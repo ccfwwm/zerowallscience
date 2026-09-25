@@ -56,7 +56,8 @@ describe('native engine lifecycle and project boundary', () => {
   it('reports RMCP through its endpoint instead of a local executable', async () => {
     const { service, project } = await fixture()
     expect(defaultScientificEngineConfig('remote-r').remoteEndpoint).toBe(DEFAULT_REMOTE_R_MCP_URL)
-    await expect(service.probe(project.id, 'remote-r')).resolves.toMatchObject({ id: 'remote-r', path: DEFAULT_REMOTE_R_MCP_URL, status: 'unknown' })
+    vi.stubEnv('R_PLATFORM_MCP_AUTHORIZATION', 'Bearer test-key')
+    await expect(service.probe(project.id, 'remote-r')).resolves.toMatchObject({ id: 'remote-r', path: DEFAULT_REMOTE_R_MCP_URL, status: 'available', available: true })
   })
   it.runIf(process.platform === 'win32' && existsSync('C:\\softworks\\Fiji\\fiji-windows-x64.exe'))('probes the installed Fiji Java without launching the GUI', async () => {
     const { project, service } = await fixture()

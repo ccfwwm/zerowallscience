@@ -4,10 +4,7 @@ import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import { NS, zh, type ZeroWallKey } from '../../../base/src/client/locales.ts'
 import type {} from '../../lib/typert.remote-client.js'
 import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
-import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { JsonObject, ResearchRecordKind } from '@zerowallscience/research-store/types'
-import type { ScienceWorkbenchEvent } from '../shared/workbench.js'
-import type { ScienceTab } from '../shared/workbench.js'
 import { scienceTabReducer, type ScienceTabState } from './workbench-state.js'
 import { WorkbenchSelectionContext, type WorkbenchSelection } from './workbench-selection.js'
 import workbenchStyles from './workbench.module.css'
@@ -59,7 +56,6 @@ type Translate = (key: TranslateKey) => string
 /** The 8-tab row of the approved design; every other tool lives in the overflow entry. */
 const TAB_ORDER: ActiveKey[] = ['home', 'imagej', 'he', 'molecule', 'sanger', 'flow', 'canvas', 'cells']
 const OVERFLOW_ORDER: ScienceToolId[] = ['sequence', 'brainglobe']
-const ALL_TOOL_IDS: ScienceToolId[] = ['imagej', 'he', 'molecule', 'sanger', 'flow', 'canvas', 'cells', 'sequence', 'brainglobe']
 const LABEL_KEYS = {
   home: 'research.workbench.tab.home', imagej: 'research.workbench.tab.imagej', he: 'research.workbench.tab.he',
   molecule: 'research.workbench.tab.molecule', sanger: 'research.workbench.tab.sanger', flow: 'research.workbench.tab.flow',
@@ -108,7 +104,6 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
   const t = useMemo(() => translateFrom(ctx), [ctx])
   const [page, setPage] = useState<Page>('overview')
   const [tabState, dispatchTab] = useReducer(scienceTabReducer, { tabs: [] } satisfies ScienceTabState)
-  const openedTools = tabState.tabs.map(tab => tab.tool).filter((tool): tool is ScienceToolId => tool !== 'home')
   /**
    * The selection each mounted panel reads through `WorkbenchSelectionContext`.
    * Keyed by tool so a panel never has to search the tab list, and carrying
@@ -116,8 +111,6 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
    * no-op re-render and re-run its open action.
    */
   const selections = useMemo(() => Object.fromEntries(tabState.tabs.map(tab => [tab.tool, { assetId: tab.assetId, viewerId: tab.viewerId, runId: tab.runId, revision: tab.revision }])) as Record<string, WorkbenchSelection>, [tabState.tabs])
-  const openedToolsRef = useRef<ScienceToolId[]>(openedTools)
-  openedToolsRef.current = openedTools
   const activeTab = tabState.tabs.find(tab => tab.id === tabState.activeId)
   const activeKey: ActiveKey = activeTab?.tool && activeTab.tool !== 'home' ? activeTab.tool : 'home'
   const [projectId, setProjectId] = useState<string>()
@@ -141,19 +134,6 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
   const [assistantBusy, setAssistantBusy] = useState(false)
   const [engineSettingsOpen, setEngineSettingsOpen] = useState(false)
   const requestGeneration = useRef(0)
-  const eventSequence = useRef(0)
-  const eventIds = useRef(new Set<string>())
-  /** Which session the durable event cursor belongs to. */
-  const sessionCursor = useRef('')
-  /**
-   * True until this client has applied every event the host had already
-   * recorded. A session carries an audit chain, not just live traffic, so the
-   * very first poll returns the whole history: the brain panel's mount, earlier
-   * viewer calls, runs from previous turns. Those are a record of what happened,
-   * not instructions to happen again — replaying them as commands is what made
-   * the ImageJ tab jump to the brain atlas with nobody touching anything.
-   */
-  const replayCursor = useRef(true)
   /** The dialog's only exit besides the scrim, so it holds the initial focus. */
   const engineDialogClose = useRef<HTMLButtonElement>(null)
   /**
@@ -173,30 +153,13 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
 
   const sessionId = props.scope.sessionId
   useEffect(() => {
-    let opened: ScienceToolId[] = []
-    try {
-      const saved = JSON.parse(localStorage.getItem(`zerowall:science-tools:${sessionId}`) ?? '{}')
-      // Migrate the pre-7.0.2 persisted `structure` tab to the public `molecule` id.
-      const persisted = Array.isArray(saved.opened) ? saved.opened.map((id: unknown) => id === 'structure' ? 'molecule' : id) : []
-      opened = [...new Set<ScienceToolId>(persisted.filter((id: unknown): id is ScienceToolId => ALL_TOOL_IDS.includes(id as ScienceToolId)))]
-    } catch { /* A malformed UI preference cannot prevent opening the workbench. */ }
-    const tabs: ScienceTab[] = opened.map(tool => ({ id: tool, tool, title: t(LABEL_KEYS[tool]), sessionId, dirty: false, lastFocusedAt: new Date().toISOString() }))
-    // A fresh workbench always opens on the card home. Previously the saved
-    // active tool (often BrainGlobe) was restored as the visible page, which
-    // made the app appear to jump into a viewer on startup. Keep the panels
-    // mounted for their selections, but leave focus on home until the user
-    // chooses a card.
-    dispatchTab({ type: 'restore', tabs, activeId: null })
+    // A new workbench starts with the cards. Old localStorage tab preferences
+    // and Host event history are not viewer commands.
+    dispatchTab({ type: 'restore', tabs: [], activeId: null })
   }, [sessionId])
   const selectTool = (id: ScienceToolId): void => {
     dispatchTab({ type: 'open', id, tool: id, title: t(LABEL_KEYS[id]), sessionId })
   }
-  const closeTool = (id: ScienceToolId): void => {
-    dispatchTab({ type: 'close', id })
-  }
-  useEffect(() => {
-    try { localStorage.setItem(`zerowall:science-tools:${sessionId}`, JSON.stringify({ opened: tabState.tabs.map(tab => tab.tool), active: activeKey === 'home' ? '' : activeKey })) } catch { /* Host persists scientific state. */ }
-  }, [sessionId, tabState.tabs, activeKey])
 
   const load = async (nextStudyId?: string): Promise<void> => {
     const generation = ++requestGeneration.current
@@ -233,86 +196,6 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
     }).catch(error => { if (!disposed) setMessage(String(error)) })
     return () => { disposed = true }
   }, [remote])
-  // The Host event cursor is durable; polling is only the transport fallback and
-  // never resubmits a scientific run. Replayed events are deduplicated by eventId.
-  useEffect(() => {
-    const eventsApi = (remote as unknown as { scienceWorkbenchEvents?: (input: { sessionId: string; afterSequence?: number; limit?: number }) => Promise<unknown> }).scienceWorkbenchEvents
-    if (!sessionId || !projectId || typeof eventsApi !== 'function') return
-    let stopped = false
-    let inFlight = false
-    // The host cursor is durable and monotonic, and the tab log is an audit
-    // chain. Rewinding it here replayed the whole session on every remount of
-    // this effect, and the loop below applies the last tab event it sees — so a
-    // historical `tab.focus`/`tab.open` (a brain panel mount records one) would
-    // silently win over the tab the user just clicked. The client-side cursor is
-    // only meaningful as one continuous run, so it is reset when the session
-    // changes, never on a re-run of this effect for the same session.
-    if (sessionCursor.current !== sessionId) {
-      sessionCursor.current = sessionId
-      eventSequence.current = 0
-      eventIds.current.clear()
-      replayCursor.current = true
-    }
-    const poll = async (): Promise<void> => {
-      if (stopped || inFlight) return
-      inFlight = true
-      try {
-        const response = unwrapRemoteResult('scienceWorkbenchEvents', await eventsApi({ sessionId, afterSequence: eventSequence.current, limit: 100 }) as RemoteResult<{ events?: ScienceWorkbenchEvent[]; lastSequence?: number }>) as { events?: ScienceWorkbenchEvent[]; lastSequence?: number }
-        if (stopped) return
-        for (const event of response.events ?? []) {
-          if (eventIds.current.has(event.eventId)) { eventSequence.current = Math.max(eventSequence.current, event.sequence); continue }
-          eventIds.current.add(event.eventId); eventSequence.current = Math.max(eventSequence.current, event.sequence)
-          // History is audited, never obeyed. During catch-up a tab event may
-          // still add the panel its session opened — reopening the tab list the
-          // user had last time is the point of the durable log — but it may not
-          // move the focus, because the focus is the user's, restored from their
-          // own last choice and changed only by their own clicks from here on.
-          const replayed = replayCursor.current
-          if ((event.type === 'tab.open' || event.type === 'tab.focus') && event.tool && event.tool !== 'home') {
-            const tool = event.tool as ScienceToolId
-            if (replayed) { if (!openedToolsRef.current.includes(tool)) dispatchTab({ type: 'reopen', id: tool, tool, title: t(LABEL_KEYS[tool]), sessionId }) }
-            else selectTool(tool)
-          }
-          if (event.type === 'asset.selected' && event.assetId) {
-            if (event.tool && event.tool !== 'home') {
-              const tool = event.tool as ScienceToolId
-              // The poll closure holds the mount-time tab list, so the guard reads
-              // the live ref; a stale guard would re-open a panel on every tick.
-              if (!openedToolsRef.current.includes(tool)) dispatchTab({ type: replayed ? 'reopen' : 'open', id: tool, tool, title: t(LABEL_KEYS[tool]), sessionId })
-              // The selection a replayed asset carries is likewise part of the
-              // record: applying it would drag the user's viewer back to an
-              // earlier asset, so catch-up keeps the panels and drops the picks.
-              if (!replayed) dispatchTab({ type: 'select', id: tool, assetId: event.assetId, viewerId: event.viewerId, runId: event.runId })
-            }
-            if (!replayed) setMessage(`已从对话选择资产：${event.assetId}`)
-          }
-          if (event.type === 'run.accepted') {
-            // Catch-up only restores that the panel was there; the asset, viewer
-            // and run the old event names are earlier state, and writing them
-            // into the tab would pull the panel back to a stale selection.
-            if (event.tool && event.tool !== 'home') {
-              if (replayed) dispatchTab({ type: 'reopen', id: event.tool, tool: event.tool as ScienceToolId, title: t(LABEL_KEYS[event.tool as ScienceToolId]), sessionId })
-              else dispatchTab({ type: 'select', id: event.tool, runId: event.runId, assetId: event.assetId, viewerId: event.viewerId })
-            }
-            if (!replayed) setMessage(`分析任务已接受${event.runId ? `：${event.runId}` : ''}。`)
-          }
-          if (event.type === 'run.progress' && !replayed) setMessage(`分析任务进度：${String(event.payload.progress ?? '运行中')}`)
-          if ((event.type === 'run.completed' || event.type === 'artifact.created') && !replayed) setMessage('分析已完成，产物已登记；请在当前工具中复核。')
-          if (event.type === 'run.failed' && !replayed) setMessage(`分析失败：${String(event.payload.error ?? '请查看任务日志')}`)
-          if (event.type === 'run.cancelled' && !replayed) setMessage('分析任务已取消；已保留部分日志和产物。')
-          if (event.type === 'engine.status') setEngines((event.payload.statuses as unknown as Engine[]) ?? [])
-        }
-        // The host cursor is monotonic, so a page shorter than the backlog means
-        // more history is waiting; only a short page proves the client has
-        // caught up and may start treating events as live instructions.
-        const last = typeof response.lastSequence === 'number' ? response.lastSequence : eventSequence.current
-        if ((response.events?.length ?? 0) < 100 && last <= eventSequence.current) replayCursor.current = false
-      } catch (error) { if (!stopped) setMessage(`实时事件同步失败：${error instanceof Error ? error.message : String(error)}`) }
-      finally { inFlight = false }
-    }
-    void poll(); const timer = window.setInterval(() => void poll(), 1500)
-    return () => { stopped = true; window.clearInterval(timer) }
-  }, [remote, sessionId, projectId])
   const active = useMemo(() => studies.find(study => study.id === selectedStudy) ?? studies[0], [studies, selectedStudy])
   const registerWorkspace = async (): Promise<void> => {
     const generation = requestGeneration.current
@@ -407,18 +290,13 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
   </>
 
   const openPage = (next: Page): void => {
-    // A research page is a destination of the home tab, but leaving the tool tab
-    // is a selection change, not a tab-list rewrite: re-dispatching `tabState.tabs`
-    // from this closure would replace the list with a stale copy and silently drop
-    // any tab or asset the 1.5 s event poll opened in the meantime.
-    if (activeKey !== 'home') dispatchTab({ type: 'select', id: activeKey })
+    if (activeKey !== 'home') dispatchTab({ type: 'blur' })
     setPage(next)
   }
-  /** The tool tab a picked file belongs to; the last focused viewer wins. */
+  /** A picked file is routed by format unless a viewer is explicitly open. */
   const assetTarget = (): ScienceToolId | undefined => {
     if (activeKey !== 'home') return activeKey
-    const candidates = tabState.tabs.filter((tab): tab is ScienceTab & { tool: ScienceToolId } => tab.tool !== 'home')
-    return candidates.sort((left, right) => right.lastFocusedAt.localeCompare(left.lastFocusedAt))[0]?.tool
+    return undefined
   }
   const openImportedAsset = (assetId: string, sourcePath: string, name: string): void => {
     const tool = scienceToolForImportedPath(sourcePath, assetTarget())
@@ -440,6 +318,11 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
   const importExternalPath = async (sourcePath: string): Promise<void> => {
     if (!sessionId || !projectId) { setMessage('请先登记当前项目，再导入项目外的科研文件。'); return }
     if (!remote.importLocalAsset) { setMessage('当前科研 Host 不支持导入科研文件。'); return }
+    const descriptor = cardFor(activeKey)
+    if (descriptor && (descriptor.acceptedExtensions.length === 0 || !descriptor.acceptedExtensions.some(ext => sourcePath.toLowerCase().endsWith(ext)))) {
+      setMessage(`${descriptor.title}不支持此文件；请选择 ${descriptor.acceptedExtensions.join('、') || '对应的查看动作'}。`)
+      return
+    }
     try {
       setMessage(`正在复制并校验 ${sourcePath.split(/[\\/]/u).at(-1) ?? '科研文件'}…`)
       const imported = unwrapRemoteResult('zerowallResearch/importLocalAsset', await remote.importLocalAsset({ sessionId, sourcePath })) as { id: string; name: string }
@@ -449,7 +332,9 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
   const pickFile = async (): Promise<void> => {
     const chooser = window.zerowallDesktop?.chooseScienceFile
     if (!chooser) { setMessage('当前桌面不支持选择科研文件。'); return }
-    const sourcePath = await chooser()
+    const extensions = cardFor(activeKey)?.acceptedExtensions.filter(ext => ext !== '.zarr')
+    if (extensions?.length === 0) { setMessage('此查看器不接受普通文件，请使用对应的查看动作。'); return }
+    const sourcePath = await chooser(extensions)
     if (sourcePath) await importExternalPath(sourcePath)
   }
   const sendToConversation = async (text: string): Promise<void> => {
@@ -531,9 +416,7 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
       </div>}
       <div hidden={page !== 'plan'}>{sessionId && active && snapshot && <NhanesSurveyPanel key={`${sessionId}:${active.id}`} remote={remote} sessionId={sessionId} study={active} documents={snapshot.documents} tasks={snapshot.tasks ?? []} onChanged={() => load(active.id)} />}</div>
       <div hidden={page !== 'plan'}>{sessionId && active && snapshot && <GeneticAnalysisPanel key={`${sessionId}:${active.id}`} remote={remote} sessionId={sessionId} study={active} documents={snapshot.documents} tasks={snapshot.tasks ?? []} onChanged={() => load(active.id)} />}</div>
-      {/* Every opened panel stays mounted and is only hidden, so a tab switch
-          cannot discard a viewer session or refetch its asset list. */}
-      {sessionId && projectId ? openedTools.map(id => <div id={`science-panel-${id}`} key={id} role="tabpanel" aria-label={t(LABEL_KEYS[id])} hidden={activeKey !== id} style={{ '--viewer-image': `url("${cardFor(id)?.image ?? ''}")` } as CSSProperties}><WorkbenchSelectionContext.Provider value={selections[id] ?? {}}>{renderTool(id)}</WorkbenchSelectionContext.Provider></div>) : <Panel title={t('research.workbench.sessionPendingTitle')}><p>{loading ? '正在准备科研目录…' : '科研目录尚未就绪，请刷新状态。'}</p></Panel>}
+      {sessionId && projectId ? activeKey !== 'home' && <div id={`science-panel-${activeKey}`} key={`${sessionId}:${activeKey}`} role="tabpanel" aria-label={t(LABEL_KEYS[activeKey])} style={{ '--viewer-image': `url("${cardFor(activeKey)?.image ?? ''}")` } as CSSProperties}><WorkbenchSelectionContext.Provider value={selections[activeKey] ?? {}}>{renderTool(activeKey)}</WorkbenchSelectionContext.Provider></div> : <Panel title={t('research.workbench.sessionPendingTitle')}><p>{loading ? '正在准备科研目录…' : '科研目录尚未就绪，请刷新状态。'}</p></Panel>}
     </WorkbenchShell>
     {engineSettingsOpen && sessionId && <div className={workbenchStyles.dialogScrim} onMouseDown={event => { if (event.target === event.currentTarget) setEngineSettingsOpen(false) }}>
       <section className={workbenchStyles.engineDialog} role="dialog" aria-modal="true" aria-label={t('research.workbench.engineSettings')} onMouseDown={event => event.stopPropagation()}>

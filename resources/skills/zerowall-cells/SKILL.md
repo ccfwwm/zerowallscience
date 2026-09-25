@@ -21,7 +21,7 @@ description: 在 ZeroWall 中打开本地 AnnData/H5AD，查看已有嵌入和�
 
 当前接受 dense、排序且无重复索引的 CSR/CSC；外部/虚拟 HDF5 数据集会拒绝。单文件最大 20 GiB、局部维度上限 200 万细胞 × 20 万 feature；这些是拒绝边界，不是性能承诺。读取串行，计算子进程限 120 秒，返回最多 32 MiB，超出时明确失败。
 
-界面显示已有嵌入的前两维散点、表达/分组着色和视图恢复；嵌入点超过 10,000 时使用 WebGL GPU 缓冲，缩放和平移只更新相机 uniform，不重复上传点数据；WebGL 不可用时只对不超过 10,000 点使用有界 SVG 回退，并明确提示大点集不可用。显示默认 100,000 点，可切换 2,000 或 200,000。视角由 `{zoom:1..100,panX:-200..200,panY:-200..200}` 保存，切换 embedding 重置。支持点击顶点绘制多边形。`cell_select` 将 `cell_selection` 的 `{embedding, axes:[0,1], polygon:[[x,y],...]}` 保存到当前 ViewerSession；坐标是 H5AD 嵌入坐标，不是屏幕像素。传 null 清除选区。多边形需要 3–128 个顶点、有限且非零面积；匹配使用奇偶规则，包含边界，浮点绝对容差 1e-10。
+默认界面只显示已有嵌入的前两维散点和查看动作；更换文件立即清空旧图，打开失败不能保留旧资产画面。索引支持普通一维 Dataset、categorical 和 nullable 字符串 Group；nullable 索引存在缺失值时拒绝。超过 10,000 个嵌入点时使用 WebGL GPU 缓冲，缩放和平移只更新相机 uniform，不重复上传点数据；WebGL 不可用时有界抽稀到 4,000 点显示并标明抽稀数量。默认上限 100,000 点。表达/分组着色、视图恢复、分析与多边形选区从 skill action 进入。视角由 `{zoom:1..100,panX:-200..200,panY:-200..200}` 保存，切换 embedding 重置。`cell_select` 将 `cell_selection` 的 `{embedding, axes:[0,1], polygon:[[x,y],...]}` 保存到当前 ViewerSession；坐标是 H5AD 嵌入坐标，不是屏幕像素。传 null 清除选区。多边形需要 3–128 个顶点、有限且非零面积；匹配使用奇偶规则，包含边界，浮点绝对容差 1e-10。
 
 选区分块匹配全部 observation，不能将 previewIndices 的长度当作全量选中数量。`cell_export_selection` 使用保存的几何，输出完整 CSV（0-based 行号与 cell_id）和 manifest；同名细胞仍由行号区分。CSV 保留原始标识，不自动重命名或合并。切换嵌入清除旧选区；源文件变化要求重新打开，历史产物保留源哈希。已用 100,005 个合成细胞验证跨预览边界选出/导出 50,000 个细胞，但这不代表全量渲染性能已通过。
 

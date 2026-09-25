@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-desktop-compat",
-  "version": "7.0.5",
+  "version": "7.0.6",
   "description": "ZeroWall Science desktop-compat domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

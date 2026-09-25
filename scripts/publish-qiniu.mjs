@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
+import { statSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 
@@ -16,18 +17,60 @@ const blockmap = `${installer}.blockmap`
 const latest = `zerowall-science-${version}-latest.json`
 for (const name of [installer, blockmap, latest, 'latest.yml', 'releases-latest.json', 'releases-zerowallsciencedev-latest.json']) await stat(resolve(dist, name))
 const mac = new qiniu.auth.digest.Mac(env.QINIU_ACCESS_KEY, env.QINIU_SECRET_KEY)
-const config = new qiniu.conf.Config(); config.zone = qiniu.zone[`Zone_${env.QINIU_REGION}`] ?? qiniu.zone.Zone_z2
+// Use HTTPS for uploads. Large Windows installers are sent through the
+// resumable API below so transient resets do not discard completed chunks.
+const config = new qiniu.conf.Config({ useHttpsDomain: true }); config.zone = qiniu.zone[`Zone_${env.QINIU_REGION}`] ?? qiniu.zone.Zone_z2
 const uploader = new qiniu.form_up.FormUploader(config)
+const resumeUploader = new qiniu.resume_up.ResumeUploader(config)
+const wait = milliseconds => new Promise(resolvePromise => setTimeout(resolvePromise, milliseconds))
+async function uploadResumable(token, key, file, localPath, progressFile, mimeType) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await new Promise((resolvePromise, reject) => {
+        let settled = false
+        let lastPercent = -5
+        const progress = (uploaded, total) => {
+          const percent = Math.floor(uploaded / total * 100)
+          if (percent >= lastPercent + 5) {
+            console.log(`Qiniu upload ${file}: ${percent}%`)
+            lastPercent = percent
+          }
+        }
+        const extra = qiniu.resume_up.PutExtra.create(file, {}, mimeType, progressFile, progress, 8 * 1024 * 1024, 'v2')
+        resumeUploader.putFile(token, key, localPath, extra, (error, body, info) => {
+          if (settled) return
+          settled = true
+          if (info?.statusCode === 200) resolvePromise(body)
+          else reject(error ?? new Error(`Qiniu resumable upload failed for ${key}: HTTP ${info?.statusCode ?? 'network error'}`))
+        })
+      })
+    } catch (error) {
+      if (attempt >= 8) throw error
+      const delay = Math.min(30_000, 2_000 * 2 ** (attempt - 1))
+      console.warn(`Qiniu resumable upload interrupted at attempt ${attempt}; retrying completed chunks in ${delay / 1000}s.`)
+      await wait(delay)
+    }
+  }
+}
 function upload(key, file, overwrite) {
   return new Promise((resolvePromise, reject) => {
     const policy = new qiniu.rs.PutPolicy({ scope: `${env.QINIU_BUCKET}:${key}`, overwrite })
     const mimeType = file.endsWith('.yml') ? 'text/yaml; charset=utf-8'
       : file.endsWith('.json') ? 'application/json; charset=utf-8'
         : 'application/octet-stream'
-    const extra = new qiniu.form_up.PutExtra('', {}, mimeType)
-    uploader.putFile(policy.uploadToken(mac), key, resolve(dist, file), extra, (error, body, info) => info?.statusCode === 200
+    const localPath = resolve(dist, file)
+    const callback = (error, body, info) => info?.statusCode === 200
       ? resolvePromise(body)
-      : reject(error ?? new Error(`Qiniu upload failed for ${key}: HTTP ${info?.statusCode}`)))
+      : reject(error ?? new Error(`Qiniu upload failed for ${key}: HTTP ${info?.statusCode}`))
+    // The installer is large enough that a single multipart request can be
+    // reset by the upload edge. Keep the recorder beside the ignored dist
+    // artifact so retries continue from completed 8 MiB chunks.
+    if (file.endsWith('.exe') && statSync(localPath).size >= 16 * 1024 * 1024) {
+      const progressFile = `${localPath}.upload-progress.json`
+      uploadResumable(policy.uploadToken(mac), key, file, localPath, progressFile, mimeType).then(resolvePromise, reject)
+      return
+    }
+    uploader.putFile(policy.uploadToken(mac), key, localPath, new qiniu.form_up.PutExtra('', {}, mimeType), callback)
   })
 }
 function refresh(urls) {

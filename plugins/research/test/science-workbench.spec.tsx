@@ -65,6 +65,45 @@ describe('Science 7 workbench', () => {
     await waitFor(() => expect(remote.scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action, assetId: 'asset-picked', sessionId: 's1' })))
   })
 
+  it('imports a new H5AD while the cell viewer is open and replaces the displayed file', async () => {
+    const { remote, props } = fixture()
+    const first = { id: 'cells-first', name: 'first.h5ad', uri: 'file:///C:/project/.zerowall/imports/first.h5ad', mediaType: 'application/x-h5ad' }
+    const second = { id: 'cells-second', name: 'second.h5ad', uri: 'file:///C:/project/.zerowall/imports/second.h5ad', mediaType: 'application/x-h5ad' }
+    const assets = [first, second]
+    const chooseScienceFile = vi.fn().mockResolvedValueOnce('C:/outside/first.h5ad').mockResolvedValueOnce('C:/outside/second.h5ad')
+    remote.importLocalAsset = vi.fn(async ({ sourcePath }) => ok(sourcePath.includes('first') ? first : second))
+    const preview = (count: number) => ({
+      summary: { encodingType: 'anndata', nObs: count, nVars: 2, obsColumns: [], varColumns: [], varNames: ['G1', 'G2'], embeddings: [{ key: 'X_umap', dimensions: 2 }], backed: true },
+      embedding: { key: 'X_umap', dimensions: 2, points: [{ index: 0, x: 0, y: 1 }, { index: 1, x: 1, y: 0 }] },
+      cells: [],
+    })
+    remote.scienceViewer = vi.fn(async input => {
+      if (input.action === 'list') return ok({ assets, viewers: [] })
+      if (input.action === 'cell_open') {
+        const asset = assets.find(item => item.id === input.assetId)!
+        const count = asset.id === first.id ? 4 : 8
+        return ok({ cell: { preview: preview(count), viewer: { id: `viewer-${asset.id}`, assetId: asset.id, tool: 'cells', version: 1, state: { embedding: 'X_umap' } } } })
+      }
+      return ok({})
+    })
+    Object.defineProperty(window, 'zerowallDesktop', { configurable: true, value: { chooseScienceFile } })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    fireEvent.click(screen.getByRole('button', { name: /细胞查看器.*进入查看器/u }))
+    fireEvent.click(screen.getByRole('button', { name: '选择文件' }))
+    await waitFor(() => expect(remote.importLocalAsset).toHaveBeenCalledExactlyOnceWith({ sessionId: 's1', sourcePath: 'C:/outside/first.h5ad' }))
+    await waitFor(() => expect(remote.scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'cell_open', assetId: 'cells-first', sessionId: 's1' })))
+    await screen.findByText(/4 cells × 2 genes/u)
+    fireEvent.click(screen.getByRole('button', { name: '更换文件' }))
+    await waitFor(() => expect(remote.importLocalAsset).toHaveBeenCalledTimes(2))
+    await screen.findByText(/8 cells × 2 genes/u)
+    expect(remote.scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'cell_open', assetId: 'cells-first', sessionId: 's1' }))
+    expect(remote.scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'cell_open', assetId: 'cells-second', sessionId: 's1' }))
+    expect((screen.getByLabelText('H5AD 数据资产') as HTMLSelectElement).value).toBe('cells-second')
+    vi.restoreAllMocks()
+  })
+
   it('uses one central file picker for every viewer', async () => {
     const { remote, props } = fixture()
     remote.importLocalAsset = vi.fn().mockResolvedValue(ok({ id: 'image-asset', name: 'sample.png' }))
@@ -90,15 +129,32 @@ describe('Science 7 workbench', () => {
     fireEvent.click(screen.getByRole('button', { name: '返回科研工作台' }))
     fireEvent.click(screen.getByRole('button', { name: /流式细胞.*进入查看器/u }))
     expect(document.querySelector('#science-panel-flow')?.hasAttribute('hidden')).toBe(false)
-    expect(document.querySelector('#science-panel-sequence')?.hasAttribute('hidden')).toBe(true)
+    expect(document.querySelector('#science-panel-sequence')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '返回科研工作台' }))
     fireEvent.click(screen.getByRole('button', { name: /序列\/Motif.*进入查看器/u }))
     expect(document.querySelector('#science-panel-sequence')?.hasAttribute('hidden')).toBe(false)
     view.unmount()
     render(<ScienceWorkbench {...props} />)
     await waitFor(() => expect(screen.getByRole('region', { name: '科研工具' })).toBeTruthy())
-    expect(document.querySelector('#science-panel-sequence')?.hasAttribute('hidden')).toBe(true)
+    expect(document.querySelector('#science-panel-sequence')).toBeNull()
     expect(screen.queryByRole('tablist', { name: '专业工具标签' })).toBeNull()
+  })
+  it('does not revive a loaded brain atlas after returning to the cards', async () => {
+    const { props } = fixture()
+    const viewer = { id: 'atlas-viewer', assetId: 'atlas-asset', version: 1, state: {} }
+    const summary = { atlas: 'allen_mouse_25um', species: 'Mus musculus', resolution: [25, 25, 25] }
+    props.remote.scienceViewer = vi.fn(async input => ok(input.action === 'brain_open' ? { brain: { viewer, summary } } : { assets: [], viewers: [] }))
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    fireEvent.click(screen.getByRole('button', { name: /脑图谱.*进入查看器/u }))
+    expect(props.remote.scienceViewer).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '打开脑图谱' }))
+    await screen.findByText(/allen_mouse_25um · Mus musculus/u)
+    fireEvent.click(screen.getByRole('button', { name: '返回科研工作台' }))
+    fireEvent.click(screen.getByRole('button', { name: /脑图谱.*进入查看器/u }))
+    expect(screen.getByRole('button', { name: '打开脑图谱' })).toBeTruthy()
+    expect(screen.queryByText(/allen_mouse_25um · Mus musculus/u)).toBeNull()
+    expect(props.remote.scienceViewer.mock.calls.map(([input]) => input.action)).toEqual(['brain_open'])
   })
   it('registers an ordinary workspace explicitly without requiring a research protocol', async () => {
     const { remote, props } = fixture()
@@ -152,16 +208,33 @@ describe('Science 7 workbench', () => {
     expect(onSendMessage).not.toHaveBeenCalled()
   })
 
-  it('unwraps and deduplicates replayed workbench events', async () => {
+  it('ignores saved tool selections and historic workbench events', async () => {
     const { props } = fixture()
-    let calls = 0
-    ;(props.remote as any).scienceWorkbenchEvents = vi.fn().mockImplementation(async () => {
-      calls += 1
-      return ok({ protocol: 'science-workbench/1', sessionId: 's1', events: calls === 1 ? [{ protocol: 'science-workbench/1', eventId: 'e1', sequence: 1, sessionId: 's1', type: 'tab.open', tool: 'flow', payload: {}, createdAt: new Date().toISOString() }] : [], lastSequence: 20, hasMore: false })
-    })
+    localStorage.setItem('zerowall:science-tools:s1', JSON.stringify({ opened: ['flow', 'brainglobe'], active: 'brainglobe' }))
+    ;(props.remote as any).scienceWorkbenchEvents = vi.fn().mockResolvedValue(ok({ events: [{ type: 'tab.open', tool: 'flow' }] }))
+    props.remote.scienceViewer = vi.fn().mockResolvedValue(ok({ assets: [], viewers: [] }))
     render(<ScienceWorkbench {...props} />)
-    await waitFor(() => expect(document.querySelector('#science-panel-flow')?.hasAttribute('hidden')).toBe(true))
+    await screen.findByText('研究 a')
     expect(screen.getByRole('region', { name: '科研工具' })).toBeTruthy()
-    expect((props.remote as any).scienceWorkbenchEvents).toHaveBeenCalledWith({ sessionId: 's1', afterSequence: 0, limit: 100 })
+    expect(document.querySelector('#science-panel-flow')).toBeNull()
+    expect(document.querySelector('#science-panel-brainglobe')).toBeNull()
+    expect((props.remote as any).scienceWorkbenchEvents).not.toHaveBeenCalled()
+    expect(props.remote.scienceViewer).not.toHaveBeenCalled()
+  })
+  it('never converts workbench events from any tool into viewer navigation', async () => {
+    const { props } = fixture()
+    const scienceViewer = vi.fn().mockResolvedValue(ok({ assets: [], viewers: [] }))
+    props.remote.scienceViewer = scienceViewer
+    ;(props.remote as any).scienceWorkbenchEvents = vi.fn().mockResolvedValue(ok({ events: [
+      { eventId: 'old', sequence: 1, type: 'tab.open', tool: 'brainglobe' },
+      { eventId: 'live', sequence: 2, type: 'asset.selected', tool: 'imagej', assetId: 'atlas-asset' },
+    ] }))
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    expect(screen.getByRole('region', { name: '科研工具' })).toBeTruthy()
+    expect(document.querySelector('#science-panel-brainglobe')).toBeNull()
+    expect(document.querySelector('#science-panel-imagej')).toBeNull()
+    expect((props.remote as any).scienceWorkbenchEvents).not.toHaveBeenCalled()
+    expect(scienceViewer).not.toHaveBeenCalled()
   })
 })

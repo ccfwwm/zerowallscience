@@ -140,10 +140,16 @@ export function BrainViewer({ remote, sessionId, viewOnly = false, active = true
       message={message || '打开脑图谱后，可按需读取切片。'}
       onOpen={{ label: '打开脑图谱', action: () => void run('brain_open'), disabled: busy }}
     />
-    const assetName = assets.find(asset => asset.id === viewer?.assetId)?.name ?? 'Allen mouse CCF 25 µm'
+    // The managed atlas is an engine resource, not a user-selected project
+    // file.  Do not surface the internal atlas asset name here: older 7.0.3
+    // projects may still contain an `Allen mouse CCF 25 um atlas` record and
+    // showing it as the current asset makes an implicit selection look like a
+    // user action.  The atlas summary below is returned only after an explicit
+    // click on “打开脑图谱”.
+    const assetName = '脑图谱查看会话'
     return <section className={viewerStyles.viewer} aria-label="脑图谱查看器">
       <div className={viewerStyles.meta}>
-        <label>当前资产 <span>{assetName}</span></label>
+        <label>当前资产 {assetName}</label>
         <span className={viewerStyles.badge}>{status}</span>
       </div>
       <div className={viewerStyles.toolbar}>

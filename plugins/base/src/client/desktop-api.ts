@@ -94,7 +94,7 @@ export interface PythonEnvironmentResponse {
 export interface ZeroWallDesktopApi {
   info(): Promise<{ version: string; platform: string; architecture: string }>
   chooseDirectory(): Promise<string | null>
-  chooseScienceFile?(): Promise<string | null>
+  chooseScienceFile?(extensions?: string[]): Promise<string | null>
   revealPath?(path: string): Promise<boolean>
   openFolder?(path: string): Promise<boolean>
   openPptx?(path: string): Promise<boolean>

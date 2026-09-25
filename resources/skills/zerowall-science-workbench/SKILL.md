@@ -9,11 +9,11 @@ Use `science_workbench` for workspace routing. It opens or focuses a tool tab, s
 
 The route only coordinates context. Use the specialized service (`scienceViewer`, `fijiWorkflow`, `fijiExperiment`, `he`, `flow`, `sanger`, `molecule`, `cell`, `canvas`, `brain`, `research_workflow`, or `r_files`) for computation. Read numeric values only from its returned run/artifact manifest. Do not claim an engine is available when Host reports `unknown`, `invalid`, or `degraded`.
 
-Workspace events use `science-workbench/1`; clients may reconnect with `afterSequence`. Replayed events must update the UI without submitting the analysis again. Preserve `sessionId`, `projectId`, `studyId`, `assetId`, `viewerId`, `runId`, and `messageId` in explanations and result links.
+Workspace events use `science-workbench/1` as a durable audit trail. The viewer UI does not poll or replay these events as navigation or asset-open commands. Only an explicit card click, file selection, or skill action opens a viewer. Preserve `sessionId`, `projectId`, `studyId`, `assetId`, `viewerId`, `runId`, and `messageId` in explanations and result links.
 
 ## 7.0.5 viewer routing
 
-The default workbench shows nine viewing cards. Select an external file with the desktop picker, then call `zerowallResearch/importLocalAsset({sessionId, sourcePath})`. Host copies it to the active project's `.zerowall/imports/`, verifies size and SHA-256, and registers the asset. Refresh the asset list and focus the matching viewer with `science_workbench(action="open", tool=..., asset_id=..., request_id=...)`. A `.zarr` directory uses its dedicated directory picker. The import limit is 20 GiB overall, 128 MiB for PNG/JPEG/PGM/PDB/CIF/SDF/SCF/AB1, and 16 MiB for FASTA/GenBank. A viewer or engine can impose a lower limit.
+The default workbench shows nine viewing cards. Select an external file with the desktop picker restricted to the active card's extensions, then call `zerowallResearch/importLocalAsset({sessionId, sourcePath})`. Host copies it to the active project's `.zerowall/imports/`, verifies size and SHA-256, and registers the asset. Refresh the asset list and focus the matching viewer with `science_workbench(action="open", tool=..., asset_id=..., request_id=...)`. The default UI has no `.zarr` directory picker; an existing registered OME-Zarr asset can still be opened through its specialized action. The import limit is 20 GiB overall, 128 MiB for PNG/JPEG/PGM/PDB/CIF/SDF/SCF/AB1, and 16 MiB for FASTA/GenBank. A viewer or engine can impose a lower limit.
 
 | Card | Inputs | Tool | Default Host action | Skill |
 | --- | --- | --- | --- | --- |

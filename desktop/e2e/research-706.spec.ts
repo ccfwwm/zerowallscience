@@ -11,6 +11,7 @@ let root: string
 let application: ChildProcessWithoutNullStreams
 let browser: Browser
 let page: Page
+let activeSessionId: string
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'zerowall-705-ui-'))
@@ -69,11 +70,11 @@ afterAll(async () => {
 
 it('loads nine research cards and their images at desktop and narrow widths', async () => {
   await page.setViewportSize({ width: 1280, height: 900 })
-  const output = join(desktopRoot, 'dist', 'verification-7.0.5')
+  const output = join(desktopRoot, 'dist', 'verification-7.0.6')
   mkdirSync(output, { recursive: true })
-  const workspacePath = join(root, 'research-705-workspace')
+  const workspacePath = join(root, 'research-706-workspace')
   mkdirSync(workspacePath)
-  await page.evaluate(async path => {
+  activeSessionId = await page.evaluate(async path => {
     const rpc = async (method: string, request: unknown) => {
       const response = await fetch(`/api/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method, payload: { args: { request } } }) })
       const envelope = await response.json()
@@ -83,6 +84,7 @@ it('loads nine research cards and their images at desktop and narrow widths', as
     const workspace = await rpc('workspace/create', { path })
     const session = await rpc('session/create', { workspaceId: workspace.workspace.workspaceId })
     await rpc('session/rename', { sessionId: session.sessionId, title: '科研工作台查看测试' })
+    return session.sessionId as string
   }, workspacePath)
   await page.reload()
   const reopenedCredential = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
@@ -90,9 +92,9 @@ it('loads nine research cards and their images at desktop and narrow widths', as
     await reopenedCredential.getByRole('button', { name: '稍后配置' }).click()
     await reopenedCredential.waitFor({ state: 'hidden' })
   }
-  await page.getByText('research-705-workspace', { exact: true }).first().click()
-  await page.getByText('research-705-workspace', { exact: true }).first().hover()
-  await page.getByRole('button', { name: '在“research-705-workspace”中新建会话', exact: true }).click()
+  await page.getByText('research-706-workspace', { exact: true }).first().click()
+  await page.getByText('research-706-workspace', { exact: true }).first().hover()
+  await page.getByRole('button', { name: '在“research-706-workspace”中新建会话', exact: true }).click()
   await page.getByRole('textbox', { name: /^描述你想要构建/u }).fill('科研工作台查看测试')
   await page.getByRole('button', { name: '发送消息', exact: true }).click()
   const stop = page.getByRole('button', { name: '停止生成', exact: true })
@@ -119,4 +121,48 @@ it('loads nine research cards and their images at desktop and narrow widths', as
   }))
   expect(geometry.every(box => box.right <= 390 && box.left >= 0)).toBe(true)
   expect(geometry.every((box, index) => index === 0 || box.top >= geometry[index - 1]!.bottom)).toBe(true)
-}, 60_000)
+  await page.setViewportSize({ width: 1280, height: 900 })
+  for (let index = 0; index < 9; index++) {
+    await home.getByRole('button').nth(index).click()
+    await pane.getByRole('button', { name: '返回科研工作台' }).waitFor({ state: 'visible' })
+    const landing = pane.locator('[data-research-landing]')
+    await landing.waitFor({ state: 'visible' })
+    expect(await landing.locator('img').evaluate(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0)).toBe(true)
+    await page.screenshot({ path: join(output, `research-viewer-${index + 1}.png`) })
+    await pane.getByRole('button', { name: '返回科研工作台' }).click()
+    await home.waitFor({ state: 'visible' })
+  }
+
+  // The real external H5AD check is opt-in because the 20 MiB sample is kept
+  // outside the repository. It exercises the packaged Host import, copy/hash,
+  // AnnData nullable index reader, viewer selection and replacement path.
+  const samplePath = process.env.ZEROWALL_CELL_SAMPLE
+  if (samplePath) {
+    const importedAssets = await page.evaluate(async ({ sessionId, sourcePath }) => {
+      const importOne = async () => {
+        const method = 'zerowallResearch/importLocalAsset'
+        const response = await fetch(`/api/${method}`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method, payload: { args: { input: { sessionId, sourcePath } } } }),
+        })
+        const envelope = await response.json()
+        if (!response.ok || !envelope.result?.ok) throw new Error(`${method}: ${JSON.stringify(envelope)}`)
+        return envelope.result.value as { id: string; name: string }
+      }
+      return [await importOne(), await importOne()]
+    }, { sessionId: activeSessionId, sourcePath: samplePath })
+    expect(importedAssets[0]!.id).not.toBe(importedAssets[1]!.id)
+    await home.getByRole('button', { name: /细胞查看器/u }).click()
+    const cellViewer = pane.getByLabel('H5AD 数据资产')
+    await cellViewer.waitFor({ state: 'visible', timeout: 30_000 })
+    await cellViewer.selectOption(importedAssets[0]!.id)
+    await pane.getByRole('img', { name: 'X_umap scatter' }).waitFor({ timeout: 120_000 })
+    await expect.poll(() => pane.getByText(/2,700 cells × 13,714 genes/u).count(), { timeout: 120_000 }).toBe(1)
+    expect(await cellViewer.inputValue()).toBe(importedAssets[0]!.id)
+    await cellViewer.selectOption(importedAssets[1]!.id)
+    await pane.getByRole('img', { name: 'X_umap scatter' }).waitFor({ timeout: 120_000 })
+    await expect.poll(() => cellViewer.inputValue()).toBe(importedAssets[1]!.id)
+    await expect.poll(() => pane.getByText(/2,700 cells × 13,714 genes/u).count(), { timeout: 120_000 }).toBe(1)
+    await page.screenshot({ path: join(output, 'research-cell-h5ad-imported.png') })
+  }
+}, 180_000)

@@ -57,6 +57,13 @@ def column_size(obj):
     if isinstance(obj, h5py.Group) and 'mask' in obj and obj['mask'].shape != ds.shape: raise ValueError('Nullable mask shape mismatch')
     return ds.shape[0]
 
+def index_values(group, start=0, stop=None):
+    key = index_key(group)
+    size = column_size(group[key])
+    entries = column(group, key, start, size if stop is None else stop)
+    if any(entry is None for entry in entries): raise ValueError('Declared dataframe index contains missing values')
+    return entries
+
 def inspect(f):
     if scalar(f.attrs.get('encoding-type', '')) != 'anndata' or any(k not in f for k in ('obs', 'var', 'X')):
         raise ValueError('Not a supported AnnData file: anndata encoding, obs, var and X are required')
@@ -87,7 +94,7 @@ def inspect(f):
         if isinstance(obj, h5py.Dataset) and obj.ndim == 2 and obj.shape[1] >= 2:
             if obj.shape[0] != n or obj.dtype.kind not in 'fiu': raise ValueError('Embedding dimensions/type do not match obs')
             embeddings.append({'key': key, 'dimensions': obj.shape[1]})
-    return {'encodingType': 'anndata', 'nObs': n, 'nVars': p, 'obsColumns': columns['obs'], 'varColumns': columns['var'], 'varNames': values(f['var'][index_key(f['var'])], 0, min(p, 10000)), 'varNamesTruncated': p > 10000, 'embeddings': embeddings, 'backed': True}
+    return {'encodingType': 'anndata', 'nObs': n, 'nVars': p, 'obsColumns': columns['obs'], 'varColumns': columns['var'], 'varNames': index_values(f['var'], 0, min(p, 10000)), 'varNamesTruncated': p > 10000, 'embeddings': embeddings, 'backed': True}
 
 def numeric(data):
     data = np.asarray(data, dtype=np.float64)
@@ -176,13 +183,13 @@ def selection_result(f, info, geometry, preview_limit, export_path=None):
     try:
         writer = csv.writer(output) if output else None
         if writer: writer.writerow(['observation_index_0based', 'cell_id'])
-        ds = f['obsm'][emb]; obs_ids = f['obs'][index_key(f['obs'])]
+        ds = f['obsm'][emb]; obs = f['obs']
         for start in range(0,n,10000):
             stop = min(n,start+10000); points = numeric(ds[start:stop,:2]); indices = np.flatnonzero(selected_points(points, geometry['polygon']))
             result['count'] += int(len(indices))
             result['previewIndices'].extend(int(start+i) for i in indices if start+i < preview_limit)
             if writer or len(result['sample']) < 100:
-                ids = values(obs_ids,start,stop)
+                ids = index_values(obs,start,stop)
                 for i in indices:
                     index = int(start+i); cell_id = str(ids[int(i)])
                     if len(result['sample']) < 100: result['sample'].append({'index': index, 'id': cell_id})
@@ -194,7 +201,7 @@ def selection_result(f, info, geometry, preview_limit, export_path=None):
 def main(req):
     with h5py.File(req['path'], 'r') as f:
         info = inspect(f); n, p = info['nObs'], info['nVars']; limit = min(req['cellLimit'], n); emb_limit = min(req['embeddingLimit'], n)
-        obs = f['obs']; ids = values(obs[index_key(obs)], 0, limit)
+        obs = f['obs']; ids = index_values(obs, 0, limit)
         cols = {c['name']: column(obs, c['name'], 0, limit) for c in info['obsColumns']}
         group = req.get('groupBy')
         if group and group not in cols: raise ValueError('Unknown obs group column: ' + group)
@@ -212,8 +219,8 @@ def main(req):
             result['embedding'] = {'key': emb, 'dimensions': f['obsm'][emb].shape[1], 'points': points}
         gene = req.get('gene'); gene_index = None
         if gene:
-            matches = []; ds = f['var'][index_key(f['var'])]
-            for start in range(0, p, 10000): matches.extend(start+i for i,v in enumerate(values(ds, start, min(p,start+10000))) if v == gene)
+            matches = []; var = f['var']
+            for start in range(0, p, 10000): matches.extend(start+i for i,v in enumerate(index_values(var, start, min(p,start+10000))) if v == gene)
             if len(matches) != 1: raise ValueError('Gene must match exactly one var index entry: ' + gene)
             gene_index = matches[0]
         full = req['action'] in ('analyze', 'export')

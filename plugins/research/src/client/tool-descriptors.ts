@@ -26,7 +26,7 @@ export type ResearchToolDescriptor = {
 
 export const RESEARCH_TOOL_DESCRIPTORS: readonly ResearchToolDescriptor[] = [
   { id: 'cells', title: '细胞查看器', description: '浏览单细胞数据与细胞分布', image: cellsImage, acceptedExtensions: ['.h5ad'], viewerRoute: 'cells', skillId: 'zerowall-cells' },
-  { id: 'imagej', title: 'ImageJ 图像', description: '查看显微图像与多页 TIFF', image: imagejImage, acceptedExtensions: ['.png', '.jpg', '.jpeg', '.tif', '.tiff', '.zarr'], viewerRoute: 'imagej', skillId: 'zerowall-fiji' },
+  { id: 'imagej', title: 'ImageJ 图像', description: '查看显微图像与多页 TIFF', image: imagejImage, acceptedExtensions: ['.png', '.jpg', '.jpeg', '.pgm', '.tif', '.tiff'], viewerRoute: 'imagej', skillId: 'zerowall-fiji' },
   { id: 'he', title: 'HE 切片', description: '浏览病理切片与金字塔图层', image: heImage, acceptedExtensions: ['.svs', '.ndpi', '.tif', '.tiff'], viewerRoute: 'he', skillId: 'zerowall-he' },
   { id: 'molecule', title: '分子结构', description: '查看分子结构与三维构象', image: moleculeImage, acceptedExtensions: ['.pdb', '.cif', '.mmcif', '.sdf'], viewerRoute: 'molecule', skillId: 'zerowall-molecule-viewer' },
   { id: 'sequence', title: '序列/Motif', description: '浏览核酸序列与注释', image: sequenceImage, acceptedExtensions: ['.fa', '.fasta', '.fna', '.ffn', '.frn', '.gb', '.gbk'], viewerRoute: 'sequence', skillId: 'zerowall-sequence' },

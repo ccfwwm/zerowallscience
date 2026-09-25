@@ -46,6 +46,7 @@ describe('science workbench router helpers', () => {
     expect(scienceViewerAction('he', 'he_segment')).toBe('he_segment')
     expect(scienceViewerAction('cells', 'cells_open')).toBe('cell_open')
     expect(scienceViewerAction('brainglobe', 'brainglobe_open')).toBe('brain_open')
+    expect(() => scienceViewerAction('brainglobe')).toThrow(/requires an explicit operation/u)
     expect(scienceViewerAction('canvas', 'canvas_open')).toBe('canvas_render')
     expect(() => scienceViewerAction('he', 'he_unknown')).toThrow(/Unsupported workbench operation/u)
     expect(workbenchTabTitle('brainglobe')).toBe('脑图谱')

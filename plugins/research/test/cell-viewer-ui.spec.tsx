@@ -22,6 +22,39 @@ it('opens a backed cell asset and renders its embedding', async () => {
   await waitFor(() => expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'cell_read', viewerId: 'v1', expectedVersion: 1, gene: 'G2' })))
 })
 
+it('clears the previous plot when a replacement H5AD fails to open', async () => {
+  const scienceViewer = vi.fn(async input => {
+    if (input.action === 'list') return { ok: true, value: { assets: [{ id: 'a1', name: 'first.h5ad' }, { id: 'a2', name: 'new.h5ad' }], viewers: [] } }
+    if (input.assetId === 'a2') return { ok: false, error: { message: 'Unreadable H5AD index' } }
+    return { ok: true, value: { cell: { preview, viewer } } }
+  })
+  render(<CellViewer remote={{ scienceViewer } as any} sessionId="s1" viewOnly />)
+  fireEvent.change(await screen.findByLabelText('H5AD 数据资产'), { target: { value: 'a1' } })
+  await screen.findByRole('img', { name: 'X_umap scatter' })
+  fireEvent.change(screen.getByLabelText('H5AD 数据资产'), { target: { value: 'a2' } })
+  expect(screen.queryByRole('img', { name: 'X_umap scatter' })).toBeNull()
+  await screen.findByText('打开失败')
+  expect(screen.queryByRole('img', { name: 'X_umap scatter' })).toBeNull()
+  expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'cell_open', assetId: 'a2' }))
+})
+
+it('ignores a late open result after choosing a different H5AD', async () => {
+  let finishOld!: (value: unknown) => void
+  const scienceViewer = vi.fn(async input => {
+    if (input.action === 'list') return { ok: true, value: { assets: [{ id: 'a1', name: 'old.h5ad' }, { id: 'a2', name: 'new.h5ad' }], viewers: [] } }
+    if (input.assetId === 'a1') return await new Promise(resolve => { finishOld = resolve })
+    return { ok: true, value: { cell: { preview, viewer: { ...viewer, assetId: 'a2' } } } }
+  })
+  render(<CellViewer remote={{ scienceViewer } as any} sessionId="s1" viewOnly />)
+  fireEvent.change(await screen.findByLabelText('H5AD 数据资产'), { target: { value: 'a1' } })
+  await waitFor(() => expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'cell_open', assetId: 'a1' })))
+  fireEvent.change(screen.getByLabelText('H5AD 数据资产'), { target: { value: 'a2' } })
+  await screen.findByRole('img', { name: 'X_umap scatter' })
+  finishOld({ ok: false, error: { message: 'Old file failed' } })
+  await waitFor(() => expect(screen.queryByText(/Old file failed/u)).toBeNull())
+  expect((screen.getByLabelText('H5AD 数据资产') as HTMLSelectElement).value).toBe('a2')
+})
+
 it('still draws a decimated embedding when WebGL is unavailable above the SVG ceiling', async () => {
   const points = Array.from({ length: 12000 }, (_, index) => ({ index, x: index % 100, y: (index * 7) % 100 }))
   const large = { ...preview, embedding: { key: 'X_umap', dimensions: 2, points } }

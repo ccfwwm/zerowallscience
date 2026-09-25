@@ -61,7 +61,24 @@ export async function atlasStatus(directory?: string): Promise<BrainAtlasStatus>
   if (!target) return { installed: false, directory: '', name: ATLAS }
   const manifestPath = join(target, ATLAS, 'zerowall-atlas.json')
   let manifest: Record<string, unknown>
-  try { manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown> } catch { return { installed: false, directory: target, name: ATLAS } }
+  try { manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<string, unknown> } catch {
+    const atlasRoot = join(target, 'brainglobe-atlasapi')
+    const installedAtlas = join(atlasRoot, 'atlases', ATLAS)
+    for (const version of await readdir(installedAtlas).catch(() => [])) {
+      const metadata = await readFile(join(installedAtlas, version, 'manifest.json'), 'utf8').then(text => JSON.parse(text) as Record<string, unknown>, () => undefined)
+      const annotation = metadata?.annotation_set as Record<string, unknown> | undefined
+      const terminology = metadata?.terminology as Record<string, unknown> | undefined
+      if (metadata?.name !== 'allen_mouse' || !Array.isArray(metadata.shape) || metadata.shape.length !== 3 || !Array.isArray(metadata.resolution) || metadata.resolution.length !== 3 || !annotation || !terminology) continue
+      const annotationRoot = join(atlasRoot, 'annotation-sets', 'allen_mouse-annotation', version, 'annotations.ome.zarr')
+      const terminologyPath = join(atlasRoot, 'terminologies', 'allen_mouse-terminology', version, 'terminology.csv')
+      const zarr = await stat(join(annotationRoot, 'zarr.json')).catch(() => undefined)
+      const table = await stat(terminologyPath).catch(() => undefined)
+      const chunks = await readdir(join(annotationRoot, 's0')).catch(() => [])
+      if (!zarr?.isFile() || !zarr.size || !table?.isFile() || !table.size || chunks.length === 0) continue
+      return { installed: true, directory: target, name: ATLAS, atlasVersion: String(metadata.version ?? version), shape: metadata.shape.map(Number) as [number, number, number], resolution: metadata.resolution.map(Number) as [number, number, number], annotationBytes: zarr.size }
+    }
+    return { installed: false, directory: target, name: ATLAS }
+  }
   const files = Array.isArray(manifest.files) ? manifest.files as Array<Record<string, unknown>> : []
   const annotation = files.find(file => String(file.name ?? '').startsWith('annotation'))
   let volumeBytes = 0
@@ -347,6 +364,9 @@ export class BrainAtlasService {
    * so a second call reports already-present rather than re-downloading.
    */
   async installAtlas(options: { atlasDirectory?: string } = {}): Promise<JsonObject> {
+    const directory = options.atlasDirectory?.trim() || process.env.ZEROWALL_BRAINGLOBE_DIR?.trim() || defaultAtlasDirectory()
+    const existing = await atlasStatus(directory)
+    if (existing.installed) return { atlas: { ...existing, status: 'already-present' } } as unknown as JsonObject
     // The download needs brainglobe-atlasapi, so it fails the same way an
     // analysis does; checking first keeps that failure actionable.
     await this.assertBrainDependencies()
@@ -417,14 +437,16 @@ export class BrainAtlasService {
     if (request.action === 'register') return await this.register(project, request)
     if (request.action === 'cellfinder') return await this.cellfinder(project, request)
     if (request.action === 'render') return await this.render(project, request)
-    const asset = this.atlasAsset(project)
     if (request.action === 'open') {
       const result = await this.run({ operation: 'summary', maxRegions: 256 })
       const summary = this.expectSummary(result.summary)
+      const asset = this.atlasAsset(project)
       const viewer = this.activeStore.createViewerSession({ projectId: project.id, assetId: asset.id, tool: 'brain', state: { atlas: ATLAS, atlasVersion: summary.version, axis: 0, index: 0, downsample: 8, runner: RUNNER } })
       return { summary, viewer }
     }
     const viewer = this.viewer(project, request.viewerId)
+    const asset = this.activeStore.listDataAssets(project.id).find(item => item.id === viewer.assetId && item.uri === `brainatlas://${ATLAS}`)
+    if (!asset) throw new Error('BrainGlobe viewer has no registered atlas asset in the active project.')
     if (request.expectedVersion !== viewer.version) throw new Error(`Brain viewer revision conflict: current ${viewer.version}.`)
     const state = viewer.state
     if (request.action === 'read') {
@@ -445,7 +467,11 @@ export class BrainAtlasService {
   private atlasAsset(project: ProjectRecord): DataAssetRecord {
     const existing = this.activeStore.listDataAssets(project.id).find(item => item.uri === `brainatlas://${ATLAS}`)
     if (existing) return existing
-    return this.activeStore.createDataAsset({ projectId: project.id, name: 'Allen mouse CCF 25 um atlas', uri: `brainatlas://${ATLAS}`, location: 'web', mediaType: 'application/x-brainglobe-atlas', provenance: { atlas: ATLAS, runner: RUNNER, source: 'BrainGlobe atlasapi' } })
+    // Keep the foreign-key target generic.  The managed atlas is an engine
+    // resource, never a selected project file, and the UI must not present an
+    // Allen atlas record as the current asset.  Existing 7.0.3 records are
+    // still accepted for data integrity but are never selected implicitly.
+    return this.activeStore.createDataAsset({ projectId: project.id, name: '脑图谱查看会话', uri: `brainatlas://${ATLAS}`, location: 'web', mediaType: 'application/x-brainglobe-atlas', provenance: { atlas: ATLAS, runner: RUNNER, source: 'BrainGlobe atlasapi', managed: true } })
   }
 
   private viewer(project: ProjectRecord, id?: string): ViewerSessionRecord {

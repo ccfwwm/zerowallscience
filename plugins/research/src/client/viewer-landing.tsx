@@ -15,7 +15,7 @@ export function ViewerLanding({ tool, status, message, onPickFile, assetPicker, 
   onOpen?: { label: string; action: () => void; disabled?: boolean }
 }): JSX.Element {
   const descriptor = RESEARCH_TOOL_DESCRIPTORS.find(item => item.id === tool)!
-  return <div className={styles.landing} role="status">
+  return <div className={styles.landing} data-research-landing={tool} role="status">
     <div className={styles.art}><img src={descriptor.image} alt="" /></div>
     <div className={styles.body}>
       <span className={styles.kicker}>{descriptor.title}</span>

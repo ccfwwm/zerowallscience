@@ -596,10 +596,13 @@ if (ownsInstance) app.whenReady().then(async () => {
       : await dialog.showOpenDialog(options)
     return result.canceled ? null : result.filePaths[0] ?? null
   })
-  ipcMain.handle('desktop:choose-science-file', async () => {
+  ipcMain.handle('desktop:choose-science-file', async (_event, requested: unknown) => {
+    const all = ['png', 'jpg', 'jpeg', 'pgm', 'tif', 'tiff', 'svs', 'ndpi', 'fasta', 'fa', 'fna', 'ffn', 'frn', 'gb', 'gbk', 'scf', 'ab1', 'pdb', 'cif', 'mmcif', 'sdf', 'fcs', 'h5ad']
+    const extensions = Array.isArray(requested)
+      ? [...new Set(requested.map(value => String(value).replace(/^\./u, '').toLowerCase()).filter(value => all.includes(value)))]
+      : all
     const options: OpenDialogOptions = { properties: ['openFile'], filters: [
-      { name: '科研文件', extensions: ['png', 'jpg', 'jpeg', 'tif', 'tiff', 'svs', 'ndpi', 'fasta', 'fa', 'gb', 'gbk', 'scf', 'ab1', 'pdb', 'cif', 'mmcif', 'sdf', 'fcs', 'h5ad', 'zarr'] },
-      { name: '所有文件', extensions: ['*'] },
+      { name: '当前查看器支持的科研文件', extensions: extensions.length ? extensions : all },
     ] }
     const result = mainWindow && !mainWindow.isDestroyed() ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options)
     return result.canceled ? null : result.filePaths[0] ?? null

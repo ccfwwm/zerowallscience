@@ -14,7 +14,14 @@ export function scienceViewerAction(tool: ScienceToolId, operation?: string): st
     if (['open', 'read', 'save', 'analyze', 'export'].includes(op)) return op
     throw new Error(`Unsupported workbench operation ${op} for ${tool}.`)
   }
-  if (!op) return tool === 'canvas' ? 'canvas_render' : `${mapped}_open`
+  // BrainGlobe owns a managed atlas and is deliberately opt-in.  A missing
+  // operation used to be treated as `brain_open`, which meant that a generic
+  // workbench request (or a replayed event without an operation) could start
+  // loading the Allen atlas.  Require the caller to name the action instead.
+  if (!op) {
+    if (tool === 'brainglobe') throw new Error('BrainGlobe requires an explicit operation; the atlas is never opened implicitly.')
+    return tool === 'canvas' ? 'canvas_render' : `${mapped}_open`
+  }
   const allowed: Record<string, string[]> = {
     imagej: ['open', 'read', 'save', 'analyze', 'mask_analyze', 'native_status', 'launch_native'],
     he: ['open', 'read', 'analyze', 'export', 'segment', 'status', 'cancel'],

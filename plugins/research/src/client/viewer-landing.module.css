@@ -1,12 +1,12 @@
-.landing { display: grid; grid-template-columns: minmax(180px, .9fr) minmax(260px, 1.1fr); min-height: min(62vh, 580px); overflow: hidden; border: 1px solid #d7e6df; border-radius: 18px; background: #fff; box-shadow: 0 16px 40px rgba(28, 80, 58, .07); }
-.art { min-height: 330px; overflow: hidden; background: #e9f5ef; }
+.landing { min-height: min(66vh, 620px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 32px 20px; box-sizing: border-box; background: #f5f9f7; border: 1px solid #d9e7df; border-radius: 8px; text-align: center; }
+.art { width: min(100%, 540px); aspect-ratio: 16 / 7; overflow: hidden; border-radius: 6px; background: #e9f2ed; }
 .art img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.body { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 16px; padding: clamp(28px, 5vw, 70px); }
-.kicker { color: #3c8267; font-size: 13px; font-weight: 700; letter-spacing: .05em; }
-.body h2 { margin: 0; color: #1e3b30; font-size: clamp(24px, 3vw, 36px); font-weight: 700; }
-.body p { margin: 0; color: #61776c; font-size: 15px; line-height: 1.65; }
-.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
-.actions select { min-width: 180px; max-width: 100%; }
-.primary { display: inline-flex; align-items: center; gap: 9px; padding: 11px 20px !important; color: #fff !important; background: #347a61 !important; border: 1px solid #347a61 !important; border-radius: 10px !important; font-size: 15px !important; font-weight: 600 !important; box-shadow: 0 6px 15px rgba(52, 122, 97, .2); }
+.body { display: flex; flex-direction: column; align-items: center; gap: 12px; width: min(100%, 650px); }
+.kicker { color: #3c8267; font-size: 13px; font-weight: 700; }
+.body h2 { margin: 0; color: #203b30; font-size: 24px; line-height: 1.3; font-weight: 700; }
+.body p { margin: 0; color: #5e7067; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-top: 8px; }
+.actions select { min-width: min(100%, 230px); max-width: 100%; }
+.primary { display: inline-flex; align-items: center; gap: 9px; padding: 11px 20px !important; color: #fff !important; background: #347a61 !important; border: 1px solid #347a61 !important; border-radius: 6px !important; font-size: 15px !important; font-weight: 600 !important; }
 .primary:hover { background: #28664f !important; }
-@media (max-width: 760px) { .landing { grid-template-columns: 1fr; } .art { min-height: 180px; max-height: 240px; } .body { padding: 24px; } }
+@media (max-width: 760px) { .landing { min-height: 520px; padding: 20px 12px; } .art { aspect-ratio: 16 / 9; } .actions { flex-direction: column; } .actions select, .actions button { width: min(100%, 300px); justify-content: center; } }

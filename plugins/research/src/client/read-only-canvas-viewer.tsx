@@ -3,6 +3,7 @@ import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { CanvasSpec } from '../shared/canvas.js'
 import { ViewerLanding } from './viewer-landing.js'
+import styles from './read-only-image-viewers.module.css'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 
@@ -14,7 +15,7 @@ export function ReadOnlyCanvasViewer({ remote, sessionId }: { remote: Remote; se
   const open = async (): Promise<void> => {
     if (busy) return
     const saved = localStorage.getItem(`zerowall:canvas:${sessionId}`)
-    if (!saved) { setStatus('未选择文件'); return }
+    if (!saved) { setSvg(''); setStatus('未选择文件'); return }
     setBusy(true); setStatus('正在加载')
     try {
       const spec = JSON.parse(saved) as CanvasSpec
@@ -22,9 +23,9 @@ export function ReadOnlyCanvasViewer({ remote, sessionId }: { remote: Remote; se
       const rendered = response.canvas?.canvas?.svg
       if (!rendered) throw new Error('画布渲染未返回图像。')
       setSvg(rendered); setStatus('已加载')
-    } catch (error) { setStatus(`打开失败：${error instanceof Error ? error.message : String(error)}`) }
+    } catch (error) { setSvg(''); setStatus(`打开失败：${error instanceof Error ? error.message : String(error)}`) }
     finally { setBusy(false) }
   }
 
-  return <section aria-label="科研画布查看器">{svg ? <><button type="button" disabled={busy} onClick={() => void open()}>刷新画布</button><p role="status">{status}</p><div aria-label="科研画布预览" style={{ overflow: 'auto' }} dangerouslySetInnerHTML={{ __html: svg }} /></> : <ViewerLanding tool="canvas" status={status} onOpen={{ label: '查看画布', action: () => void open() }} />}</section>
+  return <section className={styles.viewer} aria-label="科研画布查看器">{svg ? <><div className={styles.meta}><span className={styles.badge} role="status">{status}</span><button type="button" disabled={busy} onClick={() => void open()}>刷新画布</button></div><div className={styles.stage} aria-label="科研画布预览" dangerouslySetInnerHTML={{ __html: svg }} /></> : <ViewerLanding tool="canvas" status={status} onOpen={{ label: '查看画布', action: () => void open(), disabled: busy }} />}</section>
 }

@@ -10,6 +10,7 @@ import { prepareCellPlot } from './cell-webgl.js'
 import { CellGpuCanvas } from './cell-gpu-canvas.js'
 import { useWorkbenchSelection } from './workbench-selection.js'
 import { ViewerLanding } from './viewer-landing.js'
+import viewerStyles from './read-only-image-viewers.module.css'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: { remote: Remote; sessionId: string; viewOnly?: boolean; onPickFile?: () => void }): JSX.Element {
@@ -33,6 +34,7 @@ export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: 
   const handled = useRef('')
   const call = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<ScienceViewerResponse> =>
     unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId })) as ScienceViewerResponse
+  const isCellAsset = (asset: Pick<DataAssetRecord, 'name' | 'uri'>): boolean => /\.(h5ad|h5)$/iu.test(asset.name) || /\.(h5ad|h5)(?:$|[?#])/iu.test(asset.uri)
 
   useEffect(() => {
     const id = ++generation.current
@@ -40,7 +42,7 @@ export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: 
     setGene(''); setGroupBy(''); setEmbedding(''); setMessage(''); setCamera(DEFAULT_CELL_CAMERA); setBusy(false); inFlight.current = false
     void call({ action: 'list' }).then(result => {
       if (id !== generation.current) return
-      setAssets((result.assets ?? []).filter(a => /\.(h5ad|h5)(?:$|[?#])/iu.test(a.uri) || /\.(h5ad|h5)$/iu.test(a.name)))
+      setAssets((result.assets ?? []).filter(isCellAsset))
       setViews((result.viewers ?? []).filter(v => v.tool === 'cells'))
     }).catch(error => { if (id === generation.current) setMessage(String(error)) })
     return () => { generation.current++ }
@@ -49,7 +51,9 @@ export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: 
   // assetOverride lets the workbench-selection effect open an asset in the same tick
   // it sets the dropdown, before React has committed that state back into assetId.
   const run = async (action: 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view', restore?: ViewerSessionRecord, geometry?: CellSelection | null, assetOverride?: string): Promise<void> => {
+    if (action === 'cell_open' && inFlight.current) { generation.current++; inFlight.current = false }
     if (inFlight.current) return
+    if (action === 'cell_open') { setViewer(undefined); setPreview(undefined); setAnalysis(undefined); setSelection(undefined); setCamera(DEFAULT_CELL_CAMERA) }
     inFlight.current = true; setBusy(true); setMessage('')
     const id = generation.current
     const selected = restore ?? viewer
@@ -66,22 +70,47 @@ export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: 
       })
       if (id !== generation.current) return
       const cell = result.cell
+      if (action === 'cell_open' && (!cell?.viewer || !cell.preview)) throw new Error('细胞查看器未返回有效的 H5AD 预览。')
       if (action !== 'cell_view') { setPreview(cell?.preview); setAnalysis(cell?.analysis); setSelection(cell?.selection) }
       if (cell?.viewer) {
         setViewer(cell.viewer); setAssetId(cell.viewer.assetId)
         setCamera((cell.viewer.state.camera as unknown as CellCamera) ?? DEFAULT_CELL_CAMERA); setEmbeddingLimit(Number(cell.viewer.state.embeddingLimit ?? 100000))
         setGene(String(cell.viewer.state.gene ?? '')); setGroupBy(String(cell.viewer.state.groupBy ?? '')); setEmbedding(String(cell.viewer.state.embedding ?? ''))
         setViews(items => [cell.viewer!, ...items.filter(v => v.id !== cell.viewer!.id)])
+        if (action === 'cell_open') {
+          // Refreshing the project asset list is secondary to rendering a successful
+          // open. A transient list failure must not erase the newly loaded plot.
+          void call({ action: 'list' }).then(listed => {
+            if (id === generation.current) setAssets((listed.assets ?? []).filter(isCellAsset))
+          }).catch(() => undefined)
+        }
       }
       if (cell?.artifact) setMessage('已登记产物：' + cell.artifact.name + '\n' + cell.artifact.uri + '\nSHA-256: ' + cell.artifact.checksum)
-    } catch (error) { if (id === generation.current) setMessage(error instanceof Error ? error.message : String(error)) }
+    } catch (error) {
+      if (id === generation.current) {
+        // A failed replacement must never leave the previous file's plot on screen.
+        // Keeping it made the error look like a successful preview of the new asset.
+        if (action === 'cell_open') {
+          setViewer(undefined)
+          setPreview(undefined)
+          setAnalysis(undefined)
+          setSelection(undefined)
+        }
+        setMessage(error instanceof Error ? error.message : String(error))
+      }
+    }
     finally { if (id === generation.current) { setBusy(false); inFlight.current = false } }
   }
 
   // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
   // the file the user selected. An empty selection leaves the dropdown untouched,
   // because then the user is choosing inside the viewer.
-  useEffect(() => { if (workbench.assetId) setAssetId(workbench.assetId) }, [workbench.assetId])
+  useEffect(() => { if (workbench.assetId) { setAssetId(workbench.assetId); setViewer(undefined); setPreview(undefined); setAnalysis(undefined); setSelection(undefined); setMessage('') } }, [workbench.assetId])
+  const selectAsset = (nextAssetId: string): void => {
+    generation.current++; inFlight.current = false; setBusy(false)
+    setAssetId(nextAssetId); setViewer(undefined); setPreview(undefined); setAnalysis(undefined); setSelection(undefined); setMessage('')
+    if (nextAssetId) void run('cell_open', undefined, undefined, nextAssetId)
+  }
   useEffect(() => {
     if (!workbench.assetId || workbench.revision == null) return
     // Keyed by revision: selecting the same asset again is a second request, but a
@@ -94,8 +123,13 @@ export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: 
     void run('cell_open', undefined, undefined, workbench.assetId)
   }, [workbench.assetId, workbench.revision])
 
-  if (viewOnly && !preview) return <ViewerLanding tool="cells" status={busy ? '正在加载' : '未选择文件'} message={message} {...(onPickFile ? { onPickFile } : {})} />
-  if (viewOnly) return <section aria-label="细胞查看器"><div><select aria-label="H5AD 数据资产" value={assetId} onChange={event => setAssetId(event.target.value)}><option value="">选择 H5AD 资产</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select><button type="button" disabled={!assetId || busy} onClick={() => void run('cell_open')}>打开</button></div><p role="status">{busy ? '正在加载' : message ? `打开失败：${message}` : '已加载'}</p>{preview && <><p>{assets.find(asset => asset.id === viewer?.assetId)?.name} · {preview.summary.nObs.toLocaleString()} cells × {preview.summary.nVars.toLocaleString()} genes</p>{preview.embedding ? <EmbeddingPlot key={viewer?.id + ':' + preview.embedding.key} preview={preview} groupBy="" selection={undefined} busy={busy} camera={camera} onCamera={setCamera} onSelect={() => undefined} viewOnly /> : <p>此文件没有可用的二维嵌入。</p>}</>}</section>
+  const currentPreview = preview
+  if (viewOnly && !currentPreview) return <ViewerLanding tool="cells" status={busy ? '正在加载' : message ? '打开失败' : '未选择文件'} message={message} {...(onPickFile ? { onPickFile } : {})} {...(assets.length ? { assetPicker: <select aria-label="H5AD 数据资产" value={assetId} onChange={event => selectAsset(event.target.value)}><option value="">已有 H5AD 文件</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select> } : {})} />
+  if (viewOnly && currentPreview) return <section className={viewerStyles.viewer} aria-label="细胞查看器">
+    <div className={viewerStyles.meta}><label>当前资产 <select aria-label="H5AD 数据资产" value={assetId} onChange={event => selectAsset(event.target.value)}><option value="">选择 H5AD 文件</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label><span className={viewerStyles.badge}>{busy ? '正在加载' : message ? '打开失败' : '已加载'}</span><button type="button" onClick={onPickFile}>更换文件</button><button type="button" disabled={!assetId || busy} onClick={() => void run('cell_open')}>重新打开</button></div>
+    <div className={viewerStyles.toolbar}><span>{assets.find(asset => asset.id === viewer?.assetId)?.name ?? 'H5AD'} · {currentPreview.summary.nObs.toLocaleString()} cells × {currentPreview.summary.nVars.toLocaleString()} genes</span></div>
+    {currentPreview.embedding ? <div className={viewerStyles.stage}><EmbeddingPlot key={viewer?.id + ':' + currentPreview.embedding.key} preview={currentPreview} groupBy="" selection={undefined} busy={busy} camera={camera} onCamera={setCamera} onSelect={() => undefined} viewOnly /></div> : <div className={viewerStyles.empty}>此文件没有可用的二维嵌入。</div>}
+  </section>
   return <section style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 14, marginTop: 14 }}>
     <h3 style={{ marginTop: 0 }}>细胞查看器 · H5AD / AnnData</h3>
     <p>资料预览前 2,000 个细胞，嵌入点单独按显示上限读取；QC 扫描全量 X。X 的尺度尚未核验，数值总和不能自动解释为原始 counts。</p>
@@ -180,18 +214,18 @@ function EmbeddingPlot({ preview, groupBy, selection, busy, camera, onCamera, on
     const step=Math.ceil(points.length/5000)
     return points.filter((_,index)=>index%step===0)
   },[points])
-  return <div>
-    <p>{preview.embedding?.key} · 前两维 · {points.length.toLocaleString()} 点 · {mode==='webgl'?'WebGL':'WebGL 不可用'} · 缩放 {camera.zoom.toFixed(2)}×{data.expressionRange ? ' · '+preview.expression?.gene+' 表达 '+data.expressionRange.join('–') : ''}</p>
+  return <div className={viewerStyles.embedding}>
+    <div className={viewerStyles.embeddingHead}><span>{preview.embedding?.key} · 前两维 · {points.length.toLocaleString()} 点 · 缩放 {camera.zoom.toFixed(2)}×{data.expressionRange ? ' · '+preview.expression?.gene+' 表达 '+data.expressionRange.join('–') : ''}</span>
     {groupBy && !data.expressionRange && <p>分组：{data.groups.slice(0,16).join(' · ')}{data.groups.length>8?'（颜色按 8 色循环）':''}</p>}
-    {mode==='unavailable' && <p role="status">{fallback.length===points.length ? '当前使用有界 SVG 回退。' : `当前设备未提供 WebGL；SVG 回退按步长抽稀显示 ${fallback.length.toLocaleString()} / ${points.length.toLocaleString()} 点，QC 与圈选仍处理全量。`}</p>}
-    <div>
+    <div className={viewerStyles.embeddingActions}>
       <button type="button" disabled={busy} onClick={()=>onCamera(DEFAULT_CELL_CAMERA)}>重置视角</button>
       {!viewOnly && <button type="button" disabled={busy || maxX===minX || maxY===minY} onClick={()=>{setDrawing(true);setVertices([])}}>绘制多边形选区</button>}
       {drawing && <><button type="button" disabled={busy || vertices.length<3} onClick={()=>{onSelect({embedding:preview.embedding!.key,axes:[0,1],polygon:vertices});setDrawing(false)}}>保存选区并核验全量细胞</button><button type="button" disabled={busy} onClick={()=>setVertices(v=>v.slice(0,-1))}>撤销顶点</button><button type="button" onClick={()=>{setDrawing(false);setVertices([])}}>取消绘制</button><small>依次点击顶点（{vertices.length}/128），包含边界。</small></>}
       {!viewOnly && <button type="button" disabled={busy || !selection} onClick={()=>{setDrawing(false);setVertices([]);onSelect(null)}}>清除选区</button>}
-    </div>
-    <p><small>滚轮缩放，拖动平移；“保存视角”持久化当前位置。显示上限以内为文件顺序前 N 点，QC/圈选仍处理全量。</small></p>
-    <div style={{position:'relative',maxWidth:720,width:'100%',aspectRatio:'520 / 280'}}>
+    </div></div>
+    {mode==='unavailable' && <p role="status">{fallback.length===points.length ? '当前使用有界 SVG 回退。' : `当前设备未提供 WebGL；SVG 回退按步长抽稀显示 ${fallback.length.toLocaleString()} / ${points.length.toLocaleString()} 点，QC 与圈选仍处理全量。`}</p>}
+    {!viewOnly && <p><small>滚轮缩放，拖动平移；“保存视角”持久化当前位置。显示上限以内为文件顺序前 N 点，QC/圈选仍处理全量。</small></p>}
+    <div className={viewerStyles.embeddingPlot}>
       <CellGpuCanvas data={data} camera={camera} onMode={setMode} />
       <svg ref={svg} aria-label={(preview.embedding?.key ?? 'embedding')+' scatter'} viewBox="0 0 520 280" role="img"
         onPointerDown={event=>{if(busy||drawing)return;const p=clip(event.clientX,event.clientY);if(!p)return;drag.current={x:p[0],y:p[1],camera};event.currentTarget.setPointerCapture?.(event.pointerId)}}

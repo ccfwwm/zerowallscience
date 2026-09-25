@@ -20,6 +20,28 @@ it('validates embedding-space polygons before reading data', () => {
   for (const patch of [{ axes: [1,2] }, { polygon: [[0,0],[1,1],[2,2]] }, { polygon: [[0,0],[Infinity,0],[1,1]] }, { embedding: '' }]) expect(() => validateCellSelection({ ...geometry, ...patch })).toThrow()
 })
 
+it('reads nullable-string dataframe indexes without rewriting the H5AD', async () => {
+  const root = await (await import('node:fs/promises')).mkdtemp(join(tmpdir(), 'cells-nullable-index-'))
+  const path = join(root, 'nullable.h5ad'); const store = new ResearchStore(join(root, 'db.sqlite'))
+  cleanup.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) })
+  const project = store.createProject({ name: 'Nullable indexes', rootPath: root })
+  const asset = store.createDataAsset({ projectId: project.id, name: 'nullable.h5ad', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/x-h5ad' })
+  await run(python, ['-c', `import h5py,numpy as np,sys
+with h5py.File(sys.argv[1], 'w') as f:
+ f.attrs['encoding-type']='anndata'; f.create_dataset('X',data=[[1.,0.],[0.,2.]])
+ for group, names in [('obs',['cell1','cell2']),('var',['G1','G2'])]:
+  parent=f.create_group(group); parent.attrs['_index']='_index'; idx=parent.create_group('_index'); idx.attrs['encoding-type']='nullable-string-array'; idx.create_dataset('values',data=np.array(names,dtype=h5py.string_dtype())); idx.create_dataset('mask',data=np.zeros(len(names),dtype='bool'))
+ raw=f.create_group('raw'); raw.create_dataset('X',data=[[1.,0.],[0.,2.]])
+ raw_var=raw.create_group('var'); raw_var.attrs['_index']='_index'; idx=raw_var.create_group('_index'); idx.attrs['encoding-type']='nullable-string-array'; idx.create_dataset('values',data=np.array(['G1','G2'],dtype=h5py.string_dtype())); idx.create_dataset('mask',data=np.zeros(2,dtype='bool'))
+ f.create_group('obsm').create_dataset('X_umap',data=[[0.,1.],[1.,0.]])
+`, path])
+  const service = new CellViewerService(store)
+  const opened = await service.execute(project, { sessionId: 's', action: 'open', assetId: asset.id, gene: 'G2' })
+  expect(opened.preview?.summary.varNames).toEqual(['G1', 'G2'])
+  expect(opened.preview?.cells.map(cell => cell.id)).toEqual(['cell1', 'cell2'])
+  expect(opened.preview?.expression?.values.map(row => row.value)).toEqual([0, 2])
+})
+
 it('selects across all 100,005 cells and streams a collection beyond the preview', async () => {
   const root = await (await import('node:fs/promises')).mkdtemp(join(tmpdir(), 'cells-selection-'))
   const path = join(root, 'selection.h5ad'); const store = new ResearchStore(join(root, 'db.sqlite')); let service = new CellViewerService(store)

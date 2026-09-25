@@ -309,7 +309,10 @@ export class NativeEngineService {
     const name = engineName(id)
     if (config.enabled === false) return { id, name, available: false, status: 'invalid', source: config.source, reason: '引擎已禁用。' }
     // RMCP is a remote MCP endpoint, never a local executable.
-    if (id === 'remote-r') return { id, name, available: Boolean(config.remoteEndpoint), status: config.remoteEndpoint ? 'unknown' : 'invalid', source: config.source, ...(config.remoteEndpoint ? { path: config.remoteEndpoint } : {}), reason: config.remoteEndpoint ? 'RMCP 端点已配置；服务可用性由 MCP 连接器检查。' : '未配置 RMCP 端点。' }
+    if (id === 'remote-r') {
+      const authorized = Boolean(process.env.R_PLATFORM_MCP_AUTHORIZATION?.trim())
+      return { id, name, available: Boolean(config.remoteEndpoint && authorized), status: config.remoteEndpoint && authorized ? 'available' : config.remoteEndpoint ? 'degraded' : 'invalid', source: config.source, ...(config.remoteEndpoint ? { path: config.remoteEndpoint } : {}), reason: config.remoteEndpoint && authorized ? 'RMCP 地址和 Authorization 环境变量已配置，可由 MCP 连接器对接。' : config.remoteEndpoint ? 'RMCP 地址已配置，但未发现 R_PLATFORM_MCP_AUTHORIZATION。' : '未配置 RMCP 端点。' }
+    }
     // BrainGlobe has no single executable of its own: it runs in the managed
     // ZeroWall interpreter. Resolving it through engineExecutable would throw
     // "Unsupported native engine." whenever nothing is configured, which is the

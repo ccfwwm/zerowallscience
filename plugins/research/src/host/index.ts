@@ -613,16 +613,10 @@ export class ZeroWallResearchService extends TypertRemoteService {
    */
   @Remote('installBrainAtlas') async installBrainAtlas(input: { sessionId?: string; atlasDirectory?: string }): Promise<JsonObject> {
     const result = await this.brain.installAtlas(input.atlasDirectory ? { atlasDirectory: input.atlasDirectory } : {})
-    const project = input.sessionId ? this.projectForSession({ sessionId: input.sessionId }) : undefined
-    const atlas = (result as { atlas?: { status?: string; atlasVersion?: string | null; directory?: string } }).atlas
-    if (project && atlas?.directory && atlas.status === 'installed') {
-      // Register the atlas as a project asset so the download is discoverable
-      // from the asset list instead of only from the settings panel.
-      const uri = `brainatlas://${'allen_mouse_25um'}`
-      if (!this.store.listDataAssets(project.id).some(item => item.uri === uri)) {
-        this.store.createDataAsset({ projectId: project.id, name: 'Allen mouse CCF 25 um atlas', uri, location: 'web', mediaType: 'application/x-brainglobe-atlas', provenance: { atlas: 'allen_mouse_25um', runner: 'zerowall-brainglobe/7.0.0-3', source: 'BrainGlobe atlasapi', managedDirectory: atlas.directory } })
-      }
-    }
+    // Installing the managed atlas only prepares the engine.  It must not
+    // create/select a project asset or open/read a viewer: those are explicit
+    // user actions from the BrainGlobe page.  This prevents the atlas from
+    // appearing as the current asset immediately after startup or installation.
     return result
   }
   @Remote('getScientificEngineConfigs') async getScientificEngineConfigs(input: { sessionId: string }): Promise<ScientificEngineConfig[]> {

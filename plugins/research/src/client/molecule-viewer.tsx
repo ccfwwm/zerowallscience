@@ -7,6 +7,8 @@ import { INITIAL_MOLECULE_STATE, type MoleculeMeasurement, type MoleculeRuntime,
 import { MoleculeDockingPanel } from './molecule-docking-panel.js'
 import type { MoleculeController, MoleculeRuntimeApi } from './molecule-runtime.js'
 import { useWorkbenchSelection } from './workbench-selection.js'
+import { ViewerLanding } from './viewer-landing.js'
+import styles from './read-only-image-viewers.module.css'
 
 type Remote=TypertRemoteNamespaceMap['zerowallResearch']
 let runtimePromise:Promise<MoleculeRuntimeApi>|undefined
@@ -41,9 +43,10 @@ export function MoleculeViewer({remote,sessionId,viewOnly=false,onPickFile}:{rem
     if(current!==generation.current)return
     setAssets(response.assets.filter(asset=>/\.(pdb|cif|mmcif|sdf)$/iu.test(asset.uri)));setViewers(response.viewers.filter(view=>view.tool==='molecule'))
   }
-  useEffect(()=>{generation.current++;controller.current?.dispose();controller.current=undefined;setViewer(undefined);setSummary(undefined);setReady(false);setMessage('');void refresh().catch(error=>setMessage(String(error)));return()=>{generation.current++;controller.current?.dispose();controller.current=undefined}},[remote,sessionId])
+  useEffect(()=>{const current=++generation.current;controller.current?.dispose();controller.current=undefined;setViewer(undefined);setSummary(undefined);setReady(false);setMessage('');void refresh().catch(error=>{if(current===generation.current)setMessage(String(error))});return()=>{generation.current++;controller.current?.dispose();controller.current=undefined}},[remote,sessionId])
   const run=async(action:MoleculeRequest['action'],data:Partial<MoleculeRequest>={}):Promise<void>=>{
-    if(busy)return;const current=generation.current;setBusy(true);setMessage('')
+    if(busy&&action!=='open')return;const current=action==='open'?++generation.current:generation.current;setBusy(true);setMessage('')
+    if(action==='open'){setViewer(undefined);setSummary(undefined);setReady(false);controller.current?.dispose();controller.current=undefined}
     try{
       const next={...state,camera:controller.current?.camera()??state.camera}
       const png=action==='export'?await controller.current?.png():undefined
@@ -57,20 +60,23 @@ export function MoleculeViewer({remote,sessionId,viewOnly=false,onPickFile}:{rem
         setReady(false);controller.current?.dispose();controller.current=undefined
         const runtime=await loadRuntime(async()=>{const value=await call('runtime');if(!value.runtime)throw new Error('No molecular runtime');return value.runtime})
         if(current!==generation.current)return
-        const created=await runtime.create(container.current!,response.source,response.summary.format,response.state)
+        if(!container.current)throw new Error('分子画布尚未准备好。')
+        container.current.style.display='block'
+        const created=await runtime.create(container.current,response.source,response.summary.format,response.state)
         if(current!==generation.current){created.dispose();return}
         controller.current=created;setReady(true)
       }
       if(response.artifact)setMessage('已登记分子产物：'+response.artifact.uri)
       else if(action==='save')setMessage('视角与选择已保存。')
       await refresh()
-    }catch(error){if(current===generation.current)setMessage(error instanceof Error?error.message:String(error))}
+    }catch(error){if(current===generation.current){if(action==='open'){controller.current?.dispose();controller.current=undefined;setViewer(undefined);setSummary(undefined);setReady(false);if(container.current)container.current.style.display='none'}setMessage(error instanceof Error?error.message:String(error))}}
     finally{if(current===generation.current)setBusy(false)}
   }
   // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
   // the file the user selected. An empty selection leaves the dropdown untouched,
   // because then the user is choosing inside the viewer.
-  useEffect(()=>{if(selection.assetId)setAssetId(selection.assetId)},[selection.assetId])
+  useEffect(()=>{if(selection.assetId){setAssetId(selection.assetId);setViewer(undefined);setSummary(undefined);setReady(false);setMessage('')}},[selection.assetId])
+  const selectAsset=(nextAssetId:string):void=>{generation.current++;setBusy(false);controller.current?.dispose();controller.current=undefined;setAssetId(nextAssetId);setViewer(undefined);setSummary(undefined);setReady(false);setMessage('');if(nextAssetId)void run('open',{assetId:nextAssetId})}
   useEffect(()=>{
     if(!selection.assetId||selection.revision==null)return
     // Keyed by revision: selecting the same asset again is a second request, but a
@@ -90,7 +96,10 @@ export function MoleculeViewer({remote,sessionId,viewOnly=false,onPickFile}:{rem
   const atoms=summary?.atoms.filter(atom=>(state.chain===null||atom.chain===state.chain)&&(state.residueId===null||atom.residueId===state.residueId))??[]
   const listedAtoms=atoms.slice(0,5000)
   for(const index of [state.atomA,state.atomB])if(index!==null&&summary?.atoms[index]&&!listedAtoms.some(atom=>atom.index===index))listedAtoms.push(summary.atoms[index]!)
-  if(viewOnly)return <section data-empty={!summary} aria-label="分子结构查看器"><div><button type="button" data-choose-file="true" onClick={onPickFile}>选择文件</button><select aria-label="分子资产" value={assetId} onChange={event=>setAssetId(event.target.value)}><option value="">选择结构文件</option>{assets.map(asset=><option key={asset.id} value={asset.id}>{asset.name}</option>)}</select><button type="button" disabled={!assetId||busy} onClick={()=>void run('open',{assetId})}>打开</button></div><p role="status">{busy?'正在加载':message?`打开失败：${message}`:summary?'已加载':'未选择文件'}</p>{summary&&<><p>{summary.title||'分子结构'} · {summary.atomCount} 原子 · {summary.chains.length} 链</p><label>链 <select aria-label="分子链" value={state.chain===null?'__all__':state.chain} onChange={event=>void change({...state,chain:event.target.value==='__all__'?null:event.target.value,residueId:null})}><option value="__all__">全部链</option>{summary.chains.map(chain=><option key={chain.id} value={chain.id}>{chain.id||'(空链标识)'}</option>)}</select></label><label>显示 <select aria-label="分子表示" value={state.representation} onChange={event=>void change({...state,representation:event.target.value as MoleculeViewState['representation']})}><option value="ball-and-stick">球棍</option><option value="cartoon" disabled={summary.format==='sdf'}>卡通</option><option value="molecular-surface">分子表面</option></select></label><button type="button" disabled={!ready} onClick={()=>controller.current?.reset()}>适配视野</button></>}<div ref={container} data-testid="molecule-canvas" data-ready={ready?'true':'false'} style={{height:440,width:'100%',position:'relative',display:summary?'block':'none'}} /></section>
+  if(viewOnly)return <section className={styles.viewer} aria-label="分子结构查看器">
+    {summary ? <><div className={styles.meta}><label>当前资产 <select aria-label="分子资产" value={assetId} onChange={event=>selectAsset(event.target.value)}><option value="">选择结构文件</option>{assets.map(asset=><option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label><span className={styles.badge}>{busy?'正在加载':message?'打开失败':ready?'已加载':'正在加载'}</span><button type="button" onClick={onPickFile}>更换文件</button><button type="button" disabled={!assetId || busy} onClick={()=>void run('open',{assetId})}>重新打开</button></div><div className={styles.toolbar}><span>{summary.title||'分子结构'} · {summary.atomCount} 原子 · {summary.chains.length} 链</span><div className={styles.controls}><label>链 <select aria-label="分子链" value={state.chain===null?'__all__':state.chain} onChange={event=>void change({...state,chain:event.target.value==='__all__'?null:event.target.value,residueId:null})}><option value="__all__">全部链</option>{summary.chains.map(chain=><option key={chain.id} value={chain.id}>{chain.id||'(空链标识)'}</option>)}</select></label><label>显示 <select aria-label="分子表示" value={state.representation} onChange={event=>void change({...state,representation:event.target.value as MoleculeViewState['representation']})}><option value="ball-and-stick">球棍</option><option value="cartoon" disabled={summary.format==='sdf'}>卡通</option><option value="molecular-surface">分子表面</option></select></label><button type="button" disabled={!ready} onClick={()=>controller.current?.reset()}>适配视野</button></div></div></> : <ViewerLanding tool="molecule" status={busy?'正在加载':message?'打开失败':'未选择文件'} message={message} {...(onPickFile?{onPickFile}:{})} {...(assets.length?{assetPicker:<select aria-label="分子资产" value={assetId} onChange={event=>selectAsset(event.target.value)}><option value="">已有 PDB/mmCIF/SDF 文件</option>{assets.map(asset=><option key={asset.id} value={asset.id}>{asset.name}</option>)}</select>}: {})}/>}
+    <div ref={container} data-testid="molecule-canvas" data-ready={ready?'true':'false'} style={{height:440,width:'100%',position:'relative',display:summary?'block':'none'}} />
+  </section>
   return <section aria-label="分子结构工作台" style={{border:'1px solid var(--dsw-alias-border-l1)',borderRadius:10,padding:16,marginTop:16}}>
     <h3>分子结构 · Mol*</h3><p>PDB / mmCIF / SDF · 第一模型或单分子 · Å · 本地三维查看与测距</p>
     <fieldset disabled={busy} style={{border:0,padding:0}}>

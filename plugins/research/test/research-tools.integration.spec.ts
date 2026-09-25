@@ -49,6 +49,26 @@ it('registers only an existing session workspace idempotently and without creati
   await expect(ctx.zerowallResearch.registerSessionProject({ sessionId: 'bad' })).rejects.toThrow()
 })
 
+it('installs a managed brain atlas without selecting or registering it as a project asset', async () => {
+  const { ctx, store, project } = await fixture()
+  const assetsBefore = store.listDataAssets(project.id)
+  const install = vi.fn().mockResolvedValue({ atlas: { status: 'installed', directory: 'C:/managed-atlas', name: 'allen_mouse_25um' } })
+  ;(ctx.zerowallResearch as any).brain.installAtlas = install
+  await ctx.zerowallResearch.installBrainAtlas({ sessionId: 'a' })
+  expect(install).toHaveBeenCalledOnce()
+  expect(store.listDataAssets(project.id)).toEqual(assetsBefore)
+  expect(store.listViewerSessions(project.id)).toEqual([])
+})
+
+it('does not register the managed atlas when an explicit open fails', async () => {
+  const { ctx, store, project } = await fixture()
+  ;(ctx.zerowallResearch as any).brain.assertBrainDependencies = vi.fn().mockResolvedValue(undefined)
+  ;(ctx.zerowallResearch as any).brain.run = vi.fn().mockRejectedValue(new Error('atlas unavailable'))
+  await expect(ctx.zerowallResearch.scienceViewer({ sessionId: 'a', action: 'brain_open' })).rejects.toThrow('atlas unavailable')
+  expect(store.listDataAssets(project.id).filter(asset => asset.uri.startsWith('brainatlas://'))).toEqual([])
+  expect(store.listViewerSessions(project.id)).toEqual([])
+})
+
 it('dispatches actual H5AD cell tools and exports results with project isolation', async () => {
   const { store, project, call } = await fixture()
   const path = join(project.rootPath, 'cells.h5ad')

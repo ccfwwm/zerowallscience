@@ -5,6 +5,8 @@ import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { BidirectionalSangerReview, SangerAnalysis, SangerTrace } from '../shared/sanger.js'
 import type { ScienceViewerRequest } from '../shared/types.js'
 import { useWorkbenchSelection } from './workbench-selection.js'
+import { ViewerLanding } from './viewer-landing.js'
+import styles from './read-only-image-viewers.module.css'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 type SangerResponse = { trace?: SangerTrace; analysis?: SangerAnalysis; review?: BidirectionalSangerReview; viewer?: ViewerSessionRecord; artifact?: { name: string; uri: string; checksum: string } }
@@ -41,8 +43,10 @@ export function SangerViewer({ remote, sessionId, viewOnly = false, onPickFile }
   }
   useEffect(() => { const current = ++generation.current; setAssets([]); setViewers([]); setAssetId(''); setReference(''); setThreshold(.8); setWindow(5); setViewer(undefined); setTrace(undefined); setAnalysis(undefined); setMessage(''); setBusy(false); setReview(undefined); setReverseViewerId(''); setEditPosition(1); setEditCall('N'); setEditReason(''); setSampleStart(0); void refresh().catch(error => { if (current === generation.current) setMessage(String(error)) }); return () => { generation.current++ } }, [remote, sessionId])
   const run = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<void> => {
-    if (busy) return
-    const current = generation.current
+    const opening = input.action === 'sanger_open'
+    if (busy && !opening) return
+    const current = opening ? ++generation.current : generation.current
+    if (opening) { setViewer(undefined); setTrace(undefined); setAnalysis(undefined); setReview(undefined) }
     setBusy(true); setMessage('')
     try {
       const response = await call(input)
@@ -55,10 +59,11 @@ export function SangerViewer({ remote, sessionId, viewOnly = false, onPickFile }
       await refresh()
     } catch (error) { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) } finally { if (current === generation.current) setBusy(false) }
   }
+  const selectAsset = (nextAssetId: string): void => { generation.current++; setBusy(false); setAssetId(nextAssetId); setViewer(undefined); setTrace(undefined); setAnalysis(undefined); setReview(undefined); setMessage(''); if (nextAssetId) void run({ action: 'sanger_open', assetId: nextAssetId }) }
   // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
   // the file the user selected. An empty selection leaves the dropdown untouched,
   // because then the user is choosing inside the viewer.
-  useEffect(() => { if (selection.assetId) setAssetId(selection.assetId) }, [selection.assetId])
+  useEffect(() => { if (selection.assetId) { setAssetId(selection.assetId); setViewer(undefined); setTrace(undefined); setAnalysis(undefined); setReview(undefined); setMessage('') } }, [selection.assetId])
   useEffect(() => {
     if (!selection.assetId || selection.revision == null) return
     // Keyed by revision: selecting the same asset again is a second request, but a
@@ -77,7 +82,8 @@ export function SangerViewer({ remote, sessionId, viewOnly = false, onPickFile }
   const max = useMemo(() => { let result = 1; for (const channel of Object.values(displayed ?? {})) for (const value of channel) result = Math.max(result, value); return result }, [displayed])
   const width = 860; const height = 220
   const path = (values: number[]): string => values.length < 2 ? '' : values.map((value, index) => `${index ? 'L' : 'M'} ${(index / (values.length - 1)) * width} ${height - (value / max) * (height - 18)}`).join(' ')
-  if (viewOnly) return <section data-empty={!trace} aria-label="Sanger 峰图查看器"><div><button type="button" data-choose-file="true" onClick={onPickFile}>选择文件</button><select aria-label="Sanger 资产" value={assetId} onChange={event => setAssetId(event.target.value)}><option value="">选择 SCF/AB1 资产</option>{assets.filter(asset => /\.(scf|ab1)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select><button type="button" disabled={!assetId || busy} onClick={() => void run({ action: 'sanger_open', assetId })}>打开</button></div><p role="status">{busy ? '正在加载' : message ? `打开失败：${message}` : trace ? '已加载' : '未选择文件'}</p>{trace && <><p>{assets.find(asset => asset.id === viewer?.assetId)?.name} · {trace.sampleCount} samples · {trace.bases.length} calls</p><div><label>显示起点 <input aria-label="峰图样本起点" type="number" min={0} max={Math.max(0, trace.sampleCount - 1)} value={start} onChange={event => setSampleStart(Math.max(0, Math.trunc(Number(event.target.value))))} /></label><label>显示窗口 <input aria-label="峰图样本窗口" type="number" min={50} max={10000} value={sampleWindow} onChange={event => setSampleWindow(Math.min(10000, Math.max(50, Math.trunc(Number(event.target.value)))))}/></label></div><div style={{ overflowX: 'auto' }}><svg role="img" aria-label="四色 Sanger 峰图" width={width} height={height} viewBox={`0 0 ${width} ${height}`}>{(['A', 'C', 'G', 'T'] as const).map(base => <path key={base} d={path(displayed?.[base] ?? [])} fill="none" stroke={colours[base]} strokeWidth="1.3" />)}{trace.bases.filter(base => base.peak >= start && base.peak < end).slice(0, 300).map(base => <text key={base.position} x={(base.peak - start) / Math.max(1, end - start - 1) * width} y={13} fontSize={11} fill={colours[base.base as keyof typeof colours] ?? '#353b39'}>{base.base}</text>)}</svg></div></>}</section>
+  if (viewOnly && !trace) return <ViewerLanding tool="sanger" status={busy ? '正在加载' : message ? '打开失败' : '未选择文件'} message={message} {...(onPickFile ? { onPickFile } : {})} {...(assets.length ? { assetPicker: <select aria-label="Sanger 资产" value={assetId} onChange={event => selectAsset(event.target.value)}><option value="">已有 SCF/AB1 文件</option>{assets.filter(asset => /\.(scf|ab1)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select> } : {})} />
+  if (viewOnly && trace) return <section className={styles.viewer} aria-label="Sanger 峰图查看器"><div className={styles.meta}><label>当前资产 <select aria-label="Sanger 资产" value={assetId} onChange={event => selectAsset(event.target.value)}><option value="">选择 SCF/AB1 资产</option>{assets.filter(asset => /\.(scf|ab1)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label><span className={styles.badge}>{busy ? '正在加载' : message ? '打开失败' : '已加载'}</span><button type="button" onClick={onPickFile}>更换文件</button><button type="button" disabled={!assetId} onClick={() => void run({ action: 'sanger_open', assetId })}>打开</button></div><div className={styles.toolbar}><span>{assets.find(asset => asset.id === viewer?.assetId)?.name} · {trace.sampleCount} samples · {trace.bases.length} calls</span><div className={styles.controls}><label>起点 <input aria-label="峰图样本起点" type="number" min={0} max={Math.max(0, trace.sampleCount - 1)} value={start} onChange={event => setSampleStart(Math.max(0, Math.trunc(Number(event.target.value))))} /></label><label>窗口 <input aria-label="峰图样本窗口" type="number" min={50} max={10000} value={sampleWindow} onChange={event => setSampleWindow(Math.min(10000, Math.max(50, Math.trunc(Number(event.target.value)))))}/></label></div></div><div className={styles.stage}><svg role="img" aria-label="四色 Sanger 峰图" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ maxWidth: '100%', height: 'auto' }}>{(['A', 'C', 'G', 'T'] as const).map(base => <path key={base} d={path(displayed?.[base] ?? [])} fill="none" stroke={colours[base]} strokeWidth="1.3" />)}{trace.bases.filter(base => base.peak >= start && base.peak < end).slice(0, 300).map(base => <text key={base.position} x={(base.peak - start) / Math.max(1, end - start - 1) * width} y={13} fontSize={11} fill={colours[base.base as keyof typeof colours] ?? '#353b39'}>{base.base}</text>)}</svg></div></section>
   return <section aria-label="Sanger 峰图查看与分析" style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 14 }}>
     <h3>Sanger 峰图查看与分析</h3>
     <p>当前支持 SCF 与 AB1；AB1 的 PCON 为仪器 Phred Q，裁剪使用 1−10^(−Q/10)；SCF 使用存储的概率值，缺失质量保持未知。AB1 通道和调用标签缺失时会明确拒绝。</p>

@@ -50,6 +50,8 @@ it('opens BrainGlobe only on request and reads a slice only on request', async (
   expect(scienceViewer).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: '打开脑图谱' }))
   await screen.findByText('allen_mouse_25um · Mus musculus · 25 × 25 × 25 µm')
+  expect(screen.queryByText('当前资产 Allen mouse CCF 25 um atlas')).toBeNull()
+  expect(screen.getByText('当前资产 脑图谱查看会话')).toBeTruthy()
   expect(scienceViewer.mock.calls.map(([input]) => input.action)).toEqual(['brain_open'])
   view.rerender(<BrainViewer remote={{ scienceViewer } as any} sessionId="session-1" viewOnly />)
   expect(scienceViewer.mock.calls.map(([input]) => input.action)).toEqual(['brain_open'])

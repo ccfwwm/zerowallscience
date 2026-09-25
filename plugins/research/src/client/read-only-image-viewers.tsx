@@ -33,11 +33,12 @@ export function ReadOnlyImageViewer({ remote, sessionId, onPickFile }: CommonPro
     unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId }))
 
   const refresh = async (): Promise<void> => {
+    const current = request.current
     const response = await call({ action: 'list' })
-    setAssets(response.assets ?? [])
+    if (current === request.current) setAssets(response.assets ?? [])
   }
 
-  useEffect(() => { void refresh().catch(error => setMessage(String(error))) }, [remote, sessionId])
+  useEffect(() => { ++request.current; setAssetId(''); setViewer(undefined); setImage(undefined); setStatus('未选择文件'); void refresh().catch(error => setMessage(String(error))); return () => { ++request.current } }, [remote, sessionId])
 
   const open = async (nextAssetId: string): Promise<void> => {
     const current = ++request.current
@@ -65,19 +66,21 @@ export function ReadOnlyImageViewer({ remote, sessionId, onPickFile }: CommonPro
 
   const changePage = async (page: number): Promise<void> => {
     if (!viewer || !image || page < 0 || page >= image.coordinates.pages) return
+    const current = ++request.current
     setStatus('正在加载')
     try {
       const response = await call({ action: 'image_save', viewerId: viewer.id, expectedVersion: viewer.version, imageState: { page, zoom: 1, panX: 0, panY: 0 } })
+      if (current !== request.current) return
       if (!response.viewer || !response.image) throw new Error('图像页读取失败。')
       setViewer(response.viewer); setImage(response.image); setStatus('已加载')
-    } catch (error) { setStatus('打开失败'); setMessage(error instanceof Error ? error.message : String(error)) }
+    } catch (error) { if (current === request.current) { setStatus('打开失败'); setMessage(error instanceof Error ? error.message : String(error)) } }
   }
 
   return <section className={styles.viewer} aria-label="图像查看器">
     {image && viewer && <div className={styles.meta}><label>当前资产 <select aria-label="图像资产" value={assetId} onChange={event => void open(event.target.value)}><option value="">选择图像</option>{assets.filter(asset => /\.(png|jpe?g|tiff?|pgm|zarr)(?:[\\/]|$)/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label><span className={styles.badge}>{status}</span><button type="button" onClick={onPickFile}>更换文件</button></div>}
     {image && viewer ? <>
       <div className={styles.toolbar}><span>{assetName(assets, viewer.assetId)} · {image.format} · {image.coordinates.width} × {image.coordinates.height}</span><div className={styles.controls}><button type="button" title="缩小" aria-label="缩小" onClick={() => setZoom(value => Math.max(.25, value / 1.25))}><Minus size={16} /></button><span>{Math.round(zoom * 100)}%</span><button type="button" title="放大" aria-label="放大" onClick={() => setZoom(value => Math.min(8, value * 1.25))}><Plus size={16} /></button>{image.coordinates.pages > 1 && <><button type="button" title="上一页" aria-label="上一页" disabled={image.page === 0} onClick={() => void changePage(image.page - 1)}><ChevronLeft size={16} /></button><span>{image.page + 1} / {image.coordinates.pages}</span><button type="button" title="下一页" aria-label="下一页" disabled={image.page + 1 >= image.coordinates.pages} onClick={() => void changePage(image.page + 1)}><ChevronRight size={16} /></button></>}</div></div>
-      <div className={styles.stage}><img alt={assetName(assets, viewer.assetId)} src={`data:image/png;base64,${image.pngBase64}`} style={{ width: `${zoom * 100}%` }} /></div>
+      <div className={styles.stage}><img alt={assetName(assets, viewer.assetId)} src={`data:image/png;base64,${image.pngBase64}`} style={{ width: `${zoom * 100}%`, maxWidth: zoom > 1 ? 'none' : '100%' }} /></div>
     </> : <div data-empty="true"><ViewerLanding tool="imagej" status={status} message={message} {...(onPickFile ? { onPickFile } : {})} {...(assets.length ? { assetPicker: <select aria-label="图像资产" value={assetId} onChange={event => void open(event.target.value)}><option value="">已有图像</option>{assets.filter(asset => /\.(png|jpe?g|tiff?|pgm|zarr)(?:[\\/]|$)/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select> } : {})} /></div>}
     {image && message && <p role="alert">{message}</p>}
   </section>
@@ -101,11 +104,12 @@ export function ReadOnlyHeViewer({ remote, sessionId, onPickFile }: CommonProps)
   }
 
   const refresh = async (): Promise<void> => {
+    const current = request.current
     const response = unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ action: 'list', sessionId }))
-    setAssets(response.assets ?? [])
+    if (current === request.current) setAssets(response.assets ?? [])
   }
 
-  useEffect(() => { void refresh().catch(error => setMessage(String(error))) }, [remote, sessionId])
+  useEffect(() => { ++request.current; setAssetId(''); setViewer(undefined); setSlide(undefined); setTile(undefined); setStatus('未选择文件'); void refresh().catch(error => setMessage(String(error))); return () => { ++request.current } }, [remote, sessionId])
 
   const open = async (nextAssetId: string): Promise<void> => {
     const current = ++request.current
@@ -123,6 +127,7 @@ export function ReadOnlyHeViewer({ remote, sessionId, onPickFile }: CommonProps)
         const level = coarse?.level ?? 0
         const downsample = coarse?.downsample ?? 1
         const readResponse = await call({ action: 'he_read', viewerId: response.viewer.id, expectedVersion: response.viewer.version, region: { x: 0, y: 0, width: Math.min(response.he.width, Math.floor(2048 * downsample)), height: Math.min(response.he.height, Math.floor(2048 * downsample)), page: level } })
+        if (current !== request.current) return
         firstTile = readResponse.tile
         if (readResponse.viewer) setViewer(readResponse.viewer)
       }
@@ -144,12 +149,14 @@ export function ReadOnlyHeViewer({ remote, sessionId, onPickFile }: CommonProps)
 
   const read = async (region: Required<HeRegion>): Promise<void> => {
     if (!viewer) return
+    const current = ++request.current
     setStatus('正在加载'); setMessage('')
     try {
       const response = await call({ action: 'he_read', viewerId: viewer.id, expectedVersion: viewer.version, region })
+      if (current !== request.current) return
       if (!response.tile) throw new Error('切片区域读取失败。')
       setViewer(response.viewer ?? viewer); setTile(response.tile); setStatus('已加载')
-    } catch (error) { setStatus('打开失败'); setMessage(error instanceof Error ? error.message : String(error)) }
+    } catch (error) { if (current === request.current) { setStatus('打开失败'); setMessage(error instanceof Error ? error.message : String(error)) } }
   }
 
   const navigate = (scale: number, dx = 0, dy = 0): void => {

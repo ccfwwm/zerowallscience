@@ -47,6 +47,7 @@ it('transform service rejects new requests after disposal without touching the c
 it('releases the runner when a child never reports exit',async()=>{
  const store=new ResearchStore(':memory:');const service=new BrainAtlasService(store)
  const project=store.createProject({name:'Busy',rootPath:tmpdir()})
+ ;(service as any).missingBrainDependencies=async()=>[]
  // A runner that never reports 'exit' is the case that used to strand its
  // caller: the promise never settled, `finally` never ran, and the service
  // stayed busy for the life of the process. The holder now names itself, so a
