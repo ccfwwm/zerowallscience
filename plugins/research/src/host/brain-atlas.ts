@@ -154,7 +154,7 @@ export async function probeBrainGlobe(): Promise<ScientificEngineStatus> {
   let managed = false
   if (!executable) {
     const resolved = await resolveManagedBrainPython()
-    if (!resolved) return { id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, reason: '未配置 ZEROWALL_BRAINGLOBE_PYTHON，且未找到受管理的 ZeroWall Python 环境；不会修改现有 napari 环境。' }
+    if (!resolved) return { id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, reason: '未找到 ZeroWall 集成 Python 环境；BrainGlobe 与 napari 共用此环境，不会创建独立环境。' }
     executable = resolved.executable
     managed = true
   }

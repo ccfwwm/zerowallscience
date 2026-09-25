@@ -36,7 +36,7 @@ export function apply(ctx: ClientContext): void {
       pubmedRemote,
       unwrap: async (value: any) => unwrapRemoteResult('zerowall.environment', await value),
       modelCatalog: async (check = false) => {
-        const response = await sessionRemote.modelCatalog(check ? { check: true } : {})
+        const response = await sessionRemote.modelCatalog(check ? { check: true, refresh: true } : { refresh: true })
         return unwrapRemoteResult('zerowall.environment.modelCatalog', response)
       },
     }),

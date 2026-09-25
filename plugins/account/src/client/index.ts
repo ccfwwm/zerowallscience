@@ -7,11 +7,12 @@ import { AccountSection } from './account-surface.js'
 import { AiCloudAccountButton } from './AiCloudAccountButton.tsx'
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 
-export const inject = ['slots', 'locale', 'remote', 'connection', 'remote.zerowallAccount']
+export const inject = ['slots', 'locale', 'remote', 'connection', 'remote.zerowallAccount', 'remote.session']
 
 export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
   const remote = ctx.remote
+  const sessionRemote = ctx.get('remote.session') ?? remote?.session
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'zerowall-ai-cloud', order: -20, locale: NS,
     inject: () => ({
@@ -27,6 +28,10 @@ export function apply(ctx: ClientContext): void {
       forgotPassword: async (email: string, gatewayBaseUrl?: string) => { unwrapRemoteResult('zerowall.account.forgotPassword', await remote.zerowallAccount.forgotPassword({ email, ...(gatewayBaseUrl === undefined ? {} : { gatewayBaseUrl }) })) },
       logout: async () => { unwrapRemoteResult('zerowall.account.logout', await remote.zerowallAccount.logout()) },
       discoverModels: async () => unwrapRemoteResult('zerowall.account.discoverModels', await remote.zerowallAccount.discoverModels()),
+      refreshModelCatalog: async () => {
+        if (sessionRemote?.modelCatalog === undefined) return
+        unwrapRemoteResult('zerowall.account.modelCatalog', await sessionRemote.modelCatalog({ refresh: true }))
+      },
       checkoutInfo: async () => unwrapRemoteResult('zerowall.account.checkoutInfo', await remote.zerowallAccount.checkoutInfo()),
       listOrders: async () => unwrapRemoteResult('zerowall.account.listOrders', await remote.zerowallAccount.listOrders()),
       createOrder: async (amount: number, paymentType: string) => unwrapRemoteResult('zerowall.account.createOrder', await remote.zerowallAccount.createOrder({ amount, paymentType })),

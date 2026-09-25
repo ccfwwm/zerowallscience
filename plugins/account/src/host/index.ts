@@ -499,7 +499,11 @@ export class ZeroWallAccountService extends TypertRemoteService {
   @Remote('forgetLogin') forgetLogin(): Promise<void> { return this.client.forgetLogin() }
   @Remote('savedLogin') savedLogin(): Promise<AiCloudSavedLogin | undefined> { return this.client.savedLogin() }
   @Remote('logout') async logout(): Promise<void> { await this.client.logout(); this.publish(signedOut()) }
-  @Remote('discoverModels') async discoverModels(): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.discoverModels()) }
+  @Remote('discoverModels') async discoverModels(): Promise<AiCloudAccountSnapshot> {
+    const snapshot = await this.client.discoverModels()
+    await this.runtimeCtx.parallel('zerowall/account-updated', snapshot)
+    return snapshot
+  }
   @Remote('listOrders') listOrders(): Promise<AiCloudPaymentOrder[]> { return this.client.listOrders() }
   @Remote('checkoutInfo') checkoutInfo(): Promise<AiCloudCheckoutInfo> { return this.client.checkoutInfo() }
   @Remote('createOrder') createOrder(input: AiCloudCreateOrderRequest): Promise<AiCloudPaymentOrder> { return this.client.createOrder(input) }

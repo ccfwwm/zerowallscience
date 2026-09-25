@@ -5,7 +5,13 @@ description: 在 ZeroWall 查看图像、管理 ROI 修订并通过本机 Fiji �
 
 # Fiji 图像工作台
 
-发现 `science_viewer` 后调用真实工具，不通过任意 shell 拼接图像路径。不覆盖现有 Fiji、Java、插件或宏。
+## 7.0.5 查看入口
+
+选择 PNG/JPEG/TIFF 图像后由工作台导入项目并调用 `image_open`；普通文件导入上限 128 MiB，TIFF 导入上限 20 GiB，但内置图像预览仍受 128 MiB 与像素上限约束。OME-Zarr 使用目录导入。未选择资产提示“请先选择资产”；打开失败保留 Host 原因。Fiji/napari 未配置时提示“引擎未配置”，原生进程 `spawned` 只能提示“进程已启动，窗口状态待确认”。默认查看器只显示图像、页码、缩放与平移，不呈现 ROI、实验、批处理或导出控件。
+
+分析时使用 `science_workbench` 的 `tool=imagej`、`skill_id=zerowall-fiji`、`action_id=image_analyze` 或对应已登记的 Fiji 工作流 action，并提供真实资产/视图 ID。专项分析由下述五个 Fiji skill 继续处理；读取 Run、Artifact 和 SHA-256 后再报告产物。
+
+开始本地启动前先调用科研引擎配置 skill：读取 `getScientificEngineConfigs`，确认 Fiji 已启用并使用返回的安装目录/可执行文件；需要修改时调用 `setScientificEngineConfig` 后重新 `probeScientificEngine`。发现 `science_viewer` 后调用真实工具，不通过任意 shell 拼接图像路径。不覆盖现有 Fiji、Java、插件或宏。
 
 
 1. `science_viewer({"action":"list"})` 列出当前会话项目资产。普通查看无需研究或冻结门禁；远程资产先走现有 `r_files` 链路。

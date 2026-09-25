@@ -25,7 +25,7 @@ async function loadRuntime(get:()=>Promise<MoleculeRuntime>):Promise<MoleculeRun
   }).catch(error=>{runtimePromise=undefined;throw error})
 }
 
-export function MoleculeViewer({remote,sessionId}:{remote:Remote;sessionId:string}):JSX.Element{
+export function MoleculeViewer({remote,sessionId,viewOnly=false,onPickFile}:{remote:Remote;sessionId:string;viewOnly?:boolean;onPickFile?:()=>void}):JSX.Element{
   const [assets,setAssets]=useState<DataAssetRecord[]>([]);const [viewers,setViewers]=useState<ViewerSessionRecord[]>([])
   const [assetId,setAssetId]=useState('');const [viewer,setViewer]=useState<ViewerSessionRecord>();const [summary,setSummary]=useState<MoleculeSummary>()
   const [state,setState]=useState<MoleculeViewState>(INITIAL_MOLECULE_STATE);const [measurement,setMeasurement]=useState<MoleculeMeasurement>()
@@ -90,6 +90,7 @@ export function MoleculeViewer({remote,sessionId}:{remote:Remote;sessionId:strin
   const atoms=summary?.atoms.filter(atom=>(state.chain===null||atom.chain===state.chain)&&(state.residueId===null||atom.residueId===state.residueId))??[]
   const listedAtoms=atoms.slice(0,5000)
   for(const index of [state.atomA,state.atomB])if(index!==null&&summary?.atoms[index]&&!listedAtoms.some(atom=>atom.index===index))listedAtoms.push(summary.atoms[index]!)
+  if(viewOnly)return <section data-empty={!summary} aria-label="分子结构查看器"><div><button type="button" data-choose-file="true" onClick={onPickFile}>选择文件</button><select aria-label="分子资产" value={assetId} onChange={event=>setAssetId(event.target.value)}><option value="">选择结构文件</option>{assets.map(asset=><option key={asset.id} value={asset.id}>{asset.name}</option>)}</select><button type="button" disabled={!assetId||busy} onClick={()=>void run('open',{assetId})}>打开</button></div><p role="status">{busy?'正在加载':message?`打开失败：${message}`:summary?'已加载':'未选择文件'}</p>{summary&&<><p>{summary.title||'分子结构'} · {summary.atomCount} 原子 · {summary.chains.length} 链</p><label>链 <select aria-label="分子链" value={state.chain===null?'__all__':state.chain} onChange={event=>void change({...state,chain:event.target.value==='__all__'?null:event.target.value,residueId:null})}><option value="__all__">全部链</option>{summary.chains.map(chain=><option key={chain.id} value={chain.id}>{chain.id||'(空链标识)'}</option>)}</select></label><label>显示 <select aria-label="分子表示" value={state.representation} onChange={event=>void change({...state,representation:event.target.value as MoleculeViewState['representation']})}><option value="ball-and-stick">球棍</option><option value="cartoon" disabled={summary.format==='sdf'}>卡通</option><option value="molecular-surface">分子表面</option></select></label><button type="button" disabled={!ready} onClick={()=>controller.current?.reset()}>适配视野</button></>}<div ref={container} data-testid="molecule-canvas" data-ready={ready?'true':'false'} style={{height:440,width:'100%',position:'relative',display:summary?'block':'none'}} /></section>
   return <section aria-label="分子结构工作台" style={{border:'1px solid var(--dsw-alias-border-l1)',borderRadius:10,padding:16,marginTop:16}}>
     <h3>分子结构 · Mol*</h3><p>PDB / mmCIF / SDF · 第一模型或单分子 · Å · 本地三维查看与测距</p>
     <fieldset disabled={busy} style={{border:0,padding:0}}>

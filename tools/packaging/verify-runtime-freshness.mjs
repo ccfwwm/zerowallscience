@@ -3,7 +3,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-export async function verifyRuntimeFreshness(root) {
+export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZEROWALL_ALLOW_DIRTY_DSH === '1' } = {}) {
   const json = async file => JSON.parse(await readFile(resolve(root, file), 'utf8'))
   const pin = await json('config/deepseek-harness/upstream.json')
   const app = await json('package.json')
@@ -11,7 +11,7 @@ export async function verifyRuntimeFreshness(root) {
   const runtime = await json('.build/runtime/build-receipt.json')
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(root, 'deepseek-harness'), encoding: 'utf8' }).trim()
   const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: resolve(root, 'deepseek-harness'), encoding: 'utf8' }).trim()
-  if (dirty) throw new Error('Harness source changed since the pinned build. Commit and rebuild it before packaging.')
+  if (dirty && !allowDirty) throw new Error('Harness source changed since the pinned build. Commit and rebuild it before packaging.')
   for (const receipt of [build, runtime]) {
     if (head !== pin.commit || receipt.commit !== head || receipt.version !== pin.version || receipt.applicationVersion !== app.version || runtime.builtAt !== build.builtAt) {
       throw new Error('Stale Harness runtime: source, build, runtime, and release version must match. Run pnpm build.')

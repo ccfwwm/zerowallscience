@@ -1,0 +1,9 @@
+.root { box-sizing: border-box; width: 100%; max-width: 980px; padding: 30px 34px 42px; color: #18332a; }
+.header { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; padding-bottom: 22px; border-bottom: 1px solid #dce9e2; }
+.eyebrow { color: #378064; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.header h2 { margin: 6px 0 8px; font-size: 28px; }
+.header p { max-width: 680px; margin: 0; color: #60776d; line-height: 1.65; }
+.session { flex: none; padding: 7px 11px; border: 1px solid #cfe2d8; border-radius: 999px; color: #34735c; background: #f1f8f4; font-size: 12px; }
+.notice { margin: 18px 0 0; padding: 12px 14px; border-left: 3px solid #4f9674; color: #526c60; background: #f4faf6; line-height: 1.55; }
+.body { margin-top: 22px; }
+@media (max-width: 700px) { .root { padding: 22px 18px 32px; } .header { flex-direction: column; } }

@@ -7,12 +7,13 @@ import type { ScienceViewerRequest, SequenceAnalysis, SequenceViewState, Sequenc
 import { SequenceFeatureMap } from './sequence-feature-map.js'
 import type { SequenceSimulationOptions } from '../shared/sequence.js'
 import { useWorkbenchSelection } from './workbench-selection.js'
+import { ViewerLanding } from './viewer-landing.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 const defaults: SequenceViewState = { recordIndex: 0, start: 1, count: 2400, selectionStart: 1, selectionEnd: 1 }
 const inputStyle = { width: 95 }
 
-export function SequenceViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
+export function SequenceViewer({ remote, sessionId, viewOnly = false, onPickFile }: { remote: Remote; sessionId: string; viewOnly?: boolean; onPickFile?: () => void }): JSX.Element {
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
   const [viewers, setViewers] = useState<ViewerSessionRecord[]>([])
   const [assetId, setAssetId] = useState('')
@@ -109,6 +110,8 @@ export function SequenceViewer({ remote, sessionId }: { remote: Remote; sessionI
     ? { ...previous, selectionEnd: Math.max(previous.selectionStart, value) }
     : { ...previous, selectionStart: value, selectionEnd: value })
   const rows = window ? Array.from({ length: Math.ceil(window.sequence.length / 60) }, (_, index) => ({ start: window.start + index * 60, bases: window.sequence.slice(index * 60, index * 60 + 60) })) : []
+  if (viewOnly && !window) return <ViewerLanding tool="sequence" status={busy ? '正在加载' : '未选择文件'} message={message} {...(onPickFile ? { onPickFile } : {})} />
+  if (viewOnly) return <section aria-label="序列查看器"><div><select aria-label="序列资产" value={assetId} onChange={event => setAssetId(event.target.value)}><option value="">选择 FASTA/GenBank 资产</option>{assets.filter(asset => /\.(fa|fasta|fna|ffn|frn|gb|gbk)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select><button type="button" disabled={!assetId} onClick={() => void run({ action: 'open', assetId })}>打开</button></div><p role="status">{message ? `打开失败：${message}` : '已加载'}</p>{viewer && window && <><p>{assets.find(asset => asset.id === viewer.assetId)?.name} · {window.records[window.recordIndex]?.name} · {window.start}–{window.end}</p><div><label>序列记录 <select aria-label="序列记录" value={state.recordIndex} onChange={event => setState({ ...defaults, recordIndex: Number(event.target.value) })}>{window.records.map(record => <option key={record.index} value={record.index}>{record.name}</option>)}</select></label><label>窗口起点 <input aria-label="窗口起点" type="number" min={1} value={state.start} onChange={event => setState(previous => ({ ...previous, start: Number(event.target.value) }))} /></label><button type="button" onClick={() => void run({ action: 'save', viewerId: viewer.id, expectedVersion: viewer.version, state })}>查看</button></div><pre aria-label="碱基视图" style={{ overflow: 'auto', maxHeight: 480 }}>{rows.map(row => `${String(row.start).padStart(9)}  ${row.bases}`).join('\n')}</pre></>}</section>
   return <section aria-label="序列查看与分析" style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 14 }}>
     <h3>序列、注释图谱与分析</h3>
     <p>支持本地核酸 FASTA/GenBank，最大 16 MiB；无需建立研究。点击碱基设起点，Shift＋点击设终点；所有显示坐标从 1 开始，包含末端。</p>

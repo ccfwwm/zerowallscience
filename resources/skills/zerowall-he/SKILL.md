@@ -5,6 +5,10 @@ description: Open SVS/NDPI/pyramidal TIFF, inspect calibrated ROIs, run bounded 
 
 # HE slide workflow
 
+## 7.0.5 查看入口
+
+选择 SVS/NDPI/TIFF 后导入到项目，文件导入上限 20 GiB；工作台调用 `he_open`，随后用 `he_read` 按金字塔层级查看瓦片、缩放和平移。未选择文件显示“请先选择资产”；解码/读取失败显示“打开失败”及 Host 原因；OpenSlide 或相关引擎不可用时显示“引擎未配置”。默认查看器不提供 ROI 统计、StarDist、批处理或导出控件。分析通过 `science_workbench` 传 `tool=he`、`skill_id=zerowall-he`、所选 `action_id`（如 `he_analyze` 或 `he_segment`）、真实 `viewer_id` 和稳定 `request_id`。产物以 Run/Artifact 清单和 SHA-256 验证。
+
 Use `science_viewer` and its current schema. Ordinary viewing does not require a study freeze. Research validation and final claims follow the study's two human gates; viewing or already-authorized computation does not add another gate.
 
 ## Inspect and select
@@ -16,7 +20,7 @@ Use `science_viewer` and its current schema. Ordinary viewing does not require a
 
 ## StarDist CPU task
 
-Requires the separately managed `he-stardist` engine package and frozen BSD-3-Clause `2D_versatile_he` model. The OpenSlide-only engine is sufficient for viewing but not segmentation. Do not replace a user's Python, Fiji, or napari installation. Engine import and health status use the application's engine manager.
+Uses the application's stable Python at `%APPDATA%\zerowall-science\Python\python.exe`, its `stardist` and TensorFlow packages, and the frozen BSD-3-Clause `2D_versatile_he` weights. `Lib\site-packages\bin\stardist-predict2d.exe` and `stardist-predict3d.exe` can be discovered as package command entrypoints, but the bounded HE runner invokes `StarDist2D` through the Python API. Fiji/ImageJ is a separate image window, not this segmentation engine. OpenSlide alone is sufficient for viewing but not segmentation. Read `getScientificEngineConfigs` and `probeScientificEngine` before starting; check the shared Python, packages and model weights. Do not replace the user's Fiji or system Python installation.
 
 Submit `he_segment` with the outer `sessionId`, `viewerId`, `expectedVersion`, `region`, and nested `he: {sessionId, action: "segment", requestId, segmentation: {probabilityThreshold: 0.6924782541382084}}`. Keep the same request ID for an uncertain retry; changed input requires a new ID. Always use tool discovery to verify the current schema.
 

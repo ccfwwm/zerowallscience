@@ -136,7 +136,7 @@ describe('ZeroWall AI Cloud LLM routes', () => {
     await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2', 'deepseek-chat')).resolves.not.toHaveProperty('reasoning')
   })
 
-  it('defaults every non-DeepSeek managed model to vision input and keeps GPT reasoning choices', async () => {
+  it('defaults every non-DeepSeek managed model to vision input and keeps generic Claude thinking controls disabled', async () => {
     const { ctx, controller } = await setup(new MemorySecrets())
     await controller.update({
       status: 'signedIn', balanceFreshness: 'current', lowBalance: false,
@@ -165,15 +165,7 @@ describe('ZeroWall AI Cloud LLM routes', () => {
         { id: 'max', name: 'Max' },
       ] },
     })
-    await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2-messages', 'claude-sonnet-5')).resolves.toMatchObject({
-      reasoning: { efforts: [
-        { id: 'off', name: 'Off' },
-        { id: 'low', name: 'Low' },
-        { id: 'medium', name: 'Medium' },
-        { id: 'high', name: 'High' },
-        { id: 'max', name: 'Max' },
-      ] },
-    })
+    await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2-messages', 'claude-sonnet-5')).resolves.not.toHaveProperty('reasoning')
     await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2', 'plain-chat')).resolves.not.toHaveProperty('reasoning')
   })
 
@@ -181,7 +173,7 @@ describe('ZeroWall AI Cloud LLM routes', () => {
   // gateway alias the list had never heard of (gpt-6-astra, claude-opus-5) silently lost
   // the 推理等级 selector while the model itself reasoned fine. These are the ids that
   // were demonstrably broken; the negative controls must stay without a selector.
-  it('keeps reasoning choices for gateway aliases outside the old exact-id allowlist', async () => {
+  it('keeps OpenAI reasoning choices for gateway aliases without emitting Claude disabled-thinking requests', async () => {
     const { ctx, controller } = await setup(new MemorySecrets())
     await controller.update({
       status: 'signedIn', balanceFreshness: 'current', lowBalance: false,
@@ -204,17 +196,10 @@ describe('ZeroWall AI Cloud LLM routes', () => {
       { id: 'xhigh', name: 'Xhigh' },
       { id: 'max', name: 'Max' },
     ]
-    const claudeEfforts = [
-      { id: 'off', name: 'Off' },
-      { id: 'low', name: 'Low' },
-      { id: 'medium', name: 'Medium' },
-      { id: 'high', name: 'High' },
-      { id: 'max', name: 'Max' },
-    ]
     await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2', 'gpt-6-astra')).resolves.toMatchObject({ reasoning: { efforts: gptEfforts } })
     await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2', 'gpt-6')).resolves.toMatchObject({ reasoning: { efforts: gptEfforts } })
-    await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2-messages', 'claude-opus-5')).resolves.toMatchObject({ reasoning: { efforts: claudeEfforts } })
-    await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2-messages', 'claude-fable-5-1')).resolves.toMatchObject({ reasoning: { efforts: claudeEfforts } })
+    await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2-messages', 'claude-opus-5')).resolves.not.toHaveProperty('reasoning')
+    await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2-messages', 'claude-fable-5-1')).resolves.not.toHaveProperty('reasoning')
     // Negative controls: legacy conversational lines and pre-reasoning generations take no
     // effort parameter, and dispatching one would be rejected by the gateway.
     await expect(ctx.llm.resolveModelInfo('zerowall-ai-cloud-2', 'gpt-5-chat')).resolves.not.toHaveProperty('reasoning')

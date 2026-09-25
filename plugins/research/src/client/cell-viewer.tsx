@@ -9,9 +9,10 @@ import { DEFAULT_CELL_CAMERA, cameraForward, cameraInverse, zoomCellCamera, type
 import { prepareCellPlot } from './cell-webgl.js'
 import { CellGpuCanvas } from './cell-gpu-canvas.js'
 import { useWorkbenchSelection } from './workbench-selection.js'
+import { ViewerLanding } from './viewer-landing.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
-export function CellViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
+export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: { remote: Remote; sessionId: string; viewOnly?: boolean; onPickFile?: () => void }): JSX.Element {
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
   const [views, setViews] = useState<ViewerSessionRecord[]>([])
   const [assetId, setAssetId] = useState('')
@@ -93,6 +94,8 @@ export function CellViewer({ remote, sessionId }: { remote: Remote; sessionId: s
     void run('cell_open', undefined, undefined, workbench.assetId)
   }, [workbench.assetId, workbench.revision])
 
+  if (viewOnly && !preview) return <ViewerLanding tool="cells" status={busy ? '正在加载' : '未选择文件'} message={message} {...(onPickFile ? { onPickFile } : {})} />
+  if (viewOnly) return <section aria-label="细胞查看器"><div><select aria-label="H5AD 数据资产" value={assetId} onChange={event => setAssetId(event.target.value)}><option value="">选择 H5AD 资产</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select><button type="button" disabled={!assetId || busy} onClick={() => void run('cell_open')}>打开</button></div><p role="status">{busy ? '正在加载' : message ? `打开失败：${message}` : '已加载'}</p>{preview && <><p>{assets.find(asset => asset.id === viewer?.assetId)?.name} · {preview.summary.nObs.toLocaleString()} cells × {preview.summary.nVars.toLocaleString()} genes</p>{preview.embedding ? <EmbeddingPlot key={viewer?.id + ':' + preview.embedding.key} preview={preview} groupBy="" selection={undefined} busy={busy} camera={camera} onCamera={setCamera} onSelect={() => undefined} viewOnly /> : <p>此文件没有可用的二维嵌入。</p>}</>}</section>
   return <section style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 14, marginTop: 14 }}>
     <h3 style={{ marginTop: 0 }}>细胞查看器 · H5AD / AnnData</h3>
     <p>资料预览前 2,000 个细胞，嵌入点单独按显示上限读取；QC 扫描全量 X。X 的尺度尚未核验，数值总和不能自动解释为原始 counts。</p>
@@ -138,7 +141,7 @@ export function CellViewer({ remote, sessionId }: { remote: Remote; sessionId: s
   </section>
 }
 
-function EmbeddingPlot({ preview, groupBy, selection, busy, camera, onCamera, onSelect }: { preview: CellPreview; groupBy: string; selection: CellSelectionResult | undefined; busy: boolean; camera: CellCamera; onCamera: (camera: CellCamera) => void; onSelect: (geometry: CellSelection | null) => void }): JSX.Element {
+function EmbeddingPlot({ preview, groupBy, selection, busy, camera, onCamera, onSelect, viewOnly = false }: { preview: CellPreview; groupBy: string; selection: CellSelectionResult | undefined; busy: boolean; camera: CellCamera; onCamera: (camera: CellCamera) => void; onSelect: (geometry: CellSelection | null) => void; viewOnly?: boolean }): JSX.Element {
   const [drawing,setDrawing]=useState(false); const [vertices,setVertices]=useState<Array<[number,number]>>([])
   const [mode,setMode]=useState<'webgl'|'unavailable'>('unavailable')
   const svg=useRef<SVGSVGElement>(null); const drag=useRef<{x:number;y:number;camera:CellCamera}>()
@@ -183,9 +186,9 @@ function EmbeddingPlot({ preview, groupBy, selection, busy, camera, onCamera, on
     {mode==='unavailable' && <p role="status">{fallback.length===points.length ? '当前使用有界 SVG 回退。' : `当前设备未提供 WebGL；SVG 回退按步长抽稀显示 ${fallback.length.toLocaleString()} / ${points.length.toLocaleString()} 点，QC 与圈选仍处理全量。`}</p>}
     <div>
       <button type="button" disabled={busy} onClick={()=>onCamera(DEFAULT_CELL_CAMERA)}>重置视角</button>
-      <button type="button" disabled={busy || maxX===minX || maxY===minY} onClick={()=>{setDrawing(true);setVertices([])}}>绘制多边形选区</button>
+      {!viewOnly && <button type="button" disabled={busy || maxX===minX || maxY===minY} onClick={()=>{setDrawing(true);setVertices([])}}>绘制多边形选区</button>}
       {drawing && <><button type="button" disabled={busy || vertices.length<3} onClick={()=>{onSelect({embedding:preview.embedding!.key,axes:[0,1],polygon:vertices});setDrawing(false)}}>保存选区并核验全量细胞</button><button type="button" disabled={busy} onClick={()=>setVertices(v=>v.slice(0,-1))}>撤销顶点</button><button type="button" onClick={()=>{setDrawing(false);setVertices([])}}>取消绘制</button><small>依次点击顶点（{vertices.length}/128），包含边界。</small></>}
-      <button type="button" disabled={busy || !selection} onClick={()=>{setDrawing(false);setVertices([]);onSelect(null)}}>清除选区</button>
+      {!viewOnly && <button type="button" disabled={busy || !selection} onClick={()=>{setDrawing(false);setVertices([]);onSelect(null)}}>清除选区</button>}
     </div>
     <p><small>滚轮缩放，拖动平移；“保存视角”持久化当前位置。显示上限以内为文件顺序前 N 点，QC/圈选仍处理全量。</small></p>
     <div style={{position:'relative',maxWidth:720,width:'100%',aspectRatio:'520 / 280'}}>
@@ -203,4 +206,3 @@ function EmbeddingPlot({ preview, groupBy, selection, busy, camera, onCamera, on
     </div>
   </div>
 }
-

@@ -48,14 +48,14 @@ import { BrainAtlasService, probeBrainGlobe } from './brain-atlas.js'
 import type { CanvasRequest, FijiExperimentRequest, FijiExperimentResponse, FlowRequest, HeRequest, SangerRequest } from '../shared/types.js'
 import type { FijiWorkflowRequest, FijiWorkflowResponse } from '../shared/types.js'
 import { engineEnvironment, NativeEngineService } from './native-engines.js'
-import { readFile, stat, access } from 'node:fs/promises'
+import { readFile, stat, access, mkdir } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
-import { basename, isAbsolute, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ScientificPreviewPayload, ScientificEngineConfig, ScientificEngineId, ScientificEngineLaunchResult, ScientificEngineStatus, ScienceViewerRequest, ScienceViewerResponse, CellViewerRequest, BrainAtlasRequest } from '../shared/types.js'
 import type { ScienceWorkbenchRequest, ScienceWorkbenchEventsResponse, ScienceWorkbenchEvent, ScienceToolId } from '../shared/types.js'
 import { ScienceWorkbenchEventStore } from './workbench-events.js'
-import { scienceViewerAction, scienceToolForAction, workbenchContext, workbenchTabTitle } from './workbench-router.js'
+import { scienceViewerAction, scienceSkillForTool, scienceToolForAction, workbenchContext, workbenchTabTitle } from './workbench-router.js'
 
 export type { ScientificPreviewPayload } from '../shared/types.js'
 export const inject = ['tools'] as const
@@ -68,6 +68,7 @@ declare module '@deepseek-ai/cordis' {
 
 export class ZeroWallResearchService extends TypertRemoteService {
   private readonly store: ResearchStore
+  private readonly defaultProjectRoot: string
   private readonly viewer: ScienceViewerService
   private readonly nativeEngines: NativeEngineService
   private readonly imageViewer: ImageViewerService
@@ -91,6 +92,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     super(ctx, 'zerowallResearch')
     const path = process.env.ZEROWALL_RESEARCH_DB?.trim()
     if (!path) throw new Error('ZEROWALL_RESEARCH_DB is required.')
+    this.defaultProjectRoot = resolve(dirname(path), 'workspace')
     this.store = new ResearchStore(path)
     this.workbenchEventStore = new ScienceWorkbenchEventStore(this.store)
     this.viewer = new ScienceViewerService(this.store)
@@ -373,7 +375,9 @@ export class ZeroWallResearchService extends TypertRemoteService {
   /** Durable workbench cursor API used by the desktop and conversation bridge. */
   @Remote('scienceWorkbenchEvents') scienceWorkbenchEvents(input: { sessionId: string; afterSequence?: number; limit?: number }): ScienceWorkbenchEventsResponse {
     const project = this.projectForSession({ sessionId: input.sessionId })
-    if (!project) throw new Error('An active registered project session is required.')
+    // A tab may poll while its ordinary session is still being registered.
+    // Reading an empty cursor is safe; writes and asset access remain scoped.
+    if (!project) return { protocol: 'science-workbench/1', sessionId: input.sessionId, events: [], lastSequence: Math.max(0, input.afterSequence ?? 0), hasMore: false }
     return this.workbenchEventStore.read(project.id, input.sessionId, input.afterSequence, input.limit)
   }
 
@@ -387,6 +391,12 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (!project) throw new Error('An active registered project session is required.')
     if (input.projectId !== undefined && input.projectId !== project.id) throw new Error('Workbench access is limited to the active project workspace.')
     const tool = input.tool
+    if (input.action === 'analyze') {
+      if (!tool) throw new Error('tool is required for workbench analyze.')
+      const action = scienceViewerAction(tool, input.operation)
+      if (input.skillId !== scienceSkillForTool[tool] || input.actionId !== action) throw new Error(`Workbench analysis requires skillId=${scienceSkillForTool[tool]} and actionId=${action}.`)
+      if (!input.assetId && !input.viewerId) throw new Error('Workbench analysis requires a registered assetId or viewerId.')
+    }
     const context = workbenchContext(input)
     const prior = this.workbenchEventStore.latestRequest(project.id, sessionId, requestId)
     if (prior) {
@@ -436,14 +446,14 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (input.action !== 'analyze') throw new Error(`Unsupported workbench action: ${input.action}`)
     if (!tool) throw new Error('tool is required for workbench analyze.')
     const operation = scienceViewerAction(tool, input.operation)
-    emit('run.accepted', { requestId: input.requestId, operation })
+    emit('run.accepted', { requestId: input.requestId, operation, skillId: input.skillId as string, actionId: input.actionId as string })
     try {
       const parameters = input.parameters ?? {}
       // Context fields are owned by the router; parameters cannot smuggle a
       // different session or action into the deterministic service.
       const { sessionId: _parameterSessionId, action: _parameterAction, ...safeParameters } = parameters as JsonObject & { sessionId?: unknown; action?: unknown }
       void _parameterSessionId; void _parameterAction
-      const result = await this.scienceViewerImpl({ sessionId, action: operation as ScienceViewerRequest['action'], ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.expectedRevision === undefined ? {} : { expectedVersion: input.expectedRevision }), requestId, ...(safeParameters as unknown as Partial<ScienceViewerRequest>) })
+      const result = await this.scienceViewerImpl({ ...(safeParameters as unknown as Partial<ScienceViewerRequest>), sessionId, action: operation as ScienceViewerRequest['action'], ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.expectedRevision === undefined ? {} : { expectedVersion: input.expectedRevision }), requestId })
       const resultObject = result as unknown as JsonObject
       const nestedRuns = Object.values(resultObject).flatMap(value => value && typeof value === 'object' && !Array.isArray(value) && 'run' in value && value.run && typeof value.run === 'object' && !Array.isArray(value.run) ? [value.run as JsonObject] : [])
       const run = (resultObject.run && typeof resultObject.run === 'object' && !Array.isArray(resultObject.run)) ? resultObject.run as JsonObject : nestedRuns[0]
@@ -643,19 +653,23 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('projectForSession') projectForSession(input: { sessionId: string }): ProjectRecord | undefined {
     const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
     const cwd = session?.header.cwd
-    return cwd === undefined ? undefined : this.store.listProjects().filter(item => isWithin(cwd, item.rootPath)).sort((a, b) => b.rootPath.length - a.rootPath.length)[0]
+    if (!session) return undefined
+    if (!cwd) return this.store.listProjects().find(item => resolve(item.rootPath) === this.defaultProjectRoot)
+    return this.store.listProjects().filter(item => isWithin(cwd, item.rootPath)).sort((a, b) => b.rootPath.length - a.rootPath.length)[0]
   }
   @Remote('registerSessionProject') async registerSessionProject(input: { sessionId: string }): Promise<ProjectRecord> {
     const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
-    const cwd = session?.header.cwd
-    if (!cwd || !isAbsolute(cwd)) throw new Error('An active local workspace session with an absolute path is required.')
+    if (!session) throw new Error('An active local workspace session is required.')
+    const cwd = session.header.cwd || this.defaultProjectRoot
+    if (!isAbsolute(cwd)) throw new Error('The session workspace path must be absolute.')
+    if (!session.header.cwd) await mkdir(this.defaultProjectRoot, { recursive: true })
     if (!(await stat(cwd)).isDirectory()) throw new Error('The current workspace is not an existing directory.')
     // Check again after asynchronous filesystem validation so repeated UI requests
     // in this Host cannot register duplicate projects. Never create a study here.
     const existing = this.projectForSession(input)
     if (existing) return existing
     const rootPath = resolve(cwd)
-    return this.store.createProject({ name: basename(rootPath) || rootPath, rootPath })
+    return this.store.createProject({ name: session.header.cwd ? basename(rootPath) || rootPath : '科研工作台', rootPath })
   }
   @Remote('getActiveResearchStudy') getActiveResearchStudy(input: { sessionId: string }): ResearchStudyRecord | undefined {
     const project = this.projectForSession(input)
@@ -711,6 +725,7 @@ function registerResearchTools(ctx: Context): void {
       tool: { type: 'string', enum: ['home', 'imagej', 'he', 'molecule', 'sanger', 'flow', 'canvas', 'cells', 'sequence', 'brainglobe'] },
       asset_id: { type: 'string' }, artifact_id: { type: 'string' }, viewer_id: { type: 'string' }, run_id: { type: 'string' },
       operation: { type: 'string' }, parameters: { type: 'json' }, request_id: { type: 'string', required: true }, expected_revision: { type: 'integer' },
+      skill_id: { type: 'string', description: 'Required for analyze; must match the selected science tool.' }, action_id: { type: 'string', description: 'Required for analyze; must match the resolved Host action.' },
     },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec) {
@@ -722,6 +737,7 @@ function registerResearchTools(ctx: Context): void {
         ...(args.tool === undefined ? {} : { tool: String(args.tool) as ScienceToolId }), ...(args.asset_id === undefined ? {} : { assetId: String(args.asset_id) }),
         ...(args.artifact_id === undefined ? {} : { artifactId: String(args.artifact_id) }), ...(args.viewer_id === undefined ? {} : { viewerId: String(args.viewer_id) }),
         ...(args.run_id === undefined ? {} : { runId: String(args.run_id) }), ...(args.operation === undefined ? {} : { operation: String(args.operation) }),
+        ...(args.skill_id === undefined ? {} : { skillId: String(args.skill_id) }), ...(args.action_id === undefined ? {} : { actionId: String(args.action_id) }),
         ...(args.parameters === undefined ? {} : { parameters: requireJsonObject(args.parameters) }), ...(args.expected_revision === undefined ? {} : { expectedRevision: Number(args.expected_revision) }),
       })
     },

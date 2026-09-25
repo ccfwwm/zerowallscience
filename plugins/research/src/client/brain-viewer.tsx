@@ -5,13 +5,23 @@ import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { BrainAtlasResponse, BrainAtlasSummary, BrainCellAnalysis, BrainRegionResult, BrainSlice } from '../shared/types.js'
 import {BrainTransformPanel} from './brain-transform-panel.js'
 import { useWorkbenchSelection } from './workbench-selection.js'
+import { ViewerLanding } from './viewer-landing.js'
+import viewerStyles from './read-only-image-viewers.module.css'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 type BrainEnvelope = { brain?: BrainAtlasResponse; artifact?: ArtifactRecord }
 type BrainAction = 'brain_open' | 'brain_read' | 'brain_analyze' | 'brain_cells' | 'brain_trajectory' | 'brain_export' | 'brain_register' | 'brain_cellfinder' | 'brain_render'
 type Asset = { id: string; name: string; uri: string; location: string }
 
-export function BrainViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
+function brainErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/runner is busy with (?:open|read|analyze|register|cellfinder|render)/iu.test(message)) {
+    return '脑图谱正在读取上一项操作，请稍候后刷新。'
+  }
+  return message
+}
+
+export function BrainViewer({ remote, sessionId, viewOnly = false, active = true }: { remote: Remote; sessionId: string; viewOnly?: boolean; active?: boolean }): JSX.Element {
   const [viewer, setViewer] = useState<ViewerSessionRecord>()
   const [summary, setSummary] = useState<BrainAtlasSummary>()
   const [slice, setSlice] = useState<BrainSlice>()
@@ -48,7 +58,12 @@ export function BrainViewer({ remote, sessionId }: { remote: Remote; sessionId: 
   const apply = (response: BrainAtlasResponse): void => {
     if (response.viewer) setViewer(response.viewer)
     if (response.summary) setSummary(response.summary)
-    if (response.slice) setSlice(response.slice)
+    if (response.slice) {
+      setSlice(response.slice)
+      setAxis(response.slice.axis)
+      setIndex(response.slice.index)
+      setDownsample(response.slice.downsample)
+    }
     if (response.region) setRegion(response.region)
     if (response.analysis) setAnalysis(response.analysis)
     if (response.artifact) setMessage(`已登记产物：${response.artifact.name}\n${response.artifact.uri}\nSHA-256: ${response.artifact.checksum}`)
@@ -68,7 +83,7 @@ export function BrainViewer({ remote, sessionId }: { remote: Remote; sessionId: 
       if (current !== generation.current) return
       apply(response)
     }
-    catch (error) { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) }
+    catch (error) { if (current === generation.current) setMessage(brainErrorMessage(error)) }
     finally { if (current === generation.current) setBusy(false) }
   }
 
@@ -79,34 +94,20 @@ export function BrainViewer({ remote, sessionId }: { remote: Remote; sessionId: 
   // a sidebar pick would silently point cell detection at an unrelated file.
   useEffect(() => { if (selection.assetId) setRegistrationAsset(selection.assetId) }, [selection.assetId])
 
-  /**
-   * The automatic open, deduplicated per session.
-   *
-   * This effect used to call `call('brain_open')` directly, which bypassed the
-   * `busy` guard `run()` applies. A remount — a tab switch, a shell re-render
-   * that changes `remote` identity, React's development double-invoke — then
-   * issued a second open while the first was still starting the interpreter, and
-   * the host correctly refused the second one as "runner is busy". Holding the
-   * in-flight promise in a ref means every mount of the same session shares one
-   * host call; the generation counter still decides which result may paint.
-   */
-  const openOnce = useRef<{ session: string; promise: Promise<BrainAtlasResponse> }>()
   useEffect(() => {
-    const current = ++generation.current
+    ++generation.current
     setViewer(undefined); setSummary(undefined); setSlice(undefined); setRegion(undefined); setAnalysis(undefined); setMessage('')
-    if (openOnce.current?.session !== sessionId) {
-      openOnce.current = { session: sessionId, promise: call('brain_open') }
-      // A failed open must be retryable rather than cached forever: dropping the
-      // entry lets the next remount try again after the user installs the
-      // dependencies the message asked for.
-      openOnce.current.promise.catch(() => { if (openOnce.current?.session === sessionId) openOnce.current = undefined })
-    }
-    void Promise.all([
-      openOnce.current.promise,
-      remote.scienceViewer({ sessionId, action: 'list' }).then(value => unwrapRemoteResult('scienceViewer', value) as unknown as { assets?: Asset[] }),
-    ]).then(([response, listed]) => { if (current === generation.current) { apply(response); setAssets(listed.assets ?? []) } }).catch(error => { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) })
+    setBusy(false)
     return () => { generation.current++ }
-  }, [remote, sessionId])
+  }, [sessionId])
+
+  useEffect(() => {
+    if (!active || viewOnly) return
+    const current = generation.current
+    void remote.scienceViewer({ sessionId, action: 'list' }).then(value => {
+      if (current === generation.current) setAssets((unwrapRemoteResult('scienceViewer', value) as unknown as { assets?: Asset[] }).assets ?? [])
+    }).catch(error => { if (current === generation.current) setMessage(brainErrorMessage(error)) })
+  }, [active, remote, sessionId, viewOnly])
 
   const sliceImage = slice?.pngBase64 ? `data:image/png;base64,${slice.pngBase64}` : undefined
   const updateIndex = (value: number): void => { setIndex(Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0) }
@@ -129,6 +130,37 @@ export function BrainViewer({ remote, sessionId }: { remote: Remote; sessionId: 
       if (parsed !== undefined && !Array.isArray(parsed)) throw new Error('brainrender 坐标必须是 [[AP,SI,RL], ...] 图谱轴序 JSON 数组。')
       void run('brain_render', { brainRegions: renderRegions.split(',').map(value => value.trim()).filter(Boolean), brainTitle: renderTitle, ...(parsed === undefined ? {} : { brainCoordinates: parsed, brainCoordinateUnits: 'micron' }) })
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
+  }
+
+  if (viewOnly) {
+    const status = busy ? '正在加载' : message ? '打开失败' : summary ? '已加载' : '未选择文件'
+    if (!summary) return <ViewerLanding
+      tool="brainglobe"
+      status={status}
+      message={message || '打开脑图谱后，可按需读取切片。'}
+      onOpen={{ label: '打开脑图谱', action: () => void run('brain_open'), disabled: busy }}
+    />
+    const assetName = assets.find(asset => asset.id === viewer?.assetId)?.name ?? 'Allen mouse CCF 25 µm'
+    return <section className={viewerStyles.viewer} aria-label="脑图谱查看器">
+      <div className={viewerStyles.meta}>
+        <label>当前资产 <span>{assetName}</span></label>
+        <span className={viewerStyles.badge}>{status}</span>
+      </div>
+      <div className={viewerStyles.toolbar}>
+        <span>{summary.atlas} · {summary.species} · {summary.resolution.join(' × ')} µm</span>
+        <div className={viewerStyles.controls}>
+          <label>轴 <select aria-label="脑图谱轴" value={axis} onChange={event => setAxis(Number(event.target.value) as 0 | 1 | 2)}><option value={0}>轴 0</option><option value={1}>轴 1</option><option value={2}>轴 2</option></select></label>
+          <label>切片 <input aria-label="脑图谱切片索引" type="number" min={0} value={index} onChange={event => updateIndex(Number(event.target.value))} /></label>
+          <button type="button" disabled={!viewer || busy} onClick={() => void run('brain_analyze', { brainAxis: axis, brainIndex: index, brainDownsample: downsample })}>读取切片</button>
+          <button type="button" disabled={!viewer || busy} onClick={() => void run('brain_read')}>刷新</button>
+        </div>
+      </div>
+      {sliceImage ? <>
+        <div className={viewerStyles.stage}><img src={sliceImage} alt={`脑图谱切片 ${slice?.index}`} style={{ width: 'auto', maxWidth: '100%', imageRendering: 'pixelated' }} /></div>
+        <p>轴 {slice?.axis} · 索引 {slice?.index} · {slice?.width} × {slice?.height}</p>
+      </> : <div className={viewerStyles.empty}><strong>{busy ? '正在读取脑图谱切片' : '暂无切片预览'}</strong><span>{message || '点击“读取切片”开始查看。'}</span></div>}
+      {message && <p role="alert">{message}</p>}
+    </section>
   }
 
   return <section aria-label="BrainGlobe 脑图谱查看与分析" style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 14 }}>

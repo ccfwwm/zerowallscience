@@ -5,7 +5,7 @@ import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
-import { defaultScientificEngineConfig, discoverFijiExecutable, engineArguments, engineEnvironment, engineExecutable, NativeEngineService } from '../src/host/native-engines.js'
+import { DEFAULT_REMOTE_R_MCP_URL, defaultScientificEngineConfig, discoverFijiExecutable, discoverNapariExecutable, discoverStarDistCommands, engineArguments, engineEnvironment, engineExecutable, NativeEngineService } from '../src/host/native-engines.js'
 import { BrainAtlasService, atlasStatus, defaultAtlasDirectory, resolveManagedBrainPython } from '../src/host/brain-atlas.js'
 
 const cleanups: Array<() => Promise<void>> = []
@@ -37,6 +37,26 @@ describe('native engine lifecycle and project boundary', () => {
     const explicit = 'C:\\does-not-exist\\fiji.exe'
     expect(engineExecutable('fiji', { executablePath: explicit })).toBe(explicit)
     expect(engineExecutable('napari', { pythonPath: explicit })).toBe(explicit)
+  })
+  it('finds napari and StarDist command entrypoints in the same Python site-packages/bin', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'shared-science-python-'))
+    try {
+      const python = join(root, 'python.exe')
+      const bin = join(root, 'Lib', 'site-packages', 'bin')
+      await mkdir(bin, { recursive: true })
+      await writeFile(python, 'fixture')
+      for (const name of ['napari.exe', 'stardist-predict2d.exe', 'stardist-predict3d.exe']) await writeFile(join(bin, name), 'fixture')
+      expect(discoverNapariExecutable(python)).toBe(join(bin, 'napari.exe'))
+      expect(discoverStarDistCommands(python)).toEqual({ predict2d: join(bin, 'stardist-predict2d.exe'), predict3d: join(bin, 'stardist-predict3d.exe') })
+      expect(engineExecutable('napari', { pythonPath: python })).toBe(join(bin, 'napari.exe'))
+      expect(engineArguments('napari', 'image.tif', join(bin, 'napari.exe'))).toEqual(['image.tif'])
+      expect(engineArguments('napari', 'image.tif', python)).toEqual(['-m', 'napari', 'image.tif'])
+    } finally { await rm(root, { recursive: true, force: true }) }
+  })
+  it('reports RMCP through its endpoint instead of a local executable', async () => {
+    const { service, project } = await fixture()
+    expect(defaultScientificEngineConfig('remote-r').remoteEndpoint).toBe(DEFAULT_REMOTE_R_MCP_URL)
+    await expect(service.probe(project.id, 'remote-r')).resolves.toMatchObject({ id: 'remote-r', path: DEFAULT_REMOTE_R_MCP_URL, status: 'unknown' })
   })
   it.runIf(process.platform === 'win32' && existsSync('C:\\softworks\\Fiji\\fiji-windows-x64.exe'))('probes the installed Fiji Java without launching the GUI', async () => {
     const { project, service } = await fixture()
@@ -154,6 +174,22 @@ describe('managed BrainGlobe atlas resolution', () => {
     const service = new BrainAtlasService(new ResearchStore(':memory:'))
     await expect((service as unknown as { atlasDirectory(purpose: string): Promise<string> }).atlasDirectory('BrainGlobe analysis')).resolves.toBe(join(store, 'brainglobe-managed'))
     await service.dispose()
+  })
+  it('uses runtimeRoot for the stable Python layout after migration', async () => {
+    const userData = await mkdtemp(join(tmpdir(), 'zerowall-stable-science-'))
+    const manager = join(userData, 'zerowall-python')
+    const python = join(userData, 'Python', 'python.exe')
+    const sitePackages = join(userData, 'Python', 'Lib', 'site-packages')
+    await mkdir(manager, { recursive: true }); await mkdir(sitePackages, { recursive: true })
+    await writeFile(python, 'fixture')
+    await writeFile(join(manager, 'current.json'), JSON.stringify({ root: join(manager, 'slots', 'stale'), runtimeRoot: userData, overlayPath: sitePackages, health: 'ready', manifest: { python: { version: '3.12.10', relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } } }))
+    cleanups.push(() => rm(userData, { recursive: true, force: true }))
+    vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
+    expect(await resolveManagedBrainPython()).toMatchObject({ executable: python, root: join(userData, 'Python'), sitePackages, overlayPath: sitePackages })
+    expect(defaultScientificEngineConfig('napari').pythonPath).toBe(python)
+    expect(defaultScientificEngineConfig('brain-globe').pythonPath).toBe(python)
+    expect(defaultScientificEngineConfig('he-python').pythonPath).toBe(python)
+    expect(defaultScientificEngineConfig('he-stardist').pythonPath).toBe(python)
   })
   it('reports an installed atlas only from a non-empty volume, never from a manifest alone', async () => {
     const store = await managedRoot()

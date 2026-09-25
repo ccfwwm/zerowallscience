@@ -1,5 +1,6 @@
 import { defineConfig } from 'tsdown'
 import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { typertPlugin } from '../../deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js'
 
 const zerowallVersion = String(JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version)
@@ -8,6 +9,7 @@ export interface ZeroWallBundleOptions {
   host?: boolean
   client?: boolean
   hostAlwaysBundle?: RegExp[]
+  inlinePngAssets?: boolean
 }
 
 export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) {
@@ -84,7 +86,18 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         footer: 'return module.exports; } });',
         intro: 'var module = { exports: {} }; var exports = module.exports;',
       },
-      plugins: [{
+      plugins: [...(options.inlinePngAssets ? [{
+        name: 'zerowall-inline-png-assets',
+        resolveId(source: string, importer?: string) {
+          if (!source.endsWith('.png?inline') || !importer) return null
+          return `${resolve(dirname(importer), source.slice(0, -'?inline'.length))}?inline`
+        },
+        load(id: string) {
+          if (!id.endsWith('.png?inline')) return null
+          const png = readFileSync(id.slice(0, -'?inline'.length))
+          return `export default ${JSON.stringify(`data:image/png;base64,${png.toString('base64')}`)}`
+        },
+      }] : []), {
         name: 'zerowall-react-singleton',
         // Dependencies such as lucide-react import React themselves.  Mark
         // those transitive requests external too, otherwise the browser

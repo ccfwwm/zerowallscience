@@ -39,6 +39,9 @@
   background: var(--zw-soft);
 }
 
+.tabRow[hidden],
+.composer[hidden] { display: none; }
+
 .tab {
   display: inline-flex;
   gap: 7px;
@@ -93,10 +96,64 @@
 
 .content {
   display: grid;
-  grid-template-columns: minmax(216px, 272px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
 }
+
+.toolHome {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 28px clamp(18px, 4vw, 56px) 40px;
+  background: #f7fbf9;
+}
+
+.toolHomeIntro {
+  max-width: 720px;
+  margin: 0 auto 22px;
+}
+
+.toolHomeIntro h1 {
+  margin: 4px 0 6px;
+  color: var(--zw-text);
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 650;
+}
+
+.toolHomeIntro p { margin: 0; color: var(--zw-muted); font-size: 14px; }
+
+.toolCardGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.toolCard {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  color: inherit;
+  background: var(--zw-surface);
+  border: 1px solid var(--zw-line);
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+
+.toolCard:hover { border-color: var(--zw-accent); box-shadow: 0 8px 24px rgba(45, 107, 88, .12); transform: translateY(-2px); }
+.toolCardImage { display: block; width: 100%; aspect-ratio: 1.65; object-fit: cover; background: var(--zw-soft); }
+.toolCardBody { display: flex; flex-direction: column; gap: 6px; padding: 13px 14px 15px; }
+.toolCardBody strong { font-size: 15px; }
+.toolCardBody span { color: var(--zw-muted); font-size: 12px; line-height: 1.45; }
+.toolCardAction { color: var(--zw-accent-strong) !important; font-weight: 600; }
+.iconButton { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0 !important; }
 
 .sidebar {
   display: flex;
@@ -287,6 +344,7 @@
   background: var(--zw-soft);
   font-size: 12px;
 }
+.status[hidden] { display: none; }
 
 .statusText {
   display: inline-flex;
@@ -314,6 +372,9 @@
   border-top: 1px solid var(--zw-line);
   background: var(--zw-surface);
 }
+
+/* Conversation is an advanced skill entry, not part of the default viewer. */
+.composer { display: none; }
 
 .composerInput {
   flex: 1;
@@ -356,6 +417,9 @@
     border-right: 0;
     border-bottom: 1px solid var(--zw-line);
   }
+
+  .toolCardGrid { grid-template-columns: 1fr; }
+  .toolHome { padding: 20px 14px 28px; }
 }
 
 /* The viewer slot owns the scroll: a tall asset list must not push the status
@@ -367,6 +431,7 @@
   padding: 18px 20px;
   background: var(--zw-bg);
 }
+.viewer[hidden] { display: none; }
 
 /* Viewer modules are feature-rich and historically carried browser-default
    controls. Keep their behaviour while giving every tool the same visual
@@ -440,3 +505,24 @@
   color: var(--zw-muted);
   background: var(--zw-soft);
 }
+
+.viewer :global(section[data-empty='true']),
+.viewer :global(div[data-empty='true']) {
+  min-height: min(62vh, 580px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 28px;
+  overflow: hidden;
+  text-align: center;
+  background-image: linear-gradient(to bottom, rgba(255,255,255,.02) 0%, rgba(255,255,255,.08) 40%, #fff 78%), var(--viewer-image);
+  background-position: center;
+  background-size: cover;
+}
+.viewer :global(section[data-empty='true'] > div:first-child),
+.viewer :global(div[data-empty='true'] > .landing) { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; }
+.viewer :global(section[data-empty='true'] > p[role='status']) { color: #376550; font-size: 15px; font-weight: 600; }
+.viewer :global(button[data-choose-file='true']) { color: #fff; background: #347a61; border-color: #347a61; font-weight: 600; padding: 10px 18px; }
+.viewer :global(button[data-choose-file='true']:hover) { color: #fff; background: #28664f; }

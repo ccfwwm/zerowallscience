@@ -10,6 +10,10 @@ metadata:
 
 # 序列查看与分析
 
+## 7.0.5 查看入口
+
+选择 FASTA/GenBank（包括 .fa/.fasta/.fna/.ffn/.frn/.gb/.gbk），外部导入上限 16 MiB。工作台调用 `open`（路由别名 `sequence_open`），默认只显示记录、注释、序列窗口与翻页；未选择资产提示“请先选择资产”，解析失败提示“打开失败”。翻译、酶切、PCR、CRISPR 和拼接模拟由本 skill 调用 `science_workbench(tool=sequence, skill_id=zerowall-sequence, action_id=analyze, viewer_id=..., request_id=...)`，使用真实参数和 Host schema。输出需核对源哈希、记录坐标、Artifact URI 与 SHA-256；默认查看器不显示分析表单或导出按钮。
+
 发现并调用 `science_viewer`；工具使用当前会话绑定项目，不接受模型指定另一个项目或会话。普通查看和基础序列操作不要求创建研究或批准科研门禁。
 
 

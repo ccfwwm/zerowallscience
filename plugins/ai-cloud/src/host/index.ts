@@ -235,7 +235,7 @@ export const inject = ['llm', 'zerowallAccount']
 export function apply(ctx: Context): void {
   const secrets = new SecretBrokerClient()
   const controller = new AiCloudLlmController(ctx, { secrets })
-  ctx.on('zerowall/account-updated', (snapshot) => { void controller.update(snapshot) })
+  ctx.on('zerowall/account-updated', (snapshot) => controller.update(snapshot))
   const account = ctx.get('zerowallAccount') as { current(): Promise<AiCloudAccountSnapshot> }
   void account.current()
     .then((snapshot) => controller.update(snapshot))
@@ -311,7 +311,7 @@ function managedCompat(api: ReturnType<typeof managedApi>): NonNullable<PiAiProv
 
 /** Select the wire family exposed by common managed model gateways. */
 function managedApi(modelId: string): 'openai-responses' | 'anthropic-messages' | 'openai-completions' {
-  if (/^(?:gpt|o[1-9]|o3|o4|chatgpt)/iu.test(modelId)) return 'openai-responses'
+  if (/^(?:gpt|o[1-9]|chatgpt|codex|openai)/iu.test(modelId)) return 'openai-responses'
   if (/^(?:claude|anthropic)/iu.test(modelId)) return 'anthropic-messages'
   return 'openai-completions'
 }
@@ -331,18 +331,11 @@ function managedReasoning(modelId: string): Pick<NonNullable<PiAiProviderProfile
   // would dispatch a field the gateway rejects, so they are carved back out.
   const isLegacyGpt = /^gpt-[5-9](?:\.\d+)?[._-](?:chat|mini|nano|turbo|instruct)$/.test(id)
   const isDeepSeek = /(?:deepseek.*(?:reasoner|r1|v4)|(?:reasoner|r1).*deepseek)/.test(id)
-  // Modern Claude routes expose Anthropic adaptive-thinking effort levels.
-  // Compatibility gateways commonly publish aliases such as claude-sonnet-5 or
-  // claude-fable-5-1; capability is tied to the modern family — numbered
-  // generations, and named tiers at major version 3 and up — not to one exact
-  // vendor name.
-  const isModernClaude = /^claude-(?:[3-9](?:[._-]\d+)?|(?:opus|sonnet|haiku|fable|mythos)(?:[._-]\d+)*)(?:[._-].*)?$/.test(id)
-  if ((!isGpt || isLegacyGpt) && !isDeepSeek && !isModernClaude) return {}
-  if (isModernClaude) {
-    return {
-      reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high', max: 'max' },
-    }
-  }
+  // Anthropic thinking uses a different adaptive wire shape. Do not advertise
+  // generic reasoning efforts here: the `off` entry would serialize as the
+  // unsupported `thinking.type.disabled` request.
+  const isAnthropic = /^(?:claude|anthropic)/u.test(id)
+  if (((!isGpt || isLegacyGpt) && !isDeepSeek) || isAnthropic) return {}
   if (isDeepSeek) {
     return {
       reasoningEfforts: { off: null, low: 'low', medium: 'medium', high: 'high', max: 'max' },

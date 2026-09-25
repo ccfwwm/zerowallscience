@@ -1263,6 +1263,17 @@ async function verifyDesktopStartup() {
     await page.getByRole('button', { name: /^(设置|Settings)$/ }).click()
     const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
     const settingsNav = settings.locator('nav button')
+    // Settings sections are contributed by plugins after the shell mounts.
+    // Wait for the ledger projection before asserting ordering; otherwise a
+    // healthy packaged startup can be sampled between the dialog render and
+    // the first slot update.
+    try {
+      await settingsNav.first().waitFor({ state: 'visible', timeout: 30_000 })
+    } catch (error) {
+      await writeFile(resolve(root, 'settings-debug.html'), await settings.evaluate(node => node.outerHTML).catch(() => '<settings dialog unavailable>'))
+      await writeFile(resolve(root, 'settings-debug.txt'), await page.locator('body').innerText().catch(() => ''))
+      throw error
+    }
     const settingsNavLabels = (await settingsNav.allInnerTexts()).map(label => label.trim()).filter(Boolean)
     if (!/^(关于|About)$/u.test(settingsNavLabels.at(-1) ?? '')) {
       throw new Error(`About must be the final Settings navigation entry; found ${JSON.stringify(settingsNavLabels)}.`)

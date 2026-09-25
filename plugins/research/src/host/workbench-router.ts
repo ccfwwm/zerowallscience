@@ -9,9 +9,12 @@ export function scienceViewerAction(tool: ScienceToolId, operation?: string): st
     canvas: 'canvas', cells: 'cell', brainglobe: 'brain',
   }
   const mapped = prefix[tool]
-  if (!mapped) return op || 'open'
-  if (!op) return `${mapped}_open`
-  if (op.startsWith(`${mapped}_`)) return op
+  if (!mapped) {
+    if (!op || op === 'sequence_open') return 'open'
+    if (['open', 'read', 'save', 'analyze', 'export'].includes(op)) return op
+    throw new Error(`Unsupported workbench operation ${op} for ${tool}.`)
+  }
+  if (!op) return tool === 'canvas' ? 'canvas_render' : `${mapped}_open`
   const allowed: Record<string, string[]> = {
     imagej: ['open', 'read', 'save', 'analyze', 'mask_analyze', 'native_status', 'launch_native'],
     he: ['open', 'read', 'analyze', 'export', 'segment', 'status', 'cancel'],
@@ -21,10 +24,27 @@ export function scienceViewerAction(tool: ScienceToolId, operation?: string): st
     canvas: ['render', 'export'], cells: ['open', 'read', 'analyze', 'export', 'select', 'export_selection', 'view'],
     brainglobe: ['open', 'read', 'analyze', 'export', 'cells', 'trajectory', 'register', 'cellfinder', 'render', 'transform'],
   }
-  if (allowed[tool]?.includes(op)) return op === 'native_status' || op === 'launch_native' ? op : `${mapped}_${op}`
+  const aliases: Record<string, string> = { cells_open: 'cell_open', brainglobe_open: 'brain_open', canvas_open: 'canvas_render' }
+  const canonical = aliases[op] ?? op
+  if (canonical === 'native_status' || canonical === 'launch_native') {
+    if (tool !== 'imagej') throw new Error(`Workbench operation ${op} does not belong to ${tool}.`)
+    return canonical
+  }
+  if (canonical.startsWith(`${mapped}_`)) {
+    const suffix = canonical.slice(mapped.length + 1)
+    if (allowed[tool]?.includes(suffix)) return canonical
+    throw new Error(`Unsupported workbench operation ${op} for ${tool}.`)
+  }
+  if (allowed[tool]?.includes(canonical)) return `${mapped}_${canonical}`
   if (/^[a-z]+_[a-z_]+$/u.test(op)) throw new Error(`Workbench operation ${op} does not belong to ${tool}.`)
   if (!allowed[tool]?.includes(op)) throw new Error(`Unsupported workbench operation ${op} for ${tool}.`)
   return `${mapped}_${op}`
+}
+
+export const scienceSkillForTool: Partial<Record<ScienceToolId, string>> = {
+  imagej: 'zerowall-fiji', he: 'zerowall-he', molecule: 'zerowall-molecule-viewer',
+  sanger: 'zerowall-sanger', flow: 'zerowall-flow', canvas: 'zerowall-science-canvas',
+  cells: 'zerowall-cells', sequence: 'zerowall-sequence', brainglobe: 'zerowall-brainglobe',
 }
 
 export function workbenchTabTitle(tool: ScienceToolId): string {

@@ -13,7 +13,7 @@ import { fijiAnnotationAdapter, napariAnnotationAdapter } from './annotation-ada
 import { probeBrainGlobe } from './brain-atlas.js'
 import { heSegmentationModel } from './he-segmentation.js'
 import { HE_STARDIST_MODEL } from './he-stardist-model.js'
-import { resolveManagedSciencePython } from './managed-python.js'
+import { defaultSciencePythonExecutable, resolveManagedSciencePython } from './managed-python.js'
 import { pythonChildEnvironment } from './python-env.js'
 
 export interface AnnotationBridgeSetup {
@@ -23,6 +23,49 @@ export interface AnnotationBridgeSetup {
 const FIJI_ENTRYPOINTS = process.platform === 'win32'
   ? ['fiji-windows-x64.exe', 'ImageJ-win64.exe', 'fiji.bat', 'fiji']
   : ['fiji', 'ImageJ-linux64', 'fiji.sh']
+export const DEFAULT_REMOTE_R_MCP_URL = 'http://103.217.185.141:8099/r-platform/mcp'
+
+function isNapariLauncher(path: string): boolean { return /^napari(?:\.exe|\.bat|\.cmd)?$/iu.test(basename(path)) }
+
+function pythonForNapariLauncher(path: string): string | undefined {
+  if (!isNapariLauncher(path)) return undefined
+  const parent = dirname(path)
+  const prefix = basename(parent).toLowerCase() === 'bin' && basename(dirname(parent)).toLowerCase() === 'site-packages'
+    ? resolve(parent, '..', '..', '..')
+    : basename(parent).toLowerCase() === 'scripts' ? dirname(parent) : undefined
+  return prefix ? join(prefix, process.platform === 'win32' ? 'python.exe' : 'bin', ...(process.platform === 'win32' ? [] : ['python'])) : undefined
+}
+
+/** Find the console script installed into the shared Python environment. */
+export function discoverNapariExecutable(pythonPath?: string): string | undefined {
+  const python = pythonPath?.trim() || defaultSciencePythonExecutable()
+  if (!python) return undefined
+  if (isNapariLauncher(python)) return existsSync(python) ? python : undefined
+  const prefix = dirname(python)
+  const candidates = [
+    join(prefix, 'Lib', 'site-packages', 'bin', process.platform === 'win32' ? 'napari.exe' : 'napari'),
+    join(prefix, 'Lib', 'site-packages', 'Scripts', process.platform === 'win32' ? 'napari.exe' : 'napari'),
+    join(prefix, 'Scripts', process.platform === 'win32' ? 'napari.exe' : 'napari'),
+    join(prefix, 'bin', 'napari'),
+  ]
+  return candidates.find(path => { try { return statSync(path).isFile() } catch { return false } })
+}
+
+/** Find the pip-installed StarDist command wrappers beside the managed packages. */
+export function discoverStarDistCommands(pythonPath?: string): { predict2d?: string; predict3d?: string } {
+  const python = pythonPath?.trim() || defaultSciencePythonExecutable()
+  if (!python) return {}
+  const prefix = dirname(python)
+  const bin = join(prefix, 'Lib', 'site-packages', 'bin')
+  const candidates = (stem: string): string[] => [
+    join(bin, `${stem}.exe`), join(join(prefix, 'Lib', 'site-packages', 'Scripts'), `${stem}.exe`),
+    join(prefix, 'Scripts', `${stem}.exe`), join(prefix, 'bin', stem),
+  ]
+  const find = (stem: string): string | undefined => candidates(stem).find(path => { try { return statSync(path).isFile() } catch { return false } })
+  const predict2d = find('stardist-predict2d')
+  const predict3d = find('stardist-predict3d')
+  return { ...(predict2d ? { predict2d } : {}), ...(predict3d ? { predict3d } : {}) }
+}
 
 export function discoverFijiExecutable(configured?: string): string | undefined {
   const candidate = configured?.trim()
@@ -58,7 +101,12 @@ export function engineExecutable(engine: ScientificEngineId, config?: Partial<Sc
     }
     return discoverFijiExecutable() ?? join('C:\\softworks\\Fiji', process.platform === 'win32' ? 'fiji-windows-x64.exe' : 'fiji')
   }
-  if (engine === 'napari') return config?.executablePath?.trim() || config?.pythonPath?.trim() || process.env.ZEROWALL_NAPARI_PYTHON?.trim() || join(process.env.LOCALAPPDATA || '', 'napari-0.9.1', 'envs', 'napari-0.9.1', 'python.exe')
+  if (engine === 'napari') {
+    const explicitExecutable = config?.executablePath?.trim()
+    if (explicitExecutable && isNapariLauncher(explicitExecutable)) return explicitExecutable
+    const python = config?.pythonPath?.trim() || explicitExecutable || process.env.ZEROWALL_NAPARI_PYTHON?.trim() || defaultSciencePythonExecutable() || join(process.env.LOCALAPPDATA || '', 'napari-0.9.1', 'envs', 'napari-0.9.1', 'python.exe')
+    return discoverNapariExecutable(python) ?? python
+  }
   if (config?.executablePath || config?.pythonPath) return config.executablePath ?? config.pythonPath!
   throw new Error('Unsupported native engine.')
 }
@@ -82,10 +130,11 @@ async function hashFile(path: string, algorithm = 'sha256'): Promise<string> {
 export function defaultScientificEngineConfig(id: ScientificEngineId): ScientificEngineConfig {
   const base: ScientificEngineConfig = { id, enabled: true, source: 'default', status: 'unknown' }
   if (id === 'fiji') return { ...base, installDirectory: 'C:\\softworks\\Fiji' }
-  if (id === 'napari') { const pythonPath = process.env.ZEROWALL_NAPARI_PYTHON?.trim(); return pythonPath ? { ...base, pythonPath } : base }
-  // Deliberately no default pythonPath for brain-globe: probe() delegates to the
-  // BrainGlobe resolver, and a default path here would be reported as an
-  // explicit user configuration that the resolveExecutable guard then trusts.
+  if (id === 'remote-r') return { ...base, remoteEndpoint: DEFAULT_REMOTE_R_MCP_URL }
+  const pythonPath = id === 'napari'
+    ? process.env.ZEROWALL_NAPARI_PYTHON?.trim() || defaultSciencePythonExecutable()
+    : defaultSciencePythonExecutable()
+  if (pythonPath && ['napari', 'brain-globe', 'he-python', 'he-stardist'].includes(id)) return { ...base, pythonPath }
   return base
 }
 
@@ -132,10 +181,10 @@ async function deleteUserConfig(id: ScientificEngineId): Promise<void> {
   try { await rename(temporary, USER_CONFIG_FILE) } catch (error) { await rm(temporary, { force: true }); throw error }
 }
 
-export function engineArguments(engine: ScientificEngineId, assetPath?: string): string[] {
+export function engineArguments(engine: ScientificEngineId, assetPath?: string, executable?: string): string[] {
   // Jaunch consumes --allow-multiple; ImageJ Legacy also needs its own flag.
   if (engine === 'fiji') return ['--allow-multiple', '--forbid-single-instance', ...(assetPath ? [assetPath] : [])]
-  if (engine === 'napari') return ['-m', 'napari', ...(assetPath ? [assetPath] : [])]
+  if (engine === 'napari') return isNapariLauncher(executable ?? '') ? (assetPath ? [assetPath] : []) : ['-m', 'napari', ...(assetPath ? [assetPath] : [])]
   throw new Error('Unsupported native engine.')
 }
 
@@ -175,21 +224,25 @@ function interpreterSitePackages(prefix: string): string {
   return join(prefix, 'Lib', 'site-packages')
 }
 
-export async function engineEnvironment(engine: ScientificEngineId, executable: string): Promise<NodeJS.ProcessEnv> {
+export async function engineEnvironment(engine: ScientificEngineId, executable: string, pythonPath?: string): Promise<NodeJS.ProcessEnv> {
   // napari is the one native engine backed by Python, so it is the one that
   // honours SSL_CERT_FILE et al. Sanitize here — this function feeds both the
   // GUI launch and the version probe — or an inherited dead CA path from an
   // earlier runtime layout kills the first outbound request in the child.
-  const prefix = engine === 'napari' ? dirname(executable) : undefined
-  const env = pythonChildEnvironment(prefix ? interpreterSitePackages(prefix) : undefined)
+  const interpreter = engine === 'napari' ? pythonPath?.trim() || (isNapariLauncher(executable) ? defaultSciencePythonExecutable() : executable) : undefined
+  const prefix = interpreter ? dirname(interpreter) : undefined
+  const sitePackages = prefix ? interpreterSitePackages(prefix) : undefined
+  const env = pythonChildEnvironment(sitePackages)
   if (engine !== 'napari' || process.platform !== 'win32' || prefix === undefined) return env
-  // Mirror the installed Conda cwp.py shortcut wrapper, only in the child.
+  // Ensure the managed runtime, its installed console-script directory and DLL
+  // directories are visible to the child without changing the parent process.
+  const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path') ?? 'PATH'
+  const paths = [prefix, ...(sitePackages ? [join(sitePackages, 'bin')] : []), join(prefix, 'Scripts')]
   if (await stat(join(prefix, 'conda-meta')).then(info => info.isDirectory(), () => false)) {
-    const pathKey = Object.keys(env).find(key => key.toLowerCase() === 'path') ?? 'PATH'
-    const paths = [prefix, join(prefix, 'Library', 'mingw-w64', 'bin'), join(prefix, 'Library', 'usr', 'bin'), join(prefix, 'Library', 'bin'), join(prefix, 'Scripts')]
-    env[pathKey] = [...paths, env[pathKey] ?? ''].join(delimiter)
+    paths.push(join(prefix, 'Library', 'mingw-w64', 'bin'), join(prefix, 'Library', 'usr', 'bin'), join(prefix, 'Library', 'bin'))
     env.CONDA_PREFIX = prefix
   }
+  env[pathKey] = [...new Set(paths), env[pathKey] ?? ''].join(delimiter)
   env.PYTHONFAULTHANDLER = '1'
   return env
 }
@@ -203,6 +256,10 @@ export class NativeEngineService {
   constructor(private readonly store: ResearchStore) {}
 
   async getConfig(projectId: string | undefined, engine: ScientificEngineId): Promise<ScientificEngineConfig> {
+    // These engines are resolved by their own Host runners or the RMCP
+    // connector. Historical saved paths were never consumed by those runners;
+    // showing them as editable would claim a configuration that is not used.
+    if (['brain-globe', 'he-python', 'he-stardist', 'remote-r'].includes(engine)) return this.environmentConfig(engine) ?? defaultScientificEngineConfig(engine)
     if (projectId) {
       const events = this.store.listAuditEvents(projectId).filter(event => event.action === 'science-engine.config' && event.details.id === engine)
       const latest = events.at(-1)?.details
@@ -218,6 +275,7 @@ export class NativeEngineService {
   }
 
   async setConfig(projectId: string | undefined, input: Partial<ScientificEngineConfig> & { id: ScientificEngineId }): Promise<ScientificEngineConfig> {
+    if (!['fiji', 'napari'].includes(input.id)) throw new Error(`${engineName(input.id)} 由共享科研运行时或 RMCP 连接器管理，不能单独覆盖路径。`)
     const current = await this.getConfig(projectId, input.id)
     const config = mergeConfig(current, input, projectId ? 'project' : 'user')
     if (projectId) this.store.recordAuditEvent(projectId, 'science-engine.config', config as unknown as import('@zerowallscience/research-store/types').JsonObject)
@@ -241,7 +299,7 @@ export class NativeEngineService {
   }
 
   private environmentConfig(id: ScientificEngineId): ScientificEngineConfig | undefined {
-    const value = id === 'fiji' ? (process.env.ZEROWALL_FIJI_EXECUTABLE?.trim() || process.env.ZEROWALL_FIJI_PATH?.trim()) : id === 'napari' ? process.env.ZEROWALL_NAPARI_PYTHON?.trim() : id === 'brain-globe' ? process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim() : undefined
+    const value = id === 'fiji' ? (process.env.ZEROWALL_FIJI_EXECUTABLE?.trim() || process.env.ZEROWALL_FIJI_PATH?.trim()) : id === 'napari' ? process.env.ZEROWALL_NAPARI_PYTHON?.trim() : id === 'brain-globe' ? process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim() : id === 'he-stardist' ? process.env.ZEROWALL_HE_STARDIST_PYTHON?.trim() : undefined
     if (!value) return undefined
     return safeConfig(id === 'fiji' ? { id, enabled: true, ...(existsSync(value) && statSync(value).isDirectory() ? { installDirectory: value } : { executablePath: value }), source: 'environment' } : { id, enabled: true, pythonPath: value, source: 'environment' }, id)
   }
@@ -250,6 +308,8 @@ export class NativeEngineService {
     const config = await this.getConfig(projectId, id)
     const name = engineName(id)
     if (config.enabled === false) return { id, name, available: false, status: 'invalid', source: config.source, reason: '引擎已禁用。' }
+    // RMCP is a remote MCP endpoint, never a local executable.
+    if (id === 'remote-r') return { id, name, available: Boolean(config.remoteEndpoint), status: config.remoteEndpoint ? 'unknown' : 'invalid', source: config.source, ...(config.remoteEndpoint ? { path: config.remoteEndpoint } : {}), reason: config.remoteEndpoint ? 'RMCP 端点已配置；服务可用性由 MCP 连接器检查。' : '未配置 RMCP 端点。' }
     // BrainGlobe has no single executable of its own: it runs in the managed
     // ZeroWall interpreter. Resolving it through engineExecutable would throw
     // "Unsupported native engine." whenever nothing is configured, which is the
@@ -261,12 +321,13 @@ export class NativeEngineService {
     // HE Python has no interpreter of its own either: it reports the shared
     // environment, which is also what the HE panel actually runs.
     if (id === 'he-python') return { ...await this.probeHePython(config), id, name }
+    // napari's pip console script lives below the shared Python site-packages.
+    // Probe the interpreter, then report the wrapper used for normal launches.
+    if (id === 'napari') return this.probeNapari(config)
     let executable: string
     try { executable = (await this.resolveExecutable(projectId, id)).executable } catch (error) { const configuredPath = config.executablePath ?? config.installDirectory ?? config.pythonPath; return { id, name, available: false, status: 'invalid', source: config.source, ...(configuredPath ? { path: configuredPath } : {}), reason: String(error) } }
     if (!existsSync(executable)) return { id, name, available: false, status: 'invalid', source: config.source, path: executable, reason: `未找到入口：${executable}` }
     if (id === 'fiji') return this.probeFiji(config, executable)
-    if (id === 'napari') return this.probePython(config, executable, id)
-    if (id === 'remote-r') return { id, name, available: Boolean(config.remoteEndpoint), status: config.remoteEndpoint ? 'unknown' : 'invalid', source: config.source, ...(config.remoteEndpoint ? { path: config.remoteEndpoint } : {}), reason: config.remoteEndpoint ? '远程端点已配置；服务健康需由远端 Gateway 合成检查确认。' : '未配置远程 R 端点。' }
     return { id, name, available: false, status: 'unknown', source: config.source, reason: '未配置探测器。' }
   }
 
@@ -284,9 +345,19 @@ export class NativeEngineService {
     return { executable, jars: join(root, 'jars', '*') }
   }
 
-  private async probePython(config: ScientificEngineConfig, executable: string, id: ScientificEngineId): Promise<ScientificEngineStatus> {
-    const code = id === 'napari' ? 'import napari; print(napari.__version__)' : 'import sys; print(sys.version.split()[0])'
-    return this.runProbe(id, engineName(id), executable, ['-c', code], config)
+  private async probeNapari(config: ScientificEngineConfig): Promise<ScientificEngineStatus> {
+    const configuredPath = config.pythonPath?.trim() || config.executablePath?.trim()
+    const configured = configuredPath && isNapariLauncher(configuredPath) ? pythonForNapariLauncher(configuredPath) : configuredPath
+    const python = configured || defaultSciencePythonExecutable()
+    if (!python) return { id: 'napari', name: engineName('napari'), available: false, status: 'invalid', source: config.source, reason: '未找到 ZeroWall 集成 Python；napari 与 BrainGlobe 共用该环境。' }
+    if (!existsSync(python)) return { id: 'napari', name: engineName('napari'), available: false, status: 'invalid', source: config.source, path: python, reason: `未找到 Python：${python}` }
+    const result = await this.runProbe('napari', engineName('napari'), python, ['-c', 'import napari; print(napari.__version__)'], config)
+    const launcher = discoverNapariExecutable(python) ?? (config.executablePath?.trim() && isNapariLauncher(config.executablePath) ? config.executablePath.trim() : undefined)
+    return {
+      ...result,
+      ...(launcher ? { path: launcher, capabilities: ['napari', 'site-packages/bin launcher'] } : {}),
+      diagnostic: [`共享 Python：${python}`, `napari 启动入口：${launcher ?? '未找到；可回退到 python -m napari'}`, result.diagnostic].filter(Boolean).join('\n').slice(-8000),
+    }
   }
 
   /**
@@ -296,7 +367,8 @@ export class NativeEngineService {
    */
   private async probeHePython(config: ScientificEngineConfig, id: ScientificEngineId = 'he-python'): Promise<ScientificEngineStatus> {
     const name = engineName(id)
-    const explicit = config.pythonPath?.trim() || config.executablePath?.trim() || process.env.ZEROWALL_HE_STARDIST_PYTHON?.trim()
+    const userConfigured = config.source !== 'default' && config.source !== 'discovered'
+    const explicit = (userConfigured ? config.pythonPath?.trim() || config.executablePath?.trim() : undefined) || (id === 'he-stardist' ? process.env.ZEROWALL_HE_STARDIST_PYTHON?.trim() : undefined)
     const managed = explicit ? undefined : await resolveManagedSciencePython()
     const executable = explicit ?? managed?.executable
     if (!executable) return { id, name, available: false, status: 'invalid', source: config.source, reason: '未找到受管理的 ZeroWall Python 环境；HE 引擎共用该环境，不创建独立 venv。' }
@@ -313,6 +385,29 @@ export class NativeEngineService {
   private async probeHeStarDist(config: ScientificEngineConfig): Promise<ScientificEngineStatus> {
     const probe = await this.probeHePython(config, 'he-stardist')
     if (!probe.available) return { ...probe, id: 'he-stardist', name: engineName('he-stardist') }
+    // The HE runner calls StarDist2D through its Python API. The console
+    // scripts in site-packages/bin are useful evidence that the package was
+    // installed, but they are not a Fiji/ImageJ plugin and are not launched
+    // for the bounded ROI workflow.
+    const dependencyCode = [
+      'import importlib.metadata as metadata, json, sys',
+      'names = ["numpy", "openslide-python", "tifffile", "tensorflow", "stardist", "csbdeep", "Pillow"]',
+      'versions = {}',
+      'for name in names:',
+      ' try: versions[name] = metadata.version(name)',
+      ' except metadata.PackageNotFoundError: versions[name] = None',
+      'print(json.dumps(versions))',
+      'sys.exit(4 if any(value is None for value in versions.values()) else 0)',
+    ].join('\n')
+    const python = probe.path
+    if (!python) return { ...probe, id: 'he-stardist', name: engineName('he-stardist'), available: false, status: 'invalid', reason: '未解析到共享 Python 解释器。' }
+    const dependencies = await this.runProbe('he-stardist', engineName('he-stardist'), python, ['-c', dependencyCode], config)
+    let versions: Record<string, string | null> = {}
+    try { versions = JSON.parse(dependencies.version ?? '{}') as Record<string, string | null> } catch { /* process diagnostics below */ }
+    const missingPackages = Object.entries(versions).filter(([, version]) => version === null).map(([packageName]) => packageName)
+    const commands = discoverStarDistCommands(python)
+    const commandDiagnostic = `StarDist API：Python StarDist2D；2D CLI：${commands.predict2d ?? 'stardist-predict2d.exe 未找到'}；3D CLI：${commands.predict3d ?? 'stardist-predict3d.exe 未找到'}`
+    if (!dependencies.available) return { ...dependencies, id: 'he-stardist', name: engineName('he-stardist'), status: 'degraded', reason: missingPackages.length ? `共享 Python 缺少 StarDist 依赖：${missingPackages.join(', ')}` : dependencies.reason ?? 'StarDist 依赖检查失败。', diagnostic: [probe.diagnostic, commandDiagnostic, dependencies.diagnostic].filter(Boolean).join('\n').slice(-8000) }
     const modelDirectory = config.modelPath?.trim() || heSegmentationModel()
     const missing: string[] = []
     for (const file of HE_STARDIST_MODEL.files) {
@@ -323,7 +418,7 @@ export class NativeEngineService {
         if (await hashFile(path) !== file.sha256) missing.push(`${file.path}(哈希不符)`)
       } catch { missing.push(file.path) }
     }
-    const base = { ...probe, id: 'he-stardist' as const, name: engineName('he-stardist') }
+    const base = { ...dependencies, id: 'he-stardist' as const, name: engineName('he-stardist'), version: `Python ${probe.version ?? 'unknown'} · StarDist ${versions.stardist ?? 'unknown'} · TensorFlow ${versions.tensorflow ?? 'unknown'}`, diagnostic: [probe.diagnostic, commandDiagnostic, `运行时：${python} 调用 StarDist2D Python API（不调用 Fiji/ImageJ 宏）。`].filter(Boolean).join('\n').slice(-8000) }
     if (missing.length) return { ...base, available: false, status: 'degraded', source: config.source, reason: `StarDist 权重未就绪：${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` 等 ${missing.length} 项` : ''}。目录：${modelDirectory}`, path: modelDirectory }
     return { ...base, status: 'available', reason: `共享 ZeroWall Python 与冻结 StarDist 权重均已就绪。`, path: modelDirectory, capabilities: ['he-stardist', HE_STARDIST_MODEL.name] }
   }
@@ -374,10 +469,14 @@ export class NativeEngineService {
     if (this.pending.has(key)) throw new Error('An engine launch is already pending for this project.')
     this.pending.add(key)
     try {
-      const path = await realpath(executable)
+      let path = await realpath(executable)
       if (!(await stat(path)).isFile()) throw new Error('Engine executable must be a regular file.')
       const cwd = await realpath(project.rootPath)
-      const env = await engineEnvironment(engine, path)
+      const configuredNapariPython = resolved.config.pythonPath?.trim()
+      const napariPython = engine === 'napari'
+        ? configuredNapariPython && !isNapariLauncher(configuredNapariPython) ? configuredNapariPython : configuredNapariPython ? pythonForNapariLauncher(configuredNapariPython) ?? defaultSciencePythonExecutable() : defaultSciencePythonExecutable()
+        : undefined
+      let env = await engineEnvironment(engine, path, napariPython)
       let assetPath: string | undefined
       if (assetId !== undefined) {
         const asset = this.store.listDataAssets(project.id).find(item => item.id === assetId)
@@ -389,7 +488,7 @@ export class NativeEngineService {
       }
       if (this.disposed) throw new Error('Native engine service has stopped.')
       const record: ScientificEngineLaunchResult = { launchId: randomUUID(), id: engine, projectId: project.id, sessionId, lifecycleRevision: 0, path, started: false, status: 'starting', guiReady: 'unverified', createdAt: new Date().toISOString(), ...(assetId === undefined ? {} : { assetId }), message: '正在启动本地引擎。' }
-      let args = engineArguments(engine, assetPath)
+      let args = engineArguments(engine, assetPath, path)
       if (bridge) {
         if (!assetPath) throw new Error('An image asset is required for annotation exchange.')
         const directory = await containedFile(cwd, bridge.directory)
@@ -401,7 +500,13 @@ export class NativeEngineService {
         env.ZEROWALL_ANNOTATION_REQUEST = requestPath
         env.ZEROWALL_ANNOTATION_AUTORUN = '1'
         record.annotationBridge = { viewerId: bridge.viewerId, baseRevisionId: bridge.baseRevisionId, sourceSha256: bridge.sourceSha256, returnPath, adapterSha256: createHash('sha256').update(script).digest('hex') }
-        args = engine === 'napari' ? [scriptPath] : ['--allow-multiple', '--forbid-single-instance', '--run', scriptPath]
+        if (engine === 'napari') {
+          if (!napariPython || !existsSync(napariPython)) throw new Error('napari ROI bridge needs the configured ZeroWall Python interpreter.')
+          path = await realpath(napariPython)
+          env = await engineEnvironment(engine, path, napariPython)
+          record.path = path
+          args = [scriptPath]
+        } else args = ['--allow-multiple', '--forbid-single-instance', '--run', scriptPath]
       }
       this.persist(record)
       return await new Promise<ScientificEngineLaunchResult>((resolve, reject) => {

@@ -301,7 +301,9 @@ for (const plugin of plugins) {
       ? String.raw`, hostAlwaysBundle: [/^@deepseek-ai\/dsh-llm-pi-ai\/src\/config\.ts$/u, /llm-pi-ai[\\/]src[\\/]config\.ts$/u]`
       : plugin.id === 'mcp'
         ? String.raw`, hostAlwaysBundle: [/^@deepseek-ai\/dsh-mcp-client\/src\//]`
-        : ''} })`,
+        : plugin.id === 'research'
+          ? ', inlinePngAssets: true'
+          : ''} })`,
     '',
   ].join('\n'))
   if (plugin.client) {

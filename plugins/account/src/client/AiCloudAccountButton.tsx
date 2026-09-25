@@ -28,6 +28,8 @@ interface Actions {
   forgotPassword: (email: string, gatewayBaseUrl?: string) => Promise<void>
   logout: () => Promise<void>
   discoverModels: () => Promise<AiCloudAccountView>
+  /** Refresh the shared model directory after the account has replaced its routes. */
+  refreshModelCatalog?: () => Promise<void>
   checkoutInfo: () => Promise<AiCloudCheckoutView>
   listOrders: () => Promise<AiCloudOrderView[]>
   createOrder: (amount: number, paymentType: string) => Promise<AiCloudOrderView>
@@ -258,6 +260,7 @@ export function AiCloudAccountButton(props: Props) {
     setError(undefined)
     try {
       setAccount(await props.discoverModels())
+      await props.refreshModelCatalog?.()
     } catch (reason) {
       setError(message(reason))
     } finally {

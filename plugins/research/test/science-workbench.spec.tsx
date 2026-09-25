@@ -39,15 +39,16 @@ describe('Science 7 workbench', () => {
     Object.defineProperty(window, 'zerowallDesktop', { configurable: true, value: { chooseScienceFile: vi.fn().mockResolvedValue('C:/outside/sample.fasta') } })
     render(<ScienceWorkbench {...props} />)
     await screen.findByText('研究 a')
+    fireEvent.click(screen.getByRole('button', { name: /序列\/Motif.*进入查看器/u }))
     fireEvent.click(screen.getByRole('button', { name: '选择文件' }))
     await waitFor(() => expect(remote.importLocalAsset).toHaveBeenCalledExactlyOnceWith({ sessionId: 's1', sourcePath: 'C:/outside/sample.fasta' }))
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Motif 序列工作台' }).getAttribute('aria-selected')).toBe('true'))
-    expect(await screen.findByRole('status')).toHaveProperty('textContent', expect.stringContaining('sample.fasta'))
+    await waitFor(() => expect(document.querySelector('#science-panel-sequence')?.hasAttribute('hidden')).toBe(false))
+    expect(screen.getAllByRole('status').some(status => status.textContent?.includes('sample.fasta'))).toBe(true)
   })
 
   it.each([
     ['sample.png', 'image_open', 'ImageJ'],
-    ['slide.svs', 'he_open', 'HE 查看器'],
+    ['slide.svs', 'he_open', 'HE 切片'],
   ] as const)('imports %s, refreshes its assets and opens it with %s', async (name, action, tabName) => {
     const { remote, props } = fixture()
     const sourcePath = `C:/outside/${name}`
@@ -57,39 +58,56 @@ describe('Science 7 workbench', () => {
     Object.defineProperty(window, 'zerowallDesktop', { configurable: true, value: { chooseScienceFile: vi.fn().mockResolvedValue(sourcePath) } })
     render(<ScienceWorkbench {...props} />)
     await screen.findByText('研究 a')
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`${tabName}.*进入查看器`, 'u') }))
     fireEvent.click(screen.getByRole('button', { name: '选择文件' }))
     await waitFor(() => expect(remote.importLocalAsset).toHaveBeenCalledExactlyOnceWith({ sessionId: 's1', sourcePath }))
-    await waitFor(() => expect(screen.getByRole('tab', { name: tabName }).getAttribute('aria-selected')).toBe('true'))
+    await waitFor(() => expect(document.querySelector(`#science-panel-${name.endsWith('.svs') ? 'he' : 'imagej'}`)?.hasAttribute('hidden')).toBe(false))
     await waitFor(() => expect(remote.scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action, assetId: 'asset-picked', sessionId: 's1' })))
   })
 
-  it('opens only selected tool panels, retains them across tab switches and restores per session', async () => {
+  it('uses one central file picker for every viewer', async () => {
+    const { remote, props } = fixture()
+    remote.importLocalAsset = vi.fn().mockResolvedValue(ok({ id: 'image-asset', name: 'sample.png' }))
+    remote.scienceViewer = vi.fn().mockResolvedValue(ok({ assets: [], viewers: [] }))
+    const chooseScienceFile = vi.fn().mockResolvedValue('C:/outside/sample.png')
+    Object.defineProperty(window, 'zerowallDesktop', { configurable: true, value: { chooseScienceFile } })
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    fireEvent.click(screen.getByRole('button', { name: /ImageJ 图像.*进入查看器/u }))
+    fireEvent.click(screen.getByRole('button', { name: '选择文件' }))
+    await waitFor(() => expect(chooseScienceFile).toHaveBeenCalledOnce())
+    await waitFor(() => expect(remote.importLocalAsset).toHaveBeenCalledExactlyOnceWith({ sessionId: 's1', sourcePath: 'C:/outside/sample.png' }))
+    expect(screen.queryByRole('button', { name: '选择 Zarr 目录' })).toBeNull()
+  })
+
+  it('opens only selected tool panels and returns to the card home on a fresh mount', async () => {
     const { props } = fixture()
     props.remote.scienceViewer = vi.fn().mockResolvedValue(ok({ assets: [], viewers: [] }))
     const view = render(<ScienceWorkbench {...props} />)
     await screen.findByText('研究 a')
-    fireEvent.click(screen.getByRole('tab', { name: 'Motif 序列工作台' }))
-    await screen.findByLabelText('序列资产')
-    const initialCalls = props.remote.scienceViewer.mock.calls.length
-    fireEvent.click(screen.getByRole('tab', { name: '流式细胞' }))
-    expect(screen.getByRole('tab', { name: '流式细胞' }).getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: /序列\/Motif.*进入查看器/u }))
+    await screen.findByRole('button', { name: '选择文件' })
+    fireEvent.click(screen.getByRole('button', { name: '返回科研工作台' }))
+    fireEvent.click(screen.getByRole('button', { name: /流式细胞.*进入查看器/u }))
+    expect(document.querySelector('#science-panel-flow')?.hasAttribute('hidden')).toBe(false)
     expect(document.querySelector('#science-panel-sequence')?.hasAttribute('hidden')).toBe(true)
-    fireEvent.click(screen.getByRole('tab', { name: 'Motif 序列工作台' }))
-    expect(props.remote.scienceViewer.mock.calls.length).toBe(initialCalls + 1)
+    fireEvent.click(screen.getByRole('button', { name: '返回科研工作台' }))
+    fireEvent.click(screen.getByRole('button', { name: /序列\/Motif.*进入查看器/u }))
+    expect(document.querySelector('#science-panel-sequence')?.hasAttribute('hidden')).toBe(false)
     view.unmount()
     render(<ScienceWorkbench {...props} />)
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Motif 序列工作台' }).getAttribute('aria-selected')).toBe('true'))
-    expect(screen.getAllByRole('tab')).toHaveLength(10)
+    await waitFor(() => expect(screen.getByRole('region', { name: '科研工具' })).toBeTruthy())
+    expect(document.querySelector('#science-panel-sequence')?.hasAttribute('hidden')).toBe(true)
+    expect(screen.queryByRole('tablist', { name: '专业工具标签' })).toBeNull()
   })
   it('registers an ordinary workspace explicitly without requiring a research protocol', async () => {
     const { remote, props } = fixture()
     remote.projectForSession.mockResolvedValueOnce(ok(undefined))
     const registerSessionProject = vi.fn().mockResolvedValue(ok({ id: 'p1' }))
     render(<ScienceWorkbench {...props} remote={{ ...remote, registerSessionProject }} />)
-    fireEvent.click(await screen.findByRole('button', { name: '登记当前工作区' }))
-    await screen.findByText('研究 a')
-    expect(registerSessionProject).toHaveBeenCalledExactlyOnceWith({ sessionId: 's1' })
-    expect(screen.queryByRole('button', { name: '登记当前工作区' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /ImageJ 图像.*进入查看器/u }))
+    await waitFor(() => expect(registerSessionProject).toHaveBeenCalledExactlyOnceWith({ sessionId: 's1' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '登记当前工作区' })).toBeNull())
   })
   it('loads the session project and persists explicit study selection', async () => {
     const { remote, props } = fixture()
@@ -100,19 +118,14 @@ describe('Science 7 workbench', () => {
     await waitFor(() => expect(remote.setActiveResearchStudy).toHaveBeenCalledWith({ sessionId: 's1', studyId: 'b' }))
     await screen.findByText('研究 b')
   })
-  it('keeps review rationale empty and surfaces host gate rejection', async () => {
-    const { remote, props } = fixture()
+  it('shows nine image cards without research operations on the home screen', async () => {
+    const { props } = fixture()
     render(<ScienceWorkbench {...props} />)
-    await screen.findByText('研究 a')
-    // Research pages are sidebar cards of the 主页 tab since the shell rebuild. Scoped to
-    // the sidebar nav because the 继续研究 panel links to the same pages by plain label.
-    const researchPages = screen.getByRole('navigation', { name: '研究页面' })
-    fireEvent.click(within(researchPages).getByRole('button', { name: /^研究计划/ }))
-    expect((screen.getByLabelText('人工审阅理由') as HTMLTextAreaElement).value).toBe('')
-    fireEvent.change(screen.getByLabelText('人工审阅理由'), { target: { value: '检查后发现计划不完整' } })
-    fireEvent.click(screen.getByRole('button', { name: '人工批准门禁一' }))
-    await waitFor(() => expect(remote.approveResearchGate).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 8, rationale: '检查后发现计划不完整' })))
-    expect(await screen.findByRole('status')).toHaveProperty('textContent', expect.stringContaining('Current plan is incomplete'))
+    const home = screen.getByRole('region', { name: '科研工具' })
+    expect(within(home).getAllByRole('button')).toHaveLength(9)
+    expect(home.querySelectorAll('img')).toHaveLength(9)
+    expect(screen.queryByRole('navigation', { name: '研究页面' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '人工批准门禁一' })).toBeNull()
   })
   it('discards late responses from the previous session', async () => {
     const { remote, props } = fixture()
@@ -128,17 +141,15 @@ describe('Science 7 workbench', () => {
     expect(screen.getByText('研究 a')).toBeTruthy()
   })
 
-  it('sends a current-tool request through the conversation bridge', async () => {
+  it('keeps conversation controls out of the default viewer', async () => {
     const { props } = fixture()
     props.remote.scienceViewer = vi.fn().mockResolvedValue(ok({ assets: [], viewers: [] }))
     const onSendMessage = vi.fn().mockResolvedValue(undefined)
     render(<ScienceWorkbench {...props} onSendMessage={onSendMessage} />)
     await screen.findByText('研究 a')
-    fireEvent.click(screen.getByRole('tab', { name: 'ImageJ' }))
-    const input = screen.getByLabelText('工具助手消息')
-    fireEvent.change(input, { target: { value: '打开这张 TIFF' } })
-    fireEvent.click(screen.getByRole('button', { name: '发送到对话' }))
-    await waitFor(() => expect(onSendMessage).toHaveBeenCalledWith('打开这张 TIFF'))
+    fireEvent.click(screen.getByRole('button', { name: /ImageJ.*进入查看器/u }))
+    expect(screen.queryByRole('button', { name: '发送到对话' })).toBeNull()
+    expect(onSendMessage).not.toHaveBeenCalled()
   })
 
   it('unwraps and deduplicates replayed workbench events', async () => {
@@ -149,7 +160,8 @@ describe('Science 7 workbench', () => {
       return ok({ protocol: 'science-workbench/1', sessionId: 's1', events: calls === 1 ? [{ protocol: 'science-workbench/1', eventId: 'e1', sequence: 1, sessionId: 's1', type: 'tab.open', tool: 'flow', payload: {}, createdAt: new Date().toISOString() }] : [], lastSequence: 20, hasMore: false })
     })
     render(<ScienceWorkbench {...props} />)
-    await waitFor(() => expect(screen.getByRole('tab', { name: '流式细胞' }).getAttribute('aria-selected')).toBe('true'))
+    await waitFor(() => expect(document.querySelector('#science-panel-flow')?.hasAttribute('hidden')).toBe(true))
+    expect(screen.getByRole('region', { name: '科研工具' })).toBeTruthy()
     expect((props.remote as any).scienceWorkbenchEvents).toHaveBeenCalledWith({ sessionId: 's1', afterSequence: 0, limit: 100 })
   })
 })

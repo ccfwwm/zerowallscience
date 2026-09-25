@@ -1,18 +1,22 @@
 ---
 name: zerowall-brainglobe
-description: ZeroWall Science 7.0.0 brainglobe workflow; use only when the corresponding research or viewer task is requested.
+description: 在 ZeroWall 查看 BrainGlobe 图谱切片，并通过 Host 调用脑区、配准和细胞定位操作。
 ---
 
-# brainglobe
+# BrainGlobe 脑图谱
+
+## 7.0.5 查看入口
+
+使用托管图谱或已登记的 TIFF/NPY 等项目数据。进入脑图谱查看器时不启动引擎；用户点击“打开脑图谱”后才调用 `brain_open`（路由别名 `brainglobe_open`），点击“读取切片”后才调用 `brain_analyze`。托管 Python/图谱未安装时显示“引擎未配置”；没有输入时显示“请先选择资产”；启动原生进程时仅报告“进程已启动，窗口状态待确认”。配准、区域统计、cellfinder、brainrender 和导出不放入默认查看器。通过 `science_workbench(tool=brainglobe, skill_id=zerowall-brainglobe, action_id=brain_analyze, viewer_id=..., request_id=...)` 或对应真实 action 执行，核对 Run、坐标系、产物 URI 与 SHA-256。外部 TIFF 文件导入上限 20 GiB；托管图谱按实际引擎资源限制。
 
 Use the persisted ZeroWall research objects and the current Host/Runner schemas. Keep source, version, unit, applicability, and access state explicit; unknown values remain unknown. Register inputs and parameters before execution, use deterministic runners for numeric outputs, and retain manifests, logs, failures, conflicts, and limitations. Do not claim a professional workflow is available unless the executable adapter and validation artifact are present. A frozen question, plan, or candidate set is immutable: propose an amendment and new version. Escalate only the two research gates: freeze the primary question and validation plan, then approve the final claims.
 
 
 ## Domain constraints
 
-BrainGlobe is a separate managed environment. Do not modify the user napari environment. Report atlas, registration, cell-detection and CPU/GPU capability before analysis.
+BrainGlobe 与 napari 使用同一套 ZeroWall 稳定 Python；图谱数据由 Host 托管。分析前报告图谱、配准、细胞检测和 CPU/GPU 能力，不修改系统 Python 或用户自己的 napari 安装。
 
-通过 Host 的 `probeScientificEngines` 查看 `brainglobe` 状态；只有显式配置 `ZEROWALL_BRAINGLOBE_PYTHON` 且四个组件版本均可读取时才报告环境可用。环境探测不等同于 Allen 图谱、brainreg、cellfinder 或 brainrender Runner 已完成。
+通过 Host 的 `getScientificEngineConfigs` 和 `probeScientificEngine` 读取 `brain-globe` 配置与状态；默认使用 `%APPDATA%\zerowall-science\Python\python.exe`，也接受显式的 `ZEROWALL_BRAINGLOBE_PYTHON`。只有四个组件版本均可读取时才报告环境可用；环境探测不等同于 Allen 图谱、brainreg、cellfinder 或 brainrender Runner 已完成。图谱操作须等前一个 Host action 完成，避免并发占用单个 BrainGlobe runner。
 
 配置 `ZEROWALL_BRAINGLOBE_DIR` 指向包含 `brainglobe-atlasapi` 目录的受管理根目录后，使用 `science_viewer`：
 
@@ -29,4 +33,3 @@ BrainGlobe is a separate managed environment. Do not modify the user napari envi
 图谱元数据和 annotation 来自实际 BrainGlobe atlasapi。传输的结构列表、坐标行和切片标签有界；图谱外坐标明确单列计数，未知单位/方向、损坏的 ontology 或缺失受管理目录必须报告并停止。cellfinder 检测、brainreg 配准和 brainrender 场景仍需人工科学复核，不能由 Runner 成功退出或图像存在推断为已验证结论。
 
 brainreg/cellfinder 使用 CPU，最多 8 个工作线程/CPU，监测本任务进程树 24 GiB RSS 预算（0.5 秒采样，超限中断），启动至少需 2 GiB 可用内存；cellfinder 首版仅接受 ≤256³ 体素，detection batch=4。预算不是操作系统级硬内存隔离。固定三点合成样例的默认检测只检出 2/3，已记录漏检，禁止声称生物灵敏度或完整阳性基准通过；完整解剖配准质量、分类模型和原始样本坐标变换仍未验收。
-

@@ -4,6 +4,37 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ScienceToolId } from '../shared/workbench.js'
+import cellsImage from './assets/cells.png?inline'
+import imagejImage from './assets/imagej.png?inline'
+import heImage from './assets/he.png?inline'
+import moleculeImage from './assets/molecule.png?inline'
+import sequenceImage from './assets/sequence.png?inline'
+import sangerImage from './assets/sanger.png?inline'
+import flowImage from './assets/flow.png?inline'
+import canvasImage from './assets/canvas.png?inline'
+import brainglobeImage from './assets/brainglobe.png?inline'
+
+export type ResearchToolDescriptor = {
+  id: Exclude<ScienceToolId, 'home'>
+  title: string
+  description: string
+  image: string
+  acceptedExtensions: string[]
+  viewerRoute: string
+  skillId: string
+}
+
+export const RESEARCH_TOOL_DESCRIPTORS: readonly ResearchToolDescriptor[] = [
+  { id: 'cells', title: '细胞查看器', description: '浏览单细胞数据与细胞分布', image: cellsImage, acceptedExtensions: ['.h5ad'], viewerRoute: 'cells', skillId: 'zerowall-cells' },
+  { id: 'imagej', title: 'ImageJ 图像', description: '查看显微图像与多页 TIFF', image: imagejImage, acceptedExtensions: ['.png', '.jpg', '.jpeg', '.tif', '.tiff', '.zarr'], viewerRoute: 'imagej', skillId: 'zerowall-fiji' },
+  { id: 'he', title: 'HE 切片', description: '浏览病理切片与金字塔图层', image: heImage, acceptedExtensions: ['.svs', '.ndpi', '.tif', '.tiff'], viewerRoute: 'he', skillId: 'zerowall-he' },
+  { id: 'molecule', title: '分子结构', description: '查看分子结构与三维构象', image: moleculeImage, acceptedExtensions: ['.pdb', '.cif', '.mmcif', '.sdf'], viewerRoute: 'molecule', skillId: 'zerowall-molecule-viewer' },
+  { id: 'sequence', title: '序列/Motif', description: '浏览核酸序列与注释', image: sequenceImage, acceptedExtensions: ['.fa', '.fasta', '.fna', '.ffn', '.frn', '.gb', '.gbk'], viewerRoute: 'sequence', skillId: 'zerowall-sequence' },
+  { id: 'sanger', title: 'Sanger 峰图', description: '查看测序峰图与碱基读段', image: sangerImage, acceptedExtensions: ['.scf', '.ab1'], viewerRoute: 'sanger', skillId: 'zerowall-sanger' },
+  { id: 'flow', title: '流式细胞', description: '浏览 FCS 事件与通道分布', image: flowImage, acceptedExtensions: ['.fcs'], viewerRoute: 'flow', skillId: 'zerowall-flow' },
+  { id: 'canvas', title: '科研画布', description: '查看科研图板与标注结果', image: canvasImage, acceptedExtensions: [], viewerRoute: 'canvas', skillId: 'zerowall-science-canvas' },
+  { id: 'brainglobe', title: '脑图谱', description: '浏览脑区与图谱切面', image: brainglobeImage, acceptedExtensions: [], viewerRoute: 'brainglobe', skillId: 'zerowall-brainglobe' },
+]
 
 /**
  * The workbench shell is presentation only: every string it paints comes from
@@ -564,6 +595,7 @@ export type WorkbenchToolDescriptor = {
   statusKey: WorkbenchLocaleKey
   statusHintKey: WorkbenchLocaleKey
   actions: readonly ToolActionSpec[]
+  image?: string
 }
 
 /**
@@ -590,7 +622,7 @@ export const WORKBENCH_TOOLS: readonly WorkbenchToolDescriptor[] = [
       { kind: 'prompt', labelKey: 'science.shell.imagej.card1', hintKey: 'science.shell.imagej.card1Hint' },
       { kind: 'prompt', labelKey: 'science.shell.imagej.card2', hintKey: 'science.shell.imagej.card2Hint' },
       { kind: 'prompt', labelKey: 'science.shell.imagej.card3', hintKey: 'science.shell.imagej.card3Hint' },
-    ],
+    ], image: imagejImage,
   },
   {
     id: 'he', group: 'primary', icon: Microscope,
@@ -600,7 +632,7 @@ export const WORKBENCH_TOOLS: readonly WorkbenchToolDescriptor[] = [
       { kind: 'prompt', labelKey: 'science.shell.he.card1', hintKey: 'science.shell.he.card1Hint' },
       { kind: 'prompt', labelKey: 'science.shell.he.card2', hintKey: 'science.shell.he.card2Hint' },
       { kind: 'prompt', labelKey: 'science.shell.he.card3', hintKey: 'science.shell.he.card3Hint' },
-    ],
+    ], image: heImage,
   },
   {
     id: 'molecule', group: 'primary', icon: Atom,
@@ -610,7 +642,7 @@ export const WORKBENCH_TOOLS: readonly WorkbenchToolDescriptor[] = [
       { kind: 'action', target: 'open-asset', labelKey: 'science.shell.molecule.card1', hintKey: 'science.shell.molecule.card1Hint' },
       { kind: 'prompt', labelKey: 'science.shell.molecule.card2', hintKey: 'science.shell.molecule.card2Hint' },
       { kind: 'prompt', labelKey: 'science.shell.molecule.card3', hintKey: 'science.shell.molecule.card3Hint' },
-    ],
+    ], image: moleculeImage,
   },
   {
     id: 'sanger', group: 'primary', icon: Activity,
@@ -620,7 +652,7 @@ export const WORKBENCH_TOOLS: readonly WorkbenchToolDescriptor[] = [
       { kind: 'prompt', labelKey: 'science.shell.sanger.card1', hintKey: 'science.shell.sanger.card1Hint' },
       { kind: 'prompt', labelKey: 'science.shell.sanger.card2', hintKey: 'science.shell.sanger.card2Hint' },
       { kind: 'prompt', labelKey: 'science.shell.sanger.card3', hintKey: 'science.shell.sanger.card3Hint' },
-    ],
+    ], image: sangerImage,
   },
   {
     id: 'flow', group: 'primary', icon: Droplet,
@@ -630,7 +662,7 @@ export const WORKBENCH_TOOLS: readonly WorkbenchToolDescriptor[] = [
       { kind: 'prompt', labelKey: 'science.shell.flow.card1', hintKey: 'science.shell.flow.card1Hint' },
       { kind: 'prompt', labelKey: 'science.shell.flow.card2', hintKey: 'science.shell.flow.card2Hint' },
       { kind: 'prompt', labelKey: 'science.shell.flow.card3', hintKey: 'science.shell.flow.card3Hint' },
-    ],
+    ], image: flowImage,
   },
   {
     id: 'canvas', group: 'primary', icon: LayoutPanelLeft,
@@ -640,7 +672,7 @@ export const WORKBENCH_TOOLS: readonly WorkbenchToolDescriptor[] = [
       { kind: 'action', target: 'open-asset', labelKey: 'science.shell.canvas.card1', hintKey: 'science.shell.canvas.card1Hint' },
       { kind: 'prompt', labelKey: 'science.shell.canvas.card2', hintKey: 'science.shell.canvas.card2Hint' },
       { kind: 'action', target: 'export', labelKey: 'science.shell.canvas.card3', hintKey: 'science.shell.canvas.card3Hint' },
-    ],
+    ], image: canvasImage,
   },
   {
     id: 'cells', group: 'primary', icon: Fingerprint,
@@ -650,7 +682,7 @@ export const WORKBENCH_TOOLS: readonly WorkbenchToolDescriptor[] = [
       { kind: 'action', target: 'open-asset', labelKey: 'science.shell.cells.card1', hintKey: 'science.shell.cells.card1Hint' },
       { kind: 'prompt', labelKey: 'science.shell.cells.card2', hintKey: 'science.shell.cells.card2Hint' },
       { kind: 'prompt', labelKey: 'science.shell.cells.card3', hintKey: 'science.shell.cells.card3Hint' },
-    ],
+    ], image: cellsImage,
   },
   {
     id: 'sequence', group: 'more', icon: Dna,
@@ -660,7 +692,7 @@ export const WORKBENCH_TOOLS: readonly WorkbenchToolDescriptor[] = [
       { kind: 'action', target: 'open-asset', labelKey: 'science.shell.sequence.card1', hintKey: 'science.shell.sequence.card1Hint' },
       { kind: 'prompt', labelKey: 'science.shell.sequence.card2', hintKey: 'science.shell.sequence.card2Hint' },
       { kind: 'prompt', labelKey: 'science.shell.sequence.card3', hintKey: 'science.shell.sequence.card3Hint' },
-    ],
+    ], image: sequenceImage,
   },
   {
     id: 'brainglobe', group: 'more', icon: Brain,
@@ -670,7 +702,7 @@ export const WORKBENCH_TOOLS: readonly WorkbenchToolDescriptor[] = [
       { kind: 'prompt', labelKey: 'science.shell.brainglobe.card1', hintKey: 'science.shell.brainglobe.card1Hint' },
       { kind: 'prompt', labelKey: 'science.shell.brainglobe.card2', hintKey: 'science.shell.brainglobe.card2Hint' },
       { kind: 'prompt', labelKey: 'science.shell.brainglobe.card3', hintKey: 'science.shell.brainglobe.card3Hint' },
-    ],
+    ], image: brainglobeImage,
   },
 ]
 
@@ -731,6 +763,7 @@ export type WorkbenchDescriptor = {
   status: string
   statusHint: string
   cards: readonly WorkbenchCard[]
+  image?: string
 }
 
 /**
@@ -766,6 +799,7 @@ function toDescriptor(tool: WorkbenchToolDescriptor, t: WorkbenchTranslate): Wor
     cards: toolActions(tool.id, t).map((action, index): WorkbenchCard => action.kind === 'prompt'
       ? { key: `${tool.id}:${index}`, kind: 'prompt', value: action.prompt, label: action.label, hint: action.hint }
       : { key: `${tool.id}:${index}`, kind: 'action', value: ACTION_BY_TARGET[action.target], label: action.label, hint: action.hint }),
+    ...(tool.image ? { image: tool.image } : {}),
   }
 }
 

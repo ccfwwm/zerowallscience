@@ -5,6 +5,20 @@ export type ScienceToolId =
   | 'home' | 'imagej' | 'he' | 'molecule' | 'sanger' | 'flow' | 'canvas'
   | 'cells' | 'sequence' | 'brainglobe'
 
+export type ResearchViewerState =
+  | 'empty' | 'importing' | 'loading' | 'ready'
+  | 'engine-unconfigured' | 'failed' | 'process-started'
+
+export type ResearchToolDescriptor = {
+  id: string
+  title: string
+  description: string
+  image: string
+  acceptedExtensions: string[]
+  viewerRoute: string
+  skillId: string
+}
+
 export type ScienceTab = {
   id: string
   tool: ScienceToolId
@@ -63,6 +77,8 @@ export type ScienceWorkbenchRequest = {
   viewerId?: string
   runId?: string
   operation?: string
+  skillId?: string
+  actionId?: string
   parameters?: JsonObject
   requestId: string
   expectedRevision?: number

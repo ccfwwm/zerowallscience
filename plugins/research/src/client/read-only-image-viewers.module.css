@@ -1,0 +1,15 @@
+.viewer { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.meta, .toolbar { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.meta label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.meta select { min-width: 180px; max-width: min(64vw, 420px); }
+.badge { color: #28624e; font-size: 12px; font-weight: 600; }
+.toolbar { padding: 8px 0; border-top: 1px solid #d7e3dd; font-size: 13px; }
+.controls { display: flex; gap: 5px; align-items: center; }
+.controls button { width: 34px; height: 34px; padding: 0; display: grid; place-items: center; }
+.controls span { min-width: 48px; text-align: center; font-size: 12px; }
+.stage { display: flex; justify-content: center; align-items: flex-start; min-height: 320px; max-height: 72vh; overflow: auto; background: #e6ece9; border: 1px solid #d7e3dd; }
+.stage img { display: block; width: 100%; height: auto; max-width: none; object-fit: contain; }
+.empty { min-height: 320px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #62756c; text-align: center; }
+.empty strong { color: #30493d; font-size: 16px; }
+.empty span { max-width: 60ch; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .meta, .toolbar { align-items: flex-start; flex-direction: column; } .stage { min-height: 240px; } }

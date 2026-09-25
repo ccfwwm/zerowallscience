@@ -3,7 +3,7 @@
   "harness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "branch": "codex/biomni-model-routing",
-    "commit": "19978d57757923b798083d7406c06f3ea85a1983",
+    "commit": "b81aa60c90cf2e2c61711fd09cec93f6cc94a372",
     "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "upstreamCommit": "a66e4702047846cdaa10c66c9d3df3951f5ea70d",
     "tag": "dsh-v0.1.5-rc.2",

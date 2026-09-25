@@ -39,5 +39,6 @@ test('rejects stale plugin bytes and a different Harness build even when version
     await put('.build/runtime/build-receipt.json', receipt)
     await put('deepseek-harness/uncommitted.txt', 'source changed after building')
     await assert.rejects(verifyRuntimeFreshness(root), /Harness source changed/)
+    assert.equal((await verifyRuntimeFreshness(root, { allowDirty: true })).checked, 3)
   } finally { await rm(root, { recursive: true, force: true }) }
 })

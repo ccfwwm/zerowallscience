@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { TabComponentProps } from 'dsh-better-sidebar/client/service'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import { NS, zh, type ZeroWallKey } from '../../../base/src/client/locales.ts'
@@ -16,17 +16,15 @@ import { WorkbenchShell } from './workbench-shell.js'
 // namespace import so a renamed export degrades to the home descriptor instead
 // of failing the whole workbench import.
 import * as descriptorModule from './tool-descriptors.js'
-import { WORKBENCH_LOCALES } from './tool-descriptors.js'
+import { RESEARCH_TOOL_DESCRIPTORS, WORKBENCH_LOCALES } from './tool-descriptors.js'
 import { SequenceViewer } from './sequence-viewer.js'
 import { NativeEnginePanel } from './native-engine-panel.js'
 import { ScientificEngineCenter } from './scientific-engine-center.js'
-import { ImageViewer } from './image-viewer.js'
+import { ReadOnlyImageViewer, ReadOnlyHeViewer } from './read-only-image-viewers.js'
 import { SangerViewer } from './sanger-viewer.js'
 import { FlowViewer } from './flow-viewer.js'
-import { HeViewer } from './he-viewer.js'
 import { MoleculeViewer } from './molecule-viewer.js'
-import { CanvasViewer } from './canvas-viewer.js'
-import { FijiExperimentPanel } from './fiji-experiment-panel.js'
+import { ReadOnlyCanvasViewer } from './read-only-canvas-viewer.js'
 import { CellViewer } from './cell-viewer.js'
 import { BrainViewer } from './brain-viewer.js'
 import { scienceToolForImportedPath } from './imported-science-file.js'
@@ -175,17 +173,20 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
 
   const sessionId = props.scope.sessionId
   useEffect(() => {
-    let opened: ScienceToolId[] = []; let active: ScienceToolId | '' = ''
+    let opened: ScienceToolId[] = []
     try {
       const saved = JSON.parse(localStorage.getItem(`zerowall:science-tools:${sessionId}`) ?? '{}')
       // Migrate the pre-7.0.2 persisted `structure` tab to the public `molecule` id.
       const persisted = Array.isArray(saved.opened) ? saved.opened.map((id: unknown) => id === 'structure' ? 'molecule' : id) : []
       opened = [...new Set<ScienceToolId>(persisted.filter((id: unknown): id is ScienceToolId => ALL_TOOL_IDS.includes(id as ScienceToolId)))]
-      const persistedActive: unknown = saved.active === 'structure' ? 'molecule' : saved.active
-      active = typeof persistedActive === 'string' && opened.includes(persistedActive as ScienceToolId) ? persistedActive as ScienceToolId : opened[0] ?? ''
     } catch { /* A malformed UI preference cannot prevent opening the workbench. */ }
     const tabs: ScienceTab[] = opened.map(tool => ({ id: tool, tool, title: t(LABEL_KEYS[tool]), sessionId, dirty: false, lastFocusedAt: new Date().toISOString() }))
-    dispatchTab({ type: 'restore', tabs, activeId: active || undefined })
+    // A fresh workbench always opens on the card home. Previously the saved
+    // active tool (often BrainGlobe) was restored as the visible page, which
+    // made the app appear to jump into a viewer on startup. Keep the panels
+    // mounted for their selections, but leave focus on home until the user
+    // chooses a card.
+    dispatchTab({ type: 'restore', tabs, activeId: null })
   }, [sessionId])
   const selectTool = (id: ScienceToolId): void => {
     dispatchTab({ type: 'open', id, tool: id, title: t(LABEL_KEYS[id]), sessionId })
@@ -201,10 +202,13 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
     const generation = ++requestGeneration.current
     setLoading(true); setMessage('')
     try {
-      const project = sessionId && remote.projectForSession ? unwrapRemoteResult('zerowallResearch/projectForSession', await remote.projectForSession({ sessionId })) as { id: string } | undefined : undefined
+      let project = sessionId && remote.projectForSession ? unwrapRemoteResult('zerowallResearch/projectForSession', await remote.projectForSession({ sessionId })) as { id: string } | undefined : undefined
+      if (!project?.id && sessionId && remote.registerSessionProject) {
+        project = unwrapRemoteResult('zerowallResearch/registerSessionProject', await remote.registerSessionProject({ sessionId })) as { id: string }
+      }
       if (!project?.id) {
         if (generation === requestGeneration.current) { setProjectId(undefined); setRegistrationNeeded(true) }
-        throw new Error('当前工作区尚未登记。登记后可以查看资产和保存分析；研究方案可按需建立。')
+        throw new Error('科研目录尚未就绪，请刷新后重试。')
       }
       const listed = unwrapRemoteResult('zerowallResearch/listResearchStudies', await remote.listResearchStudies(project.id)) as Study[]
       const bound = remote.getActiveResearchStudy ? unwrapRemoteResult('getActiveResearchStudy', await remote.getActiveResearchStudy({ sessionId })) as Study | undefined : undefined
@@ -233,7 +237,7 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
   // never resubmits a scientific run. Replayed events are deduplicated by eventId.
   useEffect(() => {
     const eventsApi = (remote as unknown as { scienceWorkbenchEvents?: (input: { sessionId: string; afterSequence?: number; limit?: number }) => Promise<unknown> }).scienceWorkbenchEvents
-    if (!sessionId || typeof eventsApi !== 'function') return
+    if (!sessionId || !projectId || typeof eventsApi !== 'function') return
     let stopped = false
     let inFlight = false
     // The host cursor is durable and monotonic, and the tab log is an audit
@@ -308,7 +312,7 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
     }
     void poll(); const timer = window.setInterval(() => void poll(), 1500)
     return () => { stopped = true; window.clearInterval(timer) }
-  }, [remote, sessionId])
+  }, [remote, sessionId, projectId])
   const active = useMemo(() => studies.find(study => study.id === selectedStudy) ?? studies[0], [studies, selectedStudy])
   const registerWorkspace = async (): Promise<void> => {
     const generation = requestGeneration.current
@@ -391,15 +395,15 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
   }
 
   const renderTool = (id: ScienceToolId): JSX.Element => <>
-    {id === 'cells' && <CellViewer remote={remote} sessionId={sessionId} />}
-    {id === 'imagej' && <><ImageViewer remote={remote} sessionId={sessionId} /><NativeEnginePanel remote={remote} sessionId={sessionId} /><FijiExperimentPanel remote={remote} sessionId={sessionId} /></>}
-    {id === 'sequence' && <SequenceViewer remote={remote} sessionId={sessionId} />}
-    {id === 'sanger' && <SangerViewer remote={remote} sessionId={sessionId} />}
-    {id === 'flow' && <FlowViewer remote={remote} sessionId={sessionId} />}
-    {id === 'he' && <HeViewer remote={remote} sessionId={sessionId} />}
-    {id === 'molecule' && <MoleculeViewer remote={remote} sessionId={sessionId} />}
-    {id === 'canvas' && <CanvasViewer remote={remote} sessionId={sessionId} projectId={projectId} />}
-    {id === 'brainglobe' && <BrainViewer remote={remote} sessionId={sessionId} />}
+    {id === 'cells' && <CellViewer remote={remote} sessionId={sessionId} viewOnly onPickFile={pickFile} />}
+    {id === 'imagej' && <ReadOnlyImageViewer remote={remote} sessionId={sessionId} onPickFile={pickFile} />}
+    {id === 'sequence' && <SequenceViewer remote={remote} sessionId={sessionId} viewOnly onPickFile={pickFile} />}
+    {id === 'sanger' && <SangerViewer remote={remote} sessionId={sessionId} viewOnly onPickFile={pickFile} />}
+    {id === 'flow' && <FlowViewer remote={remote} sessionId={sessionId} viewOnly onPickFile={pickFile} />}
+    {id === 'he' && <ReadOnlyHeViewer remote={remote} sessionId={sessionId} onPickFile={pickFile} />}
+    {id === 'molecule' && <MoleculeViewer remote={remote} sessionId={sessionId} viewOnly onPickFile={pickFile} />}
+    {id === 'canvas' && <ReadOnlyCanvasViewer remote={remote} sessionId={sessionId} />}
+    {id === 'brainglobe' && <BrainViewer remote={remote} sessionId={sessionId} viewOnly active={activeKey === 'brainglobe'} />}
   </>
 
   const openPage = (next: Page): void => {
@@ -433,17 +437,20 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
    * only other destination it could reach — the 数据与资料 page — is not a
    * chooser and would hide the very viewer the click was meant to fill.
    */
-  const pickFile = async (): Promise<void> => {
+  const importExternalPath = async (sourcePath: string): Promise<void> => {
     if (!sessionId || !projectId) { setMessage('请先登记当前项目，再导入项目外的科研文件。'); return }
-    const chooser = window.zerowallDesktop?.chooseScienceFile
-    if (!chooser || !remote.importLocalAsset) { setMessage('当前桌面或科研 Host 不支持导入科研文件，请更新至 7.0.4。'); return }
+    if (!remote.importLocalAsset) { setMessage('当前科研 Host 不支持导入科研文件。'); return }
     try {
-      const sourcePath = await chooser()
-      if (!sourcePath) return
       setMessage(`正在复制并校验 ${sourcePath.split(/[\\/]/u).at(-1) ?? '科研文件'}…`)
       const imported = unwrapRemoteResult('zerowallResearch/importLocalAsset', await remote.importLocalAsset({ sessionId, sourcePath })) as { id: string; name: string }
       openImportedAsset(imported.id, sourcePath, imported.name)
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
+  }
+  const pickFile = async (): Promise<void> => {
+    const chooser = window.zerowallDesktop?.chooseScienceFile
+    if (!chooser) { setMessage('当前桌面不支持选择科研文件。'); return }
+    const sourcePath = await chooser()
+    if (sourcePath) await importExternalPath(sourcePath)
   }
   const sendToConversation = async (text: string): Promise<void> => {
     const trimmed = text.trim()
@@ -472,11 +479,12 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
     if (action === 'pick-file' || action === 'open-from-conversation') { pickFile(); return }
   }
 
-  const tabs = useMemo(() => TAB_ORDER.map(id => ({ id, label: t(LABEL_KEYS[id]), icon: TAB_ICONS[id] })), [t])
-  const overflow = useMemo(() => OVERFLOW_ORDER.map(id => ({ id, label: t(LABEL_KEYS[id]) })), [t])
+  const cardFor = (id: ActiveKey) => RESEARCH_TOOL_DESCRIPTORS.find(tool => tool.id === id)
+  const tabs = TAB_ORDER.map(id => ({ id, label: cardFor(id)?.title ?? t(LABEL_KEYS[id]), icon: TAB_ICONS[id], ...(cardFor(id) ? { description: cardFor(id)!.description, image: cardFor(id)!.image } : {}) }))
+  const overflow = OVERFLOW_ORDER.map(id => ({ id, label: cardFor(id)?.title ?? t(LABEL_KEYS[id]), ...(cardFor(id) ? { description: cardFor(id)!.description, image: cardFor(id)!.image } : {}) }))
   const descriptorTable = (descriptorModule as unknown as { toolDescriptors?: Record<ActiveKey, ShellDescriptor> }).toolDescriptors
   const descriptor = descriptorTable?.[activeKey] ?? descriptorTable?.home ?? ({} as ShellDescriptor)
-  const statusHint = `${t('research.workbench.field.study')}：${active?.title ?? t('research.workbench.notSelected')}`
+  const statusHint = ''
 
   return <>
     <WorkbenchShell
@@ -495,7 +503,6 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
         onSubmit: () => void submitComposer(),
       }}
       onAction={runAction}
-      onPickFile={() => void pickFile()}
       overflow={overflow}
     >
       {registrationNeeded && <section aria-label={t('research.workbench.registration')} className={workbenchStyles.panel}>
@@ -524,10 +531,9 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
       </div>}
       <div hidden={page !== 'plan'}>{sessionId && active && snapshot && <NhanesSurveyPanel key={`${sessionId}:${active.id}`} remote={remote} sessionId={sessionId} study={active} documents={snapshot.documents} tasks={snapshot.tasks ?? []} onChanged={() => load(active.id)} />}</div>
       <div hidden={page !== 'plan'}>{sessionId && active && snapshot && <GeneticAnalysisPanel key={`${sessionId}:${active.id}`} remote={remote} sessionId={sessionId} study={active} documents={snapshot.documents} tasks={snapshot.tasks ?? []} onChanged={() => load(active.id)} />}</div>
-      {activeKey !== 'home' && <div className={workbenchStyles.toolBar}><button type="button" onClick={() => closeTool(activeKey)}>{t('research.workbench.closeView')}</button></div>}
       {/* Every opened panel stays mounted and is only hidden, so a tab switch
           cannot discard a viewer session or refetch its asset list. */}
-      {sessionId ? openedTools.map(id => <div id={`science-panel-${id}`} key={id} role="tabpanel" aria-label={t(LABEL_KEYS[id])} hidden={activeKey !== id}><WorkbenchSelectionContext.Provider value={selections[id] ?? {}}>{renderTool(id)}</WorkbenchSelectionContext.Provider></div>) : <Panel title={t('research.workbench.sessionPendingTitle')}><p>{t('research.workbench.sessionPending')}</p></Panel>}
+      {sessionId && projectId ? openedTools.map(id => <div id={`science-panel-${id}`} key={id} role="tabpanel" aria-label={t(LABEL_KEYS[id])} hidden={activeKey !== id} style={{ '--viewer-image': `url("${cardFor(id)?.image ?? ''}")` } as CSSProperties}><WorkbenchSelectionContext.Provider value={selections[id] ?? {}}>{renderTool(id)}</WorkbenchSelectionContext.Provider></div>) : <Panel title={t('research.workbench.sessionPendingTitle')}><p>{loading ? '正在准备科研目录…' : '科研目录尚未就绪，请刷新状态。'}</p></Panel>}
     </WorkbenchShell>
     {engineSettingsOpen && sessionId && <div className={workbenchStyles.dialogScrim} onMouseDown={event => { if (event.target === event.currentTarget) setEngineSettingsOpen(false) }}>
       <section className={workbenchStyles.engineDialog} role="dialog" aria-modal="true" aria-label={t('research.workbench.engineSettings')} onMouseDown={event => event.stopPropagation()}>

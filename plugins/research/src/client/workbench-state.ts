@@ -35,7 +35,10 @@ export function scienceTabReducer(state: ScienceTabState, action: ScienceTabActi
     const tab = existing ? { ...existing, title: action.title, lastFocusedAt: now(), ...(action.assetId ? { assetId: action.assetId } : {}), ...(action.viewerId ? { viewerId: action.viewerId } : {}), ...(action.runId ? { runId: action.runId } : {}) } : { id: action.id, tool: action.tool, title: action.title, sessionId: action.sessionId, projectId: action.projectId, studyId: action.studyId, assetId: action.assetId, artifactId: action.artifactId, viewerId: action.viewerId, runId: action.runId, dirty: false, lastFocusedAt: now() }
     // `reopen` touches the list only: a catch-up replay must not be able to
     // take the focus from the tab the user is actually looking at.
-    if (action.type === 'reopen') return { tabs: existing ? state.tabs.map(item => item.id === action.id ? tab : item) : [...state.tabs, tab], activeId: state.activeId ?? tab.id }
+    // Replayed history restores the panel list only. It must never choose a
+    // viewer as the active page when the workbench is mounted on its home
+    // cards, including when this is the first tab being re-added.
+    if (action.type === 'reopen') return { tabs: existing ? state.tabs.map(item => item.id === action.id ? tab : item) : [...state.tabs, tab], activeId: state.activeId }
     return { tabs: existing ? state.tabs.map(item => item.id === action.id ? tab : item) : [...state.tabs, tab], activeId: action.id }
   }
   if (index < 0) return state
