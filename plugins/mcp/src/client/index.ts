@@ -3,15 +3,13 @@ import { McpConnectionsButton, PythonEnvironmentPanel, type McpServerInput } fro
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 import { registerKetcherTab } from './KetcherTab.js'
 
-// The dotted injection declares access to the remote namespace. It is a
-// property of remote, not a service address accepted by ctx.get().
 export const inject = ['slots', 'locale', 'remote', 'remote.zerowallMcp', 'betterSidebar']
 
 export function apply(ctx: ClientContext): void {
-  // Capture the injected namespace from this plugin fiber. The slot callback
-  // runs later in a renderer fiber where reading `ctx.remote.zerowallMcp`
-  // would correctly be rejected as an undeclared property.
-  const mcpRemote = (ctx.remote as any).zerowallMcp
+  // Capture the dotted remote through reflection while this plugin fiber owns
+  // the dependency. Slot callbacks run later in renderer fibers and must not
+  // read `ctx.remote.zerowallMcp` directly.
+  const mcpRemote = ctx.get('remote.zerowallMcp') as any
   registerKetcherTab(ctx, mcpRemote)
   const t = ctx.locale.bind(NS)
   ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({

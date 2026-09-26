@@ -7,8 +7,7 @@ interface FilesRemote { materialize(input: { sessionId: string; attachmentId: st
 interface SessionBinding { prompt(content: Array<{ type: 'text'; text: string }>, mode?: 'queue'): Promise<void> }
 function unwrap<T>(value: RemoteResult<T>): T { if (value.ok) return value.value; throw new Error(value.error.message) }
 export function apply(ctx: ClientContext): void {
-  const remote = ctx.remote as any
-  const files = (ctx.get('remote.zerowallFiles') ?? remote?.zerowallFiles) as FilesRemote | undefined
+  const files = ctx.get('remote.zerowallFiles') as FilesRemote | undefined
   ctx.effect(() => {
     const listener = (event: Event): void => {
       const detail = (event as CustomEvent<{ file: PreparedFile; sessionId: string }>).detail

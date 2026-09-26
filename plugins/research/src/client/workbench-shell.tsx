@@ -56,7 +56,11 @@ export function WorkbenchShell(props: WorkbenchShellProps): JSX.Element {
   // The slot is chosen by what the parent supplied, never by the active tab, so
   // an opened viewer is never unmounted by a tab switch.
   const hasContent = Children.count(props.children) > 0
-  return <div className={styles.shell}>
+  // Viewer pages use intrinsic content height. The old shell always filled the
+  // host viewport, so a short viewer (especially Mol* and the image viewers)
+  // left a large empty block below its actual canvas. The home page keeps the
+  // full-height application layout and its own scrolling behaviour.
+  return <div className={`${styles.shell} ${isHome ? '' : styles.shellViewer}`}>
     <div className={styles.tabRow} role="tablist" aria-label={t('science.shell.tablist')} hidden>
       {tabs.map(tab => <button
         key={tab.id} type="button" role="tab" aria-selected={tab.id === activeTab}

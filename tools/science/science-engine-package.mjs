@@ -8,7 +8,11 @@ import { pipeline } from 'node:stream/promises'
 import { Transform } from 'node:stream'
 
 const requireDesktop = createRequire(new URL('../../desktop/package.json', import.meta.url))
-const APPLICATION_VERSION = '7.1.0'
+// Science model archives are independent of patch releases.  Keep accepting
+// the 7.1.0 manifest while 7.1.1 is the current application version so users
+// do not have to download or reinstall unchanged model data.
+const APPLICATION_VERSION = '7.1.1'
+const LEGACY_APPLICATION_VERSIONS = Object.freeze(['7.1.0'])
 const ENGINE_VERSION = '7.1.0'
 const SHA = /^[a-f0-9]{64}$/u
 const exists = async path => lstat(path).then(() => true, error => {
@@ -74,7 +78,7 @@ export function validateManifest(manifest, platform = process.platform, arch = p
   if (m.platform !== 'win32' || m.arch !== 'x64' || platform !== m.platform || arch !== m.arch) throw new Error('Engine platform mismatch; Windows x64 is required.')
   if (m.python?.implementation !== 'cpython' || m.python?.version !== profile.pythonVersion || m.python?.bundled !== false) throw new Error(`Engine requires the shared CPython ${profile.pythonVersion} runtime.`)
   if (m.python.relativeExecutable !== 'Python/python.exe' || m.python.relativeSitePackages !== 'Python/Lib/site-packages') throw new Error('Shared science engine packages must use the ZeroWall Python layout.')
-  if (!Array.isArray(m.compatibleApplications) || !m.compatibleApplications.includes(APPLICATION_VERSION)) throw new Error('Application compatibility is missing.')
+  if (!Array.isArray(m.compatibleApplications) || ![APPLICATION_VERSION, ...LEGACY_APPLICATION_VERSIONS].some(version => m.compatibleApplications.includes(version))) throw new Error('Application compatibility is missing.')
   if (!m.archive || !SHA.test(m.archive.sha256) || !Number.isSafeInteger(m.archive.size) || m.archive.size < 1 || m.archive.size > limits.archive) throw new Error('Invalid archive integrity record.')
   if (!Array.isArray(m.files) || m.files.length < 1 || m.files.length > limits.entries) throw new Error('Invalid manifest file inventory.')
   let total = 0

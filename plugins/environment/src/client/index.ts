@@ -16,13 +16,16 @@ export const inject = [
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'zerowall: environment dictionaries')
   const t = ctx.locale.bind(NS)
-  const remote = ctx.remote as any
-  const sessionRemote = ctx.get('remote.session') ?? remote?.session
-  const environmentRemote = ctx.get('remote.zerowallEnvironment') ?? remote?.zerowallEnvironment
-  const accountRemote = ctx.get('remote.zerowallAccount') ?? remote?.zerowallAccount
-  const mcpRemote = ctx.get('remote.zerowallMcp') ?? remote?.zerowallMcp
-  const mineruRemote = ctx.get('remote.zerowallMineru') ?? remote?.zerowallMineru
-  const pubmedRemote = ctx.get('remote.zerowallPubmed') ?? remote?.zerowallPubmed
+  // Dotted remotes must be resolved through Cordis reflection. Falling back
+  // to `ctx.remote.<name>` after `ctx.get()` returns undefined can read the
+  // proxy outside the owning fiber and surface `without inject` during a
+  // manual model sync.
+  const sessionRemote = ctx.get('remote.session')
+  const environmentRemote = ctx.get('remote.zerowallEnvironment')
+  const accountRemote = ctx.get('remote.zerowallAccount')
+  const mcpRemote = ctx.get('remote.zerowallMcp')
+  const mineruRemote = ctx.get('remote.zerowallMineru')
+  const pubmedRemote = ctx.get('remote.zerowallPubmed')
   const reviewerScope = ctx.settingsScope.bind<any>({ namespace: 'zerowall-reviewer' })
   ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-environment', order: 25,

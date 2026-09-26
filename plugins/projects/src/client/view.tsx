@@ -8,11 +8,11 @@ import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 export const inject = ['slots', 'remote', 'workspaces', 'remote.zerowallProjects']
 
 export function apply(ctx: ClientContext): void {
-  const remote = ctx.remote as any
+  const remote = ctx.get('remote.zerowallProjects') as any
   ctx.effect(() => {
     let disposed = false
     void (async () => {
-      const projects = unwrapRemoteResult<ProjectView[]>('zerowall.projects.list', await remote.zerowallProjects.list())
+      const projects = unwrapRemoteResult<ProjectView[]>('zerowall.projects.list', await remote.list())
       if (disposed) return
       await Promise.all(projects.map(async project => {
         const known = ctx.workspaces.list.getSnapshot().items

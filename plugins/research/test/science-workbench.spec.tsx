@@ -32,6 +32,15 @@ describe('Science 7 workbench', () => {
     expect(scienceToolForImportedPath('unsupported.bin')).toBeUndefined()
   })
 
+  it('uses intrinsic-height shell layout for viewers and keeps the home workbench separate', async () => {
+    const { props } = fixture()
+    const { container } = render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    expect(container.querySelector('[class*="shellViewer"]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /分子结构.*进入查看器/u }))
+    await waitFor(() => expect(container.querySelector('[class*="shellViewer"]')).not.toBeNull())
+  })
+
   it('imports a project-external file and selects it in its viewer', async () => {
     const { remote, props } = fixture()
     remote.importLocalAsset = vi.fn().mockResolvedValue(ok({ id: 'asset-1', name: 'sample.fasta' }))

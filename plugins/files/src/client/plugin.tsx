@@ -256,7 +256,9 @@ async function copyAttachment(remote: FilesRemote, detail: AttachmentActionDetai
 }
 
 export function apply(ctx: ClientContext): void {
-  const remote = (ctx.remote as any).zerowallFiles as FilesRemote
+  // Keep the remote namespace out of delayed slot/event callbacks. Cordis's
+  // remote proxy requires an active inject fiber for dotted property reads.
+  const remote = ctx.get('remote.zerowallFiles') as FilesRemote
 
   ctx.effect(() => ctx.betterSidebar.registerTab({
     id: 'zerowall:attachment-viewer',

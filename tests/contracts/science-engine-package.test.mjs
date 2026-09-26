@@ -41,6 +41,13 @@ test('shared engine package verifies every ZIP member and clears extraction dire
   assert.deepEqual(await readdir(options.temporaryRoot), [])
 })
 
+test('7.1.1 accepts the existing 7.1.0 model manifest', async t => {
+  const { manifest } = await fixture(t)
+  assert.doesNotThrow(() => validateManifest(manifest, 'win32', 'x64'))
+  assert.doesNotThrow(() => validateManifest({ ...manifest, compatibleApplications: ['7.1.1'] }, 'win32', 'x64'))
+  assert.throws(() => validateManifest({ ...manifest, compatibleApplications: ['7.0.6'] }, 'win32', 'x64'), /Application compatibility/u)
+})
+
 test('manifest trust, platform, and shared layout are checked before installation', async t => {
   const { options, manifest } = await fixture(t)
   await assert.rejects(importHeEngine({ ...options, manifestSha256: '0'.repeat(64) }), /Manifest SHA-256 mismatch/u)

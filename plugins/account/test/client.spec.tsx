@@ -5,6 +5,7 @@ import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AiCloudAccountButton, mergePaymentOrder } from '../src/client/AiCloudAccountButton.js'
+import { apply } from '../src/client/index.js'
 import { AccountSection } from '../src/client/account-surface.js'
 import { translator } from '../../base/test/locale.js'
 
@@ -43,6 +44,48 @@ function props() {
 }
 
 describe('AI Cloud account panel', () => {
+  it('captures the account Remote before the sidebar renderer runs', async () => {
+    const account = { current: vi.fn().mockResolvedValue({ ok: true, value: { status: 'signedOut', balanceFreshness: 'current', lowBalance: false, models: [] } }) }
+    let accountReads = 0
+    const remote = new Proxy({ zerowallAccount: account, session: undefined }, {
+      get(target, property, receiver) {
+        if (property === 'zerowallAccount' && accountReads++ > 0) throw new Error('cannot get property "remote.zerowallAccount" without inject')
+        return Reflect.get(target, property, receiver)
+      },
+    })
+    let injected: (() => Record<string, any>) | undefined
+    const ctx = {
+      remote,
+      locale: { bind: vi.fn(() => translator()) },
+      get: vi.fn((name: string) => name === 'remote.zerowallAccount' ? account : undefined),
+      slots: {
+        inject: vi.fn((_name: string, mount: () => unknown) => mount()),
+        register: vi.fn((options: { inject?: () => Record<string, any> }) => { if (options.inject) injected = options.inject; return () => undefined }),
+      },
+    }
+    apply(ctx as any)
+    expect(accountReads).toBe(0)
+    const props = injected!()
+    await expect(props.getAccount()).resolves.toMatchObject({ status: 'signedOut' })
+    expect(account.current).toHaveBeenCalledOnce()
+    expect(accountReads).toBe(0)
+  })
+
+  it('turns a missing account Remote into a recoverable error', async () => {
+    let injected: (() => Record<string, any>) | undefined
+    const ctx = {
+      remote: { zerowallAccount: undefined, session: undefined },
+      locale: { bind: vi.fn(() => translator()) },
+      get: vi.fn((name: string) => name === 'remote.zerowallAccount' ? undefined : undefined),
+      slots: {
+        inject: vi.fn((_name: string, mount: () => unknown) => mount()),
+        register: vi.fn((options: { inject?: () => Record<string, any> }) => { if (options.inject) injected = options.inject; return () => undefined }),
+      },
+    }
+    apply(ctx as any)
+    await expect(injected!().getAccount()).rejects.toThrow('AI 云账户服务尚未连接')
+  })
+
   it('does not block the conversation with a login surface on first signed-out launch', async () => {
     const actions = props()
     render(<AiCloudAccountButton {...actions} />)

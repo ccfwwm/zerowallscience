@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-environment",
-  "version": "7.1.0",
+  "version": "7.1.1",
   "dsh": {
     "min": "0.1.5-rc.2",
     "max": "0.1.5-rc.2"

@@ -21,6 +21,33 @@
   font-family: Inter, "Microsoft YaHei", "Segoe UI", sans-serif;
 }
 
+/* A viewer should size to the controls and canvas it actually renders. Long
+   viewers remain scrollable through the host page, while short viewers no
+   longer reserve the entire remaining viewport as blank green space. */
+.shellViewer {
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: 100%;
+  height: fit-content;
+  min-height: 0;
+  overflow: visible;
+}
+
+.shellViewer .content,
+.shellViewer .main {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.shellViewer .viewer {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.shellViewer .empty {
+  flex: 0 0 auto;
+}
+
 /* The tab row is the one horizontally scrollable strip: ten tabs do not fit at
    narrow widths and wrapping would move the sidebar. Scrolling is the fallback;
    the tabs below truncate first so the row degrades before it overflows. */
