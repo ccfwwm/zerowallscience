@@ -6,8 +6,7 @@
   <p>
     <a href="README.md">English</a> ·
     <a href="README.zh-CN.md">简体中文</a> ·
-    <a href="docs/architecture.md">Architecture</a> ·
-    <a href="docs/architecture.zh-CN.md">中文架构</a>
+    <a href="docs/project-guide.zh-CN.md">Project guide / 中文指南</a>
   </p>
 </div>
 
@@ -175,7 +174,7 @@ pnpm package:mac:x64
 pnpm package:mac:arm64
 ```
 
-Preview and Stable builds use separate application identities, user-data directories, and update channels. Build and release controls are documented in [BUILD.md](BUILD.md).
+Preview and Stable builds use separate application identities, user-data directories, and update channels. Build and release controls are documented in the [project guide](docs/project-guide.zh-CN.md).
 
 ## Security and Scope
 
@@ -185,7 +184,7 @@ These controls reduce accidental exposure and keep privileged decisions outside 
 
 ## Detailed Documentation
 
-The [full architecture document](docs/architecture.md) covers:
+The [project guide](docs/project-guide.zh-CN.md) covers:
 
 - runtime startup and stable loopback-origin behavior;
 - Electron/Host/Renderer trust boundaries;

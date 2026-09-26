@@ -6,8 +6,7 @@
   <p>
     <a href="README.md">English</a> ·
     <a href="README.zh-CN.md">简体中文</a> ·
-    <a href="docs/architecture.md">Architecture</a> ·
-    <a href="docs/architecture.zh-CN.md">中文架构</a>
+    <a href="docs/project-guide.zh-CN.md">项目开发与发布指南</a>
   </p>
 </div>
 
@@ -32,7 +31,7 @@ ZeroWall Science 是一个模型无关的智能科研工作台，由 Electron、
 
 这些差异共同形成一条“从意图到证据再到交付”的产品主线：模型负责提出候选行动，Host 负责执行边界，Research Store 负责保存事实，用户负责最终判断。ZeroWall 不把一段漂亮的回答冒充为已验证的科研结论。
 
-## 当前版本边界（4.3.8）
+## 当前版本边界（7.1.1）
 
 本版本以 Windows 桌面包作为参考发行形态，包含基于 DSH 的 Agent 工作空间、一方科研插件、用于 DOCX/XLSX/PPTX 的 Better Sidebar Office 预览、Windows 优先的 PowerShell 执行方式，以及可恢复的演示文稿工作流。当前演示流程生成 PPTX；旧 PDF artifact 仍可为数据库兼容性加载，但不会被重新生成。质量元数据用于检查和记录，不会阻塞已完成的 PPTX。
 
@@ -175,7 +174,7 @@ pnpm package:mac:x64
 pnpm package:mac:arm64
 ```
 
-Preview 与 Stable 使用独立应用标识、用户数据目录和更新通道。构建与发布控制见 [BUILD.md](BUILD.md)。
+Preview 与 Stable 使用独立应用标识、用户数据目录和更新通道。构建与发布控制见[项目开发与发布指南](docs/project-guide.zh-CN.md)。
 
 ## 安全与适用范围
 
@@ -185,7 +184,7 @@ Preview 与 Stable 使用独立应用标识、用户数据目录和更新通道�
 
 ## 详细文档
 
-[完整中文架构文档](docs/architecture.zh-CN.md)包括：
+[项目开发与发布指南](docs/project-guide.zh-CN.md)包括：
 
 - 启动流程与稳定回环来源机制；
 - Electron/Host/Renderer 信任边界；

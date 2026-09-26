@@ -7,6 +7,11 @@ node_modules
 dist
 /desktop/out/
 /desktop/dist/
+/runtime/
+/audit-*.json
+/resolve-*.json
+/fixture
+/.tmp-*/
 /.build/
 /desktop/build/runtime-skills/
 /store/lib/
@@ -19,6 +24,7 @@ zerowallscience*.exe
 playwright-report/
 test-results/
 *.log
+/%SystemDrive%/
 /.sessions/
 /.tmp/
 /.upstream/
