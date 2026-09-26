@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { join } from 'node:path'
 import sharp from 'sharp'
 import type { ResearchStore } from '@zerowallscience/research-store'
 import type { DataAssetRecord, ProjectRecord, ViewerSessionRecord } from '@zerowallscience/research-store/types'
@@ -13,15 +13,24 @@ import { containedFile } from './science-viewer.js'
 import { HE_READER } from './he-reader.js'
 import { HeSegmentationService } from './he-segmentation.js'
 import { pythonChildEnvironment } from './python-env.js'
+import { defaultSciencePythonExecutable, resolveManagedSciencePython, scienceBootstrap } from './managed-python.js'
 
 const RUNNER = 'zerowall-he/7.0.0-2'
 const MAX_BYTES = 20 * 1024 ** 3
 const FALLBACK_PIXELS = 16_000_000
 type Input = { path: string; fingerprint: string; sha256: string; he: HeSlideMetadata }
 
+/**
+ * Compatibility helper for integration fixtures.  It always resolves the
+ * application's single managed interpreter; a caller cannot redirect HE to a
+ * private venv or an arbitrary system Python.
+ */
 export function hePythonPath(): string {
-  return process.env.ZEROWALL_HE_PYTHON?.trim() || join(process.env.LOCALAPPDATA || process.env.HOME || '', 'ZeroWallScience', 'science-engines', 'he-7.0.0', 'venv', ...(process.platform === 'win32' ? ['Scripts','python.exe'] : ['bin','python']))
+  const executable = defaultSciencePythonExecutable()
+  if (!executable) throw new Error('ZeroWall 唯一共享 Python 尚未配置。')
+  return executable
 }
+
 async function fingerprint(path: string): Promise<{ value: string; size: number }> {
   const info = await stat(path)
   if (!info.isFile() || info.size < 1 || info.size > MAX_BYTES) throw new Error('HE input must be a regular local file no larger than 20 GiB.')
@@ -37,8 +46,8 @@ export class HeService {
   private readonly metadata = new Map<string, HeSlideMetadata>()
   private activeNative = 0
   private readonly segmentation: HeSegmentationService
-  constructor(private readonly store: ResearchStore, private readonly options: { pythonPath?: string; timeoutMs?: number; stardistPythonPath?: string; stardistModelDirectory?: string } = {}) {
-    this.segmentation = new HeSegmentationService(store, { ...(options.stardistPythonPath ? { pythonPath: options.stardistPythonPath } : {}), ...(options.stardistModelDirectory ? { modelDirectory: options.stardistModelDirectory } : {}) })
+  constructor(private readonly store: ResearchStore, private readonly options: { timeoutMs?: number; stardistModelDirectory?: string; /** @deprecated ignored; HE always uses shared Python. */ pythonPath?: string } = {}) {
+    this.segmentation = new HeSegmentationService(store, { ...(options.stardistModelDirectory ? { modelDirectory: options.stardistModelDirectory } : {}) })
   }
   dispose(): void { this.segmentation.dispose() }
 
@@ -124,7 +133,7 @@ export class HeService {
     return { path,fingerprint:info.value,sha256,he }
   }
   private async fallback(path: string, size: number, reason: string): Promise<HeSlideMetadata> {
-    if (!/\.tiff?$/iu.test(path) || size > 64*1024**2) throw new Error('HE OpenSlide engine unavailable or cannot open this slide: '+reason+'. Configure ZEROWALL_HE_PYTHON or install the managed HE engine.')
+    if (!/\.tiff?$/iu.test(path) || size > 64*1024**2) throw new Error('HE OpenSlide engine unavailable or cannot open this slide: '+reason+'. Install the required packages into the shared ZeroWall Python environment from Settings → Python Environment.')
     const metadata = await sharp(path,{ page:0,pages:1,limitInputPixels:FALLBACK_PIXELS,failOn:'error' }).metadata()
     const width = metadata.width ?? 0; const height = metadata.pageHeight ?? metadata.height ?? 0
     if (!width || !height || (metadata.pages ?? 1) !== 1 || width*height > FALLBACK_PIXELS) throw new Error('Pyramidal/large HE TIFF requires OpenSlide; the small single-TIFF fallback cannot read it.')
@@ -144,12 +153,13 @@ export class HeService {
     return tile
   }
   private async native(request: object): Promise<{ he: HeSlideMetadata; tile?: HeTile }> {
-    const executable = this.options.pythonPath ?? hePythonPath()
-    if (!(await stat(executable).catch(() => undefined))?.isFile()) throw new Error('Managed OpenSlide Python is not installed')
+    const managed = await resolveManagedSciencePython()
+    if (!managed || !(await stat(managed.executable).catch(() => undefined))?.isFile()) throw new Error('ZeroWall 唯一共享 Python 环境未安装；请从设置的 Python 环境页面安装 HE 依赖。')
+    const executable = managed.executable
     if (this.activeNative >= 2) throw new Error('OpenSlide is busy: at most two tile readers can run concurrently.')
     this.activeNative++
     try { return await new Promise<{ he: HeSlideMetadata; tile?: HeTile }>((resolve,reject) => {
-      const child = spawn(executable,['-E','-P','-c',HE_READER],{ stdio:['pipe','pipe','pipe'],windowsHide:true,env:pythonChildEnvironment() })
+      const child = spawn(executable,['-E','-P','-c',`${scienceBootstrap(managed)}${HE_READER}`],{ stdio:['pipe','pipe','pipe'],windowsHide:true,env:pythonChildEnvironment(managed.sitePackages) })
       let stdout = ''; let stderr = ''; let stopped = false
       const fail = (error: Error) => { if (stopped) return; stopped = true; clearTimeout(timer); child.kill(); reject(error) }
       const timer = setTimeout(() => fail(new Error('OpenSlide tile process timed out.')),this.options.timeoutMs ?? 30000)

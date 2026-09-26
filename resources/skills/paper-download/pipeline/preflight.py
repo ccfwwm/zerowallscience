@@ -54,11 +54,11 @@ def _load_user_config_file() -> Path | None:
 # Paquet PyPI dégradé vs dépôt git HEAD complet (cf. doc INSTALL.md).
 _PAPER_SEARCH_GIT_URL = "git+https://github.com/openags/paper-search-mcp.git"
 _PAPER_SEARCH_INSTALL_RECIPE = (
-    "uv venv ~/.local/paper-search-mcp/venv\n"
-    "uv pip install --python ~/.local/paper-search-mcp/venv/bin/python \\\n"
-    f"    \"paper-search-mcp @ {_PAPER_SEARCH_GIT_URL}\"\n"
+    "# Use the application's single shared Python (set ZEROWALL_PYTHON to its path)\n"
+    "\"$ZEROWALL_PYTHON\" -m pip install --no-input "
+    f"\"paper-search-mcp @ {_PAPER_SEARCH_GIT_URL}\"\n"
     "claude mcp add paper-search --scope user \\\n"
-    "    ~/.local/paper-search-mcp/venv/bin/python -m paper_search_mcp.server"
+    "    \"$ZEROWALL_PYTHON\" -m paper_search_mcp.server"
 )
 
 
@@ -97,9 +97,9 @@ def _check_python_deps() -> list[dict]:
     """Dépendances Python essentielles."""
     results = []
     for mod, hint in [
-        ("yaml", "pip install pyyaml"),
-        ("pypdf", "pip install pypdf"),
-        ("requests", "pip install requests"),
+        ("yaml", "zerowall-python-packages: PyYAML"),
+        ("pypdf", "zerowall-python-packages: pypdf"),
+        ("requests", "zerowall-python-packages: requests"),
     ]:
         try:
             __import__(mod)

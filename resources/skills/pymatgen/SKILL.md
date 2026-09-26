@@ -74,12 +74,12 @@ uv lock
 uv sync --frozen
 ```
 
-For a disposable reviewed environment:
+For a reviewed local install, add the pins to the signed shared dependency
+manifest:
 
-```bash
-uv venv --python 3.11 .venv-pymatgen
-uv pip install --python .venv-pymatgen/bin/python \
-  "pymatgen==2026.5.4" "pymatgen-core==2026.7.16" "mp-api==0.46.4"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pins: pymatgen==2026.5.4, pymatgen-core==2026.7.16, mp-api==0.46.4
 ```
 
 Direct pins do not freeze all transitive wheels. Preserve `uv.lock`, platform,

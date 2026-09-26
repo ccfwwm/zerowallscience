@@ -132,7 +132,7 @@ def _plasmid_graphic(args, features):
     except ImportError:
         return {'graphic': False,
                 'graphic_note': 'dna_features_viewer 未安装，已回退文本模式'
-                                '（可运行 bio_env reinstall=true 补装）'}
+                                '（请在 ZeroWall 设置 > Python 环境中同步共享依赖清单）'}
 
     name = args.get('name', 'plasmid')
     width = float(args.get('figure_width', 10))

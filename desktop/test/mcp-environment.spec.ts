@@ -15,6 +15,7 @@ const testArchive = await new JSZip()
   .file('ketcher-chemistry/server.js', '')
   .file('sci/dist/cli.mjs', '')
   .file('sci/dist/mcp.cjs', '')
+  .file('sci/zerowall-mcp-launcher.cjs', '')
   .file('skills/example/SKILL.md', '')
   .generateAsync({ type: 'nodebuffer' })
 const sharedTestArchive = await new JSZip()
@@ -24,6 +25,7 @@ const sharedTestArchive = await new JSZip()
   .file('ketcher-chemistry/server.js', '')
   .file('sci/dist/cli.mjs', '')
   .file('sci/dist/mcp.cjs', '')
+  .file('sci/zerowall-mcp-launcher.cjs', '')
   .file('skills/example/SKILL.md', '')
   .generateAsync({ type: 'nodebuffer' })
 
@@ -53,7 +55,7 @@ function signedSharedManifest(): McpEnvironmentManifest {
 }
 
 async function environment(root: string, manifest: McpEnvironmentManifest): Promise<void> {
-  for (const relative of [manifest.python.relativeExecutable, 'bio-tools/run_server.py', 'ketcher-chemistry/server.js', manifest.sci.cli, manifest.sci.mcp]) {
+  for (const relative of [manifest.python.relativeExecutable, 'bio-tools/run_server.py', 'ketcher-chemistry/server.js', manifest.sci.cli, manifest.sci.mcp, 'sci/zerowall-mcp-launcher.cjs']) {
     const path = join(root, relative)
     await mkdir(dirname(path), { recursive: true })
     await writeFile(path, '')
@@ -136,7 +138,7 @@ describe('MCP environment upgrades', () => {
     await expect(controller.applyPackagePlan(planId)).resolves.toEqual(inventory)
     expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8')).root).toBe(installed)
   })
-  it('binds a manual rollback manifest to the selected directory instead of the current slot', async () => {
+  it('rejects selecting a manual environment because Python is shared', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-python-rollback-')); roots.push(root)
     const selected = join(root, 'slots', 'a'), current = join(root, 'slots', 'b')
     const old = signedManifest('6.2.0', 'stable-1', '1.3.0')
@@ -144,8 +146,8 @@ describe('MCP environment upgrades', () => {
     await environment(selected, old); await environment(current, next)
     await writeFile(join(root, 'current.json'), JSON.stringify({ root: current, health: 'ready', manifest: next }))
     const controller = new McpEnvironmentController({ root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), healthCheck: async () => undefined, publish: () => undefined })
-    await expect(controller.selectManual(selected)).resolves.toMatchObject({ phase: 'manual', environmentVersion: '1.3.0', message: selected })
-    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8')).manifest.environmentVersion).toBe('1.3.0')
+    await expect(controller.selectManual(selected)).rejects.toThrow(/一套共享 Python/u)
+    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8')).manifest.environmentVersion).toBe('1.4.0')
   })
   for (const failHealth of [false, true]) {
     it(`preserves all six user extensions when a 1.4.0 upgrade ${failHealth ? 'fails health checks' : 'succeeds'}`, async () => {
@@ -177,7 +179,7 @@ describe('MCP environment upgrades', () => {
       phase: 'ready',
       environmentVersion: '1.3.0',
       skillAudit: {
-        summary: { ready: 1, managed: 2, optional: 3, external: 4, incompatible: 5 },
+        summary: { ready: 1, managed: 2, missing: 3, external: 4, incompatible: 5 },
         skills: Array.from({ length: 200 }, (_, index) => ({ name: `skill-${index}`, path: `skill-${index}`, status: 'ready' as const, detectedImports: [], requirements: [] })),
       },
     })
@@ -199,7 +201,7 @@ describe('MCP environment upgrades', () => {
     await extractZipInWorker(archivePath, target, (completed, total) => progress.push([completed, total]))
 
     expect(eventLoopResponsive).toBe(true)
-    expect(progress.at(-1)).toEqual([16, 16])
+    expect(progress.at(-1)).toEqual([17, 17])
     await expect(readFile(join(target, 'skills', 'example', 'SKILL.md'), 'utf8')).resolves.toBe('')
   })
 
@@ -216,7 +218,7 @@ describe('MCP environment upgrades', () => {
     expect(verifyManifestWithKeyring(manifest, '', { 'rotated-2': publicKey })).toBe(true)
   })
 
-  it('selects a signed manual environment before current.json exists', async () => {
+  it('rejects an external environment before current.json exists', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
     const selected = await mkdtemp(join(tmpdir(), 'zerowall-mcp-selected-')); roots.push(selected)
     const manifest = signedManifest(); await environment(selected, manifest)
@@ -224,7 +226,7 @@ describe('MCP environment upgrades', () => {
       root, manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
       healthCheck: async () => undefined, publish: () => undefined,
     })
-    await expect(controller.selectManual(selected)).resolves.toMatchObject({ phase: 'manual', message: selected })
+    await expect(controller.selectManual(selected)).rejects.toThrow(/一套共享 Python/u)
   })
 
   it('retains the current signed healthy environment when an update manifest is invalid', async () => {

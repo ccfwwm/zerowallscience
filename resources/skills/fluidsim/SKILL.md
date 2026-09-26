@@ -79,20 +79,14 @@ As verified on 2026-07-23:
 - Current companion versions tested here: `fluidfft==0.4.5` and
   `pyFFTW==0.15.1`.
 
-Prefer a project lock:
+For the local ZeroWall runtime, use the signed shared dependency manifest and
+the Python settings panel. Do not create a project venv or Conda environment.
+Keep the package pins in the manifest and record them in the analysis receipt:
 
-```bash
-uv init --python 3.11
-uv add "fluidsim[fft]==0.9.0" "fluidfft==0.4.5" "pyFFTW==0.15.1"
-uv lock
-uv sync --frozen
-```
-
-For an isolated disposable environment:
-
-```bash
-uv venv --python 3.11
-uv pip install "fluidsim[fft]==0.9.0" "fluidfft==0.4.5" "pyFFTW==0.15.1"
+```text
+ZeroWall Settings > Python environment > Check dependencies > Preview sync > Apply sync
+Required pins: fluidsim[fft]==0.9.0, fluidfft==0.4.5, pyFFTW==0.15.1
+Interpreter: %APPDATA%\zerowall-science\Python\python.exe
 ```
 
 The project lock is the reproducibility record; direct pins alone do not freeze

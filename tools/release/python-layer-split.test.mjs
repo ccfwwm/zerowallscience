@@ -47,9 +47,10 @@ test('source artifacts must match the upstream source lock and retain signed sdi
   const applied = applySourceDistributions(packages, sourceLock, sources)
   assert.equal(applied.get('example').sha256, hash('b'))
   assert.equal(packages.get('example').sha256, hash('a'))
-  const document = scienceManifestDocument({ environmentVersion: '1.4.1', scienceRevision: 2, pythonVersion: '3.12.10', index: { indexUrl: 'https://example.org/simple' }, packages: [...applied.values()], keyId: 'test' })
+  const document = scienceManifestDocument({ environmentVersion: '3.12.10', scienceRevision: 2, pythonVersion: '3.12.10', applicationVersion: '7.1.0', index: { indexUrl: 'https://example.org/simple' }, packages: [...applied.values()], keyId: 'test' })
   assert.equal(document.packages[0].source, 'sdist')
   assert.equal(document.packages[0].filename, 'example-1.0.tar.gz')
+  assert.equal(document.compatibility.minApplicationVersion, '7.1.0')
   for (const changed of [{ ...sources[0], sha256: hash('c') }, { ...sources[0], version: '2.0' }, { ...sources[0], filename: '../example-1.0.tar.gz' }]) {
     assert.throws(() => applySourceDistributions(packages, sourceLock, [changed]), /upstream lock/)
   }

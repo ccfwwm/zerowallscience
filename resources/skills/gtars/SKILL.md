@@ -74,14 +74,13 @@ execution:
    or archive installer. Use isolation and CPU/RAM/disk/time limits.
 4. Keep a lockfile and artifact hashes with the analysis manifest.
 
-After that review, create an isolated Python environment:
+After that review, add the reviewed pin to the signed ZeroWall dependency
+manifest and install it into the one shared Python runtime:
 
-```bash
-uv venv --python 3.11 .venv-gtars
-uv pip install --dry-run --python .venv-gtars/bin/python "gtars==0.9.2"
-uv pip install --python .venv-gtars/bin/python "gtars==0.9.2"
-.venv-gtars/bin/python -c \
-  "import gtars; assert gtars.__version__ == '0.9.2'; print(gtars.__version__)"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: gtars==0.9.2
+Verify with the shared Python command line after synchronization.
 ```
 
 For the reviewed CLI source release:

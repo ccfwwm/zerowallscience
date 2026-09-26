@@ -40,17 +40,13 @@ complete reproducibility lock.
 
 ## Reproducible uv workflow
 
-Do not use an unpinned `uv pip install pufferlib`. Work in a disposable,
-project-specific environment and commit `pyproject.toml` plus `uv.lock`.
+Do not use an unpinned install. Add the reviewed pin to the signed ZeroWall
+dependency manifest and keep `pyproject.toml`/`uv.lock` only as provenance;
+the application still uses one shared Python runtime.
 
-For the published profile, after reviewing the source archive and build:
-
-```bash
-uv venv --python 3.11
-uv add --exact --no-sync "pufferlib==3.0.0"
-uv lock
-uv sync --frozen
-```
+For the published version, after reviewing the source archive and build, add
+`pufferlib==3.0.0` to the signed dependency manifest and synchronize it through
+Python settings.
 
 Confirm the lock records the published SHA-256 above and review every resolved
 dependency. The 3.0.0 source build can compile native code and may fetch build

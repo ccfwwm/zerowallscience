@@ -30,7 +30,6 @@ export function registerEnvironmentTool(ctx: Context): void {
       action: { type: 'string', required: true, enum: ['info', 'versions', 'preview', 'apply', 'status', 'rollback', 'check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure'] },
       query: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } },
       operation: { type: 'string', enum: ['install', 'uninstall'] },
-      profile: { type: 'string', description: 'Deprecated. Shared runtime installations use one package directory; separate profiles are rejected.' },
       plan_id: { type: 'string' }, task_id: { type: 'string' }, confirm: { type: 'boolean' },
       request_id: { type: 'string' }, manifest_revision: { type: 'string' }, mirror_url: { type: 'string' }, expected_revision: { type: 'integer' },
       requestId: { type: 'string' }, manifestRevision: { type: 'string' }, planId: { type: 'string' }, mirrorUrl: { type: 'string' }, expectedRevision: { type: 'integer' },
@@ -42,7 +41,6 @@ export function registerEnvironmentTool(ctx: Context): void {
       if (args.planId !== undefined) args.plan_id ??= args.planId
       if (args.mirrorUrl !== undefined) args.mirror_url ??= args.mirrorUrl
       if (args.expectedRevision !== undefined) args.expected_revision ??= args.expectedRevision
-      if (args.profile) throw new Error('SHARED_RUNTIME_ONLY: preview compatible packages in the shared environment. Conflicts must be resolved without a second package directory.')
       if (['apply', 'rollback'].includes(args.action) && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: show the concrete change plan and obtain approval first.')
       if (['apply_sync', 'configure'].includes(args.action) && args.action === 'apply_sync' && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: show the signed dependency plan and obtain approval first.')
       if (['check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure', 'rollback'].includes(args.action) || (args.action === 'status' && !args.task_id)) {
@@ -55,8 +53,7 @@ export function registerEnvironmentTool(ctx: Context): void {
           if (!args.packages?.length) throw new Error('Specify packages to check; unbounded update scans are not supported.')
           return environmentRequest('versions', [args.packages])
         case 'preview':
-          if (args.profile && args.operation === 'uninstall') throw new Error('Profile removal is not supported; preview a replacement package set instead.')
-          return environmentRequest('preview', [args.packages ?? [], args.operation ?? 'install', args.profile])
+          return environmentRequest('preview', [args.packages ?? [], args.operation ?? 'install'])
         case 'apply':
           if (!args.plan_id) throw new Error('plan_id is required')
           { const result = await environmentRequest('apply', [args.plan_id]); return { ...result, task_id: result.taskId ?? null } }

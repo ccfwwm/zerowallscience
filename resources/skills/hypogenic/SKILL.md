@@ -83,9 +83,10 @@ The latest stable artifact verified on 2026-07-23 is `hypogenic==0.3.5`
 links it to tag `v0.3.5` and commit
 `8c3800ccae155e333fac5b530afa8abdaac38300`.
 
-```bash
-uv venv --python 3.12 .venv
-uv pip install "hypogenic==0.3.5"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: hypogenic==0.3.5
+Use the shared Python command line for the import check.
 ```
 
 Wheel SHA-256:

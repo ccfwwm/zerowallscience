@@ -83,12 +83,13 @@ make network requests.
 
 ## Installation and Authentication
 
-For a reproducible environment:
+For local helper scripts, use the shared ZeroWall Python dependency manifest;
+do not create a local venv. Latch task images and remote execution contexts
+remain owned by Latch:
 
-```bash
-uv venv --python 3.12
-source .venv/bin/activate
-uv pip install "latch==2.76.8"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: latch==2.76.8
 ```
 
 On Windows, use WSL for the documented Linux workflow tooling.

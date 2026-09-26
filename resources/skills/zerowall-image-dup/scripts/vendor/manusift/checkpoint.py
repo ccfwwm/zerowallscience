@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from dataclasses import asdict
 from pathlib import Path
 
@@ -43,6 +44,7 @@ def _result_to_dict(res: DetectorResult) -> dict:
         "ok": res.ok,
         "duration_ms": res.duration_ms,
         "error": res.error,
+        "stats": res.stats,
         "findings": [f.__dict__ for f in res.findings],
     }
 
@@ -77,6 +79,7 @@ def _dict_to_result(payload: dict) -> DetectorResult:
             findings=findings,
             error=payload.get("error"),
             duration_ms=int(payload.get("duration_ms", 0)),
+            stats=payload.get("stats", {}),
         )
     except (KeyError, TypeError, ValueError) as exc:
         log.warning(
@@ -107,7 +110,14 @@ def write_step(path: Path, res: DetectorResult) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_name, path)
+        for attempt in range(10):
+            try:
+                os.replace(tmp_name, path)
+                break
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
     except Exception:
         # Clean up the temp file if the rename never happened.
         try:

@@ -17,13 +17,13 @@ import { resolveManagedSciencePython, scienceBootstrap } from './managed-python.
 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
 const terminal = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
-export function heSegmentationRoot(): string { return join(process.env.LOCALAPPDATA || process.env.HOME || '', 'ZeroWallScience', 'science-engines', 'he-stardist-7.0.0') }
+export function heSegmentationRoot(): string { return join(process.env.LOCALAPPDATA || process.env.HOME || '', 'ZeroWallScience', 'models', 'he-stardist-2d-versatile-he') }
 /**
  * The StarDist weights are frozen data, not an environment: they stay in their
  * own directory and are checksum-verified before every run. Only the
  * interpreter moved to the shared environment.
  */
-export function heSegmentationModel(): string { return process.env.ZEROWALL_HE_STARDIST_MODEL?.trim() || join(heSegmentationRoot(), 'payload', 'model', '2D_versatile_he') }
+export function heSegmentationModel(): string { return process.env.ZEROWALL_HE_STARDIST_MODEL?.trim() || join(heSegmentationRoot(), 'model', '2D_versatile_he') }
 /**
  * The interpreter HE StarDist runs in.
  *
@@ -32,15 +32,11 @@ export function heSegmentationModel(): string { return process.env.ZEROWALL_HE_S
  * declared in `resources/python/requirements-research.txt` and installed on
  * demand through the signed dependency manifest, so a second environment would
  * only duplicate that install, drift from its versions, and need its own update
- * path. An explicit ZEROWALL_HE_STARDIST_PYTHON still wins for a user-managed
- * interpreter, which is the one case where a private environment is the
- * operator's choice rather than ours.
+ * path. This is the only interpreter supported by the application.
  */
 export async function resolveHeSegmentationPython(): Promise<{ executable: string; bootstrap: string }> {
-  const explicit = process.env.ZEROWALL_HE_STARDIST_PYTHON?.trim()
-  if (explicit) return { executable: explicit, bootstrap: '' }
   const managed = await resolveManagedSciencePython()
-  if (!managed) throw new Error('未找到受管理的 ZeroWall Python 环境；HE StarDist 共用该环境，不创建独立 venv。')
+  if (!managed) throw new Error('未找到 ZeroWall 唯一共享 Python 环境；HE StarDist 不会切换到其他解释器或创建独立环境。')
   return { executable: managed.executable, bootstrap: scienceBootstrap(managed) }
 }
 async function hashFile(path: string, algorithm = 'sha256'): Promise<string> { const h = createHash(algorithm); for await (const chunk of createReadStream(path, { highWaterMark: 1024 * 1024 })) h.update(chunk); return h.digest('hex') }
@@ -51,12 +47,12 @@ export class HeSegmentationService {
   private readonly finishing = new Map<string, Promise<HeSegmentationResponse>>()
   private disposed = false
   private preparing = false
-  constructor(private readonly store: ResearchStore, private readonly options: { pythonPath?: string; modelDirectory?: string; timeoutMs?: number } = {}) {}
+  constructor(private readonly store: ResearchStore, private readonly options: { modelDirectory?: string; timeoutMs?: number } = {}) {}
   dispose(): void {
     this.disposed = true
     for (const [id, entry] of this.live) {
       this.store.updateRun(id, { status: 'failed', error: 'Host stopped; HE segmentation interrupted. Partial outputs retained; no automatic resumption.' })
-      clearTimeout(entry.timer); entry.child.kill()
+      clearTimeout(entry.timer); entry.child?.kill()
     }
     this.live.clear()
   }
@@ -79,9 +75,7 @@ export class HeSegmentationService {
     try {
       if (this.live.size || this.preparing) throw new Error('Another local StarDist task is running; CPU segmentation concurrency is 1.')
       this.preparing = true; ownsPreparation = true
-      const resolvedPython = this.options.pythonPath
-        ? { executable: this.options.pythonPath, bootstrap: '' }
-        : await resolveHeSegmentationPython()
+      const resolvedPython = await resolveHeSegmentationPython()
       const python = resolvedPython.executable; const modelDirectory = this.options.modelDirectory ?? heSegmentationModel()
       if (!(await stat(python).catch(() => undefined))?.isFile()) throw new Error('Shared ZeroWall Python is not installed; HE StarDist runs in it and does not keep a private venv.')
       for (const file of HE_STARDIST_MODEL.files) if (await hashFile(join(modelDirectory, file.path)) !== file.sha256) throw new Error('Frozen StarDist model checksum mismatch: ' + file.path)
@@ -97,8 +91,7 @@ export class HeSegmentationService {
       // site-packages are not reachable through PYTHONPATH under -E/-P, so the
       // bootstrap inserts them before the runner is entered. The runner stays a
       // real file on disk because it is the audit artifact for the run; runpy
-      // points at it after the paths are in place. An explicit
-      // ZEROWALL_HE_STARDIST_PYTHON is a normal interpreter, so it keeps -I.
+      // points at it after the shared package paths are in place.
       const child = resolvedPython.bootstrap
         ? spawn(python, ['-E', '-P', '-c', `${resolvedPython.bootstrap}import runpy,sys\nsys.argv=[${JSON.stringify(scriptPath)}]\nrunpy.run_path(sys.argv[0],run_name='__main__')`], { windowsHide: true, shell: false, cwd: directory, env: pythonChildEnvironment(undefined, { ZEROWALL_HE_REQUEST: requestPath }), stdio: ['ignore', log.fd, log.fd] })
         : spawn(python, ['-I', scriptPath], { windowsHide: true, shell: false, cwd: directory, env: pythonChildEnvironment(undefined, { ZEROWALL_HE_REQUEST: requestPath }), stdio: ['ignore', log.fd, log.fd] })

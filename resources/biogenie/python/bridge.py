@@ -80,7 +80,7 @@ def main() -> int:
             "ok": False,
             "stdout": "",
             "stderr": "",
-            "error": f"Biopython is not importable in the bundled environment: {exc}",
+            "error": f"Biopython is not importable in ZeroWall shared Python; sync the dependency manifest in Python settings: {exc}",
         }))
         return 0
 

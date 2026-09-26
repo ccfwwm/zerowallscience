@@ -19,28 +19,28 @@ type EngineApi = Omit<Remote, 'installBrainAtlas'> & {
 const IDS: ScientificEngineId[] = ['fiji', 'napari', 'brain-globe', 'he-python', 'he-stardist', 'remote-r']
 const labels: Record<ScientificEngineId, string> = { fiji: 'Fiji / ImageJ', napari: 'napari', 'brain-globe': 'BrainGlobe', 'he-python': 'HE Python', 'he-stardist': 'HE StarDist', 'remote-r': '远程 R' }
 const pathLabels: Record<ScientificEngineId, string> = {
-  fiji: 'Fiji / ImageJ 程序路径', napari: 'ZeroWall Python（napari 运行环境）',
+  fiji: 'Fiji / ImageJ 程序路径', napari: 'ZeroWall 共享 Python 环境',
   'brain-globe': 'ZeroWall Python（共享运行环境）', 'he-python': 'ZeroWall Python（HE 运行环境）',
   'he-stardist': 'ZeroWall Python（StarDist 运行环境）', 'remote-r': 'RMCP 服务地址',
 }
 const descriptions: Record<ScientificEngineId, string> = {
   fiji: '此路径用于本机启动 Fiji / ImageJ，可按需自定义。',
-  napari: 'napari 与 BrainGlobe 共用软件集成的 Python；优先发现 Lib\\site-packages\\bin\\napari.exe，找不到时使用 python -m napari。',
+  napari: 'napari 使用软件唯一的共享 Python；优先发现共享 site-packages 中的 napari.exe，找不到时使用共享 Python -m napari。',
   'brain-globe': 'BrainGlobe 使用软件集成的 Python；图谱由应用托管在本机数据目录。此路径由运行时统一解析。',
   'he-python': 'HE 查看和相关任务使用软件集成的 Python，不创建第二套虚拟环境。',
   'he-stardist': '当前 HE 分割 runner 使用共享 Python 的 StarDist2D API 和冻结的 H&E 模型。stardist-predict2d.exe / stardist-predict3d.exe 是同环境命令入口；此 runner 不调用 Fiji / ImageJ。',
   'remote-r': '远程 R 通过 RMCP MCP 连接器访问；此处显示连接器采用的默认服务地址。',
 }
-function pathValue(config: ScientificEngineConfig): string {
+function pathValue(config: ScientificEngineConfig, status?: ScientificEngineStatus): string {
   if (config.id === 'fiji') return config.installDirectory ?? config.executablePath ?? ''
   if (config.id === 'remote-r') return config.remoteEndpoint ?? ''
-  return config.pythonPath ?? config.executablePath ?? config.environmentPath ?? ''
+  return status?.path ?? status?.version ?? '由软件共享 Python 环境统一管理'
 }
 function pathPatch(id: ScientificEngineId, value: string): Partial<ScientificEngineConfig> {
   if (id === 'fiji') return { installDirectory: value }
-  return { pythonPath: value }
+  return {}
 }
-function editable(id: ScientificEngineId): boolean { return id === 'fiji' || id === 'napari' }
+function editable(id: ScientificEngineId): boolean { return id === 'fiji' }
 
 /** Settings surface for all managed scientific engines. It only submits explicit user choices to Host. */
 export function ScientificEngineCenter({ remote, sessionId, showLaunch = true }: { remote: Remote; sessionId: string; showLaunch?: boolean }): JSX.Element {
@@ -84,11 +84,11 @@ export function ScientificEngineCenter({ remote, sessionId, showLaunch = true }:
   }
   const rows = useMemo(() => IDS.map(id => configs.find(item => item.id === id) ?? ({ id, enabled: true, source: 'default' as const, status: 'unknown' as ScientificEngineHealth })), [configs])
   return <section aria-label="科研引擎中心" style={{ display: 'grid', gap: 12 }}>
-    <header><h2>科研引擎中心</h2><p>本机路径可配置 Fiji 和 napari；BrainGlobe、HE、StarDist 与 RMCP 显示实际运行时采用的共享配置。</p></header>
+    <header><h2>科研引擎中心</h2><p>本机可配置 Fiji 路径；napari、BrainGlobe 和 HE 共用软件的唯一 Python 环境。</p></header>
     {rows.map(config => {
       const status = statuses[config.id]
       const canEdit = editable(config.id)
-      const value = pathValue(config)
+      const value = pathValue(config, status)
       return <article key={config.id} style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 12 }}>
         <strong>{labels[config.id]}</strong>
         <label style={{ display: 'block', marginTop: 8 }}>{pathLabels[config.id]}<input aria-label={`${labels[config.id]} 路径`} value={value} readOnly={!canEdit} onChange={event => update(config.id, pathPatch(config.id, event.target.value))} style={{ display: 'block', width: '100%', boxSizing: 'border-box' }} /></label>

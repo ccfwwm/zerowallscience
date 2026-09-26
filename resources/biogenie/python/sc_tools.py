@@ -4,9 +4,7 @@
 完整流水线 vs 模块化积木双路径）。本实现走真实 scanpy 计算，产出可复核的
 指标表与图，不做任何近似或占位。
 
-依赖（第二层按需自动安装，见 src/extra-deps.js EXTRA_DEPS.sc_qc）：
-  scanpy / anndata / h5py —— 均为 py3-none-any 纯 Python wheel，
-  但要求 Python ≥3.12（本插件引导器即 CPython 3.12）。
+依赖由 ZeroWall 共享 Python 清单统一安装：scanpy / anndata / h5py。
 """
 
 import os
@@ -41,9 +39,8 @@ def op_sc_qc(args):
         import scanpy as sc
     except ImportError as e:
         raise RuntimeError(
-            f'单细胞质控依赖未就绪（{e}）。scanpy/anndata/h5py 属第二层按需依赖，'
-            f'经插件语义化工具 bio_sc_qc 调用时会自动安装；若你是直接调用 Python '
-            f'（绕过插件层），请先执行：uv pip install scanpy anndata h5py') from e
+            f'单细胞质控依赖未就绪（{e}）。请在 ZeroWall 设置 > Python 环境中同步共享依赖清单，'
+            f'并查看安装失败日志。') from e
 
     path = args.get('input_file')
     if not path or not os.path.exists(path):

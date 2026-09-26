@@ -43,16 +43,7 @@ statsmodels>=0.14
 # 两者 uv 实测解析干净（Resolved 24 packages，仅需新增 4 个 wheel）。
 vcfpy>=0.14
 lifelines>=0.30
-# ⚠️ 合成生物学五项已下沉第二层（v0.6.16 分层调整，2026-08-26）：
-# primer3-py / dnachisel / dna-features-viewer 不再随环境引导安装，改由
-# src/extra-deps.js EXTRA_DEPS 首次调用对应 op 时自动补装。下沉原因：第一层是
-# 全量解析、单包无解即整体失败的原子操作——冷启动实测 dnachisel>=3.3.0 为
-# 不可满足约束（PyPI 实际上限 3.2.16），卡死整个引导且 systemPython 兜底同炸；
-# 且 primer3-py 在 Windows+Python 3.12 仅有 <=2.3.0 可用 wheel（天花板低）。
-# 下沉后坏约束最多废掉一个 op，不再全局连坐：
-#  - primer3-py>=2.3.0         → bio_primer3_design
-#  - dnachisel>=3.2,<4         → bio_dna_optimize
-#  - dna-features-viewer>=3.1  → bio_plasmid_map 图形模式（缺失自动回退文本模式）
-#  - sbol3>=1.0 / tyto>=1.4    → bio_sbol_write / bio_sbol_read
-#    （二次下沉原因：tyto 声明 pyparsing(<3)，留在第一层会把整个环境钉死在
-#     pyparsing 2.4.7，与 clone_simulate 护栏 pyparsing>=3.1 结构性互斥）
+# 本文件是上游参考；ZeroWall 的唯一安装来源为
+# resources/python/requirements-research.txt 和签名共享依赖清单。
+# BioGenie 的合成生物学、代谢建模和绘图库均在共享 Python 中安装。
+# tyto 声明 pyparsing<3，与共享环境冲突；SO 角色通过 sbol3 常量解析。

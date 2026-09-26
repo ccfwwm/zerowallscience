@@ -37,7 +37,7 @@ const rpc = (method, args = []) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => { requests.delete(id); reject(new Error(`${method} timed out`)) }, 20 * 60_000)
   requests.set(id, { resolve, reject, timer }); child.send({ id, method, args })
 })
-child.send({ type: 'configure', config: { root: join(output, 'environment'), manifestUrl: 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json', publicKey: keys['stable-3'], publicKeys: keys, bundledManifestPath: resolve(root, 'desktop/dist/python-base-1.4.1/latest.json'), bundledArchivePath: resolve(root, 'desktop/dist/python-base-1.4.1/zerowall-python-windows-x64-1.4.1.zip'), diagnosticPath: join(output, 'environment.log') } })
+child.send({ type: 'configure', config: { root: join(output, 'environment'), manifestUrl: 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json', publicKey: keys['stable-3'], publicKeys: keys, bundledManifestPath: resolve(root, 'desktop/dist/python-base-3.12.10/latest.json'), bundledArchivePath: resolve(root, 'desktop/dist/python-base-3.12.10/zerowall-python-windows-x64-3.12.10.zip'), diagnosticPath: join(output, 'environment.log') } })
 try {
   console.log('Compiled worker: installing signed local base')
   evidence.initialized = await rpc('initialize')

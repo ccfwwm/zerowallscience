@@ -16,7 +16,7 @@ Use the persisted ZeroWall research objects and the current Host/Runner schemas.
 
 BrainGlobe 与 napari 使用同一套 ZeroWall 稳定 Python；图谱数据由 Host 托管。分析前报告图谱、配准、细胞检测和 CPU/GPU 能力，不修改系统 Python 或用户自己的 napari 安装。
 
-通过 Host 的 `getScientificEngineConfigs` 和 `probeScientificEngine` 读取 `brain-globe` 配置与状态；默认使用 `%APPDATA%\zerowall-science\Python\python.exe`，也接受显式的 `ZEROWALL_BRAINGLOBE_PYTHON`。只有四个组件版本均可读取时才报告环境可用；环境探测不等同于 Allen 图谱、brainreg、cellfinder 或 brainrender Runner 已完成。图谱操作须等前一个 Host action 完成，避免并发占用单个 BrainGlobe runner。
+通过 Host 的 `getScientificEngineConfigs` 和 `probeScientificEngine` 读取 `brain-globe` 配置与状态；使用 ZeroWall Science 唯一共享 Python `%APPDATA%\zerowall-science\Python\python.exe`，不得指定其他解释器或创建环境。只有四个组件版本均可读取时才报告环境可用；环境探测不等同于 Allen 图谱、brainreg、cellfinder 或 brainrender Runner 已完成。图谱操作须等前一个 Host action 完成，避免并发占用单个 BrainGlobe runner。
 
 配置 `ZEROWALL_BRAINGLOBE_DIR` 指向包含 `brainglobe-atlasapi` 目录的受管理根目录后，使用 `science_viewer`：
 

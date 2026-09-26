@@ -11,6 +11,7 @@ import { containedFile } from './science-viewer.js'
 import { validateCellSelection, type CellSelectionResult } from '../shared/cell-selection.js'
 import { DEFAULT_CELL_CAMERA, validateCellCamera } from '../shared/cell-camera.js'
 import { pythonChildEnvironment } from './python-env.js'
+import { resolveManagedSciencePython, scienceBootstrap } from './managed-python.js'
 
 const RUNNER = 'zerowall-cell-viewer/7.0.0-1'
 const MAX_BYTES = 20 * 1024 * 1024 * 1024
@@ -121,10 +122,13 @@ export class CellViewerService {
     return { path, sha256: hash.digest('hex'), signature: fileSignature(before) }
   }
   private async run(path: string, request: CellViewerRequest, selectionOutput?: string): Promise<{ preview: CellPreview; analysis?: CellAnalysis; runtime: JsonObject; selection?: CellSelectionResult }> {
-    const python = process.env.ZEROWALL_CELL_PYTHON?.trim() || process.env.ZEROWALL_PYTHON?.trim() || 'python'
+    const managed = await resolveManagedSciencePython()
+    if (!managed) throw new Error('未找到 ZeroWall 唯一共享 Python 环境；细胞数据读取不会切换到系统 Python 或其他环境。')
+    const python = managed.executable
+    const bootstrap = scienceBootstrap(managed)
     const stdout = await new Promise<string>((resolve, reject) => {
       // Ignore PYTHONPATH/current directory imports; retain configured user-site packages.
-      const child = spawn(python, ['-E', '-P', '-c', CELL_READER], { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: pythonChildEnvironment(undefined, { OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' }) })
+      const child = spawn(python, ['-E', '-P', '-c', `${bootstrap}${CELL_READER}`], { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: pythonChildEnvironment(managed.sitePackages, { OMP_NUM_THREADS: '1', OPENBLAS_NUM_THREADS: '1', MKL_NUM_THREADS: '1' }) })
       const chunks: Buffer[] = []; let size = 0; let stderr = ''; let failure: Error | undefined
       const timer = setTimeout(() => { failure = new Error('Cell reader exceeded the 120-second limit.'); child.kill() }, 120000)
       child.stdout.on('data', (chunk: Buffer) => {

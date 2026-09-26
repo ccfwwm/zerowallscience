@@ -32,7 +32,7 @@ export interface DesktopClipboardImage {
 }
 
 export type McpEnvironmentPhase = 'idle' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'failed' | 'manual' | 'unavailable' | 'paused'
-export type McpSkillDependencyStatus = 'ready' | 'managed' | 'optional' | 'external' | 'incompatible'
+export type McpSkillDependencyStatus = 'ready' | 'managed' | 'missing' | 'external' | 'incompatible'
 export interface McpSkillDependency { name: string; import?: string; status: McpSkillDependencyStatus; reason?: string }
 export interface McpSkillCapability { name: string; path: string; status: McpSkillDependencyStatus; reason?: string; detectedImports: string[]; requirements: McpSkillDependency[] }
 export interface McpSkillAudit { summary: Record<McpSkillDependencyStatus, number>; skills: McpSkillCapability[] }
@@ -77,7 +77,7 @@ export interface PythonScienceReference {
   packageCount: number
   indexUrl: string
 }
-export interface PythonUpdateJob { packageNames?: string[]; taskId: string; kind: string; stage: string; canPause: boolean; targetVersion?: string; receivedBytes?: number; totalBytes?: number; bytesPerSecond?: number; completedFiles?: number; totalFiles?: number }
+export interface PythonUpdateJob { packageNames?: string[]; taskId: string; kind: string; stage: string; canPause: boolean; targetVersion?: string; receivedBytes?: number; totalBytes?: number; bytesPerSecond?: number; completedFiles?: number; totalFiles?: number; logLines?: string[] }
 export interface PythonPackagePlan { planId: string; snapshotId: string; requested: string[]; changes: Array<{ name: string; from?: string; to: string }>; error?: string; spaceEstimate?: { snapshotBytes: number; requiredBytes: number; measuredAt: string; estimate: string } }
 export interface McpEnvironmentStatus {
   activeEnvironment?: PythonEnvironmentIdentity
@@ -100,12 +100,11 @@ export interface McpEnvironmentStatus {
   lastCheckedAt?: string
   lastUpdateError?: string
   skillAudit?: McpSkillAudit
-  python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; overlayPath?: string; packageCount?: number; message?: string; /** Stable public paths; implementation snapshot paths are intentionally omitted from UI. */ runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string }
+  python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; packageCount?: number; message?: string; /** Stable public paths; implementation snapshot paths are intentionally omitted from UI. */ runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string }
 }
 
-export interface McpPythonPackage { dependencies?: string[]; upgradeHistory?: Array<{ from?: string; to: string; verifiedAt: string }>; verificationMessage?: string; previousVersion?: string; customized?: boolean; shadowedVersion?: string; latestError?: string; compatibleVersion?: string;  name: string; version: string; location?: string; source: 'core' | 'overlay'; requiredVersion?: string; latestVersion?: string; updateAvailable?: boolean; health: 'healthy' | 'update-available' | 'locked' }
+export interface McpPythonPackage { dependencies?: string[]; upgradeHistory?: Array<{ from?: string; to: string; verifiedAt: string }>; verificationMessage?: string; previousVersion?: string; customized?: boolean; shadowedVersion?: string; latestError?: string; compatibleVersion?: string;  name: string; version: string; location?: string; source: 'core' | 'custom'; requiredVersion?: string; latestVersion?: string; updateAvailable?: boolean; health: 'healthy' | 'update-available' | 'locked' }
 export interface McpPythonInfo {
-  profiles?: Array<{ name: string; status: 'ready' | 'stale'; sitePackages: string; packages: Array<{ name: string; version: string }> }>
   snapshotId?: string
   environmentVersion?: string
   contentRevision?: number
@@ -116,14 +115,12 @@ export interface McpPythonInfo {
   version?: string
   executable?: string
   sitePackages?: string
-  overlayPath?: string
-  /** Stable, user-facing runtime paths. These never contain slots/bio-tools/overlay. */
+  /** Stable, user-facing paths into the application's single shared Python runtime. */
   runtimeRoot?: string
   runtimeExecutable?: string
   runtimeSitePackages?: string
   packageCount?: number
   corePackageCount?: number
-  overlayPackageCount?: number
   packages: McpPythonPackage[]
   skillAudit?: McpSkillAudit
   verification?: { imports: boolean; pipCheck: boolean; message: string; installed?: number; failedPackages?: string[]; upToDate?: boolean }

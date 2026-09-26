@@ -43,6 +43,11 @@ export function usableCaFile(path: string | undefined): path is string {
  */
 export function pythonChildEnvironment(sitePackages?: string, extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, ...extra }
+  // Every scientific runner uses the one managed interpreter.  Never allow a
+  // user's global Python site directory or inherited PYTHONPATH to shadow it.
+  env.PYTHONNOUSERSITE = '1'
+  delete env.PYTHONHOME
+  delete env.PYTHONPATH
   const bundled = sitePackages ? join(sitePackages, 'certifi', 'cacert.pem') : undefined
   const trusted = usableCaFile(bundled) ? bundled : undefined
   for (const key of PYTHON_CA_ENV_KEYS) {

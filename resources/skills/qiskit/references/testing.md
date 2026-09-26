@@ -322,7 +322,7 @@ Symptoms:
 - both `qiskit-terra` and modern `qiskit`,
 - modules missing after an in-place upgrade.
 
-Fix: create a fresh virtual environment and install `qiskit`, not `qiskit-terra`.
+Fix the single shared environment through **Settings > Python environment**. Remove `qiskit-terra` from the shared package plan if it is present, then synchronize `qiskit`; do not create a second virtual environment.
 
 ### `ImportError` for `Sampler` or `Estimator`
 
@@ -416,8 +416,8 @@ Do not tune a noise model solely to make one experiment match.
 
 When changing a Qiskit pin:
 
-1. create a new environment,
-2. run the environment checker,
+1. synchronize the signed pins in the shared ZeroWall Python environment,
+2. run the environment checker from the shared Python terminal,
 3. run local primitive smoke tests,
 4. run all deprecation warnings as errors,
 5. round-trip representative QPY artifacts,

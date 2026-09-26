@@ -107,12 +107,12 @@ draft only.
 
 For offline API inspection and chatterbox simulation:
 
-```bash
-uv venv --python 3.11 .venv-pylabrobot
-uv pip install --python .venv-pylabrobot/bin/python "PyLabRobot==0.2.1"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: PyLabRobot==0.2.1
 ```
 
-On Windows, use `.venv-pylabrobot\Scripts\python.exe`. Do not install hardware
+Use the shared Python command line on Windows. Do not install hardware
 extras until the user names the device and explicitly approves its transport
 dependencies. Then inspect the matching stable device page before considering a
 pin such as `"PyLabRobot[serial]==0.2.1"` or `"PyLabRobot[usb]==0.2.1"`.

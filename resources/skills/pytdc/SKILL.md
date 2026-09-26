@@ -64,14 +64,12 @@ documentation conflicts.
 
 ## Installation
 
-Use an isolated CPython 3.11 environment and pin the reviewed snapshot:
+Use the single shared ZeroWall Python runtime and pin the reviewed snapshot in
+the signed dependency manifest:
 
-```bash
-uv venv --python 3.11 .venv-pytdc
-uv pip install --dry-run --python .venv-pytdc/bin/python \
-  "setuptools==80.9.0" "PyTDC==1.1.15"
-uv pip install --python .venv-pytdc/bin/python \
-  "setuptools==80.9.0" "PyTDC==1.1.15"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pins: setuptools==80.9.0, PyTDC==1.1.15
 ```
 
 The tested macOS ARM64 resolution installed 123 packages, including large

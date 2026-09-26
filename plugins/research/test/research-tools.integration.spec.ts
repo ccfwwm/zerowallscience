@@ -116,7 +116,7 @@ it('runs image/annotation tools through the Host and keeps preview pixels out of
 
 it('uses the same native launch validation in RPC and Agent calls', async () => {
   const { ctx, project, call } = await fixture()
-  vi.stubEnv('ZEROWALL_NAPARI_PYTHON', join(project.rootPath, 'missing.exe'))
+  vi.stubEnv('ZEROWALL_PYTHON_ROOT', join(project.rootPath, 'missing', 'zerowall-python'))
   await expect(ctx.zerowallResearch.launchScientificEngine({ sessionId: 'a', engine: 'napari' })).rejects.toThrow()
   expect((await call('science_viewer', { action: 'launch_native', engine: 'napari' })).isError).toBe(true)
   expect((await call('science_viewer', { action: 'launch_native' })).isError).toBe(true)

@@ -25,15 +25,11 @@ but is not the documented compatibility guarantee.
 
 ## Installation
 
-Use an isolated Python 3.12 environment and a platform-matched Ice wheel:
+Use the shared ZeroWall Python 3.12 runtime and a platform-matched Ice wheel:
 
-```bash
-uv venv --python 3.12 .venv
-source .venv/bin/activate
-
-# Obtain the matching wheel from the OMERO-linked Ice binary matrix.
-uv pip install "/absolute/path/to/zeroc_ice-3.6.5-<matching-tags>.whl"
-uv pip install "omero-py==5.22.1"
+```text
+Add the matching zeroc_ice wheel and omero-py==5.22.1 to the signed dependency
+manifest, then use Python settings to preview and apply the sync.
 ```
 
 Wheel tags must match all of:

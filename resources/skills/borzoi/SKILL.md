@@ -28,6 +28,12 @@ metadata:
 
 ## Prerequisites
 
+When Borzoi runs inside ZeroWall Science, it uses the application's single
+shared Python 3.12 runtime and shared `Lib/site-packages`. Do not create a
+local venv, Conda environment, or per-model Python profile. GPU drivers and
+remote Linux environments remain host-managed; only the local Windows Python
+dependency list is installed through `zerowall-python-packages`.
+
 | Requirement | Minimum | Recommended |
 | ----------- | ------- | ----------- |
 | Python      | 3.10+   | 3.11        |
@@ -66,7 +72,7 @@ submit a self-contained runner with `run_in_context`:
 {
   "context_id": "ssh:gpu-box",
   "title": "Borzoi prediction for one locus",
-  "command": "source ~/miniforge3/etc/profile.d/conda.sh && conda activate borzoi && HF_HOME=/srv/model-cache python borzoi_run.py --output /home/me/zerowall-results/borzoi/tracks.npz",
+  "command": "HF_HOME=/srv/model-cache python borzoi_run.py --output /home/me/zerowall-results/borzoi/tracks.npz",
   "timeout_secs": 1800,
   "input_paths": ["runs/borzoi_run.py"],
   "output_specs": [

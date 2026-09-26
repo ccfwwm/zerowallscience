@@ -1,18 +1,10 @@
 """合成生物学 Phase 1 工具 — primer3 引物设计 / DNA Chisel 多约束优化 / pydna 克隆模拟
 
-所有第三方依赖均为**函数体内懒加载**：模块导入失败时返回带安装提示的
-error 字典，不影响 bio_ops.py 其余 op 的加载。
-
-- primer3-py / dnachisel：第二层按需依赖（v0.6.16 起，src/extra-deps.js
-  EXTRA_DEPS 注册），TS 侧会在调用 primer3_design/dna_optimize 前自动
-  uv pip install（dna-features-viewer 同理挂 plasmid_map）；此处仍兜底返回友好错误。
-- pydna：第二层按需依赖（src/extra-deps.js EXTRA_DEPS），TS 侧会在调用
-  clone_simulate 前自动 uv pip install；此处仍兜底返回友好错误。
-- sbol3 / tyto：同为第二层（2026-08-26 下沉，挂 sbol_write/sbol_read）；
-  tyto 的 pyparsing(<3) 约束是移出第一层的直接原因（避免钉死全局 pyparsing 2.x，
-  与 clone_simulate 护栏 pyparsing>=3.1 冲突）。
+所有第三方依赖在函数体内加载；缺失时返回错误，不影响其他 op。
+本地工具只使用 ZeroWall 共享 Python，依赖由设置页的清单同步。
 """
 import os
+import re
 import sys
 from seq_util import clean_seq
 
@@ -66,7 +58,7 @@ def op_primer3_design(args):
     try:
         import primer3
     except ImportError:
-        return {'error': 'primer3-py 未安装，请运行 bio_env reinstall=true 或 uv pip install primer3-py'}
+        return {'error': 'primer3-py 未安装；请在 ZeroWall 设置 > Python 环境中同步共享依赖清单。'}
 
     sequence = clean_seq(args.get('sequence', ''))
     if not sequence:
@@ -208,7 +200,7 @@ def op_dna_optimize(args):
             EnforceGCContent, AvoidPattern,
         )
     except ImportError:
-        return {'error': 'dnachisel 未安装，请运行 bio_env reinstall=true 或 uv pip install dnachisel'}
+        return {'error': 'dnachisel 未安装；请在 ZeroWall 设置 > Python 环境中同步共享依赖清单。'}
 
     dna = args.get('dna_sequence')
     protein = args.get('protein_sequence')
@@ -271,14 +263,13 @@ def op_dna_optimize(args):
 def op_clone_simulate(args):
     """克隆模拟（pydna）：gibson / golden_gate / restriction 三种方法的组装模拟。
 
-    pydna 是第二层依赖——TS 侧 ensureExtraDeps 会在调用前自动安装；
-    此处 import 失败时返回 needs_install 提示兜底。
+    pydna 由共享 Python 的必装依赖清单提供；导入失败时返回安装状态。
     """
     try:
         from pydna.dseqrecord import Dseqrecord
         from pydna.assembly import Assembly
     except ImportError:
-        return {'error': 'pydna 未安装，正在自动安装…（若仍未就绪请运行 uv pip install pydna）',
+        return {'error': 'pydna 未安装；请在 ZeroWall 设置 > Python 环境中同步共享依赖清单。',
                 'needs_install': True}
 
     backbone = clean_seq(args.get('backbone', ''))
@@ -359,27 +350,41 @@ def op_clone_simulate(args):
 # ---- Phase 2：SBOL 3 标准化读写 ----
 
 def _role_uri(role):
-    """角色名/term → 本体 URI（tyto 解析，失败原样返回）。"""
-    try:
-        import tyto
-        uri = tyto.SO.get_uri_by_term(str(role))
-        if uri:
-            return uri
-    except Exception:
-        pass
-    return str(role)
+    """Resolve common SO roles without a second ontology dependency stack."""
+    import sbol3
+
+    raw = str(role).strip()
+    if raw.startswith(("https://", "http://")):
+        return raw
+    if re.fullmatch(r"SO:\d{7}", raw, re.I):
+        return sbol3.SO_NS + raw.split(":", 1)[1]
+    aliases = {
+        "promoter": sbol3.SO_PROMOTER,
+        "rbs": sbol3.SO_RBS,
+        "ribosome_binding_site": sbol3.SO_RBS,
+        "cds": sbol3.SO_CDS,
+        "coding_sequence": sbol3.SO_CDS,
+        "terminator": sbol3.SO_TERMINATOR,
+        "operator": sbol3.SO_OPERATOR,
+        "gene": sbol3.SO_GENE,
+        "mrna": sbol3.SO_MRNA,
+    }
+    key = re.sub(r"[\s-]+", "_", raw.lower())
+    if key not in aliases:
+        raise ValueError(f"未知 SBOL role: {raw}；请提供 SO:0000000 或完整本体 URI")
+    return aliases[key]
 
 
 def op_sbol_write(args):
     """SBOL 3 写出：组件列表（name/type/sequence/role）→ SBOL 3 XML 文件。
 
     每个组件生成 Component（SBO 类型 + SO role）+ 关联 Sequence（IUPAC DNA），
-    本体 URI 经 tyto 解析（如 promoter → SO:0000167）。
+    常见角色经 sbol3 的 SO 常量解析，也可传入 SO ID 或完整 URI。
     """
     try:
         import sbol3
     except ImportError:
-        return {'error': 'sbol3 未安装，请运行 bio_env reinstall=true 或 uv pip install sbol3 tyto'}
+        return {'error': 'sbol3 未安装；请在 ZeroWall 设置 > Python 环境中同步共享依赖清单。'}
 
     components = args.get('components') or []
     output_file = args.get('output_file')
@@ -432,7 +437,7 @@ def op_sbol_read(args):
     try:
         import sbol3
     except ImportError:
-        return {'error': 'sbol3 未安装，请运行 bio_env reinstall=true 或 uv pip install sbol3 tyto'}
+        return {'error': 'sbol3 未安装；请在 ZeroWall 设置 > Python 环境中同步共享依赖清单。'}
 
     sbol_file = args.get('sbol_file')
     if not sbol_file:
@@ -469,5 +474,5 @@ def op_sbol_read(args):
         'sbol_file': os.path.abspath(sbol_file),
         'n_components': len(components),
         'components': components,
-        'note': 'roles/types 为本体 URI（SO/SBO）；用 tyto.SO.get_term_by_uri 可反查术语名。',
+        'note': 'roles/types 为本体 URI（SO/SBO）。',
     }

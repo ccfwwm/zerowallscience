@@ -60,5 +60,7 @@ it.runIf(existsSync(hePythonPath()))('reads actual OpenSlide pyramid tiles, cali
   expect(record.tile.pngBase64).toBeUndefined()
   expect(exported.artifact?.metadata.needsReview).toBe(true)
   const missing = new HeService(store,{ pythonPath:join(root,'missing.exe') })
-  await expect(missing.execute(project,{ sessionId:'s',action:'open',assetId:asset.id })).rejects.toThrow('requires OpenSlide')
+  // Legacy per-engine Python paths are ignored; opening still uses the shared
+  // runtime and the validated OpenSlide binding.
+  await expect(missing.execute(project,{ sessionId:'s',action:'open',assetId:asset.id })).resolves.toMatchObject({ he: { engine: 'openslide' } })
 },30000)

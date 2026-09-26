@@ -45,20 +45,15 @@ Use GeoPandas for planar vector data represented as pandas-like `GeoSeries` and
 
 GeoPandas 1.1.4 requires Python 3.10+; its tagged source requires NumPy >=1.24,
 pandas >=2.0, Shapely >=2.0, pyproj >=3.5, pyogrio >=0.7.2, and `packaging`.
-This exact Python 3.12 snapshot was smoke-tested on 2026-07-23:
+The following older snapshot was smoke-tested on 2026-07-23. For current runs, use the signed shared Python manifest instead of these historical pins:
 
-```bash
-uv venv --python 3.12
-uv pip install \
-  "geopandas==1.1.4" \
-  "numpy==2.5.1" \
-  "pandas==3.0.5" \
-  "shapely==2.1.2" \
-  "pyproj==3.7.2" \
-  "pyogrio==0.13.0" \
-  "pyarrow==25.0.0" \
-  "packaging==26.2"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required packages and versions are shown in the signed manifest.
 ```
+
+The list above is a manifest entry list, not a venv recipe. It is installed
+into `%APPDATA%\zerowall-science\Python\Lib\site-packages`.
 
 Keep optional plotting and PostGIS packages pinned in the project lock as well.
 Do not mix binary geospatial packages from incompatible package channels.

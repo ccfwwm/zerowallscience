@@ -58,13 +58,12 @@ Verified **2026-07-23**:
 - 4.1.2 adds Python 3.13/3.14 support and modern-interpreter test fixes.
 - Upstream and this skill are MIT-licensed.
 
-Create a reproducible environment:
+Add SimPy to the signed shared dependency manifest:
 
-```bash
-uv venv --python 3.13
-source .venv/bin/activate
-uv pip install "simpy==4.1.2"
-python -c "import importlib.metadata; print(importlib.metadata.version('simpy'))"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: simpy==4.1.2
+Verify with the shared Python command line.
 ```
 
 Do not silently substitute the `latest` documentation build: it may describe an

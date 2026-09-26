@@ -20,8 +20,7 @@ MAX_FEATURES = 256
 MAX_TIME_POINTS = 512
 DEFAULT_SEED = 20_260_723
 PINNED_INSTALL = (
-    'uv pip install "scikit-survival==0.28.0" "scikit-learn==1.9.0" '
-    '"numpy==2.4.6" "pandas==3.0.5" "scipy==1.17.1"'
+    'ZeroWall Settings > Python environment > Sync required packages into the shared Python'
 )
 
 

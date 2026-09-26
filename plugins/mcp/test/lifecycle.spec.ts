@@ -20,7 +20,7 @@ beforeEach(() => {
   // Vitest worker IPC is not the desktop credential broker.
   vi.spyOn(SecretBrokerClient.prototype, 'get').mockResolvedValue(undefined)
 })
-afterEach(() => {
+afterEach(async () => {
   delete process.env.ZEROWALL_RESEARCH_DB
   delete process.env.ZEROWALL_DISABLE_DEFAULT_MCP
   delete process.env.R_PLATFORM_MCP_AUTHORIZATION
@@ -28,9 +28,27 @@ afterEach(() => {
   delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
   delete process.env.ZEROWALL_MCP_ENVIRONMENT_POLL_MS
   // A managed server's stdio child can still be releasing its handle on the
-  // fixture executable when teardown runs, and Windows refuses the unlink for
-  // a short window afterwards. Retry rather than failing an otherwise green run.
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })
+  // fixture executable when teardown runs. Windows may keep that handle for
+  // longer than fs.rmSync's retry window, so retry asynchronously and leave a
+  // best-effort cleanup behind rather than turning a passing behavior test into
+  // an unrelated teardown failure.
+  for (const root of roots.splice(0)) {
+    let removed = false
+    for (let attempt = 0; attempt < 12 && !removed; attempt += 1) {
+      try {
+        rmSync(root, { recursive: true, force: true })
+        removed = true
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EPERM' && (error as NodeJS.ErrnoException).code !== 'EBUSY') throw error
+        await new Promise(resolve => setTimeout(resolve, 50 * (attempt + 1)))
+      }
+    }
+    if (!removed) {
+      setTimeout(() => {
+        try { rmSync(root, { recursive: true, force: true }) } catch { /* child teardown owns the remaining handle */ }
+      }, 1000).unref()
+    }
+  }
 })
 
 describe('ZeroWall MCP Cordis lifecycle', () => {
@@ -205,6 +223,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-refresh-'))
     const environmentStore = join(root, 'environment-store')
     const installed = join(environmentStore, 'versions', '4.1.10')
+    const runtimeRoot = root
     roots.push(root)
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
     process.env.DSH_HOME = join(root, 'harness')
@@ -213,8 +232,9 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     // against high-frequency environment polling.
     const timers = vi.spyOn(globalThis, 'setInterval')
     const server = `const readline=require('node:readline');const lines=readline.createInterface({input:process.stdin});lines.on('line',(line)=>{let req;try{req=JSON.parse(line)}catch{return}if(req.id===undefined)return;if(req.method==='initialize')process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}})+'\\n');else if(req.method==='tools/list')process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{tools:[]}})+'\\n');else process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result:{}})+'\\n')});`
-    for (const relative of ['bio-tools', 'bio-tools/python', 'ketcher-chemistry', 'sci/dist']) mkdirSync(join(installed, relative), { recursive: true })
-    copyFileSync(process.execPath, join(installed, 'bio-tools', 'python', 'python.exe'))
+    for (const relative of ['bio-tools', 'ketcher-chemistry', 'sci/dist']) mkdirSync(join(installed, relative), { recursive: true })
+    mkdirSync(join(runtimeRoot, 'Python'), { recursive: true })
+    copyFileSync(process.execPath, join(runtimeRoot, 'Python', 'python.exe'))
     writeFileSync(join(installed, 'bio-tools', 'run_server.py'), server)
     writeFileSync(join(installed, 'ketcher-chemistry', 'server.js'), server)
     writeFileSync(join(installed, 'sci', 'dist', 'mcp.cjs'), server)
@@ -242,7 +262,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       }
       await expect.poll(async () => (await ctx.zerowallMcp.list()).filter(item => item.serverName.startsWith('zerowall_managed_')).every(item => item.runtimeState === 'blocked'), { timeout: 10_000, interval: 25 }).toBe(true)
       mkdirSync(environmentStore, { recursive: true })
-      writeFileSync(join(environmentStore, 'current.json'), JSON.stringify({ version: '4.1.10', root: installed, health: 'ready', manifest: { python: { relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages' } } }))
+      writeFileSync(join(environmentStore, 'current.json'), JSON.stringify({ version: '4.1.10', root: installed, runtimeRoot, health: 'ready', manifest: { python: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } } }))
       const timer = timers.mock.calls.find(call => call[1] === 1000)
       expect(timer).toBeDefined()
       // Fire the production callback to verify the compact-pointer refresh.

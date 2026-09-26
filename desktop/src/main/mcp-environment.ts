@@ -6,10 +6,10 @@ import { access, appendFile, cp, lstat, mkdir, readdir, readFile, rename, rm, st
 import { basename, delimiter, dirname, join, relative, resolve } from 'node:path'
 import { downloadArchive, extractArchive, requireFreeSpace } from './python-archive.js'
 import { collectSnapshots } from './python-snapshots.js'
-import { preparePackagePlan, prepareManifestPackagePlan, applyPackagePlanFiles, applyIsolatedProfile, replayCustomizations, type StoredPackagePlan } from './python-packages.js'
+import { preparePackagePlan, prepareManifestPackagePlan, applyPackagePlanFiles, replayCustomizations, type StoredPackagePlan } from './python-packages.js'
 import { dependencyManifestChanges, dependencyManifestSha256, parsePythonDependencyManifest, type PythonDependencyManifest } from './python-dependency-manifest.js'
 import { DEFAULT_INDEX_URL, projectJsonCandidates, resolveMirror, sanitizePythonTlsEnvironment, type MirrorConfig } from './python-mirror.js'
-import { copyRuntimeSnapshot, isStablePythonDirectory, migrateStablePython, normalizeRuntimeCandidate, readRuntimeLayout, SHARED_LAYOUT, verifySharedPackages } from './shared-python-runtime.js'
+import { copyRuntimeSnapshot, isStablePythonDirectory, mergeLegacyPythonOverlay, migrateStablePython, normalizeRuntimeCandidate, readRuntimeLayout, SHARED_LAYOUT, verifySharedPackages } from './shared-python-runtime.js'
 import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage, McpSkillAudit, PythonPackagePlan } from '../shared/contracts.js'
 
 export interface McpEnvironmentManifest {
@@ -31,7 +31,7 @@ export interface McpEnvironmentManifest {
   sci: { version: string; nodeMinimum: string; cli: string; mcp: string }
   mcp: { bioToolsVersion: string; ketcherChemistryVersion: string; sciMasterVersion: string; publicToolCount: number; internalToolCount: number; servers: string[] }
   source: { claudeScienceRuntime: string; sourceHashes: Record<string, string> }
-  dependencies?: { corePackages: Array<{ name: string; requiredVersion: string }>; userOverlay: { enabled: boolean; path: string; requirementsFile: string }; indexUrl?: string }
+  dependencies?: { corePackages: Array<{ name: string; requiredVersion: string }>; indexUrl?: string }
   skillsAudit?: McpSkillAudit
   updatePolicy?: { required: boolean; reason?: string }
   signature: { algorithm: 'ed25519'; keyId: string; value: string }
@@ -72,6 +72,17 @@ export interface McpEnvironmentControllerOptions {
   verifySharedPython?(root: string): Promise<void>
   /** Optional durable diagnostic log. Failures must remain inspectable after the UI closes. */
   diagnosticPath?: string
+  /**
+   * MCP services and Skills are application resources. They are deliberately
+   * outside the small Python bootstrap archive and are resolved from these
+   * read-only roots at health-check and launch time.
+   */
+  bundledAssets?: {
+    bioToolsRoot: string
+    ketcherRoot: string
+    sciRoot: string
+    skillsRoot: string
+  }
   publish(status: McpEnvironmentStatus): void
 }
 
@@ -180,19 +191,22 @@ export class McpEnvironmentController {
     if (!current?.root || current.health !== 'ready') return { ready: false, packages: [], message: 'ZeroWall Python 尚未就绪。' }
     try {
       const installedManifest = await this.readInstalledManifest(current.root)
-      const stableRoot = current.runtimeRoot ?? await stat(join(dirname(this.options.root), 'Python', 'python.exe')).then(() => dirname(this.options.root), () => undefined)
-      const shared = !!stableRoot && basename(this.options.root).toLowerCase() === 'zerowall-python'
+      const isProductPythonRoot = basename(this.options.root).toLowerCase() === 'zerowall-python'
+      const expectedRuntimeRoot = dirname(resolve(this.options.root))
+      const stableRoot = current.runtimeRoot ? resolve(current.runtimeRoot) : await stat(join(expectedRuntimeRoot, 'Python', 'python.exe')).then(() => expectedRuntimeRoot, () => undefined)
+      const shared = isProductPythonRoot && stableRoot === expectedRuntimeRoot
+      if (isProductPythonRoot && (!shared || installedManifest.python.relativeExecutable !== SHARED_LAYOUT.relativeExecutable || installedManifest.python.relativeSitePackages !== SHARED_LAYOUT.relativeSitePackages)) {
+        throw new Error('ZeroWall 只允许使用唯一共享 Python。当前环境尚未迁移完成，已停止读取旧 profile 或独立解释器。')
+      }
       const manifest = shared ? { ...installedManifest, python: { ...installedManifest.python, ...SHARED_LAYOUT } } : installedManifest
       const executable = shared ? join(stableRoot!, SHARED_LAYOUT.relativeExecutable) : join(current.root, manifest.python.relativeExecutable)
       const sitePackages = shared ? join(stableRoot!, SHARED_LAYOUT.relativeSitePackages) : join(current.root, manifest.python.relativeSitePackages)
-      const overlayPath = shared ? sitePackages : current.overlayPath ?? pythonOverlayPath(this.options.root, manifest)
-      await mkdir(overlayPath, { recursive: true })
-      const versionResult = await execute(executable, ['--version'], current.root, undefined, { PYTHONPATH: [overlayPath, sitePackages].join(';'), PYTHONNOUSERSITE: '1' }, 20_000)
-      const env = pythonEnvironment(overlayPath, sitePackages)
-      const script = 'import importlib.metadata,json,sys\nrows=[]\npaths=[("core",sys.argv[2])] if sys.argv[1]==sys.argv[2] else [("overlay",sys.argv[1]),("core",sys.argv[2])]\nfor source,path in paths:\n for d in importlib.metadata.distributions(path=[path]):\n  rows.append({"name":d.metadata.get("Name") or d.name,"version":d.version,"location":str(d.locate_file("")),"source":source,"dependencies":d.requires or []})\nprint(json.dumps(rows))'
-      const listed = await execute(executable, ['-c', script, overlayPath, sitePackages], current.root, undefined, env, 30_000)
+      const versionResult = await execute(executable, ['--version'], current.root, undefined, { PYTHONPATH: sitePackages, PYTHONNOUSERSITE: '1' }, 20_000)
+      const env = pythonEnvironment(sitePackages)
+      const script = 'import importlib.metadata,json,sys\nrows=[]\nfor d in importlib.metadata.distributions(path=[sys.argv[1]]):\n rows.append({"name":d.metadata.get("Name") or d.name,"version":d.version,"location":str(d.locate_file("")),"dependencies":d.requires or []})\nprint(json.dumps(rows))'
+      const listed = await execute(executable, ['-c', script, sitePackages], current.root, undefined, env, 30_000)
       const required = new Map((manifest.dependencies?.corePackages ?? []).map(pkg => [pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'), pkg.requiredVersion]))
-      const raw = JSON.parse(listed.stdout.trim()) as Array<{ name: string; version: string; location?: string; source: 'core' | 'overlay' }>
+      const raw = JSON.parse(listed.stdout.trim()) as Array<{ name: string; version: string; location?: string; dependencies?: string[] }>
       const history = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
       const packages: McpPythonPackage[] = []
       for (const pkg of raw) {
@@ -200,18 +214,13 @@ export class McpEnvironmentController {
         const existing = packages.find(existing => pythonPackageName(existing.name) === key)
         if (existing) { existing.shadowedVersion = pkg.version; continue }
         const requiredVersion = required.get(key)
-        packages.push({ ...pkg, upgradeHistory: history?.history?.filter((entry: { name: string }) => pythonPackageName(entry.name) === key), verificationMessage: history?.verifiedAt && current.customizations?.[key] ? `pip check、导入与相关功能验证通过（${history.verifiedAt}）` : undefined, previousVersion: history?.changes?.find((change: { name: string }) => pythonPackageName(change.name) === key)?.from, ...(current.extensionNames?.includes(key) ? { source: 'overlay' as const } : {}), ...(requiredVersion === undefined ? {} : { requiredVersion }), customized: current.customizations?.[key] !== undefined, health: pkg.source === 'core' ? 'locked' : 'healthy' })
+        const official = requiredVersion !== undefined
+        packages.push({ ...pkg, source: official ? 'core' : 'custom', upgradeHistory: history?.history?.filter((entry: { name: string }) => pythonPackageName(entry.name) === key), verificationMessage: history?.verifiedAt && current.customizations?.[key] ? `pip check、导入与相关功能验证通过（${history.verifiedAt}）` : undefined, previousVersion: history?.changes?.find((change: { name: string }) => pythonPackageName(change.name) === key)?.from, ...(requiredVersion === undefined ? {} : { requiredVersion }), customized: current.customizations?.[key] !== undefined, health: official ? 'locked' : 'healthy' })
       }
       packages.sort((a, b) => a.name.localeCompare(b.name))
       const needle = query.trim().toLowerCase()
-      const profiles: NonNullable<McpPythonInfo['profiles']> = []
-      for (const entry of await readdir(join(this.options.root, 'profiles'), { withFileTypes: true }).catch(() => [])) {
-        if (!entry.isDirectory()) continue
-        const record = await readFile(join(this.options.root, 'profiles', entry.name, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
-        if (record) profiles.push({ name: entry.name, status: record.snapshotId === current.root ? 'ready' : 'stale', sitePackages: record.sitePackages, packages: (record.wheels ?? []).map((wheel: { name: string; version: string }) => ({ name: wheel.name, version: wheel.version })) })
-      }
       const runtime = shared ? { runtimeRoot: join(stableRoot!, 'Python'), runtimeExecutable: executable, runtimeSitePackages: sitePackages } : publicRuntimeForSnapshot(current.root, manifest)
-      return { profiles, snapshotId: current.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), localRevision: current.localRevision, scannedAt: new Date().toISOString(), officialPackageCount: manifest.dependencies?.corePackages.length ?? 0, ready: true, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable: runtime?.runtimeExecutable ?? executable, sitePackages: runtime?.runtimeSitePackages ?? sitePackages, ...runtime, ...(runtime ? { overlayPath: undefined } : { overlayPath }), packageCount: packages.length, corePackageCount: packages.filter(pkg => pkg.source === 'core').length, overlayPackageCount: packages.filter(pkg => pkg.source === 'overlay').length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
+      return { snapshotId: current.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), localRevision: current.localRevision, scannedAt: new Date().toISOString(), officialPackageCount: manifest.dependencies?.corePackages.length ?? 0, ready: true, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable: runtime?.runtimeExecutable ?? executable, sitePackages: runtime?.runtimeSitePackages ?? sitePackages, ...runtime, packageCount: packages.length, corePackageCount: packages.filter(pkg => pkg.source === 'core').length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
     } catch (error) { return { ready: false, packages: [], message: sanitizeError(error) } }
   }
 
@@ -245,13 +254,10 @@ export class McpEnvironmentController {
     return info
   }
 
-  async previewPackages(names: string[], profile?: string): Promise<PythonPackagePlan> {
+  async previewPackages(names: string[]): Promise<PythonPackagePlan> {
     if (!Array.isArray(names) || !names.length || names.length > 50 || names.some(name => typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\[[A-Za-z0-9_,.-]+\])?(?:[=<>!~]=?[A-Za-z0-9.*+!<>=~,.-]+)?$/u.test(name))) throw new Error('包名格式不安全，仅支持包名及版本约束。')
     const context = await this.pythonContext()
-    if (profile && context.manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable) throw new Error('共享 Python 环境仅支持统一依赖目录，不再新建独立 profile。')
-    if (profile && !/^[a-z][a-z0-9-]{0,39}$/u.test(profile)) throw new Error('Invalid dependency profile')
-    const baseline = profile === 'sbol' ? ['numpy', 'biopython', 'sbol3>=1.0', 'tyto>=1.4'] : profile === 'circuit' ? ['numpy', 'biopython', 'biocrnpyler', 'bioscrape'] : []
-    return preparePackagePlan(this.options.root, context, [...new Set([...names, ...baseline])], profile ? { ready: true, packages: [] } : await this.pythonInfo(), profile)
+    return preparePackagePlan(this.options.root, context, names, await this.pythonInfo())
   }
 
   async previewDependencyManifest(manifest: PythonDependencyManifest): Promise<StoredPackagePlan> {
@@ -271,7 +277,7 @@ export class McpEnvironmentController {
       if (!info.packages.some(pkg => pythonPackageName(pkg.name) === name)) throw new Error(`依赖未安装：${name}`)
     }
     const code = `import sys,json,re,importlib.metadata as m\nfrom packaging.requirements import Requirement\nsys.path[:0]=json.loads(sys.argv[2])\nremoved=set(json.loads(sys.argv[1]));norm=lambda s:re.sub(r'[-_.]+','-',s).lower()\nblocked=[]\nfor d in m.distributions():\n if norm(d.metadata['Name']) in removed: continue\n for raw in d.requires or []:\n  r=Requirement(raw)\n  if norm(r.name) in removed and (r.marker is None or r.marker.evaluate()): blocked.append(d.metadata['Name']+' requires '+raw)\nprint(json.dumps(blocked))`
-    const checked = await execute(context.executable, ['-I', '-B', '-c', code, JSON.stringify(removals), JSON.stringify([context.overlayPath, context.sitePackages])], context.root)
+    const checked = await execute(context.executable, ['-I', '-B', '-c', code, JSON.stringify(removals), JSON.stringify([context.sitePackages])], context.root)
     const blockers = JSON.parse(checked.stdout) as string[]
     if (blockers.length) throw new Error(`仍有依赖使用这些包：${blockers.join('; ')}`)
     const plan: StoredPackagePlan = { planId: randomUUID(), snapshotId: context.root, requested: removals, changes: removals.map(name => ({ name, from: info.packages.find(pkg => pythonPackageName(pkg.name) === name)!.version, to: '(removed)' })), wheels: [], removals }
@@ -299,13 +305,6 @@ export class McpEnvironmentController {
     if (!current?.root || plan.snapshotId !== current.root || plan.error) throw new Error('环境已变化，请重新检查升级计划。')
     const context = await this.pythonContext()
     const inventory = await this.pythonInfo()
-    if (plan.profile) {
-      if (context.manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable) throw new Error('旧独立 profile 计划不能应用到共享 Python 环境，请重新预览统一依赖变更。')
-      this.set({ ...this.status, phase: 'installing', progress: 15, message: `正在准备独立依赖目录：${plan.profile}` })
-      await applyIsolatedProfile(this.options.root, context, plan)
-      await this.localStatus()
-      return this.pythonInfo()
-    }
     const sharedStable = context.manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable && current.runtimeRoot === dirname(this.options.root)
     const target = sharedStable ? current.root : join(this.options.root, 'slots', `local-${randomUUID()}`)
     if (!sharedStable) {
@@ -315,16 +314,21 @@ export class McpEnvironmentController {
       await requireFreeSpace(this.options.root, requiredBytes)
     }
     await writeFile(join(this.options.root, 'plans', `${planId}.json`), JSON.stringify(plan))
-    this.set({ ...this.status, phase: 'installing', lastUpdateError: undefined, updateJob: { taskId: planId, kind: 'applyPackagePlan', stage: 'installing', canPause: false, packageNames: plan.changes.map(change => change.name) }, progress: 1, message: sharedStable ? '正在直接安装到稳定 Python 环境。' : '正在准备 Python 环境。' })
+      this.set({ ...this.status, phase: 'installing', lastUpdateError: undefined, updateJob: { taskId: planId, kind: 'applyPackagePlan', stage: 'installing', canPause: false, packageNames: plan.changes.map(change => change.name), completedFiles: 0, totalFiles: plan.wheels.length + (plan.preparationFailures?.length ?? 0) }, progress: 1, message: sharedStable ? '正在直接安装到唯一共享 Python 环境。' : '正在准备唯一共享 Python 环境。' })
     let activated = false
+    const installLog: string[] = []
     try {
       if (!sharedStable) await copyRuntimeSnapshot(current.root, target)
-      const outcome = await applyPackagePlanFiles(this.options.root, context, target, plan, ({ completed, total, name, stage }) => {
+      const outcome = await applyPackagePlanFiles(this.options.root, context, target, plan, ({ completed, total, name, stage, logLine }) => {
         // The per-package loop is where a 521-package layer spends its time, and
         // it used to publish nothing at all: the bar sat at 15% from the start of
         // the copy until activation. Map the loop onto 15..95 so it actually moves.
         const progress = total === 0 ? 95 : Math.min(95, 15 + Math.floor((completed / total) * 80))
-        this.set({ ...this.status, phase: 'installing', progress, message: stage ?? `正在安装 ${name ?? ''}`, updateJob: { taskId: planId, kind: 'applyPackagePlan', stage: 'installing', canPause: false, packageNames: plan.changes.map(change => change.name), completedFiles: completed, totalFiles: total } })
+        if (logLine) {
+          installLog.push(`${name ?? ''}: ${logLine}`)
+          if (installLog.length > 80) installLog.shift()
+        }
+        this.set({ ...this.status, phase: 'installing', progress, message: stage ?? `正在安装 ${name ?? ''}`, updateJob: { taskId: planId, kind: 'applyPackagePlan', stage: 'installing', canPause: false, packageNames: plan.changes.map(change => change.name), completedFiles: completed, totalFiles: total, logLines: [...installLog] } })
       })
       plan.installOutcome = outcome
       await writeFile(join(this.options.root, 'plans', `${planId}.json`), JSON.stringify(plan))
@@ -336,8 +340,8 @@ export class McpEnvironmentController {
       }
       if (!sharedStable) await this.verifyHealth(target, context.manifest)
       const localRevision = (current.localRevision ?? 0) + 1
-      const overlayPath = sharedStable ? join(dirname(this.options.root), SHARED_LAYOUT.relativeSitePackages) : context.manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable ? join(target, SHARED_LAYOUT.relativeSitePackages) : join(target, 'user-overlay')
-      await mkdir(overlayPath, { recursive: true })
+      const sitePackages = sharedStable ? join(dirname(this.options.root), SHARED_LAYOUT.relativeSitePackages) : join(target, context.manifest.python.relativeSitePackages)
+      await mkdir(sitePackages, { recursive: true })
       const customizations = { ...(current.customizations ?? {}) }
       const successful = new Set(plan.wheels.filter(wheel => !outcome.skipped.some(item => pythonPackageName(item.name) === pythonPackageName(wheel.name))).map(wheel => pythonPackageName(wheel.name)))
       for (const change of plan.changes.filter(change => plan.removals?.includes(pythonPackageName(change.name)) || successful.has(pythonPackageName(change.name)))) {
@@ -351,8 +355,8 @@ export class McpEnvironmentController {
       await writeFile(join(target, 'customization.json'), JSON.stringify({ planId, localRevision, customizations, changes: plan.changes, history, verifiedAt }))
       if (plan.dependencyManifest && sharedStable) await writeFile(join(dirname(this.options.root), 'Python', 'manifest.json'), JSON.stringify(plan.dependencyManifest))
       if (!sharedStable) await this.writeCurrent(current as unknown as Record<string, unknown>, 'rollback.json')
-      const extensionNames = [...new Set([...inventory.packages.filter(pkg => pkg.source === 'overlay').map(pkg => pythonPackageName(pkg.name)), ...plan.changes.filter(change => successful.has(pythonPackageName(change.name)) && !context.manifest.dependencies?.corePackages.some(pkg => pythonPackageName(pkg.name) === pythonPackageName(change.name))).map(change => pythonPackageName(change.name))])]
-      await this.writeCurrent({ ...current, root: target, runtimeRoot: sharedStable ? dirname(this.options.root) : current.runtimeRoot, overlayPath, localRevision, customizations, removedPackages, extensionNames: extensionNames.filter(name => !removedPackages.includes(name)), rollbackAvailable: sharedStable ? current.rollbackAvailable : true, installedAt: new Date().toISOString(), manifest: context.manifest, ...(plan.dependencyManifest ? { dependencyRevision: plan.dependencyManifest.revision, dependencyManifestSha256: createHash('sha256').update(JSON.stringify(plan.dependencyManifest)).digest('hex') } : {}) })
+      const extensionNames = [...new Set([...inventory.packages.filter(pkg => pkg.source === 'custom').map(pkg => pythonPackageName(pkg.name)), ...plan.changes.filter(change => successful.has(pythonPackageName(change.name)) && !context.manifest.dependencies?.corePackages.some(pkg => pythonPackageName(pkg.name) === pythonPackageName(change.name))).map(change => pythonPackageName(change.name))])]
+      await this.writeCurrent({ ...current, root: target, runtimeRoot: sharedStable ? dirname(this.options.root) : current.runtimeRoot, localRevision, customizations, removedPackages, extensionNames: extensionNames.filter(name => !removedPackages.includes(name)), rollbackAvailable: sharedStable ? current.rollbackAvailable : true, installedAt: new Date().toISOString(), manifest: context.manifest, ...(plan.dependencyManifest ? { dependencyRevision: plan.dependencyManifest.revision, dependencyManifestSha256: createHash('sha256').update(JSON.stringify(plan.dependencyManifest)).digest('hex') } : {}) })
       activated = true
       await this.localStatus()
       const info = await this.pythonInfo()
@@ -366,7 +370,7 @@ export class McpEnvironmentController {
           : verificationOk
             ? `安装成功，环境已生效。已安装 ${outcome.installed} 个依赖。`
             : `依赖文件已写入，但验证未全部通过。pip check：${outcome.pipCheckMessage ?? '通过'}；导入检查：${outcome.importCheckMessage ?? '通过'}`
-      info.verification = { imports: outcome.importCheckPassed, pipCheck: outcome.pipCheckPassed, message: resultMessage, installed: outcome.installed, failedPackages: outcome.skipped.map(item => item.name), upToDate: plan.wheels.length === 0 }
+      info.verification = { imports: outcome.importCheckPassed, pipCheck: outcome.pipCheckPassed, message: resultMessage, installed: outcome.installed, failedPackages: outcome.skipped.map(item => item.name), upToDate: plan.wheels.length === 0 && outcome.skipped.length === 0 }
       if (plan.dependencyManifest) {
         const syncDirectory = join(this.options.root, 'dependency-sync')
         const previousStatus = await readFile(join(syncDirectory, 'status.json'), 'utf8').then(JSON.parse, () => ({}))
@@ -406,7 +410,9 @@ export class McpEnvironmentController {
       await migrateStablePython(this.options.root, previous.root, manifest, previous.overlayPath, true)
       await verifySharedPackages(stableRoot)
     }
-    await this.writeCurrent({ ...previous, ...(restoreStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT, overlayPath: join(stableRoot, SHARED_LAYOUT.relativeSitePackages) } : {}), manifest })
+    const restored = { ...previous, ...(restoreStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT } : {}), manifest }
+    delete (restored as CurrentEnvironmentRecord).overlayPath
+    await this.writeCurrent(restored)
     // The record described one restore target and that restore has now happened.
     // Leaving it in place advertises another restore through `rollbackAvailable`
     // and, once the snapshot collector prunes the slot it names, points at a
@@ -415,7 +421,7 @@ export class McpEnvironmentController {
     return this.localStatus(true)
   }
 
-  private async pythonContext(): Promise<{ root: string; executable: string; sitePackages: string; overlayPath: string; manifest: McpEnvironmentManifest; mirror: MirrorConfig }> {
+  private async pythonContext(): Promise<{ root: string; executable: string; sitePackages: string; manifest: McpEnvironmentManifest; mirror: MirrorConfig }> {
     await this.migrateSharedRuntime()
     const current = await readCurrent(this.options.root)
     if (!current?.root || current.health !== 'ready') throw new Error('ZeroWall Python 尚未就绪。')
@@ -425,10 +431,11 @@ export class McpEnvironmentController {
     const manifest = shared ? { ...installedManifest, python: { ...installedManifest.python, ...SHARED_LAYOUT } } : installedManifest
     const executable = shared ? join(stableRoot!, SHARED_LAYOUT.relativeExecutable) : join(current.root, manifest.python.relativeExecutable)
     const sitePackages = shared ? join(stableRoot!, SHARED_LAYOUT.relativeSitePackages) : join(current.root, manifest.python.relativeSitePackages)
-    const overlayPath = shared ? sitePackages : current.overlayPath ?? pythonOverlayPath(this.options.root, manifest)
-    await mkdir(overlayPath, { recursive: true })
+    if (basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python' && (!shared || !current.runtimeRoot || resolve(current.runtimeRoot) !== resolve(dirname(this.options.root)))) {
+      throw new Error('共享 Python 尚未迁移完成，已停止在旧 profile 或独立目录中安装依赖。请先修复共享环境迁移。')
+    }
     const settings = await readFile(join(this.options.root, 'settings.json'), 'utf8').then(JSON.parse, () => ({}))
-    return { root: current.root, manifest, executable, sitePackages, overlayPath, mirror: resolveMirror(settings.mirrorUrl ?? DEFAULT_INDEX_URL) }
+    return { root: current.root, manifest, executable, sitePackages, mirror: resolveMirror(settings.mirrorUrl ?? DEFAULT_INDEX_URL) }
   }
 
   /** Migrate Python files from the active runtime into the stable AppData path. */
@@ -447,17 +454,27 @@ export class McpEnvironmentController {
     let signed: McpEnvironmentManifest
     try { signed = await this.readInstalledManifest(current.root) } catch { return }
     const stableRoot = dirname(this.options.root)
-    if (current.runtimeRoot === stableRoot && await isStablePythonDirectory(stableRoot)) return
+    if (current.runtimeRoot === stableRoot && await isStablePythonDirectory(stableRoot) && !current.overlayPath) return
     try {
+      if (current.runtimeRoot === stableRoot && await isStablePythonDirectory(stableRoot)) {
+        await mergeLegacyPythonOverlay(join(stableRoot, SHARED_LAYOUT.relativeExecutable), join(stableRoot, SHARED_LAYOUT.relativeSitePackages), current.overlayPath)
+        await verifySharedPackages(stableRoot)
+        const currentWithoutOverlay = { ...current }
+        delete currentWithoutOverlay.overlayPath
+        await this.writeCurrent(currentWithoutOverlay)
+        return
+      }
       const inventory = await this.pythonInfo()
       if (!inventory.ready) throw new Error(inventory.message ?? '无法读取迁移前的 Python 依赖清单。')
-      const userPackages = inventory.packages.filter(pkg => pkg.source === 'overlay')
+      const userPackages = inventory.packages.filter(pkg => pkg.source === 'custom')
       const customizations = { ...(current.customizations ?? {}), ...Object.fromEntries(userPackages.map(pkg => [pythonPackageName(pkg.name), pkg.version])) }
       const extensionNames = [...new Set([...(current.extensionNames ?? []), ...userPackages.map(pkg => pythonPackageName(pkg.name))])]
-      const oldOverlay = current.overlayPath ?? pythonOverlayPath(this.options.root, signed)
+      const oldOverlay = current.overlayPath
       await migrateStablePython(this.options.root, current.root, signed, oldOverlay)
       await verifySharedPackages(stableRoot)
-      await this.writeCurrent({ ...current, runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT, overlayPath: join(stableRoot, SHARED_LAYOUT.relativeSitePackages), customizations, extensionNames, installedAt: new Date().toISOString() })
+      const migrated = { ...current, runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT, customizations, extensionNames, installedAt: new Date().toISOString() }
+      delete (migrated as CurrentEnvironmentRecord).overlayPath
+      await this.writeCurrent(migrated)
     } catch (error) {
       await this.recordDiagnostic({ event: 'shared_runtime_migration_failed', error: describeError(error) })
       this.status.lastUpdateError = `共享 Python 目录迁移未完成，原环境保留：${sanitizeError(error)}`
@@ -466,11 +483,9 @@ export class McpEnvironmentController {
 
   async selectManual(root: string): Promise<McpEnvironmentStatus> {
     const selected = resolve(root)
-    const manifest = await this.readInstalledManifest(selected)
-    await this.verifyHealth(selected, manifest)
-    await mkdir(this.options.root, { recursive: true })
-    await this.writeCurrent({ mode: 'manual', environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), root: selected, slot: 'manual', health: 'ready', manifest, installedAt: new Date().toISOString() })
-    return this.set(environmentStatus('manual', manifest, selected, 'manual', false, false))
+    const sharedRuntime = join(dirname(this.options.root), 'Python')
+    if (selected !== sharedRuntime && selected !== this.options.root) throw new Error('ZeroWall 只使用一套共享 Python。不能将外部解释器或独立环境设为活动环境；请在共享 Python 设置中安装依赖。')
+    throw new Error('共享 Python 由软件统一管理，无需手动切换环境。')
   }
 
   private async install(): Promise<McpEnvironmentStatus> {
@@ -547,22 +562,20 @@ export class McpEnvironmentController {
       // directory look occupied (it has no python.exe yet), which aborts a
       // first install. migrateStablePython copies the complete verified
       // candidate into the stable directory after all writes are complete.
-      const overlayPath = managedStable ? join(target, SHARED_LAYOUT.relativeSitePackages) : installedManifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable ? join(target, SHARED_LAYOUT.relativeSitePackages) : join(target, 'user-overlay')
-      const previousOverlay = current?.overlayPath ?? pythonOverlayPath(this.options.root, installedManifest)
-      await mkdir(overlayPath, { recursive: true })
+      const candidateSitePackages = join(target, installedManifest.python.relativeSitePackages)
+      const previousOverlay = current?.overlayPath
+      await mkdir(candidateSitePackages, { recursive: true })
       // A shared environment has one site-packages tree; copying it wholesale
       // would overwrite the new official versions. Its recorded user pins are
       // replayed against the new base instead.
-      const previousShared = current?.manifest && (current.manifest as McpEnvironmentManifest).python?.relativeExecutable === SHARED_LAYOUT.relativeExecutable
-      if (!previousShared && await pathExists(previousOverlay)) await cp(previousOverlay, overlayPath, { recursive: true })
-      if (!this.options.healthCheck) await replayCustomizations(target, installedManifest, overlayPath, current?.customizations ?? {}, current?.removedPackages ?? [])
+      if (!this.options.healthCheck) await replayCustomizations(target, installedManifest, candidateSitePackages, current?.customizations ?? {}, current?.removedPackages ?? [])
       if (current?.root && current.customizations) {
         const previousHistory = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
         await writeFile(join(target, 'customization.json'), JSON.stringify({ ...previousHistory, customizations: current.customizations, verifiedAt: new Date().toISOString() }))
       }
       if (managedStable) {
         try {
-          await migrateStablePython(this.options.root, target, installedManifest, overlayPath, true)
+          await migrateStablePython(this.options.root, target, installedManifest, previousOverlay, true)
           await (this.options.verifySharedPython ?? verifySharedPackages)(stableRoot)
         } catch (error) {
           if (current?.root && current.health === 'ready') {
@@ -572,7 +585,9 @@ export class McpEnvironmentController {
           throw error
         }
       }
-      await this.writeCurrent({ mode: 'managed', environmentVersion: environmentVersion(installedManifest), contentRevision: contentRevision(installedManifest), archiveSha256: installedManifest.archiveSha256, root: target, ...(managedStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT } : {}), overlayPath, customizations: current?.customizations, removedPackages: current?.removedPackages, extensionNames: current?.extensionNames, localRevision: current?.localRevision, slot: targetSlot, manifest: installedManifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: current?.health === 'ready' && current.slot !== 'manual' })
+      const record = { mode: 'managed', environmentVersion: environmentVersion(installedManifest), contentRevision: contentRevision(installedManifest), archiveSha256: installedManifest.archiveSha256, root: target, ...(managedStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT } : {}), customizations: current?.customizations, removedPackages: current?.removedPackages, extensionNames: current?.extensionNames, localRevision: current?.localRevision, slot: targetSlot, manifest: installedManifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: current?.health === 'ready' && current.slot !== 'manual' }
+      delete (record as Record<string, unknown>).overlayPath
+      await this.writeCurrent(record)
       const status = environmentStatus('ready', installedManifest, target, targetSlot, true, current?.health === 'ready' && current.slot !== 'manual')
       status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
       return this.set(status)
@@ -712,8 +727,8 @@ export class McpEnvironmentController {
   }
 
   private async verifyHealth(root: string, manifest: McpEnvironmentManifest): Promise<void> {
-    await assertEnvironmentFiles(root, manifest)
-    await (this.options.healthCheck ?? verifyMcpEnvironmentHealth)(root, manifest)
+    await assertEnvironmentFiles(root, manifest, this.options.bundledAssets)
+    await (this.options.healthCheck ?? ((candidateRoot, candidateManifest) => verifyMcpEnvironmentHealth(candidateRoot, candidateManifest, this.options.bundledAssets)))(root, manifest)
   }
 
   private set(status: McpEnvironmentStatus): McpEnvironmentStatus {
@@ -845,13 +860,8 @@ function compareEnvironmentVersions(left: string, right: string): number {
   }
   return 0
 }
-function pythonOverlayPath(root: string, manifest: McpEnvironmentManifest): string {
-  const runtime = manifest.python.version.match(/^\d+\.\d+/u)?.[0] ?? manifest.python.version
-  return join(root, 'python-overlay', `python-${runtime.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
-}
-
-function pythonEnvironment(overlayPath: string, sitePackages: string): Record<string, string> {
-  return { ...sanitizePythonTlsEnvironment(), PYTHONPATH: [overlayPath, sitePackages].join(delimiter), PYTHONNOUSERSITE: '1' }
+function pythonEnvironment(sitePackages: string): Record<string, string> {
+  return { ...sanitizePythonTlsEnvironment(), PYTHONPATH: sitePackages, PYTHONNOUSERSITE: '1' }
 }
 
 /**
@@ -880,7 +890,7 @@ function pythonPackageName(spec: string): string {
 }
 
 async function saveRequestedPackage(root: string, spec: string): Promise<void> {
-  const path = join(root, 'python-overlay', 'requirements-user.txt')
+  const path = join(root, 'requirements-user.txt')
   await mkdir(dirname(path), { recursive: true })
   const requested = await readFile(path, 'utf8').then(text => text.split(/\r?\n/u).filter(Boolean), () => [])
   const name = pythonPackageName(spec)
@@ -1019,18 +1029,18 @@ async function assertRegularFile(path: string): Promise<void> {
   if (!info.isFile() || info.isSymbolicLink()) throw new Error(`MCP environment entry must be a regular file: ${path}`)
 }
 
-export async function assertEnvironmentFiles(root: string, manifest: McpEnvironmentManifest): Promise<void> {
+export async function assertEnvironmentFiles(root: string, manifest: McpEnvironmentManifest, bundledAssets?: McpEnvironmentControllerOptions['bundledAssets']): Promise<void> {
+  const bioToolsRoot = bundledAssets?.bioToolsRoot ?? join(root, 'bio-tools')
+  const ketcherRoot = bundledAssets?.ketcherRoot ?? join(root, 'ketcher-chemistry')
+  const sciRoot = bundledAssets?.sciRoot ?? join(root, 'sci')
   const paths = [
     manifest.python.relativeExecutable,
-    'bio-tools/run_server.py',
-    'ketcher-chemistry/server.js',
-    manifest.sci.cli,
-    manifest.sci.mcp,
   ].map(path => join(root, path))
+  paths.push(join(bioToolsRoot, 'run_server.py'), join(ketcherRoot, 'server.js'), join(sciRoot, 'dist', 'cli.mjs'), join(sciRoot, 'dist', 'mcp.cjs'), join(sciRoot, 'zerowall-mcp-launcher.cjs'))
   await Promise.all(paths.map(assertRegularFile))
   const sitePackages = await lstat(join(root, manifest.python.relativeSitePackages))
   if (!sitePackages.isDirectory() || sitePackages.isSymbolicLink()) throw new Error(`MCP environment Python site-packages directory is invalid: ${join(root, manifest.python.relativeSitePackages)}`)
-  const skills = join(root, manifest.skillsRoot)
+  const skills = bundledAssets?.skillsRoot ?? join(root, manifest.skillsRoot)
   const info = await lstat(skills)
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`MCP environment Skills directory is invalid: ${skills}`)
 }
@@ -1039,7 +1049,7 @@ interface ProcessResult { stdout: string; stderr: string }
 
 function execute(command: string, args: string[], cwd: string, input?: string, extraEnv: Record<string, string> = {}, timeoutMs = 15_000): Promise<ProcessResult> {
   return new Promise((resolveResult, reject) => {
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), ...extraEnv, ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
+    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), ...extraEnv, PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
     let stdout = ''
     let stderr = ''
     const timer = setTimeout(() => { child.kill(); reject(new Error(`MCP process timed out: ${args.at(-1) ?? command}`)) }, timeoutMs)
@@ -1056,7 +1066,7 @@ async function checkMcpServer(command: string, args: string[], cwd: string): Pro
   const initialized = JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
   const tools = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
   await new Promise<void>((resolveCheck, reject) => {
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
+    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
     const lines = createInterface({ input: child.stdout })
     let phase: 'initialize' | 'tools' = 'initialize'
     let finishing = false
@@ -1091,7 +1101,7 @@ async function checkMcpServer(command: string, args: string[], cwd: string): Pro
   })
 }
 
-export async function verifyMcpEnvironmentHealth(root: string, manifest: McpEnvironmentManifest): Promise<void> {
+export async function verifyMcpEnvironmentHealth(root: string, manifest: McpEnvironmentManifest, bundledAssets?: McpEnvironmentControllerOptions['bundledAssets']): Promise<void> {
   const python = join(root, manifest.python.relativeExecutable)
   const node = process.execPath
   const pythonVersion = await execute(python, ['--version'], root)
@@ -1108,9 +1118,16 @@ export async function verifyMcpEnvironmentHealth(root: string, manifest: McpEnvi
     // valid cold runtime after the shorter MCP command timeout.
     await execute(python, ['-c', `import ${healthImports.join(', ')}`], root, undefined, { PYTHONPATH: join(root, manifest.python.relativeSitePackages), PYTHONNOUSERSITE: '1' }, 120_000)
   }
-  await checkMcpServer(python, [join(root, 'bio-tools', 'run_server.py'), 'mcp_bio'], join(root, 'bio-tools'))
-  await checkMcpServer(node, [join(root, 'ketcher-chemistry', 'server.js')], join(root, 'ketcher-chemistry'))
-  await checkMcpServer(node, [join(root, manifest.sci.mcp)], join(root, 'sci'))
+  // The bundled interpreter is usable before the signed science dependency
+  // list has been installed. Bio Tools becomes available after that sync.
+  const bioToolsRoot = bundledAssets?.bioToolsRoot ?? join(root, 'bio-tools')
+  const ketcherRoot = bundledAssets?.ketcherRoot ?? join(root, 'ketcher-chemistry')
+  const sciRoot = bundledAssets?.sciRoot ?? join(root, 'sci')
+  if (manifest.dependencies?.corePackages.some(pkg => pkg.name.toLowerCase() === 'mcp')) {
+    await checkMcpServer(python, [join(bioToolsRoot, 'run_server.py'), 'mcp_bio'], bioToolsRoot)
+  }
+  await checkMcpServer(node, [join(ketcherRoot, 'server.js')], ketcherRoot)
+  await checkMcpServer(node, [join(sciRoot, 'dist', 'mcp.cjs')], sciRoot)
 }
 
 export function selectPythonHealthImports(imports: string[]): string[] {

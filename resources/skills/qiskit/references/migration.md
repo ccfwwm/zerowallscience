@@ -4,15 +4,13 @@ Use this guide when adapting code written for Qiskit 0.x, Qiskit 1.x, or early Q
 
 ## Start with a Clean Environment
 
-Do not upgrade an environment containing both old `qiskit-terra` and modern `qiskit`.
+Do not upgrade a runtime containing both old `qiskit-terra` and modern `qiskit`.
+Use the shared dependency manifest to remove or replace the old distribution.
 
-```bash
-uv venv --python 3.13 .venv-qiskit-2
-source .venv-qiskit-2/bin/activate
-uv pip install \
-  "qiskit==2.5.0" \
-  "qiskit-ibm-runtime==0.48.0" \
-  "qiskit-aer==0.17.2"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pins: qiskit==2.5.0, qiskit-ibm-runtime==0.48.0,
+qiskit-aer==0.17.2
 ```
 
 Run:

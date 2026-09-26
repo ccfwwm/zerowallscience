@@ -19,7 +19,8 @@ await mkdir(root,{ recursive:true })
 const path = join(root,'pyramid.tif')
 await promisify(execFile)(hePythonPath(),[resolve('tools/science/create-he-reference.py'),path])
 // Use the public bundled H&E example as a software fixture, not medical truth.
-const segmentationPython=join(process.env.LOCALAPPDATA!,'ZeroWallScience','science-engines','he-stardist-7.0.0','venv','Scripts','python.exe')
+// StarDist is installed into the same shared ZeroWall Python as the HE reader.
+const segmentationPython=hePythonPath()
 await promisify(execFile)(segmentationPython,['-I','-c',"from stardist.data import test_image_he_2d;import tifffile,sys;tifffile.imwrite(sys.argv[1],test_image_he_2d(),photometric='rgb',tile=(128,128),metadata=None)",path])
 const store = new ResearchStore(join(root,'store.sqlite'))
 const project = store.createProject({ name:'Public HE StarDist software reference',rootPath:root })

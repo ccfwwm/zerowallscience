@@ -3,13 +3,11 @@
 
 Usage: python run_server.py <package>   e.g. python run_server.py mcp_pubmed
 
-Registered in core/src/mcp/bundledRegistry.ts as
-  command: "python", args: ["${MCP_SERVERS_DIR}/bio-tools/run_server.py", "<pkg>"]
-MCPPool resolves `python` to the shared operon-mcp conda env and substitutes
-the staged-assets path; deps come from the registry entry's installPip pins.
+ZeroWall launches this script through its single managed Python interpreter.
+All local MCP servers use the same shared Lib/site-packages dependency set.
 
 All packages (servers + the fleet retrieval packages they import) live flat
-under lib/ next to this file — no pip install of the vendored code itself.
+under lib/ next to this file; the vendored server code is not installed by pip.
 """
 
 import importlib

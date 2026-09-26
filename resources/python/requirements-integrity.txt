@@ -1,8 +1,12 @@
-# Local research screening, Python 3.12. Large OCR models remain optional.
+# Local research screening, Python 3.12. EasyOCR models download on first use.
 opencv-python-headless==4.13.0.92
 ImageHash==4.3.2
 pikepdf==10.13.0.post1
 structlog==26.1.0
+easyocr==1.7.2
+torchvision==0.29.0
+imagededup==0.3.3.post2
+openpyxl==3.1.5
 scikit-image>=0.24,<1
 pydantic-settings>=2.7,<3
 Markdown>=3.7,<4

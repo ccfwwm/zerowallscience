@@ -44,25 +44,19 @@ const LABEL_KEYS: Record<ScientificEngineId, EngineDialogKey> = {
  * Engines the Host can actually resolve into a process.
  *
  * `native-engines.ts` only implements `engineExecutable`/`engineArguments` for
- * fiji and napari, and `environmentConfig` only reads an environment variable
- * for fiji/napari/brain-globe. he-python, he-stardist and remote-r therefore
- * have no configuration field that any code path consumes: the HE StarDist
- * runner resolves its interpreter from `ZEROWALL_HE_STARDIST_PYTHON` or the
- * managed `science-engines/he-stardist-7.0.0` directory (see
- * `he-segmentation.ts`), and no code reads `remoteEndpoint` for remote-r at all.
- * They stay visible so the operator learns why, but read-only.
+ * fiji and napari, and `environmentConfig` only reads Fiji's native path.
+ * Python-backed engines all use the single managed ZeroWall Python runtime;
+ * interpreter paths are not editable here.
  */
-const CONFIGURABLE: ScientificEngineId[] = ['fiji', 'napari', 'brain-globe']
+const CONFIGURABLE: ScientificEngineId[] = ['fiji', 'brain-globe']
 const UNIMPLEMENTED: ScientificEngineId[] = ALL_IDS.filter(id => !CONFIGURABLE.includes(id))
 
-type FieldKey = 'installDirectory' | 'executablePath' | 'pythonPath' | 'remoteEndpoint' | 'javaPath'
+type FieldKey = 'installDirectory' | 'executablePath' | 'remoteEndpoint' | 'javaPath'
 
 /** The one field each configurable engine actually reads back on the Host. */
 function fieldFor(id: ScientificEngineId): { key: FieldKey; labelKey: EngineDialogKey; placeholderKey: EngineDialogKey } | undefined {
   if (id === 'fiji') return { key: 'installDirectory', labelKey: 'science.engine.field.fijiDirectory', placeholderKey: 'science.engine.placeholder.fijiDirectory' }
-  if (id === 'napari') return { key: 'pythonPath', labelKey: 'science.engine.field.napariPython', placeholderKey: 'science.engine.placeholder.napariPython' }
-  // BrainGlobe is probed from ZEROWALL_BRAINGLOBE_PYTHON / the managed ZeroWall
-  // interpreter, never from the stored record, so its path is display-only.
+  // BrainGlobe and napari use the managed ZeroWall interpreter.
   return undefined
 }
 

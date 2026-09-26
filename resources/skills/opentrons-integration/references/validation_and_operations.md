@@ -20,15 +20,9 @@ uv run --with "opentrons==9.1.1" opentrons_simulate protocol.py
 uv run --with "opentrons==9.0.0" opentrons_simulate protocol.py
 ```
 
-Dedicated Flex environment:
-
-```bash
-uv venv --python 3.10
-uv pip install --python .venv/bin/python -r skills/opentrons-integration/requirements-flex.txt
-.venv/bin/opentrons_simulate protocol.py
-```
-
-Use `requirements-ot2.txt` instead for the OT-2 compatibility environment.
+For local Flex simulation, use the package version synchronized into the shared
+ZeroWall Python runtime. Do not create a local venv. Use the Opentrons App for
+OT-2 compatibility analysis.
 `opentrons==9.1.1` intentionally rejects OT-2 protocols after the release-line
 split; the current OT-2 App remains the authoritative OT-2 analyzer.
 

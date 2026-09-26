@@ -50,12 +50,10 @@ Use `uv` when installing into an existing Python environment:
 uv pip install rdkit
 ```
 
-For reproducible chemistry environments, especially when mixing compiled scientific packages, conda-forge remains the upstream recommendation:
-
-```bash
-conda create -c conda-forge -n my-rdkit-env rdkit
-conda activate my-rdkit-env
-```
+For the local application, add the reviewed `rdkit` pin to the signed shared
+dependency manifest and synchronize it through Python settings. Conda is not a
+local ZeroWall installation path; use it only in an explicitly external
+remote/container workflow.
 
 Avoid installing both conda `rdkit` and PyPI `rdkit`/`rdkit-pypi` into the same environment unless you are deliberately debugging packaging behavior. Mixed installs can make it unclear which binary extension is being imported.
 

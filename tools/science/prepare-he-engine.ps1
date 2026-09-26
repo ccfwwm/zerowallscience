@@ -1,21 +1,26 @@
 param(
-  [string]$Python = 'python',
-  [string]$EngineRoot = (Join-Path $env:LOCALAPPDATA 'ZeroWallScience/science-engines/he-7.0.0'),
-  [switch]$WithReferenceTools
+  [string]$Python = (Join-Path $env:APPDATA 'zerowall-science/Python/python.exe')
 )
 $ErrorActionPreference = 'Stop'
-$enginePython = Join-Path $EngineRoot 'venv/Scripts/python.exe'
-if (-not (Test-Path -LiteralPath $enginePython)) {
-  & $Python -m venv (Join-Path $EngineRoot 'venv')
-  if ($LASTEXITCODE -ne 0) { throw 'Could not create the isolated HE environment.' }
+
+if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
+  throw "ZeroWall shared Python was not found: $Python. Start ZeroWall once to initialize the one shared runtime."
 }
-& $enginePython -m pip install --timeout 60 --retries 3 'openslide-python==1.4.6' 'openslide-bin==4.0.1.2' 'Pillow==11.3.0'
-if ($LASTEXITCODE -ne 0) { throw 'OpenSlide dependency installation failed.' }
-if ($WithReferenceTools) {
-  & $enginePython -m pip install --timeout 60 --retries 3 'numpy==2.2.6' 'tifffile==2025.6.11'
-  if ($LASTEXITCODE -ne 0) { throw 'HE reference tool installation failed.' }
+$runtimeRoot = Split-Path -Parent $Python
+if ((Split-Path -Leaf $runtimeRoot) -ne 'Python' -or (Split-Path -Leaf (Split-Path -Parent $runtimeRoot)) -ne 'zerowall-science') {
+  throw 'HE dependencies must use %APPDATA%\zerowall-science\Python\python.exe; isolated or user-selected Python paths are not supported.'
 }
-& $enginePython -E -P -c 'import json,openslide; print(json.dumps({"engine":"openslide","python":__import__("sys").executable,"binding":openslide.__version__,"library":openslide.__library_version__}))'
-if ($LASTEXITCODE -ne 0) { throw 'OpenSlide import/linked-library probe failed.' }
-Write-Output "HE engine ready: $enginePython"
-Write-Output 'The Host discovers the default directory; a custom directory requires ZEROWALL_HE_PYTHON.'
+$sitePackages = Join-Path $runtimeRoot 'Lib/site-packages'
+$manifestPath = Join-Path $PSScriptRoot '../../resources/python/dependency-manifest.json'
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$sharedPackages = @{}
+foreach ($name in @('openslide-python','openslide-bin','pillow','numpy','tifffile','tensorflow','keras','stardist','csbdeep')) {
+  $package = $manifest.packages | Where-Object { $_.name -eq $name } | Select-Object -First 1
+  if (-not $package -or -not $package.required) { throw "The signed shared dependency list does not require $name." }
+  $sharedPackages[$name] = $package.version
+}
+$requiredJson = ConvertTo-Json -InputObject $sharedPackages -Compress
+& $Python -I -c 'import importlib.metadata as m,json,sys; required=json.loads(sys.argv[1]); actual={name:(m.version(name) if any(d.metadata.get("Name","").lower()==name for d in m.distributions()) else None) for name in required}; missing={name:{"required":version,"installed":actual[name]} for name,version in required.items() if actual[name]!=version}; print(json.dumps({"python":sys.executable,"sitePackages":sys.argv[2],"versions":actual,"missing":missing})); sys.exit(bool(missing))' $requiredJson $sitePackages
+if ($LASTEXITCODE -ne 0) { throw 'Shared HE/StarDist dependencies are not ready. Install the signed required ZeroWall dependency manifest; this script does not create environments or install a private profile.' }
+Write-Output "HE engine verified in the shared runtime: $Python"
+Write-Output "Shared package directory: $sitePackages"

@@ -66,13 +66,14 @@ curl -s https://get.nextflow.io | bash      # creates ./nextflow
 sudo mv nextflow /usr/local/bin/             # put on PATH
 nextflow info                                # verify
 
-# Or via conda/bioconda (also gets a managed Java)
-conda create -n nf -c bioconda -c conda-forge nextflow nf-core
+# Nextflow itself is a Java/external workflow runtime. Configure it through
+# the selected container, HPC, or remote execution context; do not create a
+# local ZeroWall Conda environment.
 ```
 
 ```bash
 # nf-core tools (Python) for creating/linting/running nf-core assets
-uv pip install nf-core            # or: conda install -c bioconda nf-core
+Add `nf-core` to the signed shared dependency manifest in **Settings > Python environment** and synchronize it there. The `nf-core` command then uses the shared Python interpreter.
 nf-core --version
 ```
 

@@ -13,11 +13,7 @@ before generating files.
 - Containers or a documented execution profile for every process
 - A pinned Latch SDK
 
-Install:
-
-```bash
-uv pip install "latch==2.76.8"
-```
+Install the local SDK by adding `latch==2.76.8` to the signed shared dependency manifest in **Settings > Python environment** and synchronizing it. The submitted Latch workflow still uses its declared external container or remote execution context.
 
 ### Generate metadata
 
@@ -141,11 +137,7 @@ with current Latch documentation or support.
 Use Python 3.11 for the broadest compatibility with the pinned Snakemake 7.x
 dependency:
 
-```bash
-uv venv --python 3.11
-source .venv/bin/activate
-uv pip install "latch[snakemake]==2.76.8"
-```
+In the ZeroWall desktop, add `latch[snakemake]==2.76.8` to the signed shared dependency manifest and synchronize it from **Settings > Python environment**. Do not create a local venv. Latch's submitted workflow containers and remote task environments remain external runtimes.
 
 Generate metadata from the workflow config:
 
@@ -177,11 +169,7 @@ Inspect their signatures before generating hand-written metadata.
 The current Snakemake v2 tutorial is a compatibility-specific path. At the time
 of this refresh, it explicitly requires:
 
-```bash
-uv venv --python 3.11
-source .venv/bin/activate
-uv pip install "latch==2.62.1a2"
-```
+For the legacy tutorial pin, add `latch==2.62.1a2` to the same shared manifest only when that compatibility track is required. Do not create a second local environment; the generated Latch workflow still runs in its declared remote container.
 
 It uses imports such as:
 
@@ -205,7 +193,7 @@ also pins the workflow runtime separately to
 Therefore:
 
 - Re-check the official tutorial's exact pin before starting.
-- Use an isolated environment.
+- Keep the local CLI in the shared ZeroWall Python environment; isolate only the submitted remote container or external execution context.
 - Preserve and review both the local CLI pin and generated runtime pin.
 - Do not upgrade that environment to stable 2.76.8 without a migration plan.
 - Do not copy v2 imports into a stable-track project.

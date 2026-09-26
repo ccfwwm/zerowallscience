@@ -44,16 +44,13 @@ gget is a command-line bioinformatics tool and Python package providing unified 
 
 ## Installation
 
-Install gget in a clean virtual environment to avoid conflicts:
+Install gget through the ZeroWall signed dependency manifest. All local Skills
+share the same interpreter and site-packages directory:
 
-```bash
-# Reproducible install targeting this skill
-uv venv .venv
-source .venv/bin/activate
-uv pip install "gget==0.30.5"
-
-# In Python/Jupyter
-import gget
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: gget==0.30.5
+Use the shared Python command line for Python/Jupyter checks.
 ```
 
 ## Quick Start

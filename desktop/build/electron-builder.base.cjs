@@ -54,9 +54,11 @@ const common = {
   extraResources: [
     { from: '../resources/biogenie', to: 'biogenie', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
     { from: '../resources/python/dependency-manifest.json', to: 'python/dependency-manifest.json' },
-    { from: 'dist/python-base-1.4.1/latest.json', to: 'python/base-manifest.json' },
-    { from: 'dist/python-base-1.4.1/zerowall-python-windows-x64-1.4.1.zip', to: 'python/base-runtime.zip' },
+    { from: 'dist/python-base-3.12.10/latest.json', to: 'python/base-manifest.json' },
+    { from: 'dist/python-base-3.12.10/zerowall-python-windows-x64-3.12.10.zip', to: 'python/base-runtime.zip' },
+    { from: '../resources/mcp/bio-tools', to: 'bio-tools', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
     { from: '../resources/mcp/ketcher-chemistry', to: 'ketcher-chemistry', filter: ['server.js', 'widget/**', 'LICENSE*', 'UPSTREAM.json'] },
+    { from: '../mcp-environment-staging/sci', to: 'sci', filter: ['dist/**', 'zerowall-mcp-launcher.cjs', 'package.json', 'LICENSE*', 'README.md'] },
     { from: 'build/zerowall.patch.yml', to: 'zerowall.patch.yml' },
     { from: 'build/splash.html', to: 'splash.html' },
     { from: '../.build/resources/skills', to: 'skills', filter: ['**/*'] },

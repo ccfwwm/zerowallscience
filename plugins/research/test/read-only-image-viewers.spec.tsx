@@ -71,14 +71,14 @@ it('keeps a retained BrainGlobe tab idle until the user opens it', async () => {
 })
 
 it('shows shared scientific paths without offering configuration that its runner ignores', async () => {
-  const python = 'C:\\Users\\scientist\\AppData\\Roaming\\zerowall-science\\Python\\python.exe'
+  const sharedLabel = '由软件共享 Python 环境统一管理'
   const ids = ['fiji', 'napari', 'brain-globe', 'he-python', 'he-stardist', 'remote-r'] as const
-  const configs = ids.map(id => ({ id, enabled: true, source: 'default', status: 'unknown', ...(id === 'remote-r' ? { remoteEndpoint: 'http://rmcp.example/mcp' } : id === 'fiji' ? { installDirectory: 'C:\\Fiji' } : { pythonPath: python }) }))
+  const configs = ids.map(id => ({ id, enabled: true, source: 'default', status: 'unknown', ...(id === 'remote-r' ? { remoteEndpoint: 'http://rmcp.example/mcp' } : id === 'fiji' ? { installDirectory: 'C:\\Fiji' } : {}) }))
   const remote = { getScientificEngineConfigs: vi.fn(async () => ok(configs)) }
   render(<ScientificEngineCenter remote={remote as any} sessionId="session-1" showLaunch={false} />)
-  await waitFor(() => expect((screen.getByRole('textbox', { name: 'napari 路径' }) as HTMLInputElement).value).toBe(python))
+  await waitFor(() => expect((screen.getByRole('textbox', { name: 'napari 路径' }) as HTMLInputElement).value).toBe(sharedLabel))
   expect((screen.getByRole('textbox', { name: 'BrainGlobe 路径' }) as HTMLInputElement).readOnly).toBe(true)
   expect((screen.getByRole('textbox', { name: 'HE StarDist 路径' }) as HTMLInputElement).readOnly).toBe(true)
   expect((screen.getByRole('textbox', { name: '远程 R 路径' }) as HTMLInputElement).value).toBe('http://rmcp.example/mcp')
-  expect(screen.getAllByRole('button', { name: '保存' })).toHaveLength(2)
+  expect(screen.getAllByRole('button', { name: '保存' })).toHaveLength(1)
 })

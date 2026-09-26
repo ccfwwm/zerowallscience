@@ -1,4 +1,4 @@
-# Broad CPU research profile; existing core ABI versions are constrained by the
+# Broad CPU research set in the one shared runtime; existing core ABI versions are constrained by the
 # three existing locks when compiling requirements-windows.lock.
 -r requirements-science.txt
 -r requirements-managed-compatible.txt
@@ -56,11 +56,11 @@ qiskit[visualization]>=2.5
 playwright==1.62.0
 pycryptodome==3.23.0
 tomli==2.2.1
-# BrainGlobe atlas and registration stack. brain-atlas.ts and brain-transform.ts
+# BrainGlobe atlas and registration stack in the shared runtime. brain-atlas.ts and brain-transform.ts
 # both refuse to run unless brainreg reports exactly 1.0.16, and the atlas API
 # must agree with the managed atlas on disk, so these are pinned rather than
 # floated. torch arrives transitively through cellfinder and stays in the
-# science layer — it is downloaded on demand, never shipped in the archive.
+# shared dependency manifest; it is downloaded separately, never shipped in the archive.
 brainglobe
 brainglobe-atlasapi
 brainglobe-utils
@@ -69,11 +69,11 @@ cellfinder
 brainrender
 # HE StarDist segmentation. he-segmentation-runner.ts imports numpy, openslide,
 # tifffile, tensorflow, stardist and csbdeep at module scope, so the shared
-# environment must supply all of them; HE no longer gets a private venv.
+# environment must supply all of them; HE has no private venv.
 # Resolved against the same three constraint locks as the rest of this file, so
-# tensorflow keeps the shared numpy 2.5.3 / protobuf / keras pins. These stay in
-# the on-demand science layer: they are installed through the signed dependency
-# manifest and are never shipped inside the installer archive.
+# tensorflow keeps the shared numpy 2.5.3 / protobuf / keras pins. They are
+# installed through the signed dependency manifest and never shipped inside the
+# installer archive.
 stardist
 csbdeep
 tensorflow
@@ -81,3 +81,15 @@ tensorflow
 # supplies them as a wheel instead of an external installer.
 openslide-python
 openslide-bin
+# BioGenie runs in the same shared Python as every other capability.
+primer3-py==2.3.1
+dnachisel==3.2.16
+dna-features-viewer==3.1.5
+pydna==5.5.16
+biocrnpyler==1.3.4
+bioscrape==1.4.1
+viennarna==2.7.2
+sbol3==1.2.0.post0
+cobra>=0.32,<1
+adjustText>=1.3,<2
+scienceplots>=2.1,<3

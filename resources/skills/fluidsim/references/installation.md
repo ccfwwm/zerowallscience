@@ -46,12 +46,10 @@ Check the lock into the study repository. Record:
 - Wheel/sdist hashes and package index.
 - Compiler and native-library versions if any package builds locally.
 
-For an isolated smoke environment:
-
-```bash
-uv venv --python 3.11
-uv pip install "fluidsim[fft]==0.9.0" "fluidfft==0.4.5" "pyFFTW==0.15.1"
-```
+For a local ZeroWall smoke test, install the pins through the signed shared
+dependency manifest and run the smoke command with
+`%APPDATA%\zerowall-science\Python\python.exe`. Do not create a venv or a
+second site-packages directory.
 
 This pins direct dependencies but does not replace a lock for transitive
 reproducibility.

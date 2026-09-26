@@ -107,7 +107,7 @@ export const rWorkflows = {
           "id": "omicverse.run.python",
           "public_tool": "omicverse_execute",
           "category": "omicverse_execute",
-          "summary": "Execute Python in the isolated OmicVerse CPU worker. Write outputs in OUTPUT_DIR; shared inputs are read-only.",
+          "summary": "Execute Python in the single shared ZeroWall Python runtime through the OmicVerse CPU worker. Write outputs in OUTPUT_DIR; shared inputs are read-only.",
           "input_schema": {
             "type": "object",
             "properties": {
@@ -17961,7 +17961,7 @@ export const rWorkflows = {
           "id": "biomni.run.python",
           "public_tool": "biomni_execute",
           "category": "biomni_execute",
-          "summary": "Run Python in the shared host Biomni venv. Read BIOMNI_DATA_ROOT and write artifacts in the job directory. Task LLM configuration is inherited by Biomni calls. Requires confirm=true.",
+          "summary": "Run Python in ZeroWall Science's single shared Python runtime. Read BIOMNI_DATA_ROOT and write artifacts in the job directory. Task LLM configuration is inherited by Biomni calls. Requires confirm=true.",
           "input_schema": {
             "type": "object",
             "properties": {

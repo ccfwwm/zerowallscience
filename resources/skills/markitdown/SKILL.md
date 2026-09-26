@@ -58,17 +58,17 @@ This skill targets **MarkItDown 0.1.6**, released May 26, 2026. New code should 
 
 ## Installation
 
-Create an isolated environment:
+Install the local converter through the ZeroWall signed dependency manifest.
+The application has one shared Python runtime; do not create a venv:
 
-```bash
-uv venv --python 3.12 .venv
-source .venv/bin/activate
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
 ```
 
 Install every built-in feature:
 
-```bash
-uv pip install "markitdown[all]==0.1.6"
+```text
+Required pin: markitdown[all]==0.1.6
 ```
 
 Or install only the converters required by the task:

@@ -27,7 +27,7 @@ describe('research runtime policy provenance', () => {
     // coreVersion tracks SCIENCE_SYSTEM_PROMPT_VERSION, the constant the Host
     // actually reports; the literal pin has to move with it or a prompt bump
     // reads as a provenance regression instead of a rename.
-    expect(first).toMatchObject({ coreVersion: '7.0.4-core.1', contextVersion: '7.0.0-context.1', skillContextCount: 1 })
+    expect(first).toMatchObject({ coreVersion: '7.1.0-core.1', contextVersion: '7.0.0-context.1', skillContextCount: 1 })
     expect(JSON.stringify(first)).not.toContain('private instructions')
     expect(JSON.stringify(first)).not.toContain('secret prompt body')
     const changed = request()

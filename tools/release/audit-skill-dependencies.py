@@ -77,15 +77,21 @@ def main():
     parser.add_argument('--site-packages')
     parser.add_argument('--verification')
     parser.add_argument('--output', default=str(ROOT / 'resources/python/skill-dependencies.json'))
+    parser.add_argument('--dependency-manifest', default=str(ROOT / 'resources/python/dependency-manifest.json'))
     args = parser.parse_args()
     root = Path(args.skills_root).resolve()
     policy = json.loads((ROOT / 'resources/python/skill-dependency-policy.json').read_text())
+    dependency_manifest = json.loads(Path(args.dependency_manifest).read_text(encoding='utf-8'))
+    manifest_packages = {
+        norm(item['name']): item for item in dependency_manifest.get('packages', [])
+        if isinstance(item, dict) and isinstance(item.get('name'), str) and item.get('required') is True
+    }
     aliases = policy['importAliases']
     packages, module_packages = {}, {}
     if args.site_packages:
         for dist in metadata.distributions(path=[args.site_packages]):
             name = norm(dist.metadata['Name'])
-            packages[name] = {'version': dist.version, 'location': 'bio-tools/python/site-packages', 'imports': []}
+            packages[name] = {'version': dist.version, 'location': 'Python/Lib/site-packages', 'imports': []}
             tops = (dist.read_text('top_level.txt') or '').splitlines()
             if not tops:
                 tops = sorted({str(p).replace('\\', '/').split('/')[0].removesuffix('.py') for p in (dist.files or []) if '/' in str(p) or str(p).endswith('.py')})
@@ -96,8 +102,8 @@ def main():
     checks = {}
     if args.verification:
         verification = json.loads(Path(args.verification).read_text(encoding='utf-8'))
-        if verification.get('python') != '3.12.10' or not verification.get('isolated'):
-            raise SystemExit('Verification must use isolated CPython 3.12.10')
+        if verification.get('python') != '3.12.10' or verification.get('runtimeMode', 'shared') != 'shared':
+            raise SystemExit('Verification must use the shared CPython 3.12.10 runtime')
         checks = verification.get('imports', {})
         verified_inventory = verification.get('packages', {})
         if {k:v['version'] for k,v in packages.items()} != verified_inventory:
@@ -164,19 +170,37 @@ def main():
                 if module in sys.stdlib_module_names or module in local:
                     continue
                 pkg = aliases.get(module, module_packages.get(module, norm(module)))
-                evidence.append({'package': pkg, 'import': module, 'file': rel, 'line': line, 'kind': kind, 'role': 'optional-feature' if kind == 'optional-import' and role == 'runtime' else role})
+                evidence.append({'package': pkg, 'import': module, 'file': rel, 'line': line, 'kind': kind, 'role': 'runtime' if role == 'runtime' else role})
         grouped = defaultdict(list)
         for item in evidence:
             grouped[item['package']].append(item)
         requirements = []
         for pkg, sources in sorted(grouped.items()):
             installed = packages.get(pkg)
+            manifest_item = manifest_packages.get(pkg)
             modules = sorted({s['import'] for s in sources if s.get('import')})
             verified_modules = {m.split('.')[0] for m, result in checks.items() if result.get('ok')}
-            verified = bool(installed) and (all(m in verified_modules for m in modules) if modules else any(m in verified_modules for m in installed['imports']))
-            status = 'managed' if verified else 'optional'
-            reason = 'Installed and isolated import verified.' if verified else 'Not verified in this shared runtime; see source evidence and independent environment policy.'
-            req = {'name': pkg, 'status': status, 'reason': reason, 'sources': sources, 'imports': modules, 'validation': 'passed' if verified else 'not-verified'}
+            exact = bool(installed and manifest_item and installed['version'] == manifest_item.get('version'))
+            imported = exact and (all(m in verified_modules for m in modules) if modules else any(m in verified_modules for m in installed['imports']))
+            if manifest_item:
+                status = 'managed' if exact else 'missing'
+                if not installed:
+                    validation = 'missing'
+                    reason = 'Required by the signed shared dependency manifest; installation is pending or failed.'
+                elif not exact:
+                    validation = 'version-mismatch'
+                    reason = f"Required by the signed shared dependency manifest; installed {installed['version']} does not match {manifest_item.get('version')}."
+                elif imported:
+                    validation = 'passed'
+                    reason = 'Required by the signed shared dependency manifest; shared-runtime import verified.'
+                else:
+                    validation = 'not-verified'
+                    reason = 'Required by the signed shared dependency manifest; installed in the shared runtime but import was not exercised.'
+            else:
+                status = 'incompatible'
+                validation = 'not-in-manifest'
+                reason = 'Declared by a Skill but absent from the signed shared manifest; add it to the shared runtime instead of creating a private profile.'
+            req = {'name': pkg, 'status': status, 'reason': reason, 'sources': sources, 'imports': modules, 'validation': validation}
             if modules:
                 req['import'] = modules[0]
             if installed:
@@ -190,20 +214,20 @@ def main():
                         except InvalidRequirement:
                             source['versionSatisfied'] = None
                 if any(s.get('versionSatisfied') is False for s in sources):
-                    req.update(status='optional', validation='version-mismatch', reason='Installed version does not satisfy every documented requirement; see source evidence.')
+                    req.update(validation='version-mismatch', reason='The installed shared-runtime version does not satisfy every documented requirement; update the signed shared manifest or the declaration.')
             requirements.append(req)
-        unresolved = [r for r in requirements if r['status'] != 'managed' and any(s['role'] != 'development' for s in r['sources'])]
-        status = 'optional' if unresolved else 'managed' if any(r['status'] == 'managed' for r in requirements) else 'optional' if requirements else 'ready'
-        reason = 'Runtime dependencies are verified; optional/documented versions remain separately recorded.' if status == 'managed' else 'No third-party Python dependency detected.' if status == 'ready' else 'Some capabilities require additional dependencies; consult evidence.'
-        if name in policy['heavy']:
-            status, reason = 'optional', 'Heavy models or specialized runtime: use an independent environment.'
+        unresolved = [r for r in requirements if r['status'] in ('missing', 'incompatible') and any(s['role'] != 'development' for s in r['sources'])]
+        status = 'incompatible' if any(r['status'] == 'incompatible' for r in unresolved) else 'missing' if unresolved else 'managed' if any(r['status'] == 'managed' for r in requirements) else 'ready'
+        reason = 'Shared dependencies are declared in the signed manifest; inspect per-package validation before use.' if status == 'managed' else 'No third-party Python dependency detected.' if status == 'ready' else 'A required shared dependency is absent, failed, version-mismatched, or not included in the signed manifest.'
+        if name in policy.get('incompatibleSkills', {}):
+            status, reason = 'incompatible', policy['incompatibleSkills'][name]
         if name in policy['external']:
             status, reason = 'external', 'Requires an external service, credentials, hardware or system runtime.'
-        if name in policy['independent']:
-            status, reason = 'incompatible', policy['independent'][name]
+        if name in policy.get('incompatible', {}):
+            status, reason = 'incompatible', policy['incompatible'][name]
         skills.append({'name': name, 'path': str(folder.relative_to(root)).replace('\\', '/'), 'status': status, 'reason': reason, 'detectedImports': sorted({s['import'] for s in evidence if s.get('import')}), 'requirements': requirements})
-    summary = {s: sum(skill['status'] == s for skill in skills) for s in ('ready', 'managed', 'optional', 'external', 'incompatible')}
-    report = {'schema': 1, 'platform': 'win32', 'architecture': 'x64', 'python': '3.12.10', 'generatedAt': datetime.now(timezone.utc).isoformat(), 'summary': summary, 'skills': skills, 'parseErrors': parse_errors, 'scannedFiles': len(paths), 'installedPackageCount': len(packages)}
+    summary = {s: sum(skill['status'] == s for skill in skills) for s in ('ready', 'managed', 'missing', 'external', 'incompatible')}
+    report = {'schema': 1, 'platform': 'win32', 'architecture': 'x64', 'python': '3.12.10', 'dependencyManifestRevision': dependency_manifest.get('revision'), 'generatedAt': datetime.now(timezone.utc).isoformat(), 'summary': summary, 'skills': skills, 'parseErrors': parse_errors, 'scannedFiles': len(paths), 'installedPackageCount': len(packages)}
     Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     print(json.dumps({'skills': len(skills), 'summary': summary, 'parseErrors': len(parse_errors)}))
 

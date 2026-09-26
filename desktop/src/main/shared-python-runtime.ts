@@ -8,6 +8,38 @@ import { sanitizePythonTlsEnvironment } from './python-mirror.js'
 
 export const SHARED_LAYOUT = { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } as const
 
+/**
+ * Keep Python's `site` module enabled so package `.pth` files (for example
+ * pywin32's DLL path hook) continue to work, while removing the per-user site
+ * directory that `site` would otherwise add to an embeddable interpreter.
+ * This file is installed inside the owned shared site-packages directory and
+ * never reads or deletes anything from the user's other Python installation.
+ */
+const SHARED_SITECUSTOMIZE = `"""ZeroWall Science shared-runtime isolation hook."""
+from __future__ import annotations
+import os
+import sys
+from pathlib import Path
+
+os.environ.setdefault("PYTHONNOUSERSITE", "1")
+try:
+    import site
+    user_site = Path(site.getusersitepackages()).resolve()
+    for item in list(sys.path):
+        if not item:
+            continue
+        try:
+            resolved = Path(item).resolve()
+        except OSError:
+            continue
+        if resolved == user_site or user_site in resolved.parents:
+            sys.path.remove(item)
+except Exception:
+    # Every managed child also sets PYTHONNOUSERSITE; startup must remain
+    # usable if a platform-specific path cannot be resolved here.
+    pass
+`
+
 /** Only a real directory containing its own interpreter is the stable runtime. */
 export async function isStablePythonDirectory(userDataRoot: string): Promise<boolean> {
   const root = join(userDataRoot, 'Python')
@@ -35,6 +67,7 @@ export async function migrateStablePython(managementRoot: string, sourceRoot: st
     await mkdir(staging, { recursive: true })
     if (manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable && manifest.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages) {
       await copyRuntimeSnapshot(dirname(join(sourceRoot, manifest.python.relativeExecutable)), staging)
+      await mergeLegacyPythonOverlay(join(staging, 'python.exe'), join(staging, 'Lib', 'site-packages'), overlay)
     } else {
       const candidate = join(managementRoot, `python-migration-${randomUUID()}`)
       try {
@@ -169,13 +202,25 @@ export async function normalizeRuntimeCandidate(root: string, manifest: McpEnvir
   // Rewrite embeddable Python's import search path; no old overlay is used.
   for (const name of await readdir(runtime)) if (name.endsWith('._pth')) {
     const file = join(runtime, name)
-    const lines = (await readFile(file, 'utf8')).split(/\r?\n/u).filter(line => line && !line.includes('site-packages') && !line.includes('overlay'))
+    const lines = (await readFile(file, 'utf8')).split(/\r?\n/u).filter(line => line && !line.includes('site-packages') && !line.includes('overlay')).map(line => line === '../lib' ? '../bio-tools/lib' : line)
+    // Keep `import site` for package `.pth` hooks, then let our owned
+    // sitecustomize module remove only the user-site entries.
     await writeFile(file, [...lines.filter(line => line !== 'import site'), 'Lib/site-packages', 'import site', ''].join('\n'))
   }
-  if (overlay && resolve(overlay) !== resolve(site) && await stat(overlay).then(v => v.isDirectory(), () => false)) {
-    // Remove only distributions replaced by user packages, using their RECORD
-    // metadata to preserve shared namespace directories.
-    const script = `import importlib.metadata as m,pathlib,sys,re,shutil
+  await writeFile(join(runtime, 'Lib', 'site-packages', 'sitecustomize.py'), SHARED_SITECUSTOMIZE, 'utf8')
+  await mergeLegacyPythonOverlay(join(runtime, 'python.exe'), site, overlay)
+  // Same repair as `readRuntimeLayout`; see `repairCertifiBundles`.
+  await repairCertifiBundles(site)
+  const layout = { schema: 1, ...SHARED_LAYOUT, archiveSha256: manifest.archiveSha256, migratedAt: new Date().toISOString(), sourceExecutable: manifest.python.relativeExecutable, sourceSitePackages: manifest.python.relativeSitePackages, resourcesRelocated }
+  await writeFile(join(root, 'runtime-layout.json'), JSON.stringify(layout, null, 2))
+  return { ...manifest, python: { ...manifest.python, ...SHARED_LAYOUT, ...(resourcesRelocated ? { dependencyManifests: manifest.python.dependencyManifests?.map(path => path.replace(/^python[\\/]/iu, 'resources/python/')) } : {}) } }
+}
+
+/** One-time import of packages from releases that stored user wheels in an
+ * overlay. Runtime consumers never search the source directory after migration. */
+export async function mergeLegacyPythonOverlay(executable: string, site: string, overlay?: string): Promise<void> {
+  if (!overlay || resolve(overlay) === resolve(site) || !await stat(overlay).then(value => value.isDirectory(), () => false)) return
+  const script = `import importlib.metadata as m,pathlib,sys,re,shutil
 site=pathlib.Path(sys.argv[1]).resolve(); overlay=sys.argv[2]
 norm=lambda s:re.sub(r'[-_.]+','-',s).lower()
 names={norm(d.metadata['Name']) for d in m.distributions(path=[overlay])}
@@ -188,14 +233,8 @@ for d in list(m.distributions(path=[str(site)])):
  metadata=pathlib.Path(d._path).resolve()
  if metadata.is_relative_to(site) and metadata.is_dir(): shutil.rmtree(metadata)
 `
-    await runPython(join(runtime, 'python.exe'), ['-I', '-B', '-c', script, site, overlay])
-    await cp(overlay, site, { recursive: true, dereference: true })
-  }
-  // Same repair as `readRuntimeLayout`; see `repairCertifiBundles`.
-  await repairCertifiBundles(site)
-  const layout = { schema: 1, ...SHARED_LAYOUT, archiveSha256: manifest.archiveSha256, migratedAt: new Date().toISOString(), sourceExecutable: manifest.python.relativeExecutable, sourceSitePackages: manifest.python.relativeSitePackages, resourcesRelocated }
-  await writeFile(join(root, 'runtime-layout.json'), JSON.stringify(layout, null, 2))
-  return { ...manifest, python: { ...manifest.python, ...SHARED_LAYOUT, ...(resourcesRelocated ? { dependencyManifests: manifest.python.dependencyManifests?.map(path => path.replace(/^python[\\/]/iu, 'resources/python/')) } : {}) } }
+  await runPython(executable, ['-I', '-B', '-c', script, site, overlay])
+  await cp(overlay, site, { recursive: true, dereference: true })
 }
 
 async function renameDirectory(source: string, target: string): Promise<void> {
@@ -213,7 +252,7 @@ export async function verifySharedPackages(root: string): Promise<void> {
 
 async function runPython(executable: string, args: string[]): Promise<void> {
   await new Promise<void>((accept, reject) => {
-    const child = spawn(executable, args, { windowsHide: true, env: sanitizePythonTlsEnvironment(), stdio: ['ignore', 'ignore', 'pipe'] })
+    const child = spawn(executable, args, { windowsHide: true, env: { ...sanitizePythonTlsEnvironment(), PYTHONNOUSERSITE: '1', PYTHONPATH: '' }, stdio: ['ignore', 'ignore', 'pipe'] })
     let error = ''; child.stderr.on('data', data => { error = (error + data).slice(-4000) })
     const timer = setTimeout(() => { child.kill(); reject(new Error('Shared Python migration verification timed out.')) }, 120_000)
     child.once('error', err => { clearTimeout(timer); reject(err) })

@@ -1,4 +1,4 @@
-# Optional capability layer for literature, Office, plotting, and bioinformatics.
+# Shared capability layer for literature, Office, plotting, and bioinformatics.
 -r requirements-base.txt
 pypdf>=4,<7
 pymupdf>=1.24,<2

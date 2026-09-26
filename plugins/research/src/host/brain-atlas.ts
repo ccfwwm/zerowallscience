@@ -166,15 +166,10 @@ except Exception as exc:
  * system Python as the BrainGlobe environment would be a false claim.
  */
 export async function probeBrainGlobe(): Promise<ScientificEngineStatus> {
-  const explicit = process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim()
-  let executable = explicit
-  let managed = false
-  if (!executable) {
-    const resolved = await resolveManagedBrainPython()
-    if (!resolved) return { id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, reason: '未找到 ZeroWall 集成 Python 环境；BrainGlobe 与 napari 共用此环境，不会创建独立环境。' }
-    executable = resolved.executable
-    managed = true
-  }
+  const resolved = await resolveManagedBrainPython()
+  if (!resolved) return { id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, reason: '未找到 ZeroWall 唯一共享 Python 环境；BrainGlobe 不会切换到其他解释器或创建独立环境。' }
+  const executable = resolved.executable
+  const managed = true
   try { await access(executable) } catch { return { id: 'brainglobe', name: 'BrainGlobe managed environment', available: false, path: executable, reason: `未找到受管理 Python：${executable}` } }
   const atlas = await atlasStatus()
   return await new Promise(resolvePromise => {
@@ -273,7 +268,7 @@ export class BrainAtlasService {
    */
   private active: { action: string; startedAt: number } | undefined
   private jobs=new BrainJobScope()
-  constructor(private readonly store: ResearchStore, private readonly options: { pythonPath?: string; atlasDirectory?: string } = {}) {}
+  constructor(private readonly store: ResearchStore, private readonly options: { atlasDirectory?: string } = {}) {}
 
   /** Claim the runner, or refuse with the holder's identity and elapsed time. */
   private acquire(action: string): void {
@@ -334,14 +329,12 @@ export class BrainAtlasService {
    * Interpreters are resolved per call, not cached, because the managed
    * environment is replaced in place by the desktop installer and a stale
    * absolute path would keep pointing at a retired generation.
-   * Precedence: explicit option, dedicated env var, managed environment, bare python.
+   * The only supported interpreter is the managed shared application runtime.
    */
   private async interpreter(): Promise<{ executable: string; bootstrap: string }> {
-    const explicit = this.options.pythonPath ?? process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim()
-    if (explicit) return { executable: explicit, bootstrap: '' }
     const managed = await resolveManagedBrainPython()
     if (managed) return { executable: managed.executable, bootstrap: brainBootstrap(managed) }
-    return { executable: process.env.ZEROWALL_PYTHON?.trim() || 'python', bootstrap: '' }
+    throw new Error('未找到 ZeroWall 唯一共享 Python 环境；BrainGlobe 不会切换到系统 Python 或其他环境。')
   }
 
   /**

@@ -227,7 +227,7 @@ def main():
             result={'ok':False,'seconds':timeout,'output':'Timed out'}
         print(name, 'PASS' if result['ok'] else 'FAIL', flush=True)
         return result
-    report={'python':'3.12.10','isolated':True,'packages':packages,'imports':{},'cases':{}}
+    report={'python':'3.12.10','runtimeMode':'shared','packages':packages,'imports':{},'cases':{}}
     if not args.case:
         # Also exercise installed modules used by Skill source/vendor files,
         # including dependencies that previously appeared only in documentation.

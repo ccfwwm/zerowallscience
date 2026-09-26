@@ -167,6 +167,12 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   useEffect(() => { const maximum = Math.max(0, rows.length * rowHeight - height); if (list.current && list.current.scrollTop > maximum) list.current.scrollTop = maximum }, [rows.length, height])
   const inventoryMatches = !active.current || info?.snapshotId === active.current
   const working = status && ['checking', 'downloading', 'verifying', 'installing'].includes(status.phase)
+  useEffect(() => {
+    if (!working) return
+    const timer = window.setInterval(() => { void loadStatus().catch(() => undefined) }, 1500)
+    return () => window.clearInterval(timer)
+  }, [working, loadStatus])
+  const liveLog = status?.updateJob?.logLines ?? events.filter(event => event.action === 'progress' && event.logLine).map(event => event.logLine!).reverse().slice(-80)
   const runtimeRoot = info?.runtimeRoot
   const stablePath = runtimeRoot
   const sharedSitePackages = runtimeRoot ? `${runtimeRoot.replace(/[\\/]+$/u, '')}\\Lib\\site-packages` : t('python.shared.pathPending')
@@ -213,13 +219,13 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     </header>
     <div className={css.summary}>
       <div className={css.metric}><span>{t('python.version')}</span><strong>{info?.version ?? '—'}</strong><small>{t('python.environment')}</small></div>
-      <div className={css.metric}><span>{t('python.environment')}</span><strong>{status?.activeEnvironment?.environmentVersion ?? info?.environmentVersion ?? '—'}</strong><small>{(status?.activeEnvironment?.localRevision ?? info?.localRevision) ? t('python.manager.localRevision', { revision: status?.activeEnvironment?.localRevision ?? info?.localRevision }) : info?.ready ? t('python.ready') : t('python.notInstalled')}</small></div>
-      <div className={css.metric}><span>{t('python.packages')}</span><strong>{inventoryMatches ? info?.packageCount ?? '—' : '…'}</strong><small>{t('python.manager.effective')}</small></div>
+      <div className={css.metric}><span>{t('python.manifestPackages')}</span><strong>{dependencies?.packageCount ?? '—'}</strong><small>{dependencies?.changes.length ? `${t('python.shared.pendingMetric')}：${dependencies.changes.length}` : t('python.ready')}</small></div>
+      <div className={css.metric}><span>{t('python.installedPackages')}</span><strong>{inventoryMatches ? info?.packageCount ?? '—' : '…'}</strong><small>{t('python.manager.effective')}</small></div>
       <div className={css.metric}><span>{t('python.status')}</span><strong>{info?.ready ? t('python.ready') : inventoryLoading || working ? t('python.checking') : t('python.shared.pending')}</strong><small>{t('python.shared.health')}: {healthLabel(info?.ready ? 'ok' : undefined)}</small></div>
     </div>
     <div className={css.update} role="status" aria-live="polite">
       <div><strong>{working ? phaseLabel() : status?.phase === 'paused' ? t('python.manager.paused') : t('python.shared.updatePolicy')}</strong>
-        <span>{status?.updateJob?.targetVersion ? t('python.manager.target', { version: status.updateJob.targetVersion }) : status?.onlineEnvironmentVersion ? t('python.manager.online', { version: status.onlineEnvironmentVersion }) : t('python.manager.pinnedTask')}</span></div>
+        <span>{dependencies?.packageCount ? `${dependencies.packageCount} · Python ${dependencies.pythonVersion}` : t('python.manager.pinnedTask')}</span></div>
       {working && <>
         <progress max={100} value={status.progress ?? 0} />
         {/* A bare progress bar says "something is happening"; the stage and the
@@ -232,7 +238,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
       </>}
       {dependencies && <div className={css.manifestMeta}>
         <strong>{t('python.shared.pendingCount', { count: dependencies.changes.length })}</strong>
-        {dependencies.manifestRevision && <span>{t('python.shared.manifestRevision')}: {dependencies.manifestRevision}</span>}
+        {dependencies.packageCount > 0 && <span>{dependencies.packageCount} {t('python.shared.dependencies')}</span>}
         {dependencies.source && <span>{t(`python.shared.source.${dependencies.source}` as 'python.shared.source.remote')}</span>}
         {dependencies.checkedAt && <time dateTime={dependencies.checkedAt}>{t('python.shared.lastChecked')}: {new Date(dependencies.checkedAt).toLocaleString()}</time>}
       </div>}
@@ -247,8 +253,12 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         {!!status?.updateJob?.totalBytes && <span>{((status.updateJob.receivedBytes ?? 0) / 1024 ** 2).toFixed(1)} / {(status.updateJob.totalBytes / 1024 ** 2).toFixed(1)} MiB</span>}
       </div>
     </div>
+    {(working || liveLog.length > 0) && <details className={css.liveLog} open={working}>
+      <summary>{t('python.shared.log')} · {liveLog.length}</summary>
+      <pre role="log" aria-live="polite">{liveLog.length ? liveLog.join('\n') : t('python.shared.logEmpty')}</pre>
+    </details>}
     <div className={css.environmentGrid}>
-      <section className={css.card} aria-labelledby="python-path-title"><div className={css.cardTitle}><div><span className={css.sectionKicker}>{t('python.environment')}</span><h3 id="python-path-title">{t('python.shared.path')}</h3></div><span className={css.checkMark}>{stablePath ? '✓' : '—'}</span></div><div className={css.pathBox} title={stablePath ?? ''}>{stablePath ?? t('python.shared.pathPending')}</div><div className={css.cardActions}><button disabled={!stablePath} onClick={() => copyPath(stablePath)}>{t('python.shared.copy')}</button><button disabled={!stablePath} onClick={() => openPath(stablePath)}>{t('python.shared.open')}</button></div><p className={css.hint}>{t('python.shared.subtitle')}</p></section>
+      <section className={css.card} aria-labelledby="python-path-title"><div className={css.cardTitle}><div><span className={css.sectionKicker}>{t('python.environment')}</span><h3 id="python-path-title">{t('python.shared.path')}</h3></div><span className={css.checkMark}>{stablePath ? '✓' : '—'}</span></div><div className={css.pathBox} title={stablePath ?? ''}>{stablePath ?? t('python.shared.pathPending')}</div><div className={css.cardActions}><button disabled={!stablePath} onClick={() => copyPath(stablePath)}>{t('python.shared.copy')}</button><button disabled={!stablePath} onClick={() => openPath(stablePath)}>{t('python.shared.open')}</button><button disabled={!stablePath || !api?.openPythonTerminal} onClick={() => void perform('terminal', async () => { if (!await api?.openPythonTerminal?.()) setFeedback(t('python.shared.terminalFailed')) })}>{t('python.shared.terminal')}</button></div><p className={css.hint}>{t('python.shared.subtitle')}</p></section>
       <section className={css.card} aria-labelledby="python-health-title"><div className={css.cardTitle}><div><span className={css.sectionKicker}>{t('python.status')}</span><h3 id="python-health-title">{t('python.shared.mirror')}</h3></div></div>
         <label className={css.mirrorSelectLabel}>{t('python.shared.mirror')}<select aria-label={t('python.shared.mirror')} value={selectedMirrorId} disabled={busy.configure || !callEnvironment} onChange={event => selectMirror(event.target.value)}>
           {mirrorOptions.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
@@ -272,8 +282,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
           <input className={css.mirrorInput} aria-label={t('python.shared.customMirror')} placeholder={t('python.shared.customMirrorHint')} value={mirrorUrl} onChange={event => setMirrorUrl(event.target.value)} />
           <div className={css.mirrorActions}><button disabled={busy.configure || !callEnvironment || !mirrorUrl.trim()} onClick={() => void configure()}>{t('python.shared.saveMirror')}</button><button disabled={busy.configure || !callEnvironment} onClick={() => { setCustomMirrorEditing(false); setMirrorUrl(defaultMirrorUrl); void configure(defaultMirrorUrl) }}>{t('python.shared.resetMirror')}</button></div>
         </section>}
-        {!!info?.profiles?.length && <section className={css.advancedSection}><h3>{t('python.shared.compatibility')} · {info.profiles.length}</h3>{info.profiles.map(profile => <div key={profile.name}><strong>{profile.name}</strong> · {profile.status === 'ready' ? t('python.manager.ready') : t('python.manager.refreshing')}<p>{profile.packages.map(pkg => `${pkg.name} ${pkg.version}`).join(', ')}</p></div>)}</section>}
-        <div className={css.sectionHeading}><div><h3>{t('python.shared.dependencies')}</h3></div><span className={css.sectionMeta}>{status?.onlineEnvironmentVersion ? t('python.manager.online', { version: status.onlineEnvironmentVersion }) : t('python.shared.updatePolicy')}</span></div>
+        <div className={css.sectionHeading}><div><h3>{t('python.shared.dependencies')}</h3></div><span className={css.sectionMeta}>{dependencies?.packageCount ? `${dependencies.packageCount} · ${t('python.shared.updatePolicy')}` : t('python.shared.updatePolicy')}</span></div>
         {!!dependencies?.changes.length && <details className={css.changeList}><summary>{t('python.shared.pendingChanges', { count: dependencies.changes.length })}</summary><ol>{dependencies.changes.map(change => <li key={change.name}><strong>{change.name}</strong><span>{change.from ?? t('python.manager.notInstalled')} → {change.to}</span></li>)}</ol></details>}
         <div className={css.toolbar}><input aria-label={t('python.manager.add')} placeholder={t('python.manager.addHint')} value={spec} onChange={e => setSpec(e.target.value)} /><button disabled={!spec.trim() || busy.preview} onClick={() => void preview('preview', [spec.trim()])}>{busy.preview ? t('python.manager.working') : t('python.manager.plan')}</button></div>
         <div className={css.toolbar}>

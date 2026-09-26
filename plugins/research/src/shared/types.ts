@@ -57,9 +57,7 @@ export interface ScientificEngineConfig {
   enabled: boolean
   executablePath?: string
   installDirectory?: string
-  pythonPath?: string
   javaPath?: string
-  environmentPath?: string
   modelPath?: string
   workingDirectory?: string
   remoteEndpoint?: string

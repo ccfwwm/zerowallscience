@@ -56,16 +56,32 @@ def main():
     (work / 'wheel-inventory.json').write_text(json.dumps(rows, indent=2), encoding='utf-8')
     if not staging.exists():
         shutil.copytree(ROOT / 'mcp-environment-staging', staging, ignore=shutil.ignore_patterns('site-packages', '__pycache__', '*.pyc', '*private*.pem', '*public*.pem'))
-    site = staging / 'bio-tools/python/site-packages'
+    legacy_resources = staging / 'python'
+    resources = staging / 'resources/python'
+    if not resources.exists() and legacy_resources.exists():
+        resources.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy_resources), str(resources))
+    legacy_python = staging / 'bio-tools/python'
+    shared_python = staging / 'Python'
+    if not shared_python.exists() and legacy_python.exists():
+        shared_python.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy_python), str(shared_python))
+    if not shared_python.is_dir():
+        raise RuntimeError('Staging runtime must contain the shared Python directory.')
+    legacy_site = shared_python / 'site-packages'
+    site = shared_python / 'Lib/site-packages'
+    if not site.exists() and legacy_site.exists():
+        site.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy_site), str(site))
     if site.exists():
         if not site.is_relative_to(work) or site.is_symlink():
             raise RuntimeError('Unsafe staging site-packages path')
         shutil.rmtree(site)
     run([sys.executable, '-m', 'pip', 'install', '--no-index', '--find-links', wheelhouse, '--require-hashes', '--no-compile', '--target', site, '-r', final_lock], env=env)
-    pth = staging / 'bio-tools/python/python312._pth'
-    pth.write_text('python312.zip\n.\nsite-packages\n../lib\nsite-packages/win32\nsite-packages/win32/lib\nsite-packages/pythonwin\nimport site\n', encoding='utf-8')
+    pth = shared_python / 'python312._pth'
+    pth.write_text('python312.zip\n.\nLib/site-packages\n../bio-tools/lib\nLib/site-packages/win32\nLib/site-packages/win32/lib\nLib/site-packages/pythonwin\nimport site\n', encoding='utf-8')
     shutil.copyfile(site / 'win32/lib/pywintypes.py', site / 'pywintypes.py')
-    python = staging / 'bio-tools/python/python.exe'
+    python = shared_python / 'python.exe'
     run([python, '-s', '-B', '-m', 'pip', 'check'], env=env)
     run([python, '-s', '-B', '-c', 'import sys; assert sys.version_info[:3] == (3,12,10); print(sys.version)'], env=env)
     print('Prepared', staging, flush=True)

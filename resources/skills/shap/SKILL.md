@@ -54,12 +54,11 @@ This skill is aligned with **SHAP 0.52.0** (released 2026-05-28). That release r
 
 ## Install
 
-Create an isolated environment and pin the documented release:
+Pin the documented release in the signed shared dependency manifest:
 
-```bash
-uv venv --python 3.12
-source .venv/bin/activate
-uv pip install "shap[plots]==0.52.0"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: shap[plots]==0.52.0
 ```
 
 `shap[plots]` installs the plotting dependencies. Add the fitted model's package at a version compatible with the project. For older Python compatibility, read [references/migration.md](references/migration.md) instead of silently installing a different SHAP release.

@@ -9,7 +9,7 @@ description: 在 ZeroWall 中打开本地 AnnData/H5AD，查看已有嵌入和�
 
 选择 H5AD 并导入项目；导入上限 20 GiB，h5py/NumPy 与数据预览还有自身限制。工作台调用 `cell_open`（路由别名 `cells_open`）展示嵌入图，默认只允许选择嵌入、缩放、平移和刷新。未选择资产提示“请先选择资产”；Python 依赖缺失提示“引擎未配置”；解析失败提示“打开失败”。QC、细胞筛选与导出由本 skill 调用 `science_workbench(tool=cells, skill_id=zerowall-cells, action_id=cell_analyze, viewer_id=..., request_id=...)` 或相应 action。核对返回 Run/Artifact、源数据哈希和输出校验和。
 
-先发现 `science_viewer`，再使用 `cell_open`、`cell_read`、`cell_analyze` 或 `cell_export`。资产必须是当前项目内已登记的本地 `.h5ad`/`.h5` 文件；远程文件先经 `r_files` 物化并校验哈希。矩阵保持 backed 分块读取，不把全量表达矩阵写入 Agent 上下文或浏览器。运行依赖 Python 3.11+、h5py 和 NumPy；Host 优先使用 `ZEROWALL_CELL_PYTHON`，其次 `ZEROWALL_PYTHON` 和 PATH 上的 `python`。缺依赖时报告错误，不修改 Fiji/napari 安装。
+先发现 `science_viewer`，再使用 `cell_open`、`cell_read`、`cell_analyze` 或 `cell_export`。资产必须是当前项目内已登记的本地 `.h5ad`/`.h5` 文件；远程文件先经 `r_files` 物化并校验哈希。矩阵保持 backed 分块读取，不把全量表达矩阵写入 Agent 上下文或浏览器。运行依赖 Python 3.12.10、h5py 和 NumPy；Host 只使用 ZeroWall Science 唯一共享 Python 和 site-packages。缺依赖时通过 Python 环境设置安装，不切换到 PATH 上的 Python，也不创建环境。
 
 - `cell_open` 返回 AnnData 维度、obs/var 字段、嵌入键和有界细胞/嵌入预览，并创建可恢复的 ViewerSession。预览固定为前 N 个细胞，不代表随机样本；`cell_limit` 限 1–10,000，`embedding_limit` 独立限 1–200,000，实际嵌入数量不超过 observation 数量。
 - `embedding` 使用真实 `obsm` 键（常见为 `X_umap` 或 `X_pca`）；未指定时优先选择 UMAP，再选择第一个二维以上嵌入。

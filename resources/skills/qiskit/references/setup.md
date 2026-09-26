@@ -17,60 +17,36 @@ Checked against PyPI and official release notes on **2026-07-23**:
 
 The Qiskit GitHub repository published a `2.5.1` patch release on 2026-07-23, but PyPI still served `2.5.0` when this skill was verified. Use the PyPI-available pin for reproducibility and check [sources.md](sources.md) before updating it.
 
-## Create an Environment
+## Configure the Shared Environment
 
-The repository recommends Python 3.13. Qiskit 2.5 supports CPython 3.10 and newer on supported 64-bit platforms.
+The repository recommends Python 3.13. Qiskit 2.5 supports CPython 3.10 and newer on supported 64-bit platforms. In ZeroWall Science, use the one shared Python 3.12 runtime. Do not create a venv, Conda environment, or project-local package directory.
 
-```bash
-uv venv --python 3.13
-source .venv/bin/activate
-```
+Open **Settings > Python environment**, add the required Qiskit pins to the signed shared dependency manifest, and run **Preview sync > Apply sync**. The manifest installs every declared package into the shared `Python/Lib/site-packages`; the live installation log is available in that settings page and from **Open Python terminal**.
 
-On Windows PowerShell:
+Required pins for this skill include:
 
-```powershell
-uv venv --python 3.13
-.venv\Scripts\Activate.ps1
-```
-
-Install the smallest useful set:
-
-```bash
-# Core SDK
-uv pip install "qiskit==2.5.0"
-
-# Core plus Matplotlib/LaTeX visualization dependencies
-uv pip install "qiskit[visualization]==2.5.0"
-
-# IBM QPUs and Runtime primitives
-uv pip install "qiskit-ibm-runtime==0.48.0"
-
-# High-performance and noisy simulation
-uv pip install "qiskit-aer==0.17.2"
-```
-
-For a project, declare the same exact pins with `uv add`:
-
-```bash
-uv add "qiskit[visualization]==2.5.0"
-uv add "qiskit-ibm-runtime==0.48.0"
-uv add "qiskit-aer==0.17.2"
+```text
+qiskit==2.5.0
+qiskit[visualization]==2.5.0
+qiskit-ibm-runtime==0.48.0
+qiskit-aer==0.17.2
 ```
 
 Do not install `qiskit-terra`. Since Qiskit 1.0, the `qiskit` distribution owns the complete `qiskit` package namespace. Aer and application packages remain separate distributions.
 
-## Optional Application Packages
+## Application Packages
 
-Install these only for the corresponding workflow:
+Add these workflow packages to the same signed manifest when the corresponding capability is part of the installation:
 
-```bash
-uv pip install "qiskit-algorithms==0.4.0"
-uv pip install "qiskit-nature==0.8.0" "qiskit-nature-pyscf==0.4.0"
-uv pip install "qiskit-machine-learning==0.9.0"
-uv pip install "qiskit-optimization==0.7.0"
+```text
+qiskit-algorithms==0.4.0
+qiskit-nature==0.8.0
+qiskit-nature-pyscf==0.4.0
+qiskit-machine-learning==0.9.0
+qiskit-optimization==0.7.0
 ```
 
-Resolve all selected packages together in a fresh environment. Do not force-install incompatible distributions with dependency checks disabled.
+Resolve all selected packages together in the shared environment. Do not force-install incompatible distributions with dependency checks disabled.
 
 ## Verify the Environment
 
@@ -219,14 +195,7 @@ Typical symptoms include:
 - Imports resolve to files left behind by an old namespace-package installation.
 - A notebook kernel uses a different Python interpreter from the activated environment.
 
-The reliable repair is a new environment:
-
-```bash
-deactivate 2>/dev/null || true
-uv venv --python 3.13 .venv-qiskit
-source .venv-qiskit/bin/activate
-uv pip install "qiskit[visualization]==2.5.0"
-```
+Repair the shared environment through **Settings > Python environment**: inspect the installation log, remove obsolete `qiskit-terra` from the shared package plan if it is present, then preview and apply the signed Qiskit pins again. Do not create a second environment to repair the application runtime.
 
 Avoid trying to repair a mixed pre-1.0 environment by repeatedly uninstalling individual packages; stale namespace files can remain.
 

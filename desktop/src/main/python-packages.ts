@@ -15,11 +15,11 @@ import { assertManifestWheels, type PythonDependencyManifest } from './python-de
 import { missingSourceRequirement, prepareRequestedSourceWheel, prepareSourceWheel, verifySourceWheel, type BuiltSourceWheel } from './python-source-packages.js'
 import { withPackageDownloadRetries } from './python-download-retry.js'
 
-interface Context { root: string; executable: string; sitePackages: string; overlayPath: string; manifest: McpEnvironmentManifest; mirror?: MirrorConfig | undefined; dependencyManifest?: PythonDependencyManifest; sourceWheels?: BuiltSourceWheel[] }
+interface Context { root: string; executable: string; sitePackages: string; manifest: McpEnvironmentManifest; mirror?: MirrorConfig | undefined; dependencyManifest?: PythonDependencyManifest; sourceWheels?: BuiltSourceWheel[] }
 interface Wheel { name: string; version: string; url?: string; hash?: string; sourceArchiveSha256?: string; sourceFilename?: string; sourceBuildId?: string; sourceUrl?: string }
 /** The only requirement form the installer uses for a mirror-resolved package. */
 const pinnedRequirement = (wheel: { name: string; version: string }) => `${wheel.name}==${wheel.version}`
-export interface StoredPackagePlan extends PythonPackagePlan { wheels: Wheel[]; removals?: string[]; profile?: string; dependencyManifest?: PythonDependencyManifest; manifestInstalled?: Array<{ name: string; version: string }>; /** Written after apply: which packages landed and which were skipped. */ installOutcome?: ApplyOutcome }
+export interface StoredPackagePlan extends PythonPackagePlan { wheels: Wheel[]; removals?: string[]; dependencyManifest?: PythonDependencyManifest; manifestInstalled?: Array<{ name: string; version: string }>; preparationFailures?: PackageInstallFailure[]; /** Written after apply: which packages landed and which were skipped. */ installOutcome?: ApplyOutcome }
 /**
  * Outcome of a per-package install.
  *
@@ -33,7 +33,7 @@ export interface StoredPackagePlan extends PythonPackagePlan { wheels: Wheel[]; 
 export interface PackageInstallFailure { name: string; version: string; message: string }
 export interface ApplyOutcome { installed: number; skipped: PackageInstallFailure[]; pipCheckPassed: boolean; pipCheckMessage?: string; importCheckPassed: boolean; importCheckMessage?: string }
 /** Progress sink. `stage` is a free-form label the caller renders verbatim. */
-export interface ApplyProgress { (input: { completed: number; total: number; name?: string; stage?: string }): void }
+export interface ApplyProgress { (input: { completed: number; total: number; name?: string; stage?: string; logLine?: string }): void }
 const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/gu, '-')
 function pinnedArtifactRequirement(wheel: Wheel): string {
   if (!wheel.url || !wheel.hash || !/^[a-f0-9]{64}$/u.test(wheel.hash)) return pinnedRequirement(wheel)
@@ -85,7 +85,7 @@ export function packageResolutionRequirements(requested: string[], installed: Ar
   // the index has no wheels, before pip sees the later direct reference.
   return [...sources.map(wheel => sourceRequirement(wheel)), ...constraints]
 }
-async function run(executable: string, args: string[], paths: string[] = [], mirror?: MirrorConfig): Promise<string> {
+async function run(executable: string, args: string[], paths: string[] = [], mirror?: MirrorConfig, onLine?: (line: string) => void): Promise<string> {
   // 1.4.0 excluded all PEM files, including pip's public CA bundle. Use Node's
   // trusted Mozilla roots without changing the active environment or disabling TLS.
   const certificateFile = await publicCAFile()
@@ -98,14 +98,20 @@ async function run(executable: string, args: string[], paths: string[] = [], mir
     const child = spawn(executable, ['-I', '-B', '-c', bootstrap], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env })
     let stdout = ''; let stderr = ''
     const timer = setTimeout(() => { child.kill(); reject(new Error('依赖操作超时，当前环境保持可用。')) }, 15 * 60_000)
-    child.stdout.on('data', chunk => { stdout = (stdout + chunk).slice(-512_000) })
-    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-16_000) })
+    const publish = (chunk: Buffer) => {
+      for (const line of String(chunk).split(/[\r\n]+/u)) {
+        const safe = line.replace(/https?:\/\/[^\s]+/gu, '[package-url]').trim().slice(0, 500)
+        if (safe) onLine?.(safe)
+      }
+    }
+    child.stdout.on('data', chunk => { stdout = (stdout + chunk).slice(-512_000); publish(chunk) })
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-16_000); publish(chunk) })
     child.once('error', error => { clearTimeout(timer); reject(error) })
     child.once('exit', code => { clearTimeout(timer); code === 0 ? accept(stdout) : reject(new Error((stderr || stdout).replace(/https?:\/\/[^\s]+/gu, '[package-url]').slice(-4000))) })
   })
 }
 
-export async function preparePackagePlan(root: string, context: Context, requested: string[], info: McpPythonInfo, profile?: string): Promise<StoredPackagePlan> {
+export async function preparePackagePlan(root: string, context: Context, requested: string[], info: McpPythonInfo): Promise<StoredPackagePlan> {
   const planId = randomUUID(); const directory = join(root, 'plans'); await mkdir(directory, { recursive: true })
   const reportPath = join(directory, `${planId}-pip.json`)
   const requestedNames = new Set(requested.map(name => normalize(name.match(/^[A-Za-z0-9_.-]+/u)![0])))
@@ -117,8 +123,15 @@ export async function preparePackagePlan(root: string, context: Context, request
   const constraintsPath = join(directory, `${planId}-constraints.txt`)
   // Retain existing distributions including locally built pure-Python wheels. Pip only
   // downloads wheels for changes; --ignore-installed would incorrectly reject those packages.
-  const minimums = info.packages.filter(pkg => !requestedNames.has(normalize(pkg.name))).map(pkg => `${pkg.name}>=${pkg.version}`)
-  const pins = info.packages.filter(pkg => !requestedNames.has(normalize(pkg.name))).map(pkg => `${pkg.name}==${pkg.version}`)
+  const retained = info.packages.filter(pkg => !requestedNames.has(normalize(pkg.name)))
+  const minimums = retained.map(pkg => `${pkg.name}>=${pkg.version}`)
+  // A signed full-software sync resolves against the complete lock, including
+  // pins that are not installed yet. This keeps the per-package fallback from
+  // quietly selecting an unlisted transitive version without requesting every
+  // missing package in every bisection group.
+  const pinned = new Map<string, { name: string; version: string }>(retained.map(pkg => [normalize(pkg.name), pkg]))
+  for (const pkg of context.dependencyManifest?.packages ?? []) pinned.set(normalize(pkg.name), pkg)
+  const pins = [...pinned.values()].map(pkg => `${pkg.name}==${pkg.version}`)
   const effectiveRequested = packageResolutionRequirements(requested, info.packages, context.sourceWheels)
   await writeFile(requirementsPath, [...effectiveRequested, ...minimums].join('\n'))
   const mirror = resolveMirror(context.mirror)
@@ -127,12 +140,15 @@ export async function preparePackagePlan(root: string, context: Context, request
     await writeFile(constraintsPath, pins.join('\n'))
     // No `--only-binary=:all:`: it made the resolver reject any pin whose
     // mirror offers only a source archive, which several science packages do.
-    const args = ['install', '--dry-run', ...(profile ? ['--ignore-installed'] : []), '--upgrade-strategy', 'only-if-needed', '--report', reportPath, '-r', requirementsPath, '-c', constraintsPath]
-    try { await run(context.executable, args, [context.overlayPath, context.sitePackages], mirror) }
-    catch {
+    const args = ['install', '--dry-run', '--upgrade-strategy', 'only-if-needed', '--report', reportPath, '-r', requirementsPath, '-c', constraintsPath]
+    try { await run(context.executable, args, [context.sitePackages], mirror) }
+    catch (strictError) {
+      // A signed dependency sync must never relax its full lock to make a
+      // resolver pass. Per-package isolation below identifies the bad pin.
+      if (context.dependencyManifest) throw strictError
       // On conflict allow upward changes only, with the full change set shown before applying.
       await writeFile(constraintsPath, minimums.join('\n'))
-      try { await run(context.executable, args, [context.overlayPath, context.sitePackages], mirror) }
+      try { await run(context.executable, args, [context.sitePackages], mirror) }
       catch (resolutionError) {
         const message = resolutionError instanceof Error ? resolutionError.message : String(resolutionError)
         const requirement = missingSourceRequirement(message)
@@ -147,13 +163,13 @@ export async function preparePackagePlan(root: string, context: Context, request
         const alreadyPrepared = directName && context.sourceWheels?.some(wheel => normalize(wheel.name) === normalize(directName))
         if (!requirement && !context.dependencyManifest && directRequest && directName && !alreadyPrepared && /BackendUnavailable: Cannot import ['"](?:setuptools\.)?build_meta['"]/u.test(message)) {
           const source = await prepareRequestedSourceWheel(root, context, directRequest, mirror)
-          return preparePackagePlan(root, { ...context, sourceWheels: [...(context.sourceWheels ?? []), source] }, requested, info, profile)
+          return preparePackagePlan(root, { ...context, sourceWheels: [...(context.sourceWheels ?? []), source] }, requested, info)
         }
         if (!requirement || context.dependencyManifest || (context.sourceWheels?.length ?? 0) >= 30) throw resolutionError
         const missingName = normalize(requirement.match(/^[A-Za-z0-9_.-]+/u)?.[0] ?? '')
         if (!missingName || context.sourceWheels?.some(w => normalize(w.name) === missingName)) throw resolutionError
         const source = await prepareRequestedSourceWheel(root, context, requirement, mirror)
-        return preparePackagePlan(root, { ...context, sourceWheels: [...(context.sourceWheels ?? []), source] }, requested, info, profile)
+        return preparePackagePlan(root, { ...context, sourceWheels: [...(context.sourceWheels ?? []), source] }, requested, info)
       }
     }
     result = JSON.parse(await readFile(reportPath, 'utf8'))
@@ -184,7 +200,7 @@ export async function preparePackagePlan(root: string, context: Context, request
     else throw new Error(`依赖 ${row.metadata.name} 的镜像产物格式不受支持：${filename}`)
   }
   const versions = new Map(info.packages.map(pkg => [normalize(pkg.name), pkg.version]))
-  const plan: StoredPackagePlan = { planId, snapshotId: context.root, requested, wheels, ...(profile ? { profile } : {}), changes: wheels.map(w => ({ name: w.name, from: versions.get(normalize(w.name)), to: w.version })) }
+  const plan: StoredPackagePlan = { planId, snapshotId: context.root, requested, wheels, changes: wheels.map(w => ({ name: w.name, from: versions.get(normalize(w.name)), to: w.version })) }
   await writeFile(join(directory, `${planId}.json`), JSON.stringify(plan))
   return plan
 }
@@ -194,59 +210,81 @@ export async function preparePackagePlan(root: string, context: Context, request
 export async function prepareManifestPackagePlan(root: string, context: Context, manifest: PythonDependencyManifest, info: McpPythonInfo): Promise<StoredPackagePlan> {
   const mirror = context.mirror ?? resolveMirror(manifest.index)
   const pending = manifest.packages.filter(pkg => !info.packages.some(installed => normalize(installed.name) === normalize(pkg.name) && installed.version === pkg.version))
-  const sourceWheels: BuiltSourceWheel[] = []
-  for (const pkg of pending) {
-    if (pkg.source !== 'sdist') continue
-    if (!pkg.filename) throw new Error(`源码依赖 ${pkg.name} 缺少锁定文件名。`)
-    // A source build must name an archive to fetch and a digest to trust: there
-    // is no index resolution step that could pick one for us.
-    if (!pkg.sha256) throw new Error(`源码依赖 ${pkg.name} 缺少源码 SHA-256。`)
-    sourceWheels.push(await prepareSourceWheel(root, context, { name: pkg.name, version: pkg.version, filename: pkg.filename, sha256: pkg.sha256 }, mirror))
-  }
+  const directory = join(root, 'plans')
+  await mkdir(directory, { recursive: true })
+  const base = { planId: randomUUID(), snapshotId: context.root, requested: pending.map(pkg => `${pkg.name}==${pkg.version}`), wheels: [] as Wheel[], changes: pending.map(pkg => ({ name: pkg.name, from: info.packages.find(installed => normalize(installed.name) === normalize(pkg.name))?.version, to: pkg.version })), dependencyManifest: manifest, manifestInstalled: info.packages.map(pkg => ({ name: pkg.name, version: pkg.version })) }
   if (!pending.length) {
-    const plan: StoredPackagePlan = { planId: randomUUID(), snapshotId: context.root, requested: [], wheels: [], changes: [], dependencyManifest: manifest, manifestInstalled: info.packages.map(pkg => ({ name: pkg.name, version: pkg.version })) }
-    await mkdir(join(root, 'plans'), { recursive: true })
-    await writeFile(join(root, 'plans', `${plan.planId}.json`), JSON.stringify(plan))
+    const plan: StoredPackagePlan = { ...base, requested: [] }
+    await writeFile(join(directory, `${plan.planId}.json`), JSON.stringify(plan))
     return plan
   }
-  const plan = await preparePackagePlan(root, { ...context, dependencyManifest: manifest, sourceWheels, mirror }, pending.map(pkg => `${pkg.name}==${pkg.version}`), info)
-  if (!plan.error) {
-    assertManifestWheels(manifest, plan.wheels, info.packages)
-    plan.dependencyManifest = manifest
-    plan.manifestInstalled = info.packages.map(pkg => ({ name: pkg.name, version: pkg.version }))
-    await writeFile(join(root, 'plans', `${plan.planId}.json`), JSON.stringify(plan))
-  }
-  return plan
-}
 
-export async function applyIsolatedProfile(root: string, context: Context, plan: StoredPackagePlan): Promise<string> {
-  if (!plan.profile || !/^[a-z][a-z0-9-]{0,39}$/u.test(plan.profile)) throw new Error('Invalid dependency profile')
-  if (plan.dependencyManifest) assertManifestWheels(plan.dependencyManifest, plan.wheels, plan.manifestInstalled)
-  for (const wheel of plan.wheels) if (wheel.sourceArchiveSha256) await verifySourceWheel(root, wheel)
-  const parent = join(root, 'profiles', plan.profile)
-  const target = join(parent, plan.planId)
-  const active = await readFile(join(parent, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
-  if (active?.planId === plan.planId && active.snapshotId === context.root) return active.root
-  // A crashed attempt has never been activated; retry from clean owned output.
-  await rm(target, { recursive: true, force: true })
-  try {
-  await mkdir(target, { recursive: true })
-  const lock = join(target, 'requirements.lock')
-  await writeFile(lock, plan.wheels.map(pinnedArtifactRequirement).join('\n'))
-  const site = join(target, 'site-packages')
-  await run(context.executable, ['install', '--ignore-installed', '--no-deps', '--target', site, '-r', lock], [context.sitePackages], resolveMirror(context.mirror))
-  await python(context.executable, `import sys,json,importlib.metadata as m\nfrom packaging.requirements import Requirement\nfrom packaging.utils import canonicalize_name\npackages={canonicalize_name(d.metadata['Name']):d for d in m.distributions(path=[sys.argv[1]])}\nfor d in packages.values():\n for raw in d.requires or []:\n  r=Requirement(raw)\n  if r.marker and not r.marker.evaluate(): continue\n  dependency=packages.get(canonicalize_name(r.name))\n  if dependency is None or dependency.version not in r.specifier: raise RuntimeError(d.metadata['Name']+' has unsatisfied dependency '+raw)`, [site])
-  const record = JSON.stringify({ profile: plan.profile, root: target, sitePackages: site, snapshotId: context.root, pythonVersion: context.manifest.python.version, planId: plan.planId, wheels: plan.wheels, verifiedAt: new Date().toISOString() })
-  await writeFile(join(target, 'manifest.json'), record)
-  const temporary = join(parent, `${plan.planId}.tmp`)
-  await writeFile(temporary, record)
-  const { rename } = await import('node:fs/promises')
-  await rename(temporary, join(parent, 'current.json'))
-  return target
-  } catch (error) {
-    await rm(target, { recursive: true, force: true }).catch(() => undefined)
-    throw error
+  // Build explicitly authorized source archives independently. A broken sdist
+  // is retained as a per-package failure and cannot block wheel packages.
+  const sourceWheels: BuiltSourceWheel[] = []
+  const preparationFailures: PackageInstallFailure[] = []
+  for (const pkg of pending) {
+    if (pkg.source !== 'sdist') continue
+    try {
+      if (!pkg.filename) throw new Error(`源码依赖 ${pkg.name} 缺少锁定文件名。`)
+      if (!pkg.sha256) throw new Error(`源码依赖 ${pkg.name} 缺少源码 SHA-256。`)
+      sourceWheels.push(await prepareSourceWheel(root, context, { name: pkg.name, version: pkg.version, filename: pkg.filename, sha256: pkg.sha256 }, mirror))
+    } catch (error) {
+      preparationFailures.push({ name: pkg.name, version: pkg.version, message: error instanceof Error ? error.message.slice(-1200) : String(error).slice(-1200) })
+    }
   }
+
+  const ready = pending.filter(pkg => !preparationFailures.some(failure => normalize(failure.name) === normalize(pkg.name)))
+  let wheels: Wheel[] = []
+  let planId: string = base.planId
+  // Keep the fast one-shot resolver for healthy indexes. If one pin breaks the
+  // batch, split it recursively: a single bad pin costs O(log n) group probes
+  // instead of hundreds of serial pip resolver runs.
+  if (ready.length) {
+    const groupContext = { ...context, dependencyManifest: manifest, sourceWheels, mirror }
+    const resolved = new Map<string, Wheel>()
+    const resolveGroup = async (group: typeof ready, knownFailure?: string): Promise<void> => {
+      let failure = knownFailure
+      if (failure === undefined) {
+        try {
+          const prepared = await preparePackagePlan(root, groupContext, group.map(pkg => `${pkg.name}==${pkg.version}`), info)
+          if (!prepared.error) {
+            for (const wheel of prepared.wheels) {
+              const key = normalize(wheel.name)
+              const previous = resolved.get(key)
+              if (previous && previous.version !== wheel.version) throw new Error(`签名依赖 ${wheel.name} 在解析分组间出现版本冲突。`)
+              resolved.set(key, wheel)
+            }
+            return
+          }
+          failure = prepared.error
+        } catch (error) {
+          failure = error instanceof Error ? error.message : String(error)
+        }
+      }
+      if (group.length > 1) {
+        const midpoint = Math.floor(group.length / 2)
+        await resolveGroup(group.slice(0, midpoint))
+        await resolveGroup(group.slice(midpoint))
+        return
+      }
+      const pkg = group[0]!
+      preparationFailures.push({ name: pkg.name, version: pkg.version, message: (failure ?? '依赖解析失败。').slice(-1200) })
+    }
+    const prepared = await preparePackagePlan(root, groupContext, ready.map(pkg => `${pkg.name}==${pkg.version}`), info)
+    if (!prepared.error) {
+      wheels = prepared.wheels
+      planId = prepared.planId
+    } else {
+      await resolveGroup(ready, prepared.error)
+      wheels = [...resolved.values()]
+    }
+  }
+  const uniqueWheels = [...new Map(wheels.map(wheel => [normalize(wheel.name), wheel])).values()]
+  const plan: StoredPackagePlan = { ...base, planId, wheels: uniqueWheels, preparationFailures }
+  assertManifestWheels(manifest, plan.wheels, info.packages, preparationFailures.map(failure => failure.name))
+  await writeFile(join(directory, `${plan.planId}.json`), JSON.stringify(plan))
+  return plan
 }
 
 async function python(executable: string, code: string, args: string[]): Promise<void> {
@@ -348,13 +386,14 @@ for d in list(m.distributions(path=[str(site)])):
  if metadata.is_relative_to(site) and metadata.name.endswith(('.dist-info','.egg-info')) and metadata.is_dir(): shutil.rmtree(metadata)
 ` // Empty namespace directories are intentionally retained, never recursively removed.
 
-export async function snapshotPythonPaths(root: string, manifest: McpEnvironmentManifest, overlayPath: string): Promise<void> {
+export async function snapshotPythonPaths(root: string, manifest: McpEnvironmentManifest, _legacyOverlayPath?: string): Promise<void> {
   const executable = join(root, manifest.python.relativeExecutable)
   const directory = dirname(executable)
   for (const name of await readdir(directory)) if (name.endsWith('._pth')) {
     const path = join(directory, name)
-    const lines = (await readFile(path, 'utf8')).split(/\r?\n/u).filter(line => line && !line.includes('python-overlay') && !line.includes('user-overlay'))
-    lines.unshift(relative(directory, overlayPath).replaceAll('\\', '/'))
+    const canonical = relative(directory, join(root, manifest.python.relativeSitePackages)).replaceAll('\\', '/')
+    const lines = (await readFile(path, 'utf8')).split(/\r?\n/u).filter(line => line && !line.includes('python-overlay') && !line.includes('user-overlay') && line !== canonical)
+    lines.unshift(canonical)
     await writeFile(path, lines.join('\n') + '\n')
   }
   // The shipped 1.4.0 ZIP excluded public CA PEMs. Repair only the unactivated
@@ -370,26 +409,20 @@ export async function snapshotPythonPaths(root: string, manifest: McpEnvironment
 }
 
 export async function applyPackagePlanFiles(root: string, context: Context, target: string, plan: StoredPackagePlan, progress?: ApplyProgress): Promise<ApplyOutcome> {
-  if (plan.dependencyManifest) assertManifestWheels(plan.dependencyManifest, plan.wheels, plan.manifestInstalled)
+  if (plan.dependencyManifest) assertManifestWheels(plan.dependencyManifest, plan.wheels, plan.manifestInstalled, (plan.preparationFailures ?? []).map(failure => failure.name))
   // Only locally built source wheels are still digest-checked: they are our own
   // build output in our own cache, not an artifact a mirror re-publishes.
   for (const wheel of plan.wheels) if (wheel.sourceArchiveSha256) await verifySourceWheel(root, wheel)
   const executable = context.executable
-  const site = context.sitePackages
-  // New shared runtimes expose one public site-packages directory. Keep the
-  // legacy overlay for old archives, but merge user wheels directly into the
-  // shared directory when the manifest uses the stable Python/ layout.
-  const shared = /^Python[\\/]Lib[\\/]site-packages$/u.test(context.manifest.python.relativeSitePackages)
-  const overlay = shared ? site : join(target, 'user-overlay')
-  await mkdir(overlay, { recursive: true })
-  if (!shared && resolve(context.overlayPath) !== resolve(overlay)) await cp(context.overlayPath, overlay, { recursive: true })
-  if (!shared) await snapshotPythonPaths(target, context.manifest, overlay)
+  const targetSite = join(target, context.manifest.python.relativeSitePackages)
+  const canonicalSite = resolve(context.sitePackages) === resolve(join(context.root, context.manifest.python.relativeSitePackages)) ? targetSite : context.sitePackages
+  await mkdir(canonicalSite, { recursive: true })
+  await snapshotPythonPaths(target, context.manifest)
   if (plan.removals?.length) {
-    await python(executable, REMOVE_DISTRIBUTIONS, [site, JSON.stringify(plan.removals)])
-    if (!shared) await python(executable, REMOVE_DISTRIBUTIONS, [overlay, JSON.stringify(plan.removals)])
+    await python(executable, REMOVE_DISTRIBUTIONS, [canonicalSite, JSON.stringify(plan.removals)])
   }
   const wheelDir = join(root, 'plans', `${plan.planId}-wheels`); await mkdir(wheelDir, { recursive: true })
-  const total = plan.wheels.length
+  const total = plan.wheels.length + (plan.preparationFailures?.length ?? 0)
   // One package per pip invocation. The previous batch form meant any single
   // failure rolled the whole layer back; now each package is attempted on its
   // own and a failure is recorded instead of aborting the run.
@@ -401,10 +434,13 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
   // bibtexparser, autograd-gamma) ship source only, and pip needs to be
   // allowed to build them. A locally built source wheel keeps its exact
   // digest pin, because that artifact is ours rather than the mirror's.
-  const skipped: PackageInstallFailure[] = []
+  const skipped: PackageInstallFailure[] = [...(plan.preparationFailures ?? [])]
   let installed = 0
+  for (const [index, failure] of skipped.entries()) progress?.({ completed: index + 1, total, name: failure.name, stage: `跳过 ${failure.name}`, logLine: failure.message })
+  const preparationFailureCount = skipped.length
   for (const [index, wheel] of plan.wheels.entries()) {
-    progress?.({ completed: index, total, name: wheel.name, stage: `正在安装 ${wheel.name}` })
+    const offset = preparationFailureCount
+    progress?.({ completed: offset + index, total, name: wheel.name, stage: `正在安装 ${wheel.name}` })
     try {
       const name = wheel.name.replace(/[^A-Za-z0-9_.-]/gu, '-')
       const itemDir = join(wheelDir, `${index}-${name}`)
@@ -420,9 +456,11 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
         if (wheel.sourceArchiveSha256 && wheel.url) {
           const sourceWheel = fileURLToPath(wheel.url)
           await cp(sourceWheel, join(itemDir, basename(sourceWheel)))
-        } else await run(context.executable, ['download', '--no-deps', '--dest', itemDir, downloadRequirement], [context.sitePackages], mirror)
+        } else await run(context.executable, ['download', '--no-deps', '--dest', itemDir, downloadRequirement], [context.sitePackages], mirror,
+          line => progress?.({ completed: offset + index, total, name: wheel.name, stage: `正在下载 ${wheel.name}`, logLine: line }))
         await validateDownloadedWheel(context.executable, itemDir, wheel)
-        await run(context.executable, ['install', '--no-index', '--find-links', itemDir, '--no-deps', '--target', unpacked, installRequirement], [context.sitePackages])
+        await run(context.executable, ['install', '--no-index', '--find-links', itemDir, '--no-deps', '--target', unpacked, installRequirement], [context.sitePackages], undefined,
+          line => progress?.({ completed: offset + index, total, name: wheel.name, stage: `正在安装 ${wheel.name}`, logLine: line }))
         return unpacked
       }, validate: async directory => {
         const files = await readdir(directory).catch(() => [])
@@ -431,7 +469,7 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
       // The candidate is complete before touching the live directory. Remove
       // only the previous distribution's RECORD files; a failed download or
       // wheel install therefore leaves the old package intact.
-      await installDistributionTransaction(executable, site, unpacked, wheel.name, wheel.version, join(itemDir, 'rollback'))
+      await installDistributionTransaction(executable, canonicalSite, unpacked, wheel.name, wheel.version, join(itemDir, 'rollback'))
       await rm(itemDir, { recursive: true, force: true })
       installed++
     } catch (error) {
@@ -439,16 +477,16 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
       skipped.push({ name: wheel.name, version: wheel.version, message })
       // Record the skip durably so a later run can retry just these packages.
       await appendFile(join(root, 'plans', `${plan.planId}-skipped.jsonl`), JSON.stringify({ name: wheel.name, version: wheel.version, message, at: new Date().toISOString() }) + '\n').catch(() => undefined)
-      progress?.({ completed: index + 1, total, name: wheel.name, stage: `跳过 ${wheel.name}` })
+      progress?.({ completed: offset + index + 1, total, name: wheel.name, stage: `跳过 ${wheel.name}` })
       continue
     }
-    progress?.({ completed: index + 1, total, name: wheel.name, stage: `已安装 ${wheel.name}` })
+    progress?.({ completed: offset + index + 1, total, name: wheel.name, stage: `已安装 ${wheel.name}` })
   }
   // `pip check` is advisory here: a skipped package legitimately leaves an
   // unsatisfied requirement, and failing the whole run for it would undo the
   // point of installing the rest.
   let pipCheckPassed = false; let pipCheckMessage: string | undefined
-  try { await run(executable, ['check'], [overlay, site]); pipCheckPassed = true }
+  try { await run(executable, ['check'], [canonicalSite]); pipCheckPassed = true }
   catch (error) { pipCheckMessage = error instanceof Error ? error.message.slice(-2000) : String(error).slice(-2000) }
   // Only verify the packages that actually landed. A skipped package has no
   // import entry point by definition, and asserting one here would turn a
@@ -484,26 +522,25 @@ for name,code in checks.items():
   return { installed, skipped, pipCheckPassed, pipCheckMessage, importCheckPassed, importCheckMessage }
 }
 
-export async function replayCustomizations(target: string, manifest: McpEnvironmentManifest, overlayPath: string, customizations: Record<string, string>, removals: string[] = []): Promise<void> {
-  await snapshotPythonPaths(target, manifest, overlayPath)
+export async function replayCustomizations(target: string, manifest: McpEnvironmentManifest, sitePackages: string, customizations: Record<string, string>, removals: string[] = []): Promise<void> {
+  await snapshotPythonPaths(target, manifest)
   const executable = join(target, manifest.python.relativeExecutable)
   const site = join(target, manifest.python.relativeSitePackages)
   if (removals.length) {
     const required = new Set(manifest.dependencies?.corePackages.map(pkg => normalize(pkg.name)) ?? [])
     if (removals.some(name => required.has(normalize(name)))) throw new Error('新版环境将已卸载包列为必需依赖，请审核后重新升级。')
     await python(executable, REMOVE_DISTRIBUTIONS, [site, JSON.stringify(removals)])
-    await python(executable, REMOVE_DISTRIBUTIONS, [overlayPath, JSON.stringify(removals)])
   }
   if (Object.keys(customizations).length) {
     // Resolve against the new official environment before touching the candidate.
     const info: McpPythonInfo = { ready: true, packages: (manifest.dependencies?.corePackages ?? []).map(p => ({ name: p.name, version: p.requiredVersion, source: 'core', health: 'locked' })) }
     // Replayed customizations resolve against the same manifest-provided index.
-    const context: Context = { root: target, executable, sitePackages: site, overlayPath, manifest, mirror: resolveMirror(manifest.dependencies?.indexUrl) }
+    const context: Context = { root: target, executable, sitePackages, manifest, mirror: resolveMirror(manifest.dependencies?.indexUrl) }
     const managementRoot = resolveManagementRoot(target)
     const plan = await preparePackagePlan(managementRoot, context, Object.entries(customizations).map(([name, version]) => `${name}==${version}`), info)
     if (plan.error) throw new Error('新版环境与本地定制不兼容：' + plan.error)
     await applyPackagePlanFiles(managementRoot, context, target, plan)
   }
-  await run(executable, ['check'], [overlayPath, site])
+  await run(executable, ['check'], [sitePackages])
 }
 function resolveManagementRoot(target: string): string { return dirname(dirname(target)) }

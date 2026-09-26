@@ -208,7 +208,7 @@ export class PythonUpdaterService {
   updatePythonPackages(names: string[]): { taskId: string } { return this.enqueue('updatePythonPackages', [names]) }
   selectManual(root: string): { taskId: string } { return this.enqueue('selectManual', [root]) }
   rollback(): { taskId: string } { return this.enqueue('rollback') }
-  previewPackages(names: string[], profile?: string): Promise<unknown> { return this.rpc('previewPackages', [names, profile]) }
+  previewPackages(names: string[]): Promise<unknown> { return this.rpc('previewPackages', [names]) }
   previewDependencyManifest(manifest: PythonDependencyManifest): Promise<StoredPackagePlan> { return this.rpc('previewDependencyManifest', [manifest]) }
   applyPackagePlan(planId: string): { taskId: string } { return this.enqueue('applyPackagePlan', [planId]) }
 }

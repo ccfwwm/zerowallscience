@@ -54,18 +54,13 @@ This skill was verified on **2026-07-23** against the PyPI releases `qiskit==2.5
 
 ## Installation
 
-Create an isolated environment and install only the components needed:
+Add the requested Qiskit distributions to the signed shared dependency manifest
+and synchronize them into the one ZeroWall Python runtime:
 
-```bash
-uv venv --python 3.13
-source .venv/bin/activate
-
-# Core SDK plus plotting support
-uv pip install "qiskit[visualization]==2.5.0"
-
-# Add only when needed
-uv pip install "qiskit-ibm-runtime==0.48.0"
-uv pip install "qiskit-aer==0.17.2"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pins: qiskit[visualization]==2.5.0, qiskit-ibm-runtime==0.48.0,
+qiskit-aer==0.17.2
 ```
 
 Do not install `qiskit-terra`; it was superseded by the `qiskit` distribution. Qiskit Runtime, Aer, Nature, Machine Learning, Optimization, and Algorithms are separate distributions.

@@ -195,7 +195,7 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
             adjust_text(texts, ax=ax, expand=(1.15, 1.25),
                         arrowprops=dict(arrowstyle='-', color='#333333', lw=.4))
         except ImportError:
-            # 第二层未装（adjustText）：静态 offset 兜底
+            # Shared dependency installation failed: use a static offset.
             for nm, xi, yi in annotations:
                 ax.annotate(nm, (xi, yi), textcoords='offset points',
                             xytext=(3, 3), fontsize=6, color=SEM_HIGHLIGHT,

@@ -1194,7 +1194,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       return
     }
     if (isManagedMcp(record.serverName) && !managedEnvironmentReady()) {
-      if (current() && !(this.fibers.has(record.id) || this.managed.has(record.id))) this.statuses.set(record.id, { state: 'blocked', error: 'The Claude Science MCP environment is not ready. Retry initialization or select a user-managed environment in Settings.', missingEnvironmentVariables: [] })
+      if (current() && !(this.fibers.has(record.id) || this.managed.has(record.id))) this.statuses.set(record.id, { state: 'blocked', error: 'The ZeroWall shared Python/MCP environment is not ready. Retry initialization from Python settings.', missingEnvironmentVariables: [] })
       return
     }
     let sciMasterApiKey: string | undefined
@@ -1453,8 +1453,7 @@ function interpreterSitePackages(root: string, relativeExecutable: string | unde
       // `import site` and comments are directives, not search directories.
       if (line === '' || line.startsWith('#') || line.startsWith('import ')) continue
       const entry = resolve(directory, line.replace(/[\\/]+$/u, ''))
-      // Ignore entries that climb out of the managed environment. The overlay is
-      // reached through `overlayPath` and never holds certificates.
+      // Ignore entries that climb out of the managed shared runtime.
       const local = relative(root, entry)
       if (local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) continue
       if (basename(entry) !== 'site-packages') continue
@@ -1466,15 +1465,15 @@ function interpreterSitePackages(root: string, relativeExecutable: string | unde
 
 /**
  * Best-effort site-packages directory for a manifest that omits the field. The
- * interpreter's own path file wins; only if it yields nothing do we probe the
- * two directory shapes that have ever been shipped, so the caller never ends up
- * joining a literal that cannot exist.
+ * interpreter's own path file wins; the shared Python layout is the only
+ * supported runtime contract. Legacy layouts are migrated by the desktop
+ * updater and are never launched here.
  */
 function derivedSitePackages(root: string, relativeExecutable?: string): string {
   const interpreter = relativeExecutable ?? 'Python/python.exe'
   const fromPathFile = interpreterSitePackages(root, interpreter)[0]
   if (fromPathFile) return relative(root, fromPathFile)
-  for (const candidate of ['Python/Lib/site-packages', 'bio-tools/python/Lib/site-packages', 'bio-tools/python/site-packages']) {
+  for (const candidate of ['Python/Lib/site-packages']) {
     if (existsSync(join(root, candidate, 'certifi'))) return candidate
   }
   return 'Python/Lib/site-packages'
@@ -1484,7 +1483,7 @@ function managedPythonCaFile(root: string, relativeSitePackages: string): string
   const active = managedEnvironmentRecord()
   const candidates: Array<[string, string]> = []
   if (active?.root) {
-    candidates.push([active.root, active.manifest?.python?.relativeSitePackages ?? relativeSitePackages])
+    candidates.push([active.runtimeRoot ?? active.root, active.manifest?.python?.relativeSitePackages ?? relativeSitePackages])
   }
   candidates.push([root, relativeSitePackages])
   for (const [candidateRoot, candidateRelative] of candidates) {
@@ -1507,11 +1506,9 @@ function managedPythonCaFile(root: string, relativeSitePackages: string): string
   return undefined
 }
 
-/** Interpreter path for a record whose manifest cannot be read: whichever of the
- * two shipped layouts actually has an interpreter. Resolution only — nothing is
- * launched from the result. */
+/** Interpreter path for a record whose manifest cannot be read. */
 function derivedExecutable(root: string): string | undefined {
-  for (const candidate of ['Python/python.exe', 'bio-tools/python/python.exe']) {
+  for (const candidate of ['Python/python.exe']) {
     if (existsSync(join(root, candidate))) return candidate
   }
   return undefined
@@ -1554,8 +1551,9 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
     }
     if (record.command === 'zerowall-managed:bio-tools') {
       launch.command = managedPythonExecutable(candidate)
-      launch.args = [join(candidate.root, 'bio-tools', 'run_server.py'), 'mcp_bio']
-      launch.cwd = join(candidate.root, 'bio-tools')
+      const bioToolsRoot = bundledManagedRoot('ZEROWALL_BIO_TOOLS_ROOT', candidate.root, 'bio-tools')
+      launch.args = [join(bioToolsRoot, 'run_server.py'), 'mcp_bio']
+      launch.cwd = bioToolsRoot
     }
   }
   if (record.transport === 'stdio' && record.command === 'zerowall-managed:bio-tools') {
@@ -1563,15 +1561,12 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
     const root = managed?.root
     const version = managed?.environmentVersion ?? managed?.version
     if (root && version) {
-      const pythonVersion = managed.manifest?.python?.version?.match(/^\d+\.\d+/u)?.[0] ?? managed.manifest?.python?.version ?? version
-      const overlay = managed.overlayPath ?? resolve(root, '..', '..', 'python-overlay', `python-${pythonVersion.replace(/[^A-Za-z0-9.-]/gu, '-')}`)
-      // The manifest is the only authority for where packages live. The former
-      // literal `bio-tools/python/Lib/site-packages` described a layout that no
-      // installed environment has (the flat layout has no `Lib` level), so a
-      // manifest without the field put both PYTHONPATH and the CA lookup on a
-      // directory that does not exist. Derive it from the interpreter instead.
+      // Every managed child uses the one application-wide Python directory.
+      // Legacy overlay paths are deliberately ignored after migration so a
+      // stale profile cannot shadow the signed shared site-packages.
       const relativeSitePackages = managed.manifest?.python?.relativeSitePackages ?? derivedSitePackages(root)
-      values.PYTHONPATH = [overlay, join(root, relativeSitePackages)].join(';')
+      const runtimeRoot = managed.runtimeRoot ?? resolve(root, '..')
+      values.PYTHONPATH = join(runtimeRoot, relativeSitePackages)
       values.PYTHONNOUSERSITE = '1'
       // The stdio transport merges these values over the inherited parent
       // environment (`{ ...scrubbedParentEnv(), ...extra }`). Assigning only on
@@ -1617,7 +1612,7 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
 
 function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' || serverName === 'zerowall_managed_scimaster' }
 
-type ManagedEnvironmentRecord = { overlayPath?: string; root?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeExecutable?: string; relativeSitePackages?: string } } }
+type ManagedEnvironmentRecord = { root?: string; runtimeRoot?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeExecutable?: string; relativeSitePackages?: string } } }
 
 /**
  * The signed manifest decides where the interpreter lives. An earlier build
@@ -1628,9 +1623,10 @@ type ManagedEnvironmentRecord = { overlayPath?: string; root?: string; health?: 
  * Refusing here names the real problem at the point of use.
  */
 function managedPythonExecutable(record: ManagedEnvironmentRecord): string {
-  const root = resolve(record.root!)
+  if (!record.runtimeRoot) throw new Error('Managed environment has no shared runtimeRoot.')
+  const root = resolve(record.runtimeRoot)
   const path = record.manifest?.python?.relativeExecutable
-  if (!path) throw new Error('Managed environment manifest is missing python.relativeExecutable.')
+  if (path !== 'Python/python.exe') throw new Error('Managed environment must use the shared Python/python.exe layout.')
   const executable = resolve(root, path)
   const local = relative(root, executable)
   if (isAbsolute(path) || local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed Python executable')
@@ -1676,11 +1672,14 @@ function managedEnvironmentReady(): boolean {
   const record = managedEnvironmentRecord()
   const root = record?.root
   if (!root || record?.health !== 'ready') return false
+  const bioToolsRoot = bundledManagedRoot('ZEROWALL_BIO_TOOLS_ROOT', root, 'bio-tools')
+  const ketcherRoot = bundledManagedRoot('ZEROWALL_KETCHER_ROOT', root, 'ketcher-chemistry')
+  const sciRoot = bundledManagedRoot('ZEROWALL_SCI_ROOT', root, 'sci')
   return existsSync(managedPythonExecutable(record))
-    && existsSync(join(root, 'bio-tools', 'run_server.py'))
-    && existsSync(join(root, 'ketcher-chemistry', 'server.js'))
-    && existsSync(join(root, 'sci', 'dist', 'mcp.cjs'))
-    && existsSync(join(root, 'sci', 'zerowall-mcp-launcher.cjs'))
+    && existsSync(join(bioToolsRoot, 'run_server.py'))
+    && existsSync(join(ketcherRoot, 'server.js'))
+    && existsSync(join(sciRoot, 'dist', 'mcp.cjs'))
+    && existsSync(join(sciRoot, 'zerowall-mcp-launcher.cjs'))
 }
 
 const MANAGED_ORDER: Record<string, number> = {
@@ -1699,13 +1698,22 @@ function resolveManagedLaunch(command: string): { command: string; args: string[
   const record = managedEnvironmentRecord()
   const root = record?.root
   if (!root || !['zerowall-managed:bio-tools', 'zerowall-managed:ketcher', 'zerowall-managed:scimaster'].includes(command)) return undefined
-  if (command === 'zerowall-managed:bio-tools') return { command: managedPythonExecutable(record!), args: [join(root, 'bio-tools', 'run_server.py'), 'mcp_bio'], cwd: join(root, 'bio-tools') }
+  if (command === 'zerowall-managed:bio-tools') {
+    const bioToolsRoot = bundledManagedRoot('ZEROWALL_BIO_TOOLS_ROOT', root, 'bio-tools')
+    return { command: managedPythonExecutable(record!), args: [join(bioToolsRoot, 'run_server.py'), 'mcp_bio'], cwd: bioToolsRoot }
+  }
   if (command === 'zerowall-managed:ketcher') {
-    const bundled = process.env.ZEROWALL_KETCHER_ROOT
-    const ketcherRoot = bundled && existsSync(join(bundled, 'server.js')) ? bundled : join(root, 'ketcher-chemistry')
+    const ketcherRoot = bundledManagedRoot('ZEROWALL_KETCHER_ROOT', root, 'ketcher-chemistry')
     return { command: process.execPath, args: [join(ketcherRoot, 'server.js')], cwd: ketcherRoot }
   }
-  return { command: process.execPath, args: [join(root, 'sci', 'zerowall-mcp-launcher.cjs')], cwd: join(root, 'sci') }
+  const sciRoot = bundledManagedRoot('ZEROWALL_SCI_ROOT', root, 'sci')
+  return { command: process.execPath, args: [join(sciRoot, 'zerowall-mcp-launcher.cjs')], cwd: sciRoot }
+}
+
+function bundledManagedRoot(variable: string, managedRoot: string, fallbackDirectory: string): string {
+  const bundled = process.env[variable]?.trim()
+  if (bundled && existsSync(bundled)) return bundled
+  return join(managedRoot, fallbackDirectory)
 }
 
 export function redactError(error: unknown): string {

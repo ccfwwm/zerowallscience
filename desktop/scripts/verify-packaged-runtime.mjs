@@ -196,6 +196,11 @@ for (const path of requiredArchivePaths) {
 for (const path of [
   resolve(packaged.resourcesRoot, 'splash.html'),
   resolve(packaged.resourcesRoot, 'zerowall.patch.yml'),
+  resolve(packaged.resourcesRoot, 'bio-tools', 'run_server.py'),
+  resolve(packaged.resourcesRoot, 'ketcher-chemistry', 'server.js'),
+  resolve(packaged.resourcesRoot, 'sci', 'dist', 'cli.mjs'),
+  resolve(packaged.resourcesRoot, 'sci', 'dist', 'mcp.cjs'),
+  resolve(packaged.resourcesRoot, 'sci', 'zerowall-mcp-launcher.cjs'),
   resolve(packaged.resourcesRoot, 'skills', 'literature-review', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'pubmed-literature', 'SKILL.md'),
   resolve(packaged.resourcesRoot, 'skills', 'mineru-document-parser', 'SKILL.md'),
@@ -490,7 +495,13 @@ async function verifyExternalPolicy() {
   if (forbiddenSkills.length > 0) throw new Error(`Forbidden runtime Skill artifacts found:\n${forbiddenSkills.slice(0, 50).join('\n')}`)
   const legacyPptFiles = externalFiles.filter(path => /(?:^|\/)(?:academic-ppt-studio|gpt-image2-ppt|journal-club-ppt)(?:\/|$)/i.test(path))
   if (legacyPptFiles.length > 0) throw new Error(`Legacy PPT Skills are forbidden in the packaged runtime:\n${legacyPptFiles.slice(0, 50).join('\n')}`)
-  if (externalFiles.length > 3_000) throw new Error(`ASAR-external file count ${externalFiles.length} exceeds the 3,000-file gate.`)
+  // 7.1.0 ships the complete local Skills catalog and the scientific runtime
+  // resource channels as external files.  The previous 3,000-file gate was
+  // sized before that catalog was included and rejected the valid 7.1.0
+  // layout (mostly Skill Markdown/Python files).  Keep a hard upper bound with
+  // enough headroom for the catalog while retaining the content-level gates
+  // above for test output and legacy resources.
+  if (externalFiles.length > 5_000) throw new Error(`ASAR-external file count ${externalFiles.length} exceeds the 5,000-file gate.`)
 
   const nodeExecutables = (await listDiskFiles(packaged.root)).filter(path => /(?:^|\/)node\.exe$/i.test(path))
   if (nodeExecutables.length > 0) throw new Error(`Standalone Node runtime is forbidden:\n${nodeExecutables.join('\n')}`)
@@ -507,12 +518,10 @@ async function verifySizePolicy() {
   // 6.2.0 adds Univer's offline Gateway, Viewer, render worker (~181 MiB),
   // and Windows native Office dependencies to the existing Claude runtime.
   //
-  // Stable builds ship the managed Python base runtime inside the installer as
-  // `resources/python/base-runtime.zip` (~128 MiB, already compressed, so it
-  // passes through NSIS almost unchanged). That moved the measured output from
-  // 1,375 MiB installed / 320 MiB compressed to 1,583 MiB / 448 MiB, which is a
-  // deliberate feature rather than growth: shipping the runtime in the package
-  // is what keeps the first run offline-capable.
+  // Stable builds ship only the compressed Python/pip bootstrap inside the
+  // installer as `resources/python/base-runtime.zip`. Scientific wheels,
+  // Skills, and MCP services are installed or mounted through their own
+  // signed/resource channels and must not inflate this bootstrap archive.
   //
   // Both budgets are advisory: they report the measured footprint so a sudden
   // jump stays visible, but an oversized build is not a defect on its own and

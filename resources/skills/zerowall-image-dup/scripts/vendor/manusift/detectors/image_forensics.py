@@ -44,8 +44,13 @@ Images without a path are skipped.
 from __future__ import annotations
 
 import io
+import hashlib
+import json
 import os
+import time
+from collections import OrderedDict
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -57,12 +62,34 @@ from .base import DetectorResult
 
 log = get_logger(__name__)
 
-# Cap pairwise cross-image SIFT comparisons (O(n^2)).
+
+class _BoundedImageCache:
+    """Keep only the images used by the current local pair in memory."""
+
+    def __init__(self, reader, limit: int = 2):
+        self.reader = reader
+        self.limit = limit
+        self.images: OrderedDict[str, Any] = OrderedDict()
+
+    def load(self, path: str):
+        if path in self.images:
+            self.images.move_to_end(path)
+            return self.images[path]
+        image = self.reader(path)
+        if image is not None:
+            self.images[path] = image
+            if len(self.images) > self.limit:
+                self.images.popitem(last=False)
+        return image
+
+# Pairwise cross-image SIFT is complete by default. A positive environment
+# value remains available as an explicit emergency budget; it is reported as
+# truncation rather than being mistaken for a completed scan.
 _CROSS_SIFT_MAX_IMAGES = int(
-    os.environ.get("MANUSIFT_CROSS_SIFT_MAX_IMAGES", "24")
+    os.environ.get("MANUSIFT_CROSS_SIFT_MAX_IMAGES", "0")
 )
 _CROSS_SIFT_MAX_FINDINGS = int(
-    os.environ.get("MANUSIFT_CROSS_SIFT_MAX_FINDINGS", "15")
+    os.environ.get("MANUSIFT_CROSS_SIFT_MAX_FINDINGS", "0")
 )
 # JPEG ghost
 _JPEG_GHOST_QUALITIES = tuple(
@@ -83,6 +110,73 @@ _JPEG_GHOST_STRENGTH_THR = float(
 _GRID_COPYMOVE_SECONDARY = os.environ.get(
     "MANUSIFT_GRID_COPYMOVE_SECONDARY", "1"
 ).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _pair_budget_limit() -> int:
+    try:
+        return max(0, int(os.environ.get("MANUSIFT_CROSS_SIFT_MAX_PAIRS", "0") or "0"))
+    except ValueError:
+        return 0
+
+
+def _pair_budget_path() -> Path | None:
+    cache = os.environ.get("MANUSIFT_IMAGE_PAIR_CACHE_DIR")
+    run_id = os.environ.get("MANUSIFT_CROSS_SIFT_RUN_ID", "")
+    return Path(cache) / ("budget-" + run_id + ".json") if cache and run_id else None
+
+
+def _pair_budget_used() -> int:
+    path = _pair_budget_path()
+    if path is None or not path.exists():
+        return 0
+    try:
+        return int(json.loads(path.read_text(encoding="utf-8")).get("compared", 0))
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _replace_checkpoint(temp: Path, path: Path) -> None:
+    for attempt in range(10):
+        try:
+            temp.replace(path)
+            return
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
+def _pair_deadline_reached() -> bool:
+    try:
+        deadline = float(os.environ.get("MANUSIFT_DETECTOR_DEADLINE_MONOTONIC", "inf"))
+    except ValueError:
+        return False
+    return time.monotonic() >= deadline
+
+
+def _count_pair_budget() -> None:
+    path = _pair_budget_path()
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps({"compared": _pair_budget_used() + 1}), encoding="utf-8")
+    _replace_checkpoint(temp, path)
+
+
+def _source_key(image: ExtractedImage, fallback: str) -> str:
+    source = str((image.exif or {}).get("zerowall_source") or fallback)
+    try:
+        return str(Path(source).resolve())
+    except OSError:
+        return source
+
+
+def _stable_pair_identity(a: ExtractedImage, b: ExtractedImage, digests: dict[str, str | None]) -> list[list[str]]:
+    return sorted([
+        [str(Path(a.image_path).resolve()), digests.get(a.image_path or "") or ""],
+        [str(Path(b.image_path).resolve()), digests.get(b.image_path or "") or ""],
+    ])
 
 # P6.1 vertical gel/blot splice seam heuristic.
 _SEAM_MAX_SIDE = int(os.environ.get("MANUSIFT_GEL_SEAM_MAX_SIDE", "640"))
@@ -634,6 +728,24 @@ def _sift_copy_move_check(
         "backend": analysis.backend,
         "width": analysis.width,
         "height": analysis.height,
+        "bbox_a": analysis.extra.get("bbox_a"),
+        "bbox_b": analysis.extra.get("bbox_b"),
+        "regions": ([{
+            "ax": analysis.extra["bbox_a"][0] / max(1, analysis.width),
+            "ay": analysis.extra["bbox_a"][1] / max(1, analysis.height),
+            "aw": analysis.extra["bbox_a"][2] / max(1, analysis.width),
+            "ah": analysis.extra["bbox_a"][3] / max(1, analysis.height),
+            "bx": analysis.extra["bbox_b"][0] / max(1, analysis.width),
+            "by": analysis.extra["bbox_b"][1] / max(1, analysis.height),
+            "bw": analysis.extra["bbox_b"][2] / max(1, analysis.width),
+            "bh": analysis.extra["bbox_b"][3] / max(1, analysis.height),
+        }] if analysis.extra.get("bbox_a") and analysis.extra.get("bbox_b") else []),
+        "warp_ncc": analysis.extra.get("warp_ncc"),
+        "warp_ssim": analysis.extra.get("warp_ssim"),
+        "overlap_ratio": analysis.extra.get("overlap_ratio"),
+        "orientation": analysis.extra.get("orientation"),
+        "scale": analysis.extra.get("scale"),
+        "pixel_verified": analysis.extra.get("pixel_verified", False),
         "image_path": img.image_path,
         "primary": True,
     }
@@ -932,54 +1044,190 @@ def _vertical_gel_seam_check(
 # P0: Cross-image SIFT/ORB local match
 # ---------------------------------------------------------------------------
 
-def _cross_image_sift_findings(doc: ParsedDoc) -> list[Finding]:
+def _cross_image_sift_findings(doc: ParsedDoc) -> tuple[list[Finding], dict[str, int | list[str]]]:
     """Keypoint match across different extracted images."""
     try:
-        from .sift_copymove import available, match_two_images
+        from .sift_copymove import (
+            MATCH_CANDIDATE_THRESHOLD,
+            _UNSET_FEATURES,
+            _read_image,
+            available,
+            candidate_similarity,
+            match_two_arrays,
+            prepare_candidate_signature,
+            prepare_match_variants,
+        )
     except Exception:  # noqa: BLE001
-        return []
+        return [], {"possible": 0, "compared": 0, "verified": 0, "remaining": 0, "excluded": 0}
     if not available():
-        return []
+        return [], {"possible": 0, "compared": 0, "verified": 0, "remaining": 0, "excluded": 0}
 
-    candidates: list[ExtractedImage] = []
+    eligible_images: list[ExtractedImage] = []
+    excluded_images = 0
     for img in doc.images or []:
         if _is_decorative_or_too_small(img):
+            excluded_images += 1
             continue
         if not img.image_path or not Path(img.image_path).exists():
+            excluded_images += 1
             continue
-        candidates.append(img)
-        if len(candidates) >= _CROSS_SIFT_MAX_IMAGES:
-            break
+        eligible_images.append(img)
+    # Build coverage from the complete image universe.  A configured image
+    # cap is a deliberate exclusion, not a silent reduction of ``possible``.
+    # This keeps possible = compared + excluded + remaining and makes the
+    # report honest when a caller elects to bound work.
+    candidates = eligible_images[:_CROSS_SIFT_MAX_IMAGES] if _CROSS_SIFT_MAX_IMAGES > 0 else eligible_images
+    capped_images = len(eligible_images) - len(candidates)
 
     # Precompute file sizes and SHA1 hashes once per image to avoid
     # redundant stat()/hash calls inside the O(n²) pair loop.
     _sizes: dict[str, int] = {}
-    _sha1s: dict[str, str | None] = {}
+    _digests: dict[str, str | None] = {}
+    image_cache = _BoundedImageCache(_read_image)
+    feature_cache: OrderedDict[str, tuple[Any | None, dict[tuple[str, float], Any]] | None] = OrderedDict()
+    candidate_cache: dict[str, Any] = {}
     for img in candidates:
         p = Path(img.image_path)
         try:
             _sizes[img.image_path] = p.stat().st_size
         except OSError:
             _sizes[img.image_path] = -1
-        _sha1s[img.image_path] = _file_sha1(p)
+        _digests[img.image_path] = _file_sha256(p)
+        decoded = _read_image(img.image_path)
+        if decoded is not None:
+            candidate_cache[img.image_path] = prepare_candidate_signature(decoded)
+    decoded = None
 
     findings: list[Finding] = []
-    for i in range(len(candidates)):
-        for j in range(i + 1, len(candidates)):
-            a, b = candidates[i], candidates[j]
-            if (a.page, a.index) == (b.page, b.index):
-                continue
-            # Skip obvious same-byte pairs (handled by full_image_duplicate)
-            if _sizes.get(a.image_path, -1) == _sizes.get(b.image_path, -2):
-                ha = _sha1s.get(a.image_path)
-                hb = _sha1s.get(b.image_path)
-                if ha and hb and ha == hb:
-                    continue
+    all_pairs = [(eligible_images[i], eligible_images[j])
+                 for i in range(len(eligible_images))
+                 for j in range(i + 1, len(eligible_images))]
+    different_sources_only = os.environ.get("MANUSIFT_CROSS_SIFT_DIFFERENT_SOURCES", "0").strip().lower() in {"1", "true", "yes", "on"}
+    cross_document_only = os.environ.get("MANUSIFT_CROSS_DOCUMENT_ONLY", "0").strip().lower() in {"1", "true", "yes", "on"}
+    def eligible_pair(a: ExtractedImage, b: ExtractedImage) -> bool:
+        if (a.page, a.index) == (b.page, b.index):
+            return False
+        if different_sources_only:
+            return _source_key(a, doc.source_path) != _source_key(b, doc.source_path)
+        if cross_document_only:
+            return (a.exif or {}).get('zerowall_document') != (b.exif or {}).get('zerowall_document')
+        return True
+    eligible_all = [(a, b) for a, b in all_pairs
+                if eligible_pair(a, b)]
+    candidate_paths = {img.image_path for img in candidates}
+    eligible = [(a, b) for a, b in eligible_all
+                if a.image_path in candidate_paths and b.image_path in candidate_paths]
+    max_pairs = _pair_budget_limit()
+    pair_cache_dir = Path(os.environ["MANUSIFT_IMAGE_PAIR_CACHE_DIR"]) if os.environ.get("MANUSIFT_IMAGE_PAIR_CACHE_DIR") else None
+    resume_pairs = os.environ.get("MANUSIFT_CROSS_SIFT_RESUME", "1").strip().lower() not in {"0", "false", "no", "off"}
+    # `accounted` advances the resumable queue. `compared` is the number of
+    # pairs that actually reached SIFT/ORB geometry; coarse rejects and exact
+    # byte duplicates are reported as excluded so coverage never claims they
+    # received geometric verification.
+    accounted = 0
+    compared = 0
+    verified = 0
+    newly_compared = 0
+    screened = 0
+    candidate_rejected = 0
+    geometry_compared = 0
+    # Structural exclusions (same extraction/source filters) and capped image
+    # pairs are already known before the resumable queue starts.
+    excluded = len(all_pairs) - len(eligible)
+    orientations = ["id", "flipH", "flipV", "rot180"]
 
-            result = match_two_images(a.image_path, b.image_path)
-            if not result.ok or not result.flagged:
+    def pair_cache_path(a: ExtractedImage, b: ExtractedImage) -> Path | None:
+        if pair_cache_dir is None:
+            return None
+        pair_key = hashlib.sha256(json.dumps(_stable_pair_identity(a, b, _digests), ensure_ascii=False).encode("utf-8")).hexdigest()
+        return pair_cache_dir / (pair_key + ".json")
+
+    def read_match(path: Path | None):
+        if not resume_pairs or path is None or not path.exists():
+            return None
+        try:
+            from .sift_copymove import CrossMatchAnalysis
+            return CrossMatchAnalysis(**json.loads(path.read_text(encoding="utf-8")))
+        except Exception:  # noqa: BLE001
+            return None
+
+    def write_match(path: Path | None, result: Any) -> None:
+        if path is None or not resume_pairs:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(".tmp")
+        temp.write_text(json.dumps(result.__dict__, ensure_ascii=False), encoding="utf-8")
+        _replace_checkpoint(temp, path)
+
+    def features_for(image_path: str, array: Any) -> tuple[Any | None, dict[tuple[str, float], Any]]:
+        """Lazily build expensive descriptors only for coarse candidates."""
+        if image_path not in feature_cache:
+            feature_cache[image_path] = prepare_match_variants(array) if array is not None else None
+            if len(feature_cache) > 4:
+                feature_cache.popitem(last=False)
+        else:
+            feature_cache.move_to_end(image_path)
+        prepared = feature_cache.get(image_path)
+        return prepared if prepared is not None else (None, {})
+
+    for a, b in eligible:
+        # Exact byte identity is covered by the whole-image detector.
+        if _sizes.get(a.image_path, -1) == _sizes.get(b.image_path, -2):
+            ha = _digests.get(a.image_path)
+            hb = _digests.get(b.image_path)
+            if ha and hb and ha == hb:
+                accounted += 1
+                excluded += 1
                 continue
-            findings.append(
+
+        # Cheap local-cell scheduling. It is intentionally below the exact
+        # hash check and above full geometry: every pair is accounted for, but
+        # unrelated canvases do not trigger twelve SIFT/ORB passes. A pair is
+        # only a finding after the full geometric and pixel gates below.
+        screen_score = candidate_similarity(candidate_cache.get(a.image_path), candidate_cache.get(b.image_path))
+        screened += 1
+        if MATCH_CANDIDATE_THRESHOLD > 0 and screen_score < MATCH_CANDIDATE_THRESHOLD:
+            accounted += 1
+            excluded += 1
+            candidate_rejected += 1
+            continue
+
+        cache_path = pair_cache_path(a, b)
+        cached = read_match(cache_path)
+        if cached is not None:
+            result = cached
+        else:
+            if _pair_deadline_reached() or (max_pairs and _pair_budget_used() >= max_pairs):
+                break
+            array_a = image_cache.load(a.image_path)
+            array_b = image_cache.load(b.image_path)
+            prepared_a, _variants_a = features_for(a.image_path, array_a)
+            _prepared_b, variants_b = features_for(b.image_path, array_b)
+            result = match_two_arrays(array_a, array_b,
+                                      prepared_a=prepared_a if prepared_a is not None else _UNSET_FEATURES,
+                                      prepared_b=variants_b if variants_b else _UNSET_FEATURES)
+            write_match(cache_path, result)
+            newly_compared += 1
+            _count_pair_budget()
+        geometry_compared += 1
+        accounted += 1
+        compared += 1
+        if result.ransac_model and result.warp_ncc is not None:
+            verified += 1
+        if not result.ok or not result.flagged:
+            continue
+        pair_id = hashlib.sha256(json.dumps(_stable_pair_identity(a, b, _digests), ensure_ascii=False).encode("utf-8")).hexdigest()[:24]
+        bbox_a = list(result.bbox_a) if result.bbox_a else None
+        bbox_b = list(result.bbox_b) if result.bbox_b else None
+        regions = []
+        if bbox_a and bbox_b:
+            regions.append({
+                "ax": bbox_a[0] / max(1, a.width), "ay": bbox_a[1] / max(1, a.height),
+                "aw": bbox_a[2] / max(1, a.width), "ah": bbox_a[3] / max(1, a.height),
+                "bx": bbox_b[0] / max(1, b.width), "by": bbox_b[1] / max(1, b.height),
+                "bw": bbox_b[2] / max(1, b.width), "bh": bbox_b[3] / max(1, b.height),
+            })
+        findings.append(
                 Finding.make(
                     trace_id=doc.trace_id,
                     detector=ImageForensicsDetector.name,
@@ -991,9 +1239,13 @@ def _cross_image_sift_findings(doc: ParsedDoc) -> list[Finding]:
                     evidence=(
                         f"SIFT/ORB matched two different extractions with "
                         f"{result.match_count} Lowe-filtered matches and "
-                        f"{result.inlier_count} RANSAC inliers "
+                        f"{result.inlier_count} RANSAC inliers, "
                         f"(model={result.ransac_model or 'none'}, "
-                        f"backend={result.backend}). Consistent with "
+                        f"backend={result.backend}, orientation={result.orientation}, "
+                        f"scale={result.scale:.2f}, warp_ncc={result.warp_ncc if result.warp_ncc is not None else 'n/a'}, "
+                        f"warp_ssim={result.warp_ssim if result.warp_ssim is not None else 'n/a'}, "
+                        f"overlap={result.overlap_ratio if result.overlap_ratio is not None else 'n/a'}, "
+                        f"median residual={result.inlier_residual_px if result.inlier_residual_px is not None else 'n/a'} px). Consistent with "
                         "reused panels/regions across figures after "
                         "scale or mild rotation."
                     ),
@@ -1003,6 +1255,7 @@ def _cross_image_sift_findings(doc: ParsedDoc) -> list[Finding]:
                     ),
                     raw={
                         "kind": "cross_image_sift",
+                        "pair_id": pair_id,
                         "image_a": {
                             "page": a.page,
                             "index": a.index,
@@ -1017,20 +1270,73 @@ def _cross_image_sift_findings(doc: ParsedDoc) -> list[Finding]:
                         "inlier_count": result.inlier_count,
                         "ransac_model": result.ransac_model,
                         "backend": result.backend,
+                        "orientation": result.orientation,
+                        "scale": result.scale,
+                        "bbox_a": bbox_a,
+                        "bbox_b": bbox_b,
+                        "regions": regions,
+                        "warp_ncc": result.warp_ncc,
+                        "warp_ssim": result.warp_ssim,
+                        "overlap_ratio": result.overlap_ratio,
+                        "inlier_residual_px": result.inlier_residual_px,
+                        "ink_density_a": result.ink_density_a,
+                        "ink_density_b": result.ink_density_b,
+                        "edge_density_a": result.edge_density_a,
+                        "edge_density_b": result.edge_density_b,
                     },
                 )
-            )
-            if len(findings) >= _CROSS_SIFT_MAX_FINDINGS:
-                return findings
-    return findings
+        )
+    remaining = max(0, len(eligible) - accounted)
+    pending_path = None
+    if remaining and pair_cache_dir is not None:
+        pending_path = pair_cache_dir / "remaining-cross.jsonl"
+        pending_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = pending_path.with_suffix(".tmp")
+        with temporary.open("w", encoding="utf-8") as stream:
+            for a, b in eligible[accounted:]:
+                stream.write(json.dumps({"pair_id": hashlib.sha256(json.dumps(_stable_pair_identity(a, b, _digests), ensure_ascii=False).encode()).hexdigest()[:24],
+                                         "a": a.image_path, "b": b.image_path}, ensure_ascii=False) + "\n")
+        _replace_checkpoint(temporary, pending_path)
+    elif pair_cache_dir is not None:
+        (pair_cache_dir / "remaining-cross.jsonl").unlink(missing_ok=True)
+    return findings, {"possible": len(all_pairs), "compared": compared, "verified": verified,
+                      "remaining": remaining, "excluded": excluded, "excluded_images": excluded_images,
+                      "remaining_pairs_path": str(pending_path) if pending_path else None,
+                      "image_cap_excluded": capped_images, "newly_compared": newly_compared,
+                      "screened": screened, "candidate_rejected": candidate_rejected,
+                      "geometry_compared": geometry_compared,
+                      "candidate_threshold": MATCH_CANDIDATE_THRESHOLD,
+                      "different_sources_only": different_sources_only,
+                      "orientation_tested": orientations}
 
 
 # ---------------------------------------------------------------------------
 # P1: Panel-segment-then-match (SIFT on panel crops)
 # ---------------------------------------------------------------------------
 
-def _panel_then_match_findings(doc: ParsedDoc) -> list[Finding]:
-    """Segment multipanel figures, then SIFT-match panel pairs."""
+def _grid_panel_boxes(width: int, height: int, gray: Any) -> list[tuple[int, int, int, int]]:
+    """Choose one viable 1x2, 2x1, or 2x2 grid partition.
+
+    The upstream fixed-grid fallback is retained, but cells from different
+    alternative partitions are never mixed into one panel list. That used to
+    compare overlapping halves against quarters and inflate both work and
+    duplicate signals.
+    """
+    from .panel_segmentation import _grid_panel_boxes as choose_grid
+
+    boxes = choose_grid(gray)
+    if not boxes:
+        return []
+    shrunk: list[tuple[int, int, int, int]] = []
+    for x, y, w, h in boxes:
+        mx, my = max(2, int(w * 0.035)), max(2, int(h * 0.035))
+        if w - 2 * mx >= 24 and h - 2 * my >= 24:
+            shrunk.append((x + mx, y + my, w - 2 * mx, h - 2 * my))
+    return shrunk
+
+
+def _panel_then_match_findings(doc: ParsedDoc) -> tuple[list[Finding], dict[str, Any]]:
+    """Segment multipanel figures, then fully verify every eligible panel pair."""
     try:
         from .panel_segmentation import _segment_panels
         from .sift_copymove import (
@@ -1039,42 +1345,70 @@ def _panel_then_match_findings(doc: ParsedDoc) -> list[Finding]:
             available,
             match_two_arrays,
         )
-    except Exception:  # noqa: BLE001
-        return []
+    except Exception as error:  # noqa: BLE001
+        return [], {"possible": 0, "compared": 0, "verified": 0, "remaining": 0,
+                    "excluded": len(doc.images or []), "status": "not_evaluated", "reason": str(error)}
     if not available():
-        return []
+        return [], {"possible": 0, "compared": 0, "verified": 0, "remaining": 0,
+                    "excluded": len(doc.images or []), "status": "not_evaluated", "reason": "OpenCV/SIFT unavailable"}
     cv2 = _load_cv2()
     if cv2 is None:
-        return []
+        return [], {"possible": 0, "compared": 0, "verified": 0, "remaining": 0,
+                    "excluded": len(doc.images or []), "status": "not_evaluated", "reason": "OpenCV unavailable"}
 
     findings: list[Finding] = []
-    for img in doc.images or []:
-        if _is_decorative_or_too_small(img):
+    pair_queue: list[tuple[ExtractedImage, ExtractedImage, int, int, tuple[int, int, int, int], tuple[int, int, int, int], str, str, Any, Any]] = []
+    all_panels: list[tuple[ExtractedImage, int, tuple[int, int, int, int], str, Any]] = []
+    excluded = 0
+    sha_cache: dict[str, str] = {}
+    try:
+        skip_sources = set(json.loads(os.environ.get("MANUSIFT_PANEL_SKIP_SOURCES", "[]")))
+    except Exception:  # noqa: BLE001
+        skip_sources = set()
+    cross_document_only = os.environ.get("MANUSIFT_CROSS_DOCUMENT_ONLY", "0").strip().lower() in {"1", "true", "yes"}
+    for image_index, img in enumerate(doc.images or []):
+        if _source_key(img, doc.source_path) in skip_sources:
+            excluded += 1
             continue
-        if not img.image_path:
+        if _is_decorative_or_too_small(img):
+            excluded += 1
+            continue
+        if not img.image_path or not Path(img.image_path).is_file():
+            excluded += 1
             continue
         arr = _read_image(img.image_path)
         if arr is None:
+            excluded += 1
             continue
         h, w = arr.shape[:2]
         if h < 128 or w < 128:
+            del arr
             continue
         gray = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
         boxes = _segment_panels(gray)
+        split_method = "adaptive_contour"
         if len(boxes) < 2:
+            boxes = _grid_panel_boxes(w, h, gray)
+            split_method = "explicit_grid"
+        if len(boxes) < 2:
+            excluded += 1
+            del gray, arr
             continue
-        # Limit pairs: at most 8 panels
-        boxes = boxes[:8]
         crops = []
         for x, y, bw, bh in boxes:
-            if bw < 40 or bh < 40:
+            if bw < 24 or bh < 24:
                 crops.append(None)
                 continue
             crops.append(arr[y : y + bh, x : x + bw])
 
-        for i in range(len(crops)):
+        if img.image_path not in sha_cache:
+            sha_cache[img.image_path] = _file_sha256(Path(img.image_path)) or ""
+        all_panels.extend((img, image_index, boxes[i], split_method, None)
+                          for i, crop in enumerate(crops) if crop is not None)
+        for i in range(len(crops)) if not cross_document_only else ():
             for j in range(i + 1, len(crops)):
                 if crops[i] is None or crops[j] is None:
+                    excluded += 1
                     continue
                 # Skip heavily overlapping boxes (same panel split)
                 xa, ya, wa, ha = boxes[i]
@@ -1088,48 +1422,131 @@ def _panel_then_match_findings(doc: ParsedDoc) -> list[Finding]:
                 inter = inter_x * inter_y
                 union = wa * ha + wb * hb - inter
                 if union > 0 and inter / union > 0.4:
+                    excluded += 1
                     continue
-                m = match_two_arrays(crops[i], crops[j])
-                if not m.ok or not m.flagged:
-                    continue
-                findings.append(
-                    Finding.make(
-                        trace_id=doc.trace_id,
-                        detector=ImageForensicsDetector.name,
-                        severity=m.severity,
-                        title=(
-                            f"Panel-to-panel SIFT match "
-                            f"({m.inlier_count} inliers)"
-                        ),
-                        evidence=(
-                            f"After panel segmentation, panels "
-                            f"{i + 1} and {j + 1} share "
-                            f"{m.inlier_count} RANSAC-confirmed "
-                            f"local features (matches={m.match_count}, "
-                            f"backend={m.backend}). Suggests reused "
-                            "panel content inside a multipanel figure."
-                        ),
-                        location=(
-                            f"Page {img.page + 1} / image {img.index} "
-                            f"panels {boxes[i]} vs {boxes[j]}"
-                        ),
-                        raw={
-                            "kind": "panel_sift_match",
-                            "page": img.page,
-                            "index": img.index,
-                            "panel_a": list(boxes[i]),
-                            "panel_b": list(boxes[j]),
-                            "match_count": m.match_count,
-                            "inlier_count": m.inlier_count,
-                            "ransac_model": m.ransac_model,
-                            "backend": m.backend,
-                            "image_path": img.image_path,
-                        },
-                    )
-                )
-                if len(findings) >= 12:
-                    return findings
-    return findings
+                pair_queue.append((img, img, image_index, image_index, boxes[i], boxes[j],
+                                   split_method, split_method, None, None))
+        del crops, gray, arr
+
+    for i, (img_a, index_a, box_a, method_a, crop_a) in enumerate(all_panels):
+        for img_b, index_b, box_b, method_b, crop_b in all_panels[i + 1:]:
+            if index_a == index_b:
+                continue
+            if cross_document_only and (img_a.exif or {}).get("zerowall_document") == (img_b.exif or {}).get("zerowall_document"):
+                continue
+            pair_queue.append((img_a, img_b, index_a, index_b, box_a, box_b,
+                               method_a, method_b, crop_a, crop_b))
+
+    possible = len(pair_queue)
+    compared = verified = newly_compared = 0
+    max_pairs = _pair_budget_limit()
+    cache_dir = Path(os.environ["MANUSIFT_IMAGE_PAIR_CACHE_DIR"]) if os.environ.get("MANUSIFT_IMAGE_PAIR_CACHE_DIR") else None
+    resume_pairs = os.environ.get("MANUSIFT_CROSS_SIFT_RESUME", "1").strip().lower() not in {"0", "false", "no", "off"}
+    image_cache = _BoundedImageCache(_read_image)
+
+    def panel_crop(img: ExtractedImage, box: tuple[int, int, int, int]):
+        array = image_cache.load(img.image_path)
+        if array is None:
+            return None
+        x, y, width, height = box
+        return array[y:y + height, x:x + width]
+
+    for img_a, img_b, index_a, index_b, panel_a, panel_b, method_a, method_b, crop_a, crop_b in pair_queue:
+        identity = json.dumps([[str(Path(img.image_path).resolve()), sha_cache.get(img.image_path, ""),
+                                box, method] for img, box, method in ((img_a, panel_a, method_a),
+                                                                      (img_b, panel_b, method_b))], ensure_ascii=False)
+        pair_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+        cache_path = cache_dir / ("panel-" + pair_id + ".json") if cache_dir is not None else None
+        m = None
+        if resume_pairs and cache_path is not None and cache_path.is_file():
+            try:
+                from .sift_copymove import CrossMatchAnalysis
+                m = CrossMatchAnalysis(**json.loads(cache_path.read_text(encoding="utf-8")))
+            except Exception:  # noqa: BLE001
+                m = None
+        if m is None:
+            if _pair_deadline_reached() or (max_pairs and _pair_budget_used() >= max_pairs):
+                break
+            crop_a = panel_crop(img_a, panel_a)
+            crop_b = panel_crop(img_b, panel_b)
+            m = match_two_arrays(crop_a, crop_b)
+            if resume_pairs and cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                temp = cache_path.with_suffix(".tmp")
+                temp.write_text(json.dumps(m.__dict__, ensure_ascii=False), encoding="utf-8")
+                _replace_checkpoint(temp, cache_path)
+            _count_pair_budget()
+            newly_compared += 1
+        compared += 1
+        if m.ransac_model and m.warp_ncc is not None:
+            verified += 1
+        if not m.ok or not m.flagged:
+            continue
+        raw_a = list(m.bbox_a) if m.bbox_a else [0, 0, panel_a[2], panel_a[3]]
+        raw_b = list(m.bbox_b) if m.bbox_b else [0, 0, panel_b[2], panel_b[3]]
+        bbox_a = [panel_a[0] + raw_a[0], panel_a[1] + raw_a[1], raw_a[2], raw_a[3]]
+        bbox_b = [panel_b[0] + raw_b[0], panel_b[1] + raw_b[1], raw_b[2], raw_b[3]]
+        regions = [{
+            "ax": bbox_a[0] / max(1, img_a.width), "ay": bbox_a[1] / max(1, img_a.height),
+            "aw": bbox_a[2] / max(1, img_a.width), "ah": bbox_a[3] / max(1, img_a.height),
+            "bx": bbox_b[0] / max(1, img_b.width), "by": bbox_b[1] / max(1, img_b.height),
+            "bw": bbox_b[2] / max(1, img_b.width), "bh": bbox_b[3] / max(1, img_b.height),
+        }]
+        findings.append(
+            Finding.make(
+                trace_id=doc.trace_id,
+                detector=ImageForensicsDetector.name,
+                severity=m.severity,
+                title=f"Panel-to-panel SIFT match ({m.inlier_count} inliers)",
+                evidence=(
+                    f"After {method_a}/{method_b} segmentation, panel boxes {panel_a} and {panel_b} share "
+                    f"{m.inlier_count} RANSAC-confirmed local features (matches={m.match_count}, "
+                    f"backend={m.backend}, orientation={m.orientation}, scale={m.scale:.2f}, "
+                    f"warp_ncc={m.warp_ncc if m.warp_ncc is not None else 'n/a'}, "
+                    f"warp_ssim={m.warp_ssim if m.warp_ssim is not None else 'n/a'}, "
+                    f"overlap={m.overlap_ratio if m.overlap_ratio is not None else 'n/a'})."
+                ),
+                location=f"Page {img_a.page + 1} / image {img_a.index} panel {panel_a} vs Page {img_b.page + 1} / image {img_b.index} panel {panel_b}",
+                raw={
+                    "kind": "panel_sift_match", "pair_id": pair_id,
+                    "image_a": {"page": img_a.page, "index": img_a.index, "image_path": img_a.image_path},
+                    "image_b": {"page": img_b.page, "index": img_b.index, "image_path": img_b.image_path},
+                    "panel_id_a": hashlib.sha256(f"{img_a.image_path}:{panel_a}:{method_a}".encode()).hexdigest()[:20],
+                    "panel_id_b": hashlib.sha256(f"{img_b.image_path}:{panel_b}:{method_b}".encode()).hexdigest()[:20],
+                    "panel_a": list(panel_a), "panel_b": list(panel_b),
+                    "bbox_a": bbox_a, "bbox_b": bbox_b, "regions": regions,
+                    "match_count": m.match_count, "inlier_count": m.inlier_count,
+                    "ransac_model": m.ransac_model, "backend": m.backend,
+                    "orientation": m.orientation, "scale": m.scale,
+                    "warp_ncc": m.warp_ncc, "warp_ssim": m.warp_ssim,
+                    "overlap_ratio": m.overlap_ratio, "inlier_residual_px": m.inlier_residual_px,
+                    "ink_density_a": m.ink_density_a, "ink_density_b": m.ink_density_b,
+                    "edge_density_a": m.edge_density_a, "edge_density_b": m.edge_density_b,
+                    "split_source_a": method_a, "split_source_b": method_b,
+                    "scale_a": 1.0, "scale_b": 1.0,
+                    "image_path_a": img_a.image_path, "image_path_b": img_b.image_path,
+                },
+            )
+        )
+    remaining = max(0, possible - compared)
+    pending_path = None
+    if remaining and cache_dir is not None:
+        pending_path = cache_dir / "remaining-panels.jsonl"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        temporary = pending_path.with_suffix(".tmp")
+        with temporary.open("w", encoding="utf-8") as stream:
+            for a, b, _, _, box_a, box_b, _, _, _, _ in pair_queue[compared:]:
+                stream.write(json.dumps({"a": a.image_path, "bbox_a": box_a,
+                                         "b": b.image_path, "bbox_b": box_b}, ensure_ascii=False) + "\n")
+        _replace_checkpoint(temporary, pending_path)
+    elif cache_dir is not None:
+        (cache_dir / "remaining-panels.jsonl").unlink(missing_ok=True)
+    coverage = {"possible": possible, "compared": compared, "verified": verified,
+                "remaining": remaining, "excluded": excluded, "newly_compared": newly_compared,
+                "remaining_pairs_path": str(pending_path) if pending_path else None,
+                "orientation_tested": ["id", "flipH", "flipV", "rot180"],
+                "status": "done" if remaining == 0 else "incomplete"}
+    return findings, coverage
 
 
 # ---------------------------------------------------------------------------
@@ -1258,21 +1675,13 @@ def _texture_cells(
         return []
 
 
-def _file_sha1(path: Path, max_bytes: int = 8_000_000) -> str | None:
-    """SHA-1 of file contents (capped) for full-image identity."""
+def _file_sha256(path: Path) -> str | None:
+    """Full-file SHA-256; prefixes are not valid identity evidence."""
     import hashlib
 
     try:
-        h = hashlib.sha1()
         with path.open("rb") as f:
-            remaining = max_bytes
-            while remaining > 0:
-                chunk = f.read(min(65536, remaining))
-                if not chunk:
-                    break
-                h.update(chunk)
-                remaining -= len(chunk)
-        return h.hexdigest()
+            return hashlib.file_digest(f, "sha256").hexdigest()
     except Exception:  # noqa: BLE001
         return None
 
@@ -1289,7 +1698,7 @@ def _full_image_duplicate_findings(doc: ParsedDoc) -> list[Finding]:
         p = Path(path)
         if not p.exists():
             continue
-        digest = _file_sha1(p)
+        digest = _file_sha256(p)
         if not digest:
             continue
         by_hash.setdefault(digest, []).append(img)
@@ -1314,8 +1723,8 @@ def _full_image_duplicate_findings(doc: ParsedDoc) -> list[Finding]:
                     f"across extractions"
                 ),
                 evidence=(
-                    "Two or more extracted images share the same file "
-                    "bytes (SHA-1). For scientific figures this can mean "
+                    "Two or more extracted images share the same full-file "
+                    "SHA-256 digest. For scientific figures this can mean "
                     "the same panel was embedded multiple times or a "
                     "panel was substituted. Tiny decorative icons are "
                     "excluded by size gates."
@@ -1567,6 +1976,25 @@ class ImageForensicsDetector:
         n_images = len(doc.images or [])
         n_skipped = 0
 
+        # The aggregate cross-document pass runs the pair queue once over all
+        # source files. Per-document detectors have already handled same-file
+        # comparisons; only image-only attachments still need same-image panel
+        # matching in this pass.
+        if os.environ.get("MANUSIFT_CROSS_DOCUMENT_ONLY", "").strip().lower() in {"1", "true", "yes"}:
+            cross_findings, cross_coverage = _cross_image_sift_findings(doc)
+            panel_findings, panel_coverage = _panel_then_match_findings(doc)
+            findings.extend(cross_findings)
+            findings.extend(panel_findings)
+            incomplete = bool(cross_coverage.get("remaining") or panel_coverage.get("remaining")
+                              or cross_coverage.get("image_cap_excluded"))
+            return DetectorResult(
+                detector=self.name, ok=not incomplete,
+                error="Pair queue incomplete; resume with the same trace ID." if incomplete else None,
+                findings=findings,
+                stats={"cross_image_pairs": cross_coverage, "panel_pairs": panel_coverage,
+                       "cross_document_only": True},
+            )
+
         # Detect whether SIFT path is live — demotes grid aHash.
         sift_live = False
         try:
@@ -1672,9 +2100,11 @@ class ImageForensicsDetector:
         findings.extend(_full_image_duplicate_findings(doc))
         findings.extend(_texture_overlap_findings(doc))
         # P0 cross-image SIFT
-        findings.extend(_cross_image_sift_findings(doc))
+        cross_findings, cross_coverage = _cross_image_sift_findings(doc)
+        findings.extend(cross_findings)
         # P1 panel-then-match
-        findings.extend(_panel_then_match_findings(doc))
+        panel_findings, panel_coverage = _panel_then_match_findings(doc)
+        findings.extend(panel_findings)
         # P1 optional backends
         findings.extend(_optional_backend_findings(doc))
 
@@ -1756,10 +2186,20 @@ class ImageForensicsDetector:
                 "by_severity": by_sev,
                 "sift_primary": sift_live,
                 "grid_secondary": grid_secondary,
+                "cross_image_pairs": cross_coverage,
+                "panel_pairs": panel_coverage,
             },
         )
+        incomplete = bool(cross_coverage.get("remaining") or panel_coverage.get("remaining")
+                          or cross_coverage.get("image_cap_excluded"))
         return DetectorResult(
             detector=self.name,
-            ok=True,
+            ok=not incomplete,
+            error="Pair queue incomplete; resume with the same trace ID." if incomplete else None,
             findings=[summary, *findings],
+            stats={
+                "images_eligible": max(0, n_images - n_skipped),
+                "cross_image_pairs": cross_coverage,
+                "panel_pairs": panel_coverage,
+            },
         )

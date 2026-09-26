@@ -50,7 +50,7 @@ export class PythonSyncService {
     const manifest = await this.cached()
     const plan = await this.options.updater.previewDependencyManifest(manifest)
     if (plan.error) throw new Error(plan.error)
-    assertManifestWheels(manifest, plan.wheels, plan.manifestInstalled)
+    assertManifestWheels(manifest, plan.wheels, plan.manifestInstalled, (plan.preparationFailures ?? []).map(failure => failure.name))
     const bound = { ...plan, manifestRevision: manifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(manifest)) }
     await this.save(`${plan.planId}.json`, bound)
     return bound
@@ -64,8 +64,8 @@ export class PythonSyncService {
     // Read the updater's actual plan too: a changed on-disk plan must not
     // inherit the approval of the previously reviewed file.
     const stored = JSON.parse(await readFile(join(this.options.root, 'plans', `${planId}.json`), 'utf8')) as StoredPackagePlan
-    if (JSON.stringify(stored.wheels) !== JSON.stringify(plan.wheels) || stored.snapshotId !== plan.snapshotId || !stored.dependencyManifest || dependencyManifestSha256(JSON.stringify(stored.dependencyManifest)) !== plan.manifestSha256) throw new Error('依赖安装计划已改变，请重新预览。')
-    assertManifestWheels(manifest, stored.wheels, (await this.options.updater.pythonInfo()).packages)
+    if (JSON.stringify(stored.wheels) !== JSON.stringify(plan.wheels) || JSON.stringify(stored.preparationFailures ?? []) !== JSON.stringify(plan.preparationFailures ?? []) || JSON.stringify(stored.changes) !== JSON.stringify(plan.changes) || stored.snapshotId !== plan.snapshotId || !stored.dependencyManifest || dependencyManifestSha256(JSON.stringify(stored.dependencyManifest)) !== plan.manifestSha256) throw new Error('依赖安装计划已改变，请重新预览。')
+    assertManifestWheels(manifest, stored.wheels, (await this.options.updater.pythonInfo()).packages, (stored.preparationFailures ?? []).map(failure => failure.name))
     return this.options.updater.applyPackagePlan(planId)
   }
 }

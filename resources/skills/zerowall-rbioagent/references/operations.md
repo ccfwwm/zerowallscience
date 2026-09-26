@@ -556,7 +556,11 @@
 
 ## biomni.run.python
 
-Run Python in the shared host Biomni venv. Read BIOMNI_DATA_ROOT and write artifacts in the job directory. Task LLM configuration is inherited by Biomni calls. Requires confirm=true.
+Run Python in the remote Biomni host's configured shared Python runtime. Do
+not create or select a per-job venv; the remote service owns its single
+environment and dependency policy. Read BIOMNI_DATA_ROOT and write artifacts
+in the job directory. Task LLM configuration is inherited by Biomni calls.
+Requires confirm=true.
 
 - 工具族：biomni_execute；副作用：execute；query：false；执行：async_or_cached。
 - 确认字段：confirm。

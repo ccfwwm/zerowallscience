@@ -63,17 +63,20 @@ do not spawn subprocesses. Example paths under `data/`, `refs/`, `work/`, and
 
 ## Install reproducibly
 
-Use a project environment and commit its generated lockfile:
+Install into the single ZeroWall Python runtime through the signed dependency
+manifest. A project lock may record the requested pins, but it must not create
+another interpreter or site-packages directory:
 
-```bash
-uv venv --python 3.12
-uv pip install "geniml==0.8.4" "gtars==0.9.2"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pins: geniml==0.8.4, gtars==0.9.2
 ```
 
 For Region2Vec, scEmbed, evaluation, or universe methods needing ML libraries:
 
-```bash
-uv pip install "geniml[ml]==0.8.4" "gtars==0.9.2"
+```text
+For ML workflows add geniml[ml]==0.8.4 to the same manifest and sync it into
+the shared Python runtime.
 ```
 
 For a durable project, prefer:

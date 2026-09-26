@@ -13,6 +13,7 @@ import {BrainJobScope,settleRunner,stopBrainProcess} from './brain-process.js'
 
 import { pythonChildEnvironment } from './python-env.js'
 import {defaultAtlasDirectory} from './brain-atlas.js'
+import { resolveManagedSciencePython, scienceBootstrap } from './managed-python.js'
 
 /**
  * Resolve the managed atlas directory the same way the atlas service does.
@@ -30,8 +31,9 @@ function managedAtlasDirectory():string|undefined{
 const NAMES=['downsampled.tiff','deformation_field_0.tiff','deformation_field_1.tiff','deformation_field_2.tiff']
 export const brainFileHash=async(path:string)=>{const hash=createHash('sha256');for await(const bytes of createReadStream(path))hash.update(bytes);return hash.digest('hex')}
 export async function runBrainTransform(input:unknown,scope?:BrainJobScope):Promise<JsonObject>{
- const python=process.env.ZEROWALL_BRAINGLOBE_PYTHON?.trim()||process.env.ZEROWALL_PYTHON?.trim()||'python'
- return new Promise((yes,no)=>{const child=(scope?.spawn??spawn)(python,['-E','-P','-c',BRAIN_TRANSFORM_RUNNER],{windowsHide:true,shell:false,detached:process.platform!=='win32',stdio:['pipe','pipe','pipe'],env: pythonChildEnvironment(undefined,{OMP_NUM_THREADS:'1',OPENBLAS_NUM_THREADS:'1',MKL_NUM_THREADS:'1'})});let output='',error='';let exceeded=false;const timer=setTimeout(()=>{exceeded=true;stopBrainProcess(child)},180000);child.on('error',e=>{clearTimeout(timer);no(e)});child.stdout.on('data',b=>{output+=b;if(output.length>32*1024**2){exceeded=true;stopBrainProcess(child)}});child.stderr.on('data',b=>error=(error+b).slice(-12000));const settle=settleRunner(child,code=>{clearTimeout(timer);if(exceeded)return no(new Error('Brain transform exceeded its time/output bound.'));if(code===null)return no(new Error(error||'Brain transform runner exited without reporting a status.'));if(code!==0)return no(new Error(error||output));try{const value=JSON.parse(output);if(value.error)throw new Error(value.error);yes(value)}catch(e){no(e)}});child.on('exit',code=>settle.gone(code));child.stdin.end(JSON.stringify(input))})
+ const managed=await resolveManagedSciencePython();if(!managed)throw new Error('未找到 ZeroWall 唯一共享 Python 环境；脑图谱变换不会切换到系统 Python 或其他环境。')
+ const python=managed.executable;const code=`${scienceBootstrap(managed)}${BRAIN_TRANSFORM_RUNNER}`
+ return new Promise((yes,no)=>{const child=(scope?.spawn??spawn)(python,['-E','-P','-c',code],{windowsHide:true,shell:false,detached:process.platform!=='win32',stdio:['pipe','pipe','pipe'],env: pythonChildEnvironment(managed.sitePackages,{OMP_NUM_THREADS:'1',OPENBLAS_NUM_THREADS:'1',MKL_NUM_THREADS:'1'})});let output='',error='';let exceeded=false;const timer=setTimeout(()=>{exceeded=true;stopBrainProcess(child)},180000);child.on('error',e=>{clearTimeout(timer);no(e)});child.stdout.on('data',b=>{output+=b;if(output.length>32*1024**2){exceeded=true;stopBrainProcess(child)}});child.stderr.on('data',b=>error=(error+b).slice(-12000));const settle=settleRunner(child,code=>{clearTimeout(timer);if(exceeded)return no(new Error('Brain transform exceeded its time/output bound.'));if(code===null)return no(new Error(error||'Brain transform runner exited without reporting a status.'));if(code!==0)return no(new Error(error||output));try{const value=JSON.parse(output);if(value.error)throw new Error(value.error);yes(value)}catch(e){no(e)}});child.on('exit',code=>settle.gone(code));child.stdin.end(JSON.stringify(input))})
 }
 export async function createBrainTransformContract(directory:string,scope?:BrainJobScope):Promise<BrainTransformContract>{
  const atlasDirectory=managedAtlasDirectory();if(!atlasDirectory)throw new Error('Managed atlas directory is required for transform inspection; configure the shared Python environment first.')

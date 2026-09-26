@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { appendFile, mkdir, open, readFile, realpath, rename, writeFile } from 'node:fs/promises'
 import { devNull } from 'node:os'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createHash } from 'node:crypto'
 import { DEFAULT_INDEX_URL, sanitizePythonTlsEnvironment } from './python-mirror.js'
@@ -50,11 +50,11 @@ export class PythonEnvironmentApi {
 
   private recordProgress(status: McpEnvironmentStatus): void {
     const job = status.updateJob
-    const entry: Record<string, unknown> = { action: 'progress', status: 'running', createdAt: new Date().toISOString(), phase: status.phase, stage: job?.stage ?? null, percent: status.progress ?? null, message: status.message ?? null, taskId: job?.taskId ?? null, packageCount: job?.packageNames?.length ?? 0, packageNames: job?.packageNames?.slice(0, 20) ?? [], completedFiles: job?.completedFiles ?? null, totalFiles: job?.totalFiles ?? null, receivedBytes: job?.receivedBytes ?? null, totalBytes: job?.totalBytes ?? null }
+    const entry: Record<string, unknown> = { action: 'progress', status: 'running', createdAt: new Date().toISOString(), phase: status.phase, stage: job?.stage ?? null, percent: status.progress ?? null, message: status.message ?? null, logLine: job?.logLines?.at(-1) ?? null, taskId: job?.taskId ?? null, packageCount: job?.packageNames?.length ?? 0, packageNames: job?.packageNames?.slice(0, 20) ?? [], completedFiles: job?.completedFiles ?? null, totalFiles: job?.totalFiles ?? null, receivedBytes: job?.receivedBytes ?? null, totalBytes: job?.totalBytes ?? null }
     const previous = this.progress[this.progress.length - 1]
     // Collapse a repeated stage in place: the log should show the shape of the
     // run, not a per-percent transcript.
-    if (previous && previous.stage === entry.stage && previous.phase === entry.phase) this.progress[this.progress.length - 1] = entry
+    if (previous && previous.stage === entry.stage && previous.phase === entry.phase && previous.logLine === entry.logLine) this.progress[this.progress.length - 1] = entry
     else this.progress.push(entry)
     if (this.progress.length > 200) this.progress.splice(0, this.progress.length - 200)
     this.progressTimer ??= setTimeout(() => { this.progressTimer = undefined; void this.flushProgress() }, 2000)
@@ -218,9 +218,14 @@ export class PythonEnvironmentApi {
     if (current.health !== 'ready') return unavailable
     const root = await realpath(current.root).catch(() => resolve(current.root))
     const stablePath = current.runtimeRoot
-    const runtimeRoot = typeof stablePath === 'string' ? await realpath(stablePath).catch(() => resolve(stablePath)) : root
-    const relativeExecutable = current.runtimeRoot ? 'Python/python.exe' : current.manifest.python.relativeExecutable
-    const relativeSitePackages = current.runtimeRoot ? 'Python/Lib/site-packages' : current.manifest.python.relativeSitePackages
+    const productRoot = basename(resolve(this.root)).toLowerCase() === 'zerowall-python'
+    const expectedRuntimeRoot = dirname(resolve(this.root))
+    if (productRoot && (typeof stablePath !== 'string' || resolve(stablePath) !== expectedRuntimeRoot || current.manifest.python.relativeExecutable !== 'Python/python.exe' || current.manifest.python.relativeSitePackages !== 'Python/Lib/site-packages')) {
+      throw new Error('Python diagnostics are limited to the single shared ZeroWall runtime; the legacy profile has not been migrated.')
+    }
+    const runtimeRoot = productRoot ? await realpath(expectedRuntimeRoot).catch(() => expectedRuntimeRoot) : typeof stablePath === 'string' ? await realpath(stablePath).catch(() => resolve(stablePath)) : root
+    const relativeExecutable = productRoot || current.runtimeRoot ? 'Python/python.exe' : current.manifest.python.relativeExecutable
+    const relativeSitePackages = productRoot || current.runtimeRoot ? 'Python/Lib/site-packages' : current.manifest.python.relativeSitePackages
     const executable = resolve(runtimeRoot, relativeExecutable)
     const rel = relative(runtimeRoot, executable)
     if (rel.startsWith('..') || isAbsolute(rel)) throw new Error('Unsafe managed Python executable')

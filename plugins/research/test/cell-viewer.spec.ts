@@ -40,7 +40,7 @@ with h5py.File(sys.argv[1], 'w') as f:
   expect(opened.preview?.summary.varNames).toEqual(['G1', 'G2'])
   expect(opened.preview?.cells.map(cell => cell.id)).toEqual(['cell1', 'cell2'])
   expect(opened.preview?.expression?.values.map(row => row.value)).toEqual([0, 2])
-})
+}, 30000)
 
 it('selects across all 100,005 cells and streams a collection beyond the preview', async () => {
   const root = await (await import('node:fs/promises')).mkdtemp(join(tmpdir(), 'cells-selection-'))

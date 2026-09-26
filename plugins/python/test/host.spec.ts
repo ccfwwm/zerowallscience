@@ -18,15 +18,18 @@ afterEach(async () => {
 
 describe('managed Python runtime', () => {
   it('pins shared tasks to their snapshot and uses one package directory', async () => {
-    const store = await mkdtemp(join(tmpdir(), 'zerowall-shared-')); roots.push(store)
+    const base = await mkdtemp(join(tmpdir(), 'zerowall-shared-')); roots.push(base)
+    const store = join(base, 'zerowall-python')
+    await mkdir(store, { recursive: true })
     const installed = join(store, 'snapshots', 'candidate')
-    const sitePackages = join(installed, 'Python', 'Lib', 'site-packages')
-    await mkdir(sitePackages, { recursive: true }); await writeFile(join(installed, 'Python', 'python.exe'), 'fixture')
+    const runtimeRoot = join(store, '..')
+    const sitePackages = join(runtimeRoot, 'Python', 'Lib', 'site-packages')
+    await mkdir(sitePackages, { recursive: true }); await writeFile(join(runtimeRoot, 'Python', 'python.exe'), 'fixture')
     const manifest = { python: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } }
-    await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, health: 'ready', manifest, overlayPath: 'obsolete' }))
+    await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, runtimeRoot, health: 'ready', manifest }))
     await writeFile(join(store, 'runtime.json'), JSON.stringify({ rootPath: 'untrusted', executablePath: process.execPath, sitePackagesPath: store }))
     process.env.ZEROWALL_PYTHON_ROOT = store
-    await expect(resolveManagedPython()).resolves.toMatchObject({ root: installed, sitePackages, overlayPath: sitePackages })
+    await expect(resolveManagedPython()).resolves.toMatchObject({ root: join(runtimeRoot, 'Python'), sitePackages })
   })
   it('uses the current snapshot CA for all Python aliases', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-ca-')); roots.push(root)
@@ -49,7 +52,7 @@ describe('managed Python runtime', () => {
     await expect(resolveManagedPython()).rejects.toThrow(/ZeroWall Python root is not configured|ZeroWall Python is not installed/u)
   })
 
-  it('resolves only the manifest-relative executable inside the ready environment', async () => {
+  it('rejects a legacy private Python layout', async () => {
     const store = await mkdtemp(join(tmpdir(), 'zerowall-python-store-'))
     const installed = join(store, 'versions', '4.1.10')
     const executable = join(installed, 'bio-tools', 'python', 'python.exe')
@@ -61,7 +64,7 @@ describe('managed Python runtime', () => {
     await writeFile(join(installed, 'manifest.json'), JSON.stringify(manifest))
     await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, health: 'ready', manifest }))
     process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = store
-    await expect(resolveManagedPython()).resolves.toMatchObject({ executable, root: installed, sitePackages, overlayPath: join(store, 'python-overlay', 'python-3.12') })
+    await expect(resolveManagedPython()).rejects.toThrow(/legacy Python layout|shared runtime/u)
 
     const escaped = { python: { relativeExecutable: '../system-python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages' } }
     await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, health: 'ready', manifest: escaped }))

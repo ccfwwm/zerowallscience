@@ -90,11 +90,7 @@ uv pip install \
   "tifffile==2026.7.14"
 ```
 
-Optional alternate table engines:
-
-```bash
-uv pip install "pandas==3.0.5" "polars==1.43.0"
-```
+Pandas 和 Polars 都由 ZeroWall 设置 > Python 环境的签名必装清单同步到唯一共享 Python；使用清单中的当前版本。
 
 ## Exact capability matrix
 

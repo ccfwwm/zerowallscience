@@ -56,21 +56,14 @@ This skill should be used when:
 
 ### Installation
 
-**Preferred Method: Conda/Mamba**
-```bash
-# Enter the following two lines if you are on a M1 Mac
-CONDA_SUBDIR=osx-64
-conda config --env --set subdir osx-64
+**Local ZeroWall path:** add the reviewed TileDB packages to the signed shared
+dependency manifest and synchronize them through Python settings. Do not create
+a Conda environment or alternate local interpreter. The Docker examples below
+remain external execution options:
 
-# Create the conda environment
-conda create -n tiledb-vcf "python<3.10"
-conda activate tiledb-vcf
-
-# Mamba is a faster and more reliable alternative to conda
-conda install -c conda-forge mamba
-
-# Install TileDB-Py and TileDB-VCF, align with other useful libraries
-mamba install -y -c conda-forge -c bioconda -c tiledb tiledb-py tiledbvcf-py pandas pyarrow numpy
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pins: tiledb-py, tiledbvcf-py, pandas, pyarrow, numpy
 ```
 
 **Alternative: Docker Images**

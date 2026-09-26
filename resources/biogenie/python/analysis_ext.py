@@ -635,7 +635,7 @@ def op_rna_fold(args):
     if len(seq) > 20000:
         raise ValueError('序列过长（>20000 nt），ViennaRNA 在此规模不可行')
 
-    import RNA  # ViennaRNA —— 第二层按需依赖（EXTRA_DEPS.rna_fold）
+    import RNA  # ViennaRNA is installed through the shared Python manifest.
 
     structure, mfe = RNA.fold(seq)
     # 解析 dot-bracket 得碱基对（比 ptable 更直观可控）

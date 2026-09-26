@@ -19,14 +19,14 @@ it('bounds StarDist CPU parameters and preserves the official model threshold', 
 })
 
 it('persists missing engine failures idempotently, rejects wrong projects and does not pretend lost runs resume', async () => {
- const root=await mkdtemp(join(tmpdir(),'he-segment-'));const store=new ResearchStore(join(root,'store.sqlite'));const service=new HeSegmentationService(store,{pythonPath:join(root,'missing.exe')})
+  const root=await mkdtemp(join(tmpdir(),'he-segment-'));const store=new ResearchStore(join(root,'store.sqlite'));process.env.ZEROWALL_PYTHON_ROOT=join(root,'missing','zerowall-python');delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT;const service=new HeSegmentationService(store,{pythonPath:join(root,'missing.exe')})
  try {
   const project=store.createProject({name:'A',rootPath:root});const foreign=store.createProject({name:'B',rootPath:join(root,'b')});const path=join(root,'source.tif');const bytes=Buffer.from('bounded fixture');await writeFile(path,bytes);const sha256=createHash('sha256').update(bytes).digest('hex')
   const asset=store.createDataAsset({projectId:project.id,name:'source',uri:pathToFileURL(path).href,location:'local',mediaType:'image/tiff',checksum:sha256,checksumAlgorithm:'sha256'})
   const viewer=store.createViewerSession({projectId:project.id,assetId:asset.id,tool:'image',state:{heTool:'he',heRegion:{x:0,y:0,width:128,height:128,page:0}}})
   const input={path,sha256,asset,viewer,he:{width:128,height:128,pages:1,format:'tiff',engine:'openslide' as const,levels:[{level:0,width:128,height:128,downsample:1}],calibration:null,bounds:{x:0,y:0,width:128,height:128,source:'full-slide'},notes:[]}}
   const request={sessionId:'s',action:'segment' as const,requestId:'stable'};const first=await service.submit(project,request,input)
-  expect(first.run).toMatchObject({status:'failed',error:expect.stringContaining('not installed')})
+  expect(first.run).toMatchObject({status:'failed',error:expect.stringContaining('未找到 ZeroWall 唯一共享 Python 环境')})
   expect((await service.submit(project,request,input)).run?.id).toBe(first.run?.id)
   await expect(service.submit(project,{...request,segmentation:{probabilityThreshold:.7}},input)).rejects.toThrow('IDEMPOTENCY_CONFLICT')
   await expect(service.status(foreign,first.run!.id)).rejects.toThrow('active project')
@@ -46,7 +46,7 @@ it('refuses a forged completion manifest without registering partial outputs', a
 })
 
 it('marks an owned child that exits without a manifest failed immediately, retaining logs', async () => {
- const root=await mkdtemp(join(tmpdir(),'he-exit-'));const store=new ResearchStore(join(root,'store.sqlite'));const pythonPath=join(root,'engine.exe');await writeFile(pythonPath,'mock executable')
+ const root=await mkdtemp(join(tmpdir(),'he-exit-'));const store=new ResearchStore(join(root,'store.sqlite'));const manager=join(root,'zerowall-python');const pythonRoot=join(root,'Python');const pythonPath=join(pythonRoot,'python.exe');await mkdir(manager,{recursive:true});await mkdir(join(pythonRoot,'Lib','site-packages'),{recursive:true});await writeFile(pythonPath,'mock executable');await writeFile(join(manager,'current.json'),JSON.stringify({root:join(manager,'slots','fixture'),runtimeRoot:root,health:'ready',manifest:{python:{version:'3.12.10',relativeExecutable:'Python/python.exe',relativeSitePackages:'Python/Lib/site-packages'}}}));process.env.ZEROWALL_PYTHON_ROOT=manager
  const service=new HeSegmentationService(store,{pythonPath});const child=Object.assign(new EventEmitter(),{pid:123,kill:vi.fn()});const spawn=vi.mocked(childProcess.spawn).mockReturnValue(child as any)
  try {
   const project=store.createProject({name:'A',rootPath:root});const path=join(root,'source.tif');const bytes=Buffer.from('fixture');await writeFile(path,bytes);const sha256=createHash('sha256').update(bytes).digest('hex')

@@ -22,7 +22,9 @@ export function attachPythonBroker(child: ChildProcess, manager: () => PythonUpd
         }
         case 'info': return service.pythonInfo(typeof args[0] === 'string' ? args[0] : '')
         case 'versions': return service.checkPythonPackageUpdates(names())
-        case 'preview': return args[1] === 'uninstall' ? service.previewUninstall(names()) : service.previewPackages(names(), typeof args[2] === 'string' ? args[2] : undefined)
+        case 'preview':
+          if (args[2] !== undefined) throw new Error('ZeroWall 使用唯一共享 Python 环境，不支持独立依赖 profile。')
+          return args[1] === 'uninstall' ? service.previewUninstall(names()) : service.previewPackages(names())
         case 'apply':
           if (typeof args[0] !== 'string' || !/^[a-f0-9-]{36}$/u.test(args[0])) throw new Error('Invalid plan id')
           return service.applyPackagePlan(args[0])

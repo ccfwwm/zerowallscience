@@ -273,7 +273,8 @@ describe('Python dependency panel', () => {
     window.zerowallDesktop = { getMcpPythonInfo: async () => info('gen-a', 1), pythonEnvironment: execute } as any
     render(<PythonEnvironmentPanel t={zhT} />)
     openAdvanced()
-    expect(await screen.findByText('清单版本: 2026-09-23.2')).toBeTruthy()
+    await screen.findByText('待同步依赖：1')
+    expect(screen.queryByText('清单版本: 2026-09-23.2')).toBeNull()
     expect(screen.getByText('待同步依赖：1')).toBeTruthy()
     expect(screen.getByText('操作记录 · 2')).toBeTruthy()
     expect(screen.getByText('Hash mismatch')).toBeTruthy()

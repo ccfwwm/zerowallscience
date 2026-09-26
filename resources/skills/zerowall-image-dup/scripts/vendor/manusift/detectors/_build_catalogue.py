@@ -3,7 +3,10 @@ Generate ``manusift/detectors/CATALOGUE.md`` from the live
 detector registry.
 
 Usage:
-    .venv/Scripts/python.exe manusift/detectors/_build_catalogue.py
+    %APPDATA%\\zerowall-science\\Python\\python.exe manusift/detectors/_build_catalogue.py
+
+The command uses ZeroWall Science's single shared Python runtime. Do not
+create a repository-local virtual environment for the catalogue build.
 
 Output:
     manusift/detectors/CATALOGUE.md

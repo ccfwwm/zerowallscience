@@ -17,12 +17,17 @@ describe('engine subprocess health', () => {
   it('does not report a timeout as available', async () => {
     expect(await probeEngine('napari', process.execPath, process.execPath, ['-e', 'setInterval(() => {}, 1000)'], 100)).toMatchObject({ available: false, reason: '版本探测超时。' })
   })
-  it('keeps BrainGlobe unavailable unless a managed Python is explicitly configured', async () => {
-    const previous = process.env.ZEROWALL_BRAINGLOBE_PYTHON
+  it('keeps BrainGlobe unavailable when the shared runtime is explicitly unavailable', async () => {
+    const previous = { shared: process.env.ZEROWALL_PYTHON_ROOT, managed: process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT, legacy: process.env.ZEROWALL_BRAINGLOBE_PYTHON }
+    process.env.ZEROWALL_PYTHON_ROOT = join(tmpdir(), 'zerowall-python-does-not-exist')
+    delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
     delete process.env.ZEROWALL_BRAINGLOBE_PYTHON
-    await expect(probeBrainGlobe()).resolves.toMatchObject({ id: 'brainglobe', available: false })
-    if (previous === undefined) delete process.env.ZEROWALL_BRAINGLOBE_PYTHON
-    else process.env.ZEROWALL_BRAINGLOBE_PYTHON = previous
+    try { await expect(probeBrainGlobe()).resolves.toMatchObject({ id: 'brainglobe', available: false }) }
+    finally {
+      if (previous.shared === undefined) delete process.env.ZEROWALL_PYTHON_ROOT; else process.env.ZEROWALL_PYTHON_ROOT = previous.shared
+      if (previous.managed === undefined) delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT; else process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = previous.managed
+      if (previous.legacy === undefined) delete process.env.ZEROWALL_BRAINGLOBE_PYTHON; else process.env.ZEROWALL_BRAINGLOBE_PYTHON = previous.legacy
+    }
   })
   it('requires the brainreg metadata and registered atlas output before recording success', () => {
     expect(validateBrainregOutputs(['brainreg.json', 'registered_atlas.tiff', 'boundaries.tiff'])).toEqual({ valid: true, missing: [] })

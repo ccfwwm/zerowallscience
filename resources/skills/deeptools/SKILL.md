@@ -31,6 +31,11 @@ These host rules override upstream examples when they differ:
 - Resolve credentials only through **Settings > Credentials** and the approved execution-context environment. Never create, scan, or load project `.env` files and never print or persist secret values.
 - Treat network calls, cloud jobs, experiment submissions, writes, deletion, and physical equipment actions as approval-gated. Default to read-only inspection, validation, or dry-run planning until the user explicitly requests execution.
 - Use `zerowall-python-packages` for managed Python dependency changes: inspect, preview, obtain confirmation, apply, and verify. Do not run pip/uv/conda against the managed snapshot. Report missing external runtimes separately.
+- In the ZeroWall desktop, deepTools and its Python dependencies use the one
+  shared Python 3.12 runtime (`%APPDATA%\\zerowall-science\\Python`). Do not
+  create a deepTools venv, Conda environment, or private site-packages path.
+  Conda/bioconda examples below apply only to an explicitly selected remote,
+  container, or HPC execution context.
 - Use `pathlib`, project-relative paths, and platform temporary directories. Gate Unix-only commands behind an explicit WSL/SSH execution context.
 - Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with `tool_search`.
 
@@ -96,9 +101,9 @@ See `assets/quick_reference.md` for frequently used commands and parameters.
 
 ## Installation
 
-```bash
-uv pip install deepTools==3.5.6
-```
+Install `deepTools==3.5.6` through the signed shared ZeroWall dependency
+manifest and inspect the live installation log in the Python settings panel.
+The command-line examples use the same shared interpreter.
 
 Upstream recommends conda/bioconda for full dependency resolution, especially on shared HPC systems:
 

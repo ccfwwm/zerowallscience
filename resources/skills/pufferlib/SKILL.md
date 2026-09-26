@@ -96,13 +96,13 @@ sha256: 7df3a3e3f5f894d78d2a1f5374097890aec01473183e748abefe4f3faa10eaa9
 Requires-Python: >=3.9
 ```
 
-After source/build review, create a pinned uv project:
+After source/build review, add the reviewed pin to the ZeroWall signed
+dependency manifest. The local runtime is shared; a project lock records
+provenance only and must not create a venv:
 
-```bash
-uv venv --python 3.11
-uv add --exact --no-sync "pufferlib==3.0.0"
-uv lock
-uv sync --frozen
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: pufferlib==3.0.0
 ```
 
 Commit `pyproject.toml` and `uv.lock`; verify the archive digest and every

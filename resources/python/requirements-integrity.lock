@@ -4,10 +4,53 @@ annotated-types==0.8.0
     # via
     #   -c resources/python/requirements-science.lock
     #   pydantic
+cloudpickle==3.1.2
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   joblib
+colorama==0.4.6
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   tqdm
+contourpy==1.3.3
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   matplotlib
+cycler==0.12.1
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   matplotlib
+easyocr==1.7.2
+    # via -r resources/python/requirements-integrity.txt
+et-xmlfile==2.0.0
+    # via
+    #   -c resources/python/requirements-managed-compatible.lock
+    #   -c resources/python/requirements-science.lock
+    #   openpyxl
+filelock==4.0.1
+    # via torch
+fonttools==4.64.0
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   matplotlib
+fsspec==2026.9.0
+    # via torch
+imagededup==0.3.3.post2
+    # via -r resources/python/requirements-integrity.txt
 imagehash==4.3.2
     # via -r resources/python/requirements-integrity.txt
 imageio==2.37.4
     # via scikit-image
+jinja2==3.1.6
+    # via torch
+joblib==1.6.0
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   scikit-learn
+kiwisolver==1.5.1
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   matplotlib
 lazy-loader==0.5
     # via scikit-image
 lxml==6.1.3
@@ -16,29 +59,61 @@ lxml==6.1.3
     #   pikepdf
 markdown==3.10.3
     # via -r resources/python/requirements-integrity.txt
+markupsafe==3.0.3
+    # via jinja2
+matplotlib==3.11.1
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   imagededup
+mpmath==1.3.0
+    # via
+    #   -c resources/python/requirements-managed-compatible.lock
+    #   -c resources/python/requirements-science.lock
+    #   sympy
+narwhals==2.25.0
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   scikit-learn
 networkx==3.6.1
     # via
     #   -c resources/python/requirements-science.lock
     #   scikit-image
+    #   torch
+ninja==1.13.2
+    # via easyocr
 numpy==2.5.3
     # via
     #   -c resources/python/requirements-managed-compatible.lock
     #   -c resources/python/requirements-science.lock
     #   -r resources/python/requirements-integrity.txt
+    #   contourpy
+    #   easyocr
     #   imagehash
     #   imageio
+    #   matplotlib
     #   opencv-python-headless
     #   pywavelets
     #   scikit-image
+    #   scikit-learn
     #   scipy
+    #   shapely
     #   tifffile
+    #   torchvision
 opencv-python-headless==4.13.0.92
-    # via -r resources/python/requirements-integrity.txt
+    # via
+    #   -r resources/python/requirements-integrity.txt
+    #   easyocr
+openpyxl==3.1.5
+    # via
+    #   -c resources/python/requirements-managed-compatible.lock
+    #   -c resources/python/requirements-science.lock
+    #   -r resources/python/requirements-integrity.txt
 packaging==26.3
     # via
     #   -c resources/python/requirements-managed-compatible.lock
     #   -c resources/python/requirements-science.lock
     #   lazy-loader
+    #   matplotlib
     #   pikepdf
     #   scikit-image
 pikepdf==10.13.0.post1
@@ -47,10 +122,16 @@ pillow==12.3.0
     # via
     #   -c resources/python/requirements-science.lock
     #   -r resources/python/requirements-integrity.txt
+    #   easyocr
+    #   imagededup
     #   imagehash
     #   imageio
+    #   matplotlib
     #   pikepdf
     #   scikit-image
+    #   torchvision
+pyclipper==1.4.0
+    # via easyocr
 pydantic==2.13.5
     # via
     #   -c resources/python/requirements-science.lock
@@ -67,35 +148,90 @@ pymupdf==1.28.2
     # via
     #   -c resources/python/requirements-science.lock
     #   -r resources/python/requirements-integrity.txt
+pyparsing==3.3.2
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   matplotlib
+python-bidi==0.6.11
+    # via easyocr
+python-dateutil==2.9.0.post0
+    # via
+    #   -c resources/python/requirements-managed-compatible.lock
+    #   -c resources/python/requirements-science.lock
+    #   matplotlib
 python-dotenv==1.2.3
     # via
     #   -c resources/python/requirements-managed-compatible.lock
     #   -c resources/python/requirements-science.lock
     #   pydantic-settings
 pywavelets==1.10.0
-    # via imagehash
+    # via
+    #   imagededup
+    #   imagehash
 pyyaml==6.0.3
     # via
     #   -c resources/python/requirements-science.lock
     #   -r resources/python/requirements-integrity.txt
+    #   easyocr
 scikit-image==0.26.0
-    # via -r resources/python/requirements-integrity.txt
+    # via
+    #   -r resources/python/requirements-integrity.txt
+    #   easyocr
+scikit-learn==1.9.0
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   imagededup
 scipy==1.18.1
     # via
     #   -c resources/python/requirements-science.lock
     #   -r resources/python/requirements-integrity.txt
+    #   easyocr
     #   imagehash
     #   scikit-image
+    #   scikit-learn
+setuptools==84.0.0
+    # via torch
+shapely==2.1.2
+    # via easyocr
+six==1.17.0
+    # via
+    #   -c resources/python/requirements-managed-compatible.lock
+    #   -c resources/python/requirements-science.lock
+    #   python-dateutil
 structlog==26.1.0
     # via -r resources/python/requirements-integrity.txt
+sympy==1.14.0
+    # via
+    #   -c resources/python/requirements-managed-compatible.lock
+    #   -c resources/python/requirements-science.lock
+    #   torch
+threadpoolctl==3.6.0
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   scikit-learn
 tifffile==2026.9.15
     # via scikit-image
+torch==2.14.0
+    # via
+    #   easyocr
+    #   imagededup
+    #   torchvision
+torchvision==0.29.0
+    # via
+    #   -r resources/python/requirements-integrity.txt
+    #   easyocr
+    #   imagededup
+tqdm==4.70.0
+    # via
+    #   -c resources/python/requirements-science.lock
+    #   imagededup
 typing-extensions==4.16.0
     # via
     #   -c resources/python/requirements-managed-compatible.lock
     #   -c resources/python/requirements-science.lock
     #   pydantic
     #   pydantic-core
+    #   torch
     #   typing-inspection
 typing-inspection==0.4.4
     # via

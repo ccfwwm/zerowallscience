@@ -67,10 +67,9 @@ Verified 2026-07-26:
 - `scipy.constants` in SciPy 1.18.0 serves **CODATA 2022**. SciPy 1.11 and earlier
   served CODATA 2018, and several recommended values differ between them.
 
-```bash
-uv venv --python 3.13
-source .venv/bin/activate
-uv pip install "pint==0.25.3" "uncertainties==3.2.3" "numpy==2.5.1" "scipy==1.18.0"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pins: pint==0.25.3, uncertainties==3.2.3, numpy==2.5.1, scipy==1.18.0
 ```
 
 `pint-pandas` and `pint-xarray` add unit-aware columns and arrays and are separate

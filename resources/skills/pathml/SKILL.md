@@ -73,11 +73,10 @@ DICOM tags, filenames, or linked clinical data. Before processing:
 
 Use Python 3.11 unless the project has tested another supported interpreter:
 
-```bash
-uv venv --python 3.11
-source .venv/bin/activate
-uv pip install "pathml==3.0.5"
-python -c "import importlib.metadata as m; print(m.version('pathml'))"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: pathml==3.0.5
+Verify with the shared Python command line.
 ```
 
 PathML 3.0.5 declares no package extras: do **not** use `pathml[all]`. Its base

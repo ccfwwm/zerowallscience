@@ -67,7 +67,7 @@ def cmd_lint(args: argparse.Namespace) -> int:
 def _preflight_dependencies() -> list[str]:
     """Vérifie les dépendances de la cascade avant de traiter la moindre ref.
 
-    Sans ce garde, un interpréteur sans `bs4` (venv oublié) fait planter
+    Sans ce garde, un interpréteur sans `bs4` fait planter
     chaque ref l'une après l'autre : le récap affiche `blocked=N` et le
     doctor ne dit rien du motif réel. Cf. issue #1.
     """
@@ -114,7 +114,8 @@ def _run_one_pass(args: argparse.Namespace) -> dict:
     missing = _preflight_dependencies()
     if missing:
         print(f"[FATAL] missing dependencies: {', '.join(missing)} — "
-              f"`pip install {' '.join(missing)}` (or run from the plugin venv). "
+              f"Install them through ZeroWall's shared Python dependency manager "
+              f"(`{' '.join(missing)}`); do not create a plugin venv. "
               f"Without them every ref would crash and be counted `blocked`.",
               file=sys.stderr)
         return {"planned": 0, "done": 0, "pending": 0, "blocked": 0,

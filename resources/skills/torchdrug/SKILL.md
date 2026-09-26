@@ -69,24 +69,31 @@ or explicitly test a source build. Do not present such combinations as supported
 
 ## Installation
 
-Prefer a dedicated Python 3.10 environment and pin the TorchDrug release:
+TorchDrug's supported Python/PyTorch matrix is older than the application
+runtime. For local use, add a compatibility-checked package set to the signed
+shared manifest and test it in the one shared Python runtime; do not create a
+dedicated environment:
 
-```bash
-uv venv --python 3.10
-source .venv/bin/activate
-uv pip install "torch==2.0.0"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pins: torch==2.0.0, torchdrug==0.2.1
 ```
 
 Install `torch-scatter` and `torch-cluster` wheels matched to the exact PyTorch
 and CUDA pair, following the
 [official installation page](https://torchdrug.ai/docs/installation.html). For a
-CPU-only PyTorch 2.0 environment, one reproducible wheel combination is:
+CPU-only PyTorch 2.0 setup, add the exact wheels to the signed shared manifest
+and synchronize them through the Python settings page. One reproducible wheel
+combination is:
 
-```bash
-uv pip install "torch-scatter==2.1.1" "torch-cluster==1.6.1" \
-  --find-links "https://data.pyg.org/whl/torch-2.0.0+cpu.html"
-uv pip install "torchdrug==0.2.1"
+```text
+torch-scatter==2.1.1
+torch-cluster==1.6.1
+torchdrug==0.2.1
 ```
+
+Configure the PyG wheel source in the dependency manifest for the exact
+PyTorch and platform pair; do not run `uv` or `pip` in a private environment.
 
 Do not copy a CUDA wheel URL between environments. Match the PyTorch version,
 CUDA build, Python ABI, and platform. On Apple Silicon, the official docs require

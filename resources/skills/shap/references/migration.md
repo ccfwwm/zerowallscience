@@ -11,12 +11,11 @@ This guide covers migration to SHAP 0.52.0 and the modern `shap.Explanation` API
 | 0.50.0 | `>=3.11` | First release after Python 3.9/3.10 support ended |
 | 0.49.1 | `>=3.9` | Last release line supporting Python 3.9 and 3.10; fixes the broken 0.49.0 publication |
 
-For a new environment:
+For a new local install, use the shared ZeroWall dependency manifest:
 
-```bash
-uv venv --python 3.12
-source .venv/bin/activate
-uv pip install "shap[plots]==0.52.0"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: shap[plots]==0.52.0
 ```
 
 For a project that cannot move off Python 3.11:

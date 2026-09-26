@@ -45,6 +45,7 @@ export function parsePythonDependencyManifest(value: unknown, keys: Record<strin
   const names = new Set<string>()
   for (const pkg of doc.packages) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(pkg.name) || !/^[A-Za-z0-9][A-Za-z0-9_.+!-]*$/u.test(pkg.version) || typeof pkg.required !== 'boolean' || !Array.isArray(pkg.capabilities) || pkg.capabilities.some(cap => typeof cap !== 'string')) throw new Error('Python 包锁定字段无效。')
+    if (!pkg.required) throw new Error(`依赖 ${pkg.name} 未标记为必装，已拒绝使用此清单。`)
     // A digest is optional provenance. When present it must still be a real
     // one, so a malformed value cannot pass as "no hash supplied".
     if (pkg.sha256 !== undefined && !/^[a-f0-9]{64}$/u.test(pkg.sha256)) throw new Error('Python 包锁定字段无效。')
@@ -85,9 +86,10 @@ export async function fetchPythonDependencyManifest(url: string, keys: Record<st
  * artifact digest, verify that too; otherwise the plan records the exact
  * SHA-256 returned by the selected mirror's index.
  */
-export function assertManifestWheels(manifest: PythonDependencyManifest, wheels: Array<{ name: string; version: string; hash?: string; sourceArchiveSha256?: string }>, installed: Array<{ name: string; version: string }> = []): void {
+export function assertManifestWheels(manifest: PythonDependencyManifest, wheels: Array<{ name: string; version: string; hash?: string; sourceArchiveSha256?: string }>, installed: Array<{ name: string; version: string }> = [], failedNames: Iterable<string> = []): void {
   const locked = new Map(manifest.packages.map(pkg => [normalize(pkg.name), pkg]))
   const present = new Map(installed.map(pkg => [normalize(pkg.name), pkg.version]))
+  const failed = new Set([...failedNames].map(normalize))
   const seen = new Set<string>()
   for (const wheel of wheels) {
     const name = normalize(wheel.name)
@@ -98,7 +100,8 @@ export function assertManifestWheels(manifest: PythonDependencyManifest, wheels:
     if (expected.sha256 && (expected.source === 'sdist' ? wheel.sourceArchiveSha256 !== expected.sha256 : wheel.hash !== expected.sha256)) throw new Error(`依赖 ${wheel.name} 与签名清单的 SHA-256 不一致，已拒绝安装。`)
     present.set(name, wheel.version)
   }
-  for (const pkg of manifest.packages) if (pkg.required && present.get(normalize(pkg.name)) !== pkg.version) throw new Error(`依赖 ${pkg.name} 在安装计划和当前环境中均缺少锁定版本。`)
+  for (const pkg of manifest.packages) if (present.get(normalize(pkg.name)) !== pkg.version && !failed.has(normalize(pkg.name))) throw new Error(`依赖 ${pkg.name} 在安装计划和当前环境中均缺少锁定版本，且未记录为单包失败。`)
+  for (const name of failed) if (!locked.has(name)) throw new Error(`安装计划把清单外依赖 ${name} 标记为失败。`)
 }
 
 /** Stable diff preserves unlisted user packages instead of silently deleting them. */

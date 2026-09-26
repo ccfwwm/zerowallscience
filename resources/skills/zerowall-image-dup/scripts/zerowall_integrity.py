@@ -17,14 +17,18 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'vendor'))
 from mineru_adapter import normalize, extracted_tables, region_records, figure_findings
 from batch_scan import scan as batch_scan
-VERSION = '2622d024ad27791196eb86bad51a9fe7bb0bb268+zerowall.4'
+VERSION = '7.1.0'
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp', '.gif', '.webp', '.avif', '.heic', '.heif', '.jp2', '.j2k', '.svg'}
+COMPANION_EXTENSIONS = IMAGE_EXTENSIONS | {'.pdf', '.xlsx', '.csv', '.tsv'}
+COMPANION_DIRECTORY = re.compile(r'(?:source\s*data|extended\s*data|supplement|supporting\s*information|unprocessed\s*(?:blot|western|gel)|additional\s*file|online\s*resource)', re.I)
+COMPANION_FILENAME = COMPANION_DIRECTORY
 CORE = {'fitz': 'PyMuPDF', 'pydantic_settings': 'pydantic-settings', 'numpy': 'numpy', 'cv2': 'opencv-python-headless', 'PIL': 'Pillow', 'imagehash': 'ImageHash', 'scipy': 'scipy', 'skimage': 'scikit-image', 'structlog': 'structlog', 'pikepdf': 'pikepdf', 'markdown': 'Markdown', 'yaml': 'PyYAML'}
 
 
@@ -57,9 +61,19 @@ def task_lock(job):
 
 def save(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(path.suffix + '.tmp')
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
-    temp.replace(path)
+    temp = path.with_name(path.name + f'.tmp-{uuid.uuid4().hex}')
+    try:
+        temp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
+        for attempt in range(10):
+            try:
+                temp.replace(path)
+                return
+            except PermissionError:
+                if attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def digest(path):
@@ -67,20 +81,40 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def preflight():
+def preflight(require_local_ocr=True, require_cnn=True):
     missing, errors = [], {}
-    for module, package in CORE.items():
+    required = dict(CORE)
+    if require_local_ocr or require_cnn:
+        required['torchvision'] = 'torchvision'
+    if require_local_ocr:
+        required['easyocr'] = 'easyocr'
+    if require_cnn:
+        required['imagededup'] = 'imagededup'
+    pinned = {'torch': '2.14.0'}
+    if require_local_ocr or require_cnn:
+        pinned['torchvision'] = '0.29.0'
+    if require_local_ocr:
+        pinned['easyocr'] = '1.7.2'
+    if require_cnn:
+        pinned['imagededup'] = '0.3.3.post2'
+    for module, package in required.items():
         try:
             __import__(module)
-            version(package)
+            installed = version(package)
+            if package in pinned and installed != pinned[package]:
+                raise RuntimeError(f'expected {package}=={pinned[package]}, found {installed}')
         except Exception as error:
             missing.append(package)
             errors[package] = str(error)
 
+    local_ocr_available = importlib.util.find_spec('easyocr') is not None
     return {'ok': not missing, 'missing': missing, 'errors': errors, 'python': sys.executable, 'engine': VERSION,
-            'ocr': False, 'ocr_provider': 'mineru', 'local_ocr_optional': importlib.util.find_spec('easyocr') is not None,
+            'ocr': bool(require_local_ocr and local_ocr_available), 'ocr_provider': 'easyocr' if require_local_ocr and local_ocr_available else 'disabled',
+            'cnn': bool(require_cnn and 'imagededup' not in missing), 'cnn_required': bool(require_cnn),
             'node': os.environ.get('ZEROWALL_NODE') or shutil.which('node'),
-            'worker': str(worker_path())}
+            'worker': str(worker_path()),
+            'local_ocr_required': bool(require_local_ocr),
+            'local_ocr_available': local_ocr_available}
 
 
 def worker_path():
@@ -123,6 +157,43 @@ def input_paths(values, recursive):
     return sorted(set(paths), key=str)
 
 
+def data_paths(values):
+    """Expand explicit --data inputs without following symlinks."""
+    result = set()
+    for value in values:
+        path = Path(value).resolve(strict=True)
+        if path.is_file():
+            result.add(path)
+        else:
+            result.update(p.resolve() for p in path.rglob('*') if p.is_file() and not p.is_symlink())
+    return sorted(result, key=str)
+
+
+def discover_companions(primary_pdfs):
+    """Discover only article-adjacent, clearly labelled companion folders/files."""
+    associations = {}
+    discovered = set()
+    for pdf in primary_pdfs:
+        matches = set()
+        try:
+            children = list(pdf.parent.iterdir())
+        except OSError:
+            associations[str(pdf)] = []
+            continue
+        for child in children:
+            if child == pdf or child.is_symlink():
+                continue
+            if child.is_dir() and COMPANION_DIRECTORY.search(child.name):
+                for candidate in child.rglob('*'):
+                    if candidate.is_file() and not candidate.is_symlink() and candidate.suffix.lower() in COMPANION_EXTENSIONS:
+                        matches.add(candidate.resolve())
+            elif child.is_file() and COMPANION_FILENAME.search(child.stem) and child.suffix.lower() in COMPANION_EXTENSIONS:
+                matches.add(child.resolve())
+        associations[str(pdf)] = sorted(matches, key=str)
+        discovered.update(matches)
+    return associations, sorted(discovered, key=str)
+
+
 def image_doc(paths, trace, job, skipped):
     from manusift.contracts import ExtractedImage, ParsedDoc
     from manusift.ingest.pdf import _compute_phash
@@ -155,47 +226,39 @@ DEADLINE = float('inf')
 def image_detectors(doc, job, steps):
     from manusift.detectors import load_detector_class
     from manusift.checkpoint import read_step_silent, write_step
-    names = ['ImageDuplicateDetector', 'ImageForensicsDetector', 'SiftCopyMoveDetector']
-    if Path(doc.source_path).suffix.lower() == '.pdf':
+    cross_document_only = os.environ.get('MANUSIFT_CROSS_DOCUMENT_ONLY', '').strip().lower() in {'1', 'true', 'yes'}
+    names = ['ImageForensicsDetector'] if cross_document_only else ['ImageDuplicateDetector', 'ImageForensicsDetector', 'SiftCopyMoveDetector']
+    if not cross_document_only and Path(doc.source_path).suffix.lower() == '.pdf':
         names.append('PanelDuplicateDetector')
     findings = []
-    if len(doc.images) > 32:
-        blocks = [doc.images[i:i+8] for i in range(0, len(doc.images), 8)]
-        for i, left in enumerate(blocks):
-            for j in range(i, len(blocks)):
-                if time.monotonic() >= DEADLINE:
-                    steps.append({'detector': 'scientific-tiles', 'ok': False, 'error': 'Budget reached; resume task.', 'next_tile': [i, j]})
-                    return findings
-                images = left if i == j else left + blocks[j]
-                subset = replace(doc, images=images)
-                found = image_detectors(subset, job / f'tile-{i:05d}-{j:05d}', steps)
-                for finding in found:
-                    raw = dict(finding.raw)
-                    if isinstance(raw.get('image_index'), int) and 0 <= raw['image_index'] < len(images):
-                        raw['image_index'] = doc.images.index(images[raw['image_index']])
-                    findings.append(replace(finding, raw=raw))
-        return findings
     for name in names:
         try:
             cls = load_detector_class(name)
             checkpoint = job / 'steps' / f'{cls.name}.json'
             result = read_step_silent(checkpoint)
-            if result is None or not result.ok:
+            unfinished_pairs = result and any(
+                isinstance(value, dict) and value.get('remaining', 0) > 0
+                for key, value in (result.stats or {}).items()
+                if key in {'cross_image_pairs', 'panel_pairs'}
+            )
+            if result is None or not result.ok or unfinished_pairs:
                 remaining = DEADLINE - time.monotonic()
                 if remaining < 1:
                     raise TimeoutError('Budget reached; resume task.')
                 checkpoint.parent.mkdir(parents=True, exist_ok=True)
                 request = checkpoint.with_suffix('.input.json')
                 save(request, asdict(doc))
+                timeout = min(360 if name == 'ImageForensicsDetector' else 75, remaining + 15)
                 process = subprocess.run([sys.executable, str(ROOT / 'detector_worker.py'), name, str(request), str(checkpoint)],
-                    capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=min(60, remaining),
+                    capture_output=True, text=True, encoding='utf-8', errors='replace',
+                    timeout=timeout,
                     creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
                 if process.returncode:
                     raise RuntimeError(process.stderr[-2000:])
                 result = read_step_silent(checkpoint)
                 if result is None:
                     raise RuntimeError('Detector did not write a valid checkpoint')
-            steps.append({'detector': result.detector, 'ok': result.ok, 'error': result.error})
+            steps.append({'detector': result.detector, 'ok': result.ok, 'error': result.error, 'stats': result.stats})
             findings.extend(result.findings)
         except Exception as error:
             steps.append({'detector': name, 'ok': False, 'error': str(error)})
@@ -281,14 +344,19 @@ def pair_sources(raw, doc):
             continue
         record = next((i for i in doc.images if i.page == ref.get('page') and i.index == ref.get('index')), None)
         if record:
-            sources.append({'file': record.exif.get('zerowall_source', doc.source_path),
-                            'page': record.exif.get('zerowall_page', record.page + 1) if record.exif.get('zerowall_source', doc.source_path).lower().endswith('.pdf') else None, 'image': record.exif.get('zerowall_index', record.index),
-                            'raster': record.image_path, 'pdf_rects': record.exif.get('zerowall_pdf_rects', [])})
+            source = image_source(record, doc.source_path)
+            if raw.get('bbox_' + key[-1]):
+                source['bbox'] = raw['bbox_' + key[-1]]
+            sources.append(source)
     if not sources and 'image_index' in raw:
         index = raw['image_index']
         if isinstance(index, int) and 0 <= index < len(doc.images):
             record = doc.images[index]
-            sources.append(image_source(record, doc.source_path))
+            for suffix in ('a', 'b') if raw.get('bbox_a') and raw.get('bbox_b') else ('a',):
+                source = image_source(record, doc.source_path)
+                source['panel'] = suffix
+                source['bbox'] = raw.get('bbox_' + suffix)
+                sources.append(source)
     if not sources and 'page_a' in raw and 'page_b' in raw:
         sources = [{'file': doc.source_path, 'page': raw[key], 'panel': raw.get('panel_' + key[-1])}
                    for key in ['page_a', 'page_b']]
@@ -300,7 +368,8 @@ def pair_sources(raw, doc):
 def image_source(image, fallback):
     source = image.exif.get('zerowall_source', fallback)
     return {'file': source, 'page': image.exif.get('zerowall_page', image.page + 1) if source.lower().endswith('.pdf') else None,
-            'image': image.exif.get('zerowall_index', image.index), 'raster': image.image_path, 'pdf_rects': image.exif.get('zerowall_pdf_rects', [])}
+            'image': image.exif.get('zerowall_index', image.index), 'xref': image.exif.get('zerowall_xref', image.xref),
+            'raster': image.image_path, 'pdf_rects': image.exif.get('zerowall_pdf_rects', [])}
 
 
 def convert_findings(findings, doc):
@@ -312,6 +381,19 @@ def convert_findings(findings, doc):
             item['sources'] = [{'file': doc.source_path, 'page': finding.raw.get('page'),
                 'bbox': finding.raw.get('bbox'), 'raster': finding.raw.get('image')}]
         item['engine'] = 'scientific-core'
+        if item['severity'] == 'high':
+            raw = item['raw']
+            geometric = (raw.get('ransac_model') in {'affine', 'homography'} and
+                         raw.get('inlier_count', 0) >= 40 and raw.get('warp_ncc', -1) >= 0.85 and
+                         raw.get('warp_ssim', -1) >= 0.65 and raw.get('overlap_ratio', 0) >= 0.03 and
+                         raw.get('bbox_a') and raw.get('bbox_b') and len(item['sources']) == 2)
+            located = (len(item['sources']) == 2 and
+                       all(source.get('file') and source.get('bbox') and
+                           (source.get('page') is not None or not str(source['file']).lower().endswith('.pdf'))
+                           for source in item['sources']))
+            if not geometric or not located:
+                item['severity'] = 'medium'
+                item['evidence'] += ' High severity withheld because local geometric/pixel evidence was not complete.'
         # Upstream titles can overstate a screening signal; keep original wording in evidence.
         item['title'] = item['title'].replace('shows copy-move forgery', 'shows a candidate copy-move pattern')
         item['finding_id'] = hashlib.sha256(json.dumps([item['detector'], item['sources'], item['raw']], sort_keys=True).encode()).hexdigest()[:20]
@@ -363,6 +445,61 @@ def merge_findings(findings):
     return list(merged.values())
 
 
+def numeric_findings(rows, trace):
+    converted = []
+    for row in rows:
+        raw = dict(row)
+        source = {'file': row['source_file'], 'page': row.get('page'), 'sheet': row.get('sheet'),
+                  'cell': row.get('cell'), 'bbox': row.get('bbox')}
+        identity = hashlib.sha256(json.dumps([row['detector'], source, row['observed'],
+                                              row['recalculation']], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:20]
+        converted.append({'finding_id': identity, 'trace_id': trace, 'detector': row['detector'],
+                          'engine': 'numeric-audit', 'severity': 'medium' if row['confidence'] == 'high' else 'low',
+                          'title': row['title'], 'location': ' '.join(str(x) for x in (row['source_file'], row.get('sheet'), row.get('cell')) if x),
+                          'evidence': row['evidence'], 'raw': raw, 'sources': [source], 'evidence_images': []})
+    return converted
+
+
+def coverage_from_steps(steps, region_report, ocr, companions, numeric, cnn, images_count):
+    def add_pair(key):
+        fields = ('possible', 'compared', 'verified', 'remaining', 'excluded')
+        total = {field: 0 for field in fields}
+        measured = False
+        failed = False
+        for step in steps:
+            stats = step.get('stats') or {}
+            current = stats.get(key)
+            if not isinstance(current, dict):
+                continue
+            measured = True
+            failed = failed or not step.get('ok', True) or current.get('status') == 'not_evaluated'
+            for field in fields:
+                total[field] += int(current.get(field, 0))
+        total['status'] = ('not_evaluated' if not measured or failed and total['possible'] == 0
+                           else 'incomplete' if failed or total['remaining'] else 'done')
+        return total
+    progress = (region_report or {}).get('progress', {})
+    whole_possible = images_count * (images_count - 1) // 2
+    # The Node stage reports work tiles rather than raw pair count; treat its
+    # whole-image stage as complete only once it advanced past that stage.
+    whole_done = bool(region_report and progress.get('phase') in {'copy-move', 'cross-image'} and progress.get('completed', 0) >= 1)
+    whole_image = {'possible': whole_possible, 'compared': whole_possible if whole_done else 0,
+                  'verified': len((region_report or {}).get('pairs', [])),
+                  'remaining': 0 if whole_done else whole_possible, 'excluded': 0,
+                  'status': 'done' if whole_done or whole_possible == 0 and images_count <= 1 else 'not_evaluated' if not region_report else 'incomplete'}
+    return {'image_pair': add_pair('cross_image_pairs'), 'whole_image': whole_image,
+            'orientation_tested': ['id', 'flipH', 'flipV', 'rot180'], 'panel_pair': add_pair('panel_pairs'),
+            'ocr': {key: ocr.get(key) for key in ('provider', 'needed', 'done', 'failed', 'remaining', 'status', 'reason')},
+            'companions': {'discovered': len(companions['discovered']), 'scanned': len(companions['scanned']),
+                           'failed': len(companions['failed']), 'excluded': len(companions['excluded'])},
+            'detectors': numeric['detectors'],
+            'cnn': {'enabled': cnn['enabled'], 'status': cnn['status'],
+                    'candidates': cnn.get('candidates_count', 0),
+                    'verified': cnn.get('verification', {}).get('verified', 0),
+                    'remaining': cnn.get('verification', {}).get('remaining', 0),
+                    'reason': cnn.get('reason')}}
+
+
 def render_evidence(findings, output):
     from PIL import Image, ImageDraw
     for finding in findings:
@@ -398,9 +535,22 @@ def render_evidence(findings, output):
 
 def write_report(output, payload):
     save(output / 'findings.json', payload)
+    coverage = payload.get('coverage', {})
+    local = coverage.get('image_pair', {})
+    panels = coverage.get('panel_pair', {})
+    ocr = coverage.get('ocr', {})
+    companions = coverage.get('companions', {})
     lines = ['# ZeroWall 科研分析报告', '', f"任务：{payload['trace_id']}", '',
              '检测结果是待人工复核的筛查信号。未检出不代表不存在问题。', '',
-             f"发现 {len(payload['findings'])} 项；未完成/跳过 {len(payload['skipped'])} 项。", '']
+             f"发现 {len(payload['findings'])} 项；未完成/跳过 {len(payload['skipped'])} 项。", '',
+             '## 覆盖率', '',
+             f"跨图局部：已几何复核 {local.get('verified', 0)} / {local.get('possible', 0)} 对；方向 {'/'.join(coverage.get('orientation_tested', []))}；剩余 {local.get('remaining', 0)} 对。", '',
+             f"同图面板：已几何复核 {panels.get('verified', 0)} / {panels.get('possible', 0)} 对；剩余 {panels.get('remaining', 0)} 对。", '',
+             f"伴随文件：发现 {companions.get('discovered', 0)}、已扫描 {companions.get('scanned', 0)}、失败 {companions.get('failed', 0)}。", '',
+             f"OCR：{ocr.get('provider', '未评估')} 完成 {ocr.get('done', 0)} / {ocr.get('needed', 0)}，失败 {ocr.get('failed', 0)}，剩余 {ocr.get('remaining', 0)}。", '']
+    if payload.get('partial'):
+        lines.extend(['未评估（覆盖或材料不完整；详见下方检测器状态与跳过原因）', ''])
+    lines += ['```json', json.dumps(coverage, ensure_ascii=False, indent=2), '```', '']
     lines += ['## 执行与 OCR 来源', '', '```json', json.dumps(payload.get('steps', []), ensure_ascii=False, indent=2), '```', '']
     for finding in payload['findings']:
         lines += [f"## {finding['title']} [{finding['severity']}]", '',
@@ -420,35 +570,55 @@ def run(args):
     total_deadline = time.monotonic() + args.budget_seconds
     DEADLINE = time.monotonic() + args.budget_seconds / 2
     if args.mode == 'setup':
-        overlay = os.environ.get('ZEROWALL_PYTHON_OVERLAY')
-        if not overlay:
-            raise RuntimeError('Use the ZeroWall managed python tool to install detector dependencies.')
-        result = subprocess.run([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check',
-            '--target', overlay, '--upgrade', '-r', str(ROOT / 'requirements.lock')],
-            capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=540,
-            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-        return {'ok': result.returncode == 0, 'output': result.stdout[-3000:], 'error': result.stderr[-3000:],
-                'next': 'Run doctor in a new python tool call.'}
+        return {'ok': False, 'reason': 'Dependencies are managed by the signed ZeroWall Python dependency manifest.',
+                'next': 'In ZeroWall Science, check the Python dependency manifest, preview and apply the update, then run doctor again.',
+                'cnn': 'The signed dependency manifest installs imagededup; --cnn on enables its candidate recall at scan time.'}
     if args.mode == 'report':
         output = args.workspace.resolve() / args.trace_id / 'output'
         payload = json.loads((output / 'findings.json').read_text(encoding='utf-8'))
         write_report(output, payload)
         return {'ok': True, 'trace_id': args.trace_id, 'report': str(output / 'report.html')}
-    check = preflight()
+    check = preflight(args.local_ocr == 'easyocr', args.cnn == 'on')
     if not check['ok']:
         return check
     parsed = parsed_manifests(args.parsed)
     regions = parsed_manifests(args.region_parsed)
-    paths = input_paths(args.inputs, args.recursive)
-    if not paths:
+    primary_paths = input_paths(args.inputs, args.recursive)
+    if not primary_paths:
         raise ValueError('No supported input files were found.')
-    if len(paths) > args.limit:
-        raise ValueError(f'{len(paths)} inputs exceed --limit {args.limit}; split the task or raise the explicit limit.')
-    if args.mode == 'compare' and sum(p.suffix.lower() == '.pdf' for p in paths) < 2:
+    if len(primary_paths) > args.limit:
+        raise ValueError(f'{len(primary_paths)} inputs exceed --limit {args.limit}; split the task or raise the explicit limit.')
+    if args.mode == 'compare' and sum(p.suffix.lower() == '.pdf' for p in primary_paths) < 2:
         raise ValueError('Paper comparison requires at least two PDFs.')
-    data_paths = sorted({p.resolve() for value in args.data for p in ([Path(value)] if Path(value).is_file() else Path(value).rglob('*')) if p.is_file()}, key=str)
-    entries = [{'path': str(p), 'sha256': digest(p), 'folder': str(p.parent)} for p in paths]
-    signature = hashlib.sha256(json.dumps([VERSION, args.mode, entries, args.threshold, args.cross_page_only, args.only_painted, args.batch_size, parsed, regions, {package: version(package) for package in CORE.values()}, [{'path': str(Path(d).resolve(strict=True)), 'sha256': digest(Path(d))} for d in data_paths]], sort_keys=True).encode()).hexdigest()
+    explicit_data = data_paths(args.data) if args.companion_mode in {'auto', 'explicit'} else []
+    auto_associations, auto_discovered = discover_companions([p for p in primary_paths if p.suffix.lower() == '.pdf']) if args.companion_mode == 'auto' else ({}, [])
+    explicit_by_pdf = {str(p): explicit_data for p in primary_paths if p.suffix.lower() == '.pdf'}
+    companion_associations = {key: sorted(set(values) | set(explicit_by_pdf.get(key, [])), key=str)
+                              for key, values in auto_associations.items()}
+    for key, values in explicit_by_pdf.items():
+        companion_associations.setdefault(key, sorted(set(values), key=str))
+    all_companion_files = sorted(set(auto_discovered) | set(explicit_data), key=str)
+    excluded_companions = [{'path': str(p), 'reason': 'unsupported companion file type'}
+                           for p in explicit_data if p.suffix.lower() not in COMPANION_EXTENSIONS]
+    included_companions = [p for p in all_companion_files if p.suffix.lower() in COMPANION_EXTENSIONS]
+    paths = sorted(set(primary_paths) | {p for p in included_companions
+                   if p.suffix.lower() in IMAGE_EXTENSIONS | {'.pdf'}}, key=str)
+    if len(paths) > args.limit:
+        raise ValueError(f'{len(paths)} primary and companion files exceed --limit {args.limit}.')
+    primary_set = set(primary_paths)
+    associated_by_path: dict[str, list[str]] = {}
+    for owner, companions in companion_associations.items():
+        for companion in companions:
+            associated_by_path.setdefault(str(companion), []).append(owner)
+    entries = [{'path': str(p), 'sha256': digest(p), 'folder': str(p.parent),
+                'role': 'primary' if p in primary_set else 'companion',
+                'associated_with': sorted(associated_by_path.get(str(p), []))} for p in paths]
+    data_signature = [{'path': str(p), 'sha256': digest(p)} for p in included_companions
+                      if p.suffix.lower() in {'.xlsx', '.csv', '.tsv'}]
+    dependency_versions = {package: version(package) for package in CORE.values()}
+    for package in (['easyocr', 'torchvision'] if args.local_ocr == 'easyocr' else []) + (['imagededup'] if args.cnn == 'on' else []):
+        dependency_versions[package] = version(package)
+    signature = hashlib.sha256(json.dumps([VERSION, args.mode, entries, args.threshold, args.cross_page_only, args.only_painted, args.batch_size, args.companion_mode, args.cnn, args.local_ocr, parsed, regions, dependency_versions, data_signature], sort_keys=True).encode()).hexdigest()
     trace = args.trace_id or 'zw-' + signature[:20]
     job = args.workspace.resolve() / trace
     output = job / 'output'
@@ -457,24 +627,40 @@ def run(args):
         manifest = job / 'manifest.json'
         if manifest.exists() and json.loads(manifest.read_text(encoding='utf-8'))['signature'] != signature:
             raise ValueError('Inputs or options changed; choose a new trace ID instead of reusing stale checkpoints.')
-        if (output / 'findings.json').exists() and not args.rerun and not json.loads((output / 'findings.json').read_text(encoding='utf-8')).get('incomplete_execution', True):
+        if (output / 'findings.json').exists() and args.resume and not args.rerun and not json.loads((output / 'findings.json').read_text(encoding='utf-8')).get('incomplete_execution', True):
             cached = json.loads((output / 'findings.json').read_text(encoding='utf-8'))
             return {'ok': True, 'trace_id': trace, 'cached': True, 'partial': cached['partial'],
                     'incomplete_execution': False, 'ocr_requests': cached.get('ocr_requests'),
                     'json': str(output / 'findings.json'), 'report': str(output / 'report.html')}
-        if args.rerun:
+        if args.rerun or not args.resume:
             # Only generated checkpoints inside this validated task directory.
             for checkpoint in job.rglob('*.json'):
                 if 'steps' not in checkpoint.relative_to(job).parts:
                     continue
                 checkpoint.unlink()
-        save(manifest, {'signature': signature, 'version': VERSION, 'inputs': entries})
+        save(manifest, {'signature': signature, 'version': VERSION, 'inputs': entries,
+                        'companions': {'mode': args.companion_mode, 'discovered': [str(p) for p in auto_discovered],
+                                       'included': [str(p) for p in included_companions], 'excluded': excluded_companions,
+                                       'associations': {key: [str(p) for p in value] for key, value in companion_associations.items()}}})
         output.mkdir(parents=True, exist_ok=True)
         steps, skipped, findings, docs = [], [], [], []
         os.environ.update({'MANUSIFT_CROSSREF_ENABLED': 'false', 'MANUSIFT_OPENALEX_ENABLED': 'false',
                            'MANUSIFT_DAS_RESOLUTION_ENABLED': 'false', 'MANUSIFT_LLM_MAX_CONCURRENCY': '0', 'MANUSIFT_OPENAI_API_KEY': '', 'MANUSIFT_ANTHROPIC_API_KEY': '',
                            'MANUSIFT_BENCHMARK_SKIP_DETECTORS': 'figure_stat_text,figure_grim,figure_table_ocr' if not check['ocr'] else '',
                            'MANUSIFT_WORKSPACE_DIR': str(job / 'papers'), 'MANUSIFT_CROSS_PAPER_IMAGE': '0'})
+        os.environ.update({
+            'MANUSIFT_CROSS_SIFT_MAX_IMAGES': '0',
+            'MANUSIFT_CROSS_SIFT_MAX_FINDINGS': '0',
+            'MANUSIFT_CROSS_SIFT_MAX_PAIRS': str(args.max_pairs),
+            'MANUSIFT_CROSS_SIFT_RESUME': '1' if args.resume else '0',
+            'MANUSIFT_CROSS_SIFT_RUN_ID': uuid.uuid4().hex,
+            'MANUSIFT_IMAGE_PAIR_CACHE_DIR': str(job / 'steps' / 'cross-image-pairs'),
+            'MANUSIFT_DETECTOR_DEADLINE_MONOTONIC': str(DEADLINE),
+            'MANUSIFT_CROSS_DOCUMENT_ONLY': '0',
+            'MANUSIFT_CROSS_SIFT_DIFFERENT_SOURCES': '0',
+            'MANUSIFT_CNN_ENABLED': '1' if args.cnn == 'on' else '0',
+            'EASYOCR_MODULE_PATH': str(Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'ZeroWallScience' / 'models' / 'easyocr'),
+        })
         from manusift.contracts import JobState
         import manusift.pipeline as pipeline
         from manusift.pipeline import run_pipeline
@@ -496,36 +682,22 @@ def run(args):
                 paper_paths = JobPaths.for_trace(paper_trace, job / 'papers')
                 paper_paths.ensure()
                 if args.mode != 'image':
-                    for data in args.data:
-                        from manusift.cli import _copy_companions
-                        _copy_companions(paper_paths.materials_dir, [Path(data)])
+                    # The standalone numeric audit reads the original files.
+                    # Avoid copying nested companion trees into a flattened
+                    # materials folder where equal basenames can collide.
                     def record_step(result, state):
                         steps.append({'detector': result.detector, 'ok': result.ok, 'error': result.error, 'stats': result.stats, 'source': str(path)})
                     parse_result = parsed.get(str(path))
                     doc = load_mineru(path, paper_trace, job / 'papers', parse_result, skipped, regions) if parse_result else load_pdf(path, paper_trace, job / 'papers', args.only_painted)
-                    summary_path = paper_paths.steps_dir / 'zerowall-pipeline.json'
-                    request_path = paper_paths.steps_dir / 'zerowall-document.input.json'
-                    save(request_path, asdict(doc))
-                    if not summary_path.exists():
-                        try:
-                            remaining = DEADLINE - time.monotonic()
-                            if remaining < 1:
-                                raise TimeoutError('Budget reached; resume task.')
-                            process = subprocess.run([sys.executable, str(ROOT / 'detector_worker.py'), '--pipeline',
-                                str(request_path), str(summary_path), str(job / 'papers')],
-                                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=min(120, remaining),
-                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-                            if process.returncode:
-                                raise RuntimeError(process.stderr[-2000:])
-                        except Exception as error:
-                            steps.append({'detector':'paper-pipeline','source':str(path),'ok':False,'error':str(error)})
-                    if summary_path.exists():
-                        summary = json.loads(summary_path.read_text(encoding='utf-8'))
-                        steps.extend(summary['steps']); skipped.extend(summary['skipped'])
-                        from manusift.contracts import Finding
-                        findings.extend(convert_findings([Finding(**f) for f in summary['findings']], doc))
-                        if any(not step['ok'] for step in summary['steps']):
-                            summary_path.unlink()
+                    # Run the screening detectors as separate checkpointed
+                    # steps. The full academic-review pipeline also starts
+                    # unrelated reference and table stages; wrapping it in one
+                    # subprocess discarded all local-pair coverage when that
+                    # broad pipeline exceeded its timeout. These detectors
+                    # write their own durable pair queues and report accurate
+                    # remaining counts so a scan can resume safely.
+                    findings.extend(convert_findings(
+                        image_detectors(doc, paper_paths.root, steps), doc))
                     if parse_result:
                         save(output / f'paper-{i:03d}-mineru.json', parse_result)
                         shutil.copy2(parse_result['markdown'], output / f'paper-{i:03d}.md')
@@ -541,22 +713,50 @@ def run(args):
                 skipped.append({'source': str(path), 'stage': 'pdf-analysis', 'reason': str(error)})
         get_bus().unsubscribe(listener)
         for index, doc in enumerate(docs):
-            if args.mode == 'image' or not doc.source_path.lower().endswith('.pdf'):
+            is_pdf_doc = doc.source_path.lower().endswith('.pdf')
+            if doc.images and (args.mode == 'image' or not is_pdf_doc):
                 found = image_detectors(doc, job / f'document-{index}', steps)
                 findings.extend(convert_findings(calibrate_findings(found), doc))
-        # Shared image collection makes cross-paper comparisons real pairwise comparisons.
+        # Shared image collection makes cross-file comparisons real pairwise comparisons.
         all_images = []
         for paper_index, doc in enumerate(docs):
             for image in doc.images:
-                all_images.append(replace(image, page=paper_index, index=len(all_images),
-                    exif={**image.exif, 'zerowall_source': image.exif.get('zerowall_source', doc.source_path), 'zerowall_page': image.exif.get('zerowall_page', image.page + 1), 'zerowall_index': image.index}))
+                source = image.exif.get('zerowall_source', doc.source_path)
+                all_images.append(replace(image, page=image.page, index=len(all_images),
+                    exif={**image.exif, 'zerowall_source': source,
+                          'zerowall_page': image.exif.get('zerowall_page', image.page + 1),
+                          'zerowall_index': image.index,
+                          'zerowall_xref': image.xref,
+                          'zerowall_document': paper_index}))
         if len(all_images) > args.limit:
             raise ValueError(f'{len(all_images)} extracted images exceed --limit {args.limit}.')
         if len(docs) > 1:
             from manusift.contracts import ParsedDoc
             combined = ParsedDoc(trace, str(job), [], all_images, {})
+            os.environ['MANUSIFT_CROSS_DOCUMENT_ONLY'] = '1'
+            os.environ['MANUSIFT_CROSS_SIFT_DIFFERENT_SOURCES'] = '0'
             found = image_detectors(combined, job / 'cross-document', steps)
             findings.extend(convert_findings(calibrate_findings(found), combined))
+            os.environ['MANUSIFT_CROSS_DOCUMENT_ONLY'] = '0'
+        cnn = {'enabled': False, 'status': 'disabled', 'candidates_count': 0}
+        if args.cnn == 'on':
+            from cnn_candidates import recall, verify_candidates
+            cnn_inputs = [{'path': image.image_path, 'source_file': image.exif.get('zerowall_source', ''),
+                           'page': image.exif.get('zerowall_page', image.page + 1),
+                           'image_id': f"{image.exif.get('zerowall_document', 0)}:{image.page}:{image.exif.get('zerowall_index', image.index)}",
+                           'width': image.width, 'height': image.height}
+                          for image in all_images if image.image_path]
+            cnn = recall(cnn_inputs, cache_dir=job / 'steps' / 'cnn-models', deadline=DEADLINE)
+            cnn['candidates_count'] = len(cnn['candidates'])
+            if cnn['candidates'] and cnn['status'] != 'failed':
+                cnn['verification'] = verify_candidates(cnn['candidates'],
+                    cache_dir=job / 'steps' / 'cnn-verification', deadline=DEADLINE, trace=trace)
+                findings.extend(cnn['verification']['findings'])
+                cnn['verification'] = {k: v for k, v in cnn['verification'].items() if k != 'findings'}
+            save(output / 'cnn-candidates.json', cnn)
+            if cnn['status'] != 'ready' or cnn.get('verification', {}).get('remaining'):
+                skipped.append({'detector': 'imagededup-cnn', 'stage': 'cnn',
+                                'reason': cnn.get('reason') or 'CNN candidate retrieval or geometry verification incomplete.'})
         # Use unique staged filenames: source files may share basenames across directories/PDFs.
         source_map, staged = {}, []
         for index, image in enumerate(all_images):
@@ -567,18 +767,53 @@ def run(args):
             shutil.copy2(image.image_path, target)
             staged.append(str(target))
             source_map[target.name] = {**image_source(image, image.exif['zerowall_source']), 'raster': str(target)}
+        report = None
         if staged:
-            report = batch_scan(staged, job, args.threshold, node_scan, save, max(0, total_deadline-time.monotonic()), args.batch_size)
+            # Keep a share of each invocation for resumable OCR. Otherwise
+            # region batches can exhaust the entire budget on every resume.
+            region_budget = max(0, (total_deadline - time.monotonic()) * 0.65)
+            report = batch_scan(staged, job, args.threshold, node_scan, save, region_budget, args.batch_size)
             save(output / 'region-evidence.json', report)
             findings.extend(worker_findings(report, source_map, trace, output))
             skipped.extend(report.get('skipped', []))
             steps.append({'detector': 'zerowall-region-adapter', 'ok': not report['partial'], 'progress': report['progress']})
+        from local_ocr import scan_isolated as scan_local_ocr
+        model_dir = Path(os.environ['EASYOCR_MODULE_PATH'])
+        ocr_images = [{'path': image.image_path, 'source_file': image.exif.get('zerowall_source', ''),
+                       'page': image.exif.get('zerowall_page', image.page + 1),
+                       'image_id': f"{image.exif.get('zerowall_document', 0)}:{image.page}:{image.exif.get('zerowall_index', image.index)}"}
+                      for image in all_images if image.image_path]
+        ocr = scan_local_ocr(ocr_images, cache_dir=job / 'steps' / 'easyocr', model_dir=model_dir,
+                             deadline=total_deadline, enabled=args.local_ocr == 'easyocr')
+        save(output / 'local-ocr.json', ocr)
+        if ocr['status'] in {'failed', 'incomplete'}:
+            skipped.append({'detector': 'easyocr', 'stage': 'local-ocr', 'reason': ocr['reason'],
+                            'remaining': ocr['remaining'], 'failed': ocr['failed']})
+
+        from numeric_audit import audit as numeric_audit
+        text_blocks = [{'source_file': doc.source_path, 'page': block.page + 1,
+                        'bbox': list(block.bbox), 'text': block.text}
+                       for doc in docs for block in doc.text_blocks]
+        numeric = numeric_audit(included_companions + [p for p in primary_paths if p.suffix.lower() in {'.xlsx', '.csv', '.tsv'}],
+                                tables=[table for doc in docs for table in doc.tables],
+                                text_blocks=text_blocks, ocr_records=ocr['records'])
+        save(output / 'numeric-audit.json', numeric)
+        findings.extend(numeric_findings(numeric['findings'], trace))
+        for detector, status in numeric['detectors'].items():
+            if status == 'not_evaluated':
+                skipped.append({'detector': detector, 'stage': 'numeric-audit',
+                                'reason': 'Required source values, declared totals, or supported formula operands were unavailable; numeric claim not evaluated.'})
+        skipped.extend({'detector': 'numeric-audit', 'source': issue['source_file'],
+                        'stage': 'numeric-audit', 'reason': issue['reason']} for issue in numeric['errors'])
+        steps.append({'detector': 'numeric-audit', 'ok': not numeric['errors'],
+                      'stats': {'detectors': numeric['detectors'], 'numeric_cells': numeric['numeric_cells'],
+                                'formula_cells': numeric['formula_cells'], 'cycle_occurrences': numeric['cycle_occurrences']}})
         skipped.extend(step for step in steps if not step['ok'])
         skipped.append({'detector': 'external-reference-verification', 'applicable': False, 'reason': 'Offline run; external references have not been verified.'})
         requests = [item for doc in docs for item in doc.metadata.get('zerowall_ocr_requests', [])]
         save(output / 'ocr-requests.json', requests)
         for doc in docs:
-            if args.mode != 'image' and not doc.metadata.get('zerowall_mineru'):
+            if args.mode != 'image' and not doc.metadata.get('zerowall_mineru') and args.local_ocr == 'off':
                 skipped.append({'detector': 'mineru-ocr', 'source': doc.source_path, 'reason': 'No MinerU parsing artifacts supplied; document/figure OCR was not executed.'})
         if args.cross_page_only:
             findings = [f for f in findings if len(f.get('sources', [])) == 2 and all(s.get('page') is not None for s in f['sources']) and len({(s.get('file'), s.get('page')) for s in f['sources']}) > 1]
@@ -587,7 +822,26 @@ def run(args):
         folders = sorted({entry['folder'] for entry in entries})
         summary = [{'folder': folder, 'files': sum(e['folder'] == folder for e in entries),
                     'findings': sum(any(str(Path(src['file']).parent) == folder for src in f['sources']) for f in merged)} for folder in folders]
-        payload = {'partial': any(item.get('applicable', True) for item in skipped), 'incomplete_execution': any(not step['ok'] for step in steps) or any(item.get('stage') in {'image-decode', 'pdf-analysis', 'region-batches', 'region-detection'} for item in skipped), 'ocr_requests': str(output / 'ocr-requests.json'), 'directory_summary': summary, 'trace_id': trace, 'engine': VERSION, 'inputs': entries, 'steps': steps, 'skipped': skipped,
+        scanned_files = {str(image.exif.get('zerowall_source', doc.source_path)) for doc in docs for image in doc.images}
+        scanned_files.update(str(doc.source_path) for doc in docs)
+        scanned_files.update(source['path'] for source in numeric['sources'] if source['status'] == 'scanned')
+        companions = {'discovered': [str(p) for p in all_companion_files],
+                      'scanned': [str(p) for p in included_companions if str(p) in scanned_files],
+                      'failed': [str(p) for p in included_companions if str(p) not in scanned_files],
+                      'excluded': excluded_companions,
+                      'associations': {key: [str(p) for p in value] for key, value in companion_associations.items()}}
+        coverage = coverage_from_steps(steps, report, ocr, companions, numeric, cnn, len(all_images))
+        incomplete = (any(not step['ok'] for step in steps) or ocr['status'] in {'failed', 'incomplete'} or
+                      any(coverage[key]['status'] != 'done' for key in ('image_pair', 'panel_pair', 'whole_image') if len(all_images) > 1) or
+                      coverage['image_pair']['remaining'] > 0 or coverage['panel_pair']['remaining'] > 0 or
+                      coverage['whole_image']['remaining'] > 0 or bool(companions['failed']) or
+                      (cnn['enabled'] and (cnn['status'] != 'ready' or cnn.get('verification', {}).get('remaining', 0) > 0)) or
+                      any(item.get('stage') in {'image-decode', 'pdf-analysis', 'region-batches', 'region-detection'} for item in skipped))
+        payload = {'partial': any(item.get('applicable', True) for item in skipped) or incomplete,
+                   'incomplete_execution': incomplete, 'ocr_requests': str(output / 'ocr-requests.json'),
+                   'directory_summary': summary, 'coverage': coverage, 'companions': companions,
+                   'numeric_audit': {'path': str(output / 'numeric-audit.json'), 'findings': len(numeric['findings'])},
+                   'trace_id': trace, 'engine': VERSION, 'inputs': entries, 'steps': steps, 'skipped': skipped,
                    'findings': merged, 'generated_at': time.time()}
         write_report(output, payload)
         return {'ok': True, 'partial': payload['partial'], 'trace_id': trace,
@@ -609,11 +863,16 @@ def main():
     parser.add_argument('--limit', type=int, default=10000)
     parser.add_argument('--budget-seconds', type=int, default=480)
     parser.add_argument('--batch-size', type=int, default=16, choices=range(1, 65))
+    parser.add_argument('--max-pairs', type=int, default=0, help='Maximum new local-image pairs to compare per invocation; 0 means complete all pairs.')
+    parser.add_argument('--resume', action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument('--companion-mode', choices=['auto', 'explicit', 'none'], default='auto')
+    parser.add_argument('--cnn', choices=['off', 'on'], default='off')
+    parser.add_argument('--local-ocr', choices=['easyocr', 'off'], default='easyocr')
     parser.add_argument('--region-parsed', action='append', default=[], help='Extracted figure image=MinerU manifest; repeat per image')
     parser.add_argument('--rerun', action='store_true')
     args = parser.parse_args()
-    if args.budget_seconds < 1 or args.limit < 1:
-        parser.error('Budget and limit must be positive')
+    if args.budget_seconds < 1 or args.limit < 1 or args.max_pairs < 0:
+        parser.error('Budget and limit must be positive; max-pairs cannot be negative')
     if args.trace_id and not re.fullmatch(r'[a-zA-Z0-9_-]{1,100}', args.trace_id):
         parser.error('Invalid trace ID')
     if args.mode == 'report' and not args.trace_id:

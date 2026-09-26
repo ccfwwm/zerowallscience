@@ -103,12 +103,18 @@ def run_detectors(doc: ParsedDoc, detectors: list[Detector]) -> list[DetectorRes
             )
             continue
         # Detector returned a value — record timing and keep going.
+        # Preserve detector status and coverage. A detector may return
+        # findings while explicitly reporting an incomplete, resumable
+        # traversal; dropping these fields made a partial pair queue look
+        # like a completed check-point.
         results.append(
             DetectorResult(
                 detector=det.name,
-                ok=True,
+                ok=bool(res.ok),
                 findings=list(res.findings),
+                error=res.error,
                 duration_ms=int((time.time() - t0) * 1000),
+                stats=dict(res.stats or {}),
             )
         )
     return results

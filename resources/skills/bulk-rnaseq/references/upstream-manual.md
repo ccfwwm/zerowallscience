@@ -2,7 +2,11 @@
 
 Run each stage yourself when you want transparency, have only a few samples, or can't use Nextflow/containers. Results are equivalent to Path A when tools, versions, reference, and parameters match. Quantify **every sample identically**.
 
-Install (bioconda): `conda create -n rnaseq -c bioconda -c conda-forge fastqc fastp trim-galore "star=2.7.11b" "salmon=1.10.3" subread multiqc rseqc`.
+For ZeroWall's local Python tools, add the required pins to **Settings > Python environment** and synchronize the single shared Python runtime. Do not create a project Conda environment or private site-packages directory. FastQC, STAR, Salmon, Subread, and other native command-line binaries remain external execution requirements; run them through the selected container, HPC, or remote execution context and record that context in the result. A Bioconda command may be used only inside that explicitly selected external context, never as a local ZeroWall profile:
+
+```text
+conda install -c bioconda -c conda-forge fastqc fastp trim-galore star=2.7.11b salmon=1.10.3 subread multiqc rseqc
+```
 
 ## 0. Reference data
 

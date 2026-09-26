@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { ResearchStore } from '../../store/src/index.js'
 import { FijiExperimentService } from '../../plugins/research/src/host/fiji-experiments.js'
+import { hePythonPath } from '../../plugins/research/src/host/he.js'
 import { createHash } from 'node:crypto'
 
 
@@ -23,7 +24,7 @@ const path=join(root,'colonies.png');const pixels=Buffer.alloc(40*24)
 for(const [x,y,w,h,value] of [[4,4,3,3,200],[12,4,3,3,200],[20,4,3,3,255],[4,13,3,3,200],[8,13,3,3,200],[7,14,1,1,200],[0,19,2,2,200],[30,19,1,1,200]])for(let yy=y!;yy<y!+h!;yy++)for(let xx=x!;xx<x!+w!;xx++)pixels[yy*40+xx]=value!
 await sharp(pixels,{raw:{width:40,height:24,channels:1}}).png().toFile(path)
 // Preserve actual 8-bit grayscale rather than an RGB PNG encoding.
-const python=join(process.env.LOCALAPPDATA!,'ZeroWallScience','science-engines','he-stardist-7.0.0','venv','Scripts','python.exe')
+const python=hePythonPath()
 await promisify(execFile)(python,['-I','-c',"from PIL import Image;import sys;image=Image.open(sys.argv[1]);image.convert('L').save(sys.argv[1])",path])
 const store=new ResearchStore(join(root,'store.sqlite'));const project=store.createProject({name:'Fiji actual UI review',rootPath:root});const asset=store.createDataAsset({projectId:project.id,name:'Independent colony fixture',uri:pathToFileURL(path).href,location:'local',mediaType:'image/png'});const service=new FijiExperimentService(store)
 const sha256=createHash('sha256').update(await readFile(path)).digest('hex')

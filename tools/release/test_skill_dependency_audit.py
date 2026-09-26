@@ -34,13 +34,18 @@ class AuditTests(unittest.TestCase):
             (dist / 'METADATA').write_text('Name: pyzotero\nVersion: 1.15.1\n')
             (dist / 'top_level.txt').write_text('pyzotero\n')
             output = root / 'audit.json'
-            base = [sys.executable, str(SCRIPT), '--skills-root', str(root/'skills'), '--site-packages', str(site), '--output', str(output)]
+            manifest = root / 'dependency-manifest.json'
+            manifest.write_text(json.dumps({'revision': '3.12.10-r9', 'packages': [{'name': 'pyzotero', 'version': '1.15.1', 'required': True}]}))
+            base = [sys.executable, str(SCRIPT), '--skills-root', str(root/'skills'), '--site-packages', str(site), '--dependency-manifest', str(manifest), '--output', str(output)]
             subprocess.run(base, check=True, capture_output=True)
-            result = json.loads(output.read_text('utf-8'))['skills'][0]
-            self.assertEqual(result['status'], 'optional')
+            report = json.loads(output.read_text('utf-8'))
+            self.assertEqual(report['dependencyManifestRevision'], '3.12.10-r9')
+            result = report['skills'][0]
+            self.assertEqual(result['status'], 'managed')
             self.assertEqual([r['name'] for r in result['requirements']], ['pyzotero'])
+            self.assertEqual(result['requirements'][0]['validation'], 'not-verified')
             proof = root / 'proof.json'
-            proof.write_text(json.dumps({'python':'3.12.10','isolated':True,'packages':{'pyzotero':'1.15.1'},'imports':{'pyzotero':{'ok':True}}}))
+            proof.write_text(json.dumps({'python':'3.12.10','runtimeMode':'shared','packages':{'pyzotero':'1.15.1'},'imports':{'pyzotero':{'ok':True}}}))
             subprocess.run([*base, '--verification', str(proof)], check=True, capture_output=True)
             result = json.loads(output.read_text('utf-8'))['skills'][0]
             self.assertEqual(result['status'], 'managed')
@@ -48,8 +53,26 @@ class AuditTests(unittest.TestCase):
             (skill / 'requirements.txt').write_text('pyzotero>=99\n')
             subprocess.run([*base, '--verification', str(proof)], check=True, capture_output=True)
             result = json.loads(output.read_text('utf-8'))['skills'][0]
-            self.assertEqual(result['status'], 'optional')
+            self.assertEqual(result['status'], 'managed')
             self.assertEqual(result['requirements'][0]['validation'], 'version-mismatch')
+
+    def test_required_shared_dependency_missing_is_not_optional(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skill = root / 'skills' / 'zotero'
+            skill.mkdir(parents=True)
+            (skill / 'SKILL.md').write_text('---\nname: fixture\n---\n```python\nimport pyzotero\n```\n')
+            manifest = root / 'dependency-manifest.json'
+            manifest.write_text(json.dumps({'revision': '3.12.10-r9', 'packages': [{'name': 'pyzotero', 'version': '1.15.1', 'required': True}]}))
+            output = root / 'audit.json'
+            subprocess.run([sys.executable, str(SCRIPT), '--skills-root', str(root/'skills'), '--dependency-manifest', str(manifest), '--output', str(output)], check=True, capture_output=True)
+            result = json.loads(output.read_text('utf-8'))
+            skill_result = result['skills'][0]
+            self.assertEqual(skill_result['status'], 'missing')
+            self.assertEqual(skill_result['requirements'][0]['status'], 'missing')
+            self.assertEqual(skill_result['requirements'][0]['validation'], 'missing')
+            self.assertEqual(result['summary']['missing'], 1)
+            self.assertNotIn('optional', result['summary'])
 
 
 if __name__ == '__main__':

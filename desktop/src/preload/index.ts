@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
   chooseScienceFile: async (extensions?: string[]): Promise<string | null> => await ipcRenderer.invoke('desktop:choose-science-file', extensions) as string | null,
   revealPath: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:reveal-path', path) as boolean,
   openFolder: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:open-folder', path) as boolean,
+  openPythonTerminal: async (): Promise<boolean> => await ipcRenderer.invoke('desktop:open-python-terminal') as boolean,
   openPptx: async (path: string): Promise<boolean> => await ipcRenderer.invoke('desktop:open-pptx', path) as boolean,
   copyFile: async (input: DesktopClipboardFile): Promise<boolean> => await ipcRenderer.invoke('desktop:clipboard-copy-file', input) as boolean,
   copyText: async (text: string): Promise<boolean> => await ipcRenderer.invoke('desktop:clipboard-copy-text', text) as boolean,

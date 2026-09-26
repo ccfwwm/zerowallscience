@@ -120,11 +120,12 @@ its release entry and use the OMERO.py version tested with it. See
 
 ## Install a Reproducible Client
 
-Create a Python 3.12 environment:
+For the local client, synchronize the pinned client packages into the single
+ZeroWall shared Python runtime. The OMERO server and its uploaded scripts are
+external environments:
 
-```bash
-uv venv --python 3.12 .venv
-source .venv/bin/activate
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
 ```
 
 Install the exact IcePy 3.6.5 wheel matching the interpreter, OS, architecture,

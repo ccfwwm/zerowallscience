@@ -1,11 +1,7 @@
 """基因回路建模工具 — BioCRNpyler 回路编译 + Bioscrape 动力学仿真
 
-biocrnpyler / bioscrape / networkx / python-libsbml / bokeh 均为第二层依赖
-（src/extra-deps.js EXTRA_DEPS），首次调用由 TS 侧 ensureExtraDeps 自动安装；
-此处 import 失败时返回 needs_install 兜底。
-
-注意：biocrnpyler 必须以 --no-deps 安装（其 fa2-modified 依赖需要 C++ 编译，
-Windows 无预编译 wheel）；fa2 只用于力导向布局，缺失不影响编译与仿真。
+biocrnpyler / bioscrape / networkx / python-libsbml / bokeh 均由 ZeroWall
+共享 Python 的签名依赖清单安装；导入失败时返回安装状态。
 """
 import os
 import sys
@@ -46,7 +42,7 @@ def op_circuit_compile(args):
     try:
         from biocrnpyler import DNA_construct, TxTlExtract, ExpressionExtract
     except ImportError:
-        return {'error': 'biocrnpyler 未安装，正在自动安装…（若仍未就绪请运行 uv pip install biocrnpyler bioscrape networkx python-libsbml）',
+        return {'error': 'biocrnpyler 未安装；请在 ZeroWall 设置 > Python 环境中同步共享依赖清单并查看失败日志。',
                 'needs_install': True}
 
     components = args.get('components') or []
@@ -166,7 +162,7 @@ def op_circuit_simulate(args):
         from bioscrape.simulator import py_simulate_model
         import numpy as np
     except ImportError:
-        return {'error': 'bioscrape 未安装，正在自动安装…（若仍未就绪请运行 uv pip install bioscrape）',
+        return {'error': 'bioscrape 未安装；请在 ZeroWall 设置 > Python 环境中同步共享依赖清单并查看失败日志。',
                 'needs_install': True}
 
     sbml_file = args.get('sbml_file')

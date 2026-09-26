@@ -1,7 +1,6 @@
-# Heavy, opt-in document parsing layer. Keep outside the minimal MCP profile.
--r requirements-science.txt
-mineru>=2,<3
-# Install this profile in an independent environment; do not overlay the shared runtime.
-opencv-python-headless>=4.9,<5
-torch>=2.2,<3
-transformers>=4.40,<5
+# ZeroWall's MinerU plugin calls the remote HTTP API from Node. Local document
+# extraction is implemented by plugins/files and uses the shared Python
+# dependency manifest. No local MinerU Python package/profile is used.
+# If local MinerU inference is added later, merge compatible pins into
+# requirements-research.txt and regenerate the signed shared dependency list;
+# never install this file into a private environment.

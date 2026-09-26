@@ -1,13 +1,16 @@
 # USAGE — Worker B au quotidien
 
 Doc courte d'usage. Pour l'architecture : voir `plans/B_worker_FSM_pipeline.md`
-et `plans/plan-design.md`. Toutes les commandes ci-dessous se lancent depuis
-la racine du repo avec le venv activé :
+et `plans/plan-design.md`. Dans ZeroWall Science, toutes les commandes se
+lancent avec l'interpréteur Python partagé de l'application. Aucun venv,
+Conda environment ou chemin `site-packages` privé n'est créé :
 
 ```bash
-source venv/bin/activate
-python -m pipeline <sous-commande> [options]
+"$ZEROWALL_PYTHON" -m pipeline <sous-commande> [options]
 ```
+
+`ZEROWALL_PYTHON` doit pointer vers `Python/python.exe` du runtime partagé;
+la fenêtre Python du logiciel peut ouvrir directement cette ligne de commande.
 
 Six sous-commandes : `status`, `run`, `lint`, `reactivate-ocr`, `doctor`,
 `events`.

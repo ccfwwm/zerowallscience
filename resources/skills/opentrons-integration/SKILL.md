@@ -127,16 +127,10 @@ uv run --with "opentrons==9.0.0" opentrons_simulate protocol.py
 The 9.1.1 package intentionally rejects OT-2 protocols after the Flex/OT-2
 release-line split. Always complete OT-2 analysis in the current OT-2 App.
 
-For a dedicated Flex environment:
-
-```bash
-uv venv --python 3.10
-uv pip install --python .venv/bin/python -r skills/opentrons-integration/requirements-flex.txt
-.venv/bin/opentrons_simulate protocol.py
-```
-
-Use `requirements-ot2.txt` instead for an OT-2 compatibility environment. On
-Windows, invoke the executable from `.venv\Scripts\opentrons_simulate.exe`.
+For local Flex simulation, install the reviewed package pin into the shared
+ZeroWall Python manifest and invoke its `opentrons_simulate` command. Do not
+create a local venv. Use the Opentrons App as the authoritative analyzer for
+OT-2 compatibility, which follows a different release line.
 Local simulation is for Python protocols; import Protocol Designer JSON files
 into the appropriate Opentrons App instead.
 

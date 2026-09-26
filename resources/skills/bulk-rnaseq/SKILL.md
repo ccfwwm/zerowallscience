@@ -29,6 +29,11 @@ These host rules override upstream examples when they differ:
 - Resolve credentials only through **Settings > Credentials** and the approved execution-context environment. Never create, scan, or load project `.env` files and never print or persist secret values.
 - Treat network calls, cloud jobs, experiment submissions, writes, deletion, and physical equipment actions as approval-gated. Default to read-only inspection, validation, or dry-run planning until the user explicitly requests execution.
 - Use `zerowall-python-packages` for managed Python dependency changes: inspect, preview, obtain confirmation, apply, and verify. Do not run pip/uv/conda against the managed snapshot. Report missing external runtimes separately.
+- All local Python glue and Python-based downstream tools use the application's
+  one shared Python 3.12 runtime. Do not create a `rnaseq` venv, Conda
+  environment, or per-skill profile. Nextflow/container/bioconda tools are
+  external execution contexts and must not be described as local Python
+  environments.
 - Use `pathlib`, project-relative paths, and platform temporary directories. Gate Unix-only commands behind an explicit WSL/SSH execution context.
 - Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with `tool_search`.
 
@@ -94,8 +99,9 @@ Both paths converge on a **gene-level counts matrix**, after which the workflow 
 ## Setup
 
 ```bash
-# This skill's glue (bridge + handoffs) — Python
-uv pip install pytximport pandas
+# This skill's glue (bridge + handoffs) — install through the signed shared
+# ZeroWall dependency manifest, never into a private environment.
+# `pytximport` and `pandas` are required packages in that manifest.
 
 # Downstream skills install their own deps:
 #   pydeseq2 skill           -> uv pip install pydeseq2
@@ -103,8 +109,10 @@ uv pip install pytximport pandas
 
 # Path A (nf-core): only Nextflow + a container engine are needed — see the `nextflow` skill.
 
-# Path B (standalone tools): install via bioconda. Pin versions for reproducibility.
-conda create -n rnaseq -c bioconda -c conda-forge \
+# Path B (standalone tools): these are external command-line tools. Run them
+# in the selected Nextflow/container/remote context; do not create a local
+# Python environment in the desktop application.
+conda install -c bioconda -c conda-forge \
   fastqc fastp trim-galore "star=2.7.11b" "salmon=1.10.3" subread multiqc
 ```
 

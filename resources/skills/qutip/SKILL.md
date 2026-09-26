@@ -50,25 +50,25 @@ Python 3.11 or newer. Its required distributions are NumPy (`>=1.23.2`), SciPy
 
 ## Reproducible uv snapshot
 
-Create a dedicated environment and pin every direct distribution:
+Pin every direct distribution in the signed shared dependency manifest:
 
-```bash
-uv venv --python 3.11
-uv pip install "qutip==5.3.0"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: qutip==5.3.0
 ```
 
 For plots:
 
-```bash
-uv pip install "qutip[graphics]==5.3.0"
+```text
+Add qutip[graphics]==5.3.0 to the same manifest and synchronize it.
 ```
 
-Optional QuTiP family packages are independently versioned:
+QuTiP family packages are independently versioned but still belong to the same signed shared manifest:
 
-```bash
-uv pip install "qutip-qip==0.4.2"
-uv pip install "qutip-qtrl==0.2.0"
-uv pip install "qutip-jax==0.1.1"
+```text
+qutip-qip==0.4.2
+qutip-qtrl==0.2.0
+qutip-jax==0.1.1
 ```
 
 - `qutip-qip` 0.4.2 (2026-06-23) is the production/stable circuit, gate, and

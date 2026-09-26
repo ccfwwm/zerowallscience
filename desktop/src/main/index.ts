@@ -421,12 +421,19 @@ if (ownsInstance) app.whenReady().then(async () => {
   await mkdir(mcpEnvironmentRoot, { recursive: true })
   process.env.ZEROWALL_PYTHON_ROOT = mcpEnvironmentRoot
   process.env.ZEROWALL_BIOGENIE_ROOT = app.isPackaged ? join(process.resourcesPath, 'biogenie') : join(findWorkspaceRoot(), 'resources', 'biogenie')
-  process.env.ZEROWALL_KETCHER_ROOT = app.isPackaged ? join(process.resourcesPath, 'ketcher-chemistry') : join(findWorkspaceRoot(), 'resources', 'mcp', 'ketcher-chemistry')
+  const bundledKetcherRoot = app.isPackaged ? join(process.resourcesPath, 'ketcher-chemistry') : join(findWorkspaceRoot(), 'resources', 'mcp', 'ketcher-chemistry')
+  process.env.ZEROWALL_KETCHER_ROOT = bundledKetcherRoot
+  const bundledBioToolsRoot = app.isPackaged ? join(process.resourcesPath, 'bio-tools') : join(findWorkspaceRoot(), 'resources', 'mcp', 'bio-tools')
+  const bundledSciRoot = app.isPackaged ? join(process.resourcesPath, 'sci') : join(findWorkspaceRoot(), 'mcp-environment-staging', 'sci')
+  const bundledSkillsRoot = bundledSkillsPath()
+  process.env.ZEROWALL_BIO_TOOLS_ROOT = bundledBioToolsRoot
+  process.env.ZEROWALL_SCI_ROOT = bundledSciRoot
   // Compatibility for older bundled plugins and already-running sessions.
   process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = mcpEnvironmentRoot
   // BrainGlobe resolves current.json for each job. Do not freeze a managed
-  // snapshot into an inherited environment variable across updates. An
-  // explicitly configured external BrainGlobe interpreter remains supported.
+  // snapshot into an inherited environment variable across updates. All
+  // scientific engines resolve this same shared runtime; external Python
+  // interpreters are never accepted as a profile override.
   // Managed Python operations pass the configured mirror explicitly. Do not
   // mutate the user's global pip.ini; it may belong to another project.
   // Do not block the entire desktop when the OS credential provider is not
@@ -494,8 +501,9 @@ if (ownsInstance) app.whenReady().then(async () => {
   mcpEnvironment = new PythonUpdaterService({
     coordinateHost: true,
     root: mcpEnvironmentRoot,
-    bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'base-manifest.json') : join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-1.4.1', 'latest.json'),
-    bundledArchivePath: app.isPackaged ? join(process.resourcesPath, 'python', 'base-runtime.zip') : join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-1.4.1', 'zerowall-python-windows-x64-1.4.1.zip'),
+    bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'base-manifest.json') : join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'latest.json'),
+    bundledArchivePath: app.isPackaged ? join(process.resourcesPath, 'python', 'base-runtime.zip') : join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'zerowall-python-windows-x64-3.12.10.zip'),
+    bundledAssets: { bioToolsRoot: bundledBioToolsRoot, ketcherRoot: bundledKetcherRoot, sciRoot: bundledSciRoot, skillsRoot: bundledSkillsRoot },
     manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
     publicKeys: MCP_ENVIRONMENT_KEYRING,
@@ -531,7 +539,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       return undefined
     })
     if (!status || (status.phase !== 'ready' && status.phase !== 'manual')) return
-    await pythonEnvironmentApi.request({ action: 'check_manifest', requestId: `startup-${Date.now()}` }).catch(error => console.warn('Python dependency check:', error instanceof Error ? error.message : String(error)))
+    await pythonEnvironmentApi.request({ action: 'sync', requestId: `startup-${Date.now()}`, confirm: true }).catch(error => console.warn('Python dependency sync:', error instanceof Error ? error.message : String(error)))
   }
 
   app.once('before-quit', () => mcpEnvironment.stop())
@@ -621,6 +629,27 @@ if (ownsInstance) app.whenReady().then(async () => {
     } catch {
       return false
     }
+  })
+  ipcMain.handle('desktop:open-python-terminal', async event => {
+    if (process.platform !== 'win32' || event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame) return false
+    try {
+      const info = await mcpEnvironment?.pythonInfo()
+      if (!info?.ready || !info.executable || !info.runtimeRoot) return false
+      const runtimeRoot = await realpath(info.runtimeRoot)
+      const executable = await realpath(info.executable)
+      if (relative(runtimeRoot, executable).toLowerCase() !== 'python.exe' || !(await stat(executable)).isFile()) return false
+      const command = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe')
+      const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${runtimeRoot};${process.env.PATH ?? ''}`, PYTHONNOUSERSITE: '1' }
+      delete env.PYTHONHOME
+      delete env.PYTHONPATH
+      const child = spawn(command, ['/K'], { cwd: runtimeRoot, env, detached: true, windowsHide: false, stdio: 'ignore' })
+      await new Promise<void>((resolveOpen, rejectOpen) => {
+        child.once('spawn', resolveOpen)
+        child.once('error', rejectOpen)
+      })
+      child.unref()
+      return true
+    } catch { return false }
   })
   ipcMain.handle('desktop:open-pptx', async (_event, value: unknown) => {
     if (typeof value !== 'string' || !isAbsolute(value) || extname(value).toLocaleLowerCase() !== '.pptx') return false
@@ -750,10 +779,9 @@ if (ownsInstance) app.whenReady().then(async () => {
 
   await launch()
   await navigation
-  // Environment updates run independently from desktop updates. Startup and
-  // hourly checks discover signed revisions without applying them. The
-  // first update begins only after the authenticated workbench is visible so
-  // a large archive cannot delay the first usable window.
+  // Environment updates run independently from desktop updates. Once the
+  // workbench is visible, the signed required dependency set is synchronized
+  // into the one shared Python environment and progress is streamed to Settings.
   const mcpEnvironmentInterval = setInterval(() => { void checkPythonUpdates() }, UPDATE_CHECK_INTERVAL_MS)
   mcpEnvironmentInterval.unref()
   const updateRecordPath = join(userData, 'updates', 'last-check.json')

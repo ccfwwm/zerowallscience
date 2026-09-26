@@ -5,7 +5,7 @@ description: 从 ZeroWall 打开本机 napari 查看图像并进行单页 ROI �
 
 # napari 图像查看
 
-先读取 `getScientificEngineConfigs({sessionId})`，确认 napari 的 `pythonPath`/环境路径和启用状态；需要修改时使用 `setScientificEngineConfig`，再用 `probeScientificEngine` 验证版本。默认解释器是 ZeroWall 稳定 Python `%APPDATA%\zerowall-science\Python\python.exe`；Host 在同一环境的 `Lib\site-packages\bin\napari.exe` 查找启动入口，缺失时用 `python -m napari`。发现 `science_viewer` 后使用 Host 启动，不修改 Qt 或全局系统 Python 环境。
+先读取 `getScientificEngineConfigs({sessionId})` 和 `probeScientificEngine` 确认 napari 状态。napari 只使用 ZeroWall Science 唯一共享 Python `%APPDATA%\zerowall-science\Python\python.exe` 及其 `Lib\site-packages`；Host 在该共享环境中查找 `napari.exe`，缺失时使用该解释器执行 `-m napari`。不得配置其他解释器、创建 venv/conda 环境或修改系统 Python。发现 `science_viewer` 后使用 Host 启动。
 
 
 - `{"action":"list"}` 获取当前项目资产；无需创建完整研究。

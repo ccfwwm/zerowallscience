@@ -41,25 +41,25 @@ only, ~1.7x faster.
 
 ## Install
 
-CUDA 12.x GPU (H100/A100-class); Python **3.12 only**. Fresh venv; needs
-egress to HF Hub, GitHub, PyPI:
+CUDA 12.x GPU (H100/A100-class); Python **3.12 only**. On the local
+application host, install the pinned package set through the ZeroWall shared
+Python dependency manifest. Do not create a local venv or alternate profile.
+The remote GPU recipe is only for the selected SSH execution context and is
+not installed into the desktop runtime.
 
-```bash
-pip install --no-cache-dir uv
-uv venv --python 3.12 /work/venv && source /work/venv/bin/activate
-uv pip install \
+```text
+ZeroWall Settings > Python environment > Check dependencies > Preview sync > Apply sync
+Required package set:
   "torch>=2.5,<2.8" einops "biotite>=1.0" rdkit msgpack-numpy biopython \
   scikit-learn brotli attrs pandas cloudpathlib httpx tenacity zstd pydssp \
   pygtrie accelerate huggingface_hub safetensors "numpy<3" networkx \
   sentencepiece tokenizers regex packaging filelock pyyaml typing_extensions \
   "transformers @ git+https://github.com/Biohub/transformers.git@3a8956fb4d4ea16b0ec8e71deef2c2909b6a5cbf"
-uv pip install --no-deps "esm @ git+https://github.com/Biohub/esm.git@f652b471"
-# OPTIONAL — only affects ESMC attention; trunk speedup comes from set_kernel_backend("fused")
-uv pip install ninja packaging wheel setuptools
-MAX_JOBS=8 uv pip install --no-deps --no-build-isolation "flash-attn<3"
-# Do NOT install transformer-engine — RuntimeError (not ImportError) on import
-# slips ESMC's guard and kills ESMFold2Model import.
 ```
+
+The manifest records every required package. A failed package is logged and
+skipped so the remaining packages continue; retry it from the same shared
+environment after the dependency issue is repaired.
 
 For remote execution, install this version-pinned recipe on a selected and
 probed direct SSH GPU context, then submit inference through

@@ -70,12 +70,12 @@ Security maintenance release:
 
 ## Upgrade Installation
 
-Create a clean environment for the comparison:
+Use the shared ZeroWall Python runtime for the comparison. Do not create a
+second environment or install into a project-local `.venv`:
 
-```bash
-uv venv --python 3.12 .venv-markitdown
-source .venv-markitdown/bin/activate
-uv pip install "markitdown[all]==0.1.6"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+Required pin: markitdown[all]==0.1.6
 ```
 
 Do not test a migration in an environment that still contains unknown third-party plugins.

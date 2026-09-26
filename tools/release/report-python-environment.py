@@ -16,15 +16,15 @@ def main():
     policy = json.loads((ROOT/'resources/python/skill-dependency-policy.json').read_text('utf-8'))
     output = work/'reports'
     output.mkdir(exist_ok=True)
-    lines = ['# Python 3.12.10 / 科研环境 1.4.0 Skills 覆盖报告', '',
+    lines = ['# Python 3.12.10 / ZeroWall 共享科研环境 Skills 覆盖报告', '',
              f"审计 {len(audit['skills'])} 个 Skill、{audit['scannedFiles']} 个文件；安装 {audit['installedPackageCount']} 个发行包。", '',
-             '状态以真实安装、隔离导入、版本要求为依据。文档示例、可选功能、开发测试和外部服务单独记录；',
+             '状态以真实安装、共享运行时导入和版本要求为依据。文档示例、开发测试和外部服务单独记录；',
              '“已管理”不代表每项在线服务、模型或任意文档示例都经过端到端验证。完整计算验证见功能报告。', '',
              f"状态统计：`{json.dumps(audit['summary'], ensure_ascii=False)}`。Python AST 解析错误：{len(audit['parseErrors'])}。", '',
-             '## 独立环境与例外', '', '| Skill | 原因 |', '| --- | --- |']
-    for name, reason in policy['independent'].items():
+             '## 共享运行时边界与例外', '', '| Skill | 原因 |', '| --- | --- |']
+    for name, reason in policy.get('incompatible', {}).items():
         lines.append(f'| {name} | {reason} |')
-    lines += ['', 'Torch/CUDA、模型权重、完整 OCR 模型栈、系统工具、Playwright 浏览器本体不进入公共包。', '',
+    lines += ['', '所有 Windows Python 包都通过签名依赖清单进入同一个共享 site-packages；模型权重、系统工具和 Playwright 浏览器本体仍按各自资源机制管理。', '',
               '## 全部 Skill', '', '| Skill / 路径 | 状态 | 已验证依赖 | 待配置、版本不符或未验证依赖 |', '| --- | --- | --- | --- |']
     for skill in audit['skills']:
         ready = ', '.join(r['name']+' '+r.get('installedVersion','') for r in skill['requirements'] if r['status']=='managed') or '—'
@@ -36,11 +36,11 @@ def main():
               '全部测试禁用个人 site-packages，完整科研测试不加载用户 overlay；客户端回归另行验证现有六个扩展。']
     (output/'skills-coverage.md').write_text('\n'.join(lines)+'\n','utf-8')
     (output/'skill-dependencies.json').write_text(json.dumps(audit, ensure_ascii=False, indent=2),'utf-8')
-    lines = ['# 科研环境 1.4.0 功能验收', '', f"解释器：{verification['python']}；隔离运行：{verification['isolated']}；包数量：{len(verification['packages'])}。", '',
+    lines = ['# ZeroWall 共享科研环境功能验收', '', f"解释器：{verification['python']}；运行时：{verification.get('runtimeMode', 'shared')}；包数量：{len(verification['packages'])}。", '',
              '## 实际计算与文件处理', '', '| 测试 | 结果 | 耗时（秒） |', '| --- | --- | --- |']
     for name, result in verification['cases'].items():
         lines.append(f"| {name} | {'PASS' if result['ok'] else 'FAIL'} | {result['seconds']} |")
-    lines += ['', f"隔离导入：{sum(r['ok'] for r in verification['imports'].values())}/{len(verification['imports'])} 通过。", '',
+    lines += ['', f"共享运行时导入：{sum(r['ok'] for r in verification['imports'].values())}/{len(verification['imports'])} 通过。", '',
               'PyZotero 使用模拟 HTTP 响应验证接口，不访问个人文献库。Office 包含 PDF、DOCX、PPTX、XLS、XLSX。',
               '图像包含 SIFT、感知哈希、SSIM、PNG/TIFF/HEIF；医学影像包含 DICOM/JPEG-LS/RLE、NIfTI、NRRD、SimpleITK。',
               'PyMC 已在没有 g++ 的条件下完成 CPU 采样验证；本包不附带 C++ 编译器，需要编译加速的专用工作流应另配工具链。',

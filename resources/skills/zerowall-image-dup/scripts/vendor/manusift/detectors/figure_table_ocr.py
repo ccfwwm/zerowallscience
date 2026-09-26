@@ -240,16 +240,8 @@ class FigureTableOCRDetector:
 
     def _get_reader(self) -> Any:
         if self._reader is None:
-            if not _HAS_EASYOCR:
-                return None
-            try:
-                import easyocr  # type: ignore
-            except ImportError:  # pragma: no cover
-                return None
-            try:
-                self._reader = easyocr.Reader(["en"], gpu=False, verbose=False)
-            except Exception:  # noqa: BLE001
-                return None
+            from ..local_ocr_runtime import get_reader
+            self._reader, self._reader_error = get_reader()
         return self._reader
 
     def run(self, doc: ParsedDoc) -> DetectorResult:
@@ -261,7 +253,9 @@ class FigureTableOCRDetector:
 
         reader = self._get_reader()
         if reader is None:
-            return DetectorResult(detector=self.name, findings=[], ok=True)
+            return DetectorResult(detector=self.name, findings=[], ok=False,
+                                  error=f"EasyOCR unavailable: {getattr(self, '_reader_error', None)}",
+                                  stats={"ocr": {"status": "failed", "reason": getattr(self, "_reader_error", None)}})
 
         try:
             import fitz  # type: ignore

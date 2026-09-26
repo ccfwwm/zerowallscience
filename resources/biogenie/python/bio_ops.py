@@ -41,7 +41,7 @@ from plasmid_repo import op_plasmid_search, op_plasmid_info
 # 能力补缺（内含子外显子/点阵图/UniProt/树比较/RNA 折叠，2026-09-16）
 from analysis_ext import (op_seq_introns, op_seq_dotplot, op_uniprot,
                           op_phylo_compare, op_rna_fold)
-# 单细胞 RNA-seq 质控（scanpy，第二层按需依赖，2026-09-16）
+# 单细胞 RNA-seq 质控使用共享 Python 的 scanpy。
 from sc_tools import op_sc_qc
 socket.setdefaulttimeout(20)
 from retry_utils import retry_on_network_error
@@ -737,7 +737,7 @@ def op_ref_genome(args):
 
 def op_env_status(args):
     """环境状态：Python 版本 + 核心库可用性探测。
-    让 agent 先调本工具确认 venv 有哪些库可用，再决定用哪个工具/怎么写 bio_python 代码。
+    让 agent 先确认 ZeroWall 共享 Python 中有哪些库可用，再决定调用哪个工具。
     """
     import sys
     import importlib.util as ilu
@@ -755,18 +755,16 @@ def op_env_status(args):
         ('PIL',        'Pillow',                  'builtin', '图像'),
         ('reportlab',  'reportlab',               'builtin', 'PDF/GenomeDiagram 后端'),
         ('cobra',      'cobra',                   'builtin', '代谢建模 FBA/FVA/OptKnock'),
-        ('primer3',    'primer3-py',              'auto',   '工业级引物设计（首调自动装）'),
-        ('dnachisel',  'dnachisel',               'auto',   '多约束 DNA 优化（首调自动装）'),
-        ('dna_features_viewer', 'dna-features-viewer', 'auto', '质粒图（首调自动装）'),
-        ('sbol3',      'sbol3',                   'auto',   'SBOL 3 读写（首调自动装）'),
-        ('tyto',       'tyto',                    'auto',   '本体查询（首调自动装）'),
+        ('primer3',    'primer3-py',              'builtin', '工业级引物设计'),
+        ('dnachisel',  'dnachisel',               'builtin', '多约束 DNA 优化'),
+        ('dna_features_viewer', 'dna-features-viewer', 'builtin', '质粒图'),
+        ('sbol3',      'sbol3',                   'builtin', 'SBOL 3 读写'),
         ('requests',   'requests',                'builtin', 'HTTP API'),
-        ('pydna',      'pydna',                   'auto',   '克隆模拟（首调自动装）'),
-        ('biocrnpyler','biocrnpyler',             'auto',   '基因回路编译（首调自动装）'),
-        ('bioscrape',  'bioscrape',               'auto',   '回路仿真（首调自动装）'),
-        ('networkx',   'networkx',                'auto',   '网络图'),
-        ('scanpy',     'scanpy',                  'addon',  '单细胞（设置面板安装）'),
-        ('pysam',      'pysam',                   'addon',  'NGS（设置面板安装）'),
+        ('pydna',      'pydna',                   'builtin', '克隆模拟'),
+        ('biocrnpyler','biocrnpyler',             'builtin', '基因回路编译'),
+        ('bioscrape',  'bioscrape',               'builtin', '回路仿真'),
+        ('networkx',   'networkx',                'builtin', '网络图'),
+        ('scanpy',     'scanpy',                  'builtin', '单细胞'),
     ]
 
     def version(mod_name):
@@ -805,7 +803,7 @@ def op_env_status(args):
         'n_libraries_missing': len(missing),
         'libraries': libs,
         'missing_libraries': [l['pip_package'] for l in missing],
-        'note': 'builtin=环境引导时内置；auto=首次调用对应药工具时自动 uv pip install；addon=需在设置面板手动安装。',
+        'note': '所有本地工具共用 ZeroWall Python；缺失依赖请在设置 > Python 环境中同步依赖清单，并查看安装日志。',
     }
 
 
@@ -2037,8 +2035,7 @@ OPS = {
     'seq_optimize': op_seq_optimize,
     'assembly_design': op_assembly_design,
     'plasmid_map': op_plasmid_map,
-    # 合成生物学 Phase 1（v0.6.16 起 primer3/dnachisel/dna-features-viewer 均为
-    # 第二层按需自动安装，注册见 src/extra-deps.js EXTRA_DEPS）
+    # 合成生物学依赖由唯一共享 Python 的签名清单安装。
     'primer3_design': op_primer3_design,
     'dna_optimize': op_dna_optimize,
     'clone_simulate': op_clone_simulate,

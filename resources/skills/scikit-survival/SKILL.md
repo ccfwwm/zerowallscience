@@ -63,22 +63,11 @@ Verified 2026-07-23:
 - 0.28 adds pandas/Polars estimator support through narwhals and removes
   `criterion` from `GradientBoostingSurvivalAnalysis`.
 
-Create an isolated environment and install the tested snapshot:
+Sync the signed required dependency manifest into the single shared ZeroWall Python runtime:
 
-```bash
-uv venv --python 3.11
-source .venv/bin/activate
-uv pip install \
-  "scikit-survival==0.28.0" \
-  "scikit-learn==1.9.0" \
-  "numpy==2.4.6" \
-  "pandas==3.0.5" \
-  "scipy==1.17.1" \
-  "ecos==2.0.14" \
-  "osqp==1.1.3" \
-  "joblib==1.5.3" \
-  "numexpr==2.14.2" \
-  "narwhals==2.24.0"
+```text
+ZeroWall Settings > Python environment > Preview sync > Apply sync
+The manifest shows the required packages and their current versions.
 ```
 
 Binary wheels are preferred. A source build requires a C/C++ compiler; OSQP may
