@@ -92,11 +92,10 @@ if (process.env.ZEROWALL_QINIU_REFRESH_ONLY !== '1') {
   }
 }
 const base = env.QINIU_DOMAIN.replace(/\/$/u, '')
-const refreshUrls = [
-  `${base}/stable/latest.yml`,
-  `${base}/stable/releases/latest.json`,
-  `${base}/stable/releases-zerowallsciencedev/latest.json`,
-]
+const refreshKeys = metadataOnly
+  ? ['stable/latest.yml', 'stable/releases/latest.json', 'stable/releases-zerowallsciencedev/latest.json', `stable/releases/${version}/${latest}`]
+  : [`stable/releases/${version}/${installer}`, `stable/releases/${version}/${blockmap}`, `stable/releases/${version}/${latest}`, 'stable/latest.yml', 'stable/releases/latest.json', 'stable/releases-zerowallsciencedev/latest.json']
+const refreshUrls = refreshKeys.map(key => `${base}/${key}`)
 await refresh(refreshUrls)
 console.log(`Refreshed ${refreshUrls.length} Qiniu CDN update pointers.`)
 console.log(process.env.ZEROWALL_QINIU_REFRESH_ONLY === '1'
