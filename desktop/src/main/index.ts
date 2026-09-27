@@ -501,8 +501,13 @@ if (ownsInstance) app.whenReady().then(async () => {
   mcpEnvironment = new PythonUpdaterService({
     coordinateHost: true,
     root: mcpEnvironmentRoot,
-    bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'base-manifest.json') : join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'latest.json'),
-    bundledArchivePath: app.isPackaged ? join(process.resourcesPath, 'python', 'base-runtime.zip') : join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'zerowall-python-windows-x64-3.12.10.zip'),
+    // Stable installers keep only the small dependency manifest. The signed
+    // Python base runtime is downloaded on demand; development builds may
+    // still use the locally generated archive for faster iteration.
+    ...(app.isPackaged ? {} : {
+      bundledManifestPath: join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'latest.json'),
+      bundledArchivePath: join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'zerowall-python-windows-x64-3.12.10.zip'),
+    }),
     bundledAssets: { bioToolsRoot: bundledBioToolsRoot, ketcherRoot: bundledKetcherRoot, sciRoot: bundledSciRoot, skillsRoot: bundledSkillsRoot },
     manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,

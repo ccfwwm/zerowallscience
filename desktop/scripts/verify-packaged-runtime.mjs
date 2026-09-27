@@ -30,16 +30,33 @@ if (process.argv.includes('--audit-source')) {
 const packaged = await locatePackagedApp(packageRoot)
 const asarPath = resolve(packaged.resourcesRoot, 'app.asar')
 await access(asarPath)
-const bundledPythonManifest = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'python', 'base-manifest.json'), 'utf8'))
-if (bundledPythonManifest.schema !== 2 || bundledPythonManifest.environmentId !== 'zerowall-python' || bundledPythonManifest.platform !== 'win32' || bundledPythonManifest.architecture !== 'x64' || typeof bundledPythonManifest.environmentVersion !== 'string' || bundledPythonManifest.signature?.algorithm !== 'ed25519') {
-  throw new Error(`Packaged ZeroWall Python manifest identity or target is invalid: schema=${bundledPythonManifest.schema}, environmentId=${bundledPythonManifest.environmentId}, platform=${bundledPythonManifest.platform}, architecture=${bundledPythonManifest.architecture}.`)
-}
+const bundledPythonManifestPath = resolve(packaged.resourcesRoot, 'python', 'base-manifest.json')
 const bundledPythonArchivePath = resolve(packaged.resourcesRoot, 'python', 'base-runtime.zip')
-const bundledPythonArchiveInfo = await stat(bundledPythonArchivePath)
-if (!bundledPythonArchiveInfo.isFile() || bundledPythonArchiveInfo.size !== bundledPythonManifest.archiveSize) throw new Error('Packaged ZeroWall Python archive size does not match its signed manifest.')
-const bundledPythonHash = createHash('sha256')
-for await (const chunk of createReadStream(bundledPythonArchivePath)) bundledPythonHash.update(chunk)
-if (bundledPythonHash.digest('hex') !== bundledPythonManifest.archiveSha256) throw new Error('Packaged ZeroWall Python archive SHA-256 does not match its signed manifest.')
+let bundledPythonManifest
+try {
+  bundledPythonManifest = JSON.parse(await readFile(bundledPythonManifestPath, 'utf8'))
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error
+  // Stable installers intentionally omit the ~1 GB base archive. The app
+  // downloads and verifies the signed manifest/archive on first use.
+  try {
+    await access(bundledPythonArchivePath)
+    throw new Error('Packaged ZeroWall Python archive exists without its manifest.')
+  } catch (archiveError) {
+    if (archiveError?.code !== 'ENOENT') throw archiveError
+  }
+  console.log('[python] no bundled base runtime; packaged app uses the signed remote runtime feed.')
+}
+if (bundledPythonManifest !== undefined) {
+  if (bundledPythonManifest.schema !== 2 || bundledPythonManifest.environmentId !== 'zerowall-python' || bundledPythonManifest.platform !== 'win32' || bundledPythonManifest.architecture !== 'x64' || typeof bundledPythonManifest.environmentVersion !== 'string' || bundledPythonManifest.signature?.algorithm !== 'ed25519') {
+    throw new Error(`Packaged ZeroWall Python manifest identity or target is invalid: schema=${bundledPythonManifest.schema}, environmentId=${bundledPythonManifest.environmentId}, platform=${bundledPythonManifest.platform}, architecture=${bundledPythonManifest.architecture}.`)
+  }
+  const bundledPythonArchiveInfo = await stat(bundledPythonArchivePath)
+  if (!bundledPythonArchiveInfo.isFile() || bundledPythonArchiveInfo.size !== bundledPythonManifest.archiveSize) throw new Error('Packaged ZeroWall Python archive size does not match its signed manifest.')
+  const bundledPythonHash = createHash('sha256')
+  for await (const chunk of createReadStream(bundledPythonArchivePath)) bundledPythonHash.update(chunk)
+  if (bundledPythonHash.digest('hex') !== bundledPythonManifest.archiveSha256) throw new Error('Packaged ZeroWall Python archive SHA-256 does not match its signed manifest.')
+}
 
 const archiveEntries = listPackage(asarPath, { isPack: false })
 const archiveFiles = archiveEntries.map(normalizeArchivePath)
@@ -518,10 +535,9 @@ async function verifySizePolicy() {
   // 6.2.0 adds Univer's offline Gateway, Viewer, render worker (~181 MiB),
   // and Windows native Office dependencies to the existing Claude runtime.
   //
-  // Stable builds ship only the compressed Python/pip bootstrap inside the
-  // installer as `resources/python/base-runtime.zip`. Scientific wheels,
-  // Skills, and MCP services are installed or mounted through their own
-  // signed/resource channels and must not inflate this bootstrap archive.
+  // Stable builds download the signed Python/pip bootstrap on first use.
+  // Scientific wheels, Skills, and MCP services are installed or mounted
+  // through their own signed/resource channels and stay out of the installer.
   //
   // Both budgets are advisory: they report the measured footprint so a sudden
   // jump stays visible, but an oversized build is not a defect on its own and
