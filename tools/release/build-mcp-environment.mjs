@@ -42,7 +42,9 @@ const pythonRuntime = pythonVersion.match(/^\d+\.\d+/u)?.[0] ?? pythonVersion
 const legacyApplicationVersion = (process.env.ZEROWALL_MCP_LEGACY_VERSION ?? '').trim()
 const contentRevision = Number(process.env.ZEROWALL_MCP_CONTENT_REVISION ?? '1')
 if (!Number.isSafeInteger(contentRevision) || contentRevision < 1) throw new Error('ZEROWALL_MCP_CONTENT_REVISION must be a positive integer.')
-const privateKeyFile = process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE?.trim() || undefined
+const configuredPrivateKeyFile = process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE?.trim()
+const defaultPrivateKeyFile = join(root, 'scripts', 'env', 'runtime-private.pem')
+const privateKeyFile = configuredPrivateKeyFile || await stat(defaultPrivateKeyFile).then(() => defaultPrivateKeyFile, () => undefined)
 const privateKeyText = (privateKeyFile === undefined
   ? (process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY ?? '')
   : await readFile(resolve(privateKeyFile), 'utf8')).trim()

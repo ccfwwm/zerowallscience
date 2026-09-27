@@ -102,7 +102,7 @@ pnpm release:metadata
 
 ## 7. 七牛云与 GitHub 发布
 
-正式发布必须先七牛云、后 GitHub。凭据只放在未跟踪的 `scripts/.env.qiniu`，不能打印、提交或写入日志。
+正式发布必须先七牛云、后 GitHub。七牛凭据和运行时签名私钥只放在 Git 忽略的 `scripts/env/`，不能打印、提交或写入日志。
 
 ```powershell
 pnpm release:metadata
@@ -135,4 +135,4 @@ GitHub 验证要确认 tag 指向发布 commit、Release 不是 draft/prerelease
 
 可以安全删除并重新生成的目录包括 `node_modules/`、`deepseek-harness/node_modules/`、`desktop/dist/`、`desktop/out/`、`.tmp*/` 和 `test-results/`。删除后使用 `pnpm install --frozen-lockfile` 和对应构建命令恢复。`desktop/build/` 是源码，不要删除。
 
-不要清理 `.env`、`scripts/.env.qiniu`、`.zerowall/`、用户科研数据、签名证书或未确认的外部挂载目录。发布前使用 `git status --short --untracked-files=all`，确保临时产物没有混入提交。
+不要清理 `.env`、`scripts/env/`、`.zerowall/`、用户科研数据、签名证书或未确认的外部挂载目录。发布前使用 `git status --short --untracked-files=all`，确保临时产物没有混入提交。

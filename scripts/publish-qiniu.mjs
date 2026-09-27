@@ -8,9 +8,9 @@ const require = createRequire(import.meta.url)
 const qiniu = require('qiniu')
 const root = resolve(import.meta.dirname, '..')
 const dist = resolve(root, 'desktop', 'dist')
-const envText = await readFile(resolve(root, 'scripts', '.env.qiniu'), 'utf8')
+const envText = await readFile(resolve(root, 'scripts', 'env', '.env.qiniu'), 'utf8')
 const env = Object.fromEntries(envText.split(/\r?\n/u).map(line => /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/u.exec(line)).filter(Boolean).map(match => [match[1], match[2].replace(/^['"]|['"]$/gu, '')]))
-for (const key of ['QINIU_ACCESS_KEY', 'QINIU_SECRET_KEY', 'QINIU_BUCKET', 'QINIU_REGION', 'QINIU_DOMAIN']) if (!env[key]) throw new Error(`Missing ${key} in scripts/.env.qiniu`)
+for (const key of ['QINIU_ACCESS_KEY', 'QINIU_SECRET_KEY', 'QINIU_BUCKET', 'QINIU_REGION', 'QINIU_DOMAIN']) if (!env[key]) throw new Error(`Missing ${key} in scripts/env/.env.qiniu`)
 const version = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')).version
 const installer = `zerowall-science-${version}-win-x64.exe`
 const blockmap = `${installer}.blockmap`

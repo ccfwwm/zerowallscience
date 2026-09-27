@@ -15,7 +15,7 @@ if (document.schema !== 3 || document.runtimeId !== 'zerowall-science-python' ||
 if (!/^[A-Za-z0-9_.-]{1,100}$/u.test(document.revision)) throw new Error('Invalid manifest revision.')
 const versionName = `manifest-${document.revision}.json`
 if (!(await readFile(join(output, versionName))).equals(bytes)) throw new Error('Latest and immutable dependency manifest differ.')
-const env = Object.fromEntries((await readFile(join(root, 'scripts', '.env.qiniu'), 'utf8')).split(/\r?\n/u).map(line => /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/u.exec(line)).filter(Boolean).map(match => [match[1], match[2].replace(/^['"]|['"]$/gu, '')]))
+const env = Object.fromEntries((await readFile(join(root, 'scripts', 'env', '.env.qiniu'), 'utf8')).split(/\r?\n/u).map(line => /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/u.exec(line)).filter(Boolean).map(match => [match[1], match[2].replace(/^['"]|['"]$/gu, '')]))
 for (const name of ['QINIU_ACCESS_KEY', 'QINIU_SECRET_KEY', 'QINIU_BUCKET', 'QINIU_REGION', 'QINIU_DOMAIN']) if (!env[name]) throw new Error(`Missing ${name}`)
 const mac = new qiniu.auth.digest.Mac(env.QINIU_ACCESS_KEY, env.QINIU_SECRET_KEY)
 const config = new qiniu.conf.Config(); config.zone = qiniu.zone[`Zone_${env.QINIU_REGION}`] ?? qiniu.zone.Zone_z2
