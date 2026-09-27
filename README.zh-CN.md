@@ -31,7 +31,7 @@ ZeroWall Science 是一个模型无关的智能科研工作台，由 Electron、
 
 这些差异共同形成一条“从意图到证据再到交付”的产品主线：模型负责提出候选行动，Host 负责执行边界，Research Store 负责保存事实，用户负责最终判断。ZeroWall 不把一段漂亮的回答冒充为已验证的科研结论。
 
-## 当前版本边界（7.1.1）
+## 当前版本边界（7.2.0）
 
 本版本以 Windows 桌面包作为参考发行形态，包含基于 DSH 的 Agent 工作空间、一方科研插件、用于 DOCX/XLSX/PPTX 的 Better Sidebar Office 预览、Windows 优先的 PowerShell 执行方式，以及可恢复的演示文稿工作流。当前演示流程生成 PPTX；旧 PDF artifact 仍可为数据库兼容性加载，但不会被重新生成。质量元数据用于检查和记录，不会阻塞已完成的 PPTX。
 

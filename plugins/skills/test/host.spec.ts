@@ -17,6 +17,30 @@ const summary = {
 }
 
 describe('ZeroWall capabilities Remote', () => {
+  it('ships the editable presentation route and keeps the upstream Univer contract explicit', async () => {
+    const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS
+    const previousUser = process.env.ZEROWALL_USER_SKILLS
+    process.env.ZEROWALL_BUNDLED_SKILLS = resolve(import.meta.dirname, '../../../resources/skills')
+    process.env.ZEROWALL_USER_SKILLS = await mkdtemp(join(tmpdir(), 'zerowall-presentation-skill-'))
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SkillRegistry)
+      const detail = await new ZeroWallCapabilitiesService(ctx).getSkill('zerowall-presentation')
+      expect(detail.source).toBe('bundled')
+      expect(detail.content).toContain('univer-slide')
+      expect(detail.content).toContain('univer_compile_svg')
+      expect(detail.content).toContain('univer_export')
+      expect(detail.content).toMatch(/full-page image as the\s+only object/u)
+      expect(detail.content).toContain('model and quality')
+    } finally {
+      await ctx.fiber.dispose()
+      if (previousBundled === undefined) delete process.env.ZEROWALL_BUNDLED_SKILLS
+      else process.env.ZEROWALL_BUNDLED_SKILLS = previousBundled
+      if (previousUser === undefined) delete process.env.ZEROWALL_USER_SKILLS
+      else process.env.ZEROWALL_USER_SKILLS = previousUser
+    }
+  })
+
   it('loads the versioned research Skills through the real filesystem parser', async () => {
     const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS
     const previousUser = process.env.ZEROWALL_USER_SKILLS

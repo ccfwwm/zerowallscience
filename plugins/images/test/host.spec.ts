@@ -44,12 +44,12 @@ function signedIn() {
   }
 }
 
-function generator(fetcher: typeof fetch, attachment?: ImageAttachmentRef | Error, imageQuality?: () => Promise<'auto' | 'low' | 'medium' | 'high' | undefined>) {
+function generator(fetcher: typeof fetch, attachment?: ImageAttachmentRef | Error, imageQuality?: () => Promise<'auto' | 'low' | 'medium' | 'high' | undefined>, models = signedIn().models) {
   const secrets = new MemorySecrets()
-  secrets.values.set('zerowall.ai-cloud.group.7', 'host-only-secret')
+  for (const model of models) secrets.values.set(`zerowall.ai-cloud.group.${model.groupId}`, 'host-only-secret')
   return new AiCloudImageGenerator({
     secrets,
-    account: { current: async () => signedIn() },
+    account: { current: async () => ({ ...signedIn(), models }) },
     fetch: fetcher,
     ...(imageQuality === undefined ? {} : { imageQuality }),
     ...(attachment === undefined ? {} : {
@@ -93,6 +93,22 @@ describe('AI Cloud image generation and editing', () => {
     await expect(service.resolveQuality()).resolves.toBe('auto')
     const unavailable = generator(vi.fn() as typeof fetch, undefined, async () => { throw new Error('environment unavailable') })
     await expect(unavailable.resolveQuality()).resolves.toBe('auto')
+  })
+
+  it('passes an explicit model override and rejects a model unavailable to the account', async () => {
+    const workspace = await root()
+    const png = await raster()
+    const models = [
+      ...signedIn().models,
+      { providerId: 'zerowall-ai-cloud-8', groupId: '8', groupName: '生图', capability: 'image-generation' as const, modelId: 'gpt-image-2-pro', baseUrl: 'https://code.aicodeme.xyz/v1' },
+    ]
+    const fetcher = vi.fn(async () => imageResponse(png))
+    const service = generator(fetcher as typeof fetch, undefined, undefined, models)
+    await service.generate({ prompt: 'override', outputPath: 'override.png', model: 'gpt-image-2-pro' }, workspace)
+    expect(fetcher.mock.calls[0]?.[0]).toBe('https://code.aicodeme.xyz/v1/images/generations')
+    expect(JSON.parse(String((fetcher.mock.calls[0]?.[1] as RequestInit).body))).toMatchObject({ model: 'gpt-image-2-pro' })
+    await expect(service.generate({ prompt: 'invalid', outputPath: 'invalid.png', model: 'missing-model' }, workspace))
+      .rejects.toThrow('当前账户没有可用的 missing-model 生图模型')
   })
 
   it('uses the configured gpt-image-2 Image API and persists preview metadata', async () => {

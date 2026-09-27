@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SCIENCE_RESEARCH_LAYER_PROMPT, SCIENCE_SYSTEM_PROMPT, SCIENCE_SYSTEM_PROMPT_VERSION } from '../src/host/index.js'
+import { SCIENCE_PRESENTATION_PROMPT, SCIENCE_RESEARCH_LAYER_PROMPT, SCIENCE_SYSTEM_PROMPT, SCIENCE_SYSTEM_PROMPT_VERSION } from '../src/host/index.js'
 
 describe('ZeroWall Science system prompt', () => {
   it('routes status checks directly and keeps catalog details out of the permanent prompt', () => {
@@ -8,7 +8,14 @@ describe('ZeroWall Science system prompt', () => {
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('capability_search')
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('mcp__rmcp__')
     expect(SCIENCE_SYSTEM_PROMPT).toContain(SCIENCE_SYSTEM_PROMPT_VERSION)
-    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^7\.1\.1-/u)
+    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^7\.2\.0-/u)
+  })
+
+  it('routes presentation requests to editable Univer objects', () => {
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('zerowall-presentation')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('univer-slide')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('never flatten a complete page into one image')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('model and quality follow the ZeroWall environment')
   })
 
   it('keeps the research layer explicit and bounded', () => {
