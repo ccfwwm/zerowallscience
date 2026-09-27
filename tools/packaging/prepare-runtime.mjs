@@ -67,7 +67,6 @@ const desktopRuntimeSeeds = [
   '@changfenhuang/dsh-genui',
   'dsh-free-search',
   'dsh-dream-skin',
-  '@deepseek-ai/dsh-subagent-claude-code',
   '@deepseek-ai/dsh-subagent-codex',
   '@earendil-works/pi-ai',
   '@modelcontextprotocol/sdk',

@@ -68,6 +68,17 @@ if (archiveFiles.some(path => path.includes('node_modules/@fylar/'))) {
 if (archiveFiles.some(path => path.startsWith('node_modules/@daweifu/capability-menu/'))) {
   throw new Error('Removed capability-menu module is still in the packaged runtime.')
 }
+const claudeCodeRuntimePatterns = [
+  /(?:^|\/)claude\.exe$/iu,
+  /(?:^|\/)node_modules\/@deepseek-ai\/dsh-subagent-claude-code\//iu,
+  /(?:^|\/)node_modules\/@anthropic-ai\/claude-agent-sdk\//iu,
+  /(?:^|\/)node_modules\/@anthropic-ai\/claude-code(?:-linux|-darwin|-win32)?-/iu,
+  /(?:^|\/)hooks-claude-code\//iu,
+]
+const bundledClaudeCodeRuntime = archiveFiles.find(path => claudeCodeRuntimePatterns.some(pattern => pattern.test(path)))
+if (bundledClaudeCodeRuntime) {
+  throw new Error(`Claude Code runtime must not be packaged: ${bundledClaudeCodeRuntime}`)
+}
 for (const retired of ['@zerowallscience/plugin-opencode', '@jiesou/dsh-opencode-zen-free-provider', 'dsh-opencode-zen-free-provider', '@zerowallscience/plugin-image-dup', '@zerowallscience/plugin-presentations', '@zerowallscience/presentations-runtime']) {
   if (archiveFiles.some(path => path.startsWith(`node_modules/${retired}/`))) {
     throw new Error(`Retired module is still in the packaged runtime: ${retired}`)
@@ -152,7 +163,6 @@ const requiredArchivePaths = [
   'node_modules/dsh-dream-skin/lib/client.js',
   'node_modules/dsh-dream-skin/package.json',
   'node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js',
-  'node_modules/@deepseek-ai/dsh-subagent-claude-code/lib/index.js',
   'node_modules/@deepseek-ai/dsh-subagent-codex/lib/index.js',
   'node_modules/@deepseek-ai/dsh-client-ui-user-questions/lib/client.js',
   'node_modules/@deepseek-ai/schemastery/lib/index.mjs',
@@ -504,6 +514,10 @@ function hasForbiddenRuntimeDirectory(path) {
 
 async function verifyExternalPolicy() {
   const externalFiles = await listDiskFiles(packaged.resourcesRoot)
+  const forbiddenClaudeFiles = externalFiles.filter(path => /(?:^|\/)(?:claude\.exe|claude-agent-sdk|dsh-subagent-claude-code|hooks-claude-code)(?:[/.]|$)/iu.test(path))
+  if (forbiddenClaudeFiles.length > 0) {
+    throw new Error(`Claude Code runtime found outside ASAR: ${forbiddenClaudeFiles.slice(0, 50).join('\n')}`)
+  }
   const forbiddenSkills = externalFiles.filter(path => path.startsWith('skills/') && (
     /(?:^|\/)(?:__pycache__|tests?|outputs?|rendered|screenshots|test-results)(?:\/|$)/i.test(path)
     || /\.pyc$/i.test(path)
@@ -532,8 +546,8 @@ async function verifyExternalPolicy() {
 
 async function verifySizePolicy() {
   const installedBytes = await directorySize(packaged.root)
-  // 6.2.0 adds Univer's offline Gateway, Viewer, render worker (~181 MiB),
-  // and Windows native Office dependencies to the existing Claude runtime.
+  // Univer's offline Gateway, Viewer, render worker (~181 MiB), and Windows
+  // native Office dependencies are included in the installed application.
   //
   // Stable builds download the signed Python/pip bootstrap on first use.
   // Scientific wheels, Skills, and MCP services are installed or mounted
@@ -1506,8 +1520,8 @@ function readArchiveFile(path) {
 
 async function verifySourceRuntimePolicy() {
   const upstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
-  if (upstream.version !== '0.1.5-rc.2' || upstream.tag !== 'dsh-v0.1.5-rc.2') {
-    throw new Error(`Pinned DSH must be rc.2; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
+  if (!/^0\.1\.7-rc\.2$/u.test(String(upstream.version)) || upstream.tag !== `dsh-v${upstream.version}`) {
+    throw new Error(`Pinned DSH must be dsh-v0.1.7-rc.2; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
   }
   const sourceDsh = JSON.parse(await readFile(resolve(repositoryRoot, 'deepseek-harness', 'package.json'), 'utf8'))
   if (sourceDsh.version !== upstream.version) throw new Error(`DSH source package must be ${upstream.version}; found ${sourceDsh.version}.`)
@@ -1527,7 +1541,7 @@ async function verifySourceRuntimePolicy() {
     ...await pluginManifestPaths(),
   ]
   const manifestText = (await Promise.all(manifests.map(path => readFile(path, 'utf8')))).join('\n')
-  for (const forbidden of ['0.1.1-rc.2', '@deepseek-ai/dsh-client-runtime', '@zerowallscience/platform-host', '@zerowallscience/platform-client']) {
+  for (const forbidden of ['0.1.1-rc.2', '@deepseek-ai/dsh-client-runtime', '@zerowallscience/platform-host', '@zerowallscience/platform-client', '@deepseek-ai/dsh-subagent-claude-code', '@anthropic-ai/claude-agent-sdk', 'hooks-claude-code']) {
     if (manifestText.includes(forbidden)) throw new Error(`Runtime manifests contain forbidden legacy reference: ${forbidden}`)
   }
 

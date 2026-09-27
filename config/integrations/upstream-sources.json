@@ -43,13 +43,6 @@
     "license": "MIT",
     "source": "packages/dsh-wechat"
   },
-  "capabilityMenu": {
-    "repository": "https://github.com/PKUfudawei/dsh-capability-menu.git",
-    "commit": "a13f2934e7685c436256e1d1a4bc7e719088c01c",
-    "version": "0.1.2",
-    "license": "Apache-2.0",
-    "source": "packages/dsh-capability-menu"
-  },
   "autoReview": {
     "repository": "https://github.com/PerryLink/dsh-auto-review.git",
     "commit": "34a497ef2d4bbe1ffd271ccedc1e6bb7c27e4c9a",

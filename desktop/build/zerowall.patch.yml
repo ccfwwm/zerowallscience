@@ -63,14 +63,12 @@
     provider: deepseek-official
     model: deepseek-v4-flash
 
-# Both local coding assistants are installed on the desktop and their DSH
-# provider bundles are part of the runtime closure. Keep their tools enabled
-# in every preset; they still fail closed when the local CLI is unavailable.
+# The local Codex assistant is installed on the desktop and its DSH provider
+# bundle is part of the runtime closure. Claude remains available through the
+# Anthropic API and Claude Science integration, without shipping Claude Code.
 - insert:
     - id: subagent-codex
       name: '@deepseek-ai/dsh-subagent-codex'
-    - id: subagent-claude-code
-      name: '@deepseek-ai/dsh-subagent-claude-code'
 
 - id: attachment-local
   config:

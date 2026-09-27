@@ -14,8 +14,6 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   try {
     manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
   } catch { continue }
-  // Retained source is not part of ZeroWall's shipped plugin composition.
-  if (manifest.name === '@daweifu/capability-menu') continue
   if (manifest.exports?.['./remote'] === undefined) {
     await removeTypertArtifacts(packageRoot)
     continue
@@ -29,8 +27,7 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   }).generate([manifest.name], ['host'])
   const host = artifacts.find(artifact => artifact.face === 'host')
   // Some standalone packages ship a prebuilt remote descriptor rather than a
-  // DSH host face (for example capability-menu's browser-facing gateway).
-  // Keep that artifact and include it in the common assembly.
+  // DSH host face. Keep that artifact and include it in the common assembly.
   if (host?.remote === undefined) {
     if (rootDir === resolve(root, 'packages') && await hasRemoteArtifact(packageRoot)) {
       remotePackages.push(manifest.name)

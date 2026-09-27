@@ -8,6 +8,24 @@ const outputPath = resolve(root, '.build/dsh/runtime-closure.json')
 const check = process.argv.includes('--check')
 const upstream = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 
+// Claude Code is intentionally excluded from the ZeroWall desktop runtime.
+// Claude model access remains available through the Anthropic API integration;
+// this deny-list prevents the optional local CLI/subagent package from being
+// pulled back into the closure through a preset or peer dependency.
+const forbiddenRuntimePackages = new Set([
+  '@deepseek-ai/dsh-subagent-claude-code',
+  '@deepseek-ai/dsh-hooks-claude-code',
+  '@anthropic-ai/claude-agent-sdk',
+  '@anthropic-ai/claude-agent-sdk-darwin-arm64',
+  '@anthropic-ai/claude-agent-sdk-darwin-x64',
+  '@anthropic-ai/claude-agent-sdk-linux-arm64',
+  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl',
+  '@anthropic-ai/claude-agent-sdk-linux-x64',
+  '@anthropic-ai/claude-agent-sdk-linux-x64-musl',
+  '@anthropic-ai/claude-agent-sdk-win32-arm64',
+  '@anthropic-ai/claude-agent-sdk-win32-x64',
+])
+
 const manifests = new Map()
 for (const path of await findPackageManifests(dshRoot)) {
   const manifest = JSON.parse(await readFile(path, 'utf8'))
@@ -27,10 +45,11 @@ for (const directory of ['packages/zotero-harvest', 'packages/dsh-ssh-ops', 'pac
   pluginPeers.push(...Object.keys(manifest.peerDependencies ?? {}), ...Object.keys(manifest.dependencies ?? {}))
 }
 const queue = [...new Set(['@deepseek-ai/dsh', ...presetRoots, ...patchRoots, ...pluginPeers])]
-  .filter(name => manifests.has(name))
+  .filter(name => manifests.has(name) && !forbiddenRuntimePackages.has(name))
 const closure = new Set()
 for (let index = 0; index < queue.length; index += 1) {
   const name = queue[index]
+  if (forbiddenRuntimePackages.has(name)) continue
   if (closure.has(name)) continue
   const manifest = manifests.get(name)
   if (manifest === undefined) throw new Error(`DSH runtime package is missing from the pinned source: ${name}`)
@@ -41,12 +60,12 @@ for (let index = 0; index < queue.length; index += 1) {
     ...manifest.optionalDependencies,
   }
   for (const dependency of Object.keys(dependencies).sort()) {
-    if (manifests.has(dependency) && !closure.has(dependency)) queue.push(dependency)
+    if (manifests.has(dependency) && !forbiddenRuntimePackages.has(dependency) && !closure.has(dependency)) queue.push(dependency)
   }
 
   for (const peer of Object.keys(manifest.peerDependencies ?? {}).sort()) {
     if (manifest.peerDependenciesMeta?.[peer]?.optional === true) continue
-    if (manifests.has(peer) && !closure.has(peer)) queue.push(peer)
+    if (manifests.has(peer) && !forbiddenRuntimePackages.has(peer) && !closure.has(peer)) queue.push(peer)
   }
 }
 
