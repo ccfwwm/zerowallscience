@@ -1,25 +1,29 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { appendFile, mkdir, open, readFile, realpath, rename, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, open, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { devNull } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import { randomUUID } from 'node:crypto'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { DEFAULT_INDEX_URL, sanitizePythonTlsEnvironment } from './python-mirror.js'
 import { DEFAULT_MIRROR_PRESET, mirrorPresets } from './python-mirrors.js'
 import { publicCAFile } from './python-pip.js'
+import { assertWritablePythonRuntimePath, normalizePythonRuntimePath } from './python-location.js'
 import type { PythonUpdaterService } from './python-updater-service.js'
 import { parsePythonDependencyManifest } from './python-dependency-manifest.js'
 import type { McpEnvironmentStatus } from '../shared/contracts.js'
 import { MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 
 const execute = promisify(execFile)
+
+export { normalizePythonRuntimePath } from './python-location.js'
 export interface PythonEnvironmentRequest {
   action: 'status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'
   requestId: string
   planId?: string
   manifestRevision?: string
   mirrorUrl?: string
+  /** New shared-runtime directory (must end in a dedicated `Python` folder). */
+  runtimeRoot?: string
   expectedRevision?: number
   confirm?: boolean
 }
@@ -34,6 +38,8 @@ interface ManifestSummary { revision: string; changes: Array<{ name: string; fro
 export class PythonEnvironmentApi {
   private operation: Promise<unknown> = Promise.resolve()
   private mutation: Promise<unknown> = Promise.resolve()
+  private readonly syncAccepts = new Map<string, Promise<Record<string, unknown>>>()
+  private readonly activeSyncIds = new Set<string>()
   /**
    * Progress rows for the job currently running. The panel reads live progress
    * through `status`, but a job that fails takes that in-memory stream with it,
@@ -44,7 +50,7 @@ export class PythonEnvironmentApi {
    */
   private progress: Array<Record<string, unknown>> = []
   private progressTimer?: NodeJS.Timeout
-  constructor(private root: string, private updater: PythonUpdaterService, private sync: SyncService) {
+  constructor(private root: string, private updater: PythonUpdaterService, private sync: SyncService, private locationPath = join(root, 'python-location.json'), private applicationInstallRoot?: string) {
     updater.watchProgress?.(status => this.recordProgress(status))
   }
 
@@ -63,24 +69,40 @@ export class PythonEnvironmentApi {
   private async flushProgress(): Promise<void> {
     const rows = this.progress.splice(0)
     if (!rows.length) return
-    await mkdir(join(this.root, 'logs'), { recursive: true })
-    await appendFile(join(this.root, 'logs', 'environment-events.jsonl'), rows.map(row => JSON.stringify({ requestId: String(row.taskId ?? 'progress'), ...row }) + '\n').join('')).catch(() => undefined)
+    await mkdir(join(this.controlRoot(), 'logs'), { recursive: true })
+    await appendFile(join(this.controlRoot(), 'logs', 'environment-events.jsonl'), rows.map(row => JSON.stringify({ requestId: String(row.taskId ?? 'progress'), ...row }) + '\n').join('')).catch(() => undefined)
+  }
+
+  private controlRoot(): string { return dirname(this.locationPath) }
+
+  private async ensureRuntimeReady(): Promise<void> {
+    const updater = this.updater as PythonUpdaterService & { ensureReady?: () => Promise<McpEnvironmentStatus> }
+    const status = typeof updater.ensureReady === 'function'
+      ? await updater.ensureReady()
+      : updater.current()
+    if (status.phase !== 'ready' && status.phase !== 'manual') {
+      throw new Error(status.lastUpdateError ?? status.message ?? '共享 Python 尚未就绪，请先完成基础环境安装。')
+    }
   }
 
   private async settings(): Promise<Settings> {
-    try { return JSON.parse(await readFile(join(this.root, 'settings.json'), 'utf8')) as Settings }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; return { revision: 0, mirrorUrl: DEFAULT_INDEX_URL } }
+    for (const root of [this.controlRoot(), this.root]) {
+      try { return JSON.parse(await readFile(join(root, 'settings.json'), 'utf8')) as Settings }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || root === this.root) break }
+    }
+    return { revision: 0, mirrorUrl: DEFAULT_INDEX_URL }
   }
 
   async request(input: PythonEnvironmentRequest): Promise<Record<string, unknown>> {
     if (!input || typeof input.requestId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/u.test(input.requestId)) throw new Error('Invalid Python requestId')
+    if (input.action === 'sync') return this.acceptSync(input)
     // `sync` installs into the shared environment, so it belongs behind the same
     // serialization lock and request receipt as the two-step apply. Leaving it
     // out would let a double click or a restart mid-install run it twice.
-    const mutates = ['apply_sync', 'sync', 'rollback'].includes(input.action) || (input.action === 'configure' && input.mirrorUrl !== undefined)
+    const mutates = ['apply_sync', 'sync', 'rollback'].includes(input.action) || (input.action === 'configure' && (input.mirrorUrl !== undefined || input.runtimeRoot !== undefined))
     if (!mutates) return this.auditedExecute(input)
     const operation = this.mutation.catch(() => undefined).then(async () => {
-      const directory = join(this.root, 'requests')
+      const directory = join(this.controlRoot(), 'requests')
       const path = join(directory, `${input.requestId}.json`)
       const fingerprint = createHash('sha256').update(JSON.stringify(Object.entries(input).sort(([a], [b]) => a.localeCompare(b)))).digest('hex')
       let receipt: { fingerprint: string; result?: Record<string, unknown>; error?: string } | undefined
@@ -109,13 +131,68 @@ export class PythonEnvironmentApi {
     return operation
   }
 
+  private acceptSync(input: PythonEnvironmentRequest): Promise<Record<string, unknown>> {
+    const pending = this.syncAccepts.get(input.requestId)
+    if (pending !== undefined) return pending
+    const accepted = this.persistAndQueueSync(input)
+    this.syncAccepts.set(input.requestId, accepted)
+    void accepted.finally(() => { this.syncAccepts.delete(input.requestId) }).catch(() => undefined)
+    return accepted
+  }
+
+  private async persistAndQueueSync(input: PythonEnvironmentRequest): Promise<Record<string, unknown>> {
+    if (input.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
+    const directory = join(this.controlRoot(), 'requests')
+    const path = join(directory, `${input.requestId}.json`)
+    const fingerprint = createHash('sha256').update(JSON.stringify(Object.entries(input).sort(([a], [b]) => a.localeCompare(b)))).digest('hex')
+    let receipt: { fingerprint: string; state?: string; taskId?: string; result?: Record<string, unknown>; error?: string } | undefined
+    try { receipt = JSON.parse(await readFile(path, 'utf8')) }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    if (receipt !== undefined) {
+      if (receipt.fingerprint !== fingerprint) throw new Error('REQUEST_ID_CONFLICT: use a new requestId for a different operation.')
+      if (receipt.result !== undefined) return receipt.result
+      if (receipt.taskId !== undefined && this.activeSyncIds.has(input.requestId)) {
+        return { requestId: input.requestId, taskId: receipt.taskId, queued: true }
+      }
+      throw new Error(receipt.error ?? 'REQUEST_INTERRUPTED: Python synchronization stopped before completion; inspect the operation log before retrying.')
+    }
+
+    await mkdir(directory, { recursive: true })
+    const taskId = randomUUID()
+    const save = async (value: unknown) => {
+      const temporary = `${path}.${randomUUID()}.tmp`
+      await writeFile(temporary, JSON.stringify(value))
+      await rename(temporary, path)
+    }
+    await writeFile(path, JSON.stringify({ fingerprint, state: 'accepted', taskId }), { flag: 'wx' })
+    await this.log(input, 'queued', { taskId })
+    this.activeSyncIds.add(input.requestId)
+    const operation = this.mutation.catch(() => undefined).then(async () => {
+      await save({ fingerprint, state: 'running', taskId })
+      await this.log(input, 'running', { taskId })
+      try {
+        const result = await this.auditedExecute(input)
+        const completed = { requestId: input.requestId, ...result, taskId: typeof result.taskId === 'string' ? result.taskId : taskId }
+        await save({ fingerprint, state: 'completed', taskId, result: completed })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        await save({ fingerprint, state: 'failed', taskId, error: message })
+      } finally {
+        this.activeSyncIds.delete(input.requestId)
+      }
+    })
+    this.mutation = operation
+    void operation.catch(() => undefined)
+    return { requestId: input.requestId, taskId, queued: true }
+  }
+
   private async log(input: PythonEnvironmentRequest, status: string, extra: Record<string, unknown> = {}): Promise<void> {
-    await mkdir(join(this.root, 'logs'), { recursive: true })
-    await appendFile(join(this.root, 'logs', 'environment-events.jsonl'), JSON.stringify({ requestId: input.requestId, action: input.action, status, createdAt: new Date().toISOString(), ...extra }) + '\n')
+    await mkdir(join(this.controlRoot(), 'logs'), { recursive: true })
+    await appendFile(join(this.controlRoot(), 'logs', 'environment-events.jsonl'), JSON.stringify({ requestId: input.requestId, action: input.action, status, createdAt: new Date().toISOString(), ...extra }) + '\n')
   }
 
   private async events(): Promise<unknown[]> {
-    const file = await open(join(this.root, 'logs', 'environment-events.jsonl'), 'r').catch(() => undefined)
+    const file = await open(join(this.controlRoot(), 'logs', 'environment-events.jsonl'), 'r').catch(() => undefined)
     if (!file) return []
     try {
       const { size } = await file.stat(); const length = Math.min(size, 64 * 1024)
@@ -139,9 +216,31 @@ export class PythonEnvironmentApi {
         const current = await readOptional(join(this.root, 'current.json'))
         const runtimeBase = typeof current?.runtimeRoot === 'string' ? current.runtimeRoot : current?.root
         const runtime = typeof runtimeBase === 'string' && current.health === 'ready' ? await readOptional(join(runtimeBase, 'Python', 'runtime.json')) : undefined
-        result = { status: this.updater.current(), runtime, dependencies: await readOptional(join(this.root, 'dependency-sync', 'status.json')), events: await this.events() }; break
+        const location = await readOptional(this.locationPath)
+        let savedRuntimeRoot: string | undefined
+        if (typeof location?.runtimeRoot === 'string') {
+          try { savedRuntimeRoot = normalizePythonRuntimePath(location.runtimeRoot) } catch { /* use the safe derived default */ }
+        }
+        // The location pointer is the user-facing source of truth, including
+        // before a restart activates a newly selected directory. Never derive
+        // the displayed path from `current.json`/runtime.json: old releases
+        // stored those records under a Roaming slot, and showing that path was
+        // the exact inconsistency that made a failed migration look active.
+        // The signed installer will rebuild the selected stable directory.
+        const configuredRuntimeRoot = savedRuntimeRoot ?? join(dirname(this.root), 'Python')
+        const activeRuntime = runtime && typeof runtime.rootPath === 'string'
+          && resolve(runtime.rootPath) === resolve(configuredRuntimeRoot)
+          ? runtime
+          : undefined
+        result = { status: this.updater.current(), runtime: activeRuntime, runtimeRoot: configuredRuntimeRoot, dependencies: await readOptional(join(this.root, 'dependency-sync', 'status.json')), events: await this.events() }; break
       }
       case 'list_packages': {
+        // The inventory view is often the first call made when Settings opens.
+        // It must join the same signed bundled-runtime gate as manifest and
+        // sync operations; otherwise an old Roaming/slot record reaches
+        // pythonInfo() directly and reports the obsolete migration error
+        // before the installer has a chance to rebuild the shared directory.
+        await this.ensureRuntimeReady()
         const inventory = await this.updater.pythonInfo()
         const manifest = await readFile(join(this.root, 'dependency-sync', 'manifest.json'), 'utf8').then(text => parsePythonDependencyManifest(JSON.parse(text), MCP_ENVIRONMENT_KEYRING)).catch(() => undefined)
         const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/gu, '-')
@@ -150,15 +249,13 @@ export class PythonEnvironmentApi {
         // when the signed manifest actually names one for this version.
         result = { inventory: { ...inventory, packages: inventory.packages.map(pkg => { const locked = packages.get(normalize(pkg.name)); return { ...pkg, capabilities: locked?.capabilities ?? [], ...(locked?.version === pkg.version && locked.sha256 ? { sha256: locked.sha256 } : {}) } }) } }; break
       }
-      case 'check_manifest': result = { manifest: await this.sync.checkManifest() }; break
-      case 'preview_sync': result = { plan: await this.sync.previewSync() }; break
+      case 'check_manifest': await this.ensureRuntimeReady(); result = { manifest: await this.sync.checkManifest() }; break
+      case 'preview_sync': await this.ensureRuntimeReady(); result = { plan: await this.sync.previewSync() }; break
       case 'sync': {
-        // One-click synchronization. The reviewed plan is still built and bound
-        // to the manifest revision before anything is applied, and the receipt
-        // for this requestId is written first, so a double click or a restart
-        // mid-flight replays the same task instead of installing twice. What the
-        // user skips is the second confirmation click, not the plan itself.
+        // One-click synchronization runs after its durable queue receipt is
+        // returned, so manifest resolution cannot make the UI appear unresponsive.
         if (input.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
+        await this.ensureRuntimeReady()
         const changed = await this.sync.checkManifest() as ManifestSummary | undefined
         const plan = await this.sync.previewSync() as { planId: string; changes: Array<{ name: string; from?: string; to: string }>; error?: string; manifestRevision: string }
         if (plan.error) throw new Error(`依赖清单已改变，无法同步：${plan.error}`)
@@ -169,6 +266,7 @@ export class PythonEnvironmentApi {
       }
       case 'apply_sync': {
         if (!input.planId || !input.manifestRevision || input.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: review and approve the concrete dependency plan first.')
+        await this.ensureRuntimeReady()
         result = await this.sync.applySync(input.planId, input.manifestRevision, true) as Record<string, unknown>
         break
       }
@@ -179,14 +277,31 @@ export class PythonEnvironmentApi {
       case 'configure': {
         const configure = async () => {
           const previous = await this.settings()
+          if (input.runtimeRoot !== undefined) {
+            const selected = normalizePythonRuntimePath(input.runtimeRoot)
+            await assertWritablePythonRuntimePath(selected, this.applicationInstallRoot)
+            await mkdir(dirname(this.locationPath), { recursive: true })
+            const temporaryLocation = `${this.locationPath}.${randomUUID()}.tmp`
+            try {
+              await writeFile(temporaryLocation, `${JSON.stringify({ runtimeRoot: selected })}\n`, { flag: 'wx' })
+              await rename(temporaryLocation, this.locationPath)
+            } finally {
+              await rm(temporaryLocation, { force: true }).catch(() => undefined)
+            }
+            // The updater is bound to its root for the lifetime of the Host.
+            // Return a restart requirement instead of pretending the path has
+            // changed while an active worker still owns the old environment.
+            return { ...previous, runtimeRoot: selected, restartRequired: true }
+          }
           if (input.mirrorUrl === undefined) return { ...previous }
           if (input.expectedRevision !== previous.revision) throw new Error(`REVISION_CONFLICT: current revision is ${previous.revision}`)
           const url = new URL(input.mirrorUrl)
           if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Mirror must be an HTTPS index without credentials, query or fragment.')
           const next = { revision: previous.revision + 1, mirrorUrl: url.href.replace(/\/$/u, '') }
-          await mkdir(this.root, { recursive: true })
-          const temp = join(this.root, `settings-${randomUUID()}.tmp`)
-          await writeFile(temp, JSON.stringify(next)); await rename(temp, join(this.root, 'settings.json'))
+          await mkdir(this.controlRoot(), { recursive: true })
+          const temp = join(this.controlRoot(), `settings-${randomUUID()}.tmp`)
+          try { await writeFile(temp, `${JSON.stringify(next)}\n`, { flag: 'wx' }); await rename(temp, join(this.controlRoot(), 'settings.json')) }
+          finally { await rm(temp, { force: true }).catch(() => undefined) }
           return next
         }
         const work = this.operation.catch(() => undefined).then(configure)
@@ -204,7 +319,10 @@ export class PythonEnvironmentApi {
       }
       default: throw new Error('Unknown Python environment action')
     }
-    if (input.action !== 'status' && input.action !== 'list_packages') await this.log(input, 'succeeded', result.taskId ? { taskId: result.taskId } : {})
+    if (input.action !== 'status' && input.action !== 'list_packages') await this.log(input, 'succeeded', {
+      ...(typeof result.taskId === 'string' ? { taskId: result.taskId } : {}),
+      ...(result.upToDate === true ? { upToDate: true } : {}),
+    })
     return { requestId: input.requestId, ...result }
   }
 
@@ -221,7 +339,17 @@ export class PythonEnvironmentApi {
     const productRoot = basename(resolve(this.root)).toLowerCase() === 'zerowall-python'
     const expectedRuntimeRoot = dirname(resolve(this.root))
     if (productRoot && (typeof stablePath !== 'string' || resolve(stablePath) !== expectedRuntimeRoot || current.manifest.python.relativeExecutable !== 'Python/python.exe' || current.manifest.python.relativeSitePackages !== 'Python/Lib/site-packages')) {
-      throw new Error('Python diagnostics are limited to the single shared ZeroWall runtime; the legacy profile has not been migrated.')
+      // A legacy slot/profile is not a usable shared runtime.  Diagnostics
+      // must remain readable in this state and must never turn the harmless
+      // legacy record into a hard "migration" gate.  The updater will replace
+      // it from the signed Python archive on the next bootstrap attempt.
+      return {
+        checkedAt,
+        python: { status: 'pending', message: '检测到旧 Python profile；不会迁移其依赖，将直接使用安装包内的签名 Python 重建共享环境。' },
+        pip: pending,
+        tls: pending,
+        mirror: pending,
+      }
     }
     const runtimeRoot = productRoot ? await realpath(expectedRuntimeRoot).catch(() => expectedRuntimeRoot) : typeof stablePath === 'string' ? await realpath(stablePath).catch(() => resolve(stablePath)) : root
     const relativeExecutable = productRoot || current.runtimeRoot ? 'Python/python.exe' : current.manifest.python.relativeExecutable

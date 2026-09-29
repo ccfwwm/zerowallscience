@@ -25,8 +25,11 @@ export function scienceEnvironmentRoot(): string | undefined {
   // (including an explicit missing path), so callers cannot silently fall
   // back to another interpreter after a configured runtime fails.
   const value = explicit || (() => {
-    const userData = process.env.APPDATA?.trim() || process.env.LOCALAPPDATA?.trim()
-    return userData ? join(userData, 'zerowall-science', 'zerowall-python') : undefined
+    // Roaming is not guaranteed to exist on locked-down or first-run Windows
+    // profiles. Keep this fallback aligned with the desktop resolver: the
+    // desktop passes the exact install/custom path through ZEROWALL_PYTHON_ROOT.
+    const localAppData = process.env.LOCALAPPDATA?.trim()
+    return localAppData ? join(localAppData, 'ZeroWall Science', 'zerowall-python') : undefined
   })()
   if (value === undefined || value === '') return undefined
   try { return resolve(value) } catch { return undefined }
@@ -41,8 +44,8 @@ export function defaultSciencePythonRoot(): string | undefined {
     if (basename(managerRoot).toLowerCase() === 'zerowall-python') return join(resolve(managerRoot, '..'), 'Python')
     if (basename(managerRoot).toLowerCase() === 'python') return managerRoot
   }
-  const roaming = process.env.APPDATA?.trim() || process.env.LOCALAPPDATA?.trim()
-  return roaming ? join(roaming, 'zerowall-science', 'Python') : undefined
+  const localAppData = process.env.LOCALAPPDATA?.trim()
+  return localAppData ? join(localAppData, 'ZeroWall Science', 'Python') : undefined
 }
 
 export function defaultSciencePythonExecutable(): string | undefined {

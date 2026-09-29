@@ -26,7 +26,7 @@ export async function requireFreeSpace(path: string, bytes: number): Promise<voi
 }
 
 /** Bounded memory, lazy entries, one file stream at a time. Never buffers the ZIP. */
-export async function extractArchive(path: string, target: string, progress: (done: number, total: number) => void = () => undefined): Promise<void> {
+export async function extractArchive(path: string, target: string, progress: (done: number, total: number) => void = () => undefined, allowedPrefix?: string): Promise<void> {
   const yauzl = createRequire(import.meta.url)('yauzl')
   await mkdir(target, { recursive: true })
   await new Promise<void>((done, fail) => {
@@ -39,6 +39,7 @@ export async function extractArchive(path: string, target: string, progress: (do
       zip.on('entry', (entry: any) => {
         void (async () => {
           const name = entry.fileName.replaceAll('\\', '/')
+          if (allowedPrefix && !name.startsWith(allowedPrefix)) throw new Error(`Bundled Python archive contains an unexpected entry: ${name}`)
           const destination = resolve(target, name)
           const rel = relative(resolve(target), destination)
           const key = destination.toLowerCase()

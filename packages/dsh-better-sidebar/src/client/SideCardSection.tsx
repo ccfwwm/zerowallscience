@@ -42,17 +42,14 @@
  */
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  IconChevronDownOutline14,
-  IconPlusOutline16,
-  IconSettingsOutline16,
+  IconChevronDownOutlineRegular,
+  IconPlusOutlineRegular,
+  IconSettingsOutlineRegular,
   Input,
   Menu,
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import clsx from 'clsx'
-// Type-only: pulls the settings shell's SlotMap merges ('settings.section').
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   TITLE_BAR_STRIP_MAX,
   TITLE_BAR_STRIP_MIN,
@@ -80,8 +77,8 @@ export interface SideCardSectionInjected {
   service: BetterSidebarService
 }
 
-/** Full section props: the runtime share plus the injected face. */
-export type SideCardSectionProps = PropsRuntime<'settings.section'> & SideCardSectionInjected
+/** The Plugins tab owner supplies no business props; the slot adapter closes over these values. */
+export type SideCardSectionProps = SideCardSectionInjected
 
 /** Map one wire failure to the inline message (the conflict gets friendly copy). */
 function messageOf(error: unknown): string {
@@ -420,7 +417,7 @@ function SelectMenu(props: {
       <span className={css.selectAnchorText}>
         {selected.length === 0 ? (placeholder ?? '—') : selected.map(option => textOf(option.title)).join(', ')}
       </span>
-      <IconChevronDownOutline14 size={12} />
+      <IconChevronDownOutlineRegular size={12} />
     </button>
   )
 
@@ -564,7 +561,7 @@ export function SettingsBody(props: {
 
 /**
  * Render the Side card preferences section.
- * @param props - composed slot props (runtime share + injected store/service).
+ * @param props - the store and service closed over by the slot adapter.
  * @returns the section element tree.
  */
 export function SideCardSection({ store, service }: SideCardSectionProps) {
@@ -817,7 +814,7 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
             aria-label={`${props.title} ${t('settingsPopup')}`}
             onClick={props.onOpenSettings}
           >
-            <IconSettingsOutline16 size={12} />
+            <IconSettingsOutlineRegular size={12} />
             <span>{t('settingsPopup')}</span>
           </button>
         )}
@@ -893,10 +890,40 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
                 title={t('settingsPopup')}
                 onClick={() => { setStripSettingsOpen(true) }}
               >
-                <IconSettingsOutline16 size={14} />
+                <IconSettingsOutlineRegular size={14} />
               </button>
             )}
           </span>
+        </div>
+      </div>
+
+      {/* 手机: the narrow-viewport adaptations. Both switches only ever change
+          what happens on a NARROW viewport (the plugin's own 768px bracket),
+          so a desktop reader's behaviour is untouched whatever they pick —
+          and neither one rewrites the wide-viewport switches above. */}
+      <div className={css.group}>
+        <div className={css.groupHeading}>{t('settingsMobileTitle')}</div>
+        <div className={css.row}>
+          <span className={css.rowText}>
+            <span className={css.title}>{t('settingsMobileNoAutoOpenTitle')}</span>
+            <span className={css.desc}>{t('settingsMobileNoAutoOpenDesc')}</span>
+          </span>
+          <Switch
+            label={t('settingsMobileNoAutoOpenTitle')}
+            checked={prefs.mobileNoAutoOpen}
+            onChange={(next) => { applyPref({ mobileNoAutoOpen: next }) }}
+          />
+        </div>
+        <div className={css.row}>
+          <span className={css.rowText}>
+            <span className={css.title}>{t('settingsMobileTreeTitle')}</span>
+            <span className={css.desc}>{t('settingsMobileTreeDesc')}</span>
+          </span>
+          <Switch
+            label={t('settingsMobileTreeTitle')}
+            checked={prefs.mobileDefaultTree}
+            onChange={(next) => { applyPref({ mobileDefaultTree: next }) }}
+          />
         </div>
       </div>
 
@@ -935,7 +962,7 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
           >
             <span className={css.cardTop}>
               <span className={css.cardIconChip}>
-                <IconPlusOutline16 size={16} />
+                <IconPlusOutlineRegular size={16} />
               </span>
               <span className={css.cardTitle}>{t('addPluginsTabCard')}</span>
             </span>
@@ -974,7 +1001,7 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
           >
             <span className={css.cardTop}>
               <span className={css.cardIconChip}>
-                <IconPlusOutline16 size={16} />
+                <IconPlusOutlineRegular size={16} />
               </span>
               <span className={css.cardTitle}>{t('addPluginsViewerCard')}</span>
             </span>

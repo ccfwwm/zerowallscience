@@ -15,11 +15,12 @@ function fixture(packages?: any[]) {
 }
 
 describe('shared Python dependency manifest', () => {
-  it('validates signed schema 3 documents and diffs installed packages', () => {
+  it('validates signed schema 3 documents and reports only missing installed packages', () => {
     const { doc, key } = fixture()
     const parsed = parsePythonDependencyManifest(doc, { test: key }, '7.0.3')
     expect(parsed.runtimeId).toBe('zerowall-science-python')
-    expect(dependencyManifestChanges(parsed, [{ name: 'numpy', version: '2.2.0' }])[0]?.to).toBe('2.3.0')
+    expect(dependencyManifestChanges(parsed, [{ name: 'numpy', version: '2.2.0' }])).toEqual([])
+    expect(dependencyManifestChanges(parsed, [])).toMatchObject([{ name: 'numpy', to: '2.3.0' }])
     expect(() => assertManifestWheels(parsed, [{ name: 'numpy', version: '2.3.0', hash: 'a'.repeat(64) }])).not.toThrow()
     // Identity is the name and the exact version. The artifact digest is not
     // part of the contract, so a wheel the mirror re-published still installs.
@@ -28,7 +29,7 @@ describe('shared Python dependency manifest', () => {
     expect(() => assertManifestWheels(parsed, [{ name: 'numpy', version: '2.4.0' }])).toThrow(/版本不一致/)
     expect(() => assertManifestWheels(parsed, [])).toThrow(/均缺少/)
     expect(() => assertManifestWheels(parsed, [], [{ name: 'numpy', version: '2.3.0' }])).not.toThrow()
-    expect(() => assertManifestWheels(parsed, [], [{ name: 'numpy', version: '2.2.0' }])).toThrow(/均缺少/)
+    expect(() => assertManifestWheels(parsed, [], [{ name: 'numpy', version: '2.2.0' }])).not.toThrow()
     expect(() => assertManifestWheels(parsed, [{ name: 'numpy', version: '2.3.0' }, { name: 'numpy', version: '2.3.0' }])).toThrow(/重复/)
   })
 

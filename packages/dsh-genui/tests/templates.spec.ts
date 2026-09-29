@@ -4,9 +4,11 @@
  * 规模在 GENUI_LIMITS 内，instruction 非空且含「dsh-ui」关键词。
  */
 import { describe, expect, it } from 'vitest'
-import { GENUI_TEMPLATES } from '../src/client/templates.ts'
+import { genuiTemplates } from '../src/client/templates.ts'
 import { validateGenuiSpec, countGenuiNodes } from '../src/client/guard.ts'
 import { GENUI_LIMITS } from '../src/client/genui-runtime/index.ts'
+
+const GENUI_TEMPLATES = genuiTemplates()
 
 describe('模板中心数据契约', () => {
   it('每条 demo 通过渲染器守卫校验', () => {
@@ -39,8 +41,9 @@ describe('模板中心数据契约', () => {
   })
 
   it('覆盖主要类别', () => {
-    const categories = new Set(GENUI_TEMPLATES.map(t => t.category))
-    for (const expected of ['仪表盘', '数据', '流程', '图表', '交互', '测验', '高级']) {
+    const categories = new Set<string>(GENUI_TEMPLATES.map(t => t.category))
+    // Stable, locale-independent category ids (display names live in i18n).
+    for (const expected of ['dashboard', 'data', 'flow', 'chart', 'interactive', 'quiz', 'advanced']) {
       expect(categories.has(expected), `缺类别: ${expected}`).toBe(true)
     }
   })

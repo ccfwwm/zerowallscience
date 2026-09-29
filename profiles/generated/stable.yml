@@ -1,7 +1,7 @@
 version: 1
 id: zerowall-stable
 channel: stable
-dsh: 0.1.5-rc.2
+dsh: 0.1.7-rc.2
 plugins:
   - 'dsh-ssh-ops'
   - 'dsh-progressive-tools'

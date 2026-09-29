@@ -46,6 +46,8 @@ const arg = (name: string): string | undefined => {
 const PORT = Number(arg('--port') ?? 3098)
 const KEEP = process.argv.includes('--keep')
 const OUT_DIR = resolve(arg('--out') ?? join(REPO_ROOT, '.e2e-artifacts'))
+/** 被测插件来源：默认 link 当前工作区；给已发布版本号可出"改动前"的对比基线。 */
+const PLUGIN_SPEC = process.env.E2E_PLUGIN_SPEC ?? `link:${REPO_ROOT}`
 
 const fail = (msg: string): never => { console.error(`✗ ${msg}`); process.exit(1) }
 const log = (msg: string): void => console.log(`· ${msg}`)
@@ -105,9 +107,11 @@ try {
   await mkdir(OUT_DIR, { recursive: true })
 
   // ── 安装插件（link 当前工作区 = 测的就是当前代码）───────────────────────
-  log('安装插件（link 当前工作区）...')
-  const add = spawnSync(DSH_BIN, ['plugin', '--profile', 'web', 'add', `link:${REPO_ROOT}`], { env, stdio: 'inherit' })
-  if (add.status !== 0) throw new Error('link 安装失败（见上方输出）')
+  // E2E_PLUGIN_SPEC 可以指向已发布版本（如 @changfenhuang/dsh-genui@0.10.0），
+  // 用来在同一个画廊、同一台宿主上出一份"改动前"的真机截图做对比。
+  log(`安装插件（${PLUGIN_SPEC}）...`)
+  const add = spawnSync(DSH_BIN, ['plugin', '--profile', 'web', 'add', PLUGIN_SPEC], { env, stdio: 'inherit' })
+  if (add.status !== 0) throw new Error('插件安装失败（见上方输出）')
 
   // ── 启动 dsh web ─────────────────────────────────────────────────────────
   // `--profile web` 明确加载刚安装插件的 profile；`--no-open` 防止每次回归
@@ -202,6 +206,19 @@ try {
 
   // 注入画廊围栏：真实 dsh-ui fence 表面（叶子语言标签 + 单一 <pre> 代码体），
   // DOM 通道应当发现它并以插件自己的 React root 挂载真实组件。
+  const visualSpec = {
+    ...gallerySpec,
+    items: [...gallerySpec.items, {
+      type: 'chart' as const,
+      kind: 'bars' as const,
+      data: [],
+      stacked: true,
+      series: [
+        { label: 'Issue 206 A', data: [{ label: '回归最大值', value: 30 }, { label: '回归一半', value: 10 }] },
+        { label: 'Issue 206 B', data: [{ label: '回归最大值', value: 10 }, { label: '回归一半', value: 10 }] },
+      ],
+    }],
+  }
   await page.evaluate((specJson: string) => {
     const host = document.createElement('div')
     host.className = 'md-code-block'
@@ -215,7 +232,7 @@ try {
     host.append(label, pre)
     const mount = document.querySelector('[data-chat-flow]') ?? document.body
     mount.appendChild(host)
-  }, JSON.stringify(gallerySpec))
+  }, JSON.stringify(visualSpec))
 
   let blocks = 0
   for (let i = 0; i < 30; i++) {
@@ -389,6 +406,74 @@ try {
     log(`✓ accent 卡片：表面 ${accentSurface.accent}（与普通卡片一致）· 描边 ${accentSurface.border}`)
   }
 
+  // ── 表面方向：浅色卡面不得比页面暗（issue #159）──────────────────────────
+  // 回归：0.10.0 为了让浅色卡片"看得见"，把卡面改成 10% 的 label 叠加
+  // （页面 255 → 卡面 231），卡片于是比白页面暗 24 级 —— 观感是凹陷/禁用而
+  // 不是抬升，浅色用户报"所有卡片都是黑灰色"。这里在真实浏览器里量浅/深两套
+  // 主题下 stat 卡面与所在页面的实际渲染色，把方向钉死：
+  //   浅色：卡面 >= 页面（白面 + 1px 描边 + 阴影承担抬升）
+  //   深色：卡面 >  页面（layer-2 + 4% 叠加；深色下阴影几乎不可见）
+  const surfaces = await page.evaluate(() => {
+    // The card itself, not a descendant: CSS-module classes are hashed and
+    // nested ones share the prefix (…_statDelta matches [class*="_stat"]), so
+    // require one class token to END in `_stat`.
+    const candidates = [...document.querySelectorAll('[class*="_stat"]')] as HTMLElement[]
+    const stat = candidates.find(el => [...el.classList].some(name => name.endsWith('_stat'))) ?? null
+    if (stat === null) return { ok: false as const, reason: '画廊里没有 stat 卡片' }
+    // Outermost painted ancestor = the page canvas the card sits on (light:
+    // white, dark: bg-base); the nearest painted one may be a bubble/card.
+    let el: HTMLElement | null = stat.parentElement
+    let pageEl: HTMLElement | null = null
+    while (el !== null) {
+      const bg = getComputedStyle(el).backgroundColor
+      if (bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') pageEl = el
+      el = el.parentElement
+    }
+    const wasDark = document.body.hasAttribute('data-ds-dark-theme')
+    document.body.removeAttribute('data-ds-dark-theme')
+    const lightCard = getComputedStyle(stat).backgroundColor
+    const lightPage = pageEl === null ? 'rgb(255, 255, 255)' : getComputedStyle(pageEl).backgroundColor
+    document.body.setAttribute('data-ds-dark-theme', '')
+    const darkCard = getComputedStyle(stat).backgroundColor
+    const darkPage = pageEl === null ? 'rgb(21, 21, 23)' : getComputedStyle(pageEl).backgroundColor
+    if (!wasDark) document.body.removeAttribute('data-ds-dark-theme')
+    return {
+      ok: true as const,
+      className: stat.className,
+      lightCard,
+      lightPage,
+      darkCard,
+      darkPage,
+      border: getComputedStyle(stat).borderTopColor,
+    }
+  })
+  if (!surfaces.ok) throw new Error(`表面方向检查无法执行：${surfaces.reason}`)
+  /** Mean channel of `rgb(r, g, b)` or `color(srgb r g b / a)` on a 0-255 scale. */
+  const meanChannel = (value: string): number => {
+    const numbers = (value.match(/[\d.]+/g) ?? []).map(Number)
+    const scale = value.startsWith('color(') ? 255 : 1
+    return ((numbers[0] ?? 0) + (numbers[1] ?? 0) + (numbers[2] ?? 0)) / 3 * scale
+  }
+  /** Alpha of the same two formats (1 when the colour is opaque). */
+  const alphaOf = (value: string): number => {
+    const numbers = (value.match(/[\d.]+/g) ?? []).map(Number)
+    return numbers.length >= 4 ? (numbers[3] ?? 1) : 1
+  }
+  for (const [theme, colour] of [['浅色', surfaces.lightCard], ['深色', surfaces.darkCard]] as const) {
+    if (alphaOf(colour) < 1) {
+      throw new Error(`${theme}量到的不是卡片本体（背景半透明 ${colour}，选中 ${surfaces.className}）—— 选择器命中了嵌套元素`)
+    }
+  }
+  const lightStep = meanChannel(surfaces.lightCard) - meanChannel(surfaces.lightPage)
+  const darkStep = meanChannel(surfaces.darkCard) - meanChannel(surfaces.darkPage)
+  if (lightStep < 0) {
+    throw new Error(`浅色卡片比页面暗 ${(-lightStep).toFixed(1)} 级（卡面 ${surfaces.lightCard} / 页面 ${surfaces.lightPage}）—— 抬升必须靠描边与阴影，不许把白卡压灰（issue #159）`)
+  }
+  if (darkStep <= 8) {
+    throw new Error(`深色卡片抬升不足（卡面 ${surfaces.darkCard} / 页面 ${surfaces.darkPage}）`)
+  }
+  log(`✓ 表面方向：浅色 ${lightStep >= 0 ? '+' : ''}${lightStep.toFixed(1)} 级（卡面 ${surfaces.lightCard} / 页面 ${surfaces.lightPage}）· 深色 +${darkStep.toFixed(1)} 级（卡面 ${surfaces.darkCard} / 页面 ${surfaces.darkPage}）· 描边 ${surfaces.border}`)
+
   // ── ECharts 配色验证（读 canvas 像素）────────────────────────────────────
   // 回归：宿主把 --dsw-static-* 定义在 body 上，而引擎只从 :root 读 → 每个
   // 系列都回退成同一个强调色，多序列图全是一片蓝。这里直接数像素色数。
@@ -430,6 +515,23 @@ try {
     }
     log(`✓ 图表 tooltip：${tipText.replace(/\s+/g, ' ').trim()}`)
   }
+
+  const regressionChart = page.locator('[data-genui-chart="bars"]').filter({ hasText: 'Issue 206' }).first()
+  const regressionStacks = regressionChart.locator('[class*="barCol"] > [class*="stack"]:not([class*="stackSeg"]):not([class*="stackValue"])')
+  if (await regressionStacks.count() !== 2) throw new Error('Issue #206 回归图表未渲染出两根堆叠柱')
+  const regressionPlot = regressionChart.locator('[class*="chartPlot"]')
+  const plotBox = await regressionPlot.boundingBox()
+  for (const stack of await regressionStacks.all()) {
+    const stackBox = await stack.boundingBox()
+    if (stackBox === null || plotBox === null) throw new Error('Issue #206 回归图表缺少绘图区几何信息')
+    if (stackBox.y < plotBox.y - 1) {
+      throw new Error(`堆叠柱越出绘图区：stack top=${stackBox.y}, plot top=${plotBox.y}`)
+    }
+    if (stackBox.y + stackBox.height > plotBox.y + plotBox.height + 1) {
+      throw new Error('堆叠柱越出绘图区底部')
+    }
+  }
+  log('✓ Issue #206 堆叠柱均处于绘图区范围内')
 
   // ── 本地交互验证 ─────────────────────────────────────────────────────────
   // 点击在第一个 evaluate 里做；React 18 的状态更新是异步的，断言放到

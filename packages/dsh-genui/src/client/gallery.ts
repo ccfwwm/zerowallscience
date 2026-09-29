@@ -165,6 +165,12 @@ export const gallerySpec: GenuiSpec = {
       { from: '渲染', to: '完成', value: 30 },
       { from: '缓存', to: '完成', value: 28 },
     ] },
+    { type: 'echart', preset: 'wordCloud', title: 'echart · preset:wordCloud（词云，完整引擎 + 扩展）', height: 240, data: [
+      { label: '系统', value: 90 }, { label: '用户', value: 70 }, { label: '权限', value: 60 },
+      { label: '模块', value: 50 }, { label: '数据', value: 45 }, { label: '安全', value: 40 },
+      { label: '扩展', value: 30 }, { label: '渲染', value: 25 },
+    ] },
+    { type: 'svg', title: 'svg · 独立图片预览（隔离渲染）', height: 160, code: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 120"><rect width="220" height="120" rx="10" fill="#534ab7"/><rect x="16" y="16" width="88" height="40" rx="6" fill="#7f74f2"/><text x="60" y="42" text-anchor="middle" fill="#fff" font-size="13">网关</text><rect x="116" y="64" width="88" height="40" rx="6" fill="#3ecf8e"/><text x="160" y="90" text-anchor="middle" fill="#fff" font-size="13">服务</text><path d="M104 56 L116 76" stroke="#fff" stroke-width="2"/></svg>' },
     { type: 'plot', title: '波动叠加', xMin: -6.28, xMax: 6.28, series: [
       { expr: 'sin(x)', label: 'sin(x)', color: '#4f8ef7' },
       { expr: '0.8*cos(x)', label: 'cos', color: '#3ecf8e' },

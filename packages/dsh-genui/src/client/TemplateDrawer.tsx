@@ -1,12 +1,14 @@
 /**
- * TemplateDrawer — GenUI 模板中心（0.9.4 新手引导）。
+ * TemplateDrawer — the GenUI template center (new-user onboarding).
  *
- * 分类浏览 → 点击卡片 → 内嵌预览（demo spec 由 GenuiBlock 直接渲染，
- * dogfooding）+「试用」插入输入框 /「复制指令」。用户先看到效果，
- * 再决定把指令发给模型——genui 能力说明书。
+ * Browse by category → click a card → inline preview (the demo spec rendered
+ * directly by GenuiBlock, dogfooding) + "try it" (insert into the composer) /
+ * "copy instruction". The user sees the result first and only then decides to
+ * send the instruction to the model — the genui capability manual.
  */
 import { useMemo, useRef, useState } from 'react'
-import { GENUI_TEMPLATES, type GenuiTemplate } from './templates.ts'
+import { genuiTemplates, TEMPLATE_CATEGORIES, categoryLabelKey, type GenuiTemplate, type TemplateCategory } from './templates.ts'
+import { useLocaleRevision, useT } from './i18n/index.ts'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { panelStateKey } from './interaction-store.ts'
@@ -16,14 +18,15 @@ import { useSyncExternalStore } from 'react'
 import css from './TemplateDrawer.module.css'
 
 export interface TemplateDrawerProps {
-  /** 试用：把模板指令插入当前输入框草稿。 */
+  /** Try it: insert the template instruction into the composer draft. */
   onUse: (instruction: string) => void
-  /** 当前面板（模板中心/成就页），由面板 header 按钮控制。 */
+  /** Which drawer is open (template center / trophies), driven by the header. */
   tab: 'templates' | 'achievements'
 }
 
-const CATEGORIES = ['全部', '仪表盘', '数据', '流程', '图表', '交互', '测验', '高级'] as const
-type Category = (typeof CATEGORIES)[number]
+/** Filter ids: `all` plus every template category. Labels are localized. */
+const CATEGORIES = ['all', ...TEMPLATE_CATEGORIES] as const
+type Category = TemplateCategory | 'all'
 
 /** Copy to clipboard with a legacy fallback (like GenuiCopy). */
 function copyText(text: string): Promise<void> {
@@ -46,7 +49,9 @@ function copyText(text: string): Promise<void> {
 }
 
 export function TemplateDrawer({ onUse, tab }: TemplateDrawerProps) {
-  const [category, setCategory] = useState<Category>('全部')
+  const t = useT()
+  const localeRevision = useLocaleRevision()
+  const [category, setCategory] = useState<Category>('all')
   const [selected, setSelected] = useState<GenuiTemplate | null>(null)
   const [copied, setCopied] = useState(false)
   const timer = useRef(0)
@@ -54,12 +59,17 @@ export function TemplateDrawer({ onUse, tab }: TemplateDrawerProps) {
   const achievements = useSyncExternalStore(subscribeAchievements, () => getAchievementSnapshot())
   const achievementSpec = useMemo(
     () => buildAchievementsSpec(achievements.state, achievements.unlocked),
-    [achievements],
+    [achievements, localeRevision],
   )
 
+  // Rebuilt when the locale changes: `t` keeps a stable identity, so the
+  // revision — not `t` — is what invalidates this memo.
   const items = useMemo(
-    () => (category === '全部' ? [...GENUI_TEMPLATES] : GENUI_TEMPLATES.filter(t => t.category === category)),
-    [category],
+    () => {
+      const all = genuiTemplates()
+      return category === 'all' ? [...all] : all.filter(tpl => tpl.category === category)
+    },
+    [category, localeRevision],
   )
 
   const copy = async (text: string): Promise<void> => {
@@ -78,13 +88,13 @@ export function TemplateDrawer({ onUse, tab }: TemplateDrawerProps) {
     <div className={css.wrap} data-genui-templates={tab === 'templates' ? undefined : 'achievements'}>
       {tab === 'achievements' ? (
         <div className={css.achievements} data-genui-achievements>
-          <ErrorBoundary label="成就页">
+          <ErrorBoundary label={t('tpl.boundary.achievements')}>
             <GenuiBlock spec={achievementSpec} stateKey={panelStateKey('genui-achievements', JSON.stringify(achievementSpec))} />
           </ErrorBoundary>
         </div>
       ) : (
         <>
-          <div className={css.cats} role="tablist" aria-label="模板分类">
+          <div className={css.cats} role="tablist" aria-label={t('tpl.categories.aria')}>
             {CATEGORIES.map(c => (
               <button
                 key={c}
@@ -94,7 +104,7 @@ export function TemplateDrawer({ onUse, tab }: TemplateDrawerProps) {
                 className={`${css.cat}${category === c ? ` ${css.catActive}` : ''}`}
                 onClick={() => { setCategory(c); setSelected(null) }}
               >
-                {c}
+                {t(categoryLabelKey(c))}
               </button>
             ))}
           </div>
@@ -107,7 +117,7 @@ export function TemplateDrawer({ onUse, tab }: TemplateDrawerProps) {
                 onClick={() => setSelected(prev => (prev?.id === tpl.id ? null : tpl))}
               >
                 <span className={css.cardName}>{tpl.name}</span>
-                <span className={css.cardMeta}>{tpl.category}</span>
+                <span className={css.cardMeta}>{t(categoryLabelKey(tpl.category))}</span>
                 <span className={css.cardDesc}>{tpl.description}</span>
               </button>
             ))}
@@ -117,14 +127,14 @@ export function TemplateDrawer({ onUse, tab }: TemplateDrawerProps) {
               <div className={css.toolbar}>
                 <span className={css.toolbarTitle}>{selected.name}</span>
                 <button type="button" className={css.try} onClick={() => onUse(selected.instruction)}>
-                  试用：插入输入框
+                  {t('tpl.try')}
                 </button>
                 <button type="button" className={css.copy} onClick={() => void copy(selected.instruction)}>
-                  {copied ? '✓ 已复制' : '复制指令'}
+                  {copied ? t('tpl.copied') : t('tpl.copy')}
                 </button>
               </div>
               <div className={css.preview}>
-                <ErrorBoundary label="模板预览">
+                <ErrorBoundary label={t('tpl.boundary.preview')}>
                   <GenuiBlock spec={selected.demo} stateKey={panelStateKey('genui-tpl', selected.id)} />
                 </ErrorBoundary>
               </div>

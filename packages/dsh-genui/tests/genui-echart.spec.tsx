@@ -13,10 +13,17 @@ vi.mock('../src/client/echarts-lazy.ts', async () => {
   const actual = await vi.importActual<typeof import('../src/client/echarts-lazy.ts')>('../src/client/echarts-lazy.ts')
   return { createChart: vi.fn(), CORE_PRESETS: actual.CORE_PRESETS }
 })
-beforeEach(() => { vi.mocked(createChart).mockReset() })
+beforeEach(() => {
+  vi.mocked(createChart).mockReset()
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    disconnect() {}
+  })
+})
 
 afterEach(() => {
   cleanup()
+  vi.unstubAllGlobals()
 })
 
 function fakeInstance() {
@@ -29,6 +36,32 @@ describe('EChartNode: series palette', () => {
     // multi-series chart came out entirely blue.
     expect(SERIES_FALLBACK.length).toBeGreaterThanOrEqual(6)
     expect(new Set(SERIES_FALLBACK).size).toBe(SERIES_FALLBACK.length)
+  })
+})
+
+describe('EChartNode: word cloud', () => {
+  it('cycles explicit palette colors per word', async () => {
+    vi.mocked(createChart).mockResolvedValue(fakeInstance())
+    render(<EChartNode node={{ type: 'echart', preset: 'wordCloud', palette: ['#123456', '#abcdef'], data: [
+      { label: 'A', value: 3 }, { label: 'B', value: 2 }, { label: 'C', value: 1 },
+    ] }} />)
+    await vi.waitFor(() => {
+      expect(createChart).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ series: [expect.objectContaining({ data: [
+        { name: 'A', value: 3, textStyle: { color: '#123456' } },
+        { name: 'B', value: 2, textStyle: { color: '#abcdef' } },
+        { name: 'C', value: 1, textStyle: { color: '#123456' } },
+      ] })] }), expect.anything(), 'full')
+    })
+  })
+
+  it('builds weighted words and loads the full engine', async () => {
+    vi.mocked(createChart).mockResolvedValue(fakeInstance())
+    render(<EChartNode node={{ type: 'echart', preset: 'wordCloud', data: [{ label: '系统', value: 80 }, { label: '用户', value: 30 }] }} />)
+    await vi.waitFor(() => {
+      expect(createChart).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        series: [expect.objectContaining({ type: 'wordCloud', data: [expect.objectContaining({ name: '系统', value: 80 }), expect.objectContaining({ name: '用户', value: 30 })] })],
+      }), expect.anything(), 'full')
+    })
   })
 })
 

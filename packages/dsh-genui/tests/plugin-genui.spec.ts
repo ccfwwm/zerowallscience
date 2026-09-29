@@ -12,6 +12,37 @@ async function assemble() {
   return ctx.systemPrompt.assemble({})
 }
 
+/** The complete whitelist the slim fence section must still advertise. */
+const WHITELISTED_COMPONENT_TYPES = [
+  'text', 'row', 'col', 'grid', 'card',
+  'button', 'input', 'textarea', 'select', 'checkbox', 'switch', 'slider', 'radio', 'submit', 'quiz', 'link',
+  'badge', 'stat', 'progress', 'divider', 'spacer', 'list', 'table', 'audio', 'video',
+  'chart', 'tabs', 'accordion', 'avatar', 'plot', 'callout', 'steps',
+  'keyvalue', 'json', 'code', 'diff', 'copy',
+  'mermaid', 'scene3d', 'timeline', 'file-tree', 'breadcrumb',
+] as const
+
+const BROKEN_FENCE_REPLY = '```dsh-ui\n{"items":[{"type":"stat"}]}\n```'
+
+/** 将已经结束的 assistant 回复写入真实 Cordis Context。 */
+function emitAssistantReply(ctx: Context, session: object): void {
+  ctx.emit('session/event', session as never, {
+    type: 'assistant/message',
+    seq: 1,
+    time: 1,
+    data: { message: { content: [{ type: 'text', text: BROKEN_FENCE_REPLY }] } },
+  } as never)
+}
+
+/** 触发允许插件请求修正的回合结束事件。 */
+function emitTurnStopping(ctx: Context, session: object, steer: () => void): void {
+  ctx.emit('agent/turn-stopping', {
+    agent: { session, steer },
+    turn: 1,
+    signal: new AbortController().signal,
+  } as never)
+}
+
 describe('genui:fence section', () => {
   it('registers the dsh-ui fence language section', async () => {
     const assembly = await assemble()
@@ -19,25 +50,41 @@ describe('genui:fence section', () => {
     expect(names).toContain('genui:fence')
   })
 
-  it('keeps only the minimal fence and tool guidance', async () => {
+  it('teaches the fence syntax and the component vocabulary', async () => {
     const assembly = await assemble()
     const section = assembly.sections.find(s => s.name === 'genui:fence')
     expect(section).toBeDefined()
     const text = typeof section!.text === 'string' ? section!.text : ''
     expect(text).toContain('dsh-ui')
-    expect(text).toContain('render_ui')
-    expect(text).toContain('genui')
-    expect(text.length).toBeLessThan(500)
+    // The model must know the white-listed component types.
+    for (const type of ['text', 'card', 'grid', 'stat', 'table', 'audio', 'video', 'chart', 'tabs', 'button', 'progress', 'plot', 'callout', 'steps', 'diff', 'mermaid', 'scene3d']) {
+      expect(text).toContain(type)
+    }
+    expect(text).toContain('"kind":"bars|line|donut"')
+    expect(text).toContain('"label":"...","value":n')
+    expect(text).toContain('series：bars 分组/堆叠 / line 多序列')
+    expect(text).toContain('LANGUAGE: reply+UI=conversation language')
+    expect(text).toContain('NEVER infer it from prompt/skill/examples/tools')
+    expect(text).toContain('never emit these placeholders literally')
+    expect(text).not.toContain('"title":"可选标题"')
   })
 
   it('keeps the full type whitelist in the slim section within the token budget', async () => {
-    // The section is deliberately tiny; detailed component vocabulary lives
-    // in the on-demand genui skill.
+    // Issue #29: GENUI_SECTION_TEXT is a fixed per-request cost, so the slim
+    // section must stay compact while still listing every allowed type.
     const assembly = await assemble()
     const section = assembly.sections.find(s => s.name === 'genui:fence')
     expect(section).toBeDefined()
     const text = typeof section!.text === 'string' ? section!.text : ''
-    expect(text.length).toBeLessThan(500)
+    // Budget: 3400 chars keeps the mixed CJK/ASCII section near ~1k tokens
+    // (CJK ≈ 1 tok/char, ASCII ≈ 0.25 tok/char) — roughly half of the
+    // original ~6.1k chars / ~2.3k tokens measured in issue #29. Raised from
+    // 3200 for issue #186's counter-example block (file-tree/callout field
+    // warnings + tightened validate wording); still ~45% below the original.
+    expect(text.length).toBeLessThanOrEqual(3400)
+    for (const type of WHITELISTED_COMPONENT_TYPES) {
+      expect(text).toContain(type)
+    }
   })
 
   it('sorts the section among the tool-guidance sections', async () => {
@@ -147,7 +194,8 @@ describe('genui:fence section', () => {
       provider: 'dsh-genui',
       source: 'bundled',
     })
-    expect(skill?.description).toContain('完整组件与字段规范')
+    expect(skill?.description).toContain('Preserve conversation language')
+    expect(skill?.description).not.toMatch(/[\u3400-\u9fff]/u)
     expect(skill?.content).toContain('chart:')
     expect(skill?.content).not.toContain('name: genui')
 
@@ -175,6 +223,32 @@ describe('genui:fence section', () => {
     await ctx.plugin(GenUI)
     const assembly = await ctx.systemPrompt.assemble({})
     expect(assembly.sections.map(s => s.name)).toContain('genui:fence')
+  })
+
+  it('enables final fence feedback by default', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    const genui = await ctx.plugin(GenUI)
+    const session = { id: 'default-feedback', header: { id: 'default-feedback' } }
+    let steerCalls = 0
+    const steer = () => { steerCalls += 1 }
+    emitAssistantReply(ctx, session)
+    emitTurnStopping(ctx, session, steer)
+    expect(steerCalls).toBe(1)
+    await genui.dispose()
+  })
+
+  it('allows final fence feedback to be disabled explicitly', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    const genui = await ctx.plugin(GenUI, { fenceFeedback: false })
+    const session = { id: 'disabled-feedback', header: { id: 'disabled-feedback' } }
+    let steerCalls = 0
+    const steer = () => { steerCalls += 1 }
+    emitAssistantReply(ctx, session)
+    emitTurnStopping(ctx, session, steer)
+    expect(steerCalls).toBe(0)
+    await genui.dispose()
   })
 
   it('removes the asset route before a plugin reload', async () => {

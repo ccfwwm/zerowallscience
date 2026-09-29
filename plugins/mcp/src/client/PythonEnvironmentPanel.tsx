@@ -48,6 +48,10 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const [installRuntime, setInstallRuntime] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [customMirrorEditing, setCustomMirrorEditing] = useState(false)
+  const [restartRequired, setRestartRequired] = useState(false)
+  const [syncRequestId, setSyncRequestId] = useState<string>()
+  const restartRequiredRef = useRef(false)
+  const [configuredPythonPath, setConfiguredPythonPath] = useState<string>()
   const [scrollTop, setScrollTop] = useState(0); const [height, setHeight] = useState(400)
   const searching = query.trim() !== '' || filter !== 'all' || capability !== 'all'; const showInventory = searching || revealed
   const list = useRef<HTMLDivElement>(null); const request = useRef(0); const active = useRef<string>()
@@ -57,6 +61,10 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     const next = await window.zerowallDesktop?.pythonEnvironment?.({ action: 'status', requestId: crypto.randomUUID() })
     if (!next) return
     if (next.status) setStatus(next.status)
+    // A path change is applied by the next desktop restart. Until then the
+    // worker and inventory APIs still report the old active root; accepting
+    // that value here would immediately hide the path the user just selected.
+    if (!restartRequiredRef.current && typeof next.runtimeRoot === 'string') setConfiguredPythonPath(next.runtimeRoot)
     setDependencies(next.dependencies)
     setEvents((next.events ?? []).filter(event => !['status', 'list_packages'].includes(event.action)))
   }, [])
@@ -153,10 +161,13 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const syncNow = () => perform('sync', async () => {
     if (!callEnvironment) { setFeedback(t('python.unavailable')); return }
     let result: PythonEnvironmentResponse
-    try { result = await callEnvironment({ action: 'sync', requestId: crypto.randomUUID(), confirm: true }) }
+    const requestId = crypto.randomUUID()
+    setFeedback(t('python.manager.queued'))
+    try { result = await callEnvironment({ action: 'sync', requestId, confirm: true }) }
     catch (error) { setFeedback(t('python.shared.installFailureSafety', { reason: error instanceof Error ? error.message : String(error) })); return }
     if (!result) { setFeedback(t('python.unavailable')); return }
-    if (result.upToDate) setFeedback(t('python.shared.syncUpToDate'))
+    if (result.queued) setSyncRequestId(requestId)
+    else if (result.upToDate) setFeedback(t('python.shared.syncUpToDate'))
     else if (result.taskId) setFeedback(t('python.manager.queued'))
     await loadStatus()
   })
@@ -166,18 +177,40 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const rowHeight = 88; const start = Math.max(0, Math.floor(scrollTop / rowHeight) - 4); const end = Math.min(rows.length, start + Math.ceil(height / rowHeight) + 8)
   useEffect(() => { const maximum = Math.max(0, rows.length * rowHeight - height); if (list.current && list.current.scrollTop > maximum) list.current.scrollTop = maximum }, [rows.length, height])
   const inventoryMatches = !active.current || info?.snapshotId === active.current
-  const working = status && ['checking', 'downloading', 'verifying', 'installing'].includes(status.phase)
+  const working = Boolean(syncRequestId) || Boolean(status && ['checking', 'downloading', 'verifying', 'installing'].includes(status.phase))
   useEffect(() => {
     if (!working) return
     const timer = window.setInterval(() => { void loadStatus().catch(() => undefined) }, 1500)
     return () => window.clearInterval(timer)
   }, [working, loadStatus])
+  useEffect(() => {
+    if (!syncRequestId) return
+    const terminal = events.find(event => event.requestId === syncRequestId && (event.status === 'succeeded' || event.status === 'failed'))
+    if (!terminal) return
+    setSyncRequestId(undefined)
+    if (terminal.status === 'failed') setFeedback(t('python.shared.installFailureSafety', { reason: terminal.message ?? t('python.shared.failed') }))
+    else if (terminal.upToDate || (dependencies?.changes?.length ?? 0) === 0) setFeedback(t('python.shared.syncUpToDate'))
+    else setFeedback(t('python.manager.queued'))
+  }, [syncRequestId, events, dependencies, t])
   const liveLog = status?.updateJob?.logLines ?? events.filter(event => event.action === 'progress' && event.logLine).map(event => event.logLine!).reverse().slice(-80)
-  const runtimeRoot = info?.runtimeRoot
+  // The saved location is authoritative while a restart is pending. An
+  // inventory response from the old worker may arrive after the user picks a
+  // new folder, and must not put the former path back on the settings card.
+  const runtimeRoot = configuredPythonPath ?? info?.runtimeRoot
   const stablePath = runtimeRoot
   const sharedSitePackages = runtimeRoot ? `${runtimeRoot.replace(/[\\/]+$/u, '')}\\Lib\\site-packages` : t('python.shared.pathPending')
   const copyPath = (value?: string) => value && void perform('copy-path', async () => { await api?.copyText?.(value); setFeedback(t('python.shared.copied')) })
   const openPath = (value?: string) => value && void perform('open-path', async () => { const ok = await api?.revealPath?.(value); if (!ok) setFeedback(t('python.shared.openFailed')) })
+  const changePythonPath = () => void perform('python-path', async () => {
+    const selected = await api?.chooseDirectory?.()
+    if (!selected) return
+    const result = await callEnvironment?.({ action: 'configure', requestId: crypto.randomUUID(), runtimeRoot: selected })
+    if (!result) { setFeedback(t('python.unavailable')); return }
+    if (result.runtimeRoot) setConfiguredPythonPath(result.runtimeRoot)
+    restartRequiredRef.current = result.restartRequired === true
+    setRestartRequired(restartRequiredRef.current)
+    setFeedback(t('python.shared.pathSaved'))
+  })
   /**
    * Kept as an internal refresh rather than a user action. The "test connection
    * and certificate" button and the mirror-probe row it fed are gone: the probe
@@ -258,7 +291,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
       <pre role="log" aria-live="polite">{liveLog.length ? liveLog.join('\n') : t('python.shared.logEmpty')}</pre>
     </details>}
     <div className={css.environmentGrid}>
-      <section className={css.card} aria-labelledby="python-path-title"><div className={css.cardTitle}><div><span className={css.sectionKicker}>{t('python.environment')}</span><h3 id="python-path-title">{t('python.shared.path')}</h3></div><span className={css.checkMark}>{stablePath ? '✓' : '—'}</span></div><div className={css.pathBox} title={stablePath ?? ''}>{stablePath ?? t('python.shared.pathPending')}</div><div className={css.cardActions}><button disabled={!stablePath} onClick={() => copyPath(stablePath)}>{t('python.shared.copy')}</button><button disabled={!stablePath} onClick={() => openPath(stablePath)}>{t('python.shared.open')}</button><button disabled={!stablePath || !api?.openPythonTerminal} onClick={() => void perform('terminal', async () => { if (!await api?.openPythonTerminal?.()) setFeedback(t('python.shared.terminalFailed')) })}>{t('python.shared.terminal')}</button></div><p className={css.hint}>{t('python.shared.subtitle')}</p></section>
+      <section className={css.card} aria-labelledby="python-path-title"><div className={css.cardTitle}><div><span className={css.sectionKicker}>{t('python.environment')}</span><h3 id="python-path-title">{t('python.shared.path')}</h3></div><span className={css.checkMark}>{info?.ready && !restartRequired && (!configuredPythonPath || info.runtimeRoot === configuredPythonPath) ? '✓' : '—'}</span></div><div className={css.pathBox} title={stablePath ?? ''}>{stablePath ?? t('python.shared.pathPending')}</div><div className={css.cardActions}><button disabled={!stablePath} onClick={() => copyPath(stablePath)}>{t('python.shared.copy')}</button><button disabled={!stablePath} onClick={() => openPath(stablePath)}>{t('python.shared.open')}</button><button onClick={changePythonPath}>{t('python.shared.changePath')}</button><button disabled={!stablePath || restartRequired || !api?.openPythonTerminal} onClick={() => void perform('terminal', async () => { if (!await api?.openPythonTerminal?.()) setFeedback(t('python.shared.terminalFailed')) })}>{t('python.shared.terminal')}</button>{restartRequired && <button onClick={() => void api?.restart?.()}>{t('python.shared.restart')}</button>}</div><p className={css.hint}>{t('python.shared.pathHint')}</p></section>
       <section className={css.card} aria-labelledby="python-health-title"><div className={css.cardTitle}><div><span className={css.sectionKicker}>{t('python.status')}</span><h3 id="python-health-title">{t('python.shared.mirror')}</h3></div></div>
         <label className={css.mirrorSelectLabel}>{t('python.shared.mirror')}<select aria-label={t('python.shared.mirror')} value={selectedMirrorId} disabled={busy.configure || !callEnvironment} onChange={event => selectMirror(event.target.value)}>
           {mirrorOptions.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
@@ -310,7 +343,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
             </div>
           </>}
         </details>
-        <details className={css.history} open={working}><summary>{t('python.shared.operations')} · {events.length}</summary>{events.length ? <ol>{events.slice(-50).reverse().map((event, index) => <li key={`${event.requestId}-${event.createdAt}-${index}`}><div><strong>{['check_manifest', 'preview_sync', 'apply_sync', 'sync', 'progress', 'configure', 'diagnose', 'rollback'].includes(event.action) ? t(`python.shared.action.${event.action}` as 'python.shared.action.configure') : event.action}</strong><span className={event.status === 'failed' ? css.healthPending : css.healthValue}>{event.status === 'failed' ? t('python.shared.failed') : event.status === 'running' ? t('python.manager.refreshing') : event.taskId ? t('python.shared.submitted') : t('python.shared.succeeded')}</span><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div>{event.message && <p>{event.message}</p>}<small title={event.requestId}>{event.taskId ?? event.requestId}</small></li>)}</ol> : <p>{t('python.shared.noOperations')}</p>}</details>
+        <details className={css.history} open={working}><summary>{t('python.shared.operations')} · {events.length}</summary>{events.length ? <ol>{events.slice(-50).reverse().map((event, index) => <li key={`${event.requestId}-${event.createdAt}-${index}`}><div><strong>{['check_manifest', 'preview_sync', 'apply_sync', 'sync', 'progress', 'configure', 'diagnose', 'rollback'].includes(event.action) ? t(`python.shared.action.${event.action}` as 'python.shared.action.configure') : event.action}</strong><span className={event.status === 'failed' ? css.healthPending : css.healthValue}>{event.status === 'failed' ? t('python.shared.failed') : event.status === 'running' ? t('python.manager.refreshing') : event.status === 'queued' || event.taskId ? t('python.shared.submitted') : t('python.shared.succeeded')}</span><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div>{event.message && <p>{event.message}</p>}<small title={event.requestId}>{event.taskId ?? event.requestId}</small></li>)}</ol> : <p>{t('python.shared.noOperations')}</p>}</details>
         <section className={css.advancedSection} aria-label={t('python.shared.diagnostics')}><h3>{t('python.shared.diagnostics')}</h3><dl><dt>{t('python.manager.interpreter')}</dt><dd>{info?.executable}</dd><dt>{t('python.shared.sitePackages')}</dt><dd>{info?.sitePackages}</dd><dt>{t('python.manager.scanned')}</dt><dd>{info?.scannedAt}</dd><dt>{t('python.manager.skills')}</dt><dd>{info?.skillAudit ? Object.entries(info.skillAudit.summary).map(([key, value]) => `${key}: ${value}`).join(" · ") : t('python.manager.noAudit')}</dd><dt>{t('python.shared.verification')}</dt><dd>{info?.verification?.message ?? status?.lastUpdateError ?? '—'}</dd><dt>pip</dt><dd title={diagnostics?.pip.message}>{diagnostics ? healthLabel(diagnostics.pip.status) : t('python.shared.pending')}</dd></dl></section>
       </div>
     </details>

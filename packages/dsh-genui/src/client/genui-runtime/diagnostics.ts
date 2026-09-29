@@ -1,5 +1,6 @@
 /** GenUI runtime diagnostics for aliases and unknown fields. */
 import { COMPONENT_SCHEMAS, GENUI_SPEC_SCHEMA } from './schema.ts'
+import { isComponentRoot } from '../spec.ts'
 import type { ComponentRecordSchema, ComponentSchema } from './schema.ts'
 
 export interface GenuiDiagnostic {
@@ -123,7 +124,7 @@ export function diagnoseUnknownGenuiFields(value: unknown): GenuiDiagnostic[] {
     }
     diagnoseNestedFields(node, path, definition, warnings)
   }
-  if (Array.isArray(root.items)) {
+  if (Array.isArray(root.items) && !isComponentRoot(root)) {
     for (const field of Object.keys(root)) {
       if (field in GENUI_SPEC_SCHEMA.fields) continue
       pushUnknownField(warnings, 'spec', field, 'spec')
@@ -131,7 +132,8 @@ export function diagnoseUnknownGenuiFields(value: unknown): GenuiDiagnostic[] {
     root.items.forEach((item, index) => visitNativeNodes(item, `items[${index}]`, visit))
   } else if (typeof root.type === 'string') {
     // A bare component root is a documented shorthand, so its `type` belongs
-    // to the native node schema rather than the root specification schema.
+    // to the native node schema rather than the root specification schema —
+    // including data components whose `items` is their record list (#172).
     visitNativeNodes(root, 'spec', visit)
   } else {
     for (const field of Object.keys(root)) {

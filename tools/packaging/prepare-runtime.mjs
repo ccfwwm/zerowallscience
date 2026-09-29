@@ -10,6 +10,7 @@ import {
   adaptZoteroItemGraph,
   adaptZoteroRemote,
   adaptZoteroContract,
+  adaptZoteroStatusCodec,
 } from './adapt-zotero.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
@@ -76,6 +77,26 @@ const desktopRuntimeSeeds = [
   'pdf-lib',
   'pptxgenjs',
 ]
+
+// Claude Code is not a ZeroWall runtime dependency. Anthropic model access is
+// provided by the API integration, while the local Claude Code executable,
+// hooks and Agent SDK are deliberately absent from the installer. Keep this
+// guard in the copier as well as the closure generator: a newly added
+// transitive dependency must fail the build instead of silently reopening the
+// old runtime bundle.
+const forbiddenClaudeRuntimePackages = new Set([
+  '@deepseek-ai/dsh-subagent-claude-code',
+  '@deepseek-ai/dsh-hooks-claude-code',
+  '@anthropic-ai/claude-agent-sdk',
+  '@anthropic-ai/claude-agent-sdk-darwin-arm64',
+  '@anthropic-ai/claude-agent-sdk-darwin-x64',
+  '@anthropic-ai/claude-agent-sdk-linux-arm64',
+  '@anthropic-ai/claude-agent-sdk-linux-arm64-musl',
+  '@anthropic-ai/claude-agent-sdk-linux-x64',
+  '@anthropic-ai/claude-agent-sdk-linux-x64-musl',
+  '@anthropic-ai/claude-agent-sdk-win32-arm64',
+  '@anthropic-ai/claude-agent-sdk-win32-x64',
+])
 const bundledRuntimeDependencies = new Map([
   [
     '@huanlin/dsh-plugin-better-sidebar-plugin-office',
@@ -129,6 +150,9 @@ let incompatible = 0
 
 while (queue.length > 0) {
   const request = queue.shift()
+  if (forbiddenClaudeRuntimePackages.has(request.name)) {
+    throw new Error(`Claude Code runtime dependency is forbidden in the ZeroWall package: ${request.name}`)
+  }
   let resolvedPackage
   try {
     resolvedPackage = await resolvePackage(request.name, request.parentRoot)
@@ -248,16 +272,22 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
   if (manifest.name === 'dsh-zotero') {
     for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
     const adapters = [
-      ['lib/command.js', adaptZoteroCommand],
-      ['lib/client.js', adaptZoteroClient],
-      ['lib/item-graph.js', adaptZoteroItemGraph],
-      ['lib/local/detail.js', adaptZoteroDetail],
-      ['lib/remote.js', adaptZoteroRemote],
-      ['lib/contract.js', adaptZoteroContract],
+      ['lib/command.js', adaptZoteroCommand, false],
+      ['lib/client.js', adaptZoteroClient, false],
+      ['lib/item-graph.js', adaptZoteroItemGraph, true],
+      ['lib/local/detail.js', adaptZoteroDetail, true],
+      ['lib/remote.js', adaptZoteroRemote, false],
+      ['lib/contract.js', adaptZoteroContract, true],
+      ['lib/status-codec.js', adaptZoteroStatusCodec, true],
     ]
-    for (const [entry, adapt] of adapters) {
+    for (const [entry, adapt, optional] of adapters) {
       const path = resolve(targetRoot, entry)
-      await writeFile(path, adapt(await readFile(path, 'utf8')))
+      try {
+        await writeFile(path, adapt(await readFile(path, 'utf8')))
+      } catch (error) {
+        if (optional && error?.code === 'ENOENT') continue
+        throw error
+      }
     }
     return
   }

@@ -23,6 +23,9 @@ export declare const TYPERT: {
             readonly wire: string;
         };
         parameters: readonly import("@deepseek-ai/dsh-typert-protocol").InvocationParameterDescriptor[];
+        uplink?: {
+            readonly codec: import("@deepseek-ai/dsh-typert-protocol").TypertCodec;
+        };
         cancellation?: {
             readonly parameter: "signal";
         };

@@ -8,6 +8,7 @@
  * @module @changfenhuang/dsh-genui/client/echarts-lazy
  */
 import { loadGenuiAsset } from './asset-loader.ts'
+export { CORE_PRESETS } from './echarts-engine.ts'
 
 /** The ECharts instance surface (the subset the component uses). */
 export interface EChartsInstance {
@@ -38,7 +39,3 @@ export async function createChart(
   const api = await loadGenuiAsset<EChartsAssetApi>(engine === 'full' ? 'echarts-full' : 'echarts-core')
   return api.createChart(el, option, opts)
 }
-
-/** Presets the core bundle can draw; anything else (or a raw `option`) needs
- *  the full engine. Kept next to the loader so the split stays in one place. */
-export const CORE_PRESETS: ReadonlySet<string> = new Set(['bar', 'line', 'area', 'pie', 'scatter', 'bigline'])

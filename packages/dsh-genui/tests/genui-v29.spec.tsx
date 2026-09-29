@@ -12,7 +12,7 @@ import { GenuiActionContext } from '../src/client/action-context.ts'
 import { GenuiBlock, GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { repairGenuiSpec } from '../src/client/guard.ts'
 import { CORE_PRESETS } from '../src/client/echarts-lazy.ts'
-import { tableToCsv, tableToMarkdown } from '../src/client/blocks/charts.tsx'
+import { formatChartValue, fractionDigits, tableToCsv, tableToMarkdown } from '../src/client/blocks/charts.tsx'
 
 afterEach(() => {
   cleanup()
@@ -21,6 +21,28 @@ afterEach(() => {
 })
 beforeEach(() => {
   vi.useFakeTimers()
+})
+
+describe('formatChartValue', () => {
+  it('rounds calculated values to the source precision without changing exact values', () => {
+    expect(formatChartValue(26.7599999999998, 2)).toBe('26.76')
+    expect(formatChartValue(0.30000000000000004, 1)).toBe('0.3')
+    expect(formatChartValue(12.520000000000001, 2)).toBe('12.52')
+    expect(formatChartValue(1.234, 3)).toBe('1.234')
+    expect(formatChartValue(100, 0)).toBe('100')
+    expect(formatChartValue(1000000000000001, 0)).toBe('1000000000000001')
+    expect(formatChartValue(Number.MAX_SAFE_INTEGER, 0)).toBe(String(Number.MAX_SAFE_INTEGER))
+    expect(formatChartValue(1.000000000000001, 15)).toBe('1.000000000000001')
+  })
+
+  it('counts decimal places in standard and exponent notation', () => {
+    expect(fractionDigits(1.23)).toBe(2)
+    expect(fractionDigits(1)).toBe(0)
+    expect(fractionDigits(1e-7)).toBe(7)
+    expect(fractionDigits(1.2e-7)).toBe(8)
+    expect(fractionDigits(1e3)).toBe(0)
+    expect(formatChartValue(1.2e-7, fractionDigits(1.2e-7))).toBe('0.00000012')
+  })
 })
 
 function renderBlock(spec: unknown, actions: Array<[string, Record<string, unknown>]> = []) {
@@ -307,6 +329,123 @@ describe('v7: table sections/totals, stacked bars, card tones', () => {
     expect(segments).toHaveLength(2)
     // 30/40 of the total height -> 75%.
     expect((segments[0] as HTMLElement).style.height).toBe('75%')
+    const stack = segments[0]!.parentElement as HTMLElement
+    expect(parseFloat(stack.style.height)).toBeLessThanOrEqual(100)
+    expect(stack.style.height).toBe('100%')
+  })
+
+  it('scales vertical stacks by the largest category total', () => {
+    const { container } = renderBlock({
+      items: [{
+        type: 'chart',
+        data: [],
+        stacked: true,
+        series: [
+          { label: 'A', data: [{ label: 'Q1', value: 30 }, { label: 'Q2', value: 10 }] },
+          { label: 'B', data: [{ label: 'Q1', value: 10 }, { label: 'Q2', value: 10 }] },
+        ],
+      }],
+    })
+    const stacks = [...container.querySelectorAll('[class*="barCol"] > [class*="stack"]:not([class*="stackSeg"]):not([class*="stackValue"])')] as HTMLElement[]
+    expect(stacks).toHaveLength(2)
+    expect(stacks.map(stack => stack.style.height)).toEqual(['100%', '50%'])
+    expect(container.querySelector('[class*="chartYAxis"]')?.textContent).toContain('40')
+  })
+
+  it('scales horizontal stacks by the largest category total', () => {
+    const { container } = renderBlock({
+      items: [{
+        type: 'chart',
+        data: [],
+        horizontal: true,
+        stacked: true,
+        series: [
+          { label: 'A', data: [{ label: 'Q1', value: 30 }, { label: 'Q2', value: 10 }] },
+          { label: 'B', data: [{ label: 'Q1', value: 10 }, { label: 'Q2', value: 10 }] },
+        ],
+      }],
+    })
+    const tracks = [...container.querySelectorAll('[class*="hbarTrack"]:not([class*="hbarTracks"])')] as HTMLElement[]
+    expect(tracks).toHaveLength(2)
+    const totals = tracks.map(track => [...track.querySelectorAll('[class*="hbarSeg"]')]
+      .reduce((sum, segment) => sum + parseFloat((segment as HTMLElement).style.width), 0))
+    expect(totals).toEqual([100, 50])
+  })
+
+  it('formats computed totals for vertical stacked bars and tooltips', () => {
+    const { container } = renderBlock({
+      items: [{
+        type: 'chart',
+        data: [],
+        stacked: true,
+        series: [
+          { label: 'A', data: [{ label: 'Q1', value: 0.1 }, { label: 'Q2', value: 1.234 }] },
+          { label: 'B', data: [{ label: 'Q1', value: 0.2 }, { label: 'Q2', value: 2.2 }] },
+        ],
+      }],
+    })
+    expect([...container.querySelectorAll('[class*="barValue"]')].map(node => node.textContent)).toEqual(['0.3', '3.434'])
+    fireEvent.mouseEnter(container.querySelector('[class*="stackSeg"]')!)
+    expect(container.querySelector('[class*="chartTip"]')?.textContent).toContain('合计0.3')
+    expect(container.textContent).not.toContain('0.30000000000000004')
+    expect(container.textContent).not.toContain('3.3000000000000003')
+  })
+
+  it('formats computed totals for horizontal stacked bars and tooltips', () => {
+    const { container } = renderBlock({
+      items: [{
+        type: 'chart',
+        data: [],
+        horizontal: true,
+        stacked: true,
+        series: [
+          { label: 'A', data: [{ label: 'Q1', value: 0.1 }, { label: 'Q2', value: 1.1 }] },
+          { label: 'B', data: [{ label: 'Q1', value: 0.2 }, { label: 'Q2', value: 2.2 }] },
+        ],
+      }],
+    })
+    expect([...container.querySelectorAll('[class*="hbarValue"]')].map(node => node.textContent)).toEqual(['0.3', '3.3'])
+    expect(container.querySelector('[class*="hbarTrack"][title]')?.getAttribute('title')).toBe('Q1: 0.3')
+    fireEvent.mouseEnter(container.querySelector('[class*="hbarSeg"]')!)
+    expect(container.querySelector('[class*="chartTip"]')?.textContent).toContain('合计0.3')
+    expect(container.textContent).not.toContain('0.30000000000000004')
+    expect(container.textContent).not.toContain('3.3000000000000003')
+  })
+
+  it('formats computed totals for horizontal grouped bars and tooltips', () => {
+    const { container } = renderBlock({
+      items: [{
+        type: 'chart',
+        data: [],
+        horizontal: true,
+        series: [
+          { label: 'A', data: [{ label: 'Q1', value: 0.1 }, { label: 'Q2', value: 1.1 }] },
+          { label: 'B', data: [{ label: 'Q1', value: 0.2 }, { label: 'Q2', value: 2.2 }] },
+        ],
+      }],
+    })
+    expect([...container.querySelectorAll('[class*="hbarValue"]')].map(node => node.textContent)).toEqual(['0.3', '3.3'])
+    fireEvent.mouseEnter(container.querySelector('[class*="hbarFill"]')!)
+    expect(container.querySelector('[class*="chartTip"]')?.textContent).toContain('合计0.3')
+    expect(container.textContent).not.toContain('0.30000000000000004')
+    expect(container.textContent).not.toContain('3.3000000000000003')
+  })
+
+  it('formats computed totals in vertical grouped bar tooltips', () => {
+    const { container } = renderBlock({
+      items: [{
+        type: 'chart',
+        data: [],
+        series: [
+          { label: 'A', data: [{ label: 'Q1', value: 0.1 }, { label: 'Q2', value: 1.1 }] },
+          { label: 'B', data: [{ label: 'Q1', value: 0.2 }, { label: 'Q2', value: 2.2 }] },
+        ],
+      }],
+    })
+    fireEvent.mouseEnter(container.querySelector('[class*="groupedFill"]')!)
+    expect(container.querySelector('[class*="chartTip"]')?.textContent).toContain('合计0.3')
+    expect(container.textContent).not.toContain('0.30000000000000004')
+    expect(container.textContent).not.toContain('3.3000000000000003')
   })
 
   it('shows an instant tooltip with the segment breakdown on hover', () => {

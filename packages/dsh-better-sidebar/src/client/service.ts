@@ -13,8 +13,8 @@
  *   hardcode: single-instance (`() => type`), per-path (`tab => tab.path`),
  *   and per-id (`tab => tab.id` for diff tabs whose id is change-derived).
  *   `single: true` is sugar for `dedupeKey: () => id`.
- * - `createTab` lets a descriptor own tab instantiation (the terminal
- *   builtin uses it to mint `terminal:<n>` ids and bump `nextTerminal`).
+ * - `createTab` lets a descriptor own tab instantiation (the side chat
+ *   builtin uses it to mint one `sidechat:<threadId>` tab per thread).
  * - `matchFileViewer` walks descriptors in priority order (desc, stable):
  *   per descriptor it tries `detect` first (when `head` bytes are given),
  *   then `exts`; `exts: []` is a catch-all that matches any path.
@@ -201,23 +201,22 @@ export interface TabDescriptor {
   dedupeKey?: (tab: SidebarTab) => string | undefined
   /**
    * Custom tab creation (minting the `SidebarTab` and any state patches).
-   * Return `null` to refuse creation. The terminal builtin uses this to
-   * mint `terminal:<n>` ids and bump `nextTerminal`.
+   * Return `null` to refuse creation. The side chat builtin uses this to mint
+   * one tab per thread and to park a pending thread id in `meta`.
    * When omitted, a default `{ id, type, title }` tab is created.
    */
   createTab?: (state: SidebarState) => { tab: SidebarTab; patch?: Partial<SidebarState> } | null
   /**
    * External-link target claim (v0.13.0+): when a GUI external-link click
-   * is taken over (the `browserInterceptLinks` master AND the URL's
-   * protocol flag — `browserInterceptHttp` / `browserInterceptHttps` —
-   * are on), the first registered tab whose `urlTarget(url)` returns true
-   * is opened with `openTab({ type, url, title: hostname })` — the URL is
-   * the whole payload (the tab reads it from `tab.path`). Registration
+   * is taken over, the first registered tab whose `urlTarget(url)` returns
+   * true is opened with `openTab({ type, url, title: hostname })` — the URL
+   * is the whole payload (the tab reads it from `tab.path`). Registration
    * order wins (first claim first served); a disabled tab type is skipped;
    * a throwing predicate is swallowed (console.error, the type is skipped).
-   * The built-in browser tab declares NO urlTarget — it stays the implicit
-   * fallback target, so plugins can never be shadowed by it. To host more
-   * than one URL at a time, mint per-URL ids through `createTab` (the
+   * A click no type claims is NOT taken over at all: it stays with whoever
+   * rendered the link (DSH 0.1.7's own chat view routes http(s) by the
+   * user's link-opening preference and falls back to a real browser tab).
+   * To host more than one URL at a time, mint per-URL ids through `createTab` (the
    * browser builtin's pattern); otherwise the id safety net focuses the
    * existing tab of the same type and the new URL is not applied.
    */
@@ -634,7 +633,7 @@ export function matchUrlTarget(tabs: readonly TabDescriptor[], url: URL): TabDes
  * The plugin version this service instance reports. Keep in lockstep with
  * `package.json`'s version — `tests/service.spec.ts` asserts the pair.
  */
-export const SIDEBAR_SERVICE_VERSION = '0.19.1'
+export const SIDEBAR_SERVICE_VERSION = '0.22.1'
 
 /**
  * Monotonic capability list consumers use to gate new API usage (features
@@ -969,7 +968,7 @@ export function createBetterSidebarService(store: SidebarStore): BetterSidebarSe
     // native sidebar owns the right column).
     const land = openTabInBottomPane
     const reducer = (state: SidebarState): SidebarState => {
-      // Let the descriptor mint the tab (terminal's nextTerminal bump, etc.).
+      // Let the descriptor mint the tab (and any state patch it owns).
       let tab: SidebarTab
       let next: SidebarState
       if (descriptor.createTab !== undefined) {

@@ -1,29 +1,36 @@
 /**
- * achievements.ts — GenUI 探索成就（0.9.5）。
+ * achievements.ts — GenUI exploration trophies.
  *
- * 轻量本地成就：只统计「使用事件计数」（渲染过的 fence、面板出现、
- * 交互回传、模板试用），绝不读消息/内容；状态存 localStorage，跨会话
- * 保留。解锁时进 toast 队列（achievement-toast 消费），面板「成就」
- * tab 用 dsh-ui 渲染自己的成就页（dogfooding）。
+ * Lightweight local trophies: they count USAGE EVENTS only (fences rendered,
+ * panels shown, actions sent back, templates tried) and never read message
+ * or interface content. State lives in localStorage and survives across
+ * sessions. An unlock enters the toast queue (consumed by achievement-toast),
+ * and the panel's trophy tab renders its own page through dsh-ui (dogfooding).
  *
- * 设计与 dsh-achievements 的分层快照思路一致，但零宿主改动：埋点全部
- * 在本包的渲染/交互路径上（GenuiBlock/TemplateDrawer/GenuiPanel）。
+ * The design mirrors dsh-achievements' layered snapshot, with zero host
+ * changes: every counter sits on this package's own render/interaction paths
+ * (GenuiBlock / TemplateDrawer / GenuiPanel).
+ *
+ * Trophy NAMES and DESCRIPTIONS resolve from the i18n dictionaries at read
+ * time (`ach.<id>.name` / `.desc`); only the ids are persisted, so a language
+ * switch never orphans an unlocked trophy.
  */
 import type { GenuiSpec, GenuiNode } from './spec.ts'
+import { t } from './i18n/index.ts'
 
-/** 累积使用计数（成就的输入）。 */
+/** Cumulative usage counters (the trophy inputs). */
 export interface AchieveState {
-  /** 渲染过的不重复 fence 数。 */
+  /** Distinct fences rendered. */
   fences: number
-  /** 面板（panel dock）出现过的会话数。 */
+  /** Sessions in which the panel dock appeared. */
   panels: number
-  /** 交互组件动作回传次数（去抖后）。 */
+  /** Component action round-trips (after debounce). */
   interactions: number
-  /** 模板试用次数。 */
+  /** Templates tried. */
   templates: number
-  /** 图表节点（chart/plot/echart）出现过的 fence 数。 */
+  /** Fences containing a chart node (chart/plot/echart). */
   charts: number
-  /** 高级节点（scene3d/mermaid/diagram）出现过的 fence 数。 */
+  /** Fences containing an advanced node (scene3d/mermaid/diagram). */
   advanced: number
 }
 
@@ -33,33 +40,71 @@ export function emptyState(): AchieveState {
 
 export interface AchievementDef {
   id: string
-  name: string
-  description: string
-  /** 解锁前隐藏名称/描述（彩蛋）。 */
+  /** Display name in the active locale (read through {@link achievementName}). */
+  readonly name: string
+  /** Description in the active locale (read through {@link achievementDesc}). */
+  readonly description: string
+  /** Hide name/description until unlocked (easter egg). */
   hidden?: boolean
-  /** 稀有度。 */
+  /** Rarity tier. */
   rarity: 'common' | 'rare' | 'legendary'
   check: (s: AchieveState) => boolean
 }
 
 const fences = (n: number) => (s: AchieveState): boolean => s.fences >= n
 
+/** Localized display name of a trophy. */
+export function achievementName(id: string): string {
+  return t(`ach.${id}.name`)
+}
+
+/** Localized description of a trophy. */
+export function achievementDesc(id: string): string {
+  return t(`ach.${id}.desc`)
+}
+
+/** Localized rarity badge label. */
+export function rarityLabel(rarity: AchievementDef['rarity']): string {
+  return t(`ach.rarity.${rarity}`)
+}
+
+/**
+ * Trophy definitions. `name`/`description` are GETTERS reading the active
+ * locale, so a definition captured before a language switch still renders in
+ * the language on screen.
+ */
+function def(
+  id: string,
+  rarity: AchievementDef['rarity'],
+  check: (s: AchieveState) => boolean,
+  hidden = false,
+): AchievementDef {
+  return {
+    id,
+    rarity,
+    check,
+    ...(hidden ? { hidden: true } : {}),
+    get name() { return achievementName(id) },
+    get description() { return achievementDesc(id) },
+  }
+}
+
 export const ACHIEVEMENTS: readonly AchievementDef[] = [
-  { id: 'first-fence', name: '初次相见', description: '渲染了第一块 GenUI 界面。', rarity: 'common', check: fences(1) },
-  { id: 'fence-5', name: '渐入佳境', description: '累计渲染 5 个界面。', rarity: 'common', check: fences(5) },
-  { id: 'fence-25', name: '界面编织者', description: '累计渲染 25 个界面。', rarity: 'rare', check: fences(25) },
-  { id: 'fence-50', name: '蓝图之魂', description: '累计渲染 50 个界面——你是 GenUI 的老朋友了。', rarity: 'legendary', hidden: true, check: fences(50) },
-  { id: 'first-interaction', name: '按钮按得动', description: '触发了一次组件交互（动作回传）。', rarity: 'common', check: s => s.interactions >= 1 },
-  { id: 'interaction-10', name: '小小操纵者', description: '累计触发 10 次组件交互。', rarity: 'rare', check: s => s.interactions >= 10 },
-  { id: 'first-panel', name: '钉在墙上', description: '第一次把内容钉进了会话面板。', rarity: 'common', check: s => s.panels >= 1 },
-  { id: 'panel-5', name: '面板管家', description: '5 个会话都用过面板。', rarity: 'rare', check: s => s.panels >= 5 },
-  { id: 'first-chart', name: '图表爱好者', description: '渲染了第一张图表（chart/plot/echart）。', rarity: 'common', check: s => s.charts >= 1 },
-  { id: 'chart-10', name: '数据可视化人', description: '10 个界面里出现过图表。', rarity: 'rare', check: s => s.charts >= 10 },
-  { id: 'first-advanced', name: '高级玩家', description: '用上了 3D/图表引擎/架构图之一。', rarity: 'rare', check: s => s.advanced >= 1 },
-  { id: 'template-1', name: '模板学员', description: '从模板中心试用了一个模板。', rarity: 'common', check: s => s.templates >= 1 },
+  def('first-fence', 'common', fences(1)),
+  def('fence-5', 'common', fences(5)),
+  def('fence-25', 'rare', fences(25)),
+  def('fence-50', 'legendary', fences(50), true),
+  def('first-interaction', 'common', s => s.interactions >= 1),
+  def('interaction-10', 'rare', s => s.interactions >= 10),
+  def('first-panel', 'common', s => s.panels >= 1),
+  def('panel-5', 'rare', s => s.panels >= 5),
+  def('first-chart', 'common', s => s.charts >= 1),
+  def('chart-10', 'rare', s => s.charts >= 10),
+  def('first-advanced', 'rare', s => s.advanced >= 1),
+  def('template-1', 'common', s => s.templates >= 1),
 ]
 
-/** 统计一个 spec 里出现的相关节点类别（与 guard 同口径遍历）。 */
+/** Count the relevant node families in a spec (same walk as the guard). */
 export function countSpecKinds(spec: GenuiSpec): { charts: number, advanced: number } {
   let charts = 0
   let advanced = 0
@@ -71,7 +116,7 @@ export function countSpecKinds(spec: GenuiSpec): { charts: number, advanced: num
       const type = v.type
       if (type === 'chart' || type === 'plot' || type === 'echart') charts += 1
       if (type === 'scene3d' || type === 'mermaid' || type === 'diagram') advanced += 1
-      // 容器与列表项递归
+      // Recurse into containers and list items.
       if (Array.isArray(v.items)) walk(v.items as unknown[])
       if (Array.isArray((v as { tabs?: unknown }).tabs)) {
         for (const tab of (v as { tabs: Array<{ items?: unknown }> }).tabs) walk(tab.items)
@@ -82,30 +127,34 @@ export function countSpecKinds(spec: GenuiSpec): { charts: number, advanced: num
   return { charts, advanced }
 }
 
-/** 生成成就页 spec（dsh-ui 渲染）：进度 stat + 解锁列表 + 稀有度徽标。 */
+/** Build the trophy page spec (rendered by dsh-ui): progress stats, the
+ *  unlock list, and rarity badges — all in the active locale. */
 export function buildAchievementsSpec(state: AchieveState, unlocked: Record<string, number>): GenuiSpec {
   const total = ACHIEVEMENTS.length
   const unlockedCount = ACHIEVEMENTS.filter(a => unlocked[a.id] !== undefined).length
   const items: GenuiNode[] = [
     { type: 'grid', cols: 3, items: [
-      { type: 'stat', label: '已解锁', value: `${unlockedCount} / ${total}` },
-      { type: 'stat', label: '渲染界面', value: String(state.fences) },
-      { type: 'stat', label: '组件交互', value: String(state.interactions) },
+      { type: 'stat', label: t('ach.stat.unlocked'), value: `${unlockedCount} / ${total}` },
+      { type: 'stat', label: t('ach.stat.rendered'), value: String(state.fences) },
+      { type: 'stat', label: t('ach.stat.interactions'), value: String(state.interactions) },
     ] },
-    { type: 'progress', label: '探索进度', value: Math.round(unlockedCount / total * 100), valueLabel: `${Math.round(unlockedCount / total * 100)}%` },
-    { type: 'list', items: ACHIEVEMENTS.map(a => ({
-      type: 'row',
-      items: [
-        { type: 'badge', label: a.rarity === 'legendary' ? '传说' : a.rarity === 'rare' ? '稀有' : '普通', tone: unlocked[a.id] !== undefined ? 'success' : 'warn' },
-        { type: 'text', size: 'body', content: a.hidden && unlocked[a.id] === undefined ? '？' : a.name },
-        { type: 'text', size: 'muted', content: a.hidden && unlocked[a.id] === undefined ? '继续探索以揭示' : a.description },
-      ],
-    })) },
+    { type: 'progress', label: t('ach.progress'), value: Math.round(unlockedCount / total * 100), valueLabel: `${Math.round(unlockedCount / total * 100)}%` },
+    { type: 'list', items: ACHIEVEMENTS.map(a => {
+      const locked = a.hidden === true && unlocked[a.id] === undefined
+      return {
+        type: 'row',
+        items: [
+          { type: 'badge', label: rarityLabel(a.rarity), tone: unlocked[a.id] !== undefined ? 'success' : 'warn' },
+          { type: 'text', size: 'body', content: locked ? t('ach.hidden.name') : a.name },
+          { type: 'text', size: 'muted', content: locked ? t('ach.hidden.desc') : a.description },
+        ],
+      }
+    }) },
   ]
-  return { title: 'GenUI 探索成就', items }
+  return { title: t('ach.page.title'), items }
 }
 
-/** 检查给定状态下的新解锁（不受 hidden 限制——规则只管阈值）。 */
+/** New unlocks for a state (hidden trophies included — rules are thresholds). */
 export function checkAchievements(state: AchieveState, unlocked: Record<string, number>): AchievementDef[] {
   return ACHIEVEMENTS.filter(a => unlocked[a.id] === undefined && a.check(state))
 }

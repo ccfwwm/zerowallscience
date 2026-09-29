@@ -9,7 +9,7 @@ import { collectSnapshots } from './python-snapshots.js'
 import { preparePackagePlan, prepareManifestPackagePlan, applyPackagePlanFiles, replayCustomizations, type StoredPackagePlan } from './python-packages.js'
 import { dependencyManifestChanges, dependencyManifestSha256, parsePythonDependencyManifest, type PythonDependencyManifest } from './python-dependency-manifest.js'
 import { DEFAULT_INDEX_URL, projectJsonCandidates, resolveMirror, sanitizePythonTlsEnvironment, type MirrorConfig } from './python-mirror.js'
-import { copyRuntimeSnapshot, isStablePythonDirectory, mergeLegacyPythonOverlay, migrateStablePython, normalizeRuntimeCandidate, readRuntimeLayout, SHARED_LAYOUT, verifySharedPackages } from './shared-python-runtime.js'
+import { copyRuntimeSnapshot, isStablePythonDirectory, migrateStablePython, normalizeRuntimeCandidate, readRuntimeLayout, SHARED_LAYOUT, verifySharedPackages } from './shared-python-runtime.js'
 import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage, McpSkillAudit, PythonPackagePlan } from '../shared/contracts.js'
 
 export interface McpEnvironmentManifest {
@@ -58,6 +58,9 @@ export interface SharedPythonRuntime {
 export interface McpEnvironmentControllerOptions {
   coordinateHost?: boolean
   root: string
+  /** Settings live beside the selected runtime so changing drives does not
+   * move the mirror and request history into the interpreter tree. */
+  settingsPath?: string
   manifestUrl: string
   publicKey: string
   /** Signed base runtime distributed with the desktop installer. When present,
@@ -118,22 +121,37 @@ export class McpEnvironmentController {
   private status: McpEnvironmentStatus = { phase: 'idle' }
   private operation?: Promise<McpEnvironmentStatus>
   private manifestCache = new Map<string, { stamp: string; value: Promise<McpEnvironmentManifest> }>()
-  private migration?: Promise<void>
 
   constructor(private readonly options: McpEnvironmentControllerOptions) {}
 
   async localStatus(skipMigration = false): Promise<McpEnvironmentStatus> {
-    if (!skipMigration) await this.migrateSharedRuntime()
     const record = await readCurrent(this.options.root)
     if (!record?.root || record.health !== 'ready') return this.current()
-    if (!skipMigration && this.status.lastUpdateError?.startsWith('共享 Python 目录迁移未完成')) {
-      return this.set({ phase: 'failed', message: this.status.lastUpdateError, lastUpdateError: this.status.lastUpdateError })
-    }
     let manifest: McpEnvironmentManifest
     try { manifest = await this.readInstalledManifest(record.root) }
     catch (error) {
       const detail = sanitizeError(error)
       return this.set({ phase: 'failed', message: `现有 ZeroWall Python 环境无法验证，将重新准备基础环境：${detail}`, lastUpdateError: detail })
+    }
+    if (!skipMigration && basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python') {
+      const stableRoot = dirname(this.options.root)
+      const sharedLayout = manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
+        && manifest.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages
+      if (!sharedLayout || record.runtimeRoot !== stableRoot || !await isStablePythonDirectory(stableRoot)) {
+        // An old slot/profile is recoverable state, not an installation
+        // failure.  Returning `failed` here made the first dependency request
+        // stop at the legacy profile gate before the updater had a chance to
+        // install the signed bootstrap.  Mark the runtime as pending instead;
+        // `autoUpdate()`/`ensureReady()` will immediately replace it from the
+        // installer archive and leave the old directory untouched.
+        return this.set({
+          phase: 'checking',
+          message: '检测到旧 Python 布局；将忽略旧 profile，直接使用安装包内的签名 Python 重建共享环境。',
+          updateAvailable: true,
+          updateRequired: true,
+          lastUpdateError: undefined,
+        })
+      }
     }
     return this.set({ ...environmentStatus('ready', manifest, record.root, record.slot ?? 'manual', false, record.rollbackAvailable === true), lastUpdateError: this.status.lastUpdateError,
       activeEnvironment: { snapshotId: record.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), pythonVersion: manifest.python.version, localRevision: record.localRevision } })
@@ -196,7 +214,7 @@ export class McpEnvironmentController {
       const stableRoot = current.runtimeRoot ? resolve(current.runtimeRoot) : await stat(join(expectedRuntimeRoot, 'Python', 'python.exe')).then(() => expectedRuntimeRoot, () => undefined)
       const shared = isProductPythonRoot && stableRoot === expectedRuntimeRoot
       if (isProductPythonRoot && (!shared || installedManifest.python.relativeExecutable !== SHARED_LAYOUT.relativeExecutable || installedManifest.python.relativeSitePackages !== SHARED_LAYOUT.relativeSitePackages)) {
-        throw new Error('ZeroWall 只允许使用唯一共享 Python。当前环境尚未迁移完成，已停止读取旧 profile 或独立解释器。')
+        throw new Error('检测到旧 Python 布局；正在使用签名基础包重新创建共享环境。旧目录会保留。')
       }
       const manifest = shared ? { ...installedManifest, python: { ...installedManifest.python, ...SHARED_LAYOUT } } : installedManifest
       const executable = shared ? join(stableRoot!, SHARED_LAYOUT.relativeExecutable) : join(current.root, manifest.python.relativeExecutable)
@@ -406,13 +424,12 @@ export class McpEnvironmentController {
     await this.verifyHealth(previous.root, manifest)
     const stableRoot = dirname(this.options.root)
     const restoreStable = basename(this.options.root).toLowerCase() === 'zerowall-python' && manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
-    if (restoreStable) {
-      await migrateStablePython(this.options.root, previous.root, manifest, previous.overlayPath, true)
-      await verifySharedPackages(stableRoot)
-    }
     const restored = { ...previous, ...(restoreStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT } : {}), manifest }
     delete (restored as CurrentEnvironmentRecord).overlayPath
-    await this.writeCurrent(restored)
+    if (restoreStable) {
+      await migrateStablePython(this.options.root, previous.root, manifest, previous.overlayPath, true, verifySharedPackages,
+        () => this.writeCurrent(restored, 'current.json', false))
+    } else await this.writeCurrent(restored)
     // The record described one restore target and that restore has now happened.
     // Leaving it in place advertises another restore through `rollbackAvailable`
     // and, once the snapshot collector prunes the slot it names, points at a
@@ -422,63 +439,19 @@ export class McpEnvironmentController {
   }
 
   private async pythonContext(): Promise<{ root: string; executable: string; sitePackages: string; manifest: McpEnvironmentManifest; mirror: MirrorConfig }> {
-    await this.migrateSharedRuntime()
-    const current = await readCurrent(this.options.root)
+    let current = await readCurrent(this.options.root)
     if (!current?.root || current.health !== 'ready') throw new Error('ZeroWall Python 尚未就绪。')
-    const installedManifest = await this.readInstalledManifest(current.root)
-    const stableRoot = current.runtimeRoot ?? await stat(join(dirname(this.options.root), 'Python', 'python.exe')).then(() => dirname(this.options.root), () => undefined)
+    let installedManifest = await this.readInstalledManifest(current.root)
+    let stableRoot = current.runtimeRoot ?? await stat(join(dirname(this.options.root), 'Python', 'python.exe')).then(() => dirname(this.options.root), () => undefined)
     const shared = !!stableRoot && basename(this.options.root).toLowerCase() === 'zerowall-python'
     const manifest = shared ? { ...installedManifest, python: { ...installedManifest.python, ...SHARED_LAYOUT } } : installedManifest
     const executable = shared ? join(stableRoot!, SHARED_LAYOUT.relativeExecutable) : join(current.root, manifest.python.relativeExecutable)
     const sitePackages = shared ? join(stableRoot!, SHARED_LAYOUT.relativeSitePackages) : join(current.root, manifest.python.relativeSitePackages)
     if (basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python' && (!shared || !current.runtimeRoot || resolve(current.runtimeRoot) !== resolve(dirname(this.options.root)))) {
-      throw new Error('共享 Python 尚未迁移完成，已停止在旧 profile 或独立目录中安装依赖。请先修复共享环境迁移。')
+      throw new Error('共享 Python 尚未就绪；请从 Python 环境页重试签名基础环境安装。')
     }
-    const settings = await readFile(join(this.options.root, 'settings.json'), 'utf8').then(JSON.parse, () => ({}))
+    const settings = await readFile(join(this.options.settingsPath ?? this.options.root, 'settings.json'), 'utf8').then(JSON.parse, () => ({}))
     return { root: current.root, manifest, executable, sitePackages, mirror: resolveMirror(settings.mirrorUrl ?? DEFAULT_INDEX_URL) }
-  }
-
-  /** Migrate Python files from the active runtime into the stable AppData path. */
-  private async migrateSharedRuntime(): Promise<void> {
-    if (this.migration) return this.migration
-    this.migration = this.performSharedRuntimeMigration().finally(() => { this.migration = undefined })
-    return this.migration
-  }
-
-  private async performSharedRuntimeMigration(): Promise<void> {
-    // Test/manual controller roots may intentionally be arbitrary directories;
-    // migration is enabled for the managed product root only.
-    if (basename(resolve(this.options.root)).toLowerCase() !== 'zerowall-python') return
-    const current = await readCurrent(this.options.root)
-    if (!current?.root || current.health !== 'ready') return
-    let signed: McpEnvironmentManifest
-    try { signed = await this.readInstalledManifest(current.root) } catch { return }
-    const stableRoot = dirname(this.options.root)
-    if (current.runtimeRoot === stableRoot && await isStablePythonDirectory(stableRoot) && !current.overlayPath) return
-    try {
-      if (current.runtimeRoot === stableRoot && await isStablePythonDirectory(stableRoot)) {
-        await mergeLegacyPythonOverlay(join(stableRoot, SHARED_LAYOUT.relativeExecutable), join(stableRoot, SHARED_LAYOUT.relativeSitePackages), current.overlayPath)
-        await verifySharedPackages(stableRoot)
-        const currentWithoutOverlay = { ...current }
-        delete currentWithoutOverlay.overlayPath
-        await this.writeCurrent(currentWithoutOverlay)
-        return
-      }
-      const inventory = await this.pythonInfo()
-      if (!inventory.ready) throw new Error(inventory.message ?? '无法读取迁移前的 Python 依赖清单。')
-      const userPackages = inventory.packages.filter(pkg => pkg.source === 'custom')
-      const customizations = { ...(current.customizations ?? {}), ...Object.fromEntries(userPackages.map(pkg => [pythonPackageName(pkg.name), pkg.version])) }
-      const extensionNames = [...new Set([...(current.extensionNames ?? []), ...userPackages.map(pkg => pythonPackageName(pkg.name))])]
-      const oldOverlay = current.overlayPath
-      await migrateStablePython(this.options.root, current.root, signed, oldOverlay)
-      await verifySharedPackages(stableRoot)
-      const migrated = { ...current, runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT, customizations, extensionNames, installedAt: new Date().toISOString() }
-      delete (migrated as CurrentEnvironmentRecord).overlayPath
-      await this.writeCurrent(migrated)
-    } catch (error) {
-      await this.recordDiagnostic({ event: 'shared_runtime_migration_failed', error: describeError(error) })
-      this.status.lastUpdateError = `共享 Python 目录迁移未完成，原环境保留：${sanitizeError(error)}`
-    }
   }
 
   async selectManual(root: string): Promise<McpEnvironmentStatus> {
@@ -498,15 +471,52 @@ export class McpEnvironmentController {
       this.set({ phase: 'checking', progress: 0, message: '正在检查 ZeroWall Python' })
       const manifest = await this.fetchManifest()
       requestedManifest = manifest
-      await this.migrateLegacyCurrent(manifest)
       const installed = await this.installedRoot(manifest)
       if (installed !== undefined) {
         const status = environmentStatus('ready', manifest, installed.root, installed.slot, false, installed.rollbackAvailable)
         status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
         return this.set(status)
       }
+      // A new installation has no runtime to migrate or MCP generation to
+      // switch. Install the signed, bundled interpreter at the selected public
+      // Python path directly; slots are reserved for later rollback snapshots.
+      const stableRoot = dirname(this.options.root)
+      let current = await readCurrent(this.options.root)
+      const productRuntime = basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python'
+      const sharedManifest = manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
+        && manifest.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages
+      const managedStable = productRuntime && sharedManifest
+      let activeShared = false
+      if (productRuntime && current?.root && current.health === 'ready'
+        && current.runtimeRoot === stableRoot && await isStablePythonDirectory(stableRoot)) {
+        const activeManifest = await this.readInstalledManifest(current.root).catch(() => undefined)
+        activeShared = activeManifest?.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
+          && activeManifest.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages
+      }
+      if (productRuntime && sharedManifest && !activeShared && await isStablePythonDirectory(stableRoot)) {
+        const existingManifest = await this.readInstalledManifest(stableRoot).catch(() => undefined)
+        if (existingManifest?.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
+          && existingManifest.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages) {
+          try {
+            await (this.options.verifySharedPython ?? verifySharedPackages)(stableRoot)
+            const restored = { mode: 'managed', environmentVersion: environmentVersion(existingManifest), contentRevision: contentRevision(existingManifest), archiveSha256: existingManifest.archiveSha256, root: stableRoot, runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT, slot: 'manual', manifest: existingManifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: false }
+            await this.writeCurrent(restored, 'current.json', false)
+            const status = environmentStatus('ready', existingManifest, stableRoot, 'manual', false, false)
+            status.onlineEnvironmentVersion = environmentVersion(manifest)
+            status.onlineContentRevision = contentRevision(manifest)
+            status.updateAvailable = compareEnvironmentVersions(environmentVersion(existingManifest), environmentVersion(manifest)) < 0
+              || (environmentVersion(existingManifest) === environmentVersion(manifest) && contentRevision(existingManifest) < contentRevision(manifest))
+            status.lastCheckedAt = new Date().toISOString()
+            return this.set(status)
+          } catch (error) {
+            await this.recordDiagnostic({ event: 'existing_shared_python_not_reused', error: describeError(error) })
+          }
+        }
+      }
+      if (productRuntime && sharedManifest && !activeShared && this.options.bundledArchivePath) {
+        return await this.installBundledFirstRun(manifest)
+      }
       this.set({ phase: 'downloading', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), progress: 5, message: '正在同步 ZeroWall Python' })
-      const current = await readCurrent(this.options.root)
       const currentSlot = current?.slot === 'a' || current?.slot === 'b' ? current.slot : undefined
       const targetSlot: 'a' | 'b' = currentSlot === 'a' ? 'b' : 'a'
       const target = join(this.options.root, 'slots', `${targetSlot}-${randomUUID()}`)
@@ -544,6 +554,11 @@ export class McpEnvironmentController {
           installedManifest = await normalizeRuntimeCandidate(temporary, manifest)
           await this.verifyHealth(temporary, installedManifest)
         }
+        // Keep the signed manifest byte-for-byte intact. Legacy archives are
+        // relocated by `normalizeRuntimeCandidate()` and carry a signed
+        // `runtime-layout.json` sidecar describing the stable paths; mutating
+        // the manifest itself would invalidate its Ed25519 signature and make
+        // the next restart reject an otherwise healthy installation.
         await writeFile(join(temporary, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
         await mkdir(dirname(target), { recursive: true })
         await renameWithRetry(temporary, target)
@@ -552,43 +567,54 @@ export class McpEnvironmentController {
         throw error
       }
       await mkdir(this.options.root, { recursive: true })
-      if (current !== undefined && current.root && current.health === 'ready' && (current.slot === 'a' || current.slot === 'b')) {
-        await this.writeCurrent({ ...current, root: current.root, slot: current.slot, rollbackAvailable: true, rollbackAt: new Date().toISOString() }, 'rollback.json')
+      if (activeShared && current?.root && current.health === 'ready') {
+        const previousRoot = resolve(current.root) === resolve(stableRoot)
+          ? await this.snapshotStablePython(stableRoot)
+          : current.root
+        await this.writeCurrent({ ...current, root: previousRoot, rollbackAvailable: true, rollbackAt: new Date().toISOString() }, 'rollback.json')
+      } else if ((!managedStable || activeShared) && current?.root && current.health === 'ready' && (current.slot === 'a' || current.slot === 'b')) {
+        await this.writeCurrent({ ...current, rollbackAvailable: true, rollbackAt: new Date().toISOString() }, 'rollback.json')
       }
-      const managedStable = basename(this.options.root).toLowerCase() === 'zerowall-python' && installedManifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
-      const stableRoot = dirname(this.options.root)
+      // A legacy slot/profile is deliberately not a source of Python packages.
+      // Only retain customizations when the currently active record already
+      // points at a healthy stable directory using the shared layout.  If that
+      // check fails, the signed installer archive is the complete source and
+      // the old profile remains untouched for manual recovery.
+      const existingSharedRuntime = managedStable && activeShared
       // Build and replay customizations in the unactivated candidate. Creating
       // site-packages under AppData\Python before migration makes the stable
       // directory look occupied (it has no python.exe yet), which aborts a
       // first install. migrateStablePython copies the complete verified
       // candidate into the stable directory after all writes are complete.
       const candidateSitePackages = join(target, installedManifest.python.relativeSitePackages)
-      const previousOverlay = current?.overlayPath
+      // Import a legacy package overlay only when the current record already
+      // points at this stable shared runtime. Old profiles are retained as-is;
+      // they are never copied into the freshly unpacked signed base.
+      const previousOverlay = existingSharedRuntime ? current?.overlayPath : undefined
+      const previousCustomizations = existingSharedRuntime ? current?.customizations : undefined
+      const previousRemovedPackages = existingSharedRuntime ? current?.removedPackages : undefined
       await mkdir(candidateSitePackages, { recursive: true })
       // A shared environment has one site-packages tree; copying it wholesale
       // would overwrite the new official versions. Its recorded user pins are
       // replayed against the new base instead.
-      if (!this.options.healthCheck) await replayCustomizations(target, installedManifest, candidateSitePackages, current?.customizations ?? {}, current?.removedPackages ?? [])
-      if (current?.root && current.customizations) {
+      if (!this.options.healthCheck) await replayCustomizations(target, installedManifest, candidateSitePackages, previousCustomizations ?? {}, previousRemovedPackages ?? [])
+      if (existingSharedRuntime && current?.root && previousCustomizations) {
         const previousHistory = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
         await writeFile(join(target, 'customization.json'), JSON.stringify({ ...previousHistory, customizations: current.customizations, verifiedAt: new Date().toISOString() }))
       }
-      if (managedStable) {
-        try {
-          await migrateStablePython(this.options.root, target, installedManifest, previousOverlay, true)
-          await (this.options.verifySharedPython ?? verifySharedPackages)(stableRoot)
-        } catch (error) {
-          if (current?.root && current.health === 'ready') {
-            const previous = await this.readInstalledManifest(current.root)
-            await migrateStablePython(this.options.root, current.root, previous, current.overlayPath, true).catch(rollbackError => this.recordDiagnostic({ event: 'stable_python_update_rollback_failed', error: describeError(rollbackError) }))
-          }
-          throw error
-        }
-      }
-      const record = { mode: 'managed', environmentVersion: environmentVersion(installedManifest), contentRevision: contentRevision(installedManifest), archiveSha256: installedManifest.archiveSha256, root: target, ...(managedStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT } : {}), customizations: current?.customizations, removedPackages: current?.removedPackages, extensionNames: current?.extensionNames, localRevision: current?.localRevision, slot: targetSlot, manifest: installedManifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: current?.health === 'ready' && current.slot !== 'manual' }
+      const record = { mode: 'managed', environmentVersion: environmentVersion(installedManifest), contentRevision: contentRevision(installedManifest), archiveSha256: installedManifest.archiveSha256, root: target, ...(managedStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT } : {}), ...(existingSharedRuntime ? { customizations: previousCustomizations, removedPackages: previousRemovedPackages, extensionNames: current?.extensionNames, localRevision: current?.localRevision } : {}), slot: targetSlot, manifest: installedManifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: existingSharedRuntime || (current?.health === 'ready' && current.slot !== 'manual') }
       delete (record as Record<string, unknown>).overlayPath
-      await this.writeCurrent(record)
-      const status = environmentStatus('ready', installedManifest, target, targetSlot, true, current?.health === 'ready' && current.slot !== 'manual')
+      if (managedStable) {
+        const verifySharedPython = this.options.verifySharedPython ?? verifySharedPackages
+        // Validate the complete signed candidate before touching the active
+        // directory, then retain a transactional backup until the installed
+        // directory and pointer pass their checks. The Host observes the
+        // current.json change; a separate MCP preflight is not a Python
+        // installation gate.
+        await verifySharedPython(target)
+        await migrateStablePython(this.options.root, target, installedManifest, previousOverlay, true, verifySharedPython, () => this.writeCurrent(record, 'current.json', false))
+      } else await this.writeCurrent(record, 'current.json', false)
+      const status = environmentStatus('ready', installedManifest, target, targetSlot, true, record.rollbackAvailable)
       status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
       return this.set(status)
     } catch (error) {
@@ -608,6 +634,99 @@ export class McpEnvironmentController {
     }
   }
 
+  /** A missing shared runtime is a fresh install, even when an obsolete
+   * Roaming/slot pointer exists. Only the signed installer archive is used. */
+  private async installBundledFirstRun(manifest: McpEnvironmentManifest): Promise<McpEnvironmentStatus> {
+    const stableRoot = dirname(this.options.root)
+    const publicPython = join(stableRoot, 'Python')
+    const archivePath = this.options.bundledArchivePath!
+    const installMarker = join(publicPython, '.zerowall-install-in-progress')
+    const manifestPath = join(stableRoot, 'manifest.json')
+    const previousManifest = await readFile(manifestPath).catch(() => undefined)
+    const currentPath = join(this.options.root, 'current.json')
+    const previousCurrent = await readFile(currentPath).catch(() => undefined)
+    let createdPython = false
+    let committed = false
+    let pointerCommitted = false
+    await requireFreeSpace(stableRoot, manifest.archiveSize * 5 + 128 * 1024 ** 2)
+    try {
+      const archive = await stat(archivePath)
+      if (!archive.isFile() || archive.size !== manifest.archiveSize) throw new Error('Bundled Python archive size does not match its signed manifest.')
+      const hash = createHash('sha256')
+      for await (const chunk of createReadStream(archivePath)) hash.update(chunk)
+      if (hash.digest('hex') !== manifest.archiveSha256) throw new Error('Bundled Python archive SHA-256 does not match its signed manifest.')
+      this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), version: environmentVersion(manifest), contentRevision: contentRevision(manifest), progress: 80, message: '正在从安装包解压 Python' })
+      const existing = await lstat(publicPython).catch(() => undefined)
+      if (existing) {
+        if (!existing.isDirectory() || existing.isSymbolicLink()) throw new Error('共享 Python 路径已被文件或目录联接占用。')
+        // No profile migration or temporary Python directory: when the chosen
+        // location has no usable interpreter, replace its stale/partial Python
+        // tree in place from the signed archive shipped with this installer.
+        await rm(publicPython, { recursive: true, force: true })
+      }
+      await mkdir(publicPython, { recursive: true })
+      createdPython = true
+      await writeFile(installMarker, JSON.stringify({ archiveSha256: manifest.archiveSha256, startedAt: new Date().toISOString() }), { flag: 'wx' })
+      await extractZipInWorker(archivePath, stableRoot, (completed, total) => {
+        this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), progress: total ? Math.min(92, 80 + Math.floor(completed / total * 12)) : 92, message: `正在解压 Python ${completed} / ${total} 个文件`, updateJob: { taskId: manifest.archiveSha256, kind: 'initialize', stage: 'installing', canPause: true, completedFiles: completed, totalFiles: total } })
+      }, 'Python/')
+      const entries = (await readdir(publicPython)).filter(entry => entry !== '.zerowall-install-in-progress')
+      if (!entries.some(entry => entry.toLowerCase() === 'python.exe')) throw new Error('Bundled Python archive did not install Python/python.exe.')
+      const packages = await lstat(join(publicPython, 'Lib', 'site-packages'))
+      if (!packages.isDirectory() || packages.isSymbolicLink()) throw new Error('Bundled Python site-packages is invalid.')
+      if (this.options.healthCheck) await this.options.healthCheck(stableRoot, manifest)
+      else {
+        const result = await execute(join(publicPython, 'python.exe'), ['--version'], stableRoot)
+        const reported = `${result.stdout}\n${result.stderr}`
+        if (!new RegExp(`Python ${manifest.python.version.replaceAll('.', '\\.')}\\s*(?:$|\\.)`, 'u').test(reported)) throw new Error(`Bundled Python version does not match ${manifest.python.version}.`)
+      }
+      await (this.options.verifySharedPython ?? verifySharedPackages)(stableRoot)
+      this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), progress: 95, message: '正在启用共享 Python' })
+      committed = true
+      await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+      const record = { mode: 'managed', environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), archiveSha256: manifest.archiveSha256, root: stableRoot, runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT, slot: 'manual', manifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: false }
+      await this.writeCurrent(record, 'current.json', false)
+      pointerCommitted = true
+      await rm(installMarker, { force: true })
+      const status = environmentStatus('ready', manifest, stableRoot, 'manual', true, false)
+      status.onlineEnvironmentVersion = environmentVersion(manifest)
+      status.onlineContentRevision = contentRevision(manifest)
+      status.updateAvailable = false
+      status.lastCheckedAt = new Date().toISOString()
+      await this.recordDiagnostic({ event: 'first_run_install_complete', runtimeRoot: publicPython, installSource: 'signed-bundled-archive' })
+      return this.set(status)
+    } catch (error) {
+      if (pointerCommitted) {
+        if (previousCurrent) await writeFile(currentPath, previousCurrent).catch(() => undefined)
+        else await rm(currentPath, { force: true }).catch(() => undefined)
+      }
+      if (committed) {
+        await rm(publicPython, { recursive: true, force: true }).catch(() => undefined)
+        if (previousManifest) await writeFile(manifestPath, previousManifest).catch(() => undefined)
+        else await rm(manifestPath, { force: true }).catch(() => undefined)
+      }
+      if (createdPython) await rm(publicPython, { recursive: true, force: true }).catch(() => undefined)
+      throw error
+    }
+  }
+
+  private async snapshotStablePython(stableRoot: string): Promise<string> {
+    const source = join(stableRoot, 'Python')
+    await requireFreeSpace(this.options.root, await directoryBytes(source) + 128 * 1024 ** 2)
+    const snapshot = join(this.options.root, 'slots', `shared-${randomUUID()}`)
+    try {
+      await copyRuntimeSnapshot(source, join(snapshot, 'Python'))
+      for (const name of ['manifest.json', 'runtime-layout.json', 'customization.json']) {
+        const contents = await readFile(join(stableRoot, name)).catch(() => undefined)
+        if (contents) await writeFile(join(snapshot, name), contents)
+      }
+      return snapshot
+    } catch (error) {
+      await rm(snapshot, { recursive: true, force: true }).catch(() => undefined)
+      throw error
+    }
+  }
+
   private async fetchManifest(): Promise<McpEnvironmentManifest> {
     if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('ZeroWall Python 仅支持 Windows x64。')
     if (this.options.publicKey.trim() === '') throw new Error('ZeroWall Python verification key is not configured.')
@@ -619,9 +738,18 @@ export class McpEnvironmentController {
       if (record?.root && record.health === 'ready') {
         try {
           const installed = await this.readInstalledManifest(record.root)
+          const productRoot = basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python'
+          const activeSharedRuntime = !productRoot || (
+            installed.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
+            && installed.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages
+            && record.runtimeRoot === dirname(this.options.root)
+            && await isStablePythonDirectory(dirname(this.options.root))
+          )
           // A newly installed desktop must never downgrade a runtime that has
-          // already been updated beyond its bundled base.
-          if (compareEnvironmentVersions(environmentVersion(installed), environmentVersion(manifest)) > 0 || (environmentVersion(installed) === environmentVersion(manifest) && contentRevision(installed) > contentRevision(manifest))) return installed
+          // already been updated beyond its bundled base.  An old-layout
+          // profile is not active for this product anymore: use the bundled
+          // signed base to replace it without attempting an in-place migration.
+          if (activeSharedRuntime && (compareEnvironmentVersions(environmentVersion(installed), environmentVersion(manifest)) > 0 || (environmentVersion(installed) === environmentVersion(manifest) && contentRevision(installed) > contentRevision(manifest)))) return installed
         } catch (error) {
           // A stale/compact current record is not evidence of a usable runtime.
           // Keep the signed bundled base as the recovery source instead of
@@ -652,11 +780,20 @@ export class McpEnvironmentController {
     }
   }
 
+
+
   private async currentHealthyRoot(): Promise<{ root: string; slot: 'a' | 'b' | 'manual'; manifest: McpEnvironmentManifest; rollbackAvailable: boolean } | undefined> {
     try {
       const record = await readCurrent(this.options.root)
       if (typeof record?.root !== 'string' || record.health !== 'ready') return undefined
       const manifest = await this.readInstalledManifest(record.root)
+      if (basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python') {
+        const stableRoot = dirname(this.options.root)
+        if (manifest.python.relativeExecutable !== SHARED_LAYOUT.relativeExecutable
+          || manifest.python.relativeSitePackages !== SHARED_LAYOUT.relativeSitePackages
+          || record.runtimeRoot !== stableRoot
+          || !await isStablePythonDirectory(stableRoot)) return undefined
+      }
       await this.verifyHealth(record.root, manifest)
       const slot = record.slot === 'a' || record.slot === 'b' ? record.slot : 'manual'
       return { root: record.root, slot, manifest, rollbackAvailable: record.rollbackAvailable === true }
@@ -669,24 +806,25 @@ export class McpEnvironmentController {
       if (typeof record?.root !== 'string' || record.health !== 'ready') return undefined
       const installed = await this.readInstalledManifest(record.root)
       if (environmentVersion(installed) !== environmentVersion(manifest) || contentRevision(installed) !== contentRevision(manifest) || installed.archiveSha256 !== manifest.archiveSha256) return undefined
+      // A legacy profile may contain the same signed archive metadata while
+      // its interpreter still lives in the old slot layout.  In the product
+      // controller that is not a usable shared runtime: force a fresh install
+      // from the signed bundled archive so the stable Python directory is
+      // rebuilt in place.  Returning the legacy slot here was the path that
+      // left users stuck behind "shared Python migration" after an install
+      // failure.
+      const managedShared = basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python'
+      if (managedShared) {
+        const stableRoot = dirname(this.options.root)
+        if (manifest.python.relativeExecutable !== SHARED_LAYOUT.relativeExecutable
+          || manifest.python.relativeSitePackages !== SHARED_LAYOUT.relativeSitePackages
+          || record.runtimeRoot !== stableRoot
+          || !await isStablePythonDirectory(stableRoot)) return undefined
+      }
       await this.verifyHealth(record.root, installed)
       const slot = record.slot === 'a' || record.slot === 'b' ? record.slot : 'manual'
       return { root: record.root, slot, rollbackAvailable: record.rollbackAvailable === true }
     } catch { return undefined }
-  }
-
-  private async migrateLegacyCurrent(manifest: McpEnvironmentManifest): Promise<void> {
-    const record = await readCurrent(this.options.root)
-    if (record === undefined || typeof record.root !== 'string' || record.slot === 'a' || record.slot === 'b' || record.slot === 'manual') return
-    const legacyRoot = resolve(record.root)
-    try {
-      const installed = await this.readInstalledManifest(legacyRoot)
-      await this.verifyHealth(legacyRoot, installed)
-      // Adopt metadata only: older processes may still be using the legacy directory.
-      await this.writeCurrent({ ...record, mode: 'managed', root: legacyRoot, slot: 'a', environmentVersion: environmentVersion(installed), contentRevision: contentRevision(installed), archiveSha256: installed.archiveSha256, manifest: installed, health: 'ready', rollbackAvailable: false })
-    } catch {
-      // Leave the legacy directory untouched; the normal installer will create a fresh slot.
-    }
   }
 
   private async readInstalledManifest(root: string, expectedVersion?: string): Promise<McpEnvironmentManifest> {
@@ -742,7 +880,7 @@ export class McpEnvironmentController {
     this.options.publish(this.current()); return this.current()
   }
 
-  private async writeCurrent(record: Record<string, unknown>, fileName = 'current.json'): Promise<void> {
+  private async writeCurrent(record: Record<string, unknown>, fileName = 'current.json', coordinateHost = this.options.coordinateHost === true): Promise<void> {
     await mkdir(this.options.root, { recursive: true })
     const current = join(this.options.root, fileName)
     const temporary = `${current}.tmp-${process.pid}-${Date.now()}`
@@ -755,7 +893,7 @@ export class McpEnvironmentController {
       const metadata: SharedPythonRuntime = { id: SHARED_PYTHON_RUNTIME_ID, platform: 'win32-x64', rootPath: runtimeRoot, executablePath: join(runtimeRoot, 'python.exe'), sitePackagesPath: join(runtimeRoot, 'Lib', 'site-packages'), source: record.runtimeLayout ? 'migrated' : record.mode === 'manual' ? 'user-configured' : 'managed', pythonVersion: manifest.python.version, environmentVersion: environmentVersion(manifest), manifestRevision: typeof record.dependencyRevision === 'string' ? record.dependencyRevision : String(contentRevision(manifest)), manifestSha256: typeof record.dependencyManifestSha256 === 'string' ? record.dependencyManifestSha256 : createHash('sha256').update(manifestBytes).digest('hex'), status: 'available' }
       await writeFile(join(runtimeRoot, 'runtime.json'), `${JSON.stringify(metadata, null, 2)}\n`)
     }
-    if (fileName === 'current.json' && this.options.coordinateHost) {
+    if (fileName === 'current.json' && coordinateHost) {
       const transactionId = randomUUID()
       const transaction = join(this.options.root, 'activation.json')
       const staging = `${transaction}.tmp`

@@ -41,6 +41,11 @@ function change(path: string, oldText: string | null, newText: string): FileRevi
   return { path, diffs: [{ path, oldText, newText }] }
 }
 
+// Windows regular-file modes are reported as a synthetic 0666 mask.
+function expectedMode(mode: number): number {
+  return process.platform === 'win32' ? 0o666 : mode
+}
+
 async function status(agent: Agent, request: FileReviewRequest) {
   return FileReviewService.prototype.status.call({} as FileReviewService, agent, request)
 }
@@ -90,7 +95,7 @@ describe('Host file-review change engine', () => {
       files: [{ path: 'created.txt', state: 'applied', changed: true }],
     })
     expect(await readFile(filename, 'utf8')).toBe('created\n')
-    expect((await lstat(filename)).mode & 0o777).toBe(0o640)
+    expect((await lstat(filename)).mode & 0o777).toBe(expectedMode(0o640))
   })
 
   // 验证空文件也能撤销和恢复；若实际权限与快照不一致，则报告冲突并保留文件。
@@ -147,17 +152,19 @@ describe('Host file-review change engine', () => {
       changed: true,
     })
     expect(await readFile(empty, 'utf8')).toBe('')
-    expect((await applyChange(agent, { action: 'undo', files: [driftedCreate] })).files[0]).toEqual(
-      expect.objectContaining({ state: 'conflict', changed: false }),
-    )
-    expect(await readFile(drifted, 'utf8')).toBe('content')
+    if (process.platform !== 'win32') {
+      expect((await applyChange(agent, { action: 'undo', files: [driftedCreate] })).files[0]).toEqual(
+        expect.objectContaining({ state: 'conflict', changed: false }),
+      )
+      expect(await readFile(drifted, 'utf8')).toBe('content')
+    }
     expect((await applyChange(agent, { action: 'undo', files: [emptyDelete] })).files[0]).toEqual({
       path: 'empty-deleted.txt',
       state: 'undone',
       changed: true,
     })
     expect(await readFile(join(root, 'empty-deleted.txt'), 'utf8')).toBe('')
-    expect((await lstat(join(root, 'empty-deleted.txt'))).mode & 0o777).toBe(0o666)
+    expect((await lstat(join(root, 'empty-deleted.txt'))).mode & 0o777).toBe(expectedMode(0o666))
   })
 
   // 验证撤销删除会恢复 UTF-8 文件及权限，重新应用删除会再次移除文件。
@@ -188,7 +195,7 @@ describe('Host file-review change engine', () => {
       files: [{ path: 'deleted.txt', state: 'undone', changed: true }],
     })
     expect(await readFile(filename, 'utf8')).toBe('deleted\n')
-    expect((await lstat(filename)).mode & 0o777).toBe(0o600)
+    expect((await lstat(filename)).mode & 0o777).toBe(expectedMode(0o600))
 
     expect(await applyChange(agent, { ...request, action: 'redo' })).toEqual({
       files: [{ path: 'deleted.txt', state: 'applied', changed: true }],
@@ -288,7 +295,7 @@ describe('Host file-review change engine', () => {
     expect(await readFile(join(root, 'created-edited.txt'), 'utf8')).toBe('B')
     await expect(access(join(root, 'edited-deleted.txt'))).rejects.toThrow()
     expect(await readFile(join(root, 'replaced.txt'), 'utf8')).toBe('new')
-    expect((await lstat(join(root, 'replaced.txt'))).mode & 0o777).toBe(0o666)
+    expect((await lstat(join(root, 'replaced.txt'))).mode & 0o777).toBe(expectedMode(0o666))
   })
 
   // 验证文件在记录操作后被外部修改或重新创建时，撤销和重新应用不会删除或覆盖这些内容。
@@ -466,7 +473,7 @@ describe('Host file-review change engine', () => {
       files: [change('script.sh', 'OLD', 'NEW')],
     })
     expect(await readFile(filename, 'utf8')).toBe('OLD')
-    expect((await lstat(filename)).mode & 0o777).toBe(0o640)
+    expect((await lstat(filename)).mode & 0o777).toBe(expectedMode(0o640))
   })
 
   // 验证非 UTF-8 文件返回明确错误，会话没有工作区时拒绝执行状态查询。

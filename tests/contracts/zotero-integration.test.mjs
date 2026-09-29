@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import test from 'node:test'
@@ -11,6 +12,7 @@ import {
   adaptZoteroItemGraph,
   adaptZoteroRemote,
   adaptZoteroContract,
+  adaptZoteroStatusCodec,
 } from '../../tools/packaging/adapt-zotero.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
@@ -19,9 +21,11 @@ const read = path => readFile(resolve(root, path), 'utf8')
 test('live item and citation endpoints preserve provider refs and configured styles', async () => {
   let source = adaptZoteroRemote(await read('desktop/node_modules/dsh-zotero/lib/remote.js'))
   assert.equal(adaptZoteroRemote(source), source)
+  const syntax = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: source, encoding: 'utf8' })
+  assert.equal(syntax.status, 0, syntax.stderr)
   source = source.replace(/^import .*;$/gm, '')
-  const Runtime = Function('TypertRemoteService', 'parseSupportedRef', 'ZOTERO_SETTINGS_NAMESPACE', source.replace('export class ', 'class ') + '\n; return ZoteroRuntime')(
-    class { constructor(ctx) { this.ctx = ctx } }, (ref, kinds) => { assert.deepEqual(kinds, ['item']); return { ref } }, 'zotero')
+  const Runtime = Function('TypertRemoteService', 'parseSupportedRef', 'ZOTERO_SETTINGS_NAMESPACE', 'ZOTERO_STATUS_SERVICE_KEY', source.replace('export class ', 'class ') + '\n; return ZoteroRuntime')(
+    class { constructor(ctx) { this.ctx = ctx } }, (ref, kinds) => { assert.deepEqual(kinds, ['item']); return { ref } }, 'zotero', 'zoteroRemote')
   const ref = 'zotero://user/0/item/ABCD1234?server=instance'
   const service = { config: { defaultStyle: 'apa', defaultLocale: 'zh-CN' },
     get: async request => { assert.deepEqual(request.ref, { ref }); assert.equal(request.include.size, 0); return { title: 'Actual metadata', abstract: 'Actual abstract' } },
@@ -32,7 +36,12 @@ test('live item and citation endpoints preserve provider refs and configured sty
   assert.equal(JSON.parse(await runtime.exportCitation({ ref, format: 'bibtex' })).text, '@article{actual}')
   const contract = adaptZoteroContract(await read('desktop/node_modules/dsh-zotero/lib/contract.js'))
   assert.equal(adaptZoteroContract(contract), contract)
-  assert.match(contract, /wire: 'request', source: 'json'/)
+  assert.match(contract, /ZOTERO_STATUS_ENDPOINT/u)
+  const statusCodec = adaptZoteroStatusCodec(await read('desktop/node_modules/dsh-zotero/lib/status-codec.js'))
+  assert.equal(adaptZoteroStatusCodec(statusCodec), statusCodec)
+  assert.match(statusCodec, /method: 'localAuthorization'/u)
+  assert.match(statusCodec, /method: 'itemDetail'/u)
+  assert.match(statusCodec, /method: 'exportCitation'/u)
 })
 
 test('shipped Zotero reducer restores dispatcher search rows and prefers structured metadata', async () => {
@@ -81,77 +90,72 @@ test('Zotero Sources tab invalidates for nested Progressive Tools calls', async 
   const original = await read('desktop/node_modules/dsh-zotero/lib/client.js')
   const adapted = adaptZoteroClient(original)
   assert.equal(adaptZoteroClient(adapted), adapted)
-  assert.match(adapted, /visit\(root, key, 1\)/u)
-  assert.match(adapted, /for \(const child of block\.subCalls\) visit\(child, key, depth \+ 1\)/u)
+  assert.match(adapted, /for \(const \{ key, root \} of visibleToolRoots\(snapshot\)\) visitBlock\(root, \[key\], 1\)/u)
+  assert.match(adapted, /visitBlock\(child, \[\.\.\.path, child\.callId\], depth \+ 1\)/u)
+  assert.match(adapted, /function zoteroDispatch\(block\)/u)
 
-  const match = adapted.match(/function sessionSignatureOf\(snapshot\) \{[\s\S]*?\n\}/u)
-  assert.ok(match)
-  const sessionSignatureOf = Function(
+  const visitMatch = adapted.match(/function visitVisibleZoteroCalls\(snapshot, visit\) \{[\s\S]*?\n\}/u)
+  const signatureMatch = adapted.match(/function sessionSignatureOf\(snapshot\) \{[\s\S]*?\n\}/u)
+  assert.ok(visitMatch)
+  assert.ok(signatureMatch)
+  const visitVisibleZoteroCalls = Function(
     'visibleToolRoots',
     'isZoteroRoot',
-    'isSettledTool',
     'MAX_SUBCALL_DEPTH',
-    `${match[0]}; return sessionSignatureOf;`,
+    `${visitMatch[0]}; return visitVisibleZoteroCalls;`,
   )(
-    snapshot => snapshot.roots,
+    snapshot => {
+      if (snapshot === undefined) return []
+      return snapshot.order.flatMap(key => {
+        const node = snapshot.nodes.get(key)
+        return node?.kind === 'tool-call' && node.visibility === 'visible' ? [{ key, root: node.data.root }] : []
+      })
+    },
     block => block.name.startsWith('zotero_'),
-    block => block.settled,
     256,
   )
-  const nested = { callId: 'z1', name: 'zotero_search', settled: false, subCalls: [] }
+  const sessionSignatureOf = Function(
+    'visitVisibleZoteroCalls',
+    'isSettledTool',
+    'MAX_SUBCALL_DEPTH',
+    `${signatureMatch[0]}; return sessionSignatureOf;`,
+  )(visitVisibleZoteroCalls, block => 'kind' in block, 256)
+  const nested = { callId: 'z1', name: 'zotero_search', phase: 'running', subCalls: [] }
   const snapshot = {
-    roots: [{ key: 'root-1', root: { callId: 'dispatch-1', name: 'tool_dispatch', settled: false, subCalls: [nested] } }],
+    order: ['root-1'],
+    nodes: new Map([['root-1', { kind: 'tool-call', visibility: 'visible', data: {
+      root: { callId: 'dispatch-1', name: 'tool_dispatch', phase: 'running', subCalls: [nested] },
+    } }]]),
   }
   const running = sessionSignatureOf(snapshot)
-  assert.deepEqual(JSON.parse(running), { order: ['root-1:z1'], running: ['z1'] })
-  nested.settled = true
+  assert.deepEqual(JSON.parse(running), { order: [{ callId: 'z1', path: ['root-1', 'z1'] }], running: [{ callId: 'z1', phase: 'running' }] })
+  nested.kind = 'tool-result'
+  nested.phase = 'done'
   const settled = sessionSignatureOf(snapshot)
-  assert.deepEqual(JSON.parse(settled), { order: ['root-1:z1'], running: [] })
+  assert.deepEqual(JSON.parse(settled), { order: [{ callId: 'z1', path: ['root-1', 'z1'] }], running: [] })
   assert.notEqual(settled, running)
   assert.throws(() => adaptZoteroClient('function sessionSignatureOf(snapshot) { return snapshot }'), /Unrecognized/u)
 })
 
-test('Zotero annotation traversal explicitly filters attachment children', async () => {
-  const itemGraphOriginal = await read('desktop/node_modules/dsh-zotero/lib/item-graph.js')
+test('Zotero 0.11 ships native annotation traversal and the adapter stays idempotent', async () => {
   const detailOriginal = await read('desktop/node_modules/dsh-zotero/lib/local/detail.js')
-  const itemGraph = adaptZoteroItemGraph(itemGraphOriginal)
+  const childrenWire = await read('desktop/node_modules/dsh-zotero/lib/local/children-wire.js')
   const detail = adaptZoteroDetail(detailOriginal)
-  assert.equal(adaptZoteroItemGraph(itemGraph), itemGraph)
   assert.equal(adaptZoteroDetail(detail), detail)
-  assert.match(itemGraph, /options\.fetchAnnotationChildren \?\? options\.fetchChildren/u)
-  assert.match(detail, /fetchAnnotationChildren: \(childKey\) => fetchChildRows\(deps, childKey, library, serverId, signal, true\)/u)
-  assert.match(detail, /annotationsOnly \? new URLSearchParams\(\{ itemType: 'annotation' \}\) : undefined/u)
-
-  const graphModule = itemGraph
-    .replace("import { mapWithConcurrency } from './concurrency.js';", 'const mapWithConcurrency = async (rows, _limit, visit) => Promise.all(rows.map(visit));')
-    .replace("import { asRecord, asString } from './json.js';", 'const asRecord = value => value && typeof value === "object" ? value : undefined; const asString = value => typeof value === "string" ? value : undefined;')
-  const { loadItemGraph } = await import(`data:text/javascript;base64,${Buffer.from(graphModule).toString('base64')}`)
-  const calls = []
-  const graph = await loadItemGraph({
-    parentKey: 'PARENT',
-    concurrency: 2,
-    withAnnotations: true,
-    fetchChildren: async key => {
-      calls.push(`plain:${key}`)
-      return [{ key: 'PDF1', data: { itemType: 'attachment' } }]
-    },
-    fetchAnnotationChildren: async key => {
-      calls.push(`annotation:${key}`)
-      return [{ key: 'ANN1', data: { itemType: 'annotation' } }]
-    },
-  })
-  assert.deepEqual(calls, ['plain:PARENT', 'annotation:PDF1'])
-  assert.equal(graph.attachmentAnnotations.length, 1)
+  assert.match(detail, /fetchAnnotationChildren/u)
+  assert.match(detail, /loadChildRows/u)
+  assert.match(childrenWire, /itemType: 'annotation'/u)
+  assert.match(childrenWire, /fetchDirectChildren/u)
   assert.throws(() => adaptZoteroItemGraph('export const loadItemGraph = () => null'), /Unrecognized/u)
   assert.throws(() => adaptZoteroDetail('export const children = () => null'), /Unrecognized/u)
 })
 
 test('Zotero ships compiled entries and is mounted once in every profile', async () => {
   const desktop = JSON.parse(await read('desktop/package.json'))
-  assert.equal(desktop.dependencies['dsh-zotero'], '0.8.4')
+  assert.equal(desktop.dependencies['dsh-zotero'], '0.11.0')
   assert.equal(desktop.dependencies['@fylar/dsh-fylar-office-editor'], undefined)
   const manifest = JSON.parse(await read('desktop/node_modules/dsh-zotero/package.json'))
-  assert.equal(manifest.version, '0.8.4')
+  assert.equal(manifest.version, '0.11.0')
   assert.equal(manifest.license, 'MIT')
   for (const entry of ['lib/index.js', 'lib/client.js', 'LICENSE']) {
     assert.ok((await read(`desktop/node_modules/dsh-zotero/${entry}`)).length > 0)

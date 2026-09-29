@@ -18,10 +18,9 @@ import type { ChatFileMentions, TurnTailOwnerProps } from '@deepseek-ai/dsh-clie
 import { useMemo, useState } from 'react'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { ProducedFiles, type ProducedFilesProps } from '../src/client/ProducedFiles.tsx'
+import { ProducedFiles, ProducedFilesSlot, type ProducedFilesProps } from '../src/client/ProducedFiles.tsx'
 import {
-  FileReviewSettingsCard,
-  type FileReviewSettingsCardProps,
+  FileReviewSettingsTab,
 } from '../src/client/FileReviewSettingsCard.tsx'
 import { FileReviewTab, type ReviewTarget } from '../src/client/FileReviewTab.tsx'
 import {
@@ -50,6 +49,14 @@ import {
 import { boundedPtcFileReviewMarker, markerBlock } from '../src/ptc-marker.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { en, NS, zh } from '../src/client/locales.ts'
+
+// The Harness client bundles browser targets behind its runtime ModuleLoader.
+// Unit tests exercise this plugin's source modules directly, so provide the
+// small chat primitive that ReviewUserMessage delegates to without evaluating
+// the loader-wrapped browser bundle in Vitest.
+vi.mock('@deepseek-ai/dsh-client-ui-chat/client', () => ({
+  UserStyleBubble: () => null,
+}))
 
 /** Supply the host-owned tab lifecycle while exercising the real card and tab content. */
 function ReviewFixture({
@@ -1526,18 +1533,18 @@ describe('FileReview settings card', () => {
       mode: 'host' as const,
     }
     const setWordWrap = vi.fn(async () => {})
-    const props = {
-      t: makeTranslate(en),
-      useFileReviewSettings: <Selected,>(select: (value: typeof snapshot) => Selected) =>
-        select(snapshot),
-      setWordWrap,
-    } as unknown as FileReviewSettingsCardProps
-    const view = render(<FileReviewSettingsCard {...props} />)
+    const settings = {
+      getSnapshot: () => snapshot,
+      subscribe: () => () => {},
+      set: vi.fn(async (field: string, value: unknown) => {
+        if (field === 'wordWrap') snapshot.value = { ...snapshot.value, wordWrap: value === true }
+        await setWordWrap(value === true)
+      }),
+      unset: vi.fn(async () => {}),
+      mutate: vi.fn(async () => true),
+    }
+    const view = render(<FileReviewSettingsTab settings={settings} t={makeTranslate(en)} />)
 
-    const starLink = view.getByRole('link', { name: en['settings.star.aria'] })
-    expect(starLink.getAttribute('href')).toBe('https://github.com/left0ver/dsh-file-review')
-    expect(starLink.getAttribute('target')).toBe('_blank')
-    expect(starLink.getAttribute('rel')).toBe('noopener noreferrer')
     expect(view.queryByRole('switch')).toBeNull()
     fireEvent.click(view.getByRole('button', { name: 'Expand: File review' }))
     const toggle = view.getByRole('switch', { name: 'Automatically wrap long lines' })
@@ -1626,7 +1633,7 @@ describe('plugin registration', () => {
       settingsValue = { wordWrap: value }
       for (const listener of settingsListeners) listener()
     }
-    const settingsScope = {
+    const settingsForm = {
       getSnapshot: () => ({
         status: 'ready' as const,
         value: settingsValue,
@@ -1642,17 +1649,18 @@ describe('plugin registration', () => {
           settingsListeners.delete(listener)
         }
       },
-      set: vi.fn(async (_field: string, value: unknown) => {
-        publishWordWrap(value === true)
+      set: vi.fn(async (field: string, value: unknown) => {
+        if (field === 'wordWrap') publishWordWrap(value === true)
       }),
       unset: vi.fn(async () => {
         publishWordWrap(false)
       }),
+      mutate: vi.fn(async () => true),
     }
-    const bindSettings = vi.fn(() => settingsScope)
+    const getSettings = vi.fn(() => settingsForm)
     const ctx = {
       remote: { $mount: mountRemote },
-      settingsScope: { bind: bindSettings },
+      configForms: { get: getSettings },
       sessions: {
         scope: vi.fn(() => sessionScope.ctx),
         binding: vi.fn(() => ({
@@ -1726,31 +1734,31 @@ describe('plugin registration', () => {
       'uiConversation',
       'remote',
       'connection',
-      'settingsScope',
+      'configForms',
       'sessions',
       'conversation',
       'inputTriggers',
       'sidebarRight',
       'sidebarRightTabs',
     ])
-    expect(bindSettings).toHaveBeenCalledWith({ namespace: 'file-review' })
+    expect(getSettings).toHaveBeenCalledWith('file-review')
     publishWordWrap(true)
     expect(registerSource).toHaveBeenCalledOnce()
     expect(mountRemote).toHaveBeenCalledOnce()
     expect(definition).toBe(deliverablesDefinition)
     expect(registerLocale).toHaveBeenCalledWith('file-review', { zh, en })
     const settingsRegistration = registrations.find(
-      (registration) => registration.options.name === 'settings.plugin.item',
+      (registration) => registration.options.name === 'settings.plugins.tab',
     )
     expect(settingsRegistration).toEqual({
       options: expect.objectContaining({
-        name: 'settings.plugin.item',
-        key: 'file-review',
-        priority: -100,
+        name: 'settings.plugins.tab',
+        id: 'file-review',
+        order: 20,
         locale: NS,
-        inject: expect.any(Function),
+        label: expect.any(Function),
       }),
-      component: FileReviewSettingsCard,
+      component: expect.any(Function),
     })
     expect(registrations).toContainEqual({
       options: expect.objectContaining({
@@ -1789,7 +1797,7 @@ describe('plugin registration', () => {
         },
       ]),
     )
-    expect(slot?.component).toBe(ProducedFiles)
+    expect(slot?.component).toBe(ProducedFilesSlot)
     expect(slot?.options.locale).toBe(NS)
     expect(slot?.options.inject).toBeTypeOf('function')
     const reviewActions = slot?.options.inject?.('session-1') as {
@@ -1812,13 +1820,7 @@ describe('plugin registration', () => {
     await expect(reviewActions.applyChanges({ action: 'undo', files: [] })).resolves.toEqual({
       files: [],
     })
-    const settingsActions = settingsRegistration?.options.inject?.('') as {
-      hooks: { fileReviewSettings: typeof settingsScope }
-      setWordWrap(value: boolean): Promise<void>
-    }
-    expect(settingsActions.hooks.fileReviewSettings).toBe(settingsScope)
-    await settingsActions.setWordWrap(false)
-    expect(settingsScope.set).toHaveBeenCalledExactlyOnceWith('wordWrap', false)
+    expect(settingsForm.set).not.toHaveBeenCalled()
 
     const opened: string[] = []
     const owner = tailOwner(produced([2, 'site/report.html']), 3, (path) => {

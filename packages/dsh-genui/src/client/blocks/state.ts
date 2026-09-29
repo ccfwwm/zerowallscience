@@ -6,6 +6,7 @@
  * @module @changfenhuang/dsh-genui/client/blocks/state
  */
 import type { GenuiSpec } from '../spec.ts'
+import type { BlockInteractionState } from '../interaction-store.ts'
 
 export interface GenuiBlockProps {
   /** Parsed spec to render. */
@@ -27,6 +28,11 @@ export interface GenuiBlockProps {
   stateKey?: string | undefined
   /** Animate newly arriving items; settled message replays opt out. */
   animateEntrance?: boolean | undefined
+  /** Native hosts own durable state instead of the browser store. Read once per stateKey. */
+  initialState?: BlockInteractionState | undefined
+  onStateChange?: ((state: BlockInteractionState) => void) | undefined
+  /** Observe the current secret-free durable state without changing persistence ownership. */
+  onStateSnapshot?: ((state: BlockInteractionState) => void) | undefined
 }
 
 /** Per-question metadata registered by grouped radios for local grading. */

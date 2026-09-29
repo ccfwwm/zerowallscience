@@ -14,7 +14,7 @@
  */
 import { createContext, useContext } from 'react'
 import type { Context } from 'react'
-import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
+import * as primitives from './primitive-adapter.ts'
 
 /** v2 action handler: component action + its collected data. */
 export type GenuiActionHandler = (action: string, payload: Record<string, unknown>) => void

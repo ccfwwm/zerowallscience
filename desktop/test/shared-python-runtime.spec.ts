@@ -79,6 +79,48 @@ describe('shared Python directory migration', () => {
     expect((await (await import('node:fs/promises')).lstat(python)).isSymbolicLink()).toBe(false)
   })
 
+  it('restores the previous Python directory if the replacement fails verification', async () => {
+    const { root, manifest } = await fixture()
+    const managementRoot = join(root, 'zerowall-python')
+    const python = join(root, 'Python')
+    const candidateBase = await mkdtemp(join(tmpdir(), 'python-candidate-')); directories.push(candidateBase)
+    const candidate = join(candidateBase, 'slot')
+    const candidatePython = join(candidate, 'bio-tools', 'python')
+    // The replacement candidate follows the legacy manifest layout. The
+    // migration code moves this directory under Python/Lib/site-packages.
+    await mkdir(join(candidatePython, 'site-packages'), { recursive: true })
+    await writeFile(join(candidatePython, 'python.exe'), 'replacement interpreter')
+    await mkdir(managementRoot)
+    await mkdir(python)
+    await writeFile(join(python, 'python.exe'), 'old interpreter')
+    await writeFile(join(python, 'keep.txt'), 'old runtime remains intact')
+
+    await expect(migrateStablePython(managementRoot, candidate, manifest, undefined, true, async () => {
+      throw new Error('injected post-copy health failure')
+    })).rejects.toThrow('injected post-copy health failure')
+    expect(await readFile(join(python, 'python.exe'), 'utf8')).toBe('old interpreter')
+    expect(await readFile(join(python, 'keep.txt'), 'utf8')).toBe('old runtime remains intact')
+  })
+
+  it('restores the previous Python directory if activation pointer update fails', async () => {
+    const { root, manifest } = await fixture()
+    const managementRoot = join(root, 'zerowall-python')
+    const python = join(root, 'Python')
+    const candidateBase = await mkdtemp(join(tmpdir(), 'python-activation-')); directories.push(candidateBase)
+    const candidate = join(candidateBase, 'slot')
+    const candidatePython = join(candidate, 'bio-tools', 'python')
+    await mkdir(join(candidatePython, 'site-packages'), { recursive: true })
+    await writeFile(join(candidatePython, 'python.exe'), 'replacement interpreter')
+    await mkdir(managementRoot)
+    await mkdir(python)
+    await writeFile(join(python, 'python.exe'), 'old interpreter')
+
+    await expect(migrateStablePython(managementRoot, candidate, manifest, undefined, true,
+      async () => {}, async () => { throw new Error('current pointer write failed') }))
+      .rejects.toThrow('current pointer write failed')
+    expect(await readFile(join(python, 'python.exe'), 'utf8')).toBe('old interpreter')
+  })
+
   it('migrates an active junction into the stable directory and leaves its source intact', async () => {
     const { root, manifest } = await fixture()
     const managementRoot = join(root, 'zerowall-python')

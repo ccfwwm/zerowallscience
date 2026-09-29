@@ -8,7 +8,7 @@ export function mountWindowChrome(): void {
     const style = document.createElement('style')
     style.textContent = `
       html[data-zerowall-chrome] body { --zw-chrome-height:48px; }
-      #zerowall-window-controls { position:fixed; top:10px; left:12px; display:flex; align-items:center; gap:1px; height:28px; z-index:2147483646; -webkit-app-region:no-drag; }
+      #zerowall-window-controls { position:fixed; top:2px; left:4px; display:flex; align-items:center; gap:1px; height:28px; z-index:2147483646; -webkit-app-region:no-drag; }
       #zerowall-window-controls button { display:grid; place-items:center; width:24px; height:28px; margin:0; padding:0; border:0; background:transparent; cursor:default; -webkit-app-region:no-drag; }
       #zerowall-window-controls i { display:grid; place-items:center; width:15px; height:15px; border-radius:50%; background:var(--light); box-shadow:inset 0 0 0 1px #0002, 0 1px 2px #00000018; color:#342726; font-style:normal; transition:filter .16s ease, opacity .16s ease, transform .16s ease; }
       #zerowall-window-controls .control-icon { display:block; width:8px; height:8px; overflow:visible; stroke:var(--ink); stroke-width:1.55; stroke-linecap:round; stroke-linejoin:round; fill:none; pointer-events:none; }
@@ -19,9 +19,21 @@ export function mountWindowChrome(): void {
       #zerowall-window-controls [data-action=close] i { --ink:#6e2926; }
       #zerowall-window-controls [data-action=minimize] i { --ink:#6a4a00; }
       #zerowall-window-controls [data-action=toggle-maximize] i { --ink:#145b2a; }
-      #zerowall-window-drag { position:fixed; top:0; left:88px; right:0; height:8px; z-index:2147483645; -webkit-app-region:drag; }
+      #zerowall-window-drag { position:fixed; top:0; left:88px; right:0; height:8px; z-index:20; -webkit-app-region:drag; }
       html[data-zerowall-chrome] header:has([data-conversation-header-corner]) > div:first-child { min-height:40px; -webkit-app-region:drag; }
       html[data-zerowall-chrome] header button, html[data-zerowall-chrome] header input, html[data-zerowall-chrome] header [role=tab] { -webkit-app-region:no-drag; }
+      html[data-zerowall-chrome] [data-dockkit-strip],
+      html[data-zerowall-chrome] [data-dockkit-strip] button,
+      html[data-zerowall-chrome] [data-dockkit-strip] [role=tab],
+      html[data-zerowall-chrome] [data-dockkit-strip] [role=button] { pointer-events:auto; -webkit-app-region:no-drag; }
+      html[data-zerowall-chrome] [data-sidebar-header] button,
+      html[data-zerowall-chrome] [data-sidebar-header] a,
+      html[data-zerowall-chrome] [data-sidebar-header] input,
+      html[data-zerowall-chrome] [data-sidebar-header] [role=button] { -webkit-app-region:no-drag; }
+      html[data-zerowall-chrome] [data-sidebar-footer],
+      html[data-zerowall-chrome] [data-sidebar-footer] button,
+      html[data-zerowall-chrome] [data-sidebar-footer] a,
+      html[data-zerowall-chrome] [data-sidebar-footer] [role=button] { position:relative; z-index:21; pointer-events:auto; -webkit-app-region:no-drag; }
       html[data-zerowall-chrome] [data-sidebar-header] { padding-top:40px; height:92px; -webkit-app-region:drag; }
       html[data-zerowall-chrome] [data-sidebar-rail=true] [data-sidebar-header] { padding-top:22px; height:58px; }
       html[data-zerowall-chrome] [data-sidebar-collapsed=true] > div:nth-of-type(2) { padding-top:8px; }
@@ -51,6 +63,7 @@ export function mountWindowChrome(): void {
       button.onclick = () => { void ipcRenderer.invoke('desktop:window-control', action).catch(() => undefined) }
       controls.append(button)
     }
+    // The narrow top edge stays draggable without covering the sidebar tabs.
     const drag = document.createElement('div'); drag.id = 'zerowall-window-drag'
     document.body.append(drag, controls)
     const update = (_event: unknown, state: { maximized: boolean; focused: boolean }) => {

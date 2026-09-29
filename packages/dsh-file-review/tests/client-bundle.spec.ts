@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { pathToFileURL } from 'node:url'
 import * as React from 'react'
 import * as jsxRuntime from 'react/jsx-runtime'
 import { describe, expect, it } from 'vitest'
@@ -21,13 +20,18 @@ describe('published browser artifact', () => {
         handoff = value
       },
     }
-    const artifact = pathToFileURL(new URL('../lib/client.js', import.meta.url).pathname)
+    // Vitest serves this module over `http:` while the published artifact must
+    // be loaded by Node as a file URL. Resolve from the package cwd so the
+    // check works on Windows and POSIX without mangling a drive-letter path.
+    const artifact = pathToFileURL(join(process.cwd(), 'lib', 'client.js'))
     await import(/* @vite-ignore */ `${artifact.href}?test=${String(Date.now())}`)
 
     expect(handoff?.id).toBe('dsh-file-review')
     const shared: Record<string, unknown> = {
       react: React,
       'react/jsx-runtime': jsxRuntime,
+      '@deepseek-ai/dsh-client-ui-chat/client': { UserStyleBubble: () => null },
+      '@deepseek-ai/dsh-client-ui-primitives': { writeClipboard: async () => true },
     }
     const client = handoff?.factory((id) => {
       if (!(id in shared)) throw new Error(`unexpected shared module: ${id}`)
@@ -40,7 +44,7 @@ describe('published browser artifact', () => {
       'uiConversation',
       'remote',
       'connection',
-      'settingsScope',
+      'configForms',
       'sessions',
       'conversation',
       'inputTriggers',
@@ -50,3 +54,5 @@ describe('published browser artifact', () => {
     expect(document.querySelectorAll('style[data-plugin="dsh-file-review"]')).toHaveLength(3)
   })
 })
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'

@@ -205,11 +205,13 @@ export async function preparePackagePlan(root: string, context: Context, request
   return plan
 }
 
-/** Resolve every changed locked package then bind the exact signed manifest to
- * the stored plan. Application must repeat hash validation before downloading. */
+/** Resolve only absent manifest packages and bind the signed manifest to the plan.
+ * Installed packages are preserved even when their version differs from the manifest. */
 export async function prepareManifestPackagePlan(root: string, context: Context, manifest: PythonDependencyManifest, info: McpPythonInfo): Promise<StoredPackagePlan> {
   const mirror = context.mirror ?? resolveMirror(manifest.index)
-  const pending = manifest.packages.filter(pkg => !info.packages.some(installed => normalize(installed.name) === normalize(pkg.name) && installed.version === pkg.version))
+  const installedNames = new Set(info.packages.map(pkg => normalize(pkg.name)))
+  const pending = manifest.packages.filter(pkg => !installedNames.has(normalize(pkg.name)))
+  const pendingManifest = { ...manifest, packages: pending }
   const directory = join(root, 'plans')
   await mkdir(directory, { recursive: true })
   const base = { planId: randomUUID(), snapshotId: context.root, requested: pending.map(pkg => `${pkg.name}==${pkg.version}`), wheels: [] as Wheel[], changes: pending.map(pkg => ({ name: pkg.name, from: info.packages.find(installed => normalize(installed.name) === normalize(pkg.name))?.version, to: pkg.version })), dependencyManifest: manifest, manifestInstalled: info.packages.map(pkg => ({ name: pkg.name, version: pkg.version })) }
@@ -241,7 +243,7 @@ export async function prepareManifestPackagePlan(root: string, context: Context,
   // batch, split it recursively: a single bad pin costs O(log n) group probes
   // instead of hundreds of serial pip resolver runs.
   if (ready.length) {
-    const groupContext = { ...context, dependencyManifest: manifest, sourceWheels, mirror }
+    const groupContext = { ...context, dependencyManifest: pendingManifest, sourceWheels, mirror }
     const resolved = new Map<string, Wheel>()
     const resolveGroup = async (group: typeof ready, knownFailure?: string): Promise<void> => {
       let failure = knownFailure

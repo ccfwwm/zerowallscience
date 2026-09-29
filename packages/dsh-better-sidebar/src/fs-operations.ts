@@ -27,6 +27,25 @@ import { ensureWorkspacePath, ensureWorkspaceWritePath } from './path-security.t
 import { resolveSessionPath } from './session-path.ts'
 import { SidebarError } from './wire.ts'
 
+/** Serialize the final rename for two uploads targeting the same file. */
+const uploadCommitQueues = new Map<string, Promise<void>>()
+
+/** Commit one completed temp file, queuing only competing writes to this target. */
+async function commitUpload(tmp: string, target: string): Promise<void> {
+  const key = process.platform === 'win32' ? target.toLowerCase() : target
+  const previous = uploadCommitQueues.get(key)
+  let release!: () => void
+  const current = new Promise<void>((resolve) => { release = resolve })
+  uploadCommitQueues.set(key, current)
+  await previous?.catch(() => {})
+  try {
+    await rename(tmp, target)
+  } finally {
+    release()
+    if (uploadCommitQueues.get(key) === current) uploadCommitQueues.delete(key)
+  }
+}
+
 /** Inputs of one upload: the session scope plus the request body stream. */
 export interface WorkspaceUploadInput {
   /** The session workspace root; target and directory must stay inside it. */
@@ -90,7 +109,7 @@ export async function writeWorkspaceUpload(input: WorkspaceUploadInput): Promise
       stream.end((error?: Error | null) => (error === undefined || error === null ? resolve() : reject(error)))
     })
     if (streamError !== undefined) throw streamError
-    await rename(tmp, safeTarget)
+    await commitUpload(tmp, safeTarget)
     const info = await stat(safeTarget)
     return { path: target, size: info.size }
   } catch (error) {

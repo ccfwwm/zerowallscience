@@ -68,10 +68,15 @@ function dispatchMarker(event: ConversationEvent): PtcFileReviewMarker | null {
 
 function nativeResultMarker(event: ConversationEvent): PtcFileReviewMarker | null {
   if (event.type !== 'tool/result') return null
-  const callId = event.data.message.source.callId
-  const result = event.data.message.content[0]
-  if (typeof callId !== 'string' || callId === '' || !Array.isArray(result?.content)) return null
-  return markerFromContent(result.content, { rootCallId: callId, subCallId: callId })
+  const message = event.data.message
+  const callId = message.source.callId
+  if (typeof callId !== 'string' || callId === '') return null
+  // rc.2 promotes tool results to a first-class `role: tool` message: the
+  // marker is carried directly in its content blocks. Accept the pre-rc.2
+  // nested `{ type: 'tool-result', content }` shape for replayed sessions.
+  const result = message.content[0] as unknown as { content?: unknown }
+  const content = Array.isArray(result?.content) ? result.content : message.content
+  return markerFromContent(content, { rootCallId: callId, subCallId: callId })
 }
 
 /**
@@ -180,8 +185,11 @@ export const deliverablesDefinition: ConversationNodeDefinition<DeliverablesStat
       return { ...context.state, calls }
     }
     if (match.event.type === 'tool/result') {
-      const result = match.event.data.message.content[0]
-      if (result.isError === true) return context.state
+      // rc.2 stores the failure bit on the tool message. Keep accepting the
+      // pre-rc.2 nested result shape while replaying existing sessions so a
+      // failed settlement can never become a produced-file row.
+      const legacyResult = match.event.data.message.content[0] as unknown as { isError?: unknown }
+      if (match.event.data.message.isError === true || legacyResult?.isError === true) return context.state
       const callId = match.event.data.message.source.callId
       if (typeof callId !== 'string' || callId === '') return context.state
       const call = context.state.calls.get(callId)

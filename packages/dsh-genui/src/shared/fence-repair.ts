@@ -126,6 +126,102 @@ export function repairFenceJson(raw: string): { text: string; repairs: number } 
 }
 
 /**
+ * Rewrite the "Tetris table" shape into legal JSON: the model closed the
+ * `columns` array after the header cells and then wrote the row matrix as a
+ * SIBLING array element —
+ *
+ *     "columns":["a","b"],["rows":[["1","2"],["3","4"]]]
+ *
+ * The element after `columns` is a `rows` field wearing the wrong hat, so
+ * restore the key (`"rows":[…]`) and drop the closer the mis-nesting left
+ * over (the final bracket-depth rescan removes every unmatched closer). Safe
+ * by construction: only applied to a body that does not parse, and the caller
+ * adopts the result only when the WHOLE body then parses.
+ *
+ * @param raw - the raw fence body.
+ * @returns the rewritten body plus the edit count, or null when the shape is
+ *   not present (or the columns array never closes).
+ */
+function rewriteTetrisTableColumns(raw: string): { text: string; repairs: number } | null {
+  if (!/"columns"\s*:\s*\[/.test(raw)) return null
+  let text = ''
+  let rest = raw
+  let edits = 0
+  while (true) {
+    const match = /"columns"\s*:\s*\[/.exec(rest)
+    if (match === null) { text += rest; break }
+    const start = match.index + match[0]!.length
+    // Walk to the matching `]` of this columns array, string-aware.
+    let depth = 1
+    let inString = false
+    let escaped = false
+    let end = -1
+    for (let i = start; i < rest.length; i++) {
+      const ch = rest[i]!
+      if (escaped) { escaped = false; continue }
+      if (inString) {
+        if (ch === '\\') escaped = true
+        else if (ch === '"') inString = false
+        continue
+      }
+      if (ch === '"') { inString = true; continue }
+      if (ch === '[') depth++
+      else if (ch === ']') { depth--; if (depth === 0) { end = i; break } }
+    }
+    if (end < 0) return null
+    const after = rest.slice(end + 1)
+    // Two Tetris spellings, both meaning "the rows matrix is a sibling array
+    // of `columns`": with the key already inside the array (`[ "rows": […]`)
+    // or as a bare matrix (`[ […], […] ]`).
+    const keyed = /^\s*,\s*\[\s*"rows"\s*:\s*\[/.exec(after)
+    if (keyed !== null) {
+      const through = end + 1 + keyed[0]!.length
+      text += `${rest.slice(0, end + 1)},"rows":[`
+      rest = rest.slice(through)
+      edits += 1
+      continue
+    }
+    const nextArray = /^\s*,\s*\[/.exec(after)
+    if (nextArray === null) {
+      text += rest.slice(0, end + 1)
+      rest = after
+      continue
+    }
+    const throughBracket = end + 1 + nextArray[0]!.length
+    text += rest.slice(0, throughBracket).replace(/,\s*\[$/, ', "rows": [')
+    rest = rest.slice(throughBracket)
+    edits += 1
+  }
+  if (edits === 0) return null
+  // Drop the closers the mis-nesting left without a partner.
+  const stack: string[] = []
+  let out = ''
+  let inString = false
+  let escaped = false
+  for (const ch of text) {
+    if (escaped) { out += ch; escaped = false; continue }
+    if (inString) {
+      out += ch
+      if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') { inString = true; out += ch; continue }
+    if (ch === '{' || ch === '[') { stack.push(ch); out += ch; continue }
+    if (ch === '}' || ch === ']') {
+      const open = stack[stack.length - 1]
+      if ((ch === '}' && open === '{') || (ch === ']' && open === '[')) {
+        stack.pop()
+        out += ch
+      } else edits += 1                   // stray closer → drop it
+      continue
+    }
+    out += ch
+  }
+  return { text: out, repairs: edits }
+}
+
+/**
  * Tier-2 repair — SETTLED MESSAGES ONLY (never while streaming): heals
  * structural incompleteness — missing closing quotes/brackets — by appending
  * the missing terminators, and heals stray closers — a `]` mistyped as `}` or
@@ -147,6 +243,21 @@ export function completeFenceJson(raw: string): { text: string; repairs: number 
     return null
   } catch {
     // fall through to the unified repair scan
+  }
+  // Shape defect first: the "Tetris table" nesting cannot be healed by the
+  // closer-appending scan below (its brackets are balanced — just nested
+  // wrongly), so rewrite the shape, then let the scan run on the result.
+  const tetris = rewriteTetrisTableColumns(raw)
+  if (tetris !== null) {
+    try {
+      JSON.parse(tetris.text)
+      return tetris
+    } catch {
+      // Tetris 形状修复可能暴露需要 tier-2 继续处理的结构问题。
+    }
+    const scanned = completeFenceJson(tetris.text)
+    if (scanned === null) return null
+    return { text: scanned.text, repairs: scanned.repairs + tetris.repairs }
   }
   let out = ''
   const stack: Array<'}' | ']'> = []

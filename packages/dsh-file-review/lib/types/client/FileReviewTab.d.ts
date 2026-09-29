@@ -1,7 +1,7 @@
 /** Review tab that resolves a lightweight target against the live Session timeline. */
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client';
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store';
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client';
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client';
 import type { Config } from '../settings-contract.ts';
 import type { UiConversation } from '@deepseek-ai/dsh-client-ui-conversation/client';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
@@ -28,7 +28,7 @@ export interface FileReviewTabProps extends PropsLocale<typeof NS> {
     readonly visible: boolean;
     readonly syncComments?: (() => void) | undefined;
     readonly wordWrap: ObservableSnapshot<boolean>;
-    readonly settings?: SettingsScope<Config> | undefined;
+    readonly settings?: ConfigForm<Config> | undefined;
     readonly openFile: (path: string) => void;
 }
 /** Restore review data after first open, target changes, session switches and page reloads. */

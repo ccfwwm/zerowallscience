@@ -1,3 +1,4 @@
+import { renderInline } from '../inline.ts'
 import { useEffect, useState } from 'react'
 import css from '../GenuiBlock.module.css'
 import type { GenuiCheckbox } from '../spec.ts'
@@ -54,7 +55,7 @@ export function CheckboxNode({ node, onAction, answers }: {
           }
         }}
       />
-      <span>{node.label}</span>
+      <span>{renderInline(node.label, false)}</span>
     </label>
   )
 }

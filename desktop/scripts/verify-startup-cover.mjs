@@ -35,7 +35,7 @@ try {
   const screenshot = await application.evaluate(async ({ BrowserWindow }) => (await BrowserWindow.getAllWindows()[0].capturePage()).toPNG().toString('base64'))
   await writeFile(resolve(evidence, 'startup-plugin-loading.png'), Buffer.from(screenshot, 'base64'))
   releaseBundle()
-  await page.waitForFunction(() => document.documentElement.dataset.zerowallBoot === 'ready', undefined, { timeout: 90_000 })
+  await page.waitForFunction(() => !document.querySelector('[data-dsh-boot]') && document.querySelector('[data-dsh-better-sidebar], [data-zerowall-conversation], [contenteditable]'), undefined, { timeout: 90_000 })
   await page.waitForFunction(async () => (await window.zerowallDesktop.getStartupStatus()).phase === 'ready', undefined, { timeout: 90_000 })
   const after = await application.evaluate(async ({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0]

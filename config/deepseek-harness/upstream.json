@@ -1,9 +1,9 @@
 {
   "repository": "https://github.com/ccfwwm/deepseek-harness.git",
-  "commit": "75e2d12fc666eb16225cd3a21195a0f056ce8a50",
-  "branch": "codex/biomni-model-routing",
+  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "branch": "codex/zerowall-7.3.0",
   "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
-  "upstreamCommit": "a66e4702047846cdaa10c66c9d3df3951f5ea70d",
-  "tag": "dsh-v0.1.5-rc.2",
-  "version": "0.1.5-rc.2"
+  "upstreamCommit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+  "tag": "dsh-v0.1.7-rc.2",
+  "version": "0.1.7-rc.2"
 }

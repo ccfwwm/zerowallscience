@@ -1,4 +1,14 @@
 /** Browser API polyfills for the test environment. */
+import { setLocale } from '../src/client/i18n/index.ts'
+
+// Locale pin: jsdom reports an English navigator, so the renderer would
+// default to `en`. The suite's existing expectations were written against the
+// Chinese chrome that shipped before the i18n extraction, so pinning `zh`
+// keeps every one of them meaningful — they now assert that the zh dictionary
+// still reproduces the pre-extraction wording verbatim. English rendering and
+// locale switching are covered explicitly in tests/i18n.spec.ts.
+setLocale('zh')
+
 // jsdom lacks rAF: the reveal animation uses it per item; manual tick below.
 if (typeof globalThis.requestAnimationFrame !== 'function') {
   // @ts-expect-error test-only stub

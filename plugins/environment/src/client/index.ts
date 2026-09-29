@@ -9,7 +9,7 @@ import { unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 import { en, NS, zh } from './locales.js'
 
 export const inject = [
-  'slots', 'locale', 'remote', 'remote.session', 'settingsScope',
+  'slots', 'locale', 'remote', 'remote.session', 'configForms',
   'remote.zerowallEnvironment', 'remote.zerowallAccount', 'remote.zerowallMcp', 'remote.zerowallMineru', 'remote.zerowallPubmed',
 ]
 
@@ -26,7 +26,7 @@ export function apply(ctx: ClientContext): void {
   const mcpRemote = ctx.get('remote.zerowallMcp')
   const mineruRemote = ctx.get('remote.zerowallMineru')
   const pubmedRemote = ctx.get('remote.zerowallPubmed')
-  const reviewerScope = ctx.settingsScope.bind<any>({ namespace: 'zerowall-reviewer' })
+  const reviewerScope = ctx.configForms.get<any>('zerowall-reviewer')
   ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-environment', order: 25,
     label: () => t('title'), locale: NS,
@@ -38,8 +38,8 @@ export function apply(ctx: ClientContext): void {
       mineruRemote,
       pubmedRemote,
       unwrap: async (value: any) => unwrapRemoteResult('zerowall.environment', await value),
-      modelCatalog: async (check = false) => {
-        const response = await sessionRemote.modelCatalog(check ? { check: true, refresh: true } : { refresh: true })
+      modelCatalog: async () => {
+        const response = await sessionRemote.modelCatalog()
         return unwrapRemoteResult('zerowall.environment.modelCatalog', response)
       },
     }),

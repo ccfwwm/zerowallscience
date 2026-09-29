@@ -43,7 +43,9 @@ it('keeps the packaged UI responsive while installing the real archive and refre
   await new Promise<void>(accept => manifestServer!.listen(0, '127.0.0.1', accept))
   const manifestUrl = `http://127.0.0.1:${(manifestServer.address() as { port: number }).port}/latest.json`
   await writeFile(join(root, 'current.json'), JSON.stringify(previous))
-  await cp(join(process.env.APPDATA!, 'zerowall-science/zerowall-python/python-overlay'), join(root, 'python-overlay'), { recursive: true })
+  const sourceManagerRoot = process.env.ZEROWALL_TEST_SOURCE_ROOT?.trim()
+    || join(process.env.LOCALAPPDATA ?? join(work, 'localappdata'), 'ZeroWall Science', 'zerowall-python')
+  await cp(join(sourceManagerRoot, 'python-overlay'), join(root, 'python-overlay'), { recursive: true })
   await link(resolve('../.build/python-1.4.0/dist/zerowall-python-windows-x64-1.4.0.zip'), join(root, 'downloads', `${manifest.archiveSha256}.part`)).catch(error => { if (error.code !== 'EEXIST') throw error })
   // Verify the dedicated worker cannot silently borrow dependencies from the
   // repository enclosing this test package.

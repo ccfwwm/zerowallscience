@@ -173,7 +173,7 @@ describe('GenuiPanel dock', () => {
     expect(container.querySelectorAll('[data-genui-panel]')).toHaveLength(1)
   })
 
-  it('routes component actions through sendGenuiAction (debounced)', () => {
+  it('routes component actions through sendGenuiAction (discrete = immediate)', () => {
     vi.useFakeTimers()
     const sendGenuiAction = vi.fn()
     direct('s1', {
@@ -183,9 +183,12 @@ describe('GenuiPanel dock', () => {
     const { container } = renderPanel('s1', sendGenuiAction)
     fireEvent.click(container.querySelector('[aria-expanded="false"]')!) // expand first
     fireEvent.click(screen.getByText('刷新'))
-    expect(sendGenuiAction).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(GENUI_ACTION_DEBOUNCE_MS)
+    // Discrete gestures deliver at once (#178); only slider drags wait out
+    // the debounce window.
+    expect(sendGenuiAction).toHaveBeenCalledTimes(1)
     expect(sendGenuiAction).toHaveBeenCalledWith('refresh', expect.objectContaining({ type: 'button' }))
+    vi.advanceTimersByTime(GENUI_ACTION_DEBOUNCE_MS)
+    expect(sendGenuiAction).toHaveBeenCalledTimes(1)
   })
 })
 

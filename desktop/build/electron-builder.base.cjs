@@ -1,3 +1,9 @@
+const fs = require('node:fs')
+const path = require('node:path')
+const pythonBootstrapDir = path.resolve(__dirname, '../dist/python-base-3.12.10')
+const bundledPythonResources = fs.existsSync(path.join(pythonBootstrapDir, 'latest.json'))
+  && fs.existsSync(path.join(pythonBootstrapDir, 'zerowall-python-windows-x64-3.12.10.zip'))
+
 const common = {
   beforePack: async () => {
     const { pathToFileURL } = require('node:url')
@@ -54,6 +60,18 @@ const common = {
   extraResources: [
     { from: '../resources/biogenie', to: 'biogenie', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
     { from: '../resources/python/dependency-manifest.json', to: 'python/dependency-manifest.json' },
+    // When the release job prepared the signed bootstrap, ship it in the
+    // installer under the stable names consumed by the desktop host. This
+    // makes first-run recovery independent of a network feed. Clean source
+    // builds omit the optional ~1 GiB archive and keep the verified feed path.
+    ...(bundledPythonResources ? [
+      // electron-builder resolves `from` relative to desktop's projectDir,
+      // while the bootstrap is produced under desktop/dist.  Using ../dist
+      // here silently looked in the repository-level dist directory and left
+      // packaged installs without their offline recovery source.
+      { from: 'dist/python-base-3.12.10/latest.json', to: 'python/base-manifest.json' },
+      { from: 'dist/python-base-3.12.10/zerowall-python-windows-x64-3.12.10.zip', to: 'python/base-runtime.zip' },
+    ] : []),
     { from: '../resources/mcp/bio-tools', to: 'bio-tools', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
     { from: '../resources/mcp/ketcher-chemistry', to: 'ketcher-chemistry', filter: ['server.js', 'widget/**', 'LICENSE*', 'UPSTREAM.json'] },
     { from: '../mcp-environment-staging/sci', to: 'sci', filter: ['dist/**', 'zerowall-mcp-launcher.cjs', 'package.json', 'LICENSE*', 'README.md'] },

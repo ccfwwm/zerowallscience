@@ -34,6 +34,16 @@ type FileImage = PresentFile | MissingFile
 
 class FileConflictError extends Error {}
 
+/**
+ * Windows exposes a synthetic mode mask for regular files and does not
+ * preserve POSIX permission bits through chmod.  Lifecycle snapshots still
+ * carry the originating mode so they remain portable, but mode mismatches
+ * must not make an otherwise identical review conflict on Windows.
+ */
+function modesMatch(left: number, right: number): boolean {
+  return process.platform === 'win32' || left === right
+}
+
 function inside(root: string, candidate: string): boolean {
   const child = relative(root, candidate)
   return child === '' || (!child.startsWith('..') && !isAbsolute(child))
@@ -147,7 +157,11 @@ function transformImage(
         if (next.kind !== 'missing') return null
         next = virtualFile(next, diff.newText, diff.lifecycle.mode)
       } else {
-        if (next.kind !== 'file' || next.text !== diff.newText || next.mode !== diff.lifecycle.mode)
+        if (
+          next.kind !== 'file' ||
+          next.text !== diff.newText ||
+          !modesMatch(next.mode, diff.lifecycle.mode)
+        )
           return null
         next = { kind: 'missing', filename: next.filename }
       }
@@ -156,7 +170,11 @@ function transformImage(
     if (diff.lifecycle?.kind === 'delete') {
       if (diff.oldText === null) return null
       if (action === 'redo') {
-        if (next.kind !== 'file' || next.text !== diff.oldText || next.mode !== diff.lifecycle.mode)
+        if (
+          next.kind !== 'file' ||
+          next.text !== diff.oldText ||
+          !modesMatch(next.mode, diff.lifecycle.mode)
+        )
           return null
         next = { kind: 'missing', filename: next.filename }
       } else {
@@ -183,7 +201,9 @@ function transformImage(
 function sameImage(left: FileImage, right: FileImage): boolean {
   return left.kind === 'missing'
     ? right.kind === 'missing'
-    : right.kind === 'file' && left.text === right.text && left.mode === right.mode
+    : right.kind === 'file' &&
+      left.text === right.text &&
+      modesMatch(left.mode, right.mode)
 }
 
 function inspectImage(
@@ -240,7 +260,7 @@ async function assertUnchanged(image: PresentFile): Promise<void> {
     if (
       currentStat.isSymbolicLink() ||
       !currentStat.isFile() ||
-      (currentStat.mode & 0o777) !== image.mode
+      !modesMatch(currentStat.mode & 0o777, image.mode)
     ) {
       throw new FileConflictError('file changed while the operation was being prepared')
     }

@@ -8,6 +8,7 @@
  * v1 interactivity is client-side only: buttons, tabs, checkboxes, and inputs
  * are operable, but events do NOT flow back to the model.
  */
+import { COMPONENT_SCHEMAS, GENUI_NATIVE_TYPES } from './genui-runtime/schema.ts'
 
 /** One node in the component tree. */
 /** Layout hints accepted by every node: `span` is how many columns the node
@@ -56,6 +57,7 @@ export type GenuiNode = (
   | GenuiAccordion
   | GenuiCopy
   | GenuiMermaid
+  | GenuiSvg
   | GenuiScene3D
   | GenuiTimeline
   | GenuiFileTree
@@ -558,6 +560,14 @@ export interface GenuiCopy {
 
 /* ---------------- v1.3: advanced ---------------- */
 
+export interface GenuiSvg {
+  type: 'svg'
+  /** Standalone SVG document, displayed in an isolated image context. */
+  code: string
+  title?: string
+  height?: number
+}
+
 /** Mermaid diagram: flowchart/sequence/class/gantt source rendered lazily. */
 export interface GenuiMermaid {
   type: 'mermaid'
@@ -760,7 +770,7 @@ export interface GenuiDiagram {
  * a full ECharts option. Each maps to a themed option template. */
 export type EChartPreset =
   | 'bar' | 'line' | 'area' | 'pie' | 'scatter'
-  | 'radar' | 'gauge' | 'funnel' | 'treemap' | 'sankey' | 'graph' | 'heatmap' | 'bigline'
+  | 'radar' | 'gauge' | 'funnel' | 'treemap' | 'sankey' | 'graph' | 'heatmap' | 'bigline' | 'wordCloud'
 
 /** ECharts node: renders a full ECharts chart. Two modes:
  *
@@ -811,35 +821,76 @@ export function parseGenuiSpec(raw: string): GenuiSpec | null {
   if (isGenuiSpec(value)) return value
   // Single-component roots are part of the documented fence vocabulary
   // (e.g. {"type":"callout","tone":"info","title":"…","content":"…"} as the
-  // whole body) — wrap them into a col so the items-gated pipeline renders
-  // them. panel/append hoist onto the wrapper so panel routing keeps working.
+  // whole body) — wrap them into a one-item spec so the items-gated pipeline
+  // renders them. panel/append hoist onto the wrapper so panel routing keeps
+  // working.
   return wrapSingleComponentRoot(value)
 }
 
 /**
- * Wrap a bare component object into a col root. Returns null when `value` is
- * not component-shaped (no usable `type`). `panel`/`append` live on the root
- * spec, so they are hoisted onto the wrapper.
+ * Is `value` a bare component root rather than an envelope spec?
+ *
+ * A root object carrying a `type` is the documented single-component
+ * shorthand. `items` alone cannot decide the root shape: for container
+ * components it holds children (row/col/grid/card/accordion) and for data
+ * components it holds records (steps/list/timeline/file-tree/breadcrumb), so
+ * both readings are components. A whitelisted `type` therefore wins over the
+ * envelope reading — `{"type":"steps","items":[{"title":"…"}]}` is a bare
+ * steps node, never a spec whose `items` are the step records (issue #172).
+ * A non-native `type` keeps the envelope reading, so a stray `type` field
+ * (`{"type":"genui","items":[…]}`) cannot swallow a real spec root.
+ */
+export function isComponentRoot(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as { type?: unknown; items?: unknown }
+  if (typeof v.type !== 'string' || v.type === '') return false
+  if (!Array.isArray(v.items)) return true
+  return GENUI_NATIVE_TYPES.has(v.type)
+}
+
+/**
+ * Wrap a bare component object into a one-item spec. Returns null when
+ * `value` is not component-shaped (no usable `type`). Root-level spec fields
+ * found on the component are hoisted onto the wrapper: `panel`/`append` (so
+ * panel routing keeps working) and `title` when the component has no title of
+ * its own (`{"type":"steps","title":"…"}` means a titled block, not a steps
+ * field the schema would drop).
+ *
+ * The wrapper is a plain spec rather than a `col` node: a spec root is
+ * already rendered as a column by GenuiBlock, and leaving the wrapper free of
+ * a component `type` is what stops the guard from reading it as one more bare
+ * component root and nesting every fence inside a second column (issue #172).
  */
 export function wrapSingleComponentRoot(value: unknown): GenuiSpec | null {
   if (typeof value !== 'object' || value === null) return null
-  const v = value as { type?: unknown; panel?: unknown; append?: unknown }
+  const v = value as { type?: unknown; title?: unknown; panel?: unknown; append?: unknown }
   if (typeof v.type !== 'string' || v.type === '') return null
-  // GenuiCol is structurally a GenuiSpec (items + optional gap); panel and
-  // append are GenuiSpec-only root flags, added after construction.
-  const wrapped: GenuiCol = {
-    type: 'col',
-    items: [value as GenuiNode],
+  const definition = GENUI_NATIVE_TYPES.has(v.type) ? COMPONENT_SCHEMAS[v.type] : undefined
+  const title = typeof v.title === 'string' && definition !== undefined && !('title' in definition.fields)
+    ? v.title
+    : undefined
+  const node: Record<string, unknown> = { ...(value as Record<string, unknown>) }
+  // The hoisted title moves to the wrapper, so the component must not keep a
+  // copy the schema would flag as an unknown field.
+  if (title !== undefined) delete node.title
+  return {
+    items: [node as unknown as GenuiNode],
+    ...(title !== undefined ? { title } : {}),
+    ...(v.panel === true ? { panel: true } : {}),
+    ...(v.append === true ? { append: true } : {}),
   }
-  const root: GenuiSpec = wrapped
-  if (v.panel === true) root.panel = true
-  if (v.append === true) root.append = true
-  return root
 }
 
-/** Basic structural guard: is this object a valid GenuiSpec? */
+/**
+ * Basic structural guard: is this object a valid GenuiSpec?
+ *
+ * A bare component root is not a spec (it is wrapped instead), so
+ * `{"type":"steps","items":[…]}` answers false and `parseGenuiSpec` routes it
+ * through `wrapSingleComponentRoot` (issue #172).
+ */
 export function isGenuiSpec(value: unknown): value is GenuiSpec {
   if (typeof value !== 'object' || value === null) return false
+  if (isComponentRoot(value)) return false
   const v = value as { items?: unknown; title?: unknown; gap?: unknown }
   if (!Array.isArray(v.items)) return false
   if (v.title !== undefined && typeof v.title !== 'string') return false

@@ -19,6 +19,8 @@ import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-updater-service.js'
 import { PythonSyncService } from './python-sync.js'
 import { PythonEnvironmentApi, type PythonEnvironmentRequest } from './python-environment-api.js'
+import { resolvePythonLocation } from './python-location.js'
+import { resolveDesktopUserDataPath } from './user-data-location.js'
 import { mcpEnvironmentDiagnostic, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { registerWindowControls } from './window-controls.js'
@@ -59,11 +61,32 @@ function readPackagedChannel(): unknown {
 
 const identity = resolveDesktopIdentity(readPackagedChannel())
 
+// These names were used for managed Python slots/profile trees before the
+// shared runtime moved beside the application (or to LocalAppData). They are
+// deliberately excluded from ordinary user-data migration. The signed base
+// archive in the current installer is the only supported recovery source.
+const LEGACY_PYTHON_DATA_DIRECTORIES = new Set([
+  'python',
+  'zerowall-python',
+  'mcp-environments',
+  'mcp-environment',
+  'python-environment',
+  'python-environments',
+])
+
 function configureIdentity(): void {
   app.setName(identity.productName)
   if (process.platform === 'win32') app.setAppUserModelId(identity.channel === 'stable' ? 'com.zerowall.science' : 'com.zerowall.science.preview')
-  const userDataOverride = process.env.ZEROWALL_USER_DATA_DIR
-  app.setPath('userData', userDataOverride ? resolve(userDataOverride) : join(app.getPath('appData'), identity.userDataDirectory))
+  let appDataPath: string | undefined
+  try { appDataPath = app.getPath('appData') } catch { /* use LocalAppData */ }
+  const userData = resolveDesktopUserDataPath({
+    override: process.env.ZEROWALL_USER_DATA_DIR,
+    appDataPath,
+    localAppDataPath: process.env.LOCALAPPDATA?.trim() || join(process.env.USERPROFILE ?? app.getPath('home'), 'AppData', 'Local'),
+    directoryName: identity.userDataDirectory,
+  })
+  if (userData.usedLocalFallback) console.info('Using LocalAppData for this Windows profile; no Roaming product directory is required.')
+  app.setPath('userData', userData.path)
 }
 
 async function migrateLegacyUserData(): Promise<void> {
@@ -87,35 +110,31 @@ async function migrateLegacyUserData(): Promise<void> {
     const legacy = join(appData, name)
     if (legacy === target) continue
     try {
-      await cp(legacy, target, { recursive: true, force: false, errorOnExist: false })
+      await cp(legacy, target, {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+        // User data such as sessions and settings still migrates. The old
+        // managed interpreter/profile is deliberately left in place; Stable
+        // restores Python from its signed installer archive instead.
+        filter: source => {
+          const relativePath = relative(legacy, source)
+          if (relativePath === '' || relativePath === '.') return true
+          const topLevel = relativePath.split(/[\\/]/u, 1)[0]?.toLowerCase()
+          // Older releases stored the interpreter and its slot/profile under
+          // several different names.  Do not copy any of those trees into the
+          // new user-data directory: the signed Python archive in the current
+          // installer is the only source for a fresh shared runtime.  Copying
+          // one of these directories was enough to make a clean install look
+          // like an unfinished migration and to block dependency installs.
+          return !LEGACY_PYTHON_DATA_DIRECTORIES.has(topLevel ?? '')
+        },
+      })
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
-      if (code !== 'ENOENT' && code !== 'EEXIST') throw error
+      if (code !== 'ENOENT' && code !== 'EEXIST' && code !== 'EACCES' && code !== 'EPERM' && code !== 'ENOTDIR') throw error
+      if (code === 'EACCES' || code === 'EPERM' || code === 'ENOTDIR') console.warn(`Legacy user data is unavailable (${code}); continuing with the writable profile.`)
     }
-  }
-}
-
-/** Move the user-visible managed runtime to its product name once, while
- * keeping the old directory intact as a rollback/source of truth. */
-async function migrateLegacyPythonRoot(userData: string, target: string): Promise<void> {
-  const legacy = join(userData, 'mcp-environments')
-  if (resolve(legacy) === resolve(target)) return
-  try { await stat(legacy) } catch { return }
-  try { await stat(target); return } catch { /* first launch after rename */ }
-  await cp(legacy, target, { recursive: true, force: false, errorOnExist: false })
-  const currentPath = join(target, 'current.json')
-  try {
-    const record = JSON.parse(await readFile(currentPath, 'utf8')) as Record<string, unknown>
-    const rewrite = (value: unknown): unknown => {
-      if (typeof value !== 'string') return value
-      const rel = relative(resolve(legacy), resolve(value))
-      return rel === '..' || rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(rel) ? value : join(target, rel)
-    }
-    if (record.root !== undefined) record.root = rewrite(record.root)
-    if (record.rollbackRoot !== undefined) record.rollbackRoot = rewrite(record.rollbackRoot)
-    await writeFile(currentPath, `${JSON.stringify(record, null, 2)}\n`, 'utf8')
-  } catch {
-    // A corrupt legacy record is handled by the normal signed installer.
   }
 }
 
@@ -361,9 +380,9 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
   // renderer plugin failure instead of silently abandoning the startup page.
   const deadline = Date.now() + 45_000
   while (!window.isDestroyed() && !quitting) {
-    const bootFailed = await window.webContents.executeJavaScript('document.documentElement.dataset.zerowallBoot === "failed"')
+    const bootFailed = await window.webContents.executeJavaScript('document.querySelector("[data-dsh-boot-failed]") !== null')
     if (bootFailed) throw new Error('客户端插件加载失败，请重试或打开日志查看详情。')
-    const mounted = await window.webContents.executeJavaScript('Boolean(document.documentElement.dataset.zerowallBoot === "ready" && document.querySelector("[data-dsh-better-sidebar], [data-zerowall-conversation], [contenteditable]"))')
+    const mounted = await window.webContents.executeJavaScript('Boolean(!document.querySelector("[data-dsh-boot]") && document.querySelector("[data-dsh-better-sidebar], [data-zerowall-conversation], [contenteditable]"))')
     if (mounted) break
     if (Date.now() >= deadline) throw new Error('工作台界面加载超时，请打开日志检查客户端插件。')
     await new Promise(resolve => setTimeout(resolve, 200))
@@ -415,10 +434,29 @@ if (ownsInstance) app.whenReady().then(async () => {
   publishStartup({ progress: 15, message: '正在检查用户数据' })
   const userData = app.getPath('userData')
   await migrateLegacyUserData()
-  const mcpEnvironmentRoot = join(userData, 'zerowall-python')
-  await migrateLegacyPythonRoot(userData, mcpEnvironmentRoot)
+  // Roaming is optional. These roots are used only to reject an obsolete
+  // saved Python target; no files are read or copied from those profiles.
+  let appDataPath: string | undefined
+  try { appDataPath = app.getPath('appData') } catch { /* Python remains independent of Roaming */ }
+  const pythonLocation = await resolvePythonLocation({
+    localAppDataPath: process.env.LOCALAPPDATA?.trim() || join(process.env.USERPROFILE ?? app.getPath('home'), 'AppData', 'Local'),
+    legacyRoamingRoots: appDataPath ? [
+      userData,
+      join(appDataPath, identity.userDataDirectory),
+      join(appDataPath, 'zerowall-science'),
+      join(appDataPath, 'zerowall-science-3'),
+    ] : [],
+    applicationInstallRoot: app.isPackaged ? dirname(process.execPath) : undefined,
+  })
+  const mcpEnvironmentRoot = pythonLocation.managementRoot
+  // Do not copy the old Roaming profile. The updater recreates the managed
+  // runtime from the signed archive packaged with Stable installers and
+  // leaves the former profile untouched for manual recovery if needed.
   publishStartup({ progress: 25, message: '正在准备本地运行环境' })
-  await mkdir(mcpEnvironmentRoot, { recursive: true })
+  // Python lives outside Roaming and may be on a removable or temporarily
+  // unavailable drive. Do not make a Python path error prevent the desktop and
+  // its path settings from opening; the updater creates the directory inside
+  // its recoverable install transaction and reports any failure in the panel.
   process.env.ZEROWALL_PYTHON_ROOT = mcpEnvironmentRoot
   process.env.ZEROWALL_BIOGENIE_ROOT = app.isPackaged ? join(process.resourcesPath, 'biogenie') : join(findWorkspaceRoot(), 'resources', 'biogenie')
   const bundledKetcherRoot = app.isPackaged ? join(process.resourcesPath, 'ketcher-chemistry') : join(findWorkspaceRoot(), 'resources', 'mcp', 'ketcher-chemistry')
@@ -498,13 +536,23 @@ if (ownsInstance) app.whenReady().then(async () => {
   const mcpEnvironmentLogPath = join(app.getPath('logs'), 'mcp-environment.log')
   await mkdir(dirname(mcpEnvironmentLogPath), { recursive: true })
   let notifiedPythonSnapshot: string | undefined
+  // Stable installers carry the signed Python bootstrap so an old profile can
+  // be left untouched while a fresh shared environment is recreated locally.
+  const packagedPythonManifest = app.isPackaged ? join(process.resourcesPath, 'python', 'base-manifest.json') : undefined
+  const packagedPythonArchive = app.isPackaged ? join(process.resourcesPath, 'python', 'base-runtime.zip') : undefined
+  const bundledPython = packagedPythonManifest !== undefined && packagedPythonArchive !== undefined
+    ? await Promise.all([access(packagedPythonManifest).then(() => true, () => false), access(packagedPythonArchive).then(() => true, () => false)])
+    : [false, false]
   mcpEnvironment = new PythonUpdaterService({
     coordinateHost: true,
     root: mcpEnvironmentRoot,
-    // Stable installers keep only the small dependency manifest. The signed
-    // Python base runtime is downloaded on demand; development builds may
-    // still use the locally generated archive for faster iteration.
-    ...(app.isPackaged ? {} : {
+    settingsPath: dirname(pythonLocation.locationPath),
+    // Windows Stable installers include the signed Python base archive for
+    // direct, offline first-run installation. Development uses the same
+    // generated archive when available.
+    ...(app.isPackaged
+      ? (bundledPython[0] && bundledPython[1] ? { bundledManifestPath: packagedPythonManifest, bundledArchivePath: packagedPythonArchive } : {})
+      : {
       bundledManifestPath: join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'latest.json'),
       bundledArchivePath: join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'zerowall-python-windows-x64-3.12.10.zip'),
     }),
@@ -532,7 +580,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     feedUrl: process.env.ZEROWALL_PYTHON_DEPENDENCY_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-science-python/windows-x64/latest.json',
     bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'dependency-manifest.json') : join(app.getAppPath(), '..', 'resources', 'python', 'dependency-manifest.json'),
   })
-  const pythonEnvironmentApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync)
+  const pythonEnvironmentApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync, pythonLocation.locationPath, app.isPackaged ? dirname(process.execPath) : undefined)
   mcpEnvironment.setEnvironmentHandler(request => pythonEnvironmentApi.request(request))
   const checkPythonUpdates = async (): Promise<void> => {
     // The signed base runtime is installed automatically on first launch; this
@@ -543,7 +591,9 @@ if (ownsInstance) app.whenReady().then(async () => {
       console.warn('Python runtime check:', error instanceof Error ? error.message : String(error))
       return undefined
     })
-    if (!status || (status.phase !== 'ready' && status.phase !== 'manual')) return
+    // A failed local install/update must remain visible to the user. Do not
+    // start dependency sync unless the active shared runtime passed recovery.
+    if (!status || (status.phase !== 'ready' && status.phase !== 'manual') || status.lastUpdateError) return
     await pythonEnvironmentApi.request({ action: 'sync', requestId: `startup-${Date.now()}`, confirm: true }).catch(error => console.warn('Python dependency sync:', error instanceof Error ? error.message : String(error)))
   }
 

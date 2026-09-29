@@ -59,7 +59,9 @@ let app, browser, page
 try {
   await writeFile(patchPath, originalPatch + `\n- insert:\n    - id: research-smoke-fixture\n      name: ${JSON.stringify(pathToFileURL(fixturePath).href)}\n`)
   const profile = join(work, 'profile'); await mkdir(join(profile, 'zerowall-python'), { recursive: true })
-  const installed = JSON.parse(await readFile(join(process.env.APPDATA, 'zerowall-science/zerowall-python/current.json'), 'utf8'))
+  const sourceManager = process.env.ZEROWALL_SOURCE_PYTHON_ROOT?.trim()
+    || join(process.env.LOCALAPPDATA ?? join(work, 'localappdata'), 'ZeroWall Science', 'zerowall-python')
+  const installed = JSON.parse(await readFile(join(sourceManager, 'current.json'), 'utf8'))
   await writeFile(join(profile, 'zerowall-python/current.json'), JSON.stringify(installed))
   for (const name of ['appdata', 'localappdata']) await mkdir(join(work, name))
   app = spawn(join(packaged, 'ZeroWallScience.exe'), ['--remote-debugging-port=0', `--user-data-dir=${join(work,'chromium')}`], { cwd: packaged, windowsHide: true, stdio: 'pipe', env: { ...process.env, ZEROWALL_USER_DATA_DIR: profile, APPDATA: join(work,'appdata'), LOCALAPPDATA: join(work,'localappdata'), USERPROFILE: work, HOME: work, ZEROWALL_PYTHON_MANIFEST: 'http://127.0.0.1:1/no-update' } })

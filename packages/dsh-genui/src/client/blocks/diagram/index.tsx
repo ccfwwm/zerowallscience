@@ -8,6 +8,7 @@
  * value is sanitized by the guard before this component ever sees it.
  * @module @changfenhuang/dsh-genui/client/blocks/diagram
  */
+import { renderInline } from '../../inline.ts'
 import { useMemo } from 'react'
 import type { GenuiDiagram } from '../../spec.ts'
 import { GENUI_LIMITS } from '../../genui-runtime/index.ts'
@@ -240,7 +241,7 @@ export function DiagramNode({ node }: { node: GenuiDiagram }) {
     <figure className="genui-diagram" data-genui-diagram>
       {node.title !== undefined && (
         <figcaption id={captionId} style={{ fontFamily: "Instrument Serif, 'Times New Roman', serif", fontSize: 20, marginBottom: 8, color: palette.ink }}>
-          {node.title}
+          {renderInline(node.title)}
         </figcaption>
       )}
       <svg

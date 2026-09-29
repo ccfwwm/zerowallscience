@@ -1,10 +1,15 @@
 import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
 const source = resolve(root, 'deepseek-harness')
+// pnpm sets npm_execpath for lifecycle scripts, but that variable is not
+// guaranteed to survive the PowerShell/Corepack wrapper used on Windows.
+// Resolve the bundled Corepack pnpm entrypoint as a deterministic fallback so
+// the Harness build can also be invoked directly during package verification.
 const pnpmCli = process.env.npm_execpath
+  ?? resolve(dirname(process.execPath), 'node_modules', 'corepack', 'dist', 'pnpm.js')
 const expected = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 const rootManifest = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 

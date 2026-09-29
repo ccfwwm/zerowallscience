@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import CodeRuntime from '@deepseek-ai/dsh-code-runtime'
-import type { CodeRunRequest, CodeRunResult } from '@deepseek-ai/dsh-code-runtime'
+import PtcRuntime from '@deepseek-ai/dsh-ptc-runtime'
+import type { PtcRunRequest, PtcRunResult, PtcRunSpec } from '@deepseek-ai/dsh-ptc-runtime'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
@@ -11,17 +11,21 @@ import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import * as ProgressiveTools from '../src/index.js'
 
 // Exercise the real PTC bridge and log pipeline without a language interpreter.
-class BindingRuntime extends CodeRuntime {
+class BindingRuntime extends PtcRuntime {
   readonly isolation = 'fixture'
   readonly language: string
-  behavior: (request: CodeRunRequest) => Promise<CodeRunResult> = async () => ({ logs: [] })
+  behavior: (request: PtcRunSpec) => Promise<PtcRunResult> = async () => ({ logs: [] })
 
   constructor(ctx: Context, config: { language: string }) {
     super(ctx)
     this.language = config.language
   }
 
-  run(request: CodeRunRequest): Promise<CodeRunResult> {
+  resolve(request: PtcRunRequest): PtcRunSpec {
+    return { ...request, cwd: request.cwd ?? process.cwd(), timeoutMs: request.timeoutMs ?? 120_000 }
+  }
+
+  run(request: PtcRunSpec): Promise<PtcRunResult> {
     return this.behavior(request)
   }
 }
@@ -66,7 +70,7 @@ describe.each(['ptc', 'both'] as const)('stable projection in %s mode', (mode) =
       arguments: { code: 'fixture bindings', description: 'Exercise discovery and dispatch' },
       agent, signal,
     })
-    const runtime = ctx.codeRuntime as BindingRuntime
+    const runtime = ctx.ptcRuntime as BindingRuntime
     runtime.behavior = async (request) => {
       const bindings = request.bindings[0]!.functions
       await expect(bindings.browser_open!({ url: 'example' })).rejects.toThrow('deferred')

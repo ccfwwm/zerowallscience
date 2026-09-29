@@ -9,6 +9,7 @@
  */
 
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import { projectToolResult } from '../tool-result.ts'
 
 /** One collected tool invocation: the call and, when present, its paired result. */
 export interface ToolCallRecord {
@@ -245,12 +246,11 @@ export function collectTrace(sessionId: SessionId, events: readonly SessionEvent
         break
       }
       case 'tool/result': {
-        const block = event.data.message.content[0]
-        if (block === undefined || block.type !== 'tool-result') break
-        const text = contentText(block.content as readonly { type: string }[])
-        const isError = event.data.error !== undefined || block.isError === true
-        resultsByCall.set(block.toolCallId, {
-          text,
+        const result = projectToolResult(event.data.message)
+        if (result === undefined) break
+        const isError = event.data.error !== undefined || result.isError
+        resultsByCall.set(result.callId, {
+          text: result.text,
           isError,
           ...(event.data.error !== undefined ? { error: { name: event.data.error.name, code: event.data.error.code } } : {}),
         })

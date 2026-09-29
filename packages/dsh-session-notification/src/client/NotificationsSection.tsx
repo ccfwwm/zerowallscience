@@ -14,8 +14,8 @@ import type {
   PropsLocale, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  Button, IconAgentPresetOutline16, IconCheckOutline16, IconChevronDownOutline14,
-  IconQuestionOutline14, IconWarningOutline16, Menu,
+  Button, IconAgentPresetOutlineMedium, IconCheckOutlineRegular, IconChevronDownOutlineRegular,
+  IconQuestionOutlineMedium, IconWarningOutlineRegular, Menu,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { NotificationsKey } from './locales.ts'
 import { NOTIFICATION_MODES, SOUND_IDS } from '../settings.ts'
@@ -61,14 +61,14 @@ export type NotificationsSectionProps =
 /** Kind row metadata: icon, copy keys. */
 const KIND_ROWS: readonly {
   kind: NotificationType
-  Icon: typeof IconCheckOutline16
+  Icon: typeof IconCheckOutlineRegular
   title: NotificationsKey
   desc: NotificationsKey
 }[] = [
-  { kind: 'completed', Icon: IconCheckOutline16, title: 'type.completed.title', desc: 'type.completed.desc' },
-  { kind: 'failed', Icon: IconWarningOutline16, title: 'type.failed.title', desc: 'type.failed.desc' },
-  { kind: 'question', Icon: IconQuestionOutline14, title: 'type.question.title', desc: 'type.question.desc' },
-  { kind: 'permission', Icon: IconAgentPresetOutline16, title: 'type.permission.title', desc: 'type.permission.desc' },
+  { kind: 'completed', Icon: IconCheckOutlineRegular, title: 'type.completed.title', desc: 'type.completed.desc' },
+  { kind: 'failed', Icon: IconWarningOutlineRegular, title: 'type.failed.title', desc: 'type.failed.desc' },
+  { kind: 'question', Icon: IconQuestionOutlineMedium, title: 'type.question.title', desc: 'type.question.desc' },
+  { kind: 'permission', Icon: IconAgentPresetOutlineMedium, title: 'type.permission.title', desc: 'type.permission.desc' },
 ]
 
 /** Sound menu entries: the four effects, Custom, then None. */
@@ -302,7 +302,7 @@ export function NotificationsSection({
 /** One notification-kind row: icon, copy, preview, picker (Custom included), switch. */
 function TypeRow({ kind, Icon, title, desc, type, customUrl, t, onTypeChange, onTest, onUpload }: {
   kind: NotificationType
-  Icon: typeof IconCheckOutline16
+  Icon: typeof IconCheckOutlineRegular
   title: string
   desc: string
   type: NotificationTypeSettings
@@ -398,7 +398,7 @@ function ModeMenu({ value, onSelect, t }: {
           onClick={() => { setOpen(value => !value) }}
         >
           {t(MODE_KEY[value])}
-          <IconChevronDownOutline14 className={css.chevron} />
+          <IconChevronDownOutlineRegular className={css.chevron} />
         </button>
       )}
     />
@@ -437,7 +437,7 @@ function SoundMenu({ value, onSelect, t }: {
           onClick={() => { setOpen(value => !value) }}
         >
           {t(SOUND_KEY[value])}
-          <IconChevronDownOutline14 className={css.chevron} />
+          <IconChevronDownOutlineRegular className={css.chevron} />
         </button>
       )}
     />

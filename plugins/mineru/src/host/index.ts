@@ -26,6 +26,7 @@ const ENV_TOKEN_KEY_PREFIX = 'zerowall.environment.var.'
 const MINERU_TOOL_NAMES = ['mineru_activate', 'mineru_parse', 'mineru_batch_parse', 'mineru_task'] as const
 const DEFAULTS: MineruConfig = { apiBaseUrl: 'https://mineru.net', tokenCredential: 'MINERU_API_TOKEN', mode: 'auto', modelVersion: 'vlm', language: 'ch', enableTable: true, enableFormula: true, isOcr: true, extraFormats: [], timeoutMs: 600000, pollIntervalMs: 3000, pollJitterMs: 500, submitRatePerMinute: 40, dailyLimit: 5000, inlineMarkdownBytes: 12000, artifactRootName: '.dsh-mineru' }
 const ConfigSchema: z<MineruConfig> = z.object({ apiBaseUrl: z.string().default(DEFAULTS.apiBaseUrl), tokenCredential: z.string().default(DEFAULTS.tokenCredential), mode: z.union(['auto', 'precision', 'agent'] as const).default(DEFAULTS.mode), modelVersion: z.union(['pipeline', 'vlm', 'MinerU-HTML'] as const).default(DEFAULTS.modelVersion), language: z.string().default(DEFAULTS.language), enableTable: z.boolean().default(true), enableFormula: z.boolean().default(true), isOcr: z.boolean().default(true), extraFormats: z.array(z.union(['docx', 'html', 'latex'] as const)).default([]), timeoutMs: z.number().default(DEFAULTS.timeoutMs), pollIntervalMs: z.number().default(DEFAULTS.pollIntervalMs), pollJitterMs: z.number().default(DEFAULTS.pollJitterMs), submitRatePerMinute: z.number().default(DEFAULTS.submitRatePerMinute), dailyLimit: z.number().default(DEFAULTS.dailyLimit), inlineMarkdownBytes: z.number().default(DEFAULTS.inlineMarkdownBytes), artifactRootName: z.string().default(DEFAULTS.artifactRootName) })
+export const Config = ConfigSchema
 interface RunRecord { result?: MineruParseResult; taskId?: string; cwd: string }
 const runs = new Map<string, RunRecord>()
 interface PendingTask { api: MineruApi; taskId: string; batch: boolean; sourceName: string; config: MineruConfig }
@@ -112,11 +113,17 @@ async function writeResult(cfg: MineruConfig, sessionId: string, cwd: string, so
 declare module '@deepseek-ai/cordis' { interface Context { zerowallMineru: ZeroWallMineruService } }
 export class ZeroWallMineruService extends TypertRemoteService {
   static inject = inject
-  private readonly scope
+  static Config = ConfigSchema
   private readonly secrets = new SecretBrokerClient()
-  constructor(private readonly hostCtx: Context) {
+  private settings: MineruConfig
+  constructor(private readonly hostCtx: Context, config: MineruConfig) {
     super(hostCtx, 'zerowallMineru')
-    this.scope = hostCtx.settings.register(MINERU_SETTINGS_NS, ConfigSchema)
+    this.settings = config
+    hostCtx.on('settings/document-updated', (ns) => {
+      if (ns !== MINERU_SETTINGS_NS) return
+      const value = hostCtx.settings.describe().find(row => row.ns === MINERU_SETTINGS_NS)?.value
+      if (value !== undefined) this.settings = value as MineruConfig
+    })
     hostCtx.tools.register(defineTool({
       name: 'mineru_activate', description: '激活 MinerU 文档解析工具集。', parameters: {},
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => { const data = value as { api?: string; tokenConfigured?: boolean }; return [{ type: 'text', text: `MinerU 已激活：${data.api ?? 'agent'} API，Token ${data.tokenConfigured ? '已配置' : '未配置'}。` }] } },
@@ -142,7 +149,7 @@ export class ZeroWallMineruService extends TypertRemoteService {
       if (hostCtx.tools.get(tool) === undefined) throw new Error(`MinerU Host tool registration failed: ${tool}`)
     }
   }
-  private config(): MineruConfig { return validateConfig({ ...DEFAULTS, ...this.scope.get() }) }
+  private config(): MineruConfig { return validateConfig({ ...DEFAULTS, ...this.settings }) }
   private async token(): Promise<string | undefined> {
     let value: string | undefined
     try { value = await this.secrets.get(TOKEN_KEY) } catch { value = undefined }
@@ -155,7 +162,7 @@ export class ZeroWallMineruService extends TypertRemoteService {
     return value?.trim() || undefined
   }
   @Remote('getConfigStatus') async getConfigStatus(): Promise<MineruConfigStatus> { const cfg = this.config(); const token = await this.token(); const registeredTools = MINERU_TOOL_NAMES.filter(tool => this.hostCtx.tools.get(tool) !== undefined); return { ...cfg, api: apiFor(cfg.mode, token), tokenConfigured: token !== undefined, tokenManagementUrl: TOKEN_MANAGEMENT_URL, available: registeredTools.length === MINERU_TOOL_NAMES.length, registeredTools } }
-  @Remote('updateConfig') async updateConfig(input: Partial<MineruConfig>): Promise<MineruConfigStatus> { const next = validateConfig({ ...this.config(), ...input }); await this.scope.replace(next); return this.getConfigStatus() }
+  @Remote('updateConfig') async updateConfig(input: Partial<MineruConfig>): Promise<MineruConfigStatus> { const next = validateConfig({ ...this.config(), ...input }); this.settings = next; await this.hostCtx.settings.replace(MINERU_SETTINGS_NS, next); return this.getConfigStatus() }
   @Remote('setToken') async setToken(value: string): Promise<MineruConfigStatus> { if (!value.trim()) throw new Error('MinerU Token 不能为空。'); await this.secrets.set(TOKEN_KEY, value.trim()); return this.getConfigStatus() }
   @Remote('clearToken') async clearToken(): Promise<MineruConfigStatus> { await this.secrets.delete(TOKEN_KEY); return this.getConfigStatus() }
   @Remote('testConnection') async testConnection(): Promise<MineruConnectionTestResult> {

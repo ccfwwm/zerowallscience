@@ -46,8 +46,9 @@ function props() {
 describe('AI Cloud account panel', () => {
   it('captures the account Remote before the sidebar renderer runs', async () => {
     const account = { current: vi.fn().mockResolvedValue({ ok: true, value: { status: 'signedOut', balanceFreshness: 'current', lowBalance: false, models: [] } }) }
+    const session = { modelCatalog: vi.fn().mockResolvedValue({ ok: true, value: { groups: [], failures: [] } }) }
     let accountReads = 0
-    const remote = new Proxy({ zerowallAccount: account, session: undefined }, {
+    const remote = new Proxy({ zerowallAccount: account, session }, {
       get(target, property, receiver) {
         if (property === 'zerowallAccount' && accountReads++ > 0) throw new Error('cannot get property "remote.zerowallAccount" without inject')
         return Reflect.get(target, property, receiver)
@@ -57,7 +58,7 @@ describe('AI Cloud account panel', () => {
     const ctx = {
       remote,
       locale: { bind: vi.fn(() => translator()) },
-      get: vi.fn((name: string) => name === 'remote.zerowallAccount' ? account : undefined),
+      get: vi.fn((name: string) => name === 'remote.zerowallAccount' ? account : name === 'remote.session' ? session : undefined),
       slots: {
         inject: vi.fn((_name: string, mount: () => unknown) => mount()),
         register: vi.fn((options: { inject?: () => Record<string, any> }) => { if (options.inject) injected = options.inject; return () => undefined }),
@@ -67,6 +68,8 @@ describe('AI Cloud account panel', () => {
     expect(accountReads).toBe(0)
     const props = injected!()
     await expect(props.getAccount()).resolves.toMatchObject({ status: 'signedOut' })
+    await props.refreshModelCatalog()
+    expect(session.modelCatalog.mock.calls).toEqual([[]])
     expect(account.current).toHaveBeenCalledOnce()
     expect(accountReads).toBe(0)
   })

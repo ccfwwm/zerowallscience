@@ -88,7 +88,7 @@ export async function fetchPythonDependencyManifest(url: string, keys: Record<st
  */
 export function assertManifestWheels(manifest: PythonDependencyManifest, wheels: Array<{ name: string; version: string; hash?: string; sourceArchiveSha256?: string }>, installed: Array<{ name: string; version: string }> = [], failedNames: Iterable<string> = []): void {
   const locked = new Map(manifest.packages.map(pkg => [normalize(pkg.name), pkg]))
-  const present = new Map(installed.map(pkg => [normalize(pkg.name), pkg.version]))
+  const present = new Set(installed.map(pkg => normalize(pkg.name)))
   const failed = new Set([...failedNames].map(normalize))
   const seen = new Set<string>()
   for (const wheel of wheels) {
@@ -97,15 +97,16 @@ export function assertManifestWheels(manifest: PythonDependencyManifest, wheels:
     seen.add(name)
     const expected = locked.get(name)
     if (!expected || expected.version !== wheel.version) throw new Error(`依赖 ${wheel.name} 与签名清单的版本不一致，已拒绝安装。`)
+    if (present.has(name)) throw new Error(`依赖 ${wheel.name} 已安装，已拒绝覆盖现有版本。`)
     if (expected.sha256 && (expected.source === 'sdist' ? wheel.sourceArchiveSha256 !== expected.sha256 : wheel.hash !== expected.sha256)) throw new Error(`依赖 ${wheel.name} 与签名清单的 SHA-256 不一致，已拒绝安装。`)
-    present.set(name, wheel.version)
+    present.add(name)
   }
-  for (const pkg of manifest.packages) if (present.get(normalize(pkg.name)) !== pkg.version && !failed.has(normalize(pkg.name))) throw new Error(`依赖 ${pkg.name} 在安装计划和当前环境中均缺少锁定版本，且未记录为单包失败。`)
+  for (const pkg of manifest.packages) if (!present.has(normalize(pkg.name)) && !failed.has(normalize(pkg.name))) throw new Error(`依赖 ${pkg.name} 在安装计划和当前环境中均不存在，且未记录为单包失败。`)
   for (const name of failed) if (!locked.has(name)) throw new Error(`安装计划把清单外依赖 ${name} 标记为失败。`)
 }
 
-/** Stable diff preserves unlisted user packages instead of silently deleting them. */
+/** Report only absent manifest dependencies; installed package versions are left alone. */
 export function dependencyManifestChanges(manifest: PythonDependencyManifest, installed: Array<{ name: string; version: string }>) {
-  const existing = new Map(installed.map(pkg => [normalize(pkg.name), pkg.version]))
-  return manifest.packages.filter(pkg => existing.get(normalize(pkg.name)) !== pkg.version).map(pkg => ({ name: pkg.name, from: existing.get(normalize(pkg.name)), to: pkg.version, required: pkg.required, capabilities: pkg.capabilities }))
+  const existing = new Set(installed.map(pkg => normalize(pkg.name)))
+  return manifest.packages.filter(pkg => !existing.has(normalize(pkg.name))).map(pkg => ({ name: pkg.name, to: pkg.version, required: pkg.required, capabilities: pkg.capabilities }))
 }

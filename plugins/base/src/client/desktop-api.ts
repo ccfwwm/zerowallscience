@@ -72,6 +72,8 @@ export interface PythonEnvironmentResponse {
   requestId: string
   revision?: number
   mirrorUrl?: string
+  runtimeRoot?: string
+  restartRequired?: boolean
   /** Selectable mirrors; the saved index is appended when it is not a preset. */
   mirrorPresets?: PythonMirrorPresetInfo[]
   /** Default index, so the panel can show which preset is active without guessing. */
@@ -80,6 +82,7 @@ export interface PythonEnvironmentResponse {
   plan?: PythonPackagePlan & { manifestRevision?: string }
   manifest?: { revision: string; packageCount: number }
   taskId?: string
+  queued?: boolean
   status?: McpEnvironmentStatus
   inventory?: McpPythonInfo
   /** `sync` only: the changes it is applying, and whether it found anything to do. */
@@ -87,10 +90,11 @@ export interface PythonEnvironmentResponse {
   upToDate?: boolean
   previousRevision?: string
   dependencies?: { revision: number; manifestRevision: string; manifestSha256: string; packageCount: number; pythonVersion: string; checkedAt: string; changes: Array<{ name: string; from?: string; to: string; required: boolean; capabilities: string[] }>; source: 'remote' | 'bundled' | 'cache' }
-  events?: Array<{ action: string; requestId: string; createdAt: string; status: 'succeeded' | 'failed' | 'running'; message?: string; logLine?: string; taskId?: string }>
+  events?: Array<{ action: string; requestId: string; createdAt: string; status: 'queued' | 'succeeded' | 'failed' | 'running'; message?: string; logLine?: string; taskId?: string; upToDate?: boolean }>
 }
 
 export interface ZeroWallDesktopApi {
+  restart?(): Promise<boolean>
   info(): Promise<{ version: string; platform: string; architecture: string }>
   chooseDirectory(): Promise<string | null>
   chooseScienceFile?(extensions?: string[]): Promise<string | null>
@@ -114,7 +118,7 @@ export interface ZeroWallDesktopApi {
   installMcpPythonPackage?(spec: string): Promise<{ taskId: string }>
   checkMcpPythonPackageUpdates?(names?: string[]): Promise<McpPythonInfo>
   updateMcpPythonPackages?(names?: string[]): Promise<{ taskId: string }>
-  pythonEnvironment?(request: { action: 'status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
+  pythonEnvironment?(request: { action: 'status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; runtimeRoot?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
   pauseMcpEnvironment?(): Promise<McpEnvironmentStatus>
   rollbackMcpEnvironment?(): Promise<{ taskId: string }>
   previewMcpPythonPackages?(names: string[]): Promise<PythonPackagePlan>

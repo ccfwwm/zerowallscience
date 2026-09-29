@@ -9,8 +9,8 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
 const { values: options } = parseArgs({
@@ -47,7 +47,7 @@ const required = [
   ...exportTargets,
 ]
 
-const dir = mkdtempSync(join(tmpdir(), 'genui-pack-'))
+const dir = mkdtempSync(join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), '.e2e-artifacts-pack-'))
 let keepTarball = false
 try {
   const out = execFileSync('npm', ['pack', '--pack-destination', dir, '--json'], {

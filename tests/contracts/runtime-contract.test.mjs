@@ -5,12 +5,12 @@ import { resolve } from 'node:path'
 import { createRequire } from 'node:module'
 
 const root = resolve(import.meta.dirname, '../..')
-const { parse: parseYaml } = createRequire(resolve(root, 'deepseek-harness/packages/settings/settings-file/package.json'))('yaml')
+const { parse: parseYaml } = createRequire(resolve(root, 'deepseek-harness/packages/settings/settings/package.json'))('yaml')
 
 test('stable profile pins rc.2 and includes the bundled WeChat plugin', async () => {
   const profile = await readFile(resolve(root, 'profiles/generated/stable.yml'), 'utf8')
   assert.match(profile, /channel: stable/)
-  assert.match(profile, /dsh: 0\.1\.5-rc\.2/)
+  assert.match(profile, /dsh: 0\.1\.7-rc\.2/)
   assert.match(profile, /'dsh-wechat'/)
 })
 
@@ -25,20 +25,20 @@ test('better-sidebar is a single pinned default workbench in every profile', asy
   }
 })
 
-test('better-sidebar contains the merged v0.18.0 compatibility changes', async () => {
+test('better-sidebar contains the merged v0.22.1 compatibility changes', async () => {
   const editor = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/EditorHost.tsx'), 'utf8')
   const tree = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/FileTree.tsx'), 'utf8')
   const sidechat = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/SideChatView.tsx'), 'utf8')
-  assert.match(editor, /loadGenerationRef/u)
-  assert.match(editor, /visible\?: boolean/u)
-  assert.match(tree, /generationRef/u)
-  assert.match(tree, /TREE_REQUEST_TIMEOUT_MS/u)
-  assert.match(sidechat, /expandSessionEntries/u)
+  assert.match(editor, /reloadSeq/u)
+  assert.match(editor, /useSyncExternalStore/u)
+  assert.match(tree, /refreshTick/u)
+  assert.match(tree, /onUploadRequest/u)
+  assert.match(sidechat, /sideThreadRows/u)
 })
 
 test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-dream-skin'], '9.13.1')
+  assert.equal(desktop.dependencies['dsh-dream-skin'], '9.27.1')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.equal((patch.match(/\bid: dream-skin\b/gu) ?? []).length, 1)
   assert.ok(patch.indexOf('id: dream-skin') < patch.indexOf('id: better-sidebar'))
@@ -91,14 +91,14 @@ test('all ZeroWall plugins expose a manifest and rc.2 range', async () => {
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
-    assert.equal(manifest.dsh.min, '0.1.5-rc.2')
-    assert.equal(manifest.dsh.max, '0.1.5-rc.2')
+    assert.equal(manifest.dsh.min, '0.1.7-rc.2')
+    assert.equal(manifest.dsh.max, '0.1.7-rc.2')
   }
 })
 
 test('dsh-free-search directly replaces the removed ZeroWall search plugin', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-free-search'], '0.4.28')
+  assert.equal(desktop.dependencies['dsh-free-search'], '0.5.0')
   assert.equal(desktop.dependencies['@zerowallscience/plugin-web-search'], undefined)
 
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
@@ -116,9 +116,13 @@ test('dsh-free-search directly replaces the removed ZeroWall search plugin', asy
 test('the pinned dsh-free-search package uses current client services and has no self-updater', async () => {
   const packageRoot = resolve(root, 'desktop/node_modules/dsh-free-search')
   const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
-  assert.equal(manifest.version, '0.4.28')
+  assert.equal(manifest.version, '0.5.0')
   assert.equal(manifest.license, 'MIT')
-  assert.deepEqual(manifest.dsh.client.inject, ['slots'])
+  assert.deepEqual(manifest.dsh.client.inject, [
+    'slots',
+    '@deepseek-ai/dsh-client-ui-plugin-manager',
+    '@deepseek-ai/dsh-client-ui-renderer',
+  ])
 
   const host = await readFile(resolve(packageRoot, 'lib/index.js'), 'utf8')
   const client = await readFile(resolve(packageRoot, 'lib/client.js'), 'utf8')
@@ -126,14 +130,14 @@ test('the pinned dsh-free-search package uses current client services and has no
     assert.doesNotMatch(`${host}\n${client}`, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
   }
   for (const marker of ['advanced_search', 'platform_search', 'free_search_test']) assert.match(host, new RegExp(marker, 'u'))
-  assert.match(client, /const inject = \["slots"\]/u)
+  assert.match(client, /const inject = \["slots",\s*"commandUi"\]/u)
   assert.match(client, /ctx\.inject\(\["commandUi"\]/u)
   assert.match(client, /free-search-engine/u)
   assert.doesNotMatch(client, /\brunUpdate\b|\bupgrading\b(?=\s*\?|\s*\|\|)/u)
 
   const lockfile = parseYaml(await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8'))
-  assert.equal(lockfile.packages['dsh-free-search@0.4.28'].resolution.integrity,
-    'sha512-USN/rV/Yf1LjrHWFMn8RT6MBuugu5sYCjbG+MKgg6jd4FCqDmi47V4SnD+8fjJ43XZHXc0D5b+QejL2hj3WhWQ==')
+  assert.equal(lockfile.packages['dsh-free-search@0.5.0'].resolution.integrity,
+    'sha512-dRxttXNCmIVwuYBKrRMUyFGz98nvE+/WnTE9aX8Uu8GNkp0WL43V+u7FPVf4SFkrMrklpWNJ95WHc1yxk+Ot6A==')
 })
 
 test('About remains the final Settings navigation section', async () => {
@@ -150,13 +154,19 @@ test('retired OpenCode free provider is absent from runtime configuration', asyn
 })
 
 test('dynamic client bundles use the DSH classic-script ModuleLoader contract', async () => {
-  for (const name of ['base', 'account', 'projects', 'mcp', 'research', 'reviewer', 'skills', 'wechat']) {
-    const bundle = await readFile(resolve(root, `plugins/${name}/lib/client.js`), 'utf8')
-    // A bundle carrying styles is prefixed with the inlined-CSS IIFE, so the
-    // ModuleLoader handoff is the first statement after that optional prefix.
-    const body = bundle.startsWith('(function(){var s=document.createElement(\'style\')')
-      ? bundle.slice(bundle.indexOf('\n') + 1)
-      : bundle
+  const bundles = [
+    ...['base', 'account', 'projects', 'mcp', 'research', 'reviewer', 'skills']
+      .map(name => [name, `plugins/${name}/lib/client.js`]),
+    ['wechat', 'packages/dsh-wechat/dist/client.js'],
+  ]
+  for (const [name, relativePath] of bundles) {
+    const bundle = await readFile(resolve(root, relativePath), 'utf8')
+    // Bundles may carry comments or an inlined-CSS prefix before the loader
+    // handoff. The registration itself remains a classic script contract.
+    const loader = 'window.__ModuleLoader__.load('
+    const loaderIndex = bundle.indexOf(loader)
+    assert.notEqual(loaderIndex, -1, `${name} client must register with DSH ModuleLoader`)
+    const body = bundle.slice(loaderIndex)
     assert.match(body, /^window\.__ModuleLoader__\.load\(/u, `${name} client must register with DSH ModuleLoader`)
     assert.doesNotMatch(bundle, /^(?:import|export)\s/m, `${name} client must be a classic script`)
     assert.match(bundle, /factory:\s*\(require\)\s*=>/u, `${name} client must receive module-table dependencies`)

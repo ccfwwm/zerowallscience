@@ -3,7 +3,7 @@ import { Check, Copy, Eye, EyeOff, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import type {} from '@zerowallscience/plugin-base/client-helpers'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 import css from './section.module.css'
 import { LiteratureSettings } from './LiteratureSettings.js'
@@ -13,14 +13,14 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 
 interface Props extends PropsRuntime<'settings.section'> {
   t: EnvironmentTranslate
-  reviewerScope: SettingsScope<any>
+  reviewerScope: ConfigForm<any>
   environmentRemote: any
   accountRemote: any
   mcpRemote: any
   mineruRemote?: any
   pubmedRemote?: any
   unwrap(value: any): Promise<any>
-  modelCatalog(check?: boolean): Promise<{ groups: any[]; failures: any[] }>
+  modelCatalog(): Promise<{ groups: any[]; failures: any[] }>
 }
 
 const defaultReviewer = { autoReview: false, modelMode: 'follow-session' as const, provider: '', model: '', reasoningEffort: '' }
@@ -94,7 +94,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       setImageModels(rows.filter((model: any) => model.capability === 'image-generation'))
     })
     void load('catalog', async () => {
-      const value = await modelCatalog(false)
+      const value = await modelCatalog()
       if (!cancelled) setCatalogGroups(Array.isArray(value?.groups) ? value.groups : [])
     })
     void load('variables', async () => {

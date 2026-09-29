@@ -10,7 +10,7 @@ export const TYPERT = {
   package: "dsh-ssh-ops",
   face: "host",
   schemas: [
-    { name: "sshError", schema: sshErrorSchema }
+    { name: "sshError", create: () => sshErrorSchema, schema: sshErrorSchema }
   ],
   invocations: DESCRIPTORS,
   model: {

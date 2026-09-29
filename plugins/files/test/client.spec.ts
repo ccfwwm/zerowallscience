@@ -25,6 +25,9 @@ function context() {
   const inspect = vi.fn().mockResolvedValue({ ok: true, value: file })
   const ctx = {
     remote: { zerowallFiles: { materializeOriginal: materialize, downloadOriginal: download, inspectOriginalMetadata: inspect } },
+    get: (name: string) => name === 'remote.zerowallFiles'
+      ? { materializeOriginal: materialize, downloadOriginal: download, inspectOriginalMetadata: inspect }
+      : undefined,
     betterSidebar: {
       registerTab: vi.fn((descriptor: { id: string; component: ComponentType<any> }) => {
         if (descriptor.id === 'zerowall:attachment-viewer') attachmentViewer = descriptor.component

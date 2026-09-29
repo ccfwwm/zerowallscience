@@ -10,7 +10,7 @@
  * builds byte-identical client.js every time.
  */
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, relative, resolve as resolvePath } from 'node:path'
+import { basename, dirname, extname, relative, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
@@ -90,6 +90,66 @@ function purityGate(): NonNullable<UserConfig['plugins']>[number] {
   }
 }
 
+function standaloneAliasPlugin(): NonNullable<UserConfig['plugins']>[number] {
+  const adapterPath = resolvePath(PROJECT_ROOT, 'src/client/primitive-adapter.ts')
+  const standaloneAdapterPath = resolvePath(PROJECT_ROOT, 'src/client/standalone/primitive-adapter.tsx')
+  const assetLoaderPath = resolvePath(PROJECT_ROOT, 'src/client/asset-loader.ts')
+  const standaloneAssetLoaderPath = resolvePath(PROJECT_ROOT, 'src/client/standalone/asset-loader.ts')
+  return {
+    name: 'dsh-genui-standalone-primitives',
+    resolveId(source: string, importer: string | undefined) {
+      if (importer === undefined) return null
+      const resolved = resolvePath(dirname(importer), source)
+      if (resolved === adapterPath) return standaloneAdapterPath
+      return resolved === assetLoaderPath ? standaloneAssetLoaderPath : null
+    },
+  }
+}
+
+function standaloneKatexCssPlugin(): NonNullable<UserConfig['plugins']>[number] {
+  const sourcePath = resolvePath(PROJECT_ROOT, 'src/client/standalone/katex-style.ts')
+  const virtualId = '\0dsh-genui-standalone-katex'
+  const cssPath = resolvePath(PROJECT_ROOT, 'node_modules/katex/dist/katex.min.css')
+  return {
+    name: 'dsh-genui-standalone-katex',
+    resolveId(source: string, importer: string | undefined) {
+      if (importer !== undefined && resolvePath(dirname(importer), source) === sourcePath) return virtualId
+      return null
+    },
+    async load(id: string) {
+      if (id !== virtualId) return null
+      const transformed = transform({
+        filename: cssPath,
+        code: await readFile(cssPath),
+        analyzeDependencies: true,
+        visitor: {
+          Rule: {
+            /** 独立 HTML 面向支持 WOFF2 的浏览器，每种字体只需内嵌一份。 */
+            'font-face'(rule) {
+              const source = rule.value.properties.find(property => property.type === 'source')
+              if (source === undefined) throw new Error('KaTeX font face has no source')
+              const woff2 = source.value.filter(entry => entry.type === 'url' && entry.value.format?.type === 'woff2')
+              if (woff2.length !== 1) throw new Error('KaTeX font face must have exactly one WOFF2 source')
+              source.value = woff2
+              return rule
+            },
+          },
+        },
+      })
+      let css = transformed.code.toString()
+      for (const dependency of transformed.dependencies ?? []) {
+        if (dependency.type !== 'url' || dependency.url.startsWith('data:') || dependency.url.startsWith('#')) continue
+        const fontPath = resolvePath(dirname(cssPath), dependency.url)
+        const extension = extname(new URL(dependency.url, 'https://genui.invalid/').pathname)
+        if (extension !== '.woff2') throw new Error(`unsupported KaTeX asset: ${dependency.url}`)
+        const font = await readFile(fontPath)
+        css = css.replaceAll(dependency.placeholder, `data:font/woff2;base64,${font.toString('base64')}`)
+      }
+      return `const style = document.createElement('style'); style.dataset.genuiStandaloneKatex = ''; style.textContent = ${JSON.stringify(css)}; document.head.appendChild(style);`
+    },
+  }
+}
+
 const clientConfig: UserConfig = {
   name: `${ID}/client`,
   entry: { client: 'src/client/index.tsx' },
@@ -125,6 +185,26 @@ const clientConfig: UserConfig = {
     footer: 'return module.exports; } });',
     intro: 'var module = { exports: {} }; var exports = module.exports;',
   },
+}
+
+const standaloneConfig: UserConfig = {
+  name: `${ID}/standalone`,
+  entry: { 'assets/standalone-runtime': 'src/client/standalone/runtime.tsx' },
+  outDir: 'lib',
+  format: 'iife',
+  platform: 'browser',
+  dts: false,
+  minify: true,
+  sourcemap: false,
+  clean: false,
+  deps: { alwaysBundle: () => true },
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
+    'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
+    'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),
+  },
+  plugins: [standaloneAliasPlugin(), cssModulesPlugin(), standaloneKatexCssPlugin()],
+  outputOptions: { entryFileNames: '[name].js', codeSplitting: false },
 }
 
 /**
@@ -187,6 +267,7 @@ const libConfig: UserConfig = {
 export default [
   libConfig,
   clientConfig,
+  standaloneConfig,
   assetConfig('mermaid', 'src/client/asset-mermaid.ts'),
   assetConfig('three', 'src/client/asset-three.ts'),
   assetConfig('echarts-core', 'src/client/asset-echarts-core.ts'),

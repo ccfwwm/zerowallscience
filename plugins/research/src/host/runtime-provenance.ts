@@ -25,16 +25,22 @@ export function runtimePolicyFingerprint(options: GenerateOptions): JsonObject {
   }
   const skills: JsonObject[] = []
   for (const message of options.messages) {
-    const source = message.source
-    const invocation = source.kind === 'skill-invocation'
+    const source = message.source as ({ kind?: unknown; name?: unknown; callId?: unknown } | undefined)
+    if (source === undefined) continue
+    const invocationName = source.kind === 'skill-invocation' && typeof source.name === 'string' ? source.name : undefined
+    const invocation = invocationName !== undefined
     const tool = source.kind === 'tool' && calls.has(String(source.callId))
     if (!invocation && !tool) continue
     // Tool failures are retained as delivered context, never certified as loads.
-    skills.push({ name: invocation ? source.name : source.kind === 'tool' ? calls.get(String(source.callId)) ?? null : null,
+    skills.push({ name: invocationName ?? (tool ? calls.get(String(source.callId)) ?? null : null),
       origin: invocation ? 'user-invocation' : 'tool-response', renderedSha256: hash(message.content) })
   }
-  const dynamic = options.messages.filter(message => message.source.kind === 'plugin'
-    && message.source.plugin === '@deepseek-ai/dsh-system-prompt' && message.role !== 'system')
+  const dynamic = options.messages.filter(message => {
+    const source = message.source as ({ kind?: unknown; plugin?: unknown } | undefined)
+    if (source === undefined || message.role === 'system') return false
+    return source.kind === 'runtime-context'
+      || (source.kind === 'plugin' && source.plugin === '@deepseek-ai/dsh-system-prompt')
+  })
   return {
     version: RUNTIME_PROVENANCE_VERSION, boundary: 'provider-neutral-pre-serialization',
     coreVersion: SCIENCE_SYSTEM_PROMPT_VERSION, contextVersion: RESEARCH_CONTEXT_VERSION,

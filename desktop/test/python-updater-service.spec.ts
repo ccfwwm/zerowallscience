@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -125,5 +125,70 @@ it('automatically installs a missing base runtime at startup and exposes progres
   await expect(completion).resolves.toMatchObject({ phase: 'ready', activeEnvironment: { snapshotId: 'active' } })
   expect(state.calls.map(call => call.method)).toEqual(['localStatus', 'initialize', 'pythonInfo', 'localStatus'])
   expect(JSON.parse(await readFile(join(root, 'jobs', `${service.current().updateJob!.taskId}.json`), 'utf8')).state).toBe('complete')
+  service.stop()
+})
+
+it('restarts a missing bundled runtime before resuming stale dependency jobs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-broker-stale-jobs-')); roots.push(root)
+  const jobs = join(root, 'jobs')
+  await mkdir(jobs)
+  const bootstrapId = '11111111-1111-4111-8111-111111111111'
+  const dependencyId = '22222222-2222-4222-8222-222222222222'
+  await writeFile(join(jobs, `${bootstrapId}.json`), JSON.stringify({ taskId: bootstrapId, method: 'initialize', args: [], state: 'paused', updatedAt: 1 }))
+  await writeFile(join(jobs, `${dependencyId}.json`), JSON.stringify({ taskId: dependencyId, method: 'installPythonPackage', args: ['requests'], state: 'paused', updatedAt: 2 }))
+  state.missing = true
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+
+  const completion = service.autoUpdate()
+  await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
+  expect(state.calls.some(call => call.method === 'installPythonPackage')).toBe(false)
+  expect(service.current().phase).not.toBe('paused')
+  const request = state.calls.find(call => call.method === 'initialize')!
+  state.missing = false
+  state.children.at(-1).emit('message', { id: request.id, result: { updated: true } })
+  await expect(completion).resolves.toMatchObject({ phase: 'ready' })
+  expect(JSON.parse(await readFile(join(jobs, `${dependencyId}.json`), 'utf8')).state).toBe('paused')
+  service.stop()
+})
+
+it('gates direct package operations behind the signed base runtime', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-broker-package-gate-')); roots.push(root)
+  state.missing = true
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+  const preview = service.previewPackages(['requests'])
+  await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
+  expect(state.calls.some(call => call.method === 'previewPackages')).toBe(false)
+  state.missing = false
+  const initialize = state.calls.find(call => call.method === 'initialize')!
+  state.children.at(-1).emit('message', { id: initialize.id, result: { updated: true } })
+  await expect(preview).resolves.toMatchObject({ phase: 'ready' })
+  expect(state.calls.map(call => call.method)).toEqual(['localStatus', 'initialize', 'pythonInfo', 'localStatus', 'previewPackages'])
+  service.stop()
+})
+
+it('does not pass package requests through when signed runtime initialization fails', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-broker-package-failure-')); roots.push(root)
+  state.missing = true
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+  const preview = service.previewPackages(['requests'])
+  await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
+  const initialize = state.calls.find(call => call.method === 'initialize')!
+  state.children.at(-1).emit('message', { id: initialize.id, error: '基础 Python 安装失败' })
+  await expect(preview).rejects.toThrow('基础 Python 安装失败')
+  expect(state.calls.some(call => call.method === 'previewPackages')).toBe(false)
+  service.stop()
+})
+
+it('records an unavailable first-run environment as a failed durable install', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-broker-unavailable-')); roots.push(root)
+  state.missing = true
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+  const completion = service.autoUpdate()
+  await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
+  const request = state.calls.find(call => call.method === 'initialize')!
+  state.children.at(-1).emit('message', { id: request.id, result: { phase: 'failed', message: 'base archive rejected' } })
+  await expect(completion).resolves.toMatchObject({ phase: 'unavailable', updateJob: { stage: 'failed' } })
+  const taskId = service.current().updateJob!.taskId
+  expect(JSON.parse(await readFile(join(root, 'jobs', `${taskId}.json`), 'utf8')).state).toBe('failed')
   service.stop()
 })

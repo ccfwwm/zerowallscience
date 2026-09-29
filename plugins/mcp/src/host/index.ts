@@ -978,7 +978,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
           const resolved = resolveMcpConfig(record, process.env, process.cwd(), undefined, candidate)
           if (!resolved.config || resolved.config.transport !== 'stdio') throw new Error('候选 MCP 配置无效。')
           if (key) resolved.config.env.ZEROWALL_SCIMASTER_API_KEY = key
-          prepared.push({ id: record.id, value: await this.managed.prepare(resolved.config, candidate.root) })
+          try {
+            prepared.push({ id: record.id, value: await this.managed.prepare(resolved.config, candidate.root) })
+          } catch (error) {
+            throw new Error(`候选 MCP ${record.serverName} 启动失败：${redactError(error)}`)
+          }
         }
         for (const item of prepared) await this.managed.stage(item.id, candidate.root, item.value)
         await writeFile(join(root, 'activation-ready.json'), JSON.stringify({ transactionId: transaction.transactionId, ready: true }))
@@ -1550,10 +1554,23 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
       launch.cwd = candidate.root
     }
     if (record.command === 'zerowall-managed:bio-tools') {
-      launch.command = managedPythonExecutable(candidate)
+      // A first-run candidate lives in a slot until activation. The shared
+      // install-directory interpreter does not exist yet, so preflight must
+      // launch the candidate's own verified interpreter.
+      launch.command = managedCandidatePythonExecutable(candidate)
       const bioToolsRoot = bundledManagedRoot('ZEROWALL_BIO_TOOLS_ROOT', candidate.root, 'bio-tools')
       launch.args = [join(bioToolsRoot, 'run_server.py'), 'mcp_bio']
       launch.cwd = bioToolsRoot
+    } else if (record.command === 'zerowall-managed:ketcher') {
+      const ketcherRoot = bundledManagedRoot('ZEROWALL_KETCHER_ROOT', candidate.root, 'ketcher-chemistry')
+      launch.command = process.execPath
+      launch.args = [join(ketcherRoot, 'server.js')]
+      launch.cwd = ketcherRoot
+    } else if (record.command === 'zerowall-managed:scimaster') {
+      const sciRoot = bundledManagedRoot('ZEROWALL_SCI_ROOT', candidate.root, 'sci')
+      launch.command = process.execPath
+      launch.args = [join(sciRoot, 'zerowall-mcp-launcher.cjs')]
+      launch.cwd = sciRoot
     }
   }
   if (record.transport === 'stdio' && record.command === 'zerowall-managed:bio-tools') {
@@ -1565,7 +1582,7 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
       // Legacy overlay paths are deliberately ignored after migration so a
       // stale profile cannot shadow the signed shared site-packages.
       const relativeSitePackages = managed.manifest?.python?.relativeSitePackages ?? derivedSitePackages(root)
-      const runtimeRoot = managed.runtimeRoot ?? resolve(root, '..')
+      const runtimeRoot = candidate ? root : managed.runtimeRoot ?? resolve(root, '..')
       values.PYTHONPATH = join(runtimeRoot, relativeSitePackages)
       values.PYTHONNOUSERSITE = '1'
       // The stdio transport merges these values over the inherited parent
@@ -1630,6 +1647,15 @@ function managedPythonExecutable(record: ManagedEnvironmentRecord): string {
   const executable = resolve(root, path)
   const local = relative(root, executable)
   if (isAbsolute(path) || local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed Python executable')
+  return executable
+}
+
+function managedCandidatePythonExecutable(record: ManagedEnvironmentRecord): string {
+  if (!record.root || record.manifest?.python?.relativeExecutable !== 'Python/python.exe') throw new Error('Managed candidate has no shared Python layout.')
+  const root = resolve(record.root)
+  const executable = resolve(root, record.manifest.python.relativeExecutable)
+  const local = relative(root, executable)
+  if (local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed candidate Python executable')
   return executable
 }
 let managedEnvironmentCache: { path: string; fileSignature: string; record: ManagedEnvironmentRecord | undefined } | undefined

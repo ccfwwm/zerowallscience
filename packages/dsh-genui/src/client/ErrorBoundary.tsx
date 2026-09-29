@@ -8,6 +8,7 @@
  */
 
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { t } from './i18n/index.ts'
 
 interface ErrorBoundaryProps {
   /** What the block is, shown in the fallback alert (fence / tool / panel). */
@@ -57,7 +58,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return (
       <div style={fallbackStyle} role="alert" data-genui-error>
         <span style={{ fontWeight: 600 }}>
-          ⚠️ {this.props.label ?? '此界面'}渲染失败（已隔离，不影响其他内容）
+          {t('err.boundary.body', { label: this.props.label ?? t('err.boundary.generic') })}
         </span>
         <span style={{ opacity: 0.75, overflowWrap: 'anywhere' }}>{error.message}</span>
       </div>

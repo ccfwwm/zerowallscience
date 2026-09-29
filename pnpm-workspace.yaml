@@ -4,6 +4,9 @@ packages:
   - plugins/*
   - '!plugins/wechat'
   - packages/*
+  # Removed from the 7.3.0 runtime; keep the source tree for audit/recovery,
+  # but do not install or build the incompatible legacy package.
+  - '!packages/dsh-capability-menu'
   - deepseek-harness
   - deepseek-harness/vendor/*
   - deepseek-harness/packages/*/*
@@ -39,7 +42,7 @@ overrides:
   'dsh-progressive-tools>@deepseek-ai/dsh-session-persistence': 'workspace:*'
   'dsh-progressive-tools>@deepseek-ai/dsh-settings': 'workspace:*'
   'dsh-progressive-tools>@deepseek-ai/dsh-user-approval': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-code-runtime': 'workspace:*'
+  'dsh-progressive-tools>@deepseek-ai/dsh-ptc-runtime': 'workspace:*'
   'tsdown': '0.22.2'
   '@tsdown/css': '0.22.2'
   '@electron/get': '5.1.0'
@@ -71,18 +74,23 @@ allowBuilds:
   # Registry release includes compiled host/client entries; no install build needed.
   dsh-zotero: false
   '@scarf/scarf': false
+  # Both packages are optional accelerators for the SSH client. Keep their
+  # native build scripts blocked; ssh2 falls back to its supported JS path.
+  cpu-features: false
+  ssh2: false
 
 minimumReleaseAgeExclude:
   # Explicitly requested integration pin, published today.
-  - 'dsh-univer-office@0.3.2'
+  - 'dsh-univer-office@0.3.5'
+  - '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.2.0'
   - '@earendil-works/pi-ai@0.85.1'
-  - dsh-better-sidebar@0.18.0
-  - dsh-dream-skin@9.13.1
-  - dsh-free-search@0.4.28
+  - dsh-better-sidebar@0.22.1
+  - dsh-dream-skin@9.27.1
+  - dsh-free-search@0.5.0
 
 patchedDependencies:
-  dsh-dream-skin@9.13.1: patches/dsh-dream-skin@9.13.1.patch
-  dsh-free-search@0.4.28: patches/dsh-free-search@0.4.28.patch
+  dsh-dream-skin@9.27.1: patches/dsh-dream-skin@9.27.1.patch
+  dsh-free-search@0.5.0: patches/dsh-free-search@0.5.0.patch
 
 packageExtensions:
   'dsh-office-tools@*':
@@ -94,3 +102,9 @@ packageExtensions:
       '@deepseek-ai/dsh-llm': 'workspace:*'
       '@deepseek-ai/dsh-session': 'workspace:*'
       '@deepseek-ai/dsh-tools': 'workspace:*'
+  # Office 0.2.0 uses Better Sidebar's stable registerFileViewer API. Its
+  # published peer range was not widened beyond 0.17, so record the verified
+  # 0.22.1 compatibility as a local, bounded adapter.
+  '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.2.0':
+    peerDependencies:
+      dsh-better-sidebar: '^0.17.0 || ^0.21.1 || ^0.22.0 || ^0.22.1'

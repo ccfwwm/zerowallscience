@@ -1034,7 +1034,11 @@ export function apply(ctx: Context, input: Config): void {
     }
   }, { prepend: true })
 
-  ctx.on('agent/session-start', ({ agent }) => {
+  // rc.2 removed the legacy session-start event. Agent creation is the
+  // earliest lifecycle hook for both startup and resumed sessions and runs
+  // before the first inbox turn, so it preserves the catalog initialization
+  // semantics here.
+  ctx.on('agent/created', ({ agent }) => {
     if (config.mode === 'stable-proxy') prepareStableState(agent)
     else prepareDynamicState(agent, latestTurn(agent))
   }, { prepend: true })

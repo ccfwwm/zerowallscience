@@ -19,7 +19,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name }}
       PRERELEASE: ${{ github.event.release.prerelease }}
-      HOST_REF: dsh-v0.1.5-rc.2
+      HOST_REF: dsh-v0.1.7-rc.2
 
     steps:
       # actions/checkout@v4
@@ -87,8 +87,7 @@ jobs:
             fi
           fi
 
-      # Host checkout is used by the real packed e2e mount; package checks use
-      # node_modules declarations pinned to DSH 0.1.2-rc.1.
+      # 固定标签的宿主用于 packed e2e；API 检查单独安装发布包类型声明。
       - name: Clone DSH host
         shell: bash
         run: |
@@ -111,6 +110,9 @@ jobs:
 
       - name: Check
         run: pnpm run check
+
+      - name: Check published host API
+        run: pnpm run check:host-api "$HOST_REF"
 
       - name: Verify and pack plugin tarball
         id: pack

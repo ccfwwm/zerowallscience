@@ -24,8 +24,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import {
-  Button, IconChevronRightOutline14, IconCloseFill14, IconCodeOutline16, IconCopyOutline16, IconDownloadOutline16,
-  IconEditOutline16, IconLinkOutline16, IconTrashOutline16, Menu, Modal, type MenuEntry, type MenuItem, writeClipboard,
+  Button, IconChevronRightOutlineRegular, IconCloseFillRegular, IconCodeOutlineRegular, IconCopyOutlineRegular, IconDownloadOutlineRegular,
+  IconEditOutlineRegular, IconLinkOutlineRegular, IconTrashOutlineRegular, Menu, Modal, type MenuEntry, type MenuItem, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { SiCursor, SiZedindustries } from 'react-icons/si'
 import { VscFolderOpened, VscLinkExternal, VscPin, VscPinned } from 'react-icons/vsc'
@@ -41,18 +41,12 @@ import { t } from './locales.ts'
 import type { BetterSidebarService } from './service.ts'
 import type { SidebarStore } from './state.ts'
 import { uploadItemsFromDrop, uploadItemsFromFiles, type UploadItem } from './upload.ts'
+import { useDirectoryWatch } from './use-dir-watch.ts'
 import css from './sidebar.module.css'
 
 interface LevelData {
   entries?: FsEntry[]
   error?: string
-}
-
-const TREE_REQUEST_TIMEOUT_MS = 15_000
-const treeCache = new Map<string, Record<string, LevelData>>()
-
-function treeScopeKey(sessionId: string, cwd: string | undefined): string {
-  return `${sessionId}\u0000${cwd ?? ''}`
 }
 
 /** Root label: the last path segment (mirror of the host rootLabel). */
@@ -74,11 +68,6 @@ function parentOf(path: string): string {
 function isFileDrag(event: DragEvent): boolean {
   return event.dataTransfer?.types.includes('Files') ?? false
 }
-
-/** Payload consumed by the conversation composer when a workspace file is
- * dragged from this tree. Keeping the URL scoped to the current session lets
- * the composer download the bytes through the existing workspace fence. */
-const SIDEBAR_FILE_DRAG = 'application/x-zerowall-sidebar-file'
 
 /** How long the row's "copied" label stays after a successful write. */
 const COPIED_MS = 1200
@@ -123,8 +112,6 @@ const ChatDropIllustration = () => (
 export function FileTree(props: {
   sessionId: string
   cwd: string | undefined
-  /** Whether this tree belongs to the currently visible workbench tab. */
-  visible?: boolean
   /** The sidebar store: the fence-refusal notice writes the `workspaceFence` pref through it. */
   store: SidebarStore
   expanded: string[]
@@ -168,9 +155,8 @@ export function FileTree(props: {
    */
   service?: BetterSidebarService
 }) {
-  const { sessionId, cwd, visible = true, store, expanded, revealed, onToggle, onOpenFile, onOpenFileNewTab, onOpenFileSide, openWithTargets, openWithPinned, openWithSsh, onOpenWith, onToggleOpenWithPin, onReferenceFile, onPathRenamed, onPathDeleted, refreshTick, onUploadRequest, busy, service } = props
-  const scopeKey = treeScopeKey(sessionId, cwd)
-  const [data, setData] = useState<Record<string, LevelData>>(() => treeCache.get(scopeKey) ?? {})
+  const { sessionId, cwd, store, expanded, revealed, onToggle, onOpenFile, onOpenFileNewTab, onOpenFileSide, openWithTargets, openWithPinned, openWithSsh, onOpenWith, onToggleOpenWithPin, onReferenceFile, onPathRenamed, onPathDeleted, refreshTick, onUploadRequest, busy, service } = props
+  const [data, setData] = useState<Record<string, LevelData>>({})
   /**
    * Registry revision for the file-icon feature: bumps on ANY registry
    * change (register/dispose of tabs, viewers, or icons — one listener
@@ -198,15 +184,6 @@ export function FileTree(props: {
   const dirRowIcon = (path: string, open: boolean): ReactNode =>
     service !== undefined ? service.folderIcon(path, open, 14) : builtinFolderIcon(open, 14)
   const dataRef = useRef(data)
-  /** Reject responses started for an older session/cwd scope. */
-  const generationRef = useRef(0)
-  const scopeRef = useRef(scopeKey)
-  const expandedRef = useRef(expanded)
-  expandedRef.current = expanded
-  const requestsRef = useRef(new Map<string, { controller: AbortController; generation: number }>())
-  // Opening a file can remount the editor host. A remount must reuse the
-  // cached tree; only an actual refresh tick should force new listings.
-  const lastRefreshTickRef = useRef(refreshTick)
   /** The row whose path was just copied ("copied" label replaces its button). */
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   /** Open context menu: the row path (and whether it is a directory) plus the cursor position. */
@@ -321,33 +298,18 @@ export function FileTree(props: {
 
   const storeLevel = useCallback((path: string, level: LevelData) => {
     dataRef.current = { ...dataRef.current, [path]: level }
-    treeCache.set(scopeRef.current, dataRef.current)
     setData(dataRef.current)
   }, [])
 
-  const loadDir = useCallback((dir: string, force = false) => {
-    if (!visible) return
-    if (!force && dataRef.current[dir] !== undefined) return
-    if (requestsRef.current.has(dir)) return
-    const generation = generationRef.current
-    const controller = new AbortController()
-    requestsRef.current.set(dir, { controller, generation })
-    if (dataRef.current[dir]?.entries === undefined) storeLevel(dir, {})
-    const timeoutError = new Error('File request timed out after 15 seconds.')
-    const timer = window.setTimeout(() => controller.abort(timeoutError), TREE_REQUEST_TIMEOUT_MS)
-    api.fsTree({ sessionId, cwd }, dir, controller.signal).then((listing) => {
-      if (generation !== generationRef.current || scopeRef.current !== scopeKey) return
+  const loadDir = useCallback((dir: string) => {
+    if (dataRef.current[dir] !== undefined) return
+    storeLevel(dir, {})
+    api.fsTree({ sessionId, cwd }, dir).then((listing) => {
       storeLevel(dir, { entries: listing.entries })
     }).catch((error: unknown) => {
-      if (generation !== generationRef.current || scopeRef.current !== scopeKey) return
-      if (controller.signal.aborted && controller.signal.reason !== timeoutError) return
-      const cause = controller.signal.reason === timeoutError ? timeoutError : error
-      storeLevel(dir, { error: cause instanceof Error ? cause.message : String(cause) })
-    }).finally(() => {
-      window.clearTimeout(timer)
-      if (requestsRef.current.get(dir)?.controller === controller) requestsRef.current.delete(dir)
+      storeLevel(dir, { error: error instanceof Error ? error.message : String(error) })
     })
-  }, [sessionId, cwd, scopeKey, visible, storeLevel])
+  }, [sessionId, cwd, storeLevel])
 
   /** Drop one level from the cache and reload it (the fence notice's retry). */
   const retryDir = useCallback((dir: string) => {
@@ -415,32 +377,33 @@ export function FileTree(props: {
 
   // The caller's refresh tick wipes the cache (declared BEFORE the load
   // effect so the reload below sees the empty cache).
+  const lastTick = useRef(refreshTick)
   useEffect(() => {
-    const scopeChanged = scopeRef.current !== scopeKey
-    const refreshChanged = lastRefreshTickRef.current !== refreshTick
-    lastRefreshTickRef.current = refreshTick
-    if (scopeChanged) {
-      generationRef.current += 1
-      for (const request of requestsRef.current.values()) request.controller.abort()
-      requestsRef.current.clear()
-      scopeRef.current = scopeKey
-      dataRef.current = treeCache.get(scopeKey) ?? {}
-      setData(dataRef.current)
-    }
-    if (!visible || cwd === undefined) return
-    for (const dir of new Set([cwd, ...expandedRef.current])) loadDir(dir, refreshChanged)
-  }, [scopeKey, visible, refreshTick, cwd, loadDir])
+    if (lastTick.current === refreshTick) return
+    lastTick.current = refreshTick
+    dataRef.current = {}
+    setData({})
+  }, [refreshTick])
 
   useEffect(() => {
-    if (!visible) return
+    // Load the visible set; already-loaded levels (kept in the cache) are
+    // not refetched. Only the refresh tick wipes the cache.
+    const root = cwd
+    if (root === undefined) return
+    loadDir(root)
     for (const dir of expanded) loadDir(dir)
-  }, [visible, expanded, loadDir])
+  }, [cwd, expanded, refreshTick, loadDir])
 
-  useEffect(() => () => {
-    generationRef.current += 1
-    for (const request of requestsRef.current.values()) request.controller.abort()
-    requestsRef.current.clear()
-  }, [])
+  // Live refresh: the host watches the folders this tree has expanded and
+  // names the one that changed, so exactly that level is dropped and
+  // re-listed instead of the whole tree. Without it a folder listed once when
+  // it was opened stayed stale for the rest of the session.
+  useDirectoryWatch({
+    sessionId,
+    root: cwd,
+    dirs: expanded,
+    onStale: retryDir,
+  })
 
   // Bring a "Show in folder" reveal into view: the ancestors expand above
   // (revealPaths), but the row may not be scrolled into sight — a reveal on
@@ -535,7 +498,7 @@ export function FileTree(props: {
       if (target.id === 'vscode') return <IconVscode16 size={14} />
       if (target.id === 'cursor') return <SiCursor size={14} />
       if (target.id === 'zed') return <SiZedindustries size={14} />
-      return <IconCodeOutline16 size={14} />
+      return <IconCodeOutlineRegular size={14} />
     }
     const pinned = openWithTargets
       .filter(target => pinnedIds.includes(target.id))
@@ -586,7 +549,7 @@ export function FileTree(props: {
         label: (
           <span className={css.openWithLabel}>
             <span className={css.openWithName}>{t('openWithMenu')}</span>
-            <IconChevronRightOutline14 size={14} className={css.openWithChevron} aria-hidden />
+            <IconChevronRightOutlineRegular size={14} className={css.openWithChevron} aria-hidden />
           </span>
         ),
         icon: <VscLinkExternal size={14} />,
@@ -657,7 +620,7 @@ export function FileTree(props: {
 
   const renderLevel = (dir: string, depth: number): ReactNode => {
     const level = data[dir]
-    if (level === undefined || (level.entries === undefined && level.error === undefined)) {
+    if (level === undefined) {
       return <div className={css.explorerRow} style={{ paddingLeft: depth * 22 + 6 }}>{t('loading')}</div>
     }
     if (level.error !== undefined) {
@@ -710,7 +673,7 @@ export function FileTree(props: {
             >
               {dirRowIcon(entry.path, isOpen)}
               <span className={css.explorerName}>{entry.name}</span>
-              {entry.isSymlink && <IconLinkOutline16 size={12} className={css.explorerSymlink} />}
+              {entry.isSymlink && <IconLinkOutlineRegular size={12} className={css.explorerSymlink} />}
               {rowActions(entry)}
             </div>
             {isOpen && renderLevel(entry.path, depth + 1)}
@@ -730,19 +693,6 @@ export function FileTree(props: {
           data-dsh-revealed={revealedSet.has(entry.path) ? 'true' : undefined}
           style={{ paddingLeft: depth * 22 + 6 }}
           title={entry.broken ? `${entry.path} — ${t('brokenSymlink')}` : entry.path}
-          draggable={!entry.broken}
-          onDragStart={(event) => {
-            if (entry.broken) return
-            event.dataTransfer.effectAllowed = 'copy'
-            const lower = entry.name.toLowerCase()
-            const type = lower.endsWith('.png') ? 'image/png' : lower.endsWith('.jpg') || lower.endsWith('.jpeg') ? 'image/jpeg' : lower.endsWith('.webp') ? 'image/webp' : lower.endsWith('.gif') ? 'image/gif' : 'application/octet-stream'
-            event.dataTransfer.setData(SIDEBAR_FILE_DRAG, JSON.stringify({
-              url: downloadUrl({ sessionId, cwd }, entry.path),
-              name: entry.name,
-              type,
-            }))
-            event.dataTransfer.setData('text/plain', entry.name)
-          }}
           onClick={() => { onOpenFile(entry.path) }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
@@ -756,7 +706,7 @@ export function FileTree(props: {
         >
           {fileRowIcon(entry.path)}
           <span className={css.explorerName}>{entry.name}</span>
-          {entry.isSymlink && <IconLinkOutline16 size={12} className={css.explorerSymlink} />}
+          {entry.isSymlink && <IconLinkOutlineRegular size={12} className={css.explorerSymlink} />}
           {rowActions(entry)}
         </div>
       )
@@ -788,7 +738,7 @@ export function FileTree(props: {
                 aria-label={t('dismiss')}
                 onClick={() => { setActionError(null) }}
               >
-                <IconCloseFill14 />
+                <IconCloseFillRegular size={14} />
               </button>
             </div>
           )}
@@ -818,7 +768,7 @@ export function FileTree(props: {
                 </button>
               )}
           </div>
-          {renderLevel(root, 1)}
+          {data[root] !== undefined && renderLevel(root, 1)}
         </>
       )}
       {dropOver && dropRect !== null && createPortal(
@@ -891,7 +841,7 @@ export function FileTree(props: {
         items={[
           // The open escapes head the FILE menu (dirs only get copy).
           ...(rowMenu?.isDir === false && onOpenFileNewTab !== undefined
-            ? [{ id: 'open-new-tab', label: t('openFileNewTab'), icon: <IconCodeOutline16 size={14} /> }]
+            ? [{ id: 'open-new-tab', label: t('openFileNewTab'), icon: <IconCodeOutlineRegular size={14} /> }]
             : []),
           ...(rowMenu?.isDir === false && onOpenFileSide !== undefined
             ? [{ id: 'open-side', label: t('openFileSide'), icon: <VscFolderOpened size={14} /> }]
@@ -899,21 +849,21 @@ export function FileTree(props: {
           ...openWithEntries(),
           // Download applies to files only (the host route refuses directories).
           ...(rowMenu?.isDir === false
-            ? [{ id: 'download', label: t('download'), icon: <IconDownloadOutline16 size={14} /> }]
+            ? [{ id: 'download', label: t('download'), icon: <IconDownloadOutlineRegular size={14} /> }]
             : []),
           // Upload into a directory (incl. the workspace root row).
           ...(rowMenu?.isDir === true
             ? [{ id: 'upload-here', label: t('uploadHere'), icon: <IconUploadOutline16 size={14} /> }]
             : []),
-          { id: 'relative', label: t('copyRelative'), icon: <IconCopyOutline16 size={14} /> },
-          { id: 'absolute', label: t('copyAbsolute'), icon: <IconCopyOutline16 size={14} /> },
+          { id: 'relative', label: t('copyRelative'), icon: <IconCopyOutlineRegular size={14} /> },
+          { id: 'absolute', label: t('copyAbsolute'), icon: <IconCopyOutlineRegular size={14} /> },
           // Explorer mutations close the menu; the workspace ROOT row is the
           // session itself — never renamable or deletable (server double-guards).
           ...(rowMenu !== null && rowMenu.path !== cwd
             ? [
                 { id: 'mutate-sep', type: 'separator' } as MenuEntry,
-                { id: 'rename', label: t('rename'), icon: <IconEditOutline16 size={14} /> },
-                { id: 'delete', label: t('delete'), icon: <IconTrashOutline16 size={14} />, danger: true },
+                { id: 'rename', label: t('rename'), icon: <IconEditOutlineRegular size={14} /> },
+                { id: 'delete', label: t('delete'), icon: <IconTrashOutlineRegular size={14} />, danger: true },
               ]
             : []),
         ]}

@@ -48,7 +48,7 @@ Check the lock into the study repository. Record:
 
 For a local ZeroWall smoke test, install the pins through the signed shared
 dependency manifest and run the smoke command with
-`%APPDATA%\zerowall-science\Python\python.exe`. Do not create a venv or a
+the shared Python executable returned by the Host (`status.runtimeRoot`). Do not create a venv or a
 second site-packages directory.
 
 This pins direct dependencies but does not replace a lock for transitive

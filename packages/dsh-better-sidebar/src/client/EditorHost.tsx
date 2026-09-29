@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createElement } from 'react'
 import clsx from 'clsx'
-import { IconCheckOutline16, IconFolderOpen16, IconRefreshOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCheckOutlineRegular, IconFolderOpenRegular, IconRefreshOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { Context } from '../context-types.ts'
 import { api, isOutsideWorkspaceMessage, mediaUrl, type SessionScope } from './api.ts'
 import { BinaryDownload } from './binary-download.tsx'
@@ -33,13 +33,13 @@ import { FenceErrorNotice } from './FenceErrorNotice.tsx'
 import { planFirstMatch, planFsReadOutcome, type EditorLoadAction } from './editor-load.ts'
 import { baseName } from './FileTree.tsx'
 import { createFrameBatcher } from './frame-batcher.ts'
-import { openSidebarFile } from './intercept.tsx'
+import { openSidebarFile } from './sidebar-file.ts'
 import { openWithSshActive, openWithUrl, parseOpenWithConfig, resolveOpenWithTargets } from './open-with.ts'
 import { updatePluginSettings } from './plugin-settings.ts'
 import { TreePanel } from './TreePanel.tsx'
 import { t } from './locales.ts'
 import { relativeTo } from './paths.ts'
-import { resolveSidebarPath } from './produced-files.ts'
+import { resolveSidebarPath } from './paths.ts'
 import { closePathTabs, retargetPathTabs } from './tree-mutations.ts'
 import type { EditorToolbarControls, EditorToolbarState, FileViewerDescriptor } from './service.ts'
 import { firstLeaf, insertLeafAt, leafWithTab, mintTabId, type SidebarStore, type SidebarTab } from './state.ts'
@@ -98,13 +98,12 @@ export function EditorHost(props: {
   store: SidebarStore
   scope: SessionScope
   tab: SidebarTab
-  visible?: boolean
   expanded: string[]
   revealed: string[]
   onToggleDir: (path: string) => void
   onReferenceFile: (path: string, isDir: boolean) => void
 }) {
-  const { ctx, store, scope, tab, visible = true, expanded, revealed, onToggleDir, onReferenceFile } = props
+  const { ctx, store, scope, tab, expanded, revealed, onToggleDir, onReferenceFile } = props
   const path = tab.path ?? ''
   const title = tab.title
   // A folder window: the model's `sidebar_open` (or any caller) opens a
@@ -116,7 +115,6 @@ export function EditorHost(props: {
   // Manual refresh (issue #167): bumping the sequence re-runs the load effect
   // with the same path/scope — the only reload entry besides open/close.
   const [reloadSeq, setReloadSeq] = useState(0)
-  const loadGenerationRef = useRef(0)
 
   // Manual refresh (issue #167 + PR #228): a dirty draft is dropped by the
   // reload (the editor instance remounts), so confirm before discarding it.
@@ -164,13 +162,13 @@ export function EditorHost(props: {
     if (inPlace) {
       ctx.get('betterSidebar')?.updateTab(tab.id, { path: absolute, title: baseName(absolute) })
     } else {
-      openSidebarFile(ctx, store, scope.sessionId, absolute)
+      openSidebarFile(ctx, scope.sessionId, absolute)
     }
   }
 
   /** The context menu's explicit "new tab" escape (per-path dedupe). */
   const openFileNewTab = (absolute: string): void => {
-    openSidebarFile(ctx, store, scope.sessionId, absolute)
+    openSidebarFile(ctx, scope.sessionId, absolute)
   }
 
   /**
@@ -298,25 +296,20 @@ export function EditorHost(props: {
     // The seeded home tab (no path) never loads a viewer — the empty-state
     // hint renders until the user picks a file. A folder tab never loads a
     // viewer either — its tree is rooted at the folder.
-    if (!visible || showEmpty || isDir) return
+    if (showEmpty || isDir) return
     let cancelled = false
-    const generation = ++loadGenerationRef.current
     // Aborts the matched viewer's `load` when the editor tears down (tab
     // closed, path changed, session switched) or re-matches the viewer.
     const controller = new AbortController()
-    const timeoutError = new Error('File request timed out after 15 seconds.')
-    const timer = window.setTimeout(() => controller.abort(timeoutError), 15_000)
     setLoad({ status: 'loading' })
     const mediaUrlOf = (): string => mediaUrl(scope, path)
     const apply = (action: EditorLoadAction): void => {
-      if (cancelled || generation !== loadGenerationRef.current) return
+      if (cancelled) return
       switch (action.kind) {
         case 'binary':
-          window.clearTimeout(timer)
           setLoad({ status: 'binary' })
           return
         case 'render':
-          window.clearTimeout(timer)
           setLoad({
             status: 'ready',
             viewer: action.viewer,
@@ -328,20 +321,16 @@ export function EditorHost(props: {
           return
         case 'customLoad':
           void action.viewer.load?.(path, scope, controller.signal).then((data) => {
-            if (cancelled || generation !== loadGenerationRef.current) return
-            window.clearTimeout(timer)
+            if (cancelled) return
             setLoad({ status: 'ready', viewer: action.viewer, customData: data })
           }).catch((error: unknown) => {
-            if (cancelled || generation !== loadGenerationRef.current) return
-            window.clearTimeout(timer)
-            const cause = controller.signal.reason === timeoutError ? timeoutError : error
-            setLoad({ status: 'error', message: cause instanceof Error ? cause.message : String(cause) })
+            if (cancelled) return
+            setLoad({ status: 'error', message: error instanceof Error ? error.message : String(error) })
           })
           return
         case 'fetchFsRead':
-          api.fsRead(scope, path, controller.signal).then((result) => {
-            if (cancelled || generation !== loadGenerationRef.current) return
-            window.clearTimeout(timer)
+          api.fsRead(scope, path).then((result) => {
+            if (cancelled) return
             // Binary reads carry the head bytes for the detect re-match.
             const outcome = planFsReadOutcome(action.viewer, {
               binary: result.kind === 'binary',
@@ -351,17 +340,18 @@ export function EditorHost(props: {
             }, (head) => ctx.get('betterSidebar')?.matchFileViewer(path, head), mediaUrlOf)
             apply(outcome)
           }).catch((error: unknown) => {
-            if (cancelled || generation !== loadGenerationRef.current) return
-            window.clearTimeout(timer)
-            const cause = controller.signal.reason === timeoutError ? timeoutError : error
-            setLoad({ status: 'error', message: cause instanceof Error ? cause.message : String(cause) })
+            if (cancelled) return
+            setLoad({ status: 'error', message: error instanceof Error ? error.message : String(error) })
           })
           return
       }
     }
     apply(planFirstMatch(ctx.get('betterSidebar')?.matchFileViewer(path), mediaUrlOf))
-    return () => { cancelled = true; window.clearTimeout(timer); controller.abort() }
-  }, [scope.sessionId, scope.cwd, path, ctx, visible, showEmpty, isDir, reloadSeq])
+    return () => { cancelled = true; controller.abort() }
+    // The deps are deliberately granular: the scope object's identity churns,
+    // only its sessionId / cwd fields gate the (re)fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope.sessionId, scope.cwd, path, ctx, showEmpty, isDir, reloadSeq])
 
   // Save-then-refresh in preview mode (issue #167 part C): the edge into
   // 'saved' (never a lingering 'saved' state) triggers exactly one reload, so
@@ -397,7 +387,6 @@ export function EditorHost(props: {
           store={store}
           sessionId={scope.sessionId}
           cwd={folderRoot ?? scope.cwd}
-          visible={visible}
           expanded={expanded}
           revealed={revealed}
           onToggle={onToggleDir}
@@ -458,7 +447,7 @@ export function EditorHost(props: {
             title={`${t('save')} (Ctrl/Cmd+S)`}
             onClick={() => { controlsRef.current?.save() }}
           >
-            <IconCheckOutline16 size={14} />
+            <IconCheckOutlineRegular size={14} />
           </button>
         )}
         {saveLabel !== '' && (
@@ -472,7 +461,7 @@ export function EditorHost(props: {
             title={t('refresh')}
             onClick={refreshFile}
           >
-            <IconRefreshOutline14 size={14} />
+            <IconRefreshOutlineRegular size={14} />
           </button>
         )}
         <button
@@ -483,7 +472,7 @@ export function EditorHost(props: {
           aria-pressed={treeOpen}
           onClick={toggleTree}
         >
-          <IconFolderOpen16 size={14} />
+          <IconFolderOpenRegular size={14} />
         </button>
       </div>
       <div className={css.editorBody}>
@@ -523,7 +512,6 @@ export function EditorHost(props: {
               store={store}
               sessionId={scope.sessionId}
               cwd={scope.cwd}
-              visible={visible}
               expanded={expanded}
               revealed={revealed}
               onToggle={onToggleDir}

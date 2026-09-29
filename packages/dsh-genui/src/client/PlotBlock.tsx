@@ -8,6 +8,7 @@
  * which render as live sliders under the chart — dragging re-samples the
  * curve in place. The plot itself supports drag-to-pan and wheel-to-zoom.
  */
+import { renderInline } from './inline.ts'
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { sampleExpr } from './safe-math.ts'
 import css from './PlotBlock.module.css'
@@ -352,7 +353,7 @@ export const PlotBlock = memo(function PlotBlock({
 
   return (
     <div className={css.block} data-genui-plot>
-      {title !== undefined && <div className={css.title}>{title}</div>}
+      {title !== undefined && <div className={css.title}>{renderInline(title)}</div>}
       {hasData && hasValidRange && (
         <div className={css.plotTools}>
           <span className={css.plotHint}>

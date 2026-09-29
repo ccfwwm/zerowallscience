@@ -7,6 +7,7 @@
  * @module @changfenhuang/dsh-genui/client/asset-echarts
  */
 import { init as echartsInit, type EChartsType, type EChartsCoreOption } from 'echarts'
+import 'echarts-wordcloud'
 
 /** The engine surface registered by the echarts asset bundle. */
 export interface EChartsAssetApi {

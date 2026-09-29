@@ -165,7 +165,7 @@ describe('surface elevation contract', () => {
     const css = readFileSync(join(process.cwd(), 'src/client/GenuiBlock.module.css'), 'utf8')
     // Dark theme: page 21,21,23 → layer-1 35,35,36 (only 14 units: "a black
     // box") → layer-2 44,44,46. Cards, stats and callouts must sit on layer-2.
-    const card = /\.card \{([^}]*)\}/.exec(css)
+    const card = /^\s*\.card \{([^}]*)\}/m.exec(css)
     expect(card, '.card rule must exist').not.toBeNull()
     expect(card![1]).toMatch(/background: var\(--dsl-g-surface\)/)
     const stat = /\.stat \{([^}]*)\}/.exec(css)
@@ -177,12 +177,13 @@ describe('surface elevation contract', () => {
   it('gives surfaces a visible outline and a lift (light theme has no layers)', () => {
     const css = readFileSync(join(process.cwd(), 'src/client/GenuiBlock.module.css'), 'utf8')
     // Light theme maps every bg layer to white and its border-l1 is 4% black —
-    // a card there would be invisible without border-l2 + a shadow.
+    // a card there would be invisible without border-l2 + a shadow, and it
+    // must NOT be darkened to compensate (issue #159).
     expect(css).toMatch(/--dsl-g-shadow-card:/)
-    expect(css).toMatch(/--dsl-g-surface: color-mix\(in srgb, var\(--dsw-alias-label-primary\) 10%/)
+    expect(css).toMatch(/--dsl-g-surface: var\(--dsw-alias-bg-layer-2,/)
     expect(css).toMatch(/--dsl-g-border-surface: color-mix\(in srgb, var\(--dsw-alias-label-primary\) 12%/)
     for (const rule of ['card', 'stat', 'callout', 'hero', 'accordion']) {
-      const block = new RegExp(`\\.${rule} \\{([^}]*)\\}`).exec(css)
+      const block = new RegExp(`^\\s*\\.${rule} \\{([^}]*)\\}`, 'm').exec(css)
       expect(block, `.${rule} must exist`).not.toBeNull()
       // Outline + surface tint are DERIVED from the theme's label colour: the
       // light theme maps every layer to white, so host layer/border tokens
@@ -198,11 +199,24 @@ describe('design-standard contract (research-driven)', () => {
 
   it('separates adjacent surfaces by the documented minimum', () => {
     // design-reference.md: light surfaces need a >=4% lightness step OR a
-    // shadow of at least `0 1px 3px rgba(0,0,0,0.10)`. Our light step is a 10%
-    // label tint (255 -> ~231 = 9.4%) and the shadow carries the documented
-    // first layer.
-    expect(css()).toMatch(/--dsl-g-surface: color-mix\(in srgb, var\(--dsw-alias-label-primary\) 10%/)
+    // shadow of at least `0 1px 3px rgba(0,0,0,0.10)`. The light theme takes
+    // the shadow branch: its page is white, so darkening the card (the old 10%
+    // label tint, 255 -> ~231) is the wrong direction — 0.10.0 shipped that
+    // and issue #159 reported "every card is grey". Elevation in light comes
+    // from the 1px surface border + this shadow; the tint belongs to dark.
+    expect(css()).toMatch(/--dsl-g-surface: var\(--dsw-alias-bg-layer-2,/)
     expect(css()).toMatch(/--dsl-g-shadow-card: 0 1px 3px rgba\(0, 0, 0, 0\.10\)/)
+  })
+
+  it('never darkens the light surface below the page', () => {
+    // The invariant that 0.10.0 broke: a light card must not be a label-colour
+    // tint (i.e. darker than the white page, which reads as recessed/disabled
+    // instead of elevated). The default `.block, .panel` declaration must
+    // therefore be a host layer token; only the dark override may use a tint.
+    const defaults = /\.block,\s*\.panel \{([\s\S]*?)\n\}/.exec(css())
+    expect(defaults, '.block, .panel token block must exist').not.toBeNull()
+    expect(defaults![1]).toMatch(/--dsl-g-surface: var\(--dsw-alias-bg-layer-2,/)
+    expect(defaults![1]).not.toMatch(/--dsl-g-surface: color-mix/)
   })
 
   it('keeps dark elevation as a small overlay, not a light-mode tint', () => {

@@ -29,16 +29,16 @@ import clsx from 'clsx'
 import {
   ConnectionIndicator,
   DiffBlock,
-  IconApiOutline14,
-  IconBrowseOutline16,
-  IconChevronRightOutline14,
-  IconEditOutline16,
-  IconNewChatOutline16,
-  IconPlusOutline16,
-  IconSearchOutline16,
-  IconSendOutline16,
-  IconSparkle16,
-  IconStopFill16,
+  IconApiOutlineRegular,
+  IconBrowseOutlineRegular,
+  IconChevronRightOutlineRegular,
+  IconEditOutlineRegular,
+  IconNewChatOutlineRegular,
+  IconPlusOutlineRegular,
+  IconSearchOutlineRegular,
+  IconSendOutlineRegular,
+  IconSparkleRegular,
+  IconStopFillRegular,
   MarkdownText,
   Menu,
   ReadBlock,
@@ -121,6 +121,11 @@ interface ThreadCache {
 interface RowLabels {
   copyLabel: string
   copiedLabel: string
+  /** Code-card chrome (DSH 0.1.7-rc.1's fence toolbar): the markdown rows read
+   *  these three straight off this object, the diff / read cards mix them in. */
+  codeLabel: string
+  wrapLabel: string
+  unwrapLabel: string
   thinkLabel: string
   injectionLabel: string
   terminal: TerminalBlockLabels
@@ -137,59 +142,6 @@ function mergeBySeq(
   for (const entry of previous) bySeq.set(entry.event.seq, entry)
   for (const entry of incoming) bySeq.set(entry.event.seq, entry)
   return [...bySeq.values()].sort((a, b) => a.event.seq - b.event.seq)
-}
-
-/** Expand alpha.1's compact history rows into the event shape used by the
- * sidebar transcript. Live rows are already scalar; cold text, reasoning,
- * and tool-call delta runs are reconstructed losslessly from their anchors. */
-function expandSessionEntries(entries: readonly {
-  type: 'event' | 'chunks'
-  event: { type: string; seq: number; time: number; data: Record<string, unknown> }
-}[]): SidebarHistoryEntry[] {
-  const expanded: SidebarHistoryEntry[] = []
-  for (const entry of entries) {
-    if (entry.type === 'event') {
-      expanded.push({ event: entry.event })
-      continue
-    }
-    const row = entry.event
-    const data = row.data as {
-      turn: number
-      step: number
-      index: number
-      dt: number[]
-      texts?: string[]
-      args?: string[]
-      id?: string
-      name?: string
-    }
-    const values = row.type === 'chunkrow/tool-call-chunks' ? data.args : data.texts
-    if (!Array.isArray(values)) continue
-    let time = row.time
-    for (let index = 0; index < values.length; index += 1) {
-      if (index > 0) time += data.dt[index - 1] ?? 0
-      const chunk = row.type === 'chunkrow/text-chunks'
-        ? { type: 'text-delta', index: data.index, text: values[index] }
-        : row.type === 'chunkrow/reasoning-chunks'
-          ? { type: 'reasoning-delta', index: data.index, text: values[index] }
-          : {
-              type: 'tool-call-delta',
-              index: data.index,
-              id: data.id,
-              ...(data.name === undefined ? {} : { name: data.name }),
-              argumentsDelta: values[index],
-            }
-      expanded.push({
-        event: {
-          type: 'assistant/chunk',
-          seq: row.seq + index,
-          time,
-          data: { turn: data.turn, step: data.step, chunk },
-        },
-      })
-    }
-  }
-  return expanded
 }
 
 /** The display title of a thread: the durable label minus the 'Side: '
@@ -251,7 +203,7 @@ function CollapsibleRow(props: {
         )}
       >
         <span className={css.sidechatRowChevron}>
-          <IconChevronRightOutline14 size={12} />
+          <IconChevronRightOutlineRegular size={12} />
         </span>
         {leading}
         {label}
@@ -292,19 +244,19 @@ function toolLeading(name: string, failed: boolean): React.ReactNode {
   switch (name) {
     case 'bash':
     case 'pwsh':
-      return <IconApiOutline14 size={14} />
+      return <IconApiOutlineRegular size={14} />
     case 'read':
     case 'web_fetch':
-      return <IconBrowseOutline16 size={14} />
+      return <IconBrowseOutlineRegular size={14} />
     case 'edit':
     case 'write':
-      return <IconEditOutline16 size={14} />
+      return <IconEditOutlineRegular size={14} />
     case 'grep':
     case 'glob':
     case 'web_search':
-      return <IconSearchOutline16 size={14} />
+      return <IconSearchOutlineRegular size={14} />
     default:
-      return <IconSparkle16 size={14} />
+      return <IconSparkleRegular size={14} />
   }
 }
 
@@ -398,22 +350,34 @@ export function SideChatView(props: {
       expand: (hidden: number) => t('sideChatBlockExpand', { hidden }),
       expandAria: (hidden: number) => t('sideChatBlockExpandAria', { hidden }),
     }
+    // DSH 0.1.7-rc.1 widened the diff / read cards into code cards and DELETED
+    // `DiffBlockLabels.files`, so the old "N files" footer is gone and these
+    // three strings are required by both cards.
+    const codeCard = {
+      codeLabel: t('codeBlockTitle'),
+      wrapLabel: t('codeBlockWrap'),
+      unwrapLabel: t('codeBlockUnwrap'),
+    }
     return {
       copyLabel: t('copy'),
       copiedLabel: t('copied'),
+      ...codeCard,
       thinkLabel: t('sideChatThink'),
       injectionLabel: t('sideChatInjection'),
       terminal: {
         ...shared,
         signal: (signal: string) => t('sideChatBlockSignal', { signal }),
         exitCode: (exitCode: number) => t('sideChatBlockExitCode', { code: exitCode }),
+        // DSH 0.1.6-alpha.2 added this pill text: a settle the view cannot
+        // name (killed by an unknown signal, or never started).
+        noExitCode: t('sideChatBlockNoExitCode'),
         running: t('sideChatBlockRunning'),
         failed: t('sideChatBlockFailed'),
         done: t('sideChatBlockDone'),
         noOutput: t('sideChatBlockNoOutput'),
       },
-      diff: { ...shared, files: (count: number) => t('sideChatBlockFiles', { count }) },
-      read: { ...shared, window: (shown: number, total: number) => t('sideChatBlockWindow', { shown, total }) },
+      diff: { ...shared, ...codeCard },
+      read: { ...shared, ...codeCard, window: (shown: number, total: number) => t('sideChatBlockWindow', { shown, total }) },
     }
   }, [])
 
@@ -646,7 +610,7 @@ export function SideChatView(props: {
 
   const menuItems = useMemo<MenuEntry[]>(() => {
     const items: MenuEntry[] = [
-      { id: '$new', label: t('sideChatNew'), icon: <IconPlusOutline16 /> },
+      { id: '$new', label: t('sideChatNew'), icon: <IconPlusOutlineRegular /> },
     ]
     if (threads.length > 0) {
       items.push({ type: 'separator', id: '$sep' })
@@ -727,7 +691,7 @@ export function SideChatView(props: {
     return (
       <div className={css.sidechat}>
         <div className={css.sidechatHero}>
-          <IconNewChatOutline16 />
+          <IconNewChatOutlineRegular />
           <div
             className={clsx(
               css.sidechatHeroTitle,
@@ -792,7 +756,6 @@ export function SideChatView(props: {
         <ConnectionIndicator
           state={connectionState}
           disconnectedLabel={t('sideChatConnDisconnected')}
-          reconnectLabel={t('sideChatConnReconnect')}
           connectingLabel={t('sideChatConnConnecting')}
           recoveredLabel={t('sideChatConnRecovered')}
           reconnectActionLabel={t('sideChatConnReconnectAction')}
@@ -844,7 +807,7 @@ export function SideChatView(props: {
               disabled={busy !== null}
               title={t('sideChatCancelTitle')}
             >
-              <IconStopFill16 />
+              <IconStopFillRegular />
             </button>
           ) : (
             <button
@@ -855,7 +818,7 @@ export function SideChatView(props: {
               disabled={composer.trim() === '' || busy !== null}
               title={t('sideChatSend')}
             >
-              <IconSendOutline16 />
+              <IconSendOutlineRegular size={16} />
             </button>
           )}
         </div>

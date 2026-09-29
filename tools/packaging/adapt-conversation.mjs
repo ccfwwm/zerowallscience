@@ -3,14 +3,35 @@
 export function adaptConversationClient(source) {
   if (source.includes('data-zerowall-conversation')) return source
   const replacements = [
-    ['ref: rootResizeRef,', 'ref: rootResizeRef,\n"data-zerowall-conversation": "",'],
-    ['role: "tablist",', 'role: "tablist",\n"data-conversation-view": active?.id ?? "chat",'],
-    ['"aria-selected": viewTab.id === active?.id,', '"aria-selected": viewTab.id === active?.id,\n"data-conversation-tab": viewTab.id,'],
-    ['if (session.blank && conversationPhase(session, conversation) === "blank") return null;', 'if (session.blank && conversationPhase(session, conversation) === "blank" && (active === undefined || active.id === "chat")) return null;'],
+    {
+      before: ['ref: rootResizeRef,', '"data-phase": phase,'],
+      after: before => before === 'ref: rootResizeRef,'
+        ? `${before}\n"data-zerowall-conversation": "",`
+        : `${before}\n"data-zerowall-conversation": "",`,
+    },
+    {
+      before: ['role: "tablist",'],
+      after: before => `${before}\n"data-conversation-view": active?.id ?? "chat",`,
+    },
+    {
+      before: ['"aria-selected": viewTab.id === active?.id,'],
+      after: before => `${before}\n"data-conversation-tab": viewTab.id,`,
+    },
+    {
+      before: [
+        'if (session.blank && conversationPhase(session, conversation) === "blank") return null;',
+        'if (session.blank && conversationPhase(session, conversation) === \'blank\') return null;',
+      ],
+      after: before => before.replace(
+        ') return null;',
+        ' && (active === undefined || active.id === "chat")) return null;',
+      ),
+    },
   ]
-  for (const [before, after] of replacements) {
-    if (!source.includes(before)) throw new Error(`Unrecognized Conversation client: ${before}`)
-    source = source.replace(before, after)
+  for (const { before, after } of replacements) {
+    const match = before.find(candidate => source.includes(candidate))
+    if (match === undefined) throw new Error(`Unrecognized Conversation client: ${before.join(' OR ')}`)
+    source = source.replace(match, after(match))
   }
   const scope = '[data-zerowall-conversation]:has(>[data-slot="conversation.session.header"] [data-conversation-view]:not([data-conversation-view="chat"]))'
   const body = `${scope}>div:not([data-slot])`

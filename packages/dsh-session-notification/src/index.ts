@@ -13,7 +13,6 @@ import type { Context } from '@deepseek-ai/cordis'
 // is passed straight through.
 import type {} from '@deepseek-ai/dsh-settings'
 import { NOTIFICATIONS_NS } from './settings.ts'
-import { NotificationSettingsSchema } from './schema.ts'
 
 export { NOTIFICATIONS_NS } from './settings.ts'
 export type { NotificationSettings, NotificationTypeSettings, NotificationType, SoundId } from './settings.ts'
@@ -27,7 +26,7 @@ export { NotificationSettingsSchema } from './schema.ts'
  * @param ctx - Host context.
  */
 export function apply(ctx: Context): void {
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.register(NOTIFICATIONS_NS, NotificationSettingsSchema)
-  })
+  // Preferences are browser-local. rc.2 removed the host-side
+  // settings.register seam; the client section owns its local scope.
+  void ctx
 }

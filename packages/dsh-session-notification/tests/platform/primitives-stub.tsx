@@ -52,10 +52,8 @@ export function Button({ variant, size, className, children, ...rest }: {
 }
 
 /** Icon stubs: the section only needs their presence. */
-export const IconAgentPresetOutline16 = () => null
-export const IconChevronDownOutline14 = () => null
-export const IconCheckOutline16 = () => null
-export const IconChecklistOutline14 = () => null
-export const IconQuestionOutline14 = () => null
-export const IconTrashOutline16 = () => null
-export const IconWarningOutline16 = () => null
+export const IconAgentPresetOutlineMedium = () => null
+export const IconChevronDownOutlineRegular = () => null
+export const IconCheckOutlineRegular = () => null
+export const IconQuestionOutlineMedium = () => null
+export const IconWarningOutlineRegular = () => null

@@ -26,6 +26,9 @@ import {
 } from '../client/guard.ts'
 import type { GenuiProcessResult } from '../client/guard.ts'
 import { completeFenceJson } from '../shared/fence-repair.ts'
+import { droppedNodeFailure } from './genui-diagnostic.ts'
+import { collectInlineContentWarnings } from './inline-content-diagnostic.ts'
+import type { GenuiSpec } from '../client/spec.ts'
 
 /**
  * Arguments schema: an open `spec` slot. The schema must NOT reject anything
@@ -144,31 +147,40 @@ function processRenderableValue(value: unknown): GenuiProcessResult {
   return processGenuiSpec(value)
 }
 
-/** Render process diagnostics as stable model-facing warning lines. */
+/** Wrap model-facing validation fields in the stable GenUI protocol envelope. */
+function validationProtocol(lines: string[]): string {
+  return ['[genui-validation]', ...lines, 'reply_language=conversation'].join('\n')
+}
+
+/** Render process diagnostics as stable model-facing warning fields. */
 function formatProcessWarnings(processed: GenuiProcessResult): string[] {
   return processed.warnings.map(warning => {
     if (warning.kind === 'alias' && warning.canonical !== undefined) {
       const separator = warning.path.lastIndexOf('.')
       const canonicalPath = `${separator < 0 ? '' : warning.path.slice(0, separator + 1)}${warning.canonical}`
       return warning.message.includes('ignored')
-        ? `⚠️ 已忽略别名字段：${warning.path} → ${canonicalPath}（ignored because canonical field '${warning.canonical}' is present）`
-        : `⚠️ 已规范化字段：${warning.path} → ${canonicalPath}（normalized/adopted as '${warning.canonical}'）`
+        ? `warning=alias_ignored path=${warning.path} canonical=${canonicalPath}`
+        : `warning=alias_normalized path=${warning.path} canonical=${canonicalPath}`
     }
-    return `⚠️ ${warning.message}`
+    return `warning=process detail=${JSON.stringify(warning.message)}`
   })
+}
+
+/** 将行内字段的块级 Markdown 诊断写入稳定的验证协议。 */
+function formatInlineContentWarnings(spec: GenuiSpec): string[] {
+  return collectInlineContentWarnings(spec).map(warning =>
+    `warning=block_markdown path=${warning.path} kind=${warning.kind} replacement=${warning.replacement}`)
 }
 
 /** Format chart-specific process errors while keeping other schema errors generic. */
 function formatProcessFailure(processed: GenuiProcessResult): string | undefined {
   const chartErrors = processed.errors.filter(error => /(?:variant is unsupported|kind must be bars, line, or donut|requires data or series|(?:data|series) is required for|(?:\.data|\.series)(?:\[\d+\])?(?:\.(?:data|label|value|color))? must|series is only supported for bars)/.test(error))
-  return chartErrors.length === 0 ? undefined : `❌ chart 字段验证失败：\n- ${chartErrors.join('\n- ')}`
-}
-
-/** Return the legacy validation text for a process that dropped native nodes. */
-function droppedNodeFailure(processed: GenuiProcessResult): string | undefined {
-  if (!processed.errors.some(error => error.startsWith('repair dropped '))) return undefined
-  const dropped = processed.declaredNativeCount - processed.renderedNativeCount
-  return `❌ 验证未通过：检测到声明了 ${processed.declaredNativeCount} 个组件，但仅成功解析出 ${processed.renderedNativeCount} 个（有 ${dropped} 个组件因字段格式异常被丢弃）。常见原因：table 的 columns/rows 不是二维字符串数组、tabs 的 items/content 缺失、嵌套组件字段类型不符。请修正后重新验证。`
+  return chartErrors.length === 0 ? undefined : validationProtocol([
+    'status=invalid',
+    'error=invalid_chart_fields',
+    ...chartErrors.map(error => `diagnostic=${JSON.stringify(error)}`),
+    'next=fix_and_revalidate',
+  ])
 }
 
 /** Tool-call title shared by the pending and completed presentations. */
@@ -206,16 +218,22 @@ export function createRenderUiTool(): ToolDefinition {
     async execute(args: unknown): Promise<JsonValue> {
       const processed = processRenderableValue(specOf(args))
       if (processed.spec === null) {
-        return 'render_ui：spec 无效 —— 根对象需要 "items" 数组（组件树白名单见系统提示词），请修正后重试。'
+        return ['[genui-render]', 'status=invalid', 'error=invalid_spec', 'required=items', 'next=fix_and_retry', 'reply_language=conversation'].join('\n')
       }
       if (!isRenderableProcess(processed)) {
         throw new Error('render_ui spec invalid: ' + processed.errors.join('; '))
       }
       const spec = processed.spec
-      const title = spec.title ?? '未命名'
       const warnings = formatProcessWarnings(processed)
-      const warningText = warnings.length === 0 ? '' : `\n${warnings.join('\n')}`
-      return `已渲染 UI「${title}」（${processed.renderedCount} 个组件）。用户现在可以看到这张卡片；组件带 action 时，用户交互会以 [genui-action] 消息发回给你，届时请重新渲染更新后的界面。${warningText}`
+      return [
+        '[genui-render]',
+        'status=rendered',
+        ...(spec.title === undefined ? [] : [`title=${JSON.stringify(spec.title)}`]),
+        `rendered=${processed.renderedCount}`,
+        'action_feedback=[genui-action]',
+        ...warnings,
+        'reply_language=conversation',
+      ].join('\n')
     },
     presentCall(args: unknown): GenericCallView | undefined {
       const title = cardTitle(args)
@@ -240,8 +258,9 @@ export function createRenderUiTool(): ToolDefinition {
 const VALIDATE_DESCRIPTION =
   'Validate the JSON body of a ```dsh-ui fence BEFORE emitting it — use for non-trivial specs (≥3 nodes or containing a table); skip for trivial ones (≤2 nodes). '
   + 'Pass the exact JSON text you are about to put inside the fence as the "spec" argument (a string). '
-  + 'Returns ✅ when it parses as a valid GenUI spec, or ❌ with the exact position, bracket counts, and likely causes when it does not — fix the JSON, re-validate, and only then emit the fence. '
-  + 'When the JSON is broken but repairable (unescaped quotes, trailing commas, missing closers), the ❌ reply INCLUDES the auto-repaired JSON — copy it verbatim into the fence instead of rewriting by hand.'
+  + 'Returns a [genui-validation] protocol block with status, diagnostics, next action, and reply_language=conversation. '
+  + 'When invalid JSON is repairable, repaired_json contains the fixed body; emit it only with next=emit_repaired_fence. '
+  + 'A warning=block_markdown requires the indicated replacement node and another validation call.'
 
 const VALIDATE_PARAMETERS: Record<string, unknown> = {
   type: 'object',
@@ -297,23 +316,22 @@ function bracketCounts(raw: string): { '{': number; '}': number; '[': number; ']
   return counts
 }
 
-/** Short structural hint from bracket counts (empty when balanced). */
-function bracketDiagnostic(raw: string): string {
+/** Return stable structural count fields for an invalid JSON body. */
+function bracketDiagnostic(raw: string): string[] {
   const c = bracketCounts(raw)
-  const diffs: string[] = []
+  const fields = [`braces_open=${c['{']}`, `braces_close=${c['}']}`, `brackets_open=${c['[']}`, `brackets_close=${c[']']}`]
   if (c['{'] !== c['}']) {
     const d = c['{'] - c['}']
-    diffs.push(`{ ×${c['{']} / } ×${c['}']} → ${d > 0 ? `缺 ${d} 个 }` : `多 ${-d} 个 }`}`)
+    fields.push(`brace_delta=${d}`, `brace_action=${d > 0 ? `add:${d}` : `remove:${-d}`}`)
   }
   if (c['['] !== c[']']) {
     const d = c['['] - c[']']
-    diffs.push(`[ ×${c['[']} / ] ×${c[']']} → ${d > 0 ? `缺 ${d} 个 ]` : `多 ${-d} 个 ]`}`)
+    fields.push(`bracket_delta=${d}`, `bracket_action=${d > 0 ? `add:${d}` : `remove:${-d}`}`)
   }
-  return diffs.length === 0 ? '' : `  括号计数：${diffs.join('；')}（长表格最易在收尾处错位，如把 ]]}]} 写成 ]}]}]}）\n`
+  return fields
 }
 
-const COMMON_CAUSES =
-  '常见原因：① 收尾括号错位/缺失（{ 与 }、[ 与 ] 数量不相等）② 字符串值内用了半角引号 "（中文引语请用 “” 或 「」）③ 尾随逗号 ④ 字符串未闭合'
+const COMMON_CAUSES = 'likely_causes=unbalanced_delimiters,unescaped_quote,trailing_comma,unterminated_string'
 
 /** Build the validate_dsh_ui tool definition (registered alongside render_ui). */
 export function createValidateDshUiTool(): ToolDefinition {
@@ -330,7 +348,7 @@ export function createValidateDshUiTool(): ToolDefinition {
     async execute(args: unknown): Promise<JsonValue> {
       const raw = fenceTextOf(args)
       if (raw === null || raw.trim() === '') {
-        return '❌ validate_dsh_ui：缺少 spec 参数 —— 把围栏 JSON 文本作为 spec 传入。'
+        return validationProtocol(['status=invalid', 'error=missing_spec', 'next=provide_spec'])
       }
       let parsed: unknown
       try {
@@ -349,21 +367,52 @@ export function createValidateDshUiTool(): ToolDefinition {
           if (chartFailure !== undefined) return chartFailure
           if (processed.spec !== null && processed.errors.length === 0) {
             const warnings = formatProcessWarnings(processed)
-            const warningText = warnings.length === 0 ? '' : `${warnings.join('\n')}\n`
-            return `❌ dsh-ui 围栏 JSON 解析失败：${detail}。\n${bracketDiagnostic(raw)}${warningText}  已自动修复 ${repaired.repairs} 处，下面是修复后的 JSON，直接作为围栏正文发出即可（无需再验证）：\n\`\`\`\n${repaired.text}\n\`\`\``
+            const inlineWarnings = formatInlineContentWarnings(processed.spec)
+            return `${validationProtocol([
+              'status=invalid',
+              'error=invalid_json',
+              `detail=${JSON.stringify(detail)}`,
+              ...bracketDiagnostic(raw),
+              ...warnings,
+              ...inlineWarnings,
+              'repair=applied',
+              `repair_count=${repaired.repairs}`,
+              inlineWarnings.length === 0 ? 'next=emit_repaired_fence' : 'next=fix_and_revalidate',
+            ])}\nrepaired_json:\n\`\`\`\n${repaired.text}\n\`\`\``
           }
         }
-        return `❌ dsh-ui 围栏 JSON 解析失败：${detail}。\n${bracketDiagnostic(raw)}  自动修复未能恢复（结构损坏），请按错误信息修正后重新调用本工具验证，通过后再发出围栏。\n${COMMON_CAUSES}`
+        return validationProtocol([
+          'status=invalid',
+          'error=invalid_json',
+          `detail=${JSON.stringify(detail)}`,
+          ...bracketDiagnostic(raw),
+          'repair=failed',
+          COMMON_CAUSES,
+          'next=fix_and_revalidate',
+        ])
       }
       const processed = processRenderableValue(parsed)
       const chartFailure = formatProcessFailure(processed)
       if (chartFailure !== undefined) return chartFailure
       if (processed.spec === null || processed.errors.length > 0) {
-        return droppedNodeFailure(processed)
-          ?? `❌ 不是合法 GenUI spec：${processed.errors.join('；') || '根对象需要 "items" 数组，且每个节点 type 必须在白名单内（见系统提示词）'}。请修正后重新验证。`
+        const dropped = droppedNodeFailure(processed, parsed)
+        return dropped === undefined
+          ? validationProtocol([
+            'status=invalid',
+            'error=invalid_spec',
+            ...(processed.errors.length === 0
+              ? ['required=items', 'node_types=whitelist']
+              : processed.errors.map(error => `diagnostic=${JSON.stringify(error)}`)),
+            'next=fix_and_revalidate',
+          ])
+          : validationProtocol(['status=invalid', ...dropped, 'next=fix_and_revalidate'])
       }
       const warnings = formatProcessWarnings(processed)
-      return [`✅ dsh-ui spec 合法（${processed.renderedCount} 个组件），可以发出围栏。`, ...warnings].join('\n')
+      const inlineWarnings = formatInlineContentWarnings(processed.spec)
+      return validationProtocol([
+        'status=valid', `rendered=${processed.renderedCount}`, ...warnings, ...inlineWarnings,
+        inlineWarnings.length === 0 ? 'next=emit_fence' : 'next=fix_and_revalidate',
+      ])
     },
     presentCall(): GenericCallView | undefined {
       return { card: 'generic', title: '验证 dsh-ui 围栏', kind: 'other' }

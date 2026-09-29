@@ -12,8 +12,11 @@
  */
 import { Fragment, memo, useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode, RefObject } from 'react'
-import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
+import { writeClipboard } from '../primitive-adapter.ts'
 import { renderInline } from '../inline.ts'
+// Aliased: `t` is already used throughout this module as a tick-value
+// local (ticks.map(t => …)), so the translator rides a distinct name.
+import { t as tr, useT } from '../i18n/index.ts'
 import css from '../GenuiBlock.module.css'
 import { GENUI_LIMITS } from '../genui-runtime/index.ts'
 import type { GenuiChart, GenuiTable } from '../spec.ts'
@@ -95,7 +98,7 @@ function deltaTone(value: unknown): 'up' | 'down' | null {
  *  trend line (area wash + end dot, same geometry as stat.spark). */
 function CellSpark({ cell }: { cell: string | number }) {
   const values = String(cell).split(/[\s,;]+/).map(Number).filter(Number.isFinite)
-  if (values.length < 2) return <>{String(cell)}</>
+  if (values.length < 2) return <>{renderInline(String(cell), false)}</>
   const W = 88
   const H = 22
   const pad = 2
@@ -131,7 +134,7 @@ function CellRing({ cell }: { cell: string | number }) {
           strokeDasharray={`${(pct / 100) * C} ${C}`} transform="rotate(-90 14 14)"
         />
       </svg>
-      <span className={css.cellRingText}>{String(cell)}</span>
+      <span className={css.cellRingText}>{renderInline(String(cell), false)}</span>
     </span>
   )
 }
@@ -157,6 +160,7 @@ export function tableToCsv(rows: Array<Array<string | number>>): string {
 /** Copy chips above a table (`table.export`). Local clipboard only — no action,
  *  no round trip; the label confirms for a moment and then resets. */
 function TableExportChips({ columns, rows }: { columns: string[]; rows: Array<Array<string | number>> }) {
+  useT()
   const [copied, setCopied] = useState<'md' | 'csv' | null>(null)
   const copy = (kind: 'md' | 'csv'): void => {
     const text = kind === 'md' ? tableToMarkdown(columns, rows) : tableToCsv(rows)
@@ -169,10 +173,10 @@ function TableExportChips({ columns, rows }: { columns: string[]; rows: Array<Ar
   return (
     <div className={css.tableTools}>
       <button type="button" className={css.tableTool} onClick={() => copy('md')}>
-        {copied === 'md' ? '已复制' : '复制 Markdown'}
+        {copied === 'md' ? tr('label.copiedDone') : tr('block.copyMarkdown')}
       </button>
       <button type="button" className={css.tableTool} onClick={() => copy('csv')}>
-        {copied === 'csv' ? '已复制' : '复制 CSV'}
+        {copied === 'csv' ? tr('label.copiedDone') : tr('block.copyCsv')}
       </button>
     </div>
   )
@@ -185,7 +189,7 @@ function CellBar({ cell }: { cell: string | number }) {
   return (
     <span className={css.cellBar}>
       <span className={css.cellBarFill} style={{ width: `${pct}%` }} />
-      <span className={css.cellBarText}>{String(cell)}</span>
+      <span className={css.cellBarText}>{renderInline(String(cell), false)}</span>
     </span>
   )
 }
@@ -200,6 +204,7 @@ export const TableNode = memo(function TableNode({ node, renderDetail, filterVal
    *  has to import the renderer back (import cycle). */
   renderDetail?: ((items: NonNullable<GenuiTable['details']>[number] & object[]) => ReactNode) | undefined
 }) {
+  useT()
   const columns = node.columns.slice(0, GENUI_LIMITS.maxTableCols)
   const rows = node.rows.slice(0, GENUI_LIMITS.maxTableRows)
   const types = node.types ?? []
@@ -309,7 +314,7 @@ export const TableNode = memo(function TableNode({ node, renderDetail, filterVal
     return (
       <td key={j} className={numeric[j] || type === 'num' ? css.tdNum : undefined}>
         {type === 'badge'
-          ? <span className={css.cellBadge}>{String(cell)}</span>
+          ? <span className={css.cellBadge}>{renderInline(String(cell), false)}</span>
           : type === 'bar'
             ? <CellBar cell={cell} />
             : type === 'spark'
@@ -319,10 +324,9 @@ export const TableNode = memo(function TableNode({ node, renderDetail, filterVal
                 : type === 'index'
                   ? <span className={css.cellIndex}>{rowIndex + 1}</span>
                   : tone === null
-                    // Text cells honour inline markup; numeric/badge/spark
-                    // cells stay literal (a number has nothing to emphasise).
-                    ? renderInline(String(cell))
-                    : <span className={`${css.tdDelta} ${tone === 'up' ? css.tdDeltaUp : css.tdDeltaDown}`}>{String(cell)}</span>}
+                    // Format displayed text without changing sorting or exported data.
+                    ? renderInline(String(cell), false)
+                    : <span className={`${css.tdDelta} ${tone === 'up' ? css.tdDeltaUp : css.tdDeltaDown}`}>{renderInline(String(cell), false)}</span>}
       </td>
     )
   }
@@ -340,7 +344,7 @@ export const TableNode = memo(function TableNode({ node, renderDetail, filterVal
                 aria-sort={sort !== null && sort.col === i ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}
               >
                 <button type="button" className={css.thSort} onClick={() => clickHeader(i)}>
-                  {c}
+                  {renderInline(c, false)}
                   {sort !== null && sort.col === i && <span className={css.thSortMark} aria-hidden>{sort.dir === 1 ? ' ▲' : ' ▼'}</span>}
                 </button>
               </th>
@@ -363,7 +367,7 @@ export const TableNode = memo(function TableNode({ node, renderDetail, filterVal
                         onClick={() => toggleSection(headerIndex)}
                       >
                         <span className={css.groupChevron} aria-hidden>{isCollapsed ? '▸' : '▾'}</span>
-                        {String(section.header.row[0])}
+                        {renderInline(String(section.header.row[0]), false)}
                         <span className={css.groupCount}>{section.children.length}</span>
                       </button>
                     </td>
@@ -386,7 +390,7 @@ export const TableNode = memo(function TableNode({ node, renderDetail, filterVal
                                   onClick={() => toggleDetail(child.index)}
                                 >
                                   <span className={css.detailChevron} data-open={open} aria-hidden>▸</span>
-                                  {String(cell)}
+                                  {renderInline(String(cell), false)}
                                 </button>
                               </td>
                             )
@@ -412,7 +416,7 @@ export const TableNode = memo(function TableNode({ node, renderDetail, filterVal
         {hiddenCount > 0 && (
           <tfoot>
             <tr className={css.filterRow}>
-              <td colSpan={columns.length}>筛选后 {visibleRows.length} / {rows.length} 行</td>
+              <td colSpan={columns.length}>{tr('block.filteredRows', { visible: visibleRows.length, total: rows.length })}</td>
             </tr>
           </tfoot>
         )}
@@ -421,7 +425,7 @@ export const TableNode = memo(function TableNode({ node, renderDetail, filterVal
             <tr>
               {columns.map((_c, j) => (
                 <td key={j} className={numeric[j] ? css.tdNum : undefined}>
-                  {j === 0 ? '合计' : totals[j] === null ? '' : formatTotal(totals[j]!)}
+                  {j === 0 ? tr('block.total') : totals[j] === null ? '' : formatTotal(totals[j]!)}
                 </td>
               ))}
             </tr>
@@ -470,8 +474,8 @@ function ChartTip({ tip }: { tip: TipState | null }) {
     <div className={css.chartTip} style={{ left: `${tip.x}px`, top: `${tip.y}px` }} role="tooltip">
       {tip.rows.map(([label, value], i) => (
         <span key={`${label}-${i}`} className={css.chartTipRow}>
-          <span>{label}</span>
-          <span className={css.chartTipValue}>{value}</span>
+          <span>{renderInline(label)}</span>
+          <span className={css.chartTipValue}>{renderInline(String(value))}</span>
         </span>
       ))}
     </div>
@@ -525,6 +529,23 @@ function formatTick(t: number): string {
   return String(Math.round(t * 100) / 100)
 }
 
+/** 计算数字用普通或指数形式表示时所需的小数位数。 */
+export function fractionDigits(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  const [coefficient, exponentText] = String(value).toLowerCase().split('e')
+  const decimalDigits = coefficient!.split('.')[1]?.length ?? 0
+  const exponent = exponentText === undefined ? 0 : Number(exponentText)
+  return Math.max(decimalDigits - exponent, 0)
+}
+
+/** 按参与计算的原始数值精度格式化图表合计。 */
+export function formatChartValue(value: number, maxFractionDigits: number): string {
+  if (!Number.isFinite(value)) return String(value)
+  if (Math.abs(value) >= 1e21 || maxFractionDigits > 100) return String(value)
+  const formatted = value.toFixed(maxFractionDigits)
+  return formatted.includes('.') ? formatted.replace(/\.?0+$/, '') : formatted
+}
+
 /** Shared y-axis gutter: ticks positioned against the same percentage scale
  *  the plot uses, so labels line up with the gridlines. */
 function YAxis({ ticks, lo, span }: { ticks: number[]; lo: number; span: number }) {
@@ -569,6 +590,7 @@ function applyChartFilter(chart: GenuiChart, filterValue: string | undefined): G
  *  Single-series bars render against a true zero line, so negative values
  *  draw downward instead of clamping to zero height. */
 export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart }) {
+  useT()
   const { tip, show, hide } = useChartTip()
   const grouped = chart.series !== undefined ? chart.series.slice(0, GENUI_LIMITS.maxPlotSeries) : undefined
   const isGrouped = grouped !== undefined && grouped.length > 0
@@ -583,33 +605,35 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
   const showValues = labels.length <= 12
   const stacked = chart.stacked === true && isGrouped
   const categoryTotals = labels.map((_l, i) => seriesValues.reduce((sum, values) => sum + Math.max(0, values[i] ?? 0), 0))
+  const categoryFractionDigits = labels.map((_label, i) => Math.max(...seriesValues.map(values => fractionDigits(values[i] ?? 0)), 0))
+  const positiveMax = stacked ? Math.max(...categoryTotals, 0) : Math.max(...flat, 0)
 
   // Horizontal: label column + one track per series. The axis is always
   // 0..max (a horizontal track has no zero line to cross).
   if (chart.horizontal === true) {
-    const scale = Math.max(Math.max(...flat, 0), 1)
+    const scale = Math.max(positiveMax, 1)
     const legend = isGrouped
       ? (
         <div className={css.chartLegend}>
           {grouped.map((entry, si) => (
             <span key={si} className={css.legendItem}>
               <span className={css.legendSwatch} style={{ background: colors[si] }} />
-              {entry.label}
+              {renderInline(entry.label)}
             </span>
           ))}
         </div>
       )
       : null
     return (
-      <div className={css.chart} data-genui-chart="bars" role="img" aria-label={`横向柱状图，${labels.length} 组`} onMouseLeave={hide}>
+      <div className={css.chart} data-genui-chart="bars" role="img" aria-label={tr('block.chart.barsAria', { count: labels.length })} onMouseLeave={hide}>
         <div className={css.hbars}>
           {labels.map((label, i) => (
             <div key={i} className={css.hbarRow}>
-              <span className={css.hbarLabel} title={label}>{label}</span>
+              <span className={css.hbarLabel} title={label}>{renderInline(label)}</span>
               <div className={css.hbarTracks}>
                 {stacked
                   ? (
-                    <div className={css.hbarTrack} title={`${label}: ${categoryTotals[i] ?? 0}`}>
+                    <div className={css.hbarTrack} title={`${label}: ${formatChartValue(categoryTotals[i] ?? 0, categoryFractionDigits[i] ?? 0)}`}>
                       {seriesValues.map((values, si) => {
                         const v = Math.max(0, values[i] ?? 0)
                         const total = categoryTotals[i] ?? 0
@@ -619,8 +643,8 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
                             key={si}
                             className={css.hbarSeg}
                             style={{ width: `${width}%`, background: colors[si] }}
-                            onMouseEnter={event => show(event, [[grouped[si]!.label, String(v)], ['合计', String(total)]])}
-                            onMouseMove={event => show(event, [[grouped[si]!.label, String(v)], ['合计', String(total)]])}
+                            onMouseEnter={event => show(event, [[grouped[si]!.label, String(v)], [tr('block.total'), formatChartValue(total, categoryFractionDigits[i] ?? 0)]])}
+                            onMouseMove={event => show(event, [[grouped[si]!.label, String(v)], [tr('block.total'), formatChartValue(total, categoryFractionDigits[i] ?? 0)]])}
                           />
                         )
                       })}
@@ -634,8 +658,8 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
                         <div
                           className={css.hbarFill}
                           style={{ width: `${width}%`, background: colors[si] }}
-                          onMouseEnter={event => show(event, isGrouped ? [[grouped[si]!.label, String(v)], ['合计', String(categoryTotals[i] ?? 0)]] : [[label, String(v)]])}
-                          onMouseMove={event => show(event, isGrouped ? [[grouped[si]!.label, String(v)], ['合计', String(categoryTotals[i] ?? 0)]] : [[label, String(v)]])}
+                          onMouseEnter={event => show(event, isGrouped ? [[grouped[si]!.label, String(v)], [tr('block.total'), formatChartValue(categoryTotals[i] ?? 0, categoryFractionDigits[i] ?? 0)]] : [[label, String(v)]])}
+                          onMouseMove={event => show(event, isGrouped ? [[grouped[si]!.label, String(v)], [tr('block.total'), formatChartValue(categoryTotals[i] ?? 0, categoryFractionDigits[i] ?? 0)]] : [[label, String(v)]])}
                         />
                       </div>
                     )
@@ -643,7 +667,7 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
               </div>
               {showValues && (
                 <span className={css.hbarValue}>
-                  {isGrouped ? categoryTotals[i] ?? 0 : String(data[i]?.value ?? '')}
+                  {isGrouped ? formatChartValue(categoryTotals[i] ?? 0, categoryFractionDigits[i] ?? 0) : String(data[i]?.value ?? '')}
                 </span>
               )}
             </div>
@@ -658,13 +682,13 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
   // Vertical: grouped bars clamp negatives (the flex layout stacks upward), so
   // the axis starts at zero for that shape; single-series bars render against
   // a true zero line and draw negatives downward.
-  const ticks = niceTicks(isGrouped ? 0 : Math.min(...flat, 0), Math.max(...flat, 0), 4)
+  const ticks = niceTicks(isGrouped ? 0 : Math.min(...flat, 0), positiveMax, 4)
   const lo = ticks[0]!
   const hi = ticks[ticks.length - 1]!
   const span = hi - lo || 1
   const pct = (v: number): number => ((v - lo) / span) * 100
   const zero = pct(0)
-  const summary = `柱状图，${labels.length} 组，最大 ${formatTick(Math.max(...flat, 0))}`
+  const summary = tr('block.chart.barsSummary', { count: labels.length, max: formatTick(Math.max(...flat, 0)) })
   return (
     <div className={css.chart} data-genui-chart="bars" role="img" aria-label={summary} onMouseLeave={hide}>
       <ChartTip tip={tip} />
@@ -681,7 +705,7 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
                   <>
                     {showValues && (
                       <span className={css.barValue} style={{ bottom: `calc(${pct(categoryTotals[i] ?? 0)}% + 4px)` }}>
-                        {String(categoryTotals[i] ?? 0)}
+                        {formatChartValue(categoryTotals[i] ?? 0, categoryFractionDigits[i] ?? 0)}
                       </span>
                     )}
                     <div className={css.stack} style={{ height: `${Math.max(0, pct(categoryTotals[i] ?? 0))}%` }}>
@@ -691,7 +715,7 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
                         const v = Math.max(0, raw)
                         const total = categoryTotals[i] ?? 0
                         const segHeight = total === 0 ? 0 : (v / total) * pct(total)
-                        const rows: TipRow[] = [[entry.label, String(raw)], ['合计', String(total)]]
+                        const rows: TipRow[] = [[entry.label, String(raw)], [tr('block.total'), formatChartValue(total, categoryFractionDigits[i] ?? 0)]]
                         return (
                           <div
                             key={si}
@@ -722,8 +746,8 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
                               height: `${Math.max(0, pct(Math.max(0, v)))}%`,
                               background: colors[si],
                             }}
-                            onMouseEnter={event => show(event, [[entry.label, String(datum?.value ?? '')], ['合计', String(categoryTotals[i] ?? 0)]])}
-                            onMouseMove={event => show(event, [[entry.label, String(datum?.value ?? '')], ['合计', String(categoryTotals[i] ?? 0)]])}
+                            onMouseEnter={event => show(event, [[entry.label, String(datum?.value ?? '')], [tr('block.total'), formatChartValue(categoryTotals[i] ?? 0, categoryFractionDigits[i] ?? 0)]])}
+                            onMouseMove={event => show(event, [[entry.label, String(datum?.value ?? '')], [tr('block.total'), formatChartValue(categoryTotals[i] ?? 0, categoryFractionDigits[i] ?? 0)]])}
                           />
                         </div>
                       )
@@ -758,14 +782,14 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
         </div>
       </div>
       <div className={css.chartLabels}>
-        {labels.map((label, i) => <span key={`${label}-${i}`} className={css.barLabel}>{label}</span>)}
+        {labels.map((label, i) => <span key={`${label}-${i}`} className={css.barLabel}>{renderInline(label)}</span>)}
       </div>
       {isGrouped && (
         <div className={css.chartLegend}>
           {grouped.map((entry, si) => (
             <span key={si} className={css.legendItem}>
               <span className={css.legendSwatch} style={{ background: colors[si] }} />
-              {entry.label}
+              {renderInline(entry.label)}
             </span>
           ))}
         </div>
@@ -777,6 +801,7 @@ export const BarsNode = memo(function BarsNode({ chart }: { chart: GenuiChart })
 /** Line: responsive polyline with an area wash, nice y ticks and sampled x
  *  labels drawn in SVG at their real size. */
 export const LineChartNode = memo(function LineChartNode({ chart }: { chart: GenuiChart }) {
+  useT()
   const [ref, measured] = useMeasuredWidth()
   const { tip, show, hide } = useChartTip()
   const gradientId = `genui-line-${useId().replace(/:/g, '')}`
@@ -814,7 +839,11 @@ export const LineChartNode = memo(function LineChartNode({ chart }: { chart: Gen
     : null
   // Keep x labels readable: at most one per ~64px of plot width.
   const labelStep = Math.max(1, Math.ceil(pointCount / Math.max(1, Math.floor(innerW / 64))))
-  const summary = `折线图，${multi ? `${seriesValues.length} 条序列` : `${pointCount} 个点`}，范围 ${formatTick(Math.min(...flat, 0))} 到 ${formatTick(Math.max(...flat, 0))}`
+  const summary = tr(multi ? 'block.chart.lineSeries' : 'block.chart.linePoints', {
+    count: multi ? seriesValues.length : pointCount,
+    min: formatTick(Math.min(...flat, 0)),
+    max: formatTick(Math.max(...flat, 0)),
+  })
   return (
     <div className={css.lineChart} data-genui-chart="line" data-genui-line ref={ref} role="img" aria-label={summary} onMouseLeave={hide}>
       <ChartTip tip={tip} />
@@ -838,7 +867,7 @@ export const LineChartNode = memo(function LineChartNode({ chart }: { chart: Gen
         {paths.map((d, si) => <path key={si} d={d} className={css.linePath} style={{ stroke: colors[si] }} />)}
         {seriesValues.map((values, si) => values.map((v, i) => {
           const rows: TipRow[] = multi
-            ? [[grouped![si]!.label, String(v)], ['节点', labels[i] ?? '']]
+            ? [[grouped![si]!.label, String(v)], [tr('block.chart.node'), labels[i] ?? '']]
             : [[labels[i] ?? '', String(v)]]
           return (
             <circle
@@ -864,7 +893,7 @@ export const LineChartNode = memo(function LineChartNode({ chart }: { chart: Gen
           {grouped!.map((entry, si) => (
             <span key={si} className={css.legendItem}>
               <span className={css.legendSwatch} style={{ background: colors[si] }} />
-              {entry.label}
+              {renderInline(entry.label)}
             </span>
           ))}
         </div>
@@ -876,6 +905,7 @@ export const LineChartNode = memo(function LineChartNode({ chart }: { chart: Gen
 /** Donut: share of total with a center total and a legend that shows each
  *  slice's value AND percentage (the old legend was unstyled text). */
 export const DonutNode = memo(function DonutNode({ chart }: { chart: GenuiChart }) {
+  useT()
   const { tip, show, hide } = useChartTip()
   const data = chart.data.slice(0, GENUI_LIMITS.maxChartPoints)
   const clamped = data.map(d => ({ ...d, v: Math.max(0, Number(d.value) || 0) }))
@@ -890,7 +920,7 @@ export const DonutNode = memo(function DonutNode({ chart }: { chart: GenuiChart 
   const SIZE = 160
   const C = 2 * Math.PI * R
   let offset = 0
-  const summary = `环形图，${clamped.length} 项，合计 ${totalText}`
+  const summary = tr('block.chart.donutSummary', { count: clamped.length, total: totalText })
   return (
     <div className={css.donut} data-genui-chart="donut" data-genui-donut role="img" aria-label={summary} onMouseLeave={hide}>
       <ChartTip tip={tip} />
@@ -920,13 +950,13 @@ export const DonutNode = memo(function DonutNode({ chart }: { chart: GenuiChart 
           return el
         })}
         <text x={SIZE / 2} y={SIZE / 2 - 2} textAnchor="middle" className={css.donutTotal}>{totalText}</text>
-        <text x={SIZE / 2} y={SIZE / 2 + 16} textAnchor="middle" className={css.donutTotalLabel}>合计</text>
+        <text x={SIZE / 2} y={SIZE / 2 + 16} textAnchor="middle" className={css.donutTotalLabel}>{tr('block.total')}</text>
       </svg>
       <div className={css.donutLegend}>
         {clamped.map((d, i) => (
           <span key={i} className={css.legendItem}>
             <span className={css.legendSwatch} style={{ background: seriesColor(i, data.length, d.color, chart.palette) ?? 'var(--dsw-alias-state-business-primary, #4f8ef7)' }} />
-            <span>{d.label}</span>
+            <span>{renderInline(d.label)}</span>
             <span className={css.donutPct}>{String(d.value)} · {(d.v / total * 100).toFixed(1)}%</span>
           </span>
         ))}

@@ -1,6 +1,6 @@
 /** Native review-tab contents: files, diffs and line comments. */
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store';
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client';
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client';
 import { type Config } from '../settings-contract.ts';
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
 import type { NS } from './locales.ts';
@@ -20,7 +20,7 @@ export interface ReviewContentProps extends PropsLocale<typeof NS> {
     readonly openFile: (path: string) => void;
     readonly syncComments?: (() => void) | undefined;
     readonly wordWrap?: ObservableSnapshot<boolean> | undefined;
-    readonly settings?: SettingsScope<Config> | undefined;
+    readonly settings?: ConfigForm<Config> | undefined;
     readonly visible?: boolean | undefined;
 }
 /** Render review header, actions, files, diffs and line comments without owning a shell. */

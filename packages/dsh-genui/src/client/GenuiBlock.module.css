@@ -16,9 +16,9 @@
    literals here are only last-resort fallbacks for hosts without the token
    sheets. */
 
-/* Dark theme: the layer step already lifts the card off the canvas, so the
-   extra label tint stays a small overlay (4%) instead of the 10% that light
-   mode needs to clear the 4% lightness-step minimum. */
+/* Dark theme: the page is near-black, so the card is lifted by the host's own
+   layer step (layer-2) plus a small 4% overlay of the theme's label colour.
+   Light mode uses no tint at all — see the token block below for why. */
 body[data-ds-dark-theme] .block,
 body[data-ds-dark-theme] .panel {
   --dsl-g-surface: color-mix(in srgb, var(--dsw-alias-label-primary) 4%,
@@ -70,17 +70,24 @@ body[data-ds-dark-theme] .panel {
   --dsl-g-tint: 8%;
   --dsl-g-tint-strong: 14%;
   --dsl-g-font-mono: var(--ds-font-family-code, ui-monospace, 'SF Mono', monospace);
-  /* Elevation, theme-agnostic: the light theme maps EVERY bg layer to white,
-     so a card there is white-on-white and a border alone cannot carry the
-     hierarchy. Both a tint of the theme's own label colour and the surface
-     border are derived from tokens that exist in both themes:
-       light: label ≈ near-black  → tint darkens the white card to ~#f5f5f5
-       dark : label ≈ near-white  → tint lifts the card off the page      */
-  /* 4% / 14% measured as 255→246 and read as "no difference" in review: the
-     tint now sits clearly above the perception floor. Light: page 255 → card
-     ~232, border ~190. Dark: page 21 → card ~62 (an unmistakable elevation). */
-  --dsl-g-surface: color-mix(in srgb, var(--dsw-alias-label-primary) 10%,
-    var(--dsw-alias-bg-layer-2, var(--dsw-alias-bg-layer-1, var(--dsw-alias-markdown-code-block, transparent))));
+  /* Elevation is theme-specific, because the two themes lift a card off the
+     page by OPPOSITE means:
+       light: the host maps every bg layer to white, so there is no layer step
+              to take. The card is WHITE, and the lift is carried by the 1px
+              surface border plus the shadow — the shadow branch of the
+              documented rule "adjacent light surfaces need a >=4% lightness
+              step OR a shadow of at least 0 1px 3px rgba(0,0,0,0.10)".
+       dark : the page is near-black and drop shadows are nearly invisible
+              there, so the layer step + a 4% label overlay do the lifting
+              (see the dark override above).
+     Do NOT darken the light surface to make it "visible": a card below the
+     page's lightness reads as recessed/disabled, not elevated. 0.10.0 shipped
+     exactly that — a 10% label tint (= #e7e7e8, page 255) reported in issue
+     #159 as "every card is grey". The 1px border keeps its 12% weight and is
+     drawn over the surface, so on white it resolves to a quiet #e2e2e3
+     hairline instead of 0.10.0's #cdcdce. */
+  --dsl-g-surface: var(--dsw-alias-bg-layer-2,
+    var(--dsw-alias-bg-layer-1, var(--dsw-alias-markdown-code-block, #fff)));
   /* Borders separate, shadows lift (design standard: "shadows over borders"):
      the outline stays quiet and the layered shadow carries the depth, with the
      first layer at the documented minimum `0 1px 3px rgba(0,0,0,0.10)`. */
@@ -120,6 +127,9 @@ body[data-ds-dark-theme] .panel {
 .col { display: flex; flex-direction: column; gap: var(--dsl-g-gap-md); }
 .row { display: flex; align-items: center; gap: var(--dsl-g-gap-md); }
 .row.wrap { flex-wrap: wrap; }
+/* Cards contain fluid charts/tables: divide the available row, not their
+   min-content widths (which can collapse a horizontal chart's tracks). */
+.row > .card { flex: 1 1 0; align-self: stretch; }
 .grid { display: grid; gap: var(--dsl-g-gap-md); }
 /* Bento child: occupies N grid columns (the wrapper exists only so the child
    keeps its own layout). */
@@ -131,6 +141,7 @@ body[data-ds-dark-theme] .panel {
 @media (max-width: 560px) {
   .grid { grid-template-columns: 1fr !important; }
   .row { flex-wrap: wrap; }
+  .row > .card { flex-basis: 100%; }
 }
 .spacer { flex: 1; }
 .divider {
@@ -2146,3 +2157,7 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
 .panelResizeHandleActive {
   background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4f8ef7) 35%, transparent);
 }
+
+/* Formula markup remains phrasing content inside labels and buttons. */
+.inlineMath { display: inline; }
+.inlineMath [class~="katex-display"] { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
