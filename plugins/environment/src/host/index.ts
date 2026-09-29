@@ -1,4 +1,4 @@
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context, FiberState } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
@@ -25,6 +25,8 @@ const KEY_PREFIX = 'zerowall.environment.var.'
 // did not persist the variable names alongside the encrypted values.
 const WELL_KNOWN_VARIABLES: string[] = []
 const RETIRED_VARIABLES = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', 'TSG_TSGUSER', 'TSG_JSESSIONID', 'RESEARCH_SCIDB_SETTLE_MS', 'LITERATURE_OUTPUT_ROOT', 'LITERATURE_DISABLE_PAPER_DOWNLOAD', 'LITERATURE_DOWNLOAD_WORKERS', 'LITERATURE_MAX_PDF_BYTES', 'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS', 'ZEROWALL_PAPER_DOWNLOAD_ROOT'] as const
+// Cordis publishes FiberState as a const enum, which has no runtime export.
+const FIBER_ACTIVE = 2 as FiberState.ACTIVE
 
 export function validateEnvironmentVariableName(name: string): string {
   const value = name.trim().toUpperCase()
@@ -40,21 +42,49 @@ declare module '@deepseek-ai/cordis' {
 
 export class ZeroWallEnvironmentService extends TypertRemoteService {
   static inject = ['settings']
+  static Config = EnvironmentSettingsSchema
   private readonly secrets = new SecretBrokerClient()
-  private readonly scope
+  private settings: EnvironmentSettingsValue
   private readonly hydration: Promise<void>
 
-  constructor(ctx: Context) {
-    super(ctx, 'zerowallEnvironment')
-    this.scope = ctx.settings.register(ENVIRONMENT_SETTINGS_NS, EnvironmentSettingsSchema)
-    // Keep credential restoration observable.  A tool can be invoked
-    // immediately after Host startup, so fire-and-forget hydration otherwise
-    // races the first TSG/download request.
-    this.hydration = this.removeRetiredVariables().then(() => this.hydrate())
+  constructor(private readonly hostCtx: Context, config: EnvironmentSettingsValue) {
+    super(hostCtx, 'zerowallEnvironment')
+    this.settings = config
+    hostCtx.on('settings/document-updated', (ns) => {
+      if (ns !== ENVIRONMENT_SETTINGS_NS) return
+      const value = hostCtx.settings.describe().find(row => row.ns === ENVIRONMENT_SETTINGS_NS)?.value
+      if (value !== undefined) this.settings = value as EnvironmentSettingsValue
+    })
+    // Settings writes are only valid after this plugin's Loader fiber is
+    // ACTIVE.  rc.2 constructs the service while the fiber is still LOADING,
+    // so writing here can race ConfigEditor registration and fail startup.
+    // Wait for the ACTIVE transition, then contain migration errors so a
+    // legacy credential problem cannot terminate the Host with an unhandled
+    // rejection.  The next user operation retries the same migration.
+    this.hydration = new Promise<void>((resolve) => {
+      let settled = false
+      const run = async (): Promise<void> => {
+        if (settled) return
+        settled = true
+        dispose()
+        try {
+          await this.removeRetiredVariables()
+          await this.hydrate()
+        } catch (error: unknown) {
+          this.hostCtx.logger.warn(`环境变量迁移暂未完成，将在下次操作时重试：${String(error)}`)
+        } finally {
+          resolve()
+        }
+      }
+      const dispose = this.hostCtx.on('internal/status', (fiber) => {
+        if (fiber === this.hostCtx.fiber && fiber.state === FIBER_ACTIVE) void run()
+      })
+      if (this.hostCtx.fiber.state === FIBER_ACTIVE) queueMicrotask(() => void run())
+    })
   }
 
   getImageModelSelection(): ImageModelSelection | undefined {
-    const selection = this.scope.get().imageModel
+    const selection = this.settings.imageModel
     return selection.providerId && selection.groupId && selection.modelId ? selection : undefined
   }
 
@@ -62,12 +92,12 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
   readImageModelSelection(): Promise<ImageModelSelection | undefined> { return Promise.resolve(this.getImageModelSelection()) }
 
   @Remote('getImageQuality')
-  getImageQuality(): ImageGenerationQuality { return this.scope.get().imageQuality }
+  getImageQuality(): ImageGenerationQuality { return this.settings.imageQuality }
 
   @Remote('setImageQuality')
   async setImageQuality(quality: ImageGenerationQuality): Promise<void> {
     if (!['auto', 'low', 'medium', 'high'].includes(quality)) throw new Error('生图质量必须是 auto、low、medium 或 high。')
-    await this.scope.replace({ ...this.scope.get(), imageQuality: quality })
+    await this.replaceSettings({ ...this.settings, imageQuality: quality })
   }
 
   @Remote('setImageModelSelection')
@@ -80,14 +110,14 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     const empty = !value.providerId && !value.groupId && !value.modelId
     const partial = !empty && (!value.providerId || !value.groupId || !value.modelId)
     if (partial) throw new Error('生图模型配置不完整。')
-    await this.scope.replace({ ...this.scope.get(), imageModel: value })
+    await this.replaceSettings({ ...this.settings, imageModel: value })
   }
 
   @Remote('listVariables')
   async listVariables(): Promise<EnvironmentVariableInfo[]> {
     await this.hydration
     const configuredNames = WELL_KNOWN_VARIABLES.filter(name => Boolean(process.env[name]?.trim()))
-    const names = [...new Set([...this.scope.get().variables.map(row => row.name), ...configuredNames])]
+    const names = [...new Set([...this.settings.variables.map((row: { name: string }) => row.name), ...configuredNames])]
     const values = await Promise.all(names.map(async name => ({
       name,
       // process.env is also a supported source: packaged launches can inject
@@ -104,8 +134,8 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     if (value.length === 0) throw new Error('环境变量值不能为空。')
     await this.secrets.set(credentialKey(key), value)
     process.env[key] = value
-    const current = this.scope.get().variables.filter(row => row.name !== key)
-    await this.scope.replace({ ...this.scope.get(), variables: [...current, { name: key }].sort((a, b) => a.name.localeCompare(b.name)) })
+    const current = this.settings.variables.filter((row: { name: string }) => row.name !== key)
+    await this.replaceSettings({ ...this.settings, variables: [...current, { name: key }].sort((a, b) => a.name.localeCompare(b.name)) })
     return await this.listVariables()
   }
 
@@ -123,12 +153,12 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     const key = validateEnvironmentVariableName(name)
     await this.secrets.delete(credentialKey(key))
     delete process.env[key]
-    await this.scope.replace({ ...this.scope.get(), variables: this.scope.get().variables.filter(row => row.name !== key) })
+    await this.replaceSettings({ ...this.settings, variables: this.settings.variables.filter((row: { name: string }) => row.name !== key) })
     return await this.listVariables()
   }
 
   private async hydrate(): Promise<void> {
-    const names = [...new Set([...this.scope.get().variables.map(row => row.name), ...WELL_KNOWN_VARIABLES])]
+    const names = [...new Set([...this.settings.variables.map((row: { name: string }) => row.name), ...WELL_KNOWN_VARIABLES])]
     for (const name of names) {
       try {
         const value = await this.secrets.get(credentialKey(name))
@@ -140,7 +170,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
   }
 
   private async removeRetiredVariables(): Promise<void> {
-    if (this.scope.get().retiredVariablesRemoved) return
+    if (this.settings.retiredVariablesRemoved) return
     for (const name of RETIRED_VARIABLES) {
       try {
         await this.secrets.delete(credentialKey(name))
@@ -148,8 +178,13 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
       } catch { return } // Retry migration on next startup if the vault is unavailable.
     }
     const retired = new Set<string>(RETIRED_VARIABLES)
-    const variables = this.scope.get().variables.filter(row => !retired.has(row.name))
-    await this.scope.replace({ ...this.scope.get(), variables, retiredVariablesRemoved: true })
+    const variables = this.settings.variables.filter((row: { name: string }) => !retired.has(row.name))
+    await this.replaceSettings({ ...this.settings, variables, retiredVariablesRemoved: true })
+  }
+
+  private async replaceSettings(next: EnvironmentSettingsValue): Promise<void> {
+    this.settings = next
+    await this.hostCtx.settings.replace(ENVIRONMENT_SETTINGS_NS, next)
   }
 }
 

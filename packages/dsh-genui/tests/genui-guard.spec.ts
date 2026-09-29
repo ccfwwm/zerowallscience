@@ -84,7 +84,11 @@ describe('validateGenuiSpec / parseGenuiSpec: single-component roots', () => {
 
   it('parseGenuiSpec wraps a single-component fence body', () => {
     const spec = parseGenuiSpec(JSON.stringify({ type: 'keyvalue', pairs: [{ key: 'a', value: 'b' }] }))
-    expect(spec?.type).toBe('col')
+    // The wrapper is a plain spec (issue #172): a spec root is already
+    // rendered as a column, and carrying a `col` type would make the guard
+    // read the wrapper as one more bare component root and nest it again.
+    expect(spec?.type).toBeUndefined()
+    expect(spec?.items).toHaveLength(1)
     expect((spec?.items[0] as { type: string }).type).toBe('keyvalue')
   })
 

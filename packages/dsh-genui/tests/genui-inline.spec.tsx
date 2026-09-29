@@ -4,6 +4,7 @@
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { renderInline } from '../src/client/inline.ts'
+import { GenuiBlock } from '../src/client/GenuiBlock.tsx'
 
 afterEach(cleanup)
 
@@ -13,6 +14,133 @@ const html = (text: string): string => {
 }
 
 describe('inline markup', () => {
+  it.each([
+    String.raw`\(\frac{a}{b}\)`,
+    String.raw`\[\begin{pmatrix}a & b \\ c & d\end{pmatrix}\]`,
+    String.raw`$$\begin{cases}x^2 & x>0 \\ -x & x\le 0\end{cases}$$`,
+    String.raw`\[\begin{aligned}a&=b+c\\&=d\end{aligned}\]`,
+    String.raw`**$a*b$**`,
+    String.raw`==\(x^2\)==`,
+  ])('renders a complete formula: %s', source => {
+    const out = html(source)
+    expect(out).toContain('class="katex"')
+    expect(out).not.toContain('katex-error')
+    expect(out).toContain('<math')
+    expect(out).not.toContain('<div class=')
+  })
+
+  it('keeps a multiline display formula inside emphasis', () => {
+    const { container } = render(<span>{renderInline('**$$x +\ny$$**')}</span>)
+    expect(container.querySelector('strong .katex-display')).not.toBeNull()
+    expect(container.textContent).not.toContain('**')
+  })
+
+  it('renders a real newline as a <br> line break', () => {
+    const out = html('第一行\n第二行')
+    expect(out).toContain('<br')
+    expect(out).not.toContain('\n')
+  })
+
+  it('renders CRLF as a single <br> and mixes with emphasis', () => {
+    const out = html('**重点**\r\n说明')
+    expect(out).toContain('<strong')
+    expect(out.match(/<br/g)).toHaveLength(1)
+  })
+
+  it('breaks the line inside emphasis content too', () => {
+    const out = html('**第一行\n第二行**')
+    expect(out).toContain('<strong')
+    expect(out).toContain('<br')
+  })
+
+  it('keeps a newline out of code spans (code stays single-line)', () => {
+    const out = html('`a\nb`')
+    // The newline ENDS the code-span attempt (no closing backtick before it);
+    // it becomes a <br> and the backticks stay literal.
+    expect(out).not.toContain('<code')
+    expect(out).toContain('<br')
+  })
+
+  it('keeps fenced backticks literal instead of parsing an inner code span', () => {
+    const out = html('因为：```score = 1```于是')
+    expect(out).not.toContain('<code')
+    expect(out).toContain('```score = 1```')
+  })
+
+  it('keeps complete fenced content opaque while parsing surrounding inline text', () => {
+    const out = html('**前文** ```js\nconst name = `foo`\n**原文**\n``` **后文**')
+    expect(out).not.toContain('<code')
+    expect(out).toContain('const name = `foo`')
+    expect(out).toContain('**原文**')
+    expect(out.match(/<strong/g)).toHaveLength(2)
+    expect(out).not.toContain('<br')
+
+    const tilde = html('~~~js\nconst name = `foo`\n~~~')
+    expect(tilde).not.toContain('<code')
+    expect(tilde).toContain('`foo`')
+  })
+
+  it('keeps content after an unclosed fence marker literal', () => {
+    const out = html('**前文** ```js\nconst name = `foo`\n**原文**')
+    expect(out).not.toContain('<code')
+    expect(out).toContain('const name = `foo`')
+    expect(out).toContain('**原文**')
+    expect(out.match(/<strong/g)).toHaveLength(1)
+    expect(out).not.toContain('<br')
+  })
+
+  it.each(['``foo``', '```foo```', '````foo````'])('keeps consecutive backticks literal: %s', source => {
+    const out = html(source)
+    expect(out).not.toContain('<code')
+    expect(out).toContain(source)
+  })
+
+  it('still renders a single-backtick code span', () => {
+    const out = html('运行 `pnpm test`')
+    expect(out).toContain('<code')
+    expect(out).toContain('pnpm test')
+  })
+
+  it('keeps the reported callout content as literal inline text', () => {
+    const { container } = render(<GenuiBlock spec={{ items: [
+      { type: 'callout', tone: 'error', title: '围栏', content: '因为：```score = 1 - 0.05 × level ```于是照建不误' },
+      { type: 'callout', tone: 'info', title: '表格', content: '| 配置 | 级数 |\n|---|---|\n| 破例版 | 887 |' },
+    ] }} />)
+    expect(container.querySelector('code')).toBeNull()
+    expect(container.textContent).toContain('```score = 1 - 0.05 × level ```')
+    expect(container.textContent).toContain('|---|---|')
+    expect(container.querySelector('table')).toBeNull()
+    expect(container.querySelectorAll('br')).toHaveLength(2)
+  })
+
+  it('expresses a line break inside a callout through the block path (#177)', () => {
+    render(<GenuiBlock spec={{
+      title: '换行',
+      items: [
+        { type: 'callout', tone: 'info', title: '两段', content: '第一行\n第二行' },
+        { type: 'text', content: '甲\n乙' },
+      ],
+    }} />)
+    const brs = document.querySelectorAll('br')
+    expect(brs.length).toBeGreaterThanOrEqual(2)
+    expect(document.body.textContent).toContain('第一行')
+    expect(document.body.textContent).toContain('第二行')
+  })
+
+  it('updates a formula without leaving stale math or damaging surrounding text', () => {
+    const { container, rerender } = render(<span>{renderInline(String.raw`**\(x\)** tail`)}</span>)
+    expect(container.querySelector('strong .katex')).not.toBeNull()
+    rerender(<span>{renderInline(String.raw`**\(y+1\)** updated`)}</span>)
+    expect(container.querySelector('annotation')?.textContent).toBe('y+1')
+    expect(container.textContent).toContain('updated')
+  })
+
+  it('renders formula labels without nesting interactive links', () => {
+    const { container } = render(<button>{renderInline('[$x$](https://example.com)', false)}</button>)
+    expect(container.querySelector('button .katex')).not.toBeNull()
+    expect(container.querySelector('a')).toBeNull()
+  })
+
   it('renders code, bold, mark and an https link as elements', () => {
     const out = html('跑 `npm run build`，**一定要**看 ==退出码==，见 [文档](https://example.com/a)')
     expect(out).toContain('<code')
@@ -42,6 +170,37 @@ describe('inline markup', () => {
     const out = html('<img src=x onerror=alert(1)> 与 **加粗**')
     expect(out).not.toContain('<img')
     expect(out).toContain('&lt;img')
+  })
+
+  it('renders inline and display math while preserving code and unsafe-source boundaries', () => {
+    const { container } = render(<div>{renderInline('Energy $E=mc^2$; $$\\frac{a}{b}$$; `$x$`; <img src=x onerror=alert(1)>')}</div>)
+    expect(container.querySelectorAll('.katex')).toHaveLength(2)
+    expect(container.querySelector('.katex-display')).not.toBeNull()
+    expect(container.querySelector('code')?.textContent).toBe('$x$')
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('.katex-error')).toBeNull()
+  })
+
+  it('keeps escaped delimiters literal and refuses unsafe math links', () => {
+    expect(html(String.raw`Escaped \$x\$`)).not.toContain('katex')
+    const out = html(String.raw`$\href{javascript:alert(1)}{x}$`)
+    expect(out).not.toContain('href="javascript:')
+    expect(out).not.toContain('<script')
+  })
+
+  it('unescapes $ and backslash tokens to their literal characters', () => {
+    const out = html(String.raw`总价 \$100，路径 C:\\dir，另一个 \$x\$`)
+    expect(out).toContain('$100')
+    expect(out).toContain('C:\\dir')
+    expect(out).toContain('$x$')
+    expect(out).not.toContain('\\$')
+    expect(out).not.toContain('\\\\')
+    expect(out).not.toContain('katex')
+  })
+
+  it('leaves currency and incomplete math literal', () => {
+    expect(html('Price $5 and $10')).not.toContain('katex')
+    expect(html('Unfinished $x + 1')).toContain('$x + 1')
   })
 
   it('returns the plain string untouched when there is no markup', () => {

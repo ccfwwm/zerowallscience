@@ -11,17 +11,13 @@
  * `type` to `echart` and adding `preset`.
  * @module @changfenhuang/dsh-genui/client/EChartNode
  */
+import { renderInline } from './inline.ts'
 import { useEffect, useRef, useState } from 'react'
 import css from './GenuiBlock.module.css'
-import { CORE_PRESETS, createChart as lazyCreateChart, type EChartsInstance } from './echarts-lazy.ts'
+import { createChart as lazyCreateChart, type EChartsInstance } from './echarts-lazy.ts'
+import { echartEngineFor } from './echarts-engine.ts'
 import { CHART_COLORS } from './blocks/charts.tsx'
 import type { GenuiEChart } from './spec.ts'
-
-/** Which engine bundle this node needs (progressive disclosure). */
-function neededEngine(node: GenuiEChart): 'core' | 'full' {
-  if (node.option !== undefined) return 'full'
-  return CORE_PRESETS.has(node.preset ?? 'bar') ? 'core' : 'full'
-}
 
 /**
  * Categorical fallback palette. The host defines its `--dsw-static-*` tokens on
@@ -104,6 +100,19 @@ function presetOption(node: GenuiEChart, el?: HTMLElement | null): Record<string
   }
 
   switch (node.preset) {
+    case 'wordCloud': {
+      return {
+        ...base,
+        series: [{
+          type: 'wordCloud',
+          sizeRange: [16, 64],
+          rotationRange: [0, 0],
+          gridSize: 8,
+          textStyle: { fontFamily: 'sans-serif' },
+          data: data.map((d, i) => ({ name: d.label, value: d.value, textStyle: { color: colors[i % colors.length] } })),
+        }],
+      }
+    }
     case 'pie': {
       return {
         ...base,
@@ -387,7 +396,8 @@ export function EChartNode({ node }: { node: GenuiEChart }) {
     // Full `option` wins over preset shorthand.
     const option = node.option ?? presetOption(node, el)
 
-    void lazyCreateChart(el, option, { height: node.height ?? 300 }, neededEngine(node)).then((inst) => {
+    const engine = echartEngineFor(node) === 'echarts-full' ? 'full' : 'core'
+    void lazyCreateChart(el, option, { height: node.height ?? 300 }, engine).then((inst) => {
       if (!alive) {
         inst.dispose()
         return
@@ -435,14 +445,14 @@ export function EChartNode({ node }: { node: GenuiEChart }) {
     return (
       <div className={css.echartFallback} data-genui-echart>
         <div className={css.echartErr}>ECharts 渲染失败</div>
-        {node.title !== undefined && <div className={css.echartHint}>{node.title}</div>}
+        {node.title !== undefined && <div className={css.echartHint}>{renderInline(node.title)}</div>}
       </div>
     )
   }
 
   return (
     <div className={css.echartWrap} data-genui-echart>
-      {node.title !== undefined && <div className={css.echartTitle}>{node.title}</div>}
+      {node.title !== undefined && <div className={css.echartTitle}>{renderInline(node.title)}</div>}
       <div
         ref={ref}
         className={css.echartCanvas}

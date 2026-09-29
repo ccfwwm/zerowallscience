@@ -19,6 +19,11 @@ import type {} from '@deepseek-ai/dsh-subagent'
 import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'dsh-auto-review': { kind: 'dsh-auto-review'; form: 'notice'; summary: string }
+  }
+}
 import type { CallId } from './call-id.ts'
 import { isMarkedAuditEvent, isUnmarkedHostVersion, peerSessionVersion, type AuditSupport } from './audit.ts'
 import { fingerprint, VerdictCache } from './cache.ts'
@@ -681,7 +686,7 @@ export class AutoReviewRuntime {
     if (action === 'abort-turn') {
       request.agent.inject(createUserMessage({
         content: [{ type: 'text', text: messages(this.config.language).circuitNotice(trip.kind, trip.count) }],
-        source: { kind: 'plugin', plugin: 'auto-review' },
+        source: { kind: 'dsh-auto-review', form: 'notice', summary: 'Auto Review circuit breaker' },
       }))
       const timer = setTimeout(() => {
         this.pendingAborts.delete(timer)
@@ -838,7 +843,7 @@ export class AutoReviewRuntime {
         type: 'text',
         text: t.switchedNotice(enabled),
       }],
-      source: { kind: 'plugin', plugin: 'auto-review' },
+      source: { kind: 'dsh-auto-review', form: 'notice', summary: `Auto Review ${enabled ? 'enabled' : 'disabled'}` },
     }))
     return { kind: 'success', text: t.switchedResult(input.toUpperCase()) }
   }

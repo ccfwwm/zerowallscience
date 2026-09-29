@@ -25,14 +25,14 @@
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
-import { IconChevronDownOutline14, IconChevronUpOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { GenuiActionContext, type GenuiActionHandler } from './action-context.ts'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { GenuiBlock } from './GenuiBlock.tsx'
+import { ExportableGenuiBlock } from './artifact/ExportableGenuiBlock.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { panelStateKey } from './interaction-store.ts'
 import { TemplateDrawer } from './TemplateDrawer.tsx'
 import { clearSessionPanel, getPanelExpandToken, getPanelSpec, setLocalPanel, subscribePanel, subscribePanelExpand } from './panel-store.ts'
+import { useT } from './i18n/index.ts'
 import css from './GenuiBlock.module.css'
 
 /** Resize bounds for the panel body, in px. */
@@ -64,6 +64,7 @@ export type GenuiPanelProps = PropsRuntime<'conversation.input.dock'> & GenuiPan
  * header always shows the current panel title.
  */
 export function GenuiPanel({ sessionId, sendGenuiAction, insertTemplate }: GenuiPanelProps) {
+  const t = useT()
   const spec = useSyncExternalStore(subscribePanel, () => getPanelSpec(sessionId))
   const expandToken = useSyncExternalStore(subscribePanelExpand, () => getPanelExpandToken(sessionId))
   const [collapsed, setCollapsed] = useState(true)
@@ -191,7 +192,7 @@ export function GenuiPanel({ sessionId, sendGenuiAction, insertTemplate }: Genui
         <div
           role="separator"
           aria-orientation="horizontal"
-          aria-label="调整面板高度"
+          aria-label={t('panel.resize.aria')}
           className={`${css.panelResizeHandle}${resizing ? ` ${css.panelResizeHandleActive}` : ''}`}
           onPointerDown={startResize}
         />
@@ -203,11 +204,13 @@ export function GenuiPanel({ sessionId, sendGenuiAction, insertTemplate }: Genui
           aria-expanded={!collapsed}
           onClick={() => setCollapsed(c => !c)}
         >
-          <span className={css.panelBadge}>面板</span>
-          <span className={css.panelTitle}>{spec?.title ?? (drawer !== null ? 'GenUI 探索' : 'GenUI 面板')}</span>
+          <span className={css.panelBadge}>{t('panel.badge')}</span>
+          <span className={css.panelTitle}>{spec?.title ?? t(drawer !== null ? 'panel.title.explore' : 'panel.title.default')}</span>
           <span className={css.panelChevron} aria-hidden>
-            {/* Host-style glyphs (same icon set as the TodoDock header) instead of typed arrows. */}
-            {collapsed ? <IconChevronUpOutline14 /> : <IconChevronDownOutline14 />}
+            {/* 折叠状态对应的箭头。 */}
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d={collapsed ? 'M12 10L8.70711 6.70711C8.31658 6.31658 7.68342 6.31658 7.29289 6.70711L4 10' : 'M4 6L7.29289 9.29289C7.68342 9.68342 8.31658 9.68342 8.70711 9.29289L12 6'} stroke="currentColor" />
+            </svg>
           </span>
         </button>
         {/* Template center (0.9.4): one button — the discovery surface for
@@ -215,22 +218,22 @@ export function GenuiPanel({ sessionId, sendGenuiAction, insertTemplate }: Genui
         <button
           type="button"
           className={`${css.panelTpl}${drawer === 'templates' ? ` ${css.panelTplActive}` : ''}`}
-          aria-label="模板中心"
-          title="模板中心：预览并试用 GenUI 示例"
+          aria-label={t('panel.templates.aria')}
+          title={t('panel.templates.title')}
           onClick={() => { setCollapsed(false); setDrawer(d => (d === 'templates' ? null : 'templates')) }}
         >
-          模板
+          {t('panel.templates')}
         </button>
         {/* Achievements (0.9.5): the exploration trophies, rendered by GenUI
             itself (dogfooding). */}
         <button
           type="button"
           className={`${css.panelTpl}${drawer === 'achievements' ? ` ${css.panelTplActive}` : ''}`}
-          aria-label="探索成就"
-          title="探索成就：解锁徽章与进度"
+          aria-label={t('panel.achievements.aria')}
+          title={t('panel.achievements.title')}
           onClick={() => { setCollapsed(false); setDrawer(d => (d === 'achievements' ? null : 'achievements')) }}
         >
-          成就
+          {t('panel.achievements')}
         </button>
         {/* In-place dismiss (issue #23): the same local override `/panel
             clear` applies — persists to localStorage, notifies subscribers,
@@ -238,8 +241,8 @@ export function GenuiPanel({ sessionId, sendGenuiAction, insertTemplate }: Genui
         <button
           type="button"
           className={css.panelClose}
-          aria-label="关闭面板"
-          title="关闭面板"
+          aria-label={t('panel.close.aria')}
+          title={t('panel.close.aria')}
           onClick={() => setLocalPanel(sessionId, null)}
         >
           <span aria-hidden>✕</span>
@@ -247,7 +250,7 @@ export function GenuiPanel({ sessionId, sendGenuiAction, insertTemplate }: Genui
       </div>
       {hint && drawer === null && (
         <div className={css.panelHint} role="status">
-          💡 这是 GenUI 会话面板：点右上角「模板」可浏览并试用示例
+          {t('panel.hint')}
         </div>
       )}
       {!collapsed && (
@@ -263,14 +266,14 @@ export function GenuiPanel({ sessionId, sendGenuiAction, insertTemplate }: Genui
               onUse={(text) => {
                 recordTemplateUse()
                 insertTemplate(text)
-                showFlash('指令已插入输入框，发送即可让模型生成')
+                showFlash(t('panel.flash.inserted'))
               }}
             />
           ) : spec !== null ? (
             <GenuiActionContext.Provider value={sendGenuiAction}>
-              <ErrorBoundary label="面板">
+              <ErrorBoundary label={t('panel.boundary')}>
                 {/* content-fingerprinted: same panel spec re-published restores its state */}
-                <GenuiBlock spec={spec} stateKey={panelStateKey(sessionId, JSON.stringify(spec))} />
+                <ExportableGenuiBlock spec={spec} stateKey={panelStateKey(sessionId, JSON.stringify(spec))} />
               </ErrorBoundary>
             </GenuiActionContext.Provider>
           ) : null}

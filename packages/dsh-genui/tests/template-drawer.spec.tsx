@@ -4,7 +4,9 @@
 import { cleanup, fireEvent, render, screen, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TemplateDrawer } from '../src/client/TemplateDrawer.tsx'
-import { GENUI_TEMPLATES } from '../src/client/templates.ts'
+import { genuiTemplates } from '../src/client/templates.ts'
+
+const GENUI_TEMPLATES = genuiTemplates()
 
 const renderDrawer = (onUse: (t: string) => void = () => {}): ReturnType<typeof render> =>
   render(<TemplateDrawer tab="templates" onUse={onUse} />)

@@ -1,38 +1,42 @@
 {
-  "version": "6.0.0",
+  "version": "7.3.0",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
-    "tag": "dsh-v0.1.5-rc.2",
-    "commit": "fcf35ae8707237f7d7963a8182652ef706f08fb5"
+    "tag": "dsh-v0.1.7-rc.2",
+    "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+    "upstreamCommit": "477b4f420553e8a52c2fbccc464d7561b239c443"
   },
   "betterSidebar": {
     "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",
-    "tag": "v0.19.1",
-    "upstreamCommit": "1fcf43ccbedd6e66370b7fb81df2b4dd0ef2604e",
-    "commit": "1fcf43ccbedd6e66370b7fb81df2b4dd0ef2604e",
+    "tag": "v0.22.1",
+    "upstreamCommit": "9b5834f74ad197534c821c35b8357edac1ad3919",
+    "commit": "9b5834f74ad197534c821c35b8357edac1ad3919",
     "source": "packages/dsh-better-sidebar"
   },
   "betterSidebarIcons": {
     "repository": "https://github.com/eg-bole/dsh-better-sidebar-icons.git",
     "branch": "master",
-    "commit": "777816766efd144379eb26ad74f2395cebe1d48f"
+    "commit": "510481e603e5c46a39f9b7f0bea1e2d3ba6aba02",
+    "version": "0.2.0"
   },
   "fileReviewTab": {
     "repository": "https://github.com/left0ver/dsh-file-review.git",
     "branch": "main",
-    "commit": "c16c7c113157f5c13cbc262b11172e1498ae31f9",
-    "version": "0.8.1",
+    "commit": "f5de7fde1beaf391ca1c80598140302337f1afc2",
+    "version": "0.8.2",
     "license": "MIT",
     "source": "packages/dsh-file-review"
   },
   "office": {
     "repository": "https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office.git",
-    "commit": "3b881c9d002109444368b1a28d371663390b156b"
+    "commit": "3b881c9d002109444368b1a28d371663390b156b",
+    "npmVersion": "0.2.0",
+    "npmIntegrity": "sha512-RPwk9ojWIT3u2shasum-dafd2544e70e8fc07c882d258178a8e09983e444"
   },
   "zotero": {
     "repository": "https://github.com/Vncntvx/dsh-zotero.git",
-    "commit": "39caf8af04f07e7fc00775e2bb6e6d8f0ba06ece",
-    "version": "0.8.4",
+    "commit": "8c34e352d5ca372ddeade95050bcc150f1465441",
+    "version": "0.11.0",
     "license": "MIT"
   },
   "wechat": {
@@ -45,19 +49,19 @@
   },
   "autoReview": {
     "repository": "https://github.com/PerryLink/dsh-auto-review.git",
-    "commit": "34a497ef2d4bbe1ffd271ccedc1e6bb7c27e4c9a",
-    "version": "0.12.4",
+    "commit": "70069c4304a381e2b08c88d42b1f8945456aaea7",
+    "version": "0.12.10",
     "license": "Apache-2.0",
     "source": "packages/dsh-auto-review"
   },
   "genui": {
     "repository": "https://github.com/omdsh-dev/dsh-genui.git",
-    "branch": "main",
-    "commit": "21ee4f42adc80452ade39fff07d40d646331caa1",
-    "version": "0.10.0",
+    "commit": "818c0fc66206052e11ca01cb14dea21948b82dd8",
+    "version": "0.11.2-preview.1",
     "license": "MIT",
     "package": "@changfenhuang/dsh-genui",
-    "source": "packages/dsh-genui"
+    "source": "packages/dsh-genui",
+    "tag": "v0.11.2-preview.1"
   },
   "academicResearchSkills": {
     "repository": "https://github.com/Imbad0202/academic-research-skills.git",
@@ -70,17 +74,17 @@
   },
   "progressiveTools": {
     "repository": "https://github.com/everclear077/dsh-progressive-tools.git",
-    "tag": "v0.4.0",
-    "commit": "47e9ea5eaeb73ca2639acdad8f5b76ff5403dd7f",
-    "version": "0.4.0",
+    "tag": "v0.6.0",
+    "commit": "779895f5d6b520922ee40690f91070436fc8a49c",
+    "version": "0.6.0",
     "license": "MIT",
     "source": "packages/dsh-progressive-tools",
-    "runtime": "0.1.5-rc.2"
+    "runtime": "0.1.7-rc.2"
   },
   "sshOps": {
     "repository": "https://github.com/caoyiwei850/dsh-ssh-ops.git",
-    "commit": "492df49d4f5c392360a6cfa0da47e6d2016d529a",
-    "version": "0.3.8",
+    "commit": "2e376e49d06e02f5bc43e3f93d99f2d4a75bb353",
+    "version": "0.3.13",
     "license": "MIT",
     "source": "packages/dsh-ssh-ops"
   },
@@ -105,7 +109,27 @@
   },
   "univerOffice": {
     "repository": "https://github.com/dream-num/dsh-univer-office",
-    "version": "0.3.2",
-    "telemetry": false
+    "version": "0.3.5",
+    "telemetry": false,
+    "commit": "ce7f3e0bfa1e9b6bc4eb855e1c220b77fcdab806"
+  },
+  "dreamSkin": {
+    "repository": "https://github.com/RevolutionLA/dsh-dream-skin.git",
+    "version": "9.27.1",
+    "commit": "621b75eb19c5d870d3ed3894884cc89c18489ff7",
+    "license": "MIT",
+    "tag": "v9.27.1"
+  },
+  "freeSearch": {
+    "repository": "https://github.com/omdsh-dev/dsh-free-search.git",
+    "version": "0.5.0",
+    "commit": "bdf0f24e9e72eaf2ff7aea415db7f0066eceeef8",
+    "license": "MIT"
+  },
+  "sessionNotification": {
+    "repository": "https://github.com/dingyi222666/dsh-session-notification.git",
+    "version": "0.1.22",
+    "commit": "20668d7b338db45203bba62d6c5ed79f47683522",
+    "license": "BSD-3-Clause"
   }
 }

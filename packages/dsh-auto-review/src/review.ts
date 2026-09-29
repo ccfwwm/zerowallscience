@@ -20,6 +20,7 @@ import type { AutoReviewFallback } from './events.ts'
 import { AutoReviewCircuitId, AutoReviewRejectionId, AutoReviewVerdictId, findPresentedCall } from './events.ts'
 import type { ContextBudgetConfig, ResolvedConfig, RiskLevel } from './config.ts'
 import type { ReviewerChildren } from './isolation.ts'
+import { projectToolResult } from './tool-result.ts'
 
 /** A reviewer verdict, validated against the closed decision vocabulary. */
 export interface ReviewerVerdict {
@@ -150,9 +151,9 @@ function contextLine(event: SessionEvent): string | undefined {
       return `[tool call ${event.data.name}] ${truncate(args, CONTEXT_LINE_BUDGET)}`
     }
     case 'tool/result': {
-      const block = event.data.message.content[0]
-      if (block === undefined || block.type !== 'tool-result') return undefined
-      const text = contentText(block.content)
+      const result = projectToolResult(event.data.message)
+      if (result === undefined) return undefined
+      const text = result.text
       return text === '' ? undefined : `[tool result] ${truncate(text, CONTEXT_LINE_BUDGET)}`
     }
     default: return undefined

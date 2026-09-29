@@ -9,7 +9,8 @@ const root = await mkdtemp(join(tmpdir(), 'zerowall-host-diagnosis-'))
 const resources = resolve(installed, 'resources')
 const asar = resolve(resources, 'app.asar')
 const entry = resolve(asar, 'node_modules/@deepseek-ai/dsh/lib/bin.js')
-const original = 'C:/Users/ccf/AppData/Roaming/zerowall-science'
+const original = process.env.ZEROWALL_SOURCE_PROFILE?.trim()
+  ?? resolve(process.env.LOCALAPPDATA ?? join(root, 'localappdata'), 'ZeroWall Science')
 await mkdir(join(root, 'harness/profiles/web'), { recursive: true })
 for (const name of ['settings.yaml', 'zerowall-mcp-defaults-v1.json', 'profiles/web/cordis.patch.yml']) {
   await copyFile(join(original, 'harness', name), join(root, 'harness', name)).catch(() => {})
@@ -32,7 +33,7 @@ const child = spawn(resolve(installed, 'ZeroWallScience.exe'), ['--import', path
  DSH_HOME:join(root,'harness'), USERPROFILE:root, HOME:root, ZEROWALL_USER_DATA_DIR:root,
  ZEROWALL_USER_SKILLS:join(root,'harness/zerowall-skills'), ZEROWALL_BUNDLED_SKILLS:resolve(resources,'skills'),
  DSH_BUNDLED_SKILL_DIR:resolve(resources,'skills'), ZEROWALL_RESEARCH_DB:join(root,'research.sqlite'),
- ZEROWALL_MCP_ENVIRONMENT_ROOT:join(original,'mcp-environments'), DSH_TELEMETRY_DISABLED:'1', ZEROWALL_DIAGNOSTICS:root,
+ ZEROWALL_MCP_ENVIRONMENT_ROOT:process.env.ZEROWALL_SOURCE_PYTHON_ROOT?.trim() ?? join(original,'zerowall-python'), DSH_TELEMETRY_DISABLED:'1', ZEROWALL_DIAGNOSTICS:root,
  } })
 let output = ''
 const capture = chunk => { output = (output+chunk.toString()).slice(-200000) }

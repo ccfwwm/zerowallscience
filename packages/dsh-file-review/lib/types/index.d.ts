@@ -19,5 +19,5 @@ export declare const inject: string[];
  * Register model guidance for the file-reference renderer shipped by this package.
  * @param ctx - host context carrying the system-prompt registry.
  */
-export declare function apply(ctx: Context, config?: ConfigShape): void;
+export declare function apply(ctx: Context, _config?: ConfigShape): void;
 //# sourceMappingURL=index.d.ts.map

@@ -33,12 +33,22 @@ export function requestFingerprint(options: GenerateOptions, previousLength = 0)
   const messages = options.messages
   const system = messages.filter(message => message.role === 'system').map(message => message.content)
   const skillCalls = new Set(messages.flatMap(message => message.content.flatMap(block =>
-    block.type === 'tool-call' && block.name === 'skill' ? [block.id] : [])))
-  const skillMessages = messages.filter(message => String(message.source.kind).startsWith('skill-')
-    || (message.source.kind === 'plugin' && /(?:^|[-/])skills?(?:$|[-/])/u.test(message.source.plugin))
-    || (message.source.kind === 'tool' && skillCalls.has(message.source.callId)))
-  const runtime = messages.findLast(message => message.source.kind === 'plugin'
-    && message.source.plugin === '@deepseek-ai/dsh-system-prompt' && message.role !== 'system')
+    block.type === 'tool-call' && block.name === 'skill' ? [String(block.id)] : [])))
+  const skillMessages = messages.filter(message => {
+    const source = message.source as ({ kind?: unknown; plugin?: unknown; callId?: unknown } | undefined)
+    if (source === undefined) return false
+    if (source.kind === 'skill-invocation' || (typeof source.kind === 'string' && source.kind.startsWith('skill-'))) return true
+    if (source.kind === 'plugin' && typeof source.plugin === 'string') {
+      return /(?:^|[-/])skills?(?:$|[-/])/u.test(source.plugin)
+    }
+    return source.kind === 'tool' && skillCalls.has(String(source.callId))
+  })
+  const runtime = messages.findLast(message => {
+    const source = message.source as ({ kind?: unknown; plugin?: unknown } | undefined)
+    if (source === undefined || message.role === 'system') return false
+    return source.kind === 'runtime-context'
+      || (source.kind === 'plugin' && source.plugin === '@deepseek-ai/dsh-system-prompt')
+  })
   // A hash chain detects an edited/deleted prefix without keeping the transcript in memory.
   let chain = fingerprint([])
   let previousPrefixHash = previousLength === 0 ? chain : null

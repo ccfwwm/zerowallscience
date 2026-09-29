@@ -20,6 +20,7 @@ import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { sessionEvents } from './session-events.ts'
 import type { InvariantFailure, InvariantInstaller } from '@deepseek-ai/dsh-invariants'
 import { AUTO_REVIEW_FALLBACKS, CIRCUIT_MARKER_PATTERN, DENY_MARKER_PATTERN, FALLBACK_MARKER_PATTERN, NEVER_MARKER_PATTERN } from './events.ts'
+import { projectToolResult } from './tool-result.ts'
 
 const PACKAGE_NAME = 'dsh-auto-review'
 
@@ -220,15 +221,12 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       return
     }
     if (event.type === 'tool/result') {
-      const block = event.data.message.content[0]
-      if (block === undefined || block.type !== 'tool-result') {
+      const result = projectToolResult(event.data.message)
+      if (result === undefined) {
         // Not a tool-result projection this invariant owns; skip.
         return
       }
-      const text = block.content
-        .filter(item => item.type === 'text')
-        .map(item => (item as { text: string }).text)
-        .join('\n')
+      const text = result.text
       const denyMatch = DENY_MARKER_PATTERN.exec(text)
       if (denyMatch !== null) {
         const reviewId = denyMatch[1]
@@ -244,8 +242,8 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
         if (verdict.decision !== 'deny' && !(verdict.escalation === 'risk-policy' && verdict.outcome === 'rejected')) {
           fail(`tool/result deny marker references a non-deny verdict ${JSON.stringify(reviewId)}`)
         }
-        if (verdict.callId !== undefined && verdict.callId !== block.toolCallId) {
-          fail(`tool/result deny marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(verdict.callId)}`)
+        if (verdict.callId !== undefined && verdict.callId !== result.callId) {
+          fail(`tool/result deny marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(result.callId)}, expected ${JSON.stringify(verdict.callId)}`)
         }
         return
       }
@@ -264,8 +262,8 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
         if (verdict.fallback === undefined || verdict.outcome !== 'rejected') {
           fail(`tool/result fallback marker references a verdict that was not rejected by fallback ${JSON.stringify(reviewId)}`)
         }
-        if (verdict.callId !== undefined && verdict.callId !== block.toolCallId) {
-          fail(`tool/result fallback marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(verdict.callId)}`)
+        if (verdict.callId !== undefined && verdict.callId !== result.callId) {
+          fail(`tool/result fallback marker for review ${JSON.stringify(reviewId)} has call id ${JSON.stringify(result.callId)}, expected ${JSON.stringify(verdict.callId)}`)
         }
         return
       }
@@ -302,8 +300,8 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
       if (rejection.outcome !== 'rejected') {
         fail(`tool/result never marker references a rejection that did not settle rejected ${JSON.stringify(rejectionId)}`)
       }
-      if (rejection.callId !== undefined && rejection.callId !== block.toolCallId) {
-        fail(`tool/result never marker for rejection ${JSON.stringify(rejectionId)} has call id ${JSON.stringify(block.toolCallId)}, expected ${JSON.stringify(rejection.callId)}`)
+      if (rejection.callId !== undefined && rejection.callId !== result.callId) {
+        fail(`tool/result never marker for rejection ${JSON.stringify(rejectionId)} has call id ${JSON.stringify(result.callId)}, expected ${JSON.stringify(rejection.callId)}`)
       }
     }
   }

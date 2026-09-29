@@ -93,8 +93,8 @@ export class PythonUpdaterService {
     const job = JSON.parse(await readFile(join(this.options.root, 'jobs', `${taskId}.json`), 'utf8'))
     return { ...job, ...(this.status.updateJob?.taskId === taskId ? { progress: this.status.progress, message: this.status.message, error: this.status.lastUpdateError } : {}) }
   }
-  previewUninstall(names: string[]): Promise<unknown> { return this.rpc('previewUninstall', [names]) }
-  checkPythonPackageUpdates(names: string[] = []): Promise<McpPythonInfo> { return this.rpc('checkPythonPackageUpdates', [names]) }
+  async previewUninstall(names: string[]): Promise<unknown> { await this.ensurePackageRuntime(); return this.rpc('previewUninstall', [names]) }
+  async checkPythonPackageUpdates(names: string[] = []): Promise<McpPythonInfo> { await this.ensurePackageRuntime(); return this.rpc('checkPythonPackageUpdates', [names]) }
   checkForUpdates(): Promise<McpEnvironmentStatus> { return this.busy ? Promise.resolve(this.status) : this.rpc('checkForUpdates') }
   private enqueue(method: string, args: unknown[] = [], taskId: string = randomUUID()): { taskId: string } {
     if (this.scheduled.has(taskId)) return { taskId }
@@ -108,8 +108,21 @@ export class PythonUpdaterService {
     const persisted = save('queued')
     this.queue = this.queue.catch(() => undefined).then(async () => {
       try { await persisted } catch (error) {
-        this.scheduled.delete(taskId); if (method === 'initialize') this.queuedUpdate = false
-        this.publish({ ...this.status, lastUpdateError: `无法保存更新任务：${String(error)}` }); return
+        this.scheduled.delete(taskId)
+        if (method === 'initialize') this.queuedUpdate = false
+        const message = `无法保存更新任务：${error instanceof Error ? error.message : String(error)}`
+        // Keep the failure attached to the durable task id that callers may
+        // already be waiting on. In particular, first-run bootstrap must not
+        // leave ensureReady() polling forever when LocalAppData or a selected
+        // runtime drive is unavailable or read-only.
+        this.publish({
+          ...this.status,
+          phase: this.status.activeEnvironment ? 'ready' : 'failed',
+          message,
+          lastUpdateError: message,
+          updateJob: { taskId, kind: method, stage: 'failed', canPause: false },
+        })
+        return
       }
       if (this.stopped || this.paused) { this.interrupted.set(taskId, { method, args }); await save('paused'); this.scheduled.delete(taskId); if (method === 'initialize') this.queuedUpdate = false; return }
       this.busy = true
@@ -122,8 +135,9 @@ export class PythonUpdaterService {
         const info = result?.packages ? result : await this.pythonInfo()
         const next = await this.rpc<McpEnvironmentStatus>('localStatus')
         if (this.paused || this.stopped) throw new Error('任务已暂停；等待用户继续。')
-        this.publish({ ...next, updated: !next.lastUpdateError && (method !== 'initialize' || result?.updated === true), packageInventory: info, updateJob: { taskId, kind: method, stage: next.lastUpdateError ? 'failed' : 'ready', canPause: false } })
-        await save(next.lastUpdateError ? 'failed' : 'complete')
+        const failed = next.phase !== 'ready' && next.phase !== 'manual' || !!next.lastUpdateError
+        this.publish({ ...next, updated: !failed && (method !== 'initialize' || result?.updated === true), packageInventory: info, updateJob: { taskId, kind: method, stage: failed ? 'failed' : 'ready', canPause: false } })
+        await save(failed ? 'failed' : 'complete', failed ? next.lastUpdateError ?? next.message : undefined)
       } catch (error) {
         if (this.paused || this.stopped) this.interrupted.set(taskId, { method, args })
         const interrupted = this.paused || this.stopped
@@ -145,11 +159,11 @@ export class PythonUpdaterService {
     return this.status
   }
   async autoUpdate(): Promise<McpEnvironmentStatus> {
-    if (this.busy || this.paused || this.queuedUpdate) return this.status
-    // Local layout migration keeps the installed package versions and is
-    // independent of downloading or applying dependency updates. A broken
-    // current.json must not block first-run setup, so treat a local status
-    // error as an unavailable runtime and repair it from the signed base.
+    if (this.busy || this.paused || this.queuedUpdate || this.stopped) return this.status
+    // A first-run install must be driven by the local signed bundle.  The old
+    // implementation called only checkForUpdates(), which reported an update
+    // but never created the shared Python directory; a following dependency
+    // request then tried to use the old Roaming/profile layout.
     let local: McpEnvironmentStatus
     try { local = await this.rpc<McpEnvironmentStatus>('localStatus') }
     catch (error) { local = { phase: 'failed', message: error instanceof Error ? error.message : String(error) } }
@@ -162,14 +176,22 @@ export class PythonUpdaterService {
       const jobs = await Promise.all(files.filter(file => file.endsWith('.json')).map(file => readFile(join(directory, file), 'utf8').then(JSON.parse, () => undefined)))
       const resumable = jobs.filter(job => job && ['queued', 'running', 'paused'].includes(job.state)).sort((a, b) => a.updatedAt - b.updatedAt)
       for (const job of resumable) this.interrupted.set(job.taskId, { method: job.method, args: job.args })
-      if (resumable.length) {
+      if (resumable.length && (local.phase === 'ready' || local.phase === 'manual')) {
         this.paused = true
         this.publish({ ...this.status, phase: 'paused', message: '发现中断的依赖任务，点击继续后恢复；当前环境保持可用。' })
         return this.status
       }
     }
     if (local.phase !== 'ready' && local.phase !== 'manual') {
+      // A stale job receipt must not prevent first-run installation. Resume at
+      // most the interrupted bootstrap now; dependency jobs remain pending
+      // until the signed runtime has actually been installed.
+      const pending = [...this.interrupted]
+      const bootstrap = pending.find(([, job]) => job.method === 'initialize')
+      this.interrupted.clear()
+      if (bootstrap) this.interrupted.set(...bootstrap)
       const started = this.updateForUser()
+      for (const [id, job] of pending) if (job.method !== 'initialize') this.interrupted.set(id, job)
       const taskId = started.updateJob?.taskId
       return taskId ? await this.waitForTask(taskId) : started
     }
@@ -177,6 +199,49 @@ export class PythonUpdaterService {
     // read-only and report signed updates for user review.
     return await this.checkForUpdates()
   }
+
+  /**
+   * Make a dependency operation safe to call while first-run bootstrap is
+   * still running.  The UI can be opened before the delayed startup check has
+   * completed; in that window a sync request must wait for the signed base
+   * runtime instead of attempting to use a legacy slot/profile.
+   */
+  async ensureReady(): Promise<McpEnvironmentStatus> {
+    if (this.busy && this.activeTaskId) return await this.waitForTask(this.activeTaskId)
+    if (this.paused) return this.status
+    // `updateForUser()` publishes the durable task id before its queue
+    // callback gets a chance to mark the service busy.  A package request can
+    // arrive in that small window (for example when the workbench opens while
+    // first-run bootstrap is still being scheduled).  Wait for that queued
+    // bootstrap instead of treating the old localStatus response as a ready
+    // environment and falling through to the legacy-profile error.
+    if (this.queuedUpdate && this.status.updateJob?.taskId) {
+      return await this.waitForTask(this.status.updateJob.taskId)
+    }
+    const local = await this.rpc<McpEnvironmentStatus>('localStatus').catch(error => ({ phase: 'failed' as const, message: error instanceof Error ? error.message : String(error) }))
+    if (local.phase === 'ready' || local.phase === 'manual') {
+      this.publish(local)
+      return local
+    }
+    this.publish(local)
+    const started = this.updateForUser()
+    const taskId = started.updateJob?.taskId
+    return taskId ? await this.waitForTask(taskId) : this.status
+  }
+
+  /**
+   * All operations that inspect or mutate packages must use the signed base
+   * runtime first.  Keeping this gate in the broker means the legacy MCP IPC,
+   * the Harness Python broker, and the settings API share exactly the same
+   * first-run behavior.
+   */
+  private async ensurePackageRuntime(): Promise<void> {
+    const status = await this.ensureReady()
+    if (status.phase !== 'ready' && status.phase !== 'manual') {
+      throw new Error(status.lastUpdateError ?? status.message ?? '共享 Python 尚未就绪，请先完成基础环境安装。')
+    }
+  }
+
   retry(): McpEnvironmentStatus { return this.updateForUser() }
   pause(): McpEnvironmentStatus {
     if (this.status.updateJob?.canPause === false) return this.status
@@ -197,18 +262,21 @@ export class PythonUpdaterService {
   private async waitForTask(taskId: string): Promise<McpEnvironmentStatus> {
     while (!this.stopped) {
       const job = await readFile(join(this.options.root, 'jobs', `${taskId}.json`), 'utf8').then(text => JSON.parse(text) as { state?: string }, () => undefined)
-      if (job?.state === 'complete' || job?.state === 'failed' || job?.state === 'paused') return this.status
+      // A resumed task may still have its previous paused receipt while the
+      // queue writes the new `queued` state. Do not report that stale receipt
+      // as the result of the current bootstrap attempt.
+      if (job?.state === 'complete' || job?.state === 'failed' || (job?.state === 'paused' && !this.scheduled.has(taskId))) return this.status
       if (this.status.updateJob?.taskId === taskId && this.status.updateJob.stage === 'failed') return this.status
       await new Promise(resolve => setTimeout(resolve, 400))
     }
     return this.status
   }
   stop(): void { this.stopped = true; this.killWorker() }
-  installPythonPackage(spec: string): { taskId: string } { return this.enqueue('installPythonPackage', [spec]) }
-  updatePythonPackages(names: string[]): { taskId: string } { return this.enqueue('updatePythonPackages', [names]) }
+  async installPythonPackage(spec: string): Promise<{ taskId: string }> { await this.ensurePackageRuntime(); return this.enqueue('installPythonPackage', [spec]) }
+  async updatePythonPackages(names: string[]): Promise<{ taskId: string }> { await this.ensurePackageRuntime(); return this.enqueue('updatePythonPackages', [names]) }
   selectManual(root: string): { taskId: string } { return this.enqueue('selectManual', [root]) }
   rollback(): { taskId: string } { return this.enqueue('rollback') }
-  previewPackages(names: string[]): Promise<unknown> { return this.rpc('previewPackages', [names]) }
-  previewDependencyManifest(manifest: PythonDependencyManifest): Promise<StoredPackagePlan> { return this.rpc('previewDependencyManifest', [manifest]) }
-  applyPackagePlan(planId: string): { taskId: string } { return this.enqueue('applyPackagePlan', [planId]) }
+  async previewPackages(names: string[]): Promise<unknown> { await this.ensurePackageRuntime(); return this.rpc('previewPackages', [names]) }
+  async previewDependencyManifest(manifest: PythonDependencyManifest): Promise<StoredPackagePlan> { await this.ensurePackageRuntime(); return this.rpc('previewDependencyManifest', [manifest]) }
+  async applyPackagePlan(planId: string): Promise<{ taskId: string }> { await this.ensurePackageRuntime(); return this.enqueue('applyPackagePlan', [planId]) }
 }

@@ -47,7 +47,7 @@ describe('environment settings client', () => {
       get: vi.fn((name: string) => name === 'connection'
         ? { api: { llm: { models: vi.fn().mockResolvedValue({ result: { ok: true, value: { groups: [{ id: 'cloud', models: [{ id: 'claude-sonnet-5', name: 'Claude Sonnet 5', reasoning: { efforts: [{ id: 'high', name: '高' }] } }] }], failures: [] } } }) } } }
         : remotes[name.replace('remote.', '') as keyof typeof remotes]),
-      settingsScope: { bind: vi.fn(() => reviewerScope) },
+      configForms: { get: vi.fn(() => reviewerScope) },
       locale: { register: vi.fn(() => () => undefined), bind: vi.fn(() => t) },
       effect: vi.fn((mount: () => unknown) => mount()),
       slots: {
@@ -67,6 +67,8 @@ describe('environment settings client', () => {
     expect(injected).toBeDefined()
     const props = { ...injected!(), t }
     const view = render(createElement(Section!, props))
+    await waitFor(() => expect(remotes.session.modelCatalog).toHaveBeenCalledOnce())
+    expect(remotes.session.modelCatalog.mock.calls).toEqual([[]])
     expect(navLabel!()).toBe('环境配置')
 
     expect(screen.getByRole('heading', { name: '环境配置' })).toBeTruthy()

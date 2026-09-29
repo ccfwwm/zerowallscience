@@ -18,21 +18,19 @@ export function PdfView(props: { scope: SessionScope; path: string; title: strin
 
   useEffect(() => {
     const controller = new AbortController()
+    let objectUrl: string | undefined
     setLoad({ status: 'loading' })
     void (async () => {
       try {
-        const url = mediaUrl(scope, path)
-        // Probe only the first byte. The iframe then navigates to the real URL
-        // so Chromium's native PDF viewer can request ranges instead of the
-        // renderer duplicating the complete document in an ArrayBuffer + Blob.
-        const response = await fetch(url, {
-          headers: { Range: 'bytes=0-0' },
-          signal: controller.signal,
-        })
+        const response = await fetch(mediaUrl(scope, path), { signal: controller.signal })
         if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        await response.body?.cancel()
+        const bytes = await response.arrayBuffer()
         if (controller.signal.aborted) return
-        setLoad({ status: 'ready', url })
+        // A direct iframe navigation may download when an old host process or
+        // proxy cached application/octet-stream. The Blob URL owns an explicit
+        // PDF MIME and therefore consistently opens the browser PDF viewer.
+        objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+        setLoad({ status: 'ready', url: objectUrl })
       } catch (error) {
         if (controller.signal.aborted) return
         setLoad({ status: 'error', message: error instanceof Error ? error.message : String(error) })
@@ -40,6 +38,7 @@ export function PdfView(props: { scope: SessionScope; path: string; title: strin
     })()
     return () => {
       controller.abort()
+      if (objectUrl !== undefined) URL.revokeObjectURL(objectUrl)
     }
     // Granular scope fields: the scope object's identity churns, only its
     // sessionId / cwd fields gate the fetch.

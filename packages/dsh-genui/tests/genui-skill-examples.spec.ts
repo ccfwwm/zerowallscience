@@ -16,7 +16,7 @@ import { validateRenderableChartSemantics } from '../src/plugin/chart-contract.t
 
 const skill = readFileSync(join(process.cwd(), 'SKILL.md'), 'utf8')
 const blocksOf = (tag: string): string[] =>
-  [...skill.matchAll(new RegExp('```json ' + tag + '\\n([\\s\\S]*?)\\n```', 'g'))].map(m => m[1]!)
+  [...skill.matchAll(new RegExp('```json ' + tag + '\\r?\\n([\\s\\S]*?)\\r?\\n```', 'g'))].map(m => m[1]!)
 const renders = (raw: string): boolean => {
   const spec = JSON.parse(raw)
   return validateRenderableChartSemantics(spec).length === 0 && isRenderableProcess(processGenuiSpec(spec))
@@ -31,6 +31,15 @@ describe('SKILL.md examples', () => {
     expect(bad.length).toBeGreaterThanOrEqual(1)
     // Without a no-component example a model learns "always emit something".
     expect(skill).toContain('正确地不套组件')
+  })
+
+  it('keeps user-visible example values language-neutral', () => {
+    expect(skill).toContain('never emit these placeholders literally')
+    expect(skill).toContain('"title":"<user-language text>"')
+    expect(skill).not.toContain('"title":"可选标题"')
+    expect(skill).not.toContain('"label":"已合并"')
+    expect(skill).not.toContain('"columns":["方案","代价","判断"]')
+    expect(skill).not.toContain('"label":"本周"')
   })
 
   for (const [i, raw] of good.entries()) {

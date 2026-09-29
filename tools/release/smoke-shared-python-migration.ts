@@ -4,7 +4,8 @@ import { spawn } from 'node:child_process'
 import { copyRuntimeSnapshot, normalizeRuntimeCandidate, readRuntimeLayout, verifySharedPackages } from '../../desktop/src/main/shared-python-runtime.js'
 import { verifyMcpEnvironmentHealth } from '../../desktop/src/main/mcp-environment.js'
 
-const sourceRoot = join(process.env.APPDATA!, 'zerowall-science', 'zerowall-python')
+const sourceRoot = process.env.ZEROWALL_PYTHON_ROOT?.trim()
+  || join(process.env.LOCALAPPDATA || resolve('.build', 'python-source'), 'ZeroWall Science', 'zerowall-python')
 const current = JSON.parse(await readFile(join(sourceRoot, 'current.json'), 'utf8'))
 const source = current.root as string
 const manifest = JSON.parse(await readFile(join(source, 'manifest.json'), 'utf8'))

@@ -7,7 +7,8 @@ import { resolve, join } from 'node:path'
 import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from '../../desktop/src/main/mcp-environment.js'
 const work = resolve('.build/python-updater')
 const root = join(work, 'real-upgrade'); await mkdir(root, { recursive: true })
-const userRoot = join(process.env.APPDATA!, 'zerowall-science', 'zerowall-python')
+const userRoot = process.env.ZEROWALL_PYTHON_ROOT?.trim()
+  || join(process.env.LOCALAPPDATA || resolve('.build', 'python-source'), 'ZeroWall Science', 'zerowall-python')
 const previous = JSON.parse(await readFile(resolve('.build/python-1.4.0/client-pointer-rollback/current.json'), 'utf8'))
 const next = JSON.parse(await readFile(resolve('.build/python-1.4.0/dist/latest.json'), 'utf8'))
 const resumePackages = process.argv.includes('--resume-packages')

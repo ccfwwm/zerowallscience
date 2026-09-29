@@ -33,8 +33,13 @@ function makeEnv(): Env {
   mkdirSync(bin, { recursive: true })
   writeFileSync(join(bin, 'dsh'), '#!/bin/sh\necho "dsh test-version"\n')
   writeFileSync(join(bin, 'pnpm'), '#!/bin/sh\necho "11.7.0"\n')
-  for (const name of ['dsh', 'pnpm']) {
-    execFileSync('chmod', ['+x', join(bin, name)])
+  // chmod is a Unix utility and is not present in a native Windows Node
+  // environment. The shell used by the test harness can still invoke these
+  // fixtures on Windows, while POSIX runs keep the executable-bit coverage.
+  if (process.platform !== 'win32') {
+    for (const name of ['dsh', 'pnpm']) {
+      execFileSync('chmod', ['+x', join(bin, name)])
+    }
   }
   // simulated installed package (no exports map → legacy subpath resolve)
   const pkg = join(profile, 'node_modules', '@changfenhuang', 'dsh-genui')
@@ -77,7 +82,7 @@ function env(): Env {
 // Each case spawns REAL shells (stub PATH + chmod + sh) at ~1s per run, so
 // the default 5000ms per-test budget can trip under a full parallel suite
 // (observed on busy machines). A suite-level timeout keeps CI deterministic.
-describe.skipIf(process.platform === 'win32')('install.sh skill sync safety', { timeout: 30_000 }, () => {
+describe('install.sh skill sync safety', { timeout: 30_000 }, () => {
   it('creates the skill file when the target does not exist', () => {
     const e = env()
     const { status, stdout } = e.run()
@@ -170,7 +175,7 @@ describe.skipIf(process.platform === 'win32')('install.sh skill sync safety', { 
   })
 })
 
-describe.skipIf(process.platform === 'win32')('install.sh argument safety', { timeout: 30_000 }, () => {
+describe('install.sh argument safety', { timeout: 30_000 }, () => {
   it('rejects an illegal profile name before doing anything', () => {
     const e = env()
     const { status, stdout } = e.run('web; rm -rf /tmp/x')

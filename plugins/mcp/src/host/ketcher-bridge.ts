@@ -1,4 +1,4 @@
-import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { Client } from '@modelcontextprotocol/client'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 interface PendingEditor { artifact_id: string; url: string; sessionId: string; cwd: string; createdAt: number }
 export class KetcherBridge {
@@ -10,7 +10,10 @@ export class KetcherBridge {
     if (!cwd || !sessionId) throw new Error('Ketcher requires an active workspace session')
     const meta = { 'zerowall/workspace': cwd, 'zerowall/session': String(sessionId) }
     const call = async (tool: string, input: unknown) => {
-      const result = await client.callTool({ name: tool, arguments: input as Record<string, unknown>, _meta: meta }, undefined, { signal: exec.signal, timeout: 40_000 })
+      const result = await client.callTool(
+        { name: tool, arguments: input as Record<string, unknown>, _meta: meta },
+        { signal: exec.signal, timeout: 40_000 },
+      )
       if (result.isError) throw new Error(JSON.stringify(result.content))
       return result
     }

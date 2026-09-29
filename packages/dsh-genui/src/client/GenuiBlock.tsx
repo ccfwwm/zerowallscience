@@ -6,6 +6,7 @@
  * durable localStorage persistence, action debounce); the per-family
  * components live in src/client/blocks/*.
  */
+import { renderInline } from './inline.ts'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGenuiAction } from './action-context.ts'
 import css from './GenuiBlock.module.css'
@@ -18,12 +19,19 @@ import type { GenuiSpec } from './spec.ts'
 export const GENUI_ACTION_DEBOUNCE_MS = 300
 
 /**
- * Wrap the harness action callback with the per-action trailing debounce.
- * Absent provider = v1 behavior (components are display-only, callback
- * stays undefined). Pending timers are cleared on unmount so a click that
- * never fired does not leak into the next mount. Timers live in one stable
- * map and read the latest handler through a ref, so provider updates cannot
- * leave stale callbacks behind.
+ * Wrap the harness action callback. DISCRETE gestures (button, checkbox,
+ * radio, switch, select, input, textarea, submit, quiz — every payload type
+ * but `slider`) deliver immediately: each is one user intent, and SKILL.md
+ * promises per-interaction `action` behavior, so collapsing them would
+ * silently drop interactions from the model's view. Only the CONTINUOUS
+ * gesture (slider drag) goes through the trailing debounce, keyed by action
+ * name + payload `id`, so one control's drag still collapses to its last
+ * value while distinct sliders sharing an action name never displace each
+ * other. Absent provider = v1 behavior (components are display-only,
+ * callback stays undefined). Pending timers are cleared on unmount so a
+ * drag that never fired does not leak into the next mount. Timers live in
+ * one stable map and read the latest handler through a ref, so provider
+ * updates cannot leave stale callbacks behind.
  */
 function useDebouncedAction(onAction: GenuiBlockProps['onAction'] | undefined): GenuiBlockProps['onAction'] {
   const pending = useRef(new Map<string, ReturnType<typeof setTimeout>>())
@@ -38,10 +46,15 @@ function useDebouncedAction(onAction: GenuiBlockProps['onAction'] | undefined): 
   }, [])
 
   const debounced = useCallback((action: string, payload: Record<string, unknown>): void => {
-    const existing = pending.current.get(action)
+    if (payload.type !== 'slider') {
+      actionRef.current?.(action, payload)
+      return
+    }
+    const key = `${action}\u0000${typeof payload.id === 'string' ? payload.id : ''}`
+    const existing = pending.current.get(key)
     if (existing !== undefined) clearTimeout(existing)
-    pending.current.set(action, setTimeout(() => {
-      pending.current.delete(action)
+    pending.current.set(key, setTimeout(() => {
+      pending.current.delete(key)
       actionRef.current?.(action, payload)
     }, GENUI_ACTION_DEBOUNCE_MS))
   }, [])
@@ -69,14 +82,17 @@ function specEquivalent(a: GenuiSpec, b: GenuiSpec): boolean {
 
 /** Stateful implementation. Streaming state adopts its first durable key
  * when the reply settles; switching an existing durable key starts fresh. */
-function GenuiBlockInstance({ spec, stateKey, animateEntrance = true }: GenuiBlockProps) {
+function GenuiBlockInstance({ spec, stateKey, animateEntrance = true, initialState, onStateChange, onStateSnapshot }: GenuiBlockProps) {
   const gap = spec.gap ?? 16
   const onAction = useDebouncedAction(useGenuiAction())
+  const stateChangeRef = useRef(onStateChange)
+  stateChangeRef.current = onStateChange
+  const savesExternally = onStateChange !== undefined
   // Grouped radios and grouped checkboxes record their local selections here;
   // `submit` either grades radio-only papers locally or aggregates all form
   // state into one action. Block-local state survives streaming/panel
   // re-renders, and with a stateKey it also survives refresh/reopen.
-  const [persisted] = useState(() => (stateKey === undefined ? null : loadBlockState(stateKey)))
+  const [persisted] = useState(() => initialState ?? (onStateChange !== undefined || stateKey === undefined ? null : loadBlockState(stateKey)))
   const [answers, setAnswers] = useState<Record<string, string>>(persisted?.answers ?? {})
   const [multiAnswers, setMultiAnswers] = useState<Record<string, string[]>>(persisted?.multiAnswers ?? {})
   const [fields, setFields] = useState<Record<string, string>>(persisted?.fields ?? {})
@@ -139,6 +155,18 @@ function GenuiBlockInstance({ spec, stateKey, animateEntrance = true }: GenuiBlo
     }),
     [answers, multiAnswers, fields, secretFields, meta, locked, round, setAnswer, setMultiAnswer, setField, registerSecretField, registerMeta, clear],
   )
+  const durableState = useMemo(() => {
+    const safeFields = Object.fromEntries(Object.entries(fields).filter(([id]) => !secretFields.has(id)))
+    return {
+      answers,
+      ...(Object.keys(multiAnswers).length > 0 ? { multiAnswers } : {}),
+      locked,
+      ...(Object.keys(safeFields).length > 0 ? { fields: safeFields } : {}),
+    }
+  }, [answers, multiAnswers, locked, fields, secretFields])
+  useEffect(() => {
+    onStateSnapshot?.(durableState)
+  }, [durableState, onStateSnapshot])
   // Achievement telemetry: every emitted action counts as one interaction
   // (the debounced emit fires once per real user action).
   const trackedAction = useMemo(() => {
@@ -151,20 +179,14 @@ function GenuiBlockInstance({ spec, stateKey, animateEntrance = true }: GenuiBlo
   // Durable save (debounced 300ms — typing in a field fires per keystroke).
   // Secret field values are stripped before writing: passwords never persist.
   useEffect(() => {
+    if (savesExternally) {
+      stateChangeRef.current?.(durableState)
+      return
+    }
     if (stateKey === undefined) return
-    const timer = setTimeout(() => {
-      const safeFields = Object.fromEntries(
-        Object.entries(fields).filter(([id]) => !secretFields.has(id)),
-      )
-      saveBlockState(stateKey, {
-        answers,
-        ...(Object.keys(multiAnswers).length > 0 ? { multiAnswers } : {}),
-        locked,
-        ...(Object.keys(safeFields).length > 0 ? { fields: safeFields } : {}),
-      })
-    }, 300)
+    const timer = setTimeout(() => saveBlockState(stateKey, durableState), 300)
     return () => clearTimeout(timer)
-  }, [stateKey, answers, multiAnswers, locked, fields, secretFields])
+  }, [stateKey, durableState, savesExternally])
   // Achievement telemetry (0.9.5): the store dedupes by spec fingerprint, so
   // streaming re-renders and replays count once per distinct content.
   useEffect(() => {
@@ -172,7 +194,7 @@ function GenuiBlockInstance({ spec, stateKey, animateEntrance = true }: GenuiBlo
   }, [spec])
   return (
     <div className={css.block} data-genui>
-      {spec.title !== undefined && <div className={css.banner}>{spec.title}</div>}
+      {spec.title !== undefined && <div className={css.banner}>{renderInline(spec.title)}</div>}
       <div className={css.col} style={{ gap: `${gap}px` }}>
         {spec.items.map((c, i) => (
           // Staggered reveal: each root item fades/slides in after its
@@ -215,4 +237,6 @@ export const GenuiBlock = memo(function GenuiBlock(props: GenuiBlockProps) {
   }
   return <GenuiBlockInstance key={identity.generation} {...props} />
 }, (prev, next) => prev.stateKey === next.stateKey
-  && prev.animateEntrance === next.animateEntrance && specEquivalent(prev.spec, next.spec))
+  && prev.animateEntrance === next.animateEntrance && prev.onStateChange === next.onStateChange
+  && prev.onStateSnapshot === next.onStateSnapshot
+  && specEquivalent(prev.spec, next.spec))

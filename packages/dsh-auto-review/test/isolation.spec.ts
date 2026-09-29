@@ -11,6 +11,11 @@ import { describe, expect, it } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'dsh-test-plugin': { kind: 'dsh-test-plugin' }
+  }
+}
 import { Session, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import { isReviewerOwnedMessage, REVIEWER_MESSAGE_SOURCES, stripInjectedContext } from '../src/index.ts'
 import { CallId } from './call-id.ts'
@@ -30,8 +35,8 @@ function toolResultMessage(text: string): UserMessage {
 }
 
 /** The loop's runtime-context snapshot / any context-injecting plugin. */
-function pluginMessage(plugin: string, text: string): UserMessage {
-  return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'plugin', plugin } })
+function pluginMessage(_plugin: string, text: string): UserMessage {
+  return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'dsh-test-plugin' } })
 }
 
 /** The workspace instruction loader's own merge-extended source kind. */

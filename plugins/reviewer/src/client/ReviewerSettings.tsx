@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './ReviewerSettings.module.css'
 
@@ -13,7 +13,7 @@ export interface ReviewerSettingsValue {
 }
 
 export interface ReviewerSettingsInjected {
-  scope: SettingsScope<ReviewerSettingsValue>
+  scope: ConfigForm<ReviewerSettingsValue>
 }
 
 export type ReviewerSettingsProps = PropsRuntime<'settings.general.item'> & PropsLocale<'zerowall'> & InjectFace<ReviewerSettingsInjected>

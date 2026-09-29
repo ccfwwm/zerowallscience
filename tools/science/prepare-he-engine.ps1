@@ -1,5 +1,14 @@
 param(
-  [string]$Python = (Join-Path $env:APPDATA 'zerowall-science/Python/python.exe')
+  [string]$Python = $(if ($env:ZEROWALL_PYTHON_ROOT) {
+    $root = $env:ZEROWALL_PYTHON_ROOT.TrimEnd('\\','/')
+    if ((Split-Path -Leaf $root) -ieq 'zerowall-python') { Join-Path (Split-Path -Parent $root) 'Python/python.exe' }
+    elseif ((Split-Path -Leaf $root) -ieq 'Python') { Join-Path $root 'python.exe' }
+    else { Join-Path $root 'Python/python.exe' }
+  } elseif ($env:LOCALAPPDATA) {
+    Join-Path $env:LOCALAPPDATA 'ZeroWall Science/Python/python.exe'
+  } else {
+    Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ZeroWall Science/Python/python.exe'
+  })
 )
 $ErrorActionPreference = 'Stop'
 
@@ -7,8 +16,8 @@ if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
   throw "ZeroWall shared Python was not found: $Python. Start ZeroWall once to initialize the one shared runtime."
 }
 $runtimeRoot = Split-Path -Parent $Python
-if ((Split-Path -Leaf $runtimeRoot) -ne 'Python' -or (Split-Path -Leaf (Split-Path -Parent $runtimeRoot)) -ne 'zerowall-science') {
-  throw 'HE dependencies must use %APPDATA%\zerowall-science\Python\python.exe; isolated or user-selected Python paths are not supported.'
+if ((Split-Path -Leaf $runtimeRoot) -ne 'Python') {
+  throw 'HE dependencies must use the shared Python path selected in ZeroWall Science; isolated Python paths are not supported.'
 }
 $sitePackages = Join-Path $runtimeRoot 'Lib/site-packages'
 $manifestPath = Join-Path $PSScriptRoot '../../resources/python/dependency-manifest.json'

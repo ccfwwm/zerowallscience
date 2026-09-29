@@ -1,37 +1,53 @@
-/** Localized labels required by the rc.1 DSH UI primitives. */
-import type { DiffBlockLabels, JsonTreeLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+/**
+ * Localized labels required by the DSH UI primitives.
+ *
+ * The primitives take their chrome as plain label objects, so these are built
+ * PER RENDER from the active locale (`labelsOf*()`) rather than frozen at
+ * module load — a language switch must reach a diff or JSON tree that is
+ * already on screen.
+ */
+import type { DiffBlockLabels, JsonTreeLabels } from './primitive-adapter.ts'
+import { t } from './i18n/index.ts'
 
-/** Chrome labels for an inline GenUI diff block. */
-export const DIFF_BLOCK_LABELS: DiffBlockLabels = {
-  copy: '复制',
-  copied: '复制成功',
-  collapseAria: '收起差异',
-  /** Accessible label for expanding a collapsed diff tail. */
-  expandAria(hidden) { return `展开其余 ${hidden} 行差异` },
-  collapse: '收起',
-  /** Visible label for expanding a collapsed diff tail. */
-  expand(hidden) { return `… 其余 ${hidden} 行` },
-  /** Localized file-count summary in the diff footer. */
-  files(count) { return `${count} 个文件` },
+/** Chrome labels for an inline GenUI diff block, in the active locale. */
+export function diffBlockLabels(): DiffBlockLabels {
+  const labels = {
+    copy: t('label.copy'),
+    copied: t('label.copied'),
+    codeLabel: t('label.code'),
+    wrapLabel: t('label.wrap'),
+    unwrapLabel: t('label.unwrap'),
+    collapseAria: t('label.collapseDiff.aria'),
+    /** Accessible label for expanding a collapsed diff tail. */
+    expandAria(hidden: number) { return t('label.expandDiff.aria', { hidden }) },
+    collapse: t('label.collapse'),
+    /** Visible label for expanding a collapsed diff tail. */
+    expand(hidden: number) { return t('label.expandDiff', { hidden }) },
+  }
+  return labels
 }
 
 /** Copy labels for a code block rendered inside a GenUI fence or node. */
-export const CODE_BLOCK_LABELS = {
-  copyLabel: '复制',
-  copiedLabel: '复制成功',
-} as const
+export function codeBlockLabels(): { copyLabel: string, copiedLabel: string } {
+  return {
+    copyLabel: t('label.copy'),
+    copiedLabel: t('label.copied'),
+  }
+}
 
-/** Chrome labels for an inline GenUI JSON tree. */
-export const JSON_TREE_LABELS: JsonTreeLabels = {
-  copyValue: '复制值',
-  copyJson: '复制 JSON',
-  copyPath: '复制属性路径',
-  copyPrettyJson: '复制格式化 JSON',
-  copyCompactJson: '复制紧凑 JSON',
-  copied: '已复制',
-  copyFailed: '复制失败',
-  collapseNode: '收起 JSON 节点',
-  expandNode: '展开 JSON 节点',
-  /** Tooltip for a JSON tree copy action. */
-  copyButtonTitle(action) { return `${action}；右键查看复制选项` },
+/** Chrome labels for an inline GenUI JSON tree, in the active locale. */
+export function jsonTreeLabels(): JsonTreeLabels {
+  return {
+    copyValue: t('label.copyValue'),
+    copyJson: t('label.copyJson'),
+    copyPath: t('label.copyPath'),
+    copyPrettyJson: t('label.copyPrettyJson'),
+    copyCompactJson: t('label.copyCompactJson'),
+    copied: t('label.copiedDone'),
+    copyFailed: t('label.copyFailed'),
+    collapseNode: t('label.collapseNode'),
+    expandNode: t('label.expandNode'),
+    /** Tooltip for a JSON tree copy action. */
+    copyButtonTitle(action) { return t('label.copyButtonTitle', { action }) },
+  }
 }

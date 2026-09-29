@@ -12,21 +12,16 @@ import { parse } from 'yaml'
 /** Replicate skill-filesystem's parseFrontmatter: leading `---`, body until the
  * next `---` line. */
 function frontmatterYaml(raw: string): string {
-  const normalized = raw.replace(/\r\n?/g, '\n')
-  const lines = normalized.slice(4).split('\n')
-  const out: string[] = []
-  for (const line of lines) {
-    if (line.trim() === '---') break
-    out.push(line)
-  }
-  return out.join('\n')
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw)
+  if (match === null) throw new Error('missing SKILL.md frontmatter')
+  return match[1]
 }
 
 describe('SKILL.md frontmatter (host yaml parser)', () => {
   const raw = readFileSync(join(process.cwd(), 'SKILL.md'), 'utf8')
 
   it('starts with the frontmatter fence', () => {
-    expect(raw.replace(/\r\n?/g, '\n').startsWith('---\n')).toBe(true)
+    expect(/^---\r?\n/.test(raw)).toBe(true)
   })
 
   it('parses with the harness yaml parser', () => {
@@ -38,5 +33,7 @@ describe('SKILL.md frontmatter (host yaml parser)', () => {
     expect(data.name).toBe('genui')
     expect(typeof data.description).toBe('string')
     expect((data.description as string).length).toBeGreaterThan(20)
+    expect(data.description).toContain('Preserve conversation language')
+    expect(data.description).not.toMatch(/[\u3400-\u9fff]/u)
   })
 })

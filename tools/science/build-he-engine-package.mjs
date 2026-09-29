@@ -38,12 +38,12 @@ if (profile.model) {
   }
 }
 
-const archivePath = join(directory, `${profile.id}-7.2.0-win32-x64.zip`)
+const archivePath = join(directory, `${profile.id}-7.3.0-win32-x64.zip`)
 await writeFile(archivePath, await archive.generateAsync({ type: 'nodebuffer', compression: 'STORE', platform: 'UNIX' }))
 const packages = Object.entries(profile.packages).map(([name, version]) => ({ name, version, source: 'signed-shared-dependency-manifest' }))
 const manifest = {
   schema: 'zerowall-science-engine/v1', engineId: profile.id, engineVersion: '7.1.0', format: 'shared-python-model-v1',
-  platform: 'win32', arch: 'x64', compatibleApplications: ['7.1.0', '7.1.1', '7.2.0'],
+  platform: 'win32', arch: 'x64', compatibleApplications: ['7.1.0', '7.1.1', '7.2.0', '7.3.0'],
   python: { implementation: 'cpython', version: profile.pythonVersion, bundled: false, relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages', note: 'Uses the application shared Python; no engine venv or private site-packages.' },
   capabilities: profile.id === 'he' ? ['openslide-pyramid-region-read', 'pillow-image-read'] : ['openslide-pyramid-region-read', 'stardist-he-cpu-segmentation'],
   ...(profile.model ? { model: profile.model } : {}),
@@ -52,7 +52,7 @@ const manifest = {
   packages, files, builtAt: new Date().toISOString(), dependencyRuntime: sharedPythonExecutable(),
 }
 validateManifest(manifest)
-const manifestPath = join(directory, `${profile.id}-7.2.0-win32-x64.manifest.json`)
+const manifestPath = join(directory, `${profile.id}-7.3.0-win32-x64.manifest.json`)
 await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
 const manifestSha256 = await hashFile(manifestPath)
 await writeFile(join(directory, 'SHA256SUMS'), `${manifestSha256}  ${basename(manifestPath)}\n${manifest.archive.sha256}  ${basename(archivePath)}\n`)

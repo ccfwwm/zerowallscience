@@ -115,7 +115,7 @@ describe('writeWorkspaceUpload', () => {
         cwd: root, dir: root, relativePath: 'upload-link/x.txt', chunks: chunksOf('x'), limit: 1024,
       })).rejects.toMatchObject({ code: 'forbidden' })
     } finally {
-      rmSync(link, { force: true })
+      rmSync(link, { force: true, recursive: true })
       rmSync(outside, { recursive: true, force: true })
     }
   })

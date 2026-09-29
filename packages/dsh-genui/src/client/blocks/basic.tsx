@@ -3,8 +3,10 @@
  * (the actionable-button chip). Used by the render dispatcher.
  * @module @changfenhuang/dsh-genui/client/blocks/basic
  */
+import { renderInline } from '../inline.ts'
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import css from '../GenuiBlock.module.css'
+import { useT } from '../i18n/index.ts'
 import type { GenuiAudio, GenuiVideo } from '../spec.ts'
 
 /** Deterministic avatar color by name hash. Host static tokens ONLY —
@@ -38,6 +40,7 @@ export function ClickFeedbackButton({ className, disabled, onClick, children }: 
   onClick?: (() => void) | undefined
   children: ReactNode
 }) {
+  const t = useT()
   const [sent, setSent] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -59,11 +62,11 @@ export function ClickFeedbackButton({ className, disabled, onClick, children }: 
         }}
       >
         {children}
-        {sent && <span className={css.btnSent} aria-hidden>✓ 已触发</span>}
+        {sent && <span className={css.btnSent} aria-hidden>{t('block.triggered')}</span>}
       </button>
       {/* Live-region sibling: button content is atomic to screen readers, so
-       * the "已触发" confirmation announces from a hidden status region. */}
-      <span className={css.visuallyHidden} role="status">{sent ? '已触发' : ''}</span>
+       * the confirmation announces from a hidden status region. */}
+      <span className={css.visuallyHidden} role="status">{sent ? t('block.triggeredPlain') : ''}</span>
     </>
   )
 }
@@ -72,16 +75,17 @@ export function ClickFeedbackButton({ className, disabled, onClick, children }: 
  * autoplay and controls hints are ignored: media starts only after the user
  * asks for it. */
 export const AudioNode = memo(function AudioNode({ node }: { node: GenuiAudio }): ReactNode {
+  const t = useT()
   const [failed, setFailed] = useState(false)
   return (
     <figure className={css.media}>
-      {node.alt !== undefined && <figcaption className={css.mediaLabel}>{node.alt}</figcaption>}
+      {node.alt !== undefined && <figcaption className={css.mediaLabel}>{renderInline(node.alt)}</figcaption>}
       {failed
-        ? <div className={css.mediaError} role="alert">音频无法播放</div>
+        ? <div className={css.mediaError} role="alert">{t('block.audioError')}</div>
         : <audio
             className={css.mediaPlayer}
             src={node.src}
-            aria-label={node.alt ?? '音频'}
+            aria-label={node.alt ?? t('block.audio')}
             controls
             preload="metadata"
             loop={node.loop === true}
@@ -92,17 +96,18 @@ export const AudioNode = memo(function AudioNode({ node }: { node: GenuiAudio })
 })
 
 export const VideoNode = memo(function VideoNode({ node }: { node: GenuiVideo }): ReactNode {
+  const t = useT()
   const [failed, setFailed] = useState(false)
   return (
     <figure className={css.media}>
-      {node.alt !== undefined && <figcaption className={css.mediaLabel}>{node.alt}</figcaption>}
+      {node.alt !== undefined && <figcaption className={css.mediaLabel}>{renderInline(node.alt)}</figcaption>}
       {failed
-        ? <div className={css.mediaError} role="alert">视频无法播放</div>
+        ? <div className={css.mediaError} role="alert">{t('block.videoError')}</div>
         : <video
             className={`${css.mediaPlayer} ${css.videoPlayer}`}
             src={node.src}
             poster={node.poster}
-            aria-label={node.alt ?? '视频'}
+            aria-label={node.alt ?? t('block.video')}
             controls
             preload="metadata"
             playsInline

@@ -10,7 +10,8 @@ import { apply } from '../../plugins/python/src/host/index.js'
 const work = resolve(process.argv[2] ?? '.build/python-1.4.0')
 const manifest = JSON.parse(await readFile(join(work, 'dist/latest.json'), 'utf8'))
 const archive = join(work, 'dist', new URL(manifest.archiveUrl).pathname.split('/').at(-1)!)
-const originalStore = join(process.env.APPDATA!, 'zerowall-science/zerowall-python')
+const originalStore = process.env.ZEROWALL_PYTHON_ROOT?.trim()
+  || join(process.env.LOCALAPPDATA || resolve('.build', 'python-source'), 'ZeroWall Science', 'zerowall-python')
 const old = JSON.parse(await readFile(join(originalStore, 'current.json'), 'utf8'))
 assert.equal(old.manifest.environmentVersion, '1.3.0', 'Upgrade fixture must be the existing signed 1.3.0 runtime')
 const publicKey = MCP_ENVIRONMENT_KEYRING['stable-3']

@@ -44,18 +44,21 @@ const resultSchema = z.object({
 const agentCodec = {
   mode: 'strict' as const,
   typeSymbol: '@deepseek-ai/dsh-session/types#SessionId',
+  create: () => z.intersection(z.string(), z.unknown()),
   schema: z.intersection(z.string(), z.unknown()),
 }
 
 const requestCodec = {
   mode: 'strict' as const,
   typeSymbol: `${PACKAGE_NAME}#FileReviewRequest`,
+  create: () => requestSchema,
   schema: requestSchema,
 }
 
 const resultCodec = {
   mode: 'strict' as const,
   typeSymbol: `${PACKAGE_NAME}#FileReviewResult`,
+  create: () => resultSchema,
   schema: resultSchema,
 }
 

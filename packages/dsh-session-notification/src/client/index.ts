@@ -36,9 +36,8 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type {
-  SessionPendingInteractionSnapshot,
-} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { NotificationMode, NotificationSettings, NotificationType, SoundId } from '../settings.ts'
 import { DEFAULT_NOTIFICATION_SETTINGS } from '../settings.ts'
 import { createLocalSettingsScope } from './local-settings.ts'
@@ -74,7 +73,7 @@ const SETTLE_MS = 250
 /** Required services: the slot registry, dictionaries, the session list, the
  *  alpha chat view (uiConversation), and the pending-interaction map
  *  (uiSession). */
-export const inject = ['slots', 'locale', 'sessions', 'uiConversation', 'uiSession']
+export const inject = ['slots', 'locale', 'sessions', 'uiConversation', 'uiSession', 'uiWorkspace']
 
 /**
  * Client plugin body: bind the browser-local preferences scope, register the
@@ -90,12 +89,18 @@ export function apply(ctx: ClientContext): void {
   let closeSettings: (() => void) | undefined
   const openSession = (id?: string): void => {
     closeSettings?.()
-    if (id) ctx.sessions.open(id as SessionId)
+    if (id) ctx.uiWorkspace.openSession(id as SessionId)
   }
-  ctx.effect(() => desktopNotifications()?.onNotificationActivated(openSession), 'desktop notification activation')
-  ctx.effect(() => desktopNotifications()?.onNotificationFailed(message => {
-    console.warn('[dsh-session-notification]', message)
-  }), 'desktop notification failures')
+  ctx.effect(() => {
+    const dispose = desktopNotifications()?.onNotificationActivated(openSession)
+    return dispose ?? (() => {})
+  }, 'desktop notification activation')
+  ctx.effect(() => {
+    const dispose = desktopNotifications()?.onNotificationFailed(message => {
+      console.warn('[dsh-session-notification]', message)
+    })
+    return dispose ?? (() => {})
+  }, 'desktop notification failures')
 
   const currentSettings = (): NotificationSettings => {
     const snapshot = scope.getSnapshot()
@@ -130,7 +135,8 @@ export function apply(ctx: ClientContext): void {
     playSound: (sound, customUrl) => { playEffective(sound, customUrl) },
     customSoundOf: (kind) => readCustomSound(kind),
     showBrowser: (title, body, tag, id) => showBrowserNotification(title, body, tag, id, () => openSession(id)),
-    currentSession: () => ctx.sessions.list.getSnapshot().current,
+    currentSession: () => Object.values(ctx.sessions.list.getSnapshot().byId)
+      .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id,
     isHidden: () => (typeof document === 'undefined' ? false : document.visibilityState === 'hidden' || (desktopNotifications() !== undefined && !document.hasFocus())),
   })
 
@@ -190,17 +196,20 @@ export function apply(ctx: ClientContext): void {
     engine.setNotificationMode(currentSettings().notificationMode)
   }), 'dsh-session-notification: mode sync')
   ctx.effect(() => {
-    const unsubscribe = ctx.sessions.list.subscribe(() => engine.observe(ctx.sessions.list.getSnapshot()))
+    const list = ctx.sessions.list
+    const unsubscribe = list.subscribe(() => engine.observe(list.getSnapshot()))
     // Establish the baseline so pre-existing state raises nothing.
-    engine.seed(ctx.sessions.list.getSnapshot())
+    engine.seed(list.getSnapshot())
     return unsubscribe
   }, 'dsh-session-notification: session watch')
 
-  // Pending interactions moved off the sessions list in the alpha: observe
-  // the uiSession pending map for question/approval edges instead.
-  const pendingFactsOf = (pending: SessionPendingInteractionSnapshot): Map<SessionId, PendingFacts> => {
+  // rc.2 exposes pending interactions through the unified session status
+  // source. The old pendingInteractions source no longer exists at runtime.
+  const pendingFactsOf = (statuses: SessionStatusSnapshot): Map<SessionId, PendingFacts> => {
     const out = new Map<SessionId, PendingFacts>()
-    for (const [id, interaction] of pending) {
+    for (const [id, status] of statuses) {
+      const interaction = status.pendingInteraction
+      if (interaction === undefined) continue
       const kind = interaction.kind === 'approval'
         ? 'approval' as const
         : (interaction.kind === 'question' || interaction.kind === 'plan-review')
@@ -214,9 +223,12 @@ export function apply(ctx: ClientContext): void {
     }
     return out
   }
-  ctx.effect(() => ctx.uiSession.pendingInteractions.subscribe(() => {
-    engine.observePending(pendingFactsOf(ctx.uiSession.pendingInteractions.getSnapshot()))
-  }), 'dsh-session-notification: pending watch')
+  ctx.effect(() => {
+    const status = ctx.uiSession.sessionStatus
+    const unsubscribe = status.subscribe(() => engine.observePending(pendingFactsOf(status.getSnapshot())))
+    engine.observePending(pendingFactsOf(status.getSnapshot()))
+    return unsubscribe
+  }, 'dsh-session-notification: pending watch')
 
   /** Persist one top-level preference through the scope, mirroring optimistically. */
   const persist = (field: 'browserEnabled' | 'notifyCurrent' | 'notificationMode' | 'soundEnabled' | 'volume', value: unknown): void => {
@@ -262,7 +274,8 @@ export function apply(ctx: ClientContext): void {
         bound?.setPermission(await requestBrowserPermission())
       },
       testBrowserNotification: () => {
-        const id = ctx.sessions.list.getSnapshot().current
+        const id = Object.values(ctx.sessions.list.getSnapshot().byId)
+          .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
         showBrowserNotification(t('test.notification.title'), t('test.notification.body'), `${NOTIFICATION_TAG_PREFIX}:test`, id, () => openSession(id))
         const settings = currentSettings()
         if (settings.soundEnabled) playEffective(settings.types.completed.sound, readCustomSound('completed'))

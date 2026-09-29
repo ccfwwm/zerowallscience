@@ -44,15 +44,24 @@ const FILE_REFERENCE_PROMPT =
  * Register model guidance for the file-reference renderer shipped by this package.
  * @param ctx - host context carrying the system-prompt registry.
  */
-export function apply(ctx: Context, config: ConfigShape = {}): void {
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, FILE_REVIEW_SETTINGS_NAMESPACE, Config, config, {
-      // The Host owns persistence; the browser mirrors this section through
-      // settingsScope, so no Host-side projection needs rebuilding on change.
+export function apply(ctx: Context, _config: ConfigShape = {}): void {
+  // rc.2 derives the live settings namespace directly from the plugin Config.
+  // Register only the automatic settings-page policy; persistence remains in
+  // Harness' profile/config editor and is keyed by this plugin entry id.
+  const settings = ctx.get('settings') as unknown as {
+    configure?: (presentation: { auto?: boolean }) => unknown
+    installSection?: (...args: unknown[]) => unknown
+  } | undefined
+  if (typeof settings?.configure === 'function') {
+    settings.configure({ auto: true })
+  } else if (typeof settings?.installSection === 'function') {
+    // Compatibility for the pre-rc.2 SettingsProvider used by isolated tests
+    // and replayed plugin hosts.
+    settings.installSection(ctx, FILE_REVIEW_SETTINGS_NAMESPACE, Config, _config, {
       setSource: () => {},
       onChange: () => {},
     })
-  })
+  }
   new FileReviewService(ctx)
   registerFileLifecycleCapture(ctx)
   registerPtcAdapter(ctx)

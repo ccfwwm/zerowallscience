@@ -17,7 +17,7 @@
  */
 import { useEffect, useRef, useState, type InputHTMLAttributes } from 'react'
 import clsx from 'clsx'
-import { IconFolderOpen16, IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconFolderOpenRegular, IconRefreshOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { api } from './api.ts'
 import type { BetterSidebarService } from './service.ts'
 import type { SidebarStore } from './state.ts'
@@ -25,7 +25,7 @@ import { FileTree } from './FileTree.tsx'
 import { IconUploadOutline16 } from './icons.tsx'
 import type { OpenWithTarget } from './open-with.ts'
 import { t } from './locales.ts'
-import { resolveSidebarPath } from './produced-files.ts'
+import { resolveSidebarPath } from './paths.ts'
 import { UploadOverlay } from './UploadOverlay.tsx'
 import {
   summarizeResults, uploadHintText, uploadItemsFromFiles, uploadToDir,
@@ -46,7 +46,6 @@ interface UploadSession {
 export function TreePanel(props: {
   sessionId: string
   cwd: string | undefined
-  visible: boolean
   /** The sidebar store (passed through to the tree's fence-refusal notice). */
   store: SidebarStore
   expanded: string[]
@@ -75,7 +74,7 @@ export function TreePanel(props: {
   /** The sidebar registry service (file-icon registrations; passed through to FileTree). */
   service?: BetterSidebarService
 }) {
-  const { sessionId, cwd, visible, store, expanded, revealed, onToggle, onOpenFile, onOpenFileNewTab, onOpenFileSide, openWithTargets, openWithPinned, openWithSsh, onOpenWith, onToggleOpenWithPin, onReferenceFile, onPathRenamed, onPathDeleted, full, service } = props
+  const { sessionId, cwd, store, expanded, revealed, onToggle, onOpenFile, onOpenFileNewTab, onOpenFileSide, openWithTargets, openWithPinned, openWithSsh, onOpenWith, onToggleOpenWithPin, onReferenceFile, onPathRenamed, onPathDeleted, full, service } = props
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<{ matches: string[]; truncated: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -83,12 +82,15 @@ export function TreePanel(props: {
 
   // The tree caches loaded directories per refresh tick, so content changed
   // outside DSH (another editor, a sync tool) stays stale until the manual
-  // refresh click. Integrations can force a refresh by dispatching a bubbling
+  // refresh click. Re-focusing the window bumps the tick automatically, and
+  // integrations can force a refresh by dispatching a bubbling
   // `dsh-sidebar:refresh-files` event on `window`.
   useEffect(() => {
     const bump = (): void => { setRefreshTick(tick => tick + 1) }
+    window.addEventListener('focus', bump)
     window.addEventListener('dsh-sidebar:refresh-files', bump)
     return () => {
+      window.removeEventListener('focus', bump)
       window.removeEventListener('dsh-sidebar:refresh-files', bump)
     }
   }, [])
@@ -193,7 +195,7 @@ export function TreePanel(props: {
           title={t('refresh')}
           onClick={() => { setRefreshTick(tick => tick + 1) }}
         >
-          <IconRefreshOutline16 size={14} />
+          <IconRefreshOutlineRegular size={14} />
         </button>
         <button
           type="button"
@@ -213,7 +215,7 @@ export function TreePanel(props: {
           disabled={busy}
           onClick={() => { folderInputRef.current?.click() }}
         >
-          <IconFolderOpen16 size={14} />
+          <IconFolderOpenRegular size={14} />
         </button>
         <input
           ref={fileInputRef}
@@ -244,7 +246,6 @@ export function TreePanel(props: {
         <FileTree
           sessionId={sessionId}
           cwd={cwd}
-          visible={visible}
           store={store}
           expanded={expanded}
           revealed={revealed}

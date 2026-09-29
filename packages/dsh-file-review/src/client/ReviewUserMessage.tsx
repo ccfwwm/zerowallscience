@@ -243,10 +243,8 @@ export function ReviewUserMessage({
   renderMessageImages,
   t,
   reviewT,
-  sessionId,
-  openAttachment,
-  openParsedAttachment,
-  copyAttachment,
+  openFile,
+  openSkill,
 }: UserMessageProps) {
   const { content, time } = node.data
   const { text, images, rest } = contentParts(content)
@@ -264,16 +262,16 @@ export function ReviewUserMessage({
       : [countLabel, visibleText].filter((value) => value !== null && value !== '').join('\n\n')
   const showBubble = visibleText !== '' || rest.length > 0
 
-  if (projection === null) return <UserStyleBubble
-    content={content}
-    sessionId={sessionId}
-    renderMessageImages={renderMessageImages}
-    openAttachment={openAttachment}
-    openParsedAttachment={openParsedAttachment}
-    copyAttachment={copyAttachment}
-    t={t}
-    actions={value => <MessageActions text={value} time={time} t={t} />}
-  />
+  if (projection === null)
+    return (
+      <UserStyleBubble
+        content={content}
+        renderMessageImages={renderMessageImages}
+        references={{ openFile, openSkill }}
+        t={t}
+        actions={value => <MessageActions text={value} time={time} t={t} />}
+      />
+    )
 
   return (
     <div className={css.reviewMessageRow} data-time-hover-root="">

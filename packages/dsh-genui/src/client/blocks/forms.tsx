@@ -3,9 +3,11 @@
  * input/select/textarea. All state flows through the shared AnswersState.
  * @module @changfenhuang/dsh-genui/client/blocks/forms
  */
+import { renderInline } from '../inline.ts'
 import { useEffect, useId, useRef, useState } from 'react'
 import css from '../GenuiBlock.module.css'
 import { GENUI_LIMITS } from '../genui-runtime/index.ts'
+import { useT } from '../i18n/index.ts'
 import type { AnswersState, GenuiBlockProps, QuestionMeta } from './state.ts'
 import type { GenuiInput, GenuiRadio, GenuiSelect, GenuiSlider, GenuiSubmit, GenuiSwitch, GenuiTextarea } from '../spec.ts'
 
@@ -50,7 +52,7 @@ export function RadioNode({ node, onAction, answers }: {
   }, [group, node.label, node.answer, node.explanation, node.options, node.selected])
   return (
     <div className={css.fieldGroup} role="radiogroup" aria-label={node.label}>
-      {node.label !== undefined && <span className={css.fieldLabel}>{node.label}</span>}
+      {node.label !== undefined && <span className={css.fieldLabel}>{renderInline(node.label, false)}</span>}
       {options.map((opt, i) => (
         <label key={i} className={css.radio}>
           <input
@@ -68,7 +70,7 @@ export function RadioNode({ node, onAction, answers }: {
               }
             }}
           />
-          <span>{opt}</span>
+          <span>{renderInline(opt, false)}</span>
         </label>
       ))}
     </div>
@@ -90,6 +92,7 @@ export function SubmitNode({ node, onAction, answers }: {
   onAction?: GenuiBlockProps['onAction']
   answers?: AnswersState | undefined
 }) {
+  const t = useT()
   const recorded = answers?.answers ?? {}
   const multiRecorded = answers?.multiAnswers ?? {}
   const fields = answers?.fields ?? {}
@@ -140,7 +143,7 @@ export function SubmitNode({ node, onAction, answers }: {
       <div className={css.gradeWrap} data-genui-grade>
         <div className={css.gradeScore}>
           <span className={css.gradeScoreValue}>{score} / {graded.length}</span>
-          <span className={css.gradeScoreLabel}>得分{graded.length < scope.length ? `（${scope.length - graded.length} 题无答案未计分）` : ''}</span>
+          <span className={css.gradeScoreLabel}>{t('block.score')}{graded.length < scope.length ? t('block.scoreUngraded', { count: scope.length - graded.length }) : ''}</span>
         </div>
         <div className={css.gradeList}>
           {scope.map(g => {
@@ -151,21 +154,21 @@ export function SubmitNode({ node, onAction, answers }: {
             if (correct === undefined) {
               return (
                 <div key={g} className={css.gradeItem}>
-                  <span className={css.gradeQ}>{m.label}</span>
-                  <span className={css.gradeAns}>你的答案：{entry}</span>
+                  <span className={css.gradeQ}>{renderInline(m.label)}</span>
+                  <span className={css.gradeAns}>{t('block.yourAnswer')}{renderInline(entry)}</span>
                 </div>
               )
             }
             const isCorrect = entry === correct
             return (
               <div key={g} className={`${css.gradeItem} ${isCorrect ? css.gradeItemOk : css.gradeItemNo}`}>
-                <span className={css.gradeQ}>{m.label}</span>
+                <span className={css.gradeQ}>{renderInline(m.label)}</span>
                 <span className={css.gradeTag}>{isCorrect ? '✓' : '✗'}</span>
                 <span className={css.gradeAns}>
-                  你的答案：{entry}
-                  {!isCorrect && <span className={css.gradeRight}> 正确答案：{correct}</span>}
+                  {t('block.yourAnswer')}{renderInline(entry)}
+                  {!isCorrect && <span className={css.gradeRight}>{t('block.correctAnswer')}{renderInline(correct ?? '')}</span>}
                 </span>
-                {m.explanation !== undefined && <span className={css.gradeExp}>{m.explanation}</span>}
+                {m.explanation !== undefined && <span className={css.gradeExp}>{renderInline(m.explanation)}</span>}
               </div>
             )
           })}
@@ -180,7 +183,7 @@ export function SubmitNode({ node, onAction, answers }: {
             }
           }}
         >
-          重新作答
+          {t('block.quizRetry')}
         </button>
       </div>
     )
@@ -209,9 +212,9 @@ export function SubmitNode({ node, onAction, answers }: {
           }
         } : undefined}
       >
-        {node.label}
+        {renderInline(node.label, false)}
       </button>
-      {total > 0 && <span className={css.submitHint} aria-live="polite">已选 {answered}/{total}</span>}
+      {total > 0 && <span className={css.submitHint} aria-live="polite">{t('block.selectedCount', { answered, total })}</span>}
     </div>
   )
 }
@@ -222,7 +225,7 @@ export function SwitchNode({ node, onAction }: { node: GenuiSwitch; onAction?: G
   const action = node.action
   return (
     <label className={css.switchRow}>
-      <span className={css.switchLabel}>{node.label}</span>
+      <span className={css.switchLabel}>{renderInline(node.label, false)}</span>
       <button
         type="button"
         role="switch"
@@ -271,7 +274,7 @@ export function SliderNode({ node, onAction, answers }: {
   }
   return (
     <label className={css.sliderRow}>
-      {node.label !== undefined && <span className={css.fieldLabel}>{node.label}</span>}
+      {node.label !== undefined && <span className={css.fieldLabel}>{renderInline(node.label, false)}</span>}
       <input
         type="range"
         className={css.sliderInput}
@@ -343,6 +346,7 @@ export function SelectNode({ node, onAction, answers }: {
   onAction?: GenuiBlockProps['onAction']
   answers?: AnswersState | undefined
 }) {
+  const t = useT()
   const action = node.action
   const id = node.id
   const options = node.options.slice(0, GENUI_LIMITS.maxOptions)
@@ -372,7 +376,7 @@ export function SelectNode({ node, onAction, answers }: {
   }
   return (
     <label className={css.field}>
-      {node.label !== undefined && <span>{node.label}</span>}
+      {node.label !== undefined && <span>{renderInline(node.label, false)}</span>}
       <select
         className={css.select}
         value={value ?? ''}
@@ -383,7 +387,7 @@ export function SelectNode({ node, onAction, answers }: {
           send(v)
         }}
       >
-        {value === null && <option value="" hidden disabled>请选择…</option>}
+        {value === null && <option value="" hidden disabled>{t('block.selectPlaceholder')}</option>}
         {options.map((o, i) => <option key={i} value={o}>{o}</option>)}
       </select>
     </label>
@@ -445,7 +449,7 @@ export function InputNode({ node, onAction, answers }: {
   }, [secret, id])
   return (
     <label className={css.field}>
-      {node.label !== undefined && <span>{node.label}</span>}
+      {node.label !== undefined && <span>{renderInline(node.label, false)}</span>}
       <input
         className={css.input}
         type={node.inputType ?? 'text'}
@@ -491,8 +495,9 @@ export function TextareaNode({ node, onAction, answers }: {
 }) {
   const action = node.action
   const id = node.id
-  const [value, setValue] = useState<string>(() =>
-    node.value ?? (id !== undefined ? answers?.fields[id] ?? '' : ''))
+  // Durable state wins over the spec default (same contract as InputNode).
+  const restored = id !== undefined ? answers?.fields[id] : undefined
+  const [value, setValue] = useState<string>(() => restored ?? node.value ?? '')
   // Last value delivered to the model: blur sends only on change. Seeded
   // with the mount value so an unedited blur stays silent.
   const lastSent = useRef<string | null>(value)
@@ -503,19 +508,21 @@ export function TextareaNode({ node, onAction, answers }: {
     }
   }
   const ime = useImeComposing()
-  // Field invariant: a spec-provided non-blank default registers at mount.
+  // Field invariant: a non-blank initial value registers at mount. When a
+  // durable value was restored, registering it is a no-op (setField dedupes);
+  // otherwise the spec default registers — never the other way around.
   const mounted = useRef(false)
   useEffect(() => {
     if (mounted.current) return
     mounted.current = true
-    if (id !== undefined && node.value !== undefined && node.value.trim() !== '') {
-      answers?.setField(id, node.value)
+    if (id !== undefined && value.trim() !== '') {
+      answers?.setField(id, value)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return (
     <label className={css.field}>
-      {node.label !== undefined && <span>{node.label}</span>}
+      {node.label !== undefined && <span>{renderInline(node.label, false)}</span>}
       <textarea
         className={css.textarea}
         placeholder={node.placeholder}

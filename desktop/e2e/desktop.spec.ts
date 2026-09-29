@@ -73,7 +73,23 @@ beforeAll(async () => {
 afterAll(async () => {
   stopProcessTree(application)
   await browser?.close().catch(() => undefined)
-  for (const target of roots.splice(0)) rmSync(target, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
+  if (application?.exitCode === null) {
+    await Promise.race([
+      new Promise<void>(resolveClosed => application.once('close', () => resolveClosed())),
+      new Promise<void>(resolveTimeout => setTimeout(resolveTimeout, 5_000)),
+    ])
+  }
+  for (const target of roots.splice(0)) {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        rmSync(target, { recursive: true, force: true })
+        break
+      } catch (error) {
+        if (attempt >= 20 || !['EPERM', 'EBUSY', 'ENOTEMPTY'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error
+        await new Promise(resolveRetry => setTimeout(resolveRetry, 500))
+      }
+    }
+  }
 })
 
 afterEach(async context => {
@@ -393,24 +409,38 @@ describe('ZeroWall Science Electron', () => {
 
   }, 300_000)
 
-  it('keeps shortcuts compact and opens WeChat configuration from its status', async () => {
-    await page.getByRole('button', { name: '展开快捷入口', exact: true }).click()
+  it('keeps the custom chrome clear and opens WeChat and right sidebar controls', async () => {
+    const controls = await page.locator('#zerowall-window-controls').boundingBox()
+    expect(controls).not.toBeNull()
+    expect(controls!.x).toBeLessThan(8)
+    expect(controls!.y).toBeLessThan(8)
+    const drag = await page.locator('#zerowall-window-drag').boundingBox()
+    expect(drag).not.toBeNull()
+    expect(drag!.height).toBe(8)
+
     const wechat = page.getByRole('button', { name: /^微信 WebChat/ })
     await wechat.waitFor()
     await wechat.click()
     const settings = page.getByRole('dialog', { name: '设置' })
     await settings.getByText('未登录', { exact: true }).first().waitFor()
+    expect(await settings.getByRole('button', { name: 'WeChat', exact: true }).getAttribute('aria-current')).toBe('true')
     await settings.getByRole('button', { name: '关闭', exact: true }).click()
-    await page.getByRole('button', { name: '收起快捷入口', exact: true }).click()
-    expect(await page.getByRole('link', { name: 'GitHub 项目' }).isVisible()).toBe(false)
-    expect(await page.getByRole('button', { name: '设置', exact: true }).isVisible()).toBe(true)
-    expect(await page.getByRole('button', { name: 'AI 审查', exact: true }).count()).toBe(0)
-    await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
-    await page.getByRole('button', { name: '打开侧边栏', exact: true }).waitFor()
-    expect(await page.getByRole('button', { name: /^微信 WebChat/ }).isVisible()).toBe(false)
-    await page.getByRole('button', { name: '打开侧边栏', exact: true }).click()
-    mkdirSync(join(desktopRoot, 'dist', 'verification-6.0.0'), { recursive: true })
-    await page.screenshot({ path: join(desktopRoot, 'dist', 'verification-6.0.0', 'sidebar-compact.png') })
+
+    const expand = page.locator('[data-sidebar-right-expand]')
+    if (await expand.isVisible()) await expand.click()
+    const right = page.locator('[data-sidebar-right-panel]:visible').first()
+    await right.waitFor({ state: 'visible' })
+    const tab = right.locator('[data-dockkit-tab]:visible').first()
+    const tabBounds = await tab.boundingBox()
+    expect(tabBounds).not.toBeNull()
+    expect(tabBounds!.y).toBeGreaterThanOrEqual(drag!.height)
+    await tab.click()
+    expect(await tab.getAttribute('aria-selected')).toBe('true')
+    const mode = right.locator('[data-sidebar-right-mode]:visible').first()
+    await mode.click()
+    await expect.poll(() => right.getAttribute('data-sidebar-right-panel')).toBe('fullscreen')
+    await right.locator('[data-sidebar-right-mode]:visible').first().click()
+    await expect.poll(() => right.getAttribute('data-sidebar-right-panel')).toBe('push')
   })
 
   it('does not mount the removed capability management module', async () => {
@@ -664,7 +694,7 @@ describe('ZeroWall Science Electron', () => {
     const version = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
     const artifacts = join(desktopRoot, 'dist', `verification-${version}`)
     mkdirSync(artifacts, { recursive: true })
-    expect(await page.evaluate(() => document.documentElement.dataset.zerowallBoot)).toBe('ready')
+    expect(await page.evaluate(() => !document.querySelector('[data-dsh-boot]') && document.querySelector('[data-dsh-better-sidebar], [data-zerowall-conversation], [contenteditable]') !== null)).toBe(true)
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const settings = page.getByRole('dialog', { name: '设置' })
     expect(await settings.getByRole('button', { name: '打开配置文件' }).count()).toBe(0)

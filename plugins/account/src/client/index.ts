@@ -38,7 +38,7 @@ export function apply(ctx: ClientContext): void {
       discoverModels: async () => unwrapRemoteResult('zerowall.account.discoverModels', await requireAccountRemote().discoverModels()),
       refreshModelCatalog: async () => {
         if (sessionRemote?.modelCatalog === undefined) return
-        unwrapRemoteResult('zerowall.account.modelCatalog', await sessionRemote.modelCatalog({ refresh: true }))
+        unwrapRemoteResult('zerowall.account.modelCatalog', await sessionRemote.modelCatalog())
       },
       checkoutInfo: async () => unwrapRemoteResult('zerowall.account.checkoutInfo', await requireAccountRemote().checkoutInfo()),
       listOrders: async () => unwrapRemoteResult('zerowall.account.listOrders', await requireAccountRemote().listOrders()),

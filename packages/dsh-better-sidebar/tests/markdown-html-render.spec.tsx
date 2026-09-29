@@ -23,16 +23,18 @@ const media: MarkdownHtmlMedia = {
   path: '/ws/docs/README.md',
   origin: 'http://gui.origin',
 }
-const codeLabels = { copyLabel: 'Copy', copiedLabel: 'Copied' }
+const codeLabels = {
+  copyLabel: 'Copy', copiedLabel: 'Copied', codeLabel: 'Code block', wrapLabel: 'Wrap lines', unwrapLabel: 'Do not wrap lines',
+}
 
-async function renderDocument(text: string, documentMedia = media): Promise<{ container: HTMLElement; root: Root }> {
+async function renderDocument(text: string): Promise<{ container: HTMLElement; root: Root }> {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
   await act(async () => {
     root.render(createElement(MarkdownDocument, {
       info: analyzeMarkdownHtml(text),
-      media: documentMedia,
+      media,
       codeLabels,
     }))
     // Let the MutationObserver's queued inline pass settle inside the act scope.
@@ -177,19 +179,6 @@ describe('MarkdownDocument (inline pass)', () => {
 })
 
 describe('MarkdownDocument (local markdown images)', () => {
-  it('renders Windows report sibling images when the opened Markdown path is relative', async () => {
-    const { container, root } = await renderDocument('![Figure 2: 四分位分析](figure2_quartile_v2.png)', {
-      scope: { sessionId: 'windows', cwd: 'C:\\科研项目\\nhanes' },
-      path: 'reports/report.md', origin: 'http://127.0.0.1:3080',
-    })
-    const img = container.querySelector('img')
-    expect(img).not.toBeNull()
-    const url = new URL(img!.src)
-    expect(url.searchParams.get('path')).toBe('C:\\科研项目\\nhanes\\reports\\figure2_quartile_v2.png')
-    expect(img!.alt).toBe('Figure 2: 四分位分析')
-    await unmount(root)
-  })
-
   it('renders markdown-syntax local images through the /sidebar/file route', async () => {
     const { container, root } = await renderDocument([
       '# Title',

@@ -1,12 +1,14 @@
 /**
- * achievement-toast.tsx — 解锁 toast 栈（右下角，3.6s 自动消退）。
+ * achievement-toast.tsx — the unlock toast stack (bottom right, 3.6s auto-fade).
  *
- * 独立 React root（document.body 级）：面板/inline fence 任一解锁都会
- * 弹——不依赖面板存在。消费 achievement-store 的新解锁队列。
+ * Its own React root at document.body level: an unlock from the panel OR an
+ * inline fence pops a toast, so it does not depend on the panel existing.
+ * Consumes achievement-store's new-unlock queue.
  */
 import { createElement, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { consumeUnlocks, subscribeAchievements } from './achievement-store.ts'
+import { useT } from './i18n/index.ts'
 import type { AchievementDef } from './achievements.ts'
 import css from './GenuiBlock.module.css'
 
@@ -17,8 +19,9 @@ interface ToastItem {
 
 let toastKey = 0
 
-/** 底部固定栈：显示队列中的最后一个（FIFO 展开为纵向栈）。 */
+/** Fixed bottom stack: the queue rendered FIFO as a vertical stack. */
 function AchievementToasts() {
+  const t = useT()
   const [, force] = useSyncExternalStore(subscribeAchievements, () => '')
   const [items, setItems] = useState<ToastItem[]>([])
   const timers = useRef<Map<number, number>>(new Map())
@@ -46,14 +49,14 @@ function AchievementToasts() {
     items.map(item => createElement('div', { key: item.key, className: css.achToast },
       createElement('span', { className: css.achToastBadge, 'aria-hidden': true }, '🏆'),
       createElement('div', { className: css.achToastBody },
-        createElement('div', { className: css.achToastName }, `成就解锁：${item.ach.name}`),
+        createElement('div', { className: css.achToastName }, t('ach.toast.unlocked', { name: item.ach.name })),
         createElement('div', { className: css.achToastDesc }, item.ach.description),
       ),
     )),
   )
 }
 
-/** 挂载 toast 栈（apply 调用；返回卸载函数）。 */
+/** Mount the toast stack (called from apply; returns the unmount disposer). */
 export function mountAchievementToasts(): () => void {
   if (typeof document === 'undefined') return () => {}
   const host = document.createElement('div')

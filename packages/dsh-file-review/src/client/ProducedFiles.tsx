@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from 'react'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { FileReviewRequest, FileReviewResult } from '../change-types.ts'
 import type { NS } from './locales.ts'
 import { ReviewStats } from './ReviewContent.tsx'
 import { ReviewResultToast, unavailableChanges, useReviewActions } from './review-actions.tsx'
 import type { ReviewTarget } from './FileReviewTab.tsx'
-import { basename, type ProducedFileReview } from './turn-deliverables.ts'
+import { basename, reviewsForClosing, type ProducedFileReview } from './turn-deliverables.ts'
 import { summarizeDiffs, type UnifiedDiffStats } from './UnifiedDiff.tsx'
 import css from './ProducedFiles.module.css'
 
@@ -25,6 +25,20 @@ export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile'> & {
   turn?: TurnTailOwnerProps['turn'] | undefined
   seq?: number | undefined
 } & PropsLocale<typeof NS>
+
+export type ProducedFilesSlotInjected = {
+  openReview: (target: ReviewTarget) => void
+  inspectChanges?: (request: FileReviewRequest) => Promise<FileReviewResult>
+  applyChanges?: (request: FileReviewRequest) => Promise<FileReviewResult>
+}
+export type ProducedFilesSlotProps = PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<typeof NS> & InjectFace<ProducedFilesSlotInjected>
+
+/** Harness rc.2 list slots pass the owner directly; derive the matched files inside the component. */
+export function ProducedFilesSlot(props: PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<typeof NS> & InjectFace<ProducedFilesSlotInjected>) {
+  const matched = reviewsForClosing(props.turn.data.get('deliverables'), props.seq)
+  if (matched.length === 0) return null
+  return <ProducedFiles {...props} matched={matched} />
+}
 
 function FileIcon() {
   return (

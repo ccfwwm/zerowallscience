@@ -32,7 +32,7 @@ These host rules override upstream examples when they differ:
 - Treat network calls, cloud jobs, experiment submissions, writes, deletion, and physical equipment actions as approval-gated. Default to read-only inspection, validation, or dry-run planning until the user explicitly requests execution.
 - Use `zerowall-python-packages` for managed Python dependency changes: inspect, preview, obtain confirmation, apply, and verify. Do not run pip/uv/conda against the managed snapshot. Report missing external runtimes separately.
 - In the ZeroWall desktop, deepTools and its Python dependencies use the one
-  shared Python 3.12 runtime (`%APPDATA%\\zerowall-science\\Python`). Do not
+  shared Python 3.12 runtime returned by the Host (`status.runtimeRoot`). Do not
   create a deepTools venv, Conda environment, or private site-packages path.
   Conda/bioconda examples below apply only to an explicitly selected remote,
   container, or HPC execution context.

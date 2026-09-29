@@ -19,12 +19,14 @@ export type * from '../shared/types.js'
 
 export const name = 'zerowall-pubmed'
 export const inject = ['settings', 'tools', 'sessions', 'zerowallResearch']
+export const Config = ConfigSchema
 declare module '@deepseek-ai/cordis' { interface Context { zerowallPubmed: ZeroWallPubmedService } }
 const jsonOutput = { schema: { type: 'json' as const }, render: (_args: unknown, result: unknown) => [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
 
 export class ZeroWallPubmedService extends TypertRemoteService {
   static inject = inject
-  private readonly scope
+  static Config = ConfigSchema
+  private settings: PubmedConfig
   private readonly secrets = new SecretBrokerClient()
   private readonly startupEnvironment: NodeJS.ProcessEnv = { ...process.env }
   private readonly transport = new LiteratureTransport()
@@ -34,9 +36,14 @@ export class ZeroWallPubmedService extends TypertRemoteService {
   private readonly disposers: (() => void)[] = []
   private readonly research: ZeroWallResearchService
 
-  constructor(private readonly host: Context) {
+  constructor(private readonly host: Context, config: PubmedConfig) {
     super(host, 'zerowallPubmed')
-    this.scope = host.settings.register('zerowall-pubmed' as SettingsNamespace, ConfigSchema)
+    this.settings = config
+    host.on('settings/document-updated', (ns) => {
+      if (ns !== ('zerowall-pubmed' as SettingsNamespace)) return
+      const value = host.settings.describe().find(row => row.ns === 'zerowall-pubmed')?.value
+      if (value !== undefined) this.settings = value as PubmedConfig
+    })
     const research = host.get('zerowallResearch') as ZeroWallResearchService | undefined
     if (!research) throw new Error('ZeroWall research service is required.')
     this.research = research
@@ -53,7 +60,8 @@ export class ZeroWallPubmedService extends TypertRemoteService {
   }
   @Remote('updateConfig') async updateConfig(changes: Partial<PubmedConfig>): Promise<PubmedStatus> {
     const config = validateConfig({ ...this.config(), ...changes })
-    await this.scope.replace(config)
+    this.settings = config
+    await this.host.settings.replace('zerowall-pubmed' as SettingsNamespace, config)
     this.registerTools()
     return this.getConfigStatus()
   }
@@ -90,7 +98,7 @@ export class ZeroWallPubmedService extends TypertRemoteService {
       return { service, state, message: error instanceof LiteratureHttpError ? error.message : 'Connection test failed or timed out' }
     }
   }
-  private config(): PubmedConfig { return validateConfig(this.scope.get()) }
+  private config(): PubmedConfig { return validateConfig(this.settings) }
   private async credentials(): Promise<Credentials> {
     return Object.fromEntries(await Promise.all(KEY_NAMES.map(async name => [name, (await resolveKey(name, ref => this.secrets.get(ref), this.startupEnvironment)).value]))) as Credentials
   }

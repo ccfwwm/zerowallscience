@@ -233,6 +233,29 @@ describe('Python dependency panel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '安装基础环境' }))
     await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1))
   })
+  it('saves a selected writable parent and keeps the new path visible until restart', async () => {
+    const chooseDirectory = vi.fn(async () => 'C:\\ZeroWall Data')
+    const restart = vi.fn(async () => true)
+    const execute = vi.fn(async (request: any) => request.runtimeRoot
+      ? { requestId: request.requestId, runtimeRoot: `${request.runtimeRoot}\\Python`, restartRequired: true }
+      : { requestId: request.requestId, runtimeRoot: 'C:\\Program Files\\ZeroWall Science\\Python', mirrorUrl: 'https://mirrors.ustc.edu.cn/pypi/simple', revision: 1, mirrorPresets: [] })
+    window.zerowallDesktop = {
+      getMcpPythonInfo: async () => ({ ...info('gen-a', 1), runtimeRoot: 'C:\\Program Files\\ZeroWall Science\\Python' }),
+      pythonEnvironment: execute,
+      chooseDirectory,
+      restart,
+    } as any
+    render(<PythonEnvironmentPanel t={zhT} />)
+    await screen.findByText('1')
+    const path = within(screen.getByRole('region', { name: '共享 Python 路径' }))
+    fireEvent.click(path.getByRole('button', { name: '更改路径' }))
+    await waitFor(() => expect(execute).toHaveBeenCalledWith(expect.objectContaining({ action: 'configure', runtimeRoot: 'C:\\ZeroWall Data' })))
+    expect(path.getByText('C:\\ZeroWall Data\\Python')).toBeTruthy()
+    expect(screen.getByText('共享 Python 路径已保存，重启软件后将在所选目录的 Python 子目录中安装或覆盖运行时。')).toBeTruthy()
+    const restartButton = path.getByRole('button', { name: '立即重启' })
+    fireEvent.click(restartButton)
+    await waitFor(() => expect(restart).toHaveBeenCalledTimes(1))
+  })
   it('applies an explicitly requested package plan through the package API even when manifest sync is available', async () => {
     const execute = vi.fn(async (request: any) => ({ requestId: request.requestId, revision: 1, mirrorUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple' }))
     const apply = vi.fn(async () => ({ taskId: 'package-install' }))

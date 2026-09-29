@@ -58,11 +58,6 @@
 - id: session-title-llm
   disabled: true
 
-- id: agent-default-model
-  config:
-    provider: deepseek-official
-    model: deepseek-v4-flash
-
 # The local Codex assistant is installed on the desktop and its DSH provider
 # bundle is part of the runtime closure. Claude remains available through the
 # Anthropic API and Claude Science integration, without shipping Claude Code.
@@ -87,6 +82,12 @@
 # ZeroWall composition. Disable DSH's stock entry to avoid duplicate
 # `conversation Definition "deliverables"` registration during client boot.
 - id: ui-deliverables
+  disabled: true
+
+# Better Sidebar owns the ZeroWall file-tree entry. Keep Harness workspace file
+# APIs and document preview available for open-file navigation and parsing, but
+# do not register its second Files tab in the same right sidebar.
+- id: ui-sidebar-files
   disabled: true
 
 # The file-backed providers declare their path fields in the runtime schema.

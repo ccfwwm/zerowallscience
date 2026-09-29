@@ -51,7 +51,7 @@ export async function isStablePythonDirectory(userDataRoot: string): Promise<boo
 }
 
 /** Move a legacy slot runtime into the real, stable product directory. */
-export async function migrateStablePython(managementRoot: string, sourceRoot: string, manifest: McpEnvironmentManifest, overlay?: string, replaceExisting = false): Promise<string> {
+export async function migrateStablePython(managementRoot: string, sourceRoot: string, manifest: McpEnvironmentManifest, overlay?: string, replaceExisting = false, verify?: (stableRoot: string) => Promise<void>, activate?: () => Promise<void>): Promise<string> {
   const stableRoot = dirname(managementRoot)
   const publicPython = join(stableRoot, 'Python')
   const sourceIsStableRoot = resolve(sourceRoot).toLowerCase() === resolve(stableRoot).toLowerCase()
@@ -59,7 +59,11 @@ export async function migrateStablePython(managementRoot: string, sourceRoot: st
   const existing = await lstat(publicPython).catch(() => undefined)
   if (existing && !existing.isSymbolicLink()) {
     if (await stat(join(publicPython, 'python.exe')).then(() => true, () => false) && !replaceExisting) return stableRoot
-    if (!await stat(join(publicPython, 'python.exe')).then(() => true, () => false)) throw new Error('Stable Python directory is occupied.')
+    // A failed first run can leave an empty or partial Python directory.  A
+    // verified installer archive is allowed to replace that directory
+    // transactionally; only a healthy interpreter is protected when the
+    // caller did not explicitly request replacement.
+    if (!await stat(join(publicPython, 'python.exe')).then(() => true, () => false) && !replaceExisting) throw new Error('Stable Python directory is occupied.')
   }
   const staging = join(stableRoot, `Python.migrating-${randomUUID()}`)
   const backup = join(stableRoot, `Python.previous-link-${randomUUID()}`)
@@ -89,9 +93,25 @@ export async function migrateStablePython(managementRoot: string, sourceRoot: st
       } finally { await rm(candidate, { recursive: true, force: true }) }
     }
     await stat(join(staging, 'python.exe'))
-    if (existing) await rename(publicPython, backup)
-    try { await rename(staging, publicPython) }
-    catch (error) { if (existing) await rename(backup, publicPython); throw error }
+    let backedUp = false
+    let activated = false
+    try {
+      if (existing) { await rename(publicPython, backup); backedUp = true }
+      await rename(staging, publicPython)
+      activated = true
+      // Keep the prior runtime until the installed directory passes its health
+      // check. A failed verify must restore the exact previous directory.
+      await verify?.(stableRoot)
+      // The pointer is part of activation. If writing current.json or the
+      // Host handoff fails, restore the previous interpreter as well.
+      await activate?.()
+    } catch (error) {
+      if (activated) await rm(publicPython, { recursive: true, force: true }).catch(() => undefined)
+      if (backedUp) await rename(backup, publicPython).catch(rollbackError => {
+        throw new Error(`Python replacement failed and the previous runtime remains at ${backup}: ${String(rollbackError)}`, { cause: error })
+      })
+      throw error
+    }
     if (existing) await rm(backup, { recursive: true, force: true }).catch(() => undefined)
     return stableRoot
   } catch (error) {

@@ -4088,16 +4088,19 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		const agentCodec = {
 			mode: "strict",
 			typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
+			create: () => intersection(string(), unknown()),
 			schema: intersection(string(), unknown())
 		};
 		const requestCodec = {
 			mode: "strict",
 			typeSymbol: `${PACKAGE_NAME}#FileReviewRequest`,
+			create: () => requestSchema,
 			schema: requestSchema
 		};
 		const resultCodec = {
 			mode: "strict",
 			typeSymbol: `${PACKAGE_NAME}#FileReviewResult`,
+			create: () => resultSchema,
 			schema: resultSchema
 		};
 		function descriptor(method) {
@@ -4816,40 +4819,40 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			document.head.appendChild(style);
 		}
 		var UnifiedDiff_module_css_default = {
-			"unifiedRemoved": "bpckIG_unifiedRemoved",
-			"unifiedBlock": "bpckIG_unifiedBlock",
-			"unifiedEmbedded": "bpckIG_unifiedEmbedded",
-			"unifiedOmitted": "bpckIG_unifiedOmitted",
-			"unifiedPath": "bpckIG_unifiedPath",
-			"unifiedLineNumber": "bpckIG_unifiedLineNumber",
-			"unifiedBodyWrap": "bpckIG_unifiedBodyWrap",
-			"unifiedStatus": "bpckIG_unifiedStatus",
-			"splitCell": "bpckIG_splitCell",
-			"commentDelete": "bpckIG_commentDelete",
 			"unifiedBody": "bpckIG_unifiedBody",
-			"commentHint": "bpckIG_commentHint",
-			"unifiedSign": "bpckIG_unifiedSign",
-			"commentEditor": "bpckIG_commentEditor",
-			"unified_add": "bpckIG_unified_add",
-			"unifiedCopyButton": "bpckIG_unifiedCopyButton",
-			"commentRow": "bpckIG_commentRow",
-			"unified_del": "bpckIG_unified_del",
-			"commentActions": "bpckIG_commentActions",
-			"unifiedHeader": "bpckIG_unifiedHeader",
-			"unified_context": "bpckIG_unified_context",
-			"splitGrid": "bpckIG_splitGrid",
-			"commentTrigger": "bpckIG_commentTrigger",
-			"unifiedFile": "bpckIG_unifiedFile",
-			"commentBody": "bpckIG_commentBody",
-			"unifiedText": "bpckIG_unifiedText",
-			"unifiedHunkHeader": "bpckIG_unifiedHunkHeader",
-			"unifiedGap": "bpckIG_unifiedGap",
-			"unifiedAdded": "bpckIG_unifiedAdded",
-			"splitEmpty": "bpckIG_splitEmpty",
-			"commentSave": "bpckIG_commentSave",
 			"unifiedLine": "bpckIG_unifiedLine",
+			"commentSave": "bpckIG_commentSave",
+			"unifiedOmitted": "bpckIG_unifiedOmitted",
+			"splitGrid": "bpckIG_splitGrid",
+			"splitCell": "bpckIG_splitCell",
+			"commentCancel": "bpckIG_commentCancel",
+			"unifiedLineNumber": "bpckIG_unifiedLineNumber",
+			"unifiedBlock": "bpckIG_unifiedBlock",
+			"unifiedStatus": "bpckIG_unifiedStatus",
+			"unifiedEmbedded": "bpckIG_unifiedEmbedded",
 			"splitPane": "bpckIG_splitPane",
-			"commentCancel": "bpckIG_commentCancel"
+			"unifiedHunkHeader": "bpckIG_unifiedHunkHeader",
+			"commentBody": "bpckIG_commentBody",
+			"unified_add": "bpckIG_unified_add",
+			"unifiedSign": "bpckIG_unifiedSign",
+			"splitEmpty": "bpckIG_splitEmpty",
+			"unifiedCopyButton": "bpckIG_unifiedCopyButton",
+			"commentDelete": "bpckIG_commentDelete",
+			"commentTrigger": "bpckIG_commentTrigger",
+			"unified_context": "bpckIG_unified_context",
+			"commentEditor": "bpckIG_commentEditor",
+			"unifiedAdded": "bpckIG_unifiedAdded",
+			"commentRow": "bpckIG_commentRow",
+			"commentActions": "bpckIG_commentActions",
+			"unifiedGap": "bpckIG_unifiedGap",
+			"unifiedBodyWrap": "bpckIG_unifiedBodyWrap",
+			"unifiedRemoved": "bpckIG_unifiedRemoved",
+			"unifiedHeader": "bpckIG_unifiedHeader",
+			"unifiedPath": "bpckIG_unifiedPath",
+			"unifiedFile": "bpckIG_unifiedFile",
+			"unified_del": "bpckIG_unified_del",
+			"commentHint": "bpckIG_commentHint",
+			"unifiedText": "bpckIG_unifiedText"
 		};
 		//#endregion
 		//#region src/client/UnifiedDiff.tsx
@@ -5330,85 +5333,85 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			document.head.appendChild(style);
 		}
 		var ProducedFiles_module_css_default = {
-			"fileName": "bWJNLG_fileName",
-			"noticeFileList": "bWJNLG_noticeFileList",
-			"noticeFileButton": "bWJNLG_noticeFileButton",
+			"noticeFileListLabel": "bWJNLG_noticeFileListLabel",
 			"reviewCommentPreviewPositioner": "bWJNLG_reviewCommentPreviewPositioner",
-			"reviewCommentPreviewAbove": "bWJNLG_reviewCommentPreviewAbove",
-			"cardHeader": "bWJNLG_cardHeader",
-			"reviewCommentPillRoot": "bWJNLG_reviewCommentPillRoot",
-			"reviewHeading": "bWJNLG_reviewHeading",
 			"fileIconWrap": "bWJNLG_fileIconWrap",
 			"toggleButton": "bWJNLG_toggleButton",
-			"openButton": "bWJNLG_openButton",
-			"toastError": "bWJNLG_toastError",
-			"toastHeader": "bWJNLG_toastHeader",
-			"fileList": "bWJNLG_fileList",
-			"commentDockPill": "bWJNLG_commentDockPill",
-			"commentDockIcon": "bWJNLG_commentDockIcon",
-			"reviewCommentPreview": "bWJNLG_reviewCommentPreview",
-			"commentPreviewBody": "bWJNLG_commentPreviewBody",
-			"reviewMessageRow": "bWJNLG_reviewMessageRow",
-			"reviewMessageStack": "bWJNLG_reviewMessageStack",
-			"reviewTitle": "bWJNLG_reviewTitle",
-			"reviewStatus": "bWJNLG_reviewStatus",
-			"reviewCommentPillRootMessage": "bWJNLG_reviewCommentPillRootMessage",
-			"reviewFile": "bWJNLG_reviewFile",
-			"commentDockOpen": "bWJNLG_commentDockOpen",
-			"commentPreviewLocation": "bWJNLG_commentPreviewLocation",
-			"reviewMessageExtraBlock": "bWJNLG_reviewMessageExtraBlock",
-			"reviewSubtitle": "bWJNLG_reviewSubtitle",
-			"stats": "bWJNLG_stats",
-			"reviewPath": "bWJNLG_reviewPath",
-			"reviewMessageActions": "bWJNLG_reviewMessageActions",
-			"buttonIcon": "bWJNLG_buttonIcon",
-			"reviewMessageAction": "bWJNLG_reviewMessageAction",
-			"reviewMessageActionIcon": "bWJNLG_reviewMessageActionIcon",
-			"commentDockRemove": "bWJNLG_commentDockRemove",
-			"toastCloseButton": "bWJNLG_toastCloseButton",
-			"toast": "bWJNLG_toast",
 			"noticeFileArrow": "bWJNLG_noticeFileArrow",
-			"reviewFileHeader": "bWJNLG_reviewFileHeader",
-			"closeIcon": "bWJNLG_closeIcon",
-			"reviewButton": "bWJNLG_reviewButton",
-			"noticeFileListLabel": "bWJNLG_noticeFileListLabel",
-			"reviewMessageCommentPill": "bWJNLG_reviewMessageCommentPill",
-			"card": "bWJNLG_card",
-			"reviewMessageTime": "bWJNLG_reviewMessageTime",
-			"reviewBody": "bWJNLG_reviewBody",
-			"reviewUnavailable": "bWJNLG_reviewUnavailable",
-			"commentPreviewPath": "bWJNLG_commentPreviewPath",
-			"cardTitle": "bWJNLG_cardTitle",
-			"removed": "bWJNLG_removed",
-			"reviewMessageCommentIcon": "bWJNLG_reviewMessageCommentIcon",
-			"noticeIcon": "bWJNLG_noticeIcon",
-			"reviewContent": "bWJNLG_reviewContent",
-			"noticeIconSvg": "bWJNLG_noticeIconSvg",
-			"noticeDismissButton": "bWJNLG_noticeDismissButton",
-			"commentPreviewCard": "bWJNLG_commentPreviewCard",
-			"noticeFiles": "bWJNLG_noticeFiles",
-			"reviewMessageBubble": "bWJNLG_reviewMessageBubble",
-			"noticeFilePath": "bWJNLG_noticeFilePath",
-			"toolbarButton": "bWJNLG_toolbarButton",
-			"reviewCommentPreviewBelow": "bWJNLG_reviewCommentPreviewBelow",
-			"sidebarTab": "bWJNLG_sidebarTab",
-			"reviewPathText": "bWJNLG_reviewPathText",
-			"commentDock": "bWJNLG_commentDock",
+			"commentDockPill": "bWJNLG_commentDockPill",
 			"reviewHeader": "bWJNLG_reviewHeader",
+			"reviewPath": "bWJNLG_reviewPath",
+			"noticeIconSvg": "bWJNLG_noticeIconSvg",
+			"noticeFiles": "bWJNLG_noticeFiles",
+			"buttonIcon": "bWJNLG_buttonIcon",
+			"commentPreviewBody": "bWJNLG_commentPreviewBody",
+			"reviewMessageCommentPill": "bWJNLG_reviewMessageCommentPill",
+			"reviewFile": "bWJNLG_reviewFile",
+			"reviewHeading": "bWJNLG_reviewHeading",
+			"toastHeader": "bWJNLG_toastHeader",
+			"noticeFileList": "bWJNLG_noticeFileList",
+			"toast": "bWJNLG_toast",
+			"toastCloseButton": "bWJNLG_toastCloseButton",
+			"commentDockOpen": "bWJNLG_commentDockOpen",
+			"reviewContent": "bWJNLG_reviewContent",
+			"cardTitle": "bWJNLG_cardTitle",
+			"reviewSubtitle": "bWJNLG_reviewSubtitle",
 			"sidebarTabEmpty": "bWJNLG_sidebarTabEmpty",
+			"reviewButton": "bWJNLG_reviewButton",
+			"closeIcon": "bWJNLG_closeIcon",
+			"toastSuccess": "bWJNLG_toastSuccess",
+			"reviewBody": "bWJNLG_reviewBody",
 			"reviewDiff": "bWJNLG_reviewDiff",
-			"toastCopy": "bWJNLG_toastCopy",
-			"cardTitleBlock": "bWJNLG_cardTitleBlock",
-			"toastDescription": "bWJNLG_toastDescription",
-			"reviewMessageReference": "bWJNLG_reviewMessageReference",
-			"icon": "bWJNLG_icon",
-			"added": "bWJNLG_added",
-			"toastTitle": "bWJNLG_toastTitle",
-			"fileRow": "bWJNLG_fileRow",
-			"moreFiles": "bWJNLG_moreFiles",
+			"reviewCommentPreviewBelow": "bWJNLG_reviewCommentPreviewBelow",
+			"commentPreviewCard": "bWJNLG_commentPreviewCard",
+			"reviewMessageRow": "bWJNLG_reviewMessageRow",
+			"reviewCommentPillRootMessage": "bWJNLG_reviewCommentPillRootMessage",
 			"commentPreviewHeader": "bWJNLG_commentPreviewHeader",
+			"commentPreviewPath": "bWJNLG_commentPreviewPath",
+			"reviewUnavailable": "bWJNLG_reviewUnavailable",
+			"reviewFileHeader": "bWJNLG_reviewFileHeader",
+			"reviewMessageStack": "bWJNLG_reviewMessageStack",
+			"toastError": "bWJNLG_toastError",
+			"reviewMessageReference": "bWJNLG_reviewMessageReference",
+			"reviewMessageActionIcon": "bWJNLG_reviewMessageActionIcon",
+			"reviewMessageAction": "bWJNLG_reviewMessageAction",
+			"removed": "bWJNLG_removed",
+			"reviewMessageBubble": "bWJNLG_reviewMessageBubble",
+			"openButton": "bWJNLG_openButton",
+			"commentDockIcon": "bWJNLG_commentDockIcon",
 			"reviewToolbar": "bWJNLG_reviewToolbar",
-			"toastSuccess": "bWJNLG_toastSuccess"
+			"toastCopy": "bWJNLG_toastCopy",
+			"toolbarButton": "bWJNLG_toolbarButton",
+			"noticeDismissButton": "bWJNLG_noticeDismissButton",
+			"toastTitle": "bWJNLG_toastTitle",
+			"reviewMessageActions": "bWJNLG_reviewMessageActions",
+			"card": "bWJNLG_card",
+			"toastDescription": "bWJNLG_toastDescription",
+			"reviewCommentPreview": "bWJNLG_reviewCommentPreview",
+			"reviewMessageExtraBlock": "bWJNLG_reviewMessageExtraBlock",
+			"reviewCommentPreviewAbove": "bWJNLG_reviewCommentPreviewAbove",
+			"cardHeader": "bWJNLG_cardHeader",
+			"fileRow": "bWJNLG_fileRow",
+			"stats": "bWJNLG_stats",
+			"fileList": "bWJNLG_fileList",
+			"cardTitleBlock": "bWJNLG_cardTitleBlock",
+			"noticeIcon": "bWJNLG_noticeIcon",
+			"sidebarTab": "bWJNLG_sidebarTab",
+			"reviewStatus": "bWJNLG_reviewStatus",
+			"commentDock": "bWJNLG_commentDock",
+			"reviewMessageTime": "bWJNLG_reviewMessageTime",
+			"reviewTitle": "bWJNLG_reviewTitle",
+			"commentDockRemove": "bWJNLG_commentDockRemove",
+			"commentPreviewLocation": "bWJNLG_commentPreviewLocation",
+			"added": "bWJNLG_added",
+			"noticeFilePath": "bWJNLG_noticeFilePath",
+			"reviewMessageCommentIcon": "bWJNLG_reviewMessageCommentIcon",
+			"reviewCommentPillRoot": "bWJNLG_reviewCommentPillRoot",
+			"noticeFileButton": "bWJNLG_noticeFileButton",
+			"moreFiles": "bWJNLG_moreFiles",
+			"icon": "bWJNLG_icon",
+			"fileName": "bWJNLG_fileName",
+			"reviewPathText": "bWJNLG_reviewPathText"
 		};
 		//#endregion
 		//#region src/client/ReviewContent.tsx
@@ -5737,6 +5740,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		/** Runtime counterpart of the message-producing event union. */
 		const SURFACE_EVENT_TYPES = /* @__PURE__ */ new Set([
 			"system/message",
+			"developer/message",
 			"user/message",
 			"assistant/message",
 			"tool/result"
@@ -5855,10 +5859,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 		function nativeResultMarker(event) {
 			if (event.type !== "tool/result") return null;
-			const callId = event.data.message.source.callId;
-			const result = event.data.message.content[0];
-			if (typeof callId !== "string" || callId === "" || !Array.isArray(result?.content)) return null;
-			return markerFromContent(result.content, {
+			const message = event.data.message;
+			const callId = message.source.callId;
+			if (typeof callId !== "string" || callId === "") return null;
+			const result = message.content[0];
+			return markerFromContent(Array.isArray(result?.content) ? result.content : message.content, {
 				rootCallId: callId,
 				subCallId: callId
 			});
@@ -5943,7 +5948,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					};
 				}
 				if (match.event.type === "tool/result") {
-					if (match.event.data.message.content[0].isError === true) return context.state;
+					const legacyResult = match.event.data.message.content[0];
+					if (match.event.data.message.isError === true || legacyResult?.isError === true) return context.state;
 					const callId = match.event.data.message.source.callId;
 					if (typeof callId !== "string" || callId === "") return context.state;
 					const call = context.state.calls.get(callId);
@@ -6260,6 +6266,15 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		//#region src/client/ProducedFiles.tsx
 		/** Keep the turn-tail card compact; the review tab still receives every file. */
 		const SHOWN_LIMIT = 6;
+		/** Harness rc.2 list slots pass the owner directly; derive the matched files inside the component. */
+		function ProducedFilesSlot(props) {
+			const matched = reviewsForClosing(props.turn.data.get("deliverables"), props.seq);
+			if (matched.length === 0) return null;
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ProducedFiles, {
+				...props,
+				matched
+			});
+		}
 		function FileIcon() {
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("svg", {
 				viewBox: "0 0 20 20",
@@ -6384,68 +6399,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				openFile,
 				onDone: actions.dismissNotice
 			}, actions.notice.seq)] });
-		}
-		//#endregion
-		//#region ../../deepseek-harness/packages/util/workspace-path/lib/index.js
-		/**
-		* The `dsh-resource://file/…` address grammar: how a file is named across the
-		* Sidebar and the resource model, built and parsed without touching a
-		* filesystem.
-		* @module
-		*/
-		/** The scheme and type every file address opens with. */
-		const FILE_ADDRESS_PREFIX = "dsh-resource://file/";
-		/** Component-encode one id or path segment, keeping `:` literal for drive letters. */
-		function encodeSegment(segment) {
-			return encodeURIComponent(segment).replace(/%3A/gi, ":");
-		}
-		/** Encode a `/`-separated path segment by segment. */
-		function encodePath(path) {
-			return path.split("/").map(encodeSegment).join("/");
-		}
-		/**
-		* Build the address of a file read through one Session.
-		* @param sessionId - the Session whose Host workspace resolves the path.
-		* @param path - absolute or workspace-relative path; backslashes are normalized to `/`, and leading `./` prefixes are dropped.
-		* @returns the `dsh-resource://file/session/<sessionId>/<path>` address.
-		*/
-		function sessionFileAddress(sessionId, path) {
-			const normalized = path.replace(/\\/g, "/").replace(/^(?:\.\/)+/, "");
-			return `${FILE_ADDRESS_PREFIX}session/${encodeSegment(sessionId)}/${encodePath(normalized)}`;
-		}
-		/**
-		* Browser-safe Workspace path and display helpers.
-		* @module @deepseek-ai/dsh-util-workspace-path
-		*/
-		/** Whether a path uses a Windows drive or UNC prefix. */
-		function isWindowsStylePath(value) {
-			return /^[A-Za-z]:[/\\]/.test(value) || value.startsWith("\\\\");
-		}
-		/**
-		* Whether a path is absolute in either spelling the Host accepts: POSIX (`/a/b`) or Windows drive or UNC.
-		* @param path - the path to classify.
-		* @returns `true` for an absolute path; `false` for a Workspace-relative one.
-		*/
-		function isAbsoluteWorkspacePath(path) {
-			return path.startsWith("/") || isWindowsStylePath(path);
-		}
-		/**
-		* The address for a path as a caller holds it: a relative path, or an absolute
-		* path inside the Session's workspace, becomes a `session`-scoped address; an
-		* absolute path outside it, or one whose workspace root is unknown, keeps its
-		* absolute path in that Session's address.
-		* @param sessionId - the Session the path is read in.
-		* @param cwd - that Session's workspace root, when known.
-		* @param path - absolute or workspace-relative path, in either separator spelling.
-		* @returns the `dsh-resource://file/…` address.
-		*/
-		function fileAddressFor(sessionId, cwd, path) {
-			const normalized = path.replace(/\\/g, "/");
-			if (!isAbsoluteWorkspacePath(normalized)) return sessionFileAddress(sessionId, normalized);
-			const root = cwd === void 0 ? "" : cwd.replace(/\\/g, "/").replace(/\/+$/, "");
-			if (root !== "" && normalized === root) return sessionFileAddress(sessionId, "");
-			if (root !== "" && normalized.startsWith(`${root}/`)) return sessionFileAddress(sessionId, normalized.slice(root.length + 1));
-			return sessionFileAddress(sessionId, normalized);
 		}
 		//#endregion
 		//#region src/client/FileReviewTab.tsx
@@ -6662,6 +6615,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		//#endregion
 		//#region src/client/native-sidebar-adapter.tsx
 		const REVIEW_TAB_ID = "dsh-file-review:review";
+		function fileAddressFor(sessionId, cwd, path) {
+			const normalized = path.replace(/\\/g, "/");
+			const root = cwd?.replace(/\\/g, "/").replace(/\/+$/u, "") ?? "";
+			const encoded = (root !== "" && normalized.startsWith(`${root}/`) ? normalized.slice(root.length + 1) : normalized.startsWith("/") && root !== "" && normalized === root ? "" : normalized).split("/").map((segment) => encodeURIComponent(segment).replace(/%3A/giu, ":")).join("/");
+			return `dsh-resource://file/session/${encodeURIComponent(sessionId)}/${encoded}`;
+		}
 		function ReviewTabTitle({ t }) {
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(react_jsx_runtime.Fragment, { children: t("review.title") });
 		}
@@ -6714,30 +6673,41 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			document.head.appendChild(style);
 		}
 		var FileReviewSettingsCard_module_css_default = {
-			"chevron": "yC9_GW_chevron",
-			"description": "yC9_GW_description",
-			"row": "yC9_GW_row",
-			"chevronOpen": "yC9_GW_chevronOpen",
-			"select": "yC9_GW_select",
-			"toggle": "yC9_GW_toggle",
-			"body": "yC9_GW_body",
 			"heading": "yC9_GW_heading",
-			"label": "yC9_GW_label",
-			"header": "yC9_GW_header",
-			"readOnly": "yC9_GW_readOnly",
-			"card": "yC9_GW_card",
-			"icon": "yC9_GW_icon",
-			"thumb": "yC9_GW_thumb",
-			"field": "yC9_GW_field",
 			"cardOpen": "yC9_GW_cardOpen",
+			"card": "yC9_GW_card",
+			"select": "yC9_GW_select",
+			"chevron": "yC9_GW_chevron",
+			"field": "yC9_GW_field",
+			"body": "yC9_GW_body",
+			"row": "yC9_GW_row",
+			"header": "yC9_GW_header",
+			"description": "yC9_GW_description",
+			"readOnly": "yC9_GW_readOnly",
 			"title": "yC9_GW_title",
-			"hint": "yC9_GW_hint"
+			"chevronOpen": "yC9_GW_chevronOpen",
+			"label": "yC9_GW_label",
+			"icon": "yC9_GW_icon",
+			"toggle": "yC9_GW_toggle",
+			"hint": "yC9_GW_hint",
+			"thumb": "yC9_GW_thumb"
 		};
 		//#endregion
 		//#region src/client/FileReviewSettingsCard.tsx
-		/** Minimal settings card owned by the file-review plugin. */
-		function FileReviewSettingsCard({ setWordWrap, setDiffLayout, t, useFileReviewSettings }) {
-			const settings = useFileReviewSettings((snapshot) => snapshot);
+		/** Adapter for the rc.2 Plugins tab, whose owner intentionally supplies no business face. */
+		function FileReviewSettingsTab({ settings, t }) {
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(FileReviewSettingsCardView, {
+				t,
+				settings: (0, react.useSyncExternalStore)(settings.subscribe, settings.getSnapshot, settings.getSnapshot),
+				setWordWrap: async (value) => {
+					await settings.set("wordWrap", value);
+				},
+				setDiffLayout: async (value) => {
+					await settings.set("diffLayout", value);
+				}
+			});
+		}
+		function FileReviewSettingsCardView({ settings, setWordWrap, setDiffLayout, t }) {
 			const [open, setOpen] = (0, react.useState)(false);
 			const [saving, setSaving] = (0, react.useState)(false);
 			const [saveError, setSaveError] = (0, react.useState)(false);
@@ -6760,7 +6730,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				setSaving(true);
 				try {
 					await setWordWrap(!wordWrap);
-				} catch {} finally {
+				} finally {
 					setSaving(false);
 				}
 			};
@@ -7179,7 +7149,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			});
 		}
 		/** Shadow the host user renderer while preserving its ordinary-message behavior. */
-		function ReviewUserMessage({ node, cwd, renderMessageImages, t, reviewT, sessionId, openAttachment, openParsedAttachment, copyAttachment }) {
+		function ReviewUserMessage({ node, cwd, renderMessageImages, t, reviewT, openFile, openSkill }) {
 			const { content, time } = node.data;
 			const { text, images, rest } = contentParts(content);
 			const projection = projectReviewMessageText(text);
@@ -7189,11 +7159,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const showBubble = visibleText !== "" || rest.length > 0;
 			if (projection === null) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_chat_client.UserStyleBubble, {
 				content,
-				sessionId,
 				renderMessageImages,
-				openAttachment,
-				openParsedAttachment,
-				copyAttachment,
+				references: {
+					openFile,
+					openSkill
+				},
 				t,
 				actions: (value) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MessageActions, {
 					text: value,
@@ -7330,7 +7300,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"uiConversation",
 			"remote",
 			"connection",
-			"settingsScope",
+			"configForms",
 			"sessions",
 			"conversation",
 			"inputTriggers",
@@ -7344,7 +7314,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		async function apply(ctx) {
 			const disposeRemote = await ctx.remote.$mount(TYPERT_REMOTE);
 			const disposeReviewSource = ctx.inputTriggers.registerSource(reviewCommentSource());
-			const settings = ctx.settingsScope.bind({ namespace: FILE_REVIEW_SETTINGS_NAMESPACE });
+			const settings = ctx.configForms.get(FILE_REVIEW_SETTINGS_NAMESPACE);
 			const wordWrap = {
 				getSnapshot: () => settings.getSnapshot().value?.wordWrap ?? false,
 				subscribe: (listener) => settings.subscribe(listener)
@@ -7397,17 +7367,16 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				zh,
 				en
 			}), "file-review: dictionaries");
-			ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
-				name: "settings.plugin.item",
-				key: FILE_REVIEW_SETTINGS_NAMESPACE,
-				priority: -100,
-				locale: NS,
-				inject: () => ({
-					hooks: { fileReviewSettings: settings },
-					setWordWrap: (value) => settings.set("wordWrap", value),
-					setDiffLayout: (value) => settings.set("diffLayout", value)
-				})
-			}, FileReviewSettingsCard));
+			ctx.slots.inject("settings.plugins.tab", () => ctx.slots.register({
+				name: "settings.plugins.tab",
+				id: FILE_REVIEW_SETTINGS_NAMESPACE,
+				order: 20,
+				label: () => t("settings.title"),
+				locale: NS
+			}, (props) => (0, react.createElement)(FileReviewSettingsTab, {
+				...props,
+				settings
+			})));
 			ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
 				name: "conversation.input.dock",
 				id: "file-review-comments",
@@ -7424,7 +7393,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}, ReviewUserMessage));
 			ctx.slots.inject("conversation.chat.turnTail", () => ctx.slots.register({
 				name: "conversation.chat.turnTail",
-				select: selectProducedFiles,
+				id: "dsh-file-review:produced-files",
 				priority: -2,
 				registrant: "dsh-file-review",
 				locale: NS,
@@ -7436,7 +7405,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						applyChanges: remote.applyChanges
 					};
 				}
-			}, ProducedFiles));
+			}, ProducedFilesSlot));
 			ctx.provide("chatFileMentions", { forClosing(owner) {
 				const reviews = selectProducedFiles(owner);
 				if (reviews === null) return void 0;

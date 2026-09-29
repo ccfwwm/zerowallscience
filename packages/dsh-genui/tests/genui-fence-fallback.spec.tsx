@@ -8,6 +8,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { renderGenuiFence } from '../src/client/index.tsx'
+import { describeFenceFailure } from '../src/client/fence-render.tsx'
 
 afterEach(cleanup)
 
@@ -121,6 +122,26 @@ describe('tier-2 structural repair (settled messages only)', () => {
 })
 
 describe('spec healing (parseable but structurally invalid)', () => {
+  it('shows repaired schema failure instead of the original JSON parse failure', () => {
+    const REPAIRED_SCHEMA_FAILURE = '{"items":[{"type":"stat","value":"好",},]}'
+    render(<div>{renderGenuiFence(REPAIRED_SCHEMA_FAILURE, 's0')}</div>)
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain('stat')
+    expect(alert.textContent).toContain('label')
+    expect(alert.textContent).not.toContain('解析失败')
+  })
+
+  it('returns no diagnostic when settled repair produces a renderable spec', () => {
+    const REPAIRED = '{"items":[{"type":"text","content":"好",},]}'
+    expect(describeFenceFailure(REPAIRED)).toBeNull()
+  })
+
+  it('uses settled repair for schema diagnostics', () => {
+    const TIER2_SCHEMA_FAILURE = '{"items":[{"type":"stat","value":"好"'
+    expect(describeFenceFailure(TIER2_SCHEMA_FAILURE)).toContain('label')
+    expect(describeFenceFailure(TIER2_SCHEMA_FAILURE, { settled: false })).toContain('解析失败')
+  })
+
   it('heals defects silently and renders the UI', () => {
     render(<div>{renderGenuiFence(
       '{"title":"x","items":[{"type":"table","columns":["a"],"rows":[["1"]]},[],["callout","info","已排除","x"],{"type":"button","label":"ok","action":"a"}]}',

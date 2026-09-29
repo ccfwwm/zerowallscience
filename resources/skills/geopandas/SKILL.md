@@ -53,7 +53,7 @@ Required packages and versions are shown in the signed manifest.
 ```
 
 The list above is a manifest entry list, not a venv recipe. It is installed
-into `%APPDATA%\zerowall-science\Python\Lib\site-packages`.
+into the shared runtime's `Lib\site-packages` directory reported by the Host.
 
 Keep optional plotting and PostGIS packages pinned in the project lock as well.
 Do not mix binary geospatial packages from incompatible package channels.

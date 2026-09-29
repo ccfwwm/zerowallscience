@@ -115,7 +115,9 @@ describe('file review smoke', () => {
     })
     await expect(access(createdPath)).rejects.toThrow()
     expect(await readFile(deletedPath, 'utf8')).toBe('before deletion\n')
-    expect((await lstat(deletedPath)).mode & 0o777).toBe(0o600)
+    // Windows exposes synthetic mode bits and does not preserve POSIX chmod
+    // values; the service still validates content and lifecycle state there.
+    if (process.platform !== 'win32') expect((await lstat(deletedPath)).mode & 0o777).toBe(0o600)
 
     expect(await service.apply(agent, { ...request, action: 'redo' })).toEqual({
       files: [
@@ -124,7 +126,7 @@ describe('file review smoke', () => {
       ],
     })
     expect(await readFile(createdPath, 'utf8')).toBe('created\n')
-    expect((await lstat(createdPath)).mode & 0o777).toBe(0o640)
+    if (process.platform !== 'win32') expect((await lstat(createdPath)).mode & 0o777).toBe(0o640)
     await expect(access(deletedPath)).rejects.toThrow()
   })
 })

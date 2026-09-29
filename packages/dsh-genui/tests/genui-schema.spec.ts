@@ -63,9 +63,34 @@ describe('GenUI runtime schema normalization', () => {
     expect(result.repaired?.items[0]).toEqual({ type: 'steps', steps: [] })
   })
 
+  it('returns each nested record error once across validation and processing', () => {
+    const cases = [
+      { name: 'chart data', spec: { items: [{ type: 'chart', kind: 'line', data: [3, 4] }] }, paths: ['items[0].data[0]', 'items[0].data[1]'] },
+      { name: 'chart series data', spec: { items: [{ type: 'chart', kind: 'line', data: [{ label: 'a', value: 1 }], series: [{ label: 'S1', data: [3, 4] }] }] }, paths: ['items[0].series[0].data[0]', 'items[0].series[0].data[1]'] },
+      { name: 'tabs', spec: { items: [{ type: 'tabs', tabs: [3, 4] }] }, paths: ['items[0].tabs[0]', 'items[0].tabs[1]'] },
+      { name: 'accordion', spec: { items: [{ type: 'accordion', items: [3, 4] }] }, paths: ['items[0].items[0]', 'items[0].items[1]'] },
+      { name: 'two chart series with five points each', spec: { items: [{ type: 'chart', kind: 'line', data: [{ label: 'a', value: 1 }], series: [{ label: 'S1', data: [1, 2, 3, 4, 5] }, { label: 'S2', data: [1, 2, 3, 4, 5] }] }] }, paths: [
+        'items[0].series[0].data[0]', 'items[0].series[0].data[1]', 'items[0].series[0].data[2]', 'items[0].series[0].data[3]', 'items[0].series[0].data[4]',
+        'items[0].series[1].data[0]', 'items[0].series[1].data[1]', 'items[0].series[1].data[2]', 'items[0].series[1].data[3]', 'items[0].series[1].data[4]',
+      ] },
+    ]
+    for (const { name, spec, paths } of cases) {
+      const expected = paths.map(path => `${path} must be an object`)
+      for (const errors of [validateGenuiSpec(spec).errors, processGenuiSpec(spec).errors]) {
+        expect(errors, name).toEqual([...new Set(errors)])
+        expect(errors.filter(error => error.endsWith('must be an object')), name).toEqual(expected)
+      }
+    }
+  })
+
   it('validates enum domains from the runtime registry', () => {
-    expect(validateGenuiSpec({ items: [{ type: 'callout', content: 'x', tone: 'warn' }] }).errors)
+    // 'purple' stays outside every tone vocabulary; 'warn'/'danger' on a
+    // callout are now value-aliases (warn→warning, danger→error, issue #186),
+    // so they normalize instead of failing the enum.
+    expect(validateGenuiSpec({ items: [{ type: 'callout', content: 'x', tone: 'purple' }] }).errors)
       .toContain('items[0].tone must be one of info, success, warning, error')
+    expect(validateGenuiSpec({ items: [{ type: 'callout', content: 'x', tone: 'warn' }] }).errors).toEqual([])
+    expect(validateGenuiSpec({ items: [{ type: 'callout', content: 'x', tone: 'danger' }] }).errors).toEqual([])
     expect(validateGenuiSpec({ items: [{
       type: 'plot',
       series: [{ expr: 'x', kind: 'bars' }],
@@ -126,6 +151,39 @@ describe('GenUI runtime schema normalization', () => {
       { type: 'tabs', tabs: [{ label: '一', items: [{ type: 'text', content: '内容' }] }] },
       { type: 'table', columns: ['名称'], rows: [['苹果']] },
     ])
+  })
+
+  it('derives table columns from a headerless 2D rows/data body', () => {
+    // Real-session sample: the model ships `{type:'table', data:[[…],[…]]}`
+    // with no `columns`. Before this, repair dropped the node and the whole
+    // fence degraded to a code block; now the leading row becomes the header.
+    const headed = processGenuiSpec({ items: [
+      { type: 'table', data: [['#', '任务'], ['t1', '后端'], ['t2', '前端']] },
+    ] })
+    expect(headed.errors).toEqual([])
+    expect(headed.repaired?.items).toEqual([
+      { type: 'table', columns: ['#', '任务'], rows: [['t1', '后端'], ['t2', '前端']] },
+    ])
+
+    // Ragged body: the leading row is data, so the columns are neutral names
+    // rather than a fabricated header taken from that row's text.
+    const ragged = processGenuiSpec({ items: [
+      { type: 'table', rows: [['a', 'b', 'c'], ['1']] },
+    ] })
+    expect(ragged.errors).toEqual([])
+    expect(ragged.repaired?.items).toEqual([
+      { type: 'table', columns: ['列1', '列2', '列3'], rows: [['a', 'b', 'c'], ['1']] },
+    ])
+
+    // Header-only capture stays a (header) table with an empty body.
+    expect(processGenuiSpec({ items: [{ type: 'table', rows: [['名称', '结果']] }] }).repaired?.items)
+      .toEqual([{ type: 'table', columns: ['名称', '结果'], rows: [] }])
+
+    // A non-2D body is still a contract error, not something to invent from.
+    expect(processGenuiSpec({ items: [{ type: 'table', rows: 42 }] }).errors)
+      .toContain("items[0]: type 'table' requires rows (array)")
+    expect(processGenuiSpec({ items: [{ type: 'table', rows: [] }] }).errors)
+      .toContain("items[0]: type 'table' requires columns (array)")
   })
 
   it('warns for native unknown fields but keeps custom nodes opaque', () => {

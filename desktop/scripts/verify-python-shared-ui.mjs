@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { access, lstat, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { _electron } from 'playwright'
 import { locatePackagedApp } from './packaged-app.mjs'
 
@@ -18,6 +18,13 @@ await mkdir(output, { recursive: true })
 const env = { ...process.env, ZEROWALL_USER_DATA_DIR: join(profile, 'userdata'), ZEROWALL_DISABLE_DEFAULT_MCP: '1', APPDATA: join(profile, 'appdata'), LOCALAPPDATA: join(profile, 'localappdata') }
 delete env.ELECTRON_RUN_AS_NODE
 await Promise.all(['appdata', 'localappdata', 'userdata'].map(name => mkdir(join(profile, name), { recursive: true })))
+// A writable per-user install directory is intentionally the default runtime
+// location in production. Point this test at its disposable profile so the
+// first-run initialization cannot modify desktop/dist/win-unpacked/Python.
+const isolatedRuntimeRoot = join(profile, 'shared-python', 'Python')
+const pythonLocationPath = join(env.LOCALAPPDATA, 'ZeroWall Science', 'python-location.json')
+await mkdir(dirname(pythonLocationPath), { recursive: true })
+await writeFile(pythonLocationPath, `${JSON.stringify({ runtimeRoot: isolatedRuntimeRoot })}\n`)
 const evidence = { executable: packaged.executablePath, profile, screenshots: [], pageErrors: [], layouts: [], startup: null, startupProgress: [], version: null, baseInstall: null, final: null, jobs: [] }
 const electron = await _electron.launch({ executablePath: packaged.executablePath, args: [`--user-data-dir=${join(profile, 'chromium')}`], env, timeout: 120_000 })
 let page
@@ -48,6 +55,17 @@ try {
     await page.setViewportSize({ width, height })
     await panel.evaluate(element => { element.scrollTop = 0 })
     const layout = await panel.evaluate(element => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth, clientHeight: element.clientHeight, scrollHeight: element.scrollHeight, overflowY: getComputedStyle(element).overflowY, fontSize: getComputedStyle(element).fontSize, background: getComputedStyle(element).backgroundColor }))
+    if (layout.scrollWidth > layout.clientWidth + 1) {
+      const overflow = await panel.evaluate(element => {
+        const edge = element.getBoundingClientRect().right
+        return [...element.querySelectorAll('*')].map(node => ({
+          tag: node.tagName.toLowerCase(), className: typeof node.className === 'string' ? node.className : '',
+          right: Math.round(node.getBoundingClientRect().right), scrollWidth: node.scrollWidth,
+          clientWidth: node.clientWidth,
+        })).filter(item => item.right > edge + 1 || item.scrollWidth > item.clientWidth + 1).slice(0, 20)
+      })
+      console.error(`Python panel overflow at ${width}px: ${JSON.stringify({ layout, overflow })}`)
+    }
     assert(layout.scrollWidth <= layout.clientWidth + 1, `Python panel has horizontal overflow at ${width}px`)
     assert.equal(layout.overflowY, 'auto')
     const screenshot = join(output, `python-${width}x${height}.png`)
@@ -57,7 +75,9 @@ try {
     await page.screenshot({ path: bottom, fullPage: true }); evidence.screenshots.push(bottom)
     evidence.layouts.push({ width, height, ...layout })
   }
-  const jobsRoot = join(profile, 'userdata', 'zerowall-python', 'jobs')
+  // The resolver prefers a writable packaged install directory.  The manager
+  // lives beside the selected shared runtime, so do not assume the old
+  // Roaming/userdata slot layout here.
   const waitForBaseInstall = async () => {
     const deadline = Date.now() + 20 * 60_000
     let previous
@@ -74,13 +94,15 @@ try {
   }
   evidence.baseInstall = await waitForBaseInstall()
   assert(evidence.startupProgress.some(item => item.stage === 'installing' || item.stage === 'downloading'), 'Automatic base installation did not report visible progress')
-  const stablePython = join(profile, 'userdata', 'Python')
+  const stablePython = evidence.final?.runtimeRoot ?? await page.evaluate(() => window.zerowallDesktop.pythonEnvironment({ action: 'status', requestId: crypto.randomUUID() })).then(result => result.runtimeRoot)
+  assert.equal(stablePython, isolatedRuntimeRoot, 'Packaged first-run test escaped its disposable Python runtime directory')
   await access(join(stablePython, 'python.exe'))
   assert.equal((await lstat(stablePython)).isSymbolicLink(), false, 'Shared Python must be a real stable directory')
   evidence.final = await page.evaluate(() => window.zerowallDesktop.pythonEnvironment({ action: 'status', requestId: crypto.randomUUID() }))
   const installed = await page.evaluate(() => window.zerowallDesktop.pythonEnvironment({ action: 'list_packages', requestId: crypto.randomUUID() }))
   assert.equal(installed.inventory.version, '3.12.10')
   assert(installed.inventory.packageCount > 0)
+  const jobsRoot = join(dirname(stablePython), 'zerowall-python', 'jobs')
   evidence.jobs = await Promise.all((await readdir(jobsRoot).catch(() => [])).filter(name => name.endsWith('.json')).map(async name => JSON.parse(await readFile(join(jobsRoot, name), 'utf8'))))
   assert(evidence.jobs.some(job => job.method === 'initialize' && job.state === 'complete'), 'First launch must finish the base runtime installation')
   assert.equal(evidence.pageErrors.length, 0, 'Packaged renderer raised JavaScript errors')

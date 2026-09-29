@@ -196,7 +196,7 @@ export class AiCloudLlmController {
     if (models.length === 0) {
       // Migrate historical selections only; no free-provider adapter is loaded.
       if (current.provider.startsWith(ROUTE_PREFIX) || ['opencode2dsh', 'opencode-zen-free-provider'].includes(current.provider)) {
-        await defaults.saveSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+        await this.saveManagedDefault(defaults, { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
       }
       return
     }
@@ -210,10 +210,10 @@ export class AiCloudLlmController {
     if (current.provider.startsWith(ROUTE_PREFIX) && !routes.includes(current.provider)) {
       const replacement = models.find(model => routes.includes(model.providerId))
       if (replacement !== undefined) {
-        await defaults.saveSelection({ provider: replacement.providerId, model: replacement.modelId })
+        await this.saveManagedDefault(defaults, { provider: replacement.providerId, model: replacement.modelId })
         return
       }
-      await defaults.saveSelection({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+      await this.saveManagedDefault(defaults, { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
       return
     }
     const preferred = [...models]
@@ -221,7 +221,17 @@ export class AiCloudLlmController {
       .sort((left, right) => left.modelId.localeCompare(right.modelId))[0]
     const available = preferred ?? models.find(model => routes.includes(model.providerId))
     if (available === undefined) return
-    await defaults.saveSelection({ provider: available.providerId, model: available.modelId })
+    await this.saveManagedDefault(defaults, { provider: available.providerId, model: available.modelId })
+  }
+
+  private async saveManagedDefault(defaults: AgentDefaultModelService, selection: ModelSelection): Promise<void> {
+    try {
+      await defaults.saveSelection(selection)
+    } catch {
+      // Account refresh is best-effort. A read-only/high-priority config layer
+      // must not prevent the Harness host from completing startup.
+      this.ctx.logger.warn('Could not persist the automatically selected AI Cloud model; keeping the current default selection.')
+    }
   }
 }
 
@@ -277,12 +287,15 @@ function managedProfiles(models: readonly AiCloudManagedModel[]): Map<string, Re
       api,
       baseURL: entry.baseURL,
       compat: managedCompat(api),
+      // Model availability comes from the account catalog. Input modalities
+      // stay part of the route contract; they are not discovered by making a
+      // probe request to the provider.
       defaultInput: ['text', 'image'],
       models: [...entry.models.keys()].map(id => ({
         id,
         name: id,
         api: managedApi(id),
-        ...managedInput(id),
+        input: ['text', 'image'],
         ...managedReasoning(id),
       })),
     }
@@ -352,14 +365,6 @@ function managedReasoning(modelId: string): Pick<NonNullable<PiAiProviderProfile
       max: 'max',
     },
   }
-}
-
-function managedInput(modelId: string): Pick<NonNullable<PiAiProviderProfile['models']>[number], 'input'> | Record<string, never> {
-  // Managed routes are verified by the Host's active visual probe. Model
-  // names are not capability evidence: gateways may expose vision variants
-  // under vendor-specific or compatibility aliases.
-  void modelId
-  return { input: ['text', 'image'] }
 }
 
 function groupIdOf(provider: string): string {

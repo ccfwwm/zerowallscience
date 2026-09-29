@@ -118,8 +118,22 @@ export function collectPartialCandidates(raw: string): { candidates: PartialCand
 /** Try to parse a candidate as a GenuiSpec. */
 function trySpec(candidate: string, allowSingleComponentRoot: boolean): GenuiSpec | null {
   try {
-    const value: unknown = JSON.parse(candidate)
+    let value: unknown = JSON.parse(candidate)
+    // Double-encoded body (issue #186): the whole spec arrived as a JSON
+    // string — decode exactly once so the fence channel reaches the guard,
+    // which reports the rewrite when the same value arrives un-parsed from a
+    // tool call.
+    if (typeof value === 'string') {
+      try {
+        value = JSON.parse(value)
+      } catch {
+        return null
+      }
+    }
     if (isGenuiSpec(value)) return value
+    // A root-level component list is the envelope minus its braces (issue
+    // #186): adopt it as `items` instead of rejecting the body.
+    if (Array.isArray(value) && value.length > 0) return { items: value }
     // Single-component roots are part of the documented fence vocabulary
     // (e.g. a bare {"type":"callout",…} body) — wrap into a col so the
     // items-gated pipeline renders them (panel/append hoisted).

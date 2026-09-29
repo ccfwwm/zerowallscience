@@ -109,6 +109,24 @@ describe('ZeroWall AI Cloud LLM routes', () => {
     expect(saveSelection).toHaveBeenCalledWith({ provider: 'zerowall-ai-cloud-2', model: 'deepseek-chat' })
   })
 
+  it('keeps account synchronization non-fatal when the automatic default selection cannot be saved', async () => {
+    const { ctx, controller } = await setup(new MemorySecrets())
+    const saveSelection = vi.fn().mockRejectedValue(new Error('configuration is locked by an overlay'))
+    ctx.provide('agentDefaultModel', {
+      currentSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-v4-flash' }),
+      saveSelection,
+    } as never)
+    const warn = vi.spyOn(ctx.logger, 'warn')
+
+    await expect(controller.update({
+      status: 'signedIn', balanceFreshness: 'current', lowBalance: false,
+      models: [{ providerId: 'zerowall-ai-cloud-2', groupId: '2', groupName: 'Research', modelId: 'deepseek-chat', baseUrl: 'https://code.aicodeme.xyz/v1' }],
+    })).resolves.toBeUndefined()
+
+    expect(ctx.llm.listProviders()).toEqual([{ id: 'zerowall-ai-cloud-2', name: 'ZeroWall AI Cloud - Research' }])
+    expect(warn).toHaveBeenCalledWith('Could not persist the automatically selected AI Cloud model; keeping the current default selection.')
+  })
+
   it('restores reasoning effort choices for managed DeepSeek reasoning models', async () => {
     const secrets = new MemorySecrets()
     secrets.values.set('zerowall.ai-cloud.group.2', 'managed-secret')

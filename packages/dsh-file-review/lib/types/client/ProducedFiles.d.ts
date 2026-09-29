@@ -1,5 +1,5 @@
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client';
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots';
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 import type { FileReviewRequest, FileReviewResult } from '../change-types.ts';
 import type { NS } from './locales.ts';
 import type { ReviewTarget } from './FileReviewTab.tsx';
@@ -14,6 +14,14 @@ export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile'> & {
     turn?: TurnTailOwnerProps['turn'] | undefined;
     seq?: number | undefined;
 } & PropsLocale<typeof NS>;
+export type ProducedFilesSlotInjected = {
+    openReview: (target: ReviewTarget) => void;
+    inspectChanges?: (request: FileReviewRequest) => Promise<FileReviewResult>;
+    applyChanges?: (request: FileReviewRequest) => Promise<FileReviewResult>;
+};
+export type ProducedFilesSlotProps = PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<typeof NS> & InjectFace<ProducedFilesSlotInjected>;
+/** Harness rc.2 list slots pass the owner directly; derive the matched files inside the component. */
+export declare function ProducedFilesSlot(props: PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<typeof NS> & InjectFace<ProducedFilesSlotInjected>): import("react").JSX.Element | null;
 /** Render one turn's produced files and open their native review tab. */
 export declare function ProducedFiles({ matched: reviews, openFile, openReview, inspectChanges, applyChanges, turn, seq, t, }: ProducedFilesProps): import("react").JSX.Element;
 //# sourceMappingURL=ProducedFiles.d.ts.map

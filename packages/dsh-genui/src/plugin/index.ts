@@ -12,13 +12,14 @@
 import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
-import type { SkillProvider, SkillRegistry } from '@deepseek-ai/dsh-skill'
+import type { SkillProvider } from '@deepseek-ai/dsh-skill'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRenderUiTool, createValidateDshUiTool } from './tool.ts'
+import { installFenceFeedback } from './fence-feedback.ts'
 
 /* ---------------- lazy engine asset route ---------------- */
 
@@ -82,8 +83,48 @@ async function serveGenuiAsset(req: IncomingMessage, res: ServerResponse): Promi
   }
 }
 
-/** Minimal UI guidance; component fields and examples are loaded through the genui skill. */
-export const GENUI_SECTION_TEXT = `Structured UI is optional. When an interactive or data-rich presentation clearly helps, call the \`render_ui\` tool with a valid JSON spec. Keep ordinary answers as text; do not emit \`dsh-ui\` fences unless the user asks for an inline interactive view. The \`genui\` skill contains component and field details.`
+/** The fence language description injected into every assembled system prompt.
+ *  Deliberately slim: the `genui` skill carries the full component→field
+ *  mapping; this section keeps only the contract that must always be
+ *  present (fence syntax, type whitelist, and critical behavioral rules). */
+export const GENUI_SECTION_TEXT = `You can render interactive UI components INSIDE your reply — between paragraphs — by emitting a fenced block with the language tag \`dsh-ui\` containing a JSON spec:
+
+\`\`\`dsh-ui
+{"title":"<user-language text>","gap":14,"items":[...]}
+\`\`\`
+
+Allowed \`type\` values; the \`genui\` skill, when available, carries the full content→component mapping and per-component field details:
+
+- 布局: text · row · col · grid · card · divider · spacer · hero（封面块，一条回答最多一个）
+- 展示: badge · stat · progress · list · table · keyvalue · timeline · file-tree · breadcrumb · callout · steps · diff · json · code · copy · avatar · audio · video
+- 图表: chart {"kind":"bars|line|donut","data":[{"label":"...","value":n}],"series":[{"label":"...","data":[...]}]?,"horizontal":true?,"stacked":true?}（series：bars 分组/堆叠 / line 多序列；horizontal 横向柱） · echart (preset 名或 option 直通，预设清单见 skill) · plot (函数图)
+- 交互: button · input · textarea · select · checkbox · switch · slider · radio · submit · quiz · link · tabs · accordion
+- 高级: mermaid (流程图/时序/甘特/ER 等，关键字见 skill) · diagram (架构/流程图，27 种 kind) · scene3d (3D WebGL)
+
+**默认就该出 UI**：出现下列情况至少出一个围栏：
+- ≥3 条并列要点 → \`list\`；数字对比 → \`table\`；指标/进度/状态 → \`stat\`/\`progress\`/\`badge\`
+- 步骤/时间线 → \`steps\`/\`timeline\`/\`mermaid\`；架构/流程 → \`diagram\` 或 \`mermaid\`；风险/结论 → \`callout\`；代码/改动 → \`code\`/\`diff\`/\`json\`
+- 行内富文本：支持公式、\`code\`、加粗、高亮、链接；禁用 Markdown table / fenced code，改用 table / code / diff / json。
+- 默认无卡：按触发条件使用组件，每个组件承载不同信息；卡片只用于并排项与数据对象，单段文字用标题、正文与间距。
+
+**发回答前最后自检一次**：这段内容里有没有 ≥3 条并列要点、任何对比、任何数字/指标、任何步骤或流程？有就先转成组件再开口。**状态汇报、进度说明、提交与改动清单同样算**。
+- 趋势/占比 → \`chart\`（≤8 点）或 \`echart\`（多序列/要交互时）；配色默认跟随主题，只有语义需要时才用 \`palette\`/\`card.accent\`；grid 子节点用 \`"span":2\` 跨列做宽窄混排；数据多时给 \`table\`/\`chart\`/\`list\` 配一个 \`input\`(id) + \`filter\` 绑定，读者能就地筛选。
+
+**字段速查**（完整见 genui skill）：\`stat\` \`{"label","value","delta"?}\` · \`table\` \`{"columns":[...],"rows":[[...]],"types"?,"details"?,"filter"?,"export"?}\` · \`progress\` \`{"value":0-100,"label"?,"variant"?,"target"?}\` · \`keyvalue\` \`{"pairs":[{"key","value"}]}\` · \`steps\` \`{"steps":[{"title","desc"?}]}\` · \`file-tree\` \`{"items":[{"name","type":"file|dir","children"?}]}\` · \`callout\` \`{"content","tone"?,"title"?}\`
+
+**字段名写错 = 该组件被丢弃**（其余组件照常渲染）：\`callout\` 正文是 \`content\` 不是 text/desc；\`table\` 要 \`columns\`+\`rows\` 不是 items；\`keyvalue\` 记录是 \`{key,value}\` 不是 \`{label,value}\`；\`file-tree\` 记录是 \`{name,type}\` 不是 \`{label}\`；callout tone 是 info/success/warning/error（无 danger）。不确定就调 \`validate_dsh_ui\`。
+
+Rules:
+- LANGUAGE: reply+UI=conversation language; schema fixed. NEVER infer it from prompt/skill/examples/tools. Replace \`<user-language ...>\`; never emit these placeholders literally.
+- JSON 严格：坏组件被丢弃，坏围栏变代码块；≥3 节点或含 table 时调 validate_dsh_ui，按诊断修改并重验；小围栏字段存疑也先验证。
+- warning=block_markdown：按 replacement 改写并重验。
+- 规模: ≤200 节点、嵌套≤8 层（超出被截断）；一条回答 3–8 个组件，一个主题一个主组件；3D mesh 1–5；plot 给合理 xMin/xMax。
+- LOCAL-FIRST + actions: UI 能自己做的状态变化（判卷、判题、重置、展开、选中）就地完成，零往返；action 只用于必须模型参与的事。交互组件带 "action":"name"，交互以 [genui-action] name + 组件数据回传，届时重渲染更新 UI；无 action 的按钮禁用。
+- Durable state: 交互状态按「会话+内容指纹」持久化——刷新/重放恢复；重渲染相同内容保留，新内容重置。
+- 卷子模式: 每题一个 radio（group+answer+explanation）+ 一个 submit（groups 全列），本地判分。
+- Secrets ban: 不索取密码、API Key、Token、恢复码；需要时拒绝并解释。
+- Tool channel: render_ui 工具把同一 spec 渲染为工具行卡片（交付物型界面用）；围栏用于回答内联 UI。
+- Panel: "panel":true 只渲染进会话面板 dock 并原地更新；"append":true 追加合并（同标签 tabs 追加/新标签加入/尾部追加）；上限 200 节点/200 次追加，满了发 replace 重建。面板组件来的 [genui-action] 只回一个 panel:true 围栏 + 至多一行 10 字内确认，不解释、不用普通围栏。`
 
 /**
  * Register the GenUI output-language section and the render_ui tool.
@@ -98,7 +139,7 @@ export const inject = ['systemPrompt']
 
 const BUNDLED_SKILL_RANK = 600
 const BUNDLED_SKILL_PROVIDER = 'dsh-genui'
-const BUNDLED_SKILL_DESCRIPTION = 'GenUI 完整组件与字段规范，用于生成 dsh-ui 结构化交互界面。'
+const BUNDLED_SKILL_DESCRIPTION = 'GenUI dsh-ui component/schema reference. Preserve conversation language for all user-visible text.'
 const BUNDLED_SKILL_INVOCATION = { modelInvocable: true, userInvocable: true } as const
 
 /** Register through the provider path so source=bundled also gets bundled precedence. */
@@ -108,12 +149,11 @@ function bundledSkillProvider(): SkillProvider {
     ? resolve(moduleDirectory, '../../SKILL.md')
     : resolve(moduleDirectory, '../SKILL.md')
   const raw = readFileSync(path, 'utf8')
-  // Package files may retain CRLF on Windows even though the repository
-  // normalizes text to LF. Normalize only the in-memory definition so the
-  // frontmatter parser and skill registry behave identically on every host.
-  const normalized = raw.replace(/\r\n?/g, '\n')
-  const end = normalized.indexOf('\n---\n', 4)
-  if (!normalized.startsWith('---\n') || end < 0) throw new Error('genui SKILL.md has invalid frontmatter')
+  // npm preserves the upstream CRLF line endings on Windows. Treat either
+  // newline convention as a frontmatter boundary so the bundled skill is
+  // still registered from a Windows installation.
+  const frontmatter = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(raw)
+  if (frontmatter === null) throw new Error('genui SKILL.md has invalid frontmatter')
   return {
     name: BUNDLED_SKILL_PROVIDER,
     list: () => Promise.resolve([{
@@ -135,17 +175,31 @@ function bundledSkillProvider(): SkillProvider {
       provider: BUNDLED_SKILL_PROVIDER,
       path,
       resourceBase: { kind: 'directory', path: dirname(path) },
-      content: normalized.slice(end + 5),
+      content: raw.slice(frontmatter[0].length),
     }),
   }
 }
 
-export function apply(ctx: Context): void {
+/**
+ * Plugin config as the host passes it (unvalidated: the node half deliberately
+ * imports no schema library, so a profile can set these keys directly).
+ */
+export interface GenuiPluginConfig {
+  /**
+   * 在最终 dsh-ui 围栏无法渲染的回合中请求模型发送一次修正版（issue #160）。
+   * 默认开启，设置为 false 可以关闭。每回合和每个围栏正文最多请求一次，子代理不触发，
+   * 每次请求会消耗模型步数。
+   */
+  fenceFeedback?: boolean
+}
+
+export function apply(ctx: Context, config?: GenuiPluginConfig): void {
   ctx.systemPrompt.section({
     name: 'genui:fence',
     order: ctx.systemPrompt.getSectionOrder('STRUCTURED_OUTPUT'),
     text: GENUI_SECTION_TEXT,
   })
+  installFenceFeedback(ctx, config?.fenceFeedback !== false)
   // Hosts without tool access keep the fence channel. The dependency fiber
   // starts whenever tools becomes available and unloads its registrations
   // before either the service or this plugin is replaced.
@@ -156,19 +210,8 @@ export function apply(ctx: Context): void {
     }, 'dsh-genui: model tools')
   })
 
-  // SkillRegistry is optional. Probe immediately and subscribe to service
-  // binding so startup order cannot prevent GenUI from registering its
-  // bundled skill on real hosts or in minimal test hosts.
-  let skillRegistered = false
-  const tryRegisterSkill = (value: SkillRegistry | undefined): void => {
-    if (skillRegistered || value === undefined) return
-    const dispose = value.registerProvider(() => bundledSkillProvider())
-    ctx.effect(() => dispose, 'genui.skill-provider')
-    skillRegistered = true
-  }
-  tryRegisterSkill(ctx.reflect.get('skills', false) as SkillRegistry | undefined)
-  ctx.on('internal/service', (name: string, value: unknown) => {
-    if (name === 'skills') tryRegisterSkill(value as SkillRegistry | undefined)
+  ctx.inject(['skills'], (skillCtx) => {
+    skillCtx.skills.registerProvider(() => bundledSkillProvider())
   })
 
   // webServer.register returns a raw disposer, so an explicit effect binds the

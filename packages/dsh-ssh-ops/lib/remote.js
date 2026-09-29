@@ -15258,12 +15258,13 @@ function def(method, requestSchema, requestType, resultSchema2, resultType, opti
         name: "request",
         wire: "request",
         source: "json",
-        codec: { mode: "strict", typeSymbol: `${PACKAGE}/types#${requestType}`, schema: requestSchema }
+        codec: { mode: "strict", typeSymbol: `${PACKAGE}/types#${requestType}`, create: () => requestSchema, schema: requestSchema }
       }
     ],
     result: {
       mode: "strict",
       typeSymbol: `${PACKAGE}/types#${resultType}`,
+      create: () => resultSchema2,
       schema: resultSchema2
     },
     sourceLocation: { file: "src/index.js", line: 1, column: 1 }

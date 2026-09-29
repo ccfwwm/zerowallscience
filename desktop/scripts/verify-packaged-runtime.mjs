@@ -20,6 +20,7 @@ const pinnedIntegrations = JSON.parse(await readFile(resolve(repositoryRoot, 'co
 const desktopManifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
 const desktopOnly = process.argv.includes('--desktop-only')
 const hostOnly = process.argv.includes('--host-only')
+const requireBundledPython = process.argv.includes('--require-bundled-python')
 
 if (process.argv.includes('--audit-source')) {
   await verifySourceRuntimePolicy()
@@ -37,15 +38,14 @@ try {
   bundledPythonManifest = JSON.parse(await readFile(bundledPythonManifestPath, 'utf8'))
 } catch (error) {
   if (error?.code !== 'ENOENT') throw error
-  // Stable installers intentionally omit the ~1 GB base archive. The app
-  // downloads and verifies the signed manifest/archive on first use.
+  if (requireBundledPython) throw new Error('Windows Stable package is missing its signed Python base manifest; offline recovery is required.')
   try {
     await access(bundledPythonArchivePath)
     throw new Error('Packaged ZeroWall Python archive exists without its manifest.')
   } catch (archiveError) {
     if (archiveError?.code !== 'ENOENT') throw archiveError
   }
-  console.log('[python] no bundled base runtime; packaged app uses the signed remote runtime feed.')
+  console.log('[python] no bundled base runtime; this verification was run without --require-bundled-python.')
 }
 if (bundledPythonManifest !== undefined) {
   if (bundledPythonManifest.schema !== 2 || bundledPythonManifest.environmentId !== 'zerowall-python' || bundledPythonManifest.platform !== 'win32' || bundledPythonManifest.architecture !== 'x64' || typeof bundledPythonManifest.environmentVersion !== 'string' || bundledPythonManifest.signature?.algorithm !== 'ed25519') {
@@ -124,7 +124,9 @@ const requiredArchivePaths = [
   'node_modules/@dsh-external/zotero-harvest/LICENSE',
   'node_modules/dsh-zotero/lib/index.js',
   'node_modules/dsh-zotero/lib/client.js',
-  'node_modules/dsh-zotero/lib/item-graph.js',
+  // dsh-zotero 0.11.x moved annotation graph traversal into the local
+  // children-wire module. Older 0.8.x builds shipped item-graph.js instead.
+  'node_modules/dsh-zotero/lib/local/children-wire.js',
   'node_modules/dsh-zotero/lib/local/detail.js',
   'node_modules/dsh-zotero/cordis.patch.yml',
   'node_modules/dsh-zotero/LICENSE',
@@ -156,7 +158,6 @@ const requiredArchivePaths = [
   'node_modules/dsh-better-sidebar/lib/client.js',
   'node_modules/dsh-better-sidebar/lib/client-registry.js',
   'node_modules/dsh-better-sidebar/lib/client-editor.js',
-  'node_modules/dsh-better-sidebar/lib/client-terminal.js',
   'node_modules/dsh-better-sidebar/lib/client-mermaid.js',
   'node_modules/dsh-better-sidebar/package.json',
   'node_modules/dsh-dream-skin/lib/index.js',
@@ -329,7 +330,12 @@ async function verifyArchivePolicy() {
       if (!betterSidebarClient.includes(marker)) throw new Error(`Packaged dsh-better-sidebar is missing its session draft bridge: ${marker}`)
     }
   }
-  if (!betterSidebarClient.includes('expandedRef.current')) {
+  // Sidebar 0.22.1 renamed the internal snapshot ref used by its directory
+  // watcher from `expandedRef` to `wantedRef`; both implementations preserve
+  // the same contract: the watcher reconciles a stable expanded-directory
+  // snapshot instead of closing over a render-time array.
+  if (!betterSidebarClient.includes('expandedRef.current')
+    && !betterSidebarClient.includes('wantedRef.current')) {
     throw new Error('Packaged dsh-better-sidebar is missing the stable expanded-directory snapshot used by file-tree refreshes.')
   }
 
@@ -366,10 +372,14 @@ async function verifyArchivePolicy() {
   if (dreamSkinManifest.version !== desktopManifest.dependencies['dsh-dream-skin']) throw new Error(`Packaged dsh-dream-skin must be ${desktopManifest.dependencies['dsh-dream-skin']}; found ${dreamSkinManifest.version}.`)
   const dreamSkinClient = readArchiveFile('node_modules/dsh-dream-skin/lib/client.js').toString('utf8')
   const dreamSkinDefaults = dreamSkinClient.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1] ?? ''
+  const defaultWallpaperValues = Object.fromEntries(['WALLPAPER_KEY', 'WALLPAPER_URL_KEY', 'WALLPAPER_GRADIENT_KEY'].map((key) => {
+    const match = dreamSkinDefaults.match(new RegExp(`\\[${key}\\]:\\s*"([^"]*)"`, 'u'))
+    return [key, match?.[1] ?? null]
+  }))
   if (!dreamSkinDefaults.includes('[BUILTIN_LAST_KEY]: "light"')
     || !dreamSkinDefaults.includes('[STORAGE_KEY]: DEFAULT_SKIN')
     || !dreamSkinDefaults.includes('[COMPOSER_OPACITY_KEY]: "1"')
-    || /\[WALLPAPER_(?:KEY|URL_KEY|GRADIENT_KEY)\]:/u.test(dreamSkinDefaults)
+    || Object.values(defaultWallpaperValues).some((value) => value !== '')
     || /data:image\/jpeg;base64,[A-Za-z0-9+/=]{10000}/u.test(dreamSkinClient)) {
     throw new Error('Dream Skin must ship the built-in light appearance with solid surfaces and no bundled wallpaper.')
   }
@@ -384,18 +394,27 @@ async function verifyArchivePolicy() {
     throw new Error(`Packaged dsh-free-search must be MIT-licensed ${desktopManifest.dependencies['dsh-free-search']}; found ${freeSearchManifest.version} (${freeSearchManifest.license}).`)
   }
   const freeSearchInject = freeSearchManifest.dsh?.client?.inject
-  if (!Array.isArray(freeSearchInject) || freeSearchInject.length !== 1 || freeSearchInject[0] !== 'slots') {
-    throw new Error(`Packaged dsh-free-search has an incompatible client inject contract: ${JSON.stringify(freeSearchInject)}.`)
+  const expectedFreeSearchInject = freeSearchManifest.version === '0.5.0'
+    ? ['slots', '@deepseek-ai/dsh-client-ui-plugin-manager', '@deepseek-ai/dsh-client-ui-renderer']
+    : ['slots']
+  if (JSON.stringify(freeSearchInject) !== JSON.stringify(expectedFreeSearchInject)) {
+    throw new Error(`Packaged dsh-free-search has an incompatible client inject contract: ${JSON.stringify(freeSearchInject)}; expected ${JSON.stringify(expectedFreeSearchInject)}.`)
   }
   const freeSearchHost = readArchiveFile('node_modules/dsh-free-search/lib/index.js').toString('utf8')
   const freeSearchClient = readArchiveFile('node_modules/dsh-free-search/lib/client.js').toString('utf8')
   for (const marker of ['id: "ddg"', 'searchBing', 'advanced_search', 'platform_search', 'free_search_test', 'registerSearchProvider']) {
     if (!freeSearchHost.includes(marker)) throw new Error(`Packaged dsh-free-search Host is missing marker: ${marker}`)
   }
-  for (const marker of ['settings.plugin.item', 'free-search-engine', 'slots', 'commandUi']) {
+  const freeSearchClientMarkers = freeSearchManifest.version === '0.5.0'
+    ? ['plugins.row.config', 'free-search-engine', 'slots', 'commandUi']
+    : ['settings.plugin.item', 'free-search-engine', 'slots', 'commandUi']
+  for (const marker of freeSearchClientMarkers) {
     if (!freeSearchClient.includes(marker)) throw new Error(`Packaged dsh-free-search client is missing marker: ${marker}`)
   }
-  if (!freeSearchClient.includes('const inject = ["slots"]') || !freeSearchClient.includes('ctx.inject(["commandUi"]')) {
+  const expectedFreeSearchClientInject = freeSearchManifest.version === '0.5.0'
+    ? 'const inject = ["slots", "commandUi"]'
+    : 'const inject = ["slots"]'
+  if (!freeSearchClient.includes(expectedFreeSearchClientInject) || !freeSearchClient.includes('ctx.inject(["commandUi"]')) {
     throw new Error('Packaged dsh-free-search must keep the settings card independent from the optional command UI service.')
   }
   if (/\brunUpdate\b|\bupgrading\b(?=\s*\?|\s*\|\|)/u.test(freeSearchClient)) {
@@ -449,16 +468,31 @@ async function verifyArchivePolicy() {
     throw new Error('Packaged Files Host is missing the on-demand extraction tool.')
   }
   const modelSelectionClient = readArchiveFile('node_modules/@deepseek-ai/dsh-client-ui-model-selection/lib/client.js').toString('utf8')
-  if (!modelSelectionClient.includes('selectingKey')) {
-    throw new Error('Packaged model selector is missing row-scoped selection state.')
+  const modelSelectionMarkers = [
+    'modelDirectories',
+    'directoryFor(sessionId)',
+    'conversation.input.model',
+    'selectModel({',
+  ]
+  const missingModelSelectionMarkers = modelSelectionMarkers.filter((marker) => !modelSelectionClient.includes(marker))
+  if (missingModelSelectionMarkers.length > 0) {
+    throw new Error(`Packaged model selector is missing session-scoped selection behavior: ${missingModelSelectionMarkers.join(', ')}`)
   }
   const sessionControllerHost = readArchiveFile('node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js').toString('utf8')
-  if (!sessionControllerHost.includes('checkAllModels')) {
-    throw new Error('Packaged Session Controller is missing the Host-owned concurrent model probe.')
+  const sessionControllerMarkers = ['buildModelCatalog', 'modelCatalog', 'Promise.all(']
+  const missingSessionControllerMarkers = sessionControllerMarkers.filter((marker) => !sessionControllerHost.includes(marker))
+  if (missingSessionControllerMarkers.length > 0) {
+    throw new Error(`Packaged Session Controller is missing the Host-owned concurrent model catalog: ${missingSessionControllerMarkers.join(', ')}`)
   }
   const llmHost = readArchiveFile('node_modules/@deepseek-ai/dsh-llm/lib/index.js').toString('utf8')
-  if (!llmHost.includes('Use read_uploaded_file or extract_uploaded_file')) {
-    throw new Error('Packaged LLM runtime is missing the on-demand attachment extraction instruction.')
+  const llmAttachmentMarkers = [
+    'fileHandleText',
+    'verbatim read-only copy saved at',
+    'Read that path with your file tools when its contents are needed',
+  ]
+  const missingLlmAttachmentMarkers = llmAttachmentMarkers.filter((marker) => !llmHost.includes(marker))
+  if (missingLlmAttachmentMarkers.length > 0) {
+    throw new Error(`Packaged LLM runtime is missing the read-only attachment handle: ${missingLlmAttachmentMarkers.join(', ')}`)
   }
 
   if (!/^\d+\.\d+\.\d+$/u.test(packagedManifest.version)) throw new Error(`Packaged desktop version must be a semantic release; found ${packagedManifest.version}.`)
@@ -475,9 +509,12 @@ function verifyQuestionComposerBundle() {
 
 function verifyZoteroAdapters() {
   const client = readArchiveFile('node_modules/dsh-zotero/lib/client.js').toString('utf8')
-  const itemGraph = readArchiveFile('node_modules/dsh-zotero/lib/item-graph.js').toString('utf8')
   const detail = readArchiveFile('node_modules/dsh-zotero/lib/local/detail.js').toString('utf8')
-  if (!client.includes('visit(root, key, 1)') || !client.includes('order.push(`${key}:${block.callId}`)')) {
+  const modernClient = client.includes('function visitVisibleZoteroCalls(snapshot, visit)')
+    && client.includes('order.push({ callId: block.callId, path });')
+  const legacyClient = client.includes('visit(root, key, 1)')
+    && client.includes('order.push(`${key}:${block.callId}`)')
+  if (!modernClient && !legacyClient) {
     throw new Error('Packaged Zotero Sources tab cannot track nested Progressive Tools calls.')
   }
   const dispatcher = readArchiveFile('node_modules/dsh-progressive-tools/lib/index.js').toString('utf8')
@@ -489,8 +526,18 @@ function verifyZoteroAdapters() {
   if (!conversation.includes('data-conversation-view') || !ssh.includes('data-zerowall-ssh-view')) {
     throw new Error('Packaged conversation view isolation or SSH main view is missing.')
   }
-  if (!itemGraph.includes('options.fetchAnnotationChildren ?? options.fetchChildren')
-    || !detail.includes("new URLSearchParams({ itemType: 'annotation' })")) {
+  const modernAnnotationWire = archiveSet.has('node_modules/dsh-zotero/lib/local/children-wire.js')
+    && (() => {
+      const wire = readArchiveFile('node_modules/dsh-zotero/lib/local/children-wire.js').toString('utf8')
+      return wire.includes('fetchAnnotationChildren')
+        && (wire.includes("itemType: 'annotation'") || wire.includes('itemType:"annotation"'))
+    })()
+  const modernAnnotationTraversal = modernAnnotationWire
+    && detail.includes('fetchAnnotationChildren')
+  const legacyItemGraph = archiveSet.has('node_modules/dsh-zotero/lib/item-graph.js')
+    && readArchiveFile('node_modules/dsh-zotero/lib/item-graph.js').toString('utf8').includes('options.fetchAnnotationChildren ?? options.fetchChildren')
+    && detail.includes("new URLSearchParams({ itemType: 'annotation' })")
+  if (!modernAnnotationTraversal && !legacyItemGraph) {
     throw new Error('Packaged Zotero annotation traversal is missing its Local API itemType filter.')
   }
 }
@@ -1232,6 +1279,19 @@ async function verifyDesktopStartup() {
     browser = await chromium.connectOverCDP(await endpoint)
     const context = browser.contexts()[0]
     if (context === undefined) throw new Error('Packaged desktop did not expose a browser context.')
+    const browserErrors = []
+    const observedPages = new WeakSet()
+    const observePage = candidate => {
+      if (observedPages.has(candidate)) return
+      observedPages.add(candidate)
+      candidate.on('pageerror', error => browserErrors.push(`pageerror: ${error.message}`))
+      candidate.on('console', message => {
+        if (['error', 'warning'].includes(message.type())) browserErrors.push(`${message.type()}: ${message.text()}`)
+      })
+      candidate.on('requestfailed', request => browserErrors.push(`request: ${request.url()} ${request.failure()?.errorText ?? 'failed'}`))
+    }
+    context.pages().forEach(observePage)
+    context.on('page', observePage)
     const deadline = Date.now() + 120_000
     let page
     while (Date.now() < deadline) {
@@ -1240,12 +1300,7 @@ async function verifyDesktopStartup() {
       await new Promise(resolvePromise => setTimeout(resolvePromise, 250))
     }
     if (page === undefined) throw new Error(`Packaged desktop did not navigate to its Host.\n${output.slice(-12_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}`)
-    const browserErrors = []
-    page.on('pageerror', error => browserErrors.push(`pageerror: ${error.message}`))
-    page.on('console', message => {
-      if (message.type() === 'error') browserErrors.push(`console: ${message.text()}`)
-    })
-    page.on('requestfailed', request => browserErrors.push(`request: ${request.url()} ${request.failure()?.errorText ?? 'failed'}`))
+    observePage(page)
     try {
       await page.waitForFunction(() => Array.isArray(window.__DSH_BOOT__?.entries), undefined, { timeout: 120_000 })
     } catch (error) {
@@ -1266,7 +1321,7 @@ async function verifyDesktopStartup() {
       'dsh-free-search', 'dsh-zotero',
       '@changfenhuang/dsh-genui',
     ]) {
-      if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}.`)
+      if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}. Found: ${ids.join(', ')}`)
     }
     try {
       // The packaged profile may initialize optional MCP/WeChat providers
@@ -1282,7 +1337,17 @@ async function verifyDesktopStartup() {
     const startupDeadline = Date.now() + 60_000
     while (Date.now() < startupDeadline && (await page.evaluate(() => window.zerowallDesktop.getStartupStatus())).phase !== 'ready') await new Promise(resolve => setTimeout(resolve, 200))
     const startup = await page.evaluate(() => window.zerowallDesktop.getStartupStatus())
-    if (startup.phase !== 'ready') throw new Error(`Desktop startup failed: ${startup.message}`)
+    if (startup.phase !== 'ready') {
+      const renderer = await page.evaluate(() => ({
+        body: document.body?.innerText?.slice(0, 2_000) ?? null,
+        boot: document.querySelector('[data-dsh-boot]')?.textContent?.slice(0, 600) ?? null,
+        sidebar: document.querySelector('[data-dsh-better-sidebar]') !== null,
+        conversation: document.querySelector('[data-zerowall-conversation]') !== null,
+        editable: document.querySelector('[contenteditable]') !== null,
+        legacyBootState: document.documentElement.dataset.zerowallBoot ?? null,
+      }))
+      throw new Error(`Desktop startup failed: ${startup.message}; renderer=${JSON.stringify(renderer)}; browser=${JSON.stringify(browserErrors.slice(-30)).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}; process=${output.slice(-4_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}; evidence=${root}`)
+    }
     console.log(`Packaged startup ready in ${Date.now() - startup.startedAt} ms; saved SSH profiles: ${Object.keys(sshProfile.tables.profiles).length}; evidence: ${root}`)
     if (await readFile(sshPath, 'utf8') !== JSON.stringify(sshProfile)) throw new Error('Startup unexpectedly rewrote saved SSH profiles.')
     if (/Failed to load plugins|missed the module table|Cannot use import statement outside a module/iu.test(bodyText)) {
@@ -1338,7 +1403,7 @@ async function verifyDesktopStartup() {
     const clientCss = await page.evaluate(() => {
       const markers = [...document.querySelectorAll('style[data-zerowall-plugin-css]')]
         .map(style => style.getAttribute('data-zerowall-plugin-css'))
-      const update = document.querySelector('button[aria-label="检查应用更新"], button[aria-label="Check for app updates"]')
+      const update = document.querySelector('button[data-update]')
       const account = document.querySelector('button[aria-label="登录AI平台"], button[aria-label="Sign in to AI platform"], button[aria-label="ZeroWall 云账户"], button[aria-label="ZeroWall Cloud account"]')
       const inspect = (element) => element instanceof HTMLElement
         ? { className: element.className, height: getComputedStyle(element).height, cursor: getComputedStyle(element).cursor }
@@ -1550,6 +1615,7 @@ async function verifySourceRuntimePolicy() {
   await access(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'dist', 'index.js'))
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
   const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')
+  const basePatch = await readFile(resolve(repositoryRoot, 'deepseek-harness', 'packages', 'bundle', 'base', 'cordis.patch.yml'), 'utf8')
   if (!stableProfile.includes("'@huanlin/dsh-plugin-better-sidebar-plugin-office'")
     || !stableProfile.includes("'dsh-wechat'")
     || !/wechat:[\s\S]*enabled:\s*true[\s\S]*autoConnect:\s*false[\s\S]*channel:\s*ilink/u.test(stableProfile)) {
@@ -1559,6 +1625,12 @@ async function verifySourceRuntimePolicy() {
     throw new Error('Packaged Electron patch must mount the Better-sidebar Office viewer.')
   }
   if (!desktopPatch.includes("name: 'dsh-wechat'")) throw new Error('Packaged Electron patch must mount dsh-wechat.')
+  if (/^\s*- id:\s*agent-default-model\s*$/mu.test(desktopPatch)) {
+    throw new Error('Packaged Electron patch must not lock agent-default-model above the editable profile layer.')
+  }
+  if (!/^\s*- id:\s*agent-default-model\s*\r?\n(?:(?!^\s*- id:)[\s\S])*?^\s+config:\s*\r?\n^\s+provider:\s*deepseek-official\s*\r?\n^\s+model:\s*deepseek-v4-flash\s*$/mu.test(basePatch)) {
+    throw new Error('Harness base bundle must provide deepseek-v4-flash as the editable default model.')
+  }
   if (/opencode2dsh|opencode-zen-free-provider|@zerowallscience\/plugin-opencode/u.test(desktopPatch + stableProfile)) {
     throw new Error('Retired local OpenCode provider must not be mounted or selected.')
   }

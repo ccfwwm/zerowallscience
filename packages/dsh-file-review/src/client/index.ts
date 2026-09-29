@@ -8,12 +8,13 @@
  * the owning view renders an empty chain and inert prose at zero cost.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import { createElement } from 'react'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { ChatFileMentions } from '@deepseek-ai/dsh-client-ui-chat/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { FileReviewRequest, FileReviewResult } from '../change-types.ts'
@@ -22,12 +23,12 @@ import {
   DEFAULT_WORD_WRAP,
   FILE_REVIEW_SETTINGS_NAMESPACE,
   type Config,
-  type DiffLayout,
 } from '../settings-contract.ts'
-import { ProducedFiles } from './ProducedFiles.tsx'
+import { ProducedFilesSlot, type ProducedFilesSlotInjected } from './ProducedFiles.tsx'
 import { installNativeSidebarIntegration } from './native-sidebar-adapter.tsx'
 import type { FileReviewTabRuntime } from './FileReviewTab.tsx'
-import { FileReviewSettingsCard } from './FileReviewSettingsCard.tsx'
+import { FileReviewSettingsTab } from './FileReviewSettingsCard.tsx'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { ReviewCommentsDock } from './ReviewCommentsDock.tsx'
 import { ReviewUserMessage } from './ReviewUserMessage.tsx'
 import { en, NS, zh, type DeliverablesKey } from './locales.ts'
@@ -53,7 +54,7 @@ export const inject = [
   'uiConversation',
   'remote',
   'connection',
-  'settingsScope',
+  'configForms',
   'sessions',
   'conversation',
   'inputTriggers',
@@ -68,9 +69,7 @@ export const inject = [
 export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(TYPERT_REMOTE)
   const disposeReviewSource = ctx.inputTriggers.registerSource(reviewCommentSource())
-  const settings = ctx.settingsScope.bind<Config>({
-    namespace: FILE_REVIEW_SETTINGS_NAMESPACE,
-  })
+  const settings: ConfigForm<Config> = ctx.configForms.get(FILE_REVIEW_SETTINGS_NAMESPACE)
   const wordWrap = {
     getSnapshot: () => settings.getSnapshot().value?.wordWrap ?? DEFAULT_WORD_WRAP,
     subscribe: (listener: () => void) => settings.subscribe(listener),
@@ -137,20 +136,17 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   })
   ctx.uiConversation.events.register(deliverablesDefinition)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'file-review: dictionaries')
-  ctx.slots.inject('settings.plugin.item', () =>
+  ctx.slots.inject('settings.plugins.tab', () =>
     ctx.slots.register(
       {
-        name: 'settings.plugin.item',
-        key: FILE_REVIEW_SETTINGS_NAMESPACE,
-        priority: -100,
+        name: 'settings.plugins.tab',
+        id: FILE_REVIEW_SETTINGS_NAMESPACE,
+        order: 20,
+        label: () => t('settings.title'),
         locale: NS,
-        inject: () => ({
-          hooks: { fileReviewSettings: settings },
-          setWordWrap: (value: boolean) => settings.set('wordWrap', value),
-          setDiffLayout: (value: DiffLayout) => settings.set('diffLayout', value),
-        }),
       },
-      FileReviewSettingsCard,
+      (props: PropsRuntime<'settings.plugins.tab'> & PropsLocale<typeof NS>) =>
+        createElement(FileReviewSettingsTab, { ...props, settings }),
     ),
   )
   ctx.slots.inject('conversation.input.dock', () =>
@@ -185,11 +181,11 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
     ctx.slots.register(
       {
         name: 'conversation.chat.turnTail',
-        select: selectProducedFiles,
+        id: 'dsh-file-review:produced-files',
         priority: -2,
         registrant: 'dsh-file-review',
         locale: NS,
-        inject: (sessionId) => {
+        inject: (sessionId: SessionId): ProducedFilesSlotInjected => {
           const remote = reviewRemoteFor(sessionId)
           return {
             openReview: (target: Parameters<typeof openReview>[1]) => openReview(sessionId, target),
@@ -198,7 +194,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           }
         },
       },
-      ProducedFiles,
+      ProducedFilesSlot,
     ),
   )
   // The prose side of the same vocabulary: the chat view reaches this face

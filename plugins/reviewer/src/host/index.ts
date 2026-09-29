@@ -12,6 +12,14 @@ import z from '@deepseek-ai/schemastery'
 export const name = 'zerowall-reviewer'
 export const inject = ['settings', 'subagents', 'commands', 'llm']
 export const REVIEWER_SETTINGS_NS = 'zerowall-reviewer' as SettingsNamespace
+export const REVIEWER_MESSAGE_SOURCE_KIND = 'plugin:zerowall-reviewer' as const
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Automatic correction prompt produced by the ZeroWall reviewer. */
+    'plugin:zerowall-reviewer': { kind: typeof REVIEWER_MESSAGE_SOURCE_KIND }
+  }
+}
 
 // Reviewer events are durable plugin-owned session events. Register them with
 // the rc8 persistence allow-list during composition instead of a global patch.
@@ -49,6 +57,7 @@ export const ReviewerSettingsSchema: z<ReviewerSettings> = z.object({
   model: z.string().default(''),
   reasoningEffort: z.string().default(''),
 })
+export const Config = ReviewerSettingsSchema
 
 export interface ReviewFinding {
   messageIndex: number
@@ -134,7 +143,12 @@ const REVIEW_SCHEMA: ObjectJsonSchema = {
 function textOf(blocks: readonly ContentBlock[]): string {
   return blocks.flatMap((block) => {
     if (block.type === 'text' || block.type === 'reasoning') return [block.text]
-    if (block.type === 'tool-result') return [textOf(block.content)]
+    // rc.2 stores tool results as role=tool messages whose content is made of
+    // ordinary blocks. Keep a structural fallback for pre-rc.2 nested logs.
+    const legacy = block as unknown as { type?: unknown; content?: unknown }
+    if (legacy.type === 'tool-result' && Array.isArray(legacy.content)) {
+      return [textOf(legacy.content as readonly ContentBlock[])]
+    }
     return []
   }).join('\n')
 }
@@ -436,8 +450,7 @@ function reviewerModelCandidate(entry: LlmModelInfo): boolean {
   return entry.inputModalities === undefined || entry.inputModalities.includes('text')
 }
 
-async function runReview(ctx: Context, agent: Agent, events: readonly SessionEvent[], turn: number, signal: AbortSignal): Promise<ReviewReport> {
-  const settings = ctx.settings.get(REVIEWER_SETTINGS_NS) as ReviewerSettings
+async function runReview(ctx: Context, agent: Agent, events: readonly SessionEvent[], turn: number, signal: AbortSignal, settings: ReviewerSettings): Promise<ReviewReport> {
   let model = currentModel(agent, events, settings)
   if (model.options?.provider && model.options.model) {
     try {
@@ -503,13 +516,19 @@ export function canAutoCorrect(report: ReviewReport): boolean {
     && report.findings.every(finding => finding.evidenceStatus === 'verified' || finding.evidenceStatus === 'auto-repaired')
 }
 
-export function apply(ctx: Context): void {
-  const scope = ctx.settings.register(REVIEWER_SETTINGS_NS, ReviewerSettingsSchema)
+export function apply(ctx: Context, config: ReviewerSettings): void {
+  let settings = config
+  ctx.on('settings/document-updated', (ns) => {
+    if (ns !== REVIEWER_SETTINGS_NS) return
+    const value = ctx.settings.describe().find(row => row.ns === REVIEWER_SETTINGS_NS)?.value
+    if (value !== undefined) settings = value as ReviewerSettings
+  })
   // Existing installations used an implicit default-on reviewer. Migrate that
   // implicit value to opt-in once while preserving later explicit choices.
-  const legacy = scope.get()
-  if (legacy.autoReviewConfigured !== true) {
-    void scope.replace({ ...legacy, autoReviewConfigured: true }).catch((error: unknown) => {
+  if (settings.autoReviewConfigured !== true) {
+    const migrated = { ...settings, autoReviewConfigured: true }
+    settings = migrated
+    void ctx.settings.replace(REVIEWER_SETTINGS_NS, migrated).catch((error: unknown) => {
       ctx.logger.warn(`Reviewer settings migration failed: ${error instanceof Error ? error.message : String(error)}`)
     })
   }
@@ -521,15 +540,14 @@ export function apply(ctx: Context): void {
     return effort === undefined ? config : { ...config, reasoningEffort: ReasoningEffortId(effort) }
   })
   const review = async (agent: Agent, turn: number, signal: AbortSignal, allowCorrection: boolean): Promise<ReviewReport | undefined> => {
-    const settings = scope.get()
     const events = currentTurnEvents(agent.session, turn)
     if (events.length === 0) return undefined
     try {
-      let report = await runReview(ctx, agent, events, turn, signal)
+      let report = await runReview(ctx, agent, events, turn, signal, settings)
       if (allowCorrection && canAutoCorrect(report)) {
         report.correction = 'requested'
         appendReport(agent.session, report)
-        agent.steer(createUserMessage({ content: [{ type: 'text', text: correctionPrompt(report) }], source: { kind: 'plugin', plugin: name } }))
+        agent.steer(createUserMessage({ content: [{ type: 'text', text: correctionPrompt(report) }], source: { kind: REVIEWER_MESSAGE_SOURCE_KIND } }))
         return report
       }
       if (allowCorrection && report.reviewStatus === 'failed' && report.hasUnverifiedEvidence === true) {
@@ -553,7 +571,7 @@ export function apply(ctx: Context): void {
     if (prior?.type === 'zerowall/reviewer/report') {
       if (prior.data.reReviewed === true || prior.data.correction !== 'requested') return
       try {
-        const followUp = await runReview(ctx, agent, currentTurnEvents(agent.session, turn), turn, signal)
+        const followUp = await runReview(ctx, agent, currentTurnEvents(agent.session, turn), turn, signal, settings)
         const reconciled: ReviewReport = followUp.findings.length === 0
           ? {
               ...prior.data,
@@ -590,7 +608,6 @@ export function apply(ctx: Context): void {
       }
       return
     }
-    const settings = scope.get()
     if (!effectiveEnabled(agent.session, settings) || !shouldAutoReview(agent.session.snapshotEvents(), turn)) return
     await review(agent, turn, signal, true)
   })
@@ -613,7 +630,6 @@ export function apply(ctx: Context): void {
     }
     if (action !== 'status') return { kind: 'error', text: `未知的审核命令：${action}` }
     const mode = latestMode(agent.session)
-    const settings = scope.get()
     const state = mode === 'inherit' ? (settings.autoReview ? '已开启' : '已关闭') : mode === 'on' ? '本会话开启' : '本会话关闭'
     return { kind: 'success', text: `审核${state}；可使用 /review now 进行一次审核` }
   })

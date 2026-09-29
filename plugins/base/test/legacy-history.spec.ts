@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import { SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import JsonlSessionPersistence from '../../../deepseek-harness/packages/session/session-persistence-jsonl/src/index.ts'
 import { generationLogPath } from '../../../deepseek-harness/packages/session/session-persistence-jsonl/src/format.ts'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -50,7 +50,7 @@ describe('removed module history compatibility', () => {
       await writeFile(path, bytes)
       await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
       if (type === 'future/required') {
-        await expect(ctx.sessionPersistence.open(id, 'read')).rejects.toThrow('unknown to this harness')
+        await expect(ctx.sessionPersistence.open(id, 'read')).rejects.toThrow('format v3 contains unknown event type')
         expect(await readFile(path)).toEqual(bytes)
         return
       }
@@ -66,8 +66,10 @@ describe('removed module history compatibility', () => {
         } finally { await handle.close() }
       }
       const stored = await readFile(path)
-      expect(stored.subarray(0, bytes.length)).toEqual(bytes)
-      expect(JSON.parse(stored.toString().trim().split('\n').at(-1)!)).toMatchObject({ seq: 2, type: 'turn/end' })
+      expect(stored).toEqual(bytes)
+      const currentPath = generationLogPath(root, undefined, id, SESSION_FORMAT_VERSION, 'none')
+      const current = await readFile(currentPath)
+      expect(JSON.parse(current.toString().trim().split('\n').at(-1)!)).toMatchObject({ seq: 2, type: 'turn/end' })
     } finally {
       await ctx.fiber.dispose()
       await rm(root, { recursive: true, force: true })

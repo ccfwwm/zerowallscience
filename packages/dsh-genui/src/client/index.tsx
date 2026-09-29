@@ -30,10 +30,12 @@ import type { Key, ReactNode } from 'react'
 import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
 import { installDomFenceRenderer } from './dom-fence.tsx'
 import { renderGenuiFence, type GenuiFenceContext } from './fence-render.tsx'
+import { renderSvgFence } from './svg-fence.tsx'
 import { createPanelSlashSource } from './panel-command.ts'
 import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
 import { GenuiToolView } from './toolview.tsx'
 import { mountAchievementToasts } from './achievement-toast.tsx'
+import { bridgeHostLocale } from './i18n/index.ts'
 import type { InputTriggerServiceContract } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { assetUrl } from './asset-loader.ts'
 
@@ -141,13 +143,19 @@ export function apply(ctx: Context): () => void {
   // Fence channel selection: the registry extension point when the host
   // ships it (contract line), the DOM observer otherwise (pristine line).
   // One plugin build serves both deployments.
+  // Language: follow the host's DSH language preference when the deployment
+  // ships the locale service, otherwise fall back to browser detection. Read
+  // OPTIONALLY (never declared in `inject`) so a pristine host without the
+  // service still renders — a declared-but-absent service would park the
+  // fiber forever and kill all GenUI rendering.
+  const localeDispose = bridgeHostLocale(ctx)
   const registerFn = (primitives as unknown as HostFenceExt).registerFenceRenderer
   const useRegistry = typeof registerFn === 'function' && !forcedDomChannel()
   const channel = useRegistry ? 'registry' : 'dom'
   console.info(`[genui] client active; fence-channel=${channel}`)
   const disposers: Array<() => void> = useRegistry
-    ? [registerFn!('dsh-ui', renderGenuiFence)]
-    : [installDomFenceRenderer(ctx, (sessionId, action, payload) => sendInlineGenuiAction(ctx, sessionId, action, payload))]
+    ? [localeDispose, registerFn!('dsh-ui', renderGenuiFence), registerFn!('svg', renderSvgFence)]
+    : [localeDispose, installDomFenceRenderer(ctx, (sessionId, action, payload) => sendInlineGenuiAction(ctx, sessionId, action, payload))]
   // Idle prefetch of the lazy engine assets: the browser downloads them at
   // LOW priority whenever the page is idle, so the first mermaid/3D node in
   // a session usually hits a warm cache instead of paying the fetch on first

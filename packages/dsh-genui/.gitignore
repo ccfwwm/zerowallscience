@@ -2,6 +2,8 @@ node_modules/
 *.tsbuildinfo
 lib/
 .e2e-artifacts/
+.e2e-artifacts-*/
+.compat-check-*/
 .playwright-cli/
 # macOS Finder metadata (never source)
 .DS_Store

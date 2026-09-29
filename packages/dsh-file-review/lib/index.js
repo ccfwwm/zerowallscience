@@ -26,6 +26,15 @@ function isReversibleChange(file) {
 //#region src/file-review-service.ts
 /** Host-side, workspace-contained undo / redo service for produced text diffs. */
 var FileConflictError = class extends Error {};
+/**
+* Windows exposes a synthetic mode mask for regular files and does not
+* preserve POSIX permission bits through chmod.  Lifecycle snapshots still
+* carry the originating mode so they remain portable, but mode mismatches
+* must not make an otherwise identical review conflict on Windows.
+*/
+function modesMatch(left, right) {
+	return process.platform === "win32" || left === right;
+}
 function inside$1(root, candidate) {
 	const child = relative(root, candidate);
 	return child === "" || !child.startsWith("..") && !isAbsolute(child);
@@ -122,7 +131,7 @@ function transformImage(image, file, action) {
 				if (next.kind !== "missing") return null;
 				next = virtualFile(next, diff.newText, diff.lifecycle.mode);
 			} else {
-				if (next.kind !== "file" || next.text !== diff.newText || next.mode !== diff.lifecycle.mode) return null;
+				if (next.kind !== "file" || next.text !== diff.newText || !modesMatch(next.mode, diff.lifecycle.mode)) return null;
 				next = {
 					kind: "missing",
 					filename: next.filename
@@ -133,7 +142,7 @@ function transformImage(image, file, action) {
 		if (diff.lifecycle?.kind === "delete") {
 			if (diff.oldText === null) return null;
 			if (action === "redo") {
-				if (next.kind !== "file" || next.text !== diff.oldText || next.mode !== diff.lifecycle.mode) return null;
+				if (next.kind !== "file" || next.text !== diff.oldText || !modesMatch(next.mode, diff.lifecycle.mode)) return null;
 				next = {
 					kind: "missing",
 					filename: next.filename
@@ -154,7 +163,7 @@ function transformImage(image, file, action) {
 	return next;
 }
 function sameImage(left, right) {
-	return left.kind === "missing" ? right.kind === "missing" : right.kind === "file" && left.text === right.text && left.mode === right.mode;
+	return left.kind === "missing" ? right.kind === "missing" : right.kind === "file" && left.text === right.text && modesMatch(left.mode, right.mode);
 }
 function inspectImage(image, file, requestedAction) {
 	if (!isReversibleChange(file)) return {
@@ -204,7 +213,7 @@ async function inspectOne(cwd, file, action) {
 async function assertUnchanged(image) {
 	try {
 		const currentStat = await lstat(image.filename);
-		if (currentStat.isSymbolicLink() || !currentStat.isFile() || (currentStat.mode & 511) !== image.mode) throw new FileConflictError("file changed while the operation was being prepared");
+		if (currentStat.isSymbolicLink() || !currentStat.isFile() || !modesMatch(currentStat.mode & 511, image.mode)) throw new FileConflictError("file changed while the operation was being prepared");
 		const current = await readFile(image.filename);
 		if (!Buffer.from(image.bytes).equals(current)) throw new FileConflictError("file changed while the operation was being prepared");
 	} catch (error) {
@@ -913,12 +922,12 @@ const FILE_REFERENCE_PROMPT = "When you successfully create or modify files, men
 * Register model guidance for the file-reference renderer shipped by this package.
 * @param ctx - host context carrying the system-prompt registry.
 */
-function apply(ctx, config = {}) {
-	ctx.inject(["settings"], (settingsCtx) => {
-		settingsCtx.settings.installSection(ctx, FILE_REVIEW_SETTINGS_NAMESPACE, Config, config, {
-			setSource: () => {},
-			onChange: () => {}
-		});
+function apply(ctx, _config = {}) {
+	const settings = ctx.get("settings");
+	if (typeof settings?.configure === "function") settings.configure({ auto: true });
+	else if (typeof settings?.installSection === "function") settings.installSection(ctx, FILE_REVIEW_SETTINGS_NAMESPACE, Config, _config, {
+		setSource: () => {},
+		onChange: () => {}
 	});
 	new FileReviewService(ctx);
 	registerFileLifecycleCapture(ctx);

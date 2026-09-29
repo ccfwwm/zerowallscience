@@ -24,6 +24,11 @@ async function workspace(): Promise<string> {
   return root
 }
 
+// Windows regular-file modes are reported as a synthetic 0666 mask.
+function expectedMode(mode: number): number {
+  return process.platform === 'win32' ? 0o666 : mode
+}
+
 function agent(cwd: string, callId: string, step = 1): Agent {
   return {
     session: {
@@ -98,7 +103,7 @@ describe('tool lifecycle capture', () => {
             newText: 'created',
             oldStart: 1,
             newStart: 1,
-            lifecycle: { kind: 'create', mode: 0o640 },
+            lifecycle: { kind: 'create', mode: expectedMode(0o640) },
           },
         ],
       },
@@ -161,7 +166,7 @@ describe('tool lifecycle capture', () => {
             newText: '',
             oldStart: 1,
             newStart: 1,
-            lifecycle: { kind: 'delete', mode: 0o600 },
+            lifecycle: { kind: 'delete', mode: expectedMode(0o600) },
           },
         ],
       },
@@ -363,7 +368,7 @@ describe('tool lifecycle capture', () => {
             newText: 'created',
             oldStart: 1,
             newStart: 1,
-            lifecycle: { kind: 'create', mode: 0o640 },
+            lifecycle: { kind: 'create', mode: expectedMode(0o640) },
           },
         ],
       },

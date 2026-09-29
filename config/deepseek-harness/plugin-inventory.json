@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "harness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
-    "branch": "codex/biomni-model-routing",
-    "commit": "b81aa60c90cf2e2c61711fd09cec93f6cc94a372",
+    "branch": "codex/zerowall-7.3.0",
+    "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
     "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
-    "upstreamCommit": "a66e4702047846cdaa10c66c9d3df3951f5ea70d",
-    "tag": "dsh-v0.1.5-rc.2",
-    "version": "0.1.5-rc.2",
+    "upstreamCommit": "477b4f420553e8a52c2fbccc464d7561b239c443",
+    "tag": "dsh-v0.1.7-rc.2",
+    "version": "0.1.7-rc.2",
     "source": "deepseek-harness",
     "packagedCli": "resources/app.asar/node_modules/@deepseek-ai/dsh/lib/bin.js",
     "kernelPackages": [
@@ -31,12 +31,12 @@
       "@deepseek-ai/dsh-subprocess",
       "@deepseek-ai/dsh-workspace"
     ],
-    "packageCount": 297
+    "packageCount": 345
   },
   "profiles": {
     "development": {
       "path": "profiles/generated/development.yml",
-      "dsh": "0.1.5-rc.2",
+      "dsh": "0.1.7-rc.2",
       "plugins": [
         "dsh-ssh-ops",
         "dsh-progressive-tools",
@@ -76,7 +76,7 @@
     },
     "preview": {
       "path": "profiles/generated/preview.yml",
-      "dsh": "0.1.5-rc.2",
+      "dsh": "0.1.7-rc.2",
       "plugins": [
         "dsh-ssh-ops",
         "dsh-progressive-tools",
@@ -116,7 +116,7 @@
     },
     "stable": {
       "path": "profiles/generated/stable.yml",
-      "dsh": "0.1.5-rc.2",
+      "dsh": "0.1.7-rc.2",
       "plugins": [
         "dsh-ssh-ops",
         "dsh-progressive-tools",
@@ -182,7 +182,7 @@
     },
     {
       "package": "dsh-dream-skin",
-      "version": "9.13.1",
+      "version": "9.27.1",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 4,
@@ -214,7 +214,7 @@
     },
     {
       "package": "@huanlin/dsh-plugin-better-sidebar-plugin-office",
-      "version": "github:HuanLinOTO/dsh-plugin-better-sidebar-plugin-office#3b881c9d002109444368b1a28d371663390b156b",
+      "version": "0.2.0",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 8,
@@ -222,7 +222,7 @@
     },
     {
       "package": "dsh-univer-office",
-      "version": "0.3.2",
+      "version": "0.3.5",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 9,
@@ -230,7 +230,7 @@
     },
     {
       "package": "dsh-zotero",
-      "version": "0.8.4",
+      "version": "0.11.0",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 10,
@@ -262,7 +262,7 @@
     },
     {
       "package": "dsh-free-search",
-      "version": "0.4.28",
+      "version": "0.5.0",
       "owner": "third-party",
       "source": "desktop/package.json",
       "loadOrder": 22,
@@ -273,7 +273,7 @@
     {
       "id": "base",
       "package": "@zerowallscience/plugin-base",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/base",
       "manifest": "plugins/base/zerowall.plugin.json",
       "client": true,
@@ -296,7 +296,7 @@
     {
       "id": "secrets",
       "package": "@zerowallscience/plugin-secrets",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/secrets",
       "manifest": "plugins/secrets/zerowall.plugin.json",
       "client": false,
@@ -318,7 +318,7 @@
     {
       "id": "environment",
       "package": "@zerowallscience/plugin-environment",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/environment",
       "manifest": "plugins/environment/zerowall.plugin.json",
       "client": true,
@@ -340,7 +340,7 @@
     {
       "id": "desktop-compat",
       "package": "@zerowallscience/plugin-desktop-compat",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/desktop-compat",
       "manifest": "plugins/desktop-compat/zerowall.plugin.json",
       "client": false,
@@ -361,7 +361,7 @@
     {
       "id": "projects",
       "package": "@zerowallscience/plugin-projects",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/projects",
       "manifest": "plugins/projects/zerowall.plugin.json",
       "client": true,
@@ -381,7 +381,7 @@
     {
       "id": "mcp",
       "package": "@zerowallscience/plugin-mcp",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/mcp",
       "manifest": "plugins/mcp/zerowall.plugin.json",
       "client": true,
@@ -405,7 +405,7 @@
     {
       "id": "account",
       "package": "@zerowallscience/plugin-account",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/account",
       "manifest": "plugins/account/zerowall.plugin.json",
       "client": true,
@@ -425,7 +425,7 @@
     {
       "id": "ai-cloud",
       "package": "@zerowallscience/plugin-ai-cloud",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/ai-cloud",
       "manifest": "plugins/ai-cloud/zerowall.plugin.json",
       "client": true,
@@ -448,7 +448,7 @@
     {
       "id": "files",
       "package": "@zerowallscience/plugin-files",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/files",
       "manifest": "plugins/files/zerowall.plugin.json",
       "client": true,
@@ -473,7 +473,7 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
@@ -498,7 +498,7 @@
     {
       "id": "research",
       "package": "@zerowallscience/plugin-research",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/research",
       "manifest": "plugins/research/zerowall.plugin.json",
       "client": true,
@@ -519,7 +519,7 @@
     {
       "id": "pubmed",
       "package": "@zerowallscience/plugin-pubmed",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/pubmed",
       "manifest": "plugins/pubmed/zerowall.plugin.json",
       "client": false,
@@ -547,7 +547,7 @@
     {
       "id": "mineru",
       "package": "@zerowallscience/plugin-mineru",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/mineru",
       "manifest": "plugins/mineru/zerowall.plugin.json",
       "client": true,
@@ -580,7 +580,7 @@
     {
       "id": "singlecell",
       "package": "@zerowallscience/plugin-singlecell",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/singlecell",
       "manifest": "plugins/singlecell/zerowall.plugin.json",
       "client": true,
@@ -615,7 +615,7 @@
     {
       "id": "execution",
       "package": "@zerowallscience/plugin-execution",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/execution",
       "manifest": "plugins/execution/zerowall.plugin.json",
       "client": true,
@@ -635,7 +635,7 @@
     {
       "id": "python",
       "package": "@zerowallscience/plugin-python",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/python",
       "manifest": "plugins/python/zerowall.plugin.json",
       "client": false,
@@ -657,7 +657,7 @@
     {
       "id": "runs",
       "package": "@zerowallscience/plugin-runs",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/runs",
       "manifest": "plugins/runs/zerowall.plugin.json",
       "client": true,
@@ -677,7 +677,7 @@
     {
       "id": "publications",
       "package": "@zerowallscience/plugin-publications",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/publications",
       "manifest": "plugins/publications/zerowall.plugin.json",
       "client": true,
@@ -697,7 +697,7 @@
     {
       "id": "skills",
       "package": "@zerowallscience/plugin-skills",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/skills",
       "manifest": "plugins/skills/zerowall.plugin.json",
       "client": true,
@@ -719,7 +719,7 @@
     {
       "id": "reviewer",
       "package": "@zerowallscience/plugin-reviewer",
-      "version": "7.0.0",
+      "version": "7.3.0",
       "source": "plugins/reviewer",
       "manifest": "plugins/reviewer/zerowall.plugin.json",
       "client": true,

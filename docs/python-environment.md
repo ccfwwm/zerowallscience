@@ -1,12 +1,14 @@
 # ZeroWall Science 共享 Python 环境
 
-桌面应用、MCP、Python Agent 工具、图像工具和科学插件共用 CPython 3.12.10。Windows 的真实运行目录固定为 `%APPDATA%\zerowall-science\Python`，包实际安装和扫描目录为 `%APPDATA%\zerowall-science\Python\Lib\site-packages`。该目录是普通目录，不是指向 slot 或快照的 Junction。
+桌面应用、MCP、Python Agent 工具、图像工具和科学插件共用 CPython 3.12.10。Windows 新安装会先尝试使用安装目录下的 `Python` 子目录；每用户安装通常可写，因此运行时会与应用一起部署。若安装在 `Program Files` 等不可写位置，则自动回退到 `%LOCALAPPDATA%\ZeroWall Science\Python`，不要求 `%APPDATA%`/Roaming 存在。新安装的应用用户数据也放在 LocalAppData；已有且可写的 Roaming 用户数据目录继续沿用，避免丢失会话。包实际安装和扫描目录为所选目录下的 `Lib\site-packages`。该目录是普通目录，不是指向 slot 或快照的 Junction。设置页可以选择其他真实、可写的数据目录；每次选择都会先做实际写入探测。
 
-## 稳定目录和旧版本迁移
+## 稳定目录和首次安装
 
-首次启动时，应用会在工作台可用后自动安装安装包内的签名基础 Python 环境，并显示下载、解压和验证进度；首次准备不要求用户手动点击安装。已有 `zerowall-python/current.json` 时，应用先读取旧版活动环境，将运行时和用户包复制到稳定 Python 目录，验证解释器及包状态，然后更新 `current.json`、`runtime.json` 和 `Python/manifest.json`。迁移失败时保留原环境并写入诊断，自动安装流程会继续尝试准备有效的基础环境，不会将半成品标记为活动环境。
+首次启动时，若选定目录没有可用 Python，应用直接把安装包内的签名基础归档解压到该目录的 `Python` 子目录，并显示解压和验证进度。首次安装不创建 `Python.migrating-*` 或 `Python.installing-*` 运行时目录，也不等待科研服务切换握手。没有 `%APPDATA%`/Roaming 目录也不影响首次准备。旧版 Roaming Python 目录和其中的路径配置只保留作人工恢复依据，不会作为活动环境来源，也不会复制到新目录。若目标目录有不完整的 Python 文件，原目录先移入管理目录的 recovery，签名环境验证失败时自动恢复；已有健康的签名环境直接复用。
 
-迁移完成后，Python 启动、包清单扫描和依赖安装均直接使用稳定目录。后台保留 `zerowall-python` 下的队列、计划、下载缓存、迁移兼容元数据和旧历史记录；普通依赖更新不会创建 `slots/local-*`，也不会切换活动环境 Junction。轮子、源码归档和临时解包结果只存放在管理缓存中，单包验证通过后才将文件写入稳定 `site-packages`。
+路径设置会先创建目标并实际写入临时文件，再原子保存指针；更改后需要重启，重启时由新路径重新创建或覆盖 `Python` 子目录。路径不可用时仍可打开设置页选择新目录。安装目录不可写时不会反复迁移或阻塞启动，用户可以改用 LocalAppData 或其他数据目录。应用更新可能重建安装目录下的运行时；需要跨安装版本长期保留自定义包时，可在设置页改用 LocalAppData。
+
+基础环境准备完成后，Python 启动、包清单扫描和依赖安装均直接使用稳定目录。依赖操作会先等待签名基础运行时完成；旧 Roaming/独立 profile 不会被直接拿来安装依赖。后台保留 `zerowall-python` 下的队列、计划、下载缓存和历史记录；普通依赖更新不会创建 `slots/local-*`，也不会切换活动环境 Junction。轮子、源码归档和临时解包结果只存放在管理缓存中，单包验证通过后才将文件写入稳定 `site-packages`。
 
 ## 安装、验证和再次检测
 
