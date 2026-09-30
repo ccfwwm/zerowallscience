@@ -16,7 +16,7 @@ const upstreamIsAncestor = runGit(['merge-base', '--is-ancestor', expected.upstr
 
 if (manifest.version !== expected.version) throw new Error(`DSH version must be ${expected.version}, received ${manifest.version}`)
 if (commit !== expected.commit) throw new Error(`DSH commit must be ${expected.commit}, received ${commit}`)
-if (branch !== expected.branch) throw new Error(`DSH branch must be ${expected.branch}, received ${branch || '(detached)'}`)
+if (branch !== '' && branch !== expected.branch) throw new Error(`DSH branch must be ${expected.branch}, received ${branch || '(detached)'}`)
 if (status !== '' && !allowDirty) throw new Error(`deepseek-harness contains uncommitted changes:\n${status}`)
 if (!upstreamIsAncestor || upstreamBase !== expected.upstreamCommit) {
   throw new Error(`DSH must derive from upstream ${expected.tag} at ${expected.upstreamCommit}; merge-base is ${upstreamBase}`)

@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Actual React/Host/Molstar WebGL reference. Does not claim packaged Electron acceptance. */
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
@@ -15,7 +16,7 @@ const require=createRequire(resolve('plugins/research/package.json'))
 const viteRequire=createRequire(require.resolve('vitest/package.json'))
 const {createServer}=await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const {chromium}=createRequire(resolve('desktop/package.json'))('playwright') as typeof import('playwright')
-const root=resolve('.build/molecule-viewer-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
+const root=resolve(zwsArtifactPaths.verification, 'molecule-viewer-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
 const store=new ResearchStore(join(root,'store.sqlite'));const project=store.createProject({name:'Synthetic molecule reference',rootPath:root});const service=new MoleculeService(store)
 const assets=[]
 for(const [name,text] of [['reference.cif',moleculeCif],['reference.pdb',moleculePdb]]){const path=join(root,name!);await writeFile(path,text!);assets.push(store.createDataAsset({projectId:project.id,name:name!,uri:pathToFileURL(path).href,location:'local',mediaType:'chemical/x-mmcif'}))}

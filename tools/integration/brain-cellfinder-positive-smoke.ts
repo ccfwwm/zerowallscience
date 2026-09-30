@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import {execFile} from 'node:child_process'
 import {mkdir,writeFile} from 'node:fs/promises'
@@ -8,7 +9,7 @@ import {ResearchStore} from '../../store/src/index.js'
 import {BrainAtlasService} from '../../plugins/research/src/host/brain-atlas.js'
 import {CELLFINDER_RUNNER} from '../../plugins/research/src/host/brainglobe-runner.js'
 if(!process.argv.includes('--run'))throw new Error('Pass --run for actual CPU cellfinder synthetic positives.')
-const root=resolve('.build/brain-cellfinder-positive',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
+const root=resolve(zwsArtifactPaths.verification, 'brain-cellfinder-positive',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
 const python=process.env.ZEROWALL_BRAINGLOBE_PYTHON||'python'
 const generate=`import json,sys,numpy as np
 from pathlib import Path

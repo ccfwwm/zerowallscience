@@ -1,10 +1,11 @@
+import { contract } from '../../tools/build/paths.mjs'
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import assert from 'node:assert/strict'
 
-const root=resolve(import.meta.dirname,'../../.build/installer-process-scope')
-const helper=resolve(import.meta.dirname,'../../.build/installer-ui/modern-installer.exe')
+const root=join(contract.verification,'installer-process-scope')
+const helper=join(contract.stage,'installer-ui/modern-installer.exe')
 const children=[]
 const call=(mode,path)=>new Promise((ok,fail)=>{const child=spawn(helper,[mode,path],{windowsHide:true,stdio:'ignore'});child.on('error',fail);child.on('exit',ok)})
 try {

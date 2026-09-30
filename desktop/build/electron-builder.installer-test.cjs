@@ -8,7 +8,7 @@ module.exports = {
   appId: `com.zerowall.science.installer-test-${key}`,
   productName: `ZeroWall Installer Test ${key}`,
   artifactName: `zerowall-installer-test-${version}.exe`,
-  directories: { ...base.directories, output: `../.build/installer-test-${key}` },
+  directories: { ...base.directories, output: require('../../tools/build/paths.cjs').buildPaths().verification + `/installer-test-${key}` },
   nsis: { ...base.nsis, shortcutName: `ZeroWall Installer Test ${key}` },
   publish: null,
 }

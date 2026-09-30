@@ -1,3 +1,4 @@
+import { contract } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -94,7 +95,7 @@ afterAll(async () => {
 
 afterEach(async context => {
   if (context.task.result?.state === 'fail') {
-    const diagnostic = join(desktopRoot, 'dist', 'verification-7.0.0'); mkdirSync(diagnostic, { recursive: true })
+    const diagnostic = join(contract.verification, 'electron'); mkdirSync(diagnostic, { recursive: true })
     await page.screenshot({ path: join(diagnostic, 'failed-workbench.png') }).catch(() => undefined)
     console.log('Failed packaged UI', (await page.locator('body').innerText().catch(() => '')).slice(-16000), rendererOutput.filter(line => line.startsWith('[pageerror]')).slice(-5))
   }
@@ -127,7 +128,7 @@ describe('ZeroWall Science Electron', () => {
       skin: localStorage.getItem('dsh-dream-skin:skin'),
       builtin: localStorage.getItem('dsh-dream-skin:builtin-last'),
     }))).toMatchObject({ dark: null, wallpaper: false, composer: '100%', modal: '100%', builtin: 'ivory', skin: 'ivory' })
-    const output = join(desktopRoot, 'dist', 'verification-7.4.0')
+    const output = contract.verification
     mkdirSync(output, { recursive: true })
     await page.screenshot({ path: join(output, 'default-ios.png') })
   })
@@ -216,8 +217,8 @@ describe('ZeroWall Science Electron', () => {
     })
     const pane = page.locator('[data-sidebar-right-panel]')
     await pane.locator('[role="button"][title$="report.md"]:visible').click({ position: { x: 8, y: 8 } }).catch(async error => {
-      mkdirSync(join(desktopRoot, 'dist', 'verification-6.0.1'), { recursive: true })
-      await page.screenshot({ path: join(desktopRoot, 'dist', 'verification-6.0.1', 'file-tree-diagnostic.png') })
+      mkdirSync(join(contract.verification, 'electron'), { recursive: true })
+      await page.screenshot({ path: join(contract.verification, 'electron', 'file-tree-diagnostic.png') })
       console.log('File tree diagnostics', await pane.innerText(), rendererOutput.filter(line => line.startsWith('[pageerror]')).slice(-3))
       throw error
     })
@@ -226,8 +227,8 @@ describe('ZeroWall Science Electron', () => {
     await picture.scrollIntoViewIfNeeded()
     await expect.poll(() => picture.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true)
     expect(readFileSync(join(workspacePath, 'report.md'), 'utf8')).toBe(source)
-    mkdirSync(join(desktopRoot, 'dist', 'verification-6.0.1'), { recursive: true })
-    await page.screenshot({ path: join(desktopRoot, 'dist', 'verification-6.0.1', 'markdown-images.png') })
+    mkdirSync(join(contract.verification, 'electron'), { recursive: true })
+    await page.screenshot({ path: join(contract.verification, 'electron', 'markdown-images.png') })
   })
 
   it('registers a workspace and restores its research workbench in the packaged application', async () => {
@@ -260,7 +261,7 @@ describe('ZeroWall Science Electron', () => {
 
     await pane.getByText('7.0.0 安装包工作台验收', { exact: true }).waitFor()
     expect(await pane.getByRole('button', { name: '登记当前工作区', exact: true }).count()).toBe(0)
-    const output = join(desktopRoot, 'dist', 'verification-7.0.0')
+    const output = join(contract.verification, 'electron')
     mkdirSync(output, { recursive: true })
     await page.screenshot({ path: join(output, 'science-workbench-restored.png') })
     await navigation.getByRole('button', { name: '专业工具', exact: true }).click()
@@ -586,7 +587,7 @@ describe('ZeroWall Science Electron', () => {
     await englishSettings.getByRole('region', { name: 'Literature services', exact: true }).getByRole('button', { name: 'Save settings', exact: true }).waitFor()
     await englishSettings.getByText('Review model mode', { exact: true }).waitFor()
     expect(await englishSettings.getByText('模型目录已同步', { exact: true }).count()).toBe(0)
-    const artifacts = join(desktopRoot, 'dist', 'verification-6.0.0')
+    const artifacts = join(contract.verification, 'electron')
     mkdirSync(artifacts, { recursive: true })
     await page.screenshot({ path: join(artifacts, 'environment-english.png') })
 
@@ -658,7 +659,7 @@ describe('ZeroWall Science Electron', () => {
     await timeout.fill('300000')
     await save.click()
     await expect.poll(() => save.isEnabled(), { timeout: 30_000 }).toBe(true)
-    await page.screenshot({ path: join(desktopRoot, 'dist', 'verification-6.0.0', 'mcp-saved.png') })
+    await page.screenshot({ path: join(contract.verification, 'electron', 'mcp-saved.png') })
     await settings.getByRole('tab', { name: '插件列表' }).click()
     const globalPlugins = settings.getByRole('button', { name: /^(全局插件|Global plugins)/ })
     if (await globalPlugins.getAttribute('aria-expanded') === 'false') await globalPlugins.click()
@@ -688,7 +689,7 @@ describe('ZeroWall Science Electron', () => {
     }
     expect(await literature.getByRole('link', { name: 'NCBI / PubMed 获取 Key' }).getAttribute('href')).toBe('https://www.ncbi.nlm.nih.gov/account/settings/')
     const version = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
-    const artifacts = join(desktopRoot, 'dist', `verification-${version}`)
+    const artifacts = join(contract.verification, 'electron')
     mkdirSync(artifacts, { recursive: true })
     for (const viewport of [{ width: 1280, height: 900 }, { width: 720, height: 900 }]) {
       await page.setViewportSize(viewport)
@@ -725,7 +726,7 @@ describe('ZeroWall Science Electron', () => {
 
   it('verifies variable privacy, clipboard, settings chrome and account layout', async () => {
     const version = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
-    const artifacts = join(desktopRoot, 'dist', `verification-${version}`)
+    const artifacts = join(contract.verification, 'electron')
     mkdirSync(artifacts, { recursive: true })
     expect(await page.evaluate(() => !document.querySelector('[data-dsh-boot]') && document.querySelector('[data-dsh-better-sidebar], [data-zerowall-conversation], [contenteditable]') !== null)).toBe(true)
     await page.getByRole('button', { name: '设置', exact: true }).click()
@@ -791,7 +792,7 @@ describe('ZeroWall Science Electron', () => {
     expect(await reset.getByLabel('密码', { exact: true }).count()).toBe(0)
     expect(await reset.getByRole('button', { name: '发送重置邮件', exact: true }).isVisible()).toBe(true)
     const version = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
-    const artifacts = join(desktopRoot, 'dist', `verification-${version}`)
+    const artifacts = join(contract.verification, 'electron')
     mkdirSync(artifacts, { recursive: true })
     await page.screenshot({ path: join(artifacts, 'account-password-reset-mobile.png') })
     await page.keyboard.press('Escape')

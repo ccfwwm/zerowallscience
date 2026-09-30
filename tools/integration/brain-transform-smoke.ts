@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import {execFile} from 'node:child_process'
 import {mkdir,writeFile} from 'node:fs/promises'
@@ -5,7 +6,7 @@ import {resolve,join} from 'node:path'
 import {promisify} from 'node:util'
 import {runBrainTransform} from '../../plugins/research/src/host/brain-transform.js'
 if(!process.argv.includes('--run'))throw new Error('Pass --run for the installed NiftyReg geometric reference.')
-const root=resolve('.build/brain-transform-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
+const root=resolve(zwsArtifactPaths.verification, 'brain-transform-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
 const python=process.env.ZEROWALL_BRAINGLOBE_PYTHON||'python'
 const reference=JSON.parse((await promisify(execFile)(python,['-E','-P',resolve('tools/integration/brain-transform-reference.py'),root],{windowsHide:true,timeout:120000})).stdout)
 const results=[];let maxErrorMicron=0

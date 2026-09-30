@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn, spawnSync, execFileSync } from 'node:child_process'
 import { copyFile, mkdir, mkdtemp, open, readFile, writeFile, rm } from 'node:fs/promises'
@@ -8,7 +9,7 @@ import { createRequire } from 'node:module'
 import { randomUUID, createHash } from 'node:crypto'
 
 const repo = resolve(import.meta.dirname, '../..')
-const packaged = join(repo, 'desktop/dist/win-unpacked')
+const packaged = join(zwsArtifactPaths.packages, 'win-unpacked')
 const resources = join(packaged, 'resources')
 const output = join(repo, 'test-results/rmcp')
 await mkdir(output, { recursive: true })
@@ -19,7 +20,7 @@ for (const name of ['harness', 'credentials', 'zerowall-python']) await mkdir(jo
 const originalProfile = process.env.ZEROWALL_SOURCE_PROFILE?.trim()
   || join(process.env.LOCALAPPDATA ?? join(work, 'localappdata'), 'ZeroWall Science')
 for (const name of ['Local State', 'harness/settings.yaml', 'credentials/vault.json', 'zerowall-python/current.json']) await copyFile(join(originalProfile, name), join(profile, name))
-const yaml = createRequire(join(repo, '.build/runtime/package.json'))('yaml')
+const yaml = createRequire(join(zwsArtifactPaths.verification, 'runtime/package.json'))('yaml')
 const settings = yaml.parse(await readFile(join(profile, 'harness/settings.yaml'), 'utf8'))
 const model = settings['agent-default-model']
 assert.ok(model?.provider && model?.model, 'Current model route required')

@@ -1,3 +1,4 @@
+import { stageRoot } from '../../tools/build/paths.mjs'
 import { readFile, realpath, mkdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
@@ -28,7 +29,7 @@ RMDir /r "$INSTDIR\\resources\\app.asar.unpacked"
 RMDir /r "$INSTDIR\\resources\\skills"
 RMDir /r "$INSTDIR\\resources\\profiles"
 RMDir /r "$INSTDIR\\resources\\licenses"`)
-const output = resolve(desktop, '../.build/nsis-overlay')
+const output = resolve(stageRoot, 'nsis-overlay')
 await mkdir(output, { recursive: true })
 await writeFile(resolve(output, 'installSection.nsh'), `${section}\n!cd "${templates}"\n`)
 let utilities = (await readFile(resolve(templates, 'include/installUtil.nsh'), 'utf8')).replaceAll('\r\n', '\n')
@@ -39,3 +40,6 @@ for (const name of ['handleUninstallResult', 'uninstallOldVersion', 'GetInQuotes
 }
 await writeFile(resolve(output, 'installUtil.nsh'), utilities)
 console.log('Prepared NSIS in-place upgrade section from electron-builder 26.15.3')
+
+await mkdir(resolve(desktop, 'out'), { recursive: true })
+await writeFile(resolve(desktop, 'out/installer-paths.nsh'), '!define ZW_NSIS_OVERLAY "'+output+'"\n!define ZW_UI_BINARY "'+resolve(stageRoot, 'installer-ui/modern-installer.exe')+'"\n')

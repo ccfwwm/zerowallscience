@@ -1,5 +1,5 @@
 !include LogicLib.nsh
-!define ZW_NSIS_OVERLAY "${__FILEDIR__}\..\..\.build\nsis-overlay"
+!include "${__FILEDIR__}\..\out\installer-paths.nsh"
 
 !macro customHeader
   ; makensis searches its working directory before include directories.
@@ -12,7 +12,6 @@
   ShowUninstDetails show
 !macroend
 
-!define ZW_UI_BINARY "${__FILEDIR__}\..\..\.build\installer-ui\modern-installer.exe"
 Var ZeroWallUiState
 !ifdef BUILD_UNINSTALLER
 !macro customUnInit
@@ -54,6 +53,8 @@ FunctionEnd
 !macroend
 
 !macro customInstall
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\commands\install-command-path.ps1" install'
+  Pop $R0
   SetDetailsPrint both
   DetailPrint "桌面和开始菜单应用图标已创建，卸载信息已写入。"
   DetailPrint "ZeroWall Science 安装完成。"
@@ -91,6 +92,11 @@ FunctionEnd
       ${EndIf}
     ${EndIf}
   ${EndIf}
+!macroend
+
+!macro customUnInstall
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\commands\install-command-path.ps1" remove'
+  Pop $R0
 !macroend
 
 !macro customCheckAppRunning

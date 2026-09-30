@@ -1,3 +1,4 @@
+import { targetPackageRoot, releaseRoot, stageRoot } from '../tools/build/paths.mjs'
 /** Publishes JSON only. Does not upload Python archives or wheel files. */
 import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -7,7 +8,7 @@ import { verifyDocument } from '../tools/release/python-layer-split.mjs'
 const require = createRequire(import.meta.url)
 const qiniu = require('qiniu')
 const root = resolve(import.meta.dirname, '..')
-const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(root, 'desktop', 'dist', 'python-dependencies'))
+const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(releaseRoot, 'python-dependencies'))
 const bytes = await readFile(join(output, 'latest.json'))
 const document = JSON.parse(bytes.toString('utf8'))
 const publicKey = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----`

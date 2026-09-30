@@ -1,3 +1,4 @@
+import { targetPackageRoot, releaseRoot, stageRoot } from '../tools/build/paths.mjs'
 import { createHash, verify } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createReadStream } from 'node:fs'

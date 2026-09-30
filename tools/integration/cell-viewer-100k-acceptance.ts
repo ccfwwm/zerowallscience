@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Real source React -> Host -> h5py, with independent SciPy CSR reference. */
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
@@ -15,7 +16,7 @@ const require = createRequire(resolve('plugins/research/package.json'))
 const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const { chromium } = createRequire(resolve('desktop/package.json'))('playwright') as typeof import('playwright')
-const root = resolve('.build/cell-viewer-100k-acceptance', new Date().toISOString().replaceAll(':', '-'))
+const root = resolve(zwsArtifactPaths.verification, 'cell-viewer-100k-acceptance', new Date().toISOString().replaceAll(':', '-'))
 await mkdir(root, { recursive: true })
 const python = process.env.ZEROWALL_CELL_PYTHON || process.env.ZEROWALL_PYTHON || 'python'
 const runPython = async (...args: string[]) => JSON.parse((await promisify(execFile)(python, ['-E', '-P', resolve('tools/integration/cell-100k-reference.py'), ...args], { windowsHide: true, maxBuffer: 4 * 1024 ** 2 })).stdout)

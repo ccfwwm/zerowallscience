@@ -1,7 +1,10 @@
 const fs = require('node:fs')
 const path = require('node:path')
-const pythonBootstrapDir = path.resolve(__dirname, '../dist/python-base-3.12.10')
-const bundledPythonResources = fs.existsSync(path.join(pythonBootstrapDir, 'latest.json'))
+const root = path.resolve(__dirname, '../..')
+const { stage, packages: packageOutput } = require('../../tools/build/paths.cjs').buildPaths(root)
+const applicationVersion = require(path.join(root, 'package.json')).version
+const pythonBootstrapDir = path.join(stage, 'python-base-3.12.10')
+const bundledPythonResources = process.env.ZEROWALL_BUNDLE_PYTHON === '1' && fs.existsSync(path.join(pythonBootstrapDir, 'latest.json'))
   && fs.existsSync(path.join(pythonBootstrapDir, 'zerowall-python-windows-x64-3.12.10.zip'))
 
 const common = {
@@ -15,8 +18,8 @@ const common = {
   asar: true,
   asarUnpack: [
     'package.json',
-    'out/main/python-updater-worker.js',
-    'out/main/chunks/mcp-environment-*.js',
+    '**/python-updater-worker.js',
+    '**/chunks/mcp-environment-*.js',
     '**/yauzl/**/*',
     '**/pend/**/*',
     '**/*.node',
@@ -37,11 +40,11 @@ const common = {
   compression: 'normal',
   electronLanguages: ['en-US', 'zh-CN', 'zh-TW'],
   directories: {
-    output: 'dist',
+    output: packageOutput,
     buildResources: '../resources/brand/app-icons',
   },
   files: [
-    'out/**/*',
+    { from: fs.realpathSync(path.join(__dirname, '../out')), to: 'out', filter: ['**/*'] },
     'package.json',
     // Exclude the workspace's pnpm-linked installation first; the explicit
     // curated runtime mapping below is added afterwards and therefore remains
@@ -50,7 +53,7 @@ const common = {
     // The runtime closure is the only production dependency tree copied into
     // the ASAR. Keep the standard node_modules name because Node's ESM resolver
     // requires that package boundary for bare package imports.
-    { from: '../.build/runtime/node_modules', to: 'node_modules', filter: ['**/*'] },
+    { from: path.join(stage, 'runtime/node_modules'), to: 'node_modules', filter: ['**/*'] },
     {
       from: 'build',
       to: 'runtime',
@@ -69,19 +72,20 @@ const common = {
       // while the bootstrap is produced under desktop/dist.  Using ../dist
       // here silently looked in the repository-level dist directory and left
       // packaged installs without their offline recovery source.
-      { from: 'dist/python-base-3.12.10/latest.json', to: 'python/base-manifest.json' },
-      { from: 'dist/python-base-3.12.10/zerowall-python-windows-x64-3.12.10.zip', to: 'python/base-runtime.zip' },
+      { from: path.join(pythonBootstrapDir, 'latest.json'), to: 'python/base-manifest.json' },
+      { from: path.join(pythonBootstrapDir, 'zerowall-python-windows-x64-3.12.10.zip'), to: 'python/base-runtime.zip' },
     ] : []),
     { from: '../resources/mcp/bio-tools', to: 'bio-tools', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
     { from: '../resources/mcp/ketcher-chemistry', to: 'ketcher-chemistry', filter: ['server.js', 'widget/**', 'LICENSE*', 'UPSTREAM.json'] },
-    { from: '../mcp-environment-staging/sci', to: 'sci', filter: ['dist/**', 'zerowall-mcp-launcher.cjs', 'package.json', 'LICENSE*', 'README.md'] },
-    { from: 'build/zerowall.patch.yml', to: 'zerowall.patch.yml' },
+    { from: path.join(stage, 'resources/sci'), to: 'sci', filter: ['dist/**', 'zerowall-mcp-launcher.cjs', 'package.json', 'LICENSE*', 'README.md'] },
+    { from: path.join(stage, 'resources/zerowall-core.patch.yml'), to: 'zerowall.patch.yml' },
     { from: 'build/splash.html', to: 'splash.html' },
-    { from: '../.build/resources/skills', to: 'skills', filter: ['**/*'] },
+    { from: path.join(stage, 'resources/skills'), to: 'skills', filter: ['**/*'] },
     { from: '../profiles/generated', to: 'profiles', filter: ['*.yml'] },
     { from: '../THIRD_PARTY_NOTICES.md', to: 'licenses/THIRD_PARTY_NOTICES.md' },
     { from: '../config/deepseek-harness/upstream.json', to: 'licenses/deepseek-harness.version.json' },
-    { from: '../.build/runtime/build-receipt.json', to: 'licenses/build-receipt.json' },
+    { from: path.join(stage, 'runtime/build-receipt.json'), to: 'licenses/build-receipt.json' },
+    { from: path.join(stage, 'commands'), to: 'commands', filter: ['**/*'] },
     { from: '../resources/brand/app-icons/icon.png', to: 'icon.png' },
     { from: '../resources/brand/zerowall/zerowall-icon.png', to: 'zerowall-icon.png' },
   ],

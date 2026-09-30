@@ -1,6 +1,8 @@
+import { stageRoot } from '../build/paths.mjs'
 import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const root = resolve(import.meta.dirname, '../..')
 const source = resolve(root, 'deepseek-harness')
@@ -29,11 +31,14 @@ if (status !== '' && !allowDirty) {
   throw new Error(`deepseek-harness must be clean before building:\n${status}`)
 }
 
-runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:lib:host'], { NODE_OPTIONS: '--max-old-space-size=8192' })
+// ZeroWall carries its own Electron main process. Build the official Host
+// library pass without bundling a second, unused Desktop shell.
+runPnpm(['--filter', '@deepseek-ai/dsh-root', 'exec', 'tsc', '-b', 'tsconfig.host.json'], { NODE_OPTIONS: '--max-old-space-size=8192' })
+runPnpm(['--filter', '@deepseek-ai/dsh-root', 'exec', 'tsdown', '--env.DSH_BUILD_FACE', 'host'], { NODE_OPTIONS: '--max-old-space-size=8192' })
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:lib:client'], { NODE_OPTIONS: '--max-old-space-size=8192' })
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:web'])
-await mkdir(resolve(root, '.build/dsh'), { recursive: true })
-await writeFile(resolve(root, '.build/dsh/build-receipt.json'), JSON.stringify({
+await mkdir(resolve(stageRoot, 'dsh'), { recursive: true })
+await writeFile(resolve(stageRoot, 'dsh/build-receipt.json'), JSON.stringify({
   commit, version: manifest.version, applicationVersion: rootManifest.version, builtAt: new Date().toISOString(),
 }, null, 2))
 
@@ -45,6 +50,7 @@ function runPnpm(args, extraEnv = {}) {
   execFileSync(process.execPath, [pnpmCli, ...args], {
     cwd: source,
     stdio: 'inherit',
-    env: { ...process.env, ZEROWALL_CLIENT_VERSION: rootManifest.version, ...extraEnv },
+    env: { ...process.env, ZEROWALL_CLIENT_VERSION: rootManifest.version, ...extraEnv,
+      NODE_OPTIONS: `${extraEnv.NODE_OPTIONS ?? process.env.NODE_OPTIONS ?? ''} --import=${pathToFileURL(resolve(root, 'tools/build/register-output-resolution.mjs')).href}` },
   })
 }

@@ -1,3 +1,4 @@
+import { stageRoot } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -86,7 +87,7 @@ for (const retired of ['@zerowallscience/plugin-opencode', '@jiesou/dsh-opencode
 }
 const packagedManifest = JSON.parse(readArchiveFile('package.json').toString('utf8'))
 const packagedBuildReceipt = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'licenses/build-receipt.json'), 'utf8'))
-const runtimeBuildReceipt = JSON.parse(await readFile(resolve(repositoryRoot, '.build/runtime/build-receipt.json'), 'utf8'))
+const runtimeBuildReceipt = JSON.parse(await readFile(resolve(stageRoot, 'runtime/build-receipt.json'), 'utf8'))
 if (packagedBuildReceipt.commit !== pinnedUpstream.commit
   || packagedBuildReceipt.version !== pinnedUpstream.version
   || packagedBuildReceipt.applicationVersion !== desktopManifest.version
@@ -95,7 +96,7 @@ if (packagedBuildReceipt.commit !== pinnedUpstream.commit
 }
 for (const [plugin, file] of ['mcp', 'research'].flatMap(plugin => ['lib/client.js', 'lib/index.js'].map(file => [plugin, file]))) {
   const path = `node_modules/@zerowallscience/plugin-${plugin}/${file}`
-  if (!readArchiveFile(path).equals(await readFile(resolve(repositoryRoot, '.build/runtime', path)))) {
+  if (!readArchiveFile(path).equals(await readFile(resolve(stageRoot, 'runtime', path)))) {
     throw new Error(`Packaged ${plugin} ${file} is stale. Repackage the current runtime.`)
   }
 }
@@ -794,6 +795,8 @@ async function verifyDirectoryPickerWorker() {
 
 async function verifyHostStartup() {
   const root = await mkdtemp(resolve(tmpdir(), 'zerowall-packaged-host-'))
+  const { initializeProfile } = await import('./../../tools/commands/profile.mjs')
+  await initializeProfile(resolve(root, 'harness'), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8')))
   const port = await reservePort()
   const url = `http://127.0.0.1:${port}`
   const dshEntry = resolve(asarPath, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')

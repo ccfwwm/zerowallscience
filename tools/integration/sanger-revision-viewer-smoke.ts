@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Actual React -> CanvasService -> four artifacts; synthetic plotting reference. */
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -12,9 +13,9 @@ const require = createRequire(resolve('plugins/research/package.json'))
 const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const { chromium } = createRequire(resolve('desktop/package.json'))('playwright') as typeof import('playwright')
-const root = resolve('.build/sanger-revision-viewer-smoke', new Date().toISOString().replaceAll(':', '-')); await mkdir(root, { recursive: true })
+const root = resolve(zwsArtifactPaths.verification, 'sanger-revision-viewer-smoke', new Date().toISOString().replaceAll(':', '-')); await mkdir(root, { recursive: true })
 const store = new ResearchStore(join(root, 'store.sqlite')); const project = store.createProject({ name: 'Synthetic plotting reference', rootPath: root }); const service = new SangerService(store)
-const source = resolve('.build/sanger-reference/3100.ab1'); const path = join(root, '3100.ab1'); const original = await readFile(source); await writeFile(path, original); const asset = store.createDataAsset({ projectId: project.id, name: '3100 instrument reference', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/octet-stream' })
+const source = resolve(zwsArtifactPaths.verification, 'sanger-reference/3100.ab1'); const path = join(root, '3100.ab1'); const original = await readFile(source); await writeFile(path, original); const asset = store.createDataAsset({ projectId: project.id, name: '3100 instrument reference', uri: pathToFileURL(path).href, location: 'local', mediaType: 'application/octet-stream' })
 const app = "import React from 'react';import {createRoot} from 'react-dom/client';import {SangerViewer} from '/plugins/research/src/client/sanger-viewer.tsx';const remote={scienceViewer:async input=>fetch('/api',{method:'POST',body:JSON.stringify(input)}).then(r=>r.json())};createRoot(document.getElementById('root')).render(React.createElement(SangerViewer,{remote,sessionId:'canvas-smoke'}));"
 const server = await createServer({ configFile: false, root: resolve('.'), cacheDir: join(root, 'vite-cache'), optimizeDeps: { noDiscovery: true, entries: [], include: ['react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom/client'] }, server: { host: '127.0.0.1', port: 0, watch: null }, esbuild: { jsx: 'automatic' }, resolve: { alias: [{ find: /^react$/u, replacement: require.resolve('react') }, { find: /^react\/jsx-runtime$/u, replacement: require.resolve('react/jsx-runtime') }, { find: /^react\/jsx-dev-runtime$/u, replacement: require.resolve('react/jsx-dev-runtime') }, { find: /^react-dom\/client$/u, replacement: require.resolve('react-dom/client') }] }, plugins: [{
   name: 'canvas-smoke', configureServer(server: any) { server.middlewares.use(async (req: any, res: any, next: () => void) => {

@@ -1,3 +1,4 @@
+import { stageRoot } from '../build/paths.mjs'
 import { access, cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
@@ -17,10 +18,10 @@ import {
 
 const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'deepseek-harness')
-const closurePath = resolve(root, '.build/dsh/runtime-closure.json')
-const outputRoot = resolve(root, '.build/runtime/node_modules')
-const expectedOutputParent = resolve(root, '.build/runtime')
-const buildReceipt = JSON.parse(await readFile(resolve(root, '.build/dsh/build-receipt.json'), 'utf8'))
+const closurePath = resolve(stageRoot, 'dsh/runtime-closure.json')
+const outputRoot = resolve(stageRoot, 'runtime/node_modules')
+const expectedOutputParent = resolve(stageRoot, 'runtime')
+const buildReceipt = JSON.parse(await readFile(resolve(stageRoot, 'dsh/build-receipt.json'), 'utf8'))
 const expectedHarness = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 if (buildReceipt.commit !== expectedHarness.commit || buildReceipt.version !== expectedHarness.version) {
   throw new Error('Harness build receipt differs from the pinned source. Run pnpm build before preparing the runtime.')

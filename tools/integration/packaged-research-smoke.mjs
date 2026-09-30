@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -11,7 +12,7 @@ const repo = resolve(import.meta.dirname, '../..')
 // Verify the unpacked directory emitted by the current local 6.7.0 package
 // build. The historical .build/skills-mcp-package directory can contain an
 // older installer snapshot and must not be used as release evidence.
-const packaged = resolve(repo, 'desktop/dist/win-unpacked')
+const packaged = join(zwsArtifactPaths.packages, 'win-unpacked')
 const resources = join(packaged, 'resources')
 const output = join(repo, 'test-results/skills-mcp/packaged')
 await mkdir(output, { recursive: true })

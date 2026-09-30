@@ -1,10 +1,11 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import {spawn} from 'node:child_process'
 import {mkdir,writeFile} from 'node:fs/promises'
 import {resolve,join} from 'node:path'
 import {BRAIN_GLOBE_RUNNER} from '../../plugins/research/src/host/brainglobe-runner.js'
 if(!process.argv.includes('--run'))throw new Error('Pass --run for local installed atlas coordinate acceptance.')
-const root=resolve('.build/brain-coordinate-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
+const root=resolve(zwsArtifactPaths.verification, 'brain-coordinate-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
 const atlasDir=process.env.ZEROWALL_BRAINGLOBE_DIR||resolve('.zerowall/brainglobe-managed')
 const python=process.env.ZEROWALL_BRAINGLOBE_PYTHON||'python'
 const run=(script:string,input:unknown)=>new Promise<any>((yes,no)=>{const child=spawn(python,['-E','-P','-c',script],{windowsHide:true,stdio:['pipe','pipe','pipe']});let stdout='',stderr='';const timer=setTimeout(()=>child.kill(),60000);child.stdout.on('data',b=>stdout+=b);child.stderr.on('data',b=>stderr+=b);child.on('error',no);child.on('close',code=>{clearTimeout(timer);if(code)no(new Error(stderr||stdout));else try{yes(JSON.parse(stdout))}catch{no(new Error(stdout))}});child.stdin.end(JSON.stringify(input))})

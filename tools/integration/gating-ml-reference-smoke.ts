@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
@@ -7,7 +8,7 @@ import { analyzeFlow, gatingMlSubset, type FlowDataset } from '../../plugins/res
 import { importGatingMl } from '../../plugins/research/src/host/gating-ml.js'
 
 if (!process.argv.includes('--run')) throw new Error('Pass --run for independent FlowKit GatingML validation.')
-const root = resolve('.build/gating-ml-reference', new Date().toISOString().replaceAll(':', '-')); await mkdir(root, { recursive: true })
+const root = resolve(zwsArtifactPaths.verification, 'gating-ml-reference', new Date().toISOString().replaceAll(':', '-')); await mkdir(root, { recursive: true })
 const fixture = await readFile('plugins/research/test/fixtures/gating-ml-standard.xml', 'utf8')
 const dataset: FlowDataset = { format: 'fcs', version: '3.0', datatype: 'F', byteOrder: 'little', eventCount: 9, channels: ['X', 'Y'].map((name, index) => ({ index, name, shortName: name, range: 100, bits: 32 })), events: [[0, 0], [1, 1], [5, 5], [9, 1], [10, 0], [-1, 1], [14, 21], [38, 43], [50, 50]], keywords: {}, sourceSha256: 'synthetic', notes: [] }
 const parsed = importGatingMl(fixture, dataset)
@@ -22,7 +23,7 @@ for (const name of ['raw', 'compensated-arcsinh']) {
   cases.push({ name, path, expected: analysis.gates.map(gate => ({ id: gate.id, count: gate.count })) })
 }
 await writeFile(join(root, 'input.json'), JSON.stringify({ events: dataset.events, cases }))
-const python = resolve('.build/flow-reference-venv/Scripts/python.exe')
+const python = resolve(zwsArtifactPaths.verification, 'flow-reference-venv/Scripts/python.exe')
 const result = await promisify(execFile)(python, ['-c', `import flowkit as fk,numpy as np,json,sys,importlib.metadata
 from pathlib import Path
 root=Path(sys.argv[1]); data=json.loads((root/'input.json').read_text()); output=[]
