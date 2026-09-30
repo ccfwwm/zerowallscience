@@ -20,8 +20,8 @@ export type ProducedFilesSlotInjected = {
     applyChanges?: (request: FileReviewRequest) => Promise<FileReviewResult>;
 };
 export type ProducedFilesSlotProps = PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<typeof NS> & InjectFace<ProducedFilesSlotInjected>;
-/** Harness rc.2 list slots pass the owner directly; derive the matched files inside the component. */
-export declare function ProducedFilesSlot(props: PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<typeof NS> & InjectFace<ProducedFilesSlotInjected>): import("react").JSX.Element | null;
+/** Only show the review action when this turn produced file changes. */
+export declare function ProducedFilesTail(props: ProducedFilesSlotProps): import("react").JSX.Element | null;
 /** Render one turn's produced files and open their native review tab. */
 export declare function ProducedFiles({ matched: reviews, openFile, openReview, inspectChanges, applyChanges, turn, seq, t, }: ProducedFilesProps): import("react").JSX.Element;
 //# sourceMappingURL=ProducedFiles.d.ts.map

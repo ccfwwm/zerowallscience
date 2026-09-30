@@ -1,3 +1,25 @@
+export async function decodeZoteroAuthorizationResponse(response) {
+  const text = await response.text();
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    if (!response.ok) {
+      const detail = text.trim();
+      throw new Error(`Zotero authorization failed (HTTP ${response.status})${detail ? `: ${detail}` : ''}`);
+    }
+    throw new Error(`Zotero authorization returned a non-JSON response (HTTP ${response.status})`);
+  }
+  if (!response.ok || body?.result?.ok !== true) {
+    throw new Error(body?.result?.error?.message || body?.error?.message || `Zotero authorization failed (HTTP ${response.status})`);
+  }
+  try {
+    return JSON.parse(body.result.value);
+  } catch {
+    throw new Error(`Zotero authorization returned invalid result JSON (HTTP ${response.status})`);
+  }
+}
+
 export function ZeroWallZoteroAuthorization({ t, dirty }) {
   const React = require('react');
   const h = React.createElement;
@@ -11,9 +33,7 @@ export function ZeroWallZoteroAuthorization({ t, dirty }) {
       method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'client-request', rpcId: crypto.randomUUID(), method: 'zotero/localAuthorization', payload: { args: { request: { action } } } }),
     });
-    const body = await response.json();
-    if (!response.ok || !body.result?.ok) throw new Error(body.result?.error?.message || 'Zotero authorization failed');
-    return JSON.parse(body.result.value);
+    return decodeZoteroAuthorizationResponse(response);
   };
   React.useEffect(() => {
     let alive = true;

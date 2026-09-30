@@ -43,11 +43,10 @@ export function builtinTabs(): readonly TabDescriptor[] {
       dedupeKey: (tab) => tab.path,
       // Declarative settings: the file-open behavior picker (in-place switch
       // vs per-path windows) renders as an iconed select row under the
-      // editor card's gear in the Side card settings page, followed by the
-      // workspace fence switch (the host's containment guard over every
-      // sidebar filesystem route); the "open with" configuration (SSH host +
-      // custom editors) is the custom panel BELOW those rows — the settings
-      // seam renders rows first, custom panel after.
+      // editor card's gear in the Side card settings page; the "open with"
+      // configuration (SSH host + custom editors) is the custom panel BELOW
+      // those rows — the settings seam renders rows first, custom panel after.
+      // The workspace fence remains available for ZeroWall users.
       settings: {
         toggles: [{
           key: 'editorExplorer',
@@ -73,16 +72,25 @@ export function builtinTabs(): readonly TabDescriptor[] {
           title: () => t('settingsFenceTitle'),
           desc: () => t('settingsFenceDesc'),
         }],
+        // Plugin-owned rows (values live in `pluginSettings['editor']`): the
+        // plugin's own open-with targets are shown only when the host reports
+        // no local application, unless the user asks for both side by side.
+        pluginToggles: [{
+          key: 'openWithPluginTargets',
+          title: () => t('settingsOpenWithPluginTitle'),
+          desc: () => t('settingsOpenWithPluginDesc'),
+        }],
         render: ({ pluginSettings, updatePluginSetting }) => (
           <OpenWithSettings pluginSettings={pluginSettings} updatePluginSetting={updatePluginSetting} />
         ),
       },
-      component: ({ ctx, store, scope, tab, expanded, revealed, onToggleDir, onReferenceFile }) => (
+      component: ({ ctx, store, scope, tab, visible, expanded, revealed, onToggleDir, onReferenceFile }) => (
         <EditorHost
           ctx={ctx}
           store={store}
           scope={scope}
           tab={tab}
+          visible={visible}
           expanded={expanded ?? []}
           revealed={revealed ?? []}
           onToggleDir={onToggleDir ?? (() => { /* no-op */ })}

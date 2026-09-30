@@ -40,7 +40,7 @@ describe('dsh-better-sidebar plugin export shape', () => {
 
   it('registers the side card preferences schema with the documented defaults', async () => {
     const { PrefsSchema, SIDEBAR_PREFS_NS, SIDEBAR_PREFS_DEFAULTS } = await import('../src/config.ts')
-    expect(SIDEBAR_PREFS_NS).toBe('better-sidebar')
+    expect(SIDEBAR_PREFS_NS).toBe('dsh-better-sidebar')
     const resolved = (PrefsSchema as unknown as {
       (input: Record<string, unknown> | undefined): Record<string, unknown>
     })(undefined)
@@ -70,9 +70,12 @@ describe('dsh-better-sidebar plugin export shape', () => {
     // The separate file-window mode is the default (each file opens its own
     // tab; the merged editor-explorer is opt-in).
     expect(resolved.editorExplorer).toBe(false)
-    // The workspace fence (containment over the sidebar fs routes) defaults
-    // ON — the safe default never depends on the stored document.
+    // The local workspace fence remains declared and enabled by default.
     expect(resolved.workspaceFence).toBe(true)
+    const legacy = (PrefsSchema as unknown as {
+      (input: Record<string, unknown> | undefined): Record<string, unknown>
+    })({ workspaceFence: true })
+    expect(legacy.workspaceFence).toBe(true)
     // A stored overridden value resolves through (the range contract is
     // enforced by the settings service on write); the new pref keeps its
     // default when the stored document predates it.

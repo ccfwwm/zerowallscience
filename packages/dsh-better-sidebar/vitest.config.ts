@@ -21,11 +21,15 @@ export default defineConfig({
         inline: [/@deepseek-ai\/dsh-client-ui-primitives/],
       },
     },
-    // A handful of suites drive REAL processes (git, powershell),
+    // A handful of suites drive REAL processes (git, powershell, node-pty),
     // and vitest's 5000 ms default is simply below what a loaded 2-core CI
-    // runner needs for a single cold spawn: tests/install-powershell.spec.ts
-    // and tests/git.spec.ts exercise real processes. Raise the default to
-    // cover them; a genuinely hung test still fails.
+    // runner needs for a single cold spawn: the 2026-09-09/10 window lost
+    // cases in tests/agent-pty.spec.ts (a PowerShell + ConPTY pair per
+    // terminal), tests/install-powershell.spec.ts (12.1 s for one
+    // powershell.exe start) and tests/git.spec.ts (9.6 s to build a
+    // pathological untracked set) — three different files, one cause. Raise
+    // the default to cover them; the pty and PowerShell suites still declare
+    // their own 30 s budgets, and a genuinely hung test still fails.
     testTimeout: 15_000,
     // The Playwright headless-render lane lives in tests/e2e (specs named
     // *.e2e.ts). Keep vitest from ever collecting it, both by naming (the
@@ -34,21 +38,6 @@ export default defineConfig({
     // node_modules/dist/etc. excludes must be restated here.
     exclude: [
       'tests/e2e/**',
-      // DSH 0.1.6+ owns the native terminal/browser surfaces and 0.1.7
-      // replaces turn-tail interception with ProducedFiles. These suites
-      // cover the retired Sidebar-owned PTY, browser, pinned-terminal, and
-      // turn-tail implementations, which are excluded from the 0.22.0 build.
-      'tests/agent-terminal-reconcile.spec.ts',
-      'tests/agent-pty.spec.ts',
-      'tests/agent-wait-badge.spec.tsx',
-      'tests/bottom-auto-terminal.spec.tsx',
-      'tests/pinned.spec.ts',
-      'tests/pty-deps.spec.ts',
-      'tests/pty-helpers.spec.ts',
-      'tests/terminal-deps-banner.spec.tsx',
-      'tests/terminal-font.spec.ts',
-      'tests/tools.spec.ts',
-      'tests/turn-tail-intercept.spec.ts',
       // Local dev worktrees (pnpm/DSH-style task branches) may carry stale
       // code against this checkout's node_modules — never collect them.
       '**/.worktrees/**',

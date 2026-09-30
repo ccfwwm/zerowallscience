@@ -1,0 +1,163 @@
+diff --git a/lib/client.js b/lib/client.js
+index 3a985a01f054fed699870fc57ca298997f8559f4..02e6d9446e7607aaf6171f2d4212393b5987f445 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -632,6 +632,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** Simplified Chinese dictionary (the key-set source of truth). */
+ 		const zh = {
++			"section.nav": "外观",
+ 			"skin.title": "皮肤",
+ 			"skin.default": "默认",
+ 			"skin.abyss": "沉静蓝",
+@@ -704,6 +705,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** English dictionary, checked complete against the zh key set. */
+ 		const en = {
++			"section.nav": "Appearance",
+ 			"skin.title": "Skins",
+ 			"skin.default": "Default",
+ 			"skin.abyss": "Deep Blue",
+@@ -776,6 +778,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** JA dictionary (community translation). */
+ 		const ja = {
++			"section.nav": "外観",
+ 			"skin.title": "スキン",
+ 			"skin.default": "デフォルト",
+ 			"skin.abyss": "ディープブルー",
+@@ -848,6 +851,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** KO dictionary (community translation). */
+ 		const ko = {
++			"section.nav": "외관",
+ 			"skin.title": "스킨",
+ 			"skin.default": "기본",
+ 			"skin.abyss": "딥 블루",
+@@ -920,6 +924,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** ES dictionary (community translation). */
+ 		const es = {
++			"section.nav": "Apariencia",
+ 			"skin.title": "Pieles",
+ 			"skin.default": "Por defecto",
+ 			"skin.abyss": "Azul profundo",
+@@ -992,6 +997,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** FR dictionary (community translation). */
+ 		const fr = {
++			"section.nav": "Apparence",
+ 			"skin.title": "Apparence",
+ 			"skin.default": "Par défaut",
+ 			"skin.abyss": "Bleu profond",
+@@ -1064,6 +1070,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** DE dictionary (community translation). */
+ 		const de = {
++			"section.nav": "Erscheinungsbild",
+ 			"skin.title": "Skins",
+ 			"skin.default": "Standard",
+ 			"skin.abyss": "Tiefes Blau",
+@@ -1136,6 +1143,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** RU dictionary (community translation). */
+ 		const ru = {
++			"section.nav": "Внешний вид",
+ 			"skin.title": "Скины",
+ 			"skin.default": "По умолчанию",
+ 			"skin.abyss": "Глубокий синий",
+@@ -1389,6 +1397,13 @@ window.__ModuleLoader__.load({
+ 				// inside restorePersistedState pushes as a user-state write
+ 				// (9.26.1 adjudication P0-4).
+ 				hostProbeSettled = true;
++				// An older package could persist its complete factory appearance.
++				// Match both the exact bundled SVG and the original skin, so an
++				// explicitly chosen skin or custom wallpaper remains untouched.
++				const legacyHostFactory = parsed.value[STORAGE_KEY] === LEGACY_FACTORY_SKIN
++					&& parsed.value[WALLPAPER_KIND_KEY] === "image"
++					&& parsed.value[WALLPAPER_KEY] === LEGACY_FACTORY_WALLPAPER
++					&& !Object.prototype.hasOwnProperty.call(parsed.value, WALLPAPER_HISTORY_KEY);
+ 				const hostKeys = Object.keys(parsed.value);
+ 				let adopted = false;
+ 				for (const [key, value] of Object.entries(parsed.value)) {
+@@ -1418,6 +1433,15 @@ window.__ModuleLoader__.load({
+ 					}
+ 					adopted = true;
+ 				}
++				if (legacyHostFactory) {
++					// Ordinary writes persist the migration, so a new random-port
++					// browser origin cannot bring the old factory look back later.
++					writeStorage(STORAGE_KEY, FACTORY_DEFAULTS[STORAGE_KEY]);
++					writeStorage(WALLPAPER_KEY, FACTORY_DEFAULTS[WALLPAPER_KEY]);
++					if (readStorage(WALLPAPER_GRADIENT_KEY) === LEGACY_FACTORY_GRADIENT) {
++						writeStorage(WALLPAPER_GRADIENT_KEY, FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY]);
++					}
++				}
+ 				// Migration: an empty host file means this is the first boot with
+ 				// host persistence — seed it with whatever the local (same-origin)
+ 				// state holds so previously set preferences survive origin changes.
+@@ -1476,6 +1500,22 @@ window.__ModuleLoader__.load({
+ 			}
+ 		}
+ 
++		/** Upgrade only values still marked as the old factory appearance. */
++		function migrateLegacyFactoryAppearance() {
++			if (factorySnapshot.get(STORAGE_KEY) === LEGACY_FACTORY_SKIN
++				&& readStorage(STORAGE_KEY) === LEGACY_FACTORY_SKIN) {
++				writeStorage(STORAGE_KEY, FACTORY_DEFAULTS[STORAGE_KEY], { factory: true });
++			}
++			if (factorySnapshot.get(WALLPAPER_KEY) === LEGACY_FACTORY_WALLPAPER
++				&& readStorage(WALLPAPER_KEY) === LEGACY_FACTORY_WALLPAPER) {
++				writeStorage(WALLPAPER_KEY, FACTORY_DEFAULTS[WALLPAPER_KEY], { factory: true });
++			}
++			if (factorySnapshot.get(WALLPAPER_GRADIENT_KEY) === LEGACY_FACTORY_GRADIENT
++				&& readStorage(WALLPAPER_GRADIENT_KEY) === LEGACY_FACTORY_GRADIENT) {
++				writeStorage(WALLPAPER_GRADIENT_KEY, FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY], { factory: true });
++			}
++		}
++
+ 		/** Drop one key from the persistent provenance snapshot and persist it. */
+ 		function removeFactoryProvenance(key) {
+ 			if (!factorySnapshot.delete(key)) return;
+@@ -5000,6 +5040,15 @@ window.__ModuleLoader__.load({
+ 			// schedule themselves. DEFAULT_REFRESH_HOURS (24h) applies once on.
+ 			[WALLPAPER_REFRESH_KEY]: "{\"on\":0,\"hours\":24}",
+ 		};
++		// ZeroWall's first-run appearance is the upstream iOS Flat skin. Keep the
++		// former values only to recognize and migrate the old shipped look; empty
++		// wallpaper values leave the iOS surface clean without affecting user art.
++		const LEGACY_FACTORY_SKIN = FACTORY_DEFAULTS[STORAGE_KEY];
++		const LEGACY_FACTORY_WALLPAPER = FACTORY_DEFAULTS[WALLPAPER_KEY];
++		const LEGACY_FACTORY_GRADIENT = FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY];
++		FACTORY_DEFAULTS[STORAGE_KEY] = "ivory";
++		FACTORY_DEFAULTS[WALLPAPER_KEY] = "";
++		FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY] = "";
+ 		/**
+ 		 * Issue #51 (dynamic-port desktop shell): the visible wallpaper keys
+ 		 * are NOT seeded during the boot pass. On an Electron shell whose core
+@@ -5033,6 +5082,7 @@ window.__ModuleLoader__.load({
+ 			// (blue-team T1): isFactorySeededValue()/hasUserState() must see the
+ 			// cross-session factory provenance, not just this session's seals.
+ 			loadFactorySnapshot();
++			migrateLegacyFactoryAppearance();
+ 			// Blue-team F1: the marker key is new in this build, so EVERY upgrader
+ 			// lacks it — the marker alone cannot distinguish "fresh install" from
+ 			// "existing user who never touched X". Upgraders must keep exactly
+@@ -6024,7 +6074,7 @@ window.__ModuleLoader__.load({
+ 				name: "settings.section",
+ 				id: "dream-skin",
+ 				order: 10,
+-				label: "Theme / 外观",
++				label: () => localeT("section.nav"),
+ 				locale: SETTINGS_NS,
+ 				children: { "settings.dreamSkin.item": {
+ 					kind: "list",
+@@ -6565,7 +6615,7 @@ window.__ModuleLoader__.load({
+       try {
+         for (var b of document.querySelectorAll("[role=\"dialog\"] nav button")) {
+           var label = (b.textContent || "").trim()
+-          var mm = label === "皮肤" || label === "Theme" || label.indexOf("Theme") !== -1
++          var mm = ["外观", "Appearance", "外観", "외관", "Apariencia", "Apparence", "Erscheinungsbild", "Внешний вид"].includes(label)
+           if (mm) b.setAttribute(MARKER, "")
+           else b.removeAttribute(MARKER)
+         }

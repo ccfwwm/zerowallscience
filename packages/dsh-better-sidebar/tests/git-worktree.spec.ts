@@ -97,5 +97,5 @@ describe('linked Git worktrees', () => {
       try { git(main, ['worktree', 'remove', '--force', agent]) } catch { /* fixture may not be fully initialized */ }
       rmSync(root, { recursive: true, force: true })
     }
-  }, 30_000)
+  })
 })

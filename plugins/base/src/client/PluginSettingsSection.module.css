@@ -1,0 +1,11 @@
+.root { box-sizing: border-box; width: 100%; max-width: 860px; padding: 28px 32px; color: var(--dsw-alias-label-primary); }
+.root h2 { margin: 0 0 8px; font-size: 20px; }
+.intro { margin: 0 0 22px; color: var(--dsw-alias-label-secondary); line-height: 1.5; }
+.list { display: grid; gap: 10px; }
+.list button { display: flex; justify-content: space-between; align-items: center; gap: 16px; width: 100%; padding: 14px 16px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; background: var(--dsw-alias-bg-layer-3); color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }
+.list button:hover { background: var(--dsw-alias-interactive-bg-hover); border-color: var(--dsw-alias-interactive-bg-hover-accent); }
+.list button:focus-visible { outline: 2px solid var(--dsw-alias-border-l4); outline-offset: 2px; }
+.list button span:first-child { display: grid; gap: 4px; }
+.list strong { font-size: 14px; font-weight: 600; }
+.list small { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.5; }
+@media (max-width: 600px) { .root { padding: 18px 16px; } }

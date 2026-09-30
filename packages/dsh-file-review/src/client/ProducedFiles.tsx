@@ -8,7 +8,7 @@ import type { NS } from './locales.ts'
 import { ReviewStats } from './ReviewContent.tsx'
 import { ReviewResultToast, unavailableChanges, useReviewActions } from './review-actions.tsx'
 import type { ReviewTarget } from './FileReviewTab.tsx'
-import { basename, reviewsForClosing, type ProducedFileReview } from './turn-deliverables.ts'
+import { basename, selectProducedFiles, type ProducedFileReview } from './turn-deliverables.ts'
 import { summarizeDiffs, type UnifiedDiffStats } from './UnifiedDiff.tsx'
 import css from './ProducedFiles.module.css'
 
@@ -33,12 +33,13 @@ export type ProducedFilesSlotInjected = {
 }
 export type ProducedFilesSlotProps = PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<typeof NS> & InjectFace<ProducedFilesSlotInjected>
 
-/** Harness rc.2 list slots pass the owner directly; derive the matched files inside the component. */
-export function ProducedFilesSlot(props: PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<typeof NS> & InjectFace<ProducedFilesSlotInjected>) {
-  const matched = reviewsForClosing(props.turn.data.get('deliverables'), props.seq)
-  if (matched.length === 0) return null
+/** Only show the review action when this turn produced file changes. */
+export function ProducedFilesTail(props: ProducedFilesSlotProps) {
+  const matched = selectProducedFiles(props)
+  if (matched === null) return null
   return <ProducedFiles {...props} matched={matched} />
 }
+
 
 function FileIcon() {
   return (

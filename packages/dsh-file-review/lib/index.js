@@ -909,10 +909,10 @@ const FILE_REVIEW_SETTINGS_NAMESPACE = "file-review";
 const DEFAULT_WORD_WRAP = false;
 //#endregion
 //#region src/index.ts
-/** Plugin configuration and durable settings schema. */
+/** Display settings that can update without restarting the plugin. */
 const Config = z.object({
-	wordWrap: z.boolean().default(false),
-	diffLayout: z.union([z.const("split"), z.const("unified")]).default("split")
+	wordWrap: z.boolean().default(false).volatile(),
+	diffLayout: z.union([z.const("split"), z.const("unified")]).default("split").volatile()
 });
 /** Services required for the model guidance paired with the browser renderer. */
 const inject = ["systemPrompt", "tools"];
@@ -922,12 +922,9 @@ const FILE_REFERENCE_PROMPT = "When you successfully create or modify files, men
 * Register model guidance for the file-reference renderer shipped by this package.
 * @param ctx - host context carrying the system-prompt registry.
 */
-function apply(ctx, _config = {}) {
-	const settings = ctx.get("settings");
-	if (typeof settings?.configure === "function") settings.configure({ auto: true });
-	else if (typeof settings?.installSection === "function") settings.installSection(ctx, FILE_REVIEW_SETTINGS_NAMESPACE, Config, _config, {
-		setSource: () => {},
-		onChange: () => {}
+function apply(ctx) {
+	ctx.inject(["settings"], (child) => {
+		child.effect(() => child.settings.configure({ auto: false }, ctx.fiber));
 	});
 	new FileReviewService(ctx);
 	registerFileLifecycleCapture(ctx);

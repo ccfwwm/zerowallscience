@@ -1,9 +1,9 @@
 {
   "repository": "https://github.com/ccfwwm/deepseek-harness.git",
-  "commit": "477b4f420553e8a52c2fbccc464d7561b239c443",
-  "branch": "codex/zerowall-7.3.0",
+  "commit": "93bacb7e30c888cc01a1322245a33ff3be9ff2b3",
+  "branch": "master",
   "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
-  "upstreamCommit": "477b4f420553e8a52c2fbccc464d7561b239c443",
-  "tag": "dsh-v0.1.7-rc.2",
-  "version": "0.1.7-rc.2"
+  "upstreamCommit": "639ed015397290b3745d163aafe02ffee4aa3f84",
+  "tag": "dsh-v0.2.0-rc.2",
+  "version": "0.2.0-rc.2"
 }

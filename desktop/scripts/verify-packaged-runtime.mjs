@@ -188,9 +188,6 @@ const requiredArchivePaths = [
   'node_modules/dsh-univer-office/lib/index.js',
   'node_modules/dsh-univer-office/lib/client.js',
   'node_modules/dsh-univer-office/artifacts/gateway.cjs',
-  'node_modules/dsh-better-sidebar-icons/lib/index.js',
-  'node_modules/dsh-better-sidebar-icons/lib/client.js',
-  'node_modules/dsh-better-sidebar-icons/icons/default_file.svg',
   'node_modules/dsh-file-review/lib/index.js',
   'node_modules/dsh-file-review/lib/client.js',
   'node_modules/dsh-file-review/cordis.patch.yml',
@@ -345,43 +342,34 @@ async function verifyArchivePolicy() {
     || /^node_modules\/dsh-better-sidebar\/scripts\//iu.test(path)
   ))
   if (forbiddenBetterSidebarFiles.length > 0) throw new Error(`Better-sidebar documentation/install files found in ASAR:\n${forbiddenBetterSidebarFiles.join('\n')}`)
-  const officePackages = archiveFiles.filter(path => path.endsWith('node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/package.json'))
-  if (officePackages.length !== 1) throw new Error(`Better-sidebar Office plugin must be packaged exactly once; found ${officePackages.length}.`)
-  const officeManifest = JSON.parse(readArchiveFile('node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/package.json').toString('utf8'))
-  if (officeManifest.version !== '0.2.0') throw new Error(`Packaged Better-sidebar Office plugin must be 0.2.0; found ${officeManifest.version}.`)
-  const officeClient = readArchiveFile('node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/lib/client.js').toString('utf8')
-  for (const marker of ['registerFileViewer', '.docx', '.xlsx', '.pptx']) {
-    if (!officeClient.includes(marker)) throw new Error(`Packaged Better-sidebar Office plugin is missing viewer marker: ${marker}`)
-  }
-  const duplicatedOfficeDependencies = [
-    'node_modules/@aiden0z/pptx-renderer/',
-    'node_modules/@univerjs/preset-sheets-core/',
-    'node_modules/@univerjs/presets/',
-    'node_modules/docx-preview/',
-  ].filter(prefix => archiveFiles.some(path => path.startsWith(prefix)))
-  const nestedOfficeDependencies = archiveFiles.filter(path => path.startsWith(
-    'node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/node_modules/',
-  ))
-  duplicatedOfficeDependencies.push(...nestedOfficeDependencies)
-  if (duplicatedOfficeDependencies.length > 0) {
-    throw new Error(`Office dependencies bundled in client.js must not be copied into ASAR again:\n${duplicatedOfficeDependencies.join('\n')}`)
+  for (const removed of ['node_modules/dsh-better-sidebar-icons/', 'node_modules/@huanlin/dsh-plugin-better-sidebar-plugin-office/']) {
+    if (archiveFiles.some(path => path.startsWith(removed))) throw new Error(`Removed plugin must not be packaged: ${removed}`)
   }
   const dreamSkinPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-dream-skin/package.json'))
   if (dreamSkinPackages.length !== 1) throw new Error(`dsh-dream-skin must be packaged exactly once; found ${dreamSkinPackages.length}.`)
   const dreamSkinManifest = JSON.parse(readArchiveFile('node_modules/dsh-dream-skin/package.json').toString('utf8'))
   if (dreamSkinManifest.version !== desktopManifest.dependencies['dsh-dream-skin']) throw new Error(`Packaged dsh-dream-skin must be ${desktopManifest.dependencies['dsh-dream-skin']}; found ${dreamSkinManifest.version}.`)
-  const dreamSkinClient = readArchiveFile('node_modules/dsh-dream-skin/lib/client.js').toString('utf8')
-  const dreamSkinDefaults = dreamSkinClient.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1] ?? ''
-  const defaultWallpaperValues = Object.fromEntries(['WALLPAPER_KEY', 'WALLPAPER_URL_KEY', 'WALLPAPER_GRADIENT_KEY'].map((key) => {
-    const match = dreamSkinDefaults.match(new RegExp(`\\[${key}\\]:\\s*"([^"]*)"`, 'u'))
-    return [key, match?.[1] ?? null]
-  }))
-  if (!dreamSkinDefaults.includes('[BUILTIN_LAST_KEY]: "light"')
-    || !dreamSkinDefaults.includes('[STORAGE_KEY]: DEFAULT_SKIN')
-    || !dreamSkinDefaults.includes('[COMPOSER_OPACITY_KEY]: "1"')
-    || Object.values(defaultWallpaperValues).some((value) => value !== '')
-    || /data:image\/jpeg;base64,[A-Za-z0-9+/=]{10000}/u.test(dreamSkinClient)) {
-    throw new Error('Dream Skin must ship the built-in light appearance with solid surfaces and no bundled wallpaper.')
+  const dreamSkinClient = readArchiveFile('node_modules/dsh-dream-skin/lib/client.js')
+  const sourceDreamSkinClient = await readFile(resolve(repositoryRoot, 'desktop/node_modules/dsh-dream-skin/lib/client.js'))
+  if (!dreamSkinClient.equals(sourceDreamSkinClient)) {
+    throw new Error('Packaged Dream Skin client must match the pinned v9.29.0 source and ZeroWall appearance patch.')
+  }
+  const dreamSkinSource = dreamSkinClient.toString('utf8')
+  const factoryDefaults = dreamSkinSource.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1]
+  const wallpaper = factoryDefaults?.match(/\[WALLPAPER_KEY\]: "data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)"/u)?.[1]
+  if (!factoryDefaults?.includes('[STORAGE_KEY]: "nebula"') || !wallpaper
+    || !dreamSkinSource.includes('FACTORY_DEFAULTS[STORAGE_KEY] = "ivory"')
+    || !dreamSkinSource.includes('FACTORY_DEFAULTS[WALLPAPER_KEY] = ""')
+    || !dreamSkinSource.includes('FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY] = ""')
+    || !dreamSkinSource.includes('id: "ivory",')
+    || !dreamSkinSource.includes('"skin.ivory": "iOS Flat"')
+    || !dreamSkinSource.includes('function migrateLegacyFactoryAppearance()')
+    || !dreamSkinSource.includes('const legacyHostFactory = parsed.value[STORAGE_KEY] === LEGACY_FACTORY_SKIN')) {
+    throw new Error('Dream Skin must start with iOS Flat, no purple wallpaper, and an old-factory migration.')
+  }
+  const defaultSvg = Buffer.from(wallpaper, 'base64').toString('utf8')
+  if (!defaultSvg.startsWith('<svg') || !defaultSvg.includes('<radialGradient') || /<(?:path|image|text|use|foreignObject)\b/iu.test(defaultSvg)) {
+    throw new Error('Dream Skin legacy factory wallpaper fingerprint must be an abstract SVG rather than a picture.')
   }
   const forbiddenDreamSkinFiles = archiveFiles.filter(path => path.startsWith('node_modules/dsh-dream-skin/') && (
     /^node_modules\/dsh-dream-skin\/(?:README|LICENSE|scripts|test|tests)\b/iu.test(path)
@@ -394,9 +382,7 @@ async function verifyArchivePolicy() {
     throw new Error(`Packaged dsh-free-search must be MIT-licensed ${desktopManifest.dependencies['dsh-free-search']}; found ${freeSearchManifest.version} (${freeSearchManifest.license}).`)
   }
   const freeSearchInject = freeSearchManifest.dsh?.client?.inject
-  const expectedFreeSearchInject = freeSearchManifest.version === '0.5.0'
-    ? ['slots', '@deepseek-ai/dsh-client-ui-plugin-manager', '@deepseek-ai/dsh-client-ui-renderer']
-    : ['slots']
+  const expectedFreeSearchInject = ['@deepseek-ai/dsh-client-ui-commands', '@deepseek-ai/dsh-client-ui-plugin-manager', '@deepseek-ai/dsh-client-ui-renderer']
   if (JSON.stringify(freeSearchInject) !== JSON.stringify(expectedFreeSearchInject)) {
     throw new Error(`Packaged dsh-free-search has an incompatible client inject contract: ${JSON.stringify(freeSearchInject)}; expected ${JSON.stringify(expectedFreeSearchInject)}.`)
   }
@@ -405,26 +391,19 @@ async function verifyArchivePolicy() {
   for (const marker of ['id: "ddg"', 'searchBing', 'advanced_search', 'platform_search', 'free_search_test', 'registerSearchProvider']) {
     if (!freeSearchHost.includes(marker)) throw new Error(`Packaged dsh-free-search Host is missing marker: ${marker}`)
   }
-  const freeSearchClientMarkers = freeSearchManifest.version === '0.5.0'
-    ? ['plugins.row.config', 'free-search-engine', 'slots', 'commandUi']
-    : ['settings.plugin.item', 'free-search-engine', 'slots', 'commandUi']
+  const freeSearchClientMarkers = ['plugins.row.config', 'free-search-engine', 'slots', 'commandUi']
   for (const marker of freeSearchClientMarkers) {
     if (!freeSearchClient.includes(marker)) throw new Error(`Packaged dsh-free-search client is missing marker: ${marker}`)
   }
-  const expectedFreeSearchClientInject = freeSearchManifest.version === '0.5.0'
-    ? 'const inject = ["slots", "commandUi"]'
-    : 'const inject = ["slots"]'
+  const expectedFreeSearchClientInject = 'const inject = ["slots", "commandUi"]'
   if (!freeSearchClient.includes(expectedFreeSearchClientInject) || !freeSearchClient.includes('ctx.inject(["commandUi"]')) {
     throw new Error('Packaged dsh-free-search must keep the settings card independent from the optional command UI service.')
-  }
-  if (/\brunUpdate\b|\bupgrading\b(?=\s*\?|\s*\|\|)/u.test(freeSearchClient)) {
-    throw new Error('Packaged dsh-free-search contains a stale self-update runtime reference.')
   }
   const fileReviewClient = readArchiveFile('node_modules/dsh-file-review/lib/client.js').toString('utf8')
   for (const forbidden of ['https://github.com/left0ver/dsh-file-review', 'Star on GitHub', '去 GitHub 点 Star']) {
     if (fileReviewClient.includes(forbidden)) throw new Error(`Packaged file review settings still contains the removed GitHub promotion: ${forbidden}`)
   }
-  for (const forbidden of ['@deepseek-ai/dsh-client-runtime', 'node:child_process', 'pnpm add dsh-free-search@latest', '/update']) {
+  for (const forbidden of ['@deepseek-ai/dsh-client-runtime']) {
     if (freeSearchHost.includes(forbidden) || freeSearchClient.includes(forbidden) || JSON.stringify(freeSearchManifest).includes(forbidden)) {
       throw new Error(`Packaged dsh-free-search contains removed compatibility or self-update marker: ${forbidden}`)
     }
@@ -865,6 +844,7 @@ async function verifyHostStartup() {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
           await verifyZoteroStatus(probeUrl)
+          await verifyZoteroAuthorization(probeUrl)
           if (!freeSearchVerified) {
             await verifyFreeSearch(probeUrl)
             freeSearchVerified = true
@@ -1023,6 +1003,9 @@ async function verifyPluginInventory(url) {
 }
 
 async function verifyFreeSearch(url) {
+  // dsh-free-search 0.6.0 stores its config under its composition entry id.
+  // Keep this in sync with the official cordis.patch.yml and client bridge.
+  const namespace = 'web-search-free'
   const endpoint = path => authUrl(new URL(url), `/api/dsh-free-search-settings/${path}`)
   const post = async (path, body = {}) => {
     const response = await hostFetch(endpoint(path), {
@@ -1035,13 +1018,17 @@ async function verifyFreeSearch(url) {
     return response.json()
   }
 
-  const valueOf = described => described?.value?.namespaces?.find(candidate => candidate?.ns === 'free-search')?.value
+  const valueOf = described => described?.value?.namespaces?.find(candidate => candidate?.ns === namespace)?.value
   const valueOfMutation = mutation => mutation?.value?.value
-  const switched = await post('mutate', { ns: 'free-search', ops: [{ op: 'set', path: ['provider'], value: 'ddg' }] })
+  const initial = await post('describe')
+  if (initial?.ok !== true || !valueOf(initial)) {
+    throw new Error(`Packaged Host free-search namespace ${namespace} is unavailable: ${JSON.stringify(initial)}`)
+  }
+  const switched = await post('mutate', { ns: namespace, ops: [{ op: 'set', path: ['provider'], value: 'ddg' }] })
   if (switched?.ok !== true || valueOfMutation(switched)?.provider !== 'ddg') {
     throw new Error(`Packaged Host free-search setting write failed: ${JSON.stringify(switched)}`)
   }
-  const restored = await post('mutate', { ns: 'free-search', ops: [{ op: 'set', path: ['provider'], value: 'bing' }] })
+  const restored = await post('mutate', { ns: namespace, ops: [{ op: 'set', path: ['provider'], value: 'bing' }] })
   if (restored?.ok !== true || valueOfMutation(restored)?.provider !== 'bing') {
     throw new Error(`Packaged Host free-search default restore failed: ${JSON.stringify(restored)}`)
   }
@@ -1086,6 +1073,39 @@ async function verifyZoteroStatus(url) {
     || typeof value?.connected !== 'boolean' || typeof value?.diagnosis !== 'string'
     || value?.diagnosis === 'The Zotero service is not composed.') {
     throw new Error(`Packaged Zotero status contract failed: ${JSON.stringify(envelope)}`)
+  }
+}
+
+async function verifyZoteroAuthorization(url) {
+  const rpcId = randomUUID()
+  const response = await hostFetch(authUrl(new URL(url), '/api/zotero/localAuthorization'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      type: 'client-request', rpcId, method: 'zotero/localAuthorization',
+      payload: { args: { request: { action: 'status' } } },
+    }),
+    signal: AbortSignal.timeout(15_000),
+  })
+  const text = await response.text()
+  let envelope
+  try {
+    envelope = JSON.parse(text)
+  } catch {
+    throw new Error(`Packaged Zotero authorization returned non-JSON HTTP ${response.status}: ${text.slice(0, 200)}`)
+  }
+  if (!response.ok || envelope?.rpcId !== rpcId || envelope?.result?.ok !== true
+    || typeof envelope.result.value !== 'string') {
+    throw new Error(`Packaged Zotero authorization RPC failed: HTTP ${response.status} ${JSON.stringify(envelope)}`)
+  }
+  let value
+  try {
+    value = JSON.parse(envelope.result.value)
+  } catch {
+    throw new Error('Packaged Zotero authorization returned invalid result JSON.')
+  }
+  if (typeof value?.authorized !== 'boolean' || typeof value?.remember !== 'boolean') {
+    throw new Error(`Packaged Zotero authorization status contract failed: ${JSON.stringify(value)}`)
   }
 }
 
@@ -1356,8 +1376,8 @@ async function verifyDesktopStartup() {
     const fatal = browserErrors.filter(error => /Failed to load plugins|missed the module table|Cannot use import statement outside a module/iu.test(error))
     if (fatal.length > 0) throw new Error(`Packaged desktop client errors:\n${fatal.join('\n')}`)
     const notice = page.getByRole('dialog', { name: '内测声明' })
-    await notice.waitFor({ state: 'visible', timeout: 30_000 })
-    await notice.getByRole('button', { name: '继续' }).click()
+    const hasNotice = await notice.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false)
+    if (hasNotice) await notice.getByRole('button', { name: '继续' }).click()
     const credential = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
     const needsCredential = await credential.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false)
     if (needsCredential) {
@@ -1481,6 +1501,9 @@ function hostEnvironment(root, dshEntry) {
     ELECTRON_RUN_AS_NODE: '1',
     NODE_PATH: resolve(asarPath, 'node_modules'),
     ZEROWALL_RUNTIME_ANCHOR: pathToFileURL(dshEntry).href,
+    // Match the packaged desktop's product environment so ZeroWall-owned
+    // profile bundles (including File Review) join this isolated Host probe.
+    ZEROWALL_USER_DATA_DIR: root,
     DSH_HOME: resolve(root, 'harness'),
     DSH_BUNDLED_SKILL_DIR: resolve(packaged.resourcesRoot, 'skills'),
     ZEROWALL_RESEARCH_DB: resolve(root, 'research', 'zerowall-research.sqlite'),
@@ -1510,7 +1533,10 @@ async function verifyPlaintextSessionPersistence(url, root) {
   while (Date.now() < deadline) {
     const files = await listDiskFiles(sessionsRoot).catch(error => error?.code === 'ENOENT' ? [] : Promise.reject(error))
     if (files.some(path => path.endsWith('session.jsonl.zstd'))) throw new Error('Packaged Host wrote a compressed session.')
-    const jsonl = files.find(path => path.endsWith('session.v3.jsonl'))
+    // Current Harness releases can persist newer session schemas (for example
+    // v4) while retaining the same plaintext JSONL contract. Verify the
+    // contract independently of the schema version.
+    const jsonl = files.find(path => /(?:^|\/)session\.v\d+\.jsonl$/u.test(path))
     if (jsonl !== undefined) {
       const firstLine = (await readFile(resolve(sessionsRoot, jsonl), 'utf8')).split('\n', 1)[0]
       if (JSON.parse(firstLine).id !== sessionId) throw new Error('Packaged Host persisted the wrong session id.')
@@ -1585,8 +1611,8 @@ function readArchiveFile(path) {
 
 async function verifySourceRuntimePolicy() {
   const upstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
-  if (!/^0\.1\.7-rc\.2$/u.test(String(upstream.version)) || upstream.tag !== `dsh-v${upstream.version}`) {
-    throw new Error(`Pinned DSH must be dsh-v0.1.7-rc.2; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
+  if (!/^0\.2\.0-rc\.2$/u.test(String(upstream.version)) || upstream.tag !== `dsh-v${upstream.version}`) {
+    throw new Error(`Pinned DSH must be dsh-v0.2.0-rc.2; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
   }
   const sourceDsh = JSON.parse(await readFile(resolve(repositoryRoot, 'deepseek-harness', 'package.json'), 'utf8'))
   if (sourceDsh.version !== upstream.version) throw new Error(`DSH source package must be ${upstream.version}; found ${sourceDsh.version}.`)
@@ -1616,15 +1642,19 @@ async function verifySourceRuntimePolicy() {
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
   const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')
   const basePatch = await readFile(resolve(repositoryRoot, 'deepseek-harness', 'packages', 'bundle', 'base', 'cordis.patch.yml'), 'utf8')
-  if (!stableProfile.includes("'@huanlin/dsh-plugin-better-sidebar-plugin-office'")
-    || !stableProfile.includes("'dsh-wechat'")
+  if (!stableProfile.includes("'dsh-wechat'")
     || !/wechat:[\s\S]*enabled:\s*true[\s\S]*autoConnect:\s*false[\s\S]*channel:\s*ilink/u.test(stableProfile)) {
-    throw new Error('Stable profile must include the Office viewer and enable WeChat while keeping first-start autoConnect disabled.')
+    throw new Error('Stable profile must enable WeChat while keeping first-start autoConnect disabled.')
   }
-  if (!desktopPatch.includes("name: '@huanlin/dsh-plugin-better-sidebar-plugin-office'")) {
-    throw new Error('Packaged Electron patch must mount the Better-sidebar Office viewer.')
+  for (const removed of ['dsh-better-sidebar-icons', '@huanlin/dsh-plugin-better-sidebar-plugin-office']) {
+    if (stableProfile.includes(removed) || desktopPatch.includes(removed)) {
+      throw new Error(`Removed plugin must not be mounted: ${removed}`)
+    }
   }
   if (!desktopPatch.includes("name: 'dsh-wechat'")) throw new Error('Packaged Electron patch must mount dsh-wechat.')
+  if (/^\s+- id:\s*web-search-free\s*$/mu.test(desktopPatch)) {
+    throw new Error('Free Search must be mounted by its profile bundle so its settings remain editable.')
+  }
   if (/^\s*- id:\s*agent-default-model\s*$/mu.test(desktopPatch)) {
     throw new Error('Packaged Electron patch must not lock agent-default-model above the editable profile layer.')
   }

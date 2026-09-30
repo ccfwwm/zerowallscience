@@ -54,6 +54,7 @@ function settingsScope(diffLayout?: DiffLayout): SettingsScope<Config> {
     set: vi.fn(async (field, value) => {
       snapshot = { ...snapshot, value: { ...snapshot.value, [field]: value } }
       for (const listener of listeners) listener()
+      return true
     }),
     unset: vi.fn(),
     mutate: vi.fn(),

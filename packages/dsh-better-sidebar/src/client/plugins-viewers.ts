@@ -15,13 +15,6 @@ import type { PluginEntry } from './plugins-shared.ts'
 /** File-previewer plugins (alphabetical order). */
 export const builtinViewerPlugins: readonly PluginEntry[] = [
   {
-    id: '@huanlin/dsh-plugin-better-sidebar-plugin-office',
-    name: () => t('pluginOfficeName'),
-    url: 'https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office',
-    description: () => t('pluginOfficeDesc'),
-    install: 'cd ~/.dsh && dsh plugin --profile web add @huanlin/dsh-plugin-better-sidebar-plugin-office',
-  },
-  {
     id: 'dsh-md-export',
     name: () => t('pluginMdExportName'),
     url: 'https://github.com/AnakinCao/dsh-md-export',

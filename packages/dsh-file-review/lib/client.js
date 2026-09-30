@@ -4088,20 +4088,17 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		const agentCodec = {
 			mode: "strict",
 			typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
-			create: () => intersection(string(), unknown()),
-			schema: intersection(string(), unknown())
+			create: () => intersection(string(), unknown())
 		};
 		const requestCodec = {
 			mode: "strict",
 			typeSymbol: `${PACKAGE_NAME}#FileReviewRequest`,
-			create: () => requestSchema,
-			schema: requestSchema
+			create: () => requestSchema
 		};
 		const resultCodec = {
 			mode: "strict",
 			typeSymbol: `${PACKAGE_NAME}#FileReviewResult`,
-			create: () => resultSchema,
-			schema: resultSchema
+			create: () => resultSchema
 		};
 		function descriptor(method) {
 			return {
@@ -4819,40 +4816,40 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			document.head.appendChild(style);
 		}
 		var UnifiedDiff_module_css_default = {
-			"unifiedBody": "bpckIG_unifiedBody",
-			"unifiedLine": "bpckIG_unifiedLine",
-			"commentSave": "bpckIG_commentSave",
-			"unifiedOmitted": "bpckIG_unifiedOmitted",
 			"splitGrid": "bpckIG_splitGrid",
-			"splitCell": "bpckIG_splitCell",
-			"commentCancel": "bpckIG_commentCancel",
-			"unifiedLineNumber": "bpckIG_unifiedLineNumber",
-			"unifiedBlock": "bpckIG_unifiedBlock",
-			"unifiedStatus": "bpckIG_unifiedStatus",
-			"unifiedEmbedded": "bpckIG_unifiedEmbedded",
-			"splitPane": "bpckIG_splitPane",
-			"unifiedHunkHeader": "bpckIG_unifiedHunkHeader",
-			"commentBody": "bpckIG_commentBody",
-			"unified_add": "bpckIG_unified_add",
 			"unifiedSign": "bpckIG_unifiedSign",
-			"splitEmpty": "bpckIG_splitEmpty",
-			"unifiedCopyButton": "bpckIG_unifiedCopyButton",
-			"commentDelete": "bpckIG_commentDelete",
-			"commentTrigger": "bpckIG_commentTrigger",
-			"unified_context": "bpckIG_unified_context",
-			"commentEditor": "bpckIG_commentEditor",
-			"unifiedAdded": "bpckIG_unifiedAdded",
-			"commentRow": "bpckIG_commentRow",
-			"commentActions": "bpckIG_commentActions",
-			"unifiedGap": "bpckIG_unifiedGap",
-			"unifiedBodyWrap": "bpckIG_unifiedBodyWrap",
-			"unifiedRemoved": "bpckIG_unifiedRemoved",
-			"unifiedHeader": "bpckIG_unifiedHeader",
-			"unifiedPath": "bpckIG_unifiedPath",
+			"unifiedBlock": "bpckIG_unifiedBlock",
+			"unifiedHunkHeader": "bpckIG_unifiedHunkHeader",
+			"commentSave": "bpckIG_commentSave",
 			"unifiedFile": "bpckIG_unifiedFile",
+			"commentRow": "bpckIG_commentRow",
+			"unifiedHeader": "bpckIG_unifiedHeader",
+			"commentTrigger": "bpckIG_commentTrigger",
+			"commentDelete": "bpckIG_commentDelete",
+			"unifiedOmitted": "bpckIG_unifiedOmitted",
 			"unified_del": "bpckIG_unified_del",
+			"unifiedAdded": "bpckIG_unifiedAdded",
+			"unifiedGap": "bpckIG_unifiedGap",
+			"unifiedLine": "bpckIG_unifiedLine",
+			"unifiedBodyWrap": "bpckIG_unifiedBodyWrap",
+			"commentCancel": "bpckIG_commentCancel",
+			"unifiedEmbedded": "bpckIG_unifiedEmbedded",
+			"commentActions": "bpckIG_commentActions",
+			"unifiedBody": "bpckIG_unifiedBody",
+			"commentBody": "bpckIG_commentBody",
 			"commentHint": "bpckIG_commentHint",
-			"unifiedText": "bpckIG_unifiedText"
+			"unifiedStatus": "bpckIG_unifiedStatus",
+			"unified_add": "bpckIG_unified_add",
+			"unifiedLineNumber": "bpckIG_unifiedLineNumber",
+			"splitPane": "bpckIG_splitPane",
+			"splitEmpty": "bpckIG_splitEmpty",
+			"splitCell": "bpckIG_splitCell",
+			"commentEditor": "bpckIG_commentEditor",
+			"unifiedText": "bpckIG_unifiedText",
+			"unifiedPath": "bpckIG_unifiedPath",
+			"unifiedCopyButton": "bpckIG_unifiedCopyButton",
+			"unified_context": "bpckIG_unified_context",
+			"unifiedRemoved": "bpckIG_unifiedRemoved"
 		};
 		//#endregion
 		//#region src/client/UnifiedDiff.tsx
@@ -5333,85 +5330,85 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			document.head.appendChild(style);
 		}
 		var ProducedFiles_module_css_default = {
-			"noticeFileListLabel": "bWJNLG_noticeFileListLabel",
-			"reviewCommentPreviewPositioner": "bWJNLG_reviewCommentPreviewPositioner",
-			"fileIconWrap": "bWJNLG_fileIconWrap",
-			"toggleButton": "bWJNLG_toggleButton",
-			"noticeFileArrow": "bWJNLG_noticeFileArrow",
-			"commentDockPill": "bWJNLG_commentDockPill",
-			"reviewHeader": "bWJNLG_reviewHeader",
-			"reviewPath": "bWJNLG_reviewPath",
-			"noticeIconSvg": "bWJNLG_noticeIconSvg",
-			"noticeFiles": "bWJNLG_noticeFiles",
-			"buttonIcon": "bWJNLG_buttonIcon",
-			"commentPreviewBody": "bWJNLG_commentPreviewBody",
-			"reviewMessageCommentPill": "bWJNLG_reviewMessageCommentPill",
-			"reviewFile": "bWJNLG_reviewFile",
-			"reviewHeading": "bWJNLG_reviewHeading",
-			"toastHeader": "bWJNLG_toastHeader",
-			"noticeFileList": "bWJNLG_noticeFileList",
-			"toast": "bWJNLG_toast",
-			"toastCloseButton": "bWJNLG_toastCloseButton",
-			"commentDockOpen": "bWJNLG_commentDockOpen",
-			"reviewContent": "bWJNLG_reviewContent",
-			"cardTitle": "bWJNLG_cardTitle",
-			"reviewSubtitle": "bWJNLG_reviewSubtitle",
-			"sidebarTabEmpty": "bWJNLG_sidebarTabEmpty",
-			"reviewButton": "bWJNLG_reviewButton",
-			"closeIcon": "bWJNLG_closeIcon",
-			"toastSuccess": "bWJNLG_toastSuccess",
-			"reviewBody": "bWJNLG_reviewBody",
-			"reviewDiff": "bWJNLG_reviewDiff",
-			"reviewCommentPreviewBelow": "bWJNLG_reviewCommentPreviewBelow",
-			"commentPreviewCard": "bWJNLG_commentPreviewCard",
-			"reviewMessageRow": "bWJNLG_reviewMessageRow",
-			"reviewCommentPillRootMessage": "bWJNLG_reviewCommentPillRootMessage",
-			"commentPreviewHeader": "bWJNLG_commentPreviewHeader",
-			"commentPreviewPath": "bWJNLG_commentPreviewPath",
-			"reviewUnavailable": "bWJNLG_reviewUnavailable",
-			"reviewFileHeader": "bWJNLG_reviewFileHeader",
-			"reviewMessageStack": "bWJNLG_reviewMessageStack",
-			"toastError": "bWJNLG_toastError",
-			"reviewMessageReference": "bWJNLG_reviewMessageReference",
-			"reviewMessageActionIcon": "bWJNLG_reviewMessageActionIcon",
-			"reviewMessageAction": "bWJNLG_reviewMessageAction",
-			"removed": "bWJNLG_removed",
-			"reviewMessageBubble": "bWJNLG_reviewMessageBubble",
-			"openButton": "bWJNLG_openButton",
-			"commentDockIcon": "bWJNLG_commentDockIcon",
-			"reviewToolbar": "bWJNLG_reviewToolbar",
-			"toastCopy": "bWJNLG_toastCopy",
-			"toolbarButton": "bWJNLG_toolbarButton",
-			"noticeDismissButton": "bWJNLG_noticeDismissButton",
-			"toastTitle": "bWJNLG_toastTitle",
-			"reviewMessageActions": "bWJNLG_reviewMessageActions",
-			"card": "bWJNLG_card",
-			"toastDescription": "bWJNLG_toastDescription",
-			"reviewCommentPreview": "bWJNLG_reviewCommentPreview",
-			"reviewMessageExtraBlock": "bWJNLG_reviewMessageExtraBlock",
-			"reviewCommentPreviewAbove": "bWJNLG_reviewCommentPreviewAbove",
-			"cardHeader": "bWJNLG_cardHeader",
-			"fileRow": "bWJNLG_fileRow",
-			"stats": "bWJNLG_stats",
 			"fileList": "bWJNLG_fileList",
-			"cardTitleBlock": "bWJNLG_cardTitleBlock",
-			"noticeIcon": "bWJNLG_noticeIcon",
-			"sidebarTab": "bWJNLG_sidebarTab",
-			"reviewStatus": "bWJNLG_reviewStatus",
-			"commentDock": "bWJNLG_commentDock",
-			"reviewMessageTime": "bWJNLG_reviewMessageTime",
-			"reviewTitle": "bWJNLG_reviewTitle",
-			"commentDockRemove": "bWJNLG_commentDockRemove",
-			"commentPreviewLocation": "bWJNLG_commentPreviewLocation",
-			"added": "bWJNLG_added",
-			"noticeFilePath": "bWJNLG_noticeFilePath",
-			"reviewMessageCommentIcon": "bWJNLG_reviewMessageCommentIcon",
-			"reviewCommentPillRoot": "bWJNLG_reviewCommentPillRoot",
-			"noticeFileButton": "bWJNLG_noticeFileButton",
+			"commentDockPill": "bWJNLG_commentDockPill",
+			"reviewBody": "bWJNLG_reviewBody",
 			"moreFiles": "bWJNLG_moreFiles",
+			"noticeFileList": "bWJNLG_noticeFileList",
+			"reviewCommentPillRoot": "bWJNLG_reviewCommentPillRoot",
+			"toastSuccess": "bWJNLG_toastSuccess",
+			"toastCopy": "bWJNLG_toastCopy",
+			"noticeFileButton": "bWJNLG_noticeFileButton",
+			"commentPreviewPath": "bWJNLG_commentPreviewPath",
+			"reviewCommentPreviewAbove": "bWJNLG_reviewCommentPreviewAbove",
+			"reviewMessageBubble": "bWJNLG_reviewMessageBubble",
+			"cardHeader": "bWJNLG_cardHeader",
+			"toolbarButton": "bWJNLG_toolbarButton",
+			"reviewFile": "bWJNLG_reviewFile",
 			"icon": "bWJNLG_icon",
+			"reviewTitle": "bWJNLG_reviewTitle",
+			"toastTitle": "bWJNLG_toastTitle",
+			"reviewHeader": "bWJNLG_reviewHeader",
+			"noticeIconSvg": "bWJNLG_noticeIconSvg",
+			"reviewCommentPreview": "bWJNLG_reviewCommentPreview",
+			"reviewMessageTime": "bWJNLG_reviewMessageTime",
+			"sidebarTabEmpty": "bWJNLG_sidebarTabEmpty",
+			"reviewUnavailable": "bWJNLG_reviewUnavailable",
+			"reviewPathText": "bWJNLG_reviewPathText",
+			"reviewMessageRow": "bWJNLG_reviewMessageRow",
+			"reviewMessageExtraBlock": "bWJNLG_reviewMessageExtraBlock",
 			"fileName": "bWJNLG_fileName",
-			"reviewPathText": "bWJNLG_reviewPathText"
+			"cardTitleBlock": "bWJNLG_cardTitleBlock",
+			"reviewMessageReference": "bWJNLG_reviewMessageReference",
+			"reviewMessageActions": "bWJNLG_reviewMessageActions",
+			"sidebarTab": "bWJNLG_sidebarTab",
+			"noticeIcon": "bWJNLG_noticeIcon",
+			"noticeFilePath": "bWJNLG_noticeFilePath",
+			"commentDockOpen": "bWJNLG_commentDockOpen",
+			"removed": "bWJNLG_removed",
+			"fileRow": "bWJNLG_fileRow",
+			"commentDockRemove": "bWJNLG_commentDockRemove",
+			"commentDockIcon": "bWJNLG_commentDockIcon",
+			"cardTitle": "bWJNLG_cardTitle",
+			"commentPreviewHeader": "bWJNLG_commentPreviewHeader",
+			"reviewContent": "bWJNLG_reviewContent",
+			"fileIconWrap": "bWJNLG_fileIconWrap",
+			"reviewButton": "bWJNLG_reviewButton",
+			"reviewSubtitle": "bWJNLG_reviewSubtitle",
+			"noticeFiles": "bWJNLG_noticeFiles",
+			"toastDescription": "bWJNLG_toastDescription",
+			"reviewStatus": "bWJNLG_reviewStatus",
+			"commentPreviewLocation": "bWJNLG_commentPreviewLocation",
+			"commentPreviewBody": "bWJNLG_commentPreviewBody",
+			"toastCloseButton": "bWJNLG_toastCloseButton",
+			"closeIcon": "bWJNLG_closeIcon",
+			"toast": "bWJNLG_toast",
+			"card": "bWJNLG_card",
+			"toggleButton": "bWJNLG_toggleButton",
+			"reviewPath": "bWJNLG_reviewPath",
+			"added": "bWJNLG_added",
+			"reviewMessageStack": "bWJNLG_reviewMessageStack",
+			"noticeFileListLabel": "bWJNLG_noticeFileListLabel",
+			"reviewCommentPillRootMessage": "bWJNLG_reviewCommentPillRootMessage",
+			"reviewHeading": "bWJNLG_reviewHeading",
+			"stats": "bWJNLG_stats",
+			"openButton": "bWJNLG_openButton",
+			"noticeFileArrow": "bWJNLG_noticeFileArrow",
+			"reviewDiff": "bWJNLG_reviewDiff",
+			"commentDock": "bWJNLG_commentDock",
+			"toastHeader": "bWJNLG_toastHeader",
+			"reviewMessageCommentPill": "bWJNLG_reviewMessageCommentPill",
+			"reviewMessageActionIcon": "bWJNLG_reviewMessageActionIcon",
+			"reviewCommentPreviewBelow": "bWJNLG_reviewCommentPreviewBelow",
+			"buttonIcon": "bWJNLG_buttonIcon",
+			"noticeDismissButton": "bWJNLG_noticeDismissButton",
+			"reviewToolbar": "bWJNLG_reviewToolbar",
+			"toastError": "bWJNLG_toastError",
+			"commentPreviewCard": "bWJNLG_commentPreviewCard",
+			"reviewMessageAction": "bWJNLG_reviewMessageAction",
+			"reviewCommentPreviewPositioner": "bWJNLG_reviewCommentPreviewPositioner",
+			"reviewMessageCommentIcon": "bWJNLG_reviewMessageCommentIcon",
+			"reviewFileHeader": "bWJNLG_reviewFileHeader"
 		};
 		//#endregion
 		//#region src/client/ReviewContent.tsx
@@ -6266,10 +6263,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		//#region src/client/ProducedFiles.tsx
 		/** Keep the turn-tail card compact; the review tab still receives every file. */
 		const SHOWN_LIMIT = 6;
-		/** Harness rc.2 list slots pass the owner directly; derive the matched files inside the component. */
-		function ProducedFilesSlot(props) {
-			const matched = reviewsForClosing(props.turn.data.get("deliverables"), props.seq);
-			if (matched.length === 0) return null;
+		/** Only show the review action when this turn produced file changes. */
+		function ProducedFilesTail(props) {
+			const matched = selectProducedFiles(props);
+			if (matched === null) return null;
 			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ProducedFiles, {
 				...props,
 				matched
@@ -6673,68 +6670,47 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			document.head.appendChild(style);
 		}
 		var FileReviewSettingsCard_module_css_default = {
-			"heading": "yC9_GW_heading",
-			"cardOpen": "yC9_GW_cardOpen",
-			"card": "yC9_GW_card",
-			"select": "yC9_GW_select",
-			"chevron": "yC9_GW_chevron",
-			"field": "yC9_GW_field",
-			"body": "yC9_GW_body",
 			"row": "yC9_GW_row",
-			"header": "yC9_GW_header",
 			"description": "yC9_GW_description",
-			"readOnly": "yC9_GW_readOnly",
-			"title": "yC9_GW_title",
-			"chevronOpen": "yC9_GW_chevronOpen",
+			"cardOpen": "yC9_GW_cardOpen",
 			"label": "yC9_GW_label",
 			"icon": "yC9_GW_icon",
-			"toggle": "yC9_GW_toggle",
+			"select": "yC9_GW_select",
 			"hint": "yC9_GW_hint",
-			"thumb": "yC9_GW_thumb"
+			"thumb": "yC9_GW_thumb",
+			"chevron": "yC9_GW_chevron",
+			"readOnly": "yC9_GW_readOnly",
+			"toggle": "yC9_GW_toggle",
+			"heading": "yC9_GW_heading",
+			"chevronOpen": "yC9_GW_chevronOpen",
+			"field": "yC9_GW_field",
+			"header": "yC9_GW_header",
+			"card": "yC9_GW_card",
+			"body": "yC9_GW_body",
+			"title": "yC9_GW_title"
 		};
 		//#endregion
 		//#region src/client/FileReviewSettingsCard.tsx
-		/** Adapter for the rc.2 Plugins tab, whose owner intentionally supplies no business face. */
-		function FileReviewSettingsTab({ settings, t }) {
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(FileReviewSettingsCardView, {
-				t,
-				settings: (0, react.useSyncExternalStore)(settings.subscribe, settings.getSnapshot, settings.getSnapshot),
-				setWordWrap: async (value) => {
-					await settings.set("wordWrap", value);
-				},
-				setDiffLayout: async (value) => {
-					await settings.set("diffLayout", value);
-				}
-			});
-		}
 		function FileReviewSettingsCardView({ settings, setWordWrap, setDiffLayout, t }) {
-			const [open, setOpen] = (0, react.useState)(false);
+			const [open, setOpen] = (0, react.useState)(true);
 			const [saving, setSaving] = (0, react.useState)(false);
 			const [saveError, setSaveError] = (0, react.useState)(false);
 			if (settings.status !== "ready") return null;
 			const title = t("settings.title");
 			const wordWrap = settings.value?.wordWrap ?? false;
 			const writable = settings.writable && !saving;
-			const changeLayout = async (value) => {
+			const save = async (operation) => {
 				setSaving(true);
 				setSaveError(false);
 				try {
-					await setDiffLayout(value);
+					if (await operation() !== true) setSaveError(true);
 				} catch {
 					setSaveError(true);
 				} finally {
 					setSaving(false);
 				}
 			};
-			const toggleWordWrap = async () => {
-				setSaving(true);
-				try {
-					await setWordWrap(!wordWrap);
-				} finally {
-					setSaving(false);
-				}
-			};
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 				className: `${FileReviewSettingsCard_module_css_default.card} ${open ? FileReviewSettingsCard_module_css_default.cardOpen : ""}`,
 				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
 					type: "button",
@@ -6814,7 +6790,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 								value: settings.value?.diffLayout ?? "split",
 								disabled: !writable,
 								onChange: (event) => {
-									changeLayout(event.target.value === "unified" ? "unified" : "split");
+									save(() => setDiffLayout(event.target.value === "unified" ? "unified" : "split"));
 								},
 								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("option", {
 									value: "split",
@@ -6846,7 +6822,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 								"data-checked": wordWrap,
 								disabled: !writable,
 								onClick: () => {
-									toggleWordWrap();
+									save(() => setWordWrap(!wordWrap));
 								},
 								children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { className: FileReviewSettingsCard_module_css_default.thumb })
 							})]
@@ -6861,6 +6837,17 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						})
 					]
 				}) : null]
+			});
+		}
+		/** Minimal settings card owned by the file-review plugin. */
+		function FileReviewSettingsCard({ view, setWordWrap, setDiffLayout, t, useFileReviewSettings }) {
+			const settings = useFileReviewSettings((snapshot) => snapshot);
+			if (view === "summary") return t("settings.description");
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(FileReviewSettingsCardView, {
+				settings,
+				setWordWrap,
+				setDiffLayout,
+				t
 			});
 		}
 		//#endregion
@@ -7149,14 +7136,16 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			});
 		}
 		/** Shadow the host user renderer while preserving its ordinary-message behavior. */
-		function ReviewUserMessage({ node, cwd, renderMessageImages, t, reviewT, openFile, openSkill }) {
+		function ReviewUserMessage({ node, sessionId, cwd, renderMessageImages, t, reviewT, openFile, openSkill }) {
 			const { content, time } = node.data;
 			const { text, images, rest } = contentParts(content);
 			const projection = projectReviewMessageText(text);
 			const visibleText = projection?.visibleText ?? text;
 			const countLabel = projection === null ? null : projection.commentCount === 1 ? reviewT("review.commentCountOne") : reviewT("review.commentCount", { count: String(projection.commentCount) });
 			const copyText = projection === null ? text : [countLabel, visibleText].filter((value) => value !== null && value !== "").join("\n\n");
-			const showBubble = visibleText !== "" || rest.length > 0;
+			const fileBlocks = rest.filter((block) => typeof block === "object" && block !== null && block.type === "file");
+			const extraBlocks = rest.filter((block) => !fileBlocks.includes(block));
+			const showBubble = visibleText !== "" || extraBlocks.length > 0;
 			if (projection === null) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_chat_client.UserStyleBubble, {
 				content,
 				renderMessageImages,
@@ -7164,6 +7153,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					openFile,
 					openSkill
 				},
+				...sessionId === void 0 ? {} : { fileActionScope: {
+					sessionId,
+					...cwd === void 0 ? {} : { cwd }
+				} },
 				t,
 				actions: (value) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MessageActions, {
 					text: value,
@@ -7191,9 +7184,18 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 							placement: "below-right",
 							variant: "message"
 						}),
+						fileBlocks.length > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_chat_client.UserStyleBubble, {
+							content: fileBlocks,
+							renderMessageImages,
+							...sessionId === void 0 ? {} : { fileActionScope: {
+								sessionId,
+								...cwd === void 0 ? {} : { cwd }
+							} },
+							t
+						}),
 						showBubble && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 							className: ProducedFiles_module_css_default.reviewMessageBubble,
-							children: [projectPlainReferences(visibleText), rest.map((block, index) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ExtraBlock, {
+							children: [projectPlainReferences(visibleText), extraBlocks.map((block, index) => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(ExtraBlock, {
 								label: t("message.extraBlock"),
 								value: block
 							}, index))]
@@ -7238,6 +7240,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		*/
 		function bindReviewReference(scope, sessionId, input, t, events) {
 			let reconciling = false;
+			let syncScheduled = false;
+			let disposed = false;
 			const sync = () => {
 				if (reconciling) return;
 				let state = input.state.getSnapshot();
@@ -7245,19 +7249,34 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				const count = reviewComments(sessionId).length;
 				const current = occurrenceFor(state, sessionId);
 				const expectedLabel = count === 0 ? void 0 : count === 1 ? t("review.commentCountOne") : t("review.commentCount", { count: String(count) });
-				if (current !== void 0 && count > 0 && current.label === expectedLabel) return;
+				if (current !== void 0 && count > 0 && current.label === expectedLabel && current.offset === 0) return;
 				reconciling = true;
 				try {
+					let caretAfterPrefix;
 					if (current !== void 0) {
 						const end = current.offset + current.length;
-						const removeEnd = state.draft[end] === " " ? end + 1 : end;
-						input.setDraft(state.draft.slice(0, current.offset) + state.draft.slice(removeEnd));
+						const hasSeparator = state.draft[end] === " ";
+						if (current.offset > 0) {
+							const detectStart = current.offset - state.occurrences.filter((occurrence) => occurrence.offset < current.offset).reduce((length, occurrence) => length + occurrence.length - 1, 0);
+							if (scope.bail(scope, "slash/input-insert-text", {
+								text: "",
+								span: {
+									start: detectStart,
+									end: detectStart + (hasSeparator ? 2 : 1),
+									draftRev: state.draftRev
+								}
+							}) !== true) throw new Error("Failed to move review comment reference");
+							caretAfterPrefix = detectStart;
+						} else {
+							const removeEnd = hasSeparator ? end + 1 : end;
+							input.setDraft(state.draft.slice(0, current.offset) + state.draft.slice(removeEnd));
+						}
 						state = input.state.getSnapshot();
 					}
 					if (count === 0 || expectedLabel === void 0 || state.phase !== "plain") return;
-					scope.bail(scope, "slash/input-insert-reference", {
+					if (scope.bail(scope, "slash/input-insert-reference", {
 						reference: {
-							source: REVIEW_COMMENT_SOURCE,
+							source: "file-review-comments",
 							ref: sessionId,
 							label: expectedLabel,
 							clipboardText: "@review-comments"
@@ -7267,14 +7286,37 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 							end: 0,
 							draftRev: state.draftRev
 						}
-					});
+					}) !== true) throw new Error("Failed to insert review comment reference");
+					if (caretAfterPrefix !== void 0) {
+						state = input.state.getSnapshot();
+						const caret = caretAfterPrefix + 2;
+						if (scope.bail(scope, "slash/input-insert-text", {
+							text: "",
+							span: {
+								start: caret,
+								end: caret,
+								draftRev: state.draftRev
+							}
+						}) !== true) throw new Error("Failed to position review comment caret");
+					}
 				} finally {
 					reconciling = false;
 				}
 			};
 			const unsubscribe = input.state.subscribe(() => {
 				if (reconciling) return;
-				if (input.state.getSnapshot().phase === "plain") sync();
+				const state = input.state.getSnapshot();
+				if (state.phase !== "plain") return;
+				if ((occurrenceFor(state, sessionId)?.offset ?? 0) === 0) {
+					sync();
+					return;
+				}
+				if (syncScheduled) return;
+				syncScheduled = true;
+				queueMicrotask(() => {
+					syncScheduled = false;
+					if (!disposed) sync();
+				});
 			});
 			const unsubscribeEvents = events.subscribe(() => {
 				const change = events.getSnapshot().change;
@@ -7285,6 +7327,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			return {
 				sync,
 				dispose: () => {
+					disposed = true;
 					unsubscribeComments();
 					unsubscribeEvents();
 					unsubscribe();
@@ -7367,16 +7410,16 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				zh,
 				en
 			}), "file-review: dictionaries");
-			ctx.slots.inject("settings.plugins.tab", () => ctx.slots.register({
-				name: "settings.plugins.tab",
-				id: FILE_REVIEW_SETTINGS_NAMESPACE,
-				order: 20,
-				label: () => t("settings.title"),
-				locale: NS
-			}, (props) => (0, react.createElement)(FileReviewSettingsTab, {
-				...props,
-				settings
-			})));
+			ctx.slots.inject("plugins.row.config", () => ctx.slots.register({
+				name: "plugins.row.config",
+				key: "dsh-file-review#file-review",
+				locale: NS,
+				inject: () => ({
+					hooks: { fileReviewSettings: settings },
+					setWordWrap: (value) => settings.set("wordWrap", value),
+					setDiffLayout: (value) => settings.set("diffLayout", value)
+				})
+			}, FileReviewSettingsCard));
 			ctx.slots.inject("conversation.input.dock", () => ctx.slots.register({
 				name: "conversation.input.dock",
 				id: "file-review-comments",
@@ -7393,8 +7436,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}, ReviewUserMessage));
 			ctx.slots.inject("conversation.chat.turnTail", () => ctx.slots.register({
 				name: "conversation.chat.turnTail",
-				id: "dsh-file-review:produced-files",
-				priority: -2,
+				id: "dsh-file-review",
+				order: -2,
 				registrant: "dsh-file-review",
 				locale: NS,
 				inject: (sessionId) => {
@@ -7405,7 +7448,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						applyChanges: remote.applyChanges
 					};
 				}
-			}, ProducedFilesSlot));
+			}, ProducedFilesTail));
 			ctx.provide("chatFileMentions", { forClosing(owner) {
 				const reviews = selectProducedFiles(owner);
 				if (reviews === null) return void 0;

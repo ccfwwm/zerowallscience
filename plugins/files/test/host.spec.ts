@@ -12,6 +12,45 @@ afterEach(async () => {
 })
 
 describe('uploaded file preparation', () => {
+  it.each(['pdf', 'txt'] as const)('authorizes historical native %s files from the exact session message', async kind => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-history-file-')); roots.push(root)
+    const previous = process.env.DSH_HOME; process.env.DSH_HOME = root
+    try {
+      const document = await PDFDocument.create()
+      document.addPage().drawText('Historical PDF preview', { x: 72, y: 720, font: await document.embedFont(StandardFonts.Helvetica) })
+      const bytes = kind === 'pdf' ? Buffer.from(await document.save()) : Buffer.from('Historical text preview', 'utf8')
+      const sha = createHash('sha256').update(bytes).digest('hex')
+      const name = kind === 'pdf' ? 'history.pdf' : 'history.txt'
+      const native = { attachmentId: `sha256:${sha}`, name, bytes: bytes.length }
+      const source = join(root, name)
+      const workspace = join(root, 'workspace')
+      await mkdir(workspace)
+      await writeFile(source, bytes)
+      const message = { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'file', attachment: native }] } }
+      const sessions = {
+        get: (id: string) => id === 'own-session'
+          ? { header: { cwd: workspace }, snapshotEvents: () => [message] }
+          : id === 'other-session'
+            ? { header: { cwd: workspace }, snapshotEvents: () => [{ type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: native.attachmentId }] } }] }
+            : undefined,
+      }
+      const service = Object.create(ZeroWallFilesService.prototype) as ZeroWallFilesService
+      Object.defineProperty(service, 'ctx', { value: { sessions, get: (key: string) => key === 'attachments' ? { fileHostPath: () => source } : undefined } })
+      await expect(service.downloadOriginal({ sessionId: 'other-session', attachmentId: native.attachmentId })).rejects.toThrow('not referenced')
+      const metadata = await service.inspectOriginalMetadata({ sessionId: 'own-session', attachmentId: native.attachmentId })
+      expect(metadata).toMatchObject({ name, bytes: bytes.length, mediaType: kind === 'pdf' ? 'application/pdf' : 'text/plain' })
+      const original = await service.downloadOriginal({ sessionId: 'own-session', attachmentId: native.attachmentId })
+      expect(Buffer.from(original.data, 'base64')).toEqual(bytes)
+      const materialized = await service.materializeOriginal({ sessionId: 'own-session', attachmentId: native.attachmentId })
+      expect(materialized.path).toBe(join(workspace, '.zerowall', 'uploads', sha, name))
+      expect(await readFile(materialized.path)).toEqual(bytes)
+      const extraction = await service.extract({ sessionId: 'own-session', attachmentId: native.attachmentId, mode: 'local' })
+      expect(extraction.state).toBe('done')
+      const parsed = await service.inspect({ sessionId: 'own-session', attachmentId: native.attachmentId, view: 'parsed' })
+      expect(parsed.preview).toContain(kind === 'pdf' ? 'Historical PDF preview' : 'Historical text preview')
+    } finally { if (previous === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = previous }
+  })
+
   it.each([false, true])('parses native PDF receipts automatically (MinerU configured: %s)', async configured => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-native-pdf-')); roots.push(root)
     const previous = process.env.DSH_HOME; process.env.DSH_HOME = root
@@ -32,7 +71,12 @@ describe('uploaded file preparation', () => {
         zerowallMineru: { getConfigStatus: async () => ({ tokenConfigured: configured }), parse },
       }
       const service = Object.create(ZeroWallFilesService.prototype) as ZeroWallFilesService
-      Object.defineProperty(service, 'ctx', { value: { get: (name: keyof typeof services) => services[name], sessions: { get: () => ({}) } } })
+      Object.defineProperty(service, 'ctx', { value: {
+        get: (name: keyof typeof services) => services[name],
+        sessions: { get: (id: string) => id === 'session-1'
+          ? { header: {}, snapshotEvents: () => [{ type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'file', attachment: ref }] } }] }
+          : undefined },
+      } })
       const prepared = await service.prepareNative({ sessionId: 'session-1', receiptId: 'receipt-1' })
       expect(prepared.content).toContain(configured ? 'MinerU parsed PDF' : 'Native PDF local extraction')
       expect(parse).toHaveBeenCalledTimes(configured ? 1 : 0)

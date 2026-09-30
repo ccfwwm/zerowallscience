@@ -9,6 +9,7 @@ import { registerZeroWallBrand } from './Brand.tsx'
 import { GithubButton } from './GithubButton.tsx'
 import { WechatStatusButton } from './WechatStatusButton.tsx'
 import { AboutSection } from './AboutSection.tsx'
+import { PluginSettingsSection } from './PluginSettingsSection.tsx'
 
 export { en, NS, zh, type ZeroWallKey } from './locales.js'
 export { unwrapRemoteResult } from './remote-result.js'
@@ -65,4 +66,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-about', order: Number.MAX_SAFE_INTEGER, locale: NS, label: () => ctx.locale.bind(NS)('about.nav'),
   }, AboutSection))
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section', id: 'zerowall-plugin-settings', order: 17,
+    locale: NS, label: () => ctx.locale.bind(NS)('pluginSettings.nav'),
+  }, PluginSettingsSection))
 }

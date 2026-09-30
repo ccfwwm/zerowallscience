@@ -24,13 +24,6 @@ import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
 const PACKAGE = '@deepseek-ai/dsh-client-ui-primitives'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
-// These sources are retained only as migration history; Harness owns these
-// browser/terminal/turn-tail surfaces in the 0.22.0 client bundle.
-const RETIRED_CLIENT_SOURCES = new Set([
-  'src/client/BrowserView.tsx',
-  'src/client/TerminalView.tsx',
-  'src/client/intercept.tsx',
-])
 
 /**
  * Every TypeScript source under the given roots.
@@ -52,9 +45,7 @@ function sourceFiles(roots: readonly string[]): string[] {
     }
   }
   for (const root of roots) walk(resolve(ROOT, root))
-  return found
-    .filter(path => !RETIRED_CLIENT_SOURCES.has(path.slice(ROOT.length + 1).replaceAll('\\', '/')))
-    .sort()
+  return found.sort()
 }
 
 /**

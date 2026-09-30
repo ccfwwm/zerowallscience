@@ -13,6 +13,10 @@ describe('desktop navigation policy', () => {
     expect(isTrustedAppUrl('file:///splash.html', origin)).toBe(true)
     expect(isTrustedAppUrl('http://127.0.0.1:43128/', origin)).toBe(false)
     expect(isTrustedAppUrl('https://example.com/', origin)).toBe(false)
+    const authenticatedUrl = `${origin}/?token=desktop-launch-token`
+    expect(isTrustedAppUrl(`${origin}/`, authenticatedUrl)).toBe(true)
+    expect(isTrustedAppUrl('http://127.0.0.1:43128/', authenticatedUrl)).toBe(false)
+    expect(canGrantWindowPermission('clipboard-sanitized-write', `${origin}/`, true, authenticatedUrl)).toBe(true)
   })
 
   it('grants only sanitized clipboard writes to the main frame', () => {

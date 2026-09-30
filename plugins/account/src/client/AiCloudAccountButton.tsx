@@ -365,12 +365,12 @@ export function AiCloudAccountButton(props: Props) {
     [activeOrder?.paymentType, paymentType, props.t],
   )
   const usageUrl = signedIn ? usagePageUrl(account?.gatewayBaseUrl) : undefined
-  const statusTone = signedIn ? 'ok' : 'error'
+  const connection = signedIn ? 'online' : account === undefined && busy ? 'waiting' : 'offline'
   const accountStatusText = signedIn ? props.t('account.status.connected') : props.t('account.status.signedOut')
 
   return <>
-    <button className={css.trigger} type="button" onClick={() => { setOpen(true); void refresh() }} title={`${props.t('account.trigger')} · ${accountStatusText}`} aria-label={props.t('account.trigger')} data-status={statusTone}>
-      <span className={css.triggerIcon}><Cloud size={18} aria-hidden="true" /><i className={css.statusDot} aria-hidden="true" /></span>{props.wide && <span>{props.t('account.nav')}</span>}
+    <button className={css.trigger} data-zerowall-footer-action data-connection={connection} type="button" onClick={() => { setOpen(true); void refresh() }} title={`${props.t('account.trigger')} · ${accountStatusText}`} aria-label={props.t('account.trigger')}>
+      <span className={css.triggerIcon} data-zerowall-footer-icon><Cloud size={18} aria-hidden="true" /><i className={css.statusDot} data-zerowall-footer-status-dot aria-hidden="true" /></span>{props.wide && <span>{props.t('account.nav')}</span>}
     </button>
     {(open || target) && createPortal(<div className={target ? css.embedded : css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
       <section className={css.panel} data-auth={!signedIn} role={target ? undefined : "dialog"} aria-modal={target ? undefined : true} aria-labelledby="zerowall-account-title">

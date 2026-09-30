@@ -156,7 +156,20 @@ interface Registration {
   readonly dispose: () => void
 }
 
-/** Release one registration without masking the error already being handled. */
+/**
+ * Run one registration disposer, reporting a failure instead of propagating
+ * it: releasing a registration must never mask the error being handled, and
+ * one broken entry must not leave the others registered.
+ *
+ * A release failure is logged, NOT routed through `reportFailure` (the visible
+ * diagnostic strip), on purpose: both callers run while the surface is being
+ * taken down — the drop loop and the seat teardown — where a strip would just
+ * be noise, and an id that really stays taken cannot hide anyway: the next
+ * registration attempt for it goes through the strip as
+ * `register … error: … already registered`.
+ * @param dispose - the disposer to run.
+ * @param what - the registration's name, for the log line.
+ */
 function disposeSafely(dispose: () => void, what: string): void {
   try {
     dispose()
@@ -194,6 +207,15 @@ export interface NativeSurfaceDeps {
  */
 export function registerNativeSurface(deps: NativeSurfaceDeps): () => void {
   const { ctx, store, service, records, reportFailure } = deps
+  // Bind the store BEFORE any body can render: the per-session state is the
+  // authority for the explorer's expansion set, so the native surface and the
+  // workbench share one set per session and a closed tab cannot drop it.
+  // (Restored after the v0.22.1 merge: main's branch rewrote this function
+  // without the call, and taking that file wholesale silently disabled every
+  // folder toggle — the records then have no store to read from or write to,
+  // so `toggleExpanded` returns without touching anything. Only the real-host
+  // lane could see it; the jsdom specs bind the records themselves.)
+  records.attachStore(store)
   // Wait for the tab-type REGISTRY (a service), not for the slot declaration:
   // the native seat declares `sidebar.right.pane.tab` BEFORE it provides
   // `sidebarRightTabs`, so a declaration-triggered registration reads the
@@ -219,13 +241,24 @@ export function registerNativeSurface(deps: NativeSurfaceDeps): () => void {
 
     /**
      * Register the body + chip-title slots for one native implementation id.
-     * Keep partial registrations so a failed second slot can be rolled back.
+     *
+     * A slot registration can fail long after the TYPE registration succeeded
+     * (`ctx.effect` on a context that is already inactive, i.e. during a
+     * plugin reload/disposal), so the disposers are collected as they are
+     * handed out and the partial set is released on the way out: the caller
+     * must be able to roll its type registration back WITHOUT losing track of
+     * a slot that did register.
      */
     const registerSlots = (
       id: string,
       injected: Omit<NativeBodyInjected, 'sessionId'>,
       params: Pick<NativeBodyInjected, 'paramsOf' | 'sessionIdOf'>,
     ): Array<() => void> => {
+      // Collected AS THEY ARE HANDED OUT: a slot registration can fail long
+      // after the TYPE registration succeeded (a plugin reload makes
+      // `ctx.slots.inject` throw on the now-inactive context), and the caller
+      // must then be able to release the type again WITHOUT losing track of a
+      // slot that did register.
       const disposers: Array<() => void> = []
       try {
         disposers.push(ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
@@ -290,6 +323,11 @@ export function registerNativeSurface(deps: NativeSurfaceDeps): () => void {
             }],
           }),
       })
+      // The type is in the host's registry the moment `tabs.register`
+      // returns; a slot failure must release it here, or the id stays taken
+      // for the rest of the page's life (the host refuses a second
+      // registration of the same id) and the tab kind renders the host's
+      // "nothing can view this" face forever.
       let slots: Array<() => void>
       try {
         slots = registerSlots(
@@ -350,6 +388,14 @@ export function registerNativeSurface(deps: NativeSurfaceDeps): () => void {
         wanted.set(descriptor.id, () => registerDescriptor(descriptor))
       }
       for (const [descriptorId, registration] of live) {
+        // `files` is this module's OWN takeover, never a descriptor: it is
+        // owned by the editor-type switch below. Re-creating it here on every
+        // notification used to put its host-side type through a
+        // tear-down/re-register window on each store commit — and a
+        // re-registration attempted on an already-inactive context (a plugin
+        // reload) left the type registered with nobody holding its disposer,
+        // so the same id could never be registered again for the rest of the
+        // page's life.
         if (descriptorId === FILES_KIND || wanted.has(descriptorId)) continue
         disposeSafely(() => registration.dispose(), `native tab type "${descriptorId}"`)
         live.delete(descriptorId)
@@ -357,7 +403,8 @@ export function registerNativeSurface(deps: NativeSurfaceDeps): () => void {
       for (const [descriptorId, create] of wanted) {
         if (live.has(descriptorId)) continue
         // One descriptor must not take the rest of the surface down with it:
-        // report and continue so the remaining types still register.
+        // report and continue so the remaining types still register. `create`
+        // has already released whatever it managed to install.
         try {
           live.set(descriptorId, { dispose: create() })
         } catch (error) {

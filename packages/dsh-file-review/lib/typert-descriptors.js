@@ -36,20 +36,17 @@ const resultSchema = z.object({ files: z.array(z.object({
 const agentCodec = {
 	mode: "strict",
 	typeSymbol: "@deepseek-ai/dsh-session/types#SessionId",
-	create: () => z.intersection(z.string(), z.unknown()),
-	schema: z.intersection(z.string(), z.unknown())
+	create: () => z.intersection(z.string(), z.unknown())
 };
 const requestCodec = {
 	mode: "strict",
 	typeSymbol: `${PACKAGE_NAME}#FileReviewRequest`,
-	create: () => requestSchema,
-	schema: requestSchema
+	create: () => requestSchema
 };
 const resultCodec = {
 	mode: "strict",
 	typeSymbol: `${PACKAGE_NAME}#FileReviewResult`,
-	create: () => resultSchema,
-	schema: resultSchema
+	create: () => resultSchema
 };
 function descriptor(method) {
 	return {

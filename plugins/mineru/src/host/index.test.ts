@@ -1,9 +1,11 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { Context } from '@deepseek-ai/cordis'
 import JSZip from 'jszip'
 import { describe, expect, it } from 'vitest'
-import { apiFor, extractZip, validateConfig } from './index.js'
+import { apiFor, extractZip, resolveMineruSource, validateConfig } from './index.js'
 
 const base = {
   apiBaseUrl: 'https://mineru.net', tokenCredential: 'MINERU_API_TOKEN', mode: 'auto' as const,
@@ -54,5 +56,48 @@ describe('MinerU safety and mode selection', () => {
     await extractZip(bytes, dir)
     await expect(readFile(join(dir, 'full.md'), 'utf8')).resolves.toBe('# result')
     await rm(dir, { recursive: true, force: true })
+  })
+
+  it('admits readable absolute files outside the workspace while containing relative paths', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mineru-source-'))
+    const workspace = join(root, 'workspace')
+    const external = join(root, 'external.pdf')
+    const local = join(workspace, 'local.txt')
+    await mkdir(workspace)
+    await writeFile(external, 'outside')
+    await writeFile(local, 'inside')
+    const ctx = { get: (name: string) => name === 'sessions' ? { get: () => ({ header: { cwd: workspace } }) } : undefined } as unknown as Context
+    try {
+      expect(await resolveMineruSource(ctx, randomUUID(), external)).toMatchObject({ filePath: external, sourceName: 'external.pdf' })
+      expect(await resolveMineruSource(ctx, randomUUID(), 'local.txt')).toMatchObject({ filePath: local, sourceName: 'local.txt' })
+      await expect(resolveMineruSource(ctx, randomUUID(), '../external.pdf')).rejects.toThrow(/工作区/)
+      await expect(resolveMineruSource(ctx, randomUUID(), workspace)).rejects.toThrow(/普通文件/)
+      expect(await resolveMineruSource(ctx, randomUUID(), 'https://example.test/document.pdf')).toEqual({ url: 'https://example.test/document.pdf', sourceName: 'https://example.test/document.pdf' })
+      const legacyId = `file-sha256:${createHash('sha256').update('outside').digest('hex')}`
+      const legacyCtx = { get: (name: string) => name === 'zerowallFiles'
+        ? { materialize: async () => ({ path: external, name: 'external.pdf' }) } : undefined } as unknown as Context
+      expect(await resolveMineruSource(legacyCtx, randomUUID(), legacyId)).toMatchObject({ filePath: external, sourceName: 'external.pdf' })
+      await expect(resolveMineruSource(legacyCtx, randomUUID(), 'local.txt')).rejects.toThrow(/没有工作区/)
+    } finally { await rm(root, { recursive: true, force: true }) }
+  })
+
+  it('accepts only verified native file references from the current session', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'mineru-attachment-'))
+    const path = join(root, 'uploaded.pdf')
+    const data = Buffer.from('native attachment')
+    await writeFile(path, data)
+    const attachmentId = `sha256:${createHash('sha256').update(data).digest('hex')}`
+    const ref = { attachmentId, name: 'uploaded.pdf', bytes: data.length }
+    const sessionId = randomUUID()
+    const events = [{ type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'file', attachment: ref }] } }]
+    const ctx = { get: (name: string) => name === 'sessions'
+      ? { get: (id: string) => id === sessionId ? { header: { cwd: root }, snapshotEvents: () => events } : undefined }
+      : name === 'attachments' ? { fileHostPath: () => path } : undefined } as unknown as Context
+    try {
+      expect(await resolveMineruSource(ctx, sessionId, attachmentId)).toMatchObject({ filePath: path, sourceName: 'uploaded.pdf' })
+      await expect(resolveMineruSource(ctx, randomUUID(), attachmentId)).rejects.toThrow(/当前会话/)
+      ref.bytes += 1
+      await expect(resolveMineruSource(ctx, sessionId, attachmentId)).rejects.toThrow(/完整性/)
+    } finally { await rm(root, { recursive: true, force: true }) }
   })
 })

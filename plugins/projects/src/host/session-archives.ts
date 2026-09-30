@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { SessionId, SessionLogOffset, type SessionHeader, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import { sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
+import { createSessionFormatCatalogWithChildren, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { createSessionArchive } from '@zerowallscience/research-store'
 import type { SessionArchiveV1 } from '@zerowallscience/research-store/types'
 import { link, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises'
@@ -52,7 +52,9 @@ export async function restoreSessionArchives(
     if (ids.has(archive.sessionId)) throw new Error(`Duplicate session archive: ${archive.sessionId}`)
     ids.add(archive.sessionId)
     const rows: unknown[] = archive.content.trimEnd().split('\n').map(line => JSON.parse(line) as unknown)
-    const restore = sessionFormatCatalog.createRestore(rows[0], { recovery: 'strict', validation: 'current' })
+    // Imported archives contain one session at a time, so no historical child
+    // catalog facts are available or applicable to this parent.
+    const restore = createSessionFormatCatalogWithChildren([]).createRestore(rows[0], { recovery: 'strict', validation: 'current' })
     for (const row of rows.slice(1)) restore.decodeRow(row)
     // The installed catalog validates and migrates both headers and event bodies.
     const artifact = restore.finish()

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "7.3.0",
+  "version": "7.4.0",
   "description": "ZeroWall Science mcp domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -61,8 +61,8 @@
   },
   "zerowall": {
     "dsh": {
-      "min": "0.1.7-rc.2",
-      "max": "0.1.7-rc.2"
+      "min": "0.2.0-rc.2",
+      "max": "0.2.0-rc.2"
     },
     "requiredServices": [
       "zerowallProjects",
@@ -141,7 +141,7 @@
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
     "dsh-better-sidebar": "workspace:^",
-    "dsh-dream-skin": "9.27.1",
+    "dsh-dream-skin": "9.29.0",
     "@zerowallscience/plugin-projects": "workspace:^",
     "@zerowallscience/plugin-base": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",

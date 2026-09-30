@@ -43,12 +43,13 @@ overrides:
   'dsh-progressive-tools>@deepseek-ai/dsh-settings': 'workspace:*'
   'dsh-progressive-tools>@deepseek-ai/dsh-user-approval': 'workspace:*'
   'dsh-progressive-tools>@deepseek-ai/dsh-ptc-runtime': 'workspace:*'
+  'micromark-util-types': '2.0.2'
   'tsdown': '0.22.2'
   '@tsdown/css': '0.22.2'
   '@electron/get': '5.1.0'
   'react': '18.2.0'
   'react-dom': '18.2.0'
-  '@deepseek-ai/dsh-llm-pi-ai>@earendil-works/pi-ai': '0.85.1'
+  '@deepseek-ai/dsh-llm-pi-ai>@earendil-works/pi-ai': '0.87.1'
   '@deepseek-ai/cosmokit': 'link:deepseek-harness/vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:deepseek-harness/vendor/schemastery'
 
@@ -82,15 +83,10 @@ allowBuilds:
 minimumReleaseAgeExclude:
   # Explicitly requested integration pin, published today.
   - 'dsh-univer-office@0.3.5'
-  - '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.2.0'
-  - '@earendil-works/pi-ai@0.85.1'
-  - dsh-better-sidebar@0.22.1
-  - dsh-dream-skin@9.27.1
-  - dsh-free-search@0.5.0
-
-patchedDependencies:
-  dsh-dream-skin@9.27.1: patches/dsh-dream-skin@9.27.1.patch
-  dsh-free-search@0.5.0: patches/dsh-free-search@0.5.0.patch
+  - '@earendil-works/pi-ai@0.87.1'
+  - dsh-better-sidebar@0.24.1
+  - dsh-dream-skin@9.29.0
+  - dsh-free-search@0.6.0
 
 packageExtensions:
   'dsh-office-tools@*':
@@ -102,9 +98,39 @@ packageExtensions:
       '@deepseek-ai/dsh-llm': 'workspace:*'
       '@deepseek-ai/dsh-session': 'workspace:*'
       '@deepseek-ai/dsh-tools': 'workspace:*'
-  # Office 0.2.0 uses Better Sidebar's stable registerFileViewer API. Its
-  # published peer range was not widened beyond 0.17, so record the verified
-  # 0.22.1 compatibility as a local, bounded adapter.
-  '@huanlin/dsh-plugin-better-sidebar-plugin-office@0.2.0':
+  'dsh-free-search@0.6.0':
     peerDependencies:
-      dsh-better-sidebar: '^0.17.0 || ^0.21.1 || ^0.22.0 || ^0.22.1'
+      '@deepseek-ai/dsh-client-ui-commands': '^0.1.7-rc.1 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-ui-plugin-manager': '^0.1.7-rc.1 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-ui-renderer': '^0.1.7-rc.1 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-settings': '^0.1.7-rc.1 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-tools': '^0.1.7-rc.1 || ^0.2.0-rc.2'
+  # Zotero 0.11.0 was published against the 0.1.7 API surface. Its runtime
+  # integration remains compatible with the rc.2 package family shipped by
+  # dsh-v0.2.0-rc.2, so widen only this exact package's peers.
+  'dsh-zotero@0.11.0':
+    peerDependencies:
+      '@deepseek-ai/dsh-api-remotes': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-locale': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-store': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-ui-chat': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-ui-conversation': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-ui-primitives': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-ui-renderer': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-ui-session': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-ui-settings': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-client-ui-slots': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-commands': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-credentials': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-llm': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-system-prompt': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-timeout': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-tools': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-typert-protocol': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-typert-registry': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-user-questions': '0.1.7-rc.2 || ^0.2.0-rc.2'
+      '@deepseek-ai/dsh-util-values': '0.1.7-rc.2 || ^0.2.0-rc.2'
+
+patchedDependencies:
+  '@earendil-works/pi-ai@0.87.1': deepseek-harness/patches/@earendil-works__pi-ai@0.87.1.patch
+  dsh-dream-skin@9.29.0: patches/dsh-dream-skin@9.29.0.patch

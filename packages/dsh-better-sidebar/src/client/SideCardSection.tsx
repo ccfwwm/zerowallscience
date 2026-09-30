@@ -77,7 +77,7 @@ export interface SideCardSectionInjected {
   service: BetterSidebarService
 }
 
-/** The Plugins tab owner supplies no business props; the slot adapter closes over these values. */
+/** The section only consumes the values injected by its slot registration. */
 export type SideCardSectionProps = SideCardSectionInjected
 
 /** Map one wire failure to the inline message (the conflict gets friendly copy). */
@@ -561,7 +561,7 @@ export function SettingsBody(props: {
 
 /**
  * Render the Side card preferences section.
- * @param props - the store and service closed over by the slot adapter.
+ * @param props - composed slot props (runtime share + injected store/service).
  * @returns the section element tree.
  */
 export function SideCardSection({ store, service }: SideCardSectionProps) {
@@ -593,6 +593,13 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
   // load/unload — so a plain effect is enough; no external-store ceremony).
   const [tabs, setTabs] = useState<TabDescriptor[]>(() => [...service.getTabs()].sort(tabOrder))
   const [viewers, setViewers] = useState<FileViewerDescriptor[]>(() => [...service.getFileViewers()].sort(viewerOrder))
+  const viewersHeadingRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (document.body.dataset.zerowallFocusFileViewers !== 'true') return
+    delete document.body.dataset.zerowallFocusFileViewers
+    viewersHeadingRef.current?.scrollIntoView?.({ block: 'start' })
+    viewersHeadingRef.current?.focus({ preventScroll: true })
+  }, [])
   useEffect(() => service.subscribe(() => {
     setTabs([...service.getTabs()].sort(tabOrder))
     setViewers([...service.getFileViewers()].sort(viewerOrder))
@@ -973,7 +980,7 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
 
       {/* 文件预览: one small card per registered file viewer. */}
       <div className={css.group}>
-        <div className={css.groupHeading}>
+        <div className={css.groupHeading} ref={viewersHeadingRef} tabIndex={-1}>
           <span>{t('settingsViewersTitle')}</span>
           <span className={css.count}>{viewers.length}</span>
         </div>

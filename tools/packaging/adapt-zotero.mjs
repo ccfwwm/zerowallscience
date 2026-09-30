@@ -1,6 +1,31 @@
 import { zoteroDispatch } from './zotero-dispatch.mjs'
 import { ZeroWallZoteroDetails } from './zotero-live.mjs'
-import { ZeroWallZoteroAuthorization } from './zotero-authorization.mjs'
+import { decodeZoteroAuthorizationResponse, ZeroWallZoteroAuthorization } from './zotero-authorization.mjs'
+
+// dsh-zotero 0.11.0 was published before the 0.2.0-rc.2 release and pins
+// every DSH peer to 0.1.7-rc.2. The source package remains untouched; this
+// adapter updates only the curated production copy used by ZeroWall.
+export function adaptZoteroManifest(source) {
+  const manifest = JSON.parse(source)
+  const runtimeRange = '^0.1.7-rc.2 || ^0.2.0-rc.2'
+  if (manifest.name !== 'dsh-zotero' || manifest.version !== '0.11.0') {
+    throw new Error('Unexpected Zotero manifest identity; review the pinned runtime adapter.')
+  }
+  if (manifest.engines?.dsh !== undefined) manifest.engines.dsh = runtimeRange
+  if (manifest.dsh?.engines?.dsh !== undefined) manifest.dsh.engines.dsh = runtimeRange
+  if (manifest.dsh?.harnessRange !== undefined) manifest.dsh.harnessRange = runtimeRange
+  if (manifest.peerDependencies && typeof manifest.peerDependencies === 'object') {
+    for (const [name, range] of Object.entries(manifest.peerDependencies)) {
+      if (name.startsWith('@deepseek-ai/dsh') && typeof range === 'string' && range === '0.1.7-rc.2') {
+        manifest.peerDependencies[name] = runtimeRange
+      }
+    }
+  }
+  if (manifest.dsh?.compatibility?.dshReleases) {
+    manifest.dsh.compatibility.dshReleases['0.2.0-rc.2'] = 'compatible'
+  }
+  return `${JSON.stringify(manifest, null, 2)}\n`
+}
 
 // Zotero 0.11.0 is compiled against the rc.2 commands API. Older releases were
 // compiled against a newer commands API under the same rc.2
@@ -98,6 +123,9 @@ function replaceRequired(source, before, after) {
 }
 
 export function adaptZoteroActions(source) {
+  if (!source.includes('function decodeZoteroAuthorizationResponse(response)')) {
+    source = replaceRequired(source, 'function ZoteroSettingsSection(props) {', `${decodeZoteroAuthorizationResponse.toString()}\nfunction ZoteroSettingsSection(props) {`)
+  }
   if (!source.includes('function ZeroWallZoteroAuthorization(')) {
     source = replaceRequired(source, 'function ZoteroSettingsSection(props) {', `${ZeroWallZoteroAuthorization.toString()}\nfunction ZoteroSettingsSection(props) {`)
     const settings = source.match(/(\/\* @__PURE__ \*\/ \(0, import_jsx_runtime\d+\.jsx\)\(ZoteroSettingsForm, \{ t, state, actions: props \}\),)/u)
@@ -175,16 +203,16 @@ export function adaptZoteroContract(source) {
     source = replaceRequired(source, 'export const ZOTERO_INVOCATIONS = [', `export const ZOTERO_INVOCATIONS = [{
       id: 'dsh-zotero#zotero/localAuthorization', service: 'zoteroRemote', namespace: ZOTERO_SETTINGS_NAMESPACE,
       method: 'localAuthorization', invocation: { kind: 'direct' },
-      parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#localAuthorizationRequest', schema: z.object({ action: z.enum(['status', 'authorize', 'renew']) }).strict() } }],
-      result: { mode: 'strict', typeSymbol: 'dsh-zotero#localAuthorizationJson', schema: z.string() }
+      parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#localAuthorizationRequest', create: () => z.object({ action: z.enum(['status', 'authorize', 'renew']) }).strict() } }],
+      result: { mode: 'strict', typeSymbol: 'dsh-zotero#localAuthorizationJson', create: () => z.string() }
     },`)
   }
   if (source.includes("method: 'itemDetail'")) return source
   const descriptor = (method, schema) => `{
     id: 'dsh-zotero#zotero/${method}', service: 'zoteroRemote', namespace: ZOTERO_SETTINGS_NAMESPACE,
     method: '${method}', invocation: { kind: 'direct' },
-    parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#${method}Request', schema: ${schema} } }],
-    result: { mode: 'strict', typeSymbol: 'dsh-zotero#${method}Json', schema: z.string() }
+    parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#${method}Request', create: () => ${schema} } }],
+    result: { mode: 'strict', typeSymbol: 'dsh-zotero#${method}Json', create: () => z.string() }
   },`
   return replaceRequired(source, 'export const ZOTERO_INVOCATIONS = [', 'export const ZOTERO_INVOCATIONS = [\n' +
     descriptor('itemDetail', 'z.object({ ref: z.string().min(1).max(2048) }).strict()') +
@@ -199,20 +227,20 @@ export function adaptZoteroStatusCodec(source) {
   {
     id: 'dsh-zotero#zotero/localAuthorization', service: 'zoteroRemote', namespace: 'zotero',
     method: 'localAuthorization', invocation: { kind: 'direct' },
-    parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#localAuthorizationRequest', schema: z.object({ action: z.enum(['status', 'authorize', 'renew']) }).strict() } }],
-    result: { mode: 'strict', typeSymbol: 'dsh-zotero#localAuthorizationJson', schema: z.string() },
+    parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#localAuthorizationRequest', create: () => z.object({ action: z.enum(['status', 'authorize', 'renew']) }).strict() } }],
+    result: { mode: 'strict', typeSymbol: 'dsh-zotero#localAuthorizationJson', create: () => z.string() },
   },
   {
     id: 'dsh-zotero#zotero/itemDetail', service: 'zoteroRemote', namespace: 'zotero',
     method: 'itemDetail', invocation: { kind: 'direct' },
-    parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#itemDetailRequest', schema: z.object({ ref: z.string().min(1).max(2048) }).strict() } }],
-    result: { mode: 'strict', typeSymbol: 'dsh-zotero#itemDetailJson', schema: z.string() },
+    parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#itemDetailRequest', create: () => z.object({ ref: z.string().min(1).max(2048) }).strict() } }],
+    result: { mode: 'strict', typeSymbol: 'dsh-zotero#itemDetailJson', create: () => z.string() },
   },
   {
     id: 'dsh-zotero#zotero/exportCitation', service: 'zoteroRemote', namespace: 'zotero',
     method: 'exportCitation', invocation: { kind: 'direct' },
-    parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#exportCitationRequest', schema: z.object({ ref: z.string().min(1).max(2048), format: z.enum(['bibtex', 'ris', 'csljson', 'citation', 'bibliography']) }).strict() } }],
-    result: { mode: 'strict', typeSymbol: 'dsh-zotero#exportCitationJson', schema: z.string() },
+    parameters: [{ name: 'request', wire: 'request', source: 'json', codec: { mode: 'strict', typeSymbol: 'dsh-zotero#exportCitationRequest', create: () => z.object({ ref: z.string().min(1).max(2048), format: z.enum(['bibtex', 'ris', 'csljson', 'citation', 'bibliography']) }).strict() } }],
+    result: { mode: 'strict', typeSymbol: 'dsh-zotero#exportCitationJson', create: () => z.string() },
   },`
   return source.replace(marker, descriptors)
 }

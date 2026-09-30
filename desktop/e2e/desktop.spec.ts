@@ -118,7 +118,7 @@ afterEach(async context => {
 })
 
 describe('ZeroWall Science Electron', () => {
-  it('starts with the built-in light appearance and no wallpaper', async () => {
+  it('starts with the iOS appearance and no factory painting', async () => {
     await expect.poll(() => page.evaluate(() => ({
       dark: document.body.getAttribute('data-ds-dark-theme'),
       wallpaper: [...document.body.children].some(element => (element as HTMLElement).style.backgroundImage.includes('url(')),
@@ -126,17 +126,13 @@ describe('ZeroWall Science Electron', () => {
       modal: document.documentElement.style.getPropertyValue('--dsh-dream-skin-modal-fill'),
       skin: localStorage.getItem('dsh-dream-skin:skin'),
       builtin: localStorage.getItem('dsh-dream-skin:builtin-last'),
-    }))).toMatchObject({ dark: null, wallpaper: false, composer: '100%', modal: '100%', builtin: 'light', skin: 'system' })
-    const output = join(desktopRoot, 'dist', 'verification-6.0.2')
+    }))).toMatchObject({ dark: null, wallpaper: false, composer: '100%', modal: '100%', builtin: 'ivory', skin: 'ivory' })
+    const output = join(desktopRoot, 'dist', 'verification-7.4.0')
     mkdirSync(output, { recursive: true })
-    await page.screenshot({ path: join(output, 'default-light.png') })
+    await page.screenshot({ path: join(output, 'default-ios.png') })
   })
 
-  it('removes the old factory painting from durable preferences and keeps custom wallpapers', async () => {
-    const patch = readFileSync(join(desktopRoot, '..', 'patches', 'dsh-dream-skin@9.13.1.patch'), 'utf8')
-    const oldImageSource = patch.match(/^-\s*\[WALLPAPER_KEY\]: ("data:image\/jpeg;base64,[^"]+")/mu)?.[1]
-    if (!oldImageSource) throw new Error('The patch must identify the removed factory painting')
-    const oldImage = JSON.parse(oldImageSource) as string
+  it('preserves an explicitly chosen skin and custom wallpaper', async () => {
     const setWallpaper = async (image: string, skin: string) => {
       await page.evaluate(async ({ image, skin }) => {
         const response = await fetch('/dream-skin/api', {
@@ -153,18 +149,6 @@ describe('ZeroWall Science Electron', () => {
       }, { image, skin })
       await reloadWithoutCredentials(page)
     }
-    await setWallpaper(oldImage, 'nebula')
-    await expect.poll(() => page.evaluate(async () => {
-      const response = await fetch('/dream-skin/api', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'get' }) })
-      const state = (await response.json()).value
-      return { wallpaper: state['dsh-dream-skin:wallpaper'] ?? null, builtin: state['dsh-dream-skin:builtin-last'], composer: state['dsh-dream-skin:composer-opacity'] }
-    })).toEqual({ wallpaper: null, builtin: 'light', composer: '1' })
-    await reloadWithoutCredentials(page)
-    await expect.poll(() => page.evaluate(() => ({
-      scheme: document.documentElement.style.colorScheme,
-      image: localStorage.getItem('dsh-dream-skin:wallpaper'),
-    }))).toEqual({ scheme: 'light', image: null })
-
     const custom = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII='
     try {
       await setWallpaper(custom, 'abyss')
@@ -177,7 +161,7 @@ describe('ZeroWall Science Electron', () => {
       await page.evaluate(async () => {
         await fetch('/dream-skin/api', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ method: 'set', patch: {
           'dsh-dream-skin:wallpaper': null, 'dsh-dream-skin:wallpaper-kind': null,
-          'dsh-dream-skin:skin': 'system', 'dsh-dream-skin:builtin-last': 'light',
+          'dsh-dream-skin:skin': 'ivory', 'dsh-dream-skin:builtin-last': 'ivory',
           'dsh-dream-skin:composer-opacity': '1', 'dsh-dream-skin:modal-opacity': '1',
         } }) })
       })
@@ -414,12 +398,38 @@ describe('ZeroWall Science Electron', () => {
     expect(controls).not.toBeNull()
     expect(controls!.x).toBeLessThan(8)
     expect(controls!.y).toBeLessThan(8)
-    const drag = await page.locator('#zerowall-window-drag').boundingBox()
-    expect(drag).not.toBeNull()
-    expect(drag!.height).toBe(8)
+    expect(await page.locator('#zerowall-window-drag').count()).toBe(0)
+    const drag = page.locator('header[data-window-drag]:visible').first()
+    expect((await drag.boundingBox())?.height).toBeGreaterThan(20)
+    expect(await drag.evaluate(element => getComputedStyle(element).getPropertyValue('-webkit-app-region'))).toBe('drag')
+    const chromeButtonRegions = await page.locator('#zerowall-window-controls button').evaluateAll(buttons =>
+      buttons.map(button => getComputedStyle(button).getPropertyValue('-webkit-app-region')))
+    expect(chromeButtonRegions).toEqual(['no-drag', 'no-drag', 'no-drag'])
 
+    const github = page.getByRole('link', { name: 'GitHub 项目', exact: true })
+    await github.waitFor({ state: 'visible' })
+    expect(await github.getAttribute('href')).toBe('https://github.com/ccfwwm/zerowallscience')
+    expect(await github.locator('[data-zerowall-footer-status-dot]').count()).toBe(0)
+
+    const account = page.getByRole('button', { name: '登录AI平台', exact: true })
     const wechat = page.getByRole('button', { name: /^微信 WebChat/ })
-    await wechat.waitFor()
+    await account.waitFor({ state: 'visible' })
+    await wechat.waitFor({ state: 'visible' })
+    for (const action of [github, wechat, account]) {
+      expect((await action.boundingBox())?.height).toBe(36)
+    }
+    expect(await account.locator('[data-zerowall-footer-status-dot]').count()).toBe(1)
+    expect(await wechat.locator('[data-zerowall-footer-status-dot]').count()).toBe(1)
+    expect(await account.getAttribute('data-connection')).toMatch(/^(online|waiting|offline)$/)
+    expect(await wechat.getAttribute('data-connection')).toMatch(/^(online|waiting|offline)$/)
+
+    const toggle = page.locator('#zerowall-window-controls [data-action="toggle-maximize"]')
+    await expect.poll(async () => await toggle.getAttribute('aria-label')).toBe('最大化')
+    await toggle.click()
+    await expect.poll(async () => await toggle.getAttribute('aria-label')).toBe('还原窗口')
+    await toggle.click()
+    await expect.poll(async () => await toggle.getAttribute('aria-label')).toBe('最大化')
+
     await wechat.click()
     const settings = page.getByRole('dialog', { name: '设置' })
     await settings.getByText('未登录', { exact: true }).first().waitFor()
@@ -430,15 +440,32 @@ describe('ZeroWall Science Electron', () => {
     if (await expand.isVisible()) await expand.click()
     const right = page.locator('[data-sidebar-right-panel]:visible').first()
     await right.waitFor({ state: 'visible' })
+    const fill = right.locator('[data-dockkit-strip-fill]:visible').first()
+    expect(await fill.evaluate(element => getComputedStyle(element).getPropertyValue('-webkit-app-region'))).toBe('drag')
+    const checkRightControls = async () => {
+      for (const selector of ['[data-dockkit-tab]', '[data-dockkit-add-tab]', '[data-dockkit-split-button]', '[data-sidebar-right-mode]', '[data-sidebar-right-toggle]']) {
+        const target = right.locator(`${selector}:visible`).first()
+        if (await target.count() === 0 || await target.isDisabled()) continue
+        expect(await target.evaluate(element => getComputedStyle(element).getPropertyValue('-webkit-app-region'))).toBe('no-drag')
+        await target.click({ trial: true })
+      }
+    }
+    await checkRightControls()
+    await toggle.click()
+    await expect.poll(async () => await toggle.getAttribute('aria-label')).toBe('还原窗口')
+    await checkRightControls()
+    await toggle.click()
+    await expect.poll(async () => await toggle.getAttribute('aria-label')).toBe('最大化')
     const tab = right.locator('[data-dockkit-tab]:visible').first()
     const tabBounds = await tab.boundingBox()
     expect(tabBounds).not.toBeNull()
-    expect(tabBounds!.y).toBeGreaterThanOrEqual(drag!.height)
+    expect(tabBounds!.height).toBeGreaterThan(0)
     await tab.click()
     expect(await tab.getAttribute('aria-selected')).toBe('true')
     const mode = right.locator('[data-sidebar-right-mode]:visible').first()
     await mode.click()
     await expect.poll(() => right.getAttribute('data-sidebar-right-panel')).toBe('fullscreen')
+    await checkRightControls()
     await right.locator('[data-sidebar-right-mode]:visible').first().click()
     await expect.poll(() => right.getAttribute('data-sidebar-right-panel')).toBe('push')
   })
@@ -468,7 +495,9 @@ describe('ZeroWall Science Electron', () => {
       const boot = (window as unknown as { __DSH_BOOT__?: { entries?: Array<{ id: string }> } }).__DSH_BOOT__
       return Array.isArray(boot?.entries) ? boot.entries.map(entry => entry.id) : []
     })
-    expect(bootEntries).toContain('@huanlin/dsh-plugin-better-sidebar-plugin-office')
+    expect(bootEntries).toContain('dsh-better-sidebar')
+    expect(bootEntries).not.toContain('dsh-better-sidebar-icons')
+    expect(bootEntries).not.toContain('@huanlin/dsh-plugin-better-sidebar-plugin-office')
     expect(bootEntries).toContain('dsh-zotero')
     expect(bootEntries).not.toContain('@fylar/dsh-fylar-office-editor')
   })
@@ -540,12 +569,16 @@ describe('ZeroWall Science Electron', () => {
     await page.getByRole('button', { name: '设置' }).click()
     const settings = page.getByRole('dialog', { name: '设置' })
     await settings.waitFor({ state: 'visible' })
+    await settings.getByRole('button', { name: '外观', exact: true }).waitFor()
+    expect(await settings.getByRole('button', { name: 'Theme / 外观', exact: true }).count()).toBe(0)
     await settings.getByRole('button', { name: /中文/ }).click()
     await page.getByRole('menuitem', { name: 'English' }).click()
     await page.getByRole('dialog', { name: 'Settings' }).waitFor({ state: 'visible' })
     await page.getByText('Language', { exact: true }).waitFor({ state: 'visible' })
 
     const englishSettings = page.getByRole('dialog', { name: 'Settings' })
+    await englishSettings.getByRole('button', { name: 'Appearance', exact: true }).waitFor()
+    expect(await englishSettings.getByRole('button', { name: '外观', exact: true }).count()).toBe(0)
     await englishSettings.getByRole('button', { name: 'Environment', exact: true }).click()
     await englishSettings.getByRole('heading', { name: 'Environment', exact: true }).waitFor()
     await englishSettings.getByRole('heading', { name: 'AIchem', exact: true }).waitFor()
@@ -773,28 +806,18 @@ describe('ZeroWall Science Electron', () => {
 })
 
 // This credential-free profile deliberately skips configuration. That decision
-// lasts for one onboarding traversal, so each reload must finish the new one.
+// First-run onboarding is available manually from Settings; desktop launch keeps
+// the workbench usable without showing either startup dialog.
 async function reloadWithoutCredentials(page: Page): Promise<void> {
   await page.reload()
-  const credential = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
-  await credential.waitFor({ state: 'visible', timeout: 30_000 })
-  await credential.getByRole('button', { name: '稍后配置' }).click()
-  await credential.waitFor({ state: 'hidden', timeout: 30_000 })
+  await page.getByRole('button', { name: '设置', exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
+  expect(await page.getByRole('dialog', { name: '添加一个 API Key 开始使用' }).count()).toBe(0)
 }
 async function completeFirstRunOnboarding(page: Page): Promise<void> {
-  const notice = page.getByRole('dialog', { name: '内测声明' })
-  await notice.waitFor({ state: 'visible', timeout: 30_000 })
-  await notice.getByRole('button', { name: '继续' }).click()
-  await notice.waitFor({ state: 'hidden', timeout: 30_000 })
-
-  const credential = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
-  try {
-    await credential.waitFor({ state: 'visible', timeout: 30_000 })
-  } catch {
-    return
-  }
-  await credential.getByRole('button', { name: '稍后配置' }).click()
-  await credential.waitFor({ state: 'hidden', timeout: 30_000 })
+  await page.getByRole('button', { name: '设置', exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
+  await page.waitForTimeout(500)
+  expect(await page.getByRole('dialog', { name: '内测声明' }).count()).toBe(0)
+  expect(await page.getByRole('dialog', { name: '添加一个 API Key 开始使用' }).count()).toBe(0)
 }
 
 async function waitForDevToolsEndpoint(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<string> {

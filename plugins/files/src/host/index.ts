@@ -14,7 +14,7 @@ import type { FileAttachmentRef as NativeFileRef } from '@deepseek-ai/dsh-attach
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import { apply as applyOfficeTools } from 'dsh-office-tools'
 import type { FileAttachmentRef, FileExtraction, MaterializedUploadedFile, PreparedFile, StoredAttachment, UploadedFileBytes, UploadedFileReadResult } from '../shared/types.js'
 
@@ -233,8 +233,9 @@ export async function readUploadedFile(id: string, offset = 0, maxChars = MAX_RE
   return { attachmentId: ref.attachmentId, name: ref.name, offset: safeOffset, nextOffset: safeOffset + text.length, hasMore: safeOffset + text.length < full.length, text }
 }
 
-export async function materializeUploadedFile(id: string, cwd?: string): Promise<{ attachmentId: string; name: string; path: string; bytes: number; sha256: string }> {
+export async function materializeUploadedFile(id: string, cwd?: string, displayName?: string): Promise<{ attachmentId: string; name: string; path: string; bytes: number; sha256: string }> {
   const ref = await readStored(id)
+  const name = cleanName(displayName ?? ref.name)
   const workspaceRoot = cwd === undefined
     ? resolve(process.env.DSH_HOME?.trim() || join(homedir(), '.dsh'), 'attachments', 'materialized')
     : resolve(cwd)
@@ -256,17 +257,38 @@ export async function materializeUploadedFile(id: string, cwd?: string): Promise
       throw new Error('Uploaded file destination escapes the session working directory.')
     }
   }
-  const path = join(directory, cleanName(ref.name))
+  const path = join(directory, name)
   try {
     const existing = await lstat(path)
     if (!existing.isFile() || existing.isSymbolicLink()) throw new Error('Uploaded file destination is not a regular file.')
     if (digest(await readFile(path)) !== ref.sha256) throw new Error('Uploaded file destination already contains different data.')
-    return { attachmentId: ref.attachmentId, name: ref.name, path, bytes: ref.bytes, sha256: ref.sha256 }
+    return { attachmentId: ref.attachmentId, name, path, bytes: ref.bytes, sha256: ref.sha256 }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
   await copyFile(ref.sourcePath, path, constants.COPYFILE_EXCL)
-  return { attachmentId: ref.attachmentId, name: ref.name, path, bytes: ref.bytes, sha256: ref.sha256 }
+  return { attachmentId: ref.attachmentId, name, path, bytes: ref.bytes, sha256: ref.sha256 }
+}
+
+function nativeSessionFileRef(session: Session, attachmentId: string): NativeFileRef | undefined {
+  for (const event of session.snapshotEvents()) {
+    if (event.type !== 'user/message' || event.data.source.kind !== 'user') continue
+    for (const block of event.data.content) {
+      if (block.type === 'file' && String(block.attachment.attachmentId) === attachmentId) return block.attachment
+    }
+  }
+  return undefined
+}
+
+const nativeImportQueue = new Map<string, Promise<void>>()
+
+async function serializeNativeImport<T>(attachmentId: string, action: () => Promise<T>): Promise<T> {
+  const previous = nativeImportQueue.get(attachmentId) ?? Promise.resolve()
+  const operation = previous.catch(() => undefined).then(action)
+  const settled = operation.then(() => undefined, () => undefined)
+  nativeImportQueue.set(attachmentId, settled)
+  try { return await operation }
+  finally { if (nativeImportQueue.get(attachmentId) === settled) nativeImportQueue.delete(attachmentId) }
 }
 
 export class ZeroWallFilesService extends TypertRemoteService {
@@ -430,9 +452,9 @@ export class ZeroWallFilesService extends TypertRemoteService {
     return readUploadedFile(input.attachmentId, input.offset, input.maxChars)
   }
   @Remote('materialize') async materialize(input: { sessionId: string; attachmentId: string }): Promise<MaterializedUploadedFile> {
-    await this.authorized(input.sessionId, input.attachmentId)
+    const ref = await this.authorized(input.sessionId, input.attachmentId)
     const cwd = this.ctx.sessions.get(SessionId(input.sessionId))?.header.cwd
-    return materializeUploadedFile(input.attachmentId, cwd)
+    return materializeUploadedFile(input.attachmentId, cwd, ref.name)
   }
   @Remote('materializeOriginal') async materializeOriginal(input: { sessionId: string; attachmentId: string }): Promise<MaterializedUploadedFile> { return this.materialize(input) }
   @Remote('materializeParsed') async materializeParsed(input: { sessionId: string; attachmentId: string }): Promise<MaterializedUploadedFile> {
@@ -490,7 +512,36 @@ export class ZeroWallFilesService extends TypertRemoteService {
   @Remote('downloadOriginal') async downloadOriginal(input: { sessionId: string; attachmentId: string }): Promise<UploadedFileBytes> { return this.download(input) }
 
   private async authorized(sessionId: string, attachmentId: string): Promise<StoredFile> {
-    if (this.ctx.sessions.get(SessionId(sessionId)) === undefined) throw new Error('Uploaded file session is not active.')
+    const session = this.ctx.sessions.get(SessionId(sessionId))
+    if (session === undefined) throw new Error('Uploaded file session is not active.')
+    if (/^sha256:[a-f0-9]{64}$/u.test(attachmentId)) {
+      const native = nativeSessionFileRef(session, attachmentId)
+      if (native === undefined) throw new Error('This file is not referenced by a user message in the current session.')
+      const path = this.ctx.get('attachments')?.fileHostPath(native)
+      if (path === undefined) throw new Error('The original session file is unavailable on this Host.')
+      const info = await lstat(path)
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error('The original session file is not a regular file.')
+      const data = await readFile(path)
+      if (data.byteLength !== native.bytes || `sha256:${digest(data)}` !== attachmentId) {
+        throw new Error('The original session file failed integrity validation.')
+      }
+      const stored = await serializeNativeImport(attachmentId, async () => {
+        let current: StoredFile
+        try { current = await readStored(attachmentId) }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+          await prepareUploadedFile({ sessionId, name: native.name, data: data.toString('base64') })
+          current = await readStored(attachmentId)
+        }
+        if (current.bytes !== native.bytes) throw new Error('Stored file size differs from the session record.')
+        if (!current.sessionIds.includes(sessionId)) {
+          current = { ...current, sessionIds: [...current.sessionIds, sessionId] }
+          await saveStored(current)
+        }
+        return current
+      })
+      return { ...stored, name: cleanName(native.name), mediaType: validateMedia(native.name, undefined, data) }
+    }
     const ref = await readStored(attachmentId)
     if (!ref.sessionIds.includes(sessionId)) throw new Error('Uploaded file is not authorized for this session.')
     return ref

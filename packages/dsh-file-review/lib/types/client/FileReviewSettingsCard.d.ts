@@ -6,15 +6,10 @@ export type FileReviewSettingsCardInjected = {
     hooks: {
         fileReviewSettings: ConfigForm<Config>;
     };
-    setWordWrap(value: boolean): Promise<void>;
-    setDiffLayout(value: DiffLayout): Promise<void>;
+    setWordWrap(value: boolean): Promise<boolean>;
+    setDiffLayout(value: DiffLayout): Promise<boolean>;
 };
-export type FileReviewSettingsCardProps = PropsRuntime<'settings.plugins.tab'> & PropsLocale<typeof NS> & InjectFace<FileReviewSettingsCardInjected>;
-export interface FileReviewSettingsTabProps extends PropsRuntime<'settings.plugins.tab'>, PropsLocale<typeof NS> {
-    readonly settings: ConfigForm<Config>;
-}
-/** Adapter for the rc.2 Plugins tab, whose owner intentionally supplies no business face. */
-export declare function FileReviewSettingsTab({ settings, t }: FileReviewSettingsTabProps): import("react").JSX.Element;
+export type FileReviewSettingsCardProps = PropsRuntime<'plugins.row.config'> & PropsLocale<typeof NS> & InjectFace<FileReviewSettingsCardInjected>;
 /** Minimal settings card owned by the file-review plugin. */
-export declare function FileReviewSettingsCard({ setWordWrap, setDiffLayout, t, useFileReviewSettings, }: FileReviewSettingsCardProps): import("react").JSX.Element;
+export declare function FileReviewSettingsCard({ view, setWordWrap, setDiffLayout, t, useFileReviewSettings, }: FileReviewSettingsCardProps): string | import("react").JSX.Element;
 //# sourceMappingURL=FileReviewSettingsCard.d.ts.map

@@ -19,23 +19,30 @@ export function mountWindowChrome(): void {
       #zerowall-window-controls [data-action=close] i { --ink:#6e2926; }
       #zerowall-window-controls [data-action=minimize] i { --ink:#6a4a00; }
       #zerowall-window-controls [data-action=toggle-maximize] i { --ink:#145b2a; }
-      #zerowall-window-drag { position:fixed; top:0; left:88px; right:0; height:8px; z-index:20; -webkit-app-region:drag; }
-      html[data-zerowall-chrome] header:has([data-conversation-header-corner]) > div:first-child { min-height:40px; -webkit-app-region:drag; }
-      html[data-zerowall-chrome] header button, html[data-zerowall-chrome] header input, html[data-zerowall-chrome] header [role=tab] { -webkit-app-region:no-drag; }
+      html[data-zerowall-chrome] [data-window-drag] { -webkit-app-region:drag; }
+      html[data-zerowall-chrome] [data-window-drag] button,
+      html[data-zerowall-chrome] [data-window-drag] input,
+      html[data-zerowall-chrome] [data-window-drag] select,
+      html[data-zerowall-chrome] [data-window-drag] textarea,
+      html[data-zerowall-chrome] [data-window-drag] a,
+      html[data-zerowall-chrome] [data-window-drag] [role=button],
+      html[data-zerowall-chrome] [data-window-drag] [role=tab] { -webkit-app-region:no-drag; }
+      html[data-zerowall-chrome] header button,
+      html[data-zerowall-chrome] header input,
+      html[data-zerowall-chrome] header select,
+      html[data-zerowall-chrome] header textarea,
+      html[data-zerowall-chrome] header a,
+      html[data-zerowall-chrome] header [role=button],
+      html[data-zerowall-chrome] header [role=tab] { -webkit-app-region:no-drag; }
       html[data-zerowall-chrome] [data-dockkit-strip],
       html[data-zerowall-chrome] [data-dockkit-strip] button,
       html[data-zerowall-chrome] [data-dockkit-strip] [role=tab],
       html[data-zerowall-chrome] [data-dockkit-strip] [role=button] { pointer-events:auto; -webkit-app-region:no-drag; }
-      html[data-zerowall-chrome] [data-sidebar-header] button,
-      html[data-zerowall-chrome] [data-sidebar-header] a,
-      html[data-zerowall-chrome] [data-sidebar-header] input,
-      html[data-zerowall-chrome] [data-sidebar-header] [role=button] { -webkit-app-region:no-drag; }
+      html[data-zerowall-chrome] [data-dockkit-strip][data-window-drag] [data-dockkit-strip-fill] { -webkit-app-region:drag; }
       html[data-zerowall-chrome] [data-sidebar-footer],
       html[data-zerowall-chrome] [data-sidebar-footer] button,
       html[data-zerowall-chrome] [data-sidebar-footer] a,
-      html[data-zerowall-chrome] [data-sidebar-footer] [role=button] { position:relative; z-index:21; pointer-events:auto; -webkit-app-region:no-drag; }
-      html[data-zerowall-chrome] [data-sidebar-header] { padding-top:40px; height:92px; -webkit-app-region:drag; }
-      html[data-zerowall-chrome] [data-sidebar-rail=true] [data-sidebar-header] { padding-top:22px; height:58px; }
+      html[data-zerowall-chrome] [data-sidebar-footer] [role=button] { pointer-events:auto; -webkit-app-region:no-drag; }
       html[data-zerowall-chrome] [data-sidebar-collapsed=true] > div:nth-of-type(2) { padding-top:8px; }
       html[data-zerowall-chrome] [data-sidebar-collapsed=true] header:has([data-conversation-header-corner]) > div:first-child { padding-left:40px; }
       html[data-zerowall-chrome] div:has(> [data-shell-overlay]) button,
@@ -63,9 +70,7 @@ export function mountWindowChrome(): void {
       button.onclick = () => { void ipcRenderer.invoke('desktop:window-control', action).catch(() => undefined) }
       controls.append(button)
     }
-    // The narrow top edge stays draggable without covering the sidebar tabs.
-    const drag = document.createElement('div'); drag.id = 'zerowall-window-drag'
-    document.body.append(drag, controls)
+    document.body.append(controls)
     const update = (_event: unknown, state: { maximized: boolean; focused: boolean }) => {
       controls.dataset.focused = String(state.focused)
       const button = controls.querySelector<HTMLButtonElement>('[data-action=toggle-maximize]')!

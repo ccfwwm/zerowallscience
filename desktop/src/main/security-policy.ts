@@ -1,6 +1,6 @@
-function isHarnessUrl(rawUrl: string, trustedOrigin: string): boolean {
+function isHarnessUrl(rawUrl: string, trustedUrl: string): boolean {
   try {
-    return new URL(rawUrl).origin === trustedOrigin
+    return new URL(rawUrl).origin === new URL(trustedUrl).origin
   } catch {
     return false
   }
@@ -31,4 +31,18 @@ export function canGrantWindowPermission(
     && isMainFrame
     && requestingUrl !== undefined
     && isHarnessUrl(requestingUrl, trustedOrigin)
+}
+
+/** Only the active Harness page may request microphone audio. */
+export function canGrantMicrophonePermission(
+  requestingUrl: string | undefined,
+  isMainFrame: boolean,
+  mediaTypes: readonly string[],
+  trustedOrigin: string,
+): boolean {
+  return isMainFrame
+    && requestingUrl !== undefined
+    && isHarnessUrl(requestingUrl, trustedOrigin)
+    && mediaTypes.length === 1
+    && mediaTypes[0] === 'audio'
 }

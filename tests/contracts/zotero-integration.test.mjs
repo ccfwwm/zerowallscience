@@ -10,13 +10,31 @@ import {
   adaptZoteroCommand,
   adaptZoteroDetail,
   adaptZoteroItemGraph,
+  adaptZoteroManifest,
   adaptZoteroRemote,
   adaptZoteroContract,
   adaptZoteroStatusCodec,
 } from '../../tools/packaging/adapt-zotero.mjs'
+import { decodeZoteroAuthorizationResponse } from '../../tools/packaging/zotero-authorization.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const read = path => readFile(resolve(root, path), 'utf8')
+
+test('Zotero runtime manifest accepts DSH rc.2 without changing the source package', () => {
+  const source = JSON.stringify({
+    name: 'dsh-zotero', version: '0.11.0',
+    engines: { dsh: '0.1.7-rc.2' },
+    dsh: { harnessRange: '0.1.7-rc.2' },
+    peerDependencies: { '@deepseek-ai/dsh-tools': '0.1.7-rc.2', react: '^18.2.0' },
+  })
+  const adapted = JSON.parse(adaptZoteroManifest(source))
+  assert.equal(adapted.engines.dsh, '^0.1.7-rc.2 || ^0.2.0-rc.2')
+  assert.equal(adapted.dsh.harnessRange, '^0.1.7-rc.2 || ^0.2.0-rc.2')
+  assert.equal(adapted.peerDependencies['@deepseek-ai/dsh-tools'], '^0.1.7-rc.2 || ^0.2.0-rc.2')
+  assert.equal(adapted.peerDependencies.react, '^18.2.0')
+  assert.throws(() => adaptZoteroManifest(JSON.stringify({ name: 'dsh-zotero', version: '0.12.0' })), /Unexpected Zotero manifest identity/u)
+  assert.equal(JSON.parse(source).engines.dsh, '0.1.7-rc.2')
+})
 
 test('live item and citation endpoints preserve provider refs and configured styles', async () => {
   let source = adaptZoteroRemote(await read('desktop/node_modules/dsh-zotero/lib/remote.js'))
@@ -40,12 +58,47 @@ test('live item and citation endpoints preserve provider refs and configured sty
   const statusCodec = adaptZoteroStatusCodec(await read('desktop/node_modules/dsh-zotero/lib/status-codec.js'))
   assert.equal(adaptZoteroStatusCodec(statusCodec), statusCodec)
   assert.match(statusCodec, /method: 'localAuthorization'/u)
+  assert.match(statusCodec, /namespace: 'zotero'[\s\S]*?method: 'localAuthorization'/u)
+  assert.match(statusCodec, /zoteroStatusInvocation\(zoteroStatusCodec\)/u)
   assert.match(statusCodec, /method: 'itemDetail'/u)
   assert.match(statusCodec, /method: 'exportCitation'/u)
 })
 
+test('Zotero adapted Remote codecs satisfy the current Typert create() contract', async () => {
+  const source = adaptZoteroStatusCodec(await read('desktop/node_modules/dsh-zotero/lib/status-codec.js'))
+  const schema = new Proxy({}, { get: () => () => schema })
+  const z = new Proxy({}, { get: () => () => schema })
+  const invocations = Function('z', 'zoteroStatusInvocation', 'ZOTERO_STATUS_TYPE_SYMBOL',
+    `${source.replace(/^import .*;\r?\n/gmu, '').replace(/^export /gmu, '')}\nreturn ZOTERO_INVOCATIONS;`)(
+    z, result => ({ id: 'dsh-zotero#zotero/status', parameters: [], result }), 'dsh-zotero#ZoteroStatusView')
+  assert.equal(invocations.length, 4)
+  for (const invocation of invocations) {
+    for (const codec of [invocation.result, ...invocation.parameters.map(parameter => parameter.codec)]) {
+      assert.equal(codec.mode, 'strict')
+      assert.equal(typeof codec.create, 'function', invocation.id)
+      assert.equal(codec.schema, undefined, invocation.id)
+      assert.ok(codec.create(), invocation.id)
+    }
+  }
+})
+
+test('local authorization reports text 404 responses without JSON parse errors', async () => {
+  await assert.rejects(
+    decodeZoteroAuthorizationResponse(new Response('not found', { status: 404 })),
+    error => error.message === 'Zotero authorization failed (HTTP 404): not found',
+  )
+})
+
+test('local authorization decodes the successful Host RPC envelope', async () => {
+  const value = { authorized: true, remember: true }
+  const response = new Response(JSON.stringify({ result: { ok: true, value: JSON.stringify(value) } }), { status: 200 })
+  assert.deepEqual(await decodeZoteroAuthorizationResponse(response), value)
+})
+
 test('shipped Zotero reducer restores dispatcher search rows and prefers structured metadata', async () => {
-  const reducer = loadZoteroReducer(adaptZoteroClient(await read('desktop/node_modules/dsh-zotero/lib/client.js')))
+  const client = adaptZoteroClient(await read('desktop/node_modules/dsh-zotero/lib/client.js'))
+  assert.match(client, /function decodeZoteroAuthorizationResponse\(response\)/u)
+  const reducer = loadZoteroReducer(client)
   const result = { kind: 'tool', callId: 'legacy', seq: 1, time: 1,
     call: { name: 'tool_dispatch', argsRaw: JSON.stringify({ name: 'zotero_search', arguments: { query: 'test' } }) },
     meta: { protocol: 'dsh-progressive-tools/dispatch-v1', tool: 'zotero_search' },

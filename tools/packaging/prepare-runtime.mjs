@@ -1,6 +1,7 @@
 import { access, cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
+import { adaptUniverOfficeManifest } from './adapt-univer-office.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
 import {
@@ -11,6 +12,7 @@ import {
   adaptZoteroRemote,
   adaptZoteroContract,
   adaptZoteroStatusCodec,
+  adaptZoteroManifest,
 } from './adapt-zotero.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
@@ -56,9 +58,7 @@ const desktopRuntimeSeeds = [
   // graph because it is an application entry rather than a library import.
   '@deepseek-ai/dsh-web-frontend',
   'dsh-better-sidebar',
-  'dsh-better-sidebar-icons',
   'dsh-file-review',
-  '@huanlin/dsh-plugin-better-sidebar-plugin-office',
   'dsh-univer-office',
   '@zerowallscience/integrity-runtime',
   'dsh-zotero',
@@ -97,18 +97,7 @@ const forbiddenClaudeRuntimePackages = new Set([
   '@anthropic-ai/claude-agent-sdk-win32-arm64',
   '@anthropic-ai/claude-agent-sdk-win32-x64',
 ])
-const bundledRuntimeDependencies = new Map([
-  [
-    '@huanlin/dsh-plugin-better-sidebar-plugin-office',
-    new Set([
-      '@aiden0z/pptx-renderer',
-      '@univerjs/preset-sheets-core',
-      '@univerjs/presets',
-      'docx-preview',
-      'xlsx',
-    ]),
-  ],
-])
+const bundledRuntimeDependencies = new Map()
 const forbiddenDirectories = new Set([
   '.github', '.idea', '.vscode', '__tests__', 'benchmark', 'benchmarks', 'coverage',
   'docs', 'example', 'examples', 'spec', 'test', 'tests',
@@ -254,6 +243,7 @@ async function copyRuntimePackage(package_, targetRoot) {
   }
 
   if (manifest.name === 'dsh-univer-office') {
+    await writeFile(resolve(targetRoot, 'package.json'), adaptUniverOfficeManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8')))
     // The Gateway and render workers must execute from physical files in Electron.
     for (const entry of ['lib', 'docs', 'skills', 'artifacts', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
     const hostPath = resolve(targetRoot, 'lib/index.js')
@@ -271,6 +261,7 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
 
   if (manifest.name === 'dsh-zotero') {
     for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
+    await writeFile(resolve(targetRoot, 'package.json'), adaptZoteroManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8')))
     const adapters = [
       ['lib/command.js', adaptZoteroCommand, false],
       ['lib/client.js', adaptZoteroClient, false],
@@ -302,9 +293,9 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
     return
   }
 
-  if (['dsh-better-sidebar-icons', 'dsh-file-review', 'dsh-wechat', 'dsh-auto-review', 'dsh-free-search'].includes(manifest.name)) {
-    // These upstream plugins publish compiled lib/dist plus their bundle patch
-    // and (for icons) the SVG asset directory. Keep the package boundary and
+  if (['dsh-file-review', 'dsh-wechat', 'dsh-auto-review', 'dsh-free-search'].includes(manifest.name)) {
+    // These upstream plugins publish compiled lib/dist plus their bundle patch.
+    // Keep the package boundary and
     // exclude repository-only tests/docs through the common runtime filter.
     for (const entry of ['lib', 'dist', 'icons', 'resources', 'cordis.patch.yml']) {
       await copyEntry(sourceRoot, targetRoot, entry)

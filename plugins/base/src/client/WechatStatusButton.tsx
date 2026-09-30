@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { MessageCircle } from 'lucide-react'
 import type { GithubButtonProps } from './GithubButton.tsx'
+import css from './SidebarFooterAction.module.css'
 
 /** Read status without starting the WeChat transport. */
 export function WechatStatusButton({ wide, t }: GithubButtonProps) {
@@ -22,8 +23,9 @@ export function WechatStatusButton({ wide, t }: GithubButtonProps) {
     return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener('focus', onFocus) }
   }, [])
   const label = `${t('wechat.label')} · ${t(`wechat.${status}`)}`
-  return <button type="button" title={label} aria-label={label} onClick={() => window.dispatchEvent(new CustomEvent('zerowall:open-settings', { detail: 'wechat' }))} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '0 8px', border: 0, borderRadius: 8, background: 'transparent', cursor: 'pointer' }}>
-    <MessageCircle size={18} aria-hidden="true" />
-    {wide && <><span>{t('wechat.label')}</span><small style={{ marginLeft: 'auto', fontWeight: 400, opacity: .75 }}>{t(`wechat.${status}`)}</small></>}
+  const connection = status === 'online' ? 'online' : status === 'waiting' ? 'waiting' : 'offline'
+  return <button className={css.action} data-zerowall-footer-action data-connection={connection} type="button" title={label} aria-label={label} onClick={() => window.dispatchEvent(new CustomEvent('zerowall:open-settings', { detail: 'wechat' }))}>
+    <span data-zerowall-footer-icon><MessageCircle size={18} aria-hidden="true" /><i data-zerowall-footer-status-dot aria-hidden="true" /></span>
+    {wide && <span>{t('wechat.label')}</span>}
   </button>
 }

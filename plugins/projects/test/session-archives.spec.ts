@@ -22,7 +22,7 @@ describe('ZeroWall project session archives', () => {
     await restoreSessionArchives(persistence, [legacy('later', cwd, 20), legacy('earlier', cwd, 10), legacy('foreign', join(tmpdir(), 'other'), 5)])
     const archives = await collectProjectSessionArchives(persistence, cwd)
     expect(archives.map(archive => archive.sessionId)).toEqual(['earlier', 'later'])
-    expect(JSON.parse(archives[0]!.content.split('\n')[0]!)).toMatchObject({ version: 3, isSeeded: false })
+    expect(JSON.parse(archives[0]!.content.split('\n')[0]!)).toMatchObject({ version: 4, isSeeded: false })
     const target = await backend(compression)
     await restoreSessionArchives(target, archives)
     expect(await collectProjectSessionArchives(target, cwd)).toEqual(archives)
@@ -42,7 +42,7 @@ describe('ZeroWall project session archives', () => {
     await expect(restoreSessionArchives(persistence, [archive])).rejects.toThrow('already exists')
     const handle = await persistence.open(SessionId('portable'), 'read')
     try {
-      expect(handle.header.version).toBe(3)
+      expect(handle.header.version).toBe(4)
       expect((await handle.read()).events).toEqual([])
     } finally {
       await handle.close()

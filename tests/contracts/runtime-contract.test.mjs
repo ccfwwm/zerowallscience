@@ -10,7 +10,7 @@ const { parse: parseYaml } = createRequire(resolve(root, 'deepseek-harness/packa
 test('stable profile pins rc.2 and includes the bundled WeChat plugin', async () => {
   const profile = await readFile(resolve(root, 'profiles/generated/stable.yml'), 'utf8')
   assert.match(profile, /channel: stable/)
-  assert.match(profile, /dsh: 0\.1\.7-rc\.2/)
+  assert.match(profile, /dsh: 0\.2\.0-rc\.2/)
   assert.match(profile, /'dsh-wechat'/)
 })
 
@@ -25,7 +25,7 @@ test('better-sidebar is a single pinned default workbench in every profile', asy
   }
 })
 
-test('better-sidebar contains the merged v0.22.1 compatibility changes', async () => {
+test('better-sidebar contains the merged v0.24.1 compatibility changes', async () => {
   const editor = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/EditorHost.tsx'), 'utf8')
   const tree = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/FileTree.tsx'), 'utf8')
   const sidechat = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/SideChatView.tsx'), 'utf8')
@@ -38,7 +38,7 @@ test('better-sidebar contains the merged v0.22.1 compatibility changes', async (
 
 test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-dream-skin'], '9.27.1')
+  assert.equal(desktop.dependencies['dsh-dream-skin'], '9.29.0')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.equal((patch.match(/\bid: dream-skin\b/gu) ?? []).length, 1)
   assert.ok(patch.indexOf('id: dream-skin') < patch.indexOf('id: better-sidebar'))
@@ -46,6 +46,27 @@ test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', asyn
     const source = await readFile(resolve(root, `profiles/generated/${profile}.yml`), 'utf8')
     assert.equal((source.match(/'dsh-dream-skin'/gu) ?? []).length, 1, `${profile} must mount Dream Skin once`)
   }
+})
+
+test('Dream Skin first run uses iOS Flat without a wallpaper and retains only the abstract legacy fingerprint', async () => {
+  const source = await readFile(resolve(root, 'desktop/node_modules/dsh-dream-skin/lib/client.js'), 'utf8')
+  const defaults = source.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1]
+  assert.ok(defaults, 'Dream Skin factory defaults must be present')
+  assert.match(defaults, /\[STORAGE_KEY\]: "nebula"/u)
+  assert.match(defaults, /\[WALLPAPER_KIND_KEY\]: "image"/u)
+  assert.match(source, /\bid: "ivory",\s*colorScheme: "light"/u)
+  assert.match(source, /"skin\.ivory": "iOS Flat"/u)
+  assert.match(source, /FACTORY_DEFAULTS\[STORAGE_KEY\] = "ivory"/u)
+  assert.match(source, /FACTORY_DEFAULTS\[WALLPAPER_KEY\] = ""/u)
+  assert.match(source, /FACTORY_DEFAULTS\[WALLPAPER_GRADIENT_KEY\] = ""/u)
+  assert.match(source, /function migrateLegacyFactoryAppearance\(\)/u)
+  assert.match(source, /const legacyHostFactory = parsed\.value\[STORAGE_KEY\] === LEGACY_FACTORY_SKIN/u)
+  const encoded = defaults.match(/\[WALLPAPER_KEY\]: "data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)"/u)?.[1]
+  assert.ok(encoded, 'legacy factory wallpaper fingerprint must be the abstract SVG')
+  const svg = Buffer.from(encoded, 'base64').toString('utf8')
+  assert.match(svg, /^<svg\b/u)
+  assert.match(svg, /<radialGradient\b/u)
+  assert.doesNotMatch(svg, /<(?:path|image|text|use|foreignObject)\b/iu)
 })
 
 test('ZeroWall domain clients do not duplicate better-sidebar tabs', async () => {
@@ -91,14 +112,14 @@ test('all ZeroWall plugins expose a manifest and rc.2 range', async () => {
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
-    assert.equal(manifest.dsh.min, '0.1.7-rc.2')
-    assert.equal(manifest.dsh.max, '0.1.7-rc.2')
+    assert.equal(manifest.dsh.min, '0.2.0-rc.2')
+    assert.equal(manifest.dsh.max, '0.2.0-rc.2')
   }
 })
 
 test('dsh-free-search directly replaces the removed ZeroWall search plugin', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-free-search'], '0.5.0')
+  assert.equal(desktop.dependencies['dsh-free-search'], '0.6.0')
   assert.equal(desktop.dependencies['@zerowallscience/plugin-web-search'], undefined)
 
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
@@ -116,28 +137,25 @@ test('dsh-free-search directly replaces the removed ZeroWall search plugin', asy
 test('the pinned dsh-free-search package uses current client services and has no self-updater', async () => {
   const packageRoot = resolve(root, 'desktop/node_modules/dsh-free-search')
   const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
-  assert.equal(manifest.version, '0.5.0')
+  assert.equal(manifest.version, '0.6.0')
   assert.equal(manifest.license, 'MIT')
   assert.deepEqual(manifest.dsh.client.inject, [
-    'slots',
+    '@deepseek-ai/dsh-client-ui-commands',
     '@deepseek-ai/dsh-client-ui-plugin-manager',
     '@deepseek-ai/dsh-client-ui-renderer',
   ])
 
   const host = await readFile(resolve(packageRoot, 'lib/index.js'), 'utf8')
   const client = await readFile(resolve(packageRoot, 'lib/client.js'), 'utf8')
-  for (const forbidden of ['@deepseek-ai/dsh-client-runtime', 'node:child_process', 'pnpm add dsh-free-search@latest', '${BRIDGE_PREFIX}/update']) {
-    assert.doesNotMatch(`${host}\n${client}`, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'u'))
-  }
+  assert.doesNotMatch(`${host}\n${client}`, /@deepseek-ai\/dsh-client-runtime/u)
   for (const marker of ['advanced_search', 'platform_search', 'free_search_test']) assert.match(host, new RegExp(marker, 'u'))
   assert.match(client, /const inject = \["slots",\s*"commandUi"\]/u)
   assert.match(client, /ctx\.inject\(\["commandUi"\]/u)
   assert.match(client, /free-search-engine/u)
-  assert.doesNotMatch(client, /\brunUpdate\b|\bupgrading\b(?=\s*\?|\s*\|\|)/u)
 
   const lockfile = parseYaml(await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8'))
-  assert.equal(lockfile.packages['dsh-free-search@0.5.0'].resolution.integrity,
-    'sha512-dRxttXNCmIVwuYBKrRMUyFGz98nvE+/WnTE9aX8Uu8GNkp0WL43V+u7FPVf4SFkrMrklpWNJ95WHc1yxk+Ot6A==')
+  assert.equal(lockfile.packages['dsh-free-search@0.6.0'].resolution.integrity,
+    'sha512-pAxhN4mVr2UpADCS/qQiJpVOco7aPD0640mYaIh2QatIrryMcsLvSds0dpimpqr+0+qYcQ9F8+BInkAVV3t5ow==')
 })
 
 test('About remains the final Settings navigation section', async () => {

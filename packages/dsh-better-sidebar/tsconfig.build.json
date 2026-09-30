@@ -7,18 +7,5 @@
     "emitDeclarationOnly": true,
     "outDir": "lib/types"
   },
-  "include": ["src"],
-  "exclude": [
-    "src/agent-pty.ts",
-    "src/pty-deps.ts",
-    "src/pty-manager.ts",
-    "src/tools.ts",
-    "src/client/BrowserView.tsx",
-    "src/client/TerminalView.tsx",
-    "src/client/pinned.ts",
-    "src/client/sidebar/use-pinned-tabs.ts",
-    "src/client/terminal-font.ts",
-    "src/client/intercept.tsx",
-    "src/client/chunks/terminal.tsx"
-  ]
+  "include": ["src"]
 }

@@ -24,11 +24,10 @@ const catalogs: Array<[string, readonly PluginEntry[]]> = [
 ]
 
 describe('builtin plugin catalogs', () => {
-  it('the viewer catalog has the office plugin, the tab catalog has the sentinel plugin', () => {
+  it('the viewer catalog contains supported preview plugins and the tab catalog has the sentinel plugin', () => {
     const ids = (list: readonly PluginEntry[]): string[] => list.map(p => p.id)
-    expect(ids(builtinViewerPlugins)).toContain('@huanlin/dsh-plugin-better-sidebar-plugin-office')
+    expect(ids(builtinViewerPlugins)).toEqual(['dsh-md-export', 'dsh-code-nav', 'dsh-video-preview'])
     expect(ids(builtinTabPlugins)).toContain('@dsh-external/dsh-sentinel')
-    expect(ids(builtinTabPlugins)).not.toContain('@huanlin/dsh-plugin-better-sidebar-plugin-office')
   })
 
   for (const [name, list] of catalogs) {

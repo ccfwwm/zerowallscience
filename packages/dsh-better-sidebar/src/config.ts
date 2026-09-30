@@ -76,7 +76,14 @@ export function resolveSidebarConfig(config: SidebarConfig | undefined): Resolve
 
 // ── User-facing "Side card" preferences ─────────────────────────────────────
 
-/** Schemastery schema for the user-facing preferences (validated by the settings service). */
+/**
+ * Schemastery schema for the user-facing preferences (validated by the
+ * settings service).
+ *
+ * Asserted as `z<SidebarPrefs>` (the interface lives in `prefs-shared.ts`; the
+ * explicit annotation is also what keeps the emitted declaration portable).
+ * Unknown keys are tolerated by this schema and pass through untouched.
+ */
 export const PrefsSchema: z<SidebarPrefs> = z.object({
   autoOpenSubagent: z.boolean().default(true),
   autoOpenJobs: z.boolean().default(true),

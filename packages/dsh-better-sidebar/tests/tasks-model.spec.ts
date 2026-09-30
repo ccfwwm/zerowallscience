@@ -3,7 +3,7 @@
  * catalog walking, workflow run attachment + member re-parenting, team
  * enrichment, and the per-parent settled-leaf fold.
  */
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   buildTasksModel,
   tasksEdges,
@@ -19,6 +19,7 @@ import type { TeamMemberRow } from '../src/client/team-projection.ts'
 import {
   foldPreviews, taskBlocked, taskDotState, taskStatusLabel, taskTone,
 } from '../src/client/tasks-shared.tsx'
+import { attachLocale } from '../src/client/locales.ts'
 import type { SubagentCatalogView } from '../src/client/subagent-catalog.ts'
 import type { SidebarChildLiveView } from '../src/context-types.ts'
 import type { WorkflowRunView } from '../src/workflow-runs.ts'
@@ -423,11 +424,20 @@ describe('buildTasksModel: duplicate workflow members', () => {
 })
 
 describe('shared task status rule (taskBlocked / taskStatusLabel / taskTone)', () => {
+  // Status labels are localized in production. Pin this pure model suite to
+  // English so the result does not depend on the machine's browser locale.
+  beforeEach(() => {
+    attachLocale({ getSnapshot: () => ({ active: 'en' }) })
+  })
+  afterEach(() => {
+    attachLocale(undefined)
+  })
+
   const facts = (status: 'pending' | 'in_progress' | 'completed', ready: boolean) => ({ status, ready })
 
   it('calls a queued task with an open blocker blocked', () => {
     expect(taskBlocked(facts('pending', false))).toBe(true)
-    expect(['Blocked', '阻塞']).toContain(taskStatusLabel(facts('pending', false)))
+    expect(taskStatusLabel(facts('pending', false))).toBe('Blocked')
     expect(taskTone(facts('pending', false))).toBe('warning')
   })
 
@@ -436,18 +446,18 @@ describe('shared task status rule (taskBlocked / taskStatusLabel / taskTone)', (
     // false for every non-pending task, which is exactly how a task being
     // actively worked on got labelled 阻塞 on the real board.
     expect(taskBlocked(facts('in_progress', false))).toBe(false)
-    expect(['In progress', '进行中']).toContain(taskStatusLabel(facts('in_progress', false)))
+    expect(taskStatusLabel(facts('in_progress', false))).toBe('In progress')
     expect(taskTone(facts('in_progress', false))).toBe('info')
   })
 
   it('never calls a finished task blocked', () => {
     expect(taskBlocked(facts('completed', false))).toBe(false)
-    expect(['Completed', '已完成']).toContain(taskStatusLabel(facts('completed', false)))
+    expect(taskStatusLabel(facts('completed', false))).toBe('Completed')
     expect(taskTone(facts('completed', false))).toBe('success')
   })
 
   it('reads a claimable queued task as pending, not blocked', () => {
-    expect(['Pending', '待办']).toContain(taskStatusLabel(facts('pending', true)))
+    expect(taskStatusLabel(facts('pending', true))).toBe('Pending')
     expect(taskTone(facts('pending', true))).toBe('info')
     expect(taskDotState(facts('pending', true))).toBe('ongoing')
   })

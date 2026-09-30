@@ -23,11 +23,6 @@
  */
 import { randomUUID } from 'node:crypto'
 import { createUserMessage, type ContentBlock, type UserMessage } from '@deepseek-ai/dsh-llm'
-declare module '@deepseek-ai/dsh-llm' {
-  interface MessageSourceMap {
-    'dsh-better-sidebar': { kind: 'dsh-better-sidebar' }
-  }
-}
 import type { Agent, AgentSetup, CreateAgentOptions, ResumeAgentOptions } from '@deepseek-ai/dsh-agent'
 import { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
 import type { Context as CordisContext } from '@deepseek-ai/cordis'
@@ -70,7 +65,7 @@ import { readPersistedSession } from './session-store.ts'
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     /** Side-chat context injection (boundary prompt + parked in-progress snapshot). */
-    'plugin:dsh-better-sidebar': { kind: typeof SIDE_INJECTION_SOURCE_KIND }
+    'dsh-better-sidebar': { kind: typeof SIDE_INJECTION_SOURCE_KIND }
   }
 }
 

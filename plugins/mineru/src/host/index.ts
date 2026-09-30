@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -8,17 +9,18 @@ import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import type { Context } from '@deepseek-ai/cordis'
 import JSZip from 'jszip'
-import { basename, extname, join, relative, resolve } from 'node:path'
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { normalizeContent } from './content.js'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 import type { MineruApi, MineruArtifact, MineruBatchResult, MineruConfig, MineruConfigStatus, MineruConnectionTestResult, MineruMode, MineruParseResult, MineruRegistrationInput, MineruTaskResult } from '../shared/types.js'
 import type { ArtifactRecord } from '@zerowallscience/research-store/types'
+import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 
 export type * from '../shared/types.js'
 export const name = 'zerowall-mineru'
-export const inject = ['settings', 'tools', 'sessions', 'zerowallFiles', 'zerowallResearch']
+export const inject = ['settings', 'tools', 'sessions', 'attachments', 'zerowallFiles', 'zerowallResearch']
 export const MINERU_SETTINGS_NS = 'zerowall-mineru' as SettingsNamespace
 export const TOKEN_MANAGEMENT_URL = 'https://mineru.net/apiManage/token'
 const TOKEN_KEY = 'zerowall.environment.mineru_api_token'
@@ -55,6 +57,56 @@ function requireWorkspaceCwd(ctx: Context, sessionId: string): string {
   return resolve(cwd)
 }
 function inside(root: string, candidate: string): boolean { const rel = relative(resolve(root), resolve(candidate)); return rel === '' || (!rel.startsWith('..') && !/^(?:[A-Za-z]:[\\/]|[\\/])/u.test(rel)) }
+async function ordinaryReadableFile(path: string, workspace?: string): Promise<string> {
+  let actual: string
+  try {
+    const entry = await lstat(path)
+    if (!entry.isFile() || entry.isSymbolicLink()) throw new Error('指定路径不是普通文件。')
+    actual = await realpath(path)
+    await access(actual, constants.R_OK)
+  } catch (error) {
+    if (error instanceof Error && error.message === '指定路径不是普通文件。') throw error
+    throw new Error(`MinerU 无法读取文件：${error instanceof Error ? error.message : String(error)}`)
+  }
+  if (workspace !== undefined) {
+    const root = await realpath(workspace)
+    if (!inside(root, actual)) throw new Error('MinerU 相对路径只能读取当前工作区内的普通文件。')
+  }
+  return actual
+}
+
+/** Resolve all parse inputs with one admission rule, shared by single and batch tools. */
+export async function resolveMineruSource(ctx: Context, sessionId: string, input: string): Promise<{ filePath?: string; sourceName: string; url?: string }> {
+  const source = input.trim()
+  if (!source) throw new Error('MinerU source 不能为空。')
+  if (/^https?:\/\//iu.test(source)) return { url: source, sourceName: source }
+  if (/^sha256:[a-f0-9]{64}$/u.test(source)) {
+    const session = ctx.get('sessions')?.get(SessionId(sessionId))
+    const ref = session?.snapshotEvents().flatMap(event =>
+      event.type === 'user/message' && event.data.source.kind === 'user'
+        ? event.data.content.flatMap(part => part.type === 'file' && String(part.attachment.attachmentId) === source ? [part.attachment] : [])
+        : [],
+    ).at(-1) as FileAttachmentRef | undefined
+    if (!ref) throw new Error('该文件附件未出现在当前会话的用户消息中。')
+    const path = ctx.get('attachments')?.fileHostPath(ref)
+    if (!path) throw new Error('当前附件存储没有可供 MinerU 读取的本机文件。')
+    const filePath = await ordinaryReadableFile(path)
+    const bytes = await readFile(filePath)
+    if (bytes.length !== ref.bytes || `sha256:${sha(bytes)}` !== source) throw new Error('会话附件完整性校验失败。')
+    return { filePath, sourceName: ref.name }
+  }
+  if (/^file-sha256:[a-f0-9]{64}$/u.test(source)) {
+    const files = ctx.get('zerowallFiles') as { materialize(input: { sessionId: string; attachmentId: string }): Promise<{ path: string; name: string }> } | undefined
+    if (!files) throw new Error('当前运行时没有文件附件服务。')
+    const materialized = await files.materialize({ sessionId, attachmentId: source })
+    return { filePath: await ordinaryReadableFile(materialized.path), sourceName: materialized.name }
+  }
+  const workspace = isAbsolute(source) ? undefined : requireWorkspaceCwd(ctx, sessionId)
+  const candidate = workspace ? resolve(workspace, source) : source
+  if (workspace && !inside(workspace, candidate)) throw new Error('MinerU 相对路径只能读取当前工作区内的普通文件。')
+  const filePath = await ordinaryReadableFile(candidate, workspace)
+  return { filePath, sourceName: basename(filePath) }
+}
 function apiFor(mode: MineruMode, token?: string): MineruApi | 'local' { if (!token) return 'local'; return mode === 'agent' ? 'agent' : 'precision' }
 function json(text: string): unknown { try { return JSON.parse(text) as unknown } catch { return undefined } }
 function sha(data: Uint8Array | string): string { return createHash('sha256').update(data).digest('hex') }
@@ -130,13 +182,13 @@ export class ZeroWallMineruService extends TypertRemoteService {
       execute: async () => { const status = await this.getConfigStatus(); return { api: status.api, tokenConfigured: status.tokenConfigured, tools: ['mineru_parse', 'mineru_batch_parse', 'mineru_task'] } as unknown as Record<string, JsonValue> },
     }))
     hostCtx.tools.register(defineTool({
-      name: 'mineru_parse', description: '将工作区文件或 HTTP(S) 文档解析为结构化 Markdown。',
+      name: 'mineru_parse', description: '将工作区相对路径、本机绝对路径、当前会话附件 ID 或 HTTP(S) 文档解析为结构化 Markdown。',
       parameters: { source: { type: 'string', required: true }, mode: { type: 'string' }, language: { type: 'string' }, modelVersion: { type: 'string' }, isOcr: { type: 'boolean' }, enableTable: { type: 'boolean' }, enableFormula: { type: 'boolean' } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => { const data = value as { sourceName?: string; preview?: { markdown?: string } }; return [{ type: 'text', text: `MinerU 解析完成：${data.sourceName ?? ''}\n${data.preview?.markdown ?? ''}` }] }, presentationMeta: (_args, value) => value },
       execute: async (args, exec) => { const input: { sessionId: string; source: string; overrides: Partial<MineruConfig>; signal: AbortSignal; mode?: MineruMode } = { sessionId: String(exec.agent?.session.id ?? ''), source: String(args.source ?? ''), overrides: args as Partial<MineruConfig>, signal: exec.signal }; if (args.mode !== undefined) input.mode = args.mode as MineruMode; return this.parse(input) as unknown as Record<string, JsonValue> },
     }))
     hostCtx.tools.register(defineTool({
-      name: 'mineru_batch_parse', description: '使用 Precision API 批量解析多个文件。', parameters: { sources: { type: 'array', required: true, items: { type: 'string' } } },
+      name: 'mineru_batch_parse', description: '使用 Precision API 批量解析工作区文件、本机绝对路径、当前会话附件或 HTTP(S) 文档。', parameters: { sources: { type: 'array', required: true, items: { type: 'string' } } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => { const data = value as { succeeded?: number; failed?: number }; return [{ type: 'text', text: `MinerU 批量解析完成：成功 ${data.succeeded ?? 0}，失败 ${data.failed ?? 0}。` }] } },
       execute: async (args, exec) => { const values = Array.isArray(args.sources) ? args.sources.slice(0, 1000).map(String) : []; const results: MineruParseResult[] = []; let failed = 0; for (const source of values) { try { results.push(await this.parse({ sessionId: String(exec.agent?.session.id ?? ''), source, mode: 'precision', signal: exec.signal })) } catch { failed += 1 } } return { ok: true, api: 'precision', results, succeeded: results.length, failed } satisfies MineruBatchResult as unknown as Record<string, JsonValue> },
     }))
@@ -224,7 +276,7 @@ export class ZeroWallMineruService extends TypertRemoteService {
     } catch (error) { if (error instanceof Error && error.name === 'AbortError') throw new Error('MinerU Agent API 测试超时，请检查网络或 API Base URL。'); throw error }
     finally { clearTimeout(timer) }
   }
-  async parse(input: { sessionId: string; source: string; mode?: MineruMode; overrides?: Partial<MineruConfig>; signal?: AbortSignal }): Promise<MineruParseResult> { const cwd = cwdFor(this.hostCtx, input.sessionId); const source = input.source.trim(); if (!source) throw new Error('MinerU source 不能为空。'); const cfg = validateConfig({ ...this.config(), ...(input.overrides ?? {}), ...(input.mode ? { mode: input.mode } : {}) }); const isUrl = /^https?:\/\//iu.test(source); let filePath: string | undefined; let sourceName = source; if (isUrl) sourceName = source; else if (/^file-sha256:[a-f0-9]{64}$/u.test(source)) { const files = this.hostCtx.get('zerowallFiles') as { materialize(input: { sessionId: string; attachmentId: string }): Promise<{ path: string; name: string }> } | undefined; if (!files) throw new Error('当前运行时没有文件附件服务。'); const materialized = await files.materialize({ sessionId: input.sessionId, attachmentId: source }); filePath = materialized.path; sourceName = materialized.name } else { filePath = resolve(cwd, source); if (!inside(cwd, filePath) || !(await stat(filePath)).isFile()) throw new Error('MinerU 只能读取当前工作区内的普通文件。'); sourceName = basename(filePath) } const token = await this.token(); const api = apiFor(cfg.mode, token); if (api === 'local') throw new Error('尚未配置 MinerU Token；请调用 extract_uploaded_file 的 local 或 auto 模式使用本地快速解析。'); const started = Date.now(); const remote = await remoteParse(cfg, api, token, filePath, isUrl ? source : undefined, input.signal ?? new AbortController().signal, async (taskId, batch) => persistTask(cwd, { api, taskId, batch, sourceName, config: cfg })); const result = await writeResult(cfg, input.sessionId, cwd, sourceName, api, remote.taskId, remote.markdown, remote.archive, started); if (remote.taskId) { const pending = JSON.parse(await readFile(taskPath(cwd, remote.taskId), 'utf8')); await writeFile(taskPath(cwd, remote.taskId), JSON.stringify({ ...pending, result }), 'utf8') }; runs.set(remote.taskId ?? result.runDir, { result, ...(remote.taskId ? { taskId: remote.taskId } : {}), cwd }); return result }
+  async parse(input: { sessionId: string; source: string; mode?: MineruMode; overrides?: Partial<MineruConfig>; signal?: AbortSignal }): Promise<MineruParseResult> { const cwd = cwdFor(this.hostCtx, input.sessionId); const cfg = validateConfig({ ...this.config(), ...(input.overrides ?? {}), ...(input.mode ? { mode: input.mode } : {}) }); const { filePath, sourceName, url } = await resolveMineruSource(this.hostCtx, input.sessionId, input.source); const token = await this.token(); const api = apiFor(cfg.mode, token); if (api === 'local') throw new Error('尚未配置 MinerU Token；请调用 extract_uploaded_file 的 local 或 auto 模式使用本地快速解析。'); const started = Date.now(); const remote = await remoteParse(cfg, api, token, filePath, url, input.signal ?? new AbortController().signal, async (taskId, batch) => persistTask(cwd, { api, taskId, batch, sourceName, config: cfg })); const result = await writeResult(cfg, input.sessionId, cwd, sourceName, api, remote.taskId, remote.markdown, remote.archive, started); if (remote.taskId) { const pending = JSON.parse(await readFile(taskPath(cwd, remote.taskId), 'utf8')); await writeFile(taskPath(cwd, remote.taskId), JSON.stringify({ ...pending, result }), 'utf8') }; runs.set(remote.taskId ?? result.runDir, { result, ...(remote.taskId ? { taskId: remote.taskId } : {}), cwd }); return result }
   @Remote('getRun') getRun(input: { taskId: string }): MineruParseResult | undefined { return [...runs.values()].find(item => item.taskId === input.taskId)?.result }
   @Remote('listRuns') listRuns(): MineruParseResult[] { return [...runs.values()].flatMap(item => item.result ? [item.result] : []) }
   async task(input: { sessionId: string; taskId: string; api: MineruApi; wait: boolean; signal?: AbortSignal }): Promise<MineruTaskResult> {

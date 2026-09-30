@@ -1,9 +1,9 @@
 {
   "name": "@zerowallscience/plugin-runs",
-  "version": "7.3.0",
+  "version": "7.4.0",
   "dsh": {
-    "min": "0.1.7-rc.2",
-    "max": "0.1.7-rc.2"
+    "min": "0.2.0-rc.2",
+    "max": "0.2.0-rc.2"
   },
   "host": "./lib/index.js",
   "client": "./lib/client.js",

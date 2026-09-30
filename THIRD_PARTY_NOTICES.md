@@ -14,30 +14,30 @@ versioned dependency inventory.
 
 ## ZeroWall scientific capability adaptations
 
-The 5.9.0 desktop adapts the following pinned plugins. Their original LICENSE files remain in each source package. ZeroWall changes cover DSH API compatibility, session capability selection, Windows file review, FigureYa project artifacts, and desktop profile wiring.
+The 7.4.0 desktop adapts the following pinned plugins. Their original LICENSE files remain in each source package. ZeroWall changes cover DSH API compatibility, Windows file review, workspace file access, and desktop profile wiring.
 
 | Source package | Upstream revision | License |
 | --- | --- | --- |
-| `packages/dsh-wechat` | pan17/dsh-wechat `a755e5c0f7901b700bd85cb4053a34753e9ac8c4` | MIT |
-| `packages/dsh-capability-menu` | PKUfudawei/dsh-capability-menu `41f3db99f131893ab9e4e82b97e941593dd56e47` | Apache-2.0 |
-| `packages/dsh-auto-review` | PerryLink/dsh-auto-review `6940bd3ad6454aa91eccbe7e4c661b6835cdb7b8` | Apache-2.0 |
-| `packages/dsh-file-review` | left0ver/dsh-file-review `d0d82d3ae223ab2fbb2e1ff826788947ec800b36` | MIT |
+| `packages/dsh-wechat` | pan17/dsh-wechat `7e3274d1e504dabe56f2873fc15bf7779c985d30` (`v0.9.6`) | MIT |
+| `packages/dsh-auto-review` | PerryLink/dsh-auto-review `70069c4304a381e2b08c88d42b1f8945456aaea7` (`v0.12.10`) | Apache-2.0 |
+| `packages/dsh-file-review` | left0ver/dsh-file-review `856f761a38fb364704a8a9d98d88d50a554f11af` (`v0.8.5`), with ZeroWall Windows compatibility changes | MIT |
+| `packages/dsh-better-sidebar` | omdsh-dev/DSH-better-sidebar `a2751cfbde2dd425b8150737574bc6d1d57f73b8` (`v0.24.1`), with ZeroWall workspace fence | MIT |
 
 | Internal package | Upstream | Fixed revision | License |
 | --- | --- | --- | --- |
 | `@zerowallscience/plugin-image-dup` | [`PetCT/dsh-Bio-image-dup-check`](https://github.com/PetCT/dsh-Bio-image-dup-check) | `7051eb55f611a46db3d9cfa1768e56c7d1a91553` | MIT |
 | `@zerowallscience/dsh-ppt-runtime` | [`yejiming/dsh-ppt`](https://github.com/yejiming/dsh-ppt) | `538f23c834056e2b3ab7314524d4b31416803a6b` | MIT |
 | `dsh-office-tools` | [`kw78/dsh-office-tools`](https://github.com/kw78/dsh-office-tools) | `30d063323e01d506a56ea89f4b2925a3a686a9fc` (`v1.0.1`) | MIT |
-| `dsh-free-search@0.4.24` | [`DDDMUC/dsh-free-search`](https://github.com/DDDMUC/dsh-free-search) | `d1beabcf643256d95823a9cb8f06fc8f84a40483` | MIT |
+| `dsh-free-search@0.6.0` | [`DDDMUC/dsh-free-search`](https://github.com/DDDMUC/dsh-free-search) | `c92489ca481ca58062258d5c3d54200904ced478` | MIT |
 
 | `resources/skills/academic-*`, `resources/skills/deep-research`, `resources/skills/ars-*` | [`Imbad0202/academic-research-skills`](https://github.com/Imbad0202/academic-research-skills) `v3.21.2` (`8fa3d651ad45da9e02762a6ba1fa3d1f231f91b6`) via [`nullptr-DZF/dsh-academic-research-skills`](https://github.com/nullptr-DZF/dsh-academic-research-skills) (`a6859a3752cfe582a166ca283c10d3a45e1f9c9c`) | CC-BY-NC-4.0 |
 
-ZeroWall Science also bundles `@huanlin/dsh-plugin-better-sidebar-plugin-office@0.1.2`
-from [`HuanLinOTO/dsh-plugin-better-sidebar-plugin-office`](https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office)
-under AGPL-3.0. It provides the in-application DOCX, XLSX, and PPTX viewers.
+The former Better Sidebar Office viewer is no longer bundled. DSH 0.2.0
+provides file previews; `dsh-univer-office` remains available for its
+independent office workbench.
 
-ZeroWall Science 6.0.6 also bundles the pinned Zotero DSH plugin as an
-independent DSH bundle.
+ZeroWall Science also bundles the pinned Zotero DSH plugin as an independent
+DSH bundle.
 
 `tools/packaging/adapt-zotero.mjs` removes the newer `CommandDefinitionId`
 field from the packaged status command to match ZeroWall's pinned DSH command
@@ -46,7 +46,7 @@ are not modified.
 
 | Package | Upstream revision | License / scope |
 | --- | --- | --- |
-| `dsh-zotero@0.8.4` | [`Vncntvx/dsh-zotero`](https://github.com/Vncntvx/dsh-zotero) npm gitHead `39caf8af04f07e7fc00775e2bb6e6d8f0ba06ece` | MIT |
+| `dsh-zotero@0.11.0` | [`Vncntvx/dsh-zotero`](https://github.com/Vncntvx/dsh-zotero) `8c34e352d5ca372ddeade95050bcc150f1465441` | MIT |
 
 The image duplicate detector is a first-party Host/Client rewrite that retains
 algorithm provenance while replacing the upstream dynamic-loader, arbitrary
@@ -55,12 +55,8 @@ a pinned internal library used only by `plugin-presentations`; it is not a
 second independently loaded product plugin. The corresponding license copies
 and provenance files are retained in those package directories.
 
-`dsh-free-search` is loaded directly as the desktop search plugin. ZeroWall's
-local package patch updates its DSH client service declaration and disables the
-package-level self-updater; search engines, settings, credentials, caching,
-time filtering, and platform search remain upstream behavior.
-The compatibility changes are recorded in
-`patches/dsh-free-search@0.4.24.patch` and are applied reproducibly by pnpm.
+`dsh-free-search@0.6.0` is loaded directly as the desktop search plugin from
+the upstream release, without a local package patch.
 
 ## DeepSeek Harness
 

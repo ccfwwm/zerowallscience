@@ -131,16 +131,6 @@
     - id: better-sidebar
       name: 'dsh-better-sidebar'
 
-    - id: better-sidebar-icons
-      name: 'dsh-better-sidebar-icons'
-
-    - id: file-review-tab
-      name: 'dsh-file-review'
-
-    # Office viewers extend Better Sidebar and must mount after its service.
-    - id: better-sidebar-office
-      name: '@huanlin/dsh-plugin-better-sidebar-plugin-office'
-
     - id: univer-office
       name: 'dsh-univer-office'
       config:
@@ -185,17 +175,6 @@
 
     - id: zerowall-ai-cloud-llm
       name: '@zerowallscience/plugin-ai-cloud'
-
-    - id: web-search-free
-      name: 'dsh-free-search'
-      config:
-        provider: bing
-        bingMarket: zh-CN
-        lang: zh
-        safeSearch: off
-        cache: true
-        cacheTtl: 5
-        keyStorage: credentials
 
     - id: zerowall-files
       name: '@zerowallscience/plugin-files'

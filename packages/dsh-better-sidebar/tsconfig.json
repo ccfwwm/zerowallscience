@@ -16,29 +16,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "tests", "tsdown.config.ts", "vitest.config.ts"],
-  "exclude": [
-    "src/agent-pty.ts",
-    "src/pty-deps.ts",
-    "src/pty-manager.ts",
-    "src/tools.ts",
-    "src/client/BrowserView.tsx",
-    "src/client/TerminalView.tsx",
-    "src/client/pinned.ts",
-    "src/client/sidebar/use-pinned-tabs.ts",
-    "src/client/terminal-font.ts",
-    "src/client/intercept.tsx",
-    "src/client/chunks/terminal.tsx",
-    "tests/agent-terminal-reconcile.spec.ts",
-    "tests/agent-pty.spec.ts",
-    "tests/agent-wait-badge.spec.tsx",
-    "tests/bottom-auto-terminal.spec.tsx",
-    "tests/pinned.spec.ts",
-    "tests/pty-deps.spec.ts",
-    "tests/pty-helpers.spec.ts",
-    "tests/terminal-font.spec.ts",
-    "tests/terminal-deps-banner.spec.tsx",
-    "tests/tools.spec.ts",
-    "tests/turn-tail-intercept.spec.ts"
-  ]
+  "include": ["src", "tests", "tsdown.config.ts", "vitest.config.ts"]
 }

@@ -239,6 +239,7 @@ function MessageActions({
 /** Shadow the host user renderer while preserving its ordinary-message behavior. */
 export function ReviewUserMessage({
   node,
+  sessionId,
   cwd,
   renderMessageImages,
   t,
@@ -260,7 +261,9 @@ export function ReviewUserMessage({
     projection === null
       ? text
       : [countLabel, visibleText].filter((value) => value !== null && value !== '').join('\n\n')
-  const showBubble = visibleText !== '' || rest.length > 0
+  const fileBlocks = rest.filter(block => typeof block === 'object' && block !== null && (block as { type?: unknown }).type === 'file')
+  const extraBlocks = rest.filter(block => !fileBlocks.includes(block))
+  const showBubble = visibleText !== '' || extraBlocks.length > 0
 
   if (projection === null)
     return (
@@ -268,6 +271,7 @@ export function ReviewUserMessage({
         content={content}
         renderMessageImages={renderMessageImages}
         references={{ openFile, openSkill }}
+        {...sessionId === undefined ? {} : { fileActionScope: { sessionId, ...(cwd === undefined ? {} : { cwd }) } }}
         t={t}
         actions={value => <MessageActions text={value} time={time} t={t} />}
       />
@@ -289,10 +293,16 @@ export function ReviewUserMessage({
             variant="message"
           />
         )}
+        {fileBlocks.length > 0 && <UserStyleBubble
+          content={fileBlocks}
+          renderMessageImages={renderMessageImages}
+          {...sessionId === undefined ? {} : { fileActionScope: { sessionId, ...(cwd === undefined ? {} : { cwd }) } }}
+          t={t}
+        />}
         {showBubble && (
           <div className={css.reviewMessageBubble}>
             {projectPlainReferences(visibleText)}
-            {rest.map((block, index) => (
+            {extraBlocks.map((block, index) => (
               <ExtraBlock key={index} label={t('message.extraBlock')} value={block} />
             ))}
           </div>

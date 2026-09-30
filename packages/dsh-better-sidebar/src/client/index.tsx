@@ -23,6 +23,7 @@ import { registerBottomToggle } from './sidebar/bottom-toggle.tsx'
 import { createNativeSurface } from './native/surface.ts'
 import { isTargetAvailable, openInterceptedLink, registerLinkInterception, shouldTakeOverLink } from './link-intercept.ts'
 import { registerImeGuard } from './ime-guard.ts'
+import { registerSettingsNavIcon } from './settings-nav-icon.ts'
 import { loadBootDecision } from './prefs.ts'
 import { SideCardSection } from './SideCardSection.tsx'
 import { api } from './api.ts'
@@ -36,8 +37,16 @@ import './layout.css'
  *  (rc.8+) is the client module system the chunk loader resolves its
  *  externals through; `connection` (0.1.2-alpha.2+) is the Remote transport's
  *  recovery lifecycle the side chat's disconnect banner reads — Cordis guards
- *  service access without inject. */
-export const inject = ['slots', 'sessions', 'locale', 'modules', 'connection']
+ *  service access without inject.
+ *
+ *  `remote` / `remote.session` (0.1.7) are the Host Remote namespace the
+ *  "open in app" adapter calls (`canOpenWorkspacePath` /
+ *  `workspacePathApplications` / `openWorkspacePath`). BOTH entries are
+ *  required: Cordis validates the nested property access
+ *  (`ctx.get('remote').session`) against the inject list, and a missing
+ *  entry throws `cannot get property "remote.session" without inject` —
+ *  which, thrown from a render path, blanks the whole sidebar panel. */
+export const inject = ['slots', 'sessions', 'locale', 'modules', 'connection', 'remote', 'remote.session']
 
 /**
  * Error boundary over the sidebar tree (root scope): a render error in the
@@ -404,17 +413,28 @@ export function apply(ctx: Context): void {
       'dsh-better-sidebar: IME composition guard',
     )
 
-    // The "Side card" preferences remain plugin-owned, now as a page inside
-    // Harness's Plugins settings section. The rc.2 owner intentionally
-    // provides no business face, so close over the sidebar store and service
-    // in the registered renderer while retaining the existing page UI.
-    ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
-      name: 'settings.plugins.tab',
+    // DSH 0.1.x does not yet carry an icon through the settings.section
+    // registration contract: its shell renders a generic gear for every
+    // external section. Mark only this plugin's localized nav row so
+    // layout.css can paint the requested Side card SVG; the disposer clears
+    // the marker for HMR / plugin disable.
+    ctx.effect(
+      () => registerSettingsNavIcon(() => t('settingsNav')),
+      'dsh-better-sidebar: settings navigation icon',
+    )
+
+    // The "Side card" settings section: appears in the DSH Settings shell
+    // once the shell's declaration is on the ledger (slots.inject waits for
+    // it); the section reads/writes the prefs through the plugin's own
+    // fenced settings route, keeps the shared store in sync, and renders the
+    // declarative enable/disable inventory from the tab/viewer registry.
+    ctx.slots.inject('settings.section', () => ctx.slots.register({
+      name: 'settings.section',
       id: 'better-sidebar',
       order: 100,
       label: () => t('settingsNav'),
-      locale: LOCALE_NS,
-    }, () => createElement(SideCardSection, { store: sidebarStore, service })))
+      inject: () => ({ store: sidebarStore, service }),
+    }, SideCardSection))
   } catch (error) {
     fail('load', error)
   }

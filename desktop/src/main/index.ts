@@ -28,7 +28,7 @@ import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } f
 import { verifyDownloadedArtifact } from './update-artifact.js'
 import { resolveRevealPath } from './reveal-path.js'
 import { copyWindowsFile } from './clipboard-files.js'
-import { deleteStoredSession, validSessionId } from './session-delete.js'
+import { deleteStoredSession, parseSessionDeleteRpcResponse, recoverSessionDeletions, sessionDeletionJournal, validSessionId } from './session-delete.js'
 import type { DesktopClipboardFile, DesktopInfo, RuntimeSnapshot, StartupStatus } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
@@ -49,6 +49,17 @@ let restarting = false
 let startup: StartupStatus = { phase: 'starting', progress: 5, message: '正在准备本地工作台', startedAt: Date.now() }
 let navigation: Promise<void> | undefined
 const desktopPluginProcesses = new Map<string, ReturnType<typeof spawn>>()
+
+async function sessionDeleteRpc<T>(window: BrowserWindow, activeRuntime: HarnessRuntime, method: string, request: object, fallback: string): Promise<T> {
+  if (activeRuntime.snapshot().phase !== 'ready') throw new Error(fallback)
+  const body = { type: 'client-request', rpcId: crypto.randomUUID(), method: `session/${method}`, payload: { args: { request } } }
+  const result = await window.webContents.executeJavaScript(`(async () => {
+    const response = await fetch(${JSON.stringify(`/api/session/${method}`)}, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: ${JSON.stringify(JSON.stringify(body))} });
+    const text = await response.text();
+    return { ok: response.ok, status: response.status, text: text.slice(0, 500) };
+  })()`)
+  return parseSessionDeleteRpcResponse<T>(result, fallback)
+}
 
 function readPackagedChannel(): unknown {
   try {
@@ -395,6 +406,16 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
     startupCover = undefined
     window.show()
     window.focus()
+    const activeRuntime = runtime
+    if (activeRuntime !== undefined) {
+      const userData = app.getPath('userData')
+      void recoverSessionDeletions({
+        directory: join(userData, 'harness', 'session-delete-pending'),
+        root: join(userData, 'harness', 'sessions'),
+        commit: async (sessionId, token) => { await sessionDeleteRpc(window, activeRuntime, 'commitDelete', { sessionId, token }, 'Session deletion recovery failed') },
+        abort: async (sessionId, token) => { await sessionDeleteRpc(window, activeRuntime, 'abortDelete', { sessionId, token }, 'Session deletion recovery failed') },
+      }).catch(error => { console.error('Session deletion recovery failed:', error) })
+    }
   }
 }
 
@@ -741,23 +762,16 @@ if (ownsInstance) app.whenReady().then(async () => {
     const zh = input.language !== 'en'
     const title = typeof input.title === 'string' ? input.title.slice(0, 200) : input.sessionId
     const label = (cn: string, en: string) => zh ? cn : en
-    async function sessionDeleteRpc<T>(method: string, request: object): Promise<T> {
-      if (activeRuntime.snapshot().phase !== 'ready') throw new Error(label('工作台尚未就绪。', 'The workbench is not ready.'))
-      const body = { type: 'client-request', rpcId: crypto.randomUUID(), method: `session/${method}`, payload: { args: { request } } }
-      const result = await window.webContents.executeJavaScript(`(async () => {
-        const response = await fetch(${JSON.stringify(`/api/session/${method}`)}, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: ${JSON.stringify(JSON.stringify(body))} });
-        return response.json();
-      })()`)
-      if (!result?.result?.ok) throw new Error(result?.result?.error?.message ?? label('会话操作失败。', 'Session operation failed.'))
-      return result.result.value as T
-    }
+    const rpc = <T>(method: string, request: object): Promise<T> =>
+      sessionDeleteRpc<T>(window, activeRuntime, method, request, label('会话操作失败。', 'Session operation failed.'))
     const operation = (async () => {
     try {
       return await deleteStoredSession({
         root: join(userData, 'harness', 'sessions'), sessionId,
-        prepare: () => sessionDeleteRpc('prepareDelete', { sessionId: input.sessionId }),
-        commit: token => sessionDeleteRpc('commitDelete', { sessionId: input.sessionId, token }),
-        abort: token => sessionDeleteRpc('abortDelete', { sessionId: input.sessionId, token }),
+        prepare: () => rpc('prepareDelete', { sessionId }),
+        commit: async token => { await rpc('commitDelete', { sessionId, token }) },
+        abort: async token => { await rpc('abortDelete', { sessionId, token }) },
+        journal: sessionDeletionJournal(join(userData, 'harness', 'session-delete-pending')),
         confirm: async () => (await dialog.showMessageBox(window, {
           type: 'warning', title: label('删除会话', 'Delete session'),
           message: label(`确定删除“${title}”？`, `Delete “${title}”?`),

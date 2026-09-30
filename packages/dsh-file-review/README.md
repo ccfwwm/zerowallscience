@@ -32,7 +32,7 @@ English · [简体中文](README.zh.md)
 3. Undo edited and newly created files. **Undoing deleted files is not currently supported.**
    > DSH does not currently provide a file-deletion tool, so this plugin cannot yet undo deleted files. Support will be added once DSH provides such a tool.
 4. Add comments to changed lines and ask the agent to continue making updates based on the feedback, or ask questions about the changes.
-5. Automatically wrap long text while reviewing. Enable it under Settings → Plugins → Plugin configuration → File review; it is disabled by default.
+5. Automatically wrap long text while reviewing. Enable it under Plugins → File Review; it is disabled by default.
 6. Multilingual support, including Chinese and English.
 
 ## Compatibility

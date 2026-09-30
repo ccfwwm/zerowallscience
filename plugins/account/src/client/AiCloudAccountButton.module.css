@@ -1,8 +1,10 @@
-.trigger { width: 100%; min-width: 32px; height: 32px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; border: 0; border-radius: 12px; color: var(--dsw-alias-label-secondary, #687078); background: transparent; cursor: pointer; font: inherit; text-align: left; }
+.trigger { width: 100%; min-width: 32px; height: 36px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; border: 0; border-radius: 8px; color: var(--dsw-alias-label-primary, #202428); background: transparent; cursor: pointer; font: inherit; text-align: left; }
 .triggerIcon { position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none; }
-.statusDot { position: absolute; right: -2px; bottom: -1px; width: 7px; height: 7px; border: 2px solid var(--dsw-alias-bg-layer-1, #fff); border-radius: 50%; background: #c43c3c; }
-.trigger[data-status='ok'] .statusDot { background: #27845a; }
-.trigger:hover, .iconButton:hover { color: var(--dsw-alias-label-primary, #202428); background: var(--dsw-alias-interactive-bg-hover, rgba(24,32,40,.08)); }
+.statusDot { position: absolute; right: -3px; bottom: -2px; width: 7px; height: 7px; border: 2px solid var(--dsw-alias-bg-layer-1, #fff); border-radius: 50%; background: #c43c3c; }
+.trigger[data-connection='online'] .statusDot { background: #27845a; }
+.trigger[data-connection='waiting'] .statusDot { background: #c1851c; }
+.trigger:hover, .trigger:focus-visible, .iconButton:hover { color: var(--dsw-alias-label-primary, #202428); background: var(--dsw-alias-interactive-bg-hover, rgba(24,32,40,.08)); }
+.trigger:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, #315b7d); outline-offset: -2px; }
 .backdrop { position: fixed; inset: 0; z-index: 1020; display: grid; place-items: center; padding: 20px; background: rgba(14,18,22,.42); }
 .panel { box-sizing: border-box; width: min(840px, 100%); max-height: min(820px, calc(100vh - 40px)); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 16px; color: var(--dsw-alias-label-primary, #202428); background: var(--dsw-alias-bg-layer-1, #fff); box-shadow: 0 24px 70px rgba(8,14,20,.24); }
 .header { min-height: 64px; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--dsw-alias-border-l2, #e3e6e8); }

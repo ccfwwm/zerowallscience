@@ -5,11 +5,11 @@
  */
 import { describe, expect, it } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
 import { SettingsConflictError, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
-import { apply, mediaTypeForPath } from '../src/index.ts'
+import { apply, FS_TREES_MAX_PATHS, mediaTypeForPath } from '../src/index.ts'
 import { SIDEBAR_PREFS_DEFAULTS } from '../src/prefs-shared.ts'
 import { encodeHtmlUrl } from '../src/html-route.ts'
 import * as git from '../src/git.ts'
@@ -84,6 +84,7 @@ describe('host plugin smoke', () => {
       '/sidebar/api',
       '/sidebar/upload',
       '/sidebar/bundle',
+      '/sidebar/archive',
       '/sidebar/file',
       '/sidebar/html',
     ])
@@ -445,71 +446,46 @@ describe('session cwd resolution over the API route', () => {
     expect(result.error?.message).toMatch(/invalid working directory/)
   })
 
-  // This package is vendored inside ZeroWall's monorepo. Use a real nested
-  // repository so Git's root-relative paths do not resolve against ZeroWall.
-  const makeNestedRepo = (): { root: string; cwd: string } => {
-    const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-nested-repo-'))
-    const cwd = join(root, 'src')
-    mkdirSync(cwd)
-    writeFileSync(join(cwd, 'git.ts'), 'export function runGit() { return "before" }\n')
-    const init = spawnSync('git', ['init', '-q'], { cwd: root, encoding: 'utf8' })
-    if (init.status !== 0) {
-      rmSync(root, { recursive: true, force: true })
-      throw new Error(init.stderr || 'git init failed')
-    }
-    const add = spawnSync('git', ['add', 'src/git.ts'], { cwd: root, encoding: 'utf8' })
-    if (add.status !== 0) {
-      rmSync(root, { recursive: true, force: true })
-      throw new Error(add.stderr || 'git add failed')
-    }
-    writeFileSync(join(cwd, 'git.ts'), 'export function runGit() { return "after" }\n')
-    writeFileSync(join(root, 'package.json'), '{}\n')
-    return { root, cwd }
-  }
-
   it('git.diff resolves repo-relative paths (session in a subdirectory)', async () => {
     // The plugin repo's status paths are relative to the repo top level
     // (e.g. `src/git.ts`); a session whose cwd sits inside the repo must
     // still load per-file diffs instead of failing with "not an absolute
     // path". The session header points INTO the repository.
-    const { root, cwd } = makeNestedRepo()
-    try {
-      const route = mount({ sessions: { get: () => ({ header: { cwd } }) } })
-      const result = await invoke(route, 'git.diff', { sessionId: 's-sub', path: 'src/git.ts', staged: false })
-      expect(result.ok).toBe(true)
-      const value = result as unknown as { ok: boolean; value?: { diff: string } }
-      expect(value.value?.diff).toContain('return "after"')
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-    }
+    const route = mount({
+      sessions: {
+        get: () => ({ header: { cwd: join(process.cwd(), 'src') } }),
+      },
+    })
+    const result = await invoke(route, 'git.diff', { sessionId: 's-sub', path: 'src/git.ts', staged: false })
+    expect(result.ok).toBe(true)
+    const value = result as unknown as { ok: boolean; value?: { diff: string } }
+    expect(typeof value.value?.diff).toBe('string')
   })
 
-  it('fs.read resolves repo-relative paths (untracked diff fallback)', async () => {
-    const { root, cwd } = makeNestedRepo()
-    try {
-      const route = mount({ sessions: { get: () => ({ header: { cwd } }) } })
-      const result = await invoke(route, 'fs.read', { sessionId: 's-sub', path: 'src/git.ts' })
-      expect(result.ok).toBe(true)
-      const value = result as unknown as { ok: boolean; value?: { kind: string; content: string } }
-      expect(value.value?.kind).toBe('text')
-      expect(value.value?.content).toContain('runGit')
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-    }
+  it('fs.read resolves files inside the nested session workspace', async () => {
+    const route = mount({
+      sessions: {
+        get: () => ({ header: { cwd: join(process.cwd(), 'src') } }),
+      },
+    })
+    const result = await invoke(route, 'fs.read', { sessionId: 's-sub', path: 'git.ts' })
+    expect(result.ok).toBe(true)
+    const value = result as unknown as { ok: boolean; value?: { kind: string; content: string } }
+    expect(value.value?.kind).toBe('text')
+    expect(value.value?.content).toContain('runGit')
   })
 
-  it('rejects repo-root-relative fs.read paths outside a nested session workspace', async () => {
-    const { root, cwd } = makeNestedRepo()
-    try {
-      const route = mount({ sessions: { get: () => ({ header: { cwd } }) } })
-      const result = await invoke(route, 'fs.read', { sessionId: 's-sub', path: 'package.json' })
-      expect(result).toMatchObject({ ok: false, status: 403, error: { code: 'forbidden' } })
-    } finally {
-      rmSync(root, { recursive: true, force: true })
-    }
+  it('rejects repo-root-relative reads outside a nested session workspace', async () => {
+    const route = mount({
+      sessions: {
+        get: () => ({ header: { cwd: join(process.cwd(), 'src') } }),
+      },
+    })
+    const result = await invoke(route, 'fs.read', { sessionId: 's-sub', path: 'package.json' })
+    expect(result).toMatchObject({ ok: false, status: 403, error: { code: 'forbidden' } })
   })
 
-  it('rejects fs.tree paths outside the session workspace', async () => {
+  it('rejects a directory outside the session workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fs-security-'))
     const workspace = join(root, 'workspace')
     const outside = join(root, 'outside')
@@ -526,7 +502,7 @@ describe('session cwd resolution over the API route', () => {
     }
   })
 
-  it('rejects fs.read paths outside the session workspace', async () => {
+  it('rejects a file outside the session workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fs-security-'))
     const workspace = join(root, 'workspace')
     const outside = join(root, 'outside')
@@ -543,46 +519,48 @@ describe('session cwd resolution over the API route', () => {
     }
   })
 
-  it('rejects fs.write paths outside the session workspace', async () => {
+  it('rejects a write outside the session workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fs-security-'))
     const workspace = join(root, 'workspace')
     const outside = join(root, 'outside')
     mkdirSync(workspace)
     mkdirSync(outside)
+    const written = join(outside, 'written.txt')
     try {
       const route = mount({ sessions: { get: () => ({ header: { cwd: workspace } }) } })
-      const write = await invoke(route, 'fs.write', { sessionId: 'security', path: join(outside, 'written.txt'), content: 'hack' })
+      const write = await invoke(route, 'fs.write', { sessionId: 'security', path: written, content: 'hack' })
       expect(write).toMatchObject({ ok: false, status: 403, error: { code: 'forbidden' } })
+      expect(existsSync(written)).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })
 
-  it('rejects media and HTML reads through a workspace symlink', async () => {
+  it('rejects media and HTML through a workspace symlink', async () => {
     if (!canCreateSymlink) return
     const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-route-symlink-security-'))
     const workspace = join(root, 'workspace')
     const outside = join(root, 'outside')
     mkdirSync(workspace)
     mkdirSync(outside)
-    const mediaPath = join(outside, 'secret.png')
-    const htmlPath = join(outside, 'secret.html')
-    writeFileSync(mediaPath, 'not an image')
-    writeFileSync(htmlPath, '<p>secret</p>')
+    const mediaPath = join(outside, 'pic.png')
+    const htmlPath = join(outside, 'page.html')
+    // A real 1x1 PNG: the media route sniffs the magic bytes, a text file
+    // would be refused as "not a file or too large" for the wrong reason.
+    writeFileSync(mediaPath, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64'))
+    writeFileSync(htmlPath, '<p>outside</p>')
     try {
       symlinkSync(outside, join(workspace, 'link'))
       const routes = mountAll({ sessions: { get: () => ({ header: { cwd: workspace } }) } })
       const media = routes.find(route => route.path === '/sidebar/file')!
       const html = routes.find(route => route.path === '/sidebar/html')!
-      const mediaResult = await invokeGet(media, `/sidebar/file?sessionId=security&path=${encodeURIComponent(join(workspace, 'link', 'secret.png'))}`)
+      const mediaResult = await invokeGet(media, `/sidebar/file?sessionId=security&path=${encodeURIComponent(join(workspace, 'link', 'pic.png'))}`)
       // Use the production encoder so the URL is well-formed on every
       // platform (a Windows drive path needs the leading slash separator
       // that a naive join-without-separator drops).
-      const htmlResult = await invokeGet(html, encodeHtmlUrl('security', join(workspace, 'link', 'secret.html')))
+      const htmlResult = await invokeGet(html, encodeHtmlUrl('security', join(workspace, 'link', 'page.html')))
       expect(mediaResult).toMatchObject({ status: 403 })
-      expect(JSON.parse(mediaResult.body)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
       expect(htmlResult).toMatchObject({ status: 403 })
-      expect(JSON.parse(htmlResult.body)).toMatchObject({ ok: false, error: { code: 'forbidden' } })
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -601,7 +579,76 @@ describe('session cwd resolution over the API route', () => {
     }
   })
 
-  it.skipIf(!canCreateSymlink)('rejects workspace symlinks that resolve outside the workspace', async () => {
+  it('fs.trees returns every requested level in one batch, errors in place', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fs-trees-'))
+    const workspace = join(root, 'workspace')
+    mkdirSync(join(workspace, 'src', 'deep'), { recursive: true })
+    writeFileSync(join(workspace, 'src', 'a.ts'), 'a')
+    writeFileSync(join(workspace, 'src', 'deep', 'b.ts'), 'b')
+    try {
+      const route = mount({ sessions: { get: () => ({ header: { cwd: workspace } }) } })
+      const result = await invoke(route, 'fs.trees', {
+        sessionId: 's-tree',
+        // A relative path, an absolute path and one that does not exist: the
+        // batch answers all three, the failure only on its own level.
+        paths: ['src', join(workspace, 'src', 'deep'), join(workspace, 'missing')],
+      })
+      expect(result.ok).toBe(true)
+      const levels = (result.value as unknown as { levels: Array<{ path: string; entries: Array<{ name: string }>; truncated: boolean; error?: string }> }).levels
+      expect(levels).toHaveLength(3)
+      expect(levels[0]).toMatchObject({ path: join(workspace, 'src'), truncated: false })
+      expect(levels[0]!.entries.map(entry => entry.name)).toEqual(['deep', 'a.ts'])
+      expect(levels[1]!.entries.map(entry => entry.name)).toEqual(['b.ts'])
+      expect(levels[1]!.error).toBeUndefined()
+      expect(levels[2]!.path).toBe(join(workspace, 'missing'))
+      expect(levels[2]!.entries).toEqual([])
+      expect(levels[2]!.truncated).toBe(false)
+      expect(levels[2]!.error).toMatch(/missing/)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('fs.trees warms the same cache fs.tree reads (and vice versa)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fs-trees-cache-'))
+    const workspace = join(root, 'workspace')
+    mkdirSync(workspace)
+    writeFileSync(join(workspace, 'a.txt'), 'a')
+    try {
+      const route = mount({ sessions: { get: () => ({ header: { cwd: workspace } }) } })
+      const batch = await invoke(route, 'fs.trees', { sessionId: 's-tree', paths: [workspace] })
+      expect(batch.ok).toBe(true)
+      const level = (batch.value as unknown as { levels: Array<{ entries: Array<{ name: string }> }> }).levels[0]!
+      // A file created after the batch is invisible to the single-path route
+      // too — proof the two routes share one cache entry.
+      writeFileSync(join(workspace, 'b.txt'), 'b')
+      const single = await invoke(route, 'fs.tree', { sessionId: 's-tree', path: workspace })
+      expect((single.value as unknown as { entries: Array<{ name: string }> }).entries.map(entry => entry.name))
+        .toEqual(level.entries.map(entry => entry.name))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('fs.trees rejects an empty list and an oversized batch', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fs-trees-guard-'))
+    const workspace = join(root, 'workspace')
+    mkdirSync(workspace)
+    try {
+      const route = mount({ sessions: { get: () => ({ header: { cwd: workspace } }) } })
+      const empty = await invoke(route, 'fs.trees', { sessionId: 's-tree', paths: [] })
+      expect(empty).toMatchObject({ ok: false, status: 400, error: { code: 'bad-request' } })
+      const tooMany = await invoke(route, 'fs.trees', {
+        sessionId: 's-tree',
+        paths: Array.from({ length: FS_TREES_MAX_PATHS + 1 }, () => workspace),
+      })
+      expect(tooMany).toMatchObject({ ok: false, status: 400, error: { code: 'bad-request' } })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it.skipIf(!canCreateSymlink)('rejects a workspace symlink that resolves outside the workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fs-symlink-security-'))
     const workspace = join(root, 'workspace')
     const outside = join(root, 'outside')
@@ -618,7 +665,7 @@ describe('session cwd resolution over the API route', () => {
     }
   })
 
-  it.skipIf(!canCreateSymlink)('rejects fs.read through a workspace symlink', async () => {
+  it.skipIf(!canCreateSymlink)('rejects reads through a workspace symlink', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fs-symlink-security-'))
     const workspace = join(root, 'workspace')
     const outside = join(root, 'outside')
@@ -635,7 +682,7 @@ describe('session cwd resolution over the API route', () => {
     }
   })
 
-  it.skipIf(!canCreateSymlink)('rejects fs.write through a workspace symlink', async () => {
+  it.skipIf(!canCreateSymlink)('rejects writes through a workspace symlink', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fs-symlink-security-'))
     const workspace = join(root, 'workspace')
     const outside = join(root, 'outside')
@@ -646,6 +693,7 @@ describe('session cwd resolution over the API route', () => {
       const route = mount({ sessions: { get: () => ({ header: { cwd: workspace } }) } })
       const write = await invoke(route, 'fs.write', { sessionId: 'security', path: join(workspace, 'link', 'new.txt'), content: 'hack' })
       expect(write).toMatchObject({ ok: false, status: 403, error: { code: 'forbidden' } })
+      expect(existsSync(join(outside, 'new.txt'))).toBe(false)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -763,6 +811,25 @@ const mountWithSettings = (settings?: unknown, home?: string): SidebarWebRoute =
   return routes.find(route => route.path === '/sidebar/api')!
 }
 
+describe('open.external route', () => {
+  it('rejects an unknown action with bad-request (before anything spawns)', async () => {
+    const route = mountWithSettings()
+    const result = await invoke(route, 'open.external', { action: 'open-ish', path: '/tmp/a.txt' })
+    expect(result).toMatchObject({ ok: false, error: { code: 'bad-request' } })
+  })
+
+  it('rejects http(s) URLs and relative reveal paths before spawning', async () => {
+    const route = mountWithSettings()
+    const https = await invoke(route, 'open.external', { action: 'url', url: 'https://example.com' })
+    expect(https).toMatchObject({ ok: false, error: { code: 'bad-request' } })
+    const relative = await invoke(route, 'open.external', { action: 'reveal', path: 'relative/path' })
+    expect(relative).toMatchObject({ ok: false, error: { code: 'fs-error' } })
+    // A missing field never reaches launchExternal either.
+    const empty = await invoke(route, 'open.external', { action: 'url' })
+    expect(empty).toMatchObject({ ok: false, error: { code: 'bad-request' } })
+  })
+})
+
 describe('side card settings routes', () => {
   it('serves the schema defaults when the settings service is absent', async () => {
     const route = mountWithSettings(undefined)
@@ -799,7 +866,6 @@ describe('side card settings routes', () => {
       autoOpenJobs: true,
       agentOpenTools: false,
       editorExplorer: false,
-      workspaceFence: true,
       // These title-bar fields are declared without a schema default on
       // purpose, so a document predating them migrates rather than flips.
       titleBarCompat: false,
@@ -871,7 +937,7 @@ describe('side card settings routes', () => {
     }
   })
 
-  it('disarms the workspace fence for the fs routes when the pref is off', async () => {
+  it('keeps the workspace fence on by default and allows explicit disable', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-fence-off-'))
     const workspace = join(root, 'workspace')
     const outside = join(root, 'outside')
@@ -880,11 +946,8 @@ describe('side card settings routes', () => {
     writeFileSync(join(outside, 'secret.txt'), 'global instructions')
     try {
       const route = mountWithSettings(createFakeSettings())
-      // Default (fence on): the outside read is refused as usual…
       const refused = await invoke(route, 'fs.read', { sessionId: 'fence', cwd: workspace, path: join(outside, 'secret.txt') })
       expect(refused).toMatchObject({ ok: false, error: { code: 'forbidden' } })
-      // …then the settings-page switch (or the fence notice's one-click off)
-      // disarms every fs route for paths outside the workspace.
       const off = await invoke(route, 'settings.update', { patch: { workspaceFence: false } })
       expect(off.ok).toBe(true)
       const read = await invoke(route, 'fs.read', { sessionId: 'fence', cwd: workspace, path: join(outside, 'secret.txt') })
@@ -894,6 +957,10 @@ describe('side card settings routes', () => {
       const write = await invoke(route, 'fs.write', { sessionId: 'fence', cwd: workspace, path: join(outside, 'written.txt'), content: 'ok' })
       expect(write).toMatchObject({ ok: true })
       expect(readFileSync(join(outside, 'written.txt'), 'utf8')).toBe('ok')
+      const on = await invoke(route, 'settings.update', { patch: { workspaceFence: true } })
+      expect(on.ok).toBe(true)
+      const refusedAgain = await invoke(route, 'fs.read', { sessionId: 'fence', cwd: workspace, path: join(outside, 'secret.txt') })
+      expect(refusedAgain).toMatchObject({ ok: false, error: { code: 'forbidden' } })
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

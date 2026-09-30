@@ -22,7 +22,7 @@ import { once } from 'node:events'
 import { createWriteStream } from 'node:fs'
 import { access, lstat, mkdir, realpath, rename, rm, stat, unlink } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { isWithin, requireAbsolute } from './fs-tree.ts'
+import { invalidateDirectoryCache, isWithin, requireAbsolute } from './fs-tree.ts'
 import { ensureWorkspacePath, ensureWorkspaceWritePath } from './path-security.ts'
 import { resolveSessionPath } from './session-path.ts'
 import { SidebarError } from './wire.ts'
@@ -111,6 +111,7 @@ export async function writeWorkspaceUpload(input: WorkspaceUploadInput): Promise
     if (streamError !== undefined) throw streamError
     await commitUpload(tmp, safeTarget)
     const info = await stat(safeTarget)
+    invalidateDirectoryCache(dirname(safeTarget))
     return { path: target, size: info.size }
   } catch (error) {
     // Wait for the stream to fully close before unlinking (Windows locks open
@@ -198,7 +199,36 @@ export async function renameWorkspaceEntry(input: WorkspaceRenameInput): Promise
   } catch (error) {
     throw new SidebarError('fs-error', `cannot rename "${path}" to "${name}": ${error instanceof Error ? error.message : String(error)}`, 400)
   }
+  invalidateDirectoryCache(dirname(absolute))
   return { path: safeDestination }
+}
+
+/** Inputs of one new directory row. */
+export interface WorkspaceMkdirInput {
+  cwd: string
+  path: string
+  name: string
+  fence?: boolean
+}
+
+/** Create one directory under an existing, fence-checked tree row. */
+export async function mkdirWorkspaceEntry(input: WorkspaceMkdirInput): Promise<{ path: string }> {
+  const { cwd, path, name, fence = true } = input
+  if (name === '' || name === '.' || name === '..' || name.includes('/') || name.includes('\\')) {
+    throw new SidebarError('bad-request', 'name must be a single path segment', 400)
+  }
+  const { absolute } = await resolveEntry(cwd, path, fence)
+  const destination = await ensureWorkspaceWritePath(cwd, join(absolute, name), fence)
+  if (await pathExists(destination)) {
+    throw new SidebarError('fs-error', `"${name}" already exists`, 409)
+  }
+  try {
+    await mkdir(destination)
+  } catch (error) {
+    throw new SidebarError('fs-error', `cannot create "${name}": ${error instanceof Error ? error.message : String(error)}`, 400)
+  }
+  invalidateDirectoryCache(dirname(destination))
+  return { path: destination }
 }
 
 /** Inputs of one tree-row delete. */
@@ -233,5 +263,6 @@ export async function removeWorkspaceEntry(input: WorkspaceRemoveInput): Promise
   } catch (error) {
     throw new SidebarError('fs-error', `cannot remove "${path}": ${error instanceof Error ? error.message : String(error)}`, 400)
   }
+  invalidateDirectoryCache(await realpath(dirname(absolute)))
   return { path: absolute }
 }

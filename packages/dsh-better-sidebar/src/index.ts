@@ -13,7 +13,7 @@
  * session's authoritative cwd comes from the session store.
  */
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, extname, isAbsolute, join } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, sep } from 'node:path'
 import type { IncomingMessage } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { WebSocket, WebSocketServer } from 'ws'
@@ -28,9 +28,9 @@ import {
   type SidebarConfig,
   type SidebarPrefs,
 } from './config.ts'
-import { parentOf, requireAbsolute, listDirectory, rootLabel } from './fs-tree.ts'
+import { invalidateDirectoryCache, listDirectory, messageOf, parentOf, requireAbsolute, rootLabel, type SidebarFsEntry } from './fs-tree.ts'
 import { resolveSessionPath } from './session-path.ts'
-import { renameWorkspaceEntry, removeWorkspaceEntry, writeWorkspaceUpload } from './fs-operations.ts'
+import { mkdirWorkspaceEntry, renameWorkspaceEntry, removeWorkspaceEntry, writeWorkspaceUpload } from './fs-operations.ts'
 import { ensureWorkspacePath, ensureWorkspaceWritePath } from './path-security.ts'
 import { searchFiles } from './fs-search.ts'
 import { decodeHtmlUrl } from './html-route.ts'
@@ -38,6 +38,8 @@ import { isTrustedApiRequest } from './trust-fence.ts'
 import { registerBundleRoute } from './bundle-route.ts'
 import { createDirectoryWatchers, type DirectoryWatchers } from './fs-watch.ts'
 import { launchExternal } from './open-external.ts'
+import { archiveNameOf, collectZipEntries, createArchiveTasks, disambiguateArchiveNames, respondArchiveDownload, type ArchiveTasks } from './archive-route.ts'
+import type { ZipEntry } from './zip.ts'
 import * as git from './git.ts'
 import { SettingsConflictError } from '@deepseek-ai/dsh-settings'
 import { AgentOpenRegistry, registerOpenTool, type AgentOpenRequest } from './agent-opens.ts'
@@ -66,9 +68,24 @@ export type {
   FileViewerProps,
   FileFetchStrategy,
 } from './client/service.ts'
-
+// The archive walk + name helpers are exercised directly by tests/zip.spec.ts:
+// their bounds live inside the collector, so the suite needs them observable
+// without creating 10 000 rows first.
+export { archiveNameOf, collectZipEntries, contentDispositionOf, disambiguateArchiveNames } from './archive-route.ts'
 /** Plugin identity for cordis.yml rows. */
 export const name = 'dsh-better-sidebar'
+
+/** Row bound of one `fs.trees` batch request (a mount/refresh sends what it shows). */
+export const FS_TREES_MAX_PATHS = 64
+
+/** One level of an `fs.trees` batch: either a listing or that level's failure. */
+export interface SidebarFsLevel {
+  path: string
+  entries: SidebarFsEntry[]
+  truncated: boolean
+  /** Present only when THIS level failed (the batch itself still succeeded). */
+  error?: string
+}
 
 /** Services required before mounting: the webserver routes, the session store, the web runtime's trusted hosts, and the tool registry. */
 export const inject = ['webServer', 'sessions', 'webRuntime', 'tools']
@@ -230,15 +247,9 @@ export interface SidebarSettingsFace {
   update(patch: Record<string, unknown>, expectedRevision?: number): Promise<{ value?: unknown; revision?: number }>
 }
 
-/**
- * Whether the workspace fence is armed for the sidebar's filesystem routes
- * (the settings-page `workspaceFence` switch under the files card's gear).
- * An absent settings service or a missing field keeps the fence ON — the
- * containment default never depends on the settings surface being reachable.
- */
+/** Fail closed until settings are available; only an explicit false disables containment. */
 function fenceEnabledOf(getSettings: () => SidebarSettingsFace | undefined): boolean {
-  const settings = getSettings()
-  const value = settings?.get().value
+  const value = getSettings()?.get().value
   if (value === null || typeof value !== 'object') return true
   return (value as Record<string, unknown>).workspaceFence !== false
 }
@@ -248,6 +259,7 @@ function buildApi(
   resolved: ResolvedSidebarConfig,
   getSettings: () => SidebarSettingsFace | undefined,
   assistantLive: AssistantLiveBuffer,
+  archiveTasks: ArchiveTasks,
 ): Record<string, ApiMethod> {
   const cwdOf = async (payload: unknown): Promise<{ sessionId: string; cwd: string }> => {
     const sessionId = requireString(payload, 'sessionId')
@@ -289,6 +301,38 @@ function buildApi(
       const target = record.path === undefined ? cwd : await ensureWorkspacePath(cwd, requireString(payload, 'path'), fenceEnabledOf(getSettings))
       return listDirectory(target, resolved.listLimit)
     },
+    // Batch listing: one request for every level the tree has expanded, so a
+    // mount/refresh costs one round trip instead of N. Each path rides the
+    // SAME resolution + cache as `fs.tree` (so a level listed here is warm for
+    // the single-path route and vice versa), and one failing level is reported
+    // in place — the other levels still render.
+    'fs.trees': async (payload) => {
+      const { cwd } = await cwdOf(payload)
+      const record = payload as { paths?: unknown } | null
+      const paths = Array.isArray(record?.paths)
+        ? record.paths.filter((value): value is string => typeof value === 'string' && value !== '')
+        : []
+      if (paths.length === 0) throw new SidebarError('bad-request', 'paths must be a non-empty array')
+      if (paths.length > FS_TREES_MAX_PATHS) {
+        throw new SidebarError('bad-request', `too many paths (max ${FS_TREES_MAX_PATHS})`)
+      }
+      const levels = await Promise.all(paths.map(async (raw): Promise<SidebarFsLevel> => {
+        // A session-relative path is accepted here (the tree already carries
+        // cwd-relative paths); `fs.tree` itself keeps requiring absolute input.
+        const requested = isAbsolute(raw) ? raw : `${cwd}${sep}${raw}`
+        try {
+          const level = await listDirectory(await ensureWorkspacePath(cwd, requested, fenceEnabledOf(getSettings)), resolved.listLimit)
+          // The client cache is keyed by the requested path. Realpath may
+          // canonicalize an in-workspace symlink, but the row keeps its name.
+          return { ...level, path: requested }
+        } catch (error) {
+          // Per-level failure: the batch itself stays a success (one unreadable
+          // directory must not blank the whole tree).
+          return { path: requested, entries: [], truncated: false, error: messageOf(error) }
+        }
+      }))
+      return { levels }
+    },
     'fs.search': async (payload) => {
       // The editor side panel's global name search: rooted at the session
       // cwd (not caller-targetable — the walk is unbounded by design and
@@ -322,6 +366,7 @@ function buildApi(
         await rm(tmp, { force: true }).catch(() => {})
         throw new SidebarError('fs-error', `cannot write "${path}": ${error instanceof Error ? error.message : String(error)}`, 400)
       }
+      invalidateDirectoryCache(dirname(path))
       return { ok: true }
     },
     // The tree row's rename: single-segment name, destination-existence and
@@ -330,6 +375,17 @@ function buildApi(
     'fs.rename': async (payload) => {
       const { cwd } = await cwdOf(payload)
       return renameWorkspaceEntry({
+        cwd,
+        path: requireString(payload, 'path'),
+        name: requireString(payload, 'name'),
+        fence: fenceEnabledOf(getSettings),
+      })
+    },
+    // The tree's "new folder": one directory inside an existing row, with
+    // the same single-segment/existence rules as rename.
+    'fs.mkdir': async (payload) => {
+      const { cwd } = await cwdOf(payload)
+      return mkdirWorkspaceEntry({
         cwd,
         path: requireString(payload, 'path'),
         name: requireString(payload, 'name'),
@@ -532,6 +588,31 @@ function buildApi(
       if (action === 'url') return launchExternal('url', requireString(payload, 'url'))
       throw new SidebarError('bad-request', 'action must be "reveal" or "url"')
     },
+    // Archive builds: collect the selection (fenced + disambiguated) and hand
+    // the zipping to the background task table, so the tree can show progress
+    // through `archive.status` and download the finished bytes from
+    // GET /sidebar/archive?id=.
+    'archive.build': async (payload) => {
+      const { sessionId, cwd } = await cwdOf(payload)
+      const record = payload as { paths?: unknown; name?: unknown } | null
+      const paths = Array.isArray(record?.paths)
+        ? record.paths.filter((value): value is string => typeof value === 'string' && value !== '')
+        : []
+      if (paths.length === 0) throw new SidebarError('bad-request', 'paths must be a non-empty array')
+      const name = archiveNameOf(typeof record?.name === 'string' ? record.name : null)
+      const selected: string[] = []
+      for (const raw of paths) selected.push(await ensureWorkspacePath(cwd, raw, fenceEnabledOf(getSettings)))
+      // Same-basename selections (a/index.ts + b/index.ts) get parent segments
+      // prepended, so no two archive members collide.
+      const entries: ZipEntry[] = []
+      const names = disambiguateArchiveNames(selected)
+      for (const [index, absolute] of selected.entries()) {
+        await collectZipEntries(absolute, names[index]!, entries)
+      }
+      return archiveTasks.start({ sessionId, name, entries })
+    },
+    'archive.status': (payload) =>
+      archiveTasks.status(requireString(payload, 'id'), requireString(payload, 'sessionId')),
     // Side Chat: create a side-thread child seeded with the parent's full
     // log up to now, deliver follow-ups (cold-resuming when the thread's
     // agent is gone), abort a running thread, and release a thread's agent.
@@ -612,12 +693,7 @@ async function readLegacyPrefs(home: string): Promise<Record<string, unknown> | 
       continue
     }
     if (document === null || typeof document !== 'object' || Array.isArray(document)) continue
-    const settingsDocument = document as Record<string, unknown>
-    // Before the settings forms move the persisted key was the package name;
-    // current forms are keyed by the configured entry id (usually
-    // `better-sidebar`). Import both shapes so existing Side card choices are
-    // not lost across the Harness migration.
-    const section = settingsDocument['dsh-better-sidebar'] ?? settingsDocument[SIDEBAR_PREFS_NS]
+    const section = (document as Record<string, unknown>)[SIDEBAR_PREFS_NS]
     if (section === null || typeof section !== 'object' || Array.isArray(section)) continue
     // Drop fields the current row schema no longer declares (the retired
     // terminal and browser keys, `defaultWidthPercent`, …). A form write
@@ -825,7 +901,10 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
   // effect releases the listener on fiber disposal.
   const assistantLive = createAssistantLiveBuffer(ctx)
   ctx.effect(() => () => { assistantLive.dispose() }, 'dsh-better-sidebar: live assistant stream buffer')
-  const api = buildApi(ctx, resolved, () => settingsFace, assistantLive)
+  // One archive task table per mount: the `archive.build` / `archive.status`
+  // API methods write it, the GET /sidebar/archive route reads it.
+  const archiveTasks = createArchiveTasks()
+  const api = buildApi(ctx, resolved, () => settingsFace, assistantLive, archiveTasks)
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: '/sidebar/api',
@@ -905,6 +984,38 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
   // (see bundle-route.ts / src/client/chunk-loader.ts).
   ctx.effect(() => registerBundleRoute(ctx, fence), 'dsh-better-sidebar: /sidebar/bundle chunk route')
 
+  // ── Archive routes (zip one selection, watch it build, download it) ─────
+  // The file tree's "zip and download" action is a three-step flow: POST
+  // `archive.build` fences every `path` through the SAME workspace fence as
+  // fs.tree / /sidebar/file, walks the directories (a symlink is skipped, never
+  // followed — no escape and no cycle) and returns an id IMMEDIATELY; the
+  // background build reports progress through `archive.status`; and
+  // GET /sidebar/archive serves the finished bytes once, with the RFC 5987
+  // disposition. `archiveTasks` owns the concurrency cap and the TTL.
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: '/sidebar/archive',
+    handler: async (req, res) => {
+      if (!fence(req)) {
+        writeJson(res, 403, { ok: false, error: { code: 'forbidden', message: 'forbidden' } })
+        return
+      }
+      if (req.method !== 'GET') {
+        writeJson(res, 405, { ok: false, error: { code: 'method-error', message: 'method not allowed' } })
+        return
+      }
+      try {
+        const url = new URL(req.url ?? '/', 'http://dsh.internal')
+        respondArchiveDownload(archiveTasks, {
+          sessionId: url.searchParams.get('sessionId'),
+          id: url.searchParams.get('id'),
+        }, res)
+      } catch (error) {
+        writeError(res, error)
+      }
+    },
+  }), 'dsh-better-sidebar: /sidebar/archive route')
+
   // ── Media route (images for the editor) ─────────────────────────────────
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
@@ -946,6 +1057,7 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
       }
     },
   }), 'dsh-better-sidebar: /sidebar/file media route')
+
 
   // ── HTML preview route (sandboxed HTML + its relative assets) ───────────
   // Serves files under the session cwd for the built-in HTML previewer. The
@@ -1034,8 +1146,8 @@ export function apply(ctx: Context, config?: SidebarConfig): void {
   // stale for the rest of the session. One socket per session carries the
   // reader's expanded-folder set; the host watches exactly those directories
   // and pushes a debounced notice per change, so the tree re-lists in place.
-  // Paths are resolved through the same workspace fence as `fs.tree`, so a
-  // watch can never observe a directory the tree itself could not list.
+  // Paths are resolved exactly like `fs.tree`'s (same resolution, same
+  // lexical rules), so the watch observes what the tree can list.
   const fsWatchWss = new WebSocketServer({ noServer: true })
   ctx.effect(() => ctx.webServer.registerUpgrade({
     path: '/sidebar/ws/fs-watch',
@@ -1071,10 +1183,9 @@ interface FsWatchFrame {
  * the session's workspace exactly like `fs.tree`'s. A path that fails
  * resolution, or a rejection past the watcher cap, is answered with
  * `{ dir, ok: false }` so the client can stop asking rather than retry.
- * @param ctx - host plugin context (session cwd, workspace fence).
+ * @param ctx - host plugin context (session cwd).
  * @param ws - the accepted socket.
  * @param req - the upgrade request carrying `?sessionId=`.
- * @param fenceEnabled - whether the workspace containment fence is on.
  */
 async function attachFsWatch(
   ctx: Context,
@@ -1116,7 +1227,6 @@ async function attachFsWatch(
  * @param watchers - the socket's watcher set.
  * @param sessionId - the session the socket was opened for.
  * @param data - the raw frame text.
- * @param fenceEnabled - whether the workspace containment fence is on.
  */
 async function handleFsWatchFrame(
   ctx: Context,

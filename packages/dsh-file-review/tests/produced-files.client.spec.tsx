@@ -18,9 +18,10 @@ import type { ChatFileMentions, TurnTailOwnerProps } from '@deepseek-ai/dsh-clie
 import { useMemo, useState } from 'react'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { ProducedFiles, ProducedFilesSlot, type ProducedFilesProps } from '../src/client/ProducedFiles.tsx'
+import { ProducedFiles, ProducedFilesTail, type ProducedFilesProps } from '../src/client/ProducedFiles.tsx'
 import {
-  FileReviewSettingsTab,
+  FileReviewSettingsCard,
+  type FileReviewSettingsCardProps,
 } from '../src/client/FileReviewSettingsCard.tsx'
 import { FileReviewTab, type ReviewTarget } from '../src/client/FileReviewTab.tsx'
 import {
@@ -1521,7 +1522,7 @@ describe('producedFileMentions resolver', () => {
 })
 
 describe('FileReview settings card', () => {
-  // 验证展开插件设置后显示换行开关，切换时保存新值，并提供安全的新窗口项目链接。
+  // 验证插件管理页展开后显示换行开关，并保存新值。
   it('discloses the word-wrap switch and saves its next value', async () => {
     const snapshot = {
       status: 'ready' as const,
@@ -1532,19 +1533,18 @@ describe('FileReview settings card', () => {
       writable: true,
       mode: 'host' as const,
     }
-    const setWordWrap = vi.fn(async () => {})
-    const settings = {
-      getSnapshot: () => snapshot,
-      subscribe: () => () => {},
-      set: vi.fn(async (field: string, value: unknown) => {
-        if (field === 'wordWrap') snapshot.value = { ...snapshot.value, wordWrap: value === true }
-        await setWordWrap(value === true)
-      }),
-      unset: vi.fn(async () => {}),
-      mutate: vi.fn(async () => true),
-    }
-    const view = render(<FileReviewSettingsTab settings={settings} t={makeTranslate(en)} />)
+    const setWordWrap = vi.fn(async () => true)
+    const props = {
+      view: 'page',
+      t: makeTranslate(en),
+      useFileReviewSettings: (select: (value: typeof snapshot) => unknown) => select(snapshot),
+      setWordWrap,
+      setDiffLayout: vi.fn(async () => true),
+    } as unknown as FileReviewSettingsCardProps
+    const view = render(<ul><FileReviewSettingsCard {...props} /></ul>)
 
+    expect(view.queryByRole('switch')).not.toBeNull()
+    fireEvent.click(view.getByRole('button', { name: 'Collapse: File review' }))
     expect(view.queryByRole('switch')).toBeNull()
     fireEvent.click(view.getByRole('button', { name: 'Expand: File review' }))
     const toggle = view.getByRole('switch', { name: 'Automatically wrap long lines' })
@@ -1651,6 +1651,7 @@ describe('plugin registration', () => {
       },
       set: vi.fn(async (field: string, value: unknown) => {
         if (field === 'wordWrap') publishWordWrap(value === true)
+        return true
       }),
       unset: vi.fn(async () => {
         publishWordWrap(false)
@@ -1742,24 +1743,32 @@ describe('plugin registration', () => {
       'sidebarRightTabs',
     ])
     expect(getSettings).toHaveBeenCalledWith('file-review')
+    expect(getSettings).toHaveBeenCalledTimes(1)
     publishWordWrap(true)
     expect(registerSource).toHaveBeenCalledOnce()
     expect(mountRemote).toHaveBeenCalledOnce()
     expect(definition).toBe(deliverablesDefinition)
     expect(registerLocale).toHaveBeenCalledWith('file-review', { zh, en })
     const settingsRegistration = registrations.find(
-      (registration) => registration.options.name === 'settings.plugins.tab',
+      (registration) => registration.options.name === 'plugins.row.config',
     )
     expect(settingsRegistration).toEqual({
       options: expect.objectContaining({
-        name: 'settings.plugins.tab',
-        id: 'file-review',
-        order: 20,
+        name: 'plugins.row.config',
+        key: 'dsh-file-review#file-review',
         locale: NS,
-        label: expect.any(Function),
+        inject: expect.any(Function),
       }),
       component: expect.any(Function),
     })
+    expect(registrations.filter(registration => registration.options.name === 'plugins.row.config')).toHaveLength(1)
+    const desktopSettingsFace = settingsRegistration?.options.inject?.('session-1') as {
+      hooks: { fileReviewSettings: { getSnapshot(): { status: string } } }
+      setWordWrap(value: boolean): Promise<boolean>
+    }
+    expect(desktopSettingsFace.hooks.fileReviewSettings.getSnapshot().status).toBe('ready')
+    await expect(desktopSettingsFace.setWordWrap(true)).resolves.toBe(true)
+    expect(settingsForm.set).toHaveBeenCalledWith('wordWrap', true)
     expect(registrations).toContainEqual({
       options: expect.objectContaining({
         name: 'conversation.input.dock',
@@ -1797,7 +1806,7 @@ describe('plugin registration', () => {
         },
       ]),
     )
-    expect(slot?.component).toBe(ProducedFilesSlot)
+    expect(slot?.component).toBe(ProducedFilesTail)
     expect(slot?.options.locale).toBe(NS)
     expect(slot?.options.inject).toBeTypeOf('function')
     const reviewActions = slot?.options.inject?.('session-1') as {
@@ -1820,7 +1829,6 @@ describe('plugin registration', () => {
     await expect(reviewActions.applyChanges({ action: 'undo', files: [] })).resolves.toEqual({
       files: [],
     })
-    expect(settingsForm.set).not.toHaveBeenCalled()
 
     const opened: string[] = []
     const owner = tailOwner(produced([2, 'site/report.html']), 3, (path) => {
