@@ -91,7 +91,7 @@ zws python rollback
 | Python 依赖清单 | resource catalog 下载后由 PythonSyncService 再验签、预览、排队安装 | 拒绝清单降级；验证失败不切活动 generation |
 | Electron + DSH 核心 | 原有桌面安装器更新 | 继续使用桌面版本更新流程 |
 
-Python 默认安装包只携带小型签名依赖清单，不携带 `base-runtime.zip`。基础环境由用户按需安装。运行任务解析后使用固定物理路径；Python 工具和托管 MCP 写 snapshot lease，科研 Host 保守保留其使用过的 generation 至进程退出。清理器保留 current、rollback、live lease 和 24 小时宽限期，随后只处理受管 slots，不删除历史外部环境。
+Python 默认安装包只携带小型签名依赖清单，不携带 `base-runtime.zip`。首次启动只检查签名 feed，不创建基础环境下载任务；用户点击安装或发起需要 Python 的操作时才安装。中断的远程安装任务在下次启动保持暂停，由用户继续。可选离线安装器仍可自动准备其携带的签名 bootstrap。运行任务解析后使用固定物理路径；Python 工具和托管 MCP 写 snapshot lease，科研 Host 保守保留其使用过的 generation 至进程退出。清理器保留 current、rollback、live lease 和 24 小时宽限期，随后只处理受管 slots，不删除历史外部环境。
 
 科学环境的大型依赖仍由专用 updater 管理，不把通用包安装器冒充 Python updater。离线 runtime 制作入口保持 `tools/release/build-mcp-environment.mjs`，不把大型包塞回默认桌面。
 

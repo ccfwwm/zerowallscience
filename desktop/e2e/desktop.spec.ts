@@ -29,6 +29,9 @@ beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'zerowall-electron-e2e-')); roots.push(root)
   mkdirSync(join(root, 'appdata'), { recursive: true })
   mkdirSync(join(root, 'localappdata'), { recursive: true })
+  const pythonLocation = join(root, 'localappdata', 'ZeroWall Science', 'python-location.json')
+  mkdirSync(dirname(pythonLocation), { recursive: true })
+  writeFileSync(pythonLocation, JSON.stringify({ runtimeRoot: join(root, 'shared-python', 'Python') }))
   const packaged = await locatePackagedApp(desktopRoot)
   const environment = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined))
   application = spawn(packaged.executablePath, ['--remote-debugging-port=0', `--user-data-dir=${join(root, 'chromium')}`], {
@@ -572,14 +575,21 @@ describe('ZeroWall Science Electron', () => {
     await expect.poll(() => page.getByRole('dialog', { name: '设置' }).count()).toBe(0)
     await page.getByRole('button', { name: '插件', exact: true }).click()
     await page.getByRole('heading', { name: '插件', exact: true }).waitFor()
-    await page.getByText('@zerowallscience/plugin-skills', { exact: true }).first().waitFor()
     await page.getByRole('button', { name: /添加插件/ }).waitFor()
-    const skillsPackage = page.locator('[data-plugin-package="@zerowallscience/plugin-skills"]')
-    await skillsPackage.getByRole('switch').waitFor()
-    await skillsPackage.getByRole('button', { name: /^查看 / }).click()
+    const bundles = await rpc(page, 'pluginManager/listBundles', {})
+    const skills = bundles.find((bundle: { name: string }) => bundle.name === '@zerowallscience/plugin-skills')
+    expect(skills).toMatchObject({ enabled: true, version: '0.1.0' })
+    expect(skills.error).toBeUndefined()
+    // The official manager shows optional and profile-installed bundles.
+    // Default shipped bundles are inspected in Settings' Plugin list above.
+    const offeredPackage = page.locator('[data-plugin-package="@deepseek-ai/dsh-experimental-voice-input-bundle"]')
+    await offeredPackage.waitFor({ state: 'visible' })
+    await offeredPackage.getByRole('switch').waitFor()
+    await offeredPackage.getByRole('button', { name: /^查看 / }).click()
     await page.locator('[data-plugin-rows]').waitFor()
     expect(await page.locator('[data-package-meta-error]').count()).toBe(0)
-    await page.getByRole('button', { name: '工作区', exact: true }).click()
+    await page.getByText('默认工作区', { exact: true }).first().click()
+    await page.locator('[data-plugin-panel]').waitFor({ state: 'hidden' })
   })
 
   it('shows environment configuration as a list with AIchem credentials and live model catalog', async () => {

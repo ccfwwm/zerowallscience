@@ -710,10 +710,9 @@ if (ownsInstance) app.whenReady().then(async () => {
   })
   app.once('before-quit', () => { void stopCommandServer() })
   const checkPythonUpdates = async (): Promise<void> => {
-    // The signed base runtime is installed automatically on first launch; this
-    // runs after the workbench becomes usable and streams progress to the
-    // Python environment panel. Subsequent runtime and package updates remain
-    // read-only until the user chooses to apply them.
+    // Thin installers check the signed feed after the workbench becomes usable.
+    // Only an optional local offline bootstrap is installed on first launch;
+    // remote runtime downloads require an explicit Python action.
     const status = await mcpEnvironment.autoUpdate().catch(error => {
       console.warn('Python runtime check:', error instanceof Error ? error.message : String(error))
       return undefined

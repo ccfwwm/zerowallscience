@@ -113,7 +113,7 @@ it('only checks on startup when a runtime exists and an update is available', as
 it('automatically installs a missing base runtime at startup and exposes progress', async () => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-missing-')); roots.push(root)
   state.missing = true
-  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', bundledArchivePath: 'signed-offline-fixture.zip', publish() {} })
   const completion = service.autoUpdate()
   await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
   const request = state.calls.find(call => call.method === 'initialize')!
@@ -137,7 +137,7 @@ it('restarts a missing bundled runtime before resuming stale dependency jobs', a
   await writeFile(join(jobs, `${bootstrapId}.json`), JSON.stringify({ taskId: bootstrapId, method: 'initialize', args: [], state: 'paused', updatedAt: 1 }))
   await writeFile(join(jobs, `${dependencyId}.json`), JSON.stringify({ taskId: dependencyId, method: 'installPythonPackage', args: ['requests'], state: 'paused', updatedAt: 2 }))
   state.missing = true
-  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', bundledArchivePath: 'signed-offline-fixture.zip', publish() {} })
 
   const completion = service.autoUpdate()
   await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
@@ -179,16 +179,41 @@ it('does not pass package requests through when signed runtime initialization fa
   service.stop()
 })
 
-it('records an unavailable first-run environment as a failed durable install', async () => {
+it('records an explicitly requested unavailable environment as a failed durable install', async () => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-unavailable-')); roots.push(root)
   state.missing = true
   const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
-  const completion = service.autoUpdate()
+  const completion = service.ensureReady()
   await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
   const request = state.calls.find(call => call.method === 'initialize')!
   state.children.at(-1).emit('message', { id: request.id, result: { phase: 'failed', message: 'base archive rejected' } })
   await expect(completion).resolves.toMatchObject({ phase: 'unavailable', updateJob: { stage: 'failed' } })
   const taskId = service.current().updateJob!.taskId
   expect(JSON.parse(await readFile(join(root, 'jobs', `${taskId}.json`), 'utf8')).state).toBe('failed')
+  service.stop()
+})
+
+it('keeps a missing thin runtime on demand across background checks', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-broker-thin-')); roots.push(root)
+  state.missing = true
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+  await expect(service.autoUpdate()).resolves.toMatchObject({ phase: 'unavailable' })
+  await service.autoUpdate()
+  expect(state.calls.map(call => call.method)).toEqual(['localStatus', 'checkForUpdates', 'localStatus', 'checkForUpdates'])
+  expect(await readdir(join(root, 'jobs')).catch(() => [])).toEqual([])
+  service.stop()
+})
+
+it('leaves an interrupted thin bootstrap paused until the user resumes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-broker-thin-paused-')); roots.push(root)
+  const jobs = join(root, 'jobs'); await mkdir(jobs)
+  const taskId = '33333333-3333-4333-8333-333333333333'
+  await writeFile(join(jobs, `${taskId}.json`), JSON.stringify({ taskId, method: 'initialize', args: [], state: 'paused', updatedAt: 1 }))
+  state.missing = true
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+  await expect(service.autoUpdate()).resolves.toMatchObject({ phase: 'paused' })
+  await service.autoUpdate()
+  expect(state.calls.map(call => call.method)).toEqual(['localStatus'])
+  expect(JSON.parse(await readFile(join(jobs, `${taskId}.json`), 'utf8')).state).toBe('paused')
   service.stop()
 })
