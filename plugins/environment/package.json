@@ -90,7 +90,8 @@
   "scripts": {
     "bundle": "tsdown",
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "vitest run --config ../../vitest.plugins.config.ts"
+    "test": "vitest run --config ../../vitest.plugins.config.ts",
+    "prepack": "node ../../tools/plugins/prepare-pack.mjs"
   },
   "license": "AGPL-3.0-only",
   "files": [
@@ -199,5 +200,8 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^"
+  },
+  "publishConfig": {
+    "directory": "../../artifacts/dev/publish/plugin-environment"
   }
 }

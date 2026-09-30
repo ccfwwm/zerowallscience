@@ -79,7 +79,8 @@
     "commands:prepare": "node tools/commands/prepare.mjs",
     "plugins:pack": "node tools/plugins/pack.mjs",
     "catalogs:generate": "node tools/release/generate-resource-catalogs.mjs",
-    "test:updates": "node --import tsx --test tests/updates/*.test.mjs"
+    "test:updates": "node --import tsx --test tests/updates/*.test.mjs",
+    "plugins:verify-pack": "node tools/plugins/verify-native-pack.mjs"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

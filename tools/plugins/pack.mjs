@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { cp, mkdir, readFile, readdir, writeFile, realpath } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile, realpath } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { root, stageRoot, releaseRoot } from '../build/paths.mjs'
+import { preparePublishPackage } from './publish-package.mjs'
 const pnpm = process.env.npm_execpath
 if (!pnpm) throw new Error('Invoke with pnpm plugins:pack')
 const records = []
@@ -17,27 +18,7 @@ for (const source of sources) {
   const directory = manifest.name.split('/').at(-1)
   const version = manifest.version
   const staging = join(stageRoot, 'plugin-packages', directory)
-  await mkdir(staging, { recursive: true })
-  for (const file of new Set(manifest.files.map(file => file.split('/')[0]))) {
-    await cp(join(source, file), join(staging, file), { recursive: true, dereference: true }).catch(error => { if (error.code !== 'ENOENT') throw error })
-  }
-  const publish = structuredClone(manifest)
-  delete publish.scripts
-  delete publish.devDependencies
-  delete publish.private
-  for (const section of ['dependencies', 'peerDependencies']) for (const [name, range] of Object.entries(publish[section] ?? {})) {
-    if (!/^(?:workspace:|github:|git\+|git:)/.test(range)) continue
-    const dependency = await readFile(join(source, 'node_modules', name, 'package.json'), 'utf8').then(JSON.parse)
-    publish[section][name] = dependency.version
-  }
-  // DSH is supplied by the Host/profile, never installed as a second runtime.
-  for (const [name, range] of Object.entries(publish.dependencies ?? {})) {
-    if (!name.startsWith('@deepseek-ai/')) continue
-    publish.peerDependencies ??= {}
-    publish.peerDependencies[name] = range
-    delete publish.dependencies[name]
-  }
-  await writeFile(join(staging, 'package.json'), JSON.stringify(publish, null, 2))
+  const { publish } = await preparePublishPackage(source, staging)
   const destination = join(releaseRoot, 'plugins', directory, version)
   await mkdir(destination, { recursive: true })
   execFileSync(process.execPath, [pnpm, 'pack', '--pack-destination', destination], { cwd: staging, stdio: 'inherit' })

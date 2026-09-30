@@ -46,6 +46,8 @@ artifacts/
 
 `@zerowallscience/dsh-bundle-science` 只声明组合与依赖。管理器安装后把组合展开为独立 profile bundles，去重；移除插件不会被该组合重新启用。`plugins:pack` 从源码和集中生成的库创建 staging manifest，去除构建脚本、devDependencies 和 workspace 发布依赖，DSH 包转换为 Host peers。
 
+20 个 ZeroWall 插件也支持直接 `pnpm --filter <包名> pack --pack-destination <绝对路径>`。`prepack` 将集中编译文件复制为 `artifacts/dev/publish/<包名>/` 中的真实文件，`publishConfig.directory` 从该目录打包，避免 pnpm 忽略源码中的 `lib` 兼容链接。`pnpm plugins:verify-pack` 实际逐个打包并检查 Host、Client、remote 和依赖声明；临时 tarball 与收据进入 `artifacts/verification/8.0.0/native-pack/`。正式批量发布仍使用独立 build ID 的 `plugins:pack`。
+
 ## 命令与凭据
 
 安装器为当前用户注册 `resources/commands` 的 PATH 项，提供 `dsh.cmd/.ps1` 与 `zws.cmd/.ps1`。PATH worker 保留其他项，并使用 ownership receipt；卸载只移除本安装器拥有的 PATH 项。注册目录放在已有 PATH 后面，外部 `dsh` 保留优先级。

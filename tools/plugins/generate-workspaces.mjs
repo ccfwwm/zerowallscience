@@ -207,12 +207,14 @@ for (const plugin of plugins) {
       rollbackSupported: true,
     },
     scripts: {
+      prepack: 'node ../../tools/plugins/prepare-pack.mjs',
       bundle: plugin.id === 'research' ? 'node ../../tools/science/build-molecule-runtime.mjs && tsdown' : 'tsdown',
       typecheck: plugin.client
         ? 'tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit' + (plugin.id === 'research' ? ' && tsc -p tsconfig.workbench.json --noEmit' : '')
         : 'tsc -p tsconfig.host.json --noEmit',
       test: 'vitest run --config ../../vitest.plugins.config.ts',
     },
+    publishConfig: { directory: `../../artifacts/dev/publish/plugin-${plugin.id}` },
     license: 'AGPL-3.0-only',
     files: [
       'lib', 'src',
