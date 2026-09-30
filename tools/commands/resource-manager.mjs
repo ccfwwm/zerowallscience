@@ -98,6 +98,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const workspace = workspaceText.trim() ? yaml.parse(workspaceText) : {}
     workspace.overrides = { ...workspace.overrides, ...overrides }
     workspace.autoInstallPeers = false
+    // Scarf only runs install telemetry. Explicitly deny that known script;
+    // leave pnpm's lifecycle approval gate intact for every other dependency.
+    workspace.ignoredBuiltDependencies = [...new Set([...(workspace.ignoredBuiltDependencies ?? []), '@scarf/scarf'])]
     await writeFile(workspaceFile, yaml.stringify(workspace))
     await runPlugin(['add', archive], generation)
     await normalizeComposition(candidate)

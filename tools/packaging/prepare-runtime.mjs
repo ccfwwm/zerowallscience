@@ -5,6 +5,7 @@ import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
 import { adaptUniverOfficeManifest } from './adapt-univer-office.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
+import { adaptDreamSkinClient } from './adapt-dream-skin.mjs'
 import {
   adaptZoteroClient,
   adaptZoteroCommand,
@@ -315,6 +316,8 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
 
   if (manifest.name === 'dsh-dream-skin') {
     await copyEntry(sourceRoot, targetRoot, 'lib')
+    const clientPath = resolve(targetRoot, 'lib/client.js')
+    await writeFile(clientPath, adaptDreamSkinClient(await readFile(clientPath, 'utf8')))
     try { await access(resolve(sourceRoot, 'cordis.patch.yml')); await copyEntry(sourceRoot, targetRoot, 'cordis.patch.yml') } catch { /* optional in newer Dream Skin releases */ }
     return
   }

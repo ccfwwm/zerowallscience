@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, writeFile, realpath } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { root, stageRoot, releaseRoot } from '../build/paths.mjs'
 const pnpm = process.env.npm_execpath
@@ -8,6 +8,9 @@ const records = []
 const sources = (await readdir(join(root, 'plugins'))).filter(name => name !== 'wechat').map(name => join(root, 'plugins', name))
 sources.push(join(root, 'store'), join(root, 'packages/integrity-runtime'), join(root, 'packages/dsh-bundle-science'))
 sources.push(...['dsh-wechat', 'dsh-session-notification', 'dsh-auto-review'].map(name => join(root, 'packages', name)))
+// Preserve the tested Office adapter Git pin as an independently signed
+// support tarball; pnpm 11 correctly rejects Git dependencies nested in bundles.
+sources.push(dirname(await realpath(join(root, 'plugins/files/node_modules/dsh-office-tools/package.json'))))
 for (const source of sources) {
   const manifest = await readFile(join(source, 'package.json'), 'utf8').then(JSON.parse, () => undefined)
   if (!manifest) continue
@@ -23,7 +26,7 @@ for (const source of sources) {
   delete publish.devDependencies
   delete publish.private
   for (const section of ['dependencies', 'peerDependencies']) for (const [name, range] of Object.entries(publish[section] ?? {})) {
-    if (!range.startsWith('workspace:')) continue
+    if (!/^(?:workspace:|github:|git\+|git:)/.test(range)) continue
     const dependency = await readFile(join(source, 'node_modules', name, 'package.json'), 'utf8').then(JSON.parse)
     publish[section][name] = dependency.version
   }
@@ -41,10 +44,10 @@ for (const source of sources) {
   const name = (await readdir(destination)).find(file => file.endsWith('.tgz'))
   const archive = join(destination, name)
   const packed = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], { encoding: 'utf8' }))
-  if (JSON.stringify(packed).includes('workspace:')) throw new Error(`Non-publishable dependency in ${manifest.name}`)
+  if (JSON.stringify(packed.dependencies ?? {}).match(/workspace:|github:|git\+|git:/)) throw new Error(`Non-publishable dependency in ${manifest.name}`)
   const contents = execFileSync('tar', ['-tf', archive], { encoding: 'utf8' })
   if (manifest.main && !contents.includes('package/' + manifest.main.replace(/^\.\//, ''))) throw new Error(`Missing Host bundle for ${manifest.name}`)
   if (manifest.zerowall?.capabilities && !manifest.zerowall?.rollbackSupported) throw new Error('Missing plugin rollback contract')
-  records.push({ id: manifest.name, version, path: archive, kind: manifest.dsh?.bundle ? 'plugin' : 'support', manifest: publish.zerowall, dependencies: publish.dependencies })
+  records.push({ id: manifest.name, version, path: archive, kind: manifest.dsh?.bundle && manifest.name !== 'dsh-office-tools' ? 'plugin' : 'support', manifest: publish.zerowall, dependencies: publish.dependencies })
 }
 await writeFile(join(releaseRoot, 'plugin-packages.json'), JSON.stringify(records, null, 2))

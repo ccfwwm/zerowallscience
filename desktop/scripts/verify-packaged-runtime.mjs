@@ -1,4 +1,4 @@
-import { stageRoot } from '../../tools/build/paths.mjs'
+import { stageRoot, targetPackageRoot } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -352,7 +352,8 @@ async function verifyArchivePolicy() {
   if (dreamSkinManifest.version !== desktopManifest.dependencies['dsh-dream-skin']) throw new Error(`Packaged dsh-dream-skin must be ${desktopManifest.dependencies['dsh-dream-skin']}; found ${dreamSkinManifest.version}.`)
   const dreamSkinClient = readArchiveFile('node_modules/dsh-dream-skin/lib/client.js')
   const sourceDreamSkinClient = await readFile(resolve(repositoryRoot, 'desktop/node_modules/dsh-dream-skin/lib/client.js'))
-  if (!dreamSkinClient.equals(sourceDreamSkinClient)) {
+  const { adaptDreamSkinClient } = await import('../../tools/packaging/adapt-dream-skin.mjs')
+  if (!dreamSkinClient.equals(Buffer.from(adaptDreamSkinClient(sourceDreamSkinClient.toString('utf8'))))) {
     throw new Error('Packaged Dream Skin client must match the pinned v9.29.0 source and ZeroWall appearance patch.')
   }
   const dreamSkinSource = dreamSkinClient.toString('utf8')
@@ -591,10 +592,10 @@ async function verifySizePolicy() {
   }
   budgetNote('installed output', installedBytes, 1_500 * MIB)
 
-  const installers = (await readdir(resolve(packageRoot, 'dist'), { withFileTypes: true }))
+  const installers = (await readdir(targetPackageRoot, { withFileTypes: true }))
     .filter(entry => entry.isFile() && entry.name.includes(`-${packagedManifest.version}-`) && entry.name.endsWith('.exe') && !entry.name.toLowerCase().includes('uninstall'))
   for (const installer of installers) {
-    const size = (await stat(resolve(packageRoot, 'dist', installer.name))).size
+    const size = (await stat(resolve(targetPackageRoot, installer.name))).size
     budgetNote(`installer ${installer.name}`, size, 1_024 * MIB)
   }
 }

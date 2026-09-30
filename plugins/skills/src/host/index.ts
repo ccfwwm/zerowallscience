@@ -16,6 +16,17 @@ export type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSo
 // the established ordering; ARS guidance itself is owned by plugin-base.
 export const inject = ['skills', 'systemPrompt']
 
+// Windows directory watchers and virus scanners can briefly deny rename.
+// Retry only sharing/permission failures; never remove a target to force a swap.
+async function moveSkillDirectory(source: string, destination: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try { await rename(source, destination); return } catch (error) {
+      if (process.platform !== 'win32' || attempt >= 12 || !['EPERM', 'EACCES', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error
+      await new Promise(resolveRetry => setTimeout(resolveRetry, 100 + attempt * 50))
+    }
+  }
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context { zerowallCapabilities: ZeroWallCapabilitiesService }
 }
@@ -116,8 +127,8 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
     await copySkillTree(source, candidate)
     const backup = join(dirname(userSkillDir()), 'history', name, randomUUID())
     await mkdir(dirname(backup), { recursive: true })
-    await rename(target, backup)
-    try { await rename(candidate, target) } catch (error) { await rename(backup, target); throw error }
+    await moveSkillDirectory(target, backup)
+    try { await moveSkillDirectory(candidate, target) } catch (error) { await moveSkillDirectory(backup, target); throw error }
     // The filesystem provider's watcher invalidates the registry. Existing
     // tasks keep their already resolved SkillDefinition and content snapshot.
     return await this.getSkill(name)
@@ -134,8 +145,8 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
     const disabled = await exists(safeSkillPath(disabledSkillDir(), name))
     const target = safeSkillPath(disabled ? disabledSkillDir() : userSkillDir(), name)
     const backup = join(history, randomUUID())
-    await rename(target, backup)
-    try { await rename(previous.path, target) } catch (error) { await rename(backup, target); throw error }
+    await moveSkillDirectory(target, backup)
+    try { await moveSkillDirectory(previous.path, target) } catch (error) { await moveSkillDirectory(backup, target); throw error }
     return this.getSkill(name)
   }
 
@@ -169,7 +180,7 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
     const to = safeSkillPath(enabled ? userSkillDir() : disabledSkillDir(), normalized)
     if (!(await exists(from))) throw new Error(`Imported Skill was not found: ${normalized}`)
     await mkdir(dirname(to), { recursive: true })
-    await rename(from, to)
+    await moveSkillDirectory(from, to)
   }
 }
 
