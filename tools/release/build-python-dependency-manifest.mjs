@@ -1,3 +1,4 @@
+import { releaseRoot } from '../build/paths.mjs'
 /** Build signed, full-software dependency metadata without rebuilding Python. */
 import { createHash, createPrivateKey, createPublicKey } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -5,10 +6,10 @@ import { join, resolve } from 'node:path'
 import { applySourceDistributions, normalizePackageName, parseLockedPackages, scienceManifestDocument, signDocument } from './python-layer-split.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
-const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(root, 'desktop', 'dist', 'python-dependencies'))
+const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(releaseRoot, 'python-dependencies'))
 const pythonVersion = process.env.ZEROWALL_PYTHON_VERSION ?? '3.12.10'
 const environmentVersion = process.env.ZEROWALL_PYTHON_ENVIRONMENT_VERSION ?? pythonVersion
-const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r10`
+const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r11`
 if (!/^[A-Za-z0-9_.-]{1,100}$/u.test(revision)) throw new Error('Invalid manifest revision.')
 const publicKey = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----`
 const keyFile = process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE ?? join(root, 'scripts', 'env', 'runtime-private.pem')

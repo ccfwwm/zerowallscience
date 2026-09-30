@@ -1,3 +1,4 @@
+import { targetPackageRoot } from '../build/paths.mjs'
 import { createHash } from 'node:crypto'
 import { readFile, stat, writeFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
@@ -28,7 +29,7 @@ export async function createWindowsReleaseMetadata(options) {
 async function main() {
   const desktopPackage = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
   const version = String(desktopPackage.version)
-  const installer = resolve(root, `desktop/dist/zerowall-science-${version}-win-x64.exe`)
+  const installer = resolve(targetPackageRoot, `zerowall-science-${version}-win-x64.exe`)
   const notes = await readFile(resolve(root, `docs/release-notes-${version}.md`), 'utf8')
   const metadata = await createWindowsReleaseMetadata({
     installer,
@@ -39,14 +40,14 @@ async function main() {
   })
   const payload = `${JSON.stringify(metadata, null, 2)}\n`
   const outputs = [
-    resolve(root, `desktop/dist/zerowall-science-${version}-latest.json`),
-    resolve(root, 'desktop/dist/releases-latest.json'),
-    resolve(root, 'desktop/dist/releases-zerowallsciencedev-latest.json'),
+    resolve(targetPackageRoot, `zerowall-science-${version}-latest.json`),
+    resolve(targetPackageRoot, 'releases-latest.json'),
+    resolve(targetPackageRoot, 'releases-zerowallsciencedev-latest.json'),
   ]
   await Promise.all(outputs.map(output => writeFile(output, payload, 'utf8')))
   // electron-updater exposes this field on update-available, allowing the
   // desktop dialog to show the concrete fixes before download/installation.
-  const feedPath = resolve(root, 'desktop/dist/latest.yml')
+  const feedPath = resolve(targetPackageRoot, 'latest.yml')
   const feed = await readFile(feedPath, 'utf8')
   const releaseNotes = notes.trim().split(/\r?\n/u).map(line => `  ${line}`).join('\n')
   const relativeAsset = `releases/${version}/${basename(installer)}`

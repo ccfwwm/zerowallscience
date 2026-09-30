@@ -1,3 +1,4 @@
+import { renameFile } from './atomic-file.js'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { appendFile, mkdir, open, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
@@ -117,7 +118,7 @@ export class PythonEnvironmentApi {
       await writeFile(path, JSON.stringify({ fingerprint, state: 'accepted' }), { flag: 'wx' })
       const save = async (value: unknown) => {
         const temporary = `${path}.${randomUUID()}.tmp`
-        await writeFile(temporary, JSON.stringify(value)); await rename(temporary, path)
+        await writeFile(temporary, JSON.stringify(value)); await renameFile(temporary, path)
       }
       try {
         const result = await this.auditedExecute(input)
@@ -162,7 +163,7 @@ export class PythonEnvironmentApi {
     const save = async (value: unknown) => {
       const temporary = `${path}.${randomUUID()}.tmp`
       await writeFile(temporary, JSON.stringify(value))
-      await rename(temporary, path)
+      await renameFile(temporary, path)
     }
     await writeFile(path, JSON.stringify({ fingerprint, state: 'accepted', taskId }), { flag: 'wx' })
     await this.log(input, 'queued', { taskId })
@@ -229,7 +230,7 @@ export class PythonEnvironmentApi {
         // The signed installer will rebuild the selected stable directory.
         const configuredRuntimeRoot = savedRuntimeRoot ?? join(dirname(this.root), 'Python')
         const activeRuntime = runtime && typeof runtime.rootPath === 'string'
-          && resolve(runtime.rootPath) === resolve(configuredRuntimeRoot)
+          && (resolve(runtime.rootPath) === resolve(configuredRuntimeRoot) || (current.generation === true && typeof current.root === 'string' && resolve(runtime.rootPath) === resolve(current.root, 'Python') && !relative(join(this.root, 'slots'), current.root).startsWith('..')))
           ? runtime
           : undefined
         result = { status: this.updater.current(), runtime: activeRuntime, runtimeRoot: configuredRuntimeRoot, dependencies: await readOptional(join(this.root, 'dependency-sync', 'status.json')), events: await this.events() }; break
@@ -284,7 +285,7 @@ export class PythonEnvironmentApi {
             const temporaryLocation = `${this.locationPath}.${randomUUID()}.tmp`
             try {
               await writeFile(temporaryLocation, `${JSON.stringify({ runtimeRoot: selected })}\n`, { flag: 'wx' })
-              await rename(temporaryLocation, this.locationPath)
+              await renameFile(temporaryLocation, this.locationPath)
             } finally {
               await rm(temporaryLocation, { force: true }).catch(() => undefined)
             }
@@ -300,7 +301,7 @@ export class PythonEnvironmentApi {
           const next = { revision: previous.revision + 1, mirrorUrl: url.href.replace(/\/$/u, '') }
           await mkdir(this.controlRoot(), { recursive: true })
           const temp = join(this.controlRoot(), `settings-${randomUUID()}.tmp`)
-          try { await writeFile(temp, `${JSON.stringify(next)}\n`, { flag: 'wx' }); await rename(temp, join(this.controlRoot(), 'settings.json')) }
+          try { await writeFile(temp, `${JSON.stringify(next)}\n`, { flag: 'wx' }); await renameFile(temp, join(this.controlRoot(), 'settings.json')) }
           finally { await rm(temp, { force: true }).catch(() => undefined) }
           return next
         }
@@ -330,13 +331,13 @@ export class PythonEnvironmentApi {
     const checkedAt = new Date().toISOString()
     const pending = { status: 'unknown' }
     const unavailable = { checkedAt, python: pending, pip: pending, tls: pending, mirror: pending }
-    let current: { root: string; runtimeRoot?: string; manifest: { python: { relativeExecutable: string; relativeSitePackages: string } }; health: string }
+    let current: { root: string; runtimeRoot?: string; generation?: boolean; manifest: { python: { relativeExecutable: string; relativeSitePackages: string } }; health: string }
     try { current = JSON.parse(await readFile(join(this.root, 'current.json'), 'utf8')) }
     catch { return unavailable }
     if (current.health !== 'ready') return unavailable
     const root = await realpath(current.root).catch(() => resolve(current.root))
     const stablePath = current.runtimeRoot
-    const productRoot = basename(resolve(this.root)).toLowerCase() === 'zerowall-python'
+    const productRoot = current.generation !== true && basename(resolve(this.root)).toLowerCase() === 'zerowall-python'
     const expectedRuntimeRoot = dirname(resolve(this.root))
     if (productRoot && (typeof stablePath !== 'string' || resolve(stablePath) !== expectedRuntimeRoot || current.manifest.python.relativeExecutable !== 'Python/python.exe' || current.manifest.python.relativeSitePackages !== 'Python/Lib/site-packages')) {
       // A legacy slot/profile is not a usable shared runtime.  Diagnostics

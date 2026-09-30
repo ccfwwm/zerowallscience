@@ -1,9 +1,10 @@
+import { releaseRoot } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { createHash, verify } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
-const work = resolve(process.argv[2] ?? '.build/python-1.4.0')
+const work = resolve(process.argv[2] ?? join(releaseRoot, 'python-runtime'))
 const local = JSON.parse(await readFile(join(work, 'dist/latest.json'), 'utf8'))
 const key = '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----'
 const base = local.archiveUrl.slice(0, local.archiveUrl.lastIndexOf('/'))

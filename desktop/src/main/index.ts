@@ -1,6 +1,8 @@
 import { attachPythonBroker } from './python-broker.js'
+import { startCommandServer } from './command-server.js'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { access, appendFile, cp, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -49,6 +51,8 @@ let restarting = false
 let startup: StartupStatus = { phase: 'starting', progress: 5, message: '正在准备本地工作台', startedAt: Date.now() }
 let navigation: Promise<void> | undefined
 const desktopPluginProcesses = new Map<string, ReturnType<typeof spawn>>()
+let managementChild: HarnessChildProcess | undefined
+const managementRequests = new Map<string, { resolve: (result: unknown) => void; reject: (error: Error) => void }>()
 
 async function sessionDeleteRpc<T>(window: BrowserWindow, activeRuntime: HarnessRuntime, method: string, request: object, fallback: string): Promise<T> {
   if (activeRuntime.snapshot().phase !== 'ready') throw new Error(fallback)
@@ -187,6 +191,14 @@ function findWorkspaceRoot(): string {
   return findDesktopWorkspaceRoot(app.getAppPath())
 }
 
+function developmentStagePath(...parts: string[]): string {
+  const root = findWorkspaceRoot()
+  const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version as string
+  const stage = join(root, 'artifacts', 'stage', version)
+  const buildId = process.env.ZEROWALL_BUILD_ID ?? (JSON.parse(readFileSync(join(stage, 'current.json'), 'utf8')).buildId as string)
+  return join(stage, buildId, ...parts)
+}
+
 function attachDesktopBridge(child: HarnessChildProcess): () => void {
   const onMessage = (message: unknown) => {
     if (!message || typeof message !== 'object') return
@@ -207,10 +219,12 @@ function attachDesktopBridge(child: HarnessChildProcess): () => void {
     if (value.op !== 'runPlugin' && value.op !== 'run') return
     const args = Array.isArray(value.args) ? [...value.args] : []
     const invokingDir = value.invokingDir ?? join(app.getPath('userData'), 'harness')
-    const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+    const command = nodeExecutablePath()
+    const pnpmEntry = app.isPackaged ? join(process.resourcesPath, 'commands/pnpm/bin/pnpm.cjs') : process.env.npm_execpath
+    if (!pnpmEntry) throw new Error('Bundled pnpm is unavailable')
     let operation: ReturnType<typeof spawn>
     try {
-      operation = spawn(command, args, { cwd: invokingDir, env: process.env, windowsHide: true, shell: false })
+      operation = spawn(command, ['--expose-internals', pnpmEntry, ...args], { cwd: invokingDir, env: { ...process.env, ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}) }, windowsHide: true, shell: false })
     } catch (error) {
       child.send({ type: 'zerowall:desktop:result', requestId: value.requestId, result: { ok: false, error: error instanceof Error ? error.message : String(error) } })
       return
@@ -249,7 +263,7 @@ function nodeResolverPath(): string | undefined {
 }
 
 function runtimeModulesPath(): string | undefined {
-  return app.isPackaged ? join(app.getAppPath(), 'node_modules') : join(findWorkspaceRoot(), '.build', 'runtime', 'node_modules')
+  return app.isPackaged ? join(app.getAppPath(), 'node_modules') : developmentStagePath('runtime', 'node_modules')
 }
 
 function runtimeAnchorPath(): string {
@@ -528,7 +542,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     // in that case process.execPath is Electron itself and must be switched
     // into its Node-compatible mode for the embedded Harness child.
     runAsNode: app.isPackaged || nodeExecutablePath() === process.execPath,
-    dshPatchPath: resourcePath('zerowall.patch.yml'),
+    dshPatchPath: app.isPackaged ? resourcePath('zerowall.patch.yml') : developmentStagePath('resources', 'zerowall-core.patch.yml'),
     userDataPath: userData,
     dshHome: join(userData, 'harness'),
     userSkillsPath: join(userData, 'harness', 'zerowall-skills', 'enabled'),
@@ -540,10 +554,25 @@ if (ownsInstance) app.whenReady().then(async () => {
     portPath: join(userData, 'harness', 'endpoint-port.txt'),
     launchProcess: (executable, args, options) => spawn(executable, args, options) as HarnessChildProcess,
     onChildStarted: (child) => {
+      managementChild = child
+      const managementListener = (message: unknown): void => {
+        if (!message || typeof message !== 'object') return
+        const response = message as { type?: string; id?: string; result?: unknown; error?: string }
+        if (response.type !== 'zerowall:management:result' || !response.id) return
+        const pending = managementRequests.get(response.id)
+        managementRequests.delete(response.id)
+        if (response.error) pending?.reject(new Error(response.error)); else pending?.resolve(response.result)
+      }
+      child.on('message', managementListener)
       const disposeCredential = attachCredentialBroker(child, credentialVault)
       const disposeDesktop = attachDesktopBridge(child)
       const disposePython = attachPythonBroker(child, () => mcpEnvironment)
-      return () => { disposeCredential(); disposeDesktop(); disposePython() }
+      return () => {
+        child.off('message', managementListener)
+        if (managementChild === child) managementChild = undefined
+        for (const [id, pending] of managementRequests) { pending.reject(new Error('Host restarted')); managementRequests.delete(id) }
+        disposeCredential(); disposeDesktop(); disposePython()
+      }
     },
     onChanged: (snapshot) => {
       if (snapshot.phase === 'ready' && navigation === undefined) {
@@ -557,26 +586,21 @@ if (ownsInstance) app.whenReady().then(async () => {
   const mcpEnvironmentLogPath = join(app.getPath('logs'), 'mcp-environment.log')
   await mkdir(dirname(mcpEnvironmentLogPath), { recursive: true })
   let notifiedPythonSnapshot: string | undefined
-  // Stable installers carry the signed Python bootstrap so an old profile can
-  // be left untouched while a fresh shared environment is recreated locally.
-  const packagedPythonManifest = app.isPackaged ? join(process.resourcesPath, 'python', 'base-manifest.json') : undefined
-  const packagedPythonArchive = app.isPackaged ? join(process.resourcesPath, 'python', 'base-runtime.zip') : undefined
-  const bundledPython = packagedPythonManifest !== undefined && packagedPythonArchive !== undefined
-    ? await Promise.all([access(packagedPythonManifest).then(() => true, () => false), access(packagedPythonArchive).then(() => true, () => false)])
-    : [false, false]
+  // Thin installers use the signed remote feed. An explicitly prepared
+  // offline bootstrap is used only when both local files are present.
+  const bootstrapManifest = app.isPackaged
+    ? join(process.resourcesPath, 'python', 'base-manifest.json')
+    : developmentStagePath('python-base-3.12.10', 'latest.json')
+  const bootstrapArchive = app.isPackaged
+    ? join(process.resourcesPath, 'python', 'base-runtime.zip')
+    : developmentStagePath('python-base-3.12.10', 'zerowall-python-windows-x64-3.12.10.zip')
+  const bootstrapAvailable = (await Promise.all([bootstrapManifest, bootstrapArchive].map(file => access(file).then(() => true, () => false)))).every(Boolean)
   mcpEnvironment = new PythonUpdaterService({
+    generationMode: true,
     coordinateHost: true,
     root: mcpEnvironmentRoot,
     settingsPath: dirname(pythonLocation.locationPath),
-    // Windows Stable installers include the signed Python base archive for
-    // direct, offline first-run installation. Development uses the same
-    // generated archive when available.
-    ...(app.isPackaged
-      ? (bundledPython[0] && bundledPython[1] ? { bundledManifestPath: packagedPythonManifest, bundledArchivePath: packagedPythonArchive } : {})
-      : {
-      bundledManifestPath: join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'latest.json'),
-      bundledArchivePath: join(findWorkspaceRoot(), 'desktop', 'dist', 'python-base-3.12.10', 'zerowall-python-windows-x64-3.12.10.zip'),
-    }),
+    ...(bootstrapAvailable ? { bundledManifestPath: bootstrapManifest, bundledArchivePath: bootstrapArchive } : {}),
     bundledAssets: { bioToolsRoot: bundledBioToolsRoot, ketcherRoot: bundledKetcherRoot, sciRoot: bundledSciRoot, skillsRoot: bundledSkillsRoot },
     manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
@@ -603,6 +627,88 @@ if (ownsInstance) app.whenReady().then(async () => {
   })
   const pythonEnvironmentApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync, pythonLocation.locationPath, app.isPackaged ? dirname(process.execPath) : undefined)
   mcpEnvironment.setEnvironmentHandler(request => pythonEnvironmentApi.request(request))
+  const commandRoot = app.isPackaged ? join(process.resourcesPath, 'commands') : join(findWorkspaceRoot(), 'tools/commands')
+  const { initializeProfile } = await import(pathToFileURL(join(commandRoot, 'profile.mjs')).href)
+  const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8'))
+  const dshHome = join(userData, 'harness')
+  await initializeProfile(dshHome, defaults)
+  const callHost = (operation: string, args: unknown[]): Promise<unknown> => {
+    if (!managementChild?.connected) return Promise.reject(new Error('Host is not ready'))
+    const child = managementChild
+    return new Promise((accept, reject) => {
+      const id = randomUUID()
+      const timer = setTimeout(() => { managementRequests.delete(id); reject(new Error('Plugin management timed out')) }, 30_000)
+      managementRequests.set(id, { resolve: result => { clearTimeout(timer); accept(result) }, reject: error => { clearTimeout(timer); reject(error) } })
+      child.send({ type: 'zerowall:management', id, operation, args })
+    })
+  }
+  const startHost = async (): Promise<void> => {
+    await harnessRuntime.start(join(userData, 'workspace'))
+    if (harnessRuntime.snapshot().phase !== 'ready') throw new Error('Host activation failed')
+    const deadline = Date.now() + 30_000
+    do {
+      const health = await callHost('host.health', []) as { ready: boolean; entries: Array<{ state: number }> }
+      if (health.ready) return
+      if (health.entries.some(entry => entry.state === 3)) break
+      await new Promise(accept => setTimeout(accept, 250))
+    } while (Date.now() < deadline)
+    throw new Error('A configured ZeroWall plugin could not activate; restoring the previous profile')
+  }
+  const runPlugin = (args: string[], profile = 'web'): Promise<unknown> => new Promise((accept, reject) => {
+    const child = spawn(nodeExecutablePath(), ['--expose-internals', join(commandRoot, 'dsh.mjs'), 'plugin', '--profile', profile, ...args], {
+      windowsHide: true, env: { ...process.env, DSH_HOME: dshHome, ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}) }, stdio: 'pipe',
+    })
+    let output = ''
+    child.stdout.on('data', chunk => { output = (output + String(chunk)).slice(-65536) })
+    child.stderr.resume()
+    child.on('error', reject)
+    child.on('exit', code => code === 0 ? accept({ code, output }) : reject(new Error('DSH package operation failed; inspect profile diagnostics')))
+  })
+  const { createResourceManager } = await import(pathToFileURL(join(commandRoot, 'resource-manager.mjs')).href)
+  const keys = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'trusted-keys.json') : join(findWorkspaceRoot(), 'config/catalogs/trusted-keys.json'), 'utf8'))
+  const resources = createResourceManager({ home: dshHome, keys, target: { desktopVersion: app.getVersion(), dshVersion: '0.2.0-rc.2', platform: process.platform, architecture: process.arch }, runPlugin,
+    applyPython: async (entry: { role: string }, file: string) => {
+      if (entry.role !== 'dependency-manifest') throw new Error('Unsupported Python resource')
+      await mcpEnvironment.ensureReady()
+      await pythonSync.importManifest(file)
+      const plan = await pythonSync.previewSync()
+      return pythonSync.applySync(plan.planId, plan.manifestRevision, true)
+    },
+    stopHost: () => harnessRuntime.stop(), startHost, callHost, yaml: createRequire(app.isPackaged ? join(process.resourcesPath, 'app.asar/package.json') : join(findWorkspaceRoot(), 'package.json'))('yaml') })
+  await resources.recover()
+  let commandQueue: Promise<unknown> = Promise.resolve()
+  const dispatchCommand = async (request: { operation: string; args: unknown[] }): Promise<unknown> => {
+    if (request.operation === 'python.status') return mcpEnvironment.pythonInfo()
+    if (request.operation === 'python.install') return mcpEnvironment.updateForUser()
+    if (request.operation === 'python.update') return resources.resource('python', 'science-dependencies', request.args[0])
+    if (request.operation === 'python.rollback') return mcpEnvironment.rollback()
+    if (request.operation === 'update') return autoUpdater.checkForUpdates().then(result => ({ updateInfo: result?.updateInfo }))
+    if (request.operation === 'resource.plugin') return resources.plugin(String(request.args[0]), request.args[1] === undefined ? undefined : String(request.args[1]))
+    if (request.operation === 'resource.rollback') return resources.rollback()
+    if (request.operation === 'resource.mcp.rollback') return resources.rollbackMcp(request.args[0])
+    if (request.operation === 'resource.import') return resources.resource(...request.args)
+    if (request.operation === 'resource.update') return resources.update(...request.args)
+    if (request.operation === 'mcp.logs') {
+      const log = await readFile(join(userData, 'logs/harness.log'), 'utf8').catch(() => '')
+      return { logFile: join(userData, 'logs/harness.log'), events: log.split(/\r?\n/).filter(line => line.includes('[zws-mcp]')).slice(-100).flatMap(line => { try { const event = JSON.parse(line.split('[zws-mcp] ')[1]!); return [{ operation: event.operation, status: event.status, time: event.time }] } catch { return [] } }) }
+    }
+    if (request.operation === 'host.restart') { await harnessRuntime.start(join(userData, 'workspace')); return { restarted: true } }
+    if (request.operation === 'plugin.run') {
+      const args = request.args
+      if (!args.every(value => typeof value === 'string') || !['list', 'add', 'remove', 'update', 'install'].includes(String(args[0]))) throw new Error('Invalid plugin command')
+      const file = join(dshHome, 'profiles/web/package.json')
+      const manifest = JSON.parse(await readFile(file, 'utf8'))
+      if (args[0] === 'list') return { bundles: manifest.dsh?.profile?.bundles ?? [], dependencies: manifest.dependencies ?? {} }
+      return resources.mutate(args as string[])
+    }
+    return callHost(request.operation, request.args)
+  }
+  const stopCommandServer = await startCommandServer(userData, request => {
+    const result = commandQueue.then(() => dispatchCommand(request))
+    commandQueue = result.catch(() => {})
+    return result
+  })
+  app.once('before-quit', () => { void stopCommandServer() })
   const checkPythonUpdates = async (): Promise<void> => {
     // The signed base runtime is installed automatically on first launch; this
     // runs after the workbench becomes usable and streams progress to the

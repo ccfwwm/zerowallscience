@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
+const pkg = JSON.parse(readFileSync(process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, 'package.json'), 'utf8'))
 
 const failures = []
 const check = (deps, label) => {

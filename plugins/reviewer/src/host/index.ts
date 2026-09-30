@@ -57,7 +57,7 @@ export const ReviewerSettingsSchema: z<ReviewerSettings> = z.object({
   model: z.string().default(''),
   reasoningEffort: z.string().default(''),
 })
-export const Config = ReviewerSettingsSchema
+export const Config = ReviewerSettingsSchema.volatile()
 
 export interface ReviewFinding {
   messageIndex: number
@@ -635,4 +635,4 @@ export function apply(ctx: Context, config: ReviewerSettings): void {
   })
 }
 
-export default { name, inject, apply }
+export default { name, inject, Config, apply: (ctx: Context, config: { get(): ReviewerSettings }) => apply(ctx, config.get()) }

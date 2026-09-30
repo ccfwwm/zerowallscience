@@ -777,7 +777,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     return this.exclusive(async () => {
       const record = this.projects().getMcpServer(id)
       if (record === undefined) throw new Error(`MCP server was not found: ${id}`)
-      await this.reconcile(record)
+      await this.reconcile(record, true)
       return this.dto(record)
     })
   }
@@ -1143,7 +1143,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (this.disposed || this.connecting.has(record.id)) return
     const cooldown = this.failureCooldownUntil.get(record.id) ?? 0
     if (cooldown > Date.now()) return
-    const pending = this.reconcile(record).catch((error: unknown) => {
+    const pending = this.exclusive(async () => {
+      const latest = this.projects().getMcpServer(record.id)
+      if (!latest || this.disposed || this.statuses.get(record.id)?.state === 'active') return
+      await this.reconcile(latest)
+    }).catch((error: unknown) => {
       this.failureCooldownUntil.set(record.id, Date.now() + MCP_FAILURE_COOLDOWN_MS)
       this.ctx.logger.warn(`zerowall-mcp: default connection failed: ${redactError(error)}`)
     }).finally(() => {
@@ -1180,12 +1184,12 @@ export class ZeroWallMcpService extends TypertRemoteService {
     } finally { if (this.connecting.get(record.id) === pending) this.connecting.delete(record.id) }
   }
 
-  private async reconcile(record: McpServerRecord): Promise<void> {
+  private async reconcile(record: McpServerRecord, force = false): Promise<void> {
     const version = (this.reconcileVersions.get(record.id) ?? 0) + 1
     this.reconcileVersions.set(record.id, version)
     this.readyVersions.delete(record.id)
     const current = (): boolean => !this.disposed && this.reconcileVersions.get(record.id) === version
-    if (record.enabled && isManagedMcp(record.serverName) && this.managed.has(record.id) && this.managed.snapshot(record.id) === managedEnvironmentRecord()?.root) {
+    if (!force && record.enabled && isManagedMcp(record.serverName) && this.managed.has(record.id) && this.managed.snapshot(record.id) === managedEnvironmentRecord()?.root) {
       const names = this.managed.names(record.id)
       this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names)
       this.readyVersions.set(record.id, version)

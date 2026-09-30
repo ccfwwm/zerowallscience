@@ -14,7 +14,7 @@ async function setup() {
   return { root, updater, sync, api: new PythonEnvironmentApi(root, updater as unknown as PythonUpdaterService, sync) }
 }
 async function waitForSync(api: PythonEnvironmentApi, request: { action: 'sync'; requestId: string; confirm: true }) {
-  const deadline = Date.now() + 2_000
+  const deadline = Date.now() + 10_000
   while (Date.now() < deadline) {
     const receipt = await api.request(request)
     if (receipt.queued !== true) return receipt

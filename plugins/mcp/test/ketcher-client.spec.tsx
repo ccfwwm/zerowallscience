@@ -21,7 +21,7 @@ it('uses the declared remote property and retries failed opens without persistin
   }
   const ctx = {
     remote: { zerowallMcp: remote },
-    get: vi.fn(() => undefined), // Cordis does not resolve dotted service names.
+    get: vi.fn((name: string) => name === 'remote.zerowallMcp' ? remote : undefined),
     betterSidebar: sidebar,
     locale: { bind: () => (key: string) => key },
     slots: { inject: vi.fn(), register: vi.fn() },

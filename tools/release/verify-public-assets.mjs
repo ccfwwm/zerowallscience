@@ -1,3 +1,4 @@
+import { targetPackageRoot, verificationRoot } from '../build/paths.mjs'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { readFile, mkdir, writeFile, stat } from 'node:fs/promises'
@@ -10,11 +11,11 @@ if (!['qiniu', 'github'].includes(provider)) throw new Error('Usage: node tools/
 const installer = `zerowall-science-${version}-win-x64.exe`
 const versionMetadata = `zerowall-science-${version}-latest.json`
 const files = [installer, `${installer}.blockmap`, versionMetadata, 'latest.yml', 'releases-latest.json', 'releases-zerowallsciencedev-latest.json']
-const metadata = JSON.parse(await readFile(resolve(root, 'desktop/dist', versionMetadata), 'utf8'))
+const metadata = JSON.parse(await readFile(resolve(targetPackageRoot, versionMetadata), 'utf8'))
 const base = new URL(metadata.assetUrl).origin
 const report = []
 for (const name of files) {
-  const local = resolve(root, 'desktop/dist', name)
+  const local = resolve(targetPackageRoot, name)
   const localHash = createHash('sha256')
   for await (const chunk of createReadStream(local)) localHash.update(chunk)
   const expected = { bytes: (await stat(local)).size, sha256: localHash.digest('hex') }
@@ -33,6 +34,6 @@ for (const name of files) {
   report.push({ name, url, bytes, sha256, verifiedAt: new Date().toISOString() })
   console.log(`${provider}: ${name} ${bytes} ${sha256} MATCH`)
 }
-const output = resolve(root, 'desktop/dist', `verification-${version}`)
+const output = resolve(targetPackageRoot, `verification-${version}`)
 await mkdir(output, { recursive: true })
 await writeFile(resolve(output, `${provider}-public-assets.json`), JSON.stringify(report, null, 2) + '\n')

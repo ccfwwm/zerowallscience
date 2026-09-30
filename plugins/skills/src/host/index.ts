@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
-import { createHash } from 'node:crypto'
-import { cp, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
+import { cp, mkdir, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import type { SkillDefinition, SkillSummary } from '@deepseek-ai/dsh-skill'
 import { isSkillName } from '@deepseek-ai/dsh-skill'
@@ -100,6 +100,43 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
     if (await exists(target)) throw new Error(`A user Skill already exists: ${parsed.name}`)
     await copySkillTree(root, target)
     return await this.getSkill(parsed.name)
+  }
+
+  @Remote('updateSkill')
+  async updateSkill(input: ImportSkillInput): Promise<ZeroWallSkillSummary> {
+    const source = await locateSkillRoot(resolve(input.sourcePath.trim()))
+    const parsed = validateSkillMarkdown(await readSkillMarkdown(join(source, 'SKILL.md')))
+    const name = validateSkillName(parsed.name)
+    const disabled = await exists(safeSkillPath(disabledSkillDir(), name))
+    const target = safeSkillPath(disabled ? disabledSkillDir() : userSkillDir(), name)
+    if (!(await exists(target))) return this.importSkill(input)
+    const within = relative(await realpath(target), await realpath(source))
+    if (!within || (!within.startsWith('..') && !isAbsolute(within))) throw new Error('Choose a separate update source.')
+    const candidate = join(dirname(userSkillDir()), 'candidates', randomUUID(), name)
+    await copySkillTree(source, candidate)
+    const backup = join(dirname(userSkillDir()), 'history', name, randomUUID())
+    await mkdir(dirname(backup), { recursive: true })
+    await rename(target, backup)
+    try { await rename(candidate, target) } catch (error) { await rename(backup, target); throw error }
+    // The filesystem provider's watcher invalidates the registry. Existing
+    // tasks keep their already resolved SkillDefinition and content snapshot.
+    return await this.getSkill(name)
+  }
+
+  @Remote('rollbackSkill')
+  async rollbackSkill(id: string): Promise<ZeroWallSkillSummary> {
+    const name = validateSkillName(id)
+    const history = join(dirname(userSkillDir()), 'history', name)
+    const backups = await readdir(history, { withFileTypes: true })
+    const candidates = await Promise.all(backups.filter(item => item.isDirectory()).map(async item => ({ path: join(history, item.name), time: (await stat(join(history, item.name))).mtimeMs })))
+    const previous = candidates.sort((a, b) => b.time - a.time)[0]
+    if (!previous) throw new Error('No previous Skill version is available.')
+    const disabled = await exists(safeSkillPath(disabledSkillDir(), name))
+    const target = safeSkillPath(disabled ? disabledSkillDir() : userSkillDir(), name)
+    const backup = join(history, randomUUID())
+    await rename(target, backup)
+    try { await rename(previous.path, target) } catch (error) { await rename(backup, target); throw error }
+    return this.getSkill(name)
   }
 
   @Remote('copyBundledSkill')

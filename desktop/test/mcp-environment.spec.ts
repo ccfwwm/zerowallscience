@@ -62,6 +62,41 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('activates immutable generations, retains leased tasks and rolls back by pointer', async () => {
+    const userData = await mkdtemp(join(tmpdir(), 'zerowall-generations-')); roots.push(userData)
+    const root = join(userData, 'zerowall-python'), assets = join(userData, 'assets')
+    const manifest = signedSharedManifest()
+    await environment(assets, manifest)
+    const bundledManifestPath = join(userData, 'base.json'), bundledArchivePath = join(userData, 'base.zip')
+    await writeFile(bundledArchivePath, sharedTestArchive)
+    const publishManifest = async (revision: number) => {
+      manifest.contentRevision = revision
+      manifest.signature.value = sign(null, canonicalManifest(manifest), keys.privateKey).toString('base64')
+      await writeFile(bundledManifestPath, JSON.stringify(manifest))
+    }
+    const controller = new McpEnvironmentController({ generationMode: true, root, bundledManifestPath, bundledArchivePath,
+      bundledAssets: { bioToolsRoot: join(assets, 'bio-tools'), ketcherRoot: join(assets, 'ketcher-chemistry'), sciRoot: join(assets, 'sci'), skillsRoot: join(assets, 'skills') },
+      manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), healthCheck: async () => {}, publish() {} })
+    await publishManifest(1)
+    const first = await controller.initialize()
+    expect(first.phase).toBe('ready')
+    const before = JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))
+    expect(before.generation).toBe(true)
+    expect(first.python?.executable).toBe(join(before.root, 'Python/python.exe'))
+    const bytes = await readFile(join(before.root, 'manifest.json'))
+    await mkdir(join(root, 'leases'))
+    await writeFile(join(root, 'leases/task.json'), JSON.stringify({ pid: process.pid, snapshot: before.root }))
+    await publishManifest(2); expect((await controller.initialize()).phase).toBe('ready')
+    const second = JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))
+    expect(second.root).not.toBe(before.root)
+    await publishManifest(3); expect((await controller.initialize()).phase).toBe('ready')
+    const { collectSnapshots } = await import('../src/main/python-snapshots.js')
+    await collectSnapshots(root, Date.now() + 48 * 60 * 60_000)
+    expect(await readFile(join(before.root, 'manifest.json'))).toEqual(bytes)
+    expect((await controller.rollback()).phase).toBe('ready')
+    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8')).root).toBe(second.root)
+    await expect(lstat(join(userData, 'Python'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
   it('installs a verified bundled base without contacting the legacy network feed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-bundled-base-')); roots.push(root)
     const manifest = signedManifest()

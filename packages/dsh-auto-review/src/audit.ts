@@ -73,6 +73,8 @@ export function isMarkedAuditEvent(result: unknown): boolean {
  */
 export function isUnmarkedHostVersion(version: string): boolean {
   const v = version.trim()
+  // ZeroWall's pinned rc.2 still exposes only SurfaceIntent on append.
+  if (v === '0.2.0-rc.2') return true
   const rc = /^0\.1\.(\d+)-rc\.(\d+)$/.exec(v)
   if (rc !== null) {
     const minor = Number(rc[1])

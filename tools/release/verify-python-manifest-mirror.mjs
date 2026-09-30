@@ -1,9 +1,10 @@
+import { releaseRoot } from '../build/paths.mjs'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 const root = resolve(import.meta.dirname, '../..')
 const manifest = JSON.parse(await readFile(join(root, 'resources/python/dependency-manifest.json'), 'utf8'))
 const sourceLock = await readFile(join(root, 'resources/python/requirements-research.lock'), 'utf8')
-const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(root, 'desktop/dist/python-dependencies'))
+const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(releaseRoot, 'python-dependencies'))
 await mkdir(output, { recursive: true })
 // Locally built wheels have hashes absent from the upstream source lock.
 const candidates = manifest.packages.filter(pkg => !sourceLock.includes(pkg.sha256))

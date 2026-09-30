@@ -80,6 +80,9 @@ try {
     config: { path: pathToFileURL(configPath).href },
   })
   await ctx.loader.await()
+  // Loader.await settles lifecycle tasks even when an entry failed. Ask each
+  // real fiber for its result so invalid configuration retains its cause.
+  for (const entry of ctx.loader.entries()) await entry.fiber?.await()
 
   if (mode === 'load-only') {
     process.stdout.write('DSH_LOADER_RESULT {"mounted":true}\n')

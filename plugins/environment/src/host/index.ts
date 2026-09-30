@@ -183,10 +183,14 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
   }
 
   private async replaceSettings(next: EnvironmentSettingsValue): Promise<void> {
-    this.settings = next
     await this.hostCtx.settings.replace(ENVIRONMENT_SETTINGS_NS, next)
+    this.settings = next
   }
 }
 
-export function apply(ctx: Context): void { ctx.plugin(ZeroWallEnvironmentService) }
-export default { apply }
+// The Loader entry must own its schema for the official profile ConfigEditor.
+// A schema only on a nested service cannot be addressed by its entry ID.
+export const Config = EnvironmentSettingsSchema.volatile()
+export const inject = ['settings']
+export function apply(ctx: Context, config: { get(): EnvironmentSettingsValue }): void { ctx.plugin(ZeroWallEnvironmentService, config.get()) }
+export default { name, Config, inject, apply }

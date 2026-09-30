@@ -1,3 +1,4 @@
+import { renameFile } from './atomic-file.js'
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -17,11 +18,17 @@ export class PythonSyncService {
     await mkdir(this.directory, { recursive: true })
     const temporary = join(this.directory, `${name}.${randomUUID()}.tmp`)
     await writeFile(temporary, JSON.stringify(value))
-    await rename(temporary, join(this.directory, name))
+    await renameFile(temporary, join(this.directory, name))
   }
   private async cached(): Promise<PythonDependencyManifest> {
     const value = JSON.parse(await readFile(join(this.directory, 'manifest.json'), 'utf8'))
     return parsePythonDependencyManifest(value, this.options.keys, this.options.applicationVersion)
+  }
+  async importManifest(file: string): Promise<void> {
+    const manifest = parsePythonDependencyManifest(JSON.parse(await readFile(file, 'utf8')), this.options.keys, this.options.applicationVersion)
+    const previous = await this.cached().catch(() => undefined)
+    if (previous && compareRevision(previous.revision, manifest.revision) > 0) throw new Error('依赖清单降级必须通过回滚完成。')
+    await this.save('manifest.json', manifest)
   }
   async checkManifest() {
     let manifest: PythonDependencyManifest

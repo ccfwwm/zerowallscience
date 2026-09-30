@@ -6,8 +6,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
-import * as capabilityRegistry from '../../../packages/dsh-capability-menu/src/registry.ts'
-import * as capabilityPolicy from '../../../packages/dsh-capability-menu/src/policy.ts'
+import * as progressiveTools from '../../../packages/dsh-progressive-tools/src/index.ts'
 import { Context } from '@deepseek-ai/cordis'
 import ZeroWallProjectsService from '../../projects/src/host/index.js'
 import ZeroWallMcpService from '../src/host/index.js'
@@ -60,16 +59,14 @@ describe('rdatalinux workspace upload bridge', () => {
       } } as any
       if (withPolicy) {
         await ctx.plugin(SkillRegistry)
-        await ctx.plugin(capabilityRegistry, { catalogFile: '' })
-        await ctx.plugin(capabilityPolicy, { zeroWallDefaults: true })
-        ctx.capabilityPolicy.selectTools(owner, ['r_files'])
+        await ctx.plugin(progressiveTools, { mode: 'stable-proxy', requireDiscovery: false })
         await ctx.systemPrompt.assemble({ scope: owner })
       }
       const result = await ctx.tools.execute({
         signal: new AbortController().signal,
         callId: ToolCallId('workspace-upload'),
-        name: 'r_files',
-        arguments: { action: 'upload_workspace', project_id: 'study-1', local_path: 'counts_raw', remote_path: 'data/raw/counts_raw', confirm: true },
+        name: withPolicy ? 'tool_dispatch' : 'r_files',
+        arguments: withPolicy ? { name: 'r_files', arguments: { action: 'upload_workspace', project_id: 'study-1', local_path: 'counts_raw', remote_path: 'data/raw/counts_raw', confirm: true } } : { action: 'upload_workspace', project_id: 'study-1', local_path: 'counts_raw', remote_path: 'data/raw/counts_raw', confirm: true },
         agent: owner,
       })
       expect(result.isError, JSON.stringify(result)).toBe(false)
@@ -77,7 +74,7 @@ describe('rdatalinux workspace upload bridge', () => {
       expect(forwarded).toHaveLength(1)
       expect(forwarded[0]).toMatchObject({ action: 'r.upload.file', arguments: { project_id: 'study-1', path: 'data/raw/counts_raw', confirm: true } })
       expect(Buffer.from(forwarded[0].arguments.data_base64, 'base64')).toEqual(bytes)
-      expect((result.isError ? undefined : result.value)).toMatchObject({ bytes: bytes.length, sha256: createHash('sha256').update(readFileSync(source)).digest('hex') })
+      expect(result.isError ? undefined : withPolicy ? (result.value as any).value : result.value).toMatchObject({ bytes: bytes.length, sha256: createHash('sha256').update(readFileSync(source)).digest('hex') })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -123,7 +120,7 @@ describe('rdatalinux workspace upload bridge', () => {
       expect(result.isError).toBe(false)
       expect(readFileSync(join(root, 'outputs', 'plot.png'))).toEqual(bytes)
       expect(JSON.stringify(result.isError ? {} : result.value)).not.toContain('data_base64')
-      expect((result.isError ? undefined : result.value)).toMatchObject({ localPath: 'outputs/plot.png', requestedRemotePath: 'module-source/FigureYa123/example.png', remotePath: 'figureya/run-1/module-source/FigureYa123/example.png', bytes: bytes.length, sha256 })
+      expect(result.isError ? undefined : result.value).toMatchObject({ localPath: 'outputs/plot.png', requestedRemotePath: 'module-source/FigureYa123/example.png', remotePath: 'figureya/run-1/module-source/FigureYa123/example.png', bytes: bytes.length, sha256 })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -181,7 +178,7 @@ describe('rdatalinux workspace upload bridge', () => {
       expect(readFileSync(join(root, 'figureya', 'FigureYa128Prognostic.Rmd'))).toEqual(bytes)
       expect(forwarded.map(item => item.action)).toEqual(['figureya.source.file.manifest', 'figureya.read.source.file.chunk'])
       expect(JSON.stringify(result.isError ? {} : result.value)).not.toContain('data_base64')
-      expect((result.isError ? undefined : result.value)).toMatchObject({ moduleId: 'FigureYa128Prognostic', bytes: bytes.length, sha256 })
+      expect(result.isError ? undefined : result.value).toMatchObject({ moduleId: 'FigureYa128Prognostic', bytes: bytes.length, sha256 })
     } finally {
       await ctx.fiber.dispose()
     }
