@@ -1,6 +1,13 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "7.4.0",
+  "version": "0.1.0",
+  "applicationVersion": "8.0.0",
+  "restartRequired": true,
+  "desktop": {
+    "min": "8.0.0"
+  },
+  "rollbackSupported": true,
+  "remote": "./lib/typert.remote-client.js",
   "dsh": {
     "min": "0.2.0-rc.2",
     "max": "0.2.0-rc.2"

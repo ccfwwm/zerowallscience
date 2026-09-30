@@ -99,5 +99,20 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "zerowall": {
+    "desktop": {
+      "min": "8.0.0"
+    },
+    "dsh": {
+      "min": "0.2.0-rc.2",
+      "max": "0.2.0-rc.2"
+    },
+    "restartRequired": true,
+    "rollbackSupported": true,
+    "permissions": [
+      "network",
+      "notifications"
+    ]
   }
 }

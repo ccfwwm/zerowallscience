@@ -4,7 +4,8 @@ import { researchToolConfig } from '../integration/research-tool-config.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const rootPackage = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
-const version = String(rootPackage.version)
+const applicationVersion = String(rootPackage.version)
+const migrationBaseline = '0.1.0'
 const hostCompilerOptions = JSON.parse(await readFile(resolve(root, 'tsconfig.plugin.host.json'), 'utf8')).compilerOptions
 const clientInject = [
   'betterSidebar',
@@ -61,6 +62,7 @@ const dshDependencies = {
   '@deepseek-ai/dsh-llm-pi-ai': 'workspace:^',
   '@deepseek-ai/dsh-mcp-client': 'workspace:^',
   '@deepseek-ai/dsh-session': 'workspace:^',
+  '@deepseek-ai/dsh-scope': 'workspace:^',
   '@deepseek-ai/dsh-session-persistence': 'workspace:^',
   '@deepseek-ai/dsh-settings': 'workspace:^',
   '@deepseek-ai/dsh-skill': 'workspace:^',
@@ -145,19 +147,15 @@ const plugins = [
   { id: 'publications', client: true, remote: true, capabilities: ['papers', 'publications'], permissions: ['files'], dependencies: ['runs'] },
 ]
 
-// plugin-base is the single client-side assembly point for ZeroWall Typert
-// remotes. Keep its module-table dependency list derived from the same plugin
-// roster that generates the remote contribution imports, so a newly added
-// remote can never be emitted as a dynamic require without a graph edge.
-const remoteClientExternal = plugins
-  .filter(plugin => plugin.remote)
-  .map(plugin => `@zerowallscience/plugin-${plugin.id}`)
-const basePlugin = plugins.find(plugin => plugin.id === 'base')
-if (basePlugin !== undefined) basePlugin.clientExternal = remoteClientExternal
+// Every installed plugin owns its remote Client contribution.
 
 for (const plugin of plugins) {
+  plugin.client ||= plugin.remote === true
   const dir = resolve(root, 'plugins', plugin.id)
   const name = `@zerowallscience/plugin-${plugin.id}`
+  let previousVersion
+  try { previousVersion = JSON.parse(await readFile(resolve(dir, 'package.json'), 'utf8')).version } catch {}
+  const version = previousVersion && !/^7\./.test(previousVersion) ? previousVersion : migrationBaseline
   await mkdir(resolve(dir, 'src/host'), { recursive: true })
   await mkdir(resolve(dir, 'src/client'), { recursive: true })
   await mkdir(resolve(dir, 'src/shared'), { recursive: true })
@@ -166,7 +164,7 @@ for (const plugin of plugins) {
   const packageJson = {
     name,
     version,
-    description: `ZeroWall Science ${plugin.id} domain plugin.`,
+    description: `ZeroWall Science ${plugin.id} domain plugin (desktop ${applicationVersion}).`,
     type: 'module',
     main: './lib/index.js',
     types: './src/host/index.ts',
@@ -197,6 +195,7 @@ for (const plugin of plugins) {
       } : {}),
     },
     zerowall: {
+      desktop: { min: applicationVersion },
       dsh: { min: '0.2.0-rc.2', max: '0.2.0-rc.2' },
       requiredServices: plugin.requiredServices ?? [],
       optionalServices: plugin.optionalServices ?? [],
@@ -204,6 +203,8 @@ for (const plugin of plugins) {
       permissions: plugin.permissions,
       profiles: ['development', 'preview', 'stable'],
       migrationVersion: 1,
+      restartRequired: true,
+      rollbackSupported: true,
     },
     scripts: {
       bundle: plugin.id === 'research' ? 'node ../../tools/science/build-molecule-runtime.mjs && tsdown' : 'tsdown',
@@ -214,7 +215,7 @@ for (const plugin of plugins) {
     },
     license: 'AGPL-3.0-only',
     files: [
-      'lib',
+      'lib', 'src',
       ...(plugin.remote ? [
         'lib/typert.host.js',
         'lib/typert.host.d.ts',
@@ -231,17 +232,11 @@ for (const plugin of plugins) {
     ...(plugin.id === 'files' ? { '@deepseek-ai/dsh-fs': 'workspace:^', 'dsh-office-tools': 'github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb' } : {}),
       ...(plugin.client ? externalClientDependencies : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),
-      ...(plugin.id === 'base'
-        ? {
-            ...Object.fromEntries(plugins.filter(candidate => candidate.remote).map(candidate => [`@zerowallscience/plugin-${candidate.id}`, 'workspace:^'])),
-            'dsh-file-review': 'workspace:*',
-          }
-        : {}),
       ...(npmDependencies[plugin.id] ?? {}),
-      ...(plugin.id === 'mcp' ? { '@modelcontextprotocol/sdk': '1.30.0' } : {}),
+      ...(plugin.id === 'mcp' ? { '@modelcontextprotocol/sdk': '1.30.0', '@modelcontextprotocol/client': '2.0.0' } : {}),
     },
     peerDependencies: {
-      '@deepseek-ai/cordis': '^4.0.3',
+      '@deepseek-ai/cordis': '4.0.4',
     },
     devDependencies: {
       ...(plugin.id === 'account' ? { '@deepseek-ai/dsh-client-ui-renderer': 'workspace:^' } : {}),
@@ -250,10 +245,21 @@ for (const plugin of plugins) {
       vitest: '^4.1.10',
     },
   }
+  for (const [dependency, range] of Object.entries(packageJson.dependencies)) {
+    if (!dependency.startsWith('@deepseek-ai/')) continue
+    packageJson.peerDependencies[dependency] = dependency === '@deepseek-ai/cordis' ? '4.0.4' : dependency === '@deepseek-ai/schemastery' ? '3.18.4' : '0.2.0-rc.2'
+    packageJson.devDependencies[dependency] = range
+    delete packageJson.dependencies[dependency]
+  }
   await writeFile(resolve(dir, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`)
   await writeFile(resolve(dir, 'zerowall.plugin.json'), `${JSON.stringify({
     name,
     version,
+    applicationVersion,
+    restartRequired: true,
+    desktop: packageJson.zerowall.desktop,
+    rollbackSupported: true,
+    ...(plugin.remote ? { remote: './lib/typert.remote-client.js' } : {}),
     dsh: packageJson.zerowall.dsh,
     host: './lib/index.js',
     ...(plugin.client ? { client: './lib/client.js' } : {}),
@@ -270,7 +276,7 @@ for (const plugin of plugins) {
   }, null, 2)}\n`)
   await writeFile(resolve(dir, 'dsh.bundle.patch.yml'), [
     '- insert:',
-    `    - id: zerowall-${plugin.id}`,
+    `    - id: ${{ 'ai-cloud': 'zerowall-ai-cloud-llm', images: 'zerowall-image-generation', publications: 'zerowall-publication', skills: 'zerowall-skills-plugin' }[plugin.id] ?? `zerowall-${plugin.id}`}`,
     `      name: '${name}'`,
     ...(plugin.id === 'mcp' ? ['- id: progressive-tools', `  config: ${JSON.stringify(researchToolConfig)}`] : []),
     '',

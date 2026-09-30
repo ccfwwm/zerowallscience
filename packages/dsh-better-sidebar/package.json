@@ -77,7 +77,7 @@
     "locale/*.json"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && tsdown",
+    "build": "node -e \"const fs=require('node:fs');if(fs.existsSync('lib'))for(const name of fs.readdirSync('lib'))fs.rmSync('lib/'+name,{recursive:true,force:true})\" && tsc -p tsconfig.build.json && tsdown",
     "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "bundle": "tsdown",
@@ -87,7 +87,7 @@
     "test:windows": "vitest run --maxWorkers=1",
     "test:mount": "bash scripts/e2e-mount.sh",
     "test:mount:aggregate": "bash scripts/e2e-aggregate-mount.sh",
-    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
+    "clean": "node -e \"const fs=require('node:fs');if(fs.existsSync('lib'))for(const name of fs.readdirSync('lib'))fs.rmSync('lib/'+name,{recursive:true,force:true})\"",
     "check:consumer-types": "bash scripts/check-consumer-types.sh",
     "lint": "eslint ."
   },
