@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
-// Isolated app ID in .build/installer-test/config.cjs prevents changing the
+// Isolated app ID in the verification installer config prevents changing the
 // user's real installation registration. The native welcome screen is driven
 // interactively; this harness verifies the outcome and keeps unrelated apps alive.
 const root = resolve(zwsArtifactPaths.verification, 'installer-upgrade-running')

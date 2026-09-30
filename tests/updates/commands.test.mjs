@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createConnection } from 'node:net'
@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { startCommandServer } from '../../desktop/src/main/command-server.ts'
-import { stageRoot } from '../../tools/build/paths.mjs'
+import { commandPathWorker } from '../../tools/commands/path-worker.mjs'
 const run = promisify(execFile)
 
 test('real CLI socket authenticates the owner, rejects another token and supports zws', async () => {
@@ -33,18 +33,22 @@ test('real CLI socket authenticates the owner, rejects another token and support
 test('Windows PATH owner preserves external commands and removes only its own entry', { skip: process.platform !== 'win32' }, async () => {
   const home = await mkdtemp(join(tmpdir(), 'zws-path-'))
   const script = join(home, 'path-test.ps1')
+  const worker = join(home, 'command-path.ps1')
+  await writeFile(worker, await commandPathWorker())
+  await mkdir(join(home, 'commands'))
+  await writeFile(join(home, 'commands/dsh.cmd'), '@echo off\r\n')
   const id = randomUUID()
   const quote = value => "'" + value.replaceAll("'", "''") + "'"
   await writeFile(script, `
 $ErrorActionPreference='Stop'
-. ${quote(join(stageRoot, 'commands/command-path.ps1'))}
+. ${quote(worker)}
 $environmentKey='Software\\ZeroWallScience\\Tests\\${id}\\Environment'
 $ownerKey='Software\\ZeroWallScience\\Tests\\${id}\\Owner'
 $testKey='Software\\ZeroWallScience\\Tests\\${id}'
 $environment=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($environmentKey)
 try { $environment.SetValue('Path','C:\\external-dsh;C:\\preserved',[Microsoft.Win32.RegistryValueKind]::ExpandString) } finally { $environment.Dispose() }
 $options=@{EnvironmentKey=$environmentKey;OwnerKey=$ownerKey;MachinePath='';MutexName='Local\\ZwsPathTest.${id}'}
-$directory=${quote(join(stageRoot, 'commands'))}
+$directory=${quote(join(home, 'commands'))}
 try {
   $state=Invoke-DshCommandPath -Request @{operation='inspect';directory=$directory} @options
   $state=Invoke-DshCommandPath -Request @{operation='install';directory=$directory;expected=$state.fingerprint} @options

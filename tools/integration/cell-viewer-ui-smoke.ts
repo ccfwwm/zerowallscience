@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Synthetic 100k-cell fixture. Real React component -> real CellViewerService. */
 import { createRequire } from 'node:module'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -13,7 +14,7 @@ if (!process.argv.includes('--run')) throw new Error('Pass --run to serve the sy
 const require = createRequire(resolve('plugins/research/package.json'))
 const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
-const root = resolve('.build','cell-viewer-ui-smoke',new Date().toISOString().replaceAll(':','-'))
+const root = resolve(zwsArtifactPaths.verification,'cell-viewer-ui-smoke',new Date().toISOString().replaceAll(':','-'))
 await mkdir(root,{recursive:true})
 const path=join(root,'synthetic-100k.h5ad')
 await promisify(execFile)(process.env.ZEROWALL_CELL_PYTHON || process.env.ZEROWALL_PYTHON || 'python',['-c',`import h5py, numpy as np, sys

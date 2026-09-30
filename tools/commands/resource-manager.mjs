@@ -243,9 +243,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       return { updated: result.length, results: result }
     }
     const installed = kind === 'skill' ? await callHost('skill.list', []) : kind === 'mcp' ? await callHost('mcp.list', []) : []
-    const names = new Set(installed.map(item => item.name ?? item.serverName))
+    const names = new Set(installed.map(item => kind === 'mcp' ? item.serverName : item.name))
     const result = []
-    for (const entry of document.resources.filter(item => item.kind === kind && names.has(item.id))) result.push(await resource(kind, entry.id, source))
+    for (const entry of document.resources.filter(item => item.kind === kind && names.has(item.server?.serverName ?? item.id))) result.push(await resource(kind, entry.id, source))
     return { updated: result.length, results: result }
   }
   async function rollbackMcp(id) {

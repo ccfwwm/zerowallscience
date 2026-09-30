@@ -9,7 +9,7 @@ import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from '../../desktop
 const work = resolve(zwsArtifactPaths.verification, 'python-updater')
 const root = join(work, 'real-upgrade'); await mkdir(root, { recursive: true })
 const userRoot = process.env.ZEROWALL_PYTHON_ROOT?.trim()
-  || join(process.env.LOCALAPPDATA || resolve('.build', 'python-source'), 'ZeroWall Science', 'zerowall-python')
+  || join(process.env.LOCALAPPDATA || resolve(zwsArtifactPaths.verification, 'python-source'), 'ZeroWall Science', 'zerowall-python')
 const previous = JSON.parse(await readFile(resolve(zwsArtifactPaths.verification, 'python-1.4.0/client-pointer-rollback/current.json'), 'utf8'))
 const next = JSON.parse(await readFile(resolve(zwsArtifactPaths.verification, 'python-1.4.0/dist/latest.json'), 'utf8'))
 const resumePackages = process.argv.includes('--resume-packages')

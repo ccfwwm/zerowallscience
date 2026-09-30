@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
@@ -5,7 +6,7 @@ import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 // Exercise the curated production tree against an isolated local API fixture.
-const runtime = resolve(import.meta.dirname, '../../.build/runtime')
+const runtime = resolve(zwsArtifactPaths.stage, 'runtime')
 const require = createRequire(resolve(runtime, 'probe.cjs'))
 const load = name => import(pathToFileURL(require.resolve(name)).href)
 const { Context } = await load('@deepseek-ai/cordis')

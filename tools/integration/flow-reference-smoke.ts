@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Actual FlowService vs independent NumPy/FlowIO. Synthetic data only. */
 import { createHash } from 'node:crypto'
 import { spawn, execFile } from 'node:child_process'
@@ -12,8 +13,8 @@ import { FLOW_STREAM_LIMITS } from '../../plugins/research/src/host/flow-reader.
 
 if (!process.argv.includes('--run')) throw new Error('Pass --run for the million-event synthetic Flow reference.')
 const option = (name: string): string | undefined => process.argv.find(value => value.startsWith(`${name}=`))?.slice(name.length + 1)
-const root = resolve(option('--output') ?? join('.build', 'flow-reference', new Date().toISOString().replaceAll(':', '-')))
-const python = resolve(option('--python') ?? '.build/flow-reference-venv/Scripts/python.exe')
+const root = resolve(option('--output') ?? join(zwsArtifactPaths.verification, 'flow-reference', new Date().toISOString().replaceAll(':', '-')))
+const python = resolve(option('--python') ?? resolve(zwsArtifactPaths.cache, 'python/flow-reference-venv/Scripts/python.exe'))
 const referenceScript = resolve('tools/science/flow-reference.py')
 await promisify(execFile)(python, [referenceScript, 'generate', root, '--count', option('--count') ?? '1000000'], { maxBuffer: 1024 * 1024 })
 const reference = JSON.parse(await readFile(join(root, 'reference.json'), 'utf8'))

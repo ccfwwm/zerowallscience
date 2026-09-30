@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Actual React + Host service + Chromium; synthetic data and Biopython reference. */
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
@@ -17,7 +18,7 @@ const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const desktopRequire = createRequire(resolve('desktop/package.json'))
 const { chromium } = desktopRequire('playwright') as typeof import('playwright')
-const root = resolve('.build', 'sequence-simulation-smoke', new Date().toISOString().replaceAll(':', '-'))
+const root = resolve(zwsArtifactPaths.verification, 'sequence-simulation-smoke', new Date().toISOString().replaceAll(':', '-'))
 await mkdir(root, { recursive: true })
 const inputs={template:pcrTemplate,forward:pcrForward,reverse:pcrReverse,circularForward:pcrTemplate.slice(170,190),circularReverse:fixtureReverseComplement(pcrTemplate.slice(10,30)),gibson:gibsonSequences,golden:goldenSequences,gibsonExpected,goldenExpected}
 await writeFile(join(root,'reference-input.json'),JSON.stringify(inputs))

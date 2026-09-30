@@ -1,10 +1,11 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Inspect exact releases on common mirrors; persist upstream hashes and URLs. */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { createHash } from 'node:crypto'
 
 const root = resolve(import.meta.dirname, '../..')
-const output = join(root, '.build', 'python-source-audit')
+const output = join(zwsArtifactPaths.verification, 'python-source-audit')
 await mkdir(output, { recursive: true })
 const packages = { flowio: '1.4.0', bibtexparser: '1.4.4', 'autograd-gamma': '0.5.0', docopt: '0.6.2', nglview: '4.0.1' }
 const mirrors = {

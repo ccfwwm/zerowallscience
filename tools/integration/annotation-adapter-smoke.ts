@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Exercise installed native ROI APIs and real exchange files; no claim of pixel-level GUI acceptance. */
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -13,7 +14,7 @@ import { napariAnnotationAdapter, fijiAnnotationAdapter } from '../../plugins/re
 if (!process.argv.includes('--run')) throw new Error('Pass --run to validate installed Fiji/napari ROI APIs against synthetic data.')
 const require = createRequire(resolve('plugins/research/package.json'))
 const sharp = (await import(pathToFileURL(require.resolve('sharp')).href)).default
-const root = resolve('.build','annotation-adapter-smoke',new Date().toISOString().replaceAll(':','-'))
+const root = resolve(zwsArtifactPaths.verification,'annotation-adapter-smoke',new Date().toISOString().replaceAll(':','-'))
 await mkdir(root,{recursive:true})
 const sourcePath=join(root,'synthetic.png'); await sharp({create:{width:64,height:64,channels:3,background:'#646464'}}).png().toFile(sourcePath)
 const store=new ResearchStore(join(root,'store.sqlite')); const engines=new NativeEngineService(store); const service=new ImageViewerService(store,engines)

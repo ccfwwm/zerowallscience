@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Local synthetic fixture; tests the real React viewer against its real Host service. */
 import { createRequire } from 'node:module'
 import { mkdir } from 'node:fs/promises'
@@ -12,7 +13,7 @@ const require = createRequire(resolve('plugins/research/package.json'))
 const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const sharp = (await import(pathToFileURL(require.resolve('sharp')).href)).default
-const root = resolve('.build','image-viewer-ui-smoke',new Date().toISOString().replaceAll(':','-'))
+const root = resolve(zwsArtifactPaths.verification,'image-viewer-ui-smoke',new Date().toISOString().replaceAll(':','-'))
 await mkdir(root,{recursive:true})
 const store = new ResearchStore(join(root,'store.sqlite'))
 const project = store.createProject({name:'Image UI fixture',rootPath:root})

@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Read-only registry/schema audit. pnpm exec tsx tools/integration/audit-science-skills.ts */
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
@@ -10,7 +11,7 @@ import { rWorkflows } from '../../plugins/mcp/src/shared/r-workflows.js'
 import * as Research from '../../plugins/research/src/host/index.js'
 
 const root = resolve(import.meta.dirname, '../..')
-const output = resolve(root, process.argv.find(v => v.startsWith('--output='))?.slice(9) ?? '.build/science-skills-audit')
+const output = resolve(root, process.argv.find(v => v.startsWith('--output='))?.slice(9) ?? resolve(zwsArtifactPaths.verification, 'science-skills-audit'))
 const bundled = resolve(root, 'resources/skills')
 await mkdir(output, { recursive: true })
 const require = createRequire(join(root, 'plugins/research/package.json'))

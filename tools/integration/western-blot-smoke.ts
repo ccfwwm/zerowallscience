@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Actual installed Fiji/ImageJ computation and Host harvesting against independently specified numbers. */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { deflateSync } from 'node:zlib'
@@ -8,7 +9,7 @@ import { ImageViewerService } from '../../plugins/research/src/host/image-viewer
 import { FijiWorkflowService } from '../../plugins/research/src/host/fiji-workflow.js'
 import type { WesternBlotPlan } from '../../plugins/research/src/shared/western-blot.js'
 if(!process.argv.includes('--run'))throw new Error('Pass --run to quantify isolated synthetic blot fixtures with installed Fiji.')
-const root=resolve('.build','western-blot-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
+const root=resolve(zwsArtifactPaths.verification,'western-blot-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
 const store=new ResearchStore(join(root,'store.sqlite'));const project=store.createProject({name:'Synthetic blot independent numerical fixture',rootPath:root})
 const images=new ImageViewerService(store);const workflows=new FijiWorkflowService(store)
 const pixels=Buffer.alloc(64*40,200);const rois:ImageRoi[]=[];const lanes:WesternBlotPlan['lanes']=[]

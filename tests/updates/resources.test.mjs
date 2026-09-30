@@ -53,6 +53,23 @@ test('profile migration is idempotent and preserves deliberate plugin removal', 
   assert.deepEqual(JSON.parse(await readFile(file)), manifest)
 })
 
+test('MCP updates match server identity rather than the display name and preserve disabled status', async () => {
+  const f = await fixture()
+  const template = { name: 'New friendly label', serverName: 'fixture-server', transport: 'streamable-http', url: 'https://example.test/mcp', enabled: true }
+  await writeFile(f.path, JSON.stringify(template))
+  const resource = { ...f.resource, id: template.serverName, kind: 'mcp', sha256: await fileDigest(f.path), size: Buffer.byteLength(JSON.stringify(template)), restartRequired: false }
+  await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [resource] }, f.privateKey, 'test')))
+  const edits = []
+  const manager = createResourceManager({ ...f, target, local: true, callHost: async (operation, args) => {
+    if (operation === 'mcp.list') return [{ id: 'connection-1', name: 'Friendly label', serverName: template.serverName, enabled: false }]
+    assert.equal(operation, 'mcp.edit')
+    edits.push(args[0])
+    return { id: 'connection-1' }
+  } })
+  assert.equal((await manager.update('mcp', f.source)).updated, 1)
+  assert.equal(edits[0].changes.enabled, false)
+})
+
 test('Python catalog activation verifies the payload before invoking the dedicated updater', async () => {
   const f = await fixture()
   const resource = { ...f.resource, id: 'science-dependencies', kind: 'python', role: 'dependency-manifest', restartRequired: false }
