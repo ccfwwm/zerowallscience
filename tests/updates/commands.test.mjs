@@ -14,7 +14,11 @@ const run = promisify(execFile)
 test('real CLI socket authenticates the owner, rejects another token and supports zws', async () => {
   const home = await mkdtemp(join(tmpdir(), 'zws-command-'))
   let calls = 0
-  const stop = await startCommandServer(home, async request => { calls++; assert.equal(request.operation, 'python.status'); return { ready: false } })
+  const stop = await startCommandServer(home, async request => {
+    calls++
+    if (request.operation === 'skill.disable') { assert.deepEqual(request.args, ['fixture', false]); return }
+    assert.equal(request.operation, 'python.status'); return { ready: false }
+  })
   try {
     const endpoint = JSON.parse(await readFile(join(home, 'command-endpoint.json')))
     const denied = await new Promise((accept, reject) => {
@@ -27,6 +31,8 @@ test('real CLI socket authenticates the owner, rejects another token and support
     assert.equal(denied.ok, false); assert.equal(calls, 0)
     const result = await run(process.execPath, ['tools/commands/zws.mjs', '--user-data', home, 'python', 'status'], { windowsHide: true })
     assert.deepEqual(JSON.parse(result.stdout), { ready: false }); assert.equal(calls, 1)
+    const disabled = await run(process.execPath, ['tools/commands/zws.mjs', '--user-data', home, 'skill', 'disable', 'fixture'], { windowsHide: true })
+    assert.deepEqual(JSON.parse(disabled.stdout), { ok: true }); assert.equal(calls, 2)
   } finally { await stop(); await rm(home, { recursive: true, force: true }) }
 })
 

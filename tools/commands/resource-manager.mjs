@@ -100,7 +100,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     workspace.autoInstallPeers = false
     // Scarf only runs install telemetry. Explicitly deny that known script;
     // leave pnpm's lifecycle approval gate intact for every other dependency.
-    workspace.ignoredBuiltDependencies = [...new Set([...(workspace.ignoredBuiltDependencies ?? []), '@scarf/scarf'])]
+    workspace.allowBuilds = { ...workspace.allowBuilds, '@scarf/scarf': false }
     await writeFile(workspaceFile, yaml.stringify(workspace))
     await runPlugin(['add', archive], generation)
     await normalizeComposition(candidate)

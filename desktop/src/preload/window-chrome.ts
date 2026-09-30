@@ -39,6 +39,7 @@ export function mountWindowChrome(): void {
       html[data-zerowall-chrome] [data-dockkit-strip] [role=tab],
       html[data-zerowall-chrome] [data-dockkit-strip] [role=button] { pointer-events:auto; -webkit-app-region:no-drag; }
       html[data-zerowall-chrome] [data-dockkit-strip][data-window-drag] [data-dockkit-strip-fill] { -webkit-app-region:drag; }
+      html[data-zerowall-chrome] [data-sidebar-right-panel=fullscreen] [data-dockkit-host=dock][data-dockkit-column="0"] [data-dockkit-strip] { padding-left:80px; }
       html[data-zerowall-chrome] [data-sidebar-footer],
       html[data-zerowall-chrome] [data-sidebar-footer] button,
       html[data-zerowall-chrome] [data-sidebar-footer] a,

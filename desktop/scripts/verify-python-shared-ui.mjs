@@ -80,7 +80,10 @@ try {
   if (!offlineBootstrap) {
     evidence.mode = 'thin-on-demand'
     evidence.final = await page.evaluate(() => window.zerowallDesktop.pythonEnvironment({ action: 'status', requestId: crypto.randomUUID() }))
-    assert.equal(evidence.final.ready, false, 'A thin package must not silently install a Python archive')
+    assert.equal(evidence.final.runtime, undefined, 'A thin package must not silently install a Python archive')
+    assert.notEqual(evidence.final.status.phase, 'ready')
+    assert.notEqual(evidence.final.status.phase, 'manual')
+    await access(join(isolatedRuntimeRoot, 'python.exe')).then(() => { throw new Error('Thin package unexpectedly installed Python') }, error => { if (error.code !== 'ENOENT') throw error })
     assert.equal(evidence.pageErrors.length, 0)
     await writeFile(join(output, 'verification.json'), JSON.stringify({ ok: true, mode: 'thin-on-demand', ...evidence }, null, 2))
     console.log(`Packaged thin-Python UI verified: ${output}`)

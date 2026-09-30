@@ -152,10 +152,17 @@ export class PythonEnvironmentApi {
     if (receipt !== undefined) {
       if (receipt.fingerprint !== fingerprint) throw new Error('REQUEST_ID_CONFLICT: use a new requestId for a different operation.')
       if (receipt.result !== undefined) return receipt.result
-      if (receipt.taskId !== undefined && this.activeSyncIds.has(input.requestId)) {
-        return { requestId: input.requestId, taskId: receipt.taskId, queued: true }
+      if (receipt.taskId !== undefined) {
+        if (this.activeSyncIds.has(input.requestId)) return { requestId: input.requestId, taskId: receipt.taskId, queued: true }
+        // The read may have captured `running` immediately before completion
+        // atomically replaced that receipt and released its in-process owner.
+        // Once the owner is gone its final write has settled; refresh the
+        // durable result before interpreting an old snapshot as interrupted.
+        receipt = JSON.parse(await readFile(path, 'utf8'))
+        if (receipt!.fingerprint !== fingerprint) throw new Error('REQUEST_ID_CONFLICT: use a new requestId for a different operation.')
+        if (receipt!.result !== undefined) return receipt!.result
       }
-      throw new Error(receipt.error ?? 'REQUEST_INTERRUPTED: Python synchronization stopped before completion; inspect the operation log before retrying.')
+      throw new Error(receipt!.error ?? 'REQUEST_INTERRUPTED: Python synchronization stopped before completion; inspect the operation log before retrying.')
     }
 
     await mkdir(directory, { recursive: true })

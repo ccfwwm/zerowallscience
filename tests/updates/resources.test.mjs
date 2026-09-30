@@ -95,6 +95,9 @@ test('failed Host activation restores the old profile, while successful activati
   let starts = 0
   const manager = createResourceManager({ ...f, target, local: true,
     runPlugin: async (_args, generation) => {
+      const workspace = JSON.parse(await readFile(join(f.home, 'profiles', generation, 'pnpm-workspace.yaml'), 'utf8'))
+      assert.equal(workspace.allowBuilds['@scarf/scarf'], false)
+      assert.equal(workspace.dangerouslyAllowAllBuilds, undefined)
       const file = join(f.home, 'profiles', generation, 'package.json')
       const value = JSON.parse(await readFile(file)); value.testVersion = 'new'
       await writeFile(file, JSON.stringify(value))

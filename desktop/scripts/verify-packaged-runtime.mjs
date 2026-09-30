@@ -130,6 +130,10 @@ const requiredArchivePaths = [
   'node_modules/dsh-zotero/lib/local/children-wire.js',
   'node_modules/dsh-zotero/lib/local/detail.js',
   'node_modules/dsh-zotero/cordis.patch.yml',
+  'node_modules/dsh-zotero/docs/images/icon.png',
+  'node_modules/dsh-zotero/locale/zh.json',
+  'node_modules/dsh-dream-skin/icon.svg',
+  'node_modules/dsh-better-sidebar/icon.svg',
   'node_modules/dsh-zotero/LICENSE',
   'node_modules/dsh-ssh-ops/lib/index.js',
   'node_modules/dsh-ssh-ops/lib/client.js',
@@ -524,6 +528,7 @@ function verifyZoteroAdapters() {
 }
 
 function hasForbiddenRuntimeDirectory(path) {
+  if (['node_modules/dsh-zotero/docs', 'node_modules/dsh-zotero/docs/images', 'node_modules/dsh-zotero/docs/images/icon.png'].includes(path)) return false
   const forbidden = new Set(['test', 'tests', '__tests__', 'example', 'examples', 'docs'])
   const segments = path.split('/')
   return segments.some((segment, index) => {

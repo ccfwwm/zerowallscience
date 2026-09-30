@@ -63,12 +63,10 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
       },
       deps: {
         // DSH client packages are provided by the browser ModuleLoader.
-        // Everything else, including ZeroWall Client helpers, lucide and
-        // qrcode, must be bundled into the classic script so it cannot
-        // become an unresolved runtime require().
+        // Plugin entrypoints stay external; implementation helpers, lucide and
+        // qrcode stay inside their owning classic-script artifact.
         neverBundle: isModuleTableExternal,
-        // Keep every ZeroWall workspace package (including generated Typert
-        // `/remote` contracts) inside the classic-script artifact.  The
+        // Helpers may resolve through a workspace symlink. The
         // resolver can hand this callback a resolved path for workspace
         // symlinks, so matching only the bare package specifier is not
         // sufficient; the explicit noExternal patterns below cover both.

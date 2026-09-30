@@ -236,6 +236,16 @@ async function copyRuntimePackage(package_, targetRoot) {
   const { manifest, manifestPath, sourceRoot, workspace } = package_
   await mkdir(targetRoot, { recursive: true })
   await cp(manifestPath, resolve(targetRoot, 'package.json'))
+  // DSH's manager reads declared artwork and locale from the package boundary.
+  // These must survive each plugin's narrow runtime-copy branch below.
+  if (manifest.dsh && typeof manifest.icon === 'string' && manifest.icon.startsWith('./')) {
+    const source = resolve(sourceRoot, manifest.icon)
+    const target = resolve(targetRoot, manifest.icon)
+    assertInside(sourceRoot, source, manifest.name)
+    await mkdir(dirname(target), { recursive: true })
+    await cp(source, target)
+  }
+  if (manifest.dsh && manifest.exports?.['./locale/*.json']) await copyEntry(sourceRoot, targetRoot, 'locale')
 
   if (manifest.name === 'node-pty') {
     await copyEntry(sourceRoot, targetRoot, 'lib')
@@ -262,7 +272,7 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
   }
 
   if (manifest.name === 'dsh-zotero') {
-    for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
+    for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml', 'docs/images/icon.png', 'locale']) await copyEntry(sourceRoot, targetRoot, entry)
     await writeFile(resolve(targetRoot, 'package.json'), adaptZoteroManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8')))
     const adapters = [
       ['lib/command.js', adaptZoteroCommand, false],
@@ -386,6 +396,9 @@ async function copyEntry(sourceRoot, targetRoot, entry) {
 function includeRuntimeFile(sourceRoot, candidate) {
   const path = relative(sourceRoot, candidate).replaceAll('\\', '/')
   if (path === '') return true
+  // This exact declared metadata asset is runtime content, even though its
+  // upstream location sits under the otherwise excluded documentation tree.
+  if (path === 'docs/images/icon.png' && basename(sourceRoot) === 'dsh-zotero') return true
   const segments = path.toLowerCase().split('/')
   // npm packages frequently publish executable JavaScript under `src`, even
   // when `main` itself lives at the package root. Keep every src directory;

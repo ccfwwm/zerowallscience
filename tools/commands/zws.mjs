@@ -86,4 +86,4 @@ async function run() {
   }
   throw new Error('用法：zws version|doctor|update；zws plugin|skill|mcp|env|python <操作>。')
 }
-try { console.log(JSON.stringify(await run(), null, 2)) } catch (error) { console.error(error.message); process.exitCode = 1 }
+try { console.log(JSON.stringify((await run()) ?? { ok: true }, null, 2)) } catch (error) { console.error(error.message); process.exitCode = 1 }

@@ -159,7 +159,7 @@ try {
   assert(composition.includes('@zerowallscience/plugin-environment'))
   assert((await callHost('host.health')).ready)
   // Removing a required service must fail health and restore the full profile.
-  await assert.rejects(manager.mutate(['remove', '@zerowallscience/plugin-base']), /failed|activation|Host/)
+  await assert.rejects(manager.mutate(['remove', '@zerowallscience/plugin-environment']), /failed|activation|Host/)
   assert.deepEqual(JSON.parse(await readFile(join(home, 'profiles/web/package.json'))).dsh.profile.bundles, composition)
   assert((await callHost('host.health')).ready)
 

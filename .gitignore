@@ -49,3 +49,5 @@ mcp-environment-staging/sci/*
 
 /artifacts/
 /packages/dsh-file-review/lib/
+/packages/dsh-ssh-ops/lib/
+/packages/zotero-harvest/lib/
