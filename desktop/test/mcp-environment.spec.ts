@@ -437,6 +437,27 @@ describe('MCP environment upgrades', () => {
     expect(requests).toEqual(['https://example.test/latest.json'])
   })
 
+  it('finishes a missing-runtime feed check idle without installing or scheduling work', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-python-check-only-')); roots.push(root)
+    const manifest = signedSharedManifest()
+    const requests: string[] = []
+    const healthCheck = vi.fn(async () => undefined)
+    const controller = new McpEnvironmentController({
+      root, generationMode: true, manifestUrl: 'https://example.test/latest.json',
+      publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      fetcher: async url => { requests.push(String(url)); return new Response(JSON.stringify(manifest), { status: 200 }) },
+      healthCheck, publish() {},
+    })
+    const status = await controller.checkForUpdates()
+    expect(status).toMatchObject({ phase: 'idle', updateAvailable: true, python: { ready: false } })
+    expect(status.lastCheckedAt).toBeTruthy()
+    expect(status.activeEnvironment).toBeUndefined()
+    expect(status.updateJob).toBeUndefined()
+    expect(requests).toEqual(['https://example.test/latest.json'])
+    expect(healthCheck).not.toHaveBeenCalled()
+    expect(await readdir(root)).toEqual([])
+  })
+
   it('rejects unsafe package specifications before starting pip', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-mcp-root-')); roots.push(root)
     const controller = new McpEnvironmentController({ root, manifestUrl: 'https://example.test/latest.json', publicKey: 'test', publish: () => undefined })

@@ -177,9 +177,10 @@ export class McpEnvironmentController {
       const manifest = await this.fetchManifest()
       const record = await readCurrent(this.options.root)
       const currentManifest = record?.root && record.health === 'ready' ? await this.readInstalledManifest(record.root).catch(() => undefined) : undefined
-      const root = record?.root ?? ''
+      const root = currentManifest ? record?.root ?? '' : ''
       const slot = record?.slot === 'a' || record?.slot === 'b' || record?.slot === 'manual' ? record.slot : undefined
-      const status = environmentStatus(currentManifest ? 'ready' : 'checking', currentManifest ?? manifest, root, slot ?? 'manual', false, record?.rollbackAvailable === true, this.options.generationMode)
+      const status = environmentStatus(currentManifest ? 'ready' : 'idle', currentManifest ?? manifest, root, slot ?? 'manual', false, record?.rollbackAvailable === true, this.options.generationMode)
+      if (!currentManifest && status.python) status.python.ready = false
       status.onlineEnvironmentVersion = environmentVersion(manifest)
       status.onlineContentRevision = contentRevision(manifest)
       status.updateAvailable = currentManifest === undefined || environmentVersion(currentManifest) !== environmentVersion(manifest) || contentRevision(currentManifest) !== contentRevision(manifest) || currentManifest.archiveSha256 !== manifest.archiveSha256

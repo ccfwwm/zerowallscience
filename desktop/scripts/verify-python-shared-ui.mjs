@@ -7,8 +7,8 @@ import { _electron } from 'playwright'
 import { locatePackagedApp } from './packaged-app.mjs'
 
 // Exercise the real packaged component and preload with an isolated profile.
-// First launch automatically installs the bundled base into this disposable
-// profile; it never changes the user's environment. The explicit
+// Thin packages leave Python absent until installation is requested. Optional
+// offline packages prepare their bundled base in this disposable profile. The explicit
 // ZEROWALL_VERIFY_PYTHON_INSTALL=1 option also runs a source-only package install.
 const desktop = resolve(import.meta.dirname, '..')
 const version = JSON.parse(await readFile(resolve(desktop, 'package.json'), 'utf8')).version
@@ -79,11 +79,20 @@ try {
   const offlineBootstrap = await access(join(packaged.root, 'resources/python/base-runtime.zip')).then(() => true, () => false)
   if (!offlineBootstrap) {
     evidence.mode = 'thin-on-demand'
+    const install = panel.getByRole('button', { name: /^(安装基础环境|Install base environment)$/ })
+    await install.waitFor({ state: 'visible', timeout: 60_000 })
+    assert(await install.isEnabled(), 'The missing-runtime installation action must be usable')
+    await install.click()
+    const confirmation = page.getByRole('dialog', { name: /^(安装共享 Python 运行时|Install the shared Python runtime)$/ })
+    await confirmation.waitFor({ state: 'visible' })
+    await confirmation.getByRole('button', { name: /^(关闭|Close)$/ }).click()
+    await confirmation.waitFor({ state: 'hidden' })
+    evidence.installConfirmation = 'opened-and-dismissed-without-download'
     evidence.final = await page.evaluate(() => window.zerowallDesktop.pythonEnvironment({ action: 'status', requestId: crypto.randomUUID() }))
     assert.equal(evidence.final.runtime, undefined, 'A thin package must not silently install a Python archive')
     assert.notEqual(evidence.final.status.phase, 'ready')
     assert.notEqual(evidence.final.status.phase, 'manual')
-    assert(!['downloading', 'installing', 'verifying'].includes(evidence.final.status.phase), 'A thin package must only check the feed until Python is requested')
+    assert(!['checking', 'downloading', 'installing', 'verifying'].includes(evidence.final.status.phase), 'A completed check must leave the install action available until Python is requested')
     assert.equal(evidence.final.status.updateJob, undefined, 'Startup must not schedule a runtime download')
     evidence.jobs = await readdir(join(dirname(isolatedRuntimeRoot), 'zerowall-python', 'jobs')).catch(error => { if (error.code === 'ENOENT') return []; throw error })
     assert.deepEqual(evidence.jobs, [], 'Startup must not persist an installation job')
