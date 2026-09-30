@@ -1,0 +1,9 @@
+{
+  "name": "R 科研平台",
+  "serverName": "r-platform",
+  "transport": "streamable-http",
+  "enabled": false,
+  "url": "http://103.217.185.141:8099/r-platform/mcp",
+  "headerRefs": { "Authorization": "zerowall.mcp.rdatalinux_authorization" },
+  "toolCallTimeoutMs": 120000
+}

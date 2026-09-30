@@ -1,0 +1,96 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { generateKeyPairSync } from 'node:crypto'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { assertCompatible, downloadResource, fileDigest, signCatalog, verifyCatalog } from '../../tools/release/resource-catalog.mjs'
+import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
+import { initializeProfile } from '../../tools/commands/profile.mjs'
+
+const target = { desktopVersion: '8.0.0', dshVersion: '0.2.0-rc.2', platform: 'win32', architecture: 'x64' }
+async function fixture() {
+  const home = await mkdtemp(join(tmpdir(), 'zws-resource-test-'))
+  const pair = generateKeyPairSync('ed25519')
+  const keys = { test: pair.publicKey }
+  const path = join(home, 'plugin.tgz')
+  await writeFile(path, 'signed test artifact')
+  const resource = { id: '@zerowallscience/plugin-test', kind: 'plugin', version: '0.1.0', dshRange: { min: target.dshVersion, max: target.dshVersion }, desktopRange: { min: '8.0.0' },
+    platform: ['win32'], architecture: ['x64'], downloadUrl: pathToFileURL(path).href, sha256: await fileDigest(path), size: 20, restartRequired: true, rollbackSupported: true }
+  const document = signCatalog({ schema: 1, localOnly: true, resources: [resource] }, pair.privateKey, 'test')
+  const source = join(home, 'catalog.json')
+  await writeFile(source, JSON.stringify(document))
+  return { home, resource, document, source, keys, path, privateKey: pair.privateKey }
+}
+
+test('signature and runtime compatibility reject tampering and an incorrect rc version', async () => {
+  const f = await fixture()
+  verifyCatalog(f.document, f.keys, { local: true })
+  assertCompatible(f.resource, target)
+  assert.throws(() => verifyCatalog({ ...f.document, resources: [] }, f.keys, { local: true }), /signature/)
+  assert.throws(() => assertCompatible(f.resource, { ...target, dshVersion: '0.2.0-rc.3' }), /exact/)
+  assert.throws(() => verifyCatalog(f.document, f.keys), /HTTPS/)
+  assert.throws(() => verifyCatalog(signCatalog({ ...f.document, resources: [{ ...f.resource, id: '../escape' }] }, f.privateKey, 'test'), f.keys, { local: true }), /identity/)
+})
+
+test('a damaged payload is never activated as a package', async () => {
+  const f = await fixture()
+  const destination = await downloadResource(f.resource, join(f.home, 'downloads'), { local: true })
+  assert.equal(await fileDigest(destination), f.resource.sha256)
+  await writeFile(f.path, 'wrong payload length')
+  await assert.rejects(downloadResource(f.resource, join(f.home, 'bad'), { local: true }), /SHA-256|size/)
+})
+
+test('profile migration is idempotent and preserves deliberate plugin removal', async () => {
+  const f = await fixture()
+  await initializeProfile(f.home, [f.resource.id])
+  const file = join(f.home, 'profiles/web/package.json')
+  const manifest = JSON.parse(await readFile(file))
+  manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(id => id !== f.resource.id)
+  await writeFile(file, JSON.stringify(manifest))
+  await initializeProfile(f.home, [f.resource.id])
+  assert.deepEqual(JSON.parse(await readFile(file)), manifest)
+})
+
+test('Python catalog activation verifies the payload before invoking the dedicated updater', async () => {
+  const f = await fixture()
+  const resource = { ...f.resource, id: 'science-dependencies', kind: 'python', role: 'dependency-manifest', restartRequired: false }
+  await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [resource] }, f.privateKey, 'test')))
+  const calls = []
+  const manager = createResourceManager({ ...f, target, local: true, applyPython: async (entry, file) => {
+    calls.push(entry.id)
+    assert.equal(await fileDigest(file), resource.sha256)
+    return { taskId: 'signed-python-sync' }
+  } })
+  assert.deepEqual(await manager.resource('python', resource.id, f.source), { taskId: 'signed-python-sync' })
+  assert.deepEqual(calls, [resource.id])
+  const bad = { ...resource, sha256: '0'.repeat(64) }
+  await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [bad] }, f.privateKey, 'test')))
+  await assert.rejects(manager.resource('python', resource.id, f.source), /SHA-256/)
+  assert.equal(calls.length, 1)
+})
+
+test('failed Host activation restores the old profile, while successful activation supports rollback', async () => {
+  const f = await fixture()
+  await initializeProfile(f.home, [f.resource.id])
+  let rejectActivation = true
+  let starts = 0
+  const manager = createResourceManager({ ...f, target, local: true,
+    runPlugin: async (_args, generation) => {
+      const file = join(f.home, 'profiles', generation, 'package.json')
+      const value = JSON.parse(await readFile(file)); value.testVersion = 'new'
+      await writeFile(file, JSON.stringify(value))
+    }, stopHost: async () => {}, startHost: async () => {
+      starts++
+      if (rejectActivation && starts === 1) throw new Error('Host failed')
+    }, callHost: async () => {} })
+  await assert.rejects(manager.plugin(f.resource.id, f.source), /Host failed/)
+  const file = join(f.home, 'profiles/web/package.json')
+  assert.equal(JSON.parse(await readFile(file)).testVersion, undefined)
+  rejectActivation = false
+  await manager.plugin(f.resource.id, f.source)
+  assert.equal(JSON.parse(await readFile(file)).testVersion, 'new')
+  await manager.rollback()
+  assert.equal(JSON.parse(await readFile(file)).testVersion, undefined)
+})

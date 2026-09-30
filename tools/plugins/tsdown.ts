@@ -1,7 +1,8 @@
 import { defineConfig } from 'tsdown'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { typertPlugin } from '../../deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js'
+import '../build/register-output-resolution.mjs'
+const { typertPlugin } = await import('../../deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js')
 
 const zerowallVersion = String(JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version)
 
@@ -13,6 +14,8 @@ export interface ZeroWallBundleOptions {
 }
 
 export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) {
+  const manifest = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'))
+  const hasRemote = manifest.exports?.['./remote'] !== undefined
   const host = options.host !== false
   const configs = []
   if (host) {
@@ -29,16 +32,17 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
       ...options.hostAlwaysBundle === undefined ? {} : {
         deps: { alwaysBundle: options.hostAlwaysBundle },
       },
-      plugins: [typertPlugin({ mode: 'package', faces: ['host'] })],
+      plugins: [{ ...typertPlugin({ mode: 'package', faces: ['host'] }), writeBundle() {} }],
     })
   }
   if (options.client) {
     const isModuleTableExternal = (specifier: string): boolean =>
       /^(?:react|react\/jsx-runtime|react-dom|react-dom\/client)$/u.test(specifier)
       || /^@deepseek-ai\/(?:dsh-client[^/]*(?:\/|$)|dsh-api-remotes(?:\/|$))/u.test(specifier)
+      || (/^@zerowallscience\/plugin-[^/]+(?:\/client)?$/u.test(specifier) && specifier !== id)
     configs.push({
       name: `${id}/client`,
-      entry: { client: 'src/client/index.ts' },
+      entry: { client: hasRemote ? 'zerowall:client-entry' : 'src/client/index.ts' },
       outDir: 'lib',
       // DSH's client module transport injects each plugin as a classic
       // script.  The artifact must therefore be CommonJS wrapped by the
@@ -72,7 +76,10 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         // entry points (for example `qrcode/lib/browser.js` and
         // `react/jsx-runtime`) are resolved as explicit subpath imports.
         alwaysBundle: [
-          /^@zerowallscience\/plugin-/,
+          // ZeroWall plugins are independently installable DSH bundles. Keep
+          // their client entrypoints external so the ModuleLoader can load,
+          // update and restart one plugin without rebuilding every client.
+          /^@zerowallscience\/plugin-[^/]+\/(?:client-helpers$|client\/|src\/)/,
           /^dsh-file-review(?:\/|$)/,
           /^lucide-react(?:\/|$)/,
           /^qrcode(?:\/|$)/,
@@ -97,6 +104,25 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
           return `export default ${JSON.stringify(`data:image/png;base64,${png.toString('base64')}`)}`
         },
       }] : []), {
+        name: 'zerowall-owned-remote',
+        resolveId(source: string) {
+          if (source === 'zerowall:client-entry') return '\0zerowall:client-entry'
+          return null
+        },
+        load(source: string) {
+          if (source !== '\0zerowall:client-entry') return null
+          const client = JSON.stringify(resolve(process.cwd(), 'src/client/index.ts').replaceAll('\\', '/'))
+          const remote = JSON.stringify(resolve(process.cwd(), 'lib/typert.remote-client.js').replaceAll('\\', '/'))
+          return `import * as feature from ${client}; import contribution from ${remote};
+export * from ${client};
+export const inject = ['remote'];
+export async function apply(ctx, config) {
+  const dispose = await ctx.remote.$mount(contribution);
+  try { ctx.plugin(feature, config); } catch (error) { await dispose(); throw error; }
+  return dispose;
+}`
+        },
+      }, {
         name: 'zerowall-react-singleton',
         // Dependencies such as lucide-react import React themselves.  Mark
         // those transitive requests external too, otherwise the browser
