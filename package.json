@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "7.4.0",
+  "version": "8.0.0",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",
@@ -9,6 +9,8 @@
     "node": "24.9.0"
   },
   "scripts": {
+    "artifacts:init": "node tools/build/init-artifacts.mjs",
+    "artifacts:manifest": "node tools/build/write-artifact-manifest.mjs",
     "plugins:generate": "node tools/plugins/generate-workspaces.mjs",
     "profiles:generate": "tsx tools/profiles/generate.ts",
     "profiles:check": "tsx tools/profiles/generate.ts --check",
@@ -34,11 +36,11 @@
     "audit:claude-science": "node tools/integration/audit-claude-science.mjs",
     "native:rebuild": "pnpm rebuild electron esbuild node-pty sharp koffi",
     "runtime:prepare": "pnpm native:rebuild && node tools/packaging/prepare-runtime.mjs",
-    "build": "pnpm plugins:generate && pnpm profiles:generate && pnpm dsh:verify && pnpm dsh:build:zerowall && pnpm store:bundle && pnpm wechat:bundle && pnpm genui:bundle && pnpm sidebar:bundle && pnpm file-review:bundle && pnpm ssh-ops:bundle && pnpm harvest:bundle && pnpm plugins:bundle && pnpm dsh:runtime:closure && pnpm runtime:prepare && pnpm resources:prepare && pnpm --filter @zerowallscience/desktop run build",
+    "build": "pnpm artifacts:init --new && pnpm artifacts:links && pnpm version:check && pnpm plugins:generate && pnpm profiles:generate && pnpm dsh:verify && pnpm dsh:build:zerowall && pnpm store:bundle && pnpm wechat:bundle && pnpm genui:bundle && pnpm sidebar:bundle && pnpm file-review:bundle && pnpm ssh-ops:bundle && pnpm harvest:bundle && pnpm plugins:bundle && pnpm dsh:runtime:closure && pnpm runtime:prepare && pnpm resources:prepare && pnpm commands:prepare && pnpm plugins:pack && pnpm catalogs:generate && pnpm --filter @zerowallscience/desktop run build",
     "dev": "pnpm plugins:generate && pnpm profiles:generate && pnpm plugins:bundle && pnpm --filter @zerowallscience/desktop run dev",
     "lint": "pnpm --filter @deepseek-ai/dsh-root run lint:contracts-ready",
     "typecheck": "pnpm dsh:verify && pnpm --filter @deepseek-ai/dsh-root run typecheck && pnpm --filter @zerowallscience/research-store run bundle && pnpm plugins:typecheck && pnpm --filter @zerowallscience/desktop run typecheck",
-    "test": "node --test tests/contracts/*.test.mjs && node --test tests/security/*.test.mjs && node --test tools/release/*.test.mjs && pnpm --filter @zerowallscience/research-store test && pnpm plugins:test && pnpm --filter @zerowallscience/desktop test",
+    "test": "node --test tests/contracts/*.test.mjs && node --test tests/security/*.test.mjs && pnpm test:updates && node --test tools/release/*.test.mjs && pnpm --filter @zerowallscience/research-store test && pnpm plugins:test && pnpm --filter @zerowallscience/desktop test",
     "test:plugins": "pnpm plugins:test",
     "test:dsh:rc1": "pnpm dsh:verify && pnpm --filter @deepseek-ai/dsh-root exec vitest run --config vitest.web.config.ts apps/web/tests/shipped-composition.e2e.ts",
     "test:dsh:composition": "pnpm test:dsh:rc1",
@@ -63,7 +65,7 @@
     "release:verify:stable": "node scripts/verify-qiniu.mjs",
     "package:dir": "pnpm build && pnpm --filter @zerowallscience/desktop run package:dir",
     "package:win": "pnpm package:stable:win",
-    "package:stable:win": "pnpm build && pnpm --filter @zerowallscience/desktop run package:stable:win",
+    "package:stable:win": "node tools/build/package-windows.mjs",
     "package:mac:x64": "pnpm build && pnpm --filter @zerowallscience/desktop run package:mac:x64",
     "package:mac:arm64": "pnpm build && pnpm --filter @zerowallscience/desktop run package:mac:arm64",
     "package:stable:mac:x64": "pnpm build && pnpm --filter @zerowallscience/desktop run package:stable:mac:x64",
@@ -71,7 +73,13 @@
     "progressive-tools:bundle": "pnpm --filter dsh-progressive-tools run build --skipLibCheck",
     "progressive-tools:check": "pnpm --filter dsh-progressive-tools run typecheck --skipLibCheck && pnpm --filter dsh-progressive-tools run lint && pnpm --filter dsh-progressive-tools run test && pnpm progressive-tools:bundle && pnpm --filter dsh-progressive-tools run publint --pack false",
     "ssh-ops:bundle": "pnpm --filter dsh-ssh-ops run build",
-    "harvest:bundle": "pnpm --filter @dsh-external/zotero-harvest run build"
+    "harvest:bundle": "pnpm --filter @dsh-external/zotero-harvest run build",
+    "artifacts:links": "node tools/build/link-outputs.mjs",
+    "version:check": "node tools/build/verify-version.mjs",
+    "commands:prepare": "node tools/commands/prepare.mjs",
+    "plugins:pack": "node tools/plugins/pack.mjs",
+    "catalogs:generate": "node tools/release/generate-resource-catalogs.mjs",
+    "test:updates": "node --import tsx --test tests/updates/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
@@ -90,6 +98,7 @@
     "tsdown": "0.22.2",
     "typescript": "6.0.3",
     "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "yaml": "2.8.1"
   }
 }

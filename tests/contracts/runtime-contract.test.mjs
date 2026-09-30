@@ -124,7 +124,7 @@ test('dsh-free-search directly replaces the removed ZeroWall search plugin', asy
 
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.match(patch, /- id: web\s+config:\s+searchProvider: ddg\s+fetchProvider: http/u)
-  assert.match(patch, /- id: web-search-free\s+name: 'dsh-free-search'\s+config:\s+provider: bing\s+bingMarket: zh-CN\s+lang: zh\s+safeSearch: off\s+cache: true\s+cacheTtl: 5\s+keyStorage: credentials/u)
+  assert.doesNotMatch(patch, /- id: web-search-free/u) // the official profile bundle owns mutable provider settings
   assert.doesNotMatch(patch, /zerowall-ai-cloud-search|@zerowallscience\/plugin-web-search/u)
 
   for (const profile of ['development', 'preview', 'stable']) {

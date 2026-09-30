@@ -46,3 +46,6 @@ mcp-environment-staging/sci/*
 !mcp-environment-staging/sci/zerowall-mcp-launcher.cjs
 .secrets/
 /scripts/env/
+
+/artifacts/
+/packages/dsh-file-review/lib/
