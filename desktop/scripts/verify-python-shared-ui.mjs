@@ -13,7 +13,7 @@ import { locatePackagedApp } from './packaged-app.mjs'
 const desktop = resolve(import.meta.dirname, '..')
 const version = JSON.parse(await readFile(resolve(desktop, 'package.json'), 'utf8')).version
 const packaged = await locatePackagedApp(desktop)
-const output = resolve(process.env.ZEROWALL_PACKAGED_OUTPUT ?? join(contract.verification, 'python-ui/packaged'))
+const output = resolve(process.env.ZEROWALL_PYTHON_UI_OUTPUT ?? join(contract.verification, 'python-ui/packaged'))
 const profile = await mkdtemp(join(tmpdir(), `zerowall-python-${version.replaceAll('.', '')}-visual-`))
 await mkdir(output, { recursive: true })
 const env = { ...process.env, ZEROWALL_USER_DATA_DIR: join(profile, 'userdata'), ZEROWALL_DISABLE_DEFAULT_MCP: '1', APPDATA: join(profile, 'appdata'), LOCALAPPDATA: join(profile, 'localappdata') }
@@ -79,7 +79,7 @@ try {
   const offlineBootstrap = await access(join(packaged.root, 'resources/python/base-runtime.zip')).then(() => true, () => false)
   if (!offlineBootstrap) {
     evidence.mode = 'thin-on-demand'
-    const install = panel.getByRole('button', { name: /^(安装基础环境|Install base environment)$/ })
+    const install = panel.getByRole('button', { name: /^(安装 Python|Install Python)$/ })
     await install.waitFor({ state: 'visible', timeout: 60_000 })
     assert(await install.isEnabled(), 'The missing-runtime installation action must be usable')
     await install.click()
