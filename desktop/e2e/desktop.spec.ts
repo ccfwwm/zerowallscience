@@ -588,7 +588,7 @@ describe('ZeroWall Science Electron', () => {
     await offeredPackage.getByRole('button', { name: /^查看 / }).click()
     await page.locator('[data-plugin-rows]').waitFor()
     expect(await page.locator('[data-package-meta-error]').count()).toBe(0)
-    await page.getByText('默认工作区', { exact: true }).first().click()
+    await page.getByRole('button', { name: '新建会话', exact: true }).first().click()
     await page.locator('[data-plugin-panel]').waitFor({ state: 'hidden' })
   })
 

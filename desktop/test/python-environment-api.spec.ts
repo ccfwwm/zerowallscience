@@ -81,6 +81,20 @@ describe('shared Python environment API', () => {
     expect(ensureReady).toHaveBeenCalledTimes(1)
     expect(sync.checkManifest).toHaveBeenCalledTimes(1)
   })
+  it('reads a missing runtime inventory without starting installation', async () => {
+    const { api, updater, sync } = await setup()
+    const ensureReady = vi.fn(async () => ({ phase: 'ready' as const }))
+    ;(updater as typeof updater & { ensureReady: typeof ensureReady }).ensureReady = ensureReady
+    updater.current.mockReturnValue({ phase: 'idle' })
+    updater.pythonInfo.mockResolvedValue({ ready: false, packages: [] } as never)
+    for (const requestId of ['open-settings', 'refresh-settings']) {
+      await expect(api.request({ action: 'list_packages', requestId })).resolves.toMatchObject({ inventory: { ready: false, packages: [] } })
+    }
+    expect(updater.pythonInfo).toHaveBeenCalledTimes(2)
+    expect(ensureReady).not.toHaveBeenCalled()
+    expect(sync.checkManifest).not.toHaveBeenCalled()
+    expect(sync.applySync).not.toHaveBeenCalled()
+  })
   it('compares mirror revisions and writes only application settings', async () => {
     const { root, api } = await setup()
     await expect(api.request({ action: 'configure', requestId: 'read' })).resolves.toMatchObject({ revision: 0, mirrorUrl: 'https://mirrors.ustc.edu.cn/pypi/simple' })

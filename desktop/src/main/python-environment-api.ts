@@ -243,12 +243,9 @@ export class PythonEnvironmentApi {
         result = { status: this.updater.current(), runtime: activeRuntime, runtimeRoot: configuredRuntimeRoot, dependencies: await readOptional(join(this.root, 'dependency-sync', 'status.json')), events: await this.events() }; break
       }
       case 'list_packages': {
-        // The inventory view is often the first call made when Settings opens.
-        // It must join the same signed bundled-runtime gate as manifest and
-        // sync operations; otherwise an old Roaming/slot record reaches
-        // pythonInfo() directly and reports the obsolete migration error
-        // before the installer has a chance to rebuild the shared directory.
-        await this.ensureRuntimeReady()
+        // Opening Settings and refreshing inventory are read-only. A thin
+        // installer reports an empty inventory until a Python operation or
+        // explicit install requests the signed runtime.
         const inventory = await this.updater.pythonInfo()
         const manifest = await readFile(join(this.root, 'dependency-sync', 'manifest.json'), 'utf8').then(text => parsePythonDependencyManifest(JSON.parse(text), MCP_ENVIRONMENT_KEYRING)).catch(() => undefined)
         const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/gu, '-')
