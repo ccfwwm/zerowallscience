@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { readFile, readdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { assertPluginDesktopCompatibility } from '../plugins/compatibility.mjs'
 
 export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZEROWALL_ALLOW_DIRTY_DSH === '1' } = {}) {
   const { stage } = paths.buildPaths(root)
@@ -30,7 +31,7 @@ export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZE
     if (manifestText === undefined) continue
     const manifest = JSON.parse(manifestText)
     const target = resolve(stage, 'runtime/node_modules', manifest.name)
-    if (!manifest.zerowall?.desktop || manifest.zerowall.desktop.min !== app.version) throw new Error(`Release version mismatch: ${manifest.name}`)
+    assertPluginDesktopCompatibility(manifest.zerowall?.desktop, app.version, manifest.name)
     for (const file of ['package.json', 'zerowall.plugin.json', ...(await readdir(join(source, 'lib'))).filter(name => /\.(?:js|css)$/.test(name)).map(name => `lib/${name}`)]) {
       if (!(await readFile(join(source, file))).equals(await readFile(join(target, file)))) {
         throw new Error(`Stale runtime: ${manifest.name}/${file}. Run pnpm build before packaging.`)

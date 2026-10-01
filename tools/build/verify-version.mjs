@@ -1,6 +1,7 @@
 import { readFile, access, readdir } from 'node:fs/promises'
 import { root, contract, applicationVersion } from './paths.mjs'
 import { join } from 'node:path'
+import { assertPluginDesktopCompatibility } from '../plugins/compatibility.mjs'
 
 async function document(file, required = true) {
   try { return JSON.parse(await readFile(file, 'utf8')) }
@@ -23,7 +24,7 @@ for (const name of await readdir(join(root, 'plugins'))) {
   const manifest = await document(join(root, 'plugins', name, 'package.json'), false)
   if (!manifest?.name?.startsWith('@zerowallscience/plugin-')) continue
   if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) throw new Error(`Invalid independent plugin version: ${name}`)
-  equal(manifest.zerowall.desktop.min, applicationVersion, `${name} minimum desktop`)
+  assertPluginDesktopCompatibility(manifest.zerowall.desktop, applicationVersion, name)
   equal(manifest.zerowall.dsh.min, '0.2.0-rc.2', `${name} DSH minimum`)
   equal(manifest.zerowall.dsh.max, '0.2.0-rc.2', `${name} DSH maximum`)
 }
