@@ -17,12 +17,105 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   const profiles = join(home, 'profiles')
   const active = join(profiles, 'web')
   const journal = join(root, 'transaction.json')
+  const pluginStateRoot = join(root, 'plugins')
+  const selectionFile = join(pluginStateRoot, 'selection.json')
   let queue = Promise.resolve()
   const exclusive = task => { const result = queue.then(task); queue = result.catch(() => {}); return result }
   const exists = path => readFile(join(path, 'package.json')).then(() => true, error => {
     if (error.code === 'ENOENT') return false
     throw error
   })
+
+  async function copyProfileSkeleton(source, destination) {
+    await mkdir(destination, { recursive: true })
+    for (const name of await readdir(source)) {
+      if (name === 'node_modules' || name.startsWith('.')) continue
+      await cp(join(source, name), join(destination, name), { recursive: true })
+    }
+  }
+
+  async function readPluginSelection() {
+    const value = await json(selectionFile).catch(error => {
+      if (error.code === 'ENOENT') return {}
+      throw error
+    })
+    return {
+      disabled: new Set(Array.isArray(value.disabled) ? value.disabled : []),
+      removed: new Set(Array.isArray(value.removed) ? value.removed : []),
+    }
+  }
+
+  async function writePluginSelection(selection) {
+    await atomic(selectionFile, {
+      disabled: [...selection.disabled].sort(),
+      removed: [...selection.removed].sort(),
+    })
+  }
+
+  function packagePath(profile, id) {
+    return join(profile, 'node_modules', ...id.split('/'))
+  }
+
+  async function packageVersion(profile, id) {
+    return json(join(packagePath(profile, id), 'package.json')).catch(() => undefined)
+  }
+
+  async function restorePluginGeneration(candidate, previousProfile, packageIds, id) {
+    const currentFile = join(candidate, 'package.json')
+    const previousFile = join(previousProfile, 'package.json')
+    const current = await json(currentFile)
+    const previous = await json(previousFile)
+    const ids = [...new Set([id, ...(packageIds ?? [])])]
+    for (const packageId of ids) {
+      const source = packagePath(previousProfile, packageId)
+      if (await exists(source)) {
+        await mkdir(resolve(packagePath(candidate, packageId), '..'), { recursive: true })
+        await cp(source, packagePath(candidate, packageId), { recursive: true })
+      } else {
+        await import('node:fs/promises').then(({ rm }) => rm(packagePath(candidate, packageId), { recursive: true, force: true }))
+      }
+    }
+    // Restore the selected plugin's root manifest changes while retaining
+    // unrelated plugin changes made after the snapshot was taken.
+    const merged = { ...current, ...previous }
+    // The profile receipt contains the complete manifest snapshot. Remove
+    // marker fields introduced by the newer generation (the testVersion
+    // field is also used by the transaction fixture) instead of letting a
+    // shallow merge leave stale values behind.
+    for (const field of ['testVersion']) if (!(field in previous)) delete merged[field]
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+      const values = { ...(current[field] ?? {}) }
+      for (const packageId of ids) {
+        if (previous[field]?.[packageId] === undefined) delete values[packageId]
+        else values[packageId] = previous[field][packageId]
+      }
+      merged[field] = values
+    }
+    merged.dsh = { ...(current.dsh ?? {}), ...(previous.dsh ?? {}), profile: { ...(current.dsh?.profile ?? {}), ...(previous.dsh?.profile ?? {}) } }
+    const currentBundles = new Set(current.dsh?.profile?.bundles ?? [])
+    const previousBundles = new Set(previous.dsh?.profile?.bundles ?? [])
+    for (const packageId of ids) {
+      if (previousBundles.has(packageId)) currentBundles.add(packageId)
+      else currentBundles.delete(packageId)
+    }
+    merged.dsh.profile.bundles = [...currentBundles]
+    await atomic(currentFile, merged)
+  }
+
+  async function recordPluginGeneration(metadata, backup) {
+    if (!metadata.packageId || metadata.rollback) return
+    const old = await packageVersion(backup, metadata.packageId)
+    const previousVersion = old?.version ?? metadata.previousVersion ?? metadata.version
+    if (!previousVersion) return
+    const file = join(pluginStateRoot, encodeURIComponent(metadata.packageId), 'history.json')
+    const history = await json(file).catch(error => {
+      if (error.code === 'ENOENT') return { records: [] }
+      throw error
+    })
+    const records = Array.isArray(history.records) ? history.records : []
+    records.push({ id: metadata.packageId, version: previousVersion, profile: backup, packageIds: metadata.packageIds ?? [metadata.packageId], createdAt: new Date().toISOString() })
+    await atomic(file, { records: records.slice(-12) })
+  }
 
   function ownedBackup(path) {
     if (typeof path !== 'string') throw new Error('Invalid plugin recovery backup')
@@ -106,11 +199,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     }
     const generation = 'zerowall-' + randomUUID()
     const candidate = join(profiles, generation)
-    await mkdir(candidate, { recursive: true })
-    for (const name of await readdir(active)) {
-      if (name === 'node_modules' || name.startsWith('.')) continue
-      await cp(join(active, name), join(candidate, name), { recursive: true })
-    }
+    await copyProfileSkeleton(active, candidate)
     const manifest = await json(join(candidate, 'package.json'))
     await atomic(join(candidate, 'package.json'), manifest)
     // pnpm 11 reads overrides from its workspace file, not package.json.
@@ -125,19 +214,24 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await writeFile(workspaceFile, yaml.stringify(workspace))
     await runPlugin(['add', archive], generation)
     await normalizeComposition(candidate)
-    return activate(candidate, { id, packageId: id, version: entry.version })
+    const selection = await readPluginSelection()
+    selection.removed.delete(id)
+    await writePluginSelection(selection)
+    return activate(candidate, { id, packageId: id, version: entry.version, packageIds: [...closure.keys()] })
   }
 
   async function normalizeComposition(candidate, removed) {
     const file = join(candidate, 'package.json')
     const manifest = await json(file)
-    const disabled = new Set(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : [])
+    const selection = await readPluginSelection()
+    const disabled = new Set([...selection.disabled, ...(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : [])])
     const bundles = []
     for (const id of manifest.dsh.profile.bundles) {
       const packageManifest = await json(join(candidate, 'node_modules', id, 'package.json')).catch(() => undefined)
       bundles.push(...(packageManifest?.zerowall?.composition ?? [id]))
     }
-    manifest.dsh.profile.bundles = [...new Set(bundles)].filter(id => id !== removed && !disabled.has(id))
+    manifest.dsh.profile.bundles = [...new Set(bundles)].filter(id => id !== removed && !disabled.has(id) && !selection.removed.has(id))
+    manifest.zerowall = { ...manifest.zerowall, disabledPlugins: [...disabled].sort() }
     await atomic(file, manifest)
   }
 
@@ -146,19 +240,21 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const generation = 'zerowall-' + randomUUID()
     const candidate = join(profiles, generation)
     await mkdir(candidate, { recursive: true })
-    for (const name of await readdir(active)) {
-      if (name === 'node_modules' || name.startsWith('.')) continue
-      await cp(join(active, name), join(candidate, name), { recursive: true })
-    }
+    await copyProfileSkeleton(active, candidate)
     const file = join(candidate, 'package.json')
     const manifest = await json(file)
-    const disabled = new Set(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : [])
+    const selection = await readPluginSelection()
+    const disabled = new Set([...selection.disabled, ...(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : [])])
     if (enabled) {
       disabled.delete(id)
+      selection.removed.delete(id)
       if (!manifest.dsh?.profile?.bundles?.includes(id)) manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...(manifest.dsh?.profile?.bundles ?? []), id] } }
-    } else disabled.add(id)
+    } else { disabled.add(id); selection.removed.delete(id) }
+    selection.disabled = disabled
+    await writePluginSelection(selection)
     manifest.zerowall = { ...manifest.zerowall, disabledPlugins: [...disabled].sort() }
     await atomic(file, manifest)
+    await runPlugin(['install'], generation)
     await normalizeComposition(candidate)
     return activate(candidate, { operation: enabled ? 'enable' : 'disable', packageId: id, enabled })
   }
@@ -177,6 +273,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       await rename(candidate, active)
       await startHost()
       await atomic(journal, { state: completionState, backup, ...metadata })
+      await recordPluginGeneration(metadata, backup)
       return { ...metadata, restarted: true, rollbackSupported: true }
     } catch (error) {
       if (backedUp) {
@@ -195,13 +292,20 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const generation = 'zerowall-' + randomUUID()
     const candidate = join(profiles, generation)
     await mkdir(candidate, { recursive: true })
-    for (const name of await readdir(active)) {
-      if (name === 'node_modules' || name.startsWith('.')) continue
-      await cp(join(active, name), join(candidate, name), { recursive: true })
-    }
+    await copyProfileSkeleton(active, candidate)
     const manifest = await json(join(candidate, 'package.json'))
+    if (args[0] === 'remove' && args[1]) {
+      const selection = await readPluginSelection()
+      selection.removed.add(args[1])
+      selection.disabled.delete(args[1])
+      await writePluginSelection(selection)
+    }
     if (args[0] === 'remove' && args.length === 2 && !manifest.dependencies?.[args[1]]) {
       manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => name !== args[1])
+      const selection = await readPluginSelection()
+      selection.removed.add(args[1])
+      selection.disabled.delete(args[1])
+      await writePluginSelection(selection)
       await atomic(join(candidate, 'package.json'), manifest)
       if (Object.keys(manifest.dependencies ?? {}).length) await runPlugin(['install'], generation)
     } else await runPlugin(args, generation)
@@ -218,9 +322,27 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
 
   async function rollbackPlugin(id) {
     if (typeof id !== 'string' || id.length === 0) throw new Error('Invalid plugin identity')
-    const previous = await json(journal)
-    if (previous.state !== 'complete' || previous.packageId !== id || !await exists(previous.backup)) throw new Error('No previous generation is available for this plugin')
-    return rollback()
+    const file = join(pluginStateRoot, encodeURIComponent(id), 'history.json')
+    const history = await json(file).catch(error => {
+      if (error.code === 'ENOENT') return { records: [] }
+      throw error
+    })
+    const installed = await packageVersion(active, id)
+    const records = (history.records ?? []).filter(record => record.id === id && record.profile && record.version && record.version !== installed?.version)
+    let previous
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      if (await exists(records[index].profile)) { previous = records[index]; break }
+    }
+    if (!previous) throw new Error('No previous generation is available for this plugin')
+    const generation = 'zerowall-' + randomUUID()
+    const candidate = join(profiles, generation)
+    await copyProfileSkeleton(active, candidate)
+    // Rollback is a surgical profile change. Keep every other installed
+    // package from the active generation so updating A cannot remove B.
+    await cp(join(active, 'node_modules'), join(candidate, 'node_modules'), { recursive: true }).catch(error => { if (error.code !== 'ENOENT') throw error })
+    await restorePluginGeneration(candidate, previous.profile, previous.packageIds, id)
+    await normalizeComposition(candidate)
+    return activate(candidate, { operation: 'rollback', packageId: id, version: previous.version, rollback: true, packageIds: previous.packageIds }, 'rolled-back')
   }
 
   async function resource(kind, id, source) {
@@ -233,7 +355,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (entry.role === 'server-bundle') {
         if (entry.runtime !== 'node' || typeof entry.server?.serverName !== 'string') throw new Error('Unsupported MCP server bundle')
         const { extractBundle } = await import('./skill-archive.mjs')
-        const folder = await extractBundle(file, join(root, 'mcp', entry.id, entry.sha256), entry.entrypoint)
+        const folder = await extractBundle(file, join(root, 'mcp', encodeURIComponent(entry.id), entry.sha256), entry.entrypoint)
         const existing = (await callHost('mcp.list', [])).find(item => item.serverName === entry.server.serverName)
         const changes = { command: process.execPath, args: [join(folder, entry.entrypoint)] }
         let activated
@@ -253,7 +375,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
             }
             if (!ready) throw new Error('Updated MCP server activation timed out')
           }
-          await atomic(join(root, 'mcp', entry.id, 'current.json'), { id, version: entry.version, sha256: entry.sha256, folder, previous: existing ? { command: existing.command, args: existing.args } : undefined })
+          const currentFile = join(root, 'mcp', encodeURIComponent(entry.id), 'current.json')
+          const oldReceipt = await json(currentFile).catch(() => undefined)
+          const historyFile = join(root, 'mcp', encodeURIComponent(entry.id), 'history.json')
+          const history = await json(historyFile).catch(() => ({ records: [] }))
+          if (oldReceipt?.version) history.records = [...(history.records ?? []), { ...oldReceipt, command: oldReceipt.command ?? oldReceipt.previous?.command, args: oldReceipt.args ?? oldReceipt.previous?.args }].slice(-12)
+          await atomic(historyFile, history)
+          await atomic(currentFile, { id, version: entry.version, sha256: entry.sha256, folder, command: changes.command, args: changes.args, previous: existing ? { command: existing.command, args: existing.args } : undefined })
           return { id, version: entry.version, generation: entry.sha256, rollbackSupported: true }
         } catch (error) {
           if (existing) await callHost('mcp.edit', [{ id: existing.id, changes: { command: existing.command, args: existing.args } }])
@@ -295,38 +423,59 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     return { updated: result.length, results: result }
   }
 
-  async function check(kind, source) {
+  async function check(kind, source, options = {}) {
     if (!['plugin', 'skill', 'mcp'].includes(kind)) throw new Error('Unsupported resource kind')
-    const document = await catalog(source ?? `${feedBase}/${kind}-latest.json`)
+    let document
+    let catalogError
+    try { if (!options.localOnly) document = await catalog(source ?? `${feedBase}/${kind}-latest.json`) }
+    catch (error) { catalogError = error instanceof Error ? error.message : 'Catalog check failed' }
+    const entries = document?.resources?.filter(item => item.kind === kind) ?? []
     if (kind === 'plugin') {
       const manifest = await json(join(active, 'package.json'))
-      const ids = new Set(manifest.dsh?.profile?.bundles ?? [])
+      const selection = await readPluginSelection()
+      for (const id of manifest.zerowall?.disabledPlugins ?? []) selection.disabled.add(id)
+      const ids = new Set([...entries.map(item => item.id), ...(manifest.dsh?.profile?.bundles ?? [])])
       const resources = []
-      for (const entry of document.resources.filter(item => item.kind === 'plugin' && ids.has(item.id))) {
-        const installed = await json(join(active, 'node_modules', entry.id, 'package.json')).catch(() => undefined)
-        resources.push({ id: entry.id, version: entry.version, installedVersion: installed?.version, updateAvailable: Boolean(installed && compareVersions(entry.version, installed.version) > 0), source: installed ? 'profile' : 'bundled', signed: true, restartRequired: entry.restartRequired, rollbackSupported: entry.rollbackSupported })
+      for (const id of ids) {
+        const entry = entries.find(item => item.id === id)
+        const installed = await packageVersion(active, id)
+        const activeVersion = installed?.version
+        const installedState = selection.removed.has(id) ? 'removed' : selection.disabled.has(id) ? 'disabled' : installed ? 'profile' : 'bundled'
+        resources.push({ id, version: entry?.version ?? activeVersion ?? 'unknown', installedVersion: activeVersion, updateAvailable: Boolean(entry && activeVersion && compareVersions(entry.version, activeVersion) > 0), source: installedState, signed: Boolean(entry), restartRequired: entry?.restartRequired ?? true, rollbackSupported: Boolean(entry?.rollbackSupported || (await json(join(pluginStateRoot, encodeURIComponent(id), 'history.json')).catch(() => undefined))?.records?.length), enabled: !selection.disabled.has(id) && !selection.removed.has(id) })
       }
-      return { kind, checkedAt: new Date().toISOString(), resources }
+      return { kind, checkedAt: new Date().toISOString(), resources, ...(catalogError ? { error: catalogError } : {}) }
     }
     const installed = kind === 'skill' ? await callHost('skill.list', []) : await callHost('mcp.list', [])
+    const local = installed.map(item => ({ item, id: kind === 'mcp' ? item.serverName : item.name }))
     const resources = []
-    for (const entry of document.resources.filter(item => item.kind === kind)) {
-      const identity = entry.server?.serverName ?? entry.id
-      const current = installed.find(item => (kind === 'mcp' ? item.serverName : item.name) === identity)
+    for (const { item, id } of local) {
+      const entry = entries.find(record => (record.server?.serverName ?? record.id) === id)
       let installedVersion
-      if (kind === 'skill' && current) installedVersion = (await callHost('skill.get', [identity]).catch(() => undefined))?.declaredVersion
-      resources.push({ id: entry.id, version: entry.version, installedVersion, updateAvailable: Boolean(current && installedVersion && compareVersions(entry.version, installedVersion) > 0), source: current ? 'profile' : 'catalog', signed: true, restartRequired: entry.restartRequired, rollbackSupported: entry.rollbackSupported })
+      if (kind === 'skill') installedVersion = item.declaredVersion ?? (await callHost('skill.get', [id]).catch(() => undefined))?.declaredVersion
+      else installedVersion = (await json(join(root, 'mcp', encodeURIComponent(id), 'current.json')).catch(() => undefined))?.version
+      resources.push({ id, version: entry?.version ?? installedVersion ?? 'unknown', installedVersion, updateAvailable: Boolean(entry && installedVersion && compareVersions(entry.version, installedVersion) > 0), source: 'profile', signed: Boolean(entry), restartRequired: entry?.restartRequired ?? kind === 'mcp', rollbackSupported: Boolean(entry?.rollbackSupported) })
     }
-    return { kind, checkedAt: new Date().toISOString(), resources }
+    for (const entry of entries) {
+      const identity = entry.server?.serverName ?? entry.id
+      if (resources.some(item => item.id === identity)) continue
+      resources.push({ id: identity, version: entry.version, source: 'catalog', signed: true, restartRequired: entry.restartRequired, rollbackSupported: entry.rollbackSupported })
+    }
+    return { kind, checkedAt: new Date().toISOString(), resources, ...(catalogError ? { error: catalogError } : {}) }
   }
   async function rollbackMcp(id) {
     if (!/^[a-zA-Z0-9._-]{1,100}$/.test(id) || id === '.' || id === '..') throw new Error('Invalid MCP resource identity')
-    const file = join(root, 'mcp', id, 'current.json')
+    const file = join(root, 'mcp', encodeURIComponent(id), 'current.json')
+    const historyFile = join(root, 'mcp', encodeURIComponent(id), 'history.json')
     const current = await json(file)
-    if (!current.previous) throw new Error('No previous MCP generation is available')
-    await callHost('mcp.edit', [{ id: current.id, changes: current.previous }])
-    await atomic(file, { ...current, previous: undefined, rolledBack: true })
-    return { id: current.id, rolledBack: true }
+    const history = await json(historyFile).catch(() => ({ records: [] }))
+    const previous = (history.records ?? []).at(-1) ?? (current.previous ? { ...current, ...current.previous } : undefined)
+    if (!previous?.previous && !previous?.command) throw new Error('No previous MCP generation is available')
+    const changes = previous.command ? { command: previous.command, args: previous.args } : previous.previous
+    await callHost('mcp.edit', [{ id: current.id, changes }])
+    history.records = (history.records ?? []).slice(0, -1)
+    await atomic(historyFile, history)
+    await atomic(file, { ...current, version: previous.version, sha256: previous.sha256, folder: previous.folder, previous: undefined, rolledBack: true })
+    return { id: current.id, version: previous.version, rolledBack: true }
   }
-  return { recover: () => exclusive(recover), catalog, check: (kind, source) => exclusive(() => check(kind, source)), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => rollbackPlugin(id)), setPluginEnabled: (id, enabled) => exclusive(() => setPluginEnabled(id, enabled)), mutate: args => exclusive(() => mutate(args)), plugin: (id, source) => exclusive(() => plugin(id, source)), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
+  return { recover: () => exclusive(recover), catalog, check: (kind, source) => exclusive(() => check(kind, source)), list: kind => exclusive(() => check(kind, undefined, { localOnly: true })), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => rollbackPlugin(id)), setPluginEnabled: (id, enabled) => exclusive(() => setPluginEnabled(id, enabled)), mutate: args => exclusive(() => mutate(args)), plugin: (id, source) => exclusive(() => plugin(id, source)), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
 }

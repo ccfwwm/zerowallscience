@@ -105,7 +105,7 @@ export interface ResourceCheckItem {
   rollbackSupported?: boolean
 }
 export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; error?: string }
-export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; error?: string; result?: unknown; createdAt: string; updatedAt: string }
+export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
 
 export interface ZeroWallDesktopApi {
   restart?(): Promise<boolean>
@@ -144,7 +144,7 @@ export interface ZeroWallDesktopApi {
     status?(): Promise<{ checkedAt: string; results: ResourceCheckResult[] }>
     update(kind: ResourceKind, id?: string): Promise<unknown>
     rollback(kind: ResourceKind, id: string): Promise<unknown>
-    startJob(kind: ResourceKind, action: string, id?: string): Promise<{ taskId: string }>
+    startJob(kind: ResourceKind, action: string, id?: string, source?: string): Promise<{ taskId: string }>
     getJob(taskId: string): Promise<ResourceJob | undefined>
     listJobs(): Promise<ResourceJob[]>
     cancelJob(taskId: string): Promise<ResourceJob | undefined>

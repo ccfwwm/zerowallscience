@@ -31,6 +31,7 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-publications',
   '@zerowallscience/plugin-skills',
   '@zerowallscience/plugin-reviewer',
+  '@zerowallscience/plugin-extension-center',
 ] as const
 
 export interface ZeroWallProfileSource {

@@ -55,13 +55,14 @@ async function run() {
   const qualified = id => aliases[id] ?? (id?.startsWith('@') || id?.startsWith('dsh-') ? id : `@zerowallscience/${id?.startsWith('plugin-') ? id : `plugin-${id}`}`)
   if (group === 'plugin') {
     if (command === 'check') return invoke('resource.catalog.check', ['plugin', catalog])
-    if (command === 'rollback') return args[0] ? invoke('resource.rollback', ['plugin', qualified(args[0])]) : invoke('resource.rollback')
+    if (command === 'rollback') return args[0] ? invoke('resource.plugin.rollback', [qualified(args[0])]) : invoke('resource.rollback')
+    if (command === 'update' && args[0]) return invoke('resource.plugin.update', [qualified(args[0]), catalog])
     if (command === 'update' && !args[0]) return invoke('resource.update', ['plugin', catalog])
     if (command === 'add' && args[0] && !args[0].endsWith('.tgz') && !args[0].includes(':')) return invoke('resource.plugin', [qualified(args[0]), catalog])
     if ((catalog || command === 'update') && ['add', 'update'].includes(command) && args[0]) return invoke('resource.plugin', [qualified(args[0]), catalog])
     if (args[0] && !args[0].endsWith('.tgz') && !args[0].includes(':')) args[0] = qualified(args[0])
-    const commands = { list: 'list', add: 'add', remove: 'remove', update: 'update', repair: 'install' }
-    if (!Object.hasOwn(commands, command)) throw new Error('插件操作支持 list/add/remove/update/repair')
+    const commands = { list: 'list', add: 'add', remove: 'remove', update: 'update', repair: 'install', enable: 'enable', disable: 'disable' }
+    if (!Object.hasOwn(commands, command)) throw new Error('插件操作支持 list/add/remove/update/repair/enable/disable')
     return invoke('plugin.run', [commands[command], ...args])
   }
   if (group === 'python' && ['status', 'install', 'update', 'rollback'].includes(command)) return invoke(`python.${command}`, catalog ? [catalog] : [])
@@ -72,7 +73,8 @@ async function run() {
   }
   if (group === 'skill') {
     if (command === 'check') return invoke('resource.catalog.check', ['skill', catalog])
-    if (command === 'rollback' && args[0]) return invoke('skill.rollback', [args[0]])
+    if (command === 'rollback' && args[0]) return invoke('resource.skill.rollback', [args[0]])
+    if (command === 'update' && args[0] && !catalog) return invoke('resource.skill.update', [args[0]])
     if (command === 'update' && !args[0]) return invoke('resource.update', ['skill', catalog])
     if (catalog && command === 'update' && args[0]) return invoke('resource.import', ['skill', args[0], catalog])
     if (command === 'list') return invoke('skill.list')
@@ -87,6 +89,7 @@ async function run() {
     if (command === 'list') return invoke('mcp.list')
     if (command === 'add') return invoke('mcp.add', [JSON.parse(await stdin())])
     if (['enable', 'disable', 'stop', 'start'].includes(command) && args[0]) return invoke(`mcp.${['enable', 'start'].includes(command) ? 'enable' : 'disable'}`, [{ id: args[0], changes: { enabled: ['enable', 'start'].includes(command) } }])
+    if (command === 'update' && args[0] && !catalog) return invoke('resource.mcp.update', [args[0]])
     if (command === 'update' && !args[0]) return invoke('resource.update', ['mcp', catalog])
     if (catalog && command === 'update' && args[0]) return invoke('resource.import', ['mcp', args[0], catalog])
     if (['update', 'restart', 'remove'].includes(command) && args[0]) return invoke(`mcp.${command}`, [args[0]])

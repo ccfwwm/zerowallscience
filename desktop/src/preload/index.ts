@@ -71,7 +71,7 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
     status: async (): Promise<{ checkedAt: string; results: ResourceCheckResult[] }> => await ipcRenderer.invoke('desktop:resource-status') as { checkedAt: string; results: ResourceCheckResult[] },
     update: async (kind: ResourceKind, id?: string): Promise<unknown> => await ipcRenderer.invoke('desktop:resource-update', kind, id) as unknown,
     rollback: async (kind: ResourceKind, id: string): Promise<unknown> => await ipcRenderer.invoke('desktop:resource-rollback', kind, id) as unknown,
-    startJob: async (kind: ResourceKind, action: string, id?: string): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:resource-job-start', kind, action, id) as { taskId: string },
+    startJob: async (kind: ResourceKind, action: string, id?: string, source?: string): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:resource-job-start', kind, action, id, source) as { taskId: string },
     getJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-get', taskId) as ResourceJob | undefined,
     statusJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-status', taskId) as ResourceJob | undefined,
     listJobs: async (): Promise<ResourceJob[]> => await ipcRenderer.invoke('desktop:resource-job-list') as ResourceJob[],

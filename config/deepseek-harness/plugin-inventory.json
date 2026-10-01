@@ -69,7 +69,8 @@
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
         "@zerowallscience/plugin-skills",
-        "@zerowallscience/plugin-reviewer"
+        "@zerowallscience/plugin-reviewer",
+        "@zerowallscience/plugin-extension-center"
       ]
     },
     "preview": {
@@ -107,7 +108,8 @@
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
         "@zerowallscience/plugin-skills",
-        "@zerowallscience/plugin-reviewer"
+        "@zerowallscience/plugin-reviewer",
+        "@zerowallscience/plugin-extension-center"
       ]
     },
     "stable": {
@@ -145,7 +147,8 @@
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
         "@zerowallscience/plugin-skills",
-        "@zerowallscience/plugin-reviewer"
+        "@zerowallscience/plugin-reviewer",
+        "@zerowallscience/plugin-extension-center"
       ]
     }
   },
@@ -733,6 +736,29 @@
       ],
       "optionalServices": [],
       "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-reviewer"
+    },
+    {
+      "id": "extension-center",
+      "package": "@zerowallscience/plugin-extension-center",
+      "version": "0.1.0",
+      "source": "plugins/extension-center",
+      "manifest": "plugins/extension-center/zerowall.plugin.json",
+      "client": true,
+      "remote": false,
+      "loadOrder": 33,
+      "capabilities": [
+        "resource-management",
+        "plugin-updates",
+        "skill-updates",
+        "mcp-updates"
+      ],
+      "permissions": [
+        "files",
+        "network"
+      ],
+      "requiredServices": [],
+      "optionalServices": [],
+      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-extension-center"
     }
   ],
   "sharedPackages": [

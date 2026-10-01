@@ -221,3 +221,6 @@
         dmPolicy: open
         groupPolicy: allowlist
         groups: []
+
+    - id: zerowall-extension-center
+      name: '@zerowallscience/plugin-extension-center'

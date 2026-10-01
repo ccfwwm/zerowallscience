@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
-import { access, appendFile, cp, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { access, appendFile, cp, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
@@ -679,28 +679,40 @@ if (ownsInstance) app.whenReady().then(async () => {
     stopHost: () => harnessRuntime.stop(), startHost, callHost, yaml: createRequire(app.isPackaged ? join(process.resourcesPath, 'app.asar/package.json') : join(findWorkspaceRoot(), 'package.json'))('yaml') })
   await resources.recover()
   type ResourceKind = 'plugin' | 'skill' | 'mcp'
-  type ResourceJob = { taskId: string; kind: ResourceKind; id?: string; action: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; error?: string; result?: unknown; createdAt: string; updatedAt: string }
+  type ResourceJob = { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
   const resourceJobRoot = join(userData, 'harness', 'resources', 'jobs')
   const resourceJobs = new Map<string, ResourceJob>()
+  const safeResourceError = (error: unknown): string => {
+    const message = error instanceof Error ? error.message : 'Resource operation failed'
+    return message.replace(/(token|secret|password|authorization|api[-_]?key)\s*[:=]\s*[^\s,;]+/giu, '$1=[redacted]').slice(0, 500)
+  }
   const persistResourceJob = async (job: ResourceJob): Promise<void> => {
     resourceJobs.set(job.taskId, job)
     await mkdir(resourceJobRoot, { recursive: true })
-    await writeFile(join(resourceJobRoot, `${job.taskId}.json`), JSON.stringify(job, null, 2), { mode: 0o600 })
+    const file = join(resourceJobRoot, `${job.taskId}.json`)
+    const tmp = `${file}.${randomUUID()}.tmp`
+    await writeFile(tmp, JSON.stringify(job, null, 2), { mode: 0o600 })
+    await rename(tmp, file)
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:resource-job', job)
   }
-  const resourceAction = async (kind: ResourceKind, action: string, id?: string): Promise<unknown> => {
-    if (action === 'check') return resources.check(kind)
+  const resourceAction = async (kind: ResourceKind, action: string, id?: string, source?: string): Promise<unknown> => {
+    if (action === 'check') return resources.check(kind, source)
+    if (action === 'list') return resources.list(kind)
     if (action === 'update') {
-      if (id === undefined) return resources.update(kind)
-      if (kind === 'plugin') return resources.plugin(id)
-      return resources.resource(kind, id)
+      if (id === undefined) return resources.update(kind, source)
+      if (kind === 'plugin') return resources.plugin(id, source)
+      return resources.resource(kind, id, source)
     }
     if (action === 'rollback') {
       if (kind === 'plugin') return resources.rollbackPlugin(id)
       if (kind === 'mcp') return resources.rollbackMcp(id)
       return callHost('skill.rollback', [id])
     }
-    if (kind === 'plugin' && ['remove', 'enable', 'disable', 'repair'].includes(action)) {
+    if (kind === 'plugin' && ['install', 'import', 'remove', 'enable', 'disable', 'repair'].includes(action)) {
+      if ((action === 'install' || action === 'import') && id !== undefined) {
+        if (source && !/^https?:\/\//u.test(source) && /\.(?:tgz|tar\.gz|tar)$/iu.test(source)) return resources.mutate(['add', source])
+        return resources.plugin(id, source)
+      }
       if (action === 'repair') return resources.mutate(['install'])
       if (id === undefined) throw new Error('Resource identity is required')
       if (action === 'enable') return resources.setPluginEnabled(id, true)
@@ -710,34 +722,45 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (kind === 'skill') {
       if (action === 'list') return callHost('skill.list', [])
       if (action === 'remove') return callHost('skill.remove', [id])
+      if (action === 'import') return callHost('skill.import', [{ sourcePath: source ?? id }])
       if (action === 'enable' || action === 'disable') return callHost('skill.enable', [id, action === 'enable'])
     }
     if (kind === 'mcp') {
       if (action === 'list') return callHost('mcp.list', [])
       if (action === 'remove') return callHost('mcp.remove', [id])
+      if (action === 'import' && source) {
+        const template = JSON.parse(await readFile(source, 'utf8'))
+        return callHost('mcp.add', [template])
+      }
       if (action === 'restart') return callHost('mcp.restart', [id])
       if (action === 'enable' || action === 'disable') return callHost('mcp.edit', [{ id, changes: { enabled: action === 'enable' } }])
     }
     throw new Error(`Unsupported resource action: ${kind}/${action}`)
   }
-  const startResourceJob = async (kind: ResourceKind, action: string, id?: string): Promise<{ taskId: string }> => {
+  const startResourceJob = async (kind: ResourceKind, action: string, id?: string, source?: string, retryOf?: string, retries = 0): Promise<{ taskId: string }> => {
     if (!['plugin', 'skill', 'mcp'].includes(kind) || !/^[a-z][a-z-]{1,30}$/u.test(action)) throw new Error('Invalid resource job')
     const now = new Date().toISOString()
     const taskId = randomUUID()
-    const job: ResourceJob = { taskId, kind, ...(id === undefined ? {} : { id }), action, status: 'queued', phase: 'queued', progress: 0, createdAt: now, updatedAt: now }
+    const oldVersion = id ? (await resources.list(kind).catch(() => undefined))?.resources.find((item: { id: string; installedVersion?: string }) => item.id === id)?.installedVersion : undefined
+    const job: ResourceJob = { taskId, kind, ...(id === undefined ? {} : { id }), ...(source === undefined ? {} : { source }), action, status: 'queued', phase: 'queued', progress: 0, oldVersion, retries, ...(retryOf === undefined ? {} : { retryOf }), createdAt: now, updatedAt: now }
     await persistResourceJob(job)
     void (async () => {
-      const running: ResourceJob = { ...job, status: 'running', phase: 'running', progress: 10, updatedAt: new Date().toISOString() }
+      const queued = resourceJobs.get(taskId)
+      if (queued?.cancelRequested || queued?.status === 'cancelled') { await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() }); return }
+      const running: ResourceJob = { ...job, status: 'running', phase: 'preparing', progress: 10, updatedAt: new Date().toISOString() }
       await persistResourceJob(running)
       try {
-        const result = await resourceAction(kind, action, id)
+        await persistResourceJob({ ...running, phase: 'applying', progress: 35, updatedAt: new Date().toISOString() })
+        const result = await resourceAction(kind, action, id, source)
         const latest = resourceJobs.get(taskId)
-        if (latest?.status === 'cancelled') return
-        await persistResourceJob({ ...running, status: 'succeeded', phase: 'complete', progress: 100, result, updatedAt: new Date().toISOString() })
+        const newVersion = id ? (await resources.list(kind).catch(() => undefined))?.resources.find((item: { id: string; installedVersion?: string }) => item.id === id)?.installedVersion : undefined
+        await persistResourceJob({ ...running, status: 'succeeded', phase: 'health-check', progress: 90, newVersion, result, updatedAt: new Date().toISOString() })
+        if (latest?.cancelRequested) await persistResourceJob({ ...running, status: 'succeeded', phase: 'complete', progress: 100, newVersion, result, error: 'Cancellation requested after activation; result retained', updatedAt: new Date().toISOString() })
+        else await persistResourceJob({ ...running, status: 'succeeded', phase: 'complete', progress: 100, newVersion, result, updatedAt: new Date().toISOString() })
       } catch (error) {
         const latest = resourceJobs.get(taskId)
         if (latest?.status === 'cancelled') return
-        await persistResourceJob({ ...running, status: 'failed', phase: 'failed', progress: 100, error: error instanceof Error ? error.message.slice(0, 500) : 'Resource operation failed', updatedAt: new Date().toISOString() })
+        await persistResourceJob({ ...running, status: 'failed', phase: 'failed', progress: 100, error: safeResourceError(error), updatedAt: new Date().toISOString() })
       }
     })()
     return { taskId }
@@ -745,7 +768,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   const retryResourceJob = async (taskId: string): Promise<{ taskId: string }> => {
     const previous = resourceJobs.get(taskId)
     if (previous === undefined || !['failed', 'cancelled'].includes(previous.status)) throw new Error('Only failed or cancelled resource tasks can be retried')
-    return startResourceJob(previous.kind, previous.action, previous.id)
+    return startResourceJob(previous.kind, previous.action, previous.id, previous.source, previous.taskId, (previous.retries ?? 0) + 1)
   }
   const loadResourceJobs = async (): Promise<void> => {
     const entries = await readdir(resourceJobRoot, { withFileTypes: true }).catch(() => [])
@@ -753,7 +776,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       if (!entry.isFile() || !entry.name.endsWith('.json')) continue
       try {
         const job = JSON.parse(await readFile(join(resourceJobRoot, entry.name), 'utf8')) as ResourceJob
-        if (job.status === 'queued' || job.status === 'running') { job.status = 'failed'; job.error = 'Desktop restarted before the resource task completed'; job.updatedAt = new Date().toISOString() }
+        if (job.status === 'queued' || job.status === 'running') { job.status = 'failed'; job.phase = 'interrupted'; job.error = 'Desktop restarted before the resource task completed'; job.retries = job.retries ?? 0; job.updatedAt = new Date().toISOString(); await persistResourceJob(job) }
         resourceJobs.set(job.taskId, job)
       } catch { /* incomplete receipt */ }
     }
@@ -770,13 +793,14 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (request.operation === 'resource.plugin') return resources.plugin(String(request.args[0]), request.args[1] === undefined ? undefined : String(request.args[1]))
     if (request.operation === 'resource.catalog.check') return resources.check(String(request.args[0]) as ResourceKind, request.args[1] === undefined ? undefined : String(request.args[1]))
     if (request.operation === 'resource.catalog.status') return Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind)))
-    if (request.operation === 'resource.job.start') return startResourceJob(String(request.args[0]) as ResourceKind, String(request.args[1]), request.args[2] === undefined ? undefined : String(request.args[2]))
+    if (request.operation === 'resource.job.start') return startResourceJob(String(request.args[0]) as ResourceKind, String(request.args[1]), request.args[2] === undefined ? undefined : String(request.args[2]), request.args[3] === undefined ? undefined : String(request.args[3]))
     if (request.operation === 'resource.job.get' || request.operation === 'resource.job.status') return resourceJobs.get(String(request.args[0]))
     if (request.operation === 'resource.job.list') return [...resourceJobs.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     if (request.operation === 'resource.job.retry') return retryResourceJob(String(request.args[0]))
     if (request.operation === 'resource.job.cancel') {
       const job = resourceJobs.get(String(request.args[0]))
-      if (job && ['queued', 'running'].includes(job.status)) await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
+      if (job?.status === 'queued') await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
+      else if (job?.status === 'running') await persistResourceJob({ ...job, phase: 'cancellation-requested', cancelRequested: true, updatedAt: new Date().toISOString() })
       return resourceJobs.get(String(request.args[0]))
     }
     if (request.operation === 'resource.rollback') return request.args[0] === 'plugin' ? resources.rollbackPlugin(String(request.args[1])) : resources.rollback()
@@ -786,7 +810,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (request.operation.startsWith('resource.plugin.')) {
       const action = request.operation.slice('resource.plugin.'.length)
       const id = request.args[0] === undefined ? undefined : String(request.args[0])
-      if (action === 'list') return resources.check('plugin')
+      if (action === 'list') return resources.list('plugin')
       if (action === 'install') return resources.plugin(id ?? (() => { throw new Error('Plugin identity is required') })(), request.args[1] === undefined ? undefined : String(request.args[1]))
       if (action === 'update') return id === undefined ? resources.update('plugin', request.args[1] === undefined ? undefined : String(request.args[1])) : resources.plugin(id, request.args[1] === undefined ? undefined : String(request.args[1]))
       if (action === 'rollback') return resources.rollbackPlugin(id ?? (() => { throw new Error('Plugin identity is required') })())
@@ -796,7 +820,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       const action = request.operation.slice('resource.skill.'.length)
       const id = request.args[0] === undefined ? undefined : String(request.args[0])
       if (action === 'list') return callHost('skill.list', [])
-      if (action === 'import') return resources.resource('skill', id ?? (() => { throw new Error('Skill identity is required') })(), request.args[1] === undefined ? undefined : String(request.args[1]))
+      if (action === 'import') return resourceAction('skill', 'import', id, request.args[1] === undefined ? undefined : String(request.args[1]))
       if (action === 'update') return id === undefined ? resources.update('skill', request.args[1] === undefined ? undefined : String(request.args[1])) : resources.resource('skill', id, request.args[1] === undefined ? undefined : String(request.args[1]))
       if (action === 'rollback') return callHost('skill.rollback', [id])
       return resourceAction('skill', action, id)
@@ -805,7 +829,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       const action = request.operation.slice('resource.mcp.'.length)
       const id = request.args[0] === undefined ? undefined : String(request.args[0])
       if (action === 'list') return callHost('mcp.list', [])
-      if (action === 'import') return resources.resource('mcp', id ?? (() => { throw new Error('MCP identity is required') })(), request.args[1] === undefined ? undefined : String(request.args[1]))
+      if (action === 'import') return resourceAction('mcp', 'import', id, request.args[1] === undefined ? undefined : String(request.args[1]))
       if (action === 'update') return id === undefined ? resources.update('mcp', request.args[1] === undefined ? undefined : String(request.args[1])) : resources.resource('mcp', id, request.args[1] === undefined ? undefined : String(request.args[1]))
       if (action === 'rollback') return resources.rollbackMcp(id ?? (() => { throw new Error('MCP identity is required') })())
       return resourceAction('mcp', action, id)
@@ -1058,14 +1082,15 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:resource-status', async () => ({ checkedAt: new Date().toISOString(), results: await Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind))) }))
   ipcMain.handle('desktop:resource-update', (_event, kind: unknown, id?: unknown) => resourceAction(String(kind) as ResourceKind, 'update', typeof id === 'string' ? id : undefined))
   ipcMain.handle('desktop:resource-rollback', (_event, kind: unknown, id: unknown) => resourceAction(String(kind) as ResourceKind, 'rollback', String(id)))
-  ipcMain.handle('desktop:resource-job-start', (_event, kind: unknown, action: unknown, id?: unknown) => startResourceJob(String(kind) as ResourceKind, String(action), typeof id === 'string' ? id : undefined))
+  ipcMain.handle('desktop:resource-job-start', (_event, kind: unknown, action: unknown, id?: unknown, source?: unknown) => startResourceJob(String(kind) as ResourceKind, String(action), typeof id === 'string' ? id : undefined, typeof source === 'string' ? source : undefined))
   ipcMain.handle('desktop:resource-job-get', (_event, taskId: unknown) => resourceJobs.get(String(taskId)))
   ipcMain.handle('desktop:resource-job-status', (_event, taskId: unknown) => resourceJobs.get(String(taskId)))
   ipcMain.handle('desktop:resource-job-list', () => [...resourceJobs.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))
   ipcMain.handle('desktop:resource-job-retry', (_event, taskId: unknown) => retryResourceJob(String(taskId)))
   ipcMain.handle('desktop:resource-job-cancel', async (_event, taskId: unknown) => {
     const job = resourceJobs.get(String(taskId))
-    if (job && ['queued', 'running'].includes(job.status)) await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
+    if (job?.status === 'queued') await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
+    else if (job?.status === 'running') await persistResourceJob({ ...job, phase: 'cancellation-requested', cancelRequested: true, updatedAt: new Date().toISOString() })
     return resourceJobs.get(String(taskId))
   })
     ipcMain.handle('desktop:mcp-environment:pause', () => mcpEnvironment.pause())
