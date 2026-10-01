@@ -2,6 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 
 const operations: Record<string, { service: string; method: string }> = {
   'skill.list': { service: 'zerowallCapabilities', method: 'listSkills' },
+  'skill.get': { service: 'zerowallCapabilities', method: 'getSkill' },
   'skill.update': { service: 'zerowallCapabilities', method: 'updateSkill' },
   'skill.rollback': { service: 'zerowallCapabilities', method: 'rollbackSkill' },
   'skill.import': { service: 'zerowallCapabilities', method: 'importSkill' },

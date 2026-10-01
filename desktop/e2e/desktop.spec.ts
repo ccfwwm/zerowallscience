@@ -596,7 +596,7 @@ describe('ZeroWall Science Electron', () => {
     await page.getByRole('button', { name: /添加插件/ }).waitFor()
     const bundles = await rpc(page, 'pluginManager/listBundles', {})
     const skills = bundles.find((bundle: { name: string }) => bundle.name === '@zerowallscience/plugin-skills')
-    expect(skills).toMatchObject({ enabled: true, version: '0.1.0' })
+    expect(skills).toMatchObject({ enabled: true, version: '0.2.0' })
     expect(skills.error).toBeUndefined()
     // The official manager shows optional and profile-installed bundles.
     // Default shipped bundles are inspected in Settings' Plugin list above.

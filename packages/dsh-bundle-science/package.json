@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/dsh-bundle-science",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "license": "AGPL-3.0-only",
   "files": [
@@ -13,7 +13,7 @@
   },
   "zerowall": {
     "desktop": {
-      "min": "8.0.1"
+      "min": "8.0.2"
     },
     "dsh": {
       "min": "0.2.0-rc.2",
@@ -25,6 +25,7 @@
       "@zerowallscience/plugin-base",
       "@zerowallscience/plugin-desktop-compat",
       "@zerowallscience/plugin-environment",
+      "@zerowallscience/plugin-extension-center",
       "@zerowallscience/plugin-execution",
       "@zerowallscience/plugin-files",
       "@zerowallscience/plugin-images",
@@ -50,6 +51,7 @@
     "@zerowallscience/plugin-base": "workspace:^",
     "@zerowallscience/plugin-desktop-compat": "workspace:^",
     "@zerowallscience/plugin-environment": "workspace:^",
+    "@zerowallscience/plugin-extension-center": "workspace:^",
     "@zerowallscience/plugin-execution": "workspace:^",
     "@zerowallscience/plugin-files": "workspace:^",
     "@zerowallscience/plugin-images": "workspace:^",

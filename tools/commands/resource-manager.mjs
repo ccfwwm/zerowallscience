@@ -125,19 +125,42 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await writeFile(workspaceFile, yaml.stringify(workspace))
     await runPlugin(['add', archive], generation)
     await normalizeComposition(candidate)
-    return activate(candidate, { id, version: entry.version })
+    return activate(candidate, { id, packageId: id, version: entry.version })
   }
 
   async function normalizeComposition(candidate, removed) {
     const file = join(candidate, 'package.json')
     const manifest = await json(file)
+    const disabled = new Set(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : [])
     const bundles = []
     for (const id of manifest.dsh.profile.bundles) {
       const packageManifest = await json(join(candidate, 'node_modules', id, 'package.json')).catch(() => undefined)
       bundles.push(...(packageManifest?.zerowall?.composition ?? [id]))
     }
-    manifest.dsh.profile.bundles = [...new Set(bundles)].filter(id => id !== removed)
+    manifest.dsh.profile.bundles = [...new Set(bundles)].filter(id => id !== removed && !disabled.has(id))
     await atomic(file, manifest)
+  }
+
+  async function setPluginEnabled(id, enabled) {
+    if (typeof id !== 'string' || !/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) || id.split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid plugin identity')
+    const generation = 'zerowall-' + randomUUID()
+    const candidate = join(profiles, generation)
+    await mkdir(candidate, { recursive: true })
+    for (const name of await readdir(active)) {
+      if (name === 'node_modules' || name.startsWith('.')) continue
+      await cp(join(active, name), join(candidate, name), { recursive: true })
+    }
+    const file = join(candidate, 'package.json')
+    const manifest = await json(file)
+    const disabled = new Set(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : [])
+    if (enabled) {
+      disabled.delete(id)
+      if (!manifest.dsh?.profile?.bundles?.includes(id)) manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...(manifest.dsh?.profile?.bundles ?? []), id] } }
+    } else disabled.add(id)
+    manifest.zerowall = { ...manifest.zerowall, disabledPlugins: [...disabled].sort() }
+    await atomic(file, manifest)
+    await normalizeComposition(candidate)
+    return activate(candidate, { operation: enabled ? 'enable' : 'disable', packageId: id, enabled })
   }
 
   async function activate(candidate, metadata, completionState = 'complete') {
@@ -191,6 +214,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     if (previous.state !== 'complete' || !await exists(previous.backup)) throw new Error('No previous plugin generation is available')
     await activate(ownedBackup(previous.backup), { operation: 'rollback' }, 'rolled-back')
     return { rolledBack: true }
+  }
+
+  async function rollbackPlugin(id) {
+    if (typeof id !== 'string' || id.length === 0) throw new Error('Invalid plugin identity')
+    const previous = await json(journal)
+    if (previous.state !== 'complete' || previous.packageId !== id || !await exists(previous.backup)) throw new Error('No previous generation is available for this plugin')
+    return rollback()
   }
 
   async function resource(kind, id, source) {
@@ -264,6 +294,31 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     for (const entry of document.resources.filter(item => item.kind === kind && names.has(item.server?.serverName ?? item.id))) result.push(await resource(kind, entry.id, source))
     return { updated: result.length, results: result }
   }
+
+  async function check(kind, source) {
+    if (!['plugin', 'skill', 'mcp'].includes(kind)) throw new Error('Unsupported resource kind')
+    const document = await catalog(source ?? `${feedBase}/${kind}-latest.json`)
+    if (kind === 'plugin') {
+      const manifest = await json(join(active, 'package.json'))
+      const ids = new Set(manifest.dsh?.profile?.bundles ?? [])
+      const resources = []
+      for (const entry of document.resources.filter(item => item.kind === 'plugin' && ids.has(item.id))) {
+        const installed = await json(join(active, 'node_modules', entry.id, 'package.json')).catch(() => undefined)
+        resources.push({ id: entry.id, version: entry.version, installedVersion: installed?.version, updateAvailable: Boolean(installed && compareVersions(entry.version, installed.version) > 0), source: installed ? 'profile' : 'bundled', signed: true, restartRequired: entry.restartRequired, rollbackSupported: entry.rollbackSupported })
+      }
+      return { kind, checkedAt: new Date().toISOString(), resources }
+    }
+    const installed = kind === 'skill' ? await callHost('skill.list', []) : await callHost('mcp.list', [])
+    const resources = []
+    for (const entry of document.resources.filter(item => item.kind === kind)) {
+      const identity = entry.server?.serverName ?? entry.id
+      const current = installed.find(item => (kind === 'mcp' ? item.serverName : item.name) === identity)
+      let installedVersion
+      if (kind === 'skill' && current) installedVersion = (await callHost('skill.get', [identity]).catch(() => undefined))?.declaredVersion
+      resources.push({ id: entry.id, version: entry.version, installedVersion, updateAvailable: Boolean(current && installedVersion && compareVersions(entry.version, installedVersion) > 0), source: current ? 'profile' : 'catalog', signed: true, restartRequired: entry.restartRequired, rollbackSupported: entry.rollbackSupported })
+    }
+    return { kind, checkedAt: new Date().toISOString(), resources }
+  }
   async function rollbackMcp(id) {
     if (!/^[a-zA-Z0-9._-]{1,100}$/.test(id) || id === '.' || id === '..') throw new Error('Invalid MCP resource identity')
     const file = join(root, 'mcp', id, 'current.json')
@@ -273,5 +328,5 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await atomic(file, { ...current, previous: undefined, rolledBack: true })
     return { id: current.id, rolledBack: true }
   }
-  return { recover: () => exclusive(recover), catalog, rollbackMcp: id => exclusive(() => rollbackMcp(id)), mutate: args => exclusive(() => mutate(args)), plugin: (id, source) => exclusive(() => plugin(id, source)), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
+  return { recover: () => exclusive(recover), catalog, check: (kind, source) => exclusive(() => check(kind, source)), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => rollbackPlugin(id)), setPluginEnabled: (id, enabled) => exclusive(() => setPluginEnabled(id, enabled)), mutate: args => exclusive(() => mutate(args)), plugin: (id, source) => exclusive(() => plugin(id, source)), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
 }

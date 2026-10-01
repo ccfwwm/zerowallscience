@@ -53,6 +53,22 @@ test('profile migration is idempotent and preserves deliberate plugin removal', 
   assert.deepEqual(JSON.parse(await readFile(file)), manifest)
 })
 
+test('catalog checks are read-only and report a selected plugin update', async () => {
+  const f = await fixture()
+  await initializeProfile(f.home, [f.resource.id])
+  const installed = join(f.home, 'profiles/web/node_modules', f.resource.id)
+  await mkdir(installed, { recursive: true })
+  await writeFile(join(installed, 'package.json'), JSON.stringify({ name: f.resource.id, version: '0.1.0' }))
+  const newer = { ...f.resource, version: '0.2.0' }
+  await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [newer] }, f.privateKey, 'test')))
+  const manager = createResourceManager({ ...f, target, local: true })
+  const before = await readFile(join(f.home, 'profiles/web/package.json'), 'utf8')
+  const result = await manager.check('plugin', f.source)
+  assert.equal(result.resources[0].updateAvailable, true)
+  assert.equal(result.resources[0].installedVersion, '0.1.0')
+  assert.equal(await readFile(join(f.home, 'profiles/web/package.json'), 'utf8'), before)
+})
+
 test('MCP updates match server identity rather than the display name and preserve disabled status', async () => {
   const f = await fixture()
   const template = { name: 'New friendly label', serverName: 'fixture-server', transport: 'streamable-http', url: 'https://example.test/mcp', enabled: true }
@@ -111,6 +127,6 @@ test('failed Host activation restores the old profile, while successful activati
   rejectActivation = false
   await manager.plugin(f.resource.id, f.source)
   assert.equal(JSON.parse(await readFile(file)).testVersion, 'new')
-  await manager.rollback()
+  await manager.rollbackPlugin(f.resource.id)
   assert.equal(JSON.parse(await readFile(file)).testVersion, undefined)
 })

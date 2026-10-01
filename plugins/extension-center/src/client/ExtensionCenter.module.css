@@ -1,0 +1,21 @@
+.root { min-height: 520px; color: var(--dsw-alias-label-primary, #202428); }
+.header { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding-bottom: 16px; }
+.header h2 { margin: 0; font-size: 20px; }
+.header p { margin: 5px 0 0; color: var(--dsw-alias-label-secondary, #687078); font-size: 12px; line-height: 1.5; }
+.primary, .row button { border: 1px solid var(--dsw-alias-border-l2, #d9dee2); border-radius: 6px; padding: 7px 11px; background: var(--dsw-alias-bg-layer-1, #fff); color: inherit; font: inherit; cursor: pointer; }
+.primary { color: #fff; border-color: #315b7d; background: #315b7d; }
+.primary:disabled, .row button:disabled { opacity: .5; cursor: default; }
+.tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--dsw-alias-border-l2, #d9dee2); }
+.tab, .activeTab { border: 0; border-bottom: 2px solid transparent; padding: 10px 14px; background: transparent; color: var(--dsw-alias-label-secondary, #687078); cursor: pointer; font: inherit; }
+.activeTab { border-bottom-color: #315b7d; color: var(--dsw-alias-label-primary, #202428); }
+.message { margin: 14px 0 0; padding: 9px 12px; border-radius: 6px; background: var(--dsw-alias-bg-layer-2, #f7f8f9); font-size: 12px; }
+.meta { display: flex; justify-content: space-between; gap: 12px; padding: 14px 0 8px; color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; }
+.list { display: grid; gap: 8px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 7px; }
+.identity { min-width: 0; }
+.identity strong, .identity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.identity small { margin-top: 4px; color: var(--dsw-alias-label-secondary, #687078); font-size: 10px; }
+.version { color: var(--dsw-alias-label-secondary, #687078); font: 11px ui-monospace, Consolas, monospace; }
+.badge, .badgeUpdate { padding: 3px 7px; border: 1px solid var(--dsw-alias-border-l2, #d9dee2); border-radius: 5px; color: var(--dsw-alias-label-secondary, #687078); font-size: 10px; }
+.badgeUpdate { border-color: rgba(49,91,125,.35); color: #315b7d; background: rgba(49,91,125,.08); }
+.empty { padding: 28px; color: var(--dsw-alias-label-secondary, #687078); text-align: center; font-size: 12px; }

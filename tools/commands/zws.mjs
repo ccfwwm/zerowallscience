@@ -44,12 +44,18 @@ async function run() {
     return { applicationVersion: version, profile: home, ...status }
   }
   if (group === 'update') return invoke('update')
+  if (group === 'extensions') {
+    if (command === 'status') return invoke('resource.catalog.status')
+    if (command === 'check') return invoke('resource.catalog.status')
+    throw new Error('用法：zws extensions status|check')
+  }
   const catalogIndex = args.indexOf('--catalog')
   const catalog = catalogIndex >= 0 ? args.splice(catalogIndex, 2)[1] : undefined
   const aliases = { wechat: 'dsh-wechat', 'plugin-wechat': 'dsh-wechat', notification: '@dingyi222666/dsh-session-notification', science: '@zerowallscience/dsh-bundle-science' }
   const qualified = id => aliases[id] ?? (id?.startsWith('@') || id?.startsWith('dsh-') ? id : `@zerowallscience/${id?.startsWith('plugin-') ? id : `plugin-${id}`}`)
   if (group === 'plugin') {
-    if (command === 'rollback') return invoke('resource.rollback')
+    if (command === 'check') return invoke('resource.catalog.check', ['plugin', catalog])
+    if (command === 'rollback') return args[0] ? invoke('resource.rollback', ['plugin', qualified(args[0])]) : invoke('resource.rollback')
     if (command === 'update' && !args[0]) return invoke('resource.update', ['plugin', catalog])
     if (command === 'add' && args[0] && !args[0].endsWith('.tgz') && !args[0].includes(':')) return invoke('resource.plugin', [qualified(args[0]), catalog])
     if ((catalog || command === 'update') && ['add', 'update'].includes(command) && args[0]) return invoke('resource.plugin', [qualified(args[0]), catalog])
@@ -65,6 +71,7 @@ async function run() {
     if (command === 'delete' && args[0]) return invoke('env.delete', [args[0]])
   }
   if (group === 'skill') {
+    if (command === 'check') return invoke('resource.catalog.check', ['skill', catalog])
     if (command === 'rollback' && args[0]) return invoke('skill.rollback', [args[0]])
     if (command === 'update' && !args[0]) return invoke('resource.update', ['skill', catalog])
     if (catalog && command === 'update' && args[0]) return invoke('resource.import', ['skill', args[0], catalog])
@@ -74,6 +81,7 @@ async function run() {
     if (command === 'remove' && args[0]) return invoke('skill.remove', [args[0]])
   }
   if (group === 'mcp') {
+    if (command === 'check') return invoke('resource.catalog.check', ['mcp', catalog])
     if (command === 'rollback' && args[0]) return invoke('resource.mcp.rollback', [args[0]])
     if (command === 'add' && args[0]) return invoke('resource.import', ['mcp', args[0], catalog])
     if (command === 'list') return invoke('mcp.list')

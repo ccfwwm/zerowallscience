@@ -93,6 +93,20 @@ export interface PythonEnvironmentResponse {
   events?: Array<{ action: string; requestId: string; createdAt: string; status: 'queued' | 'succeeded' | 'failed' | 'running'; message?: string; logLine?: string; taskId?: string; upToDate?: boolean }>
 }
 
+export type ResourceKind = 'plugin' | 'skill' | 'mcp'
+export interface ResourceCheckItem {
+  id: string
+  version: string
+  installedVersion?: string
+  updateAvailable?: boolean
+  source?: string
+  signed?: boolean
+  restartRequired?: boolean
+  rollbackSupported?: boolean
+}
+export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; error?: string }
+export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; error?: string; result?: unknown; createdAt: string; updatedAt: string }
+
 export interface ZeroWallDesktopApi {
   restart?(): Promise<boolean>
   info(): Promise<{ version: string; platform: string; architecture: string }>
@@ -125,5 +139,16 @@ export interface ZeroWallDesktopApi {
   applyMcpPythonPackagePlan?(planId: string): Promise<{ taskId: string }>
   onMcpEnvironmentStatus?(listener: (status: McpEnvironmentStatus) => void): () => void
   onUpdateStatus(listener: (status: DesktopUpdateStatus) => void): () => void
+  resources?: {
+    check(kind: ResourceKind): Promise<ResourceCheckResult>
+    status?(): Promise<{ checkedAt: string; results: ResourceCheckResult[] }>
+    update(kind: ResourceKind, id?: string): Promise<unknown>
+    rollback(kind: ResourceKind, id: string): Promise<unknown>
+    startJob(kind: ResourceKind, action: string, id?: string): Promise<{ taskId: string }>
+    getJob(taskId: string): Promise<ResourceJob | undefined>
+    listJobs(): Promise<ResourceJob[]>
+    cancelJob(taskId: string): Promise<ResourceJob | undefined>
+    onJob(listener: (job: ResourceJob) => void): () => void
+  }
 }
 declare global { interface Window { zerowallDesktop?: ZeroWallDesktopApi } }

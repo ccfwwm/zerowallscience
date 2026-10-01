@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.plugin.client.json",
+  "include": [
+    "src/client",
+    "src/shared"
+  ]
+}
