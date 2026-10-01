@@ -9,5 +9,6 @@
 - 插件更新和回滚持久化恢复事务；切换中断后保留并恢复完整的旧 profile。
 - Python manifest 请求增加超时、大小限制和临时网络故障重试。
 - Python 进程启动兼容 Windows 扩展路径，科学环境验收使用独立、较短的缓存目录。
+- Python 使用更短的临时 staging 目录，失败信息保留 traceback 尾部，便于定位科研依赖问题。
 
 此版本为本地架构迁移验证版，未向七牛云或 GitHub Release 发布。

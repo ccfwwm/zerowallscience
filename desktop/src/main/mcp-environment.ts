@@ -1,4 +1,4 @@
-import { createHash, randomUUID, verify } from 'node:crypto'
+import { createHash, randomBytes, randomUUID, verify } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
@@ -536,7 +536,10 @@ export class McpEnvironmentController {
       const currentSlot = current?.slot === 'a' || current?.slot === 'b' ? current.slot : undefined
       const targetSlot: 'a' | 'b' = currentSlot === 'a' ? 'b' : 'a'
       const target = join(this.options.root, 'slots', `${targetSlot}-${randomUUID()}`)
-      const temporary = `${target}.tmp-${process.pid}-${Date.now()}`
+      // Preserve the full UUID for durable generations. Native scientific
+      // wheels need a shorter unactivated staging path on Windows; a 128-bit
+      // base64url id retains uniqueness without repeating pid/timestamp data.
+      const temporary = join(this.options.root, 'versions', `i-${randomBytes(16).toString('base64url')}.tmp`)
       const archivePath = this.options.bundledManifestPath ? this.options.bundledArchivePath! : join(this.options.root, 'downloads', `${manifest.archiveSha256}.part`)
       let installedManifest = manifest
       await requireFreeSpace(this.options.root, manifest.archiveSize * 5 + 512 * 1024 ** 2)
@@ -791,7 +794,7 @@ export class McpEnvironmentController {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
         throw error
       }
-      for (const entry of entries.filter(entry => entry.isDirectory() && entry.name.includes('.tmp-'))) {
+      for (const entry of entries.filter(entry => entry.isDirectory() && (entry.name.includes('.tmp-') || /^i-[A-Za-z0-9_-]{22}\.tmp$/u.test(entry.name)))) {
         try { await removePathWithRetry(join(directory, entry.name)) }
         catch (error) { await this.recordDiagnostic({ event: 'temporary_cleanup_failed', path: join(directory, entry.name), error: describeError(error) }) }
       }
@@ -1141,7 +1144,7 @@ async function lookupProjectVersion(fetcher: typeof fetch, mirror: MirrorConfig,
 
 function sanitizeError(error: unknown): string {
   const item = error as NodeJS.ErrnoException
-  const message = (error instanceof Error ? error.message : String(error)).replace(/https?:\/\/[^\s]+/gu, '[download-url]').slice(0, 500)
+  const message = (error instanceof Error ? error.message : String(error)).replace(/https?:\/\/[^\s]+/gu, '[download-url]').slice(-500)
   const details = [typeof item?.code === 'string' ? `code=${item.code}` : '', typeof item?.path === 'string' ? `path=${item.path}` : ''].filter(Boolean)
   return details.length === 0 ? message : `${message} (${details.join(', ')})`
 }
@@ -1213,7 +1216,7 @@ function execute(command: string, args: string[], cwd: string, input?: string, e
     child.stdout.setEncoding('utf8').on('data', value => { stdout += value })
     child.stderr.setEncoding('utf8').on('data', value => { stderr += value })
     child.once('error', error => { clearTimeout(timer); reject(error) })
-    child.once('exit', code => { clearTimeout(timer); code === 0 ? resolveResult({ stdout, stderr }) : reject(new Error((stderr || stdout || `process exited ${code}`).trim().slice(0, 500))) })
+    child.once('exit', code => { clearTimeout(timer); code === 0 ? resolveResult({ stdout, stderr }) : reject(new Error((stderr || stdout || `process exited ${code}`).trim().slice(-16_000))) })
     if (input !== undefined) child.stdin.end(input)
   })
 }

@@ -62,6 +62,28 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('reclaims owned compact staging, preserves unrelated directories and reports the cause at the end of a traceback', async () => {
+    const userData = await mkdtemp(join(tmpdir(), 'zerowall-compact-staging-')); roots.push(userData)
+    const root = join(userData, 'zerowall-python'), assets = join(userData, 'assets')
+    const manifest = signedSharedManifest()
+    await environment(assets, manifest)
+    const interrupted = join(root, 'versions', 'i-' + 'a'.repeat(22) + '.tmp')
+    const unrelated = join(root, 'versions', 'external.tmp')
+    await mkdir(interrupted, { recursive: true }); await mkdir(unrelated)
+    await writeFile(join(unrelated, 'keep'), 'unrelated environment')
+    const bundledManifestPath = join(userData, 'base.json'), bundledArchivePath = join(userData, 'base.zip')
+    await writeFile(bundledManifestPath, JSON.stringify(manifest)); await writeFile(bundledArchivePath, sharedTestArchive)
+    const controller = new McpEnvironmentController({ generationMode: true, root, bundledManifestPath, bundledArchivePath,
+      bundledAssets: { bioToolsRoot: join(assets, 'bio-tools'), ketcherRoot: join(assets, 'ketcher-chemistry'), sciRoot: join(assets, 'sci'), skillsRoot: join(assets, 'skills') },
+      manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      healthCheck: async () => { throw new Error('Traceback:\n' + 'deep path frame\n'.repeat(100) + 'ImportError: native module failed') }, publish() {} })
+    const status = await controller.initialize()
+    expect(status).toMatchObject({ phase: 'failed', message: expect.stringContaining('ImportError: native module failed') })
+    await expect(lstat(interrupted)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await readFile(join(unrelated, 'keep'), 'utf8')).toBe('unrelated environment')
+    expect(await readdir(join(root, 'versions'))).toEqual(['external.tmp'])
+    await expect(readFile(join(root, 'current.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
   it('activates immutable generations, retains leased tasks and rolls back by pointer', async () => {
     const userData = await mkdtemp(join(tmpdir(), 'zerowall-generations-')); roots.push(userData)
     const root = join(userData, 'zerowall-python'), assets = join(userData, 'assets')
