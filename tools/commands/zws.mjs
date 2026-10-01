@@ -54,10 +54,12 @@ async function run() {
   const aliases = { wechat: 'dsh-wechat', 'plugin-wechat': 'dsh-wechat', notification: '@dingyi222666/dsh-session-notification', science: '@zerowallscience/dsh-bundle-science' }
   const qualified = id => aliases[id] ?? (id?.startsWith('@') || id?.startsWith('dsh-') ? id : `@zerowallscience/${id?.startsWith('plugin-') ? id : `plugin-${id}`}`)
   if (group === 'plugin') {
+    if (command === 'list') return invoke('resource.plugin.list')
     if (command === 'check') return invoke('resource.catalog.check', ['plugin', catalog])
     if (command === 'rollback') return args[0] ? invoke('resource.plugin.rollback', [qualified(args[0])]) : invoke('resource.rollback')
     if (command === 'update' && args[0]) return invoke('resource.plugin.update', [qualified(args[0]), catalog])
     if (command === 'update' && !args[0]) return invoke('resource.update', ['plugin', catalog])
+    if (['enable', 'disable'].includes(command) && args[0]) return invoke(`resource.plugin.${command}`, [qualified(args[0])])
     if (command === 'add' && args[0] && !args[0].endsWith('.tgz') && !args[0].includes(':')) return invoke('resource.plugin', [qualified(args[0]), catalog])
     if ((catalog || command === 'update') && ['add', 'update'].includes(command) && args[0]) return invoke('resource.plugin', [qualified(args[0]), catalog])
     if (args[0] && !args[0].endsWith('.tgz') && !args[0].includes(':')) args[0] = qualified(args[0])
