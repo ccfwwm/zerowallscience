@@ -574,3 +574,9 @@ ZeroWall adds a PNG normalization entry point; detector algorithms retain their 
 
 Version 0.3.2, Apache-2.0. Source: https://github.com/dream-num/dsh-univer-office.
 Provides Office generation/editing, Gateway, Viewer, and eight bundled skills. Telemetry is disabled in the ZeroWall profile.
+
+## Universal file preview
+
+- dsh-open-file-viewer, wenhongquan, MIT; adapted from commit 20aecc32cc597f6de094d2c7febddfb60f3ae1ef. Integration: plugins/files; license: plugins/files/THIRD_PARTY_LICENSES/dsh-open-file-viewer-MIT.txt.
+- @open-file-viewer/core 0.1.49, MIT; browser renderers and resolved dependencies are pinned in pnpm-lock.yaml.
+- PDF.js 6.3.289, Apache-2.0; offline worker, CMaps, fonts and WASM shipped with the viewer.

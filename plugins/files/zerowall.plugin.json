@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-files",
-  "version": "7.4.0",
+  "version": "7.5.0",
   "dsh": {
     "min": "0.2.0-rc.2",
     "max": "0.2.0-rc.2"
@@ -10,13 +10,16 @@
   "requiredServices": [
     "tools",
     "sessions",
-    "fs"
+    "fs",
+    "webServer"
   ],
   "optionalServices": [],
   "capabilities": [
     "files",
     "data-assets",
-    "office-tools"
+    "office-tools",
+    "universal-file-preview",
+    "automatic-attachment-extraction"
   ],
   "permissions": [
     "files"

@@ -9,10 +9,10 @@ import { Transform } from 'node:stream'
 
 const requireDesktop = createRequire(new URL('../../desktop/package.json', import.meta.url))
 // Science model archives are independent of patch releases.  Keep accepting
-// the 7.1.0 manifest while 7.4.0 is the current application version so users
+// the 7.1.0 manifest while 7.5.0 is the current application version so users
 // do not have to download or reinstall unchanged model data.
-const APPLICATION_VERSION = '7.4.0'
-const LEGACY_APPLICATION_VERSIONS = Object.freeze(['7.3.0', '7.2.0', '7.1.1', '7.1.0'])
+const APPLICATION_VERSION = '7.5.0'
+const LEGACY_APPLICATION_VERSIONS = Object.freeze(['7.4.0', '7.3.0', '7.2.0', '7.1.1', '7.1.0'])
 const ENGINE_VERSION = '7.1.0'
 const SHA = /^[a-f0-9]{64}$/u
 const exists = async path => lstat(path).then(() => true, error => {

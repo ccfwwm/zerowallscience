@@ -6,6 +6,7 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import sharp from 'sharp'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AiCloudImageGenerator } from '../src/host/generator.js'
+import { recordVisualAsset } from '../src/host/visual-assets.js'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 
 class MemorySecrets implements AccountSecretStore {
@@ -70,6 +71,22 @@ function imageResponse(data: Uint8Array, extra: Record<string, unknown> = {}): R
 }
 
 describe('AI Cloud image generation and editing', () => {
+  it('records a seed/style edit as a verified independent presentation asset', async () => {
+    const workspace = await root()
+    const png = await raster()
+    const service = generator(vi.fn(async () => imageResponse(png, { revised_prompt: 'Scientific visual without labels' })) as typeof fetch)
+    const style = await service.generate({ prompt: 'scientific style', outputPath: 'style.png' }, workspace)
+    await recordVisualAsset(workspace, { manifest: 'visual-assets.json', image: style.path, assetId: 'style-1', role: 'style-candidate' })
+    const seed = await service.generate({ prompt: 'scientific seed', outputPath: 'seed.png' }, workspace)
+    const edited = await service.edit({ prompt: 'preserve seed, use style second', inputPaths: [seed.path, style.path], outputPath: 'final.png' }, workspace)
+    const asset = await recordVisualAsset(workspace, { manifest: 'visual-assets.json', image: edited.path, assetId: 'slide-1-art', role: 'illustration', slideNumber: 1, styleReferenceIds: ['style-1'], sourceSeedPath: seed.path })
+    expect(asset).toMatchObject({ model: edited.model, width: 8, height: 6, requestedQuality: edited.requestedQuality, actualQuality: edited.actualQuality, revisedPrompt: 'Scientific visual without labels' })
+    expect(asset.inputImageHashes).toHaveLength(2)
+    expect(asset.sha256).toBe(edited.sha256)
+    expect(JSON.parse(await readFile(join(workspace, 'visual-assets.json'), 'utf8')).assets).toHaveLength(2)
+    await writeFile(edited.path, 'corrupted asset')
+    await expect(recordVisualAsset(workspace, { manifest: 'visual-assets.json', image: edited.path, assetId: 'bad', role: 'illustration' })).rejects.toThrow()
+  })
   it('resolves environment quality for generate and edit, while explicit quality wins', async () => {
     const workspace = await root()
     const png = await raster()
@@ -266,6 +283,10 @@ describe('AI Cloud image generation and editing', () => {
       .rejects.toThrow('could not be reached')
     await expect(service.generate({ prompt: 'spring', outputPath: 'spring-2.png' }, workspace))
       .rejects.not.toThrow('host-only-secret')
+    const failure = JSON.parse(await readFile(join(workspace, 'spring.png.generation.failed.json'), 'utf8'))
+    expect(failure.request).toMatchObject({ operation: 'generate_image', prompt: 'spring', model: 'gpt-image-2', quality: 'auto' })
+    expect(failure.reason).toContain('could not be reached')
+    expect(JSON.stringify(failure)).not.toContain('host-only-secret')
   })
 
   it('enforces image count, byte, format, mask, and traversal limits before network access', async () => {
