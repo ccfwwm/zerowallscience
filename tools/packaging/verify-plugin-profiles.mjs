@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile, cp, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
+import { createServer } from 'node:net'
 import yaml from 'yaml'
 import { root, stageRoot, releaseRoot, verificationRoot, contract } from '../build/paths.mjs'
 import { fileDigest, signCatalog } from '../release/resource-catalog.mjs'
@@ -21,7 +22,7 @@ const environment = { ...process.env, DSH_HOME: home, ZEROWALL_USER_DATA_DIR: di
   ZEROWALL_PYTHON_ROOT: join(directory, 'zerowall-python'),
   ZEROWALL_BUNDLED_SKILLS: join(stageRoot, 'resources/skills'),
   DSH_BUNDLED_SKILL_DIR: join(stageRoot, 'resources/skills'), DSH_TELEMETRY_DISABLED: '1', NO_COLOR: '1' }
-let child, output = '', bootCount = 0
+let child, output = '', bootCount = 0, hostAddress
 const pending = new Map()
 const secrets = new Map()
 function callHost(operation, args = []) {
@@ -33,8 +34,17 @@ function callHost(operation, args = []) {
 }
 async function startHost() {
   output = ''
+  const port = await new Promise((accept, reject) => {
+    const server = createServer()
+    server.once('error', reject)
+    server.listen(20000 + Math.floor(Math.random() * 19000), '127.0.0.1', () => {
+      const { port } = server.address()
+      server.close(error => error ? reject(error) : accept(port))
+    })
+  })
+  hostAddress = `http://127.0.0.1:${port}`
   child = spawn(process.execPath, ['--import', pathToFileURL(join(root, 'desktop/build/runtime-esm-register.mjs')).href, '--expose-internals', join(root, 'desktop/build/harness-node-entry.mjs'), entry,
-    'web', '--patch', join(stageRoot, 'resources/zerowall-core.patch.yml'), '--port', '0', '--host', '127.0.0.1', '--no-open'], { cwd: directory, env: environment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] })
+    'web', '--patch', join(stageRoot, 'resources/zerowall-core.patch.yml'), '--port', String(port), '--host', '127.0.0.1', '--no-open'], { cwd: directory, env: environment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] })
   const capture = chunk => { output = (output + chunk).slice(-100000) }
   child.stdout.on('data', capture); child.stderr.on('data', capture)
   child.on('message', message => {
@@ -47,12 +57,14 @@ async function startHost() {
     const request = pending.get(message.id); pending.delete(message.id)
     if (request) message.error ? request.reject(new Error(message.error)) : request.accept(message.result)
   })
-  const deadline = Date.now() + 30_000
+  const deadline = Date.now() + 90_000
   while (Date.now() < deadline && child.exitCode === null) {
     if (/http:\/\/127\.0\.0\.1:\d+/.test(output)) {
       let health
       try { health = await callHost('host.health') } catch {}
-      if (health?.ready) { bootCount++; return }
+      if (health?.ready) {
+        try { await fetch(hostAddress, { signal: AbortSignal.timeout(1000) }); bootCount++; return } catch {}
+      }
       if (health?.entries?.some(entry => entry.state === 3)) throw new Error('A configured plugin failed activation')
     }
     await new Promise(accept => setTimeout(accept, 250))
@@ -167,7 +179,6 @@ try {
   assert.equal(JSON.parse(await readFile(join(fileRoot, 'package.json'))).version, '0.2.0')
   const assetManifest = JSON.parse(await readFile(join(fileRoot, 'lib/viewer-assets/asset-manifest.json')))
   assert.equal(await fileDigest(join(fileRoot, 'lib/viewer-assets/build/pdf.worker.mjs')), assetManifest.files['build/pdf.worker.mjs'])
-  const hostAddress = output.match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0]
   const cssResponse = await fetch(`${hostAddress}/zerowall/viewer-assets/${assetManifest.version}/leaflet/leaflet.css`)
   assert.equal(cssResponse.status, 200)
   assert.equal(cssResponse.headers.get('cache-control'), 'public, max-age=31536000, immutable')

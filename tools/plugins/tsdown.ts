@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { viewerStylePlugin } from './viewer-style.mjs'
 import '../build/register-output-resolution.mjs'
+import { adaptViewerCore } from './viewer-adapter.mjs'
 const { typertPlugin } = await import('../../deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js')
 
 const zerowallVersion = String(JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version)
@@ -101,9 +102,7 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         name: 'zerowall-viewer-browser-modules',
         transform(code: string, id: string) {
           if (!id.replace(/\\/gu, '/').endsWith('/@open-file-viewer/core/dist/index.js')) return null
-          const anchor = 'if (insight) {\n      renderPptxTextFallback(container, insight);'
-          if (!code.includes(anchor)) throw new Error('Reviewed viewer PPTX fallback anchor changed.')
-          return code.replace(anchor, 'console.warn("ZeroWall PPTX graphical renderer failed:", error);\n    ' + anchor)
+          return adaptViewerCore(code)
         },
         resolveId(source: string, importer?: string) {
           if (source === 'shpjs' && importer) {

@@ -3,9 +3,17 @@ import { mkdir, readFile, readdir, writeFile, realpath } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { root, stageRoot, releaseRoot } from '../build/paths.mjs'
 import { preparePublishPackage } from './publish-package.mjs'
+import { preserveImmutablePackage } from './immutable-package.mjs'
 const pnpm = process.env.npm_execpath
 if (!pnpm) throw new Error('Invoke with pnpm plugins:pack')
 const records = []
+const immutableReceipts = []
+const historical = []
+for (const version of await readdir(dirname(releaseRoot))) {
+  if (version === basename(releaseRoot)) continue
+  try { historical.push(...JSON.parse(await readFile(join(dirname(releaseRoot), version, 'plugin-packages.json'), 'utf8'))) }
+  catch (error) { if (error.code !== 'ENOENT') throw error }
+}
 const sources = (await readdir(join(root, 'plugins'))).filter(name => name !== 'wechat').map(name => join(root, 'plugins', name))
 sources.push(join(root, 'store'), join(root, 'packages/integrity-runtime'), join(root, 'packages/dsh-bundle-science'))
 sources.push(...['dsh-wechat', 'dsh-session-notification', 'dsh-auto-review'].map(name => join(root, 'packages', name)))
@@ -24,6 +32,8 @@ for (const source of sources) {
   execFileSync(process.execPath, [pnpm, 'pack', '--pack-destination', destination], { cwd: staging, stdio: 'inherit' })
   const name = (await readdir(destination)).find(file => file.endsWith('.tgz'))
   const archive = join(destination, name)
+  const baseline = historical.find(item => item.id === manifest.name && item.version === version)
+  if (baseline) immutableReceipts.push({ id: manifest.name, version, ...await preserveImmutablePackage(archive, baseline.path) })
   const packed = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], { encoding: 'utf8' }))
   if (JSON.stringify(packed.dependencies ?? {}).match(/workspace:|github:|git\+|git:/)) throw new Error(`Non-publishable dependency in ${manifest.name}`)
   const contents = execFileSync('tar', ['-tf', archive], { encoding: 'utf8' })
@@ -32,3 +42,4 @@ for (const source of sources) {
   records.push({ id: manifest.name, version, path: archive, kind: manifest.dsh?.bundle && manifest.name !== 'dsh-office-tools' ? 'plugin' : 'support', manifest: publish.zerowall, dependencies: publish.dependencies })
 }
 await writeFile(join(releaseRoot, 'plugin-packages.json'), JSON.stringify(records, null, 2))
+await writeFile(join(releaseRoot, 'immutable-package-receipt.json'), JSON.stringify(immutableReceipts, null, 2) + '\n')

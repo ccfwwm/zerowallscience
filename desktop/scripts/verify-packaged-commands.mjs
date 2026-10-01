@@ -41,7 +41,12 @@ try {
   await waitFor(async () => { await zws(['env', 'list']); return true })
   assert.match(await execute(['dsh.cmd', '--version'], undefined, true), /0\.2\.0-rc\.2/)
   assert.equal(JSON.parse(await execute(['zws.cmd', '--version'], undefined, true)).applicationVersion, contract.version)
-  assert.equal((await zws(['doctor'])).host, 'ready')
+  const doctor = await zws(['doctor'])
+  assert.equal(doctor.host, 'ready')
+  const files = doctor.plugins.find(item => item.id === '@zerowallscience/plugin-files')
+  assert.equal(files.version, '0.2.0')
+  assert.equal(files.source, 'bundled')
+  assert.equal(files.compatibility, 'compatible')
   assert((await zws(['plugin', 'list'])).bundles.includes('@zerowallscience/plugin-skills'))
   const secret = 'isolated-cli-value'
   await zws(['env', 'set', 'ZWS_COMMAND_FIXTURE'], secret)
@@ -72,6 +77,6 @@ try {
   await zws(['mcp', 'remove', mcp.id])
   await zws(['python', 'status'])
   await writeFile(join(directory, 'receipt.json'), JSON.stringify({ applicationVersion: contract.version, dshVersion: '0.2.0-rc.2', ok: true,
-    commandWrappers: true, pluginProfileList: true, safeEnvironment: true, skillsImportRefreshRollback: true, mcpStartStopRestart: true, pythonStatus: true }, null, 2))
+    commandWrappers: true, pluginProfileList: true, actualFilePlugin: files, safeEnvironment: true, skillsImportRefreshRollback: true, mcpStartStopRestart: true, pythonStatus: true }, null, 2))
   console.log('Packaged commands verified:', directory)
 } finally { await application.close() }

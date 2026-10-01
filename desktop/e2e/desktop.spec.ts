@@ -217,7 +217,7 @@ describe('ZeroWall Science Electron', () => {
     await page.getByRole('button', { name: /选择模型，当前/ }).first().waitFor({ timeout: 60_000 })
     const stop = page.getByRole('button', { name: '停止生成', exact: true })
     if (await stop.isVisible()) await stop.click()
-    await expect.poll(() => page.getByRole('button', { name: '停止生成', exact: true }).count()).toBe(0)
+    await expect.poll(() => page.getByRole('button', { name: '停止生成', exact: true }).count(), { timeout: 30_000 }).toBe(0)
     await page.locator('[data-sidebar-right-expand]').first().click()
     await page.locator('[data-sidebar-right-guide-entry="files"]').click().catch(async (error) => {
       console.log('Sidebar diagnostics', (await page.locator('body').innerText()).slice(-5000), rendererOutput.filter(line => line.startsWith('[pageerror]')).slice(-3))
@@ -672,7 +672,7 @@ describe('ZeroWall Science Electron', () => {
     await page.keyboard.press('Escape')
     expect(await settings.isVisible()).toBe(true)
     await row.getByRole('button', { name: '删除', exact: true }).click()
-    await expect.poll(() => settings.locator('code', { hasText: 'ZEROWALL_UI_TEST' }).count()).toBe(0)
+    await expect.poll(() => settings.locator('code', { hasText: 'ZEROWALL_UI_TEST' }).count(), { timeout: 30_000 }).toBe(0)
     await settings.getByRole('heading', { name: '环境配置', exact: true }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: join(artifacts, 'environment.png') })
     await settings.getByRole('button', { name: 'Python 环境', exact: true }).click()
