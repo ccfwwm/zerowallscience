@@ -6,6 +6,7 @@ import { access, appendFile, cp, lstat, mkdir, readdir, readFile, rename, rm, st
 import { basename, delimiter, dirname, join, relative, resolve } from 'node:path'
 import { downloadArchive, extractArchive, requireFreeSpace } from './python-archive.js'
 import { downloadPythonManifest } from './python-manifest-download.js'
+import { windowsProcessPath } from './windows-process-path.js'
 import { collectSnapshots } from './python-snapshots.js'
 import { preparePackagePlan, prepareManifestPackagePlan, applyPackagePlanFiles, replayCustomizations, type StoredPackagePlan } from './python-packages.js'
 import { dependencyManifestChanges, dependencyManifestSha256, parsePythonDependencyManifest, type PythonDependencyManifest } from './python-dependency-manifest.js'
@@ -1205,7 +1206,7 @@ interface ProcessResult { stdout: string; stderr: string }
 
 function execute(command: string, args: string[], cwd: string, input?: string, extraEnv: Record<string, string> = {}, timeoutMs = 15_000): Promise<ProcessResult> {
   return new Promise((resolveResult, reject) => {
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), ...extraEnv, PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
+    const child = spawn(windowsProcessPath(command), args, { cwd: windowsProcessPath(cwd), windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), ...extraEnv, PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
     let stdout = ''
     let stderr = ''
     const timer = setTimeout(() => { child.kill(); reject(new Error(`MCP process timed out: ${args.at(-1) ?? command}`)) }, timeoutMs)
@@ -1222,7 +1223,7 @@ async function checkMcpServer(command: string, args: string[], cwd: string): Pro
   const initialized = JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
   const tools = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
   await new Promise<void>((resolveCheck, reject) => {
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
+    const child = spawn(windowsProcessPath(command), args, { cwd: windowsProcessPath(cwd), windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
     const lines = createInterface({ input: child.stdout })
     let phase: 'initialize' | 'tools' = 'initialize'
     let finishing = false

@@ -15,9 +15,11 @@ const execute = promisify(execFile)
 const packaged = await locatePackagedApp(join(import.meta.dirname, '..'))
 const directory = join(contract.verification, 'python-on-demand', randomUUID())
 const userdata = join(directory, 'userdata')
-const runtimeRoot = join(directory, 'shared-python/Python')
+// Native scientific DLLs also carry nested package paths. Keep the disposable
+// runtime under the Python cache, while its receipts/profile stay in verification.
+const runtimeRoot = join(contract.cache, 'python', 'demand-' + randomUUID().slice(0, 8), 'Python')
 const management = join(dirname(runtimeRoot), 'zerowall-python')
-const evidence = { ok: false, directory, executable: packaged.executablePath, startedAt: new Date().toISOString(), progress: [] }
+const evidence = { ok: false, directory, runtimeRoot, managementRoot: management, executable: packaged.executablePath, startedAt: new Date().toISOString(), progress: [] }
 const receipt = join(directory, 'receipt.json')
 const save = () => writeFile(receipt, JSON.stringify(evidence, null, 2))
 const env = { ...process.env, ZEROWALL_USER_DATA_DIR: userdata, ZEROWALL_DISABLE_DEFAULT_MCP: '1',

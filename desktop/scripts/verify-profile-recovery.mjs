@@ -56,7 +56,9 @@ try {
     await app.close(); app = undefined
   }
   evidence.retainedInterruptedProfiles = (await readdir(join(home, 'profiles'))).filter(name => name.includes('interrupted'))
-  assert.equal(evidence.retainedInterruptedProfiles.length, 2)
+  const retainedCandidates = await Promise.all(evidence.retainedInterruptedProfiles.map(async name =>
+    JSON.parse(await readFile(join(home, 'profiles', name, 'package.json'), 'utf8'))))
+  assert.equal(retainedCandidates.filter(value => value.dsh.profile.bundles.includes('deliberately-absent-recovery-plugin')).length, 2)
   evidence.ok = true
   console.log('Packaged startup recovery passed:', directory)
 } catch (error) { evidence.error = error.stack ?? String(error); throw error }

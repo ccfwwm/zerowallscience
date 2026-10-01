@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile, realpath, rm, stat } from 'node:fs/promises
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn } from 'node:child_process'
+import { windowsProcessPath } from './windows-process-path.js'
 import type { MirrorConfig } from './python-mirror.js'
 import { sanitizePythonTlsEnvironment } from './python-mirror.js'
 import { buildPythonSourceWheel } from './python-source-builder.js'
@@ -106,7 +107,7 @@ async function inspectMetadata(executable: string, wheelPath: string): Promise<{
 
 async function executeJson<T>(executable: string, code: string, args: string[], input?: string): Promise<T> {
   return new Promise((accept, reject) => {
-    const child = spawn(executable, ['-I', '-B', '-c', code, ...args], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: sanitizePythonTlsEnvironment() })
+    const child = spawn(windowsProcessPath(executable), ['-I', '-B', '-c', code, ...args], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: sanitizePythonTlsEnvironment() })
     let stdout = ''; let stderr = ''
     const timer = setTimeout(() => { child.kill(); reject(new Error('源码依赖元数据检查超时。')) }, 30_000)
     child.stdout.on('data', data => { stdout = (stdout + data).slice(-8000) }); child.stderr.on('data', data => { stderr = (stderr + data).slice(-4000) })

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
+import { windowsProcessPath } from './windows-process-path.js'
 import { devNull, tmpdir } from 'node:os'
 import { appendFile, copyFile, cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, resolve } from 'node:path'
@@ -10,7 +11,7 @@ const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest(
 
 function run(executable: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; logPath?: string }): Promise<{ stdout: string; stderr: string }> {
   return new Promise((accept, reject) => {
-    const child = spawn(executable, args, { cwd: options.cwd, env: options.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(windowsProcessPath(executable), args, { cwd: windowsProcessPath(options.cwd), env: options.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = ''; let stderr = ''; let settled = false
     let logWrites = options.logPath ? writeFile(options.logPath, '') : Promise.resolve()
     const log = (chunk: Buffer) => { if (options.logPath) logWrites = logWrites.then(() => appendFile(options.logPath!, chunk)).catch(() => undefined) }
