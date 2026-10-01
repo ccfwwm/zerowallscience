@@ -215,8 +215,8 @@ describe('ZeroWall Science Electron', () => {
     await page.getByText('markdown-images', { exact: true }).first().click()
     await page.getByText('图片与模型回归', { exact: true }).first().click()
     await page.getByRole('button', { name: /选择模型，当前/ }).first().waitFor({ timeout: 60_000 })
-    const stop = page.getByRole('button', { name: '停止生成', exact: true })
-    if (await stop.isVisible()) await stop.click()
+    // This credential-free request finishes itself. Clicking a disappearing
+    // stop button races the terminal composer replacement.
     await expect.poll(() => page.getByRole('button', { name: '停止生成', exact: true }).count(), { timeout: 30_000 }).toBe(0)
     await page.locator('[data-sidebar-right-expand]').first().click()
     await page.locator('[data-sidebar-right-guide-entry="files"]').click().catch(async (error) => {
@@ -555,14 +555,31 @@ describe('ZeroWall Science Electron', () => {
     await timeout.fill('301000')
     const save = settings.getByRole('button', { name: '保存', exact: true })
     await save.click()
-    await expect.poll(() => save.isEnabled(), { timeout: 30_000 }).toBe(true)
+    const persistedTimeout = async () => {
+      const result = await rpc(page, 'zerowallMcp/list', {})
+      const servers = Array.isArray(result) ? result : result.value
+      return servers?.find((server: { name: string; serverName: string }) => /rmcp/iu.test(server.name + server.serverName))?.toolCallTimeoutMs
+    }
+    await expect.poll(persistedTimeout, { timeout: 30_000 }).toBe(301000)
+    // Saving reconciles the runtime plugin configuration, which can remount
+    // Settings. Reload also proves that the value was durably persisted.
+    await reloadWithoutCredentials(page)
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await settings.getByRole('button', { name: '内置插件', exact: true }).click()
+    await settings.getByRole('tab', { name: 'MCP', exact: true }).click()
     await settings.getByRole('button', { name: '新建连接', exact: false }).click()
     await settings.getByRole('button', { name: /rmcp/ }).click()
     expect(await timeout.inputValue()).toBe('301000')
     expect(await settings.getByRole('checkbox', { name: '启用', exact: true }).isChecked()).toBe(true)
     await timeout.fill('300000')
     await save.click()
-    await expect.poll(() => save.isEnabled(), { timeout: 30_000 }).toBe(true)
+    await expect.poll(persistedTimeout, { timeout: 30_000 }).toBe(300000)
+    await reloadWithoutCredentials(page)
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await settings.getByRole('button', { name: '内置插件', exact: true }).click()
+    await settings.getByRole('tab', { name: 'MCP', exact: true }).click()
+    await settings.getByRole('button', { name: /rmcp/ }).click()
+    expect(await timeout.inputValue()).toBe('300000')
     await page.screenshot({ path: join(contract.verification, 'electron', 'mcp-saved.png') })
     await settings.getByRole('tab', { name: '插件列表' }).click()
     const globalPlugins = settings.getByRole('button', { name: /^(全局插件|Global plugins)/ })

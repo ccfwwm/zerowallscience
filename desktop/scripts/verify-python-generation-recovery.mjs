@@ -44,6 +44,7 @@ async function launch() {
   await page.waitForURL(url => url.hostname === '127.0.0.1', { timeout: 180000 })
   await page.getByRole('button', { name: '设置', exact: true }).click()
   await page.getByRole('dialog', { name: '设置', exact: true }).getByRole('button', { name: 'Python 环境', exact: true }).click()
+  await page.getByText('高级设置', { exact: true }).click()
   await page.getByLabel('搜索依赖', { exact: true }).waitFor()
 }
 async function waitFor(task, timeout = 180000) {
@@ -98,7 +99,18 @@ try {
     }
     await page.getByLabel('搜索依赖', { exact: true }).fill('numpy')
     if (value.phase === 'ready' && value.activeEnvironment?.contentRevision === manifest.contentRevision && (await jobs()).some(job => job.taskId === taskId && job.state === 'complete')) { ready = true; break }
-    assert.equal((await pointer()).root, before.root, 'Active pointer stays on the old generation during installation')
+    const active = await pointer()
+    if (active.root !== before.root) {
+      // The atomic commit can occur between the status RPC and the pointer
+      // read. Validate the committed generation and wait for its durable job
+      // receipt instead of comparing a new pointer to an older UI status.
+      assert.equal(active.health, 'ready')
+      assert.equal(active.contentRevision, manifest.contentRevision)
+      await waitFor(async () => (await jobs()).some(job => job.taskId === taskId && job.state === 'complete'))
+      await waitFor(async () => { const value = await status(); return value.phase === 'ready' && value.activeEnvironment?.snapshotId === active.root })
+      ready = true; break
+    }
+    assert.equal(active.root, before.root, 'Uncommitted candidates retain the running generation')
     await new Promise(accept => setTimeout(accept, 1000))
   }
   assert(ready, 'The resumed candidate must finish and pass health')
@@ -119,7 +131,12 @@ try {
   evidence.ok = true
   await save()
   console.log('Packaged Python pause, restart, snapshot and rollback passed:', directory)
-} catch (error) { evidence.error = error.stack ?? String(error); await save(); throw error }
+} catch (error) {
+  evidence.error = error.stack ?? String(error)
+  await page?.screenshot({ path: join(directory, 'failure.png') }).catch(() => {})
+  evidence.body = await page?.locator('body').innerText().catch(() => '')
+  await save(); throw error
+}
 finally {
   runningTask?.kill()
   await unlink(lease).catch(error => { if (error.code !== 'ENOENT') throw error })

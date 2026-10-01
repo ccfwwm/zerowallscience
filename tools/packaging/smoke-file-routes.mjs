@@ -76,6 +76,10 @@ try {
   const nativeOffice = name => /\.(docx?|pptx?|xlsx?|csv|tsv)$/iu.test(name)
   const gis = name => /\.(shp|geojson|topojson|kml|kmz|gpx)$/iu.test(name)
   const nativeContainer = name => page.locator(`[data-textpreview-url$="/${encodeURIComponent(name)}"]:visible`).last()
+  const pdfMetrics = () => page.evaluate(() => Array.from(document.querySelectorAll('.ofv-pdf-viewer canvas.ofv-pdf-page')).map(canvas => {
+    const bounds = canvas.getBoundingClientRect()
+    return { width: bounds.width, height: bounds.height, pixels: canvas.width * canvas.height, visible: getComputedStyle(canvas).visibility !== 'hidden' }
+  }).find(canvas => canvas.visible && canvas.pixels > 0 && canvas.width > 250 && canvas.height > 140))
   if (!process.env.ZEROWALL_ROUTE_CLIENT_OVERRIDE && samples.some(sample => gis(sample.name))) {
     for (const [path, mediaType] of [['leaflet/leaflet.css', 'text/css'], ['leaflet/images/marker-icon.png', 'image/png']]) {
       const response = await page.request.get(new URL('/zerowall/viewer-assets/' + path, page.url()).href)
@@ -125,8 +129,7 @@ try {
       const body = page.locator('.ofv-gis-viewer:visible').last()
       await body.waitFor({ timeout: 60000 })
       await body.locator('.ofv-map-feature').first().waitFor({ state: 'attached', timeout: 60000 })
-      // Leaflet fits bounds with a 250 ms zoom animation and schedules size
-      // invalidation at 240 ms. Measure the final viewport after those settle.
+      // Let Leaflet's scheduled size invalidation settle before measuring.
       await page.evaluate(() => new Promise(ok => setTimeout(ok, 400)))
       const bounds = await body.locator('.ofv-map-stage').boundingBox()
       assert.ok(bounds.width > 250 && bounds.height > 150, 'GIS map pane collapsed')
@@ -138,8 +141,20 @@ try {
       preview = { renderer: 'universal-gis', features: await body.locator('.ofv-map-feature').count(), width: bounds.width, height: bounds.height, summary: await body.locator('.ofv-gis-summary').textContent(), geometry }
     } else {
       await page.getByText('通用查看器', { exact: false }).first().waitFor({ timeout: 30000 })
-      await page.locator('.ofv-pdf:visible canvas,.ofv-pdf-viewer:visible canvas,.ofv:visible canvas').first().waitFor({ timeout: 60000 })
-      preview = { renderer: 'universal' }
+      const canvas = page.locator('.ofv-pdf-viewer:visible canvas.ofv-pdf-page:visible').first()
+      await canvas.waitFor({ timeout: 60000 })
+      // PDF rendering replaces its initial placeholder canvas. Query the
+      // current DOM on each poll instead of retaining a detached element.
+      await page.waitForFunction(() => Array.from(document.querySelectorAll('.ofv-pdf-viewer canvas.ofv-pdf-page')).some(canvas => canvas.width > 0 && canvas.getBoundingClientRect().width > 250), undefined, { timeout: 60000 })
+      let bounds
+      for (const deadline = Date.now() + 60000; Date.now() < deadline;) {
+        bounds = await pdfMetrics()
+        if (bounds) break
+        await page.waitForTimeout(100)
+      }
+      assert.ok(bounds, 'Universal PDF rendered canvas is missing')
+      assert.ok(bounds.width > 250 && bounds.height > 140, 'Universal PDF pane collapsed')
+      preview = { renderer: 'universal', width: bounds.width, height: bounds.height }
     }
     const text = await page.locator('body').innerText()
     for (const error of ['预览失败（', 'undefined (reading', 'Excel preview failed', 'GIS 数据解析失败', '文件读取失败：']) assert.ok(!text.includes(error), error)
@@ -196,6 +211,17 @@ try {
         assert.ok(metadata.content?.length)
       }
       results.push({ mode, name: sample.name, attachmentId, sha256, parser: extraction.parser, state: extraction.state, counts: { slides: extraction.slideCount, sheets: extraction.sheetCount, cells: extraction.cellCount }, opened: true, preview })
+      if (sample.name === 'offline-worker.pdf') {
+        const canvas = page.locator('.ofv-pdf-viewer:visible canvas.ofv-pdf-page:visible').first()
+        const before = await pdfMetrics()
+        assert.ok(before, 'PDF zoom requires a rendered page')
+        await page.locator('.ofv-toolbar:visible').last().getByRole('button', { name: /^(放大|Zoom in)$/u }).click()
+        await page.waitForFunction(width => Array.from(document.querySelectorAll('.ofv-pdf-viewer canvas.ofv-pdf-page')).some(canvas => canvas.getBoundingClientRect().width > width * 1.05), before.width, { timeout: 30000 })
+        const after = await pdfMetrics()
+        assert.ok(after, 'PDF zoom lost its rendered page')
+        assert.ok(after.width > before.width * 1.05, 'PDF zoom did not resize the rendered page')
+        results.push({ mode, name: sample.name, pdfZoom: true, beforeWidth: before.width, afterWidth: after.width })
+      }
       if (sample.name.endsWith('.xlsx')) {
         const excel = nativeContainer(sample.name).locator('[data-excel-preview]')
         await excel.waitFor({ timeout: 30000 })
@@ -239,7 +265,7 @@ try {
     if (mode === 'workspace') {
       await page.getByRole('button', { name: '新标签页', exact: true }).first().click()
       await page.getByText('文件', { exact: true }).first().click({ timeout: 30000 })
-      for (const sample of samples.filter(sample => nativeOffice(sample.name) || gis(sample.name))) {
+      for (const sample of samples.filter(sample => nativeOffice(sample.name) || gis(sample.name) || /\.pdf$/iu.test(sample.name))) {
         // Reuse the file tree, as a user opening successive files would. New
         // empty tabs can push the native tab bar's add button out of view.
         await page.getByText('文件', { exact: true }).first().click({ timeout: 30000 })
@@ -249,7 +275,7 @@ try {
       }
       await page.reload({ waitUntil: 'domcontentloaded', timeout: 120000 }); await page.getByText('workspace', { exact: true }).first().click({ timeout: 120000 })
       await page.getByText('预览验收 ' + mode, { exact: true }).first().click({ timeout: 30000 })
-      for (const sample of samples.filter(sample => nativeOffice(sample.name) || gis(sample.name))) {
+      for (const sample of samples.filter(sample => nativeOffice(sample.name) || gis(sample.name) || /\.pdf$/iu.test(sample.name))) {
         await page.getByRole('button', { name: '预览文件 ' + sample.name, exact: true }).first().click({ timeout: 30000 })
         results.push({ mode, name: sample.name, historyReload: true, preview: await verifyPreview(sample, 'history') })
         console.log('history', sample.name, 'rendered')
@@ -259,7 +285,7 @@ try {
       await page.getByRole('button', { name: '搜索会话', exact: true }).click({ timeout: 120000 })
       await page.getByPlaceholder('搜索会话名称').fill('预览验收 no-workspace')
       await page.getByRole('treeitem').filter({ hasText: '预览验收 no-workspace' }).first().click({ timeout: 30000 })
-      for (const sample of samples.filter(sample => nativeOffice(sample.name) || gis(sample.name))) {
+      for (const sample of samples.filter(sample => nativeOffice(sample.name) || gis(sample.name) || /\.pdf$/iu.test(sample.name))) {
         await page.getByRole('button', { name: '预览文件 ' + sample.name, exact: true }).first().click({ timeout: 30000 })
         results.push({ mode, name: sample.name, historyReload: true, preview: await verifyPreview(sample, 'no-workspace-history') })
         console.log('no-workspace-history', sample.name, 'rendered')

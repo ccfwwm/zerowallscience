@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { contract, root, releaseRoot, stageRoot } from '../build/paths.mjs'
 import { fileDigest, signCatalog, verifyCatalog } from './resource-catalog.mjs'
 import { deterministicArchive } from './deterministic-archive.mjs'
+import { historicalResources, preserveImmutableResource } from './immutable-resource.mjs'
 
 const destination = join(releaseRoot, 'catalogs')
 const catalogGeneration = `${contract.buildId}-${Date.now()}`
@@ -45,13 +46,20 @@ async function entry({ id, version, path, kind, key, metadata = {} }) {
 const plugins = await Promise.all(records.map(record => entry({ ...record, kind: record.kind ?? 'plugin', key: `plugins/${record.id.split('/').at(-1)}/${record.version}/${record.path.split(/[\\/]/).at(-1)}`, metadata: { ...record.manifest, dependencies: record.dependencies } })))
 const skills = []
 const mcpServers = []
+const immutableResources = []
+const histories = new Map(await Promise.all(['skill', 'mcp'].map(async kind => [kind, await historicalResources(releaseRoot, kind)])))
+async function archiveResource(kind, id, version, source, path) {
+  await deterministicArchive(source, path)
+  const previous = histories.get(kind).get(id + '@' + version)
+  if (previous) immutableResources.push({ kind, id, version, ...await preserveImmutableResource(path, previous.path, previous.sha256) })
+}
 const sciDirectory = join(stageRoot, 'resources/sci')
 if (await stat(join(sciDirectory, 'dist/mcp.cjs')).catch(() => undefined)) {
   const version = '0.3.15-zws.1'
   const directory = join(releaseRoot, 'mcp', 'scimaster', version)
   await mkdir(directory, { recursive: true })
   const path = join(directory, 'scimaster.tgz')
-  await deterministicArchive(sciDirectory, path)
+  await archiveResource('mcp', 'scimaster', version, sciDirectory, path)
   mcpServers.push(await entry({ id: 'scimaster', version, path, kind: 'mcp', key: `mcp/scimaster/${version}/scimaster.tgz`, metadata: {
     role: 'server-bundle', runtime: 'node', entrypoint: 'zerowall-mcp-launcher.cjs', rollbackSupported: true,
     server: { name: 'SciMaster 独立服务', serverName: 'scimaster-independent', enabled: false, envRefs: { ZEROWALL_SCIMASTER_API_KEY: 'zerowall.environment.var.scimaster_api_key' } },
@@ -65,7 +73,7 @@ for (const name of await readdir(skillsRoot)) {
   const directory = join(releaseRoot, 'skills', name, version)
   await mkdir(directory, { recursive: true })
   const path = join(directory, name + '.tgz')
-  await deterministicArchive(source, path)
+  await archiveResource('skill', name, version, source, path)
   skills.push(await entry({ id: name, version, path, kind: 'skill', key: `skills/${name}/${version}/${name}.tgz` }))
 }
 for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp', mcpServers], ['python', []]]) {
@@ -89,4 +97,5 @@ for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp',
   await writeFile(join(destination, `${kind}-latest.json`), JSON.stringify(pointer, null, 2))
 }
 await writeFile(join(destination, 'verification-keys.json'), JSON.stringify(keys, null, 2))
+await writeFile(join(releaseRoot, 'immutable-resource-receipt.json'), JSON.stringify(immutableResources, null, 2))
 console.log(`Verified catalogs: ${plugins.length} packages, ${skills.length} Skills; localOnly=${localOnly}`)
