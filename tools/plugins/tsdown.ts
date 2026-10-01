@@ -77,7 +77,7 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         // entry points (for example `qrcode/lib/browser.js` and
         // `react/jsx-runtime`) are resolved as explicit subpath imports.
         alwaysBundle: [
-          ...(options.universalViewer ? [(specifier: string) => !/^(?:react(?:\/|$)|react-dom(?:\/|$)|@deepseek-ai\/|@zerowallscience\/)/u.test(specifier)] : []),
+          ...(options.universalViewer ? [/^(?!.*(?:^|[\\/])(?:react(?:[\\/]|$)|react-dom(?:[\\/]|$)|@deepseek-ai[\\/]|@zerowallscience[\\/])).+/u] : []),
           // ZeroWall plugins are independently installable DSH bundles. Keep
           // their client entrypoints external so the ModuleLoader can load,
           // update and restart one plugin without rebuilding every client.

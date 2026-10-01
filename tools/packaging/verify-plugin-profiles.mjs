@@ -151,6 +151,29 @@ try {
   assert.equal((await waitReady()).args[0], server)
   assert.equal(bootCount, beforeMcpBoots)
   await callHost('mcp.remove', [mcp.id])
+  // Exercise the real old file archive, including its own remote bundle,
+  // before upgrading to the resource-bearing universal viewer package.
+  const fileId = '@zerowallscience/plugin-files'
+  const oldArchive = join(root, 'artifacts/release/8.0.0/plugins/plugin-files/0.1.0/zerowallscience-plugin-files-0.1.0.tgz')
+  const fileDocument = JSON.parse(await readFile(join(releaseRoot, 'catalogs/plugin-catalog.json')))
+  const oldRecord = fileDocument.resources.find(item => item.id === fileId)
+  Object.assign(oldRecord, { version: '0.1.0', desktopRange: { min: '8.0.0' }, downloadUrl: pathToFileURL(oldArchive).href, sha256: await fileDigest(oldArchive), size: (await stat(oldArchive)).size })
+  const oldCatalog = join(directory, 'old-file-catalog.json')
+  await writeFile(oldCatalog, JSON.stringify(signCatalog(fileDocument, privateKey, 'local-development')))
+  await manager.plugin(fileId, oldCatalog)
+  assert.equal(JSON.parse(await readFile(join(home, 'profiles/web/node_modules', fileId, 'package.json'))).version, '0.1.0')
+  await manager.plugin(fileId, join(releaseRoot, 'catalogs/plugin-latest.json'))
+  const fileRoot = join(home, 'profiles/web/node_modules', fileId)
+  assert.equal(JSON.parse(await readFile(join(fileRoot, 'package.json'))).version, '0.2.0')
+  const assetManifest = JSON.parse(await readFile(join(fileRoot, 'lib/viewer-assets/asset-manifest.json')))
+  assert.equal(await fileDigest(join(fileRoot, 'lib/viewer-assets/build/pdf.worker.mjs')), assetManifest.files['build/pdf.worker.mjs'])
+  const hostAddress = output.match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0]
+  const cssResponse = await fetch(`${hostAddress}/zerowall/viewer-assets/${assetManifest.version}/leaflet/leaflet.css`)
+  assert.equal(cssResponse.status, 200)
+  assert.equal(cssResponse.headers.get('cache-control'), 'public, max-age=31536000, immutable')
+  assert.equal((await fetch(`${hostAddress}/zerowall/viewer-assets/${'0'.repeat(64)}/leaflet/leaflet.css`)).status, 404)
+  await manager.rollback()
+  assert.equal(JSON.parse(await readFile(join(home, 'profiles/web/node_modules', fileId, 'package.json'))).version, '0.1.0')
   await manager.plugin('@zerowallscience/dsh-bundle-science', join(releaseRoot, 'catalogs/plugin-latest.json'))
   const composition = JSON.parse(await readFile(join(home, 'profiles/web/package.json'))).dsh.profile.bundles
   assert(!composition.includes('@zerowallscience/dsh-bundle-science'))
@@ -163,7 +186,7 @@ try {
   assert.deepEqual(JSON.parse(await readFile(join(home, 'profiles/web/package.json'))).dsh.profile.bundles, composition)
   assert((await callHost('host.health')).ready)
 
-  await writeFile(join(directory, 'receipt.json'), JSON.stringify({ applicationVersion: contract.version, dshVersion: '0.2.0-rc.2', installedPlugin: installed.name, version: installed.version, upgradeVersion: '0.1.1', bootCount, pluginInstallation: true, profileUpgradeRollback: true, skillsImportRefreshRollback: true, mcpStartStopRestart: true, mcpSignedBundleUpdateRollback: true, compositionInstallation: true, missingDependencyRollback: true, environmentSecretsRedacted: true }, null, 2))
+  await writeFile(join(directory, 'receipt.json'), JSON.stringify({ applicationVersion: contract.version, dshVersion: '0.2.0-rc.2', installedPlugin: installed.name, version: installed.version, upgradeVersion: '0.1.1', bootCount, pluginInstallation: true, filePluginUpgradeRollback: true, versionedViewerAssets: true, profileUpgradeRollback: true, skillsImportRefreshRollback: true, mcpStartStopRestart: true, mcpSignedBundleUpdateRollback: true, compositionInstallation: true, missingDependencyRollback: true, environmentSecretsRedacted: true }, null, 2))
   console.log('Real profile verification passed:', directory)
 } finally {
   await writeFile(join(directory, 'host.log'), output.replace(/([?&]token=)[^\s&]+/g, '$1[redacted]'))
