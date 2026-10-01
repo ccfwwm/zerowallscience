@@ -42,6 +42,8 @@ artifacts/
 
 20 个 ZeroWall 插件的版本基线独立为 `0.1.0`。DSH 兼容范围精确限制到 0.2.0-rc.2，桌面最低版本为 8.0.0。微信与通知保持第三方独立版本；历史 `plugins/wechat/` 适配源码保留，当前实际启用的是 `packages/dsh-wechat/`。
 
+插件的 Desktop `min`/`max` 表达兼容范围；构建检查判断当前桌面是否位于范围内，不要求插件最低版本等于桌面当前版本。后续桌面补丁升级不强制修改全部插件 manifest。当前 DSH rc 兼容范围仍保持精确匹配。
+
 每个发布包有 Host/Client/remote 入口、bundle patch、权限和重启声明。DSH 核心与 React 等共享模块由 Host/ModuleLoader 提供；插件自己的依赖在自己的 bundle 中处理。`plugin-base` 提供公共服务和 UI，领域插件通过各自 client 的 remote contribution 注册。
 
 `@zerowallscience/dsh-bundle-science` 只声明组合与依赖。管理器安装后把组合展开为独立 profile bundles，去重；移除插件不会被该组合重新启用。`plugins:pack` 从源码和集中生成的库创建 staging manifest，去除构建脚本、devDependencies 和 workspace 发布依赖，DSH 包转换为 Host peers。
@@ -94,6 +96,10 @@ zws python rollback
 | Electron + DSH 核心 | 原有桌面安装器更新 | 继续使用桌面版本更新流程 |
 
 Python 默认安装包只携带小型签名依赖清单，不携带 `base-runtime.zip`。首次启动只检查签名 feed，不创建基础环境下载任务；用户点击安装或发起需要 Python 的操作时才安装。中断的远程安装任务在下次启动保持暂停，由用户继续。可选离线安装器仍可自动准备其携带的签名 bootstrap。运行任务解析后使用固定物理路径；Python 工具和托管 MCP 写 snapshot lease，科研 Host 保守保留其使用过的 generation 至进程退出。清理器保留 current、rollback、live lease 和 24 小时宽限期，随后只处理受管 slots，不删除历史外部环境。
+
+插件切换和回滚在停止 Host 前持久化 transaction journal。启动时校验 journal 的受管路径，恢复第一次 rename 前、备份后、激活后及回滚中断的状态；损坏 journal 作为错误处理。完整旧 profile 在切换尚未开始时保留原位。
+
+Python feed 请求限制为 90 秒和 16 MiB，临时传输错误最多尝试三次；JSON 和签名错误不重试。Windows 长进程路径使用扩展路径格式；科学 DLL 对路径长度还有自己的限制，因此安装临时目录使用带 128 位随机值的短名称。永久 generation 保留 UUID，不缩短身份。清理仅识别严格的受管临时名称，不删除普通 `.tmp` 文件；失败日志保留 traceback 尾部，current 指针只在健康检查成功后切换。
 
 科学环境的大型依赖仍由专用 updater 管理，不把通用包安装器冒充 Python updater。离线 runtime 制作入口保持 `tools/release/build-mcp-environment.mjs`，不把大型包塞回默认桌面。
 

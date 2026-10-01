@@ -43,7 +43,7 @@ const current = () => page.evaluate(() => window.zerowallDesktop.getMcpEnvironme
 const jobs = async () => Promise.all((await readdir(join(management, 'jobs')).catch(error => {
   if (error.code === 'ENOENT') return []; throw error
 })).filter(name => name.endsWith('.json')).map(async name => JSON.parse(await readFile(join(management, 'jobs', name), 'utf8'))))
-async function settle(timeout, taskId) {
+async function settle(timeout, taskId, expectedPhase = 'idle') {
   const deadline = Date.now() + timeout
   let previous, lastRecorded = 0
   while (Date.now() < deadline) {
@@ -58,14 +58,20 @@ async function settle(timeout, taskId) {
     }
     if (status.phase === 'failed' || stage === 'failed') throw new Error(status.lastUpdateError ?? status.message ?? 'Python installation failed')
     if (taskId ? status.phase === 'ready' && stage === 'ready' && status.updateJob?.taskId === taskId
-      : ['idle', 'ready'].includes(status.phase) && !status.updateJob) return status
+      : status.phase === expectedPhase && !status.updateJob
+        && (expectedPhase === 'ready' ? status.python?.ready && status.activeEnvironment?.snapshotId : status.lastCheckedAt)) return status
     await new Promise(accept => setTimeout(accept, 1000))
   }
   throw new Error('Python verification timed out')
 }
 try {
   await launch()
-  evidence.startup = await settle(60_000)
+  // The workbench becomes visible before the delayed read-only Python check.
+  // Initial service state is idle even when current.json already exists.
+  // Wait for the completed check, rather than accepting that initial state.
+  // For reuse, a verified local ready snapshot is sufficient: subsequent
+  // inventory scans publish local status without a remote-check timestamp.
+  evidence.startup = await settle(180_000)
   assert.equal(evidence.startup.phase, 'idle')
   assert.deepEqual(await jobs(), [], 'Thin startup must not schedule installation')
   await access(join(runtimeRoot, 'python.exe')).then(() => assert.fail('Python installed before request'), error => { if (error.code !== 'ENOENT') throw error })
@@ -106,7 +112,7 @@ try {
   const before = await readFile(join(management, 'current.json'))
   await app.close(); app = undefined
   await launch()
-  evidence.reused = await settle(60_000)
+  evidence.reused = await settle(180_000, undefined, 'ready')
   assert.equal(evidence.reused.phase, 'ready')
   assert.equal(evidence.reused.activeEnvironment.snapshotId, pointer.root)
   assert.deepEqual(await readFile(join(management, 'current.json')), before)

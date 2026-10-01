@@ -10,13 +10,13 @@
 | 实施分支 | `dsh-allupdate` |
 | 起点 | `main@0c8506a2bce63e3268f93f74476d98fd38a46f94` |
 | 自定义 DSH | `93bacb7e30c888cc01a1322245a33ff3be9ff2b3` / `0.2.0-rc.2` |
-| 最终 runtime 构建提交 | `f54d6b2f6e9b349cd8c7acd74605898323b4391b` |
-| 最终 build ID | `1790811100023-47145ac9` |
+| 最终 runtime 构建提交 | `3c75dfdf0faad6dcbc3342cc11c955bf326e4889` |
+| 最终 build ID | `1790817499571-d4770586` |
 | 模型 | 本任务未切换执行模型，未修改用户模型配置 |
 
 原目录 `C:/softworks/gpt-tools/zerowallscience` 的 `main` 引用仍为上述起点。本任务仅向独立 worktree 写入。原目录当前处于用户另一个 `codex/dsh-file-preview-ppt-visual` 分支，并有并行工作产生的修改；因此不把原目录所有文件哈希宣称为未变化，也不回退这些修改。只读对照收据为 `artifacts/verification/8.0.0/main-preservation-final.json`。
 
-最后一次打包复用了未变化、已经验收的 DSH、插件和资源 staging，重新编译桌面 Python 修复；复用范围写入本次 stage 的 `desktop-rebuild.json`。安装包构建后补充的提交涉及单插件 `pnpm pack` 入口、验收脚本及说明文档。包 manifest 保留实际 runtime 构建提交，不能用后续文档提交替换它。
+最后一次打包复用了未变化、已经验收的 DSH、插件和资源 staging，重新编译桌面 Python 修复；复用范围写入本次 stage 的 `desktop-rebuild.json`。安装包构建后补充的提交只涉及测试、验收脚本及说明文档；插件原生打包入口已经进入本次 staging。包 manifest 保留实际 runtime 构建提交，不能用后续文档提交替换它。
 
 ## 已实现的功能边界
 
@@ -45,9 +45,9 @@ artifacts/packages/8.0.0/windows-x64/zerowall-science-8.0.0-win-x64.exe
 
 | 项目 | 数值 |
 | --- | --- |
-| 大小 | 354,884,304 bytes，338.4 MiB |
-| SHA-256 | `6aad51546970a327326bac5ad14714425fe7bdae1906eccbbc6a4c29ada3533d` |
-| win-unpacked 总文件大小 | 1,609,494,091 bytes，1534.9 MiB |
+| 大小 | 354,883,341 bytes，338.4 MiB |
+| SHA-256 | `08a8b40ec2cb3c1a6852207f3fdbcf32a5d6304f4f622eed5fa84d323eb4be14` |
+| win-unpacked 总文件大小 | 1,609,498,389 bytes，1534.9 MiB |
 | 完整 Python archive | 未包含 |
 | 隐式 Python 安装任务 | 未创建 |
 | 更新元数据 | 版本、大小、SHA-256 与安装包一致 |
@@ -82,20 +82,28 @@ catalog 当前使用本地开发密钥、`file:` 地址和 `localOnly=true`。�
 | 检查 | 结果与证据 |
 | --- | --- |
 | DSH pin、profile、runtime closure、inventory | 通过；DSH 351 个包、291 个 runtime workspace 包、20 个 ZeroWall 插件 |
-| 根类型检查及最终桌面类型检查 | 通过；`typecheck.log`、`python-idle-check.log` |
-| 最终完整 `pnpm test` | Vitest 838 passed / 10 skipped；Node 71 passed / 2 skipped；`final-source-tests.log` |
+| 根类型检查及最终桌面类型检查 | 通过；`typecheck.log`、`compact-final-typecheck.log` |
+| 最终完整 `pnpm test` | Vitest 844 passed / 10 skipped；Node 85 passed / 2 skipped；`verified-final-source-tests.log` |
 | 原生插件独立打包 | 20 个通过；`native-pack-verification.log` |
 | 隔离插件升级与回滚 | 通过；`profiles-acceptance.log` |
-| `pnpm smoke:electron` | 14 passed，0 skipped，包含剪贴板与原生插件管理；`electron-final-acceptance.log` |
-| `pnpm verify:package`、`pnpm smoke:host` | 通过；Host、ASAR、包策略和中英文设置；`package-final-acceptance.log` |
-| 包内 dsh/zws 与管理功能 | 通过；`commands-python-final-acceptance.log` 和 commands 收据 |
+| `pnpm smoke:electron` | 12 passed / 2 skipped，原生插件管理通过；当前会话剪贴板权限被 Windows 拒绝（Win32 error 5）；`compact-final-electron-tests.log` |
+| `pnpm verify:package`、`pnpm smoke:host` | 通过；Host、ASAR、包策略和中英文设置；`compact-final-package-verification.log`、`compact-final-host-smoke.log` |
+| 包内 dsh/zws 与管理功能 | 通过；`compact-final-packaged-commands.log` 和 commands 收据 |
 | 精简 Python 页面 | 通过；1440、1920、760 三种窗口尺寸无横向溢出；打开/关闭安装确认框，无 jobs、无 Python executable |
-| `pnpm release:verify-local`、`pnpm version:check --artifacts` | 通过；`python-ui-final-acceptance.log` |
+| `pnpm release:verify-local`、`pnpm version:check --artifacts` | 通过；`compact-final-release-check.log`、`compact-final-version-artifacts.log` |
+| 包内启动事务恢复 | 四种中断位置均恢复旧 profile，Host ready；`compact-final-profile-recovery.log` |
+| 真实 Python 包操作与源码构建 | 4 passed / 0 skipped；`python-real-integration-verified.log`、`artifacts/verification/8.0.0/python-real-tests/verified-final/` |
+| 包内按需 Python 安装与重启 | 通过；签名、archive SHA-256、科学库导入、相同 snapshot、current 指针不变且不新增安装任务；`complete-final-python-on-demand.log` |
 | 包及独立资源 manifest | 已生成；packages 与 release 各有 `artifact-manifest.json` |
 
-日志均位于 `artifacts/logs/8.0.0/`。最终测试汇总为 `artifacts/verification/8.0.0/final-test-summary.json`；Python 页面收据和截图为 `artifacts/verification/8.0.0/python-ui/final/`；包内命令收据为 `artifacts/verification/8.0.0/commands/864d4770-f81d-4f18-a278-20007a7e0a47/receipt.json`。
+日志均位于 `artifacts/logs/8.0.0/`。最终测试汇总为 `artifacts/verification/8.0.0/final-test-summary.json`；Python 页面收据和截图为 `artifacts/verification/8.0.0/python-ui/compact-final/`；包内命令收据为 `artifacts/verification/8.0.0/commands/0e4254fa-61a6-4660-88ec-517dcfd044bf/receipt.json`。
 
-源码测试的 skips 是既有的条件测试，包括没有提供真实 Python snapshot/source builder、离线 bootstrap、私有历史或科学样本的项目。它们不是实测成功。完整 Python/生信环境和实际远程 R、科研数据分析流程没有在本次精简安装包验收中完整运行。
+默认源码测试仍有条件 skips，包括离线 bootstrap、私有历史或科学样本。真实 Python snapshot、源码构建和包操作另行启用并验证，三个 spec 共 4 passed / 0 skipped；其中真实安装、卸载、重放、健康失败保留、回滚和签名源码允许/拒绝均通过。源环境的 flowio origin/version/content SHA-256 与解释器 `._pth` 前后相同。最新包的剪贴板两项因会话权限无法执行，不能算作通过；上一候选包曾完成 14 passed / 0 skipped。实际远程 R 服务和用户科研数据分析流程未在此次验收中完整运行。
+
+
+包内 `zws python install` 在隔离 profile 中请求 durable task，使用现有完整缓存 archive 作为 resume seed（983,689,995 bytes），再次验签公开 feed 并核对 SHA-256，实际解压、规范化和激活新 generation。安装前 idle 且无 jobs；安装后 Python 3.12.10、numpy 2.5.3、pandas 3.0.5、scipy 1.18.1、anndata 0.13.3.post0、scanpy 1.12.4 与 flowio 1.4.0 均真实导入成功。关闭并重新启动同一 profile 后恢复 ready，snapshot 和 current.json 字节保持一致，没有新增安装任务，包库存可读取。该验收没有对科学数据集执行分析，也没有操作用户现有 Python。
+
+完整收据：`artifacts/verification/8.0.0/python-on-demand/2edcafd4-687c-40c2-8ff7-7830a12c360d/receipt.json`。验收脚本等待 Desktop 延迟的本地检查完成，不把工作台刚显示时服务的初始 idle 当成重启失败；库存扫描会发布不含远程检查时间戳的 local status，因此重启使用已验证的活动 snapshot 和 Python ready 状态作断言。
 
 NSIS 的 PATH ownership 行为在隔离 registry key 中验证过，保留外部命令和既有 PATH，移除时只删除本程序所有的项。本次启动的是安装包对应的 `win-unpacked` 应用，没有覆盖用户当前安装，也没有运行安装器对真实用户 PATH 作变更。
 

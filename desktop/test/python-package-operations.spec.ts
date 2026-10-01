@@ -52,6 +52,9 @@ it.skipIf(!process.env.ZEROWALL_TEST_PYTHON_SNAPSHOT)('previews, installs, unins
     manifest.signature.value = sign(null, canonicalManifest(manifest), keys.privateKey).toString('base64')
     await writeFile(join(slot, 'manifest.json'), JSON.stringify(manifest))
     await writeFile(join(root, 'current.json'), JSON.stringify({ root: slot, health: 'ready', slot: 'a', manifest }))
+    // Mirror selection comes from the user's settings, not the signed runtime
+    // manifest. Configure only this disposable profile and retain URL checks.
+    await writeFile(join(root, 'settings.json'), JSON.stringify({ mirrorUrl: manifest.dependencies.indexUrl }))
     let failHealth = false
     const controller = new McpEnvironmentController({ root, manifestUrl: 'https://fixture.invalid', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), publish() {}, healthCheck: async () => { if (failHealth) throw new Error('injected failure') } })
     const initial = await controller.pythonInfo()
