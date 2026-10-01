@@ -742,6 +742,11 @@ if (ownsInstance) app.whenReady().then(async () => {
     })()
     return { taskId }
   }
+  const retryResourceJob = async (taskId: string): Promise<{ taskId: string }> => {
+    const previous = resourceJobs.get(taskId)
+    if (previous === undefined || !['failed', 'cancelled'].includes(previous.status)) throw new Error('Only failed or cancelled resource tasks can be retried')
+    return startResourceJob(previous.kind, previous.action, previous.id)
+  }
   const loadResourceJobs = async (): Promise<void> => {
     const entries = await readdir(resourceJobRoot, { withFileTypes: true }).catch(() => [])
     for (const entry of entries) {
@@ -766,8 +771,9 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (request.operation === 'resource.catalog.check') return resources.check(String(request.args[0]) as ResourceKind, request.args[1] === undefined ? undefined : String(request.args[1]))
     if (request.operation === 'resource.catalog.status') return Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind)))
     if (request.operation === 'resource.job.start') return startResourceJob(String(request.args[0]) as ResourceKind, String(request.args[1]), request.args[2] === undefined ? undefined : String(request.args[2]))
-    if (request.operation === 'resource.job.get') return resourceJobs.get(String(request.args[0]))
+    if (request.operation === 'resource.job.get' || request.operation === 'resource.job.status') return resourceJobs.get(String(request.args[0]))
     if (request.operation === 'resource.job.list') return [...resourceJobs.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    if (request.operation === 'resource.job.retry') return retryResourceJob(String(request.args[0]))
     if (request.operation === 'resource.job.cancel') {
       const job = resourceJobs.get(String(request.args[0]))
       if (job && ['queued', 'running'].includes(job.status)) await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
@@ -777,6 +783,33 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (request.operation === 'resource.mcp.rollback') return resources.rollbackMcp(request.args[0])
     if (request.operation === 'resource.import') return resources.resource(...request.args)
     if (request.operation === 'resource.update') return resourceAction(String(request.args[0]) as ResourceKind, 'update', request.args[1] === undefined ? undefined : String(request.args[1]))
+    if (request.operation.startsWith('resource.plugin.')) {
+      const action = request.operation.slice('resource.plugin.'.length)
+      const id = request.args[0] === undefined ? undefined : String(request.args[0])
+      if (action === 'list') return resources.check('plugin')
+      if (action === 'install') return resources.plugin(id ?? (() => { throw new Error('Plugin identity is required') })(), request.args[1] === undefined ? undefined : String(request.args[1]))
+      if (action === 'update') return id === undefined ? resources.update('plugin', request.args[1] === undefined ? undefined : String(request.args[1])) : resources.plugin(id, request.args[1] === undefined ? undefined : String(request.args[1]))
+      if (action === 'rollback') return resources.rollbackPlugin(id ?? (() => { throw new Error('Plugin identity is required') })())
+      return resourceAction('plugin', action, id)
+    }
+    if (request.operation.startsWith('resource.skill.')) {
+      const action = request.operation.slice('resource.skill.'.length)
+      const id = request.args[0] === undefined ? undefined : String(request.args[0])
+      if (action === 'list') return callHost('skill.list', [])
+      if (action === 'import') return resources.resource('skill', id ?? (() => { throw new Error('Skill identity is required') })(), request.args[1] === undefined ? undefined : String(request.args[1]))
+      if (action === 'update') return id === undefined ? resources.update('skill', request.args[1] === undefined ? undefined : String(request.args[1])) : resources.resource('skill', id, request.args[1] === undefined ? undefined : String(request.args[1]))
+      if (action === 'rollback') return callHost('skill.rollback', [id])
+      return resourceAction('skill', action, id)
+    }
+    if (request.operation.startsWith('resource.mcp.')) {
+      const action = request.operation.slice('resource.mcp.'.length)
+      const id = request.args[0] === undefined ? undefined : String(request.args[0])
+      if (action === 'list') return callHost('mcp.list', [])
+      if (action === 'import') return resources.resource('mcp', id ?? (() => { throw new Error('MCP identity is required') })(), request.args[1] === undefined ? undefined : String(request.args[1]))
+      if (action === 'update') return id === undefined ? resources.update('mcp', request.args[1] === undefined ? undefined : String(request.args[1])) : resources.resource('mcp', id, request.args[1] === undefined ? undefined : String(request.args[1]))
+      if (action === 'rollback') return resources.rollbackMcp(id ?? (() => { throw new Error('MCP identity is required') })())
+      return resourceAction('mcp', action, id)
+    }
     if (request.operation === 'mcp.logs') {
       const log = await readFile(join(userData, 'logs/harness.log'), 'utf8').catch(() => '')
       return { logFile: join(userData, 'logs/harness.log'), events: log.split(/\r?\n/).filter(line => line.includes('[zws-mcp]')).slice(-100).flatMap(line => { try { const event = JSON.parse(line.split('[zws-mcp] ')[1]!); return [{ operation: event.operation, status: event.status, time: event.time }] } catch { return [] } }) }
@@ -1027,7 +1060,9 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:resource-rollback', (_event, kind: unknown, id: unknown) => resourceAction(String(kind) as ResourceKind, 'rollback', String(id)))
   ipcMain.handle('desktop:resource-job-start', (_event, kind: unknown, action: unknown, id?: unknown) => startResourceJob(String(kind) as ResourceKind, String(action), typeof id === 'string' ? id : undefined))
   ipcMain.handle('desktop:resource-job-get', (_event, taskId: unknown) => resourceJobs.get(String(taskId)))
+  ipcMain.handle('desktop:resource-job-status', (_event, taskId: unknown) => resourceJobs.get(String(taskId)))
   ipcMain.handle('desktop:resource-job-list', () => [...resourceJobs.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))
+  ipcMain.handle('desktop:resource-job-retry', (_event, taskId: unknown) => retryResourceJob(String(taskId)))
   ipcMain.handle('desktop:resource-job-cancel', async (_event, taskId: unknown) => {
     const job = resourceJobs.get(String(taskId))
     if (job && ['queued', 'running'].includes(job.status)) await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })

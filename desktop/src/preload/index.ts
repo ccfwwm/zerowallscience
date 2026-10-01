@@ -73,7 +73,9 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
     rollback: async (kind: ResourceKind, id: string): Promise<unknown> => await ipcRenderer.invoke('desktop:resource-rollback', kind, id) as unknown,
     startJob: async (kind: ResourceKind, action: string, id?: string): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:resource-job-start', kind, action, id) as { taskId: string },
     getJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-get', taskId) as ResourceJob | undefined,
+    statusJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-status', taskId) as ResourceJob | undefined,
     listJobs: async (): Promise<ResourceJob[]> => await ipcRenderer.invoke('desktop:resource-job-list') as ResourceJob[],
+    retryJob: async (taskId: string): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:resource-job-retry', taskId) as { taskId: string },
     cancelJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-cancel', taskId) as ResourceJob | undefined,
     onJob: (listener: (job: ResourceJob) => void): (() => void) => {
       const handler = (_event: Electron.IpcRendererEvent, job: ResourceJob) => listener(job)
