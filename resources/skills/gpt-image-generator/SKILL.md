@@ -22,13 +22,15 @@ description: Generate or edit PNG images with ZeroWall's built-in generate_image
 3. 按“工具路由”调用 `generate_image` 或 `edit_image`：
    - `prompt`：完整生图提示词。
    - `output_path`：当前项目内的相对或绝对 PNG 路径。
-   - `model`：用户未指定时省略，让工具精确选择 `gpt-image-2`。
-   - `size`：用户未指定时省略，Host 使用官方 `auto`；指定时使用 `WIDTHxHEIGHT`。
+   - `model`：用户未指定时省略，沿用环境配置的生图模型；用户明确指定时只覆盖当前请求。
+   - `size`：用户未指定时省略，沿用 Host 配置；指定时使用 `WIDTHxHEIGHT`。
    - `quality`：用户未指定时不要自行填写；工具会先读取环境配置并明确把最终值发送给 API。正常环境默认是 `medium`，没有环境配置时发送 `auto`。用户明确指定时才传 `low`、`medium`、`high` 或 `auto`。
    - `overwrite`：只有用户明确要求替换已有图时才设为 `true`。
-   - `input_attachment_ids`：优先传当前会话附件 ID；`input_paths` 仅在用户明确指定工作区路径时使用，按源图优先级排列，主图放第一张。
+   - `input_attachment_ids`：优先传当前会话附件 ID；`input_paths` 可用于用户指定或当前已生成的工作区资源，按源图优先级排列，主图放第一张。
 - `mask_path`：仅 `edit_image` 可选；必须是独立于 `input_paths[0]` 的 alpha 蒙版，且与主图尺寸、格式一致。整图编辑时省略此字段，禁止传空字符串，也绝不能把主图路径重复填入 `mask_path`；工具会将这种模型回显视为未提供蒙版。
 4. 返回生成或编辑文件的绝对路径，并简要说明实际模型与尺寸意图。成功结果会直接显示在对话中；预览失败但文件已保存时，明确报告预览警告，不把文件结果判为失败。需要多张变体时使用不同文件名，可在合理并发范围内生成。
+
+科研 PPT 遵循 `zerowall-presentation`：默认先生成三张无文字样张并由当前聊天模型选定，再生成内容种子，用 `edit_image` 的 `[seed, style]` 顺序统一风格。正式文字、公式、数值和图表保留为 Univer 可编辑对象。图片、生成回执和视觉清单分别保留；失败后复用成功资产。
 
 ## 凭据与失败处理
 

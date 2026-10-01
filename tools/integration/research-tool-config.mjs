@@ -1,5 +1,7 @@
 import { DEFAULT_GROUPS } from '../../packages/dsh-progressive-tools/src/defaults.ts'
 const groups = [
+  ['attachment-reading', '附件信息、阅读、总结和比较；本地 Office 单元格解析与分页读取，PDF/OCR 使用 MinerU', ['read_uploaded_file', 'extract_uploaded_file', 'materialize_uploaded_file', 'mineru_*']],
+  ['presentation-authoring', '制作、改版和编辑科研演示文稿：视觉样张、生图资源、可编辑 Univer 排版及检查导出', ['presentation_*', 'generate_image', 'edit_image', 'univer_*']],
   ['omicverse', 'OmicVerse 原生工具、CPU 分析、Python 和 Agent', ['research_workflow', 'r_files', 'mcp__rmcp__omicverse_*']],
   ['r-compute', 'R 计算、项目和任务', ['research_workflow', 'mcp_connect', 'sc_tenifold_knockout_*', 'mcp__rmcp__r_runtime', 'mcp__rmcp__r_project', 'mcp__rmcp__r_execute', 'mcp__rmcp__r_jobs']],
   ['r-files', 'R 项目文件上传、预览、下载和校验', ['research_workflow', 'r_files', 'mcp__rmcp__r_files']],
@@ -17,6 +19,10 @@ const groups = [
 export const researchToolConfig = {
   groups: [...DEFAULT_GROUPS, ...groups],
   skillBindings: [
+    ['zerowall-presentation', ['presentation-authoring', 'image-generation']],
+    ['univer-slide', ['presentation-authoring', 'image-generation']],
+    ['gpt-image-generator', ['image-generation']],
+    ['mineru-document-parser', ['attachment-reading']],
     ['zerowall-rmcp', ['r-compute', 'r-files', 'r-packages', 'r-geo', 'r-nhanes', 'biomni', 'figureya', 'omicverse']],
     ...['zerowall-omicverse', 'zerowall-omicverse-singlecell', 'zerowall-omicverse-bulk', 'zerowall-omicverse-spatial', 'zerowall-omicverse-multiomics', 'zerowall-omicverse-agent'].map(skill => [skill, ['omicverse']]),
     ['zerowall-rplatform', ['r-compute']], ['zerowall-r-files', ['r-files']], ['zerowall-r-packages', ['r-packages']],

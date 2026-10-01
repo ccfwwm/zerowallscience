@@ -10,6 +10,7 @@ import { pcrTemplate, pcrForward, pcrReverse, pcrExpected } from '../../plugins/
 import { moleculePdb } from '../../plugins/research/test/molecule-fixture.js'
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const applicationVersion = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
 const roots: string[] = []
 let application: ChildProcessWithoutNullStreams
 let browser: Browser
@@ -94,7 +95,7 @@ afterAll(async () => {
 
 afterEach(async context => {
   if (context.task.result?.state === 'fail') {
-    const diagnostic = join(desktopRoot, 'dist', 'verification-7.0.0'); mkdirSync(diagnostic, { recursive: true })
+    const diagnostic = join(desktopRoot, 'dist', `verification-${applicationVersion}`); mkdirSync(diagnostic, { recursive: true })
     await page.screenshot({ path: join(diagnostic, 'failed-workbench.png') }).catch(() => undefined)
     console.log('Failed packaged UI', (await page.locator('body').innerText().catch(() => '')).slice(-16000), rendererOutput.filter(line => line.startsWith('[pageerror]')).slice(-5))
   }
@@ -127,7 +128,7 @@ describe('ZeroWall Science Electron', () => {
       skin: localStorage.getItem('dsh-dream-skin:skin'),
       builtin: localStorage.getItem('dsh-dream-skin:builtin-last'),
     }))).toMatchObject({ dark: null, wallpaper: false, composer: '100%', modal: '100%', builtin: 'ivory', skin: 'ivory' })
-    const output = join(desktopRoot, 'dist', 'verification-7.4.0')
+    const output = join(desktopRoot, 'dist', `verification-${applicationVersion}`)
     mkdirSync(output, { recursive: true })
     await page.screenshot({ path: join(output, 'default-ios.png') })
   })

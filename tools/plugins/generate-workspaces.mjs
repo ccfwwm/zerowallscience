@@ -98,7 +98,7 @@ const npmDependencies = {
   base: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   projects: { '@deepseek-ai/dsh-session-format-catalog': 'workspace:^', '@deepseek-ai/dsh-session-persistence-jsonl': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   account: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
-  files: { '@deepseek-ai/dsh-client-file-upload': 'workspace:^', 'dsh-office-tools': 'github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb', jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
+  files: { '@open-file-viewer/core': '0.1.49', 'viewer-pdfjs': 'npm:pdfjs-dist@6.3.289', '@deepseek-ai/dsh-api-workspace-files': 'workspace:^', '@deepseek-ai/dsh-office-to-pdf': 'workspace:^', '@deepseek-ai/dsh-client-ui-sidebar-right': 'workspace:^', '@deepseek-ai/dsh-client-file-upload': 'workspace:^', 'dsh-office-tools': 'github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb', jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   images: { sharp: '^0.35.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   mcp: { '@zerowallscience/plugin-secrets': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   skills: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
@@ -124,14 +124,14 @@ const plugins = [
   { id: 'projects', client: true, remote: true, capabilities: ['projects', 'workspaces'], permissions: ['files'] },
   { id: 'account', client: true, remote: true, capabilities: ['account'], permissions: ['credentials', 'network'], dependencies: ['secrets', 'base'] },
   { id: 'ai-cloud', client: true, capabilities: ['llm.cloud'], permissions: ['credentials', 'network'], dependencies: ['account', 'secrets'], requiredServices: ['llm', 'zerowallAccount'] },
-  { id: 'files', client: true, remote: true, capabilities: ['files', 'data-assets', 'office-tools'], permissions: ['files'], requiredServices: ['tools', 'sessions', 'fs'] },
+  { id: 'files', client: true, remote: true, capabilities: ['files', 'data-assets', 'office-tools', 'universal-file-preview', 'automatic-attachment-extraction'], permissions: ['files'], requiredServices: ['tools', 'sessions', 'fs', 'webServer'] },
   {
     id: 'images',
     client: true,
     capabilities: ['images', 'image-generation'],
     permissions: ['files', 'network'],
     dependencies: ['account', 'secrets', 'base', 'environment'],
-    requiredServices: ['tools', 'zerowallEnvironment', 'attachments'],
+    requiredServices: ['tools', 'zerowallEnvironment', 'attachments', 'llm'],
   },
   { id: 'mcp', client: true, remote: true, capabilities: ['mcp'], permissions: ['files', 'network', 'credentials'], dependencies: ['projects', 'base', 'secrets'], requiredServices: ['zerowallProjects', 'tools'] },
   { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'], requiredServices: ['skills', 'systemPrompt'] },
@@ -190,7 +190,7 @@ for (const plugin of plugins) {
       bundle: { patch: 'dsh.bundle.patch.yml' },
       ...(plugin.client ? {
         client: {
-          inject: clientInject,
+          inject: plugin.id === 'files' ? [...clientInject, 'remote.workspaceFiles', 'sidebarRightTabs', '@deepseek-ai/dsh-client-ui-sidebar-right', '@deepseek-ai/dsh-api-workspace-files'] : clientInject,
           ...(plugin.clientExternal === undefined ? {} : { external: plugin.clientExternal }),
           platform: 'web',
         },
@@ -206,7 +206,7 @@ for (const plugin of plugins) {
       migrationVersion: 1,
     },
     scripts: {
-      bundle: plugin.id === 'research' ? 'node ../../tools/science/build-molecule-runtime.mjs && tsdown' : 'tsdown',
+      bundle: plugin.id === 'research' ? 'node ../../tools/science/build-molecule-runtime.mjs && tsdown' : plugin.id === 'files' ? 'node scripts/prepare-viewer-assets.mjs && tsdown' : 'tsdown',
       typecheck: plugin.client
         ? 'tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit' + (plugin.id === 'research' ? ' && tsc -p tsconfig.workbench.json --noEmit' : '')
         : 'tsc -p tsconfig.host.json --noEmit',
@@ -223,7 +223,7 @@ for (const plugin of plugins) {
       ] : []),
       'dsh.bundle.patch.yml',
       'zerowall.plugin.json',
-      ...(plugin.id === 'pubmed' ? ['THIRD_PARTY_LICENSES'] : []),
+      ...(['pubmed', 'files'].includes(plugin.id) ? ['THIRD_PARTY_LICENSES'] : []),
       'README.md',
     ],
     dependencies: {
@@ -244,6 +244,7 @@ for (const plugin of plugins) {
       '@deepseek-ai/cordis': '^4.0.3',
     },
     devDependencies: {
+      ...(plugin.id === 'base' ? { '@deepseek-ai/dsh-scope': 'workspace:^' } : {}),
       ...(plugin.id === 'account' ? { '@deepseek-ai/dsh-client-ui-renderer': 'workspace:^' } : {}),
       tsdown: '^0.22.2',
       typescript: '6.0.3',
@@ -303,6 +304,8 @@ for (const plugin of plugins) {
         ? String.raw`, hostAlwaysBundle: [/^@deepseek-ai\/dsh-mcp-client\/src\//]`
         : plugin.id === 'research'
           ? ', inlinePngAssets: true'
+          : plugin.id === 'files'
+            ? ', universalViewer: true'
           : ''} })`,
     '',
   ].join('\n'))

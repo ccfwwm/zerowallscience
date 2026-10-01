@@ -1,7 +1,10 @@
+import { adaptLibreOfficeKit } from './adapt-libreoffice-kit.mjs'
+import { adaptDocumentPreview, adaptExcelChunk } from './adapt-document-preview.mjs'
+import { createHash } from 'node:crypto'
 import { access, cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
-import { adaptUniverOfficeManifest } from './adapt-univer-office.mjs'
+import { adaptUniverOfficeManifest, adaptUniverSkill, UNIVER_SKILL_HASHES } from './adapt-univer-office.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
 import {
@@ -242,10 +245,27 @@ async function copyRuntimePackage(package_, targetRoot) {
     return
   }
 
+  if (manifest.name === '@deepseek-ai/libreoffice-kit') {
+    for (const entry of ['lib', 'NOTICE', 'LICENSE']) await copyEntry(sourceRoot, targetRoot, entry)
+    const path = resolve(targetRoot, 'lib/index.js')
+    await writeFile(path, adaptLibreOfficeKit(await readFile(path, 'utf8'), manifest.version))
+    return
+  }
+
   if (manifest.name === 'dsh-univer-office') {
     await writeFile(resolve(targetRoot, 'package.json'), adaptUniverOfficeManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8')))
     // The Gateway and render workers must execute from physical files in Electron.
     for (const entry of ['lib', 'docs', 'skills', 'artifacts', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
+    const provenance = JSON.parse(await readFile(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8')).univerOffice
+    const skillReceipts = []
+    for (const skill of Object.keys(UNIVER_SKILL_HASHES)) {
+      const path = resolve(targetRoot, 'skills', skill, 'SKILL.md')
+      const before = await readFile(path, 'utf8')
+      const after = adaptUniverSkill(skill, before, manifest.version, provenance.commit)
+      await writeFile(path, after)
+      skillReceipts.push({ skill, version: manifest.version, commit: provenance.commit, sourceSha256: UNIVER_SKILL_HASHES[skill], adaptedSha256: createHash('sha256').update(after).digest('hex') })
+    }
+    await writeFile(resolve(targetRoot, 'skills/zerowall-adaptation.json'), JSON.stringify(skillReceipts, null, 2))
     const hostPath = resolve(targetRoot, 'lib/index.js')
     const host = await readFile(hostPath, 'utf8')
     const anchor = 'var PLUGIN_NODE_MODULES = fileURLToPath(new URL("../../node_modules/", import.meta.url));'
@@ -324,6 +344,12 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
     }
     const roots = new Set(manifest.files.filter(entry => typeof entry === 'string' && !entry.startsWith('!')).map(publishRoot))
     for (const entry of roots) await copyEntry(sourceRoot, targetRoot, entry)
+    if (manifest.name === '@deepseek-ai/dsh-client-ui-sidebar-documentpreview') {
+      const clientPath = resolve(targetRoot, 'lib/client.js')
+      await writeFile(clientPath, adaptDocumentPreview(await readFile(clientPath, 'utf8'), manifest.version))
+      const excelPath = resolve(targetRoot, 'lib/client.excel.js')
+      await writeFile(excelPath, adaptExcelChunk(await readFile(excelPath, 'utf8'), manifest.version))
+    }
     if (manifest.name === '@deepseek-ai/dsh-client-ui-conversation') {
       const clientPath = resolve(targetRoot, 'lib/client.js')
       await writeFile(clientPath, adaptConversationClient(await readFile(clientPath, 'utf8')))

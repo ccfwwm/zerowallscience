@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "7.4.0",
+  "version": "7.5.0",
   "description": "ZeroWall Science base domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -167,6 +167,7 @@
     "@deepseek-ai/cordis": "^4.0.3"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-scope": "workspace:^",
     "tsdown": "^0.22.2",
     "typescript": "6.0.3",
     "vitest": "^4.1.10"

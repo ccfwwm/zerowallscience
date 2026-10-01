@@ -2,6 +2,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createElement, type ComponentType } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+vi.mock('../src/client/universal-viewer.js', () => ({ installUniversalViewer: vi.fn(), UniversalPreview: ({ name }: { name: string }) => createElement('div', { 'data-testid': 'universal-preview' }, name + ' 通用预览') }))
+
 import { apply } from '../src/client/index.js'
 import type { PreparedFile } from '../src/shared/types.js'
 
@@ -22,12 +24,18 @@ function context() {
     ok: true, value: { path: 'C:/workspace/.zerowall/uploads/paper.pdf' },
   })
   const download = vi.fn().mockResolvedValue({ ok: true, value: { ...file, data: Buffer.from('%PDF-1.7').toString('base64') } })
+  const readOriginalRange = vi.fn(async () => {
+    const result = await download()
+    const bytes = Buffer.from(result.value.data, 'base64')
+    return { ok: true, value: { data: result.value.data, bytes: bytes.length, version: file.sha256, eof: true, name: result.value.name } }
+  })
   const inspect = vi.fn().mockResolvedValue({ ok: true, value: file })
+  const openResource = vi.fn()
   const ctx = {
-    remote: { zerowallFiles: { materializeOriginal: materialize, downloadOriginal: download, inspectOriginalMetadata: inspect } },
+    remote: { zerowallFiles: { materializeOriginal: materialize, downloadOriginal: download, inspectOriginalMetadata: inspect, readOriginalRange } },
     get: (name: string) => name === 'remote.zerowallFiles'
-      ? { materializeOriginal: materialize, downloadOriginal: download, inspectOriginalMetadata: inspect }
-      : undefined,
+      ? { materializeOriginal: materialize, downloadOriginal: download, inspectOriginalMetadata: inspect, readOriginalRange }
+      : name === 'sidebarRight' ? { openResource } : undefined,
     betterSidebar: {
       registerTab: vi.fn((descriptor: { id: string; component: ComponentType<any> }) => {
         if (descriptor.id === 'zerowall:attachment-viewer') attachmentViewer = descriptor.component
@@ -48,6 +56,7 @@ function context() {
     materialize,
     download,
     inspect,
+    openResource,
     attachmentViewer: () => attachmentViewer,
   }
 }
@@ -58,6 +67,32 @@ afterEach(() => {
 })
 
 describe('attachment client actions', () => {
+  it.each(['research.docx', 'research.pptx', 'research.xlsx', 'RESEARCH.XLS', 'facts.csv', 'facts.tsv'])('opens %s with native DSH in both workspace and detached sessions', async name => {
+    const state = context()
+    state.materialize.mockResolvedValue({ ok: true, value: { path: 'C:/科研#文件/' + name } })
+    apply(state.ctx)
+    for (const cwd of ['C:/workspace', undefined]) {
+      const complete = vi.fn()
+      window.dispatchEvent(new CustomEvent('zerowall:attachment-open', { detail: { file: { ...file, name }, sessionId: 'session-1', cwd, complete } }))
+      await waitFor(() => expect(complete).toHaveBeenCalledWith(true))
+      expect(state.openResource).toHaveBeenLastCalledWith(`dsh-resource://file/session/session-1/C%3A/%E7%A7%91%E7%A0%94%23%E6%96%87%E4%BB%B6/${name}`, { kind: 'text' })
+    }
+    expect(state.ctx.betterSidebar.openFile).not.toHaveBeenCalled()
+    expect(state.ctx.betterSidebar.openTab).not.toHaveBeenCalled()
+    expect(state.download).not.toHaveBeenCalled()
+    state.disposers.forEach(dispose => dispose())
+  })
+
+  it('does not open a native Office file when materialization authorization fails', async () => {
+    const state = context()
+    state.materialize.mockResolvedValue({ ok: false, error: { code: 'denied', message: 'Session has no attachment' } })
+    apply(state.ctx)
+    const complete = vi.fn()
+    window.dispatchEvent(new CustomEvent('zerowall:attachment-open', { detail: { file: { ...file, name: 'research.pptx' }, sessionId: 'session-1', complete } }))
+    await waitFor(() => expect(complete).toHaveBeenCalledWith(false, expect.stringContaining('denied')))
+    expect(state.openResource).not.toHaveBeenCalled()
+    state.disposers.forEach(dispose => dispose())
+  })
   it('opens workspace attachments in the original-byte Sidebar viewer', async () => {
     const state = context()
     apply(state.ctx)
@@ -164,7 +199,7 @@ describe('attachment client actions', () => {
         tab: { id: 'pdf-preview', type: 'zerowall:attachment-viewer', meta: { attachmentId: file.attachmentId } },
         visible: true,
       }))
-      expect((await screen.findByTitle('paper.pdf')).getAttribute('src')).toBe('blob:attachment-preview')
+      expect(await screen.findByTestId('universal-preview')).toHaveProperty('textContent', 'paper.pdf 通用预览')
       pdfView.unmount()
 
       const source = Buffer.from('Text attachment preview', 'utf8')

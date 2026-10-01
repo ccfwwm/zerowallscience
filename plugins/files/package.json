@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-files",
-  "version": "7.4.0",
+  "version": "7.5.0",
   "description": "ZeroWall Science files domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -54,7 +54,11 @@
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-attachment",
         "@deepseek-ai/dsh-client-ui-tool",
-        "@deepseek-ai/dsh-client-ui-workspace"
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "remote.workspaceFiles",
+        "sidebarRightTabs",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-api-workspace-files"
       ],
       "platform": "web"
     }
@@ -67,13 +71,16 @@
     "requiredServices": [
       "tools",
       "sessions",
-      "fs"
+      "fs",
+      "webServer"
     ],
     "optionalServices": [],
     "capabilities": [
       "files",
       "data-assets",
-      "office-tools"
+      "office-tools",
+      "universal-file-preview",
+      "automatic-attachment-extraction"
     ],
     "permissions": [
       "files"
@@ -86,7 +93,7 @@
     "migrationVersion": 1
   },
   "scripts": {
-    "bundle": "tsdown",
+    "bundle": "node scripts/prepare-viewer-assets.mjs && tsdown",
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "vitest run --config ../../vitest.plugins.config.ts"
   },
@@ -99,6 +106,7 @@
     "lib/typert.remote-client.d.ts",
     "dsh.bundle.patch.yml",
     "zerowall.plugin.json",
+    "THIRD_PARTY_LICENSES",
     "README.md"
   ],
   "dependencies": {
@@ -145,6 +153,11 @@
     "dsh-office-tools": "github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb",
     "dsh-better-sidebar": "workspace:^",
     "dsh-dream-skin": "9.29.0",
+    "@open-file-viewer/core": "0.1.49",
+    "viewer-pdfjs": "npm:pdfjs-dist@6.3.289",
+    "@deepseek-ai/dsh-api-workspace-files": "workspace:^",
+    "@deepseek-ai/dsh-office-to-pdf": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "workspace:^",
     "@deepseek-ai/dsh-client-file-upload": "workspace:^",
     "jszip": "3.10.1",
     "pdf-lib": "^1.17.1",

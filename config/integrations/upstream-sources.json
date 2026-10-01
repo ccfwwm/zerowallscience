@@ -1,9 +1,9 @@
 {
-  "version": "7.4.0",
+  "version": "7.5.0",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
-    "commit": "92c80404cc445cc92fb75874496785df689a15d4",
+    "commit": "93bacb7e30c888cc01a1322245a33ff3be9ff2b3",
     "upstreamCommit": "639ed015397290b3745d163aafe02ffee4aa3f84"
   },
   "betterSidebar": {
@@ -119,5 +119,13 @@
     "version": "0.1.22",
     "commit": "20668d7b338db45203bba62d6c5ed79f47683522",
     "license": "BSD-3-Clause"
+  },
+  "openFileViewer": {
+    "repository": "https://github.com/wenhongquan/dsh-open-file-viewer",
+    "commit": "20aecc32cc597f6de094d2c7febddfb60f3ae1ef",
+    "license": "MIT",
+    "coreVersion": "0.1.49",
+    "pdfjsVersion": "6.3.289",
+    "integration": "plugins/files/src/client/universal-viewer.tsx"
   }
 }

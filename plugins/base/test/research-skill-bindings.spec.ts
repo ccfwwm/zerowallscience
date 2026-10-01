@@ -12,6 +12,9 @@ import * as ProgressiveTools from '../../../packages/dsh-progressive-tools/src/i
 import { researchToolConfig } from '../../../tools/integration/research-tool-config.mjs'
 
 const cases = [
+  ['zerowall-presentation', 'presentation_visual_status'],
+  ['zerowall-presentation', 'generate_image'],
+  ['mineru-document-parser', 'extract_uploaded_file'],
   ['zerowall-rplatform', 'mcp__rmcp__r_execute'], ['zerowall-r-files', 'mcp__rmcp__r_files'],
   ['zerowall-r-packages', 'mcp__rmcp__r_packages'], ['zerowall-geo', 'mcp__rmcp__r_geo_analysis'],
   ['zerowall-nhanes', 'mcp__rmcp__r_nhanes_analysis'], ['zerowall-rbioagent', 'mcp__rmcp__biomni_execute'],

@@ -34,6 +34,18 @@ const expectedOrder = [
   ...zeroWallOrder.slice(8).map(id => `@zerowallscience/plugin-${id}`),
 ]
 const thirdPartyPackages = [...thirdPartyOrder, 'dsh-free-search']
+// The customized Host persists these bundles into the editable web profile.
+// Duplicating their rows in the desktop overlay would register them twice.
+const profileBundles = new Set(['dsh-free-search', 'dsh-file-review'])
+const hostProfileSource = await readFile(resolve(dshRoot, 'packages/boot/app-boot/src/profile.ts'), 'utf8')
+for (const name of profileBundles) {
+  assert(hostProfileSource.includes(`if (!nextBundles.includes('${name}')) nextBundles.push('${name}')`)
+    || (name === 'dsh-file-review' && hostProfileSource.includes("if (process.env.ZEROWALL_USER_DATA_DIR && !nextBundles.includes('dsh-file-review'))")),
+  `${name} must be included by the customized Host web profile`)
+  const manifest = JSON.parse(await readFile(resolve(root, 'desktop/node_modules', name, 'package.json'), 'utf8'))
+  assert(typeof manifest.dsh?.bundle?.patch === 'string', `${name} must declare its bundle patch`)
+  await readFile(resolve(root, 'desktop/node_modules', name, manifest.dsh.bundle.patch), 'utf8')
+}
 
 const zeroWallPlugins = []
 for (const id of zeroWallOrder) {
@@ -75,10 +87,12 @@ for (const profile of ['development', 'preview', 'stable']) {
 const patchDocument = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
 const patchNames = [...patchDocument.matchAll(/^\s+name:\s+['"]([^'"]+)['"]\s*$/gmu)].map(match => match[1])
 const orderedPatchNames = patchNames.filter(name => expectedOrder.includes(name))
-assertEqualList(orderedPatchNames, expectedOrder, 'desktop/build/zerowall.patch.yml plugin order')
-for (const name of expectedOrder) {
+const expectedPatchOrder = expectedOrder.filter(name => !profileBundles.has(name))
+assertEqualList(orderedPatchNames, expectedPatchOrder, 'desktop/build/zerowall.patch.yml plugin order')
+for (const name of expectedPatchOrder) {
   assert(patchNames.filter(candidate => candidate === name).length === 1, `${name} must appear exactly once in the Desktop patch`)
 }
+for (const name of profileBundles) assert(!patchNames.includes(name), `${name} must not be duplicated in the Desktop patch`)
 
 const dshPackages = []
 for (const path of await manifests(dshRoot)) {
@@ -120,6 +134,7 @@ const thirdPartyPlugins = thirdPartyPackages.map(name => ({
   package: name,
   version: desktop.dependencies?.[name] ?? null,
   owner: 'third-party',
+  registrationSource: profileBundles.has(name) ? 'host-web-profile-bundle' : 'desktop-patch',
   source: 'desktop/package.json',
   loadOrder: expectedOrder.indexOf(name) + 1,
   productionPath: `resources/app.asar/node_modules/${name}`,

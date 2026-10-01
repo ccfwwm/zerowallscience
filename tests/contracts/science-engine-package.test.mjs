@@ -41,9 +41,10 @@ test('shared engine package verifies every ZIP member and clears extraction dire
   assert.deepEqual(await readdir(options.temporaryRoot), [])
 })
 
-test('7.4.0 accepts current and legacy application manifests', async t => {
+test('7.5.0 accepts current and legacy application manifests', async t => {
   const { manifest } = await fixture(t)
   assert.doesNotThrow(() => validateManifest(manifest, 'win32', 'x64'))
+  assert.doesNotThrow(() => validateManifest({ ...manifest, compatibleApplications: ['7.5.0'] }, 'win32', 'x64'))
   assert.doesNotThrow(() => validateManifest({ ...manifest, compatibleApplications: ['7.4.0'] }, 'win32', 'x64'))
   assert.doesNotThrow(() => validateManifest({ ...manifest, compatibleApplications: ['7.3.0'] }, 'win32', 'x64'))
   assert.doesNotThrow(() => validateManifest({ ...manifest, compatibleApplications: ['7.2.0'] }, 'win32', 'x64'))
