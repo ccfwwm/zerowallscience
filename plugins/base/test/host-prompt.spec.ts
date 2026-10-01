@@ -8,14 +8,17 @@ describe('ZeroWall Science system prompt', () => {
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('capability_search')
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('mcp__rmcp__')
     expect(SCIENCE_SYSTEM_PROMPT).toContain(SCIENCE_SYSTEM_PROMPT_VERSION)
-    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^7\.2\.0-/u)
+    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^7\.5\.0-/u)
   })
 
   it('routes presentation requests to editable Univer objects', () => {
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('zerowall-presentation')
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('univer-slide')
-    expect(SCIENCE_PRESENTATION_PROMPT).toContain('never flatten a complete page into one image')
-    expect(SCIENCE_PRESENTATION_PROMPT).toContain('model and quality follow the ZeroWall environment')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('never complete page screenshots')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('model, size and quality inherit the environment')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('Passive reading')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('three text-free style candidates')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('current chat model')
   })
 
   it('keeps the research layer explicit and bounded', () => {

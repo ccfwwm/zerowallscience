@@ -35,6 +35,11 @@ for (const skill of sourceEntries) {
   skillEntries.push(skill)
 }
 console.log(`Prepared ${skillEntries.length} runtime Skills.`)
+// Catalogs distribute the reviewed authoring descriptions too. The runtime
+// copy was hash-checked and adapted without changing the upstream package.
+for (const name of ['univer', 'univer-slide', 'univer-doc', 'univer-sheet']) {
+  await cp(resolve(stageRoot, 'runtime/node_modules/dsh-univer-office/skills', name), resolve(outputRoot, name), { recursive: true, filter: includeSkillPath })
+}
 
 // Small, self-contained CLI resource; Python remains an on-demand download.
 // Pin the npm tarball and apply the existing verified compatibility patch.

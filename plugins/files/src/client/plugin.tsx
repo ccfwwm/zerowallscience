@@ -4,10 +4,14 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'dsh-better-sidebar/client/service'
 import type { TabComponentProps } from 'dsh-better-sidebar/client/service'
 import { Check, Copy, Download, FileText, FolderOpen } from 'lucide-react'
-import type { PreparedFile, UploadedFileBytes } from '../shared/types.js'
+import type { FileExtraction, PreparedFile, UploadedFileBytes } from '../shared/types.js'
+import { preferredExtractionKind } from '../shared/types.js'
 import styles from './viewer.module.css'
+import { UniversalPreview, installUniversalViewer, type WorkspaceRemote } from './universal-viewer.js'
+import { openNativeViewer, prefersNativeOffice, workspaceFileAddress } from './file-routing.js'
+import { readPreviewBytes } from './bounded-read.js'
 
-export const inject = ['betterSidebar', 'remote', 'remote.zerowallFiles']
+export const inject = ['betterSidebar', 'slots', 'sidebarRight', 'sidebarRightTabs', 'remote', 'remote.workspaceFiles', 'remote.zerowallFiles']
 
 interface AttachmentActionDetail {
   file: Pick<PreparedFile, 'attachmentId' | 'name'> | PreparedFile
@@ -18,9 +22,11 @@ interface AttachmentActionDetail {
 }
 
 interface FilesRemote {
+  readOriginalRange(input: { sessionId: string; attachmentId: string; offset: number; length: number }): Promise<RemoteResult<{ data: string; bytes: number; eof: boolean; version: string; name: string }>>
+  renderOfficeAttachment(input: { sessionId: string; attachmentId: string }, signal: AbortSignal): Promise<RemoteResult<{ data: string; missingFonts: string[] }>>
   inspectOriginalMetadata(input: { sessionId: string; attachmentId: string }): Promise<RemoteResult<PreparedFile>>
   inspect(input: { sessionId: string; attachmentId: string; view?: 'original' | 'parsed'; kind?: 'local' | 'mineru' }): Promise<RemoteResult<PreparedFile>>
-  getExtraction(input: { sessionId: string; attachmentId: string; kind: 'local' | 'mineru' }): Promise<RemoteResult<{ kind: 'local' | 'mineru'; state: 'running' | 'done' | 'failed'; artifactPath?: string } | undefined>>
+  getExtraction(input: { sessionId: string; attachmentId: string; kind: 'local' | 'mineru' }): Promise<RemoteResult<FileExtraction | undefined>>
   materializeOriginal(input: { sessionId: string; attachmentId: string }): Promise<RemoteResult<{ path: string }>>
   materializeExtraction(input: { sessionId: string; attachmentId: string; kind: 'local' | 'mineru' }): Promise<RemoteResult<{ path: string; name: string }>>
   downloadOriginal(input: { sessionId: string; attachmentId: string }): Promise<RemoteResult<UploadedFileBytes>>
@@ -51,15 +57,17 @@ function AttachmentViewer({ remote, scope, tab, ctx }: TabComponentProps & { rem
   const meta = attachmentMeta(tab.meta)
   const [file, setFile] = useState<PreparedFile | null>(meta?.initial ?? null)
   const [payload, setPayload] = useState<UploadedFileBytes | null>(null)
-  const [objectUrl, setObjectUrl] = useState<string | null>(null)
+  const [previewBytes, setPreviewBytes] = useState<Uint8Array | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [retry, setRetry] = useState(0)
+  const [pdfFallback, setPdfFallback] = useState<string>()
 
   useEffect(() => {
     let live = true
-    let url: string | undefined
+    const controller = new AbortController()
     setFile(meta?.initial ?? null)
     setPayload(null)
-    setObjectUrl(null)
+    setPreviewBytes(null); setPdfFallback(undefined)
     setError(null)
     if (meta === undefined) {
       setError('附件信息无效。')
@@ -68,7 +76,10 @@ function AttachmentViewer({ remote, scope, tab, ctx }: TabComponentProps & { rem
     const metadataRequest = meta.view === 'parsed'
       ? remote.inspect({ sessionId: scope.sessionId, attachmentId: meta.attachmentId, view: 'parsed' })
       : remote.inspectOriginalMetadata({ sessionId: scope.sessionId, attachmentId: meta.attachmentId })
-    const payloadRequest = meta.view === 'parsed' ? undefined : remote.downloadOriginal({ sessionId: scope.sessionId, attachmentId: meta.attachmentId })
+    const payloadRequest = meta.view === 'parsed' ? undefined : readPreviewBytes(async (offset, length) => {
+      const v = remoteValue('readOriginalRange', await remote.readOriginalRange({ sessionId: scope.sessionId, attachmentId: meta.attachmentId, offset, length }))
+      return { ...v, data: Uint8Array.from(atob(v.data), c => c.charCodeAt(0)) }
+    }, controller.signal)
     void Promise.all([metadataRequest, payloadRequest]).then(([metadataResponse, downloadResponse]) => {
       if (!live) return
       const metadata = remoteValue<PreparedFile>(meta.view === 'parsed' ? 'zerowallFiles.inspect' : 'zerowallFiles.inspectOriginalMetadata', metadataResponse)
@@ -76,18 +87,26 @@ function AttachmentViewer({ remote, scope, tab, ctx }: TabComponentProps & { rem
         setFile(metadata)
         return
       }
-      const bytes = remoteValue<UploadedFileBytes>('zerowallFiles.downloadOriginal', downloadResponse!)
-      const binary = atob(bytes.data)
-      const data = Uint8Array.from(binary, char => char.charCodeAt(0))
-      url = URL.createObjectURL(new Blob([data], { type: bytes.mediaType || 'application/octet-stream' }))
+      const bytes: UploadedFileBytes = { ...metadata, data: btoa(Array.from(downloadResponse!, v => String.fromCharCode(v)).join('')) }
       setFile(metadata)
       setPayload(bytes)
-      setObjectUrl(url)
+      setPreviewBytes(downloadResponse!)
     }).catch((cause: unknown) => {
       if (live) setError(cause instanceof Error ? cause.message : String(cause))
     })
-    return () => { live = false; if (url !== undefined) URL.revokeObjectURL(url) }
-  }, [meta?.attachmentId, meta?.initial, meta?.view, remote, scope.sessionId])
+    return () => { live = false; controller.abort() }
+  }, [meta?.attachmentId, meta?.initial, meta?.view, remote, scope.sessionId, retry])
+
+  useEffect(() => {
+    if (!file || meta?.view === 'parsed' || ![file.localExtraction, file.mineruExtraction].some(item => item && ['queued', 'running'].includes(item.state))) return
+    let live = true
+    const timer = setTimeout(() => {
+      void remote.inspectOriginalMetadata({ sessionId: scope.sessionId, attachmentId: file.attachmentId }).then(result => {
+        if (live) setFile(remoteValue('parseStatus', result))
+      }).catch(cause => { if (live) setError(errorText(cause)) })
+    }, 2000)
+    return () => { live = false; clearTimeout(timer) }
+  }, [file, meta?.view, remote, scope.sessionId])
 
   if (error !== null && file === null) return <div className={styles.state} role="alert">{error}</div>
   if (file === null) return <div className={styles.state}>正在读取附件…</div>
@@ -124,9 +143,7 @@ function AttachmentViewer({ remote, scope, tab, ctx }: TabComponentProps & { rem
         remote.getExtraction({ sessionId: scope.sessionId, attachmentId: file.attachmentId, kind: 'mineru' }),
         remote.getExtraction({ sessionId: scope.sessionId, attachmentId: file.attachmentId, kind: 'local' }),
       ])
-      const kind = mineru.ok && mineru.value?.state === 'done'
-        ? 'mineru'
-        : local.ok && local.value?.state === 'done' ? 'local' : undefined
+      const kind = availableExtraction(file.name, local, mineru)
       if (kind === undefined) throw new Error('该附件尚无可打开的解析结果。')
       const response = await remote.materializeExtraction({ sessionId: scope.sessionId, attachmentId: file.attachmentId, kind })
       const materialized = remoteValue<{ path: string; name: string }>('zerowallFiles.materializeExtraction', response)
@@ -160,12 +177,27 @@ function AttachmentViewer({ remote, scope, tab, ctx }: TabComponentProps & { rem
         </button>
         }
       </header>
+      {[file.localExtraction, file.mineruExtraction].filter((item): item is FileExtraction => !!item).map(item => <div key={item.kind} className={styles.state} data-extraction-state={item.state}>
+        {item.kind === 'local' ? '本地解析' : 'MinerU'}：{extractionStateLabel(item.state)}
+        {item.warning && <span> · {item.warning}</span>}{item.error && <span role="alert"> · {item.error}</span>}
+        {item.taskId && <span> · 任务 {item.taskId}</span>}
+      </div>)}
       {error !== null && <div className={styles.state} role="alert">{error}</div>}
       {meta?.view === 'parsed' && file.preview !== undefined && <pre className={styles.preview}>{file.preview}</pre>}
-      {objectUrl !== null && file.mediaType === 'application/pdf' && <iframe className={styles.frame} src={objectUrl} title={file.name} />}
-      {objectUrl !== null && file.mediaType.startsWith('image/') && <div className={styles.imageWrap}><img src={objectUrl} alt={file.name} /></div>}
+      {pdfFallback && <iframe className={styles.frame} src={pdfFallback} title={`${file.name} · Office→PDF`} />}
+      {previewBytes !== null && !pdfFallback && text === undefined && <UniversalPreview name={file.name} bytes={previewBytes} retry={() => setRetry(v => v + 1)} {...(/\.(docx?|pptx?|xlsx?)$/iu.test(file.name) ? { fallback: () => {
+        void remote.renderOfficeAttachment({ sessionId: scope.sessionId, attachmentId: file.attachmentId }, new AbortController().signal).then(result => {
+          const v = remoteValue('Office→PDF', result)
+          setPdfFallback(`data:application/pdf;base64,${v.data}`)
+          if (v.missingFonts.length) setError(`缺少字体：${v.missingFonts.join(', ')}`)
+        }).catch(cause => setError(errorText(cause)))
+      } } : {})} nativeFallback={() => {
+        void remote.materializeOriginal({ sessionId: scope.sessionId, attachmentId: file.attachmentId }).then(result => {
+          const materialized = remoteValue('原生查看器', result)
+          openNativeViewer(ctx, workspaceFileAddress(scope.sessionId, materialized.path))
+        }).catch(cause => setError(errorText(cause)))
+      }} />}
       {text !== undefined && <pre className={styles.preview}>{text}</pre>}
-      {objectUrl !== null && text === undefined && file.mediaType !== 'application/pdf' && !file.mediaType.startsWith('image/') && <div className={styles.state}>该原文件不能在浏览器内直接预览，请使用工具栏下载或在工作区打开。</div>}
     </article>
   )
 }
@@ -177,6 +209,15 @@ function formatBytes(bytes: number): string {
 }
 
 function errorText(cause: unknown): string { return cause instanceof Error ? cause.message : String(cause) }
+
+function extractionStateLabel(state: FileExtraction['state']): string {
+  return { queued: '排队中', running: '进行中', done: '完成', failed: '失败', needs_ocr: '需要 OCR', needs_configuration: '需要配置', partial: '部分完成，可继续恢复' }[state]
+}
+function availableExtraction(name: string, local: RemoteResult<FileExtraction | undefined>, mineru: RemoteResult<FileExtraction | undefined>): 'local' | 'mineru' | undefined {
+  const ref = { name, ...(local.ok && local.value ? { localExtraction: local.value } : {}), ...(mineru.ok && mineru.value ? { mineruExtraction: mineru.value } : {}) }
+  const kind = preferredExtractionKind(ref)
+  return (kind === 'local' ? ref.localExtraction : ref.mineruExtraction)?.state === 'done' ? kind : undefined
+}
 
 function openAttachmentTab(ctx: ClientContext, detail: AttachmentActionDetail): void {
   const scope = { sessionId: detail.sessionId, ...(detail.cwd === undefined ? {} : { cwd: detail.cwd }) }
@@ -203,6 +244,13 @@ function openParsedAttachmentTab(ctx: ClientContext, detail: AttachmentActionDet
 }
 
 async function openOriginalAttachment(ctx: ClientContext, remote: FilesRemote, detail: AttachmentActionDetail): Promise<void> {
+  if (prefersNativeOffice(detail.file.name)) {
+    // Materialization verifies session ownership and preserves the original
+    // bytes. DSH can resolve this absolute path even without a workspace cwd.
+    const materialized = remoteValue('zerowallFiles.materializeOriginal', await remote.materializeOriginal({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId }))
+    openNativeViewer(ctx, workspaceFileAddress(detail.sessionId, materialized.path))
+    return
+  }
   if (detail.cwd === undefined) {
     remoteValue('zerowallFiles.inspectOriginalMetadata', await remote.inspectOriginalMetadata({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId }))
     openAttachmentTab(ctx, detail)
@@ -222,9 +270,7 @@ async function openParsedAttachment(ctx: ClientContext, remote: FilesRemote, det
     remote.getExtraction({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId, kind: 'mineru' }),
     remote.getExtraction({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId, kind: 'local' }),
   ])
-  const kind = mineru.ok && mineru.value?.state === 'done'
-    ? 'mineru'
-    : local.ok && local.value?.state === 'done' ? 'local' : undefined
+  const kind = availableExtraction(detail.file.name, local, mineru)
   if (kind === undefined) throw new Error('该附件尚无可打开的解析结果。')
   const response = await remote.materializeExtraction({ sessionId: detail.sessionId, attachmentId: detail.file.attachmentId, kind })
   const materialized = remoteValue<{ path: string; name: string }>('zerowallFiles.materializeExtraction', response)
@@ -256,6 +302,7 @@ export function apply(ctx: ClientContext): void {
   // Keep the remote namespace out of delayed slot/event callbacks. Cordis's
   // remote proxy requires an active inject fiber for dotted property reads.
   const remote = ctx.get('remote.zerowallFiles') as FilesRemote
+  installUniversalViewer(ctx, ctx.get('remote.workspaceFiles') as WorkspaceRemote)
 
   ctx.effect(() => ctx.betterSidebar.registerTab({
     id: 'zerowall:attachment-viewer',

@@ -12,6 +12,7 @@ import { pcrTemplate, pcrForward, pcrReverse, pcrExpected } from '../../plugins/
 import { moleculePdb } from '../../plugins/research/test/molecule-fixture.js'
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const applicationVersion = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
 const roots: string[] = []
 let application: ChildProcessWithoutNullStreams
 let browser: Browser

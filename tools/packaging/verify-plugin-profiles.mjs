@@ -76,7 +76,7 @@ async function runPlugin(args, profile) {
   assert.equal(code, 0, 'Official DSH install failed; diagnostics: ' + directory)
 }
 const keys = JSON.parse(await readFile(join(releaseRoot, 'catalogs/verification-keys.json')))
-const manager = createResourceManager({ home, keys, local: true, target: { desktopVersion: '8.0.0', dshVersion: '0.2.0-rc.2', platform: process.platform, architecture: process.arch }, yaml, runPlugin, startHost, stopHost, callHost })
+const manager = createResourceManager({ home, keys, local: true, target: { desktopVersion: contract.version, dshVersion: '0.2.0-rc.2', platform: process.platform, architecture: process.arch }, yaml, runPlugin, startHost, stopHost, callHost })
 try {
   await startHost()
   const before = await callHost('env.list')
@@ -163,7 +163,7 @@ try {
   assert.deepEqual(JSON.parse(await readFile(join(home, 'profiles/web/package.json'))).dsh.profile.bundles, composition)
   assert((await callHost('host.health')).ready)
 
-  await writeFile(join(directory, 'receipt.json'), JSON.stringify({ applicationVersion: '8.0.0', dshVersion: '0.2.0-rc.2', installedPlugin: installed.name, version: installed.version, upgradeVersion: '0.1.1', bootCount, pluginInstallation: true, profileUpgradeRollback: true, skillsImportRefreshRollback: true, mcpStartStopRestart: true, mcpSignedBundleUpdateRollback: true, compositionInstallation: true, missingDependencyRollback: true, environmentSecretsRedacted: true }, null, 2))
+  await writeFile(join(directory, 'receipt.json'), JSON.stringify({ applicationVersion: contract.version, dshVersion: '0.2.0-rc.2', installedPlugin: installed.name, version: installed.version, upgradeVersion: '0.1.1', bootCount, pluginInstallation: true, profileUpgradeRollback: true, skillsImportRefreshRollback: true, mcpStartStopRestart: true, mcpSignedBundleUpdateRollback: true, compositionInstallation: true, missingDependencyRollback: true, environmentSecretsRedacted: true }, null, 2))
   console.log('Real profile verification passed:', directory)
 } finally {
   await writeFile(join(directory, 'host.log'), output.replace(/([?&]token=)[^\s&]+/g, '$1[redacted]'))

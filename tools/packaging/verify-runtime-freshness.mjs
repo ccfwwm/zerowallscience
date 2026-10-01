@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { assertPluginDesktopCompatibility } from '../plugins/compatibility.mjs'
+import { verifyRuntimeIntegrity } from './runtime-integrity.mjs'
 
 export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZEROWALL_ALLOW_DIRTY_DSH === '1' } = {}) {
   const { stage } = paths.buildPaths(root)
@@ -32,14 +33,24 @@ export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZE
     const manifest = JSON.parse(manifestText)
     const target = resolve(stage, 'runtime/node_modules', manifest.name)
     assertPluginDesktopCompatibility(manifest.zerowall?.desktop, app.version, manifest.name)
-    for (const file of ['package.json', 'zerowall.plugin.json', ...(await readdir(join(source, 'lib'))).filter(name => /\.(?:js|css)$/.test(name)).map(name => `lib/${name}`)]) {
+    for (const file of ['package.json', 'zerowall.plugin.json', ...await nestedFiles(join(source, 'lib'), 'lib/')]) {
       if (!(await readFile(join(source, file))).equals(await readFile(join(target, file)))) {
         throw new Error(`Stale runtime: ${manifest.name}/${file}. Run pnpm build before packaging.`)
       }
       checked++
     }
   }
+  await verifyRuntimeIntegrity(root, stage)
   return { commit: head, version: app.version, checked }
+}
+
+async function nestedFiles(directory, prefix) {
+  const result = []
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) result.push(...await nestedFiles(join(directory, entry.name), prefix + entry.name + '/'))
+    else if (entry.isFile() && !/\.(?:map|d\.ts)$/u.test(entry.name)) result.push(prefix + entry.name)
+  }
+  return result
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

@@ -40,7 +40,7 @@ async function stdin() {
 async function run() {
   if (['version', '--version', '-v'].includes(group)) return { applicationVersion: version }
   if (group === 'doctor') {
-    const status = await invoke('python.status').then(() => ({ host: 'ready' }), () => ({ host: 'unavailable' }))
+    const status = await invoke('profile.doctor').then(profile => ({ host: 'ready', ...profile }), () => ({ host: 'unavailable' }))
     return { applicationVersion: version, profile: home, ...status }
   }
   if (group === 'update') return invoke('update')

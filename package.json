@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "8.0.0",
+  "version": "8.0.1",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",
@@ -36,7 +36,7 @@
     "audit:claude-science": "node tools/integration/audit-claude-science.mjs",
     "native:rebuild": "pnpm rebuild electron esbuild node-pty sharp koffi",
     "runtime:prepare": "pnpm native:rebuild && node tools/packaging/prepare-runtime.mjs",
-    "build": "pnpm artifacts:init --new && pnpm artifacts:links && pnpm version:check && pnpm plugins:generate && pnpm profiles:generate && pnpm dsh:verify && pnpm dsh:build:zerowall && pnpm store:bundle && pnpm wechat:bundle && pnpm genui:bundle && pnpm sidebar:bundle && pnpm file-review:bundle && pnpm ssh-ops:bundle && pnpm harvest:bundle && pnpm plugins:bundle && pnpm dsh:runtime:closure && pnpm runtime:prepare && pnpm resources:prepare && pnpm commands:prepare && pnpm plugins:pack && pnpm catalogs:generate && pnpm --filter @zerowallscience/desktop run build",
+    "build": "pnpm artifacts:init --new && pnpm artifacts:links && pnpm version:check && pnpm plugins:generate && pnpm profiles:generate && pnpm dsh:verify && pnpm dsh:build:zerowall && pnpm store:bundle && pnpm wechat:bundle && pnpm genui:bundle && pnpm sidebar:bundle && pnpm file-review:bundle && pnpm ssh-ops:bundle && pnpm harvest:bundle && pnpm plugins:bundle && pnpm dsh:runtime:closure && pnpm runtime:prepare && pnpm resources:prepare && node tools/packaging/write-runtime-integrity.mjs && pnpm commands:prepare && pnpm plugins:pack && pnpm catalogs:generate && pnpm --filter @zerowallscience/desktop run build",
     "dev": "pnpm plugins:generate && pnpm profiles:generate && pnpm plugins:bundle && pnpm --filter @zerowallscience/desktop run dev",
     "lint": "pnpm --filter @deepseek-ai/dsh-root run lint:contracts-ready",
     "typecheck": "pnpm dsh:verify && pnpm --filter @deepseek-ai/dsh-root run typecheck && pnpm --filter @zerowallscience/research-store run bundle && pnpm plugins:typecheck && pnpm --filter @zerowallscience/desktop run typecheck",
@@ -100,6 +100,7 @@
     "typescript": "6.0.3",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^4.1.10",
-    "yaml": "2.8.1"
+    "yaml": "2.8.1",
+    "tar": "7.5.22"
   }
 }

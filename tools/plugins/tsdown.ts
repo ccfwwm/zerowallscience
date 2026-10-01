@@ -1,6 +1,8 @@
 import { defineConfig } from 'tsdown'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import { createRequire } from 'node:module'
+import { viewerStylePlugin } from './viewer-style.mjs'
 import '../build/register-output-resolution.mjs'
 const { typertPlugin } = await import('../../deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js')
 
@@ -11,6 +13,7 @@ export interface ZeroWallBundleOptions {
   client?: boolean
   hostAlwaysBundle?: RegExp[]
   inlinePngAssets?: boolean
+  universalViewer?: boolean
 }
 
 export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) {
@@ -74,6 +77,7 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         // entry points (for example `qrcode/lib/browser.js` and
         // `react/jsx-runtime`) are resolved as explicit subpath imports.
         alwaysBundle: [
+          ...(options.universalViewer ? [(specifier: string) => !/^(?:react(?:\/|$)|react-dom(?:\/|$)|@deepseek-ai\/|@zerowallscience\/)/u.test(specifier)] : []),
           // ZeroWall plugins are independently installable DSH bundles. Keep
           // their client entrypoints external so the ModuleLoader can load,
           // update and restart one plugin without rebuilding every client.
@@ -84,13 +88,39 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
           /^zod(?:\/|$)/,
         ],
       },
+      ...(options.universalViewer ? { codeSplitting: false } : {}),
+      ...(options.universalViewer ? { inputOptions: { resolve: { conditionNames: ['browser', 'import', 'default'], mainFields: ['browser', 'module', 'main'] } } } : {}),
       outputOptions: {
+        ...(options.universalViewer ? { inlineDynamicImports: true } : {}),
         entryFileNames: 'client.js',
         banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(id)}, factory: (require) => { const __zerowallRequire = require; require = (specifier) => /^(?:react|react\\/jsx-runtime|react-dom|react-dom\\/client)$/.test(specifier) && globalThis.__DSH_REACT_SINGLETON__?.[specifier] !== undefined ? globalThis.__DSH_REACT_SINGLETON__[specifier] : __zerowallRequire(specifier);`,
         footer: 'return module.exports; } });',
         intro: 'var module = { exports: {} }; var exports = module.exports;',
       },
-      plugins: [...(options.inlinePngAssets ? [{
+      plugins: [...(options.universalViewer ? [viewerStylePlugin(), {
+        name: 'zerowall-viewer-browser-modules',
+        transform(code: string, id: string) {
+          if (!id.replace(/\\/gu, '/').endsWith('/@open-file-viewer/core/dist/index.js')) return null
+          const anchor = 'if (insight) {\n      renderPptxTextFallback(container, insight);'
+          if (!code.includes(anchor)) throw new Error('Reviewed viewer PPTX fallback anchor changed.')
+          return code.replace(anchor, 'console.warn("ZeroWall PPTX graphical renderer failed:", error);\n    ' + anchor)
+        },
+        resolveId(source: string, importer?: string) {
+          if (source === 'shpjs' && importer) {
+            // shpjs's source entry selects Node-only but-unzip when bundled
+            // with mixed conditions. Its distributed browser ESM is standalone.
+            const entry = createRequire(importer).resolve('shpjs')
+            return resolve(dirname(entry), '../dist/shp.esm.js')
+          }
+          if (source === 'tslib' && importer) return resolve(dirname(createRequire(importer).resolve('tslib')), 'tslib.es6.js')
+          // Mammoth's browser map is not applied to nested dynamic chunks by
+          // the classic-script bundler. Keep filesystem access out of preview.
+          if (!importer || !source.startsWith('.')) return null
+          const candidate = resolve(dirname(importer), source).replace(/\\/gu, '/')
+          const match = candidate.match(/^(.*\/mammoth)\/lib\/(unzip|docx\/files)(?:\.js)?$/u)
+          return match ? `${match[1]}/browser/${match[2]}.js` : null
+        },
+      }] : []), ...(options.inlinePngAssets ? [{
         name: 'zerowall-inline-png-assets',
         resolveId(source: string, importer?: string) {
           if (!source.endsWith('.png?inline') || !importer) return null

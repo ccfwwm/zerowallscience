@@ -9,13 +9,14 @@ import { validateImageSize, type GenerateImageResult } from './generator.js'
 import { AiCloudClient } from '@zerowallscience/plugin-account'
 import { AiCloudImageGenerator } from './generator.js'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
+import { installVisualAssets } from './visual-assets.js'
 
 export * from './generator.js'
 export const name = 'zerowall-image-generation'
 // The generator persists generated PNGs through the durable attachment store.
 // Declare the service explicitly so Cordis does not reject ctx.get('attachments')
 // in the composed Host loader.
-export const inject = ['tools', 'zerowallEnvironment', 'attachments']
+export const inject = ['tools', 'zerowallEnvironment', 'attachments', 'llm']
 
 export interface ResolvedImageModel {
   providerId: string
@@ -48,7 +49,7 @@ const IMAGE_OUTPUT_SCHEMA = {
     actualHeight: { type: 'integer' as const, required: true },
     quality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high'] as const, required: true },
     requestedQuality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high'] as const, required: true },
-    actualQuality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high'] as const, required: true },
+    actualQuality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high', 'unreported'] as const, required: true },
     modelInfo: {
       type: 'object' as const,
       additionalProperties: false,
@@ -59,6 +60,10 @@ const IMAGE_OUTPUT_SCHEMA = {
       },
     },
     revisedPrompt: { type: 'string' as const },
+    sha256: { type: 'string' as const },
+    receiptPath: { type: 'string' as const },
+    promptHash: { type: 'string' as const },
+    inputImageHashes: { type: 'array' as const, items: { type: 'string' as const } },
     image: {
       type: 'object' as const,
       additionalProperties: false,
@@ -89,7 +94,8 @@ const IMAGE_OUTPUT_SCHEMA = {
 
 function renderResult(verb: 'Generated' | 'Edited', value: GenerateImageResult) {
   const warning = value.previewWarning === undefined ? '' : ` Preview warning: ${value.previewWarning}`
-  return [{ type: 'text' as const, text: `${verb} ${value.path} with ${value.model} at ${value.actualQuality} quality (${value.actualWidth}x${value.actualHeight}, requested ${value.requestedSize}, ${value.bytes} bytes).${warning}` }]
+  const quality = value.actualQuality === 'unreported' ? `requested ${value.requestedQuality} quality; actual quality unreported by provider` : `${value.actualQuality} quality`
+  return [{ type: 'text' as const, text: `${verb} ${value.path} with ${value.model} at ${quality} (${value.actualWidth}x${value.actualHeight}, requested ${value.requestedSize}, ${value.bytes} bytes).${warning}` }]
 }
 
 function presentationMeta(value: GenerateImageResult): JsonValue {
@@ -105,6 +111,10 @@ function presentationMeta(value: GenerateImageResult): JsonValue {
     requestedQuality: value.requestedQuality,
     actualQuality: value.actualQuality,
     modelInfo: { providerId: value.providerId, groupId: value.groupId, modelId: value.model },
+    sha256: value.sha256 ?? null,
+    receiptPath: value.receiptPath ?? null,
+    promptHash: value.promptHash ?? null,
+    inputImageHashes: value.inputImageHashes ?? [],
   }
   const attachmentValue = value.attachment ?? value.image
   if (attachmentValue !== undefined) {
@@ -126,6 +136,7 @@ function presentationMeta(value: GenerateImageResult): JsonValue {
 }
 
 export function apply(ctx: Context): void {
+  installVisualAssets(ctx)
   const secrets = new SecretBrokerClient()
   const account = new AiCloudClient({ secrets })
   const environment = ctx.get('zerowallEnvironment') as {

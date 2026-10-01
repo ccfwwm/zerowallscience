@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { access, lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -31,15 +31,18 @@ const ConfigSchema: z<MineruConfig> = z.object({ apiBaseUrl: z.string().default(
 export const Config = ConfigSchema.volatile()
 interface RunRecord { result?: MineruParseResult; taskId?: string; cwd: string }
 const runs = new Map<string, RunRecord>()
-interface PendingTask { api: MineruApi; taskId: string; batch: boolean; sourceName: string; config: MineruConfig }
+interface PendingUpload { url: string; path: string; sha256: string; complete: boolean }
+interface PendingTask { api: MineruApi; taskId: string; batch: boolean; sourceName: string; config: MineruConfig; upload?: PendingUpload }
 function taskPath(cwd: string, taskId: string): string {
   if (!/^[a-zA-Z0-9_-]{1,128}$/u.test(taskId)) throw new Error('MinerU task ID 无效。')
   return resolve(cwd, '.dsh-mineru', 'tasks', taskId + '.json')
 }
-async function persistTask(cwd: string, task: PendingTask): Promise<void> {
+async function persistTask(cwd: string, task: PendingTask & { result?: MineruParseResult }): Promise<void> {
   const path = taskPath(cwd, task.taskId)
   await mkdir(resolve(path, '..'), { recursive: true })
-  await writeFile(path, JSON.stringify(task), 'utf8')
+  const temporary = path + '.' + randomUUID() + '.tmp'
+  await writeFile(temporary, JSON.stringify(task), { encoding: 'utf8', mode: 0o600 })
+  await rename(temporary, path)
 }
 function validateConfig(value: MineruConfig): MineruConfig { let url: URL; try { url = new URL(value.apiBaseUrl) } catch { throw new Error('MinerU API Base URL 无效。') } if (!['http:', 'https:'].includes(url.protocol) || value.apiBaseUrl.length > 2048 || url.pathname.toLowerCase().includes('/apimanage/token')) throw new Error('MinerU API Base URL 必须是有效的 http(s) 服务地址，不能填写 Token 管理页面。'); if (!['auto', 'precision', 'agent'].includes(value.mode)) throw new Error('MinerU 模式无效。'); if (!Number.isInteger(value.timeoutMs) || value.timeoutMs < 10000 || value.timeoutMs > 3600000) throw new Error('MinerU 超时必须在 10 秒到 1 小时之间。'); if (!Number.isInteger(value.pollIntervalMs) || value.pollIntervalMs < 500 || value.pollIntervalMs > 60000) throw new Error('MinerU 轮询间隔无效。'); if (!Number.isInteger(value.pollJitterMs) || value.pollJitterMs < 0 || value.pollJitterMs > 60000) throw new Error('MinerU 轮询抖动无效。'); if (!Number.isInteger(value.submitRatePerMinute) || value.submitRatePerMinute < 1 || value.submitRatePerMinute > 50) throw new Error('MinerU 提交限流必须在 1 到 50 次/分钟之间。'); if (!Number.isInteger(value.dailyLimit) || value.dailyLimit < 1 || value.dailyLimit > 5000) throw new Error('MinerU 每日额度必须在 1 到 5000 之间。'); if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(value.tokenCredential)) throw new Error('MinerU Token 引用名无效。'); if (!value.artifactRootName || value.artifactRootName.includes('/') || value.artifactRootName.includes('\\') || value.artifactRootName === '.' || value.artifactRootName === '..') throw new Error('MinerU Artifact 目录名无效。'); return value }
 function cwdFor(ctx: Context, sessionId: string): string {
@@ -120,13 +123,13 @@ async function request(url: string, init: RequestInit, signal: AbortSignal): Pro
 async function sleepAbort(ms: number, signal: AbortSignal): Promise<void> { await new Promise<void>((resolvePromise, reject) => { if (signal.aborted) { reject(signal.reason ?? new Error('MinerU 操作已取消。')); return } const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolvePromise() }, ms); const abort = () => { clearTimeout(timer); reject(signal.reason ?? new Error('MinerU 操作已取消。')) }; signal.addEventListener('abort', abort, { once: true }) }) }
 function payloadData(value: unknown): Record<string, unknown> { if (!value || typeof value !== 'object') throw new Error('MinerU API 返回格式无效。'); const record = value as Record<string, unknown>; if (record.code !== undefined && record.code !== 0 && record.code !== '0') throw new Error(`MinerU API 错误：${String(record.msg ?? record.code).slice(0, 300)}`); const data = record.data; return data && typeof data === 'object' ? data as Record<string, unknown> : record }
 async function downloadBytes(url: string, signal: AbortSignal, limit = 1024 * 1024 * 1024): Promise<Uint8Array> { const response = await request(url, { method: 'GET' }, signal); if (!response.ok || !response.body) throw new Error(`MinerU 结果下载失败（HTTP ${response.status}）。`); const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let total = 0; for (;;) { const part = await reader.read(); if (part.done) break; total += part.value.byteLength; if (total > limit) throw new Error('MinerU 结果超过大小限制。'); chunks.push(part.value) } const result = new Uint8Array(total); let offset = 0; for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength } return result }
-async function remoteParse(cfg: MineruConfig, api: MineruApi, token: string | undefined, filePath: string | undefined, sourceUrl: string | undefined, signal: AbortSignal, onSubmitted?: (taskId: string, batch: boolean) => Promise<void>): Promise<{ taskId?: string; markdown?: string; archive?: Uint8Array }> {
+async function remoteParse(cfg: MineruConfig, api: MineruApi, token: string | undefined, filePath: string | undefined, sourceUrl: string | undefined, signal: AbortSignal, onSubmitted?: (taskId: string, batch: boolean, upload?: PendingUpload) => Promise<void>): Promise<{ taskId?: string; markdown?: string; archive?: Uint8Array }> {
   const root = cfg.apiBaseUrl.replace(/\/+$/u, ''); const auth: Record<string, string> = token ? { authorization: `Bearer ${token}` } : {}; let taskId: string | undefined; let batchId: string | undefined
   if (api === 'precision' && filePath) {
-    const bytes = await readFile(filePath); const response = await request(`${root}/api/v4/file-urls/batch`, { method: 'POST', headers: { ...auth, accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ files: [{ name: basename(filePath), is_ocr: cfg.isOcr }], model_version: cfg.modelVersion, language: cfg.language, enable_table: cfg.enableTable, enable_formula: cfg.enableFormula, ...(cfg.extraFormats.length ? { extra_formats: cfg.extraFormats } : {}) }) }, signal); const data = payloadData(await response.json() as unknown); batchId = typeof data.batch_id === 'string' ? data.batch_id : undefined; const urls = Array.isArray(data.file_urls) ? data.file_urls : []; const uploadUrl = typeof urls[0] === 'string' ? urls[0] : undefined; if (!batchId || !uploadUrl) throw new Error('Precision API 没有返回批量上传地址。'); await onSubmitted?.(batchId, true); const upload = await request(uploadUrl, { method: 'PUT', body: bytes }, signal); if (!upload.ok) throw new Error(`MinerU 文件上传失败（HTTP ${upload.status}）。`)
+    const bytes = await readFile(filePath); const response = await request(`${root}/api/v4/file-urls/batch`, { method: 'POST', headers: { ...auth, accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ files: [{ name: basename(filePath), is_ocr: cfg.isOcr }], model_version: cfg.modelVersion, language: cfg.language, enable_table: cfg.enableTable, enable_formula: cfg.enableFormula, ...(cfg.extraFormats.length ? { extra_formats: cfg.extraFormats } : {}) }) }, signal); const data = payloadData(await response.json() as unknown); batchId = typeof data.batch_id === 'string' ? data.batch_id : undefined; const urls = Array.isArray(data.file_urls) ? data.file_urls : []; const uploadUrl = typeof urls[0] === 'string' ? urls[0] : undefined; if (!batchId || !uploadUrl) throw new Error('Precision API 没有返回批量上传地址。'); const pending = { url: uploadUrl, path: filePath, sha256: sha(bytes), complete: false }; await onSubmitted?.(batchId, true, pending); const upload = await request(uploadUrl, { method: 'PUT', body: bytes }, signal); if (!upload.ok) throw new Error(`MinerU 文件上传失败（HTTP ${upload.status}）。`); await onSubmitted?.(batchId, true, { ...pending, complete: true })
   } else {
     const endpoint = api === 'precision' ? '/api/v4/extract/task' : `/api/v1/agent/parse/${filePath ? 'file' : 'url'}`; const bodyValue = api === 'precision' ? { url: sourceUrl, model_version: cfg.modelVersion, language: cfg.language, enable_table: cfg.enableTable, enable_formula: cfg.enableFormula, is_ocr: cfg.isOcr, ...(cfg.extraFormats.length ? { extra_formats: cfg.extraFormats } : {}) } : { ...(filePath ? { file_name: basename(filePath) } : { url: sourceUrl }), language: cfg.language, enable_table: cfg.enableTable, enable_formula: cfg.enableFormula, is_ocr: cfg.isOcr }
-    const response = await request(`${root}${endpoint}`, { method: 'POST', headers: { ...auth, accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(bodyValue) }, signal); const data = payloadData(await response.json() as unknown); taskId = typeof data.task_id === 'string' ? data.task_id : undefined; if (!taskId) throw new Error('MinerU API 没有返回任务 ID。'); await onSubmitted?.(taskId, false); if (api === 'agent' && filePath) { const uploadUrl = typeof data.file_url === 'string' ? data.file_url : undefined; if (!uploadUrl) throw new Error('Agent API 没有返回上传地址。'); const upload = await request(uploadUrl, { method: 'PUT', body: await readFile(filePath) }, signal); if (!upload.ok) throw new Error(`MinerU 文件上传失败（HTTP ${upload.status}）。`) }
+    const response = await request(`${root}${endpoint}`, { method: 'POST', headers: { ...auth, accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(bodyValue) }, signal); const data = payloadData(await response.json() as unknown); taskId = typeof data.task_id === 'string' ? data.task_id : undefined; if (!taskId) throw new Error('MinerU API 没有返回任务 ID。'); if (api === 'agent' && filePath) { const uploadUrl = typeof data.file_url === 'string' ? data.file_url : undefined; if (!uploadUrl) throw new Error('Agent API 没有返回上传地址。'); const bytes = await readFile(filePath); const pending = { url: uploadUrl, path: filePath, sha256: sha(bytes), complete: false }; await onSubmitted?.(taskId, false, pending); const upload = await request(uploadUrl, { method: 'PUT', body: bytes }, signal); if (!upload.ok) throw new Error(`MinerU 文件上传失败（HTTP ${upload.status}）。`); await onSubmitted?.(taskId, false, { ...pending, complete: true }) } else await onSubmitted?.(taskId, false)
   }
   const deadline = Date.now() + cfg.timeoutMs; for (;;) { if (Date.now() > deadline) throw new Error(`MinerU 任务等待超时；请使用 mineru_task 恢复 taskId=${taskId ?? batchId ?? ''}。`); await sleepAbort(cfg.pollIntervalMs, signal); const queryPath = batchId ? `/api/v4/extract-results/batch/${encodeURIComponent(batchId)}` : api === 'precision' ? `/api/v4/extract/task/${encodeURIComponent(taskId!)}` : `/api/v1/agent/parse/${encodeURIComponent(taskId!)}`; const response = await request(`${root}${queryPath}`, { method: 'GET', headers: auth }, signal); const data = payloadData(await response.json() as unknown); if (batchId) { const rows = Array.isArray(data.extract_result) ? data.extract_result as unknown[] : []; const row = rows[0] as Record<string, unknown> | undefined; if (!row || !['done', 'failed'].includes(String(row.state))) continue; if (String(row.state) === 'failed') throw new Error(String(row.err_msg ?? 'MinerU 解析失败。')); const zipUrl = typeof row.full_zip_url === 'string' ? row.full_zip_url : undefined; const resolvedTaskId = batchId; return zipUrl ? { ...(resolvedTaskId ? { taskId: resolvedTaskId } : {}), archive: await downloadBytes(zipUrl, signal) } : { ...(resolvedTaskId ? { taskId: resolvedTaskId } : {}) }
     } const state = String(data.state ?? ''); if (state !== 'done' && state !== 'failed') continue; if (state === 'failed') throw new Error(String(data.err_msg ?? 'MinerU 解析失败。')); if (api === 'precision') { const zipUrl = typeof data.full_zip_url === 'string' ? data.full_zip_url : undefined; return zipUrl ? { ...(taskId ? { taskId } : {}), archive: await downloadBytes(zipUrl, signal) } : { ...(taskId ? { taskId } : {}) } } const markdownUrl = typeof data.markdown_url === 'string' ? data.markdown_url : undefined; if (!markdownUrl) return { ...(taskId ? { taskId } : {}) }; return { ...(taskId ? { taskId } : {}), markdown: new TextDecoder().decode(await downloadBytes(markdownUrl, signal, 64 * 1024 * 1024)) }
@@ -276,7 +279,22 @@ export class ZeroWallMineruService extends TypertRemoteService {
     } catch (error) { if (error instanceof Error && error.name === 'AbortError') throw new Error('MinerU Agent API 测试超时，请检查网络或 API Base URL。'); throw error }
     finally { clearTimeout(timer) }
   }
-  async parse(input: { sessionId: string; source: string; mode?: MineruMode; overrides?: Partial<MineruConfig>; signal?: AbortSignal }): Promise<MineruParseResult> { const cwd = cwdFor(this.hostCtx, input.sessionId); const cfg = validateConfig({ ...this.config(), ...(input.overrides ?? {}), ...(input.mode ? { mode: input.mode } : {}) }); const { filePath, sourceName, url } = await resolveMineruSource(this.hostCtx, input.sessionId, input.source); const token = await this.token(); const api = apiFor(cfg.mode, token); if (api === 'local') throw new Error('尚未配置 MinerU Token；请调用 extract_uploaded_file 的 local 或 auto 模式使用本地快速解析。'); const started = Date.now(); const remote = await remoteParse(cfg, api, token, filePath, url, input.signal ?? new AbortController().signal, async (taskId, batch) => persistTask(cwd, { api, taskId, batch, sourceName, config: cfg })); const result = await writeResult(cfg, input.sessionId, cwd, sourceName, api, remote.taskId, remote.markdown, remote.archive, started); if (remote.taskId) { const pending = JSON.parse(await readFile(taskPath(cwd, remote.taskId), 'utf8')); await writeFile(taskPath(cwd, remote.taskId), JSON.stringify({ ...pending, result }), 'utf8') }; runs.set(remote.taskId ?? result.runDir, { result, ...(remote.taskId ? { taskId: remote.taskId } : {}), cwd }); return result }
+  async parse(input: { sessionId: string; source: string; mode?: MineruMode; overrides?: Partial<MineruConfig>; signal?: AbortSignal; onTaskSubmitted?: (id: string) => Promise<void> }): Promise<MineruParseResult> {
+    const cwd = cwdFor(this.hostCtx, input.sessionId)
+    const cfg = validateConfig({ ...this.config(), ...(input.overrides ?? {}), ...(input.mode ? { mode: input.mode } : {}) })
+    const { filePath, sourceName, url } = await resolveMineruSource(this.hostCtx, input.sessionId, input.source)
+    const token = await this.token(); const api = apiFor(cfg.mode, token)
+    if (api === 'local') throw new Error('尚未配置 MinerU Token；请调用 extract_uploaded_file 的 local 或 auto 模式使用本地快速解析。')
+    const started = Date.now(); let notified = false
+    const remote = await remoteParse(cfg, api, token, filePath, url, input.signal ?? new AbortController().signal, async (taskId, batch, upload) => {
+      await persistTask(cwd, { api, taskId, batch, sourceName, config: cfg, ...(upload ? { upload } : {}) })
+      if (!notified) { notified = true; await input.onTaskSubmitted?.(taskId) }
+    })
+    const result = await writeResult(cfg, input.sessionId, cwd, sourceName, api, remote.taskId, remote.markdown, remote.archive, started)
+    if (remote.taskId) { const pending = JSON.parse(await readFile(taskPath(cwd, remote.taskId), 'utf8')); await persistTask(cwd, { ...pending, result }) }
+    runs.set(remote.taskId ?? result.runDir, { result, ...(remote.taskId ? { taskId: remote.taskId } : {}), cwd })
+    return result
+  }
   @Remote('getRun') getRun(input: { taskId: string }): MineruParseResult | undefined { return [...runs.values()].find(item => item.taskId === input.taskId)?.result }
   @Remote('listRuns') listRuns(): MineruParseResult[] { return [...runs.values()].flatMap(item => item.result ? [item.result] : []) }
   async task(input: { sessionId: string; taskId: string; api: MineruApi; wait: boolean; signal?: AbortSignal }): Promise<MineruTaskResult> {
@@ -287,6 +305,15 @@ export class ZeroWallMineruService extends TypertRemoteService {
     if (!token) throw new Error('查询任务需要 MinerU Token。')
     const cfg = validateConfig(record.config)
     const signal = input.signal ?? new AbortController().signal
+    if (record.upload && !record.upload.complete) {
+      const path = await ordinaryReadableFile(record.upload.path)
+      const bytes = await readFile(path)
+      if (sha(bytes) !== record.upload.sha256) throw new Error('MinerU 恢复上传失败：原文件已修改，保留原任务编号。')
+      const upload = await request(record.upload.url, { method: 'PUT', body: bytes }, signal)
+      if (!upload.ok) throw new Error(`MinerU 原任务恢复上传失败（HTTP ${upload.status}）；上传地址可能已过期，任务编号仍保留。`)
+      record.upload.complete = true
+      await persistTask(cwd, record)
+    }
     const deadline = Date.now() + (input.wait ? cfg.timeoutMs : 0)
     for (;;) {
       const endpoint = record.batch ? '/api/v4/extract-results/batch/' : record.api === 'precision' ? '/api/v4/extract/task/' : '/api/v1/agent/parse/'
@@ -300,7 +327,7 @@ export class ZeroWallMineruService extends TypertRemoteService {
         const archive = typeof row.full_zip_url === 'string' ? await downloadBytes(row.full_zip_url, signal) : undefined
         const markdown = typeof row.markdown_url === 'string' ? new TextDecoder().decode(await downloadBytes(row.markdown_url, signal)) : undefined
         const result = await writeResult(cfg, input.sessionId, cwd, record.sourceName, record.api, record.taskId, markdown, archive, Date.now())
-        await writeFile(taskPath(cwd, record.taskId), JSON.stringify({ ...record, result }), 'utf8')
+        await persistTask(cwd, { ...record, result })
         return { ok: true, api: record.api, taskId: record.taskId, state, result }
       }
       if (!input.wait || Date.now() >= deadline) return { ok: true, api: record.api, taskId: record.taskId, state }

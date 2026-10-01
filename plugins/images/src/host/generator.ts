@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { link, lstat, mkdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, relative, resolve } from 'node:path'
 import type { ImageAttachmentRef, ImageMediaType, SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
@@ -63,13 +63,17 @@ export interface GenerateImageResult {
   quality: ImageGenerationQuality
   /** The quality requested at the API boundary (kept separate for audits). */
   requestedQuality: ImageGenerationQuality
-  /** The quality reported by the provider, or the requested value when absent. */
-  actualQuality: ImageGenerationQuality
+  /** Provider-reported quality; never infer it from the request. */
+  actualQuality: ImageGenerationQuality | 'unreported'
   revisedPrompt?: string
   image?: ImageAttachmentValue
   /** Stable attachment name used by cross-plugin consumers. */
   attachment?: ImageAttachmentValue
   previewWarning?: string
+  sha256?: string
+  receiptPath?: string
+  promptHash?: string
+  inputImageHashes?: string[]
 }
 
 export interface AccountReader { current(): Promise<AiCloudAccountSnapshot> }
@@ -125,6 +129,7 @@ export class AiCloudImageGenerator {
     const workspace = await workspaceRoot(cwd)
     const target = await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     const model = await this.resolveModel(input.model)
+    try {
     const response = await this.requestImage(`${trustedBaseUrl(model.baseUrl)}/images/generations`, {
       method: 'POST',
       headers: {
@@ -140,7 +145,12 @@ export class AiCloudImageGenerator {
       }),
       ...(signal === undefined ? {} : { signal }),
     }, 'generation')
-    return await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
+    const result = await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
+    return await this.receipt(result, prompt, [], workspace)
+    } catch (error) {
+      await this.recordFailure(workspace, target, { operation: 'generate_image', prompt, model: model.modelId, providerId: model.providerId, groupId: model.groupId, size, quality, inputImageHashes: [] }, error)
+      throw error
+    }
   }
 
   async edit(input: EditImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
@@ -185,13 +195,33 @@ export class AiCloudImageGenerator {
       form.set('mask', new Blob([Buffer.from(mask.data)], { type: mask.mediaType }), basename(mask.path))
     }
 
+    try {
     const response = await this.requestImage(`${trustedBaseUrl(model.baseUrl)}/images/edits`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await this.credential(model)}` },
       body: form,
       ...(signal === undefined ? {} : { signal }),
     }, 'edit')
-    return await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
+    const result = await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
+    return await this.receipt(result, prompt, images.map(image => image.data), workspace)
+    } catch (error) {
+      await this.recordFailure(workspace, target, { operation: 'edit_image', prompt, model: model.modelId, providerId: model.providerId, groupId: model.groupId, size, quality, inputPaths: images.map(image => image.path), inputImageHashes: images.map(image => createHash('sha256').update(image.data).digest('hex')) }, error)
+      throw error
+    }
+  }
+
+  private async recordFailure(workspace: string, output: string, request: object, error: unknown): Promise<void> {
+    const path = await safeOutputPath(workspace, output + '.generation.failed.json', true, '.json')
+    await atomicWrite(workspace, path, Buffer.from(JSON.stringify({ schemaVersion: 1, output, request, reason: errorMessage(error).slice(0, 1000), createdAt: new Date().toISOString() }, null, 2)), true)
+  }
+
+  private async receipt(result: GenerateImageResult, prompt: string, inputs: Uint8Array[], workspace: string): Promise<GenerateImageResult> {
+    const hash = (data: Uint8Array | string) => createHash('sha256').update(data).digest('hex')
+    const receiptPath = result.path + '.generation.json'
+    const enriched = { ...result, sha256: hash(await readFile(result.path)), receiptPath, promptHash: hash(prompt), inputImageHashes: inputs.map(hash) }
+    const target = await safeOutputPath(workspace, receiptPath, true, '.json')
+    await atomicWrite(workspace, target, Buffer.from(JSON.stringify({ ...enriched, mediaType: 'image/png', prompt, createdAt: new Date().toISOString() }, null, 2)), true)
+    return enriched
   }
 
   async resolveModel(requested?: string): Promise<AiCloudManagedModel> {
@@ -267,7 +297,7 @@ export class AiCloudImageGenerator {
       actualHeight: metadata.height,
       quality,
       requestedQuality: quality,
-      actualQuality: decoded.actualQuality ?? quality,
+      actualQuality: decoded.actualQuality ?? 'unreported',
       ...(decoded.revisedPrompt === undefined ? {} : { revisedPrompt: decoded.revisedPrompt }),
     }
     const attachments = this.options.attachments?.()
@@ -368,13 +398,13 @@ function assertInside(root: string, target: string, label: string): void {
   }
 }
 
-async function safeOutputPath(root: string, raw: string, overwrite: boolean): Promise<string> {
+async function safeOutputPath(root: string, raw: string, overwrite: boolean, expectedExtension = '.png'): Promise<string> {
   const trimmed = raw.trim()
   if (!trimmed) throw new Error('output_path must be a non-empty PNG path')
   rejectParentTraversal(trimmed, 'output_path')
   const target = resolve(root, trimmed)
   assertInside(root, target, 'output_path')
-  if (extname(target).toLowerCase() !== '.png') throw new Error('output_path must use the .png extension')
+  if (extname(target).toLowerCase() !== expectedExtension) throw new Error(`output_path must use the ${expectedExtension} extension`)
   await assertExistingAncestorInside(root, dirname(target), 'output_path')
   try {
     const info = await lstat(target)

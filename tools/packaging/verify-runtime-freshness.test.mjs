@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { verifyRuntimeFreshness } from './verify-runtime-freshness.mjs'
+import { writeRuntimeIntegrity } from './runtime-integrity.mjs'
 
 test('rejects stale plugin bytes and a different Harness build even when versions match', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zerowall-freshness-'))
@@ -30,7 +31,15 @@ test('rejects stale plugin bytes and a different Harness build even when version
       await put(`${base}/zerowall.plugin.json`, {})
       await put(`${base}/lib/client.js`, 'current client')
     }
+    const stage = join(root, 'artifacts/stage/6.7.0/6.7.0-dev')
+    await put('resources/skills/example/SKILL.md', 'source skill')
+    await put('artifacts/stage/6.7.0/6.7.0-dev/resources/skills/example/SKILL.md', 'source skill')
+    for (const id of ['@deepseek-ai/libreoffice-kit', '@deepseek-ai/libreoffice-kit-win32-x64', '@deepseek-ai/dsh-client-ui-sidebar-documentpreview', 'dsh-univer-office']) await put(`artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/${id}/runtime.js`, 'reviewed resource')
+    await writeRuntimeIntegrity(root, stage)
     assert.equal((await verifyRuntimeFreshness(root)).checked, 3)
+    await put('artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/@deepseek-ai/libreoffice-kit/runtime.js', 'stale native resource')
+    await assert.rejects(verifyRuntimeFreshness(root), /Office resources/)
+    await put('artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/@deepseek-ai/libreoffice-kit/runtime.js', 'reviewed resource')
     await put('artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/@zerowallscience/plugin-mcp/lib/client.js', 'old client')
     await assert.rejects(verifyRuntimeFreshness(root), /Stale runtime:.*client.js/)
     await put('artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/@zerowallscience/plugin-mcp/lib/client.js', 'current client')

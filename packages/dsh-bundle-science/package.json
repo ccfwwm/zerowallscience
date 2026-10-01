@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/dsh-bundle-science",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "license": "AGPL-3.0-only",
   "files": [
@@ -13,7 +13,7 @@
   },
   "zerowall": {
     "desktop": {
-      "min": "8.0.0"
+      "min": "8.0.1"
     },
     "dsh": {
       "min": "0.2.0-rc.2",

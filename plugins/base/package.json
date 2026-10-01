@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "0.1.0",
-  "description": "ZeroWall Science base domain plugin (desktop 8.0.0).",
+  "version": "0.1.1",
+  "description": "ZeroWall Science base domain plugin (desktop 8.0.1).",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./src/host/index.ts",
@@ -55,7 +55,7 @@
   },
   "zerowall": {
     "desktop": {
-      "min": "8.0.0"
+      "min": "8.0.1"
     },
     "dsh": {
       "min": "0.2.0-rc.2",
@@ -83,10 +83,13 @@
     "rollbackSupported": true
   },
   "scripts": {
+    "prepack": "node ../../tools/plugins/prepare-pack.mjs",
     "bundle": "tsdown",
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "vitest run --config ../../vitest.plugins.config.ts",
-    "prepack": "node ../../tools/plugins/prepare-pack.mjs"
+    "test": "vitest run --config ../../vitest.plugins.config.ts"
+  },
+  "publishConfig": {
+    "directory": "../../artifacts/dev/publish/plugin-base"
   },
   "license": "AGPL-3.0-only",
   "files": [
@@ -146,6 +149,7 @@
     "@deepseek-ai/dsh-client-ui-workspace": "0.2.0-rc.2"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-scope": "workspace:^",
     "tsdown": "^0.22.2",
     "typescript": "6.0.3",
     "vitest": "^4.1.10",
@@ -159,7 +163,6 @@
     "@deepseek-ai/dsh-llm-pi-ai": "workspace:^",
     "@deepseek-ai/dsh-mcp-client": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-scope": "workspace:^",
     "@deepseek-ai/dsh-session-persistence": "workspace:^",
     "@deepseek-ai/dsh-settings": "workspace:^",
     "@deepseek-ai/dsh-skill": "workspace:^",
@@ -189,8 +192,5 @@
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^"
-  },
-  "publishConfig": {
-    "directory": "../../artifacts/dev/publish/plugin-base"
   }
 }

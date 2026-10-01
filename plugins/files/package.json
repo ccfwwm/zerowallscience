@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/plugin-files",
-  "version": "0.1.0",
-  "description": "ZeroWall Science files domain plugin (desktop 8.0.0).",
+  "version": "0.2.0",
+  "description": "ZeroWall Science files domain plugin (desktop 8.0.1).",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./src/host/index.ts",
@@ -54,14 +54,18 @@
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-attachment",
         "@deepseek-ai/dsh-client-ui-tool",
-        "@deepseek-ai/dsh-client-ui-workspace"
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "remote.workspaceFiles",
+        "sidebarRightTabs",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-api-workspace-files"
       ],
       "platform": "web"
     }
   },
   "zerowall": {
     "desktop": {
-      "min": "8.0.0"
+      "min": "8.0.1"
     },
     "dsh": {
       "min": "0.2.0-rc.2",
@@ -70,13 +74,16 @@
     "requiredServices": [
       "tools",
       "sessions",
-      "fs"
+      "fs",
+      "webServer"
     ],
     "optionalServices": [],
     "capabilities": [
       "files",
       "data-assets",
-      "office-tools"
+      "office-tools",
+      "universal-file-preview",
+      "automatic-attachment-extraction"
     ],
     "permissions": [
       "files"
@@ -91,10 +98,13 @@
     "rollbackSupported": true
   },
   "scripts": {
-    "bundle": "tsdown",
+    "prepack": "node ../../tools/plugins/prepare-pack.mjs",
+    "bundle": "node scripts/prepare-viewer-assets.mjs && tsdown",
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "test": "vitest run --config ../../vitest.plugins.config.ts",
-    "prepack": "node ../../tools/plugins/prepare-pack.mjs"
+    "test": "vitest run --config ../../vitest.plugins.config.ts"
+  },
+  "publishConfig": {
+    "directory": "../../artifacts/dev/publish/plugin-files"
   },
   "license": "AGPL-3.0-only",
   "files": [
@@ -106,12 +116,15 @@
     "lib/typert.remote-client.d.ts",
     "dsh.bundle.patch.yml",
     "zerowall.plugin.json",
+    "THIRD_PARTY_LICENSES",
     "README.md"
   ],
   "dependencies": {
     "dsh-office-tools": "github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb",
     "dsh-better-sidebar": "workspace:^",
     "dsh-dream-skin": "9.29.0",
+    "@open-file-viewer/core": "0.1.49",
+    "viewer-pdfjs": "npm:pdfjs-dist@6.3.289",
     "jszip": "3.10.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
@@ -163,6 +176,9 @@
     "@deepseek-ai/dsh-client-ui-primitives": "0.2.0-rc.2",
     "@deepseek-ai/dsh-client-ui-workspace": "0.2.0-rc.2",
     "@deepseek-ai/dsh-fs": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-api-workspace-files": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-office-to-pdf": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "0.2.0-rc.2",
     "@deepseek-ai/dsh-client-file-upload": "0.2.0-rc.2"
   },
   "devDependencies": {
@@ -210,9 +226,9 @@
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
     "@deepseek-ai/dsh-fs": "workspace:^",
+    "@deepseek-ai/dsh-api-workspace-files": "workspace:^",
+    "@deepseek-ai/dsh-office-to-pdf": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": "workspace:^",
     "@deepseek-ai/dsh-client-file-upload": "workspace:^"
-  },
-  "publishConfig": {
-    "directory": "../../artifacts/dev/publish/plugin-files"
   }
 }

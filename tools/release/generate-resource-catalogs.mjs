@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { contract, root, releaseRoot, stageRoot } from '../build/paths.mjs'
 import { fileDigest, signCatalog, verifyCatalog } from './resource-catalog.mjs'
+import { deterministicArchive } from './deterministic-archive.mjs'
 
 const destination = join(releaseRoot, 'catalogs')
 const catalogGeneration = `${contract.buildId}-${Date.now()}`
@@ -33,10 +34,11 @@ if (configured) {
 const baseUrl = process.env.ZEROWALL_RESOURCE_BASE_URL?.replace(/\/$/, '')
 const localOnly = !baseUrl
 const records = JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8'))
+const resourceVersions = JSON.parse(await readFile(join(root, 'config/catalogs/resource-versions.json'), 'utf8'))
 async function entry({ id, version, path, kind, key, metadata = {} }) {
   const size = (await stat(path)).size
   return signCatalog({ id, version, kind, applicationVersion: contract.version,
-    dshRange: { min: '0.2.0-rc.2', max: '0.2.0-rc.2' }, desktopRange: { min: '8.0.0' },
+    dshRange: metadata.dsh ?? { min: '0.2.0-rc.2', max: '0.2.0-rc.2' }, desktopRange: metadata.desktop ?? { min: '8.0.0' },
     platform: ['win32'], architecture: ['x64'], downloadUrl: baseUrl ? `${baseUrl}/${key}` : pathToFileURL(path).href,
     sha256: await fileDigest(path), size, restartRequired: kind === 'plugin', rollbackSupported: kind !== 'mcp', ...metadata }, privateKey, keyId)
 }
@@ -49,7 +51,7 @@ if (await stat(join(sciDirectory, 'dist/mcp.cjs')).catch(() => undefined)) {
   const directory = join(releaseRoot, 'mcp', 'scimaster', version)
   await mkdir(directory, { recursive: true })
   const path = join(directory, 'scimaster.tgz')
-  execFileSync('tar', ['-czf', path, '-C', sciDirectory, '.'], { windowsHide: true })
+  await deterministicArchive(sciDirectory, path)
   mcpServers.push(await entry({ id: 'scimaster', version, path, kind: 'mcp', key: `mcp/scimaster/${version}/scimaster.tgz`, metadata: {
     role: 'server-bundle', runtime: 'node', entrypoint: 'zerowall-mcp-launcher.cjs', rollbackSupported: true,
     server: { name: 'SciMaster 独立服务', serverName: 'scimaster-independent', enabled: false, envRefs: { ZEROWALL_SCIMASTER_API_KEY: 'zerowall.environment.var.scimaster_api_key' } },
@@ -59,11 +61,12 @@ const skillsRoot = join(stageRoot, 'resources/skills')
 for (const name of await readdir(skillsRoot)) {
   const source = join(skillsRoot, name)
   if (!(await stat(source)).isDirectory() || !await stat(join(source, 'SKILL.md')).catch(() => undefined)) continue
-  const directory = join(releaseRoot, 'skills', name, '0.1.0')
+  const version = resourceVersions.skill[name] ?? '0.1.0'
+  const directory = join(releaseRoot, 'skills', name, version)
   await mkdir(directory, { recursive: true })
   const path = join(directory, name + '.tgz')
-  execFileSync('tar', ['-czf', path, '-C', source, '.'], { windowsHide: true })
-  skills.push(await entry({ id: name, version: '0.1.0', path, kind: 'skill', key: `skills/${name}/0.1.0/${name}.tgz` }))
+  await deterministicArchive(source, path)
+  skills.push(await entry({ id: name, version, path, kind: 'skill', key: `skills/${name}/${version}/${name}.tgz` }))
 }
 for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp', mcpServers], ['python', []]]) {
   // MCP templates and Python archives are supplied explicitly. Empty feeds

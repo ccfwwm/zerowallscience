@@ -628,10 +628,12 @@ if (ownsInstance) app.whenReady().then(async () => {
   const pythonEnvironmentApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync, pythonLocation.locationPath, app.isPackaged ? dirname(process.execPath) : undefined)
   mcpEnvironment.setEnvironmentHandler(request => pythonEnvironmentApi.request(request))
   const commandRoot = app.isPackaged ? join(process.resourcesPath, 'commands') : join(findWorkspaceRoot(), 'tools/commands')
-  const { initializeProfile } = await import(pathToFileURL(join(commandRoot, 'profile.mjs')).href)
+  const { initializeProfile, inspectProfile } = await import(pathToFileURL(join(commandRoot, 'profile.mjs')).href)
   const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8'))
+  const bundledPlugins = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'bundled-plugins.json') : developmentStagePath('commands', 'bundled-plugins.json'), 'utf8'))
   const dshHome = join(userData, 'harness')
   await initializeProfile(dshHome, defaults)
+  const profileDoctor = () => inspectProfile(dshHome, bundledPlugins, { desktopVersion: app.getVersion(), dshVersion: '0.2.0-rc.2' })
   const callHost = (operation: string, args: unknown[]): Promise<unknown> => {
     if (!managementChild?.connected) return Promise.reject(new Error('Host is not ready'))
     const child = managementChild
@@ -678,6 +680,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   await resources.recover()
   let commandQueue: Promise<unknown> = Promise.resolve()
   const dispatchCommand = async (request: { operation: string; args: unknown[] }): Promise<unknown> => {
+    if (request.operation === 'profile.doctor') return profileDoctor()
     if (request.operation === 'python.status') return mcpEnvironment.pythonInfo()
     if (request.operation === 'python.install') return mcpEnvironment.updateForUser()
     if (request.operation === 'python.update') return resources.resource('python', 'science-dependencies', request.args[0])

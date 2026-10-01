@@ -154,6 +154,7 @@
       "package": "dsh-ssh-ops",
       "version": "workspace:*",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 1,
       "productionPath": "resources/app.asar/node_modules/dsh-ssh-ops"
@@ -162,6 +163,7 @@
       "package": "dsh-progressive-tools",
       "version": "workspace:*",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 2,
       "productionPath": "resources/app.asar/node_modules/dsh-progressive-tools"
@@ -170,6 +172,7 @@
       "package": "@dingyi222666/dsh-session-notification",
       "version": "workspace:*",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 3,
       "productionPath": "resources/app.asar/node_modules/@dingyi222666/dsh-session-notification"
@@ -178,6 +181,7 @@
       "package": "dsh-dream-skin",
       "version": "9.29.0",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 4,
       "productionPath": "resources/app.asar/node_modules/dsh-dream-skin"
@@ -186,6 +190,7 @@
       "package": "dsh-better-sidebar",
       "version": "workspace:^",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 5,
       "productionPath": "resources/app.asar/node_modules/dsh-better-sidebar"
@@ -194,6 +199,7 @@
       "package": "dsh-file-review",
       "version": "workspace:*",
       "owner": "third-party",
+      "registrationSource": "host-web-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 6,
       "productionPath": "resources/app.asar/node_modules/dsh-file-review"
@@ -202,6 +208,7 @@
       "package": "dsh-univer-office",
       "version": "0.3.5",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 7,
       "productionPath": "resources/app.asar/node_modules/dsh-univer-office"
@@ -210,6 +217,7 @@
       "package": "dsh-zotero",
       "version": "0.11.0",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 8,
       "productionPath": "resources/app.asar/node_modules/dsh-zotero"
@@ -218,6 +226,7 @@
       "package": "@dsh-external/zotero-harvest",
       "version": "workspace:*",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 9,
       "productionPath": "resources/app.asar/node_modules/@dsh-external/zotero-harvest"
@@ -226,6 +235,7 @@
       "package": "dsh-wechat",
       "version": "workspace:*",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 10,
       "productionPath": "resources/app.asar/node_modules/dsh-wechat"
@@ -234,6 +244,7 @@
       "package": "@changfenhuang/dsh-genui",
       "version": "workspace:*",
       "owner": "third-party",
+      "registrationSource": "desktop-patch",
       "source": "desktop/package.json",
       "loadOrder": 11,
       "productionPath": "resources/app.asar/node_modules/@changfenhuang/dsh-genui"
@@ -242,6 +253,7 @@
       "package": "dsh-free-search",
       "version": "0.6.0",
       "owner": "third-party",
+      "registrationSource": "host-web-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 20,
       "productionPath": "resources/app.asar/node_modules/dsh-free-search"
@@ -251,7 +263,7 @@
     {
       "id": "base",
       "package": "@zerowallscience/plugin-base",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "source": "plugins/base",
       "manifest": "plugins/base/zerowall.plugin.json",
       "client": true,
@@ -359,7 +371,7 @@
     {
       "id": "mcp",
       "package": "@zerowallscience/plugin-mcp",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "source": "plugins/mcp",
       "manifest": "plugins/mcp/zerowall.plugin.json",
       "client": true,
@@ -426,7 +438,7 @@
     {
       "id": "files",
       "package": "@zerowallscience/plugin-files",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "plugins/files",
       "manifest": "plugins/files/zerowall.plugin.json",
       "client": true,
@@ -435,7 +447,9 @@
       "capabilities": [
         "files",
         "data-assets",
-        "office-tools"
+        "office-tools",
+        "universal-file-preview",
+        "automatic-attachment-extraction"
       ],
       "permissions": [
         "files"
@@ -443,7 +457,8 @@
       "requiredServices": [
         "tools",
         "sessions",
-        "fs"
+        "fs",
+        "webServer"
       ],
       "optionalServices": [],
       "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-files"
@@ -451,7 +466,7 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
@@ -468,7 +483,8 @@
       "requiredServices": [
         "tools",
         "zerowallEnvironment",
-        "attachments"
+        "attachments",
+        "llm"
       ],
       "optionalServices": [],
       "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-images"
@@ -525,7 +541,7 @@
     {
       "id": "mineru",
       "package": "@zerowallscience/plugin-mineru",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "source": "plugins/mineru",
       "manifest": "plugins/mineru/zerowall.plugin.json",
       "client": true,
