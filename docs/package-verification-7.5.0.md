@@ -2,6 +2,8 @@
 
 验收时间：2026/10/1 09:57:31（北京时间）。分支：codex/dsh-file-preview-ppt-visual。仅构建与验证，未发布 GitHub、七牛或生产渠道。
 
+后续已按用户要求发布七牛云与 GitHub，并合并到 main；公开下载、资产哈希及发布边界见 [发布验收](release-publication-7.5.0.md)。本报告保留安装验收时的原始记录。
+
 ## 交付物
 
 - 安装程序：desktop/dist/zerowall-science-7.5.0-win-x64.exe。
