@@ -1,5 +1,5 @@
 import { cp, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
 
@@ -19,13 +19,34 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   const journal = join(root, 'transaction.json')
   let queue = Promise.resolve()
   const exclusive = task => { const result = queue.then(task); queue = result.catch(() => {}); return result }
-  const exists = path => readFile(join(path, 'package.json')).then(() => true, () => false)
+  const exists = path => readFile(join(path, 'package.json')).then(() => true, error => {
+    if (error.code === 'ENOENT') return false
+    throw error
+  })
+
+  function ownedBackup(path) {
+    if (typeof path !== 'string') throw new Error('Invalid plugin recovery backup')
+    const child = relative(join(root, 'history'), resolve(path))
+    if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Plugin recovery backup is outside managed history')
+    return path
+  }
 
   async function recover() {
-    const pending = await json(journal).catch(() => undefined)
+    const pending = await json(journal).catch(error => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
     if (!pending || pending.state !== 'activating') return
-    if (await exists(active)) await rename(active, active + '.interrupted-' + randomUUID())
-    if (await exists(pending.backup)) await rename(pending.backup, active)
+    const backup = ownedBackup(pending.backup)
+    // Before the first rename (or after recovery has restored the backup),
+    // active still contains the complete old profile. Never quarantine it
+    // unless there is a complete backup to restore.
+    if (await exists(backup)) {
+      if (await exists(active)) await rename(active, active + '.interrupted-' + randomUUID())
+      await rename(backup, active)
+    } else if (!await exists(active)) {
+      throw new Error('Plugin update recovery has no complete active or backup profile')
+    }
     await atomic(journal, { ...pending, state: 'recovered' })
   }
 
@@ -119,22 +140,27 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await atomic(file, manifest)
   }
 
-  async function activate(candidate, metadata) {
-    const generation = candidate.split(/[\\/]/).at(-1)
-    const backup = join(root, 'history', generation)
+  async function activate(candidate, metadata, completionState = 'complete') {
+    const backup = join(root, 'history', 'zerowall-' + randomUUID())
     await mkdir(resolve(backup, '..'), { recursive: true })
-    await stopHost()
+    // Persist the recovery instruction before stopping the Host. If that
+    // write fails, the running profile is still available without a restart.
     await atomic(journal, { state: 'activating', backup, candidate, ...metadata })
+    let backedUp = false
     try {
+      await stopHost()
       await rename(active, backup)
+      backedUp = true
       await rename(candidate, active)
       await startHost()
-      await atomic(journal, { state: 'complete', backup, ...metadata })
+      await atomic(journal, { state: completionState, backup, ...metadata })
       return { ...metadata, restarted: true, rollbackSupported: true }
     } catch (error) {
-      await stopHost()
-      if (await exists(active)) await rename(active, active + '.failed-' + randomUUID())
-      if (await exists(backup)) await rename(backup, active)
+      if (backedUp) {
+        await stopHost()
+        if (await exists(active)) await rename(active, active + '.failed-' + randomUUID())
+        await rename(backup, active)
+      }
       await startHost()
       await atomic(journal, { state: 'rolled-back', backup, ...metadata })
       throw error
@@ -163,21 +189,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   async function rollback() {
     const previous = await json(journal)
     if (previous.state !== 'complete' || !await exists(previous.backup)) throw new Error('No previous plugin generation is available')
-    await stopHost()
-    const nextBackup = active + '.rollback-' + randomUUID()
-    try {
-      await rename(active, nextBackup)
-      await rename(previous.backup, active)
-      await startHost()
-      await atomic(journal, { ...previous, state: 'rolled-back' })
-      return { rolledBack: true }
-    } catch (error) {
-      await stopHost()
-      if (await exists(active)) await rename(active, active + '.failed-' + randomUUID())
-      if (await exists(nextBackup)) await rename(nextBackup, active)
-      await startHost()
-      throw error
-    }
+    await activate(ownedBackup(previous.backup), { operation: 'rollback' }, 'rolled-back')
+    return { rolledBack: true }
   }
 
   async function resource(kind, id, source) {
@@ -260,5 +273,5 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await atomic(file, { ...current, previous: undefined, rolledBack: true })
     return { id: current.id, rolledBack: true }
   }
-  return { recover, catalog, rollbackMcp: id => exclusive(() => rollbackMcp(id)), mutate: args => exclusive(() => mutate(args)), plugin: (id, source) => exclusive(() => plugin(id, source)), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
+  return { recover: () => exclusive(recover), catalog, rollbackMcp: id => exclusive(() => rollbackMcp(id)), mutate: args => exclusive(() => mutate(args)), plugin: (id, source) => exclusive(() => plugin(id, source)), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
 }

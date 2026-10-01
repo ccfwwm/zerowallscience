@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline'
 import { access, appendFile, cp, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, delimiter, dirname, join, relative, resolve } from 'node:path'
 import { downloadArchive, extractArchive, requireFreeSpace } from './python-archive.js'
+import { downloadPythonManifest } from './python-manifest-download.js'
 import { collectSnapshots } from './python-snapshots.js'
 import { preparePackagePlan, prepareManifestPackagePlan, applyPackagePlanFiles, replayCustomizations, type StoredPackagePlan } from './python-packages.js'
 import { dependencyManifestChanges, dependencyManifestSha256, parsePythonDependencyManifest, type PythonDependencyManifest } from './python-dependency-manifest.js'
@@ -777,9 +778,7 @@ export class McpEnvironmentController {
       }
       return manifest
     }
-    const response = await (this.options.fetcher ?? fetch)(this.options.manifestUrl, { cache: 'no-store' })
-    if (!response.ok) throw new Error(`MCP environment manifest returned HTTP ${response.status}.`)
-    const manifest = validateManifest(await response.json())
+    const manifest = validateManifest(await downloadPythonManifest(this.options.manifestUrl, this.options.fetcher))
     if (!verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) throw new Error('MCP environment manifest signature is invalid.')
     return manifest
   }
