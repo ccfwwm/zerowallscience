@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
@@ -5,7 +6,7 @@ import { runImageJExperiment } from '../../plugins/research/src/host/fiji-image-
 import type { FijiImageConfig } from '../../plugins/research/src/shared/fiji-experiments.js'
 
 if(!process.argv.includes('--run'))throw new Error('Pass --run to execute installed native ImageJ.')
-const root=resolve('.build/fiji-image-native',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
+const root=resolve(zwsArtifactPaths.verification, 'fiji-image-native',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
 // Independent geometry oracle: two rectangles of 12 and 6 pixels, one 1-pixel debris.
 const pixels=Buffer.alloc(20*12)
 for(let y=2;y<5;y++)for(let x=2;x<6;x++)pixels[y*20+x]=200

@@ -1,3 +1,4 @@
+import { targetPackageRoot } from '../../tools/build/paths.mjs'
 import { access, readdir } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 
@@ -5,7 +6,7 @@ import { basename, resolve } from 'node:path'
 export async function locatePackagedApp(packageRoot) {
   // Verification can target an isolated builder output while a previous
   // package is still held open by the OS or an external scanner.
-  const outputRoot = resolve(packageRoot, process.env.ZEROWALL_PACKAGED_OUTPUT ?? 'dist')
+  const outputRoot = resolve(packageRoot, process.env.ZEROWALL_PACKAGED_OUTPUT ?? targetPackageRoot)
   if (process.platform === 'win32') {
     const root = resolve(outputRoot, 'win-unpacked')
     const executablePath = resolve(root, 'ZeroWallScience.exe')

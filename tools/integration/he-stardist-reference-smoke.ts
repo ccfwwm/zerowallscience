@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -9,7 +10,7 @@ import { HeService } from '../../plugins/research/src/host/he.js'
 import { heSegmentationPython } from '../../plugins/research/src/host/he-segmentation.js'
 
 if(!process.argv.includes('--run'))throw new Error('Pass --run for a real CPU StarDist reference.')
-const root=resolve('.build/he-stardist-reference',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
+const root=resolve(zwsArtifactPaths.verification, 'he-stardist-reference',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
 const python=heSegmentationPython();const imagePath=join(root,'public-he-repeated.tif')
 await promisify(execFile)(python,['-I','-c',`import numpy as np,tifffile,sys,json
 from stardist.data import test_image_he_2d

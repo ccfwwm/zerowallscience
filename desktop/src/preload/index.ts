@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { mountWindowChrome } from './window-chrome.js'
 import type { DesktopClipboardFile, DesktopClipboardImage, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus, McpPythonInfo, PythonPackagePlan, StartupStatus } from '../shared/contracts.js'
+import type { ResourceCheckResult, ResourceJob, ResourceKind } from '../../../plugins/base/src/client/desktop-api.js'
 
 contextBridge.exposeInMainWorld('zerowallDesktop', {
   windowControl: (action: 'minimize' | 'toggle-maximize' | 'close' | 'state' | 'quit-startup') => ipcRenderer.invoke('desktop:window-control', action),
@@ -64,6 +65,23 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
     const handler = (_event: Electron.IpcRendererEvent, status: DesktopUpdateStatus) => listener(status)
     ipcRenderer.on('desktop:update-status', handler)
     return () => ipcRenderer.removeListener('desktop:update-status', handler)
+  },
+  resources: {
+    check: async (kind: ResourceKind, localOnly?: boolean): Promise<ResourceCheckResult> => await ipcRenderer.invoke('desktop:resource-check', kind, localOnly) as ResourceCheckResult,
+    status: async (): Promise<{ checkedAt: string; results: ResourceCheckResult[] }> => await ipcRenderer.invoke('desktop:resource-status') as { checkedAt: string; results: ResourceCheckResult[] },
+    update: async (kind: ResourceKind, id?: string): Promise<unknown> => await ipcRenderer.invoke('desktop:resource-update', kind, id) as unknown,
+    rollback: async (kind: ResourceKind, id: string): Promise<unknown> => await ipcRenderer.invoke('desktop:resource-rollback', kind, id) as unknown,
+    startJob: async (kind: ResourceKind, action: string, id?: string, source?: string): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:resource-job-start', kind, action, id, source) as { taskId: string },
+    getJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-get', taskId) as ResourceJob | undefined,
+    statusJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-status', taskId) as ResourceJob | undefined,
+    listJobs: async (): Promise<ResourceJob[]> => await ipcRenderer.invoke('desktop:resource-job-list') as ResourceJob[],
+    retryJob: async (taskId: string): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:resource-job-retry', taskId) as { taskId: string },
+    cancelJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-cancel', taskId) as ResourceJob | undefined,
+    onJob: (listener: (job: ResourceJob) => void): (() => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, job: ResourceJob) => listener(job)
+      ipcRenderer.on('desktop:resource-job', handler)
+      return () => ipcRenderer.removeListener('desktop:resource-job', handler)
+    },
   },
 })
 

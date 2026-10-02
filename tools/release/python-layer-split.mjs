@@ -134,6 +134,7 @@ export function scienceManifestDocument({ environmentVersion, scienceRevision, p
   return {
     schema: 3,
     kind: 'zerowall-science-python',
+    applicationVersion,
     runtimeId: 'zerowall-science-python',
     platform: 'win32-x64',
     environmentVersion,

@@ -1,3 +1,4 @@
+import { contract } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
@@ -9,7 +10,7 @@ const root = resolve(import.meta.dirname, '../..')
 const require = createRequire(resolve(root, 'desktop/package.json'))
 const { chromium } = require('playwright')
 const clientRequire = createRequire(resolve(root, 'plugins/files/package.json'))
-const output = resolve(root, process.env.ZEROWALL_VIEWER_TEST_OUTPUT ?? '.build/qa/file-viewer')
+const output = resolve(process.env.ZEROWALL_VIEWER_TEST_OUTPUT ?? resolve(contract.verification, 'file-viewer'))
 await mkdir(output, { recursive: true })
 const pluginRoot = process.env.ZEROWALL_VIEWER_TEST_PLUGIN ?? resolve(root, 'plugins/files')
 const samples = JSON.parse(await readFile(process.argv[2], 'utf8'))
@@ -29,7 +30,7 @@ const server = createServer(async (req, res) => {
     else if (pathname === '/react.js') file = resolve(reactRoot, 'umd/react.production.min.js')
     else if (pathname === '/react-dom.js') file = resolve(dirname(require.resolve('react-dom/package.json')), 'umd/react-dom.production.min.js')
     else if (pathname.startsWith('/sample/')) file = samples.find(v => v.name === pathname.slice(8))?.path
-    else if (/^\/zerowall\/viewer-assets\/(build|cmaps|standard_fonts|wasm|iccs)\/[\w.-]+$/u.test(pathname)) file = resolve(pluginRoot, 'lib/viewer-assets', pathname.slice('/zerowall/viewer-assets/'.length))
+    else if (/^\/zerowall\/viewer-assets\/[a-f0-9]{64}\/(?:build|cmaps|standard_fonts|wasm|iccs)\/[\w.-]+$/u.test(pathname)) file = resolve(pluginRoot, 'lib/viewer-assets', pathname.replace(/^\/zerowall\/viewer-assets\/[a-f0-9]{64}\//u, ''))
     if (!file) { res.writeHead(404); res.end(); return }
     res.setHeader('content-type', /\.(?:m?js)$/u.test(file) ? 'text/javascript' : file.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream')
     res.end(await readFile(file))

@@ -16,7 +16,7 @@ interface PythonArgs { code: string; description: string; timeoutMs?: number; wo
 interface PythonResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; python: string }
 interface RArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
 interface RResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; rscript: string }
-interface CurrentRecord { root?: unknown; health?: unknown; manifest?: Manifest; runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string }
+interface CurrentRecord { root?: unknown; health?: unknown; manifest?: Manifest; runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string; generation?: boolean }
 interface Manifest {
   version?: unknown
   python?: { version?: unknown; relativeExecutable?: unknown; relativeSitePackages?: unknown }
@@ -32,7 +32,7 @@ function environmentRoot(): string | undefined {
   return value === undefined || value === '' ? undefined : resolve(value)
 }
 
-export async function resolveManagedPython(): Promise<{ executable: string; root: string; sitePackages: string }> {
+export async function resolveManagedPython(): Promise<{ executable: string; root: string; sitePackages: string; snapshotRoot: string }> {
   const root = environmentRoot()
   if (root === undefined) throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python root is not configured.')
   let current: CurrentRecord
@@ -48,7 +48,9 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   // junction is for discovery; updates must not redirect a running task.
   const installRoot = resolve(current.root)
   const manifest = current.manifest ?? JSON.parse(await readFile(join(installRoot, 'manifest.json'), 'utf8')) as Manifest
-  const runtimeRoot = resolve(root, '..')
+  const within = relative(join(root, 'slots'), installRoot)
+  const generation = current.generation === true && within !== '..' && !within.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(within)
+  const runtimeRoot = generation ? installRoot : resolve(root, '..')
   if (current.runtimeRoot && resolve(current.runtimeRoot) !== runtimeRoot) {
     throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall permits only its single shared Python runtime.')
   }
@@ -73,7 +75,7 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   if (siteInfo === undefined || !siteInfo.isDirectory() || siteInfo.isSymbolicLink()) {
     throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python site-packages is missing.')
   }
-  return { executable, root: sharedPythonRoot, sitePackages }
+  return { executable, root: sharedPythonRoot, sitePackages, snapshotRoot: generation ? installRoot : sharedPythonRoot }
 }
 
 function bounded(value: string): string { return value.length <= MAX_OUTPUT ? value : value.slice(-MAX_OUTPUT) }
@@ -108,7 +110,7 @@ async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: 
   const leaseDirectory = join(environmentRoot()!, 'leases')
   await mkdir(leaseDirectory, { recursive: true })
   const lease = join(leaseDirectory, `${process.pid}-${randomUUID()}.json`)
-  await writeFile(lease, JSON.stringify({ pid: process.pid, snapshot: resolved.root, kind: 'python', createdAt: new Date().toISOString() }))
+  await writeFile(lease, JSON.stringify({ pid: process.pid, snapshot: resolved.snapshotRoot, kind: 'python', createdAt: new Date().toISOString() }))
   const controller = new AbortController()
   const abort = () => controller.abort()
   exec.signal.addEventListener('abort', abort, { once: true })

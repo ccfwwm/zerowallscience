@@ -5,6 +5,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { expect, it } from 'vitest'
 import { canonicalManifest, McpEnvironmentController } from '../src/main/mcp-environment.js'
 import { replayCustomizations } from '../src/main/python-packages.js'
+import { SHARED_LAYOUT } from '../src/main/shared-python-runtime.js'
 
 // Opt-in network integration, using a small copy of the installed interpreter.
 // The user's current pointer and packages are never mutated.
@@ -22,6 +23,16 @@ it.skipIf(!process.env.ZEROWALL_TEST_PYTHON_SNAPSHOT)('previews, installs, unins
     await record('copy-isolated-interpreter')
     const slot = join(root, 'slots', 'a')
     const manifest = JSON.parse(await readFile(join(source, 'manifest.json'), 'utf8'))
+    // The public legacy feed keeps its signed manifest intact after physical
+    // normalization. Resolve its sidecar without modifying the source runtime.
+    const layout = await readFile(join(source, 'runtime-layout.json'), 'utf8').then(JSON.parse, error => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
+    if (layout) {
+      expect(layout).toMatchObject({ schema: 1, archiveSha256: manifest.archiveSha256, ...SHARED_LAYOUT })
+      manifest.python = { ...manifest.python, ...SHARED_LAYOUT }
+    }
     const pythonDirectory = dirname(manifest.python.relativeExecutable)
     await mkdir(join(slot, pythonDirectory), { recursive: true })
     for (const entry of await readdir(join(source, pythonDirectory), { withFileTypes: true })) {
@@ -33,7 +44,7 @@ it.skipIf(!process.env.ZEROWALL_TEST_PYTHON_SNAPSHOT)('previews, installs, unins
       if (/^(pip|packaging)(?:$|-)/u.test(entry)) await cp(join(source, manifest.python.relativeSitePackages, entry), join(site, entry), { recursive: true })
     }
     for (const entry of await readdir(join(slot, pythonDirectory))) if (entry.endsWith('._pth')) await writeFile(join(slot, pythonDirectory, entry), `python312.zip\n.\n${relative(join(slot, pythonDirectory), site)}\nimport site\n`)
-    for (const path of ['bio-tools/run_server.py', 'ketcher-chemistry/server.js', manifest.sci.cli, manifest.sci.mcp]) { await mkdir(dirname(join(slot, path)), { recursive: true }); await writeFile(join(slot, path), '') }
+    for (const path of ['bio-tools/run_server.py', 'ketcher-chemistry/server.js', manifest.sci.cli, manifest.sci.mcp, 'sci/zerowall-mcp-launcher.cjs']) { await mkdir(dirname(join(slot, path)), { recursive: true }); await writeFile(join(slot, path), '') }
     await mkdir(join(slot, manifest.skillsRoot), { recursive: true })
     manifest.python.modules = ['pip', 'packaging']; manifest.pythonHealth.imports = ['pip', 'packaging']; manifest.dependencies = { ...manifest.dependencies, indexUrl: 'https://mirrors.aliyun.com/pypi/simple', corePackages: [] }
     const keys = generateKeyPairSync('ed25519')
@@ -41,6 +52,9 @@ it.skipIf(!process.env.ZEROWALL_TEST_PYTHON_SNAPSHOT)('previews, installs, unins
     manifest.signature.value = sign(null, canonicalManifest(manifest), keys.privateKey).toString('base64')
     await writeFile(join(slot, 'manifest.json'), JSON.stringify(manifest))
     await writeFile(join(root, 'current.json'), JSON.stringify({ root: slot, health: 'ready', slot: 'a', manifest }))
+    // Mirror selection comes from the user's settings, not the signed runtime
+    // manifest. Configure only this disposable profile and retain URL checks.
+    await writeFile(join(root, 'settings.json'), JSON.stringify({ mirrorUrl: manifest.dependencies.indexUrl }))
     let failHealth = false
     const controller = new McpEnvironmentController({ root, manifestUrl: 'https://fixture.invalid', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), publish() {}, healthCheck: async () => { if (failHealth) throw new Error('injected failure') } })
     const initial = await controller.pythonInfo()

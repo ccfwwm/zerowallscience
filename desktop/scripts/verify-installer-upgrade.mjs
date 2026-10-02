@@ -1,3 +1,4 @@
+import { contract } from '../../tools/build/paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -8,7 +9,7 @@ import { windowsFileVersion } from '../src/main/update-artifact.ts'
 // Never invoke the production installer from this test.
 const version = JSON.parse(await readFile(resolve(import.meta.dirname, '../package.json'), 'utf8')).version
 const versionKey = version.replaceAll('.', '')
-const root = resolve(import.meta.dirname, `../../.build/installer-test-${versionKey}`)
+const root = join(contract.verification, `installer-test-${versionKey}`)
 const installer = join(root, `zerowall-installer-test-${version}.exe`)
 const directory = join(root, '科研应用 中文目录')
 const executable = join(directory, 'ZeroWallScience.exe')

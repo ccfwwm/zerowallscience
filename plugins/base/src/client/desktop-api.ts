@@ -93,6 +93,23 @@ export interface PythonEnvironmentResponse {
   events?: Array<{ action: string; requestId: string; createdAt: string; status: 'queued' | 'succeeded' | 'failed' | 'running'; message?: string; logLine?: string; taskId?: string; upToDate?: boolean }>
 }
 
+export type ResourceKind = 'plugin' | 'skill' | 'mcp'
+export interface ResourceCheckItem {
+  id: string
+  version: string
+  installedVersion?: string
+  updateAvailable?: boolean
+  signed?: boolean
+  restartRequired?: boolean
+  rollbackSupported?: boolean
+  /** Where the active resource comes from: user profile, app bundle, DSH runtime, or catalog. */
+  source?: 'profile' | 'bundled' | 'runtime' | 'catalog' | 'removed' | 'disabled'
+  /** Whether the displayed metadata came from the signed remote catalog. */
+  catalogSigned?: boolean
+}
+export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; catalogStatus?: 'checked' | 'unavailable' | 'local' | 'unpublished'; error?: string }
+export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
+
 export interface ZeroWallDesktopApi {
   restart?(): Promise<boolean>
   info(): Promise<{ version: string; platform: string; architecture: string }>
@@ -125,5 +142,16 @@ export interface ZeroWallDesktopApi {
   applyMcpPythonPackagePlan?(planId: string): Promise<{ taskId: string }>
   onMcpEnvironmentStatus?(listener: (status: McpEnvironmentStatus) => void): () => void
   onUpdateStatus(listener: (status: DesktopUpdateStatus) => void): () => void
+  resources?: {
+    check(kind: ResourceKind, localOnly?: boolean): Promise<ResourceCheckResult>
+    status?(): Promise<{ checkedAt: string; results: ResourceCheckResult[] }>
+    update(kind: ResourceKind, id?: string): Promise<unknown>
+    rollback(kind: ResourceKind, id: string): Promise<unknown>
+    startJob(kind: ResourceKind, action: string, id?: string, source?: string): Promise<{ taskId: string }>
+    getJob(taskId: string): Promise<ResourceJob | undefined>
+    listJobs(): Promise<ResourceJob[]>
+    cancelJob(taskId: string): Promise<ResourceJob | undefined>
+    onJob(listener: (job: ResourceJob) => void): () => void
+  }
 }
 declare global { interface Window { zerowallDesktop?: ZeroWallDesktopApi } }

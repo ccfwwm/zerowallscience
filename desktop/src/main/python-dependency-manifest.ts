@@ -12,6 +12,7 @@ import { createHash, verify } from 'node:crypto'
  */
 export interface PythonDependencyManifest {
   schema: 3
+  applicationVersion?: string
   runtimeId: 'zerowall-science-python'
   platform: 'win32-x64'
   pythonVersion: string

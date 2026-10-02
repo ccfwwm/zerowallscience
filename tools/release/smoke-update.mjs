@@ -1,9 +1,10 @@
+import { targetPackageRoot, verificationRoot } from '../build/paths.mjs'
 import { access, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
 const version = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8')).version
-const dist = resolve(root, 'desktop/dist')
+const dist = targetPackageRoot
 for (const name of [
   `zerowall-science-${version}-latest.json`,
   'latest.yml',

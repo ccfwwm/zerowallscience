@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Actual million-event source React + FlowService + Chromium, using independent NumPy/FlowIO reference. */
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -16,9 +17,9 @@ const require = createRequire(resolve('plugins/research/package.json'))
 const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const { chromium } = createRequire(resolve('desktop/package.json'))('playwright') as typeof import('playwright')
-const root = resolve('.build', 'flow-viewer-smoke', new Date().toISOString().replaceAll(':', '-'))
+const root = resolve(zwsArtifactPaths.verification, 'flow-viewer-smoke', new Date().toISOString().replaceAll(':', '-'))
 await mkdir(root, { recursive: true })
-const referenceRoot = resolve('.build/flow-reference/streaming-8192-20260922')
+const referenceRoot = resolve(zwsArtifactPaths.verification, 'flow-reference/streaming-8192-20260922')
 const reference = JSON.parse(await readFile(join(referenceRoot, 'reference.json'), 'utf8'))
 assert.equal(reference.count, 1_000_000)
 const store = new ResearchStore(join(root, 'store.sqlite')); const service = new FlowService(store)
@@ -47,7 +48,7 @@ const server = await createServer({ configFile: false, root: resolve('.'), cache
     next()
   }) }, resolveId(id: string) { if (id === '/fixture-entry.js') return '\0fixture-entry' }, load(id: string) { if (id === '\0fixture-entry') return app },
 } ] })
-const monitor = spawn(resolve('.build/flow-reference-venv/Scripts/python.exe'), ['-c', `import psutil,sys,time,json,pathlib
+const monitor = spawn(resolve(zwsArtifactPaths.verification, 'flow-reference-venv/Scripts/python.exe'), ['-c', `import psutil,sys,time,json,pathlib
 p=psutil.Process(int(sys.argv[1])); root=pathlib.Path(sys.argv[2]); n=0; host=0; hostpeak=0; tree=0; children=0
 while not (root/'monitor.stop').exists():
  try:

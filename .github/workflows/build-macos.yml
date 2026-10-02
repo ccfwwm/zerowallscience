@@ -35,6 +35,12 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+      - name: Read application version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          "value=$version" >> $env:GITHUB_OUTPUT
       - uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
@@ -54,9 +60,9 @@ jobs:
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: zerowall-science-${{ inputs.channel }}-macos-${{ matrix.arch }}
+          name: zerowall-science-${{ steps.version.outputs.value }}-${{ inputs.channel }}-macos-${{ matrix.arch }}
           path: |
-            desktop/dist/*.dmg
-            desktop/dist/*.zip
-            desktop/dist/*.yml
-            desktop/dist/*.blockmap
+            artifacts/packages/**/*.dmg
+            artifacts/packages/**/*.zip
+            artifacts/packages/**/*.yml
+            artifacts/packages/**/*.blockmap

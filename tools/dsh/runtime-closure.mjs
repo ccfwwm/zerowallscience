@@ -1,10 +1,11 @@
+import { stageRoot } from '../build/paths.mjs'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'deepseek-harness')
-const outputPath = resolve(root, '.build/dsh/runtime-closure.json')
+const outputPath = resolve(stageRoot, 'dsh/runtime-closure.json')
 const check = process.argv.includes('--check')
 const upstream = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 

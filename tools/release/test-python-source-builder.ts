@@ -1,17 +1,18 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import { resolve, join } from 'node:path'
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { buildPythonSourceWheel } from '../../desktop/src/main/python-source-builder.js'
 
 const root = resolve(import.meta.dirname, '../..')
-const python = process.env.ZEROWALL_TEST_PYTHON ?? join(root, '.build/shared-python-migration/run-1790128820162/snapshot/Python/python.exe')
+const python = process.env.ZEROWALL_TEST_PYTHON ?? join(zwsArtifactPaths.verification, 'shared-python-migration/run-1790128820162/snapshot/Python/python.exe')
 const site = process.env.ZEROWALL_TEST_SOURCE_SITE ?? resolve(python, '../Lib/site-packages')
-const output = join(root, '.build/python-source-builder-live')
+const output = join(zwsArtifactPaths.verification, 'python-source-builder-live')
 await mkdir(output, { recursive: true })
 const prior = await readFile(join(output, 'receipt.json'), 'utf8').then(JSON.parse, () => ({ results: [] }))
 const results: Array<{ name: string; [key: string]: unknown }> = process.env.ZEROWALL_TEST_SOURCE_PACKAGE ? prior.results : []
 for (const name of (process.env.ZEROWALL_TEST_SOURCE_PACKAGE ? [process.env.ZEROWALL_TEST_SOURCE_PACKAGE] : ['flowio-1.4.0', 'docopt-0.6.2', 'autograd-gamma-0.5.0', 'bibtexparser-1.4.4', 'nglview-4.0.1'])) {
-  const archivePath = join(root, '.build/python-source-audit', `${name}.tar.gz`)
+  const archivePath = join(zwsArtifactPaths.verification, 'python-source-audit', `${name}.tar.gz`)
   const archiveSha256 = createHash('sha256').update(await readFile(archivePath)).digest('hex')
   console.log(`Building ${name} with ${python}`)
   const startedAt = Date.now()

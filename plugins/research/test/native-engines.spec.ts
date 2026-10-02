@@ -16,7 +16,7 @@ async function fixture() {
   const project = store.createProject({ name: 'Images', rootPath: join(root, 'project') })
   await mkdir(project.rootPath)
   const service = new NativeEngineService(store)
-  cleanups.push(async () => { service.dispose(); store.close(); await rm(root, { recursive: true, force: true }) })
+  cleanups.push(async () => { service.dispose(); store.close(); await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }) })
   // The shared interpreter is represented by a real Node process, which rejects napari's -m option.
   const manager = join(root, 'zerowall-python')
   const python = join(root, 'Python', 'python.exe')

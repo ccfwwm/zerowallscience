@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { rootCertificates } from 'node:tls'
 import { devNull } from 'node:os'
 import { spawn } from 'node:child_process'
+import { windowsProcessPath } from './windows-process-path.js'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { appendFile, mkdir, readFile, writeFile, cp, readdir, rm, stat } from 'node:fs/promises'
@@ -95,7 +96,7 @@ async function run(executable: string, args: string[], paths: string[] = [], mir
   return new Promise((accept, reject) => {
     const env = { ...sanitizePythonTlsEnvironment(process.env, certificateFile), PYTHONNOUSERSITE: '1', PIP_DISABLE_PIP_VERSION_CHECK: '1', PIP_NO_INPUT: '1', PIP_CONFIG_FILE: devNull }
     for (const key of ['PIP_EXTRA_INDEX_URL', 'PIP_INDEX_URL', 'PIP_TRUSTED_HOST']) delete (env as NodeJS.ProcessEnv)[key]
-    const child = spawn(executable, ['-I', '-B', '-c', bootstrap], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env })
+    const child = spawn(windowsProcessPath(executable), ['-I', '-B', '-c', bootstrap], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env })
     let stdout = ''; let stderr = ''
     const timer = setTimeout(() => { child.kill(); reject(new Error('依赖操作超时，当前环境保持可用。')) }, 15 * 60_000)
     const publish = (chunk: Buffer) => {
@@ -291,7 +292,7 @@ export async function prepareManifestPackagePlan(root: string, context: Context,
 
 async function python(executable: string, code: string, args: string[]): Promise<void> {
   await new Promise<void>((accept, reject) => {
-    const child = spawn(executable, ['-I', '-B', '-c', code, ...args], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'], env: sanitizePythonTlsEnvironment() })
+    const child = spawn(windowsProcessPath(executable), ['-I', '-B', '-c', code, ...args], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'], env: sanitizePythonTlsEnvironment() })
     let error = ''; child.stderr.on('data', data => { error = (error + data).slice(-4000) })
     const timer = setTimeout(() => { child.kill(); reject(new Error('候选环境验证超时。')) }, 180_000)
     child.once('error', err => { clearTimeout(timer); reject(err) })
@@ -301,7 +302,7 @@ async function python(executable: string, code: string, args: string[]): Promise
 
 async function pythonOutput(executable: string, code: string, args: string[]): Promise<string> {
   return new Promise((accept, reject) => {
-    const child = spawn(executable, ['-I', '-B', '-c', code, ...args], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: sanitizePythonTlsEnvironment() })
+    const child = spawn(windowsProcessPath(executable), ['-I', '-B', '-c', code, ...args], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: sanitizePythonTlsEnvironment() })
     let stdout = ''; let stderr = ''
     child.stdout.on('data', chunk => { stdout = (stdout + chunk).slice(-2_000_000) })
     child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-16_000) })

@@ -13,18 +13,34 @@ async function setup() {
   const unsigned = { schema: 3, runtimeId: 'zerowall-science-python', platform: 'win32-x64', pythonVersion: '3.12.10', environmentVersion: '7.0.3', revision: 'r1', createdAt: '2026-09-23T00:00:00Z', index: { indexUrl: 'https://mirrors.aliyun.com/pypi/simple' }, packages: [{ name: 'numpy', version: '2.3.0', required: true, capabilities: ['science'] }], compatibility: { minApplicationVersion: '7.0.3' } }
   const manifest = { ...unsigned, signature: { algorithm: 'ed25519', keyId: 'test', value: sign(null, Buffer.from(JSON.stringify(unsigned)), privateKey).toString('base64') } }
   const apply = vi.fn(() => ({ taskId: 'task-1' }))
-  const updater = { pythonInfo: vi.fn(async () => ({ ready: true, version: '3.12.10', packages: [{ name: 'numpy', version: '2.2.0' }] })), previewDependencyManifest: vi.fn(async () => {
+  const updater = { pythonInfo: vi.fn(async () => ({ ready: true, version: '3.12.10', packages: [] })), previewDependencyManifest: vi.fn(async () => {
     const plan = { planId: randomUUID(), snapshotId: 'old', requested: ['numpy==2.3.0'], changes: [{ name: 'numpy', from: '2.2.0', to: '2.3.0' }], wheels: [{ name: 'numpy', version: '2.3.0', hash: 'a'.repeat(64), url: 'https://mirror.example/numpy.whl' }], dependencyManifest: manifest }
     await mkdir(join(root, 'plans')); await writeFile(join(root, 'plans', `${plan.planId}.json`), JSON.stringify(plan))
     return plan
   }), applyPackagePlan: apply }
   const service = new PythonSyncService({ root, updater: updater as any, keys: { test: publicKey.export({ type: 'spki', format: 'pem' }).toString() }, applicationVersion: '7.0.3', feedUrl: 'https://example.test/latest.json', fetcher: vi.fn(async () => new Response(JSON.stringify(manifest))) as typeof fetch })
-  return { service, apply, root, manifest, updater, key: publicKey.export({ type: 'spki', format: 'pem' }).toString() }
+  return { service, apply, root, manifest, updater, privateKey, key: publicKey.export({ type: 'spki', format: 'pem' }).toString() }
 }
 
 describe('signed dependency sync', () => {
+  it('imports a signed catalog manifest but rejects tampering and a revision downgrade', async () => {
+    const { service, root, manifest, privateKey, apply } = await setup()
+    const file = join(root, 'import.json')
+    const { signature, ...unsigned } = manifest
+    const updated = { ...unsigned, revision: 'r2' }
+    await writeFile(file, JSON.stringify({ ...updated, signature: { ...signature, value: sign(null, Buffer.from(JSON.stringify(updated)), privateKey).toString('base64') } }))
+    await service.importManifest(file)
+    expect((await service.previewSync()).manifestRevision).toBe('r2')
+    await writeFile(file, JSON.stringify(manifest))
+    await expect(service.importManifest(file)).rejects.toThrow(/降级/)
+    await writeFile(file, JSON.stringify({ ...manifest, revision: 'r3' }))
+    await expect(service.importManifest(file)).rejects.toThrow(/签名/)
+    expect(apply).not.toHaveBeenCalled()
+  })
+
   it('checks without installing, binds a preview and requires confirmation before queueing', async () => {
     const { service, apply } = await setup()
+    // The signed plan installs a missing package and never overwrites an existing one.
     expect((await service.checkManifest()).changes).toHaveLength(1)
     expect(apply).not.toHaveBeenCalled()
     const preview = await service.previewSync()

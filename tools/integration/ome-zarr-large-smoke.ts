@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Real 10 GiB uncompressed synthetic directory; bounded source Host and browser acceptance. */
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -12,7 +13,7 @@ import { registerLocalAsset } from '../../plugins/research/src/host/local-assets
 import { readOmeZarrMetadata, readOmeZarrPlane } from '../../plugins/research/src/host/ome-zarr.js'
 
 if (!process.argv.includes('--run')) throw new Error('Pass --run to generate and verify a real 10 GiB synthetic OME-Zarr dataset.')
-const root = resolve('.build', 'ome-zarr-large-smoke', new Date().toISOString().replaceAll(':', '-'))
+const root = resolve(zwsArtifactPaths.verification, 'ome-zarr-large-smoke', new Date().toISOString().replaceAll(':', '-'))
 const reuse = process.argv.find(value => value.startsWith('--reuse='))?.slice(8)
 const dataset = reuse ? resolve(reuse) : join(root, 'volume.zarr'); await mkdir(root, { recursive: true })
 if (!reuse) await mkdir(join(dataset, '0'), { recursive: true })

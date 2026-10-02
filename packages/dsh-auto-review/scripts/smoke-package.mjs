@@ -45,9 +45,10 @@ const checkFile = path.join(scratch, 'check.mjs')
 // (ERR_PNPM_NO_MATCHING_VERSION). Pin the two packages at the line this repo
 // already dev-pins so the smoke proves the artifact instead of pnpm's peer
 // resolver; drop the pins once pnpm resolves prerelease peer chains.
+const hostVersion = pkg.zerowall?.dsh?.min ?? '0.1.5-alpha.1'
 const PEER_PINS = {
-  '@deepseek-ai/dsh-scope': '0.1.5-alpha.1',
-  '@deepseek-ai/dsh-typert-protocol': '0.1.5-alpha.1',
+  '@deepseek-ai/dsh-scope': hostVersion,
+  '@deepseek-ai/dsh-typert-protocol': hostVersion,
 }
 writeFileSync(path.join(scratch, 'package.json'), JSON.stringify({
   name: 'smoke',

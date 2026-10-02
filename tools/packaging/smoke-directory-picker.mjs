@@ -1,9 +1,10 @@
+import { targetPackageRoot, verificationRoot } from '../build/paths.mjs'
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const root = resolve(import.meta.dirname, '../..')
-const unpacked = resolve(root, 'desktop/dist/win-unpacked')
+const unpacked = resolve(targetPackageRoot, 'win-unpacked')
 const executable = resolve(unpacked, 'ZeroWallScience.exe')
 const worker = resolve(unpacked, 'resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh-host-directory-picker-native/lib/worker.cjs')
 const nodePath = resolve(unpacked, 'resources/app.asar/node_modules')

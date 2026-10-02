@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -70,7 +71,7 @@ afterAll(async () => {
 
 it('loads nine research cards and their images at desktop and narrow widths', async () => {
   await page.setViewportSize({ width: 1280, height: 900 })
-  const output = join(desktopRoot, 'dist', 'verification-7.0.6')
+  const output = join(zwsArtifactPaths.verification, 'electron')
   mkdirSync(output, { recursive: true })
   const workspacePath = join(root, 'research-706-workspace')
   mkdirSync(workspacePath)

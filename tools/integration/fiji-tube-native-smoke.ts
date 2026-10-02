@@ -1,10 +1,11 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { runImageJExperiment } from '../../plugins/research/src/host/fiji-image-runner.js'
 
 if(!process.argv.includes('--run'))throw new Error('Pass --run to test installed AnalyzeSkeleton and Skeletonize3D.')
-const root=resolve('.build/fiji-tube-native',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true});const results=[]
+const root=resolve(zwsArtifactPaths.verification, 'fiji-tube-native',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true});const results=[]
 for(const name of ['line','loop','empty']){
  const pixels=Buffer.alloc(20*20)
  if(name==='line')for(let x=2;x<=14;x++)pixels[6*20+x]=255

@@ -30,7 +30,10 @@ describe('ZeroWall capabilities Remote', () => {
       expect(detail.content).toContain('univer-slide')
       expect(detail.content).toContain('univer_compile_svg')
       expect(detail.content).toContain('univer_export')
-      expect(detail.content).toMatch(/full-page image as the\s+only object/u)
+      expect(detail.content).toContain('never flatten complete pages')
+      expect(detail.content).toMatch(/independent editable native objects/u)
+      expect(detail.content).toMatch(/input_paths: \[contentSeedPath, selectedStylePath\]/u)
+      expect(detail.content).toContain('Generate **three** candidates')
       expect(detail.content).toContain('model and quality')
     } finally {
       await ctx.fiber.dispose()

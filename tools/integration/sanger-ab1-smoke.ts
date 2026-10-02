@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
@@ -5,7 +6,7 @@ import { resolve, join } from 'node:path'
 import { parseAb1 } from '../../plugins/research/src/shared/sanger.js'
 
 // Reference JSON is produced independently by Biopython, never by the TS parser.
-const root = resolve(process.argv[2] ?? '.build/sanger-reference')
+const root = resolve(process.argv[2] ?? resolve(zwsArtifactPaths.verification, 'sanger-reference'))
 const names = ['310.ab1', '3100.ab1', '3730.ab1', 'A6_1-DB3.ab1', 'no_smpl1.ab1', 'nonascii_encoding.ab1']
 const results = []
 for (const name of names) {

@@ -1,5 +1,6 @@
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -19,7 +20,19 @@ it.skipIf(!process.env.ZEROWALL_TEST_SOURCE_PYTHON)('builds absent wheels during
   const snapshot = join(root, 'snapshot'); const pythonRoot = join(snapshot, 'Python')
   const site = join(pythonRoot, 'Lib', 'site-packages')
   const receipt: Record<string, unknown> = { source, startedAt: new Date().toISOString() }
+  const sourceState = async () => {
+    const original = await execute(sourceExecutable, ['-I', '-B', '-c', "import importlib.util,importlib.metadata as m,json,hashlib,pathlib; s=importlib.util.find_spec('flowio'); print(json.dumps({'origin':s.origin if s else None,'version':m.version('flowio') if s else None,'sha256':hashlib.sha256(pathlib.Path(s.origin).read_bytes()).hexdigest() if s and s.origin else None},sort_keys=True))"], { windowsHide: true })
+    const pth: Record<string, string> = {}
+    for (const name of (await readdir(source)).filter(name => name.endsWith('._pth')).sort()) {
+      pth[name] = createHash('sha256').update(await readFile(join(source, name))).digest('hex')
+    }
+    return { flowio: JSON.parse(original.stdout.trim()), pth }
+  }
   try {
+    // A full public runtime may already contain flowio. Prove that its stable
+    // origin/version/content and interpreter search paths remain unchanged.
+    const sourceBefore = await sourceState()
+    receipt.sourceBefore = sourceBefore
     await mkdir(site, { recursive: true })
     for (const entry of await readdir(source, { withFileTypes: true })) if (entry.isFile()) await cp(join(source, entry.name), join(pythonRoot, entry.name))
     for (const entry of await readdir(join(source, 'Lib', 'site-packages'))) if (/^(pip|packaging)(?:$|-)/u.test(entry)) await cp(join(source, 'Lib', 'site-packages', entry), join(site, entry), { recursive: true })
@@ -56,28 +69,34 @@ it.skipIf(!process.env.ZEROWALL_TEST_SOURCE_PYTHON)('builds absent wheels during
     const secondCheck = await preparePackagePlan(root, context, ['flowio>=1.4,<1.5'], { ready: true, packages: detected.map(pkg => ({ ...pkg, source: 'core' as const, health: 'healthy' as const })) })
     expect(secondCheck.error).toBeUndefined()
     expect(secondCheck.wheels.some(wheel => wheel.name.toLowerCase() === 'flowio')).toBe(false)
-    const original = await execute(sourceExecutable, ['-I', '-B', '-c', "import importlib.util; print(importlib.util.find_spec('flowio'))"], { windowsHide: true })
-    expect(original.stdout.trim()).toBe('None')
+    expect(await sourceState()).toEqual(sourceBefore)
     const locked = { schema: 3, runtimeId: 'zerowall-science-python', platform: 'win32-x64', pythonVersion: '3.12.10', environmentVersion: 'test', revision: 'test', createdAt: new Date().toISOString(), index: context.mirror, compatibility: { minApplicationVersion: '7.0.4' }, signature: { algorithm: 'ed25519', keyId: 'test', value: 'host-verified-input' }, packages: ordinary.wheels.map(wheel => ({ name: wheel.name, version: wheel.version, sha256: wheel.sourceArchiveSha256 ?? wheel.hash, required: true, capabilities: ['test'] })) } as PythonDependencyManifest
     // A manifest missing the signed sdist authorization must fail rather than
     // silently build a different artifact under the signed wheel hash.
     const before = await readdir(join(root, 'plans', 'source-builds'))
     console.log('source integration: rejecting source absent from signed manifest')
     const denied = await prepareManifestPackagePlan(root, signedContext, locked, info)
-    expect(denied.error).toMatch(/(?:No matching distribution found|BackendUnavailable: Cannot import)/u)
+    receipt.deniedUnsignedSource = denied
+    // Full manifest sync isolates failed packages instead of returning a
+    // top-level error. The unauthorized sdist must remain absent from its
+    // executable plan and must not create a source build.
+    expect(denied.preparationFailures).toContainEqual(expect.objectContaining({ name: 'flowio', message: expect.stringMatching(/(?:No matching distribution found|BackendUnavailable: Cannot import)/u) }))
+    expect(denied.wheels.some(wheel => wheel.name === 'flowio')).toBe(false)
     expect(await readdir(join(root, 'plans', 'source-builds'))).toEqual(before)
-    receipt.deniedUnsignedSource = denied.error
     const lockedSource = locked.packages.find(pkg => pkg.name === 'flowio')!
     lockedSource.source = 'sdist'; lockedSource.filename = 'flowio-1.4.0.tar.gz'
     console.log('source integration: building signed source plan')
     const signedSource = await prepareManifestPackagePlan(root, signedContext, locked, info)
     expect(signedSource.error).toBeUndefined()
+    expect(signedSource.preparationFailures).toEqual([])
     expect(signedSource.dependencyManifest).toEqual(locked)
     expect(signedSource.wheels.find(wheel => wheel.name === 'flowio')!.sourceArchiveSha256).toBe(lockedSource.sha256)
     await applyPackagePlanFiles(root, signedContext, signedSnapshot, signedSource)
     const signedInstalled = await execute(signedContext.executable, ['-I', '-B', '-c', "import flowio,importlib.metadata as m; print(m.version('flowio')); print(flowio.__name__)"], { windowsHide: true })
     expect(signedInstalled.stdout).toContain('1.4.0')
     console.log('source integration: signed source apply verified')
+    receipt.sourceAfter = await sourceState()
+    expect(receipt.sourceAfter).toEqual(sourceBefore)
     receipt.signedSource = signedSource; receipt.installed = installed.stdout; receipt.signedInstalled = signedInstalled.stdout; receipt.ok = true
   } catch (error) { receipt.ok = false; receipt.error = String(error); throw error }
   finally {

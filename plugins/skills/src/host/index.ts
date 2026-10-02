@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
-import { createHash } from 'node:crypto'
-import { cp, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { createHash, randomUUID } from 'node:crypto'
+import { cp, mkdir, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import type { SkillDefinition, SkillSummary } from '@deepseek-ai/dsh-skill'
 import { isSkillName } from '@deepseek-ai/dsh-skill'
@@ -15,6 +15,17 @@ export type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSo
 // Keep systemPrompt as an activation dependency so the Host loader preserves
 // the established ordering; ARS guidance itself is owned by plugin-base.
 export const inject = ['skills', 'systemPrompt']
+
+// Windows directory watchers and virus scanners can briefly deny rename.
+// Retry only sharing/permission failures; never remove a target to force a swap.
+async function moveSkillDirectory(source: string, destination: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try { await rename(source, destination); return } catch (error) {
+      if (process.platform !== 'win32' || attempt >= 12 || !['EPERM', 'EACCES', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error
+      await new Promise(resolveRetry => setTimeout(resolveRetry, 100 + attempt * 50))
+    }
+  }
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context { zerowallCapabilities: ZeroWallCapabilitiesService }
@@ -102,6 +113,43 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
     return await this.getSkill(parsed.name)
   }
 
+  @Remote('updateSkill')
+  async updateSkill(input: ImportSkillInput): Promise<ZeroWallSkillSummary> {
+    const source = await locateSkillRoot(resolve(input.sourcePath.trim()))
+    const parsed = validateSkillMarkdown(await readSkillMarkdown(join(source, 'SKILL.md')))
+    const name = validateSkillName(parsed.name)
+    const disabled = await exists(safeSkillPath(disabledSkillDir(), name))
+    const target = safeSkillPath(disabled ? disabledSkillDir() : userSkillDir(), name)
+    if (!(await exists(target))) return this.importSkill(input)
+    const within = relative(await realpath(target), await realpath(source))
+    if (!within || (!within.startsWith('..') && !isAbsolute(within))) throw new Error('Choose a separate update source.')
+    const candidate = join(dirname(userSkillDir()), 'candidates', randomUUID(), name)
+    await copySkillTree(source, candidate)
+    const backup = join(dirname(userSkillDir()), 'history', name, randomUUID())
+    await mkdir(dirname(backup), { recursive: true })
+    await moveSkillDirectory(target, backup)
+    try { await moveSkillDirectory(candidate, target) } catch (error) { await moveSkillDirectory(backup, target); throw error }
+    // The filesystem provider's watcher invalidates the registry. Existing
+    // tasks keep their already resolved SkillDefinition and content snapshot.
+    return await this.getSkill(name)
+  }
+
+  @Remote('rollbackSkill')
+  async rollbackSkill(id: string): Promise<ZeroWallSkillSummary> {
+    const name = validateSkillName(id)
+    const history = join(dirname(userSkillDir()), 'history', name)
+    const backups = await readdir(history, { withFileTypes: true })
+    const candidates = await Promise.all(backups.filter(item => item.isDirectory()).map(async item => ({ path: join(history, item.name), time: (await stat(join(history, item.name))).mtimeMs })))
+    const previous = candidates.sort((a, b) => b.time - a.time)[0]
+    if (!previous) throw new Error('No previous Skill version is available.')
+    const disabled = await exists(safeSkillPath(disabledSkillDir(), name))
+    const target = safeSkillPath(disabled ? disabledSkillDir() : userSkillDir(), name)
+    const backup = join(history, randomUUID())
+    await moveSkillDirectory(target, backup)
+    try { await moveSkillDirectory(previous.path, target) } catch (error) { await moveSkillDirectory(backup, target); throw error }
+    return this.getSkill(name)
+  }
+
   @Remote('copyBundledSkill')
   async copyBundledSkill(input: CopyBundledSkillInput): Promise<ZeroWallSkillSummary> {
     const name = validateSkillName(input.name)
@@ -132,7 +180,7 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
     const to = safeSkillPath(enabled ? userSkillDir() : disabledSkillDir(), normalized)
     if (!(await exists(from))) throw new Error(`Imported Skill was not found: ${normalized}`)
     await mkdir(dirname(to), { recursive: true })
-    await rename(from, to)
+    await moveSkillDirectory(from, to)
   }
 }
 

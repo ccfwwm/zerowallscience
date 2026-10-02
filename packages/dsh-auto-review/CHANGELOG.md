@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — ZeroWall 8.0.0 integration
+
+- Support the pinned DSH 0.2.0-rc.2 Host without writing unsupported audit markers.
+- Verify Loader fiber activation failures and use rc.2 tool-result fixtures.
+- Prepare independent tarballs with Host peers and centralized build outputs.
+
+
 All notable changes to `dsh-auto-review` are documented here. The repo is pre-release; versions follow the DeepSeek Harness `0.1.0-rc.x` target runtime and bump on every behavior change.
 
 ## [0.12.4] - 2026-09-12

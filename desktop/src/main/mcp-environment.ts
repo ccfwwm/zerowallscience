@@ -1,10 +1,12 @@
-import { createHash, randomUUID, verify } from 'node:crypto'
+import { createHash, randomBytes, randomUUID, verify } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { access, appendFile, cp, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, delimiter, dirname, join, relative, resolve } from 'node:path'
 import { downloadArchive, extractArchive, requireFreeSpace } from './python-archive.js'
+import { downloadPythonManifest } from './python-manifest-download.js'
+import { windowsProcessPath } from './windows-process-path.js'
 import { collectSnapshots } from './python-snapshots.js'
 import { preparePackagePlan, prepareManifestPackagePlan, applyPackagePlanFiles, replayCustomizations, type StoredPackagePlan } from './python-packages.js'
 import { dependencyManifestChanges, dependencyManifestSha256, parsePythonDependencyManifest, type PythonDependencyManifest } from './python-dependency-manifest.js'
@@ -56,6 +58,7 @@ export interface SharedPythonRuntime {
 }
 
 export interface McpEnvironmentControllerOptions {
+  generationMode?: boolean
   coordinateHost?: boolean
   root: string
   /** Settings live beside the selected runtime so changing drives does not
@@ -133,7 +136,7 @@ export class McpEnvironmentController {
       const detail = sanitizeError(error)
       return this.set({ phase: 'failed', message: `现有 ZeroWall Python 环境无法验证，将重新准备基础环境：${detail}`, lastUpdateError: detail })
     }
-    if (!skipMigration && basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python') {
+    if (!this.options.generationMode && !skipMigration && basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python') {
       const stableRoot = dirname(this.options.root)
       const sharedLayout = manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
         && manifest.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages
@@ -153,7 +156,7 @@ export class McpEnvironmentController {
         })
       }
     }
-    return this.set({ ...environmentStatus('ready', manifest, record.root, record.slot ?? 'manual', false, record.rollbackAvailable === true), lastUpdateError: this.status.lastUpdateError,
+    return this.set({ ...environmentStatus('ready', manifest, record.root, record.slot ?? 'manual', false, record.rollbackAvailable === true, this.options.generationMode), lastUpdateError: this.status.lastUpdateError,
       activeEnvironment: { snapshotId: record.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), pythonVersion: manifest.python.version, localRevision: record.localRevision } })
   }
 
@@ -176,9 +179,10 @@ export class McpEnvironmentController {
       const manifest = await this.fetchManifest()
       const record = await readCurrent(this.options.root)
       const currentManifest = record?.root && record.health === 'ready' ? await this.readInstalledManifest(record.root).catch(() => undefined) : undefined
-      const root = record?.root ?? ''
+      const root = currentManifest ? record?.root ?? '' : ''
       const slot = record?.slot === 'a' || record?.slot === 'b' || record?.slot === 'manual' ? record.slot : undefined
-      const status = environmentStatus(currentManifest ? 'ready' : 'checking', currentManifest ?? manifest, root, slot ?? 'manual', false, record?.rollbackAvailable === true)
+      const status = environmentStatus(currentManifest ? 'ready' : 'idle', currentManifest ?? manifest, root, slot ?? 'manual', false, record?.rollbackAvailable === true, this.options.generationMode)
+      if (!currentManifest && status.python) status.python.ready = false
       status.onlineEnvironmentVersion = environmentVersion(manifest)
       status.onlineContentRevision = contentRevision(manifest)
       status.updateAvailable = currentManifest === undefined || environmentVersion(currentManifest) !== environmentVersion(manifest) || contentRevision(currentManifest) !== contentRevision(manifest) || currentManifest.archiveSha256 !== manifest.archiveSha256
@@ -209,7 +213,7 @@ export class McpEnvironmentController {
     if (!current?.root || current.health !== 'ready') return { ready: false, packages: [], message: 'ZeroWall Python 尚未就绪。' }
     try {
       const installedManifest = await this.readInstalledManifest(current.root)
-      const isProductPythonRoot = basename(this.options.root).toLowerCase() === 'zerowall-python'
+      const isProductPythonRoot = !this.options.generationMode && basename(this.options.root).toLowerCase() === 'zerowall-python'
       const expectedRuntimeRoot = dirname(resolve(this.options.root))
       const stableRoot = current.runtimeRoot ? resolve(current.runtimeRoot) : await stat(join(expectedRuntimeRoot, 'Python', 'python.exe')).then(() => expectedRuntimeRoot, () => undefined)
       const shared = isProductPythonRoot && stableRoot === expectedRuntimeRoot
@@ -237,7 +241,7 @@ export class McpEnvironmentController {
       }
       packages.sort((a, b) => a.name.localeCompare(b.name))
       const needle = query.trim().toLowerCase()
-      const runtime = shared ? { runtimeRoot: join(stableRoot!, 'Python'), runtimeExecutable: executable, runtimeSitePackages: sitePackages } : publicRuntimeForSnapshot(current.root, manifest)
+      const runtime = shared ? { runtimeRoot: join(stableRoot!, 'Python'), runtimeExecutable: executable, runtimeSitePackages: sitePackages } : publicRuntimeForSnapshot(current.root, manifest, this.options.generationMode)
       return { snapshotId: current.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), localRevision: current.localRevision, scannedAt: new Date().toISOString(), officialPackageCount: manifest.dependencies?.corePackages.length ?? 0, ready: true, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable: runtime?.runtimeExecutable ?? executable, sitePackages: runtime?.runtimeSitePackages ?? sitePackages, ...runtime, packageCount: packages.length, corePackageCount: packages.filter(pkg => pkg.source === 'core').length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
     } catch (error) { return { ready: false, packages: [], message: sanitizeError(error) } }
   }
@@ -323,10 +327,10 @@ export class McpEnvironmentController {
     if (!current?.root || plan.snapshotId !== current.root || plan.error) throw new Error('环境已变化，请重新检查升级计划。')
     const context = await this.pythonContext()
     const inventory = await this.pythonInfo()
-    const sharedStable = context.manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable && current.runtimeRoot === dirname(this.options.root)
+    const sharedStable = !this.options.generationMode && context.manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable && current.runtimeRoot === dirname(this.options.root)
     const target = sharedStable ? current.root : join(this.options.root, 'slots', `local-${randomUUID()}`)
     if (!sharedStable) {
-      const snapshotBytes = await directoryBytes(current.root)
+      const snapshotBytes = await directoryBytes(this.options.generationMode && resolve(current.root) === resolve(dirname(this.options.root)) ? join(current.root, 'Python') : current.root)
       const requiredBytes = Math.ceil(snapshotBytes * 1.5) + 1024 ** 3
       plan.spaceEstimate = { snapshotBytes, requiredBytes, estimate: 'snapshot-size-plus-50-percent-and-1GiB', measuredAt: new Date().toISOString() }
       await requireFreeSpace(this.options.root, requiredBytes)
@@ -336,7 +340,16 @@ export class McpEnvironmentController {
     let activated = false
     const installLog: string[] = []
     try {
-      if (!sharedStable) await copyRuntimeSnapshot(current.root, target)
+      if (!sharedStable) {
+        if (this.options.generationMode && resolve(current.root) === resolve(dirname(this.options.root))) {
+          // A legacy shared root is user data, not a runtime-only snapshot.
+          await copyRuntimeSnapshot(join(current.root, 'Python'), join(target, 'Python'))
+          for (const file of ['manifest.json', 'runtime-layout.json', 'customization.json', 'requirements-user.txt']) {
+            const bytes = await readFile(join(current.root, file)).catch(() => undefined)
+            if (bytes) await writeFile(join(target, file), bytes)
+          }
+        } else await copyRuntimeSnapshot(current.root, target)
+      }
       const outcome = await applyPackagePlanFiles(this.options.root, context, target, plan, ({ completed, total, name, stage, logLine }) => {
         // The per-package loop is where a 521-package layer spends its time, and
         // it used to publish nothing at all: the bar sat at 15% from the start of
@@ -350,6 +363,9 @@ export class McpEnvironmentController {
       })
       plan.installOutcome = outcome
       await writeFile(join(this.options.root, 'plans', `${planId}.json`), JSON.stringify(plan))
+      if (this.options.generationMode && (outcome.skipped.length || !outcome.importCheckPassed || !outcome.pipCheckPassed)) {
+        throw new Error('新 Python generation 验证失败，保留当前环境；请查看依赖安装日志后重试。')
+      }
       if (outcome.skipped.length) {
         // A partial install is a real outcome the user has to see, not a silent
         // success: the skipped packages keep their old version and stay pending
@@ -374,7 +390,7 @@ export class McpEnvironmentController {
       if (plan.dependencyManifest && sharedStable) await writeFile(join(dirname(this.options.root), 'Python', 'manifest.json'), JSON.stringify(plan.dependencyManifest))
       if (!sharedStable) await this.writeCurrent(current as unknown as Record<string, unknown>, 'rollback.json')
       const extensionNames = [...new Set([...inventory.packages.filter(pkg => pkg.source === 'custom').map(pkg => pythonPackageName(pkg.name)), ...plan.changes.filter(change => successful.has(pythonPackageName(change.name)) && !context.manifest.dependencies?.corePackages.some(pkg => pythonPackageName(pkg.name) === pythonPackageName(change.name))).map(change => pythonPackageName(change.name))])]
-      await this.writeCurrent({ ...current, root: target, runtimeRoot: sharedStable ? dirname(this.options.root) : current.runtimeRoot, localRevision, customizations, removedPackages, extensionNames: extensionNames.filter(name => !removedPackages.includes(name)), rollbackAvailable: sharedStable ? current.rollbackAvailable : true, installedAt: new Date().toISOString(), manifest: context.manifest, ...(plan.dependencyManifest ? { dependencyRevision: plan.dependencyManifest.revision, dependencyManifestSha256: createHash('sha256').update(JSON.stringify(plan.dependencyManifest)).digest('hex') } : {}) })
+      await this.writeCurrent({ ...current, root: target, ...(this.options.generationMode ? { generation: true } : {}), runtimeRoot: this.options.generationMode ? target : sharedStable ? dirname(this.options.root) : current.runtimeRoot, localRevision, customizations, removedPackages, extensionNames: extensionNames.filter(name => !removedPackages.includes(name)), rollbackAvailable: sharedStable ? current.rollbackAvailable : true, installedAt: new Date().toISOString(), manifest: context.manifest, ...(plan.dependencyManifest ? { dependencyRevision: plan.dependencyManifest.revision, dependencyManifestSha256: createHash('sha256').update(JSON.stringify(plan.dependencyManifest)).digest('hex') } : {}) })
       activated = true
       await this.localStatus()
       const info = await this.pythonInfo()
@@ -423,7 +439,7 @@ export class McpEnvironmentController {
     const manifest = await this.readInstalledManifest(previous.root)
     await this.verifyHealth(previous.root, manifest)
     const stableRoot = dirname(this.options.root)
-    const restoreStable = basename(this.options.root).toLowerCase() === 'zerowall-python' && manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
+    const restoreStable = !this.options.generationMode && basename(this.options.root).toLowerCase() === 'zerowall-python' && manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
     const restored = { ...previous, ...(restoreStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT } : {}), manifest }
     delete (restored as CurrentEnvironmentRecord).overlayPath
     if (restoreStable) {
@@ -447,7 +463,7 @@ export class McpEnvironmentController {
     const manifest = shared ? { ...installedManifest, python: { ...installedManifest.python, ...SHARED_LAYOUT } } : installedManifest
     const executable = shared ? join(stableRoot!, SHARED_LAYOUT.relativeExecutable) : join(current.root, manifest.python.relativeExecutable)
     const sitePackages = shared ? join(stableRoot!, SHARED_LAYOUT.relativeSitePackages) : join(current.root, manifest.python.relativeSitePackages)
-    if (basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python' && (!shared || !current.runtimeRoot || resolve(current.runtimeRoot) !== resolve(dirname(this.options.root)))) {
+    if (!this.options.generationMode && basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python' && (!shared || !current.runtimeRoot || resolve(current.runtimeRoot) !== resolve(dirname(this.options.root)))) {
       throw new Error('共享 Python 尚未就绪；请从 Python 环境页重试签名基础环境安装。')
     }
     const settings = await readFile(join(this.options.settingsPath ?? this.options.root, 'settings.json'), 'utf8').then(JSON.parse, () => ({}))
@@ -473,7 +489,7 @@ export class McpEnvironmentController {
       requestedManifest = manifest
       const installed = await this.installedRoot(manifest)
       if (installed !== undefined) {
-        const status = environmentStatus('ready', manifest, installed.root, installed.slot, false, installed.rollbackAvailable)
+        const status = environmentStatus('ready', manifest, installed.root, installed.slot, false, installed.rollbackAvailable, this.options.generationMode)
         status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
         return this.set(status)
       }
@@ -482,7 +498,7 @@ export class McpEnvironmentController {
       // Python path directly; slots are reserved for later rollback snapshots.
       const stableRoot = dirname(this.options.root)
       let current = await readCurrent(this.options.root)
-      const productRuntime = basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python'
+      const productRuntime = !this.options.generationMode && basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python'
       const sharedManifest = manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
         && manifest.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages
       const managedStable = productRuntime && sharedManifest
@@ -501,7 +517,7 @@ export class McpEnvironmentController {
             await (this.options.verifySharedPython ?? verifySharedPackages)(stableRoot)
             const restored = { mode: 'managed', environmentVersion: environmentVersion(existingManifest), contentRevision: contentRevision(existingManifest), archiveSha256: existingManifest.archiveSha256, root: stableRoot, runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT, slot: 'manual', manifest: existingManifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: false }
             await this.writeCurrent(restored, 'current.json', false)
-            const status = environmentStatus('ready', existingManifest, stableRoot, 'manual', false, false)
+            const status = environmentStatus('ready', existingManifest, stableRoot, 'manual', false, false, this.options.generationMode)
             status.onlineEnvironmentVersion = environmentVersion(manifest)
             status.onlineContentRevision = contentRevision(manifest)
             status.updateAvailable = compareEnvironmentVersions(environmentVersion(existingManifest), environmentVersion(manifest)) < 0
@@ -520,7 +536,10 @@ export class McpEnvironmentController {
       const currentSlot = current?.slot === 'a' || current?.slot === 'b' ? current.slot : undefined
       const targetSlot: 'a' | 'b' = currentSlot === 'a' ? 'b' : 'a'
       const target = join(this.options.root, 'slots', `${targetSlot}-${randomUUID()}`)
-      const temporary = `${target}.tmp-${process.pid}-${Date.now()}`
+      // Preserve the full UUID for durable generations. Native scientific
+      // wheels need a shorter unactivated staging path on Windows; a 128-bit
+      // base64url id retains uniqueness without repeating pid/timestamp data.
+      const temporary = join(this.options.root, 'versions', `i-${randomBytes(16).toString('base64url')}.tmp`)
       const archivePath = this.options.bundledManifestPath ? this.options.bundledArchivePath! : join(this.options.root, 'downloads', `${manifest.archiveSha256}.part`)
       let installedManifest = manifest
       await requireFreeSpace(this.options.root, manifest.archiveSize * 5 + 512 * 1024 ** 2)
@@ -580,7 +599,7 @@ export class McpEnvironmentController {
       // points at a healthy stable directory using the shared layout.  If that
       // check fails, the signed installer archive is the complete source and
       // the old profile remains untouched for manual recovery.
-      const existingSharedRuntime = managedStable && activeShared
+      const existingSharedRuntime = this.options.generationMode ? current?.health === 'ready' : managedStable && activeShared
       // Build and replay customizations in the unactivated candidate. Creating
       // site-packages under AppData\Python before migration makes the stable
       // directory look occupied (it has no python.exe yet), which aborts a
@@ -602,7 +621,7 @@ export class McpEnvironmentController {
         const previousHistory = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
         await writeFile(join(target, 'customization.json'), JSON.stringify({ ...previousHistory, customizations: current.customizations, verifiedAt: new Date().toISOString() }))
       }
-      const record = { mode: 'managed', environmentVersion: environmentVersion(installedManifest), contentRevision: contentRevision(installedManifest), archiveSha256: installedManifest.archiveSha256, root: target, ...(managedStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT } : {}), ...(existingSharedRuntime ? { customizations: previousCustomizations, removedPackages: previousRemovedPackages, extensionNames: current?.extensionNames, localRevision: current?.localRevision } : {}), slot: targetSlot, manifest: installedManifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: existingSharedRuntime || (current?.health === 'ready' && current.slot !== 'manual') }
+      const record = { mode: 'managed', environmentVersion: environmentVersion(installedManifest), contentRevision: contentRevision(installedManifest), archiveSha256: installedManifest.archiveSha256, root: target, ...(this.options.generationMode ? { runtimeRoot: target, generation: true } : managedStable ? { runtimeRoot: stableRoot, runtimeLayout: SHARED_LAYOUT } : {}), ...(existingSharedRuntime ? { customizations: previousCustomizations, removedPackages: previousRemovedPackages, extensionNames: current?.extensionNames, localRevision: current?.localRevision } : {}), slot: targetSlot, manifest: installedManifest, health: 'ready', installedAt: new Date().toISOString(), rollbackAvailable: existingSharedRuntime || (current?.health === 'ready' && current.slot !== 'manual') }
       delete (record as Record<string, unknown>).overlayPath
       if (managedStable) {
         const verifySharedPython = this.options.verifySharedPython ?? verifySharedPackages
@@ -614,14 +633,14 @@ export class McpEnvironmentController {
         await verifySharedPython(target)
         await migrateStablePython(this.options.root, target, installedManifest, previousOverlay, true, verifySharedPython, () => this.writeCurrent(record, 'current.json', false))
       } else await this.writeCurrent(record, 'current.json', false)
-      const status = environmentStatus('ready', installedManifest, target, targetSlot, true, record.rollbackAvailable)
+      const status = environmentStatus('ready', installedManifest, target, targetSlot, true, record.rollbackAvailable, this.options.generationMode)
       status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
       return this.set(status)
     } catch (error) {
       await this.recordDiagnostic({ event: 'install_failed', error: describeError(error), requestedManifest: requestedManifest === undefined ? undefined : { environmentVersion: environmentVersion(requestedManifest), contentRevision: contentRevision(requestedManifest), archiveSha256: requestedManifest.archiveSha256 } })
       const retained = await this.currentHealthyRoot()
       if (retained !== undefined) {
-        const status = environmentStatus('ready', retained.manifest, retained.root, retained.slot, false, retained.rollbackAvailable)
+        const status = environmentStatus('ready', retained.manifest, retained.root, retained.slot, false, retained.rollbackAvailable, this.options.generationMode)
         status.lastUpdateError = sanitizeError(error)
         if (requestedManifest !== undefined) {
           status.onlineEnvironmentVersion = environmentVersion(requestedManifest)
@@ -648,6 +667,7 @@ export class McpEnvironmentController {
     let createdPython = false
     let committed = false
     let pointerCommitted = false
+    let recoveryPath: string | undefined
     await requireFreeSpace(stableRoot, manifest.archiveSize * 5 + 128 * 1024 ** 2)
     try {
       const archive = await stat(archivePath)
@@ -659,10 +679,12 @@ export class McpEnvironmentController {
       const existing = await lstat(publicPython).catch(() => undefined)
       if (existing) {
         if (!existing.isDirectory() || existing.isSymbolicLink()) throw new Error('共享 Python 路径已被文件或目录联接占用。')
-        // No profile migration or temporary Python directory: when the chosen
-        // location has no usable interpreter, replace its stale/partial Python
-        // tree in place from the signed archive shipped with this installer.
-        await rm(publicPython, { recursive: true, force: true })
+        // Keep user additions and partial installs until the replacement has
+        // passed verification. A failed replacement restores this exact tree.
+        const recoveryRoot = join(this.options.root, 'recovery')
+        await mkdir(recoveryRoot, { recursive: true })
+        recoveryPath = join(recoveryRoot, `first-run-${randomUUID()}`)
+        await renameWithRetry(publicPython, recoveryPath)
       }
       await mkdir(publicPython, { recursive: true })
       createdPython = true
@@ -688,7 +710,7 @@ export class McpEnvironmentController {
       await this.writeCurrent(record, 'current.json', false)
       pointerCommitted = true
       await rm(installMarker, { force: true })
-      const status = environmentStatus('ready', manifest, stableRoot, 'manual', true, false)
+      const status = environmentStatus('ready', manifest, stableRoot, 'manual', true, false, this.options.generationMode)
       status.onlineEnvironmentVersion = environmentVersion(manifest)
       status.onlineContentRevision = contentRevision(manifest)
       status.updateAvailable = false
@@ -706,6 +728,7 @@ export class McpEnvironmentController {
         else await rm(manifestPath, { force: true }).catch(() => undefined)
       }
       if (createdPython) await rm(publicPython, { recursive: true, force: true }).catch(() => undefined)
+      if (recoveryPath) await renameWithRetry(recoveryPath, publicPython)
       throw error
     }
   }
@@ -759,9 +782,7 @@ export class McpEnvironmentController {
       }
       return manifest
     }
-    const response = await (this.options.fetcher ?? fetch)(this.options.manifestUrl, { cache: 'no-store' })
-    if (!response.ok) throw new Error(`MCP environment manifest returned HTTP ${response.status}.`)
-    const manifest = validateManifest(await response.json())
+    const manifest = validateManifest(await downloadPythonManifest(this.options.manifestUrl, this.options.fetcher))
     if (!verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) throw new Error('MCP environment manifest signature is invalid.')
     return manifest
   }
@@ -773,7 +794,7 @@ export class McpEnvironmentController {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
         throw error
       }
-      for (const entry of entries.filter(entry => entry.isDirectory() && entry.name.includes('.tmp-'))) {
+      for (const entry of entries.filter(entry => entry.isDirectory() && (entry.name.includes('.tmp-') || /^i-[A-Za-z0-9_-]{22}\.tmp$/u.test(entry.name)))) {
         try { await removePathWithRetry(join(directory, entry.name)) }
         catch (error) { await this.recordDiagnostic({ event: 'temporary_cleanup_failed', path: join(directory, entry.name), error: describeError(error) }) }
       }
@@ -787,7 +808,7 @@ export class McpEnvironmentController {
       const record = await readCurrent(this.options.root)
       if (typeof record?.root !== 'string' || record.health !== 'ready') return undefined
       const manifest = await this.readInstalledManifest(record.root)
-      if (basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python') {
+      if (!this.options.generationMode && basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python') {
         const stableRoot = dirname(this.options.root)
         if (manifest.python.relativeExecutable !== SHARED_LAYOUT.relativeExecutable
           || manifest.python.relativeSitePackages !== SHARED_LAYOUT.relativeSitePackages
@@ -813,7 +834,7 @@ export class McpEnvironmentController {
       // rebuilt in place.  Returning the legacy slot here was the path that
       // left users stuck behind "shared Python migration" after an install
       // failure.
-      const managedShared = basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python'
+      const managedShared = !this.options.generationMode && basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python'
       if (managedShared) {
         const stableRoot = dirname(this.options.root)
         if (manifest.python.relativeExecutable !== SHARED_LAYOUT.relativeExecutable
@@ -980,12 +1001,12 @@ function environmentVersion(manifest: McpEnvironmentManifest): string {
   return manifest.environmentVersion ?? manifest.version ?? 'legacy'
 }
 
-function environmentStatus(phase: McpEnvironmentStatus['phase'], manifest: McpEnvironmentManifest, root: string, slot: 'a' | 'b' | 'manual', updated: boolean, rollbackAvailable: boolean): McpEnvironmentStatus {
-  return { phase, activeEnvironment: root ? { snapshotId: root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), pythonVersion: manifest.python.version } : undefined, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: slot, updated, rollbackAvailable, version: environmentVersion(manifest), progress: phase === 'ready' || phase === 'manual' ? 100 : undefined, message: root, python: pythonStatus(manifest, root), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
+function environmentStatus(phase: McpEnvironmentStatus['phase'], manifest: McpEnvironmentManifest, root: string, slot: 'a' | 'b' | 'manual', updated: boolean, rollbackAvailable: boolean, generationMode = false): McpEnvironmentStatus {
+  return { phase, activeEnvironment: root ? { snapshotId: root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), pythonVersion: manifest.python.version } : undefined, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), currentSlot: slot, updated, rollbackAvailable, version: environmentVersion(manifest), progress: phase === 'ready' || phase === 'manual' ? 100 : undefined, message: root, python: pythonStatus(manifest, root, generationMode), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
 }
 
-function pythonStatus(manifest: McpEnvironmentManifest, root: string): NonNullable<McpEnvironmentStatus['python']> {
-  const runtime = root ? publicRuntimeForSnapshot(root, manifest) : undefined
+function pythonStatus(manifest: McpEnvironmentManifest, root: string, generationMode = false): NonNullable<McpEnvironmentStatus['python']> {
+  const runtime = root ? publicRuntimeForSnapshot(root, manifest, generationMode) : undefined
   return { ready: true, version: manifest.python.version, executable: runtime?.runtimeExecutable ?? (root ? join(root, manifest.python.relativeExecutable) : undefined), sitePackages: runtime?.runtimeSitePackages ?? manifest.python.relativeSitePackages, ...runtime }
 }
 
@@ -1008,8 +1029,9 @@ function pythonEnvironment(sitePackages: string): Record<string, string> {
  * callers needing to execute Python continue to use the private snapshot
  * paths returned by pythonContext().
  */
-function publicRuntimeForSnapshot(snapshotRoot: string, manifest: McpEnvironmentManifest): { runtimeRoot: string; runtimeExecutable: string; runtimeSitePackages: string } | undefined {
+function publicRuntimeForSnapshot(snapshotRoot: string, manifest: McpEnvironmentManifest, generationMode = false): { runtimeRoot: string; runtimeExecutable: string; runtimeSitePackages: string } | undefined {
   if (manifest.python.relativeExecutable !== SHARED_LAYOUT.relativeExecutable) return undefined
+  if (generationMode) return { runtimeRoot: join(snapshotRoot, 'Python'), runtimeExecutable: join(snapshotRoot, manifest.python.relativeExecutable), runtimeSitePackages: join(snapshotRoot, manifest.python.relativeSitePackages) }
   const normalized = resolve(snapshotRoot)
   const marker = `${process.platform === 'win32' ? '\\' : '/'}zerowall-python${process.platform === 'win32' ? '\\' : '/'}slots${process.platform === 'win32' ? '\\' : '/'}`
   const index = normalized.toLowerCase().indexOf(marker.toLowerCase())
@@ -1122,7 +1144,7 @@ async function lookupProjectVersion(fetcher: typeof fetch, mirror: MirrorConfig,
 
 function sanitizeError(error: unknown): string {
   const item = error as NodeJS.ErrnoException
-  const message = (error instanceof Error ? error.message : String(error)).replace(/https?:\/\/[^\s]+/gu, '[download-url]').slice(0, 500)
+  const message = (error instanceof Error ? error.message : String(error)).replace(/https?:\/\/[^\s]+/gu, '[download-url]').slice(-500)
   const details = [typeof item?.code === 'string' ? `code=${item.code}` : '', typeof item?.path === 'string' ? `path=${item.path}` : ''].filter(Boolean)
   return details.length === 0 ? message : `${message} (${details.join(', ')})`
 }
@@ -1187,14 +1209,14 @@ interface ProcessResult { stdout: string; stderr: string }
 
 function execute(command: string, args: string[], cwd: string, input?: string, extraEnv: Record<string, string> = {}, timeoutMs = 15_000): Promise<ProcessResult> {
   return new Promise((resolveResult, reject) => {
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), ...extraEnv, PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
+    const child = spawn(windowsProcessPath(command), args, { cwd: windowsProcessPath(cwd), windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), ...extraEnv, PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
     let stdout = ''
     let stderr = ''
     const timer = setTimeout(() => { child.kill(); reject(new Error(`MCP process timed out: ${args.at(-1) ?? command}`)) }, timeoutMs)
     child.stdout.setEncoding('utf8').on('data', value => { stdout += value })
     child.stderr.setEncoding('utf8').on('data', value => { stderr += value })
     child.once('error', error => { clearTimeout(timer); reject(error) })
-    child.once('exit', code => { clearTimeout(timer); code === 0 ? resolveResult({ stdout, stderr }) : reject(new Error((stderr || stdout || `process exited ${code}`).trim().slice(0, 500))) })
+    child.once('exit', code => { clearTimeout(timer); code === 0 ? resolveResult({ stdout, stderr }) : reject(new Error((stderr || stdout || `process exited ${code}`).trim().slice(-16_000))) })
     if (input !== undefined) child.stdin.end(input)
   })
 }
@@ -1204,7 +1226,7 @@ async function checkMcpServer(command: string, args: string[], cwd: string): Pro
   const initialized = JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
   const tools = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
   await new Promise<void>((resolveCheck, reject) => {
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
+    const child = spawn(windowsProcessPath(command), args, { cwd: windowsProcessPath(cwd), windowsHide: true, env: { ...sanitizePythonTlsEnvironment(process.env), PYTHONNOUSERSITE: '1', PYTHONPATH: '', ELECTRON_RUN_AS_NODE: '1' }, stdio: 'pipe' })
     const lines = createInterface({ input: child.stdout })
     let phase: 'initialize' | 'tools' = 'initialize'
     let finishing = false

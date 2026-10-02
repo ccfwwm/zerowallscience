@@ -1,3 +1,4 @@
+import { contract } from '../../tools/build/paths.mjs'
 import assert from 'node:assert/strict'
 import { access, lstat, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -6,13 +7,13 @@ import { _electron } from 'playwright'
 import { locatePackagedApp } from './packaged-app.mjs'
 
 // Exercise the real packaged component and preload with an isolated profile.
-// First launch automatically installs the bundled base into this disposable
-// profile; it never changes the user's environment. The explicit
+// Thin packages leave Python absent until installation is requested. Optional
+// offline packages prepare their bundled base in this disposable profile. The explicit
 // ZEROWALL_VERIFY_PYTHON_INSTALL=1 option also runs a source-only package install.
 const desktop = resolve(import.meta.dirname, '..')
 const version = JSON.parse(await readFile(resolve(desktop, 'package.json'), 'utf8')).version
 const packaged = await locatePackagedApp(desktop)
-const output = resolve(process.env.ZEROWALL_PACKAGED_OUTPUT ?? resolve(desktop, `../.build/python-ui-${version}/packaged`))
+const output = resolve(process.env.ZEROWALL_PYTHON_UI_OUTPUT ?? join(contract.verification, 'python-ui/packaged'))
 const profile = await mkdtemp(join(tmpdir(), `zerowall-python-${version.replaceAll('.', '')}-visual-`))
 await mkdir(output, { recursive: true })
 const env = { ...process.env, ZEROWALL_USER_DATA_DIR: join(profile, 'userdata'), ZEROWALL_DISABLE_DEFAULT_MCP: '1', APPDATA: join(profile, 'appdata'), LOCALAPPDATA: join(profile, 'localappdata') }
@@ -20,7 +21,7 @@ delete env.ELECTRON_RUN_AS_NODE
 await Promise.all(['appdata', 'localappdata', 'userdata'].map(name => mkdir(join(profile, name), { recursive: true })))
 // A writable per-user install directory is intentionally the default runtime
 // location in production. Point this test at its disposable profile so the
-// first-run initialization cannot modify desktop/dist/win-unpacked/Python.
+// first-run initialization cannot modify the packaged application directory.
 const isolatedRuntimeRoot = join(profile, 'shared-python', 'Python')
 const pythonLocationPath = join(env.LOCALAPPDATA, 'ZeroWall Science', 'python-location.json')
 await mkdir(dirname(pythonLocationPath), { recursive: true })
@@ -75,6 +76,32 @@ try {
     await page.screenshot({ path: bottom, fullPage: true }); evidence.screenshots.push(bottom)
     evidence.layouts.push({ width, height, ...layout })
   }
+  const offlineBootstrap = await access(join(packaged.root, 'resources/python/base-runtime.zip')).then(() => true, () => false)
+  if (!offlineBootstrap) {
+    evidence.mode = 'thin-on-demand'
+    const install = panel.getByRole('button', { name: /^(安装 Python|Install Python)$/ })
+    await install.waitFor({ state: 'visible', timeout: 60_000 })
+    assert(await install.isEnabled(), 'The missing-runtime installation action must be usable')
+    await install.click()
+    const confirmation = page.getByRole('dialog', { name: /^(安装共享 Python 运行时|Install the shared Python runtime)$/ })
+    await confirmation.waitFor({ state: 'visible' })
+    await confirmation.getByRole('button', { name: /^(关闭|Close)$/ }).click()
+    await confirmation.waitFor({ state: 'hidden' })
+    evidence.installConfirmation = 'opened-and-dismissed-without-download'
+    evidence.final = await page.evaluate(() => window.zerowallDesktop.pythonEnvironment({ action: 'status', requestId: crypto.randomUUID() }))
+    assert.equal(evidence.final.runtime, undefined, 'A thin package must not silently install a Python archive')
+    assert.notEqual(evidence.final.status.phase, 'ready')
+    assert.notEqual(evidence.final.status.phase, 'manual')
+    assert(!['checking', 'downloading', 'installing', 'verifying'].includes(evidence.final.status.phase), 'A completed check must leave the install action available until Python is requested')
+    assert.equal(evidence.final.status.updateJob, undefined, 'Startup must not schedule a runtime download')
+    evidence.jobs = await readdir(join(dirname(isolatedRuntimeRoot), 'zerowall-python', 'jobs')).catch(error => { if (error.code === 'ENOENT') return []; throw error })
+    assert.deepEqual(evidence.jobs, [], 'Startup must not persist an installation job')
+    await access(join(isolatedRuntimeRoot, 'python.exe')).then(() => { throw new Error('Thin package unexpectedly installed Python') }, error => { if (error.code !== 'ENOENT') throw error })
+    assert.equal(evidence.pageErrors.length, 0)
+    await writeFile(join(output, 'verification.json'), JSON.stringify({ ok: true, mode: 'thin-on-demand', ...evidence }, null, 2))
+    console.log(`Packaged thin-Python UI verified: ${output}`)
+    process.exitCode = 0
+  } else {
   // The resolver prefers a writable packaged install directory.  The manager
   // lives beside the selected shared runtime, so do not assume the old
   // Roaming/userdata slot layout here.
@@ -141,6 +168,7 @@ try {
     evidence.jobs = await Promise.all((await readdir(jobsRoot)).filter(name => name.endsWith('.json')).map(async name => JSON.parse(await readFile(join(jobsRoot, name), 'utf8'))))
     assert(evidence.jobs.every(job => job.state === 'complete'))
     assert.equal(evidence.pageErrors.length, 0)
+  }
   }
   await writeFile(join(output, 'verification.json'), JSON.stringify({ ok: true, ...evidence }, null, 2))
   console.log(`Packaged shared-Python UI verified: ${output}`)

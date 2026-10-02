@@ -5,6 +5,7 @@ import { chmod, cp, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile
 import { dirname, join, relative, resolve, isAbsolute } from 'node:path'
 import type { McpEnvironmentManifest } from './mcp-environment.js'
 import { sanitizePythonTlsEnvironment } from './python-mirror.js'
+import { windowsProcessPath } from './windows-process-path.js'
 
 export const SHARED_LAYOUT = { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } as const
 
@@ -272,7 +273,7 @@ export async function verifySharedPackages(root: string): Promise<void> {
 
 async function runPython(executable: string, args: string[]): Promise<void> {
   await new Promise<void>((accept, reject) => {
-    const child = spawn(executable, args, { windowsHide: true, env: { ...sanitizePythonTlsEnvironment(), PYTHONNOUSERSITE: '1', PYTHONPATH: '' }, stdio: ['ignore', 'ignore', 'pipe'] })
+    const child = spawn(windowsProcessPath(executable), args, { windowsHide: true, env: { ...sanitizePythonTlsEnvironment(), PYTHONNOUSERSITE: '1', PYTHONPATH: '' }, stdio: ['ignore', 'ignore', 'pipe'] })
     let error = ''; child.stderr.on('data', data => { error = (error + data).slice(-4000) })
     const timer = setTimeout(() => { child.kill(); reject(new Error('Shared Python migration verification timed out.')) }, 120_000)
     child.once('error', err => { clearTimeout(timer); reject(err) })

@@ -160,10 +160,9 @@ export class PythonUpdaterService {
   }
   async autoUpdate(): Promise<McpEnvironmentStatus> {
     if (this.busy || this.paused || this.queuedUpdate || this.stopped) return this.status
-    // A first-run install must be driven by the local signed bundle.  The old
-    // implementation called only checkForUpdates(), which reported an update
-    // but never created the shared Python directory; a following dependency
-    // request then tried to use the old Roaming/profile layout.
+    // An offline installer may prepare its signed local bootstrap on launch.
+    // Thin installers only check the remote feed; downloading a runtime is
+    // driven by updateForUser() or an explicit Python operation's ensureReady().
     let local: McpEnvironmentStatus
     try { local = await this.rpc<McpEnvironmentStatus>('localStatus') }
     catch (error) { local = { phase: 'failed', message: error instanceof Error ? error.message : String(error) } }
@@ -176,13 +175,14 @@ export class PythonUpdaterService {
       const jobs = await Promise.all(files.filter(file => file.endsWith('.json')).map(file => readFile(join(directory, file), 'utf8').then(JSON.parse, () => undefined)))
       const resumable = jobs.filter(job => job && ['queued', 'running', 'paused'].includes(job.state)).sort((a, b) => a.updatedAt - b.updatedAt)
       for (const job of resumable) this.interrupted.set(job.taskId, { method: job.method, args: job.args })
-      if (resumable.length && (local.phase === 'ready' || local.phase === 'manual')) {
+      if (resumable.length && (!this.options.bundledArchivePath || local.phase === 'ready' || local.phase === 'manual')) {
         this.paused = true
-        this.publish({ ...this.status, phase: 'paused', message: '发现中断的依赖任务，点击继续后恢复；当前环境保持可用。' })
+        this.publish({ ...this.status, phase: 'paused', message: '发现中断的依赖任务，点击继续后恢复。' })
         return this.status
       }
     }
     if (local.phase !== 'ready' && local.phase !== 'manual') {
+      if (!this.options.bundledArchivePath) return await this.checkForUpdates()
       // A stale job receipt must not prevent first-run installation. Resume at
       // most the interrupted bootstrap now; dependency jobs remain pending
       // until the signed runtime has actually been installed.

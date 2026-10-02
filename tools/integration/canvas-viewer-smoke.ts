@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Actual React -> CanvasService -> four artifacts; synthetic plotting reference. */
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -12,7 +13,7 @@ const require = createRequire(resolve('plugins/research/package.json'))
 const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const { chromium } = createRequire(resolve('desktop/package.json'))('playwright') as typeof import('playwright')
-const root = resolve('.build/canvas-viewer-smoke', new Date().toISOString().replaceAll(':', '-')); await mkdir(root, { recursive: true })
+const root = resolve(zwsArtifactPaths.verification, 'canvas-viewer-smoke', new Date().toISOString().replaceAll(':', '-')); await mkdir(root, { recursive: true })
 const store = new ResearchStore(join(root, 'store.sqlite')); const project = store.createProject({ name: 'Synthetic plotting reference', rootPath: root }); const service = new CanvasService(store)
 const sharp = require('sharp'); const imagePath = join(root, 'microscopy-reference.png'); await sharp({ create: { width: 200, height: 100, channels: 3, background: '#275d89' } }).png().toFile(imagePath); const imageArtifact = store.createArtifact({ projectId: project.id, name: 'Microscopy reference', uri: pathToFileURL(imagePath).href, mediaType: 'image/png' })
 const app = "import React from 'react';import {createRoot} from 'react-dom/client';import {CanvasViewer} from '/plugins/research/src/client/canvas-viewer.tsx';const remote={scienceViewer:async input=>fetch('/api',{method:'POST',body:JSON.stringify(input)}).then(r=>r.json())};createRoot(document.getElementById('root')).render(React.createElement(CanvasViewer,{remote,sessionId:'canvas-smoke'}));"

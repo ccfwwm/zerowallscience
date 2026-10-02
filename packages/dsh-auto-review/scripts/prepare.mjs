@@ -5,7 +5,7 @@
 // of git-hosted packages.
 import { createRequire } from 'node:module'
 import { spawnSync } from 'node:child_process'
-import { rmSync } from 'node:fs'
+import { existsSync, readdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -27,7 +27,8 @@ function run(bin, args) {
 }
 
 // Remove the previous lib/ output so a rebuild never mixes stale artifacts.
-rmSync(new URL('../lib', import.meta.url), { recursive: true, force: true })
+const output = new URL('../lib/', import.meta.url)
+if (existsSync(output)) for (const entry of readdirSync(output)) rmSync(new URL(entry, output), { recursive: true, force: true })
 
 run(binOf('typescript', 'tsc'), ['-p', 'tsconfig.json'])
 run(binOf('tsdown', 'tsdown'), [])

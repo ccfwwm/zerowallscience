@@ -29,7 +29,7 @@ it('opens a native sidebar resource through the public tab hook, then explicitly
     expect(registerFileViewer.mock.calls[0][0].exts).toContain(ext)
     expect(registerTab.mock.calls[0][0].canOpen('dsh-resource://file/session/session-1/test.' + ext)).toBe(true)
   }
-  expect(document.querySelector('#ofv-leaflet-css')?.getAttribute('href')).toBe('/zerowall/viewer-assets/leaflet/leaflet.css')
+  expect(document.querySelector('#ofv-leaflet-css')?.getAttribute('href')).toMatch(/^\/zerowall\/viewer-assets\/[a-f0-9]{64}\/leaflet\/leaflet.css$/u)
   for (const ext of ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'tsv', 'md', 'html', 'txt', 'stl']) {
     expect(DEFAULT_VIEWER_EXTENSIONS).not.toContain(ext)
     expect(registerFileViewer.mock.calls[0][0].exts).not.toContain(ext)

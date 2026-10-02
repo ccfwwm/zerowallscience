@@ -1,3 +1,4 @@
+import { releaseRoot } from '../build/paths.mjs'
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
 import { copyFile, cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { execFile, spawn } from 'node:child_process'
@@ -31,7 +32,7 @@ const root = resolve(import.meta.dirname, '../..')
 const staging = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_STAGING ?? join(root, 'mcp-environment-staging'))
 const pythonVersion = process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12.10'
 const environmentVersion = (process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION ?? process.env.ZEROWALL_MCP_ENVIRONMENT_REVISION ?? pythonVersion).trim()
-const output = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? join(root, 'desktop', 'dist', `python-base-${environmentVersion}`))
+const output = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? join(releaseRoot, `python-base-${environmentVersion}`))
 if (!environmentVersion) throw new Error('ZEROWALL_MCP_ENVIRONMENT_VERSION is required.')
 if (pythonVersion !== '3.12.10') throw new Error('This release profile requires Python 3.12.10 exactly.')
 const pythonRuntime = pythonVersion.match(/^\d+\.\d+/u)?.[0] ?? pythonVersion
@@ -313,6 +314,7 @@ const science = {
   scienceRevision, contentRevision, packageCount: lockedPackages.size, indexUrl: scienceIndex.indexUrl,
 }
 const manifest = {
+  applicationVersion: JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
   schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'zerowall-python', platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${environmentVersion}/${archiveName}`, archiveSha256, archiveSize,
   python: { version: pythonVersion, relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages', modules: shippedModules, layers: ['base', 'science'], dependencyManifests: ['resources/python/requirements-windows.lock', 'resources/python/requirements-base.txt', 'resources/python/skill-dependency-policy.json'], supportsZeroWallTool: true },

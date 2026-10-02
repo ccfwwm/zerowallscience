@@ -17,6 +17,25 @@ afterEach(async () => {
 })
 
 describe('managed Python runtime', () => {
+  it('resolves the selected generation without redirecting a previously resolved task', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'python-task-generation-')); roots.push(base)
+    const store = join(base, 'zerowall-python')
+    const manifest = { python: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } }
+    const select = async (name: string) => {
+      const root = join(store, 'slots', name)
+      await mkdir(join(root, 'Python/Lib/site-packages'), { recursive: true })
+      await writeFile(join(root, 'Python/python.exe'), name)
+      await writeFile(join(store, 'current.json'), JSON.stringify({ root, runtimeRoot: root, generation: true, health: 'ready', manifest }))
+      return root
+    }
+    process.env.ZEROWALL_PYTHON_ROOT = store
+    const first = await select('first')
+    const task = await resolveManagedPython()
+    const second = await select('second')
+    expect(task.executable).toBe(join(first, 'Python/python.exe'))
+    expect(task.snapshotRoot).toBe(first)
+    expect((await resolveManagedPython()).executable).toBe(join(second, 'Python/python.exe'))
+  })
   it('pins shared tasks to their snapshot and uses one package directory', async () => {
     const base = await mkdtemp(join(tmpdir(), 'zerowall-shared-')); roots.push(base)
     const store = join(base, 'zerowall-python')

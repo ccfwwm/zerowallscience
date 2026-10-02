@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-extension-center
+      name: '@zerowallscience/plugin-extension-center'

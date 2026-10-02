@@ -1,3 +1,4 @@
+import { stageRoot, targetPackageRoot } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -86,7 +87,7 @@ for (const retired of ['@zerowallscience/plugin-opencode', '@jiesou/dsh-opencode
 }
 const packagedManifest = JSON.parse(readArchiveFile('package.json').toString('utf8'))
 const packagedBuildReceipt = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'licenses/build-receipt.json'), 'utf8'))
-const runtimeBuildReceipt = JSON.parse(await readFile(resolve(repositoryRoot, '.build/runtime/build-receipt.json'), 'utf8'))
+const runtimeBuildReceipt = JSON.parse(await readFile(resolve(stageRoot, 'runtime/build-receipt.json'), 'utf8'))
 if (packagedBuildReceipt.commit !== pinnedUpstream.commit
   || packagedBuildReceipt.version !== pinnedUpstream.version
   || packagedBuildReceipt.applicationVersion !== desktopManifest.version
@@ -95,7 +96,7 @@ if (packagedBuildReceipt.commit !== pinnedUpstream.commit
 }
 for (const [plugin, file] of ['mcp', 'research'].flatMap(plugin => ['lib/client.js', 'lib/index.js'].map(file => [plugin, file]))) {
   const path = `node_modules/@zerowallscience/plugin-${plugin}/${file}`
-  if (!readArchiveFile(path).equals(await readFile(resolve(repositoryRoot, '.build/runtime', path)))) {
+  if (!readArchiveFile(path).equals(await readFile(resolve(stageRoot, 'runtime', path)))) {
     throw new Error(`Packaged ${plugin} ${file} is stale. Repackage the current runtime.`)
   }
 }
@@ -129,6 +130,10 @@ const requiredArchivePaths = [
   'node_modules/dsh-zotero/lib/local/children-wire.js',
   'node_modules/dsh-zotero/lib/local/detail.js',
   'node_modules/dsh-zotero/cordis.patch.yml',
+  'node_modules/dsh-zotero/docs/images/icon.png',
+  'node_modules/dsh-zotero/locale/zh.json',
+  'node_modules/dsh-dream-skin/icon.svg',
+  'node_modules/dsh-better-sidebar/icon.svg',
   'node_modules/dsh-zotero/LICENSE',
   'node_modules/dsh-ssh-ops/lib/index.js',
   'node_modules/dsh-ssh-ops/lib/client.js',
@@ -351,7 +356,8 @@ async function verifyArchivePolicy() {
   if (dreamSkinManifest.version !== desktopManifest.dependencies['dsh-dream-skin']) throw new Error(`Packaged dsh-dream-skin must be ${desktopManifest.dependencies['dsh-dream-skin']}; found ${dreamSkinManifest.version}.`)
   const dreamSkinClient = readArchiveFile('node_modules/dsh-dream-skin/lib/client.js')
   const sourceDreamSkinClient = await readFile(resolve(repositoryRoot, 'desktop/node_modules/dsh-dream-skin/lib/client.js'))
-  if (!dreamSkinClient.equals(sourceDreamSkinClient)) {
+  const { adaptDreamSkinClient } = await import('../../tools/packaging/adapt-dream-skin.mjs')
+  if (!dreamSkinClient.equals(Buffer.from(adaptDreamSkinClient(sourceDreamSkinClient.toString('utf8'))))) {
     throw new Error('Packaged Dream Skin client must match the pinned v9.29.0 source and ZeroWall appearance patch.')
   }
   const dreamSkinSource = dreamSkinClient.toString('utf8')
@@ -522,6 +528,7 @@ function verifyZoteroAdapters() {
 }
 
 function hasForbiddenRuntimeDirectory(path) {
+  if (['node_modules/dsh-zotero/docs', 'node_modules/dsh-zotero/docs/images', 'node_modules/dsh-zotero/docs/images/icon.png'].includes(path)) return false
   const forbidden = new Set(['test', 'tests', '__tests__', 'example', 'examples', 'docs'])
   const segments = path.split('/')
   return segments.some((segment, index) => {
@@ -590,10 +597,10 @@ async function verifySizePolicy() {
   }
   budgetNote('installed output', installedBytes, 1_500 * MIB)
 
-  const installers = (await readdir(resolve(packageRoot, 'dist'), { withFileTypes: true }))
+  const installers = (await readdir(targetPackageRoot, { withFileTypes: true }))
     .filter(entry => entry.isFile() && entry.name.includes(`-${packagedManifest.version}-`) && entry.name.endsWith('.exe') && !entry.name.toLowerCase().includes('uninstall'))
   for (const installer of installers) {
-    const size = (await stat(resolve(packageRoot, 'dist', installer.name))).size
+    const size = (await stat(resolve(targetPackageRoot, installer.name))).size
     budgetNote(`installer ${installer.name}`, size, 1_024 * MIB)
   }
 }
@@ -794,6 +801,8 @@ async function verifyDirectoryPickerWorker() {
 
 async function verifyHostStartup() {
   const root = await mkdtemp(resolve(tmpdir(), 'zerowall-packaged-host-'))
+  const { initializeProfile } = await import('./../../tools/commands/profile.mjs')
+  await initializeProfile(resolve(root, 'harness'), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8')), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/bundled-plugins.json'), 'utf8')))
   const port = await reservePort()
   const url = `http://127.0.0.1:${port}`
   const dshEntry = resolve(asarPath, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
@@ -984,6 +993,9 @@ async function verifyPluginInventory(url) {
     throw new Error(`Packaged Host plugin inventory is unavailable: ${JSON.stringify(envelope)}`)
   }
   const entries = envelope.result.value.entries
+  if (entries.some(entry => entry?.moduleName === '@deepseek-ai/dsh-hmr' && entry.enabled === true)) {
+    throw new Error('Packaged desktop must disable the development HMR watcher.')
+  }
   if (entries.some(entry => /opencode-zen-free-provider|plugin-opencode|opencode2dsh/u.test(String(entry?.moduleName)))) {
     throw new Error('Retired OpenCode free provider is still present in the running Host inventory.')
   }
@@ -992,7 +1004,7 @@ async function verifyPluginInventory(url) {
   }
   const expected = [
     'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications',
+    'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications', 'extension-center',
   ].map(name => `@zerowallscience/plugin-${name}`)
   expected.push('@dsh-external/zotero-harvest', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))

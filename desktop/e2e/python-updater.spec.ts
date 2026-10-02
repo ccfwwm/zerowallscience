@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync, execFileSync, type ChildProcess } from 'node:child_process'
 import { cp, mkdir, readFile, writeFile, link, access } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
@@ -6,8 +7,8 @@ import { chromium, type Browser } from 'playwright'
 import { createServer, type Server } from 'node:http'
 import { createReadStream } from 'node:fs'
 
-const work = resolve('../.build/python-updater/packaged-smoke')
-const packageRoot = resolve(process.env.ZEROWALL_PACKAGED_OUTPUT ?? '../.build/python-updater/package')
+const work = resolve(zwsArtifactPaths.verification, 'python-updater/packaged-smoke')
+const packageRoot = resolve(process.env.ZEROWALL_PACKAGED_OUTPUT ?? zwsArtifactPaths.packages)
 const executable = join(packageRoot, 'win-unpacked/ZeroWallScience.exe')
 let application: ChildProcess | undefined; let browser: Browser | undefined
 let manifestServer: Server | undefined
@@ -37,16 +38,16 @@ it('keeps the packaged UI responsive while installing the real archive and refre
   await mkdir(work, { recursive: true })
   const profile = join(work, 'profile'); const root = join(profile, 'zerowall-python')
   await mkdir(join(root, 'downloads'), { recursive: true })
-  const previous = JSON.parse(await readFile(resolve('../.build/python-1.4.0/client-pointer-rollback/current.json'), 'utf8'))
-  const manifest = JSON.parse(await readFile(resolve('../.build/python-1.4.0/dist/latest.json'), 'utf8'))
-  manifestServer = createServer((_request, response) => { response.setHeader('content-type', 'application/json'); createReadStream(resolve('../.build/python-1.4.0/dist/latest.json')).pipe(response) })
+  const previous = JSON.parse(await readFile(resolve(zwsArtifactPaths.verification, 'python-1.4.0/client-pointer-rollback/current.json'), 'utf8'))
+  const manifest = JSON.parse(await readFile(resolve(zwsArtifactPaths.verification, 'python-1.4.0/dist/latest.json'), 'utf8'))
+  manifestServer = createServer((_request, response) => { response.setHeader('content-type', 'application/json'); createReadStream(resolve(zwsArtifactPaths.verification, 'python-1.4.0/dist/latest.json')).pipe(response) })
   await new Promise<void>(accept => manifestServer!.listen(0, '127.0.0.1', accept))
   const manifestUrl = `http://127.0.0.1:${(manifestServer.address() as { port: number }).port}/latest.json`
   await writeFile(join(root, 'current.json'), JSON.stringify(previous))
   const sourceManagerRoot = process.env.ZEROWALL_TEST_SOURCE_ROOT?.trim()
     || join(process.env.LOCALAPPDATA ?? join(work, 'localappdata'), 'ZeroWall Science', 'zerowall-python')
   await cp(join(sourceManagerRoot, 'python-overlay'), join(root, 'python-overlay'), { recursive: true })
-  await link(resolve('../.build/python-1.4.0/dist/zerowall-python-windows-x64-1.4.0.zip'), join(root, 'downloads', `${manifest.archiveSha256}.part`)).catch(error => { if (error.code !== 'EEXIST') throw error })
+  await link(resolve(zwsArtifactPaths.verification, 'python-1.4.0/dist/zerowall-python-windows-x64-1.4.0.zip'), join(root, 'downloads', `${manifest.archiveSha256}.part`)).catch(error => { if (error.code !== 'EEXIST') throw error })
   // Verify the dedicated worker cannot silently borrow dependencies from the
   // repository enclosing this test package.
   for (const entry of ['package.json', 'out/main/python-updater-worker.js', 'node_modules/yauzl/index.js', 'node_modules/pend/index.js']) await access(join(packageRoot, 'win-unpacked/resources/app.asar.unpacked', entry))

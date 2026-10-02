@@ -4,7 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { FileViewerProps } from 'dsh-better-sidebar/client/service'
 import { createViewer, imagePlugin, videoPlugin, audioPlugin, pdfPlugin, officePlugin, archivePlugin, emailPlugin, drawingPlugin, xmindPlugin, cadPlugin, model3dPlugin, gisPlugin, epubPlugin, xpsPlugin, ofdPlugin, assetPlugin, fallbackPlugin } from '@open-file-viewer/core'
 import * as pdfjs from 'viewer-pdfjs'
-import viewerCss from './viewer-style.js'
+import viewerCss, { assetVersion } from 'zerowall:viewer-style'
 import { readPreviewBytes, type ByteWindow } from './bounded-read.js'
 import { NATIVE_OFFICE_EXTENSIONS, openNativeViewer, workspaceFileAddress } from './file-routing.js'
 export { openNativeViewer, workspaceFileAddress, prefersNativeOffice } from './file-routing.js'
@@ -18,7 +18,7 @@ export const DEFAULT_VIEWER_EXTENSIONS = VIEWER_EXTENSIONS.filter(ext => !SCIENC
 export function previewCapability(name: string): '基础预览' | '仅元数据' {
   return /\.(dwg|dwf|step|stp|iges|ifc|usd|usdz|ai|eps)$/iu.test(name) ? '仅元数据' : '基础预览'
 }
-const root = '/zerowall/viewer-assets/'
+const root = `/zerowall/viewer-assets/${assetVersion}/`
 function localGisPlugin(): ReturnType<typeof gisPlugin> {
   const plugin = gisPlugin()
   return { ...plugin, async render(ctx) {

@@ -701,13 +701,17 @@ export function apply(ctx: Context): void {
   installAttachmentParsing(ctx)
   ctx.webServer.register({ kind: 'prefix', path: '/zerowall/viewer-assets', handler: async (request, response) => {
     const suffix = new URL(request.url ?? '/', 'http://localhost').pathname.slice('/zerowall/viewer-assets/'.length)
-    const pdfAsset = /^(build|cmaps|standard_fonts|wasm|iccs)\/[A-Za-z0-9_.-]+$/u.test(suffix)
-    const mapAsset = /^leaflet\/(?:leaflet\.css|images\/[A-Za-z0-9_-]+\.png)$/u.test(suffix)
+    const assetManifest = JSON.parse(await readFile(new URL('./viewer-assets/asset-manifest.json', import.meta.url), 'utf8')) as { version: string }
+    const versioned = suffix.match(/^([a-f0-9]{64})\/(.+)$/u)
+    if (versioned && versioned[1] !== assetManifest.version) { response.writeHead(404); response.end(); return }
+    const assetPath = versioned?.[2] ?? suffix
+    const pdfAsset = /^(build|cmaps|standard_fonts|wasm|iccs)\/[A-Za-z0-9_.-]+$/u.test(assetPath)
+    const mapAsset = /^leaflet\/(?:leaflet\.css|images\/[A-Za-z0-9_-]+\.png)$/u.test(assetPath)
     if (!pdfAsset && !mapAsset) { response.writeHead(404); response.end(); return }
     try {
-      const bytes = await readFile(fileURLToPath(new URL(`./viewer-assets/${suffix}`, import.meta.url)))
-      const mediaType = suffix.endsWith('.css') ? 'text/css; charset=utf-8' : suffix.endsWith('.png') ? 'image/png' : suffix.endsWith('.mjs') ? 'text/javascript' : suffix.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream'
-      response.writeHead(200, { 'content-type': mediaType, 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' })
+      const bytes = await readFile(fileURLToPath(new URL(`./viewer-assets/${assetPath}`, import.meta.url)))
+      const mediaType = assetPath.endsWith('.css') ? 'text/css; charset=utf-8' : assetPath.endsWith('.png') ? 'image/png' : assetPath.endsWith('.mjs') ? 'text/javascript' : assetPath.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream'
+      response.writeHead(200, { 'content-type': mediaType, 'cache-control': versioned ? 'public, max-age=31536000, immutable' : 'no-cache', 'x-content-type-options': 'nosniff' })
       response.end(bytes)
     } catch { response.writeHead(404); response.end() }
   } })

@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Opt-in local GUI check: pnpm exec tsx tools/integration/native-engine-smoke.ts --run */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
@@ -8,7 +9,7 @@ import { ResearchStore } from '../../store/src/index.js'
 import { NativeEngineService } from '../../plugins/research/src/host/native-engines.js'
 
 if (!process.argv.includes('--run')) throw new Error('Pass --run to open local Fiji and napari windows with synthetic data. Close only these test windows afterwards.')
-const root = resolve('.build', 'science-native-smoke', new Date().toISOString().replaceAll(':', '-'))
+const root = resolve(zwsArtifactPaths.verification, 'science-native-smoke', new Date().toISOString().replaceAll(':', '-'))
 await mkdir(root, { recursive: true })
 const path = join(root, 'ZeroWall-native-smoke-64x64.png')
 const chunk = (type: string, bytes: Buffer) => {

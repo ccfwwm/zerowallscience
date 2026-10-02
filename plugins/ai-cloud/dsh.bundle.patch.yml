@@ -1,3 +1,3 @@
 - insert:
-    - id: zerowall-ai-cloud
+    - id: zerowall-ai-cloud-llm
       name: '@zerowallscience/plugin-ai-cloud'

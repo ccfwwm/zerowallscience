@@ -1,3 +1,4 @@
+import { renameFile } from './atomic-file.js'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { appendFile, mkdir, open, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
@@ -117,7 +118,7 @@ export class PythonEnvironmentApi {
       await writeFile(path, JSON.stringify({ fingerprint, state: 'accepted' }), { flag: 'wx' })
       const save = async (value: unknown) => {
         const temporary = `${path}.${randomUUID()}.tmp`
-        await writeFile(temporary, JSON.stringify(value)); await rename(temporary, path)
+        await writeFile(temporary, JSON.stringify(value)); await renameFile(temporary, path)
       }
       try {
         const result = await this.auditedExecute(input)
@@ -151,10 +152,17 @@ export class PythonEnvironmentApi {
     if (receipt !== undefined) {
       if (receipt.fingerprint !== fingerprint) throw new Error('REQUEST_ID_CONFLICT: use a new requestId for a different operation.')
       if (receipt.result !== undefined) return receipt.result
-      if (receipt.taskId !== undefined && this.activeSyncIds.has(input.requestId)) {
-        return { requestId: input.requestId, taskId: receipt.taskId, queued: true }
+      if (receipt.taskId !== undefined) {
+        if (this.activeSyncIds.has(input.requestId)) return { requestId: input.requestId, taskId: receipt.taskId, queued: true }
+        // The read may have captured `running` immediately before completion
+        // atomically replaced that receipt and released its in-process owner.
+        // Once the owner is gone its final write has settled; refresh the
+        // durable result before interpreting an old snapshot as interrupted.
+        receipt = JSON.parse(await readFile(path, 'utf8'))
+        if (receipt!.fingerprint !== fingerprint) throw new Error('REQUEST_ID_CONFLICT: use a new requestId for a different operation.')
+        if (receipt!.result !== undefined) return receipt!.result
       }
-      throw new Error(receipt.error ?? 'REQUEST_INTERRUPTED: Python synchronization stopped before completion; inspect the operation log before retrying.')
+      throw new Error(receipt!.error ?? 'REQUEST_INTERRUPTED: Python synchronization stopped before completion; inspect the operation log before retrying.')
     }
 
     await mkdir(directory, { recursive: true })
@@ -162,7 +170,7 @@ export class PythonEnvironmentApi {
     const save = async (value: unknown) => {
       const temporary = `${path}.${randomUUID()}.tmp`
       await writeFile(temporary, JSON.stringify(value))
-      await rename(temporary, path)
+      await renameFile(temporary, path)
     }
     await writeFile(path, JSON.stringify({ fingerprint, state: 'accepted', taskId }), { flag: 'wx' })
     await this.log(input, 'queued', { taskId })
@@ -229,18 +237,15 @@ export class PythonEnvironmentApi {
         // The signed installer will rebuild the selected stable directory.
         const configuredRuntimeRoot = savedRuntimeRoot ?? join(dirname(this.root), 'Python')
         const activeRuntime = runtime && typeof runtime.rootPath === 'string'
-          && resolve(runtime.rootPath) === resolve(configuredRuntimeRoot)
+          && (resolve(runtime.rootPath) === resolve(configuredRuntimeRoot) || (current.generation === true && typeof current.root === 'string' && resolve(runtime.rootPath) === resolve(current.root, 'Python') && !relative(join(this.root, 'slots'), current.root).startsWith('..')))
           ? runtime
           : undefined
         result = { status: this.updater.current(), runtime: activeRuntime, runtimeRoot: configuredRuntimeRoot, dependencies: await readOptional(join(this.root, 'dependency-sync', 'status.json')), events: await this.events() }; break
       }
       case 'list_packages': {
-        // The inventory view is often the first call made when Settings opens.
-        // It must join the same signed bundled-runtime gate as manifest and
-        // sync operations; otherwise an old Roaming/slot record reaches
-        // pythonInfo() directly and reports the obsolete migration error
-        // before the installer has a chance to rebuild the shared directory.
-        await this.ensureRuntimeReady()
+        // Opening Settings and refreshing inventory are read-only. A thin
+        // installer reports an empty inventory until a Python operation or
+        // explicit install requests the signed runtime.
         const inventory = await this.updater.pythonInfo()
         const manifest = await readFile(join(this.root, 'dependency-sync', 'manifest.json'), 'utf8').then(text => parsePythonDependencyManifest(JSON.parse(text), MCP_ENVIRONMENT_KEYRING)).catch(() => undefined)
         const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/gu, '-')
@@ -284,7 +289,7 @@ export class PythonEnvironmentApi {
             const temporaryLocation = `${this.locationPath}.${randomUUID()}.tmp`
             try {
               await writeFile(temporaryLocation, `${JSON.stringify({ runtimeRoot: selected })}\n`, { flag: 'wx' })
-              await rename(temporaryLocation, this.locationPath)
+              await renameFile(temporaryLocation, this.locationPath)
             } finally {
               await rm(temporaryLocation, { force: true }).catch(() => undefined)
             }
@@ -300,7 +305,7 @@ export class PythonEnvironmentApi {
           const next = { revision: previous.revision + 1, mirrorUrl: url.href.replace(/\/$/u, '') }
           await mkdir(this.controlRoot(), { recursive: true })
           const temp = join(this.controlRoot(), `settings-${randomUUID()}.tmp`)
-          try { await writeFile(temp, `${JSON.stringify(next)}\n`, { flag: 'wx' }); await rename(temp, join(this.controlRoot(), 'settings.json')) }
+          try { await writeFile(temp, `${JSON.stringify(next)}\n`, { flag: 'wx' }); await renameFile(temp, join(this.controlRoot(), 'settings.json')) }
           finally { await rm(temp, { force: true }).catch(() => undefined) }
           return next
         }
@@ -330,13 +335,13 @@ export class PythonEnvironmentApi {
     const checkedAt = new Date().toISOString()
     const pending = { status: 'unknown' }
     const unavailable = { checkedAt, python: pending, pip: pending, tls: pending, mirror: pending }
-    let current: { root: string; runtimeRoot?: string; manifest: { python: { relativeExecutable: string; relativeSitePackages: string } }; health: string }
+    let current: { root: string; runtimeRoot?: string; generation?: boolean; manifest: { python: { relativeExecutable: string; relativeSitePackages: string } }; health: string }
     try { current = JSON.parse(await readFile(join(this.root, 'current.json'), 'utf8')) }
     catch { return unavailable }
     if (current.health !== 'ready') return unavailable
     const root = await realpath(current.root).catch(() => resolve(current.root))
     const stablePath = current.runtimeRoot
-    const productRoot = basename(resolve(this.root)).toLowerCase() === 'zerowall-python'
+    const productRoot = current.generation !== true && basename(resolve(this.root)).toLowerCase() === 'zerowall-python'
     const expectedRuntimeRoot = dirname(resolve(this.root))
     if (productRoot && (typeof stablePath !== 'string' || resolve(stablePath) !== expectedRuntimeRoot || current.manifest.python.relativeExecutable !== 'Python/python.exe' || current.manifest.python.relativeSitePackages !== 'Python/Lib/site-packages')) {
       // A legacy slot/profile is not a usable shared runtime.  Diagnostics

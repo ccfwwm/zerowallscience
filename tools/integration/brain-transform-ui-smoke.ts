@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Synthetic NiftyReg fields + real Host + real React panel in Chromium. */
 import assert from 'node:assert/strict'
 import {createRequire} from 'node:module'
@@ -13,7 +14,7 @@ if(!process.argv.includes('--run'))throw new Error('Pass --run for synthetic tra
 const require=createRequire(resolve('plugins/research/package.json'));const viteRequire=createRequire(require.resolve('vitest/package.json'))
 const {createServer}=await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const {chromium}=createRequire(resolve('desktop/package.json'))('playwright') as typeof import('playwright')
-const root=resolve('.build/brain-transform-ui-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
+const root=resolve(zwsArtifactPaths.verification, 'brain-transform-ui-smoke',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
 const python=process.env.ZEROWALL_BRAINGLOBE_PYTHON||'python'
 process.env.ZEROWALL_BRAINGLOBE_DIR||=resolve('.zerowall/brainglobe-managed')
 const reference=JSON.parse((await promisify(execFile)(python,['-E','-P',resolve('tools/integration/brain-transform-reference.py'),root],{windowsHide:true,timeout:120000})).stdout)

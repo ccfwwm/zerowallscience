@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
 import { FlowService } from '../src/host/flow.js'
 import { analyzeFlowStream, FcsReader, FLOW_STREAM_LIMITS } from '../src/host/flow-reader.js'
@@ -161,7 +161,10 @@ it('imports the strict FlowJo rectangle subset and records a per-sample batch re
   const retry = await service.execute(project, { sessionId: 's', action: 'batch_submit', requestId: 'flowjo-two-source-v1', assetIds: [source.id, 'missing'], importAssetId: workspace.id })
   expect(retry.run?.id).toBe(submitted.run?.id)
   let batch = retry
-  for (let attempt = 0; attempt < 50 && batch.run?.status !== 'succeeded'; attempt++) { await new Promise(resolve => setTimeout(resolve, 10)); batch = await service.execute(project, { sessionId: 's', action: 'batch_status', runId: submitted.run!.id }) }
+  await vi.waitFor(async () => {
+    batch = await service.execute(project, { sessionId: 's', action: 'batch_status', runId: submitted.run!.id })
+    expect(batch.run?.status).toBe('succeeded')
+  }, { timeout: 4000, interval: 25 })
   expect(batch.run?.status).toBe('succeeded'); expect(batch.batch?.items.map(item => Boolean(item.analysis))).toEqual([true, false]); expect(batch.batch?.items[1]?.error).toContain('not in the active project'); expect(batch.artifact?.runId).toBe(submitted.run?.id); expect(batch.artifact?.metadata.needsReview).toBe(true); expect(JSON.parse(await readFile(fileURLToPath(batch.artifact!.uri), 'utf8')).format).toBe('zerowall-flow-batch-result')
   const partial = JSON.parse(await readFile(fileURLToPath(String(batch.run!.logUri)), 'utf8'))
   expect(partial).toMatchObject({ format: 'zerowall-flow-batch-partial', completed: 2, total: 2 })
@@ -180,7 +183,10 @@ it('recovers a submitted batch from its snapshot and marks unowned running or ca
   const recoveryDirectory = join(root, '.zerowall', 'flow-batches', recovered.id); await mkdir(recoveryDirectory, { recursive: true }); const snapshotPath = join(recoveryDirectory, 'request.json'); await writeFile(snapshotPath, JSON.stringify(snapshot))
   recovered = store.updateRun(recovered.id, { inputs: [...recovered.inputs, { name: 'batch_request', uri: pathToFileURL(snapshotPath).href, mediaType: 'application/json' }] })
   let status = await service.execute(project, { sessionId: 's', action: 'batch_status', runId: recovered.id })
-  for (let attempt = 0; attempt < 50 && status.run?.status !== 'succeeded'; attempt++) { await new Promise(resolve => setTimeout(resolve, 10)); status = await service.execute(project, { sessionId: 's', action: 'batch_status', runId: recovered.id }) }
+  await vi.waitFor(async () => {
+    status = await service.execute(project, { sessionId: 's', action: 'batch_status', runId: recovered.id })
+    expect(status.run?.status).toBe('succeeded')
+  }, { timeout: 4000, interval: 25 })
   expect(status.run?.status).toBe('succeeded'); expect(status.batch?.items).toHaveLength(1)
   const tampered = store.createRun({ projectId: project.id, name: 'Tampered Flow batch', command: 'flow.batch.v1', workingDirectory: root, status: 'submitted', progress: 0, leaseOwner: 'flow-batch', inputs: [{ name: 'request_id', uri: snapshot.requestId }, { name: 'fingerprint', uri: '0'.repeat(64) }] })
   const tamperedDirectory = join(root, '.zerowall', 'flow-batches', tampered.id); await mkdir(tamperedDirectory, { recursive: true }); const tamperedPath = join(tamperedDirectory, 'request.json'); await writeFile(tamperedPath, JSON.stringify(snapshot)); store.updateRun(tampered.id, { inputs: [...tampered.inputs, { name: 'batch_request', uri: pathToFileURL(tamperedPath).href, mediaType: 'application/json' }] })

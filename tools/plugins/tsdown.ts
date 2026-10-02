@@ -2,7 +2,10 @@ import { defineConfig } from 'tsdown'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { createRequire } from 'node:module'
-import { typertPlugin } from '../../deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js'
+import { viewerStylePlugin } from './viewer-style.mjs'
+import '../build/register-output-resolution.mjs'
+import { adaptViewerCore } from './viewer-adapter.mjs'
+const { typertPlugin } = await import('../../deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js')
 
 const zerowallVersion = String(JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version)
 
@@ -15,6 +18,8 @@ export interface ZeroWallBundleOptions {
 }
 
 export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) {
+  const manifest = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'))
+  const hasRemote = manifest.exports?.['./remote'] !== undefined
   const host = options.host !== false
   const configs = []
   if (host) {
@@ -31,16 +36,17 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
       ...options.hostAlwaysBundle === undefined ? {} : {
         deps: { alwaysBundle: options.hostAlwaysBundle },
       },
-      plugins: [typertPlugin({ mode: 'package', faces: ['host'] })],
+      plugins: [{ ...typertPlugin({ mode: 'package', faces: ['host'] }), writeBundle() {} }],
     })
   }
   if (options.client) {
     const isModuleTableExternal = (specifier: string): boolean =>
       /^(?:react|react\/jsx-runtime|react-dom|react-dom\/client)$/u.test(specifier)
       || /^@deepseek-ai\/(?:dsh-client[^/]*(?:\/|$)|dsh-api-remotes(?:\/|$))/u.test(specifier)
+      || (/^@zerowallscience\/plugin-[^/]+(?:\/client)?$/u.test(specifier) && specifier !== id)
     configs.push({
       name: `${id}/client`,
-      entry: { client: 'src/client/index.ts' },
+      entry: { client: hasRemote ? 'zerowall:client-entry' : 'src/client/index.ts' },
       outDir: 'lib',
       // DSH's client module transport injects each plugin as a classic
       // script.  The artifact must therefore be CommonJS wrapped by the
@@ -61,12 +67,10 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
       },
       deps: {
         // DSH client packages are provided by the browser ModuleLoader.
-        // Everything else, including ZeroWall Client helpers, lucide and
-        // qrcode, must be bundled into the classic script so it cannot
-        // become an unresolved runtime require().
+        // Plugin entrypoints stay external; implementation helpers, lucide and
+        // qrcode stay inside their owning classic-script artifact.
         neverBundle: isModuleTableExternal,
-        // Keep every ZeroWall workspace package (including generated Typert
-        // `/remote` contracts) inside the classic-script artifact.  The
+        // Helpers may resolve through a workspace symlink. The
         // resolver can hand this callback a resolved path for workspace
         // symlinks, so matching only the bare package specifier is not
         // sufficient; the explicit noExternal patterns below cover both.
@@ -74,8 +78,11 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         // entry points (for example `qrcode/lib/browser.js` and
         // `react/jsx-runtime`) are resolved as explicit subpath imports.
         alwaysBundle: [
-          ...(options.universalViewer ? [/.*/] : []),
-          /^@zerowallscience\/plugin-/,
+          ...(options.universalViewer ? [/^(?!.*(?:^|[\\/])(?:react(?:[\\/]|$)|react-dom(?:[\\/]|$)|@deepseek-ai[\\/]|@zerowallscience[\\/])).+/u] : []),
+          // ZeroWall plugins are independently installable DSH bundles. Keep
+          // their client entrypoints external so the ModuleLoader can load,
+          // update and restart one plugin without rebuilding every client.
+          /^@zerowallscience\/plugin-[^/]+\/(?:client-helpers$|client\/|src\/)/,
           /^dsh-file-review(?:\/|$)/,
           /^lucide-react(?:\/|$)/,
           /^qrcode(?:\/|$)/,
@@ -91,13 +98,11 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         footer: 'return module.exports; } });',
         intro: 'var module = { exports: {} }; var exports = module.exports;',
       },
-      plugins: [...(options.universalViewer ? [{
+      plugins: [...(options.universalViewer ? [viewerStylePlugin(), {
         name: 'zerowall-viewer-browser-modules',
         transform(code: string, id: string) {
           if (!id.replace(/\\/gu, '/').endsWith('/@open-file-viewer/core/dist/index.js')) return null
-          const anchor = 'if (insight) {\n      renderPptxTextFallback(container, insight);'
-          if (!code.includes(anchor)) throw new Error('Reviewed viewer PPTX fallback anchor changed.')
-          return code.replace(anchor, 'console.warn("ZeroWall PPTX graphical renderer failed:", error);\n    ' + anchor)
+          return adaptViewerCore(code)
         },
         resolveId(source: string, importer?: string) {
           if (source === 'shpjs' && importer) {
@@ -126,6 +131,25 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
           return `export default ${JSON.stringify(`data:image/png;base64,${png.toString('base64')}`)}`
         },
       }] : []), {
+        name: 'zerowall-owned-remote',
+        resolveId(source: string) {
+          if (source === 'zerowall:client-entry') return '\0zerowall:client-entry'
+          return null
+        },
+        load(source: string) {
+          if (source !== '\0zerowall:client-entry') return null
+          const client = JSON.stringify(resolve(process.cwd(), 'src/client/index.ts').replaceAll('\\', '/'))
+          const remote = JSON.stringify(resolve(process.cwd(), 'lib/typert.remote-client.js').replaceAll('\\', '/'))
+          return `import * as feature from ${client}; import contribution from ${remote};
+export * from ${client};
+export const inject = ['remote'];
+export async function apply(ctx, config) {
+  const dispose = await ctx.remote.$mount(contribution);
+  try { ctx.plugin(feature, config); } catch (error) { await dispose(); throw error; }
+  return dispose;
+}`
+        },
+      }, {
         name: 'zerowall-react-singleton',
         // Dependencies such as lucide-react import React themselves.  Mark
         // those transitive requests external too, otherwise the browser

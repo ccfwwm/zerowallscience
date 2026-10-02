@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
@@ -8,7 +9,7 @@ import { ResearchStore } from '../../store/src/index.js'
 import { FijiExperimentService } from '../../plugins/research/src/host/fiji-experiments.js'
 import type { FijiImageConfig } from '../../plugins/research/src/shared/fiji-experiments.js'
 if(!process.argv.includes('--run'))throw new Error('Pass --run for actual native ImageJ.')
-const root=resolve('.build/fiji-review-native',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
+const root=resolve(zwsArtifactPaths.verification, 'fiji-review-native',new Date().toISOString().replaceAll(':','-'));await mkdir(root,{recursive:true})
 execFileSync('python',[resolve('tools/science/fiji-workflow-reference-fixtures.py'),'--output',join(root,'fixtures')])
 const store=new ResearchStore(join(root,'store.sqlite'));const project=store.createProject({name:'Fiji review geometry reference',rootPath:root});const service=new FijiExperimentService(store)
 const asset=async(name:string)=>store.createDataAsset({projectId:project.id,name,uri:pathToFileURL(join(root,'fixtures',name)).href,location:'local',mediaType:'image/x-portable-graymap'})

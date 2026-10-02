@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -5,19 +6,19 @@ import { createReadStream } from 'node:fs'
 import { cp, mkdir, readFile, writeFile, link, stat, readdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from '../../desktop/src/main/mcp-environment.js'
-const work = resolve('.build/python-updater')
+const work = resolve(zwsArtifactPaths.verification, 'python-updater')
 const root = join(work, 'real-upgrade'); await mkdir(root, { recursive: true })
 const userRoot = process.env.ZEROWALL_PYTHON_ROOT?.trim()
-  || join(process.env.LOCALAPPDATA || resolve('.build', 'python-source'), 'ZeroWall Science', 'zerowall-python')
-const previous = JSON.parse(await readFile(resolve('.build/python-1.4.0/client-pointer-rollback/current.json'), 'utf8'))
-const next = JSON.parse(await readFile(resolve('.build/python-1.4.0/dist/latest.json'), 'utf8'))
+  || join(process.env.LOCALAPPDATA || resolve(zwsArtifactPaths.verification, 'python-source'), 'ZeroWall Science', 'zerowall-python')
+const previous = JSON.parse(await readFile(resolve(zwsArtifactPaths.verification, 'python-1.4.0/client-pointer-rollback/current.json'), 'utf8'))
+const next = JSON.parse(await readFile(resolve(zwsArtifactPaths.verification, 'python-1.4.0/dist/latest.json'), 'utf8'))
 const resumePackages = process.argv.includes('--resume-packages')
 if (!resumePackages) {
 await writeFile(join(root, 'current.json'), JSON.stringify(previous))
 await cp(join(userRoot, 'python-overlay'), join(root, 'python-overlay'), { recursive: true })
 }
 await mkdir(join(root, 'downloads'), { recursive: true })
-await link(resolve('.build/python-1.4.0/dist/zerowall-python-windows-x64-1.4.0.zip'), join(root, 'downloads', `${next.archiveSha256}.part`)).catch(error => { if (error.code !== 'EEXIST') throw error })
+await link(resolve(zwsArtifactPaths.verification, 'python-1.4.0/dist/zerowall-python-windows-x64-1.4.0.zip'), join(root, 'downloads', `${next.archiveSha256}.part`)).catch(error => { if (error.code !== 'EEXIST') throw error })
 const events: unknown[] = []; let running: Promise<string> | undefined; let last = ''; let firstUpgrade = !resumePackages
 const controller = new McpEnvironmentController({ root, manifestUrl: next.archiveUrl.replace(/\/1\.4\.0\/[^/]+$/, '/latest.json'), publicKey: MCP_ENVIRONMENT_KEYRING['stable-3']!, publicKeys: MCP_ENVIRONMENT_KEYRING,
   publish: status => {

@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { fork } from 'node:child_process'
 import { randomUUID, createHash } from 'node:crypto'
@@ -6,7 +7,7 @@ import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const root = resolve(import.meta.dirname, '../..')
-const output = resolve(root, '.build/compiled-python-worker', `run-${Date.now()}`)
+const output = join(zwsArtifactPaths.verification, 'compiled-python-worker', `run-${Date.now()}`)
 await mkdir(output, { recursive: true })
 const main = resolve(root, 'desktop/out/main')
 const workerPath = join(main, 'python-updater-worker.js')
@@ -37,7 +38,7 @@ const rpc = (method, args = []) => new Promise((resolve, reject) => {
   const timer = setTimeout(() => { requests.delete(id); reject(new Error(`${method} timed out`)) }, 20 * 60_000)
   requests.set(id, { resolve, reject, timer }); child.send({ id, method, args })
 })
-child.send({ type: 'configure', config: { root: join(output, 'environment'), manifestUrl: 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json', publicKey: keys['stable-3'], publicKeys: keys, bundledManifestPath: resolve(root, 'desktop/dist/python-base-3.12.10/latest.json'), bundledArchivePath: resolve(root, 'desktop/dist/python-base-3.12.10/zerowall-python-windows-x64-3.12.10.zip'), diagnosticPath: join(output, 'environment.log') } })
+child.send({ type: 'configure', config: { root: join(output, 'environment'), manifestUrl: 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json', publicKey: keys['stable-3'], publicKeys: keys, bundledManifestPath: join(zwsArtifactPaths.packages, 'python-base-3.12.10/latest.json'), bundledArchivePath: join(zwsArtifactPaths.packages, 'python-base-3.12.10/zerowall-python-windows-x64-3.12.10.zip'), diagnosticPath: join(output, 'environment.log') } })
 try {
   console.log('Compiled worker: installing signed local base')
   evidence.initialized = await rpc('initialize')

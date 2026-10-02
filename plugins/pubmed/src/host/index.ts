@@ -19,7 +19,7 @@ export type * from '../shared/types.js'
 
 export const name = 'zerowall-pubmed'
 export const inject = ['settings', 'tools', 'sessions', 'zerowallResearch']
-export const Config = ConfigSchema
+export const Config = ConfigSchema.volatile()
 declare module '@deepseek-ai/cordis' { interface Context { zerowallPubmed: ZeroWallPubmedService } }
 const jsonOutput = { schema: { type: 'json' as const }, render: (_args: unknown, result: unknown) => [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
 
@@ -217,4 +217,4 @@ export class ZeroWallPubmedService extends TypertRemoteService {
   }
 }
 export function apply(ctx: Context): void { ctx.plugin(ZeroWallPubmedService) }
-export default { apply }
+export default { name, inject, Config, apply: (ctx: Context, config: { get(): PubmedConfig }) => { ctx.plugin(ZeroWallPubmedService, config.get()) } }

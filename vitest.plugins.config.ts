@@ -2,6 +2,7 @@ import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
+import { viewerStylePlugin } from './tools/plugins/viewer-style.mjs'
 
 const root = import.meta.dirname
 const workspaceRequire = createRequire(resolve(root, 'package.json'))
@@ -19,6 +20,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    viewerStylePlugin(),
     tsconfigPaths({ projects: [resolve(root, 'tsconfig.plugins.json')] }),
     tsconfigPaths({ projects: [resolve(root, 'deepseek-harness/tsconfig.base.json')] }),
   ],

@@ -1,3 +1,5 @@
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 
@@ -39,6 +41,14 @@ export function scienceEnvironmentRoot(): string | undefined {
 export function defaultSciencePythonRoot(): string | undefined {
   const managerRoot = scienceEnvironmentRoot()
   if (managerRoot) {
+    try {
+      const current = JSON.parse(readFileSync(join(managerRoot, 'current.json'), 'utf8')) as CurrentRecord
+      const within = typeof current.root === 'string' ? relative(join(managerRoot, 'slots'), current.root) : '..'
+      if (current.generation === true && current.health === 'ready' && !within.startsWith('..') && !isAbsolute(within) && current.runtimeRoot === current.root) {
+        retainScienceSnapshot(managerRoot, current.root as string)
+        return join(current.root as string, 'Python')
+      }
+    } catch { /* Preserve the existing first-run fallback. */ }
     // desktop/src/main/index.ts points the installer at <userData>/zerowall-python;
     // the interpreter itself is deliberately kept at the sibling <userData>/Python.
     if (basename(managerRoot).toLowerCase() === 'zerowall-python') return join(resolve(managerRoot, '..'), 'Python')
@@ -67,6 +77,7 @@ export function defaultAtlasDirectory(): string | undefined {
 export interface ManagedSciencePython { executable: string; root: string; sitePackages: string }
 interface CurrentRecord {
   root?: unknown
+  generation?: boolean
   runtimeRoot?: unknown
   runtimeExecutable?: unknown
   runtimeSitePackages?: unknown
@@ -89,7 +100,9 @@ export async function resolveManagedSciencePython(): Promise<ManagedSciencePytho
   if (current.health !== 'ready' || typeof current.root !== 'string' || current.root.trim() === '') return undefined
   const installRoot = resolve(current.root)
   const manifest = current.manifest ?? await readFile(join(installRoot, 'manifest.json'), 'utf8').then(text => JSON.parse(text) as CurrentRecord['manifest'], () => undefined)
-  const runtimeRoot = resolve(root, '..')
+  const within = typeof current.root === 'string' ? relative(join(root, 'slots'), current.root) : '..'
+  const generation = current.generation === true && within !== '..' && !within.startsWith('..\\') && !within.startsWith('../') && !isAbsolute(within)
+  const runtimeRoot = generation ? resolve(current.root as string) : resolve(root, '..')
   if (typeof current.runtimeRoot !== 'string' || resolve(current.runtimeRoot) !== runtimeRoot) return undefined
   if (manifest?.python?.relativeExecutable !== 'Python/python.exe' || manifest?.python?.relativeSitePackages !== 'Python/Lib/site-packages') return undefined
   const stablePythonRoot = join(runtimeRoot, 'Python')
@@ -101,7 +114,17 @@ export async function resolveManagedSciencePython(): Promise<ManagedSciencePytho
     const info = await stat(executable)
     if (!info.isFile()) return undefined
   } catch { return undefined }
+  if (generation) retainScienceSnapshot(root, installRoot)
   return { executable, root: stablePythonRoot, sitePackages }
+}
+
+/** Scientific runners share a Host. Conservatively keep every snapshot used
+ * by that Host until it exits; the collector removes dead process leases. */
+function retainScienceSnapshot(managerRoot: string, snapshot: string): void {
+  const directory = join(managerRoot, 'leases')
+  const id = createHash('sha256').update(resolve(snapshot)).digest('hex').slice(0, 20)
+  mkdirSync(directory, { recursive: true })
+  writeFileSync(join(directory, `${process.pid}-science-${id}.json`), JSON.stringify({ pid: process.pid, snapshot, kind: 'research-host', createdAt: new Date().toISOString() }))
 }
 
 /**

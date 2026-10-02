@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Real source React -> Host -> local OpenSlide -> ROI Artifact; no packaged-Electron claim. */
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
@@ -14,7 +15,7 @@ const require = createRequire(resolve('plugins/research/package.json'))
 const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const { chromium } = createRequire(resolve('desktop/package.json'))('playwright') as typeof import('playwright')
-const root = resolve('.build','he-stardist-viewer-smoke',new Date().toISOString().replaceAll(':','-'))
+const root = resolve(zwsArtifactPaths.verification,'he-stardist-viewer-smoke',new Date().toISOString().replaceAll(':','-'))
 await mkdir(root,{ recursive:true })
 const path = join(root,'pyramid.tif')
 await promisify(execFile)(hePythonPath(),[resolve('tools/science/create-he-reference.py'),path])

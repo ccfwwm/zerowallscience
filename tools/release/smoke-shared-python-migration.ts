@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
@@ -5,12 +6,12 @@ import { copyRuntimeSnapshot, normalizeRuntimeCandidate, readRuntimeLayout, veri
 import { verifyMcpEnvironmentHealth } from '../../desktop/src/main/mcp-environment.js'
 
 const sourceRoot = process.env.ZEROWALL_PYTHON_ROOT?.trim()
-  || join(process.env.LOCALAPPDATA || resolve('.build', 'python-source'), 'ZeroWall Science', 'zerowall-python')
+  || join(process.env.LOCALAPPDATA || resolve(zwsArtifactPaths.verification, 'python-source'), 'ZeroWall Science', 'zerowall-python')
 const current = JSON.parse(await readFile(join(sourceRoot, 'current.json'), 'utf8'))
 const source = current.root as string
 const manifest = JSON.parse(await readFile(join(source, 'manifest.json'), 'utf8'))
 const resume = process.argv.find(value => value.startsWith('--resume='))?.slice('--resume='.length)
-const output = resume ? resolve(resume) : resolve('.build', 'shared-python-migration', `run-${Date.now()}`)
+const output = resume ? resolve(resume) : resolve(zwsArtifactPaths.verification, 'shared-python-migration', `run-${Date.now()}`)
 await mkdir(output, { recursive: true })
 const target = join(output, 'snapshot')
 if (!resume || process.argv.includes('--finish-copy')) {

@@ -1,12 +1,13 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import assert from 'node:assert/strict'
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING, canonicalManifest } from '../../desktop/src/main/mcp-environment.js'
 import { hashFile } from '../../desktop/src/main/python-archive.js'
-const root = resolve('.build/python-updater/real-upgrade')
-const report = resolve('.build/python-updater/customization-verification.json')
-const manifest = JSON.parse(await readFile(resolve('.build/python-1.4.0/dist/latest.json'), 'utf8'))
+const root = resolve(zwsArtifactPaths.verification, 'python-updater/real-upgrade')
+const report = resolve(zwsArtifactPaths.verification, 'python-updater/customization-verification.json')
+const manifest = JSON.parse(await readFile(resolve(zwsArtifactPaths.verification, 'python-1.4.0/dist/latest.json'), 'utf8'))
 const events: unknown[] = []
 let last = 0
 const controller = new McpEnvironmentController({ root, manifestUrl: manifest.archiveUrl.replace(/\/1\.4\.0\/[^/]+$/, '/latest.json'), publicKey: MCP_ENVIRONMENT_KEYRING['stable-3']!, publicKeys: MCP_ENVIRONMENT_KEYRING, publish: s => { if (Date.now() - last > 10_000 || s.phase === 'ready') { console.log(s.phase, s.message?.slice(0, 150)); last = Date.now() } } })

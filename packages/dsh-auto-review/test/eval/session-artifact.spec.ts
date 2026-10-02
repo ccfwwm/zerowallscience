@@ -156,8 +156,8 @@ describe('malformed and unsupported headers (U6)', () => {
     const { headerLine, rows } = parseArtifact(renderSessionArtifact(makeHeader(), v3Events as unknown as SessionEvent[]))
     const mislabeled = { ...headerLine, version: 2 }
     expect(sessionFormatCatalog.readHeader(mislabeled).status).toBe('migration-required')
-    const restore = sessionFormatCatalog.createRestore(mislabeled, { recovery: 'strict', validation: 'current' })
     expect(() => {
+      const restore = sessionFormatCatalog.createRestore(mislabeled, { recovery: 'strict', validation: 'current' })
       for (const row of rows) restore.decodeRow(row)
       restore.finish()
     }).toThrow()

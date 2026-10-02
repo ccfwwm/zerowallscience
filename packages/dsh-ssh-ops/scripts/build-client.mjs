@@ -21,6 +21,9 @@ await build({
   target: "es2022",
   bundle: true,
   sourcemap: false,
+  plugins: [{ name: "generated-xterm-css", setup(builder) {
+    builder.onResolve({ filter: /^\.\/xterm-css\.js$/ }, () => ({ path: resolve(rootDir, "lib/generated/xterm-css.js") }));
+  } }],
   // xterm/zod are inlined; react stays external (resolved by the host page
   // through the ModuleLoader seed table).
   external: ["react", "react/*", "@deepseek-ai/*"],

@@ -1,6 +1,12 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "7.5.0",
+  "version": "0.2.0",
+  "applicationVersion": "8.0.1",
+  "restartRequired": true,
+  "desktop": {
+    "min": "8.0.1"
+  },
+  "rollbackSupported": true,
   "dsh": {
     "min": "0.2.0-rc.2",
     "max": "0.2.0-rc.2"

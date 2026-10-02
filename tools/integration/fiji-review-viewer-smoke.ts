@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Real source React -> Host -> local OpenSlide -> ROI Artifact; no packaged-Electron claim. */
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
@@ -18,7 +19,7 @@ const sharp=require('sharp') as typeof import('sharp')
 const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const { chromium } = createRequire(resolve('desktop/package.json'))('playwright') as typeof import('playwright')
-const root = resolve('.build','fiji-review-viewer-smoke',new Date().toISOString().replaceAll(':','-'))
+const root = resolve(zwsArtifactPaths.verification,'fiji-review-viewer-smoke',new Date().toISOString().replaceAll(':','-'))
 await mkdir(root,{ recursive:true })
 const path=join(root,'colonies.png');const pixels=Buffer.alloc(40*24)
 for(const [x,y,w,h,value] of [[4,4,3,3,200],[12,4,3,3,200],[20,4,3,3,255],[4,13,3,3,200],[8,13,3,3,200],[7,14,1,1,200],[0,19,2,2,200],[30,19,1,1,200]])for(let yy=y!;yy<y!+h!;yy++)for(let xx=x!;xx<x!+w!;xx++)pixels[yy*40+xx]=value!

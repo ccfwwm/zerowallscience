@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 /** Actual React + Host service + Chromium; synthetic data and Biopython reference. */
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
@@ -17,7 +18,7 @@ const viteRequire = createRequire(require.resolve('vitest/package.json'))
 const { createServer } = await import(pathToFileURL(viteRequire.resolve('vite')).href)
 const desktopRequire = createRequire(resolve('desktop/package.json'))
 const { chromium } = desktopRequire('playwright') as typeof import('playwright')
-const root = resolve('.build', 'sequence-viewer-smoke', new Date().toISOString().replaceAll(':', '-'))
+const root = resolve(zwsArtifactPaths.verification, 'sequence-viewer-smoke', new Date().toISOString().replaceAll(':', '-'))
 await mkdir(root, { recursive: true })
 const sequence = 'ATGGAATTCTAA'.repeat(10)
 assert.equal(sequence.length, 120)

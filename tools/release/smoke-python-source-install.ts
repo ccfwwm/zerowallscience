@@ -1,3 +1,4 @@
+import { contract as zwsArtifactPaths } from '../build/paths.mjs'
 import { cp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -10,7 +11,7 @@ const executable = process.env.ZEROWALL_TEST_SOURCE_PYTHON
 if (!executable) throw new Error('ZEROWALL_TEST_SOURCE_PYTHON must point to an isolated, minimal Python fixture')
 const pythonRoot = dirname(resolve(executable)); const snapshot = dirname(pythonRoot)
 if (!snapshot.includes('zerowall-source-install-')) throw new Error('Refusing to use a non-fixture runtime')
-const root = join(resolve(import.meta.dirname, '../..'), '.build', `source-install-smoke-${Date.now()}`)
+const root = join(zwsArtifactPaths.verification, `source-install-smoke-${Date.now()}`)
 await mkdir(root, { recursive: true })
 const site = join(pythonRoot, 'Lib', 'site-packages')
 const manifest = { python: { version: '3.12.10', relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } } as McpEnvironmentManifest

@@ -31,7 +31,9 @@ it('retains explicit small single-TIFF compatibility and exports ROI provenance'
   await expect(service.execute(project, { sessionId: 's', action: 'analyze', viewerId: viewer.id, expectedVersion: exported.viewer!.version, region: { x: 0, y: 0, width: 2, height: 2 } })).rejects.toThrow('changed')
 })
 
-it.runIf(existsSync(hePythonPath()))('reads actual OpenSlide pyramid tiles, calibration, restored view and exported PNG/ROI', async () => {
+// Thin desktops do not provision scientific dependencies during source tests.
+// Opt in after installing the signed OpenSlide layer into managed Python.
+it.runIf(process.env.ZEROWALL_LIVE_SCIENCE_TESTS === '1' && existsSync(hePythonPath()))('reads actual OpenSlide pyramid tiles, calibration, restored view and exported PNG/ROI', async () => {
   const root = await mkdtemp(join(tmpdir(), 'he-pyramid-')); const store = new ResearchStore(join(root, 'store.sqlite')); const service = new HeService(store)
   cleanup.push(async () => { store.close(); await rm(root, { recursive:true, force:true }) })
   const project = store.createProject({ name:'pyramid', rootPath:root }); const path = join(root,'pyramid.tif')

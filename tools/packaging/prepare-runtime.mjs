@@ -1,3 +1,4 @@
+import { stageRoot } from '../build/paths.mjs'
 import { adaptLibreOfficeKit } from './adapt-libreoffice-kit.mjs'
 import { adaptDocumentPreview, adaptExcelChunk } from './adapt-document-preview.mjs'
 import { createHash } from 'node:crypto'
@@ -7,6 +8,7 @@ import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
 import { adaptUniverOfficeManifest, adaptUniverSkill, UNIVER_SKILL_HASHES } from './adapt-univer-office.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
+import { adaptDreamSkinClient } from './adapt-dream-skin.mjs'
 import {
   adaptZoteroClient,
   adaptZoteroCommand,
@@ -20,10 +22,10 @@ import {
 
 const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'deepseek-harness')
-const closurePath = resolve(root, '.build/dsh/runtime-closure.json')
-const outputRoot = resolve(root, '.build/runtime/node_modules')
-const expectedOutputParent = resolve(root, '.build/runtime')
-const buildReceipt = JSON.parse(await readFile(resolve(root, '.build/dsh/build-receipt.json'), 'utf8'))
+const closurePath = resolve(stageRoot, 'dsh/runtime-closure.json')
+const outputRoot = resolve(stageRoot, 'runtime/node_modules')
+const expectedOutputParent = resolve(stageRoot, 'runtime')
+const buildReceipt = JSON.parse(await readFile(resolve(stageRoot, 'dsh/build-receipt.json'), 'utf8'))
 const expectedHarness = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 if (buildReceipt.commit !== expectedHarness.commit || buildReceipt.version !== expectedHarness.version) {
   throw new Error('Harness build receipt differs from the pinned source. Run pnpm build before preparing the runtime.')
@@ -237,6 +239,16 @@ async function copyRuntimePackage(package_, targetRoot) {
   const { manifest, manifestPath, sourceRoot, workspace } = package_
   await mkdir(targetRoot, { recursive: true })
   await cp(manifestPath, resolve(targetRoot, 'package.json'))
+  // DSH's manager reads declared artwork and locale from the package boundary.
+  // These must survive each plugin's narrow runtime-copy branch below.
+  if (manifest.dsh && typeof manifest.icon === 'string' && manifest.icon.startsWith('./')) {
+    const source = resolve(sourceRoot, manifest.icon)
+    const target = resolve(targetRoot, manifest.icon)
+    assertInside(sourceRoot, source, manifest.name)
+    await mkdir(dirname(target), { recursive: true })
+    await cp(source, target)
+  }
+  if (manifest.dsh && manifest.exports?.['./locale/*.json']) await copyEntry(sourceRoot, targetRoot, 'locale')
 
   if (manifest.name === 'node-pty') {
     await copyEntry(sourceRoot, targetRoot, 'lib')
@@ -280,7 +292,7 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
   }
 
   if (manifest.name === 'dsh-zotero') {
-    for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
+    for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml', 'docs/images/icon.png', 'locale']) await copyEntry(sourceRoot, targetRoot, entry)
     await writeFile(resolve(targetRoot, 'package.json'), adaptZoteroManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8')))
     const adapters = [
       ['lib/command.js', adaptZoteroCommand, false],
@@ -307,6 +319,7 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
     // The package publishes source/docs/install helpers alongside its browser
     // chunks. Only the compiled runtime belongs in the production ASAR.
     await copyEntry(sourceRoot, targetRoot, 'lib')
+    await copyEntry(sourceRoot, targetRoot, 'cordis.patch.yml')
     const clientPath = resolve(targetRoot, 'lib/client.js')
     const clientSource = await readFile(clientPath, 'utf8')
     await writeFile(clientPath, adaptBetterSidebarClient(clientSource))
@@ -334,6 +347,8 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
 
   if (manifest.name === 'dsh-dream-skin') {
     await copyEntry(sourceRoot, targetRoot, 'lib')
+    const clientPath = resolve(targetRoot, 'lib/client.js')
+    await writeFile(clientPath, adaptDreamSkinClient(await readFile(clientPath, 'utf8')))
     try { await access(resolve(sourceRoot, 'cordis.patch.yml')); await copyEntry(sourceRoot, targetRoot, 'cordis.patch.yml') } catch { /* optional in newer Dream Skin releases */ }
     return
   }
@@ -408,6 +423,9 @@ async function copyEntry(sourceRoot, targetRoot, entry) {
 function includeRuntimeFile(sourceRoot, candidate) {
   const path = relative(sourceRoot, candidate).replaceAll('\\', '/')
   if (path === '') return true
+  // This exact declared metadata asset is runtime content, even though its
+  // upstream location sits under the otherwise excluded documentation tree.
+  if (path === 'docs/images/icon.png' && basename(sourceRoot) === 'dsh-zotero') return true
   const segments = path.toLowerCase().split('/')
   // npm packages frequently publish executable JavaScript under `src`, even
   // when `main` itself lives at the package root. Keep every src directory;

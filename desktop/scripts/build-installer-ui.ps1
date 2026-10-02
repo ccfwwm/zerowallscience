@@ -3,7 +3,9 @@ $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 $vsRoot = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if (-not $vsRoot) { throw 'Visual Studio C++ tools are required to build the installer UI.' }
-$outputDir = Join-Path $repoRoot '.build/installer-ui'
+$version = (Get-Content (Join-Path $repoRoot 'package.json') | ConvertFrom-Json).version
+$contract = & node (Join-Path $repoRoot 'tools/build/print-paths.mjs')
+$outputDir = Join-Path (($contract | ConvertFrom-Json).stage) 'installer-ui'
 New-Item -ItemType Directory -Force $outputDir | Out-Null
 $source = Join-Path $repoRoot 'desktop/installer/modern-installer.cpp'
 $icon = (Join-Path $repoRoot 'resources/brand/app-icons/icon.ico').Replace('\','/')

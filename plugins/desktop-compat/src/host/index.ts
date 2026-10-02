@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path'
+import { attachManagement } from './management.js'
 import { PassThrough } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
@@ -100,6 +101,7 @@ export const name = 'zerowall-desktop-compat'
 export const inject: readonly string[] = []
 
 export function apply(ctx: Context): void {
+  attachManagement(ctx)
   const existingProfiles = ctx.get('desktopProfiles') as DesktopProfilesLike | undefined
   const existingPnpm = ctx.get('desktopPnpm') as DesktopPnpmLike | undefined
   const bridge = existingProfiles === undefined && typeof process.send === 'function' ? createProcessBridge() : undefined

@@ -25,7 +25,7 @@ const zeroWallOrder = [
   'account', 'ai-cloud',
   'files', 'images',
   'research', 'pubmed', 'mineru', 'singlecell', 'execution', 'python', 'runs',
-  'publications', 'skills', 'reviewer',
+  'publications', 'skills', 'reviewer', 'extension-center',
 ]
 const expectedOrder = [
   ...thirdPartyOrder,
