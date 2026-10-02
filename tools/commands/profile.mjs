@@ -6,7 +6,7 @@ import { compareVersions } from './resource-catalog.mjs'
 // Profile architecture migrations are deliberately additive.  A desktop
 // upgrade must be able to introduce a new bundled management surface without
 // rebuilding or replacing the user's selected plugin set.
-const PROFILE_ARCHITECTURE = 3
+const PROFILE_ARCHITECTURE = 4
 const PROFILE_MIGRATIONS = [
   { from: 1, to: 2, add: ['@zerowallscience/plugin-extension-center'] },
 ]
@@ -33,7 +33,7 @@ export async function inspectProfile(home, bundled, target) {
   }
   return { desktopVersion: target.desktopVersion, dshVersion: target.dshVersion, plugins, updates: plugins.filter(item => item.updateAvailable).map(item => item.id) }
 }
-export async function initializeProfile(home, defaults) {
+export async function initializeProfile(home, defaults, bundled = []) {
   const directory = join(home, 'profiles/web')
   const file = join(directory, 'package.json')
   await mkdir(directory, { recursive: true })
@@ -72,6 +72,13 @@ export async function initializeProfile(home, defaults) {
     for (const migration of PROFILE_MIGRATIONS.filter(item => architecture < item.to)) {
       bundles = [...new Set([...bundles, ...migration.add.filter(id => defaults.includes(id) && !removed.has(id) && !disabled.has(id))])]
     }
+  }
+  // Early 8.0 profiles also listed packages already inserted by the desktop
+  // core overlay. Removing only those duplicate bundle declarations keeps
+  // package pins, custom patches and the managed plugin selection intact.
+  if (architecture < PROFILE_ARCHITECTURE) {
+    const overlay = new Set(bundled.filter(item => item.managed === false && !item.core).map(item => item.id))
+    bundles = bundles.filter(id => !overlay.has(id))
   }
   if (architecture >= PROFILE_ARCHITECTURE && bundles === existing) return
   manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }

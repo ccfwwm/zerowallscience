@@ -38,7 +38,7 @@ test('migrates an existing profile to the extension center without restoring rem
     await writeFile(file, JSON.stringify(manifest))
     await initializeProfile(home, [extension])
     const migrated = JSON.parse(await readFile(file, 'utf8'))
-    assert.equal(migrated.zerowall.pluginArchitecture, 3)
+    assert.equal(migrated.zerowall.pluginArchitecture, 4)
     assert(migrated.dsh.profile.bundles.includes(extension))
 
     migrated.dsh.profile.bundles = migrated.dsh.profile.bundles.filter(id => id !== extension)
@@ -62,7 +62,7 @@ test('migrates a legacy 7.5 profile without an architecture marker', async () =>
     await writeFile(file, JSON.stringify({ private: true, dsh: { profile: { bundles: [legacy] } } }))
     await initializeProfile(home, [extension])
     const migrated = JSON.parse(await readFile(file, 'utf8'))
-    assert.equal(migrated.zerowall.pluginArchitecture, 3)
+    assert.equal(migrated.zerowall.pluginArchitecture, 4)
     assert.deepEqual(migrated.dsh.profile.bundles, [legacy, extension])
   } finally { await rm(home, { recursive: true, force: true }) }
 })
@@ -94,5 +94,21 @@ test('7.5 overlay migration and broken 8.0.2 migration restore domain services w
       await initializeProfile(home, defaults)
       assert.equal(await readFile(file, 'utf8'), before)
     }
+  } finally { await rm(home, { recursive: true, force: true }) }
+})
+
+test('early modular profiles shed duplicate desktop overlays while preserving package pins and plugin choices', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-overlay-duplicates-'))
+  try {
+    const id = '@zerowallscience/plugin-files'
+    await mkdir(join(home, 'profiles/web'), { recursive: true })
+    const file = join(home, 'profiles/web/package.json')
+    const manifest = { private: true, zerowall: { pluginArchitecture: 3 }, dependencies: { 'dsh-univer-office': '0.3.5' }, dsh: { profile: { bundles: [id, 'dsh-univer-office', 'dsh-better-sidebar', 'third-party-plugin'] } } }
+    await writeFile(file, JSON.stringify(manifest))
+    await initializeProfile(home, [id, '@zerowallscience/plugin-images'], [{ id: 'dsh-univer-office', managed: false }, { id: 'dsh-better-sidebar', managed: false }])
+    const result = JSON.parse(await readFile(file, 'utf8'))
+    assert.deepEqual(result.dsh.profile.bundles, [id, 'third-party-plugin'])
+    assert.deepEqual(result.dependencies, manifest.dependencies)
+    assert.equal(result.zerowall.pluginArchitecture, 4)
   } finally { await rm(home, { recursive: true, force: true }) }
 })

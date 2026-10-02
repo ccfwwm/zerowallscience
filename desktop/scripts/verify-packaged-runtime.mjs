@@ -802,7 +802,7 @@ async function verifyDirectoryPickerWorker() {
 async function verifyHostStartup() {
   const root = await mkdtemp(resolve(tmpdir(), 'zerowall-packaged-host-'))
   const { initializeProfile } = await import('./../../tools/commands/profile.mjs')
-  await initializeProfile(resolve(root, 'harness'), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8')))
+  await initializeProfile(resolve(root, 'harness'), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8')), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/bundled-plugins.json'), 'utf8')))
   const port = await reservePort()
   const url = `http://127.0.0.1:${port}`
   const dshEntry = resolve(asarPath, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')

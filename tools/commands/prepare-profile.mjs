@@ -34,6 +34,7 @@ for (const id of [...new Set([...defaults, ...coreIds])]) {
   const manifest = JSON.parse(await readFile(join(stageRoot, 'runtime/node_modules', id, 'package.json'), 'utf8'))
   bundled.push({ id, version: manifest.version, core: coreIds.has(id), managed: !coreIds.has(id) && !overlayIds.has(id) })
 }
-await writeFile(join(stageRoot, 'commands/default-plugins.json'), JSON.stringify([...new Set(defaults)]))
+const profileDefaults = [...new Set(defaults)].filter(id => !overlayIds.has(id))
+await writeFile(join(stageRoot, 'commands/default-plugins.json'), JSON.stringify(profileDefaults))
 await writeFile(join(stageRoot, 'commands/bundled-plugins.json'), JSON.stringify(bundled))
-console.log(`Profile owns ${defaults.length} independently loaded ZeroWall plugins`)
+console.log(`Profile owns ${profileDefaults.length} independent plugins; inventory contains ${bundled.length} packages`)
