@@ -146,7 +146,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   async function catalog(source) {
     let document
     if (/^https:\/\//.test(source)) {
-      const response = await fetch(source, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(30_000) })
+      const response = await fetch(source, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10_000) })
       if (!response.ok) {
         const error = new Error(`Catalog request failed (HTTP ${response.status})`)
         error.status = response.status
@@ -427,7 +427,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     return { updated: result.length, results: result }
   }
 
-  async function check(kind, source, options = {}) {
+  async function catalogState(kind, source, options = {}) {
     if (!['plugin', 'skill', 'mcp'].includes(kind)) throw new Error('Unsupported resource kind')
     let document
     let catalogError
@@ -435,6 +435,11 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     try { if (!options.localOnly) document = await catalog(source ?? `${feedBase}/${kind}-latest.json`) }
     catch (error) { unpublished = error.status === 404; if (!unpublished) catalogError = error instanceof Error ? error.message : 'Catalog check failed' }
     const catalogStatus = document ? 'checked' : options.localOnly ? 'local' : unpublished ? 'unpublished' : 'unavailable'
+    return { document, catalogStatus, catalogError }
+  }
+
+  async function check(kind, source, options = {}) {
+    const { document, catalogStatus, catalogError } = options.catalogState ?? await catalogState(kind, source, options)
     const entries = document?.resources?.filter(item => item.kind === kind) ?? []
     if (kind === 'plugin') {
       const manifest = await json(join(active, 'package.json'))
@@ -493,5 +498,11 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await atomic(file, { ...current, version: previous.version, sha256: previous.sha256, folder: previous.folder, previous: undefined, rolledBack: true })
     return { id: current.id, version: previous.version, rolledBack: true }
   }
-  return { recover: () => exclusive(recover), catalog, check: (kind, source) => exclusive(() => check(kind, source)), list: kind => exclusive(() => check(kind, undefined, { localOnly: true })), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => rollbackPlugin(id)), setPluginEnabled: (id, enabled) => exclusive(() => setPluginEnabled(id, enabled)), mutate: args => exclusive(() => mutate(args)), plugin: (id, source) => exclusive(() => plugin(id, source)), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
+  // Network checks must not hold the profile transaction queue. Read local
+  // state under the lock only after catalog verification has finished.
+  const checkResources = async (kind, source, options = {}) => {
+    const state = await catalogState(kind, source, options)
+    return exclusive(() => check(kind, source, { catalogState: state }))
+  }
+  return { recover: () => exclusive(recover), catalog, check: checkResources, list: kind => exclusive(() => check(kind, undefined, { localOnly: true })), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => rollbackPlugin(id)), setPluginEnabled: (id, enabled) => exclusive(() => setPluginEnabled(id, enabled)), mutate: args => exclusive(() => mutate(args)), plugin: (id, source) => exclusive(() => plugin(id, source)), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
 }

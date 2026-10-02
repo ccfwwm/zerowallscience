@@ -122,6 +122,8 @@ test('unpublished catalogs keep complete local inventory and bundled versions wi
     assert.equal(result.resources.find(item => item.id === core).version, target.dshVersion)
     assert.equal(result.resources.find(item => item.id === f.resource.id).installedVersion, '0.1.0')
     assert.equal(await readFile(join(f.home, 'profiles/web/package.json'), 'utf8'), before)
+    globalThis.fetch = async () => { throw new Error('Local inventory must never access the network') }
+    assert.equal((await manager.check('plugin', undefined, { localOnly: true })).catalogStatus, 'local')
     globalThis.fetch = async () => { throw new Error('offline fixture') }
     const unavailable = await manager.check('plugin')
     assert.equal(unavailable.catalogStatus, 'unavailable')
