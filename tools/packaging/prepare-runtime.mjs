@@ -319,6 +319,7 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
     // The package publishes source/docs/install helpers alongside its browser
     // chunks. Only the compiled runtime belongs in the production ASAR.
     await copyEntry(sourceRoot, targetRoot, 'lib')
+    await copyEntry(sourceRoot, targetRoot, 'cordis.patch.yml')
     const clientPath = resolve(targetRoot, 'lib/client.js')
     const clientSource = await readFile(clientPath, 'utf8')
     await writeFile(clientPath, adaptBetterSidebarClient(clientSource))

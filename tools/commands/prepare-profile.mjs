@@ -24,7 +24,7 @@ for (const name of await readdir(join(root, 'plugins'))) {
   if (name === 'wechat') continue
   const manifest = JSON.parse(await readFile(join(root, 'plugins', name, 'package.json'), 'utf8'))
   defaults.push(manifest.name)
-  bundled.push({ id: manifest.name, version: manifest.version, desktop: manifest.zerowall.desktop, dsh: manifest.zerowall.dsh })
+  bundled.push({ id: manifest.name, version: manifest.version, desktop: manifest.zerowall.desktop, dsh: manifest.zerowall.dsh, managed: true })
 }
 const known = new Set(bundled.map(item => item.id))
 const coreIds = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-experimental-voice-input-bundle'])

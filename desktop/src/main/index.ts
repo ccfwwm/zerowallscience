@@ -635,7 +635,11 @@ if (ownsInstance) app.whenReady().then(async () => {
   const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8')) as string[]
   const bundledPlugins = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'bundled-plugins.json') : developmentStagePath('commands', 'bundled-plugins.json'), 'utf8')) as Array<{ id: string; version?: string; desktop?: { min?: string; max?: string }; dsh?: { min?: string; max?: string } }>
   const dshHome = join(userData, 'harness')
-  await initializeProfile(dshHome, defaults)
+  // Core DSH overlays are already inserted by zerowall.patch.yml. Only
+  // managed ZeroWall plugins belong in the user profile; loading both layers
+  // would register Univer/Sidebar services twice after a 7.5 migration.
+  const profileDefaults = defaults.filter(id => id.startsWith('@zerowallscience/plugin-') || id === '@deepseek-ai/dsh-base' || id === '@deepseek-ai/dsh-web-app')
+  await initializeProfile(dshHome, profileDefaults)
   const profileDoctor = () => inspectProfile(dshHome, bundledPlugins, { desktopVersion: app.getVersion(), dshVersion: '0.2.0-rc.2' })
   const callHost = (operation: string, args: unknown[]): Promise<unknown> => {
     if (!managementChild?.connected) return Promise.reject(new Error('Host is not ready'))
