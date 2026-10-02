@@ -993,6 +993,9 @@ async function verifyPluginInventory(url) {
     throw new Error(`Packaged Host plugin inventory is unavailable: ${JSON.stringify(envelope)}`)
   }
   const entries = envelope.result.value.entries
+  if (entries.some(entry => entry?.moduleName === '@deepseek-ai/dsh-hmr' && entry.enabled === true)) {
+    throw new Error('Packaged desktop must disable the development HMR watcher.')
+  }
   if (entries.some(entry => /opencode-zen-free-provider|plugin-opencode|opencode2dsh/u.test(String(entry?.moduleName)))) {
     throw new Error('Retired OpenCode free provider is still present in the running Host inventory.')
   }
@@ -1001,7 +1004,7 @@ async function verifyPluginInventory(url) {
   }
   const expected = [
     'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications',
+    'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications', 'extension-center',
   ].map(name => `@zerowallscience/plugin-${name}`)
   expected.push('@dsh-external/zotero-harvest', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))

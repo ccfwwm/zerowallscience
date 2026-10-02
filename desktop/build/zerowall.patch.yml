@@ -1,5 +1,5 @@
 - id: hmr
-  name: '@deepseek-ai/cordis-plugin-hmr'
+  name: '@deepseek-ai/dsh-hmr'
   # HMR is a development watcher. In the packaged desktop it can observe
   # session/config files written by the running Host and repeatedly reload
   # plugin fibers, growing the embedded Node heap until the window is blank.
