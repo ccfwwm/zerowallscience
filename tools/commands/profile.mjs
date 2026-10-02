@@ -6,7 +6,7 @@ import { compareVersions } from './resource-catalog.mjs'
 // Profile architecture migrations are deliberately additive.  A desktop
 // upgrade must be able to introduce a new bundled management surface without
 // rebuilding or replacing the user's selected plugin set.
-const PROFILE_ARCHITECTURE = 2
+const PROFILE_ARCHITECTURE = 3
 const PROFILE_MIGRATIONS = [
   { from: 1, to: 2, add: ['@zerowallscience/plugin-extension-center'] },
 ]
@@ -48,7 +48,8 @@ export async function initializeProfile(home, defaults) {
   // 7.5.x profiles predate the architecture marker. Treat an existing
   // profile without it as architecture 1 so the 8.0.2 migration remains
   // additive instead of restoring the complete default list.
-  const architecture = Number(manifest.zerowall?.pluginArchitecture ?? (existingManifest ? 1 : 0))
+  const marker = manifest.zerowall?.pluginArchitecture
+  const architecture = Number(marker ?? (existingManifest ? 1 : 0))
   const selectionFile = join(home, 'resources/plugins/selection.json')
   let selection = {}
   try { selection = JSON.parse(await readFile(selectionFile, 'utf8')) } catch (error) { if (error.code !== 'ENOENT') throw error }
@@ -57,10 +58,17 @@ export async function initializeProfile(home, defaults) {
     ...(Array.isArray(selection.disabled) ? selection.disabled : []),
     ...(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : []),
   ])
+  // Before 8.0 the desktop overlay activated the ZeroWall domains, so their
+  // absence from a 7.5 profile is not an uninstall choice. Also repair the
+  // first 8.0.2 migration which added only extension-center and lost those
+  // overlay services. Modern modular profiles retain their selected set.
+  const domainBundles = existing.filter(id => id.startsWith('@zerowallscience/plugin-') && id !== '@zerowallscience/plugin-extension-center')
+  const legacyOverlay = existingManifest && (marker === undefined || (architecture === 2 && domainBundles.length === 0))
   let bundles = existing
   if (architecture === 0) {
     bundles = [...new Set([...existing, ...defaults])]
   } else if (architecture < PROFILE_ARCHITECTURE) {
+    if (legacyOverlay) bundles = [...new Set([...bundles, ...defaults.filter(id => id.startsWith('@zerowallscience/plugin-') && !removed.has(id) && !disabled.has(id))])]
     for (const migration of PROFILE_MIGRATIONS.filter(item => architecture < item.to)) {
       bundles = [...new Set([...bundles, ...migration.add.filter(id => defaults.includes(id) && !removed.has(id) && !disabled.has(id))])]
     }
@@ -68,6 +76,7 @@ export async function initializeProfile(home, defaults) {
   if (architecture >= PROFILE_ARCHITECTURE && bundles === existing) return
   manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }
   manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: PROFILE_ARCHITECTURE }
+  if (legacyOverlay) manifest.zerowall.legacyOverlayMigrated = true
   const temporary = file + '.' + randomUUID() + '.tmp'
   await writeFile(temporary, JSON.stringify(manifest, null, 2), { mode: 0o600 })
   await rename(temporary, file)

@@ -12,6 +12,9 @@ const directory = join(contract.verification, 'commands', randomUUID())
 const userdata = join(directory, 'userdata')
 const commands = join(packaged.resourcesRoot, 'commands')
 await mkdir(userdata, { recursive: true })
+// Exercise the real 7.5 profile shape instead of pre-seeding the new defaults.
+await mkdir(join(userdata, 'harness/profiles/web'), { recursive: true })
+await writeFile(join(userdata, 'harness/profiles/web/package.json'), JSON.stringify({ private: true, dependencies: {}, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } } }))
 const env = { ...process.env, ZEROWALL_USER_DATA_DIR: userdata, ZEROWALL_DISABLE_DEFAULT_MCP: '1',
   APPDATA: join(directory, 'appdata'), LOCALAPPDATA: join(directory, 'localappdata') }
 delete env.ELECTRON_RUN_AS_NODE
@@ -33,14 +36,16 @@ async function execute(argv, input, wrapper = false) {
 const zws = async (argv, input) => JSON.parse(await execute(argv, input))
 async function waitFor(task) {
   const deadline = Date.now() + 30_000
-  do { try { if (await task()) return } catch {} await new Promise(accept => setTimeout(accept, 250)) } while (Date.now() < deadline)
-  throw new Error('Packaged command state did not become ready')
+  let lastError
+  do { try { if (await task()) return } catch (error) { lastError = error } await new Promise(accept => setTimeout(accept, 250)) } while (Date.now() < deadline)
+  throw new Error(`Packaged command state did not become ready: ${lastError?.message ?? 'runtime did not activate'}; evidence: ${directory}`)
 }
 
 try {
   await waitFor(async () => { await zws(['env', 'list']); return true })
   assert.match(await execute(['dsh.cmd', '--version'], undefined, true), /0\.2\.0-rc\.2/)
   assert.equal(JSON.parse(await execute(['zws.cmd', '--version'], undefined, true)).applicationVersion, contract.version)
+  assert((JSON.parse(await execute(['help']))).commands.plugin)
   const doctor = await zws(['doctor'])
   assert.equal(doctor.host, 'ready')
   const files = doctor.plugins.find(item => item.id === '@zerowallscience/plugin-files')
@@ -48,6 +53,7 @@ try {
   assert.equal(files.source, 'bundled')
   assert.equal(files.compatibility, 'compatible')
   assert((await zws(['plugin', 'list'])).bundles.includes('@zerowallscience/plugin-skills'))
+  assert((await zws(['plugin', 'list'])).bundles.includes('@zerowallscience/plugin-extension-center'))
   const secret = 'isolated-cli-value'
   await zws(['env', 'set', 'ZWS_COMMAND_FIXTURE'], secret)
   const variables = await zws(['env', 'list'])

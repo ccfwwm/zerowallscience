@@ -107,7 +107,7 @@ export interface ResourceCheckItem {
   /** Whether the displayed metadata came from the signed remote catalog. */
   catalogSigned?: boolean
 }
-export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; catalogStatus?: 'checked' | 'unavailable' | 'local'; error?: string }
+export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; catalogStatus?: 'checked' | 'unavailable' | 'local' | 'unpublished'; error?: string }
 export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
 
 export interface ZeroWallDesktopApi {
@@ -143,7 +143,7 @@ export interface ZeroWallDesktopApi {
   onMcpEnvironmentStatus?(listener: (status: McpEnvironmentStatus) => void): () => void
   onUpdateStatus(listener: (status: DesktopUpdateStatus) => void): () => void
   resources?: {
-    check(kind: ResourceKind): Promise<ResourceCheckResult>
+    check(kind: ResourceKind, localOnly?: boolean): Promise<ResourceCheckResult>
     status?(): Promise<{ checkedAt: string; results: ResourceCheckResult[] }>
     update(kind: ResourceKind, id?: string): Promise<unknown>
     rollback(kind: ResourceKind, id: string): Promise<unknown>

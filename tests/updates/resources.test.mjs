@@ -104,6 +104,32 @@ test('Python catalog activation verifies the payload before invoking the dedicat
   assert.equal(calls.length, 1)
 })
 
+test('unpublished catalogs keep complete local inventory and bundled versions without pretending absent selections are enabled', async () => {
+  const f = await fixture()
+  await initializeProfile(f.home, [f.resource.id])
+  const other = '@zerowallscience/plugin-other'
+  const core = '@deepseek-ai/dsh-base'
+  const manager = createResourceManager({ ...f, target, bundledPlugins: [{ id: f.resource.id, version: '0.1.0' }, { id: other, version: '0.2.0' }, { id: core, version: target.dshVersion, core: true, managed: false }], defaultPlugins: [f.resource.id, other, core] })
+  const fetchBefore = globalThis.fetch
+  globalThis.fetch = async () => new Response('', { status: 404 })
+  try {
+    const before = await readFile(join(f.home, 'profiles/web/package.json'), 'utf8')
+    const result = await manager.check('plugin')
+    assert.equal(result.catalogStatus, 'unpublished')
+    assert.equal(result.error, undefined)
+    assert.equal(result.resources.find(item => item.id === other).enabled, false)
+    assert.equal(result.resources.find(item => item.id === core).managed, false)
+    assert.equal(result.resources.find(item => item.id === core).version, target.dshVersion)
+    assert.equal(result.resources.find(item => item.id === f.resource.id).installedVersion, '0.1.0')
+    assert.equal(await readFile(join(f.home, 'profiles/web/package.json'), 'utf8'), before)
+    globalThis.fetch = async () => { throw new Error('offline fixture') }
+    const unavailable = await manager.check('plugin')
+    assert.equal(unavailable.catalogStatus, 'unavailable')
+    assert.equal(unavailable.resources.length, result.resources.length)
+    assert.match(unavailable.error, /offline/)
+  } finally { globalThis.fetch = fetchBefore }
+})
+
 test('failed Host activation restores the old profile, while successful activation supports rollback', async () => {
   const f = await fixture()
   await initializeProfile(f.home, [f.resource.id])

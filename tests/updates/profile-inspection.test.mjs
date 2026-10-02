@@ -38,7 +38,7 @@ test('migrates an existing profile to the extension center without restoring rem
     await writeFile(file, JSON.stringify(manifest))
     await initializeProfile(home, [extension])
     const migrated = JSON.parse(await readFile(file, 'utf8'))
-    assert.equal(migrated.zerowall.pluginArchitecture, 2)
+    assert.equal(migrated.zerowall.pluginArchitecture, 3)
     assert(migrated.dsh.profile.bundles.includes(extension))
 
     migrated.dsh.profile.bundles = migrated.dsh.profile.bundles.filter(id => id !== extension)
@@ -62,7 +62,37 @@ test('migrates a legacy 7.5 profile without an architecture marker', async () =>
     await writeFile(file, JSON.stringify({ private: true, dsh: { profile: { bundles: [legacy] } } }))
     await initializeProfile(home, [extension])
     const migrated = JSON.parse(await readFile(file, 'utf8'))
-    assert.equal(migrated.zerowall.pluginArchitecture, 2)
+    assert.equal(migrated.zerowall.pluginArchitecture, 3)
     assert.deepEqual(migrated.dsh.profile.bundles, [legacy, extension])
+  } finally { await rm(home, { recursive: true, force: true }) }
+})
+
+test('7.5 overlay migration and broken 8.0.2 migration restore domain services while retaining explicit choices', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-overlay-migration-'))
+  const extension = '@zerowallscience/plugin-extension-center'
+  const defaults = ['base', 'desktop-compat', 'environment', 'skills', 'mcp', 'files', 'images', 'research'].map(name => '@zerowallscience/plugin-' + name).concat(extension)
+  try {
+    await mkdir(join(home, 'profiles/web'), { recursive: true })
+    await mkdir(join(home, 'resources/plugins'), { recursive: true })
+    const file = join(home, 'profiles/web/package.json')
+    const thirdParty = 'third-party-plugin'
+    const disabled = '@zerowallscience/plugin-images'
+    const removed = '@zerowallscience/plugin-research'
+    await writeFile(join(home, 'resources/plugins/selection.json'), JSON.stringify({ disabled: [disabled], removed: [removed] }))
+    for (const architecture of [undefined, 2]) {
+      const legacy = { private: true, dependencies: { [thirdParty]: '1.2.3' }, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', thirdParty, ...(architecture ? [extension] : [])] } }, zerowall: { pluginArchitecture: architecture } }
+      await writeFile(file, JSON.stringify(legacy))
+      await writeFile(join(home, 'profiles/web/cordis.patch.yml'), '- id: custom\n  disabled: true\n')
+      await initializeProfile(home, defaults)
+      const migrated = JSON.parse(await readFile(file, 'utf8'))
+      for (const id of defaults.filter(id => ![disabled, removed].includes(id))) assert(migrated.dsh.profile.bundles.includes(id), id)
+      assert(!migrated.dsh.profile.bundles.includes(disabled))
+      assert(!migrated.dsh.profile.bundles.includes(removed))
+      assert.equal(migrated.dependencies[thirdParty], '1.2.3')
+      assert.equal(await readFile(join(home, 'profiles/web/cordis.patch.yml'), 'utf8'), '- id: custom\n  disabled: true\n')
+      const before = await readFile(file, 'utf8')
+      await initializeProfile(home, defaults)
+      assert.equal(await readFile(file, 'utf8'), before)
+    }
   } finally { await rm(home, { recursive: true, force: true }) }
 })

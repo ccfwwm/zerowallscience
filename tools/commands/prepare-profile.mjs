@@ -18,7 +18,7 @@ await writeFile(join(stageRoot, 'resources/zerowall-core.patch.yml'), core.join(
 // bundled third-party plugins even when an older user profile does not yet
 // contain them in its package manifest.
 const inventory = JSON.parse(await readFile(join(root, 'config/deepseek-harness/plugin-inventory.json'), 'utf8'))
-const defaults = inventory.profiles?.stable?.plugins ?? ['dsh-wechat', '@dingyi222666/dsh-session-notification']
+const defaults = [...(inventory.profiles?.stable?.plugins ?? ['dsh-wechat', '@dingyi222666/dsh-session-notification'])]
 const bundled = []
 for (const name of await readdir(join(root, 'plugins'))) {
   if (name === 'wechat') continue
@@ -26,6 +26,14 @@ for (const name of await readdir(join(root, 'plugins'))) {
   defaults.push(manifest.name)
   bundled.push({ id: manifest.name, version: manifest.version, desktop: manifest.zerowall.desktop, dsh: manifest.zerowall.dsh })
 }
-await writeFile(join(stageRoot, 'commands/default-plugins.json'), JSON.stringify(defaults))
+const known = new Set(bundled.map(item => item.id))
+const coreIds = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-experimental-voice-input-bundle'])
+const overlayIds = new Set([...core.join('\n').matchAll(/^\s+name: ['"]([^'"]+)['"]/gm)].map(match => match[1]))
+for (const id of [...new Set([...defaults, ...coreIds])]) {
+  if (known.has(id)) continue
+  const manifest = JSON.parse(await readFile(join(stageRoot, 'runtime/node_modules', id, 'package.json'), 'utf8'))
+  bundled.push({ id, version: manifest.version, core: coreIds.has(id), managed: !coreIds.has(id) && !overlayIds.has(id) })
+}
+await writeFile(join(stageRoot, 'commands/default-plugins.json'), JSON.stringify([...new Set(defaults)]))
 await writeFile(join(stageRoot, 'commands/bundled-plugins.json'), JSON.stringify(bundled))
 console.log(`Profile owns ${defaults.length} independently loaded ZeroWall plugins`)

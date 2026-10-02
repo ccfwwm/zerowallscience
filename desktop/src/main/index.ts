@@ -105,6 +105,9 @@ function configureIdentity(): void {
 }
 
 async function migrateLegacyUserData(): Promise<void> {
+  // An explicitly selected profile must stay isolated. Windows known-folder
+  // paths can ignore APPDATA overrides used by packaged verification.
+  if (process.env.ZEROWALL_USER_DATA_DIR?.trim()) return
   const target = app.getPath('userData')
   // Existing installations have already migrated. Recursively walking old
   // caches and Python trees on every launch can take minutes on Windows.
@@ -1087,7 +1090,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:check-for-updates', () => updates.check())
   ipcMain.handle('desktop:download-update', () => updates.download())
   ipcMain.handle('desktop:install-update', () => updates.install())
-  ipcMain.handle('desktop:resource-check', (_event, kind: unknown) => resources.check(String(kind) as ResourceKind))
+  ipcMain.handle('desktop:resource-check', (_event, kind: unknown, localOnly: unknown) => resources.check(String(kind) as ResourceKind, undefined, { localOnly: localOnly === true }))
   ipcMain.handle('desktop:resource-status', async () => ({ checkedAt: new Date().toISOString(), results: await Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind))) }))
   ipcMain.handle('desktop:resource-update', (_event, kind: unknown, id?: unknown) => resourceAction(String(kind) as ResourceKind, 'update', typeof id === 'string' ? id : undefined))
   ipcMain.handle('desktop:resource-rollback', (_event, kind: unknown, id: unknown) => resourceAction(String(kind) as ResourceKind, 'rollback', String(id)))

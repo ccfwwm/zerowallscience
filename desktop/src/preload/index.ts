@@ -67,7 +67,7 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
     return () => ipcRenderer.removeListener('desktop:update-status', handler)
   },
   resources: {
-    check: async (kind: ResourceKind): Promise<ResourceCheckResult> => await ipcRenderer.invoke('desktop:resource-check', kind) as ResourceCheckResult,
+    check: async (kind: ResourceKind, localOnly?: boolean): Promise<ResourceCheckResult> => await ipcRenderer.invoke('desktop:resource-check', kind, localOnly) as ResourceCheckResult,
     status: async (): Promise<{ checkedAt: string; results: ResourceCheckResult[] }> => await ipcRenderer.invoke('desktop:resource-status') as { checkedAt: string; results: ResourceCheckResult[] },
     update: async (kind: ResourceKind, id?: string): Promise<unknown> => await ipcRenderer.invoke('desktop:resource-update', kind, id) as unknown,
     rollback: async (kind: ResourceKind, id: string): Promise<unknown> => await ipcRenderer.invoke('desktop:resource-rollback', kind, id) as unknown,
