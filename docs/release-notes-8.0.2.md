@@ -16,3 +16,14 @@
 - Python 环境仍按 generation 和 snapshot 管理，不随桌面包重新打入完整环境。
 
 本版本只生成本地 Windows x64 候选安装包，不上传七牛云、不更新桌面 `latest` 指针、不创建 GitHub Release 或公开插件仓库。独立插件、Skills、MCP 包和签名 catalog 等待本地安装验证完成后再发布。
+
+## 2026-10-02 扩展中心修复包
+
+- 修复未公开资源目录返回 404 时的 `Catalog download failed` 提示，改为明确显示“独立更新目录尚未发布”，保留本地管理能力；真实网络或签名错误仍提供诊断。
+- 修复 7.5.0 与早期 8.0.2 profile 迁移漏掉桌面桥接、Skills、MCP 等服务的问题，保留用户停用、移除和固定版本选择。
+- 完整列出核心、内置、自有与第三方插件，显示实际独立版本；核心 DSH 包不提供停用/卸载操作。
+- 优化设置内的扩展中心：中文名称与状态、完整包 ID、按钮分组、长名称换行及窄窗口布局；不新增侧边栏入口。
+- 补全 `zws plugin list` 和 help，修复本地 Skills 刷新路由、MCP connection ID 操作、核心 overlay 重复加载与 DSH HMR 禁用补丁。
+- 扩展中心版本为 `0.1.1`，plugin-base 为 `0.1.3`，plugin-desktop-compat 为 `0.1.2`，桌面仍为 `8.0.2`。
+
+最终包已通过隔离 profile 迁移、真实桌面设置与 CLI 验收。Windows 安装包没有 Authenticode 签名；实际旧安装器覆盖升级仍待用户验证。安装包来源、哈希与测试收据见 [修复验收报告](verification/8.0.2-extension-center-repair.md)。
