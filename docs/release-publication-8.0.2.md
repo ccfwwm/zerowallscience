@@ -26,6 +26,10 @@
 
 源码总仓库：[ccfwwm/zerowall-dsh-plugins](https://github.com/ccfwwm/zerowall-dsh-plugins)。其 `main` 首次提交 `5f24c8c`，包含插件、Skills、MCP、catalog、资源合同和 CI。GitHub 资源 Release 与七牛使用相同资源字节。
 
+- [GitHub 独立资源 Release `resources-8.0.2`](https://github.com/ccfwwm/zerowall-dsh-plugins/releases/tag/resources-8.0.2)：328 个资源资产，包含插件包、Skills、MCP、catalog 和收据。
+- 抽样完整下载验证了 plugin catalog、扩展中心插件、`zerowall-presentation` Skill 和 SciMaster MCP；其 SHA-256 与七牛/本地资源一致。
+- GitHub API 报告 EXE 资产大小 `389835467` bytes、digest `sha256:7d172cb63ac0ad62eb302e08c6d03112cf9b9a2d0b6d23eac0d06cf023babfb8`。本轮从 GitHub 完整下载 EXE 时发生 `ECONNRESET`，所以 GitHub EXE 的证据使用服务器 digest/大小和七牛完整下载校验，不声称完成 GitHub EXE 的再次完整下载。
+
 ## 老版本升级
 
 7.5.0 使用现有 stable 更新地址检查 8.0.2；安装器保留用户数据和 profile。已在隔离环境使用真实 7.5.0 profile 形状验证迁移，包括扩展中心、桌面桥接、Skills、MCP、环境服务和第三方选择。未在用户真实安装目录运行旧 NSIS 安装器覆盖升级；请用户先完全退出旧程序，再安装本包并确认现有账户、项目和模型配置。
