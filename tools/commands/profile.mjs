@@ -68,7 +68,7 @@ export async function initializeProfile(home, defaults) {
   if (architecture === 0) {
     bundles = [...new Set([...existing, ...defaults])]
   } else if (architecture < PROFILE_ARCHITECTURE) {
-    if (legacyOverlay) bundles = [...new Set([...bundles, ...defaults.filter(id => id.startsWith('@zerowallscience/plugin-') && !removed.has(id) && !disabled.has(id))])]
+    if (legacyOverlay) bundles = [...new Set([...bundles, ...defaults.filter(id => (id.startsWith('@zerowallscience/plugin-') || ['dsh-wechat', '@dingyi222666/dsh-session-notification'].includes(id)) && !removed.has(id) && !disabled.has(id))])]
     for (const migration of PROFILE_MIGRATIONS.filter(item => architecture < item.to)) {
       bundles = [...new Set([...bundles, ...migration.add.filter(id => defaults.includes(id) && !removed.has(id) && !disabled.has(id))])]
     }

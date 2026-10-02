@@ -70,7 +70,7 @@ test('migrates a legacy 7.5 profile without an architecture marker', async () =>
 test('7.5 overlay migration and broken 8.0.2 migration restore domain services while retaining explicit choices', async () => {
   const home = await mkdtemp(join(tmpdir(), 'zws-overlay-migration-'))
   const extension = '@zerowallscience/plugin-extension-center'
-  const defaults = ['base', 'desktop-compat', 'environment', 'skills', 'mcp', 'files', 'images', 'research'].map(name => '@zerowallscience/plugin-' + name).concat(extension)
+  const defaults = ['base', 'desktop-compat', 'environment', 'skills', 'mcp', 'files', 'images', 'research'].map(name => '@zerowallscience/plugin-' + name).concat(extension, 'dsh-wechat', '@dingyi222666/dsh-session-notification')
   try {
     await mkdir(join(home, 'profiles/web'), { recursive: true })
     await mkdir(join(home, 'resources/plugins'), { recursive: true })
