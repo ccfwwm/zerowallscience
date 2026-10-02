@@ -113,7 +113,13 @@ async function run() {
   if (group === 'skill') {
     if (command === 'check') return invoke('resource.catalog.check', ['skill', catalog])
     if (command === 'rollback' && args[0]) return invoke('resource.skill.rollback', [args[0]])
-    if (command === 'update' && args[0] && !catalog) return invoke('resource.skill.update', [args[0]])
+    if (command === 'update' && args[0] && !catalog) {
+      // A directory is an explicit local Skill refresh. An id is a signed
+      // catalog resource lookup; keep both forms compatible.
+      return existsSync(resolve(args[0]))
+        ? invoke('skill.update', [{ sourcePath: resolve(args[0]) }])
+        : invoke('resource.skill.update', [args[0]])
+    }
     if (command === 'update' && !args[0]) return invoke('resource.update', ['skill', catalog])
     if (catalog && command === 'update' && args[0]) return invoke('resource.import', ['skill', args[0], catalog])
     if (command === 'list') return invoke('skill.list')
