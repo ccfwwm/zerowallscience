@@ -1,6 +1,6 @@
 # ZeroWall Science 8.0.2
 
-## 本地候选版本
+## 正式发布
 
 8.0.2 增加了 ZeroWall 扩展中心和桌面资源桥接，用于统一查看和手动管理插件、Skills 与 MCP 资源。
 
@@ -15,7 +15,7 @@
 - 断网或签名目录暂时不可用时，扩展中心仍显示本地已安装资源，并将目录错误作为状态提示。
 - Python 环境仍按 generation 和 snapshot 管理，不随桌面包重新打入完整环境。
 
-本版本只生成本地 Windows x64 候选安装包，不上传七牛云、不更新桌面 `latest` 指针、不创建 GitHub Release 或公开插件仓库。独立插件、Skills、MCP 包和签名 catalog 等待本地安装验证完成后再发布。
+本版本发布 Windows x64 安装包及独立插件、Skills、MCP 签名目录。7.5.0 用户先通过原 stable 更新入口升级到 8.0.2，之后可在设置内单独更新资源。使用方法见 [独立更新教程](extensions-update-guide.md)。
 
 ## 2026-10-02 扩展中心修复包
 
@@ -26,4 +26,4 @@
 - 补全 `zws plugin list` 和 help，修复本地 Skills 刷新路由、MCP connection ID 操作、核心 overlay 重复加载与 DSH HMR 禁用补丁。
 - 扩展中心版本为 `0.1.1`，plugin-base 为 `0.1.3`，plugin-desktop-compat 为 `0.1.2`，桌面仍为 `8.0.2`。
 
-最终包已通过隔离 profile 迁移、真实桌面设置与 CLI 验收。Windows 安装包没有 Authenticode 签名；实际旧安装器覆盖升级仍待用户验证。安装包来源、哈希与测试收据见 [修复验收报告](verification/8.0.2-extension-center-repair.md)。
+最终包已通过隔离 profile 迁移、真实桌面设置与 CLI 验收。Windows 安装包没有 Authenticode 签名。安装包来源、哈希与测试收据见 [修复验收报告](verification/8.0.2-extension-center-repair.md)，发布前的“未发布”记录表示当时状态；正式线上状态以发布验收记录为准。
