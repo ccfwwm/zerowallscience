@@ -3,6 +3,14 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { compareVersions } from './resource-catalog.mjs'
 
+// Profile architecture migrations are deliberately additive.  A desktop
+// upgrade must be able to introduce a new bundled management surface without
+// rebuilding or replacing the user's selected plugin set.
+const PROFILE_ARCHITECTURE = 2
+const PROFILE_MIGRATIONS = [
+  { from: 1, to: 2, add: ['@zerowallscience/plugin-extension-center'] },
+]
+
 /** Inspect the packages that will actually shadow the bundled defaults. */
 export async function inspectProfile(home, bundled, target) {
   const directory = join(home, 'profiles/web')
@@ -30,15 +38,36 @@ export async function initializeProfile(home, defaults) {
   const file = join(directory, 'package.json')
   await mkdir(directory, { recursive: true })
   let manifest
-  try { manifest = JSON.parse(await readFile(file, 'utf8')) } catch (error) { if (error.code !== 'ENOENT') throw error }
+  let existingManifest = false
+  try { manifest = JSON.parse(await readFile(file, 'utf8')); existingManifest = true } catch (error) { if (error.code !== 'ENOENT') throw error }
   manifest ??= { private: true, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-free-search', 'dsh-file-review'] } } }
   const patchFile = join(directory, 'cordis.patch.yml')
   const patch = await readFile(patchFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
   if (patch === undefined || !patch.trim()) await writeFile(patchFile, '[]\n', { mode: 0o600 })
-  if (manifest.zerowall?.pluginArchitecture === 1) return
   const existing = manifest.dsh?.profile?.bundles ?? []
-  manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...new Set([...existing, ...defaults])] } }
-  manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: 1 }
+  // 7.5.x profiles predate the architecture marker. Treat an existing
+  // profile without it as architecture 1 so the 8.0.2 migration remains
+  // additive instead of restoring the complete default list.
+  const architecture = Number(manifest.zerowall?.pluginArchitecture ?? (existingManifest ? 1 : 0))
+  const selectionFile = join(home, 'resources/plugins/selection.json')
+  let selection = {}
+  try { selection = JSON.parse(await readFile(selectionFile, 'utf8')) } catch (error) { if (error.code !== 'ENOENT') throw error }
+  const removed = new Set(Array.isArray(selection.removed) ? selection.removed : [])
+  const disabled = new Set([
+    ...(Array.isArray(selection.disabled) ? selection.disabled : []),
+    ...(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : []),
+  ])
+  let bundles = existing
+  if (architecture === 0) {
+    bundles = [...new Set([...existing, ...defaults])]
+  } else if (architecture < PROFILE_ARCHITECTURE) {
+    for (const migration of PROFILE_MIGRATIONS.filter(item => architecture < item.to)) {
+      bundles = [...new Set([...bundles, ...migration.add.filter(id => defaults.includes(id) && !removed.has(id) && !disabled.has(id))])]
+    }
+  }
+  if (architecture >= PROFILE_ARCHITECTURE && bundles === existing) return
+  manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }
+  manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: PROFILE_ARCHITECTURE }
   const temporary = file + '.' + randomUUID() + '.tmp'
   await writeFile(temporary, JSON.stringify(manifest, null, 2), { mode: 0o600 })
   await rename(temporary, file)

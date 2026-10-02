@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { initializeProfile, inspectProfile } from '../../tools/commands/profile.mjs'
@@ -23,5 +23,46 @@ test('reports shadowed old plugins without restoring removed bundles or rewritin
     assert.equal(result.plugins[0].declaredDependency, '0.1.0')
     assert.equal(result.plugins.length, 1)
     assert.equal(result.plugins[0].compatibility, 'compatible')
+  } finally { await rm(home, { recursive: true, force: true }) }
+})
+
+test('migrates an existing profile to the extension center without restoring removed plugins', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-profile-migration-'))
+  const extension = '@zerowallscience/plugin-extension-center'
+  try {
+    await initializeProfile(home, [extension])
+    const file = join(home, 'profiles/web/package.json')
+    const manifest = JSON.parse(await readFile(file, 'utf8'))
+    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(id => id !== extension)
+    manifest.zerowall.pluginArchitecture = 1
+    await writeFile(file, JSON.stringify(manifest))
+    await initializeProfile(home, [extension])
+    const migrated = JSON.parse(await readFile(file, 'utf8'))
+    assert.equal(migrated.zerowall.pluginArchitecture, 2)
+    assert(migrated.dsh.profile.bundles.includes(extension))
+
+    migrated.dsh.profile.bundles = migrated.dsh.profile.bundles.filter(id => id !== extension)
+    await mkdir(join(home, 'resources/plugins'), { recursive: true })
+    await writeFile(join(home, 'resources/plugins/selection.json'), JSON.stringify({ removed: [extension] }))
+    migrated.zerowall.pluginArchitecture = 1
+    await writeFile(file, JSON.stringify(migrated))
+    await initializeProfile(home, [extension])
+    const preserved = JSON.parse(await readFile(file, 'utf8'))
+    assert.equal(preserved.dsh.profile.bundles.includes(extension), false)
+  } finally { await rm(home, { recursive: true, force: true }) }
+})
+
+test('migrates a legacy 7.5 profile without an architecture marker', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-profile-legacy-'))
+  const extension = '@zerowallscience/plugin-extension-center'
+  const legacy = '@zerowallscience/plugin-files'
+  try {
+    await initializeProfile(home, [extension])
+    const file = join(home, 'profiles/web/package.json')
+    await writeFile(file, JSON.stringify({ private: true, dsh: { profile: { bundles: [legacy] } } }))
+    await initializeProfile(home, [extension])
+    const migrated = JSON.parse(await readFile(file, 'utf8'))
+    assert.equal(migrated.zerowall.pluginArchitecture, 2)
+    assert.deepEqual(migrated.dsh.profile.bundles, [legacy, extension])
   } finally { await rm(home, { recursive: true, force: true }) }
 })
