@@ -41,12 +41,15 @@ export const zh = {
   noTasks: '暂无资源任务',
   retry: '重试',
   cancel: '取消',
+  source_profile: '用户安装', source_bundled: '内置', source_runtime: '核心运行时', source_catalog: '远程目录', source_removed: '已移除', source_disabled: '已停用',
+  runtimeCore: '随 DSH 核心', bundledResource: '安装包内置', localResource: '本地资源',
 } satisfies Record<string, string>
 
 export const en: typeof zh = {
   title: 'Extension Center',
   intro: 'Manage ZeroWall plugins, Skills, and MCP resources. Checks are read-only; installation and upgrades are manual.',
   refresh: 'Check for updates', checking: 'Checking…', ready: 'Check complete', unavailable: 'Desktop resource service unavailable', failed: 'Check failed', cancelled: 'Resource task was cancelled', empty: 'No updates are available.', installed: 'Installed', available: 'Update available', update: 'Update', rollback: 'Rollback', disable: 'Disable', enable: 'Enable', remove: 'Uninstall', restart: 'Host restart required', signed: 'Signature verified', unsigned: 'Unsigned', plugins: 'Plugins', skills: 'Skills', mcp: 'MCP', task: 'Task', source: 'Source', version: 'Version', status: 'Status', noDesktop: 'The ZeroWall desktop resource bridge is unavailable.', catalogUnavailable: 'Local resources are shown; the signed catalog is unavailable.', catalogError: 'Catalog check failed', search: 'Search resources', import: 'Import', install: 'Install', repair: 'Repair', disabled: 'Disabled', notInstalled: 'Not installed', tasks: 'Resource tasks', noTasks: 'No resource tasks', retry: 'Retry', cancel: 'Cancel',
+  source_profile: 'User installed', source_bundled: 'Built in', source_runtime: 'Core runtime', source_catalog: 'Remote catalog', source_removed: 'Removed', source_disabled: 'Disabled', runtimeCore: 'Provided by DSH core', bundledResource: 'Included in installer', localResource: 'Local resource',
 }
 
 export type ExtensionTranslate = TranslateNS<typeof NS>

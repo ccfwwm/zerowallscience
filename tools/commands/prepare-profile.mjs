@@ -13,7 +13,12 @@ for (const line of lines) {
 }
 await mkdir(join(stageRoot, 'resources'), { recursive: true })
 await writeFile(join(stageRoot, 'resources/zerowall-core.patch.yml'), core.join('\n'))
-const defaults = ['dsh-wechat', '@dingyi222666/dsh-session-notification']
+// The stable profile is the authoritative composition for the desktop. Keep
+// this list in the packaged command layer so `zws plugin list` can report
+// bundled third-party plugins even when an older user profile does not yet
+// contain them in its package manifest.
+const inventory = JSON.parse(await readFile(join(root, 'config/deepseek-harness/plugin-inventory.json'), 'utf8'))
+const defaults = inventory.profiles?.stable?.plugins ?? ['dsh-wechat', '@dingyi222666/dsh-session-notification']
 const bundled = []
 for (const name of await readdir(join(root, 'plugins'))) {
   if (name === 'wechat') continue

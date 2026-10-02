@@ -15,11 +15,12 @@
 .warning { margin: 14px 0 0; padding: 9px 12px; border-radius: 6px; color: #7a4a00; background: #fff6dd; font-size: 12px; }
 .meta { display: flex; justify-content: space-between; gap: 12px; padding: 14px 0 8px; color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; }
 .list { display: grid; gap: 8px; }
-.row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 7px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 7px; }
 .identity { min-width: 0; }
 .identity strong, .identity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .identity small { margin-top: 4px; color: var(--dsw-alias-label-secondary, #687078); font-size: 10px; }
 .version { color: var(--dsw-alias-label-secondary, #687078); font: 11px ui-monospace, Consolas, monospace; }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 0; }
 .badge, .badgeUpdate { padding: 3px 7px; border: 1px solid var(--dsw-alias-border-l2, #d9dee2); border-radius: 5px; color: var(--dsw-alias-label-secondary, #687078); font-size: 10px; }
 .badgeUpdate { border-color: rgba(49,91,125,.35); color: #315b7d; background: rgba(49,91,125,.08); }
 .empty { padding: 28px; color: var(--dsw-alias-label-secondary, #687078); text-align: center; font-size: 12px; }
@@ -28,3 +29,11 @@
 .job { display: flex; align-items: center; gap: 12px; padding: 7px 0; color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; }
 .job span:first-child { flex: 1; color: var(--dsw-alias-label-primary, #202428); }
 .job button { border: 1px solid var(--dsw-alias-border-l2, #d9dee2); border-radius: 5px; padding: 3px 7px; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+@media (max-width: 760px) {
+  .header { flex-direction: column; }
+  .toolbar { flex-wrap: wrap; }
+  .search { margin-left: 0; flex: 1 1 180px; width: auto; }
+  .row { grid-template-columns: minmax(0, 1fr) auto; }
+  .version { grid-column: 1; }
+  .actions { grid-column: 1 / -1; justify-content: flex-start; }
+}

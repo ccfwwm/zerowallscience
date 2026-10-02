@@ -99,12 +99,15 @@ export interface ResourceCheckItem {
   version: string
   installedVersion?: string
   updateAvailable?: boolean
-  source?: string
   signed?: boolean
   restartRequired?: boolean
   rollbackSupported?: boolean
+  /** Where the active resource comes from: user profile, app bundle, DSH runtime, or catalog. */
+  source?: 'profile' | 'bundled' | 'runtime' | 'catalog' | 'removed' | 'disabled'
+  /** Whether the displayed metadata came from the signed remote catalog. */
+  catalogSigned?: boolean
 }
-export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; error?: string }
+export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; catalogStatus?: 'checked' | 'unavailable' | 'local'; error?: string }
 export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
 
 export interface ZeroWallDesktopApi {

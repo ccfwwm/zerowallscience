@@ -629,8 +629,8 @@ if (ownsInstance) app.whenReady().then(async () => {
   mcpEnvironment.setEnvironmentHandler(request => pythonEnvironmentApi.request(request))
   const commandRoot = app.isPackaged ? join(process.resourcesPath, 'commands') : join(findWorkspaceRoot(), 'tools/commands')
   const { initializeProfile, inspectProfile } = await import(pathToFileURL(join(commandRoot, 'profile.mjs')).href)
-  const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8'))
-  const bundledPlugins = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'bundled-plugins.json') : developmentStagePath('commands', 'bundled-plugins.json'), 'utf8'))
+  const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8')) as string[]
+  const bundledPlugins = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'bundled-plugins.json') : developmentStagePath('commands', 'bundled-plugins.json'), 'utf8')) as Array<{ id: string; version?: string; desktop?: { min?: string; max?: string }; dsh?: { min?: string; max?: string } }>
   const dshHome = join(userData, 'harness')
   await initializeProfile(dshHome, defaults)
   const profileDoctor = () => inspectProfile(dshHome, bundledPlugins, { desktopVersion: app.getVersion(), dshVersion: '0.2.0-rc.2' })
@@ -668,7 +668,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   })
   const { createResourceManager } = await import(pathToFileURL(join(commandRoot, 'resource-manager.mjs')).href)
   const keys = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'trusted-keys.json') : join(findWorkspaceRoot(), 'config/catalogs/trusted-keys.json'), 'utf8'))
-  const resources = createResourceManager({ home: dshHome, keys, target: { desktopVersion: app.getVersion(), dshVersion: '0.2.0-rc.2', platform: process.platform, architecture: process.arch }, runPlugin,
+  const resources = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins, target: { desktopVersion: app.getVersion(), dshVersion: '0.2.0-rc.2', platform: process.platform, architecture: process.arch }, runPlugin,
     applyPython: async (entry: { role: string }, file: string) => {
       if (entry.role !== 'dependency-manifest') throw new Error('Unsupported Python resource')
       await mcpEnvironment.ensureReady()
@@ -844,7 +844,16 @@ if (ownsInstance) app.whenReady().then(async () => {
       if (!args.every(value => typeof value === 'string') || !['list', 'add', 'remove', 'update', 'install'].includes(String(args[0]))) throw new Error('Invalid plugin command')
       const file = join(dshHome, 'profiles/web/package.json')
       const manifest = JSON.parse(await readFile(file, 'utf8'))
-      if (args[0] === 'list') return { bundles: manifest.dsh?.profile?.bundles ?? [], dependencies: manifest.dependencies ?? {} }
+      if (args[0] === 'list') {
+        const selectionFile = join(dshHome, 'resources/plugins/selection.json')
+        let selection: { removed?: unknown[]; disabled?: unknown[] } = {}
+        try { selection = JSON.parse(await readFile(selectionFile, 'utf8')) as typeof selection } catch { /* optional selection state */ }
+        const removed = new Set((selection.removed ?? []).filter((id): id is string => typeof id === 'string'))
+        const known = [...new Set([...(manifest.dsh?.profile?.bundles ?? []), ...defaults, ...bundledPlugins.map(item => item.id)])].filter(id => !removed.has(id))
+        const profileBundles = new Set(manifest.dsh?.profile?.bundles ?? [])
+        const bundledIds = new Set(bundledPlugins.map(item => item.id))
+        return { bundles: known, dependencies: manifest.dependencies ?? {}, resources: known.map(id => ({ id, source: profileBundles.has(id) ? 'profile' : bundledIds.has(id) ? 'bundled' : 'runtime', enabled: !(selection.disabled ?? []).includes(id) })) }
+      }
       return resources.mutate(args as string[])
     }
     return callHost(request.operation, request.args)

@@ -12,7 +12,7 @@ async function atomic(path, value) {
 }
 
 /** Signed resource preparation and official DSH profile transactions. */
-export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, local = false, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify } }) {
+export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, local = false, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], defaultPlugins = [] }) {
   const root = join(home, 'resources')
   const profiles = join(home, 'profiles')
   const active = join(profiles, 'web')
@@ -429,21 +429,28 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     let catalogError
     try { if (!options.localOnly) document = await catalog(source ?? `${feedBase}/${kind}-latest.json`) }
     catch (error) { catalogError = error instanceof Error ? error.message : 'Catalog check failed' }
+    const catalogStatus = document ? 'checked' : options.localOnly ? 'local' : 'unavailable'
     const entries = document?.resources?.filter(item => item.kind === kind) ?? []
     if (kind === 'plugin') {
       const manifest = await json(join(active, 'package.json'))
       const selection = await readPluginSelection()
       for (const id of manifest.zerowall?.disabledPlugins ?? []) selection.disabled.add(id)
-      const ids = new Set([...entries.map(item => item.id), ...(manifest.dsh?.profile?.bundles ?? [])])
+      const bundled = new Map(bundledPlugins.filter(item => item && typeof item.id === 'string').map(item => [item.id, item]))
+      const builtInIds = new Set(bundled.keys())
+      const runtimeIds = new Set(defaultPlugins)
+      const ids = new Set([...entries.map(item => item.id), ...(manifest.dsh?.profile?.bundles ?? []), ...runtimeIds, ...builtInIds])
       const resources = []
       for (const id of ids) {
-        const entry = entries.find(item => item.id === id)
+        const entry = entries.find(item => item.id === id) ?? bundled.get(id)
         const installed = await packageVersion(active, id)
         const activeVersion = installed?.version
-        const installedState = selection.removed.has(id) ? 'removed' : selection.disabled.has(id) ? 'disabled' : installed ? 'profile' : 'bundled'
-        resources.push({ id, version: entry?.version ?? activeVersion ?? 'unknown', installedVersion: activeVersion, updateAvailable: Boolean(entry && activeVersion && compareVersions(entry.version, activeVersion) > 0), source: installedState, signed: Boolean(entry), restartRequired: entry?.restartRequired ?? true, rollbackSupported: Boolean(entry?.rollbackSupported || (await json(join(pluginStateRoot, encodeURIComponent(id), 'history.json')).catch(() => undefined))?.records?.length), enabled: !selection.disabled.has(id) && !selection.removed.has(id) })
+        const installedState = selection.removed.has(id) ? 'removed' : selection.disabled.has(id) ? 'disabled' : installed ? 'profile' : builtInIds.has(id) ? 'bundled' : 'runtime'
+        const catalogEntry = entries.find(item => item.id === id)
+        const version = catalogEntry?.version ?? activeVersion ?? bundled.get(id)?.version ?? (installedState === 'runtime' ? 'core' : '—')
+        resources.push({ id, version, installedVersion: activeVersion, updateAvailable: Boolean(catalogEntry && activeVersion && compareVersions(catalogEntry.version, activeVersion) > 0), source: installedState, catalogSigned: Boolean(catalogEntry), signed: Boolean(catalogEntry), restartRequired: catalogEntry?.restartRequired ?? true, rollbackSupported: Boolean(catalogEntry?.rollbackSupported || (await json(join(pluginStateRoot, encodeURIComponent(id), 'history.json')).catch(() => undefined))?.records?.length), enabled: !selection.disabled.has(id) && !selection.removed.has(id) })
       }
-      return { kind, checkedAt: new Date().toISOString(), resources, ...(catalogError ? { error: catalogError } : {}) }
+      const bundles = [...ids].filter(id => !selection.removed.has(id))
+      return { kind, checkedAt: new Date().toISOString(), bundles, dependencies: manifest.dependencies ?? {}, resources, catalogStatus, ...(catalogError ? { error: catalogError } : {}) }
     }
     const installed = kind === 'skill' ? await callHost('skill.list', []) : await callHost('mcp.list', [])
     const local = installed.map(item => ({ item, id: kind === 'mcp' ? item.serverName : item.name }))
@@ -453,14 +460,14 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       let installedVersion
       if (kind === 'skill') installedVersion = item.declaredVersion ?? (await callHost('skill.get', [id]).catch(() => undefined))?.declaredVersion
       else installedVersion = (await json(join(root, 'mcp', encodeURIComponent(id), 'current.json')).catch(() => undefined))?.version
-      resources.push({ id, version: entry?.version ?? installedVersion ?? 'unknown', installedVersion, updateAvailable: Boolean(entry && installedVersion && compareVersions(entry.version, installedVersion) > 0), source: 'profile', signed: Boolean(entry), restartRequired: entry?.restartRequired ?? kind === 'mcp', rollbackSupported: Boolean(entry?.rollbackSupported) })
+      resources.push({ id, version: entry?.version ?? installedVersion ?? '—', installedVersion, updateAvailable: Boolean(entry && installedVersion && compareVersions(entry.version, installedVersion) > 0), source: 'profile', signed: Boolean(entry), catalogSigned: Boolean(entry), restartRequired: entry?.restartRequired ?? kind === 'mcp', rollbackSupported: Boolean(entry?.rollbackSupported) })
     }
     for (const entry of entries) {
       const identity = entry.server?.serverName ?? entry.id
       if (resources.some(item => item.id === identity)) continue
-      resources.push({ id: identity, version: entry.version, source: 'catalog', signed: true, restartRequired: entry.restartRequired, rollbackSupported: entry.rollbackSupported })
+      resources.push({ id: identity, version: entry.version, source: 'catalog', signed: true, catalogSigned: true, restartRequired: entry.restartRequired, rollbackSupported: entry.rollbackSupported })
     }
-    return { kind, checkedAt: new Date().toISOString(), resources, ...(catalogError ? { error: catalogError } : {}) }
+    return { kind, checkedAt: new Date().toISOString(), resources, catalogStatus, ...(catalogError ? { error: catalogError } : {}) }
   }
   async function rollbackMcp(id) {
     if (!/^[a-zA-Z0-9._-]{1,100}$/.test(id) || id === '.' || id === '..') throw new Error('Invalid MCP resource identity')

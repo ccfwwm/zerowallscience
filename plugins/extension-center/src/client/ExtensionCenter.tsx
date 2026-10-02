@@ -6,8 +6,8 @@ import css from './ExtensionCenter.module.css'
 
 type Props = PropsRuntime<'settings.section'> & PropsLocale<typeof NS>
 type Kind = 'plugin' | 'skill' | 'mcp'
-type Resource = { id: string; version: string; installedVersion?: string; updateAvailable?: boolean; source?: string; signed?: boolean; restartRequired?: boolean; rollbackSupported?: boolean; enabled?: boolean }
-type CheckResult = { kind: Kind; checkedAt: string; resources: Resource[]; error?: string }
+type Resource = { id: string; version: string; installedVersion?: string; updateAvailable?: boolean; source?: 'profile' | 'bundled' | 'runtime' | 'catalog' | 'removed' | 'disabled'; signed?: boolean; catalogSigned?: boolean; restartRequired?: boolean; rollbackSupported?: boolean; enabled?: boolean }
+type CheckResult = { kind: Kind; checkedAt: string; resources: Resource[]; catalogStatus?: 'checked' | 'unavailable' | 'local'; error?: string }
 type Job = { taskId: string; kind: Kind; id?: string; action: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; retries?: number; error?: string }
 type DesktopResources = NonNullable<NonNullable<Window['zerowallDesktop']>['resources']>
 
@@ -26,7 +26,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
     try {
       const next = await Promise.all((['plugin', 'skill', 'mcp'] as Kind[]).map(item => api.check(item).catch(error => ({ kind: item, checkedAt: new Date().toISOString(), resources: [], error: error instanceof Error ? error.message : t('failed') }))))
       setRows(next)
-      setMessage(next.some(item => item.error) ? t('catalogUnavailable') : t('ready'))
+      setMessage(next.some(item => item.catalogStatus === 'unavailable') ? t('catalogUnavailable') : t('ready'))
     } finally { setBusy(false) }
   }, [api, t])
 
@@ -79,19 +79,20 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
       <button type="button" disabled={busy} onClick={() => void importResource()}>{t('import')}</button>
     </div>
     {message && <p className={css.message} role="status">{message}</p>}
-    {current?.error && <p className={css.warning} role="alert">{t('catalogError')}: {current.error}</p>}
     <div className={css.meta}><span>{t('status')}: {current ? t('ready') : t('unavailable')}</span><span>{t('available')}: {updates.length}</span></div>
     <div className={css.list}>
       {filtered.map(item => <article className={css.row} key={`${item.id}@${item.version}`}>
-        <div className={css.identity}><strong>{item.id}</strong><small>{item.source ?? 'catalog'} · {item.signed ? t('signed') : t('unsigned')} {item.enabled === false ? `· ${t('disabled')}` : ''}</small></div>
-        <span className={css.version}>{item.installedVersion ?? '—'} → {item.version}</span>
+        <div className={css.identity}><strong>{item.id}</strong><small>{t(`source_${item.source ?? 'catalog'}` as 'source_catalog')} · {item.source === 'runtime' ? t('runtimeCore') : item.source === 'bundled' ? t('bundledResource') : item.catalogSigned ? t('signed') : item.source === 'catalog' ? t('unsigned') : t('localResource')} {item.enabled === false ? `· ${t('disabled')}` : ''}</small></div>
+        <span className={css.version}>{item.source === 'runtime' ? t('runtimeCore') : item.updateAvailable ? `${item.installedVersion ?? '—'} → ${item.version}` : item.version}</span>
         <span className={item.updateAvailable ? css.badgeUpdate : css.badge}>{item.updateAvailable ? t('available') : item.source === 'catalog' ? t('notInstalled') : t('installed')}</span>
-        {item.updateAvailable && <button type="button" disabled={busy} onClick={() => void run('update', item)}>{t('update')}</button>}
-        {item.rollbackSupported && item.installedVersion && <button type="button" disabled={busy} onClick={() => void run('rollback', item)}>{t('rollback')}</button>}
-        {kind === 'plugin' && item.source !== 'catalog' && <button type="button" disabled={busy} onClick={() => void run(item.enabled === false ? 'enable' : 'disable', item)}>{item.enabled === false ? t('enable') : t('disable')}</button>}
-        {kind === 'plugin' && item.source !== 'bundled' && <button type="button" disabled={busy} onClick={() => void run('remove', item)}>{t('remove')}</button>}
-        {kind === 'plugin' && item.source === 'catalog' && <button type="button" disabled={busy} onClick={() => void run('install', item)}>{t('install')}</button>}
-        {kind === 'plugin' && <button type="button" disabled={busy} onClick={() => void run('repair', item)}>{t('repair')}</button>}
+        <div className={css.actions}>
+          {item.updateAvailable && item.source !== 'runtime' && <button type="button" disabled={busy} onClick={() => void run('update', item)}>{t('update')}</button>}
+          {item.rollbackSupported && item.installedVersion && item.source !== 'runtime' && <button type="button" disabled={busy} onClick={() => void run('rollback', item)}>{t('rollback')}</button>}
+          {kind === 'plugin' && ['profile', 'bundled', 'disabled', 'removed'].includes(item.source ?? '') && <button type="button" disabled={busy} onClick={() => void run(item.enabled === false ? 'enable' : 'disable', item)}>{item.enabled === false ? t('enable') : t('disable')}</button>}
+          {kind === 'plugin' && item.source === 'profile' && <button type="button" disabled={busy} onClick={() => void run('remove', item)}>{t('remove')}</button>}
+          {kind === 'plugin' && item.source === 'catalog' && <button type="button" disabled={busy} onClick={() => void run('install', item)}>{t('install')}</button>}
+          {kind === 'plugin' && item.source !== 'runtime' && item.source !== 'catalog' && <button type="button" disabled={busy} onClick={() => void run('repair', item)}>{t('repair')}</button>}
+        </div>
       </article>)}
       {filtered.length === 0 && <p className={css.empty}>{t('empty')}</p>}
     </div>

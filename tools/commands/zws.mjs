@@ -15,6 +15,41 @@ const existingRoaming = join(process.env.APPDATA || homedir(), 'zerowall-science
 const home = override ? resolve(override) : existsSync(existingRoaming) ? existingRoaming : join(process.env.LOCALAPPDATA || homedir(), 'zerowall-science')
 const [group, command, ...args] = argv
 
+const HELP = {
+  usage: 'zws <command> [options]',
+  commands: {
+    version: '显示 ZeroWall Science 和 DSH 版本',
+    doctor: '检查 Host、profile、插件兼容性和运行状态',
+    update: '检查桌面更新（不会自动安装）',
+    extensions: '扩展中心状态与 catalog 检查',
+    plugin: 'list/add/remove/update/rollback/repair/enable/disable/check',
+    skill: 'list/import/remove/update/rollback/enable/disable/check',
+    mcp: 'list/add/remove/update/rollback/start/stop/restart/logs/check',
+    env: 'list/set/delete/check（敏感值通过 stdin 提供）',
+    python: 'status/install/update/rollback（按需管理 Python 环境）',
+  },
+  examples: [
+    'zws plugin list',
+    'zws plugin update <id>',
+    'zws skill import <directory>',
+    'zws mcp list',
+    'zws extensions check',
+  ],
+}
+
+function help(scope) {
+  if (!scope || ['help', '--help', '-h'].includes(scope)) return HELP
+  const descriptions = {
+    plugin: 'zws plugin list|add|remove|update|rollback|repair|enable|disable|check <id>',
+    skill: 'zws skill list|import|remove|update|rollback|enable|disable|check <id>',
+    mcp: 'zws mcp list|add|remove|update|rollback|start|stop|restart|logs|check <id>',
+    extensions: 'zws extensions status|check',
+    env: 'zws env list|set|delete|check <name>',
+    python: 'zws python status|install|update|rollback',
+  }
+  return { usage: descriptions[scope] ?? HELP.usage, command: scope, description: HELP.commands[scope] ?? '未知命令' }
+}
+
 async function invoke(operation, args = []) {
   const endpoint = JSON.parse(await readFile(join(home, 'command-endpoint.json'), 'utf8').catch(() => { throw new Error('请先启动 ZeroWall Science，或使用 --user-data 指定正在运行的 profile。') }))
   return new Promise((accept, reject) => {
@@ -38,6 +73,8 @@ async function stdin() {
 }
 
 async function run() {
+  if (['help', '--help', '-h'].includes(group)) return help(command)
+  if (['help', '--help', '-h'].includes(command)) return help(group)
   if (['version', '--version', '-v'].includes(group)) return { applicationVersion: version }
   if (group === 'doctor') {
     const status = await invoke('profile.doctor').then(profile => ({ host: 'ready', ...profile }), () => ({ host: 'unavailable' }))
