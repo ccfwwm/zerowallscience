@@ -7,6 +7,6 @@
 - 增加 profile 迁移，升级旧的 7.5/8.0.x profile 时移除旧审查插件的 bundle、依赖和选择记录。
 - 保留账户、模型、项目、Skills、MCP 和其他插件配置。
 
-## 构建边界
+## 发布状态
 
-本版本只生成本地 Windows x64 候选安装包，不上传七牛云、不更新桌面 latest 指针、不创建 GitHub Release。
+Windows x64 安装包已发布至七牛云 Stable 更新源和 GitHub Release `v8.0.3`，桌面更新指针已指向本版本。
