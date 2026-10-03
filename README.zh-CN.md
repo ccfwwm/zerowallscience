@@ -6,7 +6,8 @@
   <p>
     <a href="README.md">English</a> ·
     <a href="README.zh-CN.md">简体中文</a> ·
-    <a href="docs/project-guide.zh-CN.md">项目开发与发布指南</a>
+    <a href="docs/project-guide.zh-CN.md">项目开发与发布指南</a> ·
+    <a href="docs/codex-development-guide.zh-CN.md">Codex 开发指导</a>
   </p>
 </div>
 
