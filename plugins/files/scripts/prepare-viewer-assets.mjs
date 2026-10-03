@@ -1,6 +1,5 @@
 import { readFile, writeFile, mkdir, cp, readdir } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
-import { contract } from '../../../tools/build/paths.mjs'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 const root = resolve(import.meta.dirname, '..')
@@ -9,7 +8,11 @@ const pdf = dirname(require.resolve('viewer-pdfjs/package.json'))
 const core = dirname(require.resolve('@open-file-viewer/core'))
 const coreRequire = createRequire(require.resolve('@open-file-viewer/core'))
 const leaflet = dirname(coreRequire.resolve('leaflet/package.json'))
-const target = resolve(contract.dev, '@zerowallscience__plugin-files/lib/viewer-assets')
+// The plugin bundler and runtime resolve viewer assets relative to the
+// package's `lib` directory.  `artifacts:links` turns that directory into a
+// junction for formal builds, so writing here still follows the central
+// artifact contract while direct package tests remain self-contained.
+const target = resolve(root, 'lib/viewer-assets')
 await mkdir(resolve(target, 'build'), { recursive: true })
 await cp(resolve(pdf, 'build/pdf.worker.mjs'), resolve(target, 'build/pdf.worker.mjs'))
 for (const name of ['cmaps', 'standard_fonts', 'wasm', 'iccs']) await cp(resolve(pdf, name), resolve(target, name), { recursive: true })

@@ -19,7 +19,6 @@ The 7.4.0 desktop adapts the following pinned plugins. Their original LICENSE fi
 | Source package | Upstream revision | License |
 | --- | --- | --- |
 | `packages/dsh-wechat` | pan17/dsh-wechat `7e3274d1e504dabe56f2873fc15bf7779c985d30` (`v0.9.6`) | MIT |
-| `packages/dsh-auto-review` | PerryLink/dsh-auto-review `70069c4304a381e2b08c88d42b1f8945456aaea7` (`v0.12.10`) | Apache-2.0 |
 | `packages/dsh-file-review` | left0ver/dsh-file-review `856f761a38fb364704a8a9d98d88d50a554f11af` (`v0.8.5`), with ZeroWall Windows compatibility changes | MIT |
 | `packages/dsh-better-sidebar` | omdsh-dev/DSH-better-sidebar `a2751cfbde2dd425b8150737574bc6d1d57f73b8` (`v0.24.1`), with ZeroWall workspace fence | MIT |
 

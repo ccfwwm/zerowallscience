@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "8.0.2",
+  "version": "8.0.3",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",
@@ -25,7 +25,7 @@
     "store:bundle": "pnpm --filter @zerowallscience/research-store run bundle",
     "file-review:bundle": "pnpm --filter dsh-file-review run build",
     "plugins:typert": "node tools/plugins/generate-typert.mjs",
-    "wechat:bundle": "pnpm --filter dsh-wechat run build && pnpm --filter dsh-auto-review run build",
+    "wechat:bundle": "pnpm --filter dsh-wechat run build",
     "genui:bundle": "pnpm --filter @changfenhuang/dsh-genui run build",
     "sidebar:bundle": "pnpm --filter dsh-better-sidebar run build",
     "session-notification:bundle": "pnpm --filter @dingyi222666/dsh-session-notification run bundle",

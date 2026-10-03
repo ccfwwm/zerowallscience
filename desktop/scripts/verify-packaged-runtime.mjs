@@ -67,7 +67,7 @@ if (archiveFiles.some(path => path.includes('node_modules/@fylar/'))) {
   throw new Error('Excluded commercial Fylar Office SDK found in the packaged runtime.')
 }
 if (archiveFiles.some(path => path.startsWith('node_modules/@daweifu/capability-menu/'))) {
-  throw new Error('Removed capability-menu module is still in the packaged runtime.')
+  throw new Error('Retired capability-menu package must not enter the packaged runtime.')
 }
 const claudeCodeRuntimePatterns = [
   /(?:^|\/)claude\.exe$/iu,
@@ -198,8 +198,6 @@ const requiredArchivePaths = [
   'node_modules/dsh-file-review/cordis.patch.yml',
   'node_modules/dsh-wechat/dist/index.js',
   'node_modules/dsh-wechat/dist/client.js',
-  'node_modules/dsh-auto-review/lib/index.js',
-  'node_modules/dsh-auto-review/lib/client.js',
   'node_modules/dsh-free-search/lib/index.js',
   'node_modules/dsh-free-search/lib/client.js',
   'node_modules/dsh-free-search/package.json',
@@ -1000,7 +998,7 @@ async function verifyPluginInventory(url) {
     throw new Error('Retired OpenCode free provider is still present in the running Host inventory.')
   }
   if (entries.some(entry => String(entry?.moduleName).startsWith('@daweifu/capability-menu'))) {
-    throw new Error('Removed capability-menu module is still mounted in the Host.')
+    throw new Error('Retired capability-menu package must not be mounted in the Host.')
   }
   const expected = [
     'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',

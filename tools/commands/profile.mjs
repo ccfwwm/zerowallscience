@@ -6,9 +6,10 @@ import { compareVersions } from './resource-catalog.mjs'
 // Profile architecture migrations are deliberately additive.  A desktop
 // upgrade must be able to introduce a new bundled management surface without
 // rebuilding or replacing the user's selected plugin set.
-const PROFILE_ARCHITECTURE = 4
+const PROFILE_ARCHITECTURE = 5
 const PROFILE_MIGRATIONS = [
   { from: 1, to: 2, add: ['@zerowallscience/plugin-extension-center'] },
+  { from: 4, to: 5, remove: ['dsh-auto-review'] },
 ]
 
 /** Inspect the packages that will actually shadow the bundled defaults. */
@@ -46,7 +47,7 @@ export async function initializeProfile(home, defaults, bundled = []) {
   if (patch === undefined || !patch.trim()) await writeFile(patchFile, '[]\n', { mode: 0o600 })
   const existing = manifest.dsh?.profile?.bundles ?? []
   // 7.5.x profiles predate the architecture marker. Treat an existing
-  // profile without it as architecture 1 so the 8.0.2 migration remains
+  // profile without it as architecture 1 so additive migrations remain
   // additive instead of restoring the complete default list.
   const marker = manifest.zerowall?.pluginArchitecture
   const architecture = Number(marker ?? (existingManifest ? 1 : 0))
@@ -65,12 +66,24 @@ export async function initializeProfile(home, defaults, bundled = []) {
   const domainBundles = existing.filter(id => id.startsWith('@zerowallscience/plugin-') && id !== '@zerowallscience/plugin-extension-center')
   const legacyOverlay = existingManifest && (marker === undefined || (architecture === 2 && domainBundles.length === 0))
   let bundles = existing
+  let dependencies = manifest.dependencies ?? {}
+  let selectionChanged = false
   if (architecture === 0) {
     bundles = [...new Set([...existing, ...defaults])]
   } else if (architecture < PROFILE_ARCHITECTURE) {
     if (legacyOverlay) bundles = [...new Set([...bundles, ...defaults.filter(id => (id.startsWith('@zerowallscience/plugin-') || ['dsh-wechat', '@dingyi222666/dsh-session-notification'].includes(id)) && !removed.has(id) && !disabled.has(id))])]
     for (const migration of PROFILE_MIGRATIONS.filter(item => architecture < item.to)) {
-      bundles = [...new Set([...bundles, ...migration.add.filter(id => defaults.includes(id) && !removed.has(id) && !disabled.has(id))])]
+      bundles = [...new Set([...bundles, ...(migration.add ?? []).filter(id => defaults.includes(id) && !removed.has(id) && !disabled.has(id))])]
+      for (const id of migration.remove ?? []) {
+        bundles = bundles.filter(value => value !== id)
+        if (Object.prototype.hasOwnProperty.call(dependencies, id)) {
+          dependencies = { ...dependencies }
+          delete dependencies[id]
+        }
+        const removedSelection = removed.delete(id)
+        const disabledSelection = disabled.delete(id)
+        if (removedSelection || disabledSelection) selectionChanged = true
+      }
     }
   }
   // Early 8.0 profiles also listed packages already inserted by the desktop
@@ -80,10 +93,17 @@ export async function initializeProfile(home, defaults, bundled = []) {
     const overlay = new Set(bundled.filter(item => item.managed === false && !item.core).map(item => item.id))
     bundles = bundles.filter(id => !overlay.has(id))
   }
-  if (architecture >= PROFILE_ARCHITECTURE && bundles === existing) return
+  if (architecture >= PROFILE_ARCHITECTURE) return
+  manifest.dependencies = dependencies
   manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }
-  manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: PROFILE_ARCHITECTURE }
+  manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: PROFILE_ARCHITECTURE, disabledPlugins: [...disabled].sort() }
   if (legacyOverlay) manifest.zerowall.legacyOverlayMigrated = true
+  if (selectionChanged) {
+    await mkdir(join(home, 'resources/plugins'), { recursive: true })
+    const selectionTemporary = selectionFile + '.' + randomUUID() + '.tmp'
+    await writeFile(selectionTemporary, JSON.stringify({ ...selection, removed: [...removed].sort(), disabled: [...disabled].sort() }, null, 2), { mode: 0o600 })
+    await rename(selectionTemporary, selectionFile)
+  }
   const temporary = file + '.' + randomUUID() + '.tmp'
   await writeFile(temporary, JSON.stringify(manifest, null, 2), { mode: 0o600 })
   await rename(temporary, file)

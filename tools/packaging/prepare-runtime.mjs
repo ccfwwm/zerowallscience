@@ -50,7 +50,6 @@ const zerowallPackageRoots = [
   resolve(root, 'packages/dsh-better-sidebar'),
   resolve(root, 'packages/dsh-wechat'),
   resolve(root, 'packages/dsh-file-review'),
-  resolve(root, 'packages/dsh-auto-review'),
   resolve(root, 'packages/dsh-genui'),
   ...await pluginRoots(resolve(root, 'plugins')),
 ]
@@ -69,7 +68,6 @@ const desktopRuntimeSeeds = [
   'dsh-zotero',
   '@dsh-external/zotero-harvest',
   'dsh-wechat',
-  'dsh-auto-review',
   '@changfenhuang/dsh-genui',
   'dsh-free-search',
   'dsh-dream-skin',
@@ -326,7 +324,7 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
     return
   }
 
-  if (['dsh-file-review', 'dsh-wechat', 'dsh-auto-review', 'dsh-free-search'].includes(manifest.name)) {
+  if (['dsh-file-review', 'dsh-wechat', 'dsh-free-search'].includes(manifest.name)) {
     // These upstream plugins publish compiled lib/dist plus their bundle patch.
     // Keep the package boundary and
     // exclude repository-only tests/docs through the common runtime filter.

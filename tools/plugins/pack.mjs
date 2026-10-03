@@ -16,7 +16,7 @@ for (const version of await readdir(dirname(releaseRoot))) {
 }
 const sources = (await readdir(join(root, 'plugins'))).filter(name => name !== 'wechat').map(name => join(root, 'plugins', name))
 sources.push(join(root, 'store'), join(root, 'packages/integrity-runtime'), join(root, 'packages/dsh-bundle-science'))
-sources.push(...['dsh-wechat', 'dsh-session-notification', 'dsh-auto-review'].map(name => join(root, 'packages', name)))
+sources.push(...['dsh-wechat', 'dsh-session-notification'].map(name => join(root, 'packages', name)))
 // Preserve the tested Office adapter Git pin as an independently signed
 // support tarball; pnpm 11 correctly rejects Git dependencies nested in bundles.
 sources.push(dirname(await realpath(join(root, 'plugins/files/node_modules/dsh-office-tools/package.json'))))

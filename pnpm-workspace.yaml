@@ -4,9 +4,6 @@ packages:
   - plugins/*
   - '!plugins/wechat'
   - packages/*
-  # Removed from the 7.3.0 runtime; keep the source tree for audit/recovery,
-  # but do not install or build the incompatible legacy package.
-  - '!packages/dsh-capability-menu'
   - deepseek-harness
   - deepseek-harness/vendor/*
   - deepseek-harness/packages/*/*

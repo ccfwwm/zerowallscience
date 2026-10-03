@@ -38,7 +38,7 @@ test('migrates an existing profile to the extension center without restoring rem
     await writeFile(file, JSON.stringify(manifest))
     await initializeProfile(home, [extension])
     const migrated = JSON.parse(await readFile(file, 'utf8'))
-    assert.equal(migrated.zerowall.pluginArchitecture, 4)
+    assert.equal(migrated.zerowall.pluginArchitecture, 5)
     assert(migrated.dsh.profile.bundles.includes(extension))
 
     migrated.dsh.profile.bundles = migrated.dsh.profile.bundles.filter(id => id !== extension)
@@ -62,7 +62,7 @@ test('migrates a legacy 7.5 profile without an architecture marker', async () =>
     await writeFile(file, JSON.stringify({ private: true, dsh: { profile: { bundles: [legacy] } } }))
     await initializeProfile(home, [extension])
     const migrated = JSON.parse(await readFile(file, 'utf8'))
-    assert.equal(migrated.zerowall.pluginArchitecture, 4)
+    assert.equal(migrated.zerowall.pluginArchitecture, 5)
     assert.deepEqual(migrated.dsh.profile.bundles, [legacy, extension])
   } finally { await rm(home, { recursive: true, force: true }) }
 })
@@ -109,6 +109,32 @@ test('early modular profiles shed duplicate desktop overlays while preserving pa
     const result = JSON.parse(await readFile(file, 'utf8'))
     assert.deepEqual(result.dsh.profile.bundles, [id, 'third-party-plugin'])
     assert.deepEqual(result.dependencies, manifest.dependencies)
-    assert.equal(result.zerowall.pluginArchitecture, 4)
+    assert.equal(result.zerowall.pluginArchitecture, 5)
+  } finally { await rm(home, { recursive: true, force: true }) }
+})
+
+test('removes the retired third-party auto-review plugin while preserving other profile choices', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-retired-auto-review-'))
+  try {
+    const directory = join(home, 'profiles/web')
+    await mkdir(directory, { recursive: true })
+    await mkdir(join(home, 'resources/plugins'), { recursive: true })
+    const file = join(directory, 'package.json')
+    await writeFile(file, JSON.stringify({
+      private: true,
+      dependencies: { 'dsh-auto-review': 'file:C:/old/dsh-auto-review.tgz', 'third-party-plugin': '1.2.3' },
+      zerowall: { pluginArchitecture: 4, disabledPlugins: ['dsh-auto-review'] },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'dsh-auto-review', 'third-party-plugin'] } },
+    }))
+    await writeFile(join(home, 'resources/plugins/selection.json'), JSON.stringify({ removed: ['dsh-auto-review'], disabled: ['dsh-auto-review'] }))
+    await initializeProfile(home, ['@zerowallscience/plugin-extension-center'])
+    const migrated = JSON.parse(await readFile(file, 'utf8'))
+    assert.equal(migrated.zerowall.pluginArchitecture, 5)
+    assert(!migrated.dsh.profile.bundles.includes('dsh-auto-review'))
+    assert.equal(migrated.dependencies['dsh-auto-review'], undefined)
+    assert(migrated.dsh.profile.bundles.includes('third-party-plugin'))
+    const selection = JSON.parse(await readFile(join(home, 'resources/plugins/selection.json'), 'utf8'))
+    assert(!selection.removed.includes('dsh-auto-review'))
+    assert(!selection.disabled.includes('dsh-auto-review'))
   } finally { await rm(home, { recursive: true, force: true }) }
 })

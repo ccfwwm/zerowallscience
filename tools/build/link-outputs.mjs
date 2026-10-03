@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, readdir, readFile, writeFile, lstat, symlink, realpath, unlink } from 'node:fs/promises'
+import { mkdir, readdir, readFile, writeFile, lstat, symlink, realpath, unlink, rename } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { dirname, join, relative, resolve, isAbsolute } from 'node:path'
 import { root, contract } from './paths.mjs'
 
@@ -9,7 +10,7 @@ const tracked = new Set(execFileSync('git', ['ls-files', '--recurse-submodules']
 async function walk(directory) {
   const result = []
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (!entry.isDirectory() || ['node_modules', '.git', 'lib', 'dist', 'artifacts', 'out'].includes(entry.name)) continue
+    if (!entry.isDirectory() || ['node_modules', '.git', '.build', 'lib', 'dist', 'artifacts', 'out'].includes(entry.name)) continue
     result.push(...await walk(join(directory, entry.name)))
   }
   try { result.push({ directory, manifest: JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) }) } catch (e) { if (e.code !== 'ENOENT') throw e }
@@ -46,7 +47,6 @@ for (const { directory, manifest } of await walk(root)) {
     }
     await mirrorDependencies(dependencyRoot, dependencyLink)
   }
-  if (manifest.name === '@daweifu/capability-menu') continue
   const outputs = manifest.name === '@zerowallscience/desktop' ? ['out'] : ['lib', ...(manifest.name === '@deepseek-ai/dsh-web-frontend' || /(?:vite|build|bundle)/.test(manifest.scripts?.build ?? '') ? ['dist'] : [])]
   for (const output of outputs) {
     const link = join(directory, output)
@@ -56,7 +56,22 @@ for (const { directory, manifest } of await walk(root)) {
     await mkdir(target, { recursive: true })
     const existing = await lstat(link).catch(e => { if (e.code !== 'ENOENT') throw e })
     if (existing) {
-      if (!existing.isSymbolicLink() || await realpath(link) !== await realpath(target)) throw new Error(`Output ${link} already exists outside the artifact contract; preserve it and explicitly relocate before building.`)
+      if (existing.isSymbolicLink()) {
+        if (await realpath(link) !== await realpath(target)) throw new Error(`Output ${link} already exists outside the artifact contract; preserve it and explicitly relocate before building.`)
+      } else {
+        // Migrate an untracked legacy output in place.  The bytes remain
+        // recoverable under the artifact cache; future builds write only
+        // through the compatibility junction into artifacts/dev.
+        const targetState = await lstat(target).catch(e => { if (e.code !== 'ENOENT') throw e })
+        if (targetState) {
+          const backup = join(contract.cache, 'legacy-outputs', manifest.name.replaceAll('/', '__'), output, `${Date.now()}-${randomUUID().slice(0, 8)}`)
+          await mkdir(dirname(backup), { recursive: true })
+          await rename(target, backup)
+        }
+        await mkdir(dirname(target), { recursive: true })
+        await rename(link, target)
+        await symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir')
+      }
     } else await symlink(target, link, process.platform === 'win32' ? 'junction' : 'dir')
     count++
   }

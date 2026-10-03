@@ -1,5 +1,5 @@
 {
-  "version": "8.0.2",
+  "version": "8.0.3",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
@@ -34,13 +34,6 @@
     "version": "0.9.6",
     "license": "MIT",
     "source": "packages/dsh-wechat"
-  },
-  "autoReview": {
-    "repository": "https://github.com/PerryLink/dsh-auto-review.git",
-    "commit": "70069c4304a381e2b08c88d42b1f8945456aaea7",
-    "version": "0.12.10",
-    "license": "Apache-2.0",
-    "source": "packages/dsh-auto-review"
   },
   "genui": {
     "repository": "https://github.com/omdsh-dev/dsh-genui.git",

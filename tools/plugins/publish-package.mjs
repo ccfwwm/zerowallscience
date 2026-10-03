@@ -2,6 +2,48 @@ import { cp, mkdir, readFile, writeFile, access } from 'node:fs/promises'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { historicalPackage } from './package-history.mjs'
+import { root } from '../build/paths.mjs'
+
+const workspaceManifestCache = new Map()
+
+/**
+ * Resolve a workspace dependency manifest without relying on the temporary
+ * publish links created by `artifacts:links`. Those links are intentionally
+ * created lazily during a build, so a package can be packed before its
+ * dependency has received a publish staging directory.
+ */
+async function workspaceDependencyManifest(source, name) {
+  const direct = join(source, 'node_modules', name, 'package.json')
+  try {
+    return JSON.parse(await readFile(direct, 'utf8'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+
+  if (workspaceManifestCache.has(name)) return workspaceManifestCache.get(name)
+  const candidates = []
+  if (name.startsWith('@zerowallscience/plugin-')) {
+    candidates.push(join(root, 'plugins', name.slice('@zerowallscience/plugin-'.length), 'package.json'))
+  } else if (name === '@zerowallscience/research-store') {
+    candidates.push(join(root, 'store', 'package.json'))
+  } else if (name === '@zerowallscience/integrity-runtime') {
+    candidates.push(join(root, 'packages', 'integrity-runtime', 'package.json'))
+  } else if (name.startsWith('@zerowallscience/')) {
+    candidates.push(join(root, 'packages', name.slice('@zerowallscience/'.length), 'package.json'))
+  } else if (name.startsWith('dsh-')) {
+    candidates.push(join(root, 'packages', name, 'package.json'))
+  }
+  for (const candidate of candidates) {
+    try {
+      const manifest = JSON.parse(await readFile(candidate, 'utf8'))
+      workspaceManifestCache.set(name, manifest)
+      return manifest
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+  }
+  throw new Error(`Unable to resolve workspace dependency ${name} for ${source}; publish staging and source manifest are both missing`)
+}
 
 /** Dereference build output links into a publishable physical package. */
 export async function preparePublishPackage(source, staging) {
@@ -23,7 +65,7 @@ export async function preparePublishPackage(source, staging) {
   for (const section of ['dependencies', 'peerDependencies']) {
     for (const [name, range] of Object.entries(publish[section] ?? {})) {
       if (!/^(?:workspace:|github:|git\+|git:)/.test(range)) continue
-      const dependency = JSON.parse(await readFile(join(source, 'node_modules', name, 'package.json'), 'utf8'))
+      const dependency = await workspaceDependencyManifest(source, name)
       // An unchanged component keeps its published dependency contract even
       // when a newer compatible workspace dependency is being bundled today.
       publish[section][name] = /^workspace:/.test(range) && previous?.[section]?.[name]

@@ -14,9 +14,6 @@ const runtimePackages = new Set([
   ...Object.keys(baseManifest.dependencies ?? {}),
   ...Object.keys(baseManifest.optionalDependencies ?? {}),
 ])
-// capability-menu was intentionally removed from 7.3.0. Keep this explicit
-// deny-list even if an old workspace package or transitive manifest remains.
-runtimePackages.delete('@daweifu/capability-menu')
 const remotePackages = []
 
 for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, { withFileTypes: true })) {
@@ -102,9 +99,6 @@ async function hasRemoteArtifact(packageRoot) {
 }
 
 // Each package owns its remote; no aggregate Client import is emitted.
-if (remotePackages.includes('@daweifu/capability-menu')) {
-  throw new Error('Disabled capability-menu unexpectedly entered the runtime remote assembly.')
-}
 console.log(`Generated Typert contracts for ${remotePackages.length} ZeroWall remote plugins.`)
 
 async function removeTypertArtifacts(packageRoot) {
