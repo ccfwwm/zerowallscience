@@ -23,6 +23,10 @@ for (const id of await readdir(join(root, 'plugins'))) {
   for (const entry of [manifest.main, descriptor.host, descriptor.client, descriptor.remote, 'dsh.bundle.patch.yml'].filter(Boolean)) {
     assert(entries.includes('package/' + entry.replace(/^\.\//, '')), `${source.name}: missing ${entry}`)
   }
+  if (descriptor.client) {
+    const clientSource = execFileSync('tar', ['-xOf', archive, `package/${descriptor.client.replace(/^\.\//, '')}`], { encoding: 'utf8', maxBuffer: 128 * 1024 ** 2 })
+    assert(!/require\(["']@zerowallscience\/plugin-base\/client-helpers["']\)/u.test(clientSource), `${source.name}: client helper escaped into the DSH module table`)
+  }
   for (const section of ['dependencies', 'peerDependencies']) {
     assert(!/workspace:|github:|git\+|git:/.test(JSON.stringify(manifest[section] ?? {})), `${source.name}: unpublished dependency`)
   }

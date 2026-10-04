@@ -3,7 +3,7 @@ import { releaseRoot } from '../build/paths.mjs'
 import { createHash, createPrivateKey, createPublicKey } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { applySourceDistributions, normalizePackageName, parseLockedPackages, scienceManifestDocument, signDocument } from './python-layer-split.mjs'
+import { applySourceDistributions, coreManifestDocument, normalizePackageName, parseDirectRequirements, parseLockedPackages, partitionLock, scienceManifestDocument, signDocument } from './python-layer-split.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(releaseRoot, 'python-dependencies'))
@@ -44,10 +44,19 @@ const sourceLock = await readFile(join(root, 'resources/python/requirements-rese
 const sourceDistributions = JSON.parse(await readFile(join(root, 'resources/python/source-distributions.json'), 'utf8'))
 const installPackages = applySourceDistributions(packages, sourceLock, sourceDistributions)
 const applicationVersion = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
+const baseRequirements = await readFile(join(root, 'resources', 'python', 'requirements-base.txt'), 'utf8')
+const layerPolicy = JSON.parse(await readFile(join(root, 'resources', 'python', 'science-layer-policy.json'), 'utf8'))
+// This standalone builder intentionally does not depend on a staged Python
+// interpreter. The checked-in policy names the offline bootstrap roots, so the
+// default dependency manifest can never silently grow to the full research lock.
+const split = partitionLock({ packages: installPackages, edges: new Map(), roots: [...parseDirectRequirements(baseRequirements), ...(layerPolicy.baseRoots ?? [])] })
+if (split.rootsNotInLock.length > 0) throw new Error(`Base requirements are not in the hashed lock: ${split.rootsNotInLock.join(', ')}`)
+if (split.base.length === 0) throw new Error('Core Python manifest is empty.')
 // Tsinghua, not Aliyun: measured across all 521 pins Tsinghua resolves 520 and
 // Aliyun 517, whose shortfall is CDN objects served truncated rather than
 // versions it lacks. The client still lets the user switch mirror at runtime.
-const document = scienceManifestDocument({ environmentVersion, scienceRevision: revision, pythonVersion, applicationVersion, index: { indexUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple', trustedHost: 'pypi.tuna.tsinghua.edu.cn' }, packages: [...installPackages.values()], keyId: 'stable-3' })
+const index = { indexUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple', trustedHost: 'pypi.tuna.tsinghua.edu.cn' }
+const document = scienceManifestDocument({ environmentVersion, scienceRevision: revision, pythonVersion, applicationVersion, index, packages: split.science, keyId: 'stable-3' })
 // Packages without a digest keep none: the client resolves their version from
 // the index above rather than verifying bytes the mirror is free to re-publish.
 document.packages = document.packages.map(pkg => {
@@ -61,10 +70,13 @@ const bytes = Buffer.from(`${JSON.stringify(document, null, 2)}\n`)
 await mkdir(output, { recursive: true })
 await writeFile(join(output, `manifest-${revision}.json`), bytes)
 await writeFile(join(output, 'latest.json'), bytes)
-// Offline bootstrap metadata: shipped in desktop/resources by the normal
-// resource copier; all scientific wheels are installed from this required
-// manifest into the single shared Python runtime after bootstrap.
 await writeFile(join(root, 'resources', 'python', 'dependency-manifest.json'), bytes)
-const receipt = { runtimeId: document.runtimeId, revision, environmentVersion, pythonVersion: document.pythonVersion, packageCount: document.packages.length, capabilitiesCount: capabilities.size, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), signatureKey: document.signature.keyId, localOnly: true }
+const core = coreManifestDocument({ environmentVersion, revision: `${revision}-core`, pythonVersion, applicationVersion, index, packages: split.base, keyId: 'stable-3' })
+signDocument(core, privateKey, publicKey)
+const coreBytes = Buffer.from(`${JSON.stringify(core, null, 2)}\n`)
+await writeFile(join(output, `core-${revision}.json`), coreBytes)
+await writeFile(join(output, 'core.json'), coreBytes)
+await writeFile(join(root, 'resources', 'python', 'core-dependency-manifest.json'), coreBytes)
+const receipt = { runtimeId: document.runtimeId, revision, environmentVersion, pythonVersion: document.pythonVersion, packageCount: document.packages.length, corePackageCount: core.packages.length, capabilitiesCount: capabilities.size, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), coreSha256: createHash('sha256').update(coreBytes).digest('hex'), signatureKey: document.signature.keyId, localOnly: true, layers: ['core', 'science', 'capability'] }
 await writeFile(join(output, 'build-receipt.json'), `${JSON.stringify(receipt, null, 2)}\n`)
 console.log(JSON.stringify(receipt, null, 2))

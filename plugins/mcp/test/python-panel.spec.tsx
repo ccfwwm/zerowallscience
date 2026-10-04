@@ -296,9 +296,9 @@ describe('Python dependency panel', () => {
     window.zerowallDesktop = { getMcpPythonInfo: async () => info('gen-a', 1), pythonEnvironment: execute } as any
     render(<PythonEnvironmentPanel t={zhT} />)
     openAdvanced()
-    await screen.findByText('待同步依赖：1')
+    await screen.findAllByText('科研层待安装：1')
     expect(screen.queryByText('清单版本: 2026-09-23.2')).toBeNull()
-    expect(screen.getByText('待同步依赖：1')).toBeTruthy()
+    expect(screen.getAllByText('科研层待安装：1').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('操作记录 · 2')).toBeTruthy()
     expect(screen.getByText('Hash mismatch')).toBeTruthy()
     expect(execute.mock.calls.every(([request]) => ['list_packages', 'configure', 'status', 'diagnose'].includes(request.action))).toBe(true)

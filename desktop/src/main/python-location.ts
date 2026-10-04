@@ -57,26 +57,10 @@ export async function resolvePythonLocation(options: PythonLocationOptions): Pro
   // current runtime.
   let configured = await readLocation(locationPath)
 
-  // A per-user NSIS installation is writable and keeps the bundled runtime
-  // beside the application.  Prefer that location on a fresh install so the
-  // first run does not depend on an AppData\Roaming profile.  Machine-wide
-  // installs normally live under Program Files and fail the same real write
-  // probe; those fall back to LocalAppData without blocking startup.
+  // The managed interpreter is always user data. Keeping it under LocalAppData
+  // prevents an installer upgrade, an uninstall, or a Program Files ACL from
+  // changing the runtime path and makes the path stable across desktop builds.
   let candidate = defaultRuntimeRoot
-  // Probe the packaged install location up front. This is the fresh/default
-  // target even when a previously selected path is now stale: a disconnected
-  // drive or removed directory must not force the next launch back into the
-  // old Roaming layout. A valid user-selected path still wins below.
-  if (options.applicationInstallRoot) {
-    const installRuntimeRoot = join(options.applicationInstallRoot, 'Python')
-    try {
-      await assertWritablePythonRuntimePath(installRuntimeRoot, options.applicationInstallRoot)
-      candidate = resolve(installRuntimeRoot)
-    } catch {
-      // LocalAppData is the safe default for a non-writable installation
-      // directory.  The selected path remains changeable from the panel.
-    }
-  }
   const freshDefaultRuntimeRoot = candidate
   let replacePointer = false
   if (configured) {

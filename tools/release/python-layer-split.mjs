@@ -130,7 +130,7 @@ export function applySourceDistributions(packages, sourceLock, sources) {
  * artifacts from `index`. A digest is emitted only where one is genuinely
  * required, i.e. source distributions that must be fetched and built.
  */
-export function scienceManifestDocument({ environmentVersion, scienceRevision, pythonVersion, index, basePackageCount, packages, keyId, generatedAt = new Date().toISOString(), applicationVersion = environmentVersion }) {
+export function scienceManifestDocument({ environmentVersion, scienceRevision, pythonVersion, index, basePackageCount, packages, keyId, generatedAt = new Date().toISOString(), applicationVersion = environmentVersion, layer = 'science', capabilityId }) {
   return {
     schema: 3,
     kind: 'zerowall-science-python',
@@ -140,11 +140,33 @@ export function scienceManifestDocument({ environmentVersion, scienceRevision, p
     environmentVersion,
     revision: String(scienceRevision).startsWith(`${environmentVersion}-`) ? String(scienceRevision) : `${environmentVersion}-r${scienceRevision}`,
     pythonVersion,
+    layer,
+    ...(capabilityId ? { capabilityId } : {}),
     createdAt: generatedAt,
     index: { indexUrl: index.indexUrl, ...(index.trustedHost ? { trustedHost: index.trustedHost } : {}) },
     packages: packages.map(pkg => pkg.source === 'sdist'
       ? { name: pkg.name, version: pkg.version, sha256: pkg.sha256, required: true, capabilities: [], source: 'sdist', filename: pkg.filename }
       : { name: pkg.name, version: pkg.version, required: true, capabilities: [] }),
+    compatibility: { minApplicationVersion: applicationVersion },
+    signature: { algorithm: 'ed25519', keyId, value: '' },
+  }
+}
+
+/** Build the small signed manifest for packages shipped by the bootstrap layer. */
+export function coreManifestDocument({ environmentVersion, revision, pythonVersion, index, packages, keyId, generatedAt = new Date().toISOString(), applicationVersion = environmentVersion }) {
+  return {
+    schema: 3,
+    kind: 'zerowall-science-python',
+    applicationVersion,
+    runtimeId: 'zerowall-science-python',
+    platform: 'win32-x64',
+    environmentVersion,
+    revision: String(revision).startsWith(`${environmentVersion}-`) ? String(revision) : `${environmentVersion}-${revision}`,
+    pythonVersion,
+    layer: 'core',
+    createdAt: generatedAt,
+    index: { indexUrl: index.indexUrl, ...(index.trustedHost ? { trustedHost: index.trustedHost } : {}) },
+    packages: packages.map(pkg => ({ name: pkg.name, version: pkg.version, ...(pkg.sha256 ? { sha256: pkg.sha256 } : {}), required: true, capabilities: ['core'] })),
     compatibility: { minApplicationVersion: applicationVersion },
     signature: { algorithm: 'ed25519', keyId, value: '' },
   }

@@ -15,15 +15,15 @@ describe('shared Python location', () => {
     expect(result.managementRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'zerowall-python'))
   })
 
-  it('prefers a writable per-user installation directory on a fresh packaged launch', async () => {
+  it('keeps a fresh packaged launch in LocalAppData even when the install directory is writable', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
     const install = join(root, 'install')
     const result = await resolvePythonLocation({
       localAppDataPath: join(root, 'Local'),
       applicationInstallRoot: install,
     })
-    expect(result.runtimeRoot).toBe(join(install, 'Python'))
-    expect(result.managementRoot).toBe(join(install, 'zerowall-python'))
+    expect(result.runtimeRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python'))
+    expect(result.managementRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'zerowall-python'))
     await expect(lstat(result.runtimeRoot)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
@@ -47,19 +47,19 @@ describe('shared Python location', () => {
     await writeFile(location, JSON.stringify({ runtimeRoot: oldPython }))
     const install = join(root, 'install')
     const result = await resolvePythonLocation({ localAppDataPath: join(root, 'Local'), applicationInstallRoot: install })
-    expect(result.runtimeRoot).toBe(join(install, 'Python'))
+    expect(result.runtimeRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python'))
     await expect(readFile(result.locationPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     expect(JSON.parse(await readFile(location, 'utf8'))).toEqual({ runtimeRoot: oldPython })
   })
 
-  it('replaces a stale local pointer to the old Roaming default with the writable install default', async () => {
+  it('replaces a stale local pointer to the old Roaming default with the LocalAppData default', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
     const local = join(root, 'Local'); const oldRoot = join(root, 'Roaming', 'zerowall-science')
     await mkdir(join(local, 'ZeroWall Science'), { recursive: true })
     await writeFile(join(local, 'ZeroWall Science', 'python-location.json'), JSON.stringify({ runtimeRoot: join(oldRoot, 'Python') }))
     const install = join(root, 'install')
     const result = await resolvePythonLocation({ localAppDataPath: local, applicationInstallRoot: install, legacyRoamingRoots: [oldRoot] })
-    expect(result.runtimeRoot).toBe(join(install, 'Python'))
+    expect(result.runtimeRoot).toBe(join(local, 'ZeroWall Science', 'Python'))
   })
 
   it('accepts a writable application install directory and data directory', async () => {
@@ -90,7 +90,7 @@ describe('shared Python location', () => {
       applicationInstallRoot: app,
     })
 
-    expect(result.runtimeRoot).toBe(join(app, 'Python'))
+    expect(result.runtimeRoot).toBe(join(local, 'ZeroWall Science', 'Python'))
     expect(JSON.parse(await readFile(join(local, 'ZeroWall Science', 'python-location.json'), 'utf8'))).toEqual({ runtimeRoot: result.runtimeRoot })
   })
 

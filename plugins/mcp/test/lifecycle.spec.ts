@@ -222,6 +222,53 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   }, 30_000)
 
+  it('reports RMCP credential and discovery states without confusing them with zero tools', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-rmcp-discovery-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    process.env.DSH_HOME = join(root, 'harness')
+
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      const seeded = ctx.zerowallProjects.createMcpServer({
+        name: 'RMCP fixture', serverName: 'rmcp', transport: 'stdio', enabled: false,
+        command: process.execPath, args: ['-e', 'process.stdin.resume()'], cwd: root,
+      })
+      await ctx.plugin(ZeroWallMcpService)
+
+      ctx.zerowallProjects.updateMcpServer(seeded.id, { enabled: true })
+      const missing = await ctx.zerowallMcp.reload(seeded.id)
+      expect(missing.runtimeState).toBe('waiting-for-credentials')
+      expect(missing.missingEnvironmentVariables).toEqual(['R_PLATFORM_MCP_AUTHORIZATION'])
+      expect(missing.tools).toEqual([])
+
+      process.env.R_PLATFORM_MCP_AUTHORIZATION = 'fixture-token'
+      const mode = join(root, 'rmcp-mode.txt')
+      writeFileSync(mode, 'zero')
+      const launcher = join(root, 'rmcp-fixture.mjs')
+      writeFileSync(launcher, `import { readFileSync } from 'node:fs'; import { createInterface } from 'node:readline'; const mode=${JSON.stringify(mode)}; createInterface({input:process.stdin}).on('line',line=>{let req;try{req=JSON.parse(line)}catch{return}if(req.id===undefined)return;let result={};if(req.method==='initialize')result={protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'rmcp-fixture',version:'1'}};else if(req.method==='tools/list')result={tools:readFileSync(mode,'utf8').trim()==='one'?[{name:'echo',description:'fixture',inputSchema:{type:'object',properties:{}}}]:[]};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result})+'\\n')});`)
+      ctx.zerowallProjects.updateMcpServer(seeded.id, { command: process.execPath, args: [launcher] })
+      const zero = await ctx.zerowallMcp.reload(seeded.id)
+      expect(zero.runtimeState, zero.runtimeError).toBe('active-with-zero-tools')
+      expect(zero.toolDiscoveryState).toBe('complete')
+      expect(zero.lastSuccessfulToolCount).toBe(0)
+      expect(zero.tools).toEqual([])
+
+      writeFileSync(mode, 'one')
+      const reloaded = await ctx.zerowallMcp.reload(zero.id)
+      expect(reloaded.runtimeState, reloaded.runtimeError).toBe('active')
+      expect(reloaded.toolDiscoveryState).toBe('complete')
+      expect(reloaded.tools).toEqual(['mcp__rmcp__echo'])
+      expect(ctx.tools.schemas().filter(tool => tool.name === 'mcp__rmcp__echo')).toHaveLength(1)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
   it('starts enabled managed servers once their environment becomes ready and polls the compact pointer every second', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-refresh-'))
     const environmentStore = join(root, 'environment-store')

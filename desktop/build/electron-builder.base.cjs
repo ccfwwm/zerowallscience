@@ -67,6 +67,7 @@ const common = {
   extraResources: [
     { from: '../resources/biogenie', to: 'biogenie', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
     { from: '../resources/python/dependency-manifest.json', to: 'python/dependency-manifest.json' },
+    { from: '../resources/python/core-dependency-manifest.json', to: 'python/core-dependency-manifest.json' },
     // When the release job prepared the signed bootstrap, ship it in the
     // installer under the stable names consumed by the desktop host. This
     // makes first-run recovery independent of a network feed. Clean source

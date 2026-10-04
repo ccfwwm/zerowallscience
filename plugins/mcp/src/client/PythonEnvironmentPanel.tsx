@@ -64,7 +64,8 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     // A path change is applied by the next desktop restart. Until then the
     // worker and inventory APIs still report the old active root; accepting
     // that value here would immediately hide the path the user just selected.
-    if (!restartRequiredRef.current && typeof next.runtimeRoot === 'string') setConfiguredPythonPath(next.runtimeRoot)
+    const stablePath = next.runtimeRoot ?? next.status?.python?.runtimeRoot ?? next.inventory?.runtimeRoot
+    if (!restartRequiredRef.current && typeof stablePath === 'string') setConfiguredPythonPath(stablePath)
     setDependencies(next.dependencies)
     setEvents((next.events ?? []).filter(event => !['status', 'list_packages'].includes(event.action)))
   }, [])
@@ -125,7 +126,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     const expected = active.current
     const id = ++request.current
     if (!name && callEnvironment) {
-      const value = await callEnvironment({ action: 'check_manifest', requestId: crypto.randomUUID() })
+      const value = await callEnvironment({ action: 'check_manifest', layer: 'science', requestId: crypto.randomUUID() })
       if (value.status) setStatus(value.status)
       setFeedback(t('python.shared.manifestChecked'))
       return
@@ -163,7 +164,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     let result: PythonEnvironmentResponse
     const requestId = crypto.randomUUID()
     setFeedback(t('python.manager.queued'))
-    try { result = await callEnvironment({ action: 'sync', requestId, confirm: true }) }
+    try { result = await callEnvironment({ action: 'sync', layer: 'science', requestId, confirm: true }) }
     catch (error) { setFeedback(t('python.shared.installFailureSafety', { reason: error instanceof Error ? error.message : String(error) })); return }
     if (!result) { setFeedback(t('python.unavailable')); return }
     if (result.queued) setSyncRequestId(requestId)

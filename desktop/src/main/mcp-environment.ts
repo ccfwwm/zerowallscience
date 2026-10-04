@@ -210,7 +210,8 @@ export class McpEnvironmentController {
 
   async pythonInfo(query = ''): Promise<McpPythonInfo> {
     const current = await readCurrent(this.options.root)
-    if (!current?.root || current.health !== 'ready') return { ready: false, packages: [], message: 'ZeroWall Python 尚未就绪。' }
+    const stableRuntimeRoot = join(dirname(resolve(this.options.root)), 'Python')
+    if (!current?.root || current.health !== 'ready') return { ready: false, runtimeRoot: stableRuntimeRoot, packages: [], message: 'ZeroWall Python 尚未就绪。' }
     try {
       const installedManifest = await this.readInstalledManifest(current.root)
       const isProductPythonRoot = !this.options.generationMode && basename(this.options.root).toLowerCase() === 'zerowall-python'

@@ -11,7 +11,7 @@ import { publicCAFile } from './python-pip.js'
 import { assertWritablePythonRuntimePath, normalizePythonRuntimePath } from './python-location.js'
 import type { PythonUpdaterService } from './python-updater-service.js'
 import { parsePythonDependencyManifest } from './python-dependency-manifest.js'
-import type { McpEnvironmentStatus } from '../shared/contracts.js'
+import type { McpEnvironmentStatus, PythonDependencyLayer } from '../shared/contracts.js'
 import { MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 
 const execute = promisify(execFile)
@@ -20,6 +20,8 @@ export { normalizePythonRuntimePath } from './python-location.js'
 export interface PythonEnvironmentRequest {
   action: 'status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'
   requestId: string
+  layer?: PythonDependencyLayer
+  capabilityId?: string
   planId?: string
   manifestRevision?: string
   mirrorUrl?: string
@@ -30,8 +32,8 @@ export interface PythonEnvironmentRequest {
 }
 interface Settings { revision: number; mirrorUrl: string }
 interface SyncService {
-  checkManifest(): Promise<unknown>
-  previewSync(): Promise<unknown>
+  checkManifest(layer?: PythonDependencyLayer, capabilityId?: string): Promise<unknown>
+  previewSync(layer?: PythonDependencyLayer, capabilityId?: string): Promise<unknown>
   applySync(planId: string, revision: string, confirm: boolean): Promise<unknown>
 }
 interface ManifestSummary { revision: string; changes: Array<{ name: string; from?: string; to: string }>; packageCount: number }
@@ -240,7 +242,8 @@ export class PythonEnvironmentApi {
           && (resolve(runtime.rootPath) === resolve(configuredRuntimeRoot) || (current.generation === true && typeof current.root === 'string' && resolve(runtime.rootPath) === resolve(current.root, 'Python') && !relative(join(this.root, 'slots'), current.root).startsWith('..')))
           ? runtime
           : undefined
-        result = { status: this.updater.current(), runtime: activeRuntime, runtimeRoot: configuredRuntimeRoot, dependencies: await readOptional(join(this.root, 'dependency-sync', 'status.json')), events: await this.events() }; break
+        const dependencyStatus = await readOptional(join(this.root, 'dependency-sync', 'status.json'))
+        result = { status: this.updater.current(), runtime: activeRuntime, runtimeRoot: configuredRuntimeRoot, layers: { bootstrap: activeRuntime ? 'ready' : 'missing', core: activeRuntime ? 'ready' : 'missing', science: dependencyStatus?.scienceInstalled ? 'installed' : dependencyStatus?.resourceAvailability?.available === false ? 'error' : dependencyStatus ? 'available' : 'not-installed' }, resourceAvailability: dependencyStatus?.resourceAvailability, lastSyncError: dependencyStatus?.lastSyncError, dependencies: dependencyStatus, events: await this.events() }; break
       }
       case 'list_packages': {
         // Opening Settings and refreshing inventory are read-only. A thin
@@ -254,19 +257,21 @@ export class PythonEnvironmentApi {
         // when the signed manifest actually names one for this version.
         result = { inventory: { ...inventory, packages: inventory.packages.map(pkg => { const locked = packages.get(normalize(pkg.name)); return { ...pkg, capabilities: locked?.capabilities ?? [], ...(locked?.version === pkg.version && locked.sha256 ? { sha256: locked.sha256 } : {}) } }) } }; break
       }
-      case 'check_manifest': await this.ensureRuntimeReady(); result = { manifest: await this.sync.checkManifest() }; break
-      case 'preview_sync': await this.ensureRuntimeReady(); result = { plan: await this.sync.previewSync() }; break
+      case 'check_manifest': await this.ensureRuntimeReady(); result = { manifest: await this.sync.checkManifest(input.layer ?? 'science', input.capabilityId) }; break
+      case 'preview_sync': await this.ensureRuntimeReady(); result = { plan: await this.sync.previewSync(input.layer ?? 'science', input.capabilityId) }; break
       case 'sync': {
         // One-click synchronization runs after its durable queue receipt is
         // returned, so manifest resolution cannot make the UI appear unresponsive.
         if (input.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
         await this.ensureRuntimeReady()
-        const changed = await this.sync.checkManifest() as ManifestSummary | undefined
-        const plan = await this.sync.previewSync() as { planId: string; changes: Array<{ name: string; from?: string; to: string }>; error?: string; manifestRevision: string }
+        const layer = input.layer ?? 'science'
+        if (layer !== 'science' && layer !== 'capability') throw new Error('基础运行层由签名 Python runtime 提供，无需通过科研依赖清单同步。')
+        const changed = await this.sync.checkManifest(layer, input.capabilityId) as ManifestSummary | undefined
+        const plan = await this.sync.previewSync(layer, input.capabilityId) as { planId: string; changes: Array<{ name: string; from?: string; to: string }>; error?: string; manifestRevision: string }
         if (plan.error) throw new Error(`依赖清单已改变，无法同步：${plan.error}`)
         if (!plan.changes.length) { result = { upToDate: true, manifestRevision: plan.manifestRevision, changes: [] }; break }
         const task = await this.sync.applySync(plan.planId, plan.manifestRevision, true) as Record<string, unknown>
-        result = { ...task, manifestRevision: plan.manifestRevision, changes: plan.changes, previousRevision: changed?.revision }
+        result = { ...task, layer, capabilityId: input.capabilityId, manifestRevision: plan.manifestRevision, changes: plan.changes, previousRevision: changed?.revision }
         break
       }
       case 'apply_sync': {

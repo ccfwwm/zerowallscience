@@ -17,6 +17,10 @@ await access(join(root, `docs/release-notes-${applicationVersion}.md`))
 const python = await document(join(root, 'resources/python/dependency-manifest.json'))
 equal(python.applicationVersion, applicationVersion, 'Python manifest applicationVersion')
 equal(python.compatibility.minApplicationVersion, applicationVersion, 'Python minimum desktop')
+const dshContract = await document(join(root, 'config/deepseek-harness/upstream.json'))
+if (typeof dshContract.commit !== 'string' || dshContract.commit.length !== 40) {
+  throw new Error(`DSH upstream contract has an invalid commit: ${dshContract.commit ?? '(missing)'}`)
+}
 for (const name of await readdir(join(root, 'plugins'))) {
   // Retired adapter source remains for historical compatibility. The active
   // WeChat bundle is packages/dsh-wechat with its own upstream version.
@@ -32,7 +36,7 @@ const strict = process.argv.includes('--artifacts')
 const receipt = await document(join(contract.stage, 'dsh/build-receipt.json'), strict)
 if (receipt) {
   equal(receipt.applicationVersion, applicationVersion, 'DSH build receipt')
-  equal(receipt.commit, '93bacb7e30c888cc01a1322245a33ff3be9ff2b3', 'DSH build commit')
+  equal(receipt.commit, dshContract.commit, 'DSH build commit')
 }
 if (strict) {
   const metadata = await document(join(contract.packages, `zerowall-science-${applicationVersion}-latest.json`))
