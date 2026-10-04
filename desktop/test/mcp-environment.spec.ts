@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import JSZip from 'jszip'
-import { canonicalManifest, extractZipInWorker, mcpEnvironmentDiagnostic, McpEnvironmentController, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
+import { canonicalManifest, extractZipInWorker, mcpEnvironmentDiagnostic, McpEnvironmentController, pythonCoreRequirements, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
 
 const roots: string[] = []
 const keys = generateKeyPairSync('ed25519')
@@ -62,6 +62,56 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('checks an old pip-only generation against the signed desktop core without downgrading newer generations', () => {
+    const installed = signedSharedManifest()
+    installed.dependencies = { corePackages: [{ name: 'pip', requiredVersion: '25.0' }] }
+    const bundled = signedSharedManifest()
+    bundled.dependencies = { corePackages: [{ name: 'pip', requiredVersion: '25.0' }, { name: 'mcp', requiredVersion: '1.13.1' }] }
+    bundled.signature.value = sign(null, canonicalManifest(bundled), keys.privateKey).toString('base64')
+    const publicKey = keys.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    expect([...pythonCoreRequirements(installed, bundled, publicKey)]).toEqual([['pip', '25.0'], ['mcp', '1.13.1']])
+    installed.contentRevision = 2
+    installed.dependencies.corePackages.push({ name: 'mcp', requiredVersion: '1.14.0' })
+    expect(pythonCoreRequirements(installed, bundled, publicKey).get('mcp')).toBe('1.14.0')
+    bundled.dependencies.corePackages[1]!.requiredVersion = '0.0.0'
+    expect(() => pythonCoreRequirements(installed, bundled, publicKey)).toThrow('signature is invalid')
+  })
+
+  it('repairs an old pip-only generation explicitly using the bundled archive and preserves a newer generation', async () => {
+    const userData = await mkdtemp(join(tmpdir(), 'zerowall-core-repair-')); roots.push(userData)
+    const root = join(userData, 'zerowall-python'), assets = join(userData, 'assets')
+    const bundled = signedSharedManifest()
+    bundled.dependencies = { corePackages: [{ name: 'pip', requiredVersion: '25.0' }, { name: 'mcp', requiredVersion: '1.13.1' }] }
+    bundled.signature.value = sign(null, canonicalManifest(bundled), keys.privateKey).toString('base64')
+    await environment(assets, bundled)
+    const old = signedSharedManifest()
+    old.dependencies = { corePackages: [{ name: 'pip', requiredVersion: '25.0' }] }
+    old.archiveSha256 = 'a'.repeat(64)
+    old.signature.value = sign(null, canonicalManifest(old), keys.privateKey).toString('base64')
+    const oldRoot = join(root, 'versions', 'legacy')
+    await environment(oldRoot, old)
+    await writeFile(join(root, 'current.json'), JSON.stringify({ root: oldRoot, health: 'ready', generation: true }))
+    const before = await readFile(join(root, 'current.json'))
+    const bundledManifestPath = join(userData, 'base.json'), bundledArchivePath = join(userData, 'base.zip')
+    await writeFile(bundledManifestPath, JSON.stringify(bundled)); await writeFile(bundledArchivePath, sharedTestArchive)
+    const fetcher = vi.fn(async () => { throw new Error('Legacy remote archive must not be fetched') })
+    const controller = new McpEnvironmentController({ generationMode: true, root, bundledManifestPath, bundledArchivePath,
+      bundledAssets: { bioToolsRoot: join(assets, 'bio-tools'), ketcherRoot: join(assets, 'ketcher-chemistry'), sciRoot: join(assets, 'sci'), skillsRoot: join(assets, 'skills') },
+      manifestUrl: 'https://example.test/latest.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), fetcher, healthCheck: async () => {}, publish() {} })
+    await controller.localStatus()
+    expect(await readFile(join(root, 'current.json'))).toEqual(before)
+    expect((await controller.initialize()).phase).toBe('ready')
+    const repaired = JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))
+    expect(repaired.root).not.toBe(oldRoot)
+    expect(JSON.parse(await readFile(join(repaired.root, 'manifest.json'), 'utf8')).dependencies.corePackages).toHaveLength(2)
+    expect(await readFile(join(oldRoot, 'manifest.json'), 'utf8')).toContain(old.archiveSha256)
+    const newer = { ...bundled, contentRevision: 2 }
+    newer.signature.value = sign(null, canonicalManifest(newer), keys.privateKey).toString('base64')
+    await writeFile(join(repaired.root, 'manifest.json'), JSON.stringify(newer))
+    await controller.initialize()
+    expect(JSON.parse(await readFile(join(root, 'current.json'), 'utf8')).root).toBe(repaired.root)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
   it('reclaims owned compact staging, preserves unrelated directories and reports the cause at the end of a traceback', async () => {
     const userData = await mkdtemp(join(tmpdir(), 'zerowall-compact-staging-')); roots.push(userData)
     const root = join(userData, 'zerowall-python'), assets = join(userData, 'assets')

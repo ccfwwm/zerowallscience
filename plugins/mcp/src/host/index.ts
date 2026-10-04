@@ -1086,6 +1086,15 @@ export class ZeroWallMcpService extends TypertRemoteService {
       if (server.serverName === RDATALINUX_SERVER_NAME && server.transport === 'streamable-http' && server.headerRefs.Authorization === undefined) {
         projects.updateMcpServer(server.id, { headerRefs: { ...server.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
       }
+      // RMCP is the managed remote service. A successful MCP client Fiber is
+      // not evidence that the HTTP handshake and tools/list completed when
+      // failOnStartupError is false: DSH can resolve the Fiber after a failed
+      // startup, which used to be projected as "connected with zero tools".
+      // Migrate only this reserved ZeroWall record; user MCP servers keep
+      // their chosen startup policy.
+      if (server.serverName === RDATALINUX_SERVER_NAME && !server.failOnStartupError) {
+        projects.updateMcpServer(server.id, { failOnStartupError: true })
+      }
     }
     if (!projects.listMcpServers().some(server => server.serverName === RDATALINUX_SERVER_NAME)) {
       projects.createMcpServer({
@@ -1095,7 +1104,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         // credential or explicitly enabling the connection reconciles it.
         enabled: defaultEnabled, url: RDATALINUX_R_MCP_URL,
         headerRefs: { Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV },
-        failOnStartupError: false,
+        failOnStartupError: true,
       })
     }
     const bundled = projects.listMcpServers()
@@ -1120,6 +1129,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
     }
     if (!bundled.some(server => server.serverName === 'zerowall_managed_scimaster')) {
       projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: defaultEnabled, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
+    }
+    for (const server of projects.listMcpServers()) {
+      // This is a first-party server bundled by the signed runtime archive.
+      // If the embedded Python lacks its verified MCP closure, let users see
+      // the actionable startup error instead of a misleading "0 tools".
+      if (server.serverName === 'zerowall_managed_bio_tools' && !server.failOnStartupError) {
+        projects.updateMcpServer(server.id, { failOnStartupError: true })
+      }
     }
     for (const server of projects.listMcpServers()) {
       const reconnect = { ...server.reconnect }

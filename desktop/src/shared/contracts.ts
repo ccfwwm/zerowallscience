@@ -133,6 +133,9 @@ export interface McpPythonInfo {
   corePackageCount?: number
   sciencePackageCount?: number
   scienceInstalledPackageCount?: number
+  /** The interpreter can exist while the signed MCP runtime closure is absent. */
+  coreReady?: boolean
+  missingCorePackages?: string[]
   packages: McpPythonPackage[]
   skillAudit?: McpSkillAudit
   verification?: { imports: boolean; pipCheck: boolean; message: string; installed?: number; failedPackages?: string[]; upToDate?: boolean }

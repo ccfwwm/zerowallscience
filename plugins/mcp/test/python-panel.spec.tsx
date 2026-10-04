@@ -233,6 +233,20 @@ describe('Python dependency panel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '安装基础环境' }))
     await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1))
   })
+  it('offers an explicit repair when a legacy interpreter is present but the MCP core is incomplete', async () => {
+    const repair = vi.fn(async () => ({ phase: 'downloading' }))
+    window.zerowallDesktop = {
+      getMcpPythonInfo: async () => ({ ...info('legacy', 1), coreReady: false, missingCorePackages: ['mcp==1.30.0'] }),
+      updateMcpEnvironment: repair,
+    } as any
+    render(<PythonEnvironmentPanel t={zhT} />)
+    fireEvent.click(await screen.findByRole('button', { name: '修复核心运行环境' }))
+    expect(repair).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('dialog', { name: '修复核心运行环境' })
+    expect(within(dialog).getByText('mcp==1.30.0')).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: '修复核心运行环境' }))
+    await waitFor(() => expect(repair).toHaveBeenCalledTimes(1))
+  })
   it('saves a selected writable parent and keeps the new path visible until restart', async () => {
     const chooseDirectory = vi.fn(async () => 'C:\\ZeroWall Data')
     const restart = vi.fn(async () => true)

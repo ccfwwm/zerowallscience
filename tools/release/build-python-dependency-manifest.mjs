@@ -9,7 +9,7 @@ const root = resolve(import.meta.dirname, '../..')
 const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(releaseRoot, 'python-dependencies'))
 const pythonVersion = process.env.ZEROWALL_PYTHON_VERSION ?? '3.12.10'
 const environmentVersion = process.env.ZEROWALL_PYTHON_ENVIRONMENT_VERSION ?? pythonVersion
-const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r11`
+const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r14`
 if (!/^[A-Za-z0-9_.-]{1,100}$/u.test(revision)) throw new Error('Invalid manifest revision.')
 const publicKey = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----`
 const keyFile = process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE ?? join(root, 'scripts', 'env', 'runtime-private.pem')
@@ -52,6 +52,14 @@ const layerPolicy = JSON.parse(await readFile(join(root, 'resources', 'python', 
 const split = partitionLock({ packages: installPackages, edges: new Map(), roots: [...parseDirectRequirements(baseRequirements), ...(layerPolicy.baseRoots ?? [])] })
 if (split.rootsNotInLock.length > 0) throw new Error(`Base requirements are not in the hashed lock: ${split.rootsNotInLock.join(', ')}`)
 if (split.base.length === 0) throw new Error('Core Python manifest is empty.')
+const wheelLock = parseLockedPackages(lockText)
+for (const pkg of split.base) {
+  const locked = wheelLock.get(normalizePackageName(pkg.name))
+  if (!locked || locked.version !== pkg.version || !/^[a-f0-9]{64}$/u.test(locked.sha256)) {
+    throw new Error(`Core wheel lock is missing a verified Windows artifact for ${pkg.name}==${pkg.version}.`)
+  }
+  pkg.sha256 = locked.sha256
+}
 // Tsinghua, not Aliyun: measured across all 521 pins Tsinghua resolves 520 and
 // Aliyun 517, whose shortfall is CDN objects served truncated rather than
 // versions it lacks. The client still lets the user switch mirror at runtime.

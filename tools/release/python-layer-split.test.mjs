@@ -5,6 +5,7 @@ import {
   assertCompletePartition,
   applySourceDistributions,
   canonicalDocument,
+  coreManifestDocument,
   packageForModule,
   parseDirectRequirements,
   parseLockedPackages,
@@ -115,4 +116,18 @@ test('science manifest names and signatures round-trip', () => {
   assert.equal(JSON.parse(canonicalDocument(document).toString()).packages.length, 1)
   const tampered = { ...document, packageCount: 2 }
   assert.equal(verifyDocument(tampered, publicKey.export({ type: 'spki', format: 'pem' }).toString()), false)
+})
+
+test('core manifest preserves the verified target-wheel digest for every bootstrap package', () => {
+  const document = coreManifestDocument({
+    environmentVersion: '3.12.10', revision: '3.12.10-r12-core', pythonVersion: '3.12.10',
+    index: { indexUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple' }, keyId: 'stable-3',
+    packages: [
+      { name: 'annotated-types', version: '0.8.0', sha256: hash('a') },
+      { name: 'mcp', version: '1.30.0', sha256: hash('b') },
+    ],
+  })
+  assert.deepEqual(document.packages.map(({ name, sha256 }) => [name, sha256]), [
+    ['annotated-types', hash('a')], ['mcp', hash('b')],
+  ])
 })

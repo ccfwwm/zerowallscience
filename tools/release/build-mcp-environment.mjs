@@ -113,7 +113,7 @@ if (!await stat(sharedPythonRoot).then(value => value.isDirectory(), () => false
   await rename(legacyPythonRoot, sharedPythonRoot)
 }
 const embeddedPthPath = join(sharedPythonRoot, 'python312._pth')
-await writeFile(embeddedPthPath, 'python312.zip\n.\nLib/site-packages\n../bio-tools/lib\nLib/site-packages/win32\nLib/site-packages/win32/lib\nLib/site-packages/pythonwin\nimport site\n', 'utf8')
+  await writeFile(embeddedPthPath, 'python312.zip\n.\nDLLs\nLib/site-packages\n../bio-tools/lib\nLib/site-packages/win32\nLib/site-packages/win32/lib\nLib/site-packages/pythonwin\nimport site\n', 'utf8')
 const legacySitePackages = join(sharedPythonRoot, 'site-packages')
 const sharedSitePackages = join(sharedPythonRoot, 'Lib', 'site-packages')
 if (!await stat(sharedSitePackages).then(value => value.isDirectory(), () => false) && await stat(legacySitePackages).then(value => value.isDirectory(), () => false)) {
@@ -190,9 +190,7 @@ for (const pkg of [...split.base, ...split.science]) {
 }
 const corePackages = split.base.map(pkg => ({ name: pkg.name, requiredVersion: pkg.version }))
 const sciencePackages = split.science
-// Only pip is part of the offline bootstrap. setuptools and packaging are
-// ordinary required entries in the signed dependency manifest, so they must
-// never leak into the small Python archive merely to support build-time work.
+// Ship the locked MCP core closure; optional science packages remain separate.
 if (!installed.pip) throw new Error('The staging runtime is missing its pip bootstrap distribution.')
 await execFileAsync(pythonExecutable, ['-s', '-B', '-c', 'import sys; assert sys.version_info[:3] == (3,12,10)'], { windowsHide: true })
 if (!baseOnly) await execFileAsync(pythonExecutable, ['-s', '-B', join(root, 'tools/release/audit-skill-dependencies.py'), '--site-packages', sitePackages, '--verification', verificationPath], { cwd: root, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
@@ -269,10 +267,13 @@ const residualNames = JSON.parse(residual.stdout)
 if (residualNames.length !== split.base.length || residualNames.some(name => !split.baseNames.has(name))) throw new Error('Pruned archive runtime does not match the base layer exactly.')
 await execFileAsync(join(prunedStaging, 'Python', 'python.exe'), ['-s', '-B', '-c', `import ${managedPythonImports}`], { cwd: prunedStaging, env: managedPythonEnv, windowsHide: true })
 await execFileAsync(join(prunedStaging, 'Python', 'python.exe'), ['-s', '-B', '-m', 'pip', 'check'], { cwd: prunedStaging, env: managedPythonEnv, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
-// Bio Tools imports scientific packages from the signed dependency list. Its
-// handshake is checked against the complete staging runtime, before pruning;
-// the first-run base archive only needs Python and pip to pass health checks.
-if (!baseOnly) await checkMcpServer(pythonExecutable, ['run_server.py', 'mcp_bio'], join(staging, 'bio-tools'))
+// Bio Tools must work in the first-run base archive: the base closure now
+// contains the complete MCP runtime, so exercise the exact embedded Python
+// and vendored server before signing the archive instead of deferring this
+// failure to the user's first launch.
+if (!baseOnly || split.baseNames.has(normalizePackageName('mcp'))) {
+  await checkMcpServer(join(prunedStaging, 'Python', 'python.exe'), ['run_server.py', 'mcp_bio'], join(prunedStaging, 'bio-tools'))
+}
 await checkMcpServer(process.execPath, ['server.js'], join(prunedStaging, 'ketcher-chemistry'))
 await checkMcpServer(process.execPath, ['dist/mcp.cjs'], join(prunedStaging, 'sci'))
 await mkdir(output, { recursive: true })
@@ -336,7 +337,7 @@ manifest.signature.value = sign(null, Buffer.from(JSON.stringify(unsigned)), pri
 if (!verify(null, Buffer.from(JSON.stringify(unsigned)), expectedPublicKey, Buffer.from(manifest.signature.value, 'base64'))) throw new Error('MCP manifest self-verification failed.')
 await writeFile(join(output, `${environmentVersion}.json`), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 await writeFile(join(output, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-await writeFile(join(output, 'base-verification.json'), JSON.stringify({ verifiedAt: new Date().toISOString(), pythonVersion, basePackageCount: corePackages.length, prunedImports: shippedModules, pipCheck: true, mcpHandshake: !baseOnly, fullScienceFunctionalVerified: !baseOnly, archiveSha256 }, null, 2))
+await writeFile(join(output, 'base-verification.json'), JSON.stringify({ verifiedAt: new Date().toISOString(), pythonVersion, basePackageCount: corePackages.length, prunedImports: shippedModules, pipCheck: true, mcpHandshake: !baseOnly || split.baseNames.has(normalizePackageName('mcp')), fullScienceFunctionalVerified: !baseOnly, archiveSha256 }, null, 2))
 await rm(prunedStaging, { recursive: true, force: true })
 console.log(`Built ${archiveName} (${archiveSize} bytes, ${archiveSha256}) with ${corePackages.length} base and ${sciencePackages.length} science packages`)
 console.log(`Built ${scienceName} (${scienceBytes.length} bytes) for the science layer revision ${scienceRevision}`)

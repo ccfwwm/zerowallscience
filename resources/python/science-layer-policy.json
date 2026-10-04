@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "baseRequirementsFile": "requirements-base.txt",
-  "baseRoots": ["pip"],
-  "mandatoryBaseModules": ["pip"],
+  "baseRoots": ["pip", "mcp"],
+  "mandatoryBaseModules": ["pip", "mcp", "requests", "numpy", "pandas", "lxml"],
   "mandatoryScienceModules": ["cv2", "imagehash", "skimage", "structlog", "pikepdf", "markdown", "pyzotero"],
-  "minBasePackages": 1,
-  "floorRationale": "The signed archive contains only the CPython interpreter and pip bootstrap. All other locked packages are required entries in the separately signed dependency list. Exact base membership is checked by the closure walk and pruned-runtime inventory."
+  "minBasePackages": 40,
+  "floorRationale": "The signed archive contains CPython, pip, the complete MCP runtime, and the import-time dependencies required to construct the bundled Bio Tools server (requests, pandas, numpy and lxml), including the PyJWT crypto extra and Windows cffi/pycparser dependencies. Other scientific packages remain in the separately signed dependency layer. Exact base membership is checked by the closure walk and pruned-runtime inventory."
 }

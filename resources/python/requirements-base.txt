@@ -1,3 +1,49 @@
-# Only the interpreter and pip bootstrap are shipped. Scientific packages are
-# installed into the same shared Python directory from the signed dependency list.
+# The bootstrap archive must be able to start every bundled MCP server. Keep
+# the complete mcp runtime closure here; scientific packages remain in the
+# separately signed science layer.
+# The MCP SDK requests PyJWT's crypto extra; pin its Windows closure explicitly.
+# Bio Tools imports every registered domain while constructing its MCP server,
+# so keep the shared HTTP client and the table/XML parsers used by those domains
+# in the minimal runnable core instead of reporting an empty tool list.
+cffi==2.1.1
+charset-normalizer==3.5.1
+cryptography==50.0.1
 pip==26.2.1
+annotated-types==0.8.0
+anyio==4.15.1
+attrs==26.1.0
+certifi==2026.7.22
+click==8.5.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+httpx-sse==0.4.3
+idna==3.19
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+mcp==1.30.0
+packaging==26.3
+numpy==2.5.3
+pandas==2.3.3
+pydantic==2.13.5
+pydantic-core==2.46.5
+pydantic-settings==2.15.0
+pyjwt==2.13.0
+python-dotenv==1.2.3
+python-multipart==0.0.32
+python-dateutil==2.9.0.post0
+pywin32==312
+pycparser==3.0
+pytz==2026.3.post1
+referencing==0.37.0
+rpds-py==2026.6.3
+sse-starlette==3.4.11
+starlette==1.6.0
+typing-extensions==4.16.0
+typing-inspection==0.4.4
+requests==2.34.2
+six==1.17.0
+tzdata==2026.3
+urllib3==2.7.0
+uvicorn==0.52.4
+lxml==6.1.3

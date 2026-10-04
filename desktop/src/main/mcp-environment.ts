@@ -211,7 +211,7 @@ export class McpEnvironmentController {
   async pythonInfo(query = ''): Promise<McpPythonInfo> {
     const current = await readCurrent(this.options.root)
     const stableRuntimeRoot = join(dirname(resolve(this.options.root)), 'Python')
-    if (!current?.root || current.health !== 'ready') return { ready: false, runtimeRoot: stableRuntimeRoot, packages: [], message: 'ZeroWall Python 尚未就绪。' }
+    if (!current?.root || current.health !== 'ready') return { ready: false, coreReady: false, missingCorePackages: [], runtimeRoot: stableRuntimeRoot, packages: [], message: 'ZeroWall Python 尚未就绪。' }
     try {
       const installedManifest = await this.readInstalledManifest(current.root)
       const isProductPythonRoot = !this.options.generationMode && basename(this.options.root).toLowerCase() === 'zerowall-python'
@@ -228,8 +228,16 @@ export class McpEnvironmentController {
       const env = pythonEnvironment(sitePackages)
       const script = 'import importlib.metadata,json,sys\nrows=[]\nfor d in importlib.metadata.distributions(path=[sys.argv[1]]):\n rows.append({"name":d.metadata.get("Name") or d.name,"version":d.version,"location":str(d.locate_file("")),"dependencies":d.requires or []})\nprint(json.dumps(rows))'
       const listed = await execute(executable, ['-c', script, sitePackages], current.root, undefined, env, 30_000)
-      const required = new Map((manifest.dependencies?.corePackages ?? []).map(pkg => [pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'), pkg.requiredVersion]))
+      const bundled = this.options.bundledManifestPath
+        ? validateManifest(JSON.parse(await readFile(this.options.bundledManifestPath, 'utf8')))
+        : undefined
+      const required = pythonCoreRequirements(manifest, bundled, this.options.publicKey, this.options.publicKeys)
       const raw = JSON.parse(listed.stdout.trim()) as Array<{ name: string; version: string; location?: string; dependencies?: string[] }>
+      const installedVersions = new Map(raw.map(pkg => [pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'), pkg.version]))
+      const missingCorePackages = [...required.entries()]
+        .filter(([name, version]) => installedVersions.get(name) !== version)
+        .map(([name, version]) => `${name}==${version}`)
+      const coreReady = required.size > 0 && missingCorePackages.length === 0
       const history = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
       const packages: McpPythonPackage[] = []
       for (const pkg of raw) {
@@ -243,7 +251,7 @@ export class McpEnvironmentController {
       packages.sort((a, b) => a.name.localeCompare(b.name))
       const needle = query.trim().toLowerCase()
       const runtime = shared ? { runtimeRoot: join(stableRoot!, 'Python'), runtimeExecutable: executable, runtimeSitePackages: sitePackages } : publicRuntimeForSnapshot(current.root, manifest, this.options.generationMode)
-      return { snapshotId: current.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), localRevision: current.localRevision, scannedAt: new Date().toISOString(), officialPackageCount: manifest.dependencies?.corePackages.length ?? 0, ready: true, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable: runtime?.runtimeExecutable ?? executable, sitePackages: runtime?.runtimeSitePackages ?? sitePackages, ...runtime, packageCount: packages.length, corePackageCount: packages.filter(pkg => pkg.source === 'core').length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
+      return { snapshotId: current.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), localRevision: current.localRevision, scannedAt: new Date().toISOString(), officialPackageCount: required.size, ready: true, coreReady, missingCorePackages, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable: runtime?.runtimeExecutable ?? executable, sitePackages: runtime?.runtimeSitePackages ?? sitePackages, ...runtime, packageCount: packages.length, corePackageCount: packages.filter(pkg => pkg.source === 'core').length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
     } catch (error) { return { ready: false, packages: [], message: sanitizeError(error) } }
   }
 
@@ -763,7 +771,7 @@ export class McpEnvironmentController {
         try {
           const installed = await this.readInstalledManifest(record.root)
           const productRoot = basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python'
-          const activeSharedRuntime = !productRoot || (
+          const activeSharedRuntime = this.options.generationMode || !productRoot || (
             installed.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
             && installed.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages
             && record.runtimeRoot === dirname(this.options.root)
@@ -1012,6 +1020,16 @@ function pythonStatus(manifest: McpEnvironmentManifest, root: string, generation
 }
 
 function contentRevision(manifest: McpEnvironmentManifest): number { return manifest.contentRevision ?? 1 }
+/** Old pip-only manifests cannot define the current desktop's core readiness.
+ * Consult its signed offline base without fetching or activating anything.
+ * A newer independently updated generation retains its own dependency pins. */
+export function pythonCoreRequirements(installed: McpEnvironmentManifest, bundled: McpEnvironmentManifest | undefined, publicKey: string, publicKeys?: Record<string, string>): Map<string, string> {
+  if (bundled && !verifyManifestWithKeyring(bundled, publicKey, publicKeys)) throw new Error('Bundled Python manifest signature is invalid.')
+  const newer = bundled && (compareEnvironmentVersions(environmentVersion(installed), environmentVersion(bundled)) > 0
+    || (environmentVersion(installed) === environmentVersion(bundled) && contentRevision(installed) > contentRevision(bundled)))
+  const required = (bundled && !newer ? bundled : installed).dependencies?.corePackages ?? []
+  return new Map(required.map(pkg => [pythonPackageName(pkg.name), pkg.requiredVersion]))
+}
 function compareEnvironmentVersions(left: string, right: string): number {
   const a = left.split('.').map(Number); const b = right.split('.').map(Number)
   for (let index = 0; index < Math.max(a.length, b.length); index++) {

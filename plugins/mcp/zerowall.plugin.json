@@ -1,10 +1,10 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "applicationVersion": "8.0.2",
   "restartRequired": true,
   "desktop": {
-    "min": "8.0.2"
+    "min": "8.0.4"
   },
   "rollbackSupported": true,
   "remote": "./lib/typert.remote-client.js",

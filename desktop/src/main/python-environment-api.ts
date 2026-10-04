@@ -242,8 +242,11 @@ export class PythonEnvironmentApi {
           && (resolve(runtime.rootPath) === resolve(configuredRuntimeRoot) || (current.generation === true && typeof current.root === 'string' && resolve(runtime.rootPath) === resolve(current.root, 'Python') && !relative(join(this.root, 'slots'), current.root).startsWith('..')))
           ? runtime
           : undefined
+        const pythonInfo = activeRuntime && typeof (this.updater as PythonUpdaterService & { pythonInfo?: () => Promise<{ coreReady?: boolean; missingCorePackages?: string[] }> }).pythonInfo === 'function'
+          ? await this.updater.pythonInfo().catch(() => undefined)
+          : undefined
         const dependencyStatus = await readOptional(join(this.root, 'dependency-sync', 'status.json'))
-        result = { status: this.updater.current(), runtime: activeRuntime, runtimeRoot: configuredRuntimeRoot, layers: { bootstrap: activeRuntime ? 'ready' : 'missing', core: activeRuntime ? 'ready' : 'missing', science: dependencyStatus?.scienceInstalled ? 'installed' : dependencyStatus?.resourceAvailability?.available === false ? 'error' : dependencyStatus ? 'available' : 'not-installed' }, resourceAvailability: dependencyStatus?.resourceAvailability, lastSyncError: dependencyStatus?.lastSyncError, dependencies: dependencyStatus, events: await this.events() }; break
+        result = { status: this.updater.current(), runtime: activeRuntime, runtimeRoot: configuredRuntimeRoot, layers: { bootstrap: activeRuntime ? 'ready' : 'missing', core: activeRuntime ? pythonInfo?.coreReady === true ? 'ready' : 'error' : 'missing', science: dependencyStatus?.scienceInstalled ? 'installed' : dependencyStatus?.resourceAvailability?.available === false ? 'error' : dependencyStatus ? 'available' : 'not-installed' }, coreReady: pythonInfo?.coreReady === true, missingCorePackages: pythonInfo?.missingCorePackages ?? [], resourceAvailability: dependencyStatus?.resourceAvailability, lastSyncError: dependencyStatus?.lastSyncError, dependencies: dependencyStatus, events: await this.events() }; break
       }
       case 'list_packages': {
         // Opening Settings and refreshing inventory are read-only. A thin
