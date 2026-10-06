@@ -55,7 +55,7 @@ async function archiveResource(kind, id, version, source, path) {
 }
 const sciDirectory = join(stageRoot, 'resources/sci')
 if (await stat(join(sciDirectory, 'dist/mcp.cjs')).catch(() => undefined)) {
-  const version = '0.3.15-zws.1'
+  const version = '0.3.15-zws.2'
   const directory = join(releaseRoot, 'mcp', 'scimaster', version)
   await mkdir(directory, { recursive: true })
   const path = join(directory, 'scimaster.tgz')

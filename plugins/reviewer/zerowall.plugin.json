@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-reviewer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "applicationVersion": "8.0.0",
   "restartRequired": true,
   "desktop": {
