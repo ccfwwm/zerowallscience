@@ -8,17 +8,17 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | `8.0.4` |
+| 应用版本 | `8.0.5` |
 | 当前开发分支 | `main` |
-| 8.0.4 开发基线提交 | `a292b06768046bbcce0e557a8d0115ac4ab3b937` |
+| 8.0.5 发布提交 | 以安装包 `artifact-manifest.json` 中的 `commit` 为准 |
 | DSH 子模块 | `86b6740d0e671cee0b3fd0168de484c0efbf46ea` |
 | DSH 分支 | `zerowall/reviewer-history-opaque` |
 | DSH 标签 | `dsh-v0.2.0-rc.2` |
 | GitHub | `https://github.com/ccfwwm/zerowallscience` |
-| 8.0.4 Stable 安装包 | 本次构建后写入 `artifacts/packages/8.0.4/windows-x64/` |
-| 8.0.4 发布状态 | 以 `artifacts/release/8.0.4/publication/` 收据、七牛公开校验和 GitHub `v8.0.4` Release 为准 |
+| 8.0.5 Stable 安装包 | `artifacts/packages/8.0.5/windows-x64/` |
+| 8.0.5 发布状态 | 以 `artifacts/release/8.0.5/publication/` 收据、七牛公开校验和 GitHub `v8.0.5` Release 为准 |
 
-历史 8.0.3 桌面安装包已经发布到七牛 Stable 和 GitHub Release `v8.0.3`。8.0.4 的桌面包和独立资源必须分别按不可变版本对象发布、公开校验后，才推进对应的稳定更新指针。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖、伪造哈希或切换信任根。
+8.0.4 桌面安装包已发布到七牛 Stable；8.0.5 使用新的不可变路径。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖或伪造哈希。资源签名保留 `stable-3` 验签兼容，并由 `stable-4` 为新发布的目录和依赖清单签名；私钥只保存在被 Git 忽略的 `scripts/env/`，严禁进入源码仓库或插件总仓库。
 
 用户指定的模型、推理强度、生图模型、协议和参数必须保持不变。开发任务不因为测试方便而自动切换模型、降低推理级别或增加替代路由。
 

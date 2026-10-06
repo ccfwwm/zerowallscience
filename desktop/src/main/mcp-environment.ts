@@ -118,6 +118,7 @@ export const MCP_ENVIRONMENT_KEYRING: Record<string, string> = {
   'stable-1': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAu8wAGfgRWqQBdIGcbkwPlBq01SjgEMybgNh3xVv0ej4=\n-----END PUBLIC KEY-----`,
   'stable-2': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAUvKwSI31zGGut3nRi4kRqZGg8eBJskIrfa8Xmp/7VJw=\n-----END PUBLIC KEY-----`,
   'stable-3': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----`,
+  'stable-4': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAc7+fa5e2mZ6qTFuJEdkYnYYqbSo1Csc7YgvfvJD6LYU=\n-----END PUBLIC KEY-----`,
 }
 
 export class McpEnvironmentController {

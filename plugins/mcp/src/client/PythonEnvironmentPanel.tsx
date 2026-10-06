@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from '@zerowallscience/plugin-base/client-helpers'
 import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage, PythonDependencyTask, PythonMirrorPresetInfo, PythonPackagePlan, PythonEnvironmentResponse } from '../../../base/src/client/desktop-api.js'
+import { localizePythonText } from './python-localization.js'
 import css from './PythonEnvironmentPanel.module.css'
 
 const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/gu, '-')
@@ -301,6 +302,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const refreshDiagnostics = () => perform('diagnose', async () => { const result = await callEnvironment?.({ action: 'diagnose', requestId: crypto.randomUUID() }); if (result?.diagnostics) setDiagnostics(result.diagnostics) })
   const configure = (value = mirrorUrl) => perform('configure', async () => { const result = await callEnvironment?.({ action: 'configure', requestId: crypto.randomUUID(), mirrorUrl: value, expectedRevision: configurationRevision }); if (!result) { setFeedback(t('python.unavailable')); return }; setMirrorUrl(result.mirrorUrl ?? value); setConfigurationRevision(result.revision); setFeedback(t('python.shared.mirrorSaved')) })
   const language = t('python.shared.advanced') === 'Advanced settings' ? 'en' : 'zh'
+  const presentPythonText = (value?: string) => localizePythonText(value, language)
   const mirrorNames: Record<string, string> = language === 'en'
     ? { aliyun: 'Aliyun', tuna: 'Tsinghua University', ustc: 'USTC', tencent: 'Tencent Cloud', huawei: 'Huawei Cloud', pypi: 'Official PyPI' }
     : { aliyun: '阿里云', tuna: '清华大学', ustc: '中科大', tencent: '腾讯云', huawei: '华为云', pypi: '官方 PyPI' }
@@ -312,12 +314,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     if (preset) { setCustomMirrorEditing(false); setMirrorUrl(preset.indexUrl); void configure(preset.indexUrl) }
   }
   const healthLabel = (value?: string) => value === 'passed' || value === 'available' || value === 'ready' || value === 'ok' ? t('python.shared.passed') : value === 'failed' || value === 'error' ? t('python.shared.failed') : t('python.shared.pending')
-  /**
-   * The stage line, derived from the phase rather than from `status.message`.
-   * Backend messages are Chinese prose, and painting them into an English panel
-   * is the leak this label exists to prevent; the raw message still reaches the
-   * operations log, where it is data rather than UI copy.
-   */
+  /** Derive the visible stage from structured task state, not backend prose. */
   const phaseLabel = (): string => {
     if (task?.state === 'queued') return t('python.shared.taskQueued')
     if (task?.state === 'interrupted') return t('python.shared.taskInterrupted')
@@ -340,7 +337,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const scienceTotal = dependencies?.layer === 'science' ? dependencies.packageCount : info?.sciencePackageCount ?? 0
   const scienceInstalled = dependencies?.layer === 'science' ? dependencies.installedPackageCount ?? info?.scienceInstalledPackageCount ?? 0 : info?.scienceInstalledPackageCount ?? 0
   const visibleProgress = taskWorking ? task.progress : runtimeWorking ? status?.progress : undefined
-  const visibleMessage = task?.message ?? status?.message
+  const visibleMessage = presentPythonText(task?.message ?? status?.message)
   const visibleCompleted = taskWorking ? task.completedPackages : runtimeWorking ? status?.updateJob?.completedFiles : undefined
   const visibleTotal = taskWorking ? task.totalPackages : runtimeWorking ? status?.updateJob?.totalFiles : undefined
   const visiblePackage = taskWorking ? task.currentPackage : runtimeWorking ? status?.updateJob?.targetVersion : undefined
@@ -380,8 +377,8 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         {task.currentPackage && <span>{task.currentPackage}</span>}
         <span>{Math.round(task.progress)}%</span>
       </div>}
-      {task?.state === 'failed' && task.error && <p className={css.warning} role="alert">{task.error}</p>}
-      {task?.state === 'interrupted' && <p className={css.warning} role="status">{task.message ?? t('python.shared.taskInterrupted')}</p>}
+      {task?.state === 'failed' && task.error && <p className={css.warning} role="alert">{presentPythonText(task.error)}</p>}
+      {task?.state === 'interrupted' && <p className={css.warning} role="status">{presentPythonText(task.message) ?? t('python.shared.taskInterrupted')}</p>}
       {dependencies && <div className={css.manifestMeta}>
         <strong>{t('python.shared.pendingCount', { count: dependencies.changes.length })}</strong>
         {dependencies.packageCount > 0 && <span>{dependencies.packageCount} {t('python.shared.dependencies')}</span>}
@@ -391,7 +388,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
       {!!dependencies?.skippedPackages?.length && <section className={css.warning} aria-label={t('python.shared.skippedPackages', { count: dependencies.skippedPackages.length })}>
         <strong>{t('python.shared.skippedPackages', { count: dependencies.skippedPackages.length })}</strong>
         <ul>{dependencies.skippedPackages.map(failure => <li key={`${normalize(failure.name)}-${failure.version}`}>
-          <div><strong>{failure.name} · {failure.version}</strong><span>{failure.message}</span></div>
+          <div><strong>{failure.name} · {failure.version}</strong><span>{presentPythonText(failure.message)}</span></div>
           <div className={css.failureActions}>
             <input aria-label={`${failure.name} ${t('python.shared.packageVersion')}`} value={failureVersions[normalize(failure.name)] ?? `${failure.name}==${failure.version}`} onChange={event => setFailureVersions(current => ({ ...current, [normalize(failure.name)]: event.target.value }))} />
             <button disabled={working || busy[`single-${failure.name}`] || !callEnvironment} onClick={() => void installSinglePackage(failure.name)}>{t('python.shared.installSingle')}</button>
@@ -412,7 +409,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     </div>
     {(working || liveLog.length > 0) && <details className={css.liveLog} open={working || task?.state === 'failed' || task?.state === 'interrupted'}>
       <summary>{t('python.shared.log')} · {liveLog.length}</summary>
-      <pre role="log" aria-live="polite">{liveLog.length ? liveLog.join('\n') : t('python.shared.logEmpty')}</pre>
+      <pre role="log" aria-live="polite">{liveLog.length ? liveLog.map(line => presentPythonText(line)).join('\n') : t('python.shared.logEmpty')}</pre>
     </details>}
     <div className={css.environmentGrid}>
       <section className={css.card} aria-labelledby="python-path-title"><div className={css.cardTitle}><div><span className={css.sectionKicker}>{t('python.environment')}</span><h3 id="python-path-title">{t('python.shared.path')}</h3></div><span className={css.checkMark}>{info?.ready && !restartRequired && (!configuredPythonPath || info.runtimeRoot === configuredPythonPath) ? '✓' : '—'}</span></div><div className={css.pathBox} title={stablePath ?? ''}>{stablePath ?? t('python.shared.pathPending')}</div><div className={css.cardActions}><button disabled={!stablePath} onClick={() => copyPath(stablePath)}>{t('python.shared.copy')}</button><button disabled={!stablePath} onClick={() => openPath(stablePath)}>{t('python.shared.open')}</button><button onClick={changePythonPath}>{t('python.shared.changePath')}</button><button disabled={!stablePath || restartRequired || !api?.openPythonTerminal} onClick={() => void perform('terminal', async () => { if (!await api?.openPythonTerminal?.()) setFeedback(t('python.shared.terminalFailed')) })}>{t('python.shared.terminal')}</button>{restartRequired && <button onClick={() => void api?.restart?.()}>{t('python.shared.restart')}</button>}</div><p className={css.hint}>{t('python.shared.pathHint')}</p></section>
@@ -424,9 +421,9 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         <p className={css.hint} title={mirrorUrl}>{mirrorOptions.find(preset => sameIndex(preset.indexUrl, mirrorUrl))?.label ?? mirrorUrl}</p>
       </section>
     </div>
-    <p role="status" className={css.feedback}>{feedback}</p>
+    <p role="status" className={css.feedback}>{presentPythonText(feedback)}</p>
     {!inventoryLoading && !info?.ready && <p className={css.empty} role="status">{t('python.notReady')}</p>}
-    {!inventoryLoading && coreRepairRequired && <p className={css.empty} role="status">核心 MCP 依赖不完整：{info?.missingCorePackages?.join('、') || '请重新验证并修复运行环境。'}</p>}
+    {!inventoryLoading && coreRepairRequired && <p className={css.empty} role="status">{t('python.shared.coreIncomplete', { packages: info?.missingCorePackages?.join(', ') || t('python.shared.coreRepairNeeded') })}</p>}
     <details className={css.advanced} open={advancedOpen} onToggle={event => { setAdvancedOpen(event.currentTarget.open); if (event.currentTarget.open && !diagnostics) refreshDiagnostics() }}>
       <summary>{t('python.shared.advanced')}</summary>
       <div className={css.advancedBody}>
@@ -468,8 +465,8 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
             </div>
           </>}
         </details>
-        <details className={css.history} open={working}><summary>{t('python.shared.operations')} · {events.length}</summary>{events.length ? <ol>{events.slice(-50).reverse().map((event, index) => <li key={`${event.requestId}-${event.createdAt}-${index}`}><div><strong>{['check_manifest', 'preview_sync', 'apply_sync', 'sync', 'install_package', 'progress', 'configure', 'diagnose', 'rollback'].includes(event.action) ? t(`python.shared.action.${event.action}` as 'python.shared.action.configure') : event.action}</strong><span className={event.status === 'failed' ? css.healthPending : css.healthValue}>{event.status === 'failed' ? t('python.shared.failed') : event.status === 'running' ? t('python.manager.refreshing') : event.status === 'queued' || event.taskId ? t('python.shared.submitted') : t('python.shared.succeeded')}</span><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div>{event.message && <p>{event.message}</p>}<small title={event.requestId}>{event.taskId ?? event.requestId}</small></li>)}</ol> : <p>{t('python.shared.noOperations')}</p>}</details>
-        <section className={css.advancedSection} aria-label={t('python.shared.diagnostics')}><h3>{t('python.shared.diagnostics')}</h3><dl><dt>{t('python.manager.interpreter')}</dt><dd>{info?.executable}</dd><dt>{t('python.shared.sitePackages')}</dt><dd>{info?.sitePackages}</dd><dt>{t('python.manager.scanned')}</dt><dd>{info?.scannedAt}</dd><dt>{t('python.manager.skills')}</dt><dd>{info?.skillAudit ? Object.entries(info.skillAudit.summary).map(([key, value]) => `${key}: ${value}`).join(" · ") : t('python.manager.noAudit')}</dd><dt>{t('python.shared.verification')}</dt><dd>{info?.verification?.message ?? status?.lastUpdateError ?? '—'}</dd><dt>pip</dt><dd title={diagnostics?.pip.message}>{diagnostics ? healthLabel(diagnostics.pip.status) : t('python.shared.pending')}</dd></dl></section>
+        <details className={css.history} open={working}><summary>{t('python.shared.operations')} · {events.length}</summary>{events.length ? <ol>{events.slice(-50).reverse().map((event, index) => <li key={`${event.requestId}-${event.createdAt}-${index}`}><div><strong>{['check_manifest', 'preview_sync', 'apply_sync', 'sync', 'install_package', 'progress', 'configure', 'diagnose', 'rollback'].includes(event.action) ? t(`python.shared.action.${event.action}` as 'python.shared.action.configure') : event.action}</strong><span className={event.status === 'failed' ? css.healthPending : css.healthValue}>{event.status === 'failed' ? t('python.shared.failed') : event.status === 'running' ? t('python.manager.refreshing') : event.status === 'queued' || event.taskId ? t('python.shared.submitted') : t('python.shared.succeeded')}</span><time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time></div>{event.message && <p>{presentPythonText(event.message)}</p>}<small title={event.requestId}>{event.taskId ?? event.requestId}</small></li>)}</ol> : <p>{t('python.shared.noOperations')}</p>}</details>
+        <section className={css.advancedSection} aria-label={t('python.shared.diagnostics')}><h3>{t('python.shared.diagnostics')}</h3><dl><dt>{t('python.manager.interpreter')}</dt><dd>{info?.executable}</dd><dt>{t('python.shared.sitePackages')}</dt><dd>{info?.sitePackages}</dd><dt>{t('python.manager.scanned')}</dt><dd>{info?.scannedAt}</dd><dt>{t('python.manager.skills')}</dt><dd>{info?.skillAudit ? Object.entries(info.skillAudit.summary).map(([key, value]) => `${key}: ${value}`).join(" · ") : t('python.manager.noAudit')}</dd><dt>{t('python.shared.verification')}</dt><dd>{presentPythonText(info?.verification?.message ?? status?.lastUpdateError) ?? '—'}</dd><dt>pip</dt><dd title={presentPythonText(diagnostics?.pip.message)}>{diagnostics ? healthLabel(diagnostics.pip.status) : t('python.shared.pending')}</dd></dl></section>
       </div>
     </details>
     {installRuntime && <div className={css.backdrop}><section className={css.dialog} role="dialog" aria-modal="true" aria-label={coreRepairRequired ? t('python.shared.repairCore') : t('python.shared.installTitle')}><h3>{coreRepairRequired ? t('python.shared.repairCore') : t('python.shared.installTitle')}</h3><p>{coreRepairRequired ? t('python.shared.coreRepairHint') : t('python.shared.installHint')}</p><dl><dt>{t('python.manager.source')}</dt><dd>{t('python.shared.runtimeSource')}</dd><dt>{t('python.version')}</dt><dd>{status?.python?.version ?? t('python.shared.runtimeVersion')}</dd>{coreRepairRequired && <><dt>{t('python.shared.missingCore')}</dt><dd>{info?.missingCorePackages?.join('、')}</dd></>}</dl><div className={css.actions}><button disabled={busy.bootstrap} onClick={() => setInstallRuntime(false)}>{t('python.manager.close')}</button><button disabled={busy.bootstrap} onClick={() => void perform('bootstrap', async () => { await api?.updateMcpEnvironment?.(); setInstallRuntime(false); setFeedback(t('python.manager.installQueued')) })}>{coreRepairRequired ? t('python.shared.repairCore') : t('python.shared.downloadBase')}</button></div></section></div>}
@@ -478,7 +475,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
       {plan ? <>
         <p>{t('python.manager.previewHint')}</p>
         {planStale && <p className={css.warning} role="status">{t('python.manager.stalePlan')}</p>}
-        {plan.error ? <pre>{plan.error}</pre> : plan.changes.length ? <ul>{plan.changes.map(change => <li key={change.name}>{change.name}: {change.from ?? t('python.manager.notInstalled')} → {change.to}</li>)}</ul> : <p>{t('python.manager.noChanges')}</p>}
+        {plan.error ? <pre>{presentPythonText(plan.error)}</pre> : plan.changes.length ? <ul>{plan.changes.map(change => <li key={change.name}>{change.name}: {change.from ?? t('python.manager.notInstalled')} → {change.to}</li>)}</ul> : <p>{t('python.manager.noChanges')}</p>}
         <div className={css.actions}>
           <button onClick={() => { setPlan(undefined); setPlanStale(false) }}>{t('python.manager.close')}</button>
           {!plan.error && !!plan.changes.length && <button disabled={busy.apply || planStale || (!!plan.manifestRevision && !callEnvironment)} onClick={() => void perform('apply', async () => {
@@ -489,7 +486,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
           })}>{t('python.manager.apply')}</button>}
         </div>
       </> : <>
-        <dl><dt>{t('python.manager.currentVersion')}</dt><dd>{detail?.version}</dd><dt>{t('python.manager.baseline')}</dt><dd>{detail?.requiredVersion ?? t('python.manager.userInstalled')}</dd><dt>{t('python.manager.shadowedVersion')}</dt><dd>{detail?.shadowedVersion ?? t('python.manager.none')}</dd><dt>{t('python.manager.location')}</dt><dd>{sharedSitePackages}</dd><dt>{t('python.manager.validation')}</dt><dd>{detail?.verificationMessage ?? t('python.manager.officialBaseline')}</dd><dt>{t('python.manager.dependencies')}</dt><dd>{detail?.dependencies?.join('; ') || t('python.manager.undeclared')}</dd></dl>
+        <dl><dt>{t('python.manager.currentVersion')}</dt><dd>{detail?.version}</dd><dt>{t('python.manager.baseline')}</dt><dd>{detail?.requiredVersion ?? t('python.manager.userInstalled')}</dd><dt>{t('python.manager.shadowedVersion')}</dt><dd>{detail?.shadowedVersion ?? t('python.manager.none')}</dd><dt>{t('python.manager.location')}</dt><dd>{sharedSitePackages}</dd><dt>{t('python.manager.validation')}</dt><dd>{presentPythonText(detail?.verificationMessage) ?? t('python.manager.officialBaseline')}</dd><dt>{t('python.manager.dependencies')}</dt><dd>{detail?.dependencies?.join('; ') || t('python.manager.undeclared')}</dd></dl>
         {!!detail?.upgradeHistory?.length && <details><summary>{t('python.manager.history')}</summary><ul>{detail.upgradeHistory.map((entry, index) => <li key={index}>{entry.from ?? t('python.manager.notInstalled')} → {entry.to} · {entry.verifiedAt}</li>)}</ul></details>}
         <p>{t('python.shared.capabilities')}: {detail?.capabilities?.join(', ') || t('python.shared.pending')}</p>
         <details><summary>{t('python.shared.advanced')}</summary><dl><dt>{t('python.manager.location')}</dt><dd>{detail?.location ?? t('python.shared.pending')}</dd><dt>{t('python.shared.wheelSha')}</dt><dd>{detail?.sha256 ?? t('python.shared.pending')}</dd></dl></details>

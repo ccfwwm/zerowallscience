@@ -9,7 +9,7 @@ import { openQiniuStore } from '../tools/release/qiniu-store.mjs'
 
 const input = JSON.parse(await readFile(join(root, 'config/python/bootstrap-inputs.json'), 'utf8'))
 const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
-const keyId = 'stable-3'
+const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4'
 const publicKey = keys[keyId]
 const environmentVersion = process.env.ZEROWALL_PYTHON_BOOTSTRAP_VERSION ?? input.environmentVersion
 const output = resolve(process.env.ZEROWALL_PYTHON_BOOTSTRAP_OUTPUT ?? join(releaseRoot, 'python-bootstrap', environmentVersion))

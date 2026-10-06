@@ -70,12 +70,12 @@ describe('signed dependency sync', () => {
   it('never lets a legacy cached or remote revision replace a newer bundled science manifest', async () => {
     const { root, manifest, updater, privateKey, key } = await setup()
     const { signature: _oldSignature, ...manifestUnsigned } = manifest
-    const newerUnsigned = { ...manifestUnsigned, environmentVersion: '8.0.4', revision: 'r14', packages: [{ name: 'pandas', version: '2.3.0', required: true, capabilities: ['science'] }] }
+    const newerUnsigned = { ...manifestUnsigned, environmentVersion: '8.0.5', revision: 'r14', packages: [{ name: 'pandas', version: '2.3.0', required: true, capabilities: ['science'] }] }
     const newer = { ...newerUnsigned, signature: { ...manifest.signature, value: sign(null, Buffer.from(JSON.stringify(newerUnsigned)), privateKey).toString('base64') } }
-    expect(() => parsePythonDependencyManifest(newer, { test: key }, '8.0.4')).not.toThrow()
+    expect(() => parsePythonDependencyManifest(newer, { test: key }, '8.0.5')).not.toThrow()
     const bundledManifestPath = join(root, 'bundled.json')
     await writeFile(bundledManifestPath, JSON.stringify(newer))
-    const service = new PythonSyncService({ root, updater: updater as any, keys: { test: key }, applicationVersion: '8.0.4', feedUrl: 'https://example.test/latest.json', bundledManifestPath, fetcher: vi.fn(async () => new Response(JSON.stringify(manifest))) as typeof fetch })
+    const service = new PythonSyncService({ root, updater: updater as any, keys: { test: key }, applicationVersion: '8.0.5', feedUrl: 'https://example.test/latest.json', bundledManifestPath, fetcher: vi.fn(async () => new Response(JSON.stringify(manifest))) as typeof fetch })
     const result = await service.checkManifest()
     expect(result.manifestRevision).toBe('r14')
     expect(result.source).toBe('bundled')

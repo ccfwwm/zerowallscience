@@ -44,7 +44,7 @@ const legacyApplicationVersion = (process.env.ZEROWALL_MCP_LEGACY_VERSION ?? '')
 const contentRevision = Number(process.env.ZEROWALL_MCP_CONTENT_REVISION ?? '1')
 if (!Number.isSafeInteger(contentRevision) || contentRevision < 1) throw new Error('ZEROWALL_MCP_CONTENT_REVISION must be a positive integer.')
 const configuredPrivateKeyFile = process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE?.trim()
-const defaultPrivateKeyFile = join(root, 'scripts', 'env', 'runtime-private.pem')
+const defaultPrivateKeyFile = join(root, 'scripts', 'env', 'resource-stable-4-private.pem')
 const privateKeyFile = configuredPrivateKeyFile || await stat(defaultPrivateKeyFile).then(() => defaultPrivateKeyFile, () => undefined)
 const privateKeyText = (privateKeyFile === undefined
   ? (process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY ?? '')
@@ -54,8 +54,10 @@ const privateKey = privateKeyText.startsWith('base64:')
   ? createPrivateKey({ key: Buffer.from(privateKeyText.slice('base64:'.length), 'base64'), format: 'der', type: 'pkcs8' })
   : privateKeyText
 
-const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-3'
-const expectedPublicKey = (process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----`).trim()
+const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4'
+const trustedKeys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
+const expectedPublicKey = (process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? trustedKeys[keyId] ?? '').trim()
+if (!expectedPublicKey) throw new Error(`No trusted public key configured for ${keyId}.`)
 const derivedPublicKey = createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).trim()
 if (derivedPublicKey !== expectedPublicKey.trim()) throw new Error(`MCP signing key does not match the pinned ${keyId} public key.`)
 

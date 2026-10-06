@@ -9,10 +9,10 @@ import { createBootstrapManifest, verifyBootstrapManifest } from './python-boots
 const exec = promisify(execFile)
 const input = JSON.parse(await readFile(join(root, 'config/python/bootstrap-inputs.json'), 'utf8'))
 const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
-const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-3'
+const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4'
 const publicKey = keys[keyId]
 if (!publicKey) throw new Error(`No trusted public key for ${keyId}.`)
-const privateKeyPath = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE ?? join(root, 'scripts/env/runtime-private.pem'))
+const privateKeyPath = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE ?? join(root, 'scripts/env/resource-stable-4-private.pem'))
 const privateKey = createPrivateKey(await readFile(privateKeyPath, 'utf8'))
 if (createPublicKey(privateKey).export({ format: 'pem', type: 'spki' }).toString().trim() !== publicKey.trim()) throw new Error(`Runtime signing key does not match ${keyId}.`)
 const environmentVersion = process.env.ZEROWALL_PYTHON_BOOTSTRAP_VERSION ?? input.environmentVersion

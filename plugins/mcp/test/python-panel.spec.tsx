@@ -59,6 +59,46 @@ describe('Python dependency panel', () => {
     expect(screen.getByRole('dialog', { name: 'Package details' })).toBeTruthy()
     expect(container.textContent).not.toMatch(/\p{Script=Han}/u)
   })
+  it('localizes persisted Python progress, diagnostics, and log lines in English settings', async () => {
+    const logLines = [
+      '等待基础 Python 环境就绪。',
+      '正在读取并验签依赖清单。',
+      '正在比较依赖版本 42/42。',
+      '依赖检查完成：1/42 已安装，41 待安装。',
+      '正在预检 42 个 core 依赖的镜像、版本和安装兼容性。',
+      '分组 1/2 · annotated-types 等 40 个包: Looking in indexes: https://mirror.example/simple',
+    ]
+    const snapshot = {
+      ...info('core-generation', 1),
+      officialPackageCount: 42,
+      corePackageCount: 1,
+      coreReady: false,
+      missingCorePackages: ['mcp==1.30.0'],
+      verification: { message: '核心 MCP 依赖不完整：mcp==1.30.0' },
+    }
+    const task = {
+      taskId: 'core-task', requestId: 'core-request', action: 'sync', layer: 'core',
+      state: 'running', stage: 'preflight', progress: 18, completedPackages: 1,
+      totalPackages: 42, message: '正在预检 42 个 core 依赖的镜像、版本和安装兼容性。',
+      logLines, createdAt: '2026-10-06T00:00:00Z', updatedAt: '2026-10-06T00:00:10Z',
+    }
+    const status = {
+      phase: 'checking', activeEnvironment: { snapshotId: 'core-generation' },
+      updateJob: { taskId: 'core-task', kind: 'python-dependency-preflight', stage: 'preflight', logLines },
+    }
+    window.zerowallDesktop = {
+      getMcpEnvironmentStatus: async () => status,
+      pythonEnvironment: async (request: any) => request.action === 'status'
+        ? { requestId: request.requestId, status, inventory: snapshot, task, events: [{ action: 'progress', requestId: 'event-1', createdAt: '2026-10-06T00:00:10Z', status: 'running', message: '正在读取并验签依赖清单。', logLine: '正在读取并验签依赖清单。' }] }
+        : { requestId: request.requestId, revision: 1, mirrorUrl: 'https://mirrors.ustc.edu.cn/pypi/simple', mirrorPresets: [] },
+    } as any
+    const { container } = render(<PythonEnvironmentPanel t={enT} />)
+    await waitFor(() => expect(container.textContent).toContain('1/42 dependencies installed; 41 pending.'))
+    openAdvanced()
+    await waitFor(() => expect(container.textContent).not.toMatch(/\p{Script=Han}/u))
+    expect(container.textContent).toContain('Checking the manifest, mirrors, and package resources…')
+    expect(container.textContent).toContain('Core MCP dependencies are incomplete: mcp==1.30.0')
+  })
   it('refreshes a background generation and virtualizes the list without checking the feed on search', async () => {
     let listener: any; let current = info('1.3.0', 131)
     const check = vi.fn(); const load = vi.fn(async () => current)

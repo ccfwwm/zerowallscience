@@ -60,7 +60,7 @@ it('checks signed pins as binary-only direct requirements, falls back to PyPI, a
     pythonVersion: '3.12.10', environmentVersion: '3.12.10', revision: 'r14',
     layer: 'science' as const, createdAt: new Date().toISOString(),
     index: { indexUrl: 'https://mirrors.ustc.edu.cn/pypi/simple' },
-    compatibility: { minApplicationVersion: '8.0.4' },
+    compatibility: { minApplicationVersion: '8.0.5' },
     signature: { algorithm: 'ed25519' as const, keyId: 'fixture', value: 'fixture' },
     packages: [{ name: 'brainglobe', version: '3.0.0', required: true, capabilities: ['science'] }],
   }

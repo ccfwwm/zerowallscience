@@ -608,7 +608,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     settingsPath: dirname(pythonLocation.locationPath),
     ...(bootstrapAvailable ? { bundledManifestPath: bootstrapManifest, bundledArchivePath: bootstrapArchive } : {}),
     bundledAssets: { bioToolsRoot: bundledBioToolsRoot, ketcherRoot: bundledKetcherRoot, sciRoot: bundledSciRoot, skillsRoot: bundledSkillsRoot },
-    manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python-bootstrap/windows-x64/1.5.0/manifest.json',
+    manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python-bootstrap/windows-x64/1.5.1/manifest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
     publicKeys: MCP_ENVIRONMENT_KEYRING,
     diagnosticPath: mcpEnvironmentLogPath,

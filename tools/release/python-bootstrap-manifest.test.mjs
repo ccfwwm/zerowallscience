@@ -19,7 +19,7 @@ const template = {
 
 test('bootstrap manifest signs a pip-only archive and records the separate 42-package layer', () => {
   const manifest = createBootstrapManifest({
-    applicationVersion: '8.0.4', environmentVersion: '1.5.0', baseUrl: 'https://example.test/python',
+    applicationVersion: '8.0.5', environmentVersion: '1.5.1', baseUrl: 'https://example.test/python',
     archiveName: 'bootstrap.zip', archiveSize: 17, archiveSha256: createHash('sha256').update('archive').digest('hex'),
     coreManifest, template, keyId: 'stable-3', privateKey,
   })
@@ -27,7 +27,7 @@ test('bootstrap manifest signs a pip-only archive and records the separate 42-pa
   assert.deepEqual(manifest.python.modules, ['pip'])
   assert.equal(manifest.dependencies.corePackages.length, 42)
   assert.equal(manifest.updatePolicy.required, false)
-  assert.equal(manifest.archiveUrl, 'https://example.test/python/1.5.0/bootstrap.zip')
+  assert.equal(manifest.archiveUrl, 'https://example.test/python/1.5.1/bootstrap.zip')
   assert.equal(verifyBootstrapManifest(manifest, publicPem), true)
   manifest.python.bootstrapOnly = false
   assert.equal(verifyBootstrapManifest(manifest, publicPem), false)
@@ -35,7 +35,7 @@ test('bootstrap manifest signs a pip-only archive and records the separate 42-pa
 
 test('bootstrap builder rejects a changed core package contract', () => {
   assert.throws(() => createBootstrapManifest({
-    applicationVersion: '8.0.4', environmentVersion: '1.5.0', baseUrl: 'https://example.test/python',
+    applicationVersion: '8.0.5', environmentVersion: '1.5.1', baseUrl: 'https://example.test/python',
     archiveName: 'bootstrap.zip', archiveSize: 17, archiveSha256: 'a'.repeat(64),
     coreManifest: { ...coreManifest, packages: corePackages.slice(1) }, template, keyId: 'stable-3', privateKey,
   }), /exactly 42/)

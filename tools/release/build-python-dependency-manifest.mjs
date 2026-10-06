@@ -9,13 +9,16 @@ const root = resolve(import.meta.dirname, '../..')
 const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(releaseRoot, 'python-dependencies'))
 const pythonVersion = process.env.ZEROWALL_PYTHON_VERSION ?? '3.12.10'
 const environmentVersion = process.env.ZEROWALL_PYTHON_ENVIRONMENT_VERSION ?? pythonVersion
-const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r14`
+const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r15`
 if (!/^[A-Za-z0-9_.-]{1,100}$/u.test(revision)) throw new Error('Invalid manifest revision.')
-const publicKey = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----`
-const keyFile = process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE ?? join(root, 'scripts', 'env', 'runtime-private.pem')
+const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4'
+const trustedKeys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
+const publicKey = trustedKeys[keyId]
+if (!publicKey) throw new Error(`No trusted public key for ${keyId}.`)
+const keyFile = process.env.ZEROWALL_MCP_ENVIRONMENT_PRIVATE_KEY_FILE ?? join(root, 'scripts', 'env', 'resource-stable-4-private.pem')
 const privateText = (await readFile(keyFile, 'utf8')).trim()
 const privateKey = privateText.startsWith('base64:') ? createPrivateKey({ key: Buffer.from(privateText.slice(7), 'base64'), type: 'pkcs8', format: 'der' }) : createPrivateKey(privateText)
-if (createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).trim() !== publicKey.trim()) throw new Error('Signing key does not match pinned stable-3 public key.')
+if (createPublicKey(privateKey).export({ type: 'spki', format: 'pem' }).trim() !== publicKey.trim()) throw new Error(`Signing key does not match pinned ${keyId} public key.`)
 const lockBytes = await readFile(join(root, 'resources', 'python', 'requirements-windows.lock'))
 const lockText = lockBytes.toString('utf8')
 const packages = parseLockedPackages(lockText)
@@ -64,7 +67,7 @@ for (const pkg of split.base) {
 // Aliyun 517, whose shortfall is CDN objects served truncated rather than
 // versions it lacks. The client still lets the user switch mirror at runtime.
 const index = { indexUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple', trustedHost: 'pypi.tuna.tsinghua.edu.cn' }
-const document = scienceManifestDocument({ environmentVersion, scienceRevision: revision, pythonVersion, applicationVersion, index, packages: split.science, keyId: 'stable-3' })
+const document = scienceManifestDocument({ environmentVersion, scienceRevision: revision, pythonVersion, applicationVersion, index, packages: split.science, keyId })
 // Packages without a digest keep none: the client resolves their version from
 // the index above rather than verifying bytes the mirror is free to re-publish.
 document.packages = document.packages.map(pkg => {
@@ -79,7 +82,7 @@ await mkdir(output, { recursive: true })
 await writeFile(join(output, `manifest-${revision}.json`), bytes)
 await writeFile(join(output, 'latest.json'), bytes)
 await writeFile(join(root, 'resources', 'python', 'dependency-manifest.json'), bytes)
-const core = coreManifestDocument({ environmentVersion, revision: `${revision}-core`, pythonVersion, applicationVersion, index, packages: split.base, keyId: 'stable-3' })
+const core = coreManifestDocument({ environmentVersion, revision: `${revision}-core`, pythonVersion, applicationVersion, index, packages: split.base, keyId })
 signDocument(core, privateKey, publicKey)
 const coreBytes = Buffer.from(`${JSON.stringify(core, null, 2)}\n`)
 await writeFile(join(output, `core-${revision}.json`), coreBytes)

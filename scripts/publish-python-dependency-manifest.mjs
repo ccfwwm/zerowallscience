@@ -11,12 +11,13 @@ const scienceBytes = await readFile(join(output, 'latest.json'))
 const science = JSON.parse(scienceBytes.toString('utf8'))
 const coreBytes = await readFile(join(output, 'core.json'))
 const core = JSON.parse(coreBytes.toString('utf8'))
-const publicKey = JSON.parse(await readFile(new URL('../config/catalogs/trusted-keys.json', import.meta.url), 'utf8'))['stable-3']
+const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4'
+const publicKey = JSON.parse(await readFile(new URL('../config/catalogs/trusted-keys.json', import.meta.url), 'utf8'))[keyId]
 const verifyManifest = (document, layer) => document.schema === 3
   && document.runtimeId === 'zerowall-science-python'
   && document.applicationVersion === contract.version
   && document.layer === layer
-  && document.signature?.keyId === 'stable-3'
+  && document.signature?.keyId === keyId
   && verifyDocument(document, publicKey)
 
 if (!verifyManifest(science, 'science') || !/^[A-Za-z0-9_.-]{1,100}$/u.test(science.revision)) throw new Error('Refusing to publish an invalid signed science dependency manifest.')
@@ -55,7 +56,7 @@ for (const asset of pointers) publicPointers.push(await store.verify(asset))
 const receipt = {
   applicationVersion: contract.version,
   publishedAt: new Date().toISOString(),
-  keyId: 'stable-3',
+  keyId,
   corePackageCount: core.packages.length,
   immutableManifests: await Promise.all(immutable.map(async asset => ({ key: asset.key, bytes: (await stat(asset.path)).size, sha256: await fileDigest(asset.path) }))),
   publicPointers,

@@ -17,6 +17,12 @@ await access(join(root, `docs/release-notes-${applicationVersion}.md`))
 const python = await document(join(root, 'resources/python/dependency-manifest.json'))
 equal(python.applicationVersion, applicationVersion, 'Python manifest applicationVersion')
 equal(python.compatibility.minApplicationVersion, applicationVersion, 'Python minimum desktop')
+const pythonBootstrap = await document(join(root, 'config/python/bootstrap-inputs.json'))
+equal(pythonBootstrap.applicationVersion, applicationVersion, 'Python bootstrap applicationVersion')
+const desktopMain = await readFile(join(root, 'desktop/src/main/index.ts'), 'utf8')
+if (!desktopMain.includes(`/windows-x64/${pythonBootstrap.environmentVersion}/manifest.json`)) {
+  throw new Error(`Desktop Python bootstrap URL does not match environment version ${pythonBootstrap.environmentVersion}.`)
+}
 const dshContract = await document(join(root, 'config/deepseek-harness/upstream.json'))
 if (typeof dshContract.commit !== 'string' || dshContract.commit.length !== 40) {
   throw new Error(`DSH upstream contract has an invalid commit: ${dshContract.commit ?? '(missing)'}`)
