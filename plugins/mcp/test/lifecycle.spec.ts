@@ -1,4 +1,5 @@
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -219,6 +220,127 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(await ctx.zerowallMcp.list()).toHaveLength(1)
     } finally {
       await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
+  it('reports RMCP credential and discovery states without confusing them with zero tools', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-rmcp-discovery-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    process.env.DSH_HOME = join(root, 'harness')
+
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      const seeded = ctx.zerowallProjects.createMcpServer({
+        name: 'RMCP fixture', serverName: 'rmcp', transport: 'stdio', enabled: false,
+        command: process.execPath, args: ['-e', 'process.stdin.resume()'], cwd: root,
+      })
+      await ctx.plugin(ZeroWallMcpService)
+
+      ctx.zerowallProjects.updateMcpServer(seeded.id, { enabled: true })
+      const missing = await ctx.zerowallMcp.reload(seeded.id)
+      expect(missing.runtimeState).toBe('waiting-for-credentials')
+      expect(missing.missingEnvironmentVariables).toEqual(['R_PLATFORM_MCP_AUTHORIZATION'])
+      expect(missing.tools).toEqual([])
+
+      process.env.R_PLATFORM_MCP_AUTHORIZATION = 'fixture-token'
+      const mode = join(root, 'rmcp-mode.txt')
+      writeFileSync(mode, 'zero')
+      const launcher = join(root, 'rmcp-fixture.mjs')
+      writeFileSync(launcher, `import { readFileSync } from 'node:fs'; import { createInterface } from 'node:readline'; const mode=${JSON.stringify(mode)}; createInterface({input:process.stdin}).on('line',line=>{let req;try{req=JSON.parse(line)}catch{return}if(req.id===undefined)return;let result={};if(req.method==='initialize')result={protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'rmcp-fixture',version:'1'}};else if(req.method==='tools/list')result={tools:readFileSync(mode,'utf8').trim()==='one'?[{name:'echo',description:'fixture',inputSchema:{type:'object',properties:{}}}]:[]};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result})+'\\n')});`)
+      ctx.zerowallProjects.updateMcpServer(seeded.id, { command: process.execPath, args: [launcher] })
+      const zero = await ctx.zerowallMcp.reload(seeded.id)
+      expect(zero.runtimeState, zero.runtimeError).toBe('active-with-zero-tools')
+      expect(zero.toolDiscoveryState).toBe('complete')
+      expect(zero.lastSuccessfulToolCount).toBe(0)
+      expect(zero.tools).toEqual([])
+
+      writeFileSync(mode, 'one')
+      const reloaded = await ctx.zerowallMcp.reload(zero.id)
+      expect(reloaded.runtimeState, reloaded.runtimeError).toBe('active')
+      expect(reloaded.toolDiscoveryState).toBe('complete')
+      expect(reloaded.tools).toEqual(['mcp__rmcp__echo'])
+      expect(ctx.tools.schemas().filter(tool => tool.name === 'mcp__rmcp__echo')).toHaveLength(1)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
+  it('migrates only the reserved RMCP record to strict startup errors', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-rmcp-startup-policy-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      const rmcp = ctx.zerowallProjects.createMcpServer({
+        name: 'rmcp', serverName: 'rmcp', transport: 'streamable-http', enabled: false,
+        url: 'http://127.0.0.1:9/mcp', failOnStartupError: false,
+      })
+      const custom = ctx.zerowallProjects.createMcpServer({
+        name: 'User MCP fixture', serverName: 'user-fixture', transport: 'streamable-http', enabled: false,
+        url: 'http://127.0.0.1:9/mcp', failOnStartupError: false,
+      })
+      await ctx.plugin(ZeroWallMcpService)
+      await ctx.zerowallMcp.list()
+      const records = ctx.zerowallProjects.listMcpServers()
+      expect(records.find(server => server.id === rmcp.id)?.failOnStartupError).toBe(true)
+      expect(records.find(server => server.serverName === 'zerowall_managed_bio_tools')?.failOnStartupError).toBe(true)
+      expect(records.find(server => server.id === custom.id)?.failOnStartupError).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
+  it('reports an RMCP HTTP startup failure instead of an active zero-tool connection', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-rmcp-http-error-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.R_PLATFORM_MCP_AUTHORIZATION = 'Bearer fixture-token'
+
+    const server = createServer((_request, response) => {
+      response.writeHead(502, { 'content-type': 'text/plain' })
+      response.end('fixture upstream unavailable')
+    })
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('RMCP fixture server did not bind a TCP port.')
+
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      const seeded = ctx.zerowallProjects.createMcpServer({
+        name: 'RMCP fixture', serverName: 'rmcp', transport: 'streamable-http', enabled: false,
+        url: `http://127.0.0.1:${address.port}/mcp`,
+        headerRefs: { Authorization: 'R_PLATFORM_MCP_AUTHORIZATION' },
+        failOnStartupError: true,
+        reconnect: { enabled: false, initialDelayMs: 5_000, maxDelayMs: 60_000, maxAttempts: 1 },
+      })
+      await ctx.plugin(ZeroWallMcpService)
+      ctx.zerowallProjects.updateMcpServer(seeded.id, { enabled: true })
+      const failed = await ctx.zerowallMcp.reload(seeded.id)
+      expect(failed.runtimeState).toBe('error')
+      expect(failed.toolDiscoveryState).toBe('failed')
+      expect(failed.runtimeState).not.toBe('active-with-zero-tools')
+      expect(failed.tools).toEqual([])
+    } finally {
+      await ctx.fiber.dispose()
+      await new Promise<void>(resolve => server.close(() => resolve()))
     }
   }, 30_000)
 

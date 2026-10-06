@@ -28,6 +28,9 @@ export interface McpEnvironmentStatus {
   updateRequired?: boolean
   lastCheckedAt?: string
   lastUpdateError?: string
+  layers?: { bootstrap: 'missing' | 'ready' | 'error'; core: 'missing' | 'ready' | 'error'; science: 'not-installed' | 'checking' | 'available' | 'installed' | 'error'; capabilities?: Record<string, 'not-installed' | 'checking' | 'available' | 'installed' | 'error'> }
+  resourceAvailability?: { layer: 'core' | 'science' | 'capability'; available: boolean; source?: string; reason?: string; packageCount?: number }
+  lastSyncError?: string
   skillAudit?: McpSkillAudit
   python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; packageCount?: number; message?: string }
 }
@@ -89,7 +92,7 @@ export interface PythonEnvironmentResponse {
   changes?: Array<{ name: string; from?: string; to: string }>
   upToDate?: boolean
   previousRevision?: string
-  dependencies?: { revision: number; manifestRevision: string; manifestSha256: string; packageCount: number; pythonVersion: string; checkedAt: string; changes: Array<{ name: string; from?: string; to: string; required: boolean; capabilities: string[] }>; source: 'remote' | 'bundled' | 'cache' }
+  dependencies?: { revision: string; manifestRevision: string; manifestSha256: string; layer?: 'core' | 'science' | 'capability'; capabilityId?: string; packageCount: number; pythonVersion: string; checkedAt: string; changes: Array<{ name: string; from?: string; to: string; required: boolean; capabilities: string[] }>; source: 'remote' | 'bundled' | 'cache'; resourceAvailability?: { layer: 'core' | 'science' | 'capability'; available: boolean; source?: string; reason?: string; packageCount?: number }; scienceInstalled?: boolean; available?: boolean }
   events?: Array<{ action: string; requestId: string; createdAt: string; status: 'queued' | 'succeeded' | 'failed' | 'running'; message?: string; logLine?: string; taskId?: string; upToDate?: boolean }>
 }
 
@@ -135,7 +138,7 @@ export interface ZeroWallDesktopApi {
   installMcpPythonPackage?(spec: string): Promise<{ taskId: string }>
   checkMcpPythonPackageUpdates?(names?: string[]): Promise<McpPythonInfo>
   updateMcpPythonPackages?(names?: string[]): Promise<{ taskId: string }>
-  pythonEnvironment?(request: { action: 'status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; runtimeRoot?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
+  pythonEnvironment?(request: { action: 'status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; layer?: 'core' | 'science' | 'capability'; capabilityId?: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; runtimeRoot?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
   pauseMcpEnvironment?(): Promise<McpEnvironmentStatus>
   rollbackMcpEnvironment?(): Promise<{ taskId: string }>
   previewMcpPythonPackages?(names: string[]): Promise<PythonPackagePlan>

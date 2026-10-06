@@ -1,8 +1,10 @@
 import { contract } from '../../tools/build/paths.mjs'
 import assert from 'node:assert/strict'
+import { execFile, spawn } from 'node:child_process'
 import { access, lstat, mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
+import { promisify } from 'node:util'
 import { _electron } from 'playwright'
 import { locatePackagedApp } from './packaged-app.mjs'
 
@@ -19,14 +21,48 @@ await mkdir(output, { recursive: true })
 const env = { ...process.env, ZEROWALL_USER_DATA_DIR: join(profile, 'userdata'), ZEROWALL_DISABLE_DEFAULT_MCP: '1', APPDATA: join(profile, 'appdata'), LOCALAPPDATA: join(profile, 'localappdata') }
 delete env.ELECTRON_RUN_AS_NODE
 await Promise.all(['appdata', 'localappdata', 'userdata'].map(name => mkdir(join(profile, name), { recursive: true })))
-// A writable per-user install directory is intentionally the default runtime
-// location in production. Point this test at its disposable profile so the
-// first-run initialization cannot modify the packaged application directory.
-const isolatedRuntimeRoot = join(profile, 'shared-python', 'Python')
-const pythonLocationPath = join(env.LOCALAPPDATA, 'ZeroWall Science', 'python-location.json')
-await mkdir(dirname(pythonLocationPath), { recursive: true })
-await writeFile(pythonLocationPath, `${JSON.stringify({ runtimeRoot: isolatedRuntimeRoot })}\n`)
+// Exercise the production default location using disposable LocalAppData.
+// Do not seed an old location pointer or assume that a generation's physical
+// executable is stored directly in the stable user-visible runtime root.
+const isolatedRuntimeRoot = join(env.LOCALAPPDATA, 'ZeroWall Science', 'Python')
 const evidence = { executable: packaged.executablePath, profile, screenshots: [], pageErrors: [], layouts: [], startup: null, startupProgress: [], version: null, baseInstall: null, final: null, jobs: [] }
+const execFileAsync = promisify(execFile)
+async function discoverManagedTools(command, args, cwd, expectedCount) {
+  const child = spawn(command, args, { cwd, windowsHide: true, env: { ...env, ELECTRON_RUN_AS_NODE: '1', PYTHONNOUSERSITE: '1', PYTHONPATH: '' }, stdio: 'pipe' })
+  const closed = new Promise(accept => child.once('close', accept))
+  let buffer = '', errors = '', initialized = false
+  try {
+    return await new Promise((accept, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Packaged MCP discovery timed out: ${cwd}`)), 60_000)
+      const finish = (error, tools) => { clearTimeout(timer); error ? reject(error) : accept(tools.map(tool => tool.name)) }
+      child.once('error', error => finish(error))
+      child.once('exit', code => finish(new Error(`Packaged MCP exited before discovery (${code}): ${errors}`)))
+      child.stderr.on('data', chunk => { errors = (errors + String(chunk)).slice(-2000) })
+      child.stdout.on('data', chunk => {
+        buffer += String(chunk)
+        const lines = buffer.split(/\r?\n/u); buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          let response
+          try { response = JSON.parse(line) } catch { continue }
+          if (response.id === 1) {
+            if (response.error || !response.result) return finish(new Error('Packaged MCP initialize failed'))
+            initialized = true
+            child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })}\n`)
+          }
+          if (response.id === 2) {
+            if (!initialized || response.error || !Array.isArray(response.result?.tools)) return finish(new Error('Packaged MCP tools/list failed'))
+            if (response.result.tools.length !== expectedCount) return finish(new Error(`Packaged MCP returned ${response.result.tools.length} tools; expected ${expectedCount}`))
+            return finish(undefined, response.result.tools)
+          }
+        }
+      })
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'zerowall-packaged-verification', version } } })}\n`)
+    })
+  } finally {
+    child.kill()
+    await closed
+  }
+}
 const electron = await _electron.launch({ executablePath: packaged.executablePath, args: [`--user-data-dir=${join(profile, 'chromium')}`], env, timeout: 120_000 })
 let page
 try {
@@ -102,9 +138,8 @@ try {
     console.log(`Packaged thin-Python UI verified: ${output}`)
     process.exitCode = 0
   } else {
-  // The resolver prefers a writable packaged install directory.  The manager
-  // lives beside the selected shared runtime, so do not assume the old
-  // Roaming/userdata slot layout here.
+  // Offline first-run bootstrap uses the packaged signed archive and activates
+  // a verified generation under the fixed LocalAppData manager.
   const waitForBaseInstall = async () => {
     const deadline = Date.now() + 20 * 60_000
     let previous
@@ -120,18 +155,47 @@ try {
     throw new Error('Automatic base runtime installation timed out')
   }
   evidence.baseInstall = await waitForBaseInstall()
-  assert(evidence.startupProgress.some(item => item.stage === 'installing' || item.stage === 'downloading'), 'Automatic base installation did not report visible progress')
+  // Installation can finish before the UI opens. In that case its durable
+  // completed job is the progress evidence, checked below.
   const stablePython = evidence.final?.runtimeRoot ?? await page.evaluate(() => window.zerowallDesktop.pythonEnvironment({ action: 'status', requestId: crypto.randomUUID() })).then(result => result.runtimeRoot)
   assert.equal(stablePython, isolatedRuntimeRoot, 'Packaged first-run test escaped its disposable Python runtime directory')
-  await access(join(stablePython, 'python.exe'))
-  assert.equal((await lstat(stablePython)).isSymbolicLink(), false, 'Shared Python must be a real stable directory')
   evidence.final = await page.evaluate(() => window.zerowallDesktop.pythonEnvironment({ action: 'status', requestId: crypto.randomUUID() }))
   const installed = await page.evaluate(() => window.zerowallDesktop.pythonEnvironment({ action: 'list_packages', requestId: crypto.randomUUID() }))
+  evidence.inventory = installed.inventory
   assert.equal(installed.inventory.version, '3.12.10')
-  assert(installed.inventory.packageCount > 0)
+  assert.equal(evidence.final.coreReady, true)
+  assert.deepEqual(evidence.final.missingCorePackages, [])
+  assert.equal(evidence.final.layers.bootstrap, 'ready')
+  assert.equal(evidence.final.layers.core, 'ready')
+  assert.equal(evidence.final.layers.science, 'not-installed', 'Startup must not install the science layer')
+  assert.equal(installed.inventory.coreReady, true)
+  const baseManifest = JSON.parse(await readFile(join(packaged.resourcesRoot, 'python/base-manifest.json'), 'utf8'))
+  const corePackages = baseManifest.dependencies.corePackages
+  assert.equal(installed.inventory.officialPackageCount, corePackages.length)
+  assert.equal(installed.inventory.packageCount, corePackages.length, 'First launch must contain only the verified core closure')
+  const normalize = name => name.toLowerCase().replace(/[-_.]+/gu, '-')
+  const versions = new Map(installed.inventory.packages.map(pkg => [normalize(pkg.name), pkg.version]))
+  for (const pkg of corePackages) assert.equal(versions.get(normalize(pkg.name)), pkg.requiredVersion, `Core package mismatch: ${pkg.name}`)
+  const executable = installed.inventory.executable
+  await access(executable)
+  assert.equal((await lstat(dirname(executable))).isSymbolicLink(), false, 'The active generation must be a real directory')
   const jobsRoot = join(dirname(stablePython), 'zerowall-python', 'jobs')
+  const current = JSON.parse(await readFile(join(dirname(jobsRoot), 'current.json'), 'utf8'))
+  assert.equal(current.generation, true)
+  assert.equal(resolve(current.root), resolve(installed.inventory.snapshotId))
+  assert.equal(resolve(executable), resolve(current.root, 'Python/python.exe'))
+  assert(!relative(join(dirname(jobsRoot), 'slots'), current.root).startsWith('..'), 'The active generation escaped the disposable manager')
+  evidence.activeGeneration = current
   evidence.jobs = await Promise.all((await readdir(jobsRoot).catch(() => [])).filter(name => name.endsWith('.json')).map(async name => JSON.parse(await readFile(join(jobsRoot, name), 'utf8'))))
   assert(evidence.jobs.some(job => job.method === 'initialize' && job.state === 'complete'), 'First launch must finish the base runtime installation')
+  assert(evidence.jobs.every(job => job.method === 'initialize'), 'Startup must not schedule a science download or synchronization')
+  const pipCheck = await execFileAsync(executable, ['-s', '-B', '-m', 'pip', 'check'], { windowsHide: true, env: { ...env, PYTHONNOUSERSITE: '1', PYTHONPATH: '' } })
+  evidence.pipCheck = pipCheck.stdout.trim()
+  evidence.managedMcpTools = {
+    bio: await discoverManagedTools(executable, ['-s', '-B', 'run_server.py', 'mcp_bio'], join(packaged.resourcesRoot, 'bio-tools'), 8),
+    ketcher: await discoverManagedTools(packaged.executablePath, ['server.js'], join(packaged.resourcesRoot, 'ketcher-chemistry'), 7),
+    sci: await discoverManagedTools(packaged.executablePath, ['dist/mcp.cjs'], join(packaged.resourcesRoot, 'sci'), 1),
+  }
   assert.equal(evidence.pageErrors.length, 0, 'Packaged renderer raised JavaScript errors')
   // Optional source-only package install still runs solely in the disposable
   // profile and validates that the newly installed base can be extended.

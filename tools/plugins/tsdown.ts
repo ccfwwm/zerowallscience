@@ -2,6 +2,7 @@ import { defineConfig } from 'tsdown'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 import { viewerStylePlugin } from './viewer-style.mjs'
 import '../build/register-output-resolution.mjs'
 import { adaptViewerCore } from './viewer-adapter.mjs'
@@ -82,7 +83,14 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
           // ZeroWall plugins are independently installable DSH bundles. Keep
           // their client entrypoints external so the ModuleLoader can load,
           // update and restart one plugin without rebuilding every client.
-          /^@zerowallscience\/plugin-[^/]+\/(?:client-helpers$|client\/|src\/)/,
+          // `plugin-base/client-helpers` is a small source-level utility, not
+          // a client runtime service.  It must be inlined into each owning
+          // plugin bundle: the DSH module table only seeds the package root
+          // client entries, so leaving this subpath external makes the
+          // classic script fail at runtime with "missed the module table".
+          /^@zerowallscience\/plugin-base\/client-helpers$/,
+          /[\\/]plugins[\\/]base[\\/]src[\\/]shared[\\/]client-helpers(?:\.[cm]?[jt]s)?$/u,
+          /^@zerowallscience\/plugin-[^/]+\/(?:client\/|src\/)/,
           /^dsh-file-review(?:\/|$)/,
           /^lucide-react(?:\/|$)/,
           /^qrcode(?:\/|$)/,
@@ -131,6 +139,22 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
           return `export default ${JSON.stringify(`data:image/png;base64,${png.toString('base64')}`)}`
         },
       }] : []), {
+        name: 'zerowall-inline-client-helpers',
+        // Workspace installs honor each package's publishConfig.directory and
+        // may therefore point at an as-yet-unprepared publish staging path
+        // while the source tree is being bundled.  Resolve this source-only
+        // helper explicitly so development builds do not turn it into an
+        // external CommonJS require that the DSH client module table cannot
+        // answer at runtime.  The helper is intentionally inlined per plugin;
+        // it is not a shared client service and remains independently
+        // publishable.
+        resolveId(source: string) {
+          if (source === '@zerowallscience/plugin-base/client-helpers') {
+            return resolve(dirname(fileURLToPath(import.meta.url)), '../../plugins/base/src/shared/client-helpers.ts')
+          }
+          return null
+        },
+      }, {
         name: 'zerowall-owned-remote',
         resolveId(source: string) {
           if (source === 'zerowall:client-entry') return '\0zerowall:client-entry'

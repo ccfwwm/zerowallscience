@@ -1,13 +1,14 @@
 {
   "schema": 3,
   "kind": "zerowall-science-python",
-  "applicationVersion": "8.0.3",
+  "applicationVersion": "8.0.4",
   "runtimeId": "zerowall-science-python",
   "platform": "win32-x64",
   "environmentVersion": "3.12.10",
-  "revision": "3.12.10-r12",
+  "revision": "3.12.10-r14",
   "pythonVersion": "3.12.10",
-  "createdAt": "2026-10-01T06:09:13.233Z",
+  "layer": "science",
+  "createdAt": "2026-10-04T16:55:57.703Z",
   "index": {
     "indexUrl": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "trustedHost": "pypi.tuna.tsinghua.edu.cn"
@@ -110,22 +111,6 @@
     {
       "name": "annotated-doc",
       "version": "0.0.5",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "annotated-types",
-      "version": "0.8.0",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
-      ]
-    },
-    {
-      "name": "anyio",
-      "version": "4.15.1",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -272,14 +257,6 @@
     {
       "name": "async-lru",
       "version": "2.3.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "attrs",
-      "version": "26.1.0",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -594,22 +571,6 @@
       ]
     },
     {
-      "name": "certifi",
-      "version": "2026.7.22",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "cffi",
-      "version": "2.1.1",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
       "name": "cftime",
       "version": "1.6.5",
       "required": true,
@@ -620,22 +581,6 @@
     {
       "name": "chardet",
       "version": "7.6.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "charset-normalizer",
-      "version": "3.5.1",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "click",
-      "version": "8.5.0",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -775,14 +720,6 @@
     {
       "name": "crc32c",
       "version": "2.9.post0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "cryptography",
-      "version": "50.0.1",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -1406,14 +1343,6 @@
       ]
     },
     {
-      "name": "h11",
-      "version": "0.16.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
       "name": "h2",
       "version": "4.4.1",
       "required": true,
@@ -1476,33 +1405,8 @@
       ]
     },
     {
-      "name": "httpcore",
-      "version": "1.0.9",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
       "name": "httpcore2",
       "version": "2.13.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "httpx",
-      "version": "0.28.1",
-      "required": true,
-      "capabilities": [
-        "benchling-integration",
-        "zerowall-image-dup"
-      ]
-    },
-    {
-      "name": "httpx-sse",
-      "version": "0.4.3",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -1527,14 +1431,6 @@
     {
       "name": "hyperframe",
       "version": "6.1.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "idna",
-      "version": "3.19",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -1756,22 +1652,6 @@
     {
       "name": "jsonpointer",
       "version": "3.1.1",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "jsonschema",
-      "version": "4.26.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "jsonschema-specifications",
-      "version": "2025.9.1",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -2002,15 +1882,6 @@
       ]
     },
     {
-      "name": "lxml",
-      "version": "6.1.3",
-      "required": true,
-      "capabilities": [
-        "paper-download",
-        "zerowall-image-dup"
-      ]
-    },
-    {
       "name": "magicgui",
       "version": "0.10.2",
       "required": true,
@@ -2131,14 +2002,6 @@
     {
       "name": "matplotlib-inline",
       "version": "0.2.2",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "mcp",
-      "version": "1.30.0",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -2550,83 +2413,6 @@
       ]
     },
     {
-      "name": "numpy",
-      "version": "2.5.3",
-      "required": true,
-      "capabilities": [
-        "academic-paper",
-        "aeon",
-        "anndata",
-        "arboreto",
-        "astropy",
-        "biopython",
-        "cirq",
-        "dask",
-        "datamol",
-        "deepchem",
-        "deepspot-m",
-        "depmap",
-        "esm",
-        "experimental-design",
-        "exploratory-data-analysis",
-        "figure-style",
-        "flowio",
-        "geomaster",
-        "gget",
-        "histolab",
-        "imaging-data-commons",
-        "ligandmpnn",
-        "matchms",
-        "matplotlib",
-        "molecular-dynamics",
-        "molfeat",
-        "networkx",
-        "neurokit2",
-        "neuropixels-analysis",
-        "omero-integration",
-        "openpiv",
-        "optimize-for-gpu",
-        "pathml",
-        "pathway-enrichment",
-        "pennylane",
-        "pkpd-modeling",
-        "polars",
-        "proteinmpnn",
-        "pufferlib",
-        "pydeseq2",
-        "pydicom",
-        "pymc",
-        "pymoo",
-        "pyopenms",
-        "qiskit",
-        "qutip",
-        "relsa-severity-assessment",
-        "scanpy",
-        "scikit-bio",
-        "scikit-learn",
-        "scikit-survival",
-        "scvelo",
-        "scvi-tools",
-        "seaborn",
-        "shap",
-        "singlecell-qc",
-        "solublempnn",
-        "stable-baselines3",
-        "statistical-analysis",
-        "statistical-power",
-        "statsmodels",
-        "sympy",
-        "timesfm-forecasting",
-        "transformers",
-        "umap-learn",
-        "uncertainty-and-units",
-        "vaex",
-        "zarr-python",
-        "zerowall-bio",
-        "zerowall-image-dup"
-      ]
-    },
-    {
       "name": "numpy-groupies",
       "version": "0.11.3",
       "required": true,
@@ -2766,83 +2552,11 @@
       ]
     },
     {
-      "name": "packaging",
-      "version": "26.3",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
-      ]
-    },
-    {
       "name": "palettable",
       "version": "3.3.3",
       "required": true,
       "capabilities": [
         "shared-runtime"
-      ]
-    },
-    {
-      "name": "pandas",
-      "version": "2.3.3",
-      "required": true,
-      "capabilities": [
-        "anndata",
-        "arboreto",
-        "astropy",
-        "bids",
-        "bioservices",
-        "bulk-rnaseq",
-        "cirq",
-        "cobrapy",
-        "dask",
-        "datamol",
-        "deepspot-m",
-        "depmap",
-        "experimental-design",
-        "exploratory-data-analysis",
-        "flowio",
-        "geomaster",
-        "geopandas",
-        "gget",
-        "glycoengineering",
-        "histolab",
-        "imaging-data-commons",
-        "lamindb",
-        "large-file",
-        "matplotlib",
-        "medchem",
-        "molecular-dynamics",
-        "networkx",
-        "neurokit2",
-        "neuropixels-analysis",
-        "optimize-for-gpu",
-        "pathway-enrichment",
-        "polars",
-        "polars-bio",
-        "primekg",
-        "pydeseq2",
-        "pymc",
-        "pyopenms",
-        "relsa-severity-assessment",
-        "rowan",
-        "scanpy",
-        "scikit-bio",
-        "scikit-learn",
-        "scikit-survival",
-        "scvi-tools",
-        "seaborn",
-        "shap",
-        "singlecell-milor",
-        "singlecell-qc",
-        "statistical-analysis",
-        "statistical-power",
-        "stats-integrity",
-        "statsmodels",
-        "timesfm-forecasting",
-        "torch-geometric",
-        "usfiscaldata",
-        "vaex",
-        "zerowall-bio"
       ]
     },
     {
@@ -2968,14 +2682,6 @@
       "required": true,
       "capabilities": [
         "uncertainty-and-units"
-      ]
-    },
-    {
-      "name": "pip",
-      "version": "26.2.1",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
       ]
     },
     {
@@ -3243,14 +2949,6 @@
       ]
     },
     {
-      "name": "pycparser",
-      "version": "3.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
       "name": "pycryptodome",
       "version": "3.23.0",
       "required": true,
@@ -3259,35 +2957,11 @@
       ]
     },
     {
-      "name": "pydantic",
-      "version": "2.13.5",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
-      ]
-    },
-    {
-      "name": "pydantic-core",
-      "version": "2.46.5",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
-      ]
-    },
-    {
       "name": "pydantic-extra-types",
       "version": "2.11.1",
       "required": true,
       "capabilities": [
         "shared-runtime"
-      ]
-    },
-    {
-      "name": "pydantic-settings",
-      "version": "2.15.0",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
       ]
     },
     {
@@ -3387,14 +3061,6 @@
       "required": true,
       "capabilities": [
         "pydicom"
-      ]
-    },
-    {
-      "name": "pyjwt",
-      "version": "2.13.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
       ]
     },
     {
@@ -3660,24 +3326,8 @@
       ]
     },
     {
-      "name": "python-dateutil",
-      "version": "2.9.0.post0",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
-      ]
-    },
-    {
       "name": "python-docx",
       "version": "1.2.0",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
-      ]
-    },
-    {
-      "name": "python-dotenv",
-      "version": "1.2.3",
       "required": true,
       "capabilities": [
         "zerowall-image-dup"
@@ -3708,14 +3358,6 @@
       ]
     },
     {
-      "name": "python-multipart",
-      "version": "0.0.32",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
       "name": "python-pptx",
       "version": "1.0.2",
       "required": true,
@@ -3732,27 +3374,11 @@
       ]
     },
     {
-      "name": "pytz",
-      "version": "2026.3.post1",
-      "required": true,
-      "capabilities": [
-        "astropy"
-      ]
-    },
-    {
       "name": "pywavelets",
       "version": "1.10.0",
       "required": true,
       "capabilities": [
         "zerowall-image-dup"
-      ]
-    },
-    {
-      "name": "pywin32",
-      "version": "312",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
       ]
     },
     {
@@ -3868,14 +3494,6 @@
       ]
     },
     {
-      "name": "referencing",
-      "version": "0.37.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
       "name": "regex",
       "version": "2026.9.10",
       "required": true,
@@ -3890,25 +3508,6 @@
       "capabilities": [
         "biopython",
         "paper-download"
-      ]
-    },
-    {
-      "name": "requests",
-      "version": "2.34.2",
-      "required": true,
-      "capabilities": [
-        "depmap",
-        "esm",
-        "genomic-intelligence",
-        "geomaster",
-        "glycoengineering",
-        "imaging-data-commons",
-        "lamindb",
-        "latex-posters",
-        "open-notebook",
-        "paper-download",
-        "tamarind",
-        "usfiscaldata"
       ]
     },
     {
@@ -3978,14 +3577,6 @@
     {
       "name": "rich-argparse",
       "version": "1.8.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "rpds-py",
-      "version": "2026.6.3",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -4288,14 +3879,6 @@
       ]
     },
     {
-      "name": "six",
-      "version": "1.17.0",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
-      ]
-    },
-    {
       "name": "slicer",
       "version": "0.0.8",
       "required": true,
@@ -4347,14 +3930,6 @@
       ]
     },
     {
-      "name": "sse-starlette",
-      "version": "3.4.11",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
       "name": "stack-data",
       "version": "0.6.3",
       "required": true,
@@ -4365,14 +3940,6 @@
     {
       "name": "stardist",
       "version": "0.9.2",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "starlette",
-      "version": "1.6.0",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -4677,30 +4244,6 @@
       ]
     },
     {
-      "name": "typing-extensions",
-      "version": "4.16.0",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
-      ]
-    },
-    {
-      "name": "typing-inspection",
-      "version": "0.4.4",
-      "required": true,
-      "capabilities": [
-        "zerowall-image-dup"
-      ]
-    },
-    {
-      "name": "tzdata",
-      "version": "2026.3",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
       "name": "tzlocal",
       "version": "5.4.4",
       "required": true,
@@ -4744,22 +4287,6 @@
     {
       "name": "url-normalize",
       "version": "3.0.0",
-      "required": true,
-      "capabilities": [
-        "shared-runtime"
-      ]
-    },
-    {
-      "name": "urllib3",
-      "version": "2.7.0",
-      "required": true,
-      "capabilities": [
-        "paper-download"
-      ]
-    },
-    {
-      "name": "uvicorn",
-      "version": "0.52.4",
       "required": true,
       "capabilities": [
         "shared-runtime"
@@ -4997,15 +4524,15 @@
     }
   ],
   "compatibility": {
-    "minApplicationVersion": "8.0.3"
+    "minApplicationVersion": "8.0.4"
   },
   "signature": {
     "algorithm": "ed25519",
     "keyId": "stable-3",
-    "value": "alTvyMKG+N9tp21K66SFBY25dnjFZ3kr/WoM+WFJcOmthIvDsfr2xq03k4TKuF8KRDnIkz9Bwp/S9Da0cuBuBg=="
+    "value": "KvSlzbrpHDu7aVdwtxLWZoL3AvB0hVxCL08cdqz3P0v7Mu666KyJncIlZsOFnvhRdQ6ckQWYGFpoUIL8EpHcCA=="
   },
   "source": {
-    "lockSha256": "909a8fd4d59679396c7e132438faab28eefed4a1a16c1d63d3c8201144e1a16c",
+    "lockSha256": "6329a49b62d2e642a0eb8ff659e106e5c62688aa7ba631b664871cb8e59eee6c",
     "sourceLockSha256": "074c64de2cae08a33c88a2d23ee1c3ea95422f66f4cc7c3775e0da62ed862e24",
     "auditGeneratedAt": "2026-09-26T12:12:18.032585+00:00"
   }

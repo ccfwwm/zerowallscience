@@ -12,7 +12,7 @@ it('releases managed connection controls after successful saves and repair', asy
     enabled: true, command: '', args: [], cwd: '', envRefs: {}, url: 'https://example.test/mcp',
     headerRefs: {}, toolCallTimeoutMs: 300_000, failOnStartupError: false,
     reconnect: { enabled: true, initialDelayMs: 5_000, maxDelayMs: 60_000, maxAttempts: 2 },
-    runtimeState: 'idle', runtimeError: '', missingEnvironmentVariables: [], tools: [], createdAt: '', updatedAt: '',
+    runtimeState: 'idle', runtimeError: '', missingEnvironmentVariables: [], tools: [], toolDiscoveryState: 'unknown', createdAt: '', updatedAt: '',
   }
   const update = vi.fn(async (_id, changes) => (record = { ...record, ...changes }))
   const reload = vi.fn(async () => record)

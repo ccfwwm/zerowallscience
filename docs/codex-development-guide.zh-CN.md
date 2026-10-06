@@ -8,16 +8,17 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | `8.0.3` |
-| 当前主分支 | `main` |
-| 8.0.3 发布提交 | `c3159cc3672d2c0f84247873114010b6bd5d0cc0` |
-| DSH 子模块 | `93bacb7e30c888cc01a1322245a33ff3be9ff2b3` |
+| 应用版本 | `8.0.4` |
+| 当前开发分支 | `codex/python-rmcp-804` |
+| 8.0.4 开发基线提交 | `b10f23690958ca308455da087334818e3babc9ad` |
+| DSH 子模块 | `86b6740d0e671cee0b3fd0168de484c0efbf46ea` |
+| DSH 分支 | `zerowall/reviewer-history-opaque` |
 | DSH 标签 | `dsh-v0.2.0-rc.2` |
 | GitHub | `https://github.com/ccfwwm/zerowallscience` |
-| Stable 安装包 | `artifacts/packages/8.0.3/windows-x64/zerowall-science-8.0.3-win-x64.exe` |
-| 8.0.3 安装包 SHA-256 | `fab62e859954da36d123d865fc7bc1e1f79bb659708ccca7cecc2bab652e893f` |
+| 8.0.4 Stable 安装包 | 本次构建后写入 `artifacts/packages/8.0.4/windows-x64/` |
+| 8.0.4 发布状态 | 仅本地候选包；未上传七牛、未创建 GitHub Release |
 
-8.0.3 桌面安装包已经发布到七牛 Stable 和 GitHub Release `v8.0.3`。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖、伪造哈希或切换信任根。
+历史 8.0.3 桌面安装包已经发布到七牛 Stable 和 GitHub Release `v8.0.3`。8.0.4 只生成本地候选包，不更新线上桌面指针。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖、伪造哈希或切换信任根。
 
 用户指定的模型、推理强度、生图模型、协议和参数必须保持不变。开发任务不因为测试方便而自动切换模型、降低推理级别或增加替代路由。
 
@@ -90,7 +91,7 @@ artifacts/
 
 ## 4. DSH 子模块合同
 
-父仓库当前使用 DSH `93bacb7e30c888cc01a1322245a33ff3be9ff2b3`。`config/deepseek-harness/upstream.json` 必须与子模块 HEAD、仓库、分支和标签一致。执行 `pnpm dsh:verify` 之前不要声称 DSH 已锁定。
+父仓库当前使用 ZeroWall DSH fork `86b6740d0e671cee0b3fd0168de484c0efbf46ea`，仍属于 `dsh-v0.2.0-rc.2` 版本线。`config/deepseek-harness/upstream.json` 必须与子模块 HEAD、仓库、分支和标签一致。执行 `pnpm dsh:verify` 之前不要声称 DSH 已锁定。
 
 检查：
 
@@ -152,6 +153,26 @@ pnpm plugins:pack
 - 插件按 profile 原子切换；Skills 支持运行中刷新；MCP 配置支持热刷新，Server 支持启停和重启；Python 使用 generation 与 `current.json`。
 
 启动检查和每日检查只读取、验签并显示可用版本，不自动下载、安装或重启。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。
+
+### Python 分层合同（8.0.4）
+
+- 运行时根目录固定为 `%LOCALAPPDATA%\\ZeroWall Science\\Python`；旧 Roaming 或安装目录中的 Python 指针不再作为默认目标，也不会被复制或删除。
+- `bootstrap` 只表示解释器是否存在，`core` 表示 ZeroWall/MCP 最小依赖，`science` 表示科研依赖，`capability` 表示某个 Skill 或流程的可选依赖。解释器就绪不等于科研层已安装。
+- 默认启动只读取本地状态和签名清单，不调用完整科研层 `sync`。只有用户明确选择“安装科研层”或某个能力层时，才进行预检、下载和 generation 切换。
+- `core-dependency-manifest.json` 与 `dependency-manifest.json` 独立签名；同步计划必须绑定所选层和 manifest hash，资源不可用时不创建安装任务。
+- Python 状态、路径和错误必须从 Host 返回的稳定字段读取，不能从旧 snapshot 的物理路径推导 UI 路径。
+
+### RMCP 工具发现合同（8.0.4）
+
+- RMCP 在桌面启动完成后后台连接，不阻塞桌面启动。缺少 `R_PLATFORM_MCP_AUTHORIZATION` 时状态是 `waiting-for-credentials`，不能显示成普通“0 个工具”。
+- 工具发现阶段使用 `discovering-tools`；`tools/list` 成功且返回空数组时才使用 `active-with-zero-tools`。这与连接失败、凭据缺失和发现超时严格区分。
+- 每次重连或 managed generation 切换前清理旧工具索引，再注册 `mcp__rmcp__*`；DTO 必须带发现状态、时间、最近成功数量和脱敏错误。
+- RMCP fake-server 测试至少覆盖多工具、零工具、缺凭据、`tools/list` 失败、重连集合变化和重复注册。
+
+### 历史会话兼容合同
+
+- DSH fork 只为已知 `zerowall/reviewer/report` 注册 opaque v0 迁移处理：验证 envelope，原样保留 payload、序号和时间，不解释业务字段。
+- 原始 `session.jsonl` 永不修改；迁移写入新的版本化副本。其他未知 required 事件继续拒绝，不能把迁移放宽成忽略所有未知事件。
 
 常用命令：
 

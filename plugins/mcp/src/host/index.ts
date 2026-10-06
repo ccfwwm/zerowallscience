@@ -95,6 +95,11 @@ interface RuntimeStatus {
   state: McpRuntimeState
   error: string
   missingEnvironmentVariables: string[]
+  toolDiscoveryState?: 'unknown' | 'pending' | 'complete' | 'failed'
+  toolDiscoveryStartedAt?: string
+  toolDiscoveryCompletedAt?: string
+  lastSuccessfulToolCount?: number
+  lastDiscoveryError?: string
 }
 
 /**
@@ -610,11 +615,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
       // A delayed reconnect/start event must not regress a connection that
       // has already completed its initial tools/list synchronization.
       if (state === 'starting' && (this.fibers.has(record.id) || this.managed.has(record.id)) && this.registeredTools.has(record.id)) return
-      if (state === 'active') { const names = this.toolNames(record.serverName); this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names) }
+      let discovered: string[] | undefined
+      if (state === 'active') { discovered = this.toolNames(record.serverName); this.registeredTools.set(record.id, discovered); this.clearMcpToolIndex(record.serverName); this.indexMcpTools(record.serverName, discovered) }
       this.statuses.set(record.id, {
-        state,
+        state: state === 'active' && record.serverName === RDATALINUX_SERVER_NAME && discovered?.length === 0 ? 'active-with-zero-tools' : state,
         error: error === undefined ? '' : redactError(error),
         missingEnvironmentVariables: [],
+        ...(record.serverName === RDATALINUX_SERVER_NAME && state === 'active' ? { toolDiscoveryState: 'complete' as const, toolDiscoveryCompletedAt: new Date().toISOString(), lastSuccessfulToolCount: discovered?.length ?? 0 } : {}),
+        ...(record.serverName === RDATALINUX_SERVER_NAME && state === 'error' ? { toolDiscoveryState: 'failed' as const, lastDiscoveryError: error === undefined ? 'unknown' : redactError(error) } : {}),
       })
     }
     // The MCP client emits on both paths. Listening at root is sufficient for
@@ -1078,6 +1086,15 @@ export class ZeroWallMcpService extends TypertRemoteService {
       if (server.serverName === RDATALINUX_SERVER_NAME && server.transport === 'streamable-http' && server.headerRefs.Authorization === undefined) {
         projects.updateMcpServer(server.id, { headerRefs: { ...server.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
       }
+      // RMCP is the managed remote service. A successful MCP client Fiber is
+      // not evidence that the HTTP handshake and tools/list completed when
+      // failOnStartupError is false: DSH can resolve the Fiber after a failed
+      // startup, which used to be projected as "connected with zero tools".
+      // Migrate only this reserved ZeroWall record; user MCP servers keep
+      // their chosen startup policy.
+      if (server.serverName === RDATALINUX_SERVER_NAME && !server.failOnStartupError) {
+        projects.updateMcpServer(server.id, { failOnStartupError: true })
+      }
     }
     if (!projects.listMcpServers().some(server => server.serverName === RDATALINUX_SERVER_NAME)) {
       projects.createMcpServer({
@@ -1087,7 +1104,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         // credential or explicitly enabling the connection reconciles it.
         enabled: defaultEnabled, url: RDATALINUX_R_MCP_URL,
         headerRefs: { Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV },
-        failOnStartupError: false,
+        failOnStartupError: true,
       })
     }
     const bundled = projects.listMcpServers()
@@ -1112,6 +1129,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
     }
     if (!bundled.some(server => server.serverName === 'zerowall_managed_scimaster')) {
       projects.createMcpServer({ name: 'Sci', serverName: 'zerowall_managed_scimaster', transport: 'stdio', enabled: defaultEnabled, command: 'zerowall-managed:scimaster', cwd: '', failOnStartupError: false })
+    }
+    for (const server of projects.listMcpServers()) {
+      // This is a first-party server bundled by the signed runtime archive.
+      // If the embedded Python lacks its verified MCP closure, let users see
+      // the actionable startup error instead of a misleading "0 tools".
+      if (server.serverName === 'zerowall_managed_bio_tools' && !server.failOnStartupError) {
+        projects.updateMcpServer(server.id, { failOnStartupError: true })
+      }
     }
     for (const server of projects.listMcpServers()) {
       const reconnect = { ...server.reconnect }
@@ -1145,7 +1170,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (cooldown > Date.now()) return
     const pending = this.exclusive(async () => {
       const latest = this.projects().getMcpServer(record.id)
-      if (!latest || this.disposed || this.statuses.get(record.id)?.state === 'active') return
+      if (!latest || this.disposed || ['active', 'active-with-zero-tools'].includes(this.statuses.get(record.id)?.state ?? '')) return
       await this.reconcile(latest)
     }).catch((error: unknown) => {
       this.failureCooldownUntil.set(record.id, Date.now() + MCP_FAILURE_COOLDOWN_MS)
@@ -1162,7 +1187,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (this.disposed) throw new Error('MCP service is stopping.')
     const record = this.projects().listMcpServers().find(item => item.serverName === serverName)
     if (record === undefined || !record.enabled) throw new Error('MCP connection is disabled or unknown. Enable it in Settings first.')
-    if (this.statuses.get(record.id)?.state === 'active' && (this.fibers.has(record.id) || this.managed.has(record.id))) return
+    if (['active', 'active-with-zero-tools'].includes(this.statuses.get(record.id)?.state ?? '') && (this.fibers.has(record.id) || this.managed.has(record.id))) return
     const cooldown = this.failureCooldownUntil.get(record.id) ?? 0
     if (cooldown > Date.now()) throw new Error('MCP connection is cooling down after a failed start. Retry later or reload it from Settings.')
     let pending = this.connecting.get(record.id)
@@ -1170,9 +1195,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
       pending = this.exclusive(async () => {
         const current = this.projects().getMcpServer(record.id)
         if (current === undefined || !current.enabled) throw new Error('MCP connection is disabled or removed.')
-        if (this.statuses.get(record.id)?.state !== 'active') await this.reconcile(current)
+        if (!['active', 'active-with-zero-tools'].includes(this.statuses.get(record.id)?.state ?? '')) await this.reconcile(current)
         const status = this.statuses.get(record.id)
-        if (status?.state !== 'active') throw new Error(status?.error || 'MCP connection is unavailable.')
+        if (!['active', 'active-with-zero-tools'].includes(status?.state ?? '')) throw new Error(status?.error || 'MCP connection is unavailable.')
       })
       this.connecting.set(record.id, pending)
     }
@@ -1180,7 +1205,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       await pending
       this.failureCooldownUntil.delete(record.id)
       const status = this.statuses.get(record.id)
-      if (status?.state !== 'active') throw new Error(status?.error || 'MCP connection is unavailable.')
+      if (!['active', 'active-with-zero-tools'].includes(status?.state ?? '')) throw new Error(status?.error || 'MCP connection is unavailable.')
     } finally { if (this.connecting.get(record.id) === pending) this.connecting.delete(record.id) }
   }
 
@@ -1222,6 +1247,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (record.serverName === RDATALINUX_SERVER_NAME) {
       try { rdatalinuxAuthorization = await this.secrets.get(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL) } catch { rdatalinuxAuthorization = undefined }
       if (!rdatalinuxAuthorization?.trim()) rdatalinuxAuthorization = process.env[RDATALINUX_R_MCP_AUTHORIZATION_ENV]
+      if (!rdatalinuxAuthorization?.trim()) {
+        await this.disposeOne(record.id)
+        if (current()) this.statuses.set(record.id, { state: 'waiting-for-credentials', error: 'RMCP 缺少 Authorization 凭据。请在环境配置中设置 R_PLATFORM_MCP_AUTHORIZATION。', missingEnvironmentVariables: [RDATALINUX_R_MCP_AUTHORIZATION_ENV], toolDiscoveryState: 'failed', lastDiscoveryError: 'missing-credential' })
+        return
+      }
     }
     let huagongsheAuthorization: string | undefined
     if (record.serverName === 'huagongshe' && record.url === HUAGONGSHE_URL) {
@@ -1257,6 +1287,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         if (!current()) { await this.managed.discard(candidate); return }
         const names = this.managed.activate(record.id, candidate)
         this.registeredTools.set(record.id, names)
+        this.clearMcpToolIndex(record.serverName)
         this.indexMcpTools(record.serverName, names)
         this.readyVersions.set(record.id, version)
         this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
@@ -1271,7 +1302,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // DSH reserves a server namespace until the prior client is disposed.
     await this.disposeOne(record.id)
     if (!current()) return
-    this.statuses.set(record.id, { state: 'starting', error: '', missingEnvironmentVariables: [] })
+    const toolDiscoveryStartedAt = new Date().toISOString()
+    this.statuses.set(record.id, { state: record.serverName === RDATALINUX_SERVER_NAME ? 'discovering-tools' : 'starting', error: '', missingEnvironmentVariables: [], toolDiscoveryState: record.serverName === RDATALINUX_SERVER_NAME ? 'pending' : 'unknown', toolDiscoveryStartedAt })
     let replacement: Fiber | undefined
     try {
       const config = resolved.config as McpClient.Config
@@ -1284,7 +1316,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
         return
       }
       this.fibers.set(record.id, fiber)
-      { const names = this.toolNames(record.serverName); this.registeredTools.set(record.id, names); this.indexMcpTools(record.serverName, names) }
+      const names = this.toolNames(record.serverName)
+      this.registeredTools.set(record.id, names)
+      this.clearMcpToolIndex(record.serverName)
+      this.indexMcpTools(record.serverName, names)
       this.readyVersions.set(record.id, version)
       // The fiber resolves after the initial transport handshake and
       // tools/list synchronization.  The lifecycle event normally arrives on
@@ -1294,7 +1329,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       // already registered.  Later lifecycle events still win and can report
       // reconnect/error transitions.
       if (current()) {
-        this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
+        this.statuses.set(record.id, { state: record.serverName === RDATALINUX_SERVER_NAME && names.length === 0 ? 'active-with-zero-tools' : 'active', error: '', missingEnvironmentVariables: [], toolDiscoveryState: record.serverName === RDATALINUX_SERVER_NAME ? 'complete' : 'unknown', toolDiscoveryStartedAt, toolDiscoveryCompletedAt: new Date().toISOString(), lastSuccessfulToolCount: names.length })
       }
     } catch (error) {
       await replacement?.dispose()
@@ -1303,6 +1338,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
         state: 'error',
         error: redactError(error),
         missingEnvironmentVariables: [],
+        toolDiscoveryState: record.serverName === RDATALINUX_SERVER_NAME ? 'failed' : 'unknown',
+        toolDiscoveryStartedAt,
+        ...(record.serverName === RDATALINUX_SERVER_NAME ? { lastDiscoveryError: redactError(error) } : {}),
       })
     }
   }
@@ -1316,12 +1354,18 @@ export class ZeroWallMcpService extends TypertRemoteService {
     const runtimeState = status.state === 'starting' && (this.fibers.has(record.id) || this.managed.has(record.id)) && this.registeredTools.has(record.id)
       ? 'active'
       : status.state
+    const toolDiscoveryState = status.toolDiscoveryState ?? (this.registeredTools.has(record.id) ? 'complete' : 'unknown')
     return {
       ...record,
       runtimeState,
       runtimeError: runtimeState === 'active' ? '' : status.error,
       missingEnvironmentVariables: [...status.missingEnvironmentVariables],
       tools,
+      toolDiscoveryState,
+      ...(status.toolDiscoveryStartedAt ? { toolDiscoveryStartedAt: status.toolDiscoveryStartedAt } : {}),
+      ...(status.toolDiscoveryCompletedAt ? { toolDiscoveryCompletedAt: status.toolDiscoveryCompletedAt } : {}),
+      ...(status.lastSuccessfulToolCount !== undefined ? { lastSuccessfulToolCount: status.lastSuccessfulToolCount } : {}),
+      ...(status.lastDiscoveryError ? { lastDiscoveryError: status.lastDiscoveryError } : {}),
     }
   }
 
@@ -1337,14 +1381,19 @@ export class ZeroWallMcpService extends TypertRemoteService {
       const version = this.readyVersions.get(record.id)
       if (!record.enabled || version === undefined || this.reconcileVersions.get(record.id) !== version || !(this.fibers.has(record.id) || this.managed.has(record.id))) continue
       const status = this.statuses.get(record.id)
-      if (status?.state === 'starting' || status?.state === undefined) {
-        this.statuses.set(record.id, { state: 'active', error: '', missingEnvironmentVariables: [] })
+      if (status?.state === 'starting' || status?.state === 'discovering-tools' || status?.state === undefined) {
+        const names = this.registeredTools.get(record.id) ?? []
+        this.statuses.set(record.id, { state: record.serverName === RDATALINUX_SERVER_NAME && names.length === 0 ? 'active-with-zero-tools' : 'active', error: '', missingEnvironmentVariables: [], ...(record.serverName === RDATALINUX_SERVER_NAME ? { toolDiscoveryState: 'complete' as const, toolDiscoveryCompletedAt: new Date().toISOString(), lastSuccessfulToolCount: names.length } : {}) })
       }
     }
   }
 
   private indexMcpTools(serverName: string, names: string[]): void {
     for (const name of names) this.mcpToolIndex.set(name, { server: serverName, name, description: name.replace(/^mcp__[^_]+__/u, '').replaceAll('_', ' ') })
+  }
+
+  private clearMcpToolIndex(serverName: string): void {
+    for (const [name, entry] of this.mcpToolIndex) if (entry.server === serverName) this.mcpToolIndex.delete(name)
   }
 
   private toolNames(serverName: string): string[] {
@@ -1356,6 +1405,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   private async disposeOne(id: string): Promise<void> {
+    const prior = this.projects().getMcpServer(id)
+    if (prior) this.clearMcpToolIndex(prior.serverName)
     await this.managed.remove(id)
     const fiber = this.fibers.get(id)
     if (fiber === undefined) return

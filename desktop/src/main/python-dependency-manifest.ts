@@ -18,6 +18,9 @@ export interface PythonDependencyManifest {
   pythonVersion: string
   environmentVersion: string
   revision: string
+  /** Default manifest is the science layer; explicit manifests may target a capability. */
+  layer?: 'core' | 'science' | 'capability'
+  capabilityId?: string
   createdAt: string
   index: { indexUrl: string; trustedHost?: string }
   packages: Array<{ name: string; version: string; sha256?: string; required: boolean; capabilities: string[]; source?: 'sdist'; filename?: string }>
@@ -46,7 +49,6 @@ export function parsePythonDependencyManifest(value: unknown, keys: Record<strin
   const names = new Set<string>()
   for (const pkg of doc.packages) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(pkg.name) || !/^[A-Za-z0-9][A-Za-z0-9_.+!-]*$/u.test(pkg.version) || typeof pkg.required !== 'boolean' || !Array.isArray(pkg.capabilities) || pkg.capabilities.some(cap => typeof cap !== 'string')) throw new Error('Python 包锁定字段无效。')
-    if (!pkg.required) throw new Error(`依赖 ${pkg.name} 未标记为必装，已拒绝使用此清单。`)
     // A digest is optional provenance. When present it must still be a real
     // one, so a malformed value cannot pass as "no hash supplied".
     if (pkg.sha256 !== undefined && !/^[a-f0-9]{64}$/u.test(pkg.sha256)) throw new Error('Python 包锁定字段无效。')
@@ -54,6 +56,8 @@ export function parsePythonDependencyManifest(value: unknown, keys: Record<strin
     if (names.has(normalize(pkg.name))) throw new Error('Python 依赖清单包含重复包。')
     names.add(normalize(pkg.name))
   }
+  if (doc.layer !== undefined && !['core', 'science', 'capability'].includes(doc.layer)) throw new Error('Python 依赖清单层级无效。')
+  if (doc.layer === 'capability' && (typeof doc.capabilityId !== 'string' || doc.capabilityId.trim() === '')) throw new Error('能力层清单缺少 capabilityId。')
   if (!doc.compatibility || !/^\d+\.\d+\.\d+$/u.test(doc.compatibility.minApplicationVersion) || (doc.compatibility.maxApplicationVersion && !/^\d+\.\d+\.\d+$/u.test(doc.compatibility.maxApplicationVersion))) throw new Error('Python 应用兼容范围无效。')
   const compare = (a: string, b: string) => { const aa = a.split('.').map(Number); const bb = b.split('.').map(Number); for (let i = 0; i < 3; i++) { const d = aa[i]! - bb[i]!; if (d) return d } return 0 }
   if (applicationVersion && (compare(applicationVersion, doc.compatibility.minApplicationVersion) < 0 || (doc.compatibility.maxApplicationVersion && compare(applicationVersion, doc.compatibility.maxApplicationVersion) > 0))) throw new Error('请先更新 ZeroWall Science，再安装此依赖清单。')

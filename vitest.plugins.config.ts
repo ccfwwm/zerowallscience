@@ -15,6 +15,10 @@ export default defineConfig({
     // primitives will use a different dispatcher from ReactDOM.
     alias: [
       { find: '@deepseek-ai/dsh-client-ui-chat/client', replacement: resolve(root, 'deepseek-harness/packages/client/ui-chat/src/client/index.ts') },
+      // Client helper entrypoints are intentionally source-only exports in the
+      // published plugin manifest. Map them explicitly in Vite so plugin
+      // component tests do not depend on a prebuilt `lib/` tree.
+      { find: '@zerowallscience/plugin-base/client-helpers', replacement: resolve(root, 'plugins/base/src/shared/client-helpers.ts') },
       { find: /^react$/u, replacement: testingLibraryRequire.resolve('react') },
       { find: /^react-dom$/u, replacement: testingLibraryRequire.resolve('react-dom') },
     ],

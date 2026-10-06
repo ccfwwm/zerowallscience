@@ -881,7 +881,9 @@ if (ownsInstance) app.whenReady().then(async () => {
     // A failed local install/update must remain visible to the user. Do not
     // start dependency sync unless the active shared runtime passed recovery.
     if (!status || (status.phase !== 'ready' && status.phase !== 'manual') || status.lastUpdateError) return
-    await pythonEnvironmentApi.request({ action: 'sync', requestId: `startup-${Date.now()}`, confirm: true }).catch(error => console.warn('Python dependency sync:', error instanceof Error ? error.message : String(error)))
+    // 8.0.4 keeps startup read-only. The signed base runtime is prepared by
+    // autoUpdate(); science and capability layers require an explicit action
+    // from Settings or zws and must never download during boot.
   }
 
   app.once('before-quit', () => mcpEnvironment.stop())

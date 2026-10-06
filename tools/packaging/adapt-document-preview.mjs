@@ -40,7 +40,12 @@ export function adaptExcelChunk(source, version) {
   if (menus.some(anchor => source.split(anchor).length !== 2)) throw new Error('Excel menu anchors changed.')
   const body = 'function ExcelBody({ content, format, limits, t, loading }) {'
   if (source.split(body).length !== 2) throw new Error('Excel body anchor changed.')
-  const highlight = /\(0, react\.useLayoutEffect\)\(function\(\) \{\s*if \(!context\.allowEdit\) setContext\(function\(ctx\) \{\s*var flowdata = getFlowdata\(ctx\);\s*if \(!import_lodash\.default\.isNil\(flowdata\) && ctx\.forceFormulaRef\) createRangeHightlight\(ctx, getCellValue\(row_index, col_index, flowdata, "f"\)\);\s*\}\);/u
+  // DSH rc.2 has shipped both forms of the read-only formula guard: older
+  // bundles checked `ctx.forceFormulaRef` inside the setter, while the
+  // current reviewed fork also places it on the outer condition. Match both
+  // shapes so a regenerated upstream client chunk remains covered by the
+  // diagnostic adaptation instead of silently skipping it.
+  const highlight = /\(0, react\.useLayoutEffect\)\(function\(\) \{\s*if \(!context\.allowEdit(?: && context\.forceFormulaRef)?\) setContext\(function\(ctx\) \{\s*var flowdata = getFlowdata\(ctx\);\s*if \(!import_lodash\.default\.isNil\(flowdata\)(?: && ctx\.forceFormulaRef)?\) createRangeHightlight\(ctx, getCellValue\(row_index, col_index, flowdata, "f"\)\);\s*\}\);/u
   if (!highlight.test(source)) throw new Error('Excel readonly formula highlight anchor changed.')
   // FortuneSheet effects compare menu props by identity. Pane/resource updates
   // must not recreate these arrays or synchronously feed resize back into rendering.

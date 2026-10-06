@@ -32,6 +32,7 @@ export interface DesktopClipboardImage {
 }
 
 export type McpEnvironmentPhase = 'idle' | 'checking' | 'downloading' | 'verifying' | 'installing' | 'ready' | 'failed' | 'manual' | 'unavailable' | 'paused'
+export type PythonDependencyLayer = 'core' | 'science' | 'capability'
 export type McpSkillDependencyStatus = 'ready' | 'managed' | 'missing' | 'external' | 'incompatible'
 export interface McpSkillDependency { name: string; import?: string; status: McpSkillDependencyStatus; reason?: string }
 export interface McpSkillCapability { name: string; path: string; status: McpSkillDependencyStatus; reason?: string; detectedImports: string[]; requirements: McpSkillDependency[] }
@@ -99,6 +100,15 @@ export interface McpEnvironmentStatus {
   updateRequired?: boolean
   lastCheckedAt?: string
   lastUpdateError?: string
+  /** Stable layer state; a ready interpreter does not imply the science layer is installed. */
+  layers?: {
+    bootstrap: 'missing' | 'ready' | 'error'
+    core: 'missing' | 'ready' | 'error'
+    science: 'not-installed' | 'checking' | 'available' | 'installed' | 'error'
+    capabilities?: Record<string, 'not-installed' | 'checking' | 'available' | 'installed' | 'error'>
+  }
+  resourceAvailability?: { layer: PythonDependencyLayer; available: boolean; source?: string; reason?: string; packageCount?: number }
+  lastSyncError?: string
   skillAudit?: McpSkillAudit
   python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; packageCount?: number; message?: string; /** Stable public paths; implementation snapshot paths are intentionally omitted from UI. */ runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string }
 }
@@ -121,6 +131,11 @@ export interface McpPythonInfo {
   runtimeSitePackages?: string
   packageCount?: number
   corePackageCount?: number
+  sciencePackageCount?: number
+  scienceInstalledPackageCount?: number
+  /** The interpreter can exist while the signed MCP runtime closure is absent. */
+  coreReady?: boolean
+  missingCorePackages?: string[]
   packages: McpPythonPackage[]
   skillAudit?: McpSkillAudit
   verification?: { imports: boolean; pipCheck: boolean; message: string; installed?: number; failedPackages?: string[]; upToDate?: boolean }

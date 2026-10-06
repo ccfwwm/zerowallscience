@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "harness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
-    "branch": "master",
-    "commit": "93bacb7e30c888cc01a1322245a33ff3be9ff2b3",
+    "branch": "zerowall/reviewer-history-opaque",
+    "commit": "86b6740d0e671cee0b3fd0168de484c0efbf46ea",
     "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "upstreamCommit": "639ed015397290b3745d163aafe02ffee4aa3f84",
     "tag": "dsh-v0.2.0-rc.2",

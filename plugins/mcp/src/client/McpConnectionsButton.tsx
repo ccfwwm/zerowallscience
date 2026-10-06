@@ -15,7 +15,7 @@ import { NS } from '@zerowallscience/plugin-base/client-helpers'
 import css from './McpConnectionsButton.module.css'
 
 type McpTransport = 'stdio' | 'streamable-http'
-type McpRuntimeState = 'idle' | 'disabled' | 'starting' | 'blocked' | 'active' | 'error'
+type McpRuntimeState = 'idle' | 'disabled' | 'starting' | 'waiting-for-credentials' | 'discovering-tools' | 'blocked' | 'active' | 'active-with-zero-tools' | 'error'
 
 interface ReconnectPolicy {
   enabled: boolean
@@ -43,6 +43,11 @@ export interface McpServerView {
   runtimeError: string
   missingEnvironmentVariables: string[]
   tools: string[]
+  toolDiscoveryState: 'unknown' | 'pending' | 'complete' | 'failed'
+  toolDiscoveryStartedAt?: string
+  toolDiscoveryCompletedAt?: string
+  lastSuccessfulToolCount?: number
+  lastDiscoveryError?: string
   createdAt: string
   updatedAt: string
 }
@@ -391,7 +396,7 @@ export function McpConnectionsButton(props: Props) {
           {selected !== undefined && <section className={css.toolsCard} aria-label={props.t('mcp.availableTools')}>
             <div className={css.toolsHeading}><strong>{props.t('mcp.availableTools')}</strong><span>{selected.tools.length}</span></div>
             {selected.tools.length === 0
-              ? <p>{selected.runtimeState === 'active' ? props.t('mcp.noTools') : props.t('mcp.toolsUnavailable')}</p>
+              ? <p>{selected.runtimeState === 'active-with-zero-tools' ? '已连接，但远端返回 0 个工具。' : selected.runtimeState === 'waiting-for-credentials' ? '等待 RMCP Authorization 凭据。' : selected.runtimeState === 'discovering-tools' || selected.runtimeState === 'starting' ? '正在发现远端工具…' : selected.runtimeState === 'active' ? props.t('mcp.noTools') : props.t('mcp.toolsUnavailable')}</p>
               : <div className={css.toolList}>{selected.tools.map(tool => <code key={tool}>{tool}</code>)}</div>}
           </section>}
           {false && selected?.serverName === 'zerowall_managed_scimaster' && <section className={css.sciMasterCard} aria-label={props.t('mcp.sciMasterSettings')}>
@@ -544,7 +549,7 @@ function inputFromDraft(draft: Draft, t: TranslateNS<typeof NS>): McpServerInput
 }
 
 function statusText(status: McpRuntimeState, t: TranslateNS<typeof NS>): string {
-  return ({ idle: t('mcp.status.idle'), active: t('mcp.status.active'), starting: t('mcp.status.starting'), blocked: t('mcp.status.blocked'), error: t('mcp.status.error'), disabled: t('mcp.status.disabled') })[status]
+  return ({ idle: t('mcp.status.idle'), active: t('mcp.status.active'), starting: t('mcp.status.starting'), 'waiting-for-credentials': '等待凭据', 'discovering-tools': '发现工具中', 'active-with-zero-tools': '已连接但无工具', blocked: t('mcp.status.blocked'), error: t('mcp.status.error'), disabled: t('mcp.status.disabled') })[status]
 }
 
 function message(reason: unknown): string {

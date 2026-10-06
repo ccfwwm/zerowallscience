@@ -1,10 +1,11 @@
 import { renameFile } from './atomic-file.js'
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { PythonUpdaterService } from './python-updater-service.js'
 import type { StoredPackagePlan } from './python-packages.js'
 import { assertManifestWheels, dependencyManifestChanges, dependencyManifestSha256, fetchPythonDependencyManifest, parsePythonDependencyManifest, PythonManifestUnavailableError, type PythonDependencyManifest } from './python-dependency-manifest.js'
+import type { PythonDependencyLayer } from '../shared/contracts.js'
 
 type Updater = Pick<PythonUpdaterService, 'pythonInfo' | 'previewDependencyManifest' | 'applyPackagePlan'>
 interface Options { updater: Updater; root: string; keys: Record<string, string>; applicationVersion: string; feedUrl: string; fetcher?: typeof fetch; bundledManifestPath?: string }
@@ -30,7 +31,7 @@ export class PythonSyncService {
     if (previous && compareRevision(previous.revision, manifest.revision) > 0) throw new Error('依赖清单降级必须通过回滚完成。')
     await this.save('manifest.json', manifest)
   }
-  async checkManifest() {
+  async checkManifest(layer: PythonDependencyLayer = 'science', capabilityId?: string) {
     let manifest: PythonDependencyManifest
     let source: 'remote' | 'bundled' | 'cache' = 'remote'
     try { manifest = await fetchPythonDependencyManifest(this.options.feedUrl, this.options.keys, { fetcher: this.options.fetcher, applicationVersion: this.options.applicationVersion }) }
@@ -49,16 +50,24 @@ export class PythonSyncService {
     const info = await this.options.updater.pythonInfo()
     if (info.ready && info.version && info.version !== manifest.pythonVersion) throw new Error('依赖清单需要不同的 Python 版本，请先更新运行环境。')
     await this.save('manifest.json', manifest)
-    const result = { revision: manifest.revision, manifestRevision: manifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(manifest)), packageCount: manifest.packages.length, pythonVersion: manifest.pythonVersion, environmentVersion: manifest.environmentVersion, changes: dependencyManifestChanges(manifest, info.packages), checkedAt: new Date().toISOString(), needsRuntime: !info.ready, source }
+    const selected = selectLayer(manifest, layer, capabilityId)
+    const changes = dependencyManifestChanges(selected, info.packages)
+    const result = { revision: manifest.revision, manifestRevision: manifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(selected)), layer, ...(capabilityId ? { capabilityId } : {}), packageCount: selected.packages.length, pythonVersion: manifest.pythonVersion, environmentVersion: manifest.environmentVersion, changes, checkedAt: new Date().toISOString(), needsRuntime: !info.ready, scienceInstalled: layer === 'science' && selected.packages.length > 0 && changes.length === 0, available: selected.packages.length > 0, resourceAvailability: { layer, available: selected.packages.length > 0, source, packageCount: selected.packages.length }, source }
     await this.save('status.json', result)
     return result
   }
-  async previewSync(): Promise<StoredPackagePlan & { manifestRevision: string; manifestSha256: string }> {
+  async previewSync(layer: PythonDependencyLayer = 'science', capabilityId?: string): Promise<StoredPackagePlan & { manifestRevision: string; manifestSha256: string }> {
     const manifest = await this.cached()
-    const plan = await this.options.updater.previewDependencyManifest(manifest)
+    const selected = selectLayer(manifest, layer, capabilityId)
+    if (selected.packages.length === 0) throw new Error(`未找到 ${layer}${capabilityId ? `:${capabilityId}` : ''} 的已签名依赖资源。`)
+    const plan = await this.options.updater.previewDependencyManifest(selected)
     if (plan.error) throw new Error(plan.error)
-    assertManifestWheels(manifest, plan.wheels, plan.manifestInstalled, (plan.preparationFailures ?? []).map(failure => failure.name))
-    const bound = { ...plan, manifestRevision: manifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(manifest)) }
+    assertManifestWheels(selected, plan.wheels, plan.manifestInstalled, (plan.preparationFailures ?? []).map(failure => failure.name))
+    if (plan.preparationFailures?.length) {
+      await rm(join(this.options.root, 'plans', `${plan.planId}.json`), { force: true }).catch(() => undefined)
+      throw new Error(`依赖资源预检失败，未创建安装任务：${plan.preparationFailures.map(failure => `${failure.name}: ${failure.message}`).join('; ')}`)
+    }
+    const bound = { ...plan, dependencyManifest: selected, manifestRevision: manifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(selected)) }
     await this.save(`${plan.planId}.json`, bound)
     return bound
   }
@@ -67,14 +76,26 @@ export class PythonSyncService {
     if (!/^[a-f0-9-]{36}$/u.test(planId)) throw new Error('依赖同步计划无效。')
     const manifest = await this.cached()
     const plan = JSON.parse(await readFile(join(this.directory, `${planId}.json`), 'utf8')) as StoredPackagePlan & { manifestRevision: string; manifestSha256: string }
-    if (manifest.revision !== revision || plan.manifestRevision !== revision || plan.manifestSha256 !== dependencyManifestSha256(JSON.stringify(manifest))) throw new Error('依赖清单已改变，请重新预览并确认。')
+    if (manifest.revision !== revision || plan.manifestRevision !== revision) throw new Error('依赖清单已改变，请重新预览并确认。')
     // Read the updater's actual plan too: a changed on-disk plan must not
     // inherit the approval of the previously reviewed file.
     const stored = JSON.parse(await readFile(join(this.options.root, 'plans', `${planId}.json`), 'utf8')) as StoredPackagePlan
-    if (JSON.stringify(stored.wheels) !== JSON.stringify(plan.wheels) || JSON.stringify(stored.preparationFailures ?? []) !== JSON.stringify(plan.preparationFailures ?? []) || JSON.stringify(stored.changes) !== JSON.stringify(plan.changes) || stored.snapshotId !== plan.snapshotId || !stored.dependencyManifest || dependencyManifestSha256(JSON.stringify(stored.dependencyManifest)) !== plan.manifestSha256) throw new Error('依赖安装计划已改变，请重新预览。')
-    assertManifestWheels(manifest, stored.wheels, (await this.options.updater.pythonInfo()).packages, (stored.preparationFailures ?? []).map(failure => failure.name))
+    if (JSON.stringify(stored.wheels) !== JSON.stringify(plan.wheels) || JSON.stringify(stored.preparationFailures ?? []) !== JSON.stringify(plan.preparationFailures ?? []) || JSON.stringify(stored.changes) !== JSON.stringify(plan.changes) || stored.snapshotId !== plan.snapshotId || !stored.dependencyManifest || stored.dependencyManifest.revision !== revision || dependencyManifestSha256(JSON.stringify(stored.dependencyManifest)) !== plan.manifestSha256) throw new Error('依赖安装计划已改变，请重新预览。')
+    assertManifestWheels(stored.dependencyManifest, stored.wheels, (await this.options.updater.pythonInfo()).packages, (stored.preparationFailures ?? []).map(failure => failure.name))
     return this.options.updater.applyPackagePlan(planId)
   }
+}
+
+function selectLayer(manifest: PythonDependencyManifest, layer: PythonDependencyLayer, capabilityId?: string): PythonDependencyManifest {
+  // Releases before 8.0.4 did not declare a layer and represented the large
+  // science inventory. Never treat that legacy inventory as the core layer.
+  const declared = manifest.layer ?? 'science'
+  if (layer === 'core' && declared !== 'core') return { ...manifest, packages: [] }
+  if (declared !== layer && !(layer === 'capability' && declared === 'science')) return { ...manifest, packages: [] }
+  const packages = layer === 'capability' && capabilityId
+    ? manifest.packages.filter(pkg => pkg.capabilities.includes(capabilityId))
+    : manifest.packages
+  return { ...manifest, layer, ...(capabilityId ? { capabilityId } : {}), packages }
 }
 
 function compareRevision(a: string, b: string): number {

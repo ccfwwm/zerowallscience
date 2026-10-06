@@ -1,9 +1,10 @@
 {
-  "version": "8.0.3",
+  "version": "8.0.4",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
-    "commit": "93bacb7e30c888cc01a1322245a33ff3be9ff2b3",
+    "commit": "86b6740d0e671cee0b3fd0168de484c0efbf46ea",
+    "branch": "zerowall/reviewer-history-opaque",
     "upstreamCommit": "639ed015397290b3745d163aafe02ffee4aa3f84"
   },
   "betterSidebar": {

@@ -14,7 +14,7 @@ async function setup() {
   const manifest = { ...unsigned, signature: { algorithm: 'ed25519', keyId: 'test', value: sign(null, Buffer.from(JSON.stringify(unsigned)), privateKey).toString('base64') } }
   const apply = vi.fn(() => ({ taskId: 'task-1' }))
   const updater = { pythonInfo: vi.fn(async () => ({ ready: true, version: '3.12.10', packages: [] })), previewDependencyManifest: vi.fn(async () => {
-    const plan = { planId: randomUUID(), snapshotId: 'old', requested: ['numpy==2.3.0'], changes: [{ name: 'numpy', from: '2.2.0', to: '2.3.0' }], wheels: [{ name: 'numpy', version: '2.3.0', hash: 'a'.repeat(64), url: 'https://mirror.example/numpy.whl' }], dependencyManifest: manifest }
+    const plan = { planId: randomUUID(), snapshotId: 'old', requested: ['numpy==2.3.0'], changes: [{ name: 'numpy', from: '2.2.0', to: '2.3.0' }], wheels: [{ name: 'numpy', version: '2.3.0', hash: 'a'.repeat(64), url: 'https://mirror.example/numpy.whl' }], dependencyManifest: { ...manifest, layer: 'science' } }
     await mkdir(join(root, 'plans')); await writeFile(join(root, 'plans', `${plan.planId}.json`), JSON.stringify(plan))
     return plan
   }), applyPackagePlan: apply }

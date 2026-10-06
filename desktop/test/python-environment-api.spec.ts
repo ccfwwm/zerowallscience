@@ -23,6 +23,25 @@ async function waitForSync(api: PythonEnvironmentApi, request: { action: 'sync';
   throw new Error(`Python sync task ${request.requestId} did not reach a terminal state.`)
 }
 describe('shared Python environment API', () => {
+  it('reports missing MCP core packages from a ready interpreter without starting repair', async () => {
+    const { root, updater, sync } = await setup()
+    const apiRoot = join(root, 'zerowall-python'), generation = join(apiRoot, 'slots', 'a-test')
+    const runtimeRoot = join(generation, 'Python')
+    await mkdir(runtimeRoot, { recursive: true })
+    await writeFile(join(runtimeRoot, 'runtime.json'), JSON.stringify({ rootPath: runtimeRoot, executablePath: join(runtimeRoot, 'python.exe') }))
+    await writeFile(join(apiRoot, 'current.json'), JSON.stringify({ root: generation, runtimeRoot: generation, health: 'ready', generation: true }))
+    updater.pythonInfo.mockResolvedValue({ ready: true, coreReady: false, missingCorePackages: ['mcp==1.13.1'], packages: [] } as never)
+    const ensureReady = vi.fn()
+    ;(updater as typeof updater & { ensureReady: typeof ensureReady }).ensureReady = ensureReady
+    const api = new PythonEnvironmentApi(apiRoot, updater as unknown as PythonUpdaterService, sync)
+    await expect(api.request({ action: 'status', requestId: 'old-core' })).resolves.toMatchObject({
+      runtimeRoot: join(root, 'Python'), layers: { bootstrap: 'ready', core: 'error', science: 'not-installed' }, coreReady: false, missingCorePackages: ['mcp==1.13.1'],
+    })
+    updater.pythonInfo.mockResolvedValue({ ready: true, coreReady: true, missingCorePackages: [], packages: [] } as never)
+    await expect(api.request({ action: 'status', requestId: 'repaired-core' })).resolves.toMatchObject({ layers: { bootstrap: 'ready', core: 'ready' }, coreReady: true })
+    expect(ensureReady).not.toHaveBeenCalled()
+    expect(sync.applySync).not.toHaveBeenCalled()
+  })
   it('normalizes a picked parent directory to its dedicated Python child', () => {
     expect(normalizePythonRuntimePath('C:/ZeroWall Data')).toMatch(/ZeroWall Data[\\/]Python$/u)
     expect(normalizePythonRuntimePath('C:/ZeroWall Data/Python')).toMatch(/ZeroWall Data[\\/]Python$/u)

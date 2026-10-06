@@ -233,6 +233,20 @@ describe('Python dependency panel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '安装基础环境' }))
     await waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1))
   })
+  it('offers an explicit repair when a legacy interpreter is present but the MCP core is incomplete', async () => {
+    const repair = vi.fn(async () => ({ phase: 'downloading' }))
+    window.zerowallDesktop = {
+      getMcpPythonInfo: async () => ({ ...info('legacy', 1), coreReady: false, missingCorePackages: ['mcp==1.30.0'] }),
+      updateMcpEnvironment: repair,
+    } as any
+    render(<PythonEnvironmentPanel t={zhT} />)
+    fireEvent.click(await screen.findByRole('button', { name: '修复核心运行环境' }))
+    expect(repair).not.toHaveBeenCalled()
+    const dialog = screen.getByRole('dialog', { name: '修复核心运行环境' })
+    expect(within(dialog).getByText('mcp==1.30.0')).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: '修复核心运行环境' }))
+    await waitFor(() => expect(repair).toHaveBeenCalledTimes(1))
+  })
   it('saves a selected writable parent and keeps the new path visible until restart', async () => {
     const chooseDirectory = vi.fn(async () => 'C:\\ZeroWall Data')
     const restart = vi.fn(async () => true)
@@ -296,9 +310,9 @@ describe('Python dependency panel', () => {
     window.zerowallDesktop = { getMcpPythonInfo: async () => info('gen-a', 1), pythonEnvironment: execute } as any
     render(<PythonEnvironmentPanel t={zhT} />)
     openAdvanced()
-    await screen.findByText('待同步依赖：1')
+    await screen.findAllByText('科研层待安装：1')
     expect(screen.queryByText('清单版本: 2026-09-23.2')).toBeNull()
-    expect(screen.getByText('待同步依赖：1')).toBeTruthy()
+    expect(screen.getAllByText('科研层待安装：1').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('操作记录 · 2')).toBeTruthy()
     expect(screen.getByText('Hash mismatch')).toBeTruthy()
     expect(execute.mock.calls.every(([request]) => ['list_packages', 'configure', 'status', 'diagnose'].includes(request.action))).toBe(true)
