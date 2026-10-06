@@ -79,6 +79,28 @@ export interface PythonScienceReference {
   indexUrl: string
 }
 export interface PythonUpdateJob { packageNames?: string[]; taskId: string; kind: string; stage: string; canPause: boolean; targetVersion?: string; receivedBytes?: number; totalBytes?: number; bytesPerSecond?: number; completedFiles?: number; totalFiles?: number; logLines?: string[] }
+export type PythonTaskState = 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted'
+export interface PythonDependencyTask {
+  taskId: string
+  underlyingTaskId?: string
+  requestId: string
+  action: 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package'
+  layer: PythonDependencyLayer
+  packageSpec?: string
+  state: PythonTaskState
+  stage: string
+  progress?: number
+  completedPackages?: number
+  totalPackages?: number
+  currentPackage?: string
+  message?: string
+  error?: string
+  logLines: string[]
+  createdAt: string
+  updatedAt: string
+  completedAt?: string
+  result?: Record<string, unknown>
+}
 export interface PythonPackagePlan { planId: string; snapshotId: string; requested: string[]; changes: Array<{ name: string; from?: string; to: string }>; error?: string; spaceEstimate?: { snapshotBytes: number; requiredBytes: number; measuredAt: string; estimate: string } }
 export interface McpEnvironmentStatus {
   activeEnvironment?: PythonEnvironmentIdentity
@@ -120,6 +142,8 @@ export interface McpPythonInfo {
   contentRevision?: number
   localRevision?: number
   scannedAt?: string
+  /** True only when packages contains the complete site-packages inventory. */
+  inventoryComplete?: boolean
   officialPackageCount?: number
   ready: boolean
   version?: string

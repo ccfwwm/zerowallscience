@@ -118,12 +118,12 @@ async function executeJson<T>(executable: string, code: string, args: string[], 
   })
 }
 
-export async function prepareSourceWheel(root: string, context: { executable: string; sitePackages: string }, pkg: SourcePackage, mirror: MirrorConfig): Promise<BuiltSourceWheel> {
+export async function prepareSourceWheel(root: string, context: { executable: string; sitePackages: string }, pkg: SourcePackage, mirror: MirrorConfig, onLog?: (line: string) => void): Promise<BuiltSourceWheel> {
   const sourceBuildId = randomUUID()
   const buildRoot = join(root, 'plans', 'source-builds', sourceBuildId)
   const { archivePath, sourceUrl } = await downloadSourceArchive(pkg, mirror, join(buildRoot, 'source'))
   const outputDirectory = join(buildRoot, 'wheels'); await mkdir(outputDirectory)
-  const { wheelPath } = await buildPythonSourceWheel({ ...context, archivePath, archiveSha256: pkg.sha256, outputDirectory, mirror })
+  const { wheelPath } = await buildPythonSourceWheel({ ...context, archivePath, archiveSha256: pkg.sha256, outputDirectory, mirror, onLine: onLog })
   await assertWithin(wheelPath, outputDirectory)
   if (!/^[A-Za-z0-9_.+-]+\.whl$/u.test(basename(wheelPath)) || resolve(dirname(wheelPath)) !== resolve(outputDirectory)) throw new Error('源码构建产物路径无效。')
   const metadata = await inspectMetadata(context.executable, wheelPath)

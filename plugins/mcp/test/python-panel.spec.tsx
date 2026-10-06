@@ -7,6 +7,7 @@ import { PythonEnvironmentPanel } from '../src/client/PythonEnvironmentPanel.js'
 afterEach(cleanup)
 vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
 const info = (snapshotId: string, count: number) => ({ snapshotId, environmentVersion: snapshotId, version: '3.12.10', ready: true, packageCount: count, officialPackageCount: count, packages: Array.from({ length: count }, (_, i) => ({ name: `package-${String(i).padStart(3, '0')}`, version: '1.0', source: 'core' as const, health: 'locked' as const })) })
+const statusSnapshot = (inventory = info('gen-a', 1)) => ({ requestId: 'status', status: { phase: 'ready', activeEnvironment: { snapshotId: inventory.snapshotId } }, inventory: { ...inventory, inventoryComplete: false, packages: [] } })
 // Advanced tools stay collapsed on first paint. Open the native details element
 // explicitly because jsdom does not consistently dispatch its toggle event.
 const openAdvanced = () => {
@@ -154,7 +155,12 @@ describe('Python dependency panel', () => {
     expect(screen.getByText('package-300')).toBeTruthy()
   })
   it('checks and previews the signed manifest without mutation, and confirms before applying', async () => {
-    const execute = vi.fn(async (request: any) => request.action === 'preview_sync' ? { requestId: request.requestId, plan: { planId: 'signed-plan', manifestRevision: '2026-09-23', snapshotId: 'gen-a', requested: [], changes: [{ name: 'numpy', from: '2.0.0', to: '2.1.0' }] } } : request.action === 'apply_sync' ? { requestId: request.requestId, taskId: 'sync-1' } : { requestId: request.requestId, revision: 4, mirrorUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple' })
+    let lastTask: any
+    const execute = vi.fn(async (request: any) => request.action === 'status'
+      ? { ...statusSnapshot(), task: lastTask }
+      : request.action === 'preview_sync'
+        ? (lastTask = { taskId: 'preview-task', requestId: request.requestId, action: 'preview_sync', layer: 'science', state: 'succeeded', stage: 'complete', logLines: [], createdAt: '2026-09-23T00:00:00Z', updatedAt: '2026-09-23T00:00:01Z', result: { plan: { planId: 'signed-plan', manifestRevision: '2026-09-23', snapshotId: 'gen-a', requested: [], changes: [{ name: 'numpy', from: '2.0.0', to: '2.1.0' }] } } }, { task: lastTask })
+        : request.action === 'apply_sync' ? { requestId: request.requestId, taskId: 'sync-1' } : { requestId: request.requestId, revision: 4, mirrorUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple' })
     const legacyUpdate = vi.fn(); const legacyInstall = vi.fn()
     window.zerowallDesktop = { getMcpPythonInfo: async () => info('gen-a', 1), pythonEnvironment: execute, updateMcpEnvironment: legacyUpdate, installMcpPythonPackage: legacyInstall } as any
     render(<PythonEnvironmentPanel t={zhT} />)
@@ -170,8 +176,40 @@ describe('Python dependency panel', () => {
     fireEvent.click(screen.getByRole('button', { name: '应用升级' }))
     await waitFor(() => expect(execute).toHaveBeenCalledWith(expect.objectContaining({ action: 'apply_sync', planId: 'signed-plan', manifestRevision: '2026-09-23', confirm: true })))
   })
+  it('keeps an incompatible optional package visible and submits the user-selected version as a separate task', async () => {
+    const execute = vi.fn(async (request: any) => {
+      if (request.action === 'status') return {
+        ...statusSnapshot(),
+        dependencies: {
+          layer: 'science', packageCount: 529, installedPackageCount: 528, pendingPackageCount: 1,
+          changes: [],
+          partial: true, skippedPackages: [{ name: 'vedo', version: '2026.6.1', message: 'ResolutionImpossible' }],
+        },
+      }
+      if (request.action === 'configure') return { requestId: request.requestId, revision: 1, mirrorUrl: 'https://mirrors.ustc.edu.cn/pypi/simple', mirrorPresets: [] }
+      if (request.action === 'install_package') return {
+        requestId: request.requestId, taskId: 'manual-package-task', queued: true,
+        task: { taskId: 'manual-package-task', requestId: request.requestId, action: 'install_package', state: 'queued', stage: 'queued', packageSpec: request.packageSpec, logLines: [], createdAt: '2026-10-06T00:00:00Z', updatedAt: '2026-10-06T00:00:00Z' },
+      }
+      return { requestId: request.requestId }
+    })
+    window.zerowallDesktop = {
+      getMcpPythonInfo: async () => ({ ...info('gen-a', 1), runtimeRoot: 'C:\\Users\\user\\AppData\\Local\\ZeroWall Science\\Python' }),
+      getMcpEnvironmentStatus: async () => ({ phase: 'ready', activeEnvironment: { snapshotId: 'gen-a' } }),
+      pythonEnvironment: execute,
+    } as any
+    render(<PythonEnvironmentPanel t={zhT} />)
+    const versionInput = await screen.findByLabelText('vedo 安装版本')
+    expect((versionInput as HTMLInputElement).value).toBe('vedo==2026.6.1')
+    fireEvent.change(versionInput, { target: { value: 'vedo==2025.5.1' } })
+    fireEvent.click(screen.getByRole('button', { name: '单独安装此版本' }))
+    await waitFor(() => expect(execute).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'install_package', packageSpec: 'vedo==2025.5.1', confirm: true, requestId: expect.any(String),
+    })))
+    expect(await screen.findByText('单包安装已加入后台任务，可在下方查看实时日志。')).toBeTruthy()
+  })
   it('shows one mirror dropdown with the USTC default and keeps custom URLs in advanced settings', async () => {
-    const execute = vi.fn(async (request: any) => request.action === 'diagnose'
+    const execute = vi.fn(async (request: any) => request.action === 'status' ? statusSnapshot({ ...info('gen-a', 1), verification: { imports: true, pipCheck: true, message: 'OK' } }) : request.action === 'diagnose'
       ? { requestId: request.requestId, diagnostics: { checkedAt: '2026-09-23', pip: { status: 'available', message: 'pip check 通过' } } }
       : { requestId: request.requestId, revision: 2, mirrorUrl: 'https://mirrors.ustc.edu.cn/pypi/simple', defaultMirrorUrl: 'https://mirrors.ustc.edu.cn/pypi/simple', mirrorPresets: [
           { id: 'aliyun', label: '阿里云 · mirrors.aliyun.com', indexUrl: 'https://mirrors.aliyun.com/pypi/simple', custom: false },
@@ -195,7 +233,7 @@ describe('Python dependency panel', () => {
     expect(screen.queryByRole('button', { name: '测试连接与证书' })).toBeNull()
   })
   it('saves application mirror configuration with its expected revision', async () => {
-    const execute = vi.fn(async (request: any) => ({ requestId: request.requestId, revision: request.mirrorUrl ? 8 : 7, mirrorUrl: request.mirrorUrl ?? 'https://pypi.tuna.tsinghua.edu.cn/simple' }))
+    const execute = vi.fn(async (request: any) => request.action === 'status' ? statusSnapshot() : ({ requestId: request.requestId, revision: request.mirrorUrl ? 8 : 7, mirrorUrl: request.mirrorUrl ?? 'https://pypi.tuna.tsinghua.edu.cn/simple' }))
     window.zerowallDesktop = { getMcpPythonInfo: async () => info('gen-a', 1), pythonEnvironment: execute } as any
     render(<PythonEnvironmentPanel t={zhT} />)
     await screen.findByText('1')
@@ -250,7 +288,7 @@ describe('Python dependency panel', () => {
   it('saves a selected writable parent and keeps the new path visible until restart', async () => {
     const chooseDirectory = vi.fn(async () => 'C:\\ZeroWall Data')
     const restart = vi.fn(async () => true)
-    const execute = vi.fn(async (request: any) => request.runtimeRoot
+    const execute = vi.fn(async (request: any) => request.action === 'status' ? statusSnapshot({ ...info('gen-a', 1), runtimeRoot: 'C:\\Program Files\\ZeroWall Science\\Python' }) : request.runtimeRoot
       ? { requestId: request.requestId, runtimeRoot: `${request.runtimeRoot}\\Python`, restartRequired: true }
       : { requestId: request.requestId, runtimeRoot: 'C:\\Program Files\\ZeroWall Science\\Python', mirrorUrl: 'https://mirrors.ustc.edu.cn/pypi/simple', revision: 1, mirrorPresets: [] })
     window.zerowallDesktop = {
@@ -271,7 +309,7 @@ describe('Python dependency panel', () => {
     await waitFor(() => expect(restart).toHaveBeenCalledTimes(1))
   })
   it('applies an explicitly requested package plan through the package API even when manifest sync is available', async () => {
-    const execute = vi.fn(async (request: any) => ({ requestId: request.requestId, revision: 1, mirrorUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple' }))
+    const execute = vi.fn(async (request: any) => request.action === 'status' ? statusSnapshot() : ({ requestId: request.requestId, revision: 1, mirrorUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple' }))
     const apply = vi.fn(async () => ({ taskId: 'package-install' }))
     window.zerowallDesktop = { getMcpPythonInfo: async () => info('gen-a', 1), pythonEnvironment: execute, previewMcpPythonPackages: async () => ({ planId: 'manual-plan', snapshotId: 'gen-a', requested: ['pydna'], changes: [{ name: 'pydna', to: '5.4.0' }] }), applyMcpPythonPackagePlan: apply } as any
     render(<PythonEnvironmentPanel t={zhT} />)
@@ -322,6 +360,7 @@ describe('Python dependency panel', () => {
     const inventory = { ...info('gen-a', 2), packages: [{ ...info('gen-a', 2).packages[0], capabilities: ['image'], sha256: 'b'.repeat(64) }, { ...info('gen-a', 2).packages[1], capabilities: ['sequence'] }] }
     window.zerowallDesktop = { getMcpPythonInfo: legacy, pythonEnvironment: async (request: any) => ({ requestId: request.requestId, ...(request.action === 'list_packages' ? { inventory } : {}) }) } as any
     render(<PythonEnvironmentPanel t={zhT} />)
+    reveal('package')
     await screen.findByText('2')
     fireEvent.change(screen.getByLabelText('相关能力'), { target: { value: 'image' } })
     expect(screen.getByText('package-000')).toBeTruthy()

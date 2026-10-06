@@ -8,7 +8,7 @@
   "revision": "3.12.10-r14-core",
   "pythonVersion": "3.12.10",
   "layer": "core",
-  "createdAt": "2026-10-04T16:55:57.715Z",
+  "createdAt": "2026-10-06T12:01:51.987Z",
   "index": {
     "indexUrl": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "trustedHost": "pypi.tuna.tsinghua.edu.cn"
@@ -399,6 +399,6 @@
   "signature": {
     "algorithm": "ed25519",
     "keyId": "stable-3",
-    "value": "YscJ0csVQy2GD6GZUjLGivrsw6za0XOLcAFXnGlKjPY5+Lc2hBmaG7r392Idhok44xdWAa71Uri/Op4IY0OqBQ=="
+    "value": "jwxToqQy59Nlhl1ITcbxvSqWizk+2FdbK9FsZO0VbIv1SmyGEF1PnzdCATcPv5Dowbd8kqVecP+GY/wVh5NyCg=="
   }
 }

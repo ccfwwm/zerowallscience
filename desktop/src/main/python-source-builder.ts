@@ -9,15 +9,28 @@ import { mirrorArgs, resolveMirror, sanitizePythonTlsEnvironment, type MirrorCon
 
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 
-function run(executable: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; logPath?: string }): Promise<{ stdout: string; stderr: string }> {
+function run(executable: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; logPath?: string; onLine?: (line: string) => void; heartbeat?: string }): Promise<{ stdout: string; stderr: string }> {
   return new Promise((accept, reject) => {
     const child = spawn(windowsProcessPath(executable), args, { cwd: windowsProcessPath(options.cwd), env: options.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     let stdout = ''; let stderr = ''; let settled = false
     let logWrites = options.logPath ? writeFile(options.logPath, '') : Promise.resolve()
     const log = (chunk: Buffer) => { if (options.logPath) logWrites = logWrites.then(() => appendFile(options.logPath!, chunk)).catch(() => undefined) }
+    const startedAt = Date.now()
+    const lineBuffers = { stdout: '', stderr: '' }
+    const publish = (stream: keyof typeof lineBuffers, chunk: Buffer, flush = false) => {
+      const parts = (lineBuffers[stream] + chunk.toString('utf8')).split(/[\r\n]+/u)
+      const tail = parts.pop() ?? ''
+      lineBuffers[stream] = flush ? '' : tail.slice(-4000)
+      for (const line of flush ? [...parts, tail] : parts) {
+        const safe = line.replace(/https?:\/\/[^\s]+/giu, '[package-url]').trim().slice(0, 500)
+        if (safe) { try { options.onLine?.(safe) } catch { /* observers must not interrupt a verified build */ } }
+      }
+    }
     const finish = async (error?: Error, result?: { stdout: string; stderr: string }) => {
       if (settled) return
       settled = true; clearTimeout(timer)
+      if (heartbeatTimer) clearInterval(heartbeatTimer)
+      publish('stdout', Buffer.alloc(0), true); publish('stderr', Buffer.alloc(0), true)
       await logWrites
       error ? reject(error) : accept(result!)
     }
@@ -27,8 +40,12 @@ function run(executable: string, args: string[], options: { cwd: string; env: No
         execFile('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 10_000 }, () => { child.kill(); void finish(error) })
       } else { child.kill(); void finish(error) }
     }, options.timeoutMs)
-    child.stdout.on('data', chunk => { stdout = (stdout + chunk).slice(-256_000); log(chunk) })
-    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-64_000); log(chunk) })
+    const heartbeatTimer = options.heartbeat ? setInterval(() => {
+      const seconds = Math.floor((Date.now() - startedAt) / 1000)
+      try { options.onLine?.(`${options.heartbeat}；已等待 ${seconds} 秒，构建进程仍在运行。`) } catch { /* progress observers cannot interrupt a verified build */ }
+    }, 8_000) : undefined
+    child.stdout.on('data', chunk => { stdout = (stdout + chunk).slice(-256_000); log(chunk); publish('stdout', chunk) })
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-64_000); log(chunk); publish('stderr', chunk) })
     child.once('error', error => finish(error))
     child.once('exit', code => code === 0
       ? finish(undefined, { stdout, stderr })
@@ -86,6 +103,7 @@ export async function buildPythonSourceWheel(options: {
   archiveSha256: string
   outputDirectory: string
   mirror: MirrorConfig
+  onLine?: (line: string) => void
 }): Promise<{ wheelPath: string }> {
   if (!/^[a-f0-9]{64}$/u.test(options.archiveSha256)) throw new Error('源码归档 SHA-256 格式无效。')
   const archivePath = resolve(options.archivePath); const outputDirectory = resolve(options.outputDirectory)
@@ -115,7 +133,10 @@ export async function buildPythonSourceWheel(options: {
   env.PIP_DEFAULT_TIMEOUT = '30'; env.PIP_RETRIES = '2'
   try {
     const buildPython = await copyBuildInterpreter(options.executable, workDirectory)
-    await run(buildPython, ['-I', '-B', '-c', bootstrap], { cwd: workDirectory, env, timeoutMs: 30 * 60_000, logPath: join(outputDirectory, 'build.log') })
+    await run(buildPython, ['-I', '-B', '-c', bootstrap], {
+      cwd: workDirectory, env, timeoutMs: 10 * 60_000, logPath: join(outputDirectory, 'build.log'),
+      onLine: options.onLine, heartbeat: '正在构建已验签的 Python 源码包',
+    })
     const entries = await readdir(output)
     const wheels = entries.filter(name => extname(name).toLowerCase() === '.whl')
     if (wheels.length !== 1) throw new Error(`源码构建应生成一个 wheel，实际生成 ${wheels.length} 个。`)

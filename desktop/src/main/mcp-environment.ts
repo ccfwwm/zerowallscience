@@ -27,7 +27,7 @@ export interface McpEnvironmentManifest {
   archiveUrl: string
   archiveSha256: string
   archiveSize: number
-  python: { version: string; relativeExecutable: string; relativeSitePackages: string; modules: string[]; supportsZeroWallTool: boolean; layers?: string[]; dependencyManifests?: string[] }
+  python: { version: string; relativeExecutable: string; relativeSitePackages: string; modules: string[]; supportsZeroWallTool: boolean; layers?: string[]; dependencyManifests?: string[]; bootstrapOnly?: boolean }
   pythonHealth: { imports: string[]; bioServer: string; ketcherServer: string }
   skillsRoot: string
   sci: { version: string; nodeMinimum: string; cli: string; mcp: string }
@@ -208,7 +208,7 @@ export class McpEnvironmentController {
     return await this.checkForUpdates()
   }
 
-  async pythonInfo(query = ''): Promise<McpPythonInfo> {
+  async pythonInfo(query = '', includeInventory = true, packageNames: string[] = []): Promise<McpPythonInfo> {
     const current = await readCurrent(this.options.root)
     const stableRuntimeRoot = join(dirname(resolve(this.options.root)), 'Python')
     if (!current?.root || current.health !== 'ready') return { ready: false, coreReady: false, missingCorePackages: [], runtimeRoot: stableRuntimeRoot, packages: [], message: 'ZeroWall Python 尚未就绪。' }
@@ -225,19 +225,31 @@ export class McpEnvironmentController {
       const executable = shared ? join(stableRoot!, SHARED_LAYOUT.relativeExecutable) : join(current.root, manifest.python.relativeExecutable)
       const sitePackages = shared ? join(stableRoot!, SHARED_LAYOUT.relativeSitePackages) : join(current.root, manifest.python.relativeSitePackages)
       const versionResult = await execute(executable, ['--version'], current.root, undefined, { PYTHONPATH: sitePackages, PYTHONNOUSERSITE: '1' }, 20_000)
-      const env = pythonEnvironment(sitePackages)
-      const script = 'import importlib.metadata,json,sys\nrows=[]\nfor d in importlib.metadata.distributions(path=[sys.argv[1]]):\n rows.append({"name":d.metadata.get("Name") or d.name,"version":d.version,"location":str(d.locate_file("")),"dependencies":d.requires or []})\nprint(json.dumps(rows))'
-      const listed = await execute(executable, ['-c', script, sitePackages], current.root, undefined, env, 30_000)
       const bundled = this.options.bundledManifestPath
         ? validateManifest(JSON.parse(await readFile(this.options.bundledManifestPath, 'utf8')))
         : undefined
       const required = pythonCoreRequirements(manifest, bundled, this.options.publicKey, this.options.publicKeys)
+      const names = [...new Set([...required.keys(), ...packageNames])]
+      const env = pythonEnvironment(sitePackages)
+      const inventoryScript = 'import importlib.metadata,json,sys\nrows=[]\nfor d in importlib.metadata.distributions(path=[sys.argv[1]]):\n rows.append({"name":d.metadata.get("Name") or d.name,"version":d.version,"location":str(d.locate_file("")),"dependencies":d.requires or []})\nprint(json.dumps(rows))'
+      // Runtime health and signed-manifest checks need only a small set of
+      // distributions. Avoid materializing dependency metadata and locations
+      // for every package on startup, preview, and post-install verification.
+      const targetedScript = 'import json,os,sys\nroot=sys.argv[1]; wanted={n.lower().replace("_","-").replace(".","-"):n for n in json.loads(sys.argv[2])}; keys=sorted(wanted,key=len,reverse=True); rows=[]\nfor entry in os.scandir(root):\n name=entry.name\n if not entry.is_dir(follow_symlinks=False) or not (name.endswith(".dist-info") or name.endswith(".egg-info")): continue\n stem=name.rsplit(".",1)[0]; normalized=stem.lower().replace("_","-").replace(".","-")\n key=next((key for key in keys if normalized.startswith(key+"-")),None)\n if key is None: continue\n metadata=os.path.join(entry.path,"METADATA" if name.endswith(".dist-info") else "PKG-INFO")\n try:\n  values={}\n  with open(metadata,encoding="utf-8",errors="replace") as stream:\n   for line in stream:\n    if not line.strip(): break\n    if line.startswith("Name:"): values["name"]=line[5:].strip()\n    elif line.startswith("Version:"): values["version"]=line[8:].strip()\n    if "name" in values and "version" in values: break\n  if values.get("name") and values.get("version"): rows.append(values)\n except OSError: pass\nprint(json.dumps(rows))'
+      const script = includeInventory ? inventoryScript : targetedScript
+      const args = includeInventory ? ['-c', script, sitePackages] : ['-c', script, sitePackages, JSON.stringify(names)]
+      const listed = await execute(executable, args, current.root, undefined, env, 30_000)
       const raw = JSON.parse(listed.stdout.trim()) as Array<{ name: string; version: string; location?: string; dependencies?: string[] }>
       const installedVersions = new Map(raw.map(pkg => [pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'), pkg.version]))
       const missingCorePackages = [...required.entries()]
         .filter(([name, version]) => installedVersions.get(name) !== version)
         .map(([name, version]) => `${name}==${version}`)
       const coreReady = required.size > 0 && missingCorePackages.length === 0
+      const scienceManifest = await readFile(join(this.options.root, 'dependency-sync', 'manifest.json'), 'utf8')
+        .then(text => parsePythonDependencyManifest(JSON.parse(text), this.options.publicKeys ?? { 'stable-3': this.options.publicKey }))
+        .catch(() => undefined)
+      const sciencePackages = scienceManifest?.layer === 'science' ? scienceManifest.packages : []
+      const scienceInstalledPackageCount = sciencePackages.filter(pkg => installedVersions.get(pkg.name.toLowerCase().replace(/[-_.]+/gu, '-')) === pkg.version).length
       const history = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
       const packages: McpPythonPackage[] = []
       for (const pkg of raw) {
@@ -246,12 +258,12 @@ export class McpEnvironmentController {
         if (existing) { existing.shadowedVersion = pkg.version; continue }
         const requiredVersion = required.get(key)
         const official = requiredVersion !== undefined
-        packages.push({ ...pkg, source: official ? 'core' : 'custom', upgradeHistory: history?.history?.filter((entry: { name: string }) => pythonPackageName(entry.name) === key), verificationMessage: history?.verifiedAt && current.customizations?.[key] ? `pip check、导入与相关功能验证通过（${history.verifiedAt}）` : undefined, previousVersion: history?.changes?.find((change: { name: string }) => pythonPackageName(change.name) === key)?.from, ...(requiredVersion === undefined ? {} : { requiredVersion }), customized: current.customizations?.[key] !== undefined, health: official ? 'locked' : 'healthy' })
+        packages.push({ ...pkg, source: official ? 'core' : 'custom', ...(includeInventory ? { upgradeHistory: history?.history?.filter((entry: { name: string }) => pythonPackageName(entry.name) === key), verificationMessage: history?.verifiedAt && current.customizations?.[key] ? `pip check、导入与相关功能验证通过（${history.verifiedAt}）` : undefined, previousVersion: history?.changes?.find((change: { name: string }) => pythonPackageName(change.name) === key)?.from, customized: current.customizations?.[key] !== undefined } : {}), ...(requiredVersion === undefined ? {} : { requiredVersion }), health: official ? 'locked' : 'healthy' })
       }
       packages.sort((a, b) => a.name.localeCompare(b.name))
       const needle = query.trim().toLowerCase()
       const runtime = shared ? { runtimeRoot: join(stableRoot!, 'Python'), runtimeExecutable: executable, runtimeSitePackages: sitePackages } : publicRuntimeForSnapshot(current.root, manifest, this.options.generationMode)
-      return { snapshotId: current.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), localRevision: current.localRevision, scannedAt: new Date().toISOString(), officialPackageCount: required.size, ready: true, coreReady, missingCorePackages, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable: runtime?.runtimeExecutable ?? executable, sitePackages: runtime?.runtimeSitePackages ?? sitePackages, ...runtime, packageCount: packages.length, corePackageCount: packages.filter(pkg => pkg.source === 'core').length, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
+      return { snapshotId: current.root, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), localRevision: current.localRevision, scannedAt: new Date().toISOString(), inventoryComplete: includeInventory, officialPackageCount: required.size, ready: true, coreReady, missingCorePackages, version: `${versionResult.stdout}\n${versionResult.stderr}`.trim().replace(/^Python\s+/u, ''), executable: runtime?.runtimeExecutable ?? executable, sitePackages: runtime?.runtimeSitePackages ?? sitePackages, ...runtime, ...(includeInventory ? { packageCount: packages.length } : {}), corePackageCount: packages.filter(pkg => pkg.source === 'core').length, sciencePackageCount: sciencePackages.length, scienceInstalledPackageCount, packages: needle === '' ? packages : packages.filter(pkg => pkg.name.toLowerCase().includes(needle)), skillAudit: manifest.skillsAudit ? { summary: manifest.skillsAudit.summary, skills: [] } : undefined }
     } catch (error) { return { ready: false, packages: [], message: sanitizeError(error) } }
   }
 
@@ -291,10 +303,50 @@ export class McpEnvironmentController {
     return preparePackagePlan(this.options.root, context, names, await this.pythonInfo())
   }
 
-  async previewDependencyManifest(manifest: PythonDependencyManifest): Promise<StoredPackagePlan> {
+  async previewDependencyManifest(manifest: PythonDependencyManifest, taskId?: string): Promise<StoredPackagePlan> {
     const verified = parsePythonDependencyManifest(manifest, { ...MCP_ENVIRONMENT_KEYRING, ...this.options.publicKeys })
     const context = await this.pythonContext()
-    return prepareManifestPackagePlan(this.options.root, context, verified, await this.pythonInfo())
+    const info = await this.pythonInfo('', false, verified.packages.map(pkg => pkg.name))
+    const progressTaskId = taskId ?? `preflight-${Date.now()}`
+    const previousStatus = this.status
+    const logLines: string[] = []
+    const report = (progress: { stage: string; message: string; progress?: number; completedPackages?: number; totalPackages?: number; currentPackage?: string; logLine?: string }) => {
+      const line = progress.logLine ? `${progress.currentPackage ? `${progress.currentPackage}: ` : ''}${progress.logLine}` : progress.message
+      if (line && logLines.at(-1) !== line) {
+        logLines.push(line)
+        if (logLines.length > 120) logLines.shift()
+      }
+      const totalFiles = progress.totalPackages
+      const completedFiles = progress.completedPackages
+      this.set({
+        ...this.status,
+        phase: 'checking',
+          progress: progress.progress,
+        message: progress.message,
+        updateJob: {
+          taskId: progressTaskId,
+          kind: 'python-dependency-preflight',
+          stage: progress.stage,
+          canPause: false,
+          ...(progress.currentPackage ? { targetVersion: progress.currentPackage } : {}),
+          ...(completedFiles === undefined ? {} : { completedFiles }),
+          ...(totalFiles === undefined ? {} : { totalFiles }),
+          packageNames: verified.packages.map(pkg => pkg.name),
+          logLines: [...logLines],
+        },
+      })
+    }
+    const installed = new Map(info.packages.map(pkg => [pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'), pkg.version]))
+    const pendingCount = verified.packages.filter(pkg => installed.get(pkg.name.toLowerCase().replace(/[-_.]+/gu, '-')) !== pkg.version).length
+    report({ stage: 'inventory', message: `已核对 ${info.packages.length}/${verified.packages.length} 个目标依赖，开始预检 ${pendingCount} 个待安装依赖。`, progress: 0, completedPackages: 0, totalPackages: pendingCount })
+    try {
+      return await prepareManifestPackagePlan(this.options.root, context, verified, info, report)
+    } finally {
+      // A read-only preview must not leave the shared runtime in a permanent
+      // `checking` phase. The durable Python task owns preview progress and
+      // remains visible after this transient worker status is restored.
+      if (this.status.updateJob?.taskId === progressTaskId) this.set(previousStatus)
+    }
   }
 
   async previewUninstall(names: string[]): Promise<StoredPackagePlan> {
@@ -331,11 +383,20 @@ export class McpEnvironmentController {
     if (plan.dependencyManifest) parsePythonDependencyManifest(plan.dependencyManifest, { ...MCP_ENVIRONMENT_KEYRING, ...this.options.publicKeys })
     if (current?.root && plan.snapshotId !== current.root && !plan.error) {
       const applied = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
-      if (applied?.planId === planId) return this.pythonInfo()
+      if (applied?.planId === planId) return this.pythonInfo('', false, [...(current.extensionNames ?? []), ...Object.keys(current.customizations ?? {}), ...plan.changes.map(change => change.name)])
     }
     if (!current?.root || plan.snapshotId !== current.root || plan.error) throw new Error('环境已变化，请重新检查升级计划。')
     const context = await this.pythonContext()
-    const inventory = await this.pythonInfo()
+    // Package application only needs the signed core closure, previously
+    // managed extensions, and packages named by this plan. A full importlib
+    // inventory here made even the small 42-package startup repair wait on
+    // unrelated science packages and custom tooling.
+    const trackedNames = [...new Set([
+      ...(current.extensionNames ?? []),
+      ...Object.keys(current.customizations ?? {}),
+      ...plan.changes.map(change => change.name),
+    ])]
+    const inventory = await this.pythonInfo('', false, trackedNames)
     const sharedStable = !this.options.generationMode && context.manifest.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable && current.runtimeRoot === dirname(this.options.root)
     const target = sharedStable ? current.root : join(this.options.root, 'slots', `local-${randomUUID()}`)
     if (!sharedStable) {
@@ -372,7 +433,13 @@ export class McpEnvironmentController {
       })
       plan.installOutcome = outcome
       await writeFile(join(this.options.root, 'plans', `${planId}.json`), JSON.stringify(plan))
-      if (this.options.generationMode && (outcome.skipped.length || !outcome.importCheckPassed || !outcome.pipCheckPassed)) {
+      const strictCoreGeneration = plan.dependencyManifest?.layer === 'core'
+      // Core is the boot contract and must remain all-or-nothing. Science and
+      // capability layers are optional: a package with an unavailable or
+      // conflicting version is retained as a durable retry item while the
+      // successfully installed packages remain usable in the candidate.
+      const optionalPartialInstall = !strictCoreGeneration && outcome.skipped.length > 0
+      if (this.options.generationMode && (!outcome.importCheckPassed || strictCoreGeneration && (outcome.skipped.length > 0 || !outcome.pipCheckPassed) || !optionalPartialInstall && !outcome.pipCheckPassed)) {
         throw new Error('新 Python generation 验证失败，保留当前环境；请查看依赖安装日志后重试。')
       }
       if (outcome.skipped.length) {
@@ -402,7 +469,7 @@ export class McpEnvironmentController {
       await this.writeCurrent({ ...current, root: target, ...(this.options.generationMode ? { generation: true } : {}), runtimeRoot: this.options.generationMode ? target : sharedStable ? dirname(this.options.root) : current.runtimeRoot, localRevision, customizations, removedPackages, extensionNames: extensionNames.filter(name => !removedPackages.includes(name)), rollbackAvailable: sharedStable ? current.rollbackAvailable : true, installedAt: new Date().toISOString(), manifest: context.manifest, ...(plan.dependencyManifest ? { dependencyRevision: plan.dependencyManifest.revision, dependencyManifestSha256: createHash('sha256').update(JSON.stringify(plan.dependencyManifest)).digest('hex') } : {}) })
       activated = true
       await this.localStatus()
-      const info = await this.pythonInfo()
+      const info = await this.pythonInfo('', false, trackedNames)
       const verificationOk = outcome.importCheckPassed && outcome.pipCheckPassed
       const resultMessage = outcome.skipped.length && outcome.installed > 0
         ? `部分成功：已安装 ${outcome.installed} 个依赖，${outcome.skipped.length} 个失败（${outcome.skipped.map(item => item.name).join('、')}），可以重试。`
@@ -417,7 +484,7 @@ export class McpEnvironmentController {
       if (plan.dependencyManifest) {
         const syncDirectory = join(this.options.root, 'dependency-sync')
         const previousStatus = await readFile(join(syncDirectory, 'status.json'), 'utf8').then(JSON.parse, () => ({}))
-        const syncStatus = { ...previousStatus, manifestRevision: plan.dependencyManifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(plan.dependencyManifest)), packageCount: plan.dependencyManifest.packages.length, pythonVersion: plan.dependencyManifest.pythonVersion, environmentVersion: plan.dependencyManifest.environmentVersion, changes: dependencyManifestChanges(plan.dependencyManifest, info.packages), checkedAt: new Date().toISOString(), needsRuntime: false }
+        const syncStatus = { ...previousStatus, manifestRevision: plan.dependencyManifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(plan.dependencyManifest)), packageCount: plan.dependencyManifest.packages.length, pythonVersion: plan.dependencyManifest.pythonVersion, environmentVersion: plan.dependencyManifest.environmentVersion, changes: dependencyManifestChanges(plan.dependencyManifest, info.packages), skippedPackages: outcome.skipped, partial: outcome.skipped.length > 0, checkedAt: new Date().toISOString(), needsRuntime: false }
         await mkdir(syncDirectory, { recursive: true })
         const statusPath = join(syncDirectory, 'status.json'); const statusTemp = `${statusPath}.tmp-${randomUUID()}`
         await writeFile(statusTemp, JSON.stringify(syncStatus)); await renameWithRetry(statusTemp, statusPath)
@@ -501,6 +568,11 @@ export class McpEnvironmentController {
         const status = environmentStatus('ready', manifest, installed.root, installed.slot, false, installed.rollbackAvailable, this.options.generationMode)
         status.onlineEnvironmentVersion = environmentVersion(manifest); status.onlineContentRevision = contentRevision(manifest); status.updateAvailable = false; status.lastCheckedAt = new Date().toISOString()
         return this.set(status)
+      }
+      const packagedBootstrapAvailable = this.options.bundledArchivePath !== undefined
+        && await stat(this.options.bundledArchivePath).then(info => info.isFile(), () => false)
+      if (manifest.environmentId === 'zerowall-python' && manifest.python.bootstrapOnly !== true && !packagedBootstrapAvailable) {
+        throw new Error(`拒绝下载完整科研 Python 环境 ${environmentVersion(manifest)}（${(manifest.archiveSize / 1024 ** 2).toFixed(0)} MiB）。首次启动只允许安装签名的 Python + pip bootstrap；42 个核心依赖应在独立后台任务中安装。请检查 bootstrap 清单地址。`)
       }
       // A new installation has no runtime to migrate or MCP generation to
       // switch. Install the signed, bundled interpreter at the selected public
@@ -1302,7 +1374,7 @@ export async function verifyMcpEnvironmentHealth(root: string, manifest: McpEnvi
   const bioToolsRoot = bundledAssets?.bioToolsRoot ?? join(root, 'bio-tools')
   const ketcherRoot = bundledAssets?.ketcherRoot ?? join(root, 'ketcher-chemistry')
   const sciRoot = bundledAssets?.sciRoot ?? join(root, 'sci')
-  if (manifest.dependencies?.corePackages.some(pkg => pkg.name.toLowerCase() === 'mcp')) {
+  if (!manifest.python.bootstrapOnly && manifest.dependencies?.corePackages.some(pkg => pkg.name.toLowerCase() === 'mcp')) {
     await checkMcpServer(python, [join(bioToolsRoot, 'run_server.py'), 'mcp_bio'], bioToolsRoot)
   }
   await checkMcpServer(node, [join(ketcherRoot, 'server.js')], ketcherRoot)

@@ -87,10 +87,24 @@ export class PythonUpdaterService {
     })
   }
   pythonInfo(query = ''): Promise<McpPythonInfo> { return this.rpc('pythonInfo', [query]) }
+  /** Fast startup/health path: check the signed core closure without building the full package inventory. */
+  pythonCoreInfo(): Promise<McpPythonInfo> { return this.rpc('pythonInfo', ['', false]) }
+  /** Read only the named distributions from site-packages for manifest comparisons. */
+  pythonPackages(names: string[]): Promise<McpPythonInfo> { return this.rpc('pythonInfo', ['', false, names]) }
   async taskStatus(taskId?: string): Promise<unknown> {
     if (!taskId) return this.current()
     if (!/^[a-f0-9-]{36}$/u.test(taskId)) throw new Error('Invalid task id')
-    const job = JSON.parse(await readFile(join(this.options.root, 'jobs', `${taskId}.json`), 'utf8'))
+    const job = await readFile(join(this.options.root, 'jobs', `${taskId}.json`), 'utf8')
+      .then(text => JSON.parse(text) as { state?: string; error?: string })
+      .catch(error => {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        // enqueue() returns the task ID immediately and persists the receipt in
+        // the queued microtask. A poll in that small window must see `queued`,
+        // not turn a real install into an apparent missing-task failure.
+        if (this.scheduled.has(taskId)) return { state: 'queued' }
+        if (this.status.updateJob?.taskId === taskId && this.status.updateJob.stage === 'failed') return { state: 'failed', error: this.status.lastUpdateError }
+        return { state: 'missing' }
+      })
     return { ...job, ...(this.status.updateJob?.taskId === taskId ? { progress: this.status.progress, message: this.status.message, error: this.status.lastUpdateError } : {}) }
   }
   async previewUninstall(names: string[]): Promise<unknown> { await this.ensurePackageRuntime(); return this.rpc('previewUninstall', [names]) }
@@ -132,7 +146,7 @@ export class PythonUpdaterService {
         await save('running')
         const result = await this.rpc<any>(method, args)
         if (this.paused || this.stopped) throw new Error('任务已暂停；等待用户继续。')
-        const info = result?.packages ? result : await this.pythonInfo()
+        const info = result?.packages ? result : method === 'initialize' ? await this.pythonCoreInfo() : await this.pythonInfo()
         const next = await this.rpc<McpEnvironmentStatus>('localStatus')
         if (this.paused || this.stopped) throw new Error('任务已暂停；等待用户继续。')
         const failed = next.phase !== 'ready' && next.phase !== 'manual' || !!next.lastUpdateError
@@ -158,11 +172,39 @@ export class PythonUpdaterService {
     if (taskId) this.publish({ ...this.status, phase: 'checking', progress: 0, updateJob: { taskId, kind: 'initialize', stage: 'checking', canPause: true }, message: '后台任务已启动' })
     return this.status
   }
+  /**
+   * Continue the automatic core-dependency workflow after restart without
+   * resuming unrelated user package jobs. If the core task's previous package
+   * transaction is still queued for recovery, resume only that transaction.
+   */
+  resumeAutomaticCoreOperation(taskId?: string): boolean {
+    if (this.stopped) return false
+    const pending = taskId ? this.interrupted.get(taskId) : undefined
+    // When a task id is supplied it must refer to the exact interrupted
+    // package transaction. Returning true for a missing id made the outer
+    // Python sync resume and plan a second install while the original updater
+    // receipt was still paused or unavailable.
+    if (taskId && (!pending || pending.method !== 'applyPackagePlan')) return false
+    this.paused = false
+    if (taskId && pending) {
+      this.interrupted.delete(taskId)
+      this.enqueue(pending.method, pending.args, taskId)
+      this.publish({
+        ...this.status,
+        phase: 'checking',
+        progress: 0,
+        updateJob: { taskId, kind: pending.method, stage: 'checking', canPause: false },
+        message: '正在恢复自动核心依赖任务。',
+      })
+    }
+    return true
+  }
+
   async autoUpdate(): Promise<McpEnvironmentStatus> {
     if (this.busy || this.paused || this.queuedUpdate || this.stopped) return this.status
-    // An offline installer may prepare its signed local bootstrap on launch.
-    // Thin installers only check the remote feed; downloading a runtime is
-    // driven by updateForUser() or an explicit Python operation's ensureReady().
+    // Offline installers use the signed local bootstrap. Thin installers fetch
+    // the same signed Python + pip bootstrap over the network when no runtime is
+    // active; the 42-package core dependency layer follows as a separate task.
     let local: McpEnvironmentStatus
     try { local = await this.rpc<McpEnvironmentStatus>('localStatus') }
     catch (error) { local = { phase: 'failed', message: error instanceof Error ? error.message : String(error) } }
@@ -175,17 +217,17 @@ export class PythonUpdaterService {
       const jobs = await Promise.all(files.filter(file => file.endsWith('.json')).map(file => readFile(join(directory, file), 'utf8').then(JSON.parse, () => undefined)))
       const resumable = jobs.filter(job => job && ['queued', 'running', 'paused'].includes(job.state)).sort((a, b) => a.updatedAt - b.updatedAt)
       for (const job of resumable) this.interrupted.set(job.taskId, { method: job.method, args: job.args })
-      if (resumable.length && (!this.options.bundledArchivePath || local.phase === 'ready' || local.phase === 'manual')) {
+      if (resumable.length && (local.phase === 'ready' || local.phase === 'manual')) {
         this.paused = true
         this.publish({ ...this.status, phase: 'paused', message: '发现中断的依赖任务，点击继续后恢复。' })
         return this.status
       }
     }
     if (local.phase !== 'ready' && local.phase !== 'manual') {
-      if (!this.options.bundledArchivePath) return await this.checkForUpdates()
       // A stale job receipt must not prevent first-run installation. Resume at
-      // most the interrupted bootstrap now; dependency jobs remain pending
-      // until the signed runtime has actually been installed.
+      // the interrupted bootstrap now; dependency jobs remain pending until
+      // the signed Python + pip runtime has actually been installed. Thin
+      // installers fetch that small signed runtime archive on demand.
       const pending = [...this.interrupted]
       const bootstrap = pending.find(([, job]) => job.method === 'initialize')
       this.interrupted.clear()
@@ -195,9 +237,11 @@ export class PythonUpdaterService {
       const taskId = started.updateJob?.taskId
       return taskId ? await this.waitForTask(taskId) : started
     }
-    // Once the bundled base runtime is present, background checks remain
-    // read-only and report signed updates for user review.
-    return await this.checkForUpdates()
+    // Bootstrap and dependency installation have separate owners. Once the
+    // interpreter exists, return the local state immediately so the caller can
+    // start the 42-package core task without waiting on the remote runtime feed.
+    // The runtime feed remains an explicit read-only check after core setup.
+    return this.status
   }
 
   /**
@@ -277,6 +321,6 @@ export class PythonUpdaterService {
   selectManual(root: string): { taskId: string } { return this.enqueue('selectManual', [root]) }
   rollback(): { taskId: string } { return this.enqueue('rollback') }
   async previewPackages(names: string[]): Promise<unknown> { await this.ensurePackageRuntime(); return this.rpc('previewPackages', [names]) }
-  async previewDependencyManifest(manifest: PythonDependencyManifest): Promise<StoredPackagePlan> { await this.ensurePackageRuntime(); return this.rpc('previewDependencyManifest', [manifest]) }
+  async previewDependencyManifest(manifest: PythonDependencyManifest, taskId?: string): Promise<StoredPackagePlan> { await this.ensurePackageRuntime(); return this.rpc('previewDependencyManifest', [manifest, taskId]) }
   async applyPackagePlan(planId: string): Promise<{ taskId: string }> { await this.ensurePackageRuntime(); return this.enqueue('applyPackagePlan', [planId]) }
 }

@@ -153,7 +153,10 @@ def main():
         shutil.rmtree(site)
     run([sys.executable, '-m', 'pip', 'install', '--no-index', '--find-links', wheelhouse, '--require-hashes', '--no-compile', '--target', site, '-r', install_lock], env=env)
     pth = shared_python / 'python312._pth'
-    pth.write_text('python312.zip\n.\nDLLs\nLib/site-packages\n../bio-tools/lib\nLib/site-packages/win32\nLib/site-packages/win32/lib\nLib/site-packages/pythonwin\nimport site\n', encoding='utf-8')
+    # Include Lib for normal CPython distributions where encodings and other
+    # stdlib modules are not entirely packed into python312.zip.  This keeps
+    # the managed archive bootable before pip or an MCP server is invoked.
+    pth.write_text('python312.zip\n.\nDLLs\nLib\nLib/site-packages\n../bio-tools/lib\nLib/site-packages/win32\nLib/site-packages/win32/lib\nLib/site-packages/pythonwin\nimport site\n', encoding='utf-8')
     shutil.copyfile(site / 'win32/lib/pywintypes.py', site / 'pywintypes.py')
     python = shared_python / 'python.exe'
     run([python, '-s', '-B', '-m', 'pip', 'check'], env=env)

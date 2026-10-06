@@ -22,6 +22,7 @@ const desktopManifest = JSON.parse(await readFile(resolve(packageRoot, 'package.
 const desktopOnly = process.argv.includes('--desktop-only')
 const hostOnly = process.argv.includes('--host-only')
 const requireBundledPython = process.argv.includes('--require-bundled-python')
+const requireThinPython = process.argv.includes('--require-thin-python')
 
 if (process.argv.includes('--audit-source')) {
   await verifySourceRuntimePolicy()
@@ -34,6 +35,11 @@ const asarPath = resolve(packaged.resourcesRoot, 'app.asar')
 await access(asarPath)
 const bundledPythonManifestPath = resolve(packaged.resourcesRoot, 'python', 'base-manifest.json')
 const bundledPythonArchivePath = resolve(packaged.resourcesRoot, 'python', 'base-runtime.zip')
+if (requireThinPython) {
+  const [hasManifest, hasArchive] = await Promise.all([bundledPythonManifestPath, bundledPythonArchivePath].map(path => access(path).then(() => true, () => false)))
+  if (hasManifest || hasArchive) throw new Error('Stable Windows package must not bundle the Python bootstrap archive; Python + pip are installed from the signed resource feed after first launch.')
+  console.log('[python] thin installer verified: no bundled bootstrap manifest or archive.')
+}
 let bundledPythonManifest
 try {
   bundledPythonManifest = JSON.parse(await readFile(bundledPythonManifestPath, 'utf8'))

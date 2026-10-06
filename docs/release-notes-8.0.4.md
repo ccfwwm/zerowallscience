@@ -1,29 +1,21 @@
 # ZeroWall Science 8.0.4
 
-## Python 运行环境
+## Python 环境与依赖
 
-- 默认使用 `%LOCALAPPDATA%\\ZeroWall Science\\Python`，不再迁移旧 Roaming Python 路径。
-- 安装包只初始化轻量基础运行层；科研和生信依赖改为显式按需安装。
-- 启动时只检查清单和本地环境，不自动安装完整科研依赖。
-- Python 页面显示稳定路径、核心层、科研层和可选能力层状态。
+- 首次启动按需联网安装轻量 CPython 3.12.10 + pip；安装包不包含 Python 环境归档。
+- Python + pip 就绪后，桌面在后台异步检查并安装签名锁定的 42 个核心依赖，显示实时进度和安装日志，并持久保存任务状态以便重启后恢复。
+- 科研与生信依赖仍由用户明确选择后安装。预检或安装遇到单个不可用、冲突或失败的包时，会隔离记录并继续处理其他包；用户可以为失败包填写版本后单独重试。
+- Python 命令行使用当前活动环境及其稳定路径启动。
+- 安装过程沿用 generation、健康检查和回滚；失败时保留原有可用环境。
 
-## RMCP
+## MCP 与历史会话
 
-- 启动后后台自动连接 RMCP。
-- 区分缺少凭据、连接中、工具发现中、连接成功但工具为 0 和连接失败。
-- 工具列表在 `tools/list` 完成后重新注册，避免界面错误显示空工具。
-- 修正 DSH 吞掉启动异常后被误报为“已连接但无工具”的情况；仅迁移内置 RMCP 和 Bio Tools 的启动错误策略，保留第三方 MCP 配置。
-- 核心 Python 层包含 42 个固定版本依赖，可实际启动 Bio Tools；529 个科研依赖仍单独按需安装。旧 pip-only 环境会显示“修复核心运行环境”，确认后用签名离线包建立新 generation，保留旧环境。
-- 重新打包的 Windows 候选包使用构建 ID `20261005-rmcp-core-v8`。本次不发布线上更新。
-- 最终打包 Host 和 MCP 设置页验证 Bio Tools 正常连接并注册 8 个工具、Ketcher 7 个工具；缺少 RMCP 凭据时明确显示等待凭据。
+- MCP 后台连接状态区分凭据缺失、连接中、工具发现中、连接成功但远端返回 0 个工具和连接失败。
+- `tools/list` 完成后重新注册已发现工具；内置 RMCP 和 Bio Tools 的启动异常会显示真实失败状态，不影响第三方 MCP 配置。
+- 保留已知 `zerowall/reviewer/report` 历史扩展事件；迁移生成新的历史副本，不修改原始 session JSONL，其他未知事件仍按 DSH 规则处理。
 
-## 生产服务验证限制
+## 资源与升级
 
-- 本次从开发机访问 `103.217.185.141` 的 SSH 22、历史 SSH 50537 和 MCP 8099 均连接超时，尚未连接生产机或更改服务。
-- 客户端错误投影与本地 Bio Tools 已分别修复；这不代表远端 RMCP 服务已恢复。待生产地址可达后，仍须执行带凭据的 initialize、tools/list 和最小健康调用。
-- 该候选 EXE 未作 Authenticode 签名；签名 Python 清单仍使用正式 stable-3 信任根。完整构建来源、哈希、跳过项和生产限制见 `docs/rmcp-8.0.4-repair.zh-CN.md`。
-
-## 历史会话
-
-- 兼容已知的 `zerowall/reviewer/report` opaque 历史事件。
-- 原始 session JSONL 保持不变，迁移只生成新的历史副本。
+- 插件、Skills、MCP 模板、Python bootstrap 和依赖清单以各自签名、SHA-256 和不可变版本路径独立发布。
+- 桌面启动只自动准备 Python + pip 和核心依赖；科研层、Skills、插件及 MCP 资源更新仍需用户明确选择。
+- 本版本升级保留账户、模型、项目、用户配置、第三方插件及历史 Python 目录；新运行时使用 `%LOCALAPPDATA%\\ZeroWall Science\\Python`。

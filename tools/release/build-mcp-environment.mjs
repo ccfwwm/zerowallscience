@@ -113,7 +113,12 @@ if (!await stat(sharedPythonRoot).then(value => value.isDirectory(), () => false
   await rename(legacyPythonRoot, sharedPythonRoot)
 }
 const embeddedPthPath = join(sharedPythonRoot, 'python312._pth')
-  await writeFile(embeddedPthPath, 'python312.zip\n.\nDLLs\nLib/site-packages\n../bio-tools/lib\nLib/site-packages/win32\nLib/site-packages/win32/lib\nLib/site-packages/pythonwin\nimport site\n', 'utf8')
+  // Keep the standard-library directory explicit.  The official embeddable
+  // distribution normally carries most of it in python312.zip, while a
+  // repaired or locally prepared CPython runtime may keep encodings and
+  // other stdlib modules under Lib.  Omitting Lib makes the interpreter fail
+  // before pip or the MCP server can start (init_fs_encoding).
+  await writeFile(embeddedPthPath, 'python312.zip\n.\nDLLs\nLib\nLib/site-packages\n../bio-tools/lib\nLib/site-packages/win32\nLib/site-packages/win32/lib\nLib/site-packages/pythonwin\nimport site\n', 'utf8')
 const legacySitePackages = join(sharedPythonRoot, 'site-packages')
 const sharedSitePackages = join(sharedPythonRoot, 'Lib', 'site-packages')
 if (!await stat(sharedSitePackages).then(value => value.isDirectory(), () => false) && await stat(legacySitePackages).then(value => value.isDirectory(), () => false)) {
@@ -141,9 +146,10 @@ if (process.env.ZEROWALL_MCP_REBUILD_PYTHON !== '0') {
 }
 const verificationPath = process.env.ZEROWALL_PYTHON_VERIFICATION
 const baseOnly = process.env.ZEROWALL_PYTHON_BASE_ONLY === '1'
-if (!verificationPath && !baseOnly) throw new Error('ZEROWALL_PYTHON_VERIFICATION must identify the functional acceptance report.')
+const bootstrapOnly = process.env.ZEROWALL_PYTHON_BOOTSTRAP_ONLY === '1'
+if (!verificationPath && !baseOnly && !bootstrapOnly) throw new Error('ZEROWALL_PYTHON_VERIFICATION must identify the functional acceptance report.')
 const verification = verificationPath ? JSON.parse(await readFile(verificationPath, 'utf8')) : undefined
-if (!baseOnly && (!verification?.ok || verification.python !== '3.12.10' || verification.runtimeMode !== 'shared' || Object.keys(verification.cases ?? {}).length < 16 || Object.values(verification.cases).some(item => item.ok !== true))) throw new Error('Shared-runtime functional acceptance failed or is incomplete.')
+if (!baseOnly && !bootstrapOnly && (!verification?.ok || verification.python !== '3.12.10' || verification.runtimeMode !== 'shared' || Object.keys(verification.cases ?? {}).length < 16 || Object.values(verification.cases).some(item => item.ok !== true))) throw new Error('Shared-runtime functional acceptance failed or is incomplete.')
 const inventoryResult = await execFileAsync(pythonExecutable, ['-s', '-B', '-c', 'import importlib.metadata as m,json,re,sys; print(json.dumps({re.sub(r"[-_.]+","-",d.metadata["Name"]).lower():d.version for d in m.distributions(path=[sys.argv[1]])}))', sitePackages], { windowsHide: true, env: { ...process.env, PYTHONNOUSERSITE: '1', PYTHONPATH: '' } })
 const installed = JSON.parse(inventoryResult.stdout)
 
@@ -183,17 +189,19 @@ for (const module of layerPolicy.mandatoryBaseModules) {
 // three-way invariant while the shipped archive becomes the smaller BASE set.
 const installedNames = new Set(Object.keys(installed).map(normalizePackageName))
 const lockNames = new Set(lockedPackages.keys())
-if ([...installedNames].some(name => !lockNames.has(name)) || (!baseOnly && [...lockNames].some(name => !installedNames.has(name)))) throw new Error('Installed runtime and hashed lock package inventories differ.')
+if (bootstrapOnly) {
+  if ([...installedNames].some(name => !split.baseNames.has(name)) || [...split.baseNames].some(name => !installedNames.has(name))) throw new Error('Bootstrap runtime inventory does not match the signed core layer.')
+} else if ([...installedNames].some(name => !lockNames.has(name)) || (!baseOnly && [...lockNames].some(name => !installedNames.has(name)))) throw new Error('Installed runtime and hashed lock package inventories differ.')
 for (const pkg of [...split.base, ...split.science]) {
   const name = normalizePackageName(pkg.name)
-  if ((installed[name] !== undefined && installed[name] !== pkg.version) || (split.baseNames.has(name) && installed[name] !== pkg.version) || (!baseOnly && (installed[name] !== pkg.version || verification.packages[name] !== pkg.version))) throw new Error(`Lock, installed runtime and functional report disagree on ${pkg.name}.`)
+  if ((installed[name] !== undefined && installed[name] !== pkg.version) || (split.baseNames.has(name) && installed[name] !== pkg.version) || (!baseOnly && !bootstrapOnly && (installed[name] !== pkg.version || verification.packages[name] !== pkg.version))) throw new Error(`Lock, installed runtime and functional report disagree on ${pkg.name}.`)
 }
 const corePackages = split.base.map(pkg => ({ name: pkg.name, requiredVersion: pkg.version }))
 const sciencePackages = split.science
 // Ship the locked MCP core closure; optional science packages remain separate.
 if (!installed.pip) throw new Error('The staging runtime is missing its pip bootstrap distribution.')
 await execFileAsync(pythonExecutable, ['-s', '-B', '-c', 'import sys; assert sys.version_info[:3] == (3,12,10)'], { windowsHide: true })
-if (!baseOnly) await execFileAsync(pythonExecutable, ['-s', '-B', join(root, 'tools/release/audit-skill-dependencies.py'), '--site-packages', sitePackages, '--verification', verificationPath], { cwd: root, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
+if (!baseOnly && !bootstrapOnly) await execFileAsync(pythonExecutable, ['-s', '-B', join(root, 'tools/release/audit-skill-dependencies.py'), '--site-packages', sitePackages, '--verification', verificationPath], { cwd: root, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
 const skillAudit = JSON.parse(await readFile(join(root, 'resources/python/skill-dependencies.json'), 'utf8'))
 // All compatibility edits happen in an owned candidate copy. The source may
 // be the user's currently running interpreter and must remain read-only.
@@ -212,17 +220,21 @@ for (const module of ['certifi', 'pip/_vendor/certifi']) {
     await writeFile(certificate, rootCertificates.join('\n'))
   }
 }
-const managedPythonModules = baseOnly ? layerPolicy.mandatoryBaseModules.map(name => ({ pillow: 'PIL', 'python-dotenv': 'dotenv' })[name] ?? name) : Object.entries(verification.imports).filter(([, result]) => result.ok).map(([name]) => name)
+const managedPythonModules = bootstrapOnly
+  ? ['pip']
+  : baseOnly
+    ? layerPolicy.mandatoryBaseModules.map(name => ({ pillow: 'PIL', 'python-dotenv': 'dotenv' })[name] ?? name)
+    : Object.entries(verification.imports).filter(([, result]) => result.ok).map(([name]) => name)
 // The shipped archive only contains BASE, so its health probe and its declared
 // module list may only name BASE modules; a probe for an absent package would
 // fail the client's post-install check. The science imports stay release
 // evidence instead: they prove the published science manifest describes a set
 // that was functionally verified, without shipping it.
 const importAliases = { pillow: 'PIL', 'python-dotenv': 'dotenv' }
-const baseImportNames = layerPolicy.mandatoryBaseModules.map(name => importAliases[name] ?? name)
+const baseImportNames = bootstrapOnly ? ['pip'] : layerPolicy.mandatoryBaseModules.map(name => importAliases[name] ?? name)
 const shippedModules = baseImportNames.filter(name => managedPythonModules.includes(name))
 if (shippedModules.length !== baseImportNames.length) throw new Error(`Mandatory base module was not verified: ${baseImportNames.filter(name => !managedPythonModules.includes(name)).join(', ')}`)
-for (const module of baseOnly ? [] : layerPolicy.mandatoryScienceModules) {
+for (const module of baseOnly || bootstrapOnly ? [] : layerPolicy.mandatoryScienceModules) {
   if (!managedPythonModules.includes(module)) throw new Error(`Mandatory science module was not verified: ${module}`)
 }
 const managedPythonImports = shippedModules.join(', ')
@@ -236,6 +248,7 @@ await execFileAsync(pythonExecutable, ['-s', '-B', '-c', `import ${managedPython
 // Prune a copy rather than the checked-in staging tree: the packer consumes a
 // whole directory, and the build input has to stay usable for the next release.
 const prunedSitePackages = join(prunedStaging, 'Python', 'Lib', 'site-packages')
+const expectedArchiveNames = bootstrapOnly ? new Set(['pip']) : split.baseNames
 await execFileAsync(pythonExecutable, ['-s', '-B', '-c', `import importlib.metadata as m,json,pathlib,re,shutil,sys
 site=pathlib.Path(sys.argv[1]).resolve()
 wanted=set(json.loads(sys.argv[2]))
@@ -261,17 +274,17 @@ for p in sorted((p for p in site.rglob('*') if p.is_file()), key=lambda p:len(p.
 for directory in sorted((p for p in site.rglob('*') if p.is_dir()), key=lambda p:len(p.parts), reverse=True):
     try: directory.rmdir()
     except OSError: pass
-print(json.dumps(removed))`, prunedSitePackages, JSON.stringify([...split.baseNames])], { windowsHide: true, env: managedPythonEnv, maxBuffer: 16 * 1024 * 1024 })
+print(json.dumps(removed))`, prunedSitePackages, JSON.stringify([...expectedArchiveNames])], { windowsHide: true, env: managedPythonEnv, maxBuffer: 16 * 1024 * 1024 })
 const residual = await execFileAsync(pythonExecutable, ['-s', '-B', '-c', 'import importlib.metadata as m,json,re,sys; print(json.dumps(sorted(re.sub(r"[-_.]+","-",d.metadata["Name"]).lower() for d in m.distributions(path=[sys.argv[1]]))))', prunedSitePackages], { windowsHide: true, env: managedPythonEnv, maxBuffer: 16 * 1024 * 1024 })
 const residualNames = JSON.parse(residual.stdout)
-if (residualNames.length !== split.base.length || residualNames.some(name => !split.baseNames.has(name))) throw new Error('Pruned archive runtime does not match the base layer exactly.')
+if (residualNames.length !== expectedArchiveNames.size || residualNames.some(name => !expectedArchiveNames.has(name))) throw new Error('Pruned archive runtime does not match the selected bootstrap layer exactly.')
 await execFileAsync(join(prunedStaging, 'Python', 'python.exe'), ['-s', '-B', '-c', `import ${managedPythonImports}`], { cwd: prunedStaging, env: managedPythonEnv, windowsHide: true })
 await execFileAsync(join(prunedStaging, 'Python', 'python.exe'), ['-s', '-B', '-m', 'pip', 'check'], { cwd: prunedStaging, env: managedPythonEnv, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
 // Bio Tools must work in the first-run base archive: the base closure now
 // contains the complete MCP runtime, so exercise the exact embedded Python
 // and vendored server before signing the archive instead of deferring this
 // failure to the user's first launch.
-if (!baseOnly || split.baseNames.has(normalizePackageName('mcp'))) {
+if (!bootstrapOnly && (!baseOnly || split.baseNames.has(normalizePackageName('mcp')))) {
   await checkMcpServer(join(prunedStaging, 'Python', 'python.exe'), ['run_server.py', 'mcp_bio'], join(prunedStaging, 'bio-tools'))
 }
 await checkMcpServer(process.execPath, ['server.js'], join(prunedStaging, 'ketcher-chemistry'))
@@ -318,7 +331,7 @@ const manifest = {
   applicationVersion: JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
   schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'zerowall-python', platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${environmentVersion}/${archiveName}`, archiveSha256, archiveSize,
-  python: { version: pythonVersion, relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages', modules: shippedModules, layers: ['base', 'science'], dependencyManifests: ['resources/python/requirements-windows.lock', 'resources/python/requirements-base.txt', 'resources/python/skill-dependency-policy.json'], supportsZeroWallTool: true },
+  python: { version: pythonVersion, relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages', modules: shippedModules, ...(bootstrapOnly ? { bootstrapOnly: true } : {}), layers: ['base', 'science'], dependencyManifests: ['resources/python/requirements-windows.lock', 'resources/python/requirements-base.txt', 'resources/python/skill-dependency-policy.json'], supportsZeroWallTool: true },
   // Every package in the signed dependency manifest is installed into the
   // one shared Python site-packages directory.  Keep health metadata as a
   // complete import list; there is no second or optional Python layer.
@@ -337,7 +350,7 @@ manifest.signature.value = sign(null, Buffer.from(JSON.stringify(unsigned)), pri
 if (!verify(null, Buffer.from(JSON.stringify(unsigned)), expectedPublicKey, Buffer.from(manifest.signature.value, 'base64'))) throw new Error('MCP manifest self-verification failed.')
 await writeFile(join(output, `${environmentVersion}.json`), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
 await writeFile(join(output, 'latest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-await writeFile(join(output, 'base-verification.json'), JSON.stringify({ verifiedAt: new Date().toISOString(), pythonVersion, basePackageCount: corePackages.length, prunedImports: shippedModules, pipCheck: true, mcpHandshake: !baseOnly || split.baseNames.has(normalizePackageName('mcp')), fullScienceFunctionalVerified: !baseOnly, archiveSha256 }, null, 2))
+await writeFile(join(output, 'base-verification.json'), JSON.stringify({ verifiedAt: new Date().toISOString(), pythonVersion, basePackageCount: bootstrapOnly ? 1 : corePackages.length, coreDependencyPackageCount: corePackages.length, prunedImports: shippedModules, pipCheck: true, mcpHandshake: !bootstrapOnly && (!baseOnly || split.baseNames.has(normalizePackageName('mcp'))), fullScienceFunctionalVerified: !baseOnly && !bootstrapOnly, bootstrapOnly, archiveSha256 }, null, 2))
 await rm(prunedStaging, { recursive: true, force: true })
 console.log(`Built ${archiveName} (${archiveSize} bytes, ${archiveSha256}) with ${corePackages.length} base and ${sciencePackages.length} science packages`)
 console.log(`Built ${scienceName} (${scienceBytes.length} bytes) for the science layer revision ${scienceRevision}`)

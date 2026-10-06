@@ -7,6 +7,7 @@ export interface McpSkillCapability { name: string; path: string; status: McpSki
 export interface McpSkillAudit { summary: Record<McpSkillDependencyStatus, number>; skills: McpSkillCapability[] }
 export interface PythonEnvironmentIdentity { snapshotId: string; environmentVersion: string; contentRevision: number; pythonVersion: string; localRevision?: number }
 export interface PythonUpdateJob { packageNames?: string[]; taskId: string; kind: string; stage: string; canPause: boolean; targetVersion?: string; receivedBytes?: number; totalBytes?: number; bytesPerSecond?: number; completedFiles?: number; totalFiles?: number; logLines?: string[] }
+export interface PythonDependencyTask { taskId: string; underlyingTaskId?: string; requestId: string; action: 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync'; layer: 'core' | 'science' | 'capability'; state: 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted'; stage: string; progress?: number; completedPackages?: number; totalPackages?: number; currentPackage?: string; message?: string; error?: string; logLines: string[]; createdAt: string; updatedAt: string; completedAt?: string; result?: Record<string, any> }
 export interface PythonPackagePlan { planId: string; snapshotId: string; requested: string[]; changes: Array<{ name: string; from?: string; to: string }>; error?: string }
 export interface McpEnvironmentStatus {
   activeEnvironment?: PythonEnvironmentIdentity
@@ -44,6 +45,7 @@ export interface McpPythonInfo {
   contentRevision?: number
   localRevision?: number
   scannedAt?: string
+  inventoryComplete?: boolean
   officialPackageCount?: number
   ready: boolean
   version?: string
@@ -85,6 +87,7 @@ export interface PythonEnvironmentResponse {
   plan?: PythonPackagePlan & { manifestRevision?: string }
   manifest?: { revision: string; packageCount: number }
   taskId?: string
+  task?: PythonDependencyTask
   queued?: boolean
   status?: McpEnvironmentStatus
   inventory?: McpPythonInfo
@@ -92,7 +95,7 @@ export interface PythonEnvironmentResponse {
   changes?: Array<{ name: string; from?: string; to: string }>
   upToDate?: boolean
   previousRevision?: string
-  dependencies?: { revision: string; manifestRevision: string; manifestSha256: string; layer?: 'core' | 'science' | 'capability'; capabilityId?: string; packageCount: number; pythonVersion: string; checkedAt: string; changes: Array<{ name: string; from?: string; to: string; required: boolean; capabilities: string[] }>; source: 'remote' | 'bundled' | 'cache'; resourceAvailability?: { layer: 'core' | 'science' | 'capability'; available: boolean; source?: string; reason?: string; packageCount?: number }; scienceInstalled?: boolean; available?: boolean }
+  dependencies?: { revision: string; manifestRevision: string; manifestSha256: string; layer?: 'core' | 'science' | 'capability'; capabilityId?: string; packageCount: number; installedPackageCount?: number; pendingPackageCount?: number; unresolvedPackageCount?: number; partial?: boolean; skippedPackages?: Array<{ name: string; version: string; message: string }>; pythonVersion: string; environmentVersion?: string; checkedAt: string; changes: Array<{ name: string; from?: string; to: string; required: boolean; capabilities: string[] }>; source: 'remote' | 'bundled' | 'cache'; remoteError?: string; lastSyncError?: string; resourceAvailability?: { layer: 'core' | 'science' | 'capability'; available: boolean; source?: string; reason?: string; packageCount?: number }; scienceInstalled?: boolean; available?: boolean }
   events?: Array<{ action: string; requestId: string; createdAt: string; status: 'queued' | 'succeeded' | 'failed' | 'running'; message?: string; logLine?: string; taskId?: string; upToDate?: boolean }>
 }
 
@@ -138,7 +141,7 @@ export interface ZeroWallDesktopApi {
   installMcpPythonPackage?(spec: string): Promise<{ taskId: string }>
   checkMcpPythonPackageUpdates?(names?: string[]): Promise<McpPythonInfo>
   updateMcpPythonPackages?(names?: string[]): Promise<{ taskId: string }>
-  pythonEnvironment?(request: { action: 'status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; layer?: 'core' | 'science' | 'capability'; capabilityId?: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; runtimeRoot?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
+  pythonEnvironment?(request: { action: 'status' | 'task_status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; taskId?: string; layer?: 'core' | 'science' | 'capability'; packageSpec?: string; capabilityId?: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; runtimeRoot?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
   pauseMcpEnvironment?(): Promise<McpEnvironmentStatus>
   rollbackMcpEnvironment?(): Promise<{ taskId: string }>
   previewMcpPythonPackages?(names: string[]): Promise<PythonPackagePlan>

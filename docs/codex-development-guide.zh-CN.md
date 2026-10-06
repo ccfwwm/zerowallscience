@@ -9,16 +9,16 @@
 | 项目 | 值 |
 | --- | --- |
 | 应用版本 | `8.0.4` |
-| 当前开发分支 | `codex/python-rmcp-804` |
-| 8.0.4 开发基线提交 | `b10f23690958ca308455da087334818e3babc9ad` |
+| 当前开发分支 | `main` |
+| 8.0.4 开发基线提交 | `a292b06768046bbcce0e557a8d0115ac4ab3b937` |
 | DSH 子模块 | `86b6740d0e671cee0b3fd0168de484c0efbf46ea` |
 | DSH 分支 | `zerowall/reviewer-history-opaque` |
 | DSH 标签 | `dsh-v0.2.0-rc.2` |
 | GitHub | `https://github.com/ccfwwm/zerowallscience` |
 | 8.0.4 Stable 安装包 | 本次构建后写入 `artifacts/packages/8.0.4/windows-x64/` |
-| 8.0.4 发布状态 | 仅本地候选包；未上传七牛、未创建 GitHub Release |
+| 8.0.4 发布状态 | 以 `artifacts/release/8.0.4/publication/` 收据、七牛公开校验和 GitHub `v8.0.4` Release 为准 |
 
-历史 8.0.3 桌面安装包已经发布到七牛 Stable 和 GitHub Release `v8.0.3`。8.0.4 只生成本地候选包，不更新线上桌面指针。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖、伪造哈希或切换信任根。
+历史 8.0.3 桌面安装包已经发布到七牛 Stable 和 GitHub Release `v8.0.3`。8.0.4 的桌面包和独立资源必须分别按不可变版本对象发布、公开校验后，才推进对应的稳定更新指针。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖、伪造哈希或切换信任根。
 
 用户指定的模型、推理强度、生图模型、协议和参数必须保持不变。开发任务不因为测试方便而自动切换模型、降低推理级别或增加替代路由。
 
@@ -158,7 +158,10 @@ pnpm plugins:pack
 
 - 运行时根目录固定为 `%LOCALAPPDATA%\\ZeroWall Science\\Python`；旧 Roaming 或安装目录中的 Python 指针不再作为默认目标，也不会被复制或删除。
 - `bootstrap` 只表示解释器是否存在，`core` 表示 ZeroWall/MCP 最小依赖，`science` 表示科研依赖，`capability` 表示某个 Skill 或流程的可选依赖。解释器就绪不等于科研层已安装。
-- 默认启动只读取本地状态和签名清单，不调用完整科研层 `sync`。只有用户明确选择“安装科研层”或某个能力层时，才进行预检、下载和 generation 切换。
+- 默认启动顺序是：按需联网安装轻量 Python + pip bootstrap；bootstrap 就绪后，后台检查并自动安装签名核心清单中的 42 个基础依赖。核心任务必须异步运行，不阻塞桌面界面。
+- 新桌面版本使用固定版本的 Python bootstrap manifest；首次安装只接受 `python.bootstrapOnly=true` 的清单。发布的运行时 ZIP 只含 CPython 3.12.10 与 pip，拒绝旧的 387 包科研环境清单，避免新用户误下载近 1 GB 的完整环境。bootstrap 资源使用独立的版本目录；验证阶段只上传不可变对象，不更新 `latest.json`。
+- 核心任务写入持久 task receipt，持续记录阶段、包计数、当前包、实时 pip 日志和错误。设置页轮询本地快照，不重复扫描完整 site-packages；关闭或重启后恢复最近任务状态，并在安全条件下续接自动核心同步。
+- 科研层和 capability 层不随启动自动安装。用户明确选择“安装科研层”或某个能力层后，才预检、下载并进行 generation 切换；启动检查不得下载这些大型资源。
 - `core-dependency-manifest.json` 与 `dependency-manifest.json` 独立签名；同步计划必须绑定所选层和 manifest hash，资源不可用时不创建安装任务。
 - Python 状态、路径和错误必须从 Host 返回的稳定字段读取，不能从旧 snapshot 的物理路径推导 UI 路径。
 

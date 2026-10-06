@@ -59,6 +59,8 @@
     "release:verify-local": "node tools/release/smoke-update.mjs",
     "release:publish:stable": "node scripts/publish-qiniu.mjs",
     "mcp:environment:build": "node tools/release/build-mcp-environment.mjs",
+    "python:bootstrap:build": "node tools/release/build-python-bootstrap.mjs",
+    "python:bootstrap:publish": "node scripts/publish-python-bootstrap.mjs",
     "mcp:environment:publish": "node scripts/publish-mcp-environment.mjs",
     "python:dependencies:build": "node tools/release/build-python-dependency-manifest.mjs",
     "python:dependencies:publish": "node scripts/publish-python-dependency-manifest.mjs",

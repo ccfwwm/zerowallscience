@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ children: [] as any[], calls: [] as any[], held: new Set<string>(), missing: false, nextPid: 100 }))
+const state = vi.hoisted(() => ({ children: [] as any[], calls: [] as any[], held: new Set<string>(), missing: false, coreIncomplete: false, nextPid: 100 }))
 vi.mock('node:child_process', () => ({
   fork: () => {
     const child = new EventEmitter() as any
@@ -13,7 +13,7 @@ vi.mock('node:child_process', () => ({
       if (!message.id) return
       state.calls.push(message)
       if (message.method === 'initialize' || state.held.has(message.method)) return
-      queueMicrotask(() => child.emit('message', { id: message.id, result: message.method === 'pythonInfo' ? { ready: !state.missing, packages: [] } : state.missing ? { phase: 'unavailable', updateRequired: true } : { phase: 'ready', activeEnvironment: { snapshotId: 'active' }, updateAvailable: true } }))
+      queueMicrotask(() => child.emit('message', { id: message.id, result: message.method === 'pythonInfo' ? { ready: !state.missing, coreReady: !state.coreIncomplete, packages: [] } : state.missing ? { phase: 'unavailable', updateRequired: true } : { phase: 'ready', activeEnvironment: { snapshotId: 'active' }, updateAvailable: true } }))
     }
     state.children.push(child); return child
   },
@@ -21,7 +21,7 @@ vi.mock('node:child_process', () => ({
 }))
 import { PythonUpdaterService } from '../src/main/python-updater-service.js'
 const roots: string[] = []
-afterEach(async () => { state.children.length = 0; state.calls.length = 0; state.held.clear(); state.missing = false; for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
+afterEach(async () => { state.children.length = 0; state.calls.length = 0; state.held.clear(); state.missing = false; state.coreIncomplete = false; for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
 it('continues an immediately paused job under the same durable task id', async () => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-')); roots.push(root)
   const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
@@ -100,11 +100,13 @@ it('cancels a pending resume when the user pauses again before the worker exits'
   service.stop()
 })
 
-it('only checks on startup when a runtime exists and an update is available', async () => {
+it('returns local startup readiness immediately and leaves runtime-feed checks separate', async () => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-startup-')); roots.push(root)
   const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
   const status = await service.autoUpdate()
   expect(status.updateAvailable).toBe(true)
+  expect(state.calls.map(call => call.method)).toEqual(['localStatus'])
+  await expect(service.checkForUpdates()).resolves.toMatchObject({ updateAvailable: true })
   expect(state.calls.map(call => call.method)).toEqual(['localStatus', 'checkForUpdates'])
   expect(await readdir(join(root, 'jobs')).catch(() => [])).toEqual([])
   service.stop()
@@ -125,6 +127,16 @@ it('automatically installs a missing base runtime at startup and exposes progres
   await expect(completion).resolves.toMatchObject({ phase: 'ready', activeEnvironment: { snapshotId: 'active' } })
   expect(state.calls.map(call => call.method)).toEqual(['localStatus', 'initialize', 'pythonInfo', 'localStatus'])
   expect(JSON.parse(await readFile(join(root, 'jobs', `${service.current().updateJob!.taskId}.json`), 'utf8')).state).toBe('complete')
+  service.stop()
+})
+
+it('does not reinstall the Python runtime just because its core dependency closure is incomplete', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-broker-core-repair-')); roots.push(root)
+  state.coreIncomplete = true
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', bundledArchivePath: 'signed-offline-fixture.zip', publish() {} })
+  await expect(service.autoUpdate()).resolves.toMatchObject({ phase: 'ready' })
+  expect(state.calls.map(call => call.method)).toEqual(['localStatus'])
+  expect(state.calls.some(call => call.method === 'initialize')).toBe(false)
   service.stop()
 })
 
@@ -193,27 +205,56 @@ it('records an explicitly requested unavailable environment as a failed durable 
   service.stop()
 })
 
-it('keeps a missing thin runtime on demand across background checks', async () => {
+it('automatically installs a missing thin Python runtime at startup', async () => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-thin-')); roots.push(root)
   state.missing = true
+  state.held.add('initialize')
   const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
-  await expect(service.autoUpdate()).resolves.toMatchObject({ phase: 'unavailable' })
-  await service.autoUpdate()
-  expect(state.calls.map(call => call.method)).toEqual(['localStatus', 'checkForUpdates', 'localStatus', 'checkForUpdates'])
-  expect(await readdir(join(root, 'jobs')).catch(() => [])).toEqual([])
+  const completion = service.autoUpdate()
+  await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
+  const request = state.calls.find(call => call.method === 'initialize')!
+  expect(service.current()).toMatchObject({ phase: 'checking', updateJob: { kind: 'initialize' } })
+  state.missing = false
+  state.children.at(-1).emit('message', { id: request.id, result: { updated: true } })
+  await expect(completion).resolves.toMatchObject({ phase: 'ready' })
+  expect(state.calls.map(call => call.method)).toEqual(['localStatus', 'initialize', 'pythonInfo', 'localStatus'])
+  expect(JSON.parse(await readFile(join(root, 'jobs', `${service.current().updateJob!.taskId}.json`), 'utf8')).state).toBe('complete')
   service.stop()
 })
 
-it('leaves an interrupted thin bootstrap paused until the user resumes', async () => {
+it('automatically resumes an interrupted thin bootstrap before core dependency work', async () => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-thin-paused-')); roots.push(root)
   const jobs = join(root, 'jobs'); await mkdir(jobs)
   const taskId = '33333333-3333-4333-8333-333333333333'
   await writeFile(join(jobs, `${taskId}.json`), JSON.stringify({ taskId, method: 'initialize', args: [], state: 'paused', updatedAt: 1 }))
   state.missing = true
+  state.held.add('initialize')
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+  const completion = service.autoUpdate()
+  await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
+  const request = state.calls.find(call => call.method === 'initialize')!
+  expect(service.current()).toMatchObject({ phase: 'checking', updateJob: { taskId, kind: 'initialize' } })
+  state.missing = false
+  state.children.at(-1).emit('message', { id: request.id, result: { updated: true } })
+  await expect(completion).resolves.toMatchObject({ phase: 'ready' })
+  expect(JSON.parse(await readFile(join(jobs, `${taskId}.json`), 'utf8')).state).toBe('complete')
+  service.stop()
+})
+
+it('resumes only the interrupted worker transaction owned by automatic core sync', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-broker-core-resume-')); roots.push(root)
+  const jobs = join(root, 'jobs'); await mkdir(jobs)
+  const coreTask = '44444444-4444-4444-8444-444444444444'
+  const unrelatedTask = '55555555-5555-4555-8555-555555555555'
+  await writeFile(join(jobs, `${coreTask}.json`), JSON.stringify({ taskId: coreTask, method: 'applyPackagePlan', args: ['core-plan'], state: 'paused', updatedAt: 1 }))
+  await writeFile(join(jobs, `${unrelatedTask}.json`), JSON.stringify({ taskId: unrelatedTask, method: 'installPythonPackage', args: ['user-package'], state: 'paused', updatedAt: 2 }))
+  state.held.add('applyPackagePlan')
+  state.held.add('installPythonPackage')
   const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
   await expect(service.autoUpdate()).resolves.toMatchObject({ phase: 'paused' })
-  await service.autoUpdate()
-  expect(state.calls.map(call => call.method)).toEqual(['localStatus'])
-  expect(JSON.parse(await readFile(join(jobs, `${taskId}.json`), 'utf8')).state).toBe('paused')
+  expect(service.resumeAutomaticCoreOperation(coreTask)).toBe(true)
+  await expect.poll(() => state.calls.filter(call => call.method === 'applyPackagePlan').length).toBe(1)
+  expect(service.resumeAutomaticCoreOperation(unrelatedTask)).toBe(false)
+  expect(state.calls.some(call => call.method === 'installPythonPackage')).toBe(false)
   service.stop()
 })

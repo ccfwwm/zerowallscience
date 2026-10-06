@@ -15,7 +15,7 @@
     "test:e2e:packaged": "vitest run --config e2e/vitest.config.ts e2e/desktop.spec.ts",
     "test:e2e:source": "vitest run --config e2e/vitest.config.ts e2e/desktop-source.spec.ts",
     "package:dir": "node scripts/verify-target.mjs win32 x64 && electron-builder --config build/electron-builder.stable.cjs --dir --publish never && node scripts/verify-packaged-runtime.mjs --desktop-only",
-    "package:win": "node scripts/verify-target.mjs win32 x64 && pnpm installer:build && electron-builder --config build/electron-builder.stable.cjs --win --x64 --publish never && node scripts/verify-packaged-runtime.mjs --desktop-only && node ../tools/release/generate-windows-metadata.mjs && pnpm --dir .. artifacts:manifest",
+    "package:win": "node scripts/verify-target.mjs win32 x64 && pnpm installer:build && electron-builder --config build/electron-builder.stable.cjs --win --x64 --publish never && node scripts/verify-packaged-runtime.mjs --desktop-only --require-thin-python && node ../tools/release/generate-windows-metadata.mjs && pnpm --dir .. artifacts:manifest",
     "package:mac:x64": "node scripts/verify-target.mjs darwin x64 && electron-builder --config build/electron-builder.preview.cjs --mac --x64 --publish never && node scripts/verify-packaged-runtime.mjs",
     "package:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && electron-builder --config build/electron-builder.preview.cjs --mac --arm64 --publish never && node scripts/verify-packaged-runtime.mjs",
     "package:stable:win": "pnpm run package:win",

@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto'
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PythonSyncService } from '../src/main/python-sync.js'
+import { parsePythonDependencyManifest } from '../src/main/python-dependency-manifest.js'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
@@ -64,5 +65,44 @@ describe('signed dependency sync', () => {
     expect((await offline.checkManifest()).source).toBe('bundled')
     const tampered = new PythonSyncService({ ...options, fetcher: vi.fn(async () => new Response(JSON.stringify({ ...manifest, revision: 'r3' }))) as typeof fetch })
     await expect(tampered.checkManifest()).rejects.toThrow(/签名/)
+  })
+
+  it('never lets a legacy cached or remote revision replace a newer bundled science manifest', async () => {
+    const { root, manifest, updater, privateKey, key } = await setup()
+    const { signature: _oldSignature, ...manifestUnsigned } = manifest
+    const newerUnsigned = { ...manifestUnsigned, environmentVersion: '8.0.4', revision: 'r14', packages: [{ name: 'pandas', version: '2.3.0', required: true, capabilities: ['science'] }] }
+    const newer = { ...newerUnsigned, signature: { ...manifest.signature, value: sign(null, Buffer.from(JSON.stringify(newerUnsigned)), privateKey).toString('base64') } }
+    expect(() => parsePythonDependencyManifest(newer, { test: key }, '8.0.4')).not.toThrow()
+    const bundledManifestPath = join(root, 'bundled.json')
+    await writeFile(bundledManifestPath, JSON.stringify(newer))
+    const service = new PythonSyncService({ root, updater: updater as any, keys: { test: key }, applicationVersion: '8.0.4', feedUrl: 'https://example.test/latest.json', bundledManifestPath, fetcher: vi.fn(async () => new Response(JSON.stringify(manifest))) as typeof fetch })
+    const result = await service.checkManifest()
+    expect(result.manifestRevision).toBe('r14')
+    expect(result.source).toBe('bundled')
+    expect(result.packageCount).toBe(1)
+    expect(result.pendingPackageCount).toBe(1)
+    expect(JSON.parse(await readFile(join(root, 'dependency-sync', 'manifest.json'), 'utf8')).revision).toBe('r14')
+  })
+
+  it('keeps a package preflight failure as a retryable item while applying the remaining packages', async () => {
+    const { service, root, updater, privateKey, manifest } = await setup()
+    const { signature: oldSignature, ...unsigned } = manifest
+    const expandedUnsigned = { ...unsigned, packages: [
+      ...(unsigned.packages as Array<Record<string, unknown>>),
+      { name: 'vedo', version: '2026.6.1', required: false, capabilities: ['science'], source: 'wheel', filename: 'vedo.whl', sha256: 'b'.repeat(64) },
+    ] }
+    const expandedManifest = { ...expandedUnsigned, signature: { ...oldSignature, value: sign(null, Buffer.from(JSON.stringify(expandedUnsigned)), privateKey).toString('base64') } }
+    await mkdir(join(root, 'dependency-sync'), { recursive: true })
+    await writeFile(join(root, 'dependency-sync', 'manifest.json'), JSON.stringify(expandedManifest))
+    await service.checkManifest()
+    const preflight = vi.spyOn(updater, 'previewDependencyManifest').mockResolvedValue({
+      planId: randomUUID(), snapshotId: 'old', requested: [], changes: [], wheels: [{ name: 'numpy', version: '2.3.0', hash: 'a'.repeat(64), url: 'https://mirror.example/numpy.whl' }],
+      preparationFailures: [{ name: 'numpy', version: '2.3.0', message: 'ResolutionImpossible' }],
+    } as any)
+    const plan = await service.previewSync()
+    expect(plan.error).toBeUndefined()
+    expect(plan.preparationFailures).toEqual([{ name: 'numpy', version: '2.3.0', message: 'ResolutionImpossible' }])
+    expect(plan.planId).toBeTruthy()
+    expect(JSON.parse(await readFile(join(root, 'dependency-sync', `${plan.planId}.json`), 'utf8'))).toMatchObject({ preparationFailures: [{ name: 'numpy', version: '2.3.0' }] })
   })
 })

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { access, appendFile, cp, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
 import { DesktopNotifications } from './notifications.js'
@@ -19,6 +19,8 @@ import { resolveDesktopIdentity } from './identity.js'
 import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-updater-service.js'
+import { createPythonTerminalLaunch } from './python-terminal.js'
+import { ensurePythonCoreAtStartup } from './python-startup.js'
 import { PythonSyncService } from './python-sync.js'
 import { PythonEnvironmentApi, type PythonEnvironmentRequest } from './python-environment-api.js'
 import { resolvePythonLocation } from './python-location.js'
@@ -45,6 +47,7 @@ const MCP_ENVIRONMENT_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA
 let mainWindow: BrowserWindow | undefined
 let startupCover: WebContentsView | undefined
 let runtime: HarnessRuntime | undefined
+let pythonEnvironmentApi: PythonEnvironmentApi | undefined
 let tray: Tray | undefined
 let quitting = false
 let restarting = false
@@ -605,7 +608,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     settingsPath: dirname(pythonLocation.locationPath),
     ...(bootstrapAvailable ? { bundledManifestPath: bootstrapManifest, bundledArchivePath: bootstrapArchive } : {}),
     bundledAssets: { bioToolsRoot: bundledBioToolsRoot, ketcherRoot: bundledKetcherRoot, sciRoot: bundledSciRoot, skillsRoot: bundledSkillsRoot },
-    manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python/windows-x64/latest.json',
+    manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python-bootstrap/windows-x64/1.5.0/manifest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
     publicKeys: MCP_ENVIRONMENT_KEYRING,
     diagnosticPath: mcpEnvironmentLogPath,
@@ -627,9 +630,12 @@ if (ownsInstance) app.whenReady().then(async () => {
     applicationVersion: app.getVersion(),
     feedUrl: process.env.ZEROWALL_PYTHON_DEPENDENCY_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-science-python/windows-x64/latest.json',
     bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'dependency-manifest.json') : join(app.getAppPath(), '..', 'resources', 'python', 'dependency-manifest.json'),
+    bundledCoreManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'core-dependency-manifest.json') : join(app.getAppPath(), '..', 'resources', 'python', 'core-dependency-manifest.json'),
+    coreFeedUrl: process.env.ZEROWALL_PYTHON_CORE_MANIFEST ?? process.env.ZEROWALL_PYTHON_DEPENDENCY_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-science-python/windows-x64/core.json',
   })
-  const pythonEnvironmentApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync, pythonLocation.locationPath, app.isPackaged ? dirname(process.execPath) : undefined)
-  mcpEnvironment.setEnvironmentHandler(request => pythonEnvironmentApi.request(request))
+  const pythonApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync, pythonLocation.locationPath, app.isPackaged ? dirname(process.execPath) : undefined)
+  pythonEnvironmentApi = pythonApi
+  mcpEnvironment.setEnvironmentHandler(request => pythonApi.request(request))
   const commandRoot = app.isPackaged ? join(process.resourcesPath, 'commands') : join(findWorkspaceRoot(), 'tools/commands')
   const { initializeProfile, inspectProfile } = await import(pathToFileURL(join(commandRoot, 'profile.mjs')).href)
   const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8')) as string[]
@@ -870,23 +876,35 @@ if (ownsInstance) app.whenReady().then(async () => {
     return result
   })
   app.once('before-quit', () => { void stopCommandServer() })
-  const checkPythonUpdates = async (): Promise<void> => {
-    // Thin installers check the signed feed after the workbench becomes usable.
-    // Only an optional local offline bootstrap is installed on first launch;
-    // remote runtime downloads require an explicit Python action.
-    const status = await mcpEnvironment.autoUpdate().catch(error => {
-      console.warn('Python runtime check:', error instanceof Error ? error.message : String(error))
-      return undefined
-    })
-    // A failed local install/update must remain visible to the user. Do not
-    // start dependency sync unless the active shared runtime passed recovery.
-    if (!status || (status.phase !== 'ready' && status.phase !== 'manual') || status.lastUpdateError) return
-    // 8.0.4 keeps startup read-only. The signed base runtime is prepared by
-    // autoUpdate(); science and capability layers require an explicit action
-    // from Settings or zws and must never download during boot.
+  let pythonCheckInFlight: Promise<void> | undefined
+  const checkPythonUpdates = (): Promise<void> => {
+    if (pythonCheckInFlight) return pythonCheckInFlight
+    const run = async (): Promise<void> => {
+      try {
+        const result = await ensurePythonCoreAtStartup(mcpEnvironment, pythonApi)
+        if (result.state === 'runtime-unavailable') {
+          if (result.status.lastUpdateError || result.status.message) console.warn('Python runtime check:', result.status.lastUpdateError ?? result.status.message)
+          return
+        }
+        if (result.state === 'sync-started' || result.state === 'sync-running') return
+        if (result.state === 'inventory-unavailable') {
+          console.warn('Python core inventory:', result.info?.message ?? 'Python interpreter is not ready.')
+          return
+        }
+        // Do not put the signed core check behind a slow remote runtime feed.
+        // Once core is ready, the separate runtime feed check is read-only.
+        void mcpEnvironment.checkForUpdates().catch(error => {
+          console.warn('Python runtime update check:', error instanceof Error ? error.message : String(error))
+        })
+      } catch (error) {
+        console.warn('Python core dependency sync:', error instanceof Error ? error.message : String(error))
+      }
+    }
+    const pending = run()
+    const wrapped = pending.finally(() => { if (pythonCheckInFlight === wrapped) pythonCheckInFlight = undefined })
+    pythonCheckInFlight = wrapped
+    return wrapped
   }
-
-  app.once('before-quit', () => mcpEnvironment.stop())
 
   const updates = new DesktopUpdateController({
     updater: autoUpdater,
@@ -981,12 +999,11 @@ if (ownsInstance) app.whenReady().then(async () => {
       if (!info?.ready || !info.executable || !info.runtimeRoot) return false
       const runtimeRoot = await realpath(info.runtimeRoot)
       const executable = await realpath(info.executable)
-      if (relative(runtimeRoot, executable).toLowerCase() !== 'python.exe' || !(await stat(executable)).isFile()) return false
+      const relativeExecutable = relative(runtimeRoot, executable)
+      if (!relativeExecutable || relativeExecutable.startsWith('..') || isAbsolute(relativeExecutable) || basename(executable).toLowerCase() !== 'python.exe' || !(await stat(executable)).isFile()) return false
       const command = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe')
-      const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${runtimeRoot};${process.env.PATH ?? ''}`, PYTHONNOUSERSITE: '1' }
-      delete env.PYTHONHOME
-      delete env.PYTHONPATH
-      const child = spawn(command, ['/K'], { cwd: runtimeRoot, env, detached: true, windowsHide: false, stdio: 'ignore' })
+      const launch = createPythonTerminalLaunch(runtimeRoot, executable, process.env)
+      const child = spawn(command, launch.args, { cwd: launch.cwd, env: launch.env, detached: true, windowsHide: false, stdio: 'ignore' })
       await new Promise<void>((resolveOpen, rejectOpen) => {
         child.once('spawn', resolveOpen)
         child.once('error', rejectOpen)
@@ -1121,7 +1138,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:mcp-python:install', (_event, spec?: unknown) => mcpEnvironment.installPythonPackage(typeof spec === 'string' ? spec : ''))
   ipcMain.handle('desktop:mcp-python:check-updates', (_event, names?: string[]) => mcpEnvironment.checkPythonPackageUpdates(Array.isArray(names) ? names : []))
   ipcMain.handle('desktop:mcp-python:update', (_event, names?: unknown) => mcpEnvironment.updatePythonPackages(Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []))
-  ipcMain.handle('desktop:python-environment', (_event, request: PythonEnvironmentRequest) => pythonEnvironmentApi.request(request))
+  ipcMain.handle('desktop:python-environment', (_event, request: PythonEnvironmentRequest) => pythonApi.request(request))
   ipcMain.handle('desktop:mcp-environment:retry', () => mcpEnvironment.retry())
   ipcMain.handle('desktop:mcp-environment:select-path', async () => {
     const result = await dialog.showOpenDialog(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined as never, { properties: ['openDirectory'] })
@@ -1131,6 +1148,10 @@ if (ownsInstance) app.whenReady().then(async () => {
 
   await launch()
   await navigation
+  // Do the first bootstrap/core check as soon as the workbench is visible.
+  // This is intentionally fire-and-forget so a slow network never blocks the
+  // desktop UI, while the updater persists progress and can resume later.
+  void checkPythonUpdates()
   // Environment updates run independently from desktop updates. Once the
   // workbench is visible, the signed required dependency set is synchronized
   // into the one shared Python environment and progress is streamed to Settings.
@@ -1169,7 +1190,11 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   quitting = true
   const activeRuntime = runtime
-  void stopBeforeExit(() => activeRuntime?.stop() ?? Promise.resolve(), 6_000).finally(() => {
+  void stopBeforeExit(() => activeRuntime?.stop() ?? Promise.resolve(), 6_000).then(async () => {
+    await pythonEnvironmentApi?.shutdown()
+  }).catch(error => {
+    console.warn('Python task flush during shutdown:', error instanceof Error ? error.message : String(error))
+  }).finally(() => {
     tray?.destroy()
     tray = undefined
     if (restarting) app.relaunch()
