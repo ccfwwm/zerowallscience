@@ -13,7 +13,7 @@
   },
   "zerowall": {
     "desktop": {
-      "min": "8.0.2"
+      "min": "8.0.6"
     },
     "dsh": {
       "min": "0.2.0-rc.2",

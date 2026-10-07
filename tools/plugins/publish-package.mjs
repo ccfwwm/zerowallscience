@@ -13,13 +13,6 @@ const workspaceManifestCache = new Map()
  * dependency has received a publish staging directory.
  */
 async function workspaceDependencyManifest(source, name) {
-  const direct = join(source, 'node_modules', name, 'package.json')
-  try {
-    return JSON.parse(await readFile(direct, 'utf8'))
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error
-  }
-
   if (workspaceManifestCache.has(name)) return workspaceManifestCache.get(name)
   const candidates = []
   if (name.startsWith('@zerowallscience/plugin-')) {
@@ -41,6 +34,13 @@ async function workspaceDependencyManifest(source, name) {
     } catch (error) {
       if (error.code !== 'ENOENT') throw error
     }
+  }
+  // Installed links may point at an older publish staging manifest. Resolve
+  // owned workspace sources first; external/Git dependencies still use links.
+  try {
+    return JSON.parse(await readFile(join(source, 'node_modules', name, 'package.json'), 'utf8'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
   }
   throw new Error(`Unable to resolve workspace dependency ${name} for ${source}; publish staging and source manifest are both missing`)
 }

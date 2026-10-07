@@ -4,7 +4,7 @@
   "applicationVersion": "8.0.1",
   "restartRequired": true,
   "desktop": {
-    "min": "8.0.1"
+    "min": "8.0.6"
   },
   "rollbackSupported": true,
   "dsh": {
