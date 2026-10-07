@@ -9,6 +9,7 @@ import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { startCommandServer } from '../../desktop/src/main/command-server.ts'
 import { commandPathWorker } from '../../tools/commands/path-worker.mjs'
+import { buildPowerShellPythonCommand } from '../../tools/commands/python-shell.mjs'
 const run = promisify(execFile)
 
 test('real CLI socket authenticates the owner, rejects another token and supports zws', async () => {
@@ -74,4 +75,13 @@ try {
 `)
   try { const result = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { windowsHide: true }); assert.match(result.stdout, /ownership verified/) }
   finally { await rm(home, { recursive: true, force: true }) }
+})
+
+test('Python shell PowerShell command uses escaped paths instead of environment variables', () => {
+  const runtimeRoot = "C:\\Users\\O'Neil\\AppData\\Local\\ZeroWall Science\\Python"
+  const executable = `${runtimeRoot}\\python.exe`
+  assert.equal(
+    buildPowerShellPythonCommand(runtimeRoot, executable),
+    "$ErrorActionPreference = 'Stop'; Set-Location -LiteralPath 'C:\\Users\\O''Neil\\AppData\\Local\\ZeroWall Science\\Python'; & 'C:\\Users\\O''Neil\\AppData\\Local\\ZeroWall Science\\Python\\python.exe'",
+  )
 })

@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { createConnection } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { buildPowerShellPythonCommand } from './python-shell.mjs'
 
 const packaged = existsSync(resolve(import.meta.dirname, '../app.asar/package.json'))
 const root = packaged ? resolve(import.meta.dirname, '../app.asar') : resolve(import.meta.dirname, '../..')
@@ -127,14 +128,12 @@ async function run() {
     delete env.PYTHONPATH
     env.PYTHONNOUSERSITE = '1'
     const mode = args.includes('--cmd') ? 'cmd' : 'powershell'
-    // Start the actual managed interpreter in the new console.  Merely
-    // changing PATH leaves users in a shell that can silently resolve a
-    // system/Roaming Python; launching through the two environment variables
-    // makes the executable and working directory unambiguous while still
-    // returning to the shell after `exit()` so pip commands can be run there.
+    // Start the actual managed interpreter in the new console. Merely changing
+    // PATH could resolve a system Python. PowerShell uses escaped literal paths
+    // directly so it does not depend on environment-variable expansion.
     const child = mode === 'cmd'
       ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/D', '/K', 'title ZeroWall Science Python && cd /d "%ZEROWALL_PYTHON_ROOT%" && "%ZEROWALL_PYTHON_EXECUTABLE%"'], { cwd: runtimeRoot, env, stdio: 'inherit', windowsHide: false })
-      : spawnSync('powershell.exe', ['-NoLogo', '-NoExit', '-Command', 'Set-Location -LiteralPath $env:ZEROWALL_PYTHON_ROOT; & $env:ZEROWALL_PYTHON_EXECUTABLE'], { cwd: runtimeRoot, env, stdio: 'inherit', windowsHide: false })
+      : spawnSync('powershell.exe', ['-NoLogo', '-NoExit', '-Command', buildPowerShellPythonCommand(runtimeRoot, executable)], { cwd: runtimeRoot, env, stdio: 'inherit', windowsHide: false })
     if (child.error) throw child.error
     process.exitCode = child.status ?? 1
     return undefined

@@ -19,7 +19,7 @@ import { resolveDesktopIdentity } from './identity.js'
 import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-updater-service.js'
-import { createPythonTerminalLaunch } from './python-terminal.js'
+import { createPythonTerminalLaunch, managedPythonTerminalPaths } from './python-terminal.js'
 import { ensurePythonCoreAtStartup } from './python-startup.js'
 import { PythonSyncService } from './python-sync.js'
 import { PythonEnvironmentApi, type PythonEnvironmentRequest } from './python-environment-api.js'
@@ -997,12 +997,14 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (process.platform !== 'win32' || event.sender !== mainWindow?.webContents || event.senderFrame !== event.sender.mainFrame) return false
     try {
       const info = await mcpEnvironment?.pythonInfo()
-      if (!info?.ready || !info.executable || !info.runtimeRoot) return false
-      const runtimeRoot = await realpath(info.runtimeRoot)
-      const executable = await realpath(info.executable)
+      // The interpreter can be useful for diagnosis and pip repair even when
+      // the asynchronous core dependency layer has not completed yet.
+      const target = managedPythonTerminalPaths(info, pythonLocation.runtimeRoot)
+      const runtimeRoot = await realpath(target.runtimeRoot)
+      const executable = await realpath(target.executable)
       const relativeExecutable = relative(runtimeRoot, executable)
       if (!relativeExecutable || relativeExecutable.startsWith('..') || isAbsolute(relativeExecutable) || basename(executable).toLowerCase() !== 'python.exe' || !(await stat(executable)).isFile()) return false
-      const command = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe')
+      const command = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
       const launch = createPythonTerminalLaunch(runtimeRoot, executable, process.env)
       const child = spawn(command, launch.args, { cwd: launch.cwd, env: launch.env, detached: true, windowsHide: false, stdio: 'ignore' })
       await new Promise<void>((resolveOpen, rejectOpen) => {

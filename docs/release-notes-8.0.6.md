@@ -27,6 +27,6 @@
 - 启动检查和每日清单检查只验证状态，不自动安装科研层、插件、Skills 或 MCP 资源。
 - 基础依赖安装失败、部分完成或中断后，可以从 Python 设置页重试核心层；重试跳过已验证成功的包，并恢复失败或缺失包。
 - 基础 Python + pip 引导安装失败时，设置页显示单独的重试入口和失败原因；核心依赖未达到签名数量时显示明确的核心重试按钮，并暂停科研层安装入口，避免把核心故障误报为“可用”。
-- CLI 的 `zws python shell` 与 Python 设置页命令行入口都显式使用统一 Python 解释器，并清理外部 `PYTHONHOME` / `PYTHONPATH`。
+- CLI 的 `zws python shell` 与 Python 设置页命令行入口都显式使用统一 Python 解释器，并清理外部 `PYTHONHOME` / `PYTHONPATH`。PowerShell 启动命令直接引用已校验的解释器路径，不依赖可能为空的环境变量；核心依赖失败但 `python.exe` 已存在时，仍可打开命令行进行诊断和修复。
 - 独立插件资源同步版本为 `plugin-base 0.1.8`、`plugin-mcp 0.2.5`、`plugin-environment 0.1.3`、`plugin-images 0.2.2`、`plugin-research 0.1.4` 和 `dsh-bundle-science 0.1.6`，避免覆盖已发布的旧版本内容。
 - 新插件的发布依赖从当前源码读取，避免旧暂存 manifest 将更新重新锁定到旧插件；更新后的图片插件与科研组合包要求桌面 8.0.6。
