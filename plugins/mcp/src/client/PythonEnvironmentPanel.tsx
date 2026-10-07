@@ -265,6 +265,9 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const coreCountIncomplete = info?.officialPackageCount !== undefined && info.corePackageCount !== undefined && coreTotal > 0 && coreInstalled < coreTotal
   const coreRepairRequired = coreTaskFailed || (info?.ready === true && (info.coreReady === false || coreCountIncomplete || (info.missingCorePackages?.length ?? 0) > 0))
   const bootstrapFailed = !coreTaskFailed && !coreRepairRequired && info?.ready !== true && (status?.phase === 'failed' || status?.updateJob?.stage === 'failed' || !!status?.lastUpdateError)
+  // A terminal core task is more authoritative than a stale updater phase.
+  // Do not let an old `paused` snapshot hide the repair action after failure.
+  const pausedUpdate = status?.phase === 'paused' && !coreTaskFailed
   // The updater can retain the last phase after a read-only manifest check.
   // Only an active durable task or a non-terminal runtime job may animate the
   // progress UI; a stale `checking / 100%` snapshot is never treated as work.
@@ -414,8 +417,8 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         {working && task?.taskId && callEnvironment && <button onClick={cancelTask}>{t('python.shared.cancel')}</button>}
         {/* One primary action checks, plans and installs the signed dependency set. */}
         {!working && <button className={css.primary} disabled={busy.sync || !callEnvironment || coreRepairRequired} onClick={() => void syncNow()}>{busy.sync ? t('python.shared.syncing') : t('python.shared.syncNow')}</button>}
-        {status?.phase === 'paused' && <button disabled={busy.resume || !api?.updateMcpEnvironment} onClick={() => void perform('resume', async () => { await api?.updateMcpEnvironment?.() })}>{t('python.manager.resume')}</button>}
-        {!working && status?.phase !== 'paused' && (!inventoryLoading || coreTaskFailed) && coreRepairRequired && <button className={css.primary} disabled={busy['core-sync'] || !callEnvironment} onClick={() => callEnvironment ? void installCore() : setFeedback(t('python.shared.retryRequiresDesktopUpdate'))}>{t('python.shared.retryCore')}</button>}
+        {pausedUpdate && <button disabled={busy.resume || !api?.updateMcpEnvironment} onClick={() => void perform('resume', async () => { await api?.updateMcpEnvironment?.() })}>{t('python.manager.resume')}</button>}
+        {!working && !pausedUpdate && (!inventoryLoading || coreTaskFailed) && coreRepairRequired && <button className={css.primary} disabled={busy['core-sync'] || !callEnvironment} onClick={() => callEnvironment ? void installCore() : setFeedback(t('python.shared.retryRequiresDesktopUpdate'))}>{t('python.shared.retryCore')}</button>}
         {coreRepairRequired && !callEnvironment && <p className={css.warning} role="alert">{t('python.shared.retryRequiresDesktopUpdate')}</p>}
         {!working && status?.phase !== 'paused' && bootstrapFailed && <button className={css.primary} disabled={busy.bootstrap || !api?.updateMcpEnvironment} onClick={() => void perform('bootstrap', async () => {
           const result = await api?.updateMcpEnvironment?.()

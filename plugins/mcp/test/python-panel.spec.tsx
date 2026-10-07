@@ -354,6 +354,21 @@ describe('Python dependency panel', () => {
     fireEvent.click(button)
     await waitFor(() => expect(retry).toHaveBeenCalledWith(expect.objectContaining({ action: 'sync', layer: 'core', confirm: true, requestId: expect.any(String) })))
   })
+  it('prioritizes retrying a failed core task over a stale paused updater state', async () => {
+    const retry = vi.fn(async (request: any) => request.action === 'status'
+      ? {
+          status: { phase: 'paused', updateJob: { taskId: 'old-bootstrap', kind: 'install', stage: 'paused' } },
+          inventory: { ...info('shared-python', 42), officialPackageCount: 42, corePackageCount: 1, ready: true, coreReady: false, missingCorePackages: ['mcp==1.30.0'] },
+          task: { taskId: 'core-failed', requestId: 'core-request', action: 'sync', layer: 'core', state: 'failed', stage: 'failed', error: 'core package installation failed', logLines: [], createdAt: '2026-10-07T00:00:00Z', updatedAt: '2026-10-07T00:00:01Z' },
+        }
+      : { requestId: request.requestId, taskId: 'core-retry', queued: true, task: { taskId: 'core-retry', requestId: request.requestId, action: 'sync', layer: 'core', state: 'queued', stage: 'queued', logLines: [], createdAt: '2026-10-07T00:00:00Z', updatedAt: '2026-10-07T00:00:00Z' } })
+    window.zerowallDesktop = { pythonEnvironment: retry } as any
+    render(<PythonEnvironmentPanel t={zhT} />)
+    const button = await screen.findByRole('button', { name: '重试核心依赖安装' })
+    expect(screen.queryByRole('button', { name: '继续更新' })).toBeNull()
+    fireEvent.click(button)
+    await waitFor(() => expect(retry).toHaveBeenCalledWith(expect.objectContaining({ action: 'sync', layer: 'core', confirm: true, requestId: expect.any(String) })))
+  })
   it('offers a direct retry after the Python bootstrap itself has failed', async () => {
     const retry = vi.fn(async () => ({ phase: 'downloading', message: '正在重试基础环境' }))
     const pythonEnvironment = vi.fn(async (request: any) => request.action === 'status'
