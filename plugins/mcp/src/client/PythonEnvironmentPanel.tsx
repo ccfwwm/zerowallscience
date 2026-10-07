@@ -259,6 +259,12 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const updateStage = status?.updateJob?.stage
   const terminalUpdateStages = ['ready', 'complete', 'completed', 'failed', 'paused', 'interrupted']
   const taskOwnsUpdate = !!task && [task.taskId, task.underlyingTaskId, task.result?.underlyingTaskId].includes(status?.updateJob?.taskId)
+  const coreTaskFailed = task?.layer === 'core' && ['failed', 'partial', 'interrupted', 'cancelled'].includes(task.state)
+  const coreTotal = info?.officialPackageCount ?? info?.corePackageCount ?? 0
+  const coreInstalled = info?.corePackageCount ?? 0
+  const coreCountIncomplete = info?.officialPackageCount !== undefined && info.corePackageCount !== undefined && coreTotal > 0 && coreInstalled < coreTotal
+  const coreRepairRequired = coreTaskFailed || (info?.ready === true && (info.coreReady === false || coreCountIncomplete || (info.missingCorePackages?.length ?? 0) > 0))
+  const bootstrapFailed = !coreTaskFailed && !coreRepairRequired && info?.ready !== true && (status?.phase === 'failed' || status?.updateJob?.stage === 'failed' || !!status?.lastUpdateError)
   // The updater can retain the last phase after a read-only manifest check.
   // Only an active durable task or a non-terminal runtime job may animate the
   // progress UI; a stale `checking / 100%` snapshot is never treated as work.
@@ -266,14 +272,12 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     && ['checking', 'downloading', 'verifying', 'installing'].includes(status.phase)
     && !terminalUpdateStages.includes(updateStage ?? '')
     && status.updateJob.kind !== 'python-dependency-preflight'
-    && !(terminalTask && taskOwnsUpdate)
+    // The durable core task is authoritative for the dependency layer. A
+    // terminal failure can race with a stale updater job whose task ID differs
+    // (for example after bootstrap recovery); that stale job must not hide the
+    // only repair action.
+    && !(terminalTask && (taskOwnsUpdate || coreTaskFailed))
   const working = taskWorking || runtimeWorking
-  // A legacy generation can contain a healthy interpreter while its signed
-  // ZeroWall MCP closure is incomplete. Startup queues a durable automatic
-  // repair; keep the action visible after a failed/interrupted task even when
-  // the inventory snapshot temporarily reports `ready: false`.
-  const coreTaskFailed = task?.layer === 'core' && ['failed', 'partial', 'interrupted', 'cancelled'].includes(task.state)
-  const coreRepairRequired = coreTaskFailed || (info?.ready === true && (info.coreReady === false || (info.missingCorePackages?.length ?? 0) > 0))
   useEffect(() => {
     if (!working) return
     const timer = window.setInterval(() => { void loadStatus().catch(() => undefined) }, 1500)
@@ -344,8 +348,6 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     if (status.phase === 'installing') return status.updateJob?.totalFiles ? t('python.manager.extracting', { completed: status.updateJob.completedFiles ?? 0, total: status.updateJob.totalFiles }) : t('python.manager.preparing')
     return t('python.manager.checking')
   }
-  const coreTotal = Math.max(info?.officialPackageCount ?? info?.corePackageCount ?? 0, info?.corePackageCount ?? 0)
-  const coreInstalled = info?.corePackageCount ?? 0
   const scienceTotal = dependencies?.layer === 'science' ? dependencies.packageCount : info?.sciencePackageCount ?? 0
   const scienceInstalled = dependencies?.layer === 'science' ? dependencies.installedPackageCount ?? info?.scienceInstalledPackageCount ?? 0 : info?.scienceInstalledPackageCount ?? 0
   const visibleProgress = taskWorking ? task.progress : runtimeWorking ? status?.progress : undefined
@@ -356,7 +358,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   return <section className={css.panel} aria-label={t('python.title')}>
     <header className={css.heading}>
       <div><span className={css.eyebrow}>ZeroWall Science</span><h2>{t('python.title')}</h2><p className={css.subtitle}>{t('python.shared.subtitle')}</p></div>
-      <div className={css.headingActions}><span className={`${css.statusPill} ${info?.ready ? css.success : css.muted}`}>{info?.ready ? t('python.ready') : inventoryLoading || working ? t('python.checking') : t('python.unavailable')}</span><button onClick={() => { void loadStatus(); if (!window.zerowallDesktop?.pythonEnvironment || showInventory) void refresh() }} aria-label={t('python.shared.refreshStatus')}>{t('python.manager.refresh')}</button></div>
+      <div className={css.headingActions}><span className={`${css.statusPill} ${coreRepairRequired || bootstrapFailed ? css.warning : info?.ready ? css.success : css.muted}`}>{coreRepairRequired ? t('python.shared.coreRepairNeeded') : bootstrapFailed ? t('python.shared.bootstrapFailed') : info?.ready ? t('python.ready') : inventoryLoading || working ? t('python.checking') : t('python.unavailable')}</span><button onClick={() => { void loadStatus(); if (!window.zerowallDesktop?.pythonEnvironment || showInventory) void refresh() }} aria-label={t('python.shared.refreshStatus')}>{t('python.manager.refresh')}</button></div>
     </header>
       <div className={css.summary}>
       <div className={css.metric}><span>{t('python.version')}</span><strong>{info?.version ?? '—'}</strong><small>{t('python.environment')}</small></div>
@@ -411,10 +413,19 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         {working && status?.updateJob?.canPause && <button onClick={() => void api?.pauseMcpEnvironment?.()}>{t('python.manager.pause')}</button>}
         {working && task?.taskId && callEnvironment && <button onClick={cancelTask}>{t('python.shared.cancel')}</button>}
         {/* One primary action checks, plans and installs the signed dependency set. */}
-        {!working && <button className={css.primary} disabled={busy.sync || !callEnvironment} onClick={() => void syncNow()}>{busy.sync ? t('python.shared.syncing') : t('python.shared.syncNow')}</button>}
+        {!working && <button className={css.primary} disabled={busy.sync || !callEnvironment || coreRepairRequired} onClick={() => void syncNow()}>{busy.sync ? t('python.shared.syncing') : t('python.shared.syncNow')}</button>}
         {status?.phase === 'paused' && <button disabled={busy.resume || !api?.updateMcpEnvironment} onClick={() => void perform('resume', async () => { await api?.updateMcpEnvironment?.() })}>{t('python.manager.resume')}</button>}
-        {!working && status?.phase !== 'paused' && !inventoryLoading && coreRepairRequired && <button disabled={busy['core-sync'] || (callEnvironment ? false : !api?.updateMcpEnvironment)} onClick={() => callEnvironment ? void installCore() : setInstallRuntime(true)}>{coreTaskFailed ? t('python.shared.retryCore') : t('python.shared.repairCore')}</button>}
-        {!working && status?.phase !== 'paused' && !inventoryLoading && !info?.ready && <button disabled={busy.bootstrap || !api?.updateMcpEnvironment} onClick={() => setInstallRuntime(true)}>{t('python.shared.installRuntime')}</button>}
+        {!working && status?.phase !== 'paused' && (!inventoryLoading || coreTaskFailed) && coreRepairRequired && <button className={css.primary} disabled={busy['core-sync'] || !callEnvironment} onClick={() => callEnvironment ? void installCore() : setFeedback(t('python.shared.retryRequiresDesktopUpdate'))}>{t('python.shared.retryCore')}</button>}
+        {coreRepairRequired && !callEnvironment && <p className={css.warning} role="alert">{t('python.shared.retryRequiresDesktopUpdate')}</p>}
+        {!working && status?.phase !== 'paused' && bootstrapFailed && <button className={css.primary} disabled={busy.bootstrap || !api?.updateMcpEnvironment} onClick={() => void perform('bootstrap', async () => {
+          const result = await api?.updateMcpEnvironment?.()
+          if (!result) { setFeedback(t('python.unavailable')); return }
+          setStatus(result)
+          if (result.phase === 'failed') setFeedback(result.lastUpdateError ?? result.message ?? t('python.shared.bootstrapFailed'))
+          else setFeedback(t('python.shared.retryQueued'))
+        })}>{t('python.shared.retryBootstrap')}</button>}
+        {bootstrapFailed && (status?.lastUpdateError || status?.message) && <p className={css.warning} role="alert">{status.lastUpdateError ?? status.message}</p>}
+        {!working && status?.phase !== 'paused' && !bootstrapFailed && !info?.ready && <button disabled={busy.bootstrap || !api?.updateMcpEnvironment} onClick={() => setInstallRuntime(true)}>{t('python.shared.installRuntime')}</button>}
         {status?.rollbackAvailable && !working && <button onClick={() => void perform('rollback', async () => { await api?.rollbackMcpEnvironment?.(); setFeedback(t('python.manager.rollbackQueued')) })}>{t('python.manager.rollback')}</button>}
         {!!status?.updateJob?.bytesPerSecond && <span>{(status.updateJob.bytesPerSecond / 1024 ** 2).toFixed(1)} MiB/s</span>}
         {!!status?.updateJob?.totalBytes && <span>{((status.updateJob.receivedBytes ?? 0) / 1024 ** 2).toFixed(1)} / {(status.updateJob.totalBytes / 1024 ** 2).toFixed(1)} MiB</span>}
@@ -482,7 +493,13 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         <section className={css.advancedSection} aria-label={t('python.shared.diagnostics')}><h3>{t('python.shared.diagnostics')}</h3><dl><dt>{t('python.manager.interpreter')}</dt><dd>{info?.executable}</dd><dt>{t('python.shared.sitePackages')}</dt><dd>{info?.sitePackages}</dd><dt>{t('python.manager.scanned')}</dt><dd>{info?.scannedAt}</dd><dt>{t('python.manager.skills')}</dt><dd>{info?.skillAudit ? Object.entries(info.skillAudit.summary).map(([key, value]) => `${key}: ${value}`).join(" · ") : t('python.manager.noAudit')}</dd><dt>{t('python.shared.verification')}</dt><dd>{presentPythonText(info?.verification?.message ?? status?.lastUpdateError) ?? '—'}</dd><dt>pip</dt><dd title={presentPythonText(diagnostics?.pip.message)}>{diagnostics ? healthLabel(diagnostics.pip.status) : t('python.shared.pending')}</dd></dl></section>
       </div>
     </details>
-    {installRuntime && <div className={css.backdrop}><section className={css.dialog} role="dialog" aria-modal="true" aria-label={coreRepairRequired ? t('python.shared.repairCore') : t('python.shared.installTitle')}><h3>{coreRepairRequired ? t('python.shared.repairCore') : t('python.shared.installTitle')}</h3><p>{coreRepairRequired ? t('python.shared.coreRepairHint') : t('python.shared.installHint')}</p><dl><dt>{t('python.manager.source')}</dt><dd>{t('python.shared.runtimeSource')}</dd><dt>{t('python.version')}</dt><dd>{status?.python?.version ?? t('python.shared.runtimeVersion')}</dd>{coreRepairRequired && <><dt>{t('python.shared.missingCore')}</dt><dd>{info?.missingCorePackages?.join('、')}</dd></>}</dl><div className={css.actions}><button disabled={busy.bootstrap} onClick={() => setInstallRuntime(false)}>{t('python.manager.close')}</button><button disabled={busy.bootstrap} onClick={() => void perform('bootstrap', async () => { await api?.updateMcpEnvironment?.(); setInstallRuntime(false); setFeedback(t('python.manager.installQueued')) })}>{coreRepairRequired ? t('python.shared.repairCore') : t('python.shared.downloadBase')}</button></div></section></div>}
+    {installRuntime && <div className={css.backdrop}><section className={css.dialog} role="dialog" aria-modal="true" aria-label={t('python.shared.installTitle')}><h3>{t('python.shared.installTitle')}</h3><p>{t('python.shared.installHint')}</p><dl><dt>{t('python.manager.source')}</dt><dd>{t('python.shared.runtimeSource')}</dd><dt>{t('python.version')}</dt><dd>{status?.python?.version ?? t('python.shared.runtimeVersion')}</dd></dl><div className={css.actions}><button disabled={busy.bootstrap} onClick={() => setInstallRuntime(false)}>{t('python.manager.close')}</button><button disabled={busy.bootstrap} onClick={() => void perform('bootstrap', async () => {
+      const result = await api?.updateMcpEnvironment?.()
+      if (!result) { setFeedback(t('python.unavailable')); return }
+      setStatus(result)
+      if (result.phase === 'failed') { setFeedback(result.lastUpdateError ?? result.message ?? t('python.shared.bootstrapFailed')); return }
+      setInstallRuntime(false); setFeedback(t('python.manager.installQueued'))
+    })}>{t('python.shared.downloadBase')}</button></div></section></div>}
     {(plan || detail) && <div className={css.backdrop}><section className={css.dialog} role="dialog" aria-modal="true" aria-label={plan ? t('python.manager.preview') : t('python.manager.packageDetails')}>
       <h3>{plan ? t('python.manager.preview') : detail?.name}</h3>
       {plan ? <>
