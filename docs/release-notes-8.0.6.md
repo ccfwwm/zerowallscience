@@ -25,3 +25,6 @@
 - 桌面版本为 `8.0.6`，DSH 继续固定在 `0.2.0-rc.2` 的 ZeroWall fork。
 - 保留账户、模型、项目、Skills、MCP 配置、第三方插件和用户环境变量引用；旧 Python 目录不读取、不迁移、不删除。
 - 启动检查和每日清单检查只验证状态，不自动安装科研层、插件、Skills 或 MCP 资源。
+- 基础依赖安装失败、部分完成或中断后，可以从 Python 设置页重试核心层；重试跳过已验证成功的包，并恢复失败或缺失包。
+- CLI 的 `zws python shell` 与 Python 设置页命令行入口都显式使用统一 Python 解释器，并清理外部 `PYTHONHOME` / `PYTHONPATH`。
+- 独立插件资源同步版本为 `plugin-base 0.1.7`、`plugin-mcp 0.2.4`，避免覆盖已发布的旧版本内容。
