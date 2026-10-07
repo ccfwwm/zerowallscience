@@ -3,7 +3,7 @@
   "platform": "win32",
   "architecture": "x64",
   "python": "3.12.10",
-  "dependencyManifestRevision": "3.12.10-r10",
+  "dependencyManifestRevision": "3.12.10-r16",
   "generatedAt": "2026-09-26T12:12:18.032585+00:00",
   "summary": {
     "ready": 126,

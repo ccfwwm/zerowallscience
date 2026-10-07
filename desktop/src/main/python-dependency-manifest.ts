@@ -93,7 +93,14 @@ export async function fetchPythonDependencyManifest(url: string, keys: Record<st
  */
 export function assertManifestWheels(manifest: PythonDependencyManifest, wheels: Array<{ name: string; version: string; hash?: string; sourceArchiveSha256?: string }>, installed: Array<{ name: string; version: string }> = [], failedNames: Iterable<string> = []): void {
   const locked = new Map(manifest.packages.map(pkg => [normalize(pkg.name), pkg]))
-  const present = new Set(installed.map(pkg => normalize(pkg.name)))
+  // Core packages are an exact signed closure. An older installed version is
+  // therefore still pending and must be replaceable by the planned wheel.
+  // Science/capability layers intentionally tolerate an existing version
+  // because those layers support partial, user-selected installs.
+  const exactVersions = manifest.layer === 'core'
+  const present = new Set(installed
+    .filter(pkg => !exactVersions || locked.get(normalize(pkg.name))?.version === pkg.version)
+    .map(pkg => normalize(pkg.name)))
   const failed = new Set([...failedNames].map(normalize))
   const seen = new Set<string>()
   for (const wheel of wheels) {

@@ -12,7 +12,7 @@ describe('shared Python location', () => {
     const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
     const result = await resolvePythonLocation({ localAppDataPath: join(root, 'Local') })
     expect(result.runtimeRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python'))
-    expect(result.managementRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'zerowall-python'))
+    expect(result.managementRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python', '.zerowall'))
   })
 
   it('keeps a fresh packaged launch in LocalAppData even when the install directory is writable', async () => {
@@ -23,7 +23,7 @@ describe('shared Python location', () => {
       applicationInstallRoot: install,
     })
     expect(result.runtimeRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python'))
-    expect(result.managementRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'zerowall-python'))
+    expect(result.managementRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python', '.zerowall'))
     await expect(lstat(result.runtimeRoot)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
@@ -75,7 +75,7 @@ describe('shared Python location', () => {
     await writeFile(join(local, 'ZeroWall Science', 'python-location.json'), JSON.stringify({ runtimeRoot: join(install, 'Python') }))
     const result = await resolvePythonLocation({ localAppDataPath: local, applicationInstallRoot: install })
     expect(result.runtimeRoot).toBe(join(install, 'Python'))
-    expect(result.managementRoot).toBe(join(install, 'zerowall-python'))
+    expect(result.managementRoot).toBe(join(install, 'Python', '.zerowall'))
   })
 
   it('falls back from a stale saved path and rewrites the LocalAppData pointer', async () => {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
 import { createConnection } from 'node:net'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -26,7 +27,7 @@ const HELP = {
     skill: 'list/import/remove/update/rollback/enable/disable/check',
     mcp: 'list/add/remove/update/rollback/start/stop/restart/logs/check',
     env: 'list/set/delete/check（敏感值通过 stdin 提供）',
-    python: 'status/install/update/rollback（按需管理 Python 环境）',
+    python: 'status/install/update/rollback/shell（按需管理 Python 环境；shell 进入统一 Python 目录）',
   },
   examples: [
     'zws plugin list',
@@ -45,7 +46,7 @@ function help(scope) {
     mcp: 'zws mcp list|add|remove|update|rollback|start|stop|restart|logs|check <id>',
     extensions: 'zws extensions status|check',
     env: 'zws env list|set|delete|check <name>',
-    python: 'zws python status|install|update|rollback',
+    python: 'zws python status|install|update|rollback|shell [--powershell|--cmd]',
   }
   return { usage: descriptions[scope] ?? HELP.usage, command: scope, description: HELP.commands[scope] ?? '未知命令' }
 }
@@ -104,6 +105,33 @@ async function run() {
     if (!Object.hasOwn(commands, command)) throw new Error('插件操作支持 list/add/remove/update/repair/enable/disable')
     return invoke('plugin.run', [commands[command], ...args])
   }
+  if (group === 'python' && command === 'shell') {
+    const info = await invoke('python.status')
+    const localAppData = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local')
+    const runtimeRoot = typeof info?.runtimeRoot === 'string' && info.runtimeRoot.trim() !== ''
+      ? info.runtimeRoot
+      : join(localAppData, 'ZeroWall Science', 'Python')
+    const executable = typeof info?.runtimeExecutable === 'string' && info.runtimeExecutable.trim() !== ''
+      ? info.runtimeExecutable
+      : join(runtimeRoot, 'python.exe')
+    if (!existsSync(executable)) throw new Error(`统一 Python 尚未就绪：${executable}`)
+    const env = { ...process.env, PATH: `${runtimeRoot};${join(runtimeRoot, 'Scripts')};${process.env.PATH || ''}` }
+    delete env.PYTHONHOME
+    delete env.PYTHONPATH
+    env.PYTHONNOUSERSITE = '1'
+    const mode = args.includes('--cmd') ? 'cmd' : 'powershell'
+    // Start the actual managed interpreter in the new console.  Merely
+    // changing PATH leaves users in a shell that can silently resolve a
+    // system/Roaming Python; launching through the two environment variables
+    // makes the executable and working directory unambiguous while still
+    // returning to the shell after `exit()` so pip commands can be run there.
+    const child = mode === 'cmd'
+      ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/D', '/K', 'title ZeroWall Science Python && cd /d "%ZEROWALL_PYTHON_ROOT%" && "%ZEROWALL_PYTHON_EXECUTABLE%"'], { cwd: runtimeRoot, env, stdio: 'inherit', windowsHide: false })
+      : spawnSync('powershell.exe', ['-NoLogo', '-NoExit', '-Command', 'Set-Location -LiteralPath $env:ZEROWALL_PYTHON_ROOT; & $env:ZEROWALL_PYTHON_EXECUTABLE'], { cwd: runtimeRoot, env, stdio: 'inherit', windowsHide: false })
+    if (child.error) throw child.error
+    process.exitCode = child.status ?? 1
+    return undefined
+  }
   if (group === 'python' && ['status', 'install', 'update', 'rollback'].includes(command)) return invoke(`python.${command}`, catalog ? [catalog] : [])
   if (group === 'env') {
     if (['list', 'check'].includes(command)) return invoke(`env.${command}`)
@@ -140,6 +168,6 @@ async function run() {
     if (['update', 'restart', 'remove'].includes(command) && args[0]) return invoke(`mcp.${command}`, [args[0]])
     if (command === 'logs') return invoke('mcp.logs', args)
   }
-  throw new Error('用法：zws version|doctor|update；zws plugin|skill|mcp|env|python <操作>。')
+  throw new Error('用法：zws version|doctor|update；zws plugin|skill|mcp|env|python <操作>。使用 zws help 查看完整命令。')
 }
 try { console.log(JSON.stringify((await run()) ?? { ok: true }, null, 2)) } catch (error) { console.error(error.message); process.exitCode = 1 }

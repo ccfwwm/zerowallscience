@@ -32,8 +32,7 @@ export const SCIMASTER_API_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/h
 export const HUAGONGSHE_URL = 'https://huagongshe.com/mcp'
 export const HUAGONGSHE_CREDENTIAL = 'zerowall.mcp.huagongshe_token'
 export const HUAGONGSHE_AUTH_ENV = 'HUAGONGSHE_MCP_AUTHORIZATION'
-export const RDATALINUX_R_MCP_LEGACY_URL = 'http://103.217.185.141/r-platform/mcp'
-export const RDATALINUX_R_MCP_URL = 'http://103.217.185.141:8099/r-platform/mcp'
+export const RDATALINUX_R_MCP_URL = 'https://rmcp.chengxunkeji.cn/r-platform/mcp'
 export const RDATALINUX_SERVER_NAME = 'rmcp'
 export const RDATALINUX_BIOMNI_SERVER_NAME = 'rbioagent'
 export const RDATALINUX_R_PLATFORM_SERVER_NAME = 'rplatform'
@@ -1017,11 +1016,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
     const projects = this.projects()
-    // Migrate legacy rdatalinux namespaces while preserving settings.
+    // Migrate legacy rdatalinux namespaces while preserving settings.  The
+    // managed RMCP endpoint is now HTTPS and is intentionally not represented
+    // by a literal retired IP in the source.  Reserved RMCP records are safe
+    // to normalize because their endpoint is product-owned; custom MCP
+    // records keep their URL and settings.
     for (const server of projects.listMcpServers()) {
       if (['rdatalinux_biomni', 'rdatalinux_r_platform', 'rbioagent', 'rplatform', 'rplotfigure'].includes(server.serverName)
         && server.transport === 'streamable-http'
-        && [RDATALINUX_R_MCP_URL, RDATALINUX_R_MCP_LEGACY_URL].includes(server.url ?? '')
         && server.headerRefs?.Authorization === RDATALINUX_R_MCP_AUTHORIZATION_ENV) {
         const existing = projects.listMcpServers().find(candidate => candidate.serverName === RDATALINUX_SERVER_NAME)
         if (existing === undefined) projects.updateMcpServer(server.id, { serverName: RDATALINUX_SERVER_NAME, name: RDATALINUX_SERVER_NAME })
@@ -1037,11 +1039,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
       }
     }
     if (markerVersion < 4) {
-      // The R Platform MCP service moved from the default HTTP port to 8099.
-      // Migrate only the exact retired endpoint so user-managed MCP URLs are
-      // never rewritten as part of bundled-server maintenance.
+      // Older builds persisted the managed RMCP record with an HTTP/IP URL.
+      // Match the reserved record and credential reference instead of keeping
+      // the retired address in source or rewriting arbitrary user servers.
       for (const server of projects.listMcpServers()) {
-        if (server.transport === 'streamable-http' && server.url === RDATALINUX_R_MCP_LEGACY_URL) {
+        if (server.serverName === RDATALINUX_SERVER_NAME
+          && server.transport === 'streamable-http'
+          && server.headerRefs?.Authorization === RDATALINUX_R_MCP_AUTHORIZATION_ENV
+          && server.url !== RDATALINUX_R_MCP_URL) {
           projects.updateMcpServer(server.id, { url: RDATALINUX_R_MCP_URL })
         }
       }
@@ -1699,7 +1704,11 @@ function managedPythonExecutable(record: ManagedEnvironmentRecord): string {
   const root = resolve(record.runtimeRoot)
   const path = record.manifest?.python?.relativeExecutable
   if (path !== 'Python/python.exe') throw new Error('Managed environment must use the shared Python/python.exe layout.')
-  const executable = resolve(root, path)
+  // The signed manifest retains the historical `Python/python.exe` path, but
+  // 8.0.6 projects it into the single canonical runtime directory.  Detect
+  // that layout from the actual files and never fall back to a slot path.
+  const direct = path === 'Python/python.exe' && existsSync(join(root, 'python.exe'))
+  const executable = direct ? join(root, 'python.exe') : resolve(root, path)
   const local = relative(root, executable)
   if (isAbsolute(path) || local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed Python executable')
   return executable
@@ -1708,7 +1717,8 @@ function managedPythonExecutable(record: ManagedEnvironmentRecord): string {
 function managedCandidatePythonExecutable(record: ManagedEnvironmentRecord): string {
   if (!record.root || record.manifest?.python?.relativeExecutable !== 'Python/python.exe') throw new Error('Managed candidate has no shared Python layout.')
   const root = resolve(record.root)
-  const executable = resolve(root, record.manifest.python.relativeExecutable)
+  const direct = existsSync(join(root, 'python.exe'))
+  const executable = direct ? join(root, 'python.exe') : resolve(root, record.manifest.python.relativeExecutable)
   const local = relative(root, executable)
   if (local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed candidate Python executable')
   return executable

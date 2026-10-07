@@ -411,7 +411,7 @@ export function McpConnectionsButton(props: Props) {
           </section>}
           {false && selected?.serverName === 'rmcp' && <section className={css.sciMasterCard} aria-label="rdatalinux MCP">
              <div className={css.sciMasterHeading}><strong>rmcp · rbioagent / rplatform / rplotfigure</strong><span className={rdatalinuxConfigured ? css.configured : css.missing}>{rdatalinuxConfigured ? '已配置' : '未配置'}</span></div>
-             <p className={css.sciMasterHelp}>端点固定为 http://103.217.185.141:8099/r-platform/mcp。R 与 Biomni 共用 MCP Authorization，凭据仅保存到 ZeroWall 凭据保险库。</p>
+             <p className={css.sciMasterHelp}>端点固定为 https://rmcp.chengxunkeji.cn/r-platform/mcp。R 与 Biomni 共用 MCP Authorization，凭据仅保存到 ZeroWall 凭据保险库。</p>
              <div className={css.sciMasterActions}>
                <input type="password" value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorizationValue(event.target.value)} placeholder="Bearer &lt;MCP key&gt;" autoComplete="off" />
                <button type="button" className={css.saveButton} onClick={() => void saveRdatalinuxAuthorization()} disabled={rdatalinuxBusy || rdatalinuxAuthorization.trim() === ''}>保存</button>

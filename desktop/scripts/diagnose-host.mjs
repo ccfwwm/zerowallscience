@@ -33,7 +33,7 @@ const child = spawn(resolve(installed, 'ZeroWallScience.exe'), ['--import', path
  DSH_HOME:join(root,'harness'), USERPROFILE:root, HOME:root, ZEROWALL_USER_DATA_DIR:root,
  ZEROWALL_USER_SKILLS:join(root,'harness/zerowall-skills'), ZEROWALL_BUNDLED_SKILLS:resolve(resources,'skills'),
  DSH_BUNDLED_SKILL_DIR:resolve(resources,'skills'), ZEROWALL_RESEARCH_DB:join(root,'research.sqlite'),
- ZEROWALL_MCP_ENVIRONMENT_ROOT:process.env.ZEROWALL_SOURCE_PYTHON_ROOT?.trim() ?? join(original,'zerowall-python'), DSH_TELEMETRY_DISABLED:'1', ZEROWALL_DIAGNOSTICS:root,
+ ZEROWALL_MCP_ENVIRONMENT_ROOT:process.env.ZEROWALL_SOURCE_PYTHON_ROOT?.trim() ?? join(original,'Python','.zerowall'), DSH_TELEMETRY_DISABLED:'1', ZEROWALL_DIAGNOSTICS:root,
  } })
 let output = ''
 const capture = chunk => { output = (output+chunk.toString()).slice(-200000) }

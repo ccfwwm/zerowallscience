@@ -8,17 +8,17 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | `8.0.5` |
+| 应用版本 | `8.0.6` |
 | 当前开发分支 | `main` |
-| 8.0.5 发布提交 | 以安装包 `artifact-manifest.json` 中的 `commit` 为准 |
+| 8.0.6 发布提交 | 以安装包 `artifact-manifest.json` 中的 `commit` 为准 |
 | DSH 子模块 | `86b6740d0e671cee0b3fd0168de484c0efbf46ea` |
 | DSH 分支 | `zerowall/reviewer-history-opaque` |
 | DSH 标签 | `dsh-v0.2.0-rc.2` |
 | GitHub | `https://github.com/ccfwwm/zerowallscience` |
-| 8.0.5 Stable 安装包 | `artifacts/packages/8.0.5/windows-x64/` |
-| 8.0.5 发布状态 | 以 `artifacts/release/8.0.5/publication/` 收据、七牛公开校验和 GitHub `v8.0.5` Release 为准 |
+| 8.0.6 Stable 安装包 | `artifacts/packages/8.0.6/windows-x64/` |
+| 8.0.6 发布状态 | 以 `artifacts/release/8.0.6/publication/` 收据、七牛公开校验和 GitHub `v8.0.6` Release 为准 |
 
-8.0.4 桌面安装包已发布到七牛 Stable；8.0.5 使用新的不可变路径。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖或伪造哈希。资源签名保留 `stable-3` 验签兼容，并由 `stable-4` 为新发布的目录和依赖清单签名；私钥只保存在被 Git 忽略的 `scripts/env/`，严禁进入源码仓库或插件总仓库。
+8.0.4 和 8.0.5 的历史安装包继续保留；8.0.6 使用新的不可变路径。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖或伪造哈希。资源签名保留 `stable-3` 验签兼容，并由 `stable-4` 为新发布的目录和依赖清单签名；私钥只保存在被 Git 忽略的 `scripts/env/`，严禁进入源码仓库或插件总仓库。
 
 用户指定的模型、推理强度、生图模型、协议和参数必须保持不变。开发任务不因为测试方便而自动切换模型、降低推理级别或增加替代路由。
 
@@ -154,7 +154,7 @@ pnpm plugins:pack
 
 启动检查和每日检查只读取、验签并显示可用版本，不自动下载、安装或重启。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。
 
-### Python 分层合同（8.0.4）
+### Python 分层合同（8.0.6）
 
 - 运行时根目录固定为 `%LOCALAPPDATA%\\ZeroWall Science\\Python`；旧 Roaming 或安装目录中的 Python 指针不再作为默认目标，也不会被复制或删除。
 - `bootstrap` 只表示解释器是否存在，`core` 表示 ZeroWall/MCP 最小依赖，`science` 表示科研依赖，`capability` 表示某个 Skill 或流程的可选依赖。解释器就绪不等于科研层已安装。
@@ -165,7 +165,7 @@ pnpm plugins:pack
 - `core-dependency-manifest.json` 与 `dependency-manifest.json` 独立签名；同步计划必须绑定所选层和 manifest hash，资源不可用时不创建安装任务。
 - Python 状态、路径和错误必须从 Host 返回的稳定字段读取，不能从旧 snapshot 的物理路径推导 UI 路径。
 
-### RMCP 工具发现合同（8.0.4）
+### RMCP 工具发现合同（8.0.6）
 
 - RMCP 在桌面启动完成后后台连接，不阻塞桌面启动。缺少 `R_PLATFORM_MCP_AUTHORIZATION` 时状态是 `waiting-for-credentials`，不能显示成普通“0 个工具”。
 - 工具发现阶段使用 `discovering-tools`；`tools/list` 成功且返回空数组时才使用 `active-with-zero-tools`。这与连接失败、凭据缺失和发现超时严格区分。

@@ -21,7 +21,7 @@ RMCP 源码检查位置为 `C:\softworks\gpt-tools\raiagentai`，HEAD 为 `36ea1
 
 ## 生产端现状
 
-开发机对免密别名 `rdatalinux` 的 SSH 22、历史 SSH 50537 和 `http://103.217.185.141:8099/r-platform/mcp` 的 8099 连接均超时，HTTP 为 000。50537 仅作历史端口排查，不作为当前 SSH 配置。没有收到应用层 HTTP 响应，不能据此判断 gateway 代码、认证、服务进程或防火墙中的哪一层故障。没有进入服务器，也没有执行生产变更。
+开发机对免密别名 `rdatalinux` 的历史 IP/端口探测曾经超时，HTTP 为 000；该地址已退休，不再作为客户端或配置入口。当前生产 RMCP 统一使用 `https://rmcp.chengxunkeji.cn/r-platform/mcp`。没有收到旧地址的应用层响应，不能据此判断 gateway 代码、认证、服务进程或防火墙中的哪一层故障。没有进入服务器，也没有执行生产变更。
 
 本地 gateway 的 Streamable HTTP 回归已通过：initialize 后立即 tools/list、旧 session 恢复、未授权返回 401。本地协议通过不等于生产可用。
 

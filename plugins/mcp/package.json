@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "0.2.2",
-  "description": "ZeroWall Science mcp domain plugin (desktop 8.0.5).",
+  "version": "0.2.3",
+  "description": "ZeroWall Science mcp domain plugin (desktop 8.0.6).",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./src/host/index.ts",
@@ -61,7 +61,7 @@
   },
   "zerowall": {
     "desktop": {
-      "min": "8.0.5"
+      "min": "8.0.6"
     },
     "dsh": {
       "min": "0.2.0-rc.2",

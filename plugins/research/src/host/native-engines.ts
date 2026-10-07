@@ -23,7 +23,7 @@ export interface AnnotationBridgeSetup {
 const FIJI_ENTRYPOINTS = process.platform === 'win32'
   ? ['fiji-windows-x64.exe', 'ImageJ-win64.exe', 'fiji.bat', 'fiji']
   : ['fiji', 'ImageJ-linux64', 'fiji.sh']
-export const DEFAULT_REMOTE_R_MCP_URL = 'http://103.217.185.141:8099/r-platform/mcp'
+export const DEFAULT_REMOTE_R_MCP_URL = 'https://rmcp.chengxunkeji.cn/r-platform/mcp'
 
 function isNapariLauncher(path: string): boolean { return /^napari(?:\.exe|\.bat|\.cmd)?$/iu.test(basename(path)) }
 

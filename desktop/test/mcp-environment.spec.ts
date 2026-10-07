@@ -192,6 +192,61 @@ describe('MCP environment upgrades', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
+  it('downloads a thin bootstrap into the canonical single-directory runtime', async () => {
+    const userData = await mkdtemp(join(tmpdir(), 'zerowall-python-thin-remote-')); roots.push(userData)
+    const runtimeRoot = join(userData, 'Python')
+    const root = join(runtimeRoot, '.zerowall')
+    const manifest = signedSharedManifest()
+    manifest.environmentVersion = '1.5.1'
+    manifest.contentRevision = 16
+    manifest.python.modules = ['pip']
+    manifest.python.bootstrapOnly = true
+    manifest.pythonHealth.imports = []
+    manifest.archiveUrl = 'https://example.test/python/bootstrap.zip'
+    manifest.archiveSha256 = createHash('sha256').update(sharedTestArchive).digest('hex')
+    manifest.archiveSize = sharedTestArchive.byteLength
+    manifest.signature.value = sign(null, canonicalManifest(manifest), keys.privateKey).toString('base64')
+    const assets = join(userData, 'assets')
+    await mkdir(join(assets, 'bio-tools'), { recursive: true })
+    await mkdir(join(assets, 'ketcher-chemistry'), { recursive: true })
+    await mkdir(join(assets, 'sci', 'dist'), { recursive: true })
+    await mkdir(join(assets, 'skills'), { recursive: true })
+    await writeFile(join(assets, 'bio-tools', 'run_server.py'), '')
+    await writeFile(join(assets, 'ketcher-chemistry', 'server.js'), '')
+    await writeFile(join(assets, 'sci', 'dist', 'cli.mjs'), '')
+    await writeFile(join(assets, 'sci', 'dist', 'mcp.cjs'), '')
+    await writeFile(join(assets, 'sci', 'zerowall-mcp-launcher.cjs'), '')
+    const fetcher = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith('.zip')) return new Response(sharedTestArchive as unknown as BodyInit)
+      return new Response(JSON.stringify(manifest), { headers: { 'content-type': 'application/json' } })
+    })
+    const controller = new McpEnvironmentController({
+      root,
+      runtimeRoot,
+      manifestUrl: 'https://example.test/python/latest.json',
+      publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      publicKeys: { 'stable-1': keys.publicKey.export({ type: 'spki', format: 'pem' }).toString() },
+      fetcher,
+      bundledAssets: { bioToolsRoot: join(assets, 'bio-tools'), ketcherRoot: join(assets, 'ketcher-chemistry'), sciRoot: join(assets, 'sci'), skillsRoot: join(assets, 'skills') },
+      healthCheck: async () => undefined,
+      verifySharedPython: async () => undefined,
+      publish() {},
+    })
+
+    const installed = await controller.initialize()
+    expect(installed, JSON.stringify(installed)).toMatchObject({ phase: 'ready', environmentVersion: '1.5.1' })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(await readFile(join(runtimeRoot, 'python.exe'), 'utf8')).toBe('fixture interpreter')
+    expect(await readFile(join(runtimeRoot, 'Lib', 'site-packages', '.keep'), 'utf8')).toBe('')
+    const current = JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))
+    expect(current.root).toBe(runtimeRoot)
+    expect(current.runtimeRoot).toBe(runtimeRoot)
+    expect(await readdir(root)).not.toContain('slots')
+    expect(await readdir(root)).not.toContain('versions')
+    expect(await readdir(runtimeRoot)).not.toContain('Python')
+    expect(await readdir(runtimeRoot)).not.toContain('zerowall-python')
+  })
+
   it('recovers from a compact legacy current record whose standalone manifest is missing', async () => {
     const userData = await mkdtemp(join(tmpdir(), 'zerowall-python-stale-current-')); roots.push(userData)
     const root = join(userData, 'zerowall-python'); const stale = join(root, 'slots', 'a')

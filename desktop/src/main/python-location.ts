@@ -107,7 +107,11 @@ export async function resolvePythonLocation(options: PythonLocationOptions): Pro
   }
 
   return {
-    managementRoot: join(dirname(candidate), 'zerowall-python'),
+    // Keep the interpreter and every package in the one user-visible Python
+    // directory.  Transaction journals, plans and logs are implementation
+    // details below the same directory so a user never has to distinguish a
+    // slot, generation or second environment.
+    managementRoot: join(candidate, '.zerowall'),
     runtimeRoot: candidate,
     locationPath,
   }

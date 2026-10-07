@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/plugin-environment",
-  "version": "0.1.1",
-  "description": "ZeroWall Science environment domain plugin (desktop 8.0.0).",
+  "version": "0.1.2",
+  "description": "ZeroWall Science environment domain plugin (desktop 8.0.6).",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./src/host/index.ts",
@@ -61,7 +61,7 @@
   },
   "zerowall": {
     "desktop": {
-      "min": "8.0.0"
+      "min": "8.0.6"
     },
     "dsh": {
       "min": "0.2.0-rc.2",

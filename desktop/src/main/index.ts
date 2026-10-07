@@ -605,6 +605,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     generationMode: true,
     coordinateHost: true,
     root: mcpEnvironmentRoot,
+    runtimeRoot: pythonLocation.runtimeRoot,
     settingsPath: dirname(pythonLocation.locationPath),
     ...(bootstrapAvailable ? { bundledManifestPath: bootstrapManifest, bundledArchivePath: bootstrapArchive } : {}),
     bundledAssets: { bioToolsRoot: bundledBioToolsRoot, ketcherRoot: bundledKetcherRoot, sciRoot: bundledSciRoot, skillsRoot: bundledSkillsRoot },
@@ -633,7 +634,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     bundledCoreManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'core-dependency-manifest.json') : join(app.getAppPath(), '..', 'resources', 'python', 'core-dependency-manifest.json'),
     coreFeedUrl: process.env.ZEROWALL_PYTHON_CORE_MANIFEST ?? process.env.ZEROWALL_PYTHON_DEPENDENCY_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-science-python/windows-x64/core.json',
   })
-  const pythonApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync, pythonLocation.locationPath, app.isPackaged ? dirname(process.execPath) : undefined)
+  const pythonApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync, pythonLocation.locationPath, app.isPackaged ? dirname(process.execPath) : undefined, pythonLocation.runtimeRoot)
   pythonEnvironmentApi = pythonApi
   mcpEnvironment.setEnvironmentHandler(request => pythonApi.request(request))
   const commandRoot = app.isPackaged ? join(process.resourcesPath, 'commands') : join(findWorkspaceRoot(), 'tools/commands')

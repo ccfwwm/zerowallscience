@@ -79,7 +79,7 @@ export interface PythonScienceReference {
   indexUrl: string
 }
 export interface PythonUpdateJob { packageNames?: string[]; taskId: string; kind: string; stage: string; canPause: boolean; targetVersion?: string; receivedBytes?: number; totalBytes?: number; bytesPerSecond?: number; completedFiles?: number; totalFiles?: number; logLines?: string[] }
-export type PythonTaskState = 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted'
+export type PythonTaskState = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'interrupted' | 'cancelled'
 export interface PythonDependencyTask {
   taskId: string
   underlyingTaskId?: string

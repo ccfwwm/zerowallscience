@@ -19,7 +19,7 @@ const execute = promisify(execFile)
 
 export { normalizePythonRuntimePath } from './python-location.js'
 export interface PythonEnvironmentRequest {
-  action: 'status' | 'task_status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'
+  action: 'status' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'
   requestId: string
   taskId?: string
   layer?: PythonDependencyLayer
@@ -68,7 +68,7 @@ export class PythonEnvironmentApi {
    */
   private progress: Array<Record<string, unknown>> = []
   private progressTimer?: NodeJS.Timeout
-  constructor(private root: string, private updater: PythonUpdaterService, private sync: SyncService, private locationPath = join(root, 'python-location.json'), private applicationInstallRoot?: string) {
+  constructor(private root: string, private updater: PythonUpdaterService, private sync: SyncService, private locationPath = join(root, 'python-location.json'), private applicationInstallRoot?: string, private canonicalRuntimeRoot?: string) {
     updater.watchProgress?.(status => this.recordProgress(status))
   }
 
@@ -134,9 +134,16 @@ export class PythonEnvironmentApi {
     await this.flush()
   }
 
-  private controlRoot(): string { return dirname(this.locationPath) }
+  /** All durable Python task state lives below the canonical runtime's
+   * `.zerowall` directory.  `root` is supplied by resolvePythonLocation and
+   * already points there; using the location-file parent would put receipts
+   * beside the runtime and reintroduce the old split directory layout. */
+  private controlRoot(): string { return this.root }
 
-  private taskDirectory(): string { return join(this.controlRoot(), 'python-tasks') }
+  /** One durable queue for every Python operation.  The directory lives under
+   * the canonical runtime's private control tree so a restart can recover the
+   * same task and its logs without exposing slots or a second environment. */
+  private taskDirectory(): string { return join(this.controlRoot(), 'jobs') }
   private taskPath(taskId: string): string { return join(this.taskDirectory(), `${taskId}.json`) }
   private async writeJsonAtomic(path: string, value: unknown): Promise<void> {
     await mkdir(dirname(path), { recursive: true })
@@ -179,7 +186,7 @@ export class PythonEnvironmentApi {
     const operation = previous.catch(() => undefined).then(async () => {
       const current = await this.readTask(taskId)
       if (!current) return undefined
-      const terminal = current.state === 'succeeded' || current.state === 'failed' || current.state === 'interrupted'
+      const terminal = this.isTerminal(current.state)
       if (terminal && patch.state !== current.state) return current
       if (!terminal && current.state !== 'queued' && current.state !== 'running' && patch.state === undefined) return current
       const appended = lines.map(line => this.safeTaskText(line)).filter(Boolean)
@@ -193,7 +200,7 @@ export class PythonEnvironmentApi {
         ...(patch.error === undefined ? {} : { error: this.safeTaskText(patch.error) }),
         logLines: merged.slice(-240),
         updatedAt: now,
-        ...(patch.state === 'succeeded' || patch.state === 'failed' || patch.state === 'interrupted' ? { completedAt: now } : {}),
+        ...(this.isTerminal(patch.state) ? { completedAt: now } : {}),
       }
       this.taskCache.set(taskId, next)
       await this.writeJsonAtomic(this.taskPath(taskId), next)
@@ -251,8 +258,12 @@ export class PythonEnvironmentApi {
     // The inner updater id remains separately available as underlyingTaskId;
     // allowing task.result.taskId to override it made the returned id change
     // after installation completed.
-    if (task.state === 'succeeded') return { ...task.result, requestId: task.requestId, taskId: task.taskId, ...(task.underlyingTaskId ? { underlyingTaskId: task.underlyingTaskId } : {}), queued: false, task }
+    if (task.state === 'succeeded' || task.state === 'partial') return { ...task.result, requestId: task.requestId, taskId: task.taskId, ...(task.underlyingTaskId ? { underlyingTaskId: task.underlyingTaskId } : {}), queued: false, task }
     return { requestId: task.requestId, taskId: task.taskId, queued: false, task, error: task.error }
+  }
+
+  private isTerminal(state: PythonTaskState | undefined): boolean {
+    return state === 'succeeded' || state === 'partial' || state === 'failed' || state === 'interrupted' || state === 'cancelled'
   }
 
   private async ensureRuntimeReady(): Promise<void> {
@@ -283,13 +294,14 @@ export class PythonEnvironmentApi {
       // an older snapshot than the progress event that triggered the poll.
       await this.taskWrites.get(input.taskId)?.catch(() => undefined)
       let task = await this.readTask(input.taskId)
-      if (task?.state === 'succeeded' || task?.state === 'failed' || task?.state === 'interrupted') {
+      if (task && this.isTerminal(task.state)) {
         await this.taskOperations.get(input.taskId)?.catch(() => undefined)
         task = await this.readTask(input.taskId)
       }
       if (!task) throw new Error('Python task not found.')
       return { requestId: input.requestId, taskId: task.taskId, task }
     }
+    if (input.action === 'cancel') return this.cancelTask(input)
     // `sync` installs into the shared environment, so it belongs behind the same
     // serialization lock and request receipt as the two-step apply. Leaving it
     // out would let a double click or a restart mid-install run it twice.
@@ -348,7 +360,7 @@ export class PythonEnvironmentApi {
       if (receipt.fingerprint !== fingerprint) throw new Error('REQUEST_ID_CONFLICT: use a new requestId for a different operation.')
       if (receipt.taskId) {
         let existingTask = await this.readTask(receipt.taskId)
-        if (existingTask?.state === 'succeeded' || existingTask?.state === 'failed' || existingTask?.state === 'interrupted') {
+        if (existingTask && this.isTerminal(existingTask.state)) {
           await this.taskOperations.get(receipt.taskId)?.catch(() => undefined)
           existingTask = await this.readTask(receipt.taskId)
         }
@@ -419,13 +431,20 @@ export class PythonEnvironmentApi {
       await this.log(input, 'running', { taskId })
       try {
         const result = this.compactResult(await this.executeTask(input, taskId))
-        const completed = await this.updateTask(taskId, { state: 'succeeded', stage: 'complete', progress: 100, message: this.taskSuccessMessage(input.action as AsyncPythonAction), result })
+        const partial = result.partial === true
+        const completed = await this.updateTask(taskId, { state: partial ? 'partial' : 'succeeded', stage: partial ? 'partial' : 'complete', progress: 100, message: partial ? this.taskPartialMessage(input.action as AsyncPythonAction) : this.taskSuccessMessage(input.action as AsyncPythonAction), result })
         if (!completed) throw new Error('任务已结束，但最终状态未能写入磁盘。')
         const response = this.responseForTask(completed)
-        await this.writeJsonAtomic(receiptPath, { fingerprint, state: 'completed', taskId, result: response } satisfies PythonJobReceipt)
-        await this.log(input, 'succeeded', { taskId })
+        await this.writeJsonAtomic(receiptPath, { fingerprint, state: partial ? 'partial' : 'completed', taskId, result: response } satisfies PythonJobReceipt)
+        await this.log(input, partial ? 'partial' : 'succeeded', { taskId })
       } catch (error) {
         const message = this.safeTaskText(error instanceof Error ? error.message : String(error))
+        const cancelled = (await this.readTask(taskId))?.state === 'cancelled'
+        if (cancelled) {
+          await this.writeJsonAtomic(receiptPath, { fingerprint, state: 'cancelled', taskId, error: message } satisfies PythonJobReceipt)
+          await this.log(input, 'cancelled', { taskId, message })
+          return
+        }
         const failed = await this.updateTask(taskId, { state: 'failed', stage: 'failed', progress: undefined, message: '任务失败，当前有效 Python 环境保持不变。', error: message }, [message])
         await this.writeJsonAtomic(receiptPath, { fingerprint, state: 'failed', taskId, error: message } satisfies PythonJobReceipt)
         await this.log(input, 'failed', { taskId, message })
@@ -447,6 +466,28 @@ export class PythonEnvironmentApi {
     return action === 'check_manifest' ? '依赖检查完成。' : action === 'preview_sync' ? '资源预检完成，可查看安装计划。' : 'Python 依赖任务已完成并通过验证。'
   }
 
+  private taskPartialMessage(action: AsyncPythonAction): string {
+    return action === 'preview_sync' ? '资源预检完成，但有资源不可用；可单独重试失败包。' : '任务部分完成；已成功安装的依赖已保留，失败包可单独重试。'
+  }
+
+  private async cancelTask(input: PythonEnvironmentRequest): Promise<Record<string, unknown>> {
+    if (!input.taskId || !/^[a-f0-9-]{36}$/u.test(input.taskId)) throw new Error('Invalid Python task id')
+    const task = await this.readTask(input.taskId)
+    if (!task) throw new Error('Python task not found.')
+    if (this.isTerminal(task.state)) return { requestId: input.requestId, taskId: task.taskId, queued: false, task }
+    // Stop the updater worker when the task owns it. The queue catch path sees
+    // the durable cancelled state and will not overwrite it with a generic
+    // failure after the child exits.
+    this.updater.pause()
+    const cancelled = await this.updateTask(task.taskId, { state: 'cancelled', stage: 'cancelled', message: '任务已取消；已安装的依赖保持不变。', error: undefined })
+    if (!cancelled) throw new Error('Python task could not be cancelled.')
+    const receiptPath = join(this.controlRoot(), 'requests', `${task.requestId}.json`)
+    const receipt = await readFile(receiptPath, 'utf8').then(text => JSON.parse(text) as PythonJobReceipt, () => undefined)
+    if (receipt) await this.writeJsonAtomic(receiptPath, { ...receipt, state: 'cancelled', taskId: task.taskId })
+    await this.log(input, 'cancelled', { taskId: task.taskId })
+    return { requestId: input.requestId, taskId: task.taskId, queued: false, task: cancelled }
+  }
+
   private async executeTask(input: PythonEnvironmentRequest, taskId: string): Promise<Record<string, unknown>> {
     const report: ReportPythonSyncProgress = progress => this.reportTask(taskId, progress)
     const layer = input.layer ?? 'science'
@@ -462,7 +503,7 @@ export class PythonEnvironmentApi {
         ? await this.sync.verifyInstalled(layer, input.capabilityId, report, knownFailures) as Record<string, unknown>
         : undefined
       const unresolved = verification ? Number(verification.unresolvedPackageCount ?? verification.pendingPackageCount ?? 0) : 0
-      if (verification && unresolved > 0) {
+      if (verification && unresolved > 0 && layer === 'core') {
         throw new Error(`安装后仍有 ${verification.pendingPackageCount} 个依赖未达到签名清单版本；请查看失败包日志后重试。`)
       }
       if (layer === 'core') {
@@ -475,7 +516,8 @@ export class PythonEnvironmentApi {
           }
         }
       }
-      return { taskId: underlyingTaskId, underlyingTaskId, layer, capabilityId: input.capabilityId, verification, ...(knownFailures.length ? { skippedPackages: knownFailures, partial: true } : {}), ...(resumed ? { resumed: true } : {}) }
+      const partial = layer !== 'core' && (knownFailures.length > 0 || unresolved > 0)
+      return { taskId: underlyingTaskId, underlyingTaskId, layer, capabilityId: input.capabilityId, verification, ...(knownFailures.length ? { skippedPackages: knownFailures } : {}), ...(partial ? { partial: true } : {}), ...(resumed ? { resumed: true } : {}) }
     }
     // If shutdown happened after the package transaction started, continue
     // observing that exact durable updater job. Re-running check/preview/apply
@@ -594,7 +636,10 @@ export class PythonEnvironmentApi {
         const readOptional = async (path: string) => readFile(path, 'utf8').then(JSON.parse, () => undefined)
         const current = await readOptional(join(this.root, 'current.json'))
         const runtimeBase = typeof current?.runtimeRoot === 'string' ? current.runtimeRoot : current?.root
-        const runtime = typeof runtimeBase === 'string' && current.health === 'ready' ? await readOptional(join(runtimeBase, 'Python', 'runtime.json')) : undefined
+        const runtimeMetadataPath = typeof runtimeBase === 'string' && current.health === 'ready'
+          ? join(runtimeBase, this.canonicalRuntimeRoot !== undefined ? 'runtime.json' : current.generation === true ? 'Python/runtime.json' : 'runtime.json')
+          : undefined
+        const runtime = runtimeMetadataPath ? await readOptional(runtimeMetadataPath) : undefined
         const location = await readOptional(this.locationPath)
         let savedRuntimeRoot: string | undefined
         if (typeof location?.runtimeRoot === 'string') {
@@ -606,7 +651,7 @@ export class PythonEnvironmentApi {
         // stored those records under a Roaming slot, and showing that path was
         // the exact inconsistency that made a failed migration look active.
         // The signed installer will rebuild the selected stable directory.
-        const configuredRuntimeRoot = savedRuntimeRoot ?? join(dirname(this.root), 'Python')
+        const configuredRuntimeRoot = savedRuntimeRoot ?? this.canonicalRuntimeRoot ?? join(dirname(this.root), 'Python')
         const activeRuntime = runtime && typeof runtime.rootPath === 'string'
           && (resolve(runtime.rootPath) === resolve(configuredRuntimeRoot) || (current.generation === true && typeof current.root === 'string' && resolve(runtime.rootPath) === resolve(current.root, 'Python') && !relative(join(this.root, 'slots'), current.root).startsWith('..')))
           ? runtime
@@ -767,8 +812,8 @@ export class PythonEnvironmentApi {
     if (current.health !== 'ready') return unavailable
     const root = await realpath(current.root).catch(() => resolve(current.root))
     const stablePath = current.runtimeRoot
-    const productRoot = current.generation !== true && basename(resolve(this.root)).toLowerCase() === 'zerowall-python'
-    const expectedRuntimeRoot = dirname(resolve(this.root))
+    const productRoot = this.canonicalRuntimeRoot !== undefined || (current.generation !== true && basename(resolve(this.root)).toLowerCase() === 'zerowall-python')
+    const expectedRuntimeRoot = this.canonicalRuntimeRoot ?? dirname(resolve(this.root))
     if (productRoot && (typeof stablePath !== 'string' || resolve(stablePath) !== expectedRuntimeRoot || current.manifest.python.relativeExecutable !== 'Python/python.exe' || current.manifest.python.relativeSitePackages !== 'Python/Lib/site-packages')) {
       // A legacy slot/profile is not a usable shared runtime.  Diagnostics
       // must remain readable in this state and must never turn the harmless
@@ -783,8 +828,8 @@ export class PythonEnvironmentApi {
       }
     }
     const runtimeRoot = productRoot ? await realpath(expectedRuntimeRoot).catch(() => expectedRuntimeRoot) : typeof stablePath === 'string' ? await realpath(stablePath).catch(() => resolve(stablePath)) : root
-    const relativeExecutable = productRoot || current.runtimeRoot ? 'Python/python.exe' : current.manifest.python.relativeExecutable
-    const relativeSitePackages = productRoot || current.runtimeRoot ? 'Python/Lib/site-packages' : current.manifest.python.relativeSitePackages
+    const relativeExecutable = this.canonicalRuntimeRoot !== undefined ? 'python.exe' : productRoot || current.runtimeRoot ? 'Python/python.exe' : current.manifest.python.relativeExecutable
+    const relativeSitePackages = this.canonicalRuntimeRoot !== undefined ? 'Lib/site-packages' : productRoot || current.runtimeRoot ? 'Python/Lib/site-packages' : current.manifest.python.relativeSitePackages
     const executable = resolve(runtimeRoot, relativeExecutable)
     const rel = relative(runtimeRoot, executable)
     if (rel.startsWith('..') || isAbsolute(rel)) throw new Error('Unsafe managed Python executable')

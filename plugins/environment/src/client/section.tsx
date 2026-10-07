@@ -67,7 +67,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [chemKey, setChemKey] = useState('')
   const [chemConnection, setChemConnection] = useState<LocalizedMessage>('')
   const [rdatalinuxConfigured, setRdatalinuxConfigured] = useState(false)
-  const [rdatalinuxEndpoint, setRdatalinuxEndpoint] = useState('http://103.217.185.141:8099/r-platform/mcp')
+  const [rdatalinuxEndpoint, setRdatalinuxEndpoint] = useState('https://rmcp.chengxunkeji.cn/r-platform/mcp')
   const [rdatalinuxAuthorization, setRdatalinuxAuthorization] = useState('')
   const [rdatalinuxConnection, setRdatalinuxConnection] = useState<LocalizedMessage>('')
 
@@ -125,7 +125,7 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     void load('rdatalinux', async () => {
       if (mcpRemote?.getRdatalinuxCredentialStatus === undefined) throw new LocalizedError('mcpUnavailable')
       const value = await unwrap(mcpRemote.getRdatalinuxCredentialStatus()) as any
-      if (!cancelled) { setRdatalinuxConfigured(value?.configured === true); setRdatalinuxEndpoint(value?.endpoint ?? 'http://103.217.185.141:8099/r-platform/mcp') }
+      if (!cancelled) { setRdatalinuxConfigured(value?.configured === true); setRdatalinuxEndpoint(value?.endpoint ?? 'https://rmcp.chengxunkeji.cn/r-platform/mcp') }
     })
     void load('mineru', async () => {
       if (mineruRemote?.getConfigStatus === undefined) throw new LocalizedError('mineruUnavailable')

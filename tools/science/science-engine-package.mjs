@@ -45,10 +45,21 @@ export function engineProfile(id) {
 
 export function sharedPythonExecutable() {
   const managerRoot = process.env.ZEROWALL_PYTHON_ROOT?.trim() || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
-  const userData = managerRoot
-    ? resolve(managerRoot, '..')
-    : join(process.env.LOCALAPPDATA?.trim() || homedir(), 'ZeroWall Science')
-  return join(userData, 'Python', 'python.exe')
+  if (managerRoot) {
+    const resolved = resolve(managerRoot)
+    const name = basename(resolved).toLowerCase()
+    // 8.0.6 exposes the manager journal as `<Python>\\.zerowall`; the
+    // interpreter and all site-packages stay directly in its parent. Keep the
+    // legacy `zerowall-python` interpretation only for isolated test/tools
+    // callers that do not pass the canonical runtime root.
+    const runtimeRoot = name === '.zerowall'
+      ? dirname(resolved)
+      : name === 'python'
+        ? resolved
+        : join(dirname(resolved), 'Python')
+    return join(runtimeRoot, 'python.exe')
+  }
+  return join(process.env.LOCALAPPDATA?.trim() || homedir(), 'ZeroWall Science', 'Python', 'python.exe')
 }
 
 export function sharedModelRoot(engineId = 'he-stardist') {

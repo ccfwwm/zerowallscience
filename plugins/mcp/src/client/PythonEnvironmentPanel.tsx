@@ -72,6 +72,8 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     if (next.task) {
       setTask(next.task)
       if (next.task.state === 'interrupted') setFeedback(next.task.error ?? t('python.shared.taskInterrupted'))
+      else if (next.task.state === 'cancelled') setFeedback(next.task.message ?? t('python.shared.taskCancelled'))
+      else if (next.task.state === 'partial') setFeedback(next.task.message ?? t('python.shared.partial'))
       else if (next.task.state === 'failed') setFeedback(next.task.error ?? t('python.shared.failed'))
       if (next.task.state === 'succeeded' && next.task.action === 'preview_sync' && handledTaskResult.current !== next.task.taskId) {
         const resolved = next.task.result?.plan as (PythonPackagePlan & { manifestRevision?: string }) | undefined
@@ -119,7 +121,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         active.current = snapshot; setUpdates({}); setPlan(undefined); setPlanStale(false); setDetail(undefined); setInfo(undefined); setInventoryLoading(false)
         // Older Host bridges do not expose the lightweight durable task API.
         // Preserve their inventory refresh behavior without making the current
-        // 8.0.4 status path scan site-packages during startup or polling.
+        // The status path must never scan site-packages during startup or polling.
         if (window.zerowallDesktop?.pythonEnvironment) void loadStatus()
         else void refresh()
       }
@@ -240,6 +242,12 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
     setFeedback(t('python.shared.packageQueued'))
     void loadStatus()
   })
+  const cancelTask = () => void perform('cancel-python-task', async () => {
+    if (!task?.taskId || !callEnvironment) return
+    const result = await callEnvironment({ action: 'cancel', taskId: task.taskId, requestId: crypto.randomUUID() })
+    if (result?.task) setTask(result.task)
+    setFeedback(t('python.shared.taskCancelled'))
+  })
   const rows = useMemo(() => (info?.packages ?? []).map(pkg => ({ ...pkg, ...updates[normalize(pkg.name)] })).filter(pkg =>
     pkg.name.toLowerCase().includes(query.toLowerCase()) && (capability === 'all' || pkg.capabilities?.includes(capability)) && (filter === 'all' || filter === pkg.source || filter === 'custom' && pkg.customized || filter === 'updates' && pkg.updateAvailable)), [info, updates, query, filter, capability])
   const capabilities = useMemo(() => [...new Set((info?.packages ?? []).flatMap(pkg => pkg.capabilities ?? []))].sort(), [info])
@@ -247,7 +255,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   useEffect(() => { const maximum = Math.max(0, rows.length * rowHeight - height); if (list.current && list.current.scrollTop > maximum) list.current.scrollTop = maximum }, [rows.length, height])
   const inventoryMatches = !active.current || info?.snapshotId === active.current
   const taskWorking = task?.state === 'queued' || task?.state === 'running'
-  const terminalTask = task?.state === 'succeeded' || task?.state === 'failed' || task?.state === 'interrupted'
+  const terminalTask = task?.state === 'succeeded' || task?.state === 'partial' || task?.state === 'failed' || task?.state === 'interrupted' || task?.state === 'cancelled'
   const updateStage = status?.updateJob?.stage
   const terminalUpdateStages = ['ready', 'complete', 'completed', 'failed', 'paused', 'interrupted']
   const taskOwnsUpdate = !!task && [task.taskId, task.underlyingTaskId, task.result?.underlyingTaskId].includes(status?.updateJob?.taskId)
@@ -318,6 +326,8 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const phaseLabel = (): string => {
     if (task?.state === 'queued') return t('python.shared.taskQueued')
     if (task?.state === 'interrupted') return t('python.shared.taskInterrupted')
+    if (task?.state === 'cancelled') return t('python.shared.taskCancelled')
+    if (task?.state === 'partial') return t('python.shared.partial')
     if (task?.state === 'failed') return t('python.shared.failed')
     if (task?.state === 'succeeded') return t('python.shared.succeeded')
     if (task?.state === 'running') {
@@ -370,7 +380,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
           <span>{visibleProgress === undefined ? '—' : `${Math.round(visibleProgress)}%`}</span>
         </div>
       </>}
-      {!working && (task?.state === 'interrupted' || task?.state === 'failed') && task.progress !== undefined && <div className={css.progressLine} role="status" aria-label={task.state}>
+      {!working && (task?.state === 'partial' || task?.state === 'cancelled' || task?.state === 'interrupted' || task?.state === 'failed') && task.progress !== undefined && <div className={css.progressLine} role="status" aria-label={task.state}>
         <progress max={100} value={task.progress} />
         <span>{task.stage}</span>
         {task.totalPackages !== undefined && <span>{t('python.manager.progressPackages', { completed: task.completedPackages ?? 0, total: task.totalPackages })}</span>}
@@ -378,7 +388,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         <span>{Math.round(task.progress)}%</span>
       </div>}
       {task?.state === 'failed' && task.error && <p className={css.warning} role="alert">{presentPythonText(task.error)}</p>}
-      {task?.state === 'interrupted' && <p className={css.warning} role="status">{presentPythonText(task.message) ?? t('python.shared.taskInterrupted')}</p>}
+      {(task?.state === 'interrupted' || task?.state === 'cancelled' || task?.state === 'partial') && <p className={css.warning} role="status">{presentPythonText(task.message) ?? (task.state === 'cancelled' ? t('python.shared.taskCancelled') : t('python.shared.partial'))}</p>}
       {dependencies && <div className={css.manifestMeta}>
         <strong>{t('python.shared.pendingCount', { count: dependencies.changes.length })}</strong>
         {dependencies.packageCount > 0 && <span>{dependencies.packageCount} {t('python.shared.dependencies')}</span>}
@@ -397,6 +407,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
       </section>}
       <div className={css.actions}>
         {working && status?.updateJob?.canPause && <button onClick={() => void api?.pauseMcpEnvironment?.()}>{t('python.manager.pause')}</button>}
+        {working && task?.taskId && callEnvironment && <button onClick={cancelTask}>{t('python.shared.cancel')}</button>}
         {/* One primary action checks, plans and installs the signed dependency set. */}
         {!working && <button className={css.primary} disabled={busy.sync || !callEnvironment} onClick={() => void syncNow()}>{busy.sync ? t('python.shared.syncing') : t('python.shared.syncNow')}</button>}
         {status?.phase === 'paused' && <button disabled={busy.resume || !api?.updateMcpEnvironment} onClick={() => void perform('resume', async () => { await api?.updateMcpEnvironment?.() })}>{t('python.manager.resume')}</button>}
@@ -407,7 +418,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         {!!status?.updateJob?.totalBytes && <span>{((status.updateJob.receivedBytes ?? 0) / 1024 ** 2).toFixed(1)} / {(status.updateJob.totalBytes / 1024 ** 2).toFixed(1)} MiB</span>}
       </div>
     </div>
-    {(working || liveLog.length > 0) && <details className={css.liveLog} open={working || task?.state === 'failed' || task?.state === 'interrupted'}>
+    {(working || liveLog.length > 0) && <details className={css.liveLog} open={working || task?.state === 'failed' || task?.state === 'interrupted' || task?.state === 'partial'}>
       <summary>{t('python.shared.log')} · {liveLog.length}</summary>
       <pre role="log" aria-live="polite">{liveLog.length ? liveLog.map(line => presentPythonText(line)).join('\n') : t('python.shared.logEmpty')}</pre>
     </details>}

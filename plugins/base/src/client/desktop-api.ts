@@ -7,7 +7,7 @@ export interface McpSkillCapability { name: string; path: string; status: McpSki
 export interface McpSkillAudit { summary: Record<McpSkillDependencyStatus, number>; skills: McpSkillCapability[] }
 export interface PythonEnvironmentIdentity { snapshotId: string; environmentVersion: string; contentRevision: number; pythonVersion: string; localRevision?: number }
 export interface PythonUpdateJob { packageNames?: string[]; taskId: string; kind: string; stage: string; canPause: boolean; targetVersion?: string; receivedBytes?: number; totalBytes?: number; bytesPerSecond?: number; completedFiles?: number; totalFiles?: number; logLines?: string[] }
-export interface PythonDependencyTask { taskId: string; underlyingTaskId?: string; requestId: string; action: 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync'; layer: 'core' | 'science' | 'capability'; state: 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted'; stage: string; progress?: number; completedPackages?: number; totalPackages?: number; currentPackage?: string; message?: string; error?: string; logLines: string[]; createdAt: string; updatedAt: string; completedAt?: string; result?: Record<string, any> }
+export interface PythonDependencyTask { taskId: string; underlyingTaskId?: string; requestId: string; action: 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package'; layer: 'core' | 'science' | 'capability'; state: 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'interrupted' | 'cancelled'; stage: string; progress?: number; completedPackages?: number; totalPackages?: number; currentPackage?: string; message?: string; error?: string; logLines: string[]; createdAt: string; updatedAt: string; completedAt?: string; result?: Record<string, any> }
 export interface PythonPackagePlan { planId: string; snapshotId: string; requested: string[]; changes: Array<{ name: string; from?: string; to: string }>; error?: string }
 export interface McpEnvironmentStatus {
   activeEnvironment?: PythonEnvironmentIdentity
@@ -33,7 +33,7 @@ export interface McpEnvironmentStatus {
   resourceAvailability?: { layer: 'core' | 'science' | 'capability'; available: boolean; source?: string; reason?: string; packageCount?: number }
   lastSyncError?: string
   skillAudit?: McpSkillAudit
-  python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; packageCount?: number; message?: string }
+  python?: { ready: boolean; version?: string; executable?: string; sitePackages?: string; packageCount?: number; message?: string; runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string }
 }
 
 export interface McpPythonPackage { capabilities?: string[]; sha256?: string; dependencies?: string[]; upgradeHistory?: Array<{ from?: string; to: string; verifiedAt: string }>; verificationMessage?: string; previousVersion?: string; customized?: boolean; shadowedVersion?: string; latestError?: string; compatibleVersion?: string;  name: string; version: string; location?: string; source: 'core' | 'custom'; requiredVersion?: string; latestVersion?: string; updateAvailable?: boolean; health: 'healthy' | 'update-available' | 'locked' }
@@ -53,6 +53,10 @@ export interface McpPythonInfo {
   sitePackages?: string
   packageCount?: number
   corePackageCount?: number
+  sciencePackageCount?: number
+  scienceInstalledPackageCount?: number
+  coreReady?: boolean
+  missingCorePackages?: string[]
   overlayPackageCount?: number
   packages: McpPythonPackage[]
   skillAudit?: McpSkillAudit
@@ -141,7 +145,7 @@ export interface ZeroWallDesktopApi {
   installMcpPythonPackage?(spec: string): Promise<{ taskId: string }>
   checkMcpPythonPackageUpdates?(names?: string[]): Promise<McpPythonInfo>
   updateMcpPythonPackages?(names?: string[]): Promise<{ taskId: string }>
-  pythonEnvironment?(request: { action: 'status' | 'task_status' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; taskId?: string; layer?: 'core' | 'science' | 'capability'; packageSpec?: string; capabilityId?: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; runtimeRoot?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
+  pythonEnvironment?(request: { action: 'status' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; taskId?: string; layer?: 'core' | 'science' | 'capability'; packageSpec?: string; capabilityId?: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; runtimeRoot?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
   pauseMcpEnvironment?(): Promise<McpEnvironmentStatus>
   rollbackMcpEnvironment?(): Promise<{ taskId: string }>
   previewMcpPythonPackages?(names: string[]): Promise<PythonPackagePlan>

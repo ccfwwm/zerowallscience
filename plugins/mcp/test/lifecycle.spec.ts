@@ -12,7 +12,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import ZeroWallProjectsService from '../../projects/src/host/index.js'
 import ZeroWallMcpService, {
   ZeroWallMcpService as McpServiceClass,
-  RDATALINUX_R_MCP_LEGACY_URL,
+  RDATALINUX_R_MCP_AUTHORIZATION_ENV,
   RDATALINUX_R_MCP_URL,
 } from '../src/host/index.js'
 
@@ -111,7 +111,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   })
 
-  it('migrates only the retired R Platform endpoint to port 8099', async () => {
+  it('normalizes the managed R Platform endpoint to HTTPS', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-r-platform-'))
     roots.push(root)
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
@@ -127,20 +127,21 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
         serverName: 'rmcp',
         transport: 'streamable-http',
         enabled: false,
-        url: RDATALINUX_R_MCP_LEGACY_URL,
+        url: 'http://legacy.example.invalid/r-platform/mcp',
+        headerRefs: { Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV },
       })
       const custom = ctx.zerowallProjects.createMcpServer({
         name: 'Custom R',
         serverName: 'custom_r_platform',
         transport: 'streamable-http',
         enabled: false,
-        url: 'http://103.217.185.141:9000/r-platform/mcp',
+        url: 'https://custom.example.invalid/r-platform/mcp',
       })
 
       await ctx.plugin(ZeroWallMcpService)
       const servers = await ctx.zerowallMcp.list()
       expect(servers.find(server => server.id === migrated.id)?.url).toBe(RDATALINUX_R_MCP_URL)
-      expect(servers.find(server => server.id === custom.id)?.url).toBe('http://103.217.185.141:9000/r-platform/mcp')
+      expect(servers.find(server => server.id === custom.id)?.url).toBe('https://custom.example.invalid/r-platform/mcp')
     } finally {
       await ctx.fiber.dispose()
     }

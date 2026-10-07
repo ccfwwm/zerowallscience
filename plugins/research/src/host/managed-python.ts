@@ -15,8 +15,9 @@ import { basename, isAbsolute, join, relative, resolve } from 'node:path'
  */
 
 /**
- * The desktop points ZEROWALL_PYTHON_ROOT at <userData>/zerowall-python, so the
- * environment has to be derived from it rather than from an Electron path: host
+ * The desktop points ZEROWALL_PYTHON_ROOT at
+ * `<LocalAppData>/ZeroWall Science/Python/.zerowall`, so the environment has to
+ * be derived from it rather than from an Electron path: host
  * code runs inside the harness process, where electron is not importable.
  */
 export function scienceEnvironmentRoot(): string | undefined {
@@ -31,7 +32,7 @@ export function scienceEnvironmentRoot(): string | undefined {
     // profiles. Keep this fallback aligned with the desktop resolver: the
     // desktop passes the exact install/custom path through ZEROWALL_PYTHON_ROOT.
     const localAppData = process.env.LOCALAPPDATA?.trim()
-    return localAppData ? join(localAppData, 'ZeroWall Science', 'zerowall-python') : undefined
+    return localAppData ? join(localAppData, 'ZeroWall Science', 'Python', '.zerowall') : undefined
   })()
   if (value === undefined || value === '') return undefined
   try { return resolve(value) } catch { return undefined }
@@ -51,6 +52,10 @@ export function defaultSciencePythonRoot(): string | undefined {
     } catch { /* Preserve the existing first-run fallback. */ }
     // desktop/src/main/index.ts points the installer at <userData>/zerowall-python;
     // the interpreter itself is deliberately kept at the sibling <userData>/Python.
+    // 8.0.6 keeps the interpreter and all packages directly in the canonical
+    // `...\\ZeroWall Science\\Python` directory.  `.zerowall` is only the
+    // private journal/current-pointer directory beside it.
+    if (basename(managerRoot).toLowerCase() === '.zerowall') return resolve(managerRoot, '..')
     if (basename(managerRoot).toLowerCase() === 'zerowall-python') return join(resolve(managerRoot, '..'), 'Python')
     if (basename(managerRoot).toLowerCase() === 'python') return managerRoot
   }
@@ -102,10 +107,11 @@ export async function resolveManagedSciencePython(): Promise<ManagedSciencePytho
   const manifest = current.manifest ?? await readFile(join(installRoot, 'manifest.json'), 'utf8').then(text => JSON.parse(text) as CurrentRecord['manifest'], () => undefined)
   const within = typeof current.root === 'string' ? relative(join(root, 'slots'), current.root) : '..'
   const generation = current.generation === true && within !== '..' && !within.startsWith('..\\') && !within.startsWith('../') && !isAbsolute(within)
-  const runtimeRoot = generation ? resolve(current.root as string) : resolve(root, '..')
+  const canonicalMode = basename(root).toLowerCase() === '.zerowall'
+  const runtimeRoot = canonicalMode ? resolve(root, '..') : generation ? resolve(current.root as string) : resolve(root, '..')
   if (typeof current.runtimeRoot !== 'string' || resolve(current.runtimeRoot) !== runtimeRoot) return undefined
   if (manifest?.python?.relativeExecutable !== 'Python/python.exe' || manifest?.python?.relativeSitePackages !== 'Python/Lib/site-packages') return undefined
-  const stablePythonRoot = join(runtimeRoot, 'Python')
+  const stablePythonRoot = canonicalMode ? runtimeRoot : join(runtimeRoot, 'Python')
   const executable = join(stablePythonRoot, 'python.exe')
   const sitePackages = join(stablePythonRoot, 'Lib', 'site-packages')
   const contained = (root: string, candidate: string): boolean => { const containment = relative(root, candidate); return containment !== '..' && !containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(containment) }

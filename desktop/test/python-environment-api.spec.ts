@@ -150,7 +150,7 @@ describe('shared Python environment API', () => {
     const running = await api.request({ action: 'task_status', taskId: String(accepted.taskId), requestId: 'read-durable-progress' })
     expect(running.task).toMatchObject({ state: 'running', progress: 47, completedPackages: 7, totalPackages: 42, currentPackage: 'numpy' })
     expect((running.task as { logLines: string[] }).logLines).toContain('Installing numpy')
-    const diskTask = JSON.parse(await readFile(join(root, 'python-tasks', `${accepted.taskId}.json`), 'utf8'))
+    const diskTask = JSON.parse(await readFile(join(root, 'jobs', `${accepted.taskId}.json`), 'utf8'))
     expect(diskTask.logLines).toContain('Installing numpy')
     const operations = await readFile(join(root, 'logs', 'environment-events.jsonl'), 'utf8')
     expect(operations).toContain('Installing numpy')
@@ -164,9 +164,9 @@ describe('shared Python environment API', () => {
     const taskId = '77d07c54-98e0-40b0-8424-25a8394dba2a'
     const now = new Date().toISOString()
     const task = { taskId, requestId: 'interrupted-task', action: 'sync', layer: 'core', state: 'running', stage: 'installing', progress: 31, completedPackages: 4, totalPackages: 42, currentPackage: 'mcp', message: '正在安装 mcp', logLines: ['Collecting mcp', 'Installing mcp'], createdAt: now, updatedAt: now }
-    await mkdir(join(root, 'python-tasks'), { recursive: true })
-    await writeFile(join(root, 'python-tasks', `${taskId}.json`), JSON.stringify(task))
-    await writeFile(join(root, 'python-tasks', 'latest.json'), JSON.stringify({ taskId, updatedAt: now }))
+    await mkdir(join(root, 'jobs'), { recursive: true })
+    await writeFile(join(root, 'jobs', `${taskId}.json`), JSON.stringify(task))
+    await writeFile(join(root, 'jobs', 'latest.json'), JSON.stringify({ taskId, updatedAt: now }))
     const restarted = new PythonEnvironmentApi(root, updater as unknown as PythonUpdaterService, sync)
     await expect(restarted.request({ action: 'status', requestId: 'recover-interrupted-task' })).resolves.toMatchObject({
       task: { taskId, state: 'interrupted', progress: 31, completedPackages: 4, totalPackages: 42, logLines: ['Collecting mcp', 'Installing mcp'] },
@@ -179,10 +179,10 @@ describe('shared Python environment API', () => {
     const now = new Date().toISOString()
     const task = { taskId, requestId, action: 'sync', layer: 'core', state: 'interrupted', stage: 'installing', progress: 31, completedPackages: 4, totalPackages: 42, currentPackage: 'mcp', message: '上次安装中断', error: '任务因桌面进程结束而中断。', logLines: ['Collecting mcp', 'Installing mcp'], createdAt: now, updatedAt: now, completedAt: now }
     const requestPath = join(root, 'requests', `${requestId}.json`)
-    await mkdir(join(root, 'python-tasks'), { recursive: true })
+    await mkdir(join(root, 'jobs'), { recursive: true })
     await mkdir(join(root, 'requests'), { recursive: true })
-    await writeFile(join(root, 'python-tasks', `${taskId}.json`), JSON.stringify(task))
-    await writeFile(join(root, 'python-tasks', 'latest.json'), JSON.stringify({ taskId, updatedAt: now }))
+    await writeFile(join(root, 'jobs', `${taskId}.json`), JSON.stringify(task))
+    await writeFile(join(root, 'jobs', 'latest.json'), JSON.stringify({ taskId, updatedAt: now }))
     await writeFile(requestPath, JSON.stringify({ fingerprint: 'signed-request-receipt', state: 'failed', taskId }))
     let finishInstall: ((value: unknown) => void) | undefined
     updater.taskStatus.mockImplementation(() => new Promise(resolve => { finishInstall = resolve }) as never)
@@ -209,10 +209,10 @@ describe('shared Python environment API', () => {
     const now = new Date().toISOString()
     const task = { taskId, underlyingTaskId, requestId, action: 'sync', layer: 'core', state: 'interrupted', stage: 'installing', progress: 58, completedPackages: 24, totalPackages: 42, currentPackage: 'numpy', message: '正在安装 numpy', error: '任务因桌面进程结束而中断。', logLines: ['Downloading numpy', 'Installing numpy'], createdAt: now, updatedAt: now, completedAt: now }
     const requestPath = join(root, 'requests', `${requestId}.json`)
-    await mkdir(join(root, 'python-tasks'), { recursive: true })
+    await mkdir(join(root, 'jobs'), { recursive: true })
     await mkdir(join(root, 'requests'), { recursive: true })
-    await writeFile(join(root, 'python-tasks', `${taskId}.json`), JSON.stringify(task))
-    await writeFile(join(root, 'python-tasks', 'latest.json'), JSON.stringify({ taskId, updatedAt: now }))
+    await writeFile(join(root, 'jobs', `${taskId}.json`), JSON.stringify(task))
+    await writeFile(join(root, 'jobs', 'latest.json'), JSON.stringify({ taskId, updatedAt: now }))
     await writeFile(requestPath, JSON.stringify({ fingerprint: 'same-core-request', state: 'failed', taskId }))
     const syncWithVerification = sync as typeof sync & { verifyInstalled?: (...args: any[]) => Promise<unknown> }
     syncWithVerification.verifyInstalled = vi.fn(async () => ({ layer: 'core', pendingPackageCount: 0, installedPackageCount: 42 }))
@@ -274,6 +274,21 @@ describe('shared Python environment API', () => {
     const api = new PythonEnvironmentApi(join(root, 'zerowall-python'), updater as unknown as PythonUpdaterService, sync, missingRoamingLocation)
     await expect(api.request({ action: 'status', requestId: 'first-run-path' })).resolves.toMatchObject({ runtimeRoot: join(root, 'Python') })
     await expect(readFile(missingRoamingLocation, 'utf8')).rejects.toThrow()
+  })
+
+  it('reads runtime metadata directly from the canonical single Python directory', async () => {
+    const { root, updater, sync } = await setup()
+    const managementRoot = join(root, 'ZeroWall Science', 'Python', '.zerowall')
+    const runtimeRoot = join(root, 'ZeroWall Science', 'Python')
+    await mkdir(managementRoot, { recursive: true })
+    await mkdir(runtimeRoot, { recursive: true })
+    await writeFile(join(managementRoot, 'current.json'), JSON.stringify({ root: runtimeRoot, runtimeRoot, health: 'ready' }))
+    await writeFile(join(runtimeRoot, 'runtime.json'), JSON.stringify({ rootPath: runtimeRoot, executablePath: join(runtimeRoot, 'python.exe'), sitePackagesPath: join(runtimeRoot, 'Lib', 'site-packages'), pythonVersion: '3.12.10' }))
+    const api = new PythonEnvironmentApi(managementRoot, updater as unknown as PythonUpdaterService, sync, join(root, 'python-location.json'), undefined, runtimeRoot)
+    await expect(api.request({ action: 'status', requestId: 'single-directory-status' })).resolves.toMatchObject({
+      runtimeRoot,
+      runtime: expect.objectContaining({ rootPath: runtimeRoot }),
+    })
   })
 
   it('never exposes a legacy runtime.json path as the active shared path', async () => {
