@@ -175,7 +175,7 @@
     "pytdc": "0.1.1",
     "pytorch-lightning": "0.1.1",
     "pyzotero": "0.1.1",
-    "qiskit": "0.1.1",
+    "qiskit": "0.1.2",
     "qutip": "0.1.1",
     "rdkit": "0.1.1",
     "reasoning-trace": "0.1.1",
