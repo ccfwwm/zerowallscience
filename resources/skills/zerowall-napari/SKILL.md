@@ -5,7 +5,7 @@ description: 从 ZeroWall 打开本机 napari 查看图像并进行单页 ROI �
 
 # napari 图像查看
 
-先读取 `getScientificEngineConfigs({sessionId})` 和 `probeScientificEngine` 确认 napari 状态。napari 只使用 Host `status.runtimeRoot` 返回的 ZeroWall Science 唯一共享 Python 及其 `Lib\site-packages`；Host 在该共享环境中查找 `napari.exe`，缺失时使用该解释器执行 `-m napari`。不得配置其他解释器、创建 venv/conda 环境或修改系统 Python。发现 `science_viewer` 后使用 Host 启动。
+先读取 `getScientificEngineConfigs({sessionId})` 和 `probeScientificEngine` 确认 napari 状态。napari 只使用 Host 返回的 `status.runtimeExecutable` 和 `status.sitePackages`；不要根据 `runtimeRoot` 手工追加 `Python\\python.exe` 或 `Lib\\site-packages`。Host 在该共享环境中查找 `napari.exe`，缺失时使用同一个 `runtimeExecutable` 执行 `-m napari`。不得配置其他解释器、创建 venv/conda 环境或修改系统 Python。发现 `science_viewer` 后使用 Host 启动。
 
 
 - `{"action":"list"}` 获取当前项目资产；无需创建完整研究。

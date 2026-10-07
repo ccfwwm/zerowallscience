@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { createConnection } from 'node:net'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { buildPowerShellPythonCommand } from './python-shell.mjs'
+import { dirname, join, resolve } from 'node:path'
+import { buildCmdPythonCommand, buildPowerShellPythonCommand } from './python-shell.mjs'
 
 const packaged = existsSync(resolve(import.meta.dirname, '../app.asar/package.json'))
 const root = packaged ? resolve(import.meta.dirname, '../app.asar') : resolve(import.meta.dirname, '../..')
@@ -16,6 +16,7 @@ const override = dataOption < 0 ? process.env.ZEROWALL_USER_DATA_DIR : argv.spli
 const existingRoaming = join(process.env.APPDATA || homedir(), 'zerowall-science')
 const home = override ? resolve(override) : existsSync(existingRoaming) ? existingRoaming : join(process.env.LOCALAPPDATA || homedir(), 'zerowall-science')
 const [group, command, ...args] = argv
+const INTERACTIVE_SHELL = Symbol('interactive-shell')
 
 const HELP = {
   usage: 'zws <command> [options]',
@@ -122,21 +123,22 @@ async function run() {
       // interpreter.  PATH alone could resolve a system or Roaming Python.
       ZEROWALL_PYTHON_ROOT: runtimeRoot,
       ZEROWALL_PYTHON_EXECUTABLE: executable,
-      PATH: `${runtimeRoot};${join(runtimeRoot, 'Scripts')};${process.env.PATH || ''}`,
+      PATH: `${dirname(executable)};${join(dirname(executable), 'Scripts')};${process.env.PATH || ''}`,
     }
     delete env.PYTHONHOME
     delete env.PYTHONPATH
     env.PYTHONNOUSERSITE = '1'
     const mode = args.includes('--cmd') ? 'cmd' : 'powershell'
-    // Start the actual managed interpreter in the new console. Merely changing
-    // PATH could resolve a system Python. PowerShell uses escaped literal paths
-    // directly so it does not depend on environment-variable expansion.
+    // Enter a branded interactive shell at the managed python.exe directory.
+    // This avoids making users mistake the parent PowerShell (whose pip is
+    // system-owned) for the activated ZeroWall shell.
+    const cwd = dirname(executable)
     const child = mode === 'cmd'
-      ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/D', '/K', 'title ZeroWall Science Python && cd /d "%ZEROWALL_PYTHON_ROOT%" && "%ZEROWALL_PYTHON_EXECUTABLE%"'], { cwd: runtimeRoot, env, stdio: 'inherit', windowsHide: false })
-      : spawnSync('powershell.exe', ['-NoLogo', '-NoExit', '-Command', buildPowerShellPythonCommand(runtimeRoot, executable)], { cwd: runtimeRoot, env, stdio: 'inherit', windowsHide: false })
+      ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/D', '/K', `title ZeroWall Science Python && ${buildCmdPythonCommand(runtimeRoot, executable)}`], { cwd, env, stdio: 'inherit', windowsHide: false })
+      : spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NoExit', '-Command', buildPowerShellPythonCommand(runtimeRoot, executable)], { cwd, env, stdio: 'inherit', windowsHide: false })
     if (child.error) throw child.error
     process.exitCode = child.status ?? 1
-    return undefined
+    return INTERACTIVE_SHELL
   }
   if (group === 'python' && ['status', 'install', 'update', 'rollback'].includes(command)) return invoke(`python.${command}`, catalog ? [catalog] : [])
   if (group === 'env') {
@@ -176,4 +178,11 @@ async function run() {
   }
   throw new Error('用法：zws version|doctor|update；zws plugin|skill|mcp|env|python <操作>。使用 zws help 查看完整命令。')
 }
-try { console.log(JSON.stringify((await run()) ?? { ok: true }, null, 2)) } catch (error) { console.error(error.message); process.exitCode = 1 }
+try {
+  const result = await run()
+  // Interactive shell commands deliberately have no JSON result. Printing a
+  // success object after the user closes the shell makes it look as if the
+  // managed interpreter was never entered. Other management commands retain
+  // the historical `{ "ok": true }` response for compatibility.
+  if (result !== INTERACTIVE_SHELL) console.log(JSON.stringify(result ?? { ok: true }, null, 2))
+} catch (error) { console.error(error.message); process.exitCode = 1 }

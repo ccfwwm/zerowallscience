@@ -27,14 +27,15 @@ describe('createPythonTerminalLaunch', () => {
     })
 
     expect(launch.cwd).toBe(`${runtimeRoot}\\generations\\generation-1`)
-    expect(launch.args).toEqual([
-      '-NoLogo',
-      '-NoExit',
-      '-Command',
-      `$ErrorActionPreference = 'Stop'; Set-Location -LiteralPath '${runtimeRoot}'; & '${executable}'`,
-    ])
+    expect(launch.args.slice(0, 3)).toEqual(['-NoLogo', '-NoExit', '-Command'])
+    expect(launch.args[3]).toContain(`Set-Location -LiteralPath '${runtimeRoot}\\generations\\generation-1'`)
+    expect(launch.args[3]).toContain(`function global:pip { & $env:ZEROWALL_PYTHON_EXECUTABLE -m pip @args }`)
+    expect(launch.args[3]).toContain(`function global:python { & $env:ZEROWALL_PYTHON_EXECUTABLE @args }`)
+    expect(launch.args[3]).toContain('[ZeroWall Python]')
+    expect(launch.args[3]).not.toMatch(new RegExp(`; & '${executable.replaceAll('\\', '\\\\')}'$`))
     expect(launch.env.PYTHONNOUSERSITE).toBe('1')
     expect(launch.env.PATH).toBe(`${runtimeRoot}\\generations\\generation-1;${runtimeRoot}\\generations\\generation-1\\Scripts;C:\\Windows\\System32`)
+    expect(launch.env.ZEROWALL_PYTHON_EXECUTABLE).toBe(executable)
     expect(launch.env).not.toHaveProperty('PYTHONHOME')
     expect(launch.env).not.toHaveProperty('PYTHONPATH')
   })
@@ -44,7 +45,8 @@ describe('createPythonTerminalLaunch', () => {
     const executable = `${runtimeRoot}\\python.exe`
     const launch = createPythonTerminalLaunch(runtimeRoot, executable, {})
 
-    expect(launch.args[3]).toBe(`$ErrorActionPreference = 'Stop'; Set-Location -LiteralPath 'C:\\Users\\O''Neil\\ZeroWall Science\\Python'; & 'C:\\Users\\O''Neil\\ZeroWall Science\\Python\\python.exe'`)
+    expect(launch.args[3]).toContain(`Set-Location -LiteralPath 'C:\\Users\\O''Neil\\ZeroWall Science\\Python'`)
+    expect(launch.args[3]).toContain(`function global:pip { & $env:ZEROWALL_PYTHON_EXECUTABLE -m pip @args }`)
   })
 
   it('rejects executables outside the managed runtime', () => {

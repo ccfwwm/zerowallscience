@@ -86,7 +86,7 @@ Keep the package pins in the manifest and record them in the analysis receipt:
 ```text
 ZeroWall Settings > Python environment > Check dependencies > Preview sync > Apply sync
 Required pins: fluidsim[fft]==0.9.0, fluidfft==0.4.5, pyFFTW==0.15.1
-Interpreter: the shared Python executable returned by the Host (`status.runtimeRoot`); it may be beside the application or under `%LOCALAPPDATA%/ZeroWall Science/Python` when the install directory is protected.
+Interpreter: use the shared Python executable returned by the Host (`status.runtimeExecutable`) and its returned `status.sitePackages`; do not derive either path from `runtimeRoot` or select an application, Roaming, slot, venv, or Conda directory.
 ```
 
 The project lock is the reproducibility record; direct pins alone do not freeze

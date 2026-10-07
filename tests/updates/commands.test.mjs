@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createConnection } from 'node:net'
@@ -80,8 +80,25 @@ try {
 test('Python shell PowerShell command uses escaped paths instead of environment variables', () => {
   const runtimeRoot = "C:\\Users\\O'Neil\\AppData\\Local\\ZeroWall Science\\Python"
   const executable = `${runtimeRoot}\\python.exe`
-  assert.equal(
-    buildPowerShellPythonCommand(runtimeRoot, executable),
-    "$ErrorActionPreference = 'Stop'; Set-Location -LiteralPath 'C:\\Users\\O''Neil\\AppData\\Local\\ZeroWall Science\\Python'; & 'C:\\Users\\O''Neil\\AppData\\Local\\ZeroWall Science\\Python\\python.exe'",
-  )
+  const command = buildPowerShellPythonCommand(runtimeRoot, executable)
+  assert.match(command, /Set-Location -LiteralPath 'C:\\Users\\O''Neil\\AppData\\Local\\ZeroWall Science\\Python'/)
+  assert.match(command, /function global:pip \{ & \$env:ZEROWALL_PYTHON_EXECUTABLE -m pip @args \}/)
+  assert.match(command, /function global:python \{ & \$env:ZEROWALL_PYTHON_EXECUTABLE @args \}/)
+  assert.match(command, /\[ZeroWall Python\]/)
+  assert.doesNotMatch(command, /; & 'C:\\Users\\O''Neil\\AppData\\Local\\ZeroWall Science\\Python\\python\.exe'$/)
+})
+
+test('managed Python PowerShell shell binds cwd, python and pip to the selected interpreter', { skip: process.platform !== 'win32' }, async context => {
+  const localAppData = process.env.LOCALAPPDATA
+  if (!localAppData) return context.skip('LOCALAPPDATA is unavailable')
+  const runtimeRoot = join(localAppData, 'ZeroWall Science', 'Python')
+  const executable = join(runtimeRoot, 'python.exe')
+  await access(executable).catch(() => context.skip('Canonical ZeroWall Python runtime is not installed on this host'))
+  const command = buildPowerShellPythonCommand(runtimeRoot, executable)
+  const script = `${command}; Write-Output ('cwd=' + (Get-Location).Path); python -c 'import sys; print(sys.executable)'; pip -V; pip list --format=freeze | Select-Object -First 1`
+  const result = await run('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true })
+  assert.match(result.stdout, new RegExp(`cwd=${runtimeRoot.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}`, 'iu'))
+  assert.match(result.stdout, new RegExp(executable.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'iu'))
+  assert.match(result.stdout, new RegExp(`${runtimeRoot.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\\\Lib\\\\site-packages\\\\pip`, 'iu'))
+  assert.doesNotMatch(result.stdout, /Program Files\\Python312\\Lib\\site-packages\\pip/iu)
 })

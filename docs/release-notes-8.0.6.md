@@ -7,7 +7,7 @@
 - Python、pip、核心依赖和科研依赖统一使用 `%LOCALAPPDATA%\\ZeroWall Science\\Python`，任务、日志、计划和回滚记录位于该目录下的 `.zerowall`。
 - 核心层要求 42 个包全部核验通过；科研层允许部分成功，已安装的包不会因为单包失败被整体回滚。
 - 网络中断、镜像缺包、版本冲突和构建失败都会保留逐包结果，支持重试、指定版本安装和重启后恢复。
-- Python 命令行直接进入统一运行时，可使用 `zws python shell`、`--powershell` 或 `--cmd` 执行 `python` 与 `pip`。
+- `zws python shell`、`--powershell`、`--cmd` 和 Python 设置页的命令行按钮进入有明显标识的 ZeroWall 交互 Shell，工作目录切到实际 `python.exe` 所在目录；Shell 中的 `python`、`pip`、`pip3` 都绑定到该解释器，`pip list` 不会落到系统 Python。
 
 ## 科研依赖与兼容性
 

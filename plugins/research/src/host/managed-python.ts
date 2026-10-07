@@ -119,7 +119,16 @@ export async function resolveManagedSciencePython(): Promise<ManagedSciencePytho
   const relativeSitePackages = manifest?.python?.relativeSitePackages
   const canonicalLayout = relativeExecutable === 'python.exe' && relativeSitePackages === 'Lib/site-packages'
   const compatibilityLayout = relativeExecutable === 'Python/python.exe' && relativeSitePackages === 'Python/Lib/site-packages'
-  const singleDirectoryRuntime = canonicalMode && !generation && installRoot === runtimeRoot && canonicalLayout
+  // The signed bootstrap keeps its archive-relative paths for signature and
+  // rollback compatibility.  Single-directory activation projects those
+  // files into `<LocalAppData>\\ZeroWall Science\\Python` and records the
+  // original archive layout in runtimeLayout.  Treat that projected record as
+  // canonical as well; otherwise every scientific engine reports “Python not
+  // found” immediately after a successful first-run installation.
+  const projectedCanonicalLayout = compatibilityLayout
+    && current.runtimeLayout?.relativeExecutable === relativeExecutable
+    && current.runtimeLayout?.relativeSitePackages === relativeSitePackages
+  const singleDirectoryRuntime = canonicalMode && !generation && installRoot === runtimeRoot && (canonicalLayout || projectedCanonicalLayout)
   const legacyRuntime = compatibilityLayout && (!canonicalMode || generation)
   if (!singleDirectoryRuntime && !legacyRuntime) return undefined
   const stablePythonRoot = singleDirectoryRuntime ? runtimeRoot : join(runtimeRoot, 'Python')

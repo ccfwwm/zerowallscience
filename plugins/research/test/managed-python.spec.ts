@@ -61,3 +61,31 @@ it('resolves the canonical single-directory Python projected in current.json', a
     await rm(root, { recursive: true, force: true })
   }
 })
+
+it('resolves a flat runtime when current.json keeps the signed archive layout', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'science-signed-layout-python-'))
+  const runtime = join(root, 'ZeroWall Science', 'Python')
+  const manager = join(runtime, '.zerowall')
+  vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
+  try {
+    await mkdir(join(runtime, 'Lib', 'site-packages'), { recursive: true })
+    await mkdir(manager, { recursive: true })
+    await writeFile(join(runtime, 'python.exe'), 'fixture')
+    await writeFile(join(manager, 'current.json'), JSON.stringify({
+      // The signed manifest deliberately retains archive-relative paths.
+      root: runtime,
+      runtimeRoot: runtime,
+      runtimeLayout: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' },
+      health: 'ready',
+      manifest: { python: { version: '3.12.10', relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } },
+    }))
+    await expect(resolveManagedSciencePython()).resolves.toMatchObject({
+      root: runtime,
+      executable: join(runtime, 'python.exe'),
+      sitePackages: join(runtime, 'Lib', 'site-packages'),
+    })
+  } finally {
+    vi.unstubAllEnvs()
+    await rm(root, { recursive: true, force: true })
+  }
+})

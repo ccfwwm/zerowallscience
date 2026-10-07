@@ -1004,15 +1004,25 @@ if (ownsInstance) app.whenReady().then(async () => {
       const executable = await realpath(target.executable)
       const relativeExecutable = relative(runtimeRoot, executable)
       if (!relativeExecutable || relativeExecutable.startsWith('..') || isAbsolute(relativeExecutable) || basename(executable).toLowerCase() !== 'python.exe' || !(await stat(executable)).isFile()) return false
-      const command = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
       const launch = createPythonTerminalLaunch(runtimeRoot, executable, process.env)
-      const child = spawn(command, launch.args, { cwd: launch.cwd, env: launch.env, detached: true, windowsHide: false, stdio: 'ignore' })
-      await new Promise<void>((resolveOpen, rejectOpen) => {
-        child.once('spawn', resolveOpen)
-        child.once('error', rejectOpen)
-      })
-      child.unref()
-      return true
+      // Electron has no interactive stdin. Write a tiny, user-scoped launcher
+      // under the canonical runtime and let Windows create a real console for
+      // it. The PowerShell script sets PATH and defines pip/python wrappers,
+      // so the terminal remains bound to this managed interpreter after the
+      // initial REPL is closed.
+      const shellDirectory = join(runtimeRoot, '.zerowall')
+      await mkdir(shellDirectory, { recursive: true })
+      const scriptPath = join(shellDirectory, 'python-shell.ps1')
+      const commandPath = join(shellDirectory, 'python-shell.cmd')
+      // Windows PowerShell 5 treats UTF-8 without a BOM as the active ANSI
+      // code page. Include a BOM so managed paths containing non-ASCII user
+      // names survive script parsing.
+      await writeFile(scriptPath, `\uFEFF${launch.args[3] ?? ''}\r\n`, { encoding: 'utf8' })
+      const quote = (value: string): string => `"${value.replaceAll('"', '""')}"`
+      const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+      await writeFile(commandPath, `@echo off\r\nstart "ZeroWall Science Python" ${quote(powershell)} -NoLogo -NoProfile -NoExit -ExecutionPolicy Bypass -File ${quote(scriptPath)}\r\n`, { encoding: 'utf8' })
+      const error = await shell.openPath(commandPath)
+      return error === ''
     } catch { return false }
   })
   ipcMain.handle('desktop:open-pptx', async (_event, value: unknown) => {
