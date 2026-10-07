@@ -50,6 +50,29 @@ describe('managed Python runtime', () => {
     process.env.ZEROWALL_PYTHON_ROOT = store
     await expect(resolveManagedPython()).resolves.toMatchObject({ root: join(runtimeRoot, 'Python'), sitePackages })
   })
+  it('resolves the canonical single-directory runtime despite legacy runtimeLayout metadata', async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), 'zerowall-flat-python-')); roots.push(runtimeRoot)
+    const manager = join(runtimeRoot, '.zerowall')
+    const sitePackages = join(runtimeRoot, 'Lib', 'site-packages')
+    await mkdir(sitePackages, { recursive: true })
+    await mkdir(manager, { recursive: true })
+    await writeFile(join(runtimeRoot, 'python.exe'), 'fixture')
+    const manifest = { python: { version: '3.12.10', relativeExecutable: 'python.exe', relativeSitePackages: 'Lib/site-packages' } }
+    await writeFile(join(manager, 'current.json'), JSON.stringify({
+      root: runtimeRoot,
+      runtimeRoot,
+      health: 'ready',
+      runtimeLayout: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' },
+      manifest,
+    }))
+    process.env.ZEROWALL_PYTHON_ROOT = manager
+    await expect(resolveManagedPython()).resolves.toMatchObject({
+      executable: join(runtimeRoot, 'python.exe'),
+      root: runtimeRoot,
+      sitePackages,
+      snapshotRoot: runtimeRoot,
+    })
+  })
   it('uses the current snapshot CA for all Python aliases', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-ca-')); roots.push(root)
     await mkdir(join(root, 'certifi')); const ca = join(root, 'certifi', 'cacert.pem'); await writeFile(ca, 'certificate fixture')

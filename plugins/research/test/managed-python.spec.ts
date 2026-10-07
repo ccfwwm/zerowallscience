@@ -30,3 +30,34 @@ it('pins scientific runners to the selected generation and retains a live Host l
     await rm(root, { recursive: true, force: true })
   }
 })
+
+it('resolves the canonical single-directory Python projected in current.json', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'science-canonical-python-'))
+  const runtime = join(root, 'ZeroWall Science', 'Python')
+  const manager = join(runtime, '.zerowall')
+  vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
+  try {
+    await mkdir(manager, { recursive: true })
+    await mkdir(join(runtime, 'Lib', 'site-packages'), { recursive: true })
+    await writeFile(join(runtime, 'python.exe'), 'fixture')
+    await writeFile(join(manager, 'current.json'), JSON.stringify({
+      root: runtime,
+      runtimeRoot: runtime,
+      health: 'ready',
+      // Older metadata can coexist with the projected manifest after the
+      // single-directory bootstrap. It must not redirect engines back into
+      // a nested Python/ directory.
+      runtimeLayout: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' },
+      manifest: { python: { version: '3.12.10', relativeExecutable: 'python.exe', relativeSitePackages: 'Lib/site-packages' } },
+    }))
+    await expect(resolveManagedSciencePython()).resolves.toMatchObject({
+      root: runtime,
+      executable: join(runtime, 'python.exe'),
+      sitePackages: join(runtime, 'Lib', 'site-packages'),
+    })
+    expect(defaultSciencePythonExecutable()).toBe(join(runtime, 'python.exe'))
+  } finally {
+    vi.unstubAllEnvs()
+    await rm(root, { recursive: true, force: true })
+  }
+})

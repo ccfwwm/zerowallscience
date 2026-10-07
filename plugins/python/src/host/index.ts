@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { access, lstat, readFile, mkdir, writeFile, rm } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
@@ -16,7 +16,7 @@ interface PythonArgs { code: string; description: string; timeoutMs?: number; wo
 interface PythonResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; python: string }
 interface RArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
 interface RResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; rscript: string }
-interface CurrentRecord { root?: unknown; health?: unknown; manifest?: Manifest; runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string; generation?: boolean }
+interface CurrentRecord { root?: unknown; health?: unknown; manifest?: Manifest; runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string; runtimeLayout?: { relativeExecutable?: unknown; relativeSitePackages?: unknown }; generation?: boolean }
 interface Manifest {
   version?: unknown
   python?: { version?: unknown; relativeExecutable?: unknown; relativeSitePackages?: unknown }
@@ -50,14 +50,20 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   const manifest = current.manifest ?? JSON.parse(await readFile(join(installRoot, 'manifest.json'), 'utf8')) as Manifest
   const within = relative(join(root, 'slots'), installRoot)
   const generation = current.generation === true && within !== '..' && !within.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(within)
-  const runtimeRoot = generation ? installRoot : resolve(root, '..')
-  if (current.runtimeRoot && resolve(current.runtimeRoot) !== runtimeRoot) {
+  const canonicalManager = basename(root).toLowerCase() === '.zerowall'
+  const canonicalRuntimeRoot = canonicalManager ? resolve(root, '..') : undefined
+  const runtimeRoot = generation ? installRoot : canonicalRuntimeRoot ?? (current.runtimeRoot ? resolve(current.runtimeRoot) : resolve(root, '..'))
+  if ((generation || canonicalManager) && !current.runtimeRoot || current.runtimeRoot && resolve(current.runtimeRoot) !== runtimeRoot) {
     throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall permits only its single shared Python runtime.')
   }
-  if (manifest.python?.relativeExecutable !== 'Python/python.exe' || manifest.python?.relativeSitePackages !== 'Python/Lib/site-packages' || !current.runtimeRoot) {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: The legacy Python layout must be migrated to the shared runtime before use.')
+  const canonicalLayout = manifest.python?.relativeExecutable === 'python.exe' && manifest.python?.relativeSitePackages === 'Lib/site-packages'
+  const compatibilityLayout = manifest.python?.relativeExecutable === 'Python/python.exe' && manifest.python?.relativeSitePackages === 'Python/Lib/site-packages'
+  const flatRuntime = canonicalManager && !generation && installRoot === runtimeRoot && canonicalLayout
+  const nestedRuntime = compatibilityLayout && (!canonicalManager || generation)
+  if (!flatRuntime && !nestedRuntime) {
+    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: Python manifest does not describe the managed shared runtime.')
   }
-  const sharedPythonRoot = join(runtimeRoot, 'Python')
+  const sharedPythonRoot = flatRuntime ? runtimeRoot : join(runtimeRoot, 'Python')
   const executable = join(sharedPythonRoot, 'python.exe')
   const sitePackages = join(sharedPythonRoot, 'Lib', 'site-packages')
   const isContained = (candidate: string): boolean => {
@@ -67,11 +73,10 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   if (!isContained(executable) || !isContained(sitePackages)) {
     throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: Python executable escapes the managed environment.')
   }
-  const info = await lstat(executable).catch(() => undefined)
+  const [info, siteInfo] = await Promise.all([lstat(executable).catch(() => undefined), lstat(sitePackages).catch(() => undefined)])
   if (info === undefined || !info.isFile() || info.isSymbolicLink()) {
     throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python executable is missing.')
   }
-  const siteInfo = await lstat(sitePackages).catch(() => undefined)
   if (siteInfo === undefined || !siteInfo.isDirectory() || siteInfo.isSymbolicLink()) {
     throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python site-packages is missing.')
   }

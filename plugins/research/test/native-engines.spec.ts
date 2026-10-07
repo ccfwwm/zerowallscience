@@ -20,9 +20,15 @@ async function fixture() {
   // The shared interpreter is represented by a real Node process, which rejects napari's -m option.
   const manager = join(root, 'zerowall-python')
   const python = join(root, 'Python', 'python.exe')
-  await mkdir(manager)
-  await mkdir(join(root, 'Python'))
+  await mkdir(join(root, 'Python', 'Lib', 'site-packages'), { recursive: true })
+  await mkdir(manager, { recursive: true })
   await copyFile(process.execPath, python)
+  await writeFile(join(manager, 'current.json'), JSON.stringify({
+    root: join(manager, 'versions', 'fixture'),
+    runtimeRoot: root,
+    health: 'ready',
+    manifest: { python: { version: '3.12.10', relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } },
+  }))
   vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
   return { root, store, project, service }
 }
@@ -196,6 +202,34 @@ describe('managed BrainGlobe atlas resolution', () => {
     vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
     expect(await resolveManagedBrainPython()).toMatchObject({ executable: python, root: join(userData, 'Python'), sitePackages })
     for (const id of ['napari', 'brain-globe', 'he-python', 'he-stardist'] as const) expect(defaultScientificEngineConfig(id).pythonPath).toBeUndefined()
+  })
+  it('recognizes the canonical single-directory Python for BrainGlobe and HE probes', async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), 'zerowall-flat-science-python-'))
+    const manager = join(runtimeRoot, '.zerowall')
+    const python = join(runtimeRoot, 'python.exe')
+    const sitePackages = join(runtimeRoot, 'Lib', 'site-packages')
+    await mkdir(sitePackages, { recursive: true })
+    await mkdir(manager, { recursive: true })
+    await copyFile(process.execPath, python)
+    await writeFile(join(manager, 'current.json'), JSON.stringify({
+      root: runtimeRoot,
+      runtimeRoot,
+      health: 'ready',
+      runtimeLayout: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' },
+      manifest: { python: { version: '3.12.10', relativeExecutable: 'python.exe', relativeSitePackages: 'Lib/site-packages' } },
+    }))
+    cleanups.push(() => rm(runtimeRoot, { recursive: true, force: true }))
+    vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
+    delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+    expect(await resolveManagedBrainPython()).toMatchObject({ root: runtimeRoot, executable: python, sitePackages })
+
+    const { service, project } = await fixture()
+    // The fixture creates a second legacy record, so restore the flat runtime
+    // pointer before probing the HE engine.
+    vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
+    const status = await service.probe(project.id, 'he-python')
+    expect(status.path).toBe(python)
+    expect(status.reason).not.toContain('未找到受管理的 ZeroWall Python 环境')
   })
   it('reports an installed atlas only from a non-empty volume, never from a manifest alone', async () => {
     const store = await managedRoot()

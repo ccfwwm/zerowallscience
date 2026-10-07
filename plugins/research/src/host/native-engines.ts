@@ -339,9 +339,9 @@ export class NativeEngineService {
   }
 
   private async probeNapari(config: ScientificEngineConfig): Promise<ScientificEngineStatus> {
-    const python = defaultSciencePythonExecutable()
-    if (!python) return { id: 'napari', name: engineName('napari'), available: false, status: 'invalid', source: config.source, reason: '未找到 ZeroWall 集成 Python；napari 与 BrainGlobe 共用该环境。' }
-    if (!existsSync(python)) return { id: 'napari', name: engineName('napari'), available: false, status: 'invalid', source: config.source, path: python, reason: `未找到 Python：${python}` }
+    const managed = await resolveManagedSciencePython()
+    const python = managed?.executable
+    if (!python) return { id: 'napari', name: engineName('napari'), available: false, status: 'invalid', source: config.source, reason: '未找到受管理的 ZeroWall Python 环境；napari 与 BrainGlobe 共用该环境。' }
     const result = await this.runProbe('napari', engineName('napari'), python, ['-c', 'import napari; print(napari.__version__)'], config)
     const launcher = discoverNapariExecutable()
     return {
@@ -485,7 +485,7 @@ export class NativeEngineService {
         env.ZEROWALL_ANNOTATION_AUTORUN = '1'
         record.annotationBridge = { viewerId: bridge.viewerId, baseRevisionId: bridge.baseRevisionId, sourceSha256: bridge.sourceSha256, returnPath, adapterSha256: createHash('sha256').update(script).digest('hex') }
         if (engine === 'napari') {
-          const napariPython = defaultSciencePythonExecutable()
+          const napariPython = (await resolveManagedSciencePython())?.executable
           if (!napariPython || !existsSync(napariPython)) throw new Error('napari ROI bridge needs the ZeroWall shared Python interpreter.')
           path = await realpath(napariPython)
           env = await engineEnvironment(engine, path)

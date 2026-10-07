@@ -9,7 +9,7 @@ Conda environment ou chemin `site-packages` privé n'est créé :
 "$ZEROWALL_PYTHON" -m pipeline <sous-commande> [options]
 ```
 
-`ZEROWALL_PYTHON` doit pointer vers `Python/python.exe` du runtime partagé;
+`ZEROWALL_PYTHON` doit pointer vers l’exécutable renvoyé par le Host (`status.runtimeExecutable`), normalement `%LOCALAPPDATA%\\ZeroWall Science\\Python\\python.exe` sous Windows; ne construisez pas un ancien chemin `Python/python.exe` à la main.
 la fenêtre Python du logiciel peut ouvrir directement cette ligne de commande.
 
 Six sous-commandes : `status`, `run`, `lint`, `reactivate-ocr`, `doctor`,

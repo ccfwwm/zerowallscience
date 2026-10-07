@@ -5,7 +5,7 @@ description: 科研图片查重。检查图片、递归目录或 PDF 中的整�
 
 # ZeroWall 科研图片查重
 
-通过现有 `python` 工具执行本技能目录下的 `scripts/zerowall_integrity.py`。使用 ZeroWall Science 唯一共享 Python（`Python/python.exe`）和唯一的 `Python/Lib/site-packages`；不要创建 venv、overlay 或其他 Python 环境。不得为查重另装独立运行时或启动独立聊天界面。脚本的绝对路径以本技能实际加载路径为准。
+通过现有 `python` 工具执行本技能目录下的 `scripts/zerowall_integrity.py`。使用 Host 返回的 ZeroWall Science 唯一共享 Python（Windows 通常为 `%LOCALAPPDATA%\\ZeroWall Science\\Python\\python.exe`）和该运行时的 `Lib\\site-packages`；不要根据旧的 `Python/python.exe`、slot 或 Roaming 路径自行拼接，也不要创建 venv、overlay 或其他 Python 环境。不得为查重另装独立运行时或启动独立聊天界面。脚本的绝对路径以本技能实际加载路径为准。
 
 先运行 `doctor`。缺少依赖时，使用 ZeroWall Science 的共享 Python 依赖更新功能检查签名清单、预览变更并应用更新；完成后重新运行 `doctor`。不要通过脚本 `setup` 或独立 pip 安装绕过清单。安装失败应报告错误，不能把未执行说成“无重复”。
 

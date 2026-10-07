@@ -21,7 +21,7 @@ The Qiskit GitHub repository published a `2.5.1` patch release on 2026-07-23, bu
 
 The repository recommends Python 3.13. Qiskit 2.5 supports CPython 3.10 and newer on supported 64-bit platforms. In ZeroWall Science, use the one shared Python 3.12 runtime. Do not create a venv, Conda environment, or project-local package directory.
 
-Open **Settings > Python environment**, add the required Qiskit pins to the signed shared dependency manifest, and run **Preview sync > Apply sync**. The manifest installs every declared package into the shared `Python/Lib/site-packages`; the live installation log is available in that settings page and from **Open Python terminal**.
+Open **Settings > Python environment**, add the required Qiskit pins to the signed shared dependency manifest, and run **Preview sync > Apply sync**. The manifest installs every declared package into the shared runtime reported by Host (`runtimeRoot`, `runtimeExecutable`, and `sitePackages`); do not construct a legacy `Python/Lib/site-packages` path. The live installation log is available in that settings page and from **Open Python terminal**.
 
 Required pins for this skill include:
 

@@ -1,6 +1,6 @@
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, lstat } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
 
 /**
@@ -108,17 +108,28 @@ export async function resolveManagedSciencePython(): Promise<ManagedSciencePytho
   const within = typeof current.root === 'string' ? relative(join(root, 'slots'), current.root) : '..'
   const generation = current.generation === true && within !== '..' && !within.startsWith('..\\') && !within.startsWith('../') && !isAbsolute(within)
   const canonicalMode = basename(root).toLowerCase() === '.zerowall'
-  const runtimeRoot = canonicalMode ? resolve(root, '..') : generation ? resolve(current.root as string) : resolve(root, '..')
+  const canonicalRuntimeRoot = canonicalMode ? resolve(root, '..') : undefined
+  const runtimeRoot = generation ? installRoot : canonicalRuntimeRoot ?? (typeof current.runtimeRoot === 'string' ? resolve(current.runtimeRoot) : resolve(root, '..'))
   if (typeof current.runtimeRoot !== 'string' || resolve(current.runtimeRoot) !== runtimeRoot) return undefined
-  if (manifest?.python?.relativeExecutable !== 'Python/python.exe' || manifest?.python?.relativeSitePackages !== 'Python/Lib/site-packages') return undefined
-  const stablePythonRoot = canonicalMode ? runtimeRoot : join(runtimeRoot, 'Python')
+  // current.json keeps the signed archive's historical runtimeLayout for
+  // compatibility, while manifest.python is projected to the actual flat
+  // user runtime by the 8.0.6 installer. Treat the signed manifest projection
+  // as authoritative and keep the old nested layout only for legacy profiles.
+  const relativeExecutable = manifest?.python?.relativeExecutable
+  const relativeSitePackages = manifest?.python?.relativeSitePackages
+  const canonicalLayout = relativeExecutable === 'python.exe' && relativeSitePackages === 'Lib/site-packages'
+  const compatibilityLayout = relativeExecutable === 'Python/python.exe' && relativeSitePackages === 'Python/Lib/site-packages'
+  const singleDirectoryRuntime = canonicalMode && !generation && installRoot === runtimeRoot && canonicalLayout
+  const legacyRuntime = compatibilityLayout && (!canonicalMode || generation)
+  if (!singleDirectoryRuntime && !legacyRuntime) return undefined
+  const stablePythonRoot = singleDirectoryRuntime ? runtimeRoot : join(runtimeRoot, 'Python')
   const executable = join(stablePythonRoot, 'python.exe')
   const sitePackages = join(stablePythonRoot, 'Lib', 'site-packages')
   const contained = (root: string, candidate: string): boolean => { const containment = relative(root, candidate); return containment !== '..' && !containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(containment) }
   if (!contained(stablePythonRoot, executable) || !contained(stablePythonRoot, sitePackages)) return undefined
   try {
-    const info = await stat(executable)
-    if (!info.isFile()) return undefined
+    const [executableInfo, sitePackagesInfo] = await Promise.all([lstat(executable), lstat(sitePackages)])
+    if (!executableInfo.isFile() || executableInfo.isSymbolicLink() || !sitePackagesInfo.isDirectory() || sitePackagesInfo.isSymbolicLink()) return undefined
   } catch { return undefined }
   if (generation) retainScienceSnapshot(root, installRoot)
   return { executable, root: stablePythonRoot, sitePackages }
