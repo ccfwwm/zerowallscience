@@ -325,6 +325,20 @@ describe('Python dependency panel', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: '修复核心运行环境' }))
     await waitFor(() => expect(repair).toHaveBeenCalledTimes(1))
   })
+  it('keeps a retry action visible after a failed core task is restored from disk', async () => {
+    const retry = vi.fn(async (request: any) => request.action === 'status'
+      ? {
+          status: { phase: 'failed', lastUpdateError: 'core verification failed' },
+          inventory: { ready: false, packages: [], coreReady: false, missingCorePackages: [] },
+          task: { taskId: 'core-failed', requestId: 'core-request', action: 'sync', layer: 'core', state: 'failed', stage: 'failed', error: 'core verification failed', logLines: [], createdAt: '2026-10-07T00:00:00Z', updatedAt: '2026-10-07T00:00:01Z' },
+        }
+      : { requestId: request.requestId, taskId: 'core-retry', queued: true, task: { taskId: 'core-retry', requestId: request.requestId, action: 'sync', layer: 'core', state: 'queued', stage: 'queued', logLines: [], createdAt: '2026-10-07T00:00:00Z', updatedAt: '2026-10-07T00:00:00Z' } })
+    window.zerowallDesktop = { pythonEnvironment: retry } as any
+    render(<PythonEnvironmentPanel t={zhT} />)
+    const button = await screen.findByRole('button', { name: '重试核心依赖安装' })
+    fireEvent.click(button)
+    await waitFor(() => expect(retry).toHaveBeenCalledWith(expect.objectContaining({ action: 'sync', layer: 'core', confirm: true, requestId: expect.any(String) })))
+  })
   it('saves a selected writable parent and keeps the new path visible until restart', async () => {
     const chooseDirectory = vi.fn(async () => 'C:\\ZeroWall Data')
     const restart = vi.fn(async () => true)

@@ -270,8 +270,10 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const working = taskWorking || runtimeWorking
   // A legacy generation can contain a healthy interpreter while its signed
   // ZeroWall MCP closure is incomplete. Startup queues a durable automatic
-  // repair; this button remains a manual retry when that task has failed.
-  const coreRepairRequired = info?.ready === true && (info.coreReady === false || (info.missingCorePackages?.length ?? 0) > 0)
+  // repair; keep the action visible after a failed/interrupted task even when
+  // the inventory snapshot temporarily reports `ready: false`.
+  const coreTaskFailed = task?.layer === 'core' && ['failed', 'partial', 'interrupted', 'cancelled'].includes(task.state)
+  const coreRepairRequired = coreTaskFailed || (info?.ready === true && (info.coreReady === false || (info.missingCorePackages?.length ?? 0) > 0))
   useEffect(() => {
     if (!working) return
     const timer = window.setInterval(() => { void loadStatus().catch(() => undefined) }, 1500)
@@ -411,7 +413,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
         {/* One primary action checks, plans and installs the signed dependency set. */}
         {!working && <button className={css.primary} disabled={busy.sync || !callEnvironment} onClick={() => void syncNow()}>{busy.sync ? t('python.shared.syncing') : t('python.shared.syncNow')}</button>}
         {status?.phase === 'paused' && <button disabled={busy.resume || !api?.updateMcpEnvironment} onClick={() => void perform('resume', async () => { await api?.updateMcpEnvironment?.() })}>{t('python.manager.resume')}</button>}
-        {!working && status?.phase !== 'paused' && !inventoryLoading && coreRepairRequired && <button disabled={busy['core-sync'] || (callEnvironment ? false : !api?.updateMcpEnvironment)} onClick={() => callEnvironment ? void installCore() : setInstallRuntime(true)}>{t('python.shared.repairCore')}</button>}
+        {!working && status?.phase !== 'paused' && !inventoryLoading && coreRepairRequired && <button disabled={busy['core-sync'] || (callEnvironment ? false : !api?.updateMcpEnvironment)} onClick={() => callEnvironment ? void installCore() : setInstallRuntime(true)}>{coreTaskFailed ? t('python.shared.retryCore') : t('python.shared.repairCore')}</button>}
         {!working && status?.phase !== 'paused' && !inventoryLoading && !info?.ready && <button disabled={busy.bootstrap || !api?.updateMcpEnvironment} onClick={() => setInstallRuntime(true)}>{t('python.shared.installRuntime')}</button>}
         {status?.rollbackAvailable && !working && <button onClick={() => void perform('rollback', async () => { await api?.rollbackMcpEnvironment?.(); setFeedback(t('python.manager.rollbackQueued')) })}>{t('python.manager.rollback')}</button>}
         {!!status?.updateJob?.bytesPerSecond && <span>{(status.updateJob.bytesPerSecond / 1024 ** 2).toFixed(1)} MiB/s</span>}

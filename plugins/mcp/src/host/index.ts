@@ -1572,7 +1572,7 @@ function managedPythonCaFile(root: string, relativeSitePackages: string): string
 
 /** Interpreter path for a record whose manifest cannot be read. */
 function derivedExecutable(root: string): string | undefined {
-  for (const candidate of ['Python/python.exe']) {
+  for (const candidate of ['python.exe', 'Python/python.exe']) {
     if (existsSync(join(root, candidate))) return candidate
   }
   return undefined
@@ -1703,22 +1703,24 @@ function managedPythonExecutable(record: ManagedEnvironmentRecord): string {
   if (!record.runtimeRoot) throw new Error('Managed environment has no shared runtimeRoot.')
   const root = resolve(record.runtimeRoot)
   const path = record.manifest?.python?.relativeExecutable
-  if (path !== 'Python/python.exe') throw new Error('Managed environment must use the shared Python/python.exe layout.')
-  // The signed manifest retains the historical `Python/python.exe` path, but
-  // 8.0.6 projects it into the single canonical runtime directory.  Detect
-  // that layout from the actual files and never fall back to a slot path.
-  const direct = path === 'Python/python.exe' && existsSync(join(root, 'python.exe'))
-  const executable = direct ? join(root, 'python.exe') : resolve(root, path)
+  // The signed bootstrap keeps the historical `Python/python.exe` namespace,
+  // while the 8.0.6 canonical runtime projects it to `python.exe`. Both
+  // layouts are valid when declared by the manifest; never infer a third path.
+  if (path !== 'Python/python.exe' && path !== 'python.exe') throw new Error('Managed environment must use the shared Python layout.')
+  const executable = path === 'python.exe' || existsSync(join(root, 'python.exe'))
+    ? join(root, 'python.exe')
+    : resolve(root, path)
   const local = relative(root, executable)
   if (isAbsolute(path) || local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed Python executable')
   return executable
 }
 
 function managedCandidatePythonExecutable(record: ManagedEnvironmentRecord): string {
-  if (!record.root || record.manifest?.python?.relativeExecutable !== 'Python/python.exe') throw new Error('Managed candidate has no shared Python layout.')
+  if (!record.root || (record.manifest?.python?.relativeExecutable !== 'Python/python.exe' && record.manifest?.python?.relativeExecutable !== 'python.exe')) throw new Error('Managed candidate has no shared Python layout.')
   const root = resolve(record.root)
-  const direct = existsSync(join(root, 'python.exe'))
-  const executable = direct ? join(root, 'python.exe') : resolve(root, record.manifest.python.relativeExecutable)
+  const executable = record.manifest.python.relativeExecutable === 'python.exe'
+    ? join(root, 'python.exe')
+    : resolve(root, record.manifest.python.relativeExecutable)
   const local = relative(root, executable)
   if (local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed candidate Python executable')
   return executable

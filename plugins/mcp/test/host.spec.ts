@@ -50,6 +50,43 @@ describe('ZeroWall MCP config boundary', () => {
     }
   })
 
+  it('preflights a canonical single-directory candidate manifest', () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-python-canonical-candidate-'))
+    const previous = {
+      bio: process.env.ZEROWALL_BIO_TOOLS_ROOT,
+      python: process.env.ZEROWALL_PYTHON_ROOT,
+    }
+    const candidateRoot = join(root, 'Python')
+    const candidate = {
+      root: candidateRoot,
+      runtimeRoot: candidateRoot,
+      health: 'ready',
+      environmentVersion: '3.12.10',
+      manifest: { python: { relativeExecutable: 'python.exe', relativeSitePackages: 'Lib/site-packages' } },
+    }
+    const bio = join(root, 'bio-tools')
+    mkdirSync(candidateRoot, { recursive: true })
+    mkdirSync(bio, { recursive: true })
+    writeFileSync(join(candidateRoot, 'python.exe'), '')
+    process.env.ZEROWALL_BIO_TOOLS_ROOT = bio
+    process.env.ZEROWALL_PYTHON_ROOT = candidateRoot
+    try {
+      const config = resolveMcpConfig({ ...base, serverName: 'zerowall_managed_bio_tools', command: 'zerowall-managed:bio-tools', args: [], envRefs: {} }, {}, root, undefined, candidate).config
+      expect(config).toMatchObject({
+        command: join(candidateRoot, 'python.exe'),
+        args: [join(bio, 'run_server.py'), 'mcp_bio'],
+        cwd: bio,
+        env: { PYTHONPATH: join(candidateRoot, 'Lib', 'site-packages') },
+      })
+    } finally {
+      for (const [name, value] of [['ZEROWALL_BIO_TOOLS_ROOT', previous.bio], ['ZEROWALL_PYTHON_ROOT', previous.python]] as const) {
+        if (value === undefined) delete process.env[name]
+        else process.env[name] = value
+      }
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('normalizes stdio working directories and path arguments to absolute paths', () => {
     const result = resolveStdioLaunch({ command: 'node', args: ['scripts/server.mjs', '@scope/server', '--flag'], cwd: 'workspace' }, 'C:/host')
     expect(result.cwd).toMatch(/^[A-Za-z]:[\\/]host[\\/]workspace$/u)

@@ -1219,18 +1219,30 @@ export class McpEnvironmentController {
       const staging = `${transaction}.tmp`
       await writeFile(staging, JSON.stringify({ transactionId, candidate: compact, state: 'prepare', createdAt: Date.now() }))
       await renameWithRetry(staging, transaction)
-      this.set({ ...this.status, phase: 'verifying', progress: 97, message: '正在准备科研服务切换，原任务继续运行。' })
-      const deadline = Date.now() + 180_000
-      let ready = false
-      while (Date.now() < deadline) {
-        const reply = await readFile(join(this.options.root, 'activation-ready.json'), 'utf8').then(JSON.parse, () => undefined)
-        if (reply?.transactionId === transactionId) {
-          if (reply.error) throw new Error(`新服务验证失败：${reply.error}`)
-          ready = true; break
+      try {
+        this.set({ ...this.status, phase: 'verifying', progress: 97, message: '正在准备科研服务切换，原任务继续运行。' })
+        const deadline = Date.now() + 180_000
+        let ready = false
+        while (Date.now() < deadline) {
+          const reply = await readFile(join(this.options.root, 'activation-ready.json'), 'utf8').then(JSON.parse, () => undefined)
+          if (reply?.transactionId === transactionId) {
+            if (reply.error) throw new Error(`新服务验证失败：${reply.error}`)
+            ready = true; break
+          }
+          await new Promise(resolve => setTimeout(resolve, 200))
         }
-        await new Promise(resolve => setTimeout(resolve, 200))
+        if (!ready) throw new Error('科研服务切换准备超时，保留当前环境。')
+      } catch (error) {
+        // A failed candidate preflight must not survive as a stale transaction
+        // that the next Host startup tries to activate again. Remove only the
+        // transaction we created; a newer transaction is left untouched.
+        const active = await readFile(transaction, 'utf8').then(JSON.parse, () => undefined) as { transactionId?: string } | undefined
+        if (active?.transactionId === transactionId) await rm(transaction, { force: true }).catch(() => undefined)
+        const readyPath = join(this.options.root, 'activation-ready.json')
+        const ready = await readFile(readyPath, 'utf8').then(JSON.parse, () => undefined) as { transactionId?: string } | undefined
+        if (ready?.transactionId === transactionId) await rm(readyPath, { force: true }).catch(() => undefined)
+        throw error
       }
-      if (!ready) throw new Error('科研服务切换准备超时，保留当前环境。')
     }
     await writeFile(temporary, `${JSON.stringify(compact)}\n`, 'utf8')
     await replaceFileWithRetry(temporary, current)

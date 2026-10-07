@@ -115,7 +115,14 @@ async function run() {
       ? info.runtimeExecutable
       : join(runtimeRoot, 'python.exe')
     if (!existsSync(executable)) throw new Error(`统一 Python 尚未就绪：${executable}`)
-    const env = { ...process.env, PATH: `${runtimeRoot};${join(runtimeRoot, 'Scripts')};${process.env.PATH || ''}` }
+    const env = {
+      ...process.env,
+      // The new console uses these variables to launch the exact managed
+      // interpreter.  PATH alone could resolve a system or Roaming Python.
+      ZEROWALL_PYTHON_ROOT: runtimeRoot,
+      ZEROWALL_PYTHON_EXECUTABLE: executable,
+      PATH: `${runtimeRoot};${join(runtimeRoot, 'Scripts')};${process.env.PATH || ''}`,
+    }
     delete env.PYTHONHOME
     delete env.PYTHONPATH
     env.PYTHONNOUSERSITE = '1'
