@@ -215,6 +215,8 @@ zws python status
 
 增量入口是 `pnpm build:changed`、`pnpm plugin:build <id>`、`pnpm plugin:pack <id>`、`pnpm package:build <id>`、`pnpm resource:build skill|mcp|python <id-or-layer>`。Windows Stable 打包先验证当前 runtime stage 的新鲜度，将已验证的 runtime closure 复制到新 build ID，再单独构建桌面和安装器；它不隐式运行完整 `pnpm build`。运行时输入过期时，先运行完整构建再打包。每项收据包含输入文件哈希、lockfile、DSH commit、依赖版本、输出、build ID 和失败原因。`pnpm artifacts:gc --dry-run` 默认只读；只有核对候选清单后才使用 `--apply`。
 
+GC 不遍历任何 `node_modules` 目录；候选树包含嵌套依赖目录时保留整棵树。只有超过保留期且不被收据引用的候选项才计算 SHA-256。删除前重新校验内容和嵌套依赖保护，即使 dry-run 后只新增了一个空的 `node_modules`，也必须拒绝删除。
+
 单独的 Python 依赖清单可用 `pnpm resource:build python core`、`science` 或 `capability <id>` 生成。构建命令应绑定新的 `ZEROWALL_BUILD_ID`；输出先进入该 build ID 的 stage，再经签名和 SHA-256 收据校验。catalog 若标记 `localOnly`，只可用于本地验收，不能作为正式发布目录。
 
 `@zerowallscience/dsh-bundle-core` 和 `dsh-bundle-science` 都是组合声明。8.0.7 新安装器的 immutable runtime closure 只包含 Core 插件和必要宿主依赖；科研领域插件由签名 catalog 安装到用户 profile。8.0.6 用户迁移时保留已有 bundles、禁用项、固定版本和第三方插件，不用 Core 默认值覆盖旧选择。

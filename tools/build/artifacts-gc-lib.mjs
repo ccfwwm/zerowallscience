@@ -12,26 +12,33 @@ export function within(root, candidate) {
   return rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`)
 }
 
-async function inventory(path, files = [], dirs = []) {
-  const info = await lstat(path).catch(() => undefined)
-  if (!info || info.isSymbolicLink()) return { mostRecentMs: 0, bytes: 0, files, dirs }
+const hasDependencyDirectory = path => resolve(path).split(/[\\/]/u).some(part => part.toLowerCase() === 'node_modules')
+
+async function inventory(path, files = [], dirs = [], protectedPaths = []) {
+  if (hasDependencyDirectory(path)) {
+    protectedPaths.push(path)
+    return { mostRecentMs: 0, bytes: 0, files, dirs, protectedPaths }
+  }
+  const info = await lstat(path).catch(error => error.code === 'ENOENT' ? undefined : Promise.reject(error))
+  if (!info || info.isSymbolicLink()) return { mostRecentMs: 0, bytes: 0, files, dirs, protectedPaths }
   if (info.isFile()) {
     files.push(path)
-    return { mostRecentMs: info.mtimeMs, bytes: info.size, files, dirs }
+    return { mostRecentMs: info.mtimeMs, bytes: info.size, files, dirs, protectedPaths }
   }
-  if (!info.isDirectory()) return { mostRecentMs: info.mtimeMs, bytes: 0, files, dirs }
+  if (!info.isDirectory()) return { mostRecentMs: info.mtimeMs, bytes: 0, files, dirs, protectedPaths }
   dirs.push(path)
   let mostRecentMs = info.mtimeMs, bytes = 0
   for (const child of await readdir(path)) {
-    const item = await inventory(join(path, child), files, dirs)
+    const item = await inventory(join(path, child), files, dirs, protectedPaths)
     mostRecentMs = Math.max(mostRecentMs, item.mostRecentMs)
     bytes += item.bytes
   }
-  return { mostRecentMs, bytes, files, dirs }
+  return { mostRecentMs, bytes, files, dirs, protectedPaths }
 }
 
 async function treeDigest(path) {
   const data = await inventory(path)
+  if (data.protectedPaths.length) throw new Error(`Refusing to remove a tree containing protected node_modules: ${path}`)
   const digest = createHash('sha256')
   const base = resolve(path)
   for (const file of data.files.sort()) {
@@ -68,6 +75,7 @@ async function isReferenced(candidate, buildId, referenceFiles) {
 }
 
 async function collectJsonFiles(path, files = []) {
+  if (hasDependencyDirectory(path)) return files
   const info = await lstat(path).catch(() => undefined)
   if (!info || info.isSymbolicLink()) return files
   if (info.isFile()) {
@@ -75,7 +83,11 @@ async function collectJsonFiles(path, files = []) {
     return files
   }
   if (!info.isDirectory()) return files
-  for (const name of await readdir(path)) await collectJsonFiles(join(path, name), files)
+  for (const entry of await readdir(path, { withFileTypes: true })) {
+    if (entry.isDirectory() || (entry.isFile() && entry.name.toLowerCase().endsWith('.json'))) {
+      await collectJsonFiles(join(path, entry.name), files)
+    }
+  }
   return files
 }
 
@@ -106,14 +118,21 @@ export async function createCleanupPlan({ root, policy, now = Date.now() }) {
       exclusions.push({ path: absolute, reason: 'missing-or-link' })
       return
     }
-    const inventoryData = await treeDigest(absolute)
+    // A recently touched tree cannot have expired. Avoid scanning or hashing it.
+    if ((now - info.mtimeMs) / 86_400_000 < cutoffDays) return
+    const inventoryData = await inventory(absolute)
+    if (inventoryData.protectedPaths.length) {
+      exclusions.push({ path: absolute, reason: 'contains-protected-node-modules' })
+      return
+    }
     const ageDays = (now - inventoryData.mostRecentMs) / 86_400_000
     if (ageDays < cutoffDays) return
     if (buildId && await isReferenced(absolute.replaceAll('\\', '/'), buildId, referenceFiles)) {
       exclusions.push({ path: absolute, reason: 'referenced-build' })
       return
     }
-    candidates.push({ path: absolute, managedRoot: absoluteRoot, reason, ageDays: Math.floor(ageDays), ...inventoryData })
+    const digest = await treeDigest(absolute)
+    candidates.push({ path: absolute, managedRoot: absoluteRoot, reason, ageDays: Math.floor(ageDays), ...digest })
   }
 
   const stageRoot = join(artifacts, 'stage')

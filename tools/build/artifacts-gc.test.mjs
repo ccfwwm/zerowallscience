@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, symlink, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -32,8 +32,7 @@ test('GC reports only expired generated children and preserves the active stage'
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('GC does not traverse symbolic links in managed output trees', async t => {
-  if (process.platform === 'win32') t.skip('Creating directory symlinks may require elevated privileges on Windows.')
+test('GC does not traverse symbolic links in managed output trees', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-gc-link-'))
   try {
     const target = join(root, 'outside')
@@ -70,5 +69,41 @@ test('GC keeps referenced content objects and only reports old unreferenced obje
     assert.equal(plan.candidates.length, 1)
     assert.equal(plan.candidates[0].path, objectPath(orphanHash))
     assert.ok(plan.exclusions.some(item => item.path === objectPath(referencedHash) && item.reason === 'referenced-content-object'))
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('GC preserves expired output trees containing nested dependency directories', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-gc-dependencies-'))
+  try {
+    const output = join(root, 'artifacts/dev/old-output')
+    const dependencies = join(output, 'runtime/NoDe_MoDuLeS/local-package')
+    await mkdir(dependencies, { recursive: true })
+    await writeFile(join(dependencies, 'keep.js'), 'user dependency')
+    await writeFile(join(output, 'output.bin'), 'old')
+    const oldTime = new Date(Date.now() - 40 * 86_400_000)
+    for (const path of [join(output, 'output.bin'), join(dependencies, 'keep.js'), dependencies, join(output, 'runtime/NoDe_MoDuLeS'), join(output, 'runtime'), output]) {
+      await utimes(path, oldTime, oldTime)
+    }
+    const plan = await createCleanupPlan({ root, policy })
+    assert.equal(plan.candidates.length, 0)
+    assert.ok(plan.exclusions.some(item => item.path === output && item.reason === 'contains-protected-node-modules'))
+    assert.equal(await readFile(join(dependencies, 'keep.js'), 'utf8'), 'user dependency')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('GC refuses to delete a candidate if an empty dependency directory appeared after planning', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-gc-late-dependencies-'))
+  try {
+    const output = join(root, 'artifacts/dev/old-output')
+    await mkdir(output, { recursive: true })
+    await writeFile(join(output, 'output.bin'), 'old')
+    const oldTime = new Date(Date.now() - 40 * 86_400_000)
+    await utimes(join(output, 'output.bin'), oldTime, oldTime)
+    await utimes(output, oldTime, oldTime)
+    const plan = await createCleanupPlan({ root, policy })
+    assert.equal(plan.candidates.length, 1)
+    await mkdir(join(output, 'node_modules'))
+    await assert.rejects(removeCandidate(plan.candidates[0], plan.candidates[0]), /protected node_modules/u)
+    assert.equal(await readFile(join(output, 'output.bin'), 'utf8'), 'old')
   } finally { await rm(root, { recursive: true, force: true }) }
 })
