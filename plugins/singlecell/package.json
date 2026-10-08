@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-singlecell",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "ZeroWall Science singlecell domain plugin (desktop 8.0.0).",
   "type": "module",
   "main": "./lib/index.js",

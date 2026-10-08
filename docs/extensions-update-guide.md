@@ -1,8 +1,8 @@
-# ZeroWall 8.0.7：插件、Skills、MCP 与 Python 单独更新教程
+# ZeroWall 8.0.8：插件、Skills、MCP 与 Python 单独更新教程
 
 ## 先升级桌面一次
 
-桌面核心与扩展资源分开更新。8.0.7 启动和每日检查只读验签 catalog，安装、更新和重启由用户确认。已有 8.0.6 用户升级时保留账户、模型、项目、环境变量、第三方插件和停用选择。
+桌面核心与扩展资源分开更新。8.0.8 安装器携带完整默认功能的签名离线包。扩展启动和每日远端检测关闭；打开扩展中心、切换标签和刷新本地列表不会联网检测。点击“检查更新”才获取并验签目录，安装、更新和重启仍由用户选择。已有 8.0.6 用户升级时保留账户、模型、项目、环境变量、第三方插件和停用选择。
 
 升级后启动桌面，重新打开一个 PowerShell 窗口：
 
@@ -14,7 +14,7 @@ zws doctor
 zws plugin list
 ```
 
-`dsh` 应显示 `0.2.0-rc.2`，`zws` 应显示桌面 `8.0.7`。`zws doctor` 会报告实际加载的插件版本和来源。命令需要正在运行的桌面 Host；若提示先启动 ZeroWall Science，请启动应用后再操作。
+`dsh` 应显示 `0.2.0-rc.2`，`zws` 应显示桌面 `8.0.8`。`zws doctor` 会报告实际加载的插件版本和来源。命令需要正在运行的桌面 Host；若提示先启动 ZeroWall Science，请启动应用后再操作。
 
 如果 Windows 安装目录变过或旧终端仍持有旧 PATH，关闭并重开终端。程序会按 owner receipt 管理命令，避免覆盖不属于 ZeroWall 的 `dsh`。
 
@@ -159,3 +159,9 @@ node scripts/publish-resources.mjs verify
 ## Python 分层更新
 
 Python generation 与桌面版本独立。`core` 是启动所需最小依赖，`science` 和 `capability` 按需安装；检查不会下载。设置页或 Host 任务确认后才执行 generation 切换，失败自动回滚到上一个 `current.json`。关闭桌面后可从任务 receipt 恢复。
+
+## 固定版本与修复
+
+插件支持“固定当前版本”和“解除固定”，`zws plugin pin <id>`、`zws plugin unpin <id>` 使用同一选择记录。“全部更新”跳过固定项和固定依赖冲突项并给出原因。停用、卸载存在依赖的插件时先展示受影响插件，用户确认后再处理。
+
+升级自动修复损坏的 8.0.7 architecture 6 profile，并保留明确停用、卸载和第三方配置。缺失的固定版本必须导入精确版本或由用户解除固定。离线签名或健康检查失败保留原 profile 和失败 receipt；不要手工清空用户配置。MCP 缺凭据显示待配置，Python 显示各层真实安装程度，不会因打开扩展中心自动安装科研依赖。

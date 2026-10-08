@@ -35,27 +35,31 @@ const configuredDefaults = [...(inventory.profiles?.stable?.plugins ?? [])]
 const defaults = [...new Set([
   '@deepseek-ai/dsh-base',
   '@deepseek-ai/dsh-web-app',
-  ...runtimeProfile.corePlugins,
-].filter(name => configuredDefaults.includes(name) || name.startsWith('@deepseek-ai/dsh-') || runtimeProfile.corePlugins.includes(name)))]
+  ...configuredDefaults,
+])]
 const bundled = []
 for (const name of await readdir(join(root, 'plugins'))) {
   if (name === 'wechat') continue
   const manifest = JSON.parse(await readFile(join(root, 'plugins', name, 'package.json'), 'utf8'))
-  if (!runtimeProfile.corePlugins.includes(manifest.name)) continue
   if (!defaults.includes(manifest.name)) defaults.push(manifest.name)
-  bundled.push({ id: manifest.name, version: manifest.version, desktop: manifest.zerowall.desktop, dsh: manifest.zerowall.dsh, managed: true, core: true })
+  bundled.push({ id: manifest.name, version: manifest.version, desktop: manifest.zerowall.desktop, dsh: manifest.zerowall.dsh, managed: true, core: runtimeProfile.corePlugins.includes(manifest.name), offline: true })
 }
 const known = new Set(bundled.map(item => item.id))
 const coreIds = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-experimental-voice-input-bundle'])
 const overlayIds = new Set([...core.join('\n').matchAll(/^\s+name: ['"]([^'"]+)['"]/gm)].map(match => match[1]))
 for (const id of [...new Set([...defaults, ...coreIds])]) {
   if (known.has(id)) continue
-  const manifest = JSON.parse(await readFile(join(stageRoot, 'runtime/node_modules', id, 'package.json'), 'utf8'))
-  bundled.push({ id, version: manifest.version, core: coreIds.has(id), managed: !coreIds.has(id) && !overlayIds.has(id) })
+  const manifest = JSON.parse(await readFile(join(stageRoot, coreIds.has(id) ? 'runtime/node_modules' : 'offline-profile/modules', id, 'package.json'), 'utf8'))
+  bundled.push({ id, version: manifest.version, core: coreIds.has(id), managed: !coreIds.has(id) && !overlayIds.has(id), offline: !coreIds.has(id) })
 }
 const profileDefaults = [...new Set(defaults)].filter(id => !overlayIds.has(id))
 await writeFile(join(stageRoot, 'commands/default-plugins.json'), JSON.stringify(profileDefaults))
 await writeFile(join(stageRoot, 'commands/bundled-plugins.json'), JSON.stringify(bundled))
-const optional = configuredDefaults.filter(id => !runtimeProfile.corePlugins.includes(id) && !profileDefaults.includes(id))
+const optional = configuredDefaults.filter(id => !runtimeProfile.corePlugins.includes(id))
 await writeFile(join(stageRoot, 'commands/optional-plugins.json'), JSON.stringify(optional))
-console.log(`Core profile owns ${profileDefaults.length} plugins; ${optional.length} optional plugins remain catalog-managed`)
+await writeFile(join(stageRoot, 'commands/default-profile.patch.json'), JSON.stringify([
+  { id: 'progressive-tools', config: { mode: 'stable-proxy', toolName: 'tool_search', dispatchToolName: 'tool_dispatch', maxResults: 5, requireDiscovery: true, statusGrantsDiscovery: false, deferToolGuidance: true } },
+  { id: 'univer-office', config: { telemetry: false } },
+  { id: 'dsh-wechat', config: { autoStart: false } },
+]))
+console.log(`Complete offline default profile owns ${profileDefaults.length} plugins; ${optional.length} domain plugins remain independently catalog-managed`)

@@ -12,7 +12,7 @@ import { PluginSettingsSection } from './PluginSettingsSection.tsx'
 
 export { en, NS, zh, type ZeroWallKey } from './locales.js'
 export { unwrapRemoteResult } from './remote-result.js'
-export type { PythonLayer, PythonLayerCheck, PythonLayerChange, ResourceKind } from './desktop-api.js'
+export type { PythonLayer, PythonLayerCheck, PythonLayerChange, ResourceKind, ResourceCheckItem, ResourceCheckResult } from './desktop-api.js'
 
 export const inject = ['slots', 'locale', 'remote', 'theme']
 

@@ -88,7 +88,16 @@ export class PythonUpdaterService {
     const id = randomUUID()
     return new Promise((resolve, reject) => {
       const child = this.connect()
-      this.requests.set(id, { child, resolve, reject })
+      // Bound inventory RPCs even when the worker stops replying. Installing
+      // jobs have their own persisted lifecycle and are not subject to this.
+      const timer = method === 'pythonInfo' ? setTimeout(() => {
+        this.requests.delete(id)
+        reject(new Error('Python local inventory timed out'))
+      }, 4000) : undefined
+      this.requests.set(id, { child,
+        resolve: value => { clearTimeout(timer); resolve(value) },
+        reject: error => { clearTimeout(timer); reject(error) },
+      })
       child.send({ id, method, args })
     })
   }

@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import test from 'node:test'
 
 const root = resolve(import.meta.dirname, '../..')
-const skillsRoot = join(root, 'resources', 'skills')
+const skillsRoot = join(root, 'resources', 'extensions', 'skills')
 const coreSkills = ['deep-research', 'academic-paper', 'academic-paper-reviewer', 'academic-pipeline']
 const arsCommands = ['ars-3w', 'ars-abstract', 'ars-cache-invalidate', 'ars-citation-check', 'ars-disclosure', 'ars-format-convert', 'ars-full', 'ars-lit-review', 'ars-mark-read', 'ars-outline', 'ars-plan', 'ars-rebuttal-audit', 'ars-reviewer', 'ars-revision', 'ars-revision-coach', 'ars-unmark-read']
 

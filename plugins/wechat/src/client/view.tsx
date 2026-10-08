@@ -66,10 +66,13 @@ function statusOf(
   error: string | null,
 ): { dot: 'done' | 'warning' | 'ongoing' | 'error'; text: string } {
   if (error !== null) return { dot: 'error', text: '连接中断，正在重试…' }
-  if (payload === null) return { dot: 'ongoing', text: '微信后端启动中…' }
+  // The QR entry is user initiated. Before the first local poll completes,
+  // keep the pairing contract visible instead of exposing an internal
+  // backend lifecycle state.
+  if (payload === null) return { dot: 'ongoing', text: '等待扫码' }
   switch (payload.state.kind) {
     case 'none':
-      return { dot: 'ongoing', text: '微信后端启动中…' }
+      return { dot: 'ongoing', text: '等待扫码' }
     case 'scan':
       return { dot: 'ongoing', text: scanHint(payload.state.status) }
     case 'logged-in':
@@ -455,7 +458,7 @@ function WechatDialog(props: {
           )}
 
           {(state === undefined || state.kind === 'none') && (
-            <div className="dsh-weixin-clawbot-qr-hint">等待微信后端就绪后显示二维码…</div>
+            <div className="dsh-weixin-clawbot-qr-hint">等待扫码</div>
           )}
           {state?.kind === 'failed' && (
             <div className="dsh-weixin-clawbot-qr-hint">

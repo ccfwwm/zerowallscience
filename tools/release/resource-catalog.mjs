@@ -67,7 +67,7 @@ export async function fileDigest(path) {
   return hash.digest('hex')
 }
 /** Download into a new content-addressed generation; never overwrite a live package. */
-export async function downloadResource(entry, directory, { local = false, fetcher = fetch } = {}) {
+export async function downloadResource(entry, directory, { local = false, fetcher = fetch, signal } = {}) {
   await mkdir(directory, { recursive: true })
   const destination = join(directory, entry.sha256 + '.package')
   if ((await stat(destination).catch(() => undefined))?.size === entry.size && await fileDigest(destination) === entry.sha256) return destination
@@ -81,7 +81,7 @@ export async function downloadResource(entry, directory, { local = false, fetche
     if (url.protocol === 'file:' && local) body = [await readFile(url)]
     else {
       if (url.protocol !== 'https:') throw new Error('Resource download must use HTTPS')
-      const response = await fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(120_000) })
+      const response = await fetcher(url, { redirect: 'error', signal: signal ?? AbortSignal.timeout(120_000) })
       if (!response.ok || !response.body) throw new Error('Resource download failed')
       body = response.body
     }

@@ -1,4 +1,5 @@
 import { cp, mkdir, readFile, writeFile, access } from 'node:fs/promises'
+import { globSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { historicalPackage } from './package-history.mjs'
@@ -15,6 +16,15 @@ const workspaceManifestCache = new Map()
  */
 async function workspaceDependencyManifest(source, name) {
   if (workspaceManifestCache.has(name)) return workspaceManifestCache.get(name)
+  if (name.startsWith('@deepseek-ai/')) {
+    // Adapted offline packages have no development node_modules links. Resolve
+    // their Harness peers from the pinned workspace's manifests instead.
+    for (const file of globSync(['packages/*/*/package.json', 'vendor/*/package.json', 'apps/*/package.json'], { cwd: join(root, 'deepseek-harness') })) {
+      const manifest = JSON.parse(await readFile(join(root, 'deepseek-harness', file), 'utf8'))
+      workspaceManifestCache.set(manifest.name, manifest)
+    }
+    if (workspaceManifestCache.has(name)) return workspaceManifestCache.get(name)
+  }
   const candidates = []
   if (name.startsWith('@zerowallscience/plugin-')) {
     candidates.push(join(root, 'plugins', name.slice('@zerowallscience/plugin-'.length), 'package.json'))

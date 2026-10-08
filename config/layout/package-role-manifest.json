@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.0.7",
+  "version": "8.0.8",
   "roles": {
     "dsh": { "independentInstall": false, "description": "DSH 外部扩展、适配器和第三方集成；保持原 npm name。" },
     "support": { "independentInstall": false, "description": "ZeroWall 构建和完整性支持库；不作为领域插件安装。" },

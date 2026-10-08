@@ -82,7 +82,11 @@ for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp',
   // advertise no update; they never invent a downloadable or compatible pack.
   const source = JSON.parse(await readFile(join(root, `config/catalogs/${kind}-catalog.json`), 'utf8'))
   for (const resource of source.resources ?? []) if (resource.path) resources.push(await entry({ ...resource, path: resolve(root, resource.path), kind }))
-  if (kind === 'python') resources.push(await entry({ id: 'science-dependencies', version: contract.version, path: await resourceSource('python', 'dependency-manifest.json'), kind, key: `python/layers/science/${contract.version}/dependency-manifest.json`, metadata: { role: 'dependency-manifest', restartRequired: false } }))
+  if (kind === 'python') {
+    const version = resourceVersions.python?.['science-dependencies']
+    if (!version) throw new Error('Python resource version must be pinned independently from Desktop')
+    resources.push(await entry({ id: 'science-dependencies', version, path: await resourceSource('python', 'dependency-manifest.json'), kind, key: `python/layers/science/${version}/dependency-manifest.json`, metadata: { role: 'dependency-manifest', restartRequired: false } }))
+  }
   const document = signCatalog({ schema: 1, kind, applicationVersion: contract.version, localOnly,
     generatedAt: new Date().toISOString(), resources }, privateKey, keyId)
   verifyCatalog(document, keys, { local: localOnly })

@@ -1,7 +1,7 @@
 import { attachPythonBroker } from './python-broker.js'
 import { startCommandServer } from './command-server.js'
 import { spawn } from 'node:child_process'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { access, appendFile, cp, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
@@ -20,7 +20,6 @@ import { findDesktopWorkspaceRoot, resolveBundledSkillsPath, resolveDesktopIconP
 import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-updater-service.js'
 import { createPythonTerminalLaunch, managedPythonTerminalPaths } from './python-terminal.js'
-import { ensurePythonCoreAtStartup } from './python-startup.js'
 import { PythonSyncService } from './python-sync.js'
 import { PythonEnvironmentApi, type PythonEnvironmentRequest } from './python-environment-api.js'
 import { resolvePythonLocation } from './python-location.js'
@@ -53,6 +52,8 @@ let quitting = false
 let restarting = false
 let startup: StartupStatus = { phase: 'starting', progress: 5, message: '正在准备本地工作台', startedAt: Date.now() }
 let navigation: Promise<void> | undefined
+let runtimeReachedReady = false
+let initialRuntimeStartRequested = false
 const desktopPluginProcesses = new Map<string, ReturnType<typeof spawn>>()
 let managementChild: HarnessChildProcess | undefined
 const managementRequests = new Map<string, { resolve: (result: unknown) => void; reject: (error: Error) => void }>()
@@ -471,6 +472,10 @@ async function resolveManagedPythonExecutable(root: string): Promise<string | un
 }
 
 async function launch(): Promise<void> {
+  // Offline profile activation already starts and validates this same Host.
+  // Starting it twice replaces its token after the Renderer authenticated.
+  if (runtimeReachedReady || runtime?.snapshot().phase === 'ready' || initialRuntimeStartRequested) return
+  initialRuntimeStartRequested = true
   publishStartup({ progress: 35, message: '正在加载核心服务与插件' })
   await runtime?.start(join(app.getPath('userData'), 'workspace'))
 }
@@ -514,10 +519,10 @@ if (ownsInstance) app.whenReady().then(async () => {
   // its path settings from opening; the updater creates the directory inside
   // its recoverable install transaction and reports any failure in the panel.
   process.env.ZEROWALL_PYTHON_ROOT = mcpEnvironmentRoot
-  process.env.ZEROWALL_BIOGENIE_ROOT = app.isPackaged ? join(process.resourcesPath, 'biogenie') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'biogenie')
-  const bundledKetcherRoot = app.isPackaged ? join(process.resourcesPath, 'ketcher-chemistry') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'mcp', 'ketcher-chemistry')
+  process.env.ZEROWALL_BIOGENIE_ROOT = app.isPackaged ? join(process.resourcesPath, 'extensions/capabilities/biogenie') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'biogenie')
+  const bundledKetcherRoot = app.isPackaged ? join(process.resourcesPath, 'extensions/mcp/ketcher-chemistry') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'mcp', 'ketcher-chemistry')
   process.env.ZEROWALL_KETCHER_ROOT = bundledKetcherRoot
-  const bundledBioToolsRoot = app.isPackaged ? join(process.resourcesPath, 'bio-tools') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'mcp', 'bio-tools')
+  const bundledBioToolsRoot = app.isPackaged ? join(process.resourcesPath, 'extensions/mcp/bio-tools') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'mcp', 'bio-tools')
   const bundledSciRoot = app.isPackaged ? join(process.resourcesPath, 'sci') : developmentStagePath('resources', 'sci')
   const bundledSkillsRoot = bundledSkillsPath()
   const bundledAssets: { bioToolsRoot?: string; ketcherRoot?: string; sciRoot?: string; skillsRoot?: string } = {}
@@ -552,14 +557,6 @@ if (ownsInstance) app.whenReady().then(async () => {
     decrypt: (value) => safeStorage.decryptString(value),
   })
   let mcpEnvironment!: PythonUpdaterService
-  let mcpEnvironmentStartTimer: NodeJS.Timeout | undefined
-  const scheduleMcpEnvironmentUpdate = (): void => {
-    if (mcpEnvironmentStartTimer !== undefined) return
-    mcpEnvironmentStartTimer = setTimeout(() => {
-      void checkPythonUpdates()
-    }, 5_000)
-    mcpEnvironmentStartTimer.unref()
-  }
   const harnessRuntime = new HarnessRuntime({
     dshEntryPath: dshEntryPath(),
     nodeExecutablePath: nodeExecutablePath(),
@@ -604,8 +601,13 @@ if (ownsInstance) app.whenReady().then(async () => {
       }
     },
     onChanged: (snapshot) => {
+      // Profile repair/recovery may already start and health-check this Host
+      // before the normal startup tail runs. Remember the ready transition,
+      // because a later start() replaces DSH's authenticated web token while
+      // the renderer may already be connected to the previous URL.
+      if (snapshot.phase === 'ready') runtimeReachedReady = true
       if (snapshot.phase === 'ready' && navigation === undefined) {
-        navigation = showHarness(snapshot).then(scheduleMcpEnvironmentUpdate).catch(failStartup).finally(() => { navigation = undefined })
+        navigation = showHarness(snapshot).catch(failStartup).finally(() => { navigation = undefined })
       }
       if (snapshot.phase === 'failed' && !quitting) void failStartup(snapshot.message)
     },
@@ -677,17 +679,18 @@ if (ownsInstance) app.whenReady().then(async () => {
   const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8')) as string[]
   const bundledPlugins = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'bundled-plugins.json') : developmentStagePath('commands', 'bundled-plugins.json'), 'utf8')) as Array<{ id: string; version?: string; managed?: boolean; core?: boolean; desktop?: { min?: string; max?: string }; dsh?: { min?: string; max?: string } }>
   const dshHome = join(userData, 'harness')
+  const dshIdentity = JSON.parse(await readFile(app.isPackaged ? join(process.resourcesPath, 'licenses/deepseek-harness.version.json') : join(findWorkspaceRoot(), 'config/deepseek-harness/upstream.json'), 'utf8')) as { version: string; commit: string }
   // Core DSH overlays are already inserted by zerowall.patch.yml. Only
   // managed ZeroWall plugins belong in the user profile; loading both layers
   // would register Univer/Sidebar services twice after a 7.5 migration.
   await initializeProfile(dshHome, defaults, bundledPlugins)
-  const profileDoctor = () => inspectProfile(dshHome, bundledPlugins, { desktopVersion: app.getVersion(), dshVersion: '0.2.0-rc.2' })
+  const profileDoctor = () => inspectProfile(dshHome, bundledPlugins, { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version })
   const callHost = (operation: string, args: unknown[]): Promise<unknown> => {
     if (!managementChild?.connected) return Promise.reject(new Error('Host is not ready'))
     const child = managementChild
     return new Promise((accept, reject) => {
       const id = randomUUID()
-      const timer = setTimeout(() => { managementRequests.delete(id); reject(new Error('Plugin management timed out')) }, 30_000)
+      const timer = setTimeout(() => { managementRequests.delete(id); reject(new Error('Plugin management timed out')) }, operation === 'host.health' || /\.(?:list|sources|get)$/u.test(operation) ? 4_500 : 30_000)
       managementRequests.set(id, { resolve: result => { clearTimeout(timer); accept(result) }, reject: error => { clearTimeout(timer); reject(error) } })
       child.send({ type: 'zerowall:management', id, operation, args })
     })
@@ -716,7 +719,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   })
   const { createResourceManager } = await import(pathToFileURL(join(commandRoot, 'resource-manager.mjs')).href)
   const keys = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'trusted-keys.json') : join(findWorkspaceRoot(), 'config/catalogs/trusted-keys.json'), 'utf8'))
-  const resources = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins, target: { desktopVersion: app.getVersion(), dshVersion: '0.2.0-rc.2', platform: process.platform, architecture: process.arch }, runPlugin,
+  const resources = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins, runtimeModules: app.isPackaged ? join(process.resourcesPath, 'app.asar/node_modules') : developmentStagePath('runtime', 'node_modules'), target: { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version, dshCommit: dshIdentity.commit, platform: process.platform, architecture: process.arch }, runPlugin,
     applyPython: async (entry: { role: string }, file: string) => {
       if (entry.role !== 'dependency-manifest') throw new Error('Unsupported Python resource')
       await mcpEnvironment.ensureReady()
@@ -756,16 +759,19 @@ if (ownsInstance) app.whenReady().then(async () => {
       if (kind === 'mcp') return resources.rollbackMcp(id)
       return callHost('skill.rollback', [id])
     }
-    if (kind === 'plugin' && ['install', 'import', 'remove', 'enable', 'disable', 'repair'].includes(action)) {
+    if (kind === 'plugin' && ['install', 'import', 'remove', 'enable', 'disable', 'repair', 'pin', 'unpin'].includes(action)) {
       if ((action === 'install' || action === 'import') && id !== undefined) {
         if (source && !/^https?:\/\//u.test(source) && /\.(?:tgz|tar\.gz|tar)$/iu.test(source)) return resources.mutate(['add', source])
         return resources.plugin(id, source)
       }
       if (action === 'repair') return resources.mutate(['install'])
       if (id === undefined) throw new Error('Resource identity is required')
+      if (action === 'pin' || action === 'unpin') return resources.pinPlugin(id, action === 'pin')
+      const acknowledgment = source && ['disable', 'remove'].includes(action) ? JSON.parse(source) as { dependents?: unknown } : undefined
+      const dependents = Array.isArray(acknowledgment?.dependents) && acknowledgment.dependents.every(value => typeof value === 'string') ? acknowledgment.dependents as string[] : []
       if (action === 'enable') return resources.setPluginEnabled(id, true)
-      if (action === 'disable') return resources.setPluginEnabled(id, false)
-      return resources.mutate([action, id])
+      if (action === 'disable') return resources.setPluginEnabled(id, false, dependents)
+      return resources.mutate([action, id], dependents)
     }
     if (kind === 'skill') {
       if (action === 'list') return callHost('skill.list', [])
@@ -840,7 +846,8 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (request.operation === 'update') return autoUpdater.checkForUpdates().then(result => ({ updateInfo: result?.updateInfo }))
     if (request.operation === 'resource.plugin') return resources.plugin(String(request.args[0]), request.args[1] === undefined ? undefined : String(request.args[1]))
     if (request.operation === 'resource.catalog.check') return resources.check(String(request.args[0]) as ResourceKind, request.args[1] === undefined ? undefined : String(request.args[1]))
-    if (request.operation === 'resource.catalog.status') return Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind)))
+    if (request.operation === 'resource.catalog.status') return Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.list(kind)))
+    if (request.operation === 'resource.catalog.check-all') return Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind)))
     if (request.operation === 'resource.job.start') return startResourceJob(String(request.args[0]) as ResourceKind, String(request.args[1]), request.args[2] === undefined ? undefined : String(request.args[2]), request.args[3] === undefined ? undefined : String(request.args[3]))
     if (request.operation === 'resource.job.get' || request.operation === 'resource.job.status') return resourceJobs.get(String(request.args[0]))
     if (request.operation === 'resource.job.list') return [...resourceJobs.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -912,31 +919,6 @@ if (ownsInstance) app.whenReady().then(async () => {
     return result
   })
   app.once('before-quit', () => { void stopCommandServer() })
-  let pythonCheckInFlight: Promise<void> | undefined
-  const checkPythonUpdates = (): Promise<void> => {
-    if (pythonCheckInFlight) return pythonCheckInFlight
-    const run = async (): Promise<void> => {
-      try {
-        const result = await ensurePythonCoreAtStartup(mcpEnvironment, pythonApi)
-        if (result.state === 'runtime-unavailable') {
-          if (result.status.lastUpdateError || result.status.message) console.warn('Python runtime check:', result.status.lastUpdateError ?? result.status.message)
-          return
-        }
-        if (result.state === 'sync-paused' || result.state === 'sync-running') return
-        if (result.state === 'inventory-unavailable') {
-          console.warn('Python core inventory:', result.info?.message ?? 'Python interpreter is not ready.')
-          return
-        }
-      } catch (error) {
-        console.warn('Python core dependency sync:', error instanceof Error ? error.message : String(error))
-      }
-    }
-    const pending = run()
-    const wrapped = pending.finally(() => { if (pythonCheckInFlight === wrapped) pythonCheckInFlight = undefined })
-    pythonCheckInFlight = wrapped
-    return wrapped
-  }
-
   const updates = new DesktopUpdateController({
     updater: autoUpdater,
     enabled: app.isPackaged && identity.channel === 'stable',
@@ -1156,7 +1138,9 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:download-update', () => updates.download())
   ipcMain.handle('desktop:install-update', () => updates.install())
   ipcMain.handle('desktop:resource-check', (_event, kind: unknown, localOnly: unknown) => resources.check(String(kind) as ResourceKind, undefined, { localOnly: localOnly === true }))
-  ipcMain.handle('desktop:resource-status', async () => ({ checkedAt: new Date().toISOString(), results: await Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind))) }))
+  ipcMain.handle('desktop:resource-list', (_event, kind: unknown) => resources.list(String(kind) as ResourceKind))
+  ipcMain.handle('desktop:resource-dependents', (_event, id: unknown) => resources.dependents(String(id)))
+  ipcMain.handle('desktop:resource-status', async () => ({ checkedAt: new Date().toISOString(), results: await Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.list(kind))) }))
   ipcMain.handle('desktop:resource-update', (_event, kind: unknown, id?: unknown) => resourceAction(String(kind) as ResourceKind, 'update', typeof id === 'string' ? id : undefined))
   ipcMain.handle('desktop:resource-rollback', (_event, kind: unknown, id: unknown) => resourceAction(String(kind) as ResourceKind, 'rollback', String(id)))
   ipcMain.handle('desktop:resource-job-start', (_event, kind: unknown, action: unknown, id?: unknown, source?: unknown) => startResourceJob(String(kind) as ResourceKind, String(action), typeof id === 'string' ? id : undefined, typeof source === 'string' ? source : undefined))
@@ -1186,6 +1170,10 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (layer !== 'core' && layer !== 'science' && layer !== 'capability') throw new Error('Invalid Python dependency layer.')
     return pythonSync.checkManifest(layer as PythonDependencyLayer)
   })
+  ipcMain.handle('desktop:python-layer-list', (_event, layer: unknown) => {
+    if (layer !== 'core' && layer !== 'science' && layer !== 'capability') throw new Error('Invalid Python dependency layer.')
+    return pythonSync.listLocal(layer as PythonDependencyLayer)
+  })
   ipcMain.handle('desktop:python-layer-update', (_event, layer: unknown, capabilityId?: unknown) => {
     if (layer !== 'core' && layer !== 'science' && layer !== 'capability') throw new Error('Invalid Python dependency layer.')
     if (layer === 'capability' && (typeof capabilityId !== 'string' || !/^[A-Za-z0-9_.-]{1,100}$/u.test(capabilityId))) throw new Error('A valid capability ID is required.')
@@ -1203,16 +1191,10 @@ if (ownsInstance) app.whenReady().then(async () => {
     return mcpEnvironment.selectManual(result.filePaths[0])
   })
 
+  const repair = await resources.repairOffline(app.isPackaged ? join(process.resourcesPath, 'offline-profile') : developmentStagePath('offline-profile'))
+  if (repair.blocked?.length) notifications.show({ title: '默认插件需要修复', body: '固定版本缺失。请在扩展中心导入对应版本或明确解除固定；用户配置已保留。', tag: 'profile-repair' })
   await launch()
   await navigation
-  // Do the first bootstrap/core check as soon as the workbench is visible.
-  // This is intentionally fire-and-forget so a slow network never blocks the
-  // desktop UI, while the updater persists progress and can resume later.
-  void checkPythonUpdates()
-  // Python checks remain read-only. Bootstrap, dependency installation and
-  // resuming interrupted work require an explicit action in Settings.
-  const mcpEnvironmentInterval = setInterval(() => { void checkPythonUpdates() }, UPDATE_CHECK_INTERVAL_MS)
-  mcpEnvironmentInterval.unref()
   const updateRecordPath = join(userData, 'updates', 'last-check.json')
   const runScheduledUpdateCheck = async (): Promise<void> => {
     const record = await readUpdateCheckRecord(updateRecordPath)
@@ -1226,41 +1208,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   updateTimer.unref()
   const updateInterval = setInterval(() => { void runScheduledUpdateCheck().catch(() => undefined) }, UPDATE_CHECK_INTERVAL_MS)
   updateInterval.unref()
-  // Resource checks are deliberately read-only. They only refresh the signed
-  // catalog badge; installation, restart, and rollback remain explicit.
-  const resourceCheckPath = join(userData, 'updates', 'resource-check.json')
-  const resourceCheck = async (): Promise<void> => {
-    const previous = await readResourceCheckRecord(resourceCheckPath)
-    if (!isUpdateCheckDue(previous.lastCheckedAt)) return
-    await writeResourceCheckRecord(resourceCheckPath, { ...previous, lastCheckedAt: Date.now() })
-    try {
-      const results = await Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind)))
-      const available: Array<{ kind: ResourceKind | 'python'; id: string; version: string }> = results.flatMap((result: { kind: ResourceKind; resources?: Array<{ id: string; version: string; updateAvailable?: boolean }> }) =>
-        (result.resources ?? []).filter(item => item.updateAvailable).map(item => ({ kind: result.kind, id: item.id, version: item.version })))
-      const pythonResults = await Promise.all((['core', 'science', 'capability'] as PythonDependencyLayer[]).map(async layer => {
-        try { return await pythonSync.checkManifest(layer) as { layer: PythonDependencyLayer; capabilityCounts?: Record<string, { pendingPackageCount: number }>; pendingPackageCount: number; revision: string } }
-        catch (error) { console.warn(`Python ${layer} catalog check failed:`, error instanceof Error ? error.message : 'unknown error'); return undefined }
-      }))
-      for (const result of pythonResults) {
-        if (!result) continue
-        if (result.layer === 'capability') {
-          for (const [id, status] of Object.entries(result.capabilityCounts ?? {})) if (status.pendingPackageCount > 0) available.push({ kind: 'python', id: `capability:${id}`, version: result.revision })
-        } else if (result.pendingPackageCount > 0) available.push({ kind: 'python', id: result.layer, version: result.revision })
-      }
-      available.sort((a, b) => `${a.kind}/${a.id}`.localeCompare(`${b.kind}/${b.id}`))
-      const signature = available.length ? createHash('sha256').update(JSON.stringify(available)).digest('hex') : undefined
-      if (signature && signature !== previous.lastNotifiedSignature) {
-        notifications.show({ title: 'ZeroWall 扩展有可用更新', body: `${available.length} 个插件、Skills、MCP 或 Python 层可更新。打开设置中的扩展中心选择更新。`, tag: 'resource-update' })
-        await writeResourceCheckRecord(resourceCheckPath, { lastCheckedAt: Date.now(), lastNotifiedSignature: signature })
-      }
-    } catch (error) {
-      console.warn('Signed resource catalog check failed:', error instanceof Error ? error.message : 'unknown error')
-    }
-  }
-  const resourceCheckTimer = setTimeout(() => { if (startup.phase === 'ready') void resourceCheck() }, 20_000)
-  resourceCheckTimer.unref()
-  const resourceCheckInterval = setInterval(() => { void resourceCheck() }, 24 * 60 * 60 * 1000)
-  resourceCheckInterval.unref()
+  // Extension resource catalogs are checked only by explicit user action.
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && runtime !== undefined) void showHarness(runtime.snapshot())
     else showMainWindow()

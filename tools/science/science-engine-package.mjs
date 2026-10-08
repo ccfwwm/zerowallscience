@@ -21,7 +21,13 @@ const exists = async path => lstat(path).then(() => true, error => {
 })
 
 const sharedDependencyManifest = JSON.parse(readFileSync(new URL('../../resources/extensions/python/dependency-manifest.json', import.meta.url), 'utf8'))
-const sharedPins = new Map((sharedDependencyManifest.packages ?? []).map(pkg => [String(pkg.name).toLowerCase().replace(/[-_.]+/gu, '-'), pkg.version]))
+const coreDependencyManifest = JSON.parse(readFileSync(new URL('../../resources/extensions/python/core-dependency-manifest.json', import.meta.url), 'utf8'))
+const sharedPins = new Map()
+for (const pkg of [...(coreDependencyManifest.packages ?? []), ...(sharedDependencyManifest.packages ?? [])]) {
+  const name = String(pkg.name).toLowerCase().replace(/[-_.]+/gu, '-')
+  if (sharedPins.has(name) && sharedPins.get(name) !== pkg.version) throw new Error(`Core/science dependency versions conflict for ${name}.`)
+  sharedPins.set(name, pkg.version)
+}
 function sharedPackageVersions(names) {
   return Object.fromEntries(names.map(name => {
     const version = sharedPins.get(String(name).toLowerCase().replace(/[-_.]+/gu, '-'))

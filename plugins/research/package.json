@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-research",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "ZeroWall Science research domain plugin (desktop 8.0.6).",
   "type": "module",
   "main": "./lib/index.js",
@@ -90,7 +90,7 @@
     "prepack": "node ../../tools/plugins/prepare-pack.mjs",
     "bundle": "node ../../tools/science/build-molecule-runtime.mjs && tsdown",
     "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.workbench.json --noEmit",
-    "test": "vitest run --config ../../vitest.plugins.config.ts"
+    "test": "vitest run --config ../../vitest.plugins.config.ts --no-file-parallelism"
   },
   "publishConfig": {
     "directory": "../../artifacts/dev/publish/plugin-research"

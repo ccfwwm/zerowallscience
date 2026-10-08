@@ -14,7 +14,7 @@ const { LocalZoteroWriter } = await import(moduleUrl('save/local-api.js'))
 const { savePapers } = await import(moduleUrl('save/index.js'))
 const { resolveConfig } = await import(moduleUrl('config.js'))
 const { dedupeHits } = await import(moduleUrl('fetch/index.js'))
-import { zoteroDispatch } from '../../../tools/packaging/zotero-dispatch.mjs'
+import { zoteroDispatch } from '../../../../tools/packaging/zotero-dispatch.mjs'
 
 const paper = { source: 'crossref', id: '1', title: '中文文献甲', authors: ['王小明'], doi: '10.1234/example', year: 2026 }
 async function fixture(options = {}) {

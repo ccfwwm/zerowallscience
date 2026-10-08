@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "0.1.10",
-  "description": "ZeroWall Science base domain plugin (desktop 8.0.7).",
+  "version": "0.1.11",
+  "description": "ZeroWall Science base domain plugin (desktop 8.0.8).",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./src/host/index.ts",
@@ -25,7 +25,6 @@
     },
     "client": {
       "inject": [
-        "betterSidebar",
         "slots",
         "uiConversation",
         "settingsScope",
@@ -100,8 +99,6 @@
     "README.md"
   ],
   "dependencies": {
-    "dsh-better-sidebar": "workspace:^",
-    "dsh-dream-skin": "9.29.0",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

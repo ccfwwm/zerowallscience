@@ -69,6 +69,11 @@ const common = {
     },
   ],
   extraResources: [
+    { from: path.join(stage, 'offline-profile'), to: 'offline-profile', filter: ['**/*'] },
+    { from: path.join(stage, 'resources/extensions/skills'), to: 'extensions/skills', filter: ['**/*'] },
+    { from: path.join(stage, 'resources/extensions/mcp'), to: 'extensions/mcp', filter: ['**/*'] },
+    { from: path.join(stage, 'resources/extensions/capabilities/biogenie'), to: 'extensions/capabilities/biogenie', filter: ['**/*'] },
+    { from: path.join(stage, 'resources/sci'), to: 'sci', filter: ['**/*'] },
     { from: path.join(stage, 'python-updater'), to: 'python-updater', filter: ['**/*'] },
     { from: resourcePath('python', 'dependency-manifest.json'), to: 'python/dependency-manifest.json' },
     { from: resourcePath('python', 'core-dependency-manifest.json'), to: 'python/core-dependency-manifest.json' },

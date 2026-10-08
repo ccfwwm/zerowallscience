@@ -1,0 +1,3 @@
+- insert:
+    - id: zotero-harvest
+      name: '@dsh-external/zotero-harvest'

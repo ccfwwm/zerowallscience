@@ -1,5 +1,5 @@
 {
-  "version": "8.0.7",
+  "version": "8.0.8",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
@@ -72,7 +72,7 @@
   },
   "zotero-harvest": {
     "repository": "https://github.com/Fisfzy/zotero-harvest.git",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "commit": "9635a4f27ba186f414d3ba23042bd12ee176cddc",
     "license": "MIT",
     "source": "packages/dsh/zotero-harvest"

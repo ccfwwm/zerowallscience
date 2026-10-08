@@ -60,7 +60,7 @@ export function defaultPanelSpec(): GenuiSpec {
  * expand, or clear). The override is the fold base and shields against every
  * replay at/below the highest message seq seen so far; the next later real
  * tool/fence operation replaces or merges into it as usual. */
-function applyPanelCommand(sessionId: string, args: string): void {
+export function applyPanelCommand(sessionId: string, args: string): void {
   const cmd = args.trim().toLowerCase()
   if (cmd === 'clear' || cmd === 'off' || cmd === 'close') {
     setLocalPanel(sessionId, null)

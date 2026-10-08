@@ -8,10 +8,13 @@ import { EnvironmentSection } from './section.js'
 import { unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 import { en, NS, zh } from './locales.js'
 
-export const inject = [
-  'slots', 'locale', 'remote', 'remote.session', 'configForms',
-  'remote.zerowallEnvironment', 'remote.zerowallAccount', 'remote.zerowallMcp', 'remote.zerowallMineru', 'remote.zerowallPubmed',
-]
+// Cordis uses an object inject declaration as a service-to-intercept map.  It
+// does not have `required`/`optional` groups; declaring those names would make
+// the plugin wait for services literally named "required" and "optional".
+// Keep only the services needed to render the base environment section here.
+// Domain remotes are resolved opportunistically below so the page remains
+// available while AI Cloud, MCP, MinerU or PubMed are disabled/uninstalled.
+export const inject = ['slots', 'locale', 'remote', 'remote.session', 'configForms', 'remote.zerowallEnvironment']
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'zerowall: environment dictionaries')
@@ -22,10 +25,23 @@ export function apply(ctx: ClientContext): void {
   // manual model sync.
   const sessionRemote = ctx.get('remote.session')
   const environmentRemote = ctx.get('remote.zerowallEnvironment')
-  const accountRemote = ctx.get('remote.zerowallAccount')
-  const mcpRemote = ctx.get('remote.zerowallMcp')
-  const mineruRemote = ctx.get('remote.zerowallMineru')
-  const pubmedRemote = ctx.get('remote.zerowallPubmed')
+  const optionalRemote = (name: 'remote.zerowallAccount' | 'remote.zerowallMcp' | 'remote.zerowallMineru' | 'remote.zerowallPubmed') => {
+    let remote: any
+    ctx.inject([name], scope => {
+      remote = scope.get(name)
+      scope.effect(() => () => { remote = undefined })
+    })
+    // Resolve methods inside the owning injected fiber. The base page keeps
+    // rendering, and its existing per-domain error states show availability.
+    return new Proxy({}, { get: (_target, method) => (...args: unknown[]) => {
+      if (typeof remote?.[method] !== 'function') return Promise.reject(new Error('Domain service unavailable'))
+      return remote[method](...args)
+    } })
+  }
+  const accountRemote = optionalRemote('remote.zerowallAccount')
+  const mcpRemote = optionalRemote('remote.zerowallMcp')
+  const mineruRemote = optionalRemote('remote.zerowallMineru')
+  const pubmedRemote = optionalRemote('remote.zerowallPubmed')
   const reviewerScope = ctx.configForms.get<any>('zerowall-reviewer')
   ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-environment', order: 25,

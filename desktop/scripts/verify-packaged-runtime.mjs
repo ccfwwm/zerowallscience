@@ -1,16 +1,19 @@
 import { stageRoot, targetPackageRoot } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { createReadStream } from 'node:fs'
-import { access, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { createReadStream, readFileSync } from 'node:fs'
+import { access, mkdir, mkdtemp, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { delimiter, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { extractFile, listPackage } from '@electron/asar'
 import { chromium } from 'playwright'
+import yaml from 'yaml'
+import { verifyOfflineProfile, prepareOfflineCandidate } from '../../tools/commands/offline-profile.mjs'
 import { locatePackagedApp } from './packaged-app.mjs'
 import { verifySettingsLocales } from './verify-settings-locales.mjs'
+import { prepareOfflineNetworkProbe, verifyOfflineNetworkProbe } from './offline-network-probe.mjs'
 
 const hostCookies = new Map()
 const MIB = 1024 * 1024
@@ -20,9 +23,11 @@ const pinnedUpstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config
 const pinnedIntegrations = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'integrations', 'upstream-sources.json'), 'utf8'))
 const desktopManifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
 const runtimeProfile = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'layout', 'runtime-profile.json'), 'utf8'))
+const fullOffline = runtimeProfile.optionalPluginPolicy?.offlineClosure === 'offline-profile/modules'
 const coreOnly = runtimeProfile.optionalPluginPolicy?.bundled === false
 const desktopOnly = process.argv.includes('--desktop-only')
 const hostOnly = process.argv.includes('--host-only')
+const offlineNetwork = process.argv.includes('--offline-network')
 const requireBundledPython = process.argv.includes('--require-bundled-python')
 const requireThinPython = process.argv.includes('--require-thin-python')
 
@@ -68,9 +73,34 @@ if (bundledPythonManifest !== undefined) {
 }
 
 const archiveEntries = listPackage(asarPath, { isPack: false })
-const archiveFiles = archiveEntries.map(normalizeArchivePath)
+const rawArchiveFiles = archiveEntries.map(normalizeArchivePath)
+const archiveFiles = [...rawArchiveFiles]
 const archiveEntryByPath = new Map(archiveEntries.map(entry => [normalizeArchivePath(entry), entry.replace(/^[/\\]+/, '')]))
 const archiveSet = new Set(archiveFiles)
+const rawArchiveSet = new Set(rawArchiveFiles)
+let offlineReceipt, offlineProbe
+if (fullOffline) {
+  const keys = JSON.parse(await readFile(resolve(repositoryRoot, 'config/catalogs/trusted-keys.json'), 'utf8'))
+  offlineReceipt = (await verifyOfflineProfile(resolve(packaged.resourcesRoot, 'offline-profile'), keys, {
+    desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit,
+    platform: process.platform, architecture: process.arch,
+  })).receipt
+  for (const entry of offlineReceipt.files.filter(entry => entry.path.startsWith('modules/'))) {
+    const logical = 'node_modules/' + entry.path.slice('modules/'.length)
+    if (!archiveSet.has(logical)) { archiveFiles.push(logical); archiveSet.add(logical) }
+  }
+  await verifyCoreRuntimeArchive()
+  // Imports exercise the installed generation's real node_modules boundary.
+  const probeHome = await mkdtemp(resolve(tmpdir(), 'zerowall-离线闭包-'))
+  const { initializeProfile } = await import('../../tools/commands/profile.mjs')
+  const defaults = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8'))
+  await initializeProfile(probeHome, defaults, offlineReceipt.plugins)
+  offlineProbe = await prepareOfflineCandidate({ home: probeHome, source: resolve(packaged.resourcesRoot, 'offline-profile'), keys,
+    target: { desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit, platform: process.platform, architecture: process.arch }, defaults, yaml,
+  })
+  if (offlineProbe.blocked.length) throw new Error('New offline import profile unexpectedly blocked')
+}
+
 if (archiveFiles.some(path => path.includes('node_modules/@fylar/'))) {
   throw new Error('Excluded commercial Fylar Office SDK found in the packaged runtime.')
 }
@@ -116,7 +146,7 @@ if (coreOnly) {
 }
 for (const [plugin, file] of ['mcp', 'research'].flatMap(plugin => ['lib/client.js', 'lib/index.js'].map(file => [plugin, file]))) {
   const path = `node_modules/@zerowallscience/plugin-${plugin}/${file}`
-  if (!readArchiveFile(path).equals(await readFile(resolve(stageRoot, 'runtime', path)))) {
+  if (!readArchiveFile(path).equals(await readFile(resolve(stageRoot, fullOffline && !rawArchiveSet.has(path) ? 'offline-profile/modules' : 'runtime/node_modules', path.slice('node_modules/'.length))))) {
     throw new Error(`Packaged ${plugin} ${file} is stale. Repackage the current runtime.`)
   }
 }
@@ -132,7 +162,7 @@ for (const entry of ['out/main/index.js', 'out/main/python-updater-worker.js', '
     throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
   }
 }
-for (const entry of ['out/main/python-updater-worker.js', 'node_modules/yauzl/index.js', 'node_modules/pend/index.js']) {
+for (const entry of fullOffline ? [] : ['out/main/python-updater-worker.js', 'node_modules/yauzl/index.js', 'node_modules/pend/index.js']) {
   await access(resolve(packaged.resourcesRoot, 'app.asar.unpacked', entry))
 }
 const packagedMcpHost = readArchiveFile('node_modules/@zerowallscience/plugin-mcp/lib/index.js').toString('utf8')
@@ -244,31 +274,31 @@ for (const path of requiredArchivePaths) {
 for (const path of [
   resolve(packaged.resourcesRoot, 'splash.html'),
   resolve(packaged.resourcesRoot, 'zerowall.patch.yml'),
-  resolve(packaged.resourcesRoot, 'bio-tools', 'run_server.py'),
-  resolve(packaged.resourcesRoot, 'ketcher-chemistry', 'server.js'),
+  resolve(packaged.resourcesRoot, 'extensions/mcp/bio-tools', 'run_server.py'),
+  resolve(packaged.resourcesRoot, 'extensions/mcp/ketcher-chemistry', 'server.js'),
   resolve(packaged.resourcesRoot, 'sci', 'dist', 'cli.mjs'),
   resolve(packaged.resourcesRoot, 'sci', 'dist', 'mcp.cjs'),
   resolve(packaged.resourcesRoot, 'sci', 'zerowall-mcp-launcher.cjs'),
-  resolve(packaged.resourcesRoot, 'skills', 'literature-review', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'pubmed-literature', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'mineru-document-parser', 'SKILL.md'),
-  ...['zerowall-image-dup', 'zerowall-paper-analysis', 'zerowall-paper-compare', 'zerowall-integrity-report'].map(name => resolve(packaged.resourcesRoot, 'skills', name, 'SKILL.md')),
-  resolve(packaged.resourcesRoot, 'skills', 'bioinfor-figure-export', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'bioinfor-literature-search-digest', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'bioinfor-public-data-access', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'code-organization', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'managing-pixi-environments', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'pixi-environment-builder', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'project-scaffold', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'sc-upstream', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'singlecell-milor', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'singlecell-milor', 'scripts', 'generate_milor_r_script.py'),
-  resolve(packaged.resourcesRoot, 'skills', 'singlecell-milor', 'templates', 'milor_readable_template.R'),
-  resolve(packaged.resourcesRoot, 'skills', 'singlecell-qc', 'SKILL.md'),
-  resolve(packaged.resourcesRoot, 'skills', 'singlecell-qc', 'scripts', 'calculate_metrics.py'),
-  resolve(packaged.resourcesRoot, 'skills', 'singlecell-qc', 'scripts', 'calculate_metrics.R'),
-  resolve(packaged.resourcesRoot, 'skills', 'singlecell-qc', 'assets', 'gene_sets', 'hbb_genes_human.txt'),
-  resolve(packaged.resourcesRoot, 'skills', 'bioinfor-public-data-access', 'scripts', 'public_data_plan.py'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'literature-review', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'pubmed-literature', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'mineru-document-parser', 'SKILL.md'),
+  ...['zerowall-image-dup', 'zerowall-paper-analysis', 'zerowall-paper-compare', 'zerowall-integrity-report'].map(name => resolve(packaged.resourcesRoot, 'extensions/skills', name, 'SKILL.md')),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'bioinfor-figure-export', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'bioinfor-literature-search-digest', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'bioinfor-public-data-access', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'code-organization', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'managing-pixi-environments', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'pixi-environment-builder', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'project-scaffold', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'sc-upstream', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'singlecell-milor', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'singlecell-milor', 'scripts', 'generate_milor_r_script.py'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'singlecell-milor', 'templates', 'milor_readable_template.R'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'singlecell-qc', 'SKILL.md'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'singlecell-qc', 'scripts', 'calculate_metrics.py'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'singlecell-qc', 'scripts', 'calculate_metrics.R'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'singlecell-qc', 'assets', 'gene_sets', 'hbb_genes_human.txt'),
+  resolve(packaged.resourcesRoot, 'extensions/skills', 'bioinfor-public-data-access', 'scripts', 'public_data_plan.py'),
   resolve(packaged.resourcesRoot, 'licenses', 'THIRD_PARTY_NOTICES.md'),
   resolve(packaged.resourcesRoot, 'licenses', 'deepseek-harness.version.json'),
 ]) await access(path)
@@ -504,12 +534,12 @@ async function verifyArchivePolicy() {
 }
 
 async function verifyCoreRuntimeArchive() {
-  const forbidden = archiveFiles.filter(path => path.startsWith('node_modules/') && (
+  const forbidden = rawArchiveFiles.filter(path => path.startsWith('node_modules/') && (
     /\.(?:d\.ts|ts|tsx|mts|cts|map|pdb|tsbuildinfo)$/i.test(path)
     || hasForbiddenRuntimeDirectory(path)
   ))
   if (forbidden.length > 0) throw new Error(`Forbidden production runtime files found in Core ASAR:\n${forbidden.slice(0, 50).join('\n')}`)
-  const nativeMismatch = archiveFiles.filter(path => /\.(?:node|dll|exe)$/i.test(path)
+  const nativeMismatch = rawArchiveFiles.filter(path => /\.(?:node|dll|exe)$/i.test(path)
     && /(darwin|linux|android|arm64|ia32|x86)/i.test(path)
     && !/(win32|windows).*(x64|amd64)/i.test(path))
   if (nativeMismatch.length > 0) throw new Error(`Non-Windows-x64 native files found in Core ASAR:\n${nativeMismatch.join('\n')}`)
@@ -529,7 +559,7 @@ async function verifyCoreRuntimeArchive() {
     required.push(`node_modules/${id}/package.json`)
   }
   required.push('node_modules/pend/package.json', 'node_modules/pend/index.js')
-  for (const path of required) if (!archiveSet.has(path)) throw new Error(`Core ASAR is missing required startup file: ${path}`)
+  for (const path of required) if (!rawArchiveSet.has(path)) throw new Error(`Core ASAR is missing required startup file: ${path}`)
   for (const entry of ['out/main/index.js', 'out/main/python-updater-worker.js', 'out/preload/index.cjs']) {
     if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
       throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
@@ -542,7 +572,7 @@ async function verifyCoreRuntimeArchive() {
   if (updaterReceipt.schema !== 1 || updaterReceipt.buildId !== stagedDesktopReceipt.buildId || !Array.isArray(updaterReceipt.files)) {
     throw new Error('External Python updater assets do not belong to the current desktop build.')
   }
-  for (const entry of ['python-updater-worker.js', ...archiveFiles
+  for (const entry of ['python-updater-worker.js', ...rawArchiveFiles
     .filter(path => /^out\/main\/chunks\/mcp-environment-.+\.js$/u.test(path))
     .map(path => path.slice('out/main/'.length))]) {
     const bytes = await readFile(resolve(updaterRoot, entry))
@@ -576,7 +606,7 @@ async function verifyCoreRuntimeArchive() {
   if (updaterRequireCheck.status !== 0) {
     throw new Error(`External Python updater cannot load its ZIP runtime: ${(updaterRequireCheck.stderr || updaterRequireCheck.error?.message || 'unknown error').trim()}`)
   }
-  const updaterChunkPaths = archiveFiles.filter(path => /^out\/main\/chunks\/mcp-environment-.+\.js$/u.test(path))
+  const updaterChunkPaths = rawArchiveFiles.filter(path => /^out\/main\/chunks\/mcp-environment-.+\.js$/u.test(path))
   if (updaterChunkPaths.length === 0) throw new Error('Core ASAR is missing the Python updater environment chunk.')
   for (const name of ['yauzl', 'pend']) {
     const externalManifest = JSON.parse(await readFile(resolve(updaterRoot, 'modules', name, 'package.json'), 'utf8'))
@@ -593,13 +623,14 @@ async function verifyCoreRuntimeArchive() {
   }
 
   const defaults = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8'))
-  for (const entry of ['resource-manager.mjs', 'profile.mjs', 'zws.mjs']) {
+  for (const entry of ['resource-manager.mjs', 'profile.mjs', 'zws.mjs', ...(fullOffline ? ['offline-profile.mjs'] : [])]) {
     const bytes = await readFile(resolve(packaged.resourcesRoot, 'commands', entry))
     if (!bytes.equals(await readFile(resolve(repositoryRoot, 'tools/commands', entry)))) {
       throw new Error(`Packaged management command is stale: ${entry}. Regenerate commands and repackage.`)
     }
   }
-  const expectedDefaults = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', ...runtimeProfile.corePlugins].sort()
+  const inventory = JSON.parse(await readFile(resolve(repositoryRoot, 'config/deepseek-harness/plugin-inventory.json'), 'utf8'))
+  const expectedDefaults = [...new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', ...(fullOffline ? inventory.profiles.stable.plugins : runtimeProfile.corePlugins)])].sort()
   if (JSON.stringify([...defaults].sort()) !== JSON.stringify(expectedDefaults)) {
     throw new Error(`Core profile contains unexpected default plugins: ${JSON.stringify(defaults)}`)
   }
@@ -618,7 +649,7 @@ async function verifyCoreRuntimeArchive() {
     '@dsh-external/zotero-harvest', '@dingyi222666/dsh-session-notification',
     '@changfenhuang/dsh-genui', 'dsh-free-search', 'dsh-zotero',
   ]) optional.add(name)
-  const includedOptional = [...optional].filter(name => archiveFiles.some(path => path.startsWith(`node_modules/${name}/`)))
+  const includedOptional = [...optional].filter(name => rawArchiveFiles.some(path => path.startsWith(`node_modules/${name}/`)))
   if (includedOptional.length > 0) throw new Error(`Optional plugins were embedded in the Core ASAR: ${includedOptional.join(', ')}`)
   const packagedResourceFiles = await listDiskFiles(packaged.resourcesRoot)
   const optionalResourceRoots = [
@@ -627,7 +658,7 @@ async function verifyCoreRuntimeArchive() {
     'biogenie/', 'bio-tools/', 'ketcher-chemistry/', 'sci/',
   ]
   const embeddedResources = packagedResourceFiles.filter(path => optionalResourceRoots.some(prefix => path.startsWith(prefix)))
-  if (embeddedResources.length > 0) {
+  if (!fullOffline && embeddedResources.length > 0) {
     throw new Error(`Independently updateable resource payload was embedded in the Core installer: ${embeddedResources.slice(0, 30).join(', ')}`)
   }
   console.log(`Core ASAR verified with ${runtimeProfile.corePlugins.length} ZeroWall Core plugins and ${optional.size} excluded optional packages.`)
@@ -734,7 +765,11 @@ async function verifyExternalPolicy() {
   // layout (mostly Skill Markdown/Python files).  Keep a hard upper bound with
   // enough headroom for the catalog while retaining the content-level gates
   // above for test output and legacy resources.
-  if (externalFiles.length > 5_000) throw new Error(`ASAR-external file count ${externalFiles.length} exceeds the 5,000-file gate.`)
+  const offlineCount = externalFiles.filter(path => path.startsWith('offline-profile/')).length
+  if (fullOffline && offlineCount > 50_000) throw new Error(`Signed offline closure exceeds its 50,000-file gate: ${offlineCount}`)
+  const ordinaryCount = externalFiles.length - (fullOffline ? offlineCount : 0)
+  if (ordinaryCount > 5_000) throw new Error(`ASAR-external resource count ${ordinaryCount} exceeds the 5,000-file gate.`)
+  console.log(`[files] signed offline closure: ${offlineCount}; other external resources: ${ordinaryCount}`)
 
   const nodeExecutables = (await listDiskFiles(packaged.root)).filter(path => /(?:^|\/)node\.exe$/i.test(path))
   if (nodeExecutables.length > 0) throw new Error(`Standalone Node runtime is forbidden:\n${nodeExecutables.join('\n')}`)
@@ -969,13 +1004,27 @@ async function verifyDirectoryPickerWorker() {
 }
 
 async function verifyHostStartup() {
-  const root = await mkdtemp(resolve(tmpdir(), 'zerowall-packaged-host-'))
+  const root = await mkdtemp(resolve(tmpdir(), 'zerowall-离线验收-'))
   const { initializeProfile } = await import('./../../tools/commands/profile.mjs')
   await initializeProfile(resolve(root, 'harness'), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8')), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/bundled-plugins.json'), 'utf8')))
+  if (fullOffline) {
+    const home = resolve(root, 'harness')
+    const result = await prepareOfflineCandidate({ home, source: resolve(packaged.resourcesRoot, 'offline-profile'),
+      keys: JSON.parse(await readFile(resolve(repositoryRoot, 'config/catalogs/trusted-keys.json'), 'utf8')),
+      target: { desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit, platform: process.platform, architecture: process.arch },
+      defaults: JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8')), yaml,
+    })
+    if (result.blocked.length) throw new Error('New offline profile unexpectedly has blocked plugins')
+    await rename(resolve(home, 'profiles/web'), resolve(home, 'profiles/verification-before-repair'))
+    await rename(result.candidate, resolve(home, 'profiles/web'))
+  }
   const port = await reservePort()
   const url = `http://127.0.0.1:${port}`
   const dshEntry = resolve(asarPath, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  const networkProbe = offlineNetwork ? await prepareOfflineNetworkProbe(root) : undefined
+  const networkGuardEvidence = networkProbe ? await verifyOfflineNetworkProbe(networkProbe, { executablePath: packaged.executablePath }) : undefined
   const child = spawn(packaged.executablePath, [
+    ...(networkProbe ? ['--import', pathToFileURL(networkProbe.path).href] : []),
     '--import', pathToFileURL(resolve(asarPath, 'runtime', 'runtime-esm-register.mjs')).href,
     '--expose-internals',
     resolve(asarPath, 'runtime', 'harness-node-entry.mjs'),
@@ -1031,7 +1080,7 @@ async function verifyHostStartup() {
           }
           await verifyZoteroStatus(probeUrl)
           await verifyZoteroAuthorization(probeUrl)
-          if (!freeSearchVerified) {
+          if (!offlineNetwork && !freeSearchVerified) {
             await verifyFreeSearch(probeUrl)
             freeSearchVerified = true
           }
@@ -1051,6 +1100,13 @@ async function verifyHostStartup() {
           await verifyPubmedStatus(probeUrl)
           await verifySinglecellStatus(probeUrl)
           await verifyEventWebSockets(probeUrl)
+          if (networkProbe) {
+            const evidence = JSON.parse(await readFile(networkProbe.receipt, 'utf8'))
+            if (!evidence.isolated || evidence.packageInstallsAttempted !== 0) throw new Error('Offline Host attempted package installation')
+            await mkdir(resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version), { recursive: true })
+            await writeFile(resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version, 'offline-host.json'), JSON.stringify({ ...evidence, guard: networkGuardEvidence, applicationVersion: desktopManifest.version, fullDefaultProfile: fullOffline, evidenceRoot: root }, null, 2))
+            console.log('Full default Host activated with outbound networking blocked and zero package installation attempts.')
+          }
           return
         } catch (error) {
           if (lastProbeError !== (error instanceof Error ? error.message : String(error))) console.log(`Host probe pending: ${error instanceof Error ? error.message : String(error)}`)
@@ -1760,15 +1816,18 @@ function hostEnvironment(root, dshEntry) {
   return {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1',
-    NODE_PATH: resolve(asarPath, 'node_modules'),
+    NODE_PATH: [resolve(asarPath, 'node_modules'), ...(fullOffline ? [resolve(offlineProbe.candidate, 'node_modules')] : [])].join(delimiter),
+    ...(fullOffline ? { ZEROWALL_PROFILE_ANCHOR: pathToFileURL(resolve(offlineProbe.candidate, 'package.json')).href } : {}),
     ZEROWALL_RUNTIME_ANCHOR: pathToFileURL(dshEntry).href,
     // Match the packaged desktop's product environment so ZeroWall-owned
     // profile bundles (including File Review) join this isolated Host probe.
     ZEROWALL_USER_DATA_DIR: root,
     DSH_HOME: resolve(root, 'harness'),
-    DSH_BUNDLED_SKILL_DIR: resolve(packaged.resourcesRoot, 'skills'),
+    DSH_BUNDLED_SKILL_DIR: resolve(packaged.resourcesRoot, 'extensions/skills'),
     ZEROWALL_RESEARCH_DB: resolve(root, 'research', 'zerowall-research.sqlite'),
-    ZEROWALL_BUNDLED_SKILLS: resolve(packaged.resourcesRoot, 'skills'),
+    ZEROWALL_BUNDLED_SKILLS: resolve(packaged.resourcesRoot, 'extensions/skills'),
+    ZEROWALL_DEFER_DEFAULT_MCP: '1',
+    DSH_CLIENT_VERSION: desktopManifest.version,
     DSH_TELEMETRY_DISABLED: '1',
     NO_COLOR: '1',
   }
@@ -1866,7 +1925,11 @@ function normalizeArchivePath(path) {
 
 function readArchiveFile(path) {
   const entry = archiveEntryByPath.get(path)
-  if (entry === undefined) throw new Error(`ASAR file is missing: ${path}`)
+  if (entry === undefined) {
+    const physical = 'modules/' + path.slice('node_modules/'.length)
+    if (fullOffline && path.startsWith('node_modules/') && offlineReceipt.files.some(item => item.path === physical)) return readFileSync(resolve(packaged.resourcesRoot, 'offline-profile', physical))
+    throw new Error(`Verified runtime file is missing: ${path}`)
+  }
   return extractFile(asarPath, entry)
 }
 

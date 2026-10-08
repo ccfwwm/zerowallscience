@@ -35,27 +35,32 @@ export function attachManagement(ctx: Context): void {
       // merely to augment Cordis's Context type in this independent plugin.
       type Entry = { options: { name?: string; id?: string }; disabled?: boolean; fiber?: { state: number } }
       const loader = (ctx.root as Context & { loader?: { entries(): Iterable<Entry> } }).loader
-      const entries = loader ? [...loader.entries()].filter(entry => entry.options.name?.startsWith('@zerowallscience/plugin-') && !entry.disabled) : []
-      process.send?.({ type: 'zerowall:management:result', id: request.id, result: { ready: !!loader && entries.length > 0 && entries.every(entry => entry.fiber?.state === 2), entries: entries.map(entry => ({ id: entry.options.id, state: entry.fiber?.state })) } })
+      const entries = loader ? [...loader.entries()].filter(entry => entry.options.name && !entry.disabled) : []
+      process.send?.({ type: 'zerowall:management:result', id: request.id, result: { ready: !!loader && entries.length > 0 && entries.every(entry => entry.fiber?.state === 2), entries: entries.map(entry => ({ id: entry.options.id, name: entry.options.name, state: entry.fiber?.state })) } })
       return
     }
     const operation = operations[request.operation ?? '']
     const reply = (result: unknown, error?: string): void => { process.send?.({ type: 'zerowall:management:result', id: request.id, result, error }) }
     if (!operation) { reply(undefined, 'Unsupported management operation'); return }
-    let completed = false
-    const timer = setTimeout(() => { if (!completed) { completed = true; reply(undefined, 'Requested plugin service is unavailable') } }, 5000)
+    let completed = false, started = false
+    const timer = setTimeout(() => { if (!completed) { completed = true; reply(undefined, started ? 'Plugin management timed out' : 'Requested plugin service is unavailable') } }, /\.(?:list|sources|get)$/u.test(request.operation ?? '') ? 4000 : 30000)
     const dispose = ctx.inject([operation.service], async scope => {
-      if (completed) return
-      completed = true
-      clearTimeout(timer)
+      if (completed || started) return
+      started = true
       try {
         const service = scope.get(operation.service) as unknown as Record<string, (...args: unknown[]) => unknown>
         if (typeof service[operation.method] !== 'function') throw new Error('Service operation unavailable')
         const result = await service[operation.method]!(...(request.args ?? []))
+        if (completed) return
+        completed = true
+        clearTimeout(timer)
         if (request.operation?.startsWith('mcp.')) console.info('[zws-mcp] ' + JSON.stringify({ operation: request.operation, status: 'completed', time: new Date().toISOString() }))
         // MCP may carry inherited credential env values; publish only status.
         reply(request.operation?.startsWith('mcp.') ? sanitize(result) : result)
       } catch (error: unknown) {
+        if (completed) return
+        completed = true
+        clearTimeout(timer)
         // Error messages may contain credentials supplied by a provider. Keep
         // only the error class and source frames in the desktop diagnostics.
         const failure = error instanceof Error ? error : new Error()

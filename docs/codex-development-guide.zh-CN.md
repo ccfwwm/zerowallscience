@@ -8,7 +8,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | `8.0.7` |
+| 应用版本 | `8.0.8` |
 | 集成基线 | `main`，8.0.6 发布提交 `1e76a16e87ee53da9270e750673a8572447d5517` |
 | 8.0.7 架构工作分支 | `codex/8.0.7-modular`，从上述基线创建，已合并并推送到 `main`；对应 Codex worktree 已归档 |
 | 8.0.7 本地 Windows 安装包 | `artifacts/packages/8.0.7/windows-x64/zerowall-science-8.0.7-win-x64.exe`；当前 manifest 标明源码树非 clean |
@@ -158,13 +158,13 @@ pnpm plugins:pack
 - 独立 generation、任务 journal、旧版本、失败原因和重试次数。
 - 插件按 profile 原子切换；Skills 支持运行中刷新；MCP 配置支持热刷新，Server 支持启停和重启；Python 使用 generation 与 `current.json`。
 
-启动检查和每日检查只读取、验签并显示可用版本，不自动下载、安装或重启。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。
+8.0.8 扩展资源启动和每日远端检测默认关闭。打开页面、切换标签、刷新本地列表只读取本地状态；只有用户点击“检查更新”才读取、验签远端 catalog metadata，可保存验证后的缓存。检测不下载 payload、不安装、不修改 profile、不重启。桌面安装器更新策略保持原有行为。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。
 
 ### Python 分层合同（8.0.7）
 
 - 运行时根目录固定为 `%LOCALAPPDATA%\\ZeroWall Science\\Python`；旧 Roaming 或安装目录中的 Python 指针不再作为默认目标，也不会被复制或删除。
 - `bootstrap` 只表示解释器是否存在，`core` 表示 ZeroWall/MCP 最小依赖，`science` 表示科研依赖，`capability` 表示某个 Skill 或流程的可选依赖。解释器就绪不等于科研层已安装。
-- 默认启动只检查签名清单和本地状态。Python + pip bootstrap、42 个基础依赖和其他资源均由用户明确选择安装；任务异步运行，不阻塞桌面界面。
+- 默认启动只读取已捆绑签名清单和本地状态，不检测远端。Python + pip bootstrap、42 个基础依赖和其他资源均由用户明确选择安装；任务异步运行，不阻塞桌面界面。
 - 新桌面版本使用固定版本的 Python bootstrap manifest；首次安装只接受 `python.bootstrapOnly=true` 的清单。发布的运行时 ZIP 只含 CPython 3.12.10 与 pip，拒绝旧的 387 包科研环境清单，避免新用户误下载近 1 GB 的完整环境。bootstrap 资源使用独立的版本目录；验证阶段只上传不可变对象，不更新 `latest.json`。
 - 核心任务写入持久 task receipt，持续记录阶段、包计数、当前包、实时 pip 日志和错误。设置页轮询本地快照，不重复扫描完整 site-packages；关闭或重启后恢复最近任务状态，等待用户选择继续后续接核心同步。
 - 科研层和 capability 层不随启动自动安装。用户明确选择“安装科研层”或某个能力层后，才预检、下载并进行 generation 切换；启动检查不得下载这些大型资源。
@@ -219,9 +219,14 @@ GC 不遍历任何 `node_modules` 目录；候选树包含嵌套依赖目录时�
 
 单独的 Python 依赖清单可用 `pnpm resource:build python core`、`science` 或 `capability <id>` 生成。构建命令应绑定新的 `ZEROWALL_BUILD_ID`；输出先进入该 build ID 的 stage，再经签名和 SHA-256 收据校验。catalog 若标记 `localOnly`，只可用于本地验收，不能作为正式发布目录。
 
-`@zerowallscience/dsh-bundle-core` 和 `dsh-bundle-science` 都是组合声明。8.0.7 新安装器的 immutable runtime closure 只包含 Core 插件和必要宿主依赖；科研领域插件由签名 catalog 安装到用户 profile。8.0.6 用户迁移时保留已有 bundles、禁用项、固定版本和第三方插件，不用 Core 默认值覆盖旧选择。
+`@zerowallscience/dsh-bundle-core` 和 `dsh-bundle-science` 都是组合声明。8.0.8 ASAR 只携带 Core 和宿主依赖；安装器同时携带完整默认插件的签名离线闭包 `offline-profile/modules`、独立 tarball、默认 Skills 和小型 MCP 启动资源。新用户首次启动不运行 npm/pnpm 网络安装。离线闭包必须使用正式信任公钥验签，并检查 Desktop/DSH、平台、架构、完整文件集、大小和 SHA-256。
 
-Core 启动允许独立 Skills 目录尚未安装。打包验收同时拒绝旧 `skills/` 与新 `extensions/skills/` 内嵌 payload，避免通过恢复旧目录掩盖启动错误。`pnpm smoke:electron` 根据 runtime profile 选择 Core 桌面启动和扩展中心验收；原完整科研安装器套件保留为桌面的 `test:e2e:legacy-packaged`，不能用 Core smoke 的通过替代可选科研 profile 的完整验收。
+architecture 7 通过 candidate profile、事务 journal、真实 Host 健康检查和原子激活提交。固定版本缺包时阻止整个修复，不用离线的新版本替代。用户明确停用、卸载、固定版本、第三方包、账户、模型、项目、环境变量引用和自定义配置优先。签名闭包复制至用户拥有的固定 generation 后再链接，不能链接到会随安装器升级而替换的目录。旧 architecture 6 即使已迁移，也必须检查实际缺包并修复。
+
+扩展中心四组独立显示，本地读取上限 5 秒，人工检测每组上限 15 秒；请求去重、底层超时、关闭后和过期结果保护同时生效。已安装版本、是否缺包、用户启用选择、实际 Host 激活、固定版本必须分开。Python 解释器就绪不等于 science/capability 已安装。某组挂起或不可用不阻塞其他组，不清空已有结果。
+
+8.0.8 验收不能使用 Core smoke 代替完整科研功能测试。`pnpm smoke:electron` 执行真实隔离 Electron；`verify:package` 同时检查原始 Core ASAR 与验签后的离线闭包，保留 Office/Zotero/原生依赖等检查。功能基线和证据见 [8.0.6 到 8.0.8 功能对照](feature-parity-8.0.8.md)。本轮用户明确要求直接在 main 目录开发，清理暂停；不要另外创建 worktree 或删除旧包目录、凭据和历史产物。
+
 ## 7. 版本和兼容性
 
 桌面版本、插件版本、Skills 版本、MCP Server 版本、Python generation 和提示词版本相互独立：

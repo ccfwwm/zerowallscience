@@ -1,6 +1,6 @@
 # ZeroWall Science 项目开发与发布指南
 
-本文保留项目级目录、开发环境和通用构建说明。当前 Codex 的执行合同、DSH 固定版本、插件更新事务和 8.0.7 模块化架构和发布边界以 [Codex 开发指导](codex-development-guide.zh-CN.md) 为准。源码和脚本是事实来源；旧版本验收记录、一次性审计结果和本地构建目录不属于项目源代码。
+本文保留项目级目录、开发环境和通用构建说明。当前 Codex 的执行合同、DSH 固定版本、插件更新事务和 8.0.8 完整离线默认功能和发布边界以 [Codex 开发指导](codex-development-guide.zh-CN.md) 为准。源码和脚本是事实来源；旧版本验收记录、一次性审计结果和本地构建目录不属于项目源代码。
 
 ## 1. 项目边界
 
@@ -51,17 +51,17 @@ pnpm dsh:verify
 
 ## 4. DSH 子模块提交控制
 
-父仓库只保存 `deepseek-harness` 的 gitlink，不能把子模块内部文件当作父仓库源码提交。当前 ZeroWall fork 使用远端 `https://github.com/ccfwwm/deepseek-harness.git`、分支 `codex/biomni-model-routing`、固定 commit `75e2d12fc666eb16225cd3a21195a0f056ce8a50`，上游基线为 `dsh-v0.1.5-rc.2`。
+父仓库只保存 `deepseek-harness` 的 gitlink，不能把子模块内部文件当作父仓库源码提交。当前 ZeroWall fork 使用远端 `https://github.com/ccfwwm/deepseek-harness.git`、分支 `zerowall/reviewer-history-opaque`、固定 commit `86b6740d0e671cee0b3fd0168de484c0efbf46ea`，版本合同为 `dsh-v0.2.0-rc.2`。
 
 修改 DSH：
 
 ```powershell
 git -C deepseek-harness status --short --branch
-git -C deepseek-harness switch codex/biomni-model-routing
+git -C deepseek-harness switch zerowall/reviewer-history-opaque
 # 修改后只添加明确文件
 git -C deepseek-harness add path/to/changed-file
 git -C deepseek-harness commit -m "fix: describe the DSH change"
-git -C deepseek-harness push zerowall HEAD:codex/biomni-model-routing
+git -C deepseek-harness push zerowall HEAD:zerowall/reviewer-history-opaque
 # 更新父仓库 gitlink 和固定声明
 git -C deepseek-harness rev-parse HEAD
 # 将同一个 commit 写入 config/deepseek-harness/upstream.json
@@ -140,3 +140,9 @@ GitHub 验证要确认 tag 指向发布 commit、Release 不是 draft/prerelease
 ## 8.0.7 增量构建与清理
 
 修改单个插件、Skill、MCP 或 Python 层时使用对应的 `plugin:*` 或 `resource:*` 命令，不触发完整 Electron 构建。正式产物只写入 `artifacts/`，构建收据和锁保证并发安全。清理前先运行 `pnpm artifacts:gc --dry-run`；受保护目录、当前 stage、回滚 generation、发布收据、用户数据和 `%SystemDrive%` 异常目录不会由 GC 处理。
+
+## 8.0.8 完整离线 profile
+
+Core ASAR 与完整功能的离线默认 profile 分开构建。`pnpm build` 依次准备 Core、`offline-profile/modules`、默认 Skills/MCP、独立 tarball、catalog 和签名 receipt。`pnpm package:stable:win` 消费已验证 stage，使用新 build ID 重新绑定签名。普通插件后续仍可独立更新，无需同步提升桌面版本。
+
+扩展资源列表和远端检测严格分离：`resources.list`、`pythonLayers.listLocal` 只读本地；点击检查更新才调用 `check`。桌面版本通过 ZeroWall 的 DSH 构建 wrapper 注入 `DSH_CLIENT_VERSION`；CLI `dsh --version` 继续显示独立 DSH 核心版本。

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-environment",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "ZeroWall Science environment domain plugin (desktop 8.0.6).",
   "type": "module",
   "main": "./lib/index.js",
@@ -32,7 +32,6 @@
     },
     "client": {
       "inject": [
-        "betterSidebar",
         "slots",
         "uiConversation",
         "settingsScope",
@@ -109,8 +108,6 @@
     "README.md"
   ],
   "dependencies": {
-    "dsh-better-sidebar": "workspace:^",
-    "dsh-dream-skin": "9.29.0",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-base": "workspace:^",
     "lucide-react": "^0.468.0",

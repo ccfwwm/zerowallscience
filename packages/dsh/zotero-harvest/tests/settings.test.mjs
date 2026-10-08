@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as Harvest from '../lib/index.js'
-import { validateJsonSchemaValue } from '../../../deepseek-harness/packages/core/tools/lib/index.js'
+import { validateJsonSchemaValue } from '../../../../deepseek-harness/packages/core/tools/lib/index.js'
 
 test('tool uses live DSH Zotero configuration and validates real save output', async () => {
  const root = await mkdtemp(join(tmpdir(),'harvest-tool-'))

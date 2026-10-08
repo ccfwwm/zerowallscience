@@ -106,6 +106,8 @@ export interface PythonEnvironmentResponse {
 export type ResourceKind = 'plugin' | 'skill' | 'mcp'
 export interface ResourceCheckItem {
   id: string
+  actionId?: string
+  name?: string
   version: string
   installedVersion?: string
   updateAvailable?: boolean
@@ -116,8 +118,15 @@ export interface ResourceCheckItem {
   source?: 'profile' | 'bundled' | 'runtime' | 'catalog' | 'removed' | 'disabled'
   /** Whether the displayed metadata came from the signed remote catalog. */
   catalogSigned?: boolean
+  enabled?: boolean
+  managed?: boolean
+  installState?: 'installed' | 'missing' | 'not-installed'
+  activationState?: 'active' | 'disabled' | 'missing' | 'unavailable' | 'error'
+  runtimeState?: string
+  pinnedVersion?: string
+  updateBlocked?: string
 }
-export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; catalogStatus?: 'checked' | 'unavailable' | 'local' | 'unpublished'; error?: string }
+export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; catalogStatus?: 'checked' | 'unavailable' | 'local' | 'unpublished'; domainAvailable?: boolean; error?: string }
 export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
 export type PythonLayer = 'core' | 'science' | 'capability'
 export interface PythonLayerChange { name: string; from?: string; to: string; required: boolean; capabilities: string[] }
@@ -168,6 +177,7 @@ export interface ZeroWallDesktopApi {
   updateMcpPythonPackages?(names?: string[]): Promise<{ taskId: string }>
   pythonEnvironment?(request: { action: 'status' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; taskId?: string; layer?: 'core' | 'science' | 'capability'; packageSpec?: string; capabilityId?: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; runtimeRoot?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
   pythonLayers?: {
+    listLocal(layer: PythonLayer): Promise<PythonLayerCheck>
     check(layer: PythonLayer): Promise<PythonLayerCheck>
     update(layer: PythonLayer, capabilityId?: string): Promise<PythonEnvironmentResponse>
     taskStatus(taskId: string): Promise<PythonEnvironmentResponse>
@@ -179,6 +189,8 @@ export interface ZeroWallDesktopApi {
   onMcpEnvironmentStatus?(listener: (status: McpEnvironmentStatus) => void): () => void
   onUpdateStatus(listener: (status: DesktopUpdateStatus) => void): () => void
   resources?: {
+    list(kind: ResourceKind): Promise<ResourceCheckResult>
+    dependents?(id: string): Promise<string[]>
     check(kind: ResourceKind, localOnly?: boolean): Promise<ResourceCheckResult>
     status?(): Promise<{ checkedAt: string; results: ResourceCheckResult[] }>
     update(kind: ResourceKind, id?: string): Promise<unknown>

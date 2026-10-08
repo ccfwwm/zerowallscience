@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { Context } from '../../../deepseek-harness/vendor/cordis/lib/index.js'
-import SystemPrompt from '../../../deepseek-harness/packages/core/system-prompt/lib/index.js'
-import ToolRuntime, { validateJsonSchemaValue } from '../../../deepseek-harness/packages/core/tools/lib/index.js'
+import { Context } from '../../../../deepseek-harness/vendor/cordis/lib/index.js'
+import SystemPrompt from '../../../../deepseek-harness/packages/core/system-prompt/lib/index.js'
+import ToolRuntime, { validateJsonSchemaValue } from '../../../../deepseek-harness/packages/core/tools/lib/index.js'
 import * as Harvest from '../lib/index.js'
 test('all six tools mount on pinned DSH and return schema-valid output', async () => {
  const ctx = new Context()

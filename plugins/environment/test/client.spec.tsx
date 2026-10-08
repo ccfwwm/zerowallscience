@@ -3,13 +3,13 @@ import '../../../tests/support/native-dialog.js'
 import { createElement, type ComponentType } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { apply } from '../src/client/index.js'
+import { apply, inject } from '../src/client/index.js'
 import { en, NS, zh, type EnvironmentTranslate } from '../src/client/locales.js'
 import { DEFAULTS, type PubmedStatus } from '../../pubmed/src/shared/types.js'
 
 describe('environment settings client', () => {
   afterEach(cleanup)
-  it('waits for Typert responses and renders every settings group', async () => {
+  it.each([true, false])('renders base environment settings when optional domains are available=%s', async domainsAvailable => {
     let Section: ComponentType<any> | undefined
     let injected: (() => Record<string, unknown>) | undefined
     let navLabel: (() => string) | undefined
@@ -43,6 +43,10 @@ describe('environment settings client', () => {
       },
     }
     const ctx = {
+      inject: vi.fn((names: string[], mount: (scope: unknown) => unknown) => {
+        if (domainsAvailable && names.every(name => ctx.get(name))) mount(ctx)
+        return { dispose: vi.fn() }
+      }),
       remote: remotes,
       get: vi.fn((name: string) => name === 'connection'
         ? { api: { llm: { models: vi.fn().mockResolvedValue({ result: { ok: true, value: { groups: [{ id: 'cloud', models: [{ id: 'claude-sonnet-5', name: 'Claude Sonnet 5', reasoning: { efforts: [{ id: 'high', name: '高' }] } }] }], failures: [] } } }) } } }
@@ -77,6 +81,13 @@ describe('environment settings client', () => {
     expect(screen.getByText('生图模型')).toBeTruthy()
     expect(screen.getByText('自定义变量')).toBeTruthy()
     await waitFor(() => expect(screen.getByText('SCI_TOKEN')).toBeTruthy())
+    for (const service of ['remote.zerowallAccount', 'remote.zerowallMcp', 'remote.zerowallMineru', 'remote.zerowallPubmed']) expect(inject).not.toContain(service)
+    if (!domainsAvailable) {
+      expect(screen.getByPlaceholderText('变量名，例如 SCI_KEY')).toBeTruthy()
+      expect(remotes.zerowallAccount.current).not.toHaveBeenCalled()
+      expect(remotes.zerowallMcp.getSciMasterCredentialStatus).not.toHaveBeenCalled()
+      return
+    }
     expect(screen.getAllByRole('option', { name: '高' }).length).toBeGreaterThanOrEqual(1)
     expect(screen.getByRole('option', { name: '中（推荐）' })).toBeTruthy()
     expect(screen.queryByText('科研 MCP 能力')).toBeNull()

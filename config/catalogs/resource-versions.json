@@ -1,4 +1,5 @@
 {
+  "python": { "science-dependencies": "8.0.7" },
   "skill": {
     "gpt-image-generator": "0.1.1",
     "mineru-document-parser": "0.1.1",

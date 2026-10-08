@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, writeFile, realpath } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { root, stageRoot, releaseRoot } from '../build/paths.mjs'
@@ -23,10 +24,22 @@ for (const version of await readdir(dirname(releaseRoot)).catch(error => {
 }
 const sources = (await readdir(join(root, 'plugins'))).filter(name => name !== 'wechat').map(name => join(root, 'plugins', name))
 sources.push(join(root, 'store'), await packageSource('integrity-runtime'), await packageSource('dsh-bundle-science'))
-sources.push(...await Promise.all(['dsh-wechat', 'dsh-session-notification'].map(name => packageSource(name))) )
+sources.push(await packageSource('dsh-wechat'))
+// This adapter's published runtime excludes generated TypeScript declarations.
+sources.push(join(stageRoot, 'offline-profile/modules/@dingyi222666/dsh-session-notification'))
 // Preserve the tested Office adapter Git pin as an independently signed
 // support tarball; pnpm 11 correctly rejects Git dependencies nested in bundles.
 sources.push(dirname(await realpath(join(root, 'plugins/files/node_modules/dsh-office-tools/package.json'))))
+if (!selectedPlugin) {
+  const knownSources = new Set(await Promise.all(sources.map(async source => JSON.parse(await readFile(join(source, 'package.json'), 'utf8')).name)))
+  const defaults = JSON.parse(await readFile(join(stageRoot, 'commands/default-plugins.json'), 'utf8'))
+  for (const id of defaults) {
+    if (id.startsWith('@deepseek-ai/') || knownSources.has(id)) continue
+    // Package the exact reviewed/adapted runtime rather than a registry copy
+    // that could omit Office, Zotero, theme or sidebar compatibility fixes.
+    sources.push(join(stageRoot, 'offline-profile/modules', id))
+  }
+}
 const selectedSources = selectedPlugin ? sources.filter(source => source.split(/[\\/]/u).at(-1) === selectedPlugin) : sources
 if (selectedPlugin && !selectedSources.length) throw new Error(`Unknown plugin source: ${selectedPlugin}`)
 for (const source of selectedSources) {
@@ -34,7 +47,7 @@ for (const source of selectedSources) {
   if (!manifest) continue
   const directory = manifest.name.split('/').at(-1)
   const version = manifest.version
-  const staging = join(stageRoot, 'plugin-packages', directory)
+  const staging = join(stageRoot, 'plugin-packages', directory, randomUUID())
   const { publish } = await preparePublishPackage(source, staging)
   const destination = join(releaseRoot, 'plugins', directory, version)
   await mkdir(destination, { recursive: true })

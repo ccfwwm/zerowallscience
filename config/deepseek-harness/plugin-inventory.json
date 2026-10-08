@@ -157,116 +157,116 @@
       "package": "dsh-ssh-ops",
       "version": "workspace:*",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 1,
-      "productionPath": "resources/app.asar/node_modules/dsh-ssh-ops"
+      "productionPath": "resources/offline-profile/modules/dsh-ssh-ops"
     },
     {
       "package": "dsh-progressive-tools",
       "version": "workspace:*",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 2,
-      "productionPath": "resources/app.asar/node_modules/dsh-progressive-tools"
+      "productionPath": "resources/offline-profile/modules/dsh-progressive-tools"
     },
     {
       "package": "@dingyi222666/dsh-session-notification",
       "version": "workspace:*",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 3,
-      "productionPath": "resources/app.asar/node_modules/@dingyi222666/dsh-session-notification"
+      "productionPath": "resources/offline-profile/modules/@dingyi222666/dsh-session-notification"
     },
     {
       "package": "dsh-dream-skin",
       "version": "9.29.0",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 4,
-      "productionPath": "resources/app.asar/node_modules/dsh-dream-skin"
+      "productionPath": "resources/offline-profile/modules/dsh-dream-skin"
     },
     {
       "package": "dsh-better-sidebar",
       "version": "workspace:^",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 5,
-      "productionPath": "resources/app.asar/node_modules/dsh-better-sidebar"
+      "productionPath": "resources/offline-profile/modules/dsh-better-sidebar"
     },
     {
       "package": "dsh-file-review",
       "version": "workspace:*",
       "owner": "third-party",
-      "registrationSource": "host-web-profile-bundle",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 6,
-      "productionPath": "resources/app.asar/node_modules/dsh-file-review"
+      "productionPath": "resources/offline-profile/modules/dsh-file-review"
     },
     {
       "package": "dsh-univer-office",
       "version": "0.3.5",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 7,
-      "productionPath": "resources/app.asar/node_modules/dsh-univer-office"
+      "productionPath": "resources/offline-profile/modules/dsh-univer-office"
     },
     {
       "package": "dsh-zotero",
       "version": "0.11.0",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 8,
-      "productionPath": "resources/app.asar/node_modules/dsh-zotero"
+      "productionPath": "resources/offline-profile/modules/dsh-zotero"
     },
     {
       "package": "@dsh-external/zotero-harvest",
       "version": "workspace:*",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 9,
-      "productionPath": "resources/app.asar/node_modules/@dsh-external/zotero-harvest"
+      "productionPath": "resources/offline-profile/modules/@dsh-external/zotero-harvest"
     },
     {
       "package": "dsh-wechat",
       "version": "workspace:*",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 10,
-      "productionPath": "resources/app.asar/node_modules/dsh-wechat"
+      "productionPath": "resources/offline-profile/modules/dsh-wechat"
     },
     {
       "package": "@changfenhuang/dsh-genui",
       "version": "workspace:*",
       "owner": "third-party",
-      "registrationSource": "desktop-patch",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 11,
-      "productionPath": "resources/app.asar/node_modules/@changfenhuang/dsh-genui"
+      "productionPath": "resources/offline-profile/modules/@changfenhuang/dsh-genui"
     },
     {
       "package": "dsh-free-search",
       "version": "0.6.0",
       "owner": "third-party",
-      "registrationSource": "host-web-profile-bundle",
+      "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 20,
-      "productionPath": "resources/app.asar/node_modules/dsh-free-search"
+      "productionPath": "resources/offline-profile/modules/dsh-free-search"
     }
   ],
   "zeroWallPlugins": [
     {
       "id": "base",
       "package": "@zerowallscience/plugin-base",
-      "version": "0.1.10",
+      "version": "0.1.11",
       "source": "plugins/base",
       "manifest": "plugins/base/zerowall.plugin.json",
       "client": true,
@@ -311,7 +311,7 @@
     {
       "id": "environment",
       "package": "@zerowallscience/plugin-environment",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "source": "plugins/environment",
       "manifest": "plugins/environment/zerowall.plugin.json",
       "client": true,
@@ -333,7 +333,7 @@
     {
       "id": "desktop-compat",
       "package": "@zerowallscience/plugin-desktop-compat",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "source": "plugins/desktop-compat",
       "manifest": "plugins/desktop-compat/zerowall.plugin.json",
       "client": false,
@@ -369,12 +369,12 @@
       ],
       "requiredServices": [],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-projects"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-projects"
     },
     {
       "id": "mcp",
       "package": "@zerowallscience/plugin-mcp",
-      "version": "0.2.6",
+      "version": "0.2.7",
       "source": "plugins/mcp",
       "manifest": "plugins/mcp/zerowall.plugin.json",
       "client": true,
@@ -393,12 +393,12 @@
         "tools"
       ],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-mcp"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-mcp"
     },
     {
       "id": "account",
       "package": "@zerowallscience/plugin-account",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "source": "plugins/account",
       "manifest": "plugins/account/zerowall.plugin.json",
       "client": true,
@@ -413,12 +413,12 @@
       ],
       "requiredServices": [],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-account"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-account"
     },
     {
       "id": "ai-cloud",
       "package": "@zerowallscience/plugin-ai-cloud",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "source": "plugins/ai-cloud",
       "manifest": "plugins/ai-cloud/zerowall.plugin.json",
       "client": true,
@@ -436,12 +436,12 @@
         "zerowallAccount"
       ],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-ai-cloud"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-ai-cloud"
     },
     {
       "id": "files",
       "package": "@zerowallscience/plugin-files",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "source": "plugins/files",
       "manifest": "plugins/files/zerowall.plugin.json",
       "client": true,
@@ -464,12 +464,12 @@
         "webServer"
       ],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-files"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-files"
     },
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
@@ -490,12 +490,12 @@
         "llm"
       ],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-images"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-images"
     },
     {
       "id": "research",
       "package": "@zerowallscience/plugin-research",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "source": "plugins/research",
       "manifest": "plugins/research/zerowall.plugin.json",
       "client": true,
@@ -511,12 +511,12 @@
       ],
       "requiredServices": [],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-research"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-research"
     },
     {
       "id": "pubmed",
       "package": "@zerowallscience/plugin-pubmed",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "source": "plugins/pubmed",
       "manifest": "plugins/pubmed/zerowall.plugin.json",
       "client": true,
@@ -539,12 +539,12 @@
         "zerowallResearch"
       ],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-pubmed"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-pubmed"
     },
     {
       "id": "mineru",
       "package": "@zerowallscience/plugin-mineru",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "source": "plugins/mineru",
       "manifest": "plugins/mineru/zerowall.plugin.json",
       "client": true,
@@ -572,12 +572,12 @@
         "zerowallExecution",
         "zerowallRuns"
       ],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-mineru"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-mineru"
     },
     {
       "id": "singlecell",
       "package": "@zerowallscience/plugin-singlecell",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "source": "plugins/singlecell",
       "manifest": "plugins/singlecell/zerowall.plugin.json",
       "client": true,
@@ -607,7 +607,7 @@
         "zerowallRuns",
         "webServer"
       ],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-singlecell"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-singlecell"
     },
     {
       "id": "execution",
@@ -627,7 +627,7 @@
       ],
       "requiredServices": [],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-execution"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-execution"
     },
     {
       "id": "python",
@@ -649,7 +649,7 @@
         "tools"
       ],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-python"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-python"
     },
     {
       "id": "runs",
@@ -669,7 +669,7 @@
       ],
       "requiredServices": [],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-runs"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-runs"
     },
     {
       "id": "publications",
@@ -689,12 +689,12 @@
       ],
       "requiredServices": [],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-publications"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-publications"
     },
     {
       "id": "skills",
       "package": "@zerowallscience/plugin-skills",
-      "version": "0.2.2",
+      "version": "0.2.3",
       "source": "plugins/skills",
       "manifest": "plugins/skills/zerowall.plugin.json",
       "client": true,
@@ -711,12 +711,12 @@
         "systemPrompt"
       ],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-skills"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-skills"
     },
     {
       "id": "reviewer",
       "package": "@zerowallscience/plugin-reviewer",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "source": "plugins/reviewer",
       "manifest": "plugins/reviewer/zerowall.plugin.json",
       "client": true,
@@ -735,12 +735,12 @@
         "llm"
       ],
       "optionalServices": [],
-      "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-reviewer"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-reviewer"
     },
     {
       "id": "extension-center",
       "package": "@zerowallscience/plugin-extension-center",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "source": "plugins/extension-center",
       "manifest": "plugins/extension-center/zerowall.plugin.json",
       "client": true,

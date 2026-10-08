@@ -25,7 +25,7 @@ const HELP = {
     doctor: '检查 Host、profile、插件兼容性和运行状态',
     update: '检查桌面更新（不会自动安装）',
     extensions: '扩展中心状态与 catalog 检查',
-    plugin: 'list/add/remove/update/rollback/repair/enable/disable/check',
+    plugin: 'list/add/remove/update/rollback/repair/enable/disable/pin/unpin/check（固定当前已安装版本）',
     skill: 'list/import/remove/update/rollback/enable/disable/check',
     mcp: 'list/add/remove/update/rollback/start/stop/restart/logs/check',
     env: 'list/set/delete/check（敏感值通过 stdin 提供）',
@@ -43,7 +43,7 @@ const HELP = {
 function help(scope) {
   if (!scope || ['help', '--help', '-h'].includes(scope)) return HELP
   const descriptions = {
-    plugin: 'zws plugin list|add|remove|update|rollback|repair|enable|disable|check <id>',
+    plugin: 'zws plugin list|add|remove|update|rollback|repair|enable|disable|pin|unpin|check <id>',
     skill: 'zws skill list|import|remove|update|rollback|enable|disable|check <id>',
     mcp: 'zws mcp list|add|remove|update|rollback|start|stop|restart|logs|check <id>',
     extensions: 'zws extensions status|check',
@@ -86,7 +86,7 @@ async function run() {
   if (group === 'update') return invoke('update')
   if (group === 'extensions') {
     if (command === 'status') return invoke('resource.catalog.status')
-    if (command === 'check') return invoke('resource.catalog.status')
+    if (command === 'check') return invoke('resource.catalog.check-all')
     throw new Error('用法：zws extensions status|check')
   }
   const catalogIndex = args.indexOf('--catalog')
@@ -99,7 +99,7 @@ async function run() {
     if (command === 'rollback') return args[0] ? invoke('resource.plugin.rollback', [qualified(args[0])]) : invoke('resource.rollback')
     if (command === 'update' && args[0]) return invoke('resource.plugin.update', [qualified(args[0]), catalog])
     if (command === 'update' && !args[0]) return invoke('resource.update', ['plugin', catalog])
-    if (['enable', 'disable'].includes(command) && args[0]) return invoke(`resource.plugin.${command}`, [qualified(args[0])])
+    if (['enable', 'disable', 'pin', 'unpin'].includes(command) && args[0]) return invoke(`resource.plugin.${command}`, [qualified(args[0])])
     if (command === 'add' && args[0] && !args[0].endsWith('.tgz') && !args[0].includes(':')) return invoke('resource.plugin', [qualified(args[0]), catalog])
     if ((catalog || command === 'update') && ['add', 'update'].includes(command) && args[0]) return invoke('resource.plugin', [qualified(args[0]), catalog])
     if (args[0] && !args[0].endsWith('.tgz') && !args[0].includes(':')) args[0] = qualified(args[0])

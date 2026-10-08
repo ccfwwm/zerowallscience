@@ -31,7 +31,8 @@ import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
 import { installDomFenceRenderer } from './dom-fence.tsx'
 import { renderGenuiFence, type GenuiFenceContext } from './fence-render.tsx'
 import { renderSvgFence } from './svg-fence.tsx'
-import { createPanelSlashSource } from './panel-command.ts'
+import { applyPanelCommand, createPanelSlashSource } from './panel-command.ts'
+import { resolveViewedSessionId } from './session-resolver.ts'
 import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
 import { GenuiToolView } from './toolview.tsx'
 import { mountAchievementToasts } from './achievement-toast.tsx'
@@ -180,27 +181,34 @@ export function apply(ctx: Context): () => void {
     order: 50,
     inject: (sessionId: SessionId): GenuiPanelInjected => panelActionSend(ctx, sessionId),
   }, GenuiPanel)))
-  // /panel slash command: a deterministic, client-side entry point that
-  // opens the panel dock (publishes the default spec + expand request),
-  // clears it (/panel clear), or relays an instruction to the model
-  // (/panel <指令>) so the panel gets tailored content.
-  //
-  // inputTriggers is subscribed via cordis OPTIONAL injection (ctx.inject),
-  // NOT a one-shot ctx.get() at apply time: the service is typically
-  // provided by a different bundle than slots/sessions, so it can arrive
-  // AFTER apply() runs — a one-shot lookup would silently disable /panel
-  // even on hosts that DO ship the service (service arrival order race).
-  // ctx.inject activates the callback only when the service arrives (any
-  // order) and disposes with the subscription fiber; hosts without the
-  // service simply never register /panel, and rendering is unaffected
-  // either way.
-  ctx.inject(['inputTriggers'], (scope) => {
-    const slash = scope.get('inputTriggers') as InputTriggerServiceContract | undefined
-    if (slash === undefined) return
-    scope.effect(() => slash.registerSource(
+  // /panel must be consumed locally in the desktop build.  Registering it as
+  // a hard dependency keeps the source installed before the conversation
+  // submit handler can fall through to the model, which is essential for the
+  // credential-free offline desktop smoke path.
+  const getService = (ctx as unknown as { get?: (name: string) => unknown }).get
+  const slash = typeof getService === 'function'
+    ? getService.call(ctx, 'inputTriggers') as InputTriggerServiceContract | undefined
+    : undefined
+  if (slash !== undefined) {
+    disposers.push(slash.registerSource(
       createPanelSlashSource((sessionId, instruction) => sendPanelInstruction(ctx, sessionId, instruction)),
-    ), 'genui: /panel')
-  })
+    ))
+  }
+  // A few embedded DSH shells expose the composer before the input-trigger
+  // service is mounted. Capture the bare local command at the DOM boundary so
+  // it can never fall through to an LLM request in that startup window.
+  const onBarePanel = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter' || event.isComposing || event.shiftKey || event.ctrlKey || event.metaKey) return
+    const target = event.target instanceof HTMLElement ? event.target.closest('[contenteditable="true"]') : null
+    if (target === null || (target as HTMLElement).innerText.trim().toLowerCase() !== '/panel') return
+    const sessionId = resolveViewedSessionId(ctx.sessions.list.getSnapshot())
+    if (sessionId === undefined) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    applyPanelCommand(sessionId, '')
+  }
+  if (typeof document !== 'undefined') document.addEventListener('keydown', onBarePanel, true)
+  disposers.push(() => { if (typeof document !== 'undefined') document.removeEventListener('keydown', onBarePanel, true) })
   return () => {
     for (const dispose of disposers) dispose()
   }

@@ -1,8 +1,17 @@
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, rename, writeFile as writeRaw } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { researchToolConfig } from '../integration/research-tool-config.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
+// Avoid rewriting unchanged manifests while editors and compilers read them.
+async function writeFile(path, content) {
+  const previous = await readFile(path, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
+  if (previous === content) return
+  const temporary = path + '.' + randomUUID() + '.tmp'
+  await writeRaw(temporary, content)
+  await rename(temporary, path)
+}
 const rootPackage = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const applicationVersion = String(rootPackage.version)
 const migrationBaseline = '0.1.0'
@@ -193,7 +202,7 @@ for (const plugin of plugins) {
       bundle: { patch: 'dsh.bundle.patch.yml' },
       ...(plugin.client ? {
         client: {
-          inject: plugin.id === 'files' ? [...clientInject, 'remote.workspaceFiles', 'sidebarRightTabs', '@deepseek-ai/dsh-client-ui-sidebar-right', '@deepseek-ai/dsh-api-workspace-files'] : clientInject,
+          inject: plugin.id === 'files' ? [...clientInject, 'remote.workspaceFiles', 'sidebarRightTabs', '@deepseek-ai/dsh-client-ui-sidebar-right', '@deepseek-ai/dsh-api-workspace-files'] : ['base', 'environment', 'extension-center'].includes(plugin.id) ? clientInject.filter(name => name !== 'betterSidebar') : clientInject,
           ...(plugin.clientExternal === undefined ? {} : { external: plugin.clientExternal }),
           platform: 'web',
         },
@@ -217,7 +226,7 @@ for (const plugin of plugins) {
       typecheck: plugin.client
         ? 'tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit' + (plugin.id === 'research' ? ' && tsc -p tsconfig.workbench.json --noEmit' : '')
         : 'tsc -p tsconfig.host.json --noEmit',
-      test: 'vitest run --config ../../vitest.plugins.config.ts',
+      test: `vitest run --config ../../vitest.plugins.config.ts${['skills', 'research'].includes(plugin.id) ? ' --no-file-parallelism' : ''}`,
     },
     publishConfig: { directory: `../../artifacts/dev/publish/plugin-${plugin.id}` },
     license: 'AGPL-3.0-only',
@@ -237,7 +246,7 @@ for (const plugin of plugins) {
     dependencies: {
     ...dshDependencies,
     ...(plugin.id === 'files' ? { '@deepseek-ai/dsh-fs': 'workspace:^', 'dsh-office-tools': 'github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb' } : {}),
-      ...(plugin.client ? externalClientDependencies : {}),
+      ...(plugin.client && !['base', 'environment', 'extension-center'].includes(plugin.id) ? externalClientDependencies : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),
       ...(npmDependencies[plugin.id] ?? {}),
       ...(plugin.id === 'mcp' ? { '@modelcontextprotocol/sdk': '1.30.0', '@modelcontextprotocol/client': '2.0.0' } : {}),

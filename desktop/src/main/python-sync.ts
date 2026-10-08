@@ -73,7 +73,10 @@ export class PythonSyncService {
     if (previous && compareRevision(previous.revision, manifest.revision) > 0) throw new Error('依赖清单降级必须通过回滚完成。')
     await this.save(this.manifestFile(layer), manifest)
   }
-  async checkManifest(layer: PythonDependencyLayer = 'science', capabilityId?: string, report?: ReportPythonSyncProgress) {
+  async listLocal(layer: PythonDependencyLayer = 'science') {
+    return this.checkManifest(layer, undefined, undefined, { localOnly: true })
+  }
+  async checkManifest(layer: PythonDependencyLayer = 'science', capabilityId?: string, report?: ReportPythonSyncProgress, options: { localOnly?: boolean } = {}) {
     await report?.({ stage: 'manifest', progress: 5, message: '正在读取并验签依赖清单。' })
     const candidates: Array<{ manifest: PythonDependencyManifest; source: ManifestSource }> = []
     const bundled = await this.bundled(layer)
@@ -81,7 +84,7 @@ export class PythonSyncService {
     if (bundled) candidates.push({ manifest: bundled, source: 'bundled' })
     if (cached) candidates.push({ manifest: cached, source: 'cache' })
     let remoteError: string | undefined
-    try {
+    if (!options.localOnly) try {
       await report?.({ stage: 'remote-catalog', progress: 15, message: '正在检查签名资源目录。' })
       const remote = await fetchPythonDependencyManifest(layer === 'core' ? (this.options.coreFeedUrl ?? this.options.feedUrl) : this.options.feedUrl, this.options.keys, { fetcher: this.options.fetcher, applicationVersion: this.options.applicationVersion })
       const declaredLayer = remote.layer ?? 'science'
@@ -105,7 +108,7 @@ export class PythonSyncService {
     const info = await this.packageInfo(selected.packages.map(pkg => pkg.name))
     if (info.ready && info.version && info.version !== manifest.pythonVersion) throw new Error('依赖清单需要不同的 Python 版本，请先更新运行环境。')
     await report?.({ stage: 'compare', progress: 80, message: `正在比较 ${manifest.packages.length} 个依赖版本。`, totalPackages: manifest.packages.length, completedPackages: 0 })
-    await this.save(this.manifestFile(layer), manifest)
+    if (!options.localOnly) await this.save(this.manifestFile(layer), manifest)
     const installed = new Map(info.packages.map(item => [normalizeName(item.name), item.version]))
     const changes: Array<{ name: string; from?: string; to: string; required: boolean; capabilities: string[] }> = []
     for (let index = 0; index < selected.packages.length; index++) {
@@ -128,7 +131,7 @@ export class PythonSyncService {
       }]
     }))
     const result = { revision: manifest.revision, manifestRevision: manifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(manifest)), layer, ...(capabilityId ? { capabilityId } : {}), packageCount: selected.packages.length, installedPackageCount, pendingPackageCount: Math.max(0, selected.packages.length - installedPackageCount), ...(capabilityCounts ? { capabilityCounts } : {}), pythonVersion: manifest.pythonVersion, environmentVersion: manifest.environmentVersion, changes, checkedAt: new Date().toISOString(), needsRuntime: !info.ready, scienceInstalled: layer === 'science' && selected.packages.length > 0 && changes.length === 0, available: selected.packages.length > 0, resourceAvailability: { layer, available: selected.packages.length > 0, source, packageCount: selected.packages.length, reason: remoteError }, remoteError, lastSyncError: undefined, source }
-    await this.save('status.json', result)
+    if (!options.localOnly) await this.save('status.json', result)
     await report?.({ stage: 'complete', progress: 99, message: `依赖检查完成：${installedPackageCount}/${selected.packages.length} 已安装，${result.pendingPackageCount} 待安装。`, completedPackages: selected.packages.length, totalPackages: selected.packages.length })
     return result
   }

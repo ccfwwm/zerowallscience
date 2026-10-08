@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
   updateMcpPythonPackages: async (names?: string[]): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:mcp-python:update', names) as { taskId: string },
   pythonEnvironment: async (request: Record<string, unknown>): Promise<Record<string, unknown>> => await ipcRenderer.invoke('desktop:python-environment', request) as Record<string, unknown>,
   pythonLayers: {
+    listLocal: async (layer: PythonLayer): Promise<PythonLayerCheck> => await ipcRenderer.invoke('desktop:python-layer-list', layer) as PythonLayerCheck,
     check: async (layer: PythonLayer): Promise<PythonLayerCheck> => await ipcRenderer.invoke('desktop:python-layer-check', layer) as PythonLayerCheck,
     update: async (layer: PythonLayer, capabilityId?: string): Promise<PythonEnvironmentResponse> => await ipcRenderer.invoke('desktop:python-layer-update', layer, capabilityId) as PythonEnvironmentResponse,
     taskStatus: async (taskId: string): Promise<PythonEnvironmentResponse> => await ipcRenderer.invoke('desktop:python-layer-task-status', taskId) as PythonEnvironmentResponse,
@@ -73,6 +74,8 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
     return () => ipcRenderer.removeListener('desktop:update-status', handler)
   },
   resources: {
+    list: async (kind: ResourceKind): Promise<ResourceCheckResult> => await ipcRenderer.invoke('desktop:resource-list', kind) as ResourceCheckResult,
+    dependents: async (id: string): Promise<string[]> => await ipcRenderer.invoke('desktop:resource-dependents', id) as string[],
     check: async (kind: ResourceKind, localOnly?: boolean): Promise<ResourceCheckResult> => await ipcRenderer.invoke('desktop:resource-check', kind, localOnly) as ResourceCheckResult,
     status: async (): Promise<{ checkedAt: string; results: ResourceCheckResult[] }> => await ipcRenderer.invoke('desktop:resource-status') as { checkedAt: string; results: ResourceCheckResult[] },
     update: async (kind: ResourceKind, id?: string): Promise<unknown> => await ipcRenderer.invoke('desktop:resource-update', kind, id) as unknown,

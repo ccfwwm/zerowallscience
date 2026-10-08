@@ -16249,12 +16249,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../deepseek-harness/vendor/schemastery
         version: link:../../deepseek-harness/vendor/schemastery
-      dsh-better-sidebar:
-        specifier: workspace:^
-        version: link:../../packages/dsh/dsh-better-sidebar
-      dsh-dream-skin:
-        specifier: 9.29.0
-        version: 9.29.0(patch_hash=3df34a8089c8750f5fd41b0d9ef6dd4de65584fa6154acbf007ce646a88ed7d5)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -16538,12 +16532,6 @@ importers:
       '@zerowallscience/plugin-secrets':
         specifier: workspace:^
         version: link:../../artifacts/dev/publish/plugin-secrets
-      dsh-better-sidebar:
-        specifier: workspace:^
-        version: link:../../packages/dsh/dsh-better-sidebar
-      dsh-dream-skin:
-        specifier: 9.29.0
-        version: 9.29.0(patch_hash=3df34a8089c8750f5fd41b0d9ef6dd4de65584fa6154acbf007ce646a88ed7d5)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)
@@ -16836,12 +16824,6 @@ importers:
       '@zerowallscience/plugin-base':
         specifier: workspace:^
         version: link:../../artifacts/dev/publish/plugin-base
-      dsh-better-sidebar:
-        specifier: workspace:^
-        version: link:../../packages/dsh/dsh-better-sidebar
-      dsh-dream-skin:
-        specifier: 9.29.0
-        version: 9.29.0(patch_hash=3df34a8089c8750f5fd41b0d9ef6dd4de65584fa6154acbf007ce646a88ed7d5)(@deepseek-ai/cordis@deepseek-harness+vendor+cordis)(@deepseek-ai/dsh-client-locale@deepseek-harness+packages+client+locale)(@deepseek-ai/dsh-client-store@deepseek-harness+packages+client+store)(@deepseek-ai/dsh-client-ui-settings@deepseek-harness+packages+client+ui-settings)(react@18.2.0)
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@18.2.0)

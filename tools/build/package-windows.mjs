@@ -29,5 +29,6 @@ execFileSync(process.execPath, [process.env.npm_execpath, '--filter', '@zerowall
 // Management commands are desktop inputs, independent from the DSH closure.
 // Refresh them from their generators instead of packaging a prior stage copy.
 execFileSync(process.execPath, [process.env.npm_execpath, 'commands:prepare'], { cwd: root, env, stdio: 'inherit' })
+execFileSync(process.execPath, [join(root, 'tools/packaging/prepare-offline-profile.mjs')], { cwd: root, env, stdio: 'inherit' })
 execFileSync(process.execPath, [process.env.npm_execpath, '--filter', '@zerowallscience/desktop', 'run', 'package:stable:win'], { cwd: root, env, stdio: 'inherit' })
 } finally { await releaseLock() }

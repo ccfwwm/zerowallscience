@@ -36,11 +36,23 @@ for (const skill of sourceEntries) {
   skillEntries.push(skill)
 }
 console.log(`Prepared ${skillEntries.length} runtime Skills.`)
+// Ship reviewed launchers and widgets, while keeping Python environments on demand.
+for (const [source, destination] of [
+  ['resources/extensions/mcp/bio-tools', 'extensions/mcp/bio-tools'],
+  ['resources/extensions/mcp/ketcher-chemistry', 'extensions/mcp/ketcher-chemistry'],
+  ['resources/extensions/capabilities/biogenie', 'extensions/capabilities/biogenie'],
+]) {
+  const input = resolve(root, source)
+  await cp(input, resolve(stageRoot, 'resources', destination), { recursive: true, filter: candidate => {
+    const segments = relative(input, candidate).toLowerCase().split(/[\\/]/u)
+    return !segments.some(segment => forbiddenDirectories.has(segment) || ['node_modules', '.venv', 'venv', '.cache', 'python'].includes(segment)) && !/\.py[co]$/u.test(candidate)
+  } })
+}
 // Catalogs distribute the reviewed authoring descriptions too. The runtime
 // copy was hash-checked and adapted without changing the upstream package.
 // Univer is an optional package in the 8.0.7 Core box. A Core-only build must
 // therefore remain valid when that package is not installed in the runtime.
-const univerSkillsRoot = resolve(stageRoot, 'runtime/node_modules/dsh-univer-office/skills')
+const univerSkillsRoot = resolve(stageRoot, 'offline-profile/modules/dsh-univer-office/skills')
 if (await stat(univerSkillsRoot).catch(() => undefined)) {
   for (const name of ['univer', 'univer-slide', 'univer-doc', 'univer-sheet']) {
     const source = resolve(univerSkillsRoot, name)

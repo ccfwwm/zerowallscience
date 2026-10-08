@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 // checks plugin inventory/WebSockets/session persistence, and then tears it
 // down. This wrapper intentionally adds no second Host implementation.
 const script = resolve(import.meta.dirname, '../../desktop/scripts/verify-packaged-runtime.mjs')
-const child = spawn(process.execPath, [script], { stdio: 'inherit', windowsHide: true })
+const child = spawn(process.execPath, [script, '--host-only', ...process.argv.slice(2)], { stdio: 'inherit', windowsHide: true })
 child.once('error', error => {
   console.error(error instanceof Error ? error.message : String(error))
   process.exitCode = 1

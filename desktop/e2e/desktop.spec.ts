@@ -1,11 +1,12 @@
 import { contract } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import JSZip from 'jszip'
 import { locatePackagedApp } from '../scripts/packaged-app.mjs'
 import { clipboardCapability } from '../scripts/clipboard-capability.mjs'
 import { pcrTemplate, pcrForward, pcrReverse, pcrExpected } from '../../plugins/research/test/sequence-simulation-fixture.js'
@@ -27,7 +28,7 @@ beforeAll(async () => {
   mkdirSync(contract.verification, { recursive: true })
   writeFileSync(join(contract.verification, 'clipboard-capability.json'), JSON.stringify(clipboardAccess, null, 2))
   if (!clipboardAccess.available) console.log('Clipboard success checks unavailable in this Windows session:', clipboardAccess)
-  root = mkdtempSync(join(tmpdir(), 'zerowall-electron-e2e-')); roots.push(root)
+  root = mkdtempSync(join(tmpdir(), 'zerowall-中文路径-e2e-')); roots.push(root)
   mkdirSync(join(root, 'appdata'), { recursive: true })
   mkdirSync(join(root, 'localappdata'), { recursive: true })
   const pythonLocation = join(root, 'localappdata', 'ZeroWall Science', 'python-location.json')
@@ -132,6 +133,38 @@ afterEach(async context => {
 })
 
 describe('ZeroWall Science Electron', () => {
+  it('restores all default plugins offline and keeps Extension Center local until manual detection', async () => {
+    const hostLog = readFileSync(join(root, 'zerowall-user-data/logs/harness.log'), 'utf8')
+    expect(hostLog.match(/\[desktop\] starting /g)).toHaveLength(1)
+    const packaged = await locatePackagedApp(desktopRoot)
+    const defaults: string[] = JSON.parse(readFileSync(join(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8'))
+    const inventory = await rpc(page, 'pluginInventory/list', {})
+    const entries = inventory.entries ?? inventory
+    for (const id of defaults.filter(id => !id.startsWith('@deepseek-ai/'))) {
+      expect(entries.find((entry: { moduleName: string }) => entry.moduleName === id), id).toMatchObject({ enabled: true, fiberPhase: 'active' })
+    }
+    const profile = JSON.parse(readFileSync(join(root, 'zerowall-user-data/harness/profiles/web/package.json'), 'utf8'))
+    expect(profile.zerowall.pluginArchitecture).toBe(7)
+    expect(profile.dsh.profile.bundles).not.toContain('dsh-auto-review')
+    const catalogs = join(root, 'zerowall-user-data/harness/resources/catalogs')
+    expect(existsSync(catalogs)).toBe(false)
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const settings = page.getByRole('dialog', { name: '设置' })
+    for (let visit = 0; visit < 2; visit++) {
+      await settings.getByRole('button', { name: '扩展中心', exact: true }).click()
+      await settings.locator('strong[title="@zerowallscience/plugin-mcp"]').waitFor()
+      for (const name of ['Skills', 'MCP', 'Python', '插件']) await settings.getByRole('tab', { name, exact: true }).click()
+      await settings.getByRole('button', { name: '刷新本地列表', exact: true }).click()
+      expect(existsSync(catalogs)).toBe(false)
+      await settings.getByRole('button', { name: '环境配置', exact: true }).click()
+      await settings.getByRole('heading', { name: '环境配置', exact: true }).waitFor()
+    }
+    await settings.getByRole('button', { name: '扩展中心', exact: true }).click()
+    await settings.getByRole('button', { name: '检查更新', exact: true }).click()
+    await settings.getByRole('button', { name: '正在检查…', exact: true }).waitFor({ state: 'hidden', timeout: 20_000 })
+    await settings.locator('strong[title="@zerowallscience/plugin-mcp"]').waitFor()
+    await page.screenshot({ path: join(contract.verification, 'extensions-8.0.8.png'), fullPage: true })
+  })
   it('starts with the iOS appearance and no factory painting', async () => {
     await expect.poll(() => page.evaluate(() => ({
       dark: document.body.getAttribute('data-ds-dark-theme'),
@@ -239,6 +272,26 @@ describe('ZeroWall Science Electron', () => {
     await page.screenshot({ path: join(contract.verification, 'electron', 'markdown-images.png') })
   })
 
+  it('opens GenUI locally, renders a chart template and inserts its editable instruction', async () => {
+    const editor = page.locator('[contenteditable="true"]').first()
+    await editor.fill('/panel')
+    await editor.press('Enter')
+    const panel = page.locator('[data-genui-panel]')
+    await panel.waitFor()
+    await panel.getByRole('button', { name: '模板中心', exact: true }).click()
+    await panel.getByRole('tab', { name: '图表', exact: true }).click()
+    await panel.getByRole('button', { name: /趋势柱状图/ }).click()
+    const preview = panel.locator('[data-genui-template-preview]')
+    await preview.locator('svg').first().waitFor()
+    await preview.getByRole('button', { name: '试用：插入输入框', exact: true }).click()
+    await expect.poll(() => editor.innerText()).toContain('请用 dsh-ui')
+    const output = join(contract.verification, 'electron')
+    mkdirSync(output, { recursive: true })
+    await panel.screenshot({ path: join(output, 'genui-chart-template.png') })
+    await panel.getByRole('button', { name: '关闭面板', exact: true }).click()
+    await editor.fill('')
+  })
+
   it('registers a workspace and restores its research workbench in the packaged application', async () => {
     const pane = page.locator('[data-sidebar-right-panel]')
     await pane.getByRole('button', { name: '新标签页', exact: true }).click()
@@ -248,9 +301,9 @@ describe('ZeroWall Science Electron', () => {
     // Empty sessions are deliberately absent from the rc.2 history view.
     const sessionId = markdownSessionId
     expect(sessionId).toBeTruthy()
-    await rpc(page, 'session/rename', { request: { sessionId, title: '8.0.0 科研插件验收' } })
+    await rpc(page, 'session/rename', { request: { sessionId, title: `${applicationVersion} 科研插件验收` } })
     await reloadWithoutCredentials(page)
-    await page.getByText('8.0.0 科研插件验收', { exact: true }).first().click()
+    await page.getByText(`${applicationVersion} 科研插件验收`, { exact: true }).first().click()
     const expand = page.locator('[data-sidebar-right-expand]').first()
     if (await expand.isVisible()) await expand.click()
     const guide = pane.locator('[data-sidebar-right-guide-entry$="science-workbench"]')
@@ -314,7 +367,7 @@ describe('ZeroWall Science Electron', () => {
     expect(exportedSequence.analysis.sequence).toBe(pcrExpected)
     expect(readFileSync(fileURLToPath(exportedSequence.artifact.uri)).length).toBeGreaterThan(0)
     await sequence.screenshot({ path: join(output, 'sequence-pcr-packaged.png') })
-    writeFileSync(join(output, 'research-receipt.json'), JSON.stringify({ applicationVersion: '8.0.0', workspaceRestored: true,
+    writeFileSync(join(output, 'research-receipt.json'), JSON.stringify({ applicationVersion, workspaceRestored: true,
       scope: 'Packaged readonly viewers and real Host actions using local software fixtures', moleculeDistanceAngstrom: measured.molecule.measurement.distanceAngstrom,
       canvasExports: exportedCanvas.canvas.artifacts.length, pcrFixturePassed: true }, null, 2))
 
@@ -359,7 +412,10 @@ describe('ZeroWall Science Electron', () => {
 
     await wechat.click()
     const settings = page.getByRole('dialog', { name: '设置' })
-    await settings.getByText('等待扫码', { exact: true }).first().waitFor()
+    // Opening WeChat starts the user-requested QR flow. A network/provider
+    // failure is still a visible, actionable state in credential-free smoke;
+    // it must not be mistaken for a blank or unloaded dialog.
+    await expect.poll(async () => await settings.getByText(/^(等待扫码|未登录)$/u).count()).toBeGreaterThan(0)
     expect(await settings.getByRole('button', { name: 'WeChat', exact: true }).getAttribute('aria-current')).toBe('true')
     await settings.getByRole('button', { name: '关闭', exact: true }).click()
 
@@ -399,6 +455,32 @@ describe('ZeroWall Science Electron', () => {
     await expect.poll(() => right.getAttribute('data-sidebar-right-panel')).toBe('push')
   })
 
+  it('converts a workspace Office document and reads persisted science engine settings', async () => {
+    const zip = new JSZip()
+    zip.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+    zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+    zip.file('word/document.xml', '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>ZeroWall Office parity fixture</w:t></w:r></w:p><w:sectPr/></w:body></w:document>')
+    const bytes = await zip.generateAsync({ type: 'nodebuffer' })
+    const file = join(root, 'markdown-images', '验收文档.docx')
+    writeFileSync(file, bytes)
+    const rendered = await rpc(page, 'zerowallFiles/renderWorkspaceOffice', { input: { sessionId: markdownSessionId, path: '验收文档.docx' } })
+    const pdf = Buffer.from(rendered.data, 'base64')
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
+    expect(pdf.length).toBeGreaterThan(100)
+    expect(readFileSync(file)).toEqual(bytes)
+    const configs = await rpc(page, 'zerowallResearch/getScientificEngineConfigs', { input: { sessionId: markdownSessionId } })
+    expect(configs.map((config: { id: string }) => config.id)).toEqual(expect.arrayContaining(['fiji', 'napari', 'brain-globe', 'he-python', 'he-stardist', 'remote-r']))
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const settings = page.getByRole('dialog', { name: '设置' })
+    await settings.getByRole('button', { name: '科研引擎', exact: true }).click()
+    await settings.getByRole('region', { name: '科研引擎中心', exact: true }).getByLabel('Fiji / ImageJ 路径', { exact: true }).waitFor()
+    const output = join(contract.verification, 'electron')
+    mkdirSync(output, { recursive: true })
+    writeFileSync(join(output, 'office-parity.pdf'), pdf)
+    writeFileSync(join(output, 'office-engine-receipt.json'), JSON.stringify({ applicationVersion, sourceUnchanged: true, pdfBytes: pdf.length, engineIds: configs.map((config: { id: string }) => config.id) }, null, 2))
+    await page.screenshot({ path: join(output, 'science-engines.png') })
+  })
+
   it('does not mount the removed capability management module', async () => {
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const settings = page.getByRole('dialog', { name: '设置' })
@@ -418,6 +500,8 @@ describe('ZeroWall Science Electron', () => {
     expect(renderer).toEqual({ process: 'undefined', require: 'undefined', desktop: 'object' })
     expect(await page.evaluate(() => typeof (window as unknown as { zerowallDesktop?: { revealPath?: unknown } }).zerowallDesktop?.revealPath)).toBe('function')
     expect(await page.getByRole('button', { name: '科研项目' }).count()).toBe(0)
+    // The workbench is mounted in the right-side guide after a workspace is
+    // selected; it is not a global shell button on a fresh renderer.
     expect(await page.getByRole('button', { name: '科研工作台' }).count()).toBe(0)
     expect(await page.getByRole('button', { name: 'MCP 连接' }).count()).toBe(0)
     const bootEntries = await page.evaluate(() => {
@@ -596,7 +680,7 @@ describe('ZeroWall Science Electron', () => {
     await page.getByRole('button', { name: /添加插件/ }).waitFor()
     const bundles = await rpc(page, 'pluginManager/listBundles', {})
     const skills = bundles.find((bundle: { name: string }) => bundle.name === '@zerowallscience/plugin-skills')
-    expect(skills).toMatchObject({ enabled: true, version: '0.2.1' })
+    expect(skills).toMatchObject({ enabled: true, version: JSON.parse(readFileSync(join(desktopRoot, '../plugins/skills/package.json'), 'utf8')).version })
     expect(skills.error).toBeUndefined()
     // The official manager shows optional and profile-installed bundles.
     // Default shipped bundles are inspected in Settings' Plugin list above.
@@ -742,6 +826,59 @@ describe('ZeroWall Science Electron', () => {
     await settings.getByRole('heading', { name: '重置密码', exact: true }).waitFor()
     expect(await settings.getByRole('button', { name: '发送重置邮件', exact: true }).isVisible()).toBe(true)
     await page.screenshot({ path: join(artifacts, 'account-password-reset-settings.png') })
+  })
+  it('repairs a damaged architecture 6 profile with the real Host while preserving user choices', async () => {
+    const home = join(root, 'zerowall-user-data/harness')
+    const active = join(home, 'profiles/web')
+    const patchBefore = readFileSync(join(active, 'cordis.patch.yml'))
+    const mcpId = '@zerowallscience/plugin-mcp'
+    const disabledId = '@zerowallscience/plugin-pubmed'
+    const removedId = '@zerowallscience/plugin-mineru'
+    const pinnedId = '@changfenhuang/dsh-genui'
+    const pinnedVersion = JSON.parse(readFileSync(join(active, 'node_modules', pinnedId, 'package.json'), 'utf8')).version
+    const imported = join(active, 'node_modules/parity-user-plugin')
+    const importedSource = 'export function apply() {}\n'
+    stopProcessTree(application)
+    await browser.close()
+    if (application.exitCode === null) await new Promise<void>(resolveClosed => application.once('close', () => resolveClosed()))
+    mkdirSync(imported, { recursive: true })
+    writeFileSync(join(imported, 'package.json'), JSON.stringify({ name: 'parity-user-plugin', version: '1.2.3', type: 'module', main: 'index.js', dsh: { bundle: { patch: './cordis.patch.yml' } } }))
+    writeFileSync(join(imported, 'index.js'), importedSource)
+    writeFileSync(join(imported, 'cordis.patch.yml'), '- insert:\n    - id: parity-user-plugin\n      name: parity-user-plugin\n')
+    const profile = JSON.parse(readFileSync(join(active, 'package.json'), 'utf8'))
+    profile.zerowall.pluginArchitecture = 6
+    delete profile.zerowall.offlineBuildId
+    profile.dsh.profile.bundles.push('parity-user-plugin')
+    writeFileSync(join(active, 'package.json'), JSON.stringify(profile))
+    const selections = { disabled: [disabledId], removed: [removedId], pinned: { [pinnedId]: pinnedVersion } }
+    mkdirSync(join(home, 'resources/plugins'), { recursive: true })
+    writeFileSync(join(home, 'resources/plugins/selection.json'), JSON.stringify(selections))
+    const mcpLink = join(active, 'node_modules', mcpId)
+    expect(lstatSync(mcpLink).isSymbolicLink()).toBe(true)
+    unlinkSync(mcpLink)
+    const packaged = await locatePackagedApp(desktopRoot)
+    applicationOutput = ''
+    application = spawn(packaged.executablePath, ['--remote-debugging-port=0', `--user-data-dir=${join(root, 'chromium')}`], {
+      cwd: packaged.root, env: { ...process.env, APPDATA: join(root, 'appdata'), LOCALAPPDATA: join(root, 'localappdata'),
+        ZEROWALL_USER_DATA_DIR: join(root, 'zerowall-user-data'), USERPROFILE: root, HOME: root }, stdio: 'pipe', windowsHide: true,
+    })
+    for (const stream of [application.stdout, application.stderr]) stream.on('data', chunk => { applicationOutput = (applicationOutput + String(chunk)).slice(-40_000) })
+    browser = await chromium.connectOverCDP(await waitForDevToolsEndpoint(application, 150_000))
+    page = await waitForMainPage(browser.contexts()[0]!, application, 150_000)
+    await completeFirstRunOnboarding(page)
+    const repaired = JSON.parse(readFileSync(join(active, 'package.json'), 'utf8'))
+    expect(repaired.zerowall.pluginArchitecture).toBe(7)
+    expect(readFileSync(join(active, 'cordis.patch.yml'))).toEqual(patchBefore)
+    expect(readFileSync(join(imported, 'index.js'), 'utf8')).toBe(importedSource)
+    expect(JSON.parse(readFileSync(join(home, 'resources/plugins/selection.json'), 'utf8'))).toEqual(selections)
+    const entries = (await rpc(page, 'pluginInventory/list', {})).entries
+    expect(entries.find((entry: { moduleName: string }) => entry.moduleName === mcpId)).toMatchObject({ enabled: true, fiberPhase: 'active' })
+    expect(entries.find((entry: { moduleName: string }) => entry.moduleName === 'parity-user-plugin')).toMatchObject({ enabled: true, fiberPhase: 'active' })
+    expect(entries.find((entry: { moduleName: string }) => entry.moduleName === disabledId)?.enabled).not.toBe(true)
+    expect(entries.find((entry: { moduleName: string }) => entry.moduleName === removedId)?.enabled).not.toBe(true)
+    expect(JSON.parse(readFileSync(join(active, 'node_modules', pinnedId, 'package.json'), 'utf8')).version).toBe(pinnedVersion)
+    writeFileSync(join(contract.verification, 'electron/profile-repair-real-host.json'), JSON.stringify({ applicationVersion, fromArchitecture: 6, toArchitecture: 7,
+      repairedPlugin: mcpId, disabledPlugin: disabledId, removedPlugin: removedId, pinnedVersion, thirdPartyRetained: true, patchUnchanged: true }, null, 2))
   })
 })
 

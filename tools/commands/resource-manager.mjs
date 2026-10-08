@@ -2,6 +2,7 @@ import { cp, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promise
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
+import { pluginIdentity, prepareOfflineCandidate } from './offline-profile.mjs'
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
 async function atomic(path, value) {
@@ -12,7 +13,7 @@ async function atomic(path, value) {
 }
 
 /** Signed resource preparation and official DSH profile transactions. */
-export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, local = false, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], defaultPlugins = [] }) {
+export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, runtimeModules, local = false, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], defaultPlugins = [] }) {
   const root = join(home, 'resources')
   const profiles = join(home, 'profiles')
   const active = join(profiles, 'web')
@@ -20,7 +21,15 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   const pluginStateRoot = join(root, 'plugins')
   const selectionFile = join(pluginStateRoot, 'selection.json')
   let queue = Promise.resolve()
+  let selectionBefore
   const exclusive = task => { const result = queue.then(task); queue = result.catch(() => {}); return result }
+  const selectionTransaction = async task => {
+    const previous = await json(selectionFile).catch(error => { if (error.code !== 'ENOENT') throw error; return {} })
+    selectionBefore = previous
+    try { return await task() }
+    catch (error) { await atomic(selectionFile, previous); throw error }
+    finally { selectionBefore = undefined }
+  }
   const exists = path => readFile(join(path, 'package.json')).then(() => true, error => {
     if (error.code === 'ENOENT') return false
     throw error
@@ -39,25 +48,69 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (error.code === 'ENOENT') return {}
       throw error
     })
+    if (value.pinned !== undefined && (!value.pinned || typeof value.pinned !== 'object' || Array.isArray(value.pinned))) throw new Error('Invalid pinned plugin selections')
+    for (const [id, version] of Object.entries(value.pinned ?? {})) {
+      pluginIdentity(id)
+      if (typeof version !== 'string' || !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$/u.test(version)) throw new Error('Invalid pinned plugin version')
+    }
     return {
+      ...value,
       disabled: new Set(Array.isArray(value.disabled) ? value.disabled : []),
       removed: new Set(Array.isArray(value.removed) ? value.removed : []),
+      pinned: { ...(value.pinned ?? {}) },
     }
   }
 
   async function writePluginSelection(selection) {
     await atomic(selectionFile, {
+      ...selection,
       disabled: [...selection.disabled].sort(),
       removed: [...selection.removed].sort(),
     })
   }
 
   function packagePath(profile, id) {
+    pluginIdentity(id)
     return join(profile, 'node_modules', ...id.split('/'))
   }
 
   async function packageVersion(profile, id) {
-    return json(join(packagePath(profile, id), 'package.json')).catch(() => undefined)
+    const installed = await json(join(packagePath(profile, id), 'package.json')).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
+    if (installed) return installed
+    if (runtimeModules) return json(join(runtimeModules, pluginIdentity(id), 'package.json')).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
+    return undefined
+  }
+  const localSnapshots = new Map()
+  async function hostRead(operation, args) {
+    let timer
+    try { return await Promise.race([callHost(operation, args), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Local resource service timed out')), 4500) })]) }
+    finally { clearTimeout(timer) }
+  }
+  async function dependents(id) {
+    pluginIdentity(id)
+    const manifest = await json(join(active, 'package.json'))
+    const selection = await readPluginSelection()
+    const result = new Set()
+    const bundles = (manifest.dsh?.profile?.bundles ?? []).filter(name => name !== id && !selection.disabled.has(name) && !selection.removed.has(name))
+    const packages = await Promise.all(bundles.map(async name => ({ name, manifest: await packageVersion(active, name) })))
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const entry of packages) if (!result.has(entry.name) && Object.keys(entry.manifest?.dependencies ?? {}).some(name => name === id || result.has(name))) { result.add(entry.name); changed = true }
+    }
+    return [...result].sort()
+  }
+  async function pinPlugin(id, pinned) {
+    pluginIdentity(id)
+    const installed = await packageVersion(active, id)
+    const packaged = bundledPlugins.find(item => item.id === id)
+    if (packaged?.core || packaged?.managed === false) throw new Error('Core runtime cannot be pinned independently')
+    if (!installed?.version && pinned) throw new Error('Cannot pin a missing plugin')
+    const selection = await readPluginSelection()
+    if (pinned) selection.pinned[id] = installed.version
+    else delete selection.pinned[id]
+    await writePluginSelection(selection)
+    return { id, pinnedVersion: selection.pinned[id] }
   }
 
   async function restorePluginGeneration(candidate, previousProfile, packageIds, id) {
@@ -140,13 +193,44 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     } else if (!await exists(active)) {
       throw new Error('Plugin update recovery has no complete active or backup profile')
     }
+    if (pending.selectionBefore) await atomic(selectionFile, pending.selectionBefore)
     await atomic(journal, { ...pending, state: 'recovered' })
   }
 
-  async function catalog(source) {
+  async function repairOffline(source) {
+    const document = verifySignedDocument(await json(join(source, 'receipt.json')), keys)
+    const manifest = await json(join(active, 'package.json'))
+    const selection = await readPluginSelection()
+    const expected = defaultPlugins.filter(id => !selection.removed.has(id) && !selection.disabled.has(id) && !manifest.zerowall?.disabledPlugins?.includes(id))
+    const missing = []
+    for (const id of expected) {
+      const installed = await packageVersion(active, id)
+      if (!installed || (selection.pinned[id] && installed.version !== selection.pinned[id])) missing.push(id)
+    }
+    if (manifest.zerowall?.pluginArchitecture >= 7 && document.buildId === manifest.zerowall.offlineBuildId && !missing.length) return { repaired: false, architecture: 7 }
+    const result = await prepareOfflineCandidate({ home, source, keys, target, defaults: defaultPlugins, bundledPlugins, yaml, local })
+    const receiptPath = join(pluginStateRoot, 'repairs', result.digest + '.json')
+    if (result.blocked.length) {
+      await atomic(receiptPath, { state: 'blocked', architecture: 7, buildId: document.buildId, blocked: result.blocked, candidate: result.candidate })
+      return { repaired: false, blocked: result.blocked }
+    }
+    const candidateManifest = await json(join(result.candidate, 'package.json'))
+    candidateManifest.zerowall.offlineBuildId = document.buildId
+    await atomic(join(result.candidate, 'package.json'), candidateManifest)
+    try {
+      const activation = await activate(result.candidate, { operation: 'offline-repair', buildId: document.buildId, offlineGeneration: result.digest })
+      await atomic(receiptPath, { state: 'complete', architecture: 7, buildId: document.buildId, changed: result.changed, ...activation })
+      return { repaired: true, architecture: 7, changed: result.changed }
+    } catch (error) {
+      await atomic(receiptPath, { state: 'failed', architecture: 7, buildId: document.buildId, reason: 'Candidate Host activation failed; previous profile restored' })
+      throw error
+    }
+  }
+
+  async function catalog(source, { signal } = {}) {
     let document
     if (/^https:\/\//.test(source)) {
-      const response = await fetch(source, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(10_000) })
+      const response = await fetch(source, { cache: 'no-store', redirect: 'error', signal: signal ?? AbortSignal.timeout(10_000) })
       if (!response.ok) {
         const error = new Error(`Catalog request failed (HTTP ${response.status})`)
         error.status = response.status
@@ -163,7 +247,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     if (document.kind === 'pointer') {
       verifySignedDocument(document, keys)
       if (document.localOnly && !local) throw new Error('Development pointer cannot be activated by a release installation')
-      const file = await downloadResource(document.catalog, join(root, 'catalogs'), { local })
+      const file = await downloadResource(document.catalog, join(root, 'catalogs'), { local, signal })
       document = await json(file)
     }
     verifyCatalog(document, keys, { local })
@@ -176,6 +260,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const entry = document.resources.find(item => item.id === id)
     if (!entry || !['plugin', 'support'].includes(entry.kind)) throw new Error('Plugin is absent from the signed catalog')
     assertCompatible(entry, target)
+    const choices = await readPluginSelection()
+    if (choices.pinned[id] && choices.pinned[id] !== entry.version) throw new Error('Plugin version is pinned; unpin before updating')
     const installed = await json(join(active, 'node_modules', id, 'package.json')).catch(() => undefined)
     if (installed && compareVersions(entry.version, installed.version) < 0) throw new Error('Plugin downgrade requires an explicit rollback')
     // Own support packages and plugin dependencies are signed together. Cache
@@ -194,6 +280,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     }
     visit(entry)
     for (const item of closure.values()) {
+      if (choices.pinned[item.id] && choices.pinned[item.id] !== item.version) throw new Error(`Dependency version is pinned: ${item.id}`)
       assertCompatible(item, target)
       const file = await downloadResource(item, join(root, 'downloads'), { local })
       const tarball = file + '.tgz'
@@ -217,10 +304,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     workspace.allowBuilds = { ...workspace.allowBuilds, '@scarf/scarf': false }
     await writeFile(workspaceFile, yaml.stringify(workspace))
     await runPlugin(['add', archive], generation)
-    await normalizeComposition(candidate)
     const selection = await readPluginSelection()
     selection.removed.delete(id)
     await writePluginSelection(selection)
+    await normalizeComposition(candidate)
     return activate(candidate, { id, packageId: id, version: entry.version, packageIds: [...closure.keys()] })
   }
 
@@ -239,7 +326,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await atomic(file, manifest)
   }
 
-  async function setPluginEnabled(id, enabled) {
+  async function setPluginEnabled(id, enabled, acknowledgedDependents = []) {
     if (typeof id !== 'string' || !/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) || id.split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid plugin identity')
     const generation = 'zerowall-' + randomUUID()
     const candidate = join(profiles, generation)
@@ -249,6 +336,11 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const manifest = await json(file)
     const selection = await readPluginSelection()
     const disabled = new Set([...selection.disabled, ...(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : [])])
+    if (!enabled) {
+      const required = await dependents(id)
+      if (required.some(name => !acknowledgedDependents.includes(name))) throw new Error('Plugin has active dependents; review them before disabling')
+      for (const name of required) disabled.add(name)
+    }
     if (enabled) {
       disabled.delete(id)
       selection.removed.delete(id)
@@ -258,7 +350,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await writePluginSelection(selection)
     manifest.zerowall = { ...manifest.zerowall, disabledPlugins: [...disabled].sort() }
     await atomic(file, manifest)
-    await runPlugin(['install'], generation)
+    await cp(join(active, 'node_modules'), join(candidate, 'node_modules'), { recursive: true, dereference: false }).catch(error => { if (error.code !== 'ENOENT') throw error })
     await normalizeComposition(candidate)
     return activate(candidate, { operation: enabled ? 'enable' : 'disable', packageId: id, enabled })
   }
@@ -268,7 +360,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await mkdir(resolve(backup, '..'), { recursive: true })
     // Persist the recovery instruction before stopping the Host. If that
     // write fails, the running profile is still available without a restart.
-    await atomic(journal, { state: 'activating', backup, candidate, ...metadata })
+    await atomic(journal, { state: 'activating', backup, candidate, ...metadata, ...(selectionBefore ? { selectionBefore } : {}) })
     let backedUp = false
     try {
       await stopHost()
@@ -291,7 +383,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     }
   }
 
-  async function mutate(args) {
+  async function mutate(args, acknowledgedDependents = []) {
     if (!Array.isArray(args) || !args.every(item => typeof item === 'string') || !['add', 'remove', 'update', 'install'].includes(args[0])) throw new Error('Invalid plugin mutation')
     const generation = 'zerowall-' + randomUUID()
     const candidate = join(profiles, generation)
@@ -300,6 +392,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const manifest = await json(join(candidate, 'package.json'))
     if (args[0] === 'remove' && args[1]) {
       const selection = await readPluginSelection()
+      const required = await dependents(args[1])
+      if (required.some(name => !acknowledgedDependents.includes(name))) throw new Error('Plugin has active dependents; review them before removing')
+      for (const name of required) selection.disabled.add(name)
       selection.removed.add(args[1])
       selection.disabled.delete(args[1])
       await writePluginSelection(selection)
@@ -411,14 +506,18 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const document = await catalog(source ?? `${feedBase}/${kind}-latest.json`)
     if (kind === 'plugin') {
       const manifest = await json(join(active, 'package.json'))
-      const result = []
+      const result = [], skipped = []
+      const choices = await readPluginSelection()
       for (const entry of document.resources.filter(item => item.kind === 'plugin' && manifest.dsh?.profile?.bundles?.includes(item.id))) {
+        if (choices.pinned[entry.id]) { skipped.push({ id: entry.id, reason: 'Pinned version' }); continue }
+        const conflict = Object.keys(entry.dependencies ?? {}).find(id => choices.pinned[id] && choices.pinned[id] !== document.resources.find(item => item.id === id)?.version)
+        if (conflict) { skipped.push({ id: entry.id, reason: 'Dependency version is pinned: ' + conflict }); continue }
         const installed = await json(join(active, 'node_modules', entry.id, 'package.json')).catch(() => undefined)
         if (installed && compareVersions(entry.version, installed.version) <= 0) continue
         if (!installed && compareVersions(entry.version, '0.1.0') <= 0) continue
-        result.push(await plugin(entry.id, source))
+        result.push(await selectionTransaction(() => plugin(entry.id, source)))
       }
-      return { updated: result.length, results: result }
+      return { updated: result.length, results: result, skipped }
     }
     const installed = kind === 'skill' ? await callHost('skill.list', []) : kind === 'mcp' ? await callHost('mcp.list', []) : []
     const names = new Set(installed.map(item => kind === 'mcp' ? item.serverName : item.name))
@@ -432,9 +531,17 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     let document
     let catalogError
     let unpublished = false
-    try { if (!options.localOnly) document = await catalog(source ?? `${feedBase}/${kind}-latest.json`) }
+    try {
+      if (!options.localOnly) {
+        document = await catalog(source ?? `${feedBase}/${kind}-latest.json`, { signal: options.signal })
+        await atomic(join(root, 'catalogs', kind + '-verified.json'), document)
+      } else {
+        const cached = await json(join(root, 'catalogs', kind + '-verified.json')).catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
+        if (cached) document = verifyCatalog(cached, keys, { local })
+      }
+    }
     catch (error) { unpublished = error.status === 404; if (!unpublished) catalogError = error instanceof Error ? error.message : 'Catalog check failed' }
-    const catalogStatus = document ? 'checked' : options.localOnly ? 'local' : unpublished ? 'unpublished' : 'unavailable'
+    const catalogStatus = options.localOnly ? 'local' : document ? 'checked' : unpublished ? 'unpublished' : 'unavailable'
     return { document, catalogStatus, catalogError }
   }
 
@@ -450,16 +557,27 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       const runtimeIds = new Set(defaultPlugins)
       const ids = new Set([...entries.map(item => item.id), ...(manifest.dsh?.profile?.bundles ?? []), ...runtimeIds, ...builtInIds])
       const resources = []
+      let health
+      try { health = await hostRead('host.health', []) } catch { /* Keep package presence and activation separate when Host is unavailable. */ }
+      const activated = new Map((health?.entries ?? []).map(entry => [entry.name, entry.state]))
       for (const id of ids) {
         const packaged = bundled.get(id)
         const installed = await packageVersion(active, id)
-        const activeVersion = installed?.version ?? packaged?.version
+        const activeVersion = installed?.version
         const installedState = selection.removed.has(id) ? 'removed' : selection.disabled.has(id) ? 'disabled' : installed ? 'profile' : packaged?.core ? 'runtime' : builtInIds.has(id) ? 'bundled' : entries.some(item => item.id === id) && !runtimeIds.has(id) && !(manifest.dsh?.profile?.bundles ?? []).includes(id) ? 'catalog' : 'runtime'
         const catalogEntry = entries.find(item => item.id === id)
         const version = catalogEntry?.version ?? activeVersion ?? bundled.get(id)?.version ?? (installedState === 'runtime' ? 'core' : '—')
         const managed = packaged?.managed !== false && !packaged?.core && installedState !== 'runtime'
         const enabled = !selection.disabled.has(id) && !selection.removed.has(id) && (packaged?.core || packaged?.managed === false || (manifest.dsh?.profile?.bundles ?? []).includes(id))
-        resources.push({ id, version, installedVersion: activeVersion, updateAvailable: Boolean(catalogEntry && activeVersion && compareVersions(catalogEntry.version, activeVersion) > 0), source: installedState, catalogSigned: Boolean(catalogEntry), signed: Boolean(catalogEntry), restartRequired: catalogEntry?.restartRequired ?? true, rollbackSupported: Boolean((await json(join(pluginStateRoot, encodeURIComponent(id), 'history.json')).catch(() => undefined))?.records?.length), enabled, managed })
+        const present = Boolean(activeVersion)
+        resources.push({ id, version: present || catalogEntry || packaged ? version : '—', installedVersion: activeVersion, updateAvailable: Boolean(catalogEntry && activeVersion && compareVersions(catalogEntry.version, activeVersion) > 0), source: !present && !catalogEntry ? 'profile' : installedState, catalogSigned: Boolean(catalogEntry), signed: Boolean(catalogEntry), restartRequired: catalogEntry?.restartRequired ?? true, rollbackSupported: Boolean((await json(join(pluginStateRoot, encodeURIComponent(id), 'history.json')).catch(() => undefined))?.records?.length), enabled: Boolean(enabled), managed, installState: present ? 'installed' : 'missing', activationState: !present ? 'missing' : enabled ? 'active' : 'disabled', pinnedVersion: selection.pinned[id], ...(selection.pinned[id] ? { updateBlocked: 'Pinned version' } : {}) })
+      }
+      for (const resource of resources) {
+        if (resource.installState === 'missing' || !resource.enabled) continue
+        resource.activationState = activated.get(resource.id) === 2 ? 'active' : activated.has(resource.id) ? 'error' : 'unavailable'
+        const entry = entries.find(item => item.id === resource.id)
+        const conflict = Object.keys(entry?.dependencies ?? {}).find(id => selection.pinned[id] && entries.find(item => item.id === id)?.version !== selection.pinned[id])
+        if (conflict) resource.updateBlocked = 'Dependency version is pinned: ' + conflict
       }
       const bundles = [...ids].filter(id => !selection.removed.has(id))
       return { kind, checkedAt: new Date().toISOString(), bundles, dependencies: manifest.dependencies ?? {}, resources, catalogStatus, ...(catalogError ? { error: catalogError } : {}) }
@@ -469,10 +587,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     // real Host/IPC errors; only the explicit absent-service response is empty.
     let installed = [], skillSources, domainAvailable = true
     try {
-      installed = kind === 'skill' ? await callHost('skill.list', []) : await callHost('mcp.list', [])
-      skillSources = kind === 'skill' ? await callHost('skill.sources', []) : undefined
+      if (kind === 'skill') [installed, skillSources] = await Promise.all([hostRead('skill.list', []), hostRead('skill.sources', [])])
+      else installed = await hostRead('mcp.list', [])
     } catch (error) {
-      if (error.message !== 'Requested plugin service is unavailable') throw error
+      if (!['Requested plugin service is unavailable', 'Host is not ready', 'Local resource service timed out', 'Plugin management timed out', 'Host restarted'].includes(error.message)) throw error
       domainAvailable = false
     }
     const local = installed.map(item => ({ item, id: kind === 'mcp' ? item.serverName : item.name }))
@@ -480,7 +598,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     for (const { item, id } of local) {
       const entry = entries.find(record => (record.server?.serverName ?? record.id) === id)
       let installedVersion
-      if (kind === 'skill') installedVersion = item.declaredVersion ?? (await callHost('skill.get', [id]).catch(() => undefined))?.declaredVersion
+      if (kind === 'skill') installedVersion = item.declaredVersion
       else installedVersion = (await json(join(root, 'mcp', encodeURIComponent(id), 'current.json')).catch(() => undefined))?.version
       const userSkill = skillSources?.enabled?.includes(id) || skillSources?.disabled?.includes(id)
       resources.push({ id, actionId: kind === 'mcp' ? item.id : id, name: kind === 'mcp' ? item.name : id, version: entry?.version ?? installedVersion ?? '—', installedVersion, updateAvailable: Boolean(entry && installedVersion && compareVersions(entry.version, installedVersion) > 0), source: kind === 'skill' && !userSkill ? 'bundled' : 'profile', signed: Boolean(entry), catalogSigned: Boolean(entry), restartRequired: entry?.restartRequired ?? kind === 'mcp', rollbackSupported: Boolean(entry?.rollbackSupported), enabled: kind === 'skill' ? !skillSources?.disabled?.includes(id) : item.enabled, managed: kind === 'mcp' || Boolean(userSkill), runtimeState: item.runtimeState })
@@ -490,7 +608,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (resources.some(item => item.id === identity)) continue
       resources.push({ id: identity, version: entry.version, source: 'catalog', signed: true, catalogSigned: true, restartRequired: entry.restartRequired, rollbackSupported: entry.rollbackSupported })
     }
-    return { kind, checkedAt: new Date().toISOString(), resources, catalogStatus, domainAvailable, ...(catalogError ? { error: catalogError } : {}) }
+    return { kind, checkedAt: new Date().toISOString(), resources: !domainAvailable && localSnapshots.has(kind) ? localSnapshots.get(kind).resources : resources, catalogStatus, domainAvailable, ...(catalogError ? { error: catalogError } : {}) }
   }
   async function rollbackMcp(id) {
     if (!/^[a-zA-Z0-9._-]{1,100}$/.test(id) || id === '.' || id === '..') throw new Error('Invalid MCP resource identity')
@@ -509,9 +627,23 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   }
   // Network checks must not hold the profile transaction queue. Read local
   // state under the lock only after catalog verification has finished.
-  const checkResources = async (kind, source, options = {}) => {
-    const state = await catalogState(kind, source, options)
-    return exclusive(() => check(kind, source, { catalogState: state }))
+  const reads = new Map()
+  const checkResources = (kind, source, options = {}) => {
+    if (!['plugin', 'skill', 'mcp'].includes(kind)) return Promise.reject(new Error('Invalid resource kind'))
+    const identity = JSON.stringify([kind, source, Boolean(options.localOnly)])
+    if (reads.has(identity)) return reads.get(identity)
+    const signal = AbortSignal.timeout(options.localOnly ? 4900 : 14500)
+    const run = async () => {
+      const state = await catalogState(kind, source, { ...options, signal })
+      const result = await check(kind, source, { catalogState: state })
+      if (signal.aborted) throw new Error('Resource request timed out')
+      if (result.domainAvailable !== false) localSnapshots.set(kind, result)
+      return result
+    }
+    let timer
+    const pending = Promise.race([run(), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Resource request timed out')), options.localOnly ? 4900 : 14500) })]).finally(() => { clearTimeout(timer); reads.delete(identity) })
+    reads.set(identity, pending)
+    return pending
   }
-  return { recover: () => exclusive(recover), catalog, check: checkResources, list: kind => exclusive(() => check(kind, undefined, { localOnly: true })), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => rollbackPlugin(id)), setPluginEnabled: (id, enabled) => exclusive(() => setPluginEnabled(id, enabled)), mutate: args => exclusive(() => mutate(args)), plugin: (id, source) => exclusive(() => plugin(id, source)), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
+  return { recover: () => exclusive(recover), repairOffline: source => exclusive(() => repairOffline(source)), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => selectionTransaction(() => rollbackPlugin(id))), setPluginEnabled: (id, enabled, dependents) => exclusive(() => selectionTransaction(() => setPluginEnabled(id, enabled, dependents))), mutate: (args, dependents) => exclusive(() => selectionTransaction(() => mutate(args, dependents))), plugin: (id, source) => exclusive(() => selectionTransaction(() => plugin(id, source))), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
 }

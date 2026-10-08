@@ -24,6 +24,18 @@ async function setup() {
 }
 
 describe('signed dependency sync', () => {
+  it('local lists never fetch, install or persist catalog/status files', async () => {
+    const { root, manifest, updater, key, apply } = await setup()
+    const bundledManifestPath = join(root, 'bundled.json')
+    await writeFile(bundledManifestPath, JSON.stringify(manifest))
+    const fetcher = vi.fn(async () => { throw new Error('No network on local list') })
+    const service = new PythonSyncService({ root, updater: updater as any, keys: { test: key }, applicationVersion: '7.0.3', feedUrl: 'https://example.test/latest.json', bundledManifestPath, fetcher })
+    expect((await service.listLocal('science')).installedPackageCount).toBe(0)
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(apply).not.toHaveBeenCalled()
+    await expect(readFile(join(root, 'dependency-sync/status.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(readFile(join(root, 'dependency-sync/manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
   it('imports a signed catalog manifest but rejects tampering and a revision downgrade', async () => {
     const { service, root, manifest, privateKey, apply } = await setup()
     const file = join(root, 'import.json')

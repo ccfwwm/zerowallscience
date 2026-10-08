@@ -102,7 +102,9 @@ test('Core profiles can browse signed Skills/MCP catalogs before installing thei
     assert.equal(result.resources[0].signed, true)
     assert.equal(result.resources[0].updateAvailable, undefined)
     const broken = createResourceManager({ ...f, target, local: true, callHost: async () => { throw new Error('Host is not ready') } })
-    await assert.rejects(broken.check(kind, f.source), /Host is not ready/u)
+    const unavailable = await broken.check(kind, f.source)
+    assert.equal(unavailable.domainAvailable, false)
+    assert.equal(unavailable.catalogStatus, 'checked')
   }
 })
 
@@ -140,7 +142,8 @@ test('unpublished catalogs keep complete local inventory and bundled versions wi
     assert.equal(result.resources.find(item => item.id === other).enabled, false)
     assert.equal(result.resources.find(item => item.id === core).managed, false)
     assert.equal(result.resources.find(item => item.id === core).version, target.dshVersion)
-    assert.equal(result.resources.find(item => item.id === f.resource.id).installedVersion, '0.1.0')
+    assert.equal(result.resources.find(item => item.id === f.resource.id).installedVersion, undefined)
+    assert.equal(result.resources.find(item => item.id === f.resource.id).installState, 'missing')
     assert.equal(await readFile(join(f.home, 'profiles/web/package.json'), 'utf8'), before)
     globalThis.fetch = async () => { throw new Error('Local inventory must never access the network') }
     assert.equal((await manager.check('plugin', undefined, { localOnly: true })).catalogStatus, 'local')

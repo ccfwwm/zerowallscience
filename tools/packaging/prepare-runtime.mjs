@@ -24,11 +24,13 @@ import { packageSource } from '../build/layout.mjs'
 const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'deepseek-harness')
 const closurePath = resolve(stageRoot, 'dsh/runtime-closure.json')
-const outputRoot = resolve(stageRoot, 'runtime/node_modules')
-const expectedOutputParent = resolve(stageRoot, 'runtime')
+const offlineProfile = process.argv.includes('--offline-profile')
+const outputRoot = resolve(stageRoot, offlineProfile ? 'offline-profile/modules' : 'runtime/node_modules')
+const expectedOutputParent = resolve(stageRoot, offlineProfile ? 'offline-profile' : 'runtime')
 const buildReceipt = JSON.parse(await readFile(resolve(stageRoot, 'dsh/build-receipt.json'), 'utf8'))
 const expectedHarness = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 const runtimeProfile = JSON.parse(await readFile(resolve(root, 'config/layout/runtime-profile.json'), 'utf8'))
+const configuredDefaults = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/plugin-inventory.json'), 'utf8')).profiles.stable.plugins
 if (buildReceipt.commit !== expectedHarness.commit || buildReceipt.version !== expectedHarness.version) {
   throw new Error('Harness build receipt differs from the pinned source. Run pnpm build before preparing the runtime.')
 }
@@ -41,7 +43,9 @@ const workspaceModules = resolve(root, 'node_modules')
 const zerowallPackageRoots = [
   resolve(await packageSource('integrity-runtime')),
   ...await Promise.all(runtimeProfile.corePackageDependencies.map(async name => resolve(await packageSource(name)))),
-  ...await pluginRoots(resolve(root, 'plugins'), new Set(runtimeProfile.corePlugins)),
+  ...await pluginRoots(resolve(root, 'plugins'), new Set(offlineProfile ? configuredDefaults : runtimeProfile.corePlugins)),
+  ...(offlineProfile ? await Promise.all(['dsh-ssh-ops', 'dsh-progressive-tools', 'dsh-session-notification', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-wechat', 'dsh-genui', 'zotero-harvest'].map(async name => resolve(await packageSource(name)))) : []),
+  ...(offlineProfile ? [resolve(root, 'store')] : []),
 ]
 const desktopRuntimeSeeds = [
   // The packaged Web Host resolves its SPA entry through this package's
@@ -85,6 +89,7 @@ if (!outputRoot.startsWith(`${expectedOutputParent}${sep}`)) {
 
 const closure = JSON.parse(await readFile(closurePath, 'utf8'))
 const dshNames = new Set(closure.packages ?? [])
+const coreModules = resolve(stageRoot, 'runtime/node_modules')
 const workspacePackages = new Map()
 
 for (const manifestPath of await findPackageManifests(dshRoot)) {
@@ -107,7 +112,7 @@ await rm(resolve(expectedOutputParent, 'build-receipt.json'), { force: true })
 await removeTree(outputRoot)
 await mkdir(outputRoot, { recursive: true })
 
-const queue = [...new Set([...dshNames, ...workspacePackages.keys(), ...desktopRuntimeSeeds])].map(name => ({ name, optional: false }))
+const queue = [...new Set(offlineProfile ? [...configuredDefaults, '@zerowallscience/integrity-runtime', '@zerowallscience/research-store'] : [...dshNames, ...workspacePackages.keys(), ...desktopRuntimeSeeds])].map(name => ({ name, optional: false }))
 const copiedTargets = new Map()
 const topLevelPackages = new Map()
 let incompatible = 0
@@ -128,6 +133,12 @@ while (queue.length > 0) {
     throw error
   }
   const identity = `${resolvedPackage.manifest.name}@${resolvedPackage.manifest.version ?? '0.0.0'}`
+  // Share the verified Core peer identity through the profile ESM resolver
+  // and NODE_PATH rather than copying Cordis/DSH/React into a second runtime.
+  if (offlineProfile) {
+    const shared = await readFile(resolve(coreModules, request.name, 'package.json'), 'utf8').then(JSON.parse).catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
+    if (shared?.version === resolvedPackage.manifest.version && !runtimeProfile.corePlugins.includes(request.name)) continue
+  }
   const topLevelIdentity = topLevelPackages.get(request.name)
   const targetRoot = topLevelIdentity === undefined || topLevelIdentity === identity
     ? resolve(outputRoot, ...request.name.split('/'))
@@ -397,6 +408,9 @@ function includeRuntimeFile(sourceRoot, candidate) {
   // upstream location sits under the otherwise excluded documentation tree.
   if (path === 'docs/images/icon.png' && basename(sourceRoot) === 'dsh-zotero') return true
   const segments = path.toLowerCase().split('/')
+  // Repository marker files are excluded by electron-builder. Exclude them
+  // before signing the immutable offline file set as well.
+  if (segments.some(segment => ['.gitkeep', '.gitignore', '.gitattributes', '.npmignore'].includes(segment))) return false
   // npm packages frequently publish executable JavaScript under `src`, even
   // when `main` itself lives at the package root. Keep every src directory;
   // guessing whether it is development-only creates incomplete runtimes.

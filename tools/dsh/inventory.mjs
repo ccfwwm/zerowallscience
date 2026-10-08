@@ -6,6 +6,8 @@ const dshRoot = resolve(root, 'deepseek-harness')
 const output = resolve(root, 'config/deepseek-harness/plugin-inventory.json')
 const upstream = await json('config/deepseek-harness/upstream.json')
 const desktop = await json('desktop/package.json')
+const runtimeProfile = await json('config/layout/runtime-profile.json')
+const productionPath = name => `resources/${runtimeProfile.corePlugins.includes(name) ? 'app.asar/node_modules' : 'offline-profile/modules'}/${name}`
 
 const thirdPartyOrder = [
   'dsh-ssh-ops',
@@ -69,7 +71,7 @@ for (const id of zeroWallOrder) {
     permissions: manifest.permissions ?? [],
     requiredServices: manifest.requiredServices ?? [],
     optionalServices: manifest.optionalServices ?? [],
-    productionPath: `resources/app.asar/node_modules/${expectedName}`,
+    productionPath: productionPath(expectedName),
   })
 }
 
@@ -134,10 +136,10 @@ const thirdPartyPlugins = thirdPartyPackages.map(name => ({
   package: name,
   version: desktop.dependencies?.[name] ?? null,
   owner: 'third-party',
-  registrationSource: profileBundles.has(name) ? 'host-web-profile-bundle' : 'desktop-patch',
+  registrationSource: 'user-profile-bundle',
   source: 'desktop/package.json',
   loadOrder: expectedOrder.indexOf(name) + 1,
-  productionPath: `resources/app.asar/node_modules/${name}`,
+  productionPath: productionPath(name),
 }))
 for (const plugin of thirdPartyPlugins) assert(plugin.version !== null, `desktop/package.json must pin ${plugin.package}`)
 
