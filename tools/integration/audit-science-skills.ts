@@ -12,7 +12,7 @@ import * as Research from '../../plugins/research/src/host/index.js'
 
 const root = resolve(import.meta.dirname, '../..')
 const output = resolve(root, process.argv.find(v => v.startsWith('--output='))?.slice(9) ?? resolve(zwsArtifactPaths.verification, 'science-skills-audit'))
-const bundled = resolve(root, 'resources/skills')
+const bundled = resolve(root, 'resources/extensions/skills')
 await mkdir(output, { recursive: true })
 const require = createRequire(join(root, 'plugins/research/package.json'))
 const load = (id: string) => import(pathToFileURL(require.resolve(id)).href)

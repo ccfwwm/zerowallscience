@@ -7,7 +7,7 @@
 应用设置页显示的共享 Python 路径\Python\Lib\site-packages
 ```
 
-依赖版本来自签名的 `resources/python/dependency-manifest.json`，通过桌面 Python 依赖同步流程安装到上述目录。新安装优先使用安装目录下的 `Python` 子目录；安装目录不可写时自动使用 `%LOCALAPPDATA%\ZeroWall Science\Python`。HE、StarDist、MCP、Skills、论文查重、OCR、数值审计、BioGenie 和脚本都不能创建或切换到独立依赖 profile。Fiji、napari、R 和远程服务仍是外部运行时，不会被伪装成 Python profile。
+依赖版本来自签名的 `resources/extensions/python/dependency-manifest.json`，通过桌面 Python 依赖同步流程安装到上述目录。新安装优先使用安装目录下的 `Python` 子目录；安装目录不可写时自动使用 `%LOCALAPPDATA%\ZeroWall Science\Python`。HE、StarDist、MCP、Skills、论文查重、OCR、数值审计、BioGenie 和脚本都不能创建或切换到独立依赖 profile。Fiji、napari、R 和远程服务仍是外部运行时，不会被伪装成 Python profile。
 
 ## 包格式
 

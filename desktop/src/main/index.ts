@@ -1,7 +1,7 @@
 import { attachPythonBroker } from './python-broker.js'
 import { startCommandServer } from './command-server.js'
 import { spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { access, appendFile, cp, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
@@ -16,7 +16,7 @@ import { CredentialVault } from './credentials/vault.js'
 import { secureWindow } from './security.js'
 import { isZoteroOpenUrl } from './security-policy.js'
 import { resolveDesktopIdentity } from './identity.js'
-import { findDesktopWorkspaceRoot, resolveDesktopIconPath, resolveDesktopResourcePath } from './paths.js'
+import { findDesktopWorkspaceRoot, resolveBundledSkillsPath, resolveDesktopIconPath, resolveDesktopResourcePath, resolveWorkspaceResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-updater-service.js'
 import { createPythonTerminalLaunch, managedPythonTerminalPaths } from './python-terminal.js'
@@ -33,7 +33,7 @@ import { verifyDownloadedArtifact } from './update-artifact.js'
 import { resolveRevealPath } from './reveal-path.js'
 import { copyWindowsFile } from './clipboard-files.js'
 import { deleteStoredSession, parseSessionDeleteRpcResponse, recoverSessionDeletions, sessionDeletionJournal, validSessionId } from './session-delete.js'
-import type { DesktopClipboardFile, DesktopInfo, RuntimeSnapshot, StartupStatus } from '../shared/contracts.js'
+import type { DesktopClipboardFile, DesktopInfo, PythonDependencyLayer, RuntimeSnapshot, StartupStatus } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
 /** Stable updates are served from the Qiniu-backed generic feed. Keeping this
@@ -168,16 +168,17 @@ function desktopIconPath(): string {
 }
 
 function bundledSkillsPath(): string {
-  return app.isPackaged ? join(process.resourcesPath, 'skills') : join(findWorkspaceRoot(), 'resources', 'skills')
+  return app.isPackaged ? resolveBundledSkillsPath(process.resourcesPath) : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'skills')
 }
 
 function brandIconPath(): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'zerowall-icon.png')
-    : join(findWorkspaceRoot(), 'resources', 'brand', 'zerowall', 'zerowall-icon.png')
+    : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'brand', 'zerowall', 'zerowall-icon.png')
 }
 
 interface UpdateCheckRecord { lastCheckedAt?: number }
+interface ResourceCheckRecord { lastCheckedAt?: number; lastNotifiedSignature?: string }
 
 async function readUpdateCheckRecord(path: string): Promise<UpdateCheckRecord> {
   try {
@@ -191,6 +192,20 @@ async function readUpdateCheckRecord(path: string): Promise<UpdateCheckRecord> {
 async function writeUpdateCheckRecord(path: string, lastCheckedAt: number): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, `${JSON.stringify({ lastCheckedAt })}\n`, 'utf8')
+}
+
+async function readResourceCheckRecord(path: string): Promise<ResourceCheckRecord> {
+  try {
+    const parsed = JSON.parse(await readFile(path, 'utf8')) as ResourceCheckRecord
+    return typeof parsed.lastCheckedAt === 'number' ? parsed : {}
+  } catch { return {} }
+}
+
+async function writeResourceCheckRecord(path: string, record: ResourceCheckRecord): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
+  const temporary = `${path}.${randomUUID()}.tmp`
+  await writeFile(temporary, `${JSON.stringify(record)}\n`, { mode: 0o600 })
+  await rename(temporary, path)
 }
 
 function findWorkspaceRoot(): string {
@@ -499,12 +514,20 @@ if (ownsInstance) app.whenReady().then(async () => {
   // its path settings from opening; the updater creates the directory inside
   // its recoverable install transaction and reports any failure in the panel.
   process.env.ZEROWALL_PYTHON_ROOT = mcpEnvironmentRoot
-  process.env.ZEROWALL_BIOGENIE_ROOT = app.isPackaged ? join(process.resourcesPath, 'biogenie') : join(findWorkspaceRoot(), 'resources', 'biogenie')
-  const bundledKetcherRoot = app.isPackaged ? join(process.resourcesPath, 'ketcher-chemistry') : join(findWorkspaceRoot(), 'resources', 'mcp', 'ketcher-chemistry')
+  process.env.ZEROWALL_BIOGENIE_ROOT = app.isPackaged ? join(process.resourcesPath, 'biogenie') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'biogenie')
+  const bundledKetcherRoot = app.isPackaged ? join(process.resourcesPath, 'ketcher-chemistry') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'mcp', 'ketcher-chemistry')
   process.env.ZEROWALL_KETCHER_ROOT = bundledKetcherRoot
-  const bundledBioToolsRoot = app.isPackaged ? join(process.resourcesPath, 'bio-tools') : join(findWorkspaceRoot(), 'resources', 'mcp', 'bio-tools')
-  const bundledSciRoot = app.isPackaged ? join(process.resourcesPath, 'sci') : join(findWorkspaceRoot(), 'mcp-environment-staging', 'sci')
+  const bundledBioToolsRoot = app.isPackaged ? join(process.resourcesPath, 'bio-tools') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'mcp', 'bio-tools')
+  const bundledSciRoot = app.isPackaged ? join(process.resourcesPath, 'sci') : developmentStagePath('resources', 'sci')
   const bundledSkillsRoot = bundledSkillsPath()
+  const bundledAssets: { bioToolsRoot?: string; ketcherRoot?: string; sciRoot?: string; skillsRoot?: string } = {}
+  for (const [key, path] of [
+    ['bioToolsRoot', bundledBioToolsRoot], ['ketcherRoot', bundledKetcherRoot],
+    ['sciRoot', bundledSciRoot], ['skillsRoot', bundledSkillsRoot],
+  ] as const) {
+    try { await access(path); bundledAssets[key] = path }
+    catch (error) { if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error }
+  }
   process.env.ZEROWALL_BIO_TOOLS_ROOT = bundledBioToolsRoot
   process.env.ZEROWALL_SCI_ROOT = bundledSciRoot
   // Compatibility for older bundled plugins and already-running sessions.
@@ -590,6 +613,8 @@ if (ownsInstance) app.whenReady().then(async () => {
   runtime = harnessRuntime
 
   const mcpEnvironmentLogPath = join(app.getPath('logs'), 'mcp-environment.log')
+  const pythonCheckRecordPath = join(userData, 'updates', 'python-check.json')
+  let pythonNotificationQueue = Promise.resolve()
   await mkdir(dirname(mcpEnvironmentLogPath), { recursive: true })
   let notifiedPythonSnapshot: string | undefined
   // Thin installers use the signed remote feed. An explicitly prepared
@@ -607,8 +632,9 @@ if (ownsInstance) app.whenReady().then(async () => {
     root: mcpEnvironmentRoot,
     runtimeRoot: pythonLocation.runtimeRoot,
     settingsPath: dirname(pythonLocation.locationPath),
+    ...(app.isPackaged ? { updaterWorkerPath: join(process.resourcesPath, 'python-updater', 'python-updater-worker.js') } : {}),
     ...(bootstrapAvailable ? { bundledManifestPath: bootstrapManifest, bundledArchivePath: bootstrapArchive } : {}),
-    bundledAssets: { bioToolsRoot: bundledBioToolsRoot, ketcherRoot: bundledKetcherRoot, sciRoot: bundledSciRoot, skillsRoot: bundledSkillsRoot },
+    bundledAssets,
     manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python-bootstrap/windows-x64/1.5.1/manifest.json',
     publicKey: process.env.ZEROWALL_MCP_ENVIRONMENT_PUBLIC_KEY ?? MCP_ENVIRONMENT_PUBLIC_KEY,
     publicKeys: MCP_ENVIRONMENT_KEYRING,
@@ -617,6 +643,15 @@ if (ownsInstance) app.whenReady().then(async () => {
       void appendFile(mcpEnvironmentLogPath, `${JSON.stringify({ timestamp: new Date().toISOString(), ...mcpEnvironmentDiagnostic(status) })}\n`, 'utf8').catch(() => undefined)
       const window = mainWindow
       if (window !== undefined && !window.isDestroyed()) window.webContents.send('desktop:mcp-environment:status-changed', status)
+      if (status.updateAvailable && status.onlineEnvironmentVersion) {
+        const signature = `${status.onlineEnvironmentVersion}:${status.onlineContentRevision ?? 'unknown'}`
+        pythonNotificationQueue = pythonNotificationQueue.then(async () => {
+          const previous = await readResourceCheckRecord(pythonCheckRecordPath)
+          if (previous.lastNotifiedSignature === signature) return
+          notifications.show({ title: 'ZeroWall Python 环境有可用更新', body: `科研环境 ${status.onlineEnvironmentVersion} 可更新。打开 Python 环境管理查看变更并手动安装。`, tag: 'python-update' })
+          await writeResourceCheckRecord(pythonCheckRecordPath, { lastCheckedAt: Date.now(), lastNotifiedSignature: signature })
+        }).catch(error => console.warn('Python update notification could not be recorded:', error instanceof Error ? error.message : 'unknown error'))
+      }
       const snapshot = status.packageInventory?.snapshotId
       if (status.updated && snapshot && snapshot !== notifiedPythonSnapshot) {
         notifiedPythonSnapshot = snapshot
@@ -630,8 +665,8 @@ if (ownsInstance) app.whenReady().then(async () => {
     keys: MCP_ENVIRONMENT_KEYRING,
     applicationVersion: app.getVersion(),
     feedUrl: process.env.ZEROWALL_PYTHON_DEPENDENCY_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-science-python/windows-x64/latest.json',
-    bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'dependency-manifest.json') : join(app.getAppPath(), '..', 'resources', 'python', 'dependency-manifest.json'),
-    bundledCoreManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'core-dependency-manifest.json') : join(app.getAppPath(), '..', 'resources', 'python', 'core-dependency-manifest.json'),
+    bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'dependency-manifest.json') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'python', 'dependency-manifest.json'),
+    bundledCoreManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'core-dependency-manifest.json') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'python', 'core-dependency-manifest.json'),
     coreFeedUrl: process.env.ZEROWALL_PYTHON_CORE_MANIFEST ?? process.env.ZEROWALL_PYTHON_DEPENDENCY_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-science-python/windows-x64/core.json',
   })
   const pythonApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync, pythonLocation.locationPath, app.isPackaged ? dirname(process.execPath) : undefined, pythonLocation.runtimeRoot)
@@ -887,16 +922,11 @@ if (ownsInstance) app.whenReady().then(async () => {
           if (result.status.lastUpdateError || result.status.message) console.warn('Python runtime check:', result.status.lastUpdateError ?? result.status.message)
           return
         }
-        if (result.state === 'sync-started' || result.state === 'sync-running') return
+        if (result.state === 'sync-paused' || result.state === 'sync-running') return
         if (result.state === 'inventory-unavailable') {
           console.warn('Python core inventory:', result.info?.message ?? 'Python interpreter is not ready.')
           return
         }
-        // Do not put the signed core check behind a slow remote runtime feed.
-        // Once core is ready, the separate runtime feed check is read-only.
-        void mcpEnvironment.checkForUpdates().catch(error => {
-          console.warn('Python runtime update check:', error instanceof Error ? error.message : String(error))
-        })
       } catch (error) {
         console.warn('Python core dependency sync:', error instanceof Error ? error.message : String(error))
       }
@@ -1152,6 +1182,20 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:mcp-python:check-updates', (_event, names?: string[]) => mcpEnvironment.checkPythonPackageUpdates(Array.isArray(names) ? names : []))
   ipcMain.handle('desktop:mcp-python:update', (_event, names?: unknown) => mcpEnvironment.updatePythonPackages(Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []))
   ipcMain.handle('desktop:python-environment', (_event, request: PythonEnvironmentRequest) => pythonApi.request(request))
+  ipcMain.handle('desktop:python-layer-check', (_event, layer: unknown) => {
+    if (layer !== 'core' && layer !== 'science' && layer !== 'capability') throw new Error('Invalid Python dependency layer.')
+    return pythonSync.checkManifest(layer as PythonDependencyLayer)
+  })
+  ipcMain.handle('desktop:python-layer-update', (_event, layer: unknown, capabilityId?: unknown) => {
+    if (layer !== 'core' && layer !== 'science' && layer !== 'capability') throw new Error('Invalid Python dependency layer.')
+    if (layer === 'capability' && (typeof capabilityId !== 'string' || !/^[A-Za-z0-9_.-]{1,100}$/u.test(capabilityId))) throw new Error('A valid capability ID is required.')
+    if (layer !== 'capability' && capabilityId !== undefined) throw new Error('Capability IDs are only valid for the capability layer.')
+    return pythonApi.request({ action: 'sync', layer, ...(typeof capabilityId === 'string' ? { capabilityId } : {}), confirm: true, requestId: randomUUID() })
+  })
+  ipcMain.handle('desktop:python-layer-task-status', (_event, taskId: unknown) => {
+    if (typeof taskId !== 'string' || !/^[a-f0-9-]{36}$/u.test(taskId)) throw new Error('Invalid Python task ID.')
+    return pythonApi.request({ action: 'task_status', taskId, requestId: randomUUID() })
+  })
   ipcMain.handle('desktop:mcp-environment:retry', () => mcpEnvironment.retry())
   ipcMain.handle('desktop:mcp-environment:select-path', async () => {
     const result = await dialog.showOpenDialog(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined as never, { properties: ['openDirectory'] })
@@ -1165,9 +1209,8 @@ if (ownsInstance) app.whenReady().then(async () => {
   // This is intentionally fire-and-forget so a slow network never blocks the
   // desktop UI, while the updater persists progress and can resume later.
   void checkPythonUpdates()
-  // Environment updates run independently from desktop updates. Once the
-  // workbench is visible, the signed required dependency set is synchronized
-  // into the one shared Python environment and progress is streamed to Settings.
+  // Python checks remain read-only. Bootstrap, dependency installation and
+  // resuming interrupted work require an explicit action in Settings.
   const mcpEnvironmentInterval = setInterval(() => { void checkPythonUpdates() }, UPDATE_CHECK_INTERVAL_MS)
   mcpEnvironmentInterval.unref()
   const updateRecordPath = join(userData, 'updates', 'last-check.json')
@@ -1185,8 +1228,34 @@ if (ownsInstance) app.whenReady().then(async () => {
   updateInterval.unref()
   // Resource checks are deliberately read-only. They only refresh the signed
   // catalog badge; installation, restart, and rollback remain explicit.
+  const resourceCheckPath = join(userData, 'updates', 'resource-check.json')
   const resourceCheck = async (): Promise<void> => {
-    await Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind))).catch(() => undefined)
+    const previous = await readResourceCheckRecord(resourceCheckPath)
+    if (!isUpdateCheckDue(previous.lastCheckedAt)) return
+    await writeResourceCheckRecord(resourceCheckPath, { ...previous, lastCheckedAt: Date.now() })
+    try {
+      const results = await Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind)))
+      const available: Array<{ kind: ResourceKind | 'python'; id: string; version: string }> = results.flatMap((result: { kind: ResourceKind; resources?: Array<{ id: string; version: string; updateAvailable?: boolean }> }) =>
+        (result.resources ?? []).filter(item => item.updateAvailable).map(item => ({ kind: result.kind, id: item.id, version: item.version })))
+      const pythonResults = await Promise.all((['core', 'science', 'capability'] as PythonDependencyLayer[]).map(async layer => {
+        try { return await pythonSync.checkManifest(layer) as { layer: PythonDependencyLayer; capabilityCounts?: Record<string, { pendingPackageCount: number }>; pendingPackageCount: number; revision: string } }
+        catch (error) { console.warn(`Python ${layer} catalog check failed:`, error instanceof Error ? error.message : 'unknown error'); return undefined }
+      }))
+      for (const result of pythonResults) {
+        if (!result) continue
+        if (result.layer === 'capability') {
+          for (const [id, status] of Object.entries(result.capabilityCounts ?? {})) if (status.pendingPackageCount > 0) available.push({ kind: 'python', id: `capability:${id}`, version: result.revision })
+        } else if (result.pendingPackageCount > 0) available.push({ kind: 'python', id: result.layer, version: result.revision })
+      }
+      available.sort((a, b) => `${a.kind}/${a.id}`.localeCompare(`${b.kind}/${b.id}`))
+      const signature = available.length ? createHash('sha256').update(JSON.stringify(available)).digest('hex') : undefined
+      if (signature && signature !== previous.lastNotifiedSignature) {
+        notifications.show({ title: 'ZeroWall 扩展有可用更新', body: `${available.length} 个插件、Skills、MCP 或 Python 层可更新。打开设置中的扩展中心选择更新。`, tag: 'resource-update' })
+        await writeResourceCheckRecord(resourceCheckPath, { lastCheckedAt: Date.now(), lastNotifiedSignature: signature })
+      }
+    } catch (error) {
+      console.warn('Signed resource catalog check failed:', error instanceof Error ? error.message : 'unknown error')
+    }
   }
   const resourceCheckTimer = setTimeout(() => { if (startup.phase === 'ready') void resourceCheck() }, 20_000)
   resourceCheckTimer.unref()

@@ -14,8 +14,8 @@ async function setup() {
   const unsigned = { schema: 3, runtimeId: 'zerowall-science-python', platform: 'win32-x64', pythonVersion: '3.12.10', environmentVersion: '7.0.3', revision: 'r1', createdAt: '2026-09-23T00:00:00Z', index: { indexUrl: 'https://mirrors.aliyun.com/pypi/simple' }, packages: [{ name: 'numpy', version: '2.3.0', required: true, capabilities: ['science'] }], compatibility: { minApplicationVersion: '7.0.3' } }
   const manifest = { ...unsigned, signature: { algorithm: 'ed25519', keyId: 'test', value: sign(null, Buffer.from(JSON.stringify(unsigned)), privateKey).toString('base64') } }
   const apply = vi.fn(() => ({ taskId: 'task-1' }))
-  const updater = { pythonInfo: vi.fn(async () => ({ ready: true, version: '3.12.10', packages: [] })), previewDependencyManifest: vi.fn(async () => {
-    const plan = { planId: randomUUID(), snapshotId: 'old', requested: ['numpy==2.3.0'], changes: [{ name: 'numpy', from: '2.2.0', to: '2.3.0' }], wheels: [{ name: 'numpy', version: '2.3.0', hash: 'a'.repeat(64), url: 'https://mirror.example/numpy.whl' }], dependencyManifest: { ...manifest, layer: 'science' } }
+  const updater = { pythonInfo: vi.fn(async () => ({ ready: true, version: '3.12.10', packages: [] })), previewDependencyManifest: vi.fn(async (dependencyManifest?: object) => {
+    const plan = { planId: randomUUID(), snapshotId: 'old', requested: ['numpy==2.3.0'], changes: [{ name: 'numpy', from: '2.2.0', to: '2.3.0' }], wheels: [{ name: 'numpy', version: '2.3.0', hash: 'a'.repeat(64), url: 'https://mirror.example/numpy.whl' }], dependencyManifest: dependencyManifest ?? { ...manifest, layer: 'science' } }
     await mkdir(join(root, 'plans')); await writeFile(join(root, 'plans', `${plan.planId}.json`), JSON.stringify(plan))
     return plan
   }), applyPackagePlan: apply }
@@ -47,6 +47,16 @@ describe('signed dependency sync', () => {
     const preview = await service.previewSync()
     await expect(service.applySync(preview.planId, 'r1', false)).rejects.toThrow(/确认/)
     await expect(service.applySync(preview.planId, 'r2', true)).rejects.toThrow(/已改变/)
+    expect(await service.applySync(preview.planId, 'r1', true)).toEqual({ taskId: 'task-1' })
+    expect(apply).toHaveBeenCalledExactlyOnceWith(preview.planId)
+  })
+  it('checks capability subsets from the signed science manifest and keeps updates explicit', async () => {
+    const { service, apply } = await setup()
+    const checked = await service.checkManifest('capability')
+    expect(checked).toMatchObject({ layer: 'capability', revision: 'r1', capabilityCounts: { science: { packageCount: 1, pendingPackageCount: 1 } } })
+    expect(apply).not.toHaveBeenCalled()
+    const preview = await service.previewSync('capability', 'science')
+    await expect(service.applySync(preview.planId, 'r1', false)).rejects.toThrow(/确认/)
     expect(await service.applySync(preview.planId, 'r1', true)).toEqual({ taskId: 'task-1' })
     expect(apply).toHaveBeenCalledExactlyOnceWith(preview.planId)
   })

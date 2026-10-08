@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "0.1.9",
-  "applicationVersion": "8.0.6",
+  "version": "0.1.10",
+  "applicationVersion": "8.0.7",
   "restartRequired": true,
   "desktop": {
     "min": "8.0.1"

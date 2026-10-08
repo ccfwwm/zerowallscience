@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { historicalPackage } from './package-history.mjs'
 import { root } from '../build/paths.mjs'
+import { packageSource } from '../build/layout.mjs'
 
 const workspaceManifestCache = new Map()
 
@@ -20,11 +21,11 @@ async function workspaceDependencyManifest(source, name) {
   } else if (name === '@zerowallscience/research-store') {
     candidates.push(join(root, 'store', 'package.json'))
   } else if (name === '@zerowallscience/integrity-runtime') {
-    candidates.push(join(root, 'packages', 'integrity-runtime', 'package.json'))
+    candidates.push(join(await packageSource('integrity-runtime'), 'package.json'))
   } else if (name.startsWith('@zerowallscience/')) {
-    candidates.push(join(root, 'packages', name.slice('@zerowallscience/'.length), 'package.json'))
+    candidates.push(join(await packageSource(name.slice('@zerowallscience/'.length)), 'package.json'))
   } else if (name.startsWith('dsh-')) {
-    candidates.push(join(root, 'packages', name, 'package.json'))
+    candidates.push(join(await packageSource(name), 'package.json'))
   }
   for (const candidate of candidates) {
     try {

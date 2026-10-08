@@ -22,7 +22,7 @@ if ((Split-Path -Leaf $runtimeRoot) -ne 'Python') {
   throw 'HE dependencies must use the shared Python path selected in ZeroWall Science; isolated Python paths are not supported.'
 }
 $sitePackages = Join-Path $runtimeRoot 'Lib/site-packages'
-$manifestPath = Join-Path $PSScriptRoot '../../resources/python/dependency-manifest.json'
+$manifestPath = Join-Path $PSScriptRoot '../../resources/extensions/python/dependency-manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $sharedPackages = @{}
 foreach ($name in @('openslide-python','openslide-bin','pillow','numpy','tifffile','tensorflow','keras','stardist','csbdeep')) {

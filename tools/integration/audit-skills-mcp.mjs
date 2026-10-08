@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto'
 import { readFile, readdir, mkdir, writeFile, access } from 'node:fs/promises'
 import { resolve, relative, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
-const root = resolve(import.meta.dirname, '../..'); const directory = resolve(root, 'resources/skills')
+const root = resolve(import.meta.dirname, '../..'); const directory = resolve(root, 'resources/extensions/skills')
 const rows = []; const names = new Map(); const hashes = new Map()
-const changed = new Set(execFileSync('git', ['diff', '--name-only', '--', 'resources/skills'], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/u))
+const changed = new Set(execFileSync('git', ['diff', '--name-only', '--', 'resources/extensions/skills'], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/u))
 async function exists(path) { return access(path).then(() => true, () => false) }
 async function files(path) { const result = []; for (const entry of await readdir(path, { withFileTypes: true })) { if (['vendor', '.git', '__pycache__', 'node_modules'].includes(entry.name)) continue; const child = resolve(path, entry.name); if (entry.isDirectory()) result.push(...await files(child)); else result.push(child) } return result }
 for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -31,7 +31,7 @@ for (const entry of await readdir(directory, { withFileTypes: true })) {
   const scripts = skillFiles.filter(file => /\.(py|mjs|js|sh|ps1)$/u.test(file)).map(file => relative(root, file).replaceAll('\\', '/'))
   const runtimes = [...new Set((content.match(/\b(?:python|Rscript|R|CUDA|GPU|docker|uv|conda|node)\b/gu) ?? []))]
   const conditional = /API[_ -]?KEY|credential|token|GPU|CUDA|license|requires.*(?:install|account|server)/iu.test(content)
-  rows.push({ name: name ?? entry.name, action: entry.name === 'zerowall-bio' ? '合并入口' : changed.has(`resources/skills/${entry.name}/SKILL.md`) ? '修复' : conditional ? '条件可用' : '保留', reason: entry.name === 'zerowall-bio' ? '统一 Bio Tools / BioGenie / Biomni 后端导航' : changed.has(`resources/skills/${entry.name}/SKILL.md`) ? '统一发现/调用与托管环境契约' : conditional ? '运行取决于凭据、后端、模型或可选运行时；不自动安装' : '未发现重复注册或过期发现入口', allowedTools: /^allowed-tools:\s*(.*)$/mu.exec(content)?.[1] ?? '', scripts, runtimes, brokenLinks: broken, reviewedExamples, issues })
+  rows.push({ name: name ?? entry.name, action: entry.name === 'zerowall-bio' ? '合并入口' : changed.has(`resources/extensions/skills/${entry.name}/SKILL.md`) ? '修复' : conditional ? '条件可用' : '保留', reason: entry.name === 'zerowall-bio' ? '统一 Bio Tools / BioGenie / Biomni 后端导航' : changed.has(`resources/extensions/skills/${entry.name}/SKILL.md`) ? '统一发现/调用与托管环境契约' : conditional ? '运行取决于凭据、后端、模型或可选运行时；不自动安装' : '未发现重复注册或过期发现入口', allowedTools: /^allowed-tools:\s*(.*)$/mu.exec(content)?.[1] ?? '', scripts, runtimes, brokenLinks: broken, reviewedExamples, issues })
 }
 const out = resolve(root, 'docs/integration/skills-mcp'); await mkdir(out, { recursive: true })
 const summary = { total: rows.length, issues: rows.filter(r => r.issues.length).length, brokenLinks: rows.reduce((sum,r) => sum+r.brokenLinks.length,0), scripts: rows.reduce((sum,r) => sum+r.scripts.length,0) }

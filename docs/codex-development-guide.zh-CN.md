@@ -8,9 +8,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | `8.0.6` |
-| 当前开发分支 | `main` |
-| 8.0.6 发布提交 | 以安装包 `artifact-manifest.json` 中的 `commit` 为准 |
+| 应用版本 | `8.0.7` |
+| 集成基线 | `main`，8.0.6 发布提交 `1e76a16e87ee53da9270e750673a8572447d5517` |
+| 8.0.7 架构工作分支 | `codex/8.0.7-modular`，从上述基线创建 |
+| 8.0.7 本地 Windows 安装包 | `artifacts/packages/8.0.7/windows-x64/zerowall-science-8.0.7-win-x64.exe`；当前 manifest 标明源码树非 clean |
+| 8.0.7 发布状态 | 独立资源目录已发布；桌面安装器和 GitHub Release 尚未发布 |
 | DSH 子模块 | `86b6740d0e671cee0b3fd0168de484c0efbf46ea` |
 | DSH 分支 | `zerowall/reviewer-history-opaque` |
 | DSH 标签 | `dsh-v0.2.0-rc.2` |
@@ -89,6 +91,8 @@ artifacts/
 
 `desktop/dist/`、`desktop/out/`、根 `.build/`、源码目录下的 `lib/` 和各插件临时目录不是正式输出目录。它们可作为兼容链接或历史生成物存在，但新正式构建必须由 `tools/build/paths.*` 指向 `artifacts/`。`node_modules/`、pnpm store、用户数据、忽略的签名文件和现有缓存不要移动或删除。
 
+8.0.7 的资源源码按 `resources/extensions/{skills,mcp,python,runtimes}`、`resources/extensions/engines/r`、`resources/extensions/capabilities/biogenie`、`resources/cases/research` 和 `resources/branding` 分层。路径消费者使用 layout resolver，并在迁移期只读兼容旧路径。根级 `mcp-environment-staging/` 仅保留源码管理的 SciMaster launcher 输入；实际 MCP/Python 中间 staging 放在 `artifacts/stage/<version>/<build-id>/mcp-environment-staging/`。脚本直接准备 Python 环境时，优先传 `--input` 或设置 `ZEROWALL_BUILD_ID`，不要把 staging 写回源码目录。
+
 ## 4. DSH 子模块合同
 
 父仓库当前使用 ZeroWall DSH fork `86b6740d0e671cee0b3fd0168de484c0efbf46ea`，仍属于 `dsh-v0.2.0-rc.2` 版本线。`config/deepseek-harness/upstream.json` 必须与子模块 HEAD、仓库、分支和标签一致。执行 `pnpm dsh:verify` 之前不要声称 DSH 已锁定。
@@ -154,13 +158,13 @@ pnpm plugins:pack
 
 启动检查和每日检查只读取、验签并显示可用版本，不自动下载、安装或重启。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。
 
-### Python 分层合同（8.0.6）
+### Python 分层合同（8.0.7）
 
 - 运行时根目录固定为 `%LOCALAPPDATA%\\ZeroWall Science\\Python`；旧 Roaming 或安装目录中的 Python 指针不再作为默认目标，也不会被复制或删除。
 - `bootstrap` 只表示解释器是否存在，`core` 表示 ZeroWall/MCP 最小依赖，`science` 表示科研依赖，`capability` 表示某个 Skill 或流程的可选依赖。解释器就绪不等于科研层已安装。
-- 默认启动顺序是：按需联网安装轻量 Python + pip bootstrap；bootstrap 就绪后，后台检查并自动安装签名核心清单中的 42 个基础依赖。核心任务必须异步运行，不阻塞桌面界面。
+- 默认启动只检查签名清单和本地状态。Python + pip bootstrap、42 个基础依赖和其他资源均由用户明确选择安装；任务异步运行，不阻塞桌面界面。
 - 新桌面版本使用固定版本的 Python bootstrap manifest；首次安装只接受 `python.bootstrapOnly=true` 的清单。发布的运行时 ZIP 只含 CPython 3.12.10 与 pip，拒绝旧的 387 包科研环境清单，避免新用户误下载近 1 GB 的完整环境。bootstrap 资源使用独立的版本目录；验证阶段只上传不可变对象，不更新 `latest.json`。
-- 核心任务写入持久 task receipt，持续记录阶段、包计数、当前包、实时 pip 日志和错误。设置页轮询本地快照，不重复扫描完整 site-packages；关闭或重启后恢复最近任务状态，并在安全条件下续接自动核心同步。
+- 核心任务写入持久 task receipt，持续记录阶段、包计数、当前包、实时 pip 日志和错误。设置页轮询本地快照，不重复扫描完整 site-packages；关闭或重启后恢复最近任务状态，等待用户选择继续后续接核心同步。
 - 科研层和 capability 层不随启动自动安装。用户明确选择“安装科研层”或某个能力层后，才预检、下载并进行 generation 切换；启动检查不得下载这些大型资源。
 - `core-dependency-manifest.json` 与 `dependency-manifest.json` 独立签名；同步计划必须绑定所选层和 manifest hash，资源不可用时不创建安装任务。
 - Python 状态、路径和错误必须从 Host 返回的稳定字段读取，不能从旧 snapshot 的物理路径推导 UI 路径。
@@ -202,6 +206,18 @@ zws python status
 
 `zws env set <name>` 的敏感值通过 stdin 输入；命令、界面和日志只显示是否已配置，不输出密钥。`dsh` 保持官方命令语义。命令安装使用 owner receipt，保留已有 PATH 和外部 `dsh`；卸载时只删除本程序拥有的 PATH 项。
 
+
+### 8.0.7 模块化构建与资源布局
+
+8.0.7 新增 `config/layout/resource-layout.json`、`package-layout.json` 和 `package-role-manifest.json`。解析器先尝试 `resources/extensions/*`、`resources/cases`、`resources/branding` 与 `packages/{dsh,support,bundles}`，再回退 8.0.6 旧路径；在所有生成器和消费者完成验证前，不要手工删除或复制旧目录。
+
+增量入口是 `pnpm build:changed`、`pnpm plugin:build <id>`、`pnpm plugin:pack <id>`、`pnpm package:build <id>`、`pnpm resource:build skill|mcp|python <id-or-layer>`。Windows Stable 打包先验证当前 runtime stage 的新鲜度，将已验证的 runtime closure 复制到新 build ID，再单独构建桌面和安装器；它不隐式运行完整 `pnpm build`。运行时输入过期时，先运行完整构建再打包。每项收据包含输入文件哈希、lockfile、DSH commit、依赖版本、输出、build ID 和失败原因。`pnpm artifacts:gc --dry-run` 默认只读；只有核对候选清单后才使用 `--apply`。
+
+单独的 Python 依赖清单可用 `pnpm resource:build python core`、`science` 或 `capability <id>` 生成。构建命令应绑定新的 `ZEROWALL_BUILD_ID`；输出先进入该 build ID 的 stage，再经签名和 SHA-256 收据校验。catalog 若标记 `localOnly`，只可用于本地验收，不能作为正式发布目录。
+
+`@zerowallscience/dsh-bundle-core` 和 `dsh-bundle-science` 都是组合声明。8.0.7 新安装器的 immutable runtime closure 只包含 Core 插件和必要宿主依赖；科研领域插件由签名 catalog 安装到用户 profile。8.0.6 用户迁移时保留已有 bundles、禁用项、固定版本和第三方插件，不用 Core 默认值覆盖旧选择。
+
+Core 启动允许独立 Skills 目录尚未安装。打包验收同时拒绝旧 `skills/` 与新 `extensions/skills/` 内嵌 payload，避免通过恢复旧目录掩盖启动错误。`pnpm smoke:electron` 根据 runtime profile 选择 Core 桌面启动和扩展中心验收；原完整科研安装器套件保留为桌面的 `test:e2e:legacy-packaged`，不能用 Core smoke 的通过替代可选科研 profile 的完整验收。
 ## 7. 版本和兼容性
 
 桌面版本、插件版本、Skills 版本、MCP Server 版本、Python generation 和提示词版本相互独立：

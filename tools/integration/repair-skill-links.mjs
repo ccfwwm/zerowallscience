@@ -5,7 +5,7 @@ const audit = JSON.parse(await readFile(resolve(root, 'docs/integration/skills-m
 let count = 0
 for (const skill of audit.skills) for (const issue of [...new Set(skill.brokenLinks)]) {
   const [file, target] = issue.split(' -> ')
-  const path = resolve(root, 'resources/skills', skill.name, file)
+  const path = resolve(root, 'resources/extensions/skills', skill.name, file)
   let text = await readFile(path, 'utf8')
   let replacement
   if (skill.name === 'markdown-mermaid-writing' && ['markdown_style_guide.md', 'mermaid_style_guide.md'].includes(basename(target))) replacement = '../references/' + basename(target)

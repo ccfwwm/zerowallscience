@@ -1,4 +1,4 @@
-import * as progressiveTools from '../../../packages/dsh-progressive-tools/src/index.ts'
+import * as progressiveTools from '../../../packages/dsh/dsh-progressive-tools/src/index.ts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

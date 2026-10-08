@@ -11,6 +11,7 @@ export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZE
   const json = async file => JSON.parse(await readFile(resolve(root, file), 'utf8'))
   const pin = await json('config/deepseek-harness/upstream.json')
   const app = await json('package.json')
+  const runtimeProfile = await json('config/layout/runtime-profile.json')
   const build = await json(`${stage}/dsh/build-receipt.json`)
   const runtime = await json(`${stage}/runtime/build-receipt.json`)
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(root, 'deepseek-harness'), encoding: 'utf8' }).trim()
@@ -31,6 +32,7 @@ export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZE
     })
     if (manifestText === undefined) continue
     const manifest = JSON.parse(manifestText)
+    if (!runtimeProfile.corePlugins.includes(manifest.name)) continue
     const target = resolve(stage, 'runtime/node_modules', manifest.name)
     assertPluginDesktopCompatibility(manifest.zerowall?.desktop, app.version, manifest.name)
     for (const file of ['package.json', 'zerowall.plugin.json', ...await nestedFiles(join(source, 'lib'), 'lib/')]) {

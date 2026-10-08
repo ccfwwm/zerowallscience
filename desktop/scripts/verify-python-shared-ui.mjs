@@ -112,7 +112,7 @@ try {
     await page.screenshot({ path: bottom, fullPage: true }); evidence.screenshots.push(bottom)
     evidence.layouts.push({ width, height, ...layout })
   }
-  const offlineBootstrap = await access(join(packaged.root, 'resources/python/base-runtime.zip')).then(() => true, () => false)
+  const offlineBootstrap = await access(join(packaged.root, 'resources/extensions/python/base-runtime.zip')).then(() => true, () => false)
   if (!offlineBootstrap) {
     evidence.mode = 'thin-on-demand'
     const install = panel.getByRole('button', { name: /^(安装 Python|Install Python)$/ })

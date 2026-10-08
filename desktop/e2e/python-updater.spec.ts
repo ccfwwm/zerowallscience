@@ -50,7 +50,8 @@ it('keeps the packaged UI responsive while installing the real archive and refre
   await link(resolve(zwsArtifactPaths.verification, 'python-1.4.0/dist/zerowall-python-windows-x64-1.4.0.zip'), join(root, 'downloads', `${manifest.archiveSha256}.part`)).catch(error => { if (error.code !== 'EEXIST') throw error })
   // Verify the dedicated worker cannot silently borrow dependencies from the
   // repository enclosing this test package.
-  for (const entry of ['package.json', 'out/main/python-updater-worker.js', 'node_modules/yauzl/index.js', 'node_modules/pend/index.js']) await access(join(packageRoot, 'win-unpacked/resources/app.asar.unpacked', entry))
+  for (const entry of ['package.json', 'out/main/python-updater-worker.js']) await access(join(packageRoot, 'win-unpacked/resources/app.asar.unpacked', entry))
+  for (const entry of ['python-updater/python-updater-worker.js', 'python-updater/modules/yauzl/index.js', 'python-updater/modules/pend/index.js']) await access(join(packageRoot, 'win-unpacked/resources', entry))
   const errors: string[] = []
   let inspectorUrl = ''
   const loopP95: number[] = []; const workerPeaks: number[] = []

@@ -8,8 +8,9 @@ import { contract } from '../build/paths.mjs'
 import { createHash } from 'node:crypto'
 
 const root = resolve(import.meta.dirname, '../..')
-const sourceRoot = resolve(root, 'resources/skills')
-const outputRoot = resolve(stageRoot, 'resources/skills')
+const skillRoots = contract.resource('skills')
+const sourceRoot = resolve((await stat(skillRoots.preferred).catch(() => undefined)) ? skillRoots.preferred : skillRoots.legacy)
+const outputRoot = resolve(stageRoot, 'resources/extensions/skills')
 const expectedParent = resolve(stageRoot, 'resources')
 const forbiddenDirectories = new Set([
   '.git', '.pytest_cache', '__pycache__', 'coverage', 'output', 'outputs', 'rendered',
@@ -37,8 +38,15 @@ for (const skill of sourceEntries) {
 console.log(`Prepared ${skillEntries.length} runtime Skills.`)
 // Catalogs distribute the reviewed authoring descriptions too. The runtime
 // copy was hash-checked and adapted without changing the upstream package.
-for (const name of ['univer', 'univer-slide', 'univer-doc', 'univer-sheet']) {
-  await cp(resolve(stageRoot, 'runtime/node_modules/dsh-univer-office/skills', name), resolve(outputRoot, name), { recursive: true, filter: includeSkillPath })
+// Univer is an optional package in the 8.0.7 Core box. A Core-only build must
+// therefore remain valid when that package is not installed in the runtime.
+const univerSkillsRoot = resolve(stageRoot, 'runtime/node_modules/dsh-univer-office/skills')
+if (await stat(univerSkillsRoot).catch(() => undefined)) {
+  for (const name of ['univer', 'univer-slide', 'univer-doc', 'univer-sheet']) {
+    const source = resolve(univerSkillsRoot, name)
+    if (!await stat(source).catch(() => undefined)) continue
+    await cp(source, resolve(outputRoot, name), { recursive: true, filter: includeSkillPath })
+  }
 }
 
 // Small, self-contained CLI resource; Python remains an on-demand download.

@@ -86,6 +86,26 @@ test('MCP updates match server identity rather than the display name and preserv
   assert.equal(edits[0].changes.enabled, false)
 })
 
+test('Core profiles can browse signed Skills/MCP catalogs before installing their domain plugins', async () => {
+  const f = await fixture()
+  for (const kind of ['skill', 'mcp']) {
+    const resource = { ...f.resource, id: 'optional-resource', kind }
+    await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [resource] }, f.privateKey, 'test')))
+    const manager = createResourceManager({ ...f, target, local: true, callHost: async () => {
+      throw new Error('Requested plugin service is unavailable')
+    } })
+    const result = await manager.check(kind, f.source)
+    assert.equal(result.domainAvailable, false)
+    assert.equal(result.catalogStatus, 'checked')
+    assert.equal(result.resources.length, 1)
+    assert.equal(result.resources[0].source, 'catalog')
+    assert.equal(result.resources[0].signed, true)
+    assert.equal(result.resources[0].updateAvailable, undefined)
+    const broken = createResourceManager({ ...f, target, local: true, callHost: async () => { throw new Error('Host is not ready') } })
+    await assert.rejects(broken.check(kind, f.source), /Host is not ready/u)
+  }
+})
+
 test('Python catalog activation verifies the payload before invoking the dedicated updater', async () => {
   const f = await fixture()
   const resource = { ...f.resource, id: 'science-dependencies', kind: 'python', role: 'dependency-manifest', restartRequired: false }

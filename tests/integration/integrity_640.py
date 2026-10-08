@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / 'resources/skills/zerowall-image-dup/scripts'
+SCRIPTS = ROOT / 'resources/extensions/skills/zerowall-image-dup/scripts'
 sys.path.insert(0, str(SCRIPTS))
 import zerowall_integrity as runner
 from mineru_adapter import normalize, extracted_tables, region_records, figure_findings

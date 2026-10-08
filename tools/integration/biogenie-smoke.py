@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import sys
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'resources/biogenie/python'))
+sys.path.insert(0, str(ROOT / 'resources/extensions/capabilities/biogenie/python'))
 from zerowall_bridge import main
 output = ROOT / 'test-results/skills-mcp/biogenie'
 output.mkdir(parents=True, exist_ok=True)
@@ -38,7 +38,7 @@ failed = json.loads(main({'action': 'run', 'operation': 'seq_io_read', 'argument
 assert not failed['ok']
 assert call('seq_io_read', {'path': 'sequence.fasta'})
 syntax_errors = []
-scripts = list((ROOT / 'resources/skills').rglob('*.py')) + list((ROOT / 'resources/biogenie').rglob('*.py'))
+scripts = list((ROOT / 'resources/extensions/skills').rglob('*.py')) + list((ROOT / 'resources/extensions/capabilities/biogenie').rglob('*.py'))
 for script in scripts:
     if '__pycache__' in script.parts: continue
     try: ast.parse(script.read_text(encoding='utf-8-sig'), filename=str(script))

@@ -19,6 +19,7 @@ import {
   adaptZoteroStatusCodec,
   adaptZoteroManifest,
 } from './adapt-zotero.mjs'
+import { packageSource } from '../build/layout.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'deepseek-harness')
@@ -27,6 +28,7 @@ const outputRoot = resolve(stageRoot, 'runtime/node_modules')
 const expectedOutputParent = resolve(stageRoot, 'runtime')
 const buildReceipt = JSON.parse(await readFile(resolve(stageRoot, 'dsh/build-receipt.json'), 'utf8'))
 const expectedHarness = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
+const runtimeProfile = JSON.parse(await readFile(resolve(root, 'config/layout/runtime-profile.json'), 'utf8'))
 if (buildReceipt.commit !== expectedHarness.commit || buildReceipt.version !== expectedHarness.version) {
   throw new Error('Harness build receipt differs from the pinned source. Run pnpm build before preparing the runtime.')
 }
@@ -37,48 +39,18 @@ const desktopModules = resolve(root, 'desktop/node_modules')
 // closure dependencies are not silently omitted from the packaged ASAR.
 const workspaceModules = resolve(root, 'node_modules')
 const zerowallPackageRoots = [
-  resolve(root, 'store'),
-  resolve(root, 'packages/integrity-runtime'),
-  resolve(root, 'packages/dsh-ssh-ops'),
-  resolve(root, 'packages/zotero-harvest'),
-  resolve(root, 'packages/dsh-progressive-tools'),
-  resolve(root, 'packages/dsh-session-notification'),
-  // Keep the merged ZeroWall Sidebar as the canonical runtime package. Some
-  // workspace plugins retain a stale pnpm link under their own node_modules
-  // directory; treating the Sidebar as a workspace package prevents that
-  // parent-first lookup from introducing a second version into the ASAR.
-  resolve(root, 'packages/dsh-better-sidebar'),
-  resolve(root, 'packages/dsh-wechat'),
-  resolve(root, 'packages/dsh-file-review'),
-  resolve(root, 'packages/dsh-genui'),
-  ...await pluginRoots(resolve(root, 'plugins')),
+  resolve(await packageSource('integrity-runtime')),
+  ...await Promise.all(runtimeProfile.corePackageDependencies.map(async name => resolve(await packageSource(name)))),
+  ...await pluginRoots(resolve(root, 'plugins'), new Set(runtimeProfile.corePlugins)),
 ]
 const desktopRuntimeSeeds = [
-  'dsh-ssh-ops',
-  'dsh-progressive-tools',
-  '@dingyi222666/dsh-session-notification',
   // The packaged Web Host resolves its SPA entry through this package's
   // manifest at runtime; it is not reachable from the DSH library dependency
   // graph because it is an application entry rather than a library import.
   '@deepseek-ai/dsh-web-frontend',
-  'dsh-better-sidebar',
-  'dsh-file-review',
-  'dsh-univer-office',
+  ...runtimeProfile.coreRuntimeSeeds,
+  ...runtimeProfile.corePackageDependencies,
   '@zerowallscience/integrity-runtime',
-  'dsh-zotero',
-  '@dsh-external/zotero-harvest',
-  'dsh-wechat',
-  '@changfenhuang/dsh-genui',
-  'dsh-free-search',
-  'dsh-dream-skin',
-  '@deepseek-ai/dsh-subagent-codex',
-  '@earendil-works/pi-ai',
-  '@modelcontextprotocol/sdk',
-  '@pdf-lib/fontkit',
-  'jszip',
-  'yauzl',
-  'pdf-lib',
-  'pptxgenjs',
 ]
 
 // Claude Code is not a ZeroWall runtime dependency. Anthropic model access is
@@ -472,7 +444,7 @@ async function findPackageManifests(directory) {
   return result
 }
 
-async function pluginRoots(directory) {
+async function pluginRoots(directory, allowedNames) {
   const roots = []
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue
@@ -482,7 +454,7 @@ async function pluginRoots(directory) {
     const root = resolve(directory, entry.name)
     try {
       await access(resolve(root, 'package.json'))
-      roots.push(root)
+      if (allowedNames === undefined || allowedNames.has(JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')).name)) roots.push(root)
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error
     }

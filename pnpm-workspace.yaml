@@ -4,6 +4,9 @@ packages:
   - plugins/*
   - '!plugins/wechat'
   - packages/*
+  - packages/dsh/*
+  - packages/support/*
+  - packages/bundles/*
   - deepseek-harness
   - deepseek-harness/vendor/*
   - deepseek-harness/packages/*/*

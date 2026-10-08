@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Regenerate the user-invocable ARS command wrappers in resources/skills from an
+// Regenerate the user-invocable ARS command wrappers in resources/extensions/skills from an
 // upstream Academic Research Skills checkout.
 //
 // Usage:
@@ -46,7 +46,7 @@ if (!existsSync(sourceDir)) {
   console.error(`upstream commands directory was not found: ${sourceDir}`);
   process.exit(1);
 }
-const outputRoot = fileURLToPath(new URL('../resources/skills/', import.meta.url));
+const outputRoot = fileURLToPath(new URL('../resources/extensions/skills/', import.meta.url));
 mkdirSync(outputRoot, { recursive: true });
 
 const files = readdirSync(sourceDir).filter((f) => /^ars-.*\.md$/.test(f)).sort();

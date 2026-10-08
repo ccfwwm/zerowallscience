@@ -13,6 +13,7 @@ function makeTask(overrides: Partial<PythonDependencyTask> = {}): PythonDependen
 
 function setup({ info = makeInfo(), task }: { info?: McpPythonInfo; task?: PythonDependencyTask } = {}) {
   const updater = {
+    checkForUpdates: vi.fn(async () => ({ phase: 'ready' as const })),
     autoUpdate: vi.fn(async () => ({ phase: 'ready' as const })),
     pythonCoreInfo: vi.fn(async () => info),
     resumeAutomaticCoreOperation: vi.fn(() => true),
@@ -25,15 +26,17 @@ function setup({ info = makeInfo(), task }: { info?: McpPythonInfo; task?: Pytho
   return { updater, api }
 }
 
-describe('automatic Python core startup sync', () => {
-  it('queues the signed core manifest as a durable task without scanning science packages', async () => {
+describe('Python startup inspection', () => {
+  it('checks an incomplete core generation without queuing an install', async () => {
     const { updater, api } = setup()
     const result = await ensurePythonCoreAtStartup(updater as never, api as never, () => 'startup-request')
-    expect(result).toEqual({ state: 'sync-started', taskId: '22222222-2222-4222-8222-222222222222' })
-    expect(updater.autoUpdate).toHaveBeenCalledOnce()
+    expect(result).toEqual({ state: 'inventory-unavailable', info: makeInfo() })
+    expect(updater.checkForUpdates).toHaveBeenCalledOnce()
+    expect(updater.autoUpdate).not.toHaveBeenCalled()
     expect(updater.pythonCoreInfo).toHaveBeenCalledOnce()
     expect(api.persistRuntimeSummary).toHaveBeenCalledWith(expect.objectContaining({ officialPackageCount: 42 }))
-    expect(api.request).toHaveBeenCalledWith({ action: 'sync', layer: 'core', confirm: true, requestId: 'startup-request' })
+    expect(api.request).toHaveBeenCalledWith({ action: 'status', requestId: 'startup-request' })
+    expect(api.request).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'sync' }))
   })
 
   it('does not create a duplicate when the saved core task is still running', async () => {
@@ -45,30 +48,30 @@ describe('automatic Python core startup sync', () => {
     expect(api.request).toHaveBeenCalledTimes(1)
   })
 
-  it('resumes an interrupted core task with its existing id after desktop restart', async () => {
+  it('retains an interrupted core task until the user resumes it after desktop restart', async () => {
     const task = makeTask({ state: 'interrupted' })
     const { updater, api } = setup({ task })
-    await expect(ensurePythonCoreAtStartup(updater as never, api as never)).resolves.toEqual({ state: 'sync-running', taskId: task.taskId })
-    expect(api.resumeCoreSyncTask).toHaveBeenCalledWith(task.taskId)
+    await expect(ensurePythonCoreAtStartup(updater as never, api as never)).resolves.toEqual({ state: 'sync-paused', taskId: task.taskId })
+    expect(api.resumeCoreSyncTask).not.toHaveBeenCalled()
     expect(updater.pythonCoreInfo).not.toHaveBeenCalled()
   })
 
-  it('unpauses only the automatic core task when the updater restored a paused worker job', async () => {
+  it('does not unpause a saved worker job during the startup check', async () => {
     const task = makeTask({ state: 'interrupted', underlyingTaskId: '33333333-3333-4333-8333-333333333333' })
     const { updater, api } = setup({ task })
-    updater.autoUpdate.mockResolvedValue({ phase: 'paused' } as never)
+    updater.checkForUpdates.mockResolvedValue({ phase: 'paused' } as never)
     const result = await ensurePythonCoreAtStartup(updater as never, api as never, () => 'startup-request')
-    expect(result).toEqual({ state: 'sync-running', taskId: task.taskId })
-    expect(updater.resumeAutomaticCoreOperation).toHaveBeenCalledWith(task.underlyingTaskId)
-    expect(api.resumeCoreSyncTask).toHaveBeenCalledWith(task.taskId)
+    expect(result).toEqual({ state: 'sync-paused', taskId: task.taskId })
+    expect(updater.resumeAutomaticCoreOperation).not.toHaveBeenCalled()
+    expect(api.resumeCoreSyncTask).not.toHaveBeenCalled()
   })
 
   it('does not resume a core task when its recorded updater transaction is missing', async () => {
     const task = makeTask({ state: 'interrupted', underlyingTaskId: '33333333-3333-4333-8333-333333333333' })
     const { updater, api } = setup({ task })
-    updater.autoUpdate.mockResolvedValue({ phase: 'paused' } as never)
+    updater.checkForUpdates.mockResolvedValue({ phase: 'paused' } as never)
     updater.resumeAutomaticCoreOperation.mockReturnValue(false)
-    await expect(ensurePythonCoreAtStartup(updater as never, api as never)).resolves.toMatchObject({ state: 'runtime-unavailable', status: { phase: 'paused' } })
+    await expect(ensurePythonCoreAtStartup(updater as never, api as never)).resolves.toEqual({ state: 'sync-paused', taskId: task.taskId })
     expect(api.resumeCoreSyncTask).not.toHaveBeenCalled()
     expect(api.request).toHaveBeenCalledTimes(1)
   })
@@ -83,10 +86,11 @@ describe('automatic Python core startup sync', () => {
 
   it('does not queue dependencies until the Python and pip bootstrap is ready', async () => {
     const { updater, api } = setup()
-    updater.autoUpdate.mockResolvedValue({ phase: 'unavailable' } as never)
+    updater.checkForUpdates.mockResolvedValue({ phase: 'unavailable' } as never)
     await expect(ensurePythonCoreAtStartup(updater as never, api as never)).resolves.toMatchObject({ state: 'runtime-unavailable' })
     expect(updater.pythonCoreInfo).not.toHaveBeenCalled()
     expect(api.request).toHaveBeenCalledWith({ action: 'status', requestId: expect.any(String) })
     expect(api.request).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'sync' }))
+    expect(updater.autoUpdate).not.toHaveBeenCalled()
   })
 })

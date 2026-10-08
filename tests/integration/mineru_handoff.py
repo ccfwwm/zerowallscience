@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / 'resources/skills/zerowall-image-dup/scripts/zerowall_integrity.py'
+SCRIPT = ROOT / 'resources/extensions/skills/zerowall-image-dup/scripts/zerowall_integrity.py'
 
 
 def main():

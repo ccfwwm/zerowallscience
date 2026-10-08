@@ -1,6 +1,6 @@
 # ZeroWall Science 项目开发与发布指南
 
-本文保留项目级目录、开发环境和通用构建说明。当前 Codex 的执行合同、DSH 固定版本、插件更新事务和 8.0.3 发布边界以 [Codex 开发指导](codex-development-guide.zh-CN.md) 为准。源码和脚本是事实来源；旧版本验收记录、一次性审计结果和本地构建目录不属于项目源代码。
+本文保留项目级目录、开发环境和通用构建说明。当前 Codex 的执行合同、DSH 固定版本、插件更新事务和 8.0.7 模块化架构和发布边界以 [Codex 开发指导](codex-development-guide.zh-CN.md) 为准。源码和脚本是事实来源；旧版本验收记录、一次性审计结果和本地构建目录不属于项目源代码。
 
 ## 1. 项目边界
 
@@ -14,10 +14,10 @@ ZeroWall Science 是 Windows 优先的 Electron 科研工作台：Electron 主�
 | --- | --- | --- |
 | `desktop/` | Electron 主进程、preload、更新和安装包配置 | 是 |
 | `plugins/` | ZeroWall 一方产品插件 | 是 |
-| `packages/` | 可复用的 DSH、Office 和科研包 | 是 |
+| `packages/` | 按 `dsh/`、`support/`、`bundles/` 分组的适配器、支持库和组合声明；旧路径只读兼容 | 是 |
 | `store/` | SQLite Research Store、迁移、审计和快照 | 是 |
 | `deepseek-harness/` | 固定的 DSH fork 子模块 | 通过 gitlink 提交 |
-| `resources/` | Skills、Python 依赖清单、科学资源和许可证 | 是 |
+| `resources/` | `extensions/` 下的 Skills、MCP、Python、运行时与引擎，另有 cases、branding、provenance | 是 |
 | `profiles/`、`config/` | 配置生成和 DSH 固定版本声明 | 是 |
 | `tools/`、`scripts/` | 生成、检查、构建和发布自动化 | 是 |
 | `tests/` | 契约、安全、集成和发布测试 | 是 |
@@ -36,7 +36,7 @@ git submodule update --init --recursive
 pnpm install --frozen-lockfile
 ```
 
-Python 由软件使用一个共享环境。项目不为 profile 创建独立 Python 环境；依赖版本以 `resources/python/requirements-*.lock`、`resources/python/dependency-manifest.json` 和 `resources/python/skill-dependencies.json` 为准。
+Python 由软件使用一个共享环境。项目不为 profile 创建独立 Python 环境；依赖版本以 `resources/extensions/python/requirements-*.lock`、`resources/extensions/python/dependency-manifest.json` 和 `resources/extensions/python/skill-dependencies.json` 为准。
 
 常用命令：
 
@@ -86,7 +86,7 @@ pnpm smoke:host
 pnpm smoke:update
 ```
 
-构建前检查工作区，构建后不要把 `desktop/dist/`、`desktop/out/` 或临时验证目录加入 Git。发布前记录安装包大小和 SHA-256。
+构建前检查工作区，构建后不要把 `desktop/dist/`、`desktop/out/` 或临时验证目录加入 Git。正式输出位于 `artifacts/packages/<version>/<target>/`，发布前记录安装包大小、SHA-256、build ID 和 artifact manifest。
 
 ## 6. 版本管理
 
@@ -120,10 +120,10 @@ git push origin main
 git tag v<version>
 git push origin v<version>
 gh release create v<version> `
-  desktop/dist/zerowall-science-<version>-win-x64.exe `
-  desktop/dist/zerowall-science-<version>-win-x64.exe.blockmap `
-  desktop/dist/zerowall-science-<version>-latest.json `
-  desktop/dist/latest.yml `
+  artifacts/packages/<version>/windows-x64/zerowall-science-<version>-win-x64.exe `
+  artifacts/packages/<version>/windows-x64/zerowall-science-<version>-win-x64.exe.blockmap `
+  artifacts/packages/<version>/windows-x64/zerowall-science-<version>-latest.json `
+  artifacts/packages/<version>/windows-x64/latest.yml `
   --title "ZeroWall Science <version>" `
   --notes-file docs/release-notes-<version>.md
 gh release view v<version> --json tagName,isDraft,isPrerelease,assets,url
@@ -133,6 +133,10 @@ GitHub 验证要确认 tag 指向发布 commit、Release 不是 draft/prerelease
 
 ## 8. 清理规则
 
-可以安全删除并重新生成的目录包括 `node_modules/`、`deepseek-harness/node_modules/`、`desktop/dist/`、`desktop/out/`、`.tmp*/` 和 `test-results/`。删除后使用 `pnpm install --frozen-lockfile` 和对应构建命令恢复。`desktop/build/` 是源码，不要删除。
+不要把 `node_modules/`、pnpm store、`deepseek-harness/` 或 `desktop/build/` 当成一般缓存清理；项目级清理合同要求保留它们。`desktop/dist/`、`desktop/out/`、`.tmp*/` 和 `test-results/` 只有在确认是当前工作区拥有的生成物、没有正在运行的任务且不含待保留数据后，才可按精确路径单独清理。正式 artifacts 清理先运行 `pnpm artifacts:gc --dry-run`，核对候选与保护项后再按项目合同处理。
 
 不要清理 `.env`、`scripts/env/`、`.zerowall/`、用户科研数据、签名证书或未确认的外部挂载目录。发布前使用 `git status --short --untracked-files=all`，确保临时产物没有混入提交。
+
+## 8.0.7 增量构建与清理
+
+修改单个插件、Skill、MCP 或 Python 层时使用对应的 `plugin:*` 或 `resource:*` 命令，不触发完整 Electron 构建。正式产物只写入 `artifacts/`，构建收据和锁保证并发安全。清理前先运行 `pnpm artifacts:gc --dry-run`；受保护目录、当前 stage、回滚 generation、发布收据、用户数据和 `%SystemDrive%` 异常目录不会由 GC 处理。

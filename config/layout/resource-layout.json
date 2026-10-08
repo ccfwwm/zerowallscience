@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "version": "8.0.7",
+  "canonicalRoot": "resources",
+  "logicalRoots": {
+    "skills": "extensions/skills",
+    "mcp": "extensions/mcp",
+    "python": "extensions/python",
+    "runtimes": "extensions/runtimes",
+    "r": "extensions/engines/r",
+    "biogenie": "extensions/capabilities/biogenie",
+    "researchCases": "cases/research",
+    "branding": "branding"
+  },
+  "legacyAliases": {
+    "extensions/skills": "skills",
+    "extensions/mcp": "mcp",
+    "extensions/python": "python",
+    "extensions/runtimes": "runtimes",
+    "extensions/engines/r": "r",
+    "extensions/capabilities/biogenie": "biogenie",
+    "cases/research": "research-cases",
+    "branding": "brand"
+  },
+  "migration": {
+    "readLegacy": true,
+    "writeCanonical": false,
+    "deleteLegacy": false
+  }
+}

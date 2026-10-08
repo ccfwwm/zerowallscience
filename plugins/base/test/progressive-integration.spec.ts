@@ -8,7 +8,7 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjection from '../../../deepseek-harness/packages/session/session-projection/lib/index.js'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
-import * as ProgressiveTools from '../../../packages/dsh-progressive-tools/src/index.ts'
+import * as ProgressiveTools from '../../../packages/dsh/dsh-progressive-tools/src/index.ts'
 import { apply as applyBase } from '../src/host/index.ts'
 
 describe('ZeroWall progressive tool composition', () => {

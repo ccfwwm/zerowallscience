@@ -8,7 +8,7 @@ const packaged = await locatePackagedApp(resolve(root, 'desktop'))
 const asar = resolve(packaged.resourcesRoot, 'app.asar')
 const child = spawn(packaged.executablePath, [
   '--import', pathToFileURL(resolve(asar, 'runtime/runtime-esm-register.mjs')).href,
-  '--test', resolve(root, 'packages/zotero-harvest/tests/save.test.mjs'),
+  '--test', resolve(root, 'packages/dsh/zotero-harvest/tests/save.test.mjs'),
 ], { cwd: packaged.root, windowsHide: true, stdio: 'inherit', env: {
   ...process.env, ELECTRON_RUN_AS_NODE: '1',
   ZEROWALL_HARVEST_MODULE_ROOT: resolve(asar, 'node_modules/@dsh-external/zotero-harvest'),

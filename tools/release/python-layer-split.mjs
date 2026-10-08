@@ -6,8 +6,8 @@
  * The rule is mechanical rather than a hand-maintained list, so it stays
  * auditable as the lock grows: BASE is the transitive closure, over
  * `Requires-Dist` edges with win32/cp312 markers already evaluated, of the
- * direct names in `resources/python/requirements-base.txt` plus the bootstrap
- * roots from `resources/python/science-layer-policy.json`. Every other lock
+ * direct names in `resources/extensions/python/requirements-base.txt` plus the bootstrap
+ * roots from `resources/extensions/python/science-layer-policy.json`. Every other lock
  * entry is SCIENCE.
  *
  * Edges are produced by the caller from installed distribution metadata

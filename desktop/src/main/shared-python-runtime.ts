@@ -159,7 +159,7 @@ export async function readRuntimeLayout(root: string, signed: McpEnvironmentMani
   // and every `requests` call in the child died on `certifi.where()`. This is
   // the one read that every active-layout consumer performs.
   await repairCertifiBundles(join(root, SHARED_LAYOUT.relativeSitePackages))
-  return { ...signed, python: { ...signed.python, ...SHARED_LAYOUT, ...(layout.resourcesRelocated ? { dependencyManifests: signed.python.dependencyManifests?.map(path => path.replace(/^python[\\/]/iu, 'resources/python/')) } : {}) } }
+  return { ...signed, python: { ...signed.python, ...SHARED_LAYOUT, ...(layout.resourcesRelocated ? { dependencyManifests: signed.python.dependencyManifests?.map(path => path.replace(/^python[\\/]/iu, 'resources/extensions/python/')) } : {}) } }
 }
 
 /**
@@ -234,7 +234,7 @@ export async function normalizeRuntimeCandidate(root: string, manifest: McpEnvir
   await repairCertifiBundles(site)
   const layout = { schema: 1, ...SHARED_LAYOUT, archiveSha256: manifest.archiveSha256, migratedAt: new Date().toISOString(), sourceExecutable: manifest.python.relativeExecutable, sourceSitePackages: manifest.python.relativeSitePackages, resourcesRelocated }
   await writeFile(join(root, 'runtime-layout.json'), JSON.stringify(layout, null, 2))
-  return { ...manifest, python: { ...manifest.python, ...SHARED_LAYOUT, ...(resourcesRelocated ? { dependencyManifests: manifest.python.dependencyManifests?.map(path => path.replace(/^python[\\/]/iu, 'resources/python/')) } : {}) } }
+  return { ...manifest, python: { ...manifest.python, ...SHARED_LAYOUT, ...(resourcesRelocated ? { dependencyManifests: manifest.python.dependencyManifests?.map(path => path.replace(/^python[\\/]/iu, 'resources/extensions/python/')) } : {}) } }
 }
 
 /** One-time import of packages from releases that stored user wheels in an

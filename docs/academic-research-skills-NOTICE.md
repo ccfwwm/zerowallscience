@@ -26,10 +26,10 @@ contract-audited academic research pipeline
 
 ## 内容归属 / Content ownership
 
-- 本包中的 4 个技能包（`resources/skills/deep-research`、`resources/skills/academic-paper`、
-  `resources/skills/academic-paper-reviewer`、`resources/skills/academic-pipeline`，含其
+- 本包中的 4 个技能包（`resources/extensions/skills/deep-research`、`resources/extensions/skills/academic-paper`、
+  `resources/extensions/skills/academic-paper-reviewer`、`resources/extensions/skills/academic-pipeline`，含其
   `SKILL.md`、`agents/`、`references/`、`templates/`、`examples/`）以及
-  16 个命令定义（`resources/skills/ars-*`）**全部衍生自上游项目**，继续以
+  16 个命令定义（`resources/extensions/skills/ars-*`）**全部衍生自上游项目**，继续以
   **CC-BY-NC-4.0** 授权。任何再分发须保留本署名并仅限非商业用途。
 - 移植层（`lib/startup.js`、`cordis.patch.yml`、打包与文档）为
   `nullptr-DZF` 的新增作品，为保持一致同样以 **CC-BY-NC-4.0** 发布。

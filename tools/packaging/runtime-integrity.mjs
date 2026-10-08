@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 export async function treeHashes(directory, prefix = '') {
@@ -13,8 +13,17 @@ export async function treeHashes(directory, prefix = '') {
 }
 async function snapshot(root, stage) {
   const packages = ['@deepseek-ai/libreoffice-kit', '@deepseek-ai/libreoffice-kit-win32-x64', '@deepseek-ai/dsh-client-ui-sidebar-documentpreview', 'dsh-univer-office']
-  const result = { skillsSource: await treeHashes(join(root, 'resources/skills')), skillsRuntime: await treeHashes(join(stage, 'resources/skills')), runtime: {} }
-  for (const id of packages) result.runtime[id] = await treeHashes(join(stage, 'runtime/node_modules', id))
+  const result = { skillsSource: await treeHashes(join(root, 'resources/extensions/skills')), skillsRuntime: await treeHashes(join(stage, 'resources/extensions/skills')), runtime: {} }
+  for (const id of packages) {
+    const directory = join(stage, 'runtime/node_modules', id)
+    try {
+      await stat(directory)
+      result.runtime[id] = await treeHashes(directory)
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+      result.runtime[id] = null
+    }
+  }
   return result
 }
 export async function writeRuntimeIntegrity(root, stage) {

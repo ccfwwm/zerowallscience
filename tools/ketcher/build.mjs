@@ -1,7 +1,7 @@
 import { build } from 'esbuild'
 import { cp, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-const output = resolve(import.meta.dirname, '../../resources/mcp/ketcher-chemistry')
+const output = resolve(import.meta.dirname, '../../resources/extensions/mcp/ketcher-chemistry')
 // This directory contains generated assets only; remove stale hashed chunks.
 await rm(resolve(output, 'widget'), { recursive: true, force: true })
 await mkdir(resolve(output, 'widget'), { recursive: true })

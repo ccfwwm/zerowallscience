@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "version": "8.0.7",
+  "defaults": {
+    "dryRun": true,
+    "stageDays": 14,
+    "devDays": 14,
+    "failedBuildDays": 7,
+    "cacheDays": 30,
+    "logsDays": 90,
+    "objectDays": 30,
+    "keepStableVersions": 2,
+    "keepResourceVersions": 2
+  },
+  "protectedRoots": [
+    "deepseek-harness",
+    "node_modules",
+    "desktop/node_modules",
+    "desktop/build",
+    "scripts/env",
+    ".zerowall",
+    "artifacts/stage/current.json",
+    "artifacts/release",
+    "artifacts/verification",
+    "%SystemDrive%"
+  ],
+  "managedRoots": [
+    "artifacts/stage",
+    "artifacts/dev",
+    "artifacts/cache/legacy-outputs",
+    "artifacts/cache/electron-builder",
+    "artifacts/logs",
+    "artifacts/objects"
+  ],
+  "neverDelete": [
+    "artifacts/release/**/publication/**",
+    "artifacts/release/**/catalogs/**",
+    "artifacts/release/**/immutable-*-receipt.json",
+    "artifacts/release/**/artifact-manifest.json"
+  ]
+}

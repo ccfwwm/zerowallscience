@@ -28,7 +28,7 @@ if (manifest.applicationVersion !== contract.version || manifest.environmentVers
   || manifest.archiveUrl !== expectedArchiveUrl || manifest.archiveSize !== archiveInfo.size || manifest.archiveSha256 !== archiveHash) {
   throw new Error('Bootstrap manifest does not match the current desktop version and archive bytes.')
 }
-const coreBytes = await readFile(join(root, 'resources/python/core-dependency-manifest.json'))
+const coreBytes = await readFile(join(root, 'resources/extensions/python/core-dependency-manifest.json'))
 const coreManifest = JSON.parse(coreBytes.toString('utf8'))
 const { signature: coreSignature, ...corePayload } = coreManifest
 if (coreSignature?.keyId !== keyId || !verify(null, Buffer.from(JSON.stringify(corePayload)), publicKey, Buffer.from(coreSignature.value ?? '', 'base64'))

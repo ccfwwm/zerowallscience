@@ -243,7 +243,7 @@
     "zerowall-flow": "0.1.1",
     "zerowall-geo": "0.1.1",
     "zerowall-he": "0.1.1",
-    "zerowall-image-dup": "0.1.2",
+    "zerowall-image-dup": "0.1.3",
     "zerowall-image-intensity": "0.1.1",
     "zerowall-image-mask": "0.1.1",
     "zerowall-integrity-report": "0.1.1",

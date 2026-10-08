@@ -20,7 +20,7 @@ const exists = async path => lstat(path).then(() => true, error => {
   throw error
 })
 
-const sharedDependencyManifest = JSON.parse(readFileSync(new URL('../../resources/python/dependency-manifest.json', import.meta.url), 'utf8'))
+const sharedDependencyManifest = JSON.parse(readFileSync(new URL('../../resources/extensions/python/dependency-manifest.json', import.meta.url), 'utf8'))
 const sharedPins = new Map((sharedDependencyManifest.packages ?? []).map(pkg => [String(pkg.name).toLowerCase().replace(/[-_.]+/gu, '-'), pkg.version]))
 function sharedPackageVersions(names) {
   return Object.fromEntries(names.map(name => {

@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "8.0.6",
+  "version": "8.0.7",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",
@@ -10,6 +10,13 @@
   },
   "scripts": {
     "artifacts:init": "node tools/build/init-artifacts.mjs",
+    "artifacts:stage:clone": "node tools/build/clone-current-stage.mjs",
+    "build:changed": "node tools/build/build-graph.mjs build:changed",
+    "plugin:build": "node tools/build/build-graph.mjs plugin:build",
+    "plugin:pack": "node tools/build/build-graph.mjs plugin:pack",
+    "package:build": "node tools/build/build-graph.mjs package:build",
+    "resource:build": "node tools/build/build-graph.mjs resource:build",
+    "artifacts:gc": "node tools/build/artifacts-gc.mjs",
     "artifacts:manifest": "node tools/build/write-artifact-manifest.mjs",
     "plugins:generate": "node tools/plugins/generate-workspaces.mjs",
     "profiles:generate": "tsx tools/profiles/generate.ts",

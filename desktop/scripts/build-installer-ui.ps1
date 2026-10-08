@@ -8,9 +8,9 @@ $contract = & node (Join-Path $repoRoot 'tools/build/print-paths.mjs')
 $outputDir = Join-Path (($contract | ConvertFrom-Json).stage) 'installer-ui'
 New-Item -ItemType Directory -Force $outputDir | Out-Null
 $source = Join-Path $repoRoot 'desktop/installer/modern-installer.cpp'
-$icon = (Join-Path $repoRoot 'resources/brand/app-icons/icon.ico').Replace('\','/')
+$icon = (Join-Path $repoRoot 'resources/branding/app-icons/icon.ico').Replace('\','/')
 Set-Content -LiteralPath (Join-Path $outputDir 'brand.rc') -Value ('1 ICON "' + $icon + '"') -Encoding ascii
-$png = (Join-Path $repoRoot 'resources/brand/app-icons/icon.png').Replace('\','/')
+$png = (Join-Path $repoRoot 'resources/branding/app-icons/icon.png').Replace('\','/')
 Add-Content -LiteralPath (Join-Path $outputDir 'brand.rc') -Value ('101 RCDATA "' + $png + '"') -Encoding ascii
 $command = '@call "' + $vsRoot + '\VC\Auxiliary\Build\vcvars64.bat" >nul' + "`r`n" + 'rc /nologo brand.rc' + "`r`n" + 'cl /nologo /std:c++17 /utf-8 /EHsc /O2 /MT /DWINVER=0x0A00 /D_WIN32_WINNT=0x0A00 "' + $source + '" brand.res /Fe:modern-installer.exe /link /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT' + "`r`n" + 'exit /b %errorlevel%'
 $script = Join-Path $outputDir 'build.cmd'

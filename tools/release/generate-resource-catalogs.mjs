@@ -7,6 +7,7 @@ import { contract, root, releaseRoot, stageRoot } from '../build/paths.mjs'
 import { fileDigest, signCatalog, verifyCatalog } from './resource-catalog.mjs'
 import { deterministicArchive } from './deterministic-archive.mjs'
 import { historicalResources, preserveImmutableResource } from './immutable-resource.mjs'
+import { resourceSource } from '../build/layout.mjs'
 
 const destination = join(releaseRoot, 'catalogs')
 const catalogGeneration = `${contract.buildId}-${Date.now()}`
@@ -65,7 +66,7 @@ if (await stat(join(sciDirectory, 'dist/mcp.cjs')).catch(() => undefined)) {
     server: { name: 'SciMaster 独立服务', serverName: 'scimaster-independent', enabled: false, envRefs: { ZEROWALL_SCIMASTER_API_KEY: 'zerowall.environment.var.scimaster_api_key' } },
   } }))
 }
-const skillsRoot = join(stageRoot, 'resources/skills')
+const skillsRoot = join(stageRoot, 'resources/extensions/skills')
 for (const name of await readdir(skillsRoot)) {
   const source = join(skillsRoot, name)
   if (!(await stat(source)).isDirectory() || !await stat(join(source, 'SKILL.md')).catch(() => undefined)) continue
@@ -81,7 +82,7 @@ for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp',
   // advertise no update; they never invent a downloadable or compatible pack.
   const source = JSON.parse(await readFile(join(root, `config/catalogs/${kind}-catalog.json`), 'utf8'))
   for (const resource of source.resources ?? []) if (resource.path) resources.push(await entry({ ...resource, path: resolve(root, resource.path), kind }))
-  if (kind === 'python') resources.push(await entry({ id: 'science-dependencies', version: contract.version, path: join(root, 'resources/python/dependency-manifest.json'), kind, key: `python/layers/science/${contract.version}/dependency-manifest.json`, metadata: { role: 'dependency-manifest', restartRequired: false } }))
+  if (kind === 'python') resources.push(await entry({ id: 'science-dependencies', version: contract.version, path: await resourceSource('python', 'dependency-manifest.json'), kind, key: `python/layers/science/${contract.version}/dependency-manifest.json`, metadata: { role: 'dependency-manifest', restartRequired: false } }))
   const document = signCatalog({ schema: 1, kind, applicationVersion: contract.version, localOnly,
     generatedAt: new Date().toISOString(), resources }, privateKey, keyId)
   verifyCatalog(document, keys, { local: localOnly })

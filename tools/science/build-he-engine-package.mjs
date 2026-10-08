@@ -28,7 +28,7 @@ function add(path, bytes, kind) {
 
 add(`provenance/${profile.id}-shared-python.json`, Buffer.from(JSON.stringify({
   engineId: profile.id, pythonVersion: profile.pythonVersion, packages: profile.packages,
-  dependencySource: 'resources/python/dependency-manifest.json', sharedPython: 'Python/python.exe',
+  dependencySource: 'resources/extensions/python/dependency-manifest.json', sharedPython: 'Python/python.exe',
 }, null, 2) + '\n'), 'provenance')
 if (profile.model) {
   for (const file of profile.model.files) {

@@ -45,7 +45,7 @@ describe('shared Python directory migration', () => {
     expect(pth).toContain('import site')
     expect(await readFile(join(root, 'Python', 'Lib', 'site-packages', 'sitecustomize.py'), 'utf8')).toContain('getusersitepackages')
     expect(await readFile(join(root, 'resources', 'python', 'requirements.lock'), 'utf8')).toBe('example==1')
-    expect(effective.python.dependencyManifests).toEqual(['resources/python/requirements.lock'])
+    expect(effective.python.dependencyManifests).toEqual(['resources/extensions/python/requirements.lock'])
     expect((await readRuntimeLayout(root, manifest)).python).toEqual(effective.python)
   })
 

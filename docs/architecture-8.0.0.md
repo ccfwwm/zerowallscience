@@ -40,7 +40,7 @@ artifacts/
 
 桌面保留 Electron 主进程、DSH 运行时、Host 启停恢复、安全凭据代理、桌面更新及 Python 更新服务。官方 Desktop 的 PATH worker 和官方 DSH CLI/profile 包管理语义被复用；ZeroWall 的 CLI 管理接口调用已有服务。
 
-20 个 ZeroWall 插件的版本基线独立为 `0.1.0`。DSH 兼容范围精确限制到 0.2.0-rc.2，桌面最低版本为 8.0.0。微信与通知保持第三方独立版本；历史 `plugins/wechat/` 适配源码保留，当前实际启用的是 `packages/dsh-wechat/`。
+20 个 ZeroWall 插件的版本基线独立为 `0.1.0`。DSH 兼容范围精确限制到 0.2.0-rc.2，桌面最低版本为 8.0.0。微信与通知保持第三方独立版本；历史 `plugins/wechat/` 适配源码保留，当前实际启用的是 `packages/dsh/dsh-wechat/`。
 
 插件的 Desktop `min`/`max` 表达兼容范围；构建检查判断当前桌面是否位于范围内，不要求插件最低版本等于桌面当前版本。后续桌面补丁升级不强制修改全部插件 manifest。当前 DSH rc 兼容范围仍保持精确匹配。
 

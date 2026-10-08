@@ -43,12 +43,10 @@ const presetText = await readFile(resolve(dshRoot, 'packages/bundle/web-app/pres
 const presetRoots = [...presetText.matchAll(/^\s+name:\s+['"]([^'"]+)['"]\s*$/gmu)].map(match => match[1])
 const patchText = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
 const patchRoots = [...patchText.matchAll(/^\s+name:\s+['"]([^'"]+)['"]\s*$/gmu)].map(match => match[1])
-const pluginPeers = []
-for (const directory of ['packages/zotero-harvest', 'packages/dsh-ssh-ops', 'packages/dsh-progressive-tools', 'packages/dsh-session-notification', 'packages/dsh-wechat', 'packages/dsh-file-review']) {
-  const manifest = JSON.parse(await readFile(resolve(root, directory, 'package.json'), 'utf8'))
-  pluginPeers.push(...Object.keys(manifest.peerDependencies ?? {}), ...Object.keys(manifest.dependencies ?? {}))
-}
-const queue = [...new Set(['@deepseek-ai/dsh', ...presetRoots, ...patchRoots, ...pluginPeers])]
+// The Core patch is intentionally the only ZeroWall overlay that contributes
+// DSH roots. Optional domain packages are installed into the user profile and
+// therefore must not make the immutable desktop closure grow.
+const queue = [...new Set(['@deepseek-ai/dsh', ...presetRoots, ...patchRoots])]
   .filter(name => manifests.has(name) || forbiddenRuntimePackages.has(name))
 const closure = new Set()
 for (let index = 0; index < queue.length; index += 1) {

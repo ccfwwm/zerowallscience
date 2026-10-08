@@ -26,9 +26,9 @@ test('better-sidebar is a single pinned default workbench in every profile', asy
 })
 
 test('better-sidebar contains the merged v0.24.1 compatibility changes', async () => {
-  const editor = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/EditorHost.tsx'), 'utf8')
-  const tree = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/FileTree.tsx'), 'utf8')
-  const sidechat = await readFile(resolve(root, 'packages/dsh-better-sidebar/src/client/SideChatView.tsx'), 'utf8')
+  const editor = await readFile(resolve(root, 'packages/dsh/dsh-better-sidebar/src/client/EditorHost.tsx'), 'utf8')
+  const tree = await readFile(resolve(root, 'packages/dsh/dsh-better-sidebar/src/client/FileTree.tsx'), 'utf8')
+  const sidechat = await readFile(resolve(root, 'packages/dsh/dsh-better-sidebar/src/client/SideChatView.tsx'), 'utf8')
   assert.match(editor, /reloadSeq/u)
   assert.match(editor, /useSyncExternalStore/u)
   assert.match(tree, /refreshTick/u)
@@ -175,7 +175,7 @@ test('dynamic client bundles use the DSH classic-script ModuleLoader contract', 
   const bundles = [
     ...['base', 'account', 'projects', 'mcp', 'research', 'reviewer', 'skills']
       .map(name => [name, `plugins/${name}/lib/client.js`]),
-    ['wechat', 'packages/dsh-wechat/dist/client.js'],
+    ['wechat', 'packages/dsh/dsh-wechat/dist/client.js'],
   ]
   for (const [name, relativePath] of bundles) {
     const bundle = await readFile(resolve(root, relativePath), 'utf8')

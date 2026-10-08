@@ -1,0 +1,14 @@
+{
+  "name": "@zerowallscience/dsh-bundle-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "files": ["dsh.bundle.patch.yml"],
+  "dsh": { "bundle": { "patch": "dsh.bundle.patch.yml" } },
+  "zerowall": {
+    "desktop": { "min": "8.0.7" },
+    "dsh": { "min": "0.2.0-rc.2", "max": "0.2.0-rc.2" },
+    "composition": ["@zerowallscience/plugin-base", "@zerowallscience/plugin-secrets", "@zerowallscience/plugin-environment", "@zerowallscience/plugin-desktop-compat", "@zerowallscience/plugin-extension-center"]
+  }
+}

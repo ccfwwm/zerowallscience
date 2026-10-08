@@ -22,7 +22,7 @@ describe('Harness runtime boundary', () => {
       dshHome: 'C:/data/harness',
       userSkillsPath: 'C:/data/harness/zerowall-skills/enabled',
       researchDbPath: 'C:/data/research/zerowall-research.sqlite',
-      bundledSkillsPath: 'C:/app/resources/skills',
+      bundledSkillsPath: 'C:/app/resources/extensions/skills',
       mcpEnvironmentRoot: 'C:/data/mcp-environments',
       runAsNode: true,
       runtimeAnchorPath: 'C:/app/resources/app.asar/node_modules/@deepseek-ai/dsh/package.json',
@@ -32,22 +32,22 @@ describe('Harness runtime boundary', () => {
     expect(options.env?.ZEROWALL_RUNTIME_ANCHOR).toContain('app.asar/node_modules/@deepseek-ai/dsh/package.json')
     expect(options.env?.DSH_HOME).toBe('C:/data/harness')
     expect(options.env?.ZEROWALL_USER_DATA_DIR).toBe('C:/data')
-    expect(options.env?.DSH_BUNDLED_SKILL_DIR).toBe('C:/app/resources/skills')
+    expect(options.env?.DSH_BUNDLED_SKILL_DIR).toBe('C:/app/resources/extensions/skills')
     expect(options.env?.ZEROWALL_USER_SKILLS).toBe('C:/data/harness/zerowall-skills/enabled')
     expect(options.env?.ZEROWALL_RESEARCH_DB).toBe('C:/data/research/zerowall-research.sqlite')
     expect(options.env?.ZEROWALL_MCP_ENVIRONMENT_ROOT).toBe('C:/data/mcp-environments')
     expect(options.env?.ZEROWALL_PYTHON_ROOT).toBe('C:/data/mcp-environments')
     expect(options.env?.ZEROWALL_DISABLE_DEFAULT_MCP).toBe('1')
     expect(options.env?.CUSTOM_API_KEY).toBe('test-key-reference')
-    expect(options.env?.ZEROWALL_BUNDLED_SKILLS).toBe('C:/app/resources/skills')
-    expect(options.env?.ZEROWALL_MCP_BUNDLED_SKILLS).toBe('C:/app/resources/skills')
+    expect(options.env?.ZEROWALL_BUNDLED_SKILLS).toBe('C:/app/resources/extensions/skills')
+    expect(options.env?.ZEROWALL_MCP_BUNDLED_SKILLS).toBe('C:/app/resources/extensions/skills')
     expect(options.env?.ZEROWALL_MCP_USER_SKILLS).toBe('C:/data/harness/zerowall-skills/enabled')
-    expect(options.env?.ZEROWALL_MCP_SKILLS).toContain('C:/app/resources/skills')
+    expect(options.env?.ZEROWALL_MCP_SKILLS).toContain('C:/app/resources/extensions/skills')
     expect(options.env?.ZEROWALL_MCP_SKILLS).toContain('C:/data/harness/zerowall-skills/enabled')
     expect(options.stdio).toEqual(['pipe', 'pipe', 'pipe', 'ipc'])
   })
 
-  it('creates a fresh workspace before spawning the packaged Host', async () => {
+  it('starts the Core Host without an optional bundled Skills directory', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-harness-runtime-'))
     const launchDirectory = join(root, 'new', 'workspace')
     const files = {
@@ -70,7 +70,7 @@ describe('Harness runtime boundary', () => {
       userDataPath: root,
       userSkillsPath: join(root, 'harness', 'zerowall-skills', 'enabled'),
       researchDbPath: join(root, 'research', 'zerowall-research.sqlite'),
-      bundledSkillsPath: root,
+      bundledSkillsPath: join(root, 'extensions', 'skills'),
       mcpEnvironmentRoot: join(root, 'mcp-environments'),
       logPath: join(root, 'logs', 'harness.log'),
       launchProcess: (_executable, _args, options) => {
@@ -93,7 +93,9 @@ describe('Harness runtime boundary', () => {
 
     await expect(access(launchDirectory)).resolves.toBeUndefined()
     expect(spawnCwd).toBe(launchDirectory)
-    expect(await readFile(join(root, 'logs', 'harness.log'), 'utf8')).toContain('Harness could not start: test stop')
+    const log = await readFile(join(root, 'logs', 'harness.log'), 'utf8')
+    expect(log).toContain('optional bundled Skills are not installed; continuing with Core')
+    expect(log).toContain('Harness could not start: test stop')
     await runtime.stop()
   })
 

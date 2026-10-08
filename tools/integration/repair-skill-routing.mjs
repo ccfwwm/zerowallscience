@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 
-const root = resolve(import.meta.dirname, '../../resources/skills')
+const root = resolve(import.meta.dirname, '../../resources/extensions/skills')
 let changed = 0
 async function visit(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {

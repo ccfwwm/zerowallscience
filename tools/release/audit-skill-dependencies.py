@@ -73,14 +73,14 @@ def install_specs(text):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--skills-root', default=str(ROOT / 'resources/skills'))
+    parser.add_argument('--skills-root', default=str(ROOT / 'resources/extensions/skills'))
     parser.add_argument('--site-packages')
     parser.add_argument('--verification')
-    parser.add_argument('--output', default=str(ROOT / 'resources/python/skill-dependencies.json'))
-    parser.add_argument('--dependency-manifest', default=str(ROOT / 'resources/python/dependency-manifest.json'))
+    parser.add_argument('--output', default=str(ROOT / 'resources/extensions/python/skill-dependencies.json'))
+    parser.add_argument('--dependency-manifest', default=str(ROOT / 'resources/extensions/python/dependency-manifest.json'))
     args = parser.parse_args()
     root = Path(args.skills_root).resolve()
-    policy = json.loads((ROOT / 'resources/python/skill-dependency-policy.json').read_text())
+    policy = json.loads((ROOT / 'resources/extensions/python/skill-dependency-policy.json').read_text())
     dependency_manifest = json.loads(Path(args.dependency_manifest).read_text(encoding='utf-8'))
     manifest_packages = {
         norm(item['name']): item for item in dependency_manifest.get('packages', [])

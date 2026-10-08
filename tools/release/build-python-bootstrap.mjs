@@ -4,10 +4,12 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import { dirname, join, resolve } from 'node:path'
 import { cacheRoot, releaseRoot, root } from '../build/paths.mjs'
+import { resourceSource } from '../build/layout.mjs'
 import { createBootstrapManifest, verifyBootstrapManifest } from './python-bootstrap-manifest.mjs'
 
 const exec = promisify(execFile)
 const input = JSON.parse(await readFile(join(root, 'config/python/bootstrap-inputs.json'), 'utf8'))
+const pythonRoot = await resourceSource('python')
 const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
 const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4'
 const publicKey = keys[keyId]
@@ -41,7 +43,7 @@ async function fetchPinned(url, file, expectedSha256) {
 
 const official = await fetchPinned(input.pythonArchive.url, pythonArchive, input.pythonArchive.sha256)
 const pip = await fetchPinned(input.pipWheel.url, pipWheel, input.pipWheel.sha256)
-const coreBytes = await readFile(join(root, 'resources/python/core-dependency-manifest.json'))
+const coreBytes = await readFile(join(pythonRoot, 'core-dependency-manifest.json'))
 const coreManifest = JSON.parse(coreBytes.toString('utf8'))
 const { signature: coreSignature, ...corePayload } = coreManifest
 if (coreSignature?.keyId !== keyId || coreSignature.algorithm !== 'ed25519' || !verify(null, Buffer.from(JSON.stringify(corePayload)), publicKey, Buffer.from(coreSignature.value, 'base64'))) throw new Error('Core dependency manifest signature verification failed.')

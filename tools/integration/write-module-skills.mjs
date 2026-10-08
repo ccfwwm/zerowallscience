@@ -2,7 +2,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { rWorkflows } from '../../plugins/mcp/src/shared/r-workflows.ts'
-const root = resolve(import.meta.dirname, '../../resources/skills')
+const root = resolve(import.meta.dirname, '../../resources/extensions/skills')
 const check = process.argv.includes('--check')
 for (const module of rWorkflows.modules) {
   const directory = resolve(root, module.skill, 'references')

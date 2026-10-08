@@ -1,6 +1,6 @@
 import { fork, spawn, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { mkdir, readFile, writeFile, readdir, rename } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import type { McpEnvironmentControllerOptions } from './mcp-environment.js'
@@ -49,10 +49,16 @@ export class PythonUpdaterService {
     if (this.child) return this.child
     // Loading a worker from the full application ASAR also loads its large file
     // index. The tiny updater and ZIP reader are packaged outside that archive.
-    const worker = fileURLToPath(new URL('./python-updater-worker.js', import.meta.url)).replace(/app\.asar([\\/])/u, 'app.asar.unpacked$1')
+    const worker = this.options.updaterWorkerPath
+      ?? fileURLToPath(new URL('./python-updater-worker.js', import.meta.url)).replace(/app\.asar([\\/])/u, 'app.asar.unpacked$1')
+    const updaterModulesPath = this.options.updaterWorkerPath ? join(dirname(worker), 'modules') : undefined
+    const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+    if (updaterModulesPath) {
+      env.NODE_PATH = [updaterModulesPath, process.env.NODE_PATH].filter(Boolean).join(delimiter)
+    }
     const child = fork(worker, [], {
       execPath: process.execPath, execArgv: ['--max-old-space-size=128', '--max-semi-space-size=8'],
-      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      env, stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
     })
     this.child = child
     child.stderr?.resume()

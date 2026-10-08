@@ -9,7 +9,7 @@ const output = resolve(root, 'test-results/skills-mcp/ketcher'); await mkdir(out
 const client = new Client({ name: 'zerowall-ketcher-smoke', version: '1' })
 let browser
 try {
-  await client.connect(new StdioClientTransport({ command: process.execPath, args: [resolve(root, 'resources/mcp/ketcher-chemistry/server.js')], stderr: 'pipe' }))
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [resolve(root, 'resources/extensions/mcp/ketcher-chemistry/server.js')], stderr: 'pipe' }))
   const call = async (name, args, cwd = output) => {
     const value = await client.callTool({ name, arguments: args, _meta: { 'zerowall/workspace': cwd } })
     assert.ok(!value.isError, JSON.stringify(value)); return value

@@ -42,8 +42,8 @@ def verify_core_wheels(wheelhouse, requirements):
 
 def make_core_wheel_lock(work):
     """Resolve the minimal offline core only from the pinned Windows wheel lock."""
-    base_requirements = ROOT / "resources/python/requirements-base.txt"
-    windows_lock = ROOT / "resources/python/requirements-windows.lock"
+    base_requirements = ROOT / "resources/extensions/python/requirements-base.txt"
+    windows_lock = ROOT / "resources/extensions/python/requirements-windows.lock"
     available = {}
     for raw in windows_lock.read_text(encoding="utf-8").splitlines():
         match = re.match(r"^([A-Za-z0-9_.-]+)==([^\s]+)\s+--hash=sha256:([a-f0-9]{64})$", raw.strip())
@@ -71,10 +71,24 @@ def run(args, **kwargs):
     subprocess.run(list(map(str, args)), check=True, **kwargs)
 
 
+def default_mcp_staging():
+    version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
+    build_id = os.environ.get("ZEROWALL_BUILD_ID", "").strip()
+    if not build_id:
+        pointer = ROOT / "artifacts" / "stage" / version / "current.json"
+        try:
+            build_id = json.loads(pointer.read_text(encoding="utf-8"))["buildId"]
+        except (OSError, KeyError, json.JSONDecodeError):
+            build_id = f"{version}-dev"
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", build_id):
+        raise RuntimeError("Invalid ZEROWALL_BUILD_ID for MCP staging input.")
+    return ROOT / "artifacts" / "stage" / version / build_id / "mcp-environment-staging"
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--work", required=True)
-    parser.add_argument("--input", help="Owned MCP staging input; defaults to mcp-environment-staging.")
+    parser.add_argument("--input", help="Owned MCP staging input; defaults to the current artifacts/stage build.")
     parser.add_argument("--base-only", action="store_true", help="Build only the signed minimal Windows core layer.")
     args = parser.parse_args()
     work = Path(args.work).resolve()
@@ -82,7 +96,7 @@ def main():
     staging = work / "staging"
     wheelhouse = work / "wheels"
     wheelhouse.mkdir(exist_ok=True)
-    source_lock = ROOT / "resources/python/requirements-research.lock"
+    source_lock = ROOT / "resources/extensions/python/requirements-research.lock"
     if sys.version_info[:3] != (3, 12, 10):
         raise SystemExit("Build requires CPython 3.12.10")
     env = {**os.environ, "PYTHONNOUSERSITE": "1", "PYTHONPATH": "", "PIP_DISABLE_PIP_VERSION_CHECK": "1"}
@@ -98,7 +112,7 @@ def main():
         run_args.append("--prefer-binary")
     run_args += ["--require-hashes", "-r", source_lock, "--wheel-dir", wheelhouse]
     run(run_args, env=env)
-    core_hashes = verify_core_wheels(wheelhouse, ROOT / "resources/python/requirements-base.txt")
+    core_hashes = verify_core_wheels(wheelhouse, ROOT / "resources/extensions/python/requirements-base.txt")
     expected = dict(re.findall(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", source_lock.read_text(encoding="utf-8"), re.M))
     expected = {normalized(k): v for k, v in expected.items()}
     rows = []
@@ -111,7 +125,7 @@ def main():
         rows.append({"name": name, "version": version, "file": wheel.name, "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(), "size": wheel.stat().st_size})
     if len(rows) != len(expected) or {r['name'] for r in rows} != set(expected):
         raise RuntimeError("Wheel set does not exactly match the source lock")
-    final_lock = ROOT / 'resources/python/requirements-windows.lock'
+    final_lock = ROOT / 'resources/extensions/python/requirements-windows.lock'
     install_lock = source_lock
     if not args.base_only:
         final_lock.write_text('# Windows x64 / CPython 3.12.10; hashes of the actual release wheels.\n' + ''.join(f"{r['name']}=={r['version']} --hash=sha256:{r['sha256']}\n" for r in sorted(rows, key=lambda r: r['name'])), encoding='utf-8')
@@ -123,15 +137,15 @@ def main():
     # rewrite the roots into a second, divergent dependency lock.
     (work / 'wheel-inventory.json').write_text(json.dumps(rows, indent=2), encoding='utf-8')
     if not staging.exists():
-        source_staging = Path(args.input).resolve() if args.input else ROOT / 'mcp-environment-staging'
+        source_staging = Path(args.input).resolve() if args.input else default_mcp_staging()
         if not source_staging.is_dir() or source_staging == staging:
             raise RuntimeError(f"Invalid MCP staging input: {source_staging}")
         shutil.copytree(source_staging, staging, ignore=shutil.ignore_patterns('site-packages', '__pycache__', '*.pyc', '*private*.pem', '*public*.pem', 'prepare-bootstrap.ps1', 'build-stdlib-zip.py', 'requirements-core.lock'))
     legacy_resources = staging / 'python'
-    resources = staging / 'resources/python'
+    resources = staging / 'resources/extensions/python'
     # On Windows, ``python`` and ``Python`` name the same directory. Move only
     # the historical metadata-only folder; never relocate the embedded runtime
-    # into resources/python when the stage already contains Python/python.exe.
+    # into resources/extensions/python when the stage already contains Python/python.exe.
     if not resources.exists() and legacy_resources.exists() and not (legacy_resources / 'python.exe').is_file():
         resources.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(legacy_resources), str(resources))

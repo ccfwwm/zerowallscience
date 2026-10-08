@@ -5,7 +5,7 @@ import { createReadStream } from 'node:fs'
 import { access, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { resolve } from 'node:path'
+import { delimiter, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { extractFile, listPackage } from '@electron/asar'
 import { chromium } from 'playwright'
@@ -19,6 +19,8 @@ const repositoryRoot = resolve(packageRoot, '..')
 const pinnedUpstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
 const pinnedIntegrations = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'integrations', 'upstream-sources.json'), 'utf8'))
 const desktopManifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
+const runtimeProfile = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'layout', 'runtime-profile.json'), 'utf8'))
+const coreOnly = runtimeProfile.optionalPluginPolicy?.bundled === false
 const desktopOnly = process.argv.includes('--desktop-only')
 const hostOnly = process.argv.includes('--host-only')
 const requireBundledPython = process.argv.includes('--require-bundled-python')
@@ -99,6 +101,18 @@ if (packagedBuildReceipt.commit !== pinnedUpstream.commit
   || packagedBuildReceipt.applicationVersion !== desktopManifest.version
   || JSON.stringify(packagedBuildReceipt) !== JSON.stringify(runtimeBuildReceipt)) {
   throw new Error('Packaged Harness receipt differs from the current pinned build. Repackage the current runtime.')
+}
+if (coreOnly) {
+  await verifyCoreRuntimeArchive()
+  await verifyExternalPolicy()
+  await verifySizePolicy()
+  await verifyCoreImports()
+  await verifyNativeRuntime()
+  await verifyDirectoryPickerWorker()
+  if (!desktopOnly) await verifyHostStartup()
+  if (!hostOnly) await verifyDesktopStartup()
+  console.log(`Packaged ZeroWall Core runtime verified; optional plugins and resource payloads remain profile-managed; startup: ${hostOnly ? 'Host' : desktopOnly ? 'Desktop' : 'Host and Desktop'}.`)
+  process.exit(0)
 }
 for (const [plugin, file] of ['mcp', 'research'].flatMap(plugin => ['lib/client.js', 'lib/index.js'].map(file => [plugin, file]))) {
   const path = `node_modules/@zerowallscience/plugin-${plugin}/${file}`
@@ -312,7 +326,7 @@ async function verifyArchivePolicy() {
   for (const [archivePath, sourcePath] of [
     ['node_modules/@zerowallscience/plugin-base/lib/index.js', 'plugins/base/lib/index.js'],
     ['node_modules/@zerowallscience/plugin-base/lib/client.js', 'plugins/base/lib/client.js'],
-    ['node_modules/dsh-better-sidebar/lib/client-editor.js', 'packages/dsh-better-sidebar/lib/client-editor.js'],
+    ['node_modules/dsh-better-sidebar/lib/client-editor.js', 'packages/dsh/dsh-better-sidebar/lib/client-editor.js'],
     ['node_modules/@deepseek-ai/dsh-client-ui-model-selection/lib/client.js', 'deepseek-harness/packages/client/ui-model-selection/lib/client.js'],
     ['node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js', 'deepseek-harness/packages/api/session-controller/lib/index.js'],
   ]) {
@@ -489,6 +503,155 @@ async function verifyArchivePolicy() {
   if (dshManifest.version !== pinnedUpstream.version) throw new Error(`Packaged DSH must be ${pinnedUpstream.version}; found ${dshManifest.version}.`)
 }
 
+async function verifyCoreRuntimeArchive() {
+  const forbidden = archiveFiles.filter(path => path.startsWith('node_modules/') && (
+    /\.(?:d\.ts|ts|tsx|mts|cts|map|pdb|tsbuildinfo)$/i.test(path)
+    || hasForbiddenRuntimeDirectory(path)
+  ))
+  if (forbidden.length > 0) throw new Error(`Forbidden production runtime files found in Core ASAR:\n${forbidden.slice(0, 50).join('\n')}`)
+  const nativeMismatch = archiveFiles.filter(path => /\.(?:node|dll|exe)$/i.test(path)
+    && /(darwin|linux|android|arm64|ia32|x86)/i.test(path)
+    && !/(win32|windows).*(x64|amd64)/i.test(path))
+  if (nativeMismatch.length > 0) throw new Error(`Non-Windows-x64 native files found in Core ASAR:\n${nativeMismatch.join('\n')}`)
+
+  const required = [
+    'out/main/index.js', 'out/preload/index.cjs',
+    'runtime/harness-node-entry.mjs', 'runtime/runtime-esm-register.mjs', 'runtime/runtime-esm-loader.mjs',
+    'node_modules/@deepseek-ai/dsh/lib/bin.js',
+    'node_modules/@deepseek-ai/dsh-base/package.json',
+    'node_modules/@deepseek-ai/dsh-web-app/package.json',
+    'node_modules/@zerowallscience/integrity-runtime/hash-worker.mjs',
+  ]
+  for (const id of runtimeProfile.corePlugins) {
+    required.push(`node_modules/${id}/package.json`, `node_modules/${id}/zerowall.plugin.json`, `node_modules/${id}/lib/index.js`)
+  }
+  for (const id of [...(runtimeProfile.corePackageDependencies ?? []), ...(runtimeProfile.coreRuntimeSeeds ?? [])]) {
+    required.push(`node_modules/${id}/package.json`)
+  }
+  required.push('node_modules/pend/package.json', 'node_modules/pend/index.js')
+  for (const path of required) if (!archiveSet.has(path)) throw new Error(`Core ASAR is missing required startup file: ${path}`)
+  for (const entry of ['out/main/index.js', 'out/main/python-updater-worker.js', 'out/preload/index.cjs']) {
+    if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
+      throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
+    }
+  }
+
+  const updaterRoot = resolve(packaged.resourcesRoot, 'python-updater')
+  const updaterReceipt = JSON.parse(await readFile(resolve(updaterRoot, 'receipt.json'), 'utf8'))
+  const stagedDesktopReceipt = JSON.parse(await readFile(resolve(stageRoot, 'desktop-package-receipt.json'), 'utf8'))
+  if (updaterReceipt.schema !== 1 || updaterReceipt.buildId !== stagedDesktopReceipt.buildId || !Array.isArray(updaterReceipt.files)) {
+    throw new Error('External Python updater assets do not belong to the current desktop build.')
+  }
+  for (const entry of ['python-updater-worker.js', ...archiveFiles
+    .filter(path => /^out\/main\/chunks\/mcp-environment-.+\.js$/u.test(path))
+    .map(path => path.slice('out/main/'.length))]) {
+    const bytes = await readFile(resolve(updaterRoot, entry))
+    if (!bytes.equals(readArchiveFile(`out/main/${entry}`))) throw new Error(`External Python updater asset differs from ASAR: ${entry}`)
+  }
+  for (const asset of updaterReceipt.files) {
+    if (typeof asset.path !== 'string' || asset.path.includes('\\') || asset.path.split('/').some(part => !part || part === '.' || part === '..')) {
+      throw new Error('External Python updater receipt contains an unsafe path.')
+    }
+    const absolute = resolve(updaterRoot, asset.path)
+    const rel = relative(updaterRoot, absolute)
+    if (!rel || rel === '..' || rel.startsWith(`..${sep}`)) throw new Error('External Python updater receipt escapes its resource directory.')
+    const bytes = await readFile(absolute)
+    if (bytes.length !== asset.size || createHash('sha256').update(bytes).digest('hex') !== asset.sha256) {
+      throw new Error(`External Python updater asset failed its build receipt: ${asset.path}`)
+    }
+  }
+  for (const entry of ['modules/yauzl/package.json', 'modules/yauzl/index.js', 'modules/pend/package.json', 'modules/pend/index.js']) {
+    await access(resolve(updaterRoot, entry))
+  }
+  const updaterModulesPath = resolve(updaterRoot, 'modules')
+  const updaterRequireCheck = spawnSync(process.execPath, ['-e', [
+    "const requireFromWorker = require('node:module').createRequire(process.argv[1]);",
+    "if (typeof requireFromWorker('yauzl').open !== 'function') throw new Error('ZIP reader is unavailable');",
+    "requireFromWorker('pend');",
+  ].join(' '), resolve(updaterRoot, 'python-updater-worker.js')], {
+    encoding: 'utf8',
+    windowsHide: true,
+    env: { ...process.env, NODE_PATH: [updaterModulesPath, process.env.NODE_PATH].filter(Boolean).join(delimiter) },
+  })
+  if (updaterRequireCheck.status !== 0) {
+    throw new Error(`External Python updater cannot load its ZIP runtime: ${(updaterRequireCheck.stderr || updaterRequireCheck.error?.message || 'unknown error').trim()}`)
+  }
+  const updaterChunkPaths = archiveFiles.filter(path => /^out\/main\/chunks\/mcp-environment-.+\.js$/u.test(path))
+  if (updaterChunkPaths.length === 0) throw new Error('Core ASAR is missing the Python updater environment chunk.')
+  for (const name of ['yauzl', 'pend']) {
+    const externalManifest = JSON.parse(await readFile(resolve(updaterRoot, 'modules', name, 'package.json'), 'utf8'))
+    const archiveManifest = JSON.parse(readArchiveFile(`node_modules/${name}/package.json`).toString('utf8'))
+    for (const field of ['name', 'version', 'main', 'dependencies']) {
+      if (JSON.stringify(externalManifest[field]) !== JSON.stringify(archiveManifest[field])) {
+        throw new Error(`External Python updater ${name} manifest differs from Core ASAR in ${field}.`)
+      }
+    }
+    const entry = `modules/${name}/index.js`
+    if (!(await readFile(resolve(updaterRoot, entry))).equals(readArchiveFile(`node_modules/${name}/index.js`))) {
+      throw new Error(`External Python updater dependency differs from Core ASAR: ${entry}`)
+    }
+  }
+
+  const defaults = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8'))
+  for (const entry of ['resource-manager.mjs', 'profile.mjs', 'zws.mjs']) {
+    const bytes = await readFile(resolve(packaged.resourcesRoot, 'commands', entry))
+    if (!bytes.equals(await readFile(resolve(repositoryRoot, 'tools/commands', entry)))) {
+      throw new Error(`Packaged management command is stale: ${entry}. Regenerate commands and repackage.`)
+    }
+  }
+  const expectedDefaults = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', ...runtimeProfile.corePlugins].sort()
+  if (JSON.stringify([...defaults].sort()) !== JSON.stringify(expectedDefaults)) {
+    throw new Error(`Core profile contains unexpected default plugins: ${JSON.stringify(defaults)}`)
+  }
+  const layout = JSON.parse(await readFile(resolve(repositoryRoot, 'config/layout/package-layout.json'), 'utf8'))
+  const optional = new Set()
+  for (const entry of await readdir(resolve(repositoryRoot, 'plugins'), { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'wechat') continue
+    const manifest = JSON.parse(await readFile(resolve(repositoryRoot, 'plugins', entry.name, 'package.json'), 'utf8').catch(error => {
+      if (error?.code === 'ENOENT') return '{}'
+      throw error
+    }))
+    if (manifest.name && !runtimeProfile.corePlugins.includes(manifest.name)) optional.add(manifest.name)
+  }
+  for (const name of layout.roots?.dsh ?? []) if (name !== 'dsh-better-sidebar') optional.add(name)
+  for (const name of [
+    '@dsh-external/zotero-harvest', '@dingyi222666/dsh-session-notification',
+    '@changfenhuang/dsh-genui', 'dsh-free-search', 'dsh-zotero',
+  ]) optional.add(name)
+  const includedOptional = [...optional].filter(name => archiveFiles.some(path => path.startsWith(`node_modules/${name}/`)))
+  if (includedOptional.length > 0) throw new Error(`Optional plugins were embedded in the Core ASAR: ${includedOptional.join(', ')}`)
+  const packagedResourceFiles = await listDiskFiles(packaged.resourcesRoot)
+  const optionalResourceRoots = [
+    'skills/', 'extensions/skills/', 'mcp/', 'extensions/mcp/',
+    'extensions/runtimes/', 'extensions/engines/r/', 'extensions/capabilities/biogenie/',
+    'biogenie/', 'bio-tools/', 'ketcher-chemistry/', 'sci/',
+  ]
+  const embeddedResources = packagedResourceFiles.filter(path => optionalResourceRoots.some(prefix => path.startsWith(prefix)))
+  if (embeddedResources.length > 0) {
+    throw new Error(`Independently updateable resource payload was embedded in the Core installer: ${embeddedResources.slice(0, 30).join(', ')}`)
+  }
+  console.log(`Core ASAR verified with ${runtimeProfile.corePlugins.length} ZeroWall Core plugins and ${optional.size} excluded optional packages.`)
+}
+
+async function verifyCoreImports() {
+  const expression = `
+    const load = name => import(import.meta.resolve(name, process.env.ZEROWALL_RUNTIME_ANCHOR));
+    const { KNOWN_SESSION_EVENT_TYPES } = await load('@deepseek-ai/dsh-session');
+    if (!KNOWN_SESSION_EVENT_TYPES.has('zerowall/capabilities/selection')) throw new Error('Built Session catalog is missing legacy ZeroWall history.');
+    await load('@deepseek-ai/dsh-mcp-client');
+    await load('@deepseek-ai/schemastery');
+    for (const name of ${JSON.stringify(runtimeProfile.corePlugins)}) {
+      const module = await load(name);
+      const plugin = module.default ?? module;
+      if (typeof plugin !== 'object' || typeof plugin.apply !== 'function') throw new Error(name + ' did not preserve its Core Cordis plugin object.');
+    }
+  `
+  await runEmbeddedNode([
+    '--import', pathToFileURL(resolve(asarPath, 'runtime', 'runtime-esm-register.mjs')).href,
+    '--experimental-import-meta-resolve', '--input-type=module', '--eval', expression,
+  ], { cwd: packaged.root })
+}
+
 function verifyQuestionComposerBundle() {
   const bundle = readArchiveFile('node_modules/@deepseek-ai/dsh-client-ui-user-questions/lib/client.js').toString('utf8')
   for (const marker of ['data-question-key', 'radio', 'checkbox', 'pending.answer']) {
@@ -555,13 +718,15 @@ async function verifyExternalPolicy() {
   if (forbiddenClaudeFiles.length > 0) {
     throw new Error(`Claude Code runtime found outside ASAR: ${forbiddenClaudeFiles.slice(0, 50).join('\n')}`)
   }
-  const forbiddenSkills = externalFiles.filter(path => path.startsWith('skills/') && (
+  const skillRoots = ['skills/', 'extensions/skills/']
+  const forbiddenSkills = externalFiles.filter(path => skillRoots.some(root => path.startsWith(root)) && (
     /(?:^|\/)(?:__pycache__|tests?|outputs?|rendered|screenshots|test-results)(?:\/|$)/i.test(path)
     || /\.pyc$/i.test(path)
     || /(?:^|\/)(?:academic-ppt-studio|gpt-image2-ppt|journal-club-ppt)(?:\/|$)/i.test(path)
   ))
   if (forbiddenSkills.length > 0) throw new Error(`Forbidden runtime Skill artifacts found:\n${forbiddenSkills.slice(0, 50).join('\n')}`)
-  const legacyPptFiles = externalFiles.filter(path => /(?:^|\/)(?:academic-ppt-studio|gpt-image2-ppt|journal-club-ppt)(?:\/|$)/i.test(path))
+  const legacyPptFiles = externalFiles.filter(path => skillRoots.some(root => path.startsWith(root))
+    && /(?:^|\/)(?:academic-ppt-studio|gpt-image2-ppt|journal-club-ppt)(?:\/|$)/i.test(path))
   if (legacyPptFiles.length > 0) throw new Error(`Legacy PPT Skills are forbidden in the packaged runtime:\n${legacyPptFiles.slice(0, 50).join('\n')}`)
   // 7.1.0 ships the complete local Skills catalog and the scientific runtime
   // resource channels as external files.  The previous 3,000-file gate was
@@ -856,6 +1021,14 @@ async function verifyHostStartup() {
         try {
           await verifyWebBootManifest(probeUrl)
           await verifyPluginInventory(probeUrl)
+          if (coreOnly) {
+            await verifyEventWebSockets(probeUrl)
+            await new Promise(resolvePromise => setTimeout(resolvePromise, 2_000))
+            if (child.exitCode !== null) throw new Error(`Packaged Core Host exited after becoming ready.\n${output.slice(-12_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}`)
+            await verifyWebBootManifest(probeUrl)
+            await verifyPluginInventory(probeUrl)
+            return
+          }
           await verifyZoteroStatus(probeUrl)
           await verifyZoteroAuthorization(probeUrl)
           if (!freeSearchVerified) {
@@ -1006,16 +1179,23 @@ async function verifyPluginInventory(url) {
   if (entries.some(entry => String(entry?.moduleName).startsWith('@daweifu/capability-menu'))) {
     throw new Error('Retired capability-menu package must not be mounted in the Host.')
   }
-  const expected = [
+  const expected = coreOnly ? [...runtimeProfile.corePlugins] : [
     'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications', 'extension-center',
   ].map(name => `@zerowallscience/plugin-${name}`)
-  expected.push('@dsh-external/zotero-harvest', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
+  if (!coreOnly) expected.push('@dsh-external/zotero-harvest', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
   const inactive = expected.filter(name => byModule.get(name)?.enabled !== true || byModule.get(name)?.fiberPhase !== 'active')
   if (inactive.length > 0) throw new Error(`Packaged Host ZeroWall plugins are not active: ${inactive.map(name => `${name}=${JSON.stringify(byModule.get(name))}`).join('; ')}`)
+  if (coreOnly) {
+    const unexpected = entries.filter(entry => typeof entry?.moduleName === 'string'
+      && entry.moduleName.startsWith('@zerowallscience/plugin-')
+      && !runtimeProfile.corePlugins.includes(entry.moduleName)
+      && entry.enabled === true)
+    if (unexpected.length > 0) throw new Error(`Core Host activated optional ZeroWall plugins: ${unexpected.map(entry => entry.moduleName).join(', ')}`)
+  }
 }
 
 async function verifyFreeSearch(url) {
@@ -1209,7 +1389,20 @@ async function verifyWebBootManifest(url) {
   const graph = JSON.parse(match[1])
   const entries = Array.isArray(graph?.entries) ? graph.entries : []
   const ids = new Set(entries.map(entry => entry?.id).filter(id => typeof id === 'string'))
-  const required = [
+  const coreRequired = [
+    '@deepseek-ai/dsh-api-gateway',
+    '@deepseek-ai/dsh-api-session-controller',
+    '@deepseek-ai/dsh-api-workspace-controller',
+    '@deepseek-ai/dsh-client-connection',
+    '@deepseek-ai/dsh-client-ui-settings',
+    '@deepseek-ai/dsh-client-ui-chat',
+    '@deepseek-ai/dsh-client-ui-theme',
+    '@deepseek-ai/dsh-client-locale',
+    '@deepseek-ai/dsh-client-ui-layout',
+    '@deepseek-ai/dsh-client-ui-user-questions',
+    ...await coreClientPluginIds(),
+  ]
+  const required = coreOnly ? coreRequired : [
     '@deepseek-ai/dsh-api-gateway',
     '@deepseek-ai/dsh-api-session-controller',
     '@deepseek-ai/dsh-api-workspace-controller',
@@ -1244,6 +1437,20 @@ async function verifyWebBootManifest(url) {
     const plugin = await hostFetch(pluginUrl, { signal: AbortSignal.timeout(10_000) })
     if (!plugin.ok) throw new Error(`Packaged client plugin ${id} returned HTTP ${plugin.status} at ${pluginUrl.href}: ${await plugin.text()}`)
   }
+}
+
+async function coreClientPluginIds() {
+  const result = []
+  for (const entry of await readdir(resolve(repositoryRoot, 'plugins'), { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const directory = resolve(repositoryRoot, 'plugins', entry.name)
+    const descriptor = await readFile(resolve(directory, 'zerowall.plugin.json'), 'utf8').then(JSON.parse, error => {
+      if (error?.code === 'ENOENT') return undefined
+      throw error
+    })
+    if (descriptor && runtimeProfile.corePlugins.includes(descriptor.name) && typeof descriptor.client === 'string') result.push(descriptor.name)
+  }
+  return result.sort()
 }
 
 
@@ -1346,7 +1553,10 @@ async function verifyDesktopStartup() {
       const boot = window.__DSH_BOOT__
       return Array.isArray(boot?.entries) ? boot.entries.map(entry => entry.id) : []
     })
-    for (const id of [
+    const expectedBootModules = coreOnly ? [
+      '@deepseek-ai/dsh-api-session-controller', '@deepseek-ai/dsh-client-connection',
+      '@deepseek-ai/dsh-client-ui-layout', ...await coreClientPluginIds(),
+    ] : [
       '@deepseek-ai/dsh-api-session-controller', '@deepseek-ai/dsh-client-connection',
       '@deepseek-ai/dsh-client-ui-layout', '@zerowallscience/plugin-base',
       '@zerowallscience/plugin-projects', '@zerowallscience/plugin-account', '@zerowallscience/plugin-images',
@@ -1356,7 +1566,8 @@ async function verifyDesktopStartup() {
       '@zerowallscience/plugin-research',
       'dsh-free-search', 'dsh-zotero',
       '@changfenhuang/dsh-genui',
-    ]) {
+    ]
+    for (const id of expectedBootModules) {
       if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}. Found: ${ids.join(', ')}`)
     }
     try {
@@ -1402,7 +1613,10 @@ async function verifyDesktopStartup() {
     }
     await page.getByRole('button', { name: /^(设置|Settings)$/ }).click()
     const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
-    const settingsNav = settings.locator('nav button')
+    // Only inspect the Settings shell navigation. Extension Center renders a
+    // nested resource-tab <nav>; including its buttons makes the last item
+    // become Python and sends the About check to the wrong section.
+    const settingsNav = settings.locator(':scope > nav button')
     // Settings sections are contributed by plugins after the shell mounts.
     // Wait for the ledger projection before asserting ordering; otherwise a
     // healthy packaged startup can be sampled between the dialog render and
@@ -1417,6 +1631,37 @@ async function verifyDesktopStartup() {
     const settingsNavLabels = (await settingsNav.allInnerTexts()).map(label => label.trim()).filter(Boolean)
     if (!/^(关于|About)$/u.test(settingsNavLabels.at(-1) ?? '')) {
       throw new Error(`About must be the final Settings navigation entry; found ${JSON.stringify(settingsNavLabels)}.`)
+    }
+    if (coreOnly) {
+      const extensionCenter = settings.getByRole('button', { name: /^(扩展中心|Extension Center)$/u })
+      await extensionCenter.waitFor({ state: 'visible', timeout: 30_000 })
+      await extensionCenter.click()
+      await settings.getByRole('heading', { name: /^(扩展中心|Extension Center)$/u }).waitFor({ state: 'visible' })
+      const localChecks = await page.evaluate(async () => {
+        const api = window.zerowallDesktop.resources
+        const before = await api.listJobs()
+        const checks = await Promise.all(['plugin', 'skill', 'mcp'].map(kind => api.check(kind, true)))
+        const after = await api.listJobs()
+        return { before, after, checks }
+      })
+      if (JSON.stringify(localChecks.before) !== JSON.stringify(localChecks.after)) throw new Error('Read-only Core catalog checks created or modified a resource task.')
+      for (const result of localChecks.checks) {
+        if (result.catalogStatus !== 'local' || !Array.isArray(result.resources)) throw new Error(`Core local catalog inspection failed: ${JSON.stringify(result)}`)
+      }
+      await writeFile(resolve(root, 'core-catalog-checks.json'), JSON.stringify(localChecks, null, 2))
+      await page.screenshot({ path: resolve(root, 'core-extension-center.png'), fullPage: true })
+      await settingsNav.last().click()
+      try {
+        await settings.getByRole('heading', { name: 'ZeroWall Science', exact: true }).waitFor({ state: 'visible' })
+      } catch (error) {
+        await page.screenshot({ path: resolve(root, 'core-about-failure.png'), fullPage: true }).catch(() => undefined)
+        await writeFile(resolve(root, 'core-about-failure.txt'), await page.locator('body').innerText().catch(() => ''))
+        throw error
+      }
+      await settings.getByText(desktopManifest.version, { exact: true }).waitFor({ state: 'visible' })
+      await page.screenshot({ path: resolve(root, 'core-version.png'), fullPage: true })
+      console.log(`Packaged Core startup and Extension Center are ready; optional plugins and resources remain profile-managed. Evidence: ${root}`)
+      return
     }
     await settingsNav.last().click()
     await settings.getByRole('heading', { name: 'ZeroWall Science', exact: true }).waitFor({ state: 'visible' })

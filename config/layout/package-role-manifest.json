@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "version": "8.0.7",
+  "roles": {
+    "dsh": { "independentInstall": false, "description": "DSH 外部扩展、适配器和第三方集成；保持原 npm name。" },
+    "support": { "independentInstall": false, "description": "ZeroWall 构建和完整性支持库；不作为领域插件安装。" },
+    "bundles": { "independentInstall": false, "description": "组合声明，只声明组成关系，不复制插件代码。" }
+  },
+  "packages": {
+    "dsh-bundle-core": { "role": "bundles", "composition": ["@zerowallscience/plugin-base", "@zerowallscience/plugin-secrets", "@zerowallscience/plugin-environment", "@zerowallscience/plugin-desktop-compat", "@zerowallscience/plugin-extension-center"] },
+    "dsh-bundle-science": { "role": "bundles", "compositionSource": "packages/bundles/dsh-bundle-science/package.json" }
+  },
+  "migration": { "readLegacy": true, "writeCanonical": false, "deleteLegacy": false }
+}

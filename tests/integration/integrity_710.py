@@ -12,7 +12,7 @@ import weakref
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ROOT / "resources/skills/zerowall-image-dup/scripts"
+SCRIPTS = ROOT / "resources/extensions/skills/zerowall-image-dup/scripts"
 sys.path[:0] = [str(SCRIPTS), str(SCRIPTS / "vendor")]
 
 import cv2

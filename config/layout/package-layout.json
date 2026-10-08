@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "version": "8.0.7",
+  "roots": {
+    "dsh": [
+      "dsh-better-sidebar",
+      "dsh-file-review",
+      "dsh-genui",
+      "dsh-wechat",
+      "dsh-session-notification",
+      "dsh-ssh-ops",
+      "dsh-progressive-tools",
+      "zotero-harvest"
+    ],
+    "support": [
+      "integrity-runtime"
+    ],
+    "bundles": [
+      "dsh-bundle-science",
+      "dsh-bundle-core"
+    ]
+  },
+  "legacyRoot": "packages",
+  "migration": {
+    "readLegacy": true,
+    "writeCanonical": false,
+    "deleteLegacy": false
+  }
+}

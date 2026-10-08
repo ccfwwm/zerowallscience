@@ -152,13 +152,19 @@ export class HarnessRuntime {
       ['Node bootstrap', this.options.nodeEntryPath],
       ...(this.options.nodeResolverPath ? [['Node ESM resolver', this.options.nodeResolverPath] as const] : []),
       ['ZeroWall patch', this.options.dshPatchPath],
-      ['ZeroWall scientific skills', this.options.bundledSkillsPath],
     ] as const) {
       this.writeLog(`[desktop] ${label.toLowerCase()} ${path}`)
       if (!existsSync(path)) {
         this.fail(`${label} was not found: ${path}`)
         return
       }
+    }
+    // Core installers intentionally omit independently updateable Skills.
+    // DSH's filesystem provider treats a missing bundled root as an empty
+    // catalog, so offline Core startup must not depend on optional payloads.
+    this.writeLog(`[desktop] ZeroWall scientific skills ${this.options.bundledSkillsPath}`)
+    if (!existsSync(this.options.bundledSkillsPath)) {
+      this.writeLog('[desktop] optional bundled Skills are not installed; continuing with Core')
     }
 
     await mkdir(launchDirectory, { recursive: true })

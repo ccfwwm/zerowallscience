@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { mountWindowChrome } from './window-chrome.js'
 import type { DesktopClipboardFile, DesktopClipboardImage, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus, McpPythonInfo, PythonPackagePlan, StartupStatus } from '../shared/contracts.js'
-import type { ResourceCheckResult, ResourceJob, ResourceKind } from '../../../plugins/base/src/client/desktop-api.js'
+import type { PythonLayer, PythonLayerCheck, ResourceCheckResult, ResourceJob, ResourceKind } from '../../../plugins/base/src/client/desktop-api.js'
+import type { PythonEnvironmentResponse } from '../../../plugins/base/src/client/desktop-api.js'
 
 contextBridge.exposeInMainWorld('zerowallDesktop', {
   windowControl: (action: 'minimize' | 'toggle-maximize' | 'close' | 'state' | 'quit-startup') => ipcRenderer.invoke('desktop:window-control', action),
@@ -56,6 +57,11 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
   checkMcpPythonPackageUpdates: async (names?: string[]): Promise<McpPythonInfo> => await ipcRenderer.invoke('desktop:mcp-python:check-updates', names) as McpPythonInfo,
   updateMcpPythonPackages: async (names?: string[]): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:mcp-python:update', names) as { taskId: string },
   pythonEnvironment: async (request: Record<string, unknown>): Promise<Record<string, unknown>> => await ipcRenderer.invoke('desktop:python-environment', request) as Record<string, unknown>,
+  pythonLayers: {
+    check: async (layer: PythonLayer): Promise<PythonLayerCheck> => await ipcRenderer.invoke('desktop:python-layer-check', layer) as PythonLayerCheck,
+    update: async (layer: PythonLayer, capabilityId?: string): Promise<PythonEnvironmentResponse> => await ipcRenderer.invoke('desktop:python-layer-update', layer, capabilityId) as PythonEnvironmentResponse,
+    taskStatus: async (taskId: string): Promise<PythonEnvironmentResponse> => await ipcRenderer.invoke('desktop:python-layer-task-status', taskId) as PythonEnvironmentResponse,
+  },
   onMcpEnvironmentStatus: (listener: (status: McpEnvironmentStatus) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: McpEnvironmentStatus) => listener(status)
     ipcRenderer.on('desktop:mcp-environment:status-changed', handler)

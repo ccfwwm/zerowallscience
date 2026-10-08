@@ -1,14 +1,33 @@
 """Regression checks for installed-runtime staging used by release packing."""
 import json
+import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 
 class PackPythonEnvironmentTest(unittest.TestCase):
+    def test_default_mcp_staging_is_scoped_to_the_artifact_build(self):
+        script = Path(__file__).with_name("prepare-python-environment.py")
+        spec = importlib.util.spec_from_file_location("prepare_python_environment", script)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory(prefix="zerowall-stage-test-") as tmp:
+            root = Path(tmp)
+            (root / "package.json").write_text(json.dumps({"version": "8.0.7"}), encoding="utf-8")
+            pointer = root / "artifacts" / "stage" / "8.0.7" / "current.json"
+            pointer.parent.mkdir(parents=True)
+            pointer.write_text(json.dumps({"buildId": "build-from-current"}), encoding="utf-8")
+            with patch.object(module, "ROOT", root), patch.dict(os.environ, {"ZEROWALL_BUILD_ID": "build-explicit"}):
+                self.assertEqual(module.default_mcp_staging(), root / "artifacts/stage/8.0.7/build-explicit/mcp-environment-staging")
+            with patch.object(module, "ROOT", root), patch.dict(os.environ, {}, clear=True):
+                self.assertEqual(module.default_mcp_staging(), root / "artifacts/stage/8.0.7/build-from-current/mcp-environment-staging")
+
     def test_archive_contains_only_shared_python_bootstrap(self):
         with tempfile.TemporaryDirectory(prefix="zerowall-pack-test-") as tmp:
             root = Path(tmp)
@@ -19,12 +38,12 @@ class PackPythonEnvironmentTest(unittest.TestCase):
                 staging / "Python/python312.zip": b"stdlib",
                 staging / "Python/Lib/site-packages/pip/__init__.py": b"pip",
                 staging / "skills/example/SKILL.md": b"stale skill",
-                staging / "resources/python/requirements-base.txt": b"stale dependencies",
+                staging / "resources/extensions/python/requirements-base.txt": b"stale dependencies",
                 staging / "bio-tools/run_server.py": b"mcp",
                 staging / "ketcher-chemistry/server.js": b"ketcher",
                 staging / "sci/dist/mcp.cjs": b"sci",
-                repo / "resources/skills/example/SKILL.md": b"current skill",
-                repo / "resources/python/requirements-base.txt": b"current dependencies",
+                repo / "resources/extensions/skills/example/SKILL.md": b"current skill",
+                repo / "resources/extensions/python/requirements-base.txt": b"current dependencies",
             }
             for path, data in files.items():
                 path.parent.mkdir(parents=True, exist_ok=True)

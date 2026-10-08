@@ -20,8 +20,8 @@ const environment = { ...process.env, DSH_HOME: home, ZEROWALL_USER_DATA_DIR: di
   ZEROWALL_RUNTIME_ANCHOR: pathToFileURL(entry).href,
   ZEROWALL_RESEARCH_DB: join(directory, 'research.sqlite'), ZEROWALL_DISABLE_DEFAULT_MCP: '1',
   ZEROWALL_PYTHON_ROOT: join(directory, 'zerowall-python'),
-  ZEROWALL_BUNDLED_SKILLS: join(stageRoot, 'resources/skills'),
-  DSH_BUNDLED_SKILL_DIR: join(stageRoot, 'resources/skills'), DSH_TELEMETRY_DISABLED: '1', NO_COLOR: '1' }
+  ZEROWALL_BUNDLED_SKILLS: join(stageRoot, 'resources/extensions/skills'),
+  DSH_BUNDLED_SKILL_DIR: join(stageRoot, 'resources/extensions/skills'), DSH_TELEMETRY_DISABLED: '1', NO_COLOR: '1' }
 let child, output = '', bootCount = 0, hostAddress
 const pending = new Map()
 const secrets = new Map()

@@ -332,7 +332,7 @@ function runReview(validation: ScTenifoldValidationResult | undefined, output: s
 }
 function singlecellRunnerPath(): string | undefined {
   const resources = process.env.ZEROWALL_RESOURCES_ROOT?.trim() || process.env.ZEROWALL_PACKAGED_RESOURCES?.trim()
-  const candidates = [resources ? join(resources, 'skills', 'sc-tenifold-knockout', 'scripts', 'run_scTenifoldKnk.R') : undefined, typeof (process as NodeJS.Process & { resourcesPath?: unknown }).resourcesPath === 'string' ? join(String((process as NodeJS.Process & { resourcesPath?: unknown }).resourcesPath), 'skills', 'sc-tenifold-knockout', 'scripts', 'run_scTenifoldKnk.R') : undefined, resolve(process.cwd(), 'resources/skills/sc-tenifold-knockout/scripts/run_scTenifoldKnk.R')]
+  const candidates = [resources ? join(resources, 'skills', 'sc-tenifold-knockout', 'scripts', 'run_scTenifoldKnk.R') : undefined, typeof (process as NodeJS.Process & { resourcesPath?: unknown }).resourcesPath === 'string' ? join(String((process as NodeJS.Process & { resourcesPath?: unknown }).resourcesPath), 'skills', 'sc-tenifold-knockout', 'scripts', 'run_scTenifoldKnk.R') : undefined, resolve(process.cwd(), 'resources/extensions/skills/sc-tenifold-knockout/scripts/run_scTenifoldKnk.R')]
   return candidates.find(path => path !== undefined && existsSync(path))
 }
 async function createProject(ctx: Context, sessionId: string, studyId: string): Promise<string> {

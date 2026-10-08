@@ -81,16 +81,18 @@ export interface McpEnvironmentControllerOptions {
   verifySharedPython?(root: string): Promise<void>
   /** Optional durable diagnostic log. Failures must remain inspectable after the UI closes. */
   diagnosticPath?: string
+  /** Packaged updater worker copied outside ASAR with its small ZIP runtime. */
+  updaterWorkerPath?: string
   /**
    * MCP services and Skills are application resources. They are deliberately
    * outside the small Python bootstrap archive and are resolved from these
    * read-only roots at health-check and launch time.
    */
   bundledAssets?: {
-    bioToolsRoot: string
-    ketcherRoot: string
-    sciRoot: string
-    skillsRoot: string
+    bioToolsRoot?: string
+    ketcherRoot?: string
+    sciRoot?: string
+    skillsRoot?: string
   }
   publish(status: McpEnvironmentStatus): void
 }
@@ -1524,19 +1526,22 @@ async function assertRegularFile(path: string): Promise<void> {
 }
 
 export async function assertEnvironmentFiles(root: string, manifest: McpEnvironmentManifest, bundledAssets?: McpEnvironmentControllerOptions['bundledAssets']): Promise<void> {
-  const bioToolsRoot = bundledAssets?.bioToolsRoot ?? join(root, 'bio-tools')
-  const ketcherRoot = bundledAssets?.ketcherRoot ?? join(root, 'ketcher-chemistry')
-  const sciRoot = bundledAssets?.sciRoot ?? join(root, 'sci')
   const paths = [
     manifest.python.relativeExecutable,
   ].map(path => join(root, path))
-  paths.push(join(bioToolsRoot, 'run_server.py'), join(ketcherRoot, 'server.js'), join(sciRoot, 'dist', 'cli.mjs'), join(sciRoot, 'dist', 'mcp.cjs'), join(sciRoot, 'zerowall-mcp-launcher.cjs'))
+  const assets = bundledAssets === undefined
+    ? { bioToolsRoot: join(root, 'bio-tools'), ketcherRoot: join(root, 'ketcher-chemistry'), sciRoot: join(root, 'sci'), skillsRoot: join(root, manifest.skillsRoot) }
+    : bundledAssets
+  if (assets.bioToolsRoot) paths.push(join(assets.bioToolsRoot, 'run_server.py'))
+  if (assets.ketcherRoot) paths.push(join(assets.ketcherRoot, 'server.js'))
+  if (assets.sciRoot) paths.push(join(assets.sciRoot, 'dist', 'cli.mjs'), join(assets.sciRoot, 'dist', 'mcp.cjs'), join(assets.sciRoot, 'zerowall-mcp-launcher.cjs'))
   await Promise.all(paths.map(assertRegularFile))
   const sitePackages = await lstat(join(root, manifest.python.relativeSitePackages))
   if (!sitePackages.isDirectory() || sitePackages.isSymbolicLink()) throw new Error(`MCP environment Python site-packages directory is invalid: ${join(root, manifest.python.relativeSitePackages)}`)
-  const skills = bundledAssets?.skillsRoot ?? join(root, manifest.skillsRoot)
-  const info = await lstat(skills)
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`MCP environment Skills directory is invalid: ${skills}`)
+  if (assets.skillsRoot) {
+    const info = await lstat(assets.skillsRoot)
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error(`MCP environment Skills directory is invalid: ${assets.skillsRoot}`)
+  }
 }
 
 interface ProcessResult { stdout: string; stderr: string }
@@ -1614,14 +1619,15 @@ export async function verifyMcpEnvironmentHealth(root: string, manifest: McpEnvi
   }
   // The bundled interpreter is usable before the signed science dependency
   // list has been installed. Bio Tools becomes available after that sync.
-  const bioToolsRoot = bundledAssets?.bioToolsRoot ?? join(root, 'bio-tools')
-  const ketcherRoot = bundledAssets?.ketcherRoot ?? join(root, 'ketcher-chemistry')
-  const sciRoot = bundledAssets?.sciRoot ?? join(root, 'sci')
-  if (!manifest.python.bootstrapOnly && manifest.dependencies?.corePackages.some(pkg => pkg.name.toLowerCase() === 'mcp')) {
+  const assets = bundledAssets === undefined
+    ? { bioToolsRoot: join(root, 'bio-tools'), ketcherRoot: join(root, 'ketcher-chemistry'), sciRoot: join(root, 'sci') }
+    : bundledAssets
+  if (assets.bioToolsRoot && !manifest.python.bootstrapOnly && manifest.dependencies?.corePackages.some(pkg => pkg.name.toLowerCase() === 'mcp')) {
+    const bioToolsRoot = assets.bioToolsRoot
     await checkMcpServer(python, [join(bioToolsRoot, 'run_server.py'), 'mcp_bio'], bioToolsRoot)
   }
-  await checkMcpServer(node, [join(ketcherRoot, 'server.js')], ketcherRoot)
-  await checkMcpServer(node, [join(sciRoot, 'dist', 'mcp.cjs')], sciRoot)
+  if (assets.ketcherRoot) await checkMcpServer(node, [join(assets.ketcherRoot, 'server.js')], assets.ketcherRoot)
+  if (assets.sciRoot) await checkMcpServer(node, [join(assets.sciRoot, 'dist', 'mcp.cjs')], assets.sciRoot)
 }
 
 export function selectPythonHealthImports(imports: string[]): string[] {

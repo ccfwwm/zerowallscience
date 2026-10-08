@@ -6,10 +6,11 @@ import { compareVersions } from './resource-catalog.mjs'
 // Profile architecture migrations are deliberately additive.  A desktop
 // upgrade must be able to introduce a new bundled management surface without
 // rebuilding or replacing the user's selected plugin set.
-const PROFILE_ARCHITECTURE = 5
+const PROFILE_ARCHITECTURE = 6
 const PROFILE_MIGRATIONS = [
   { from: 1, to: 2, add: ['@zerowallscience/plugin-extension-center'] },
   { from: 4, to: 5, remove: ['dsh-auto-review'] },
+  { from: 5, to: 6 },
 ]
 
 /** Inspect the packages that will actually shadow the bundled defaults. */
@@ -41,7 +42,7 @@ export async function initializeProfile(home, defaults, bundled = []) {
   let manifest
   let existingManifest = false
   try { manifest = JSON.parse(await readFile(file, 'utf8')); existingManifest = true } catch (error) { if (error.code !== 'ENOENT') throw error }
-  manifest ??= { private: true, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-free-search', 'dsh-file-review'] } } }
+  manifest ??= { private: true, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } } }
   const patchFile = join(directory, 'cordis.patch.yml')
   const patch = await readFile(patchFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
   if (patch === undefined || !patch.trim()) await writeFile(patchFile, '[]\n', { mode: 0o600 })

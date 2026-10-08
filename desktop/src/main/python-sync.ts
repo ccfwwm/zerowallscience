@@ -49,7 +49,8 @@ export class PythonSyncService {
   private async cached(layer: PythonDependencyLayer = 'science'): Promise<PythonDependencyManifest> {
     const value = JSON.parse(await readFile(join(this.directory, this.manifestFile(layer)), 'utf8'))
     const manifest = parsePythonDependencyManifest(value, this.options.keys, this.options.applicationVersion)
-    if ((manifest.layer ?? 'science') !== layer) throw new Error(`缓存清单层级不匹配：需要 ${layer}。`)
+    const declaredLayer = manifest.layer ?? 'science'
+    if (declaredLayer !== layer && !(layer === 'capability' && declaredLayer === 'science')) throw new Error(`缓存清单层级不匹配：需要 ${layer}。`)
     return manifest
   }
   private async bundled(layer: PythonDependencyLayer): Promise<PythonDependencyManifest | undefined> {
@@ -60,7 +61,8 @@ export class PythonSyncService {
       // A resource file with the wrong layer must never be used as the core
       // contract. This also prevents an old science manifest from masquerading
       // as the 42-package startup set.
-      if ((manifest.layer ?? 'science') !== layer) return undefined
+      const declaredLayer = manifest.layer ?? 'science'
+      if (declaredLayer !== layer && !(layer === 'capability' && declaredLayer === 'science')) return undefined
       return manifest
     } catch { return undefined }
   }
@@ -82,7 +84,8 @@ export class PythonSyncService {
     try {
       await report?.({ stage: 'remote-catalog', progress: 15, message: '正在检查签名资源目录。' })
       const remote = await fetchPythonDependencyManifest(layer === 'core' ? (this.options.coreFeedUrl ?? this.options.feedUrl) : this.options.feedUrl, this.options.keys, { fetcher: this.options.fetcher, applicationVersion: this.options.applicationVersion })
-      if ((remote.layer ?? 'science') === layer) candidates.push({ manifest: remote, source: 'remote' })
+      const declaredLayer = remote.layer ?? 'science'
+      if (declaredLayer === layer || (layer === 'capability' && declaredLayer === 'science')) candidates.push({ manifest: remote, source: 'remote' })
       else remoteError = `远程清单层级不匹配：需要 ${layer}，收到 ${remote.layer ?? 'science'}`
     } catch (error) {
       // Invalid signatures and malformed documents are hard failures. Network
@@ -114,7 +117,17 @@ export class PythonSyncService {
       }
     }
     const installedPackageCount = selected.packages.filter(pkg => installed.get(normalizeName(pkg.name)) === pkg.version).length
-    const result = { revision: manifest.revision, manifestRevision: manifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(manifest)), layer, ...(capabilityId ? { capabilityId } : {}), packageCount: selected.packages.length, installedPackageCount, pendingPackageCount: Math.max(0, selected.packages.length - installedPackageCount), pythonVersion: manifest.pythonVersion, environmentVersion: manifest.environmentVersion, changes, checkedAt: new Date().toISOString(), needsRuntime: !info.ready, scienceInstalled: layer === 'science' && selected.packages.length > 0 && changes.length === 0, available: selected.packages.length > 0, resourceAvailability: { layer, available: selected.packages.length > 0, source, packageCount: selected.packages.length, reason: remoteError }, remoteError, lastSyncError: undefined, source }
+    const capabilityCounts = layer === 'core' ? undefined : Object.fromEntries([...new Set(selected.packages.flatMap(pkg => pkg.capabilities))].sort().map(capability => {
+      const packages = selected.packages.filter(pkg => pkg.capabilities.includes(capability))
+      const pending = packages.filter(pkg => installed.get(normalizeName(pkg.name)) !== pkg.version)
+      return [capability, {
+        packageCount: packages.length,
+        installedPackageCount: packages.length - pending.length,
+        pendingPackageCount: pending.length,
+        changes: pending.map(pkg => ({ name: pkg.name, ...(installed.has(normalizeName(pkg.name)) ? { from: installed.get(normalizeName(pkg.name)) } : {}), to: pkg.version, required: pkg.required, capabilities: pkg.capabilities })),
+      }]
+    }))
+    const result = { revision: manifest.revision, manifestRevision: manifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(manifest)), layer, ...(capabilityId ? { capabilityId } : {}), packageCount: selected.packages.length, installedPackageCount, pendingPackageCount: Math.max(0, selected.packages.length - installedPackageCount), ...(capabilityCounts ? { capabilityCounts } : {}), pythonVersion: manifest.pythonVersion, environmentVersion: manifest.environmentVersion, changes, checkedAt: new Date().toISOString(), needsRuntime: !info.ready, scienceInstalled: layer === 'science' && selected.packages.length > 0 && changes.length === 0, available: selected.packages.length > 0, resourceAvailability: { layer, available: selected.packages.length > 0, source, packageCount: selected.packages.length, reason: remoteError }, remoteError, lastSyncError: undefined, source }
     await this.save('status.json', result)
     await report?.({ stage: 'complete', progress: 99, message: `依赖检查完成：${installedPackageCount}/${selected.packages.length} 已安装，${result.pendingPackageCount} 待安装。`, completedPackages: selected.packages.length, totalPackages: selected.packages.length })
     return result

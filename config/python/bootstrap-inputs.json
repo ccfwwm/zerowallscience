@@ -1,6 +1,6 @@
 {
   "environmentVersion": "1.5.1",
-  "applicationVersion": "8.0.6",
+  "applicationVersion": "8.0.7",
   "pythonVersion": "3.12.10",
   "pipVersion": "26.2.1",
   "manifestBaseUrl": "https://zerowall.chengxunkeji.cn/stable/zerowall-python-bootstrap/windows-x64",
@@ -22,8 +22,8 @@
       "science"
     ],
     "dependencyManifests": [
-      "resources/python/core-dependency-manifest.json",
-      "resources/python/dependency-manifest.json"
+      "resources/extensions/python/core-dependency-manifest.json",
+      "resources/extensions/python/dependency-manifest.json"
     ]
   },
   "pythonHealth": {

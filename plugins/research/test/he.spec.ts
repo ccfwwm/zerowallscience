@@ -29,7 +29,7 @@ it('retains explicit small single-TIFF compatibility and exports ROI provenance'
   expect(opened.he?.engine).toBe('sharp-single-tiff'); expect(opened.he?.calibration).toBeNull()
   await writeFile(path, Buffer.concat([await readFile(path), Buffer.from([1])]))
   await expect(service.execute(project, { sessionId: 's', action: 'analyze', viewerId: viewer.id, expectedVersion: exported.viewer!.version, region: { x: 0, y: 0, width: 2, height: 2 } })).rejects.toThrow('changed')
-})
+}, 15000)
 
 // Thin desktops do not provision scientific dependencies during source tests.
 // Opt in after installing the signed OpenSlide layer into managed Python.

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import JSZip from 'jszip'
-import { canonicalManifest, extractZipInWorker, mcpEnvironmentDiagnostic, McpEnvironmentController, pythonCoreRequirements, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
+import { assertEnvironmentFiles, canonicalManifest, extractZipInWorker, mcpEnvironmentDiagnostic, McpEnvironmentController, pythonCoreRequirements, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
 
 const roots: string[] = []
 const keys = generateKeyPairSync('ed25519')
@@ -62,6 +62,15 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('validates the Python generation without requiring separately managed MCP and Skills payloads', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-python-core-only-')); roots.push(root)
+    const manifest = signedSharedManifest()
+    await mkdir(dirname(join(root, manifest.python.relativeExecutable)), { recursive: true })
+    await writeFile(join(root, manifest.python.relativeExecutable), 'python')
+    await mkdir(join(root, manifest.python.relativeSitePackages), { recursive: true })
+    await expect(assertEnvironmentFiles(root, manifest, {})).resolves.toBeUndefined()
+  })
+
   it('checks an old pip-only generation against the signed desktop core without downgrading newer generations', () => {
     const installed = signedSharedManifest()
     installed.dependencies = { corePackages: [{ name: 'pip', requiredVersion: '25.0' }] }

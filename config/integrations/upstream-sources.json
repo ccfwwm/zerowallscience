@@ -1,5 +1,5 @@
 {
-  "version": "8.0.6",
+  "version": "8.0.7",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
@@ -12,7 +12,7 @@
     "tag": "v0.24.1",
     "upstreamCommit": "a2751cfbde2dd425b8150737574bc6d1d57f73b8",
     "commit": "a2751cfbde2dd425b8150737574bc6d1d57f73b8",
-    "source": "packages/dsh-better-sidebar"
+    "source": "packages/dsh/dsh-better-sidebar"
   },
   "fileReviewTab": {
     "repository": "https://github.com/left0ver/dsh-file-review.git",
@@ -20,7 +20,7 @@
     "commit": "856f761a38fb364704a8a9d98d88d50a554f11af",
     "version": "0.8.5",
     "license": "MIT",
-    "source": "packages/dsh-file-review"
+    "source": "packages/dsh/dsh-file-review"
   },
   "zotero": {
     "repository": "https://github.com/Vncntvx/dsh-zotero.git",
@@ -34,7 +34,7 @@
     "commit": "7e3274d1e504dabe56f2873fc15bf7779c985d30",
     "version": "0.9.6",
     "license": "MIT",
-    "source": "packages/dsh-wechat"
+    "source": "packages/dsh/dsh-wechat"
   },
   "genui": {
     "repository": "https://github.com/omdsh-dev/dsh-genui.git",
@@ -42,7 +42,7 @@
     "version": "0.11.2-preview.1",
     "license": "MIT",
     "package": "@changfenhuang/dsh-genui",
-    "source": "packages/dsh-genui",
+    "source": "packages/dsh/dsh-genui",
     "tag": "v0.11.2-preview.1"
   },
   "academicResearchSkills": {
@@ -52,7 +52,7 @@
     "license": "CC-BY-NC-4.0",
     "adapterRepository": "https://github.com/nullptr-DZF/dsh-academic-research-skills.git",
     "adapterCommit": "a6859a3752cfe582a166ca283c10d3a45e1f9c9c",
-    "source": "resources/skills"
+    "source": "resources/extensions/skills"
   },
   "progressiveTools": {
     "repository": "https://github.com/everclear077/dsh-progressive-tools.git",
@@ -60,7 +60,7 @@
     "commit": "779895f5d6b520922ee40690f91070436fc8a49c",
     "version": "0.6.0",
     "license": "MIT",
-    "source": "packages/dsh-progressive-tools",
+    "source": "packages/dsh/dsh-progressive-tools",
     "runtime": "0.1.7-rc.2"
   },
   "sshOps": {
@@ -68,25 +68,25 @@
     "commit": "2e376e49d06e02f5bc43e3f93d99f2d4a75bb353",
     "version": "0.3.13",
     "license": "MIT",
-    "source": "packages/dsh-ssh-ops"
+    "source": "packages/dsh/dsh-ssh-ops"
   },
   "zotero-harvest": {
     "repository": "https://github.com/Fisfzy/zotero-harvest.git",
     "version": "0.2.0",
     "commit": "9635a4f27ba186f414d3ba23042bd12ee176cddc",
     "license": "MIT",
-    "source": "packages/zotero-harvest"
+    "source": "packages/dsh/zotero-harvest"
   },
   "researchIntegrity": {
     "manusift": {
       "repository": "https://github.com/WuP1ao0/ManuSift",
       "commit": "2622d024ad27791196eb86bad51a9fe7bb0bb268",
-      "source": "resources/skills/zerowall-image-dup/scripts/vendor/manusift"
+      "source": "resources/extensions/skills/zerowall-image-dup/scripts/vendor/manusift"
     },
     "imageRegionWorker": {
       "repository": "https://github.com/PetCT/dsh-Bio-image-dup-check",
       "commit": "7051eb55f611a46db3d9cfa1768e56c7d1a91553",
-      "source": "packages/integrity-runtime/hash-worker.mjs"
+      "source": "packages/support/integrity-runtime/hash-worker.mjs"
     }
   },
   "univerOffice": {

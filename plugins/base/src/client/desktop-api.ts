@@ -119,6 +119,27 @@ export interface ResourceCheckItem {
 }
 export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; catalogStatus?: 'checked' | 'unavailable' | 'local' | 'unpublished'; error?: string }
 export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
+export type PythonLayer = 'core' | 'science' | 'capability'
+export interface PythonLayerChange { name: string; from?: string; to: string; required: boolean; capabilities: string[] }
+export interface PythonLayerCheck {
+  revision: string
+  manifestRevision: string
+  manifestSha256: string
+  layer: PythonLayer
+  capabilityId?: string
+  packageCount: number
+  installedPackageCount: number
+  pendingPackageCount: number
+  capabilityCounts?: Record<string, { packageCount: number; installedPackageCount: number; pendingPackageCount: number; changes: PythonLayerChange[] }>
+  pythonVersion: string
+  environmentVersion: string
+  changes: PythonLayerChange[]
+  checkedAt: string
+  needsRuntime: boolean
+  available: boolean
+  source: 'remote' | 'bundled' | 'cache'
+  remoteError?: string
+}
 
 export interface ZeroWallDesktopApi {
   restart?(): Promise<boolean>
@@ -146,6 +167,11 @@ export interface ZeroWallDesktopApi {
   checkMcpPythonPackageUpdates?(names?: string[]): Promise<McpPythonInfo>
   updateMcpPythonPackages?(names?: string[]): Promise<{ taskId: string }>
   pythonEnvironment?(request: { action: 'status' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'; requestId: string; taskId?: string; layer?: 'core' | 'science' | 'capability'; packageSpec?: string; capabilityId?: string; planId?: string; manifestRevision?: string; mirrorUrl?: string; runtimeRoot?: string; expectedRevision?: number; confirm?: boolean }): Promise<PythonEnvironmentResponse>
+  pythonLayers?: {
+    check(layer: PythonLayer): Promise<PythonLayerCheck>
+    update(layer: PythonLayer, capabilityId?: string): Promise<PythonEnvironmentResponse>
+    taskStatus(taskId: string): Promise<PythonEnvironmentResponse>
+  }
   pauseMcpEnvironment?(): Promise<McpEnvironmentStatus>
   rollbackMcpEnvironment?(): Promise<{ taskId: string }>
   previewMcpPythonPackages?(names: string[]): Promise<PythonPackagePlan>

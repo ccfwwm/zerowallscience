@@ -20,7 +20,7 @@ describe('ZeroWall capabilities Remote', () => {
   it('ships the editable presentation route and keeps the upstream Univer contract explicit', async () => {
     const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS
     const previousUser = process.env.ZEROWALL_USER_SKILLS
-    process.env.ZEROWALL_BUNDLED_SKILLS = resolve(import.meta.dirname, '../../../resources/skills')
+    process.env.ZEROWALL_BUNDLED_SKILLS = resolve(import.meta.dirname, '../../../resources/extensions/skills')
     process.env.ZEROWALL_USER_SKILLS = await mkdtemp(join(tmpdir(), 'zerowall-presentation-skill-'))
     const ctx = new Context()
     try {
@@ -47,7 +47,7 @@ describe('ZeroWall capabilities Remote', () => {
   it('loads the versioned research Skills through the real filesystem parser', async () => {
     const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS
     const previousUser = process.env.ZEROWALL_USER_SKILLS
-    process.env.ZEROWALL_BUNDLED_SKILLS = resolve(import.meta.dirname, '../../../resources/skills')
+    process.env.ZEROWALL_BUNDLED_SKILLS = resolve(import.meta.dirname, '../../../resources/extensions/skills')
     process.env.ZEROWALL_USER_SKILLS = await mkdtemp(join(tmpdir(), 'zerowall-research-skill-versions-'))
     const ctx = new Context()
     try {

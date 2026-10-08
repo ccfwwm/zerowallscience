@@ -16,7 +16,7 @@ for (const path of selected) {
   await cp(join(root, path), join(destination, path))
   copied++
 }
-await cp(join(stageRoot, 'resources/skills'), join(destination, 'skills'), { recursive: true, dereference: true })
+await cp(join(stageRoot, 'resources/extensions/skills'), join(destination, 'skills'), { recursive: true, dereference: true })
 await mkdir(join(destination, 'mcp'), { recursive: true })
 await cp(join(root, 'config/catalogs/mcp'), join(destination, 'mcp/templates'), { recursive: true })
 await cp(join(stageRoot, 'resources/sci'), join(destination, 'mcp/scimaster'), { recursive: true, dereference: true })

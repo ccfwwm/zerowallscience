@@ -1,11 +1,12 @@
 import { EventEmitter } from 'node:events'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ children: [] as any[], calls: [] as any[], held: new Set<string>(), missing: false, coreIncomplete: false, nextPid: 100 }))
+const state = vi.hoisted(() => ({ children: [] as any[], calls: [] as any[], forks: [] as any[], held: new Set<string>(), missing: false, coreIncomplete: false, nextPid: 100 }))
 vi.mock('node:child_process', () => ({
-  fork: () => {
+  fork: (...args: any[]) => {
+    state.forks.push(args)
     const child = new EventEmitter() as any
     child.pid = ++state.nextPid; child.stderr = { resume() {} }
     child.kill = () => setTimeout(() => child.emit('exit', 1), 20)
@@ -21,7 +22,26 @@ vi.mock('node:child_process', () => ({
 }))
 import { PythonUpdaterService } from '../src/main/python-updater-service.js'
 const roots: string[] = []
-afterEach(async () => { state.children.length = 0; state.calls.length = 0; state.held.clear(); state.missing = false; state.coreIncomplete = false; for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
+afterEach(async () => { state.children.length = 0; state.calls.length = 0; state.forks.length = 0; state.held.clear(); state.missing = false; state.coreIncomplete = false; for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
+
+it('adds packaged updater modules to the child lookup path and preserves existing Node paths', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-broker-module-path-')); roots.push(root)
+  const previousNodePath = process.env.NODE_PATH
+  const existingNodePath = join(root, 'existing-modules')
+  process.env.NODE_PATH = existingNodePath
+  try {
+    const updaterWorkerPath = join(root, 'resources', 'python-updater', 'python-updater-worker.js')
+    const service = new PythonUpdaterService({ root, updaterWorkerPath, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
+    await expect(service.pythonInfo()).resolves.toMatchObject({ ready: true })
+    expect(state.forks).toHaveLength(1)
+    expect(state.forks[0][2].env.NODE_PATH).toBe([join(dirname(updaterWorkerPath), 'modules'), existingNodePath].join(delimiter))
+    service.stop()
+  } finally {
+    if (previousNodePath === undefined) delete process.env.NODE_PATH
+    else process.env.NODE_PATH = previousNodePath
+  }
+})
+
 it('continues an immediately paused job under the same durable task id', async () => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-')); roots.push(root)
   const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })

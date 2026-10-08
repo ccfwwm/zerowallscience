@@ -1,4 +1,4 @@
-import { DEFAULT_GROUPS } from '../../packages/dsh-progressive-tools/src/defaults.ts'
+import { DEFAULT_GROUPS } from '../../packages/dsh/dsh-progressive-tools/src/defaults.ts'
 const groups = [
   ['attachment-reading', '附件信息、阅读、总结和比较；本地 Office 单元格解析与分页读取，PDF/OCR 使用 MinerU', ['read_uploaded_file', 'extract_uploaded_file', 'materialize_uploaded_file', 'mineru_*']],
   ['presentation-authoring', '制作、改版和编辑科研演示文稿：视觉样张、生图资源、可编辑 Univer 排版及检查导出', ['presentation_*', 'generate_image', 'edit_image', 'univer_*']],

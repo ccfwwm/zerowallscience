@@ -464,8 +464,17 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       const bundles = [...ids].filter(id => !selection.removed.has(id))
       return { kind, checkedAt: new Date().toISOString(), bundles, dependencies: manifest.dependencies ?? {}, resources, catalogStatus, ...(catalogError ? { error: catalogError } : {}) }
     }
-    const installed = kind === 'skill' ? await callHost('skill.list', []) : await callHost('mcp.list', [])
-    const skillSources = kind === 'skill' ? await callHost('skill.sources', []) : undefined
+    // Core profiles may not have the optional Skills/MCP domain provider yet.
+    // Catalog browsing must remain available so users can install it. Preserve
+    // real Host/IPC errors; only the explicit absent-service response is empty.
+    let installed = [], skillSources, domainAvailable = true
+    try {
+      installed = kind === 'skill' ? await callHost('skill.list', []) : await callHost('mcp.list', [])
+      skillSources = kind === 'skill' ? await callHost('skill.sources', []) : undefined
+    } catch (error) {
+      if (error.message !== 'Requested plugin service is unavailable') throw error
+      domainAvailable = false
+    }
     const local = installed.map(item => ({ item, id: kind === 'mcp' ? item.serverName : item.name }))
     const resources = []
     for (const { item, id } of local) {
@@ -481,7 +490,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (resources.some(item => item.id === identity)) continue
       resources.push({ id: identity, version: entry.version, source: 'catalog', signed: true, catalogSigned: true, restartRequired: entry.restartRequired, rollbackSupported: entry.rollbackSupported })
     }
-    return { kind, checkedAt: new Date().toISOString(), resources, catalogStatus, ...(catalogError ? { error: catalogError } : {}) }
+    return { kind, checkedAt: new Date().toISOString(), resources, catalogStatus, domainAvailable, ...(catalogError ? { error: catalogError } : {}) }
   }
   async function rollbackMcp(id) {
     if (!/^[a-zA-Z0-9._-]{1,100}$/.test(id) || id === '.' || id === '..') throw new Error('Invalid MCP resource identity')

@@ -8,7 +8,7 @@ import { createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
-import * as ProgressiveTools from '../../../packages/dsh-progressive-tools/src/index.ts'
+import * as ProgressiveTools from '../../../packages/dsh/dsh-progressive-tools/src/index.ts'
 import { researchToolConfig } from '../../../tools/integration/research-tool-config.mjs'
 
 const cases = [
@@ -32,7 +32,7 @@ const cases = [
 ]
 it.each(cases)('loads %s and dispatches its bound tool %s', async (skill, target) => {
   const ctx = new Context(); await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime)
-  const skillText = await readFile(resolve(import.meta.dirname, '../../../resources/skills', skill!, 'SKILL.md'), 'utf8')
+  const skillText = await readFile(resolve(import.meta.dirname, '../../../resources/extensions/skills', skill!, 'SKILL.md'), 'utf8')
   expect(skillText).not.toContain('search_mcp_tools')
   const register = (name: string, execute: () => Promise<string>) => ctx.tools.register(defineTool({ name, description: name, parameters: name === 'skill' ? { name: { type: 'string' } } : {}, output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] }, execute }))
   register('skill', async () => skillText)

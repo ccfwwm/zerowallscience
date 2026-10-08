@@ -6,35 +6,29 @@ import type { PythonUpdaterService } from './python-updater-service.js'
 export type PythonCoreStartupResult =
   | { state: 'runtime-unavailable'; status: McpEnvironmentStatus }
   | { state: 'sync-running'; taskId: string }
-  | { state: 'sync-started'; taskId: string }
+  | { state: 'sync-paused'; taskId: string }
   | { state: 'core-ready'; info: McpPythonInfo }
   | { state: 'inventory-unavailable'; info?: McpPythonInfo }
 
 /**
- * First-run orchestration for the small Python bootstrap and its signed core
- * dependency layer. This runs outside app launch and returns as soon as the
- * durable 42-package task has been queued.
+ * Read-only startup inspection for the optional Python generation. Existing
+ * interrupted tasks remain paused; an empty or outdated environment waits
+ * for an explicit user action in the Python environment UI.
  */
 export async function ensurePythonCoreAtStartup(
-  updater: Pick<PythonUpdaterService, 'autoUpdate' | 'pythonCoreInfo' | 'resumeAutomaticCoreOperation'>,
-  api: Pick<PythonEnvironmentApi, 'request' | 'persistRuntimeSummary' | 'resumeCoreSyncTask'>,
+  updater: Pick<PythonUpdaterService, 'checkForUpdates' | 'pythonCoreInfo'>,
+  api: Pick<PythonEnvironmentApi, 'request' | 'persistRuntimeSummary'>,
   makeRequestId: () => string = () => randomUUID(),
 ): Promise<PythonCoreStartupResult> {
-  // autoUpdate restores updater receipts and installs the thin Python + pip
-  // runtime when absent. Its ready-runtime path is a local check only; remote
-  // update-feed requests are scheduled separately after core dependencies.
-  const status = await updater.autoUpdate()
+  // The worker's check method reads the signed manifest only. autoUpdate is
+  // reserved for explicit dependency operations that may bootstrap Python.
+  const status = await updater.checkForUpdates()
   const saved = await api.request({ action: 'status', requestId: makeRequestId() })
   const savedTask = saved.task as PythonDependencyTask | undefined
   if (savedTask?.layer === 'core') {
     if (savedTask.state === 'queued' || savedTask.state === 'running') return { state: 'sync-running', taskId: savedTask.taskId }
     if (savedTask.state === 'interrupted') {
-      if (status.phase === 'paused' && !updater.resumeAutomaticCoreOperation(savedTask.underlyingTaskId)) {
-        return { state: 'runtime-unavailable', status }
-      }
-      if (status.phase !== 'ready' && status.phase !== 'manual' && status.phase !== 'paused') return { state: 'runtime-unavailable', status }
-      const resumed = await api.resumeCoreSyncTask(savedTask.taskId)
-      if (resumed?.taskId) return { state: 'sync-running', taskId: String(resumed.taskId) }
+      return { state: 'sync-paused', taskId: savedTask.taskId }
     }
   }
   if (status.phase !== 'ready' && status.phase !== 'manual') return { state: 'runtime-unavailable', status }
@@ -45,9 +39,5 @@ export async function ensurePythonCoreAtStartup(
   await api.persistRuntimeSummary(info)
   if (!info.ready) return { state: 'inventory-unavailable', info }
   if (info.coreReady === true) return { state: 'core-ready', info }
-
-  const queued = await api.request({ action: 'sync', layer: 'core', confirm: true, requestId: makeRequestId() })
-  const taskId = typeof queued.taskId === 'string' ? queued.taskId : (queued.task as PythonDependencyTask | undefined)?.taskId
-  if (!taskId) throw new Error('Python 核心依赖同步没有创建可追踪的后台任务。')
-  return { state: 'sync-started', taskId }
+  return { state: 'inventory-unavailable', info }
 }

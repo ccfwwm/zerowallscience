@@ -1,13 +1,18 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const root = path.resolve(__dirname, '../..')
-const { stage, packages: packageOutput } = require('../../tools/build/paths.cjs').buildPaths(root)
+const buildPaths = require('../../tools/build/paths.cjs').buildPaths(root)
+const { stage, packages: packageOutput } = buildPaths
+const resourcePath = (...parts) => {
+  const { preferred, legacy } = buildPaths.resource(...parts)
+  return fs.existsSync(preferred) ? preferred : legacy
+}
 const applicationVersion = require(path.join(root, 'package.json')).version
-const pythonBootstrapDir = path.join(stage, 'python-base-3.12.10')
-const bundledPythonResources = process.env.ZEROWALL_BUNDLE_PYTHON === '1' && fs.existsSync(path.join(pythonBootstrapDir, 'latest.json'))
-  && fs.existsSync(path.join(pythonBootstrapDir, 'zerowall-python-windows-x64-3.12.10.zip'))
 
 const common = {
+  // The verified runtime closure supplies node_modules explicitly. Returning
+  // false tells electron-builder to skip workspace dependency collection too.
+  beforeBuild: async () => false,
   beforePack: async () => {
     const { pathToFileURL } = require('node:url')
     const { resolve } = require('node:path')
@@ -18,10 +23,6 @@ const common = {
   asar: true,
   asarUnpack: [
     'package.json',
-    '**/python-updater-worker.js',
-    '**/chunks/mcp-environment-*.js',
-    '**/yauzl/**/*',
-    '**/pend/**/*',
     '**/*.node',
     '**/*.dll',
     '**/*.exe',
@@ -39,13 +40,16 @@ const common = {
     '**/@deepseek-ai/dsh-host-directory-picker-native/lib/worker.cjs',
     '**/ripgrep*/**/*',
   ],
-  npmRebuild: false,
-  electronDist: 'node_modules/electron/dist',
+  // The hook above stops rebuilding before it starts; npmRebuild=false would
+  // bypass that hook and unexpectedly enable the dependency collector again.
+  npmRebuild: true,
+  electronDist: path.join(root, 'desktop/node_modules/electron/dist'),
   compression: 'normal',
   electronLanguages: ['en-US', 'zh-CN', 'zh-TW'],
   directories: {
+    app: path.join(stage, 'electron-app'),
     output: packageOutput,
-    buildResources: '../resources/brand/app-icons',
+    buildResources: resourcePath('brand', 'app-icons'),
   },
   files: [
     { from: fs.realpathSync(path.join(__dirname, '../out')), to: 'out', filter: ['**/*'] },
@@ -59,47 +63,31 @@ const common = {
     // requires that package boundary for bare package imports.
     { from: path.join(stage, 'runtime/node_modules'), to: 'node_modules', filter: ['**/*'] },
     {
-      from: 'build',
+      from: path.join(root, 'desktop/build'),
       to: 'runtime',
       filter: ['harness-node-entry.mjs', 'runtime-esm-register.mjs', 'runtime-esm-loader.mjs'],
     },
   ],
   extraResources: [
-    { from: '../resources/biogenie', to: 'biogenie', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
-    { from: '../resources/python/dependency-manifest.json', to: 'python/dependency-manifest.json' },
-    { from: '../resources/python/core-dependency-manifest.json', to: 'python/core-dependency-manifest.json' },
-    // When the release job prepared the signed bootstrap, ship it in the
-    // installer under the stable names consumed by the desktop host. This
-    // makes first-run recovery independent of a network feed. Clean source
-    // builds omit the optional ~1 GiB archive and keep the verified feed path.
-    ...(bundledPythonResources ? [
-      // electron-builder resolves `from` relative to desktop's projectDir,
-      // while the bootstrap is produced under desktop/dist.  Using ../dist
-      // here silently looked in the repository-level dist directory and left
-      // packaged installs without their offline recovery source.
-      { from: path.join(pythonBootstrapDir, 'latest.json'), to: 'python/base-manifest.json' },
-      { from: path.join(pythonBootstrapDir, 'zerowall-python-windows-x64-3.12.10.zip'), to: 'python/base-runtime.zip' },
-    ] : []),
-    { from: '../resources/mcp/bio-tools', to: 'bio-tools', filter: ['**/*', '!**/__pycache__/**', '!**/*.pyc'] },
-    { from: '../resources/mcp/ketcher-chemistry', to: 'ketcher-chemistry', filter: ['server.js', 'widget/**', 'LICENSE*', 'UPSTREAM.json'] },
-    { from: path.join(stage, 'resources/sci'), to: 'sci', filter: ['dist/**', 'zerowall-mcp-launcher.cjs', 'package.json', 'LICENSE*', 'README.md'] },
+    { from: path.join(stage, 'python-updater'), to: 'python-updater', filter: ['**/*'] },
+    { from: resourcePath('python', 'dependency-manifest.json'), to: 'python/dependency-manifest.json' },
+    { from: resourcePath('python', 'core-dependency-manifest.json'), to: 'python/core-dependency-manifest.json' },
     { from: path.join(stage, 'resources/zerowall-core.patch.yml'), to: 'zerowall.patch.yml' },
-    { from: 'build/splash.html', to: 'splash.html' },
-    { from: path.join(stage, 'resources/skills'), to: 'skills', filter: ['**/*'] },
-    { from: '../profiles/generated', to: 'profiles', filter: ['*.yml'] },
-    { from: '../THIRD_PARTY_NOTICES.md', to: 'licenses/THIRD_PARTY_NOTICES.md' },
-    { from: '../config/deepseek-harness/upstream.json', to: 'licenses/deepseek-harness.version.json' },
+    { from: path.join(root, 'desktop/build/splash.html'), to: 'splash.html' },
+    { from: path.join(root, 'profiles/generated'), to: 'profiles', filter: ['*.yml'] },
+    { from: path.join(root, 'THIRD_PARTY_NOTICES.md'), to: 'licenses/THIRD_PARTY_NOTICES.md' },
+    { from: path.join(root, 'config/deepseek-harness/upstream.json'), to: 'licenses/deepseek-harness.version.json' },
     { from: path.join(stage, 'runtime/build-receipt.json'), to: 'licenses/build-receipt.json' },
     { from: path.join(stage, 'commands'), to: 'commands', filter: ['**/*'] },
-    { from: '../resources/brand/app-icons/icon.png', to: 'icon.png' },
-    { from: '../resources/brand/zerowall/zerowall-icon.png', to: 'zerowall-icon.png' },
+    { from: path.join(resourcePath('brand', 'app-icons'), 'icon.png'), to: 'icon.png' },
+    { from: path.join(resourcePath('brand', 'zerowall'), 'zerowall-icon.png'), to: 'zerowall-icon.png' },
   ],
   win: {
-    icon: '../resources/brand/app-icons/icon.ico',
+    icon: path.join(resourcePath('brand', 'app-icons'), 'icon.ico'),
     target: [{ target: 'nsis', arch: ['x64'] }],
   },
   mac: {
-    icon: '../resources/brand/app-icons/icon.icns',
+    icon: path.join(resourcePath('brand', 'app-icons'), 'icon.icns'),
     category: 'public.app-category.productivity',
     hardenedRuntime: true,
     gatekeeperAssess: false,

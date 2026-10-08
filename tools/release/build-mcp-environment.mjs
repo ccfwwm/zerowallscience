@@ -1,4 +1,4 @@
-import { releaseRoot } from '../build/paths.mjs'
+import { releaseRoot, stageRoot } from '../build/paths.mjs'
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto'
 import { copyFile, cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { execFile, spawn } from 'node:child_process'
@@ -8,6 +8,7 @@ import { rootCertificates } from 'node:tls'
 import { join, resolve } from 'node:path'
 import { patchSciMasterMcp } from './scimaster-compat.mjs'
 import { applySourceDistributions, assertCompletePartition, normalizePackageName, parseDirectRequirements, parseLockedPackages, partitionLock, scienceManifestDocument, scienceManifestName, signDocument } from './python-layer-split.mjs'
+import { resourceSource } from '../build/layout.mjs'
 const execFileAsync = promisify(execFile)
 
 async function copyOwnedStaging(source, target) {
@@ -29,7 +30,9 @@ async function copyOwnedStaging(source, target) {
 }
 
 const root = resolve(import.meta.dirname, '../..')
-const staging = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_STAGING ?? join(root, 'mcp-environment-staging'))
+const pythonRoot = await resourceSource('python')
+const skillsRoot = await resourceSource('skills')
+const staging = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_STAGING ?? join(stageRoot, 'mcp-environment-staging'))
 const pythonVersion = process.env.ZEROWALL_MCP_PYTHON_VERSION ?? '3.12.10'
 const environmentVersion = (process.env.ZEROWALL_MCP_ENVIRONMENT_VERSION ?? process.env.ZEROWALL_MCP_ENVIRONMENT_REVISION ?? pythonVersion).trim()
 const output = resolve(process.env.ZEROWALL_MCP_ENVIRONMENT_OUTPUT ?? join(releaseRoot, `python-base-${environmentVersion}`))
@@ -100,7 +103,7 @@ async function checkMcpServer(command, args, cwd) {
 
 // Normalize pre-7.1 staging once at the build boundary. Windows treats
 // ``Python`` and ``python`` as the same directory, so dependency metadata
-// moves under ``resources/python`` before the interpreter is created.
+// moves under ``resources/extensions/python`` before the interpreter is created.
 const legacyResourcePython = join(staging, 'python')
 const resourcePython = join(staging, 'resources', 'python')
 if (!await stat(resourcePython).then(value => value.isDirectory(), () => false) && await stat(legacyResourcePython).then(value => value.isDirectory(), () => false) && !await stat(join(legacyResourcePython, 'python.exe')).then(value => value.isFile(), () => false)) {
@@ -131,14 +134,14 @@ if (!await stat(sharedSitePackages).then(value => value.isDirectory(), () => fal
 await stat(join(sharedPythonRoot, 'python.exe'))
 await stat(join(staging, 'bio-tools', 'run_server.py'))
 await stat(join(staging, 'ketcher-chemistry', 'server.js'))
-await stat(join(root, 'resources', 'skills'))
+await stat(skillsRoot)
 const sciMcpPath = join(staging, 'sci', 'dist', 'mcp.cjs')
 await stat(sciMcpPath)
 
-const finalLockPath = join(root, 'resources', 'python', 'requirements-windows.lock')
+const finalLockPath = join(pythonRoot, 'requirements-windows.lock')
 const finalLock = await readFile(finalLockPath, 'utf8')
 const lockedPackages = parseLockedPackages(finalLock)
-const installPackages = applySourceDistributions(lockedPackages, await readFile(join(root, 'resources/python/requirements-research.lock'), 'utf8'), JSON.parse(await readFile(join(root, 'resources/python/source-distributions.json'), 'utf8')))
+const installPackages = applySourceDistributions(lockedPackages, await readFile(join(pythonRoot, 'requirements-research.lock'), 'utf8'), JSON.parse(await readFile(join(pythonRoot, 'source-distributions.json'), 'utf8')))
 const pythonExecutable = join(sharedPythonRoot, 'python.exe')
 const sitePackages = join(sharedPythonRoot, 'Lib', 'site-packages')
 const buildPython = process.env.ZEROWALL_MCP_BUILD_PYTHON ?? (process.platform === 'win32' ? 'py' : 'python3')
@@ -160,8 +163,8 @@ const installed = JSON.parse(inventoryResult.stdout)
 // multi-gigabyte archive re-download. BASE is the closure of the base profile
 // plus the interpreter bootstrap over installed `Requires-Dist` edges, and the
 // remaining lock entries are the science layer.
-const layerPolicy = JSON.parse(await readFile(join(root, 'resources', 'python', 'science-layer-policy.json'), 'utf8'))
-const baseRequirements = await readFile(join(root, 'resources', 'python', layerPolicy.baseRequirementsFile), 'utf8')
+const layerPolicy = JSON.parse(await readFile(join(pythonRoot, 'science-layer-policy.json'), 'utf8'))
+const baseRequirements = await readFile(join(pythonRoot, layerPolicy.baseRequirementsFile), 'utf8')
 const edgeResult = await execFileAsync(pythonExecutable, ['-s', '-B', '-c', `import importlib.metadata as m,json,re,sys
 from packaging.requirements import Requirement
 edges={}
@@ -204,7 +207,7 @@ const sciencePackages = split.science
 if (!installed.pip) throw new Error('The staging runtime is missing its pip bootstrap distribution.')
 await execFileAsync(pythonExecutable, ['-s', '-B', '-c', 'import sys; assert sys.version_info[:3] == (3,12,10)'], { windowsHide: true })
 if (!baseOnly && !bootstrapOnly) await execFileAsync(pythonExecutable, ['-s', '-B', join(root, 'tools/release/audit-skill-dependencies.py'), '--site-packages', sitePackages, '--verification', verificationPath], { cwd: root, windowsHide: true, maxBuffer: 16 * 1024 * 1024 })
-const skillAudit = JSON.parse(await readFile(join(root, 'resources/python/skill-dependencies.json'), 'utf8'))
+const skillAudit = JSON.parse(await readFile(join(pythonRoot, 'skill-dependencies.json'), 'utf8'))
 // All compatibility edits happen in an owned candidate copy. The source may
 // be the user's currently running interpreter and must remain read-only.
 const prunedStaging = await mkdtemp(join(tmpdir(), 'zerowall-base-layer-'))
@@ -333,7 +336,7 @@ const manifest = {
   applicationVersion: JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
   schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'zerowall-python', platform: 'win32', architecture: 'x64',
   archiveUrl: `${baseUrl}/${environmentVersion}/${archiveName}`, archiveSha256, archiveSize,
-  python: { version: pythonVersion, relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages', modules: shippedModules, ...(bootstrapOnly ? { bootstrapOnly: true } : {}), layers: ['base', 'science'], dependencyManifests: ['resources/python/requirements-windows.lock', 'resources/python/requirements-base.txt', 'resources/python/skill-dependency-policy.json'], supportsZeroWallTool: true },
+  python: { version: pythonVersion, relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages', modules: shippedModules, ...(bootstrapOnly ? { bootstrapOnly: true } : {}), layers: ['base', 'science'], dependencyManifests: ['resources/extensions/python/requirements-windows.lock', 'resources/extensions/python/requirements-base.txt', 'resources/extensions/python/skill-dependency-policy.json'], supportsZeroWallTool: true },
   // Every package in the signed dependency manifest is installed into the
   // one shared Python site-packages directory.  Keep health metadata as a
   // complete import list; there is no second or optional Python layer.

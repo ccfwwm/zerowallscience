@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "version": "8.0.7",
+  "corePlugins": [
+    "@zerowallscience/plugin-base",
+    "@zerowallscience/plugin-secrets",
+    "@zerowallscience/plugin-environment",
+    "@zerowallscience/plugin-desktop-compat",
+    "@zerowallscience/plugin-extension-center"
+  ],
+  "corePackageDependencies": [
+    "dsh-better-sidebar"
+  ],
+  "coreRuntimeSeeds": [
+    "@deepseek-ai/dsh-web-frontend",
+    "@deepseek-ai/dsh-subagent-codex",
+    "@earendil-works/pi-ai",
+    "dsh-dream-skin",
+    "pptxgenjs",
+    "yauzl"
+  ],
+  "optionalPluginPolicy": {
+    "bundled": false,
+    "install": "profile",
+    "update": "signed-catalog"
+  }
+}

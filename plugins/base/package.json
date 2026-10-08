@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "0.1.9",
-  "description": "ZeroWall Science base domain plugin (desktop 8.0.6).",
+  "version": "0.1.10",
+  "description": "ZeroWall Science base domain plugin (desktop 8.0.7).",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./src/host/index.ts",

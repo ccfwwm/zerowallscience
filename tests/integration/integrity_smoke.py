@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 import fitz
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / 'resources/skills/zerowall-image-dup/scripts/zerowall_integrity.py'
+SCRIPT = ROOT / 'resources/extensions/skills/zerowall-image-dup/scripts/zerowall_integrity.py'
 
 def invoke(*args):
     completed = subprocess.run([sys.executable, str(SCRIPT), *map(str,args)], capture_output=True, text=True, encoding='utf-8', timeout=300)

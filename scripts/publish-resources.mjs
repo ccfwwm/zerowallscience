@@ -34,7 +34,7 @@ for (const kind of ['plugin', 'skill', 'mcp', 'python']) {
     let source = records.find(record => record.id === entry.id && record.version === entry.version)?.path
     if (!source) source = entry.kind === 'skill' ? join(releaseRoot, 'skills', entry.id, entry.version, entry.id + '.tgz')
       : entry.id === 'scimaster' ? join(releaseRoot, 'mcp/scimaster', entry.version, 'scimaster.tgz')
-      : entry.id === 'science-dependencies' ? join(root, 'resources/python/dependency-manifest.json')
+      : entry.id === 'science-dependencies' ? join(root, 'resources/extensions/python/dependency-manifest.json')
       : resolve(root, JSON.parse(await readFile(join(root, `config/catalogs/${kind}-catalog.json`), 'utf8')).resources.find(resource => resource.id === entry.id)?.path ?? '')
     if ((await stat(source)).size !== entry.size || await fileDigest(source) !== entry.sha256) throw new Error(`Resource artifact mismatch: ${entry.id}`)
     assets.set(key, { key, path: source, id: entry.id, version: entry.version, kind: entry.kind })

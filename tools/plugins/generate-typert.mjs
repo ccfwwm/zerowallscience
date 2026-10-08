@@ -5,7 +5,15 @@ const { WorkspaceTypertGenerator } = await import('../../deepseek-harness/packag
 
 const root = resolve(import.meta.dirname, '../..')
 const pluginsRoot = resolve(root, 'plugins')
-const packageRoots = [pluginsRoot, resolve(root, 'packages')]
+// Workspace packages are grouped under the 8.0.7 layout. Keep the scan
+// explicit so nested DSH/support/bundle packages participate in generation
+// without treating arbitrary artifact directories as packages.
+const packageRoots = [
+  pluginsRoot,
+  resolve(root, 'packages/dsh'),
+  resolve(root, 'packages/support'),
+  resolve(root, 'packages/bundles'),
+]
 const desktopManifest = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
 const baseManifest = JSON.parse(await readFile(resolve(pluginsRoot, 'base/package.json'), 'utf8'))
 const runtimePackages = new Set([
@@ -72,7 +80,7 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
       remotePackages.push(manifest.name)
       continue
     }
-    if (rootDir === resolve(root, 'packages') && await hasRemoteArtifact(packageRoot)) {
+    if (rootDir !== pluginsRoot && await hasRemoteArtifact(packageRoot)) {
       remotePackages.push(manifest.name)
       continue
     }

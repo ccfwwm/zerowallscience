@@ -11,9 +11,9 @@ def main():
     parser.add_argument('--work', required=True)
     args = parser.parse_args()
     work = Path(args.work).resolve()
-    audit = json.loads((ROOT/'resources/python/skill-dependencies.json').read_text('utf-8'))
+    audit = json.loads((ROOT/'resources/extensions/python/skill-dependencies.json').read_text('utf-8'))
     verification = json.loads((work/'verification.json').read_text('utf-8'))
-    policy = json.loads((ROOT/'resources/python/skill-dependency-policy.json').read_text('utf-8'))
+    policy = json.loads((ROOT/'resources/extensions/python/skill-dependency-policy.json').read_text('utf-8'))
     output = work/'reports'
     output.mkdir(exist_ok=True)
     lines = ['# Python 3.12.10 / ZeroWall 共享科研环境 Skills 覆盖报告', '',
@@ -62,7 +62,7 @@ def main():
     (output/'functional-verification.md').write_text('\n'.join(lines)+'\n','utf-8')
     for name in ['verification.json','client-verification.json','wheel-inventory.json','public-verification.json']:
         if (work/name).exists(): (output/name).write_bytes((work/name).read_bytes())
-    (output/'requirements-windows.lock').write_bytes((ROOT/'resources/python/requirements-windows.lock').read_bytes())
+    (output/'requirements-windows.lock').write_bytes((ROOT/'resources/extensions/python/requirements-windows.lock').read_bytes())
     public = work/'public-verification.json'
     if public.exists():
         release=json.loads(public.read_text('utf-8'))
