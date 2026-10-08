@@ -49,6 +49,12 @@
 - SHA-256：`4568068a6bd48e8f1d692228a47efcb75db089522a20180258e5c3fd4bed6873`
 - `pnpm verify:package`：通过
 - `pnpm smoke:host --offline-network`：通过
-- `pnpm smoke:electron`：18/18 通过（日志 `artifacts/logs/8.0.8/electron-8.0.8-final-rerun2.log`）
+- `pnpm smoke:electron`：最终 build 再验收 18/18 通过（2026-10-09 03:08 开始，197.46 秒）；此前回归日志仍保留于 `artifacts/logs/8.0.8/electron-8.0.8-final-rerun2.log`。
 
-七牛公网校验、GitHub Release 下载核对和正式发布 receipt 在发布动作完成后追加；清理仍暂停。
+七牛 325 个不可变资源对象（37 插件、281 Skills、2 MCP、1 Python 加 4 个 catalog）和 4 个签名指针已经完成 stage/promote/verify；桌面 6 个公开对象经 `pnpm release:verify:stable` 全部 HTTP 200，大小和 SHA-256 匹配本地。
+
+[七牛安装器](https://zerowall.chengxunkeji.cn/stable/releases/8.0.8/zerowall-science-8.0.8-win-x64.exe) 和 [GitHub v8.0.8](https://github.com/ccfwwm/zerowallscience/releases/tag/v8.0.8) 已公开。GitHub 的安装器、blockmap、latest.yml 和版本 metadata 均已完整下载、重新计算 SHA-256，与本地及七牛一致。
+
+源码发布提交 `9624d2619813e8d2dc3cefd466225adbeeda334f`，`v8.0.8` 指向该提交。安装器在提交前由父提交 `fc77ce52507aab751925f9d0cec1a392af56306f` 加本次工作树改动构建，manifest 保留 `source.clean=false`，没有将其声称为 clean HEAD 构建。后续验收文档提交不改安装器或发布标签。
+
+公开收据：`artifacts/release/8.0.8/publication/qiniu-resources-public.json`、`qiniu-desktop-public.json` 和 `artifacts/verification/8.0.8/github-public/hash-comparison.json`。清理仍暂停。
