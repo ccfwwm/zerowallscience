@@ -10,9 +10,11 @@
 | --- | --- |
 | 应用版本 | `8.0.7` |
 | 集成基线 | `main`，8.0.6 发布提交 `1e76a16e87ee53da9270e750673a8572447d5517` |
-| 8.0.7 架构工作分支 | `codex/8.0.7-modular`，从上述基线创建 |
+| 8.0.7 架构工作分支 | `codex/8.0.7-modular`，从上述基线创建，已合并并推送到 `main`；对应 Codex worktree 已归档 |
 | 8.0.7 本地 Windows 安装包 | `artifacts/packages/8.0.7/windows-x64/zerowall-science-8.0.7-win-x64.exe`；当前 manifest 标明源码树非 clean |
-| 8.0.7 发布状态 | 独立资源目录已发布；桌面安装器和 GitHub Release 尚未发布 |
+| 8.0.7 发布状态 | 独立资源目录、桌面安装器和 Stable 指针已发布至七牛并通过公网校验；[GitHub v8.0.7 Release](https://github.com/ccfwwm/zerowallscience/releases/tag/v8.0.7) 已公开，四项资产已下载复核 |
+| 8.0.7 发布标签 | `v8.0.7` 指向 `f5d04dc0dafd468809ba8eef35e2f9eb2027045a`；后续文档提交不改变发布资产 |
+| 8.0.7 安装器收据 | build ID `1791439688519-5aba5d34`，229,670,236 字节，SHA-256 `78b1bcb9613ac8b5f2eaf349c13c59ceac575b425587c7d2b0f94ab2370302f7` |
 | DSH 子模块 | `86b6740d0e671cee0b3fd0168de484c0efbf46ea` |
 | DSH 分支 | `zerowall/reviewer-history-opaque` |
 | DSH 标签 | `dsh-v0.2.0-rc.2` |
