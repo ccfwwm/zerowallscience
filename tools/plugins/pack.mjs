@@ -101,8 +101,10 @@ const currentRecordsPath = join(releaseRoot, 'plugin-packages.json')
 const currentReceiptsPath = join(releaseRoot, 'immutable-package-receipt.json')
 if (selectedPlugin) {
   const prior = await readFile(currentRecordsPath, 'utf8').then(JSON.parse, () => [])
-  const replaced = new Set(records.map(record => `${record.id}@${record.version}`))
-  await writeFile(currentRecordsPath, JSON.stringify([...prior.filter(record => !replaced.has(`${record.id}@${record.version}`)), ...records], null, 2))
+  // A feed advertises the current version for each plugin. Keep historical
+  // archives in the content cache, not ahead of the new version in this list.
+  const replaced = new Set(records.map(record => record.id))
+  await writeFile(currentRecordsPath, JSON.stringify([...prior.filter(record => !replaced.has(record.id)), ...records], null, 2))
   const priorReceipts = await readFile(currentReceiptsPath, 'utf8').then(JSON.parse, () => [])
   await writeFile(currentReceiptsPath, JSON.stringify([...priorReceipts, ...immutableReceipts], null, 2) + '\n')
 } else {

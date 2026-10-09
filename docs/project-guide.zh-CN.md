@@ -98,7 +98,7 @@ pnpm dsh:verify
 pnpm release:metadata
 ```
 
-当前版本说明放在 `docs/release-notes-<version>.md`。历史版本只保留发布说明和必要的公开收据，不在工作树累积一次性验收目录；Windows 安装器、stage、临时验证和日志应在发布校验后按精确版本路径清理。
+当前版本说明放在 `docs/release-notes-<version>.md`。历史版本保留发布说明、公开收据和供增量打包复用的原始插件 tarball，不在工作树累积一次性验收目录；Windows 安装器、stage、临时验证和日志应在发布校验后按精确版本路径清理。有效的 `artifacts/cache/`、`artifacts/dev/`、`scripts/env/` 和签名私钥保留。
 
 ## 7. 七牛云与 GitHub 发布
 
@@ -141,8 +141,24 @@ GitHub 验证要确认 tag 指向发布 commit、Release 不是 draft/prerelease
 
 修改单个插件、Skill、MCP 或 Python 层时使用对应的 `plugin:*` 或 `resource:*` 命令，不触发完整 Electron 构建。正式产物只写入 `artifacts/`，构建收据和锁保证并发安全。清理前先运行 `pnpm artifacts:gc --dry-run`；受保护目录、当前 stage、回滚 generation、发布收据、用户数据和 `%SystemDrive%` 异常目录不会由 GC 处理。
 
+插件迭代先修改该插件源码及自己的 semver，按实际依赖关系更新需要同步变更的 manifest/profile；桌面版本无需跟随递增。以 `plugins/files` 为例，在主目录执行相关类型与功能测试后：
+
+```powershell
+pnpm plugin:pack files
+$env:ZEROWALL_RESOURCE_PRIVATE_KEY_FILE = Join-Path (Get-Location) 'scripts/env/resource-stable-4-private.pem'
+$env:ZEROWALL_RESOURCE_KEY_ID = 'stable-4'
+$env:ZEROWALL_RESOURCE_BASE_URL = 'https://zerowall.chengxunkeji.cn/stable'
+node tools/release/generate-resource-catalogs.mjs --kind plugin
+node scripts/publish-resources.mjs stage --kind plugin
+# 完成新插件的隔离安装、功能和回滚验收后再更新指针：
+node scripts/publish-resources.mjs promote --kind plugin
+node scripts/publish-resources.mjs verify --kind plugin
+```
+
+`plugin:pack` 会构建所选插件；其他插件沿用已校验的原始归档。`--kind plugin` 不读取 Skills 的 stage，只生成和发布插件 feed，保留 Skills/MCP/Python 目录与桌面 `latest.yml`。发布收据分别写入 `qiniu-resources-plugin-stage.json` 和 `qiniu-resources-plugin-public.json`；不带 `--kind` 的完整资源发布继续使用原有收据。
+
 ## 8.0.9 完整离线 profile
 
-Core ASAR 与完整功能的离线默认 profile 分开构建。`pnpm build` 依次准备 Core、`offline-profile/modules`、默认 Skills/MCP、独立 tarball、catalog 和签名 receipt；普通 JS/JSON 资源收敛到 `profile-runtime.asar`，需要物理路径的 Office worker 和原生库按规则展开。`pnpm package:stable:win` 消费已验证 stage，使用新 build ID 重新绑定签名。正式 build 使用内容指纹和输出哈希任务图，普通插件后续可独立构建、打包和上传，无需同步提升桌面版本。
+Core ASAR 与完整功能的离线默认 profile 分开构建。`pnpm build` 依次准备 Core、`offline-profile/modules`、默认 Skills/MCP、独立 tarball、catalog 和签名 receipt；普通 JS/JSON 资源收敛到 `profile-runtime.asar`，需要物理路径的 Office worker 和原生库按规则展开。`pnpm package:stable:win` 先执行增量 build 装配新 stage，再校验运行时并生成安装器。正式 build 使用内容指纹和输出哈希任务图，普通插件后续可独立构建、打包和上传，无需同步提升桌面版本。
 
 扩展资源列表和远端检测严格分离：`resources.list`、`pythonLayers.listLocal` 只读本地；点击检查更新才调用 `check`。桌面版本通过 ZeroWall 的 DSH 构建 wrapper 注入 `DSH_CLIENT_VERSION`；CLI `dsh --version` 继续显示独立 DSH 核心版本。

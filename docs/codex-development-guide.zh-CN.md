@@ -11,7 +11,7 @@
 | 应用版本 | `8.0.9` |
 | 8.0.9 Windows x64 安装包 | `316,401,650` 字节，SHA-256 `a2200357281410897bd1a9f7f4702742599cb4b004a8f35acdfd4d4f8e344ced`，build ID `1791561463413-f0f9c239` |
 | 8.0.9 发布状态 | Windows 安装器、37 个插件、281 个 Skills、2 个 MCP 和 1 个 Python 目录已发布至七牛 Stable 并完成公网校验；未创建 GitHub Release |
-| 集成基线 | `main`，8.0.6 发布提交 `1e76a16e87ee53da9270e750673a8572447d5517` |
+| 集成基线 | 8.0.9 从 `d7d8f579357f5fec20773425d5ae9430ea5e7d4e` 开发，实现提交 `d4738fbee0778e0d0bae495b1bcdc2ac75e63c6d` 已合并到 `main` |
 | 8.0.7 架构工作分支 | `codex/8.0.7-modular`，从上述基线创建，已合并并推送到 `main`；对应 Codex worktree 已归档 |
 | 8.0.7 本地 Windows 安装包 | `artifacts/packages/8.0.7/windows-x64/zerowall-science-8.0.7-win-x64.exe`；当前 manifest 标明源码树非 clean |
 | 8.0.7 发布状态 | 独立资源目录、桌面安装器和 Stable 指针已发布至七牛并通过公网校验；[GitHub v8.0.7 Release](https://github.com/ccfwwm/zerowallscience/releases/tag/v8.0.7) 已公开，四项资产已下载复核 |
@@ -24,7 +24,7 @@
 | 8.0.6 Stable 安装包 | `artifacts/packages/8.0.6/windows-x64/` |
 | 8.0.6 发布状态 | 以 `artifacts/release/8.0.6/publication/` 收据、七牛公开校验和 GitHub `v8.0.6` Release 为准 |
 
-8.0.4 和 8.0.5 的历史安装包继续保留；8.0.6 使用新的不可变路径。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖或伪造哈希。资源签名保留 `stable-3` 验签兼容，并由 `stable-4` 为新发布的目录和依赖清单签名；私钥只保存在被 Git 忽略的 `scripts/env/`，严禁进入源码仓库或插件总仓库。
+七牛历史版本使用不可变路径，清理本地安装器和 stage 不删除远端发布。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖或伪造哈希。资源签名保留 `stable-3` 验签兼容，并由 `stable-4` 为新发布的目录和依赖清单签名；私钥只保存在被 Git 忽略的 `scripts/env/`，严禁进入源码仓库或插件总仓库。
 
 用户指定的模型、推理强度、生图模型、协议和参数必须保持不变。开发任务不因为测试方便而自动切换模型、降低推理级别或增加替代路由。
 
@@ -215,7 +215,7 @@ zws python status
 
 8.0.7 新增 `config/layout/resource-layout.json`、`package-layout.json` 和 `package-role-manifest.json`。8.0.9 继续使用这些布局，解析器先尝试 `resources/extensions/*`、`resources/cases`、`resources/branding` 与 `packages/{dsh,support,bundles}`，再回退旧路径；在所有生成器和消费者完成验证前，不要手工删除或复制旧目录。
 
-增量入口是 `pnpm build:changed`、`pnpm plugin:build <id>`、`pnpm plugin:pack <id>`、`pnpm package:build <id>`、`pnpm resource:build skill|mcp|python <id-or-layer>`。Windows Stable 打包先验证当前 runtime stage 的新鲜度，将已验证的 runtime closure 复制到新 build ID，再单独构建桌面和安装器；它不隐式运行完整 `pnpm build`。运行时输入过期时，先运行完整构建再打包。每项收据包含输入文件哈希、lockfile、DSH commit、依赖版本、输出、build ID 和失败原因。`pnpm artifacts:gc --dry-run` 默认只读；只有核对候选清单后才使用 `--apply`。
+增量入口是 `pnpm build:changed`、`pnpm plugin:build <id>`、`pnpm plugin:pack <id>`、`pnpm package:build <id>`、`pnpm resource:build skill|mcp|python <id-or-layer>`。Windows Stable 打包先执行增量 `pnpm build`，检查全部组件指纹和输出哈希，用有效缓存装配新的 build ID，再验证 runtime stage 的新鲜度并生成安装器。`pnpm build:full` 显式强制重建；单个插件迭代只使用对应的 `plugin:*` 命令。每项收据包含实际依赖闭包指纹、DSH commit、输出哈希、build ID、耗时和重建原因。`pnpm artifacts:gc --dry-run` 默认只读；只有核对候选清单后才使用 `--apply`。
 
 GC 不遍历任何 `node_modules` 目录；候选树包含嵌套依赖目录时保留整棵树。只有超过保留期且不被收据引用的候选项才计算 SHA-256。删除前重新校验内容和嵌套依赖保护，即使 dry-run 后只新增了一个空的 `node_modules`，也必须拒绝删除。
 
@@ -229,7 +229,7 @@ architecture 7 通过 candidate profile、事务 journal、真实 Host 健康检
 
 扩展中心四组独立显示，本地读取上限 5 秒，人工检测每组上限 15 秒；请求去重、底层超时、关闭后和过期结果保护同时生效。已安装版本、是否缺包、用户启用选择、实际 Host 激活、固定版本必须分开。Python 解释器就绪不等于 science/capability 已安装。某组挂起或不可用不阻塞其他组，不清空已有结果。
 
-8.0.8 验收不能使用 Core smoke 代替完整科研功能测试。`pnpm smoke:electron` 执行真实隔离 Electron；`verify:package` 同时检查原始 Core ASAR 与验签后的离线闭包，保留 Office/Zotero/原生依赖等检查。功能基线和证据见 [8.0.6 到 8.0.8 功能对照](feature-parity-8.0.8.md)。本轮用户明确要求直接在 main 目录开发，清理暂停；不要另外创建 worktree 或删除旧包目录、凭据和历史产物。
+验收不能使用 Core smoke 代替完整科研功能测试。`pnpm smoke:electron` 执行真实隔离 Electron；`verify:package` 同时检查原始 Core ASAR 与验签后的离线闭包，保留 Office/Zotero/原生依赖等检查。历史功能基线见 [8.0.6 到 8.0.8 功能对照](feature-parity-8.0.8.md)，8.0.9 发布和性能记录见 [8.0.9 发布说明](release-notes-8.0.9.md)。后续直接在主目录开发；已发布的临时版本产物按用户要求清理，凭据、用户数据、有效缓存和原始插件归档保留。
 
 ## 7. 版本和兼容性
 
@@ -347,6 +347,8 @@ node scripts/publish-resources.mjs verify
 ```
 
 `stage` 验证所有不可变对象；`promote` 只更新资源 catalog 指针，不更新桌面 `latest.yml`。遇到 `Public size or SHA-256 differs`、签名不可信、同版本对象冲突或 catalog 仍为 `localOnly` 时立即停止。先比较本地和远端事实，再递增资源 semver、重新生成正式 catalog，并重新执行隔离安装验收。
+
+只更新插件时，先运行 `pnpm plugin:pack <目录 id>`，再给目录生成及 `stage|promote|verify` 命令加上 `--kind plugin`。这样不需要完整 Skills stage，其他资源 feed 保留；分类型发布使用自己的 stage/public 收据，不能拿完整发布的收据代替。正式签名变量和完整示例见 [项目指南](project-guide.zh-CN.md#809-增量构建与清理)。
 
 GitHub Release 的 tag 必须指向实际发布提交，Release 必须为非 draft、非 prerelease，资产状态为 `uploaded`。GitHub 与七牛使用相同资源字节和 manifest；GitHub 发布成功不能替代七牛公开下载校验。
 

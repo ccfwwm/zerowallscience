@@ -8,7 +8,9 @@ import { fileDigest, signCatalog, verifyCatalog } from './resource-catalog.mjs'
 import { deterministicArchive } from './deterministic-archive.mjs'
 import { historicalResources, preserveImmutableResource } from './immutable-resource.mjs'
 import { resourceSource } from '../build/layout.mjs'
+import { resourcePublicationScope } from './resource-publication-scope.mjs'
 
+const { kinds } = resourcePublicationScope(process.argv.slice(2))
 const destination = join(releaseRoot, 'catalogs')
 const catalogGeneration = `${contract.buildId}-${Date.now()}`
 await mkdir(destination, { recursive: true })
@@ -35,7 +37,7 @@ if (configured) {
 }
 const baseUrl = process.env.ZEROWALL_RESOURCE_BASE_URL?.replace(/\/$/, '')
 const localOnly = !baseUrl
-const records = JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8'))
+const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')) : []
 const resourceVersions = JSON.parse(await readFile(join(root, 'config/catalogs/resource-versions.json'), 'utf8'))
 async function entry({ id, version, path, kind, key, metadata = {} }) {
   const size = (await stat(path)).size
@@ -48,14 +50,14 @@ const plugins = await Promise.all(records.map(record => entry({ ...record, kind:
 const skills = []
 const mcpServers = []
 const immutableResources = []
-const histories = new Map(await Promise.all(['skill', 'mcp'].map(async kind => [kind, await historicalResources(releaseRoot, kind)])))
+const histories = new Map(await Promise.all(kinds.filter(kind => ['skill', 'mcp'].includes(kind)).map(async kind => [kind, await historicalResources(releaseRoot, kind)])))
 async function archiveResource(kind, id, version, source, path) {
   await deterministicArchive(source, path)
   const previous = histories.get(kind).get(id + '@' + version)
   if (previous) immutableResources.push({ kind, id, version, ...await preserveImmutableResource(path, previous.path, previous.sha256) })
 }
 const sciDirectory = join(stageRoot, 'resources/sci')
-if (await stat(join(sciDirectory, 'dist/mcp.cjs')).catch(() => undefined)) {
+if (kinds.includes('mcp') && await stat(join(sciDirectory, 'dist/mcp.cjs')).catch(() => undefined)) {
   const version = '0.3.15-zws.2'
   const directory = join(releaseRoot, 'mcp', 'scimaster', version)
   await mkdir(directory, { recursive: true })
@@ -67,7 +69,7 @@ if (await stat(join(sciDirectory, 'dist/mcp.cjs')).catch(() => undefined)) {
   } }))
 }
 const skillsRoot = join(stageRoot, 'resources/extensions/skills')
-for (const name of await readdir(skillsRoot)) {
+for (const name of kinds.includes('skill') ? await readdir(skillsRoot) : []) {
   const source = join(skillsRoot, name)
   if (!(await stat(source)).isDirectory() || !await stat(join(source, 'SKILL.md')).catch(() => undefined)) continue
   const version = resourceVersions.skill[name] ?? '0.1.0'
@@ -78,6 +80,7 @@ for (const name of await readdir(skillsRoot)) {
   skills.push(await entry({ id: name, version, path, kind: 'skill', key: `skills/${name}/${version}/${name}.tgz` }))
 }
 for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp', mcpServers], ['python', []]]) {
+  if (!kinds.includes(kind)) continue
   // MCP templates and Python archives are supplied explicitly. Empty feeds
   // advertise no update; they never invent a downloadable or compatible pack.
   const source = JSON.parse(await readFile(join(root, `config/catalogs/${kind}-catalog.json`), 'utf8'))
@@ -102,5 +105,5 @@ for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp',
   await writeFile(join(destination, `${kind}-latest.json`), JSON.stringify(pointer, null, 2))
 }
 await writeFile(join(destination, 'verification-keys.json'), JSON.stringify(keys, null, 2))
-await writeFile(join(releaseRoot, 'immutable-resource-receipt.json'), JSON.stringify(immutableResources, null, 2))
-console.log(`Verified catalogs: ${plugins.length} packages, ${skills.length} Skills; localOnly=${localOnly}`)
+if (kinds.some(kind => ['skill', 'mcp'].includes(kind))) await writeFile(join(releaseRoot, 'immutable-resource-receipt.json'), JSON.stringify(immutableResources, null, 2))
+console.log(`Verified catalogs (${kinds.join(', ')}): ${plugins.length} packages, ${skills.length} Skills; localOnly=${localOnly}`)

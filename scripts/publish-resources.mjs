@@ -4,16 +4,18 @@ import { fileURLToPath } from 'node:url'
 import { root, contract, releaseRoot } from '../tools/build/paths.mjs'
 import { openQiniuStore } from '../tools/release/qiniu-store.mjs'
 import { verifyCatalog, verifySignedDocument, fileDigest } from '../tools/release/resource-catalog.mjs'
+import { resourcePublicationScope } from '../tools/release/resource-publication-scope.mjs'
 
 const mode = process.argv[2] ?? 'stage'
 if (!['stage', 'promote', 'verify'].includes(mode)) throw new Error('Usage: node scripts/publish-resources.mjs stage|promote|verify')
+const { kinds, receiptSuffix } = resourcePublicationScope(process.argv.slice(3))
 const store = await openQiniuStore(root)
 const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
 const output = join(releaseRoot, 'publication')
 await mkdir(output, { recursive: true })
 const assets = new Map(), pointers = [], feeds = []
-const records = JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8'))
-for (const kind of ['plugin', 'skill', 'mcp', 'python']) {
+const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')) : []
+for (const kind of kinds) {
   const path = join(releaseRoot, 'catalogs', `${kind}-catalog.json`)
   const document = verifyCatalog(JSON.parse(await readFile(path, 'utf8')), keys, { local: false })
   if (document.localOnly || document.applicationVersion !== contract.version) throw new Error('Wrong release catalog')
@@ -42,7 +44,7 @@ for (const kind of ['plugin', 'skill', 'mcp', 'python']) {
   feeds.push({ kind, count: document.resources.length, keyId: document.signature.keyId, catalogKey })
   pointers.push({ key: `stable/catalogs/${kind}-latest.json`, path: pointerPath })
 }
-const receiptPath = join(output, 'qiniu-resources-stage.json')
+const receiptPath = join(output, `qiniu-resources${receiptSuffix}-stage.json`)
 const staged = []
 if (mode === 'stage') {
   let n = 0
@@ -62,6 +64,6 @@ if (mode === 'stage') {
   }
   const pointerReceipts = []
   for (const asset of pointers) pointerReceipts.push(await store.verify(asset))
-  await writeFile(join(output, 'qiniu-resources-public.json'), JSON.stringify({ applicationVersion: contract.version, feeds, immutableAssets: saved.assets, pointers: pointerReceipts, verifiedAt: new Date().toISOString() }, null, 2))
+  await writeFile(join(output, `qiniu-resources${receiptSuffix}-public.json`), JSON.stringify({ applicationVersion: contract.version, feeds, immutableAssets: saved.assets, pointers: pointerReceipts, verifiedAt: new Date().toISOString() }, null, 2))
 }
 console.log(`Resource ${mode} complete: ${assets.size} immutable objects, ${pointers.length} signed pointers`)
