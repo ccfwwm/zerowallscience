@@ -25,6 +25,10 @@
 
 发布后按用户要求清理本地安装器、stage、临时验证和日志；公开发布收据保留在主目录 `artifacts/release/8.0.9/publication/`，签名 catalog 和校验后的原始插件 tarball 保留供后续增量打包复用。代码实现提交 `d4738fbee0778e0d0bae495b1bcdc2ac75e63c6d` 已合并到 `main`；安装包记录的是打包当时的基线 HEAD 和未提交源码状态，后续提交与清理不改写发布资产。
 
+后续发布工具已增加 `--kind plugin`，可以单独生成和发布插件 feed，无需完整 Skills stage；23 项发布工具测试通过。工作方式已更新为直接在主目录开发。
+
+两个额外 worktree 已从 Git 解除，主目录 8.0.6/8.0.7/8.0.8 的安装包、旧验证和日志已移入回收站。当前 Codex 应用仍缓存部分 `.asar` 句柄，Windows 也限制部分旧 stage 的路径操作；残余 worktree 文件和 8.0.8 stage 尚待清理。已启动后台助手，等待当前 Codex 退出后，按冻结文件清单与大小、修改时间检查将生成文件移入回收站；变化的文件保留。实际完成状态见本机 `artifacts/cache/cleanup/8.0.9-cleanup-state.json`，不能把等待状态视为清理完成。
+
 公开下载：
 
 - 安装器：[zerowall-science-8.0.9-win-x64.exe](https://zerowall.chengxunkeji.cn/stable/releases/8.0.9/zerowall-science-8.0.9-win-x64.exe)
