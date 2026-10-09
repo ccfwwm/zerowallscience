@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { copyFile, cp, lstat, mkdir, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, realpath, rename, symlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { assertCompatible, compareVersions, fileDigest, verifySignedDocument } from './resource-catalog.mjs'
+import { carrierIndex, carrierName, offlineContentDigest } from './offline-carrier.mjs'
+import { physicalFs } from './physical-fs.mjs'
+const { copyFile, lstat, readdir } = physicalFs.promises
 
 export function pluginIdentity(id) {
   if (typeof id !== 'string' || !/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) || id.split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid plugin identity')
@@ -58,19 +61,20 @@ async function copySignedModules(source, destination, files) {
     if (info.size !== entry.size || await fileDigest(path) !== entry.sha256) throw new Error('Copied offline module differs from its signed receipt')
   })
 }
-export async function verifyOfflineProfile(source, keys, target, { local = false } = {}) {
+export async function readOfflineReceipt(source, keys, target, { local = false, generation = false } = {}) {
   const text = await readFile(join(source, 'receipt.json'), 'utf8')
   const receipt = verifySignedDocument(JSON.parse(text), keys)
-  if (receipt.schema !== 1 || receipt.kind !== 'offline-profile' || receipt.profileArchitecture !== 7 || !Array.isArray(receipt.files) || !Array.isArray(receipt.plugins) || !Array.isArray(receipt.defaultPatch)) throw new Error('Invalid offline profile receipt')
+  if (![1, 2].includes(receipt.schema) || receipt.kind !== 'offline-profile' || receipt.profileArchitecture !== 7 || !Array.isArray(receipt.files) || !Array.isArray(receipt.plugins) || !Array.isArray(receipt.defaultPatch)) throw new Error('Invalid offline profile receipt')
   if (receipt.localOnly && !local) throw new Error('Development offline profile cannot enter a stable installation')
-  if (receipt.applicationVersion !== target.desktopVersion || receipt.dshCommit !== target.dshCommit) throw new Error('Offline profile does not match this Desktop/DSH build')
-  assertCompatible(receipt, target)
-  for (const entry of receipt.files) {
-    if (typeof entry.path !== 'string' || entry.path.includes('\\') || entry.path.split('/').some(part => !part || part === '.' || part === '..') || isAbsolute(entry.path) || !/^[a-f0-9]{64}$/u.test(entry.sha256) || !Number.isSafeInteger(entry.size)) throw new Error('Invalid signed offline file')
+  if ((!generation && receipt.schema === 1 && receipt.applicationVersion !== target.desktopVersion) || receipt.dshCommit !== target.dshCommit) throw new Error('Offline profile does not match this Desktop/DSH build')
+  assertCompatible(receipt, generation && receipt.schema === 1 ? { ...target, desktopVersion: receipt.applicationVersion } : target)
+  const paths = new Set()
+  for (const entry of [...receipt.files, ...(receipt.payloadFiles ?? [])]) {
+    if (typeof entry.path !== 'string' || entry.path.includes('\\') || entry.path.split('/').some(part => !part || part === '.' || part === '..') || isAbsolute(entry.path) || !/^[a-f0-9]{64}$/u.test(entry.sha256) || !Number.isSafeInteger(entry.size) || entry.size < 0 || paths.has(entry.path)) throw new Error('Invalid signed offline file')
+    paths.add(entry.path)
     inside(resolve(source), resolve(source, entry.path))
   }
-  const actual = (await offlineFiles(source)).filter(entry => entry.path !== 'receipt.json').sort((a, b) => a.path.localeCompare(b.path))
-  if (JSON.stringify(actual) !== JSON.stringify(receipt.files)) throw new Error('Offline profile size, SHA-256 or file set mismatch')
+  if (receipt.schema === 2 && (!Array.isArray(receipt.payloadFiles) || receipt.contentDigest !== offlineContentDigest(receipt) || !receipt.payloadFiles.some(entry => entry.path === carrierName) || receipt.files.some(entry => !entry.path.startsWith('modules/')))) throw new Error('Invalid offline content identity')
   const identities = new Set()
   for (const entry of receipt.plugins) {
     pluginIdentity(entry.id)
@@ -78,28 +82,143 @@ export async function verifyOfflineProfile(source, keys, target, { local = false
     identities.add(entry.id)
   }
   for (const row of receipt.defaultPatch) if (!row || typeof row.id !== 'string' || typeof row.config !== 'object') throw new Error('Invalid signed offline default configuration')
-  return { receipt, digest: createHash('sha256').update(text).digest('hex') }
+  return { receipt, digest: receipt.schema === 2 ? receipt.contentDigest : createHash('sha256').update(text).digest('hex') }
+}
+
+export async function verifyOfflineProfile(source, keys, target, { local = false, staging = false } = {}) {
+  const verified = await readOfflineReceipt(source, keys, target, { local })
+  const { receipt } = verified
+  if (receipt.schema === 1) {
+    const actual = (await offlineFiles(source)).filter(entry => entry.path !== 'receipt.json').sort((a, b) => a.path.localeCompare(b.path))
+    if (JSON.stringify(actual) !== JSON.stringify(receipt.files)) throw new Error('Offline profile size, SHA-256 or file set mismatch')
+  } else {
+    const actual = []
+    const payloadTasks = []
+    for (const entry of await readdir(source, { withFileTypes: true })) {
+      if (entry.name === 'receipt.json' || staging && ['modules', 'build-receipt.json'].includes(entry.name)) continue
+      if (entry.name === carrierName && entry.isFile()) payloadTasks.push((async () => [{ path: entry.name, size: (await lstat(join(source, entry.name))).size, sha256: await fileDigest(join(source, entry.name)) }])())
+      else if (entry.name === carrierName + '.unpacked' && entry.isDirectory() && !(await lstat(join(source, entry.name))).isSymbolicLink()) payloadTasks.push(offlineFiles(join(source, entry.name), entry.name + '/'))
+      else throw new Error('Offline profile file set mismatch')
+    }
+    const payloadResults = await Promise.allSettled(payloadTasks)
+    for (const result of payloadResults) {
+      if (result.status === 'rejected') throw result.reason
+      actual.push(...result.value)
+    }
+    actual.sort((a, b) => a.path.localeCompare(b.path))
+    if (JSON.stringify(actual) !== JSON.stringify(receipt.payloadFiles)) throw new Error('Offline profile size, SHA-256 or file set mismatch')
+    const logical = (await carrierIndex(source)).rows.map(({ path, size, sha256 }) => ({ path: path.replace(/^node_modules\//u, 'modules/'), size, sha256 })).sort((a, b) => a.path.localeCompare(b.path))
+    if (JSON.stringify(logical) !== JSON.stringify(receipt.files)) throw new Error('Offline archive logical file set mismatch')
+  }
+  return verified
+}
+
+async function assertCarrierSourceFiles(source, receipt, staging) {
+  const expected = new Map(receipt.payloadFiles.map(entry => [entry.path, entry]))
+  const actual = []
+  async function collect(directory, prefix = '') {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (!prefix && (entry.name === 'receipt.json' || staging && ['modules', 'build-receipt.json'].includes(entry.name))) continue
+      const path = join(directory, entry.name), name = prefix + entry.name
+      if (entry.isSymbolicLink()) throw new Error('Offline closure contains a link')
+      if (entry.isDirectory()) await collect(path, name + '/')
+      else if (entry.isFile()) actual.push({ path, name })
+      else throw new Error('Offline profile file set mismatch')
+    }
+  }
+  await collect(source)
+  if (actual.length !== expected.size) throw new Error('Offline profile file set mismatch')
+  await concurrentFiles(actual, async ({ path, name }) => {
+    const record = expected.get(name), info = await lstat(path)
+    if (!record || !info.isFile() || info.isSymbolicLink() || info.size !== record.size) throw new Error('Offline profile file set or size mismatch')
+  })
+}
+
+export function generationModules(cache, receipt) {
+  return join(cache, receipt.schema === 2 ? carrierName + '.unpacked/node_modules' : 'node_modules')
+}
+
+/** Ordinary launch authenticates the receipt and required entrypoints only.
+ * Full content verification happens before atomic generation commit. */
+export async function verifiedGeneration(home, digest, keys, target, ids, { local = false } = {}) {
+  if (!/^[a-f0-9]{64}$/u.test(digest ?? '')) return undefined
+  const cache = join(home, 'resources/offline', digest)
+  try {
+    const verified = await readOfflineReceipt(cache, keys, target, { local, generation: true })
+    if (verified.digest !== digest) return undefined
+    const receipt = verified.receipt, modules = generationModules(cache, receipt)
+    if (receipt.schema === 2) {
+      const marker = JSON.parse(await readFile(join(cache, 'verified.json'), 'utf8'))
+      if (marker.contentDigest !== digest) return undefined
+      for (const entry of receipt.payloadFiles.filter(entry => entry.path === carrierName)) {
+        const info = await lstat(join(cache, entry.path))
+        if (!info.isFile() || info.isSymbolicLink() || info.size !== entry.size || info.mtimeMs !== marker.archiveMtimeMs) return undefined
+      }
+    }
+    const files = new Map(receipt.files.map(entry => [entry.path, entry]))
+    for (const id of ids) {
+      const record = receipt.plugins.find(entry => entry.id === id)
+      if (record?.core) continue
+      const manifestPath = join(modules, pluginIdentity(id), 'package.json')
+      const bytes = await readFile(manifestPath), manifest = JSON.parse(bytes)
+      if (!record || manifest.name !== id || manifest.version !== record.version) return undefined
+      if (manifest.zerowall?.desktop) assertCompatible({ ...receipt, desktopRange: manifest.zerowall.desktop }, target)
+      const exported = Object.values(manifest.exports ?? {}).map(entry => typeof entry === 'string' ? entry : entry?.default).filter(entry => typeof entry === 'string' && !entry.includes('*') && !entry.endsWith('.ts'))
+      const entryPaths = [...new Set(['package.json', manifest.main, manifest.dsh?.bundle?.patch, ...exported].filter(entry => typeof entry === 'string').map(entry => entry.replace(/^\.\//u, '')))]
+      for (const entry of entryPaths) {
+        const signed = files.get('modules/' + id + '/' + entry)
+        if (!signed || await fileDigest(join(modules, id, entry)) !== signed.sha256) return undefined
+      }
+    }
+    return { ...verified, cache, modules }
+  } catch {
+    // A damaged local cache is never trusted. The signed installer source is
+    // fully verified before repairing it, including when this receipt fails.
+    return undefined
+  }
 }
 
 /** Materialize a verified immutable generation in user-owned storage. */
-export async function prepareOfflineCandidate({ home, source, keys, target, defaults, bundledPlugins, yaml, local = false }) {
-  const { receipt, digest } = await verifyOfflineProfile(source, keys, target, { local })
+export async function prepareOfflineCandidate({ home, source, keys, target, defaults, bundledPlugins, yaml, local = false, staging = false, onPhase = () => {} }) {
+  let started = Date.now()
+  const metadata = await readOfflineReceipt(source, keys, target, { local })
+  const { receipt, digest } = metadata
   const cache = join(home, 'resources/offline', digest)
-  let cacheReady = false
-  try {
-    const cached = JSON.parse(await readFile(join(cache, 'receipt.json'), 'utf8'))
-    if (JSON.stringify(cached) !== JSON.stringify(receipt)) throw new Error('Offline cache receipt differs')
-    const cachedFiles = (await offlineFiles(join(cache, 'node_modules'))).sort((a, b) => a.path.localeCompare(b.path))
-    cacheReady = JSON.stringify(cachedFiles.map(entry => ({ ...entry, path: 'modules/' + entry.path }))) === JSON.stringify(receipt.files.filter(entry => entry.path.startsWith('modules/')))
-  } catch (error) { if (error.code !== 'ENOENT') throw error }
+  const cacheReady = await verifiedGeneration(home, digest, keys, target, receipt.plugins.filter(entry => !entry.core).map(entry => entry.id), { local })
   if (!cacheReady) {
-    if (await lstat(cache).catch(() => undefined)) throw new Error('Immutable offline generation was changed; repair its cache explicitly')
+    onPhase({ phase: 'offline-verify', state: 'started' })
+    if (receipt.schema === 1) await verifyOfflineProfile(source, keys, target, { local, staging })
+    else await assertCarrierSourceFiles(source, receipt, staging)
+    onPhase({ phase: 'offline-verify', state: 'complete', durationMs: Date.now() - started })
+    started = Date.now()
+    onPhase({ phase: 'offline-copy', state: 'started' })
     const pending = cache + '.candidate-' + randomUUID()
     await mkdir(pending, { recursive: true })
-    await copySignedModules(source, join(pending, 'node_modules'), receipt.files)
+    if (receipt.schema === 1) await copySignedModules(source, join(pending, 'node_modules'), receipt.files)
+    else {
+      await concurrentFiles(receipt.payloadFiles, async entry => {
+        const path = join(pending, entry.path)
+        await mkdir(dirname(path), { recursive: true })
+        await copyFile(join(source, entry.path), path)
+      })
+    }
     await writeFile(join(pending, 'receipt.json'), JSON.stringify(receipt))
+    onPhase({ phase: 'offline-copy', state: 'complete', durationMs: Date.now() - started })
+    started = Date.now()
+    if (receipt.schema === 2) {
+      // Verify the actual copied candidate, including all physical hashes
+      // and the archive's logical set. This binds source bytes without a
+      // duplicate full read and closes copy-time changes before activation.
+      onPhase({ phase: 'offline-verify-candidate', state: 'started' })
+      await verifyOfflineProfile(pending, keys, target, { local })
+      await writeFile(join(pending, 'verified.json'), JSON.stringify({ contentDigest: digest, archiveMtimeMs: (await lstat(join(pending, carrierName))).mtimeMs }))
+      onPhase({ phase: 'offline-verify-candidate', state: 'complete', durationMs: Date.now() - started })
+    }
+    if (await lstat(cache).catch(() => undefined)) await rename(cache, cache + '.damaged-' + randomUUID())
     await rename(pending, cache)
   }
+  started = Date.now()
+  onPhase({ phase: 'profile-prepare', state: 'started' })
   const active = join(home, 'profiles/web')
   const manifest = JSON.parse(await readFile(join(active, 'package.json'), 'utf8'))
   const selection = JSON.parse(await readFile(join(home, 'resources/plugins/selection.json'), 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return '{}' }))
@@ -123,11 +242,16 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
       } else { bundles.add(id); continue }
     }
     bundles.add(id)
-    // Independently updated packages may be newer than the installer seed.
-    // Repair missing packages without rolling those generations back.
-    if (installed?.version && compareVersions(installed.version, record.version) >= 0) continue
-    if (record.core && id.startsWith('@deepseek-ai/')) continue
-    const replacement = join(cache, 'node_modules', id)
+    // Explicitly installed packages have precedence even at an older version.
+    // Only installer-owned generations participate in seed replacement.
+    const installedRoot = installed && await realpath(join(candidate, 'node_modules', id)).catch(() => undefined)
+    const offlineRoot = join(home, 'resources/offline')
+    const owned = installedRoot && !relative(offlineRoot, installedRoot).startsWith('..') && !isAbsolute(relative(offlineRoot, installedRoot))
+    if (installed?.version && !owned) continue
+    if (installed?.version && compareVersions(installed.version, record.version) > 0) continue
+    if (record.core) continue
+    const replacement = join(generationModules(cache, receipt), id)
+    if (installed?.version === record.version && installedRoot === await realpath(replacement)) continue
     const physical = JSON.parse(await readFile(join(replacement, 'package.json'), 'utf8'))
     if (physical.version !== record.version || physical.name !== id) throw new Error('Offline plugin identity/version mismatch')
     const path = join(candidate, 'node_modules', id)
@@ -151,5 +275,6 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   const patches = receipt.defaultPatch.filter(row => !existingPatch.some(existing => existing.id === row.id))
   await writeFile(patchPath, yaml.stringify([...patches, ...existingPatch]))
   await writeFile(join(candidate, 'package.json'), JSON.stringify(manifest, null, 2))
+  onPhase({ phase: 'profile-prepare', state: 'complete', durationMs: Date.now() - started })
   return { candidate, receipt, digest, changed, blocked }
 }

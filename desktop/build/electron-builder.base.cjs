@@ -69,7 +69,7 @@ const common = {
     },
   ],
   extraResources: [
-    { from: path.join(stage, 'offline-profile'), to: 'offline-profile', filter: ['**/*'] },
+    { from: path.join(stage, 'offline-profile'), to: 'offline-profile', filter: ['receipt.json', 'profile-runtime.asar', 'profile-runtime.asar.unpacked/**/*'] },
     { from: path.join(stage, 'resources/extensions/skills'), to: 'extensions/skills', filter: ['**/*'] },
     { from: path.join(stage, 'resources/extensions/mcp'), to: 'extensions/mcp', filter: ['**/*'] },
     { from: path.join(stage, 'resources/extensions/capabilities/biogenie'), to: 'extensions/capabilities/biogenie', filter: ['**/*'] },
@@ -81,6 +81,10 @@ const common = {
     { from: path.join(root, 'desktop/build/splash.html'), to: 'splash.html' },
     { from: path.join(root, 'profiles/generated'), to: 'profiles', filter: ['*.yml'] },
     { from: path.join(root, 'THIRD_PARTY_NOTICES.md'), to: 'licenses/THIRD_PARTY_NOTICES.md' },
+    // Historical sidebar tarballs inherited the workspace license while its
+    // runtime copier omits source files. Ship the adapter's actual license
+    // separately and preserve those immutable release tarballs unchanged.
+    { from: path.join(buildPaths.packageRoots.dsh, 'dsh-better-sidebar/LICENSE'), to: 'licenses/dsh-better-sidebar.LICENSE' },
     { from: path.join(root, 'config/deepseek-harness/upstream.json'), to: 'licenses/deepseek-harness.version.json' },
     { from: path.join(stage, 'runtime/build-receipt.json'), to: 'licenses/build-receipt.json' },
     { from: path.join(stage, 'commands'), to: 'commands', filter: ['**/*'] },

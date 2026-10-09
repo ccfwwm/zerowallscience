@@ -24,7 +24,7 @@ const pinnedIntegrations = JSON.parse(await readFile(resolve(repositoryRoot, 'co
 const desktopManifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
 const runtimeProfile = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'layout', 'runtime-profile.json'), 'utf8'))
 const fullOffline = runtimeProfile.optionalPluginPolicy?.offlineClosure === 'offline-profile/modules'
-const coreOnly = runtimeProfile.optionalPluginPolicy?.bundled === false
+const coreOnly = runtimeProfile.optionalPluginPolicy?.bundled === false && !fullOffline
 const desktopOnly = process.argv.includes('--desktop-only')
 const hostOnly = process.argv.includes('--host-only')
 const offlineNetwork = process.argv.includes('--offline-network')
@@ -759,17 +759,9 @@ async function verifyExternalPolicy() {
   const legacyPptFiles = externalFiles.filter(path => skillRoots.some(root => path.startsWith(root))
     && /(?:^|\/)(?:academic-ppt-studio|gpt-image2-ppt|journal-club-ppt)(?:\/|$)/i.test(path))
   if (legacyPptFiles.length > 0) throw new Error(`Legacy PPT Skills are forbidden in the packaged runtime:\n${legacyPptFiles.slice(0, 50).join('\n')}`)
-  // 7.1.0 ships the complete local Skills catalog and the scientific runtime
-  // resource channels as external files.  The previous 3,000-file gate was
-  // sized before that catalog was included and rejected the valid 7.1.0
-  // layout (mostly Skill Markdown/Python files).  Keep a hard upper bound with
-  // enough headroom for the catalog while retaining the content-level gates
-  // above for test output and legacy resources.
   const offlineCount = externalFiles.filter(path => path.startsWith('offline-profile/')).length
-  if (fullOffline && offlineCount > 50_000) throw new Error(`Signed offline closure exceeds its 50,000-file gate: ${offlineCount}`)
-  const ordinaryCount = externalFiles.length - (fullOffline ? offlineCount : 0)
-  if (ordinaryCount > 5_000) throw new Error(`ASAR-external resource count ${ordinaryCount} exceeds the 5,000-file gate.`)
-  console.log(`[files] signed offline closure: ${offlineCount}; other external resources: ${ordinaryCount}`)
+  if (externalFiles.length > 6_000) throw new Error(`Installed resource file count ${externalFiles.length} exceeds the 6,000-file gate.`)
+  console.log(`[files] installed resources: ${externalFiles.length}; signed offline closure: ${offlineCount}`)
 
   const nodeExecutables = (await listDiskFiles(packaged.root)).filter(path => /(?:^|\/)node\.exe$/i.test(path))
   if (nodeExecutables.length > 0) throw new Error(`Standalone Node runtime is forbidden:\n${nodeExecutables.join('\n')}`)
@@ -790,11 +782,8 @@ async function verifySizePolicy() {
   // Scientific wheels, Skills, and MCP services are installed or mounted
   // through their own signed/resource channels and stay out of the installer.
   //
-  // Both budgets are advisory: they report the measured footprint so a sudden
-  // jump stays visible, but an oversized build is not a defect on its own and
-  // must not abort the packaging chain. Everything that follows this check —
-  // including the Windows metadata generation chained after `package:win` — is
-  // blocked by a throw here, which is a worse outcome than a large installer.
+  // Installed size is diagnostic; the installer must meet the verified
+  // 8.0.6 baseline while retaining the complete offline feature set.
   const budgetNote = (label, size, budget) => {
     const verdict = size > budget ? 'over advisory budget' : 'within advisory budget'
     console.log(`[size] ${label}: ${(size / MIB).toFixed(1)} MiB (${verdict}, budget ${(budget / MIB).toFixed(0)} MiB)`)
@@ -805,7 +794,8 @@ async function verifySizePolicy() {
     .filter(entry => entry.isFile() && entry.name.includes(`-${packagedManifest.version}-`) && entry.name.endsWith('.exe') && !entry.name.toLowerCase().includes('uninstall'))
   for (const installer of installers) {
     const size = (await stat(resolve(targetPackageRoot, installer.name))).size
-    budgetNote(`installer ${installer.name}`, size, 1_024 * MIB)
+    if (size > 379_604_648) throw new Error(`Installer ${installer.name} is ${size} bytes; exceeds the 8.0.6 limit of 379604648 bytes`)
+    budgetNote(`installer ${installer.name}`, size, 379_604_648)
   }
 }
 
@@ -1927,7 +1917,7 @@ function readArchiveFile(path) {
   const entry = archiveEntryByPath.get(path)
   if (entry === undefined) {
     const physical = 'modules/' + path.slice('node_modules/'.length)
-    if (fullOffline && path.startsWith('node_modules/') && offlineReceipt.files.some(item => item.path === physical)) return readFileSync(resolve(packaged.resourcesRoot, 'offline-profile', physical))
+    if (fullOffline && path.startsWith('node_modules/') && offlineReceipt.files.some(item => item.path === physical)) return offlineReceipt.schema === 2 ? extractFile(resolve(packaged.resourcesRoot, 'offline-profile/profile-runtime.asar'), path.split('/').join(sep)) : readFileSync(resolve(packaged.resourcesRoot, 'offline-profile', physical))
     throw new Error(`Verified runtime file is missing: ${path}`)
   }
   return extractFile(asarPath, entry)

@@ -33,6 +33,11 @@ if (mode === 'stage') {
   const staged = JSON.parse(await readFile(receiptPath, 'utf8'))
   if (staged.version !== version || staged.assets.length !== assets.length) throw new Error('Desktop stage is incomplete')
   for (const asset of assets) if (await fileDigest(asset.path) !== staged.assets.find(item => item.key === asset.key)?.sha256) throw new Error('Staged desktop asset changed')
+  if (mode === 'verify') {
+    const current = []
+    for (const asset of assets) current.push(await store.verify(asset))
+    staged.assets = current
+  }
   if (mode === 'promote') { for (const asset of pointers) await store.upload(asset, true); await store.refresh(pointers.map(item => item.key)) }
   const verified = []
   for (const asset of pointers) verified.push(await store.verify(asset))

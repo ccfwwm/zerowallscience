@@ -13,6 +13,8 @@ export interface StartupStatus {
   progress: number
   message: string
   startedAt: number
+  segment?: string
+  durationMs?: number
 }
 
 export interface DesktopInfo {

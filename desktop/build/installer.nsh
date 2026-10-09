@@ -13,15 +13,29 @@
 !macroend
 
 Var ZeroWallUiState
+Var ZeroWallPerfFile
 !ifdef BUILD_UNINSTALLER
 !macro customUnInit
   StrCpy $ZeroWallUiState ""
+  StrCpy $ZeroWallPerfFile ""
 !macroend
 !endif
 !ifndef BUILD_UNINSTALLER
 Var ZeroWallUiProcess
 !endif
 !macro ZW_PHASE value
+  ${If} $ZeroWallPerfFile != ""
+    Push $R8
+    Push $R9
+    System::Call 'kernel32::GetTickCount64() l.r8'
+    FileOpen $R9 "$ZeroWallPerfFile" a
+    ${IfNot} ${Errors}
+      FileWrite $R9 "$R8|${value}$\r$\n"
+      FileClose $R9
+    ${EndIf}
+    Pop $R9
+    Pop $R8
+  ${EndIf}
   ${If} $ZeroWallUiState != ""
     WriteINIStr "$ZeroWallUiState" "Install" "Phase" "${value}"
   ${EndIf}
@@ -58,6 +72,7 @@ FunctionEnd
   SetDetailsPrint both
   DetailPrint "桌面和开始菜单应用图标已创建，卸载信息已写入。"
   DetailPrint "ZeroWall Science 安装完成。"
+  !insertmacro ZW_PHASE "complete"
   ; The deployed 2.x updater invokes the verified 3.0 installer with /S and
   ; then exits. Start the new Electron app from the installer so the updater
   ; never needs to know the new executable or installation directory.
@@ -143,6 +158,10 @@ FunctionEnd
 
 !macro customInit
   StrCpy $ZeroWallUiState ""
+  StrCpy $ZeroWallPerfFile ""
+  ${GetParameters} $R0
+  ${GetOptions} $R0 "/ZW_PERF=" $ZeroWallPerfFile
+  ClearErrors
   ; When both scopes exist, the running updater's explicit directory decides
   ; which registration to replace instead of starting a different installed copy.
   !insertmacro GetDParameter $R0

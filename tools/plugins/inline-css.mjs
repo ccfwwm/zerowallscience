@@ -2,8 +2,10 @@ import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
+const selectedPlugin = process.argv.includes('--plugin') ? process.argv[process.argv.indexOf('--plugin') + 1] : undefined
 for (const entry of await readdir(resolve(root, 'plugins'), { withFileTypes: true })) {
   if (!entry.isDirectory()) continue
+  if (selectedPlugin && entry.name !== selectedPlugin) continue
   const lib = resolve(root, 'plugins', entry.name, 'lib')
   const clientPath = resolve(lib, 'client.js')
   const cssPath = resolve(lib, 'style.css')

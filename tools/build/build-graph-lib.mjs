@@ -5,7 +5,7 @@ import { relative, resolve, sep } from 'node:path'
 
 const hash = value => createHash('sha256').update(value).digest('hex')
 
-export async function fingerprintInputs({ root, inputs, dshCommit = '', lockPath = 'pnpm-lock.yaml', dependencyVersions = {} }) {
+export async function fingerprintInputs({ root, inputs, dshCommit = '', lockPath = 'pnpm-lock.yaml', dependencyVersions = {}, dependencyLockHash }) {
   const repositoryRoot = resolve(root)
   const args = ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...inputs]
   const listed = execFileSync('git', args, { cwd: repositoryRoot, encoding: 'buffer' })
@@ -36,7 +36,7 @@ export async function fingerprintInputs({ root, inputs, dshCommit = '', lockPath
     digest.update(name.replaceAll('\\', '/')).update('\0').update(fileHash).update('\0')
   }
   const lockAbsolute = resolve(repositoryRoot, lockPath)
-  const lockHash = hash(await readFile(lockAbsolute))
+  const lockHash = dependencyLockHash ?? hash(await readFile(lockAbsolute))
   digest.update(`dsh:${dshCommit}\0lock:${lockHash}\0dependencies:${JSON.stringify(dependencyVersions)}`)
   return { fingerprint: digest.digest('hex'), files: records.length, inputs: records, lockHash, dshCommit, dependencyVersions }
 }

@@ -51,6 +51,7 @@ let tray: Tray | undefined
 let quitting = false
 let restarting = false
 let startup: StartupStatus = { phase: 'starting', progress: 5, message: '正在准备本地工作台', startedAt: Date.now() }
+let hostStartedAt: number | undefined
 let navigation: Promise<void> | undefined
 let runtimeReachedReady = false
 let initialRuntimeStartRequested = false
@@ -347,7 +348,7 @@ function restartDesktop(): void {
 }
 
 function publishStartup(update: Partial<StartupStatus>): void {
-  startup = { ...startup, ...update }
+  startup = { ...startup, segment: undefined, durationMs: undefined, ...update }
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:startup-status', startup)
   if (startupCover && !startupCover.webContents.isDestroyed()) startupCover.webContents.send('desktop:startup-status', startup)
   const line = { timestamp: new Date().toISOString(), elapsedMs: Date.now() - startup.startedAt, ...update }
@@ -359,7 +360,9 @@ function publishStartup(update: Partial<StartupStatus>): void {
 async function failStartup(error: unknown): Promise<void> {
   const message = (error instanceof Error ? error.message : String(error)).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')
   publishStartup({ phase: 'failed', message: message.slice(0, 1800) })
-  if (!quitting && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.getURL().startsWith('file:')) await showSplash()
+  if (!quitting && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.getURL().startsWith('file:')) {
+    await showSplash().catch(() => { /* A concurrent navigation must not replace the original startup failure. */ })
+  }
 }
 
 function ensureTray(): void {
@@ -395,6 +398,7 @@ async function showSplash(): Promise<void> {
 }
 
 async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
+  const rendererStartedAt = Date.now()
   if (snapshot.phase !== 'ready' || snapshot.url === undefined) return
   // DSH first exposes the loopback endpoint and then prints an authenticated
   // URL. The bare endpoint intentionally returns 401 and renders as a blank
@@ -429,13 +433,13 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
   while (!window.isDestroyed() && !quitting) {
     const bootFailed = await window.webContents.executeJavaScript('document.querySelector("[data-dsh-boot-failed]") !== null')
     if (bootFailed) throw new Error('客户端插件加载失败，请重试或打开日志查看详情。')
-    const mounted = await window.webContents.executeJavaScript('Boolean(!document.querySelector("[data-dsh-boot]") && document.querySelector("[data-dsh-better-sidebar], [data-zerowall-conversation], [contenteditable]"))')
+    const mounted = await window.webContents.executeJavaScript('Boolean(!document.querySelector("[data-dsh-boot]") && Array.from(document.querySelectorAll("[contenteditable=true]")).some(el => { const rect = el.getBoundingClientRect(); const style = getComputedStyle(el); return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none" && el.getAttribute("aria-disabled") !== "true"; }))')
     if (mounted) break
     if (Date.now() >= deadline) throw new Error('工作台界面加载超时，请打开日志检查客户端插件。')
     await new Promise(resolve => setTimeout(resolve, 200))
   }
-  if (!window.isDestroyed()) {
-    publishStartup({ phase: 'ready', progress: 100, message: '工作台已就绪' })
+  if (!window.isDestroyed() && !quitting && startup.phase !== 'failed') {
+    publishStartup({ phase: 'ready', progress: 100, message: '工作台已就绪', segment: 'renderer-ready', durationMs: Date.now() - rendererStartedAt })
     runtime?.workbenchReady()
     window.contentView.removeChildView(cover)
     cover.webContents.close()
@@ -601,6 +605,14 @@ if (ownsInstance) app.whenReady().then(async () => {
       }
     },
     onChanged: (snapshot) => {
+      if (snapshot.phase === 'starting' && hostStartedAt === undefined) {
+        hostStartedAt = Date.now()
+        publishStartup({ progress: 35, message: '正在加载核心服务与插件', segment: 'host:start' })
+      }
+      if (snapshot.phase === 'ready' && hostStartedAt !== undefined) {
+        publishStartup({ progress: 80, message: '本地服务已就绪', segment: 'host:ready', durationMs: Date.now() - hostStartedAt })
+        hostStartedAt = undefined
+      }
       // Profile repair/recovery may already start and health-check this Host
       // before the normal startup tail runs. Remember the ready transition,
       // because a later start() replaces DSH's authenticated web token while
@@ -720,6 +732,11 @@ if (ownsInstance) app.whenReady().then(async () => {
   const { createResourceManager } = await import(pathToFileURL(join(commandRoot, 'resource-manager.mjs')).href)
   const keys = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'trusted-keys.json') : join(findWorkspaceRoot(), 'config/catalogs/trusted-keys.json'), 'utf8'))
   const resources = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins, runtimeModules: app.isPackaged ? join(process.resourcesPath, 'app.asar/node_modules') : developmentStagePath('runtime', 'node_modules'), target: { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version, dshCommit: dshIdentity.commit, platform: process.platform, architecture: process.arch }, runPlugin,
+    offlineStaging: !app.isPackaged,
+    onOfflinePhase: (event: { phase: string; state: string; durationMs?: number }) => {
+      const labels: Record<string, string> = { 'offline-verify': '正在校验离线插件', 'offline-verify-candidate': '正在验证本地插件文件', 'offline-copy': '正在准备离线插件文件', 'profile-prepare': '正在准备用户插件配置', 'offline-reuse': '已复用本地插件' }
+      publishStartup({ progress: event.phase === 'profile-prepare' ? 30 : 25, message: labels[event.phase] ?? '正在准备插件', segment: event.phase + ':' + event.state, durationMs: event.durationMs })
+    },
     applyPython: async (entry: { role: string }, file: string) => {
       if (entry.role !== 'dependency-manifest') throw new Error('Unsupported Python resource')
       await mcpEnvironment.ensureReady()

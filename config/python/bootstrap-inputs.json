@@ -1,6 +1,6 @@
 {
   "environmentVersion": "1.5.1",
-  "applicationVersion": "8.0.8",
+  "applicationVersion": "8.0.9",
   "pythonVersion": "3.12.10",
   "pipVersion": "26.2.1",
   "manifestBaseUrl": "https://zerowall.chengxunkeji.cn/stable/zerowall-python-bootstrap/windows-x64",

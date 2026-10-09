@@ -8,7 +8,9 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | `8.0.8` |
+| 应用版本 | `8.0.9` |
+| 8.0.9 Windows x64 安装包 | `316,401,650` 字节，SHA-256 `a2200357281410897bd1a9f7f4702742599cb4b004a8f35acdfd4d4f8e344ced`，build ID `1791561463413-f0f9c239` |
+| 8.0.9 发布状态 | Windows 安装器、37 个插件、281 个 Skills、2 个 MCP 和 1 个 Python 目录已发布至七牛 Stable 并完成公网校验；未创建 GitHub Release |
 | 集成基线 | `main`，8.0.6 发布提交 `1e76a16e87ee53da9270e750673a8572447d5517` |
 | 8.0.7 架构工作分支 | `codex/8.0.7-modular`，从上述基线创建，已合并并推送到 `main`；对应 Codex worktree 已归档 |
 | 8.0.7 本地 Windows 安装包 | `artifacts/packages/8.0.7/windows-x64/zerowall-science-8.0.7-win-x64.exe`；当前 manifest 标明源码树非 clean |
@@ -40,7 +42,7 @@ git submodule status
 Get-Content config/deepseek-harness/upstream.json
 ```
 
-记录当前分支、父仓库 HEAD、DSH 子模块 HEAD 和工作区状态。用户没有要求切换分支时，继续当前分支；涉及大范围架构、版本升级或打包时，优先从目标基线创建独立 worktree。新 worktree 必须通过 Codex worktree 工具创建，不能手工复制目录。
+记录当前分支、父仓库 HEAD、DSH 子模块 HEAD 和工作区状态。默认直接在当前 `main` checkout 开发，保持用户已有改动；只有用户明确要求隔离，或当前目录被另一项任务占用且无法并行时，才创建 Codex 管理的 worktree。新 worktree 必须通过 Codex worktree 工具创建，不能手工复制目录。
 
 主目录有未提交修改时，逐项识别归属并保留。禁止使用 `reset --hard`、广泛 `git clean`、删除整个工作区或覆盖用户配置来“恢复干净”。任何清理都必须先列出精确路径、确认该路径属于生成物，再按 allowlist 删除。
 
@@ -158,7 +160,7 @@ pnpm plugins:pack
 - 独立 generation、任务 journal、旧版本、失败原因和重试次数。
 - 插件按 profile 原子切换；Skills 支持运行中刷新；MCP 配置支持热刷新，Server 支持启停和重启；Python 使用 generation 与 `current.json`。
 
-8.0.8 扩展资源启动和每日远端检测默认关闭。打开页面、切换标签、刷新本地列表只读取本地状态；只有用户点击“检查更新”才读取、验签远端 catalog metadata，可保存验证后的缓存。检测不下载 payload、不安装、不修改 profile、不重启。桌面安装器更新策略保持原有行为。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。
+8.0.9 扩展资源启动和每日远端检测默认关闭。打开页面、切换标签、刷新本地列表只读取本地状态；只有用户点击“检查更新”才读取、验签远端 catalog metadata，可保存验证后的缓存。检测不下载 payload、不安装、不修改 profile、不重启。桌面安装器更新策略保持原有行为。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。
 
 ### Python 分层合同（8.0.7）
 
@@ -209,9 +211,9 @@ zws python status
 `zws env set <name>` 的敏感值通过 stdin 输入；命令、界面和日志只显示是否已配置，不输出密钥。`dsh` 保持官方命令语义。命令安装使用 owner receipt，保留已有 PATH 和外部 `dsh`；卸载时只删除本程序拥有的 PATH 项。
 
 
-### 8.0.7 模块化构建与资源布局
+### 8.0.9 模块化构建、增量打包与资源布局
 
-8.0.7 新增 `config/layout/resource-layout.json`、`package-layout.json` 和 `package-role-manifest.json`。解析器先尝试 `resources/extensions/*`、`resources/cases`、`resources/branding` 与 `packages/{dsh,support,bundles}`，再回退 8.0.6 旧路径；在所有生成器和消费者完成验证前，不要手工删除或复制旧目录。
+8.0.7 新增 `config/layout/resource-layout.json`、`package-layout.json` 和 `package-role-manifest.json`。8.0.9 继续使用这些布局，解析器先尝试 `resources/extensions/*`、`resources/cases`、`resources/branding` 与 `packages/{dsh,support,bundles}`，再回退旧路径；在所有生成器和消费者完成验证前，不要手工删除或复制旧目录。
 
 增量入口是 `pnpm build:changed`、`pnpm plugin:build <id>`、`pnpm plugin:pack <id>`、`pnpm package:build <id>`、`pnpm resource:build skill|mcp|python <id-or-layer>`。Windows Stable 打包先验证当前 runtime stage 的新鲜度，将已验证的 runtime closure 复制到新 build ID，再单独构建桌面和安装器；它不隐式运行完整 `pnpm build`。运行时输入过期时，先运行完整构建再打包。每项收据包含输入文件哈希、lockfile、DSH commit、依赖版本、输出、build ID 和失败原因。`pnpm artifacts:gc --dry-run` 默认只读；只有核对候选清单后才使用 `--apply`。
 
@@ -219,9 +221,11 @@ GC 不遍历任何 `node_modules` 目录；候选树包含嵌套依赖目录时�
 
 单独的 Python 依赖清单可用 `pnpm resource:build python core`、`science` 或 `capability <id>` 生成。构建命令应绑定新的 `ZEROWALL_BUILD_ID`；输出先进入该 build ID 的 stage，再经签名和 SHA-256 收据校验。catalog 若标记 `localOnly`，只可用于本地验收，不能作为正式发布目录。
 
-`@zerowallscience/dsh-bundle-core` 和 `dsh-bundle-science` 都是组合声明。8.0.8 ASAR 只携带 Core 和宿主依赖；安装器同时携带完整默认插件的签名离线闭包 `offline-profile/modules`、独立 tarball、默认 Skills 和小型 MCP 启动资源。新用户首次启动不运行 npm/pnpm 网络安装。离线闭包必须使用正式信任公钥验签，并检查 Desktop/DSH、平台、架构、完整文件集、大小和 SHA-256。
+`@zerowallscience/dsh-bundle-core` 和 `dsh-bundle-science` 都是组合声明。8.0.9 ASAR 只携带 Core 和宿主依赖；普通运行时依赖收敛到 `profile-runtime.asar`，安装器保留完整默认插件的签名离线闭包 `offline-profile/modules`、必要物理文件、默认 Skills 和小型 MCP 启动资源，独立插件 tarball 留在 release 产物。新用户首次启动不运行 npm/pnpm 网络安装。离线闭包必须使用正式信任公钥验签，并检查 Desktop/DSH、平台、架构、完整文件集、大小和 SHA-256。
 
-architecture 7 通过 candidate profile、事务 journal、真实 Host 健康检查和原子激活提交。固定版本缺包时阻止整个修复，不用离线的新版本替代。用户明确停用、卸载、固定版本、第三方包、账户、模型、项目、环境变量引用和自定义配置优先。签名闭包复制至用户拥有的固定 generation 后再链接，不能链接到会随安装器升级而替换的目录。旧 architecture 6 即使已迁移，也必须检查实际缺包并修复。
+architecture 7 通过 candidate profile、事务 journal、真实 Host 健康检查和原子激活提交。8.0.9 的 generation 使用稳定内容身份，桌面版本和 build ID 只作为构建记录；插件完整且兼容时直接复用已验证 generation。固定版本缺包时阻止整个修复，不用离线的新版本替代。用户明确停用、卸载、固定版本、第三方包、账户、模型、项目、环境变量引用和自定义配置优先。签名闭包复制至用户拥有的固定 generation 后再链接，不能链接到会随安装器升级而替换的目录。旧 architecture 6 即使已迁移，也必须检查实际缺包并修复。
+
+正式 build 使用内容指纹和输出哈希组成的任务图。只修改桌面时只重建 desktop；只修改插件时只重建该插件及其实际依赖闭包；共享 helper 修改沿任务图传播；无变化构建复用经过验证的 tarball。桌面版本和 build ID 不再使全部插件失效。常用命令为 `pnpm build:changed`、`pnpm plugin:build <id>`、`pnpm plugin:pack <id>`、`pnpm resource:build <kind> <id-or-layer>` 和 `pnpm package:stable:win`。
 
 扩展中心四组独立显示，本地读取上限 5 秒，人工检测每组上限 15 秒；请求去重、底层超时、关闭后和过期结果保护同时生效。已安装版本、是否缺包、用户启用选择、实际 Host 激活、固定版本必须分开。Python 解释器就绪不等于 science/capability 已安装。某组挂起或不可用不阻塞其他组，不清空已有结果。
 

@@ -29,7 +29,7 @@ function normalizedJavaScript(bytes, file) {
   finally { result.dispose() }
 }
 
-async function packageFiles(path) {
+export async function packageFiles(path) {
   const files = new Map()
   await list({ file: path, onReadEntry(entry) {
     if (entry.type === 'Directory') return entry.resume()

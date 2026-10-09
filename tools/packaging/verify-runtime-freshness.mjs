@@ -46,7 +46,7 @@ export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZE
   }
   await verifyRuntimeIntegrity(root, stage)
   if (runtimeProfile.optionalPluginPolicy?.offlineClosure) await verifyOfflineProfile(join(stage, 'offline-profile'),
-    await json('config/catalogs/trusted-keys.json'), { desktopVersion: app.version, dshVersion: pin.version, dshCommit: pin.commit, platform: process.platform, architecture: process.arch })
+    await json('config/catalogs/trusted-keys.json'), { desktopVersion: app.version, dshVersion: pin.version, dshCommit: pin.commit, platform: process.platform, architecture: process.arch }, { staging: true })
   return { commit: head, version: app.version, checked }
 }
 

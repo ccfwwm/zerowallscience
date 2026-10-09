@@ -50,9 +50,9 @@ function runPnpm(args, extraEnv = {}) {
   execFileSync(process.execPath, [pnpmCli, ...args], {
     cwd: source,
     stdio: 'inherit',
-    env: { ...process.env, ZEROWALL_CLIENT_VERSION: rootManifest.version,
-      DSH_CLIENT_VERSION: rootManifest.version, DSH_CLIENT_TITLE: 'ZeroWall Science',
-      DSH_CLIENT_COMMIT_HASH: execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(), ...extraEnv,
+    env: { ...process.env, ZEROWALL_CLIENT_VERSION: '__ZEROWALL_DESKTOP_VERSION__',
+      DSH_CLIENT_VERSION: '__ZEROWALL_DESKTOP_VERSION__', DSH_CLIENT_TITLE: 'ZeroWall Science',
+      DSH_CLIENT_COMMIT_HASH: commit.slice(0, 7), ...extraEnv,
       NODE_OPTIONS: `${extraEnv.NODE_OPTIONS ?? process.env.NODE_OPTIONS ?? ''} --import=${pathToFileURL(resolve(root, 'tools/build/register-output-resolution.mjs')).href}` },
   })
 }

@@ -1,4 +1,5 @@
 import { stageRoot } from '../build/paths.mjs'
+import { dedupeRuntime } from './dedupe-runtime.mjs'
 import { adaptLibreOfficeKit } from './adapt-libreoffice-kit.mjs'
 import { adaptDocumentPreview, adaptExcelChunk } from './adapt-document-preview.mjs'
 import { createHash } from 'node:crypto'
@@ -77,8 +78,15 @@ const forbiddenClaudeRuntimePackages = new Set([
   '@anthropic-ai/claude-agent-sdk-win32-x64',
 ])
 const bundledRuntimeDependencies = new Map()
+// The universal preview compiler inlines the browser library and PDF JS.
+// Its worker/fonts/WASM/maps are owned by lib/viewer-assets. The Host still
+// keeps its separate pdfjs-dist 4.x parser and all Office dependencies.
+bundledRuntimeDependencies.set('@zerowallscience/plugin-files', new Set(['@open-file-viewer/core', 'viewer-pdfjs']))
+// Sidebar's compiler resolves icon sets to ESM and emits Mermaid as a
+// self-contained lazy chunk. No Host entry imports these browser libraries.
+bundledRuntimeDependencies.set('dsh-better-sidebar', new Set(['react-icons', 'mermaid']))
 const forbiddenDirectories = new Set([
-  '.github', '.idea', '.vscode', '__tests__', 'benchmark', 'benchmarks', 'coverage',
+  '.github', '.idea', '.vscode', '.v8-cache', '.cache', '.turbo', '.parcel-cache', '__tests__', 'benchmark', 'benchmarks', 'coverage',
   'docs', 'example', 'examples', 'spec', 'test', 'tests',
 ])
 const forbiddenExtensions = new Set(['.cts', '.map', '.mts', '.pdb', '.ts', '.tsx'])
@@ -90,6 +98,7 @@ if (!outputRoot.startsWith(`${expectedOutputParent}${sep}`)) {
 const closure = JSON.parse(await readFile(closurePath, 'utf8'))
 const dshNames = new Set(closure.packages ?? [])
 const coreModules = resolve(stageRoot, 'runtime/node_modules')
+const coreReceipt = offlineProfile ? JSON.parse(await readFile(resolve(stageRoot, 'runtime/build-receipt.json'), 'utf8')) : undefined
 const workspacePackages = new Map()
 
 for (const manifestPath of await findPackageManifests(dshRoot)) {
@@ -114,6 +123,7 @@ await mkdir(outputRoot, { recursive: true })
 
 const queue = [...new Set(offlineProfile ? [...configuredDefaults, '@zerowallscience/integrity-runtime', '@zerowallscience/research-store'] : [...dshNames, ...workspacePackages.keys(), ...desktopRuntimeSeeds])].map(name => ({ name, optional: false }))
 const copiedTargets = new Map()
+const packageRecords = []
 const topLevelPackages = new Map()
 let incompatible = 0
 
@@ -132,12 +142,13 @@ while (queue.length > 0) {
     }
     throw error
   }
-  const identity = `${resolvedPackage.manifest.name}@${resolvedPackage.manifest.version ?? '0.0.0'}`
+  const sourceKey = await realpath(resolvedPackage.sourceRoot)
+  const identity = `${resolvedPackage.manifest.name}@${resolvedPackage.manifest.version ?? '0.0.0'}:${sourceKey}`
   // Share the verified Core peer identity through the profile ESM resolver
   // and NODE_PATH rather than copying Cordis/DSH/React into a second runtime.
   if (offlineProfile) {
     const shared = await readFile(resolve(coreModules, request.name, 'package.json'), 'utf8').then(JSON.parse).catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
-    if (shared?.version === resolvedPackage.manifest.version && !runtimeProfile.corePlugins.includes(request.name)) continue
+    if (shared?.version === resolvedPackage.manifest.version && coreReceipt.topLevelInstances?.[request.name] === sourceKey) continue
   }
   const topLevelIdentity = topLevelPackages.get(request.name)
   const targetRoot = topLevelIdentity === undefined || topLevelIdentity === identity
@@ -156,8 +167,22 @@ while (queue.length > 0) {
 
   await copyRuntimePackage(resolvedPackage, targetRoot)
   copiedTargets.set(targetKey, identity)
+  packageRecords.push({ path: targetRoot, sourceKey, manifest: resolvedPackage.manifest })
   if (topLevelIdentity === undefined) topLevelPackages.set(request.name, identity)
   const bundledDependencies = bundledRuntimeDependencies.get(resolvedPackage.manifest.name) ?? new Set()
+  if (bundledDependencies.size) {
+    await verifyInlinedDependencies(resolvedPackage, bundledDependencies)
+    for (const name of bundledDependencies) {
+      const dependency = await resolvePackage(name, resolvedPackage.sourceRoot)
+      for (const entry of await readdir(dependency.sourceRoot)) {
+        if (/^(?:licen[sc]e|notice|copying)(?:\.|$)/iu.test(entry)) {
+          // Installer notices are separate from independently published
+          // plugin bytes, whose existing version and tarball stay immutable.
+          await copyEntry(dependency.sourceRoot, join(outputRoot, '.licenses', resolvedPackage.manifest.name.replaceAll('/', '__'), name.replaceAll('/', '__')), entry)
+        }
+      }
+    }
+  }
   for (const name of Object.keys(resolvedPackage.manifest.dependencies ?? {}).sort()) {
     if (bundledDependencies.has(name)) continue
     queue.push({ name, parentRoot: resolvedPackage.sourceRoot, targetParentRoot: targetRoot, optional: false })
@@ -167,8 +192,51 @@ while (queue.length > 0) {
   }
 }
 
-await writeFile(resolve(expectedOutputParent, 'build-receipt.json'), JSON.stringify(buildReceipt, null, 2))
+const deduplication = await dedupeRuntime(outputRoot, packageRecords)
+const desktopVersion = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')).version
+for (const name of [...workspacePackages.keys()].filter(name => name.startsWith('@deepseek-ai/'))) {
+  const directory = join(outputRoot, name)
+  if (await stat(directory).catch(() => undefined)) await applyDesktopMetadata(directory)
+}
+await writeFile(resolve(expectedOutputParent, 'build-receipt.json'), JSON.stringify({ ...buildReceipt, deduplication, topLevelInstances: Object.fromEntries(packageRecords.filter(entry => entry.path === resolve(outputRoot, entry.manifest.name)).map(entry => [entry.manifest.name, entry.sourceKey])) }, null, 2))
+console.log(`Resolution-preserving dedupe: ${deduplication.before} -> ${deduplication.after} package locations.`)
 console.log(`Prepared ${copiedTargets.size} production runtime package locations (${incompatible} incompatible packages skipped).`)
+
+async function applyDesktopMetadata(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) await applyDesktopMetadata(path)
+    else if (/\.(?:js|mjs|cjs|html)$/u.test(entry.name)) {
+      const source = await readFile(path, 'utf8')
+      if (source.includes('__ZEROWALL_DESKTOP_VERSION__')) await writeFile(path, source.replaceAll('__ZEROWALL_DESKTOP_VERSION__', desktopVersion))
+    }
+  }
+}
+
+async function verifyInlinedDependencies(package_, names) {
+  if (package_.manifest.name === '@zerowallscience/plugin-files') {
+    const assets = JSON.parse(await readFile(join(package_.sourceRoot, 'lib/viewer-assets/asset-manifest.json'), 'utf8'))
+    if (!assets.files?.['build/pdf.worker.mjs'] || !Object.keys(assets.files).some(path => path.startsWith('cmaps/'))) throw new Error('Inlined viewer is missing physical worker or font assets')
+  } else if (package_.manifest.name === 'dsh-better-sidebar') {
+    const client = await readFile(join(package_.sourceRoot, 'lib/client.js'), 'utf8')
+    const mermaid = await readFile(join(package_.sourceRoot, 'lib/client-mermaid.js'), 'utf8')
+    if (!client.includes('GenIcon') || !mermaid.includes('flowchart') || !mermaid.includes('__dshChunks__')) throw new Error('Sidebar is missing inlined icons or its Mermaid engine chunk')
+  } else throw new Error('No owned-asset proof for inlined dependencies: ' + package_.manifest.name)
+  async function inspect(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name)
+      if (entry.isDirectory() && entry.name !== 'viewer-assets') await inspect(path)
+      else if (entry.isFile() && /\.[cm]?js$/u.test(entry.name)) {
+        const code = await readFile(path, 'utf8')
+        for (const match of code.matchAll(/(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)['"]([^'"]+)['"]/gu)) {
+          if ([...names].some(name => match[1] === name || match[1].startsWith(name + '/'))) throw new Error('Supposedly inlined dependency remains external: ' + match[1])
+        }
+      }
+    }
+  }
+  await inspect(join(package_.sourceRoot, 'lib'))
+  console.log(`Verified inlined dependencies and owned assets: ${package_.manifest.name}: ${[...names].join(', ')}`)
+}
 
 // Windows removes a large tree while the indexing service and Defender may
 // still be walking it, so a recursive delete can fail with ENOTEMPTY or EPERM

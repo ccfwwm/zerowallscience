@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "8.0.8",
-  "description": "ZeroWall Science 8.0.8 local-first scientific visualization and research workbench.",
+  "version": "8.0.9",
+  "description": "ZeroWall Science 8.0.9 local-first scientific visualization and research workbench.",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",

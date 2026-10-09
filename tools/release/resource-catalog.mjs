@@ -2,6 +2,7 @@ import { createHash, randomUUID, sign, verify } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdir, open, rename, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { physicalFs } from '../commands/physical-fs.mjs'
 
 export function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical)
@@ -63,7 +64,10 @@ export function assertCompatible(entry, target) {
 }
 export async function fileDigest(path) {
   const hash = createHash('sha256')
-  for await (const chunk of createReadStream(path)) hash.update(chunk)
+  const stream = String(path).endsWith('.asar')
+    ? physicalFs.createReadStream(path, { highWaterMark: 4 * 1024 * 1024 })
+    : createReadStream(path, { highWaterMark: 1024 * 1024 })
+  for await (const chunk of stream) hash.update(chunk)
   return hash.digest('hex')
 }
 /** Download into a new content-addressed generation; never overwrite a live package. */

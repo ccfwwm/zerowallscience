@@ -72,7 +72,9 @@ export async function preparePublishPackage(source, staging) {
   delete publish.scripts
   delete publish.devDependencies
   delete publish.private
+  delete publish.packageManager
   delete publish.publishConfig?.directory
+  if (publish.publishConfig && Object.keys(publish.publishConfig).length === 0) delete publish.publishConfig
   for (const section of ['dependencies', 'peerDependencies']) {
     for (const [name, range] of Object.entries(publish[section] ?? {})) {
       if (!/^(?:workspace:|github:|git\+|git:)/.test(range)) continue

@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promise
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
-import { pluginIdentity, prepareOfflineCandidate } from './offline-profile.mjs'
+import { pluginIdentity, prepareOfflineCandidate, readOfflineReceipt, verifiedGeneration } from './offline-profile.mjs'
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
 async function atomic(path, value) {
@@ -13,7 +13,7 @@ async function atomic(path, value) {
 }
 
 /** Signed resource preparation and official DSH profile transactions. */
-export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, runtimeModules, local = false, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], defaultPlugins = [] }) {
+export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, runtimeModules, local = false, offlineStaging = false, onOfflinePhase = () => {}, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], defaultPlugins = [] }) {
   const root = join(home, 'resources')
   const profiles = join(home, 'profiles')
   const active = join(profiles, 'web')
@@ -198,17 +198,37 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   }
 
   async function repairOffline(source) {
-    const document = verifySignedDocument(await json(join(source, 'receipt.json')), keys)
+    const started = Date.now()
+    const { receipt: document } = await readOfflineReceipt(source, keys, target, { local })
     const manifest = await json(join(active, 'package.json'))
     const selection = await readPluginSelection()
     const expected = defaultPlugins.filter(id => !selection.removed.has(id) && !selection.disabled.has(id) && !manifest.zerowall?.disabledPlugins?.includes(id))
     const missing = []
     for (const id of expected) {
+      if (document.plugins.find(entry => entry.id === id)?.core && !selection.pinned[id]) continue
       const installed = await packageVersion(active, id)
+      const seed = document.plugins.find(entry => entry.id === id)
+      if (!installed && seed?.core && selection.pinned[id] === seed.version) continue
       if (!installed || (selection.pinned[id] && installed.version !== selection.pinned[id])) missing.push(id)
     }
-    if (manifest.zerowall?.pluginArchitecture >= 7 && document.buildId === manifest.zerowall.offlineBuildId && !missing.length) return { repaired: false, architecture: 7 }
-    const result = await prepareOfflineCandidate({ home, source, keys, target, defaults: defaultPlugins, bundledPlugins, yaml, local })
+    if (manifest.zerowall?.pluginArchitecture >= 7 && !missing.length) {
+      const generation = await verifiedGeneration(home, manifest.zerowall.offlineGeneration, keys, target, expected, { local })
+      const unchanged = generation && expected.every(id => {
+        const seed = document.plugins.find(entry => entry.id === id), prior = generation.receipt.plugins.find(entry => entry.id === id)
+        return seed?.core || seed?.version === prior?.version
+      }) && (generation.receipt.schema === 2
+        ? generation.digest === document.contentDigest
+        : JSON.stringify(generation.receipt.defaultPatch) === JSON.stringify(document.defaultPatch)
+          && document.files.filter(file => expected.some(id => file.path.startsWith('modules/' + id + '/'))).every(file => {
+            const prior = generation.receipt.files.find(entry => entry.path === file.path)
+            return prior?.size === file.size && prior?.sha256 === file.sha256
+          }))
+      if (unchanged) {
+        onOfflinePhase({ phase: 'offline-reuse', state: 'complete', durationMs: Date.now() - started })
+        return { repaired: false, architecture: 7, generation: generation.digest }
+      }
+    }
+    const result = await prepareOfflineCandidate({ home, source, keys, target, defaults: defaultPlugins, bundledPlugins, yaml, local, staging: offlineStaging, onPhase: onOfflinePhase })
     const receiptPath = join(pluginStateRoot, 'repairs', result.digest + '.json')
     if (result.blocked.length) {
       await atomic(receiptPath, { state: 'blocked', architecture: 7, buildId: document.buildId, blocked: result.blocked, candidate: result.candidate })

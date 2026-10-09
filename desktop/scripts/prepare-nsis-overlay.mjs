@@ -28,7 +28,13 @@ DetailPrint "正在原位置覆盖升级，保留项目与用户数据..."
 RMDir /r "$INSTDIR\\resources\\app.asar.unpacked"
 RMDir /r "$INSTDIR\\resources\\skills"
 RMDir /r "$INSTDIR\\resources\\profiles"
-RMDir /r "$INSTDIR\\resources\\licenses"`)
+RMDir /r "$INSTDIR\\resources\\licenses"
+; 8.0.8 shipped an expanded offline profile and redundant tarballs. Remove
+; only those installer-owned v1 entries, after process checks and before
+; extraction, so the v2 signed file set remains exact on in-place upgrades.
+RMDir /r "$INSTDIR\\resources\\offline-profile\\modules"
+RMDir /r "$INSTDIR\\resources\\offline-profile\\packages"
+Delete "$INSTDIR\\resources\\offline-profile\\build-receipt.json"`)
 const output = resolve(stageRoot, 'nsis-overlay')
 await mkdir(output, { recursive: true })
 await writeFile(resolve(output, 'installSection.nsh'), `${section}\n!cd "${templates}"\n`)

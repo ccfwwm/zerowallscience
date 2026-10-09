@@ -8,6 +8,9 @@ import { fingerprintInputs, isContained, tasksForChangedFiles } from './build-gr
 import { packageSource, resourceSource } from './layout.mjs'
 import { deterministicArchive } from '../release/deterministic-archive.mjs'
 import { storeAndLink } from './content-store.mjs'
+import { dependencyLockFingerprint, sharedSourceInputs } from './component-inputs.mjs'
+import { offlineFiles } from '../commands/offline-profile.mjs'
+import { restorePublishedOutput } from '../plugins/published-output.mjs'
 
 const requested = process.argv.slice(2)
 const [command, ...args] = requested
@@ -17,12 +20,17 @@ const lockRoot = join(graphRoot, 'locks')
 
 function pnpmArgs(argv) {
   const pnpmEntry = process.env.npm_execpath
-  return pnpmEntry ? [process.execPath, pnpmEntry, ...argv] : ['pnpm', ...argv]
+  if (pnpmEntry) return [process.execPath, pnpmEntry, ...argv]
+  // Node's Windows child-process resolver does not consider pnpm.ps1 or the
+  // extensionless shim that PowerShell resolves. Use the executable cmd shim
+  // when the graph is launched directly (for example by incremental checks).
+  return [process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', ...argv]
 }
 
 function run(argv, options = {}) {
   const command = argv[0]
-  const result = spawnSync(command, argv.slice(1), { cwd: root, stdio: 'inherit', windowsHide: true, ...options })
+  const shell = process.platform === 'win32' && command.toLowerCase().endsWith('.cmd')
+  const result = spawnSync(command, argv.slice(1), { cwd: root, stdio: 'inherit', windowsHide: true, shell, ...options })
   if (result.error) throw result.error
   if (result.status !== 0) throw new Error(`Command failed (${result.status}): ${argv.join(' ')}`)
 }
@@ -68,14 +76,18 @@ async function taskDefinition(id, taskArgs = []) {
   const dshCommit = await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8').then(JSON.parse).then(value => value.commit)
   const packageManifest = await readFile(join(root, 'package.json'), 'utf8').then(JSON.parse)
   const desktopManifest = await readFile(join(root, 'desktop/package.json'), 'utf8').then(JSON.parse)
-  const dependencies = { node: process.version, pnpm: packageManifest.packageManager, desktop: desktopManifest.version }
+  const dependencies = { node: process.version, pnpm: packageManifest.packageManager, platform: process.platform, architecture: process.arch, nodeAbi: process.versions.modules }
   if (kind === 'plugin-build' || kind === 'plugin-pack') {
     const pluginPath = join(root, 'plugins', name)
     const manifest = await readFile(join(pluginPath, 'package.json'), 'utf8').then(JSON.parse)
-    const inputs = [`plugins/${name}`, 'tools/plugins/tsdown.ts', 'tools/plugins/prepare-pack.mjs', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json']
-    const output = kind === 'plugin-build' ? join(pluginPath, 'lib/index.js') : join(contract.release, 'plugins', manifest.name.split('/').at(-1), manifest.version)
-    return { id, inputPaths: inputs, dshCommit, dependencies: { ...dependencies, package: manifest.name, version: manifest.version }, outputs: [output], lockName: `plugin-${name}`, run: async () => {
+    const inputs = [`plugins/${name}`, 'tools/plugins/tsdown.ts', 'tools/plugins/generate-typert.mjs', 'tools/plugins/prepare-pack.mjs', 'tools/plugins/inline-css.mjs', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json', ...await sharedSourceInputs(root, pluginPath)]
+    if (name === 'files') inputs.push('tools/plugins/viewer-style.mjs', 'tools/plugins/viewer-adapter.mjs')
+    const output = kind === 'plugin-build' ? join(pluginPath, 'lib') : join(contract.release, 'plugins', manifest.name.split('/').at(-1), manifest.version)
+    const dependencyLockHash = await dependencyLockFingerprint(root, [`plugins/${name}`], ['tsdown', 'typescript', '@tsdown/css'])
+    return { id, inputPaths: inputs, dshCommit, dependencyLockHash, dependencies: { ...dependencies, package: manifest.name, version: manifest.version }, outputs: [output, ...(kind === 'plugin-build' ? [join(pluginPath, 'lib/index.js')] : [])], lockName: `plugin-${name}`, run: async () => {
+      run([process.execPath, join(root, 'tools/plugins/generate-typert.mjs'), '--plugin', manifest.name])
       run(scriptArgs(['--filter', manifest.name, 'run', 'bundle']))
+      run([process.execPath, join(root, 'tools/plugins/inline-css.mjs'), '--plugin', name])
       if (kind === 'plugin-pack') {
         run([process.execPath, join(root, 'tools/plugins/pack.mjs'), '--plugin', name])
       }
@@ -147,9 +159,9 @@ async function taskDefinition(id, taskArgs = []) {
     } }
   }
   if (kind === 'package-build') {
-    const sourceRoot = await packageSource(name)
+    const sourceRoot = name === 'research-store' ? join(root, 'store') : await packageSource(name)
     const manifest = await readFile(join(sourceRoot, 'package.json'), 'utf8').then(JSON.parse)
-    const task = manifest.scripts?.bundle ? 'bundle' : manifest.scripts?.build ? 'build' : undefined
+    const task = name === 'dsh-better-sidebar' ? 'build' : manifest.scripts?.bundle ? 'bundle' : manifest.scripts?.build ? 'build' : undefined
     if (!task && manifest.zerowall?.composition) {
       const output = join(stageRoot, 'package-compositions', `${name}.json`)
       return {
@@ -169,42 +181,87 @@ async function taskDefinition(id, taskArgs = []) {
         }),
       }
     }
+    if (!task && manifest.files?.length) return { id, inputPaths: [relative(root, sourceRoot)], dshCommit: '', dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, sourceRoot).replaceAll('\\', '/')]), dependencies: { ...dependencies, package: manifest.name, version: manifest.version }, outputs: manifest.files.map(file => join(sourceRoot, file)), lockName: `package-${name}`, run: async () => {} }
     if (!task) throw new Error(`Package ${manifest.name} has no bundle/build script.`)
-    return { id, inputPaths: [relative(root, sourceRoot), 'tools/plugins/tsdown.ts'], dshCommit, dependencies: { ...dependencies, package: manifest.name, version: manifest.version }, outputs: [join(sourceRoot, 'lib')], lockName: `package-${name}`, run: async () => run(scriptArgs(['--filter', manifest.name, 'run', task])) }
+    return { id, inputPaths: [relative(root, sourceRoot), 'tools/plugins/tsdown.ts', ...await sharedSourceInputs(root, sourceRoot)], dshCommit, dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, sourceRoot).replaceAll('\\', '/')], ['tsdown', 'typescript']), dependencies: { ...dependencies, package: manifest.name, version: manifest.version, task, script: manifest.scripts[task] }, outputs: [join(sourceRoot, 'lib')], lockName: `package-${name}`, run: async () => run(scriptArgs(['--filter', manifest.name, 'run', task, ...(name === 'dsh-progressive-tools' ? ['--skipLibCheck'] : [])])) }
   }
-  if (id === 'dsh') return { id, inputPaths: ['deepseek-harness', 'tools/dsh', 'config/deepseek-harness'], dshCommit, dependencies, outputs: [join(stageRoot, 'dsh/build-receipt.json')], lockName: 'runtime', run: async () => run(scriptArgs(['dsh:build:zerowall'])) }
+  if (id === 'dsh') {
+    const outputDirectories = []
+    async function collect(directory) {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (!entry.isDirectory() || ['node_modules', '.git', 'lib', 'dist', 'src', 'tests', 'test', 'artifacts'].includes(entry.name)) continue
+        await collect(join(directory, entry.name))
+      }
+      const manifest = await readFile(join(directory, 'package.json'), 'utf8').then(JSON.parse, () => undefined)
+      if (manifest?.name && await exists(join(directory, 'lib'))) outputDirectories.push(join(directory, 'lib'))
+    }
+    await collect(join(root, 'deepseek-harness'))
+    return { id, inputPaths: ['deepseek-harness', 'tools/dsh/build-zerowall.mjs', 'config/deepseek-harness/upstream.json'], dshCommit, dependencyLockHash: createHash('sha256').update(await readFile(join(root, 'deepseek-harness/pnpm-lock.yaml'))).digest('hex'), dependencies, outputs: [...outputDirectories, join(root, 'deepseek-harness/apps/cli/lib/bin.js'), join(root, 'deepseek-harness/apps/web/dist')], lockName: 'runtime', run: async () => run(scriptArgs(['dsh:build:zerowall'])) }
+  }
   if (id === 'runtime') return { id, inputPaths: ['plugins', 'packages', 'profiles', 'tools/dsh', 'tools/plugins', 'config/deepseek-harness', 'config/layout'], dshCommit, dependencies, outputs: [join(stageRoot, 'dsh/runtime-closure.json')], lockName: 'runtime', run: async () => {
     run(scriptArgs(['profiles:generate']))
     run(scriptArgs(['dsh:runtime:closure']))
   } }
-  if (id === 'desktop') return { id, inputPaths: ['desktop/src', 'desktop/build', 'desktop/package.json', 'pnpm-lock.yaml'], dshCommit, dependencies, outputs: [join(root, 'desktop/out')], lockName: 'runtime', run: async () => run(scriptArgs(['--filter', '@zerowallscience/desktop', 'run', 'build'])) }
+  if (id === 'desktop') return { id, inputPaths: ['desktop/src', 'desktop/build', 'desktop/package.json'], dshCommit, dependencyLockHash: await dependencyLockFingerprint(root, ['desktop']), dependencies: { ...dependencies, desktop: desktopManifest.version }, outputs: [join(root, 'desktop/out')], lockName: 'runtime', run: async () => run(scriptArgs(['--filter', '@zerowallscience/desktop', 'run', 'build'])) }
   throw new Error(`Unknown build task: ${id}`)
 }
 
 async function runTask(id, extra = []) {
   const definition = await taskDefinition(id, extra)
-  const input = await fingerprintInputs({ root, inputs: definition.inputPaths, dshCommit: definition.dshCommit, dependencyVersions: definition.dependencies })
+  const startedMs = Date.now()
+  const input = await fingerprintInputs({ root, inputs: definition.inputPaths, dshCommit: definition.dshCommit, dependencyVersions: definition.dependencies, dependencyLockHash: definition.dependencyLockHash })
   const file = await receiptPath(id)
-  const prior = await readFile(file, 'utf8').then(JSON.parse, () => undefined)
-  if (prior?.status === 'success' && prior.fingerprint === input.fingerprint && (await Promise.all(definition.outputs.map(exists))).every(Boolean)) {
-    console.log(`CACHE HIT ${id} ${input.fingerprint.slice(0, 12)}`)
-    return { id, status: 'cached', fingerprint: input.fingerprint }
-  }
   const releaseLock = await acquireLock(definition.lockName)
   const startedAt = new Date().toISOString()
   try {
+  const prior = await readFile(file, 'utf8').then(JSON.parse, () => undefined)
+  const publishedSource = id.startsWith('plugin-build:') ? join(root, 'plugins', id.split(':')[1]) : id.startsWith('package-build:') ? id.endsWith(':research-store') ? join(root, 'store') : await packageSource(id.split(':')[1]) : undefined
+  if (publishedSource && !process.argv.includes('--force') && (!prior || process.argv.includes('--bootstrap-published')) && await restorePublishedOutput(publishedSource)) {
+    const receipt = { schema: 2, task: id, status: 'success', ...input, outputs: definition.outputs, outputIntegrity: await outputIntegrity(definition.outputs), finishedAt: new Date().toISOString(), durationMs: Date.now() - startedMs, reason: 'verified published source and compiled output bootstrap', buildId: contract.buildId }
+    await writeJson(file, receipt)
+    return { id, status: 'cached', fingerprint: input.fingerprint, builtAt: receipt.finishedAt }
+  }
+  const outputs = await outputIntegrity(definition.outputs).catch(() => undefined)
+  if (!process.argv.includes('--force') && prior?.status === 'success' && prior.fingerprint === input.fingerprint && outputs && JSON.stringify(outputs) === JSON.stringify(prior.outputIntegrity)) {
+    console.log(`CACHE HIT ${id} ${input.fingerprint.slice(0, 12)} ${Date.now() - startedMs}ms; verified output SHA-256`)
+    return { id, status: 'cached', fingerprint: input.fingerprint, builtAt: prior.finishedAt }
+  }
+  const reason = process.argv.includes('--force') ? 'explicit full build' : !prior ? 'no verified receipt' : prior.fingerprint !== input.fingerprint ? 'input/dependency fingerprint changed' : !outputs ? 'output missing' : 'output hash changed'
+  console.log(`REBUILD ${id}: ${reason}`)
     await definition.run()
     const missing = []
     for (const output of definition.outputs) if (!await exists(output)) missing.push(output)
     if (missing.length) throw new Error(`Task completed without expected output: ${missing.join(', ')}`)
-    const receipt = { schema: 1, task: id, status: 'success', startedAt, finishedAt: new Date().toISOString(), ...input, outputs: definition.outputs, buildId: contract.buildId }
+    const receipt = { schema: 2, task: id, status: 'success', startedAt, finishedAt: new Date().toISOString(), durationMs: Date.now() - startedMs, reason, ...input, outputs: definition.outputs, outputIntegrity: await outputIntegrity(definition.outputs), buildId: contract.buildId }
     await writeJson(file, receipt)
-    console.log(`BUILT ${id} ${input.fingerprint.slice(0, 12)}`)
-    return { id, status: 'built', fingerprint: input.fingerprint }
+    console.log(`BUILT ${id} ${input.fingerprint.slice(0, 12)} ${receipt.durationMs}ms; ${reason}`)
+    return { id, status: 'built', fingerprint: input.fingerprint, builtAt: receipt.finishedAt }
   } catch (error) {
     await writeJson(file, { schema: 1, task: id, status: 'failed', startedAt, finishedAt: new Date().toISOString(), ...input, outputs: definition.outputs, failure: String(error?.message ?? error), buildId: contract.buildId })
     throw error
   } finally { await releaseLock() }
+}
+
+async function outputIntegrity(outputs) {
+  const records = []
+  for (const path of outputs) {
+    const info = await stat(path)
+    if (info.isFile()) records.push({ path: relative(root, path).replaceAll('\\', '/'), size: info.size, sha256: createHash('sha256').update(await readFile(path)).digest('hex') })
+    else if (info.isDirectory()) records.push({ path: relative(root, path).replaceAll('\\', '/'), files: await offlineFiles(path) })
+    else throw new Error('Build output is not a regular payload')
+  }
+  return records
+}
+
+async function allComponents() {
+  const dsh = await runTask('dsh')
+  const pin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
+  const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
+  await writeJson(join(stageRoot, 'dsh/build-receipt.json'), { commit: pin.commit, version: pin.version, applicationVersion: version, builtAt: dsh.builtAt, compilationFingerprint: dsh.fingerprint })
+  for (const name of ['integrity-runtime', 'dsh-wechat', 'dsh-genui', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-ssh-ops', 'zotero-harvest', 'dsh-session-notification', 'dsh-progressive-tools']) await runTask('package-build:' + name)
+  // Store is a workspace package with the same independent task contract.
+  await runTask('package-build:research-store')
+  for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) if (entry.isDirectory() && entry.name !== 'wechat' && await exists(join(root, 'plugins', entry.name, 'package.json'))) await runTask('plugin-build:' + entry.name)
 }
 
 async function changedTasks() {
@@ -225,10 +282,13 @@ async function changedTasks() {
   return tasksForChangedFiles(files, { pythonCapabilities })
 }
 
-if (command === 'build:changed') {
-  const tasks = await changedTasks()
-  if (!tasks.length) { console.log('No build inputs changed.'); process.exit(0) }
-  for (const task of tasks) await runTask(task)
+if (command === 'components' || command === 'build:changed') {
+  // Check every content fingerprint, including committed changes and damaged
+  // outputs. git diff HEAD is not a build dependency graph.
+  await allComponents()
+  if (command === 'build:changed') await runTask('desktop')
+} else if (command === 'desktop') {
+  await runTask('desktop')
 } else if (command === 'plugin:build' || command === 'plugin:pack') {
   if (!args[0] || !await exists(join(root, 'plugins', args[0], 'package.json'))) throw new Error(`Unknown plugin: ${args[0] ?? '(missing)'}`)
   await runTask(`${command === 'plugin:build' ? 'plugin-build' : 'plugin-pack'}:${args[0]}`)

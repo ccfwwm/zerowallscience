@@ -23,6 +23,7 @@ const runtimePackages = new Set([
   ...Object.keys(baseManifest.optionalDependencies ?? {}),
 ])
 const remotePackages = []
+const selectedPlugin = process.argv.includes('--plugin') ? process.argv[process.argv.indexOf('--plugin') + 1] : undefined
 
 for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue
@@ -31,6 +32,7 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   try {
     manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
   } catch { continue }
+  if (selectedPlugin && manifest.name !== selectedPlugin) continue
   // The workspace also contains disabled or development-only plugins. Only
   // packages that the desktop runtime actually installs may contribute to the
   // shared browser remote assembly; otherwise a removed plugin can survive in
