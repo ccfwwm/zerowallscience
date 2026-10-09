@@ -148,4 +148,61 @@ export const RELEASE_NOTES: Record<string, ReleaseNotes> = {
       '- **Windows 横幅恢复**: 通知此前共用同一个 tag 且未设 renotify,Windows/Chromium 下同 tag 通知只"静默替换"、不再弹横幅(通知中心里留着未读通知时,后续提醒全都不会弹出来);现在补上 `renotify: true`,并按事件类型分 tag——完成/失败/提问/权限/测试各自一条,同类型仍合并,但每次都会重新弹横幅,不同类型也不会互相顶掉',
     ],
   },
+  '0.1.19': {
+    features: [],
+    fixes: [
+      '- **依赖升级至 0.1.6-alpha.1**: @deepseek-ai/dsh-* 依赖升到 ^0.1.6-alpha.1(804 个提交的大版本);逐项核对插件消费的全部运行时面——SessionSnapshot(running/lastAgentError)、SessionSummary/SessionListState(id/parentId/origin/running/displayTitle/current)、uiSession 待交互表、uiConversation 的 binding().target("chat") 与 ChatSnapshot 节点(turn-error/assistant-step)、SettingsScope 契约、slots/store/primitives 导出、以及 slots/locale/sessions/uiConversation/uiSession 五个服务名——全部保持,代码零改动;平台模块表种子不变,bundle externals 仍为四个',
+    ],
+  },
+  '0.1.20': {
+    features: [],
+    fixes: [
+      '- **依赖升级至 0.1.7-alpha.1**: @deepseek-ai/dsh-* 依赖升到 ^0.1.7-alpha.1,并把 cordis 升到 ^4.0.3、schemastery 升到 ^3.18.3 与 dsh 包的 peer 依赖对齐(此前顶层解析到 3.18.1,与 dsh-settings 期望的 3.18.3 类型不兼容)',
+      '- **会话"当前"判定**: 0.1.7 删除了 SessionListState.current——改为按主视图引用判定(retainedBy.mainView);会话列表其余字段(id/parentId/origin/running/displayTitle)与对话节点(turn-error/assistant-step)不变',
+      '- **待交互订阅**: 0.1.7 把 uiSession 的待交互表合并进 sessionStatus 源(SessionStatusSnapshot:running + pendingInteraction + completionUnread),订阅与问题/权限取值逻辑同步迁移',
+      '- **设置契约更名**: 客户端 SettingsScope 更名为 ConfigForm、settings.register 移除(插件配置表单改由 Loader 条目派生、写入 profile patch);本地偏好作用域改为实现官方 ConfigForm(写入返回 boolean),宿主半区保持惰性',
+      '- **图标命名**: ui-primitives 图标由 16/14 尺寸命名改为 Regular/Medium 笔画命名,按原笔画与尺寸映射(含警示图标显式 size=14)',
+    ],
+  },
+  '0.1.21': {
+    features: [],
+    fixes: [
+      '- **依赖升级至 0.1.7-rc.2**: @deepseek-ai/dsh-* 依赖升到 ^0.1.7-rc.2,cordis/schemastery 对齐 vendor 版本(^4.0.4 / ^3.18.4);alpha.1→rc.2 的 664 个提交改动了会话快照、对话记录、图标等内部结构,但逐项核对插件消费的运行时面——SessionSnapshot.lastAgentError、SessionSummary(running/displayTitle/parentId/origin)、SessionStatus.pendingInteraction、uiConversation 的 chat target 与 assistant-step.blocks / turn-error.seq+message、settings.section 席位——全部保持,代码零改动,typecheck/110 specs/build 全绿',
+    ],
+  },
+  '0.1.22': {
+    features: [],
+    fixes: [
+      '- **提示音不再阻止睡眠(#6)**: 共享 AudioContext 此前创建后永不挂起,处于 running 的上下文会让系统音频流(以及 macOS 的 PreventUserIdleSystemSleep 断言)一直存活到标签页关闭——单次 0.5 秒提示音实测挂住 17 小时不断电;现在内置音效在最后一个振荡器 ended(以排程时长为兜底定时器)后挂起,自定义音频在 ended/error/自动播放被拒时挂起,并断开每次播放的 MediaElementSource(节点不再累积);插件卸载时关闭上下文;音量 0 或静音开关也不再长期占用音频流',
+    ],
+  },
+  '0.2.0': {
+    features: [
+      '- **桌面端通知支持**: 插件在 dsh 桌面应用(Electron 外壳,加载同一套 Web 客户端与插件图)中原样运行;桌面通知即系统原生通知——外壳默认授予通知权限,打开开关即生效、不再弹授权框;通知使用应用图标(`dsh-app://` 与 `data:` SVG 等原生层无法栅格化的图标会被跳过,让打包应用图标生效),并在系统层标记 silent——Electron 会转发该标志,避免系统通知音与插件提示音叠加成「双响」;点击通知经外壳的应用激活恢复并聚焦窗口(关窗只是隐藏);README 补充桌面端安装方式:由桌面应用的「插件」页面安装(desktop profile 由 Electron 独占,CLI 拒绝管理)',
+    ],
+    fixes: [
+      '- **依赖升级至 0.2.0-rc.1**: @deepseek-ai/dsh-* 依赖升到 ^0.2.0-rc.1(cordis/schemastery 对齐 ~4.0.4 / ~3.18.4 peer);0.1.7-rc.2→0.2.0-rc.1 的 261 个提交集中在会话控制器契约与 composer/draft 输入契约,插件消费的面(SessionSnapshot.lastAgentError、SessionSummary 字段、SessionStatus.pendingInteraction、chat target 与 assistant-step.blocks / turn-error.seq+message、settings.section 席位、ConfigForm 契约、平台模块表)全部保持,仅新增桌面通知的图标 scheme 处理',
+    ],
+  },
+  '0.2.1': {
+    features: [],
+    fixes: [
+      '- **依赖升级至 0.2.0-rc.2**: @deepseek-ai/dsh-* 依赖升到 ^0.2.0-rc.2(peer 仍为 cordis ~4.0.4 / schemastery ~3.18.4);rc.1→rc.2 的 187 个提交集中在桌面端命令安装/管理与 desktop-host CLI,通知链路(权限默认放行、dshDesktop 桥、Electron 通知转发)与插件消费的所有 API 面均未变化,图标(Regular 家族)也全部保留,代码零改动,typecheck/123 specs/build 全绿',
+    ],
+  },
+  '0.2.2': {
+    features: [
+      '- **点击通知跳转到对应会话(#7)**: 通知点击时除聚焦页面外,还会经官方导航入口 `ctx.uiWorkspace.openSession(sessionId)` 打开该事件所属会话的对话——Web 与桌面端一致(桌面端关窗隐藏后,点击通知恢复窗口并直接进入那个会话);`uiWorkspace` 采用可选注入(该服务缺失时插件照常运行,点击仅聚焦),并新增两条回归测试(点击行为、分发器把会话 id 传给通知)',
+    ],
+    fixes: [],
+  },
+  '0.2.3': {
+    features: [
+      '- **点击通知跳转到对应会话(#7)**: 通知点击时除聚焦页面外,还会打开该事件所属会话的对话——桌面端关窗隐藏后,点击通知会恢复窗口并直接进入那个会话;v0.2.2 引入该能力,本版修复了它在实际 GUI(尤其桌面端)中未生效的问题(见下)',
+    ],
+    fixes: [
+      '- **点击跳转修复(#7 后续)**: 上一版的可选注入在实际 GUI 里可能未生效——改为与官方 ui-chat 一致的**硬注入 `uiWorkspace`**,打开失败时打印告警;同时把通知对象保持**强引用**(Chromium/Electron 下点击回调可能因 JS 包装对象被回收而丢失),点击回调抛错也不影响关闭通知卡片',
+      '- **通知正文缺少助手回复修复**: 0.1.7+ 起读取 chat target 不会激活视图,未选中的会话拿不到对话节点;现在读取前显式 `activate("chat")`,并在结算前按需用 `sessions.using()` 打开该会话历史——从未打开过的会话也能拿到最终回复文本(桌面端隐藏窗口、只提醒「完成」的场景同样生效);该加载仅在有提醒可能时执行,失败不影响完成/失败分类',
+    ],
+  },
 }

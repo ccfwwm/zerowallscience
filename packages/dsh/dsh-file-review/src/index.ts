@@ -13,11 +13,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import { FileReviewService } from './file-review-service.ts'
 import { registerFileLifecycleCapture } from './file-lifecycle-capture.ts'
 import { registerPtcAdapter } from './ptc-adapter.ts'
-import {
-  DEFAULT_WORD_WRAP,
-  DEFAULT_DIFF_LAYOUT,
-  type DiffLayout,
-} from './settings-contract.ts'
+import { DEFAULT_WORD_WRAP, DEFAULT_DIFF_LAYOUT, type DiffLayout } from './settings-contract.ts'
 
 export type * from './change-types.ts'
 export { FileReviewService, transformFile } from './file-review-service.ts'
@@ -28,10 +24,13 @@ export interface Config {
   diffLayout: Volatile<DiffLayout>
 }
 
-/** Display settings that can update without restarting the plugin. */
+/** 可由当前 Profile 即时更新的显示设置。 */
 export const Config = z.object({
   wordWrap: z.boolean().default(DEFAULT_WORD_WRAP).volatile(),
-  diffLayout: z.union([z.const('split'), z.const('unified')]).default(DEFAULT_DIFF_LAYOUT).volatile(),
+  diffLayout: z
+    .union([z.const('split'), z.const('unified')])
+    .default(DEFAULT_DIFF_LAYOUT)
+    .volatile(),
 })
 
 /** Services required for the model guidance paired with the browser renderer. */

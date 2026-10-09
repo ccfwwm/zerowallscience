@@ -14,7 +14,7 @@ import * as ProgressiveTools from '../src/index.js'
 class BindingRuntime extends PtcRuntime {
   readonly isolation = 'fixture'
   readonly language: string
-  behavior: (request: PtcRunSpec) => Promise<PtcRunResult> = async () => ({ logs: [] })
+  behavior: (request: PtcRunRequest) => Promise<PtcRunResult> = async () => ({ logs: [] })
 
   constructor(ctx: Context, config: { language: string }) {
     super(ctx)
@@ -22,11 +22,11 @@ class BindingRuntime extends PtcRuntime {
   }
 
   resolve(request: PtcRunRequest): PtcRunSpec {
-    return { ...request, cwd: request.cwd ?? process.cwd(), timeoutMs: request.timeoutMs ?? 120_000 }
+    return { ...request, cwd: request.cwd ?? process.cwd(), timeoutMs: request.timeoutMs ?? null }
   }
 
-  run(request: PtcRunSpec): Promise<PtcRunResult> {
-    return this.behavior(request)
+  run(spec: PtcRunSpec): Promise<PtcRunResult> {
+    return this.behavior(spec)
   }
 }
 
@@ -77,6 +77,7 @@ describe.each(['ptc', 'both'] as const)('stable projection in %s mode', (mode) =
       await bindings.tool_search!({ query: 'browser_open' })
       const value = await bindings.tool_dispatch!({ name: 'browser_open', arguments: { url: 'example' } })
       expect(value).toMatchObject({ tool: 'browser_open', value: 'opened:example' })
+      expect(value).not.toHaveProperty('content')
       await expect(bindings.tool_dispatch!({ name: 'browser_open', arguments: {} })).rejects.toThrow()
       return { logs: [], value }
     }

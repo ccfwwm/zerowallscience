@@ -120,9 +120,7 @@ describe('DSH plugin presentation metadata', () => {
     try {
       execFileSync('pnpm', ['pack', '--pack-destination', dir], { cwd: ROOT, stdio: 'pipe', shell: process.platform === 'win32' })
       const contents = execFileSync('tar', ['-tzf', `${pkg.name}-${pkg.version}.tgz`], { cwd: dir, encoding: 'utf8' })
-      // GNU tar on Windows emits CRLF, so normalize the entry terminators
-      // before comparing names. The archive itself is otherwise identical.
-      const files = contents.split(/\r?\n/u)
+      const files = contents.split('\n')
       expect(files, `${ICON} must be published`).toContain(`package/${ICON}`)
       for (const [name] of locales()) {
         expect(files, `${LOCALE_DIR}/${name} must be published`).toContain(`package/${LOCALE_DIR}/${name}`)

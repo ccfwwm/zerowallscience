@@ -170,6 +170,35 @@ export function buildCatalog(
   }
 }
 
+/**
+ * Queries that look like `family_member` or `plugin.tool` are treated as
+ * exact-name lookups. Capability phrases keep spaces and stay in lexical
+ * ranking.
+ */
+const IDENTIFIER_QUERY = /^[A-Za-z][A-Za-z0-9]*(?:[_.-][A-Za-z0-9]+)+$/
+
+function isExactNameQuery(query: string): boolean {
+  return IDENTIFIER_QUERY.test(query.trim())
+}
+
+function hasCatalogNameHit(catalog: ToolCatalog, query: string): boolean {
+  const normalizedQuery = normalize(query)
+  if (normalizedQuery === '') return false
+  for (const name of catalog.tools.keys()) {
+    const normalizedName = normalize(name)
+    if (normalizedName === normalizedQuery || normalizedName.includes(normalizedQuery)) return true
+  }
+  for (const group of catalog.groups.values()) {
+    if (normalize(group.id) === normalizedQuery) return true
+    if (group.aliases.some(alias => normalize(alias) === normalizedQuery)) return true
+  }
+  return false
+}
+
+function skipUnmatchedExactName(catalog: ToolCatalog, query: string): boolean {
+  return isExactNameQuery(query) && !hasCatalogNameHit(catalog, query)
+}
+
 function scoreGroup(group: ToolGroup, query: string): number {
   const normalizedQuery = normalize(query)
   if (normalizedQuery === '') return 0
@@ -195,6 +224,7 @@ function scoreGroup(group: ToolGroup, query: string): number {
 }
 
 export function searchCatalog(catalog: ToolCatalog, query: string, limit: number): SearchMatch[] {
+  if (skipUnmatchedExactName(catalog, query)) return []
   return [...catalog.groups.values()]
     .map(group => ({ group, score: scoreGroup(group, query) }))
     .filter(candidate => candidate.score > 0)
@@ -211,6 +241,20 @@ export function searchCatalog(catalog: ToolCatalog, query: string, limit: number
     }))
 }
 
+function dropLowRelevance(
+  ranked: readonly { tool: CatalogTool; score: number; group: string }[],
+  queryTokens: readonly string[],
+): { tool: CatalogTool; score: number; group: string }[] {
+  const top = ranked[0]
+  if (top === undefined) return []
+  const floor = top.score * 0.15
+  return ranked.filter((candidate, index) => {
+    if (index === 0) return true
+    if (candidate.score >= floor) return true
+    return tokens(candidate.tool.name).some(token => queryTokens.includes(token))
+  })
+}
+
 function termFrequency(documentTokens: readonly string[], term: string): number {
   return documentTokens.reduce((count, token) => count + (token === term ? 1 : 0), 0)
 }
@@ -224,6 +268,9 @@ export function searchTools(catalog: ToolCatalog, query: string, limit: number):
   const normalizedQuery = normalize(query)
   const queryTokens = [...new Set(tokens(query))]
   if (normalizedQuery === '' || queryTokens.length === 0) return []
+  // An unmatched identifier must not dump unrelated schemas. Shared tokens
+  // such as "tool" otherwise fill maxResults and inflate later turns.
+  if (skipUnmatchedExactName(catalog, query)) return []
 
   const documents = [...catalog.tools.values()].map(tool => ({
     tool,
@@ -243,8 +290,16 @@ export function searchTools(catalog: ToolCatalog, query: string, limit: number):
     : documents.reduce((total, document) => total + document.tokens.length, 0) / documents.length
   const k1 = 1.2
   const b = 0.75
+  const documentFrequency = new Map<string, number>()
+  for (const term of queryTokens) {
+    let count = 0
+    for (const document of documents) {
+      if (document.tokens.includes(term)) count += 1
+    }
+    documentFrequency.set(term, count)
+  }
 
-  return documents
+  const ranked = documents
     .map(({ tool, group, text, tokens: documentTokens }) => {
       let score = 0
       const normalizedName = normalize(tool.name)
@@ -259,12 +314,8 @@ export function searchTools(catalog: ToolCatalog, query: string, limit: number):
       for (const term of queryTokens) {
         const frequency = termFrequency(documentTokens, term)
         if (frequency === 0) continue
-        const documentFrequency = documents.reduce(
-          (count, document) => count + (document.tokens.includes(term) ? 1 : 0),
-          0,
-        )
         const inverseFrequency = Math.log(
-          1 + (documents.length - documentFrequency + 0.5) / (documentFrequency + 0.5),
+          1 + (documents.length - (documentFrequency.get(term) ?? 0) + 0.5) / ((documentFrequency.get(term) ?? 0) + 0.5),
         )
         const denominator = frequency + k1 * (1 - b + b * documentTokens.length / averageLength)
         score += inverseFrequency * (frequency * (k1 + 1)) / denominator * 10
@@ -281,8 +332,12 @@ export function searchTools(catalog: ToolCatalog, query: string, limit: number):
     .sort((left, right) => right.score - left.score
       || left.tool.estimatedTokens - right.tool.estimatedTokens
       || left.tool.name.localeCompare(right.tool.name))
-    .slice(0, limit)
-    .map(({ tool, score, group }) => ({
+  const exact = ranked.find(candidate => normalize(candidate.tool.name) === normalizedQuery)
+  // An exact registered name is the target. Do not append the next lexical neighbor.
+  const selected = exact !== undefined
+    ? [exact]
+    : dropLowRelevance(ranked, queryTokens).slice(0, limit)
+  return selected.map(({ tool, score, group }) => ({
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,

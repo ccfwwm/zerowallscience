@@ -18,7 +18,11 @@ import type { ChatFileMentions, TurnTailOwnerProps } from '@deepseek-ai/dsh-clie
 import { useMemo, useState } from 'react'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { ProducedFiles, ProducedFilesTail, type ProducedFilesProps } from '../src/client/ProducedFiles.tsx'
+import {
+  ProducedFiles,
+  ProducedFilesTail,
+  type ProducedFilesProps,
+} from '../src/client/ProducedFiles.tsx'
 import {
   FileReviewSettingsCard,
   type FileReviewSettingsCardProps,
@@ -50,14 +54,6 @@ import {
 import { boundedPtcFileReviewMarker, markerBlock } from '../src/ptc-marker.ts'
 import { apply, inject } from '../src/client/index.ts'
 import { en, NS, zh } from '../src/client/locales.ts'
-
-// The Harness client bundles browser targets behind its runtime ModuleLoader.
-// Unit tests exercise this plugin's source modules directly, so provide the
-// small chat primitive that ReviewUserMessage delegates to without evaluating
-// the loader-wrapped browser bundle in Vitest.
-vi.mock('@deepseek-ai/dsh-client-ui-chat/client', () => ({
-  UserStyleBubble: () => null,
-}))
 
 /** Supply the host-owned tab lifecycle while exercising the real card and tab content. */
 function ReviewFixture({
@@ -261,14 +257,12 @@ function result(
     turn,
     step,
     message: {
-      source: { type: 'tool-result', callId },
-      content: [
-        {
-          type: 'tool-result',
-          content: marker === null ? [] : [markerBlock(marker)],
-          isError: options.isError ?? false,
-        },
-      ],
+      id: `result-${callId}`,
+      role: 'tool',
+      source: { kind: 'tool', callId },
+      toolCallId: callId,
+      content: marker === null ? [] : [markerBlock(marker)],
+      isError: options.isError ?? false,
     },
   })
 }
@@ -1522,7 +1516,7 @@ describe('producedFileMentions resolver', () => {
 })
 
 describe('FileReview settings card', () => {
-  // 验证插件管理页展开后显示换行开关，并保存新值。
+  // 验证展开插件设置后显示换行开关，切换时保存新值，并提供安全的新窗口项目链接。
   it('discloses the word-wrap switch and saves its next value', async () => {
     const snapshot = {
       status: 'ready' as const,
@@ -1533,18 +1527,20 @@ describe('FileReview settings card', () => {
       writable: true,
       mode: 'host' as const,
     }
-    const setWordWrap = vi.fn(async () => true)
+    const setWordWrap = vi.fn(async () => {})
     const props = {
-      view: 'page',
       t: makeTranslate(en),
-      useFileReviewSettings: (select: (value: typeof snapshot) => unknown) => select(snapshot),
+      view: 'page',
+      useFileReviewSettings: <Selected,>(select: (value: typeof snapshot) => Selected) =>
+        select(snapshot),
       setWordWrap,
-      setDiffLayout: vi.fn(async () => true),
     } as unknown as FileReviewSettingsCardProps
-    const view = render(<ul><FileReviewSettingsCard {...props} /></ul>)
+    const view = render(<FileReviewSettingsCard {...props} />)
 
-    expect(view.queryByRole('switch')).not.toBeNull()
-    fireEvent.click(view.getByRole('button', { name: 'Collapse: File review' }))
+    const starLink = view.getByRole('link', { name: en['settings.star.aria'] })
+    expect(starLink.getAttribute('href')).toBe('https://github.com/left0ver/dsh-file-review')
+    expect(starLink.getAttribute('target')).toBe('_blank')
+    expect(starLink.getAttribute('rel')).toBe('noopener noreferrer')
     expect(view.queryByRole('switch')).toBeNull()
     fireEvent.click(view.getByRole('button', { name: 'Expand: File review' }))
     const toggle = view.getByRole('switch', { name: 'Automatically wrap long lines' })
@@ -1567,6 +1563,7 @@ describe('plugin registration', () => {
             inject?: (sessionId: string) => unknown
             locale?: string
             name?: string
+            order?: number
           }
           component: unknown
         }
@@ -1633,7 +1630,7 @@ describe('plugin registration', () => {
       settingsValue = { wordWrap: value }
       for (const listener of settingsListeners) listener()
     }
-    const settingsForm = {
+    const configForm = {
       getSnapshot: () => ({
         status: 'ready' as const,
         value: settingsValue,
@@ -1649,19 +1646,17 @@ describe('plugin registration', () => {
           settingsListeners.delete(listener)
         }
       },
-      set: vi.fn(async (field: string, value: unknown) => {
-        if (field === 'wordWrap') publishWordWrap(value === true)
-        return true
+      set: vi.fn(async (_field: string, value: unknown) => {
+        publishWordWrap(value === true)
       }),
       unset: vi.fn(async () => {
         publishWordWrap(false)
       }),
-      mutate: vi.fn(async () => true),
     }
-    const getSettings = vi.fn(() => settingsForm)
+    const getConfigForm = vi.fn(() => configForm)
     const ctx = {
       remote: { $mount: mountRemote },
-      configForms: { get: getSettings },
+      configForms: { get: getConfigForm },
       sessions: {
         scope: vi.fn(() => sessionScope.ctx),
         binding: vi.fn(() => ({
@@ -1713,6 +1708,7 @@ describe('plugin registration', () => {
             key?: string
             locale?: string
             name?: string
+            order?: number
             priority?: number
           },
           component: unknown,
@@ -1742,8 +1738,7 @@ describe('plugin registration', () => {
       'sidebarRight',
       'sidebarRightTabs',
     ])
-    expect(getSettings).toHaveBeenCalledWith('file-review')
-    expect(getSettings).toHaveBeenCalledTimes(1)
+    expect(getConfigForm).toHaveBeenCalledWith('file-review')
     publishWordWrap(true)
     expect(registerSource).toHaveBeenCalledOnce()
     expect(mountRemote).toHaveBeenCalledOnce()
@@ -1759,16 +1754,8 @@ describe('plugin registration', () => {
         locale: NS,
         inject: expect.any(Function),
       }),
-      component: expect.any(Function),
+      component: FileReviewSettingsCard,
     })
-    expect(registrations.filter(registration => registration.options.name === 'plugins.row.config')).toHaveLength(1)
-    const desktopSettingsFace = settingsRegistration?.options.inject?.('session-1') as {
-      hooks: { fileReviewSettings: { getSnapshot(): { status: string } } }
-      setWordWrap(value: boolean): Promise<boolean>
-    }
-    expect(desktopSettingsFace.hooks.fileReviewSettings.getSnapshot().status).toBe('ready')
-    await expect(desktopSettingsFace.setWordWrap(true)).resolves.toBe(true)
-    expect(settingsForm.set).toHaveBeenCalledWith('wordWrap', true)
     expect(registrations).toContainEqual({
       options: expect.objectContaining({
         name: 'conversation.input.dock',
@@ -1783,6 +1770,7 @@ describe('plugin registration', () => {
     )
     expect(dockRegistration?.options.inject?.('session-1')).toEqual({
       projectRoot: '/workspace/project',
+      syncComments: expect.any(Function),
     })
     expect(registrations).toEqual(
       expect.arrayContaining([
@@ -1807,6 +1795,8 @@ describe('plugin registration', () => {
       ]),
     )
     expect(slot?.component).toBe(ProducedFilesTail)
+    expect(slot?.options.id).toBe('dsh-file-review')
+    expect(slot?.options.order).toBe(-2)
     expect(slot?.options.locale).toBe(NS)
     expect(slot?.options.inject).toBeTypeOf('function')
     const reviewActions = slot?.options.inject?.('session-1') as {
@@ -1829,6 +1819,13 @@ describe('plugin registration', () => {
     await expect(reviewActions.applyChanges({ action: 'undo', files: [] })).resolves.toEqual({
       files: [],
     })
+    const settingsActions = settingsRegistration?.options.inject?.('') as {
+      hooks: { fileReviewSettings: typeof configForm }
+      setWordWrap(value: boolean): Promise<void>
+    }
+    expect(settingsActions.hooks.fileReviewSettings).toBe(configForm)
+    await settingsActions.setWordWrap(false)
+    expect(configForm.set).toHaveBeenCalledExactlyOnceWith('wordWrap', false)
 
     const opened: string[] = []
     const owner = tailOwner(produced([2, 'site/report.html']), 3, (path) => {

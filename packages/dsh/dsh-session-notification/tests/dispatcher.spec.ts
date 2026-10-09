@@ -18,11 +18,11 @@ const event = (kind: NotificationEvent['kind'], sessionId = 'a'): NotificationEv
 function makeDeps(overrides: Partial<NotificationDispatcherDeps> = {}): {
   deps: NotificationDispatcherDeps
   sounds: Array<{ sound: SoundId; customUrl?: string }>
-  browser: Array<{ title: string; body: string; tag: string }>
+  browser: Array<{ title: string; body: string; tag: string; sessionId: SessionId }>
   settings: NotificationSettings
 } {
   const sounds: Array<{ sound: SoundId; customUrl?: string }> = []
-  const browser: Array<{ title: string; body: string; tag: string }> = []
+  const browser: Array<{ title: string; body: string; tag: string; sessionId: SessionId }> = []
   const settings: NotificationSettings = structuredClone(DEFAULT_NOTIFICATION_SETTINGS)
   // The shipped default keeps browser notifications off; these tests focus on
   // the browser path, so enable it unless a test flips it off explicitly.
@@ -33,8 +33,8 @@ function makeDeps(overrides: Partial<NotificationDispatcherDeps> = {}): {
       t: (key: string) => (zh as Record<string, string>)[key] ?? key,
       playSound: (sound, customUrl) => { sounds.push(customUrl === undefined ? { sound } : { sound, customUrl }) },
       customSoundOf: () => undefined,
-      showBrowser: (title, body, tag) => { browser.push({ title, body, tag }); return true },
-      currentSession: () => undefined,
+      showBrowser: (title, body, tag, sessionId) => { browser.push({ title, body, tag, sessionId }); return true },
+      isCurrent: () => false,
       isHidden: () => false,
       ...overrides,
     },
@@ -86,28 +86,35 @@ describe('NotificationDispatcher', () => {
   })
 
   it('stays fully quiet while the user watches that session (default)', () => {
-    const { deps, sounds, browser } = makeDeps({ currentSession: () => 'a' as SessionId })
+    const { deps, sounds, browser } = makeDeps({ isCurrent: (id) => id === 'a' })
     new NotificationDispatcher(deps).dispatch(event('completed', 'a'))
     expect(sounds).toEqual([])
     expect(browser).toEqual([])
   })
 
   it('alerts for the current session when the notifyCurrent toggle is on', () => {
-    const { deps, sounds, browser, settings } = makeDeps({ currentSession: () => 'a' as SessionId })
+    const { deps, sounds, browser, settings } = makeDeps({ isCurrent: (id) => id === 'a' })
     settings.notifyCurrent = true
     new NotificationDispatcher(deps).dispatch(event('completed', 'a'))
     expect(sounds).toEqual([{ sound: 'chime' }])
     expect(browser).toHaveLength(1)
   })
 
+  it('hands the event session to the notification click target', () => {
+    const { deps, browser } = makeDeps()
+    new NotificationDispatcher(deps).dispatch(event('completed', 'a'))
+    expect(browser).toHaveLength(1)
+    expect(browser[0].sessionId).toBe('a')
+  })
+
   it('shows a browser notification for a different session while visible', () => {
-    const { deps, browser } = makeDeps({ currentSession: () => 'b' as SessionId })
+    const { deps, browser } = makeDeps({ isCurrent: (id) => id === 'b' })
     new NotificationDispatcher(deps).dispatch(event('completed', 'a'))
     expect(browser).toHaveLength(1)
   })
 
   it('shows a browser notification when hidden even for the current session', () => {
-    const { deps, browser } = makeDeps({ currentSession: () => 'a' as SessionId, isHidden: () => true })
+    const { deps, browser } = makeDeps({ isCurrent: (id) => id === 'a', isHidden: () => true })
     new NotificationDispatcher(deps).dispatch(event('question', 'a'))
     expect(browser).toHaveLength(1)
   })

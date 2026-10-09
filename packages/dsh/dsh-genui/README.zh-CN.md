@@ -96,7 +96,7 @@ CI 的 packed host smoke 会把实际生成的 npm tarball 安装到真实 DSH �
 
 前置条件，缺一不可：
 
-1. **dsh `^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-alpha.1`**（验收宿主标签为 `dsh-v0.1.2-rc.1`、`dsh-v0.1.7-alpha.1` 与 `dsh-v0.1.7-alpha.2`；使用 DSH `<=0.1.1-rc.x` 的用户请使用 dsh-genui `0.9.8`）
+1. **dsh `^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-alpha.1 || >=0.2.0-rc.1 <0.3.0-0`**（DSH `0.2.0-rc.1` 当前属于预发布版本；已验证宿主角色：minimum `dsh-v0.1.2-rc.1`、current `dsh-v0.1.7-rc.2`、next `dsh-v0.2.0-rc.2`；使用 DSH `<=0.1.1-rc.x` 的用户请使用 dsh-genui `0.9.8`）
 2. **`pnpm` 在 PATH 上**：`dsh plugin` 命令依赖它。没有就 `corepack enable`（或 `npm i -g pnpm`），然后**新开一个终端**，确认 `pnpm -v` 有输出
 
 安装并在 DSH 中激活（一行命令，自动带上全部依赖）：
@@ -115,6 +115,12 @@ npm install @changfenhuang/dsh-genui
 > `npm install` 只添加依赖，不会把插件注册到 DSH；在 DSH 中使用时仍应执行上面的 `dsh plugin add`。
 
 > ⚠️ **别用 `link:` 装一个刚 clone 的目录**——`link:` 不会安装插件的依赖（mermaid / three / react），装完渲染器会挂。正常安装请使用上面的 npm 命令；只有本地开发迭代才用 `link:`（见下文）。
+
+### 认准包名与版本
+
+- **包名必须带 scope**：npm 上另有一个同名但不带 scope 的 [`dsh-genui`](https://www.npmjs.com/package/dsh-genui)（Vue/OpenTiny 实现，与本仓库无关，维护者不同）。如果安装列表里描述是 "interactive charts, forms, calculators, dashboards, and mini apps"，那是那个项目——装上会因 peer 不兼容被宿主拒绝。本插件始终是 **`@changfenhuang/dsh-genui`**。
+- **宿主拒绝安装时**：支持的宿主范围由 peerDependencies 声明、宿主据此检查，升级到 npm 上 `latest` 的插件版本重装即可，无需改其他配置。
+- **解析到的版本低于 `latest`**：多半是 pnpm 的发布冷静期在起作用（默认跳过发布不满 24 小时的版本，且不提示）。等一天重试，或在 profile 的 `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude` 里加入目标版本；profile 里精确 pin 过旧版本的，先改依赖声明再重装。
 
 ### 从旧 `@omdsh-dev` 包名迁移
 
@@ -163,7 +169,8 @@ dsh plugin --profile web add link:$PWD
 - **ECharts 集成**：`echart` 节点渲染完整的 ECharts 图表，自动适配主题色、提示框和图例。两种模式：**预设简写**（`preset: 'bar' | 'line' | 'area' | 'pie' | 'scatter'` + `data`/`series`）可从 `chart` 节点快速升级；**完整选项**（`option` 字段）支持自定义图表类型、dataZoom、visualMap 等高级 ECharts 功能。echarts 引擎（~1 MB）按需懒加载——主包不含引擎，没有 `echart` 节点的对话不会下载它- **函数图**：`plot` 画曲线，参数滑块拖动实时重绘，支持自动动画
 
 - **测验**：`quiz` 点选判题 + 解析 + 重试；带 `action` 时答案同时回传模型（判题仍本地即时）
-- **本地判卷（交卷）**：多道选择题 = 每题的 `radio` 加 `group` + `answer`（正确答案）+ `explanation`（解析），再加一个 `submit` 交卷按钮——用户全部选完点一次，**分数、每题对错、解析当场在 UI 里出现，零模型往返**；题目随即锁定，「重新作答」本地重置（可选 `resetAction` 通知模型）。题目没带答案时才退回聚合 action（`fields` 收集所有带 `id` 的输入）
+- **本地判卷（交卷）**：多道选择题的每个 `radio` 设置 `group`、`answer` 和 `explanation`，再添加 `submit` 按钮。所需 radio 均已选择且当前 block 没有其他需要发送的表单状态时，分数、每题对错和解析直接显示在界面中；其他情况通过聚合 action 发送 `answers`、可选的 `fields`、`total` 和 `answered`。
+- **提交分组**：`groups` 引用当前 block 中的 submission member key，来源为 `radio.group`、`checkbox.group`、`input.id`、`textarea.id`、`select.id`、`slider.id`。radio 需已选择，checkbox 组需至少选择一项，普通字段需在 trim 后非空。`groups` 控制提交所需成员与完成进度；payload 继续收集当前 block 中已填写的表单状态。未设置 `groups` 时，至少有一个已完成成员即可提交。
 - **状态持久化**：答案、交卷锁定、输入值按「会话 + 内容指纹」自动保存——刷新页面/重开会话原样恢复，重渲染相同内容保留用户状态，新内容自动从头开始；上限 200 块 LRU 淘汰
 - **表单语义**：`input` 回车 / `textarea` Ctrl+Enter 即时提交（`submit:true`），不用等失焦；带 `id` 的字段值进 submit 的 `fields` 收集
 - **秘密禁令**：GenUI 不得索取密码、API Key、访问令牌、恢复码或其他秘密；密码输入即使出现也保持打码、不持久化、不进表单收集
@@ -172,7 +179,7 @@ dsh plugin --profile web add link:$PWD
 - **事件循环**：按钮、复选框、单选、开关、下拉、输入、文本域、提交和测验等离散交互按一次手势一次事件立即回传模型；`slider` 连续拖动保留尾沿防抖，同一滑块只回传最终值，不同 `id` 的滑块互不合并。
 - **工具通道**：`render_ui` 工具把同一份 spec 渲染成工具行卡片（交付物型 UI 走工具、回答型 UI 走围栏）
 - **会话面板**：composer 上方常驻 dock，`render_ui` / `panel: true` 围栏原地更新同一块界面；`/panel` 命令客户端直开（`/panel <指令>` 转模型定制、`/panel clear` 清空）；顶边框可拖拽调高；`append: true` 增量合并——同名标签页追加内容、新标签页新增；整面板默认最多 200 节点 / 200 条追加，达到上限后模型应发送 `replace` 重建
-- **围栏自修**：默认开启；在 profile 的 cordis.patch.yml 中本插件条目的 `config:` 下设置 `fenceFeedback: false` 可以关闭。回答最终的 dsh-ui 围栏无法渲染时，插件借宿主的轮内转向（steer）把逐节点诊断送回**同一轮**，模型重发修好的围栏；每轮至多一次、每个围栏至多一次、子代理不触发，不会循环。
+- **围栏自修**：默认开启；在 profile 的 cordis.patch.yml 中本插件条目的 `config:` 下设置 `fenceFeedback: false` 可以关闭同回合围栏修正。已调用 `validate_dsh_ui` 的 GenUI 回合若只输出 reasoning 并以 `stop` 结束，仍会转换为 `EMPTY_RESPONSE`，交给宿主重试策略处理。回答最终的 dsh-ui 围栏无法渲染时，插件借宿主的轮内转向（steer）把逐节点诊断送回**同一轮**，模型重发修好的围栏。每个 turn 最多发送两条 correction，渲染失败与“已验证但没有正式交付”共用该上限；同一 turn 内相同围栏 fingerprint 只修正一次，新 turn 可以重新修正相同错误；同一 turn 的零交付提醒只发送一次。plugin reload 后会从持久化的 correction message 恢复当前 turn 的围栏去重记录、已消费的 correction 次数以及零交付提醒记录。子代理回合不会收到围栏修正。
 - **自愈与上限**：每个围栏过规格守卫——坏节点静默丢弃（同围栏其余组件照常渲染，单个坏组件不再拖垮整条围栏）、数值钳位、字符串截断，整树 ≤200 节点 / 8 层嵌套，病态 spec 不会拖垮界面
 - **统一组件协议**：`card.label` → `title`、`table.data`/`table.items` → `rows`、`callout.kind`/`callout.desc` → `tone`/`content`（tone 值 `danger` → `error`）、`steps.items` → `steps`、`keyvalue.items` → `pairs`（记录内 `label` → `key`）、`file-tree.nodes` → `items`（记录内 `label` → `name`、有 children 时缺省 `dir`）等原生字段别名会在校验和渲染前确定性归一化；根级组件数组视为 `items`、双重编码的 JSON 字符串解一层；`validate_dsh_ui` 会报告归一化结果，并对原生组件未知字段给出警告，同时保持自定义 renderer 节点的透明兼容。
 - **图错误自愈**：mermaid 渲染失败自动修复重试（剥反引号、引号化中文/空格标签、去 `<br/>`），仍失败才降级源码；错误图永不直接上屏
@@ -253,7 +260,9 @@ pnpm run check   # 类型检查 + 全量测试 + 构建
 
 安装锁定依赖后，检查脚本（`pnpm run check` 或 `npm run check`）使用固定的 DSH `0.1.2-rc.1` 发布包。
 
-`pnpm run check:host-api dsh-v0.1.7-alpha.1` 与 `pnpm run check:host-api dsh-v0.1.7-alpha.2` 会在隔离目录安装对应的 DSH npm 发布包，运行 TypeScript 类型检查与 tsdown 构建。CI 对两个版本执行检查，然后运行安装包宿主 smoke 测试。
+已验证宿主角色为 minimum `dsh-v0.1.2-rc.1`、current `dsh-v0.1.7-rc.2`、next `dsh-v0.2.0-rc.1`。DSH `0.2.0-rc.1` 当前属于预发布版本。CI 保持四条主要 lane：Node 22 + current，以及 Node 24 + minimum/current/next。DSH 发布新版本后，替换对应固定标签。
+
+`pnpm run check:host-api dsh-v0.1.7-rc.2` 与 `pnpm run check:host-api dsh-v0.2.0-rc.1` 会安装对应 DSH 发布包，运行 TypeScript 类型检查与 tsdown 构建。每条 CI 宿主 lane 随后会把生成的 tarball 安装到固定版本的 DSH 宿主并运行 packed smoke。
 
 运行 `node scripts/verify-pack.mjs --keep` 可保留已验收的 tarball，便于检查或运行 e2e；默认的 `node scripts/verify-pack.mjs` 会在验收后清理临时目录。
 

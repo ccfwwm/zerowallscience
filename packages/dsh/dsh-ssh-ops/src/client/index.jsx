@@ -1,35 +1,33 @@
 /**
  * dsh-ssh-ops browser plugin entry.
  *
- * Two integration modes, chosen per environment:
+ * - Official Sidebar mode (requires `sidebarRightTabs` + `sidebarRight`): the
+ *   SSH terminal is a TAB of the official right-Sidebar, beside the built-in
+ *   Files tab. Registration follows the same public two-stage path every tab
+ *   type uses — the type into `ctx.sidebarRightTabs`, the body into the keyed
+ *   `sidebar.right.pane.tab` seat under the type's `id`. The session-header
+ *   SSH button opens or focuses that tab (repeated clicks focus, never
+ *   duplicate). Width, split, fullscreen and collapse are the Sidebar's; no
+ *   floating panel, no chat-column margin, no own resize. The legacy floating
+ *   drawer for pre-Sidebar DSH has been removed: a host without the Sidebar
+ *   services shows no terminal UI (agent tools keep working), so the
+ *   registration simply waits and never falls back.
  *
- * - Official Sidebar mode (new DSH, `sidebarRightTabs` + `sidebarRight`
- *   present): the SSH terminal is a TAB of the official right-Sidebar, beside
- *   the built-in Files tab. Registration follows the same public two-stage
- *   path every tab type uses — the type into `ctx.sidebarRightTabs`, the body
- *   into the keyed `sidebar.right.pane.tab` seat under the type's `id`. The
- *   session-header SSH button opens or focuses that tab (repeated clicks
- *   focus, never duplicate). Width, split, fullscreen and collapse are the
- *   Sidebar's; no floating panel, no chat-column margin, no own resize.
- * - Drawer mode (older DSH): the previous fixed right-side floating panel
- *   (`SshDrawer.jsx` in `shell.overlay`) with its own width and the chat
- *   column reservation — kept as the compatibility fallback.
- *
- * Connection lifetime is independent of the view in both modes: switching
- * tabs, collapsing the Sidebar, closing the SSH tab, or switching chats never
- * disconnects; terminals are pooled client-side (`terminal-pool.js`) and the
- * host replays output buffered while no view was attached.
+ * Connection lifetime is independent of the view: switching tabs, collapsing
+ * the Sidebar, closing the SSH tab, or switching chats never disconnects;
+ * terminals are pooled client-side (`terminal-pool.js`) and the host replays
+ * output buffered while no view was attached.
  */
 import * as React from "react";
-import { resourceZh, resourceEn } from "./resource-locales.js";
 import { createSshApi } from "./api.js";
 import { IconTerminal16 } from "./IconTerminal16.jsx";
-import { SshDrawer } from "./SshDrawer.jsx";
 import { SshSidebarBody } from "./SshSidebarBody.jsx";
-import { SshPanel } from "./SshPanel.jsx";
 import { SshResources } from "./SshResources.jsx";
-import { getSshUiSnapshot, sshUiSetOpen, sshUiSetSurfaceOpener } from "./store.js";
+import { sshUiAnnounceAgentConnections, sshUiSetSurfaceOpener } from "./store.js";
+import { startAgentConnectionPoll } from "./agent-connection-poll.js";
 import { activateSidebarWhenAvailable } from "./sidebar-lifecycle.js";
+import { readHostLanguage, setLanguage } from "./locale.js";
+import { installSettingsNavIcon } from "./nav-icon.js";
 import TYPERT_REMOTE from "../remote.js";
 
 const NS = "ssh-ops";
@@ -57,20 +55,24 @@ export async function apply(ctx) {
 
   const api = createSshApi(ctx);
 
-  const localeDispose = own(ctx.locale.register(NS, {
+  // Agent-connected servers must surface even while the SSH tab is closed
+  // (issue #25 real-machine feedback): ssh_connect_profile opens transport +
+  // session host-side, and without a poll nobody reveals the tab — the user
+  // had to find the terminal by hand, and a second server never appeared
+  // beside the first. The plugin root is always mounted, so it owns the
+  // slow poll; the panel's own refresh is the fast path while it is open.
+  own(startAgentConnectionPoll(api, sshUiAnnounceAgentConnections));
+
+  own(ctx.locale.register(NS, {
     zh: {
-      ...resourceZh,
-      sshAction: "SSH 终端",
-      sshActionClose: "关闭 SSH 终端",
-      sidebarTabTitle: "SSH 终端",
-      openSidebarTab: "打开或聚焦 SSH 终端标签",
-      guideTitle: "SSH 终端",
-      guideDescription: "连接服务器，使用终端、远程文件、转发、快捷命令与数据库工具"
+      settingsSectionLabel: "SSH 资源", // i18n-ignore: host locale entry
+      sidebarTabTitle: "SSH 终端", // i18n-ignore: host locale entry
+      openSidebarTab: "打开或聚焦 SSH 终端标签", // i18n-ignore: host locale entry
+      guideTitle: "SSH 终端", // i18n-ignore: host locale entry
+      guideDescription: "连接服务器，使用终端、远程文件、转发、快捷命令与数据库工具" // i18n-ignore: host locale entry
     },
     en: {
-      ...resourceEn,
-      sshAction: "SSH Terminal",
-      sshActionClose: "Close SSH terminal",
+      settingsSectionLabel: "SSH Resources",
       sidebarTabTitle: "SSH Terminal",
       openSidebarTab: "Open or focus the SSH terminal tab",
       guideTitle: "SSH Terminal",
@@ -78,32 +80,30 @@ export async function apply(ctx) {
     }
   }));
 
-  const t = ctx.locale.bind(NS);
+  const hostT = ctx.locale.bind(NS);
 
-  // Start with the legacy drawer so older DSH releases remain usable. Newer
-  // hosts provide their Sidebar faces asynchronously; a one-time ctx.get()
-  // snapshot here races that startup and permanently selects the drawer.
+  // Follow the host's language before any surface paints. An explicit
+  // combobox choice sticks; otherwise (follow mode) the plugin adopts
+  // whatever DSH Settings → Language shows now and on every later change the
+  // locale face reports, writing it back so the host half (agent-visible
+  // messages) speaks the same language after the next restart.
+  own(syncLanguageWithHost(api, ctx));
+
+  // The Sidebar's service faces may be provided after this bundle is
+  // evaluated; register through the delayed lifecycle instead of a one-time
+  // ctx.get() snapshot that would permanently miss them. There is no fallback
+  // surface anymore — if the Sidebar path fails, the error is only reported.
   own(activateSidebarWhenAvailable(ctx, {
-    registerLegacy: (legacyCtx) => applyLegacyRegistrations(legacyCtx, { api }),
-    registerSidebar: (sidebarCtx) => applySidebarRegistrations(sidebarCtx, { api, t }),
+    registerSidebar: (sidebarCtx) => applySidebarRegistrations(sidebarCtx, { api, hostT }),
     onSidebarError: (error) => {
-      console.error("[dsh-ssh-ops] sidebar tab registration failed; keeping legacy drawer:", error);
+      console.error("[dsh-ssh-ops] sidebar tab registration failed; no terminal surface available:", error);
     }
   }));
 
-  // Use the host view roster so SSH selection replaces the transcript and
-  // has exactly the same selection/replay lifecycle as Chat and Zotero.
-  own(ctx.slots.inject("conversation.view", () => ctx.slots.register({
-    name: "conversation.view",
-    id: "ssh",
-    order: 40,
-    label: "SSH",
-    inject: () => ({ api, credentials: ctx.remote?.credentials })
-  }, function SshConversationView({ api, credentials }) {
-    return <div data-zerowall-ssh-view="" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, height: "100%" }}>
-      <SshPanel api={api} credentials={credentials} viewId="zerowall-ssh-main" />
-    </div>;
-  })));
+  // The settings nav glyph: the host's section slot has no icon field (its
+  // navIcon table falls back to the gear), so paint our terminal mark over
+  // the gear on our own row — same DOM-marker technique as dshmarket.
+  own(installSettingsNavIcon(ctx, () => hostT("settingsSectionLabel")));
 
   // SSH resources are a first-class settings section, beside General and
   // Models. Keeping them under Settings → Plugins made an operational
@@ -115,7 +115,7 @@ export async function apply(ctx) {
         name: "settings.section",
         id: "ssh-ops-resources",
         order: 35,
-        label: () => t("SSH 资源"),
+        label: () => hostT("settingsSectionLabel"), // getter: the host menu re-renders it per language change
         icon: "terminal",
         locale: NS,
         inject: () => ({ api, credentials: ctx.remote?.credentials })
@@ -130,7 +130,7 @@ export async function apply(ctx) {
 }
 
 /** Official Sidebar registrations: both stages live under one disposable scope. */
-function applySidebarRegistrations(ctx, { api, t }) {
+function applySidebarRegistrations(ctx, { api, hostT }) {
   const disposers = [];
   const own = (dispose) => {
     if (typeof dispose === "function") disposers.push(dispose);
@@ -138,9 +138,9 @@ function applySidebarRegistrations(ctx, { api, t }) {
   };
   try {
     // Surfaces that do not own a pane (the resources page) ask for the
-    // terminal through the shared store; in this mode that means focusing the
-    // Sidebar tab. Cleared on release so a later mode switch cannot keep
-    // calling into a host whose Sidebar is gone.
+    // terminal through the shared store; that means focusing the Sidebar
+    // tab. Cleared on release so a disposed registration cannot keep calling
+    // into a host whose Sidebar is gone.
     sshUiSetSurfaceOpener(() => {
       try {
         ctx.sidebarRight.openTab(SSH_TAB_KIND);
@@ -153,11 +153,11 @@ function applySidebarRegistrations(ctx, { api, t }) {
       id: SSH_TAB_ID,
       kind: SSH_TAB_KIND,
       priority: "extension",
-      title: () => t("sidebarTabTitle"),
+      title: () => hostT("sidebarTabTitle"),
       guide: [{
         order: 20,
-        title: () => t("guideTitle"),
-        description: () => t("guideDescription"),
+        title: () => hostT("guideTitle"),
+        description: () => hostT("guideDescription"),
         icon: IconTerminal16
       }]
     }));
@@ -172,10 +172,10 @@ function applySidebarRegistrations(ctx, { api, t }) {
         SshSidebarBody
       )
     ));
-    own(ctx.slots.inject("conversation.session.header.utilities", () =>
+    own(ctx.slots.inject("conversation.session.header.actions", () =>
       ctx.slots.register(
         {
-          name: "conversation.session.header.utilities",
+          name: "conversation.session.header.actions",
           id: "ssh-ops-tab-action",
           order: 90,
           locale: NS
@@ -197,8 +197,8 @@ function applySidebarRegistrations(ctx, { api, t }) {
                 return false;
               }
             },
-            title: t("openSidebarTab"),
-            ariaLabel: "SSH 终端侧栏",
+            title: hostT("openSidebarTab"),
+            ariaLabel: hostT("sidebarTabTitle"),
             watchActive: true
           });
         }
@@ -213,58 +213,169 @@ function applySidebarRegistrations(ctx, { api, t }) {
   }
 }
 
-/** Drawer-mode registrations (legacy DSH): toggle button + shell.overlay panel. */
-function applyLegacyRegistrations(ctx, { api }) {
-  const disposers = [];
-  const own = (dispose) => {
-    if (typeof dispose === "function") disposers.push(dispose);
-    return dispose;
-  };
-  // The optional side-by-side drawer has a header utility, separate from the
-  // mutually exclusive main conversation views.
-  own(ctx.slots.inject("conversation.session.header.utilities", () =>
-    ctx.slots.register(
-      {
-        name: "conversation.session.header.utilities",
-        id: "ssh-ops-tab-action",
-        order: 90,
-        locale: NS
-      },
-      SshDrawerTabAction
-    )
-  ));
+const SSH_TAB_SELECTOR = '[data-dsh-ssh-ops-tab="true"]';
 
-  // The panel itself: a fixed right-side floating panel, mounted at the shell
-  // overlay level so it spans the whole app frame regardless of conversation
-  // scroll state.
-  own(ctx.slots.inject("shell.overlay", () =>
-    ctx.slots.register(
-      {
-        name: "shell.overlay",
-        id: "ssh-ops-panel",
-        order: 100,
-        locale: NS,
-        inject: () => ({ api, credentials: ctx.remote?.credentials })
-      },
-      SshDrawer
-    )
-  ));
+/**
+ * The settings dialog also owns a tablist.  SSH belongs only beside the
+ * conversation / trajectory view tabs, never inside Settings → Plugins.
+ */
+function findConversationTablist() {
+  return [...document.querySelectorAll('[role="tablist"]')].find((tablist) => {
+    const text = tablist.textContent?.replace(/\s+/g, " ").trim().toLowerCase() ?? "";
+    return (text.includes("对话") && text.includes("轨迹")) // i18n-ignore: sniffs the HOST tab labels
+      || (text.includes("conversation") && text.includes("trajectory"));
+  });
+}
+
+function syncSshTabButton(button, active, { title, activeTitle }) {
+  const activeClass = button.dataset.dshSshOpsActiveClass;
+  if (activeClass) button.classList.toggle(activeClass, active);
+  button.setAttribute("aria-pressed", active ? "true" : "false");
+  button.title = active ? (activeTitle ?? title) : title;
+  // The copied host tab class carries an underline.  Explicitly control it so
+  // SSH only looks selected while its terminal view is actually showing.
+  button.style.setProperty(
+    "color",
+    active ? "var(--dsw-alias-brand, #2d6cdf)" : "var(--dsw-alias-label, currentColor)",
+    "important"
+  );
+  button.style.setProperty(
+    "border-bottom-color",
+    active ? "var(--dsw-alias-brand, #2d6cdf)" : "transparent",
+    "important"
+  );
+}
+
+/**
+ * Shared host for the DOM-injected SSH button in the conversation tab strip.
+ * The chat tab strip re-renders constantly during message streaming; the
+ * observer only needs to keep one button mounted, so bursts coalesce into at
+ * most one scan per animation frame. Behavior (press / active) is injected by
+ * the mode-specific caller; the Sidebar mode additionally polls `isActive`,
+ * because the Sidebar's layout store is session-scoped and offers no
+ * cross-plugin subscription for the small "is my tab showing" read.
+ */
+function SshTabButtonHost({ press, isActive, title, activeTitle, ariaLabel, watchActive }) {
+  React.useEffect(() => {
+    const mount = () => {
+      const tablist = findConversationTablist();
+      if (!tablist) return;
+      // An older plugin client used the first tablist on the page, which can
+      // be Settings → Plugins. Remove that stale misplaced control whenever
+      // the current client mounts, then keep exactly one in the chat tab bar.
+      document.querySelectorAll(SSH_TAB_SELECTOR).forEach((button) => {
+        if (!tablist.contains(button)) button.remove();
+      });
+      let button = tablist.querySelector(SSH_TAB_SELECTOR);
+      if (!button) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.dataset.dshSshOpsTab = "true";
+        button.textContent = "SSH";
+        button.setAttribute("aria-label", ariaLabel);
+        // Copy an unselected host tab.  Copying the first tab would also copy
+        // its `tabActive` class, whose ::after pseudo-element leaves a bright
+        // underline visible even while the SSH view is not showing.
+        const inactiveTab = tablist.querySelector('[role="tab"][aria-selected="false"]');
+        const fallbackTab = tablist.querySelector('[role="tab"]');
+        button.className = inactiveTab?.className ?? fallbackTab?.className.replace(/\S*tabActive\b/g, "").trim() ?? "";
+        const selectedTab = tablist.querySelector('[role="tab"][aria-selected="true"]');
+        const activeClass = [...(selectedTab?.classList ?? [])].find(
+          (className) => /tabActive\b/.test(className) && !button.classList.contains(className)
+        );
+        if (activeClass) button.dataset.dshSshOpsActiveClass = activeClass;
+        tablist.appendChild(button);
+      }
+      // Assignment (rather than addEventListener) makes remounts idempotent.
+      button.onclick = () => press();
+      syncSshTabButton(button, isActive(), { title, activeTitle });
+    };
+
+    mount();
+    let scheduled = false;
+    let animationFrame = null;
+    let disposed = false;
+    const observer = new MutationObserver(() => {
+      if (disposed || scheduled) return;
+      scheduled = true;
+      animationFrame = requestAnimationFrame(() => {
+        animationFrame = null;
+        scheduled = false;
+        if (disposed) return;
+        mount();
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+      document.querySelectorAll(SSH_TAB_SELECTOR).forEach((button) => button.remove());
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!watchActive) return undefined;
+    const sync = () => {
+      document.querySelectorAll(SSH_TAB_SELECTOR).forEach((button) => {
+        syncSshTabButton(button, isActive(), { title, activeTitle });
+      });
+    };
+    sync();
+    const timer = setInterval(sync, 1000);
+    return () => clearInterval(timer);
+  }, [watchActive]);
+
+  return null;
+}
+
+
+/**
+ * Resolve the stored language choice and keep follow mode tracking the host.
+ * Returns a disposer for the optional live subscription.
+ */
+function syncLanguageWithHost(api, ctx) {
+  let disposed = false;
+  let unsubscribe = null;
+  const applyFollow = async () => {
+    if (disposed) return;
+    let stored = null;
+    try {
+      // The stored settings decide whether the plugin follows the host at
+      // all: autoApplySystemLanguage=false pins the stored language (a
+      // third-party system locale such as "ru" would otherwise be coerced to
+      // "zh" and written back on every load). Read them first so the pin is
+      // respected even before the host locale is consulted.
+      stored = await api.languageGet();
+      if (disposed) return;
+    } catch {
+      // Older host without the languageGet RPC: treat as auto mode with no
+      // stored pin and fall through to the synchronous host-locale read.
+    }
+    if (stored?.autoApplySystemLanguage === false) {
+      if (stored.language !== null) setLanguage(stored.language);
+      return;
+    }
+    const host = readHostLanguage(ctx.locale);
+    if (host !== null) {
+      setLanguage(host);
+      // Write back so the host half (agent-visible messages) follows the
+      // same language immediately and after the next restart.
+      api.languageSave(host).catch(() => {});
+      return;
+    }
+    if (stored?.language !== null) setLanguage(stored.language);
+  };
+  void applyFollow();
+  // Best-effort live follow: the documented face exposes subscribe; older
+  // hosts simply re-resolve on the next plugin load.
+  try {
+    if (typeof ctx.locale?.subscribe === "function") {
+      unsubscribe = ctx.locale.subscribe(() => { void applyFollow(); });
+    }
+  } catch {}
   return () => {
-    for (const dispose of disposers.reverse()) dispose();
+    disposed = true;
+    try { unsubscribe?.(); } catch {}
   };
-}
-
-/** A separate utility opens the optional side-by-side terminal. It is never
- * inserted into the mutually exclusive conversation view tab strip. */
-function SshTabButtonHost({ press, title, ariaLabel }) {
-  return <button type="button" onClick={press} title={title} aria-label={ariaLabel}
-    style={{ background: "transparent", color: "inherit", border: 0, cursor: "pointer", padding: 4 }}>
-    <IconTerminal16 />
-  </button>;
-}
-
-function SshDrawerTabAction() {
-  return <SshTabButtonHost
-    press={() => sshUiSetOpen(!getSshUiSnapshot().open)}
-    title="打开 SSH 侧栏" ariaLabel="SSH 终端侧栏" />;
 }

@@ -23,15 +23,29 @@ export function resultSchema(value) {
 
 // ── auth ────────────────────────────────────────────────────────────────────
 
-export const passwordAuthSchema = z.object({
+// A single authentication factor. Dual-factor devices (firewalls/switches
+// with `AuthenticationMethods password,publickey` or the reverse) require two
+// factors on the SAME connection, so a credential may carry a primary factor
+// plus an optional secondary of the opposite kind.
+export const passwordFactorSchema = z.object({
   kind: z.literal("password"),
   password: z.string()
 });
 
-export const keyAuthSchema = z.object({
+export const keyFactorSchema = z.object({
   kind: z.literal("key"),
   privateKey: z.string(),
   passphrase: z.string().optional()
+});
+
+export const passwordAuthSchema = passwordFactorSchema.extend({
+  // Optional second factor: a key, when the primary factor is the password.
+  secondary: keyFactorSchema.optional()
+});
+
+export const keyAuthSchema = keyFactorSchema.extend({
+  // Optional second factor: a password, when the primary factor is the key.
+  secondary: passwordFactorSchema.optional()
 });
 
 export const authSchema = z.union([passwordAuthSchema, keyAuthSchema]);
@@ -59,6 +73,11 @@ export const connectRequestSchema = z.object({
   // on KEX selection; true → use the legacy set up front (no downgrade
   // warning); false → modern algorithms only, no automatic retry.
   legacy: z.boolean().optional(),
+  // Opt-in SSH agent forwarding: hand the local ssh-agent to the remote host
+  // so terminals opened on it can authenticate onward with the local keys.
+  // Requires a running local agent (SSH_AUTH_SOCK); the connect fails fast
+  // with an actionable message otherwise.
+  agentForward: z.boolean().optional(),
   name: z.string().optional(),
   hostKeyMode: hostKeyModeSchema.optional(),
   proxyJump: z.array(z.object({
@@ -102,15 +121,51 @@ export const connectionInfoSchema = z.object({
   port: z.number(),
   username: z.string(),
   connected: z.boolean(),
-  sessions: z.array(z.string())
+  sessions: z.array(z.string()),
+  // True while the connection has a live session opened by the agent
+  // (ssh_connect_profile); the browser auto-reveals the SSH surface for it.
+  agentSession: z.boolean().optional(),
+  agentRevealId: z.string().optional()
+});
+
+// A saved SSH resource as the agent sees it (issue #25): coordinates only —
+// no credentials, no credential ids, no jump chains.
+export const savedResourceInfoSchema = z.object({
+  profileId: z.string(),
+  name: z.string(),
+  host: z.string(),
+  port: z.number(),
+  username: z.string(),
+  connected: z.boolean()
 });
 
 export const listResultSchema = resultSchema(
   z.object({
     connections: z.array(connectionInfoSchema),
-    activeConnectionId: z.string().nullable()
+    activeConnectionId: z.string().nullable(),
+    // Present only while the operator's AI-auto-connect switch is on.
+    resources: z.array(savedResourceInfoSchema).optional()
   })
 );
+
+// ── agent auto-connect settings (operator switch, issue #25) ────────────────
+
+export const agentSettingsGetRequestSchema = z.object({});
+export const agentSettingsResultSchema = resultSchema(z.object({ agentAutoConnect: z.boolean() }));
+export const agentSettingsSaveRequestSchema = z.object({ agentAutoConnect: z.boolean() });
+
+// ── interface language (operator choice; null = follow DSH's own language) ──
+
+const languageValueSchema = z.enum(["zh", "en"]);
+export const languageGetRequestSchema = z.object({});
+export const languageResultSchema = resultSchema(z.object({
+  language: z.enum(["zh", "en"]).nullable(),
+  // When false, the plugin never follows (or writes back) the host language:
+  // the stored `language` value is authoritative. Absent means "true" (follow
+  // the host), matching the behaviour of installs written before this field.
+  autoApplySystemLanguage: z.boolean().optional()
+}));
+export const languageSaveRequestSchema = z.object({ language: languageValueSchema });
 
 // ── saved SSH resources ────────────────────────────────────────────────────
 
@@ -124,7 +179,7 @@ export const profileAuthKindSchema = z.enum(["password", "key"]);
 // different meanings for one saved value.
 const projectDirectorySchema = z.string().min(1).max(1024).refine(
   (path) => path.startsWith("/") && !/[\x00-\x1f\x7f]/.test(path),
-  "项目目录必须是绝对路径，且不能包含控制字符"
+  "项目目录必须是绝对路径，且不能包含控制字符" // i18n-ignore: schema-time message, frozen by design
 );
 const legacySavedJumpSchema = z.object({
   host: z.string().min(1).max(255), port: z.number().int().min(1).max(65535).default(22),
@@ -139,7 +194,11 @@ const profileMetadataSchema = z.object({
   port: z.number().int().min(1).max(65535).default(22),
   username: z.string().min(1).max(128),
   authKind: profileAuthKindSchema,
-  hostKeyMode: hostKeyModeSchema.default("accept-new")
+  hostKeyMode: hostKeyModeSchema.default("accept-new"),
+  // SSH agent forwarding (resolved false for records saved before this
+  // field existed): forward the local ssh-agent so a terminal on this server
+  // can authenticate onward with the local keys.
+  agentForward: z.boolean().default(false)
 });
 
 export const profileSaveRequestSchema = profileMetadataSchema.extend({
@@ -165,6 +224,10 @@ export const profileInfoSchema = profileMetadataSchema.extend({
   groupName: z.string().nullable(),
   credentialConfigured: z.boolean(),
   passphraseConfigured: z.boolean(),
+  // Optional second factor (dual-factor auth): whether the opposite-kind
+  // secret is also configured. Resolved to false for records saved before
+  // dual-factor support existed.
+  secondaryConfigured: z.boolean(),
   connected: z.boolean()
   ,credentialId: credentialIdSchema.nullable(),
   credentialName: z.string().nullable(),
@@ -172,7 +235,7 @@ export const profileInfoSchema = profileMetadataSchema.extend({
   defaultProjectPath: projectDirectorySchema.nullable()
 });
 
-const credentialInfoSchema = z.object({ credentialId: credentialIdSchema, name: z.string(), authKind: profileAuthKindSchema, credentialConfigured: z.boolean(), passphraseConfigured: z.boolean() });
+const credentialInfoSchema = z.object({ credentialId: credentialIdSchema, name: z.string(), authKind: profileAuthKindSchema, credentialConfigured: z.boolean(), passphraseConfigured: z.boolean(), secondaryConfigured: z.boolean() });
 export const credentialListRequestSchema = z.object({});
 export const credentialListResultSchema = resultSchema(z.object({ credentials: z.array(credentialInfoSchema) }));
 export const credentialSaveRequestSchema = z.object({ credentialId: credentialIdSchema.optional(), name: z.string().min(1).max(120), authKind: profileAuthKindSchema });
@@ -263,8 +326,18 @@ export const terminalContextListResultSchema = resultSchema(z.object({ sessions:
 export const terminalContextReadRequestSchema = z.object({
   sessionId: z.string().min(1), after: z.number().int().nonnegative().safe().optional(), maxBytes: z.number().int().min(1024).max(98304).optional()
 });
+export const shellIntegrationStateSchema = z.object({
+  atPrompt: z.boolean(),
+  lastExitCode: z.number().nullable(),
+  cwd: z.string().nullable(),
+  lastCommandAt: z.string().nullable(),
+  commands: z.number().int().nonnegative()
+});
+
 export const terminalContextReadResultSchema = resultSchema(z.object({
-  sessionId: z.string(), data: z.string(), historyStart: z.number().int().nonnegative(), historyEnd: z.number().int().nonnegative(), offset: z.number().int().nonnegative(), nextOffset: z.number().int().nonnegative(), wasClamped: z.boolean(), hasMore: z.boolean(), alive: z.boolean(), exit: z.union([z.object({ code: z.number(), signal: z.number().optional() }), z.null()]), redacted: z.boolean()
+  sessionId: z.string(), data: z.string(), historyStart: z.number().int().nonnegative(), historyEnd: z.number().int().nonnegative(), offset: z.number().int().nonnegative(), nextOffset: z.number().int().nonnegative(), wasClamped: z.boolean(), hasMore: z.boolean(), alive: z.boolean(), exit: z.union([z.object({ code: z.number(), signal: z.number().optional() }), z.null()]), redacted: z.boolean(),
+  // OSC 133 state when the shell emits it (enableShellIntegration); null before that.
+  shell: shellIntegrationStateSchema.nullable()
 }));
 
 // ── write ───────────────────────────────────────────────────────────────────
@@ -486,6 +559,29 @@ export const sftpRenameResultSchema = resultSchema(
   z.object({ from: z.string(), to: z.string() })
 );
 
+export const sftpUploadDirRequestSchema = z.object({
+  connectionId: z.string().optional(),
+  localPath: z.string().min(1),
+  remotePath: z.string().min(1)
+});
+
+export const sftpDownloadDirRequestSchema = z.object({
+  connectionId: z.string().optional(),
+  remotePath: z.string().min(1),
+  localPath: z.string().min(1)
+});
+
+export const sftpTransferDirResultSchema = resultSchema(
+  z.object({
+    source: z.string(),
+    target: z.string(),
+    directories: z.number(),
+    files: z.number(),
+    bytes: z.number(),
+    failed: z.array(z.object({ path: z.string(), error: z.string() }))
+  })
+);
+
 // ── Port forwarding ──────────────────────────────────────────────────────────
 
 export const tunnelStartLocalRequestSchema = z.object({
@@ -495,6 +591,21 @@ export const tunnelStartLocalRequestSchema = z.object({
   remoteHost: z.string().min(1),
   remotePort: z.number().int().min(1).max(65535)
 });
+
+export const tunnelStartDynamicRequestSchema = z.object({
+  connectionId: z.string().optional(),
+  bindAddr: z.string().optional(),
+  bindPort: z.number().int().min(0).max(65535).optional()
+});
+
+export const tunnelStartDynamicResultSchema = resultSchema(
+  z.object({
+    tunnelId: z.string(),
+    kind: z.literal("dynamic"),
+    bindAddr: z.string(),
+    bindPort: z.number()
+  })
+);
 
 export const tunnelStartLocalResultSchema = resultSchema(
   z.object({
@@ -554,44 +665,109 @@ export const tunnelListResultSchema = resultSchema(
       remotePort: z.number().optional(),
       targetHost: z.string().optional(),
       targetPort: z.number().optional(),
+      /** Dynamic tunnels only: accepted client connections right now. */
+      connections: z.number().int().nonnegative().optional(),
       active: z.boolean()
     }))
   })
 );
 
-// ── SSH config import ─────────────────────────────────────────────────────────
+export const enableShellIntegrationRequestSchema = z.object({ sessionId: z.string().min(1) });
+export const enableShellIntegrationResultSchema = resultSchema(
+  z.object({ sessionId: z.string(), enabled: z.boolean() })
+);
 
-export const sshConfigImportRequestSchema = z.object({});
+// ── session logs (recording) ─────────────────────────────────────────────────
 
-export const sshConfigImportResultSchema = resultSchema(
+export const sessionLogInfoSchema = z.object({
+  sessionId: z.string(),
+  connectionId: z.string().nullable(),
+  name: z.string().nullable(),
+  host: z.string().nullable(),
+  port: z.number().nullable(),
+  openedBy: z.string().nullable(),
+  startedAt: z.string(),
+  endedAt: z.string().nullable(),
+  exitCode: z.number().nullable(),
+  bytes: z.number(),
+  truncated: z.boolean()
+});
+
+export const sessionLogListRequestSchema = z.object({});
+export const sessionLogListResultSchema = resultSchema(
+  z.object({ enabled: z.boolean(), logs: z.array(sessionLogInfoSchema) })
+);
+
+export const sessionLogReadRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  offset: z.number().int().min(0).optional(),
+  maxBytes: z.number().int().min(1).max(4194304).optional()
+});
+export const sessionLogReadResultSchema = resultSchema(
   z.object({
-    hosts: z.array(z.object({
-      name: z.string(),
-      host: z.string(),
-      port: z.number(),
-      username: z.string(),
-      authKind: z.string(),
-      identityFile: z.string(),
-      proxyJump: z.string()
-    }))
+    sessionId: z.string(),
+    data: z.string(),
+    startOffset: z.number(),
+    nextOffset: z.number(),
+    eof: z.boolean(),
+    size: z.number()
   })
+);
+
+export const sessionLogSearchRequestSchema = z.object({
+  sessionId: z.string().min(1),
+  query: z.string().min(1),
+  maxHits: z.number().int().min(1).max(1000).optional()
+});
+export const sessionLogSearchResultSchema = resultSchema(
+  z.object({
+    sessionId: z.string(),
+    hits: z.array(z.object({ offset: z.number(), line: z.string() })),
+    scannedBytes: z.number(),
+    stoppedEarly: z.boolean()
+  })
+);
+
+export const sessionLogDeleteRequestSchema = z.object({ sessionId: z.string().min(1).optional() });
+export const sessionLogDeleteResultSchema = resultSchema(
+  z.object({ deleted: z.number(), remaining: z.number() })
 );
 
 // ── Database ops ─────────────────────────────────────────────────────────────
 
-export const dbTypeSchema = z.enum(["mysql", "postgresql", "redis", "mongodb"]);
+export const dbTypeSchema = z.enum(["mysql", "postgresql", "opengauss", "sqlite", "clickhouse", "redis", "mongodb"]);
 export const dbSslSchema = z.enum(["disabled", "preferred", "verify"]).default("disabled");
+
+/**
+ * Per-connection statement-deadline override ceiling (ms). The db layer's
+ * default op ceiling stays 35s; a connection created with `queryTimeoutMs`
+ * (0 = no per-statement ceiling, or 1000..this max) opts into longer
+ * statements for slow databases and large exports. The db tool family
+ * declares a budget above this ceiling so an override is never cut off by
+ * the tool-level timeout.
+ */
+export const DB_QUERY_TIMEOUT_MAX_MS = 1_800_000;
+
+/** Validation shared by the connect request and the db-profile record. */
+export const dbQueryTimeoutSchema = z.number().int().refine(
+  (v) => v === 0 || (v >= 1000 && v <= DB_QUERY_TIMEOUT_MAX_MS),
+  "queryTimeoutMs 为 0（不限）或 1000..1800000 毫秒" // i18n-ignore: schema-time message, frozen by design
+);
 
 export const dbConnectRequestSchema = z.object({
   type: dbTypeSchema,
-  host: z.string().min(1),
-  port: z.number().int().min(1).max(65535),
+  // Absent for SQLite (addressed by file path in `database`); every other
+  // driver validates its presence in the host layer.
+  host: z.string().optional(),
+  port: z.number().int().min(1).max(65535).optional(),
   database: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
   ssl: dbSslSchema,
   sshConnectionId: z.string().optional(),
   name: z.string().optional(),
+  // Per-connection statement deadline override (ms); see DB_QUERY_TIMEOUT_MAX_MS.
+  queryTimeoutMs: dbQueryTimeoutSchema.optional(),
   signal: z.any().optional()
 });
 
@@ -605,6 +781,8 @@ export const dbConnectionInfoSchema = z.object({
   username: z.string().nullable(),
   ssl: z.string(),
   sshConnectionId: z.string().nullable(),
+  // Present only when the connection was created with an override.
+  queryTimeoutMs: dbQueryTimeoutSchema.optional(),
   createdAt: z.string()
 });
 
@@ -629,6 +807,29 @@ export const dbQueryResultSchema = resultSchema(
     rows: z.array(z.any()),
     rowCount: z.number(),
     truncated: z.boolean()
+  })
+);
+
+export const dbExportRequestSchema = z.object({
+  dbConnectionId: z.string().min(1),
+  sql: z.string().min(1),
+  format: z.enum(["csv", "json"]).default("csv"),
+  delimiter: z.enum(["comma", "tab", "semicolon", "pipe"]).optional(),
+  header: z.boolean().optional(),
+  path: z.string().optional(),
+  maxRows: z.number().int().min(1).max(200000).optional(),
+  params: z.array(z.any()).optional(),
+  signal: z.any().optional()
+});
+export const dbExportResultSchema = resultSchema(
+  z.object({
+    format: z.enum(["csv", "json"]),
+    columns: z.array(z.string()),
+    rows: z.number(),
+    bytes: z.number(),
+    truncated: z.boolean(),
+    path: z.string().nullable(),
+    content: z.string().optional()
   })
 );
 
@@ -780,6 +981,8 @@ export const dbProfileInfoSchema = z.object({
   username: z.string().nullable(),
   ssl: z.string(),
   sshProfileId: z.string().uuid().nullable(),
+  // Per-connection statement deadline (ms) applied on connect; null = default.
+  queryTimeoutMs: dbQueryTimeoutSchema.nullable(),
   credentialConfigured: z.boolean(),
   connected: z.boolean()
 });
@@ -788,13 +991,14 @@ export const dbProfileSaveRequestSchema = z.object({
   dbProfileId: z.string().uuid().optional(),
   name: z.string().min(1).max(120),
   type: dbTypeSchema,
-  host: z.string().min(1).max(255),
-  port: z.number().int().min(1).max(65535),
+  host: z.string().max(255).optional(),
+  port: z.number().int().min(1).max(65535).optional(),
   database: z.string().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
   ssl: dbSslSchema,
-  sshProfileId: z.string().uuid().nullable().optional()
+  sshProfileId: z.string().uuid().nullable().optional(),
+  queryTimeoutMs: dbQueryTimeoutSchema.nullable().optional()
 });
 
 export const dbProfileSaveResultSchema = resultSchema(

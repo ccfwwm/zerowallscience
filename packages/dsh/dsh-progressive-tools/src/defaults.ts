@@ -3,7 +3,7 @@ import type { SkillBindingConfig, ToolGroupConfig } from './types.js'
 export const DEFAULT_MODE = 'stable-proxy' as const
 export const DEFAULT_TOOL_NAME = 'tool_search'
 export const DEFAULT_DISPATCH_TOOL_NAME = 'tool_dispatch'
-export const DEFAULT_MAX_RESULTS = 5
+export const DEFAULT_MAX_RESULTS = 2
 export const DEFAULT_ACTIVATION_GROUP_LIMIT = 1
 export const DEFAULT_MAX_ACTIVE_GROUPS = 3
 export const DEFAULT_MAX_ACTIVE_TOOL_TOKENS = 6_000
@@ -12,12 +12,45 @@ export const DEFAULT_CHARACTERS_PER_TOKEN = 4
 export const DEFAULT_REQUIRE_DISCOVERY = true
 export const DEFAULT_STATUS_GRANTS_DISCOVERY = false
 export const DEFAULT_DEFER_TOOL_GUIDANCE = true
+export const DEFAULT_LEGACY_RESULTS = false
+export const DEFAULT_MAX_RESULT_CHARACTERS = 12_000
+export const DEFAULT_PROFILE = 'default' as const
+export const DEFAULT_REPEAT_DEFINITIONS = 'compact' as const
+export const DEFAULT_CAPABILITY_SUMMARY_CHARACTERS = 1_500
+export const DEFAULT_RESULT_BUDGET = false
+export const DEFAULT_RESULT_BUDGET_CHARACTERS = 8_000
+export const DEFAULT_FAMILY_DISCOVERY = 'family' as const
+export const DEFAULT_AUTOLOAD_MAX_TOOLS = 0
 export const DEFAULT_ALWAYS_VISIBLE = [
   'skill',
   'ask_user_question',
   'report',
   'submit_*',
   'structured_output*',
+  'read',
+  'write',
+  'edit',
+  'glob',
+  'grep',
+] as const
+
+/** Terminal and long-task tools added by the optional coding profile when registered. */
+export const CODING_PROFILE_PATTERNS = [
+  'bash',
+  'bash_*',
+  'shell',
+  'shell_*',
+  'exec',
+  'exec_*',
+  'pwsh',
+  'powershell',
+  'terminal',
+  'terminal_*',
+  'process',
+  'process_*',
+  'await_shell',
+  'wait_shell',
+  'job_*',
 ] as const
 export const DEFAULT_SKILL_BINDINGS: readonly SkillBindingConfig[] = []
 

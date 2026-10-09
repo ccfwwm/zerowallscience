@@ -1,10 +1,6 @@
 ---
 name: genui
-description: >-
-  Render structured interactive UI inline through the dsh-ui fence. Use for
-  key points, emphasis, comparisons, flows, steps, status, data, demos, and
-  interactions whenever structured presentation would be clearer than prose.
-  Preserve conversation language for all user-visible text.
+description: "Render structured interactive UI inline through the dsh-ui fence. Use for key points, emphasis, comparisons, flows, steps, status, data, demos, and interactions whenever structured presentation would be clearer than prose. Preserve conversation language for all user-visible text."
 ---
 
 # GenUI — 生成式 UI 输出规范
@@ -44,7 +40,7 @@ description: >-
 - image: `{"type":"image","src":"/mmx-files/result.png","alt":"<user-language description>"}` — 展示浏览器可访问的 http(s) 或同源相对图片地址；懒加载；不支持 `file:`/`data:` 等本地或主动协议
 - audio: `{"type":"audio","src":"/mmx-files/result.mp3","alt":"<user-language description>","loop":true?}` — 原生控制条；用户主动播放，不自动播放；仅 http(s) 或同源相对地址
 - video: `{"type":"video","src":"/mmx-files/result.mp4","alt":"<user-language description>","poster":"/mmx-files/poster.jpg"?,"loop":true?,"muted":true?,"aspectRatio":"16:9|4:3|1:1|9:16"?}` — 原生播放/音量/全屏控制；不自动播放
-- list: `{"type":"list","items":["..."] 或 [{"title":"...","desc":"..."}] 或嵌套节点(如 {"type":"badge","label":"TS"})}` — 行内可嵌节点（计入节点预算）
+- list: `{"type":"list","items":["..."] 或 [{"title":"...","desc":"..."}] 或嵌套节点(如 {"type":"badge","label":"TS"})}` — 行内可嵌节点（计入节点预算）；记录中的 `label`/`name` 归一化为 `title`，`description`/`content`/`text`/`body`/`detail` 归一化为 `desc`；只有正文时将正文用作标题，未知字段会收到警告
 - table: `{"type":"table","columns":["..."],"rows":[["...","..."]],"types":["text|num|delta|bar|badge"]?,"details":[[...]]?,"total":true?}` — 表头点击本地排序（升/降/还原，零往返）；数值感知：千分位（`1,234`）、`k/m/b`、`万/亿`、`%`、货币符号都能按真实数值比较，纯数值列自动右对齐；**带符号单元格自动着色**（`+12.4%` 绿、`-3` 红，无需额外字段）；`types` 可按列指定 `bar`（0-100 内联进度条）、`ring`（0-100 小环）、`spark`（单元格写 `"3,5,4,8"` 画微趋势线）、`badge`（胶囊标签）、`delta`（强制涨跌色）、`num`（强制右对齐）、`index`（行号）、`group`（首列当分组标题：该行只有第一格有内容时渲染成跨列小标题）；`"total":true` 追加合计行（数值列自动求和）；**`"export":true`**：表格上方出现「复制 Markdown / 复制 CSV」两个小按钮（纯本地剪贴板，不发请求）；**`"filter":"输入框id"`**：把表格和某个 input/select 绑定，读者输入即时过滤（`filterColumn` 可限定列）——数据多时**默认就该配一个**；**`"sortField":"下拉id"`** 用下拉的值（列名）排序；**`"details"` 与 rows 同序**，第 i 项是该行展开后的内容（可放任意组件，`null` = 该行不可展开）——首列出现 chevron，点开在整行下方展开明细，适合「主表 + 明细」
 - keyvalue: `{"type":"keyvalue","pairs":[{"key":"...","value":"..."}]}`
 - timeline: `{"type":"timeline","items":[{"title":"...","desc":"...","time":"..."}]}`
@@ -71,9 +67,9 @@ description: >-
 - select: `{"type":"select","label":"...","options":["...","..."],"selected":下标?,"action":"pick"?,"id":"field-id"?}` — `selected` 预选某选项（缺省显示「请选择…」占位，不静默预选第一项）；带 `id` 的选择跨刷新保留并进 submit 的 `fields`
 - checkbox: `{"type":"checkbox","label":"<user-language option>","checked":true?,"action":"toggle"?,"group":"group-id"?}` — 默认保持逐次 `action` 行为；**加 `group` 进入多选聚合模式**：同组 checkbox 可反复勾选/取消，变化只在本地记录、不发逐次 action，兄弟 `submit` 一次性把该组已选 label 作为字符串数组放进 `answers`（例如 `{"styles":["<user-language option>","<user-language option>"]}`）
 - slider: `{"type":"slider","label":"...","min":0,"max":100,"step":1,"value":n?,"action":"name"?,"id":"field-id"?}` — 数值表单滑块：实时显示数值；带 `id` 跨刷新保留并进 submit 的 `fields`（拖拽经防抖合并成一次 action）
-- radio: `{"type":"radio","label":"<user-language label>","options":["<user-language option>","<user-language option>"],"selected":n?,"action":"pick"?}` — 单选；**加 `"group":"group-id"` 进入聚合模式**：选择只本地记录、不发往返；**加 `"answer":正确下标或标签` + `"explanation":"<user-language explanation>"` 后，交卷在本地判卷**
+- radio: `{"type":"radio","label":"<user-language label>","options":["<user-language option>","<user-language option>"],"selected":n?,"action":"pick"?}` — 单选；**加 `"group":"group-id"` 进入聚合模式**：选择只本地记录、不发往返；可设置 `"answer":正确下标或标签` 和 `"explanation":"<user-language explanation>"`，在纯 radio 且没有其他待发送表单状态时本地判卷
 - link: `{"type":"link","label":"...","href":"https://..."?}` — 仅 http(s)/mailto 协议被接受；无 `href` 时渲染为纯文本样式（不会假装可点）
-- submit: `{"type":"submit","label":"<user-language action>","action":"grade","groups":["q1","styles"],"resetAction":"redo"?}` — 聚合按钮：纯 radio 且题目带 `answer` 时仍本地立即判卷（得分 + 每题 ✓/✗ + 解析，零往返）；其余聚合场景一次发送 `[genui-action]`，payload 为 `{answers:{q1:"<user-language option>",styles:["<user-language option>","<user-language option>"]},fields:{id:"<user-language value>"},total,answered}`。`groups` 中每个 radio 必须已选择、每个 checkbox 组必须至少勾选一项才可提交
+- submit: `{"type":"submit","label":"<user-language action>","action":"grade","groups":["q1","styles"],"resetAction":"redo"?}` — 聚合按钮：`groups` 引用当前 block 中的 submission member key，来源为 `radio.group`、`checkbox.group`、`input.id`、`textarea.id`、`select.id`、`slider.id`；radio 需已选择，checkbox 组需至少选择一项，普通 field 的值需在 trim 后非空。`groups` 控制提交所需成员与完成进度；未设置时，至少有一个已完成成员即可提交。纯 radio 范围含 `answer` 且本次没有范围外 payload 时可本地判卷；其余场景一次发送 `[genui-action]`，payload 继续收集当前 block 中已填写的表单状态，字段名称保持 `answers`、`fields`、`total`、`answered`
 - switch: `{"type":"switch","label":"...","checked":true?,"action":"toggle"?}`
 - textarea: `{"type":"textarea","label":"...","placeholder":"...","rows":n?,"value":"...","action":"save"?,"id":"field-id"?}` — action 在失焦和 **Ctrl/Cmd+Enter** 时触发；blur 仅值有变化才发送；带 `id` 的值刷新后保留
 - tabs: `{"type":"tabs","tabs":[{"label":"...","items":[...]}]}` — 空 tab 可以省略 `items`，会按空数组处理
@@ -241,7 +237,7 @@ description: >-
 
 1. **围栏放哪，组件就出现在哪** —— 文字在前后自然流动，不要用工具、不要解释"这是一个围栏"。**围栏一闭合就立即渲染**（不等整条回答结束），所以可以边写文字边出组件
 2. **组合优先**：复杂界面用 `grid`+`card`+`stat`+`table` 拼，不要追求单一巨型组件
-3. **JSON 必须严格合法，发出前完成 4 步自检**：插件**只**修标点级小错（字符串内半角引号、尾随逗号）；**缺括号/错括号等结构错误一律不修**，直接红横幅退化成代码块——写错就重发，别指望兜底。**最容易犯的错：字符串值里用了半角引号 `"`**——中文引语一律写 `“”` 或 `「」`。发出围栏前自检 4 条：① 括号配对：`{` 与 `}`、`[` 与 `]` 数量相等，**收尾序列逐个核对**（长表格最易在最后几行错位：把 `]]}]}` 写成 `]}]}]}`）② 无尾随逗号 ③ 值内引号用中文引号 ④ 最后一个字符必须是 `}`。不要在 JSON 字符串里放 markdown；超长表格/列表拆成多个组件分开发，宁短勿长
+3. **JSON 必须严格合法，发出前完成 4 步自检**：插件**只**修标点级小错（字符串内半角引号、尾随逗号）；**缺括号/错括号等结构错误一律不修**，直接红横幅退化成代码块——写错就重发，别指望兜底。**最容易犯的错：字符串值里用了半角引号 `"`**——中文引语一律写 `“”` 或 `「」`。发出围栏前自检 4 条：① 括号配对：`{` 与 `}`、`[` 与 `]` 数量相等，**收尾序列逐个核对**（长表格最易在最后几行错位：把 `]]}]}` 写成 `]}]}]}`）② 无尾随逗号 ③ 值内引号用中文引号 ④ 最后一个字符必须是 `}`（**`}` 之后不要再写任何字符**——实测常见错误是习惯性追加 `</p>` 或一句解释，整条围栏就解析不了）。不要在 JSON 字符串里放 markdown；超长表格/列表拆成多个组件分开发，宁短勿长
 3.5. **字段名逐个核对（写错一个 = 整条围栏降级为代码块）**：某个组件的必填字段写错 / 缺失 → 该组件被丢弃 → 整份 spec 判定不可渲染 → 用户只看到一段裸 JSON。高频误写：`callout` 正文是 `content`（不是 text/body）；`table` 要 `columns` + `rows`（不是 data，只给二维 rows 时首行会当表头）；`keyvalue` 要 `pairs:[{key,value}]`（不是 items）；`diff` 是 `diffs`；图片/音视频是 `src`；`code` 是 `code`、`copy` 是 `text`。拿不准就调 `validate_dsh_ui`，不要凭直觉命名
 4. **不要嵌套围栏**：dsh-ui 里不要再包 ``` 代码围栏
 5. **深色主题友好**：配色选深底亮色；UI 主题跟随应用
@@ -250,4 +246,16 @@ description: >-
 8. **规格要紧凑**：整棵组件树 ≤200 节点、≤8 层嵌套（超出部分会被渲染器裁掉），避免巨型 spec
 9. **一个主题选一个主组件**：命中映射表后选**一种**组件承载，同一信息不要用两种组件重复表达（同一批数据又画 bars 又画 donut = 冗余）
 10. **数量纪律**：一条回答 3–8 个组件为宜，宁缺毋滥。反例：该用 `table` 对比时写三段 `text`；一个 `stat` 能说清的事套 `card`+`grid`；与内容无关的 `scene3d` 炫技——3D 只在内容本身就是几何/空间时才用
+12. **给命令就给能直接粘的**：多行 python 一律写成 heredoc 包装的**一整段** shell 代码块（`python - <<'PY'` … `PY`），不要用 `python -c "…"` 配反斜杠续行——续行在复制/粘贴里最容易碎成多行，用户还得自己拼回 heredoc。单行表达式才用 `-c`，且必须真的在一行内写完。示例：
+
+    ````text
+    cd /path/to/repo
+    python - <<'PY'
+    import json
+    d = json.load(open('report.json'))
+    print(d.get('status'))
+    PY
+    ````
+
+    同理：需要用户执行的脚本放进 `code` 节点（`lang`: `bash`/`python`）或正文围栏，并保证**从第一行到最后一行一次粘进终端就能跑**。
 11. **先验后发（复杂 UI）**：发出 ```dsh-ui 围栏前，若 spec ≥3 个组件或含 `table`（长表格最易括号错位），先调用 `validate_dsh_ui` 工具（参数 `spec` 传围栏内的 JSON 文本）验证；返回 `next=fix_and_revalidate` 就按诊断修正后重新验证；返回 `next=emit_fence` 再发出；返回 `next=emit_repaired_fence` 时直接照抄 `repaired_json` 发出，无需再次验证；简单 UI（≤2 个组件）不必验证，渲染器会自动修复大部分标点/括号错误

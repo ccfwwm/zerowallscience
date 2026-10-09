@@ -1,26 +1,68 @@
 /**
  * DbOpsManager: in-memory database connection manager for the sshOps service.
- * Supports MySQL, PostgreSQL, Redis, MongoDB. Optional SSH tunnel reuses an
- * existing ssh2 connection (forwardOut + net.createServer) so agents can reach
- * databases on private networks. High-risk SQL (DROP DATABASE/SCHEMA/TABLE,
- * TRUNCATE, SHUTDOWN) is blocked on db_execute via db-safety.js.
+ * Supports MySQL, PostgreSQL/openGauss, SQLite, ClickHouse, Redis, MongoDB.
+ * Optional SSH tunnel reuses an existing ssh2 connection (forwardOut +
+ * net.createServer) so agents can reach databases on private networks.
+ * High-risk SQL (DROP DATABASE/SCHEMA/TABLE, TRUNCATE, SHUTDOWN) is blocked on
+ * db_execute via db-safety.js.
  */
 import net from "node:net";
 import { randomUUID } from "node:crypto";
-import mysql from "mysql2/promise.js";
-import pg from "pg";
-import { createClient as createRedisClient } from "redis";
-import { MongoClient } from "mongodb";
-import pgCursorModule from "pg-cursor";
-import { assessSqlStatement, assessReadOnlySql } from "./db-safety.js";
+import { mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+// DB drivers are imported on first use (see connect/pgQueryPaged) so loading
+// this module does not pull the whole driver module tree up front.
+import { assessSqlStatement, assessReadOnlySql, parseDestructiveTarget, QUARANTINE_SUFFIX_RE } from "./db-safety.js";
+// SQLite/ClickHouse mechanics plus the type metadata shared with schemas and
+// the client (default ports, SQL-family checks, CSV/JSON serializers).
+import {
+  clickhouseDescribeTable,
+  clickhouseExecute,
+  clickhouseListTables,
+  clickhouseQuery,
+  defaultDbPort,
+  isPgFamily,
+  isSqlType,
+  needsNetwork,
+  openSqlite,
+  sqliteDescribeTable,
+  sqliteExecute,
+  sqliteListTables,
+  sqliteQuery,
+  toCsv,
+  toJson,
+  EXPORT_DELIMITERS
+} from "./db-drivers.js";
 // The db layer wraps every failure straight into the full result envelope.
 import { failResult as fail } from "./envelope.js";
+import { t } from "./i18n/core.js";
+import { DB_QUERY_TIMEOUT_MAX_MS } from "./schemas.js";
 
-const Cursor = pgCursorModule.default ?? pgCursorModule;
+/**
+ * Validate a per-connection statement-deadline override (see DB_DEADLINES):
+ * 0 means "no per-statement ceiling", 1000..DB_QUERY_TIMEOUT_MAX_MS raises it
+ * above the default for slow databases and large exports. Anything else falls
+ * back to the default so a garbage value can neither tighten nor abolish the
+ * ceiling by accident.
+ */
+export function normalizeQueryTimeoutMs(value) {
+  if (value === 0) return 0;
+  if (Number.isInteger(value) && value >= 1000 && value <= DB_QUERY_TIMEOUT_MAX_MS) return value;
+  return undefined;
+}
 
-const DB_QUERY_TIMEOUT_MS = 30000;
+/** Export defaults: rows pulled when the caller names no limit, and the ceiling. */
+const EXPORT_DEFAULT_ROWS = 50000;
+const EXPORT_MAX_ROWS = 200000;
+/** Largest export returned inline to the browser (bigger ones need an SSH host to land on). */
+const EXPORT_INLINE_LIMIT = 256 * 1024;
 /** Idle transactions are rolled back and released after this long. */
 const DB_TX_IDLE_MS = 5 * 60 * 1000;
+/** TCP keepalive on pooled database sockets (NAT/firewall idle drops). */
+const DB_TCP_KEEPALIVE_MS = 30000;
+/** A pooled connection idle longer than this gets a ping before reuse. */
+const DB_PING_AFTER_IDLE_MS = 30000;
 
 /**
  * Client-side ceilings for every driver await. A half-open transport (idle
@@ -41,6 +83,8 @@ export const DB_DEADLINES = Object.freeze({
   checkout: 12000,
   /** Best-effort cleanup round-trips: RESET statement_timeout, cursor close. */
   reset: 2000,
+  /** Liveness ping of a pooled connection before reuse after an idle period. */
+  ping: 10000,
   /** Whole db_connect handshake + validation checkout. */
   connect: 20000,
   /** Driver-level connect timeout (pg connectionTimeoutMillis, mysql connectTimeout). */
@@ -177,28 +221,93 @@ export function quotePgIdentifier(name) {
  * passed through mysql2's `??` escaping (mysql) or quoted above (pg), and
  * limit/offset always bound as values.
  */
+/** Default remote file name for an export: dsh-export-<connection>-<stamp>.<ext>. */
+function defaultExportName(connectionName, format) {
+  const stem = String(connectionName ?? "query").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "query";
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  return `dsh-export-${stem}-${stamp}.${format}`;
+}
+
 export function buildPreviewSql(dialect, table, limit, offset) {
   if (!validateDbIdentifier(table).ok) return { ok: false, error: `illegal table name: ${String(table)}` };
   if (dialect === "mysql") {
     return { ok: true, sql: "SELECT * FROM ?? LIMIT ? OFFSET ?", params: [table, limit, offset] };
   }
+  if (dialect === "sqlite") {
+    const quoted = `"${String(table).replaceAll('"', '""')}"`;
+    return { ok: true, sql: `SELECT * FROM ${quoted} LIMIT ? OFFSET ?`, params: [limit, offset] };
+  }
+  if (dialect === "clickhouse") {
+    // Placeholders become typed `{pN:...}` parameters; LIMIT/OFFSET need the
+    // integer type, which the translator derives from the JS values.
+    const quoted = `\`${String(table).replaceAll("`", "``")}\``;
+    return { ok: true, sql: `SELECT * FROM ${quoted} LIMIT ? OFFSET ?`, params: [limit, offset] };
+  }
   return { ok: true, sql: `SELECT * FROM ${quotePgIdentifier(table)} LIMIT $1 OFFSET $2`, params: [limit, offset] };
+}
+
+// ── destructive-SQL guard: backup + quarantine (never executes the SQL) ──────
+
+/** Engine types that support ALTER TABLE ... RENAME for quarantine. */
+const QUARANTINE_CAPABLE_TYPES = new Set(["mysql", "postgresql", "opengauss", "sqlite"]);
+/** DROP DATABASE dumps at most this many tables before declaring the backup partial. */
+const BACKUP_TABLE_CAP = 20;
+
+function backupFileNameStem(record, target) {
+  const sanitize = (text) => String(text).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "x";
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  return `dsh-backup-${sanitize(record.name)}-${sanitize(target)}-${stamp}`;
+}
+
+function describeBackupEntry(entry) {
+  if (entry.error) return t(`- ${entry.target}：备份失败（${entry.error}）`);
+  const bits = [`- ${entry.target} → ${entry.path}`];
+  if (entry.schemaPath) bits.push(t(`（含 schema：${entry.schemaPath}）`));
+  if (entry.truncated) bits.push(t("（超过行数上限，已截断）"));
+  bits.push(t(`，${entry.bytes} 字节`));
+  return bits.join("");
+}
+
+/**
+ * Single source for rendering backup lists (guard messages AND the agent
+ * tool result) so the recovery info shown to the operator cannot drift
+ * between the two surfaces.
+ */
+export function backupSummary(backup) {
+  if (!Array.isArray(backup) || backup.length === 0) return t("本次未生成自动备份。");
+  return t(`已自动备份（误删可从下列文件恢复）：\n${backup.map(describeBackupEntry).join("\n")}`);
 }
 
 // ── value serialization (MongoDB ObjectId/Decimal/Date, Buffer, bigint) ─────
 
-function serializeDbValue(value) {
-  return JSON.parse(JSON.stringify(value, (_key, val) => {
+/**
+ * Single value serializer for every result path (db_query, db_preview,
+ * db_export, db_run, db_explain, transactions). Driver values that cannot
+ * travel as JSON — notably MySQL buffers returned for columns whose charset
+ * the server reports as binary/unknown — decode as UTF-8 here, so text never
+ * reaches the agent as a raw byte array.
+ *
+ * Implemented as an explicit walk instead of a JSON.stringify replacer:
+ * Buffer.toJSON() runs BEFORE the replacer, so inside a replacer a Buffer has
+ * already degraded to {type:"Buffer",data:[…]} and can never be detected.
+ */
+export function serializeDbValue(value) {
+  const walk = (val) => {
     if (val === undefined) return null;
     if (typeof val === "bigint") return val.toString();
     if (Buffer.isBuffer(val)) return val.toString("utf8");
+    if (val instanceof Date) return val.toISOString();
     if (val && typeof val === "object") {
-      if (typeof val.toISOString === "function" && val instanceof Date) return val.toISOString();
       if (typeof val.toHexString === "function") return val.toHexString();
       if (typeof val.toString === "function" && val.constructor?.name === "Decimal128") return val.toString();
+      if (Array.isArray(val)) return val.map(walk);
+      const out = {};
+      for (const [key, entry] of Object.entries(val)) out[key] = walk(entry);
+      return out;
     }
     return val;
-  }));
+  };
+  return walk(value);
 }
 
 // ── DbOpsManager ────────────────────────────────────────────────────────────
@@ -211,6 +320,8 @@ export class DbOpsManager {
     this.dbConnections = new Map();
     /** txId -> interactive transaction { txId, dbId, kind, handle, timer, createdAt } */
     this.dbTransactions = new Map();
+    /** Injectable fetch for the ClickHouse HTTP driver (tests stub it). */
+    this.fetchImpl = undefined;
   }
 
   /**
@@ -244,12 +355,22 @@ export class DbOpsManager {
   }
 
   async connect(request) {
-    const { type, host, port, database, username, password, ssl, sshConnectionId, name } = request;
+    const { type, host, database, username, password, ssl, sshConnectionId, name } = request;
+    // SQLite is a file, not an endpoint; every other driver falls back to its
+    // protocol default port when the caller left the port out (an empty/0
+    // value from a stored record counts as absent).
+    const port = request.port || defaultDbPort(type);
+    const queryTimeoutMs = normalizeQueryTimeoutMs(request.queryTimeoutMs);
+    if (needsNetwork(type) && !host) {
+      return fail("db-connect-failed", t(`${type} connect 需要填写主机地址`));
+    }
     let tunnel = null;
     let connectHost = host;
     let connectPort = port;
 
-    if (sshConnectionId) {
+    // A SQLite file is local to this host: there is nothing to forward, and the
+    // sshConnectionId is still recorded below — it names where an export lands.
+    if (sshConnectionId && needsNetwork(type)) {
       try {
         tunnel = await this.createTunnel(sshConnectionId, host, port);
         connectHost = "127.0.0.1";
@@ -264,17 +385,26 @@ export class DbOpsManager {
     let client;
     try {
       if (type === "mysql") {
+        const { default: mysql } = await import("mysql2/promise.js");
         client = mysql.createPool({
           host: connectHost, port: connectPort, user: username, password, database,
           ssl: buildMysqlSsl(ssl), connectionLimit: 4, supportBigNumbers: true,
+          // TCP-level keepalive so an idle NAT/firewall drop surfaces as a
+          // socket error instead of a silent half-open connection.
+          enableKeepAlive: true, keepAliveInitialDelay: DB_TCP_KEEPALIVE_MS,
           connectTimeout: this.dl("poolConnection")
         });
         const c = await this.mysqlCheckout({ client }, { signal, label: "db_connect", timeoutMs: this.dl("connect") });
         c.release();
-      } else if (type === "postgresql") {
+      } else if (isPgFamily(type)) {
+        // openGauss speaks the PostgreSQL wire protocol; only its server-side
+        // defaults differ, so one driver serves both types.
+        const { default: pg } = await import("pg");
         client = new pg.Pool({
           host: connectHost, port: connectPort, user: username, password, database,
           ssl: buildPgSsl(ssl), max: 4,
+          // Same TCP keepalive rationale as the MySQL pool above.
+          keepAlive: true, keepAliveInitialDelay: DB_TCP_KEEPALIVE_MS,
           // Without this pg-pool waits forever — both on new TCP connects and
           // on the waiter queue of an exhausted pool (the half-open state).
           connectionTimeoutMillis: this.dl("poolConnection")
@@ -282,6 +412,7 @@ export class DbOpsManager {
         const c = await this.pgCheckout({ client }, { signal, label: "db_connect", timeoutMs: this.dl("connect") });
         c.release();
       } else if (type === "redis") {
+        const { createClient: createRedisClient } = await import("redis");
         client = createRedisClient({
           socket: { ...buildRedisSocket(ssl, connectHost, connectPort), connectTimeout: this.dl("poolConnection") },
           password,
@@ -292,6 +423,7 @@ export class DbOpsManager {
           onLose: () => { try { client.disconnect(); } catch {} }
         });
       } else if (type === "mongodb") {
+        const { MongoClient } = await import("mongodb");
         const cred = username ? `${encodeURIComponent(username)}:${encodeURIComponent(password ?? "")}@` : "";
         const uri = `mongodb://${cred}${connectHost}:${connectPort}/${database ?? ""}`;
         client = new MongoClient(uri, {
@@ -303,6 +435,19 @@ export class DbOpsManager {
           signal, timeoutMs: this.dl("connect"), label: "db_connect",
           onLose: () => { try { client.close(true); } catch {} }
         });
+      } else if (type === "sqlite") {
+        // No tunnel, no auth: the file path travels in `database`. Opening is
+        // the connection; one prepared statement proves the file is readable.
+        client = await openSqlite(database);
+        sqliteQuery(client, "SELECT 1 AS ok", [], 1);
+      } else if (type === "clickhouse") {
+        // Stateless HTTP: nothing to keep open, so validation is one round-trip
+        // against the same endpoint/mapping a later query uses.
+        const probe = { config: { host: connectHost, port: connectPort, database, username, password, ssl } };
+        await clickhouseQuery(probe, "SELECT 1 AS ok", [], {
+          signal, fetchImpl: this.fetchImpl, maxRows: 1
+        });
+        client = { kind: "clickhouse" };
       } else {
         throw new Error(`unsupported database type: ${type}`);
       }
@@ -314,20 +459,25 @@ export class DbOpsManager {
       // failed connect must not wait for it.
       if (client) {
         try {
-          if (type === "redis" && typeof client.disconnect === "function") client.disconnect();
+          if (type === "sqlite" && typeof client.close === "function") client.close();
+          else if (type === "redis" && typeof client.disconnect === "function") client.disconnect();
           else if (type === "mongodb" && typeof client.close === "function") client.close(true).catch(() => {});
           else if (typeof client.end === "function") client.end()?.catch?.(() => {});
         } catch {}
       }
       if (tunnel) { try { tunnel.server.close(); } catch {} }
-      const target = tunnel ? `${connectHost}:${connectPort} (tunneled to ${host}:${port})` : `${connectHost}:${connectPort}`;
+      const target = needsNetwork(type)
+        ? (tunnel ? `${connectHost}:${connectPort} (tunneled to ${host}:${port})` : `${connectHost}:${connectPort}`)
+        : String(database ?? "");
       return fail("db-connect-failed", `${type} connect to ${target}: ${error.message}`);
     }
 
     const record = {
-      id, type, name: name ?? `${type}:${host}:${port}`,
-      config: { host, port, database, username, ssl: ssl ?? "disabled", sshConnectionId: sshConnectionId ?? null },
-      client, tunnel, createdAt: new Date().toISOString()
+      id, type, name: name ?? `${type}:${host ?? database}:${port}`,
+      config: { host: host ?? "", port, database, username, ssl: ssl ?? "disabled", sshConnectionId: sshConnectionId ?? null },
+      client, tunnel, createdAt: new Date().toISOString(),
+      // Connect-time statement-deadline override (absent = class default).
+      ...(queryTimeoutMs !== undefined ? { queryTimeoutMs } : {})
     };
     this.dbConnections.set(id, record);
     this.attachDbTransportHandlers(record);
@@ -356,7 +506,10 @@ export class DbOpsManager {
     if (!record || record.client !== client || record.dead) return;
     record.dead = true;
     this.dbConnections.delete(id);
-    this.dropTransactionsFor(id);
+    // Manual transactions die with the pool: a bounded best-effort ROLLBACK
+    // goes out per transaction, and every dedicated connection is destroyed
+    // or released-with-error so no pool slot leaks with the transport gone.
+    this.abandonTransactionsFor(id);
     if (record.tunnel) { try { record.tunnel.server.close(); } catch {} }
     // Only node-redis reconnects on its own; with the tunnel already closed it
     // would retry a dead local port forever, so stop its retry loop for good.
@@ -388,6 +541,31 @@ export class DbOpsManager {
   /** Deadline lookup; `this.deadlines` is an instance override used by tests. */
   dl(key) {
     return this.deadlines?.[key] ?? DB_DEADLINES[key];
+  }
+
+  /**
+   * Per-connection statement ceiling: the record's connect-time override
+   * (0 = none) beats the class default. Every race around ONE driver
+   * statement goes through here, so a slow-database connection can outlive
+   * the 35s default without loosening it for every other connection.
+   */
+  opDeadlineFor(record) {
+    const override = record?.queryTimeoutMs;
+    if (override === 0) return Infinity; // raceDeadline skips non-finite budgets
+    if (Number.isFinite(override)) return override;
+    return this.dl("op");
+  }
+
+  /**
+   * Server/driver-side statement_timeout for one connection: the client-side
+   * ceiling minus a 5s grace (the default pair is 30s server / 35s client),
+   * so the server's specific "statement timeout" error wins over the generic
+   * client race. 0 disables the server-side guard — only reachable through
+   * an explicit unlimited override.
+   */
+  statementTimeoutFor(record) {
+    const ceiling = this.opDeadlineFor(record);
+    return Number.isFinite(ceiling) ? Math.max(0, ceiling - 5000) : 0;
   }
 
   /**
@@ -450,16 +628,37 @@ export class DbOpsManager {
    * raced; a lost race marks the client dead so it is released WITH an error
    * — pg-pool then removes it synchronously and its end() force-destroys the
    * socket of a hung query, returning the slot to the pool.
+   *
+   * Before the caller's statements run, a connection that has been idle for
+   * DB_PING_AFTER_IDLE_MS is verified with a bounded `SELECT 1`: a half-open
+   * transport otherwise turns the NEXT real query into a 35s stall. One fresh
+   * reconnect attempt is made transparently before giving up.
    */
   async pgWithClient(record, opts, fn) {
+    return await this.withAliveRetry(record, opts, () => this.pgWithClientOnce(record, opts, fn));
+  }
+
+  async pgWithClientOnce(record, opts, fn) {
     const label = opts?.label ?? "db statement";
     const client = await this.pgCheckout(record, { signal: opts?.signal, label, timeoutMs: this.dl("checkout") });
     let dead = false;
     const run = (sql, params) => raceDeadline(client.query(sql, params), {
-      signal: opts?.signal, timeoutMs: this.dl("op"), label, onLose: () => { dead = true; }
+      signal: opts?.signal, timeoutMs: this.opDeadlineFor(record), label, onLose: () => { dead = true; }
     });
     try {
-      return await fn(run);
+      try {
+        await this.ensureIdleAlive(record, () => raceDeadline(client.query("SELECT 1"), {
+          signal: opts?.signal, timeoutMs: this.dl("ping"), label: `${label} ping`, onLose: () => { dead = true; }
+        }));
+      } catch (error) {
+        // A ping failure (timeout or immediate error) leaves the connection
+        // suspect; release it with an error so pg-pool never re-uses it.
+        dead = true;
+        throw error;
+      }
+      const result = await fn(run);
+      record.lastUsedAt = Date.now();
+      return result;
     } finally {
       if (dead) client.release(new Error(`${label}: connection killed after cancel/timeout`));
       else client.release();
@@ -473,12 +672,16 @@ export class DbOpsManager {
    * would bypass the kill path, so pg always goes through a checked-out client.
    */
   async mysqlWithConn(record, opts, fn) {
+    return await this.withAliveRetry(record, opts, () => this.mysqlWithConnOnce(record, opts, fn));
+  }
+
+  async mysqlWithConnOnce(record, opts, fn) {
     const label = opts?.label ?? "db statement";
     const conn = await this.mysqlCheckout(record, { signal: opts?.signal, label, timeoutMs: this.dl("checkout") });
     const target = conn.kind === "pool" ? conn.pool : conn;
     let killed = false;
     const run = (sql, params) => raceDeadline(target.query(sql, params), {
-      signal: opts?.signal, timeoutMs: this.dl("op"), label, onLose: () => { killed = true; }
+      signal: opts?.signal, timeoutMs: this.opDeadlineFor(record), label, onLose: () => { killed = true; }
     }).catch((error) => {
       // A timed-out or protocol-fatal command leaves the connection
       // mid-protocol; it must never go back to the pool (see mysqlQueryPaged).
@@ -486,9 +689,54 @@ export class DbOpsManager {
       throw error;
     });
     try {
-      return await fn(run);
+      try {
+        await this.ensureIdleAlive(record, () => raceDeadline(target.query("SELECT 1"), {
+          signal: opts?.signal, timeoutMs: this.dl("ping"), label: `${label} ping`, onLose: () => { killed = true; }
+        }));
+      } catch (error) {
+        // Suspect after a ping failure: destroyed, never pooled again.
+        killed = true;
+        throw error;
+      }
+      const result = await fn(run);
+      record.lastUsedAt = Date.now();
+      return result;
     } finally {
       if (killed) { try { conn.destroy(); } catch {} } else conn.release();
+    }
+  }
+
+  /**
+   * One transparent retry after an idle-liveness failure: the dead pooled
+   * connection was already reclaimed by the inner finally, so the second
+   * attempt checks out a (likely fresh) connection and pings again. Only a
+   * ping failure triggers this — ordinary statement errors never retry here.
+   */
+  async withAliveRetry(record, opts, run) {
+    try {
+      return await run();
+    } catch (error) {
+      if (error?.transportDead !== true) throw error;
+      return await run();
+    }
+  }
+
+  /**
+   * Ping a pooled connection before reuse when it has been idle longer than
+   * DB_PING_AFTER_IDLE_MS. Failure (including the bounded race timing out)
+   * throws an error marked `transportDead`, which drives the one reconnect
+   * retry above; the suspect connection itself is reclaimed by the caller's
+   * finally via the dead/killed flags.
+   */
+  async ensureIdleAlive(record, ping) {
+    const lastUsed = record.lastUsedAt ?? Date.parse(record.createdAt ?? "") ?? 0;
+    if (Number.isFinite(lastUsed) && Date.now() - lastUsed < DB_PING_AFTER_IDLE_MS) return;
+    try {
+      await ping();
+    } catch (error) {
+      const wrapped = new Error(`pooled connection idle over ${DB_PING_AFTER_IDLE_MS / 1000}s no longer responds to a liveness ping (${error.message})`);
+      wrapped.transportDead = true;
+      throw wrapped;
     }
   }
 
@@ -504,7 +752,9 @@ export class DbOpsManager {
     // The teardown itself is raced too: pool.end()/quit()/close() wait on the
     // transport, and the record must leave the manager even if it never dies.
     const teardown = (async () => {
-      if (record.type === "mysql" || record.type === "postgresql") await record.client.end();
+      if (record.type === "mysql" || isPgFamily(record.type)) await record.client.end();
+      else if (record.type === "sqlite") record.client.close();
+      else if (record.type === "clickhouse") { /* stateless HTTP: nothing to close */ }
       else if (record.type === "redis") await record.client.quit();
       else if (record.type === "mongodb") await record.client.close();
     })();
@@ -552,6 +802,7 @@ export class DbOpsManager {
       database: r.config.database ?? null,
       username: r.config.username ?? null,
       ssl: r.config.ssl, sshConnectionId: r.config.sshConnectionId ?? null,
+      ...(r.queryTimeoutMs !== undefined ? { queryTimeoutMs: r.queryTimeoutMs } : {}),
       createdAt: r.createdAt
     }));
     return { ok: true, value: { connections } };
@@ -561,8 +812,8 @@ export class DbOpsManager {
     let record;
     try { record = this.getRecord(request.dbConnectionId); }
     catch (error) { return fail("no-db-connection", error.message); }
-    if (record.type !== "mysql" && record.type !== "postgresql") {
-      return fail("unsupported-op", `db_query only supports mysql/postgresql, use db_run for ${record.type}`);
+    if (!isSqlType(record.type)) {
+      return fail("unsupported-op", `db_query only supports SQL databases (mysql/postgresql/opengauss/sqlite/clickhouse), use db_run for ${record.type}`);
     }
     // The query channel is lexically read-only, not just by convention: the
     // caller-supplied statement text is gated here before any driver sees it,
@@ -589,11 +840,26 @@ export class DbOpsManager {
    * so a half-open transport cannot pin the call forever.
    */
   queryPaged(record, request) {
-    const opts = { signal: request.signal, label: "db_query" };
+    // Export rides this same dispatch with a raised row cap and its own label,
+    // so its timeout messages name db_export instead of db_query.
+    const opts = {
+      signal: request.signal,
+      label: request.label ?? "db_query",
+      ...(request.maxRows !== undefined ? { maxRows: request.maxRows } : {})
+    };
     const { sql: statement, params: bindings } = request;
-    return record.type === "mysql"
-      ? this.mysqlQueryPaged(record, statement, bindings ?? [], opts)
-      : this.pgQueryPaged(record, statement, bindings ?? [], opts);
+    if (record.type === "mysql") return this.mysqlQueryPaged(record, statement, bindings ?? [], opts);
+    const cap = opts.maxRows ?? this.maxDbRows;
+    if (record.type === "sqlite") {
+      const result = sqliteQuery(record.client, statement, bindings ?? [], cap);
+      return Promise.resolve(result);
+    }
+    if (record.type === "clickhouse") {
+      return clickhouseQuery(record, statement, bindings ?? [], {
+        signal: opts.signal, fetchImpl: this.fetchImpl, maxRows: cap
+      });
+    }
+    return this.pgQueryPaged(record, statement, bindings ?? [], opts);
   }
 
   /**
@@ -617,7 +883,7 @@ export class DbOpsManager {
       // Object form: mysql2 renders `statement` with `?` placeholders and
       // sends `bindings` through the protocol's separate parameter slot.
       const stream = conn.connection
-        .query({ sql: statement, values: bindings, timeout: DB_QUERY_TIMEOUT_MS })
+        .query({ sql: statement, values: bindings, timeout: this.statementTimeoutFor(record) })
         .stream();
       const streamed = new Promise((resolve, reject) => {
         const once = (fn) => {
@@ -629,7 +895,7 @@ export class DbOpsManager {
           if (fields?.length) fieldNames = fields.map((f) => f.name);
         });
         stream.on("result", (row) => {
-          if (rows.length >= this.maxDbRows) {
+          if (rows.length >= (opts.maxRows ?? this.maxDbRows)) {
             truncated = true;
             killed = true;
             once(resolve);
@@ -653,7 +919,7 @@ export class DbOpsManager {
         stream.resume();
       });
       await raceDeadline(streamed, {
-        signal: opts.signal, timeoutMs: this.dl("op"), label,
+        signal: opts.signal, timeoutMs: this.opDeadlineFor(record), label,
         onLose: () => { killed = true; try { stream.destroy(); } catch {} }
       });
     } finally {
@@ -679,27 +945,32 @@ export class DbOpsManager {
    */
   async pgQueryPaged(record, statement, bindings, opts = {}) {
     const label = opts.label ?? "db_query";
+    // Export raises the shared row cap through opts; everything else uses the
+    // manager's configured page size.
+    const cap = opts.maxRows ?? this.maxDbRows;
     const client = await this.pgCheckout(record, { signal: opts.signal, label });
     const rows = [];
     let fieldNames = [];
     let truncated = false;
     let dead = false;
     const run = (text, params) => raceDeadline(client.query(text, params), {
-      signal: opts.signal, timeoutMs: this.dl("op"), label, onLose: () => { dead = true; }
+      signal: opts.signal, timeoutMs: this.opDeadlineFor(record), label, onLose: () => { dead = true; }
     });
     try {
-      await run("SELECT set_config('statement_timeout', $1, false)", [String(DB_QUERY_TIMEOUT_MS)]);
+      await run("SELECT set_config('statement_timeout', $1, false)", [String(this.statementTimeoutFor(record))]);
+      const pgCursorModule = await import("pg-cursor");
+      const Cursor = pgCursorModule.default ?? pgCursorModule;
       const cursor = client.query(new Cursor(statement, bindings));
       try {
         await raceDeadline(new Promise((resolve, reject) => {
           const readBatch = () => {
-            cursor.read(this.maxDbRows + 1 - rows.length, (err, batch) => {
+            cursor.read(cap + 1 - rows.length, (err, batch) => {
               if (err) { reject(err); return; }
               if (batch.length === 0) { resolve(); return; }
               rows.push(...batch);
-              if (rows.length > this.maxDbRows) {
+              if (rows.length > cap) {
                 truncated = true;
-                rows.length = this.maxDbRows;
+                rows.length = cap;
                 resolve();
                 return;
               }
@@ -708,7 +979,7 @@ export class DbOpsManager {
           };
           readBatch();
         }), {
-          signal: opts.signal, timeoutMs: this.dl("op"), label,
+          signal: opts.signal, timeoutMs: this.opDeadlineFor(record), label,
           // The portal is mid-fetch: the client must not return to the pool.
           onLose: () => { dead = true; }
         });
@@ -737,9 +1008,14 @@ export class DbOpsManager {
     try { record = this.getRecord(request.dbConnectionId); }
     catch (error) { return fail("no-db-connection", error.message); }
     const assessment = assessSqlStatement(request.sql);
-    if (assessment.blocked) return fail("unsafe-sql", assessment.reason);
-    if (record.type !== "mysql" && record.type !== "postgresql") {
-      return fail("unsupported-op", `db_execute only supports mysql/postgresql, use db_run for ${record.type}`);
+    if (assessment.blocked) {
+      // Destructive SQL never executes, but it no longer dies silently: the
+      // target is backed up (and for DROP TABLE, quarantined by rename) so
+      // the operation stays recoverable. See guardDestructiveSql.
+      return this.guardDestructiveSql(record, request, assessment);
+    }
+    if (!isSqlType(record.type)) {
+      return fail("unsupported-op", `db_execute only supports SQL databases (mysql/postgresql/opengauss/sqlite/clickhouse), use db_run for ${record.type}`);
     }
     try {
       const opts = { signal: request.signal, label: "db_execute" };
@@ -753,6 +1029,15 @@ export class DbOpsManager {
           affectedRows = rows.affectedRows ?? 0;
           if (rows.insertId) insertId = rows.insertId;
         }
+      } else if (record.type === "sqlite") {
+        const r = sqliteExecute(record.client, request.sql, request.params ?? []);
+        affectedRows = r.affectedRows;
+        if (r.insertId !== null && r.insertId !== undefined) insertId = r.insertId;
+      } else if (record.type === "clickhouse") {
+        const r = await clickhouseExecute(record, request.sql, request.params ?? [], {
+          signal: opts.signal, fetchImpl: this.fetchImpl
+        });
+        affectedRows = r.affectedRows;
       } else {
         const r = await this.pgQueryOnce(record, request.sql, request.params ?? [], opts);
         affectedRows = r.rowCount ?? r.rows?.length ?? 0;
@@ -765,12 +1050,214 @@ export class DbOpsManager {
     }
   }
 
+  /**
+   * Destructive SQL (DROP/TRUNCATE/SHUTDOWN) never executes. Depending on the
+   * target it instead:
+   *   - backs the table up (rows + DDL where the dialect provides it) and
+   *     returns the blocked envelope with the backup list attached;
+   *   - for DROP TABLE on a rename-capable engine, quarantines the table by
+   *     renaming it to `<name>_to_be_dropped_<date>` after the backup. The
+   *     agent can never finalize the deletion: purging a quarantined table is
+   *     an operator-only action (panel-executed DROP on the renamed table).
+   * The agent path (request.origin === "agent") gets structured backup data on
+   * the error envelope; panel requests keep the wire-safe {code,message} form.
+   */
+  async guardDestructiveSql(record, request, assessment) {
+    const agentOrigin = request.origin === "agent";
+    if (!isSqlType(record.type)) return fail("unsafe-sql", assessment.reason);
+
+    const blocked = (backup, message) => {
+      const text = t(`${message ?? assessment.reason}。${backupSummary(backup)}\nSQL 未执行；请勿重试/绕行，由人工在数据库面板执行。`);
+      // An empty backup list stays absent — no point attaching noise.
+      return agentOrigin
+        ? { ok: false, error: { code: "unsafe-sql", message: text, ...(backup.length > 0 ? { backup } : {}) } }
+        : { ok: false, error: { code: "unsafe-sql", message: text } };
+    };
+
+    const target = parseDestructiveTarget(request.sql);
+    if (target === null || target.kind === null || target.identifier === null) {
+      // SHUTDOWN, DROP PROCEDURE, quoted identifiers the lexer skips — nothing
+      // to back up or rename, keep the plain blocked flow.
+      return blocked([]);
+    }
+
+    if (target.kind === "database" || target.kind === "schema") {
+      // A whole database cannot be renamed to safety. Only the database this
+      // connection points at can be dumped through it.
+      const currentDb = record.config.database;
+      if (record.type !== "sqlite" && target.identifier !== currentDb) {
+        return blocked([], t(`${assessment.reason}。目标库（${target.identifier}）与连接所指向的库（${currentDb ?? t("未知")}）不同，未能自动备份`));
+      }
+      const backup = [];
+      let partial = false;
+      const listed = await this.listTables({ dbConnectionId: record.id, signal: request.signal }).catch(() => ({ ok: false, error: { message: "listTables failed" } }));
+      if (listed.ok) {
+        const tables = listed.value.tables;
+        if (tables.length > BACKUP_TABLE_CAP) partial = true;
+        for (const table of tables.slice(0, BACKUP_TABLE_CAP)) {
+          backup.push(await this.backupTableSnapshot(record, table, request.signal));
+        }
+      }
+      const note = partial ? t(`（表数量超过 ${BACKUP_TABLE_CAP}，仅备份了前 ${BACKUP_TABLE_CAP} 张）`) : (listed.ok ? "" : t("（枚举表失败，未能备份）"));
+      return blocked(backup, t(`${assessment.reason}。整库删除无法自动隔离${note}`));
+    }
+
+    // target.kind === "table"
+    const bareName = target.identifier.split(".").pop();
+    if (QUARANTINE_SUFFIX_RE.test(bareName)) {
+      // Purging a quarantined table is the one human-final step. The
+      // identifier is lexer-built, but the whitelist stays the gate.
+      if (!validateDbIdentifier(target.identifier).ok) return blocked([]);
+      if (agentOrigin) {
+        return blocked([], t(`隔离表的最终删除必须由操作者在数据库面板执行（当前请求来自 Agent，已拦截）`));
+      }
+      try {
+        await this.runQuarantineSql(record, `DROP TABLE ${target.identifier}`, request.signal);
+      } catch (error) {
+        return fail("db-execute-failed", error.message);
+      }
+      return { ok: true, value: { affectedRows: 0, truncated: false } };
+    }
+
+    // Rows must be read before anything hides the table — backup FIRST.
+    const backup = [await this.backupTableSnapshot(record, target.identifier, request.signal)];
+
+    if (target.verb === "TRUNCATE" || !QUARANTINE_CAPABLE_TYPES.has(record.type)) {
+      // Truncate empties a table in place and this engine cannot rename to
+      // safety — blocked with the backup attached.
+      const why = target.verb === "TRUNCATE" ? t("TRUNCATE 无法隔离改名") : t(`引擎 ${record.type} 不支持隔离改名`);
+      return blocked(backup, t(`${assessment.reason}。${why}，已自动备份后拦截`));
+    }
+
+    const renamed = await this.quarantineRename(record, target.identifier, request.signal);
+    if (!renamed.ok) {
+      return blocked(backup, t(`${assessment.reason}。隔离改名失败（${renamed.error}），已自动备份后拦截`));
+    }
+    if (renamed.renamedTo === null) {
+      return { ok: true, value: { affectedRows: 0, truncated: false, quarantined: false, notice: t("表不存在，未做任何变更（IF EXISTS 语义）"), backup } };
+    }
+    const notice = t(`已隔离改名（数据未删除，可随时改回）。彻底删除请由操作者在数据库面板执行：DROP TABLE ${renamed.renamedTo}`);
+    if (agentOrigin) {
+      return { ok: true, value: { affectedRows: 0, truncated: false, quarantined: true, renamedTo: renamed.renamedTo, backup, notice } };
+    }
+    return blocked(backup, notice);
+  }
+
+  /**
+   * Best-effort backup of one table: rows via the read-only export channel
+   * (SSH-connected databases land on the remote /tmp, direct ones on the DSH
+   * host's temp dir), DDL alongside when the dialect can produce it. Never
+   * throws; failures land on the entry so the operator sees exactly what is
+   * and is not recoverable.
+   */
+  async backupTableSnapshot(record, table, signal) {
+    const entry = { target: table, path: null, schemaPath: null, bytes: 0, truncated: false, error: null };
+    const preview = buildPreviewSql(record.type, table, EXPORT_MAX_ROWS, 0);
+    if (!preview.ok) { entry.error = preview.error; return entry; }
+    try {
+      const exported = await this.exportRows({
+        dbConnectionId: record.id,
+        sql: preview.sql,
+        params: preview.params,
+        format: "csv",
+        maxRows: EXPORT_MAX_ROWS,
+        path: record.config.sshConnectionId ? `/tmp/${backupFileNameStem(record, table)}.csv` : undefined,
+        signal
+      });
+      if (!exported.ok) { entry.error = exported.error.message; return entry; }
+      entry.bytes = exported.value.bytes;
+      entry.truncated = exported.value.truncated;
+      if (exported.value.path) {
+        entry.path = exported.value.path;
+      } else if (typeof exported.value.content === "string") {
+        const dir = join(tmpdir(), "dsh-db-backups");
+        await mkdir(dir, { recursive: true });
+        entry.path = join(dir, `${backupFileNameStem(record, table)}.csv`);
+        await writeFile(entry.path, exported.value.content, "utf8");
+      } else {
+        entry.error = "export returned no destination";
+        return entry;
+      }
+      // Schema DDL where the dialect provides it (PostgreSQL family: null).
+      const described = await this.describeTable({ dbConnectionId: record.id, table, signal });
+      if (described.ok && described.value.ddl) {
+        const ddl = String(described.value.ddl);
+        const schemaPath = `${entry.path}.schema.sql`;
+        if (record.config.sshConnectionId) {
+          const written = await this.sshOpsService.sftpWriteFile({
+            connectionId: record.config.sshConnectionId,
+            path: schemaPath,
+            data: Buffer.from(ddl, "utf8").toString("base64")
+          });
+          if (written && written.ok === true) entry.schemaPath = schemaPath;
+        } else {
+          await writeFile(schemaPath, ddl, "utf8");
+          entry.schemaPath = schemaPath;
+        }
+      }
+      return entry;
+    } catch (error) {
+      entry.error = entry.error ?? error.message;
+      return entry;
+    }
+  }
+
+  /**
+   * Rename `identifier` to `<bare>_to_be_dropped_<YYYYMMDD>` (suffixed _2, _3
+   * … on collision). Returns {renamedTo: null} when the table does not exist
+   * (IF EXISTS semantics). The rename keeps the data on the server — only the
+   * operator can finalize a real DROP afterwards.
+   */
+  async quarantineRename(record, identifier, signal) {
+    const bare = identifier.split(".").pop();
+    const listed = await this.listTables({ dbConnectionId: record.id, signal }).catch(() => ({ ok: false, error: { message: "listTables failed" } }));
+    if (!listed.ok) return { ok: false, error: listed.error.message };
+    const names = listed.value.tables;
+    if (!names.includes(bare)) return { ok: true, renamedTo: null };
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    let candidate = `${bare}_to_be_dropped_${stamp}`;
+    let n = 2;
+    while (names.includes(candidate)) {
+      candidate = `${bare}_to_be_dropped_${stamp}_${n}`;
+      n++;
+    }
+    const qualified = identifier.includes(".");
+    const newIdentifier = qualified ? `${identifier.slice(0, identifier.length - bare.length)}${candidate}` : candidate;
+    if (!validateDbIdentifier(newIdentifier).ok) {
+      return { ok: false, error: t(`隔离名 ${newIdentifier} 不是合法标识符（过长或含特殊字符）`) };
+    }
+    try {
+      if (record.type === "mysql") {
+        await this.mysqlQueryOnce(record, "RENAME TABLE ?? TO ??", [identifier, newIdentifier], { signal, label: "db_quarantine_rename" });
+      } else if (record.type === "sqlite") {
+        sqliteExecute(record.client, `ALTER TABLE "${bare.replace(/"/g, '""')}" RENAME TO "${candidate.replace(/"/g, '""')}"`, []);
+      } else {
+        await this.pgQueryOnce(record, `ALTER TABLE ${quotePgIdentifier(identifier)} RENAME TO ${quotePgIdentifier(candidate)}`, [], { signal, label: "db_quarantine_rename" });
+      }
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+    return { ok: true, renamedTo: newIdentifier };
+  }
+
+  /** Run the operator-only final DROP of a quarantined table (panel path). */
+  async runQuarantineSql(record, sql, signal) {
+    const opts = { signal, label: "db_quarantine_drop" };
+    if (record.type === "mysql") {
+      await this.mysqlQueryOnce(record, sql, [], opts);
+    } else if (record.type === "sqlite") {
+      sqliteExecute(record.client, sql, []);
+    } else {
+      await this.pgQueryOnce(record, sql, [], opts);
+    }
+  }
+
   async listTables(request) {
     let record;
     try { record = this.getRecord(request.dbConnectionId); }
     catch (error) { return fail("no-db-connection", error.message); }
-    if (record.type !== "mysql" && record.type !== "postgresql") {
-      return fail("unsupported-op", `db_list_tables only supports mysql/postgresql, use db_run for ${record.type}`);
+    if (!isSqlType(record.type)) {
+      return fail("unsupported-op", `db_list_tables only supports SQL databases (mysql/postgresql/opengauss/sqlite/clickhouse), use db_run for ${record.type}`);
     }
     try {
       const opts = { signal: request.signal, label: "db_list_tables" };
@@ -778,6 +1265,10 @@ export class DbOpsManager {
       if (record.type === "mysql") {
         const [rows] = await this.mysqlQueryOnce(record, "SHOW TABLES", [], opts);
         tables = rows.map((row) => Object.values(row)[0]);
+      } else if (record.type === "sqlite") {
+        tables = sqliteListTables(record.client);
+      } else if (record.type === "clickhouse") {
+        tables = await clickhouseListTables(record, { signal: opts.signal, fetchImpl: this.fetchImpl });
       } else {
         const r = await this.pgQueryOnce(record, "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY table_name", [], opts);
         tables = r.rows.map((row) => Object.values(row)[0]);
@@ -792,8 +1283,8 @@ export class DbOpsManager {
     let record;
     try { record = this.getRecord(request.dbConnectionId); }
     catch (error) { return fail("no-db-connection", error.message); }
-    if (record.type !== "mysql" && record.type !== "postgresql") {
-      return fail("unsupported-op", `db_describe_table only supports mysql/postgresql, use db_run for ${record.type}`);
+    if (!isSqlType(record.type)) {
+      return fail("unsupported-op", `db_describe_table only supports SQL databases (mysql/postgresql/opengauss/sqlite/clickhouse), use db_run for ${record.type}`);
     }
     // The identifier is the only caller-controlled token embedded in these
     // metadata queries; it must pass the whitelist and is quoted per dialect.
@@ -847,6 +1338,37 @@ export class DbOpsManager {
           name: row.CONSTRAINT_NAME, column: row.COLUMN_NAME,
           foreignTable: row.REFERENCED_TABLE_NAME, foreignColumn: row.REFERENCED_COLUMN_NAME
         }));
+      } else if (record.type === "sqlite") {
+        columns = sqliteDescribeTable(record.client, bareTable);
+        const idx = sqliteQuery(record.client,
+          "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL ORDER BY name",
+          [bareTable], 200);
+        indexes = idx.rows.map((row) => ({
+          name: row.name, definition: row.sql,
+          unique: /CREATE\s+UNIQUE/i.test(String(row.sql)), columns: []
+        }));
+        const ddlRow = sqliteQuery(record.client,
+          "SELECT sql FROM sqlite_master WHERE name = ? AND type IN ('table','view')", [bareTable], 1);
+        ddl = ddlRow.rows?.[0]?.sql ?? null;
+        // SQLite keeps no row/size statistics; COUNT(*) would scan the table,
+        // so the stats block stays empty instead of costing a full read.
+      } else if (record.type === "clickhouse") {
+        columns = await clickhouseDescribeTable(record, bareTable, { signal: opts.signal, fetchImpl: this.fetchImpl });
+        const ddlRows = await clickhouseQuery(record, `SHOW CREATE TABLE \`${bareTable.replaceAll("`", "``")}\``, [], {
+          signal: opts.signal, fetchImpl: this.fetchImpl, maxRows: 1
+        }).catch(() => null);
+        ddl = ddlRows?.rows?.[0]?.statement ?? ddlRows?.rows?.[0]?.create_table_query ?? null;
+        const statsRows = await clickhouseQuery(record,
+          "SELECT total_rows, total_bytes FROM system.tables WHERE database = currentDatabase() AND name = ?",
+          [bareTable], { signal: opts.signal, fetchImpl: this.fetchImpl, maxRows: 1 }).catch(() => null);
+        const s = statsRows?.rows?.[0];
+        if (s) {
+          stats = {
+            estimatedRows: s.total_rows == null ? null : Number(s.total_rows),
+            dataBytes: s.total_bytes == null ? null : Number(s.total_bytes),
+            indexBytes: null
+          };
+        }
       } else {
         const r = await this.pgQueryOnce(record,
           "SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_name = $1 AND table_schema = current_schema() ORDER BY ordinal_position",
@@ -907,8 +1429,8 @@ export class DbOpsManager {
     let record;
     try { record = this.getRecord(request.dbConnectionId); }
     catch (error) { return fail("no-db-connection", error.message); }
-    if (record.type !== "mysql" && record.type !== "postgresql") {
-      return fail("unsupported-op", `db_preview only supports mysql/postgresql, use db_run for ${record.type}`);
+    if (!isSqlType(record.type)) {
+      return fail("unsupported-op", `db_preview only supports SQL databases (mysql/postgresql/opengauss/sqlite/clickhouse), use db_run for ${record.type}`);
     }
     const requestedLimit = Math.floor(Number(request.limit) || 50);
     if (requestedLimit > this.maxDbRows) return fail("db-limit-too-high", `requested limit ${requestedLimit} exceeds configured max ${this.maxDbRows}`);
@@ -926,10 +1448,17 @@ export class DbOpsManager {
           [bareTable], opts
         );
         estimatedTotal = statsRows?.[0]?.est == null ? null : Number(statsRows[0].est);
-      } else {
+      } else if (record.type === "clickhouse") {
+        const statsRows = await clickhouseQuery(record,
+          "SELECT total_rows AS est FROM system.tables WHERE database = currentDatabase() AND name = ?",
+          [bareTable], { signal: opts.signal, fetchImpl: this.fetchImpl, maxRows: 1 });
+        estimatedTotal = statsRows.rows?.[0]?.est == null ? null : Number(statsRows.rows[0].est);
+      } else if (isPgFamily(record.type)) {
         const estimate = await this.pgQueryOnce(record, "SELECT reltuples::bigint AS est FROM pg_class WHERE relname = $1", [bareTable], opts);
         estimatedTotal = estimate.rows?.[0]?.est == null ? null : Number(estimate.rows[0].est);
       }
+      // SQLite keeps no planner row count: the estimate stays null rather than
+      // paying a COUNT(*) scan for a decoration.
       if (estimatedTotal != null && estimatedTotal < 0) estimatedTotal = null;
     } catch (error) {
       // The estimate is decoration; the rows are the answer. Cancellation is
@@ -939,6 +1468,68 @@ export class DbOpsManager {
     const result = await this.query({ dbConnectionId: request.dbConnectionId, sql: built.sql, params: built.params, signal: request.signal });
     if (!result.ok) return result;
     return { ok: true, value: { ...result.value, table: request.table, limit, offset, estimatedTotal } };
+  }
+
+  /**
+   * Export one read-only query as CSV or JSON.
+   *
+   * Rows come from the same lexically read-only, placeholder-bound dispatch as
+   * db_query — export is never a second write channel. The destination follows
+   * the connection: a database reached through an SSH connection writes the
+   * file onto that server (ready for the SFTP panel to pull), while a direct
+   * connection returns the content inline for the browser to download, up to
+   * the inline ceiling.
+   */
+  async exportRows(request) {
+    let record;
+    try { record = this.getRecord(request.dbConnectionId); }
+    catch (error) { return fail("no-db-connection", error.message); }
+    if (!isSqlType(record.type)) {
+      return fail("unsupported-op", `db_export only supports SQL databases (mysql/postgresql/opengauss/sqlite/clickhouse), use db_run for ${record.type}`);
+    }
+    const gate = assessReadOnlySql(request.sql);
+    if (!gate.ok) return fail("readonly-sql", gate.reason);
+    const format = request.format ?? "csv";
+    if (format !== "csv" && format !== "json") return fail("bad-request", `unsupported export format: ${format}`);
+    const delimiter = EXPORT_DELIMITERS[request.delimiter ?? "comma"];
+    if (delimiter === undefined) return fail("bad-request", `unsupported delimiter: ${String(request.delimiter)}`);
+    const requested = Math.floor(Number(request.maxRows) || EXPORT_DEFAULT_ROWS);
+    const maxRows = Math.min(Math.max(requested, 1), EXPORT_MAX_ROWS);
+    try {
+      const paged = await this.queryPaged(record, {
+        sql: request.sql, params: request.params, signal: request.signal,
+        maxRows, label: "db_export"
+      });
+      const rows = paged.rows.map(serializeDbValue);
+      const columns = paged.fieldNames.length > 0 ? paged.fieldNames : (rows[0] ? Object.keys(rows[0]) : []);
+      const content = format === "csv"
+        ? toCsv(columns, rows, { delimiter, header: request.header !== false })
+        : toJson(columns, rows);
+      const bytes = Buffer.byteLength(content, "utf8");
+      const value = { format, columns, rows: rows.length, bytes, truncated: paged.truncated, path: null };
+      const sshConnectionId = record.config.sshConnectionId;
+      if (sshConnectionId) {
+        const trimmed = typeof request.path === "string" ? request.path.trim() : "";
+        const target = trimmed.length > 0 ? trimmed : `/tmp/${defaultExportName(record.name, format)}`;
+        const written = await this.sshOpsService.sftpWriteFile({
+          connectionId: sshConnectionId, path: target,
+          data: Buffer.from(content, "utf8").toString("base64")
+        });
+        if (!written || written.ok !== true) {
+          return fail("export-write-failed", t(`写入 ${target} 失败：${written?.error?.message ?? t("未知错误")}`));
+        }
+        value.path = target;
+        return { ok: true, value };
+      }
+      if (bytes > EXPORT_INLINE_LIMIT) {
+        return fail("export-too-large",
+          t(`导出内容 ${bytes} 字节，超过内嵌返回上限 ${EXPORT_INLINE_LIMIT}；请把导出写到远端（为连接配置 SSH 通道）或收窄查询`));
+      }
+      value.content = content;
+      return { ok: true, value };
+    } catch (error) {
+      return fail("db-export-failed", error.message);
+    }
   }
 
   // ── interactive transactions (operator-verified change workflow) ───────────
@@ -964,27 +1555,27 @@ export class DbOpsManager {
         let lost = false;
         try {
           await raceDeadline(conn.query("START TRANSACTION"), {
-            signal, timeoutMs: this.dl("op"), label: "db_tx_begin",
+            signal, timeoutMs: this.opDeadlineFor(record), label: "db_tx_begin",
             onLose: () => { lost = true; try { conn.destroy(); } catch {} }
           });
         } catch (error) {
           if (!lost) { try { conn.destroy(); } catch {} }
           throw error;
         }
-        handle = { kind: "mysql", conn, signal };
+        handle = { kind: "mysql", conn, signal, opTimeoutMs: this.opDeadlineFor(record) };
       } else {
         const client = await this.pgCheckout(record, { signal, label: "db_tx_begin" });
         let lost = false;
         try {
           await raceDeadline(client.query("BEGIN"), {
-            signal, timeoutMs: this.dl("op"), label: "db_tx_begin",
+            signal, timeoutMs: this.opDeadlineFor(record), label: "db_tx_begin",
             onLose: () => { lost = true; try { client.release(new Error("db_tx_begin: connection killed")); } catch {} }
           });
         } catch (error) {
           if (!lost) { try { client.release(new Error("db_tx_begin failed")); } catch {} }
           throw error;
         }
-        handle = { kind: "pg", client, signal };
+        handle = { kind: "pg", client, signal, opTimeoutMs: this.opDeadlineFor(record) };
       }
     } catch (error) {
       // START TRANSACTION/BEGIN failed before a transaction record existed.
@@ -1022,7 +1613,7 @@ export class DbOpsManager {
       let value;
       if (tx.handle.kind === "mysql") {
         const [r] = await raceDeadline(tx.handle.conn.query(statement, bindings), {
-          signal, timeoutMs: this.dl("op"), label: "db_tx_execute",
+          signal, timeoutMs: tx.handle.opTimeoutMs ?? this.dl("op"), label: "db_tx_execute",
           onLose: () => this.killTransaction(tx)
         });
         if (Array.isArray(r)) {
@@ -1035,7 +1626,7 @@ export class DbOpsManager {
         }
       } else {
         const r = await raceDeadline(tx.handle.client.query(statement, bindings), {
-          signal, timeoutMs: this.dl("op"), label: "db_tx_execute",
+          signal, timeoutMs: tx.handle.opTimeoutMs ?? this.dl("op"), label: "db_tx_execute",
           onLose: () => this.killTransaction(tx)
         });
         const allRows = r.rows ?? [];
@@ -1079,14 +1670,16 @@ export class DbOpsManager {
     const tx = this.dbTransactions.get(txId);
     if (!tx) return fail("tx-missing", `transaction ${txId} not found or already finished`);
     const label = action === "COMMIT" ? "db_tx_commit" : "db_tx_rollback";
+    // The connection's connect-time override (if any) travels on the handle.
+    const opBudget = tx.handle.opTimeoutMs ?? this.dl("op");
     let killed = false;
     try {
       const settled = tx.handle.kind === "mysql"
         ? await raceDeadline(tx.handle.conn.query(action), {
-          signal, timeoutMs: this.dl("op"), label, onLose: () => { killed = true; }
+          signal, timeoutMs: opBudget, label, onLose: () => { killed = true; }
         })
         : await raceDeadline(tx.handle.client.query(action), {
-          signal, timeoutMs: this.dl("op"), label, onLose: () => { killed = true; }
+          signal, timeoutMs: opBudget, label, onLose: () => { killed = true; }
         });
       void settled;
       if (killed) {
@@ -1096,7 +1689,7 @@ export class DbOpsManager {
         else tx.handle.client.release(new Error(`${label}: connection killed after timeout`));
         this.dbTransactions.delete(txId);
         if (tx.timer) clearTimeout(tx.timer);
-        return fail(errorCode, `${label} timed out after ${this.dl("op")}ms: the transaction outcome is unknown — verify the data before retrying`);
+        return fail(errorCode, `${label} timed out after ${opBudget}ms: the transaction outcome is unknown — verify the data before retrying`);
       }
       if (tx.handle.kind === "mysql") tx.handle.conn.release();
       else tx.handle.client.release();
@@ -1161,6 +1754,23 @@ export class DbOpsManager {
     }
   }
 
+  /**
+   * Transport-loss counterpart of disposeDbTransactionsFor: per open
+   * transaction, attempt a bounded ROLLBACK (the wire may still be half-alive)
+   * and always end with destroy/release-with-error so the dedicated pooled
+   * connection is reclaimed even when the transport is gone. Fire-and-forget —
+   * the loss handler must not wait on a dead transport.
+   */
+  abandonTransactionsFor(dbConnectionId) {
+    if (!this.dbTransactions) return; // partially-constructed instances in unit tests
+    for (const [txId, tx] of [...this.dbTransactions.entries()]) {
+      if (tx.dbId !== dbConnectionId) continue;
+      if (tx.timer) clearTimeout(tx.timer);
+      // disposeTransaction drops the bookmark itself once it has settled.
+      void this.disposeTransaction(txId, "ROLLBACK").catch(() => {});
+    }
+  }
+
   // ── performance diagnostics ─────────────────────────────────────────────────
 
   /**
@@ -1173,13 +1783,13 @@ export class DbOpsManager {
     let record;
     try { record = this.getRecord(request.dbConnectionId); }
     catch (error) { return fail("no-db-connection", error.message); }
-    if (record.type !== "mysql" && record.type !== "postgresql") {
-      return fail("unsupported-op", "db_explain only supports mysql/postgresql");
+    if (!isSqlType(record.type)) {
+      return fail("unsupported-op", `db_explain only supports SQL databases (mysql/postgresql/opengauss/sqlite/clickhouse)`);
     }
     const gate = assessReadOnlySql(request.sql);
     if (!gate.ok) return fail("readonly-sql", gate.reason);
     if (!gate.verbs?.length || !["SELECT", "WITH"].includes(gate.verbs[0])) {
-      return fail("unsupported-op", "db_explain 仅支持 SELECT/WITH 查询计划");
+      return fail("unsupported-op", t("db_explain 仅支持 SELECT/WITH 查询计划"));
     }
     const opts = { signal: request.signal, label: "db_explain" };
     try {
@@ -1188,6 +1798,21 @@ export class DbOpsManager {
         const [r] = await this.mysqlQueryOnce(record, "EXPLAIN FORMAT=JSON " + request.sql, request.params ?? [], opts);
         const raw = r?.[0]?.EXPLAIN ?? null;
         plan = typeof raw === "string" ? JSON.parse(raw) : raw;
+      } else if (record.type === "sqlite") {
+        // SQLite prints the plan as rows; the array is the plan.
+        plan = sqliteQuery(record.client, "EXPLAIN QUERY PLAN " + request.sql, request.params ?? [], this.maxDbRows).rows;
+      } else if (record.type === "clickhouse") {
+        // ClickHouse's EXPLAIN has no cross-version JSON default: ask for JSON
+        // first and fall back to the textual plan when the server rejects it.
+        const json = await clickhouseQuery(record, "EXPLAIN json = 1 " + request.sql, request.params ?? [], {
+          signal: opts.signal, fetchImpl: this.fetchImpl, maxRows: 50
+        }).catch(() => null);
+        const raw = json?.rows?.[0]?.explain ?? null;
+        plan = raw === null || raw === undefined
+          ? (await clickhouseQuery(record, "EXPLAIN " + request.sql, request.params ?? [], {
+              signal: opts.signal, fetchImpl: this.fetchImpl, maxRows: 200
+            })).rows
+          : (typeof raw === "string" ? JSON.parse(raw) : raw);
       } else {
         const r = await this.pgQueryOnce(record, "EXPLAIN (FORMAT JSON) " + request.sql, request.params ?? [], opts);
         const raw = r.rows?.[0]?.["QUERY PLAN"] ?? null;
@@ -1212,7 +1837,7 @@ export class DbOpsManager {
         // happens, so the command must race client-side. A lost race leaves the
         // connection suspect: drop it (disconnect also stops the retry loop).
         const result = await raceDeadline(record.client.sendCommand([command, ...(args ?? [])]), {
-          signal: request.signal, timeoutMs: this.dl("op"), label: "db_run",
+          signal: request.signal, timeoutMs: this.opDeadlineFor(record), label: "db_run",
           onLose: (error) => { this.handleDbTransportLoss(record.id, record.client, error); }
         });
         return { ok: true, value: { result: serializeDbValue(result) } };
@@ -1235,7 +1860,7 @@ export class DbOpsManager {
           }
         };
         const result = await raceDeadline(mongoRun(), {
-          signal: request.signal, timeoutMs: this.dl("op"), label: "db_run",
+          signal: request.signal, timeoutMs: this.opDeadlineFor(record), label: "db_run",
           onLose: (error) => {
             // Clear the stuck topology so the next call starts from a clean
             // selection instead of queueing behind the dead one.

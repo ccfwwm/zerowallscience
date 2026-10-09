@@ -3,7 +3,7 @@
  * catalog walking, workflow run attachment + member re-parenting, team
  * enrichment, and the per-parent settled-leaf fold.
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   buildTasksModel,
   tasksEdges,
@@ -19,7 +19,6 @@ import type { TeamMemberRow } from '../src/client/team-projection.ts'
 import {
   foldPreviews, taskBlocked, taskDotState, taskStatusLabel, taskTone,
 } from '../src/client/tasks-shared.tsx'
-import { attachLocale } from '../src/client/locales.ts'
 import type { SubagentCatalogView } from '../src/client/subagent-catalog.ts'
 import type { SidebarChildLiveView } from '../src/context-types.ts'
 import type { WorkflowRunView } from '../src/workflow-runs.ts'
@@ -424,15 +423,6 @@ describe('buildTasksModel: duplicate workflow members', () => {
 })
 
 describe('shared task status rule (taskBlocked / taskStatusLabel / taskTone)', () => {
-  // Status labels are localized in production. Pin this pure model suite to
-  // English so the result does not depend on the machine's browser locale.
-  beforeEach(() => {
-    attachLocale({ getSnapshot: () => ({ active: 'en' }) })
-  })
-  afterEach(() => {
-    attachLocale(undefined)
-  })
-
   const facts = (status: 'pending' | 'in_progress' | 'completed', ready: boolean) => ({ status, ready })
 
   it('calls a queued task with an open blocker blocked', () => {

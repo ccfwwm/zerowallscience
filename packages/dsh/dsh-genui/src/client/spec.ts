@@ -471,17 +471,13 @@ export interface GenuiRadio {
   explanation?: string
 }
 
-/** Submit node: collects sibling `radio` and grouped `checkbox` answers in
- * this block. LOCAL-FIRST grading still applies to radio-only question scopes;
- * aggregation scopes can emit strings for radio groups and string arrays for
- * checkbox groups in the same `answers` object. */
+/** 提交节点收集当前 block 的答案和字段值；纯 radio 范围可在本地判卷。 */
 export interface GenuiSubmit {
   type: 'submit'
   label: string
   /**
-   * Optional action name. Local-first: when the in-scope questions can be
-   * graded entirely locally, no action is needed. Aggregation submits require
-   * an action and emit `{type:'submit', answers, total, answered}`.
+   * 可选 action 名称。纯 radio 范围满足本地判卷条件时无需 action；其他提交
+   * 通过 action 发送 `answers`、可选的 `fields`、`total` 和 `answered`。
    */
   action?: string
   /**
@@ -491,10 +487,11 @@ export interface GenuiSubmit {
    */
   resetAction?: string
   /**
-   * Optional explicit group list to wait for; when absent the submit enables
-   * once at least one grouped answer (or filled field) exists. When present
-   * it stays disabled until EVERY listed radio/checkbox group has a non-empty
-   * recorded answer (the hint shows the progress).
+   * `groups` 引用当前 block 中的 submission member key，来源为 radio.group、
+   * checkbox.group 以及 input/textarea/select/slider.id。radio 需已选择，
+   * checkbox 需至少选择一项，普通 field 需在 trim 后非空。`groups` 控制提交
+   * 所需成员与完成进度；payload 仍收集当前 block 中已填写的表单状态。
+   * 未设置时，只要存在至少一个已完成成员即可提交。
    */
   groups?: string[]
 }

@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1200" viewBox="0 0 1280 1200" role="img" aria-labelledby="title desc">
+  <title id="title">stable-proxy flow</title>
+  <desc id="desc">by everclear077</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1">
+      <stop stop-color="#f7fbff"/><stop offset="1" stop-color="#eef4fc"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#2563eb"/><stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowMuted" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#64748b"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e3a8a" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="1200" rx="24" fill="url(#bg)" stroke="#c5daf3" stroke-width="2"/>
+  <path d="M64 36h36" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+  <text x="110" y="42" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" letter-spacing="2.4" fill="#5b7c99">@EVERCLEAR077</text>
+  <text x="640" y="48" text-anchor="middle" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="26" font-weight="700" fill="#0f172a">stable-proxy 流程</text>
+  <text x="640" y="76" text-anchor="middle" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">线上保持精简且字节稳定的前缀；完整目录留在内存；真实工具走原有管线。</text>
+  <rect x="80" y="98" width="1120" height="92" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="80" y="98" width="8" height="92" rx="4" fill="url(#accent)"/>
+  <text x="112" y="128" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#2563eb">1  进程内存</text>
+  <text x="112" y="158" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="20" font-weight="700" fill="#0f172a">完整工具注册表</text>
+  <text x="112" y="180" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">所有已注册工具都留在这里。插件不会把这一整表作为请求 tools 数组送出去。</text>
+  <line x1="640" y1="190" x2="640" y2="218" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="80" y="228" width="540" height="188" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="80" y="228" width="8" height="188" rx="4" fill="#38bdf8"/>
+  <text x="112" y="258" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#2563eb">2A  延迟目录</text>
+  <text x="112" y="288" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="18" font-weight="700" fill="#0f172a">可搜索的精确定义</text>
+  <text x="112" y="316" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">名称、描述、参数 schema、工具族别名。</text>
+  <text x="112" y="338" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">BM25 排序。标识符未命中返回空结果。</text>
+  <text x="112" y="360" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">status 浏览工具族。一次搜索打开整族。</text>
+  <text x="112" y="392" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">搜索结果出现之前不上线。</text>
+  <rect x="660" y="228" width="540" height="188" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="660" y="228" width="8" height="188" rx="4" fill="#2563eb"/>
+  <text x="692" y="258" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#2563eb">2B  稳定请求面</text>
+  <text x="692" y="288" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="18" font-weight="700" fill="#0f172a">首次组装时冻结</text>
+  <text x="692" y="316" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">tool_search  +  tool_dispatch</text>
+  <text x="692" y="338" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">alwaysVisible：skill、read、write、edit、glob、grep …</text>
+  <text x="692" y="360" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">真实首个请求就是这一小面。</text>
+  <text x="692" y="392" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">后续发现不会扩大 tools[]。</text>
+  <line x1="350" y1="416" x2="350" y2="446" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="930" y1="416" x2="930" y2="446" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="80" y="456" width="1120" height="104" rx="16" fill="#ffffff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="80" y="456" width="8" height="104" rx="4" fill="url(#accent)"/>
+  <text x="112" y="486" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#2563eb">3  缓存稳定前缀</text>
+  <text x="112" y="516" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="18" font-weight="700" fill="#0f172a">tools[] 、系统文本、Code Mode SDK 保持逐字节稳定</text>
+  <text x="112" y="540" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">搜索只追加对话历史。组合不变时，可缓存前缀在后续轮次保持不变。</text>
+  <line x1="640" y1="560" x2="640" y2="588" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="640" y="610" text-anchor="middle" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#2563eb">4  稳定工具面上的三条调用路径</text>
+  <rect x="80" y="626" width="350" height="156" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="80" y="626" width="8" height="156" rx="4" fill="#38bdf8"/>
+  <text x="112" y="656" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="16" font-weight="700" fill="#0f172a">A  可见工具</text>
+  <text x="112" y="684" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">直接调用 read / write / skill …</text>
+  <text x="112" y="706" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">不需要先搜索。</text>
+  <text x="112" y="740" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">跳过发现，直接进入管线。</text>
+  <text x="112" y="760" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">前缀保持不变。</text>
+  <rect x="465" y="626" width="350" height="156" rx="16" fill="#ffffff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="465" y="626" width="8" height="156" rx="4" fill="#2563eb"/>
+  <text x="497" y="656" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="16" font-weight="700" fill="#0f172a">B  发现一类能力</text>
+  <text x="497" y="684" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">用任务描述调用 tool_search，</text>
+  <text x="497" y="706" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">或 action=status 浏览目录。</text>
+  <text x="497" y="740" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">编造名字：不搜直接拒绝。</text>
+  <text x="497" y="760" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">标识符未命中：返回空结果。</text>
+  <rect x="850" y="626" width="350" height="156" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="850" y="626" width="8" height="156" rx="4" fill="#64748b"/>
+  <text x="882" y="656" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="16" font-weight="700" fill="#0f172a">C  直接调隐藏名</text>
+  <text x="882" y="684" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">按隐藏工具名直接调用</text>
+  <text x="882" y="706" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="14" fill="#475569">会被单调 guard 拒绝。</text>
+  <text x="882" y="740" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">必须先 tool_search，</text>
+  <text x="882" y="760" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">再 tool_dispatch。不能绕过。</text>
+  <line x1="255" y1="782" x2="255" y2="1068" stroke="#38bdf8" stroke-width="2" stroke-dasharray="5 5"/>
+  <line x1="255" y1="1068" x2="632" y2="1068" stroke="#38bdf8" stroke-width="2" stroke-dasharray="5 5"/>
+  <text x="268" y="930" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" fill="#0284c7">直接</text>
+  <line x1="640" y1="782" x2="640" y2="808" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="1025" y1="782" x2="1025" y2="808" stroke="#64748b" stroke-width="2" marker-end="url(#arrowMuted)"/>
+  <rect x="465" y="818" width="350" height="108" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <text x="489" y="848" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#2563eb">5  搜索结果</text>
+  <text x="489" y="874" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="15" font-weight="700" fill="#0f172a">把命中的精确定义追加到历史</text>
+  <text x="489" y="896" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#475569">schema + 同族兄弟名。</text>
+  <text x="489" y="914" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">tools[] 不变。失败的搜索不会改状态。</text>
+  <rect x="850" y="818" width="350" height="108" rx="16" fill="#f8fafc" stroke="#cbd5e1" filter="url(#shadow)"/>
+  <text x="874" y="848" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#64748b">终止</text>
+  <text x="874" y="874" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="15" font-weight="700" fill="#0f172a">拒绝。留在可见工具面。</text>
+  <text x="874" y="896" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#475569">不改目录状态。不进管线。</text>
+  <text x="874" y="914" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#64748b">先搜索，再分发。</text>
+  <line x1="640" y1="926" x2="640" y2="952" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="465" y="962" width="350" height="92" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <text x="489" y="990" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#2563eb">6  分发</text>
+  <text x="489" y="1014" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="15" font-weight="700" fill="#0f172a">tool_dispatch 嵌套执行</text>
+  <text x="489" y="1036" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="13" fill="#1d4ed8">ctx.tools.execute(真实工具, parent = 分发器)</text>
+  <line x1="640" y1="1054" x2="640" y2="1080" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <rect x="80" y="1090" width="1120" height="86" rx="16" fill="#ffffff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="80" y="1090" width="8" height="86" rx="4" fill="url(#accent)"/>
+  <text x="112" y="1120" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#2563eb">7  DSH 原有管线</text>
+  <text x="112" y="1154" font-family="Noto Sans SC,Microsoft YaHei,Arial,sans-serif" font-size="16" fill="#0f172a">审批  /  guard  /  schema 校验  /  超时  /  结果策略  /  取消</text>
+</svg>

@@ -33,13 +33,8 @@ function makeEnv(): Env {
   mkdirSync(bin, { recursive: true })
   writeFileSync(join(bin, 'dsh'), '#!/bin/sh\necho "dsh test-version"\n')
   writeFileSync(join(bin, 'pnpm'), '#!/bin/sh\necho "11.7.0"\n')
-  // chmod is a Unix utility and is not present in a native Windows Node
-  // environment. The shell used by the test harness can still invoke these
-  // fixtures on Windows, while POSIX runs keep the executable-bit coverage.
-  if (process.platform !== 'win32') {
-    for (const name of ['dsh', 'pnpm']) {
-      execFileSync('chmod', ['+x', join(bin, name)])
-    }
+  for (const name of ['dsh', 'pnpm']) {
+    execFileSync('chmod', ['+x', join(bin, name)])
   }
   // simulated installed package (no exports map → legacy subpath resolve)
   const pkg = join(profile, 'node_modules', '@changfenhuang', 'dsh-genui')

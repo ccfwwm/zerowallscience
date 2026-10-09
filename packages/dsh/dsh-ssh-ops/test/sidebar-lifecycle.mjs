@@ -17,67 +17,59 @@ function fakeContext() {
     provideSidebar(sidebarCtx = { sidebarRightTabs: {}, sidebarRight: {} }) {
       assert.equal(watching, true, "the lifecycle must still be watching for late Sidebar services");
       return callback(sidebarCtx);
-    }
+    },
+    stillWatching: () => watching
   };
 }
 
-// New DSH: the plugin starts before Sidebar services exist, keeps the old
-// drawer briefly, then replaces it exactly once when the services arrive.
+// New DSH: the plugin starts before Sidebar services exist, so registration
+// is deferred — nothing runs until both services arrive, then the Sidebar
+// path runs exactly once.
 {
   const events = [];
   const fake = fakeContext();
   const dispose = activateSidebarWhenAvailable(fake.ctx, {
-    registerLegacy: () => {
-      events.push("legacy-register");
-      return () => events.push("legacy-dispose");
-    },
     registerSidebar: (ctx) => {
       assert.ok(ctx.sidebarRightTabs && ctx.sidebarRight);
       events.push("sidebar-register");
       return () => events.push("sidebar-dispose");
     }
   });
-  assert.deepEqual(events, ["legacy-register"], "old drawer is available until the host Sidebar is ready");
+  assert.deepEqual(events, [], "nothing registers before the host Sidebar services arrive");
   const disposeSidebar = fake.provideSidebar();
-  assert.deepEqual(events, ["legacy-register", "sidebar-register", "legacy-dispose"],
-    "Sidebar registration replaces rather than overlaps the legacy drawer");
+  assert.deepEqual(events, ["sidebar-register"]);
   disposeSidebar();
+  assert.deepEqual(events, ["sidebar-register", "sidebar-dispose"],
+    "the Sidebar registration's own disposer is honored");
   dispose();
-  assert.deepEqual(events, ["legacy-register", "sidebar-register", "legacy-dispose", "sidebar-dispose"],
+  assert.deepEqual(events, ["sidebar-register", "sidebar-dispose"],
     "teardown is idempotent after Sidebar ownership changes");
 }
 
-// Old DSH: no services are provided, so the drawer remains usable until the
-// plugin itself is unloaded.
+// A host without the Sidebar services: registration never fires and teardown
+// stays safe (there is no fallback surface anymore).
 {
-  const events = [];
   const fake = fakeContext();
   const dispose = activateSidebarWhenAvailable(fake.ctx, {
-    registerLegacy: () => {
-      events.push("legacy-register");
-      return () => events.push("legacy-dispose");
-    },
-    registerSidebar: () => assert.fail("old DSH must not register an official Sidebar tab")
+    registerSidebar: () => assert.fail("no services means no registration")
   });
   dispose();
-  assert.deepEqual(events, ["legacy-register", "legacy-dispose"]);
+  assert.equal(fake.stillWatching(), false, "dispose stops watching for services");
 }
 
-// A registration collision leaves the working legacy drawer in place.
+// A registration failure is reported through onSidebarError and must not
+// leave a half-disposed registration behind.
 {
   const events = [];
   const fake = fakeContext();
   const dispose = activateSidebarWhenAvailable(fake.ctx, {
-    registerLegacy: () => {
-      events.push("legacy-register");
-      return () => events.push("legacy-dispose");
-    },
     registerSidebar: () => { throw new Error("ssh kind already claimed"); },
-    onSidebarError: () => events.push("sidebar-error")
+    onSidebarError: (error) => events.push(`sidebar-error:${error.message}`)
   });
   fake.provideSidebar();
   dispose();
-  assert.deepEqual(events, ["legacy-register", "sidebar-error", "legacy-dispose"]);
+  assert.deepEqual(events, ["sidebar-error:ssh kind already claimed"],
+    "a failed Sidebar attempt is reported, not swallowed");
 }
 
-console.log("sidebar lifecycle: delayed services, old-host fallback, and conflict fallback passed");
+console.log("sidebar lifecycle: delayed services, no-service no-op, and failure reporting passed");

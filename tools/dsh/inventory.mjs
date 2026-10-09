@@ -11,7 +11,7 @@ const productionPath = name => `resources/${runtimeProfile.corePlugins.includes(
 
 const thirdPartyOrder = [
   'dsh-ssh-ops',
-  'dsh-progressive-tools',
+  '@everclear077/dsh-progressive-tools',
   '@dingyi222666/dsh-session-notification',
   'dsh-dream-skin',
   'dsh-better-sidebar',

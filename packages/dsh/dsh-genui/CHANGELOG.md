@@ -2,7 +2,32 @@
 
 ## [Unreleased]
 
-## [0.11.2-preview.1] - 2026-09-26
+## [0.11.4] - 2026-10-08
+
+### 修复
+
+- DSH Desktop 0.11.0 将 `dsh-ui` 围栏呈现为 `<dsh-ui>…</dsh-ui>` 纯文本标签时，DOM 通道现可识别助手消息中的完整标签文本，渲染卡片并在卸载时恢复原文（#268）。
+- `list` 项支持 `label`/`name` 标题字段与 `description`/`content`/`text`/`body`/`detail` 正文字段；只有正文的记录也能显示，无法渲染的记录字段会给出位置明确的警告（#265）。
+- **GenUI reasoning-only 回合进入宿主重试**：当前回合调用 `validate_dsh_ui` 后，普通顶层会话若以 `stop` 结束且完整内容块只有 reasoning，插件会将终止结果改写为 `EMPTY_RESPONSE`，交由宿主现有重试策略处理；普通会话、子代理、辅助请求及含正文或工具调用的结果保持原行为。`fenceFeedback: false` 仍只关闭同回合围栏修正（#259）。
+- **完善 GenUI 交付判定与 fence-feedback 重载恢复**：`render_ui` 只有明确返回 `status=rendered` 才计为正式交付，正常返回的 `status=invalid` 会继续进入零交付修正；plugin reload 时主动读取历史会话，恢复当前 turn 的 render fingerprint、delivery turn 和已消费的 correction budget，避免重复发送 delivery reminder 或重新获得修正次数；render fingerprint 去重仅限当前 turn，新 turn 可重新修正相同错误。每 turn 最多两条 correction 的上限由 render failure 与 nothing-delivered reminder 共同使用（#263、#267）。
+- **非英文宿主 locale 下围栏永远不渲染**：通用代码块的判定依赖硬编码标题白名单（`Code` / `Code block` / `代码块`），宿主 locale 为其它语言时（如俄语包的 «Код»），本地化标题被当成真实语言，同一份 `dsh-ui` 围栏既不走带标签路径也不进内容识别——界面永远停在代码块。现在判定反转：banner 标签命中**已知真实语言闭集**（语言 id 有限、由插件维护）才视为带语言，空标签与任何本地化通用词一律视为无语言、交给内容校验把关——同一份正文的渲染结果不再因宿主语言而不同（#258）。
+- **多行文本/代码的复制不再丢换行**：行内渲染曾把每个 `\n` 变成 `<br>`，而 `<br>` 对 `textContent` 与 `Selection.toString()` **零贡献**——用户选中表格单元格复制出来的是一整行，`python - <<'PY' … PY` 这类 heredoc 结构被毁、必须手工拼回。现在换行在 DOM 里保持为**真实换行符**（选中/复制原样），由容器的 `white-space` 负责呈现：代码形单元格 `.tdCode` 用 `pre-wrap`（换行 + 行首缩进都保留），散文单元格 `.tdMultiline` 用 `pre-line`（换行呈现、空格照常折叠），单行单元格仍是 `nowrap`；`calloutBody`/`liTitle`/`liDesc`/`kvValue`/`tlDesc`/`detailBody`/`accBody` 同步声明 `pre-line`，因为它们此前正是靠 `<br>` 硬断行（#233）。
+- **多行表格单元格的缩进**：`.table td` 的 `nowrap`（表格的数据语气）会折叠单元格里的空白，模型写进单元格的代码缩进会消失；行内 `` `code` `` 同步改为 `pre-wrap`，不再吞掉自身空格（#233）。
+- **「未转义引号 + 尾部杂字符」叠在一起时围栏不再整条失守**：模型常在 JSON 根值之后追加 `</p>` 或一句解释（真实会话 539 条围栏里 240 条有尾随 `</p>`），这类正文本来靠 `parsePartialGenuiSpec` 的平衡前缀就能渲染；但一旦**同时**还有字符串内未转义的半角引号，tier-1 因为「必须整体 parse 通过」而放弃、tier-2 同样放弃——两个缺陷叠加就把整条围栏变成代码块 + 红横幅。现在 tier-2 在整体 parse 失败时回退到**平衡前缀**（根值结束处）并采用它；tier-1 保持严格（它也在流式期运行，采用前缀可能发布半截正文）。真实语料 37 条不可渲染 → 22 条（救回 15 条，占失败数 40%）。
+- SKILL.md 使用规则第 3 条补充：`}` 之后不要再写任何字符（常见错误是追加 `</p>` 或解释）。
+- **通用代码块的内容识别接受标点级修复**：宿主会隐去它不认识的语言（高亮器不支持 `dsh-ui`），此时同一份围栏在 DOM 里是一个「代码块 / Code block / Code」标签的普通代码块；当 ChatSnapshot 的语言来源在那一行上不可用时，内容识别是唯一出路。此前它要求 `JSON.parse(raw)` **直接**通过，于是「只差一个未转义引号（tier-1 可修）」的围栏永远不会被接管——真实会话（seq 40530）里模型终于把围栏写进正文、正文经 tier-1 修 14 处后可正常渲染，界面却始终停在代码块。现在内容识别跑与带标签路径**相同的 tier-1 修复**，并且在整体 parse 失败时**裁到第一个平衡根值**（`trimToBalancedRoot`，只裁剪、不补全结构）——真实样本里模型把工具调用模板泄漏在 JSON 之后且围栏没闭合，正是这一种；结构级 tier-2 刻意不参与（兜底不该接管只是"长得像 JSON"的普通代码），canonical 规范 / 未知字段 / 归一化等价的检查保持不变。
+- **回合状态的两处漏补救**：① `render_ui` 是否交付由 `tool/result` 决定，只有无内部错误、结果块非 `isError` 且协议明确返回 `status=rendered` 才算成功；结果未到达时回合边界保持静默，不与晚到结果赛跑。② 同回合的合成上下文消息（`agent.inject()` 通知、成员消息等）不会清掉本回合的验证/交付状态；重置只发生在正式的 `turn/start` 边界与直接用户提示（`source.kind === 'user'`）上（#236、#263 review）。
+
+## [0.11.3] - 2026-09-29
+
+### 兼容性
+
+- 支持 DSH `0.2.0-rc.1` / `0.2.x` 宿主（#227）。
+- 扩展 `@deepseek-ai/dsh-*` peerDependencies 至 `0.2.x`（#227）。
+- 将 CI 宿主兼容目标整理为 minimum / current / next（#227）。
+- 将 `dsh-v0.2.0-rc.1` 纳入 host API 与 packed host smoke 验证（#227）。
+
+## [0.11.2] - 2026-09-28
 
 ### 新增
 
@@ -12,7 +37,7 @@
 ### 兼容性
 
 - `preview-latest` 与 Release API、packed smoke 宿主检查统一更新为 DSH `0.1.7-rc.2`，并保留 `0.1.7-rc.1` API 标签检查能力。
-- Session format v4 的 fence repair feedback 使用 producer-owned source kind，避免新版 DSH 拒绝反馈消息；同时识别原始插件来源和迁移后的 v4 来源（#218、PR #220）。
+- Session format v4 的 fence repair feedback 使用 producer-owned source kind `plugin:@changfenhuang/dsh-genui`，修复反馈消息因旧 source kind 被新版 DSH 拒绝、导致会话持久化失败的问题；旧 Session format 继续使用 legacy source，并同时识别两种插件来源（#218、PR #220）。
 
 ### 修复
 

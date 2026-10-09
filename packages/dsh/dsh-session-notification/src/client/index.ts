@@ -36,15 +36,19 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {
+  SessionStatusSnapshot,
+} from '@deepseek-ai/dsh-client-ui-session/client'
+// Type-only: the workspace navigation merge (ctx.uiWorkspace). Injected
+// optionally so a composition without it keeps the plugin running.
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
-import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { NotificationMode, NotificationSettings, NotificationType, SoundId } from '../settings.ts'
 import { DEFAULT_NOTIFICATION_SETTINGS } from '../settings.ts'
 import { createLocalSettingsScope } from './local-settings.ts'
 import { createTabCoordinator } from './tab-coordinator.ts'
 import { SoundPlayer } from './sounds.ts'
 import {
-  browserPermission, requestBrowserPermission, showBrowserNotification, NOTIFICATION_TAG_PREFIX, desktopNotifications,
+  browserPermission, requestBrowserPermission, showBrowserNotification, NOTIFICATION_TAG_PREFIX,
 } from './browser-notify.ts'
 import { MAX_CUSTOM_AUDIO_BYTES, readCustomSound, readFileAsDataUrl, writeCustomSound } from './custom-audio.ts'
 import {
@@ -61,6 +65,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     /** The Notifications settings section's copy. */
     'notifications': NotificationsKey
+  }
+}
+
+declare module '@deepseek-ai/dsh-api-session-controller/client' {
+  interface SessionReferenceSourceMap {
+    /** Reference held while one notification classification reads a session. */
+    sessionNotification: unknown
   }
 }
 
@@ -86,21 +97,6 @@ export function apply(ctx: ClientContext): void {
   const scope = createLocalSettingsScope()
   const store = createNotificationsStore()
   let bound: BoundActions<typeof store> | undefined
-  let closeSettings: (() => void) | undefined
-  const openSession = (id?: string): void => {
-    closeSettings?.()
-    if (id) ctx.uiWorkspace.openSession(id as SessionId)
-  }
-  ctx.effect(() => {
-    const dispose = desktopNotifications()?.onNotificationActivated(openSession)
-    return dispose ?? (() => {})
-  }, 'desktop notification activation')
-  ctx.effect(() => {
-    const dispose = desktopNotifications()?.onNotificationFailed(message => {
-      console.warn('[dsh-session-notification]', message)
-    })
-    return dispose ?? (() => {})
-  }, 'desktop notification failures')
 
   const currentSettings = (): NotificationSettings => {
     const snapshot = scope.getSnapshot()
@@ -117,6 +113,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => scope.subscribe(() => { bound?.adopt(scope.getSnapshot()) }), 'dsh-session-notification: scope adoption')
 
   const player = new SoundPlayer(() => currentSettings().volume)
+  // Release the shared AudioContext (and any preview still holding it) when
+  // the plugin unloads; a live context keeps a system audio stream open.
+  ctx.effect(() => () => player.dispose(), 'dsh-session-notification: sound player')
+
   // Cross-tab arbiter: one open tab wins each event, so N tabs do not ring N
   // times; a visible tab takes the event ahead of a background one.
   const coordinator = createTabCoordinator()
@@ -134,28 +134,59 @@ export function apply(ctx: ClientContext): void {
     t: translate,
     playSound: (sound, customUrl) => { playEffective(sound, customUrl) },
     customSoundOf: (kind) => readCustomSound(kind),
-    showBrowser: (title, body, tag, id) => showBrowserNotification(title, body, tag, id, () => openSession(id)),
-    currentSession: () => Object.values(ctx.sessions.list.getSnapshot().byId)
-      .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id,
-    isHidden: () => (typeof document === 'undefined' ? false : document.visibilityState === 'hidden' || (desktopNotifications() !== undefined && !document.hasFocus())),
+    showBrowser: (title, body, tag, sessionId) => showBrowserNotification(title, body, tag, () => {
+      try {
+        ctx.uiWorkspace.openSession(sessionId)
+      } catch (error) {
+        console.warn('[dsh-session-notification] could not open the notification session', sessionId, error)
+      }
+    }),
+    // dsh 0.1.7 dropped the list's `current` selection; the main view owns
+    // selection through its reference source, so a session is "the one being
+    // read" while the main-view reference retains it.
+    isCurrent: (id) => (ctx.sessions.retainInfo(id).getSnapshot().retainedBy.mainView ?? 0) > 0,
+    isHidden: () => (typeof document === 'undefined' ? false : document.visibilityState === 'hidden'),
   })
 
   const engine = new NotificationEngine({
     detailOf: (id: SessionId) => {
       const binding = ctx.sessions.binding(id)
       if (binding === undefined) return undefined
-      // The alpha session snapshot carries no chat view: the conversation
-      // nodes live in the uiConversation chat target, materialized only for
-      // opened sessions. Absent it, classification still has lastAgentError.
+      // The session snapshot carries no chat view: the conversation nodes
+      // live in the uiConversation chat target, materialized only for opened
+      // sessions. Absent it, classification still has lastAgentError.
       // (The chat target key and the session snapshot shape are surfaced
       // through their owning packages' type merges; the structural casts keep
-      // this plugin independent of those augmentation orders.)
-      const chatTarget = (ctx.uiConversation.binding(binding) as {
-        target(key: string): { getSnapshot(): unknown }
-      }).target('chat')
-      const chat = chatTarget.getSnapshot() as ChatSnapshotLike | undefined
-      const session = binding.session.getSnapshot() as unknown as SessionSnapshot
-      return sessionDetailOf(session, chat)
+      // this plugin independent of those augmentation orders.) A generation
+      // that ends between the running edge and this read makes the binding
+      // calls throw in 0.1.7, so a failed read degrades to "no detail".
+      try {
+        const conversation = ctx.uiConversation.binding(binding) as unknown as {
+          activate(target: string): void
+          target(key: string): { getSnapshot(): unknown }
+        }
+        // Reading a target source does not activate it in 0.1.7+; without
+        // activation the chat nodes this classification needs stay absent for
+        // every session the shell has not selected.
+        conversation.activate('chat')
+        const chat = conversation.target('chat').getSnapshot() as ChatSnapshotLike | undefined
+        const session = binding.session.getSnapshot() as unknown as SessionSnapshot
+        return sessionDetailOf(session, chat)
+      } catch {
+        return undefined
+      }
+    },
+    // Open a session the UI never opened so its chat view can assemble the
+    // final assistant text; skipped when no alert could use it.
+    ensureDetail: async (id) => {
+      const settings = currentSettings()
+      if (!settings.browserEnabled && !settings.soundEnabled) return
+      if (!Object.values(settings.types).some(type => type.enabled)) return
+      try {
+        await ctx.sessions.using(id, { source: 'sessionNotification' }, async () => {})
+      } catch (error) {
+        console.warn('[dsh-session-notification] could not load the notification session', id, error)
+      }
     },
     titleOf: (id: SessionId) => ctx.sessions.list.getSnapshot().byId[id]?.displayTitle ?? id,
     settle: () => new Promise(resolve => setTimeout(resolve, SETTLE_MS)),
@@ -196,15 +227,16 @@ export function apply(ctx: ClientContext): void {
     engine.setNotificationMode(currentSettings().notificationMode)
   }), 'dsh-session-notification: mode sync')
   ctx.effect(() => {
-    const list = ctx.sessions.list
-    const unsubscribe = list.subscribe(() => engine.observe(list.getSnapshot()))
+    const unsubscribe = ctx.sessions.list.subscribe(() => engine.observe(ctx.sessions.list.getSnapshot()))
     // Establish the baseline so pre-existing state raises nothing.
-    engine.seed(list.getSnapshot())
+    engine.seed(ctx.sessions.list.getSnapshot())
     return unsubscribe
   }, 'dsh-session-notification: session watch')
 
-  // rc.2 exposes pending interactions through the unified session status
-  // source. The old pendingInteractions source no longer exists at runtime.
+  // dsh 0.1.7 unified the pending-interaction map into the uiSession session
+  // status source (running + pendingInteraction + completionUnread per
+  // session): observe its pendingInteraction values for question/approval
+  // edges.
   const pendingFactsOf = (statuses: SessionStatusSnapshot): Map<SessionId, PendingFacts> => {
     const out = new Map<SessionId, PendingFacts>()
     for (const [id, status] of statuses) {
@@ -223,12 +255,9 @@ export function apply(ctx: ClientContext): void {
     }
     return out
   }
-  ctx.effect(() => {
-    const status = ctx.uiSession.sessionStatus
-    const unsubscribe = status.subscribe(() => engine.observePending(pendingFactsOf(status.getSnapshot())))
-    engine.observePending(pendingFactsOf(status.getSnapshot()))
-    return unsubscribe
-  }, 'dsh-session-notification: pending watch')
+  ctx.effect(() => ctx.uiSession.sessionStatus.subscribe(() => {
+    engine.observePending(pendingFactsOf(ctx.uiSession.sessionStatus.getSnapshot()))
+  }), 'dsh-session-notification: pending watch')
 
   /** Persist one top-level preference through the scope, mirroring optimistically. */
   const persist = (field: 'browserEnabled' | 'notifyCurrent' | 'notificationMode' | 'soundEnabled' | 'volume', value: unknown): void => {
@@ -252,7 +281,6 @@ export function apply(ctx: ClientContext): void {
     // First sync on mount: push the accepted scope value into the renderer's store.
     bound.adopt(scope.getSnapshot())
     return {
-      bindSettingsClose: close => { closeSettings = close },
       setBrowserEnabled: async (enabled) => {
         if (enabled) {
           let permission = browserPermission()
@@ -274,11 +302,7 @@ export function apply(ctx: ClientContext): void {
         bound?.setPermission(await requestBrowserPermission())
       },
       testBrowserNotification: () => {
-        const id = Object.values(ctx.sessions.list.getSnapshot().byId)
-          .find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
-        showBrowserNotification(t('test.notification.title'), t('test.notification.body'), `${NOTIFICATION_TAG_PREFIX}:test`, id, () => openSession(id))
-        const settings = currentSettings()
-        if (settings.soundEnabled) playEffective(settings.types.completed.sound, readCustomSound('completed'))
+        showBrowserNotification(t('test.notification.title'), t('test.notification.body'), `${NOTIFICATION_TAG_PREFIX}:test`)
       },
       uploadCustomSound: async (kind, file) => {
         if (file.size > MAX_CUSTOM_AUDIO_BYTES) return

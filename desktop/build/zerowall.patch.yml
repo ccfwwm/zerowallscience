@@ -110,7 +110,7 @@
       name: 'dsh-ssh-ops'
 
     - id: progressive-tools
-      name: 'dsh-progressive-tools'
+      name: '@everclear077/dsh-progressive-tools'
       config:
         mode: stable-proxy
         toolName: tool_search

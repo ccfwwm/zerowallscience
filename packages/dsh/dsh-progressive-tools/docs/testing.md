@@ -9,8 +9,10 @@ pnpm peers check
 ```
 
 `check` runs type checking, lint, tests, build, and package validation.
-It must pass before merge or release. The current release baseline has
-46 tests across five files. Counts are a snapshot, not a coverage guarantee.
+It must pass before merge or release. The `0.7.0` snapshot has 73 tests
+across eight files, run against host `0.2.0-rc.1`. Counts are a snapshot, not a coverage guarantee. The PTC suite still
+uses a `ctx.ptcRuntime` binding fixture, not a language interpreter. `pnpm run baseline` is a
+local character measurement, not a paid task run.
 
 | Suite | What it verifies |
 | --- | --- |
@@ -19,8 +21,11 @@ It must pass before merge or release. The current release baseline has
 | `plugin.spec.ts` | First assembly, discovery grants, routing, top-level/nested replay, legacy records and cleanup |
 | `agent-loop.spec.ts` | Actual first request, serialized tool equality and leading system-message equality after discovery/status |
 | `ptc.spec.ts` | Real host PTC bridge under ptc/both, both SDK renderers, direct-call denial, target validation and reload replay |
+| `cost.spec.ts` | Exact search, family shape, budgets, guidance, dispatch envelopes, result reads, coding profile, offline cost accounting |
+| `baseline-cli.spec.ts` | Deterministic character report for direct content and whole-object program returns |
+| `remaining.spec.ts` | Autoload, auto profile, `run_code` model budget, cancellation, deferred-protocol probe, offline arms |
 
-The PTC suite uses a binding runtime fixture: it invokes the real registry
+The PTC suite uses a `ctx.ptcRuntime` binding fixture: it invokes the real registry
 bindings and durable dispatch pipeline but does not launch a TypeScript or
 Python interpreter. The request suite intercepts streaming; it uses no remote
 provider or credentials. CI runs the required check on Node 22.19.0 and 24.

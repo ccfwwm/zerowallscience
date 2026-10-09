@@ -473,3 +473,51 @@ pnpm release:verify-local
 ```
 
 公开发布前还必须完成七牛公网校验、GitHub 资产校验、安装包下载复核和工作区状态检查。任何一项没有证据，都应标记为未完成并继续调查。
+
+## 15. 2026-10 上游独立资源批次
+
+本批次基于父仓库 `60622c6`，最终源码提交前 HEAD 为 `c0161e81433211fbb02262635ce464193b28c8df`，分支为 `main`；桌面版本保持 `8.0.9`，DSH 子模块保持 `86b6740d0e671cee0b3fd0168de484c0efbf46ea`（`dsh-v0.2.0-rc.2`）。构建 ID 为 `1791580654547-438073f3`。本批次只发布独立插件和 Skills，不重建桌面安装器，不改变桌面 `latest.yml`。
+
+### 15.1 上游审计矩阵
+
+| 资源 | 锁定版本/tag | 精确 commit | 适配复核 |
+| --- | --- | --- | --- |
+| `dsh-file-review` | `0.8.8` / `v0.8.8` | `7636242d1145708b9f602b32c46cb3a57524ae7e` | manifest、文件审查 Host/Client、打包收据 |
+| `dsh-zotero` | `0.12.1` / `v0.12.1` | `77604ad4829dea52d0e9f498d635c9b59f1cae38` | manifest、命令注册、Sources UI、状态 codec、remote API、annotation traversal |
+| `dsh-wechat` | `0.9.11` / `v0.9.11` | `4eb2800a1197cef2e5a6055418149fd26262f097` | bridge、会话和跨会话通知 |
+| `dsh-genui` | `0.11.4` / `v0.11.4` | `1e87eb103dafc32e2612341f1c004bb015c1c024` | fence、schema、block renderer 与 Host API |
+| `academic-research-skills` | `v3.23.0` | `6ab4b03bf70a118a1b3ee7f3263ed9f19031061b` | adapter `a6859a3752cfe582a166ca283c10d3a45e1f9c9c`、Skills 清单和哈希 |
+| `dsh-progressive-tools` | `0.7.0` / `v0.7.0` | `f929e86fb442bf289d56e268562b31d8fb8a390b` | peer 依赖、catalog 和 runtime 入口 |
+| `dsh-ssh-ops` | `0.3.19` / `v0.3.19` | `262953e614db3aae97594a6fe6d76dc1128c2645` | manifest、SSH/SFTP/DB 工具和安全测试 |
+| `dsh-univer-office` | `0.3.7` / `v0.3.7` | `8f85ce4074fdbe51416b6c337468bb916a302c2a` | manifest、四个 Office Skills、telemetry=false 和哈希 |
+| `dsh-dream-skin` | `10.9.3` / `v10.9.3` | `927a6f1c1a0d694dfc2ec4557f26266a85f91f22` | 透明度适配、默认值和 packaged runtime guard |
+| `dsh-free-search` | `0.8.3` / `v0.8.3` | `0b122443597a9af7964e59e556541b27d71492fd` | settings namespace、free-search endpoint 和版本 guard |
+| `dsh-session-notification` | `0.2.3-zws.1`（上游 `0.2.3`） | `794f6536ee060e3254a8a027c5954ed20e369fd8` | ZeroWall 通知定制补丁、声音资源和版本 guard |
+| `dsh-better-sidebar` | `0.25.0` / `v0.25.0` | `64a61ccfe42f96e950c7e837c4cbc09942090ac9` | 默认分支注入、Host/Client API 与依赖闭包 |
+
+上游锁定的机器可读来源是 `config/integrations/upstream-sources.json`。若上游只有 commit 变化或保留本地补丁，必须递增独立 ZeroWall 版本；同一 `resource-id@version` 的公开字节不可复用。此次新增 `sr-screener@0.1.1`；因适配层依赖闭包变化而递增的 ZeroWall 插件版本记录在各自 manifest 和 catalog 中。
+
+### 15.2 构建、签名和公网收据
+
+生成命令使用稳定 `stable-4` Ed25519 密钥，两个目录的 `applicationVersion` 均为 `8.0.9`、`localOnly=false`：
+
+```powershell
+pnpm plugins:generate
+pnpm plugins:bundle
+pnpm plugins:pack
+pnpm plugins:verify-pack
+pnpm catalogs:generate
+pnpm runtime:profile:sign
+node scripts/publish-resources.mjs stage --kind plugin
+node scripts/publish-resources.mjs promote --kind plugin
+node scripts/publish-resources.mjs verify --kind plugin
+node scripts/publish-resources.mjs stage --kind skill
+node scripts/publish-resources.mjs promote --kind skill
+node scripts/publish-resources.mjs verify --kind skill
+```
+
+本地归档和公网校验收据位于 `artifacts/release/8.0.9/publication/`。插件 feed 包含 38 个不可变对象（含 catalog），总大小 `81,525,684` 字节；catalog 为 `54,271` 字节，SHA-256 `fefb5b9d82793f786de2906bf16fb64473f6d513de3ac99d2cea067946ae3fce`，公网指针 `https://zerowall.chengxunkeji.cn/stable/catalogs/plugin-latest.json` 的校验 SHA-256 为 `f57ec85c65c87f468e03eb7ac746ac1c74c166b1fb8000468fa93165802b4f9e`。
+
+Skills feed 包含 283 个不可变对象（含 catalog），总大小 `7,503,550` 字节；catalog 为 `238,104` 字节，SHA-256 `6adf1498a8020ee80e2328edab6f9ae715863ab7407d9aa40f3c5054abb2bc78`，公网指针 `https://zerowall.chengxunkeji.cn/stable/catalogs/skill-latest.json` 的校验 SHA-256 为 `84d0f7d4a0e665754c9d43b63f90d279e3ac3d4ee5ba6131ba35f72a03dfdf77`。资源归档路径、单对象大小和 SHA-256 以 `qiniu-resources-plugin-public.json`、`qiniu-resources-skill-public.json` 为准。
+
+`stage` 只上传并验证不可变对象，`promote` 只更新对应的资源 catalog pointer，`verify` 再次从公网检查大小和 SHA-256。该流程不会上传桌面安装器，也不会修改桌面 `latest.yml`。启动和每日目录检查仍是只读；旧版本安装状态只能用于检测新版本，用户未明确选择时不得下载、安装、重启或改变 profile。

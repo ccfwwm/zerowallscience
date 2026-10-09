@@ -3,7 +3,8 @@
 | Symptom | Check and recovery |
 | --- | --- |
 | Plugin absent from config dump | Verify the selected profile, source build authorization, and bundle installation; restart that profile. |
-| Type/import errors after host upgrade | Compare exact core peer versions with `0.1.5-rc.1`; align the host/plugin pair rather than suppressing type checks. |
+| Host rejects the plugin as incompatible | Install `@everclear077/dsh-progressive-tools@0.7.0` with host `0.2.0-rc.1`. Version `0.6.0` only accepts host `0.1.7-rc.2`. |
+| Type/import errors after host upgrade | Compare exact core peer versions with `0.2.0-rc.1`; align the host/plugin pair rather than suppressing type checks. |
 | Duplicate `tool_search` registration | Remove duplicate discovery plugins or configure distinct search and dispatch names. |
 | Empty catalog | Verify providers registered their tools in this agent's scope. Tools already directly visible are excluded from the deferred catalog. |
 | Search returns no match | Browse `status`, then query an exact name; add explicit groups and multilingual aliases for recurring vocabulary gaps. |

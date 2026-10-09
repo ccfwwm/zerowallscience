@@ -25,17 +25,27 @@ import {
   searchTools,
 } from './catalog.js'
 import {
+  CODING_PROFILE_PATTERNS,
   DEFAULT_ACTIVATION_GROUP_LIMIT,
   DEFAULT_ALWAYS_VISIBLE,
+  DEFAULT_CAPABILITY_SUMMARY_CHARACTERS,
   DEFAULT_CHARACTERS_PER_TOKEN,
+  DEFAULT_AUTOLOAD_MAX_TOOLS,
   DEFAULT_DEFER_TOOL_GUIDANCE,
   DEFAULT_DISPATCH_TOOL_NAME,
+  DEFAULT_FAMILY_DISCOVERY,
   DEFAULT_GROUPS,
+  DEFAULT_LEGACY_RESULTS,
   DEFAULT_MAX_ACTIVE_GROUPS,
   DEFAULT_MAX_ACTIVE_TOOL_TOKENS,
+  DEFAULT_MAX_RESULT_CHARACTERS,
   DEFAULT_MAX_RESULTS,
   DEFAULT_MODE,
+  DEFAULT_PROFILE,
+  DEFAULT_REPEAT_DEFINITIONS,
   DEFAULT_REQUIRE_DISCOVERY,
+  DEFAULT_RESULT_BUDGET,
+  DEFAULT_RESULT_BUDGET_CHARACTERS,
   DEFAULT_RETENTION_TURNS,
   DEFAULT_SKILL_BINDINGS,
   DEFAULT_STATUS_GRANTS_DISCOVERY,
@@ -51,16 +61,28 @@ import {
   touchTool,
 } from './state.js'
 import type { ProgressiveState } from './state.js'
+import {
+  capabilitySummary,
+  DISPATCH_PROTOCOL_V1,
+  DISPATCH_PROTOCOL_V2,
+  historyText,
+  projectSearch,
+  SEARCH_PROTOCOL_V3,
+} from './projection.js'
+import { budgetDispatchContent, dropAgentResults, dropAllResults, readStoredResult } from './result-budget.js'
 import type {
   ActiveGroupState,
   DeferredGroupSummary,
   DeferredToolMatch,
+  FamilyDiscovery,
   ProgressiveMode,
   ProxySearchResultValue,
+  RepeatDefinitions,
   ResolvedConfig,
   SearchResultValue,
   SkillBindingConfig,
   StateSnapshot,
+  SurfaceProfile,
   ToolGroupConfig,
   ToolSchemaView,
 } from './types.js'
@@ -129,6 +151,26 @@ export interface Config {
   readonly statusGrantsDiscovery?: boolean
   /** Remove exact hidden tool guidance sections from the stable prompt. */
   readonly deferToolGuidance?: boolean
+  /** Restore v2 search values and the v1 dispatch envelope that repeats content. */
+  readonly legacyResults?: boolean
+  /** Character budget for one stable search result. Schemas are not truncated. */
+  readonly maxResultCharacters?: number
+  /** Optional coding surface. Explicit alwaysVisible replaces the profile list. */
+  readonly profile?: SurfaceProfile
+  /** Return a short notice when the same definition is still in derived history. */
+  readonly repeatDefinitions?: RepeatDefinitions
+  /** Character budget for the frozen capability summary. */
+  readonly capabilitySummaryCharacters?: number
+  /** Budget model-visible direct dispatch text. Off until a measured deployment enables it. */
+  readonly resultBudget?: boolean
+  readonly resultBudgetCharacters?: number
+  /** family keeps sibling discovery; matched discovers only returned schemas. */
+  readonly familyDiscovery?: FamilyDiscovery
+  /**
+   * Load every deferred tool onto the frozen surface when the deferred catalog
+   * is at most this size. Zero keeps the default search surface.
+   */
+  readonly autoloadMaxTools?: number
 }
 
 const groupConfigSchema = z.object({
@@ -166,6 +208,15 @@ export const Config = z.object({
   requireDiscovery: z.boolean().default(DEFAULT_REQUIRE_DISCOVERY),
   statusGrantsDiscovery: z.boolean().default(DEFAULT_STATUS_GRANTS_DISCOVERY),
   deferToolGuidance: z.boolean().default(DEFAULT_DEFER_TOOL_GUIDANCE),
+  legacyResults: z.boolean().default(DEFAULT_LEGACY_RESULTS),
+  maxResultCharacters: z.number().default(DEFAULT_MAX_RESULT_CHARACTERS),
+  profile: z.string().default(DEFAULT_PROFILE),
+  repeatDefinitions: z.string().default(DEFAULT_REPEAT_DEFINITIONS),
+  capabilitySummaryCharacters: z.number().default(DEFAULT_CAPABILITY_SUMMARY_CHARACTERS),
+  resultBudget: z.boolean().default(DEFAULT_RESULT_BUDGET),
+  resultBudgetCharacters: z.number().default(DEFAULT_RESULT_BUDGET_CHARACTERS),
+  familyDiscovery: z.string().default(DEFAULT_FAMILY_DISCOVERY),
+  autoloadMaxTools: z.number().default(DEFAULT_AUTOLOAD_MAX_TOOLS),
 }) as unknown as z<Config>
 
 function nonEmpty(value: string, path: string): string {
@@ -192,7 +243,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     'dispatchToolName',
   )
   if (toolName === dispatchToolName) throw new Error('toolName and dispatchToolName must differ')
-  const alwaysVisible = (config.alwaysVisible ?? DEFAULT_ALWAYS_VISIBLE)
+  const alwaysVisible = visiblePatterns(config)
     .map((pattern, index) => nonEmpty(pattern, `alwaysVisible[${index}]`))
   const groups = (config.groups ?? DEFAULT_GROUPS).map((group, index): ToolGroupConfig => {
     const description = group.description?.trim()
@@ -263,7 +314,96 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     requireDiscovery: config.requireDiscovery ?? DEFAULT_REQUIRE_DISCOVERY,
     statusGrantsDiscovery: config.statusGrantsDiscovery ?? DEFAULT_STATUS_GRANTS_DISCOVERY,
     deferToolGuidance: config.deferToolGuidance ?? DEFAULT_DEFER_TOOL_GUIDANCE,
+    legacyResults: config.legacyResults ?? DEFAULT_LEGACY_RESULTS,
+    maxResultCharacters: integer(
+      config.maxResultCharacters ?? DEFAULT_MAX_RESULT_CHARACTERS,
+      'maxResultCharacters',
+      1,
+    ),
+    profile: resolveProfile(config.profile),
+    repeatDefinitions: resolveRepeat(config.repeatDefinitions),
+    capabilitySummaryCharacters: integer(
+      config.capabilitySummaryCharacters ?? DEFAULT_CAPABILITY_SUMMARY_CHARACTERS,
+      'capabilitySummaryCharacters',
+      1,
+    ),
+    resultBudget: config.resultBudget ?? DEFAULT_RESULT_BUDGET,
+    resultBudgetCharacters: integer(
+      config.resultBudgetCharacters ?? DEFAULT_RESULT_BUDGET_CHARACTERS,
+      'resultBudgetCharacters',
+      1,
+    ),
+    familyDiscovery: resolveFamilyDiscovery(config.familyDiscovery),
+    autoloadMaxTools: integer(
+      config.autoloadMaxTools ?? DEFAULT_AUTOLOAD_MAX_TOOLS,
+      'autoloadMaxTools',
+      0,
+    ),
   }
+}
+
+function resolveProfile(value: string | undefined): SurfaceProfile {
+  const profile = value ?? DEFAULT_PROFILE
+  if (profile !== 'default' && profile !== 'coding' && profile !== 'auto') {
+    throw new Error('profile must be "default", "coding", or "auto"')
+  }
+  return profile
+}
+
+function resolveRepeat(value: string | undefined): RepeatDefinitions {
+  const repeat = value ?? DEFAULT_REPEAT_DEFINITIONS
+  if (repeat !== 'compact' && repeat !== 'full') {
+    throw new Error('repeatDefinitions must be either "compact" or "full"')
+  }
+  return repeat
+}
+
+function resolveFamilyDiscovery(value: string | undefined): FamilyDiscovery {
+  const discovery = value ?? DEFAULT_FAMILY_DISCOVERY
+  if (discovery !== 'family' && discovery !== 'matched') {
+    throw new Error('familyDiscovery must be either "family" or "matched"')
+  }
+  return discovery
+}
+
+function samePatterns(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((pattern, index) => pattern === right[index])
+}
+
+function visiblePatterns(config: Config): readonly string[] {
+  const explicit = config.alwaysVisible
+  const coding = (config.profile ?? DEFAULT_PROFILE) === 'coding'
+  if (!coding) return explicit ?? [...DEFAULT_ALWAYS_VISIBLE]
+  // A schema default fills alwaysVisible before apply. Treat that default as
+  // "not customized" so the coding profile can add registered terminal tools.
+  // Any other list is an explicit user surface and wins.
+  if (explicit === undefined || samePatterns(explicit, DEFAULT_ALWAYS_VISIBLE)) {
+    return [...DEFAULT_ALWAYS_VISIBLE, ...CODING_PROFILE_PATTERNS]
+  }
+  return explicit
+}
+
+function freezeStableNames(schemas: readonly ToolSchemaView[], config: ResolvedConfig): Set<string> {
+  let patterns = config.alwaysVisible
+  if (config.profile === 'auto' && samePatterns(patterns, DEFAULT_ALWAYS_VISIBLE)) {
+    const terminal = schemas.some(schema =>
+      schema.name !== 'run_code' && matchesToolName(schema.name, CODING_PROFILE_PATTERNS),
+    )
+    if (terminal) patterns = [...DEFAULT_ALWAYS_VISIBLE, ...CODING_PROFILE_PATTERNS]
+  }
+  const names = new Set(schemas
+    .filter(schema => schema.name === config.toolName
+      || schema.name === config.dispatchToolName
+      || (config.resultBudget && schema.name === 'tool_result_read')
+      || matchesToolName(schema.name, patterns))
+    .map(schema => schema.name))
+  if (config.autoloadMaxTools > 0) {
+    const deferred = schemas.filter(schema => schema.name !== 'run_code' && !names.has(schema.name))
+    if (deferred.length > 0 && deferred.length <= config.autoloadMaxTools) {
+      for (const schema of deferred) names.add(schema.name)
+    }
+  }
+  return names
 }
 
 interface AgentState {
@@ -278,6 +418,9 @@ interface AgentState {
   stableNames: Set<string> | undefined
   catalogDirty: boolean
   restored: boolean
+  readonly guidance: Map<string, string>
+  readonly skillGranted: Set<string>
+  capabilityText: string | undefined
 }
 
 interface LoggedCall {
@@ -331,28 +474,43 @@ function snapshotFromSearchValue(value: unknown): StateSnapshot | undefined {
   return parseSnapshot(value.state)
 }
 
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) return undefined
+  return value as string[]
+}
+
 function discoveredFromSearchValue(value: unknown): string[] | undefined {
-  if (!isRecord(value) || value.protocol !== 'dsh-progressive-tools/v2') return undefined
+  if (!isRecord(value)) return undefined
+  if (value.protocol !== 'dsh-progressive-tools/v2' && value.protocol !== SEARCH_PROTOCOL_V3) return undefined
   // Cumulative lists (older results, presentation meta) take priority; newer
   // rendered results carry per-call increments that union across events.
-  if (Array.isArray(value.allDiscoveredTools)
-    && value.allDiscoveredTools.every(name => typeof name === 'string')) {
-    return value.allDiscoveredTools as string[]
+  const cumulative = stringArray(value.allDiscoveredTools)
+  if (cumulative !== undefined) return cumulative
+  const increment = stringArray(value.discoveredTools)
+  if (increment !== undefined) return increment
+  const names = new Set<string>()
+  if (Array.isArray(value.families)) {
+    for (const family of value.families) {
+      if (!isRecord(family) || !Array.isArray(family.tools)) continue
+      for (const tool of family.tools) {
+        if (typeof tool === 'string') names.add(tool)
+        else if (isRecord(tool) && typeof tool.name === 'string') names.add(tool.name)
+      }
+    }
   }
-  if (Array.isArray(value.discoveredTools)
-    && value.discoveredTools.every(name => typeof name === 'string')) {
-    return value.discoveredTools as string[]
+  if (Array.isArray(value.matches)) {
+    for (const match of value.matches) {
+      if (!isRecord(match)) continue
+      if (typeof match.name === 'string') names.add(match.name)
+      for (const name of stringArray(match.groupTools) ?? []) names.add(name)
+    }
   }
-  if (!Array.isArray(value.matches)) return undefined
-  const names = value.matches
-    .map(match => isRecord(match) && typeof match.name === 'string' ? match.name : undefined)
-    .filter((name): name is string => name !== undefined)
-  return names
+  return names.size > 0 ? [...names] : undefined
 }
 
 function statusFromSearchValue(value: unknown): boolean {
   return isRecord(value)
-    && value.protocol === 'dsh-progressive-tools/v2'
+    && (value.protocol === 'dsh-progressive-tools/v2' || value.protocol === SEARCH_PROTOCOL_V3)
     && value.action === 'status'
 }
 
@@ -378,13 +536,21 @@ function nestedDispatch(event: unknown): {
 
 function toolResultContent(message: unknown): { callId: string; isError: boolean; value: unknown } | undefined {
   if (!isRecord(message) || !isRecord(message.source) || typeof message.source.callId !== 'string') return undefined
-  if (!Array.isArray(message.content) || !isRecord(message.content[0])) return undefined
+  if (!Array.isArray(message.content)) return undefined
   const block = message.content[0]
-  if (block.type !== 'tool-result') return undefined
+  // Older logs wrap the model content in a tool-result block. Current host
+  // messages carry that content directly and put isError on the message.
+  if (isRecord(block) && block.type === 'tool-result') {
+    return {
+      callId: message.source.callId,
+      isError: block.isError === true,
+      value: textContentValue(block.content),
+    }
+  }
   return {
     callId: message.source.callId,
-    isError: block.isError === true,
-    value: textContentValue(block.content),
+    isError: message.isError === true,
+    value: textContentValue(message.content),
   }
 }
 
@@ -494,18 +660,20 @@ function legacyResultFromExecution(result: Readonly<ToolExecutionResult>): Searc
   return result.value as unknown as SearchResultValue
 }
 
-function proxyResultFromExecution(result: Readonly<ToolExecutionResult>): ProxySearchResultValue | undefined {
-  if (result.isError || !isRecord(result.value) || result.value.protocol !== 'dsh-progressive-tools/v2') {
-    return undefined
-  }
-  return result.value as unknown as ProxySearchResultValue
-}
-
 function proxyContent(value: unknown): ContentBlock[] {
   if (!isRecord(value) || !Array.isArray(value.content)) {
     return [{ type: 'text', text: JSON.stringify(value) }]
   }
   return value.content as ContentBlock[]
+}
+
+function deferredToolForSection(sectionName: string, deferredNames: ReadonlySet<string>): string | undefined {
+  if (!exactGuidanceForDeferredTool(sectionName, deferredNames)) return undefined
+  const suffix = sectionName.slice('tool:'.length)
+  for (const name of deferredNames) {
+    if (suffix === name || suffix.startsWith(`${name}:`)) return name
+  }
+  return undefined
 }
 
 function exactGuidanceForDeferredTool(sectionName: string, deferredNames: ReadonlySet<string>): boolean {
@@ -561,6 +729,9 @@ export function apply(ctx: Context, input: Config): void {
       stableNames: undefined,
       catalogDirty: true,
       restored: false,
+      guidance: new Map(),
+      skillGranted: new Set(),
+      capabilityText: undefined,
     }
     states.set(agent, created)
     liveStates.add(created)
@@ -580,8 +751,14 @@ export function apply(ctx: Context, input: Config): void {
     if (skillName === undefined) return
     const groups = skillBindings.get(skillName)
     if (groups === undefined) return
-    if (config.mode === 'stable-proxy') discoverGroups(state, groups)
-    else activateGroups(state.progressive, groups, turn, config)
+    if (config.mode === 'stable-proxy') {
+      discoverGroups(state, groups)
+      for (const groupId of groups) {
+        const group = state.progressive.catalog.groups.get(groupId)
+        if (group === undefined) continue
+        for (const tool of group.tools) state.skillGranted.add(tool.name)
+      }
+    } else activateGroups(state.progressive, groups, turn, config)
   }
 
   const restoreFromEvents = (state: AgentState): void => {
@@ -649,11 +826,7 @@ export function apply(ctx: Context, input: Config): void {
   const rebuildStableCatalog = (state: AgentState): void => {
     const schemas = cloneSchemas(state.agent.ctx.tools.schemas(state.agent))
     if (state.stableNames === undefined) {
-      state.stableNames = new Set(schemas
-        .filter(schema => schema.name === config.toolName
-          || schema.name === config.dispatchToolName
-          || matchesToolName(schema.name, config.alwaysVisible))
-        .map(schema => schema.name))
+      state.stableNames = freezeStableNames(schemas, config)
     }
     const managed = schemas.filter(schema =>
       schema.name !== 'run_code' && !state.stableNames!.has(schema.name),
@@ -728,6 +901,74 @@ export function apply(ctx: Context, input: Config): void {
     return Math.min(Math.max(requested, 1), config.maxResults)
   }
 
+  const pendingCumulative = new Map<string, { names: readonly string[]; omittedDefinitionTokens: number }>()
+  const dispatchContent = new Map<ToolExecutionToken, ContentBlock[]>()
+
+  const searchPresentationMeta = (value: unknown): JsonValue => {
+    if (isRecord(value) && value.protocol === SEARCH_PROTOCOL_V3) {
+      const resume = typeof value.resume === 'string' ? value.resume : ''
+      const pending = pendingCumulative.get(resume)
+      const discovered = pending?.names ?? discoveredFromSearchValue(value) ?? []
+      const omitted = pending?.omittedDefinitionTokens ?? 0
+      return {
+        protocol: SEARCH_PROTOCOL_V3,
+        action: value.action === 'status' ? 'status' : 'search',
+        discoveredTools: [...discovered],
+        omittedDefinitionTokens: omitted,
+        estimatedSavedTokens: omitted,
+      }
+    }
+    return proxyStateMeta(value as unknown as ProxySearchResultValue)
+  }
+
+  const currentSearchResult = (
+    state: AgentState,
+    callId: string,
+    action: 'search' | 'status',
+    query: string,
+    matches: readonly DeferredToolMatch[],
+    reload: boolean,
+  ): Record<string, unknown> => {
+    const resume = String(callId)
+    if (action === 'status') {
+      pendingCumulative.set(resume, {
+        names: [...state.discovered].sort(),
+        omittedDefinitionTokens: state.progressive.catalog.totalEstimatedTokens,
+      })
+      return {
+        protocol: SEARCH_PROTOCOL_V3,
+        mode: 'stable-proxy',
+        action,
+        query: '',
+        matches: [],
+        families: [],
+        groups: deferredGroupSummaries(state),
+        instruction: `Use ${config.toolName} with a task-oriented query to load exact deferred definitions. Status does not repeat parameter schemas.`,
+        resume,
+      }
+    }
+    const projected = projectSearch({
+      query,
+      ranked: matches,
+      guidance: state.guidance,
+      historyText: historyText(state.agent.session.deriveMessages()),
+      reload,
+      repeatDefinitions: config.repeatDefinitions,
+      maxResultCharacters: config.maxResultCharacters,
+      familyDiscovery: config.familyDiscovery,
+      skillGranted: state.skillGranted,
+      dispatchToolName: config.dispatchToolName,
+      searchToolName: config.toolName,
+    })
+    const cumulative = new Set(state.discovered)
+    for (const name of projected.discoveredNames) cumulative.add(name)
+    pendingCumulative.set(resume, {
+      names: [...cumulative].sort(),
+      omittedDefinitionTokens: state.progressive.catalog.totalEstimatedTokens,
+    })
+    return { ...projected.result, resume }
+  }
+
   const deferredGroupSummaries = (state: AgentState): DeferredGroupSummary[] =>
     [...state.progressive.catalog.groups.values()]
       .map(group => ({
@@ -784,11 +1025,11 @@ export function apply(ctx: Context, input: Config): void {
   if (config.mode === 'stable-proxy') {
     ctx.tools.register(defineTool({
       name: config.toolName,
-      description: `Search deferred tools by capability. Use this whenever the visible tools do not cover the task. Returns exact names, descriptions, and parameter schemas for ${config.dispatchToolName}.`,
+      description: `Search deferred tools by task-oriented capability when the visible tools cannot do the work. Do not use this only to prove that a requested name is missing; refuse invented or uncallable names from the visible surface.`,
       parameters: {
         query: {
           type: 'string',
-          description: 'Task-oriented capability query. Include the object, action, or service involved.',
+          description: 'Task-oriented capability query. Include the object, action, or service involved. Do not pass an invented tool name just to confirm it is absent.',
         },
         action: {
           type: 'string',
@@ -799,17 +1040,22 @@ export function apply(ctx: Context, input: Config): void {
           type: 'integer',
           description: `Maximum exact tool definitions to return; values are clamped between 1 and ${config.maxResults}.`,
         },
+        reload: {
+          type: 'boolean',
+          description: 'Return full parameter schemas even when the same definition is already in the conversation.',
+        },
       },
       output: {
         schema: proxyResultSchema,
         render: (_args, value) => {
-          // The cumulative list lives in presentation meta only; rendering it
-          // would leak the ever-growing discovery table back into the prompt.
+          // Cumulative discovery stays in presentation meta. The rendered copy
+          // also drops the resume handle used only to populate that meta.
           const rendered = { ...(value as Record<string, unknown>) }
           delete rendered.allDiscoveredTools
+          delete rendered.resume
           return [{ type: 'text', text: JSON.stringify(rendered) }]
         },
-        presentationMeta: (_args, value) => proxyStateMeta(value as unknown as ProxySearchResultValue),
+        presentationMeta: (_args, value) => searchPresentationMeta(value),
       },
       isConcurrencySafe: () => true,
       async execute(args, exec) {
@@ -821,18 +1067,21 @@ export function apply(ctx: Context, input: Config): void {
         const matches = action === 'search'
           ? searchTools(state.progressive.catalog, query, clampLimit(args.max_results))
           : []
-        return stableSearchResult(
-          state,
-          action,
-          action === 'search' ? query : '',
-          matches,
-        ) as unknown as InferValue<typeof proxyResultSchema>
+        if (config.legacyResults) {
+          return stableSearchResult(
+            state,
+            action,
+            action === 'search' ? query : '',
+            matches,
+          ) as unknown as InferValue<typeof proxyResultSchema>
+        }
+        return currentSearchResult(state, exec.callId, action, query, matches, args.reload === true) as unknown as InferValue<typeof proxyResultSchema>
       },
     }))
 
     ctx.tools.register(defineTool({
       name: config.dispatchToolName,
-      description: `Execute one exact tool returned by ${config.toolName}. Copy the returned name exactly and pass arguments that satisfy its parameters schema.`,
+      description: `Execute one exact tool returned by ${config.toolName}. Copy the returned name exactly and pass arguments that satisfy its parameters schema. A program receives { protocol, tool, value }; value is the target canonical value and does not repeat rendered content.`,
       parameters: {
         name: {
           type: 'string',
@@ -840,32 +1089,39 @@ export function apply(ctx: Context, input: Config): void {
           description: `Exact tool name returned by ${config.toolName}.`,
         },
         arguments: {
-          // MCP/OpenAI clients in the wild sometimes JSON-encode this nested
-          // object before sending the outer dispatch envelope. `json` keeps
-          // the wire contract permissive; execute() performs the strict
-          // object normalization before entering the real tool pipeline.
-          type: 'json',
+          type: 'object',
+          additionalProperties: true,
           required: true,
-          description: 'Arguments matching the selected tool parameters schema. An object is preferred; JSON text is accepted and decoded before dispatch.',
+          description: 'Arguments matching the selected tool parameters schema.',
         },
       },
       output: {
         schema: proxyResultSchema,
         render: (_args, value) => proxyContent(value),
-        presentationMeta: (args, value) => ({
+        presentationMeta: (args) => ({
           protocol: 'dsh-progressive-tools/dispatch-v1',
           tool: args.name,
-          ...(isRecord(value) && value.targetMeta !== undefined ? { targetMeta: value.targetMeta } : {}),
         }),
       },
       // Parallel scheduling follows the real tool's own classifier so deferred
       // tools keep the concurrency they declare; unknown targets stay exclusive.
+      finalizeContent(exec, result) {
+        const stored = dispatchContent.get(exec.token)
+        dispatchContent.delete(exec.token)
+        if (result.isError || stored === undefined) return undefined
+        // Nested calls keep the target rendering. The outer run_code result
+        // carries the separate model-text budget, so the body is not compressed twice.
+        if (!config.resultBudget || exec.parent !== undefined || exec.agent === undefined) return [...stored]
+        const toolName = isRecord(exec.arguments) && typeof exec.arguments.name === 'string'
+          ? exec.arguments.name
+          : config.dispatchToolName
+        return budgetDispatchContent(String(exec.agent.id), toolName, stored, config.resultBudgetCharacters)
+      },
       isConcurrencySafe(args) {
         const definition = ctx.tools.get(args.name)
         if (definition?.isConcurrencySafe === undefined) return false
         try {
-          const decoded = parseJson(args.arguments)
-          return isRecord(decoded) && definition.isConcurrencySafe(decoded) === true
+          return definition.isConcurrencySafe(args.arguments) === true
         } catch {
           return false
         }
@@ -873,10 +1129,6 @@ export function apply(ctx: Context, input: Config): void {
       async execute(args, exec) {
         if (exec.agent === undefined) throw new Error(`${config.dispatchToolName} requires an agent-scoped execution`)
         const state = prepareStableState(exec.agent)
-        const decodedArguments = parseJson(args.arguments)
-        if (!isRecord(decodedArguments)) {
-          throw new Error(`tool ${JSON.stringify(args.name)} arguments must be an object; received JSON text could not be decoded`)
-        }
         if (!state.progressive.catalog.tools.has(args.name)) {
           if (state.stableNames?.has(args.name)) {
             throw new Error(`tool ${JSON.stringify(args.name)} is already visible and should be called directly`)
@@ -899,7 +1151,7 @@ export function apply(ctx: Context, input: Config): void {
             rootCallId: exec.rootCallId,
             parent: exec.token,
             name: args.name,
-            arguments: decodedArguments,
+            arguments: args.arguments,
             agent: exec.agent,
           })
           for (const context of nested.additionalContexts ?? []) exec.deferContext(context)
@@ -914,16 +1166,19 @@ export function apply(ctx: Context, input: Config): void {
             if (nested.error.info !== undefined) failure.name = nested.error.info.name
             throw failure
           }
+          if (config.legacyResults) {
+            return {
+              protocol: DISPATCH_PROTOCOL_V1,
+              tool: args.name,
+              value: nested.value,
+              content: nested.content as unknown as JsonValue,
+            } as InferValue<typeof proxyResultSchema>
+          }
+          dispatchContent.set(exec.token, [...nested.content])
           return {
-            protocol: 'dsh-progressive-tools/dispatch-v1',
+            protocol: DISPATCH_PROTOCOL_V2,
             tool: args.name,
             value: nested.value,
-            content: nested.content as unknown as JsonValue,
-            // Nested executions omit presentation projection in the pinned
-            // runtime. Persist the target's projection on the root result.
-            ...(definition.output.presentationMeta === undefined ? {} : {
-              targetMeta: definition.output.presentationMeta(decodedArguments, nested.value),
-            }),
           } as InferValue<typeof proxyResultSchema>
         } finally {
           authorizedProxyParents.delete(exec.token)
@@ -931,17 +1186,48 @@ export function apply(ctx: Context, input: Config): void {
       },
     }))
 
+    if (config.resultBudget) {
+      ctx.tools.register(defineTool({
+        name: 'tool_result_read',
+        description: 'Read the original text of a budgeted tool result by its ref. Use range or keyword search before asking for the full text.',
+        parameters: {
+          ref: { type: 'string', required: true, description: 'Reference from a budgeted tool result.' },
+          mode: { type: 'string', enum: ['full', 'range', 'search'], description: 'Defaults to range.' },
+          start: { type: 'integer', description: 'Inclusive character start for range.' },
+          end: { type: 'integer', description: 'Exclusive character end for range.' },
+          keyword: { type: 'string', description: 'Substring for search mode.' },
+        },
+        output: {
+          schema: proxyResultSchema,
+          render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+        },
+        async execute(args, exec) {
+          if (exec.agent === undefined) throw new Error('tool_result_read requires an agent-scoped execution')
+          const mode = args.mode === 'full' || args.mode === 'search' ? args.mode : 'range'
+          const read = readStoredResult(String(exec.agent.id), args.ref, {
+            mode,
+            ...(args.start === undefined ? {} : { start: args.start }),
+            ...(args.end === undefined ? {} : { end: args.end }),
+            ...(args.keyword === undefined ? {} : { keyword: args.keyword }),
+          })
+          if (!read.ok) throw new Error(read.message)
+          return { protocol: 'dsh-progressive-tools/result-read-v1', text: read.text }
+        },
+      }))
+    }
+
+    const skillFamilies = config.skillBindings.map(binding => `${binding.skill}: ${binding.groups.join(', ')}`).join('; ')
     ctx.systemPrompt.section({
       name: 'progressive-tools:discovery',
       order: 140,
-      text: `Only the common tools are listed initially. When the task needs another capability, call ${config.toolName}; then call ${config.dispatchToolName} with an exact returned name and schema-valid arguments. Tool names mentioned elsewhere in this prompt but not listed as callable must be discovered the same way before dispatch. Use action "status" to browse the complete deferred catalog. Do not claim a capability is unavailable before searching.`,
+      text: `Only the common tools are listed initially. When the task needs another capability, call ${config.toolName} with a task-oriented query; then call ${config.dispatchToolName} with an exact returned name and schema-valid arguments. Tool names mentioned elsewhere in this prompt but not listed as callable must be discovered the same way before dispatch. Use action "status" to browse the complete deferred catalog. Search before declaring a needed capability class unavailable. Do not search merely to prove a named tool is missing: invented names, and names that are not on the visible surface when a refusal is enough, should be refused without searching. A program result from ${config.dispatchToolName} is { protocol, tool, value }; value is the target canonical value. Skill bindings supply the call contract for their families${skillFamilies === '' ? ' (none configured)' : `: ${skillFamilies}`}.`,
     })
 
     ctx.tools.guard((execution) => {
       const agent = execution.agent
       if (agent === undefined) return undefined
       // Prepare lazily so calls arriving before the first assembly or
-      // session-start event are still classified against the deferred catalog.
+      // agent/created event are still classified against the deferred catalog.
       const state = prepareStableState(agent)
       if (execution.parent !== undefined && authorizedProxyParents.has(execution.parent)) {
         authorizedProxyParents.add(execution.token)
@@ -1021,12 +1307,36 @@ export function apply(ctx: Context, input: Config): void {
     const deferredNames = config.mode === 'stable-proxy'
       ? new Set(state.progressive.catalog.tools.keys())
       : new Set<string>()
-    const sections = resolved.sections
-      .filter(section => !config.deferToolGuidance
-        || !exactGuidanceForDeferredTool(section.name, deferredNames))
-      .map(section => section.name === 'tools:sdk'
+    const guidance = new Map<string, string>()
+    const sections = []
+    for (const section of resolved.sections) {
+      const guided = config.mode === 'stable-proxy' && config.deferToolGuidance
+        ? deferredToolForSection(section.name, deferredNames)
+        : undefined
+      if (guided !== undefined) {
+        const previous = guidance.get(guided)
+        guidance.set(guided, previous === undefined ? section.text : `${previous}\n\n${section.text}`)
+        continue
+      }
+      sections.push(section.name === 'tools:sdk'
         ? { ...section, text: shapeSdkSection(state, visibleNames, section.text) }
         : section)
+    }
+    if (config.mode === 'stable-proxy') {
+      state.guidance.clear()
+      for (const [name, text] of guidance) state.guidance.set(name, text)
+      if (state.capabilityText === undefined) {
+        state.capabilityText = capabilitySummary(
+          state.progressive.catalog,
+          config.capabilitySummaryCharacters,
+        )
+      }
+      sections.push({
+        name: 'progressive-tools:capabilities',
+        order: 141,
+        text: state.capabilityText,
+      })
+    }
     return {
       ...resolved,
       sections,
@@ -1034,10 +1344,6 @@ export function apply(ctx: Context, input: Config): void {
     }
   }, { prepend: true })
 
-  // rc.2 removed the legacy session-start event. Agent creation is the
-  // earliest lifecycle hook for both startup and resumed sessions and runs
-  // before the first inbox turn, so it preserves the catalog initialization
-  // semantics here.
   ctx.on('agent/created', ({ agent }) => {
     if (config.mode === 'stable-proxy') prepareStableState(agent)
     else prepareDynamicState(agent, latestTurn(agent))
@@ -1052,16 +1358,40 @@ export function apply(ctx: Context, input: Config): void {
     return next()
   }, { prepend: true })
 
+  ctx.on('tools/post-execute', async (exec, result, next) => {
+    const decision = await next()
+    if (!config.resultBudget || config.mode !== 'stable-proxy') return decision
+    if (exec.name !== 'run_code' || exec.parent !== undefined || exec.agent === undefined) return decision
+    if (result.isError || decision.kind !== 'accept' || Object.hasOwn(decision, 'value')) return decision
+    const content = decision.content ?? result.content
+    const text = content.map(block => block.type === 'text' ? block.text : '').join('')
+    if (text.length <= config.resultBudgetCharacters) return decision
+    const budgeted = budgetDispatchContent(
+      String(exec.agent.id),
+      'run_code',
+      content,
+      config.resultBudgetCharacters,
+    )
+    return {
+      kind: 'accept',
+      content: budgeted,
+      ...(decision.additionalContexts === undefined ? {} : { additionalContexts: decision.additionalContexts }),
+    }
+  }, { prepend: true })
+
   ctx.on('tools/result', (exec, result) => {
     authorizedProxyParents.delete(exec.token)
+    dispatchContent.delete(exec.token)
+    if (!result.isError && isRecord(result.value) && typeof result.value.resume === 'string') {
+      pendingCumulative.delete(result.value.resume)
+    }
     const agent = exec.agent
     if (agent === undefined || result.isError) return
     const state = ensureState(agent)
     if (exec.name === config.toolName) {
       if (config.mode === 'stable-proxy') {
-        const value = proxyResultFromExecution(result)
-        for (const name of value?.discoveredTools ?? []) state.discovered.add(name)
-        if (value?.action === 'status') state.catalogListed = true
+        for (const name of discoveredFromSearchValue(result.value) ?? []) state.discovered.add(name)
+        if (statusFromSearchValue(result.value)) state.catalogListed = true
       } else {
         const value = legacyResultFromExecution(result)
         if (value !== undefined) restoreSnapshot(state.progressive, value.state)
@@ -1086,6 +1416,7 @@ export function apply(ctx: Context, input: Config): void {
     const state = states.get(agent)
     if (state === undefined) return
     disposeRestriction(state)
+    dropAgentResults(String(agent.id))
     states.delete(agent)
     liveStates.delete(state)
   })
@@ -1094,5 +1425,8 @@ export function apply(ctx: Context, input: Config): void {
     for (const state of liveStates) disposeRestriction(state)
     liveStates.clear()
     authorizedProxyParents.clear()
+    pendingCumulative.clear()
+    dispatchContent.clear()
+    dropAllResults()
   }, 'progressive-tools.agent-state')
 }

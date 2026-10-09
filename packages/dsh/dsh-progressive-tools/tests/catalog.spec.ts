@@ -163,6 +163,17 @@ describe('tool catalog', () => {
     expect(catalog.toolToGroup.get('get_goal')).toBe('get_goal')
   })
 
+  it('does not fill unrelated definitions for an unmatched exact name', () => {
+    const catalog = buildCatalog(schemas, groups, 4)
+
+    expect(searchTools(catalog, 'definitely_not_a_real_tool_xyz', 5)).toEqual([])
+    expect(searchCatalog(catalog, 'definitely_not_a_real_tool_xyz', 5)).toEqual([])
+    expect(searchTools(catalog, 'db_query', 1)[0]?.name).toBe('db_query')
+    expect(searchTools(catalog, 'db_query', 5)).toHaveLength(1)
+    expect(searchTools(catalog, 'browser navigation', 2).map(match => match.name))
+      .toEqual(['browser_open', 'browser_click'])
+  })
+
   it('returns every family member name alongside each exact match', () => {
     const catalog = buildCatalog(schemas, groups, 4)
     const matches = searchTools(catalog, 'browser', 1)
@@ -173,6 +184,13 @@ describe('tool catalog', () => {
     const singleton = searchTools(catalog, 'unique operation', 5)
       .find(match => match.name === 'standalone')
     expect(singleton?.groupTools).toEqual(['standalone'])
+  })
+
+  it('keeps exact-name ranking on a large catalog', () => {
+    const many = Array.from({ length: 200 }, (_item, index) => schema(`tool_${index}`, `helper ${index}`))
+    const catalog = buildCatalog([...many, schema('db_query', 'Run a SQL query')], groups, 4)
+    expect(searchTools(catalog, 'db_query', 5).map(match => match.name)).toEqual(['db_query'])
+    expect(searchTools(catalog, 'database', 2)[0]?.name.startsWith('db_')).toBe(true)
   })
 
   it('uses the configured character ratio for deterministic estimates', () => {

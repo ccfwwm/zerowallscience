@@ -2,13 +2,13 @@ import { zoteroDispatch } from './zotero-dispatch.mjs'
 import { ZeroWallZoteroDetails } from './zotero-live.mjs'
 import { decodeZoteroAuthorizationResponse, ZeroWallZoteroAuthorization } from './zotero-authorization.mjs'
 
-// dsh-zotero 0.11.0 was published before the 0.2.0-rc.2 release and pins
+// dsh-zotero 0.12.1 was published before the 0.2.0-rc.2 release and pins
 // every DSH peer to 0.1.7-rc.2. The source package remains untouched; this
 // adapter updates only the curated production copy used by ZeroWall.
 export function adaptZoteroManifest(source) {
   const manifest = JSON.parse(source)
   const runtimeRange = '^0.1.7-rc.2 || ^0.2.0-rc.2'
-  if (manifest.name !== 'dsh-zotero' || manifest.version !== '0.11.0') {
+  if (manifest.name !== 'dsh-zotero' || manifest.version !== '0.12.1') {
     throw new Error('Unexpected Zotero manifest identity; review the pinned runtime adapter.')
   }
   if (manifest.engines?.dsh !== undefined) manifest.engines.dsh = runtimeRange
@@ -27,7 +27,7 @@ export function adaptZoteroManifest(source) {
   return `${JSON.stringify(manifest, null, 2)}\n`
 }
 
-// Zotero 0.11.0 is compiled against the rc.2 commands API. Older releases were
+// Zotero 0.12.1 is compiled against the rc.2 commands API. Older releases were
 // compiled against a newer commands API under the same rc.2
 // version. The pinned Harness registers commands by name and has no
 // CommandDefinitionId brand. Preserve the command and omit that newer field.
@@ -77,12 +77,12 @@ export function adaptZoteroClient(source) {
   }
   return JSON.stringify({ order, running });
 }`
-  // 0.11.x already contains the nested-call walk and the session signature
+  // 0.12.x already contains the nested-call walk and the session signature
   // tracks call paths. Applying the 0.8.x patch would both fail to match and
   // risk replacing the upstream reducer with an older implementation.
   const modernSourcesTab = source.includes('function visitVisibleZoteroCalls(snapshot, visit)')
     && source.includes('order.push({ callId: block.callId, path });')
-  // 0.11.x already has the correct nested-call traversal and session
+  // 0.12.x already has the correct nested-call traversal and session
   // signature. It still needs the ZeroWall dispatch projection below so
   // progressive-tools results (tool_dispatch/lit_save) reach the native
   // workspace reducer. Do not return before that projection is installed.
@@ -134,12 +134,13 @@ export function adaptZoteroActions(source) {
   }
   if (source.includes('function ZeroWallZoteroDetails(')) return source
   source = replaceRequired(source, 'function SourceOverview({ item, t, setDraft }) {', `${ZeroWallZoteroDetails.toString()}\nfunction SourceOverview({ item, t, setDraft }) {`)
-  source = replaceRequired(source,
-    'function SourcesTab({ status, t, useSession, useChat, inputActions }) {',
-    'function SourcesTab({ status, t, useSession, useChat, inputActions, openView }) {')
-  const setDraft = 'const setDraft = (0, import_react11.useMemo)(\n    () => inputActions === void 0 ? void 0 : inputActions.setDraft.bind(inputActions),\n    [inputActions]\n  );'
-  if (source.includes(setDraft)) {
-    source = source.replace(setDraft, `const setDraft = (0, import_react11.useMemo)(() => inputActions === void 0 ? void 0 : (text) => {
+  const sourcesTab = /function SourcesTab\(\{ status, t, useSession, useChat, inputActions(?:, openView)? \}\) \{/u
+  if (!sourcesTab.test(source)) throw new Error('Unrecognized Zotero Sources tab signature; review the pinned client adapter.')
+  source = source.replace(sourcesTab, 'function SourcesTab({ status, t, useSession, useChat, inputActions, openView }) {')
+  const setDraft = source.match(/const setDraft = \(0, (import_react\d+)\.useMemo\)\(\s*\(\) => inputActions === void 0 \? void 0 : inputActions\.setDraft\.bind\(inputActions\),\s*\[inputActions\]\s*\);/u)
+  if (setDraft) {
+    const reactImport = setDraft[1]
+    source = source.replace(setDraft[0], `const setDraft = (0, ${reactImport}.useMemo)(() => inputActions === void 0 ? void 0 : (text) => {
     inputActions.setDraft(text);
     openView?.("chat", "");
     requestAnimationFrame(() => inputActions.focus?.());

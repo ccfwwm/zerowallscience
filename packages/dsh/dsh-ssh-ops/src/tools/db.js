@@ -13,26 +13,36 @@
  * connecting…", "…cancelled") from the layer that knows what hung.
  */
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { pickSshConnectionId } from "../db-ops.js";
+import { backupSummary, pickSshConnectionId } from "../db-ops.js";
+import { t } from "../i18n/core.js";
 
-/** Cooperative tool-call budget; the db layer's own ceilings are all lower. */
-export const DB_TOOL_TIMEOUT_MS = 60000;
+/**
+ * Cooperative tool-call budget. It must sit above the db layer's own ceilings
+ * AND above the largest per-connection query_timeout_ms override
+ * (DB_QUERY_TIMEOUT_MAX_MS, 30 min) so an opted-in slow-database connection
+ * is never cut off by the tool budget. Default connections are unaffected in
+ * practice: every driver await is still bounded by the db layer's own
+ * deadlines (the 35s op ceiling fires first), so this budget only matters as
+ * the last-resort backstop.
+ */
+export const DB_TOOL_TIMEOUT_MS = 1_860_000;
 
 export function registerDbTools(ctx, service) {
   ctx.tools.register(defineTool({
     name: "db_connect",
     timeoutMs: DB_TOOL_TIMEOUT_MS,
-    description: "Connect to a database (MySQL, PostgreSQL, Redis, or MongoDB) so the agent can query or run commands in later db_query/db_execute/db_run calls. When an SSH server is connected, a loopback host (127.0.0.1/localhost) is automatically tunneled through the current server (via_ssh=auto), so 'connect to the database on the server' works without an internal connection id; pass via_ssh='no' to force a local connection, or ssh_connection_id to pick a specific server. For cloud-managed databases requiring TLS, set ssl to 'verify' (public-CA certs) or 'preferred' (self-signed certs). Returns a db_connection_id.",
+    description: "Connect to a database (MySQL, PostgreSQL, openGauss, SQLite, ClickHouse, Redis, or MongoDB) so the agent can query or run commands in later db_query/db_execute/db_run calls. When an SSH server is connected, a loopback host (127.0.0.1/localhost) is automatically tunneled through the current server (via_ssh=auto), so 'connect to the database on the server' works without an internal connection id; pass via_ssh='no' to force a local connection, or ssh_connection_id to pick a specific server. For cloud-managed databases requiring TLS, set ssl to 'verify' (public-CA certs) or 'preferred' (self-signed certs). Returns a db_connection_id.",
     parameters: {
-      type: { type: "string", enum: ["mysql", "postgresql", "redis", "mongodb"], required: true, description: "Database type." },
-      host: { type: "string", required: true, description: "Database host. When reached via SSH, this is the address as seen from the SSH server (127.0.0.1 if the DB runs on that server)." },
-      port: { type: "integer", required: true, description: "Database port (e.g. 3306 MySQL, 5432 PostgreSQL, 6379 Redis, 27017 MongoDB)." },
-      database: { type: "string", description: "Database/schema name (MySQL/PostgreSQL/MongoDB) or numeric DB index (Redis)." },
+      type: { type: "string", enum: ["mysql", "postgresql", "opengauss", "sqlite", "clickhouse", "redis", "mongodb"], required: true, description: "Database type." },
+      host: { type: "string", description: "Database host (required for every type except sqlite). When reached via SSH, this is the address as seen from the SSH server (127.0.0.1 if the DB runs on that server)." },
+      port: { type: "integer", description: "Database port; defaults per type (3306 MySQL, 5432 PostgreSQL/openGauss, 8123 ClickHouse, 6379 Redis, 27017 MongoDB). Not used by sqlite." },
+      database: { type: "string", description: "Database/schema name (MySQL/PostgreSQL/openGauss/ClickHouse, optional), the SQLite file path (required for sqlite), or numeric DB index (Redis)." },
       username: { type: "string", description: "Database username (not needed for Redis)." },
       password: { type: "string", description: "Database password." },
       ssl: { type: "string", enum: ["disabled", "preferred", "verify"], description: "TLS mode: 'disabled' (default) plain TCP; 'preferred' encrypt without cert verification (self-signed cloud DBs); 'verify' encrypt and verify CA (public-CA cloud DBs)." },
       ssh_connection_id: { type: "string", description: "Optional. An existing SSH connection id to tunnel through, reaching databases on private networks. Takes precedence over via_ssh." },
       via_ssh: { type: "string", enum: ["auto", "yes", "no"], description: "Tunnel routing when ssh_connection_id is omitted: 'auto' (default) tunnels loopback hosts (127.0.0.1/localhost) through the current SSH server; 'yes' always tunnels through the current server; 'no' always connects directly." },
+      query_timeout_ms: { type: "integer", description: "Optional per-connection statement deadline in milliseconds, set once at connect time for slow databases and large exports: 0 disables the per-statement ceiling (this tool-call budget still applies), 1000..1800000 raises it above the 35s default. Omit for the default." },
       name: { type: "string", description: "Optional display name." }
     },
     output: {
@@ -59,7 +69,8 @@ export function registerDbTools(ctx, service) {
       const result = await service.dbConnect({
         type: args.type, host: args.host, port: args.port, database: args.database,
         username: args.username, password: args.password, ssl: args.ssl,
-        sshConnectionId: routed.sshConnectionId, name: args.name, signal: exec?.signal
+        sshConnectionId: routed.sshConnectionId, name: args.name, signal: exec?.signal,
+        ...(args.query_timeout_ms !== undefined ? { queryTimeoutMs: args.query_timeout_ms } : {})
       });
       if (!result.ok) throw new Error(`db_connect failed: ${result.error.message}`);
       return result.value;
@@ -69,7 +80,7 @@ export function registerDbTools(ctx, service) {
   ctx.tools.register(defineTool({
     name: "db_list_connections",
     timeoutMs: DB_TOOL_TIMEOUT_MS,
-    description: "List currently open database connections (db_connection_id, type, host, port). Use it only when the user asks which databases are connected.",
+    description: "List currently open database connections and their endpoint/account metadata. Use it only when the user asks which databases are connected.",
     parameters: {},
     output: {
       schema: {
@@ -84,6 +95,7 @@ export function registerDbTools(ctx, service) {
               host: { type: "string", required: true },
               port: { type: "integer", required: true },
               database: { oneOf: [{ type: "string" }, { type: "null" }], required: true },
+              username: { oneOf: [{ type: "string" }, { type: "null" }], required: true },
               ssl: { type: "string", required: true },
               sshConnectionId: { oneOf: [{ type: "string" }, { type: "null" }], required: true },
               createdAt: { type: "string", required: true }
@@ -93,7 +105,18 @@ export function registerDbTools(ctx, service) {
       },
       render(_args, value) {
         if (!value.connections.length) return [{ type: "text", text: "No database connection is currently open." }];
-        return [{ type: "text", text: value.connections.map((c) => `- ${c.name} (${c.type}): ${c.host}:${c.port}${c.sshConnectionId ? " via SSH" : ""} (id: ${c.dbConnectionId})`).join("\n") }];
+        const lines = value.connections.map((c) => {
+          const endpoint = c.type === "sqlite" ? (c.database ?? "(no file)") : `${c.host}:${c.port}`;
+          const metadata = [
+            c.type !== "sqlite" && c.database ? `db: ${c.database}` : null,
+            c.username ? `user: ${c.username}` : null,
+            c.ssl && c.ssl !== "disabled" ? `TLS: ${c.ssl}` : null,
+            c.sshConnectionId ? "via SSH" : null,
+            c.queryTimeoutMs !== undefined ? `query timeout: ${c.queryTimeoutMs === 0 ? "none" : `${Math.round(c.queryTimeoutMs / 1000)}s`}` : null
+          ].filter(Boolean);
+          return `- ${c.name} (${c.type}): ${endpoint}${metadata.length ? ` · ${metadata.join(" · ")}` : ""} (id: ${c.dbConnectionId})`;
+        });
+        return [{ type: "text", text: lines.join("\n") }];
       }
     },
     async execute(_args, exec) {
@@ -140,7 +163,7 @@ export function registerDbTools(ctx, service) {
   ctx.tools.register(defineTool({
     name: "db_execute",
     timeoutMs: DB_TOOL_TIMEOUT_MS,
-    description: "Run a write SQL statement (INSERT/UPDATE/DELETE/CREATE/ALTER) on a connected MySQL or PostgreSQL database. Destructive statements (DROP/TRUNCATE/SHUTDOWN, detected by leading statement verb so keywords inside string literals or comments are not false-positives) are not executed by the agent: the SQL is returned as a copyable card to paste into the database panel's SQL editor and run manually. For Redis or MongoDB, use db_run instead.",
+    description: "Run a write SQL statement (INSERT/UPDATE/DELETE/CREATE/ALTER) on a connected MySQL or PostgreSQL database. Destructive statements (DROP/TRUNCATE/SHUTDOWN, detected by leading statement verb so keywords inside string literals or comments are not false-positives) are NOT executed and must never be retried or worked around: DROP TABLE is instead backed up and quarantined by rename (result reports quarantined/renamedTo), while DROP DATABASE/TRUNCATE/SHUTDOWN are blocked after an automatic backup of the affected tables. Only the operator, via the database panel, can finalize any real deletion. For Redis or MongoDB, use db_run instead.",
     parameters: {
       db_connection_id: { type: "string", required: true },
       sql: { type: "string", required: true, description: "Write statement. MySQL uses ? placeholders, PostgreSQL uses $1 placeholders." },
@@ -155,12 +178,39 @@ export function registerDbTools(ctx, service) {
           truncated: { type: "boolean", required: true },
           blocked: { type: "boolean" },
           reason: { type: "string" },
-          sql: { type: "string" }
+          sql: { type: "string" },
+          quarantined: { type: "boolean" },
+          renamedTo: { type: "string" },
+          notice: { type: "string" },
+          backup: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                target: { type: "string", required: true },
+                path: { type: "string" },
+                schemaPath: { type: "string" },
+                bytes: { type: "integer" },
+                truncated: { type: "boolean" },
+                error: { type: "string" }
+              }
+            }
+          }
         }
       },
       render(_args, value) {
+        if (value.quarantined) {
+          const lines = [t(`♻️ DROP 已转换为隔离改名（数据未删除，可随时改回）：${value.sql} → ${value.renamedTo}`)];
+          if (Array.isArray(value.backup) && value.backup.length > 0) {
+            lines.push(backupSummary(value.backup));
+          }
+          lines.push(value.notice ?? t("彻底删除请由操作者在数据库面板执行。"));
+          return [{ type: "text", text: lines.join("\n") }];
+        }
         if (value.blocked) {
-          return [{ type: "text", text: `⚠️ 已拦截：${value.reason ?? ""}\nSQL 未执行，请在数据库面板 SQL 编辑器粘贴执行：\n\`\`\`sql\n${value.sql ?? ""}\n\`\`\`\n请勿重试/绕行，由人工执行。` }];
+          const backupNote = Array.isArray(value.backup) && value.backup.length > 0 ? `\n${backupSummary(value.backup)}` : "";
+          return [{ type: "text", text: t(`⚠️ 已拦截：${value.reason ?? ""}\nSQL 未执行，请在数据库面板 SQL 编辑器粘贴执行：\n\`\`\`sql\n${value.sql ?? ""}\n\`\`\`${backupNote}\n请勿重试/绕行，由人工执行。`) }];
         }
         let text = `Affected ${value.affectedRows} row(s).`;
         if (value.insertId !== undefined) text += ` Insert id: ${value.insertId}.`;
@@ -168,10 +218,15 @@ export function registerDbTools(ctx, service) {
       }
     },
     async execute(args, exec) {
-      const result = await service.dbExecute({ dbConnectionId: args.db_connection_id, sql: args.sql, params: args.params, signal: exec?.signal });
+      const result = await service.dbExecute({ dbConnectionId: args.db_connection_id, sql: args.sql, params: args.params, signal: exec?.signal, origin: "agent" });
       if (!result.ok) {
         if (result.error.code === "unsafe-sql") {
-          return { affectedRows: 0, truncated: false, blocked: true, reason: result.error.message, sql: args.sql };
+          const hasBackup = Array.isArray(result.error.backup) && result.error.backup.length > 0;
+          return {
+            affectedRows: 0, truncated: false, blocked: true,
+            reason: result.error.message, sql: args.sql,
+            ...(hasBackup ? { backup: result.error.backup } : {})
+          };
         }
         throw new Error(`db_execute failed: ${result.error.message}`);
       }
@@ -347,6 +402,52 @@ export function registerDbTools(ctx, service) {
     async execute(args, exec) {
       const result = await service.dbExplain({ dbConnectionId: args.db_connection_id, sql: args.sql, params: args.params, signal: exec?.signal });
       if (!result.ok) throw new Error(`db_explain failed: ${result.error.message}`);
+      return result.value;
+    }
+  }));
+
+  ctx.tools.register(defineTool({
+    name: "db_export",
+    timeoutMs: DB_TOOL_TIMEOUT_MS,
+    description: "Export the rows of a read-only query (SELECT/WITH, same lexical gate as db_query) as CSV or JSON. When the database is reached through an SSH connection the file is written onto that server (default /tmp/dsh-export-*.{csv,json}) and can be pulled with the SFTP tools; a directly-connected database returns the content inline (small results only). Use for dumping a table or query result, e.g. to hand a CSV to someone or to archive data.",
+    parameters: {
+      db_connection_id: { type: "string", required: true },
+      sql: { type: "string", required: true, description: "SELECT or WITH ... SELECT statement whose rows are exported." },
+      format: { type: "string", enum: ["csv", "json"], description: "Export format; defaults to csv." },
+      delimiter: { type: "string", enum: ["comma", "tab", "semicolon", "pipe"], description: "CSV field delimiter; defaults to comma." },
+      header: { type: "boolean", description: "Include a header row in CSV output; defaults to true." },
+      path: { type: "string", description: "Remote path to write to when the connection runs through SSH; defaults to /tmp/dsh-export-<connection>-<timestamp>.<ext>." },
+      max_rows: { type: "integer", description: "Row cap for the export; defaults to 50000, maximum 200000." },
+      params: { type: "array", description: "Optional parameter values for placeholders." }
+    },
+    output: {
+      schema: {
+        type: "object", additionalProperties: false,
+        properties: {
+          format: { type: "string", required: true },
+          columns: { type: "array", required: true, items: { type: "string" } },
+          rows: { type: "integer", required: true },
+          bytes: { type: "integer", required: true },
+          truncated: { type: "boolean", required: true },
+          path: { oneOf: [{ type: "string" }, { type: "null" }], required: true },
+          content: { type: "string" }
+        }
+      },
+      render(_args, value) {
+        const where = value.path !== null
+          ? `written to ${value.path} (pull it with the SFTP tools)`
+          : "returned inline";
+        const more = value.truncated ? " [truncated at the row cap]" : "";
+        return [{ type: "text", text: `db_export ${value.format}: ${value.rows} row(s), ${value.bytes} bytes ${where}${more}` }];
+      }
+    },
+    async execute(args, exec) {
+      const result = await service.dbExport({
+        dbConnectionId: args.db_connection_id, sql: args.sql, format: args.format,
+        delimiter: args.delimiter, header: args.header, path: args.path,
+        maxRows: args.max_rows, params: args.params, signal: exec?.signal
+      });
+      if (!result.ok) throw new Error(`db_export failed: ${result.error.message}`);
       return result.value;
     }
   }));

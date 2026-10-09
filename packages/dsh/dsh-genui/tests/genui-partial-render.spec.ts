@@ -51,13 +51,26 @@ describe('partial fence rendering (issue #186)', () => {
     expect(fenceSpec('{"items":[{"type":"progress","value":200},{"type":"stat","label":1,"value":2}]}')).toBeNull()
     // A single-node fence has no siblings to keep.
     expect(fenceSpec('{"items":[{"type":"progress","value":200}]}')).toBeNull()
-    // A bare component root keeps its wrap-relative paths out of reach.
+    // A defective bare root has no surviving content after pruning.
     expect(fenceSpec('{"type":"steps","items":[{"desc":"no title"}]}')).toBeNull()
   })
 
   it('passes a clean spec through untouched', () => {
     const raw = '{"items":[{"type":"text","content":"好"}]}'
     expect(partialRepairGenuiSpec(processGenuiSpec(JSON.parse(raw)))).toEqual(fenceSpec(raw))
+  })
+
+  it('renders the only declared node next to undeclared junk siblings (issue #254)', () => {
+    // 真实样本：模型漏了 keyvalue 包装，把两个 pair 对象直接放进 items。杂项
+    // 没有 type，不计入 declaredNativeCount —— 部分修复剪掉的是杂项，唯一合法
+    // 的 table 必须存活，不能被「声明数 ≤ 1」连坐（#253 已删该早退）。
+    const raw = '{"items":[{"type":"table","columns":["Item","Qty"],"rows":[["a","1"],["b","2"]]},{"key":"k1","value":"v1"},{"key":"k2","value":"v2"}]}'
+    const processed = processGenuiSpec(JSON.parse(raw))
+    expect(processed.declaredNativeCount).toBe(1)
+    expect(processed.errors).toEqual(["items[1]: missing string 'type'", "items[2]: missing string 'type'"])
+    const spec = fenceSpec(raw)
+    expect(spec).not.toBeNull()
+    expect(spec!.items).toEqual([{ type: 'table', columns: ['Item', 'Qty'], rows: [['a', '1'], ['b', '2']] }])
   })
 })
 
@@ -142,5 +155,135 @@ describe('partial fence pruning with multiple bad siblings (issue #190)', () => 
       { type: 'col', items: [{ type: 'stat', label: 'a', value: '1' }] },
       { type: 'text', content: 'tail' },
     ])
+  })
+})
+
+describe('partial table detail repair (issue #248)', () => {
+  const text = (content: string) => ({ type: 'text', content })
+  const table = (details: unknown) => ({ type: 'table', columns: ['Item'], rows: [['A'], ['B'], ['C']], details })
+
+  it('nulls malformed detail slots without shifting later rows or dropping the table', () => {
+    const value = { items: [table([text('bad A'), [text('B detail')], 42]), text('sibling')] }
+    const processed = processGenuiSpec(value)
+    expect(processed.errors).toEqual([
+      'items[0].details[0] must be an array or null',
+      'items[0].details[2] must be an array or null',
+    ])
+    expect(isRenderableProcess(processed)).toBe(false)
+    expect(partialRepairGenuiSpec(processed)?.items).toEqual([
+      table([null, [text('B detail')], null]), text('sibling'),
+    ])
+    expect(processed.value).toEqual(value)
+  })
+
+  it('drops bad detail children and keeps their healthy siblings on the same row', () => {
+    const value = { items: [table([
+      [{ type: 'text' }, text('A detail'), { type: 'progress', value: 200 }],
+      [text('B detail')],
+      null,
+    ])] }
+    expect(fenceSpec(JSON.stringify(value))?.items).toEqual([
+      table([[text('A detail')], [text('B detail')], null]),
+    ])
+  })
+
+  it('repairs malformed details when the table is the only declared native node', () => {
+    const node = table([text('not a detail list')])
+    const processed = processGenuiSpec({ items: [node] })
+    expect(processed.declaredNativeCount).toBe(1)
+    expect(partialRepairGenuiSpec(processed)?.items).toEqual([
+      { type: 'table', columns: ['Item'], rows: [['A'], ['B'], ['C']] },
+    ])
+  })
+
+  it('keeps a single table when every detail child is defective', () => {
+    const node = table([[{ type: 'text' }, { type: 'chart', kind: 'line', data: [] }]])
+    const expected = { items: [{ type: 'table', columns: ['Item'], rows: [['A'], ['B'], ['C']] }] }
+    expect(partialRepairGenuiSpec(processGenuiSpec({ items: [node] }))).toEqual(expected)
+    expect(partialRepairGenuiSpec(processGenuiSpec(node))).toEqual(expected)
+  })
+
+  it('repairs a bare table root using the same wrap-relative validation paths', () => {
+    const value = { ...table([text('bad A'), [text('B detail')]]), title: 'Items', panel: true }
+    const processed = processGenuiSpec(value)
+    expect(partialRepairGenuiSpec(processed)).toEqual({
+      title: 'Items', panel: true,
+      items: [table([null, [text('B detail')], null])],
+    })
+    expect(fenceSpec(JSON.stringify(value))).toEqual(partialRepairGenuiSpec(processed))
+  })
+
+  it('truncates excess detail slots and keeps both a single table and its siblings', () => {
+    const node = { type: 'table', columns: ['Item'], rows: [['A']], details: [[text('A detail')], [{ type: 'chart', kind: 'line', data: [] }]] }
+    const expected = { ...node, details: [[text('A detail')]] }
+    for (const [value, expectedItems] of [
+      [node, [expected]],
+      [{ items: [node] }, [expected]],
+      [{ items: [node, text('sibling')] }, [expected, text('sibling')]],
+    ] as const) {
+      const processed = processGenuiSpec(value)
+      expect(processed.errors).toEqual(['items[0].details must not contain more entries than rows'])
+      expect(isRenderableProcess(processed)).toBe(false)
+      expect(partialRepairGenuiSpec(processed)?.items).toEqual(expectedItems)
+    }
+  })
+
+  it('resolves nested details paths through tabs and containers', () => {
+    const nested = { type: 'col', items: [
+      { type: 'tabs', tabs: [{ label: 'Nested', items: [table([
+        [{ type: 'col', items: [{ type: 'text' }, text('nested survivor')] }],
+        [text('B detail')],
+        null,
+      ])] }] },
+    ] }
+    const spec = partialRepairGenuiSpec(processGenuiSpec({ items: [nested] }))
+    expect(spec?.items).toEqual([{ type: 'col', items: [
+      { type: 'tabs', tabs: [{ label: 'Nested', items: [table([
+        [{ type: 'col', items: [text('nested survivor')] }],
+        [text('B detail')],
+        null,
+      ])] }] },
+    ] }])
+  })
+
+  it('repairs a nested table overhang and child errors together', () => {
+    const nested = { type: 'table', columns: ['Nested'], rows: [['N']], details: [
+      [{ type: 'text' }, text('nested detail')],
+      [text('unreachable detail')],
+    ] }
+    const value = { items: [table([[nested]])] }
+    expect(partialRepairGenuiSpec(processGenuiSpec(value))?.items).toEqual([
+      table([[{ ...nested, details: [[text('nested detail')]] }], null, null]),
+    ])
+  })
+
+  it('drops undrawable charts in details instead of exposing repaired blank charts', () => {
+    const value = { items: [table([
+      [{ type: 'chart', kind: 'line', data: [] }, text('A detail')],
+      [text('B detail')],
+      null,
+    ])] }
+    expect(fenceSpec(JSON.stringify(value))?.items).toEqual([
+      table([[text('A detail')], [text('B detail')], null]),
+    ])
+  })
+
+  it('rejects a retry with newly exposed submission errors or invalid root fields', () => {
+    const node = table([[{ type: 'input', id: 'lost', label: 42 }]])
+    expect(partialRepairGenuiSpec(processGenuiSpec({ items: [
+      node, { type: 'submit', label: 'Send', action: 'send', groups: ['lost'] },
+    ] }))).toBeNull()
+    expect(partialRepairGenuiSpec(processGenuiSpec({ title: 42, items: [node] }))).toBeNull()
+  })
+
+  it('continues to reject a defective single component itself', () => {
+    for (const node of [
+      { type: 'stat', label: 42, value: '1' },
+      { type: 'table', columns: ['Item'], rows: 42, details: [[text('detail')]] },
+      { type: 'chart', kind: 'line', data: [] },
+    ]) {
+      expect(partialRepairGenuiSpec(processGenuiSpec(node))).toBeNull()
+      expect(partialRepairGenuiSpec(processGenuiSpec({ items: [node] }))).toBeNull()
+    }
   })
 })

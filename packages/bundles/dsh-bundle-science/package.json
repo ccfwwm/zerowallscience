@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/dsh-bundle-science",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "type": "module",
   "license": "AGPL-3.0-only",
   "files": [

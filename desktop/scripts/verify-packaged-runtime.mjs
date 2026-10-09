@@ -406,7 +406,7 @@ async function verifyArchivePolicy() {
   const sourceDreamSkinClient = await readFile(resolve(repositoryRoot, 'desktop/node_modules/dsh-dream-skin/lib/client.js'))
   const { adaptDreamSkinClient } = await import('../../tools/packaging/adapt-dream-skin.mjs')
   if (!dreamSkinClient.equals(Buffer.from(adaptDreamSkinClient(sourceDreamSkinClient.toString('utf8'))))) {
-    throw new Error('Packaged Dream Skin client must match the pinned v9.29.0 source and ZeroWall appearance patch.')
+    throw new Error('Packaged Dream Skin client must match the pinned v10.9.3 source and ZeroWall appearance patch.')
   }
   const dreamSkinSource = dreamSkinClient.toString('utf8')
   const factoryDefaults = dreamSkinSource.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1]
@@ -1245,7 +1245,7 @@ async function verifyPluginInventory(url) {
 }
 
 async function verifyFreeSearch(url) {
-  // dsh-free-search 0.6.0 stores its config under its composition entry id.
+  // dsh-free-search 0.8.3 stores its config under its composition entry id.
   // Keep this in sync with the official cordis.patch.yml and client bridge.
   const namespace = 'web-search-free'
   const endpoint = path => authUrl(new URL(url), `/api/dsh-free-search-settings/${path}`)

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-projects",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ZeroWall Science projects domain plugin (desktop 8.0.0).",
   "type": "module",
   "main": "./lib/index.js",
@@ -108,7 +108,7 @@
   ],
   "dependencies": {
     "dsh-better-sidebar": "workspace:^",
-    "dsh-dream-skin": "9.29.0",
+    "dsh-dream-skin": "10.9.3",
     "@zerowallscience/research-store": "workspace:^",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",

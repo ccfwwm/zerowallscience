@@ -7,6 +7,7 @@
  */
 import type { GenuiSpec } from '../spec.ts'
 import type { BlockInteractionState } from '../interaction-store.ts'
+import type { SubmissionRegistry } from '../submission-registry.ts'
 
 export interface GenuiBlockProps {
   /** Parsed spec to render. */
@@ -35,16 +36,6 @@ export interface GenuiBlockProps {
   onStateSnapshot?: ((state: BlockInteractionState) => void) | undefined
 }
 
-/** Per-question metadata registered by grouped radios for local grading. */
-export interface QuestionMeta {
-  label: string
-  options: string[]
-  /** Correct option: index (number) or label (string); absent = no local grading. */
-  answer?: number | string | undefined
-  /** Shown after local grading. */
-  explanation?: string | undefined
-}
-
 /** Block-wide aggregation state. Grouped radios store one selected label in
  * `answers`; grouped checkboxes store a selected-label array in
  * `multiAnswers`. Keeping the registries separate preserves the existing
@@ -60,7 +51,7 @@ export interface AnswersState {
   fields: Record<string, string>
   /** Field ids whose value must never be persisted or collected (secrets). */
   secretFields: ReadonlySet<string>
-  meta: Record<string, QuestionMeta>
+  registry: SubmissionRegistry
   /** True after a local grading: questions are locked until 重新作答. */
   locked: boolean
   /** Bumped by every reset; radios use it as their remount key. */
@@ -69,7 +60,6 @@ export interface AnswersState {
   setMultiAnswer: (group: string, choice: string, checked: boolean) => void
   setField: (id: string, value: string) => void
   registerSecretField: (id: string) => void
-  registerMeta: (group: string, meta: QuestionMeta) => void
   clear: () => void
   setLocked: (locked: boolean) => void
 }

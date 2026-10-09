@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-publications",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ZeroWall Science publications domain plugin (desktop 8.0.0).",
   "type": "module",
   "main": "./lib/index.js",
@@ -108,7 +108,7 @@
   ],
   "dependencies": {
     "dsh-better-sidebar": "workspace:^",
-    "dsh-dream-skin": "9.29.0",
+    "dsh-dream-skin": "10.9.3",
     "@zerowallscience/plugin-runs": "workspace:^",
     "@zerowallscience/research-store": "workspace:^",
     "jszip": "3.10.1",

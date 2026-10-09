@@ -25,7 +25,7 @@ test('better-sidebar is a single pinned default workbench in every profile', asy
   }
 })
 
-test('better-sidebar contains the merged v0.24.1 compatibility changes', async () => {
+test('better-sidebar contains the merged v0.25.0 compatibility changes', async () => {
   const editor = await readFile(resolve(root, 'packages/dsh/dsh-better-sidebar/src/client/EditorHost.tsx'), 'utf8')
   const tree = await readFile(resolve(root, 'packages/dsh/dsh-better-sidebar/src/client/FileTree.tsx'), 'utf8')
   const sidechat = await readFile(resolve(root, 'packages/dsh/dsh-better-sidebar/src/client/SideChatView.tsx'), 'utf8')
@@ -38,7 +38,7 @@ test('better-sidebar contains the merged v0.24.1 compatibility changes', async (
 
 test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-dream-skin'], '9.29.0')
+  assert.equal(desktop.dependencies['dsh-dream-skin'], '10.9.3')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.equal((patch.match(/\bid: dream-skin\b/gu) ?? []).length, 1)
   assert.ok(patch.indexOf('id: dream-skin') < patch.indexOf('id: better-sidebar'))
@@ -48,19 +48,16 @@ test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', asyn
   }
 })
 
-test('Dream Skin first run uses iOS Flat without a wallpaper and retains only the abstract legacy fingerprint', async () => {
+test('Dream Skin 10.9.3 preserves the factory skin and defers wallpaper seeding', async () => {
   const source = await readFile(resolve(root, 'desktop/node_modules/dsh-dream-skin/lib/client.js'), 'utf8')
   const defaults = source.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1]
   assert.ok(defaults, 'Dream Skin factory defaults must be present')
-  assert.match(defaults, /\[STORAGE_KEY\]: "nebula"/u)
+  assert.match(source, /const FACTORY_SKIN_ID = "nebula"/u)
+  assert.match(defaults, /\[STORAGE_KEY\]: (?:FACTORY_SKIN_ID|"nebula")/u)
   assert.match(defaults, /\[WALLPAPER_KIND_KEY\]: "image"/u)
-  assert.match(source, /\bid: "ivory",\s*colorScheme: "light"/u)
-  assert.match(source, /"skin\.ivory": "iOS Flat"/u)
-  assert.match(source, /FACTORY_DEFAULTS\[STORAGE_KEY\] = "ivory"/u)
-  assert.match(source, /FACTORY_DEFAULTS\[WALLPAPER_KEY\] = ""/u)
-  assert.match(source, /FACTORY_DEFAULTS\[WALLPAPER_GRADIENT_KEY\] = ""/u)
-  assert.match(source, /function migrateLegacyFactoryAppearance\(\)/u)
-  assert.match(source, /const legacyHostFactory = parsed\.value\[STORAGE_KEY\] === LEGACY_FACTORY_SKIN/u)
+  assert.match(source, /const DEFERRED_WALLPAPER_KEYS = \[/u)
+  assert.match(source, /DEFERRED_WALLPAPER_KEYS\.includes\(key\)/u)
+  assert.match(source, /writeStorage\(FACTORY_APPLIED_KEY, "1", \{ factory: true \}\)/u)
   const encoded = defaults.match(/\[WALLPAPER_KEY\]: "data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)"/u)?.[1]
   assert.ok(encoded, 'legacy factory wallpaper fingerprint must be the abstract SVG')
   const svg = Buffer.from(encoded, 'base64').toString('utf8')
@@ -119,7 +116,7 @@ test('all ZeroWall plugins expose a manifest and rc.2 range', async () => {
 
 test('dsh-free-search directly replaces the removed ZeroWall search plugin', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-free-search'], '0.6.0')
+  assert.equal(desktop.dependencies['dsh-free-search'], '0.8.3')
   assert.equal(desktop.dependencies['@zerowallscience/plugin-web-search'], undefined)
 
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
@@ -137,7 +134,7 @@ test('dsh-free-search directly replaces the removed ZeroWall search plugin', asy
 test('the pinned dsh-free-search package uses current client services and has no self-updater', async () => {
   const packageRoot = resolve(root, 'desktop/node_modules/dsh-free-search')
   const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
-  assert.equal(manifest.version, '0.6.0')
+  assert.equal(manifest.version, '0.8.3')
   assert.equal(manifest.license, 'MIT')
   assert.deepEqual(manifest.dsh.client.inject, [
     '@deepseek-ai/dsh-client-ui-commands',
@@ -154,8 +151,8 @@ test('the pinned dsh-free-search package uses current client services and has no
   assert.match(client, /free-search-engine/u)
 
   const lockfile = parseYaml(await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8'))
-  assert.equal(lockfile.packages['dsh-free-search@0.6.0'].resolution.integrity,
-    'sha512-pAxhN4mVr2UpADCS/qQiJpVOco7aPD0640mYaIh2QatIrryMcsLvSds0dpimpqr+0+qYcQ9F8+BInkAVV3t5ow==')
+  assert.equal(lockfile.packages['dsh-free-search@0.8.3'].resolution.integrity,
+    'sha512-GofSod7DqBWzxwLSxQyyLGzkpDr2ZZk10IoivuTadL22efIRvIjRZ6X4VbKJshc7gYpPYXxCYR8E8PkNunYM5w==')
 })
 
 test('About remains the final Settings navigation section', async () => {

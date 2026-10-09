@@ -7,6 +7,7 @@
 import { createTerminalOutput } from "./terminal-output.js";
 import { randomUUID } from "node:crypto";
 import { findReusableProfileConnection } from "./profile-connection.js";
+import { resolveProfileRef, noConnectionGuidance, AUTO_CONNECT_DISABLED_MESSAGE } from "./agent-connect.js";
 import net from "node:net";
 import { Client } from "ssh2";
 import { Service } from "@deepseek-ai/cordis";
@@ -14,16 +15,28 @@ import { credentialRef } from "@deepseek-ai/dsh-credentials";
 import { defineDomain, domainTable } from "@deepseek-ai/dsh-storage-domain";
 import { TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import { z } from "zod";
-import { assessShellCommand, isPrefillable, shellQuote } from "./safety.js";
+import { CATEGORY_DELETE_FILES, assessShellCommand, isPrefillable, shellQuote } from "./safety.js";
 import { EXEC_CWD_ERROR_PREFIX, buildCwdAwareCommand, execEchoWarning, extractExecCwd, posixLoginShell } from "./exec-cwd.js";
+import { buildTrashCommand, parseSimpleDeleteCommand, parseTrashOutput } from "./trash.js";
 import { scpCommand, scpDownload, scpUpload } from "./scp.js";
 import { redactForModel } from "./redact.js";
 import { isTransientConnectError } from "./net-errors.js";
 import { isIdentMismatchError, withRepairedBanner } from "./ssh-banner.js";
+import { createAuthTracker, makeAuthHandler, classifyConnectFailure, formatConnectFailure, wasAuthCut } from "./ssh-auth.js";
+import { applyAgentForwarding } from "./ssh-agent.js";
 import { processTerminalInput } from "./terminal-input.js";
 import { fail } from "./envelope.js";
 import { POLICY_NOTICE_PREFIX, DANGEROUS_DEFAULT_REASON } from "./policy-messages.js";
 import { DbOpsManager } from "./db-ops.js";
+import { defaultDbPort } from "./db-drivers.js";
+import { attachSocks5 } from "./socks5.js";
+import { SessionLogStore } from "./session-log.js";
+import { SHELL_FAMILY_PROBE, ShellIntegrationTracker, parseShellFamilyProbe, shellIntegrationCommand } from "./shell-integration.js";
+import { homedir } from "node:os";
+import { join as joinPath, dirname as dirnamePath, relative as relativePath } from "node:path";
+import { mkdir as fsMkdir, readdir as fsReaddir, stat as fsStat } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { runTransferTasks, joinRemotePath, splitRemotePath } from "./sftp-dir.js";
 import {
   KnownHosts,
   decideHostKey,
@@ -36,6 +49,9 @@ import { registerSftpTools } from "./tools/sftp.js";
 import { registerTunnelTools } from "./tools/tunnel.js";
 import { registerBatchTools } from "./tools/batch.js";
 import { registerDbTools } from "./tools/db.js";
+import { registerSessionLogTools } from "./tools/session-log.js";
+import { t, setLanguage } from "./i18n/core.js";
+import { registerPluginUpdater, UPDATE_ENDPOINT } from "./plugin-updater.js";
 
 const MAX_BUFFER_BYTES = 2 * 1024 * 1024;
 const MAX_COMMAND_OUTPUT_BYTES = 64 * 1024;
@@ -122,7 +138,7 @@ function parseDbToolRegistration(raw = process.env.DSH_SSH_OPS_REGISTER_DB_TOOLS
   throw new Error("DSH_SSH_OPS_REGISTER_DB_TOOLS must be 0, 1, true, or false");
 }
 
-export const profileRecordSchema = z.object({
+const profileRecordSchema = z.object({
   name: z.string(),
   host: z.string(),
   port: z.number().int(),
@@ -136,6 +152,9 @@ export const profileRecordSchema = z.object({
   // domain can read every pre-0.3.3 resource without migration.
   credentialId: z.string().uuid().nullable().optional(),
   // Optional so already-saved resources load without a storage migration.
+  // Nullable because profileSave persists `null` for "no project directory"
+  // (the request schema accepts an explicit null to clear the entry) and DSH
+  // re-validates every stored record when it reopens the domain at boot.
   // This is metadata only; it never contains credentials or shell syntax.
   defaultProjectPath: z.string().nullable().optional(),
   proxyJump: z.array(z.union([z.object({ profileId: z.string().uuid() }), z.object({
@@ -159,7 +178,10 @@ const groupRecordSchema = z.object({
   updatedAt: z.string()
 });
 
-const profileDomainSpec = defineDomain({
+// Exported (with the credential, DB-profile and known-host specs below) so
+// tests can assert that the records each save path writes satisfy the schemas
+// DSH re-validates when it reopens the domain at boot.
+export const profileDomainSpec = defineDomain({
   name: "ssh_ops_profiles",
   version: 1,
   tables: {
@@ -171,7 +193,7 @@ const profileDomainSpec = defineDomain({
 // Keep shared credentials in a new unit rather than bumping the established
 // profile unit. DSH's JSON storage rejects in-place unit-version changes, and
 // users' existing server profiles must never prevent the host from booting.
-const credentialDomainSpec = defineDomain({
+export const credentialDomainSpec = defineDomain({
   name: "ssh_ops_credentials",
   version: 1,
   tables: { credentials: domainTable(credentialRecordSchema) }
@@ -179,18 +201,22 @@ const credentialDomainSpec = defineDomain({
 
 const dbProfileRecordSchema = z.object({
   name: z.string(),
-  type: z.enum(["mysql", "postgresql", "redis", "mongodb"]),
+  type: z.enum(["mysql", "postgresql", "opengauss", "sqlite", "clickhouse", "redis", "mongodb"]),
+  // SQLite records carry their file path in `database` and leave these empty.
   host: z.string(),
   port: z.number().int(),
   database: z.string().nullable(),
   username: z.string().nullable(),
   ssl: z.string(),
   sshProfileId: z.string().uuid().nullable(),
+  // Connect-time statement deadline (0 = unlimited; null/absent = default).
+  // Optional so records written by older builds keep loading.
+  queryTimeoutMs: z.number().int().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
 
-const dbProfileDomainSpec = defineDomain({
+export const dbProfileDomainSpec = defineDomain({
   name: "db_ops_profiles",
   version: 1,
   tables: {
@@ -207,13 +233,52 @@ const knownHostRecordSchema = z.object({
   lastSeenAt: z.string()
 });
 
-const knownHostDomainSpec = defineDomain({
+export const knownHostDomainSpec = defineDomain({
   name: "ssh_ops_known_hosts",
   version: 1,
   tables: {
     known_hosts: domainTable(knownHostRecordSchema)
   }
 });
+
+// Operator-level plugin settings (one row, id "main"). New fields must be
+// optional so records written by older builds keep loading.
+const settingsRecordSchema = z.object({
+  agentAutoConnect: z.boolean().optional(),
+  // Interface language chosen by the operator ("zh" | "en"). Absent means
+  // "never chosen explicitly", so the settings page adopts whatever DSH
+  // Settings → Language is showing and writes that back.
+  language: z.enum(["zh", "en"]).optional(),
+  // When false, the host language is never followed or written back: the
+  // stored `language` value is authoritative. Absent means "true" so first
+  // installs behave exactly as before this flag existed.
+  autoApplySystemLanguage: z.boolean().optional(),
+  updatedAt: z.string().optional()
+});
+
+export const settingsDomainSpec = defineDomain({
+  name: "ssh_ops_settings",
+  version: 1,
+  tables: {
+    settings: domainTable(settingsRecordSchema)
+  }
+});
+
+const SETTINGS_ROW_ID = "main";
+
+/**
+ * Interpret one persisted settings record into the runtime switches. Absent
+ * `autoApplySystemLanguage` means "true" (follow the host), which is also what
+ * a first install must behave like. Extracted so boot and tests share one
+ * reading of the record.
+ */
+export function loadSettingsRecord(record = {}) {
+  return {
+    agentAutoConnect: record.agentAutoConnect === true,
+    language: record.language === "zh" || record.language === "en" ? record.language : null,
+    autoApplySystemLanguage: record.autoApplySystemLanguage !== false
+  };
+}
 
 function profileCredentialRefs(profileId) {
   const stem = profileId.replaceAll("-", "").toUpperCase();
@@ -231,6 +296,25 @@ function sharedCredentialRefs(credentialId) {
     privateKey: `DSH_SSH_OPS_SHARED_${stem}_PRIVATE_KEY`,
     passphrase: `DSH_SSH_OPS_SHARED_${stem}_PASSPHRASE`
   };
+}
+
+/**
+ * Assemble the wire `auth` object from a primary factor plus an optional
+ * opposite-kind secondary factor (dual-factor devices such as firewalls or
+ * switches configured with `AuthenticationMethods password,publickey`, or
+ * the reverse, require both factors on the SAME connection). For a password
+ * primary the secondary is a key and takes the shared passphrase slot; for a
+ * key primary the secondary is a plain password.
+ */
+function assembleAuth(authKind, primaryValue, { secondaryValue, passphraseValue, secondaryPassphraseValue } = {}) {
+  const primary = authKind === "password"
+    ? { kind: "password", password: primaryValue }
+    : { kind: "key", privateKey: primaryValue, ...(passphraseValue === undefined ? {} : { passphrase: passphraseValue }) };
+  if (secondaryValue === undefined) return primary;
+  const secondary = authKind === "password"
+    ? { kind: "key", privateKey: secondaryValue, ...(secondaryPassphraseValue === undefined ? {} : { passphrase: secondaryPassphraseValue }) }
+    : { kind: "password", password: secondaryValue };
+  return { ...primary, secondary };
 }
 
 function profileJumpPasswordRef(profileId, index) {
@@ -312,6 +396,27 @@ export default class SshOpsService extends TypertRemoteService {
 
   /** The connection currently represented by the right-side terminal panel. */
   activeConnectionId = null;
+  /**
+   * Agent auto-connect switch (issue #25): when true the agent may connect
+   * saved SSH resources itself (ssh_connect_profile, and ssh_list shows the
+   * saved resources). Persisted in ssh_ops_settings; default OFF.
+   */
+  agentAutoConnect = false;
+  /**
+   * Interface language last resolved from DSH's own Settings → Language by
+   * the browser half ("zh" | "en"), or null before the first write-back.
+   * There is no manual language switch: the plugin always follows the host,
+   * and this stored value lets the host half (agent-visible messages) speak
+   * the same language from the first message built after boot.
+   */
+  language = null;
+  /**
+   * Whether the plugin follows DSH's own Settings → Language ("true", the
+   * default) or is pinned to the stored `language` value ("false", operator
+   * edit of ssh_ops_settings.json). When false the host language is neither
+   * followed nor written back by the browser half.
+   */
+  autoApplySystemLanguage = true;
   profileTable = null;
   groupTable = null;
   credentialTable = null;
@@ -319,6 +424,8 @@ export default class SshOpsService extends TypertRemoteService {
   knownHostTable = null;
   /** KnownHosts adapter over `knownHostTable`; null until [Service.init]. */
   knownHosts = null;
+  /** Operator settings table; null until [Service.init]. */
+  settingsTable = null;
 
   constructor(ctx, config = {}) {
     super(ctx, "sshOps");
@@ -330,6 +437,10 @@ export default class SshOpsService extends TypertRemoteService {
       streamHeartbeatMs: STREAM_HEARTBEAT_MS,
       registerDbAgentTools: parseDbToolRegistration(),
       maxDbRows: parseDbRows(),
+      // Session recording is on by default; the directory defaults to
+      // ~/.dsh/ssh-ops-logs and is resolved lazily on first use.
+      sessionLogEnabled: true,
+      sessionLogDir: undefined,
       ...config
     };
     // Tear down all connections when the plugin fiber unloads.
@@ -362,6 +473,12 @@ export default class SshOpsService extends TypertRemoteService {
           this.handleStreamRoute(req, res, hostCtx.connection);
         }
       }), "ssh-ops: streaming file routes");
+      // Settings-page self-update endpoint (GET status / trusted POST install).
+      hostCtx.effect(() => registerPluginUpdater(hostCtx, {
+        endpoint: UPDATE_ENDPOINT,
+        packageName: "dsh-ssh-ops",
+        manifestUrl: new URL("../package.json", import.meta.url)
+      }), "ssh-ops: plugin update endpoint");
     });
   }
 
@@ -380,6 +497,38 @@ export default class SshOpsService extends TypertRemoteService {
     this.knownHostTable = knownHostDomain.table("known_hosts");
     this.knownHosts = new KnownHosts(this.knownHostTable);
     this.ctx.effect(() => () => knownHostDomain.close(), "ssh-ops: known-host domain close");
+    const settingsDomain = await this.ctx.storageDomain.open(settingsDomainSpec);
+    this.settingsTable = settingsDomain.table("settings");
+    this.ctx.effect(() => () => settingsDomain.close(), "ssh-ops: settings domain close");
+    // Load the persisted operator switch; a missing row (first boot) keeps the
+    // safe default off, and a read failure must not block service startup.
+    try {
+      const settingsRecord = this.settingsTable.get(SETTINGS_ROW_ID) ?? {};
+      const loaded = loadSettingsRecord(settingsRecord);
+      this.agentAutoConnect = loaded.agentAutoConnect;
+      // An explicit choice drives the host half from the first message it
+      // builds. With no choice stored, the host keeps its default (zh) and
+      // the browser half adopts DSH's language and writes it back.
+      this.language = loaded.language;
+      // "false" pins the stored language: the browser half must never follow
+      // (or write back) the host language. Absent defaults to true so first
+      // installs keep the auto-follow behaviour.
+      this.autoApplySystemLanguage = loaded.autoApplySystemLanguage;
+      // Materialize the default: the flag is an operator-editable field of
+      // ssh_ops_settings.json, so a record that predates it must gain the
+      // explicit "true" on first load after the upgrade — otherwise the
+      // settings file would never show the knob the operator can flip.
+      if (settingsRecord.autoApplySystemLanguage === undefined) {
+        await this.settingsTable.put(SETTINGS_ROW_ID, {
+          ...settingsRecord,
+          autoApplySystemLanguage: true,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      // The browser half refreshes this from the live host on every load;
+      // until then it is the best-known host language.
+      if (this.language !== null) setLanguage(this.language);
+    } catch {}
   }
 
   // ── Remote methods ─────────────────────────────────────────────────────────
@@ -398,9 +547,55 @@ export default class SshOpsService extends TypertRemoteService {
       // Strict Typert results must be JSON-safe: optional fields must be
       // absent, rather than present with an `undefined` value.
       if (c.name !== undefined) connection.name = c.name;
+      // The browser reveals agent-opened sessions, and a new request token
+      // also reveals reused connections whose existing PTY was human-opened.
+      if ([...c.sessions].some((sessionId) => this.sessions?.get(sessionId)?.openedBy === "agent")) connection.agentSession = true;
+      if (c.agentRevealId !== undefined) connection.agentRevealId = c.agentRevealId;
       connections.push(connection);
     }
-    return { ok: true, value: { connections, activeConnectionId: this.activeConnectionId } };
+    const value = { connections, activeConnectionId: this.activeConnectionId };
+    // Saved resources reach the agent only after the operator opted in
+    // (issue #25); with the switch off, ssh_list keeps today's strict
+    // live-connections-only stance.
+    if (this.agentAutoConnect) {
+      try {
+        value.resources = this.savedResourceSummaries();
+      } catch {}
+    }
+    return { ok: true, value };
+  }
+
+  /**
+   * Saved SSH resources as the agent may see them: coordinates only. The
+   * caller gates on `agentAutoConnect`; a storage failure must not take
+   * `list()` down, so callers wrap this in try/catch.
+   */
+  savedResourceSummaries() {
+    const connectedProfileIds = new Set(
+      [...this.connections.values()].map((connection) => connection.profileId).filter(Boolean)
+    );
+    return [...this.requireProfileTable().entries()]
+      .map(([profileId, record]) => ({
+        profileId,
+        name: record.name,
+        host: record.host,
+        port: record.port,
+        username: record.username,
+        connected: connectedProfileIds.has(profileId)
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN"));
+  }
+
+  /** Saved resource names for error guidance; failures degrade to an empty list. */
+  savedResourceNameList() {
+    if (!this.agentAutoConnect) return [];
+    try {
+      return [...this.requireProfileTable().values()]
+        .map((record) => record.name)
+        .sort((left, right) => left.localeCompare(right, "zh-Hans-CN"));
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -413,13 +608,37 @@ export default class SshOpsService extends TypertRemoteService {
   async selectConnection(request) {
     const connection = this.connections.get(request.connectionId);
     if (connection === void 0) {
-      return { ok: false, error: fail("no-connection", `connection "${request.connectionId}" does not exist`) };
+      return { ok: false, error: fail("no-connection", noConnectionGuidance(request.connectionId, this.savedResourceNameList(), this.agentAutoConnect)) };
     }
     if (connection.dead || connection.closing) {
       return { ok: false, error: fail("connection-lost", `connection "${request.connectionId}" is not usable`) };
     }
     this.activeConnectionId = request.connectionId;
     return { ok: true, value: { activeConnectionId: this.activeConnectionId } };
+  }
+
+  /**
+   * Resolve a credential's primary factor plus its optional opposite-kind
+   * secondary (dual-factor auth) from a refs triple. The passphrase slot is
+   * shared: it holds the primary key's passphrase for key-primary records
+   * and the secondary key's passphrase for password-primary records. The
+   * secondary is optional — an unconfigured slot yields a single-factor auth.
+   */
+  async resolveCredentialAuth(refs, authKind) {
+    const primary = await this.ctx.credentials.resolve(credentialRef(authKind === "password" ? refs.password : refs.privateKey));
+    if (primary === undefined) return undefined;
+    const passphrase = authKind === "key"
+      ? await this.ctx.credentials.resolve(credentialRef(refs.passphrase))
+      : undefined;
+    const secondary = await this.ctx.credentials.resolve(credentialRef(authKind === "password" ? refs.privateKey : refs.password));
+    const secondaryPassphrase = authKind === "password"
+      ? await this.ctx.credentials.resolve(credentialRef(refs.passphrase))
+      : undefined;
+    return assembleAuth(authKind, primary.value, {
+      passphraseValue: passphrase?.value,
+      secondaryValue: secondary?.value,
+      secondaryPassphraseValue: secondaryPassphrase?.value
+    });
   }
 
   async connect(request) {
@@ -429,15 +648,9 @@ export default class SshOpsService extends TypertRemoteService {
         const credential = this.requireCredentialTable().get(request.credentialId);
         if (credential === undefined) return { ok: false, error: fail("no-credential", `SSH credential "${request.credentialId}" does not exist`) };
         const refs = sharedCredentialRefs(request.credentialId);
-        const primary = await this.ctx.credentials.resolve(credentialRef(credential.authKind === "password" ? refs.password : refs.privateKey));
-        if (primary === undefined) return { ok: false, error: fail("credential-missing", `shared credential "${credential.name}" has no saved ${credential.authKind === "password" ? "password" : "private key"}`) };
-        const passphrase = credential.authKind === "key" ? await this.ctx.credentials.resolve(credentialRef(refs.passphrase)) : undefined;
-        resolvedRequest = {
-          ...request,
-          auth: credential.authKind === "password"
-            ? { kind: "password", password: primary.value }
-            : { kind: "key", privateKey: primary.value, ...(passphrase === undefined ? {} : { passphrase: passphrase.value }) }
-        };
+        const auth = await this.resolveCredentialAuth(refs, credential.authKind);
+        if (auth === undefined) return { ok: false, error: fail("credential-missing", `shared credential "${credential.name}" has no saved ${credential.authKind === "password" ? "password" : "private key"}`) };
+        resolvedRequest = { ...request, auth };
       } catch (error) { return { ok: false, error: fail("credential-connect-failed", error.message) }; }
     }
     if (Array.isArray(resolvedRequest.proxyJumpProfileIds) && resolvedRequest.proxyJumpProfileIds.length > 0) {
@@ -445,15 +658,14 @@ export default class SshOpsService extends TypertRemoteService {
         const seen = new Set();
         const proxyJump = [];
         for (const profileId of request.proxyJumpProfileIds) {
-          if (seen.has(profileId)) return { ok: false, error: fail("jump-duplicate", "同一条跳板链不能重复选择同一台服务器") };
+          if (seen.has(profileId)) return { ok: false, error: fail("jump-duplicate", t("同一条跳板链不能重复选择同一台服务器")) };
           seen.add(profileId);
           const profile = this.requireProfileTable().get(profileId);
           if (profile === undefined) return { ok: false, error: fail("no-profile", `jump-host profile "${profileId}" does not exist`) };
           const refs = profile.credentialId ? sharedCredentialRefs(profile.credentialId) : profileCredentialRefs(profileId);
-          const primary = await this.ctx.credentials.resolve(credentialRef(profile.authKind === "password" ? refs.password : refs.privateKey));
-          if (primary === undefined) return { ok: false, error: fail("credential-missing", `jump host "${profile.name}" has no saved credential`) };
-          const passphrase = profile.authKind === "key" ? await this.ctx.credentials.resolve(credentialRef(refs.passphrase)) : undefined;
-          proxyJump.push({ host: profile.host, port: profile.port, username: profile.username, hostKeyMode: profile.hostKeyMode, auth: profile.authKind === "password" ? { kind: "password", password: primary.value } : { kind: "key", privateKey: primary.value, ...(passphrase === undefined ? {} : { passphrase: passphrase.value }) } });
+          const auth = await this.resolveCredentialAuth(refs, profile.authKind);
+          if (auth === undefined) return { ok: false, error: fail("credential-missing", `jump host "${profile.name}" has no saved credential`) };
+          proxyJump.push({ host: profile.host, port: profile.port, username: profile.username, hostKeyMode: profile.hostKeyMode, auth });
         }
         return await this.connectInternal({ ...resolvedRequest, proxyJump });
       } catch (error) { return { ok: false, error: fail("profile-jump-connect-failed", error.message) }; }
@@ -471,11 +683,27 @@ export default class SshOpsService extends TypertRemoteService {
       keepaliveInterval: request.keepaliveInterval ?? KEEPALIVE_INTERVAL_MS,
       keepaliveCountMax: request.keepaliveCountMax ?? KEEPALIVE_COUNT_MAX
     };
-    if (request.auth.kind === "password") {
-      connectConfig.password = request.auth.password;
-    } else {
-      connectConfig.privateKey = request.auth.privateKey;
-      if (request.auth.passphrase !== void 0) connectConfig.passphrase = request.auth.passphrase;
+    // Dual-factor devices require both factors on the same connection: apply
+    // the primary and, when present, the secondary to the ssh2 config so the
+    // auth handler can walk password → publickey in either server order.
+    if (request.auth.password !== undefined) connectConfig.password = request.auth.password;
+    if (request.auth.privateKey !== undefined) connectConfig.privateKey = request.auth.privateKey;
+    if (request.auth.passphrase !== void 0) connectConfig.passphrase = request.auth.passphrase;
+    if (request.auth.secondary?.kind === "key") {
+      connectConfig.privateKey = request.auth.secondary.privateKey;
+      if (request.auth.secondary.passphrase !== void 0) connectConfig.passphrase = request.auth.secondary.passphrase;
+    } else if (request.auth.secondary?.kind === "password") {
+      connectConfig.password = request.auth.secondary.password;
+    }
+    // Opt-in SSH agent forwarding (jump-host workflows): wire the local agent
+    // into the config BEFORE the record exists — a missing agent is an
+    // environment problem the user must fix, not a transient failure worth
+    // retrying. On success every shell/exec channel on this connection
+    // requests forwarding (ssh2 handles the auth-agent channel plumbing), and
+    // the agent also becomes an additional auth method for the handshake.
+    const agentApplied = applyAgentForwarding(connectConfig, request.agentForward === true);
+    if (!agentApplied.ok) {
+      return { ok: false, error: fail(agentApplied.error.code, agentApplied.error.message) };
     }
     const record = {
       id,
@@ -506,6 +734,12 @@ export default class SshOpsService extends TypertRemoteService {
       // `legacy: false` is an explicit "modern only, do NOT downgrade" — the
       // automatic retry is opt-out, not merely opt-in.
       allowLegacyDowngrade: request.legacy === undefined,
+      // Authentication-stage telemetry: which methods were offered, what the
+      // server still accepts, whether a keyboard-interactive prompt was
+      // served. Feeds the structured connect-failure diagnosis and the
+      // one-shot keyboard-interactive → plain-password fallback.
+      authTracker: createAuthTracker(),
+      kbdFallbackTried: false,
       proxyJump: Array.isArray(request.proxyJump) ? request.proxyJump : [],
       // Host-key TOFU mode for this connection (undefined → accept-new default
       // resolved in attachHostVerifier). Persisted on the record so transparent
@@ -547,7 +781,7 @@ export default class SshOpsService extends TypertRemoteService {
     // should know the connection only exists because the line was repaired.
     if (record.bannerRepair) {
       value.bannerRepair = true;
-      warnings.push(`对端的 SSH 横幅不符合 RFC 4253，ssh2 会直接拒绝这条连接；本次已按规范化后的横幅完成握手。${record.bannerRepairNote ?? ""}`);
+      warnings.push(t(`对端的 SSH 横幅不符合 RFC 4253，ssh2 会直接拒绝这条连接；本次已按规范化后的横幅完成握手。${record.bannerRepairNote ?? ""}`));
     }
     if (warnings.length > 0) value.warning = warnings.join("\n");
     // A newly connected server is the natural target for the conversation,
@@ -613,7 +847,7 @@ export default class SshOpsService extends TypertRemoteService {
       return fail("host-key-unseen", `host key for ${where} is not previously trusted (mode ${m.mode}). Presented SHA256:${m.got}; verify it out of band. Strict mode will not create a trust record; follow your approved process before changing the profile policy.`);
     }
     if (m.reason === "host-key-mismatch") {
-      return fail("host-key-mismatch", `host key for ${where} changed (mode ${m.mode}). Expected SHA256:${m.expected}; presented SHA256:${m.got}. This may be a man-in-the-middle or a re-provisioned server. Verify it out of band; if legitimate, use "忘记主机指纹" and reconnect.`);
+      return fail("host-key-mismatch", t(`host key for ${where} changed (mode ${m.mode}). Expected SHA256:${m.expected}; presented SHA256:${m.got}. This may be a man-in-the-middle or a re-provisioned server. Verify it out of band; if legitimate, use "忘记主机指纹" and reconnect.`));
     }
     return fail("host-key-error", `host key verification error for ${where} (mode ${m.mode}): ${m.message ?? m.reason}`);
   }
@@ -688,6 +922,28 @@ export default class SshOpsService extends TypertRemoteService {
           if (record.legacyAlgorithms) {
             config.algorithms = { ...(config.algorithms ?? {}), ...LEGACY_VRP_ALGORITHMS };
           }
+          // Keyboard-interactive support: only when a saved password exists to
+          // answer prompts with, and never on the plain-password fallback
+          // attempt (where the device killed the transport mid-prompt).
+          const hasPassword = record.connectConfig.password !== undefined;
+          config.tryKeyboard = hasPassword && !record.kbdFallbackTried;
+          if (config.tryKeyboard) {
+            client.on("keyboard-interactive", (name, instructions, instructionsLang, prompts, finish) => {
+              record.authTracker.kbdSeen = true;
+              finish(prompts.map(() => record.connectConfig.password));
+            });
+          }
+          // ssh2's own default handler walks the same method order; this one
+          // additionally records what was tried and what the server accepts,
+          // so a failed login produces a diagnosis instead of a bare line.
+          config.authHandler = makeAuthHandler(record.authTracker, {
+            hasPassword,
+            hasPrivateKey: record.connectConfig.privateKey !== undefined,
+            // A forwarded agent doubles as an auth source (ssh2's separate
+            // "agent" method), so a keyless resource can still log in.
+            hasAgent: typeof record.connectConfig.agent === "string",
+            tryKeyboard: config.tryKeyboard
+          });
           if (sock !== undefined) config.sock = sock;
           this.attachHostVerifier(config, record, record.host, record.port, record.hostKeyMode);
           client.connect(config);
@@ -738,6 +994,17 @@ export default class SshOpsService extends TypertRemoteService {
           if (attempt >= retries) retries += 1;
           continue;
         }
+        // Devices whose firmware aborts the transport while a keyboard-
+        // interactive round-trip is in flight get ONE plain-password retry
+        // (tryKeyboard off, so the interactive method is never offered). Only
+        // fires after auth provably started — otherwise it is a plain network
+        // failure and the retry loop's own policy applies.
+        if (!record.kbdFallbackTried && wasAuthCut(record.authTracker, error)) {
+          record.kbdFallbackTried = true;
+          this.log(`SSH ${record.host}:${record.port} dropped the transport during authentication; retrying once with the plain password method only.`);
+          if (attempt >= retries) retries += 1;
+          continue;
+        }
         if (!isTransientConnectError(error) || attempt >= retries) break;
         await this.sleep(Math.min(2000, 500 * 2 ** attempt));
       }
@@ -745,9 +1012,17 @@ export default class SshOpsService extends TypertRemoteService {
     if (record.closing) {
       return { ok: false, error: fail("connect-cancelled", `connection "${record.id}" was closed`) };
     }
+    // Structured diagnosis instead of ssh2's bare one-liner: what stage died,
+    // which methods were tried, what the server still accepts, and the next
+    // steps worth trying. The code stays `connect-failed` so existing callers
+    // (and their matching) are unaffected.
+    const diagnosis = classifyConnectFailure(lastError, record.authTracker, {
+      hasPassword: record.connectConfig.password !== undefined,
+      hasPrivateKey: record.connectConfig.privateKey !== undefined
+    });
     return {
       ok: false,
-      error: fail("connect-failed", `${record.username}@${record.host}:${record.port}: ${lastError?.message ?? "connection failed"}`)
+      error: fail("connect-failed", formatConnectFailure(diagnosis, `${record.username}@${record.host}:${record.port}`))
     };
   }
 
@@ -808,11 +1083,27 @@ export default class SshOpsService extends TypertRemoteService {
         // connection (the one that terminates at the device).
         readyTimeout: hopConfig.readyTimeout ?? 20000
       };
-      if (hopConfig.auth?.kind === "password") {
-        hopConnectConfig.password = hopConfig.auth.password;
-      } else if (hopConfig.auth?.kind === "key") {
+      // Primary + optional secondary factor (dual-factor jump devices): the
+      // hop's auth handler walks methods from whatever is configured.
+      if (hopConfig.auth?.password !== undefined) hopConnectConfig.password = hopConfig.auth.password;
+      if (hopConfig.auth?.privateKey !== undefined) {
         hopConnectConfig.privateKey = hopConfig.auth.privateKey;
         if (hopConfig.auth.passphrase !== void 0) hopConnectConfig.passphrase = hopConfig.auth.passphrase;
+      }
+      if (hopConfig.auth?.secondary?.kind === "key") {
+        hopConnectConfig.privateKey = hopConfig.auth.secondary.privateKey;
+        if (hopConfig.auth.secondary.passphrase !== void 0) hopConnectConfig.passphrase = hopConfig.auth.secondary.passphrase;
+      } else if (hopConfig.auth?.secondary?.kind === "password") {
+        hopConnectConfig.password = hopConfig.auth.secondary.password;
+      }
+      // Jump hosts get the same keyboard-interactive support as targets: an
+      // MFA-prompting bastion is exactly where a saved password answers prompts.
+      const hopTracker = createAuthTracker();
+      if (hopConnectConfig.password !== undefined) {
+        hopConnectConfig.tryKeyboard = true;
+        hopConnectConfig.authHandler = makeAuthHandler(hopTracker, {
+          hasPassword: true, hasPrivateKey: hopConnectConfig.privateKey !== undefined, tryKeyboard: true
+        });
       }
       if (sock !== undefined) hopConnectConfig.sock = sock;
       const hopState = { hostKeyMismatch: null, hostKeyToRecord: null };
@@ -824,6 +1115,12 @@ export default class SshOpsService extends TypertRemoteService {
           // second protocol error after the first one settled this promise,
           // and an unhandled 'error' crashes the DSH process.
           let settled = false;
+          if (hopConnectConfig.tryKeyboard) {
+            hopClient.on("keyboard-interactive", (name, instructions, instructionsLang, prompts, finish) => {
+              hopTracker.kbdSeen = true;
+              finish(prompts.map(() => hopConnectConfig.password));
+            });
+          }
           hopClient.once("ready", () => { if (!settled) { settled = true; resolve(); } });
           hopClient.on("error", (cause) => { if (!settled) { settled = true; reject(cause); } });
           hopClient.connect(hopConnectConfig);
@@ -979,11 +1276,13 @@ export default class SshOpsService extends TypertRemoteService {
   async credentialPublic(credentialId, record) {
     const refs = sharedCredentialRefs(credentialId);
     const primaryRef = record.authKind === "password" ? refs.password : refs.privateKey;
-    const [primary, passphrase] = await Promise.all([
+    const secondaryRef = record.authKind === "password" ? refs.privateKey : refs.password;
+    const [primary, passphrase, secondary] = await Promise.all([
       this.ctx.credentials.describe(credentialRef(primaryRef)),
-      this.ctx.credentials.describe(credentialRef(refs.passphrase))
+      this.ctx.credentials.describe(credentialRef(refs.passphrase)),
+      this.ctx.credentials.describe(credentialRef(secondaryRef))
     ]);
-    return { credentialId, name: record.name, authKind: record.authKind, credentialConfigured: primary.configured, passphraseConfigured: passphrase.configured };
+    return { credentialId, name: record.name, authKind: record.authKind, credentialConfigured: primary.configured, passphraseConfigured: passphrase.configured, secondaryConfigured: secondary.configured };
   }
 
   async credentialList() {
@@ -1012,7 +1311,7 @@ export default class SshOpsService extends TypertRemoteService {
       const table = this.requireCredentialTable();
       if (table.get(request.credentialId) === undefined) return { ok: true, value: { deleted: false } };
       const usedBy = [...this.requireProfileTable().entries()].find(([, profile]) => profile.credentialId === request.credentialId || profile.proxyJump?.some((hop) => hop.credentialId === request.credentialId));
-      if (usedBy) return { ok: false, error: fail("credential-in-use", "此凭据仍被 SSH 资源或跳板机引用；请先改用其他凭据") };
+      if (usedBy) return { ok: false, error: fail("credential-in-use", t("此凭据仍被 SSH 资源或跳板机引用；请先改用其他凭据")) };
       await Promise.all(Object.values(sharedCredentialRefs(request.credentialId)).map(async (ref) => await this.ctx.credentials.unset(credentialRef(ref))));
       await table.delete(request.credentialId);
       return { ok: true, value: { deleted: true } };
@@ -1028,9 +1327,11 @@ export default class SshOpsService extends TypertRemoteService {
     const shared = record.credentialId ? this.requireCredentialTable().get(record.credentialId) : undefined;
     const refs = shared ? sharedCredentialRefs(record.credentialId) : profileCredentialRefs(profileId);
     const primaryRef = record.authKind === "password" ? refs.password : refs.privateKey;
-    const [primary, passphrase] = await Promise.all([
+    const secondaryRef = record.authKind === "password" ? refs.privateKey : refs.password;
+    const [primary, passphrase, secondary] = await Promise.all([
       this.ctx.credentials.describe(credentialRef(primaryRef)),
-      this.ctx.credentials.describe(credentialRef(refs.passphrase))
+      this.ctx.credentials.describe(credentialRef(refs.passphrase)),
+      this.ctx.credentials.describe(credentialRef(secondaryRef))
     ]);
     const connected = [...this.connections.values()].some((connection) => connection.profileId === profileId);
     const group = record.groupId === null ? undefined : this.requireGroupTable().get(record.groupId);
@@ -1042,6 +1343,7 @@ export default class SshOpsService extends TypertRemoteService {
       username: record.username,
       authKind: record.authKind,
       hostKeyMode: record.hostKeyMode ?? DEFAULT_HOST_KEY_MODE,
+      agentForward: record.agentForward === true,
       credentialId: shared ? record.credentialId : null,
       credentialName: shared?.name ?? null,
       proxyJump: record.proxyJump ?? [],
@@ -1050,6 +1352,7 @@ export default class SshOpsService extends TypertRemoteService {
       groupName: group?.name ?? null,
       credentialConfigured: primary.configured,
       passphraseConfigured: passphrase.configured,
+      secondaryConfigured: secondary.configured,
       connected
     };
   }
@@ -1082,7 +1385,7 @@ export default class SshOpsService extends TypertRemoteService {
       if (request.credentialId !== null && request.credentialId !== undefined) {
         const credential = this.requireCredentialTable().get(request.credentialId);
         if (credential === undefined) return { ok: false, error: fail("no-credential", `SSH credential "${request.credentialId}" does not exist`) };
-        if (credential.authKind !== request.authKind) return { ok: false, error: fail("credential-auth-mismatch", "所选共享凭据的认证方式与服务器不一致") };
+        if (credential.authKind !== request.authKind) return { ok: false, error: fail("credential-auth-mismatch", t("所选共享凭据的认证方式与服务器不一致")) };
       }
       const proxyJump = request.proxyJump ?? previous?.proxyJump ?? [];
       const defaultProjectPath = Object.hasOwn(request, "defaultProjectPath")
@@ -1091,8 +1394,8 @@ export default class SshOpsService extends TypertRemoteService {
       const seenJumpProfiles = new Set();
       for (const hop of proxyJump) {
         if (hop.profileId) {
-          if (hop.profileId === profileId) return { ok: false, error: fail("jump-cycle", "服务器不能把自己设为跳板机") };
-          if (seenJumpProfiles.has(hop.profileId)) return { ok: false, error: fail("jump-duplicate", "同一条跳板链不能重复选择同一台服务器") };
+          if (hop.profileId === profileId) return { ok: false, error: fail("jump-cycle", t("服务器不能把自己设为跳板机")) };
+          if (seenJumpProfiles.has(hop.profileId)) return { ok: false, error: fail("jump-duplicate", t("同一条跳板链不能重复选择同一台服务器")) };
           seenJumpProfiles.add(hop.profileId);
           if (this.requireProfileTable().get(hop.profileId) === undefined) return { ok: false, error: fail("no-profile", `jump-host profile "${hop.profileId}" does not exist`) };
           continue;
@@ -1106,6 +1409,7 @@ export default class SshOpsService extends TypertRemoteService {
         username: request.username.trim(),
         authKind: request.authKind,
         hostKeyMode: request.hostKeyMode ?? DEFAULT_HOST_KEY_MODE,
+        agentForward: request.agentForward === true,
         // An explicit null detaches a shared credential and restores the
         // server's legacy dedicated credential slot; only an omitted field
         // preserves old records for backwards-compatible callers.
@@ -1174,28 +1478,23 @@ export default class SshOpsService extends TypertRemoteService {
         return { ok: true, value };
       }
       const refs = record.credentialId ? sharedCredentialRefs(record.credentialId) : profileCredentialRefs(request.profileId);
-      const primaryRef = record.authKind === "password" ? refs.password : refs.privateKey;
-      const primary = await this.ctx.credentials.resolve(credentialRef(primaryRef));
-      if (primary === undefined) {
+      const targetAuth = await this.resolveCredentialAuth(refs, record.authKind);
+      if (targetAuth === undefined) {
         return { ok: false, error: fail("credential-missing", `SSH resource "${record.name}" has no saved ${record.authKind === "password" ? "password" : "private key"}`) };
       }
-      const passphrase = record.authKind === "key"
-        ? await this.ctx.credentials.resolve(credentialRef(refs.passphrase))
-        : undefined;
       const proxyJump = [];
       const configuredHops = request.proxyJumpProfileIds?.map((profileId) => ({ profileId })) ?? record.proxyJump ?? [];
       const seenHops = new Set();
       for (const [index, hop] of configuredHops.entries()) {
         if (hop.profileId) {
-          if (hop.profileId === request.profileId || seenHops.has(hop.profileId)) return { ok: false, error: fail("jump-cycle", "跳板链不能包含当前服务器或重复服务器") };
+          if (hop.profileId === request.profileId || seenHops.has(hop.profileId)) return { ok: false, error: fail("jump-cycle", t("跳板链不能包含当前服务器或重复服务器")) };
           seenHops.add(hop.profileId);
           const jump = this.requireProfileTable().get(hop.profileId);
           if (jump === undefined) return { ok: false, error: fail("no-profile", `jump-host profile "${hop.profileId}" does not exist`) };
           const jumpRefs = jump.credentialId ? sharedCredentialRefs(jump.credentialId) : profileCredentialRefs(hop.profileId);
-          const secret = await this.ctx.credentials.resolve(credentialRef(jump.authKind === "password" ? jumpRefs.password : jumpRefs.privateKey));
-          if (secret === undefined) return { ok: false, error: fail("credential-missing", `jump host "${jump.name}" has no saved credential`) };
-          const passphrase = jump.authKind === "key" ? await this.ctx.credentials.resolve(credentialRef(jumpRefs.passphrase)) : undefined;
-          proxyJump.push({ host: jump.host, port: jump.port, username: jump.username, hostKeyMode: jump.hostKeyMode, auth: jump.authKind === "password" ? { kind: "password", password: secret.value } : { kind: "key", privateKey: secret.value, ...(passphrase === undefined ? {} : { passphrase: passphrase.value }) } });
+          const auth = await this.resolveCredentialAuth(jumpRefs, jump.authKind);
+          if (auth === undefined) return { ok: false, error: fail("credential-missing", `jump host "${jump.name}" has no saved credential`) };
+          proxyJump.push({ host: jump.host, port: jump.port, username: jump.username, hostKeyMode: jump.hostKeyMode, auth });
           continue;
         }
         if ((hop.authKind ?? "credential") === "password") {
@@ -1213,10 +1512,9 @@ export default class SshOpsService extends TypertRemoteService {
         }
         const credential = this.requireCredentialTable().get(hop.credentialId);
         const hopRefs = sharedCredentialRefs(hop.credentialId);
-        const secret = await this.ctx.credentials.resolve(credentialRef(credential.authKind === "password" ? hopRefs.password : hopRefs.privateKey));
-        if (secret === undefined) return { ok: false, error: fail("credential-missing", `jump host "${hop.host}" has no saved credential`) };
-        const phrase = credential.authKind === "key" ? await this.ctx.credentials.resolve(credentialRef(hopRefs.passphrase)) : undefined;
-        proxyJump.push({ host: hop.host, port: hop.port, username: hop.username, hostKeyMode: hop.hostKeyMode, auth: credential.authKind === "password" ? { kind: "password", password: secret.value } : { kind: "key", privateKey: secret.value, ...(phrase === undefined ? {} : { passphrase: phrase.value }) } });
+        const auth = await this.resolveCredentialAuth(hopRefs, credential.authKind);
+        if (auth === undefined) return { ok: false, error: fail("credential-missing", `jump host "${hop.host}" has no saved credential`) };
+        proxyJump.push({ host: hop.host, port: hop.port, username: hop.username, hostKeyMode: hop.hostKeyMode, auth });
       }
       return await this.connectInternal({
         name: record.name,
@@ -1224,11 +1522,10 @@ export default class SshOpsService extends TypertRemoteService {
         port: record.port,
         username: record.username,
         hostKeyMode: record.hostKeyMode,
+        agentForward: record.agentForward === true,
         readyTimeout: request.readyTimeout,
         retries: request.retries,
-        auth: record.authKind === "password"
-          ? { kind: "password", password: primary.value }
-          : { kind: "key", privateKey: primary.value, ...(passphrase === undefined ? {} : { passphrase: passphrase.value }) },
+        auth: targetAuth,
         ...(proxyJump.length > 0 ? { proxyJump } : {})
       }, request.profileId);
     } catch (error) {
@@ -1257,6 +1554,134 @@ export default class SshOpsService extends TypertRemoteService {
     } catch (error) {
       return { ok: false, error: fail("cancel-connect-failed", error.message) };
     }
+  }
+
+  // ── agent auto-connect (issue #25) ─────────────────────────────────────────
+
+  async agentSettingsGet() {
+    return { ok: true, value: { agentAutoConnect: this.agentAutoConnect } };
+  }
+
+  async agentSettingsSave(request) {
+    const agentAutoConnect = request.agentAutoConnect === true;
+    try {
+      const previous = this.settingsTable.get(SETTINGS_ROW_ID) ?? {};
+      await this.settingsTable.put(SETTINGS_ROW_ID, {
+        ...previous,
+        agentAutoConnect,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      return { ok: false, error: fail("agent-settings-save-failed", error.message) };
+    }
+    this.agentAutoConnect = agentAutoConnect;
+    return { ok: true, value: { agentAutoConnect: this.agentAutoConnect } };
+  }
+
+  // ── interface language ─────────────────────────────────────────────────────
+
+  /**
+   * The stored language, or null when the operator never chose one (meaning:
+   * follow DSH's own Settings → Language). The host half applies the choice
+   * at boot; agent-visible tool messages and safety-policy notices follow the
+   * same language as the panel.
+   */
+  async languageGet() {
+    return { ok: true, value: { language: this.language, autoApplySystemLanguage: this.autoApplySystemLanguage } };
+  }
+
+  /**
+   * Persist the interface language and apply it to the host half immediately.
+   * `null` clears an explicit choice, so the next settings-page load goes back
+   * to adopting DSH's own language.
+   */
+  async languageSave(request) {
+    const requested = request.language === null || request.language === undefined
+      ? null
+      : (request.language === "zh" || request.language === "en" ? request.language : undefined);
+    if (requested === undefined) {
+      return { ok: false, error: fail("language-unsupported", `the plugin supports "zh" and "en", not "${request.language}"`) };
+    }
+    try {
+      const previous = this.settingsTable.get(SETTINGS_ROW_ID) ?? {};
+      await this.settingsTable.put(SETTINGS_ROW_ID, {
+        ...previous,
+        language: requested ?? undefined,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      return { ok: false, error: fail("language-save-failed", error.message) };
+    }
+    this.language = requested;
+    if (requested !== null) setLanguage(requested);
+    return { ok: true, value: { language: this.language } };
+  }
+
+  /**
+   * Connect a saved SSH resource by name/id at the agent's request. The
+   * operator's switch gates the whole verb (the risk is waking a machine, not
+   * switching between live ones). A live connection for the same profile is
+   * reused, the result becomes the active connection so later ssh_exec calls
+   * land on it, and a terminal is opened so the operator can always see which
+   * machine the agent moved to in the right-side panel.
+   */
+  async agentConnectProfile(request) {
+    if (!this.agentAutoConnect) {
+      return { ok: false, error: fail("auto-connect-disabled", t(AUTO_CONNECT_DISABLED_MESSAGE)) };
+    }
+    let resolved;
+    try {
+      resolved = resolveProfileRef(
+        [...this.requireProfileTable().entries()].map(([profileId, record]) => ({ profileId, name: record.name })),
+        request.resource
+      );
+    } catch (error) {
+      return { ok: false, error: fail("profile-list-failed", error.message) };
+    }
+    if (!resolved.ok) return { ok: false, error: fail(resolved.code, resolved.message) };
+    const knownConnectionIds = new Set(this.connections.keys());
+    const previousActiveConnectionId = this.activeConnectionId;
+    const connected = await this.profileConnect({ profileId: resolved.profileId, reuseExisting: true });
+    if (!connected.ok) return connected;
+    const connectionId = connected.value.connectionId;
+    const reused = knownConnectionIds.has(connectionId);
+    const rollback = async (error, openedSessionId = null) => {
+      if (!reused) await this.disconnect({ connectionId }).catch(() => {});
+      else if (openedSessionId !== null) await this.closeSession({ sessionId: openedSessionId }).catch(() => {});
+      this.activeConnectionId = previousActiveConnectionId;
+      return { ok: false, error };
+    };
+    let terminalOpened = false;
+    const connection = this.connections.get(connectionId);
+    if (connection === undefined) return rollback(fail("no-connection", `connection "${connectionId}" disappeared before its terminal opened`));
+    // Visibility is the safeguard: the agent's target machine must appear in
+    // the right-side panel, not just exist as an invisible transport.
+    let openedSessionId = null;
+    if (connection.sessions.size === 0) {
+      const opened = await this.openSession({ connectionId, openedBy: "agent" });
+      if (!opened.ok) return rollback(opened.error);
+      openedSessionId = opened.value.sessionId;
+      terminalOpened = true;
+    }
+    const selected = await this.selectConnection({ connectionId });
+    if (!selected.ok) return rollback(selected.error, openedSessionId);
+    // A new token on every request lets the browser re-open a reused server
+    // after its pane was closed, even when its existing PTY was human-opened.
+    connection.agentRevealId = randomUUID();
+    return {
+      ok: true,
+      value: {
+        connectionId,
+        profileId: resolved.profileId,
+        name: resolved.name,
+        host: connected.value.host,
+        port: connected.value.port,
+        username: connected.value.username,
+        reused,
+        terminalOpened,
+        ...(connected.value.warning !== undefined ? { warning: connected.value.warning } : {})
+      }
+    };
   }
 
   /** Connect a saved profile, run one command, then disconnect. Batch channel only. */
@@ -1353,7 +1778,7 @@ export default class SshOpsService extends TypertRemoteService {
 
   async openSession(request) {
     const conn = this.connections.get(request.connectionId);
-    if (conn === void 0) return { ok: false, error: fail("no-connection", `connection "${request.connectionId}" does not exist`) };
+    if (conn === void 0) return { ok: false, error: fail("no-connection", noConnectionGuidance(request.connectionId, this.savedResourceNameList(), this.agentAutoConnect)) };
     if (this.sessions.size >= MAX_SESSIONS) return { ok: false, error: fail("session-limit", `too many live sessions (${MAX_SESSIONS})`) };
     if (!(await this.ensureAlive(conn))) {
       return { ok: false, error: fail("connection-lost", `connection "${request.connectionId}" is down and could not be re-established`) };
@@ -1375,6 +1800,8 @@ export default class SshOpsService extends TypertRemoteService {
       lastPrompt: null,
       waiters: [],
       streamListeners: new Set(),
+      // OSC 133 markers, when the shell emits them (enableShellIntegration).
+      shellIntegration: new ShellIntegrationTracker(),
       exited: null,
       stream: null,
       // The PTY receives keystrokes one at a time. Track the current command
@@ -1406,6 +1833,18 @@ export default class SshOpsService extends TypertRemoteService {
       // connection. Remember it so agent tools can act on the same server
       // without making the model discover an opaque connection id first.
       this.activeConnectionId = request.connectionId;
+      {
+        const conn = this.connections.get(request.connectionId);
+        // Recording starts with the session's FIRST output, not with the
+        // session: a shell that produces nothing (an accidental tab, a probe)
+        // must not leave an empty log behind.
+        session.logMeta = {
+          sessionId, connectionId: request.connectionId,
+          name: conn?.name ?? null, host: conn?.connectConfig?.host ?? conn?.username ?? null,
+          port: conn?.connectConfig?.port ?? null, openedBy: session.openedBy,
+          startedAt: session.openedAt
+        };
+      }
     } catch (error) {
       this.sessions.delete(sessionId);
       conn.sessions.delete(sessionId);
@@ -1441,7 +1880,7 @@ export default class SshOpsService extends TypertRemoteService {
           // agent-originated dangerous command.  Keyboard Enter cannot submit
           // it, while Ctrl-C and any edit revoke the pending approval first.
           if (text === "\r" || text === "\n") {
-            this.appendTerminalNotice(session, "此危险命令不会因回车执行：请使用面板弹出的确认卡片，点击“执行”或“撤销”。");
+            this.appendTerminalNotice(session, t("此危险命令不会因回车执行：请使用面板弹出的确认卡片，点击“执行”或“撤销”。"));
             return { ok: true, value: { written: 0 } };
           }
           if (text === "\x03") {
@@ -1474,7 +1913,7 @@ export default class SshOpsService extends TypertRemoteService {
   /** Explicit UI action: refuse drafts, foreground jobs, and ambiguous PTYs. */
   async changeDirectory(request) {
     if (typeof request.path !== "string" || !request.path.startsWith("/") || /[\x00-\x1f\x7f]/.test(request.path)) {
-      return { ok: false, error: fail("bad-path", "目录必须是绝对路径，且不能包含控制字符") };
+      return { ok: false, error: fail("bad-path", t("目录必须是绝对路径，且不能包含控制字符")) };
     }
     const session = this.sessions.get(request.sessionId);
     const conn = session && this.connections.get(session.connectionId);
@@ -1482,24 +1921,66 @@ export default class SshOpsService extends TypertRemoteService {
       && !conn.dead && !conn.closing && session.exited === null && session.stream
       && session.inputKnown === true && session.inputLine === ""
       && !this.pendingForSession(session.id) && conn.sessions.size === 1;
-    if (!ready()) return { ok: false, error: fail("terminal-not-ready", "请先结束前台程序、清空未提交输入，并仅保留一个交互终端") };
+    if (!ready()) return { ok: false, error: fail("terminal-not-ready", t("请先结束前台程序、清空未提交输入，并仅保留一个交互终端")) };
     const revision = session.inputRevision ?? 0;
     const client = conn.client;
     try {
       if (!posixLoginShell(await this.resolveLoginShell(conn))) {
-        return { ok: false, error: fail("unsupported-shell", "无法确认此 shell 的空闲状态，请在终端手动切换目录") };
+        return { ok: false, error: fail("unsupported-shell", t("无法确认此 shell 的空闲状态，请在终端手动切换目录")) };
       }
       const probe = await this.collectExecOutput(client, buildCwdAwareCommand(":"), 5000);
       if (probe.exitCode !== 0 || extractExecCwd(probe.stdout).cwd === null) {
-        return { ok: false, error: fail("terminal-busy", "未确认空闲交互 shell，请结束前台程序后重试或手动 cd") };
+        return { ok: false, error: fail("terminal-busy", t("未确认空闲交互 shell，请结束前台程序后重试或手动 cd")) };
       }
       if (!ready() || client !== conn.client || revision !== (session.inputRevision ?? 0)) {
-        return { ok: false, error: fail("terminal-changed", "终端输入已变化，请检查后重试") };
+        return { ok: false, error: fail("terminal-changed", t("终端输入已变化，请检查后重试")) };
       }
       const quoted = "'" + request.path.replace(/'/g, "'\\''") + "'";
       return this.write({ sessionId: session.id, data: encodeData(`cd -- ${quoted}\r`) });
     } catch (error) {
       return { ok: false, error: fail("cd-failed", error.message) };
+    }
+  }
+
+  /**
+   * Install the OSC 133 markers in the session's shell (bash/zsh): the prompt
+   * and each command's end are announced with an exit code and a cwd report,
+   * which is what readTerminalContext surfaces as `shell`. Gated exactly like
+   * changeDirectory — the shell must be an idle, known, single interactive
+   * prompt, because the snippet edits PROMPT_COMMAND/PS1 for the login
+   * session and nothing here can undo a partial write.
+   */
+  async enableShellIntegration(request) {
+    const session = this.sessions.get(request.sessionId);
+    const conn = session && this.connections.get(session.connectionId);
+    const ready = () => session && conn && this.sessions.get(request.sessionId) === session
+      && !conn.dead && !conn.closing && session.exited === null && session.stream
+      && session.inputKnown === true && session.inputLine === ""
+      && !this.pendingForSession(session.id) && conn.sessions.size === 1;
+    if (!ready()) return { ok: false, error: fail("terminal-not-ready", t("请先结束前台程序、清空未提交输入，并仅保留一个交互终端")) };
+    try {
+      if (!posixLoginShell(await this.resolveLoginShell(conn))) {
+        return { ok: false, error: fail("unsupported-shell", t("无法确认此 shell 的空闲状态，请在终端手动启用")) };
+      }
+      const client = conn.client;
+      const probe = await this.collectExecOutput(client, buildCwdAwareCommand(":"), 5000);
+      if (probe.exitCode !== 0) {
+        return { ok: false, error: fail("terminal-busy", t("未确认空闲交互 shell，请结束前台程序后重试")) };
+      }
+      if (!ready() || client !== conn.client) {
+        return { ok: false, error: fail("terminal-changed", t("终端状态已变化，请重试")) };
+      }
+      // Which flavour of snippet fits is the shell's own answer: a single line
+      // is parsed whole, so handing zsh syntax to sh (or the reverse) would
+      // abort it silently on a pipe.
+      const family = await this.collectExecOutput(client, buildCwdAwareCommand(SHELL_FAMILY_PROBE), 5000)
+        .then((result) => (result.exitCode === 0 ? parseShellFamilyProbe(result.stdout) : ""))
+        .catch(() => "");
+      const written = await this.write({ sessionId: session.id, data: encodeData(`${shellIntegrationCommand(family)}\r`) });
+      if (!written.ok) return written;
+      return { ok: true, value: { sessionId: session.id, enabled: true } };
+    } catch (error) {
+      return { ok: false, error: fail("shell-integration-failed", error.message) };
     }
   }
 
@@ -1582,7 +2063,7 @@ export default class SshOpsService extends TypertRemoteService {
     const history = this.terminalContextHistory(session);
     const relativeAfter = request.after === undefined ? undefined : request.after - history.start;
     const window = history.journal.readWindow(relativeAfter, maxBytes);
-    return { ok: true, value: { sessionId: session.id, ...window, historyStart: history.start, historyEnd: history.end, offset: history.start + window.offset, nextOffset: history.start + window.nextOffset, alive: session.exited === null && session.stream !== null, exit: session.exited, redacted: history.redacted } };
+    return { ok: true, value: { sessionId: session.id, ...window, historyStart: history.start, historyEnd: history.end, offset: history.start + window.offset, nextOffset: history.start + window.nextOffset, alive: session.exited === null && session.stream !== null, exit: session.exited, redacted: history.redacted, shell: session.shellIntegration?.snapshot() ?? null } };
   }
 
   terminalContextHistory(session) {
@@ -1686,8 +2167,8 @@ export default class SshOpsService extends TypertRemoteService {
 
   async batchRun(request) {
     const task = this.batchTasks.get(request.batchId);
-    if (!task) return { ok: false, error: fail("batch-missing", `批量任务 "${request.batchId}" 不存在或已执行`) };
-    if (request.profileIds.length === 0) return { ok: false, error: fail("batch-no-targets", "未选择任何服务器") };
+    if (!task) return { ok: false, error: fail("batch-missing", t(`批量任务 "${request.batchId}" 不存在或已执行`)) };
+    if (request.profileIds.length === 0) return { ok: false, error: fail("batch-no-targets", t("未选择任何服务器")) };
     this.batchTasks.delete(request.batchId);
     // Fixed worker pool over the target list; results keep the requested order
     // via index-addressed slots.
@@ -1716,17 +2197,39 @@ export default class SshOpsService extends TypertRemoteService {
     return { ok: true, value: { cancelled } };
   }
 
-  pendingConfirmationApprove(request) {
+  async pendingConfirmationApprove(request) {
     const pending = this.pendingConfirmations.get(request.confirmationId);
-    if (!pending) return { ok: false, error: fail("confirmation-missing", "待确认命令不存在或已处理") };
+    if (!pending) return { ok: false, error: fail("confirmation-missing", t("待确认命令不存在或已处理")) };
     const session = this.sessions.get(pending.sessionId);
     if (!session || session.exited !== null || session.stream === null) {
       this.removePendingConfirmation(pending.confirmationId);
-      return { ok: false, error: fail("confirmation-session-closed", "终端已关闭，无法执行待确认命令") };
+      return { ok: false, error: fail("confirmation-session-closed", t("终端已关闭，无法执行待确认命令")) };
+    }
+    if (pending.trashScript) {
+      // The approved command runs as the reversible trash move on the exec
+      // channel when that is possible. When it is not (connection gone, or a
+      // non-POSIX login shell that cannot anchor relative paths), execution
+      // falls through to the historical PTY path below — exactly what the
+      // operator approved before this safety net existed. The card, the
+      // notices and the terminal output are identical either way; the only
+      // difference is whether a rollback copy exists.
+      const conn = this.connections.get(pending.connectionId);
+      if (conn) {
+        const shell = await this.resolveLoginShell(conn);
+        if (posixLoginShell(shell)) {
+          this.removePendingConfirmation(pending.confirmationId);
+          const result = await this.runPreparedExec(pending.connectionId, pending.trashScript, pending.command, true, 30000, false);
+          if (!result.ok) {
+            this.appendTerminalNotice(session, t(`回收站移动未能执行：${result.error.message}。命令未执行。`));
+            return { ok: true, value: { executed: false } };
+          }
+          return { ok: true, value: { executed: true } };
+        }
+      }
     }
     if (pending.prefilled && (!session.inputKnown || session.inputLine !== pending.command)) {
       this.removePendingConfirmation(pending.confirmationId);
-      return { ok: false, error: fail("confirmation-modified", "终端命令已变化，待确认项已作废") };
+      return { ok: false, error: fail("confirmation-modified", t("终端命令已变化，待确认项已作废")) };
     }
     try {
       this.removePendingConfirmation(pending.confirmationId);
@@ -1744,7 +2247,7 @@ export default class SshOpsService extends TypertRemoteService {
 
   pendingConfirmationCancel(request) {
     const pending = this.pendingConfirmations.get(request.confirmationId);
-    if (!pending) return { ok: false, error: fail("confirmation-missing", "待确认命令不存在或已处理") };
+    if (!pending) return { ok: false, error: fail("confirmation-missing", t("待确认命令不存在或已处理")) };
     const session = this.sessions.get(pending.sessionId);
     this.removePendingConfirmation(pending.confirmationId);
     if (pending.prefilled && session && session.exited === null && session.stream !== null) {
@@ -1802,6 +2305,7 @@ export default class SshOpsService extends TypertRemoteService {
   }
 
   async closeSession(request) {
+    try { void this.sessionLogStore()?.end(request.sessionId, { exitCode: null }); } catch { /* best-effort */ }
     const session = this.sessions.get(request.sessionId);
     if (session === void 0) return { ok: false, error: fail("no-session", `session "${request.sessionId}" does not exist`) };
     this.sessions.delete(request.sessionId);
@@ -1818,7 +2322,7 @@ export default class SshOpsService extends TypertRemoteService {
 
   async disconnect(request) {
     const conn = this.connections.get(request.connectionId);
-    if (conn === void 0) return { ok: false, error: fail("no-connection", `connection "${request.connectionId}" does not exist`) };
+    if (conn === void 0) return { ok: false, error: fail("no-connection", noConnectionGuidance(request.connectionId, this.savedResourceNameList(), this.agentAutoConnect)) };
     // Explicit disconnect: never auto-reconnect, and stop any in-flight one.
     conn.closing = true;
     if (conn.reconnectTimer !== null) {
@@ -1864,6 +2368,10 @@ export default class SshOpsService extends TypertRemoteService {
 
   async dbExecute(request) {
     return this.dbOps.execute(request);
+  }
+
+  async dbExport(request) {
+    return this.dbOps.exportRows(request);
   }
 
   async dbListTables(request) {
@@ -1927,6 +2435,7 @@ export default class SshOpsService extends TypertRemoteService {
       username: record.username,
       ssl: record.ssl,
       sshProfileId: record.sshProfileId,
+      queryTimeoutMs: record.queryTimeoutMs ?? null,
       credentialConfigured: cred.configured,
       connected
     };
@@ -1956,12 +2465,17 @@ export default class SshOpsService extends TypertRemoteService {
       const record = {
         name: request.name.trim(),
         type: request.type,
-        host: request.host.trim(),
-        port: request.port,
+        // SQLite stores the file path in `database`; host/port stay empty so
+        // the record shape (and every boot-time schema check) is unchanged.
+        host: (request.host ?? "").trim(),
+        port: request.port ?? defaultDbPort(request.type),
         database: request.database?.trim() || null,
         username: request.username?.trim() || null,
         ssl: request.ssl ?? "disabled",
         sshProfileId: request.sshProfileId || null,
+        // Connect-time statement deadline (0 = unlimited, null = default);
+        // omitted preserves the stored value for backwards-compatible callers.
+        queryTimeoutMs: Object.hasOwn(request, "queryTimeoutMs") ? request.queryTimeoutMs : (previous?.queryTimeoutMs ?? null),
         createdAt: previous?.createdAt ?? now,
         updatedAt: now
       };
@@ -2026,7 +2540,8 @@ export default class SshOpsService extends TypertRemoteService {
         password: cred?.value,
         ssl: record.ssl,
         sshConnectionId,
-        name: record.name
+        name: record.name,
+        ...(record.queryTimeoutMs !== null && record.queryTimeoutMs !== undefined ? { queryTimeoutMs: record.queryTimeoutMs } : {})
       });
       if (!result.ok) return result;
       // Tag the db connection with the profile name for connected-status lookup.
@@ -2127,7 +2642,25 @@ export default class SshOpsService extends TypertRemoteService {
 
   async execOnConnection(connectionId, command, timeoutMs = 30000, retried = false) {
     const decision = assessShellCommand(command);
-    if (!decision.ok) return this.prefillBlockedResult(connectionId, command, decision.category ?? decision.reason);
+    if (!decision.ok) {
+      // A simple, fully-literal rm/unlink/rmdir still goes through the
+      // operator's confirmation card — but approving it performs the
+      // reversible trash move, not a real deletion. The card carries the
+      // prepared script; real `rm` only ever happens when the operator types
+      // it in their own terminal.
+      let trashScript = null;
+      if (decision.category === CATEGORY_DELETE_FILES) {
+        const parsed = parseSimpleDeleteCommand(command);
+        if (parsed) trashScript = buildTrashCommand(parsed.targets);
+      }
+      // The card, the reason and every notice stay byte-for-byte what they
+      // always were — the trash is a silent rollback margin, never a new UX.
+      return this.prefillBlockedResult(connectionId, command, t(decision.category ?? decision.reason), trashScript);
+    }
+    return this.runPreparedExec(connectionId, command, command, false, timeoutMs, retried);
+  }
+
+  async runPreparedExec(connectionId, prepared, displayCommand, trashRun, timeoutMs = 30000, retried = false) {
     const conn = this.connections.get(connectionId);
     if (conn === void 0) return { ok: false, error: fail("no-connection", `connection "${connectionId}" does not exist`) };
     if (!(await this.ensureAlive(conn))) {
@@ -2137,9 +2670,11 @@ export default class SshOpsService extends TypertRemoteService {
     // interactive shell may be somewhere else entirely. When the login shell
     // is POSIX-family, prepend the interactive-cwd prologue (see exec-cwd.js)
     // so the command runs where the operator's terminal is, and the resolved
-    // directory comes back on a stripped marker line.
+    // directory comes back on a stripped marker line. (The trash move is only
+    // ever dispatched through pendingConfirmationApprove, which refuses to
+    // run it when the shell family cannot anchor relative paths.)
     const shell = await this.resolveLoginShell(conn);
-    const sent = posixLoginShell(shell) ? buildCwdAwareCommand(command) : command;
+    const sent = posixLoginShell(shell) ? buildCwdAwareCommand(prepared) : prepared;
     const commandId = randomUUID();
     const startedAt = new Date().toISOString();
     const startedAtMs = Date.now();
@@ -2150,11 +2685,18 @@ export default class SshOpsService extends TypertRemoteService {
       // The transport may have died between the liveness check and the exec.
       // Wait for the self-healing reconnect and retry once transparently.
       if (!retried && conn.dead && (await this.ensureAlive(conn))) {
-        return this.execOnConnection(connectionId, command, timeoutMs, true);
+        return this.runPreparedExec(connectionId, prepared, displayCommand, trashRun, timeoutMs, true);
       }
       return { ok: false, error: fail("exec-failed", error.message) };
     }
-    const { cwd, stdout } = extractExecCwd(state.stdout);
+    const { cwd, stdout: execStdout } = extractExecCwd(state.stdout);
+    let stdout = execStdout;
+    let trashEvents = null;
+    if (trashRun) {
+      const parsed = parseTrashOutput(execStdout);
+      stdout = parsed.stdout;
+      trashEvents = parsed.events.filter((event) => event.event !== "purged");
+    }
     const { stderr } = state;
     if (state.exitCode === 125 && cwd === null && stderr.startsWith(EXEC_CWD_ERROR_PREFIX)) {
       return { ok: false, error: fail("cwd-unavailable", stderr.trim()) };
@@ -2164,9 +2706,11 @@ export default class SshOpsService extends TypertRemoteService {
     // state label: the `$ ` prefix is the established agent marker and, with
     // the cwd inherited, output is consistent with the visible prompt. A dim
     // warning appears only in the fallback case (cwd undetected — the exec
-    // ran from the home directory, so output may contradict the prompt).
+    // ran from the home directory, so output may contradict the prompt). A
+    // trash run echoes the plain original command: the rollback margin is
+    // silent, the terminal looks exactly as it always did.
     const warning = execEchoWarning(cwd);
-    const display = normalizeTerminalEol(`${warning ? `${warning}\n` : ""}$ ${command}\n${stdout}${stderr.length > 0 ? stderr : ""}`)
+    const display = normalizeTerminalEol(`${warning ? `${warning}\n` : ""}$ ${displayCommand}\n${stdout}${stderr.length > 0 ? stderr : ""}`)
       .replace(/(?:\r\n)+$/, "");
     for (const sessionId of conn.sessions) {
       const session = this.sessions.get(sessionId);
@@ -2177,22 +2721,27 @@ export default class SshOpsService extends TypertRemoteService {
         this.appendSessionOutput(session, `${display}\r\n${prompt}`, { capture: false, observePrompt: false });
       }
     }
-    return {
-      ok: true,
-      value: {
-        exitCode: state.exitCode,
-        stdout,
-        stderr,
-        cwd,
-        display,
-        commandId,
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedAtMs,
-        truncated: state.truncated,
-        timedOut: state.timedOut
-      }
+    const value = {
+      exitCode: state.exitCode,
+      stdout,
+      stderr,
+      cwd,
+      display,
+      commandId,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAtMs,
+      truncated: state.truncated,
+      timedOut: state.timedOut
     };
+    if (trashEvents !== null && trashEvents.length > 0) {
+      value.trashed = trashEvents.map((event) => (
+        event.event === "moved"
+          ? { original: event.original, trashPath: event.trashPath }
+          : { original: event.original }
+      ));
+    }
+    return { ok: true, value };
   }
 
   /**
@@ -2202,7 +2751,10 @@ export default class SshOpsService extends TypertRemoteService {
    * command contains control characters that would be unsafe to send to a PTY).
    * The operator — never the agent — is the one who presses Enter.
    */
-  prefillBlockedCommand(connectionId, command, reason = DANGEROUS_DEFAULT_REASON) {
+  prefillBlockedCommand(connectionId, command, reason = null, trashScript = null) {
+    // The default reason is translated per call: module-level t() would freeze
+    // whatever language happened to be active at import time.
+    const effectiveReason = reason ?? t(DANGEROUS_DEFAULT_REASON);
     // Agent tools commonly omit connection_id to mean the selected right-side
     // server. Resolve it here so safety confirmations follow exactly the same
     // current-connection semantics as ssh_exec and the other SFTP tools.
@@ -2217,6 +2769,8 @@ export default class SshOpsService extends TypertRemoteService {
           // terminal input line.  This avoids the contradiction of a visible
           // command that Enter cannot submit — the only execution path is the
           // panel's Execute button, which sends the full command + Enter.
+          // For a simple delete the card also carries the prepared trash
+          // script: approving performs the reversible move, never a real rm.
           const confirmation = {
             confirmationId: randomUUID(),
             connectionId: effectiveConnectionId,
@@ -2224,12 +2778,13 @@ export default class SshOpsService extends TypertRemoteService {
             name: conn.name,
             host: conn.host,
             command,
-            reason,
+            reason: effectiveReason,
             createdAt: new Date().toISOString(),
-            prefilled: false
+            prefilled: false,
+            ...(trashScript ? { trashScript } : {})
           };
           this.pendingConfirmations.set(confirmation.confirmationId, confirmation);
-          this.appendTerminalNotice(session, `危险命令已被拦截并弹出确认卡片，请在右侧 SSH 面板点击“执行”或“撤销”：${command}`);
+          this.appendTerminalNotice(session, t(`危险命令已被拦截并弹出确认卡片，请在右侧 SSH 面板点击“执行”或“撤销”：${command}`));
           return { queued: true, prefilled: false, confirmationId: confirmation.confirmationId };
         }
         return { queued: false, prefilled: false };
@@ -2242,8 +2797,8 @@ export default class SshOpsService extends TypertRemoteService {
    * Build the ssh_exec result for a blocked destructive command: prefilled into
    * the terminal when possible, otherwise a copyable command card.
    */
-  prefillBlockedResult(connectionId, command, reason) {
-    const pending = this.prefillBlockedCommand(connectionId, command, reason);
+  prefillBlockedResult(connectionId, command, reason, trashScript = null) {
+    const pending = this.prefillBlockedCommand(connectionId, command, reason, trashScript);
     const now = new Date().toISOString();
     return {
       blocked: true,
@@ -2290,7 +2845,7 @@ export default class SshOpsService extends TypertRemoteService {
 
   /** Add a local policy notice to the same buffer rendered by the terminal. */
   appendTerminalNotice(session, message) {
-    this.appendSessionOutput(session, `\r\n\x1b[33m${POLICY_NOTICE_PREFIX} ${message}\x1b[0m\r\n`);
+    this.appendSessionOutput(session, `\r\n\x1b[33m${t(POLICY_NOTICE_PREFIX)} ${message}\x1b[0m\r\n`);
   }
 
   /**
@@ -2348,10 +2903,11 @@ export default class SshOpsService extends TypertRemoteService {
    * never has to expose an implementation-only UUID to the user.
    */
   resolveConnection(connectionId) {
+    const resourceNames = this.savedResourceNameList();
     if (connectionId !== undefined) {
       const connection = this.connections.get(connectionId);
       if (connection !== undefined) return { ok: true, connectionId, connection };
-      return { ok: false, error: fail("no-connection", `connection "${connectionId}" does not exist`) };
+      return { ok: false, error: fail("no-connection", noConnectionGuidance(connectionId, resourceNames, this.agentAutoConnect)) };
     }
     if (this.activeConnectionId !== null) {
       const connection = this.connections.get(this.activeConnectionId);
@@ -2365,7 +2921,7 @@ export default class SshOpsService extends TypertRemoteService {
       return { ok: true, connectionId: resolvedId, connection };
     }
     if (this.connections.size === 0) {
-      return { ok: false, error: fail("no-connection", "no active SSH connection; connect a server in the SSH panel first") };
+      return { ok: false, error: fail("no-connection", noConnectionGuidance(undefined, resourceNames, this.agentAutoConnect)) };
     }
     return { ok: false, error: fail("connection-selection-required", "multiple SSH connections are open; select a server in the SSH panel or provide connection_id") };
   }
@@ -3111,6 +3667,177 @@ export default class SshOpsService extends TypertRemoteService {
     }
   }
 
+  // ── Directory batch transfer (SFTP) ────────────────────────────────────────
+  // Scheduling policy lives in sftp-dir.js: small files in a bounded pool of
+  // 6, files over 512 KiB one at a time, monotone counters, per-file failures
+  // collected instead of fatal. These methods only implement the I/O.
+
+  /** Promisified one-shot sftp callback op. */
+  sftpCall(sftp, fn) {
+    return new Promise((resolve, reject) => fn((error, value) => (error ? reject(error) : resolve(value))));
+  }
+
+  /** mkdir -p over SFTP: create each missing segment, verify with stat. */
+  async ensureRemoteDir(sftp, dir) {
+    if (dir === "/" || dir === "") return;
+    try {
+      await this.sftpCall(sftp, (cb) => sftp.sftp.mkdir(dir, cb));
+      return;
+    } catch {
+      // Fall through: the directory may already exist, or the parent may be
+      // missing — stat decides, recursion creates the parent chain.
+    }
+    try {
+      const attrs = await this.sftpCall(sftp, (cb) => sftp.sftp.stat(dir, cb));
+      if ((attrs.mode & 0o170000) === 0o040000) return;
+      throw new Error(`${dir} exists and is not a directory`);
+    } catch (error) {
+      if (/not a directory/.test(error.message)) throw error;
+      const { parent } = splitRemotePath(dir);
+      await this.ensureRemoteDir(sftp, parent);
+      await this.sftpCall(sftp, (cb) => sftp.sftp.mkdir(dir, cb));
+    }
+  }
+
+  /** Upload one local file into a remote SFTP write stream. */
+  sftpUploadFile(sftp, localFile, remoteFile) {
+    return new Promise((resolve, reject) => {
+      const source = createReadStream(localFile);
+      const target = sftp.sftp.createWriteStream(remoteFile);
+      source.on("error", (error) => { target.destroy(); reject(error); });
+      target.on("error", (error) => { source.destroy(); reject(error); });
+      target.on("close", () => resolve());
+      source.pipe(target);
+    });
+  }
+
+  /** Download one remote SFTP file into a local write stream. */
+  sftpDownloadFile(sftp, remoteFile, localFile) {
+    return new Promise((resolve, reject) => {
+      const source = sftp.sftp.createReadStream(remoteFile);
+      const target = createWriteStream(localFile);
+      source.on("error", (error) => { target.destroy(); reject(error); });
+      target.on("error", (error) => { source.destroy(); reject(error); });
+      target.on("close", () => resolve());
+      source.pipe(target);
+    });
+  }
+
+  /** Recursively list a remote directory; returns [{ rel, path, size, isDirectory }]. */
+  async walkRemoteDir(sftp, root, base = root, out = []) {
+    const entries = await this.sftpCall(sftp, (cb) => sftp.sftp.readdir(root, cb));
+    for (const entry of entries) {
+      const path = joinRemotePath(root, entry.filename);
+      const rel = relativePath(base, path).split("\\").join("/");
+      const isDirectory = (entry.attrs.mode & 0o170000) === 0o040000;
+      if (isDirectory) {
+        out.push({ rel, path, size: 0, isDirectory: true });
+        await this.walkRemoteDir(sftp, path, base, out);
+      } else {
+        out.push({ rel, path, size: entry.attrs.size ?? 0, isDirectory: false });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Upload a local directory tree over SFTP. Small files transfer in a
+   * bounded pool; large files one at a time; per-file failures are reported
+   * in the result instead of aborting the batch.
+   */
+  async sftpUploadDir(request) {
+    const selected = this.resolveConnection(request.connectionId);
+    if (!selected.ok) return selected;
+    const sftp = await this.requireSftp(selected.connection);
+    if (!sftp.ok) return sftp;
+    const { localPath, remotePath } = request;
+    try {
+      const rootStat = await fsStat(localPath);
+      if (!rootStat.isDirectory()) {
+        return { ok: false, error: fail("sftp-upload-dir-failed", `${localPath} is not a directory`) };
+      }
+      await this.ensureRemoteDir(sftp, remotePath);
+      const entries = [];
+      const walk = async (dir) => {
+        for (const entry of await fsReaddir(dir, { withFileTypes: true })) {
+          const full = joinPath(dir, entry.filename ?? entry.name);
+          if (entry.isDirectory()) {
+            await walk(full);
+          } else if (entry.isFile()) {
+            const { size } = await fsStat(full);
+            entries.push({ full, size });
+          }
+        }
+      };
+      await walk(localPath);
+      const tasks = entries.map(({ full, size }) => {
+        const rel = relativePath(localPath, full).split("\\").join("/");
+        return { path: rel, size, run: () => this.sftpUploadFile(sftp, full, joinRemotePath(remotePath, rel)) };
+      });
+      // Every ancestor directory of every file, deduplicated, created shallow
+      // first so each mkdir sees its parent already in place.
+      const remoteDirs = new Set();
+      for (const task of tasks) {
+        let dir = dirnamePath(task.path).split("\\").join("/");
+        while (dir !== "." && dir !== "/" && dir !== "") {
+          remoteDirs.add(dir);
+          dir = dirnamePath(dir);
+        }
+      }
+      const sortedDirs = [...remoteDirs].sort((a, b) => a.length - b.length);
+      for (const dir of sortedDirs) {
+        await this.ensureRemoteDir(sftp, joinRemotePath(remotePath, dir));
+      }
+      const { files, bytes, failures } = await runTransferTasks(tasks);
+      return {
+        ok: true,
+        value: { source: localPath, target: remotePath, directories: remoteDirs.size + 1, files, bytes, failed: failures }
+      };
+    } catch (error) {
+      return { ok: false, error: fail("sftp-upload-dir-failed", `${localPath} -> ${remotePath}: ${error.message}`) };
+    }
+  }
+
+  /**
+   * Download a remote directory tree over SFTP with the same scheduling
+   * policy as sftpUploadDir.
+   */
+  async sftpDownloadDir(request) {
+    const selected = this.resolveConnection(request.connectionId);
+    if (!selected.ok) return selected;
+    const sftp = await this.requireSftp(selected.connection);
+    if (!sftp.ok) return sftp;
+    const { remotePath, localPath } = request;
+    try {
+      const rootAttrs = await this.sftpCall(sftp, (cb) => sftp.sftp.stat(remotePath, cb));
+      if ((rootAttrs.mode & 0o170000) !== 0o040000) {
+        return { ok: false, error: fail("sftp-download-dir-failed", `${remotePath} is not a directory`) };
+      }
+      await fsMkdir(localPath, { recursive: true });
+      const entries = await this.walkRemoteDir(sftp, remotePath);
+      const directories = entries.filter((e) => e.isDirectory).length;
+      for (const dir of entries.filter((e) => e.isDirectory)) {
+        await fsMkdir(joinPath(localPath, dir.rel), { recursive: true });
+      }
+      const tasks = entries.filter((e) => !e.isDirectory).map((entry) => ({
+        path: entry.rel,
+        size: entry.size,
+        run: async () => {
+          const local = joinPath(localPath, entry.rel);
+          await fsMkdir(dirnamePath(local), { recursive: true });
+          await this.sftpDownloadFile(sftp, entry.path, local);
+        }
+      }));
+      const { files, bytes, failures } = await runTransferTasks(tasks);
+      return {
+        ok: true,
+        value: { source: remotePath, target: localPath, directories: directories + 1, files, bytes, failed: failures }
+      };
+    } catch (error) {
+      return { ok: false, error: fail("sftp-download-dir-failed", `${remotePath} -> ${localPath}: ${error.message}`) };
+    }
+  }
+
   // ── Port forwarding (tunnels) ──────────────────────────────────────────────
 
   /**
@@ -3237,6 +3964,46 @@ export default class SshOpsService extends TypertRemoteService {
   }
 
   /** Stop a tunnel by id. */
+  /**
+   * Dynamic SOCKS5 forwarding (the `ssh -D` equivalent): one local listener
+   * whose clients choose the destination per connection; each chosen address
+   * is opened as a fresh channel on the SSH connection, so the client reaches
+   * whatever that server can reach.
+   */
+  async tunnelStartDynamic(request) {
+    const selected = this.resolveConnection(request.connectionId);
+    if (!selected.ok) return selected;
+    const conn = selected.connection;
+    if (!(await this.ensureAlive(conn))) {
+      return { ok: false, error: fail("connection-lost", `connection "${conn.id}" is down and could not be re-established`) };
+    }
+    const tunnelId = `tun-${randomUUID().slice(0, 8)}`;
+    const bindAddr = request.bindAddr ?? "127.0.0.1";
+    const bindPort = request.bindPort ?? 0;
+    const net = await import("node:net");
+    const record = { id: tunnelId, kind: "dynamic", bindAddr, bindPort, active: true, connections: 0 };
+    try {
+      const server = net.createServer((socket) => {
+        record.connections += 1;
+        attachSocks5(socket, {
+          forwardOut: (host, port, callback) => conn.client.forwardOut("127.0.0.1", 0, host, port, callback),
+          onClose: () => { record.connections = Math.max(0, record.connections - 1); }
+        });
+      });
+      await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(bindPort, bindAddr, () => resolve());
+      });
+      const address = server.address();
+      record.bindPort = typeof address === "object" && address !== null ? address.port : bindPort;
+      record.server = server;
+      conn.tunnels.set(tunnelId, record);
+      return { ok: true, value: { tunnelId, kind: "dynamic", bindAddr, bindPort: record.bindPort } };
+    } catch (error) {
+      return { ok: false, error: fail("tunnel-start-failed", error.message) };
+    }
+  }
+
   async tunnelStop(request) {
     const selected = this.resolveConnection(request.connectionId);
     if (!selected.ok) return selected;
@@ -3244,7 +4011,7 @@ export default class SshOpsService extends TypertRemoteService {
     const tunnel = conn.tunnels.get(request.tunnelId);
     if (tunnel === void 0) return { ok: false, error: fail("no-tunnel", `tunnel "${request.tunnelId}" does not exist on this connection`) };
     try {
-      if (tunnel.kind === "local") {
+      if (tunnel.kind === "local" || tunnel.kind === "dynamic") {
         await new Promise((resolve) => tunnel.server.close(() => resolve()));
       } else {
         if (tunnel.bridgeInfo?.bridge) {
@@ -3275,58 +4042,60 @@ export default class SshOpsService extends TypertRemoteService {
       };
       if (t.targetHost !== undefined) entry.targetHost = t.targetHost;
       if (t.targetPort !== undefined) entry.targetPort = t.targetPort;
+      if (t.connections !== undefined) entry.connections = t.connections;
       return entry;
     });
     return { ok: true, value: { tunnels } };
   }
 
-  // ── SSH config import ──────────────────────────────────────────────────────
+  // ── session logs ───────────────────────────────────────────────────────────
 
-  /**
-   * Parse the user's ~/.ssh/config and return host entries suitable for
-   * saving as profiles. Each Host block becomes one entry with host, port,
-   * user, and auth kind (key path is detected but the key content is NOT
-   * read — the caller saves the path and the profile connect flow reads it
-   * at connect time).
-   */
-  async sshConfigImport() {
-    const { readFile, existsSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const os = await import("node:os");
-    const configPath = join(os.default.homedir(), ".ssh", "config");
-    if (!existsSync(configPath)) {
-      return { ok: false, error: fail("no-ssh-config", `~/.ssh/config not found at ${configPath}`) };
+  async sessionLogList() {
+    const store = this.sessionLogStore();
+    if (store === null) return { ok: true, value: { enabled: false, logs: [] } };
+    return { ok: true, value: { enabled: true, logs: await store.list() } };
+  }
+
+  async sessionLogRead(request) {
+    const store = this.sessionLogStore();
+    if (store === null) {
+      return { ok: false, error: fail("session-log-disabled", t("会话录制已关闭（config.sessionLogEnabled = false）")) };
     }
-    let content;
-    try {
-      content = await readFile(configPath, "utf8");
-    } catch (error) {
-      return { ok: false, error: fail("ssh-config-read-failed", error.message) };
+    const result = await store.read(request.sessionId, { offset: request.offset, maxBytes: request.maxBytes });
+    if (result.ok !== true) {
+      return { ok: false, error: fail("no-session-log", t(`会话日志不存在：${request.sessionId}`)) };
     }
-    const hosts = [];
-    let current = null;
-    for (const rawLine of content.split("\n")) {
-      const line = rawLine.trim();
-      if (line === "" || line.startsWith("#")) continue;
-      const spaceIdx = line.search(/\s/);
-      if (spaceIdx === -1) continue;
-      const key = line.slice(0, spaceIdx).toLowerCase();
-      const value = line.slice(spaceIdx + 1).trim();
-      if (key === "host") {
-        // Skip wildcards like Host *
-        if (value.includes("*")) { current = null; continue; }
-        if (current !== null) hosts.push(current);
-        current = { name: value, host: value, port: 22, username: "", authKind: "key", identityFile: "", proxyJump: "" };
-      } else if (current !== null) {
-        if (key === "hostname") current.host = value;
-        else if (key === "port") current.port = parseInt(value, 10) || 22;
-        else if (key === "user") current.username = value;
-        else if (key === "identityfile") current.identityFile = value.replace(/^~/, os.default.homedir());
-        else if (key === "proxyjump") current.proxyJump = value;
+    return {
+      ok: true,
+      value: {
+        sessionId: request.sessionId, data: result.data,
+        startOffset: result.startOffset, nextOffset: result.nextOffset, eof: result.eof, size: result.size
       }
+    };
+  }
+
+  async sessionLogSearch(request) {
+    const store = this.sessionLogStore();
+    if (store === null) {
+      return { ok: false, error: fail("session-log-disabled", t("会话录制已关闭（config.sessionLogEnabled = false）")) };
     }
-    if (current !== null) hosts.push(current);
-    return { ok: true, value: { hosts } };
+    const result = await store.search(request.sessionId, { query: request.query, maxHits: request.maxHits });
+    if (result.ok !== true) {
+      return { ok: false, error: fail("no-session-log", t(`会话日志不存在：${request.sessionId}`)) };
+    }
+    return {
+      ok: true,
+      value: { sessionId: request.sessionId, hits: result.hits, scannedBytes: result.scannedBytes, stoppedEarly: result.stoppedEarly }
+    };
+  }
+
+  async sessionLogDelete(request) {
+    const store = this.sessionLogStore();
+    if (store === null) return { ok: true, value: { deleted: 0, remaining: 0 } };
+    const deleted = request.sessionId === undefined
+      ? (await store.removeAll()).deleted
+      : ((await store.remove(request.sessionId)), 1);
+    return { ok: true, value: { deleted, remaining: (await store.list()).length } };
   }
 
   /** Execute a command on the explicit or current SSH connection. */
@@ -3420,8 +4189,30 @@ export default class SshOpsService extends TypertRemoteService {
   }
 
   /** Append transport data and retain a bounded, explicit-read capture. */
+  /**
+   * The session-log store, created on first use. Returns null when recording
+   * is switched off in config; every call site treats null as "not recording".
+   */
+  sessionLogStore() {
+    if (this.config.sessionLogEnabled === false) return null;
+    if (this.sessionLogs === undefined || this.sessionLogs === null) {
+      const dir = this.config.sessionLogDir ?? joinPath(homedir(), ".dsh", "ssh-ops-logs");
+      this.sessionLogs = new SessionLogStore({ dir });
+    }
+    return this.sessionLogs;
+  }
+
   appendSessionOutput(session, text, { capture = true, observePrompt = true } = {}) {
     this.terminalOutput(session).append(text);
+    // Recording must never influence the session: a broken log is swallowed.
+    try {
+      const store = this.sessionLogStore();
+      if (store !== null && session.logMeta !== undefined) {
+        if (!store.has(session.id)) void store.begin(session.logMeta).catch(() => {});
+        store.append(session.id, text);
+      }
+    } catch { /* keep the session alive */ }
+    try { session.shellIntegration?.feed(text); } catch { /* tracking is decoration */ }
     // Legacy poll readers retain their independent destructive buffer.
     session.buffer = tailCapped((session.buffer ?? "") + text, this.config.maxBufferBytes);
     if (capture) {
@@ -3450,6 +4241,7 @@ export default class SshOpsService extends TypertRemoteService {
     registerTunnelTools(ctx, this);
     registerBatchTools(ctx, this);
     if (this.config.registerDbAgentTools !== false) registerDbTools(ctx, this);
+    registerSessionLogTools(ctx, this);
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
@@ -3457,6 +4249,7 @@ export default class SshOpsService extends TypertRemoteService {
   recordExit(session, exit) {
     if (session.exited !== null) return;
     session.exited = exit;
+    try { void this.sessionLogStore()?.end(session.id, { exitCode: exit?.code ?? null }); } catch { /* best-effort */ }
     this.removePendingForSession(session.id);
     // A naturally-exited shell must no longer count as an open terminal:
     // drop it from the connection's live-session set so list() reports only

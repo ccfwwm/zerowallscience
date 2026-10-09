@@ -2,6 +2,7 @@
 import { COMPONENT_SCHEMAS, GENUI_SPEC_SCHEMA } from './schema.ts'
 import { isComponentRoot } from '../spec.ts'
 import type { ComponentRecordSchema, ComponentSchema } from './schema.ts'
+import { isTableDetailReachable } from '../table-details.ts'
 
 export interface GenuiDiagnostic {
   readonly kind: 'alias' | 'unknown-field'
@@ -46,6 +47,13 @@ function visitNativeNodes(value: unknown, path: string, visit: (node: Record<str
     value.items.forEach((item, index) => {
       const holder = record(item)
       if (holder?.items !== undefined && Array.isArray(holder.items)) holder.items.forEach((child, childIndex) => children(child, `${path}.items[${index}].items[${childIndex}]`))
+    })
+  } else if (type === 'table' && Array.isArray(value.details)) {
+    const table = { columns: value.columns, rows: value.rows, types: value.types }
+    value.details.forEach((detail, rowIndex) => {
+      if (Array.isArray(detail) && isTableDetailReachable(table, rowIndex)) {
+        detail.forEach((child, childIndex) => children(child, `${path}.details[${rowIndex}][${childIndex}]`))
+      }
     })
   }
 }
@@ -123,6 +131,18 @@ export function diagnoseUnknownGenuiFields(value: unknown): GenuiDiagnostic[] {
       pushUnknownField(warnings, path, field, node.type as string)
     }
     diagnoseNestedFields(node, path, definition, warnings)
+    if (node.type === 'list' && Array.isArray(node.items)) {
+      node.items.forEach((item, index) => {
+        if (isNode(item)) return
+        const holder = record(item)
+        if (holder === undefined) return
+        for (const field of Object.keys(holder)) {
+          if (field === 'title' || field === 'desc') continue
+          const itemPath = `${path}.items[${index}]`
+          warnings.push({ kind: 'unknown-field', path: `${itemPath}.${field}`, message: `${itemPath}.${field}: list items render 'title' and 'desc' only — '${field}' is dropped`, type: 'list', field })
+        }
+      })
+    }
   }
   if (Array.isArray(root.items) && !isComponentRoot(root)) {
     for (const field of Object.keys(root)) {

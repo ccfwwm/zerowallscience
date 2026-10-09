@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-chat/client'
-import { UserStyleBubble } from '@deepseek-ai/dsh-client-ui-chat/client'
-import { writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
@@ -154,7 +152,13 @@ function messageClock(time: number, t: UserMessageProps['t']): string {
 }
 
 async function writeText(text: string): Promise<boolean> {
-  return writeClipboard(text)
+  try {
+    if (navigator.clipboard === undefined) return false
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function CheckIcon() {
@@ -239,13 +243,10 @@ function MessageActions({
 /** Shadow the host user renderer while preserving its ordinary-message behavior. */
 export function ReviewUserMessage({
   node,
-  sessionId,
   cwd,
   renderMessageImages,
   t,
   reviewT,
-  openFile,
-  openSkill,
 }: UserMessageProps) {
   const { content, time } = node.data
   const { text, images, rest } = contentParts(content)
@@ -261,21 +262,7 @@ export function ReviewUserMessage({
     projection === null
       ? text
       : [countLabel, visibleText].filter((value) => value !== null && value !== '').join('\n\n')
-  const fileBlocks = rest.filter(block => typeof block === 'object' && block !== null && (block as { type?: unknown }).type === 'file')
-  const extraBlocks = rest.filter(block => !fileBlocks.includes(block))
-  const showBubble = visibleText !== '' || extraBlocks.length > 0
-
-  if (projection === null)
-    return (
-      <UserStyleBubble
-        content={content}
-        renderMessageImages={renderMessageImages}
-        references={{ openFile, openSkill }}
-        {...sessionId === undefined ? {} : { fileActionScope: { sessionId, ...(cwd === undefined ? {} : { cwd }) } }}
-        t={t}
-        actions={value => <MessageActions text={value} time={time} t={t} />}
-      />
-    )
+  const showBubble = visibleText !== '' || rest.length > 0
 
   return (
     <div className={css.reviewMessageRow} data-time-hover-root="">
@@ -293,16 +280,10 @@ export function ReviewUserMessage({
             variant="message"
           />
         )}
-        {fileBlocks.length > 0 && <UserStyleBubble
-          content={fileBlocks}
-          renderMessageImages={renderMessageImages}
-          {...sessionId === undefined ? {} : { fileActionScope: { sessionId, ...(cwd === undefined ? {} : { cwd }) } }}
-          t={t}
-        />}
         {showBubble && (
           <div className={css.reviewMessageBubble}>
             {projectPlainReferences(visibleText)}
-            {extraBlocks.map((block, index) => (
+            {rest.map((block, index) => (
               <ExtraBlock key={index} label={t('message.extraBlock')} value={block} />
             ))}
           </div>

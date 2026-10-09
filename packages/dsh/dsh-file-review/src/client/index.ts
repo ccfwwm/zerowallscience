@@ -14,6 +14,7 @@ import type { ChatFileMentions } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { FileReviewRequest, FileReviewResult } from '../change-types.ts'
 import { TYPERT_REMOTE } from '../remote.ts'
@@ -67,15 +68,19 @@ export const inject = [
 export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const disposeRemote = await ctx.remote.$mount(TYPERT_REMOTE)
   const disposeReviewSource = ctx.inputTriggers.registerSource(reviewCommentSource())
-  // The bundle owns the canonical Host row. Its configuration is written into
-  // the user's profile; a desktop command-line overlay would make it read-only.
   const settings = ctx.configForms.get<Config>(FILE_REVIEW_SETTINGS_NAMESPACE)
   const wordWrap = {
     getSnapshot: () => settings.getSnapshot().value?.wordWrap ?? DEFAULT_WORD_WRAP,
     subscribe: (listener: () => void) => settings.subscribe(listener),
   }
   const t = ctx.locale.bind(NS)
-  const reviewBindings = new Map<string, ReturnType<typeof bindReviewReference>>()
+  const reviewBindings = new Map<
+    string,
+    {
+      readonly session: NonNullable<ReturnType<ISessions['binding']>>
+      readonly reference: ReturnType<typeof bindReviewReference>
+    }
+  >()
   const reviewRemotes = new Map<string, FileReviewTabRuntime>()
   // The package ships Host and browser halves in one TypeScript program. The Host
   // SessionStore and browser ISessions intentionally share the Cordis key, so keep
@@ -84,19 +89,23 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   const reviewBindingFor = (
     sessionId: SessionId,
   ): ReturnType<typeof bindReviewReference> | undefined => {
-    let binding = reviewBindings.get(sessionId)
-    if (binding !== undefined) return binding
     const session = sessions.binding(sessionId)
+    const cached = reviewBindings.get(sessionId)
+    if (cached !== undefined && cached.session === session) return cached.reference
+    // Leaving a Session can release its binding; returning builds a new composer
+    // shell, so a cached reference would keep reconciling the dead one.
+    cached?.reference.dispose()
+    reviewBindings.delete(sessionId)
     if (session === undefined) return undefined
-    binding = bindReviewReference(
+    const reference = bindReviewReference(
       session.ctx,
       sessionId,
       ctx.conversation.input.for(session.ctx),
       ctx.locale.bind(NS),
       session.eventSource,
     )
-    reviewBindings.set(sessionId, binding)
-    return binding
+    reviewBindings.set(sessionId, { session, reference })
+    return reference
   }
   const reviewRemoteFor = (sessionId: SessionId): FileReviewTabRuntime => {
     let remote = reviewRemotes.get(sessionId)
@@ -136,8 +145,6 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   })
   ctx.uiConversation.events.register(deliverablesDefinition)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'file-review: dictionaries')
-  // One canonical card serves both the standalone and ZeroWall Host row ids.
-  // Registering each alias creates duplicate cards in the Plugins page.
   ctx.slots.inject('plugins.row.config', () =>
     ctx.slots.register(
       {
@@ -162,6 +169,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         locale: NS,
         inject: (sessionId) => ({
           projectRoot: sessions.list.getSnapshot().byId[sessionId]?.cwd,
+          syncComments: reviewRemoteFor(sessionId).syncComments,
         }),
       },
       ReviewCommentsDock,
@@ -218,7 +226,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
   }
   ctx.provide('chatFileMentions', mentions)
   return async () => {
-    for (const binding of reviewBindings.values()) binding.dispose()
+    for (const { reference } of reviewBindings.values()) reference.dispose()
     reviewBindings.clear()
     reviewRemotes.clear()
     disposeReviewSource()

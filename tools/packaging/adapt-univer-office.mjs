@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto'
-const upstreamPeerRange = '^0.1.5-rc.3 || ^0.1.7-alpha.2 || ^0.1.7-rc.1'
+const upstreamPeerRanges = new Set([
+  '^0.1.5-rc.3 || ^0.1.7-alpha.2 || ^0.1.7-rc.1',
+  '^0.1.5-rc.3 || ^0.1.7-rc.1 || ^0.2.0-rc.1',
+])
+const adaptedPeerRange = '^0.1.5-rc.3 || ^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.0-rc.2'
 export const UNIVER_SKILL_HASHES = {
   univer: 'e7d13dab051806eee9fb482b3b487d37198fa4eb7050bf755226de5dbca6b24c',
   'univer-slide': '8b24e3fb8d24546a5199d5c65fabb7245c50145f9a0113a5aa7377a389ad3baf',
@@ -7,7 +11,7 @@ export const UNIVER_SKILL_HASHES = {
   'univer-sheet': '4599841af059e772c6d9af352359d22c50bd2438cc9a167b272ab2ebc2f4991a',
 }
 export function adaptUniverSkill(name, source, version, commit) {
-  if (version !== '0.3.5' || commit !== 'ce7f3e0bfa1e9b6bc4eb855e1c220b77fcdab806') throw new Error('Univer Skill adapter identity changed.')
+  if (version !== '0.3.7' || commit !== '8f85ce4074fdbe51416b6c337468bb916a302c2a') throw new Error('Univer Skill adapter identity changed.')
   if (createHash('sha256').update(source).digest('hex') !== UNIVER_SKILL_HASHES[name]) throw new Error(`Univer Skill ${name} upstream hash changed; review before adapting.`)
   const descriptions = {
     univer: 'Create, inspect, edit, import and export .univer Units. Use for Univer authoring or explicitly requested Office import into Univer. Ordinary Office attachment identification, reading, summary and comparison use Host extraction and pagination; load this before the matching authoring Unit skill.',
@@ -34,21 +38,21 @@ const dshPeers = [
   '@deepseek-ai/dsh-tools',
 ]
 
-// The published 0.3.5 bundle predates rc.2. Only the curated runtime copy
+// The published 0.3.7 bundle predates rc.2. Only the curated runtime copy
 // gets the range extension; any upstream manifest change requires a new audit.
 export function adaptUniverOfficeManifest(source) {
   const manifest = JSON.parse(source)
-  if (manifest.name !== 'dsh-univer-office' || manifest.version !== '0.3.5') {
+  if (manifest.name !== 'dsh-univer-office' || manifest.version !== '0.3.7') {
     throw new Error('Unexpected Univer Office manifest identity; review its DSH compatibility.')
   }
   if (Object.keys(manifest.peerDependencies ?? {}).filter(name => name.startsWith('@deepseek-ai/dsh-')).length !== dshPeers.length) {
     throw new Error('Univer Office DSH peer set changed; review its DSH compatibility.')
   }
   for (const name of dshPeers) {
-    if (manifest.peerDependencies[name] !== upstreamPeerRange) {
+    if (!upstreamPeerRanges.has(manifest.peerDependencies[name]) && manifest.peerDependencies[name] !== adaptedPeerRange) {
       throw new Error(`Univer Office peer ${name} changed; review its DSH compatibility.`)
     }
-    manifest.peerDependencies[name] = `${upstreamPeerRange} || ^0.2.0-rc.2`
+    manifest.peerDependencies[name] = adaptedPeerRange
   }
   return `${JSON.stringify(manifest, null, 2)}\n`
 }

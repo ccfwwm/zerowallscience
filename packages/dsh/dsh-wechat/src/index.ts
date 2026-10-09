@@ -32,7 +32,6 @@ export interface PluginConfig {
   silent?: boolean;
   surfacePromptEnabled?: boolean;
   surfacePrompt?: string;
-  autoStart?: boolean;
 }
 
 export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise<void> {
@@ -64,6 +63,14 @@ export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise
     bridge.handleSessionEvent(sessionId, event as { type: string; [k: string]: unknown });
   });
   console.log("[dsh-wechat] session/event listener attached");
+  context.on("agent/assistant-stream", (payload) => {
+    const { agent, frame } = payload as { agent?: { id?: string }; frame?: import("./dsh/types.js").AssistantStreamFrame };
+    if (agent?.id && frame) bridge.handleAssistantStream(agent.id, frame);
+  });
+  context.on("session/disposed", (session) => {
+    const sessionId = sessionIdFrom(session);
+    if (sessionId) bridge.clearSessionOutput(sessionId);
+  });
 
   // ─── Agent errors → WeChat notification ───
   context.on("agent/error", (payload) => {
@@ -405,16 +412,10 @@ if (typeof context.inject === "function") {
     console.log("[dsh-wechat] ctx.inject unavailable; QR page disabled (login QR is logged)");
   }
 
-  // A packaged desktop should finish the main UI boot before starting an
-  // interactive QR/login flow. Existing installations can opt back in via
-  // the profile patch; the Settings page always exposes reconnect/re-login.
-  if (config.autoStart) {
-    void bridge.start().catch((err) => {
-      console.error(`[dsh-wechat] bridge start failed: ${String(err)}`);
-    });
-  } else {
-    console.log("[dsh-wechat] bridge startup deferred; connect it from Settings → WeChat");
-  }
+  // Start the bridge (token resume or QR login), stop on dispose.
+  void bridge.start().catch((err) => {
+    console.error(`[dsh-wechat] bridge start failed: ${String(err)}`);
+  });
 
   return () => bridge.stop();
 }

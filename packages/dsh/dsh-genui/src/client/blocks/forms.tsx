@@ -8,7 +8,9 @@ import { useEffect, useId, useRef, useState } from 'react'
 import css from '../GenuiBlock.module.css'
 import { GENUI_LIMITS } from '../genui-runtime/index.ts'
 import { useT } from '../i18n/index.ts'
-import type { AnswersState, GenuiBlockProps, QuestionMeta } from './state.ts'
+import { resolveSubmitState } from '../submission-registry.ts'
+import type { RadioSubmissionMember } from '../submission-registry.ts'
+import type { AnswersState, GenuiBlockProps } from './state.ts'
 import type { GenuiInput, GenuiRadio, GenuiSelect, GenuiSlider, GenuiSubmit, GenuiSwitch, GenuiTextarea } from '../spec.ts'
 
 export function RadioNode({ node, onAction, answers }: {
@@ -22,7 +24,7 @@ export function RadioNode({ node, onAction, answers }: {
   const options = node.options.slice(0, GENUI_LIMITS.maxOptions)
   // No default selection unless the model explicitly sets `selected` — a
   // pre-checked first option silently swallows the user's "keep the default"
-  // answer (the registry only records real change events). A DURABLE answer
+  // answer (the interaction state only records selected values). A DURABLE answer
   // (restored from localStorage) wins over both. The parent key includes the
   // reset round, so 重新作答 remounts this radio with a clean selection —
   // no sync effect needed.
@@ -32,17 +34,8 @@ export function RadioNode({ node, onAction, answers }: {
   const [selected, setSelected] = useState<number | null>(restoredIndex >= 0 ? restoredIndex : (node.selected ?? null))
   const uid = useId()
   const locked = grouped && answers?.locked === true
-  // Register question metadata for local grading (mount + when the question
-  // changes). `answers` is deliberately NOT a dep: the callback identity is
-  // stable and re-registering on every answers update is needless churn.
   useEffect(() => {
     if (group === undefined) return
-    answers?.registerMeta(group, {
-      label: node.label ?? group,
-      options,
-      answer: node.answer,
-      explanation: node.explanation,
-    })
     // A model-provided default selection IS the answer — but only when the
     // group has no durable answer yet (a restored user choice must win).
     if (node.selected !== undefined && options[node.selected] !== undefined && answers?.answers[group] === undefined) {
@@ -77,16 +70,14 @@ export function RadioNode({ node, onAction, answers }: {
   )
 }
 
-/** Resolve a question's correct label from its metadata. */
-export function correctLabelOf(m: QuestionMeta): string | undefined {
+/** 根据静态 radio member 获取正确选项的标签。 */
+export function correctLabelOf(m: RadioSubmissionMember): string | undefined {
   if (m.answer === undefined) return undefined
   if (typeof m.answer === 'number') return m.options[m.answer]
   return m.answer
 }
 
-/** Submit: collect grouped radio and checkbox answers. Radio-only scopes keep
- * LOCAL-FIRST grading; when checkbox selections participate, the click falls
- * back to the aggregation action so multi-select data is never discarded. */
+/** 汇总当前 block 的表单状态，并根据 resolver 的结果提交或本地判卷。 */
 export function SubmitNode({ node, onAction, answers }: {
   node: GenuiSubmit
   onAction?: GenuiBlockProps['onAction']
@@ -96,34 +87,21 @@ export function SubmitNode({ node, onAction, answers }: {
   const recorded = answers?.answers ?? {}
   const multiRecorded = answers?.multiAnswers ?? {}
   const fields = answers?.fields ?? {}
-  const meta = answers?.meta ?? {}
   const expected = node.groups
   // One shared notion of "filled fields" for answered/ready/payload: non-blank
   // values only, secrets (password inputs) never collected into submit.
   const filledFields = Object.fromEntries(
     Object.entries(fields).filter(([id, v]) => v.trim() !== '' && !answers?.secretFields.has(id)),
   )
-  const nonEmptyMultiGroups = Object.entries(multiRecorded)
-    .filter(([, values]) => Array.isArray(values) && values.length > 0)
-    .map(([group]) => group)
-  const recordedGroups = new Set([...Object.keys(recorded), ...nonEmptyMultiGroups])
-  const hasRecordedAnswer = (group: string): boolean =>
-    recorded[group] !== undefined || (Array.isArray(multiRecorded[group]) && multiRecorded[group]!.length > 0)
-
-  // Explicit groups require at least one selected checkbox (or a radio answer)
-  // per group. Empty checkbox arrays remain durable state but are deliberately
-  // not considered "answered".
-  const answered = expected === undefined
-    ? Math.max(recordedGroups.size, Object.keys(filledFields).length)
-    : expected.filter(hasRecordedAnswer).length
-  const total = expected?.length ?? answered
-  const scope = expected ?? [...recordedGroups]
-  const hasMultiInScope = scope.some(group =>
-    Array.isArray(multiRecorded[group]) && multiRecorded[group]!.length > 0,
-  )
-  // Local grading must be radio-only. Otherwise grading would consume the
-  // click and silently omit checkbox selections that need model delivery.
-  const canGradeLocally = !hasMultiInScope && scope.some(group => meta[group]?.answer !== undefined)
+  const resolved = answers === undefined ? { scope: [], answered: 0, total: expected?.length ?? 0, localGradeEligible: false, hasOutOfScopePayload: false }
+    : resolveSubmitState({
+      registry: answers.registry,
+      ...(expected === undefined ? {} : { groups: expected }),
+      state: { answers: recorded, multiAnswers: multiRecorded, fields, secretFields: answers.secretFields },
+    })
+  const { scope, answered, total } = resolved
+  const canSendAction = node.action !== undefined && onAction !== undefined
+  const shouldGradeLocally = resolved.localGradeEligible && (!resolved.hasOutOfScopePayload || !canSendAction)
   const submitted = answers?.locked === true
   const collectedAnswers: Record<string, string | string[]> = {
     ...recorded,
@@ -133,12 +111,12 @@ export function SubmitNode({ node, onAction, answers }: {
   // grading, or a real action name + provider. A submit with neither is a
   // display-only control — honest disabled affordance.
   const ready = answered > 0 && answered >= total
-    && (canGradeLocally || (node.action !== undefined && onAction !== undefined))
+    && (shouldGradeLocally || canSendAction)
 
   if (submitted) {
     // ── local grading result ──
-    const graded = scope.filter(g => recorded[g] !== undefined && meta[g]?.answer !== undefined)
-    const score = graded.filter(g => recorded[g] === correctLabelOf(meta[g]!)).length
+    const graded = scope.filter((member): member is RadioSubmissionMember => member.kind === 'radio' && recorded[member.key] !== undefined && member.answer !== undefined)
+    const score = graded.filter(member => recorded[member.key] === correctLabelOf(member)).length
     return (
       <div className={css.gradeWrap} data-genui-grade>
         <div className={css.gradeScore}>
@@ -146,14 +124,14 @@ export function SubmitNode({ node, onAction, answers }: {
           <span className={css.gradeScoreLabel}>{t('block.score')}{graded.length < scope.length ? t('block.scoreUngraded', { count: scope.length - graded.length }) : ''}</span>
         </div>
         <div className={css.gradeList}>
-          {scope.map(g => {
-            const entry = recorded[g]
-            const m = meta[g]
-            if (entry === undefined || m === undefined) return null
+          {scope.map(m => {
+            if (m.kind !== 'radio') return null
+            const entry = recorded[m.key]
+            if (entry === undefined) return null
             const correct = correctLabelOf(m)
             if (correct === undefined) {
               return (
-                <div key={g} className={css.gradeItem}>
+                <div key={m.key} className={css.gradeItem}>
                   <span className={css.gradeQ}>{renderInline(m.label)}</span>
                   <span className={css.gradeAns}>{t('block.yourAnswer')}{renderInline(entry)}</span>
                 </div>
@@ -161,7 +139,7 @@ export function SubmitNode({ node, onAction, answers }: {
             }
             const isCorrect = entry === correct
             return (
-              <div key={g} className={`${css.gradeItem} ${isCorrect ? css.gradeItemOk : css.gradeItemNo}`}>
+              <div key={m.key} className={`${css.gradeItem} ${isCorrect ? css.gradeItemOk : css.gradeItemNo}`}>
                 <span className={css.gradeQ}>{renderInline(m.label)}</span>
                 <span className={css.gradeTag}>{isCorrect ? '✓' : '✗'}</span>
                 <span className={css.gradeAns}>
@@ -196,7 +174,7 @@ export function SubmitNode({ node, onAction, answers }: {
         className={`${css.button} ${css.primary} ${css.submit}`}
         disabled={!ready}
         onClick={ready ? () => {
-          if (canGradeLocally) {
+          if (shouldGradeLocally) {
             // Local grading: immediate in-place result, no model round trip.
             answers?.setLocked(true)
           } else if (node.action !== undefined && onAction !== undefined) {

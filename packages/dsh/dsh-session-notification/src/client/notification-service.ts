@@ -9,7 +9,7 @@
  * dsh 0.1.3-alpha.1 data model: the session snapshot still carries no chat
  * view or pending interaction — the chat view comes from
  * `uiConversation.binding(binding).target('chat')` and pending interactions
- * from `uiSession.pendingInteractions`. The engine's session types now come
+ * from the uiSession session-status source. The engine's session types now come
  * from the api-session-controller client (dsh-client-runtime was dissolved);
  * `AssistantBlock`/`TurnErrorNode` live with the ui-conversation records.
  */
@@ -81,6 +81,12 @@ export interface NotificationEvent {
 export interface NotificationEnginePorts {
   /** Read one session's detail snapshot; undefined when unavailable. */
   detailOf: (sessionId: SessionId) => SessionDetail | undefined
+  /**
+   * Materialize the detail inputs before the settle read (open a session the
+   * UI never opened so its chat view can assemble the final assistant text).
+   * Optional and best-effort: a failure must not lose the classification.
+   */
+  ensureDetail?: (sessionId: SessionId) => Promise<void>
   /** Human display title of one session. */
   titleOf: (sessionId: SessionId) => string
   /** Wait for trailing wire frames after a running edge (settle window). */
@@ -261,6 +267,13 @@ export class NotificationEngine {
         this.prevRunning.delete(id)
         return
       }
+      // A session the user never opened has no loaded history, so its chat
+      // view holds no nodes yet; materialize it best-effort before reading.
+      try {
+        await this.ports.ensureDetail?.(id)
+      } catch {
+        // Best effort only: classify from whatever snapshot reads exist.
+      }
       const detail = this.ports.detailOf(id)
       const failed = detail !== undefined && (
         detail.maxTurnErrorSeq > run.baselineErrorSeq ||
@@ -364,10 +377,13 @@ export interface NotificationDispatcherDeps {
   /** Read one kind's custom sound data URL (undefined = use the built-in). */
   customSoundOf: (kind: NotificationType) => string | undefined
   /** Show one system notification; returns whether it was shown. */
-  /** Show one system notification under the event kind's collapse tag. */
+  /**
+   * Show one system notification under the event kind's collapse tag; the
+   * session id lets the click action navigate back to the event's session.
+   */
   showBrowser: (title: string, body: string, tag: string, sessionId: SessionId) => boolean
-  /** The currently selected session, when one is selected. */
-  currentSession: () => SessionId | undefined
+  /** Whether one session is the one currently shown in the main view. */
+  isCurrent: (sessionId: SessionId) => boolean
   /** Whether the document is hidden (backgrounded). */
   isHidden: () => boolean
 }
@@ -394,7 +410,7 @@ export class NotificationDispatcher {
     const settings = this.deps.settings()
     const type = settings.types[event.kind]
     if (!type.enabled) return
-    const isCurrent = this.deps.currentSession() === event.sessionId
+    const isCurrent = this.deps.isCurrent(event.sessionId)
     const hidden = this.deps.isHidden()
     // Not interrupting what you are reading: the current, visible session
     // alerts only when the user opted in.

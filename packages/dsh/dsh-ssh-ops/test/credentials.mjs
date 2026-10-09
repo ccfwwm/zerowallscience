@@ -2,7 +2,7 @@
 // credentials service (the "save and connect" path), with the credentials
 // provider mocked out. No ssh2 transport, no real credential store.
 import assert from "node:assert/strict";
-import SshOpsService, { profileRecordSchema } from "../src/index.js";
+import SshOpsService from "../src/index.js";
 
 function makeService() {
   const service = Object.create(SshOpsService.prototype);
@@ -29,11 +29,11 @@ function makeService() {
   return service;
 }
 
-function fakeTable(entries = [], schema = null) {
+function fakeTable(entries = []) {
   const map = new Map(entries);
   return {
     get: (id) => map.get(id),
-    put: (id, record) => { map.set(id, schema ? schema.parse(record) : record); },
+    put: (id, record) => { map.set(id, record); },
     delete: (id) => { map.delete(id); },
     entries: () => [...map.entries()],
     size: () => map.size
@@ -43,7 +43,7 @@ function fakeTable(entries = [], schema = null) {
 // ── profileSave: fresh save returns non-secret record + derived refs ──
 {
   const service = makeService();
-  const table = fakeTable([], profileRecordSchema);
+  const table = fakeTable();
   service.requireProfileTable = () => table;
 
   const saved = await service.profileSave({
@@ -56,10 +56,11 @@ function fakeTable(entries = [], schema = null) {
   assert.equal(profile.port, 22, "port defaults to 22");
   assert.equal(profile.defaultProjectPath, "/srv/apps/web-1", "project entry is returned without touching credentials");
   assert.equal(table.entries()[0][1].defaultProjectPath, "/srv/apps/web-1", "project entry persists as ordinary profile metadata");
+  assert.equal(table.entries()[0][1].agentForward, false, "agent forwarding defaults to off for records saved without the field");
   // The saved record itself must never carry secret material.
   assert.deepEqual(
     Object.keys(table.entries()[0][1]).sort(),
-    ["authKind", "createdAt", "credentialId", "defaultProjectPath", "groupId", "host", "hostKeyMode", "name", "port", "proxyJump", "updatedAt", "username"].sort(),
+    ["agentForward", "authKind", "createdAt", "credentialId", "defaultProjectPath", "groupId", "host", "hostKeyMode", "name", "port", "proxyJump", "updatedAt", "username"].sort(),
     "stored record holds config only, no password/privateKey field"
   );
   const stem = profile.profileId.replaceAll("-", "").toUpperCase();
@@ -82,7 +83,7 @@ function fakeTable(entries = [], schema = null) {
 // ── save and connect: password profile resolves the saved secret ──
 {
   const service = makeService();
-  const table = fakeTable([], profileRecordSchema);
+  const table = fakeTable();
   service.requireProfileTable = () => table;
   const saved = await service.profileSave({ name: "web-1", host: "10.0.0.5", username: "root", authKind: "password" });
   const profileId = saved.value.profile.profileId;
@@ -106,7 +107,7 @@ function fakeTable(entries = [], schema = null) {
 // ── save and connect: key profile resolves key + optional passphrase ──
 {
   const service = makeService();
-  const table = fakeTable([], profileRecordSchema);
+  const table = fakeTable();
   service.requireProfileTable = () => table;
   const saved = await service.profileSave({ name: "k8s", host: "10.0.0.9", username: "ops", authKind: "key" });
   const profileId = saved.value.profile.profileId;
@@ -123,7 +124,7 @@ function fakeTable(entries = [], schema = null) {
 // ── connect without a saved secret: explicit credential-missing, no connect ──
 {
   const service = makeService();
-  const table = fakeTable([], profileRecordSchema);
+  const table = fakeTable();
   service.requireProfileTable = () => table;
   const saved = await service.profileSave({ name: "empty", host: "h", username: "u", authKind: "password" });
   let called = false;
@@ -137,7 +138,7 @@ function fakeTable(entries = [], schema = null) {
 // ── temporary connect: a shared credential is resolved in the service ─────
 {
   const service = makeService();
-  const credentials = fakeTable([], null);
+  const credentials = fakeTable();
   service.requireCredentialTable = () => credentials;
   const saved = await service.credentialSave({ name: "shared-password", authKind: "password" });
   const credentialId = saved.value.credential.credentialId;
@@ -153,10 +154,10 @@ function fakeTable(entries = [], schema = null) {
 // ── profileDelete: clears this profile's own and reserved jump-password refs ──
 {
   const service = makeService();
-  const table = fakeTable([], profileRecordSchema);
+  const table = fakeTable();
   service.requireProfileTable = () => table;
   const saved = await service.profileSave({ name: "gone", host: "h", username: "u", authKind: "key" });
-  table.put(saved.value.profile.profileId, { ...table.get(saved.value.profile.profileId), authKind: "key" });
+  table.put(saved.value.profile.profileId, { authKind: "key" });
   await service.ctx.credentials.set(service.storeKey(saved.value.credentialRefs.password), "a");
   await service.ctx.credentials.set(service.storeKey(saved.value.credentialRefs.privateKey), "b");
   await service.ctx.credentials.set(service.storeKey(saved.value.credentialRefs.passphrase), "c");
@@ -179,7 +180,7 @@ function fakeTable(entries = [], schema = null) {
 // ── profilePublic: configured flags reflect the store, not the panel ──
 {
   const service = makeService();
-  const table = fakeTable([], profileRecordSchema);
+  const table = fakeTable();
   service.requireProfileTable = () => table;
   const saved = await service.profileSave({ name: "p", host: "h", username: "u", authKind: "password" });
   assert.equal(saved.value.profile.credentialConfigured, false);

@@ -24,7 +24,6 @@ class FakeIntersectionObserver implements IntersectionObserver {
   static last: FakeIntersectionObserver | null = null
   readonly root: Element | Document | null = null
   readonly rootMargin = '0px'
-  readonly scrollMargin = '0px'
   readonly thresholds: readonly number[] = [0]
   readonly targets = new Set<Element>()
   constructor(readonly callback: IntersectionObserverCallback) {

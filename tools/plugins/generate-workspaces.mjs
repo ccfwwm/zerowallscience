@@ -57,7 +57,7 @@ const externalClientDependencies = {
   // ZeroWall compatibility changes are reproducible without overwriting the
   // custom host integration with a remote package snapshot.
   'dsh-better-sidebar': 'workspace:^',
-  'dsh-dream-skin': '9.29.0',
+  'dsh-dream-skin': '10.9.3',
 }
 
 const dshDependencies = {

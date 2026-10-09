@@ -90,6 +90,22 @@ export class SshApi {
     return this.call("selectConnection", typeof input === "string" ? { connectionId: input } : input);
   }
 
+  agentSettingsGet() {
+    return this.call("agentSettingsGet", {});
+  }
+
+  agentSettingsSave(agentAutoConnect) {
+    return this.call("agentSettingsSave", { agentAutoConnect });
+  }
+
+  languageGet() {
+    return this.call("languageGet", {});
+  }
+
+  languageSave(language) {
+    return this.call("languageSave", { language });
+  }
+
   profileList() {
     return this.call("profileList", {});
   }
@@ -265,6 +281,30 @@ export class SshApi {
     return this.call("tunnelStartLocal", input);
   }
 
+  enableShellIntegration(sessionId) {
+    return this.call("enableShellIntegration", { sessionId });
+  }
+
+  sessionLogList() {
+    return this.call("sessionLogList", {});
+  }
+
+  sessionLogRead(sessionId, offset, maxBytes) {
+    return this.call("sessionLogRead", { sessionId, offset, maxBytes });
+  }
+
+  sessionLogSearch(sessionId, query, maxHits) {
+    return this.call("sessionLogSearch", { sessionId, query, maxHits });
+  }
+
+  sessionLogDelete(sessionId) {
+    return this.call("sessionLogDelete", { sessionId });
+  }
+
+  tunnelStartDynamic(connectionId, bindAddr, bindPort) {
+    return this.call("tunnelStartDynamic", { connectionId, bindAddr, bindPort });
+  }
+
   tunnelStartRemote(input) {
     return this.call("tunnelStartRemote", input);
   }
@@ -275,10 +315,6 @@ export class SshApi {
 
   tunnelList(connectionId) {
     return this.call("tunnelList", { connectionId });
-  }
-
-  sshConfigImport() {
-    return this.call("sshConfigImport", {});
   }
 
   // ── Database ops ───────────────────────────────────────────────────────────
@@ -293,6 +329,10 @@ export class SshApi {
 
   dbQuery(dbConnectionId, sql, params) {
     return this.call("dbQuery", { dbConnectionId, sql, params });
+  }
+
+  dbExport(dbConnectionId, sql, options = {}) {
+    return this.call("dbExport", { dbConnectionId, sql, ...options });
   }
 
   dbExecute(dbConnectionId, sql, params) {

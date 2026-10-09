@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 // Inline markup: emphasis INSIDE a sentence. Every token must become a React
 // element — never HTML — and an unsafe link must degrade to its label.
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { renderInline } from '../src/client/inline.ts'
 import { GenuiBlock } from '../src/client/GenuiBlock.tsx'
+import styles from '../src/client/GenuiBlock.module.css'
+import type { GenuiNode } from '../src/client/spec.ts'
 
 afterEach(cleanup)
 
@@ -13,7 +17,65 @@ const html = (text: string): string => {
   return container.innerHTML
 }
 
+function selectionTextOf(node: Element): string {
+  const range = document.createRange()
+  range.selectNodeContents(node)
+  const selection = window.getSelection()!
+  selection.removeAllRanges()
+  selection.addRange(range)
+  return selection.toString()
+}
+
+/** Match the exact owning selector, rather than a later unrelated CSS rule. */
+function whiteSpaceFor(selector: string): string | undefined {
+  const css = readFileSync(join(process.cwd(), 'src/client/GenuiBlock.module.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+  let value: string | undefined
+  for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!rule[1]!.split(',').some(part => part.trim() === selector)) continue
+    const declaration = /white-space:\s*([^;]+)/.exec(rule[2]!)
+    if (declaration !== null) value = declaration[1]!.trim()
+  }
+  return value
+}
+
 describe('inline markup', () => {
+  it.each(['body', 'muted', 'caption', 'h1', 'h2', 'h3'] as const)(
+    'preserves LF and CRLF in the %s text surface, including emphasis and copy', size => {
+      for (const newline of ['\n', '\r\n']) {
+        const { container } = render(<GenuiBlock spec={{ items: [
+          { type: 'text', size, content: `**第一行**${newline}第二行` },
+        ] }} />)
+        const text = container.querySelector(`.${styles.text}`)!
+        expect(text.querySelector('strong')?.textContent).toBe('第一行')
+        expect(text.querySelector('br')).toBeNull()
+        expect(text.textContent).toBe('第一行\n第二行')
+        expect(selectionTextOf(text)).toBe('第一行\n第二行')
+      }
+      // jsdom has no line boxes; actual browser layout is verified separately.
+      expect(whiteSpaceFor('.text')).toBe('pre-line')
+    },
+  )
+
+  it.each([
+    ['radio', '.radio > span', styles.radio, (label: string): GenuiNode => ({ type: 'radio', options: [label] })],
+    ['checkbox', '.checkbox > span', styles.checkbox, (label: string): GenuiNode => ({ type: 'checkbox', label })],
+    ['tab', '.tab', styles.tab, (label: string): GenuiNode => ({ type: 'tabs', tabs: [{ label, items: [] }] })],
+    ['badge', '.badgeLabel', styles.badgeLabel, (label: string): GenuiNode => ({ type: 'badge', label, icon: '★' })],
+    ['submit', '.button', styles.submit, (label: string): GenuiNode => ({ type: 'submit', label })],
+  ] as const)('keeps multiline %s labels visible and copyable', (_name, selector, className, node) => {
+    for (const newline of ['\n', '\r\n']) {
+      const { container } = render(<GenuiBlock spec={{ items: [node(`**第一行**${newline}第二行`)] }} />)
+      const owner = container.querySelector(`.${className}`)!
+      const label = selector.endsWith(' > span') ? owner.querySelector('span')! : owner
+      expect(label).not.toBeNull()
+      expect(label.querySelector('br')).toBeNull()
+      expect(label.textContent).toBe('第一行\n第二行')
+      expect(selectionTextOf(label)).toBe('第一行\n第二行')
+    }
+    expect(whiteSpaceFor(selector)).toBe('pre-line')
+  })
+
   it.each([
     String.raw`\(\frac{a}{b}\)`,
     String.raw`\[\begin{pmatrix}a & b \\ c & d\end{pmatrix}\]`,
@@ -35,30 +97,41 @@ describe('inline markup', () => {
     expect(container.textContent).not.toContain('**')
   })
 
-  it('renders a real newline as a <br> line break', () => {
+  it('keeps a real newline as a newline character (not a <br>)', () => {
+    // `<br>` paints a break but contributes NOTHING to `textContent`, so a
+    // user selecting and copying a multi-line cell used to get one run-on
+    // line — a `python - <<'PY' … PY` heredoc lost its structure and could not
+    // be pasted back into a shell. The newline must survive in the DOM; the
+    // owning container turns it into a visible break via pre-line/pre-wrap.
     const out = html('第一行\n第二行')
-    expect(out).toContain('<br')
-    expect(out).not.toContain('\n')
+    expect(out).not.toContain('<br')
+    expect(out).toContain('第一行\n第二行')
+    const { container } = render(<div>{renderInline('第一行\n第二行')}</div>)
+    expect(container.textContent).toBe('第一行\n第二行')
   })
 
-  it('renders CRLF as a single <br> and mixes with emphasis', () => {
+  it('normalizes CRLF to one newline and mixes with emphasis', () => {
     const out = html('**重点**\r\n说明')
     expect(out).toContain('<strong')
-    expect(out.match(/<br/g)).toHaveLength(1)
+    expect(out).not.toContain('<br')
+    const { container } = render(<div>{renderInline('**重点**\r\n说明')}</div>)
+    expect(container.textContent).toBe('重点\n说明')
   })
 
-  it('breaks the line inside emphasis content too', () => {
+  it('keeps the newline inside emphasis content too', () => {
     const out = html('**第一行\n第二行**')
     expect(out).toContain('<strong')
-    expect(out).toContain('<br')
+    expect(out).not.toContain('<br')
+    expect(out).toContain('第一行\n第二行')
   })
 
   it('keeps a newline out of code spans (code stays single-line)', () => {
     const out = html('`a\nb`')
     // The newline ENDS the code-span attempt (no closing backtick before it);
-    // it becomes a <br> and the backticks stay literal.
+    // it stays a newline and the backticks remain literal.
     expect(out).not.toContain('<code')
-    expect(out).toContain('<br')
+    expect(out).not.toContain('<br')
+    expect(out).toContain('`a\nb`')
   })
 
   it('keeps fenced backticks literal instead of parsing an inner code span', () => {
@@ -110,21 +183,27 @@ describe('inline markup', () => {
     expect(container.textContent).toContain('```score = 1 - 0.05 × level ```')
     expect(container.textContent).toContain('|---|---|')
     expect(container.querySelector('table')).toBeNull()
-    expect(container.querySelectorAll('br')).toHaveLength(2)
+    // Both fields carry one real newline each — still newlines, not <br>.
+    expect(container.querySelectorAll('br')).toHaveLength(0)
+    expect(container.textContent).toContain('| 配置 | 级数 |\n|---|---|\n| 破例版 | 887 |')
   })
 
   it('expresses a line break inside a callout through the block path (#177)', () => {
-    render(<GenuiBlock spec={{
+    // #177 gave a string field a way to express a break; the mechanism is now
+    // a real newline painted by `pre-line`, so the break also survives
+    // selection/copy (a `<br>` did not).
+    const { container } = render(<GenuiBlock spec={{
       title: '换行',
       items: [
         { type: 'callout', tone: 'info', title: '两段', content: '第一行\n第二行' },
         { type: 'text', content: '甲\n乙' },
       ],
     }} />)
-    const brs = document.querySelectorAll('br')
-    expect(brs.length).toBeGreaterThanOrEqual(2)
-    expect(document.body.textContent).toContain('第一行')
-    expect(document.body.textContent).toContain('第二行')
+    expect(container.querySelectorAll('br')).toHaveLength(0)
+    expect(container.textContent).toContain('第一行\n第二行')
+    expect(container.textContent).toContain('甲\n乙')
+    const css = readFileSync(join(process.cwd(), 'src/client/GenuiBlock.module.css'), 'utf8')
+    expect(css).toMatch(/\.calloutBody,[\s\S]*?white-space:\s*pre-line/)
   })
 
   it('updates a formula without leaving stale math or damaging surrounding text', () => {

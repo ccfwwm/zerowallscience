@@ -13,8 +13,9 @@ import css from './GenuiBlock.module.css'
 import { loadBlockState, saveBlockState } from './interaction-store.ts'
 import { recordFence, recordInteraction } from './achievement-store.ts'
 import { renderNode } from './blocks/render-node.tsx'
-import type { AnswersState, GenuiBlockProps, QuestionMeta } from './blocks/state.ts'
+import type { AnswersState, GenuiBlockProps } from './blocks/state.ts'
 import type { GenuiSpec } from './spec.ts'
+import { compileSubmissionRegistry } from './submission-registry.ts'
 
 export const GENUI_ACTION_DEBOUNCE_MS = 300
 
@@ -96,7 +97,7 @@ function GenuiBlockInstance({ spec, stateKey, animateEntrance = true, initialSta
   const [answers, setAnswers] = useState<Record<string, string>>(persisted?.answers ?? {})
   const [multiAnswers, setMultiAnswers] = useState<Record<string, string[]>>(persisted?.multiAnswers ?? {})
   const [fields, setFields] = useState<Record<string, string>>(persisted?.fields ?? {})
-  const [meta, setMeta] = useState<Record<string, QuestionMeta>>({})
+  const submissionRegistry = useMemo(() => compileSubmissionRegistry(spec), [spec])
   const [locked, setLocked] = useState(persisted?.locked === true)
   const [round, setRound] = useState(0)
   // Secret (password) field ids: their values never persist and never join
@@ -123,7 +124,7 @@ function GenuiBlockInstance({ spec, stateKey, animateEntrance = true, initialSta
     })
   }, [])
   const setField = useCallback((id: string, value: string) => {
-    // Registry presence means "the user has touched this field" — a blank
+    // Field state presence means "the user has touched this field" — a blank
     // value is stored as '' instead of deleting the entry, so a user who
     // CLEARS a model-provided default does not get the default back on the
     // next mount. Blank values are still excluded from submit collection by
@@ -134,14 +135,6 @@ function GenuiBlockInstance({ spec, stateKey, animateEntrance = true, initialSta
   const registerSecretField = useCallback((id: string) => {
     setSecretFields(prev => (prev.has(id) ? prev : new Set(prev).add(id)))
   }, [])
-  const registerMeta = useCallback((group: string, m: QuestionMeta) => {
-    setMeta(prev => {
-      const existing = prev[group]
-      if (existing !== undefined && existing.label === m.label && existing.answer === m.answer
-        && existing.explanation === m.explanation) return prev
-      return { ...prev, [group]: m }
-    })
-  }, [])
   const clear = useCallback(() => {
     setAnswers({})
     setMultiAnswers({})
@@ -150,10 +143,10 @@ function GenuiBlockInstance({ spec, stateKey, animateEntrance = true, initialSta
   }, [])
   const answersState = useMemo<AnswersState>(
     () => ({
-      answers, multiAnswers, fields, secretFields, meta, locked, round,
-      setAnswer, setMultiAnswer, setField, registerSecretField, registerMeta, clear, setLocked,
+      answers, multiAnswers, fields, secretFields, registry: submissionRegistry, locked, round,
+      setAnswer, setMultiAnswer, setField, registerSecretField, clear, setLocked,
     }),
-    [answers, multiAnswers, fields, secretFields, meta, locked, round, setAnswer, setMultiAnswer, setField, registerSecretField, registerMeta, clear],
+    [answers, multiAnswers, fields, secretFields, submissionRegistry, locked, round, setAnswer, setMultiAnswer, setField, registerSecretField, clear],
   )
   const durableState = useMemo(() => {
     const safeFields = Object.fromEntries(Object.entries(fields).filter(([id]) => !secretFields.has(id)))

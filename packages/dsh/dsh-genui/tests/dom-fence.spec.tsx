@@ -128,7 +128,74 @@ afterEach(() => {
 })
 
 describe('installDomFenceRenderer', () => {
-  it.each(['Code', 'Code block', '代码块'])('renders canonical GenUI from a generic %s banner', async label => {
+  it('renders a Desktop tag-text fence and restores the original text on disposal', async () => {
+    const row = assistantRow('desktop-tag')
+    const prose = document.createElement('span')
+    prose.textContent = '回答正文'
+    const tag = document.createElement('span')
+    tag.className = '_plainRun_fbulu_6'
+    tag.textContent = `<dsh-ui>\r\n${VALID_SPEC}\r\n</dsh-ui>`
+    row.append(prose, tag)
+    document.body.appendChild(row)
+    const dispose = installDomFenceRenderer(makeModernCtx('desktop-session'), () => {})
+    try {
+      expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('你好，世界') === true)).toBe(true)
+      expect(tag.style.display).toBe('none')
+      expect(prose.textContent).toBe('回答正文')
+    } finally { dispose() }
+    expect(tag.style.display).toBe('')
+    expect(tag.textContent).toContain(VALID_SPEC)
+  })
+
+  it('updates a tag-text fence as its content changes', async () => {
+    const row = assistantRow('desktop-stream', true)
+    const tag = document.createElement('span')
+    tag.textContent = `<dsh-ui>\n${VALID_SPEC}\n</dsh-ui>`
+    row.appendChild(tag)
+    document.body.appendChild(row)
+    const dispose = installDomFenceRenderer(makeModernCtx('desktop-stream-session'), () => {})
+    try {
+      expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('你好，世界') === true)).toBe(true)
+      tag.textContent = '<dsh-ui>\n{"title":"更新","items":[{"type":"text","content":"更新内容"}]}\n</dsh-ui>'
+      row.removeAttribute('data-streaming')
+      expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('更新内容') === true)).toBe(true)
+    } finally { dispose() }
+  })
+
+  it('renders tag text when the host omits the conversation row attributes', async () => {
+    const tag = document.createElement('span')
+    tag.textContent = `<dsh-ui>\n${VALID_SPEC}\n</dsh-ui>`
+    document.body.appendChild(tag)
+    const dispose = installDomFenceRenderer(makeModernCtx('desktop-no-row-session'), () => {})
+    try {
+      expect(await waitFor(() => document.querySelector('.genui-dom-fence')?.textContent?.includes('你好，世界') === true)).toBe(true)
+      expect(tag.style.display).toBe('none')
+    } finally { dispose() }
+  })
+
+  it('leaves non-assistant and incomplete tag text visible', async () => {
+    const userRow = document.createElement('div')
+    userRow.setAttribute('data-chat-flow-kind', 'user')
+    const userTag = document.createElement('span')
+    userTag.textContent = `<dsh-ui>${VALID_SPEC}</dsh-ui>`
+    userRow.appendChild(userTag)
+    const assistant = assistantRow('desktop-incomplete')
+    const incomplete = document.createElement('span')
+    incomplete.textContent = `<dsh-ui>${VALID_SPEC}`
+    assistant.appendChild(incomplete)
+    document.body.append(userRow, assistant)
+    const dispose = installDomFenceRenderer(makeModernCtx('desktop-filter-session'), () => {})
+    try {
+      await tick()
+      expect(document.querySelector('.genui-dom-fence')).toBeNull()
+      expect(userTag.style.display).toBe('')
+      expect(incomplete.style.display).toBe('')
+    } finally { dispose() }
+  })
+
+  it.each(['Code', 'Code block', '代码块', 'Код', 'Código', 'Codice', 'Kode'])('renders canonical GenUI from a generic %s banner', async label => {
+    // 标签集合刻意跨语系：本地化通用标题是宿主呈现文案，不是语言（issue #258）——
+    // 旧白名单只列英/中，俄语等 locale 下同一份围栏永远停在代码块。
     const row = assistantRow('generic-valid')
     const block = genericCodeBlock(VALID_SPEC, label)
     row.appendChild(block)
@@ -137,6 +204,44 @@ describe('installDomFenceRenderer', () => {
     try {
       expect(await waitFor(() => block.hasAttribute('data-genui-rendered'))).toBe(true)
       expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('你好，世界') === true)).toBe(true)
+    } finally { dispose() }
+  })
+
+  it('takes over a generic banner whose body only needs tier-1 punctuation repairs', async () => {
+    // Real session (seq 40530): the model finally emitted the fence in the body,
+    // but one value carried unescaped half-width quotes. The host hides the
+    // `dsh-ui` language (unsupported by its highlighter) and the ChatSnapshot
+    // language source was unavailable for that row, so content recognition was
+    // the only path left — and it demanded a raw JSON.parse, so a perfectly
+    // renderable fence stayed a code block. Recognition now runs the same tier-1
+    // repair as the labelled path.
+    const repairable = '{"items":[{"type":"keyvalue","pairs":[{"key":"备注","value":"他说"可以"了 ✓"}]}]}'
+    expect(() => JSON.parse(repairable)).toThrow()
+    const row = assistantRow('generic-repairable')
+    const block = genericCodeBlock(repairable)
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const dispose = installDomFenceRenderer(makeModernCtx('generic-session'), () => {})
+    try {
+      expect(await waitFor(() => block.hasAttribute('data-genui-rendered'))).toBe(true)
+      expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('可以') === true)).toBe(true)
+    } finally { dispose() }
+  })
+
+  it('takes over a generic banner whose body is a spec followed by trailing junk', async () => {
+    // Real sample: the model leaked its tool-call template after the JSON and
+    // never closed the fence, so the host rendered everything as one code block.
+    // Content recognition must cut back to the balanced root instead of giving up.
+    const body = '{"items":[{"type":"table","columns":["观察项"],"rows":[["RL3b 转 pass"]]}]}'
+    const leaker = `${body}\n</x> parameter>\n</x> invoke>\n</x> calls>`
+    const row = assistantRow('generic-trailing-junk')
+    const block = genericCodeBlock(leaker)
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const dispose = installDomFenceRenderer(makeModernCtx('generic-session'), () => {})
+    try {
+      expect(await waitFor(() => block.hasAttribute('data-genui-rendered'))).toBe(true)
+      expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('RL3b 转 pass') === true)).toBe(true)
     } finally { dispose() }
   })
 
@@ -167,6 +272,21 @@ describe('installDomFenceRenderer', () => {
     row.appendChild(block)
     document.body.appendChild(row)
     const dispose = installDomFenceRenderer(makeModernCtx('explicit-session'), () => {})
+    try {
+      await tick()
+      expect(block.hasAttribute('data-genui-rendered')).toBe(false)
+      expect(row.querySelector('.genui-dom-fence')).toBeNull()
+    } finally { dispose() }
+  })
+
+  it.each(['json', 'JSON', 'python'])('keeps a banner-labeled %s block even with the generic banner marker', async language => {
+    // 反转后的 domLanguageOf（#258）：banner 标注了已知真实语言 ⇒ 明确不是通用块，
+    // 即使宿主同时给了 data-code-block-banner 也不内容接管（大小写不敏感）。
+    const row = assistantRow(`banner-language-${language}`)
+    const block = genericCodeBlock(VALID_SPEC, language)
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const dispose = installDomFenceRenderer(makeModernCtx('banner-language-session'), () => {})
     try {
       await tick()
       expect(block.hasAttribute('data-genui-rendered')).toBe(false)
@@ -482,8 +602,9 @@ describe('installDomFenceRenderer', () => {
   it('declares its cordis service injects (boot sweep depends on it)', () => {
     // 回归钉：曾丢失 inject 导出 → 宿主 fiber inject waiting 失效 →
     // apply 早于 slots 服务运行 → 整页 "Failed to load plugins"。
-    // inputTriggers is optional: pristine DSH shells may not provide it. The
-    // DOM capture fallback still claims the bare command locally.
+    // inputTriggers 刻意不在硬注入列表里：cordis `inject` 是硬激活门控，
+    // 原版 DSH 壳不提供该服务 → fiber 永久 waiting、apply 永不执行 →
+    // 全部 dsh-ui 围栏静默保持代码块。apply() 体内已用 ctx.get() 可选降级。
     expect([...inject].sort()).toEqual(['sessions', 'slots'])
   })
 

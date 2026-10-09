@@ -1,0 +1,9 @@
+autoInstallPeers: false
+
+allowBuilds:
+  esbuild: true
+  node-pty: true
+  sharp: true
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/dsh-*'
+  - dsh-file-review

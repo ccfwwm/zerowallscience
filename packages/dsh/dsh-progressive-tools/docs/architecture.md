@@ -1,14 +1,14 @@
 # Architecture
 
-After successful guarded execution, the dispatcher projects the target's
-presentation metadata into `meta.targetMeta` on its root result. This supports
-hosts that omit nested projections and preserves structured UI replay without
-changing model-facing rendered content or bypassing target execution policy.
-
 ## Runtime baseline
 
-The current checkout targets `0.1.5-rc.1`. Calls use `ToolCallId`, and replay
+The current checkout targets `0.2.0-rc.1`. Calls use `ToolCallId`, and replay
 reads `session.snapshotEvents()` instead of the former mutable event view.
+Host tool schemas may include `deferLoading`. stable-proxy still removes
+deferred catalog tools from the assembled request, because a route without
+tool updates strips that flag and sends the full schema. A tool that is
+already on the stable surface keeps the flag.
+
 Current PTC subcalls persist `tool/ptc-dispatch`; replay also recognizes old
 `tool/code-dispatch` records retained as ignorable events by host migration.
 The plugin itself does not rewrite session storage.
@@ -16,8 +16,8 @@ The plugin itself does not rewrite session storage.
 Agent creation is asynchronous and the integration harness mounts session
 projections. Request prefix tests compare the leading system-role message,
 because loop-built requests no longer populate the standalone `system` field.
-Additional PTC/both tests exercise the real dispatch bridge with a binding
-runtime fixture, checking both SDK languages and unload/reload replay. They
+Additional PTC/both tests exercise the real dispatch bridge through
+`ctx.ptcRuntime`, checking both SDK languages and unload/reload replay. They
 do not certify the language interpreters or measure provider cache savings.
 
 ## Goals and invariants
@@ -38,7 +38,7 @@ The plugin uses only public Harness APIs and extension points:
 - `ctx.tools.execute()` for nested real-tool execution;
 - `tools/result` for authoritative discovery commits;
 - `tools/change` for in-process catalog invalidation;
-- `agent/session-start` and durable session events for state initialization;
+- `agent/created` and durable session events for state initialization;
 - `agent/disposed` and Cordis effects for cleanup.
 
 ## The DSH lifecycle boundary
@@ -66,7 +66,7 @@ only the following assembly. Version 0.2.0 performs the authoritative
 projection in `system-prompt/assemble`, after all providers have contributed
 but before AgentLoop stores or sends the request.
 
-`agent/session-start` eagerly initializes the catalog for normal creation and
+`agent/created` eagerly initializes the catalog for normal creation and
 resume. The assembly hook remains authoritative and also covers hot reload,
 late registration, and callers that assemble without a normal startup event.
 
@@ -79,7 +79,9 @@ name set:
 
 - `tool_search`;
 - `tool_dispatch`;
-- registered names matching `alwaysVisible`;
+- registered names matching `alwaysVisible` (filesystem tools `read`, `write`,
+  `edit`, `glob`, and `grep` are in the default list when the host registers
+  them);
 - the reserved `run_code` transport when DSH exposes it.
 
 The complete registry remains visible to in-process code. The assembly
@@ -108,22 +110,27 @@ contains:
 Ranking combines exact-name and contained-label bonuses with a deterministic
 BM25-style lexical score. CJK text is additionally tokenized into character
 bigrams, so queries without space-delimited words can match definitions and
-family metadata without configured aliases. Search returns at most
-`maxResults` exact definitions; larger `max_results` requests are clamped.
-Those definitions enter the ordinary tool result and therefore extend history
-append-only.
+family metadata without configured aliases. An identifier query with no catalog
+name hit returns nothing rather than filling `maxResults` from shared tokens
+such as `tool`. Search otherwise returns at most `maxResults` exact
+definitions; larger `max_results` requests are clamped. Those definitions
+enter the ordinary tool result and therefore extend history append-only.
 
-Each match also lists every member name of its family (`groupTools`), and the
-whole family becomes discovered in the same call. One query therefore opens a
-plugin's complete tool surface even when only its top-ranked members carry
-full schemas; the remaining siblings dispatch by name and validate against
-their original definitions, or can be schema-loaded first with one exact-name
-search.
+An exact registered name returns only that tool. Other queries return at most
+`maxResults` definitions and also stop at `maxResultCharacters`. Schemas are
+not cut to fit. One definition that is larger than the budget is returned
+whole, with `budget.singleDefinitionExceedsBudget`. The family member table
+appears once on `families`, not on every match. `schema` means parameters are
+in the result; `name-only` means the sibling can be dispatched or loaded with
+an exact-name search; `skill` means a configured Skill supplies the contract.
+The whole family is still discovered unless `familyDiscovery` is `matched`.
 
 The `status` action lists every deferred family with its member tool names, so
 the model can browse the catalog when a search query has no lexical overlap.
 By default the listing is browse-only; `statusGrantsDiscovery` optionally
-turns it into a catalog-wide discovery grant.
+turns it into a catalog-wide discovery grant. The discovery guidance still
+requires a search before declaring a needed capability class unavailable. It
+tells the model not to search merely to prove a named tool is missing.
 
 Successful `tools/result` observation commits the returned names to the
 agent's discovered set. Failed or invalid searches do not mutate live state.
@@ -150,10 +157,21 @@ tool_dispatch root execution
 
 Nested contexts and a successful turn-conclusion marker are ferried back to
 the outer result. The outer rendering uses the real tool's finalized content,
-including non-text blocks. A nested failure is rethrown with the real tool's
-structured error code preserved, and the dispatcher delegates its
-parallel-scheduling classification to the target tool's own declaration, so
-concurrency-safe deferred tools keep overlapping with sibling calls.
+including non-text blocks. The default program value is
+`dsh-progressive-tools/dispatch-v2`: `{ protocol, tool, value }`. Rendered
+content is not copied into that value, so a program that returns the whole
+object does not repeat the body. `legacyResults` restores
+`dsh-progressive-tools/dispatch-v1`, which includes `content`. A nested
+failure is rethrown with the real tool's structured error code preserved, and
+the dispatcher delegates its parallel-scheduling classification to the target
+tool's own declaration, so concurrency-safe deferred tools keep overlapping
+with sibling calls.
+
+`resultBudget` applies to a direct `tool_dispatch` rendering. A dispatch nested
+under `run_code` keeps the target rendering so the body is not compressed
+twice. The outer `run_code` model text is then replaced in `tools/post-execute`.
+The canonical program value is not truncated. `tools/ptc-dispatch-log` is still
+only a durable log copy.
 
 ### Routing guard
 
@@ -169,7 +187,7 @@ registers a monotonic guard:
 Tokens are registry-minted opaque identities, so a caller cannot manufacture
 the parent capability. Authorized tokens are removed on result and plugin
 cleanup. The guard prepares the agent's state on demand, so a call that
-arrives before the first assembly or session-start event is still classified
+arrives before the first assembly or agent/created event is still classified
 against the deferred catalog instead of passing through unexamined.
 
 The guard is not an authorization boundary for the underlying capability. It
@@ -196,11 +214,13 @@ section is outside the discovery invariant.
 
 ## Resume behavior
 
-Discovery state is recorded asymmetrically. The rendered search result — the
-text the model reads and re-reads in history — carries only the names newly
-discovered by that call, so conversation growth stays bounded no matter how
-much has been discovered. The result's presentation metadata, which never
-reaches the model, carries the cumulative discovered list and the action kind.
+Discovery state is recorded asymmetrically. The default search value
+(`dsh-progressive-tools/v3`) does not carry the cumulative name list. The
+result's presentation metadata, which never reaches the model, carries that
+list plus `omittedDefinitionTokens`. `estimatedSavedTokens` in the same
+metadata is the same number and is not a bill. Old v2 records are still read.
+Current tool results store model content directly on the tool message. Replay
+also accepts older logs that wrap that content in a `tool-result` block.
 
 On resume the plugin replays successful search results and skill bindings,
 preferring the cumulative metadata when present and unioning per-call
@@ -222,7 +242,7 @@ without losing the rest of the discovery state.
 `mode: dynamic` retains the v0.1 family activation design for deployments that
 need provider-native definitions after search. Its lifecycle is corrected:
 
-- initial restriction is installed at `agent/session-start`;
+- initial restriction is installed at `agent/created`;
 - turn expiry is reconciled at `agent/inbox/claimed`;
 - successful search and skill results reinstall the restriction immediately;
 - the assembly waterfall filters the already-collected current assembly and

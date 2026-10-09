@@ -31,17 +31,12 @@ function parsePackOutput(output) {
 }
 
 try {
-  const windows = process.platform === 'win32'
-  const result = spawnSync(
-    windows ? (process.env.ComSpec || 'cmd.exe') : 'npm',
-    windows ? ['/d', '/s', '/c', 'npm pack --dry-run --ignore-scripts --json'] : ['pack', '--dry-run', '--ignore-scripts', '--json'],
-    {
-      cwd: root,
-      encoding: 'utf8',
-      env: { ...process.env, HUSKY: '0', npm_config_cache: cache },
-    },
-  )
-  if (result.status !== 0) throw new Error(result.error?.message || result.stderr || result.stdout)
+  const result = spawnSync('npm', ['pack', '--dry-run', '--ignore-scripts', '--json'], {
+    cwd: root,
+    encoding: 'utf8',
+    env: { ...process.env, HUSKY: '0', npm_config_cache: cache },
+  })
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout)
   const [pack] = parsePackOutput(result.stdout)
   const files = new Set(pack.files.map((entry) => entry.path))
   for (const required of [

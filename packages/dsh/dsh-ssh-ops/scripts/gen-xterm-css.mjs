@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cssPath = resolve(rootDir, "node_modules/@xterm/xterm/css/xterm.css");
-const outPath = resolve(rootDir, "lib/generated/xterm-css.js");
+const outPath = resolve(rootDir, "src/client/xterm-css.js");
 
 const css = readFileSync(cssPath, "utf8");
 const cleaned = css.replace(/\/\*# sourceMappingURL=[^*]+\*\//g, "");

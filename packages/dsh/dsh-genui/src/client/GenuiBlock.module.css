@@ -191,7 +191,7 @@ body[data-ds-dark-theme] .panel {
 
 /* ---------- text ---------- */
 
-.text { color: var(--dsw-alias-label-primary); }
+.text { color: var(--dsw-alias-label-primary); white-space: pre-line; }
 .text.h1 {
   font-size: var(--dsl-g-font-h1);
   font-weight: 800;
@@ -229,6 +229,7 @@ body[data-ds-dark-theme] .panel {
   cursor: pointer;
   transition: border-color 0.15s, filter 0.15s, background 0.15s, transform 0.1s;
   text-align: center;
+  white-space: pre-line;
   /* A button in a `col` must hug its label; only `full: true` stretches.
      (Default flex `align-items: stretch` used to make every stacked button a
      full-width slab.) */
@@ -628,6 +629,69 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 .tdDelta { font-weight: 600; }
 .tdDeltaUp { color: var(--dsw-alias-state-success-secondary, #1f9d63); }
 .tdDeltaDown { color: var(--dsw-alias-state-error-primary, #d94848); }
+/* A cell carrying real line breaks opts out of the `nowrap` data voice.
+   Prose keeps `pre-line` (newlines paint, spaces collapse as everywhere else);
+   a code-shaped cell uses `pre-wrap` so leading indentation survives too.
+   Either way the newline characters stay in the DOM, which is what makes the
+   cell selectable and copyable as the multi-line snippet the model wrote. */
+.table th.tdMultiline,
+.table td.tdMultiline {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  vertical-align: top;
+}
+.table th.tdCode,
+.table td.tdCode {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  vertical-align: top;
+}
+/* An inline code span keeps its own spacing too (a pasted snippet often lives
+   inside backticks), matching the block-level code surface. */
+.inlineCode { white-space: pre-wrap; }
+/* Rich-text owners must paint the real newlines kept by renderInline. Scope
+   this to prose/labels: table data keeps nowrap and code keeps pre-wrap. For
+   flex controls, target the label span so emphasis and plain text share one
+   line-formatting context (rather than becoming separate flex items). */
+.calloutBody,
+.liTitle,
+.liDesc,
+.kvValue,
+.tlDesc,
+.detailBody,
+.accBody,
+.banner,
+.cardTitle,
+.mediaLabel,
+.heroLabel,
+.heroTitle,
+.heroSubtitle,
+.statLabel,
+.ringLabel,
+.ringSub,
+.calloutTitle,
+.stepTitle,
+.stepDesc,
+.kvKey,
+.tlTitle,
+.tlTime,
+.accTitle,
+.field > span,
+.fieldLabel,
+.switchLabel,
+.radio > span,
+.checkbox > span,
+.tab,
+.badgeLabel,
+.gradeQ,
+.gradeAns,
+.gradeRight,
+.gradeExp,
+.quizQuestion,
+.quizFeedback,
+.quizExplanation { white-space: pre-line; }
 
 /* sortable header button (v2.9) */
 .thSort {

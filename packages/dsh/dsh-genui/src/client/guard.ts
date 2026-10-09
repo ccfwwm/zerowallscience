@@ -31,6 +31,8 @@ import { normalizeGenuiSpec } from './genui-runtime/normalize.ts'
 import { diagnoseUnknownGenuiFields } from './genui-runtime/diagnostics.ts'
 import type { GenuiDiagnostic } from './genui-runtime/diagnostics.ts'
 import { GENUI_LIMITS } from './genui-runtime/limits.ts'
+import { analyzeSubmissionRegistry } from './submission-registry.ts'
+import { isTableDetailReachable, prepareTableRows, tableRowsForDetails } from './table-details.ts'
 import { color, enu, int, num, obj, opt, safeHref, safeMediaSrc, str } from './genui-runtime/value-utils.ts'
 
 /** Result of `validateGenuiSpec`. */
@@ -418,41 +420,9 @@ function repairNodeFields(value: unknown, ctx: RepairCtx, depth: number): GenuiN
       return { type: 'list', items, ...opt('filter', str(v.filter, 64)) }
     }
     case 'table': {
-      let rawCols = v.columns as unknown
-      let rawRows = v.rows !== undefined ? v.rows : (v as Record<string, unknown>).data
-      // Self-heal model-shaped tables: antd-style object columns
-      // ({title,key}) become header strings, and object-array rows (or a
-      // `data` alias) flatten to 2D rows keyed by the column keys — without
-      // this the whole node is dropped for "missing 2D rows" and the user
-      // sees nothing (issue #42).
-      if (Array.isArray(rawCols) && rawCols.length > 0 && typeof rawCols[0] === 'object' && rawCols[0] !== null) {
-        rawCols = rawCols.map(c => columnHeaderText(c))
-      }
-      if (Array.isArray(rawRows) && rawRows.length > 0 && typeof rawRows[0] === 'object' && rawRows[0] !== null && !Array.isArray(rawRows[0])) {
-        const keys = Array.isArray(v.columns) && v.columns.length > 0 && typeof v.columns[0] === 'object' && v.columns[0] !== null
-          ? v.columns.map(c => columnKeyOf(c)).filter((k): k is string => k !== undefined)
-          : Object.keys(rawRows[0] as Record<string, unknown>)
-        rawRows = rawRows.map(row => keys.map(k => cellText((row as Record<string, unknown>)[k])))
-      }
-      // Headerless rows: a 2D `rows`/`data` array with no `columns` states its
-      // own column names in its leading row, so derive them instead of
-      // dropping the node (and with it, the whole fence). A derivation the
-      // cell repair cannot reproduce (malformed cells) falls through to the
-      // existing drop-and-report behaviour.
-      let derived: { columns: string[]; rows: Array<Array<string | number>> } | null = null
-      if ((!Array.isArray(rawCols) || rawCols.length === 0)
-        && Array.isArray(rawRows) && rawRows.length > 0 && Array.isArray(rawRows[0])) {
-        const grid = repairRows(rawRows, GENUI_LIMITS.maxTableRows, GENUI_LIMITS.maxTableCols)
-        const candidate = grid === undefined || grid.length === 0 ? null : deriveTableColumns(grid)
-        if (candidate !== null
-          && repairRows(candidate.rows, GENUI_LIMITS.maxTableRows, GENUI_LIMITS.maxTableCols)?.length === candidate.rows.length) {
-          derived = candidate
-          rawCols = candidate.columns
-        }
-      }
-      const columns = repairStrings(rawCols, GENUI_LIMITS.maxTableCols, 128)
-      const rows = repairRows(derived === null ? rawRows : derived.rows, GENUI_LIMITS.maxTableRows, GENUI_LIMITS.maxTableCols)
-      if (columns === undefined || rows === undefined) return null
+      const prepared = prepareTableRows(v)
+      if (prepared === null) return null
+      const { columns, rows } = prepared
       // Optional per-column cell types; unknown entries degrade to 'text'.
       const rawTypes = Array.isArray(v.types) ? v.types : undefined
       const types = rawTypes === undefined
@@ -470,6 +440,7 @@ function repairNodeFields(value: unknown, ctx: RepairCtx, depth: number): GenuiN
       const details = rawDetails === undefined
         ? undefined
         : rows.map((_row, i) => {
+          if (!isTableDetailReachable({ columns, rows, types }, i)) return null
           const entry = repairItems(rawDetails[i], ctx, depth + 1)
           return entry.length === 0 ? null : entry
         })
@@ -569,10 +540,7 @@ function repairNodeFields(value: unknown, ctx: RepairCtx, depth: number): GenuiN
     }
     case 'submit': {
       const label = str(v.label, GENUI_LIMITS.maxString)
-      // action is OPTIONAL: local grading (any question carries `answer`)
-      // needs no round trip, so a submit without an action is valid. It only
-      // becomes semantically required when no local answers exist — the
-      // renderer disables the button then (honest affordance).
+      // 本地判卷可以不设置 action；不满足判卷条件时，渲染器会禁用无 action 的按钮。
       const action = str(v.action, 200)
       if (label === undefined) return null
       return {
@@ -760,11 +728,6 @@ function repairListItems(
       continue
     }
     const o = obj(item)
-    const title = o === undefined ? undefined : str(o.title, GENUI_LIMITS.maxString)
-    if (title !== undefined) {
-      out.push({ title, ...opt('desc', o === undefined ? undefined : str(o.desc, GENUI_LIMITS.maxString) ?? str(o.description, GENUI_LIMITS.maxString)) })
-      continue
-    }
     if (o !== undefined && typeof o.type === 'string') {
       // Typed children are GenuiNodes: charge them against the shared node
       // budget (module header promise — exhausted budget elides remaining
@@ -774,56 +737,14 @@ function repairListItems(
       ctx.remaining -= 1
       const node = repairNode(o, ctx, depth)
       if (node !== null) out.push(node)
+      continue
+    }
+    const title = o === undefined ? undefined : str(o.title, GENUI_LIMITS.maxString)
+    if (title !== undefined) {
+      out.push({ title, ...opt('desc', str(o?.desc, GENUI_LIMITS.maxString)) })
     }
   }
   return out
-}
-
-function repairRows(v: unknown, rowCap: number, colCap: number): Array<Array<string | number>> | undefined {
-  if (!Array.isArray(v)) return undefined
-  const out: Array<Array<string | number>> = []
-  for (const row of v) {
-    if (out.length >= rowCap) break
-    if (!Array.isArray(row)) continue
-    const cells: Array<string | number> = []
-    for (const cell of row) {
-      if (cells.length >= colCap) break
-      if (typeof cell === 'string') cells.push(cell.slice(0, 256))
-      else if (typeof cell === 'number' && Number.isFinite(cell)) cells.push(cell)
-    }
-    if (cells.length > 0) out.push(cells)
-  }
-  return out
-}
-
-/** Left-aligned, undecorated columns for a table whose rows came without one. */
-function derivedColumnNames(count: number): string[] {
-  return Array.from({ length: count }, (_unused, index) => `列${index + 1}`)
-}
-
-/**
- * Derive `columns` for a table that shipped only rows, without inventing
- * content: the leading cell array is adopted as the header row and removed
- * from the body — the shape both JSON table dumps and DataFrame-shaped
- * exports are meant to be read as. Returns null when no unambiguous
- * derivation exists (ragged rows) so the caller keeps its existing
- * drop-and-report behaviour instead of rendering a fabricated header.
- */
-function deriveTableColumns(rows: Array<Array<string | number>>): { columns: string[]; rows: Array<Array<string | number>> } | null {
-  const header = rows[0]
-  if (header === undefined || header.length === 0) return null
-  const body = rows.slice(1)
-  if (body.length === 0) {
-    // Header-only capture (a model dumping just its result header): render the
-    // stated columns with an empty body rather than fabricating a header row.
-    const columns = header.map(cell => String(cell).trim())
-    return columns.every(column => column !== '') ? { columns, rows: [] } : null
-  }
-  if (body.every(row => row.length === header.length)) {
-    return { columns: header.map(cell => String(cell).trim()), rows: body }
-  }
-  // Ragged body: nothing states the column names, so the leading row is data.
-  return { columns: derivedColumnNames(header.length), rows }
 }
 
 function repairChartData(v: unknown, cap: number): Array<{ label: string; value: number; color?: string }> | undefined {
@@ -870,38 +791,6 @@ function repairTabs(v: unknown, ctx: RepairCtx, depth: number): Array<{ label: s
     out.push({ label, items: repairItems(rawItems, ctx, depth + 1) })
   }
   return out
-}
-
-/** Header text for an object-shaped table column ({title,key} antd style). */
-function columnHeaderText(c: unknown): string {
-  const o = obj(c)
-  if (o === undefined) return String(c)
-  for (const k of ['title', 'label', 'key', 'dataIndex'] as const) {
-    const s = o[k]
-    if (typeof s === 'string' && s !== '') return s
-  }
-  return JSON.stringify(c)
-}
-
-/** Row key for an object-shaped column, mirroring columnHeaderText's order. */
-function columnKeyOf(c: unknown): string | undefined {
-  const o = obj(c)
-  if (o === undefined) return undefined
-  for (const k of ['key', 'dataIndex', 'title', 'label'] as const) {
-    const s = o[k]
-    if (typeof s === 'string' && s !== '') return s
-  }
-  return undefined
-}
-
-/** Cell text for object-array rows: strings/finite numbers pass through,
- * everything else stringifies so the column alignment is preserved
- * (repairRows would drop null/undefined cells and shift the row). */
-function cellText(v: unknown): string | number {
-  if (typeof v === 'string') return v
-  if (typeof v === 'number' && Number.isFinite(v)) return v
-  if (v === null || v === undefined) return ''
-  return JSON.stringify(v)
 }
 
 function repairPlotSeries(v: unknown, cap: number): GenuiPlot['series'] | undefined {
@@ -1376,6 +1265,13 @@ export function countGenuiNodes(value: unknown, cap = Number.POSITIVE_INFINITY):
           const lo = obj(li)
           if (lo !== undefined && typeof lo.type === 'string') walk([lo])
         }
+      } else if (v.type === 'table' && Array.isArray(v.details)) {
+        const rowCount = tableRowsForDetails(v).length
+        for (let rowIndex = 0; rowIndex < Math.min(v.details.length, rowCount); rowIndex++) {
+          if (count >= cap) return
+          const detail = v.details[rowIndex]
+          if (Array.isArray(detail) && isTableDetailReachable(v, rowIndex)) walk(detail)
+        }
       }
     }
   }
@@ -1431,6 +1327,11 @@ function visitDeclaredGenuiNodes(
     } else if (v.type === 'list' && Array.isArray(v.items)) {
       for (let row = 0; row < v.items.length; row++) {
         walkNode(v.items[row], `${at}.items[${row}]`)
+      }
+    } else if (v.type === 'table' && Array.isArray(v.details)) {
+      const rowCount = tableRowsForDetails(v).length
+      for (let row = 0; row < Math.min(v.details.length, rowCount); row++) {
+        if (Array.isArray(v.details[row]) && isTableDetailReachable(v, row)) walk(v.details[row], `${at}.details[${row}]`)
       }
     }
   }
@@ -1524,6 +1425,7 @@ export function validateCanonicalGenuiSpec(value: unknown): GenuiValidation {
     }
   }
   walk(v.items, 0, 'items')
+  if (errors.length === 0) errors.push(...analyzeSubmissionRegistry(v as unknown as GenuiSpec).diagnostics)
   const uniqueErrors = [...new Set(errors)]
   return { ok: uniqueErrors.length === 0, errors: uniqueErrors }
 }
@@ -1590,6 +1492,9 @@ export function processGenuiSpec(value: unknown): GenuiProcessResult {
   // unknown type. The processing pipeline is renderer-aware by contract:
   // custom nodes stay opaque and must not fail native schema validation.
   const errors = validation.errors.filter(error => !error.includes(': unknown type '))
+  if (repaired !== null && errors.length === 0) {
+    errors.push(...analyzeSubmissionRegistry(repaired).diagnostics)
+  }
   if (declaredNativeCount > renderedNativeCount) {
     errors.push(`repair dropped ${declaredNativeCount - renderedNativeCount} declared native node(s): declared ${declaredNativeCount}, rendered ${renderedNativeCount}`)
   }
@@ -1598,7 +1503,7 @@ export function processGenuiSpec(value: unknown): GenuiProcessResult {
     normalized: normalized.value,
     repaired,
     spec: repaired,
-    errors,
+    errors: [...new Set(errors)],
     warnings: [...normalized.warnings, ...diagnoseUnknownGenuiFields(normalized.value)],
     // Compatibility fields retain their historical meanings: declaredCount
     // is native declarations, while renderedCount is the total rendered tree.
@@ -1625,30 +1530,37 @@ export function isRenderableProcess(processed: GenuiProcessResult): boolean {
 
 /* ---------------- partial fence rendering (issue #186) ---------------- */
 
-/** Longest declared-node path prefix a validation error points at. */
-const DECLARED_NODE_PATH_RE = /^(items\[\d+\](?:\.(?:items\[\d+\]|tabs\[\d+\]\.items\[\d+\]))*)/
+/** Longest node or aligned table-detail slot path a validation error points at. */
+const DECLARED_NODE_PATH_RE = /^(items\[\d+\](?:\.(?:items\[\d+\]|tabs\[\d+\]\.items\[\d+\]|details\[\d+\](?:\[\d+\])?))*)/
 
 function errorNodePath(error: string): string | null {
   const match = DECLARED_NODE_PATH_RE.exec(error)
   return match === null ? null : match[1] ?? null
 }
 
-/** Where the node at a declared path lives: its parent array and index. */
-function nodeSlotAt(root: Record<string, unknown>, path: string): { array: unknown[]; index: number } | undefined {
-  const steps = [...path.matchAll(/(?:^|\.)(items|tabs)\[(\d+)\]/g)]
-  if (steps.length === 0 || steps[steps.length - 1]![1] !== 'items') return undefined
+interface NodeSlot {
+  array: unknown[]
+  index: number
+  /** Detail row slots align with table rows; pruning must not shift them. */
+  preserveIndex: boolean
+}
+
+/** Where the node or table-detail slot at a validation path lives. */
+function nodeSlotAt(root: Record<string, unknown>, path: string): NodeSlot | undefined {
+  const steps = [...path.matchAll(/(?:^|\.)(items|tabs|details)\[(\d+)\]|\[(\d+)\]/g)]
+  if (steps.length === 0 || steps[steps.length - 1]![1] === 'tabs') return undefined
   let current: unknown = root
-  for (let i = 0; i < steps.length - 1; i++) {
+  for (let i = 0; i < steps.length; i++) {
     const step = steps[i]!
-    const holder = obj(current)
-    const list = holder === undefined ? undefined : holder[step[1]!]
-    current = Array.isArray(list) ? list[Number(step[2])] : undefined
+    // A detail child has a second index without a property: details[row][node].
+    const list = step[1] === undefined ? current : obj(current)?.[step[1]]
+    const index = Number(step[2] ?? step[3])
+    if (!Array.isArray(list) || index >= list.length) return undefined
+    if (i === steps.length - 1) return { array: list, index, preserveIndex: step[1] === 'details' }
+    current = list[index]
     if (current === undefined) return undefined
   }
-  const holder = obj(current)
-  const list = holder === undefined ? undefined : holder.items
-  if (!Array.isArray(list)) return undefined
-  return { array: list, index: Number(steps[steps.length - 1]![2]) }
+  return undefined
 }
 
 /** Deep-clone a JSON value for pruning; null when it cannot round-trip. */
@@ -1676,18 +1588,21 @@ export function partialRepairGenuiSpec(processed: GenuiProcessResult): GenuiSpec
   if (isRenderableProcess(processed)) return processed.spec
   if (processed.spec === null) return null
   const root = obj(processed.value)
-  // A bare component root has no siblings to keep, and its validation paths
-  // are wrap-relative (`items[0]` is the root itself after wrapping).
-  if (root === undefined || isComponentRoot(root)) return null
-  if (processed.declaredNativeCount <= 1) return null
+  if (root === undefined) return null
   const paths = new Set<string>()
+  const overhangPaths = new Set<string>()
   for (const error of processed.errors) {
     if (error.startsWith('spec exceeds ')) continue
     const nodePath = errorNodePath(error)
-    if (nodePath !== null) paths.add(nodePath)
+    if (nodePath === null) continue
+    if (error === `${nodePath}.details must not contain more entries than rows`) {
+      overhangPaths.add(nodePath)
+    } else paths.add(nodePath)
   }
-  if (paths.size === 0) return null
-  const pruned = cloneJsonValue(processed.value)
+  if (paths.size === 0 && overhangPaths.size === 0) return null
+  // Validation wraps a bare component first. Prune the same shape so its
+  // detail paths resolve even when the table is the only declared node.
+  const pruned = cloneJsonValue(isComponentRoot(root) ? wrapSingleComponentRoot(root) : root)
   if (pruned === null) return null
   // Resolve every slot BEFORE the first splice: each drop shifts the later
   // siblings of the same array, so a resolve-after-splice (deepest-first or
@@ -1697,9 +1612,24 @@ export function partialRepairGenuiSpec(processed: GenuiProcessResult): GenuiSpec
   // highest-index first keeps the remaining indexes valid (issue #190).
   const slots = [...paths]
     .map((path) => nodeSlotAt(pruned, path))
-    .filter((slot): slot is { array: unknown[]; index: number } => slot !== undefined)
+    .filter((slot): slot is NodeSlot => slot !== undefined)
+  const overhangSlots = [...overhangPaths]
+    .map((path) => nodeSlotAt(pruned, path))
+    .filter((slot): slot is NodeSlot => slot !== undefined)
+  // Extra details are unreachable. Mirror table repair's existing truncation
+  // only for this exact diagnostic, then validate the whole candidate again.
+  for (const { array, index } of overhangSlots) {
+    const table = obj(array[index])
+    if (table?.type === 'table' && Array.isArray(table.details)) {
+      table.details.length = Math.min(table.details.length, tableRowsForDetails(table).length)
+    }
+  }
   const byArray = new Map<unknown[], number[]>()
-  for (const { array, index } of slots) {
+  for (const { array, index, preserveIndex } of slots) {
+    if (preserveIndex) {
+      array[index] = null
+      continue
+    }
     const indexes = byArray.get(array)
     if (indexes === undefined) byArray.set(array, [index])
     else indexes.push(index)
@@ -1864,9 +1794,7 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       break
     case 'submit':
       if (typeof v.label !== 'string') errors.push(`${at}: type 'submit' requires label (string)`)
-      // action is optional (local grading needs no round trip); the
-      // renderer disables the button when it is absent AND no question
-      // carries local `answer` data.
+      // 本地判卷可以不设置 action；不满足判卷条件时，渲染器会禁用无 action 的按钮。
       break
     case 'badge':
       if (typeof v.label !== 'string' && typeof v.text !== 'string' && typeof v.value !== 'string') {
@@ -1919,6 +1847,20 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       }
       if (v.details !== undefined && !Array.isArray(v.details)) {
         errors.push(`${at}.details must be an array aligned with rows`)
+      }
+      if (Array.isArray(v.details)) {
+        const table = { columns: v.columns, rows: v.rows, types: v.types }
+        const rowCount = tableRowsForDetails(table).length
+        if (v.details.length > rowCount) errors.push(`${at}.details must not contain more entries than rows`)
+        for (let i = 0; i < Math.min(v.details.length, rowCount); i++) {
+          const detail = v.details[i]
+          if (detail === null || !isTableDetailReachable(table, i)) continue
+          if (!Array.isArray(detail)) {
+            errors.push(`${at}.details[${i}] must be an array or null`)
+            continue
+          }
+          walk(detail, depth + 1, `${at}.details[${i}]`)
+        }
       }
       validateTableRows(v.rows, `${at}.rows`, errors)
       break

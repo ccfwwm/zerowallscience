@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-files",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "ZeroWall Science files domain plugin (desktop 8.0.1).",
   "type": "module",
   "main": "./lib/index.js",
@@ -122,7 +122,7 @@
   "dependencies": {
     "dsh-office-tools": "github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb",
     "dsh-better-sidebar": "workspace:^",
-    "dsh-dream-skin": "9.29.0",
+    "dsh-dream-skin": "10.9.3",
     "@open-file-viewer/core": "0.1.49",
     "viewer-pdfjs": "npm:pdfjs-dist@6.3.289",
     "jszip": "3.10.1",

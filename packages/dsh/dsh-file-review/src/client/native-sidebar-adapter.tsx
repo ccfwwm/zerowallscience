@@ -9,23 +9,11 @@ import type { UiConversation } from '@deepseek-ai/dsh-client-ui-conversation/cli
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import { FileReviewTab, type FileReviewTabRuntime, type ReviewTarget } from './FileReviewTab.tsx'
 import { NS } from './locales.ts'
 
 const REVIEW_TAB_ID = 'dsh-file-review:review'
-
-// Keep the browser adapter self-contained. This is the same session-scoped
-// address grammar as Harness' workspace-path helper, and avoids pulling the
-// Host path package through Vitest's browser module graph.
-function fileAddressFor(sessionId: string, cwd: string | undefined, path: string): string {
-  const normalized = path.replace(/\\/g, '/')
-  const root = cwd?.replace(/\\/g, '/').replace(/\/+$/u, '') ?? ''
-  const relative = root !== '' && normalized.startsWith(`${root}/`)
-    ? normalized.slice(root.length + 1)
-    : normalized.startsWith('/') && root !== '' && normalized === root ? '' : normalized
-  const encoded = relative.split('/').map(segment => encodeURIComponent(segment).replace(/%3A/giu, ':')).join('/')
-  return `dsh-resource://file/session/${encodeURIComponent(sessionId)}/${encoded}`
-}
 
 declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
   interface SidebarRightTabParamsMap {

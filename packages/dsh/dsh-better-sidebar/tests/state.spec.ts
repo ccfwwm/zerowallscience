@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  activateTab, allLeaves, BOTTOM_DEFAULT, BOTTOM_MIN, closeTab, CONVERSATION_MIN, createSidebarStore,
+  activateTab, allLeaves, ancestorDirs, BOTTOM_DEFAULT, BOTTOM_MIN, closeTab, CONVERSATION_MIN, createSidebarStore,
   insertLeafAt, makeDefaultState, moveTab, moveTabToEdge, openDiffTab,
   openTabInBottomPane, patchTab, resizeSplit,
   resizeSplitIn, revealPaths, sanitizeState, setBottomHeight,
@@ -245,6 +245,40 @@ describe('sidebar state', () => {
     const after = s.bottomSplits as { tabs: { id: string }[] }
     expect(after.tabs[after.tabs.length - 1]!.id).toBe(first)
     expect(after.tabs).toHaveLength(2)
+  })
+
+  it('dragging a pane\'s only tab onto its own edge splits in place instead of losing the tab', () => {
+    let s = state()
+    s = openTabInBottomPane(s, { id: 'git', type: 'git', title: 'Git' })
+    s = splitPane(s, 'col')
+    const split = s.bottomSplits as Extract<SplitNode, { kind: 'split' }>
+    const paneA = split.children[0] as { id: string; tabs: { id: string }[] }
+    const paneB = split.children[1] as { id: string }
+    const tabId = paneA.tabs[0]!.id
+    s = moveTab(s, paneA.id, tabId, paneB.id)
+    // paneB now holds the single tab; dropping it onto paneB's own edge
+    // used to empty paneB, delete its leaf, and discard the tab entirely.
+    s = moveTabToEdge(s, paneB.id, tabId, paneB.id, 'left')
+    const leaves = allLeaves(s.bottomSplits)
+    expect(leaves).toHaveLength(1)
+    expect(leaves[0]!.tabs.map(t => t.id)).toEqual([tabId])
+    expect(s.activePane).toBe(leaves[0]!.id)
+  })
+
+  it('dragging one of several tabs onto its own pane edge splits the pane with the dragged tab', () => {
+    let s = state()
+    s = openTabInBottomPane(s, { id: 'git', type: 'git', title: 'Git' })
+    s = openTabInBottomPane(s, { id: 't2', type: 'terminal', title: 'T2' })
+    const leaf = s.bottomSplits as { id: string; tabs: { id: string }[] }
+    const first = leaf.tabs[0]!.id
+    s = moveTabToEdge(s, leaf.id, first, leaf.id, 'right')
+    const leaves = allLeaves(s.bottomSplits)
+    expect(leaves).toHaveLength(2)
+    const dragged = leaves.find(candidate => candidate.tabs.some(t => t.id === first))
+    const kept = leaves.find(candidate => candidate !== dragged)
+    expect(dragged!.tabs.map(t => t.id)).toEqual([first])
+    expect(kept!.tabs.map(t => t.id)).toEqual([leaf.tabs[1]!.id])
+    expect(s.activePane).toBe(dragged!.id)
   })
 
   it('closing the last tab removes the pane (promotes the sibling)', () => {
@@ -699,6 +733,45 @@ describe('v0.12.0 store additions', () => {
   })
 })
 
+describe('unread mark persistence (v0.25.0)', () => {
+  // "A page the reader has not looked at" must outlive the mount that raised
+  // it (the mark is drawn by a chip that unmounts on every session switch and
+  // every page reload), so the mark rides the session's persisted state — and
+  // sanitizeState's `unread` branch is the ONLY thing that carries it back.
+  it('survives a reload: a fresh store reads the mark back from localStorage', () => {
+    const g = globalThis as Record<string, unknown>
+    const storage = new Map<string, string>()
+    const timers: Array<() => void> = []
+    g.window = {
+      clearTimeout: () => {},
+      setTimeout: (fn: () => void) => { timers.push(fn); return timers.length },
+      innerWidth: 1024,
+      innerHeight: 800,
+    }
+    g.localStorage = {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+    }
+    try {
+      const first = createSidebarStore()
+      first.setSession('s1')
+      expect(first.markUnread('subagent')).toBe(true)
+      // The write is debounced; fire the pending timer the page would hit
+      // after the delay, then read the persisted layout back.
+      for (const fn of timers.splice(0)) fn()
+      expect(JSON.parse(storage.get('dsh-sidebar:v1:s1')!).unread).toEqual(['subagent'])
+      // A reload is a brand-new store over the SAME storage.
+      const reloaded = createSidebarStore()
+      reloaded.setSession('s1')
+      expect(reloaded.getSnapshot().state!.unread).toEqual(['subagent'])
+    } finally {
+      delete g.window
+      delete g.localStorage
+    }
+  })
+})
+
 describe('revealPaths (show in folder)', () => {
   it('expands ancestors with their ABSOLUTE path (leading separator preserved)', () => {
     // POSIX: the root (/w/src) is not itself expanded, but the subdirs
@@ -723,6 +796,27 @@ describe('revealPaths (show in folder)', () => {
   it('resolves nothing to the same reference (no churn)', () => {
     const base = makeDefaultState()
     expect(revealPaths(base, '/w', [])).toBe(base)
+  })
+})
+
+describe('ancestorDirs (the levels a lazy tree must expand)', () => {
+  it('lists the absolute ancestors below the explorer root, excluding the path itself', () => {
+    // The root itself is not a level the tree expands, and the target is not
+    // its own ancestor.
+    expect(ancestorDirs('/w/src', ['/w/src/sub/deep/a.ts'])).toEqual(['/w/src/sub', '/w/src/sub/deep'])
+    expect(ancestorDirs('/w/src', ['/w/src/a.ts'])).toEqual([])
+  })
+
+  it('keeps a Windows drive-letter root and a UNC prefix', () => {
+    expect(ancestorDirs('C:\\work', ['C:\\work\\src\\a.ts'])).toEqual(['C:\\work\\src'])
+    expect(ancestorDirs('\\\\server\\share', ['\\\\server\\share\\sub\\a.ts'])).toEqual(['\\\\server\\share\\sub'])
+  })
+
+  it('skips empty and non-string entries and de-duplicates shared ancestors', () => {
+    expect(ancestorDirs('/w', ['', '/w/a/b.ts', '/w/a/c.ts'])).toEqual(['/w/a'])
+    // Without a root there is nothing to anchor against, so every leading
+    // level is still reported (the caller only uses this when cwd is known).
+    expect(ancestorDirs(undefined, [undefined as unknown as string, '/a/b/c.ts'])).toEqual(['/a', '/a/b'])
   })
 })
 
@@ -789,5 +883,65 @@ describe('URL reset escape hatch (issue #369)', () => {
     store.setSession('s1')
     const leaf = store.getSnapshot().state!.bottomSplits as { tabs: { type: string }[] }
     expect(leaf.tabs.map(tab => tab.type)).toEqual([])
+  })
+})
+
+/**
+ * listener isolation. `service.subscribeState` is this store's own
+ * `subscribe`, so a consumer plugin's listener throws INSIDE notify() — and
+ * notify() runs inline in the mutating call site (setSession from the
+ * Sidebar's mount effect, reduce from a click handler). An escaping throw
+ * therefore lands in the React commit phase, where the shell's ROOT
+ * RenderBoundary swaps the whole sidebar for its error strip.
+ */
+describe('store listener isolation', () => {
+  // Same browser-global stubs as the blocks above: setSession → loadState
+  // reads window.location.search and localStorage.
+  beforeEach(() => {
+    const g = globalThis as Record<string, unknown>
+    g.window = { clearTimeout: () => {}, setTimeout: () => 0, innerWidth: 1024, innerHeight: 800, location: { search: '' } }
+    g.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+  })
+  afterEach(() => {
+    const g = globalThis as Record<string, unknown>
+    delete g.window
+    delete g.localStorage
+  })
+
+  it('contains a throwing listener and still delivers the change to the rest', () => {
+    const store = createSidebarStore()
+    const delivered: string[] = []
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    store.subscribe(() => {
+      delivered.push('throwing')
+      throw new Error('third-party listener boom')
+    })
+    store.subscribe(() => { delivered.push('healthy') })
+    // The mutation must not throw out of the store, and the throwing
+    // listener must not rob the healthy ones of their notification (React's
+    // own useSyncExternalStore callback shares this loop in the real shell).
+    expect(() => store.setSession('s1')).not.toThrow()
+    expect(delivered).toEqual(['throwing', 'healthy'])
+    // The mutation itself still landed.
+    expect(store.getSnapshot().sessionId).toBe('s1')
+    expect(store.getSnapshot().state).toBeDefined()
+    // The crash is reported, not swallowed silently.
+    expect(errorSpy).toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
+  it('keeps notifying every listener on later mutations (the loop recovers)', () => {
+    const store = createSidebarStore()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    let healthyCalls = 0
+    store.subscribe(() => { throw new Error('boom') })
+    store.subscribe(() => { healthyCalls += 1 })
+    store.setSession('s1')
+    const afterFirst = healthyCalls
+    // A later mutation notifies again: the throwing listener was neither
+    // dropped from the set nor left the loop half-iterated.
+    store.reduce(toggleBottomPanel)
+    expect(healthyCalls).toBe(afterFirst + 1)
+    errorSpy.mockRestore()
   })
 })

@@ -18,6 +18,9 @@ export interface SkillBindingConfig {
 }
 
 export type ProgressiveMode = 'stable-proxy' | 'dynamic'
+export type SurfaceProfile = 'default' | 'coding' | 'auto'
+export type RepeatDefinitions = 'compact' | 'full'
+export type FamilyDiscovery = 'family' | 'matched'
 
 export interface ResolvedConfig {
   readonly mode: ProgressiveMode
@@ -35,6 +38,19 @@ export interface ResolvedConfig {
   readonly requireDiscovery: boolean
   readonly statusGrantsDiscovery: boolean
   readonly deferToolGuidance: boolean
+  /** Restore the v2 search value and the v1 dispatch envelope. */
+  readonly legacyResults: boolean
+  /** Character budget for one stable search result, including guidance and wrapper. */
+  readonly maxResultCharacters: number
+  readonly profile: SurfaceProfile
+  readonly repeatDefinitions: RepeatDefinitions
+  readonly capabilitySummaryCharacters: number
+  /** Budget model-visible direct dispatch content. Program values stay intact. */
+  readonly resultBudget: boolean
+  readonly resultBudgetCharacters: number
+  readonly familyDiscovery: FamilyDiscovery
+  /** When positive, a deferred catalog no larger than this is placed on the frozen surface. */
+  readonly autoloadMaxTools: number
 }
 
 export interface CatalogTool extends ToolSchemaView {

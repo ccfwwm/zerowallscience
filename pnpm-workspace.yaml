@@ -29,20 +29,20 @@ autoInstallPeers: false
 verifyDepsBeforeRun: false
 
 overrides:
-  'dsh-progressive-tools>@deepseek-ai/cordis': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-agent': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-agent-loop': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-llm': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-scope': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-session': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-system-prompt': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-tools': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-attachment': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-session-projection': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-session-persistence': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-settings': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-user-approval': 'workspace:*'
-  'dsh-progressive-tools>@deepseek-ai/dsh-ptc-runtime': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/cordis': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-agent': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-agent-loop': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-llm': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-scope': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-session': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-system-prompt': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-tools': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-attachment': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-session-projection': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-session-persistence': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-settings': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-user-approval': 'workspace:*'
+  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-ptc-runtime': 'workspace:*'
   'micromark-util-types': '2.0.2'
   'tsdown': '0.22.2'
   '@tsdown/css': '0.22.2'
@@ -82,11 +82,11 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   # Explicitly requested integration pin, published today.
-  - 'dsh-univer-office@0.3.5'
+  - 'dsh-univer-office@0.3.7'
   - '@earendil-works/pi-ai@0.87.1'
-  - dsh-better-sidebar@0.24.1
-  - dsh-dream-skin@9.29.0
-  - dsh-free-search@0.6.0
+  - dsh-better-sidebar@0.25.0
+  - dsh-dream-skin@10.9.3
+  - dsh-free-search@0.8.3
 
 packageExtensions:
   'dsh-office-tools@*':
@@ -98,17 +98,17 @@ packageExtensions:
       '@deepseek-ai/dsh-llm': 'workspace:*'
       '@deepseek-ai/dsh-session': 'workspace:*'
       '@deepseek-ai/dsh-tools': 'workspace:*'
-  'dsh-free-search@0.6.0':
+  'dsh-free-search@0.8.3':
     peerDependencies:
       '@deepseek-ai/dsh-client-ui-commands': '^0.1.7-rc.1 || ^0.2.0-rc.2'
       '@deepseek-ai/dsh-client-ui-plugin-manager': '^0.1.7-rc.1 || ^0.2.0-rc.2'
       '@deepseek-ai/dsh-client-ui-renderer': '^0.1.7-rc.1 || ^0.2.0-rc.2'
       '@deepseek-ai/dsh-settings': '^0.1.7-rc.1 || ^0.2.0-rc.2'
       '@deepseek-ai/dsh-tools': '^0.1.7-rc.1 || ^0.2.0-rc.2'
-  # Zotero 0.11.0 was published against the 0.1.7 API surface. Its runtime
+  # Zotero 0.12.1 was published against the 0.1.7 API surface. Its runtime
   # integration remains compatible with the rc.2 package family shipped by
   # dsh-v0.2.0-rc.2, so widen only this exact package's peers.
-  'dsh-zotero@0.11.0':
+  'dsh-zotero@0.12.1':
     peerDependencies:
       '@deepseek-ai/dsh-api-remotes': '0.1.7-rc.2 || ^0.2.0-rc.2'
       '@deepseek-ai/dsh-client-locale': '0.1.7-rc.2 || ^0.2.0-rc.2'
@@ -133,4 +133,4 @@ packageExtensions:
 
 patchedDependencies:
   '@earendil-works/pi-ai@0.87.1': deepseek-harness/patches/@earendil-works__pi-ai@0.87.1.patch
-  dsh-dream-skin@9.29.0: patches/dsh-dream-skin@9.29.0.patch
+  dsh-dream-skin@10.9.3: patches/dsh-dream-skin@10.9.3.patch

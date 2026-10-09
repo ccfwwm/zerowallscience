@@ -15,8 +15,8 @@ export type SettingsNamespace = string & { readonly __settingsNamespace?: undefi
 /**
  * Busy-time delivery behavior for user messages (DSH `ui-conversation.busyEnter`).
  * `queue` = ordinary follow-up turn; `steer` = splice into the running turn at
- * the nearest step boundary. The value lives in the host user-settings document
- * (`$DSH_HOME/settings.yaml`) — the exact field the GUI's General Settings
+ * the nearest step boundary. The value lives in the host configuration
+ * (profile config in DSH 0.2, user-settings document in older hosts) — the exact field the GUI's General Settings
  * 「繁忙时 Enter 键行为」 row edits — so WeChat and the GUI always agree.
  */
 export type BusyEnterBehavior = "queue" | "steer";
@@ -217,13 +217,13 @@ export interface CommandResultShape {
 }
 
 /**
- * Minimal structural surface of the host user-settings service (`ctx.settings`,
- * dsh-settings). `get(ns)` returns the schema-resolved section (`undefined`
- * while the namespace is unregistered); `update(ns, patch)` merges a patch
- * into the namespace's user layer and persists it to the settings document.
+ * Host settings across versions: DSH 0.2 projects live plugin Config values
+ * through describe(); older hosts expose get(ns). update(ns, patch) remains
+ * the shared write entry point used by the GUI.
  */
 export interface SettingsService {
-  get(ns: SettingsNamespace): unknown;
+  get?(ns: SettingsNamespace): unknown;
+  describe?(): readonly { ns: string; value?: unknown }[];
   update(ns: SettingsNamespace, patch: object): Promise<void>;
 }
 
@@ -758,18 +758,29 @@ export class DshOps {
   }
 
   /**
-   * Persist the deployment-wide default preset into the DSH settings document
-   * (`agent-presets` namespace) — the exact document the GUI settings page
-   * edits, so a change from WeChat shows up there and vice versa. Returns
-   * false when no settings provider is mounted or the write is refused.
+   * Persist the same default selection the GUI edits. DSH 0.2 exposes
+   * `agent-preset-registry.selectedDefault` as a live settings field; the
+   * ordinary `default` config is only the deployment fallback. Older hosts
+   * use `agent-presets.default` instead.
    */
   async saveDefaultPreset(presetId: string): Promise<boolean> {
     const settings = this.get<{
+      describe?(): readonly { ns: string }[];
       update(ns: SettingsNamespace, patch: object): Promise<void>;
     }>("settings");
     if (!settings) return false;
     try {
-      await settings.update("agent-presets" as SettingsNamespace, { default: presetId });
+      const descriptors = settings.describe?.();
+      const registry = descriptors?.find((row) => row.ns === "agent-preset-registry")
+        ?? descriptors?.find((row) => row.ns.endsWith(":agent-preset-registry"));
+      if (registry) {
+        await settings.update(registry.ns as SettingsNamespace, { selectedDefault: presetId });
+      } else {
+        const legacy = descriptors?.find((row) => row.ns === "agent-presets");
+        // A describe-capable host must advertise the entry before we write.
+        if (descriptors && !legacy) return false;
+        await settings.update((legacy?.ns ?? "agent-presets") as SettingsNamespace, { default: presetId });
+      }
       return true;
     } catch (err) {
       console.error(`[dsh-wechat] save default preset failed: ${String(err)}`);
@@ -860,7 +871,11 @@ export class DshOps {
   busyEnter(): BusyEnterBehavior {
     const settings = this.get<SettingsService>("settings");
     try {
-      const section = settings?.get(BUSY_ENTER_NAMESPACE as SettingsNamespace) as
+      // Read the resolved live value, not the sparse user override. In DSH
+      // 0.2 settings.get was removed when settings moved into profile Config.
+      const section = (typeof settings?.describe === "function"
+        ? settings.describe().find((row) => row.ns === BUSY_ENTER_NAMESPACE)?.value
+        : settings?.get?.(BUSY_ENTER_NAMESPACE as SettingsNamespace)) as
         | { busyEnter?: unknown }
         | undefined;
       return section?.busyEnter === "steer" ? "steer" : "queue";
@@ -870,7 +885,7 @@ export class DshOps {
   }
 
   /**
-   * Persist the busy-Enter behavior into the DSH settings document
+   * Persist the busy-Enter behavior through the DSH settings service
    * (`ui-conversation` namespace) — the exact field the GUI settings page
    * edits, so a switch from WeChat shows up there and vice versa. Returns
    * false when no settings provider is mounted or the write is refused.

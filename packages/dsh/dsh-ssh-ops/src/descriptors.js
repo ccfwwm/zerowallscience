@@ -24,14 +24,15 @@ function def(method, requestSchema, requestType, resultSchema, resultType, optio
         name: "request",
         wire: "request",
         source: "json",
-        codec: { mode: "strict", typeSymbol: `${PACKAGE}/types#${requestType}`, create: () => requestSchema, schema: requestSchema }
+        // 0.1.6-alpha.2 requires create(); alpha.1 client face reads .schema — ship both.
+        codec: { mode: "strict", typeSymbol: `${PACKAGE}/types#${requestType}`, schema: requestSchema, create: () => requestSchema }
       }
     ],
     result: {
       mode: "strict",
       typeSymbol: `${PACKAGE}/types#${resultType}`,
-      create: () => resultSchema,
-      schema: resultSchema
+      schema: resultSchema,
+      create: () => resultSchema
     },
     sourceLocation: { file: "src/index.js", line: 1, column: 1 }
   };
@@ -53,10 +54,15 @@ export const DESCRIPTORS = [
   def("groupSave", S.groupSaveRequestSchema, "SshGroupSaveRequest", S.groupSaveResultSchema, "SshGroupSaveResult"),
   def("groupDelete", S.groupDeleteRequestSchema, "SshGroupDeleteRequest", S.groupDeleteResultSchema, "SshGroupDeleteResult"),
   def("selectConnection", S.selectConnectionRequestSchema, "SshSelectConnectionRequest", S.selectConnectionResultSchema, "SshSelectConnectionResult"),
+  def("agentSettingsGet", S.agentSettingsGetRequestSchema, "SshAgentSettingsGetRequest", S.agentSettingsResultSchema, "SshAgentSettingsResult"),
+  def("agentSettingsSave", S.agentSettingsSaveRequestSchema, "SshAgentSettingsSaveRequest", S.agentSettingsResultSchema, "SshAgentSettingsResult"),
+  def("languageGet", S.languageGetRequestSchema, "SshLanguageGetRequest", S.languageResultSchema, "SshLanguageResult"),
+  def("languageSave", S.languageSaveRequestSchema, "SshLanguageSaveRequest", S.languageResultSchema, "SshLanguageResult"),
   def("openSession", S.openSessionRequestSchema, "SshOpenSessionRequest", S.openSessionResultSchema, "SshOpenSessionResult"),
   def("listTerminalContexts", S.terminalContextListRequestSchema, "SshTerminalContextListRequest", S.terminalContextListResultSchema, "SshTerminalContextListResult"),
   def("readTerminalContext", S.terminalContextReadRequestSchema, "SshTerminalContextReadRequest", S.terminalContextReadResultSchema, "SshTerminalContextReadResult"),
   def("changeDirectory", S.changeDirectoryRequestSchema, "SshChangeDirectoryRequest", S.writeResultSchema, "SshWriteResult"),
+  def("enableShellIntegration", S.enableShellIntegrationRequestSchema, "EnableShellIntegrationRequest", S.enableShellIntegrationResultSchema, "EnableShellIntegrationResult"),
   def("write", S.writeRequestSchema, "SshWriteRequest", S.writeResultSchema, "SshWriteResult"),
   def("pendingConfirmationList", S.pendingConfirmationListRequestSchema, "PendingConfirmationListRequest", S.pendingConfirmationListResultSchema, "PendingConfirmationListResult"),
   def("pendingConfirmationApprove", S.pendingConfirmationActionRequestSchema, "PendingConfirmationActionRequest", S.pendingConfirmationApproveResultSchema, "PendingConfirmationApproveResult"),
@@ -75,15 +81,22 @@ export const DESCRIPTORS = [
   def("sftpMkdir", S.sftpMkdirRequestSchema, "SftpMkdirRequest", S.sftpMkdirResultSchema, "SftpMkdirResult"),
   def("sftpDelete", S.sftpDeleteRequestSchema, "SftpDeleteRequest", S.sftpDeleteResultSchema, "SftpDeleteResult"),
   def("sftpRename", S.sftpRenameRequestSchema, "SftpRenameRequest", S.sftpRenameResultSchema, "SftpRenameResult"),
+  def("sftpUploadDir", S.sftpUploadDirRequestSchema, "SftpUploadDirRequest", S.sftpTransferDirResultSchema, "SftpTransferDirResult"),
+  def("sftpDownloadDir", S.sftpDownloadDirRequestSchema, "SftpDownloadDirRequest", S.sftpTransferDirResultSchema, "SftpTransferDirResult"),
   def("tunnelStartLocal", S.tunnelStartLocalRequestSchema, "TunnelStartLocalRequest", S.tunnelStartLocalResultSchema, "TunnelStartLocalResult"),
   def("tunnelStartRemote", S.tunnelStartRemoteRequestSchema, "TunnelStartRemoteRequest", S.tunnelStartRemoteResultSchema, "TunnelStartRemoteResult"),
+  def("tunnelStartDynamic", S.tunnelStartDynamicRequestSchema, "TunnelStartDynamicRequest", S.tunnelStartDynamicResultSchema, "TunnelStartDynamicResult"),
   def("tunnelStop", S.tunnelStopRequestSchema, "TunnelStopRequest", S.tunnelStopResultSchema, "TunnelStopResult"),
   def("tunnelList", S.tunnelListRequestSchema, "TunnelListRequest", S.tunnelListResultSchema, "TunnelListResult"),
-  def("sshConfigImport", S.sshConfigImportRequestSchema, "SshConfigImportRequest", S.sshConfigImportResultSchema, "SshConfigImportResult"),
+  def("sessionLogList", S.sessionLogListRequestSchema, "SessionLogListRequest", S.sessionLogListResultSchema, "SessionLogListResult"),
+  def("sessionLogRead", S.sessionLogReadRequestSchema, "SessionLogReadRequest", S.sessionLogReadResultSchema, "SessionLogReadResult"),
+  def("sessionLogSearch", S.sessionLogSearchRequestSchema, "SessionLogSearchRequest", S.sessionLogSearchResultSchema, "SessionLogSearchResult"),
+  def("sessionLogDelete", S.sessionLogDeleteRequestSchema, "SessionLogDeleteRequest", S.sessionLogDeleteResultSchema, "SessionLogDeleteResult"),
   def("dbConnect", S.dbConnectRequestSchema, "DbConnectRequest", S.dbConnectResultSchema, "DbConnectResult"),
   def("dbListConnections", S.dbListConnectionsRequestSchema, "DbListConnectionsRequest", S.dbListConnectionsResultSchema, "DbListConnectionsResult"),
   def("dbQuery", S.dbQueryRequestSchema, "DbQueryRequest", S.dbQueryResultSchema, "DbQueryResult"),
   def("dbExecute", S.dbExecuteRequestSchema, "DbExecuteRequest", S.dbExecuteResultSchema, "DbExecuteResult"),
+  def("dbExport", S.dbExportRequestSchema, "DbExportRequest", S.dbExportResultSchema, "DbExportResult"),
   def("dbListTables", S.dbListTablesRequestSchema, "DbListTablesRequest", S.dbListTablesResultSchema, "DbListTablesResult"),
   def("dbDescribeTable", S.dbDescribeTableRequestSchema, "DbDescribeTableRequest", S.dbDescribeTableResultSchema, "DbDescribeTableResult"),
   def("dbPreview", S.dbPreviewRequestSchema, "DbPreviewRequest", S.dbPreviewResultSchema, "DbPreviewResult"),

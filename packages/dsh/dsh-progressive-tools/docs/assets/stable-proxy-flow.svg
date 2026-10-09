@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="1200" viewBox="0 0 1280 1200" role="img" aria-labelledby="title desc">
+  <title id="title">stable-proxy request flow</title>
+  <desc id="desc">How DSH Progressive Tools keeps a small cache-stable request surface while the full catalog stays in process memory and discovered tools execute through the ordinary pipeline.</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1">
+      <stop stop-color="#f7fbff"/><stop offset="1" stop-color="#eef4fc"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#2563eb"/><stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowMuted" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto">
+      <path d="M0,0 L9,3.5 L0,7 Z" fill="#64748b"/>
+    </marker>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#1e3a8a" flood-opacity="0.06"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="1200" rx="24" fill="url(#bg)" stroke="#c5daf3" stroke-width="2"/>
+  <path d="M64 36h36" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+  <text x="110" y="42" font-family="Arial,Helvetica,sans-serif" font-size="12" letter-spacing="2.4" fill="#5b7c99">@EVERCLEAR077</text>
+  <text x="640" y="48" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="26" font-weight="700" fill="#0f172a">stable-proxy flow</text>
+  <text x="640" y="76" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">Small byte-stable prefix on the wire. Full catalog in memory. Ordinary execution for the real tool.</text>
+
+  <rect x="80" y="98" width="1120" height="92" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="80" y="98" width="8" height="92" rx="4" fill="url(#accent)"/>
+  <text x="112" y="128" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#2563eb" letter-spacing="1.2">1  PROCESS MEMORY</text>
+  <text x="112" y="158" font-family="Arial,Helvetica,sans-serif" font-size="20" font-weight="700" fill="#0f172a">Complete tool registry</text>
+  <text x="112" y="180" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">Every registered tool stays here. The plugin never serializes this full list as the request tools array.</text>
+
+  <line x1="640" y1="190" x2="640" y2="218" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="80" y="228" width="540" height="188" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="80" y="228" width="8" height="188" rx="4" fill="#38bdf8"/>
+  <text x="112" y="258" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#2563eb" letter-spacing="1.2">2A  DEFERRED CATALOG</text>
+  <text x="112" y="288" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#0f172a">Searchable exact definitions</text>
+  <text x="112" y="316" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">Name, description, parameter schema, family aliases.</text>
+  <text x="112" y="338" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">BM25 ranking. Exact-name miss returns empty.</text>
+  <text x="112" y="360" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">status lists families. One match opens the whole family.</text>
+  <text x="112" y="392" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">Not sent on the wire until a search result.</text>
+
+  <rect x="660" y="228" width="540" height="188" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="660" y="228" width="8" height="188" rx="4" fill="#2563eb"/>
+  <text x="692" y="258" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#2563eb" letter-spacing="1.2">2B  STABLE REQUEST SURFACE</text>
+  <text x="692" y="288" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#0f172a">Frozen on first assembly</text>
+  <text x="692" y="316" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">tool_search  +  tool_dispatch</text>
+  <text x="692" y="338" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">alwaysVisible: skill, read, write, edit, glob, grep, ...</text>
+  <text x="692" y="360" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">The first AgentLoop request already uses this small list.</text>
+  <text x="692" y="392" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">Later discovery never grows this tools[] set.</text>
+
+  <line x1="350" y1="416" x2="350" y2="446" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="930" y1="416" x2="930" y2="446" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="80" y="456" width="1120" height="104" rx="16" fill="#ffffff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="80" y="456" width="8" height="104" rx="4" fill="url(#accent)"/>
+  <text x="112" y="486" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#2563eb" letter-spacing="1.2">3  CACHE-STABLE PREFIX</text>
+  <text x="112" y="516" font-family="Arial,Helvetica,sans-serif" font-size="18" font-weight="700" fill="#0f172a">tools[]  +  system text  +  Code Mode SDK stay byte-stable</text>
+  <text x="112" y="540" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">Search writes conversation history only. An unchanged composition keeps the same cacheable prefix across turns.</text>
+
+  <line x1="640" y1="560" x2="640" y2="588" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="640" y="610" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#2563eb" letter-spacing="1.4">4  THREE CALL PATHS FROM THE STABLE SURFACE</text>
+
+  <rect x="80" y="626" width="350" height="156" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="80" y="626" width="8" height="156" rx="4" fill="#38bdf8"/>
+  <text x="112" y="656" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="#0f172a">A  Visible tool</text>
+  <text x="112" y="684" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">Call read / write / skill / ...</text>
+  <text x="112" y="706" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">directly. No search needed.</text>
+  <text x="112" y="740" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">Skip discovery. Go to the pipeline.</text>
+  <text x="112" y="760" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">Prefix stays unchanged.</text>
+
+  <rect x="465" y="626" width="350" height="156" rx="16" fill="#ffffff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="465" y="626" width="8" height="156" rx="4" fill="#2563eb"/>
+  <text x="497" y="656" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="#0f172a">B  Discover a capability</text>
+  <text x="497" y="684" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">tool_search with a task query,</text>
+  <text x="497" y="706" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">or action=status to browse families.</text>
+  <text x="497" y="740" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">Invented names: refuse, do not search.</text>
+  <text x="497" y="760" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">Identifier miss: empty result.</text>
+
+  <rect x="850" y="626" width="350" height="156" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <rect x="850" y="626" width="8" height="156" rx="4" fill="#64748b"/>
+  <text x="882" y="656" font-family="Arial,Helvetica,sans-serif" font-size="16" font-weight="700" fill="#0f172a">C  Direct deferred name</text>
+  <text x="882" y="684" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">Calling a hidden tool by name</text>
+  <text x="882" y="706" font-family="Arial,Helvetica,sans-serif" font-size="14" fill="#475569">is denied by the monotonic guard.</text>
+  <text x="882" y="740" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">Must go through tool_search,</text>
+  <text x="882" y="760" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">then tool_dispatch. No bypass.</text>
+
+  <line x1="255" y1="782" x2="255" y2="1068" stroke="#38bdf8" stroke-width="2" stroke-dasharray="5 5"/>
+  <line x1="255" y1="1068" x2="632" y2="1068" stroke="#38bdf8" stroke-width="2" stroke-dasharray="5 5"/>
+  <text x="268" y="930" font-family="Arial,Helvetica,sans-serif" font-size="12" fill="#0284c7">direct</text>
+
+  <line x1="640" y1="782" x2="640" y2="808" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="1025" y1="782" x2="1025" y2="808" stroke="#64748b" stroke-width="2" marker-end="url(#arrowMuted)"/>
+
+  <rect x="465" y="818" width="350" height="108" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <text x="489" y="848" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#2563eb" letter-spacing="1.2">5  SEARCH RESULT</text>
+  <text x="489" y="874" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="700" fill="#0f172a">Append exact matches to history</text>
+  <text x="489" y="896" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#475569">schemas + family sibling names.</text>
+  <text x="489" y="914" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">tools[] unchanged. Failed search is a no-op.</text>
+
+  <rect x="850" y="818" width="350" height="108" rx="16" fill="#f8fafc" stroke="#cbd5e1" filter="url(#shadow)"/>
+  <text x="874" y="848" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#64748b" letter-spacing="1.2">STOP</text>
+  <text x="874" y="874" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="700" fill="#0f172a">Denied. Stay on the visible surface.</text>
+  <text x="874" y="896" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#475569">No catalog mutation. No pipeline entry.</text>
+  <text x="874" y="914" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#64748b">Recover via search, then dispatch.</text>
+
+  <line x1="640" y1="926" x2="640" y2="952" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="465" y="962" width="350" height="92" rx="16" fill="#ffffff" stroke="#93c5fd" filter="url(#shadow)"/>
+  <text x="489" y="990" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#2563eb" letter-spacing="1.2">6  DISPATCH</text>
+  <text x="489" y="1014" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="700" fill="#0f172a">tool_dispatch nested execute</text>
+  <text x="489" y="1036" font-family="Arial,Helvetica,sans-serif" font-size="13" fill="#1d4ed8">ctx.tools.execute(real tool, parent = dispatcher)</text>
+
+  <line x1="640" y1="1054" x2="640" y2="1080" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="80" y="1090" width="1120" height="86" rx="16" fill="#ffffff" stroke="#2563eb" stroke-width="2" filter="url(#shadow)"/>
+  <rect x="80" y="1090" width="8" height="86" rx="4" fill="url(#accent)"/>
+  <text x="112" y="1120" font-family="Arial,Helvetica,sans-serif" font-size="12" font-weight="700" fill="#2563eb" letter-spacing="1.2">7  ORDINARY DSH PIPELINE</text>
+  <text x="112" y="1154" font-family="Arial,Helvetica,sans-serif" font-size="16" fill="#0f172a">approval  /  guards  /  schema validation  /  timeout  /  result policy  /  cancellation</text>
+</svg>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import type { TurnTailOwnerProps } from '@deepseek-ai/dsh-client-ui-chat/client'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { FileReviewRequest, FileReviewResult } from '../change-types.ts'
 import type { NS } from './locales.ts'
 import { ReviewStats } from './ReviewContent.tsx'
@@ -26,20 +26,14 @@ export type ProducedFilesProps = Pick<TurnTailOwnerProps, 'openFile'> & {
   seq?: number | undefined
 } & PropsLocale<typeof NS>
 
-export type ProducedFilesSlotInjected = {
-  openReview: (target: ReviewTarget) => void
-  inspectChanges?: (request: FileReviewRequest) => Promise<FileReviewResult>
-  applyChanges?: (request: FileReviewRequest) => Promise<FileReviewResult>
-}
-export type ProducedFilesSlotProps = PropsRuntime<'conversation.chat.turnTail'> & PropsLocale<typeof NS> & InjectFace<ProducedFilesSlotInjected>
+export type ProducedFilesTailProps = PropsRuntime<'conversation.chat.turnTail'> &
+  Omit<ProducedFilesProps, 'matched'>
 
-/** Only show the review action when this turn produced file changes. */
-export function ProducedFilesTail(props: ProducedFilesSlotProps) {
+/** 仅在当前轮次包含文件变更时显示审查入口。 */
+export function ProducedFilesTail(props: ProducedFilesTailProps) {
   const matched = selectProducedFiles(props)
-  if (matched === null) return null
-  return <ProducedFiles {...props} matched={matched} />
+  return matched === null ? null : <ProducedFiles {...props} matched={matched} />
 }
-
 
 function FileIcon() {
   return (

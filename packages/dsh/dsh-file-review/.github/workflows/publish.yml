@@ -1,0 +1,128 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: E2E (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      MIDSCENE_MODEL_API_KEY: ${{ secrets.MIDSCENE_MODEL_API_KEY }}
+      MIDSCENE_MODEL_BASE_URL: ${{ secrets.MIDSCENE_MODEL_BASE_URL }}
+      MIDSCENE_MODEL_FAMILY: ${{ secrets.MIDSCENE_MODEL_FAMILY }}
+      MIDSCENE_MODEL_NAME: ${{ secrets.MIDSCENE_MODEL_NAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify E2E configuration
+        shell: bash
+        run: |
+          required=(
+            DEEPSEEK_API_KEY
+            MIDSCENE_MODEL_API_KEY
+            MIDSCENE_MODEL_BASE_URL
+            MIDSCENE_MODEL_FAMILY
+            MIDSCENE_MODEL_NAME
+          )
+
+          for name in "${required[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required GitHub Actions secret: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps --only-shell chromium
+
+      - name: Run E2E tests
+        shell: bash
+        run: |
+          DSH_VERSION="$(node -p 'require("./package.json").dsh.adapter.cliVersion')"
+          npm run adapter:e2e -- "$DSH_VERSION"
+
+      - name: Upload E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-${{ matrix.os }}
+          path: |
+            test-results/
+            playwright-report/
+            midscene_run/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  publish:
+    needs: e2e
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Ensure supported npm version
+        run: npm install --global npm@11
+
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+
+          if [[ "${GITHUB_REF_NAME}" != "v${VERSION}" ]]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version v${VERSION}"
+            exit 1
+          fi
+
+      - name: Publish
+        run: npm publish

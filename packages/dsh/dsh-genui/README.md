@@ -96,7 +96,7 @@ The repository ships both renderer channels, the host plugin, and the built brow
 
 Prerequisites — all required:
 
-1. **dsh `^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-alpha.1`** (verified host tags: `dsh-v0.1.2-rc.1`, `dsh-v0.1.7-alpha.1`, and `dsh-v0.1.7-alpha.2`; users on DSH `<=0.1.1-rc.x` should use dsh-genui `0.9.8`)
+1. **dsh `^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-alpha.1 || >=0.2.0-rc.1 <0.3.0-0`** (DSH `0.2.0-rc.1` is currently a prerelease; verified host roles: minimum `dsh-v0.1.2-rc.1`, current `dsh-v0.1.7-rc.2`, next `dsh-v0.2.0-rc.2`; users on DSH `<=0.1.1-rc.x` should use dsh-genui `0.9.8`)
 2. **`pnpm` on your PATH**: the `dsh plugin` command depends on it. If missing: `corepack enable` (or `npm i -g pnpm`), then **open a new terminal** and confirm `pnpm -v` prints a version
 
 Install and activate in DSH (one command, all dependencies included):
@@ -115,6 +115,12 @@ npm install @changfenhuang/dsh-genui
 > `npm install` only adds the dependency; it does not register the plugin with DSH. Use `dsh plugin add` above when installing it into DSH.
 
 > ⚠️ **Don't use `link:` on a freshly cloned directory** — `link:` does not install the plugin's dependencies (mermaid / three / react), so the renderer will break. Use the npm command above for normal installation; reserve `link:` for local development iteration (see below).
+
+### Package name and version matter
+
+- **The scope matters**: npm also hosts a same-named, unscoped [`dsh-genui`](https://www.npmjs.com/package/dsh-genui) (a Vue/OpenTiny implementation by a different maintainer, unrelated to this repo). If an install listing describes "interactive charts, forms, calculators, dashboards, and mini apps", that is the other project — the host will reject it over incompatible peers. This plugin is always **`@changfenhuang/dsh-genui`**.
+- **When the host rejects the install**: the supported host range is declared in peerDependencies and enforced by the host — upgrade to the `latest` plugin version on npm and reinstall; no other config changes are needed.
+- **When the resolved version is older than `latest`**: this is usually pnpm's release-age policy (versions published within the last 24 hours are silently skipped). Wait a day and retry, or add the target version to `minimumReleaseAgeExclude` in the profile's `pnpm-workspace.yaml`; if the profile exact-pins an old version, update the declaration first, then reinstall.
 
 ### Migrating from the old `@omdsh-dev` package name
 
@@ -163,7 +169,8 @@ The following is the detailed capability reference. Every behavior is constraine
 - **ECharts integration**: the `echart` node renders full ECharts charts with theme-aware colors, tooltips, and legends. Two modes: **preset shorthand** (`preset: 'bar' | 'line' | 'area' | 'pie' | 'scatter'` + `data`/`series`) for quick upgrade from the `chart` node, or **full option** (`option` field) for custom chart types, dataZoom, visualMap, and other advanced ECharts features. The echarts engine (~1 MB) is lazy-loaded on demand — the main bundle never carries it, and conversations without `echart` nodes never download it- **Function plots**: `plot` draws curves; parameter sliders redraw in real time, with optional auto-animation
 
 - **Quiz**: `quiz` grades on click with explanation and retry; with `action`, the answer is also sent back to the model (grading stays local and instant)
-- **Local grading (submit)**: a multiple-choice set = one `radio` per question with `group` + `answer` (correct answer) + `explanation`, plus one `submit` button — after the user answers everything and clicks once, **the score, per-question right/wrong, and explanations appear right in the UI with zero model round-trips**; the quiz then locks, and "retake" resets locally (optional `resetAction` notifies the model). Questions without an answer fall back to an aggregated action (`fields` collects every input with an `id`)
+- **Local grading (submit)**: a multiple-choice set uses one `radio` per question with `group` + `answer` + `explanation` and a `submit` button. Once the required radio members are answered, grading appears in the UI when no other collected block state needs delivery. An aggregated action sends `answers`, optional `fields`, `total`, and `answered` in other cases.
+- **Submit groups**: `groups` names submission member keys from `radio.group`, `checkbox.group`, `input.id`, `textarea.id`, `select.id`, and `slider.id`. A radio needs a selection, a checkbox group needs at least one selection, and a field needs a value that remains after trimming. `groups` controls required members and progress; the payload still collects filled form state across the block. Without `groups`, any answered member enables submission.
 - **State persistence**: answers, submission locks, and input values are saved per "session + content fingerprint" — refresh or reopen restores everything; re-rendering identical content keeps user state; new content starts fresh; LRU cap of 200 blocks
 - **Form semantics**: `input` Enter / `textarea` Ctrl+Enter submits immediately (`submit:true`), no blur needed; fields with an `id` are collected into the submit's `fields`
 - **Secrets ban**: GenUI must never ask for passwords, API keys, access tokens, recovery codes, or other secrets; even if a password input appears, it stays masked, is never persisted, and never enters form collection
@@ -172,7 +179,7 @@ The following is the detailed capability reference. Every behavior is constraine
 - **Event loop**: buttons, checkboxes, radio buttons, switches, selects, inputs, textareas, submits, and quizzes send one event immediately per gesture; slider drags keep trailing-edge debounce, sending only the final value per slider, with different `id`s handled independently
 - **Tool channel**: the `render_ui` tool renders the same spec as a card in the tool row (deliverable-style UI goes through the tool, answer-style UI through the fence)
 - **Session panel**: a persistent dock above the composer; `render_ui` / `panel: true` fences update the same surface in place; `/panel` opens it from the client (`/panel <instruction>` customizes via the model, `/panel clear` clears); the top border is draggable to resize; `append: true` merges incrementally — same-named tabs append content, new tabs get added; the whole panel caps at 200 nodes / 200 appends, after which the model should send `replace` to rebuild
-- **Fence auto-repair**: enabled by default; set `fenceFeedback: false` in this plugin's config (under the plugin entry's `config:` in your profile's cordis.patch.yml) to disable it. When a reply's final dsh-ui fence fails to render, the plugin steers the SAME turn with the per-node diagnosis so the model can resend a fixed fence; at most one correction per turn and per fence, never in subagents, so it cannot loop.
+- **Fence auto-repair**: enabled by default; set `fenceFeedback: false` in this plugin's config (under the plugin entry's `config:` in your profile's cordis.patch.yml) to disable same-turn fence corrections. A validated GenUI turn that ends with reasoning only still becomes `EMPTY_RESPONSE` and uses the host's retry policy. When a reply's final dsh-ui fence fails to render, the plugin steers the SAME turn with the per-node diagnosis so the model can resend a fixed fence. At most two corrections are sent per turn, shared by render failures and validated turns with no formal delivery; each fence fingerprint is corrected once per turn, and a nothing-delivered reminder is sent once per turn. A new turn can correct the same failed fence again. Plugin reload restores the current turn's fence fingerprints and correction count, along with delivery reminders, from persisted correction messages. Corrections are never sent in subagent sessions.
 - **Self-healing & limits**: every fence passes a spec guard — bad nodes are silently dropped (the surviving siblings keep rendering: one bad component no longer degrades the whole fence), numbers clamped, strings truncated; the whole tree is capped at 200 nodes / 8 nesting levels; pathological specs never crash the UI
 - **Canonical component protocol**: native field aliases such as `card.label` → `title`, `table.data`/`table.items` → `rows`, `callout.kind`/`callout.desc` → `tone`/`content` (tone value `danger` → `error`), `steps.items` → `steps`, `keyvalue.items` → `pairs` (record `label` → `key`), and `file-tree.nodes` → `items` (record `label` → `name`, `type` defaults to `dir` when children exist) are normalized deterministically before validation and rendering. A root-level component array is adopted as `items`, and a double-encoded JSON string is decoded once. `validate_dsh_ui` reports these normalizations and warns about unknown native fields without blocking custom renderer nodes.
 - **Chart error self-healing**: mermaid failures auto-retry with repairs (strip backticks, quote Chinese/space labels, remove `<br/>`) before degrading to source; a broken chart never hits the screen
@@ -239,7 +246,9 @@ pnpm run check   # type check + full tests + build
 
 With the locked dependencies installed, the check script (`pnpm run check` or `npm run check`) uses the pinned DSH `0.1.2-rc.1` release packages.
 
-`pnpm run check:host-api dsh-v0.1.7-alpha.1` and `pnpm run check:host-api dsh-v0.1.7-alpha.2` install the corresponding published DSH packages in an isolated workspace and run TypeScript typecheck plus tsdown build. CI runs both checks before packed host smoke tests.
+The verified host roles are minimum `dsh-v0.1.2-rc.1`, current `dsh-v0.1.7-rc.2`, and next `dsh-v0.2.0-rc.1`. DSH `0.2.0-rc.1` is currently a prerelease. CI keeps four primary lanes: Node 22 + current, and Node 24 + minimum/current/next. Replace these pinned tags as DSH publishes newer versions.
+
+`pnpm run check:host-api dsh-v0.1.7-rc.2` and `pnpm run check:host-api dsh-v0.2.0-rc.1` install the corresponding published DSH packages and run TypeScript typecheck plus tsdown build. Each CI host lane then installs the generated tarball in its pinned DSH host and runs the packed smoke.
 
 Run `node scripts/verify-pack.mjs --keep` to retain the verified tarball for inspection or e2e use. The default `node scripts/verify-pack.mjs` removes its temporary directory after verification.
 

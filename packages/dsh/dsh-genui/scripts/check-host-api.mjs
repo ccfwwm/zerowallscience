@@ -2,15 +2,16 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { cp, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const hostRef = process.argv[2]
-assert.match(hostRef ?? '', /^dsh-v0\.1\.7-(?:alpha\.[12]|rc\.[12])$/, '需要明确的 DSH 0.1.7 发布标签')
+assert.match(hostRef ?? '', /^dsh-v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/, '需要明确的 DSH 发布标签')
 const version = hostRef.slice('dsh-v'.length)
 const pkg = JSON.parse(await readFile(join(repoRoot, 'package.json'), 'utf8'))
 const dshPackages = Object.keys(pkg.peerDependencies).filter(name => name.startsWith('@deepseek-ai/dsh-'))
-const checkRoot = await mkdtemp(join(repoRoot, '.compat-check-'))
+const checkRoot = await mkdtemp(join(tmpdir(), 'dsh-genui-host-api-'))
 
 try {
   for (const name of ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.npmrc', 'tsconfig.json', 'tsdown.config.ts']) {

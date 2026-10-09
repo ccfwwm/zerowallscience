@@ -12,16 +12,20 @@ import { parse } from 'yaml'
 /** Replicate skill-filesystem's parseFrontmatter: leading `---`, body until the
  * next `---` line. */
 function frontmatterYaml(raw: string): string {
-  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw)
-  if (match === null) throw new Error('missing SKILL.md frontmatter')
-  return match[1]
+  const lines = raw.slice(4).split('\n')
+  const out: string[] = []
+  for (const line of lines) {
+    if (line.trim() === '---') break
+    out.push(line)
+  }
+  return out.join('\n')
 }
 
 describe('SKILL.md frontmatter (host yaml parser)', () => {
   const raw = readFileSync(join(process.cwd(), 'SKILL.md'), 'utf8')
 
   it('starts with the frontmatter fence', () => {
-    expect(/^---\r?\n/.test(raw)).toBe(true)
+    expect(raw.startsWith('---\n')).toBe(true)
   })
 
   it('parses with the harness yaml parser', () => {
@@ -35,5 +39,19 @@ describe('SKILL.md frontmatter (host yaml parser)', () => {
     expect((data.description as string).length).toBeGreaterThan(20)
     expect(data.description).toContain('Preserve conversation language')
     expect(data.description).not.toMatch(/[\u3400-\u9fff]/u)
+  })
+})
+
+describe('SKILL.md command-delivery contract', () => {
+  const raw = readFileSync(join(process.cwd(), 'SKILL.md'), 'utf8')
+
+  it('requires a copy-paste-runnable heredoc for multi-line python', () => {
+    // Real-session complaint: the model delivered a multi-line python as
+    // `python -c "…"` with backslash continuations; the user copied it, had to
+    // reassemble it, and ended up writing the heredoc by hand. The skill must
+    // keep telling the model to emit ONE pasteable block instead.
+    expect(raw).toContain("python - <<'PY'")
+    expect(raw).toMatch(/不要用 `python -c/)
+    expect(raw).toContain('一次粘进终端就能跑')
   })
 })

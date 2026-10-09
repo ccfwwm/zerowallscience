@@ -299,7 +299,7 @@ export function renderNode(
       return (
         <span key={key} className={`${css.badge} ${css[tone] || ''}`}>
           {node.icon !== undefined && <span aria-hidden>{node.icon} </span>}
-          {renderInline(node.label, false)}
+          <span className={css.badgeLabel}>{renderInline(node.label, false)}</span>
         </span>
       )
     }

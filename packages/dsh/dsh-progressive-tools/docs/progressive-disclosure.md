@@ -46,22 +46,23 @@ fits; by default it informs without unlocking dispatch.
 
 ## Native deferred tools versus stable proxy
 
-A provider-native deferred-tool protocol can receive all definitions out of
-band, initially render only non-deferred tools, and later return typed tool
-references without changing its cache prefix. DSH's current generic
-`ToolSchema` contains only `name`, `description`, and `parameters`; the DeepSeek
-Chat Completions tool protocol also has no equivalent deferred-reference block.
+Host `ToolSchema` includes optional `deferLoading`. A route that declares
+tool updates can keep that definition out of the immediate list and activate
+it later with a tool-addition block. A route without tool updates strips the
+flag and sends the full schema. The chat-completion tool list still has no
+deferred-reference block.
 
-Stable proxy therefore keeps two generic schemas fixed and performs real-tool
-validation at dispatch time. This preserves prefix stability and ordinary DSH
+Stable proxy therefore still removes deferred catalog tools from the assembled
+request. Leaving them on the list with `deferLoading` would expand the prefix
+on routes that do not support tool updates. A tool already on the stable
+surface keeps the host flag. This preserves prefix stability and ordinary DSH
 policy, with two explicit trade-offs:
 
-- the outer request has no provider-native grammar for a deferred tool;
+- the outer request has no provider-native grammar for a deferred catalog tool;
 - discovery and execution are separate calls.
 
-When DSH adds provider capability negotiation and native deferred references,
-a future native mode can use those features without changing the stable proxy
-fallback.
+A future native mode can use tool updates on routes that declare them without
+changing this fallback.
 
 References:
 

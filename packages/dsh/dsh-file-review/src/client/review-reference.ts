@@ -14,6 +14,9 @@ import {
 
 export const REVIEW_COMMENT_SOURCE = 'file-review-comments'
 
+/** Plain-text form of the chip; the host writes it when it rebuilds a draft from text. */
+const REVIEW_COMMENT_TEXT = '@review-comments'
+
 interface ReviewOccurrence {
   readonly source: string
   readonly ref: string
@@ -56,7 +59,7 @@ export function reviewCommentSource(): InputTriggerSource {
       return undefined
     },
     codec: {
-      clipboardText: () => '@review-comments',
+      clipboardText: () => REVIEW_COMMENT_TEXT,
       async serialize(ref, signal) {
         if (signal.aborted) throw signal.reason
         return `${serializeReviewComments(ref)}\n\n`
@@ -87,6 +90,13 @@ export function bindReviewReference(
     if (state.phase !== 'plain') return
     const count = reviewComments(sessionId).length
     const current = occurrenceFor(state, sessionId)
+    // 宿主用纯文本重建草稿（如会话重新挂载时恢复已保存草稿）会把 chip 压平成字面文字。
+    const flattened =
+      current === undefined &&
+      state.draft.startsWith(REVIEW_COMMENT_TEXT) &&
+      !state.occurrences.some((occurrence) => occurrence.offset === 0)
+        ? REVIEW_COMMENT_TEXT.length
+        : 0
     const expectedLabel =
       count === 0
         ? undefined
@@ -100,6 +110,7 @@ export function bindReviewReference(
       current.offset === 0
     )
       return
+    if (current === undefined && count === 0 && flattened === 0) return
 
     reconciling = true
     try {
@@ -108,7 +119,7 @@ export function bindReviewReference(
         const end = current.offset + current.length
         const hasSeparator = state.draft[end] === ' '
         if (current.offset > 0) {
-          // DSH counts each reference as one position in detect coordinates.
+          // DSH 的 detect 坐标中每个引用占一个位置。
           const detectStart =
             current.offset -
             state.occurrences
@@ -130,19 +141,30 @@ export function bindReviewReference(
         }
         state = input.state.getSnapshot()
       }
+      if (flattened > 0 && count === 0) {
+        const end = flattened + (state.draft[flattened] === ' ' ? 1 : 0)
+        const removed = scope.bail(scope, 'slash/input-insert-text', {
+          text: '',
+          span: { start: 0, end, draftRev: state.draftRev },
+        })
+        if (removed !== true) throw new Error('Failed to remove stale review comment reference')
+        return
+      }
       if (count === 0 || expectedLabel === undefined || state.phase !== 'plain') return
+      // 压平的字面文字位于开头，detect 坐标与字符一一对应，直接原地替换回 chip。
       const inserted = scope.bail(scope, 'slash/input-insert-reference', {
         reference: {
           source: REVIEW_COMMENT_SOURCE,
           ref: sessionId,
           label: expectedLabel,
-          clipboardText: '@review-comments',
+          clipboardText: REVIEW_COMMENT_TEXT,
         },
-        span: { start: 0, end: 0, draftRev: state.draftRev },
+        span: { start: 0, end: flattened, draftRev: state.draftRev },
       })
       if (inserted !== true) throw new Error('Failed to insert review comment reference')
       if (caretAfterPrefix !== undefined) {
         state = input.state.getSnapshot()
+        // 新引用与后续空格各占一个 detect 位置。
         const caret = caretAfterPrefix + 2
         const positioned = scope.bail(scope, 'slash/input-insert-text', {
           text: '',
@@ -164,6 +186,7 @@ export function bindReviewReference(
       return
     }
     if (syncScheduled) return
+    // 等输入组件完成状态通知，再按新的 draftRev 调整引用位置。
     syncScheduled = true
     queueMicrotask(() => {
       syncScheduled = false

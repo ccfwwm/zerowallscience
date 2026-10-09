@@ -5,12 +5,12 @@
 ## 0. 前置条件
 
 - 已安装并运行 **DSH Desktop**。
-- 已取得成品包 `dsh-ssh-ops-0.3.8.tgz`（来源：GitHub Releases 下载，或源码 `npm run pack:release` 构建产物 `release/` 下）。
+- 已取得成品包 `dsh-ssh-ops-0.3.12.tgz`（来源：GitHub Releases 下载，或源码 `npm run pack:release` 构建产物 `release/` 下）。
 
 ### 兼容性
 
 - 目标为 DSH Desktop / Web Profile `0.1.6` 系列；已验证 `0.1.6-alpha.1`。
-- 提供 `sidebarRightTabs` 和 `sidebarRight` 的宿主使用官方右侧 SSH 标签；旧宿主会自动回退到浮动面板。
+- 宿主须提供 `sidebarRightTabs` 和 `sidebarRight`；SSH 以官方右侧标签运行，旧宿主（缺这两个 API）不再有浮动面板回退——宿主半工具照常可用，但没有终端 UI。
 - 上传／下载字节流需要 Web Profile 的 `webServer` 与请求来源校验服务；不具备时保留既有 SFTP 操作。目录归档下载被有意禁用并返回 `501`，防止 SFTP chroot 与 SSH shell 命名空间不一致。
 
 ## 1. 定位 `dsh` 命令行
@@ -36,13 +36,13 @@ $dsh  = "<INSTALL_DIR>\DSH Desktop\resources\app\node_modules\@deepseek-ai\dsh\l
 把 `<TARBALL>` 替换为 tgz 的绝对路径。
 
 ```powershell
-dsh plugin --profile web add "<TARBALL>\dsh-ssh-ops-0.3.8.tgz"
+dsh plugin --profile web add "<TARBALL>\dsh-ssh-ops-0.3.12.tgz"
 ```
 
 若 `dsh` 不在 PATH，用：
 
 ```powershell
-& $node $dsh plugin --profile web add "<TARBALL>\dsh-ssh-ops-0.3.8.tgz"
+& $node $dsh plugin --profile web add "<TARBALL>\dsh-ssh-ops-0.3.12.tgz"
 ```
 
 ## 3. 校验安装结果
@@ -52,6 +52,8 @@ dsh plugin --profile web add "<TARBALL>\dsh-ssh-ops-0.3.8.tgz"
 1. `profiles\web\package.json` 的 `dependencies` 含 `"dsh-ssh-ops"`；
 2. 同一文件 `dsh.profile.bundles` 数组含 `"dsh-ssh-ops"`；
 3. `profiles\web\node_modules\dsh-ssh-ops\lib\` 下存在 `index.js` 与 `client.js`。
+
+> 第 3 条不满足（`lib\` 缺失）通常出现在 `github:` 源码渠道且宿主 pnpm（≥ 10）拦截了依赖的构建脚本：进入 `node_modules\dsh-ssh-ops\` 执行 `npm install && npm run build`（或在该 profile 的 pnpm 配置 `onlyBuiltDependencies` 中放行 `dsh-ssh-ops`），然后重启。tgz 渠道的包自带 `lib\`，不受此影响。
 
 ## 4. 重启 DSH Desktop（必做，不可省略）
 
@@ -76,11 +78,26 @@ dsh plugin --profile web remove dsh-ssh-ops
 
 ---
 
-## 附：0.3.8 版本更新内容
+## 附：0.3.12 版本更新内容
 
-1. **兼容性声明规范化**：移除 `engines.dsh`，只通过官方 `@deepseek-ai/*` 包的 `peerDependencies` 声明宿主兼容性。
-2. **覆盖宿主版本线**：显式覆盖 `0.1.2-rc.1`、`0.1.3-alpha.2`、`0.1.5-alpha.1` 和 `0.1.6-alpha.1`。
-3. **保留上一版修复**：包含 SFTP 符号链接下载修复及浅色／深色模式可读性优化。
+1. **修复 #23**：`db_list_connections` 的严格输出 schema 补上 `username: string | null`，存在活动数据库连接时不再被 DSH 拒绝整个结果。
+2. **连接身份更清楚**：Agent 输出增加数据库名、非敏感用户名、TLS 模式与 SSH 路由；SQLite 显示数据库文件路径。
+3. **回归测试**：真实服务输出经 RPC 同款 JSON 传输后通过 DSH 自身的 JSON Schema 校验链路验证，覆盖 `db_list_connections`（有账号/无账号/SQLite）以及 `db_execute`、`db_tx_execute`、`db_describe_table`、`db_export` 的全部条件/复合形状。
+
+## 附：0.3.10 版本更新内容
+
+1. **三种新数据库驱动**：SQLite（文件即连接）、ClickHouse（HTTP）、openGauss（PostgreSQL 协议），连接表单与资源保存同步支持。
+2. **导出 CSV/JSON**：结果集可直接下载，或经 SSH 写到服务器后由 SFTP 面板取回；agent 侧有 `db_export` 工具。
+3. **动态 SOCKS5 隧道**：一个本地端口做代理出口，客户端自行选择目标。
+4. **会话录制**：SSH 面板新增「日志」tab（预览/搜索/下载/删除），默认单会话 8MB、目录 256MB 自动轮换。
+5. **OSC 133 shell integration**：终端上下文给出 cwd、退出码与提示符状态。
+6. **SFTP 增强**：文本编辑器（10MB 上限）、目录过滤、收藏路径、拖拽上传。
+
+## 附：0.3.9 版本更新内容
+
+1. **兼容 DSH 0.1.6-alpha.2**：适配新宿主 typert 校验（schema 与 strict codec 携带 `create()` 工厂）与槽位注册新规则（拒绝同 id 重复注册），SSH 标签在官方侧边栏恢复正常。
+2. **修复 #20**：存储 schema 接受资源记录中 `null` 的默认远程项目目录，避免坏记录导致配置无法读取。
+3. **数据库驱动懒加载**：MySQL/PostgreSQL/Redis/MongoDB 驱动延迟到首次连接时加载，降低冷启动开销。
 
 ## 附：本地模拟测试（无远端服务器时）
 

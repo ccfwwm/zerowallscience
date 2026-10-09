@@ -1,0 +1,12 @@
+{
+  "note": "Redacted local fixture. It is not a live session and has no server usage.",
+  "pluginVersion": "0.7.0",
+  "hostVersion": "0.2.0-rc.1",
+  "requests": [
+    {
+      "index": 1,
+      "usage": { "source": "unknown" }
+    }
+  ],
+  "chain": ["run_code", "tool_dispatch", "browser_open"]
+}

@@ -23,6 +23,8 @@ export function diffBlockLabels(): DiffBlockLabels {
     collapse: t('label.collapse'),
     /** Visible label for expanding a collapsed diff tail. */
     expand(hidden: number) { return t('label.expandDiff', { hidden }) },
+    /** Localized file-count summary in the diff footer. */
+    files(count: number) { return t('label.diffFiles', { count }) },
   }
   return labels
 }

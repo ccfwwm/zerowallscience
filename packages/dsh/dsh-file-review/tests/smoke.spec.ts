@@ -1,6 +1,5 @@
-import { access, lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { access, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -41,7 +40,8 @@ function smokeAgent(cwd: string, callId: string): Agent {
 describe('file review smoke', () => {
   // 验证从工具执行捕获到文件服务的完整链路：创建和删除标记可用于撤销及重新应用，并恢复正确内容和权限。
   it('captures, undoes, and reapplies created and deleted files end to end', async () => {
-    root = await mkdtemp(join(tmpdir(), 'dsh-file-review-smoke-'))
+    await mkdir(resolve('.e2e'), { recursive: true })
+    root = await mkdtemp(resolve('.e2e', 'dsh-file-review-smoke-'))
     const createdPath = join(root, 'created.txt')
     const deletedPath = join(root, 'deleted.txt')
     await writeFile(deletedPath, 'before deletion\n', { mode: 0o600 })
@@ -115,9 +115,7 @@ describe('file review smoke', () => {
     })
     await expect(access(createdPath)).rejects.toThrow()
     expect(await readFile(deletedPath, 'utf8')).toBe('before deletion\n')
-    // Windows exposes synthetic mode bits and does not preserve POSIX chmod
-    // values; the service still validates content and lifecycle state there.
-    if (process.platform !== 'win32') expect((await lstat(deletedPath)).mode & 0o777).toBe(0o600)
+    expect((await lstat(deletedPath)).mode & 0o777).toBe(0o600)
 
     expect(await service.apply(agent, { ...request, action: 'redo' })).toEqual({
       files: [
@@ -126,7 +124,7 @@ describe('file review smoke', () => {
       ],
     })
     expect(await readFile(createdPath, 'utf8')).toBe('created\n')
-    if (process.platform !== 'win32') expect((await lstat(createdPath)).mode & 0o777).toBe(0o640)
+    expect((await lstat(createdPath)).mode & 0o777).toBe(0o640)
     await expect(access(deletedPath)).rejects.toThrow()
   })
 })

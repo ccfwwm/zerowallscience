@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="440" viewBox="0 0 1280 440" role="img" aria-labelledby="title desc">
+  <title id="title">DSH Progressive Tools</title>
+  <desc id="desc">Cache-stable progressive tool discovery. A small request surface, full catalog in memory, ordinary execution pipeline. by everclear077</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1">
+      <stop stop-color="#f7fbff"/><stop offset="1" stop-color="#e7f1fc"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="78%" cy="48%" r="52%">
+      <stop stop-color="#3b82f6" stop-opacity=".16"/><stop offset="1" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#2563eb"/><stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#60a5fa" opacity=".18"/>
+    </pattern>
+  </defs>
+  <rect width="1280" height="440" rx="24" fill="url(#bg)" stroke="#c5daf3" stroke-width="2"/>
+  <rect width="1280" height="440" rx="24" fill="url(#dots)"/>
+  <ellipse cx="1020" cy="210" rx="320" ry="280" fill="url(#glow)"/>
+  <path d="M64 67h36" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+  <text x="116" y="73" font-family="Arial,Helvetica,sans-serif" font-size="14" letter-spacing="3.2" fill="#5b7c99">@EVERCLEAR077</text>
+  <g font-family="Arial,Helvetica,sans-serif">
+    <text x="62" y="156" font-size="62" font-weight="700" letter-spacing="-1.8" fill="#0f172a">DSH Progressive</text>
+    <text x="62" y="228" font-size="62" font-weight="700" letter-spacing="-1.8" fill="url(#accent)">Tools.</text>
+    <text x="66" y="280" font-size="20" fill="#475569">Cache-stable discovery  /  Small request surface</text>
+    <g font-size="12" letter-spacing="1.6">
+      <rect x="64" y="318" width="92" height="34" rx="17" fill="#ffffff" stroke="#93c5fd"/>
+      <text x="110" y="340" text-anchor="middle" fill="#1d4ed8">SEARCH</text>
+      <rect x="168" y="318" width="108" height="34" rx="17" fill="#ffffff" stroke="#93c5fd"/>
+      <text x="222" y="340" text-anchor="middle" fill="#1d4ed8">DISPATCH</text>
+      <rect x="288" y="318" width="148" height="34" rx="17" fill="#ffffff" stroke="#93c5fd"/>
+      <text x="362" y="340" text-anchor="middle" fill="#1d4ed8">STABLE PREFIX</text>
+    </g>
+    <text x="66" y="400" font-size="11" letter-spacing="1.8" fill="#64748b">9 TOOLS ON THE WIRE   /   FULL CATALOG IN MEMORY   /   ORDINARY PIPELINE</text>
+  </g>
+  <g fill="none" stroke="#60a5fa" stroke-width="1.5" opacity=".62">
+    <path d="M838 96L1010 64L1158 138L1210 268L1068 352L892 318L790 210Z"/>
+    <path d="M838 96L1008 214L1158 138M1008 214L1068 352M1008 214L892 318M1008 214L1210 268M1010 64L1008 214M790 210L1008 214"/>
+    <circle cx="1008" cy="214" r="118" stroke-dasharray="3 12" opacity=".42"/>
+    <circle cx="1008" cy="214" r="168" stroke-dasharray="2 18" opacity=".32"/>
+  </g>
+  <g stroke="#2563eb" stroke-width="2">
+    <circle cx="838" cy="96" r="9" fill="#ffffff"/>
+    <circle cx="1010" cy="64" r="7" fill="#3b82f6"/>
+    <circle cx="1158" cy="138" r="10" fill="#ffffff"/>
+    <circle cx="1210" cy="268" r="8" fill="#0ea5e9"/>
+    <circle cx="1068" cy="352" r="10" fill="#ffffff"/>
+    <circle cx="892" cy="318" r="8" fill="#38bdf8" stroke="#2563eb"/>
+    <circle cx="790" cy="210" r="8" fill="#ffffff"/>
+    <circle cx="1008" cy="214" r="58" fill="#ffffff"/>
+    <circle cx="1008" cy="214" r="66" fill="none" opacity=".18" stroke-width="8"/>
+  </g>
+  <g fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M984 198h48l-8 12h-32z"/>
+    <path d="M980 214h56l-10 14h-36z"/>
+    <path d="M976 232h64l-12 16h-40z"/>
+  </g>
+  <g fill="#334155" font-family="Arial,Helvetica,sans-serif" font-size="11" letter-spacing="1.4">
+    <text x="796" y="76">PREFIX</text>
+    <text x="1132" y="114">CATALOG</text>
+    <text x="1088" y="308">PIPELINE</text>
+    <text x="1018" y="386">DEFERRED</text>
+    <text x="768" y="338">VISIBLE</text>
+  </g>
+  <g fill="#38bdf8">
+    <circle cx="1224" cy="88" r="3"/><circle cx="868" cy="40" r="3"/>
+    <circle cx="748" cy="360" r="3"/><circle cx="1178" cy="392" r="3"/>
+  </g>
+</svg>

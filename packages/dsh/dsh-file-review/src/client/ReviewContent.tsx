@@ -24,6 +24,9 @@ import {
 import type { ProducedFileReview } from './turn-deliverables.ts'
 import css from './ProducedFiles.module.css'
 
+/** Below this panel width two panes are too cramped to read, so diffs render unified. */
+const SPLIT_MIN_WIDTH = 480
+
 export const DEFAULT_WORD_WRAP_SOURCE: ObservableSnapshot<boolean> = {
   getSnapshot: () => false,
   subscribe: () => () => {},
@@ -33,19 +36,60 @@ function addStats(left: UnifiedDiffStats, right: UnifiedDiffStats): UnifiedDiffS
   return { added: left.added + right.added, removed: left.removed + right.removed }
 }
 
+const METER_CELLS = 5
+
+/** Split five meter cells by change share, keeping any non-zero side visible. */
+function meterCells({ added, removed }: UnifiedDiffStats): ('added' | 'removed' | 'empty')[] {
+  const total = added + removed
+  if (total === 0) return Array.from({ length: METER_CELLS }, () => 'empty')
+  let green = Math.round((added / total) * METER_CELLS)
+  if (added > 0) green = Math.max(1, green)
+  if (removed > 0) green = Math.min(METER_CELLS - 1, green)
+  return Array.from({ length: METER_CELLS }, (_, index) => (index < green ? 'added' : 'removed'))
+}
+
 export function ReviewStats({
   stats,
   label,
+  meter = false,
 }: {
   readonly stats: UnifiedDiffStats
   readonly label: string
+  readonly meter?: boolean | undefined
 }) {
   return (
     <span className={css.stats} aria-label={label}>
       <span className={css.added}>+{stats.added}</span>
       <span className={css.removed}>-{stats.removed}</span>
+      {meter && (
+        <span className={css.statsBar} aria-hidden="true">
+          {meterCells(stats).map((cell, index) => (
+            <span
+              key={index}
+              className={`${css.statsCell} ${
+                cell === 'added'
+                  ? css.statsCellAdded
+                  : cell === 'removed'
+                    ? css.statsCellRemoved
+                    : ''
+              }`}
+            />
+          ))}
+        </span>
+      )}
     </span>
   )
+}
+
+/** Git-style status letter for one reviewed file's net lifecycle. */
+function fileStatus(review: ProducedFileReview): 'A' | 'D' | 'M' {
+  const first = review.diffs[0]
+  const last = review.diffs.at(-1)
+  if (last?.lifecycle?.kind === 'delete') return 'D'
+  if (first?.lifecycle?.kind === 'create' || (first !== undefined && first.oldText === null)) {
+    return 'A'
+  }
+  return 'M'
 }
 
 function CopyIcon() {
@@ -99,6 +143,23 @@ export function ReviewContent({
   const getSettings = useCallback(() => settings?.getSnapshot(), [settings])
   const snapshot = useSyncExternalStore(subscribeSettings, getSettings, getSettings)
   const layout = snapshot?.value?.diffLayout ?? DEFAULT_DIFF_LAYOUT
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [narrow, setNarrow] = useState(false)
+  useEffect(() => {
+    const root = rootRef.current
+    if (root === null || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry?.contentRect.width ?? 0
+      // A hidden tab reports zero width; keep the last real decision.
+      if (width > 0) setNarrow(width < SPLIT_MIN_WIDTH)
+    })
+    observer.observe(root)
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+  // The saved preference stays split; only the rendering falls back while narrow.
+  const renderedLayout: DiffLayout = narrow ? 'unified' : layout
   const changeLayout = async (value: DiffLayout): Promise<void> => {
     if (settings === undefined) return
     setSavingLayout(true)
@@ -199,7 +260,7 @@ export function ReviewContent({
   }, [copied, diffs])
 
   return (
-    <div className={css.reviewContent} data-review-content="">
+    <div ref={rootRef} className={css.reviewContent} data-review-content="">
       <header className={css.reviewHeader}>
         <div className={css.reviewHeading}>
           <span className={css.reviewTitle}>{t('review.title')}</span>
@@ -215,6 +276,7 @@ export function ReviewContent({
             added: String(stats.added),
             removed: String(stats.removed),
           })}
+          meter
         />
         <div className={css.reviewToolbar}>
           <select
@@ -264,10 +326,16 @@ export function ReviewContent({
           const fileStats = summarizeDiffs(review.diffs)
           const relativePath = displayProjectPath(review.path, projectRoot)
           const fileCollapsed = collapsedPaths.has(review.path)
+          const status = fileStatus(review)
           return (
-            <section key={review.path} className={css.reviewFile}>
+            <section
+              key={review.path}
+              className={`${css.reviewFile} ${fileCollapsed ? css.reviewFileCollapsed : ''}`}
+            >
               <header className={css.reviewFileHeader}>
-                <span className={css.reviewStatus}>M</span>
+                <span className={css.reviewStatus} data-status={status}>
+                  {status}
+                </span>
                 <button
                   type="button"
                   className={css.reviewPath}
@@ -286,7 +354,7 @@ export function ReviewContent({
                   }
                 >
                   <svg viewBox="0 0 20 20" aria-hidden="true" className={css.buttonIcon}>
-                    <path d={fileCollapsed ? 'M7 5l5 5-5 5' : 'M5 7l5 5 5-5'} />
+                    <path d="M5 7l5 5 5-5" />
                   </svg>
                   <span className={css.reviewPathText}>{relativePath}</span>
                 </button>
@@ -300,18 +368,23 @@ export function ReviewContent({
                 <button
                   type="button"
                   className={css.openButton}
+                  title={t('review.openInEditor')}
                   onClick={() => {
                     openFile(review.path)
                   }}
                 >
-                  {t('review.openInEditor')}
+                  <svg viewBox="0 0 20 20" aria-hidden="true" className={css.buttonIcon}>
+                    <path d="M11 4h5v5M16 4l-7 7M14 11.5V15a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h3.5" />
+                  </svg>
+                  <span className={css.openButtonLabel}>{t('review.openInEditor')}</span>
                 </button>
               </header>
               {fileCollapsed ? null : review.diffs.length === 0 ? (
                 <p className={css.reviewUnavailable}>{t('review.unavailable')}</p>
               ) : (
                 <UnifiedDiff
-                  layout={layout}
+                  layout={renderedLayout}
+                  preferredLayout={layout}
                   commentsActive={commentPath === review.path}
                   onCommentStart={() => setCommentPath(review.path)}
                   diffs={review.diffs}

@@ -92,25 +92,56 @@ async function execute(ctx: Context, agent: Agent, name: string, argumentsValue:
 }
 
 describe('progressive tools plugin', () => {
-  it('preserves target presentation metadata through the guarded dispatcher', async () => {
+  it('keeps registered filesystem tools on the first stable surface', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt, {})
+    await ctx.plugin(ToolRuntime)
+    for (const name of ['read', 'write', 'edit', 'glob', 'grep', 'browser_open', 'skill']) {
+      ctx.tools.register(tool(name))
+    }
+    await ctx.plugin(ProgressiveTools)
+    const { agent } = await (async () => {
+      const session = Session.create(SessionId('fs-visible-agent'))
+      const agent = {} as Agent
+      await ctx.plugin(Object.assign((inner: Context) => {
+        Object.assign(agent, { id: session.id, session, ctx: createScope(inner, agent).ctx })
+      }, { inject: ['tools', 'systemPrompt'] }))
+      return { agent }
+    })()
+    const first = await assemble(ctx, agent)
+    expect(first.tools.map(schema => schema.name).sort()).toEqual([
+      'edit',
+      'glob',
+      'grep',
+      'read',
+      'skill',
+      'tool_dispatch',
+      'tool_search',
+      'write',
+    ])
+    expect(first.tools.map(schema => schema.name)).not.toContain('browser_open')
+  })
+
+  it('tells the model not to search merely to prove a named tool is missing', async () => {
     const { agent, ctx } = await setup()
-    const items = [{ ref: 'zotero://user/0/item/ABCD1234', title: 'Search result', creatorSummary: 'Author' }]
-    ctx.tools.register(defineTool({
-      name: 'zotero_search', description: 'Search literature', parameters: {},
-      output: {
-        schema: { type: 'string' },
-        render: (_args, value) => [{ type: 'text', text: value }],
-        presentationMeta: () => ({ items }),
-      },
-      execute: async () => 'rendered search result',
-    }))
+    const assembled = await assemble(ctx, agent)
+    const text = assembled.sections.find(section => section.name === 'progressive-tools:discovery')?.text ?? ''
+    expect(text).toContain('refused without searching')
+    expect(text).toContain('needed capability class')
+    expect(text).not.toContain('Do not claim a capability is unavailable before searching')
+    expect(assembled.tools.find(schema => schema.name === 'tool_search')?.description)
+      .toContain('refuse invented or uncallable names')
+  })
+
+  it('returns no schemas when an exact-name search misses the catalog', async () => {
+    const { agent, ctx } = await setup()
     await assemble(ctx, agent)
-    expect((await execute(ctx, agent, 'zotero_search', {}, 'direct')).isError).toBe(true)
-    await execute(ctx, agent, 'tool_search', { query: 'zotero_search' }, 'discover-zotero')
-    const result = await execute(ctx, agent, 'tool_dispatch', { name: 'zotero_search', arguments: {} }, 'search-zotero')
-    expect(result.isError).toBe(false)
-    expect(result.content).toEqual([{ type: 'text', text: 'rendered search result' }])
-    expect(result.meta).toEqual({ protocol: 'dsh-progressive-tools/dispatch-v1', tool: 'zotero_search', targetMeta: { items } })
+
+    const missed = await execute(ctx, agent, 'tool_search', {
+      query: 'definitely_not_a_real_tool_xyz',
+    }, 'missing-name')
+    expect(missed.isError).toBe(false)
+    expect(missed.isError ? [] : (missed.value as { matches: unknown[] }).matches).toEqual([])
   })
 
   it('uses a minimal byte-stable surface on the first assembly and dispatches discovered tools', async () => {
@@ -177,12 +208,16 @@ describe('progressive tools plugin', () => {
     const value = search.isError
       ? undefined
       : search.value as {
-          matches: { name: string; groupTools: string[] }[]
-          discoveredTools: string[]
+          matches: { name: string }[]
+          families: { id: string; tools: { name: string; contract: string }[] }[]
         }
     expect(value?.matches).toHaveLength(1)
-    expect([...value?.matches[0]?.groupTools ?? []].sort()).toEqual(['browser_click', 'browser_open'])
-    expect([...value?.discoveredTools ?? []].sort()).toEqual(['browser_click', 'browser_open'])
+    expect(value?.families).toHaveLength(1)
+    expect(value?.families[0]?.tools.map(tool => tool.name).sort()).toEqual(['browser_click', 'browser_open'])
+    const loaded = value?.families[0]?.tools.find(tool => tool.name === value.matches[0]?.name)
+    expect(loaded?.contract).toBe('schema')
+    const siblingContract = value?.families[0]?.tools.find(tool => tool.name !== value.matches[0]?.name)
+    expect(siblingContract?.contract).toBe('name-only')
 
     const sibling = value?.matches[0]?.name === 'browser_open' ? 'browser_click' : 'browser_open'
     const dispatched = await execute(ctx, agent, 'tool_dispatch', { name: sibling, arguments: {} }, 'family-dispatch')
@@ -233,21 +268,22 @@ describe('progressive tools plugin', () => {
     const firstText = first.isError ? '{}' : (first.content[0] as { type: 'text'; text: string }).text
     const firstRendered = JSON.parse(firstText) as Record<string, unknown>
     expect(firstRendered.allDiscoveredTools).toBeUndefined()
-    expect([...firstRendered.discoveredTools as string[]].sort()).toEqual(['browser_click', 'browser_open'])
-    expect(firstRendered.discoveredCount).toBe(2)
-    // The execution value keeps the cumulative list so presentation meta can
-    // carry it for resume even though the rendered text drops it.
-    const firstValue = first.isError ? undefined : first.value as { allDiscoveredTools: string[] }
-    expect([...firstValue?.allDiscoveredTools ?? []].sort()).toEqual(['browser_click', 'browser_open'])
+    expect(firstRendered.resume).toBeUndefined()
+    expect(firstRendered.estimatedSavedTokens).toBeUndefined()
+    const firstValue = first.isError ? undefined : first.value as { allDiscoveredTools?: unknown; families: { tools: { name: string }[] }[] }
+    expect(firstValue?.allDiscoveredTools).toBeUndefined()
+    expect(firstValue?.families[0]?.tools.map(tool => tool.name).sort()).toEqual(['browser_click', 'browser_open'])
+    const firstMeta = first.isError ? undefined : first.meta as { discoveredTools: string[]; omittedDefinitionTokens: number }
+    expect([...(firstMeta?.discoveredTools ?? [])].sort()).toEqual(['browser_click', 'browser_open'])
+    expect(firstMeta?.omittedDefinitionTokens).toBeGreaterThan(0)
 
     const second = await execute(ctx, agent, 'tool_search', { query: 'browser navigation' }, 'increment-2')
     expect(second.isError).toBe(false)
     const secondText = second.isError ? '{}' : (second.content[0] as { type: 'text'; text: string }).text
-    const secondRendered = JSON.parse(secondText) as Record<string, unknown>
-    expect(secondRendered.discoveredTools).toEqual([])
-    expect(secondRendered.discoveredCount).toBe(2)
-    const secondValue = second.isError ? undefined : second.value as { allDiscoveredTools: string[] }
-    expect([...secondValue?.allDiscoveredTools ?? []].sort()).toEqual(['browser_click', 'browser_open'])
+    const secondRendered = JSON.parse(secondText) as { allDiscoveredTools?: unknown }
+    expect(secondRendered.allDiscoveredTools).toBeUndefined()
+    const secondValue = second.isError ? undefined : second.value as { allDiscoveredTools?: unknown }
+    expect(secondValue?.allDiscoveredTools).toBeUndefined()
   })
 
   it('restores cumulative discovery from a stable search result projection', async () => {
@@ -405,7 +441,7 @@ describe('progressive tools plugin', () => {
     const search = await execute(ctx, agent, 'tool_search', { query: 'browser', max_results: 99 }, 'clamp')
     expect(search.isError).toBe(false)
     const matches = search.isError ? [] : (search.value as { matches: unknown[] }).matches
-    expect(matches.length).toBeLessThanOrEqual(5)
+    expect(matches.length).toBeLessThanOrEqual(2)
     expect(matches.length).toBeGreaterThan(0)
   })
 

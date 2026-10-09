@@ -119,12 +119,13 @@ Rules:
 - JSON 严格：坏组件被丢弃，坏围栏变代码块；≥3 节点或含 table 时调 validate_dsh_ui，按诊断修改并重验；小围栏字段存疑也先验证。
 - warning=block_markdown：按 replacement 改写并重验。
 - 规模: ≤200 节点、嵌套≤8 层（超出被截断）；一条回答 3–8 个组件，一个主题一个主组件；3D mesh 1–5；plot 给合理 xMin/xMax。
-- LOCAL-FIRST + actions: UI 能自己做的状态变化（判卷、判题、重置、展开、选中）就地完成，零往返；action 只用于必须模型参与的事。交互组件带 "action":"name"，交互以 [genui-action] name + 组件数据回传，届时重渲染更新 UI；无 action 的按钮禁用。
-- Durable state: 交互状态按「会话+内容指纹」持久化——刷新/重放恢复；重渲染相同内容保留，新内容重置。
+- LOCAL-FIRST + actions: UI 能自己做的状态变化（判卷、判题、重置、展开、选中）就地完成，零往返；action 只用于必须模型参与的事。交互以 [genui-action] name + 组件数据回传，届时重渲染更新 UI；无 action 的按钮禁用。
+- Durable state: 交互状态按「会话+内容指纹」持久化——刷新/重放恢复；相同内容保留，新内容重置。
 - 卷子模式: 每题一个 radio（group+answer+explanation）+ 一个 submit（groups 全列），本地判分。
 - Secrets ban: 不索取密码、API Key、Token、恢复码；需要时拒绝并解释。
-- Tool channel: render_ui 工具把同一 spec 渲染为工具行卡片（交付物型界面用）；围栏用于回答内联 UI。
-- Panel: "panel":true 只渲染进会话面板 dock 并原地更新；"append":true 追加合并（同标签 tabs 追加/新标签加入/尾部追加）；上限 200 节点/200 次追加，满了发 replace 重建。面板组件来的 [genui-action] 只回一个 panel:true 围栏 + 至多一行 10 字内确认，不解释、不用普通围栏。`
+- Tool channel: render_ui 工具把同一 spec 渲染为工具行卡片；围栏用于回答内联 UI。
+- 围栏位置：\`dsh-ui\` 只写在**回答正文**；写在 reasoning/思考块里不渲染、用户看不到——思考里验证好 spec，正文再输出同一份。
+- Panel: "panel":true 只渲染进会话面板 dock 并原地更新；"append":true 追加合并；上限 200 节点/200 次追加，满了发 replace 重建。面板来的 [genui-action] 只回一个 panel:true 围栏 + 至多一行 10 字内确认。`
 
 /**
  * Register the GenUI output-language section and the render_ui tool.
@@ -149,11 +150,8 @@ function bundledSkillProvider(): SkillProvider {
     ? resolve(moduleDirectory, '../../SKILL.md')
     : resolve(moduleDirectory, '../SKILL.md')
   const raw = readFileSync(path, 'utf8')
-  // npm preserves the upstream CRLF line endings on Windows. Treat either
-  // newline convention as a frontmatter boundary so the bundled skill is
-  // still registered from a Windows installation.
-  const frontmatter = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(raw)
-  if (frontmatter === null) throw new Error('genui SKILL.md has invalid frontmatter')
+  const end = raw.indexOf('\n---\n', 4)
+  if (!raw.startsWith('---\n') || end < 0) throw new Error('genui SKILL.md has invalid frontmatter')
   return {
     name: BUNDLED_SKILL_PROVIDER,
     list: () => Promise.resolve([{
@@ -175,7 +173,7 @@ function bundledSkillProvider(): SkillProvider {
       provider: BUNDLED_SKILL_PROVIDER,
       path,
       resourceBase: { kind: 'directory', path: dirname(path) },
-      content: raw.slice(frontmatter[0].length),
+      content: raw.slice(end + 5),
     }),
   }
 }
@@ -187,8 +185,8 @@ function bundledSkillProvider(): SkillProvider {
 export interface GenuiPluginConfig {
   /**
    * 在最终 dsh-ui 围栏无法渲染的回合中请求模型发送一次修正版（issue #160）。
-   * 默认开启，设置为 false 可以关闭。每回合和每个围栏正文最多请求一次，子代理不触发，
-   * 每次请求会消耗模型步数。
+   * 默认开启，设置为 false 可以关闭同回合围栏修正。GenUI 回合的 reasoning-only 响应仍会交给宿主重试策略处理。
+   * 每回合和每个围栏正文最多请求一次，子代理不触发，每次修正请求会消耗模型步数。
    */
   fenceFeedback?: boolean
 }

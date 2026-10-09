@@ -1,0 +1,15 @@
+node_modules
+.pnpm-store
+lib
+*.tgz
+.codegraph
+.DS_Store
+.e2e/
+midscene_run/
+test-results/
+playwright-report/
+.env.e2e
+__pycache__
+.release-notes
+.agents
+spec

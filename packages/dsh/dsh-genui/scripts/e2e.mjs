@@ -27,7 +27,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createWriteStream, rmSync } from 'node:fs'
 import { mkdtemp, mkdir, copyFile, rm, writeFile, appendFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { createServer } from 'node:net'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -81,7 +81,7 @@ log(`DSH_BIN: ${DSH_BIN}`)
 log(`pnpm: ${spawnSync('pnpm', ['--version'], { encoding: 'utf8' }).stdout.trim()}`)
 
 // ── 临时环境 ──────────────────────────────────────────────────────────────
-const DSH_HOME = await mkdtemp(join(REPO_ROOT, '.e2e-artifacts-host-'))
+const DSH_HOME = await mkdtemp(join(tmpdir(), 'dsh-genui-e2e-host-'))
 const env = { ...process.env, DSH_HOME }
 const webLog = join(DSH_HOME, 'dsh-web.log')
 const artifactsDir = process.cwd()

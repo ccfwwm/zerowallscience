@@ -4,12 +4,13 @@
 
 **无需离开 DeepSeek Harness Web，即可立即审查 Agent 刚刚修改的每个文件。**
 
-[![Adapted DSH CLI version](https://img.shields.io/badge/DSH_CLI-0.1.5--rc.1-4f46e5?style=flat-square)](package.json)
+[![Adapted DSH CLI version](https://img.shields.io/badge/DSH_CLI-0.2.0--rc.2-4f46e5?style=flat-square)](package.json)
 ![Web profile](https://img.shields.io/badge/profile-Web-0ea5e9?style=flat-square)
 [![npm version](https://img.shields.io/npm/v/dsh-file-review?style=flat-square&logo=npm)](https://www.npmjs.com/package/dsh-file-review)
 [![npm downloads](https://img.shields.io/npm/dm/dsh-file-review?style=flat-square&logo=npm)](https://www.npmjs.com/package/dsh-file-review)
 [![GitHub repository](https://img.shields.io/badge/GitHub-Repository-181717?style=flat-square&logo=github)](https://github.com/left0ver/dsh-file-review)
 [![MIT License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
+[![dsh.so install](https://www.dsh.so/badge/install/dsh-file-review.svg)](https://www.dsh.so/artifact/dsh-file-review/)
 
 [English](README.md) · 简体中文
 
@@ -37,7 +38,13 @@
 
 ## 兼容性声明
 
-当前适配版本见顶部的徽章
+顶部徽章是本版本实际测试过的 DSH CLI 版本。插件同时兼容该 DSH 版本的其他预发布版和正式版（例如所有 `0.2.0-rc.x` 以及 `0.2.0`），准确范围见 [package.json](package.json) 中的 `peerDependencies`。
+
+超出该范围时，DSH 会拒绝加载插件。如果仍想使用（风险自负），可以为对应的精确版本授予豁免：
+
+```bash
+dsh plugin --profile web allow-version dsh-file-review@<plugin-version> --dsh-version <dsh-version> --accept-risk
+```
 
 ## 快速开始
 

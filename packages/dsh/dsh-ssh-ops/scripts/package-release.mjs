@@ -11,12 +11,14 @@ const stage = join(release, archiveRoot);
 rmSync(release, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 
-for (const entry of ["assets", "lib", "src", "scripts", "test", "package.json", "package-lock.json", "cordis.patch.yml", "README.md", "LICENSE", "CHANGELOG.md"]) {
+for (const entry of ["assets", "lib", "src", "scripts", "test", "locale", "package.json", "package-lock.json", "cordis.patch.yml", "icon.svg", "README.md", "LICENSE", "CHANGELOG.md"]) {
   const source = join(root, entry);
   if (existsSync(source)) cpSync(source, join(stage, basename(entry)), { recursive: true });
 }
 
-execFileSync("npm", ["pack", "--pack-destination", release], { cwd: root, stdio: "inherit" });
+// --ignore-scripts: prepare (which builds lib/) must not re-run during pack —
+// pack:release has already built the exact artifacts this tarball should ship.
+execFileSync("npm", ["pack", "--ignore-scripts", "--pack-destination", release], { cwd: root, stdio: "inherit" });
 execFileSync("zip", ["-q", "-r", "-X", join(release, `${archiveRoot}.zip`), archiveRoot], { cwd: release, stdio: "inherit" });
 rmSync(stage, { recursive: true, force: true });
 

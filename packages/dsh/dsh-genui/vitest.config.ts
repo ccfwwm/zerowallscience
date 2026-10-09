@@ -15,9 +15,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['tests/setup.ts'],
     include: ['tests/**/*.spec.{ts,tsx}'],
-    // The full jsdom suite can overwhelm Vitest's worker RPC on Windows when
-    // every file runs at once. Keep the checks deterministic on the release OS.
-    maxWorkers: process.platform === 'win32' ? 4 : undefined,
     server: {
       deps: { inline: ['@deepseek-ai/dsh-client-ui-primitives'] },
     },

@@ -11,6 +11,7 @@
  *    workspace, covering the fence, the parameter guards and a full
  *    directory walk.
  */
+import './browser-globals.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -538,7 +539,7 @@ describe('disambiguateArchiveNames', () => {
 describe('archive task flow (build → status → download)', () => {
   it('archive client helpers build the frozen request/URL shapes', () => {
     expect(archiveDownloadUrl({ sessionId: 's-1' }, 'ar-9'))
-      .toBe('/sidebar/archive?sessionId=s-1&id=ar-9')
+      .toBe('http://localhost/sidebar/archive?sessionId=s-1&id=ar-9')
   })
 
   it('zips a selected file and a selected directory, walking it recursively', async () => {
@@ -836,20 +837,24 @@ describe('archive task flow (build → status → download)', () => {
     expect(byName.get('b/index.ts')!.data.toString('utf8')).toBe('from b\n')
   })
 
-  it('rejects an archive path outside the session workspace', async () => {
+  it('zips a path outside the session workspace (fence removed)', async () => {
     const root = tempRoot()
     const workspace = join(root, 'workspace')
     const outside = join(root, 'outside')
     mkdirSync(workspace)
     mkdirSync(outside)
     writeFileSync(join(outside, 'secret.txt'), 'secret')
-    const { api } = mountHost()
-    const build = await post(api, 'archive.build', {
+    const { download } = await archiveFlow({
       sessionId: 's-zip',
       cwd: workspace,
       paths: [join(outside, 'secret.txt')],
     })
-    expect(build).toMatchObject({ ok: false, status: 403, error: { code: 'forbidden' } })
+    // ⚠️ PERMISSION CHANGE: an absolute path outside the workspace is now a
+    // normal selection (no 403 branch exists any more).
+    expect(download.status).toBe(200)
+    const entries = readZip(download.body)
+    expect(entries.map(entry => entry.name)).toEqual(['secret.txt'])
+    expect(entries[0]!.data.toString('utf8')).toBe('secret')
   })
 
   it('skips a symlink row while walking a directory (no escape by following)', async () => {

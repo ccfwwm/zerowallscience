@@ -1,0 +1,106 @@
+diff --git a/lib/client.js b/lib/client.js
+index 431858a..fc1486e 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -974,6 +974,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** Simplified Chinese dictionary (the key-set source of truth). */
+ 		const zh = {
++			"section.nav": "外观",
+ 			"skin.title": "皮肤",
+ 			"skin.default": "默认",
+ 			"skin.abyss": "沉静蓝",
+@@ -1047,6 +1048,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** English dictionary, checked complete against the zh key set. */
+ 		const en = {
++			"section.nav": "Appearance",
+ 			"skin.title": "Skins",
+ 			"skin.default": "Default",
+ 			"skin.abyss": "Deep Blue",
+@@ -1120,6 +1122,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** JA dictionary (community translation). */
+ 		const ja = {
++			"section.nav": "外観",
+ 			"skin.title": "スキン",
+ 			"skin.default": "デフォルト",
+ 			"skin.abyss": "ディープブルー",
+@@ -1193,6 +1196,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** KO dictionary (community translation). */
+ 		const ko = {
++			"section.nav": "외관",
+ 			"skin.title": "스킨",
+ 			"skin.default": "기본",
+ 			"skin.abyss": "딥 블루",
+@@ -1266,6 +1270,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** ES dictionary (community translation). */
+ 		const es = {
++			"section.nav": "Apariencia",
+ 			"skin.title": "Pieles",
+ 			"skin.default": "Por defecto",
+ 			"skin.abyss": "Azul profundo",
+@@ -1339,6 +1344,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** FR dictionary (community translation). */
+ 		const fr = {
++			"section.nav": "Apparence",
+ 			"skin.title": "Apparence",
+ 			"skin.default": "Par défaut",
+ 			"skin.abyss": "Bleu profond",
+@@ -1412,6 +1418,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** DE dictionary (community translation). */
+ 		const de = {
++			"section.nav": "Erscheinungsbild",
+ 			"skin.title": "Skins",
+ 			"skin.default": "Standard",
+ 			"skin.abyss": "Tiefes Blau",
+@@ -1485,6 +1492,7 @@ window.__ModuleLoader__.load({
+ 
+ 		/** RU dictionary (community translation). */
+ 		const ru = {
++			"section.nav": "Внешний вид",
+ 			"skin.title": "Скины",
+ 			"skin.default": "По умолчанию",
+ 			"skin.abyss": "Глубокий синий",
+@@ -6399,8 +6407,8 @@ window.__ModuleLoader__.load({
+ 			// Not deferred: on its own a fill mode paints nothing (it only matters
+ 			// once a wallpaper exists), so it cannot cause the #51 flash.
+ 			[WALLPAPER_FIT_KEY]: DEFAULT_WALLPAPER_FIT,
+-			[COMPOSER_OPACITY_KEY]: String(FACTORY_SKIN_DEFAULTS.composerOpacity ?? 0.4),
+-			[MODAL_OPACITY_KEY]: String(FACTORY_SKIN_DEFAULTS.modalOpacity ?? 0.94),
++			[COMPOSER_OPACITY_KEY]: String(FACTORY_SKIN_DEFAULTS.composerOpacity ?? 1),
++			[MODAL_OPACITY_KEY]: String(FACTORY_SKIN_DEFAULTS.modalOpacity ?? 1),
+ 			[MATERIAL_PRESET_KEY]: String(FACTORY_SKIN_DEFAULTS.material ?? DEFAULT_MATERIAL_PRESET),
+ 			// Factory refresh OFF (blue-team B7): polling a third-party API on the
+ 			// user's behalf (even hourly) must be an explicit opt-in, never a
+@@ -7612,7 +7620,7 @@ window.__ModuleLoader__.load({
+ 				name: "settings.section",
+ 				id: "dream-skin",
+ 				order: 10,
+-				label: "Theme / 外观",
++				label: () => localeT("section.nav"),
+ 				locale: SETTINGS_NS,
+ 				children: { "settings.dreamSkin.item": {
+ 					kind: "list",
+@@ -8161,7 +8169,7 @@ window.__ModuleLoader__.load({
+   // (`label: "Theme / 外观"`, see the settings.section registration in the
+   // factory). Substring/marker games painted rows we never declared; see the
+   // matcher's own comment below for the measured walk-ons.
+-  var NAV_ROW_LABEL = "Theme / 外观"
++  var NAV_ROW_LABELS = ["外观", "Appearance", "外観", "외관", "Apariencia", "Apparence", "Erscheinungsbild", "Внешний вид"]
+   var mask = "%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'24'%20height%3D'24'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Ccircle%20cx%3D%2213.5%22%20cy%3D%226.5%22%20r%3D%221.05%22%2F%3E%3Ccircle%20cx%3D%2217.5%22%20cy%3D%2210.5%22%20r%3D%221.05%22%2F%3E%3Ccircle%20cx%3D%228.5%22%20cy%3D%227.5%22%20r%3D%221.05%22%2F%3E%3Ccircle%20cx%3D%226.5%22%20cy%3D%2212.5%22%20r%3D%221.05%22%2F%3E%3Cpath%20d%3D'M12%202C6.5%202%202%206.5%202%2012s4.5%2010%2010%2010c.926%200%201.648-.746%201.648-1.688%200-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64%201.64%200%200%201%201.668-1.668h1.996c3.051%200%205.555-2.503%205.555-5.554C21.965%206.012%2017.461%202%2012%202z'%2F%3E%3C%2Fsvg%3E"
+   var css = "[" + MARKER + "] > svg:first-child{display:none}" +
+     "[" + MARKER + "]::before{content:\"\";flex:none;width:16px;height:16px;background:currentColor;" +
+@@ -8271,7 +8279,7 @@ window.__ModuleLoader__.load({
+         // Trade-off stated plainly: if a future host renders our row without the
+         // exact label, we lose the icon (decorative loss, visible as marked:0 &&
+         // armed:1) — we never gain a foreign row.
+-        var mm = label.indexOf(NAV_ROW_LABEL) !== -1
++        var mm = NAV_ROW_LABELS.some(function (item) { return label.indexOf(item) !== -1 })
+         if (mm) { b.setAttribute(MARKER, ""); marked++; nextMarked.push(b) }
+         else b.removeAttribute(MARKER)
+       }

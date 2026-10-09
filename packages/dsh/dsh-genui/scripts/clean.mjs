@@ -9,6 +9,6 @@
  * on Windows on purpose. Doing the removal in Node keeps one command that
  * resolves in every shell the repo is built from.
  */
-import { existsSync, readdirSync, rmSync } from 'node:fs'
+import { rmSync } from 'node:fs'
 
-if (existsSync('lib')) for (const entry of readdirSync('lib')) rmSync(`lib/${entry}`, { recursive: true, force: true })
+rmSync('lib', { recursive: true, force: true })

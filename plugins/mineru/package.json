@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mineru",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "ZeroWall Science mineru domain plugin (desktop 8.0.1).",
   "type": "module",
   "main": "./lib/index.js",
@@ -121,7 +121,7 @@
   ],
   "dependencies": {
     "dsh-better-sidebar": "workspace:^",
-    "dsh-dream-skin": "9.29.0",
+    "dsh-dream-skin": "10.9.3",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-files": "workspace:^",
     "@zerowallscience/plugin-research": "workspace:^",

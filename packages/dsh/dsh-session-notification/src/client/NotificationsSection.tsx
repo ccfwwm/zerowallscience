@@ -8,14 +8,14 @@
  * preview button. All copy rides the standard locale seat; reads go through
  * `useStore`, business writes through the injected controller callbacks.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { KeyboardEvent, PointerEvent } from 'react'
 import type {
   PropsLocale, PropsRuntime, PropsStore,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  Button, IconAgentPresetOutlineMedium, IconCheckOutlineRegular, IconChevronDownOutlineRegular,
-  IconQuestionOutlineMedium, IconWarningOutlineRegular, Menu,
+  Button, IconAgentPresetOutlineRegular, IconCheckOutlineRegular, IconChevronDownOutlineRegular,
+  IconQuestionOutlineRegular, IconWarningOutlineRegular, Menu,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { NotificationsKey } from './locales.ts'
 import { NOTIFICATION_MODES, SOUND_IDS } from '../settings.ts'
@@ -28,7 +28,6 @@ import css from './NotificationsSection.module.css'
 /** Injected business face: preference writes, sound preview, permission and
  *  custom-audio flows. */
 export interface NotificationsSectionInjected {
-  bindSettingsClose?: (close: (() => void) | undefined) => void
   /** Persist the browser-notification master switch (grants permission first). */
   setBrowserEnabled: (enabled: boolean) => Promise<void>
   /** Persist whether the current session also alerts. */
@@ -62,13 +61,15 @@ export type NotificationsSectionProps =
 const KIND_ROWS: readonly {
   kind: NotificationType
   Icon: typeof IconCheckOutlineRegular
+  /** Glyph size override; the warning artwork's default grew 14 -> 16 in 0.1.7. */
+  size?: number
   title: NotificationsKey
   desc: NotificationsKey
 }[] = [
   { kind: 'completed', Icon: IconCheckOutlineRegular, title: 'type.completed.title', desc: 'type.completed.desc' },
-  { kind: 'failed', Icon: IconWarningOutlineRegular, title: 'type.failed.title', desc: 'type.failed.desc' },
-  { kind: 'question', Icon: IconQuestionOutlineMedium, title: 'type.question.title', desc: 'type.question.desc' },
-  { kind: 'permission', Icon: IconAgentPresetOutlineMedium, title: 'type.permission.title', desc: 'type.permission.desc' },
+  { kind: 'failed', Icon: IconWarningOutlineRegular, size: 14, title: 'type.failed.title', desc: 'type.failed.desc' },
+  { kind: 'question', Icon: IconQuestionOutlineRegular, title: 'type.question.title', desc: 'type.question.desc' },
+  { kind: 'permission', Icon: IconAgentPresetOutlineRegular, title: 'type.permission.title', desc: 'type.permission.desc' },
 ]
 
 /** Sound menu entries: the four effects, Custom, then None. */
@@ -187,13 +188,8 @@ function VolumeSlider({ value, label, onChange }: {
 export function NotificationsSection({
   t, useStore, setBrowserEnabled, setNotifyCurrent, setNotificationMode, setSoundEnabled, setVolume, setType, testSound,
   requestPermission, testBrowserNotification, uploadCustomSound,
-  close, bindSettingsClose,
 }: NotificationsSectionProps) {
   const { settings, permission, customSounds } = useStore(state => state)
-  useEffect(() => {
-    bindSettingsClose?.(close)
-    return () => bindSettingsClose?.(undefined)
-  }, [close, bindSettingsClose])
 
   // The permission state is shown honestly: denied/unsupported explain why
   // nothing can fire, and an enabled switch without permission reads as
@@ -272,11 +268,12 @@ export function NotificationsSection({
           </div>
         </li>
 
-        {KIND_ROWS.map(({ kind, Icon, title, desc }) => (
+        {KIND_ROWS.map(({ kind, Icon, size, title, desc }) => (
           <TypeRow
             key={kind}
             kind={kind}
             Icon={Icon}
+            iconSize={size}
             title={t(title)}
             desc={t(desc)}
             type={settings.types[kind]}
@@ -300,9 +297,10 @@ export function NotificationsSection({
 }
 
 /** One notification-kind row: icon, copy, preview, picker (Custom included), switch. */
-function TypeRow({ kind, Icon, title, desc, type, customUrl, t, onTypeChange, onTest, onUpload }: {
+function TypeRow({ kind, Icon, iconSize, title, desc, type, customUrl, t, onTypeChange, onTest, onUpload }: {
   kind: NotificationType
   Icon: typeof IconCheckOutlineRegular
+  iconSize?: number
   title: string
   desc: string
   type: NotificationTypeSettings
@@ -327,7 +325,7 @@ function TypeRow({ kind, Icon, title, desc, type, customUrl, t, onTypeChange, on
   }
   return (
     <li className={css.row}>
-      <Icon className={css.rowIcon} aria-hidden="true" />
+      <Icon className={css.rowIcon} size={iconSize} aria-hidden="true" />
       <div className={css.rowText}>
         <div className={css.rowTitle}>{title}</div>
         <div className={css.desc}>{desc}</div>

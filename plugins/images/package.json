@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "ZeroWall Science images domain plugin (desktop 8.0.1).",
   "type": "module",
   "main": "./lib/index.js",
@@ -102,7 +102,7 @@
   ],
   "dependencies": {
     "dsh-better-sidebar": "workspace:^",
-    "dsh-dream-skin": "9.29.0",
+    "dsh-dream-skin": "10.9.3",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-base": "workspace:^",
