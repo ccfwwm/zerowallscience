@@ -34,6 +34,7 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from mcp_servers_common.tier1 import READ_ONLY
+from mcp_servers_common.cancellation import CancellationSafeServer
 
 SERVER_NAME = "bio-mcp-server"
 CATALOG_VERSION = "2026-09-07.2"
@@ -337,7 +338,7 @@ def build_public_tools() -> list[Tool]:
 
 def build_server() -> tuple[Server, BioAggregate]:
     agg = BioAggregate()
-    server = Server(SERVER_NAME)
+    server = CancellationSafeServer(SERVER_NAME)
     by_id, public_for_id = _capability_maps()
 
     @server.list_tools()

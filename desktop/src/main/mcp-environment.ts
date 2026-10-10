@@ -1560,7 +1560,7 @@ function execute(command: string, args: string[], cwd: string, input?: string, e
   })
 }
 
-async function checkMcpServer(command: string, args: string[], cwd: string): Promise<void> {
+export async function checkMcpServer(command: string, args: string[], cwd: string): Promise<void> {
   const initialize = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'zerowall-health', version: '1' } } })
   const initialized = JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })
   const tools = JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })
@@ -1570,19 +1570,30 @@ async function checkMcpServer(command: string, args: string[], cwd: string): Pro
     let phase: 'initialize' | 'tools' = 'initialize'
     let finishing = false
     let settled = false
-    const settle = (error?: Error) => { if (settled) return; settled = true; error === undefined ? resolveCheck() : reject(error) }
+    let stderr = ''
+    let exitTimer: ReturnType<typeof setTimeout> | undefined
+    const settle = (error?: Error) => {
+      if (settled) return
+      settled = true; clearTimeout(exitTimer)
+      const diagnostic = `${error?.message ?? ''}\n${stderr}`
+        .replace(/\b(Bearer|Basic)\s+\S+/giu, '$1 [redacted]')
+        .replace(/(authorization|api[-_ ]?key|token|secret|password)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu, '$1=[redacted]')
+        .replace(/https?:\/\/[^\s)\]}]+/giu, '[redacted-url]')
+      error === undefined ? resolveCheck() : reject(new Error(diagnostic.trim()))
+    }
     const finish = (error?: Error) => {
       if (finishing) return
       finishing = true; clearTimeout(timer); lines.close()
       if (child.exitCode !== null) return settle(error)
       child.once('exit', () => settle(error))
-      child.kill()
-      const exitTimer = setTimeout(() => settle(error), 2_000); exitTimer.unref()
+      child.stdin.end()
+      exitTimer = setTimeout(() => { child.kill(); settle(error) }, 2_000); exitTimer.unref()
     }
     const timer = setTimeout(() => finish(new Error(`MCP server health check timed out: ${args.at(-1) ?? command}`)), 120_000)
     child.once('error', error => finish(error))
+    child.stdin.on('error', error => { if (!finishing) finish(error) })
     child.once('exit', code => { if (!finishing) finish(new Error(`MCP server exited before health check completed (${code ?? 'unknown'}): ${args.at(-1) ?? command}`)) })
-    child.stderr.resume()
+    child.stderr.setEncoding('utf8').on('data', value => { stderr = (stderr + value).slice(-16_000) })
     lines.on('line', line => {
       let reply: { id?: number; result?: unknown; error?: unknown }
       try { reply = JSON.parse(line) as typeof reply } catch { return }

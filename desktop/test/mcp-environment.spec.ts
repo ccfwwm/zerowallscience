@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import JSZip from 'jszip'
-import { assertEnvironmentFiles, canonicalManifest, extractZipInWorker, mcpEnvironmentDiagnostic, McpEnvironmentController, pythonCoreRequirements, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
+import { assertEnvironmentFiles, canonicalManifest, checkMcpServer, extractZipInWorker, mcpEnvironmentDiagnostic, McpEnvironmentController, pythonCoreRequirements, selectPythonHealthImports, type McpEnvironmentManifest, verifyManifestWithKeyring } from '../src/main/mcp-environment.js'
 
 const roots: string[] = []
 const keys = generateKeyPairSync('ed25519')
@@ -62,6 +62,17 @@ async function environment(root: string, manifest: McpEnvironmentManifest): Prom
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
 describe('MCP environment upgrades', () => {
+  it('keeps the startup import error and redacts credentials instead of reporting only closed', async () => {
+    await expect(checkMcpServer(process.execPath, ['-e', 'console.error("ImportError: missing mcp token=private-value"); process.exit(1)'], process.cwd())).rejects.toThrow('ImportError: missing mcp token=[redacted]')
+  })
+
+  it('ends stdin after tools/list so healthy stdio servers can exit normally', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zws-health-eof-')); roots.push(root)
+    const receipt = join(root, 'eof.json')
+    const script = `const fs=require('node:fs'); const rl=require('node:readline').createInterface({input:process.stdin}); rl.on('line',line=>{const q=JSON.parse(line); if(q.id)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,result:q.method==='tools/list'?{tools:[]}:{}})+'\\n')}); rl.on('close',()=>fs.writeFileSync(process.argv[1],'true'));`
+    await expect(checkMcpServer(process.execPath, ['-e', script, receipt], root)).resolves.toBeUndefined()
+    expect(await readFile(receipt, 'utf8')).toBe('true')
+  })
   it('validates the Python generation without requiring separately managed MCP and Skills payloads', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zerowall-python-core-only-')); roots.push(root)
     const manifest = signedSharedManifest()

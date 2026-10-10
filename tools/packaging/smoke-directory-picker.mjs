@@ -1,5 +1,7 @@
 import { targetPackageRoot, verificationRoot } from '../build/paths.mjs'
 import { spawn } from 'node:child_process'
+import assert from 'node:assert/strict'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -10,6 +12,10 @@ const worker = resolve(unpacked, 'resources/app.asar.unpacked/node_modules/@deep
 const nodePath = resolve(unpacked, 'resources/app.asar/node_modules')
 const dialogBindings = resolve(root, 'deepseek-harness/packages/host/directory-picker-native/lib/types/win32-dialog-bindings.js')
 const timeoutMs = Number(process.env.PICKER_TEST_TIMEOUT_MS ?? 120_000)
+const selectIndex = process.argv.indexOf('--select')
+const selection = selectIndex < 0 ? undefined : resolve(process.argv[selectIndex + 1] ?? '')
+if (selectIndex >= 0 && !process.argv[selectIndex + 1]) throw new Error('--select requires an explicit directory')
+if (selection) await mkdir(selection, { recursive: true })
 
 const child = spawn(executable, [worker], {
   windowsHide: false,
@@ -17,13 +23,16 @@ const child = spawn(executable, [worker], {
   env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NODE_PATH: nodePath, DSH_DIALOG_TITLE: 'ZeroWall Science 目录选择测试' },
 })
 let finished = false
+let terminalReceived = false
 const closeTimers = []
+let selector
 const timer = setTimeout(() => finish(2, `directory picker timed out after ${timeoutMs}ms`), timeoutMs)
 function finish(code, message) {
   if (finished) return
   finished = true
   clearTimeout(timer)
   for (const closeTimer of closeTimers) clearTimeout(closeTimer)
+  if (selector && selector.exitCode === null) selector.kill()
   if (message) console.error(message)
   if (!child.killed) child.kill()
   process.exitCode = code
@@ -34,6 +43,15 @@ child.on('error', error => finish(1, error.stack ?? String(error)))
 child.on('message', message => {
   console.log('MSG', message)
   if (message?.kind === 'showing' && Number.isInteger(message.threadId)) {
+    if (selection) {
+      // Target only this regression worker's native dialog, never another app.
+      selector = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', resolve(import.meta.dirname, 'select-test-directory.ps1'), '-PickerProcessId', String(child.pid), '-Directory', selection], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      selector.stderr.on('data', data => process.stderr.write(data))
+      selector.stdout.on('data', data => process.stdout.write(data))
+      selector.once('error', error => finish(1, String(error)))
+      selector.once('exit', code => { if (code && !finished) finish(1, `Test dialog selection failed (${code})`) })
+      return
+    }
     // Close the test dialog through the same thread-window cancellation path
     // used by the production picker. This keeps the packaged smoke unattended
     // and verifies that the worker reports a terminal `done` message.
@@ -51,10 +69,16 @@ child.on('message', message => {
       })
       .catch(error => finish(1, error instanceof Error ? error.stack : String(error)))
   }
-  if (message?.kind === 'done') finish(0)
+  if (message?.kind === 'done') {
+    terminalReceived = true
+    try {
+      if (selection) assert.equal(resolve(message.path ?? ''), selection, 'Native dialog must return the selected Unicode path')
+      void mkdir(verificationRoot, { recursive: true }).then(() => writeFile(resolve(verificationRoot, selection ? 'directory-picker-selection.json' : 'directory-picker-cancel.json'), JSON.stringify({ selected: selection !== undefined, path: message.path, returnedTerminalResult: true }, null, 2))).then(() => finish(0), error => finish(1, String(error)))
+    } catch (error) { finish(1, String(error)) }
+  }
   if (message?.kind === 'error') finish(1, message.message ?? 'directory picker worker failed')
 })
 child.on('exit', (code, signal) => {
   console.log('EXIT', code, signal)
-  if (!finished) finish(code === 0 ? 0 : 1, code === 0 ? undefined : `worker exited before returning a result (${signal ?? code})`)
+  if (!finished && !terminalReceived) finish(1, `worker exited before returning a result (${signal ?? code})`)
 })

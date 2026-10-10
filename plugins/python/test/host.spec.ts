@@ -73,6 +73,20 @@ describe('managed Python runtime', () => {
       snapshotRoot: runtimeRoot,
     })
   })
+  it('uses the Host projection without rewriting the signed archive manifest', async () => {
+    const runtimeRoot = await mkdtemp(join(tmpdir(), 'python-signed-projection-')); roots.push(runtimeRoot)
+    const manager = join(runtimeRoot, '.zerowall')
+    const sitePackages = join(runtimeRoot, 'Lib/site-packages')
+    await mkdir(sitePackages, { recursive: true }); await mkdir(manager)
+    await writeFile(join(runtimeRoot, 'python.exe'), 'fixture')
+    const python = { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' }
+    const current = { root: runtimeRoot, runtimeRoot, health: 'ready', runtimeLayout: python, manifest: { python } }
+    await writeFile(join(manager, 'current.json'), JSON.stringify(current))
+    process.env.ZEROWALL_PYTHON_ROOT = manager
+    await expect(resolveManagedPython()).resolves.toMatchObject({ executable: join(runtimeRoot, 'python.exe'), sitePackages, snapshotRoot: runtimeRoot })
+    await writeFile(join(manager, 'current.json'), JSON.stringify({ ...current, runtimeLayout: undefined }))
+    await expect(resolveManagedPython()).rejects.toThrow(/managed shared runtime/)
+  })
   it('uses the current snapshot CA for all Python aliases', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-ca-')); roots.push(root)
     await mkdir(join(root, 'certifi')); const ca = join(root, 'certifi', 'cacert.pem'); await writeFile(ca, 'certificate fixture')

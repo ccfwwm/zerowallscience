@@ -4,7 +4,7 @@ import type { Context, Fiber } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, readFileSync, readdirSync, renameSync, rmSync, statSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, readFileSync, renameSync, rmSync, statSync, mkdirSync, writeFileSync } from 'node:fs'
 import { lstat, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
@@ -980,6 +980,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
       const prepared: Array<{ id: string; value: Awaited<ReturnType<ManagedGenerations['prepare']>> }> = []
       try {
         for (const record of this.projects().listMcpServers().filter(record => record.enabled && isManagedMcp(record.serverName))) {
+          // Installing the interpreter must succeed before its optional MCP
+          // dependencies exist. Keep any live generation until core is ready.
+          if (record.serverName === 'zerowall_managed_bio_tools' && candidate.manifest?.python?.bootstrapOnly === true && !managedBioDependenciesReady(candidate, true)) continue
           const key = record.serverName === 'zerowall_managed_scimaster' ? await this.secrets.get(SCIMASTER_API_KEY_CREDENTIAL).catch(() => undefined) : undefined
           if (record.serverName === 'zerowall_managed_scimaster' && !key) continue
           const resolved = resolveMcpConfig(record, process.env, process.cwd(), undefined, candidate)
@@ -1231,8 +1234,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
       if (current()) this.statuses.set(record.id, { state: 'disabled', error: '', missingEnvironmentVariables: [] })
       return
     }
-    if (isManagedMcp(record.serverName) && !managedEnvironmentReady()) {
-      if (current() && !(this.fibers.has(record.id) || this.managed.has(record.id))) this.statuses.set(record.id, { state: 'blocked', error: 'The ZeroWall shared Python/MCP environment is not ready. Retry initialization from Python settings.', missingEnvironmentVariables: [] })
+    if (isManagedMcp(record.serverName) && !managedEnvironmentReady(record.serverName)) {
+      if (current() && !(this.fibers.has(record.id) || this.managed.has(record.id))) this.statuses.set(record.id, { state: 'blocked', error: record.serverName === 'zerowall_managed_bio_tools' && managedEnvironmentRecord()?.health === 'ready' && !managedBioDependenciesReady(managedEnvironmentRecord()!) ? '共享 Python 解释器已就绪，但 Bio MCP 核心依赖尚未安装。请在 Python 设置中安装或修复核心层。' : '共享 Python/MCP 环境未就绪，请在 Python 设置中检查运行时和服务资源。', missingEnvironmentVariables: [] })
       return
     }
     let sciMasterApiKey: string | undefined
@@ -1480,104 +1483,6 @@ function ensurePublicCaBundle(target: string): boolean {
   return usableCaFile(target)
 }
 
-/**
- * Resolve a CA bundle for managed Python/MCP processes. The managed wheel
- * layer may be installed on demand, so certifi is not guaranteed to exist at
- * launch time. Keep one application-owned fallback outside the environment;
- * this also avoids malformed Windows paths being passed through JSON or shell
- * escaping (for example ``\\b`` becoming a backspace).
- *
- * The active runtime record wins over the caller-supplied root: callers have
- * been observed holding a pre-migration slot path, and a root that is no longer
- * the live environment must never decide which certificate the child trusts.
- */
-/**
- * Absolute site-package directories the interpreter will actually search,
- * taken from the embedded CPython path file rather than inferred from a layout.
- *
- * For embeddable CPython the `pythonXY._pth` file is authoritative: it replaces
- * `sys.path` bootstrapping, so it — not `sys.prefix`, not `PYTHONPATH`, not the
- * signed manifest — decides which `certifi` a child imports, and therefore
- * which `cacert.pem` `certifi.where()` returns. A flat-layout environment lists
- * `site-packages` directly; a shared environment lists `Lib/site-packages`.
- * Reading the file is the only way to cover both without a hard-coded guess.
- */
-function interpreterSitePackages(root: string, relativeExecutable: string | undefined): string[] {
-  const found: string[] = []
-  if (!relativeExecutable) return found
-  const interpreter = resolve(root, relativeExecutable)
-  const directory = dirname(interpreter)
-  let names: string[]
-  try { names = readdirSync(directory) } catch { return found }
-  for (const name of names.filter(entry => entry.endsWith('._pth')).sort()) {
-    let content: string
-    try { content = readFileSync(join(directory, name), 'utf8') } catch { continue }
-    for (const raw of content.split(/\r?\n/u)) {
-      const line = raw.trim()
-      // `import site` and comments are directives, not search directories.
-      if (line === '' || line.startsWith('#') || line.startsWith('import ')) continue
-      const entry = resolve(directory, line.replace(/[\\/]+$/u, ''))
-      // Ignore entries that climb out of the managed shared runtime.
-      const local = relative(root, entry)
-      if (local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) continue
-      if (basename(entry) !== 'site-packages') continue
-      if (!found.includes(entry)) found.push(entry)
-    }
-  }
-  return found
-}
-
-/**
- * Best-effort site-packages directory for a manifest that omits the field. The
- * interpreter's own path file wins; the shared Python layout is the only
- * supported runtime contract. Legacy layouts are migrated by the desktop
- * updater and are never launched here.
- */
-function derivedSitePackages(root: string, relativeExecutable?: string): string {
-  const interpreter = relativeExecutable ?? 'Python/python.exe'
-  const fromPathFile = interpreterSitePackages(root, interpreter)[0]
-  if (fromPathFile) return relative(root, fromPathFile)
-  for (const candidate of ['Python/Lib/site-packages']) {
-    if (existsSync(join(root, candidate, 'certifi'))) return candidate
-  }
-  return 'Python/Lib/site-packages'
-}
-
-function managedPythonCaFile(root: string, relativeSitePackages: string): string | undefined {
-  const active = managedEnvironmentRecord()
-  const candidates: Array<[string, string]> = []
-  if (active?.root) {
-    candidates.push([active.runtimeRoot ?? active.root, active.manifest?.python?.relativeSitePackages ?? relativeSitePackages])
-  }
-  candidates.push([root, relativeSitePackages])
-  for (const [candidateRoot, candidateRelative] of candidates) {
-    const bundled = join(candidateRoot, candidateRelative, 'certifi', 'cacert.pem')
-    if (usableCaFile(bundled)) return bundled
-  }
-  // Neither record described a bundle that exists. Ask the interpreter where it
-  // will really import `certifi` from, and trust a bundle found there over the
-  // application-owned fallback: that bundle belongs to the environment the child
-  // is about to run in.
-  for (const [candidateRoot, candidateExecutable] of [[root, undefined], [active?.root, active?.manifest?.python?.relativeExecutable]] as Array<[string | undefined, string | undefined]>) {
-    if (!candidateRoot) continue
-    for (const site of interpreterSitePackages(candidateRoot, candidateExecutable ?? derivedExecutable(candidateRoot))) {
-      const bundled = join(site, 'certifi', 'cacert.pem')
-      if (usableCaFile(bundled)) return bundled
-    }
-  }
-  const fallback = publicCaBundlePath()
-  if (ensurePublicCaBundle(fallback)) return fallback
-  return undefined
-}
-
-/** Interpreter path for a record whose manifest cannot be read. */
-function derivedExecutable(root: string): string | undefined {
-  for (const candidate of ['python.exe', 'Python/python.exe']) {
-    if (existsSync(join(root, candidate))) return candidate
-  }
-  return undefined
-}
-
 export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.ProcessEnv, hostCwd = process.cwd(), enabledTools?: string[], candidate?: ManagedEnvironmentRecord): ResolvedMcpConfig {
   const missing = new Set<string>()
   const resolveRefs = (refs: Record<string, string>): Record<string, string> => Object.fromEntries(
@@ -1641,9 +1546,8 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
       // Every managed child uses the one application-wide Python directory.
       // Legacy overlay paths are deliberately ignored after migration so a
       // stale profile cannot shadow the signed shared site-packages.
-      const relativeSitePackages = managed.manifest?.python?.relativeSitePackages ?? derivedSitePackages(root)
-      const runtimeRoot = candidate ? root : managed.runtimeRoot ?? resolve(root, '..')
-      values.PYTHONPATH = join(runtimeRoot, relativeSitePackages)
+      const sitePackages = managedPythonSitePackages(managed, candidate !== undefined)
+      values.PYTHONPATH = sitePackages
       values.PYTHONNOUSERSITE = '1'
       // The stdio transport merges these values over the inherited parent
       // environment (`{ ...scrubbedParentEnv(), ...extra }`). Assigning only on
@@ -1651,7 +1555,9 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
       // Electron process itself had inherited survived the spread verbatim and
       // reached Python — the reported `slots\b\...\certifi\cacert.pem` failure.
       // Set or delete, never skip: an absent key is an inherited key.
-      const caFile = managedPythonCaFile(root, relativeSitePackages)
+      const candidateCa = join(sitePackages, 'certifi', 'cacert.pem')
+      const fallbackCa = publicCaBundlePath()
+      const caFile = usableCaFile(candidateCa) ? candidateCa : ensurePublicCaBundle(fallbackCa) ? fallbackCa : undefined
       for (const key of MANAGED_CA_ENV_KEYS) {
         if (caFile === undefined) delete values[key]
         else values[key] = caFile
@@ -1689,7 +1595,7 @@ export function resolveStdioLaunch(record: Pick<McpServerRecord, 'command' | 'ar
 
 function isManagedMcp(serverName: string): boolean { return serverName === 'zerowall_managed_bio_tools' || serverName === 'zerowall_managed_ketcher' || serverName === 'zerowall_managed_scimaster' }
 
-type ManagedEnvironmentRecord = { root?: string; runtimeRoot?: string; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeExecutable?: string; relativeSitePackages?: string } } }
+type ManagedEnvironmentRecord = { root?: string; runtimeRoot?: string; runtimeLayout?: { relativeExecutable?: string; relativeSitePackages?: string }; generation?: boolean; health?: string; version?: string; environmentVersion?: string; contentRevision?: number; archiveSha256?: string; mode?: string; manifest?: { python?: { version?: string; relativeExecutable?: string; relativeSitePackages?: string; bootstrapOnly?: boolean } } }
 
 /**
  * The signed manifest decides where the interpreter lives. An earlier build
@@ -1707,7 +1613,8 @@ function managedPythonExecutable(record: ManagedEnvironmentRecord): string {
   // while the 8.0.6 canonical runtime projects it to `python.exe`. Both
   // layouts are valid when declared by the manifest; never infer a third path.
   if (path !== 'Python/python.exe' && path !== 'python.exe') throw new Error('Managed environment must use the shared Python layout.')
-  const executable = path === 'python.exe' || existsSync(join(root, 'python.exe'))
+  const projection = record.root === record.runtimeRoot && record.generation !== true && record.runtimeLayout?.relativeExecutable === path && record.runtimeLayout?.relativeSitePackages === record.manifest?.python?.relativeSitePackages
+  const executable = path === 'python.exe' || projection
     ? join(root, 'python.exe')
     : resolve(root, path)
   const local = relative(root, executable)
@@ -1718,12 +1625,23 @@ function managedPythonExecutable(record: ManagedEnvironmentRecord): string {
 function managedCandidatePythonExecutable(record: ManagedEnvironmentRecord): string {
   if (!record.root || (record.manifest?.python?.relativeExecutable !== 'Python/python.exe' && record.manifest?.python?.relativeExecutable !== 'python.exe')) throw new Error('Managed candidate has no shared Python layout.')
   const root = resolve(record.root)
-  const executable = record.manifest.python.relativeExecutable === 'python.exe'
+  const projection = record.root === record.runtimeRoot && record.generation !== true && record.runtimeLayout?.relativeExecutable === record.manifest.python.relativeExecutable && record.runtimeLayout?.relativeSitePackages === record.manifest.python.relativeSitePackages
+  const executable = record.manifest.python.relativeExecutable === 'python.exe' || projection
     ? join(root, 'python.exe')
     : resolve(root, record.manifest.python.relativeExecutable)
   const local = relative(root, executable)
   if (local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed candidate Python executable')
   return executable
+}
+function managedPythonSitePackages(record: ManagedEnvironmentRecord, candidate = false): string {
+  const executable = candidate ? managedCandidatePythonExecutable(record) : managedPythonExecutable(record)
+  const declared = record.manifest?.python?.relativeSitePackages
+  if (declared !== (record.manifest?.python?.relativeExecutable === 'python.exe' ? 'Lib/site-packages' : 'Python/Lib/site-packages')) throw new Error('Managed environment must use the shared Python package layout.')
+  return join(dirname(executable), 'Lib', 'site-packages')
+}
+export function managedBioDependenciesReady(record: ManagedEnvironmentRecord, candidate = false): boolean {
+  try { return existsSync(join(managedPythonSitePackages(record, candidate), 'mcp', '__init__.py')) }
+  catch { return false }
 }
 let managedEnvironmentCache: { path: string; fileSignature: string; record: ManagedEnvironmentRecord | undefined } | undefined
 
@@ -1761,18 +1679,17 @@ function managedEnvironmentSignature(record = managedEnvironmentRecord()): strin
     : `${record.health ?? 'unknown'}:${record.environmentVersion ?? record.version ?? 'unknown'}:${record.contentRevision ?? ''}:${record.archiveSha256?.slice(0, 12) ?? ''}:${record.root ?? ''}`
 }
 
-function managedEnvironmentReady(): boolean {
+function managedEnvironmentReady(serverName: string): boolean {
   const record = managedEnvironmentRecord()
   const root = record?.root
   if (!root || record?.health !== 'ready') return false
   const bioToolsRoot = bundledManagedRoot('ZEROWALL_BIO_TOOLS_ROOT', root, 'bio-tools')
   const ketcherRoot = bundledManagedRoot('ZEROWALL_KETCHER_ROOT', root, 'ketcher-chemistry')
   const sciRoot = bundledManagedRoot('ZEROWALL_SCI_ROOT', root, 'sci')
-  return existsSync(managedPythonExecutable(record))
-    && existsSync(join(bioToolsRoot, 'run_server.py'))
-    && existsSync(join(ketcherRoot, 'server.js'))
-    && existsSync(join(sciRoot, 'dist', 'mcp.cjs'))
-    && existsSync(join(sciRoot, 'zerowall-mcp-launcher.cjs'))
+  if (serverName === 'zerowall_managed_ketcher') return existsSync(join(ketcherRoot, 'server.js'))
+  if (serverName === 'zerowall_managed_scimaster') return existsSync(join(sciRoot, 'dist', 'mcp.cjs')) && existsSync(join(sciRoot, 'zerowall-mcp-launcher.cjs'))
+  try { return managedBioDependenciesReady(record) && existsSync(managedPythonExecutable(record)) && existsSync(join(bioToolsRoot, 'run_server.py')) }
+  catch { return false }
 }
 
 const MANAGED_ORDER: Record<string, number> = {
@@ -1816,11 +1733,13 @@ export function redactError(error: unknown): string {
     messages.push(current instanceof Error ? current.message : String(current))
     current = current instanceof Error ? current.cause : undefined
   }
-  return messages.join(': ')
+  const diagnostic = messages.join(': ')
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9+/=_\-.~]+/gi, '$1 [redacted]')
     .replace(/(authorization|api[-_ ]?key|token|secret|password)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '$1=[redacted]')
     .replace(/https?:\/\/[^\s)\]}]+/gi, redactUrl)
-    .slice(0, 1000)
+  // Python tracebacks put the actual ImportError at the end. Keep the
+  // transport error and that tail after redaction, even for long tracebacks.
+  return diagnostic.length <= 4000 ? diagnostic : `${diagnostic.slice(0, 500)}\n[diagnostic truncated]\n${diagnostic.slice(-3400)}`
 }
 
 function redactUrl(value: string): string {

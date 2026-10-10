@@ -29,6 +29,13 @@ RMDir /r "$INSTDIR\\resources\\app.asar.unpacked"
 RMDir /r "$INSTDIR\\resources\\skills"
 RMDir /r "$INSTDIR\\resources\\profiles"
 RMDir /r "$INSTDIR\\resources\\licenses"
+; Hashed assets and renamed packages disappear from the new archive but
+; electron-builder's extraction does not remove their old physical copies.
+; Replace this installer-owned directory before extracting the signed carrier.
+RMDir /r "$INSTDIR\\resources\\offline-profile\\profile-runtime.asar.unpacked"
+IfFileExists "$INSTDIR\\resources\\offline-profile\\profile-runtime.asar.unpacked\\*.*" 0 +3
+  MessageBox MB_OK|MB_ICONSTOP "旧离线运行时仍被占用，无法安全完成升级。请关闭 ZeroWall Science 后重试。"
+  Abort
 ; 8.0.8 shipped an expanded offline profile and redundant tarballs. Remove
 ; only those installer-owned v1 entries, after process checks and before
 ; extraction, so the v2 signed file set remains exact on in-place upgrades.

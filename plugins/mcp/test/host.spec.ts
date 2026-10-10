@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { McpServerRecord } from '@zerowallscience/research-store'
-import { aiCloudCredentialKey, managedEnvironmentFileSignature, managedEnvironmentRecord, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
+import { aiCloudCredentialKey, managedBioDependenciesReady, managedEnvironmentFileSignature, managedEnvironmentRecord, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
 
 const base: McpServerRecord = {
   id: 'mcp-1', name: 'Tools', serverName: 'tools', transport: 'stdio', enabled: true,
@@ -14,6 +14,38 @@ const base: McpServerRecord = {
 }
 
 describe('ZeroWall MCP config boundary', () => {
+  it('keeps the transport error and final Python exception in long redacted diagnostics', () => {
+    const diagnostic = redactError(new Error('closed\nMCP stderr: ' + '  traceback frame token=secret-value\n'.repeat(250) + 'ImportError: missing required package'))
+    expect(diagnostic.startsWith('closed')).toBe(true)
+    expect(diagnostic.endsWith('ImportError: missing required package')).toBe(true)
+    expect(diagnostic).not.toContain('secret-value')
+    expect(diagnostic.length).toBeLessThanOrEqual(4000)
+  })
+  it('uses the explicit Host projection for active and candidate Python without a second Python directory', () => {
+    const root = mkdtempSync(join(tmpdir(), 'zws-python-projection-'))
+    const previous = { python: process.env.ZEROWALL_PYTHON_ROOT, bio: process.env.ZEROWALL_BIO_TOOLS_ROOT }
+    const manager = join(root, '.zerowall'), bio = join(root, 'bio-tools')
+    mkdirSync(manager); mkdirSync(bio)
+    const candidate = { root, runtimeRoot: root, health: 'ready', version: '3.12.10', runtimeLayout: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' }, manifest: { python: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages', bootstrapOnly: true } } }
+    writeFileSync(join(manager, 'current.json'), JSON.stringify(candidate))
+    process.env.ZEROWALL_PYTHON_ROOT = manager; process.env.ZEROWALL_BIO_TOOLS_ROOT = bio
+    const record = { ...base, command: 'zerowall-managed:bio-tools', args: [], envRefs: {} }
+    try {
+      for (const state of [undefined, candidate]) {
+        expect(resolveMcpConfig(record, {}, root, undefined, state).config).toMatchObject({ command: join(root, 'python.exe'), env: { PYTHONPATH: join(root, 'Lib', 'site-packages') } })
+      }
+      expect(managedBioDependenciesReady(candidate, true)).toBe(false)
+      mkdirSync(join(root, 'Lib/site-packages/mcp'), { recursive: true })
+      writeFileSync(join(root, 'Lib/site-packages/mcp/__init__.py'), '')
+      expect(managedBioDependenciesReady(candidate, true)).toBe(true)
+      expect(managedBioDependenciesReady({ ...candidate, runtimeLayout: undefined }, true)).toBe(false)
+      expect(() => resolveMcpConfig(record, {}, root, undefined, { ...candidate, manifest: { python: { relativeExecutable: 'python.exe', relativeSitePackages: '../site-packages' } } })).toThrow('shared Python package layout')
+    } finally {
+      if (previous.python === undefined) delete process.env.ZEROWALL_PYTHON_ROOT; else process.env.ZEROWALL_PYTHON_ROOT = previous.python
+      if (previous.bio === undefined) delete process.env.ZEROWALL_BIO_TOOLS_ROOT; else process.env.ZEROWALL_BIO_TOOLS_ROOT = previous.bio
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
   it('resolves stdio credential references only inside the Host', () => {
     const result = resolveMcpConfig(base, { MCP_TOKEN: 'secret-value' })
     expect(result.missingEnvironmentVariables).toEqual([])

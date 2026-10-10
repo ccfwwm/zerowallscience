@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
 import { DesktopNotifications } from './notifications.js'
 import { redactResourceDiagnostic } from './resource-diagnostics.js'
+import { startupFailure } from './startup-failure.js'
 import { resourceUpdateSummary, type CatalogCheck } from './resource-update-status.js'
 import updaterPackage from 'electron-updater'
 import { HarnessRuntime, type HarnessChildProcess } from './runtime/harness-runtime.js'
@@ -360,8 +361,7 @@ function publishStartup(update: Partial<StartupStatus>): void {
 }
 
 async function failStartup(error: unknown): Promise<void> {
-  const message = (error instanceof Error ? error.message : String(error)).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')
-  publishStartup({ phase: 'failed', message: message.slice(0, 1800) })
+  publishStartup(startupFailure(error))
   if (!quitting && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.getURL().startsWith('file:')) {
     await showSplash().catch(() => { /* A concurrent navigation must not replace the original startup failure. */ })
   }

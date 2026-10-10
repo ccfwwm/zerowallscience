@@ -10,6 +10,7 @@ import { adaptUniverOfficeManifest, adaptUniverSkill, UNIVER_SKILL_HASHES } from
 import { adaptProgressiveToolsManifest, adaptProgressiveToolsPatch } from './adapt-progressive-tools.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
+import { adaptDirectoryPicker } from './adapt-directory-picker.mjs'
 import { adaptDreamSkinClient } from './adapt-dream-skin.mjs'
 import {
   adaptZoteroClient,
@@ -429,6 +430,12 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
     if (manifest.name === '@deepseek-ai/dsh-client-ui-workspace') {
       const clientPath = resolve(targetRoot, 'lib/client.js')
       await writeFile(clientPath, adaptSessionDelete(await readFile(clientPath, 'utf8')))
+    }
+    if (manifest.name === '@deepseek-ai/dsh-host-directory-picker-native') {
+      for (const entry of ['lib/worker.cjs', 'lib/types/win32-dialog-bindings.js']) {
+        const path = resolve(targetRoot, entry)
+        await writeFile(path, adaptDirectoryPicker(await readFile(path, 'utf8'), manifest.version))
+      }
     }
     return
   }

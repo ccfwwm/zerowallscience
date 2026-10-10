@@ -58,7 +58,10 @@ export async function resolveManagedPython(): Promise<{ executable: string; root
   }
   const canonicalLayout = manifest.python?.relativeExecutable === 'python.exe' && manifest.python?.relativeSitePackages === 'Lib/site-packages'
   const compatibilityLayout = manifest.python?.relativeExecutable === 'Python/python.exe' && manifest.python?.relativeSitePackages === 'Python/Lib/site-packages'
-  const flatRuntime = canonicalManager && !generation && installRoot === runtimeRoot && canonicalLayout
+  // The signed archive retains its original layout. The Host explicitly
+  // records the projection when activating it in the canonical flat runtime.
+  const projectedCanonicalLayout = compatibilityLayout && current.runtimeLayout?.relativeExecutable === manifest.python?.relativeExecutable && current.runtimeLayout?.relativeSitePackages === manifest.python?.relativeSitePackages
+  const flatRuntime = canonicalManager && !generation && installRoot === runtimeRoot && (canonicalLayout || projectedCanonicalLayout)
   const nestedRuntime = compatibilityLayout && (!canonicalManager || generation)
   if (!flatRuntime && !nestedRuntime) {
     throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: Python manifest does not describe the managed shared runtime.')

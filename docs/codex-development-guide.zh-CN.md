@@ -8,7 +8,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | `8.1.0`；本批次父 HEAD `c47e360279d4ff0b032b8c4bd384a4cd5fea072d`，分支 `main` |
+| 应用版本 | `8.1.1`；本批次父 HEAD `c8f00c0b1fd15a6695f136b58d2486cb8f73f3e3`，分支 `main`；构建与发布收据见第 17 节 |
 | 8.0.9 Windows x64 安装包 | `316,401,650` 字节，SHA-256 `a2200357281410897bd1a9f7f4702742599cb4b004a8f35acdfd4d4f8e344ced`，build ID `1791561463413-f0f9c239` |
 | 8.0.9 发布状态 | Windows 安装器、37 个插件、281 个 Skills、2 个 MCP 和 1 个 Python 目录已发布至七牛 Stable 并完成公网校验；未创建 GitHub Release |
 | 集成基线 | 8.0.9 从 `d7d8f579357f5fec20773425d5ae9430ea5e7d4e` 开发，实现提交 `d4738fbee0778e0d0bae495b1bcdc2ac75e63c6d` 已合并到 `main` |
@@ -591,3 +591,77 @@ Skills feed 包含 283 个不可变对象（含 catalog），总大小 `7,503,55
 真实打包 Electron 使用隔离用户目录，完成 File Review `0.8.8` → `0.8.9-zws.1` 更新、Host 健康检查和回滚；`paper-download` `0.1.1` → `0.1.2` 更新后不再误报，随后回滚成功。启动公网检查发现 `1` 个插件和 `1` 个 Skill 更新，弹窗自动显示，关闭后左下角指示仍保留，按钮可以打开扩展中心；检查未创建安装任务。截图与 JSON 收据位于 `artifacts/verification/8.1.0/`。
 
 本批次仅构建 Windows x64，不构建 macOS/Linux；第 16.1 节额外上游 refs 未合入。安装器未使用 Windows Authenticode 证书，资源目录和离线闭包使用稳定 Ed25519 签名。没有创建 GitHub Release/tag，没有对真实用户目录执行安装或更新。未跟踪目录、密钥和 `artifacts/` 不纳入源码提交。
+
+## 17. 8.1.1 启动与共享运行时修复
+
+本批次在 `main` 上从 `c8f00c0b1fd15a6695f136b58d2486cb8f73f3e3` 开发，DSH 仍为 `86b6740d0e671cee0b3fd0168de484c0efbf46ea`。用户授权构建、发布七牛 Windows x64 `8.1.1` 并提交和推送 `origin/main`；本批次不创建 GitHub Release 或版本标签。
+
+### 17.1 覆盖安装与离线验签
+
+客户日志和本机安装副本表明，覆盖安装保留了旧 `resources/offline-profile/profile-runtime.asar.unpacked` 中已改名插件及旧 hash 资源。2026-10-10 本机只读复查：签名收据包含 1031 个物理文件，实际存在 1082 个文件（多余 51 个、缺失 0 个、大小不符 0 个），启动在 Host 创建之前被严格集合校验拒绝。这不是网络更新失败，也不能通过忽略多余文件修复。收据为 `artifacts/verification/8.1.1/installed-offline-diagnostic.json`。
+
+NSIS 在进程占用检查之后、新归档解包之前，只替换安装器拥有的 `profile-runtime.asar.unpacked`；删除失败时中止安装并明确提示关闭进程。其他用户文件、profile、账户、模型、项目、环境变量引用与自定义资源保持原有归属。启动验证继续拒绝链接、特殊文件、缺失、多余、大小或 SHA-256 不符，错误提供物理及逻辑集合差异计数、资源版本、build ID 和内容身份；界面不输出文件名和凭据。不得将启动错误改成自动安装或静默删除用户目录。
+
+覆盖安装回归必须使用已知不匹配的旧离线副本，在隔离的中文安装路径运行真实 NSIS；要求旧副本先被拒绝、新副本正式验签通过、安装后 ASAR 与候选包一致、用户 sentinel 保留。安装器 exit code 不能代替这些检查。
+
+### 17.2 Python、MCP 与目录选择器
+
+Python 插件和 MCP 插件共同解释 Host 的 `runtimeRoot`、`runtimeLayout` 与 `generation`，在唯一的 `%LOCALAPPDATA%\\ZeroWall Science\\Python` 共享运行时中使用平铺解释器及 `Lib/site-packages`。签名 archive manifest 保留原始 `Python/python.exe` 布局，只有 Host 明确记录投影时才接受平铺布局；候选 generation 使用其自己的已声明路径，不从文件存在性猜测另一套环境。
+
+只有 bootstrap 解释器且缺少 Bio MCP 核心依赖时，允许解释器独立激活，保留当前已运行服务；Bio 明确显示核心依赖待安装。核心层候选仍须经过 `initialize` 和 `tools/list` 健康检查，不能放宽断言或切换用户模型。启动失败保留阶段、退出信息与 stderr，经脱敏后展示，Python traceback 的末尾 ImportError 不得被截断成仅有 `closed`。健康检查成功后关闭 stdin，使 stdio 正常退出；Bio 请求取消后避免重复响应，其他协议错误继续报告。
+
+Win32 目录选择器由 runtime adaptation 校验原始目标后使用 Koffi 复制式 UTF-16 解码，COM 分配内存在 finally 中释放，并保持 IPC 连接到终态。修改 adaptation 时必须同步断言和真实中文目录选择验收。
+
+仅变化的独立插件递增：Python `0.1.3`、MCP `0.2.10`。MCP `0.2.9` 曾暂存至七牛，因此即使还未 promote，也不能用它发布不同字节。未变插件、Skills、MCP 配置及 Python archive 继续复用既有归档。新 build ID 按组件指纹检查编译、runtime assembly 和 offline carrier 输入；变更的组件重新构建，未变组件使用内容存储、Electron 和原生缓存。禁止为了打包整目录复制或清空有效缓存。
+
+### 17.3 构建、发布与验收收据
+
+最终 build ID 为 `1791636065885-36d837b3`。Windows x64 安装器为 `artifacts/packages/8.1.1/windows-x64/zerowall-science-8.1.1-win-x64.exe`，大小 `317,646,258` 字节，SHA-256 `74dcf5ac334e67ea4c7002f6843323e65dd81d775fd2a04ee70052af1c9a9f43`。blockmap 为 `332,039` 字节，SHA-256 `54b060b72b61226628155ba7ac2acaf3b76ab1e0f147e63260bf4dc6b8a3c045`。安装后 ASAR 与验收包一致，SHA-256 `64851363a3bef8967aa4b760371c552786151b21e8383de78871f87ba26a2756`。`dsh.cmd --version` 为 `0.2.0-rc.2`，`zws.cmd --version` 为 `8.1.1`。
+
+构建基于本节记录的父 HEAD 加本批次未提交源码；`artifact-manifest.json` 明确记录 `source.clean=false`，不能声称只由父 HEAD 重现。完成安装验收后仅修正文档、发布元数据和隔离测试工具，沿用上述安装器，不再次构建 payload。组件指纹、缓存、内容硬链接和未变 tarball 均复用；默认安装器没有捆绑大型 Python 科研环境，也没有清空历史构建缓存。
+
+本批次变化的插件归档路径前缀为 `artifacts/release/8.1.1/plugins/`：
+
+| 资源 | 版本 | 归档相对路径 | 字节 | SHA-256 |
+| --- | --- | --- | --- | --- |
+| Python | `0.1.3` | `plugin-python/0.1.3/zerowallscience-plugin-python-0.1.3.tgz` | `24492` | `490fdb5c7094073dd6f641cc7282e2d8754c9f9afd7c4e5f48a5d917c507af40` |
+| MCP | `0.2.10` | `plugin-mcp/0.2.10/zerowallscience-plugin-mcp-0.2.10.tgz` | `348202` | `735f0fe56a2b19d0a048c16c6a16eb7380cfea7eec9aba7aa9ac5f2dbd94a01c` |
+
+四组 catalog 的 `applicationVersion=8.1.1`、`localOnly=false`、签名密钥 `stable-4`，generation 为 `1791636065885-36d837b3-1791636373605`。`stage` 下载并核验 326 个不可变对象（37 个插件、282 个 Skills、2 个 MCP、1 个 Python 清单及 4 个 catalog），总大小 `89,406,684` 字节；`promote`、`verify` 成功，收据为 `artifacts/release/8.1.1/publication/qiniu-resources-public.json`。
+
+| catalog | 字节 | SHA-256 | 公网指针 |
+| --- | --- | --- | --- |
+| plugin | `54332` | `4457e25ef879f8ce37ec0ea31e06ff0f8b20583377a8d6e60bc79f7e1687b893` | `https://zerowall.chengxunkeji.cn/stable/catalogs/plugin-latest.json` |
+| skill | `238104` | `97c502b9c2881d51b1a24c6ed8b9f53e338ee55672ab5e757ef5e3e6e11760eb` | `https://zerowall.chengxunkeji.cn/stable/catalogs/skill-latest.json` |
+| mcp | `2357` | `c107987b8233435bc6e237a3ff38f31bbfab254393c438b968873e150541f21e` | `https://zerowall.chengxunkeji.cn/stable/catalogs/mcp-latest.json` |
+| python | `1229` | `edc3a4e83a505e4607ff5a06b8af38af726e4fd3af74fad01944c88e08dbde26` | `https://zerowall.chengxunkeji.cn/stable/catalogs/python-latest.json` |
+
+### 17.4 真实安装与运行验收
+
+以下门禁通过：`pnpm dsh:inventory`、`pnpm dsh:verify`、`pnpm profiles:check`、`pnpm dsh:runtime:closure`、`pnpm version:check`、完整 `pnpm typecheck`、`pnpm plugins:typecheck`、`pnpm plugins:test`、`pnpm plugins:verify-pack`（21 个原生包）、`pnpm test:updates`、`pnpm test:security`、`pnpm smoke:update` 和 `pnpm verify:package`。包验收包括 Host/Desktop、About `8.1.1`、中英文设置切换；ready 为 `26145 ms`，5096 个安装资源，离线闭包 1032 项（含收据），展开目录 `1348.2 MiB`、安装器 `302.9 MiB`。包验收已包含 Host/Electron smoke，不重复运行相同检查。
+
+最终相关测试：桌面 `238` 通过、`4` 跳过；Updates `54` 通过、`3` 跳过；Security `2` 通过；MCP `86` 通过、`2` 跳过；Python `8` 通过；Bio `8` 通过；目录选择器 adaptation 单测 `1` 通过。跳过项包括 Base 私有历史、桌面真实 Python fixtures、MCP 远程 R 凭据、Research 的 live docking/OpenSlide/H5AD，以及未配置独立 Electron 路径的 3 项更新单测。真实打包后的 Electron 能力另经以下验收覆盖；不能据此宣称所有远程科研服务均已验证。
+
+真实 NSIS 覆盖安装使用已知不匹配的旧 carrier 和隔离中文目录。第一次安装超过 180 秒；第二次 NSIS exit `0` 且必需断言通过，但读取可选性能 trace 时出现 ENOENT，使原验证命令 exit `1`。随后补验全部必需断言 exit `0`，记录 `installer-test-811/installation-receipt.json` 与 `final-isolated-installation-complete.log`：旧 carrier 被拒绝，新 carrier 的 1031 个 payload 文件正式验签通过，ASAR 一致、用户 sentinel 保留、729 个 Office 物理资源齐全。未取得可选性能 trace；不能把原验证命令描述为直接成功。
+
+隔离安装会临时注册命令入口，测试工具现于安装前保存精确 HKCU PATH 值、类型及命令 owner，在 finally 中恢复；并发外部修改时拒绝覆盖。`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/packaging/installer-command-state.test.ps1` 在专属测试注册表 key 验证了顺序和类型恢复、安装前失败的 no-op、并发修改拒绝、原 PATH/owner 缺失及预先存在的相同路径。实际测试留下的临时命令入口已按所有权校验恢复正式安装，收据为 `command-owner-restoration.json`，未修改真实 profile。
+
+真实安装后的 Electron 使用隔离用户数据：宽屏和窄屏扩展中心分别为 `559/559`、`511/511` 的滚动宽度/客户区宽度，无横向溢出；未安装 Python 不计为更新。File Review `0.8.8` → `0.8.9-zws.1` 完成更新、Host 健康检查与回滚，`paper-download` `0.1.1` → `0.1.2` 完成更新与回滚。公网检测发现 1 个插件和 1 个 Skill 更新，启动弹窗、关闭后左下角标记、扩展中心跳转均通过，未创建自动安装任务且 profile 保持原样。收据为 `ui-receipt.json`、`update-receipt.json`、`notification-receipt.json`；对应截图保存在同目录。
+
+科学代码通过 Python Host 工具在唯一共享 `Python/python.exe` 中完成 NumPy `2.5.3`、Pandas `2.3.3`、SciPy 线性回归及 Matplotlib 出图，`current.json` 不变；并非从 UI 发起。最终安装目录下的 Bio stdio 完成 initialize、8 个公开工具/247 个内部工具发现、`bio_search`、`bio_jobs` 和再次 tools/list，连接保持。收据为 `python-tool-receipt.json`、`bio-stdio-receipt.json`。
+
+仅 Windows x64；未测机器级 UAC、生产安装注册、远程科研 API。无 Windows Authenticode 签名，资源目录与离线闭包使用稳定 Ed25519 签名。未创建 GitHub Release/tag。用户数据、密钥、未跟踪用户目录和 `artifacts/` 不纳入源码提交；详细机器收据位于 `artifacts/verification/8.1.1/`、`artifacts/release/8.1.1/publication/` 和 `artifacts/logs/8.1.1/`。
+
+### 17.5 本次桌面同版本覆盖授权
+
+普通稳定发布首先拒绝了旧七牛 `8.1.1` 候选对象与最终包的大小/哈希冲突。旧安装器为 `317,645,085` 字节，SHA-256 `04a15cf29dafb8047ae2c329a40a7c6bed3b94816587632406637ad94cebdb43`。用户随后明确要求“直接覆盖即可 8.1.1，没人下载”，撤回此前选择的 `8.1.2`。本次仅对 `stable/releases/8.1.1/` 下安装器、blockmap 和版本 JSON 三个桌面对象执行授权覆盖；常规发布保护及插件/Skills 的不可变规则保持有效，后续任务不得默认复用此例外。
+
+桌面下载地址为 `https://zerowall.chengxunkeji.cn/stable/releases/8.1.1/zerowall-science-8.1.1-win-x64.exe`。旧 publication 收据保留为 `*-before-authorized-overwrite.json`；覆盖后要求刷新 CDN，带校验参数及无参数的公开下载均匹配第 17.3 节最终字节，然后通过标准 `pnpm release:publish:stable` 提升桌面指针及 `pnpm release:verify:stable` 公网复核。当前已安装相同 `8.1.1` 的客户端不会因同版本号自动再次升级，需要退出后手动下载覆盖安装；`8.1.0` 及较早版本可检测到 `8.1.1`。
+
+最终 `pnpm release:publish:stable` 的 `stage`、`promote` 均成功，`pnpm release:verify:stable` exit `0`；公网收据 `artifacts/release/8.1.1/publication/qiniu-desktop-public.json` 的验证时间为 `2026-10-10T13:45:46.046Z`。安装器、blockmap、版本 JSON 及三个桌面指针均匹配本地 `artifact-manifest.json`。无参数安装器 URL 已完整下载核验；三个无参数指针也独立核验通过，收据分别为 `qiniu-desktop-overwrite-normal-urls.json`、`qiniu-desktop-pointer-normal-urls.json`。
+
+| 桌面 Stable 指针 | 字节 | SHA-256 |
+| --- | --- | --- |
+| `https://zerowall.chengxunkeji.cn/stable/latest.yml` | `1987` | `ace931b0c7a46033a83f26e0d2f1128f296f5a0d9696235f467b4294bd0f88d2` |
+| `https://zerowall.chengxunkeji.cn/stable/releases/latest.json` | `2076` | `29d1524b22c58cf48f0b4fdc7f381030ebe0593f1e1a80894f686e9fcdfb69fd` |
+| `https://zerowall.chengxunkeji.cn/stable/releases-zerowallsciencedev/latest.json` | `2076` | `29d1524b22c58cf48f0b4fdc7f381030ebe0593f1e1a80894f686e9fcdfb69fd` |

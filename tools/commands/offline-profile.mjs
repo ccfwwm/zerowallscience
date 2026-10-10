@@ -10,6 +10,39 @@ export function pluginIdentity(id) {
   if (typeof id !== 'string' || !/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) || id.split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid plugin identity')
   return id
 }
+
+export class OfflineProfileVerificationError extends Error {
+  constructor(message, diagnostics = {}) {
+    super(message)
+    this.name = 'OfflineProfileVerificationError'
+    this.code = 'OFFLINE_PROFILE_MISMATCH'
+    this.diagnostics = diagnostics
+  }
+}
+
+function mismatch(message, receipt, diagnostics = {}) {
+  return new OfflineProfileVerificationError(message, {
+    applicationVersion: receipt.applicationVersion,
+    buildId: receipt.buildId,
+    contentDigest: receipt.contentDigest,
+    ...diagnostics,
+  })
+}
+
+function compareEntries(actual, expected, hashes = true) {
+  const actualByPath = new Map(actual.map(entry => [entry.path, entry]))
+  const expectedByPath = new Map(expected.map(entry => [entry.path, entry]))
+  const extraFiles = actual.filter(entry => !expectedByPath.has(entry.path)).map(entry => entry.path)
+  const missingFiles = expected.filter(entry => !actualByPath.has(entry.path)).map(entry => entry.path)
+  const sizeMismatches = [], hashMismatches = []
+  for (const entry of actual) {
+    const wanted = expectedByPath.get(entry.path)
+    if (!wanted) continue
+    if (entry.size !== wanted.size) sizeMismatches.push({ path: entry.path, expected: wanted.size, actual: entry.size })
+    if (hashes && entry.sha256 !== wanted.sha256) hashMismatches.push({ path: entry.path, expected: wanted.sha256, actual: entry.sha256 })
+  }
+  return { extraFiles, missingFiles, sizeMismatches, hashMismatches }
+}
 function inside(root, path) {
   const rel = relative(root, path)
   if (!rel || rel === '..' || rel.startsWith('..\\') || rel.startsWith('../') || isAbsolute(rel)) throw new Error('Offline path escapes its signed root')
@@ -90,7 +123,8 @@ export async function verifyOfflineProfile(source, keys, target, { local = false
   const { receipt } = verified
   if (receipt.schema === 1) {
     const actual = (await offlineFiles(source)).filter(entry => entry.path !== 'receipt.json').sort((a, b) => a.path.localeCompare(b.path))
-    if (JSON.stringify(actual) !== JSON.stringify(receipt.files)) throw new Error('Offline profile size, SHA-256 or file set mismatch')
+    const differences = compareEntries(actual, receipt.files)
+    if (differences.extraFiles.length || differences.missingFiles.length || differences.sizeMismatches.length || differences.hashMismatches.length) throw mismatch('Offline profile size, SHA-256 or file set mismatch', receipt, differences)
   } else {
     const actual = []
     const payloadTasks = []
@@ -98,7 +132,7 @@ export async function verifyOfflineProfile(source, keys, target, { local = false
       if (entry.name === 'receipt.json' || staging && ['modules', 'build-receipt.json'].includes(entry.name)) continue
       if (entry.name === carrierName && entry.isFile()) payloadTasks.push((async () => [{ path: entry.name, size: (await lstat(join(source, entry.name))).size, sha256: await fileDigest(join(source, entry.name)) }])())
       else if (entry.name === carrierName + '.unpacked' && entry.isDirectory() && !(await lstat(join(source, entry.name))).isSymbolicLink()) payloadTasks.push(offlineFiles(join(source, entry.name), entry.name + '/'))
-      else throw new Error('Offline profile file set mismatch')
+      else throw mismatch('Offline profile file set mismatch', receipt, { extraFiles: [entry.name], missingFiles: [] })
     }
     const payloadResults = await Promise.allSettled(payloadTasks)
     for (const result of payloadResults) {
@@ -106,9 +140,11 @@ export async function verifyOfflineProfile(source, keys, target, { local = false
       actual.push(...result.value)
     }
     actual.sort((a, b) => a.path.localeCompare(b.path))
-    if (JSON.stringify(actual) !== JSON.stringify(receipt.payloadFiles)) throw new Error('Offline profile size, SHA-256 or file set mismatch')
+    const differences = compareEntries(actual, receipt.payloadFiles)
+    if (differences.extraFiles.length || differences.missingFiles.length || differences.sizeMismatches.length || differences.hashMismatches.length) throw mismatch('Offline profile size, SHA-256 or file set mismatch', receipt, differences)
     const logical = (await carrierIndex(source)).rows.map(({ path, size, sha256 }) => ({ path: path.replace(/^node_modules\//u, 'modules/'), size, sha256 })).sort((a, b) => a.path.localeCompare(b.path))
-    if (JSON.stringify(logical) !== JSON.stringify(receipt.files)) throw new Error('Offline archive logical file set mismatch')
+    const logicalDifferences = compareEntries(logical, receipt.files)
+    if (logicalDifferences.extraFiles.length || logicalDifferences.missingFiles.length || logicalDifferences.sizeMismatches.length || logicalDifferences.hashMismatches.length) throw mismatch('Offline archive logical file set mismatch', receipt, { logicalArchiveMismatch: logicalDifferences })
   }
   return verified
 }
@@ -123,15 +159,18 @@ async function assertCarrierSourceFiles(source, receipt, staging) {
       if (entry.isSymbolicLink()) throw new Error('Offline closure contains a link')
       if (entry.isDirectory()) await collect(path, name + '/')
       else if (entry.isFile()) actual.push({ path, name })
-      else throw new Error('Offline profile file set mismatch')
+      else throw mismatch('Offline profile file set mismatch', receipt, { extraFiles: [name], missingFiles: [] })
     }
   }
   await collect(source)
-  if (actual.length !== expected.size) throw new Error('Offline profile file set mismatch')
-  await concurrentFiles(actual, async ({ path, name }) => {
-    const record = expected.get(name), info = await lstat(path)
-    if (!record || !info.isFile() || info.isSymbolicLink() || info.size !== record.size) throw new Error('Offline profile file set or size mismatch')
+  const actualEntries = []
+  await concurrentFiles(actual, async ({ path, name }, index) => {
+    const info = await lstat(path)
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error('Offline closure contains a link or special file')
+    actualEntries[index] = { path: name, size: info.size }
   })
+  const differences = compareEntries(actualEntries, [...expected.values()], false)
+  if (differences.extraFiles.length || differences.missingFiles.length || differences.sizeMismatches.length) throw mismatch('Offline profile file set mismatch (size mismatch included)', receipt, differences)
 }
 
 export function generationModules(cache, receipt) {

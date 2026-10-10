@@ -12,6 +12,19 @@ readline.createInterface({input:process.stdin}).on('line', line => {
  if(q.method==='tools/call') setTimeout(()=>reply({content:[{type:'text',text:generation}]}),q.params.arguments.delay||0);
 });`
 describe('managed MCP generations', () => {
+  it('captures early startup stderr and removes credentials', async () => {
+    const generations = new ManagedGenerations({ tools: {} } as any)
+    const config = { serverName: 'managed', transport: 'stdio' as const, command: process.execPath, args: ['-e', 'console.error("ImportError: missing mcp; token=private-value"); process.exit(1)'], cwd: process.cwd(), env: {}, toolCallTimeoutMs: 5000, failOnStartupError: true }
+    await expect(generations.prepare(config)).rejects.toThrow('ImportError: missing mcp; token=[redacted]')
+  })
+  it('identifies tools/list as the failed health probe', async () => {
+    const generations = new ManagedGenerations({ tools: {}, logger: { error() {} } } as any)
+    const failing = server
+      .replace("serverInfo:{name:'fixture',version:generation}", "serverInfo:{name:'fixture',version:'one'}")
+      .replace("reply({tools:[{name:'echo',description:'Generation echo',inputSchema:{type:'object',properties:{delay:{type:'number'}}}}]})", "process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:q.id,error:{code:-32603,message:'probe failed'}})+'\\n')")
+    const config = { serverName: 'managed', transport: 'stdio' as const, command: process.execPath, args: ['-e', failing], cwd: process.cwd(), env: { TEST_GENERATION: 'one' }, toolCallTimeoutMs: 5000, failOnStartupError: true }
+    await expect(generations.prepare(config)).rejects.toThrow('validation failed (tools/list)')
+  })
   it('keeps an in-flight request on the old client and routes new requests to the candidate', async () => {
     const definitions = new Map<string, ToolDefinition>()
     const ctx = { tools: { register: (definition: ToolDefinition) => { if (definitions.has(definition.name)) throw Error('duplicate'); definitions.set(definition.name, definition); return () => definitions.delete(definition.name) } }, logger: { error() {} }, get: () => undefined } as any

@@ -44,15 +44,18 @@ export class ManagedGenerations {
     const transport = new StdioClientTransport({ command: config.command, args: config.args, cwd: config.cwd, env: { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), ...config.env, ELECTRON_RUN_AS_NODE: '1' }, stderr: 'pipe' })
     const definitions = new Map<string, ToolDefinition>()
     const generation: Generation = { client, definitions, references: 0, retired: false, snapshot }
+    let stderr = ''
+    let phase = 'initialize'
+    transport.stderr?.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-8_000) })
     try {
       await client.connect(transport)
-      transport.stderr?.on('data', () => undefined)
       // Reuse the established MCP schema/content/attachment bridge. Capture definitions
       // privately until the complete candidate has initialized successfully.
       const tools = new Proxy(this.ctx.tools, { get: (target, property) => property === 'register'
         ? (definition: ToolDefinition) => { definitions.set(definition.name, definition); return () => definitions.delete(definition.name) }
         : Reflect.get(target, property) })
       const context = new Proxy(this.ctx, { get: (target, property) => property === 'tools' ? tools : Reflect.get(target, property) })
+      phase = 'tools/list'
       await syncTools(client, context, { registrationFailure: 'throw', serverName: config.serverName, toolCallTimeoutMs: config.toolCallTimeoutMs }, new Map())
       const root = process.env.ZEROWALL_PYTHON_ROOT ?? process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
       if (root && snapshot) {
@@ -62,7 +65,13 @@ export class ManagedGenerations {
       }
       this.generations.add(generation)
       return generation
-    } catch (error) { await client.close().catch(() => undefined); throw error }
+    } catch (error) {
+      await client.close().catch(() => undefined)
+      const diagnostic = `${error instanceof Error ? error.message : String(error)}${stderr ? `\nMCP stderr: ${stderr}` : ''}`.replace(/\b(Bearer|Basic)\s+\S+/giu, '$1 [redacted]')
+        .replace(/(authorization|api[-_ ]?key|token|secret|password)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu, '$1=[redacted]')
+        .replace(/https?:\/\/[^\s)\]}]+/giu, '[redacted-url]')
+      throw new Error(`MCP ${config.serverName} validation failed (${phase}): ${diagnostic}`, { cause: error })
+    }
   }
   activate(id: string, generation: Generation): string[] {
     const previous = this.active.get(id)

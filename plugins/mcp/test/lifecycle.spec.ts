@@ -384,7 +384,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
         } })
         expect(saved.runtimeState).toBe('blocked')
         expect(saved.reconnect.maxAttempts).toBe(2)
-        await expect(ctx.zerowallMcp.ensureConnected(item.serverName)).rejects.toThrow('environment is not ready')
+        await expect(ctx.zerowallMcp.ensureConnected(item.serverName)).rejects.toThrow('共享 Python/MCP 环境未就绪')
       }
       await expect.poll(async () => (await ctx.zerowallMcp.list()).filter(item => item.serverName.startsWith('zerowall_managed_')).every(item => item.runtimeState === 'blocked'), { timeout: 10_000, interval: 25 }).toBe(true)
       mkdirSync(environmentStore, { recursive: true })
@@ -395,6 +395,11 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await (timer![0] as () => void)()
       await new Promise(resolve => setImmediate(resolve))
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_ketcher')?.runtimeState, { timeout: 10_000 }).toBe('active')
+      expect((await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_bio_tools')).toMatchObject({ runtimeState: 'blocked', runtimeError: expect.stringContaining('核心依赖尚未安装') })
+      mkdirSync(join(runtimeRoot, 'Python/Lib/site-packages/mcp'), { recursive: true })
+      writeFileSync(join(runtimeRoot, 'Python/Lib/site-packages/mcp/__init__.py'), '')
+      const bio = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_bio_tools')!
+      await ctx.zerowallMcp.update({ id: bio.id, changes: { enabled: true } })
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_bio_tools')?.runtimeState, { timeout: 10_000 }).toBe('active')
       const beforeInspect = (await ctx.zerowallMcp.list()).map(item => item.tools)
       await (timer![0] as () => void)()

@@ -15,6 +15,7 @@ export interface StartupStatus {
   startedAt: number
   segment?: string
   durationMs?: number
+  diagnostics?: { code?: string; applicationVersion?: string; buildId?: string; contentDigest?: string; extraFiles?: number; missingFiles?: number; sizeMismatches?: number; hashMismatches?: number; logicalArchiveMismatch?: { extraFiles?: number; missingFiles?: number; sizeMismatches?: number; hashMismatches?: number } }
 }
 
 export interface DesktopInfo {
