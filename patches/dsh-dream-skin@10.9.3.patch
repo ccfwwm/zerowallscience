@@ -66,7 +66,60 @@ index 431858a..fc1486e 100644
  			"skin.title": "Скины",
  			"skin.default": "По умолчанию",
  			"skin.abyss": "Глубокий синий",
-@@ -6399,8 +6407,8 @@ window.__ModuleLoader__.load({
+@@ -1739,6 +1747,13 @@ window.__ModuleLoader__.load({
+ 				// inside restorePersistedState pushes as a user-state write
+ 				// (9.26.1 adjudication P0-4).
+ 				hostProbeSettled = true;
++				// An older package could persist its complete factory appearance.
++				// Match both the exact bundled SVG and the original skin, so an
++				// explicitly chosen skin or custom wallpaper remains untouched.
++				const legacyHostFactory = parsed.value[STORAGE_KEY] === LEGACY_FACTORY_SKIN
++					&& parsed.value[WALLPAPER_KIND_KEY] === "image"
++					&& parsed.value[WALLPAPER_KEY] === LEGACY_FACTORY_WALLPAPER
++					&& !Object.prototype.hasOwnProperty.call(parsed.value, WALLPAPER_HISTORY_KEY);
+ 				const hostKeys = Object.keys(parsed.value);
+ 				let adopted = false;
+ 				for (const [key, value] of Object.entries(parsed.value)) {
+@@ -1768,6 +1783,15 @@ window.__ModuleLoader__.load({
+ 					}
+ 					adopted = true;
+ 				}
++				if (legacyHostFactory) {
++					// Ordinary writes persist the migration, so a new random-port
++					// browser origin cannot bring the old factory look back later.
++					writeStorage(STORAGE_KEY, FACTORY_DEFAULTS[STORAGE_KEY]);
++					writeStorage(WALLPAPER_KEY, FACTORY_DEFAULTS[WALLPAPER_KEY]);
++					if (readStorage(WALLPAPER_GRADIENT_KEY) === LEGACY_FACTORY_GRADIENT) {
++						writeStorage(WALLPAPER_GRADIENT_KEY, FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY]);
++					}
++				}
+ 				// Migration: an empty host file means this is the first boot with
+ 				// host persistence — seed it with whatever the local (same-origin)
+ 				// state holds so previously set preferences survive origin changes.
+@@ -1827,6 +1851,22 @@ window.__ModuleLoader__.load({
+ 			}
+ 		}
+ 
++		/** Upgrade only values still marked as the old factory appearance. */
++		function migrateLegacyFactoryAppearance() {
++			if (factorySnapshot.get(STORAGE_KEY) === LEGACY_FACTORY_SKIN
++				&& readStorage(STORAGE_KEY) === LEGACY_FACTORY_SKIN) {
++				writeStorage(STORAGE_KEY, FACTORY_DEFAULTS[STORAGE_KEY], { factory: true });
++			}
++			if (factorySnapshot.get(WALLPAPER_KEY) === LEGACY_FACTORY_WALLPAPER
++				&& readStorage(WALLPAPER_KEY) === LEGACY_FACTORY_WALLPAPER) {
++				writeStorage(WALLPAPER_KEY, FACTORY_DEFAULTS[WALLPAPER_KEY], { factory: true });
++			}
++			if (factorySnapshot.get(WALLPAPER_GRADIENT_KEY) === LEGACY_FACTORY_GRADIENT
++				&& readStorage(WALLPAPER_GRADIENT_KEY) === LEGACY_FACTORY_GRADIENT) {
++				writeStorage(WALLPAPER_GRADIENT_KEY, FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY], { factory: true });
++			}
++		}
++
+ 		/** Drop one key from the persistent provenance snapshot and persist it. */
+ 		function removeFactoryProvenance(key) {
+ 			if (!factorySnapshot.delete(key)) return;
+@@ -6399,8 +6439,8 @@ window.__ModuleLoader__.load({
  			// Not deferred: on its own a fill mode paints nothing (it only matters
  			// once a wallpaper exists), so it cannot cause the #51 flash.
  			[WALLPAPER_FIT_KEY]: DEFAULT_WALLPAPER_FIT,
@@ -77,7 +130,31 @@ index 431858a..fc1486e 100644
  			[MATERIAL_PRESET_KEY]: String(FACTORY_SKIN_DEFAULTS.material ?? DEFAULT_MATERIAL_PRESET),
  			// Factory refresh OFF (blue-team B7): polling a third-party API on the
  			// user's behalf (even hourly) must be an explicit opt-in, never a
-@@ -7612,7 +7620,7 @@ window.__ModuleLoader__.load({
+@@ -6407,6 +6447,15 @@ window.__ModuleLoader__.load({
+ 			// schedule themselves. DEFAULT_REFRESH_HOURS (24h) applies once on.
+ 			[WALLPAPER_REFRESH_KEY]: "{\"on\":0,\"hours\":24}"
+ 		};
++		// ZeroWall's first-run appearance is the upstream iOS Flat skin. Keep the
++		// former values only to recognize and migrate the old shipped look; empty
++		// wallpaper values leave the iOS surface clean without affecting user art.
++		const LEGACY_FACTORY_SKIN = FACTORY_DEFAULTS[STORAGE_KEY];
++		const LEGACY_FACTORY_WALLPAPER = FACTORY_DEFAULTS[WALLPAPER_KEY];
++		const LEGACY_FACTORY_GRADIENT = FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY];
++		FACTORY_DEFAULTS[STORAGE_KEY] = "ivory";
++		FACTORY_DEFAULTS[WALLPAPER_KEY] = "";
++		FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY] = "";
+ 		/**
+ 		 * Issue #51 (dynamic-port desktop shell): the visible wallpaper keys
+ 		 * are NOT seeded during the boot pass. On an Electron shell whose core
+@@ -6440,6 +6489,7 @@ window.__ModuleLoader__.load({
+ 			// (blue-team T1): isFactorySeededValue()/hasUserState() must see the
+ 			// cross-session factory provenance, not just this session's seals.
+ 			loadFactorySnapshot();
++			migrateLegacyFactoryAppearance();
+ 			// Blue-team F1: the marker key is new in this build, so EVERY upgrader
+ 			// lacks it — the marker alone cannot distinguish "fresh install" from
+ 			// "existing user who never touched X". Upgraders must keep exactly
+@@ -7612,7 +7662,7 @@ window.__ModuleLoader__.load({
  				name: "settings.section",
  				id: "dream-skin",
  				order: 10,
@@ -86,7 +163,7 @@ index 431858a..fc1486e 100644
  				locale: SETTINGS_NS,
  				children: { "settings.dreamSkin.item": {
  					kind: "list",
-@@ -8161,7 +8169,7 @@ window.__ModuleLoader__.load({
+@@ -8161,7 +8211,7 @@ window.__ModuleLoader__.load({
    // (`label: "Theme / 外观"`, see the settings.section registration in the
    // factory). Substring/marker games painted rows we never declared; see the
    // matcher's own comment below for the measured walk-ons.
@@ -95,7 +172,7 @@ index 431858a..fc1486e 100644
    var mask = "%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20width%3D'24'%20height%3D'24'%20viewBox%3D'0%200%2024%2024'%20fill%3D'none'%20stroke%3D'black'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Ccircle%20cx%3D%2213.5%22%20cy%3D%226.5%22%20r%3D%221.05%22%2F%3E%3Ccircle%20cx%3D%2217.5%22%20cy%3D%2210.5%22%20r%3D%221.05%22%2F%3E%3Ccircle%20cx%3D%228.5%22%20cy%3D%227.5%22%20r%3D%221.05%22%2F%3E%3Ccircle%20cx%3D%226.5%22%20cy%3D%2212.5%22%20r%3D%221.05%22%2F%3E%3Cpath%20d%3D'M12%202C6.5%202%202%206.5%202%2012s4.5%2010%2010%2010c.926%200%201.648-.746%201.648-1.688%200-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64%201.64%200%200%201%201.668-1.668h1.996c3.051%200%205.555-2.503%205.555-5.554C21.965%206.012%2017.461%202%2012%202z'%2F%3E%3C%2Fsvg%3E"
    var css = "[" + MARKER + "] > svg:first-child{display:none}" +
      "[" + MARKER + "]::before{content:\"\";flex:none;width:16px;height:16px;background:currentColor;" +
-@@ -8271,7 +8279,7 @@ window.__ModuleLoader__.load({
+@@ -8271,7 +8321,7 @@ window.__ModuleLoader__.load({
          // Trade-off stated plainly: if a future host renders our row without the
          // exact label, we lose the icon (decorative loss, visible as marked:0 &&
          // armed:1) — we never gain a foreign row.
@@ -104,3 +181,14 @@ index 431858a..fc1486e 100644
          if (mm) { b.setAttribute(MARKER, ""); marked++; nextMarked.push(b) }
          else b.removeAttribute(MARKER)
        }
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+ 	"name": "dsh-dream-skin",
+-	"version": "10.9.3",
++	"version": "10.9.4-zws.1",
+ 	"description": "DeepSeek Harness 换肤插件（Dream Skin for DSH）：8 套 iOS / Linear 式清透冷调的高质感主题 + 弥散光壁纸 + 每皮肤智能背景 + 强调色 + 主题包分享，把换肤做成材质与配色克制的高级感工艺，而非贴图。Works in native DSH Web and third-party desktop clients (DSH Desktop): 8 original premium themes, glass materials, wallpaper 2.0, per-user accent, shareable theme packs — purely native token system.",
+ 	"license": "MIT",
+ 	"type": "module",

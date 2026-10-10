@@ -18,7 +18,7 @@ const relationships = (type, target) => xml(`<Relationships xmlns="http://schema
 const doc = new JSZip()
 doc.file('[Content_Types].xml', xml('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'))
 doc.file('_rels/.rels', relationships('officeDocument', 'word/document.xml'))
-doc.file('word/document.xml', xml('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>ZeroWall Office conversion and preview 8.0.9</w:t></w:r></w:p><w:p><w:r><w:t>科研文档离线验收</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>'))
+doc.file('word/document.xml', xml('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>ZeroWall Office conversion and preview 8.1.0</w:t></w:r></w:p><w:p><w:r><w:t>科研文档离线验收</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>'))
 await save('sample.docx', await doc.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }), { expectedText: 'ZeroWall Office' })
 const book = new JSZip()
 book.file('[Content_Types].xml', xml('<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>'))
@@ -30,7 +30,7 @@ book.file('xl/worksheets/sheet1.xml', xml(`<worksheet xmlns="http://schemas.open
 await save('sample.xlsx', await book.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }), { minRows: 13, minColumns: 14 })
 const deck = new PptxGenJS()
 deck.layout = 'LAYOUT_WIDE'
-for (const title of Array.from({ length: 12 }, (_, index) => `ZeroWall Science Office 8.0.9 - ${index + 1}`)) {
+for (const title of Array.from({ length: 12 }, (_, index) => `ZeroWall Science Office 8.1.0 - ${index + 1}`)) {
   const slide = deck.addSlide()
   slide.addShape(deck.ShapeType.rect, { x: 0.5, y: 1.6, w: 4, h: 2.2, fill: { color: '2563EB' } })
   slide.addText(title, { x: 0.6, y: 0.4, w: 12, h: 0.8, fontSize: 30 })
@@ -38,7 +38,7 @@ for (const title of Array.from({ length: 12 }, (_, index) => `ZeroWall Science O
 }
 await save('sample.pptx', await deck.write({ outputType: 'nodebuffer' }), { minSlides: 12 })
 const pdf = await PDFDocument.create(), font = await pdf.embedFont(StandardFonts.Helvetica)
-pdf.addPage([600, 800]).drawText('Offline PDF worker and zoom verification 8.0.9', { x: 40, y: 720, size: 18, font })
+pdf.addPage([600, 800]).drawText('Offline PDF worker and zoom verification 8.1.0', { x: 40, y: 720, size: 18, font })
 await save('offline-worker.pdf', await pdf.save(), { expectedText: 'Offline PDF worker' })
 await save('ethanol.sdf', Buffer.from('Ethanol\nZeroWall\n\n  3  2  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    2.5000    1.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\nM  END\n$$$$\n'))
 await save('offline-map.geojson', Buffer.from(JSON.stringify({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { name: 'Offline polygon' }, geometry: { type: 'Polygon', coordinates: [[[116, 39], [117, 39], [117, 40], [116, 40], [116, 39]]] } }] })))

@@ -9,6 +9,8 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
 import { DesktopNotifications } from './notifications.js'
+import { redactResourceDiagnostic } from './resource-diagnostics.js'
+import { resourceUpdateSummary, type CatalogCheck } from './resource-update-status.js'
 import updaterPackage from 'electron-updater'
 import { HarnessRuntime, type HarnessChildProcess } from './runtime/harness-runtime.js'
 import { attachCredentialBroker } from './credentials/broker.js'
@@ -719,19 +721,43 @@ if (ownsInstance) app.whenReady().then(async () => {
     } while (Date.now() < deadline)
     throw new Error('A configured ZeroWall plugin could not activate; restoring the previous profile')
   }
+  const redactDiagnostic = (value: string): string => redactResourceDiagnostic(value).slice(-4000)
   const runPlugin = (args: string[], profile = 'web'): Promise<unknown> => new Promise((accept, reject) => {
     const child = spawn(nodeExecutablePath(), ['--expose-internals', join(commandRoot, 'dsh.mjs'), 'plugin', '--profile', profile, ...args], {
       windowsHide: true, env: { ...process.env, DSH_HOME: dshHome, ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}) }, stdio: 'pipe',
     })
     let output = ''
+    let errorOutput = ''
     child.stdout.on('data', chunk => { output = (output + String(chunk)).slice(-65536) })
-    child.stderr.resume()
+    child.stderr.on('data', chunk => { errorOutput = (errorOutput + String(chunk)).slice(-65536) })
     child.on('error', reject)
-    child.on('exit', code => code === 0 ? accept({ code, output }) : reject(new Error('DSH package operation failed; inspect profile diagnostics')))
+    child.on('exit', code => {
+      if (code === 0) { accept({ code, output }); return }
+      void (async () => {
+        let diagnostics = 'profile diagnostics unavailable'
+        try {
+          const report = await profileDoctor() as { desktopVersion?: string; dshVersion?: string; updates?: string[]; plugins?: Array<{ id?: string; version?: string | null; compatibility?: string; updateAvailable?: boolean }> }
+          const plugins = (report.plugins ?? []).map(item => `${item.id ?? 'unknown'}=${item.version ?? 'missing'}${item.compatibility === 'incompatible' ? ' (incompatible)' : ''}`).join(', ')
+          diagnostics = `desktop=${report.desktopVersion ?? app.getVersion()}, dsh=${report.dshVersion ?? dshIdentity.version}, updates=${(report.updates ?? []).join(',') || 'none'}, plugins=${plugins || 'none'}`
+        } catch (error) {
+          diagnostics = `profile diagnostics failed: ${error instanceof Error ? error.message : String(error)}`
+        }
+        const stdout = redactDiagnostic(output)
+        const stderr = redactDiagnostic(errorOutput)
+        const details = [
+          `DSH package operation failed (exit code ${code ?? 'unknown'})`,
+          stderr ? `stderr: ${stderr}` : '',
+          stdout ? `stdout: ${stdout}` : '',
+          `profile diagnostics: ${redactDiagnostic(diagnostics)}`,
+        ].filter(Boolean).join('\n')
+        reject(new Error(details))
+      })().catch(error => reject(error instanceof Error ? error : new Error(String(error))))
+    })
   })
   const { createResourceManager } = await import(pathToFileURL(join(commandRoot, 'resource-manager.mjs')).href)
   const keys = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'trusted-keys.json') : join(findWorkspaceRoot(), 'config/catalogs/trusted-keys.json'), 'utf8'))
-  const resources = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins, runtimeModules: app.isPackaged ? join(process.resourcesPath, 'app.asar/node_modules') : developmentStagePath('runtime', 'node_modules'), target: { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version, dshCommit: dshIdentity.commit, platform: process.platform, architecture: process.arch }, runPlugin,
+  const bundledSkillVersions = JSON.parse(await readFile(join(commandRoot, 'bundled-skill-versions.json'), 'utf8'))
+  const resources = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins, bundledSkillVersions, runtimeModules: app.isPackaged ? join(process.resourcesPath, 'app.asar/node_modules') : developmentStagePath('runtime', 'node_modules'), target: { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version, dshCommit: dshIdentity.commit, platform: process.platform, architecture: process.arch }, runPlugin,
     offlineStaging: !app.isPackaged,
     onOfflinePhase: (event: { phase: string; state: string; durationMs?: number }) => {
       const labels: Record<string, string> = { 'offline-verify': '正在校验离线插件', 'offline-verify-candidate': '正在验证本地插件文件', 'offline-copy': '正在准备离线插件文件', 'profile-prepare': '正在准备用户插件配置', 'offline-reuse': '已复用本地插件' }
@@ -747,12 +773,39 @@ if (ownsInstance) app.whenReady().then(async () => {
     stopHost: () => harnessRuntime.stop(), startHost, callHost, yaml: createRequire(app.isPackaged ? join(process.resourcesPath, 'app.asar/package.json') : join(findWorkspaceRoot(), 'package.json'))('yaml') })
   await resources.recover()
   type ResourceKind = 'plugin' | 'skill' | 'mcp'
+  type ResourceUpdateStatus = { phase: 'idle' | 'checking' | 'available' | 'upToDate' | 'error'; checkedAt?: string; updateCount: number; kinds: Partial<Record<ResourceKind, number>>; error?: string }
+  const resourceCheckRecordPath = join(userData, 'updates', 'resources-check.json')
+  let resourceUpdateStatus: ResourceUpdateStatus = { phase: 'idle', updateCount: 0, kinds: {} }
+  let resourceCheckInFlight: Promise<ResourceUpdateStatus> | undefined
+  const publishResourceUpdateStatus = (status: ResourceUpdateStatus): ResourceUpdateStatus => {
+    resourceUpdateStatus = status
+    if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:resource-update-status', status)
+    return status
+  }
+  const countResourceUpdates = (results: CatalogCheck[], failures: string[] = []): ResourceUpdateStatus => resourceUpdateSummary(resourceUpdateStatus, results, failures)
+  const checkResourceCatalogs = async (force = false): Promise<ResourceUpdateStatus> => {
+    if (resourceCheckInFlight) return resourceCheckInFlight
+    resourceCheckInFlight = (async () => {
+      if (!force) {
+        const record = await readResourceCheckRecord(resourceCheckRecordPath)
+        if (!isUpdateCheckDue(record.lastCheckedAt)) return resourceUpdateStatus
+      }
+      publishResourceUpdateStatus({ ...resourceUpdateStatus, phase: 'checking', error: undefined })
+      const results = await Promise.allSettled((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.check(kind, undefined, { localOnly: false })))
+      const successful = results.flatMap(result => result.status === 'fulfilled' ? [result.value as CatalogCheck] : [])
+      const rejected = results.filter(result => result.status === 'rejected').map(result => result.reason instanceof Error ? result.reason.message : String(result.reason)).filter(Boolean)
+      const next = countResourceUpdates(successful, rejected)
+      await writeResourceCheckRecord(resourceCheckRecordPath, { lastCheckedAt: Date.now(), lastNotifiedSignature: String(next.updateCount) }).catch(() => undefined)
+      return publishResourceUpdateStatus(next)
+    })().finally(() => { resourceCheckInFlight = undefined })
+    return resourceCheckInFlight
+  }
   type ResourceJob = { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
   const resourceJobRoot = join(userData, 'harness', 'resources', 'jobs')
   const resourceJobs = new Map<string, ResourceJob>()
   const safeResourceError = (error: unknown): string => {
     const message = error instanceof Error ? error.message : 'Resource operation failed'
-    return message.replace(/(token|secret|password|authorization|api[-_]?key)\s*[:=]\s*[^\s,;]+/giu, '$1=[redacted]').slice(0, 500)
+    return redactResourceDiagnostic(message).slice(0, 12000)
   }
   const persistResourceJob = async (job: ResourceJob): Promise<void> => {
     resourceJobs.set(job.taskId, job)
@@ -828,6 +881,7 @@ if (ownsInstance) app.whenReady().then(async () => {
         await persistResourceJob({ ...running, status: 'succeeded', phase: 'health-check', progress: 90, newVersion, result, updatedAt: new Date().toISOString() })
         if (latest?.cancelRequested) await persistResourceJob({ ...running, status: 'succeeded', phase: 'complete', progress: 100, newVersion, result, error: 'Cancellation requested after activation; result retained', updatedAt: new Date().toISOString() })
         else await persistResourceJob({ ...running, status: 'succeeded', phase: 'complete', progress: 100, newVersion, result, updatedAt: new Date().toISOString() })
+        await resources.list(kind).then((result: CatalogCheck) => publishResourceUpdateStatus(countResourceUpdates([result]))).catch(() => undefined)
       } catch (error) {
         const latest = resourceJobs.get(taskId)
         if (latest?.status === 'cancelled') return
@@ -1152,9 +1206,18 @@ if (ownsInstance) app.whenReady().then(async () => {
   })
   ipcMain.handle('desktop:get-update-status', () => updates.current())
   ipcMain.handle('desktop:check-for-updates', () => updates.check())
+  ipcMain.handle('desktop:resource-update-status', () => resourceUpdateStatus)
+  ipcMain.handle('desktop:check-resource-updates', () => checkResourceCatalogs(true))
   ipcMain.handle('desktop:download-update', () => updates.download())
   ipcMain.handle('desktop:install-update', () => updates.install())
-  ipcMain.handle('desktop:resource-check', (_event, kind: unknown, localOnly: unknown) => resources.check(String(kind) as ResourceKind, undefined, { localOnly: localOnly === true }))
+  ipcMain.handle('desktop:resource-check', async (_event, kind: unknown, localOnly: unknown) => {
+    const result = await resources.check(String(kind) as ResourceKind, undefined, { localOnly: localOnly === true })
+    if (localOnly !== true) {
+      const next = countResourceUpdates([result as CatalogCheck])
+      publishResourceUpdateStatus(next)
+    }
+    return result
+  })
   ipcMain.handle('desktop:resource-list', (_event, kind: unknown) => resources.list(String(kind) as ResourceKind))
   ipcMain.handle('desktop:resource-dependents', (_event, id: unknown) => resources.dependents(String(id)))
   ipcMain.handle('desktop:resource-status', async () => ({ checkedAt: new Date().toISOString(), results: await Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.list(kind))) }))
@@ -1213,19 +1276,22 @@ if (ownsInstance) app.whenReady().then(async () => {
   await launch()
   await navigation
   const updateRecordPath = join(userData, 'updates', 'last-check.json')
-  const runScheduledUpdateCheck = async (): Promise<void> => {
+  const runScheduledUpdateCheck = async (force = false): Promise<void> => {
     const record = await readUpdateCheckRecord(updateRecordPath)
-    if (!isUpdateCheckDue(record.lastCheckedAt)) return
+    if (!force && !isUpdateCheckDue(record.lastCheckedAt)) return
     // Persist the attempt before contacting the feed. A failed background
     // check remains retryable manually, but cannot retry-loop on startup.
     await writeUpdateCheckRecord(updateRecordPath, Date.now())
     await updates.check()
   }
-  const updateTimer = setTimeout(() => { if (startup.phase === 'ready') void runScheduledUpdateCheck().catch(() => undefined) }, 15_000)
+  const updateTimer = setTimeout(() => { void runScheduledUpdateCheck(true).catch(() => undefined) }, 15_000)
   updateTimer.unref()
   const updateInterval = setInterval(() => { void runScheduledUpdateCheck().catch(() => undefined) }, UPDATE_CHECK_INTERVAL_MS)
   updateInterval.unref()
-  // Extension resource catalogs are checked only by explicit user action.
+  const resourceUpdateTimer = setTimeout(() => { void checkResourceCatalogs(true).catch(() => undefined) }, 12_000)
+  resourceUpdateTimer.unref()
+  const resourceUpdateInterval = setInterval(() => { void checkResourceCatalogs().catch(() => undefined) }, UPDATE_CHECK_INTERVAL_MS)
+  resourceUpdateInterval.unref()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0 && runtime !== undefined) void showHarness(runtime.snapshot())
     else showMainWindow()

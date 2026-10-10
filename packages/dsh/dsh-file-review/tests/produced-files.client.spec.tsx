@@ -1537,10 +1537,7 @@ describe('FileReview settings card', () => {
     } as unknown as FileReviewSettingsCardProps
     const view = render(<FileReviewSettingsCard {...props} />)
 
-    const starLink = view.getByRole('link', { name: en['settings.star.aria'] })
-    expect(starLink.getAttribute('href')).toBe('https://github.com/left0ver/dsh-file-review')
-    expect(starLink.getAttribute('target')).toBe('_blank')
-    expect(starLink.getAttribute('rel')).toBe('noopener noreferrer')
+    expect(view.queryByRole('link')).toBeNull()
     expect(view.queryByRole('switch')).toBeNull()
     fireEvent.click(view.getByRole('button', { name: 'Expand: File review' }))
     const toggle = view.getByRole('switch', { name: 'Automatically wrap long lines' })

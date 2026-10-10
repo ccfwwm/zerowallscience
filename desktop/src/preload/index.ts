@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { mountWindowChrome } from './window-chrome.js'
 import type { DesktopClipboardFile, DesktopClipboardImage, DesktopInfo, DesktopUpdateStatus, McpEnvironmentStatus, McpPythonInfo, PythonPackagePlan, StartupStatus } from '../shared/contracts.js'
-import type { PythonLayer, PythonLayerCheck, ResourceCheckResult, ResourceJob, ResourceKind } from '../../../plugins/base/src/client/desktop-api.js'
+import type { PythonLayer, PythonLayerCheck, ResourceCheckResult, ResourceJob, ResourceKind, ResourceUpdateStatus } from '../../../plugins/base/src/client/desktop-api.js'
 import type { PythonEnvironmentResponse } from '../../../plugins/base/src/client/desktop-api.js'
 
 contextBridge.exposeInMainWorld('zerowallDesktop', {
@@ -72,6 +72,13 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
     const handler = (_event: Electron.IpcRendererEvent, status: DesktopUpdateStatus) => listener(status)
     ipcRenderer.on('desktop:update-status', handler)
     return () => ipcRenderer.removeListener('desktop:update-status', handler)
+  },
+  getResourceUpdateStatus: async (): Promise<ResourceUpdateStatus> => await ipcRenderer.invoke('desktop:resource-update-status') as ResourceUpdateStatus,
+  checkResourceUpdates: async (): Promise<ResourceUpdateStatus> => await ipcRenderer.invoke('desktop:check-resource-updates') as ResourceUpdateStatus,
+  onResourceUpdateStatus: (listener: (status: ResourceUpdateStatus) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: ResourceUpdateStatus) => listener(status)
+    ipcRenderer.on('desktop:resource-update-status', handler)
+    return () => ipcRenderer.removeListener('desktop:resource-update-status', handler)
   },
   resources: {
     list: async (kind: ResourceKind): Promise<ResourceCheckResult> => await ipcRenderer.invoke('desktop:resource-list', kind) as ResourceCheckResult,

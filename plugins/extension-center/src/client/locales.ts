@@ -2,12 +2,12 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-locale'
 
 export const NS = 'zerowall.extensionCenter' as const
 export const zh = {
-  activationError: '激活失败', activationUnavailable: '尚未确认激活', unchecked: '尚未检查更新',
+  activationError: '激活失败', activationUnavailable: '尚未确认激活', unchecked: '尚未检查更新', summary: '资源更新摘要', lastChecked: '上次检查',
   localRefresh: '刷新本地列表', localReady: '本地资源', loadingLocal: '读取本地资源…', missing: '插件包缺失',
   pinned: '已固定版本', pin: '固定当前版本', unpin: '解除固定', updateSelected: '更新选中项', selectUpdate: '选择更新',
   dependentWarning: '此操作还会停用以下依赖插件，继续吗？',
   title: '扩展中心',
-  intro: '打开时显示本地插件、Skills、MCP 和 Python。点击检查更新才检测远端；安装与升级由你选择。',
+  intro: '自动检查插件与 Skills 更新，统一管理 MCP 和 Python；安装与升级由你选择。',
   refresh: '检查更新',
   checking: '正在检查…',
   ready: '已完成检查',
@@ -60,12 +60,12 @@ export const zh = {
 } satisfies Record<string, string>
 
 export const en: typeof zh = {
-  activationError: 'Activation failed', activationUnavailable: 'Activation unconfirmed', unchecked: 'Updates not checked',
+  activationError: 'Activation failed', activationUnavailable: 'Activation unconfirmed', unchecked: 'Updates not checked', summary: 'Resource update summary', lastChecked: 'Last checked',
   localRefresh: 'Refresh local list', localReady: 'Local resources', loadingLocal: 'Reading local resources…', missing: 'Plugin package missing',
   pinned: 'Pinned version', pin: 'Pin current version', unpin: 'Unpin', updateSelected: 'Update selected', selectUpdate: 'Select update',
   dependentWarning: 'This operation will also disable these dependent plugins. Continue?',
   title: 'Extension Center',
-  intro: 'Manage ZeroWall plugins, Skills, MCP, and layered Python environments. Checks are read-only; installation and upgrades are manual.',
+  intro: 'Automatically check plugin and Skills updates, and manage MCP and Python. Choose when to install or upgrade.',
   refresh: 'Check for updates', checking: 'Checking…', ready: 'Check complete', unavailable: 'Desktop resource service unavailable', failed: 'Check failed', cancelled: 'Resource task was cancelled', empty: 'No updates are available.', installed: 'Installed', available: 'Update available', update: 'Update', updateAll: 'Update all available', rollback: 'Rollback', disable: 'Disable', enable: 'Enable', remove: 'Uninstall', restart: 'Host restart required', signed: 'Signature verified', unsigned: 'Unsigned', plugins: 'Plugins', skills: 'Skills', mcp: 'MCP', python: 'Python', pythonCore: 'Python Core', pythonScience: 'Python Science', task: 'Task', source: 'Source', version: 'Version', status: 'Status', noDesktop: 'The ZeroWall desktop resource bridge is unavailable.', catalogUnavailable: 'Local resources are shown; the signed catalog is unavailable.', catalogError: 'Catalog check failed', search: 'Search resources', import: 'Import', install: 'Install', repair: 'Repair', disabled: 'Disabled', notInstalled: 'Not installed', tasks: 'Resource tasks', noTasks: 'No resource tasks', retry: 'Retry', cancel: 'Cancel',
   source_profile: 'User installed', source_bundled: 'Built in', source_runtime: 'Core runtime', source_catalog: 'Remote catalog', source_removed: 'Removed', source_disabled: 'Disabled', runtimeCore: 'Provided by DSH core', bundledResource: 'Included in installer', localResource: 'Local resource',
   catalogUnpublished: 'The independent update catalog has not been published. Local resources remain available; check here after publication.',

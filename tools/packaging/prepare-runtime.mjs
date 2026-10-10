@@ -7,6 +7,7 @@ import { access, cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } f
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
 import { adaptUniverOfficeManifest, adaptUniverSkill, UNIVER_SKILL_HASHES } from './adapt-univer-office.mjs'
+import { adaptProgressiveToolsManifest, adaptProgressiveToolsPatch } from './adapt-progressive-tools.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
 import { adaptDreamSkinClient } from './adapt-dream-skin.mjs'
@@ -288,6 +289,9 @@ async function copyRuntimePackage(package_, targetRoot) {
   const { manifest, manifestPath, sourceRoot, workspace } = package_
   await mkdir(targetRoot, { recursive: true })
   await cp(manifestPath, resolve(targetRoot, 'package.json'))
+  if (manifest.name === '@everclear077/dsh-progressive-tools') {
+    await writeFile(resolve(targetRoot, 'package.json'), adaptProgressiveToolsManifest(await readFile(manifestPath, 'utf8')))
+  }
   // DSH's manager reads declared artwork and locale from the package boundary.
   // These must survive each plugin's narrow runtime-copy branch below.
   if (manifest.dsh && typeof manifest.icon === 'string' && manifest.icon.startsWith('./')) {
@@ -408,6 +412,10 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
     }
     const roots = new Set(manifest.files.filter(entry => typeof entry === 'string' && !entry.startsWith('!')).map(publishRoot))
     for (const entry of roots) await copyEntry(sourceRoot, targetRoot, entry)
+    if (manifest.name === '@everclear077/dsh-progressive-tools') {
+      const patchPath = resolve(targetRoot, 'cordis.patch.yml')
+      await writeFile(patchPath, adaptProgressiveToolsPatch(await readFile(patchPath, 'utf8')))
+    }
     if (manifest.name === '@deepseek-ai/dsh-client-ui-sidebar-documentpreview') {
       const clientPath = resolve(targetRoot, 'lib/client.js')
       await writeFile(clientPath, adaptDocumentPreview(await readFile(clientPath, 'utf8'), manifest.version))

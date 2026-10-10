@@ -1,5 +1,5 @@
 {
-  "version": "8.0.9",
+  "version": "8.1.0",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
@@ -20,7 +20,9 @@
     "commit": "7636242d1145708b9f602b32c46cb3a57524ae7e",
     "version": "0.8.8",
     "license": "MIT",
-    "source": "packages/dsh/dsh-file-review"
+    "source": "packages/dsh/dsh-file-review",
+    "resourceVersion": "0.8.9-zws.1",
+    "localAdaptation": "Remove upstream GitHub promotion from the settings card; retain display controls and review behavior."
   },
   "zotero": {
     "repository": "https://github.com/Vncntvx/dsh-zotero.git",
@@ -64,7 +66,9 @@
     "package": "@everclear077/dsh-progressive-tools",
     "license": "MIT",
     "source": "packages/dsh/dsh-progressive-tools",
-    "runtime": "0.1.7-rc.2"
+    "runtime": "0.2.0-rc.2",
+    "resourceVersion": "0.7.2-zws.1",
+    "localAdaptation": "Strictly adapt the four audited DSH peers from exact rc.1 to exact rc.2 and the bundle registration to the scoped published package; retain upstream source and compatibility enforcement."
   },
   "sshOps": {
     "repository": "https://github.com/caoyiwei850/dsh-ssh-ops.git",
@@ -103,6 +107,7 @@
   "dreamSkin": {
     "repository": "https://github.com/RevolutionLA/dsh-dream-skin.git",
     "version": "10.9.3",
+    "resourceVersion": "10.9.4-zws.1",
     "commit": "927a6f1c1a0d694dfc2ec4557f26266a85f91f22",
     "license": "MIT",
     "tag": "v10.9.3"

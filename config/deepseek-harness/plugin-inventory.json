@@ -164,7 +164,7 @@
     },
     {
       "package": "@everclear077/dsh-progressive-tools",
-      "version": "workspace:*",
+      "version": "0.7.2-zws.1",
       "owner": "third-party",
       "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
@@ -182,7 +182,7 @@
     },
     {
       "package": "dsh-dream-skin",
-      "version": "10.9.3",
+      "version": "10.9.4-zws.1",
       "owner": "third-party",
       "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
@@ -200,7 +200,7 @@
     },
     {
       "package": "dsh-file-review",
-      "version": "workspace:*",
+      "version": "0.8.9-zws.1",
       "owner": "third-party",
       "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
@@ -266,7 +266,7 @@
     {
       "id": "base",
       "package": "@zerowallscience/plugin-base",
-      "version": "0.1.11",
+      "version": "0.1.13",
       "source": "plugins/base",
       "manifest": "plugins/base/zerowall.plugin.json",
       "client": true,
@@ -495,7 +495,7 @@
     {
       "id": "research",
       "package": "@zerowallscience/plugin-research",
-      "version": "0.1.8",
+      "version": "0.1.10",
       "source": "plugins/research",
       "manifest": "plugins/research/zerowall.plugin.json",
       "client": true,
@@ -740,7 +740,7 @@
     {
       "id": "extension-center",
       "package": "@zerowallscience/plugin-extension-center",
-      "version": "0.1.4",
+      "version": "0.1.8",
       "source": "plugins/extension-center",
       "manifest": "plugins/extension-center/zerowall.plugin.json",
       "client": true,

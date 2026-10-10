@@ -10,7 +10,7 @@ export async function verifySettingsLocales(page, settings, root) {
       await settings.getByRole('button', { name: /^(中文|English)$/ }).click()
       await page.getByRole('menuitem', { name: english ? 'English' : '中文', exact: true }).click()
       const names = english
-        ? ['AI Cloud', 'Python environment', 'SSH resources', 'About']
+        ? ['AI Cloud', 'Python environment', /^SSH resources$/iu, 'About']
         : ['AI 云平台', 'Python 环境', 'SSH 资源', '关于']
       for (const name of names) await settings.getByRole('button', { name, exact: true }).waitFor({ state: 'visible' })
       const locale = english ? 'en' : 'zh'
@@ -27,12 +27,14 @@ export async function verifySettingsLocales(page, settings, root) {
       await page.screenshot({ path: resolve(root, `settings-python-${locale}.png`), fullPage: true })
       await settings.getByRole('button', { name: names[2], exact: true }).click()
       await settings.getByRole('button', { name: english ? 'Add server' : '新增服务器', exact: true }).click()
+      await page.getByRole('button', { name: english ? /Advanced options/u : /高级选项/u }).click()
       await page.getByText(english ? 'Default project directory' : '默认项目目录', { exact: true }).waitFor({ state: 'visible' })
       await assertLanguage(settings, english)
       await page.screenshot({ path: resolve(root, `settings-ssh-${locale}.png`), fullPage: true })
       await page.getByRole('button', { name: english ? 'Cancel' : '取消', exact: true }).click()
-      await settings.getByRole('button', { name: english ? 'Add shared credentials' : '新增共享凭据', exact: true }).click()
-      await page.getByText(english ? 'Choose private key file' : '选择私钥文件', { exact: true }).waitFor({ state: 'visible' })
+      await settings.getByRole('tab', { name: english ? 'Shared SSH credentials' : '共享 SSH 凭据', exact: true }).click()
+      await settings.getByRole('button', { name: english ? 'Add shared credential' : '新增共享凭据', exact: true }).click()
+      await page.getByText(english ? 'Choose a private key file' : '选择私钥文件', { exact: true }).waitFor({ state: 'visible' })
       await assertLanguage(settings, english)
       await page.getByRole('button', { name: english ? 'Cancel' : '取消', exact: true }).click()
       await settings.getByRole('button', { name: names[3], exact: true }).click()

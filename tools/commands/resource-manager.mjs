@@ -13,7 +13,7 @@ async function atomic(path, value) {
 }
 
 /** Signed resource preparation and official DSH profile transactions. */
-export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, runtimeModules, local = false, offlineStaging = false, onOfflinePhase = () => {}, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], defaultPlugins = [] }) {
+export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, runtimeModules, local = false, offlineStaging = false, onOfflinePhase = () => {}, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], bundledSkillVersions = {}, defaultPlugins = [] }) {
   const root = join(home, 'resources')
   const profiles = join(home, 'profiles')
   const active = join(profiles, 'web')
@@ -41,6 +41,34 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (name === 'node_modules' || name.startsWith('.')) continue
       await cp(join(source, name), join(destination, name), { recursive: true })
     }
+  }
+
+  async function preparePackageInstall(candidate, replacements = {}) {
+    const file = join(candidate, 'package.json')
+    const manifest = await json(file)
+    const workspaceFile = join(candidate, 'pnpm-workspace.yaml')
+    const text = await readFile(workspaceFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return '' })
+    const workspace = text.trim() ? yaml.parse(text) : {}
+    workspace.overrides = { ...workspace.overrides, ...replacements }
+    // Installer-owned packages already have their complete runtime closure.
+    // Re-resolving their source manifests exposes workspace: dependencies that
+    // cannot exist in a user's profile. Link these unchanged generations; only
+    // the selected signed closure participates in package resolution.
+    for (const [id, spec] of Object.entries(manifest.dependencies ?? {})) {
+      if (replacements[id]) { manifest.dependencies[id] = replacements[id]; continue }
+      if (!spec.startsWith('file:') && !spec.startsWith('link:')) continue
+      const path = resolve(candidate, spec.slice(5))
+      const child = relative(join(root, 'offline'), path)
+      if (!child || child.startsWith('..') || isAbsolute(child)) continue
+      const installed = await json(join(path, 'package.json'))
+      if (installed.name !== id) throw new Error('Offline package identity mismatch: ' + id)
+      manifest.dependencies[id] = 'link:' + path.replaceAll('\\', '/')
+      delete workspace.overrides[id]
+    }
+    workspace.autoInstallPeers = false
+    workspace.allowBuilds = { ...workspace.allowBuilds, '@scarf/scarf': false }
+    await atomic(file, manifest)
+    await writeFile(workspaceFile, yaml.stringify(workspace))
   }
 
   async function readPluginSelection() {
@@ -311,18 +339,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const generation = 'zerowall-' + randomUUID()
     const candidate = join(profiles, generation)
     await copyProfileSkeleton(active, candidate)
-    const manifest = await json(join(candidate, 'package.json'))
-    await atomic(join(candidate, 'package.json'), manifest)
-    // pnpm 11 reads overrides from its workspace file, not package.json.
-    const workspaceFile = join(candidate, 'pnpm-workspace.yaml')
-    const workspaceText = await readFile(workspaceFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return '' })
-    const workspace = workspaceText.trim() ? yaml.parse(workspaceText) : {}
-    workspace.overrides = { ...workspace.overrides, ...overrides }
-    workspace.autoInstallPeers = false
-    // Scarf only runs install telemetry. Explicitly deny that known script;
-    // leave pnpm's lifecycle approval gate intact for every other dependency.
-    workspace.allowBuilds = { ...workspace.allowBuilds, '@scarf/scarf': false }
-    await writeFile(workspaceFile, yaml.stringify(workspace))
+    await preparePackageInstall(candidate, overrides)
     await runPlugin(['add', archive], generation)
     const selection = await readPluginSelection()
     selection.removed.delete(id)
@@ -352,6 +369,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const candidate = join(profiles, generation)
     await mkdir(candidate, { recursive: true })
     await copyProfileSkeleton(active, candidate)
+    await preparePackageInstall(candidate)
     const file = join(candidate, 'package.json')
     const manifest = await json(file)
     const selection = await readPluginSelection()
@@ -409,6 +427,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const candidate = join(profiles, generation)
     await mkdir(candidate, { recursive: true })
     await copyProfileSkeleton(active, candidate)
+    await preparePackageInstall(candidate)
     const manifest = await json(join(candidate, 'package.json'))
     if (args[0] === 'remove' && args[1]) {
       const selection = await readPluginSelection()
@@ -517,6 +536,19 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     if (kind === 'skill') {
       const { extractSkill } = await import('./skill-archive.mjs')
       const folder = await extractSkill(file, join(root, 'skills', entry.sha256))
+      // Upstream Skills do not consistently carry a ZeroWall version in their
+      // frontmatter. Stamp the signed catalog version into the extracted copy
+      // so later checks can distinguish an installed update from an old,
+      // unversioned user import without changing the archive bytes.
+      const skillFile = join(folder, 'SKILL.md')
+      const markdown = await readFile(skillFile, 'utf8')
+      const match = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n/u.exec(markdown)
+      if (!match) throw new Error('Skill archive frontmatter is missing or cannot be versioned')
+      const metadata = yaml.parse(match[1])
+      if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) throw new Error('Invalid Skill metadata')
+      metadata.metadata = { ...metadata.metadata, zerowall: { ...metadata.metadata?.zerowall, version: entry.version, source: 'catalog' } }
+      const stamped = `---\n${yaml.stringify(metadata).trimEnd()}\n---\n${markdown.slice(match[0].length)}`
+      await writeFile(skillFile, stamped, 'utf8')
       return callHost('skill.update', [{ sourcePath: folder }])
     }
     if (kind === 'python' && entry.role === 'dependency-manifest' && applyPython) return applyPython(entry, file)
@@ -613,15 +645,29 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (!['Requested plugin service is unavailable', 'Host is not ready', 'Local resource service timed out', 'Plugin management timed out', 'Host restarted'].includes(error.message)) throw error
       domainAvailable = false
     }
-    const local = installed.map(item => ({ item, id: kind === 'mcp' ? item.serverName : item.name }))
-    const resources = []
-    for (const { item, id } of local) {
-      const entry = entries.find(record => (record.server?.serverName ?? record.id) === id)
+    const local = await Promise.all(installed.map(async item => {
+      const id = kind === 'mcp' ? item.serverName : item.name
+      const userSkill = kind === 'skill' && Boolean(skillSources?.enabled?.includes(id) || skillSources?.disabled?.includes(id))
       let installedVersion
-      if (kind === 'skill') installedVersion = item.declaredVersion
-      else installedVersion = (await json(join(root, 'mcp', encodeURIComponent(id), 'current.json')).catch(() => undefined))?.version
-      const userSkill = skillSources?.enabled?.includes(id) || skillSources?.disabled?.includes(id)
-      resources.push({ id, actionId: kind === 'mcp' ? item.id : id, name: kind === 'mcp' ? item.name : id, version: entry?.version ?? installedVersion ?? '—', installedVersion, updateAvailable: Boolean(entry && installedVersion && compareVersions(entry.version, installedVersion) > 0), source: kind === 'skill' && !userSkill ? 'bundled' : 'profile', signed: Boolean(entry), catalogSigned: Boolean(entry), restartRequired: entry?.restartRequired ?? kind === 'mcp', rollbackSupported: Boolean(entry?.rollbackSupported), enabled: kind === 'skill' ? !skillSources?.disabled?.includes(id) : item.enabled, managed: kind === 'mcp' || Boolean(userSkill), runtimeState: item.runtimeState })
+      if (userSkill && entries.some(record => record.id === id)) {
+        installedVersion = (await hostRead('skill.get', [id])).declaredVersion
+        // Disabled Skills have no registry definition. Read their preserved
+        // metadata, which the older domain service omits from its detail DTO.
+        if (!installedVersion && skillSources?.disabled?.includes(id)) {
+          if (!/^[a-z0-9][a-z0-9-]{0,63}$/u.test(id)) throw new Error('Invalid Skill identity')
+          const markdown = await readFile(join(home, 'zerowall-skills', 'disabled', id, 'SKILL.md'), 'utf8')
+          const frontmatter = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n/u.exec(markdown)
+          installedVersion = frontmatter ? yaml.parse(frontmatter[1])?.metadata?.zerowall?.version : undefined
+        }
+      } else if (kind === 'skill' && !userSkill) installedVersion = bundledSkillVersions[id]
+      else if (kind === 'mcp') installedVersion = (await json(join(root, 'mcp', encodeURIComponent(id), 'current.json')).catch(() => undefined))?.version
+      return { item, id, userSkill, installedVersion: typeof installedVersion === 'string' ? installedVersion : undefined }
+    }))
+    const resources = []
+    for (const { item, id, userSkill, installedVersion } of local) {
+      const entry = entries.find(record => (record.server?.serverName ?? record.id) === id)
+      const updateAvailable = Boolean(entry && (kind === 'skill' && userSkill && !installedVersion || installedVersion && compareVersions(entry.version, installedVersion) > 0))
+      resources.push({ id, actionId: kind === 'mcp' ? item.id : id, name: kind === 'mcp' ? item.name : id, version: entry?.version ?? installedVersion ?? '—', installedVersion, updateAvailable, source: kind === 'skill' && !userSkill ? 'bundled' : 'profile', signed: Boolean(entry), catalogSigned: Boolean(entry), restartRequired: entry?.restartRequired ?? kind === 'mcp', rollbackSupported: Boolean(entry?.rollbackSupported), enabled: kind === 'skill' ? !skillSources?.disabled?.includes(id) : item.enabled, managed: kind === 'mcp' || Boolean(userSkill), runtimeState: item.runtimeState })
     }
     for (const entry of entries) {
       const identity = entry.server?.serverName ?? entry.id

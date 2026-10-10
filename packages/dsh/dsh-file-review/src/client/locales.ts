@@ -7,8 +7,6 @@ export const NS = 'file-review'
 export const en = {
   'settings.title': 'File review',
   'settings.description': 'See every file your agent changes clearly.',
-  'settings.star.title': 'Star on GitHub',
-  'settings.star.aria': 'Star dsh-file-review on GitHub (opens in a new tab)',
   'settings.expand': 'Expand',
   'settings.collapse': 'Collapse',
   'settings.readOnly': 'The settings file is read-only.',
@@ -86,8 +84,6 @@ export type DeliverablesKey = keyof typeof en
 export const zh: Record<DeliverablesKey, string> = {
   'settings.title': '文件审查',
   'settings.description': '让你看清agent改动的每一个文件',
-  'settings.star.title': '去 GitHub 点 Star',
-  'settings.star.aria': '在 GitHub 为 dsh-file-review 点 Star（在新标签页打开）',
   'settings.expand': '展开',
   'settings.collapse': '收起',
   'settings.readOnly': '配置文件为只读。',

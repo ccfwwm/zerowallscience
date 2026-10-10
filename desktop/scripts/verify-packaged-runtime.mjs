@@ -14,6 +14,7 @@ import { verifyOfflineProfile, prepareOfflineCandidate } from '../../tools/comma
 import { locatePackagedApp } from './packaged-app.mjs'
 import { verifySettingsLocales } from './verify-settings-locales.mjs'
 import { prepareOfflineNetworkProbe, verifyOfflineNetworkProbe } from './offline-network-probe.mjs'
+import { verifyZoteroDispatch } from '../../tools/packaging/verify-zotero-dispatch.mjs'
 
 const hostCookies = new Map()
 const MIB = 1024 * 1024
@@ -94,6 +95,11 @@ if (fullOffline) {
   const probeHome = await mkdtemp(resolve(tmpdir(), 'zerowall-离线闭包-'))
   const { initializeProfile } = await import('../../tools/commands/profile.mjs')
   const defaults = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8'))
+  const bundledSkillVersions = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/bundled-skill-versions.json'), 'utf8'))
+  const skillVersions = JSON.parse(await readFile(resolve(repositoryRoot, 'config/catalogs/resource-versions.json'), 'utf8')).skill
+  for (const [id, version] of Object.entries(bundledSkillVersions)) {
+    if (version !== (skillVersions[id] ?? '0.1.0')) throw new Error(`Packaged Skill version snapshot is stale: ${id}`)
+  }
   await initializeProfile(probeHome, defaults, offlineReceipt.plugins)
   offlineProbe = await prepareOfflineCandidate({ home: probeHome, source: resolve(packaged.resourcesRoot, 'offline-profile'), keys,
     target: { desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit, platform: process.platform, architecture: process.arch }, defaults, yaml,
@@ -189,8 +195,8 @@ const requiredArchivePaths = [
   'node_modules/dsh-ssh-ops/lib/client.js',
   'node_modules/dsh-ssh-ops/lib/typert.js',
   'node_modules/dsh-ssh-ops/cordis.patch.yml',
-  'node_modules/dsh-progressive-tools/lib/index.js',
-  'node_modules/dsh-progressive-tools/cordis.patch.yml',
+  'node_modules/@everclear077/dsh-progressive-tools/lib/index.js',
+  'node_modules/@everclear077/dsh-progressive-tools/cordis.patch.yml',
   'node_modules/@dingyi222666/dsh-session-notification/lib/index.js',
   'node_modules/@dingyi222666/dsh-session-notification/lib/client.js',
   'node_modules/@dingyi222666/dsh-session-notification/cordis.patch.yml',
@@ -401,7 +407,8 @@ async function verifyArchivePolicy() {
   const dreamSkinPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-dream-skin/package.json'))
   if (dreamSkinPackages.length !== 1) throw new Error(`dsh-dream-skin must be packaged exactly once; found ${dreamSkinPackages.length}.`)
   const dreamSkinManifest = JSON.parse(readArchiveFile('node_modules/dsh-dream-skin/package.json').toString('utf8'))
-  if (dreamSkinManifest.version !== desktopManifest.dependencies['dsh-dream-skin']) throw new Error(`Packaged dsh-dream-skin must be ${desktopManifest.dependencies['dsh-dream-skin']}; found ${dreamSkinManifest.version}.`)
+  const dreamSkinLock = JSON.parse(await readFile(resolve(repositoryRoot, 'config/integrations/upstream-sources.json'), 'utf8')).dreamSkin
+  if (desktopManifest.dependencies['dsh-dream-skin'] !== dreamSkinLock.version || dreamSkinManifest.version !== (dreamSkinLock.resourceVersion ?? dreamSkinLock.version)) throw new Error(`Packaged dsh-dream-skin must match locked source ${dreamSkinLock.version} and resource ${dreamSkinLock.resourceVersion ?? dreamSkinLock.version}; found ${dreamSkinManifest.version}.`)
   const dreamSkinClient = readArchiveFile('node_modules/dsh-dream-skin/lib/client.js')
   const sourceDreamSkinClient = await readFile(resolve(repositoryRoot, 'desktop/node_modules/dsh-dream-skin/lib/client.js'))
   const { adaptDreamSkinClient } = await import('../../tools/packaging/adapt-dream-skin.mjs')
@@ -411,7 +418,8 @@ async function verifyArchivePolicy() {
   const dreamSkinSource = dreamSkinClient.toString('utf8')
   const factoryDefaults = dreamSkinSource.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1]
   const wallpaper = factoryDefaults?.match(/\[WALLPAPER_KEY\]: "data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)"/u)?.[1]
-  if (!factoryDefaults?.includes('[STORAGE_KEY]: "nebula"') || !wallpaper
+  if (!dreamSkinSource.includes('const FACTORY_SKIN_ID = "nebula";')
+    || !factoryDefaults?.includes('[STORAGE_KEY]: FACTORY_SKIN_ID,') || !wallpaper
     || !dreamSkinSource.includes('FACTORY_DEFAULTS[STORAGE_KEY] = "ivory"')
     || !dreamSkinSource.includes('FACTORY_DEFAULTS[WALLPAPER_KEY] = ""')
     || !dreamSkinSource.includes('FACTORY_DEFAULTS[WALLPAPER_GRADIENT_KEY] = ""')
@@ -700,14 +708,23 @@ function verifyZoteroAdapters() {
   if (!modernClient && !legacyClient) {
     throw new Error('Packaged Zotero Sources tab cannot track nested Progressive Tools calls.')
   }
-  const dispatcher = readArchiveFile('node_modules/dsh-progressive-tools/lib/index.js').toString('utf8')
+  const dispatcher = readArchiveFile('node_modules/@everclear077/dsh-progressive-tools/lib/index.js').toString('utf8')
+  const progressive = JSON.parse(readArchiveFile('node_modules/@everclear077/dsh-progressive-tools/package.json').toString('utf8'))
+  if (progressive.version !== pinnedIntegrations.progressiveTools.resourceVersion || ['agent', 'llm', 'system-prompt', 'tools'].some(name => progressive.peerDependencies?.[`@deepseek-ai/dsh-${name}`] !== '0.2.0-rc.2')) {
+    throw new Error('Packaged Progressive Tools manifest must use the audited rc.2 resource adaptation.')
+  }
+  const progressivePatch = yaml.parse(readArchiveFile('node_modules/@everclear077/dsh-progressive-tools/cordis.patch.yml').toString('utf8'))
+  if (progressivePatch?.[0]?.insert?.[0]?.name !== progressive.name) {
+    throw new Error('Packaged Progressive Tools bundle registration must match its package identity.')
+  }
   const conversation = readArchiveFile('node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js').toString('utf8')
   const ssh = readArchiveFile('node_modules/dsh-ssh-ops/lib/client.js').toString('utf8')
-  if (!client.includes('function zoteroDispatch(block)') || !dispatcher.includes('targetMeta: definition.output.presentationMeta')) {
-    throw new Error('Packaged Zotero dispatcher metadata/replay adapter is missing.')
+  verifyZoteroDispatch(client, dispatcher)
+  if (!conversation.includes('data-conversation-view')) {
+    throw new Error('Packaged conversation view isolation is missing.')
   }
-  if (!conversation.includes('data-conversation-view') || !ssh.includes('data-zerowall-ssh-view')) {
-    throw new Error('Packaged conversation view isolation or SSH main view is missing.')
+  for (const marker of ['sidebarRightTabs.register', 'sidebar.right.pane.tab', 'ctx.sidebarRight.openTab(SSH_TAB_KIND)', 'data-dsh-ssh-ops-sidebar-body', 'data-dsh-ssh-ops-tab', 'viewSignal: tabInfo.tab.signal']) {
+    if (!ssh.includes(marker)) throw new Error(`Packaged SSH Sidebar registration/lifetime contract is missing: ${marker}`)
   }
   const modernAnnotationWire = archiveSet.has('node_modules/dsh-zotero/lib/local/children-wire.js')
     && (() => {
@@ -1782,11 +1799,17 @@ async function verifyConversationViews(page, root) {
   if (!draft.includes('zotero://')) throw new Error('Source action did not populate the resident draft')
   await switchTo('zotero')
   await page.screenshot({ path: resolve(root, 'zotero.png'), fullPage: true })
-  await switchTo('ssh')
-  const ssh = page.locator('[data-zerowall-ssh-view]')
+  await tabs.locator('[data-conversation-tab="chat"]').click()
+  const sshAction = tabs.locator('[data-dsh-ssh-ops-tab="true"]')
+  await sshAction.click()
+  await page.waitForFunction(() => document.querySelector('[data-dsh-ssh-ops-tab="true"]')?.getAttribute('aria-pressed') === 'true')
+  const ssh = page.locator('[data-dsh-ssh-ops-sidebar-body="true"]')
   await ssh.waitFor({ state: 'visible' })
   const box = await ssh.boundingBox()
   if (!box || box.height < 250 || box.width < 300) throw new Error(`SSH workspace is collapsed: ${JSON.stringify(box)}`)
+  if (!await composer.isVisible() || await editor.innerText() !== draft) throw new Error('Opening the SSH Sidebar hid the Chat composer or lost its draft')
+  await sshAction.click()
+  if (await ssh.count() !== 1) throw new Error('Repeated SSH action created a duplicate terminal pane')
   await page.screenshot({ path: resolve(root, 'ssh.png'), fullPage: true })
   for (const id of await tabs.locator('[data-conversation-tab]').evaluateAll(elements => elements.map(el => el.getAttribute('data-conversation-tab')))) {
     if (id !== 'chat') await switchTo(id)

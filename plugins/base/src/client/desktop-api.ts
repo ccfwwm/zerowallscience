@@ -104,6 +104,14 @@ export interface PythonEnvironmentResponse {
 }
 
 export type ResourceKind = 'plugin' | 'skill' | 'mcp'
+export type ResourceUpdatePhase = 'idle' | 'checking' | 'available' | 'upToDate' | 'error'
+export interface ResourceUpdateStatus {
+  phase: ResourceUpdatePhase
+  checkedAt?: string
+  updateCount: number
+  kinds: Partial<Record<ResourceKind, number>>
+  error?: string
+}
 export interface ResourceCheckItem {
   id: string
   actionId?: string
@@ -188,6 +196,9 @@ export interface ZeroWallDesktopApi {
   applyMcpPythonPackagePlan?(planId: string): Promise<{ taskId: string }>
   onMcpEnvironmentStatus?(listener: (status: McpEnvironmentStatus) => void): () => void
   onUpdateStatus(listener: (status: DesktopUpdateStatus) => void): () => void
+  getResourceUpdateStatus?(): Promise<ResourceUpdateStatus>
+  checkResourceUpdates?(): Promise<ResourceUpdateStatus>
+  onResourceUpdateStatus?(listener: (status: ResourceUpdateStatus) => void): () => void
   resources?: {
     list(kind: ResourceKind): Promise<ResourceCheckResult>
     dependents?(id: string): Promise<string[]>

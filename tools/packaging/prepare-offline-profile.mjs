@@ -62,7 +62,7 @@ const payloadFiles = [{ path: carrierName, size: (await stat(join(directory, car
   ...await offlineFiles(join(directory, carrierName + '.unpacked'), carrierName + '.unpacked/')].sort((a, b) => a.path.localeCompare(b.path))
 const oldBuildReceipt = JSON.parse(await readFile(join(directory, 'build-receipt.json'), 'utf8'))
 files.sort((a, b) => a.path.localeCompare(b.path))
-const desktopRange = { min: plugins.map(entry => entry.desktop?.min).filter(Boolean).reduce((a, b) => compareVersions(a, b) >= 0 ? a : b, '8.0.9') }
+const desktopRange = { min: plugins.map(entry => entry.desktop?.min).filter(Boolean).reduce((a, b) => compareVersions(a, b) >= 0 ? a : b, '8.1.0') }
 const upperBounds = plugins.map(entry => entry.desktop?.max).filter(Boolean)
 if (upperBounds.length) desktopRange.max = upperBounds.reduce((a, b) => compareVersions(a, b) <= 0 ? a : b)
 const content = { schema: 2, kind: 'offline-profile', profileArchitecture: 7, applicationVersion, buildId,

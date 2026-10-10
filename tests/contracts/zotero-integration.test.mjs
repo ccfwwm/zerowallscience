@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 import { loadZoteroReducer, snapshotFromLog } from './zotero-replay.mjs'
 import { zoteroDispatch } from '../../tools/packaging/zotero-dispatch.mjs'
+import { verifyZoteroDispatch } from '../../tools/packaging/verify-zotero-dispatch.mjs'
 import {
   adaptZoteroClient,
   adaptZoteroCommand,
@@ -21,6 +22,14 @@ import { decodeZoteroAuthorizationResponse } from '../../tools/packaging/zotero-
 
 const root = resolve(import.meta.dirname, '../..')
 const read = path => readFile(resolve(root, path), 'utf8')
+
+test('Progressive Tools 0.7 replays nested structured metadata and parent-only search logs', async () => {
+  const client = adaptZoteroClient(await read('desktop/node_modules/dsh-zotero/lib/client.js'))
+  const dispatcher = await read('packages/dsh/dsh-progressive-tools/lib/index.js')
+  verifyZoteroDispatch(client, dispatcher)
+  assert.throws(() => verifyZoteroDispatch(client, dispatcher.replace('parent: exec.token', 'parent: undefined')), /nested dispatch contract/u)
+  assert.throws(() => verifyZoteroDispatch(client, dispatcher.replace("protocol: 'dsh-progressive-tools/dispatch-v1'", "protocol: 'unknown'")), /presentation metadata/u)
+})
 
 test('Zotero runtime manifest accepts DSH rc.2 without changing the source package', () => {
   const source = JSON.stringify({

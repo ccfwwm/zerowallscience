@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Boxes, CheckCircle2, RefreshCw, Search, Upload } from 'lucide-react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PythonLayer, PythonLayerCheck, ResourceKind } from '@zerowallscience/plugin-base/client'
 import { NS } from './locales.js'
@@ -9,7 +10,7 @@ import { boundedRequest } from './requests.js'
 type Props = PropsRuntime<'settings.section'> & PropsLocale<typeof NS>
 type Kind = 'plugin' | 'skill' | 'mcp' | 'python'
 type ResourceKindOnly = Exclude<Kind, 'python'>
-type Resource = ResourceCheckItem & { pythonLayer?: PythonLayer; capabilityId?: string; pythonInstalled?: boolean }
+type Resource = ResourceCheckItem & { pythonLayer?: PythonLayer; capabilityId?: string; pythonInstalled?: boolean; pythonNeedsInstall?: boolean }
 type CheckResult = ResourceCheckResult
 type Job = { taskId: string; kind: ResourceKindOnly; id?: string; action: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; retries?: number; error?: string }
 type PythonJob = { taskId: string; layer: PythonLayer; state: 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'interrupted' | 'cancelled'; progress?: number; currentPackage?: string; error?: string; message?: string }
@@ -20,15 +21,18 @@ function pythonResource(layer: PythonLayer, status: PythonLayerCheck, capability
   const packageCount = counts?.packageCount ?? status.packageCount
   const installedPackageCount = counts?.installedPackageCount ?? status.installedPackageCount
   const pendingPackageCount = counts?.pendingPackageCount ?? status.pendingPackageCount
+  const hasInstalledPackages = installedPackageCount > 0 || (counts?.changes ?? status.changes).some(change => Boolean(change.from))
+  const pythonNeedsInstall = packageCount > 0 && (status.needsRuntime || !hasInstalledPackages)
   const id = capabilityId ? `capability:${capabilityId}` : layer
   return {
     id, actionId: id, capabilityId, pythonLayer: layer,
     name: capabilityId ? capabilityId : layer === 'core' ? 'Python Core' : 'Python Science',
     version: status.revision,
     installedVersion: `${installedPackageCount}/${packageCount} packages`,
-    updateAvailable: pendingPackageCount > 0,
+    updateAvailable: pendingPackageCount > 0 && !pythonNeedsInstall,
     source: status.source === 'bundled' ? 'bundled' : 'profile', catalogSigned: true, signed: true, restartRequired: true,
-    pythonInstalled: !status.needsRuntime && pendingPackageCount === 0 && packageCount > 0,
+    pythonInstalled: !pythonNeedsInstall && packageCount > 0,
+    pythonNeedsInstall,
   }
 }
 
@@ -46,7 +50,8 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
   const [errors, setErrors] = useState<Partial<Record<Kind, string>>>({})
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const lifecycle = useRef(0)
-  const sequences = useRef<Partial<Record<Kind, number>>>({})
+  const sequences = useRef<Partial<Record<`${'local' | 'remote'}:${Kind}`, number>>>({})
+  const remoteApplied = useRef<Partial<Record<Kind, number>>>({})
   const checkInFlight = useRef(false)
   const [message, setMessage] = useState<string>()
   const [operationFailed, setOperationFailed] = useState(false)
@@ -57,9 +62,15 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
     const generation = lifecycle.current
     const alive = () => lifecycle.current === generation
     await Promise.all((['plugin', 'skill', 'mcp', 'python'] as Kind[]).map(async item => {
-      const request = (sequences.current[item] ?? 0) + 1
-      sequences.current[item] = request
-      const current = () => alive() && sequences.current[item] === request
+      const sequenceKey = `${remote ? 'remote' : 'local'}:${item}` as const
+      const request = (sequences.current[sequenceKey] ?? 0) + 1
+      sequences.current[sequenceKey] = request
+      const localRequestAtStart = sequences.current[`local:${item}`] ?? 0
+      const remoteRequestAtStart = sequences.current[`remote:${item}`] ?? 0
+      const current = () => alive()
+        && sequences.current[sequenceKey] === request
+        && (!remote || sequences.current[`local:${item}`] === localRequestAtStart)
+        && (remote || (remoteApplied.current[item] ?? 0) <= remoteRequestAtStart)
       if (!remote) setStates(previous => ({ ...previous, [item]: 'loading' }))
       try {
         if (item === 'python') {
@@ -77,11 +88,13 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
           setPythonResources(previous => [...previous.filter(row => results[layers.indexOf(row.pythonLayer!)]?.status === 'rejected'), ...successful])
           setPythonCheckError(failed.length ? failed.join('\n') : undefined)
           if (failed.length === layers.length) throw new Error(failed.join('\n'))
+          if (remote) remoteApplied.current[item] = request
         } else {
           if (!api) throw new Error('Desktop resource bridge unavailable')
           const result = await boundedRequest(remote ? api.check(item, false) : api.list(item), remote ? 15_000 : 5_000)
           if (!current()) return
           if (remote && result.catalogStatus === 'unavailable') throw new Error(result.error ?? 'Catalog unavailable')
+          if (remote) remoteApplied.current[item] = request
           setRows(previous => [...previous.filter(row => row.kind !== item), result])
           if (result.domainAvailable === false) { setStates(previous => ({ ...previous, [item]: 'unavailable' })); return }
         }
@@ -113,7 +126,9 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
 
   useEffect(() => {
     lifecycle.current++
-    void refresh(); void refreshJobs().catch(() => {})
+    void refresh()
+    void checkUpdates()
+    void refreshJobs().catch(() => {})
     return () => { lifecycle.current++ }
   }, [refresh, refreshJobs])
   useEffect(() => {
@@ -126,6 +141,11 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
   const updates = filtered.filter(item => item.updateAvailable)
   const allUpdates = [...rows.flatMap(row => row.resources.filter(item => item.updateAvailable && !item.pinnedVersion && !item.updateBlocked).map(item => ({ kind: row.kind, item }))), ...pythonResources.filter(item => item.updateAvailable).map(item => ({ kind: 'python' as const, item }))]
   const localFailed = states[kind] === 'error'
+  const totalResources = rows.reduce((sum, row) => sum + row.resources.length, 0) + pythonResources.length
+  const totalUpdates = allUpdates.length
+  const checkFailed = Object.values(errors).some(Boolean) || Boolean(pythonCheckError) || rows.some(row => row.error || row.catalogStatus === 'unavailable' || row.domainAvailable === false)
+  const loading = Object.values(states).some(state => state === 'loading')
+  const checkedAt = rows.map(row => row.checkedAt).filter(Boolean).sort().at(-1)
   const resourceName = (item: Resource): string => item.name ?? (item.id.startsWith('@zerowallscience/plugin-') ? t(`name_${item.id.slice('@zerowallscience/plugin-'.length).replaceAll('-', '_')}` as 'name_base') : item.id)
 
   const updatePythonLayer = async (item: Resource): Promise<void> => {
@@ -154,7 +174,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
     const generation = lifecycle.current
     const alive = () => generation === lifecycle.current
     if (kind === 'python') {
-      if (!item || action !== 'update') return
+      if (!item || !['install', 'update'].includes(action)) return
       setBusy(true); setMessage(undefined); setOperationFailed(false)
       try { await updatePythonLayer(item); if (!alive()) return; setMessage(t('ready')); await refresh() }
       catch (error) { if (!alive()) return; setOperationFailed(true); setMessage(error instanceof Error ? error.message : t('failed')) }
@@ -221,18 +241,26 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
 
   return <section className={css.root} aria-labelledby="zerowall-extension-center-title">
     <header className={css.header}>
-      <div><h2 id="zerowall-extension-center-title">{t('title')}</h2><p>{t('intro')}</p></div>
-      {selected.size > 0 && <button type="button" disabled={busy} onClick={() => void updateAll(true)}>{t('updateSelected')}</button>}
-      {allUpdates.length > 0 && <button type="button" disabled={busy} onClick={() => void updateAll()}>{t('updateAll')}</button>}
-      <button type="button" disabled={busy} onClick={() => void refresh()}>{t('localRefresh')}</button>
-      <button className={css.primary} type="button" disabled={busy || checking} onClick={() => void checkUpdates()}>{checking ? t('checking') : t('refresh')}</button>
+      <div className={css.heading}><div className={css.eyebrow}><Boxes size={14} aria-hidden="true" /> ZeroWall Science</div><h2 id="zerowall-extension-center-title">{t('title')}</h2><p>{t('intro')}</p></div>
+      <div className={css.headerActions}>
+        {selected.size > 0 && <button type="button" disabled={busy} onClick={() => void updateAll(true)}>{t('updateSelected')}</button>}
+        {allUpdates.length > 0 && <button type="button" disabled={busy} onClick={() => void updateAll()}>{t('updateAll')}</button>}
+        <button type="button" disabled={busy} onClick={() => void refresh()}><RefreshCw size={14} aria-hidden="true" />{t('localRefresh')}</button>
+        <button className={css.primary} type="button" disabled={busy || checking} onClick={() => void checkUpdates()}><RefreshCw size={14} aria-hidden="true" />{checking ? t('checking') : t('refresh')}</button>
+      </div>
     </header>
+    <div className={css.summary} aria-label={t('summary')}>
+      <div><strong>{totalResources}</strong><span>{t('resourceCount')}</span></div>
+      <div data-alert={totalUpdates > 0}><strong>{totalUpdates}</strong><span>{t('available')}</span></div>
+      <div><strong>{checkedAt ? new Date(checkedAt).toLocaleTimeString() : '—'}</strong><span>{t('lastChecked')}</span></div>
+      <div className={css.summaryState}>{checking || loading ? <><RefreshCw size={14} className={css.spin} />{t('checking')}</> : checkFailed ? <><span className={css.dot} />{t('catalogError')}</> : totalUpdates > 0 ? <><span className={css.dot} />{t('available')}</> : checkedAt ? <><CheckCircle2 size={14} />{t('ready')}</> : <>{t('unchecked')}</>}</div>
+    </div>
     <div className={css.toolbar}>
       <nav className={css.tabs} aria-label={t('title')}>
-        {(['plugin', 'skill', 'mcp', 'python'] as Kind[]).map(item => <button key={item} role="tab" aria-selected={kind === item} className={kind === item ? css.activeTab : css.tab} type="button" onClick={() => setKind(item)}>{t(item === 'plugin' ? 'plugins' : item === 'skill' ? 'skills' : item === 'mcp' ? 'mcp' : 'python')}</button>)}
+        {(['plugin', 'skill', 'mcp', 'python'] as Kind[]).map(item => { const count = item === 'python' ? pythonResources.filter(resource => resource.updateAvailable).length : rows.find(row => row.kind === item)?.resources.filter(resource => resource.updateAvailable).length ?? 0; return <button key={item} role="tab" aria-selected={kind === item} className={kind === item ? css.activeTab : css.tab} type="button" onClick={() => setKind(item)}>{t(item === 'plugin' ? 'plugins' : item === 'skill' ? 'skills' : item === 'mcp' ? 'mcp' : 'python')}{count > 0 && <b>{count}</b>}</button> })}
       </nav>
-      <input className={css.search} value={query} onChange={event => setQuery(event.target.value)} placeholder={t('search')} aria-label={t('search')} />
-      {kind !== 'python' && <button type="button" disabled={busy} onClick={() => void importResource()}>{t('import')}</button>}
+      <label className={css.searchWrap}><Search size={14} aria-hidden="true" /><input className={css.search} value={query} onChange={event => setQuery(event.target.value)} placeholder={t('search')} aria-label={t('search')} /></label>
+      {kind !== 'python' && <button type="button" disabled={busy} onClick={() => void importResource()}><Upload size={14} aria-hidden="true" />{t('import')}</button>}
     </div>
     {message && <p className={operationFailed ? css.warning : css.message} role={operationFailed ? 'alert' : 'status'}>{message}</p>}
     {current?.catalogStatus === 'unpublished' && <p className={css.message} role="status">{t('catalogUnpublished')}</p>}
@@ -245,15 +273,16 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
         <span>{item.updateAvailable && !item.pinnedVersion && !item.updateBlocked && <label><input type="checkbox" aria-label={`${t('selectUpdate')} ${resourceName(item)}`} checked={selected.has(`${kind}:${item.id}`)} onChange={event => { const key = `${kind}:${item.id}`; setSelected(previous => { const next = new Set(previous); if (event.target.checked) next.add(key); else next.delete(key); return next }) }} /></label>}</span>
         <div className={css.identity}><strong title={item.id}>{resourceName(item)}</strong><small title={item.id}>{item.id}</small><small>{t(`source_${item.source ?? 'catalog'}` as 'source_catalog')} · {item.catalogSigned ? t('signed') : item.source === 'runtime' ? t('runtimeCore') : item.source === 'bundled' ? t('bundledResource') : t('localResource')}</small></div>
         <span className={css.version}>{item.updateAvailable ? `${item.installedVersion ?? '—'} → ${item.version}` : item.version === '—' ? t('unversioned') : item.version === 'core' ? t('runtimeCore') : `v${item.version}`}</span>
-        <span className={item.updateAvailable ? css.badgeUpdate : css.badge}>{item.installState === 'missing' ? t('missing') : item.pythonLayer ? item.pythonInstalled ? t('installed') : t('notInstalled') : item.enabled === false ? t('disabled') : item.updateAvailable ? t('available') : item.source === 'catalog' ? t('notInstalled') : t('installed')}</span>
+        <span className={item.updateAvailable ? css.badgeUpdate : css.badge}>{item.installState === 'missing' ? t('missing') : item.pythonLayer ? item.updateAvailable ? t('available') : item.pythonInstalled ? t('installed') : t('notInstalled') : item.enabled === false ? t('disabled') : item.updateAvailable ? t('available') : item.source === 'catalog' ? t('notInstalled') : t('installed')}</span>
         {(item.pinnedVersion || item.updateBlocked) && <small>{item.pinnedVersion ? `${t('pinned')} ${item.pinnedVersion}` : item.updateBlocked}</small>}
         {kind === 'plugin' && ['error', 'unavailable'].includes(item.activationState ?? '') && <small>{item.activationState === 'error' ? t('activationError') : t('activationUnavailable')}</small>}
         <div className={css.actions}>
-          {item.updateAvailable && !item.pinnedVersion && !item.updateBlocked && item.source !== 'runtime' && <button type="button" disabled={busy} onClick={() => void run('update', item)}>{t('update')}</button>}
+          {item.pythonNeedsInstall && <button type="button" disabled={busy} onClick={() => void run('install', item)}>{t('install')}</button>}
+          {item.updateAvailable && !item.pythonNeedsInstall && !item.pinnedVersion && !item.updateBlocked && item.source !== 'runtime' && <button type="button" disabled={busy} onClick={() => void run('update', item)}>{t('update')}</button>}
           {kind === 'plugin' && item.managed !== false && item.installedVersion && item.source !== 'runtime' && <button type="button" disabled={busy} onClick={() => void run(item.pinnedVersion ? 'unpin' : 'pin', item)}>{item.pinnedVersion ? t('unpin') : t('pin')}</button>}
           {item.rollbackSupported && item.installedVersion && item.source !== 'runtime' && <button type="button" disabled={busy} onClick={() => void run('rollback', item)}>{t('rollback')}</button>}
-          {item.managed !== false && ['profile', 'bundled', 'disabled', 'removed'].includes(item.source ?? '') && <button type="button" disabled={busy} onClick={() => void run(item.enabled === false ? 'enable' : 'disable', item)}>{item.enabled === false ? t('enable') : t('disable')}</button>}
-          {item.managed !== false && item.source === 'profile' && <button type="button" disabled={busy} onClick={() => void run('remove', item)}>{t('remove')}</button>}
+          {!item.pythonLayer && item.managed !== false && ['profile', 'bundled', 'disabled', 'removed'].includes(item.source ?? '') && <button type="button" disabled={busy} onClick={() => void run(item.enabled === false ? 'enable' : 'disable', item)}>{item.enabled === false ? t('enable') : t('disable')}</button>}
+          {!item.pythonLayer && item.managed !== false && item.source === 'profile' && <button type="button" disabled={busy} onClick={() => void run('remove', item)}>{t('remove')}</button>}
           {kind === 'mcp' && item.enabled !== false && item.source === 'profile' && <button type="button" disabled={busy} onClick={() => void run('restart', item)}>{t('restartServer')}</button>}
           {kind === 'plugin' && item.source === 'catalog' && <button type="button" disabled={busy} onClick={() => void run('install', item)}>{t('install')}</button>}
           {kind === 'plugin' && item.managed !== false && item.source !== 'runtime' && item.source !== 'catalog' && <button type="button" disabled={busy} onClick={() => void run('repair', item)}>{t('repair')}</button>}

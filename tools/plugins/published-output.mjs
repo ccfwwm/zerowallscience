@@ -31,7 +31,17 @@ export async function restorePublishedOutput(source, { restore = true } = {}) {
   if (!/^v\d+\.\d+\.\d+$/u.test(reference)) return false
   const importer = relative(root, source).replaceAll('\\', '/')
   const tools = ['tsdown', 'typescript', ...(firstParty ? ['@tsdown/css'] : [])]
-  const baselineLock = execFileSync('git', ['show', `${reference}:pnpm-lock.yaml`], { cwd: root, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 })
+  let baselineLock
+  try {
+    baselineLock = execFileSync('git', ['show', `${reference}:pnpm-lock.yaml`], { cwd: root, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 })
+  } catch (error) {
+    // Some releases were delivered from a commit without a matching Git tag.
+    // A missing baseline cannot prove source equivalence, so build from the
+    // current source instead of failing the whole package operation.
+    if (error?.status !== 128) throw error
+    console.log(`BOOTSTRAP MISS ${manifest.name}: baseline tag ${reference} is unavailable`)
+    return false
+  }
   if (await dependencyLockFingerprint(root, [importer], tools) !== await dependencyLockFingerprint(root, [importer], tools, baselineLock)) return false
   const own = execFileSync('git', ['ls-files', '--', relative(root, source)], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/u)
   const shared = [...await sharedSourceInputs(root, source), 'tools/plugins/tsdown.ts', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json']

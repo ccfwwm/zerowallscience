@@ -5,10 +5,11 @@ import test from 'node:test'
 
 const root = resolve(import.meta.dirname, '../..')
 
-test('Dream Skin 10.9.3 settings title follows the active Chinese or English locale', async () => {
+test('Dream Skin adapted resource settings title follows the active Chinese or English locale', async () => {
   const manifest = JSON.parse(await readFile(resolve(root, 'desktop/node_modules/dsh-dream-skin/package.json'), 'utf8'))
   const client = await readFile(resolve(root, 'desktop/node_modules/dsh-dream-skin/lib/client.js'), 'utf8')
-  assert.equal(manifest.version, '10.9.3')
+  const sources = JSON.parse(await readFile(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8'))
+  assert.equal(manifest.version, sources.dreamSkin.resourceVersion)
 
   const labelFor = (locale) => {
     const value = client.match(new RegExp(`const ${locale} = \\{\\s*"section\\.nav": "([^"]+)"`, 'u'))?.[1]

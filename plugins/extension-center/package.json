@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-extension-center",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "description": "ZeroWall Science extension-center domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

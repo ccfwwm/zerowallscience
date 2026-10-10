@@ -31,5 +31,6 @@ test('native Excel boundary catches lazy/Worker/render errors and offers viewer 
   assert.throws(() => adaptExcelChunk(chunk.replace('if (!context.allowEdit) setContext(function(ctx)', 'if (context.allowEdit) setContext(function(ctx)'), '0.2.0-rc.2'), /highlight anchor/u)
 })
 test('Univer skill adaptation rejects unexpected bytes instead of blindly changing upstream instructions', () => {
-  for (const name of Object.keys(UNIVER_SKILL_HASHES)) assert.throws(() => adaptUniverSkill(name, 'unexpected', '0.3.5', 'ce7f3e0bfa1e9b6bc4eb855e1c220b77fcdab806'), /hash/u)
+  for (const name of Object.keys(UNIVER_SKILL_HASHES)) assert.throws(() => adaptUniverSkill(name, 'unexpected', '0.3.7', '8f85ce4074fdbe51416b6c337468bb916a302c2a'), /hash/u)
+  assert.throws(() => adaptUniverSkill('univer', 'unexpected', '0.3.5', 'ce7f3e0bfa1e9b6bc4eb855e1c220b77fcdab806'), /identity/u)
 })

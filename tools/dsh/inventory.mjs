@@ -6,6 +6,7 @@ const dshRoot = resolve(root, 'deepseek-harness')
 const output = resolve(root, 'config/deepseek-harness/plugin-inventory.json')
 const upstream = await json('config/deepseek-harness/upstream.json')
 const desktop = await json('desktop/package.json')
+const integrations = await json('config/integrations/upstream-sources.json')
 const runtimeProfile = await json('config/layout/runtime-profile.json')
 const productionPath = name => `resources/${runtimeProfile.corePlugins.includes(name) ? 'app.asar/node_modules' : 'offline-profile/modules'}/${name}`
 
@@ -134,7 +135,10 @@ for (const name of kernelPackages) assert(packageNames.has(name), `required DSH 
 
 const thirdPartyPlugins = thirdPartyPackages.map(name => ({
   package: name,
-  version: desktop.dependencies?.[name] ?? null,
+  version: name === 'dsh-dream-skin' ? integrations.dreamSkin.resourceVersion ?? integrations.dreamSkin.version
+    : name === 'dsh-file-review' ? integrations.fileReviewTab.resourceVersion ?? integrations.fileReviewTab.version
+      : name === '@everclear077/dsh-progressive-tools' ? integrations.progressiveTools.resourceVersion ?? integrations.progressiveTools.version
+      : desktop.dependencies?.[name] ?? null,
   owner: 'third-party',
   registrationSource: 'user-profile-bundle',
   source: 'desktop/package.json',

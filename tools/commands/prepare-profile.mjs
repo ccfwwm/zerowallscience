@@ -55,6 +55,12 @@ for (const id of [...new Set([...defaults, ...coreIds])]) {
 const profileDefaults = [...new Set(defaults)].filter(id => !overlayIds.has(id))
 await writeFile(join(stageRoot, 'commands/default-plugins.json'), JSON.stringify(profileDefaults))
 await writeFile(join(stageRoot, 'commands/bundled-plugins.json'), JSON.stringify(bundled))
+const skillVersions = JSON.parse(await readFile(join(root, 'config/catalogs/resource-versions.json'), 'utf8')).skill
+const bundledSkills = {}
+for (const name of await readdir(join(stageRoot, 'resources/extensions/skills'))) {
+  if (await readFile(join(stageRoot, 'resources/extensions/skills', name, 'SKILL.md')).then(() => true, () => false)) bundledSkills[name] = skillVersions[name] ?? '0.1.0'
+}
+await writeFile(join(stageRoot, 'commands/bundled-skill-versions.json'), JSON.stringify(bundledSkills))
 const optional = configuredDefaults.filter(id => !runtimeProfile.corePlugins.includes(id))
 await writeFile(join(stageRoot, 'commands/optional-plugins.json'), JSON.stringify(optional))
 await writeFile(join(stageRoot, 'commands/default-profile.patch.json'), JSON.stringify([

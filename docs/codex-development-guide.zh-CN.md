@@ -8,7 +8,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | `8.0.9` |
+| 应用版本 | `8.1.0`；本批次父 HEAD `c47e360279d4ff0b032b8c4bd384a4cd5fea072d`，分支 `main` |
 | 8.0.9 Windows x64 安装包 | `316,401,650` 字节，SHA-256 `a2200357281410897bd1a9f7f4702742599cb4b004a8f35acdfd4d4f8e344ced`，build ID `1791561463413-f0f9c239` |
 | 8.0.9 发布状态 | Windows 安装器、37 个插件、281 个 Skills、2 个 MCP 和 1 个 Python 目录已发布至七牛 Stable 并完成公网校验；未创建 GitHub Release |
 | 集成基线 | 8.0.9 从 `d7d8f579357f5fec20773425d5ae9430ea5e7d4e` 开发，实现提交 `d4738fbee0778e0d0bae495b1bcdc2ac75e63c6d` 已合并到 `main` |
@@ -160,7 +160,9 @@ pnpm plugins:pack
 - 独立 generation、任务 journal、旧版本、失败原因和重试次数。
 - 插件按 profile 原子切换；Skills 支持运行中刷新；MCP 配置支持热刷新，Server 支持启停和重启；Python 使用 generation 与 `current.json`。
 
-8.0.9 扩展资源启动和每日远端检测默认关闭。打开页面、切换标签、刷新本地列表只读取本地状态；只有用户点击“检查更新”才读取、验签远端 catalog metadata，可保存验证后的缓存。检测不下载 payload、不安装、不修改 profile、不重启。桌面安装器更新策略保持原有行为。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。
+8.1.0 在启动完成后后台检查插件、Skills 和 MCP 签名目录，并每日检查一次；扩展中心打开时独立检查四组资源（含 Python），手动“检查更新”可立即重试。检测只读取、验签 catalog metadata，并保存验证后的缓存，不下载 payload、不安装、不修改 profile、不重启。发现桌面或资源更新时自动打开更新提示，并在左下角保留更新标记和扩展中心入口。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。远端结果成功后，较早发起的本地读取不得覆盖它；网络失败保留已知更新状态，并显示该组诊断。
+
+插件更新、修复、本地导入和启停的 candidate profile 必须保留安装器已验证离线闭包。对未被本次签名更新替换、且位于用户资源 `offline/` generation 内的包，使用 `link:` 引用其完整运行时，不让 pnpm 重新解析源码 manifest 中的 `workspace:`。选中的插件和签名依赖闭包仍使用验签 tarball。不要删除依赖或放宽版本断言来规避 `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`。包管理失败应显示退出码、脱敏 stdout/stderr 和 profile diagnostics，不能只显示通用失败提示。
 
 ### Python 分层合同（8.0.7）
 
@@ -229,7 +231,7 @@ architecture 7 通过 candidate profile、事务 journal、真实 Host 健康检
 
 扩展中心四组独立显示，本地读取上限 5 秒，人工检测每组上限 15 秒；请求去重、底层超时、关闭后和过期结果保护同时生效。已安装版本、是否缺包、用户启用选择、实际 Host 激活、固定版本必须分开。Python 解释器就绪不等于 science/capability 已安装。某组挂起或不可用不阻塞其他组，不清空已有结果。
 
-验收不能使用 Core smoke 代替完整科研功能测试。`pnpm smoke:electron` 执行真实隔离 Electron；`verify:package` 同时检查原始 Core ASAR 与验签后的离线闭包，保留 Office/Zotero/原生依赖等检查。历史功能基线见 [8.0.6 到 8.0.8 功能对照](feature-parity-8.0.8.md)，8.0.9 发布和性能记录见 [8.0.9 发布说明](release-notes-8.0.9.md)。后续直接在主目录开发；已发布的临时版本产物按用户要求清理，凭据、用户数据、有效缓存和原始插件归档保留。
+验收不能使用 Core smoke 代替完整科研功能测试。当前 Core 策略下 `pnpm smoke:electron` 调用桌面包结构验证，并不启动真实 Electron 界面；修改 UI 或更新交互时必须另行启动隔离的打包后 Electron 验收，报告不能将两者混为一谈。`verify:package` 同时检查原始 Core ASAR 与验签后的离线闭包，保留 Office/Zotero/原生依赖等检查。历史功能基线见 [8.0.6 到 8.0.8 功能对照](feature-parity-8.0.8.md)，8.0.9 发布和性能记录见 [8.0.9 发布说明](release-notes-8.0.9.md)。后续直接在主目录开发；已发布的临时版本产物按用户要求清理，凭据、用户数据、有效缓存和原始插件归档保留。
 
 ## 7. 版本和兼容性
 
@@ -521,3 +523,71 @@ node scripts/publish-resources.mjs verify --kind skill
 Skills feed 包含 283 个不可变对象（含 catalog），总大小 `7,503,550` 字节；catalog 为 `238,104` 字节，SHA-256 `6adf1498a8020ee80e2328edab6f9ae715863ab7407d9aa40f3c5054abb2bc78`，公网指针 `https://zerowall.chengxunkeji.cn/stable/catalogs/skill-latest.json` 的校验 SHA-256 为 `84d0f7d4a0e665754c9d43b63f90d279e3ac3d4ee5ba6131ba35f72a03dfdf77`。资源归档路径、单对象大小和 SHA-256 以 `qiniu-resources-plugin-public.json`、`qiniu-resources-skill-public.json` 为准。
 
 `stage` 只上传并验证不可变对象，`promote` 只更新对应的资源 catalog pointer，`verify` 再次从公网检查大小和 SHA-256。该流程不会上传桌面安装器，也不会修改桌面 `latest.yml`。启动和每日目录检查仍是只读；旧版本安装状态只能用于检测新版本，用户未明确选择时不得下载、安装、重启或改变 profile。
+
+## 16. 8.1.0 更新修复与验收
+
+本批次在 `main` 上从 `c47e360279d4ff0b032b8c4bd384a4cd5fea072d` 开发，DSH 仍为 `86b6740d0e671cee0b3fd0168de484c0efbf46ea`。用户已授权构建和发布 Windows x64 `8.1.0`、更新七牛桌面 Stable 指针，并提交及推送 `origin/main`；本批次不创建 GitHub Release 或版本标签。
+
+插件更新的 candidate profile 不能重新解析安装器离线包的源码 `workspace:` 依赖。未被替换的离线 generation 保留完整闭包并使用 `link:`；选中资源和签名依赖继续使用验签归档。Progressive Tools 上游 `0.7.0` 的四个 DSH peers 仍为精确 `0.2.0-rc.1`，生产适配器核验原版本及 peer 集合后改为精确 `0.2.0-rc.2`。其 bundle 使用未加 scope 的包名，导致安装包中入口无法导入；适配器核验原始 patch 后改为 `@everclear077/dsh-progressive-tools`，独立版本为 `0.7.2-zws.1`。这项适配不改上游源码，也不放宽运行时兼容检查。
+
+资源更新弹窗与桌面更新状态分别判断：只存在插件/Skills 更新时不得显示旧桌面版本为最新版本。捆绑 Skills 使用构建时生成的版本快照；独立更新后的 Skill 副本写入签名目录版本，后续检测使用 `skill.get.declaredVersion`。后台检测只读取并验签目录，实际更新、回滚和 Host 重启均由用户明确操作触发。
+
+### 16.1 上游复查（2026-10-10）
+
+12 个锁定 tag 的远端身份已核验。第 15 节中的 File Review 和 Zotero 旧 `commit` 字段实际记录 annotated tag 对象；本次审计保留该历史身份，并记录剥离 tag 后的真实源码 commit：
+
+| 资源 | 锁定 tag | tag 对象 | 真实源码 commit |
+| --- | --- | --- | --- |
+| File Review | `v0.8.8` | `7636242d1145708b9f602b32c46cb3a57524ae7e` | `b0a828b925b42435d85c4bb867072c167baf678d` |
+| Zotero | `v0.12.1` | `77604ad4829dea52d0e9f498d635c9b59f1cae38` | `abb4054cc13b0a893df96294e57c667aab3fd059` |
+
+额外发现的上游 refs 本次未合入，需要按适配矩阵复核后另发资源版本：
+
+| 资源 | 新 ref | 默认分支 commit |
+| --- | --- | --- |
+| Zotero | `v0.13.0-alpha.2` | `313b7fffa71c599fed29f1549f1aaab39128f191` |
+| GenUI | 默认分支新提交；最新 tag 仍为 `v0.11.4` | `5d0d63b8f542886db4910f4dd13a875b1e01803c` |
+| Academic Research Skills | 默认分支新提交；最新 tag 仍为 `v3.23.0` | `e614b322297ba5b072a106942177e218cbe2d48f` |
+| Dream Skin | 默认分支新提交；最新 tag 仍为 `v10.9.3` | `c48e03461815aa22014d4ab98f0fbb3b4b12d052` |
+| Session Notification | 默认分支新提交；最新 tag 仍为 `v0.2.3` | `655150567cf1a40ca245645daf265cbadd63c97d` |
+
+机器可读审计收据为 `artifacts/verification/8.1.0/upstream-audit.json`。运行时公网检测针对经过签名、适配和发布的资源目录；上游 GitHub 新提交只有正式纳入目录后才作为用户可安装更新。
+
+### 16.2 版本与检测合同
+
+桌面启动完成后 12 秒读取插件、Skills 和 MCP 签名目录，15 秒检查桌面更新，运行中每 24 小时再次检查；手动检查可立即重试。检测不得创建安装任务、修改 profile 或重启 Host。发现更新时自动弹窗，同时保留左下角更新标记；资源更新弹窗直接进入扩展中心，桌面更新仍由用户确认下载和安装。
+
+本批次资源版本为 Base `0.1.13`、Research `0.1.10`、Extension Center `0.1.8`、File Review `0.8.9-zws.1`、Dream Skin `10.9.4-zws.1`、Progressive Tools `0.7.2-zws.1`。其他插件及未变化 Skills 保持已发布版本和字节。扩展中心 `0.1.6` 已存在公网归档，其 Base 依赖为 `0.1.12`；当前依赖为 `0.1.13`，曾递增并暂存 `0.1.7`。后续调整窄屏布局和 Python 安装状态，因此最终发布 `0.1.8`，保留旧归档且不覆盖同版本对象。
+
+扩展中心按插件、Skills、MCP 和 Python 分组，摘要显示资源数量、可更新数量和最近检查时间；窄屏工具栏将标签与搜索分行，搜索与导入保持同一行。Python 完全未安装时显示“安装”，不计入可更新数量或全部更新；已经安装旧包但匹配版本数量为零时仍应识别为更新。实际安装必须由用户点击安装按钮触发。
+
+实际安装验收必须在隔离用户目录启动打包后的 Electron，使用真实旧插件/Skills 归档验证检测、更新、健康检查和回滚。宽屏及窄屏截图要关闭更新弹窗后检查扩展中心，再单独检查公网启动弹窗；只运行结构门禁不能代替这项 UI 验收。失败命令保留脱敏 stdout/stderr、exit code 与 profile diagnostics，不展示凭据。
+
+### 16.3 最终构建与资源收据
+
+构建 ID 为 `1791616088507-10a8b33f`，Windows x64 安装器为 `artifacts/packages/8.1.0/windows-x64/zerowall-science-8.1.0-win-x64.exe`，大小 `317,644,649` 字节，SHA-256 `23c1af2e65fca7655d5b5d41166aa9a8d76da9bf4192db109dd340c961886fd3`。安装器构建基于本节开头记录的父 HEAD 和本次未提交源码；`artifact-manifest.json` 明确记录 `source.clean=false`，不能将它描述为仅由父 HEAD 重现的产物。桌面和 DSH 命令实际输出分别为 `8.1.0` 与 `0.2.0-rc.2`。
+
+本批次变化的插件归档如下，路径前缀均为 `artifacts/release/8.1.0/plugins/`；未变化资源的完整路径、大小和哈希见 `plugin-packages.json` 与公网收据。
+
+| 资源 | 版本 | 归档相对路径 | 字节 | SHA-256 |
+| --- | --- | --- | --- | --- |
+| Base | `0.1.13` | `plugin-base/0.1.13/zerowallscience-plugin-base-0.1.13.tgz` | `201795` | `f226841fe6dd4e2c8ec273f2cf300d98f8360e6b5b5e1973e544ee7d5e616e99` |
+| Extension Center | `0.1.8` | `plugin-extension-center/0.1.8/zerowallscience-plugin-extension-center-0.1.8.tgz` | `143711` | `40b7205ddb04896c164b030c77b83b371cf9cc1d6eb243b4c3a009e1a3499723` |
+| Research | `0.1.10` | `plugin-research/0.1.10/zerowallscience-plugin-research-0.1.10.tgz` | `9881038` | `4d27ce4bfd83e34cf5b89666326b053963e8343ead763188a4062d8cd2d22010` |
+| Progressive Tools | `0.7.2-zws.1` | `dsh-progressive-tools/0.7.2-zws.1/everclear077-dsh-progressive-tools-0.7.2-zws.1.tgz` | `44553` | `76211474e0e4e781e0a02f7b1cb3db21a15d60143909ce541fe1871b8b69ebd4` |
+| Dream Skin | `10.9.4-zws.1` | `dsh-dream-skin/10.9.4-zws.1/dsh-dream-skin-10.9.4-zws.1.tgz` | `149116` | `38a34d5a8a52945c0aa35f775609408b32ecdcb317ca2fc9c78a53b61f6e161e` |
+| File Review | `0.8.9-zws.1` | `dsh-file-review/0.8.9-zws.1/dsh-file-review-0.8.9-zws.1.tgz` | `90629` | `dcb970c2c412875519bf6c9a082cae422c11e4f67a896e030bdb893cf9533b54` |
+
+两个签名目录的 `applicationVersion=8.1.0`、`localOnly=false`、`keyId=stable-4`。插件 feed 为 37 个插件和 1 个 catalog，共 `81,637,017` 字节；catalog 为 `54,329` 字节，SHA-256 `af732828dd2a334001770f0cfd3e1cacbe851f2e951dee67623b5f3fb3f8dda7`。Skills feed 为 282 个 Skills 和 1 个 catalog，共 `7,503,550` 字节；catalog 为 `238,104` 字节，SHA-256 `3b7d522df2406fbc62060d2f6bb558144bf670bac548f4d379692e6166767a41`。
+
+插件公网指针 `https://zerowall.chengxunkeji.cn/stable/catalogs/plugin-latest.json` 为 `521` 字节，SHA-256 `70ddceb3cf25eb32f59dbea4f35cafcf24d7fc8200783af4efd19a2ee6e6106d`；Skills 公网指针 `https://zerowall.chengxunkeji.cn/stable/catalogs/skill-latest.json` 为 `520` 字节，SHA-256 `b267a7a266173dcb0b9d641befbc7f5d440690794d7c10c1d2df5ec6ca790af2`。每个不可变对象均已在 `stage` 时从公网下载校验，随后 `promote` 与 `verify` 校验目录指针。逐对象收据为 `artifacts/release/8.1.0/publication/qiniu-resources-plugin-public.json`、`qiniu-resources-skill-public.json`。
+
+### 16.4 验收与限制
+
+以下检查通过：`pnpm dsh:inventory`、`pnpm dsh:verify`、`pnpm profiles:check`、`pnpm dsh:runtime:closure`、`pnpm version:check`、完整 `pnpm typecheck`、`pnpm plugins:typecheck`、`pnpm plugins:test`、`pnpm plugins:verify-pack`（21 个原生包）、`pnpm test:updates`、`pnpm test:security` 和完整 `pnpm verify:package`。最终完整包验证已经包含 `smoke:host` 与 `smoke:electron` 所代理的 Host/Desktop 检查，因此没有重复运行相同门禁。`pnpm smoke:update` 验证桌面更新元数据。
+
+最后修改后补验 Base `54` 通过、`1` 跳过；Extension Center `8` 通过；桌面 `233` 通过、`4` 跳过；更新 `53` 通过、`3` 跳过；合同 `57` 通过、`1` 跳过；安全 `2` 通过。详细日志位于 `artifacts/logs/8.1.0/`。跳过项为未提供私有历史副本、实际 Python 集成 fixtures、提供的 Zotero 回放 fixture，以及未配置独立 Electron 测试可执行路径的三项单测；后者相关运行时能力另由真实安装包验证覆盖。
+
+真实打包 Electron 使用隔离用户目录，完成 File Review `0.8.8` → `0.8.9-zws.1` 更新、Host 健康检查和回滚；`paper-download` `0.1.1` → `0.1.2` 更新后不再误报，随后回滚成功。启动公网检查发现 `1` 个插件和 `1` 个 Skill 更新，弹窗自动显示，关闭后左下角指示仍保留，按钮可以打开扩展中心；检查未创建安装任务。截图与 JSON 收据位于 `artifacts/verification/8.1.0/`。
+
+本批次仅构建 Windows x64，不构建 macOS/Linux；第 16.1 节额外上游 refs 未合入。安装器未使用 Windows Authenticode 证书，资源目录和离线闭包使用稳定 Ed25519 签名。没有创建 GitHub Release/tag，没有对真实用户目录执行安装或更新。未跟踪目录、密钥和 `artifacts/` 不纳入源码提交。

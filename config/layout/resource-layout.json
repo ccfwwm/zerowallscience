@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.0.9",
+  "version": "8.1.0",
   "canonicalRoot": "resources",
   "logicalRoots": {
     "skills": "extensions/skills",
