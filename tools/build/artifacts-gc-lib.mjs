@@ -14,8 +14,8 @@ export function within(root, candidate) {
 
 const hasDependencyDirectory = path => resolve(path).split(/[\\/]/u).some(part => part.toLowerCase() === 'node_modules')
 
-async function inventory(path, files = [], dirs = [], protectedPaths = []) {
-  if (hasDependencyDirectory(path)) {
+async function inventory(path, files = [], dirs = [], protectedPaths = [], { protectDependencies = true } = {}) {
+  if (protectDependencies && hasDependencyDirectory(path)) {
     protectedPaths.push(path)
     return { mostRecentMs: 0, bytes: 0, files, dirs, protectedPaths }
   }
@@ -29,15 +29,15 @@ async function inventory(path, files = [], dirs = [], protectedPaths = []) {
   dirs.push(path)
   let mostRecentMs = info.mtimeMs, bytes = 0
   for (const child of await readdir(path)) {
-    const item = await inventory(join(path, child), files, dirs, protectedPaths)
+    const item = await inventory(join(path, child), files, dirs, protectedPaths, { protectDependencies })
     mostRecentMs = Math.max(mostRecentMs, item.mostRecentMs)
     bytes += item.bytes
   }
   return { mostRecentMs, bytes, files, dirs, protectedPaths }
 }
 
-async function treeDigest(path) {
-  const data = await inventory(path)
+async function treeDigest(path, { protectDependencies = true } = {}) {
+  const data = await inventory(path, [], [], [], { protectDependencies })
   if (data.protectedPaths.length) throw new Error(`Refusing to remove a tree containing protected node_modules: ${path}`)
   const digest = createHash('sha256')
   const base = resolve(path)
@@ -103,7 +103,7 @@ export async function createCleanupPlan({ root, policy, now = Date.now() }) {
   const cacheReferences = [...durableReferences]
   const candidates = []
   const exclusions = []
-  const addCandidate = async (managedRoot, path, cutoffDays, reason, buildId, references = durableReferences) => {
+  const addCandidate = async (managedRoot, path, cutoffDays, reason, buildId, references = durableReferences, { protectDependencies = true } = {}) => {
     const absoluteRoot = resolve(repositoryRoot, managedRoot)
     const absolute = resolve(path)
     const protectedRoot = (policy.protectedRoots ?? []).some(item => {
@@ -124,7 +124,7 @@ export async function createCleanupPlan({ root, policy, now = Date.now() }) {
     }
     // A recently touched tree cannot have expired. Avoid scanning or hashing it.
     if (cutoffDays > 0 && (now - info.mtimeMs) / 86_400_000 < cutoffDays) return
-    const inventoryData = await inventory(absolute)
+    const inventoryData = await inventory(absolute, [], [], [], { protectDependencies })
     if (inventoryData.protectedPaths.length) {
       exclusions.push({ path: absolute, reason: 'contains-protected-node-modules' })
       return
@@ -135,8 +135,8 @@ export async function createCleanupPlan({ root, policy, now = Date.now() }) {
       exclusions.push({ path: absolute, reason: 'referenced-build' })
       return
     }
-    const digest = await treeDigest(absolute)
-    candidates.push({ path: absolute, managedRoot: absoluteRoot, repositoryRoot, reason, ageDays: Math.floor(ageDays), ...digest })
+    const digest = await treeDigest(absolute, { protectDependencies })
+    candidates.push({ path: absolute, managedRoot: absoluteRoot, repositoryRoot, reason, ageDays: Math.floor(ageDays), protectDependencies, ...digest })
   }
 
   const stageRoot = join(artifacts, 'stage')
@@ -160,9 +160,9 @@ export async function createCleanupPlan({ root, policy, now = Date.now() }) {
     for (const { path: buildPath, buildId, failed, success } of builds) {
       if (active?.buildId === buildId) { exclusions.push({ path: buildPath, reason: 'active-stage' }); continue }
       if (retained.has(buildId)) { exclusions.push({ path: buildPath, reason: 'retained-successful-stage' }); continue }
-      if (failed) await addCandidate('artifacts/stage', buildPath, policy.defaults.failedBuildDays, 'failed-build-expired', buildId)
-      else if (success && keepCount != null) await addCandidate('artifacts/stage', buildPath, 0, 'successful-stage-over-retention', buildId)
-      else await addCandidate('artifacts/stage', buildPath, policy.defaults.stageDays, 'unreferenced-stage-expired', buildId)
+      if (failed) await addCandidate('artifacts/stage', buildPath, policy.defaults.failedBuildDays, 'failed-build-expired', buildId, durableReferences, { protectDependencies: false })
+      else if (success && keepCount != null) await addCandidate('artifacts/stage', buildPath, 0, 'successful-stage-over-retention', buildId, durableReferences, { protectDependencies: false })
+      else await addCandidate('artifacts/stage', buildPath, policy.defaults.stageDays, 'unreferenced-stage-expired', buildId, durableReferences, { protectDependencies: false })
       void version
     }
     if (active?.buildId && /^[A-Za-z0-9._-]+$/u.test(active.buildId)) cacheReferences.push(...await collectJsonFiles(join(versionPath, active.buildId)))
@@ -179,7 +179,7 @@ export async function createCleanupPlan({ root, policy, now = Date.now() }) {
     entries.sort((a, b) => b.time - a.time || b.path.localeCompare(a.path))
     for (const [index, entry] of entries.entries()) {
       if (index < count) exclusions.push({ path: entry.path, reason: 'retained-cache' })
-      else await addCandidate(managedRoot, entry.path, 0, 'cache-over-retention', entry.path.split(/[\\/]/u).at(-1), cacheReferences)
+      else await addCandidate(managedRoot, entry.path, 0, 'cache-over-retention', entry.path.split(/[\\/]/u).at(-1), cacheReferences, { protectDependencies: false })
     }
   }
   const assemblyRoot = join(artifacts, 'cache/runtime-assemblies')
@@ -237,7 +237,7 @@ export async function removeCandidate(candidate, expected) {
     }
     if (await isReferenced(path, id, references)) throw new Error('Cleanup candidate acquired a protected reference')
   }
-  const current = await treeDigest(path)
+  const current = await treeDigest(path, { protectDependencies: expected.protectDependencies !== false })
   if (current.sha256 !== expected.sha256 || current.bytes !== expected.bytes) throw new Error(`Cleanup candidate changed after dry-run: ${path}`)
   await rm(path, { recursive: info.isDirectory(), force: false })
 }

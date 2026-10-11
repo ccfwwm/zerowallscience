@@ -26,6 +26,27 @@ test('GC retains the current and previous successful stage by count', async () =
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+test('GC can retire generated stages that contain packaged node_modules', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-gc-stage-dependencies-'))
+  try {
+    const stage = join(root, 'artifacts/stage/8.1.2')
+    await mkdir(stage, { recursive: true })
+    for (const [id, time] of [['oldest', 1], ['current', 2]]) {
+      const path = join(stage, id)
+      await mkdir(join(path, 'runtime/node_modules/generated'), { recursive: true })
+      await writeFile(join(path, 'runtime/node_modules/generated/package.json'), '{}')
+      await writeFile(join(path, 'runtime/payload'), id)
+      await writeFile(join(path, 'runtime/build-receipt.json'), JSON.stringify({ status: 'success', finishedAt: `2026-10-0${time}T00:00:00.000Z` }))
+    }
+    await writeFile(join(stage, 'current.json'), JSON.stringify({ buildId: 'current' }))
+    const plan = await createCleanupPlan({ root, now: Date.parse('2026-10-10T00:00:00.000Z'), policy: { ...policy, defaults: { ...policy.defaults, keepStagesPerVersion: 1 } } })
+    assert.ok(plan.candidates.some(item => item.path.endsWith('oldest') && item.reason === 'successful-stage-over-retention'))
+    await removeCandidate(plan.candidates.find(item => item.path.endsWith('oldest')), plan.candidates.find(item => item.path.endsWith('oldest')))
+    await assert.rejects(readFile(join(stage, 'oldest/runtime/payload')))
+    assert.equal(await readFile(join(stage, 'current/runtime/payload'), 'utf8'), 'current')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 test('GC reports only expired generated children and preserves the active stage', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-gc-'))
   try {
