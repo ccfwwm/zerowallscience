@@ -50,23 +50,32 @@ describe('/panel slash source', () => {
     }
   })
 
-  it('publishes the default spec and requests expansion on pick', async () => {
+  it('publishes the default spec and requests expansion on a menu pick', () => {
     const before = getPanelExpandToken(SID)
     const outcome = source.onPick!({
       candidate: { name: 'panel' },
       session: { sessionId: SID },
       position: 'leading',
+      via: 'menu',
+      span: { start: 0, end: 6, draftRev: 0 },
+    })
+    expect(outcome).toBe('handled')
+    expect(getPanelSpec(SID)).toEqual(defaultPanelSpec())
+    expect(getPanelExpandToken(SID)).toBe(before + 1)
+  })
+
+  it('keeps the claim path for non-menu picks', async () => {
+    const outcome = source.onPick!({
+      candidate: { name: 'panel' },
+      session: { sessionId: SID } as never,
+      position: 'leading',
       via: 'enter',
       span: { start: 0, end: 6, draftRev: 0 },
     })
-    expect(outcome).not.toBeUndefined()
     expect(outcome).toHaveProperty('claim')
     const claim = (outcome as { claim: { name: string; submit: (a: string) => Promise<unknown> } }).claim
     expect(claim.name).toBe('panel')
-    const result = await claim.submit('')
-    expect(result).toEqual({ kind: 'success' })
-    expect(getPanelSpec(SID)).toEqual(defaultPanelSpec())
-    expect(getPanelExpandToken(SID)).toBe(before + 1)
+    await expect(claim.submit('')).resolves.toEqual({ kind: 'success' })
   })
 
   it('clears the panel on /panel clear (matchEnter path)', async () => {

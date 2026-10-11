@@ -128,6 +128,13 @@ export function createPanelSlashSource(sendInstruction: (sessionId: SessionId, i
       }]
     },
     onPick(pick) {
+      // A menu pick is already an explicit choice. Execute the bare panel
+      // action immediately so Enter on the highlighted `/panel` row does not
+      // leave the composer in the claimed phase waiting for a second Enter.
+      if (pick.via === 'menu') {
+        applyPanelCommand(pick.session.sessionId, '')
+        return 'handled'
+      }
       return { claim: panelClaim(pick.session.sessionId, sendInstruction) }
     },
     matchEnter: async (session, line, _signal) => {

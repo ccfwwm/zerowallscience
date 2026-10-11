@@ -3,11 +3,15 @@ export function adaptDreamSkinClient(source) {
   // pnpm applies the checked-in 10.9.3 patch before this runtime copy. Accept
   // both the upstream table and that already-adapted table, while rejecting
   // any future layout change until the appearance adapter is reviewed.
-  const composer = /(\[COMPOSER_OPACITY_KEY\]: String\(FACTORY_SKIN_DEFAULTS\.composerOpacity \?\? )(0\.4|1)(\),)/
-  const modal = /(\[MODAL_OPACITY_KEY\]: String\(FACTORY_SKIN_DEFAULTS\.modalOpacity \?\? )(0\.94|1)(\),)/
+  // The pinned 10.9.3 client derives the seed from the selected factory skin
+  // table. Older snapshots used the same expression with a named fallback;
+  // both forms need the ZeroWall first-run values to be opaque. Keep the
+  // match narrow so a future upstream refactor fails loudly.
+  const composer = /\[COMPOSER_OPACITY_KEY\]: String\((?:FACTORY_SKIN_DEFAULTS\.composerOpacity \?\? 1|1)\),/
+  const modal = /\[MODAL_OPACITY_KEY\]: String\((?:FACTORY_SKIN_DEFAULTS\.modalOpacity \?\? 1|1)\),/
   if (!composer.test(source) || !modal.test(source)) throw new Error('Pinned Dream Skin factory table changed; review appearance adapter')
-  let result = source.replace(composer, (_match, prefix, _value, suffix) => `${prefix}1${suffix}`)
-    .replace(modal, (_match, prefix, _value, suffix) => `${prefix}1${suffix}`)
+  let result = source.replace(composer, '[COMPOSER_OPACITY_KEY]: String(1),')
+    .replace(modal, '[MODAL_OPACITY_KEY]: String(1),')
   const locales = [
     ['zh', '外观'], ['en', 'Appearance'], ['ja', '外観'], ['ko', '외관'],
     ['es', 'Apariencia'], ['fr', 'Apparence'], ['de', 'Erscheinungsbild'], ['ru', 'Внешний вид'],

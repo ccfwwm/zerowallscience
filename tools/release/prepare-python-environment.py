@@ -105,12 +105,46 @@ def main():
     # upstream sdist lock and may compile explicitly authorized sources.
     if args.base_only:
         source_lock = make_core_wheel_lock(work)
+    # A small number of upstream sdists have invalid VCS metadata on Windows
+    # (notably nglview 4.0.1).  A repaired wheel is kept in the owned wheel
+    # cache and must be resolved locally instead of allowing pip to select the
+    # broken index sdist again.
+    resolved_lock = source_lock
+    repaired = {"nglview==4.0.1": wheelhouse / "nglview-4.0.1-py3-none-any.whl"}
+    lock_text = source_lock.read_text(encoding="utf-8")
+    for requirement, wheel in repaired.items():
+        if wheel.is_file():
+            name = requirement.split("==", 1)[0]
+            lines = lock_text.splitlines(keepends=True)
+            filtered = []
+            skipping = False
+            for line in lines:
+                if line.startswith(f"{name}=="):
+                    skipping = True
+                    continue
+                if skipping and line.startswith("    --hash=sha256:"):
+                    continue
+                skipping = False
+                filtered.append(line)
+            lock_text = "".join(filtered)
+    if lock_text != source_lock.read_text(encoding="utf-8"):
+        resolved_lock = work / "requirements-research-resolved.lock"
+        resolved_lock.write_text(lock_text, encoding="utf-8")
     run_args = [sys.executable, "-m", "pip", "wheel"]
     if args.base_only:
         run_args.append("--only-binary=:all:")
     else:
         run_args.append("--prefer-binary")
-    run_args += ["--require-hashes", "-r", source_lock, "--wheel-dir", wheelhouse]
+    # The lock contains the complete transitive set.  Building with dependency
+    # resolution enabled makes pip re-parse upstream metadata and reject
+    # otherwise valid locks when a package declares a range such as
+    # ``nglview>=3.1`` without a hash.  Resolve the explicitly locked rows only;
+    # installation below still uses the complete hash-checked lock.
+    run_args += ["--no-deps", "--require-hashes", "-r", resolved_lock, "--wheel-dir", wheelhouse]
+    # Reuse previously repaired/compiled wheels before consulting an index.
+    # ``--wheel-dir`` is output-only in pip; without an explicit find-links
+    # source, a bad sdist can be selected again on every environment build.
+    run_args += ["--find-links", wheelhouse]
     run(run_args, env=env)
     core_hashes = verify_core_wheels(wheelhouse, ROOT / "resources/extensions/python/requirements-base.txt")
     expected = dict(re.findall(r"^([A-Za-z0-9_.-]+)==([^\s\\]+)", source_lock.read_text(encoding="utf-8"), re.M))

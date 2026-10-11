@@ -413,7 +413,7 @@ export class McpEnvironmentController {
     const context = await this.pythonContext()
     // Package application only needs the signed core closure, previously
     // managed extensions, and packages named by this plan. A full importlib
-    // inventory here made even the small 42-package startup repair wait on
+    // inventory here made even the small signed core repair wait on
     // unrelated science packages and custom tooling.
     const trackedNames = [...new Set([
       ...(current.extensionNames ?? []),

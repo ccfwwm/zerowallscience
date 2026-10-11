@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { reuseAssembly } from './assembly-cache.mjs'
@@ -20,7 +20,12 @@ test('assembly cache reuses verified bytes and rebuilds corrupt or additional fi
     } })
   }
   await assemble('first')
-  assert.deepEqual(await assemble('second'), { generation: 'same-across-desktop-versions' })
+  const second = await assemble('second')
+  assert.equal(second.generation, 'same-across-desktop-versions')
+  assert.equal(second.materialization.sourceKey, 'component-content')
+  assert.equal(second.materialization.mode, 'hardlink')
+  await assemble('other-stage')
+  assert.equal((await stat(join(root, 'second/index.js'))).ino, (await stat(join(root, 'other-stage/index.js'))).ino)
   assert.equal(builds, 1)
   assert.equal(await readFile(join(root, 'second/index.js'), 'utf8'), 'verified original bytes')
   await writeFile(join(cache, 'component-content/modules/index.js'), 'corrupt')

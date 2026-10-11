@@ -4,7 +4,7 @@ import { copyFile, lstat, mkdir, readFile, readdir, rm, stat, writeFile } from '
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { contract, root, stageRoot } from './paths.mjs'
-import { fingerprintInputs, isContained, tasksForChangedFiles } from './build-graph-lib.mjs'
+import { fingerprintInputs, isContained } from './build-graph-lib.mjs'
 import { packageSource, resourceSource } from './layout.mjs'
 import { deterministicArchive } from '../release/deterministic-archive.mjs'
 import { storeAndLink } from './content-store.mjs'
@@ -196,7 +196,7 @@ async function taskDefinition(id, taskArgs = []) {
       if (manifest?.name && await exists(join(directory, 'lib'))) outputDirectories.push(join(directory, 'lib'))
     }
     await collect(join(root, 'deepseek-harness'))
-    return { id, inputPaths: ['deepseek-harness', 'tools/dsh/build-zerowall.mjs', 'config/deepseek-harness/upstream.json'], dshCommit, dependencyLockHash: createHash('sha256').update(await readFile(join(root, 'deepseek-harness/pnpm-lock.yaml'))).digest('hex'), dependencies, outputs: [...outputDirectories, join(root, 'deepseek-harness/apps/cli/lib/bin.js'), join(root, 'deepseek-harness/apps/web/dist')], lockName: 'runtime', run: async () => run(scriptArgs(['dsh:build:zerowall'])) }
+    return { id, inputPaths: ['deepseek-harness', 'tools/dsh/build-zerowall.mjs', 'config/deepseek-harness/upstream.json'], dshCommit, dependencyLockHash: createHash('sha256').update(await readFile(join(root, 'deepseek-harness/pnpm-lock.yaml'))).digest('hex'), dependencies, outputs: [...outputDirectories, join(root, 'deepseek-harness/apps/cli/lib/bin.js'), join(root, 'deepseek-harness/apps/web/dist')], lockName: 'runtime', run: async () => run(scriptArgs(['dsh:build:zerowall', ...(command === 'development' ? ['--development'] : [])])) }
   }
   if (id === 'runtime') return { id, inputPaths: ['plugins', 'packages', 'profiles', 'tools/dsh', 'tools/plugins', 'config/deepseek-harness', 'config/layout'], dshCommit, dependencies, outputs: [join(stageRoot, 'dsh/runtime-closure.json')], lockName: 'runtime', run: async () => {
     run(scriptArgs(['profiles:generate']))
@@ -253,36 +253,23 @@ async function outputIntegrity(outputs) {
   return records
 }
 
-async function allComponents() {
+async function allComponents({ development = false } = {}) {
   const dsh = await runTask('dsh')
   const pin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
   const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
-  await writeJson(join(stageRoot, 'dsh/build-receipt.json'), { commit: pin.commit, version: pin.version, applicationVersion: version, builtAt: dsh.builtAt, compilationFingerprint: dsh.fingerprint })
+  if (!development) await writeJson(join(stageRoot, 'dsh/build-receipt.json'), { commit: pin.commit, version: pin.version, applicationVersion: version, builtAt: dsh.builtAt, compilationFingerprint: dsh.fingerprint })
   for (const name of ['integrity-runtime', 'dsh-wechat', 'dsh-genui', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-ssh-ops', 'zotero-harvest', 'dsh-session-notification', 'dsh-progressive-tools']) await runTask('package-build:' + name)
   // Store is a workspace package with the same independent task contract.
   await runTask('package-build:research-store')
   for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) if (entry.isDirectory() && entry.name !== 'wechat' && await exists(join(root, 'plugins', entry.name, 'package.json'))) await runTask('plugin-build:' + entry.name)
 }
 
-async function changedTasks() {
-  const tracked = spawnSync('git', ['diff', '--name-only', '-z', 'HEAD'], { cwd: root, encoding: 'utf8' })
-  if (tracked.status !== 0) throw new Error('Could not inspect changed files with git diff.')
-  const untracked = spawnSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' })
-  if (untracked.status !== 0) throw new Error('Could not inspect untracked files.')
-  const files = [...new Set(`${tracked.stdout}${untracked.stdout}`.split('\0').filter(Boolean))]
-  const pythonChanged = files.some(file => {
-    const normalized = file.replaceAll('\\', '/')
-    return normalized.startsWith('resources/extensions/python/') || normalized.startsWith('resources/python/')
-  })
-  let pythonCapabilities = []
-  if (pythonChanged) {
-    const capabilityConfig = await readFile(join(root, 'config/python/capability-layers.json'), 'utf8').then(JSON.parse)
-    pythonCapabilities = Array.isArray(capabilityConfig.capabilities) ? capabilityConfig.capabilities : []
-  }
-  return tasksForChangedFiles(files, { pythonCapabilities })
-}
-
-if (command === 'components' || command === 'build:changed') {
+if (command === 'development') {
+  // Fingerprints catch committed edits and missing outputs as well as the
+  // working diff. Only changed/damaged components actually compile.
+  await allComponents({ development: true })
+  await runTask('desktop')
+} else if (command === 'components' || command === 'build:changed') {
   // Check every content fingerprint, including committed changes and damaged
   // outputs. git diff HEAD is not a build dependency graph.
   await allComponents()

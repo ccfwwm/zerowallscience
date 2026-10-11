@@ -22,6 +22,7 @@ const publicKeys = {
   'stable-2': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAUvKwSI31zGGut3nRi4kRqZGg8eBJskIrfa8Xmp/7VJw=\n-----END PUBLIC KEY-----`,
   'stable-3': `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA9DJ9yg3F5f67/cEE54AdIDtQshvLP0SF5gVe3F3X+wA=\n-----END PUBLIC KEY-----`,
 }
+Object.assign(publicKeys, JSON.parse(await readFile(resolve(root, 'config/catalogs/trusted-keys.json'), 'utf8')))
 const manifest = JSON.parse(await readFile(resolve(dist, 'latest.json'), 'utf8'))
 const versionManifest = JSON.parse(await readFile(resolve(dist, `${environmentVersion}.json`), 'utf8'))
 if ((manifest.environmentVersion ?? manifest.version) !== environmentVersion || JSON.stringify(manifest) !== JSON.stringify(versionManifest)) throw new Error('MCP latest and version manifests do not match the requested environment version.')
@@ -56,7 +57,21 @@ const mac = new qiniu.auth.digest.Mac(env.QINIU_ACCESS_KEY, env.QINIU_SECRET_KEY
 const config = new qiniu.conf.Config(); config.zone = qiniu.zone[`Zone_${env.QINIU_REGION}`] ?? qiniu.zone.Zone_z2
 const uploader = new qiniu.form_up.FormUploader(config)
 const resumeUploader = new qiniu.resume_up.ResumeUploader(config)
-function upload(key, file, overwrite) {
+async function upload(key, file, overwrite) {
+  if (!overwrite) {
+    const existing = await fetch(`${publicBase}/${key}?immutable-check=${Date.now()}`)
+    if (existing.ok) {
+      const bytes = Buffer.from(await existing.arrayBuffer())
+      const local = await hashFile(resolve(dist, file))
+      const remoteSha256 = createHash('sha256').update(bytes).digest('hex')
+      if (bytes.length === local.size && remoteSha256 === local.sha256) {
+        console.log(`Immutable asset already verified: ${key}`)
+        return
+      }
+      throw new Error(`Refusing to overwrite immutable asset with different bytes: ${key}`)
+    }
+    if (existing.status !== 404) throw new Error(`Immutable asset preflight failed for ${key}: HTTP ${existing.status}`)
+  }
   return new Promise((resolvePromise, reject) => {
     const policy = new qiniu.rs.PutPolicy({ scope: `${env.QINIU_BUCKET}:${key}`, insertOnly: overwrite ? 0 : 1, expires: 86400 })
     const callback = (error, body, info) => info?.statusCode === 200 ? resolvePromise(body) : reject(new Error(`Qiniu upload failed for ${key}: HTTP ${info?.statusCode ?? 'network error'}`))
@@ -68,7 +83,7 @@ function upload(key, file, overwrite) {
     } else uploader.putFile(policy.uploadToken(mac), key, resolve(dist, file), new qiniu.form_up.PutExtra(), callback)
   })
 }
-const publicBase = env.QINIU_DOMAIN.replace(/\/$/u, '')
+const publicBase = (/^https?:\/\//u.test(env.QINIU_DOMAIN) ? env.QINIU_DOMAIN : `https://${env.QINIU_DOMAIN}`).replace(/\/$/u, '')
 function verifyPublicManifest(value) {
   const { signature: receivedSignature, ...payload } = value
   if (!receivedSignature?.keyId || !publicKeys[receivedSignature.keyId] || !verify(null, Buffer.from(JSON.stringify(payload)), publicKeys[receivedSignature.keyId], Buffer.from(receivedSignature.value ?? '', 'base64'))) throw new Error('Public manifest signature verification failed.')

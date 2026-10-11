@@ -12,6 +12,7 @@ under lib/ next to this file; the vendored server code is not installed by pip.
 
 import importlib
 import sys
+import traceback
 from pathlib import Path
 
 
@@ -37,4 +38,15 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        # Keep the traceback for diagnostics, but put the actionable cause at
+        # the end because desktop health checks retain only the tail of stderr.
+        traceback.print_exc()
+        missing = getattr(exc, "name", None)
+        suffix = f"; missing module: {missing}" if missing else ""
+        sys.stderr.write(
+            f"ZeroWall MCP startup failed: {type(exc).__name__}: {exc}{suffix}\n"
+        )
+        raise

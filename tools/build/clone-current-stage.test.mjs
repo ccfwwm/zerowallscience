@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -16,6 +16,7 @@ test('clones the active runtime stage under a new build ID and switches the poin
     await writeFile(join(source, 'runtime/build-receipt.json'), JSON.stringify({
       commit: 'dsh-commit', version: '0.2.0-rc.2', applicationVersion: '8.0.7',
     }))
+    await writeFile(join(source, 'runtime/payload.bin'), 'immutable runtime')
     await writeFile(join(source, 'resources/extensions/skills/example/SKILL.md'), 'skill payload')
     await writeFile(join(versionRoot, 'current.json'), JSON.stringify({ buildId: 'build-old', applicationVersion: '8.0.7' }))
 
@@ -27,10 +28,18 @@ test('clones the active runtime stage under a new build ID and switches the poin
     assert.deepEqual(JSON.parse(await readFile(join(versionRoot, 'current.json'), 'utf8')), {
       buildId: 'build-new', applicationVersion: '8.0.7',
     })
-    assert.deepEqual(JSON.parse(await readFile(join(result.stage, 'stage-clone-receipt.json'), 'utf8')), {
+    const cloneReceipt = JSON.parse(await readFile(join(result.stage, 'stage-clone-receipt.json'), 'utf8'))
+    assert.deepEqual({ ...cloneReceipt, materialization: undefined }, {
       schema: 1, applicationVersion: '8.0.7', buildId: 'build-new', sourceBuildId: 'build-old',
-      runtimeCommit: 'dsh-commit', dshVersion: '0.2.0-rc.2', createdAt: '2026-10-08T00:00:00.000Z',
+      runtimeCommit: 'dsh-commit', dshVersion: '0.2.0-rc.2', createdAt: '2026-10-08T00:00:00.000Z', materialization: undefined,
     })
+    assert.equal(cloneReceipt.materialization.mode, 'mixed')
+    assert.equal((await stat(join(source, 'runtime/payload.bin'))).ino, (await stat(join(result.stage, 'runtime/payload.bin'))).ino)
+    assert.notEqual((await stat(join(source, 'runtime/build-receipt.json'))).ino, (await stat(join(result.stage, 'runtime/build-receipt.json'))).ino)
+    await writeFile(join(result.stage, 'runtime/build-receipt.json'), JSON.stringify({
+      commit: 'new-commit', version: '0.2.0-rc.2', applicationVersion: '8.0.7',
+    }))
+    assert.equal(JSON.parse(await readFile(join(source, 'runtime/build-receipt.json'), 'utf8')).commit, 'dsh-commit')
     await assert.rejects(cloneCurrentStage({ root, buildId: 'build-new' }), /matches the active build ID/u)
     await mkdir(join(versionRoot, 'build-existing'))
     await assert.rejects(cloneCurrentStage({ root, buildId: 'build-existing' }), /Refusing to overwrite an existing build stage/u)

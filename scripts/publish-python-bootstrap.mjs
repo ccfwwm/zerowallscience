@@ -23,7 +23,7 @@ const expectedArchiveUrl = `https://zerowall.chengxunkeji.cn/stable/zerowall-pyt
 const { signature, ...payload } = manifest
 if (!publicKey || signature?.keyId !== keyId || signature.algorithm !== 'ed25519'
   || !verify(null, Buffer.from(JSON.stringify(payload)), publicKey, Buffer.from(signature.value ?? '', 'base64'))
-  || !verifyBootstrapManifest(manifest, publicKey)) throw new Error('Bootstrap manifest signature or 42-package core contract failed.')
+  || !verifyBootstrapManifest(manifest, publicKey)) throw new Error('Bootstrap manifest signature or core dependency contract failed.')
 if (manifest.applicationVersion !== contract.version || manifest.environmentVersion !== environmentVersion
   || manifest.archiveUrl !== expectedArchiveUrl || manifest.archiveSize !== archiveInfo.size || manifest.archiveSha256 !== archiveHash) {
   throw new Error('Bootstrap manifest does not match the current desktop version and archive bytes.')

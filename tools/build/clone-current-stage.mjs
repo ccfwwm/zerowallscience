@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
-import { cp, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { materializeTree, mutableReceipt } from './materialize-tree.mjs'
 
 const repositoryRoot = resolve(import.meta.dirname, '../..')
 
@@ -55,7 +56,12 @@ export async function cloneCurrentStage({ root = repositoryRoot, buildId, create
   // may hold descendants open even after all copy operations have finished.
   await mkdir(destination)
   try {
-    await cp(source, destination, { recursive: true, force: false, errorOnExist: true })
+    const materialization = await materializeTree({ source, destination, sourceKey: active.buildId,
+      // These script-owned areas are refreshed during packaging. Copy them
+      // privately so an in-place adaptation cannot alter the prior stage.
+      shouldCopy: path => mutableReceipt(path) || /^(?:commands|resources|electron-app|installer-ui|nsis-overlay|python-updater)\//u.test(path),
+      include: path => !/^stage-clone-(?:receipt|failure)\.json$/u.test(path),
+    })
     await writeFile(join(destination, 'stage-clone-receipt.json'), `${JSON.stringify({
       schema: 1,
       applicationVersion,
@@ -64,6 +70,7 @@ export async function cloneCurrentStage({ root = repositoryRoot, buildId, create
       runtimeCommit: runtimeReceipt.commit,
       dshVersion: runtimeReceipt.version,
       createdAt,
+      materialization,
     }, null, 2)}\n`)
   } catch (error) {
     // Keep the interrupted candidate and failure evidence for inspection/GC.

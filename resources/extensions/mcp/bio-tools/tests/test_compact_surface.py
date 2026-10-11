@@ -22,6 +22,40 @@ class CompactSurfaceTests(unittest.TestCase):
         self.assertLessEqual(len(summary), 350)
         self.assertTrue(summary.endswith("..."))
 
+    def test_server_startup_does_not_require_science_domains(self):
+        import mcp_bio.server as server_module
+
+        original = server_module.BioAggregate
+
+        class ShouldNotLoad:
+            def __init__(self):
+                raise AssertionError("science domains were imported during initialize")
+
+        server_module.BioAggregate = ShouldNotLoad
+        try:
+            server, aggregate = server_module.build_server()
+            self.assertIsNotNone(server)
+            self.assertIsInstance(aggregate, server_module.LazyBioAggregate)
+        finally:
+            server_module.BioAggregate = original
+
+    def test_missing_science_dependency_is_reported_when_capability_is_used(self):
+        import mcp_bio.server as server_module
+
+        original = server_module.BioAggregate
+
+        class MissingScience:
+            def __init__(self):
+                raise ModuleNotFoundError("No module named 'clinicaltrials_essie'", name="clinicaltrials_essie")
+
+        server_module.BioAggregate = MissingScience
+        try:
+            aggregate = server_module.LazyBioAggregate()
+            with self.assertRaisesRegex(RuntimeError, "clinicaltrials_essie"):
+                aggregate.tool_names()
+        finally:
+            server_module.BioAggregate = original
+
 
 if __name__ == "__main__":
     unittest.main()

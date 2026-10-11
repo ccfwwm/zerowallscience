@@ -87,10 +87,20 @@ for (const file of ['tsconfig.host.tsbuildinfo', 'tsconfig.client.tsbuildinfo'])
   const contained = relative(contract.artifacts, target)
   if (contained.startsWith('..') || isAbsolute(contained)) throw new Error('Cache target is outside artifacts')
   await mkdir(dirname(target), { recursive: true })
-  const existing = await lstat(source).catch(() => undefined)
+  let existing = await lstat(source).catch(() => undefined)
   if (existing?.isSymbolicLink()) {
-    if (await realpath(source) !== await realpath(target)) throw new Error('Unknown TypeScript cache link')
-    continue
+    const sourceTarget = await realpath(source).catch(() => undefined)
+    const cacheTarget = await realpath(target).catch(() => undefined)
+    if (sourceTarget !== undefined && cacheTarget !== undefined) {
+      if (sourceTarget !== cacheTarget) throw new Error('Unknown TypeScript cache link')
+      continue
+    }
+    // A previous interrupted build can leave a dangling compatibility link.
+    // Remove only that known link, then recreate the cache file below.
+    await unlink(source)
+    // Treat the removed link as absent for the migration branches below.
+    // The target is either restored from a real source file or initialized.
+    existing = undefined
   }
   if (existing) {
     await writeFile(target, await readFile(source))

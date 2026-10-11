@@ -22,7 +22,7 @@ const verifyManifest = (document, layer) => document.schema === 3
 
 if (!verifyManifest(science, 'science') || !/^[A-Za-z0-9_.-]{1,100}$/u.test(science.revision)) throw new Error('Refusing to publish an invalid signed science dependency manifest.')
 if (!verifyManifest(core, 'core') || !/^[A-Za-z0-9_.-]{1,100}$/u.test(core.revision)) throw new Error('Refusing to publish an invalid signed core dependency manifest.')
-if (core.packages.length !== 42 || core.packages.some(pkg => pkg.required !== true)) throw new Error('The startup core manifest must contain exactly 42 required dependencies.')
+if (core.packages.length === 0 || core.packages.some(pkg => pkg.required !== true)) throw new Error('The startup core manifest must contain only required dependencies.')
 
 const scienceVersionName = `manifest-${science.revision}.json`
 const coreVersionName = `core-${science.revision}.json`

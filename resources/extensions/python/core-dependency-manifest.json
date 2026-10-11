@@ -1,14 +1,14 @@
 {
   "schema": 3,
   "kind": "zerowall-science-python",
-  "applicationVersion": "8.0.7",
+  "applicationVersion": "8.1.2",
   "runtimeId": "zerowall-science-python",
   "platform": "win32-x64",
   "environmentVersion": "3.12.10",
-  "revision": "3.12.10-r16-core",
+  "revision": "3.12.10-r17-core",
   "pythonVersion": "3.12.10",
   "layer": "core",
-  "createdAt": "2026-10-08T05:15:57.088Z",
+  "createdAt": "2026-10-10T20:25:23.523Z",
   "index": {
     "indexUrl": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "trustedHost": "pypi.tuna.tsinghua.edu.cn"
@@ -330,6 +330,15 @@
       ]
     },
     {
+      "name": "sniffio",
+      "version": "1.3.1",
+      "sha256": "2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2",
+      "required": true,
+      "capabilities": [
+        "core"
+      ]
+    },
+    {
       "name": "sse-starlette",
       "version": "3.4.11",
       "sha256": "c7b2244bdff016fe7f64e10075e89a3e6bbf899649cc89b0fe884b5545042453",
@@ -394,11 +403,11 @@
     }
   ],
   "compatibility": {
-    "minApplicationVersion": "8.0.7"
+    "minApplicationVersion": "8.1.2"
   },
   "signature": {
     "algorithm": "ed25519",
     "keyId": "stable-4",
-    "value": "6AWRXPxD25Ul8MFr6Wp2z8znR6aCQyEvCtxoR11xLdwa4JhbouioU+1ZlEw9AnAVOcWcXhtkjQVZ32HKe/1fAg=="
+    "value": "T61U2ByK8QsGC1L28qR0OG0yzgjzY5LANI5Ev+BcZ7KvwrehVext0utCnUMkgAc2B7H9SNlsKNl7i6+LN/ShAA=="
   }
 }

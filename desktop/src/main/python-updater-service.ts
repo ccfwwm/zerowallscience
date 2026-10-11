@@ -219,7 +219,7 @@ export class PythonUpdaterService {
     if (this.busy || this.paused || this.queuedUpdate || this.stopped) return this.status
     // Offline installers use the signed local bootstrap. Thin installers fetch
     // the same signed Python + pip bootstrap over the network when no runtime is
-    // active; the 42-package core dependency layer follows as a separate task.
+    // active; the signed core dependency layer follows as a separate task.
     let local: McpEnvironmentStatus
     try { local = await this.rpc<McpEnvironmentStatus>('localStatus') }
     catch (error) { local = { phase: 'failed', message: error instanceof Error ? error.message : String(error) } }
@@ -254,7 +254,7 @@ export class PythonUpdaterService {
     }
     // Bootstrap and dependency installation have separate owners. Once the
     // interpreter exists, return the local state immediately so the caller can
-    // start the 42-package core task without waiting on the remote runtime feed.
+    // start the signed core dependency task without waiting on the remote runtime feed.
     // The runtime feed remains an explicit read-only check after core setup.
     return this.status
   }

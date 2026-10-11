@@ -185,22 +185,60 @@ export function apply(ctx: Context): () => void {
   // clears it (/panel clear), or relays an instruction to the model
   // (/panel <指令>) so the panel gets tailored content.
   //
-  // inputTriggers is subscribed via cordis OPTIONAL injection (ctx.inject),
-  // NOT a one-shot ctx.get() at apply time: the service is typically
-  // provided by a different bundle than slots/sessions, so it can arrive
-  // AFTER apply() runs — a one-shot lookup would silently disable /panel
-  // even on hosts that DO ship the service (service arrival order race).
-  // ctx.inject activates the callback only when the service arrives (any
-  // order) and disposes with the subscription fiber; hosts without the
-  // service simply never register /panel, and rendering is unaffected
-  // either way.
-  ctx.inject(['inputTriggers'], (scope) => {
-    const slash = scope.get('inputTriggers') as InputTriggerServiceContract | undefined
-    if (slash === undefined) return
-    scope.effect(() => slash.registerSource(
-      createPanelSlashSource((sessionId, instruction) => sendPanelInstruction(ctx, sessionId, instruction)),
-    ), 'genui: /panel')
-  })
+  // inputTriggers is optional because pristine DSH shells do not provide it.
+  // Dynamic client packages can be mounted below a different fiber from the
+  // conversation package, so probe both the package context and the app root.
+  // Cordis emits internal/service whenever a provider appears or disappears;
+  // this keeps registration order independent without making the service a
+  // hard activation dependency.
+  const serviceOf = (scope: Context | undefined): InputTriggerServiceContract | undefined => {
+    if (scope === undefined) return undefined
+    const getter = (scope as unknown as { get?: (name: string) => unknown }).get
+    if (typeof getter === 'function') return getter.call(scope, 'inputTriggers') as InputTriggerServiceContract | undefined
+    return (scope as unknown as { inputTriggers?: InputTriggerServiceContract }).inputTriggers
+  }
+  // Use Cordis' optional injection so registration follows the provider's
+  // actual isolated scope. The callback is parked until inputTriggers exists,
+  // then its effect owns the source lifetime. A few registry-only tests use a
+  // minimal context without real injection; probing the service keeps those
+  // hosts harmless while real DSH uses the contract above.
+  const panelSource = createPanelSlashSource((sessionId, instruction) => sendPanelInstruction(ctx, sessionId, instruction))
+  let panelSourceDispose: (() => void) | undefined
+  const registerPanelSource = (service: InputTriggerServiceContract | undefined): void => {
+    if (service === undefined || panelSourceDispose !== undefined) return
+    panelSourceDispose = service.registerSource(panelSource)
+  }
+  // Stable DSH compositions usually expose inputTriggers from the application
+  // root before this plugin runs. Register there immediately so the command is
+  // available even when the optional injection fiber is isolated below a
+  // different package scope.
+  registerPanelSource(serviceOf(ctx) as InputTriggerServiceContract | undefined)
+  const inject = (ctx as unknown as {
+    inject?: (deps: string[], callback: (scope: Context) => void) => { dispose?: () => void } | void
+  }).inject
+  if (typeof inject === 'function') {
+    const fiber = inject.call(ctx, ['inputTriggers'], (scope: Context) => {
+      const service = serviceOf(scope)
+      if (service === undefined) return
+      if (panelSourceDispose !== undefined) return
+      const register = () => service.registerSource(panelSource)
+      if (typeof (scope as unknown as { effect?: (fn: () => () => void, name?: string) => unknown }).effect === 'function') {
+        ;(scope as unknown as { effect: (fn: () => () => void, name?: string) => unknown }).effect(register, 'genui: /panel')
+      } else {
+        panelSourceDispose = register()
+      }
+    })
+    disposers.push(() => {
+      fiber?.dispose?.()
+      panelSourceDispose?.()
+      panelSourceDispose = undefined
+    })
+  } else if (panelSourceDispose !== undefined) {
+    disposers.push(() => {
+      panelSourceDispose?.()
+      panelSourceDispose = undefined
+    })
+  }
   return () => {
     for (const dispose of disposers) dispose()
   }
@@ -216,10 +254,9 @@ export function apply(ctx: Context): () => void {
 // cordis `inject` is a hard activation gate — a declared service that is
 // never provided (pristine DSH shells ship no inputTriggers provider) parks
 // the fiber in waiting forever and apply() never runs, silently killing all
-// GenUI rendering. Instead the apply() body subscribes via ctx.inject
-// (optional injection): hosts with the service get /panel registered in any
-// arrival order, hosts without it never register /panel — and the renderer
-// itself never depends on the service either way.
+// GenUI rendering. The apply() body therefore uses optional ctx.get() and the
+// internal/service lifecycle event to register /panel whenever the provider is
+// present in either the package or application-root service scope.
 export const inject = ['slots', 'sessions']
 
 // Re-export the registry renderer for the test suite (setup.ts registers it

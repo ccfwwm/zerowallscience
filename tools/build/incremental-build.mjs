@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
@@ -25,3 +25,4 @@ run(['resources:prepare'])
 execFileSync(process.execPath, [join(root, 'tools/packaging/write-runtime-integrity.mjs')], { cwd: root, env: process.env, stdio: 'inherit' })
 for (const task of ['commands:prepare', 'plugins:pack', 'catalogs:generate', 'runtime:profile:sign']) run([task])
 execFileSync(process.execPath, [join(root, 'tools/build/build-graph.mjs'), 'desktop'], { cwd: root, env: process.env, stdio: 'inherit' })
+await writeFile(join(artifacts, 'stage', version, process.env.ZEROWALL_BUILD_ID, 'build-receipt.json'), JSON.stringify({ schema: 1, status: 'success', applicationVersion: version, buildId: process.env.ZEROWALL_BUILD_ID, finishedAt: new Date().toISOString() }, null, 2))

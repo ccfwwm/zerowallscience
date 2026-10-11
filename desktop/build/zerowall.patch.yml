@@ -9,6 +9,14 @@
 
 # Keep the structured question composer active in the desktop overlay. A
 # disabled renderer leaves only the waiting tool row and no selectable options.
+- id: ui-input-trigger
+  disabled: false
+- id: ui-commands
+  disabled: false
+- id: ui-skill
+  disabled: false
+- id: ui-reference
+  disabled: false
 - id: ui-user-questions
   disabled: false
 

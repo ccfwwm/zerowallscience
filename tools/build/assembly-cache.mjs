@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { cp, link, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { cp, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
+import { join, relative, resolve, sep } from 'node:path'
 import { offlineFiles } from '../commands/offline-profile.mjs'
 import { root, stageRoot, cacheRoot, applicationVersion } from './paths.mjs'
+import { materializeTree } from './materialize-tree.mjs'
 
 /** Reuse verified assembled bytes, including their exact file set. The stage
  * receives immutable hard links; later tasks read them or copy into packages.
@@ -14,31 +15,23 @@ export async function reuseAssembly({ cache, output, key, prepare }) {
   const started = Date.now()
   if (prior?.key === key && actual && JSON.stringify(actual) === JSON.stringify(prior.files)) {
     await mkdir(output, { recursive: true })
-    let next = 0
-    await Promise.all(Array.from({ length: 16 }, async () => {
-      while (next < actual.length) {
-        const entry = actual[next++]
-        const source = join(cached, 'modules', entry.path), target = join(output, entry.path)
-        await mkdir(dirname(target), { recursive: true })
-        try { await link(source, target) }
-        catch (error) { if (!['EXDEV', 'EPERM', 'EACCES'].includes(error.code)) throw error; await cp(source, target) }
-      }
-    }))
+    const materialization = await materializeTree({ source: join(cached, 'modules'), destination: output, sourceKey: key, expectedFiles: actual })
     console.log(`CACHE HIT runtime-assembly ${key.slice(0, 12)} ${Date.now() - started}ms; verified ${actual.length} files`)
-    return prior.metadata
+    return { ...(prior.metadata ?? {}), materialization }
   }
   console.log(`REBUILD runtime-assembly ${key.slice(0, 12)}: ${prior ? 'output file set/hash changed' : 'no component cache'}`)
   const metadata = await prepare()
   const pending = cached + '.candidate-' + randomUUID()
   await mkdir(pending, { recursive: true })
   await cp(output, join(pending, 'modules'), { recursive: true })
-  await writeFile(join(pending, 'receipt.json'), JSON.stringify({ key, metadata, files: await offlineFiles(join(pending, 'modules')) }))
+  const files = await offlineFiles(join(pending, 'modules'))
+  await writeFile(join(pending, 'receipt.json'), JSON.stringify({ key, metadata, files, materialization: { sourceKey: key, mode: 'copy', files } }))
   const withinCache = path => { const rel = relative(resolve(cache), resolve(path)); return rel && rel !== '..' && !rel.startsWith('..' + sep) }
   if (!withinCache(cached) || !withinCache(pending)) throw new Error('Runtime assembly cache escapes its owned root')
   if (await stat(cached).catch(() => undefined)) await rename(cached, cached + '.damaged-' + randomUUID())
   await rename(pending, cached)
   console.log(`BUILT runtime-assembly ${key.slice(0, 12)} ${Date.now() - started}ms`)
-  return metadata
+  return { ...metadata, materialization: { sourceKey: key, mode: 'copy', files } }
 }
 
 export async function assembleRuntime(kind, run) {

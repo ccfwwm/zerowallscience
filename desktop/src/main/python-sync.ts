@@ -60,7 +60,7 @@ export class PythonSyncService {
       const manifest = parsePythonDependencyManifest(JSON.parse(await readFile(path, 'utf8')), this.options.keys, this.options.applicationVersion)
       // A resource file with the wrong layer must never be used as the core
       // contract. This also prevents an old science manifest from masquerading
-      // as the 42-package startup set.
+      // as the signed startup core set.
       const declaredLayer = manifest.layer ?? 'science'
       if (declaredLayer !== layer && !(layer === 'capability' && declaredLayer === 'science')) return undefined
       return manifest

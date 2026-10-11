@@ -1,14 +1,14 @@
 {
   "schema": 3,
   "kind": "zerowall-science-python",
-  "applicationVersion": "8.0.7",
+  "applicationVersion": "8.1.2",
   "runtimeId": "zerowall-science-python",
   "platform": "win32-x64",
   "environmentVersion": "3.12.10",
-  "revision": "3.12.10-r16",
+  "revision": "3.12.10-r17",
   "pythonVersion": "3.12.10",
   "layer": "science",
-  "createdAt": "2026-10-08T05:15:57.082Z",
+  "createdAt": "2026-10-10T20:25:23.518Z",
   "index": {
     "indexUrl": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "trustedHost": "pypi.tuna.tsinghua.edu.cn"
@@ -2467,6 +2467,7 @@
       "version": "3.1.5",
       "required": true,
       "capabilities": [
+        "sr-screener",
         "zerowall-image-dup"
       ]
     },
@@ -4524,16 +4525,16 @@
     }
   ],
   "compatibility": {
-    "minApplicationVersion": "8.0.7"
+    "minApplicationVersion": "8.1.2"
   },
   "signature": {
     "algorithm": "ed25519",
     "keyId": "stable-4",
-    "value": "eXXVgO6ff60u4TFknm6abK/GbSHZvVXoqefMoSeqrmtSVAAvkxh+hw+DCgN4t45e35TNld+7UbyEFA9Fh7FDAw=="
+    "value": "WdLbIarSKLrARSE7RELNpAyXcovQFtor+Z05tQEL3F0LCDmu1VDewMXHHjPlFZOprJELMOmUKd1w9+yUy0MHDg=="
   },
   "source": {
-    "lockSha256": "ef306e94e27ebfe441cc51533bbfcf96b6b0338046800f643ce813024c78120a",
-    "sourceLockSha256": "40b122ca08c29a1e04329a343c1689b4e14c9840140d2134a06dc7d5accff81f",
-    "auditGeneratedAt": "2026-09-26T12:12:18.032585+00:00"
+    "lockSha256": "18da5f3bff1c2a92a604efe2415af3c278734473f9898d8ed562921fcffc0b62",
+    "sourceLockSha256": "0c8aac2a7ede3709623c4b9ab6281bdede8a73b58c8c3a6fe61eb7e74b5e67db",
+    "auditGeneratedAt": "2026-10-10T20:15:46.842964+00:00"
   }
 }

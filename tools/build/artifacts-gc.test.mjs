@@ -8,6 +8,24 @@ import { createCleanupPlan, removeCandidate } from './artifacts-gc-lib.mjs'
 
 const policy = { defaults: { stageDays: 14, devDays: 14, failedBuildDays: 7, cacheDays: 30, logsDays: 90, objectDays: 30 }, protectedRoots: ['artifacts/release', 'node_modules'], managedRoots: ['artifacts/stage', 'artifacts/dev', 'artifacts/objects'] }
 
+test('GC retains the current and previous successful stage by count', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-gc-retention-'))
+  try {
+    const stage = join(root, 'artifacts/stage/8.1.1')
+    await mkdir(stage, { recursive: true })
+    for (const [id, time] of [['oldest', 1], ['previous', 2], ['current', 3]]) {
+      const path = join(stage, id); await mkdir(join(path, 'runtime'), { recursive: true })
+      await writeFile(join(path, 'runtime/build-receipt.json'), JSON.stringify({ status: 'success', finishedAt: `2026-10-0${time}T00:00:00.000Z` }))
+      await writeFile(join(path, 'payload'), id)
+    }
+    await writeFile(join(stage, 'current.json'), JSON.stringify({ buildId: 'current' }))
+    const plan = await createCleanupPlan({ root, now: Date.parse('2026-10-10T00:00:00.000Z'), policy: { ...policy, defaults: { ...policy.defaults, keepStagesPerVersion: 2 } } })
+    assert.ok(plan.exclusions.some(item => item.path.endsWith('current') && item.reason === 'active-stage'))
+    assert.ok(plan.exclusions.some(item => item.path.endsWith('previous') && item.reason === 'retained-successful-stage'))
+    assert.ok(plan.candidates.some(item => item.path.endsWith('oldest') && item.reason === 'successful-stage-over-retention'))
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 test('GC reports only expired generated children and preserves the active stage', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-gc-'))
   try {

@@ -219,7 +219,13 @@ zws python status
 
 增量入口是 `pnpm build:changed`、`pnpm plugin:build <id>`、`pnpm plugin:pack <id>`、`pnpm package:build <id>`、`pnpm resource:build skill|mcp|python <id-or-layer>`。Windows Stable 打包先执行增量 `pnpm build`，检查全部组件指纹和输出哈希，用有效缓存装配新的 build ID，再验证 runtime stage 的新鲜度并生成安装器。`pnpm build:full` 显式强制重建；单个插件迭代只使用对应的 `plugin:*` 命令。每项收据包含实际依赖闭包指纹、DSH commit、输出哈希、build ID、耗时和重建原因。`pnpm artifacts:gc --dry-run` 默认只读；只有核对候选清单后才使用 `--apply`。
 
+日常编译使用 `pnpm build:dev`：检查 DSH、支持包、Research Store、插件和桌面的全部组件指纹，仅编译输入变化、输出缺失或哈希失效的组件。输出继续通过兼容链接进入 `artifacts/dev/`；已提交改动和共享 helper 也参与指纹。此入口不初始化正式 stage，不装配 runtime、离线 profile、资源签名或安装器载荷。正式构建仍使用 `pnpm build`、`pnpm build:full` 和 `pnpm package:stable:win`。
+
+runtime assembly、stage clone 和离线 carrier 命中缓存时优先硬链接普通文件；跨卷或权限不允许时复制。正式 runtime 拒绝符号链接和特殊文件，并记录物化方式、源缓存键及文件 SHA-256。链接后的缓存字节视为不可变：适配必须在生成候选缓存之前完成，不能原地修改命中后的 runtime。收据、签名及 stage clone 中会被包装脚本刷新或适配的目录独立复制。新缓存仍通过完整候选目录校验后原子切换，损坏缓存保留诊断副本。
+
 GC 不遍历任何 `node_modules` 目录；候选树包含嵌套依赖目录时保留整棵树。只有超过保留期且不被收据引用的候选项才计算 SHA-256。删除前重新校验内容和嵌套依赖保护，即使 dry-run 后只新增了一个空的 `node_modules`，也必须拒绝删除。
+
+GC 按数量保留每个版本的当前 stage 和上一次成功 stage；没有当前指针时保留最近两次成功 stage。每类 runtime assembly 和 offline carrier 保留最近两份。超过数量的成功产物可进入候选，不必等待 14 天；失败和不完整产物仍遵守原保留期。当前 stage、release/verification 收据引用和 `node_modules` 保护优先于数量规则，因此实际保留数量可能超过两份。`--dry-run` 只列清单，`--apply` 必须由用户显式执行。
 
 单独的 Python 依赖清单可用 `pnpm resource:build python core`、`science` 或 `capability <id>` 生成。构建命令应绑定新的 `ZEROWALL_BUILD_ID`；输出先进入该 build ID 的 stage，再经签名和 SHA-256 收据校验。catalog 若标记 `localOnly`，只可用于本地验收，不能作为正式发布目录。
 

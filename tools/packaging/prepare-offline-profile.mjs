@@ -1,5 +1,5 @@
-import { cp, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { createHash, randomUUID } from 'node:crypto'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { join, resolve, relative } from 'node:path'
 import { createRequire } from 'node:module'
 import { root, stageRoot, cacheRoot, applicationVersion, buildId } from '../build/paths.mjs'
@@ -8,6 +8,7 @@ import { carrierName, offlineContentDigest } from '../commands/offline-carrier.m
 import { compareVersions, fileDigest } from '../commands/resource-catalog.mjs'
 import { signCatalog } from '../release/resource-catalog.mjs'
 import { loadResourceSigner } from '../release/resource-signing.mjs'
+import { reuseOfflineCarrier } from './offline-carrier-cache.mjs'
 
 const directory = join(stageRoot, 'offline-profile')
 const signer = await loadResourceSigner({ root, cacheRoot })
@@ -26,19 +27,7 @@ const physicalRoots = [...plugins.filter(entry => !entry.core).map(entry => `nod
   'node_modules/sharp', 'node_modules/@img', 'node_modules/koffi',
   'node_modules/@koromix', 'node_modules/@zerowallscience/integrity-runtime']
 const cacheKey = createHash('sha256').update(JSON.stringify({ files, physicalRoots, archiver: require('@electron/asar/package.json').version, recipe: await fileDigest(import.meta.filename) })).digest('hex')
-const cached = join(cacheRoot, 'offline-carriers', cacheKey)
-const cachedReceipt = await readFile(join(cached, 'payload.json'), 'utf8').then(JSON.parse, () => undefined)
-async function payloadAt(path) {
-  return [{ path: carrierName, size: (await stat(join(path, carrierName))).size, sha256: await fileDigest(join(path, carrierName)) },
-    ...await offlineFiles(join(path, carrierName + '.unpacked'), carrierName + '.unpacked/')].sort((a, b) => a.path.localeCompare(b.path))
-}
-const cachedFiles = cachedReceipt && await payloadAt(cached).catch(() => undefined)
-const cacheHit = cachedFiles && JSON.stringify(cachedFiles) === JSON.stringify(cachedReceipt.files)
-if (cacheHit) {
-  await cp(join(cached, carrierName), join(directory, carrierName))
-  await cp(join(cached, carrierName + '.unpacked'), join(directory, carrierName + '.unpacked'), { recursive: true })
-  console.log(`CACHE HIT offline-carrier ${cacheKey}; verified archive and native output hashes`)
-} else {
+const carrier = await reuseOfflineCarrier({ cache: join(cacheRoot, 'offline-carriers'), output: directory, key: cacheKey, prepare: async () => {
   // Rename the owned staging directory while archiving rather than copying
   // the entire expanded closure again. Always restore it for tarball gates.
   await mkdir(input, { recursive: true })
@@ -49,18 +38,10 @@ if (cacheHit) {
     })
   } finally { await rename(join(input, 'node_modules'), join(directory, 'modules')) }
   await rm(input, { recursive: true })
-  const pending = cached + '.candidate-' + randomUUID()
-  await mkdir(pending, { recursive: true })
-  await cp(join(directory, carrierName), join(pending, carrierName))
-  await cp(join(directory, carrierName + '.unpacked'), join(pending, carrierName + '.unpacked'), { recursive: true })
-  await writeFile(join(pending, 'payload.json'), JSON.stringify({ cacheKey, files: await payloadAt(pending) }))
-  if (await stat(cached).catch(() => undefined)) await rename(cached, cached + '.damaged-' + randomUUID())
-  await rename(pending, cached)
-  console.log(`BUILT offline-carrier ${cacheKey}; stable component content identity`)
-}
-const payloadFiles = [{ path: carrierName, size: (await stat(join(directory, carrierName))).size, sha256: await fileDigest(join(directory, carrierName)) },
-  ...await offlineFiles(join(directory, carrierName + '.unpacked'), carrierName + '.unpacked/')].sort((a, b) => a.path.localeCompare(b.path))
+} })
+const payloadFiles = carrier.files
 const oldBuildReceipt = JSON.parse(await readFile(join(directory, 'build-receipt.json'), 'utf8'))
+await writeFile(join(directory, 'build-receipt.json'), JSON.stringify({ ...oldBuildReceipt, carrierMaterialization: carrier.materialization }, null, 2))
 files.sort((a, b) => a.path.localeCompare(b.path))
 const desktopRange = { min: plugins.map(entry => entry.desktop?.min).filter(Boolean).reduce((a, b) => compareVersions(a, b) >= 0 ? a : b, '8.1.0') }
 const upperBounds = plugins.map(entry => entry.desktop?.max).filter(Boolean)

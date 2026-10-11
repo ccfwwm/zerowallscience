@@ -182,7 +182,7 @@
     },
     {
       "package": "dsh-dream-skin",
-      "version": "10.9.4-zws.1",
+      "version": "10.9.4-zws.2",
       "owner": "third-party",
       "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",

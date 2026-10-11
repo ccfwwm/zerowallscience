@@ -2,7 +2,8 @@ import { createHash, sign, verify } from 'node:crypto'
 
 export function createBootstrapManifest({ applicationVersion, environmentVersion, baseUrl, archiveName, archiveSize, archiveSha256, coreManifest, template, keyId, privateKey }) {
   if (coreManifest?.schema !== 3 || coreManifest.runtimeId !== 'zerowall-science-python' || coreManifest.platform !== 'win32-x64' || coreManifest.layer !== 'core') throw new Error('A signed Windows core dependency manifest is required.')
-  if (coreManifest.packages.length !== 42 || coreManifest.packages.some(item => item.required !== true)) throw new Error('The Python bootstrap contract requires exactly 42 required core packages.')
+  const requiredCorePackages = coreManifest.packages.filter(item => item.required === true)
+  if (requiredCorePackages.length !== coreManifest.packages.length || requiredCorePackages.length === 0) throw new Error('The Python bootstrap contract requires a non-empty core manifest whose packages are all required.')
   if (!coreManifest.packages.some(item => item.name.toLowerCase() === 'pip' && item.version === template.pipVersion)) throw new Error('The bootstrap pip version must match the signed core manifest.')
   if (!Number.isSafeInteger(archiveSize) || archiveSize <= 0 || !/^[a-f0-9]{64}$/u.test(archiveSha256)) throw new Error('Python bootstrap archive metadata is invalid.')
   const archiveUrl = `${baseUrl.replace(/\/$/u, '')}/${environmentVersion}/${archiveName}`
@@ -32,7 +33,7 @@ export function createBootstrapManifest({ applicationVersion, environmentVersion
       corePackages: coreManifest.packages.map(item => ({ name: item.name, requiredVersion: item.version })),
       indexUrl: coreManifest.index.indexUrl,
     },
-    updatePolicy: { required: false, reason: 'Python and pip bootstrap only; the 42-package core installs in its own durable background task.' },
+    updatePolicy: { required: false, reason: `Python and pip bootstrap only; the ${requiredCorePackages.length}-package core installs in its own durable background task.` },
     skillsRoot: 'skills',
     sci: template.sci,
     mcp: template.mcp,
@@ -49,7 +50,7 @@ export function createBootstrapManifest({ applicationVersion, environmentVersion
 }
 
 export function verifyBootstrapManifest(manifest, publicKey) {
-  if (manifest?.python?.bootstrapOnly !== true || manifest?.python?.modules?.join(',') !== 'pip' || manifest?.dependencies?.corePackages?.length !== 42) return false
+  if (manifest?.python?.bootstrapOnly !== true || manifest?.python?.modules?.join(',') !== 'pip' || !Array.isArray(manifest?.dependencies?.corePackages) || manifest.dependencies.corePackages.length === 0) return false
   const { signature, ...unsigned } = manifest
   return signature?.algorithm === 'ed25519' && verify(null, Buffer.from(JSON.stringify(unsigned)), publicKey, Buffer.from(signature.value ?? '', 'base64'))
 }

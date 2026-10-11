@@ -5,7 +5,7 @@ import { createBootstrapManifest, verifyBootstrapManifest } from './python-boots
 
 const { privateKey, publicKey } = generateKeyPairSync('ed25519')
 const publicPem = publicKey.export({ format: 'pem', type: 'spki' }).toString()
-const corePackages = Array.from({ length: 42 }, (_, index) => ({ name: `core-${index}`, version: '1.0.0', required: true }))
+const corePackages = Array.from({ length: 43 }, (_, index) => ({ name: `core-${index}`, version: '1.0.0', required: true }))
 corePackages[20] = { name: 'pip', version: '26.2.1', required: true }
 const coreManifest = { schema: 3, runtimeId: 'zerowall-science-python', platform: 'win32-x64', layer: 'core', packages: corePackages, index: { indexUrl: 'https://pypi.example/simple' } }
 const template = {
@@ -17,7 +17,7 @@ const template = {
   publicKey: publicPem,
 }
 
-test('bootstrap manifest signs a pip-only archive and records the separate 42-package layer', () => {
+test('bootstrap manifest signs a pip-only archive and records the separate core layer', () => {
   const manifest = createBootstrapManifest({
     applicationVersion: '8.0.5', environmentVersion: '1.5.1', baseUrl: 'https://example.test/python',
     archiveName: 'bootstrap.zip', archiveSize: 17, archiveSha256: createHash('sha256').update('archive').digest('hex'),
@@ -25,7 +25,7 @@ test('bootstrap manifest signs a pip-only archive and records the separate 42-pa
   })
   assert.equal(manifest.python.bootstrapOnly, true)
   assert.deepEqual(manifest.python.modules, ['pip'])
-  assert.equal(manifest.dependencies.corePackages.length, 42)
+  assert.equal(manifest.dependencies.corePackages.length, 43)
   assert.equal(manifest.updatePolicy.required, false)
   assert.equal(manifest.archiveUrl, 'https://example.test/python/1.5.1/bootstrap.zip')
   assert.equal(verifyBootstrapManifest(manifest, publicPem), true)
@@ -34,9 +34,10 @@ test('bootstrap manifest signs a pip-only archive and records the separate 42-pa
 })
 
 test('bootstrap builder rejects a changed core package contract', () => {
+  const malformed = corePackages.map((pkg, index) => index === 0 ? { ...pkg, required: false } : pkg)
   assert.throws(() => createBootstrapManifest({
     applicationVersion: '8.0.5', environmentVersion: '1.5.1', baseUrl: 'https://example.test/python',
     archiveName: 'bootstrap.zip', archiveSize: 17, archiveSha256: 'a'.repeat(64),
-    coreManifest: { ...coreManifest, packages: corePackages.slice(1) }, template, keyId: 'stable-3', privateKey,
-  }), /exactly 42/)
+    coreManifest: { ...coreManifest, packages: malformed }, template, keyId: 'stable-3', privateKey,
+  }), /non-empty core manifest whose packages are all required/)
 })

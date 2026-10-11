@@ -33,7 +33,7 @@ export async function ensurePythonCoreAtStartup(
   }
   if (status.phase !== 'ready' && status.phase !== 'manual') return { state: 'runtime-unavailable', status }
 
-  // Only inspect the signed core closure (42 packages), not the full Python
+  // Only inspect the signed core closure, not the full Python
   // site-packages inventory or the much larger science dependency layer.
   const info = await updater.pythonCoreInfo()
   await api.persistRuntimeSummary(info)

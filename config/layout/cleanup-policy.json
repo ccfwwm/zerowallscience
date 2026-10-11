@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.1.1",
+  "version": "8.1.2",
   "defaults": {
     "dryRun": true,
     "stageDays": 14,
@@ -10,7 +10,10 @@
     "logsDays": 90,
     "objectDays": 30,
     "keepStableVersions": 2,
-    "keepResourceVersions": 2
+    "keepResourceVersions": 2,
+    "keepStagesPerVersion": 2,
+    "keepRuntimeAssembliesPerKind": 2,
+    "keepOfflineCarriers": 2
   },
   "protectedRoots": [
     "deepseek-harness",
@@ -29,6 +32,8 @@
     "artifacts/dev",
     "artifacts/cache/legacy-outputs",
     "artifacts/cache/electron-builder",
+    "artifacts/cache/runtime-assemblies",
+    "artifacts/cache/offline-carriers",
     "artifacts/logs",
     "artifacts/objects"
   ],

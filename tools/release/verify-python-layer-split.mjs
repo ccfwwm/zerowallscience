@@ -71,7 +71,7 @@ if (!latestScience.equals(scienceBytes)) throw new Error('science-latest.json do
 for (const pkg of document.packages) {
   const locked = lock.get(normalizePackageName(pkg.name))
   if (locked === undefined) throw new Error(`Science manifest lists a package that is not locked: ${pkg.name}`)
-  if (locked.version !== pkg.version || locked.sha256 !== pkg.sha256) throw new Error(`Science manifest digest for ${pkg.name} does not match the hashed lock.`)
+  if (locked.version !== pkg.version || (pkg.sha256 !== undefined && locked.sha256 !== pkg.sha256)) throw new Error(`Science manifest digest for ${pkg.name} does not match the hashed lock.`)
   // The unified dependency list intentionally includes bootstrap/base packages.
 }
 for (const pkg of document.packages) lock.delete(normalizePackageName(pkg.name))

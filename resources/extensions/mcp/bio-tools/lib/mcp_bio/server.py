@@ -235,6 +235,49 @@ class BioAggregate:
             return await anyio.to_thread.run_sync(_run_in_worker)
 
 
+class LazyBioAggregate:
+    """Load the scientific domain fleet only when a Bio capability is used.
+
+    The signed Python core intentionally contains the MCP transport and the
+    lightweight HTTP/serialization runtime.  The 529-package science layer
+    is installed separately, so importing every domain while answering MCP
+    ``initialize`` would make a healthy core runtime look broken.  Keeping
+    the lazy boundary here lets health checks and tool discovery work before
+    science packages are installed, while preserving the existing aggregate
+    behavior once a capability is requested.
+    """
+
+    def __init__(self) -> None:
+        self._aggregate: BioAggregate | None = None
+        self._load_error: RuntimeError | None = None
+
+    def _get(self) -> BioAggregate:
+        if self._aggregate is not None:
+            return self._aggregate
+        if self._load_error is not None:
+            raise self._load_error
+        try:
+            self._aggregate = BioAggregate()
+        except (ImportError, ModuleNotFoundError) as exc:
+            missing = getattr(exc, "name", None)
+            suffix = f" (缺少模块: {missing})" if missing else ""
+            self._load_error = RuntimeError(
+                "Bio 科研依赖尚未安装或不完整%s；请在 ZeroWall Science 的科研层"
+                "完成安装后重试。" % suffix
+            )
+            raise self._load_error from exc
+        return self._aggregate
+
+    def tool_names(self) -> set[str]:
+        return self._get().tool_names()
+
+    async def internal_tools(self) -> dict[str, Tool]:
+        return await self._get().internal_tools()
+
+    async def call_internal(self, tool: str, arguments: dict):
+        return await self._get().call_internal(tool, arguments)
+
+
 BIO_DOMAIN_GROUPS = {
     "bio_data": {
         "biomart", "biorxiv", "clinical-trials", "drug-regulatory",
@@ -336,8 +379,10 @@ def build_public_tools() -> list[Tool]:
     ]
 
 
-def build_server() -> tuple[Server, BioAggregate]:
-    agg = BioAggregate()
+def build_server() -> tuple[Server, LazyBioAggregate]:
+    # Do not construct BioAggregate here.  It imports every scientific domain
+    # and therefore requires the optional science layer during MCP initialize.
+    agg = LazyBioAggregate()
     server = CancellationSafeServer(SERVER_NAME)
     by_id, public_for_id = _capability_maps()
 

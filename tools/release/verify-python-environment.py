@@ -214,7 +214,14 @@ def main():
     env['ZEROWALL_XLS_FIXTURE'] = str(ROOT/'tools/release/fixtures/sample.xls')
     if sys.version_info[:3] != (3,12,10):
         raise SystemExit('Expected CPython 3.12.10')
-    site = Path(sys.executable).parent / 'site-packages'
+    # The embedded distribution historically used ``Python/site-packages``;
+    # prepared CPython staging follows the normal ``Python/Lib/site-packages``
+    # layout.  Accept both while keeping all imports constrained to the owned
+    # runtime.
+    runtime = Path(sys.executable).parent
+    site = runtime / 'Lib' / 'site-packages'
+    if not site.is_dir():
+        site = runtime / 'site-packages'
     if not sys.flags.no_user_site:
         raise SystemExit('Run verification with -s')
     packages = {re.sub(r'[-_.]+','-',d.metadata['Name']).lower():d.version for d in metadata.distributions(path=[str(site)])}

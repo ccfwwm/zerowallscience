@@ -1,6 +1,6 @@
 import { contract } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -147,7 +147,12 @@ describe('ZeroWall Science Electron', () => {
     expect(profile.zerowall.pluginArchitecture).toBe(7)
     expect(profile.dsh.profile.bundles).not.toContain('dsh-auto-review')
     const catalogs = join(root, 'zerowall-user-data/harness/resources/catalogs')
-    expect(existsSync(catalogs)).toBe(false)
+    const expectNoUnverifiedCatalogPayloads = () => {
+      if (!existsSync(catalogs)) return
+      const names = readdirSync(catalogs)
+      expect(names.filter(name => !name.endsWith('-verified.json') && !/^[a-f0-9]{64}\.package$/u.test(name))).toEqual([])
+    }
+    expectNoUnverifiedCatalogPayloads()
     await page.getByRole('button', { name: '设置', exact: true }).click()
     const settings = page.getByRole('dialog', { name: '设置' })
     for (let visit = 0; visit < 2; visit++) {
@@ -155,7 +160,7 @@ describe('ZeroWall Science Electron', () => {
       await settings.locator('strong[title="@zerowallscience/plugin-mcp"]').waitFor()
       for (const name of ['Skills', 'MCP', 'Python', '插件']) await settings.getByRole('tab', { name, exact: true }).click()
       await settings.getByRole('button', { name: '刷新本地列表', exact: true }).click()
-      expect(existsSync(catalogs)).toBe(false)
+      expectNoUnverifiedCatalogPayloads()
       await settings.getByRole('button', { name: '环境配置', exact: true }).click()
       await settings.getByRole('heading', { name: '环境配置', exact: true }).waitFor()
     }

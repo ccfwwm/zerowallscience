@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "8.1.1",
+  "version": "8.1.2",
   "description": "ZeroWall Science local-first scientific research workbench.",
   "private": true,
   "type": "module",
@@ -46,6 +46,7 @@
     "runtime:profile:prepare": "node tools/packaging/prepare-runtime.mjs --offline-profile",
     "runtime:profile:sign": "node tools/packaging/prepare-offline-profile.mjs",
     "build": "node tools/build/incremental-build.mjs",
+    "build:dev": "node tools/build/development-build.mjs",
     "build:full": "node tools/build/incremental-build.mjs --force",
     "dev": "pnpm plugins:generate && pnpm profiles:generate && pnpm plugins:bundle && pnpm --filter @zerowallscience/desktop run dev",
     "lint": "pnpm --filter @deepseek-ai/dsh-root run lint:contracts-ready",

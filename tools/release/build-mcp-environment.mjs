@@ -229,7 +229,7 @@ const managedPythonModules = bootstrapOnly
   ? ['pip']
   : baseOnly
     ? layerPolicy.mandatoryBaseModules.map(name => ({ pillow: 'PIL', 'python-dotenv': 'dotenv' })[name] ?? name)
-    : Object.entries(verification.imports).filter(([, result]) => result.ok).map(([name]) => name)
+    : ['pip', ...Object.entries(verification.imports).filter(([, result]) => result.ok).map(([name]) => name)]
 // The shipped archive only contains BASE, so its health probe and its declared
 // module list may only name BASE modules; a probe for an absent package would
 // fail the client's post-install check. The science imports stay release
@@ -312,17 +312,30 @@ const scienceBaseUrl = (process.env.ZEROWALL_PYTHON_SCIENCE_BASE_URL ?? 'https:/
 // mirror setting has to travel as an explicit argument.
 const scienceIndexUrl = (process.env.ZEROWALL_PYTHON_INDEX_URL ?? 'https://pypi.tuna.tsinghua.edu.cn/simple').replace(/\/$/u, '')
 const scienceIndex = { indexUrl: `${scienceIndexUrl}/`, trustedHost: new URL(scienceIndexUrl).hostname }
-const scienceRevision = Number(process.env.ZEROWALL_MCP_SCIENCE_REVISION ?? '1')
-if (!Number.isSafeInteger(scienceRevision) || scienceRevision < 1) throw new Error('ZEROWALL_MCP_SCIENCE_REVISION must be a positive integer.')
-const scienceName = scienceManifestName({ environmentVersion, scienceRevision })
+const configuredScienceManifest = process.env.ZEROWALL_MCP_SCIENCE_MANIFEST_FILE?.trim()
+let scienceDocument
+let scienceBytes
+let scienceName
+if (configuredScienceManifest) {
+  scienceBytes = await readFile(resolve(configuredScienceManifest))
+  scienceDocument = JSON.parse(scienceBytes.toString('utf8'))
+  const { signature: scienceSignature, ...scienceUnsigned } = scienceDocument
+  if (scienceDocument.environmentVersion !== environmentVersion || scienceDocument.layer !== 'science' || scienceSignature?.algorithm !== 'ed25519' || !verify(null, Buffer.from(JSON.stringify(scienceUnsigned)), expectedPublicKey, Buffer.from(scienceSignature?.value ?? '', 'base64'))) throw new Error('Configured science manifest does not match the MCP environment or trusted signature.')
+  scienceName = configuredScienceManifest.split(/[\\/]/u).at(-1)
+  if (!/^manifest-[A-Za-z0-9_.-]+\.json$/u.test(scienceName)) throw new Error('Configured science manifest filename is invalid.')
+} else {
+  const scienceRevision = Number(process.env.ZEROWALL_MCP_SCIENCE_REVISION ?? '1')
+  if (!Number.isSafeInteger(scienceRevision) || scienceRevision < 1) throw new Error('ZEROWALL_MCP_SCIENCE_REVISION must be a positive integer.')
+  scienceName = scienceManifestName({ environmentVersion, scienceRevision })
+  scienceDocument = signDocument(scienceManifestDocument({
+    environmentVersion, scienceRevision, pythonVersion, index: scienceIndex,
+    basePackageCount: corePackages.length, packages: [...installPackages.values()], keyId,
+    applicationVersion: legacyApplicationVersion || JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
+  }), privateKey, expectedPublicKey)
+  scienceBytes = Buffer.from(`${JSON.stringify(scienceDocument, null, 2)}\n`)
+}
 const sciencePath = join(output, scienceName)
 try { await stat(sciencePath); throw new Error('Refusing to overwrite an existing science manifest.') } catch (error) { if (error.code !== 'ENOENT') throw error }
-const scienceDocument = signDocument(scienceManifestDocument({
-  environmentVersion, scienceRevision, pythonVersion, index: scienceIndex,
-  basePackageCount: corePackages.length, packages: [...installPackages.values()], keyId,
-  applicationVersion: legacyApplicationVersion || JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
-}), privateKey, expectedPublicKey)
-const scienceBytes = Buffer.from(`${JSON.stringify(scienceDocument, null, 2)}\n`)
 await writeFile(sciencePath, scienceBytes)
 await writeFile(join(output, 'science-latest.json'), scienceBytes)
 // The science reference is embedded in the signed archive manifest, so the two
@@ -330,8 +343,9 @@ await writeFile(join(output, 'science-latest.json'), scienceBytes)
 // published above, including their trailing newline.
 const science = {
   manifestUrl: `${scienceBaseUrl}/${scienceName}`, manifestSha256: createHash('sha256').update(scienceBytes).digest('hex'), manifestSize: scienceBytes.length,
-  scienceRevision, contentRevision, packageCount: lockedPackages.size, indexUrl: scienceIndex.indexUrl,
+  scienceRevision: Number(String(scienceDocument.revision).match(/-r(\d+)$/u)?.[1] ?? NaN), contentRevision, packageCount: scienceDocument.packages.length, indexUrl: scienceDocument.index?.indexUrl,
 }
+if (!Number.isSafeInteger(science.scienceRevision) || science.scienceRevision < 1) throw new Error('Science manifest revision must end in -r<number>.')
 const manifest = {
   applicationVersion: JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
   schema: 2, environmentVersion, ...(legacyApplicationVersion ? { version: legacyApplicationVersion } : {}), contentRevision, environmentId: 'zerowall-python', platform: 'win32', architecture: 'x64',
@@ -358,4 +372,4 @@ await writeFile(join(output, 'latest.json'), `${JSON.stringify(manifest, null, 2
 await writeFile(join(output, 'base-verification.json'), JSON.stringify({ verifiedAt: new Date().toISOString(), pythonVersion, basePackageCount: bootstrapOnly ? 1 : corePackages.length, coreDependencyPackageCount: corePackages.length, prunedImports: shippedModules, pipCheck: true, mcpHandshake: !bootstrapOnly && (!baseOnly || split.baseNames.has(normalizePackageName('mcp'))), fullScienceFunctionalVerified: !baseOnly && !bootstrapOnly, bootstrapOnly, archiveSha256 }, null, 2))
 await rm(prunedStaging, { recursive: true, force: true })
 console.log(`Built ${archiveName} (${archiveSize} bytes, ${archiveSha256}) with ${corePackages.length} base and ${sciencePackages.length} science packages`)
-console.log(`Built ${scienceName} (${scienceBytes.length} bytes) for the science layer revision ${scienceRevision}`)
+console.log(`Built ${scienceName} (${scienceBytes.length} bytes) for the science layer revision ${scienceDocument.revision}`)

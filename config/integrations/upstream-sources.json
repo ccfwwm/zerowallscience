@@ -1,5 +1,5 @@
 {
-  "version": "8.1.1",
+  "version": "8.1.2",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
@@ -47,7 +47,9 @@
     "license": "MIT",
     "package": "@changfenhuang/dsh-genui",
     "source": "packages/dsh/dsh-genui",
-    "tag": "v0.11.4"
+    "tag": "v0.11.4",
+    "resourceVersion": "0.11.5-zws.3",
+    "localAdaptation": "Register /panel against both the dynamic client context and application-root input trigger service scopes; the runner facade does not expose ctx.inject."
   },
   "academicResearchSkills": {
     "repository": "https://github.com/Imbad0202/academic-research-skills.git",
@@ -107,7 +109,7 @@
   "dreamSkin": {
     "repository": "https://github.com/RevolutionLA/dsh-dream-skin.git",
     "version": "10.9.3",
-    "resourceVersion": "10.9.4-zws.1",
+    "resourceVersion": "10.9.4-zws.2",
     "commit": "927a6f1c1a0d694dfc2ec4557f26266a85f91f22",
     "license": "MIT",
     "tag": "v10.9.3"

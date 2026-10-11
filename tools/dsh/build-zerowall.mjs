@@ -37,10 +37,12 @@ runPnpm(['--filter', '@deepseek-ai/dsh-root', 'exec', 'tsc', '-b', 'tsconfig.hos
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'exec', 'tsdown', '--env.DSH_BUILD_FACE', 'host'], { NODE_OPTIONS: '--max-old-space-size=8192' })
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:lib:client'], { NODE_OPTIONS: '--max-old-space-size=8192' })
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:web'])
-await mkdir(resolve(stageRoot, 'dsh'), { recursive: true })
-await writeFile(resolve(stageRoot, 'dsh/build-receipt.json'), JSON.stringify({
-  commit, version: manifest.version, applicationVersion: rootManifest.version, builtAt: new Date().toISOString(),
-}, null, 2))
+if (!process.argv.includes('--development')) {
+  await mkdir(resolve(stageRoot, 'dsh'), { recursive: true })
+  await writeFile(resolve(stageRoot, 'dsh/build-receipt.json'), JSON.stringify({
+    commit, version: manifest.version, applicationVersion: rootManifest.version, builtAt: new Date().toISOString(),
+  }, null, 2))
+}
 
 function git(args) {
   return execFileSync('git', args, { cwd: source, encoding: 'utf8' }).trim()

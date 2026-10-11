@@ -79,11 +79,13 @@ async function collectJsonFiles(path, files = []) {
   const info = await lstat(path).catch(() => undefined)
   if (!info || info.isSymbolicLink()) return files
   if (info.isFile()) {
-    if (path.toLowerCase().endsWith('.json') && info.size <= 2 * 1024 * 1024) files.push(path)
+    if (path.toLowerCase().endsWith('.json') && info.size <= 32 * 1024 * 1024) files.push(path)
     return files
   }
   if (!info.isDirectory()) return files
   for (const entry of await readdir(path, { withFileTypes: true })) {
+    // Cleanup plans list candidates for audit; they do not keep those bytes.
+    if (entry.name === 'cleanup' && path.split(/[\\/]/u).includes('verification')) continue
     if (entry.isDirectory() || (entry.isFile() && entry.name.toLowerCase().endsWith('.json'))) {
       await collectJsonFiles(join(path, entry.name), files)
     }
@@ -97,9 +99,11 @@ export async function createCleanupPlan({ root, policy, now = Date.now() }) {
   const referenceFiles = [
     ...await collectJsonFiles(artifacts),
   ]
+  const durableReferences = [...await collectJsonFiles(join(artifacts, 'release')), ...await collectJsonFiles(join(artifacts, 'verification'))]
+  const cacheReferences = [...durableReferences]
   const candidates = []
   const exclusions = []
-  const addCandidate = async (managedRoot, path, cutoffDays, reason, buildId) => {
+  const addCandidate = async (managedRoot, path, cutoffDays, reason, buildId, references = durableReferences) => {
     const absoluteRoot = resolve(repositoryRoot, managedRoot)
     const absolute = resolve(path)
     const protectedRoot = (policy.protectedRoots ?? []).some(item => {
@@ -119,37 +123,68 @@ export async function createCleanupPlan({ root, policy, now = Date.now() }) {
       return
     }
     // A recently touched tree cannot have expired. Avoid scanning or hashing it.
-    if ((now - info.mtimeMs) / 86_400_000 < cutoffDays) return
+    if (cutoffDays > 0 && (now - info.mtimeMs) / 86_400_000 < cutoffDays) return
     const inventoryData = await inventory(absolute)
     if (inventoryData.protectedPaths.length) {
       exclusions.push({ path: absolute, reason: 'contains-protected-node-modules' })
       return
     }
     const ageDays = (now - inventoryData.mostRecentMs) / 86_400_000
-    if (ageDays < cutoffDays) return
-    if (buildId && await isReferenced(absolute.replaceAll('\\', '/'), buildId, referenceFiles)) {
+    if (cutoffDays > 0 && ageDays < cutoffDays) return
+    if (await isReferenced(absolute.replaceAll('\\', '/'), buildId, references)) {
       exclusions.push({ path: absolute, reason: 'referenced-build' })
       return
     }
     const digest = await treeDigest(absolute)
-    candidates.push({ path: absolute, managedRoot: absoluteRoot, reason, ageDays: Math.floor(ageDays), ...digest })
+    candidates.push({ path: absolute, managedRoot: absoluteRoot, repositoryRoot, reason, ageDays: Math.floor(ageDays), ...digest })
   }
 
   const stageRoot = join(artifacts, 'stage')
   for (const versionPath of await directChildren(stageRoot).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
     const version = versionPath.split(/[\\/]/u).at(-1)
     const active = await readFile(join(versionPath, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
-    for (const buildPath of await directChildren(versionPath).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
-      if (buildPath.toLowerCase().endsWith('current.json')) continue
-      const buildId = buildPath.split(/[\\/]/u).at(-1)
-      if (active?.buildId === buildId) { exclusions.push({ path: buildPath, reason: 'active-stage' }); continue }
+    const builds = []
+    for (const buildPath of await directChildren(versionPath)) {
+      if (!(await lstat(buildPath)).isDirectory()) continue
       const receipt = await readFile(join(buildPath, 'build-receipt.json'), 'utf8').then(JSON.parse, () => undefined)
-      const failed = receipt?.status === 'failed' || await lstat(join(buildPath, 'FAILED')).then(() => true, () => false)
+        ?? await readFile(join(buildPath, 'runtime/build-receipt.json'), 'utf8').then(JSON.parse, () => undefined)
+      const packaged = await readFile(join(buildPath, 'desktop-package-receipt.json'), 'utf8').then(JSON.parse, () => undefined)
+      const cloned = await readFile(join(buildPath, 'stage-clone-receipt.json'), 'utf8').then(JSON.parse, () => undefined)
+      const failed = receipt?.status === 'failed' || await lstat(join(buildPath, 'FAILED')).then(() => true, () => false) || await lstat(join(buildPath, 'stage-clone-failure.json')).then(() => true, () => false)
+      builds.push({ path: buildPath, buildId: buildPath.split(/[\\/]/u).at(-1), failed, success: !failed && (receipt?.status === 'success' || !!packaged || !!cloned), time: Date.parse(receipt?.finishedAt ?? cloned?.createdAt) || (await lstat(buildPath)).mtimeMs })
+    }
+    const keepCount = policy.defaults.keepStagesPerVersion ?? policy.defaults.keepStableVersions
+    const successful = builds.filter(item => item.success).sort((a, b) => b.time - a.time || b.buildId.localeCompare(a.buildId))
+    const activeIds = builds.some(item => item.buildId === active?.buildId) ? [active.buildId] : []
+    const retained = new Set(keepCount == null ? [] : [...activeIds, ...successful.filter(item => item.buildId !== active?.buildId).slice(0, Math.max(0, keepCount - activeIds.length)).map(item => item.buildId)])
+    for (const { path: buildPath, buildId, failed, success } of builds) {
+      if (active?.buildId === buildId) { exclusions.push({ path: buildPath, reason: 'active-stage' }); continue }
+      if (retained.has(buildId)) { exclusions.push({ path: buildPath, reason: 'retained-successful-stage' }); continue }
       if (failed) await addCandidate('artifacts/stage', buildPath, policy.defaults.failedBuildDays, 'failed-build-expired', buildId)
+      else if (success && keepCount != null) await addCandidate('artifacts/stage', buildPath, 0, 'successful-stage-over-retention', buildId)
       else await addCandidate('artifacts/stage', buildPath, policy.defaults.stageDays, 'unreferenced-stage-expired', buildId)
       void version
     }
+    if (active?.buildId && /^[A-Za-z0-9._-]+$/u.test(active.buildId)) cacheReferences.push(...await collectJsonFiles(join(versionPath, active.buildId)))
   }
+
+  const retainCache = async (managedRoot, directory, count, receiptName) => {
+    const entries = []
+    for (const path of await directChildren(directory)) {
+      if (!(await lstat(path)).isDirectory()) continue
+      const receipt = await readFile(join(path, receiptName), 'utf8').then(JSON.parse, () => undefined)
+      if (!receipt || /\.(?:candidate|damaged)-/u.test(path)) { await addCandidate(managedRoot, path, policy.defaults.cacheDays, 'incomplete-cache-expired', path.split(/[\\/]/u).at(-1), cacheReferences); continue }
+      entries.push({ path, time: (await lstat(join(path, receiptName))).mtimeMs })
+    }
+    entries.sort((a, b) => b.time - a.time || b.path.localeCompare(a.path))
+    for (const [index, entry] of entries.entries()) {
+      if (index < count) exclusions.push({ path: entry.path, reason: 'retained-cache' })
+      else await addCandidate(managedRoot, entry.path, 0, 'cache-over-retention', entry.path.split(/[\\/]/u).at(-1), cacheReferences)
+    }
+  }
+  const assemblyRoot = join(artifacts, 'cache/runtime-assemblies')
+  for (const kind of await directChildren(assemblyRoot)) if ((await lstat(kind)).isDirectory()) await retainCache('artifacts/cache/runtime-assemblies', kind, policy.defaults.keepRuntimeAssembliesPerKind ?? 2, 'receipt.json')
+  await retainCache('artifacts/cache/offline-carriers', join(artifacts, 'cache/offline-carriers'), policy.defaults.keepOfflineCarriers ?? 2, 'payload.json')
 
   for (const [rootName, days, reason] of [
     ['artifacts/dev', policy.defaults.devDays, 'development-output-expired'],
@@ -189,6 +224,19 @@ export async function removeCandidate(candidate, expected) {
   if (!within(root, path)) throw new Error(`Refusing to remove path outside managed root: ${path}`)
   const info = await lstat(path)
   if (info.isSymbolicLink()) throw new Error(`Refusing to remove symbolic link: ${path}`)
+  if (candidate.repositoryRoot) {
+    const artifacts = join(candidate.repositoryRoot, 'artifacts')
+    const references = [...await collectJsonFiles(join(artifacts, 'release')), ...await collectJsonFiles(join(artifacts, 'verification'))]
+    const id = path.split(/[\\/]/u).at(-1)
+    // A stage can become active or acquire a durable reference after planning.
+    for (const version of await directChildren(join(artifacts, 'stage'))) {
+      const active = await readFile(join(version, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
+      if (!active?.buildId || !/^[A-Za-z0-9._-]+$/u.test(active.buildId)) continue
+      if (path === join(version, active.buildId)) throw new Error('Cleanup candidate became the active stage')
+      references.push(...await collectJsonFiles(join(version, active.buildId)))
+    }
+    if (await isReferenced(path, id, references)) throw new Error('Cleanup candidate acquired a protected reference')
+  }
   const current = await treeDigest(path)
   if (current.sha256 !== expected.sha256 || current.bytes !== expected.bytes) throw new Error(`Cleanup candidate changed after dry-run: ${path}`)
   await rm(path, { recursive: info.isDirectory(), force: false })
