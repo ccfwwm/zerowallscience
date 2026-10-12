@@ -6,7 +6,7 @@ This file is automatically loaded when Codex works in this repository. It is the
 
 - Preserve the user's selected model, reasoning effort, image model, protocol, and configured parameters. Do not switch models or weaken assertions to make a test pass.
 - Start every task with `git status --short --branch`, `git rev-parse HEAD`, `git submodule status`, and the current package version. Preserve unrelated modified, ignored, and untracked files.
-- Treat the root `main` checkout as shared user work. Unless the user explicitly requests isolation, develop directly in the current checkout; use a managed worktree only when isolation is requested or the checkout is actively occupied by another task. Do not use `reset --hard`, broad `git clean`, recursive deletion, or whole-directory replacement.
+- Treat the root `main` checkout as shared user work. Develop directly in the current checkout; do not create, attach, or switch to worktrees for this repository. If concurrent work blocks a safe change, coordinate in the current checkout instead. Do not use `reset --hard`, broad `git clean`, recursive deletion, or whole-directory replacement.
 - Before editing, inspect the affected source, manifest, generator, tests, and relevant `config/` or `tools/` contract. If a file is generated, fix its generator instead of making a patch that the next generation will erase.
 - Continue until the requested outcome is implemented and verified. Report evidence, failures, skips, external dependencies, and remaining uncertainty precisely.
 
