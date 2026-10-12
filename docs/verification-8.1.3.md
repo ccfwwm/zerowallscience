@@ -99,7 +99,7 @@
 
 ## GitHub 发布与公网核验
 
-- 主项目源码已推送到 [`ccfwwm/zerowallscience`](https://github.com/ccfwwm/zerowallscience)，`main` 与提交 `2bd818fb89396f64f79d12c31315776f1e06cccb` 一致；`v8.1.3` 标签指向该提交。
+- 主项目源码已推送到 [`ccfwwm/zerowallscience`](https://github.com/ccfwwm/zerowallscience)；发布时的 `main` 提交为 `2bd818fb89396f64f79d12c31315776f1e06cccb`，`v8.1.3` 标签指向该提交，之后仅追加本验收文档提交。
 - Windows x64 安装包及 4 个配套元数据文件已发布到 [ZeroWall Science v8.1.3 Release](https://github.com/ccfwwm/zerowallscience/releases/tag/v8.1.3)。安装包大小 `316,315,589` 字节，SHA-256 为 `1e2fb6c6ed50acc355483b2b62b1ae1d7fc6ebedd69f0d907a1110bad3c8d1a1`；已从 GitHub 完整下载并核对。
 - 插件中心源码已推送到 [`ccfwwm/zerowall-dsh-plugins`](https://github.com/ccfwwm/zerowall-dsh-plugins)，提交为 `3b1b6ef9af6c0f6601d4a41f2f489702b422ea13`。插件资源发布在 [`resources-8.1.3`](https://github.com/ccfwwm/zerowall-dsh-plugins/releases/tag/resources-8.1.3)，Release 为公开、非草稿、非预发布，共 342 项资源。
 - 342 项插件资源已完整下载到本地，逐项与 `artifacts/release/8.1.3/publication/github-assets.json` 比较大小和 SHA-256：342/342 通过，缺失 0、额外 0、不一致 0。收据为 `artifacts/release/8.1.3/publication/github-resources-public.json`；上传 API 收据为 `github-resources-api.json`。
