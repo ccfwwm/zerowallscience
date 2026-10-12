@@ -1,0 +1,146 @@
+import { errorMessage } from "./contracts.js";
+import type { ArchiveState, SessionList, Snapshot, Translate } from "./contracts.js";
+
+interface RetainInfo { retainedBy?: { mainView?: number } }
+export interface SessionNavigationSource {
+  list: Snapshot<SessionList>;
+  retainInfo?(id: string): unknown;
+  retain?: unknown;
+  open?(id: string): unknown;
+}
+export interface NavigationSource {
+  clearArchivedCurrent?: (...args: unknown[]) => unknown;
+  openSession?(id: string): unknown;
+}
+interface NavigationOptions {
+  onOpened?: () => void;
+  beginNavigation?: () => void;
+  warn?: (...args: unknown[]) => void;
+}
+/** 导航业务错误使用稳定标识，由界面按当前语言展示。 */
+export class ArchiveNavigationError extends Error {
+  readonly code: string;
+  constructor(code: string) {
+    super(code);
+    this.name = "ArchiveNavigationError";
+    this.code = code;
+  }
+}
+
+/** 仅翻译插件自身的导航错误，保留宿主异常的原始消息。 */
+export function formatArchiveNavigationError(error: unknown, t: Translate) {
+  return error instanceof ArchiveNavigationError
+    ? t(`archives.${error.code}`)
+    : errorMessage(error);
+}
+
+function retainInfoSnapshot(sessions: SessionNavigationSource | undefined, id: string): RetainInfo | undefined {
+  if (typeof sessions?.retainInfo !== "function") return;
+  const source = sessions.retainInfo(id);
+  // 宿主边界不能只凭字段存在就调用；畸形保留信息应退化为非当前会话。
+  const value: unknown = source && typeof source === "object" && "getSnapshot" in source && typeof source.getSnapshot === "function"
+    ? source.getSnapshot() : source;
+  if (!value || typeof value !== "object" || !("retainedBy" in value)) return;
+  const retainedBy = value.retainedBy;
+  if (!retainedBy || typeof retainedBy !== "object" || !("mainView" in retainedBy) || typeof retainedBy.mainView !== "number") return;
+  return { retainedBy: { mainView: retainedBy.mainView } };
+}
+
+function mainViewSessionId(list: SessionList | undefined) {
+  const byId = list?.byId;
+  if (byId === undefined) return;
+  for (const session of Object.values(byId)) {
+    if (session && (session.retainedBy?.mainView ?? 0) > 0) return session.id;
+  }
+}
+
+/**
+ * 当前主视图会话：0.1.6-alpha.2 读 `retainedBy.mainView`，旧宿主回退 `list.current`。
+ * 两套字段同时存在时以 mainView 为准，避免打开归档后仍读到过期的 current。
+ * @param list - 会话列表快照。
+ * @returns 当前会话 id；没有选中时为 undefined。
+ */
+export function currentSessionId(list: SessionList | undefined) {
+  return mainViewSessionId(list) ?? list?.current;
+}
+
+/**
+ * 指定会话是否就是当前主视图。按 id 看 mainView / retainInfo，避免列表里另有 current 时误判。
+ * @param list - 会话列表快照。
+ * @param id - 要核对的会话。
+ * @param sessions - 可选；alpha.2 用 retainInfo 补列表尚未投影的归档行。
+ */
+export function sessionIsCurrent(list: SessionList | undefined, id: string | undefined, sessions?: SessionNavigationSource) {
+  if (id === undefined || id === "") return false;
+  if ((list?.byId?.[id]?.retainedBy?.mainView ?? 0) > 0) return true;
+  if ((retainInfoSnapshot(sessions, id)?.retainedBy?.mainView ?? 0) > 0) return true;
+  return list?.current === id;
+}
+
+/** 恢复失败不导航；页面卸载后不让迟到响应抢占当前会话。 */
+export async function openArchivedConversation(actions: { prepare?(id: string): unknown; restore(id: string): unknown; open(id: string): unknown }, sessionId: string, restore: boolean, isActive = () => true) {
+  if (restore) {
+    // 先离开当前选中的其他工作区导航，再官方恢复，避免恢复后仍停在别人的文件夹里。
+    if (typeof actions.prepare === "function") await actions.prepare(sessionId);
+    if (!isActive()) return;
+    await actions.restore(sessionId);
+  }
+  if (isActive()) await actions.open(sessionId);
+}
+
+/** 仅放行显式打开的归档；保留官方导航实例和其他归档清理行为。 */
+export function allowArchivedNavigation(navigation: NavigationSource | undefined, sessions: SessionNavigationSource, workspaces: { list: Snapshot<ArchiveState> }, { onOpened = () => {}, beginNavigation, warn = (...args) => console.warn(...args) }: NavigationOptions = {}) {
+  let allowed: string | undefined;
+  const original = navigation?.clearArchivedCurrent;
+  const descriptor = navigation && Object.getOwnPropertyDescriptor(navigation, "clearArchivedCurrent");
+  const viewing = (id: string) => sessionIsCurrent(sessions.list.getSnapshot(), id, sessions);
+  const wrapped = function (this: NavigationSource, ...args: unknown[]) {
+    if (allowed !== undefined && viewing(allowed) && workspaces.list.getSnapshot().archivedSessionIds.includes(allowed)) return false;
+    allowed = undefined;
+    return original?.apply(this, args);
+  };
+  const ownsWrapper = () => navigation && Object.getOwnPropertyDescriptor(navigation, "clearArchivedCurrent")?.value === wrapped;
+  if (navigation && typeof original === "function") {
+    try {
+      navigation.clearArchivedCurrent = wrapped;
+      if (!ownsWrapper()) throw new Error("导航方法未接纳归档适配");
+    } catch (error) {
+      warn("archive-manager: 无法适配归档导航，请恢复会话后打开。", error);
+    }
+  }
+  return {
+    open(id: string) {
+      allowed = id;
+      try {
+        if (typeof original === "function" && !ownsWrapper() && workspaces.list.getSnapshot().archivedSessionIds.includes(id)) {
+          warn("archive-manager: 归档导航适配不可用或已被替换。");
+          throw new ArchiveNavigationError("navigationUnavailable");
+        }
+        // 中止进行中的 openWorkspace，避免当前选中的其他工作区在创建空白会话后抢走目标。
+        beginNavigation?.();
+        // alpha.2 有 retain：必须走 openSession，旧的 sessions.open 即使还在也不会写入 mainView。
+        // 更早宿主没有 retain，继续用 sessions.open，避免未验证成功就关掉设置。
+        if (typeof sessions.retain === "function" && typeof navigation?.openSession === "function") navigation.openSession(id);
+        else if (typeof sessions.open === "function") sessions.open(id);
+        else if (typeof navigation?.openSession === "function") navigation.openSession(id);
+        else {
+          warn("archive-manager: 宿主未提供会话打开接口。");
+          throw new ArchiveNavigationError("navigationUnavailable");
+        }
+        if (!viewing(id)) {
+          warn("archive-manager: 宿主未保留目标会话。", { cleanupAvailable: typeof original === "function" });
+          throw new ArchiveNavigationError("sessionNotRetained");
+        }
+        onOpened();
+      } catch (error) { allowed = undefined; throw error; }
+    },
+    dispose() {
+      allowed = undefined;
+      // Cordis 读取方法时会绑定代理；用自有描述符核对，避免误判为其他插件覆盖。
+      if (!navigation || Object.getOwnPropertyDescriptor(navigation, "clearArchivedCurrent")?.value !== wrapped) return;
+      if (descriptor) Object.defineProperty(navigation, "clearArchivedCurrent", descriptor);
+      else delete navigation.clearArchivedCurrent;
+      original?.call(navigation);
+    }
+  };
+}

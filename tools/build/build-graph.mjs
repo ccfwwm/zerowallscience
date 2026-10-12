@@ -75,9 +75,23 @@ async function taskDefinition(id, taskArgs = []) {
   const [kind, name] = id.split(':')
   const dshCommit = await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8').then(JSON.parse).then(value => value.commit)
   const packageManifest = await readFile(join(root, 'package.json'), 'utf8').then(JSON.parse)
-  const desktopManifest = await readFile(join(root, 'desktop/package.json'), 'utf8').then(JSON.parse)
   const dependencies = { node: process.version, pnpm: packageManifest.packageManager, platform: process.platform, architecture: process.arch, nodeAbi: process.versions.modules }
   if (kind === 'plugin-build' || kind === 'plugin-pack') {
+    if (!await exists(join(root, 'plugins', name, 'package.json'))) {
+      const source = await packageSource(name)
+      const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
+      if (!manifest.dsh?.bundle || !manifest.zerowall?.rollbackSupported) throw new Error(`Package is not an independently managed plugin: ${name}`)
+      return {
+        id, inputPaths: [relative(root, source), 'tools/plugins/pack.mjs', 'tools/plugins/publish-package.mjs'], dshCommit,
+        dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, source).replaceAll('\\', '/')]),
+        dependencies: { ...dependencies, package: manifest.name, version: manifest.version },
+        outputs: [kind === 'plugin-build' ? join(source, 'lib') : join(contract.release, 'plugins', manifest.name.split('/').at(-1), manifest.version)],
+        lockName: `plugin-${name}`, run: async () => {
+          await runTask(`package-build:${name}`)
+          if (kind === 'plugin-pack') run([process.execPath, join(root, 'tools/plugins/pack.mjs'), '--plugin', name])
+        },
+      }
+    }
     const pluginPath = join(root, 'plugins', name)
     const manifest = await readFile(join(pluginPath, 'package.json'), 'utf8').then(JSON.parse)
     const inputs = [`plugins/${name}`, 'tools/plugins/tsdown.ts', 'tools/plugins/generate-typert.mjs', 'tools/plugins/prepare-pack.mjs', 'tools/plugins/inline-css.mjs', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json', ...await sharedSourceInputs(root, pluginPath)]
@@ -204,7 +218,10 @@ async function taskDefinition(id, taskArgs = []) {
     run(scriptArgs(['profiles:generate']))
     run(scriptArgs(['dsh:runtime:closure']))
   } }
-  if (id === 'desktop') return { id, inputPaths: ['desktop/src', 'desktop/build', 'desktop/package.json', 'tools/packaging/installer-ownership.mjs'], dshCommit, dependencyLockHash: await dependencyLockFingerprint(root, ['desktop']), dependencies: { ...dependencies, desktop: desktopManifest.version }, outputs: [join(root, 'desktop/out')], lockName: 'runtime', run: async () => run(scriptArgs(['--filter', '@zerowallscience/desktop', 'run', 'build'])) }
+  if (id === 'desktop') {
+    const desktopManifest = await readFile(join(root, 'desktop/package.json'), 'utf8').then(JSON.parse)
+    return { id, inputPaths: ['desktop/src', 'desktop/build', 'desktop/package.json', 'tools/packaging/installer-ownership.mjs'], dshCommit, dependencyLockHash: await dependencyLockFingerprint(root, ['desktop']), dependencies: { ...dependencies, desktop: desktopManifest.version }, outputs: [join(root, 'desktop/out')], lockName: 'runtime', run: async () => run(scriptArgs(['--filter', '@zerowallscience/desktop', 'run', 'build'])) }
+  }
   throw new Error(`Unknown build task: ${id}`)
 }
 
@@ -217,7 +234,8 @@ async function runTask(id, extra = []) {
   const startedAt = new Date().toISOString()
   try {
   const prior = await readFile(file, 'utf8').then(JSON.parse, () => undefined)
-  const publishedSource = id.startsWith('plugin-build:') ? join(root, 'plugins', id.split(':')[1]) : id.startsWith('package-build:') ? id.endsWith(':research-store') ? join(root, 'store') : await packageSource(id.split(':')[1]) : undefined
+  const pluginSource = id.startsWith('plugin-build:') ? join(root, 'plugins', id.split(':')[1]) : undefined
+  const publishedSource = pluginSource ? await exists(join(pluginSource, 'package.json')) ? pluginSource : await packageSource(id.split(':')[1]) : id.startsWith('package-build:') ? id.endsWith(':research-store') ? join(root, 'store') : await packageSource(id.split(':')[1]) : undefined
   if (publishedSource && !process.argv.includes('--force') && (!prior || process.argv.includes('--bootstrap-published')) && await restorePublishedOutput(publishedSource)) {
     const receipt = { schema: 2, task: id, status: 'success', ...input, outputs: definition.outputs, outputIntegrity: await outputIntegrity(definition.outputs), finishedAt: new Date().toISOString(), durationMs: Date.now() - startedMs, reason: 'verified published source and compiled output bootstrap', buildId: contract.buildId }
     await writeJson(file, receipt)
@@ -279,7 +297,7 @@ if (command === 'development') {
 } else if (command === 'desktop') {
   await runTask('desktop')
 } else if (command === 'plugin:build' || command === 'plugin:pack') {
-  if (!args[0] || !await exists(join(root, 'plugins', args[0], 'package.json'))) throw new Error(`Unknown plugin: ${args[0] ?? '(missing)'}`)
+  if (!args[0] || !await exists(join(root, 'plugins', args[0], 'package.json')) && !await exists(join(await packageSource(args[0]), 'package.json'))) throw new Error(`Unknown plugin: ${args[0] ?? '(missing)'}`)
   await runTask(`${command === 'plugin:build' ? 'plugin-build' : 'plugin-pack'}:${args[0]}`)
 } else if (command === 'package:build') {
   if (!args[0] || !await exists(join(await packageSource(args[0]), 'package.json'))) throw new Error(`Unknown package: ${args[0] ?? '(missing)'}`)

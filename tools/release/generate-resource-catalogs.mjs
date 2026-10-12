@@ -1,18 +1,21 @@
-import { generateKeyPairSync } from 'node:crypto'
+import { createHash, generateKeyPairSync } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { contract, root, releaseRoot, stageRoot } from '../build/paths.mjs'
-import { fileDigest, signCatalog, verifyCatalog } from './resource-catalog.mjs'
+import { fileDigest, signCatalog, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
 import { deterministicArchive } from './deterministic-archive.mjs'
 import { historicalResources, preserveImmutableResource } from './immutable-resource.mjs'
 import { resourceSource, packageSource } from '../build/layout.mjs'
 import { resourcePublicationScope } from './resource-publication-scope.mjs'
 import { pluginDependencyContract } from './plugin-dependency-contract.mjs'
 import { satisfiesPackageRange } from '../commands/package-range.mjs'
+import { mergePublishedPlugin } from './targeted-plugin-catalog.mjs'
 
-const { kinds } = resourcePublicationScope(process.argv.slice(2))
+const publicationArgs = process.argv.slice(2)
+const pluginArgument = publicationArgs.indexOf('--plugin')
+const { kinds } = resourcePublicationScope(pluginArgument < 0 ? publicationArgs : publicationArgs.filter((_, index) => index !== pluginArgument && index !== pluginArgument + 1))
 const destination = join(releaseRoot, 'catalogs')
 const catalogGeneration = `${contract.buildId}-${Date.now()}`
 await mkdir(destination, { recursive: true })
@@ -39,7 +42,10 @@ if (configured) {
 }
 const baseUrl = process.env.ZEROWALL_RESOURCE_BASE_URL?.replace(/\/$/, '')
 const localOnly = !baseUrl
-const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')) : []
+const selectedPlugin = process.argv.includes('--plugin') ? process.argv[process.argv.indexOf('--plugin') + 1] : undefined
+if (process.argv.includes('--plugin') && (!selectedPlugin || selectedPlugin.startsWith('--') || kinds.length !== 1 || kinds[0] !== 'plugin' || localOnly || !configured)) throw new Error('Targeted plugin catalogs require --kind plugin --plugin <package-name>, a public base URL and a release signing key')
+const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')).filter(record => !selectedPlugin || record.id === selectedPlugin) : []
+if (selectedPlugin && records.length !== 1) throw new Error('Targeted plugin has no unique packed artifact: ' + selectedPlugin)
 const resourceVersions = JSON.parse(await readFile(join(root, 'config/catalogs/resource-versions.json'), 'utf8'))
 async function entry({ id, version, path, kind, key, metadata = {} }) {
   const size = (await stat(path)).size
@@ -52,9 +58,27 @@ const integrations = JSON.parse(await readFile(join(root, 'config/integrations/u
 const plugins = await Promise.all(records.map(async record => {
   const sourcePath = record.id.startsWith('@zerowallscience/plugin-') ? join(root, 'plugins', record.id.slice('@zerowallscience/plugin-'.length), 'package.json')
     : record.id === '@zerowallscience/dsh-bundle-science' ? join(await packageSource('dsh-bundle-science'), 'package.json') : undefined
-  const source = sourcePath ? JSON.parse(await readFile(sourcePath, 'utf8')) : undefined
+  const source = sourcePath ? await readFile(sourcePath, 'utf8').then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return undefined; throw error }) : undefined
   return entry({ ...record, kind: record.kind ?? 'plugin', key: `plugins/${record.id.split('/').at(-1)}/${record.version}/${record.path.split(/[\\/]/).at(-1)}`, metadata: { ...record.manifest, ...pluginDependencyContract(record, source, integrations) } })
 }))
+if (selectedPlugin) {
+  // Preserve the exact signed public entries, including versions older than
+  // other pending local builds. Installing one optional plugin must not
+  // publish unrelated work or remove catalog resources.
+  const response = await fetch(`${baseUrl}/catalogs/plugin-latest.json`, { signal: AbortSignal.timeout(15000), cache: 'no-store' })
+  if (!response.ok) throw new Error('Cannot read the published plugin pointer: ' + response.status)
+  const pointer = verifySignedDocument(await response.json(), keys)
+  if (pointer.resourceKind !== 'plugin' || pointer.localOnly || !pointer.catalog.downloadUrl.startsWith(`${baseUrl}/catalogs/plugin/`)) throw new Error('Published plugin pointer is outside the release store')
+  const catalogResponse = await fetch(pointer.catalog.downloadUrl, { signal: AbortSignal.timeout(15000) })
+  if (!catalogResponse.ok) throw new Error('Cannot read the published plugin catalog: ' + catalogResponse.status)
+  const bytes = Buffer.from(await catalogResponse.arrayBuffer())
+  if (bytes.length !== pointer.catalog.size || createHash('sha256').update(bytes).digest('hex') !== pointer.catalog.sha256) throw new Error('Published plugin catalog integrity mismatch')
+  const previous = verifyCatalog(JSON.parse(bytes), keys)
+  if (previous.kind !== 'plugin' || previous.localOnly) throw new Error('Invalid published plugin catalog')
+  const merged = mergePublishedPlugin(previous.resources, plugins[0], keys)
+  plugins.splice(0, plugins.length, ...merged)
+  await writeFile(join(destination, 'plugin-targeted-baseline.json'), JSON.stringify({ selectedPlugin, pointer, previousCatalog: previous }, null, 2) + '\n')
+}
 for (const parent of plugins) for (const [id, range] of Object.entries(parent.dependencies ?? {})) {
   const child = plugins.find(resource => resource.id === id)
   if (child && !satisfiesPackageRange(child.version, range)) throw new Error(`Plugin catalog dependency closure is incompatible: ${parent.id} -> ${id}@${range}, selected ${child.version}`)

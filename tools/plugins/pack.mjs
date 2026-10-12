@@ -37,6 +37,11 @@ async function checkpoint() {
 const sources = (await readdir(join(root, 'plugins'))).filter(name => name !== 'wechat').map(name => join(root, 'plugins', name))
 sources.push(join(root, 'store'), await packageSource('integrity-runtime'), await packageSource('dsh-bundle-science'))
 sources.push(await packageSource('dsh-wechat'))
+// Optional catalog plugins do not require a desktop offline-profile build.
+const integrations = JSON.parse(await readFile(join(root, 'config/integrations/upstream-sources.json'), 'utf8'))
+for (const integration of Object.values(integrations)) {
+  if (integration?.catalogOptional && integration.source) sources.push(join(root, integration.source))
+}
 // This adapter's published runtime excludes generated TypeScript declarations.
 sources.push(join(stageRoot, 'offline-profile/modules/@dingyi222666/dsh-session-notification'))
 // Preserve the tested Office adapter Git pin as an independently signed

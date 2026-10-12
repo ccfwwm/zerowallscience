@@ -138,5 +138,17 @@
     "coreVersion": "0.1.49",
     "pdfjsVersion": "6.3.289",
     "integration": "plugins/files/src/client/universal-viewer.tsx"
+  },
+  "archiveManager": {
+    "repository": "https://github.com/MichengAI/dsh-archive-manager.git",
+    "commit": "1f65ada8cc553fbea0a3cfa1564b9136ef196cf8",
+    "npmGitHead": "38bdbdea87ef8fbe356df2d291593d9aefc701ec",
+    "version": "1.0.17",
+    "resourceVersion": "1.0.17-zws.1",
+    "package": "@michengai/dsh-archive-manager",
+    "license": "Apache-2.0",
+    "source": "packages/dsh/dsh-archive-manager",
+    "catalogOptional": true,
+    "localAdaptation": "Route plugin updates to ZeroWall Extension Center; omit upstream npm updater from published runtime; compile into artifacts/dev with audited upstream Host and Client behavior."
   }
 }

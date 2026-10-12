@@ -41,10 +41,13 @@ pkg.scripts = {
   'plugins:typecheck': 'pnpm --filter @zerowallscience/plugin-* run typecheck',
   'plugins:test': 'pnpm --filter @zerowallscience/plugin-* run test',
   'plugins:pack': 'node tools/plugins/pack.mjs',
+  'package:build': 'node tools/build/build-graph.mjs package:build',
+  'plugin:build': 'node tools/build/build-graph.mjs plugin:build',
+  'plugin:pack': 'node tools/build/build-graph.mjs plugin:pack',
   'source:verify': 'node tools/plugins/verify-source-repository.mjs',
 }
 await writeFile(join(destination, 'package.json'), JSON.stringify(pkg, null, 2) + '\n')
-await writeFile(join(destination, '.gitignore'), 'node_modules/\nartifacts/\n/plugins/*/lib/\n/plugins/biogenie/payload/\n/packages/**/lib/\n/store/lib/\ndist/\n.build/\n.env\n.env.*\n*.pem\n*.tsbuildinfo\n*.log\n__pycache__/\n')
+await writeFile(join(destination, '.gitignore'), 'node_modules/\nartifacts/\n/plugins/*/lib/\n/plugins/biogenie/payload/\n/packages/**/lib/\n/store/lib/\ndist/\n.build/\n.env\n.env.*\n/scripts/env/\n*.pem\n*.tsbuildinfo\n*.log\n__pycache__/\n')
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 const dshCommit = execFileSync('git', ['-C', 'deepseek-harness', 'rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 const records = JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8'))

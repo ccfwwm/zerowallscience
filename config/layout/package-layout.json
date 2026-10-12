@@ -3,6 +3,7 @@
   "version": "8.1.2",
   "roots": {
     "dsh": [
+      "dsh-archive-manager",
       "dsh-better-sidebar",
       "dsh-file-review",
       "dsh-genui",
