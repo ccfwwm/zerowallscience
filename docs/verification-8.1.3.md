@@ -2,7 +2,7 @@
 
 ## 源码与交付边界
 
-本轮直接使用当前项目，未创建 worktree、未使用子代理。分支为 `main`，父 HEAD 为 `15aa09b7a586ef71f18e0ab06da9cfec4caff929`；DSH 为 `8c00ce78435cf35300654c41e69336e69dc758b1`，分支 `zerowall/reviewer-history-opaque`，版本线保持 `0.2.0-rc.2`。工作区含本轮及已有用户修改，构建 manifest 标记源码非 clean；未提交、推送、打标签或创建 GitHub Release。
+本轮直接使用当前项目，未创建 worktree、未使用子代理。分支为 `main`，构建前父 HEAD 为 `15aa09b7a586ef71f18e0ab06da9cfec4caff929`；发布提交为 `2bd818fb89396f64f79d12c31315776f1e06cccb`，标签为 `v8.1.3`。DSH 为 `8c00ce78435cf35300654c41e69336e69dc758b1`，分支 `zerowall/reviewer-history-opaque`，版本线保持 `0.2.0-rc.2`。工作区含本轮及已有用户修改，构建 manifest 标记源码非 clean；源码与 Windows 安装包已推送到 GitHub Release。
 
 仅发布七牛 Stable。资源使用 Ed25519 `stable-4` 签名，并保留旧稳定公钥兼容；Windows EXE 没有 Authenticode 签名。凭据、私钥、用户数据、Python 和旧 slots 未纳入源码或发布包。
 
@@ -97,4 +97,12 @@
 
 独立运行 `verify-normal-public-urls.mjs`，对不带查询参数的安装器、blockmap、版本 JSON、3 个桌面指针、4 个资源指针及 2 个 Python 清单指针共 12 个普通 URL 完整下载并核对大小和 SHA-256，全部通过。收据为 `artifacts/verification/8.1.3/qiniu-normal-public-urls.json`，complete=true，build ID 与最终包一致；日志 `8.1.3-qiniu-normal-public-urls.log`。
 
-本轮未创建 GitHub Release，未提交/推送源码或标签。所有跳过项、外部限制及源码非 clean 状态仍按前文保留，不因发布成功而改记为通过。
+## GitHub 发布与公网核验
+
+- 主项目源码已推送到 [`ccfwwm/zerowallscience`](https://github.com/ccfwwm/zerowallscience)，`main` 与提交 `2bd818fb89396f64f79d12c31315776f1e06cccb` 一致；`v8.1.3` 标签指向该提交。
+- Windows x64 安装包及 4 个配套元数据文件已发布到 [ZeroWall Science v8.1.3 Release](https://github.com/ccfwwm/zerowallscience/releases/tag/v8.1.3)。安装包大小 `316,315,589` 字节，SHA-256 为 `1e2fb6c6ed50acc355483b2b62b1ae1d7fc6ebedd69f0d907a1110bad3c8d1a1`；已从 GitHub 完整下载并核对。
+- 插件中心源码已推送到 [`ccfwwm/zerowall-dsh-plugins`](https://github.com/ccfwwm/zerowall-dsh-plugins)，提交为 `3b1b6ef9af6c0f6601d4a41f2f489702b422ea13`。插件资源发布在 [`resources-8.1.3`](https://github.com/ccfwwm/zerowall-dsh-plugins/releases/tag/resources-8.1.3)，Release 为公开、非草稿、非预发布，共 342 项资源。
+- 342 项插件资源已完整下载到本地，逐项与 `artifacts/release/8.1.3/publication/github-assets.json` 比较大小和 SHA-256：342/342 通过，缺失 0、额外 0、不一致 0。收据为 `artifacts/release/8.1.3/publication/github-resources-public.json`；上传 API 收据为 `github-resources-api.json`。
+- 插件中心源码合同 CI 已通过（Run [38232793995](https://github.com/ccfwwm/zerowall-dsh-plugins/actions/runs/38232793995)）。主项目 CI（Run [38230494457](https://github.com/ccfwwm/zerowallscience/actions/runs/38230494457)）未通过，失败发生在干净 runner 的 DSH bundle 阶段：`vendor/group/lib/index.js` 引用了打包应用未携带的 `@deepseek-ai/cordis-plugin-loader`。本地已验收的安装包和插件资源不因该远端构建环境问题改写；该 CI 限制保留为未通过项。
+
+所有跳过项、外部限制及源码非 clean 状态仍按前文保留，不因发布成功而改记为通过。
