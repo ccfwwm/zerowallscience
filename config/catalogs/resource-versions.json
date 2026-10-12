@@ -1,11 +1,11 @@
 {
   "python": { "science-dependencies": "8.1.2" },
   "skill": {
-    "gpt-image-generator": "0.1.1",
+    "gpt-image-generator": "0.1.2",
     "mineru-document-parser": "0.1.1",
-    "zerowall-presentation": "0.1.1",
+    "zerowall-presentation": "0.1.3",
     "univer": "0.1.1",
-    "univer-slide": "0.1.1",
+    "univer-slide": "0.1.3",
     "univer-doc": "0.1.1",
     "univer-sheet": "0.1.1",
     "academic-paper": "0.1.1",

@@ -2,6 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
@@ -64,6 +65,7 @@ const IMAGE_OUTPUT_SCHEMA = {
     receiptPath: { type: 'string' as const },
     promptHash: { type: 'string' as const },
     inputImageHashes: { type: 'array' as const, items: { type: 'string' as const } },
+    cached: { type: 'boolean' as const },
     image: {
       type: 'object' as const,
       additionalProperties: false,
@@ -261,7 +263,7 @@ async function materializeAttachments(
     if (!ref) throw new Error(`图片附件 ${id} 未在当前会话中找到，无法用于编辑。`)
     const stored = await attachments.readImage(ref)
     const extension = ref.mediaType === 'image/jpeg' ? 'jpg' : ref.mediaType.slice('image/'.length)
-    const path = join(root, `input-${index}.${extension}`)
+    const path = join(root, `input-${randomUUID()}-${index}.${extension}`)
     await writeFile(path, stored.data)
     paths.push(path)
   }

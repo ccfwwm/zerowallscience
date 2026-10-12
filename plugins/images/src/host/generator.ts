@@ -6,6 +6,7 @@ import sharp from 'sharp'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscience/plugin-account/types'
 import type { ImageGenerationQuality, ImageModelSelection } from '@zerowallscience/plugin-environment/types'
+import { withPresentationLock } from './visual-assets.js'
 
 const KEY_PREFIX = 'zerowall.ai-cloud.group.'
 const MAX_INPUT_IMAGES = 16
@@ -74,6 +75,7 @@ export interface GenerateImageResult {
   receiptPath?: string
   promptHash?: string
   inputImageHashes?: string[]
+  cached?: boolean
 }
 
 export interface AccountReader { current(): Promise<AiCloudAccountSnapshot> }
@@ -85,6 +87,28 @@ export interface AiCloudImageGeneratorOptions {
   attachments?: () => ImageAttachmentWriter | undefined
   imageModel?: () => Promise<ImageModelSelection | undefined>
   imageQuality?: () => Promise<ImageGenerationQuality | undefined>
+  retryDelayMs?: number
+}
+
+let activeImages = 0
+const imageQueue: Array<() => void> = []
+async function imageSlot<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted()
+  await new Promise<void>((accept, reject) => {
+    const start = () => { signal?.removeEventListener('abort', abort); activeImages++; accept() }
+    const abort = () => { const i = imageQueue.indexOf(start); if (i >= 0) imageQueue.splice(i, 1); reject(signal?.reason) }
+    if (activeImages < 2) start()
+    else { imageQueue.push(start); signal?.addEventListener('abort', abort, { once: true }) }
+  })
+  try { signal?.throwIfAborted(); return await action() } finally { activeImages--; imageQueue.shift()?.() }
+}
+async function retryPause(ms: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
+  await new Promise<void>((accept, reject) => {
+    const abort = () => { clearTimeout(timer); reject(signal?.reason) }
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); accept() }, ms)
+    signal?.addEventListener('abort', abort, { once: true })
+  })
 }
 
 export type ImageSize = 'auto' | `${number}x${number}`
@@ -123,12 +147,19 @@ export class AiCloudImageGenerator {
   }
 
   async generate(input: GenerateImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
+    return withPresentationLock(`image:${resolve(cwd, input.outputPath)}`, () => this.generateOnce(input, cwd, signal))
+  }
+  private async generateOnce(input: GenerateImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
     const prompt = nonEmptyPrompt(input.prompt)
     const size = validateImageSize(input.size)
     const quality = await this.resolveQuality(input.quality)
     const workspace = await workspaceRoot(cwd)
-    const target = await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
+    const target = await safeOutputPath(workspace, input.outputPath, true)
     const model = await this.resolveModel(input.model)
+    const requestHash = this.requestHash('generate', model, prompt, size, quality, [])
+    const cached = await this.cached(target, requestHash, signal)
+    if (cached) return cached
+    await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     try {
     const response = await this.requestImage(`${trustedBaseUrl(model.baseUrl)}/images/generations`, {
       method: 'POST',
@@ -146,7 +177,7 @@ export class AiCloudImageGenerator {
       ...(signal === undefined ? {} : { signal }),
     }, 'generation')
     const result = await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
-    return await this.receipt(result, prompt, [], workspace)
+    return await this.receipt(result, prompt, [], workspace, requestHash)
     } catch (error) {
       await this.recordFailure(workspace, target, { operation: 'generate_image', prompt, model: model.modelId, providerId: model.providerId, groupId: model.groupId, size, quality, inputImageHashes: [] }, error)
       throw error
@@ -154,6 +185,9 @@ export class AiCloudImageGenerator {
   }
 
   async edit(input: EditImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
+    return withPresentationLock(`image:${resolve(cwd, input.outputPath)}`, () => this.editOnce(input, cwd, signal))
+  }
+  private async editOnce(input: EditImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
     const prompt = nonEmptyPrompt(input.prompt)
     const size = validateImageSize(input.size)
     const quality = await this.resolveQuality(input.quality)
@@ -165,7 +199,7 @@ export class AiCloudImageGenerator {
     }
 
     const workspace = await workspaceRoot(cwd)
-    const target = await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
+    const target = await safeOutputPath(workspace, input.outputPath, true)
     const images: InspectedImage[] = []
     for (let index = 0; index < input.inputPaths.length; index += 1) {
       images.push(await inspectInputImage(workspace, input.inputPaths[index]!, `input_paths[${index}]`, signal))
@@ -182,6 +216,10 @@ export class AiCloudImageGenerator {
     if (mask !== undefined) validateMask(mask, images[0]!)
 
     const model = await this.resolveModel(input.model)
+    const requestHash = this.requestHash('edit', model, prompt, size, quality, images.map(image => image.data), mask?.data)
+    const cached = await this.cached(target, requestHash, signal)
+    if (cached) return cached
+    await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     const form = new FormData()
     form.set('model', model.modelId)
     form.set('prompt', prompt)
@@ -203,7 +241,7 @@ export class AiCloudImageGenerator {
       ...(signal === undefined ? {} : { signal }),
     }, 'edit')
     const result = await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
-    return await this.receipt(result, prompt, images.map(image => image.data), workspace)
+    return await this.receipt(result, prompt, images.map(image => image.data), workspace, requestHash)
     } catch (error) {
       await this.recordFailure(workspace, target, { operation: 'edit_image', prompt, model: model.modelId, providerId: model.providerId, groupId: model.groupId, size, quality, inputPaths: images.map(image => image.path), inputImageHashes: images.map(image => createHash('sha256').update(image.data).digest('hex')) }, error)
       throw error
@@ -215,12 +253,33 @@ export class AiCloudImageGenerator {
     await atomicWrite(workspace, path, Buffer.from(JSON.stringify({ schemaVersion: 1, output, request, reason: errorMessage(error).slice(0, 1000), createdAt: new Date().toISOString() }, null, 2)), true)
   }
 
-  private async receipt(result: GenerateImageResult, prompt: string, inputs: Uint8Array[], workspace: string): Promise<GenerateImageResult> {
+  private requestHash(operation: string, model: AiCloudManagedModel, prompt: string, size: ImageSize, quality: ImageGenerationQuality, inputs: Uint8Array[], mask?: Uint8Array): string {
+    const digest = (value: Uint8Array) => createHash('sha256').update(value).digest('hex')
+    return digest(Buffer.from(JSON.stringify({ operation, model: model.modelId, provider: model.providerId, group: model.groupId, endpoint: model.baseUrl, prompt, size, quality, inputs: inputs.map(digest), mask: mask ? digest(mask) : null })))
+  }
+  private async cached(target: string, requestHash: string, signal?: AbortSignal): Promise<GenerateImageResult | undefined> {
+    signal?.throwIfAborted()
+    try {
+      const receipt = JSON.parse(await readFile(target + '.generation.json', 'utf8'))
+      if (receipt.requestHash !== requestHash) return undefined
+      const bytes = await readFile(target)
+      if (createHash('sha256').update(bytes).digest('hex') !== receipt.sha256) return undefined
+      const metadata = await sharp(bytes).metadata()
+      if (metadata.width !== receipt.actualWidth || metadata.height !== receipt.actualHeight) return undefined
+      const { prompt: _prompt, createdAt: _createdAt, requestHash: _requestHash, mediaType: _mediaType, ...result } = receipt
+      // Attachment stores are session/runtime scoped. Refresh the reference.
+      delete result.image; delete result.attachment
+      const attachments = this.options.attachments?.()
+      if (attachments) { const ref = await attachments.saveImage({ data: bytes, mediaType: 'image/png', name: basename(target) }); result.image = attachmentValue(ref); result.attachment = result.image }
+      return { ...result, path: target, cached: true }
+    } catch (error) { if (signal?.aborted) throw error; return undefined }
+  }
+  private async receipt(result: GenerateImageResult, prompt: string, inputs: Uint8Array[], workspace: string, requestHash: string): Promise<GenerateImageResult> {
     const hash = (data: Uint8Array | string) => createHash('sha256').update(data).digest('hex')
     const receiptPath = result.path + '.generation.json'
     const enriched = { ...result, sha256: hash(await readFile(result.path)), receiptPath, promptHash: hash(prompt), inputImageHashes: inputs.map(hash) }
     const target = await safeOutputPath(workspace, receiptPath, true, '.json')
-    await atomicWrite(workspace, target, Buffer.from(JSON.stringify({ ...enriched, mediaType: 'image/png', prompt, createdAt: new Date().toISOString() }, null, 2)), true)
+    await atomicWrite(workspace, target, Buffer.from(JSON.stringify({ ...enriched, requestHash, mediaType: 'image/png', prompt, createdAt: new Date().toISOString() }, null, 2)), true)
     return enriched
   }
 
@@ -254,16 +313,22 @@ export class AiCloudImageGenerator {
   }
 
   private async requestImage(url: string, init: RequestInit, operation: 'generation' | 'edit'): Promise<Response> {
-    try {
-      return await this.fetcher(url, init)
-    } catch (error) {
-      if (isAbortError(error) || (init.signal?.aborted ?? false)) throw error
-      const code = errorCode(error)
-      const detail = code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT'
-        ? 'The image endpoint timed out before returning a response.'
-        : 'The image endpoint could not be reached.'
-      throw new Error(`Image ${operation} failed before receiving a response. ${detail} Check the configured AI Cloud node and retry.`, { cause: error })
-    }
+    return imageSlot(async () => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const response = await this.fetcher(url, init)
+          if (attempt < 2 && [429, 502, 503, 504].includes(response.status)) {
+            await response.body?.cancel(); await retryPause((this.options.retryDelayMs ?? 750) * (attempt + 1), init.signal ?? undefined); continue
+          }
+          return response
+        } catch (error) {
+          if (isAbortError(error) || init.signal?.aborted) throw error
+          if (attempt < 2) { await retryPause((this.options.retryDelayMs ?? 750) * (attempt + 1), init.signal ?? undefined); continue }
+          const code = errorCode(error) ?? 'NETWORK_ERROR'
+          throw new Error(`Image ${operation} failed before receiving a response (${code}). The image endpoint could not be reached after 3 attempts. Keep successful assets; check the configured AI Cloud node and retry.`, { cause: error })
+        }
+      }
+    }, init.signal ?? undefined)
   }
 
   private async finishResponse(
@@ -276,7 +341,10 @@ export class AiCloudImageGenerator {
     overwrite: boolean,
     signal?: AbortSignal,
   ): Promise<GenerateImageResult> {
-    if (!response.ok) throw new Error(`Image request failed (HTTP ${response.status}).`)
+    if (!response.ok) {
+      const action = response.status === 400 || response.status === 422 ? 'Correct the request parameters before retrying.' : response.status === 401 || response.status === 403 ? 'Refresh the account credentials.' : 'Keep successful assets and retry this request after checking the service.'
+      throw new Error(`Image request failed (HTTP ${response.status}). ${action}`)
+    }
     signal?.throwIfAborted()
     const decoded = await decodeImagePayload(await response.json() as unknown, this.fetcher, signal)
     const png = await normalizePng(decoded.bytes, signal)

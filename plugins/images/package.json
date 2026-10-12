@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "ZeroWall Science images domain plugin (desktop 8.0.1).",
   "type": "module",
   "main": "./lib/index.js",
@@ -108,6 +108,8 @@
     "@zerowallscience/plugin-base": "workspace:^",
     "@zerowallscience/plugin-environment": "workspace:^",
     "sharp": "^0.35.3",
+    "@xmldom/xmldom": "0.9.12",
+    "fflate": "0.8.3",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0"
   },

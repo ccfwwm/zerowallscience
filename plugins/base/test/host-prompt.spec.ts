@@ -8,17 +8,22 @@ describe('ZeroWall Science system prompt', () => {
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('capability_search')
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('mcp__rmcp__')
     expect(SCIENCE_SYSTEM_PROMPT).toContain(SCIENCE_SYSTEM_PROMPT_VERSION)
-    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^7\.5\.0-/u)
+    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^8\.1\.2-/u)
   })
 
   it('routes presentation requests to editable Univer objects', () => {
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('zerowall-presentation')
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('univer-slide')
-    expect(SCIENCE_PRESENTATION_PROMPT).toContain('never complete page screenshots')
-    expect(SCIENCE_PRESENTATION_PROMPT).toContain('model, size and quality inherit the environment')
-    expect(SCIENCE_PRESENTATION_PROMPT).toContain('Passive reading')
-    expect(SCIENCE_PRESENTATION_PROMPT).toContain('three text-free style candidates')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('Keep formal text/charts/tables/notes editable')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('current model/quality/protocol settings')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('Passive Office reading')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('No mandatory three-style exploration')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('multiple images per page')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('exported-file readback')
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('current chat model')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('take precedence')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('small top-left kicker')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('universal no-text')
   })
 
   it('keeps the research layer explicit and bounded', () => {

@@ -50,6 +50,7 @@ function generator(fetcher: typeof fetch, attachment?: ImageAttachmentRef | Erro
   for (const model of models) secrets.values.set(`zerowall.ai-cloud.group.${model.groupId}`, 'host-only-secret')
   return new AiCloudImageGenerator({
     secrets,
+    retryDelayMs: 0,
     account: { current: async () => ({ ...signedIn(), models }) },
     fetch: fetcher,
     ...(imageQuality === undefined ? {} : { imageQuality }),
@@ -69,6 +70,31 @@ function imageResponse(data: Uint8Array, extra: Record<string, unknown> = {}): R
     data: [{ b64_json: Buffer.from(data).toString('base64'), ...extra }],
   }), { status: 200, headers: { 'content-type': 'application/json' } })
 }
+
+it('resumes matching successful requests without another generation and preserves the selected parameters', async () => {
+  const workspace = await root(), png = await raster(), fetcher = vi.fn(async () => imageResponse(png))
+  const first = await generator(fetcher as typeof fetch).generate({ prompt: 'verified concept', outputPath: 'cached.png', quality: 'medium' }, workspace)
+  const restored = await generator(fetcher as typeof fetch).generate({ prompt: 'verified concept', outputPath: 'cached.png', quality: 'medium' }, workspace)
+  expect(fetcher).toHaveBeenCalledOnce(); expect(restored.cached).toBe(true); expect(restored.sha256).toBe(first.sha256)
+  await expect(generator(fetcher as typeof fetch).generate({ prompt: 'verified concept', outputPath: 'cached.png', quality: 'high' }, workspace)).rejects.toThrow('already exists')
+})
+it('limits image requests to two concurrent jobs and deduplicates concurrent identical targets', async () => {
+  const workspace = await root(), png = await raster(); let active = 0, maximum = 0
+  const fetcher = vi.fn(async () => { active++; maximum = Math.max(maximum, active); await new Promise(resolve => setTimeout(resolve, 15)); active--; return imageResponse(png) })
+  const service = generator(fetcher as typeof fetch)
+  await Promise.all([1, 2, 3, 3].map(number => service.generate({ prompt: `concept ${number}`, outputPath: `parallel-${number}.png` }, workspace)))
+  expect(maximum).toBe(2); expect(fetcher).toHaveBeenCalledTimes(3)
+})
+it('retries transient 503 responses but returns parameter errors without replaying them', async () => {
+  const workspace = await root(), png = await raster()
+  const transient = vi.fn().mockResolvedValueOnce(new Response('', { status: 503 })).mockResolvedValueOnce(imageResponse(png))
+  await generator(transient as typeof fetch).generate({ prompt: 'concept', outputPath: 'retry.png' }, workspace)
+  expect(transient).toHaveBeenCalledTimes(2)
+  const invalid = vi.fn(async () => new Response('sensitive response', { status: 400 }))
+  await expect(generator(invalid as typeof fetch).generate({ prompt: 'concept', outputPath: 'bad.png' }, workspace)).rejects.toThrow('Correct the request parameters')
+  expect(invalid).toHaveBeenCalledOnce()
+  expect(await readFile(join(workspace, 'bad.png.generation.failed.json'), 'utf8')).not.toContain('sensitive response')
+})
 
 describe('AI Cloud image generation and editing', () => {
   it('records a seed/style edit as a verified independent presentation asset', async () => {
