@@ -84,15 +84,17 @@ export function dependencyManifestSha256(bytes: Uint8Array | string): string {
 
 export class PythonManifestUnavailableError extends Error {}
 
-export async function fetchPythonDependencyManifest(url: string, keys: Record<string, string>, options: { fetcher?: (typeof fetch) | undefined; applicationVersion?: (string) | undefined; expectedSha256?: (string) | undefined } = {}): Promise<PythonDependencyManifest> {
+export async function fetchPythonDependencyManifest(url: string, keys: Record<string, string>, options: { fetcher?: (typeof fetch) | undefined; applicationVersion?: (string) | undefined; expectedSha256?: (string) | undefined; timeoutMs?: number } = {}): Promise<PythonDependencyManifest> {
   const target = new URL(url)
   if (target.protocol !== 'https:' || target.username || target.password) throw new Error('Python 清单地址必须使用 HTTPS。')
   let response: Response
-  try { response = await (options.fetcher ?? fetch)(url, { cache: 'no-store' }) }
-  catch { throw new PythonManifestUnavailableError('Python 清单网络连接失败。') }
+  try { response = await (options.fetcher ?? fetch)(url, { cache: 'no-store', signal: AbortSignal.timeout(options.timeoutMs ?? 12_000) }) }
+  catch { throw new PythonManifestUnavailableError('Python 清单网络连接失败或超时。') }
   if (response.status === 404) throw new PythonManifestUnavailableError('Python 清单尚未发布（HTTP 404）。')
   if (!response.ok) throw new Error(`Python 清单下载失败：HTTP ${response.status}`)
-  const bytes = await response.arrayBuffer()
+  let bytes: ArrayBuffer
+  try { bytes = await response.arrayBuffer() }
+  catch { throw new PythonManifestUnavailableError('Python 清单读取失败或超时。') }
   if (bytes.byteLength > 4 * 1024 * 1024) throw new Error('Python 清单超过大小限制。')
   if (options.expectedSha256 && dependencyManifestSha256(new Uint8Array(bytes)) !== options.expectedSha256) throw new Error('Python 清单 SHA-256 校验失败。')
   return parsePythonDependencyManifest(JSON.parse(new TextDecoder().decode(bytes)), keys, options.applicationVersion)

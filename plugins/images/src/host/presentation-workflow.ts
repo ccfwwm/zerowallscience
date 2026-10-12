@@ -14,6 +14,7 @@ export interface PresentationWorkflow {
   schemaVersion: 2; spec: string; manifest: string; mode: 'new' | 'edit'; scope?: Scope; journal?: string
   changedPages: number[]; pages: Record<string, { fingerprint: string; id: string; checks: Record<string, Check>; review?: { fingerprint: string; observations: string; waivers: string[] } }>
   phase: string; failure?: { stage: string; message: string; at: string }
+  exportReceipt?: { outputPath: string; notesWritten: number; bytes: number; sha256: string }
 }
 const EVENT = 'zerowall/presentation-workflow'
 // Return compact facts, not multi-megabyte image data in the conversation. Two
@@ -41,10 +42,11 @@ export function actualCoverage(name: string, value: any, snapshots: PageSnapshot
 }
 export function refreshPages(state: PresentationWorkflow, snapshots: PageSnapshot[], dependencies: Record<string, string>): void {
   const ids = new Set(snapshots.map(page => String(page.page)))
-  for (const key of Object.keys(state.pages)) if (!ids.has(key)) delete state.pages[key]
+  for (const key of Object.keys(state.pages)) if (!ids.has(key)) { delete state.pages[key]; delete state.exportReceipt }
   for (const page of snapshots) {
     const fingerprint = hash(page.fingerprint + (dependencies[page.page] ?? ''))
     if (state.pages[page.page]?.fingerprint !== fingerprint) {
+      delete state.exportReceipt
       state.pages[page.page] = { id: page.id, fingerprint, checks: {} }
       state.changedPages = [...new Set([...state.changedPages, page.page])]
     }
@@ -57,6 +59,9 @@ export function exportBlockers(state: PresentationWorkflow): number[] {
     return ['univer_inspect', 'univer_lint', 'univer_screenshot'].some(name => entry.checks[name]?.fingerprint !== entry.fingerprint)
       || Object.values(entry.checks).some(check => check.findings.some(finding => !entry.review?.waivers.includes(hash(JSON.stringify(finding)))))
   })
+}
+function presentationFindings(state: PresentationWorkflow, pages = state.changedPages) {
+  return pages.flatMap(page => (state.pages[page]?.checks.univer_lint?.findings ?? []).map(finding => ({ page, sha256: hash(JSON.stringify(finding)), finding })))
 }
 export function installPresentationWorkflow(ctx: Context): void {
   const routes = new Map<string, { provider: string; model: string; imageInput: boolean }>(), bypass = new Set<string>()
@@ -128,6 +133,7 @@ export function installPresentationWorkflow(ctx: Context): void {
         }
         const before = await sync(exec, state)
         if (exec.name === 'univer_export') {
+          delete state.exportReceipt
           await validatePresentationAssets(cwd(exec), state)
           const blocked = exportBlockers(state)
           if (blocked.length) throw new Error(`Export requires current inspect/lint/screenshots and actual visual reviews for pages: ${blocked.join(', ')}. Use presentation_check_pages, fix only these pages, then presentation_record_reviews.`)
@@ -153,16 +159,13 @@ export function installPresentationWorkflow(ctx: Context): void {
             const notes = captured?.value ?? captured?.execution?.value ?? captured
             if (!Array.isArray(notes) || notes.some(note => typeof note !== 'string')) throw new Error('Cannot read current speaker notes for PPTX export.')
             const preserved = await preservePptxNotes(cwd(exec), outputPath, notes, exec.signal)
-            Object.assign(result.value as object, { presentationExport: preserved })
+            if (preserved) state.exportReceipt = { outputPath, ...preserved }
           }
           state.phase = 'exported-awaiting-readback'
         }
         delete state.failure; await persist(exec, state)
-        if (exec.name === 'univer_lint') {
-          const covered = actualCoverage(exec.name, result.value, before)
-          const presentationFindings = covered.flatMap(page => (state.pages[page]?.checks.univer_lint?.findings ?? []).map(finding => ({ sha256: hash(JSON.stringify(finding)), finding })))
-          return { ...result, value: { ...(result.value as any), presentationFindings }, content: [...result.content, { type: 'text' as const, text: JSON.stringify({ presentationFindings }) }] }
-        }
+        // Univer owns a closed, frozen output contract. Keep its canonical
+        // result intact; expose ZeroWall findings/receipts through our tools.
         return result
       } catch (error) {
         state.failure = { stage: exec.name, message: error instanceof Error ? error.message.slice(0, 1000) : 'Presentation operation failed.', at: new Date().toISOString() }
@@ -238,7 +241,8 @@ export function installPresentationWorkflow(ctx: Context): void {
     const batches: any[] = []
     for (let offset = 0; offset < pages.length; offset += 5) batches.push(await dispatch(exec, 'univer_screenshot', { ...state.scope, pages: pages.slice(offset, offset + 5), output: `${args.output}/batch-${offset / 5 + 1}`, contactSheet: true }))
     const screenshot = { ...batches[0], result: { ...payload(batches[0]), images: batches.flatMap(batch => payload(batch).images ?? []) } }
-    return JSON.stringify({ inspect, lint, screenshot, state: await load(exec) })
+    const latest = (await load(exec))!
+    return JSON.stringify({ inspect, lint, screenshot, presentationFindings: presentationFindings(latest, pages), state: latest })
   } }))
-  ctx.tools.register(defineTool({ name: 'presentation_status', description: 'Read persisted phase, current page checks/reviews, specific failures and export blockers. Does not mutate the deck.', parameters: {}, output, execute: async (_, exec) => { const state = await load(exec); return JSON.stringify({ state, blockedPages: state ? exportBlockers(state) : [] }) } }))
+  ctx.tools.register(defineTool({ name: 'presentation_status', description: 'Read persisted phase, current page checks/reviews, finding hashes, export receipt, specific failures and export blockers. Does not mutate the deck.', parameters: {}, output, execute: async (_, exec) => { const state = await load(exec); return JSON.stringify({ state, presentationFindings: state ? presentationFindings(state) : [], blockedPages: state ? exportBlockers(state) : [] }) } }))
 }

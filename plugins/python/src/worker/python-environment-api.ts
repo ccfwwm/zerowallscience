@@ -15,12 +15,14 @@ import type { McpEnvironmentStatus, McpPythonInfo, PythonDependencyLayer, Python
 import type { ReportPythonSyncProgress, PythonSyncProgress } from './python-sync.js'
 import { MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { checkPythonCancellation, withPythonOperation } from './python-operation.js'
+import { openPythonShell } from './python-shell.js'
+import { runtimeWriterActive } from '../shared/runtime-lock.js'
 
 const execute = promisify(execFile)
 
 export { normalizePythonRuntimePath } from './python-location.js'
 export interface PythonEnvironmentRequest {
-  action: 'status' | 'scan_local' | 'install_runtime' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'
+  action: 'status' | 'scan_local' | 'open_shell' | 'install_runtime' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'
   requestId: string
   taskId?: (string) | undefined
   layer?: (PythonDependencyLayer) | undefined
@@ -169,6 +171,9 @@ export class PythonEnvironmentApi {
       .slice(0, 800)
   }
   async persistRuntimeSummary(info: McpPythonInfo): Promise<void> {
+    // An install lock or timeout is not evidence of missing packages. Never
+    // replace a previously complete scan with an incomplete transient result.
+    if (info.inventoryComplete === false && !info.ready) return
     await this.writeJsonAtomic(join(this.controlRoot(), 'python-summary.json'), {
       ready: info.ready, version: info.version, runtimeRoot: info.runtimeRoot ?? this.canonicalRuntimeRoot ?? join(dirname(this.root), 'Python'),
       executable: info.executable, sitePackages: info.sitePackages,
@@ -305,13 +310,23 @@ export class PythonEnvironmentApi {
     const operation = (async () => {
       let timer: NodeJS.Timeout | undefined
       try {
+        const previous = await readFile(join(this.controlRoot(), 'local-inventory.json'), 'utf8').then(JSON.parse, () => undefined)
+        const runtimeRoot = this.canonicalRuntimeRoot ?? dirname(this.root)
+        if (this.scan?.scanId !== scanId) return
+        if (runtimeWriterActive(runtimeRoot)) {
+          // Refresh during an install reads the last complete result. The task
+          // performs a fresh scan after releasing the writer lock.
+          const inventory = previous?.inventory?.inventoryComplete === true && previous.inventory.runtimeRoot === runtimeRoot ? previous.inventory as McpPythonInfo : undefined
+          this.scan = { ...this.scan!, state: 'complete', completedAt: new Date().toISOString(), inventory, error: '正在安装依赖，完成后自动重新检测。' }
+          return
+        }
         const inventory = await Promise.race([
           this.updater.pythonInfo(),
           new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('PYTHON_SCAN_TIMEOUT: 本地检测超过 45 秒。')), 45_000) }),
         ])
         if (this.scan?.scanId !== scanId) return
         this.scan = { ...this.scan, state: inventory.inventoryComplete === false ? 'failed' : 'complete', completedAt: new Date().toISOString(), inventory, ...(inventory.message ? { error: inventory.message } : {}) }
-        await this.writeJsonAtomic(join(this.controlRoot(), 'local-inventory.json'), this.scan)
+        if (inventory.inventoryComplete !== false) await this.writeJsonAtomic(join(this.controlRoot(), 'local-inventory.json'), this.scan)
         if (this.scan.scanId === scanId) await this.persistRuntimeSummary(inventory)
       } catch (error) {
         if (this.scan?.scanId === scanId) this.scan = { ...this.scan, state: 'failed', completedAt: new Date().toISOString(), error: this.safeTaskText(error instanceof Error ? error.message : String(error)) }
@@ -324,6 +339,10 @@ export class PythonEnvironmentApi {
 
   async request(input: PythonEnvironmentRequest): Promise<Record<string, unknown>> {
     if (!input || typeof input.requestId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/u.test(input.requestId)) throw new Error('Invalid Python requestId')
+    if (input.action === 'open_shell') {
+      await openPythonShell(this.canonicalRuntimeRoot ?? dirname(this.root))
+      return { opened: true, requestId: input.requestId }
+    }
     if (input.action === 'scan_local') return { requestId: input.requestId, ...this.startLocalScan() }
     if (['check_manifest', 'preview_sync', 'apply_sync', 'sync', 'install_package', 'install_runtime'].includes(input.action)) return this.acceptTask(input)
     if (input.action === 'task_status') {
@@ -556,6 +575,16 @@ export class PythonEnvironmentApi {
       return { inventory, runtimeRoot: inventory.runtimeRoot }
     }
     if ((input.action === 'sync' || input.action === 'install_package') && input.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
+    // A healthy fixed interpreter does not need bootstrap or management-record
+    // repair merely to acknowledge an already installed package.
+    if (input.action === 'install_package' && !/[=<>!~]/u.test(input.packageSpec!)) {
+      const spec = input.packageSpec!.trim()
+      const name = spec.match(/^[A-Za-z0-9_.-]+/u)![0].toLowerCase().replace(/[-_.]+/gu, '-')
+      const updater = this.updater as PythonUpdaterService & { pythonPackages?: (names: string[]) => Promise<McpPythonInfo> }
+      const local = updater.pythonPackages ? await updater.pythonPackages([name]) : await updater.pythonInfo()
+      checkPythonCancellation()
+      if (local.ready && local.packages.some(pkg => pkg.name.toLowerCase().replace(/[-_.]+/gu, '-') === name)) return { upToDate: true, packageSpec: spec, changes: [], installed: 0 }
+    }
     if (['sync', 'apply_sync', 'install_package'].includes(input.action)) {
       await report({ stage: 'waiting-runtime', message: '等待基础 Python 环境就绪。' })
       const runtime = await (this.updater as PythonUpdaterService & { ensureReady?: (() => Promise<McpEnvironmentStatus>) | undefined }).ensureReady?.()
@@ -624,8 +653,8 @@ export class PythonEnvironmentApi {
       const expected = plan.changes ?? []
       const installed = packageUpdater.pythonPackages ? await packageUpdater.pythonPackages(expected.map(change => change.name)) : await packageUpdater.pythonInfo()
       const actual = new Map(installed.packages.map(pkg => [pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'), pkg.version]))
-      const missed = expected.filter(change => actual.get(change.name.toLowerCase().replace(/[-_.]+/gu, '-')) !== change.to)
-      if (missed.length) throw new Error(`单包安装结束后版本核验未通过：${missed.map(change => `${change.name}==${change.to}`).join('、')}`)
+      const missed = expected.filter(change => !actual.has(change.name.toLowerCase().replace(/[-_.]+/gu, '-')))
+      if (missed.length) throw new Error(`安装后仍缺少包：${missed.map(change => change.name).join('、')}`)
       return { taskId: queued.taskId, underlyingTaskId: queued.taskId, packageSpec: spec, changes: expected, installed: expected.length }
     }
     let planId = input.planId
@@ -635,14 +664,15 @@ export class PythonEnvironmentApi {
     if (input.action === 'sync') {
       if (layer !== 'core' && layer !== 'science' && layer !== 'capability') throw new Error('不支持的 Python 依赖层。')
       changed = await this.sync.checkManifest(layer, input.capabilityId, report) as ManifestSummary
-    const plan = await this.sync.previewSync(layer, input.capabilityId, taskId, report) as { planId: string; changes: Array<{ name: string; from?: (string) | undefined; to: string }>; preparationFailures?: (Array<{ name: string; version: string; message: string }>) | undefined; error?: (string) | undefined; manifestRevision: string }
+      plan = await this.sync.previewSync(layer, input.capabilityId, taskId, report) as typeof plan
+      if (!plan) throw new Error('未生成缺包安装队列。')
       if (plan.error) throw new Error(`依赖清单已改变，无法同步：${plan.error}`)
       if (!plan.changes.length) return { upToDate: true, manifestRevision: plan.manifestRevision, changes: [] }
       planId = plan.planId
       manifestRevision = plan.manifestRevision
     }
     if (!planId || !manifestRevision || input.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: review and approve the concrete dependency plan first.')
-    await report({ stage: 'install-queued', message: '安装计划已通过签名、哈希和资源检查，正在启动依赖安装。' })
+    await report({ stage: 'install-queued', message: '正在按顺序逐包安装缺失依赖。', ...(savedTask?.completedPackages ? {} : { progress: 0, completedPackages: 0 }) })
     checkPythonCancellation()
     const applied = await this.sync.applySync(planId, manifestRevision, true) as { taskId?: (string) | undefined; partial?: (boolean) | undefined; skippedPackages?: (Array<{ name: string; version: string; message: string }>) | undefined; noInstallablePackages?: (boolean) | undefined }
     if (!applied.taskId) return { ...applied, layer, manifestRevision, changes: plan?.changes ?? [], partial: applied.partial === true }
@@ -735,10 +765,12 @@ export class PythonEnvironmentApi {
         const task = await this.recoverLatestTask()
         if (task) await this.taskWrites.get(task.taskId)?.catch(() => undefined)
         const stableRoot = configuredRuntimeRoot
-        const coreReady = pythonSummary?.coreReady === true
-        const corePackageCount = pythonSummary?.corePackageCount ?? 0
-        const sciencePackageCount = dependencyStatus?.layer === 'science' ? dependencyStatus.packageCount ?? 0 : 0
-        const scienceInstalledPackageCount = dependencyStatus?.layer === 'science' ? dependencyStatus.installedPackageCount ?? 0 : 0
+        const coreReady = pythonSummary?.coreReady
+        const corePackageCount = pythonSummary?.corePackageCount
+        const sciencePackageCount = pythonSummary?.sciencePackageCount ?? (dependencyStatus?.layer === 'science' ? dependencyStatus.packageCount : undefined)
+        const scienceInstalledPackageCount = pythonSummary?.scienceInstalledPackageCount ?? (dependencyStatus?.layer === 'science' ? dependencyStatus.installedPackageCount : undefined)
+        const localScan = this.scan?.inventory?.inventoryComplete === true ? this.scan : await readOptional(join(this.controlRoot(), 'local-inventory.json'))
+        const localInventory = localScan?.inventory?.inventoryComplete === true && resolve(localScan.inventory.runtimeRoot ?? '') === resolve(stableRoot) ? localScan.inventory : undefined
         const scienceState = dependencyStatus?.layer === 'science'
           ? dependencyStatus.scienceInstalled ? 'installed' : dependencyStatus.resourceAvailability?.available === false ? 'error' : 'available'
           : 'not-installed'
@@ -761,20 +793,20 @@ export class PythonEnvironmentApi {
           : this.isTerminal(task?.state) ? { ...liveStatus, phase: pythonSummary?.ready ? 'ready' as const : 'idle' as const, updateJob: undefined, progress: undefined } : liveStatus
         result = {
           status: restoredStatus, task, runtime: activeRuntime, runtimeRoot: stableRoot, ...(savedRuntimeRoot && resolve(savedRuntimeRoot) !== resolve(stableRoot) ? { nextRuntimeRoot: savedRuntimeRoot, restartRequired: true } : {}), scan: this.scan,
-          inventory: {
+          inventory: localInventory ?? {
             ready: pythonSummary?.ready === true || activeRuntime !== undefined,
             version: pythonSummary?.version ?? activeRuntime?.pythonVersion,
             runtimeRoot: stableRoot,
             executable: pythonSummary?.executable ?? activeRuntime?.executablePath,
             sitePackages: pythonSummary?.sitePackages ?? activeRuntime?.sitePackagesPath,
-            snapshotId: activeRuntime?.rootPath,
+            snapshotId: stableRoot,
             officialPackageCount: pythonSummary?.officialPackageCount ?? corePackageCount,
             coreReady, corePackageCount, sciencePackageCount, scienceInstalledPackageCount,
             missingCorePackages: pythonSummary?.missingCorePackages ?? [],
             ...(pythonSummary?.packageCount === undefined ? {} : { packageCount: pythonSummary.packageCount }),
             inventoryComplete: false, packages: [],
           },
-          layers: { bootstrap: pythonSummary ? pythonSummary.ready ? 'ready' : 'missing' : 'unknown', core: pythonSummary ? coreReady ? 'ready' : 'missing' : 'unknown', science: scienceState },
+          layers: { bootstrap: pythonSummary ? pythonSummary.ready ? 'ready' : 'missing' : 'unknown', core: coreReady === undefined ? 'unknown' : coreReady ? 'ready' : 'missing', science: scienceState },
           coreReady, corePackageCount, sciencePackageCount, scienceInstalledPackageCount,
           missingCorePackages: pythonSummary?.missingCorePackages ?? [],
           resourceAvailability: dependencyStatus?.resourceAvailability, lastSyncError: dependencyStatus?.lastSyncError,

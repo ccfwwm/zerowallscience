@@ -19,7 +19,7 @@ import { commitFixedRuntime } from './python-fixed-transaction.js'
 import { mayUseFallbackWheel, prepareFallbackWheel } from './python-fallback-wheel.js'
 
 interface Context { root: string; executable: string; sitePackages: string; manifest: McpEnvironmentManifest; mirror?: MirrorConfig | undefined; dependencyManifest?: (PythonDependencyManifest) | undefined; sourceWheels?: (BuiltSourceWheel[]) | undefined }
-interface Wheel { name: string; version: string; url?: (string) | undefined; hash?: (string) | undefined; sourceArchiveSha256?: (string) | undefined; sourceFilename?: (string) | undefined; sourceBuildId?: (string) | undefined; sourceUrl?: (string) | undefined; deferredSourceBuild?: (true) | undefined }
+interface Wheel { name: string; version: string; url?: (string) | undefined; hash?: (string) | undefined; sourceArchiveSha256?: (string) | undefined; sourceFilename?: (string) | undefined; sourceBuildId?: (string) | undefined; sourceUrl?: (string) | undefined; deferredSourceBuild?: (true) | undefined; deferredResolution?: (true) | undefined }
 /** The only requirement form the installer uses for a mirror-resolved package. */
 const pinnedRequirement = (wheel: { name: string; version: string }) => `${wheel.name}==${wheel.version}`
 export interface StoredPackagePlan extends PythonPackagePlan { wheels: Wheel[]; removals?: (string[]) | undefined; dependencyManifest?: (PythonDependencyManifest) | undefined; manifestInstalled?: (Array<{ name: string; version: string }>) | undefined; preparationFailures?: (PackageInstallFailure[]) | undefined; /** Written after apply: which packages landed and which were skipped. */ installOutcome?: (ApplyOutcome) | undefined }
@@ -155,7 +155,11 @@ export async function preparePackagePlan(root: string, context: Context, request
   // Retain existing distributions including locally built pure-Python wheels. Pip only
   // downloads wheels for changes; --ignore-installed would incorrectly reject those packages.
   const retained = info.packages.filter(pkg => !requestedNames.has(normalize(pkg.name)))
-  const minimums = retained.map(pkg => `${pkg.name}>=${pkg.version}`)
+  // Existing distributions are user-owned. Pin them exactly during resolver
+  // work so installing a missing package cannot silently upgrade or downgrade
+  // another package as a transitive side effect. An explicit request for the
+  // package itself can still carry its own version constraint.
+  const minimums = retained.map(pkg => `${pkg.name}==${pkg.version}`)
   // A signed full-software sync resolves against the complete lock, including
   // pins that are not installed yet. This keeps the per-package fallback from
   // quietly selecting an unlisted transitive version without requesting every
@@ -164,7 +168,7 @@ export async function preparePackagePlan(root: string, context: Context, request
   for (const pkg of context.dependencyManifest?.packages ?? []) pinned.set(normalize(pkg.name), pkg)
   const pins = [...pinned.values()].map(pkg => `${pkg.name}==${pkg.version}`)
   const effectiveRequested = packageResolutionRequirements(requested, info.packages, context.sourceWheels)
-  await writeFile(requirementsPath, [...effectiveRequested, ...minimums].join('\n'))
+  await writeFile(requirementsPath, (context.dependencyManifest ? effectiveRequested : [...effectiveRequested, ...minimums]).join('\n'))
   const mirror = resolveMirror(context.mirror)
   let result: any
   try {
@@ -252,7 +256,6 @@ export async function prepareManifestPackagePlan(root: string, context: Context,
   const mirror = context.mirror ?? resolveMirror(manifest.index)
   const installedByName = new Map(info.packages.map(pkg => [normalize(pkg.name), pkg.version]))
   const pending = manifest.packages.filter(pkg => !installedByName.has(normalize(pkg.name)))
-  const pendingManifest = { ...manifest, packages: pending }
   const directory = join(root, 'plans')
   await mkdir(directory, { recursive: true })
   const manifestInstalled = info.packages.map(pkg => ({ name: pkg.name, version: pkg.version }))
@@ -267,79 +270,27 @@ export async function prepareManifestPackagePlan(root: string, context: Context,
   // the user starts installation. Building during a read-only preview caused
   // long silent waits and made missing build backends look like bad resources.
   const preparationFailures: PackageInstallFailure[] = []
-  const sourcePackages = pending.filter(pkg => pkg.source === 'sdist')
-  const deferredSourceWheels: Wheel[] = []
-  for (const [index, pkg] of sourcePackages.entries()) {
+  const wheels: Wheel[] = []
+  for (const pkg of pending) {
+    if (pkg.source !== 'sdist') {
+      wheels.push({ name: pkg.name, version: pkg.version, deferredResolution: true, ...(pkg.sha256 ? { hash: pkg.sha256 } : {}) })
+      continue
+    }
     if (!pkg.filename || !pkg.sha256) {
       preparationFailures.push({ name: pkg.name, version: pkg.version, message: '签名清单中的源码文件名或 SHA-256 缺失。' })
       continue
     }
-    deferredSourceWheels.push({ name: pkg.name, version: pkg.version, sourceArchiveSha256: pkg.sha256, sourceFilename: pkg.filename, deferredSourceBuild: true })
-    report?.({ stage: 'source-ready', progress: Math.min(20, Math.floor((index + 1) / Math.max(1, sourcePackages.length) * 20)), message: `已绑定源码依赖 ${pkg.name} 的签名文件；用户确认安装后再构建。`, completedPackages: index + 1, totalPackages: pending.length, currentPackage: pkg.name, logLine: `${pkg.filename} · SHA-256 已由签名清单锁定` })
+    wheels.push({ name: pkg.name, version: pkg.version, sourceArchiveSha256: pkg.sha256, sourceFilename: pkg.filename, deferredSourceBuild: true })
   }
 
-  const ready = pending.filter(pkg => pkg.source !== 'sdist' && !preparationFailures.some(failure => normalize(failure.name) === normalize(pkg.name)))
-  let wheels: Wheel[] = [...deferredSourceWheels]
-  let planId: string = base.planId
-  // Resolve fixed-size batches. A bad mirror entry is isolated only within its
-  // bounded batch, so a single sdist or missing wheel cannot trigger an
-  // unbounded whole-manifest resolver tree or leave the user at 0/N for ages.
-  if (ready.length) {
-    const groupContext = { ...context, dependencyManifest: { ...pendingManifest, packages: ready }, mirror }
-    const resolved = new Map<string, Wheel>()
-    const batchSize = 40
-    const batches = Array.from({ length: Math.ceil(ready.length / batchSize) }, (_, index) => ready.slice(index * batchSize, (index + 1) * batchSize))
-    const done = () => resolved.size + preparationFailures.length + deferredSourceWheels.length
-    const progressValue = () => Math.min(92, 4 + Math.floor(done() / Math.max(1, pending.length) * 88))
-    const addWheels = (items: Wheel[]) => {
-      for (const wheel of items) {
-        const key = normalize(wheel.name)
-        const previous = resolved.get(key)
-        if (previous && previous.version !== wheel.version) throw new Error(`签名依赖 ${wheel.name} 在解析分组间出现版本冲突。`)
-        resolved.set(key, wheel)
-      }
-    }
-    const resolveGroup = async (group: typeof ready, batchNumber: number): Promise<void> => {
-      const first = group[0]!
-      const currentPackage = group.length === 1 ? first.name : `分组 ${batchNumber}/${batches.length} · ${first.name} 等 ${group.length} 个包`
-      report?.({ stage: 'resolving', progress: progressValue(), message: `正在检查资源：${currentPackage}（已完成 ${done()}/${pending.length}）。`, completedPackages: done(), totalPackages: pending.length, currentPackage })
-      const onLine = (logLine: string) => report?.({ stage: 'resolving', progress: progressValue(), message: `正在检查资源：${currentPackage}。`, completedPackages: done(), totalPackages: pending.length, currentPackage, logLine })
-      let failure: string | undefined
-      try {
-        const prepared = await preparePackagePlan(root, groupContext, group.map(pkg => `${pkg.name}==${pkg.version}`), info, onLine)
-        if (!prepared.error) { addWheels(prepared.wheels); return }
-        failure = prepared.error
-      } catch (error) { failure = error instanceof Error ? error.message : String(error) }
-
-      if (group.length > 1) {
-        const midpoint = Math.floor(group.length / 2)
-        await resolveGroup(group.slice(0, midpoint), batchNumber)
-        await resolveGroup(group.slice(midpoint), batchNumber)
-        return
-      }
-
-      const pkg = group[0]!
-      const alreadyOfficial = new URL(mirror.indexUrl).hostname.toLowerCase() === new URL(PYPI_INDEX_URL).hostname.toLowerCase()
-      const canFallback = !alreadyOfficial && /(?:No matching distribution|Could not find a version|BackendUnavailable|Cannot import ['"](?:setuptools\.)?build_meta['"]|timed? ?out|connection error|temporary failure|TLS|SSL)/iu.test(failure ?? '')
-      if (canFallback) {
-        report?.({ stage: 'mirror-fallback', progress: progressValue(), message: `${pkg.name} 在所选镜像未取得可用 wheel，正在使用官方 PyPI 重新检查精确锁定版本。`, completedPackages: done(), totalPackages: pending.length, currentPackage: pkg.name })
-        try {
-          const official = await preparePackagePlan(root, { ...groupContext, mirror: { indexUrl: PYPI_INDEX_URL } }, [`${pkg.name}==${pkg.version}`], info, onLine)
-          if (!official.error) { addWheels(official.wheels); return }
-          failure = official.error
-        } catch (error) { failure = error instanceof Error ? error.message : String(error) }
-      }
-      preparationFailures.push({ name: pkg.name, version: pkg.version, message: (failure ?? '依赖解析失败。').slice(-1200) })
-      report?.({ stage: 'resource-unavailable', progress: progressValue(), message: `${pkg.name} 的精确版本未通过资源预检。`, completedPackages: done(), totalPackages: pending.length, currentPackage: pkg.name, logLine: failure })
-    }
-    for (let index = 0; index < batches.length; index++) await resolveGroup(batches[index]!, index + 1)
-    wheels.push(...resolved.values())
-  }
+  // No network-wide preflight. Each missing wheel is resolved immediately
+  // before its own installation, so the first success appears promptly.
+  const planId = base.planId
   const uniqueWheels = [...new Map(wheels.map(wheel => [normalize(wheel.name), wheel])).values()]
   const plan: StoredPackagePlan = { ...base, planId, wheels: uniqueWheels, preparationFailures }
   assertManifestWheels(manifest, plan.wheels, info.packages, preparationFailures.map(failure => failure.name))
   await writeFile(join(directory, `${plan.planId}.json`), JSON.stringify(plan))
-  report?.({ stage: 'preflight-complete', progress: 99, message: `资源预检完成：${plan.wheels.length} 个可安装包，${preparationFailures.length} 个资源失败。`, completedPackages: plan.wheels.length + preparationFailures.length, totalPackages: pending.length })
+  report?.({ stage: 'preflight-complete', progress: 0, message: `缺包队列已就绪：${plan.wheels.length} 个包将逐一安装。`, completedPackages: 0, totalPackages: pending.length })
   return plan
 }
 
@@ -485,23 +436,38 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
   // digest pin, because that artifact is ours rather than the mirror's.
   const skipped: PackageInstallFailure[] = [...(plan.preparationFailures ?? [])]
   let installed = 0
-  for (const [index, failure] of skipped.entries()) progress?.({ completed: index + 1, total, name: failure.name, stage: `跳过 ${failure.name}`, logLine: failure.message })
-  const preparationFailureCount = skipped.length
+  for (const failure of skipped) progress?.({ completed: 0, total, name: failure.name, stage: `跳过 ${failure.name}`, logLine: failure.message })
   for (const [index, wheel] of plan.wheels.entries()) {
     checkPythonCancellation()
-    const offset = preparationFailureCount
-    progress?.({ completed: offset + index, total, name: wheel.name, stage: `正在安装 ${wheel.name}` })
+    progress?.({ completed: installed, total, name: wheel.name, stage: `正在安装 ${wheel.name}` })
     try {
       const name = wheel.name.replace(/[^A-Za-z0-9_.-]/gu, '-')
       const itemDir = join(wheelDir, `${index}-${name}`)
       let installWheel: Wheel = wheel
       const mirror = resolveMirror(context.mirror)
+      if (wheel.deferredResolution) {
+        const source = plan.dependencyManifest?.packages.find(pkg => normalize(pkg.name) === normalize(wheel.name))
+        if (!source || source.source === 'sdist') throw new Error('未找到签名清单中的依赖：' + wheel.name)
+        const resolveOne = (selectedMirror: MirrorConfig) => preparePackagePlan(root,
+          { ...context, dependencyManifest: { ...plan.dependencyManifest!, packages: [source] }, mirror: selectedMirror },
+          [pinnedRequirement(wheel)], { ready: true, packages: [] },
+          line => progress?.({ completed: installed, total, name: wheel.name, stage: `正在获取 ${wheel.name}`, logLine: line }))
+        let resolved = await resolveOne(mirror)
+        checkPythonCancellation()
+        if (resolved.error && mirror.indexUrl !== PYPI_INDEX_URL && /No matching distribution|Could not find a version|timed? ?out|connection|TLS|SSL/iu.test(resolved.error)) {
+          resolved = await resolveOne({ indexUrl: PYPI_INDEX_URL })
+        }
+        if (resolved.error) throw new Error(resolved.error)
+        assertManifestWheels({ ...plan.dependencyManifest!, packages: [source] }, resolved.wheels)
+        if (resolved.wheels.length !== 1) throw new Error('单包资源解析结果无效：' + wheel.name)
+        installWheel = resolved.wheels[0]!
+      }
       if (wheel.deferredSourceBuild) {
         const source = plan.dependencyManifest?.packages.find(pkg => normalize(pkg.name) === normalize(wheel.name))
         if (!source || source.source !== 'sdist' || source.filename !== wheel.sourceFilename || source.sha256 !== wheel.sourceArchiveSha256) throw new Error(`依赖 ${wheel.name} 的源码锁定信息与已确认的安装清单不匹配。`)
         const sourcePackage = { name: source.name, version: source.version, filename: source.filename!, sha256: source.sha256! }
-        progress?.({ completed: offset + index, total, name: wheel.name, stage: `正在构建 ${wheel.name}`, logLine: '正在下载并校验签名清单锁定的源码归档。' })
-        const onBuildLine = (line: string) => progress?.({ completed: offset + index, total, name: wheel.name, stage: `正在构建 ${wheel.name}`, logLine: line })
+        progress?.({ completed: installed, total, name: wheel.name, stage: `正在构建 ${wheel.name}`, logLine: '正在下载并校验签名清单锁定的源码归档。' })
+        const onBuildLine = (line: string) => progress?.({ completed: installed, total, name: wheel.name, stage: `正在构建 ${wheel.name}`, logLine: line })
         try {
           try {
             installWheel = await prepareSourceWheel(root, context, sourcePackage, mirror, onBuildLine)
@@ -531,11 +497,11 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
           const sourceWheel = fileURLToPath(installWheel.url)
           await cp(sourceWheel, join(itemDir, basename(sourceWheel)))
         } else await run(context.executable, ['download', '--no-deps', '--dest', itemDir, pinnedArtifactRequirement(installWheel)], [context.sitePackages], mirror,
-          line => progress?.({ completed: offset + index, total, name: wheel.name, stage: `正在下载 ${wheel.name}`, logLine: line }))
+          line => progress?.({ completed: installed, total, name: wheel.name, stage: `正在下载 ${wheel.name}`, logLine: line }))
         await validateDownloadedWheel(context.executable, itemDir, installWheel)
         const installRequirement = installWheel.sourceArchiveSha256 && installWheel.url ? pinnedArtifactRequirement(installWheel) : pinnedRequirement(installWheel)
         await run(context.executable, ['install', '--no-index', '--find-links', itemDir, '--no-deps', '--target', unpacked, installRequirement], [context.sitePackages], undefined,
-          line => progress?.({ completed: offset + index, total, name: wheel.name, stage: `正在安装 ${wheel.name}`, logLine: line }))
+          line => progress?.({ completed: installed, total, name: wheel.name, stage: `正在安装 ${wheel.name}`, logLine: line }))
         return unpacked
       }, validate: async directory => {
         const files = await readdir(directory).catch(() => [])
@@ -553,10 +519,10 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
       skipped.push({ name: wheel.name, version: wheel.version, message })
       // Record the skip durably so a later run can retry just these packages.
       await appendFile(join(root, 'plans', `${plan.planId}-skipped.jsonl`), JSON.stringify({ name: wheel.name, version: wheel.version, message, at: new Date().toISOString() }) + '\n').catch(() => undefined)
-      progress?.({ completed: offset + index + 1, total, name: wheel.name, stage: `跳过 ${wheel.name}` })
+      progress?.({ completed: installed, total, name: wheel.name, stage: `安装失败 ${wheel.name}`, logLine: message })
       continue
     }
-    progress?.({ completed: offset + index + 1, total, name: wheel.name, stage: `已安装 ${wheel.name}` })
+    progress?.({ completed: installed, total, name: wheel.name, stage: `已安装 ${wheel.name}` })
   }
   // `pip check` is advisory here: a skipped package legitimately leaves an
   // unsatisfied requirement, and failing the whole run for it would undo the
@@ -569,6 +535,13 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
   // deliberate skip into a hard failure after the work is already done.
   const verified = plan.wheels.map(wheel => wheel.name).filter(name => !skipped.some(item => normalize(item.name) === normalize(name)))
   let importCheckPassed = true; let importCheckMessage: string | undefined
+  if (plan.dependencyManifest) {
+    try { await python(executable, `import importlib.metadata as m,json,sys
+present={d.metadata.get('Name','').lower().replace('_','-').replace('.','-') for d in m.distributions(path=[sys.argv[1]])}
+missing=[n for n in json.loads(sys.argv[2]) if n.lower().replace('_','-').replace('.','-') not in present]
+if missing: raise RuntimeError('Missing installed packages: '+', '.join(missing))`, [canonicalSite, JSON.stringify(verified)]) }
+    catch (error) { importCheckPassed = false; importCheckMessage = String(error).slice(-2000) }
+  } else {
   if (verified.length) try { await python(executable, `import importlib,importlib.metadata as m,sys,json,pathlib
 names=json.loads(sys.argv[1])
 mapping=m.packages_distributions()
@@ -595,6 +568,7 @@ checks={
 for name,code in checks.items():
  if name in names: exec(code)
 `, [JSON.stringify(verified.map(name => normalize(name)))]) } catch (error) { importCheckPassed = false; importCheckMessage = [importCheckMessage, error instanceof Error ? error.message.slice(-2000) : String(error).slice(-2000)].filter(Boolean).join('\n') }
+  }
   return { installed, skipped, pipCheckPassed, pipCheckMessage, importCheckPassed, importCheckMessage }
 }
 

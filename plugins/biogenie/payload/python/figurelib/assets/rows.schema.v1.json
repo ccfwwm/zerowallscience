@@ -1,0 +1,341 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "enum": [
+              "string",
+              "boolean",
+              "integer",
+              "number",
+              "datetime",
+              "categorical"
+            ]
+          },
+          "dtype": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unit": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "precision": {
+            "enum": [
+              "lossless-json/typed-tags"
+            ]
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number",
+                  "not": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "missing": {
+                      "enum": [
+                        "NA",
+                        "NaN",
+                        "+Infinity",
+                        "-Infinity"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "missing"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "datetime": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "datetime"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "integer": {
+                      "type": "string",
+                      "pattern": "^-?(0|[1-9][0-9]*)$"
+                    }
+                  },
+                  "required": [
+                    "integer"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "ordered": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "dtype",
+          "unit",
+          "precision"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "row_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "semantic_id": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number",
+                "not": {
+                  "type": "integer"
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "missing": {
+                    "enum": [
+                      "NA",
+                      "NaN",
+                      "+Infinity",
+                      "-Infinity"
+                    ]
+                  }
+                },
+                "required": [
+                  "missing"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "datetime": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "datetime"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "integer": {
+                    "type": "string",
+                    "pattern": "^-?(0|[1-9][0-9]*)$"
+                  }
+                },
+                "required": [
+                  "integer"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "occurrence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "values": {
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number",
+                  "not": {
+                    "type": "integer"
+                  }
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "missing": {
+                      "enum": [
+                        "NA",
+                        "NaN",
+                        "+Infinity",
+                        "-Infinity"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "missing"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "datetime": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "datetime"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "integer": {
+                      "type": "string",
+                      "pattern": "^-?(0|[1-9][0-9]*)$"
+                    }
+                  },
+                  "required": [
+                    "integer"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "row_id",
+          "semantic_id",
+          "occurrence",
+          "values"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "file",
+            "dataframe",
+            "none"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "file_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "snapshot_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "parser": {
+      "type": "object"
+    },
+    "lineage": {
+      "type": "object",
+      "properties": {
+        "filters": {
+          "type": "array",
+          "items": {}
+        },
+        "sort": {
+          "type": "array",
+          "items": {}
+        },
+        "aggregations": {
+          "type": "array",
+          "items": {}
+        }
+      },
+      "required": [
+        "filters",
+        "sort",
+        "aggregations"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "columns",
+    "rows",
+    "source",
+    "parser",
+    "lineage"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-bio-genie:figview:v1:rows",
+  "title": "fig-viewer rows v1"
+}

@@ -3,6 +3,7 @@ import { mkdir, open, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { resolve } from 'node:path'
+import { runtimeWriterActive } from './runtime-lock.js'
 
 const writerContext = new AsyncLocalStorage<string>()
 export const withRuntimeWriterContext = <T>(root: string, run: () => T): T => writerContext.run(resolve(root), run)
@@ -13,8 +14,8 @@ function alive(pid: unknown): boolean {
   try { process.kill(Number(pid), 0); return true } catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM' }
 }
 export async function acquireRuntimeLease(root: string): Promise<() => Promise<void>> {
-  const manager = join(root, '.zerowall'); const lock = join(manager, 'write-lock.json')
-  const blocked = () => readFile(lock).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error })
+  const manager = join(root, '.zerowall')
+  const blocked = () => runtimeWriterActive(root)
   if (await blocked()) throw new Error('PYTHON_RUNTIME_UPDATING: Python 正在更新或等待恢复，请稍后重试。')
   await mkdir(join(manager, 'leases'), { recursive: true })
   const lease = join(manager, 'leases', `${process.pid}-${randomUUID()}.json`)
@@ -37,8 +38,7 @@ export async function acquireRuntimeWriter(root: string, waiting?: (count: numbe
       break
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      const owner = await readFile(lock, 'utf8').then(JSON.parse, () => undefined)
-      if (!owner || alive(owner.pid)) throw new Error('PYTHON_RUNTIME_BUSY: 另一个 Python 更新正在运行。')
+      if (runtimeWriterActive(root)) throw new Error('PYTHON_RUNTIME_BUSY: 另一个 Python 更新正在运行。')
       await rm(lock, { force: true })
     }
   }

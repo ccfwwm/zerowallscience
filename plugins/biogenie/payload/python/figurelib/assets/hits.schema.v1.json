@@ -1,0 +1,376 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "origin": {
+      "enum": [
+        "top-left"
+      ]
+    },
+    "units": {
+      "enum": [
+        "image-pixels"
+      ]
+    },
+    "pixel_convention": {
+      "enum": [
+        "continuous-boundaries"
+      ]
+    },
+    "renderer_width": {
+      "type": "number"
+    },
+    "renderer_height": {
+      "type": "number"
+    },
+    "dpi": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "axes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "axes_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "bbox": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "affine": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "xscale": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "enum": [
+                  "linear",
+                  "log"
+                ]
+              },
+              "base": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "nonpositive": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "enum": [
+                      "excluded"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "base",
+              "nonpositive"
+            ],
+            "additionalProperties": false
+          },
+          "yscale": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "enum": [
+                  "linear",
+                  "log"
+                ]
+              },
+              "base": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "nonpositive": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "enum": [
+                      "excluded"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "base",
+              "nonpositive"
+            ],
+            "additionalProperties": false
+          },
+          "xlim": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "ylim": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "inverted_x": {
+            "type": "boolean"
+          },
+          "inverted_y": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "axes_id",
+          "bbox",
+          "affine",
+          "xscale",
+          "yscale",
+          "xlim",
+          "ylim",
+          "inverted_x",
+          "inverted_y"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "series": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "series_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "axes_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "semantics": {
+            "type": "object"
+          },
+          "offset_affine": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "series_id",
+          "axes_id",
+          "semantics",
+          "offset_affine"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "elements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "axes_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "series_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "element_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "geometry": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "point"
+                ]
+              },
+              "center": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "radius": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            },
+            "required": [
+              "kind",
+              "center",
+              "radius"
+            ],
+            "additionalProperties": false
+          },
+          "plotted_values": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          "row_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "clip": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4
+              }
+            ]
+          },
+          "zorder": {
+            "type": "number"
+          },
+          "draw_order": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "point_order": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "axes_id",
+          "series_id",
+          "element_id",
+          "geometry",
+          "plotted_values",
+          "row_ids",
+          "clip",
+          "zorder",
+          "draw_order",
+          "point_order"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 10000
+    },
+    "excluded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "element_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "row_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "reason": {
+            "enum": [
+              "invisible",
+              "masked/nonfinite",
+              "outside-log-domain",
+              "transparent",
+              "nonfinite-transform",
+              "zero-size"
+            ]
+          }
+        },
+        "required": [
+          "element_id",
+          "row_ids",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "origin",
+    "units",
+    "pixel_convention",
+    "renderer_width",
+    "renderer_height",
+    "dpi",
+    "axes",
+    "series",
+    "elements",
+    "excluded"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-bio-genie:figview:v1:hits",
+  "title": "fig-viewer hits v1"
+}

@@ -30,7 +30,7 @@ process.on('message', async (message: any) => {
   if (message.type === 'cancel') { operations.get(message.id)?.abort(); return }
   if (message.type === 'configure') {
     const publish = (status: unknown) => send({ type: 'status', status })
-    controller = new McpEnvironmentController({ ...message.config, publish: status => manager ? manager.publish(status) : publish(status) })
+    controller = new McpEnvironmentController({ ...message.config, scienceDependencyManifestPath: message.config.manager?.sync?.bundledManifestPath, publish: status => manager ? manager.publish(status) : publish(status) })
     manager = new PythonUpdaterService({ ...message.config, publish, executeOperation: async (method, args, signal) => withPythonOperation(signal, async () => {
       if (!controllerMethods.includes(method)) throw new Error('Unknown updater operation')
       const value = await (controller as any)[method](...args)

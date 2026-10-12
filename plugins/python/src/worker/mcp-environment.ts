@@ -71,6 +71,7 @@ export interface McpEnvironmentControllerOptions {
    * `<runtime>/.zerowall`) while packages and the executable stay here. */
   runtimeRoot?: (string) | undefined
   coreDependencyManifestPath?: (string) | undefined
+  scienceDependencyManifestPath?: (string) | undefined
   /** Settings live beside the selected runtime so changing drives does not
    * move the mirror and request history into the interpreter tree. */
   settingsPath?: (string) | undefined
@@ -250,8 +251,8 @@ export class McpEnvironmentController {
     if (this.singleDirectoryMode()) {
       const readDependencies = async (path: string | undefined) => path ? readFile(path, 'utf8').then(text => parsePythonDependencyManifest(JSON.parse(text), { ...MCP_ENVIRONMENT_KEYRING, ...this.options.publicKeys }).packages.map(pkg => pkg.name), () => []).catch(() => []) : []
       const [core, science] = await Promise.all([
-        readDependencies(this.options.coreDependencyManifestPath ?? join(this.options.root, 'dependency-sync', 'core-manifest.json')),
-        readDependencies(join(this.options.root, 'dependency-sync', 'manifest.json')),
+        readDependencies(join(this.options.root, 'dependency-sync', 'core-manifest.json')).then(names => names.length ? names : readDependencies(this.options.coreDependencyManifestPath)),
+        readDependencies(join(this.options.root, 'dependency-sync', 'manifest.json')).then(names => names.length ? names : readDependencies(this.options.scienceDependencyManifestPath)),
       ])
       const info = await scanFixedPython(this.canonicalRoot(), core, science)
       const needle = query.trim().toLowerCase()
@@ -385,7 +386,7 @@ export class McpEnvironmentController {
       })
     }
     const installed = new Map(info.packages.map(pkg => [pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'), pkg.version]))
-    const pendingCount = verified.packages.filter(pkg => installed.get(pkg.name.toLowerCase().replace(/[-_.]+/gu, '-')) !== pkg.version).length
+    const pendingCount = verified.packages.filter(pkg => !installed.has(pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'))).length
     report({ stage: 'inventory', message: `已核对 ${info.packages.length}/${verified.packages.length} 个目标依赖，开始预检 ${pendingCount} 个待安装依赖。`, progress: 0, completedPackages: 0, totalPackages: pendingCount })
     try {
       return await prepareManifestPackagePlan(this.options.root, context, verified, info, report)
@@ -489,12 +490,12 @@ export class McpEnvironmentController {
         // The per-package loop is where a 521-package layer spends its time, and
         // it used to publish nothing at all: the bar sat at 15% from the start of
         // the copy until activation. Map the loop onto 15..95 so it actually moves.
-        const progress = total === 0 ? 95 : Math.min(95, 15 + Math.floor((completed / total) * 80))
+        const progress = total === 0 ? 100 : Math.floor((completed / total) * 100)
         if (logLine) {
           installLog.push(`${name ?? ''}: ${logLine}`)
           if (installLog.length > 80) installLog.shift()
         }
-        this.set({ ...this.status, phase: 'installing', progress, message: stage ?? `正在安装 ${name ?? ''}`, updateJob: { taskId: planId, kind: 'applyPackagePlan', stage: 'installing', canPause: false, packageNames: plan.changes.map(change => change.name), completedFiles: completed, totalFiles: total, logLines: [...installLog] } })
+        this.set({ ...this.status, phase: 'installing', progress, message: stage ?? `正在安装 ${name ?? ''}`, updateJob: { taskId: planId, kind: 'applyPackagePlan', stage: 'installing', canPause: false, packageNames: plan.changes.map(change => change.name), targetVersion: name, completedFiles: completed, totalFiles: total, logLines: [...installLog] } })
       })
       plan.installOutcome = outcome
       await writeFile(join(this.options.root, 'plans', `${planId}.json`), JSON.stringify(plan))

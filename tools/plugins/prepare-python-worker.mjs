@@ -26,6 +26,12 @@ async function collect(directory) {
 }
 await collect(worker)
 const signer = await loadResourceSigner({ root, cacheRoot: contract.cache })
+// A configured release signer is the boundary between local development and
+// independently published Python workers. Do not let a missing/incorrect
+// release setup produce a tarball that the stable desktop cannot load.
+if (process.env.ZEROWALL_RESOURCE_PRIVATE_KEY_FILE && signer.localOnly) {
+  throw new Error('Python worker release signing did not produce a stable manifest.')
+}
 if (signer.localOnly) await writeFile(join(worker, 'development-keys.json'), JSON.stringify(signer.keys))
 else await rm(join(worker, 'development-keys.json'), { force: true })
 const version = JSON.parse(await readFile(join(source, 'package.json'), 'utf8')).version

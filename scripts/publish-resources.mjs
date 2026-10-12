@@ -7,6 +7,19 @@ import { verifyCatalog, verifySignedDocument, fileDigest } from '../tools/releas
 import { resourcePublicationScope } from '../tools/release/resource-publication-scope.mjs'
 import { downloadResource } from '../tools/release/resource-catalog.mjs'
 import { assertPublicationBaseline } from '../tools/release/targeted-plugin-catalog.mjs'
+import { t as listTar } from 'tar'
+
+async function verifyPythonWorkerRelease(path) {
+  let manifest
+  await listTar({ file: path, onentry: entry => {
+    if (entry.path !== 'package/lib/worker/worker-manifest.json') return
+    let text = ''
+    entry.on('data', chunk => { text += chunk.toString('utf8') })
+    entry.on('end', () => { manifest = JSON.parse(text) })
+  } })
+  if (!manifest || manifest.localOnly || manifest.signature?.keyId === 'local-development') throw new Error('Python plugin contains a development-only worker manifest')
+  verifySignedDocument(manifest, keys)
+}
 
 const mode = process.argv[2] ?? 'stage'
 if (!['stage', 'promote', 'verify'].includes(mode)) throw new Error('Usage: node scripts/publish-resources.mjs stage|promote|verify')
@@ -49,6 +62,7 @@ for (const kind of kinds) {
       : entry.role === 'fallback-wheel' ? join(releaseRoot, 'python-wheels', new URL(entry.downloadUrl).pathname.split('/').at(-1))
       : resolve(root, JSON.parse(await readFile(join(root, `config/catalogs/${kind}-catalog.json`), 'utf8')).resources.find(resource => resource.id === entry.id)?.path ?? '')
     if ((await stat(source)).size !== entry.size || await fileDigest(source) !== entry.sha256) throw new Error(`Resource artifact mismatch: ${entry.id}`)
+    if (kind === 'plugin' && entry.id === '@zerowallscience/plugin-python') await verifyPythonWorkerRelease(source)
     assets.set(key, { key, path: source, id: entry.id, version: entry.version, kind: entry.kind })
   }
   feeds.push({ kind, count: document.resources.length, keyId: document.signature.keyId, catalogKey })

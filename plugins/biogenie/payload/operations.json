@@ -1,0 +1,1503 @@
+{
+  "schema": 1,
+  "upstreamVersion": "0.6.48",
+  "operations": [
+    {
+      "id": "seq_analyze",
+      "summary": "分析 DNA/RNA/蛋白质序列：长度、GC%、翻译、互补、分子量等。",
+      "description": "分析 DNA/RNA/蛋白质序列：长度、GC%、翻译、互补、分子量等。",
+      "parameters": {
+        "seq_type": {
+          "required": false,
+          "default": "auto"
+        },
+        "sequence": {
+          "required": true
+        },
+        "codon_stats": {
+          "required": false
+        },
+        "codon_host": {
+          "required": false,
+          "default": "ecoli"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "seq_translate",
+      "summary": "翻译 DNA/RNA 为蛋白质。",
+      "description": "翻译 DNA/RNA 为蛋白质。",
+      "parameters": {
+        "table": {
+          "required": false,
+          "default": 1
+        },
+        "to_stop": {
+          "required": false,
+          "default": false
+        },
+        "sequence": {
+          "required": true
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "seq_gc_skew",
+      "summary": "计算 GC skew (G-C)/(G+C)，可窗口化。",
+      "description": "计算 GC skew (G-C)/(G+C)，可窗口化。",
+      "parameters": {
+        "window": {
+          "required": false,
+          "default": 100
+        },
+        "sequence": {
+          "required": true
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "seq_find_orf",
+      "summary": "查找最长 ORF（开放阅读框）。",
+      "description": "查找最长 ORF（开放阅读框）。",
+      "parameters": {
+        "min_len": {
+          "required": false,
+          "default": 30
+        },
+        "table": {
+          "required": false,
+          "default": 1
+        },
+        "sequence": {
+          "required": true
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "seq_restriction",
+      "summary": "限制酶位点分析。",
+      "description": "限制酶位点分析。",
+      "parameters": {
+        "enzymes": {
+          "required": false,
+          "default": null
+        },
+        "enzyme_set": {
+          "required": false,
+          "default": "commonly"
+        },
+        "linear": {
+          "required": false,
+          "default": true
+        },
+        "sequence": {
+          "required": true
+        },
+        "detail": {
+          "required": false,
+          "default": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "seq_io_read",
+      "summary": "读取序列文件（FASTA/GenBank 等），返回记录摘要。",
+      "description": "读取序列文件（FASTA/GenBank 等），返回记录摘要。",
+      "parameters": {
+        "path": {
+          "required": true
+        },
+        "format": {
+          "required": false,
+          "default": null
+        },
+        "limit": {
+          "required": false,
+          "default": 50
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "seq_io_write",
+      "summary": "写序列到文件（FASTA）。",
+      "description": "写序列到文件（FASTA）。",
+      "parameters": {
+        "path": {
+          "required": true
+        },
+        "records": {
+          "required": true
+        },
+        "format": {
+          "required": false,
+          "default": "fasta"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "seq_kmer",
+      "summary": "k-mer 频率统计。",
+      "description": "k-mer 频率统计。",
+      "parameters": {
+        "k": {
+          "required": false,
+          "default": 3
+        },
+        "top": {
+          "required": false,
+          "default": 10
+        },
+        "sequence": {
+          "required": true
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "entrez_search",
+      "summary": "NCBI Entrez 检索：esearch + efetch 摘要。",
+      "description": "NCBI Entrez 检索：esearch + efetch 摘要。",
+      "parameters": {
+        "term": {
+          "required": true
+        },
+        "db": {
+          "required": false,
+          "default": "nucleotide"
+        },
+        "retmax": {
+          "required": false,
+          "default": 5
+        },
+        "email": {
+          "required": false,
+          "default": null
+        }
+      },
+      "default_backend": "bio-tools",
+      "dependency_profile": "shared",
+      "network": true
+    },
+    {
+      "id": "entrez_fetch",
+      "summary": "NCBI Entrez fetch：取序列。",
+      "description": "NCBI Entrez fetch：取序列。",
+      "parameters": {
+        "ids": {
+          "required": true
+        },
+        "db": {
+          "required": false,
+          "default": "nucleotide"
+        },
+        "rettype": {
+          "required": false,
+          "default": "fasta"
+        },
+        "email": {
+          "required": false,
+          "default": null
+        }
+      },
+      "default_backend": "bio-tools",
+      "dependency_profile": "shared",
+      "network": true
+    },
+    {
+      "id": "enrichr",
+      "summary": "Enrichr 通路/功能富集分析（maayanlab REST，两步：addList → enrich）。",
+      "description": "Enrichr 通路/功能富集分析（maayanlab REST，两步：addList → enrich）。\n\n零新增依赖：urllib 标准库即可。生物背景：给定基因符号列表，\n返回其在 GO/KEGG/Reactome 等库中的显著富集条目（p 值、基因重叠）。",
+      "parameters": {
+        "genes": {
+          "required": true
+        },
+        "library": {
+          "required": false,
+          "default": "GO_Biological_Process_2023"
+        },
+        "top": {
+          "required": false,
+          "default": 10
+        }
+      },
+      "default_backend": "bio-tools",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "pubmed_search",
+      "summary": "PubMed 检索：esearch + esummary，返回 PMID/标题/年份/期刊/作者/DOI。",
+      "description": "PubMed 检索：esearch + esummary，返回 PMID/标题/年份/期刊/作者/DOI。",
+      "parameters": {
+        "term": {
+          "required": true
+        },
+        "retmax": {
+          "required": false,
+          "default": 10
+        },
+        "email": {
+          "required": false,
+          "default": null
+        }
+      },
+      "default_backend": "bio-tools",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "pubmed_abstract",
+      "summary": "按 PMID 取结构化摘要：标题/摘要/作者/期刊/日期/DOI。",
+      "description": "按 PMID 取结构化摘要：标题/摘要/作者/期刊/日期/DOI。\n\nrettype=medline retmode=xml（text 模式是纯文本无法解析；Entrez.read 解析\nPubmedArticleSet）。走 Entrez.parse 会因根节点不是列表报错，故用 read。",
+      "parameters": {
+        "ids": {
+          "required": true
+        },
+        "email": {
+          "required": false,
+          "default": null
+        }
+      },
+      "default_backend": "bio-tools",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "ref_genome",
+      "summary": "参考基因组 assembly 信息（Ensembl REST）。",
+      "description": "参考基因组 assembly 信息（Ensembl REST）。\n\nEnsembl 要求显式 User-Agent 头（默认 urllib UA 会被 429 拒绝）。\n主站失败自动切 asia.ensembl.org 镜像。",
+      "parameters": {
+        "species": {
+          "required": true
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "fig_profile",
+      "summary": "数据剖析 + 图型建议：CSV/TSV/Excel → 列类型/样本量/分布/异常/相关 + 建议。",
+      "description": "数据剖析 + 图型建议：CSV/TSV/Excel → 列类型/样本量/分布/异常/相关 + 建议。\n\n对应 scipilot「思考-绘制」工作流的第 1 步。相对路径基于工作区。",
+      "parameters": {
+        "path": {
+          "required": false
+        },
+        "group_cols": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "fig_export",
+      "summary": "图文件合规审计 + 可选 PNG 预览：格式/DPI/尺寸/字体嵌入检查。",
+      "description": "图文件合规审计 + 可选 PNG 预览：格式/DPI/尺寸/字体嵌入检查。\n\n对应 scipilot 工作流的第 7 步（投稿前机器审计）。对已落盘的 PDF/SVG/\nPNG/TIFF 文件逐张检查：JPEG 数据图、DPI 不足、尺寸偏离目标、PDF 含\nType 3 字体等。preview=true 时额外渲染 PNG 预览（PDF 需要 pypdf/\nPyMuPDF 支持）。相对路径基于工作区。",
+      "parameters": {
+        "paths": {
+          "required": false
+        },
+        "min_dpi": {
+          "required": false,
+          "default": 300
+        },
+        "width_in": {
+          "required": false
+        },
+        "height_in": {
+          "required": false
+        },
+        "preview": {
+          "required": false,
+          "default": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "fig_qa",
+      "summary": "绘图环境自检：CJK 字体可用性 + 期刊预设应用测试。",
+      "description": "绘图环境自检：CJK 字体可用性 + 期刊预设应用测试。\n\n中文图出方框的根因是默认字体无 CJK 字符表。本 op 在画图前探测：\ncjk_ready=false 时画中文图必然方框——应改用英文标签或提示安装\nNoto Sans CJK。preset_test 验证期刊预设可应用（含中文模式字体配置）。",
+      "parameters": {
+        "lang": {
+          "required": false,
+          "default": "zh"
+        },
+        "journal": {
+          "required": false,
+          "default": "nature"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "fig_lint",
+      "summary": "FIG 级语义 lint：配色语义/排印/灰度/统计元数据的出版合规检查。",
+      "description": "FIG 级语义 lint：配色语义/排印/灰度/统计元数据的出版合规检查。\n\n与 fig_export（文件级：DPI/格式/字体）互补。推荐元数据模式：调用方自报\ncolors_used / cmap_used / n_categorical / err_semantics / has_stat_metadata /\nn_available——画完图后立刻自检自己的视觉选择；不持有 fig 对象（对象级\ntypography 检查由 bio_python 桥内直接调 figurelib.fig_lint.lint_typography）。\n\n也可直接检查一组 hex 色板的出版合规性（选色板时用）。",
+      "parameters": {
+        "colors_used": {
+          "required": false
+        },
+        "cmap_used": {
+          "required": false
+        },
+        "n_categorical": {
+          "required": false
+        },
+        "err_semantics": {
+          "required": false
+        },
+        "has_stat_metadata": {
+          "required": false
+        },
+        "n_available": {
+          "required": false
+        },
+        "min_pt": {
+          "required": false,
+          "default": 5.0
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "env_status",
+      "summary": "环境状态：Python 版本 + 核心库可用性探测。",
+      "description": "环境状态：Python 版本 + 核心库可用性探测。\n让 agent 先确认 ZeroWall 共享 Python 中有哪些库可用，再决定调用哪个工具。",
+      "parameters": {},
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "metabolic_model",
+      "summary": "代谢模型管理：加载、查看、列出可用模型。",
+      "description": "代谢模型管理：加载、查看、列出可用模型。",
+      "parameters": {
+        "action": {
+          "required": false,
+          "default": "list"
+        },
+        "model_id": {
+          "required": false,
+          "default": "textbook"
+        },
+        "file_path": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "fba",
+      "summary": "通量平衡分析：fba（默认）/ fva（通量可变性分析）/ pfba（节俭 FBA）。",
+      "description": "通量平衡分析：fba（默认）/ fva（通量可变性分析）/ pfba（节俭 FBA）。\n可选 reactions=\"EX_succ_e,PPC\"（逗号分隔 reaction id）只输出指定反应，缩小返回体积。",
+      "parameters": {
+        "model_id": {
+          "required": false,
+          "default": "ecoli_core_model"
+        },
+        "objective": {
+          "required": false
+        },
+        "reactions": {
+          "required": false
+        },
+        "fraction_of_optimum": {
+          "required": false,
+          "default": 1.0
+        },
+        "analysis_type": {
+          "required": false,
+          "default": "fba"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "gene_knockout",
+      "summary": "基因敲除分析：single（默认）/ double（两两组合）/ essentiality（全基因扫描）。",
+      "description": "基因敲除分析：single（默认）/ double（两两组合）/ essentiality（全基因扫描）。",
+      "parameters": {
+        "model_id": {
+          "required": false,
+          "default": "ecoli_core_model"
+        },
+        "gene": {
+          "required": false
+        },
+        "target_reaction": {
+          "required": false,
+          "default": "EX_ac_e"
+        },
+        "top_n": {
+          "required": false,
+          "default": 10
+        },
+        "min_growth": {
+          "required": false,
+          "default": 0.1
+        },
+        "max_knockouts": {
+          "required": false,
+          "default": 3
+        },
+        "analysis_type": {
+          "required": false,
+          "default": "single"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "pathway_search",
+      "summary": "代谢通路搜索：在KEGG数据库中搜索代谢通路。",
+      "description": "代谢通路搜索：在KEGG数据库中搜索代谢通路。",
+      "parameters": {
+        "target_metabolite": {
+          "required": false
+        },
+        "organism": {
+          "required": false,
+          "default": "eco"
+        },
+        "limit": {
+          "required": false,
+          "default": 10
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": true
+    },
+    {
+      "id": "pathway_design",
+      "summary": "代谢通路设计：设计异源代谢通路。",
+      "description": "代谢通路设计：设计异源代谢通路。",
+      "parameters": {
+        "target_product": {
+          "required": false
+        },
+        "host_organism": {
+          "required": false,
+          "default": "eco"
+        },
+        "strategy": {
+          "required": false,
+          "default": "shortest"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": true
+    },
+    {
+      "id": "ml_pipeline",
+      "summary": "通用 ML 管道：读 CSV → 先划分 → Pipeline（每折独立 fit）→ 训练 → holdout 评估。",
+      "description": "通用 ML 管道：读 CSV → 先划分 → Pipeline（每折独立 fit）→ 训练 → holdout 评估。",
+      "parameters": {
+        "path": {
+          "required": false
+        },
+        "target": {
+          "required": false
+        },
+        "task": {
+          "required": false,
+          "default": "classification"
+        },
+        "model": {
+          "required": false,
+          "default": "random_forest"
+        },
+        "test_size": {
+          "required": false,
+          "default": 0.2
+        },
+        "cv": {
+          "required": false,
+          "default": 5
+        },
+        "seed": {
+          "required": false,
+          "default": 42
+        },
+        "group_col": {
+          "required": false
+        },
+        "exclude_cols": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "ml_reduce",
+      "summary": "降维：PCA / t-SNE / UMAP（可选），返回降维坐标 + 方差解释。",
+      "description": "降维：PCA / t-SNE / UMAP（可选），返回降维坐标 + 方差解释。",
+      "parameters": {
+        "path": {
+          "required": false
+        },
+        "method": {
+          "required": false,
+          "default": "pca"
+        },
+        "n_components": {
+          "required": false,
+          "default": 2
+        },
+        "perplexity": {
+          "required": false,
+          "default": 30
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "ml_feature",
+      "summary": "特征重要性分析：基于随机森林的特征排序 + 相关性矩阵。",
+      "description": "特征重要性分析：基于随机森林的特征排序 + 相关性矩阵。",
+      "parameters": {
+        "path": {
+          "required": false
+        },
+        "target": {
+          "required": false
+        },
+        "task": {
+          "required": false,
+          "default": "classification"
+        },
+        "top": {
+          "required": false,
+          "default": 10
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "ml_cluster",
+      "summary": "聚类分析：K-Means / 层次聚类，返回标签 + 轮廓系数。",
+      "description": "聚类分析：K-Means / 层次聚类，返回标签 + 轮廓系数。",
+      "parameters": {
+        "path": {
+          "required": false
+        },
+        "method": {
+          "required": false,
+          "default": "kmeans"
+        },
+        "n_clusters": {
+          "required": false,
+          "default": 3
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "stats_test",
+      "summary": "统计检验：t-test / Mann-Whitney / ANOVA / 卡方，自动检测数据类型。",
+      "description": "统计检验：t-test / Mann-Whitney / ANOVA / 卡方，自动检测数据类型。",
+      "parameters": {
+        "path": {
+          "required": false
+        },
+        "group_col": {
+          "required": false
+        },
+        "value_col": {
+          "required": false
+        },
+        "test_type": {
+          "required": false,
+          "default": "auto"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "primer_design",
+      "summary": "PCR 引物设计：输入序列，返回正/反向引物（Tm、GC、长度、二级结构评估）。",
+      "description": "PCR 引物设计：输入序列，返回正/反向引物（Tm、GC、长度、二级结构评估）。\n\n返回字段约定：fwd_position/rev_position 为 0-based 切片索引（与 Python\nsequence[start:end] 一致，1-based 坐标 = 索引 + 1）；每个候选带 quality\n评估（good/ok/poor）与 issues 说明。top_n 控制返回候选数（默认 5）。",
+      "parameters": {
+        "sequence": {
+          "required": false,
+          "default": ""
+        },
+        "product_size": {
+          "required": false,
+          "default": 500
+        },
+        "primer_len_range": {
+          "required": false,
+          "default": [
+            18,
+            25
+          ]
+        },
+        "tm_target": {
+          "required": false,
+          "default": 60
+        },
+        "top_n": {
+          "required": false,
+          "default": 5
+        },
+        "tm_diff_max": {
+          "required": false,
+          "default": 5
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "seq_optimize",
+      "summary": "密码子优化：将编码序列按目标宿主的密码子使用频率优化。",
+      "description": "密码子优化：将编码序列按目标宿主的密码子使用频率优化。",
+      "parameters": {
+        "sequence": {
+          "required": false,
+          "default": ""
+        },
+        "organism": {
+          "required": false,
+          "default": "ecoli"
+        },
+        "remove_rare": {
+          "required": false,
+          "default": true
+        },
+        "gc_target": {
+          "required": false,
+          "default": null
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "assembly_design",
+      "summary": "组装策略设计：输入片段列表，推荐组装方法并计算接头/overhang。",
+      "description": "组装策略设计：输入片段列表，推荐组装方法并计算接头/overhang。",
+      "parameters": {
+        "method": {
+          "required": false,
+          "default": "auto"
+        },
+        "vector": {
+          "required": false,
+          "default": null
+        },
+        "fragments": {
+          "required": false,
+          "default": []
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "plasmid_map",
+      "summary": "质粒图谱：GenBank/features → 图形（dna-features-viewer）或文本注释图。",
+      "description": "质粒图谱：GenBank/features → 图形（dna-features-viewer）或文本注释图。\n\n传入 genbank_file 或（features + sequence）时优先输出 PNG/SVG 图形文件；\ndna_features_viewer 缺失或渲染失败时自动回退到原有文本模式。",
+      "parameters": {
+        "features": {
+          "required": false,
+          "default": []
+        },
+        "name": {
+          "required": false,
+          "default": "plasmid"
+        },
+        "size": {
+          "required": false,
+          "default": null
+        },
+        "genbank_file": {
+          "required": false
+        },
+        "sequence": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "primer3_design",
+      "summary": "工业级 PCR 引物设计（primer3-py）：模板 → 候选引物对（Tm/GC/二级结构评分）。",
+      "description": "工业级 PCR 引物设计（primer3-py）：模板 → 候选引物对（Tm/GC/二级结构评分）。\n\n与 op_primer_design（dna_design.py，Biopython 简单版）区分：本 op 走\nPrimer3 热力学评分（发夹/自互补/二聚体 Tm + penalty 排序），适合\n需要可投稿级引物质量的场景。",
+      "parameters": {
+        "target_region": {
+          "required": false
+        },
+        "must_include": {
+          "required": false
+        },
+        "product_size_range": {
+          "required": false
+        },
+        "primer_size": {
+          "required": false
+        },
+        "tm_range": {
+          "required": false
+        },
+        "gc_range": {
+          "required": false
+        },
+        "num_return": {
+          "required": false,
+          "default": 5
+        },
+        "name": {
+          "required": false,
+          "default": "target"
+        },
+        "max_hairpin_tm": {
+          "required": false,
+          "default": 47.0
+        },
+        "max_self_any_tm": {
+          "required": false,
+          "default": 47.0
+        },
+        "sequence": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "dna_optimize",
+      "summary": "多约束 DNA 序列优化（DNA Chisel）：EnforceTranslation + CodonOptimize + 约束集。",
+      "description": "多约束 DNA 序列优化（DNA Chisel）：EnforceTranslation + CodonOptimize + 约束集。\n\n与 op_seq_optimize（dna_design.py，简单密码子替换）区分：本 op 是\n约束求解架构——同时满足去限制性位点/GC 窗口/禁用 motif 等多约束后再做\n密码子优化，并返回逐位点修改报告。",
+      "parameters": {
+        "dna_sequence": {
+          "required": false
+        },
+        "protein_sequence": {
+          "required": false
+        },
+        "host_organism": {
+          "required": false,
+          "default": "e_coli"
+        },
+        "constraints": {
+          "required": false
+        },
+        "codon_optimize": {
+          "required": false,
+          "default": true
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "clone_simulate",
+      "summary": "克隆模拟（pydna）：gibson / golden_gate / restriction 三种方法的组装模拟。",
+      "description": "克隆模拟（pydna）：gibson / golden_gate / restriction 三种方法的组装模拟。\n\npydna 由共享 Python 的必装依赖清单提供；导入失败时返回安装状态。",
+      "parameters": {
+        "backbone": {
+          "required": false,
+          "default": ""
+        },
+        "inserts": {
+          "required": false
+        },
+        "restriction_enzymes": {
+          "required": false
+        },
+        "overlap": {
+          "required": false,
+          "default": 20
+        },
+        "method": {
+          "required": false,
+          "default": "gibson"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "deseq2",
+      "summary": "差异表达分析。backend: 'pydeseq2'（默认，正式）| 'legacy_welch'（旧近似，显式）。",
+      "description": "差异表达分析。backend: 'pydeseq2'（默认，正式）| 'legacy_welch'（旧近似，显式）。\n\n单因素：design 默认 ~condition，contrast \"trt_vs_ctrl\"。\n多因素：design \"~ type + condition\" + factor/num/den（显式比较因子、分子、分母）。\n旧 group1_vs_group2 语法继续支持且方向不变。",
+      "parameters": {
+        "counts_file": {
+          "required": false
+        },
+        "meta_file": {
+          "required": false
+        },
+        "contrast": {
+          "required": false,
+          "default": "trt_vs_ctrl"
+        },
+        "out_csv": {
+          "required": false
+        },
+        "backend": {
+          "required": false,
+          "default": "pydeseq2"
+        },
+        "design": {
+          "required": false
+        },
+        "factor": {
+          "required": false,
+          "default": "condition"
+        },
+        "numerator": {
+          "required": false
+        },
+        "denominator": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "gsea",
+      "summary": "GSEA 富集分析（GSEApy 正式 prerank）。",
+      "description": "GSEA 富集分析（GSEApy 正式 prerank）。\n\n输入：de_results_file（完整排序表，非仅 DEG）+ ranking_column（默认 stat，\n不隐式回退）+ gene_set_file（GMT）或 gene_sets 命名库。\n输出 ES/NES/nominal p/FDR/leading edge/集合交集规模与完整结果落盘。",
+      "parameters": {
+        "de_results_file": {
+          "required": false
+        },
+        "gene_set_file": {
+          "required": false
+        },
+        "gene_sets": {
+          "required": false
+        },
+        "ranking_column": {
+          "required": false,
+          "default": "stat"
+        },
+        "out_csv": {
+          "required": false
+        },
+        "seed": {
+          "required": false,
+          "default": 42
+        },
+        "permutation_num": {
+          "required": false,
+          "default": 1000
+        },
+        "min_size": {
+          "required": false,
+          "default": 15
+        },
+        "max_size": {
+          "required": false,
+          "default": 500
+        },
+        "species": {
+          "required": false
+        },
+        "id_namespace": {
+          "required": false
+        },
+        "gene_set_species": {
+          "required": false
+        },
+        "gene_set_id_namespace": {
+          "required": false
+        },
+        "gene_set_version": {
+          "required": false
+        },
+        "gene_set_source": {
+          "required": false
+        },
+        "gene_set_license_source": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "blast_search",
+      "summary": "远程 BLAST 搜索：NCBIWWW.qblast + NCBIXML 解析。",
+      "description": "远程 BLAST 搜索：NCBIWWW.qblast + NCBIXML 解析。\n\n返回每个命中的 accession/描述/e-value/score/一致性/比对坐标。\n另附 diagnostics（实际参数回执 + 0 命中解释）：短核酸查询的 e-value 天然在\n0.1-10 量级，严格 expect 会让服务端过滤掉全部命中——0 命中不等于服务故障。\nqblast 在 NCBI 服务端排队执行，通常耗时 1-10 分钟，属正常现象。",
+      "parameters": {
+        "program": {
+          "required": false,
+          "default": "blastn"
+        },
+        "sequence": {
+          "required": true
+        },
+        "database": {
+          "required": false
+        },
+        "hitlist_size": {
+          "required": false,
+          "default": 10
+        },
+        "word_size": {
+          "required": false
+        },
+        "expect": {
+          "required": false
+        },
+        "queue_deadline_s": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": true
+    },
+    {
+      "id": "msa",
+      "summary": "多序列比对：调用本机 clustalw/clustalw2 或 muscle 二进制。",
+      "description": "多序列比对：调用本机 clustalw/clustalw2 或 muscle 二进制。\n\n输入：FASTA 字符串（sequences）或 FASTA 文件路径（file_path）。\n二进制缺失时返回 status=program_missing + 安装提示，不抛异常——\n让 Agent 可以提示用户安装或改走 bio_python 兜底。",
+      "parameters": {
+        "sequences": {
+          "required": false
+        },
+        "file_path": {
+          "required": false
+        },
+        "program": {
+          "required": false,
+          "default": "clustalw"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "phylo_build",
+      "summary": "系统发育树构建：多序列比对 → 距离矩阵 → NJ/UPGMA 树（Newick）。",
+      "description": "系统发育树构建：多序列比对 → 距离矩阵 → NJ/UPGMA 树（Newick）。\n\n输入可对接 op_msa 的 alignment_fasta 输出（alignment 参数传 FASTA 字符串），\n或传 alignment_file 路径。返回 Newick 字符串、叶节点数、总枝长；\n提供 out_file 时同时写盘。",
+      "parameters": {
+        "format": {
+          "required": false,
+          "default": "fasta"
+        },
+        "alignment": {
+          "required": false
+        },
+        "alignment_file": {
+          "required": false
+        },
+        "out_file": {
+          "required": false
+        },
+        "method": {
+          "required": false,
+          "default": "nj"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "production_envelope",
+      "summary": "生产包络线：固定目标反应为优化目标，扫描某反应通量，产出 (vary_flux → target_max) 曲线。",
+      "description": "生产包络线：固定目标反应为优化目标，扫描某反应通量，产出 (vary_flux → target_max) 曲线。\n\n用途：预测基因改造后产物产量的理论上限（如固定不同生长率看产物得率）。",
+      "parameters": {
+        "model_id": {
+          "required": false,
+          "default": "ecoli_core_model"
+        },
+        "target_reaction": {
+          "required": false
+        },
+        "vary_reaction": {
+          "required": false
+        },
+        "vary_range": {
+          "required": false
+        },
+        "points": {
+          "required": false,
+          "default": 20
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "sbol_write",
+      "summary": "SBOL 3 写出：组件列表（name/type/sequence/role）→ SBOL 3 XML 文件。",
+      "description": "SBOL 3 写出：组件列表（name/type/sequence/role）→ SBOL 3 XML 文件。\n\n每个组件生成 Component（SBO 类型 + SO role）+ 关联 Sequence（IUPAC DNA），\n常见角色经 sbol3 的 SO 常量解析，也可传入 SO ID 或完整 URI。",
+      "parameters": {
+        "output_file": {
+          "required": false
+        },
+        "components": {
+          "required": false
+        },
+        "namespace": {
+          "required": false,
+          "default": "https://dsh-bio-genie.local/design"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "sbol_read",
+      "summary": "SBOL 3 读取：SBOL 3 XML → 组件列表（name/type/role/sequence）。",
+      "description": "SBOL 3 读取：SBOL 3 XML → 组件列表（name/type/role/sequence）。\n\ninclude_sequences=true 时返回各组件关联的序列（可直接导出 FASTA 用）。",
+      "parameters": {
+        "sbol_file": {
+          "required": false
+        },
+        "include_sequences": {
+          "required": false,
+          "default": true
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "circuit_compile",
+      "summary": "基因回路编译（BioCRNpyler）：组件列表 → CRN → SBML 模型 + 网络统计 + 拓扑图。",
+      "description": "基因回路编译（BioCRNpyler）：组件列表 → CRN → SBML 模型 + 网络统计 + 拓扑图。\n\n返回 sbml_file 路径（供 op_circuit_simulate 使用）、物种/反应数、networkx\n二部图 PNG（species↔reaction 二分网络）。",
+      "parameters": {
+        "components": {
+          "required": false
+        },
+        "name": {
+          "required": false,
+          "default": "circuit"
+        },
+        "out_file": {
+          "required": false
+        },
+        "context": {
+          "required": false,
+          "default": "txtl_extract"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "circuit_simulate",
+      "summary": "回路动力学仿真（Bioscrape）：SBML → ODE/SSA 时间序列 + 曲线图 + 稳态/峰值。",
+      "description": "回路动力学仿真（Bioscrape）：SBML → ODE/SSA 时间序列 + 曲线图 + 稳态/峰值。",
+      "parameters": {
+        "sbml_file": {
+          "required": false
+        },
+        "timepoints": {
+          "required": false
+        },
+        "out_file": {
+          "required": false
+        },
+        "simulation_type": {
+          "required": false,
+          "default": "ode"
+        },
+        "parameter_overrides": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "crispr_guide",
+      "summary": "CRISPR sgRNA 设计。",
+      "description": "CRISPR sgRNA 设计。\nargs:\n  sequence: 模板序列（必填，DNA）\n  cas: Cas 蛋白类型（默认 spcas9）\n  gc_min, gc_max: GC 范围筛选（默认 30, 80）\n  max_offtargets: off-target 容忍数（默认 10）\n  max_mismatches: off-target 错配上限（默认 3）\n  top_n: 返回候选数（默认 10）",
+      "parameters": {
+        "gc_min": {
+          "required": false,
+          "default": 30
+        },
+        "gc_max": {
+          "required": false,
+          "default": 80
+        },
+        "max_offtargets": {
+          "required": false,
+          "default": 10
+        },
+        "max_mismatches": {
+          "required": false,
+          "default": 3
+        },
+        "top_n": {
+          "required": false,
+          "default": 10
+        },
+        "sequence": {
+          "required": false
+        },
+        "cas": {
+          "required": false,
+          "default": "spcas9"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "crispr_verify",
+      "summary": "CRISPR 编辑验证：Sanger 测序 trace 比对 → indel/substitution 定量。",
+      "description": "CRISPR 编辑验证：Sanger 测序 trace 比对 → indel/substitution 定量。\nargs:\n  wild_type: 野生型参考序列（必填）\n  edited: 编辑后序列（必填，或 trace_file）\n  trace_file: .ab1 测序文件路径（与 edited 二选一）\n返回：alignment + 突变类型 + 频率\n注：纯 indel 检测，不调用 trace 解析（避免额外依赖）。如需 .ab1 解析可后续扩展。",
+      "parameters": {
+        "wild_type": {
+          "required": false,
+          "default": ""
+        },
+        "edited": {
+          "required": false,
+          "default": ""
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "dna_syncheck",
+      "summary": "DNA 合成约束检查。",
+      "description": "DNA 合成约束检查。\nargs:\n  sequence: DNA 序列（必填）\n  host: 宿主（用于密码子检查，默认 e_coli）\n  min_gc_window, max_gc_window: 窗口 GC 边界（默认 25, 65）\n  homopolymer_threshold: 同聚物报警阈值（默认 8）\n  poly_run_min: 连续重复报警阈值（默认 6）\n返回：各约束检查结果 + 综合可合成性评估。",
+      "parameters": {
+        "homopolymer_threshold": {
+          "required": false,
+          "default": 8
+        },
+        "poly_run_min": {
+          "required": false,
+          "default": 6
+        },
+        "sequence": {
+          "required": false
+        },
+        "min_gc_window": {
+          "required": false,
+          "default": 25
+        },
+        "max_gc_window": {
+          "required": false,
+          "default": 65
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "wetlab_design",
+      "summary": "湿实验方案设计。",
+      "description": "湿实验方案设计。\nargs:\n  protocol_type: 方案类型（必填）\n    - pcr_amplification: PCR 扩增方案\n    - gibson_assembly: Gibson 组装方案\n    - golden_gate: Golden Gate 组装方案\n    - restriction_cloning: 限制酶克隆方案\n    - crispr_editing: CRISPR 编辑方案\n    - strain_construction: 菌株构建方案\n    - transformation: 转化方案\n  input_data: 上游工具输出（必填，dict）\n  host_organism: 宿主生物（默认 e_coli）\n  scale: 实验规模（small/medium/large，默认 small）",
+      "parameters": {
+        "protocol_type": {
+          "required": false,
+          "default": ""
+        },
+        "input_data": {
+          "required": false,
+          "default": {}
+        },
+        "host_organism": {
+          "required": false,
+          "default": "e_coli"
+        },
+        "scale": {
+          "required": false,
+          "default": "small"
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "plasmid_search",
+      "summary": "Addgene 质粒检索（公开目录页）。",
+      "description": "Addgene 质粒检索（公开目录页）。\n\nargs:\n  query (str, 必填): 关键词，如 'CRISPR Cas9'、'lentiCRISPR'、'GFP reporter'\n  limit (int): 返回条数，默认 20，上限 50\n  sort (str): relevance | newest | oldest | alpha_asc | alpha_desc",
+      "parameters": {
+        "limit": {
+          "required": false,
+          "default": 20
+        },
+        "query": {
+          "required": false
+        },
+        "sort": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": true
+    },
+    {
+      "id": "plasmid_info",
+      "summary": "按 Addgene ID 取质粒完整公开元数据。",
+      "description": "按 Addgene ID 取质粒完整公开元数据。",
+      "parameters": {
+        "plasmid_id": {
+          "required": false,
+          "default": ""
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": true
+    },
+    {
+      "id": "seq_introns",
+      "summary": "从 GenBank 注释提取基因的内含子/外显子结构与剪接位点。",
+      "description": "从 GenBank 注释提取基因的内含子/外显子结构与剪接位点。\n\nargs:\n  accession (str): NCBI 登录号（如 NG_005905、NC_000017.11）\n  genbank_file (str): 或本地 GenBank 文件路径（与 accession 二选一）\n  gene (str): 可选，按 gene/locus_tag **精确**匹配（不做子串匹配）\n  max_features (int): 最多返回多少个转录本，默认 10",
+      "parameters": {
+        "max_features": {
+          "required": false,
+          "default": 10
+        },
+        "accession": {
+          "required": false
+        },
+        "genbank_file": {
+          "required": false
+        },
+        "gene": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "seq_dotplot",
+      "summary": "序列点阵图（dotplot）：滑窗一致性矩阵 + 出版级 PNG。",
+      "description": "序列点阵图（dotplot）：滑窗一致性矩阵 + 出版级 PNG。\n\nargs:\n  seq1 / seq2 (str): 两条序列（内容或文件路径）\n  window (int): 滑窗大小，默认 15\n  threshold (float): 窗口一致性阈值 0-1，默认 0.7\n  output_file (str): 输出 PNG 路径（默认工作区 dotplot.png）",
+      "parameters": {
+        "window": {
+          "required": false,
+          "default": 15
+        },
+        "threshold": {
+          "required": false,
+          "default": 0.7
+        },
+        "output_file": {
+          "required": false
+        },
+        "seq1": {
+          "required": false
+        },
+        "seq2": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "uniprot",
+      "summary": "UniProt 蛋白知识库查询（真实 REST API）。",
+      "description": "UniProt 蛋白知识库查询（真实 REST API）。\n\nmode:\n  entry   —— 单条完整条目（默认）：功能、基因、序列、按类型归并的 feature\n  ptm     —— 只看翻译后修饰相关 feature（Modified residue / Cross-link /\n             Glycosylation / Lipidation / Disulfide bond）\n  xref    —— 交叉引用按数据库归并（PDB/InterPro/Pfam/GO/KEGG/Reactome…）\n  pathway —— 通路信息（从交叉引用中提取 KEGG/Reactome/UniPathway）\n  sequence—— 仅取 FASTA 序列\n  search  —— 关键词检索（args.query），返回匹配条目摘要列表\n\nargs:\n  accession (str): UniProt 登录号（如 P38398），entry/ptm/xref/pathway/sequence 模式必填\n  query (str): search 模式的检索式（如 \"BRCA1 human\"、\"kinase AND organism_id:9606\"）\n  limit (int): search 模式返回条数，默认 10",
+      "parameters": {
+        "accession": {
+          "required": false
+        },
+        "query": {
+          "required": false
+        },
+        "limit": {
+          "required": false,
+          "default": 10
+        },
+        "mode": {
+          "required": false
+        }
+      },
+      "default_backend": "bio-tools",
+      "dependency_profile": "shared",
+      "network": true
+    },
+    {
+      "id": "phylo_compare",
+      "summary": "比较两棵系统发育树：Robinson-Foulds 距离 + 拓扑差异明细。",
+      "description": "比较两棵系统发育树：Robinson-Foulds 距离 + 拓扑差异明细。\n\nargs:\n  tree1 / tree2 (str): Newick 字符串（或文件路径）\n  detail (bool): 是否返回差异分裂的具体组成，默认 True",
+      "parameters": {
+        "detail": {
+          "required": false,
+          "default": true
+        },
+        "tree1": {
+          "required": false
+        },
+        "tree2": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "rna_fold",
+      "summary": "RNA 二级结构预测（ViennaRNA 热力学模型）。",
+      "description": "RNA 二级结构预测（ViennaRNA 热力学模型）。\n\nargs:\n  sequence (str): RNA 序列（或 DNA，自动 T→U）；也可传文件路径\n  output_file (str): 可选，输出结构示意图 PNG\n  also_ensemble (bool): 是否附加配分函数/集合多样性，默认 True",
+      "parameters": {
+        "also_ensemble": {
+          "required": false,
+          "default": true
+        },
+        "output_file": {
+          "required": false
+        },
+        "sequence": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "sc_qc",
+      "summary": "单细胞 RNA-seq 质控：指标计算 → MAD 离群过滤 → 出图 → 保存过滤后数据。",
+      "description": "单细胞 RNA-seq 质控：指标计算 → MAD 离群过滤 → 出图 → 保存过滤后数据。\n\nargs:\n  input_file (str, 必填): .h5ad（AnnData）或 10X Cell Ranger 的 .h5\n  output_dir (str): 输出目录（默认工作区 sc_qc/）\n  species (str): human | mouse | zebrafish | other（默认 human；决定 MT-/Rps 前缀）\n  mad_counts / mad_genes / mad_mt (float): MAD 阈值（默认 5 / 5 / 3）\n  min_genes (int): 细胞最少检出基因数（默认 200）\n  min_cells (int): 基因最少被检出细胞数（默认 3）\n  mt_cap (float): 线粒体比例硬上限（可选，叠加在 MAD 之上）\n  apply_filter (bool): 是否保存过滤后的 h5ad（默认 True）\n  make_plots (bool): 是否输出图（默认 True）\n  max_cells (int): 细胞数上限保护，超出随机下采样（默认 200000）",
+      "parameters": {
+        "input_file": {
+          "required": false
+        },
+        "mt_cap": {
+          "required": false
+        },
+        "apply_filter": {
+          "required": false,
+          "default": true
+        },
+        "make_plots": {
+          "required": false,
+          "default": true
+        },
+        "mad_counts": {
+          "required": false,
+          "default": 5
+        },
+        "mad_genes": {
+          "required": false,
+          "default": 5
+        },
+        "mad_mt": {
+          "required": false,
+          "default": 3
+        },
+        "min_genes": {
+          "required": false,
+          "default": 200
+        },
+        "min_cells": {
+          "required": false,
+          "default": 3
+        },
+        "max_cells": {
+          "required": false,
+          "default": 200000
+        },
+        "output_dir": {
+          "required": false
+        },
+        "species": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    },
+    {
+      "id": "source_audit",
+      "summary": "bio_source_audit 工具入口：按 mode 分发。",
+      "description": "bio_source_audit 工具入口：按 mode 分发。",
+      "parameters": {
+        "mode": {
+          "required": false
+        }
+      },
+      "default_backend": "biogenie",
+      "dependency_profile": "shared",
+      "network": false
+    }
+  ]
+}

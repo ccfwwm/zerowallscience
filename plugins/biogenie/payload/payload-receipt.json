@@ -1,0 +1,300 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "path": "docs/agent-guide/plotting.md",
+      "size": 8672,
+      "sha256": "bf9b9e89b851d8764a7e6d99666d7ec98cef9387b8ecd258c1ac235e9cdc773c"
+    },
+    {
+      "path": "docs/agent-guide/python-cookbook.md",
+      "size": 11347,
+      "sha256": "7f2c5ba338e7ab96a7c389f6d6fa67c601388386fca120c3ab6795fb220524a9"
+    },
+    {
+      "path": "docs/agent-guide/README.md",
+      "size": 5090,
+      "sha256": "451c8018f8784297cf07697d8072915916485dd950a43a177a5e076680fcf350"
+    },
+    {
+      "path": "docs/agent-guide/rigor.md",
+      "size": 8475,
+      "sha256": "6330beae1bf76deda69c15d4b8c0afd6b0b99a1162d64e8ac9cfb256648e6944"
+    },
+    {
+      "path": "docs/agent-guide/skills.md",
+      "size": 9382,
+      "sha256": "7e7a714bd6100a0d963f5c2a83918588e106644e123e46aac39dc78df460a5c4"
+    },
+    {
+      "path": "docs/agent-guide/tools.md",
+      "size": 32687,
+      "sha256": "69ed7f737714050681180a079684f3cc3c4e3bc4413eb4226eab089d4957dfbd"
+    },
+    {
+      "path": "docs/agent-guide/troubleshooting.md",
+      "size": 8422,
+      "sha256": "18815dfe8378992123a866c3018b8f85c786d379be683366b99413727613717d"
+    },
+    {
+      "path": "docs/agent-guide/workflows.md",
+      "size": 8305,
+      "sha256": "439e56ce6bc825245a86274321e63b2e08afaf7c1fcee61fc34f996c7c43c940"
+    },
+    {
+      "path": "docs/fig-viewer-sidecar-v1.md",
+      "size": 14652,
+      "sha256": "9ffe0230f91ee6b4c0abaac3887cbeade3525975fd8d2f7e24762612dc6fbcf8"
+    },
+    {
+      "path": "docs/figorigin-v1.md",
+      "size": 2051,
+      "sha256": "8d5b55b3d6e2cb511843987c71d53e6e53e747b02f0b863872ae3ada8e19cddb"
+    },
+    {
+      "path": "LICENSE",
+      "size": 1263,
+      "sha256": "f8fb12aa92f22640202178f1826d122e503437879cae48f4cbdfe8224fcd7cac"
+    },
+    {
+      "path": "operations.json",
+      "size": 50952,
+      "sha256": "1fde003e605a0c3545a40706877097a097e431f765fb1080798cc509fbe757eb"
+    },
+    {
+      "path": "python/analysis_ext.py",
+      "size": 30708,
+      "sha256": "41a3cc7f91494e32fdbc6c68793c51ef4efadf01ab2c05d4cc4b745c30606f5d"
+    },
+    {
+      "path": "python/bio_ops.py",
+      "size": 94803,
+      "sha256": "ec7043a540f58307eb3814b5b792cbaac3d021c1193d4922a086e9bb066165a1"
+    },
+    {
+      "path": "python/bridge.py",
+      "size": 6158,
+      "sha256": "affc0b07d1b1b74e42c08a8193fa5cf312f73fff1d816b72ab8f35726f17a0a0"
+    },
+    {
+      "path": "python/circuit_tools.py",
+      "size": 12866,
+      "sha256": "a271a56e930b9e3c4f964161eeab801978c63d7c12ebe60aecf9e429016a5eb2"
+    },
+    {
+      "path": "python/crispr_tools.py",
+      "size": 13486,
+      "sha256": "df2dfb9274ff6c69372d0591d337d064dfb7714b1d87cf26d47bb1683ec09b7d"
+    },
+    {
+      "path": "python/deg_tools.py",
+      "size": 29041,
+      "sha256": "5ecf9305a30da63db82f586cd6f7ee082bcc969861e2689132799ec194eef5b1"
+    },
+    {
+      "path": "python/dna_design_2.py",
+      "size": 13003,
+      "sha256": "5e50af44b4a506b8b0601f58d342f88754710fd5a32f25aaf1aed8722d82f9d2"
+    },
+    {
+      "path": "python/dna_design.py",
+      "size": 8467,
+      "sha256": "cc9ae76d6cd693d5e0450fa809c0ee312a2fe562539f9b7f8377a149185da4e3"
+    },
+    {
+      "path": "python/figurelib/__init__.py",
+      "size": 1466,
+      "sha256": "3d6d8d5e684572784f0bb27e1a6b017b6eaa5beda0796e38306916cd307b6d35"
+    },
+    {
+      "path": "python/figurelib/assets/color_palettes.py",
+      "size": 6756,
+      "sha256": "173d95887be654867db3602430ade84f6362ae80477c5373de0b44ce40375f57"
+    },
+    {
+      "path": "python/figurelib/assets/figview.schema.v1.json",
+      "size": 6772,
+      "sha256": "a5ecb67c4a19f5b825e057962943e8c92a05eefd5aa9b8df5b4c83c509bec25b"
+    },
+    {
+      "path": "python/figurelib/assets/hits.schema.v1.json",
+      "size": 8403,
+      "sha256": "334579ba4ca710afe22f8602d0810d4c9d9d32c576c4cc470b2beb9b3e278957"
+    },
+    {
+      "path": "python/figurelib/assets/nature.mplstyle",
+      "size": 1619,
+      "sha256": "1c0c6bcb4d6add27247f43541d8e588aa562f21c4c88c7eaa673a2eac63dfb35"
+    },
+    {
+      "path": "python/figurelib/assets/presentation.mplstyle",
+      "size": 1460,
+      "sha256": "db47ccdf7267a39407a959141b851d72295a66489f01c9a23ec8e963a02144c8"
+    },
+    {
+      "path": "python/figurelib/assets/publication.mplstyle",
+      "size": 1817,
+      "sha256": "45973599d92b27e5b156b4a23aa794795b5d83173633acb47e55658af304f999"
+    },
+    {
+      "path": "python/figurelib/assets/publisher_profiles.json",
+      "size": 9863,
+      "sha256": "12633ca62d1b7539b40fa31c01aa5b266546a25734961a41fc79250a5b328b9b"
+    },
+    {
+      "path": "python/figurelib/assets/rows.schema.v1.json",
+      "size": 8250,
+      "sha256": "fa3f2765d572a4f81458249cbda11f7542005e17bb1477f094ce817eebc11768"
+    },
+    {
+      "path": "python/figurelib/check_figure.py",
+      "size": 9709,
+      "sha256": "861191858ff47c5af5247f08d0759b14956a2a7e7d8eafcc6b414d37b9d70f06"
+    },
+    {
+      "path": "python/figurelib/differential_recipes.py",
+      "size": 25436,
+      "sha256": "954c78987cc1ae774ca1cd23b607edc615b16827ad0aa0b37d50fb3a6ad23f6f"
+    },
+    {
+      "path": "python/figurelib/export_figure.py",
+      "size": 7100,
+      "sha256": "de25ce0972e4241da61f2bfe9757fd29d44bc3fa58e01a3baa87616c88f8b51a"
+    },
+    {
+      "path": "python/figurelib/fig_lint.py",
+      "size": 10086,
+      "sha256": "d216634e7dc18eaf48230094842a8fabdff1a733c80b5cb8fcb784e4a0e2b5e7"
+    },
+    {
+      "path": "python/figurelib/figview_validate.py",
+      "size": 15989,
+      "sha256": "cd4ed6f4d5f220281f1564a0156eb53a904471f6d1f2d1ac1571f8d96f9b2157"
+    },
+    {
+      "path": "python/figurelib/figview.py",
+      "size": 18917,
+      "sha256": "c4099002830a13a641747206192baf9768aa471d8c898773af953834a8d40b70"
+    },
+    {
+      "path": "python/figurelib/layout_tools.py",
+      "size": 9351,
+      "sha256": "68e1d25774148fe78f5d87035d651f5e3707382502505cb11f62f9ec7ae88e49"
+    },
+    {
+      "path": "python/figurelib/origin.py",
+      "size": 6296,
+      "sha256": "4fba8a6f0cff041365895e72fc6fb20f15d7ff6c089fa6ec4aca251efc07408f"
+    },
+    {
+      "path": "python/figurelib/profile_data.py",
+      "size": 17764,
+      "sha256": "d8a2a72c2607c390f2d3ed1508209d515ad4fbf833fa1602ab9da519b3596ec4"
+    },
+    {
+      "path": "python/figurelib/repro_script.py",
+      "size": 5551,
+      "sha256": "fa1473bb5b17d9c4fd75cbfa7038df1f600f6fd79df4a71b895aef7434a84e15"
+    },
+    {
+      "path": "python/figurelib/setup_style.py",
+      "size": 11794,
+      "sha256": "d58ef81684577bb605a92733dd2ca48ade03b4f819b3d255fd62f319be7fea82"
+    },
+    {
+      "path": "python/figurelib/visual_qa.py",
+      "size": 20060,
+      "sha256": "8ee89bb570660a74666d36d9e773975494bb430879d8f4b04e64cf453a32ff55"
+    },
+    {
+      "path": "python/kegg_client.py",
+      "size": 8613,
+      "sha256": "d05094a85e51ef7a4e063af53c02a0820925d72e61f187fb6548033eda2bd92b"
+    },
+    {
+      "path": "python/ml_tools_2.py",
+      "size": 5213,
+      "sha256": "5157b2e3865b8d1d0af376011d6ca06c174c55ddf1346dca81dd879a227a80a8"
+    },
+    {
+      "path": "python/ml_tools_3.py",
+      "size": 3690,
+      "sha256": "9b17a942e92be87cb6b9e247d42309f0063bbb813553a3e7b3d3cad160668407"
+    },
+    {
+      "path": "python/ml_tools.py",
+      "size": 14989,
+      "sha256": "e88dff0150e87bae77be12187f0c052935859d25f0d71d205fc75570cfbe83c2"
+    },
+    {
+      "path": "python/plasmid_render.py",
+      "size": 19014,
+      "sha256": "79d9c66df57125c3f412828359723110f8673d93134193fbf2cb0b47f48cb16b"
+    },
+    {
+      "path": "python/plasmid_repo.py",
+      "size": 12541,
+      "sha256": "4972b53c6f53d74f959e00e3c5ef6ed2f78bc884cf715d9cf08b312e47c5baa3"
+    },
+    {
+      "path": "python/requirements.txt",
+      "size": 3033,
+      "sha256": "cad58cd279d70ecc60d11a32d7f92939424b07413d1db4b4328df000bed40d7d"
+    },
+    {
+      "path": "python/retry_utils.py",
+      "size": 1018,
+      "sha256": "d761a67faef0bb5211aa16ab1ef9e583125bb857dd972d71ab92a62c35e102fe"
+    },
+    {
+      "path": "python/sc_tools.py",
+      "size": 12651,
+      "sha256": "1babf01f5aa912f49f0dc673b8043cc1364e03fe5ad0d49ccad64288300eb49d"
+    },
+    {
+      "path": "python/seq_util.py",
+      "size": 5940,
+      "sha256": "2acfe2832171fae524f2dea363c192ca2bc8a3f8e2cdf3891c4b185bce146b8a"
+    },
+    {
+      "path": "python/source_audit_tools.py",
+      "size": 30905,
+      "sha256": "558b1fa25f73f355f89dc41efe753397aa3c5166f79b68333d43787334a627df"
+    },
+    {
+      "path": "python/synbio_tools.py",
+      "size": 22973,
+      "sha256": "770f310df66ece906523c4a8489cba63d3f43ca973e9665185eea58cab60def8"
+    },
+    {
+      "path": "python/syncheck_tools.py",
+      "size": 8104,
+      "sha256": "a84b1e8a1f16f3c17ca6d49e7c43707cfae5e2af9fec77c39aa3136951484917"
+    },
+    {
+      "path": "python/wetlab_tools.py",
+      "size": 22293,
+      "sha256": "45322f9243b7cfb337a0a29a62c03a2bf746c76a0ab5e74b0fad54441f6823e6"
+    },
+    {
+      "path": "python/zerowall_bridge.py",
+      "size": 5918,
+      "sha256": "eaa8c19f6dbed6112216480ea5e340883b0fe9d59c1c928c9c2dd7cbd067f1f5"
+    },
+    {
+      "path": "SKILL-PROVENANCE.yaml",
+      "size": 6672,
+      "sha256": "f60dc8da7d8bef29d963d56f872e80ad0735bf4654a66eb149a8d38797b10f85"
+    },
+    {
+      "path": "THIRD_PARTY_NOTICES.md",
+      "size": 6543,
+      "sha256": "28b5357e011e1afd2fd336dce29f68dba13eb1da6aabe2799fcc715cb7df2902"
+    },
+    {
+      "path": "UPSTREAM.json",
+      "size": 344,
+      "sha256": "a1ef516f812b69076a360e0e8f9b39d2c4d62b991a051767de25d06f3752aedc"
+    }
+  ]
+}

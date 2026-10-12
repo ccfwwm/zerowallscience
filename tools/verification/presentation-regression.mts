@@ -87,7 +87,7 @@ try {
     const checks = await call('presentation_check_pages', { pages: spec.slides.map((_: any, i: number) => i + 1), output: `${mode}-screenshots` })
     report = { mode, scope, specName, stateJournal: state.journal, checks, counters, topLevelCalls, serviceCalls, serviceMs, buildMs: performance.now() - started, excludes: ['LLM authoring', 'source extraction', 'image generation'] }
     await writeFile(reportPath, JSON.stringify(report, null, 2))
-    console.log(JSON.stringify({ mode, scope, buildMs: report.buildMs, counters, screenshots: checks.screenshot, findings: checks.lint.presentationFindings }))
+    console.log(JSON.stringify({ mode, scope, buildMs: report.buildMs, counters, screenshots: checks.screenshot, findings: checks.presentationFindings }))
   } else {
     try { report = JSON.parse(await readFile(reportPath, 'utf8')) } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error

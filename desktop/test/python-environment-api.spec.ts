@@ -278,6 +278,20 @@ describe('shared Python environment API', () => {
     expect(saved).not.toHaveProperty('scienceInstalledPackageCount')
     expect(saved).not.toHaveProperty('packageCount')
   })
+  it('keeps the last complete scan during a real writer lock and never persists a failed refresh as missing packages', async () => {
+    const { root, updater, sync } = await setup()
+    const runtime = join(root, 'installation/Python'), manager = join(runtime, '.zerowall')
+    const api = createApi(manager, updater as unknown as PythonUpdaterService, sync, undefined, join(root, 'installation'), runtime)
+    const inventory = { ready: true, runtimeRoot: runtime, inventoryComplete: true, coreReady: true, officialPackageCount: 43, corePackageCount: 43, packageCount: 171, packages: [{ name: 'pandas', version: '1.0', source: 'core' as const, health: 'healthy' as const }], missingCorePackages: [] }
+    await api.persistRuntimeSummary(inventory)
+    await writeFile(join(manager, 'local-inventory.json'), JSON.stringify({ state: 'complete', inventory }))
+    await writeFile(join(manager, 'write-lock.json'), JSON.stringify({ pid: process.pid }))
+    await api.request({ action: 'scan_local', requestId: 'refresh-while-installing' })
+    await vi.waitFor(async () => expect(await api.request({ action: 'status', requestId: 'scan-result' })).toMatchObject({ inventory: { coreReady: true, corePackageCount: 43 }, scan: { state: 'complete' } }))
+    expect(updater.pythonInfo).not.toHaveBeenCalled()
+    await api.persistRuntimeSummary({ ...inventory, ready: false, inventoryComplete: false, coreReady: false, corePackageCount: 0, packages: [] })
+    expect(JSON.parse(await readFile(join(manager, 'python-summary.json'), 'utf8'))).toMatchObject({ inventoryComplete: true, coreReady: true, corePackageCount: 43 })
+  })
   it('flushes progress and stops the updater before desktop shutdown completes', async () => {
     const { api, updater } = await setup()
     await api.shutdown()

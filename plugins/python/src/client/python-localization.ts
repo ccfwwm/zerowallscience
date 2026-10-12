@@ -4,6 +4,9 @@ const han = /\p{Script=Han}/u
 
 const exactEnglish = new Map<string, string>([
   ['等待基础 Python 环境就绪。', 'Waiting for the base Python runtime.'],
+  ['正在按顺序逐包安装缺失依赖。', 'Installing missing packages one at a time.'],
+  ['正在确认包是否已安装。', 'Checking installed package names.'],
+  ['安装进程已结束，正在核对实际环境中的依赖是否已安装。', 'Installation finished. Checking installed package names.'],
   ['正在读取并验签依赖清单。', 'Loading and verifying the signed dependency manifest.'],
   ['正在检查签名资源目录。', 'Checking the signed resource catalog.'],
   ['正在读取当前 Python 包清单。', 'Reading the installed Python package inventory.'],
@@ -36,7 +39,11 @@ export function localizePythonText(value: string | undefined, language: PythonUi
   const exact = exactEnglish.get(value)
   if (exact) return exact
 
-  let match = value.match(/^正在比较 (\d+) 个依赖版本。$/u)
+  let match = value.match(/^正在检测 (\d+) 个依赖是否已安装。$/u)
+  if (match) return `Checking whether ${match[1]} packages are installed.`
+  match = value.match(/^正在检测依赖 (\d+)\/(\d+)。$/u)
+  if (match) return `Checking package names ${match[1]}/${match[2]}.`
+  match = value.match(/^正在比较 (\d+) 个依赖版本。$/u)
   if (match) return `Comparing ${match[1]} dependency versions.`
   match = value.match(/^正在比较依赖版本 (\d+)\/(\d+)。$/u)
   if (match) return `Comparing dependency versions ${match[1]}/${match[2]}.`
