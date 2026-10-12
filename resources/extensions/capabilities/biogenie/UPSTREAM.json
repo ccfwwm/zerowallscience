@@ -1,7 +1,7 @@
 {
   "repository": "https://github.com/moonbowterfly/dsh-bio-genie",
-  "version": "0.6.36",
-  "commit": "3f1f669b27a5ca8318e7388c44e1f397213cdf7c",
+  "version": "0.6.48",
+  "commit": "9ad4269d0afd49213431bb4ee4d00566704641f3",
   "license": "MIT",
   "integration": "Python operations and method references only. Upstream runtime bootstrap, package installer, preset installer and tool registrations are not loaded."
 }

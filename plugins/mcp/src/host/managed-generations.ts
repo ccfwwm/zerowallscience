@@ -7,11 +7,22 @@ import type { StdioConfig } from '@deepseek-ai/dsh-mcp-client'
 import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { KetcherBridge } from './ketcher-bridge.js'
 
 interface Generation { client: Client; definitions: Map<string, ToolDefinition>; references: number; retired: boolean; lease?: string; snapshot?: string | undefined }
 /** Stable public tool names dispatch to immutable generations. Retiring never kills an in-flight call. */
 export class ManagedGenerations {
+  private suspended = false
+  async quiesce(): Promise<void> {
+    this.suspended = true
+    for (const generation of this.generations) {
+      while (generation.references > 0) await new Promise(resolve => setTimeout(resolve, 100))
+      await this.close(generation)
+    }
+    this.active.clear(); this.staged.clear()
+  }
+  resume(): void { this.suspended = false }
   readonly ketcher = new KetcherBridge()
   private staged = new Map<string, { snapshot: string; generation: Generation; expires: number }>()
   private active = new Map<string, Generation>()
@@ -40,14 +51,26 @@ export class ManagedGenerations {
   snapshot(id: string): string | undefined { return this.active.get(id)?.snapshot }
   names(id: string): string[] { return [...(this.active.get(id)?.definitions.keys() ?? [])].sort() }
   async prepare(config: StdioConfig, snapshot?: string): Promise<Generation> {
+    const root = process.env.ZEROWALL_PYTHON_MANAGEMENT_ROOT || process.env.ZEROWALL_PYTHON_ROOT || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+    const updating = () => this.suspended || !!(root && existsSync(join(root, 'write-lock.json')))
+    if (updating()) throw new Error('PYTHON_RUNTIME_UPDATING: managed MCP is waiting for Python update.')
     const client = new Client({ name: 'zerowall-managed', version: '1' })
-    const transport = new StdioClientTransport({ command: config.command, args: config.args, cwd: config.cwd, env: { ...Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)), ...config.env, ELECTRON_RUN_AS_NODE: '1' }, stderr: 'pipe' })
+    const parent = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined && !['PYTHONHOME', 'PYTHONPATH', 'VIRTUAL_ENV', 'CONDA_PREFIX'].includes(entry[0])))
+    const transport = new StdioClientTransport({ command: config.command, args: config.args, cwd: config.cwd, env: { ...parent, ...config.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', ELECTRON_RUN_AS_NODE: '1' }, stderr: 'pipe' })
     const definitions = new Map<string, ToolDefinition>()
     const generation: Generation = { client, definitions, references: 0, retired: false, snapshot }
     let stderr = ''
     let phase = 'initialize'
     transport.stderr?.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-8_000) })
     try {
+      // Register before spawning: a writer waits for this connection or its
+      // failed initialization to release the lease, including startup races.
+      if (root && snapshot) {
+        await mkdir(join(root, 'leases'), { recursive: true })
+        generation.lease = join(root, 'leases', `${process.pid}-${randomUUID()}.json`)
+        await writeFile(generation.lease, JSON.stringify({ pid: process.pid, snapshot, kind: 'mcp', createdAt: new Date().toISOString() }))
+      }
+      if (updating()) throw new Error('PYTHON_RUNTIME_UPDATING')
       await client.connect(transport)
       // Reuse the established MCP schema/content/attachment bridge. Capture definitions
       // privately until the complete candidate has initialized successfully.
@@ -57,16 +80,12 @@ export class ManagedGenerations {
       const context = new Proxy(this.ctx, { get: (target, property) => property === 'tools' ? tools : Reflect.get(target, property) })
       phase = 'tools/list'
       await syncTools(client, context, { registrationFailure: 'throw', serverName: config.serverName, toolCallTimeoutMs: config.toolCallTimeoutMs }, new Map())
-      const root = process.env.ZEROWALL_PYTHON_ROOT ?? process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
-      if (root && snapshot) {
-        await mkdir(join(root, 'leases'), { recursive: true })
-        generation.lease = join(root, 'leases', `${process.pid}-${randomUUID()}.json`)
-        await writeFile(generation.lease, JSON.stringify({ pid: process.pid, snapshot, kind: 'mcp', createdAt: new Date().toISOString() }))
-      }
+      if (updating()) throw new Error('PYTHON_RUNTIME_UPDATING')
       this.generations.add(generation)
       return generation
     } catch (error) {
       await client.close().catch(() => undefined)
+      if (generation.lease) await rm(generation.lease, { force: true }).catch(() => undefined)
       const diagnostic = `${error instanceof Error ? error.message : String(error)}${stderr ? `\nMCP stderr: ${stderr}` : ''}`.replace(/\b(Bearer|Basic)\s+\S+/giu, '$1 [redacted]')
         .replace(/(authorization|api[-_ ]?key|token|secret|password)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu, '$1=[redacted]')
         .replace(/https?:\/\/[^\s)\]}]+/giu, '[redacted-url]')
@@ -82,6 +101,8 @@ export class ManagedGenerations {
         const executions = new WeakMap<ToolExecution, ToolDefinition>()
         const wrapper: ToolDefinition = { ...definition,
           execute: async (args, exec) => {
+            const manager = process.env.ZEROWALL_PYTHON_MANAGEMENT_ROOT || process.env.ZEROWALL_PYTHON_ROOT || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+            if (this.suspended || manager && existsSync(join(manager, 'write-lock.json'))) throw new Error('PYTHON_RUNTIME_UPDATING: Python 更新正在等待已有调用结束。')
             this.commitStaged()
             const selected = this.active.get(id)
             const target = selected?.definitions.get(name)

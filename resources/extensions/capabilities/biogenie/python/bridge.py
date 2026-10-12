@@ -45,14 +45,55 @@ if _BRIDGE_DIR not in sys.path:
 # plugin's memory; the harness spill policy already handles model-facing size.
 MAX_CAPTURE_CHARS = 1_000_000
 
+# numpy 为可选依赖（分析环境通常已装）：结果规范化对 numpy 标量/数组做原生
+# 转换；环境无 numpy 时保持纯 Python 路径（import 失败不影响 bridge 运行）。
+try:
+    import numpy as _NP
+except ImportError:  # pragma: no cover - 无 numpy 环境
+    _NP = None
 
-def _json_safe(value):
-    """Return value if JSON-serializable, else its repr as a fallback string."""
+_MAX_NORMALIZE_DEPTH = 32
+
+
+def _normalize_json_value(value, depth=0):
+    """把 result 值递归规范化为 lossless JSON 可表达的结构。
+
+    规则（与 bio_ops.py 的 _sanitize_json 同款语义）：
+      - numpy 标量 -> .item()（原生类型）；numpy 数组 -> tolist 后递归
+      - -0.0 -> 0.0；NaN / +-inf / -inf -> None（dsh snapshot 校验拒绝它们，
+        不规范化会导致整个工具输出被拒：value is not lossless JSON）
+      - dict 键一律 str()；list/tuple/set -> list
+      - 不可序列化的叶子回退为 repr 字符串
+    """
+    if depth > _MAX_NORMALIZE_DEPTH:
+        return repr(value)
+    if _NP is not None:
+        if isinstance(value, _NP.generic):
+            return _normalize_json_value(value.item(), depth + 1)
+        if isinstance(value, _NP.ndarray):
+            return _normalize_json_value(value.tolist(), depth + 1)
+    if isinstance(value, float):
+        if value != value or value in (float('inf'), float('-inf')):
+            return None
+        if value == 0.0 and str(value).startswith('-'):
+            return 0.0
+        return value
+    if isinstance(value, dict):
+        return {str(k): _normalize_json_value(v, depth + 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_normalize_json_value(v, depth + 1) for v in value]
+    if isinstance(value, (str, int, bool)) or value is None:
+        return value
     try:
         json.dumps(value)
         return value
     except (TypeError, ValueError):
         return repr(value)
+
+
+def _json_safe(value):
+    """Return a lossless-JSON-safe version of value (numpy/-0.0/NaN 规范化后返回）。"""
+    return _normalize_json_value(value)
 
 
 def main() -> int:

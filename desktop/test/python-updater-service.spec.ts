@@ -22,6 +22,29 @@ vi.mock('node:child_process', () => ({
 }))
 import { PythonUpdaterService } from '../src/main/python-updater-service.js'
 const roots: string[] = []
+
+it('preserves the bootstrap download error before a missing-runtime inventory can overwrite it', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-bootstrap-error-')); roots.push(root)
+  const calls: string[] = []
+  const service = new PythonUpdaterService({
+    root, runtimeRoot: join(root, 'Python'), manifestUrl: 'https://fixture', publicKey: 'key', publish() {},
+    executeOperation: async method => {
+      calls.push(method)
+      if (method === 'initialize') return { phase: 'failed', lastUpdateError: 'Download response terminated; resume is available.' }
+      if (method === 'pythonInfo') throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: fixed Python executable is missing or unsafe.')
+      return { phase: 'idle', message: 'Python is not installed.' }
+    },
+  })
+  try {
+    const status = await service.ensureReady()
+    expect(status.lastUpdateError).toContain('Download response terminated')
+    expect(status.updateJob?.stage).toBe('failed')
+    expect(calls).toEqual(['localStatus', 'initialize'])
+    const receipt = JSON.parse(await readFile(join(root, 'jobs', `${status.updateJob!.taskId}.json`), 'utf8'))
+    expect(receipt).toMatchObject({ state: 'failed' })
+    expect(receipt.error).toContain('Download response terminated')
+  } finally { await service.shutdown() }
+})
 afterEach(async () => { state.children.length = 0; state.calls.length = 0; state.forks.length = 0; state.held.clear(); state.missing = false; state.coreIncomplete = false; for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
 
 it('adds packaged updater modules to the child lookup path and preserves existing Node paths', async () => {
@@ -187,14 +210,15 @@ it('gates direct package operations behind the signed base runtime', async () =>
   const root = await mkdtemp(join(tmpdir(), 'python-broker-package-gate-')); roots.push(root)
   state.missing = true
   const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
-  const preview = service.previewPackages(['requests'])
+  const preview = service.installPythonPackage('requests')
   await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
   expect(state.calls.some(call => call.method === 'previewPackages')).toBe(false)
   state.missing = false
   const initialize = state.calls.find(call => call.method === 'initialize')!
   state.children.at(-1).emit('message', { id: initialize.id, result: { updated: true } })
-  await expect(preview).resolves.toMatchObject({ phase: 'ready' })
-  expect(state.calls.map(call => call.method)).toEqual(['localStatus', 'initialize', 'pythonInfo', 'localStatus', 'previewPackages'])
+  await expect(preview).resolves.toMatchObject({ taskId: expect.any(String) })
+  await expect.poll(() => state.calls.some(call => call.method === 'installPythonPackage')).toBe(true)
+  expect(state.calls.slice(0, 4).map(call => call.method)).toEqual(['localStatus', 'initialize', 'pythonInfo', 'localStatus'])
   service.stop()
 })
 
@@ -202,7 +226,7 @@ it('does not pass package requests through when signed runtime initialization fa
   const root = await mkdtemp(join(tmpdir(), 'python-broker-package-failure-')); roots.push(root)
   state.missing = true
   const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {} })
-  const preview = service.previewPackages(['requests'])
+  const preview = service.installPythonPackage('requests')
   await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
   const initialize = state.calls.find(call => call.method === 'initialize')!
   state.children.at(-1).emit('message', { id: initialize.id, error: '基础 Python 安装失败' })
@@ -219,9 +243,10 @@ it('records an explicitly requested unavailable environment as a failed durable 
   await expect.poll(() => state.calls.filter(call => call.method === 'initialize').length).toBe(1)
   const request = state.calls.find(call => call.method === 'initialize')!
   state.children.at(-1).emit('message', { id: request.id, result: { phase: 'failed', message: 'base archive rejected' } })
-  await expect(completion).resolves.toMatchObject({ phase: 'unavailable', updateJob: { stage: 'failed' } })
+  await expect(completion).resolves.toMatchObject({ phase: 'failed', lastUpdateError: 'base archive rejected', updateJob: { stage: 'failed' } })
+  expect(state.calls.map(call => call.method)).toEqual(['localStatus', 'initialize'])
   const taskId = service.current().updateJob!.taskId
-  expect(JSON.parse(await readFile(join(root, 'jobs', `${taskId}.json`), 'utf8')).state).toBe('failed')
+  expect(JSON.parse(await readFile(join(root, 'jobs', `${taskId}.json`), 'utf8'))).toMatchObject({ state: 'failed', error: 'base archive rejected' })
   service.stop()
 })
 

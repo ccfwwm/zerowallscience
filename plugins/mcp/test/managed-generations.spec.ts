@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { acquireRuntimeWriter } from '../../python/src/shared/runtime-leases.js'
 import { ManagedGenerations } from '../src/host/managed-generations.js'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 const server = String.raw`
@@ -12,6 +16,33 @@ readline.createInterface({input:process.stdin}).on('line', line => {
  if(q.method==='tools/call') setTimeout(()=>reply({content:[{type:'text',text:generation}]}),q.params.arguments.delay||0);
 });`
 describe('managed MCP generations', () => {
+  it('waits for an actual MCP call, closes its transport lease, and resumes from the fixed root', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'managed-writer-'))
+    const manager = join(root, '.zerowall'); await mkdir(manager)
+    vi.stubEnv('ZEROWALL_PYTHON_MANAGEMENT_ROOT', manager)
+    const definitions = new Map<string, ToolDefinition>()
+    const ctx = { tools: { register: (definition: ToolDefinition) => { definitions.set(definition.name, definition); return () => definitions.delete(definition.name) } }, logger: { error() {} }, get: () => undefined } as any
+    const generations = new ManagedGenerations(ctx)
+    const config = { serverName: 'managed', transport: 'stdio' as const, command: process.execPath, args: ['-e', server], cwd: root, env: { TEST_GENERATION: 'fixed' }, toolCallTimeoutMs: 5000, failOnStartupError: true }
+    let release: (() => Promise<void>) | undefined
+    try {
+      generations.activate('id', await generations.prepare(config, root))
+      expect(await readdir(join(manager, 'leases'))).toHaveLength(1)
+      const pending = definitions.get('mcp__managed__echo')!.execute({ delay: 250 }, { signal: new AbortController().signal } as any)
+      let acquired = false
+      const writer = acquireRuntimeWriter(root).then(value => { acquired = true; return value })
+      await expect.poll(() => readFile(join(manager, 'write-lock.json'), 'utf8').then(() => true, () => false)).toBe(true)
+      await expect(generations.prepare(config, root)).rejects.toThrow('PYTHON_RUNTIME_UPDATING')
+      const quiesced = generations.quiesce()
+      expect(acquired).toBe(false)
+      expect(JSON.stringify(await pending)).toContain('fixed')
+      await quiesced; release = await writer
+      expect(await readdir(join(manager, 'leases'))).toHaveLength(0)
+      await release(); release = undefined; generations.resume()
+      generations.activate('id', await generations.prepare(config, root))
+      expect(JSON.stringify(await definitions.get('mcp__managed__echo')!.execute({}, { signal: new AbortController().signal } as any))).toContain('fixed')
+    } finally { await release?.(); await generations.dispose(); vi.unstubAllEnvs(); await rm(root, { recursive: true, force: true }) }
+  })
   it('captures early startup stderr and removes credentials', async () => {
     const generations = new ManagedGenerations({ tools: {} } as any)
     const config = { serverName: 'managed', transport: 'stdio' as const, command: process.execPath, args: ['-e', 'console.error("ImportError: missing mcp; token=private-value"); process.exit(1)'], cwd: process.cwd(), env: {}, toolCallTimeoutMs: 5000, failOnStartupError: true }

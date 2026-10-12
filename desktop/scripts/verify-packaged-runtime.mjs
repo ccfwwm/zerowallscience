@@ -10,6 +10,8 @@ import { pathToFileURL } from 'node:url'
 import { extractFile, listPackage } from '@electron/asar'
 import { chromium } from 'playwright'
 import yaml from 'yaml'
+import { verifySignedDocument } from '../../tools/release/resource-catalog.mjs'
+import { handleResourceUpdateNotices } from './update-notice-handler.mjs'
 import { verifyOfflineProfile, prepareOfflineCandidate } from '../../tools/commands/offline-profile.mjs'
 import { locatePackagedApp } from './packaged-app.mjs'
 import { verifySettingsLocales } from './verify-settings-locales.mjs'
@@ -163,12 +165,12 @@ if (moleculeManifest.version !== '5.11.0' || moleculeRuntime.length !== molecule
   throw new Error('Packaged molecular viewer runtime differs from its fixed version/hash manifest.')
 }
 if (!readArchiveFile(`${moleculePrefix}molecule-runtime.LICENSE.txt`).toString('utf8').includes('MIT')) throw new Error('Packaged molecular viewer license is missing.')
-for (const entry of ['out/main/index.js', 'out/main/python-updater-worker.js', 'out/preload/index.cjs']) {
+for (const entry of ['out/main/index.js', 'out/preload/index.cjs']) {
   if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
     throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
   }
 }
-for (const entry of fullOffline ? [] : ['out/main/python-updater-worker.js', 'node_modules/yauzl/index.js', 'node_modules/pend/index.js']) {
+for (const entry of fullOffline ? [] : ['node_modules/yauzl/index.js', 'node_modules/pend/index.js']) {
   await access(resolve(packaged.resourcesRoot, 'app.asar.unpacked', entry))
 }
 const packagedMcpHost = readArchiveFile('node_modules/@zerowallscience/plugin-mcp/lib/index.js').toString('utf8')
@@ -333,6 +335,16 @@ if (!hostOnly) await verifyDesktopStartup()
 console.log(`Packaged ZeroWall ASAR runtime and package policy verified; startup: ${hostOnly ? 'Host' : desktopOnly ? 'Desktop' : 'Host and Desktop'}.`)
 
 async function verifyArchivePolicy() {
+  // BioGenie executes this signed resource payload and verifies every file
+  // before use. Its agent guides are part of that payload, not build docs.
+  const bioPrefix = 'node_modules/@zerowallscience/plugin-biogenie/payload/'
+  const bioReceipt = JSON.parse(readArchiveFile(bioPrefix + 'payload-receipt.json').toString('utf8'))
+  if (bioReceipt.schema !== 1 || !Array.isArray(bioReceipt.files)) throw new Error('Invalid packaged BioGenie payload receipt.')
+  for (const file of bioReceipt.files) {
+    if (typeof file.path !== 'string' || file.path.startsWith('/') || file.path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Unsafe packaged BioGenie payload path.')
+    const bytes = readArchiveFile(bioPrefix + file.path)
+    if (bytes.length !== file.size || createHash('sha256').update(bytes).digest('hex') !== file.sha256) throw new Error('Packaged BioGenie payload mismatch: ' + file.path)
+  }
   const forbidden = archiveFiles.filter(path => path.startsWith('node_modules/') && (
     /\.(?:d\.ts|ts|tsx|mts|cts|map|pdb|tsbuildinfo)$/i.test(path)
     || hasForbiddenRuntimeDirectory(path)
@@ -568,7 +580,7 @@ async function verifyCoreRuntimeArchive() {
   }
   required.push('node_modules/pend/package.json', 'node_modules/pend/index.js')
   for (const path of required) if (!rawArchiveSet.has(path)) throw new Error(`Core ASAR is missing required startup file: ${path}`)
-  for (const entry of ['out/main/index.js', 'out/main/python-updater-worker.js', 'out/preload/index.cjs']) {
+  for (const entry of ['out/main/index.js', 'out/preload/index.cjs']) {
     if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
       throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
     }
@@ -580,12 +592,20 @@ async function verifyCoreRuntimeArchive() {
   if (updaterReceipt.schema !== 1 || updaterReceipt.buildId !== stagedDesktopReceipt.buildId || !Array.isArray(updaterReceipt.files)) {
     throw new Error('External Python updater assets do not belong to the current desktop build.')
   }
-  for (const entry of ['python-updater-worker.js', ...rawArchiveFiles
-    .filter(path => /^out\/main\/chunks\/mcp-environment-.+\.js$/u.test(path))
-    .map(path => path.slice('out/main/'.length))]) {
-    const bytes = await readFile(resolve(updaterRoot, entry))
-    if (!bytes.equals(readArchiveFile(`out/main/${entry}`))) throw new Error(`External Python updater asset differs from ASAR: ${entry}`)
+  const workerManifestBytes = await readFile(resolve(updaterRoot, 'worker-manifest.json'))
+  const workerManifest = JSON.parse(workerManifestBytes)
+  const keys = JSON.parse(await readFile(resolve(repositoryRoot, 'config/catalogs/trusted-keys.json'), 'utf8'))
+  verifySignedDocument(workerManifest, keys)
+  if (workerManifest.schema !== 1 || workerManifest.abi !== 1 || workerManifest.localOnly || workerManifest.entry !== 'python-updater-worker.js') throw new Error('Python worker is not a stable ABI 1 resource.')
+  const workerPaths = new Set(workerManifest.files.map(file => file.path))
+  if (!workerPaths.has(workerManifest.entry) || workerPaths.size !== workerManifest.files.length) throw new Error('Python worker closure is incomplete or duplicated.')
+  for (const file of workerManifest.files) {
+    if (typeof file.path !== 'string' || file.path.includes('\\') || file.path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Unsafe signed Python worker path')
+    const bytes = await readFile(resolve(updaterRoot, file.path))
+    if (bytes.length !== file.size || createHash('sha256').update(bytes).digest('hex') !== file.sha256) throw new Error('Signed Python worker integrity failed: ' + file.path)
+    if (!bytes.equals(readArchiveFile('node_modules/@zerowallscience/plugin-python/lib/worker/' + file.path))) throw new Error('Desktop worker differs from its independently installed Python plugin: ' + file.path)
   }
+  if (!workerManifestBytes.equals(readArchiveFile('node_modules/@zerowallscience/plugin-python/lib/worker/worker-manifest.json'))) throw new Error('Desktop Python worker signature differs from the bundled plugin')
   for (const asset of updaterReceipt.files) {
     if (typeof asset.path !== 'string' || asset.path.includes('\\') || asset.path.split('/').some(part => !part || part === '.' || part === '..')) {
       throw new Error('External Python updater receipt contains an unsafe path.')
@@ -614,22 +634,6 @@ async function verifyCoreRuntimeArchive() {
   if (updaterRequireCheck.status !== 0) {
     throw new Error(`External Python updater cannot load its ZIP runtime: ${(updaterRequireCheck.stderr || updaterRequireCheck.error?.message || 'unknown error').trim()}`)
   }
-  const updaterChunkPaths = rawArchiveFiles.filter(path => /^out\/main\/chunks\/mcp-environment-.+\.js$/u.test(path))
-  if (updaterChunkPaths.length === 0) throw new Error('Core ASAR is missing the Python updater environment chunk.')
-  for (const name of ['yauzl', 'pend']) {
-    const externalManifest = JSON.parse(await readFile(resolve(updaterRoot, 'modules', name, 'package.json'), 'utf8'))
-    const archiveManifest = JSON.parse(readArchiveFile(`node_modules/${name}/package.json`).toString('utf8'))
-    for (const field of ['name', 'version', 'main', 'dependencies']) {
-      if (JSON.stringify(externalManifest[field]) !== JSON.stringify(archiveManifest[field])) {
-        throw new Error(`External Python updater ${name} manifest differs from Core ASAR in ${field}.`)
-      }
-    }
-    const entry = `modules/${name}/index.js`
-    if (!(await readFile(resolve(updaterRoot, entry))).equals(readArchiveFile(`node_modules/${name}/index.js`))) {
-      throw new Error(`External Python updater dependency differs from Core ASAR: ${entry}`)
-    }
-  }
-
   const defaults = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8'))
   for (const entry of ['resource-manager.mjs', 'profile.mjs', 'zws.mjs', ...(fullOffline ? ['offline-profile.mjs'] : [])]) {
     const bytes = await readFile(resolve(packaged.resourcesRoot, 'commands', entry))
@@ -743,6 +747,7 @@ function verifyZoteroAdapters() {
 }
 
 function hasForbiddenRuntimeDirectory(path) {
+  if (path.startsWith('node_modules/@zerowallscience/plugin-biogenie/payload/docs/')) return false
   if (['node_modules/dsh-zotero/docs', 'node_modules/dsh-zotero/docs/images', 'node_modules/dsh-zotero/docs/images/icon.png'].includes(path)) return false
   const forbidden = new Set(['test', 'tests', '__tests__', 'example', 'examples', 'docs'])
   const segments = path.split('/')
@@ -1674,6 +1679,7 @@ async function verifyDesktopStartup() {
       await credential.getByRole('button', { name: '稍后配置' }).click()
       await credential.waitFor({ state: 'hidden' })
     }
+    await handleResourceUpdateNotices(page)
     await page.getByRole('button', { name: /^(设置|Settings)$/ }).click()
     const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
     // Only inspect the Settings shell navigation. Extension Center renders a

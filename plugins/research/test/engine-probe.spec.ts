@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { probeBrainGlobe, probeEngine } from '../src/host/index.js'
 import { auditBrainregOutputDirectory, parseBrainregMetadata, validateBrainregOutputs } from '../src/host/brain-atlas.js'
+afterEach(() => vi.unstubAllEnvs())
 
 describe('engine subprocess health', () => {
   it.each([
@@ -20,6 +21,7 @@ describe('engine subprocess health', () => {
   it('keeps BrainGlobe unavailable when the shared runtime is explicitly unavailable', async () => {
     const previous = { shared: process.env.ZEROWALL_PYTHON_ROOT, managed: process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT, legacy: process.env.ZEROWALL_BRAINGLOBE_PYTHON }
     process.env.ZEROWALL_PYTHON_ROOT = join(tmpdir(), 'zerowall-python-does-not-exist')
+    vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', join(tmpdir(), 'zerowall-python-does-not-exist', 'Python'))
     delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
     delete process.env.ZEROWALL_BRAINGLOBE_PYTHON
     try { await expect(probeBrainGlobe()).resolves.toMatchObject({ id: 'brainglobe', available: false }) }

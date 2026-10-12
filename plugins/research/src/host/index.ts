@@ -49,7 +49,7 @@ import type { CanvasRequest, FijiExperimentRequest, FijiExperimentResponse, Flow
 import type { FijiWorkflowRequest, FijiWorkflowResponse } from '../shared/types.js'
 import { engineEnvironment, NativeEngineService } from './native-engines.js'
 import { readFile, stat, access, mkdir } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runtime-process.js'
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ScientificPreviewPayload, ScientificEngineConfig, ScientificEngineId, ScientificEngineLaunchResult, ScientificEngineStatus, ScienceViewerRequest, ScienceViewerResponse, CellViewerRequest, BrainAtlasRequest } from '../shared/types.js'

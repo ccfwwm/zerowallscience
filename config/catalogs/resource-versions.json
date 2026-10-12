@@ -1,5 +1,7 @@
 {
-  "python": { "science-dependencies": "8.1.2" },
+  "python": {
+    "science-dependencies": "8.1.3"
+  },
   "skill": {
     "gpt-image-generator": "0.1.2",
     "mineru-document-parser": "0.1.1",
@@ -229,7 +231,7 @@
     "venue-templates": "0.1.1",
     "zarr-python": "0.1.1",
     "zerowall-aichem": "0.1.1",
-    "zerowall-bio": "0.1.2",
+    "zerowall-bio": "0.1.3",
     "zerowall-bio-tools": "0.1.1",
     "zerowall-brainglobe": "0.1.1",
     "zerowall-cells": "0.1.1",
@@ -266,7 +268,7 @@
     "zerowall-omicverse-spatial": "0.1.1",
     "zerowall-paper-analysis": "0.1.1",
     "zerowall-paper-compare": "0.1.1",
-    "zerowall-python-packages": "0.1.2",
+    "zerowall-python-packages": "0.1.4",
     "zerowall-r-files": "0.1.1",
     "zerowall-r-packages": "0.1.1",
     "zerowall-rbioagent": "0.1.1",

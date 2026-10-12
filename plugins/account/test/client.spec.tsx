@@ -61,7 +61,7 @@ describe('AI Cloud account panel', () => {
       get: vi.fn((name: string) => name === 'remote.zerowallAccount' ? account : name === 'remote.session' ? session : undefined),
       slots: {
         inject: vi.fn((_name: string, mount: () => unknown) => mount()),
-        register: vi.fn((options: { inject?: () => Record<string, any> }) => { if (options.inject) injected = options.inject; return () => undefined }),
+        register: vi.fn((options: { name?: string; key?: string; inject?: () => Record<string, any> }) => { if (options.name === 'settings.models.provider-card') expect(options.key).toBe('zerowall-ai-cloud'); if (options.inject) injected = options.inject; return () => undefined }),
       },
     }
     apply(ctx as any)
@@ -381,7 +381,7 @@ describe('AI Cloud account panel', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
-  it('keeps model names out of account management and renders a scannable payment order', async () => {
+  it('offers a collapsed searchable model list and renders a scannable payment order', async () => {
     const actions = props()
     actions.getAccount.mockResolvedValue({
       status: 'signedIn', email: 'user@example.com', balance: 18, currency: 'CNY',
@@ -402,6 +402,11 @@ describe('AI Cloud account panel', () => {
     await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
     fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
     expect(await screen.findByText('账户余额')).toBeTruthy()
+    const model = screen.getByText('deepseek-v4-pro')
+    const list = model.closest('details')!
+    expect(list.open).toBe(false)
+    list.open = true
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索模型、分组、协议或能力' }), { target: { value: 'missing' } })
     expect(screen.queryByText('deepseek-v4-pro')).toBeNull()
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '10' } })
     fireEvent.click(screen.getByRole('button', { name: '生成支付订单' }))

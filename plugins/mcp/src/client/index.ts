@@ -1,5 +1,5 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import { McpConnectionsButton, PythonEnvironmentPanel, type McpServerInput } from './McpConnectionsButton.tsx'
+import { McpConnectionsButton, type McpServerInput } from './McpConnectionsButton.tsx'
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 import { registerKetcherTab } from './KetcherTab.js'
 
@@ -30,8 +30,4 @@ export function apply(ctx: ClientContext): void {
       clearRdatalinuxAuthorization: async () => unwrapRemoteResult('zerowall.mcp.clearRdatalinuxAuthorization', await mcpRemote.clearRdatalinuxAuthorization()),
     }),
   }, McpConnectionsButton))
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section', id: 'zerowall-python-environment', order: 30,
-    label: () => t('mcp.pythonEnvironment'), locale: NS, inject: () => ({}),
-  }, PythonEnvironmentPanel))
 }

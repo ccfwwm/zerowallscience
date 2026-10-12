@@ -27,6 +27,7 @@ it('atlas shutdown waits for pending analysis and prevents late viewer registrat
  const project=store.createProject({name:'Lifetime',rootPath:tmpdir()})
  let resume!:(value:unknown)=>void;let started!:()=>void
  const ready=new Promise<void>(resolve=>started=resolve)
+ ;(service as any).missingBrainDependencies=async()=>[]
  ;(service as any).run=()=>{started();return new Promise(resolve=>resume=resolve)}
  const pending=service.execute(project,{sessionId:'test',action:'open'}).then(()=>null,error=>error)
  await ready;let stopped=false;const closing=service.dispose().then(()=>{stopped=true})

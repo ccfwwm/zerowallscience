@@ -16,6 +16,7 @@ export interface ZeroWallBundleOptions {
   hostAlwaysBundle?: RegExp[]
   inlinePngAssets?: boolean
   universalViewer?: boolean
+  pythonWorker?: boolean
 }
 
 export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) {
@@ -23,6 +24,11 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
   const hasRemote = manifest.exports?.['./remote'] !== undefined
   const host = options.host !== false
   const configs = []
+  if (options.pythonWorker) configs.push({
+    name: `${id}/worker`, entry: { 'python-updater-worker': 'src/worker/python-updater-worker.ts' },
+    outDir: 'lib/worker', format: ['esm'], platform: 'node', target: 'es2024',
+    fixedExtension: false, dts: false, clean: false, codeSplitting: false,
+  })
   if (host) {
     configs.push({
       name: id,

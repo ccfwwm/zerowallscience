@@ -6,7 +6,7 @@
 import os
 import re
 import sys
-from seq_util import clean_seq
+from seq_util import clean_seq, read_seq_input
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -15,14 +15,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Primer3 explain 短语 → 中文可操作建议。
 # n=0 时只回传英文统计（如 "considered 548, overlap target 548, ok 0"）时，
-# agent 只能靠猜测逐个放宽参数试错（v0.6.26 E2E：连续 3 次无效调用后才放弃）。
+# agent 只能靠猜测逐个放宽参数试错（v0.6.26 实测：连续 3 次无效调用后才放弃）。
 _PRIMER3_EXPLAIN_HINTS = (
     ('overlap target',
      '候选引物与 SEQUENCE_TARGET 重叠被排除——该参数（本工具的 must_include）要求引物落在'
      '目标区之外，目标区覆盖到序列端点时必然无解；要扩增某区间请用 target_region，'
      '要扩增全长请省略 must_include'),
     ('no target', '没有候选引物能覆盖要求的 must_include 区域'),
-    ('gc content failed', 'GC% 落在 gc_range 之外（高 GC / 低 GC 模板常见）→ 放宽 gc_range'),
+    ('gc content failed', 'GC% 落在 gc_range 之外（高 GC / 低 GC 模板常见）→ 放宽 gc_range；'
+     '若产物长度由 target_region 间接约束过窄，可改用 product_size_range 显式给出 [min, max]'),
     ('gc clamp', "3' 端 GC 钳不足 → 放宽 gc_range 或加长引物"),
     ('tm too high', 'Tm 高于 tm_range 上限 → 抬高 tm_range 上限'),
     ('tm too low', 'Tm 低于 tm_range 下限 → 压低 tm_range 下限'),
@@ -43,8 +44,8 @@ def _primer3_explain_hint(explain):
         if key in low and hint not in hits:
             hits.append(hint)
     if not hits:
-        return ('未能从 explain 定位单一原因；可先放宽 tm_range / gc_range / primer_size，'
-                '或省略 target_region 只按产物长度约束设计。')
+        return ('未能从 explain 定位单一原因；可先放宽 tm_range / gc_range / primer_size；'
+                '产物长度用 product_size_range [min, max] 显式给出（或省略 target_region 只按产物长度设计）。')
     return '；'.join(hits)
 
 
@@ -60,9 +61,7 @@ def op_primer3_design(args):
     except ImportError:
         return {'error': 'primer3-py 未安装；请在 ZeroWall 设置 > Python 环境中同步共享依赖清单。'}
 
-    sequence = clean_seq(args.get('sequence', ''))
-    if not sequence:
-        raise ValueError('sequence 必填（模板 DNA 序列）')
+    sequence = clean_seq(read_seq_input(args.get('sequence') or '', 'sequence'))
     if len(sequence) < 40:
         raise ValueError(f'模板太短（{len(sequence)} bp），Primer3 至少需要 ~40 bp')
 
@@ -78,7 +77,7 @@ def op_primer3_design(args):
     # target_region 语义 = 「要扩增的区间」（引物落在区间内）→ 映射到 Primer3 的
     # SEQUENCE_INCLUDED_REGION。绝不能映射到 SEQUENCE_TARGET：后者要求引物位于
     # 目标区之外，扩增全长（如 [0, 720]）时引物无处可放 → 恒返回 ok 0，且与
-    # 放宽 tm/gc/二级结构约束完全无关（v0.6.26 E2E 实测：eGFP 720bp 全长扩增
+    # 放宽 tm/gc/二级结构约束完全无关（v0.6.26 实测：eGFP 720bp 全长扩增
     # 连续 3 次失败，agent 无法靠调参自救）。
     target_region = args.get('target_region')
     if target_region:
@@ -104,7 +103,17 @@ def op_primer3_design(args):
     # 产物长度约束：给了 target_region 就必须让产物真正覆盖该区间，否则 Primer3
     # 会在区间内部挑最短产物（实测 target_region=[0,720] 全长扩增返回 315bp 短产物）。
     max_primer = int(primer_size[1])
-    if target_region:
+    explicit_range = args.get('product_size_range')
+    if explicit_range:
+        # 显式产物长度区间（2026-10-04 增补）：直接控制 PRIMER_PRODUCT_SIZE_RANGE，
+        # 优先级最高（覆盖 target_region 推导）。此前只能靠 target_region 间接控制，
+        # agent 首次使用难以掌握（实战：连续空结果后靠自愈学会）。
+        ps_min, ps_max = int(explicit_range[0]), int(explicit_range[1])
+        if ps_min <= 0 or ps_max < ps_min:
+            raise ValueError(
+                f'product_size_range [{ps_min}, {ps_max}] 无效（需 0 < min <= max）')
+        product_range = [[ps_min, ps_max]]
+    elif target_region:
         tlen = int(target_region[1])
         product_range = [[max(60, tlen), min(len(sequence) + 2 * max_primer, tlen + 2 * max_primer)]]
     else:

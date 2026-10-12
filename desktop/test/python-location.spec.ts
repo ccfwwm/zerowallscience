@@ -8,26 +8,26 @@ const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 
 describe('shared Python location', () => {
-  it('uses LocalAppData on first launch without a Roaming profile', async () => {
+  it('resolves from the actual executable on first launch without a Roaming profile', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
-    const result = await resolvePythonLocation({ localAppDataPath: join(root, 'Local') })
-    expect(result.runtimeRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python'))
-    expect(result.managementRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python', '.zerowall'))
+    const result = await resolvePythonLocation({ localAppDataPath: join(root, 'Local'), applicationInstallRoot: join(root, 'install') })
+    expect(result.runtimeRoot).toBe(join(root, 'install', 'Python'))
+    expect(result.managementRoot).toBe(join(root, 'install', 'Python', '.zerowall'))
   })
 
-  it('keeps a fresh packaged launch in LocalAppData even when the install directory is writable', async () => {
+  it('uses the installation directory without creating or probing it at startup', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
     const install = join(root, 'install')
     const result = await resolvePythonLocation({
       localAppDataPath: join(root, 'Local'),
       applicationInstallRoot: install,
     })
-    expect(result.runtimeRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python'))
-    expect(result.managementRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python', '.zerowall'))
+    expect(result.runtimeRoot).toBe(join(root, 'install', 'Python'))
+    expect(result.managementRoot).toBe(join(root, 'install', 'Python', '.zerowall'))
     await expect(lstat(result.runtimeRoot)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
-  it('falls back to LocalAppData when the installation directory is not writable', async () => {
+  it('keeps the installation target even when it is not writable', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
     const install = join(root, 'install-file')
     await writeFile(install, 'not a directory')
@@ -35,7 +35,7 @@ describe('shared Python location', () => {
       localAppDataPath: join(root, 'Local'),
       applicationInstallRoot: install,
     })
-    expect(result.runtimeRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python'))
+    expect(result.runtimeRoot).toBe(join(install, 'Python'))
   })
 
   it('does not read or migrate an old Roaming Python pointer', async () => {
@@ -47,19 +47,19 @@ describe('shared Python location', () => {
     await writeFile(location, JSON.stringify({ runtimeRoot: oldPython }))
     const install = join(root, 'install')
     const result = await resolvePythonLocation({ localAppDataPath: join(root, 'Local'), applicationInstallRoot: install })
-    expect(result.runtimeRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'Python'))
+    expect(result.runtimeRoot).toBe(join(root, 'install', 'Python'))
     await expect(readFile(result.locationPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
     expect(JSON.parse(await readFile(location, 'utf8'))).toEqual({ runtimeRoot: oldPython })
   })
 
-  it('replaces a stale local pointer to the old Roaming default with the LocalAppData default', async () => {
+  it('ignores a legacy default without rewriting its pointer at startup', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
     const local = join(root, 'Local'); const oldRoot = join(root, 'Roaming', 'zerowall-science')
     await mkdir(join(local, 'ZeroWall Science'), { recursive: true })
     await writeFile(join(local, 'ZeroWall Science', 'python-location.json'), JSON.stringify({ runtimeRoot: join(oldRoot, 'Python') }))
     const install = join(root, 'install')
     const result = await resolvePythonLocation({ localAppDataPath: local, applicationInstallRoot: install, legacyRoamingRoots: [oldRoot] })
-    expect(result.runtimeRoot).toBe(join(local, 'ZeroWall Science', 'Python'))
+    expect(result.runtimeRoot).toBe(join(install, 'Python'))
   })
 
   it('accepts a writable application install directory and data directory', async () => {
@@ -78,7 +78,7 @@ describe('shared Python location', () => {
     expect(result.managementRoot).toBe(join(install, 'Python', '.zerowall'))
   })
 
-  it('falls back from a stale saved path and rewrites the LocalAppData pointer', async () => {
+  it('preserves an unavailable user selection without writing at startup', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
     const local = join(root, 'Local'); const app = join(root, 'app'); const blockedParent = join(root, 'removed-drive')
     await mkdir(join(local, 'ZeroWall Science'), { recursive: true })
@@ -90,8 +90,9 @@ describe('shared Python location', () => {
       applicationInstallRoot: app,
     })
 
-    expect(result.runtimeRoot).toBe(join(local, 'ZeroWall Science', 'Python'))
-    expect(JSON.parse(await readFile(join(local, 'ZeroWall Science', 'python-location.json'), 'utf8'))).toEqual({ runtimeRoot: result.runtimeRoot })
+    expect(result.runtimeRoot).toBe(join(blockedParent, 'Python'))
+    expect(result.source).toBe('user-selected')
+    expect(JSON.parse(await readFile(join(local, 'ZeroWall Science', 'python-location.json'), 'utf8'))).toEqual({ runtimeRoot: join(blockedParent, 'Python') })
   })
 
   it('normalizes a selected parent and an explicit Python child consistently', () => {

@@ -6,7 +6,7 @@ import os
 import sys
 import re
 from collections import defaultdict
-from seq_util import clean_seq
+from seq_util import clean_seq, read_seq_input
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -109,9 +109,7 @@ def op_crispr_guide(args):
       max_mismatches: off-target 错配上限（默认 3）
       top_n: 返回候选数（默认 10）
     """
-    sequence = clean_seq(args.get('sequence', ''))
-    if not sequence:
-        raise ValueError('sequence 必填（DNA 模板序列）')
+    sequence = clean_seq(read_seq_input(args.get('sequence') or '', 'sequence'))
     if len(sequence) < 23:
         raise ValueError(f'模板太短（{len(sequence)} bp），至少需要 23bp')
 

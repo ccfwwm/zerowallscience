@@ -33,6 +33,8 @@ if sys.platform == "win32":
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import matplotlib.text as mtext
+from matplotlib.transforms import Bbox
 import numpy as np
 import pandas as pd
 
@@ -59,9 +61,10 @@ def _pick_labels(df: pd.DataFrame, effect_col: str, padj_col: str | None,
                  label_col: str | None = None) -> set:
     """标注预算：top effect + top significance + 用户点名。绝不全标。"""
     chosen = set()
+    _col = label_col if (label_col and label_col in df.columns) else None
     if user_labels:
         for name in user_labels:
-            chosen.update(df.index[df[label_col] == name] if label_col else
+            chosen.update(df.index[df[_col] == name] if _col else
                           df.index[df.index.astype(str) == str(name)])
     if padj_col and padj_col in df:
         sig = df[df[padj_col] < alpha]
@@ -81,6 +84,58 @@ def _pick_labels(df: pd.DataFrame, effect_col: str, padj_col: str | None,
     return {c for c in chosen if not pd.isna(c)}
 
 
+def _fit_annotations(ax, texts, arrows=()):
+    """Final pixel geometry guard: keep visible labels inside the data axes.
+
+    adjustText is heuristic and may leave overlaps at an axes boundary. Preserve
+    its positions when possible, otherwise try nearby rows/columns in a stable
+    order with a 4 px gap so neighbouring numeric labels remain distinct.
+    Do not move or render annotations whose target was
+    clipped by the volcano cap. Reconnect any moved label's existing leader.
+    """
+    ax.figure.canvas.draw()
+    renderer = ax.figure.canvas.get_renderer()
+    bounds = ax.bbox
+    legend = ax.get_legend()
+    occupied = [legend.get_window_extent(renderer)] if legend is not None else []
+    gap = 4.0
+    for text in texts:
+        if not text._check_xy(renderer):
+            continue
+        text.get_window_extent(renderer)  # update annotation's text transform
+        box = mtext.Text.get_window_extent(text, renderer)
+        if box.width + 2 * gap > bounds.width or box.height + 2 * gap > bounds.height:
+            continue  # preserve the text and let audit_layout report the limit
+        dx = max(bounds.x0 + gap - box.x0, min(0, bounds.x1 - gap - box.x1))
+        dy = max(bounds.y0 + gap - box.y0, min(0, bounds.y1 - gap - box.y1))
+        step = box.height + gap
+        limit = int(np.ceil(max(bounds.width, bounds.height) / step))
+        offsets = [(0, 0)]
+        for radius in range(1, limit + 1):
+            offsets.extend((u * step, v * step) for u, v in
+                           ((0, -radius), (0, radius), (-radius, 0), (radius, 0),
+                            (-radius, -radius), (radius, -radius),
+                            (-radius, radius), (radius, radius)))
+        for u, v in offsets:
+            candidate = Bbox.from_bounds(box.x0 + dx + u, box.y0 + dy + v,
+                                         box.width, box.height)
+            if not (bounds.x0 + gap <= candidate.x0 and candidate.x1 <= bounds.x1 - gap
+                    and bounds.y0 + gap <= candidate.y0 and candidate.y1 <= bounds.y1 - gap):
+                continue
+            if any(candidate.padded(gap).overlaps(other) for other in occupied):
+                continue
+            transform = text.get_transform()
+            position = transform.transform(text.get_position())
+            text.set_position(transform.inverted().transform(position + (dx + u, dy + v)))
+            occupied.append(candidate)
+            for arrow in arrows:
+                if getattr(arrow, 'patchA', None) is text:
+                    arrow.set_positions(text.get_position(), text.xy)
+            break
+        else:
+            occupied.append(box)  # no silent dropping; audit will report it
+
+
 def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC',
                       p_col: str = 'pvalue', padj_col: str | None = 'padj',
                       base_mean_col: str | None = None, label_col: str | None = None,
@@ -88,7 +143,7 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
                       effect_threshold: float = 1.0, use_padj: bool = True,
                       user_labels: list[str] | None = None, top_k: int = 5,
                       out_file: str | None = None, journal: str = 'nature',
-                      ax=None) -> tuple:
+                      ax=None, legend_loc: str | int = 'outside', viewer=False) -> tuple:
     """差异分析事实图（Volcano 或 MA）。返回 (fig, ax, meta)。
 
     参数：
@@ -101,12 +156,23 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
       top_k: 每类自动标注上限
       out_file: 落盘路径（有值即自动 export）
       journal: 'nature' 预设（其余回退 nature 色板并 WARN）
+      legend_loc: 默认 'outside'：axes 上方留白区横排，不改变数据区尺寸；
+                  可覆盖为 matplotlib 的位置（如 'best' / 'upper right'）。
+      viewer: 显式 True 或配置 dict 才登记 sidecar 绑定；无 out_file 时通过
+              fig.figview_binding 调用 export_bundle。配置键为 figure_id/output_dir。
 
-    返回 meta ={n_sig_up, n_sig_down, n_total, thresholds, labeled:[...], out_file}
+    返回 meta 保留既有键，并增加 layout_audit:[(severity, msg), ...] 和
+    layout_suggestions:[str, ...]。出图前自动审计，WARN 不阻断导出。
     """
     if isinstance(dz_frame, str):
         sep = '\t' if dz_frame.endswith(('.tsv', '.txt')) else ','
-        df = pd.read_csv(dz_frame, sep=sep)
+        if viewer is not False and viewer is not None:
+            import io
+            from pathlib import Path
+            source_bytes = Path(dz_frame).read_bytes()
+            df = pd.read_csv(io.BytesIO(source_bytes), sep=sep)
+        else:
+            df = pd.read_csv(dz_frame, sep=sep)
     else:
         df = dz_frame.copy()
     if effect_col not in df.columns:
@@ -152,12 +218,13 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
         fig = ax.figure
 
     # Tier C：全 NS 灰背景 + Tier A/B 彩色显著
-    ax.scatter(x, y, s=6, c=SEM_NEUTRAL, alpha=.6, lw=0, label=None)
+    background_artist = ax.scatter(x, y, s=6, c=SEM_NEUTRAL, alpha=.6, lw=0, label=None)
+    down_artist = up_artist = None
     if down_mask.any():
-        ax.scatter(x[down_mask.to_numpy()], y[down_mask.to_numpy()], s=8,
+        down_artist = ax.scatter(x[down_mask.to_numpy()], y[down_mask.to_numpy()], s=8,
                    c=SEM_DOWN, alpha=.9, lw=0, label=f'down ({int(down_mask.sum())})')
     if up_mask.any():
-        ax.scatter(x[up_mask.to_numpy()], y[up_mask.to_numpy()], s=8,
+        up_artist = ax.scatter(x[up_mask.to_numpy()], y[up_mask.to_numpy()], s=8,
                    c=SEM_UP, alpha=.9, lw=0, label=f'up ({int(up_mask.sum())})')
 
     # 阈值线（数据解释结构，进图）
@@ -167,14 +234,18 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
             ax.axvline(v, color='#444444', lw=.5, ls='--', zorder=1)
 
     # 标注预算（Tier A highlight）；有 adjustText 时自动避碰，无则静态 offset 回退
+    # label_col 缺省：仅当 df 真的带 'name' 列才用它，否则回退索引（2026-10-05 修：
+    # 原 `label_col or 'name'` 会让没有任何列命名的 DataFrame 直接 KeyError）
+    _label_eff = label_col if label_col else ('name' if 'name' in df.columns else None)
     label_idx = _pick_labels(df, effect_col, padj_col if use_padj else None,
                              alpha, top_k=top_k, user_labels=user_labels,
-                             label_col=label_col or 'name')
+                             label_col=_label_eff)
     labeled = []
     annotations = []
     try:
-        labels_arr = df[label_col].astype(str).to_numpy() if label_col else \
-            df.index.astype(str).to_numpy()
+        labels_arr = (df[label_col].astype(str).to_numpy()
+                      if (label_col and label_col in df.columns) else
+                      df.index.astype(str).to_numpy())
         pos_map = {idx: i for i, idx in enumerate(df.index)}
         for idx in label_idx:
             i = pos_map.get(idx)
@@ -187,23 +258,6 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
             labeled.append(nm)
     except Exception as e:  # 标注失败不拖垮出图
         print(f"[warn] label pass failed: {type(e).__name__}: {e}", file=sys.stderr)
-    if annotations:
-        try:
-            from adjustText import adjust_text
-            texts = [ax.annotate(nm, (xi, yi), fontsize=6, color=SEM_HIGHLIGHT)
-                     for nm, xi, yi in annotations]
-            adjust_text(texts, ax=ax, expand=(1.15, 1.25),
-                        arrowprops=dict(arrowstyle='-', color='#333333', lw=.4))
-        except ImportError:
-            # Shared dependency installation failed: use a static offset.
-            for nm, xi, yi in annotations:
-                ax.annotate(nm, (xi, yi), textcoords='offset points',
-                            xytext=(3, 3), fontsize=6, color=SEM_HIGHLIGHT,
-                            ha='left', va='bottom')
-        except Exception as e:
-            print(f"[warn] adjust_text failed, fallback static: {type(e).__name__}: {e}",
-                  file=sys.stderr)
-
     # 轴标签（含语义单位）
     if mode == 'volcano':
         ax.set_xlabel(f'{effect_col}')
@@ -213,8 +267,14 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
         ax.set_xlabel(f'log10({base_mean_col})' if base_mean_col else 'log10(mean expression)')
         ax.set_ylabel(effect_col)
 
-    leg = ax.legend(loc='best', frameon=False, fontsize=6, handletextpad=.2,
-                    borderaxespad=.2) if (up_mask.any() or down_mask.any()) else None
+    # 'best' can hide dense significant points even in its least busy corner.
+    # Put the default legend above the axes in existing whitespace, preserving
+    # scatter/threshold/annotation geometry, limits and the axes rectangle.
+    legend_position = (dict(loc='lower left', bbox_to_anchor=(0, 1.02), ncol=2)
+                       if legend_loc == 'outside' else dict(loc=legend_loc))
+    if up_mask.any() or down_mask.any():
+        ax.legend(**legend_position, frameon=False, fontsize=6, handletextpad=.2,
+                  borderaxespad=.2)
 
     # 截断 y 上界防 p=0 极端值压缩主体
     if mode == 'volcano' and len(y) and np.isfinite(y).any():
@@ -222,6 +282,38 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
         ymax = min(np.nanmax(y[np.isfinite(y)]), max(q999, 3.0) * 1.15)
         ax.set_ylim(top=max(ymax, 4))
     ax.margins(x=.04)
+
+    # Resolve limits BEFORE placing labels: adjusting against the earlier
+    # autoscaled ylim and then lowering the volcano cap moved labels above the
+    # final axes, directly into the outside legend's strip (Hermes R2, seed 7).
+    if annotations:
+        # Leader patches also update dataLim. Freeze the resolved data limits so
+        # later draws cannot rescale the axes underneath the pixel layout guard.
+        ax.set_xlim(ax.get_xlim())
+        ax.set_ylim(ax.get_ylim())
+        try:
+            from adjustText import adjust_text
+            texts = [ax.annotate(nm, (xi, yi), fontsize=6, color=SEM_HIGHLIGHT)
+                     for nm, xi, yi in annotations]
+            fig.canvas.draw()
+            # Capped targets render no text. Matplotlib reports a unit bbox for
+            # clipped annotations, so bbox width alone cannot identify them.
+            visible_texts = [text for text in texts
+                             if ax.patch.contains_point(ax.transData.transform(text.xy))]
+            if visible_texts:
+                _, arrows = adjust_text(visible_texts, ax=ax, expand=(1.15, 1.25),
+                                        ensure_inside_axes=True, expand_axes=False,
+                                        arrowprops=dict(arrowstyle='-', color='#333333', lw=.4))
+                _fit_annotations(ax, visible_texts, arrows)
+        except ImportError:
+            # 第二层未装（adjustText）：静态 offset 兜底，仍保留图例条带。
+            texts = [ax.annotate(nm, (xi, yi), textcoords='offset points',
+                                 xytext=(3, 3), fontsize=6, color=SEM_HIGHLIGHT,
+                                 ha='left', va='bottom')
+                     for nm, xi, yi in annotations]
+            _fit_annotations(ax, texts)
+        except Exception as e:
+            print(f"[warn] adjust_text failed: {type(e).__name__}: {e}", file=sys.stderr)
 
     meta = {
         'mode': mode,
@@ -238,6 +330,64 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
             f'NS: {SEM_NEUTRAL}; up: {SEM_UP}; down: {SEM_DOWN}',
         ],
     }
+    from figurelib.visual_qa import audit_layout
+    meta['layout_audit'] = audit_layout(fig)
+    suggestions = []
+    for severity, message in meta['layout_audit']:
+        if message.startswith('图例遮数据：'):
+            suggestions.append("将图例移到数据区外（legend_loc='outside'），再运行布局自检。")
+        elif message.startswith('用户文本互叠：'):
+            suggestions.append('移动重叠标注或增加标题/面板字母间距，再运行布局自检。')
+        elif '超出画布被裁切' in message:
+            suggestions.append('用 finalize_figure(fig) 调整布局，或导出时 bbox_inches=\'tight\'。')
+        elif '刻度标签重叠' in message:
+            suggestions.append('减少刻度或旋转刻度标签，再运行布局自检。')
+        elif severity == 'FAIL':
+            suggestions.append('配置可覆盖缺失字形的字体，再运行布局自检。')
+    meta['layout_suggestions'] = list(dict.fromkeys(suggestions))
+    viewer_enabled = viewer is not False and viewer is not None
+    if viewer_enabled:
+        if viewer is not True and not isinstance(viewer, dict):
+            raise ValueError('viewer must be False, True or an explicit configuration dict')
+        from figurelib.figview import FigureBinding, sha256
+        options = viewer if isinstance(viewer, dict) else {}
+        if set(options) - {'figure_id', 'output_dir'}:
+            raise ValueError('Unknown viewer options; supported: figure_id, output_dir')
+        source = {'kind': 'dataframe'}
+        parser = {'kind': 'dataframe'}
+        if isinstance(dz_frame, str):
+            from pathlib import Path
+            source = {'kind': 'file', 'label': Path(dz_frame).name, 'path': str(dz_frame),
+                      'file_sha256': sha256(source_bytes)}
+            parser = {'kind': 'pandas.read_csv', 'delimiter': sep, 'encoding': 'utf-8',
+                      'options': {'header': 0, 'index_col': None}}
+        parameters = dict(effect_col=effect_col, p_col=p_col, padj_col=padj_col,
+                          base_mean_col=base_mean_col, label_col=label_col, mode=mode,
+                          alpha=alpha, effect_threshold=effect_threshold, use_padj=use_padj,
+                          user_labels=list(user_labels or []), top_k=top_k,
+                          journal=journal, legend_loc=legend_loc)
+        binding = FigureBinding(fig, df, id_column=label_col if label_col in df else None,
+                                source=source, parser=parser,
+                                lineage={'filters': [], 'sort': [], 'aggregations': []},
+                                redraw={'recipe_id': 'figurelib.differential_plot',
+                                        'script_path': __file__, 'parameters': parameters,
+                                        'seed': None, 'allowed_parameters': ['alpha', 'effect_threshold',
+                                        'top_k', 'user_labels', 'journal', 'legend_loc']},
+                                provenance={'binding': 'explicit', 'mode': mode})
+        for name, artist, mask in [('ns', background_artist, ns_mask),
+                                    ('down', down_artist, down_mask), ('up', up_artist, up_mask)]:
+            if artist is None:
+                continue
+            positions = np.flatnonzero(mask.to_numpy()).tolist()
+            binding.bind_points(artist, series_id=name, row_groups=[[i] for i in positions],
+                                plotted_values=np.column_stack([x[positions], y[positions]]),
+                                point_indices=positions if name == 'ns' else None,
+                                semantics={'classification': name, 'mode': mode,
+                                           'x': effect_col if mode == 'volcano' else f'log10({base_mean_col})',
+                                           'y': f'-log10(clip({sig_basis.split(" <")[0]},1e-300))' if mode == 'volcano' else effect_col,
+                                           'alpha': alpha, 'effect_threshold': effect_threshold,
+                                           'sig_basis': sig_basis})
+        fig.figview_binding = binding
     if out_file:
         from figurelib.export_figure import export_figure
         exported = export_figure(fig, os.path.splitext(out_file)[0],
@@ -245,6 +395,11 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
                                  dpi=300)
         meta['exported_files'] = exported
         meta['out_file'] = exported[0] if exported else out_file
+        if viewer_enabled:
+            from figurelib.figview import export_bundle
+            meta['viewer_manifest'] = export_bundle(
+                binding, options.get('output_dir', os.path.splitext(out_file)[0] + '.figview'),
+                figure_id=options.get('figure_id', 'differential-plot'))
         # 审稿人复现代码 bundle（出图即落盘，agent 零操作）
         try:
             import inspect as _inspect
@@ -258,6 +413,7 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
                 'mode': mode, 'alpha': alpha, 'effect_threshold': effect_threshold,
                 'use_padj': use_padj, 'user_labels': list(user_labels or []),
                 'top_k': top_k, 'out_file': out_file, 'journal': journal,
+                'legend_loc': legend_loc,
             }
             _script = script_snapshot(_caller, _fn, _call_kwargs,
                                       header_note=f'Figure: {os.path.basename(out_file)} (volcano/MA, autogenerated)')
@@ -276,7 +432,7 @@ def differential_plot(dz_frame: pd.DataFrame | str, *, effect_col: str = 'log2FC
     return fig, ax, meta
 
 
-# 别名（符合 GPT 所述"两个模板应共用同一数据语义"）
+# 别名（符合"两个模板应共用同一数据语义"的设计约定）
 volcano_plot = lambda *a, **k: differential_plot(*a, mode='volcano', **k)
 ma_plot = lambda *a, **k: differential_plot(*a, mode='ma', **k)
 
@@ -307,6 +463,8 @@ def _demo(out_dir: str = './differential_demo') -> None:
         plt.close(fig)
         print(mode, '->', meta['out_file'],
               f"up={meta['n_sig_up']} down={meta['n_sig_down']} labeled={len(meta['labeled'])}")
+        from figurelib.visual_qa import print_report
+        print_report(meta['layout_audit'])
 
 
 if __name__ == '__main__':

@@ -10,16 +10,18 @@ test('offline carrier cache hit materializes archive and unpacked files as links
   const root = await mkdtemp(join(tmpdir(), 'zws-carrier-cache-')); t.after(() => rm(root, { recursive: true, force: true }))
   const cache = join(root, 'cache'), first = join(root, 'first'), second = join(root, 'second')
   let builds = 0
-  const prepare = async () => {
+  const prepare = async candidate => {
     builds++
-    await mkdir(join(first, carrierName + '.unpacked/node_modules/demo'), { recursive: true })
-    await writeFile(join(first, carrierName), 'archive')
-    await writeFile(join(first, carrierName + '.unpacked/node_modules/demo/index.js'), 'native')
+    assert.equal(await stat(first).catch(() => undefined), undefined)
+    await mkdir(join(candidate, carrierName + '.unpacked/node_modules/demo'), { recursive: true })
+    await writeFile(join(candidate, carrierName), 'archive')
+    await writeFile(join(candidate, carrierName + '.unpacked/node_modules/demo/index.js'), 'native')
   }
   const initial = await reuseOfflineCarrier({ cache, output: first, key: 'carrier-key', prepare })
   const hit = await reuseOfflineCarrier({ cache, output: second, key: 'carrier-key', prepare })
   assert.equal(builds, 1); assert.equal(initial.cacheHit, false); assert.equal(hit.cacheHit, true)
   assert.equal(hit.materialization.mode, 'hardlink')
+  assert.equal((await stat(join(first, carrierName))).ino, (await stat(join(cache, 'carrier-key', carrierName))).ino)
   const third = join(root, 'third')
   await reuseOfflineCarrier({ cache, output: third, key: 'carrier-key', prepare })
   assert.deepEqual(initial.files, hit.files)
@@ -32,9 +34,29 @@ test('offline carrier cache hit materializes archive and unpacked files as links
   assert.deepEqual(prior.files, initial.files)
   await writeFile(join(cache, 'carrier-key', carrierName), 'corrupt')
   const replacement = join(root, 'replacement')
-  const rebuilt = await reuseOfflineCarrier({ cache, output: replacement, key: 'carrier-key', prepare: async () => {
-    await mkdir(join(replacement, carrierName + '.unpacked'), { recursive: true })
-    await writeFile(join(replacement, carrierName), 'archive')
+  const rebuilt = await reuseOfflineCarrier({ cache, output: replacement, key: 'carrier-key', prepare: async candidate => {
+    await mkdir(join(candidate, carrierName + '.unpacked'), { recursive: true })
+    await writeFile(join(candidate, carrierName), 'archive')
   } })
   assert.equal(rebuilt.cacheHit, false)
+})
+
+test('carrier permission fallback preserves payload identity and independently copies mutable receipts', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-carrier-fallback-')); t.after(() => rm(root, { recursive: true, force: true }))
+  const cache = join(root, 'cache'), first = join(root, 'first'), second = join(root, 'second')
+  const prepare = async candidate => {
+    await mkdir(join(candidate, carrierName + '.unpacked'), { recursive: true })
+    await writeFile(join(candidate, carrierName), 'archive')
+    await writeFile(join(candidate, carrierName + '.unpacked/receipt.json'), '{}')
+  }
+  const linkFile = async () => { throw Object.assign(new Error('permission'), { code: 'EPERM' }) }
+  const initial = await reuseOfflineCarrier({ cache, output: first, key: 'key', prepare, linkFile })
+  const hit = await reuseOfflineCarrier({ cache, output: second, key: 'key', prepare, linkFile })
+  assert.deepEqual(initial.files, hit.files)
+  assert.equal(hit.materialization.mode, 'copy')
+  assert.equal(hit.materialization.files.find(file => file.path === carrierName).fallback, 'EPERM')
+  const receiptPath = carrierName + '.unpacked/receipt.json'
+  await writeFile(join(first, receiptPath), '{"changed":true}')
+  assert.equal(await readFile(join(cache, 'key', receiptPath), 'utf8'), '{}')
+  assert.equal(await readFile(join(second, receiptPath), 'utf8'), '{}')
 })

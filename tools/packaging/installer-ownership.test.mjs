@@ -1,0 +1,155 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtemp, mkdir, readFile, writeFile, rm, cp, readdir } from 'node:fs/promises'
+import { createHash, generateKeyPairSync } from 'node:crypto'
+import { dirname, join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
+import { writeInstallerOwnership } from './installer-ownership.mjs'
+import { signCatalog } from '../release/resource-catalog.mjs'
+
+async function signedPayload(root) {
+  const source = join(root, 'source'), target = join(root, 'target')
+  const payloadPath = 'profile-runtime.asar.unpacked/node_modules/plugin/new.css'
+  const payload = 'new signed runtime'
+  await mkdir(join(source, 'resources/offline-profile', dirname(payloadPath)), { recursive: true })
+  await mkdir(join(source, 'resources/commands'), { recursive: true })
+  // Use the deployed verifier, including its dependency, rather than a test stub.
+  await cp(resolve('tools/release/resource-catalog.mjs'), join(source, 'resources/commands/resource-catalog.mjs'))
+  await cp(resolve('tools/commands/physical-fs.mjs'), join(source, 'resources/commands/physical-fs.mjs'))
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  await writeFile(join(source, 'resources/commands/trusted-keys.json'), JSON.stringify({ test: publicKey.export({ format: 'pem', type: 'spki' }) }))
+  const receipt = signCatalog({ schema: 2, kind: 'offline-profile', payloadFiles: [{ path: payloadPath, size: Buffer.byteLength(payload), sha256: createHash('sha256').update(payload).digest('hex') }] }, privateKey, 'test')
+  await writeFile(join(source, 'resources/offline-profile/receipt.json'), JSON.stringify(receipt))
+  await writeFile(join(source, 'resources/offline-profile', payloadPath), payload)
+  await writeFile(join(source, 'app.exe'), 'new application')
+  await writeInstallerOwnership(source)
+  await mkdir(join(target, 'resources/offline-profile', dirname(payloadPath)), { recursive: true })
+  await writeFile(join(target, 'resources/offline-profile', payloadPath), 'damaged old runtime')
+  await writeFile(join(target, 'resources/offline-profile/obsolete.css'), 'legacy extra')
+  await writeFile(join(target, 'app.exe'), 'old application')
+  await mkdir(join(target, 'Python'), { recursive: true })
+  await writeFile(join(target, 'Python/python.exe'), 'user Python')
+  await writeFile(join(target, 'resources/user.txt'), 'user resource')
+  return { source, target, payloadPath, receipt }
+}
+
+for (const oldReceipt of ['missing', 'corrupt', 'older expanded layout']) test(`upgrade replaces legacy offline payload with ${oldReceipt} receipt and deletes obsolete files`, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-offline-upgrade-'))
+  try {
+    const { source, target, payloadPath } = await signedPayload(root)
+    if (oldReceipt === 'corrupt') await writeFile(join(target, 'resources/offline-profile/receipt.json'), '{broken')
+    const olderFiles = ['modules/legacy/package.json', 'packages/legacy.tgz', 'build-receipt.json', 'old-runtime.zip']
+    if (oldReceipt === 'older expanded layout') {
+      await writeFile(join(target, 'resources/offline-profile/receipt.json'), JSON.stringify({ schema: 1, applicationVersion: '8.0.8' }))
+      for (const file of olderFiles) {
+        await mkdir(dirname(join(target, 'resources/offline-profile', file)), { recursive: true })
+        await writeFile(join(target, 'resources/offline-profile', file), 'obsolete from an older layout')
+      }
+    }
+    execFileSync(process.env.ZEROWALL_TEST_ELECTRON ?? process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target], { windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+    assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
+    assert.equal(await readFile(join(target, 'resources/offline-profile', payloadPath), 'utf8'), 'new signed runtime')
+    assert.deepEqual(await readFile(join(target, 'resources/offline-profile/receipt.json')), await readFile(join(source, 'resources/offline-profile/receipt.json')))
+    await assert.rejects(readFile(join(target, 'resources/offline-profile/obsolete.css')), /ENOENT/)
+    if (oldReceipt === 'older expanded layout') for (const file of olderFiles) await assert.rejects(readFile(join(target, 'resources/offline-profile', file)), /ENOENT/)
+    await assert.rejects(readdir(join(target, 'resources/installer-recovery')), /ENOENT/)
+    assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
+    assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+for (const corruption of ['signature', 'same-size payload', 'unsigned file', 'missing receipt']) test(`incoming ${corruption} is rejected before touching the old installation`, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-offline-reject-'))
+  try {
+    const { source, target, payloadPath, receipt } = await signedPayload(root)
+    if (corruption === 'signature') await writeFile(join(source, 'resources/offline-profile/receipt.json'), JSON.stringify({ ...receipt, kind: 'tampered' }))
+    if (corruption === 'same-size payload') await writeFile(join(source, 'resources/offline-profile', payloadPath), 'bad signed runtime')
+    if (corruption === 'unsigned file') {
+      await writeFile(join(source, 'resources/offline-profile/unsigned.txt'), 'untrusted')
+      await writeInstallerOwnership(source)
+    }
+    if (corruption === 'missing receipt') {
+      await rm(join(source, 'resources/offline-profile/receipt.json'))
+      await writeInstallerOwnership(source)
+    }
+    assert.throws(() => execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target], { windowsHide: true, stdio: 'pipe' }))
+    assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
+    assert.equal(await readFile(join(target, 'resources/offline-profile', payloadPath), 'utf8'), 'damaged old runtime')
+    assert.equal(await readFile(join(target, 'resources/offline-profile/obsolete.css'), 'utf8'), 'legacy extra')
+    await assert.rejects(readdir(join(target, 'resources/installer-recovery')), /ENOENT/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('real uninstall removes only packaged files and preserves Python and unowned files', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-uninstall-'))
+  try {
+    await mkdir(join(root, 'resources/commands'), { recursive: true })
+    await writeFile(join(root, 'app.exe'), 'packaged')
+    await cp(resolve('tools/commands/uninstall-owned-files.ps1'), join(root, 'resources/commands/uninstall-owned-files.ps1'))
+    await writeInstallerOwnership(root)
+    await mkdir(join(root, 'Python/Lib/site-packages'), { recursive: true })
+    await writeFile(join(root, 'Python/python.exe'), 'preserved-python')
+    await writeFile(join(root, 'Python/Lib/site-packages/pandas.py'), 'custom-version')
+    await writeFile(join(root, 'resources/user.txt'), 'preserved-user')
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', join(root, 'resources/commands/uninstall-owned-files.ps1'), '-InstallRoot', root], { windowsHide: true })
+    assert.equal(await readFile(join(root, 'Python/python.exe'), 'utf8'), 'preserved-python')
+    assert.equal(await readFile(join(root, 'Python/Lib/site-packages/pandas.py'), 'utf8'), 'custom-version')
+    assert.equal(await readFile(join(root, 'resources/user.txt'), 'utf8'), 'preserved-user')
+    await assert.rejects(readFile(join(root, 'app.exe')), /ENOENT/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('bundled Electron copies raw ASAR bytes and ignores runtime files outside the ownership inventory', { skip: !process.env.ZEROWALL_TEST_ELECTRON }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-electron-copy-'))
+  const source = join(root, 'source'), input = join(root, 'archive-input'), target = join(root, 'target')
+  try {
+    await mkdir(join(source, 'resources'), { recursive: true })
+    await mkdir(join(input, 'Python'), { recursive: true })
+    await writeFile(join(input, 'Python/not-an-active-runtime.txt'), 'archived')
+    const { createPackageWithOptions } = createRequire(new URL('../../desktop/package.json', import.meta.url))('@electron/asar')
+    await createPackageWithOptions(input, join(source, 'resources/app.asar'), {})
+    await writeInstallerOwnership(source)
+    await mkdir(join(source, 'Python'), { recursive: true })
+    await writeFile(join(source, 'Python/not-owned.txt'), 'test-environment')
+    execFileSync(process.env.ZEROWALL_TEST_ELECTRON, [resolve('tools/commands/installer-copy-files.mjs'), source, target], { windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+    assert.deepEqual(await readFile(join(target, 'resources/app.asar')), await readFile(join(source, 'resources/app.asar')))
+    await assert.rejects(readFile(join(target, 'Python/not-owned.txt')), /ENOENT/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('upgrade preserves an unmanaged legacy installation and rejects unsafe inventory before deleting', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-upgrade-'))
+  const script = resolve('tools/commands/uninstall-owned-files.ps1')
+  const run = () => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-InstallRoot', root, '-PreserveIfUnmanaged'], { windowsHide: true, stdio: 'pipe' })
+  try {
+    await mkdir(join(root, 'resources'), { recursive: true })
+    await writeFile(join(root, 'app.exe'), 'existing')
+    run()
+    assert.equal(await readFile(join(root, 'app.exe'), 'utf8'), 'existing')
+    await writeFile(join(root, 'resources/installer-owned.json'), JSON.stringify({ schema: 1, files: ['app.exe', 'Python/python.exe'] }))
+    assert.throws(run)
+    assert.equal(await readFile(join(root, 'app.exe'), 'utf8'), 'existing')
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('installer copies and uninstalls owned files beyond MAX_PATH while preserving Python', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-long-install-'))
+  const source = join(root, 'payload'), target = join(root, '安装 目录', 'ZeroWallScience')
+  const local = join('resources', 'extensions', ...Array.from({ length: 5 }, (_, i) => `long-component-${i}-${'x'.repeat(35)}`), 'asset.json')
+  try {
+    await mkdir(dirname(join(source, local)), { recursive: true })
+    await writeFile(join(source, local), 'verified-long-path-resource')
+    await writeInstallerOwnership(source)
+    await mkdir(target, { recursive: true })
+    await mkdir(join(target, 'Python'), { recursive: true })
+    await writeFile(join(target, 'Python/python.exe'), 'preserved')
+    execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target], { windowsHide: true })
+    assert.ok(join(target, local).length > 300)
+    assert.equal(await readFile(join(target, local), 'utf8'), 'verified-long-path-resource')
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', resolve('tools/commands/uninstall-owned-files.ps1'), '-InstallRoot', target], { windowsHide: true })
+    assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'preserved')
+    await assert.rejects(readFile(join(target, local)), /ENOENT/)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})

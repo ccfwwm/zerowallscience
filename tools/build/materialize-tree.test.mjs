@@ -15,12 +15,13 @@ test('materializes regular files as hard links and records hashes', async t => {
   assert.equal(await readFile(join(destination, 'nested/value.txt'), 'utf8'), 'shared bytes')
 })
 
-test('falls back to copy for cross-volume or permission link failures', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'zws-materialize-fallback-')); t.after(() => rm(root, { recursive: true, force: true }))
+for (const code of ['EXDEV', 'EPERM']) test(`falls back to copy for ${code} link failures`, async t => {
+  const root = await mkdtemp(join(tmpdir(), `zws-materialize-fallback-${code.toLowerCase()}-`)); t.after(() => rm(root, { recursive: true, force: true }))
   const source = join(root, 'source'), destination = join(root, 'destination')
   await mkdir(source); await writeFile(join(source, 'value.txt'), 'copied bytes')
-  const receipt = await materializeTree({ source, destination, linkFile: async () => { const error = new Error('cross device'); error.code = 'EXDEV'; throw error } })
+  const receipt = await materializeTree({ source, destination, linkFile: async () => { const error = new Error(code); error.code = code; throw error } })
   assert.equal(receipt.mode, 'copy'); assert.equal(receipt.copiedFiles, 1)
+  assert.equal(receipt.files[0].fallback, code)
   assert.notEqual((await stat(join(source, 'value.txt'))).ino, (await stat(join(destination, 'value.txt'))).ino)
 })
 

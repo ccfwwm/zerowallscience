@@ -68,7 +68,7 @@ def op_circuit_compile(args):
     crn.write_sbml_file(out_file)
 
     # P1：构建体 DNA 物种（id 以 dna_part_ 开头）初始浓度 <=0 或未设置时默认 1.0，
-    # 否则 simulate 默认跑出全零（E2E 实证）。显式设置的正值不覆盖。
+    # 否则 simulate 默认跑出全零（实证）。显式设置的正值不覆盖。
     dna_defaults = []
     try:
         import libsbml

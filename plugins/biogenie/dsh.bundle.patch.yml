@@ -1,0 +1,3 @@
+- insert:
+    - id: zerowall-biogenie
+      name: '@zerowallscience/plugin-biogenie'

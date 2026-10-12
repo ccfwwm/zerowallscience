@@ -212,11 +212,16 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
     if (!api?.startJob || allUpdates.length === 0) return
     setBusy(true); setMessage(undefined); setOperationFailed(false)
     try {
+      const pluginIds = allUpdates.filter(update => update.kind === 'plugin' && (!onlySelected || selected.has(`plugin:${update.item.id}`))).map(update => update.item.id)
+      let pluginsSubmitted = false
       for (const update of allUpdates) {
         if (!alive()) return
         if (onlySelected && !selected.has(`${update.kind}:${update.item.id}`)) continue
         if (update.kind === 'python') { await updatePythonLayer(update.item); continue }
-        const started = await api.startJob(update.kind, 'update', update.item.id)
+        if (update.kind === 'plugin' && pluginsSubmitted) continue
+        if (update.kind === 'plugin' && !api.updatePlugins) throw new Error('请更新桌面程序至 8.1.3 后使用插件批量更新。')
+        const started = update.kind === 'plugin' ? await api.updatePlugins!(pluginIds) : await api.startJob(update.kind, 'update', update.item.id)
+        if (update.kind === 'plugin') pluginsSubmitted = true
         let job = await boundedRequest(api.getJob(started.taskId), 5000) as Job | undefined
         while (job && (job.status === 'queued' || job.status === 'running')) {
           await new Promise(resolve => setTimeout(resolve, 300))

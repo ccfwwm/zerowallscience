@@ -37,6 +37,7 @@ interface StoredSession {
   lowBalanceThreshold?: number
   models: AiCloudManagedModel[]
   groupIds: string[]
+  modelSync?: AiCloudAccountSnapshot['modelSync']
 }
 
 interface StoredLogin {
@@ -61,6 +62,8 @@ export interface AiCloudClientOptions {
 }
 
 export class AiCloudClient {
+  private identityRevision = 0
+  private modelDiscovery: { key: string; operation: Promise<AiCloudAccountSnapshot> } | undefined
   private readonly secrets: AccountSecretStore
   private readonly fetcher: typeof fetch
   private readonly bases: string[]
@@ -82,6 +85,7 @@ export class AiCloudClient {
 
   /** Persist a selected supported endpoint without exposing account credentials. */
   async selectGateway(baseUrl: string): Promise<AiCloudAccountSnapshot> {
+    this.identityRevision++
     const selected = this.requireBase(baseUrl)
     await this.secrets.set(PREFERRED_BASE_KEY, selected)
     const login = await this.loadLogin()
@@ -119,6 +123,7 @@ export class AiCloudClient {
   }
 
   async login(input: AiCloudLoginRequest): Promise<AiCloudAccountSnapshot> {
+    this.identityRevision++
     const email = normalizedEmail(input.email)
     const password = requiredPassword(input.password)
     const authenticated = await this.authenticate(email, password)
@@ -135,6 +140,7 @@ export class AiCloudClient {
   }
 
   async register(input: AiCloudRegisterRequest): Promise<AiCloudAccountSnapshot> {
+    this.identityRevision++
     const base = input.gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(input.gatewayBaseUrl)
     const config = await this.publicConfig(base)
     if (!config.registrationEnabled || !config.emailVerifyEnabled || config.captchaEnabled || config.invitationCodeEnabled) {
@@ -162,6 +168,7 @@ export class AiCloudClient {
   }
 
   async current(): Promise<AiCloudAccountSnapshot> {
+    const revision = this.identityRevision
     if (await this.isManuallySignedOut()) return signedOut()
     const session = await this.loadSession()
     if (session === undefined) return await this.restoreSavedLogin('signedOut')
@@ -169,9 +176,11 @@ export class AiCloudClient {
       const { body } = await this.request(session.baseUrl, '/auth/me', { token: session.accessToken })
       const funds = accountFunds(body)
       const refreshed = { ...session, ...funds }
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
       await this.storeSession(refreshed)
       return snapshot(refreshed, 'current')
     } catch (error) {
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
       if (error instanceof GatewayHttpError && (error.status === 401 || error.status === 403)) {
         await this.clearSession(session, false)
         return await this.restoreSavedLogin('authExpired')
@@ -181,6 +190,7 @@ export class AiCloudClient {
   }
 
   async logout(): Promise<void> {
+    this.identityRevision++
     const session = await this.loadSession()
     // Signing out ends the active token session but intentionally keeps the
     // encrypted login record so the next sign-in can reuse it. A user can
@@ -198,12 +208,26 @@ export class AiCloudClient {
   }
 
   async discoverModels(): Promise<AiCloudAccountSnapshot> {
+    const revision = this.identityRevision
     const session = await this.requireSession()
+    const key = `${revision}:${session.baseUrl}:${session.email}`
+    if (this.modelDiscovery?.key === key) return this.modelDiscovery.operation
+    const operation = this.discoverSessionModels(session, revision)
+    this.modelDiscovery = { key, operation }
+    try { return await operation }
+    finally { if (this.modelDiscovery?.operation === operation) this.modelDiscovery = undefined }
+  }
+
+  private async discoverSessionModels(session: StoredSession, revision: number): Promise<AiCloudAccountSnapshot> {
+    const assertCurrent = () => { if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED') }
+    assertCurrent()
     const groupsReply = await this.request(session.baseUrl, '/groups/available', { token: session.accessToken })
     const keysReply = await this.request(session.baseUrl, KEYS_PATH, { token: session.accessToken })
     const groups = availableGroups(groupsReply.body)
     const keys = existingKeys(keysReply.body)
     const models: AiCloudManagedModel[] = []
+    const checkedAt = new Date().toISOString()
+    const results: NonNullable<AiCloudAccountSnapshot['modelSync']>['groups'] = []
     const groupIds: string[] = []
     const previousModels = new Map<string, AiCloudManagedModel[]>()
     for (const model of session.models) {
@@ -212,8 +236,10 @@ export class AiCloudClient {
       previousModels.set(model.groupId, entries)
     }
     for (const group of groups) {
+      assertCurrent()
       const groupId = String(group.id)
       groupIds.push(groupId)
+      try {
       let apiKey = keys.find((candidate) => candidate.groupId === group.id)?.key
       if (apiKey === undefined) {
         const created = await this.request(session.baseUrl, '/keys', {
@@ -223,9 +249,10 @@ export class AiCloudClient {
       }
       // Save a newly-created key before catalog I/O. A transient catalog
       // timeout must not make the next sync create another key for the same group.
+      assertCurrent()
       await this.secrets.set(`${KEY_PREFIX}${groupId}`, apiKey)
-      try {
         const modelReply = await this.rawRequest(`${session.baseUrl}/v1/models`, { token: apiKey })
+        assertCurrent()
         for (const modelId of modelIds(modelReply)) {
           models.push({
             // pi-ai owns one streaming implementation per provider route. A
@@ -236,6 +263,7 @@ export class AiCloudClient {
             groupId,
             groupName: group.name,
             modelId,
+            ...modelCapacity(modelReply, modelId),
             // OpenAI-compatible transports append their resource path to a
             // `/v1` base URL, while the Anthropic SDK appends `/v1/messages`
             // itself. Keeping the protocol-specific base here avoids the
@@ -244,13 +272,22 @@ export class AiCloudClient {
             ...(isImageGenerationGroup(group.name) ? { capability: 'image-generation' as const } : {}),
           })
         }
-      } catch {
+        results.push({ groupId, groupName: group.name, status: 'succeeded', count: models.filter(model => model.groupId === groupId).length, checkedAt })
+      } catch (error) {
+        assertCurrent()
         // A group catalog is independent. Retain its last known-good entries
         // and keep syncing all other groups when this endpoint times out.
-        models.push(...(previousModels.get(groupId) ?? []))
+        const old = (previousModels.get(groupId) ?? []).map(model => ({ ...model, stale: true }))
+        models.push(...old)
+        results.push({ groupId, groupName: group.name, status: 'failed', count: old.length, checkedAt, error: error instanceof GatewayHttpError ? `HTTP ${error.status}` : 'MODEL_SYNC_FAILED: 模型目录请求失败，请检查网关连接后重试。' })
       }
     }
-    const updated = { ...session, models, groupIds }
+    assertCurrent()
+    const live = await this.loadSession()
+    if (live?.accessToken !== session.accessToken || live?.baseUrl !== session.baseUrl) throw new Error('ACCOUNT_STATE_CHANGED')
+    const failures = results.filter(group => group.status === 'failed').length
+    const modelSync: NonNullable<AiCloudAccountSnapshot['modelSync']> = { checkedAt, status: failures === 0 ? 'succeeded' : failures === results.length ? 'failed' : 'partial', groups: results }
+    const updated = { ...live, models, groupIds, modelSync }
     await this.storeSession(updated)
     return snapshot(updated, 'current')
   }
@@ -560,7 +597,15 @@ function existingKeys(body: string): ExistingKey[] { return list(body).flatMap((
 function createdKey(body: string): string { const key = stringField(envelope(body), ['key', 'token', 'api_key']); if (!key) throw new Error('AI Cloud created a key but returned no credential.'); return key }
 function modelIds(body: string): string[] { const root = JSON.parse(body) as Record<string, unknown>; const values = Array.isArray(root.data) ? root.data : Array.isArray(root) ? root : []; const ids = values.flatMap((item) => isRecord(item) && typeof item.id === 'string' && item.id ? [item.id] : []); if (ids.length === 0) throw new Error('AI Cloud listed no models for a managed group.'); return ids }
 function signedOut(gatewayBaseUrl?: string): AiCloudAccountSnapshot { return { status: 'signedOut', balanceFreshness: 'current', lowBalance: false, ...(gatewayBaseUrl === undefined ? {} : { gatewayBaseUrl }), models: [] } }
-function snapshot(session: StoredSession, freshness: 'current' | 'stale'): AiCloudAccountSnapshot { return { status: 'signedIn', email: session.email, balance: session.balance, currency: session.currency, balanceFreshness: freshness, gatewayBaseUrl: session.baseUrl, ...(session.rechargeUrl === undefined ? {} : { rechargeUrl: session.rechargeUrl }), lowBalance: session.lowBalanceThreshold !== undefined && session.balance <= session.lowBalanceThreshold, models: session.models } }
+function modelCapacity(body: string, id: string): Partial<AiCloudManagedModel> {
+  const data = JSON.parse(body).data
+  const entry = Array.isArray(data) ? data.find((row: any) => row.id === id) : undefined
+  const positive = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0
+  const context = entry?.context_window ?? entry?.contextWindow
+  const output = entry?.max_output_tokens ?? entry?.maxOutputTokens
+  return { ...(positive(context) ? { contextWindow: context, capacitySource: 'gateway' as const } : {}), ...(positive(output) ? { maxOutputTokens: output, capacitySource: 'gateway' as const } : {}) }
+}
+function snapshot(session: StoredSession, freshness: 'current' | 'stale'): AiCloudAccountSnapshot { return { status: 'signedIn', email: session.email, balance: session.balance, currency: session.currency, balanceFreshness: freshness, gatewayBaseUrl: session.baseUrl, ...(session.rechargeUrl === undefined ? {} : { rechargeUrl: session.rechargeUrl }), lowBalance: session.lowBalanceThreshold !== undefined && session.balance <= session.lowBalanceThreshold, models: session.models, ...(session.modelSync ? { modelSync: session.modelSync } : {}) } }
 function gatewayLabel(baseUrl: string): string { return baseUrl === PRIMARY_BASE ? 'Hong Kong (default)' : baseUrl.includes('.xyz') ? 'Global XYZ backup' : 'Global CN backup' }
 function normalizePaymentType(value: string): string { const normalized = value.trim().toLowerCase(); if (normalized === 'wechat' || normalized === 'wechat_pay') return 'wxpay'; if (['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct'].includes(normalized)) return normalized; throw new Error('Unsupported payment type.') }
 function paymentOrderPayload(value: unknown): Record<string, unknown> {

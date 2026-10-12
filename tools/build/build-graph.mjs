@@ -82,9 +82,11 @@ async function taskDefinition(id, taskArgs = []) {
     const manifest = await readFile(join(pluginPath, 'package.json'), 'utf8').then(JSON.parse)
     const inputs = [`plugins/${name}`, 'tools/plugins/tsdown.ts', 'tools/plugins/generate-typert.mjs', 'tools/plugins/prepare-pack.mjs', 'tools/plugins/inline-css.mjs', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json', ...await sharedSourceInputs(root, pluginPath)]
     if (name === 'files') inputs.push('tools/plugins/viewer-style.mjs', 'tools/plugins/viewer-adapter.mjs')
+    if (name === 'biogenie') inputs.push('resources/extensions/capabilities/biogenie', 'tools/integration/prepare-biogenie.mjs', 'tools/integration/generate-biogenie-catalog.py')
+    if (name === 'python') inputs.push('tools/plugins/prepare-python-worker.mjs')
     const output = kind === 'plugin-build' ? join(pluginPath, 'lib') : join(contract.release, 'plugins', manifest.name.split('/').at(-1), manifest.version)
     const dependencyLockHash = await dependencyLockFingerprint(root, [`plugins/${name}`], ['tsdown', 'typescript', '@tsdown/css'])
-    return { id, inputPaths: inputs, dshCommit, dependencyLockHash, dependencies: { ...dependencies, package: manifest.name, version: manifest.version }, outputs: [output, ...(kind === 'plugin-build' ? [join(pluginPath, 'lib/index.js')] : [])], lockName: `plugin-${name}`, run: async () => {
+    return { id, inputPaths: inputs, dshCommit, dependencyLockHash, dependencies: { ...dependencies, package: manifest.name, version: manifest.version, ...(name === 'python' ? { signingKeyId: process.env.ZEROWALL_RESOURCE_KEY_ID ?? 'local-development' } : {}) }, outputs: [output, ...(kind === 'plugin-build' ? [join(pluginPath, 'lib/index.js')] : [])], lockName: `plugin-${name}`, run: async () => {
       run([process.execPath, join(root, 'tools/plugins/generate-typert.mjs'), '--plugin', manifest.name])
       run(scriptArgs(['--filter', manifest.name, 'run', 'bundle']))
       run([process.execPath, join(root, 'tools/plugins/inline-css.mjs'), '--plugin', name])
@@ -148,7 +150,7 @@ async function taskDefinition(id, taskArgs = []) {
     const catalogReference = join(stageRoot, 'refs', 'python', layer, ...(capabilityId ? [capabilityId] : []), 'catalog.json')
     const inputs = ['resources/extensions/python', 'config/python/capability-layers.json', 'tools/release/python-layer-split.mjs', 'tools/release/build-python-dependency-manifest.mjs', 'config/catalogs/trusted-keys.json', 'package.json', 'tools/build/content-store.mjs']
     inputs.push('tools/release/build-resource-catalog-item.mjs', 'tools/release/resource-signing.mjs', 'tools/release/resource-catalog.mjs', 'config/deepseek-harness/upstream.json')
-    return { id: taskId, inputPaths: inputs, dshCommit: '', dependencies: { ...dependencies, layer, capabilityId, pythonRevision: process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? '3.12.10-r16', manifestSigningKeyId: process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4', catalogSigningKeyId: process.env.ZEROWALL_RESOURCE_KEY_ID ?? 'local-development' }, outputs: [output, receipt, reference, itemCatalog, catalogReference], lockName: `resource-python-${layer}-${capabilityId ?? 'all'}`, run: async () => {
+    return { id: taskId, inputPaths: inputs, dshCommit: '', dependencies: { ...dependencies, layer, capabilityId, pythonRevision: process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? '3.12.10-r18', manifestSigningKeyId: process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4', catalogSigningKeyId: process.env.ZEROWALL_RESOURCE_KEY_ID ?? 'local-development' }, outputs: [output, receipt, reference, itemCatalog, catalogReference], lockName: `resource-python-${layer}-${capabilityId ?? 'all'}`, run: async () => {
       run([process.execPath, join(root, 'tools/release/build-python-dependency-manifest.mjs'), '--layer', layer, ...(capabilityId ? [capabilityId] : []), '--output', output])
       await storeAndLink(output, { referencePath: reference })
       const manifest = JSON.parse(await readFile(output, 'utf8'))
@@ -181,7 +183,7 @@ async function taskDefinition(id, taskArgs = []) {
         }),
       }
     }
-    if (!task && manifest.files?.length) return { id, inputPaths: [relative(root, sourceRoot)], dshCommit: '', dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, sourceRoot).replaceAll('\\', '/')]), dependencies: { ...dependencies, package: manifest.name, version: manifest.version }, outputs: manifest.files.map(file => join(sourceRoot, file)), lockName: `package-${name}`, run: async () => {} }
+    if (!task && manifest.files?.length) return { id, inputPaths: [relative(root, sourceRoot)], dshCommit: '', dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, sourceRoot).replaceAll('\\', '/')]), dependencies: { ...dependencies, package: manifest.name, version: manifest.version, ...(name === 'python' ? { signingKeyId: process.env.ZEROWALL_RESOURCE_KEY_ID ?? 'local-development' } : {}) }, outputs: manifest.files.map(file => join(sourceRoot, file)), lockName: `package-${name}`, run: async () => {} }
     if (!task) throw new Error(`Package ${manifest.name} has no bundle/build script.`)
     return { id, inputPaths: [relative(root, sourceRoot), 'tools/plugins/tsdown.ts', ...await sharedSourceInputs(root, sourceRoot)], dshCommit, dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, sourceRoot).replaceAll('\\', '/')], ['tsdown', 'typescript']), dependencies: { ...dependencies, package: manifest.name, version: manifest.version, task, script: manifest.scripts[task] }, outputs: [join(sourceRoot, 'lib')], lockName: `package-${name}`, run: async () => run(scriptArgs(['--filter', manifest.name, 'run', task, ...(manifest.name === '@everclear077/dsh-progressive-tools' ? ['--skipLibCheck'] : [])])) }
   }
@@ -202,7 +204,7 @@ async function taskDefinition(id, taskArgs = []) {
     run(scriptArgs(['profiles:generate']))
     run(scriptArgs(['dsh:runtime:closure']))
   } }
-  if (id === 'desktop') return { id, inputPaths: ['desktop/src', 'desktop/build', 'desktop/package.json'], dshCommit, dependencyLockHash: await dependencyLockFingerprint(root, ['desktop']), dependencies: { ...dependencies, desktop: desktopManifest.version }, outputs: [join(root, 'desktop/out')], lockName: 'runtime', run: async () => run(scriptArgs(['--filter', '@zerowallscience/desktop', 'run', 'build'])) }
+  if (id === 'desktop') return { id, inputPaths: ['desktop/src', 'desktop/build', 'desktop/package.json', 'tools/packaging/installer-ownership.mjs'], dshCommit, dependencyLockHash: await dependencyLockFingerprint(root, ['desktop']), dependencies: { ...dependencies, desktop: desktopManifest.version }, outputs: [join(root, 'desktop/out')], lockName: 'runtime', run: async () => run(scriptArgs(['--filter', '@zerowallscience/desktop', 'run', 'build'])) }
   throw new Error(`Unknown build task: ${id}`)
 }
 

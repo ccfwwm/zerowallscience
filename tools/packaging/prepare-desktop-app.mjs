@@ -15,26 +15,12 @@ export function packagingManifest(manifest) {
 
 async function preparePythonUpdaterAssets() {
   const output = join(stageRoot, 'python-updater')
-  const sourceMain = join(root, 'desktop/out/main')
+  const sourceWorker = join(root, 'plugins/python/lib/worker')
   await rm(output, { recursive: true, force: true })
-  await mkdir(join(output, 'chunks'), { recursive: true })
-  // electron-builder filters node_modules from extraResources. These two
-  // packages are a deliberately small runtime dependency closure for the
-  // external updater worker, so ship them under a neutral directory name and
-  // expose that directory through NODE_PATH when the worker starts.
-  await mkdir(join(output, 'modules'), { recursive: true })
-
-  const worker = join(sourceMain, 'python-updater-worker.js')
-  await cp(worker, join(output, 'python-updater-worker.js'))
-  const chunks = (await readdir(join(sourceMain, 'chunks'))).filter(name => /^mcp-environment-.+\.js$/u.test(name)).sort()
-  if (chunks.length === 0) throw new Error('Desktop build did not emit the Python updater environment chunk.')
-  for (const name of chunks) await cp(join(sourceMain, 'chunks', name), join(output, 'chunks', name))
-
-  for (const name of ['yauzl', 'pend']) {
-    const source = join(stageRoot, 'runtime/node_modules', name)
-    if (!(await stat(source).catch(() => undefined))?.isDirectory()) throw new Error(`Core runtime is missing Python updater dependency ${name}.`)
-    await cp(source, join(output, 'modules', name), { recursive: true, dereference: true })
-  }
+  await mkdir(output, { recursive: true })
+  await cp(sourceWorker, output, { recursive: true, dereference: true })
+  const manifest = JSON.parse(await readFile(join(output, 'worker-manifest.json'), 'utf8'))
+  if (manifest.abi !== 1 || !manifest.files?.length) throw new Error('Python plugin worker ABI or closure is missing.')
 
   const files = []
   async function collect(directory) {

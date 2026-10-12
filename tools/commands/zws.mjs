@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process'
 import { createConnection } from 'node:net'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { buildCmdPythonCommand, buildPowerShellPythonCommand } from './python-shell.mjs'
+import { buildCmdPythonCommand, buildPowerShellPythonCommand, fixedPythonShellPaths } from './python-shell.mjs'
 
 const packaged = existsSync(resolve(import.meta.dirname, '../app.asar/package.json'))
 const root = packaged ? resolve(import.meta.dirname, '../app.asar') : resolve(import.meta.dirname, '../..')
@@ -109,25 +109,25 @@ async function run() {
   }
   if (group === 'python' && command === 'shell') {
     const info = await invoke('python.status')
-    const localAppData = process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local')
-    const runtimeRoot = typeof info?.runtimeRoot === 'string' && info.runtimeRoot.trim() !== ''
-      ? info.runtimeRoot
-      : join(localAppData, 'ZeroWall Science', 'Python')
-    const executable = typeof info?.runtimeExecutable === 'string' && info.runtimeExecutable.trim() !== ''
-      ? info.runtimeExecutable
-      : join(runtimeRoot, 'python.exe')
+    const { runtimeRoot, executable, managementRoot } = fixedPythonShellPaths(info)
     if (!existsSync(executable)) throw new Error(`统一 Python 尚未就绪：${executable}`)
     const env = {
       ...process.env,
       // The new console uses these variables to launch the exact managed
       // interpreter.  PATH alone could resolve a system or Roaming Python.
-      ZEROWALL_PYTHON_ROOT: runtimeRoot,
+      ZEROWALL_PYTHON_ROOT: managementRoot,
+      ZEROWALL_PYTHON_MANAGEMENT_ROOT: managementRoot,
+      ZEROWALL_PYTHON_RUNTIME_ROOT: runtimeRoot,
       ZEROWALL_PYTHON_EXECUTABLE: executable,
       PATH: `${dirname(executable)};${join(dirname(executable), 'Scripts')};${process.env.PATH || ''}`,
     }
     delete env.PYTHONHOME
     delete env.PYTHONPATH
+    delete env.VIRTUAL_ENV
+    delete env.CONDA_PREFIX
     env.PYTHONNOUSERSITE = '1'
+    env.PYTHONUTF8 = '1'
+    env.PYTHONIOENCODING = 'utf-8'
     const mode = args.includes('--cmd') ? 'cmd' : 'powershell'
     // Enter a branded interactive shell at the managed python.exe directory.
     // This avoids making users mistake the parent PowerShell (whose pip is

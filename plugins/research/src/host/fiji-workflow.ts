@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { type ChildProcess } from 'node:child_process'
+import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runtime-process.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
 import { dirname, extname, join } from 'node:path'

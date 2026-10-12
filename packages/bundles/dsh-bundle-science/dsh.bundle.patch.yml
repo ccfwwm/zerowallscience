@@ -43,6 +43,9 @@
     - id: zerowall-python
       name: '@zerowallscience/plugin-python'
 - insert:
+    - id: zerowall-biogenie
+      name: '@zerowallscience/plugin-biogenie'
+- insert:
     - id: zerowall-research
       name: '@zerowallscience/plugin-research'
 - insert:

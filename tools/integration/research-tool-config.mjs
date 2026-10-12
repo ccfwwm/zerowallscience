@@ -17,6 +17,8 @@ const groups = [
   ['chemistry-editor', 'Ketcher 分子编辑、结构读取和导出', ['mcp__zerowall_managed_ketcher__*']],
 ].map(([id, description, include]) => ({ id, description, include }))
 export const researchToolConfig = {
+  resultBudget: true,
+  resultBudgetCharacters: 8000,
   groups: [...DEFAULT_GROUPS, ...groups],
   skillBindings: [
     ['zerowall-presentation', ['presentation-authoring', 'image-generation']],

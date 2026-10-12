@@ -1,9 +1,9 @@
 {
-  "version": "8.1.2",
+  "version": "8.1.3",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
-    "commit": "86b6740d0e671cee0b3fd0168de484c0efbf46ea",
+    "commit": "8c00ce78435cf35300654c41e69336e69dc758b1",
     "branch": "zerowall/reviewer-history-opaque",
     "upstreamCommit": "639ed015397290b3745d163aafe02ffee4aa3f84"
   },
@@ -77,6 +77,7 @@
     "tag": "v0.3.19",
     "commit": "262953e614db3aae97594a6fe6d76dc1128c2645",
     "version": "0.3.19",
+    "resourceVersion": "0.3.19-zws.1",
     "license": "MIT",
     "source": "packages/dsh/dsh-ssh-ops"
   },
@@ -103,6 +104,7 @@
     "repository": "https://github.com/dream-num/dsh-univer-office",
     "tag": "v0.3.7",
     "version": "0.3.7",
+    "resourceVersion": "0.3.7-zws.1",
     "telemetry": false,
     "commit": "8f85ce4074fdbe51416b6c337468bb916a302c2a"
   },

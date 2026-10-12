@@ -5,13 +5,14 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { EventEmitter } from 'node:events'
 import * as childProcess from 'node:child_process'
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { ResearchStore } from '../../../store/src/index.js'
 import { HeSegmentationService } from '../src/host/he-segmentation.js'
 import { validateHeSegmentationParameters } from '../src/shared/he-segmentation.js'
 
 vi.mock('../src/host/he-stardist-model.js', () => ({ HE_STARDIST_MODEL: { files: [], sha256: 'a'.repeat(64) } }))
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }))
+afterEach(() => vi.unstubAllEnvs())
 
 it('bounds StarDist CPU parameters and preserves the official model threshold', () => {
  expect(validateHeSegmentationParameters()).toMatchObject({tileSize:512,halo:128,probabilityThreshold:0.6924782541382084,nmsThreshold:0.3,threads:4})
@@ -19,7 +20,7 @@ it('bounds StarDist CPU parameters and preserves the official model threshold', 
 })
 
 it('persists missing engine failures idempotently, rejects wrong projects and does not pretend lost runs resume', async () => {
-  const root=await mkdtemp(join(tmpdir(),'he-segment-'));const store=new ResearchStore(join(root,'store.sqlite'));process.env.ZEROWALL_PYTHON_ROOT=join(root,'missing','zerowall-python');delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT;const service=new HeSegmentationService(store,{pythonPath:join(root,'missing.exe')})
+  const root=await mkdtemp(join(tmpdir(),'he-segment-'));const store=new ResearchStore(join(root,'store.sqlite'));vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT',join(root,'missing','Python'));const service=new HeSegmentationService(store,{pythonPath:join(root,'missing.exe')})
  try {
   const project=store.createProject({name:'A',rootPath:root});const foreign=store.createProject({name:'B',rootPath:join(root,'b')});const path=join(root,'source.tif');const bytes=Buffer.from('bounded fixture');await writeFile(path,bytes);const sha256=createHash('sha256').update(bytes).digest('hex')
   const asset=store.createDataAsset({projectId:project.id,name:'source',uri:pathToFileURL(path).href,location:'local',mediaType:'image/tiff',checksum:sha256,checksumAlgorithm:'sha256'})
@@ -47,6 +48,7 @@ it('refuses a forged completion manifest without registering partial outputs', a
 
 it('marks an owned child that exits without a manifest failed immediately, retaining logs', async () => {
  const root=await mkdtemp(join(tmpdir(),'he-exit-'));const store=new ResearchStore(join(root,'store.sqlite'));const manager=join(root,'zerowall-python');const pythonRoot=join(root,'Python');const pythonPath=join(pythonRoot,'python.exe');await mkdir(manager,{recursive:true});await mkdir(join(pythonRoot,'Lib','site-packages'),{recursive:true});await writeFile(pythonPath,'mock executable');await writeFile(join(manager,'current.json'),JSON.stringify({root:join(manager,'slots','fixture'),runtimeRoot:root,health:'ready',manifest:{python:{version:'3.12.10',relativeExecutable:'Python/python.exe',relativeSitePackages:'Python/Lib/site-packages'}}}));process.env.ZEROWALL_PYTHON_ROOT=manager
+ vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT',pythonRoot)
  const service=new HeSegmentationService(store,{pythonPath});const child=Object.assign(new EventEmitter(),{pid:123,kill:vi.fn()});const spawn=vi.mocked(childProcess.spawn).mockReturnValue(child as any)
  try {
   const project=store.createProject({name:'A',rootPath:root});const path=join(root,'source.tif');const bytes=Buffer.from('fixture');await writeFile(path,bytes);const sha256=createHash('sha256').update(bytes).digest('hex')

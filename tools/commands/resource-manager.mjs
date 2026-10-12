@@ -3,6 +3,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
 import { pluginIdentity, prepareOfflineCandidate, readOfflineReceipt, verifiedGeneration } from './offline-profile.mjs'
+import { satisfiesPackageRange } from './package-range.mjs'
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
 async function atomic(path, value) {
@@ -184,6 +185,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   }
 
   async function recordPluginGeneration(metadata, backup) {
+    if (metadata.plugins?.length > 1 && !metadata.rollback) { for (const item of metadata.plugins) await recordPluginGeneration({ ...metadata, plugins: undefined, packageId: item.id, version: item.version }, backup); return }
     if (!metadata.packageId || metadata.rollback) return
     const old = await packageVersion(backup, metadata.packageId)
     const previousVersion = old?.version ?? metadata.previousVersion ?? metadata.version
@@ -303,49 +305,73 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     return document
   }
 
-  async function plugin(id, source) {
-    const document = await catalog(source ?? `${feedBase}/plugin-latest.json`)
-    const entry = document.resources.find(item => item.id === id)
-    if (!entry || !['plugin', 'support'].includes(entry.kind)) throw new Error('Plugin is absent from the signed catalog')
-    assertCompatible(entry, target)
+  async function plugin(id, source) { return pluginBatch([id], source, undefined, { install: true }) }
+
+  async function pluginBatch(ids, source, snapshot, { signal, report = () => {}, install = false } = {}) {
+    if (!Array.isArray(ids) || !ids.length || ids.length > 200 || ids.some(id => typeof id !== 'string')) throw new Error('Invalid plugin batch')
+    ids = [...new Set(ids)]
+    const checkCancelled = () => { if (signal?.aborted) throw new Error('RESOURCE_BATCH_CANCELLED') }
+    checkCancelled()
+    const document = snapshot ?? await catalog(source ?? feedBase + '/plugin-latest.json', { signal })
     const choices = await readPluginSelection()
-    if (choices.pinned[id] && choices.pinned[id] !== entry.version) throw new Error('Plugin version is pinned; unpin before updating')
-    const installed = await json(join(active, 'node_modules', id, 'package.json')).catch(() => undefined)
-    if (installed && compareVersions(entry.version, installed.version) < 0) throw new Error('Plugin downgrade requires an explicit rollback')
-    // Own support packages and plugin dependencies are signed together. Cache
-    // them before stopping the Host; pnpm still owns dependency resolution.
-    const overrides = {}
-    let archive
+    const entries = ids.map(id => {
+      pluginIdentity(id)
+      if (!install && choices.removed.has(id)) throw new Error('Plugin was explicitly removed: ' + id)
+      const entry = document.resources.find(item => item.id === id && ['plugin', 'support'].includes(item.kind))
+      if (!entry) throw new Error('Plugin is absent from the signed catalog: ' + id)
+      return entry
+    })
     const closure = new Map()
-    function visit(item) {
-      if (closure.has(item.id)) return
-      closure.set(item.id, item)
-      // Only download the selected component and its signed own dependencies.
-      for (const name of Object.keys(item.dependencies ?? {})) {
-        const dependency = document.resources.find(record => record.id === name)
-        if (dependency) visit(dependency)
+    function visit(entry) {
+      if (closure.has(entry.id)) return
+      assertCompatible(entry, target)
+      if (choices.pinned[entry.id] && choices.pinned[entry.id] !== entry.version) throw new Error('Plugin or dependency version is pinned: ' + entry.id)
+      closure.set(entry.id, entry)
+      for (const [id, range] of Object.entries(entry.dependencies ?? {})) {
+        const child = document.resources.find(item => item.id === id)
+        if (choices.removed.has(id)) throw new Error('Required plugin was explicitly removed: ' + id)
+        if (child) {
+          if (!satisfiesPackageRange(child.version, range)) throw new Error('Signed dependency version does not satisfy ' + entry.id + ': ' + id + '@' + range)
+          visit(child)
+        }
       }
     }
-    visit(entry)
-    for (const item of closure.values()) {
-      if (choices.pinned[item.id] && choices.pinned[item.id] !== item.version) throw new Error(`Dependency version is pinned: ${item.id}`)
-      assertCompatible(item, target)
-      const file = await downloadResource(item, join(root, 'downloads'), { local })
-      const tarball = file + '.tgz'
-      await cp(file, tarball)
-      overrides[item.id] = 'file:' + tarball.replaceAll('\\', '/')
-      if (item.id === id) archive = tarball
+    for (const entry of entries) {
+      const installed = await packageVersion(active, entry.id)
+      if (installed && compareVersions(entry.version, installed.version) < 0) throw new Error('Plugin downgrade requires an explicit rollback: ' + entry.id)
+      visit(entry)
     }
-    const generation = 'zerowall-' + randomUUID()
-    const candidate = join(profiles, generation)
-    await copyProfileSkeleton(active, candidate)
-    await preparePackageInstall(candidate, overrides)
-    await runPlugin(['add', archive], generation)
-    const selection = await readPluginSelection()
-    selection.removed.delete(id)
-    await writePluginSelection(selection)
-    await normalizeComposition(candidate)
-    return activate(candidate, { id, packageId: id, version: entry.version, packageIds: [...closure.keys()] })
+    const generation = 'zerowall-' + randomUUID(), candidate = join(profiles, generation)
+    const batchId = randomUUID(), metadata = { batchId, plugins: entries.map(entry => ({ id: entry.id, version: entry.version })), packageIds: [...closure.keys()] }
+    await atomic(journal, { state: 'preparing', candidate, ...metadata })
+    const overrides = {}, archives = new Map()
+    let completed = 0
+    try {
+      for (const item of closure.values()) {
+        checkCancelled()
+        const file = await downloadResource(item, join(root, 'downloads'), { local, signal })
+        const tarball = file + '.tgz'; await cp(file, tarball)
+        overrides[item.id] = 'file:' + tarball.replaceAll('\\', '/')
+        archives.set(item.id, tarball)
+        await report({ phase: 'preparing', completed: ++completed, total: closure.size, currentPlugin: item.id })
+        await atomic(journal, { state: 'preparing', candidate, completed, ...metadata })
+      }
+      await copyProfileSkeleton(active, candidate)
+      await preparePackageInstall(candidate, overrides)
+      checkCancelled()
+      await runPlugin(['add', ...entries.map(entry => archives.get(entry.id))], generation, { signal })
+      checkCancelled()
+      if (install) { const selection = await readPluginSelection(); for (const id of ids) selection.removed.delete(id); await writePluginSelection(selection) }
+      await normalizeComposition(candidate)
+      checkCancelled()
+      await report({ phase: 'activating', completed, total: closure.size })
+      const result = await activate(candidate, { ...metadata, ...(ids.length === 1 ? { id: ids[0], packageId: ids[0], version: entries[0].version } : {}) })
+      return { ...result, updated: entries.length }
+    } catch (error) {
+      const state = await json(journal).catch(() => undefined)
+      if (state?.batchId === batchId && state.state === 'preparing') await atomic(journal, { ...state, state: signal?.aborted ? 'cancelled' : 'preparation-failed', error: String(error) })
+      throw error
+    }
   }
 
   async function normalizeComposition(candidate, removed) {
@@ -480,6 +506,15 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await cp(join(active, 'node_modules'), join(candidate, 'node_modules'), { recursive: true }).catch(error => { if (error.code !== 'ENOENT') throw error })
     await restorePluginGeneration(candidate, previous.profile, previous.packageIds, id)
     await normalizeComposition(candidate)
+    const manifest = await json(join(candidate, 'package.json'))
+    for (const name of manifest.dsh?.profile?.bundles ?? []) {
+      const item = await packageVersion(candidate, name)
+      for (const [dependency, range] of Object.entries(item?.dependencies ?? {})) {
+        if (!(previous.packageIds ?? [id]).includes(dependency)) continue
+        const restored = await packageVersion(candidate, dependency)
+        if (!restored || !satisfiesPackageRange(restored.version, range)) throw new Error('PLUGIN_ROLLBACK_CONFLICT: ' + name + ' requires ' + dependency + '@' + range)
+      }
+    }
     return activate(candidate, { operation: 'rollback', packageId: id, version: previous.version, rollback: true, packageIds: previous.packageIds }, 'rolled-back')
   }
 
@@ -558,7 +593,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const document = await catalog(source ?? `${feedBase}/${kind}-latest.json`)
     if (kind === 'plugin') {
       const manifest = await json(join(active, 'package.json'))
-      const result = [], skipped = []
+      const ids = [], skipped = []
       const choices = await readPluginSelection()
       for (const entry of document.resources.filter(item => item.kind === 'plugin' && manifest.dsh?.profile?.bundles?.includes(item.id))) {
         if (choices.pinned[entry.id]) { skipped.push({ id: entry.id, reason: 'Pinned version' }); continue }
@@ -567,9 +602,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
         const installed = await json(join(active, 'node_modules', entry.id, 'package.json')).catch(() => undefined)
         if (installed && compareVersions(entry.version, installed.version) <= 0) continue
         if (!installed && compareVersions(entry.version, '0.1.0') <= 0) continue
-        result.push(await selectionTransaction(() => plugin(entry.id, source)))
+        ids.push(entry.id)
       }
-      return { updated: result.length, results: result, skipped }
+      return ids.length ? { ...await selectionTransaction(() => pluginBatch(ids, source, document)), skipped } : { updated: 0, skipped }
     }
     const installed = kind === 'skill' ? await callHost('skill.list', []) : kind === 'mcp' ? await callHost('mcp.list', []) : []
     const names = new Set(installed.map(item => kind === 'mcp' ? item.serverName : item.name))
@@ -711,5 +746,5 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     reads.set(identity, pending)
     return pending
   }
-  return { recover: () => exclusive(recover), repairOffline: source => exclusive(() => repairOffline(source)), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => selectionTransaction(() => rollbackPlugin(id))), setPluginEnabled: (id, enabled, dependents) => exclusive(() => selectionTransaction(() => setPluginEnabled(id, enabled, dependents))), mutate: (args, dependents) => exclusive(() => selectionTransaction(() => mutate(args, dependents))), plugin: (id, source) => exclusive(() => selectionTransaction(() => plugin(id, source))), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
+  return { recover: () => exclusive(recover), repairOffline: source => exclusive(() => repairOffline(source)), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => selectionTransaction(() => rollbackPlugin(id))), setPluginEnabled: (id, enabled, dependents) => exclusive(() => selectionTransaction(() => setPluginEnabled(id, enabled, dependents))), mutate: (args, dependents) => exclusive(() => selectionTransaction(() => mutate(args, dependents))), updatePlugins: (ids, source, options) => exclusive(() => selectionTransaction(() => pluginBatch(ids, source, undefined, options))), plugin: (id, source) => exclusive(() => selectionTransaction(() => plugin(id, source))), rollback: () => exclusive(rollback), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
 }

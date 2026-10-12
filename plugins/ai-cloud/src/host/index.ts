@@ -61,6 +61,7 @@ export class AiCloudLlmController {
   private credentialRefreshAt = 0
 
   constructor(private readonly ctx: Context, options: AiCloudLlmControllerOptions = {}) {
+    ctx.llm.registerConfigurableProviders([{ provider: 'zerowall-ai-cloud', displayName: 'ZeroWall AI 云平台', settingsNs: 'zerowall-ai-cloud', settingsPath: [], configurationMode: 'managed' }])
     this.secrets = options.secrets ?? new SecretBrokerClient()
     this.adapter = (options.createAdapter ?? ((adapterOptions) => new PiAiAdapter(adapterOptions)))({
       profiles: () => this.profiles,
@@ -179,60 +180,15 @@ export class AiCloudLlmController {
     const routes = [...next.keys()]
     if (this.registration === undefined) {
       if (routes.length === 0) {
-        await this.selectManagedDefault([], [])
         return
       }
       this.registration = this.ctx.llm.registerAdapter(routes, this.adapter)
     } else {
       this.registration.replace(routes)
     }
-    await this.selectManagedDefault(chatModels, routes)
   }
 
-  private async selectManagedDefault(models: readonly AiCloudManagedModel[], routes: readonly string[]): Promise<void> {
-    const defaults = this.ctx.get('agentDefaultModel')
-    if (defaults === undefined) return
-    const current = defaults.currentSelection()
-    if (models.length === 0) {
-      // Migrate historical selections only; no free-provider adapter is loaded.
-      if (current.provider.startsWith(ROUTE_PREFIX) || ['opencode2dsh', 'opencode-zen-free-provider'].includes(current.provider)) {
-        await this.saveManagedDefault(defaults, { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
-      }
-      return
-    }
-    if (routes.includes(current.provider)) {
-      // rc8 no longer exposes a provider availability probe. The account
-      // snapshot is the authoritative catalog for managed routes, so retain
-      // a route only when its provider and model are still advertised.
-      const stillAdvertised = models.some(model => model.providerId === current.provider && model.modelId === current.model)
-      if (stillAdvertised || !current.provider.startsWith(ROUTE_PREFIX)) return
-    }
-    if (current.provider.startsWith(ROUTE_PREFIX) && !routes.includes(current.provider)) {
-      const replacement = models.find(model => routes.includes(model.providerId))
-      if (replacement !== undefined) {
-        await this.saveManagedDefault(defaults, { provider: replacement.providerId, model: replacement.modelId })
-        return
-      }
-      await this.saveManagedDefault(defaults, { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
-      return
-    }
-    const preferred = [...models]
-      .filter(model => /deepseek/i.test(model.modelId))
-      .sort((left, right) => left.modelId.localeCompare(right.modelId))[0]
-    const available = preferred ?? models.find(model => routes.includes(model.providerId))
-    if (available === undefined) return
-    await this.saveManagedDefault(defaults, { provider: available.providerId, model: available.modelId })
-  }
 
-  private async saveManagedDefault(defaults: AgentDefaultModelService, selection: ModelSelection): Promise<void> {
-    try {
-      await defaults.saveSelection(selection)
-    } catch {
-      // Account refresh is best-effort. A read-only/high-priority config layer
-      // must not prevent the Harness host from completing startup.
-      this.ctx.logger.warn('Could not persist the automatically selected AI Cloud model; keeping the current default selection.')
-    }
-  }
 }
 
 export const name = 'zerowall-ai-cloud-llm'
@@ -296,6 +252,8 @@ function managedProfiles(models: readonly AiCloudManagedModel[]): Map<string, Re
         name: id,
         api: managedApi(id),
         input: ['text', 'image'],
+        ...(entry.models.get(id)?.contextWindow ? { contextWindow: entry.models.get(id)!.contextWindow } : {}),
+        ...(entry.models.get(id)?.maxOutputTokens ? { maxTokens: entry.models.get(id)!.maxOutputTokens } : {}),
         ...managedReasoning(id),
       })),
     }

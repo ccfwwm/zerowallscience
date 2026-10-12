@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runtime-process.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { mkdir, realpath, rm, stat, writeFile } from 'node:fs/promises'

@@ -9,6 +9,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import JSZip from 'jszip'
 import { locatePackagedApp } from '../scripts/packaged-app.mjs'
 import { clipboardCapability } from '../scripts/clipboard-capability.mjs'
+import { handleResourceUpdateNotices, resourceUpdateNotice } from '../scripts/update-notice-handler.mjs'
 import { pcrTemplate, pcrForward, pcrReverse, pcrExpected } from '../../plugins/research/test/sequence-simulation-fixture.js'
 import { moleculePdb } from '../../plugins/research/test/molecule-fixture.js'
 
@@ -78,6 +79,7 @@ beforeAll(async () => {
       `Electron diagnostics:\n${applicationOutput}`,
     ].join('\n\n'))
   }
+  await handleResourceUpdateNotices(page)
   await completeFirstRunOnboarding(page)
   await page.getByRole('dialog', { name: '登录或注册' }).waitFor({ state: 'hidden', timeout: 30_000 })
 })
@@ -158,7 +160,7 @@ describe('ZeroWall Science Electron', () => {
     for (let visit = 0; visit < 2; visit++) {
       await settings.getByRole('button', { name: '扩展中心', exact: true }).click()
       await settings.locator('strong[title="@zerowallscience/plugin-mcp"]').waitFor()
-      for (const name of ['Skills', 'MCP', 'Python', '插件']) await settings.getByRole('tab', { name, exact: true }).click()
+      for (const name of ['Skills', 'MCP', 'Python', '插件']) await settings.getByRole('tab', { name: new RegExp(`^${name}(?:\\s*\\d+)?$`, 'u') }).click()
       await settings.getByRole('button', { name: '刷新本地列表', exact: true }).click()
       expectNoUnverifiedCatalogPayloads()
       await settings.getByRole('button', { name: '环境配置', exact: true }).click()
@@ -789,11 +791,16 @@ describe('ZeroWall Science Electron', () => {
     if (await expand.isVisible()) await expand.click()
     const login = page.getByRole('button', { name: '登录AI平台', exact: true })
     const update = page.locator('button[data-update]')
-    expect(await update.evaluate((element) => element.previousElementSibling?.textContent)).toContain('登录AI平台')
+    expect(await update.evaluate(element => {
+      const account = element.parentElement?.querySelector('button[aria-label="登录AI平台"]')
+      return Boolean(account && (account.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING))
+    })).toBe(true)
+    await page.removeLocatorHandler(resourceUpdateNotice(page))
     await update.click()
     await page.getByRole('dialog').waitFor()
     await page.screenshot({ path: join(artifacts, 'update.png') })
     await page.keyboard.press('Escape')
+    await handleResourceUpdateNotices(page)
     await login.click()
     const account = page.getByRole('dialog', { name: '登录或注册' })
     await account.waitFor()

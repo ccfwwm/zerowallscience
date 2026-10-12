@@ -450,12 +450,12 @@ describe('Python dependency panel', () => {
     expect(screen.getAllByText('科研层待安装：1').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('操作记录 · 2')).toBeTruthy()
     expect(screen.getByText('Hash mismatch')).toBeTruthy()
-    expect(execute.mock.calls.every(([request]) => ['list_packages', 'configure', 'status', 'diagnose'].includes(request.action))).toBe(true)
+    expect(execute.mock.calls.every(([request]) => ['scan_local', 'list_packages', 'configure', 'status', 'diagnose'].includes(request.action))).toBe(true)
   })
   it('prefers the Host inventory metadata and filters by package capability', async () => {
     const legacy = vi.fn()
     const inventory = { ...info('gen-a', 2), packages: [{ ...info('gen-a', 2).packages[0], capabilities: ['image'], sha256: 'b'.repeat(64) }, { ...info('gen-a', 2).packages[1], capabilities: ['sequence'] }] }
-    window.zerowallDesktop = { getMcpPythonInfo: legacy, pythonEnvironment: async (request: any) => ({ requestId: request.requestId, ...(request.action === 'list_packages' ? { inventory } : {}) }) } as any
+    window.zerowallDesktop = { getMcpPythonInfo: legacy, pythonEnvironment: async (request: any) => ({ requestId: request.requestId, ...(request.action === 'scan_local' ? { scanId: 'actual-scan', scan: { scanId: 'actual-scan', state: 'succeeded', inventory } } : {}) }) } as any
     render(<PythonEnvironmentPanel t={zhT} />)
     reveal('package')
     await screen.findByText('2')

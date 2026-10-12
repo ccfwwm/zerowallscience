@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { access, mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runtime-process.js'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { ResearchStore } from '@zerowallscience/research-store'

@@ -1,14 +1,14 @@
 {
   "schema": 3,
   "kind": "zerowall-science-python",
-  "applicationVersion": "8.1.2",
+  "applicationVersion": "8.1.3",
   "runtimeId": "zerowall-science-python",
   "platform": "win32-x64",
   "environmentVersion": "3.12.10",
-  "revision": "3.12.10-r17",
+  "revision": "3.12.10-r18",
   "pythonVersion": "3.12.10",
   "layer": "science",
-  "createdAt": "2026-10-10T20:25:23.518Z",
+  "createdAt": "2026-10-12T03:40:24.272Z",
   "index": {
     "indexUrl": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "trustedHost": "pypi.tuna.tsinghua.edu.cn"
@@ -645,13 +645,10 @@
     {
       "name": "cobra",
       "version": "0.32.1",
-      "sha256": "0efd20239ad820e1da0abf4f61284fe2098119de0b99509d543c2f32ae499b3a",
       "required": true,
       "capabilities": [
         "cobrapy"
-      ],
-      "source": "sdist",
-      "filename": "cobra-0.32.1.tar.gz"
+      ]
     },
     {
       "name": "colorama",
@@ -4525,16 +4522,79 @@
     }
   ],
   "compatibility": {
-    "minApplicationVersion": "8.1.2"
+    "minApplicationVersion": "8.1.3"
   },
   "signature": {
     "algorithm": "ed25519",
     "keyId": "stable-4",
-    "value": "WdLbIarSKLrARSE7RELNpAyXcovQFtor+Z05tQEL3F0LCDmu1VDewMXHHjPlFZOprJELMOmUKd1w9+yUy0MHDg=="
+    "value": "H/g+Meub+e5jYc5rmFr0G6vMYABjm5dC6pk3bWIuQ/gqlWgyC32/FnLqSkxD1ekGgW+ymqt+g2odOeX6LVWaAQ=="
   },
+  "fallbackWheels": [
+    {
+      "name": "flowio",
+      "version": "1.4.0",
+      "filename": "flowio-1.4.0-py3-none-any.whl",
+      "size": 21926,
+      "sha256": "e278b5ecd3fefbdaaa5bc677a2c2dded8541920a461d82091a9191eb874e93e6",
+      "tags": [
+        "py3-none-any"
+      ],
+      "sourceArchiveSha256": "c205efcecd1da7da29a1a55c30e09daa7fc132b997cd88910ef06a490755ecf7",
+      "url": "https://zerowall.chengxunkeji.cn/stable/python/wheels/3.12.10-r18/flowio-1.4.0-py3-none-any.whl"
+    },
+    {
+      "name": "bibtexparser",
+      "version": "1.4.4",
+      "filename": "bibtexparser-1.4.4-py3-none-any.whl",
+      "size": 43708,
+      "sha256": "b94ef8ce83dd595355eae0a9b8886df6d9fabfcdec2adb7a143417094f1013c9",
+      "tags": [
+        "py3-none-any"
+      ],
+      "sourceArchiveSha256": "093b6c824f7a71d3a748867c4057b71f77c55b8dbc07efc993b781771520d8fb",
+      "url": "https://zerowall.chengxunkeji.cn/stable/python/wheels/3.12.10-r18/bibtexparser-1.4.4-py3-none-any.whl"
+    },
+    {
+      "name": "autograd-gamma",
+      "version": "0.5.0",
+      "filename": "autograd_gamma-0.5.0-py3-none-any.whl",
+      "size": 4136,
+      "sha256": "48be4ad0d0deacf33b5022c7be7a6c18fa9ae57263ac02fa8522d2a53b3487a0",
+      "tags": [
+        "py3-none-any"
+      ],
+      "sourceArchiveSha256": "f27abb7b8bb9cffc8badcbf59f3fe44a9db39e124ecacf1992b6d952934ac9c4",
+      "url": "https://zerowall.chengxunkeji.cn/stable/python/wheels/3.12.10-r18/autograd_gamma-0.5.0-py3-none-any.whl"
+    },
+    {
+      "name": "docopt",
+      "version": "0.6.2",
+      "filename": "docopt-0.6.2-py2.py3-none-any.whl",
+      "size": 13858,
+      "sha256": "d6031e32d0e38c26cac7b82072662d42875be0e213c6f18993c25171952c0bf1",
+      "tags": [
+        "py2-none-any",
+        "py3-none-any"
+      ],
+      "sourceArchiveSha256": "49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491",
+      "url": "https://zerowall.chengxunkeji.cn/stable/python/wheels/3.12.10-r18/docopt-0.6.2-py2.py3-none-any.whl"
+    },
+    {
+      "name": "nglview",
+      "version": "4.0.1",
+      "filename": "nglview-4.0.1-py3-none-any.whl",
+      "size": 10672486,
+      "sha256": "da62def7d8e79e3a8e1a0bd410fc9acd43eddd9f4b2e6a35870865ec3e2a53ef",
+      "tags": [
+        "py3-none-any"
+      ],
+      "sourceArchiveSha256": "1e15b819b9f8ada3e521e587d24cc3754573203cc99ee5d801cef28d992865a5",
+      "url": "https://zerowall.chengxunkeji.cn/stable/python/wheels/3.12.10-r18/nglview-4.0.1-py3-none-any.whl"
+    }
+  ],
   "source": {
     "lockSha256": "18da5f3bff1c2a92a604efe2415af3c278734473f9898d8ed562921fcffc0b62",
     "sourceLockSha256": "0c8aac2a7ede3709623c4b9ab6281bdede8a73b58c8c3a6fe61eb7e74b5e67db",
-    "auditGeneratedAt": "2026-10-10T20:15:46.842964+00:00"
+    "auditGeneratedAt": "2026-10-10T20:34:33.510595+00:00"
   }
 }

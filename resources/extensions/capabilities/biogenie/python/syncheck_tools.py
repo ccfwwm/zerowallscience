@@ -4,7 +4,7 @@
 import os
 import sys
 import re
-from seq_util import clean_seq
+from seq_util import clean_seq, read_seq_input
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -123,9 +123,7 @@ def op_dna_syncheck(args):
       poly_run_min: 连续重复报警阈值（默认 6）
     返回：各约束检查结果 + 综合可合成性评估。
     """
-    sequence = clean_seq(args.get('sequence', ''))
-    if not sequence:
-        raise ValueError('sequence 必填')
+    sequence = clean_seq(read_seq_input(args.get('sequence') or '', 'sequence'))
     if not re.match(r'^[ACGTN]+$', sequence):
         invalid = set(c for c in sequence if c not in 'ACGTN')
         return {'error': f'序列含非法碱基 {invalid}，仅支持 A/C/G/T/N'}

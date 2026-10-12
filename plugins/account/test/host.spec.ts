@@ -13,6 +13,37 @@ function json(value: unknown, status = 200): Response {
 }
 
 describe('AI Cloud account client', () => {
+  it('coalesces model sync, reports partial failure with retained stale models and rejects a late response after logout', async () => {
+    const secrets = new MemorySecrets()
+    const previous = { providerId: 'zerowall-ai-cloud-2-completions', groupId: '2', groupName: 'Old', modelId: 'deepseek-old', baseUrl: 'https://code.aicodeme.xyz/v1' }
+    secrets.values.set('zerowall.ai-cloud.session', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'test@example.com', accessToken: 'fixture', balance: 1, currency: 'CNY', models: [previous], groupIds: ['2'] }))
+    let delayed: ((value: Response) => void) | undefined
+    let block = false
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith('/groups/available')) return json({ data: [{ id: 1, name: 'New', enabled: true }, { id: 2, name: 'Old', enabled: true }] })
+      if (url.includes('/keys?')) return json({ data: { items: [{ group_id: 1, key: 'one' }, { group_id: 2, key: 'two' }] } })
+      if (url.endsWith('/v1/models')) {
+        if (block) return new Promise<Response>(resolve => { delayed = resolve })
+        if (new Headers(init?.headers).get('authorization')?.endsWith('two')) return json({ message: 'unavailable' }, 503)
+        return json({ data: [{ id: 'gpt-6-fixture', context_window: 32000, max_output_tokens: 4000 }] })
+      }
+      throw new Error('Unexpected fixture endpoint')
+    })
+    const client = new AiCloudClient({ secrets, fetch: fetcher })
+    const [a, b] = await Promise.all([client.discoverModels(), client.discoverModels()])
+    expect(a).toEqual(b)
+    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith('/groups/available'))).toHaveLength(1)
+    expect(a.modelSync).toMatchObject({ status: 'partial', groups: [{ status: 'succeeded', count: 1 }, { status: 'failed', count: 1, error: 'HTTP 503' }] })
+    expect(a.models.find(model => model.groupId === '2')).toMatchObject({ ...previous, stale: true })
+    expect(a.models.find(model => model.groupId === '1')).toMatchObject({ contextWindow: 32000, maxOutputTokens: 4000, capacitySource: 'gateway' })
+    block = true
+    const late = client.discoverModels(); const rejected = expect(late).rejects.toThrow('ACCOUNT_STATE_CHANGED')
+    await expect.poll(() => !!delayed).toBe(true)
+    await client.logout(); delayed!(json({ data: [{ id: 'late' }] }))
+    await rejected
+    expect(secrets.values.has('zerowall.ai-cloud.session')).toBe(false)
+  })
   it('uses the same normalized email, gateway and exact password for verification and registration', async () => {
     const secrets = new MemorySecrets()
     let issuedEmail = ''

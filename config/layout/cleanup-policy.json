@@ -24,11 +24,12 @@
     ".zerowall",
     "artifacts/stage/current.json",
     "artifacts/release",
-    "artifacts/verification",
     "%SystemDrive%"
   ],
   "managedRoots": [
     "artifacts/stage",
+    "artifacts/packages",
+    "artifacts/verification",
     "artifacts/dev",
     "artifacts/cache/legacy-outputs",
     "artifacts/cache/electron-builder",

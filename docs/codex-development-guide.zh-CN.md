@@ -8,7 +8,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | `8.1.1`；本批次父 HEAD `c8f00c0b1fd15a6695f136b58d2486cb8f73f3e3`，分支 `main`；构建与发布收据见第 17 节 |
+| 应用版本 | `8.1.3`；本批次父 HEAD `15aa09b7a586ef71f18e0ab06da9cfec4caff929`，分支 `main`；本版发布以实际验收与公网收据为准 |
 | 8.0.9 Windows x64 安装包 | `316,401,650` 字节，SHA-256 `a2200357281410897bd1a9f7f4702742599cb4b004a8f35acdfd4d4f8e344ced`，build ID `1791561463413-f0f9c239` |
 | 8.0.9 发布状态 | Windows 安装器、37 个插件、281 个 Skills、2 个 MCP 和 1 个 Python 目录已发布至七牛 Stable 并完成公网校验；未创建 GitHub Release |
 | 集成基线 | 8.0.9 从 `d7d8f579357f5fec20773425d5ae9430ea5e7d4e` 开发，实现提交 `d4738fbee0778e0d0bae495b1bcdc2ac75e63c6d` 已合并到 `main` |
@@ -17,7 +17,7 @@
 | 8.0.7 发布状态 | 独立资源目录、桌面安装器和 Stable 指针已发布至七牛并通过公网校验；[GitHub v8.0.7 Release](https://github.com/ccfwwm/zerowallscience/releases/tag/v8.0.7) 已公开，四项资产已下载复核 |
 | 8.0.7 发布标签 | `v8.0.7` 指向 `f5d04dc0dafd468809ba8eef35e2f9eb2027045a`；后续文档提交不改变发布资产 |
 | 8.0.7 安装器收据 | build ID `1791439688519-5aba5d34`，229,670,236 字节，SHA-256 `78b1bcb9613ac8b5f2eaf349c13c59ceac575b425587c7d2b0f94ab2370302f7` |
-| DSH 子模块 | `86b6740d0e671cee0b3fd0168de484c0efbf46ea` |
+| DSH 子模块 | `8c00ce78435cf35300654c41e69336e69dc758b1`；保留 `0.2.0-rc.2` 版本线，新增可选 managed 供应商展示 |
 | DSH 分支 | `zerowall/reviewer-history-opaque` |
 | DSH 标签 | `dsh-v0.2.0-rc.2` |
 | GitHub | `https://github.com/ccfwwm/zerowallscience` |
@@ -27,6 +27,15 @@
 七牛历史版本使用不可变路径，清理本地安装器和 stage 不删除远端发布。插件、Skills、MCP 和 Python 资源属于独立发布面；如果同一资源 ID 和版本在七牛已有不同字节，必须停止发布并递增该资源版本，不能覆盖或伪造哈希。资源签名保留 `stable-3` 验签兼容，并由 `stable-4` 为新发布的目录和依赖清单签名；私钥只保存在被 Git 忽略的 `scripts/env/`，严禁进入源码仓库或插件总仓库。
 
 用户指定的模型、推理强度、生图模型、协议和参数必须保持不变。开发任务不因为测试方便而自动切换模型、降低推理级别或增加替代路由。
+
+### 8.1.3 的 Windows 路径边界
+
+- 应用入口和捆绑资源从真实 `ZeroWallScience.exe` 及其 `resources` 定位，不从用户数据目录查找程序。
+- 共享解释器默认位于 `<真实安装目录>\Python\python.exe`，site-packages 位于同一根目录下；管理记录位于 `Python\.zerowall`。旧 Roaming、LocalAppData 和 slots 中的 Python 不迁移、不删除、不执行。
+- 用户数据包括会话、账户设置、项目记录、Host profile 和日志，独立于程序及 Python。已有可写的 `%APPDATA%\zerowall-science` profile 保留使用；新 profile 或 Roaming 不可用时使用 `%LOCALAPPDATA%\zerowall-science`。不为初始化 Python 创建 Roaming product 目录。
+- `%LOCALAPPDATA%\ZeroWall Science\python-location.json` 只保存 Python 路径选择。旧默认选择及私有 slots 路径被忽略；明确选择的有效固定根保留。启动解析只读，安装目录无写权限时由显式安装操作报告并提供路径选择。
+- 判断客户启动错误时记录失败阶段和真实路径。看到 Roaming 的 profile 路径本身不能证明安装位置错误；不得将用户数据目录与 Python 根混为一谈，也不得删除 profile 作为修复手段。
+- 本版最终构建、NSIS 安装/卸载/重装、真实工具和七牛校验事实记录在 `docs/verification-8.1.3.md` 与 `artifacts/verification/8.1.3/`；测试失败和外部账号限制必须随收据保留。
 
 ## 2. Codex 的工作方式
 
@@ -42,7 +51,7 @@ git submodule status
 Get-Content config/deepseek-harness/upstream.json
 ```
 
-记录当前分支、父仓库 HEAD、DSH 子模块 HEAD 和工作区状态。默认直接在当前 `main` checkout 开发，保持用户已有改动；只有用户明确要求隔离，或当前目录被另一项任务占用且无法并行时，才创建 Codex 管理的 worktree。新 worktree 必须通过 Codex worktree 工具创建，不能手工复制目录。
+记录当前分支、父仓库 HEAD、DSH 子模块 HEAD 和工作区状态。直接在当前 `main` checkout 开发，保持用户已有改动，不创建、挂接或切换 worktree；当前目录存在并行工作时，在当前 checkout 协调修改范围。
 
 主目录有未提交修改时，逐项识别归属并保留。禁止使用 `reset --hard`、广泛 `git clean`、删除整个工作区或覆盖用户配置来“恢复干净”。任何清理都必须先列出精确路径、确认该路径属于生成物，再按 allowlist 删除。
 
@@ -99,7 +108,7 @@ artifacts/
 
 ## 4. DSH 子模块合同
 
-父仓库当前使用 ZeroWall DSH fork `86b6740d0e671cee0b3fd0168de484c0efbf46ea`，仍属于 `dsh-v0.2.0-rc.2` 版本线。`config/deepseek-harness/upstream.json` 必须与子模块 HEAD、仓库、分支和标签一致。执行 `pnpm dsh:verify` 之前不要声称 DSH 已锁定。
+父仓库当前使用 ZeroWall DSH fork `8c00ce78435cf35300654c41e69336e69dc758b1`，仍属于 `dsh-v0.2.0-rc.2` 版本线。`config/deepseek-harness/upstream.json` 必须与子模块 HEAD、仓库、分支和标签一致。执行 `pnpm dsh:verify` 之前不要声称 DSH 已锁定。
 
 检查：
 
@@ -158,22 +167,26 @@ pnpm plugins:pack
 - 签名 catalog、资源版本、Desktop/DSH 兼容范围、平台和架构。
 - 下载、验签、解包、依赖准备、健康检查、切换和回滚阶段。
 - 独立 generation、任务 journal、旧版本、失败原因和重试次数。
-- 插件按 profile 原子切换；Skills 支持运行中刷新；MCP 配置支持热刷新，Server 支持启停和重启；Python 使用 generation 与 `current.json`。
+- 插件按 profile 原子切换；Skills 支持运行中刷新；MCP 配置支持热刷新，Server 支持启停和重启；Python 使用固定目录中的文件事务、内容 revision 与管理记录，回滚恢复同一目录，不切换解释器路径。
 
 8.1.0 在启动完成后后台检查插件、Skills 和 MCP 签名目录，并每日检查一次；扩展中心打开时独立检查四组资源（含 Python），手动“检查更新”可立即重试。检测只读取、验签 catalog metadata，并保存验证后的缓存，不下载 payload、不安装、不修改 profile、不重启。发现桌面或资源更新时自动打开更新提示，并在左下角保留更新标记和扩展中心入口。用户必须明确通过设置或 `zws` 触发变更。更新失败时保留旧版本继续运行，不能删除用户自定义 Skill、MCP 配置、账户、模型、项目或第三方插件。远端结果成功后，较早发起的本地读取不得覆盖它；网络失败保留已知更新状态，并显示该组诊断。
 
 插件更新、修复、本地导入和启停的 candidate profile 必须保留安装器已验证离线闭包。对未被本次签名更新替换、且位于用户资源 `offline/` generation 内的包，使用 `link:` 引用其完整运行时，不让 pnpm 重新解析源码 manifest 中的 `workspace:`。选中的插件和签名依赖闭包仍使用验签 tarball。不要删除依赖或放宽版本断言来规避 `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`。包管理失败应显示退出码、脱敏 stdout/stderr 和 profile diagnostics，不能只显示通用失败提示。
 
-### Python 分层合同（8.0.7）
+### Python 分层合同（8.1.3）
 
-- 运行时根目录固定为 `%LOCALAPPDATA%\\ZeroWall Science\\Python`；旧 Roaming 或安装目录中的 Python 指针不再作为默认目标，也不会被复制或删除。
+- 运行时根目录固定为 `<实际 EXE 安装目录>\\Python`，或用户明确选择的固定根目录。正常执行只用根目录的 `python.exe` 和 `Lib/site-packages`。旧 LocalAppData、Roaming 和 slots 不迁移、不删除，也不再执行。
 - `bootstrap` 只表示解释器是否存在，`core` 表示 ZeroWall/MCP 最小依赖，`science` 表示科研依赖，`capability` 表示某个 Skill 或流程的可选依赖。解释器就绪不等于科研层已安装。
-- 默认启动只读取已捆绑签名清单和本地状态，不检测远端。Python + pip bootstrap、42 个基础依赖和其他资源均由用户明确选择安装；任务异步运行，不阻塞桌面界面。
+- 默认启动只读；远端 catalog 检查也不下载或安装。Python + pip bootstrap、43 个核心依赖、529 个科研依赖均由用户明确选择安装；任务异步返回持久 ID。
 - 新桌面版本使用固定版本的 Python bootstrap manifest；首次安装只接受 `python.bootstrapOnly=true` 的清单。发布的运行时 ZIP 只含 CPython 3.12.10 与 pip，拒绝旧的 387 包科研环境清单，避免新用户误下载近 1 GB 的完整环境。bootstrap 资源使用独立的版本目录；验证阶段只上传不可变对象，不更新 `latest.json`。
 - 核心任务写入持久 task receipt，持续记录阶段、包计数、当前包、实时 pip 日志和错误。设置页轮询本地快照，不重复扫描完整 site-packages；关闭或重启后恢复最近任务状态，等待用户选择继续后续接核心同步。
-- 科研层和 capability 层不随启动自动安装。用户明确选择“安装科研层”或某个能力层后，才预检、下载并进行 generation 切换；启动检查不得下载这些大型资源。
+- 科研层和 capability 层不随启动自动安装。显式安装使用同目录文件事务、写锁和执行租约；回滚恢复到相同目录，不切换解释器路径。候选只用于安装器内部校验，不注册为活动运行时。
 - `core-dependency-manifest.json` 与 `dependency-manifest.json` 独立签名；同步计划必须绑定所选层和 manifest hash，资源不可用时不创建安装任务。
 - Python 状态、路径和错误必须从 Host 返回的稳定字段读取，不能从旧 snapshot 的物理路径推导 UI 路径。
+- 本地真实检测优先使用固定解释器的 `-m pip list --format=json`，pip 故障时同解释器 metadata fallback。所有默认层、预览、补缺和核验按包名存在判断，保留已安装版本。资源签名与下载哈希校验保持严格。
+- Python 插件的默认及恢复默认镜像均为中科大 `https://mirrors.ustc.edu.cn/pypi/simple`；用户明确保存的镜像优先。依赖清单记录生成时的解析源，不覆盖应用设置。安装不关闭 HTTPS 验证，也不修改全局 pip 配置。镜像验收包含连续完整 wheel 下载和大小/SHA-256 校验，不能以一次索引请求成功代替。
+- Python 插件拥有管理页面和 ABI 1 验签 worker；桌面只保留 IPC、worker 验真和生命周期协调。更新后旧 worker 完成原任务，新任务使用新 worker，持久任务记录 `ownerPid` 防止误恢复。
+- Python 解释器、pip、依赖层、导入诊断和 MCP 连接分别报告。完整 stdout/stderr 保存在工作区结果文件，模型可见输出有预算并支持分页；模型上下文错误不能改成 Python 失败或重执行已完成工具。
 
 ### RMCP 工具发现合同（8.0.6）
 
@@ -221,11 +234,13 @@ zws python status
 
 日常编译使用 `pnpm build:dev`：检查 DSH、支持包、Research Store、插件和桌面的全部组件指纹，仅编译输入变化、输出缺失或哈希失效的组件。输出继续通过兼容链接进入 `artifacts/dev/`；已提交改动和共享 helper 也参与指纹。此入口不初始化正式 stage，不装配 runtime、离线 profile、资源签名或安装器载荷。正式构建仍使用 `pnpm build`、`pnpm build:full` 和 `pnpm package:stable:win`。
 
-runtime assembly、stage clone 和离线 carrier 命中缓存时优先硬链接普通文件；跨卷或权限不允许时复制。正式 runtime 拒绝符号链接和特殊文件，并记录物化方式、源缓存键及文件 SHA-256。链接后的缓存字节视为不可变：适配必须在生成候选缓存之前完成，不能原地修改命中后的 runtime。收据、签名及 stage clone 中会被包装脚本刷新或适配的目录独立复制。新缓存仍通过完整候选目录校验后原子切换，损坏缓存保留诊断副本。
+runtime assembly、stage clone 和离线 carrier 命中缓存时优先硬链接普通文件；跨卷或权限不允许时复制。正式 runtime 拒绝符号链接和特殊文件，并记录物化方式、源缓存键及文件 SHA-256。链接后的缓存字节视为不可变：适配必须在生成候选缓存之前完成，不能原地修改命中后的 runtime。收据、签名及 stage clone 中会被包装脚本刷新或适配的目录独立复制。runtime assembly 和离线 carrier 首次构建直接生成缓存候选目录，完成校验和原子切换后再物化到 stage，避免复制一份完整中间目录。缓存提交失败恢复原缓存，损坏缓存保留诊断副本。
 
-GC 不遍历任何 `node_modules` 目录；候选树包含嵌套依赖目录时保留整棵树。只有超过保留期且不被收据引用的候选项才计算 SHA-256。删除前重新校验内容和嵌套依赖保护，即使 dry-run 后只新增了一个空的 `node_modules`，也必须拒绝删除。
+GC 保护开发依赖目录；只有明确归属 `artifacts/stage`、已知 runtime/offline cache、历史隔离验收和包解包目录的候选才允许清理其中的生成 `node_modules`。其他候选树包含嵌套依赖目录时保留整棵树。候选需要校验 SHA-256；删除前重新检查活动构建锁、当前指针、外部收据引用和内容。普通开发目录即使在 dry-run 后只新增一个空的 `node_modules`，也必须拒绝删除。正式构建全程持有 `formal-build` 锁。
 
-GC 按数量保留每个版本的当前 stage 和上一次成功 stage；没有当前指针时保留最近两次成功 stage。每类 runtime assembly 和 offline carrier 保留最近两份。超过数量的成功产物可进入候选，不必等待 14 天；失败和不完整产物仍遵守原保留期。当前 stage、release/verification 收据引用和 `node_modules` 保护优先于数量规则，因此实际保留数量可能超过两份。`--dry-run` 只列清单，`--apply` 必须由用户显式执行。
+`pnpm artifacts:gc --dry-run --prune-incomplete` 显式列出未完成和空 stage，以及 hash/UUID 命名的未提交缓存候选；默认仍遵守 stage 的 14 天和 cache 的 30 天策略。失败 stage 和损坏缓存的回滚快照遵守各自保留期。历史版本 `isolated-*`、`native-pack`、`installer-test-*` 等隔离载荷可进入候选，删除前将诊断 JSON、收据与日志独立复制、校验并保留到该版本的 `summaries/`，当前版本验收目录保持完整。当前安装器必须通过完整 `verify:package` 后，才能使用 `--prune-unpacked` 处理有 artifact manifest 的 `win-unpacked`。清理始终先审核 dry-run，再由用户明确选择 `--apply`。输出包含逻辑大小、唯一 inode 大小和移除全部硬链接时可释放的字节估计；apply 收据另外记录磁盘空闲空间差值。inode 字节数不是磁盘簇分配量，空闲空间差值也可能受同时运行的其他程序影响。
+
+GC 按数量保留每个版本的当前 stage 和上一次成功 stage；没有当前指针时保留最近两次成功 stage。每类 runtime assembly 和 offline carrier 保留最近两份。超过数量的成功产物可进入候选，不必等待 14 天；失败产物遵守失败保留期，未完成产物默认遵守 14 天策略，可由 `--prune-incomplete` 显式提前清理。当前 stage、release/verification 收据引用和开发依赖保护优先于数量规则，因此实际保留数量可能超过两份。`--dry-run` 只列清单，`--apply` 必须由用户显式执行。
 
 单独的 Python 依赖清单可用 `pnpm resource:build python core`、`science` 或 `capability <id>` 生成。构建命令应绑定新的 `ZEROWALL_BUILD_ID`；输出先进入该 build ID 的 stage，再经签名和 SHA-256 收据校验。catalog 若标记 `localOnly`，只可用于本地验收，不能作为正式发布目录。
 

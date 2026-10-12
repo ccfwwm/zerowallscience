@@ -28,7 +28,7 @@ export function startupFailure(error: unknown): Pick<StartupStatus, 'phase' | 'm
       `多余 ${diagnostics.extraFiles}、缺失 ${diagnostics.missingFiles}、大小不符 ${diagnostics.sizeMismatches}、哈希不符 ${diagnostics.hashMismatches}。`,
       logical ? `归档逻辑集合：多余 ${count(logical.extraFiles)}、缺失 ${count(logical.missingFiles)}、大小不符 ${count(logical.sizeMismatches)}、哈希不符 ${count(logical.hashMismatches)}。` : '',
       diagnostics.applicationVersion ? `离线资源版本 ${diagnostics.applicationVersion}${diagnostics.buildId ? `，构建 ${diagnostics.buildId}` : ''}。` : '',
-      '请完全退出旧版本进程后重新覆盖安装 8.1.1；安装器会清理其拥有的旧运行时文件。',
+      `请完全退出旧版本进程后重新覆盖安装 ${diagnostics.applicationVersion ?? '当前版本'}；安装器会清理其拥有的旧运行时文件。`,
     ].filter(Boolean).join('\n')
   }
   return { phase: 'failed', message: redactResourceDiagnostic(message).slice(0, 1800), ...(diagnostics ? { diagnostics } : {}) }

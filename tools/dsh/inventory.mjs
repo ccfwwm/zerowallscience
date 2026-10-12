@@ -27,7 +27,7 @@ const zeroWallOrder = [
   'base', 'secrets', 'environment', 'desktop-compat', 'projects', 'mcp',
   'account', 'ai-cloud',
   'files', 'images',
-  'research', 'pubmed', 'mineru', 'singlecell', 'execution', 'python', 'runs',
+  'research', 'pubmed', 'mineru', 'singlecell', 'execution', 'python', 'biogenie', 'runs',
   'publications', 'skills', 'reviewer', 'extension-center',
 ]
 const expectedOrder = [

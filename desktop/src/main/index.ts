@@ -21,10 +21,10 @@ import { isZoteroOpenUrl } from './security-policy.js'
 import { resolveDesktopIdentity } from './identity.js'
 import { findDesktopWorkspaceRoot, resolveBundledSkillsPath, resolveDesktopIconPath, resolveDesktopResourcePath, resolveWorkspaceResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
-import { PythonUpdaterService } from './python-updater-service.js'
+import { PythonUpdaterService } from './python-manager-broker.js'
 import { createPythonTerminalLaunch, managedPythonTerminalPaths } from './python-terminal.js'
-import { PythonSyncService } from './python-sync.js'
-import { PythonEnvironmentApi, type PythonEnvironmentRequest } from './python-environment-api.js'
+
+import type { PythonEnvironmentApi, PythonEnvironmentRequest } from './python-environment-api.js'
 import { resolvePythonLocation } from './python-location.js'
 import { resolveDesktopUserDataPath } from './user-data-location.js'
 import { mcpEnvironmentDiagnostic, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
@@ -35,7 +35,7 @@ import { verifyDownloadedArtifact } from './update-artifact.js'
 import { resolveRevealPath } from './reveal-path.js'
 import { copyWindowsFile } from './clipboard-files.js'
 import { deleteStoredSession, parseSessionDeleteRpcResponse, recoverSessionDeletions, sessionDeletionJournal, validSessionId } from './session-delete.js'
-import type { DesktopClipboardFile, DesktopInfo, PythonDependencyLayer, RuntimeSnapshot, StartupStatus } from '../shared/contracts.js'
+import type { DesktopClipboardFile, DesktopInfo, McpPythonInfo, PythonDependencyLayer, RuntimeSnapshot, StartupStatus } from '../shared/contracts.js'
 
 const { autoUpdater } = updaterPackage
 /** Stable updates are served from the Qiniu-backed generic feed. Keeping this
@@ -49,7 +49,7 @@ const MCP_ENVIRONMENT_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA
 let mainWindow: BrowserWindow | undefined
 let startupCover: WebContentsView | undefined
 let runtime: HarnessRuntime | undefined
-let pythonEnvironmentApi: PythonEnvironmentApi | undefined
+let pythonEnvironmentApi: Pick<PythonEnvironmentApi, 'request' | 'shutdown' | 'persistRuntimeSummary'> | undefined
 let tray: Tray | undefined
 let quitting = false
 let restarting = false
@@ -461,21 +461,7 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
   }
 }
 
-async function resolveManagedPythonExecutable(root: string): Promise<string | undefined> {
-  try {
-    const current = JSON.parse(await readFile(join(root, 'current.json'), 'utf8')) as { root?: unknown; health?: unknown; manifest?: { python?: { relativeExecutable?: unknown } } }
-    if (current.health !== 'ready' || typeof current.root !== 'string' || current.root.trim() === '') return undefined
-    const installRoot = resolve(current.root)
-    const manifest = current.manifest ?? JSON.parse(await readFile(join(installRoot, 'manifest.json'), 'utf8')) as { python?: { relativeExecutable?: unknown } }
-    const relativeExecutable = manifest.python?.relativeExecutable
-    if (typeof relativeExecutable !== 'string' || relativeExecutable.trim() === '' || isAbsolute(relativeExecutable)) return undefined
-    const executable = resolve(installRoot, relativeExecutable)
-    const containment = relative(installRoot, executable)
-    if (containment === '..' || containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(containment)) return undefined
-    await access(executable)
-    return executable
-  } catch { return undefined }
-}
+
 
 async function launch(): Promise<void> {
   // Offline profile activation already starts and validates this same Host.
@@ -525,6 +511,8 @@ if (ownsInstance) app.whenReady().then(async () => {
   // its path settings from opening; the updater creates the directory inside
   // its recoverable install transaction and reports any failure in the panel.
   process.env.ZEROWALL_PYTHON_ROOT = mcpEnvironmentRoot
+  process.env.ZEROWALL_PYTHON_MANAGEMENT_ROOT = mcpEnvironmentRoot
+  process.env.ZEROWALL_PYTHON_RUNTIME_ROOT = pythonLocation.runtimeRoot
   process.env.ZEROWALL_BIOGENIE_ROOT = app.isPackaged ? join(process.resourcesPath, 'extensions/capabilities/biogenie') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'biogenie')
   const bundledKetcherRoot = app.isPackaged ? join(process.resourcesPath, 'extensions/mcp/ketcher-chemistry') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'mcp', 'ketcher-chemistry')
   process.env.ZEROWALL_KETCHER_ROOT = bundledKetcherRoot
@@ -643,12 +631,18 @@ if (ownsInstance) app.whenReady().then(async () => {
     : developmentStagePath('python-base-3.12.10', 'zerowall-python-windows-x64-3.12.10.zip')
   const bootstrapAvailable = (await Promise.all([bootstrapManifest, bootstrapArchive].map(file => access(file).then(() => true, () => false)))).every(Boolean)
   mcpEnvironment = new PythonUpdaterService({
-    generationMode: true,
-    coordinateHost: true,
+    generationMode: false,
+    coordinateHost: false,
     root: mcpEnvironmentRoot,
     runtimeRoot: pythonLocation.runtimeRoot,
+    coreDependencyManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'core-dependency-manifest.json') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'python', 'core-dependency-manifest.json'),
     settingsPath: dirname(pythonLocation.locationPath),
-    ...(app.isPackaged ? { updaterWorkerPath: join(process.resourcesPath, 'python-updater', 'python-updater-worker.js') } : {}),
+    resolveWorker: async () => {
+      const active = join(userData, 'harness', 'profiles', 'web', 'node_modules', '@zerowallscience', 'plugin-python', 'lib', 'worker', 'python-updater-worker.js')
+      if (await access(active).then(() => true, () => false)) return active
+      return app.isPackaged ? join(process.resourcesPath, 'python-updater', 'python-updater-worker.js') : join(findWorkspaceRoot(), 'plugins/python/lib/worker/python-updater-worker.js')
+    },
+    allowDevelopment: !app.isPackaged,
     ...(bootstrapAvailable ? { bundledManifestPath: bootstrapManifest, bundledArchivePath: bootstrapArchive } : {}),
     bundledAssets,
     manifestUrl: process.env.ZEROWALL_PYTHON_MANIFEST ?? process.env.ZEROWALL_MCP_ENVIRONMENT_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python-bootstrap/windows-x64/1.5.2/manifest.json',
@@ -675,8 +669,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       }
     },
   })
-  const pythonSync = new PythonSyncService({
-    updater: mcpEnvironment,
+  const syncConfiguration = {
     root: mcpEnvironmentRoot,
     keys: MCP_ENVIRONMENT_KEYRING,
     applicationVersion: app.getVersion(),
@@ -684,10 +677,21 @@ if (ownsInstance) app.whenReady().then(async () => {
     bundledManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'dependency-manifest.json') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'python', 'dependency-manifest.json'),
     bundledCoreManifestPath: app.isPackaged ? join(process.resourcesPath, 'python', 'core-dependency-manifest.json') : resolveWorkspaceResourcePath(findWorkspaceRoot(), 'python', 'core-dependency-manifest.json'),
     coreFeedUrl: process.env.ZEROWALL_PYTHON_CORE_MANIFEST ?? process.env.ZEROWALL_PYTHON_DEPENDENCY_MANIFEST ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-science-python/windows-x64/core.json',
-  })
-  const pythonApi = new PythonEnvironmentApi(mcpEnvironmentRoot, mcpEnvironment, pythonSync, pythonLocation.locationPath, app.isPackaged ? dirname(process.execPath) : undefined, pythonLocation.runtimeRoot)
+  }
+  mcpEnvironment.configureManager({ sync: syncConfiguration, locationPath: pythonLocation.locationPath, applicationInstallRoot: app.isPackaged ? dirname(process.execPath) : undefined })
+  const pythonSync = {
+    importManifest: (file: string) => mcpEnvironment.rpc('sync', 'importManifest', [file]),
+    checkManifest: (layer?: PythonDependencyLayer) => mcpEnvironment.rpc('sync', 'checkManifest', [layer]),
+    listLocal: (layer?: PythonDependencyLayer) => mcpEnvironment.rpc('sync', 'listLocal', [layer]),
+    previewSync: () => mcpEnvironment.rpc('sync', 'previewSync'),
+    applySync: (id: string, revision: string, confirm: boolean) => mcpEnvironment.rpc('sync', 'applySync', [id, revision, confirm]),
+  }
+  const pythonApi = {
+    request: (request: PythonEnvironmentRequest) => mcpEnvironment.environmentRequest(request),
+    persistRuntimeSummary: (info: McpPythonInfo) => mcpEnvironment.rpc<void>('api', 'persistRuntimeSummary', [info]),
+    shutdown: () => mcpEnvironment.shutdown(),
+  }
   pythonEnvironmentApi = pythonApi
-  mcpEnvironment.setEnvironmentHandler(request => pythonApi.request(request))
   const commandRoot = app.isPackaged ? join(process.resourcesPath, 'commands') : join(findWorkspaceRoot(), 'tools/commands')
   const { initializeProfile, inspectProfile } = await import(pathToFileURL(join(commandRoot, 'profile.mjs')).href)
   const defaults = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'default-plugins.json') : developmentStagePath('commands', 'default-plugins.json'), 'utf8')) as string[]
@@ -722,16 +726,22 @@ if (ownsInstance) app.whenReady().then(async () => {
     throw new Error('A configured ZeroWall plugin could not activate; restoring the previous profile')
   }
   const redactDiagnostic = (value: string): string => redactResourceDiagnostic(value).slice(-4000)
-  const runPlugin = (args: string[], profile = 'web'): Promise<unknown> => new Promise((accept, reject) => {
+  const runPlugin = (args: string[], profile = 'web', options: { signal?: AbortSignal } = {}): Promise<unknown> => new Promise((accept, reject) => {
+    options.signal?.throwIfAborted()
     const child = spawn(nodeExecutablePath(), ['--expose-internals', join(commandRoot, 'dsh.mjs'), 'plugin', '--profile', profile, ...args], {
       windowsHide: true, env: { ...process.env, DSH_HOME: dshHome, ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}) }, stdio: 'pipe',
     })
+    const cancel = () => { if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => child.kill()); else child.kill() }
+    options.signal?.addEventListener('abort', cancel, { once: true })
+    child.once('close', () => options.signal?.removeEventListener('abort', cancel))
+    if (options.signal?.aborted) cancel()
     let output = ''
     let errorOutput = ''
     child.stdout.on('data', chunk => { output = (output + String(chunk)).slice(-65536) })
     child.stderr.on('data', chunk => { errorOutput = (errorOutput + String(chunk)).slice(-65536) })
     child.on('error', reject)
     child.on('exit', code => {
+      if (options.signal?.aborted) { reject(new Error('RESOURCE_BATCH_CANCELLED')); return }
       if (code === 0) { accept({ code, output }); return }
       void (async () => {
         let diagnostics = 'profile diagnostics unavailable'
@@ -803,6 +813,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   type ResourceJob = { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
   const resourceJobRoot = join(userData, 'harness', 'resources', 'jobs')
   const resourceJobs = new Map<string, ResourceJob>()
+  const resourceJobControllers = new Map<string, AbortController>()
   const safeResourceError = (error: unknown): string => {
     const message = error instanceof Error ? error.message : 'Resource operation failed'
     return redactResourceDiagnostic(message).slice(0, 12000)
@@ -865,6 +876,8 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (!['plugin', 'skill', 'mcp'].includes(kind) || !/^[a-z][a-z-]{1,30}$/u.test(action)) throw new Error('Invalid resource job')
     const now = new Date().toISOString()
     const taskId = randomUUID()
+    const batchController = new AbortController()
+    if (action === 'update-batch') resourceJobControllers.set(taskId, batchController)
     const oldVersion = id ? (await resources.list(kind).catch(() => undefined))?.resources.find((item: { id: string; installedVersion?: string }) => item.id === id)?.installedVersion : undefined
     const job: ResourceJob = { taskId, kind, ...(id === undefined ? {} : { id }), ...(source === undefined ? {} : { source }), action, status: 'queued', phase: 'queued', progress: 0, oldVersion, retries, ...(retryOf === undefined ? {} : { retryOf }), createdAt: now, updatedAt: now }
     await persistResourceJob(job)
@@ -875,7 +888,12 @@ if (ownsInstance) app.whenReady().then(async () => {
       await persistResourceJob(running)
       try {
         await persistResourceJob({ ...running, phase: 'applying', progress: 35, updatedAt: new Date().toISOString() })
-        const result = await resourceAction(kind, action, id, source)
+        const result = action === 'update-batch' && kind === 'plugin'
+          ? await resources.updatePlugins(JSON.parse(source ?? '[]'), undefined, {
+            signal: batchController.signal,
+            report: async (progress: { phase: string; completed: number; total: number; currentPlugin?: string }) => persistResourceJob({ ...(resourceJobs.get(taskId) ?? running), phase: progress.phase, progress: progress.phase === 'activating' ? 90 : 10 + Math.floor(progress.completed / Math.max(1, progress.total) * 75), updatedAt: new Date().toISOString() }),
+          })
+          : await resourceAction(kind, action, id, source)
         const latest = resourceJobs.get(taskId)
         const newVersion = id ? (await resources.list(kind).catch(() => undefined))?.resources.find((item: { id: string; installedVersion?: string }) => item.id === id)?.installedVersion : undefined
         await persistResourceJob({ ...running, status: 'succeeded', phase: 'health-check', progress: 90, newVersion, result, updatedAt: new Date().toISOString() })
@@ -885,8 +903,9 @@ if (ownsInstance) app.whenReady().then(async () => {
       } catch (error) {
         const latest = resourceJobs.get(taskId)
         if (latest?.status === 'cancelled') return
-        await persistResourceJob({ ...running, status: 'failed', phase: 'failed', progress: 100, error: safeResourceError(error), updatedAt: new Date().toISOString() })
-      }
+        const cancelled = action === 'update-batch' && latest?.cancelRequested && batchController.signal.aborted
+        await persistResourceJob({ ...running, status: cancelled ? 'cancelled' : 'failed', phase: cancelled ? 'cancelled' : 'failed', progress: 100, error: safeResourceError(error), updatedAt: new Date().toISOString() })
+      } finally { resourceJobControllers.delete(taskId) }
     })()
     return { taskId }
   }
@@ -925,6 +944,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (request.operation === 'resource.job.retry') return retryResourceJob(String(request.args[0]))
     if (request.operation === 'resource.job.cancel') {
       const job = resourceJobs.get(String(request.args[0]))
+      resourceJobControllers.get(String(request.args[0]))?.abort()
       if (job?.status === 'queued') await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
       else if (job?.status === 'running') await persistResourceJob({ ...job, phase: 'cancellation-requested', cancelRequested: true, updatedAt: new Date().toISOString() })
       return resourceJobs.get(String(request.args[0]))
@@ -1222,6 +1242,10 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:resource-dependents', (_event, id: unknown) => resources.dependents(String(id)))
   ipcMain.handle('desktop:resource-status', async () => ({ checkedAt: new Date().toISOString(), results: await Promise.all((['plugin', 'skill', 'mcp'] as ResourceKind[]).map(kind => resources.list(kind))) }))
   ipcMain.handle('desktop:resource-update', (_event, kind: unknown, id?: unknown) => resourceAction(String(kind) as ResourceKind, 'update', typeof id === 'string' ? id : undefined))
+  ipcMain.handle('desktop:resource-update-plugins', (_event, ids: unknown) => {
+    if (!Array.isArray(ids) || !ids.length || ids.length > 200 || !ids.every(id => typeof id === 'string')) throw new Error('Invalid plugin batch')
+    return startResourceJob('plugin', 'update-batch', undefined, JSON.stringify([...new Set(ids)]))
+  })
   ipcMain.handle('desktop:resource-rollback', (_event, kind: unknown, id: unknown) => resourceAction(String(kind) as ResourceKind, 'rollback', String(id)))
   ipcMain.handle('desktop:resource-job-start', (_event, kind: unknown, action: unknown, id?: unknown, source?: unknown) => startResourceJob(String(kind) as ResourceKind, String(action), typeof id === 'string' ? id : undefined, typeof source === 'string' ? source : undefined))
   ipcMain.handle('desktop:resource-job-get', (_event, taskId: unknown) => resourceJobs.get(String(taskId)))
@@ -1230,6 +1254,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:resource-job-retry', (_event, taskId: unknown) => retryResourceJob(String(taskId)))
   ipcMain.handle('desktop:resource-job-cancel', async (_event, taskId: unknown) => {
     const job = resourceJobs.get(String(taskId))
+    resourceJobControllers.get(String(taskId))?.abort()
     if (job?.status === 'queued') await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
     else if (job?.status === 'running') await persistResourceJob({ ...job, phase: 'cancellation-requested', cancelRequested: true, updatedAt: new Date().toISOString() })
     return resourceJobs.get(String(taskId))

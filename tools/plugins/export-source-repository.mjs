@@ -6,11 +6,13 @@ import { root, stageRoot, releaseRoot, contract } from '../build/paths.mjs'
 const destination = resolve(process.argv[2] ?? join(root, 'artifacts/source/zerowall-dsh-plugins'))
 await mkdir(destination, { recursive: true })
 const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' }).split('\0').filter(Boolean)
-const selected = tracked.filter(path => /^(plugins\/|packages\/|store\/|tools\/|config\/|tests\/|patches\/|resources\/python\/|desktop\/src\/shared\/)/u.test(path)
-  || ['tsconfig.base.json', 'vitest.plugins.config.ts', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', '.gitmodules', 'LICENSE', 'LICENSE.md'].includes(path))
+const selected = tracked.filter(path => (/^(plugins\/|packages\/|store\/|tools\/|config\/|tests\/|patches\/|schemas\/|resources\/extensions\/|desktop\/src\/shared\/)/u.test(path)
+  || /^(?:tsconfig.*\.json|vitest.*\.ts)$/u.test(path)
+  || ['pnpm-lock.yaml', 'pnpm-workspace.yaml', '.gitmodules', 'LICENSE', 'LICENSE.md'].includes(path))
+  && !/^packages\/(?:dsh\/)?(?:dsh-auto-review|dsh-capability-menu)(?:\/|$)/u.test(path))
 let copied = 0
 for (const path of selected) {
-  if (/node_modules|(?:^|\/)\.env(?:\.|$)|(?:^|\/)artifacts\//u.test(path)) throw new Error('Private/generated path selected')
+  if (/node_modules|(?:^|\/)\.env(?:\.|$)|(?:^|\/)artifacts\/|(?:^|\/)(?:lib|payload|\.yarn)\//u.test(path)) throw new Error('Private/generated path selected')
   await access(join(destination, path)).then(() => { throw new Error('Refusing to replace existing source: ' + path) }, error => { if (error.code !== 'ENOENT') throw error })
   await mkdir(dirname(join(destination, path)), { recursive: true })
   await cp(join(root, path), join(destination, path))

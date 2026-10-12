@@ -1,3 +1,4 @@
+import type { AiCloudModelSync } from '../shared/types.js'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import QRCode from 'qrcode/lib/browser.js'
@@ -8,8 +9,8 @@ import { NS } from '@zerowallscience/plugin-base/client-helpers'
 import { accountSurface } from './account-surface.js'
 import css from './AiCloudAccountButton.module.css'
 
-export interface AiCloudModelView { providerId: string; groupId: string; groupName: string; modelId: string; baseUrl: string }
-export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; models: AiCloudModelView[] }
+export interface AiCloudModelView { providerId: string; groupId: string; groupName: string; modelId: string; baseUrl: string; capability?: string; stale?: boolean }
+export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; models: AiCloudModelView[]; modelSync?: AiCloudModelSync }
 export interface AiCloudGatewayView { baseUrl: string; label: string; preferred: boolean }
 export interface AiCloudPublicView { registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; captchaEnabled: boolean; passwordResetEnabled?: boolean; rechargeUrl?: string; lowBalanceThreshold?: number }
 export interface AiCloudCheckoutView { enabled: boolean; minimumAmount: number; paymentTypes: string[]; rechargeUrl?: string }
@@ -51,6 +52,9 @@ export function AiCloudAccountButton(props: Props) {
   const [registering, setRegistering] = useState(false)
   const [forgotMode, setForgotMode] = useState(false)
   const [syncingModels, setSyncingModels] = useState(false)
+  const modelSyncRequest = useRef(0)
+  const [modelQuery, setModelQuery] = useState('')
+  useEffect(() => accountSurface.subscribeOpen(() => setOpen(true)), [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberPassword, setRememberPassword] = useState(true)
@@ -256,15 +260,19 @@ export function AiCloudAccountButton(props: Props) {
 
   const syncModels = async () => {
     if (syncingModels || account?.status !== 'signedIn') return
+    const request = ++modelSyncRequest.current
     setSyncingModels(true)
     setError(undefined)
     try {
-      setAccount(await props.discoverModels())
+      const next = await props.discoverModels()
       await props.refreshModelCatalog?.()
+      if (request !== modelSyncRequest.current) return
+      setAccount(next)
+      setSuccess(props.t('account.modelsSynced', { count: next.models.length }))
     } catch (reason) {
-      setError(message(reason))
+      if (request === modelSyncRequest.current) setError(message(reason))
     } finally {
-      setSyncingModels(false)
+      if (request === modelSyncRequest.current) setSyncingModels(false)
     }
   }
 
@@ -288,6 +296,7 @@ export function AiCloudAccountButton(props: Props) {
   }
 
   const logout = async () => {
+    ++modelSyncRequest.current; setSyncingModels(false)
     setBusy(true)
     setError(undefined)
     try {
@@ -308,6 +317,7 @@ export function AiCloudAccountButton(props: Props) {
   }
 
   const switchGateway = async (baseUrl: string) => {
+    ++modelSyncRequest.current; setSyncingModels(false)
     if (authPending.current) return
     formEdited.current = true
     ++configRequest.current
@@ -423,10 +433,10 @@ export function AiCloudAccountButton(props: Props) {
             <div className={css.identity}><span>{props.t('account.currentAccount')}</span><strong>{account.email}</strong><small><CheckCircle2 size={13} />{account.balanceFreshness === 'stale' ? props.t('account.lastBalance') : props.t('account.signedIn')}</small></div>
             <div className={css.balance}><span>{props.t('account.balance')}</span><strong>{formatBalance(account)}</strong></div>
             <button className={css.logoutButton} type="button" onClick={() => void logout()} disabled={busy}><LogOut size={16} />{props.t('account.logout')}</button>
-          </div>
           <div className={css.externalActions}>
             {usageUrl !== undefined && <button className={css.externalButton} type="button" onClick={() => openExternal(usageUrl)}><ExternalLink size={15} />{props.t('account.usageDetails')}</button>}
             <button className={css.externalButton} type="button" onClick={() => openExternal(modelPricingUrl)}><ExternalLink size={15} />{props.t('account.modelPricing')}</button>
+          </div>
           </div>
           <section className={css.modelSync} aria-live="polite">
             <div><h3>{props.t('account.modelsTitle')}</h3><p>{props.t('account.modelsDescription')}</p></div>
@@ -435,6 +445,12 @@ export function AiCloudAccountButton(props: Props) {
               {syncingModels ? props.t('account.modelsSyncing') : props.t('account.modelsSync')}
             </button>
           </section>
+          {account.modelSync && <div aria-live="polite">{account.modelSync.groups.map(group => <p key={group.groupId} role={group.status === 'failed' ? 'alert' : undefined}>{group.groupName} · {group.count} · {group.status} · {group.checkedAt}{group.error ? ` · ${group.error}` : ''}</p>)}</div>}
+          <details className={css.modelList}>
+            <summary>{props.t('account.modelsList', { count: account.models.length })}</summary>
+            <input aria-label={props.t('account.modelsSearch')} placeholder={props.t('account.modelsSearch')} value={modelQuery} onChange={event => setModelQuery(event.target.value)} />
+            <div className={css.modelRows}>{account.models.filter(model => `${model.groupName} ${model.modelId} ${model.providerId} ${model.capability ?? 'chat'}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <div key={`${model.providerId}:${model.modelId}`}><strong>{model.modelId}</strong><span>{model.groupName}</span><small>{model.providerId.split('-').at(-1)} · {model.capability ?? 'chat'} · {props.t(model.stale ? 'account.modelsStale' : 'account.modelsAvailable')}</small></div>)}</div>
+          </details>
           {(account.lowBalance || (account.balance !== undefined && account.balance <= 0)) && <p className={css.warning} role="alert">{account.balance !== undefined && account.balance <= 0 ? props.t('account.balanceEmpty') : props.t('account.lowBalance')}</p>}
           <div className={css.billingGrid}>
             <section className={css.rechargeCard}>

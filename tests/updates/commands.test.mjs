@@ -9,7 +9,7 @@ import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import { startCommandServer } from '../../desktop/src/main/command-server.ts'
 import { commandPathWorker } from '../../tools/commands/path-worker.mjs'
-import { buildPowerShellPythonCommand } from '../../tools/commands/python-shell.mjs'
+import { buildPowerShellPythonCommand, fixedPythonShellPaths } from '../../tools/commands/python-shell.mjs'
 const run = promisify(execFile)
 
 test('real CLI socket authenticates the owner, rejects another token and supports zws', async () => {
@@ -82,10 +82,19 @@ test('Python shell PowerShell command uses escaped paths instead of environment 
   const executable = `${runtimeRoot}\\python.exe`
   const command = buildPowerShellPythonCommand(runtimeRoot, executable)
   assert.match(command, /Set-Location -LiteralPath 'C:\\Users\\O''Neil\\AppData\\Local\\ZeroWall Science\\Python'/)
-  assert.match(command, /function global:pip \{ & \$env:ZEROWALL_PYTHON_EXECUTABLE -m pip @args \}/)
-  assert.match(command, /function global:python \{ & \$env:ZEROWALL_PYTHON_EXECUTABLE @args \}/)
+  assert.match(command, /function global:pip \{ Invoke-ZeroWallPython -m pip @args \}/)
+  assert.match(command, /function global:python \{ Invoke-ZeroWallPython @args \}/)
+  assert.match(command, /write-lock\.json/)
   assert.match(command, /\[ZeroWall Python\]/)
   assert.doesNotMatch(command, /; & 'C:\\Users\\O''Neil\\AppData\\Local\\ZeroWall Science\\Python\\python\.exe'$/)
+})
+
+test('CLI Python shell requires the fixed service root and rejects stale slots', () => {
+  const runtimeRoot = resolve('fixed-install/Python')
+  assert.deepEqual(fixedPythonShellPaths({ runtimeRoot, executable: join(runtimeRoot, 'python.exe') }), { runtimeRoot, executable: join(runtimeRoot, 'python.exe'), managementRoot: join(runtimeRoot, '.zerowall') })
+  assert.throws(() => fixedPythonShellPaths({}), /PYTHON_FIXED_PATH_REQUIRED/)
+  assert.throws(() => fixedPythonShellPaths({ runtimeRoot, runtimeExecutable: join(runtimeRoot, '.zerowall/slots/a/Python/python.exe') }), /PYTHON_FIXED_PATH_REQUIRED/)
+  assert.throws(() => fixedPythonShellPaths({ runtimeRoot: join(runtimeRoot, '.zerowall/slots/a') }), /PYTHON_FIXED_PATH_REQUIRED/)
 })
 
 test('managed Python PowerShell shell binds cwd, python and pip to the selected interpreter', { skip: process.platform !== 'win32' }, async context => {

@@ -1,9 +1,11 @@
 import { resolve } from 'node:path'
 import { writeFile } from 'node:fs/promises'
+import { handleResourceUpdateNotices } from './update-notice-handler.mjs'
 
 // Exercise the actual settings slots and persisted language selector in the
 // packaged renderer. No reload, mocked locale service or real account needed.
 export async function verifySettingsLocales(page, settings, root) {
+  await handleResourceUpdateNotices(page)
   try {
     for (const english of [true, false]) {
       await settings.getByRole('button', { name: /^(通用设置|General)$/ }).click()

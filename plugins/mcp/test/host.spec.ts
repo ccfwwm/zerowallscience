@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { McpServerRecord } from '@zerowallscience/research-store'
 import { aiCloudCredentialKey, managedBioDependenciesReady, managedEnvironmentFileSignature, managedEnvironmentRecord, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
+beforeEach(() => { vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', ''); vi.stubEnv('ZEROWALL_PYTHON_MANAGEMENT_ROOT', '') })
+afterEach(() => vi.unstubAllEnvs())
 
 const base: McpServerRecord = {
   id: 'mcp-1', name: 'Tools', serverName: 'tools', transport: 'stdio', enabled: true,
@@ -25,7 +27,7 @@ describe('ZeroWall MCP config boundary', () => {
     const root = mkdtempSync(join(tmpdir(), 'zws-python-projection-'))
     const previous = { python: process.env.ZEROWALL_PYTHON_ROOT, bio: process.env.ZEROWALL_BIO_TOOLS_ROOT }
     const manager = join(root, '.zerowall'), bio = join(root, 'bio-tools')
-    mkdirSync(manager); mkdirSync(bio)
+    mkdirSync(manager); mkdirSync(bio); writeFileSync(join(root, "python.exe"), "")
     const candidate = { root, runtimeRoot: root, health: 'ready', version: '3.12.10', runtimeLayout: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' }, manifest: { python: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages', bootstrapOnly: true } } }
     writeFileSync(join(manager, 'current.json'), JSON.stringify(candidate))
     process.env.ZEROWALL_PYTHON_ROOT = manager; process.env.ZEROWALL_BIO_TOOLS_ROOT = bio
@@ -38,7 +40,7 @@ describe('ZeroWall MCP config boundary', () => {
       mkdirSync(join(root, 'Lib/site-packages/mcp'), { recursive: true })
       writeFileSync(join(root, 'Lib/site-packages/mcp/__init__.py'), '')
       expect(managedBioDependenciesReady(candidate, true)).toBe(true)
-      expect(managedBioDependenciesReady({ ...candidate, runtimeLayout: undefined }, true)).toBe(false)
+      expect(managedBioDependenciesReady({ ...candidate, runtimeLayout: undefined }, true)).toBe(true)
       expect(() => resolveMcpConfig(record, {}, root, undefined, { ...candidate, manifest: { python: { relativeExecutable: 'python.exe', relativeSitePackages: '../site-packages' } } })).toThrow('shared Python package layout')
     } finally {
       if (previous.python === undefined) delete process.env.ZEROWALL_PYTHON_ROOT; else process.env.ZEROWALL_PYTHON_ROOT = previous.python
@@ -52,32 +54,17 @@ describe('ZeroWall MCP config boundary', () => {
     expect(result.config).toMatchObject({ transport: 'stdio', env: { API_TOKEN: 'secret-value' } })
   })
 
-  it('preflights a first-run candidate from its slot while using packaged MCP scripts', () => {
-    const root = mkdtempSync(join(tmpdir(), 'zerowall-python-candidate-'))
-    const previous = {
-      bio: process.env.ZEROWALL_BIO_TOOLS_ROOT,
-      ketcher: process.env.ZEROWALL_KETCHER_ROOT,
-      sci: process.env.ZEROWALL_SCI_ROOT,
-    }
-    const candidate = { root: join(root, 'slots', 'a-new'), runtimeRoot: root, health: 'ready', environmentVersion: '3.12.10', manifest: { python: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } } }
-    const sources = { bio: join(root, 'bundled-bio'), ketcher: join(root, 'bundled-ketcher'), sci: join(root, 'bundled-sci') }
-    for (const path of Object.values(sources)) mkdirSync(path, { recursive: true })
-    process.env.ZEROWALL_BIO_TOOLS_ROOT = sources.bio
-    process.env.ZEROWALL_KETCHER_ROOT = sources.ketcher
-    process.env.ZEROWALL_SCI_ROOT = sources.sci
+  it('rejects old slots for every product-owned launch command', () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-python-slot-reject-'))
+    const previous = process.env.ZEROWALL_PYTHON_RUNTIME_ROOT
+    process.env.ZEROWALL_PYTHON_RUNTIME_ROOT = root
+    const candidate = { root: join(root, '.zerowall/slots/a-old'), generation: true, health: 'ready' }
     try {
-      const config = (command: string) => resolveMcpConfig({ ...base, command, args: [], envRefs: {} }, {}, root, undefined, candidate).config
-      const bio = config('zerowall-managed:bio-tools')
-      const ketcher = config('zerowall-managed:ketcher')
-      const sci = config('zerowall-managed:scimaster')
-      expect(bio).toMatchObject({ command: join(candidate.root, 'Python', 'python.exe'), args: [join(sources.bio, 'run_server.py'), 'mcp_bio'], cwd: sources.bio, env: { PYTHONPATH: join(candidate.root, 'Python', 'Lib', 'site-packages') } })
-      expect(ketcher).toMatchObject({ command: process.execPath, args: [join(sources.ketcher, 'server.js')], cwd: sources.ketcher })
-      expect(sci).toMatchObject({ command: process.execPath, args: [join(sources.sci, 'zerowall-mcp-launcher.cjs')], cwd: sources.sci })
-    } finally {
-      for (const [name, value] of [['ZEROWALL_BIO_TOOLS_ROOT', previous.bio], ['ZEROWALL_KETCHER_ROOT', previous.ketcher], ['ZEROWALL_SCI_ROOT', previous.sci]] as const) {
-        if (value === undefined) delete process.env[name]
-        else process.env[name] = value
+      for (const command of ['zerowall-managed:bio-tools', 'zerowall-managed:ketcher', 'zerowall-managed:scimaster']) {
+        expect(() => resolveMcpConfig({ ...base, command, args: [], envRefs: {} }, {}, root, undefined, candidate)).toThrow('PYTHON_FIXED_PATH_REQUIRED')
       }
+    } finally {
+      if (previous === undefined) delete process.env.ZEROWALL_PYTHON_RUNTIME_ROOT; else process.env.ZEROWALL_PYTHON_RUNTIME_ROOT = previous
       rmSync(root, { recursive: true, force: true })
     }
   })
@@ -101,7 +88,7 @@ describe('ZeroWall MCP config boundary', () => {
     mkdirSync(bio, { recursive: true })
     writeFileSync(join(candidateRoot, 'python.exe'), '')
     process.env.ZEROWALL_BIO_TOOLS_ROOT = bio
-    process.env.ZEROWALL_PYTHON_ROOT = candidateRoot
+    process.env.ZEROWALL_PYTHON_ROOT = join(candidateRoot, '.zerowall')
     try {
       const config = resolveMcpConfig({ ...base, serverName: 'zerowall_managed_bio_tools', command: 'zerowall-managed:bio-tools', args: [], envRefs: {} }, {}, root, undefined, candidate).config
       expect(config).toMatchObject({
@@ -188,14 +175,15 @@ describe('ZeroWall MCP config boundary', () => {
   it('caches the large managed environment record until current.json changes', () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-environment-cache-'))
     const prior = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
-    process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = root
+    const manager = join(root, '.zerowall'); mkdirSync(manager); writeFileSync(join(root, 'python.exe'), '')
+    process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT = manager
     try {
-      writeFileSync(join(root, 'current.json'), JSON.stringify({ health: 'ready', environmentVersion: '1.0.0' }))
+      writeFileSync(join(manager, 'current.json'), JSON.stringify({ root, runtimeRoot: root, health: 'ready', environmentVersion: '1.0.0' }))
       const firstSignature = managedEnvironmentFileSignature()
       const first = managedEnvironmentRecord(firstSignature)
       expect(managedEnvironmentRecord(firstSignature)).toBe(first)
 
-      writeFileSync(join(root, 'current.json'), JSON.stringify({ health: 'ready', environmentVersion: '1.0.0', contentRevision: 2 }))
+      writeFileSync(join(manager, 'current.json'), JSON.stringify({ root, runtimeRoot: root, health: 'ready', environmentVersion: '1.0.0', contentRevision: 2 }))
       const secondSignature = managedEnvironmentFileSignature()
       expect(secondSignature).not.toBe(firstSignature)
       expect(managedEnvironmentRecord(secondSignature)).not.toBe(first)

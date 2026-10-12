@@ -27,6 +27,7 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-singlecell',
   '@zerowallscience/plugin-execution',
   '@zerowallscience/plugin-python',
+  '@zerowallscience/plugin-biogenie',
   '@zerowallscience/plugin-runs',
   '@zerowallscience/plugin-publications',
   '@zerowallscience/plugin-skills',

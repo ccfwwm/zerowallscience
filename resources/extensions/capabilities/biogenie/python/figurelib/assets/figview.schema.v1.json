@@ -1,0 +1,328 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "figure_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "parent_revision": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      ]
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "dpi": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "width",
+        "height",
+        "dpi"
+      ],
+      "additionalProperties": false
+    },
+    "data": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "hitmap": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "origin": {
+              "enum": [
+                "top-left"
+              ]
+            },
+            "units": {
+              "enum": [
+                "image-pixels"
+              ]
+            }
+          },
+          "required": [
+            "path",
+            "sha256",
+            "origin",
+            "units"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "inspect": {
+          "enum": [
+            "points",
+            "preview"
+          ]
+        },
+        "request_redraw": {
+          "type": "boolean"
+        },
+        "reason": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        }
+      },
+      "required": [
+        "inspect",
+        "request_redraw",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "file",
+            "dataframe",
+            "none"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "file_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "snapshot_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "recipe": {
+      "type": "object",
+      "properties": {
+        "recipe_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        }
+      },
+      "required": [
+        "recipe_id"
+      ],
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "redraw": {
+      "type": "object",
+      "properties": {
+        "recipe_id": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1
+            }
+          ]
+        },
+        "script": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "additionalProperties": false
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "seed": {},
+        "allowed_parameters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "libraries": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "export": {
+          "type": "object",
+          "properties": {
+            "dpi": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "size_inches": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              ]
+            },
+            "tight": {
+              "type": "boolean"
+            },
+            "pad_inches": {
+              "type": "number",
+              "minimum": 0
+            },
+            "transparent": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "dpi",
+            "size_inches",
+            "tight",
+            "pad_inches",
+            "transparent"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "recipe_id",
+        "parameters",
+        "seed",
+        "allowed_parameters",
+        "libraries",
+        "export"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "figure_id",
+    "revision",
+    "parent_revision",
+    "image",
+    "data",
+    "hitmap",
+    "capabilities",
+    "source",
+    "recipe",
+    "provenance",
+    "redraw"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dsh-bio-genie:figview:v1:figview",
+  "title": "fig-viewer figview v1"
+}

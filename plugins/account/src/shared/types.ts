@@ -19,6 +19,15 @@ export interface AiCloudManagedModel {
   baseUrl: string
   /** Capability exposed by the managed group. Image routes never enter chat. */
   capability?: 'chat' | 'image-generation'
+  stale?: boolean
+  contextWindow?: number
+  maxOutputTokens?: number
+  capacitySource?: 'gateway'
+}
+export interface AiCloudModelSync {
+  checkedAt: string
+  status: 'succeeded' | 'partial' | 'failed'
+  groups: Array<{ groupId: string; groupName: string; status: 'succeeded' | 'failed'; count: number; checkedAt: string; error?: string }>
 }
 
 export interface AiCloudAccountSnapshot {
@@ -32,6 +41,7 @@ export interface AiCloudAccountSnapshot {
   /** Gateway selected for this account session. Public endpoint metadata only. */
   gatewayBaseUrl?: string
   models: AiCloudManagedModel[]
+  modelSync?: AiCloudModelSync
 }
 
 export interface AiCloudGateway {

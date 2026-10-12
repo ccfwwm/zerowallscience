@@ -22,26 +22,17 @@ const old = `!insertmacro uninstallOldVersion SHELL_CONTEXT
 \${endIf}`
 if (section.split(old).length !== 2) throw new Error('Unexpected upstream uninstall sequence')
 section = section.replace('!include installer.nsh', `!include "${resolve(templates, 'include/installer.nsh')}"`)
-section = section.replace(old, `; ZeroWall in-place upgrade: do not invoke an earlier uninstaller.
-; Only these shipped runtime directories are replaced; user files stay intact.
-DetailPrint "正在原位置覆盖升级，保留项目与用户数据..."
-RMDir /r "$INSTDIR\\resources\\app.asar.unpacked"
-RMDir /r "$INSTDIR\\resources\\skills"
-RMDir /r "$INSTDIR\\resources\\profiles"
-RMDir /r "$INSTDIR\\resources\\licenses"
-; Hashed assets and renamed packages disappear from the new archive but
-; electron-builder's extraction does not remove their old physical copies.
-; Replace this installer-owned directory before extracting the signed carrier.
-RMDir /r "$INSTDIR\\resources\\offline-profile\\profile-runtime.asar.unpacked"
-IfFileExists "$INSTDIR\\resources\\offline-profile\\profile-runtime.asar.unpacked\\*.*" 0 +3
-  MessageBox MB_OK|MB_ICONSTOP "旧离线运行时仍被占用，无法安全完成升级。请关闭 ZeroWall Science 后重试。"
+section = section.replace(old, `; Never invoke an earlier recursive uninstaller.
+; Embed the current remover, including when upgrading a pre-inventory release.
+DetailPrint "正在原位置覆盖升级，保留 Python 和用户文件..."
+InitPluginsDir
+File /oname=$PLUGINSDIR\\zerowall-owned-files.ps1 "${resolve(desktop, '../tools/commands/uninstall-owned-files.ps1')}"
+nsExec::ExecToLog '"$SYSDIR\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\zerowall-owned-files.ps1" -InstallRoot "$INSTDIR" -PreserveIfUnmanaged'
+Pop $R0
+\${If} $R0 != 0
+  MessageBox MB_OK|MB_ICONSTOP "旧安装文件仍被占用或归属清单无效，无法安全升级。请关闭 ZeroWall Science 后重试。Python 和用户文件已保留。"
   Abort
-; 8.0.8 shipped an expanded offline profile and redundant tarballs. Remove
-; only those installer-owned v1 entries, after process checks and before
-; extraction, so the v2 signed file set remains exact on in-place upgrades.
-RMDir /r "$INSTDIR\\resources\\offline-profile\\modules"
-RMDir /r "$INSTDIR\\resources\\offline-profile\\packages"
-Delete "$INSTDIR\\resources\\offline-profile\\build-receipt.json"`)
+\${EndIf}`)
 const output = resolve(stageRoot, 'nsis-overlay')
 await mkdir(output, { recursive: true })
 await writeFile(resolve(output, 'installSection.nsh'), `${section}\n!cd "${templates}"\n`)
@@ -52,6 +43,30 @@ for (const name of ['handleUninstallResult', 'uninstallOldVersion', 'GetInQuotes
   utilities = utilities.replace(definition, '')
 }
 await writeFile(resolve(output, 'installUtil.nsh'), utilities)
+let extraction = (await readFile(resolve(templates, 'include/extractAppPackage.nsh'), 'utf8')).replaceAll('\r\n', '\n')
+const extractMacro = /^!macro extractUsing7za FILE\n[\s\S]*?^!macroend/gm
+if ([...extraction.matchAll(extractMacro)].length !== 1) throw new Error('Unexpected upstream archive extraction macro')
+extraction = extraction.replace(extractMacro, `!macro extractUsing7za FILE
+  Push $OUTDIR
+  CreateDirectory "$PLUGINSDIR\\7z-out"
+  SetOutPath "$PLUGINSDIR\\7z-out"
+  Nsis7z::Extract "\${FILE}"
+  Pop $R0
+  SetOutPath $R0
+  File /oname=$PLUGINSDIR\\zerowall-copy-files.mjs "${resolve(desktop, '../tools/commands/installer-copy-files.mjs')}"
+  ; CopyFiles silently omits MAX_PATH files. The bundled Node API handles
+  ; long Unicode paths and reports every incomplete copy as an install error.
+  System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", w "1")'
+  nsExec::ExecToLog '"$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR"'
+  Pop $R0
+  System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", p 0)'
+  \${If} $R0 != 0
+    MessageBox MB_OK|MB_ICONSTOP "应用文件复制失败，请检查目录权限、磁盘空间和文件占用后重试。Python 和用户文件已保留。"
+    SetErrorLevel 2
+    Abort
+  \${EndIf}
+!macroend`)
+await writeFile(resolve(output, 'extractAppPackage.nsh'), extraction)
 console.log('Prepared NSIS in-place upgrade section from electron-builder 26.15.3')
 
 await mkdir(resolve(desktop, 'out'), { recursive: true })

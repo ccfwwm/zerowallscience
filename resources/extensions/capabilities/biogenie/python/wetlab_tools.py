@@ -115,6 +115,10 @@ def _design_pcr(data, host, scale):
     best = primers[0] if isinstance(primers, list) else primers
     left = best.get('left', best.get('forward', {}))
     right = best.get('right', best.get('reverse', {}))
+    # 产物长度：优先顶层显式传入；否则从引物对自带字段回填——bio_primer3_design
+    # 的 product_size 位于 pairs[i] 内（2026-10-04 修复：此前只看顶层，回填恒为 0）
+    if not product_size and isinstance(best, dict):
+        product_size = best.get('product_size', 0)
 
     left_seq = left.get('sequence', '')
     right_seq = right.get('sequence', '')

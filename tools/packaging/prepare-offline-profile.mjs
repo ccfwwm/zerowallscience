@@ -27,13 +27,13 @@ const physicalRoots = [...plugins.filter(entry => !entry.core).map(entry => `nod
   'node_modules/sharp', 'node_modules/@img', 'node_modules/koffi',
   'node_modules/@koromix', 'node_modules/@zerowallscience/integrity-runtime']
 const cacheKey = createHash('sha256').update(JSON.stringify({ files, physicalRoots, archiver: require('@electron/asar/package.json').version, recipe: await fileDigest(import.meta.filename) })).digest('hex')
-const carrier = await reuseOfflineCarrier({ cache: join(cacheRoot, 'offline-carriers'), output: directory, key: cacheKey, prepare: async () => {
+const carrier = await reuseOfflineCarrier({ cache: join(cacheRoot, 'offline-carriers'), output: directory, key: cacheKey, prepare: async candidate => {
   // Rename the owned staging directory while archiving rather than copying
   // the entire expanded closure again. Always restore it for tarball gates.
   await mkdir(input, { recursive: true })
   await rename(join(directory, 'modules'), join(input, 'node_modules'))
   try {
-    await createPackageWithOptions(input, join(directory, carrierName), {
+    await createPackageWithOptions(input, join(candidate, carrierName), {
       unpackDir: `{${physicalRoots.join(',')}}`, unpack: '**/*.{node,dll,exe}',
     })
   } finally { await rename(join(input, 'node_modules'), join(directory, 'modules')) }

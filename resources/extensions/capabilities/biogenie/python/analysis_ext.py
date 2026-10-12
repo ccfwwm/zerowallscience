@@ -2,7 +2,7 @@
 
 补齐与其他生信工具集对标时发现的 5 类缺口。**全部走真实库/真实算法**——
 对标对象 `bach-biotools-server` 在这些位置返回的是 Math.random() 伪造数据
-或 mock 占位（详见 dsh-bio-genie-doc/生信MCP生态调研与能力缺口-2026-09-16.md），
+或 mock 占位；
 本模块的实现路线与之无关，一律基于 Biopython / UniProt REST / ViennaRNA。
 
 包含：
@@ -20,21 +20,13 @@ import re
 import urllib.parse
 import urllib.request
 
+from seq_util import read_text_input, read_seq_input
+
 # ---------------------------------------------------------------- 公共
 
 UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/120.0 Safari/537.36 '
       '(+dsh-bio-genie; contact: dsh-bio-genie@users.noreply.github.com)')
-
-
-def _read_text_arg(value, what):
-    """参数既可以是内容本身，也可以是文件路径。"""
-    if not value:
-        raise ValueError(f'{what} 不能为空')
-    if isinstance(value, str) and len(value) < 512 and '\n' not in value and os.path.exists(value):
-        with open(value, encoding='utf-8', errors='replace') as fh:
-            return fh.read()
-    return value
 
 
 def _http_json(url, timeout=40):
@@ -256,8 +248,8 @@ def op_seq_dotplot(args):
     """
     import numpy as np
 
-    s1 = re.sub(r'\s+', '', _read_text_arg(args.get('seq1'), 'seq1')).upper()
-    s2 = re.sub(r'\s+', '', _read_text_arg(args.get('seq2'), 'seq2')).upper()
+    s1 = read_seq_input(args.get('seq1'), 'seq1').upper()
+    s2 = read_seq_input(args.get('seq2'), 'seq2').upper()
     if len(s1) < 10 or len(s2) < 10:
         raise ValueError('两条序列都至少需要 10 bp/aa')
     window = int(args.get('window', 15))
@@ -563,8 +555,8 @@ def op_phylo_compare(args):
     """
     from Bio import Phylo
 
-    t1_raw = _read_text_arg(args.get('tree1'), 'tree1')
-    t2_raw = _read_text_arg(args.get('tree2'), 'tree2')
+    t1_raw = read_text_input(args.get('tree1'), 'tree1')
+    t2_raw = read_text_input(args.get('tree2'), 'tree2')
     if not t1_raw.strip().startswith('(') and not t1_raw.strip().endswith(';'):
         raise ValueError('tree1 看起来不是 Newick 字符串（应以 "(" 开头）')
     t1 = _parse_newick(t1_raw)
@@ -628,7 +620,7 @@ def op_rna_fold(args):
       output_file (str): 可选，输出结构示意图 PNG
       also_ensemble (bool): 是否附加配分函数/集合多样性，默认 True
     """
-    seq = re.sub(r'[^ACGTUacgtu]', '', _read_text_arg(args.get('sequence'), 'sequence')).upper()
+    seq = re.sub(r'[^ACGTUacgtu]', '', read_seq_input(args.get('sequence'), 'sequence')).upper()
     seq = seq.replace('T', 'U')
     if len(seq) < 10:
         raise ValueError('RNA 序列至少 10 nt')

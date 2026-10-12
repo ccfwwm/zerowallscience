@@ -114,6 +114,20 @@ FunctionEnd
   Pop $R0
 !macroend
 
+; electron-builder's default recursively removes $INSTDIR. Use the exact
+; afterPack ownership inventory so the fixed Python runtime and user files stay.
+!macro customRemoveFiles
+  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\commands\uninstall-owned-files.ps1" -InstallRoot "$INSTDIR"'
+  Pop $R0
+  ${If} $R0 != 0
+    MessageBox MB_OK|MB_ICONSTOP "无法核验安装文件归属，卸载已停止。Python 和用户文件已保留。"
+    Abort
+  ${EndIf}
+  SetOutPath $TEMP
+  Delete "$INSTDIR\${UNINSTALL_FILENAME}"
+  RMDir "$INSTDIR"
+!macroend
+
 !macro customCheckAppRunning
   !insertmacro ZW_PHASE "stopping"
   InitPluginsDir

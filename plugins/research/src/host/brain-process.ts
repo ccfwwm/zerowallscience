@@ -1,4 +1,5 @@
-import {spawn,type ChildProcess} from 'node:child_process'
+import { type ChildProcess } from 'node:child_process'
+import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runtime-process.js'
 
 /**
  * How long to wait, after the direct child has been observed to exit, for the

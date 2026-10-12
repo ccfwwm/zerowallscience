@@ -69,8 +69,13 @@ def execute(envelope):
         elif isinstance(value, list):
             for item in value:
                 walk(item, key)
-        elif isinstance(value, str) and (key in {'path', 'file', 'out_file', 'output', 'input', 'filename', 'directory', 'workdir'} or key.endswith(('_path', '_file', '_dir'))):
-            check_path(value)
+        elif isinstance(value, str):
+            if key in {'path', 'file', 'out_file', 'output', 'input', 'filename', 'directory', 'workdir'} or key.endswith(('_path', '_file', '_dir')):
+                check_path(value)
+            elif key in {'sequence', 'sequences', 'seq1', 'seq2', 'tree1', 'tree2'} and len(value) < 512 and '\n' not in value:
+                candidate = Path(value)
+                if candidate.is_absolute() or candidate.exists() or candidate.suffix.lower() in {'.fa', '.fasta', '.fna', '.faa', '.gb', '.gbk', '.txt', '.nwk', '.newick'}:
+                    check_path(value)
     walk(args)
     result = function(args)
     if isinstance(result, dict) and result.get('error'):
@@ -91,7 +96,7 @@ def execute(envelope):
             except (OSError, ValueError):
                 pass
     collect(result)
-    return {'result': bio_ops._sanitize_json(result), 'artifacts': artifacts, 'provenance': {'backend': 'biogenie', 'version': '0.6.36', 'operation': op, 'python': sys.version.split()[0], 'executable': sys.executable}}
+    return {'result': bio_ops._sanitize_json(result), 'artifacts': artifacts, 'provenance': {'backend': 'biogenie', 'version': '0.6.48', 'operation': op, 'python': sys.version.split()[0], 'executable': sys.executable}}
 
 
 def main(envelope):

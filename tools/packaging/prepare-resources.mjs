@@ -45,7 +45,7 @@ for (const [source, destination] of [
   const input = resolve(root, source)
   await cp(input, resolve(stageRoot, 'resources', destination), { recursive: true, filter: candidate => {
     const segments = relative(input, candidate).toLowerCase().split(/[\\/]/u)
-    return !segments.some(segment => forbiddenDirectories.has(segment) || ['node_modules', '.venv', 'venv', '.cache', 'python'].includes(segment)) && !/\.py[co]$/u.test(candidate)
+    return !segments.some(segment => forbiddenDirectories.has(segment) || ['node_modules', '.venv', 'venv', '.cache'].includes(segment)) && !/\.py[co]$/u.test(candidate)
   } })
 }
 // Catalogs distribute the reviewed authoring descriptions too. The runtime

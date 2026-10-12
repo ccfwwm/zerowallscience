@@ -21,7 +21,11 @@ export async function restorePublishedOutput(source, { restore = true } = {}) {
   const baseline = await historicalPackage(manifest.name, manifest.version)
   if (!baseline) return false
   const normalizedArchive = baseline.path.replaceAll('\\', '/')
-  const catalogRoot = normalizedArchive.slice(0, normalizedArchive.indexOf('/plugins/'))
+  // Public-history downloads live in release/<version>/published/<hash>/,
+  // while locally packed archives live in plugins/. Both share the catalog.
+  const releaseMatch = normalizedArchive.match(/^(.*\/release\/\d+\.\d+\.\d+)(?:\/|$)/u)
+  if (!releaseMatch) return false
+  const catalogRoot = releaseMatch[1]
   const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
   const catalog = verifySignedDocument(JSON.parse(await readFile(join(catalogRoot, 'catalogs/plugin-catalog.json'), 'utf8')), keys)
   const resource = catalog.resources.find(entry => entry.id === manifest.name && entry.version === manifest.version)

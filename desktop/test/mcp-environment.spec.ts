@@ -253,6 +253,9 @@ describe('MCP environment upgrades', () => {
       publish() {},
     })
 
+    // This layout unit test uses a text interpreter fixture; the actual scan
+    // runs separately in python-fixed-runtime.integration.spec.ts.
+    vi.spyOn(controller, 'pythonInfo').mockResolvedValue({ ready: true, pipReady: true, packages: [], runtimeRoot, executable: join(runtimeRoot, 'python.exe') }).mockResolvedValueOnce({ ready: false, packages: [] })
     const installed = await controller.initialize()
     expect(installed, JSON.stringify(installed)).toMatchObject({ phase: 'ready', environmentVersion: '1.5.1' })
     expect(fetcher).toHaveBeenCalledTimes(2)

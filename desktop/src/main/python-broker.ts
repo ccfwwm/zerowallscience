@@ -2,7 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import type { PythonUpdaterService } from './python-updater-service.js'
 
 /** Private parent/child IPC; no HTTP endpoint or renderer-supplied method names. */
-export function attachPythonBroker(child: ChildProcess, manager: () => PythonUpdaterService): () => void {
+export function attachPythonBroker(child: ChildProcess, manager: () => Pick<PythonUpdaterService, 'environmentRequest' | 'pythonInfo' | 'checkPythonPackageUpdates' | 'previewUninstall' | 'previewPackages' | 'applyPackagePlan' | 'taskStatus'> & { rollback(): unknown }): () => void {
   const listener = (value: unknown): void => {
     if (!value || typeof value !== 'object') return
     const message = value as { kind?: string; requestId?: string; operation?: string; args?: unknown[] }

@@ -30,6 +30,7 @@ async function fixture() {
     manifest: { python: { version: '3.12.10', relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } },
   }))
   vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
+  vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', join(root, 'Python'))
   return { root, store, project, service }
 }
 
@@ -44,10 +45,11 @@ describe('native engine lifecycle and project boundary', () => {
       expect(defaultScientificEngineConfig('fiji').installDirectory).toBe('C:\\softworks\\Fiji')
     } finally { await rm(root, { recursive: true, force: true }) }
   })
-  it('keeps an explicitly invalid Fiji path instead of silently falling back', () => {
+  it('keeps an explicitly invalid Fiji path and ignores per-engine Python overrides', async () => {
+    const { root } = await fixture()
     const explicit = 'C:\\does-not-exist\\fiji.exe'
     expect(engineExecutable('fiji', { executablePath: explicit })).toBe(explicit)
-    expect(engineExecutable('napari', { pythonPath: explicit })).not.toBe(explicit)
+    expect(engineExecutable('napari', { pythonPath: explicit })).toBe(join(root, 'Python', 'python.exe'))
   })
   it('finds napari and StarDist command entrypoints in the same Python site-packages/bin', async () => {
     const root = await mkdtemp(join(tmpdir(), 'shared-science-python-'))
@@ -56,6 +58,7 @@ describe('native engine lifecycle and project boundary', () => {
       const bin = join(root, 'Lib', 'site-packages', 'bin')
       await mkdir(bin, { recursive: true })
       await writeFile(python, 'fixture')
+      vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', root)
       for (const name of ['napari.exe', 'stardist-predict2d.exe', 'stardist-predict3d.exe']) await writeFile(join(bin, name), 'fixture')
       expect(discoverNapariExecutable(python)).toBe(join(bin, 'napari.exe'))
       expect(discoverStarDistCommands(python)).toEqual({ predict2d: join(bin, 'stardist-predict2d.exe'), predict3d: join(bin, 'stardist-predict3d.exe') })
@@ -99,6 +102,7 @@ describe('native engine lifecycle and project boundary', () => {
   it('rejects missing engines and invalid engine identifiers before launching', async () => {
     const { root, project, service } = await fixture()
     vi.stubEnv('ZEROWALL_PYTHON_ROOT', join(root, 'missing', 'zerowall-python'))
+    vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', join(root, 'missing', 'Python'))
     await expect(service.launch(project, 's1', 'napari')).rejects.toThrow()
     await expect(service.launch(project, 's1', 'python' as any)).rejects.toThrow('Unsupported')
     expect(service.list(project.id)).toEqual([])
@@ -174,6 +178,7 @@ describe('managed BrainGlobe atlas resolution', () => {
     const manifest = { python: { version: '3.12.10', relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } }
     await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, runtimeRoot, health: 'ready', manifest }))
     cleanups.push(async () => rm(userData, { recursive: true, force: true }))
+    vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', join(userData, 'Python'))
     return store
   }
   it('resolves the managed interpreter and a default atlas directory without ZEROWALL_BRAINGLOBE_DIR', async () => {
@@ -181,16 +186,17 @@ describe('managed BrainGlobe atlas resolution', () => {
     delete process.env.ZEROWALL_BRAINGLOBE_DIR
     delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
     vi.stubEnv('ZEROWALL_PYTHON_ROOT', store)
-    expect(defaultAtlasDirectory()).toBe(join(store, 'brainglobe-managed'))
+    const atlas = join(store, '..', 'Python', '.zerowall', 'brainglobe-managed')
+    expect(defaultAtlasDirectory()).toBe(atlas)
     const resolved = await resolveManagedBrainPython()
     const userData = join(store, '..')
     expect(resolved).toMatchObject({ root: join(userData, 'Python'), executable: join(userData, 'Python', 'python.exe'), sitePackages: join(userData, 'Python', 'Lib', 'site-packages') })
     // The service must create the default directory lazily instead of throwing.
     const service = new BrainAtlasService(new ResearchStore(':memory:'))
-    await expect((service as unknown as { atlasDirectory(purpose: string): Promise<string> }).atlasDirectory('BrainGlobe analysis')).resolves.toBe(join(store, 'brainglobe-managed'))
+    await expect((service as unknown as { atlasDirectory(purpose: string): Promise<string> }).atlasDirectory('BrainGlobe analysis')).resolves.toBe(atlas)
     await service.dispose()
   })
-  it('uses runtimeRoot for the stable Python layout after migration', async () => {
+  it('ignores a stale slots pointer and uses the configured fixed Python', async () => {
     const userData = await mkdtemp(join(tmpdir(), 'zerowall-stable-science-'))
     const manager = join(userData, 'zerowall-python')
     const python = join(userData, 'Python', 'python.exe')
@@ -200,6 +206,7 @@ describe('managed BrainGlobe atlas resolution', () => {
     await writeFile(join(manager, 'current.json'), JSON.stringify({ root: join(manager, 'slots', 'stale'), runtimeRoot: userData, health: 'ready', manifest: { python: { version: '3.12.10', relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' } } }))
     cleanups.push(() => rm(userData, { recursive: true, force: true }))
     vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
+    vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', join(userData, 'Python'))
     expect(await resolveManagedBrainPython()).toMatchObject({ executable: python, root: join(userData, 'Python'), sitePackages })
     for (const id of ['napari', 'brain-globe', 'he-python', 'he-stardist'] as const) expect(defaultScientificEngineConfig(id).pythonPath).toBeUndefined()
   })
@@ -220,6 +227,7 @@ describe('managed BrainGlobe atlas resolution', () => {
     }))
     cleanups.push(() => rm(runtimeRoot, { recursive: true, force: true }))
     vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
+    vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', runtimeRoot)
     delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
     expect(await resolveManagedBrainPython()).toMatchObject({ root: runtimeRoot, executable: python, sitePackages })
 
@@ -227,6 +235,7 @@ describe('managed BrainGlobe atlas resolution', () => {
     // The fixture creates a second legacy record, so restore the flat runtime
     // pointer before probing the HE engine.
     vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
+    vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', runtimeRoot)
     const status = await service.probe(project.id, 'he-python')
     expect(status.path).toBe(python)
     expect(status.reason).not.toContain('未找到受管理的 ZeroWall Python 环境')
@@ -247,8 +256,10 @@ describe('managed BrainGlobe atlas resolution', () => {
     const store = await managedRoot()
     delete process.env.ZEROWALL_BRAINGLOBE_DIR
     vi.stubEnv('ZEROWALL_PYTHON_ROOT', store)
-    const installed = join(store, 'versions', '7.0.2')
-    await writeFile(join(store, 'current.json'), JSON.stringify({ root: installed, health: 'ready', manifest: { python: { relativeExecutable: '../../escape.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages' } } }))
+    const runtime = join(store, '..', 'Python')
+    await rm(join(runtime, 'Lib', 'site-packages'), { recursive: true })
+    const outside = join(store, 'outside'); await mkdir(outside)
+    await symlink(outside, join(runtime, 'Lib', 'site-packages'), process.platform === 'win32' ? 'junction' : 'dir')
     await expect(resolveManagedBrainPython()).resolves.toBeUndefined()
   })
   it('uses the shared runtime location for the default atlas directory', async () => {
@@ -256,12 +267,13 @@ describe('managed BrainGlobe atlas resolution', () => {
     // application default may legitimately point at the user's shared runtime.
     const missingRoot = join(tmpdir(), 'zerowall-python-does-not-exist')
     vi.stubEnv('ZEROWALL_PYTHON_ROOT', missingRoot)
+    vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', join(missingRoot, 'Python'))
     delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
     delete process.env.ZEROWALL_BRAINGLOBE_DIR
-    expect(defaultAtlasDirectory()).toBe(join(missingRoot, 'brainglobe-managed'))
+    expect(defaultAtlasDirectory()).toBe(join(missingRoot, 'Python', '.zerowall', 'brainglobe-managed'))
     const store = new ResearchStore(':memory:')
     const service = new BrainAtlasService(store)
-    await expect((service as unknown as { atlasDirectory(purpose: string): Promise<string> }).atlasDirectory('BrainGlobe analysis')).resolves.toBe(join(missingRoot, 'brainglobe-managed'))
+    await expect((service as unknown as { atlasDirectory(purpose: string): Promise<string> }).atlasDirectory('BrainGlobe analysis')).resolves.toBe(join(missingRoot, 'Python', '.zerowall', 'brainglobe-managed'))
     await service.dispose(); store.close()
   })
 })

@@ -3,6 +3,8 @@ import sys
 import json
 import os
 
+from seq_util import read_seq_input
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -16,7 +18,7 @@ def op_assembly_design(args):
 
     # vector 真正参与组装：把线性化载体并入片段列表（作为环化起点）。
     # 此前 vector 是声明了却从未使用的死参数，导致「单个插入片段 + 载体」这种最常见的
-    # 组装表达被 len<2 直接拒掉——v0.6.26 E2E 实测 agent 连续两次撞
+    # 组装表达被 len<2 直接拒掉——v0.6.26 实测 agent 连续两次撞
     # 'at least 2 fragments required' 且无法从错误里自救。
     if vector:
         fragments = [vector] + fragments
@@ -115,7 +117,7 @@ def op_assembly_design(args):
 
 
 def _plasmid_graphic(args, features):
-    """dna-features-viewer 图形模式：GenBank 文件或 features+sequence → PNG/SVG。
+    """图形模式：环形用 matplotlib；线性保留 dna-features-viewer。
 
     成功返回 dict（含 out_file 路径）；库缺失或无图形输入返回 None 走文本回退。
     """
@@ -123,6 +125,13 @@ def _plasmid_graphic(args, features):
     output_format = str(args.get('output_format', 'png')).lower()
     if not genbank_file and not args.get('sequence'):
         return None
+    if args.get('circular', True):
+        try:
+            from plasmid_render import render_circular_map
+            return render_circular_map(args, features)
+        except Exception as e:
+            return {'graphic': False,
+                    'graphic_note': f'图形渲染失败，已回退文本模式: {e}'}
     try:
         import matplotlib
         matplotlib.use('Agg')
@@ -141,7 +150,8 @@ def _plasmid_graphic(args, features):
             record = BiopythonTranslator().translate_record(
                 genbank_file, record_class=CircularGraphicRecord)
         else:
-            seq = ''.join(str(args.get('sequence', '')).upper().split())
+            seq_raw = str(args.get('sequence', ''))
+            seq = read_seq_input(seq_raw, 'sequence').upper() if seq_raw.strip() else ''
             gfeatures = [
                 GraphicFeature(start=int(f.get('start', 0)), end=int(f.get('end', 0)),
                                strand=1 if f.get('direction', '+') == '+' else -1,
@@ -234,7 +244,7 @@ def op_plasmid_map(args):
         )
 
     # 统计：按区间并集算覆盖碱基数，避免重叠特征被重复计数。
-    # （E2E 实测：eGFP 720bp 图上有 CDS(0-720) + 两端引物 + 起始/终止密码子等
+    # （实测：eGFP 720bp 图上有 CDS(0-720) + 两端引物 + 起始/终止密码子等
     #   子区间，简单求和得 776bp > 720bp → unannotated_bp = -56 这种无意义的负值。）
     spans = sorted((max(0, int(f.get('start', 0))), min(max_pos, int(f.get('end', 0))))
                    for f in features

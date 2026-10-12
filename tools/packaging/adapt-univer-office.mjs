@@ -64,7 +64,7 @@ const dshPeers = [
 
 // The published 0.3.7 bundle predates rc.2. Only the curated runtime copy
 // gets the range extension; any upstream manifest change requires a new audit.
-export function adaptUniverOfficeManifest(source) {
+export function adaptUniverOfficeManifest(source, resourceVersion = '0.3.7') {
   const manifest = JSON.parse(source)
   if (manifest.name !== 'dsh-univer-office' || manifest.version !== '0.3.7') {
     throw new Error('Unexpected Univer Office manifest identity; review its DSH compatibility.')
@@ -78,5 +78,6 @@ export function adaptUniverOfficeManifest(source) {
     }
     manifest.peerDependencies[name] = adaptedPeerRange
   }
+  manifest.version = resourceVersion
   return `${JSON.stringify(manifest, null, 2)}\n`
 }

@@ -1,7 +1,10 @@
 import { useCallback } from 'react'
 let target: HTMLElement | null = null
 const listeners = new Set<() => void>()
+const openListeners = new Set<() => void>()
 export const accountSurface = {
+  open() { for (const listener of openListeners) listener() },
+  subscribeOpen(listener: () => void) { openListeners.add(listener); return () => { openListeners.delete(listener) } },
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
   getSnapshot: () => target,
 }

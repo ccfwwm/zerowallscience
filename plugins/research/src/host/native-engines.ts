@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { type ChildProcess } from 'node:child_process'
+import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runtime-process.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { createReadStream, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
@@ -97,7 +98,7 @@ export function engineExecutable(engine: ScientificEngineId, config?: Partial<Sc
   if (engine === 'napari') {
     const python = defaultSciencePythonExecutable()
     if (!python) throw new Error('未找到 ZeroWall 唯一共享 Python 环境；napari 不会使用其他解释器。')
-    return discoverNapariExecutable() ?? python
+    return python
   }
   if (config?.executablePath) return config.executablePath
   throw new Error('Unsupported native engine.')
@@ -343,11 +344,10 @@ export class NativeEngineService {
     const python = managed?.executable
     if (!python) return { id: 'napari', name: engineName('napari'), available: false, status: 'invalid', source: config.source, reason: '未找到受管理的 ZeroWall Python 环境；napari 与 BrainGlobe 共用该环境。' }
     const result = await this.runProbe('napari', engineName('napari'), python, ['-c', 'import napari; print(napari.__version__)'], config)
-    const launcher = discoverNapariExecutable()
     return {
       ...result,
-      ...(launcher ? { path: launcher, capabilities: ['napari', 'shared site-packages launcher'] } : {}),
-      diagnostic: [`共享 Python：${python}`, `napari 启动入口：${launcher ?? '未找到；可回退到 python -m napari'}`, result.diagnostic].filter(Boolean).join('\n').slice(-8000),
+      path: python, capabilities: ['napari', 'fixed Python -m napari'],
+      diagnostic: [`共享 Python：${python}`, 'napari 启动入口：固定解释器 -m napari', result.diagnostic].filter(Boolean).join('\n').slice(-8000),
     }
   }
 

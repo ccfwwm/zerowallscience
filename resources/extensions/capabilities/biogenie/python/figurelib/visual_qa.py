@@ -4,8 +4,9 @@ scipilot-figure-skill :: visual_qa.py
 出图后的「程序自检」+「渲染预览」——自检闭环的机器那一层。
 
 设计分工：
-- **程序（本脚本）** 抓**确定性**问题：缺字乱码、文字越界裁切、刻度标签重叠。
-- **AI 读图**（见 references/visual_review.md）抓**感知性**问题：图例压数据、
+- **程序（本脚本）** 抓**确定性**问题：缺字乱码、文字越界裁切、刻度标签重叠、
+  用户文本互叠、图例与散点/折线采样点碰撞。
+- **AI 读图**（见 references/visual_review.md）抓**感知性**问题：其他图例遮挡、
   子图标签是否对齐、配色灰度可分、整体观感。
 
 两层串起来才是完整的「出图 → 渲 PNG → 程序自检 + AI 读图 → 回改 → 再看」闭环。
@@ -19,6 +20,8 @@ scipilot-figure-skill :: visual_qa.py
     告警通道，任一报 "missing from font" 即判定成图会出方框/乱码。
   * **文字越界裁切**（WARN）：Text 的 window_extent 超出画布边界。
   * **刻度标签重叠**（WARN）：相邻 tick label 的包围盒水平/垂直相交。
+  * **用户文本互叠**（WARN）：排除刻度、同一图例内文本后，两两 bbox 相交。
+  * **图例遮数据**（WARN）：默认至少 3 个可见散点/折线顶点落入图例 bbox。
 
 severity 约定与 check_figure.py 保持一致：INFO < WARN < FAIL。
 
@@ -47,6 +50,9 @@ import warnings
 
 import matplotlib.pyplot as plt
 import matplotlib.text as mtext
+from matplotlib.collections import PathCollection
+from matplotlib.legend import Legend
+import numpy as np
 
 
 # Windows GBK 终端下 print 中文会 UnicodeEncodeError。用 reconfigure 而非替换
@@ -100,7 +106,8 @@ def _draw_and_collect_glyph_warnings(fig) -> list[str]:
             warnings.simplefilter("always")
             # 画到内存即可，不落盘；draw 也会触发缺字告警
             buf = io.BytesIO()
-            fig.savefig(buf, format="png", dpi=100)
+            # Keep bbox measurements and transforms at the figure's own DPI.
+            fig.savefig(buf, format="png", dpi=fig.dpi)
             buf.close()
         for w in wlist:
             s = str(w.message)
@@ -131,7 +138,8 @@ def _visible_texts(fig) -> list:
     return out
 
 
-def audit_layout(fig, clip_tol_px: float = 2.0, overlap_tol_px: float = 1.0
+def audit_layout(fig, clip_tol_px: float = 2.0, overlap_tol_px: float = 1.0,
+                 legend_min_points: int = 3
                  ) -> list[tuple[str, str]]:
     """
     对一张 matplotlib Figure 做版面自检。返回 [(severity, msg), ...]。
@@ -140,9 +148,17 @@ def audit_layout(fig, clip_tol_px: float = 2.0, overlap_tol_px: float = 1.0
         1. 缺字乱码（FAIL）—— 中文/特殊符号字体未命中。
         2. 文字越界裁切（WARN）—— 标题/轴标签/标注超出画布。
         3. 刻度标签重叠（WARN）—— x/y 轴相邻刻度包围盒相交。
+        4. 用户文本互叠（WARN）—— 两个方向交叠均超过 overlap_tol_px。
+        5. 图例遮数据（WARN）—— 至少 legend_min_points 个数据点落入图例。
+
+    图例检测统计 scatter 中心和 line 顶点（不插值，不含 marker 半径）；
+    默认阈值 3，忽略零星接触，宁可漏报而不滥报。不覆盖 bars/images/线段穿越。
+    同位置的分层数据只计一次；不可见、非有限、被 axes/artist 裁剪的点不计。
 
     非破坏性：只渲染测量，不修改 fig 内容。
     """
+    if legend_min_points < 1 or int(legend_min_points) != legend_min_points:
+        raise ValueError("legend_min_points must be a positive integer")
     issues: list[tuple[str, str]] = []
 
     # ---- 1. 缺字（同时触发一次渲染，让 renderer 就绪）----
@@ -217,7 +233,127 @@ def audit_layout(fig, clip_tol_px: float = 2.0, overlap_tol_px: float = 1.0
             "y 轴：增大子图高度或减少刻度数。"
         ))
 
+    # ---- 4. 用户级文本互叠 ----
+    all_legends = fig.findobj(Legend)
+    legends = [leg for leg in all_legends
+               if leg.get_visible() and (leg.axes is None or leg.axes.get_visible())]
+    legend_owners = {id(t): id(leg) for leg in legends
+                     for t in (*leg.get_texts(), leg.get_title())}
+    hidden_legend_texts = {id(t) for leg in all_legends if leg not in legends
+                           for t in (*leg.get_texts(), leg.get_title())}
+    # Scientific-notation offsets belong to ticks, not user-level text.
+    structural_ids = tick_ids | {id(axis.get_offset_text()) for ax in fig.axes
+                                for axis in (ax.xaxis, ax.yaxis)}
+    boxes = []
+    for t in _visible_texts(fig):
+        if id(t) in structural_ids or (t.axes is not None and not t.axes.get_visible()):
+            continue
+        # Hidden legends' descendants may still have get_visible() == True.
+        if id(t) in hidden_legend_texts:
+            continue
+        try:
+            if isinstance(t, mtext.Annotation):
+                if not t._check_xy(renderer):
+                    continue  # annotation_clip hid this annotation
+                # Annotation's full extent includes its arrow. Only compare text.
+                bb = mtext.Text.get_window_extent(t, renderer)
+            else:
+                bb = t.get_window_extent(renderer)
+            if bb.width > 0 and bb.height > 0 and np.isfinite(bb.extents).all():
+                boxes.append((t, bb))
+        except (ValueError, RuntimeError):
+            continue
+    for i, (a, ba) in enumerate(boxes):
+        for b, bb in boxes[i + 1:]:
+            # A legend's packer intentionally arranges its entries/title. Treat
+            # that group as structural; still compare it with other user text.
+            if id(a) in legend_owners and legend_owners[id(a)] == legend_owners.get(id(b)):
+                continue
+            if (min(ba.x1, bb.x1) - max(ba.x0, bb.x0) > overlap_tol_px
+                    and min(ba.y1, bb.y1) - max(ba.y0, bb.y0) > overlap_tol_px):
+                issues.append(("WARN", "用户文本互叠："
+                               f"{_text_summary(a, ba)} × {_text_summary(b, bb)}。"
+                               "请移动标注/面板字母，或调整标题与轴标签间距。"))
+
+    # ---- 5. 图例 bbox × 可见数据中心 ----
+    for ax_index, ax in enumerate(fig.axes):
+        axes_legends = [leg for leg in legends if leg.axes is ax or leg.axes is None]
+        if not ax.get_visible() or not axes_legends:
+            continue
+        points = _display_data_points(ax)
+        for leg in axes_legends:
+            # Includes figure legends and legends retained via ax.add_artist().
+            bb = leg.get_window_extent(renderer)
+            hits = ((points[:, 0] > bb.x0 + overlap_tol_px)
+                    & (points[:, 0] < bb.x1 - overlap_tol_px)
+                    & (points[:, 1] > bb.y0 + overlap_tol_px)
+                    & (points[:, 1] < bb.y1 - overlap_tol_px))
+            count = int(hits.sum())
+            if count >= legend_min_points:
+                issues.append(("WARN", f"图例遮数据：axes[{ax_index}] 的图例 bbox="
+                               f"{_bbox_summary(bb)} px 内有 {count} 个数据点"
+                               f"（阈值 ≥{legend_min_points}）。请将图例移到数据区外。"))
     return issues
+
+
+def _bbox_summary(bb) -> str:
+    return f"({bb.x0:.1f}, {bb.y0:.1f}, {bb.x1:.1f}, {bb.y1:.1f})"
+
+
+def _text_summary(text, bb) -> str:
+    label = text.get_text().strip().replace("\n", " ")[:40]
+    return f"{label!r} bbox={_bbox_summary(bb)} px"
+
+
+def _display_data_points(ax):
+    """Visible scatter centres / line vertices in display pixels, deduplicated.
+
+    Use each artist's transform (log axes, axhline/axvline blended transforms,
+    and custom scatter offset transforms all work). No interpolation means
+    sparse lines can be missed, but threshold guides cannot become fake piles.
+    """
+    groups = []
+    for artist in (*ax.collections, *ax.lines):
+        alpha = artist.get_alpha()
+        if not artist.get_visible() or (alpha is not None and not np.any(np.asarray(alpha) > 0)):
+            continue
+        if isinstance(artist, PathCollection):
+            if not len(artist.get_paths()) or not np.any(artist.get_sizes() > 0):
+                continue
+            if not any(len(colors) and np.any(colors[:, 3] > 0)
+                       for colors in (artist.get_facecolors(), artist.get_edgecolors())):
+                continue
+            raw = np.ma.asarray(artist.get_offsets(), dtype=float)
+            transform = artist.get_offset_transform()
+            # Collections can hide individual points via size or RGBA alpha.
+            count = len(raw)
+            visible = np.resize(artist.get_sizes(), count) > 0
+            opacity = np.zeros(count, dtype=bool)
+            for colors in (artist.get_facecolors(), artist.get_edgecolors()):
+                if len(colors):
+                    opacity |= np.resize(colors[:, 3], count) > 0
+            raw = raw[visible & opacity]
+        elif hasattr(artist, 'get_xydata'):
+            if (artist.get_linestyle() in ('None', 'none', '', ' ')
+                    and artist.get_marker() in ('None', 'none', '', ' ')):
+                continue
+            raw = np.ma.asarray(artist.get_xydata(), dtype=float)
+            transform = artist.get_transform()
+        else:
+            continue
+        raw = raw.filled(np.nan)
+        points = transform.transform(raw[np.isfinite(raw).all(axis=1)])
+        points = points[np.isfinite(points).all(axis=1)]
+        if artist.get_clip_on():
+            clip = artist.get_clip_box()
+            if clip is not None:
+                points = points[(points[:, 0] >= clip.x0) & (points[:, 0] <= clip.x1)
+                                & (points[:, 1] >= clip.y0) & (points[:, 1] <= clip.y1)]
+            path, affine = artist.get_transformed_clip_path_and_affine()
+            if path is not None:
+                points = points[path.contains_points(points, affine)]
+        groups.append(points)
+    return np.unique(np.concatenate(groups), axis=0) if groups else np.empty((0, 2))
 
 
 def _ticklabels_overlap(labels, renderer, axis: str, tol: float) -> bool:
@@ -285,7 +421,7 @@ def render_preview(fig_or_path, out_png: str = "_preview.png",
 def print_report(issues: list[tuple[str, str]]) -> str:
     """打印 audit_layout 的结果，返回 verdict（PASS/WARN/FAIL）。"""
     if not issues:
-        print("  [PASS] 程序自检未发现缺字 / 裁切 / 刻度重叠。")
+        print("  [PASS] 程序自检未发现缺字 / 裁切 / 刻度重叠 / 文本互叠 / 图例遮数据。")
         print("  >>> 仍需 AI 读图复核感知性问题（见 visual_review.md）。")
         return "PASS"
     max_sev = max(SEVERITY[s] for s, _ in issues)

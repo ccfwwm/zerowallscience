@@ -1,3 +1,4 @@
+import { configuredPythonRuntimeRoot } from '../../../python/src/shared/runtime-path.js'
 import { ManagedGenerations } from './managed-generations.js'
 import { registerResearchWorkflow } from './research-workflow.js'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
@@ -929,7 +930,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private async pollEnvironment(): Promise<void> {
     if (this.environmentRefreshInFlight) return
-    await this.prepareEnvironmentTransaction()
+    const manager = process.env.ZEROWALL_PYTHON_MANAGEMENT_ROOT || process.env.ZEROWALL_PYTHON_ROOT || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
+    if (manager && existsSync(join(manager, 'write-lock.json'))) {
+      this.environmentRefreshInFlight = true
+      try { await this.managed.quiesce(); this.environmentFileSignature = ''; this.environmentSignature = '' }
+      finally { this.environmentRefreshInFlight = false }
+      return
+    }
+    this.managed.resume()
     this.managed.commitStaged()
     if (!this.backgroundStarted) return
     const fileSignature = managedEnvironmentFileSignature()
@@ -964,44 +972,6 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   @Remote('acknowledgeEditor')
   acknowledgeEditor(id: string): void { this.managed.ketcher.acknowledge(id) }
-
-  private activationId = ''
-  private activationBusy = false
-  private async prepareEnvironmentTransaction(): Promise<void> {
-    const root = process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT
-    if (!root || this.activationBusy) return
-    this.activationBusy = true
-    try {
-      const transaction = await readFile(join(root, 'activation.json'), 'utf8').then(JSON.parse, () => undefined)
-      if (!transaction?.transactionId || transaction.transactionId === this.activationId || Date.now() - transaction.createdAt > 180_000) return
-      this.activationId = transaction.transactionId
-      const candidate = transaction.candidate as ManagedEnvironmentRecord
-      if (!candidate.root || candidate.health !== 'ready') throw new Error('无效候选环境。')
-      const prepared: Array<{ id: string; value: Awaited<ReturnType<ManagedGenerations['prepare']>> }> = []
-      try {
-        for (const record of this.projects().listMcpServers().filter(record => record.enabled && isManagedMcp(record.serverName))) {
-          // Installing the interpreter must succeed before its optional MCP
-          // dependencies exist. Keep any live generation until core is ready.
-          if (record.serverName === 'zerowall_managed_bio_tools' && candidate.manifest?.python?.bootstrapOnly === true && !managedBioDependenciesReady(candidate, true)) continue
-          const key = record.serverName === 'zerowall_managed_scimaster' ? await this.secrets.get(SCIMASTER_API_KEY_CREDENTIAL).catch(() => undefined) : undefined
-          if (record.serverName === 'zerowall_managed_scimaster' && !key) continue
-          const resolved = resolveMcpConfig(record, process.env, process.cwd(), undefined, candidate)
-          if (!resolved.config || resolved.config.transport !== 'stdio') throw new Error('候选 MCP 配置无效。')
-          if (key) resolved.config.env.ZEROWALL_SCIMASTER_API_KEY = key
-          try {
-            prepared.push({ id: record.id, value: await this.managed.prepare(resolved.config, candidate.root) })
-          } catch (error) {
-            throw new Error(`候选 MCP ${record.serverName} 启动失败：${redactError(error)}`)
-          }
-        }
-        for (const item of prepared) await this.managed.stage(item.id, candidate.root, item.value)
-        await writeFile(join(root, 'activation-ready.json'), JSON.stringify({ transactionId: transaction.transactionId, ready: true }))
-      } catch (error) {
-        await Promise.allSettled(prepared.map(item => this.managed.discard(item.value)))
-        await writeFile(join(root, 'activation-ready.json'), JSON.stringify({ transactionId: transaction.transactionId, error: redactError(error) }))
-      }
-    } finally { this.activationBusy = false }
-  }
 
   private async seedBundledServers(): Promise<void> {
     if (process.env.ZEROWALL_DISABLE_DEFAULT_MCP === '1') return
@@ -1502,47 +1472,14 @@ export function resolveMcpConfig(record: McpServerRecord, environment: NodeJS.Pr
     ...(enabledTools === undefined ? {} : { enabledTools }),
   }
   const launch = record.transport === 'stdio' ? resolveStdioLaunch(record, hostCwd) : undefined
-  if (launch && candidate?.root) {
-    const currentRoot = managedEnvironmentRecord()?.root
-    if (currentRoot) {
-      launch.command = launch.command.replace(currentRoot, candidate.root)
-      launch.args = launch.args.map(arg => arg.replace(currentRoot, candidate.root!))
-      launch.cwd = launch.cwd.replace(currentRoot, candidate.root)
-    } else {
-      // The live environment is unavailable, so there is no root to relocate
-      // from and no manifest to read a layout out of. Deriving one from a
-      // hard-coded flat layout put a stale interpreter path in front of Python;
-      // only the entry scripts below are layout-independent.
-      const relative = record.command === 'zerowall-managed:bio-tools' ? ['', 'bio-tools/run_server.py', 'mcp_bio'] : record.command === 'zerowall-managed:ketcher' ? ['', 'ketcher-chemistry/server.js'] : ['', 'sci/zerowall-mcp-launcher.cjs']
-      launch.command = relative[0] ? join(candidate.root, relative[0]) : process.execPath
-      launch.args = [join(candidate.root, relative[1]!), ...relative.slice(2)]
-      launch.cwd = candidate.root
-    }
-    if (record.command === 'zerowall-managed:bio-tools') {
-      // A first-run candidate lives in a slot until activation. The shared
-      // install-directory interpreter does not exist yet, so preflight must
-      // launch the candidate's own verified interpreter.
-      launch.command = managedCandidatePythonExecutable(candidate)
-      const bioToolsRoot = bundledManagedRoot('ZEROWALL_BIO_TOOLS_ROOT', candidate.root, 'bio-tools')
-      launch.args = [join(bioToolsRoot, 'run_server.py'), 'mcp_bio']
-      launch.cwd = bioToolsRoot
-    } else if (record.command === 'zerowall-managed:ketcher') {
-      const ketcherRoot = bundledManagedRoot('ZEROWALL_KETCHER_ROOT', candidate.root, 'ketcher-chemistry')
-      launch.command = process.execPath
-      launch.args = [join(ketcherRoot, 'server.js')]
-      launch.cwd = ketcherRoot
-    } else if (record.command === 'zerowall-managed:scimaster') {
-      const sciRoot = bundledManagedRoot('ZEROWALL_SCI_ROOT', candidate.root, 'sci')
-      launch.command = process.execPath
-      launch.args = [join(sciRoot, 'zerowall-mcp-launcher.cjs')]
-      launch.cwd = sciRoot
-    }
+  if (candidate?.root && record.command.startsWith('zerowall-managed:')) {
+    const fixed = configuredPythonRuntimeRoot()
+    if (!fixed || resolve(candidate.root) !== resolve(fixed) || candidate.generation) throw new Error('PYTHON_FIXED_PATH_REQUIRED: MCP cannot launch a slot or candidate runtime.')
   }
   if (record.transport === 'stdio' && record.command === 'zerowall-managed:bio-tools') {
     const managed = candidate ?? managedEnvironmentRecord()
     const root = managed?.root
-    const version = managed?.environmentVersion ?? managed?.version
-    if (root && version) {
+    if (root) {
       // Every managed child uses the one application-wide Python directory.
       // Legacy overlay paths are deliberately ignored after migration so a
       // stale profile cannot shadow the signed shared site-packages.
@@ -1605,34 +1542,18 @@ type ManagedEnvironmentRecord = { root?: string; runtimeRoot?: string; runtimeLa
  * to nothing and the failure only surfaced much later as an interpreter error.
  * Refusing here names the real problem at the point of use.
  */
-function managedPythonExecutable(record: ManagedEnvironmentRecord): string {
-  if (!record.runtimeRoot) throw new Error('Managed environment has no shared runtimeRoot.')
-  const root = resolve(record.runtimeRoot)
-  const path = record.manifest?.python?.relativeExecutable
-  // The signed bootstrap keeps the historical `Python/python.exe` namespace,
-  // while the 8.0.6 canonical runtime projects it to `python.exe`. Both
-  // layouts are valid when declared by the manifest; never infer a third path.
-  if (path !== 'Python/python.exe' && path !== 'python.exe') throw new Error('Managed environment must use the shared Python layout.')
-  const projection = record.root === record.runtimeRoot && record.generation !== true && record.runtimeLayout?.relativeExecutable === path && record.runtimeLayout?.relativeSitePackages === record.manifest?.python?.relativeSitePackages
-  const executable = path === 'python.exe' || projection
-    ? join(root, 'python.exe')
-    : resolve(root, path)
-  const local = relative(root, executable)
-  if (isAbsolute(path) || local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed Python executable')
-  return executable
+function managedPythonExecutable(_record: ManagedEnvironmentRecord): string {
+  const root = configuredPythonRuntimeRoot()
+  if (!root) throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: fixed runtime is not configured.')
+  if (_record.root && resolve(_record.root) !== resolve(root) || _record.generation) throw new Error('PYTHON_FIXED_PATH_REQUIRED: stale MCP runtime.')
+  return join(root, 'python.exe')
 }
 
 function managedCandidatePythonExecutable(record: ManagedEnvironmentRecord): string {
-  if (!record.root || (record.manifest?.python?.relativeExecutable !== 'Python/python.exe' && record.manifest?.python?.relativeExecutable !== 'python.exe')) throw new Error('Managed candidate has no shared Python layout.')
-  const root = resolve(record.root)
-  const projection = record.root === record.runtimeRoot && record.generation !== true && record.runtimeLayout?.relativeExecutable === record.manifest.python.relativeExecutable && record.runtimeLayout?.relativeSitePackages === record.manifest.python.relativeSitePackages
-  const executable = record.manifest.python.relativeExecutable === 'python.exe' || projection
-    ? join(root, 'python.exe')
-    : resolve(root, record.manifest.python.relativeExecutable)
-  const local = relative(root, executable)
-  if (local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local)) throw new Error('Unsafe managed candidate Python executable')
-  return executable
+  // MCP must never execute an installation candidate or an old slot.
+  return managedPythonExecutable(record)
 }
+
 function managedPythonSitePackages(record: ManagedEnvironmentRecord, candidate = false): string {
   const executable = candidate ? managedCandidatePythonExecutable(record) : managedPythonExecutable(record)
   const declared = record.manifest?.python?.relativeSitePackages
@@ -1646,7 +1567,7 @@ export function managedBioDependenciesReady(record: ManagedEnvironmentRecord, ca
 let managedEnvironmentCache: { path: string; fileSignature: string; record: ManagedEnvironmentRecord | undefined } | undefined
 
 function managedEnvironmentPath(): string | undefined {
-  const root = process.env.ZEROWALL_PYTHON_ROOT?.trim() || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
+  const root = process.env.ZEROWALL_PYTHON_MANAGEMENT_ROOT?.trim() || process.env.ZEROWALL_PYTHON_ROOT?.trim() || process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
   return root ? join(root, 'current.json') : undefined
 }
 
@@ -1656,9 +1577,14 @@ export function managedEnvironmentFileSignature(): string {
   if (path === undefined) return 'disabled'
   try {
     const info = statSync(path, { bigint: true })
-    return `${path}:${info.size}:${info.mtimeNs}`
+    const revision = join(dirname(path), 'revision.json')
+    const content = existsSync(revision) ? readFileSync(revision, 'utf8') : ''
+    return `${path}:${info.size}:${info.mtimeNs}:${content}`
   } catch {
-    return `${path}:missing`
+    const root = configuredPythonRuntimeRoot()
+    const info = root && existsSync(join(root, 'python.exe')) ? statSync(join(root, 'python.exe'), { bigint: true }) : undefined
+    const revision = join(dirname(path), 'revision.json')
+    return `${path}:missing:${info ? `${info.size}:${info.mtimeNs}` : 'no-python'}:${existsSync(revision) ? readFileSync(revision, 'utf8') : ''}`
   }
 }
 
@@ -1668,7 +1594,14 @@ export function managedEnvironmentRecord(fileSignature = managedEnvironmentFileS
   if (path === undefined) return undefined
   if (managedEnvironmentCache?.path === path && managedEnvironmentCache.fileSignature === fileSignature) return managedEnvironmentCache.record
   let record: ManagedEnvironmentRecord | undefined
-  try { record = JSON.parse(readFileSync(path, 'utf8')) as ManagedEnvironmentRecord } catch { record = undefined }
+  const root = configuredPythonRuntimeRoot()
+  if (root && existsSync(join(root, 'python.exe'))) {
+    try {
+      const saved = JSON.parse(readFileSync(path, 'utf8')) as ManagedEnvironmentRecord
+      if (!saved.generation && resolve(saved.runtimeRoot ?? saved.root ?? '') === resolve(root)) record = saved
+    } catch { /* pointerless runtime */ }
+    record = { ...record, root, runtimeRoot: root, generation: false, health: 'ready', runtimeLayout: { relativeExecutable: 'python.exe', relativeSitePackages: 'Lib/site-packages' }, manifest: { python: { ...record?.manifest?.python, relativeExecutable: 'python.exe', relativeSitePackages: 'Lib/site-packages' } } }
+  }
   managedEnvironmentCache = { path, fileSignature, record }
   return record
 }
@@ -1676,7 +1609,7 @@ export function managedEnvironmentRecord(fileSignature = managedEnvironmentFileS
 function managedEnvironmentSignature(record = managedEnvironmentRecord()): string {
   return record === undefined
     ? 'missing'
-    : `${record.health ?? 'unknown'}:${record.environmentVersion ?? record.version ?? 'unknown'}:${record.contentRevision ?? ''}:${record.archiveSha256?.slice(0, 12) ?? ''}:${record.root ?? ''}`
+    : `${record.health ?? 'unknown'}:${record.environmentVersion ?? record.version ?? 'unknown'}:${record.contentRevision ?? ''}:${record.archiveSha256?.slice(0, 12) ?? ''}:${record.root ?? ''}:${managedEnvironmentFileSignature()}`
 }
 
 function managedEnvironmentReady(serverName: string): boolean {
@@ -1706,11 +1639,11 @@ function compareMcpServers(left: McpServerRecord, right: McpServerRecord): numbe
 
 function resolveManagedLaunch(command: string): { command: string; args: string[]; cwd: string } | undefined {
   const record = managedEnvironmentRecord()
-  const root = record?.root
+  const root = configuredPythonRuntimeRoot()
   if (!root || !['zerowall-managed:bio-tools', 'zerowall-managed:ketcher', 'zerowall-managed:scimaster'].includes(command)) return undefined
   if (command === 'zerowall-managed:bio-tools') {
     const bioToolsRoot = bundledManagedRoot('ZEROWALL_BIO_TOOLS_ROOT', root, 'bio-tools')
-    return { command: managedPythonExecutable(record!), args: [join(bioToolsRoot, 'run_server.py'), 'mcp_bio'], cwd: bioToolsRoot }
+    return { command: managedPythonExecutable(record ?? { root }), args: [join(bioToolsRoot, 'run_server.py'), 'mcp_bio'], cwd: bioToolsRoot }
   }
   if (command === 'zerowall-managed:ketcher') {
     const ketcherRoot = bundledManagedRoot('ZEROWALL_KETCHER_ROOT', root, 'ketcher-chemistry')

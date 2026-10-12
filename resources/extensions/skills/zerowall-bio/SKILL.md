@@ -10,6 +10,8 @@ AnnData、单细胞、空间和多组学专项分析使用 zerowall-omicverse；
 
 用 tool_search 发现工具，用 tool_dispatch 执行：
 
+BioGenie 由独立 `plugin-biogenie` 注册唯一的 `bio_local`，上游固定 0.6.48。`list` / `describe` 不要求 Python 或工作区；执行才使用 `<实际安装目录>/Python/python.exe`。本地依赖按包名存在判断，不要求版本与线上清单相同。正式 PyDESeq2、GSEApy 和分组机器学习失败时保留真实错误，近似算法必须显式选择。文件输入必须位于工作区，序列文件多记录时要求明确选择。
+
 - Bio Tools：先 bio_search 检索 capability_id 与参数，再调用其 public_tool，传入 capability_id 和 arguments。
 - BioGenie：发现 bio_local，action=list 查看可用操作，action=describe、operation=精确 ID 查看参数；action=run 执行。示例：operation=seq_analyze，arguments={"sequence":"ATGGCCATTGTA","seq_type":"dna"}。数据库操作仅在明确选择备用实现时指定 backend=biogenie。
 - Biomni：加载 zerowall-rbioagent，查询能力和数据湖后通过 research_workflow 跟踪任务。

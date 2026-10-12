@@ -13,6 +13,12 @@ const common = {
   // The verified runtime closure supplies node_modules explicitly. Returning
   // false tells electron-builder to skip workspace dependency collection too.
   beforeBuild: async () => false,
+  afterPack: async context => {
+    if (context.electronPlatformName !== 'win32') return
+    const { pathToFileURL } = require('node:url')
+    const { writeInstallerOwnership } = await import(pathToFileURL(path.join(root, 'tools/packaging/installer-ownership.mjs')).href)
+    await writeInstallerOwnership(context.appOutDir)
+  },
   beforePack: async () => {
     const { pathToFileURL } = require('node:url')
     const { resolve } = require('node:path')

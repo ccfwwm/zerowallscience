@@ -43,6 +43,9 @@ from analysis_ext import (op_seq_introns, op_seq_dotplot, op_uniprot,
                           op_phylo_compare, op_rna_fold)
 # 单细胞 RNA-seq 质控使用共享 Python 的 scanpy。
 from sc_tools import op_sc_qc
+# 来源审计（2026-10-10 新增）
+from source_audit_tools import op_source_audit
+from seq_util import read_seq_input
 socket.setdefaulttimeout(20)
 from retry_utils import retry_on_network_error
 
@@ -71,7 +74,7 @@ def op_seq_analyze(args):
     from Bio.Seq import Seq
     from Bio.SeqUtils import gc_fraction, molecular_weight
 
-    sequence = args['sequence']
+    sequence = read_seq_input(args['sequence'])
     seq_type = args.get('seq_type', 'auto')  # auto | dna | rna | protein
     s = Seq(sequence)
     result = {
@@ -118,7 +121,7 @@ def op_seq_analyze(args):
         elif seq_type == 'rna':
             result['complement'] = str(s.complement())
             # 与 DNA 分支一致：含 X 的 RNA（探针/引物常见修饰碱基）或 gap 序列翻译前
-            # X/gap → N，避免 XXA / --A 等模糊密码子抛 TranslationError（WB 第二轮 S2 确认）
+            # X/gap → N，避免 XXA / --A 等模糊密码子抛 TranslationError（实测确认）
             translate_rna = s.replace('X', 'N').replace('-', 'N').replace('.', 'N')
             frames = {}
             for frame in range(3):
@@ -201,7 +204,7 @@ def _codon_usage_stats(sequence, host='ecoli'):
 def op_seq_translate(args):
     """翻译 DNA/RNA 为蛋白质。"""
     from Bio.Seq import Seq
-    s = Seq(args['sequence'])
+    s = Seq(read_seq_input(args['sequence']))
     table = args.get('table', 1)
     to_stop = args.get('to_stop', False)
     result = {
@@ -215,7 +218,7 @@ def op_seq_translate(args):
 def op_seq_gc_skew(args):
     """计算 GC skew (G-C)/(G+C)，可窗口化。"""
     from Bio.SeqUtils import GC_skew
-    sequence = args['sequence']
+    sequence = read_seq_input(args['sequence'])
     window = args.get('window', 100)
     skews = GC_skew(sequence, window=window)
     return {'window': window, 'gc_skew': [round(float(v), 4) for v in skews]}
@@ -224,7 +227,7 @@ def op_seq_gc_skew(args):
 def op_seq_find_orf(args):
     """查找最长 ORF（开放阅读框）。"""
     from Bio.Seq import Seq
-    sequence = args['sequence']
+    sequence = read_seq_input(args['sequence'])
     min_len = args.get('min_len', 30)  # 至少 10 个密码子
     table = args.get('table', 1)
     s = Seq(sequence)
@@ -255,7 +258,7 @@ def op_seq_restriction(args):
     from Bio.Restriction import RestrictionBatch, AllEnzymes, CommOnly
     from Bio.Seq import Seq
 
-    sequence = args['sequence']
+    sequence = read_seq_input(args['sequence'])
     enzymes = args.get('enzymes', None)  # 如 ["EcoRI", "BamHI"]，None = 全部
     enzyme_set = args.get('enzyme_set', 'commonly')  # commonly(商业常用) | all(含虚构)
     linear = args.get('linear', True)  # 线性/环状影响位点计数
@@ -366,7 +369,7 @@ def op_seq_io_write(args):
 def op_seq_kmer(args):
     """k-mer 频率统计。"""
     from collections import Counter
-    sequence = args['sequence'].upper()
+    sequence = read_seq_input(args['sequence']).upper()
     k = args.get('k', 3)
     if k < 1:
         raise ValueError('k must be >= 1')
@@ -692,7 +695,7 @@ def op_ref_genome(args):
 
     headers = {'User-Agent': 'dsh-bio-genie/0.1.4'}
     url = f'https://rest.ensembl.org/info/assembly/{species}?content-type=application/json'
-    # 网络策略（WB 审查发现）：部分代理环境对 rest.ensembl.org 超时/404，
+    # 网络策略（实测发现）：部分代理环境对 rest.ensembl.org 超时/404，
     # 直连稳定。因此直连优先，失败回退系统代理。
     # 注意：只有 rest.ensembl.org 一个 host —— asia.ensembl.org 是网页门户
     # 而非 REST API，/info/assembly/ 路径必然 404，不可作 fallback。
@@ -841,6 +844,49 @@ def op_fig_profile(args):
     return _to_jsonable(info)
 
 
+def _discover_figview_sidecar(path):
+    """查找图文件的 fig-viewer sidecar manifest（保守发现，不猜非同名文件）。
+
+    约定：与图同目录、同 stem 的 `<stem>.figview.json`（R2-1 bundle 布局中图与
+    manifest 同目录）。返回 (manifest_path, viewer_dict) 或 (None, None)。
+    权威关联通道是工具结果里的 viewer_manifest 字段；此处仅为审计兜底。
+    """
+    import json as _json
+    import os as _os
+    stem = _os.path.splitext(_os.path.abspath(path))[0]
+    candidate = stem + '.figview.json'
+    if not _os.path.isfile(candidate):
+        return None, None
+    try:
+        with open(candidate, 'r', encoding='utf-8') as fh:
+            m = _json.load(fh)
+        ok = (isinstance(m, dict) and m.get('schema_version') == 1
+              and isinstance(m.get('figure_id'), str) and m.get('figure_id')
+              and isinstance(m.get('revision'), str) and m.get('revision'))
+        if not ok:
+            return candidate, {'available': False, 'reason': 'manifest 存在但结构校验未通过'}
+        inspect = (m.get('capabilities') or {}).get('inspect')
+        src = m.get('source') or {}
+        redraw = m.get('redraw') or {}
+        script = redraw.get('script') or {}
+        source_path = src.get('path') if isinstance(src.get('path'), str) and src.get('path') else None
+        script_path = None
+        if isinstance(script.get('path'), str) and script.get('path'):
+            script_path = _os.path.join(_os.path.dirname(_os.path.abspath(candidate)), script['path'])
+        return candidate, {
+            'available': True,
+            'manifest': candidate,
+            'schema_version': 1,
+            'figure_id': m.get('figure_id'),
+            'revision': m.get('revision'),
+            'inspect': inspect,
+            'source_path': source_path,
+            'script_path': script_path,
+        }
+    except Exception as e:
+        return candidate, {'available': False, 'reason': f'{type(e).__name__}: {e}'}
+
+
 def op_fig_export(args):
     """图文件合规审计 + 可选 PNG 预览：格式/DPI/尺寸/字体嵌入检查。
 
@@ -875,6 +921,9 @@ def op_fig_export(args):
             'issues': [{'severity': s, 'message': m} for s, m in issues],
             'info': _to_jsonable(info),
         }
+        _manifest_path, viewer = _discover_figview_sidecar(p)
+        entry['viewer'] = viewer if viewer is not None else {
+            'available': False, 'reason': '未发现同 stem 的 sidecar manifest（交互查看不可用）'}
         if preview:
             try:
                 out = os.path.splitext(os.path.abspath(p))[0] + '_preview.png'
@@ -1706,12 +1755,11 @@ def _blast_diagnostics(sequence, program, params_used, warnings, hit_count,
     return {'query_length': length, 'params_used': dict(params_used), 'notes': notes}
 
 
-# ── qblast 排队 deadline（2026-09-19 审计修复）──────────────────────────────
-# 真实事故（会话 924dd607）：23nt + expect=0.001 的 qblast 在 NCBI 服务端排队
-# >600s，被 TS 执行层硬杀（python execution timed out after 600000 ms），agent
-# 只拿到裸超时文案、无任何指引。qblast 的排队时长由 NCBI 控制、进程内无法中断
-# 其轮询，因此在本层施加**总 deadline** 主动放弃（默认 540s，后于执行层 600s
-# 硬杀线留 60s 余量），换取结构化、可行动的返回文案。
+# ── qblast 排队 deadline ────────────────────────────────────────────
+# 短查询 + 严 expect（如 23nt + expect=0.001）易在 NCBI 服务端长时间排队，
+# 超过执行层 600s 上限会被硬杀且无结构化指引。qblast 的排队时长由 NCBI 控制、
+# 进程内无法中断其轮询，因此在本层施加**总 deadline** 主动放弃（默认 540s，
+# 于执行层 600s 硬杀线留 60s 余量），换取结构化、可行动的返回文案。
 _QBLAST_DEADLINE_S = 540
 
 
@@ -1764,7 +1812,7 @@ def op_blast_search(args):
     import io
     from Bio.Blast import NCBIWWW, NCBIXML
 
-    sequence = args['sequence'].strip()
+    sequence = read_seq_input(args['sequence'])
     program = args.get('program', 'blastn')  # blastn / blastp / blastx
     database = args.get('database') or ('nt' if program in ('blastn', 'blastx') else 'nr')
     hitlist_size = int(args.get('hitlist_size', 10))
@@ -2069,6 +2117,8 @@ OPS = {
     'phylo_compare': op_phylo_compare,
     'rna_fold': op_rna_fold,
     'sc_qc': op_sc_qc,
+    # 来源审计（2026-10-10 新增）
+    'source_audit': op_source_audit,
 }
 
 
@@ -2123,6 +2173,11 @@ def main():
             return
         result = OPS[op](args)
         result = _sanitize_json(result)
+        if op in {'deseq2', 'gsea', 'ml_pipeline'} and isinstance(result, dict) and result.get('error'):
+            print(json.dumps({'ok': False, 'code': result.get('code', 'ANALYSIS_FAILED'),
+                              'error': result['error'], 'details': result},
+                             ensure_ascii=False, cls=SafeEncoder))
+            return
         print(json.dumps({'ok': True, 'result': result}, ensure_ascii=False, cls=SafeEncoder))
     except Exception as e:
         traceback.print_exc(file=sys.stderr)

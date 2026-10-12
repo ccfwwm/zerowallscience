@@ -1,4 +1,4 @@
-import { stageRoot } from '../build/paths.mjs'
+import { cacheRoot, stageRoot } from '../build/paths.mjs'
 import { dedupeRuntime } from './dedupe-runtime.mjs'
 import { adaptLibreOfficeKit } from './adapt-libreoffice-kit.mjs'
 import { adaptDocumentPreview, adaptExcelChunk } from './adapt-document-preview.mjs'
@@ -28,7 +28,12 @@ const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'deepseek-harness')
 const closurePath = resolve(stageRoot, 'dsh/runtime-closure.json')
 const offlineProfile = process.argv.includes('--offline-profile')
-const outputRoot = resolve(stageRoot, offlineProfile ? 'offline-profile/modules' : 'runtime/node_modules')
+const cacheOutputIndex = process.argv.indexOf('--cache-output')
+const cacheOutput = cacheOutputIndex >= 0 ? process.argv[cacheOutputIndex + 1] : undefined
+if (cacheOutputIndex >= 0 && !cacheOutput) throw new Error('--cache-output requires an owned candidate path')
+const outputRoot = cacheOutput ? resolve(cacheOutput) : resolve(stageRoot, offlineProfile ? 'offline-profile/modules' : 'runtime/node_modules')
+const candidateRoot = resolve(cacheRoot, 'runtime-assemblies', offlineProfile ? 'offline' : 'core')
+if (cacheOutput && !/^[a-f0-9]{64}\.candidate-[a-f0-9-]{36}\/modules$/u.test(relative(candidateRoot, outputRoot).replaceAll('\\', '/'))) throw new Error('Runtime cache output is not an owned candidate')
 const expectedOutputParent = resolve(stageRoot, offlineProfile ? 'offline-profile' : 'runtime')
 const buildReceipt = JSON.parse(await readFile(resolve(stageRoot, 'dsh/build-receipt.json'), 'utf8'))
 const expectedHarness = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
@@ -93,7 +98,7 @@ const forbiddenDirectories = new Set([
 ])
 const forbiddenExtensions = new Set(['.cts', '.map', '.mts', '.pdb', '.ts', '.tsx'])
 
-if (!outputRoot.startsWith(`${expectedOutputParent}${sep}`)) {
+if (!cacheOutput && !outputRoot.startsWith(`${expectedOutputParent}${sep}`)) {
   throw new Error(`Refusing to replace runtime workspace output outside ${expectedOutputParent}.`)
 }
 
@@ -119,6 +124,7 @@ const missing = [...dshNames].filter(name => !workspacePackages.has(name))
 if (missing.length > 0) throw new Error(`Pinned DSH runtime packages are missing: ${missing.join(', ')}`)
 
 // An interrupted refresh must never retain a receipt from the prior tree.
+await mkdir(expectedOutputParent, { recursive: true })
 await rm(resolve(expectedOutputParent, 'build-receipt.json'), { force: true })
 await removeTree(outputRoot)
 await mkdir(outputRoot, { recursive: true })
@@ -319,10 +325,10 @@ async function copyRuntimePackage(package_, targetRoot) {
   }
 
   if (manifest.name === 'dsh-univer-office') {
-    await writeFile(resolve(targetRoot, 'package.json'), adaptUniverOfficeManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8')))
+    const provenance = JSON.parse(await readFile(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8')).univerOffice
+    await writeFile(resolve(targetRoot, 'package.json'), adaptUniverOfficeManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8'), provenance.resourceVersion ?? provenance.version))
     // The Gateway and render workers must execute from physical files in Electron.
     for (const entry of ['lib', 'docs', 'skills', 'artifacts', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
-    const provenance = JSON.parse(await readFile(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8')).univerOffice
     const skillReceipts = []
     for (const skill of Object.keys(UNIVER_SKILL_HASHES)) {
       const path = resolve(targetRoot, 'skills', skill, 'SKILL.md')
@@ -413,6 +419,14 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
     }
     const roots = new Set(manifest.files.filter(entry => typeof entry === 'string' && !entry.startsWith('!')).map(publishRoot))
     for (const entry of roots) await copyEntry(sourceRoot, targetRoot, entry)
+    if (manifest.name === '@zerowallscience/plugin-biogenie') {
+      const payload = resolve(targetRoot, 'payload')
+      const receipt = JSON.parse(await readFile(join(payload, 'payload-receipt.json'), 'utf8'))
+      for (const file of receipt.files) {
+        const bytes = await readFile(join(payload, file.path))
+        if (bytes.length !== file.size || createHash('sha256').update(bytes).digest('hex') !== file.sha256) throw new Error('BioGenie runtime payload is incomplete: ' + file.path)
+      }
+    }
     if (manifest.name === '@everclear077/dsh-progressive-tools') {
       const patchPath = resolve(targetRoot, 'cordis.patch.yml')
       await writeFile(patchPath, adaptProgressiveToolsPatch(await readFile(patchPath, 'utf8')))
@@ -494,6 +508,7 @@ function includeRuntimeFile(sourceRoot, candidate) {
   // Repository marker files are excluded by electron-builder. Exclude them
   // before signing the immutable offline file set as well.
   if (segments.some(segment => ['.gitkeep', '.gitignore', '.gitattributes', '.npmignore'].includes(segment))) return false
+  if (basename(sourceRoot) === 'biogenie' && (path === 'payload' || path.startsWith('payload/'))) return true
   // npm packages frequently publish executable JavaScript under `src`, even
   // when `main` itself lives at the package root. Keep every src directory;
   // guessing whether it is development-only creates incomplete runtimes.

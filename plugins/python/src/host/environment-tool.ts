@@ -27,8 +27,9 @@ export function registerEnvironmentTool(ctx: Context): void {
     name: 'python_environment',
     description: 'Inspect and synchronize the shared ZeroWall Science Python runtime used by all scientific tools and MCP consumers. Manifest checks and previews are read-only; applying a dependency plan requires explicit confirmation. Never invokes system Python.',
     parameters: {
-      action: { type: 'string', required: true, enum: ['info', 'versions', 'preview', 'apply', 'status', 'rollback', 'check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure'] },
+      action: { type: 'string', required: true, enum: ['info', 'versions', 'preview', 'apply', 'status', 'rollback', 'check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure', 'scan_local', 'install_runtime', 'task_status', 'cancel'] },
       query: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } },
+      offset: { type: 'integer' }, limit: { type: 'integer' }, layer: { type: 'string', enum: ['core', 'science', 'capability'] }, capability_id: { type: 'string' },
       operation: { type: 'string', enum: ['install', 'uninstall'] },
       plan_id: { type: 'string' }, task_id: { type: 'string' }, confirm: { type: 'boolean' },
       request_id: { type: 'string' }, manifest_revision: { type: 'string' }, mirror_url: { type: 'string' }, expected_revision: { type: 'integer' },
@@ -41,14 +42,14 @@ export function registerEnvironmentTool(ctx: Context): void {
       if (args.planId !== undefined) args.plan_id ??= args.planId
       if (args.mirrorUrl !== undefined) args.mirror_url ??= args.mirrorUrl
       if (args.expectedRevision !== undefined) args.expected_revision ??= args.expectedRevision
-      if (['apply', 'rollback'].includes(args.action) && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: show the concrete change plan and obtain approval first.')
+      if (['apply', 'rollback', 'install_runtime'].includes(args.action) && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: show the concrete change plan and obtain approval first.')
       if (['apply_sync', 'configure'].includes(args.action) && args.action === 'apply_sync' && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: show the signed dependency plan and obtain approval first.')
-      if (['check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure', 'rollback'].includes(args.action) || (args.action === 'status' && !args.task_id)) {
+      if (['check_manifest', 'preview_sync', 'apply_sync', 'list_packages', 'diagnose', 'configure', 'rollback', 'scan_local', 'install_runtime', 'task_status', 'cancel'].includes(args.action) || (args.action === 'status' && !args.task_id)) {
         const requestId = typeof args.request_id === 'string' && args.request_id.trim() ? args.request_id : randomUUID()
-        return environmentRequest('request', [{ action: args.action, requestId, ...(args.plan_id ? { planId: args.plan_id } : {}), ...(args.manifest_revision ? { manifestRevision: args.manifest_revision } : {}), ...(args.mirror_url ? { mirrorUrl: args.mirror_url } : {}), ...(args.expected_revision !== undefined ? { expectedRevision: args.expected_revision } : {}), ...(args.confirm !== undefined ? { confirm: args.confirm } : {}) }])
+        return environmentRequest('request', [{ action: args.action, requestId, query: args.query, offset: args.offset, limit: args.limit ?? 50, layer: args.layer, capabilityId: args.capability_id, taskId: args.task_id, ...(args.plan_id ? { planId: args.plan_id } : {}), ...(args.manifest_revision ? { manifestRevision: args.manifest_revision } : {}), ...(args.mirror_url ? { mirrorUrl: args.mirror_url } : {}), ...(args.expected_revision !== undefined ? { expectedRevision: args.expected_revision } : {}), ...(args.confirm !== undefined ? { confirm: args.confirm } : {}) }])
       }
       switch (args.action) {
-        case 'info': return environmentRequest('info', [args.query ?? ''])
+        case 'info': return environmentRequest('request', [{ action: 'list_packages', requestId: randomUUID(), query: args.query, offset: args.offset, limit: args.limit ?? 50 }])
         case 'versions':
           if (!args.packages?.length) throw new Error('Specify packages to check; unbounded update scans are not supported.')
           return environmentRequest('versions', [args.packages])

@@ -38,12 +38,12 @@ async function setup(secrets: MemorySecrets, account?: { discoverModels(): Promi
 }
 
 describe('ZeroWall AI Cloud LLM routes', () => {
-  it.each(['opencode2dsh', 'opencode-zen-free-provider'])('migrates a saved retired %s default without registering the provider', async (provider) => {
+  it.each(['opencode2dsh', 'opencode-zen-free-provider'])('preserves a saved %s selection without registering the provider', async (provider) => {
     const { ctx, controller } = await setup(new MemorySecrets())
     const saveSelection = vi.fn()
     ctx.provide('agentDefaultModel', { currentSelection: () => ({ provider, model: 'retired-free-model' }), saveSelection } as never)
     await controller.update({ status: 'signedOut', balanceFreshness: 'current', lowBalance: false, models: [] })
-    expect(saveSelection).toHaveBeenCalledWith({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    expect(saveSelection).not.toHaveBeenCalled()
     expect(ctx.llm.listProviders()).toEqual([])
   })
   it('registers managed routes, resolves the group key per request, and removes routes on logout', async () => {
@@ -88,7 +88,7 @@ describe('ZeroWall AI Cloud LLM routes', () => {
     expect(JSON.stringify([...options().profiles().values()])).not.toContain('managed-secret')
   })
 
-  it('switches an unusable built-in default to the first managed DeepSeek model after login', async () => {
+  it('preserves the selected model after login', async () => {
     const secrets = new MemorySecrets()
     secrets.values.set('zerowall.ai-cloud.group.2', 'managed-secret')
     const { ctx, controller } = await setup(secrets)
@@ -106,7 +106,7 @@ describe('ZeroWall AI Cloud LLM routes', () => {
       ],
     })
 
-    expect(saveSelection).toHaveBeenCalledWith({ provider: 'zerowall-ai-cloud-2', model: 'deepseek-chat' })
+    expect(saveSelection).not.toHaveBeenCalled()
   })
 
   it('keeps account synchronization non-fatal when the automatic default selection cannot be saved', async () => {
@@ -124,7 +124,7 @@ describe('ZeroWall AI Cloud LLM routes', () => {
     })).resolves.toBeUndefined()
 
     expect(ctx.llm.listProviders()).toEqual([{ id: 'zerowall-ai-cloud-2', name: 'ZeroWall AI Cloud - Research' }])
-    expect(warn).toHaveBeenCalledWith('Could not persist the automatically selected AI Cloud model; keeping the current default selection.')
+    expect(saveSelection).not.toHaveBeenCalled()
   })
 
   it('restores reasoning effort choices for managed DeepSeek reasoning models', async () => {

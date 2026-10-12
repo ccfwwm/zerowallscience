@@ -1,0 +1,38 @@
+{
+  "name": "@zerowallscience/plugin-biogenie",
+  "version": "0.1.3",
+  "applicationVersion": "8.1.3",
+  "restartRequired": true,
+  "desktop": {
+    "min": "8.1.3"
+  },
+  "rollbackSupported": true,
+  "dsh": {
+    "min": "0.2.0-rc.2",
+    "max": "0.2.0-rc.2"
+  },
+  "host": "./lib/index.js",
+  "requiredServices": [
+    "tools",
+    "zerowallPython"
+  ],
+  "optionalServices": [],
+  "capabilities": [
+    "bio-local"
+  ],
+  "permissions": [
+    "processes",
+    "files",
+    "network"
+  ],
+  "network": true,
+  "files": true,
+  "credentials": false,
+  "approvals": false,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

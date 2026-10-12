@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@zerowallscience/plugin-account/remote'
 import { AccountSection } from './account-surface.js'
 import { AiCloudAccountButton } from './AiCloudAccountButton.tsx'
+import { ManagedProviderCard } from './ManagedProviderCard.js'
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 
 export const inject = ['slots', 'locale', 'remote', 'connection', 'remote.zerowallAccount', 'remote.session']
@@ -21,6 +22,7 @@ export function apply(ctx: ClientContext): void {
     return accountRemote
   }
   const sessionRemote = ctx.get('remote.session')
+  ctx.slots.inject('settings.models.provider-card', () => ctx.slots.register({ name: 'settings.models.provider-card', id: 'zerowall-ai-cloud', key: 'zerowall-ai-cloud', inject: () => ({ getAccount: async () => unwrapRemoteResult('zerowall.account.current', await requireAccountRemote().current()) }) }, ManagedProviderCard))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'zerowall-ai-cloud', order: -20, locale: NS,
     inject: () => ({

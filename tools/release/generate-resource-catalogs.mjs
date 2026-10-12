@@ -7,8 +7,10 @@ import { contract, root, releaseRoot, stageRoot } from '../build/paths.mjs'
 import { fileDigest, signCatalog, verifyCatalog } from './resource-catalog.mjs'
 import { deterministicArchive } from './deterministic-archive.mjs'
 import { historicalResources, preserveImmutableResource } from './immutable-resource.mjs'
-import { resourceSource } from '../build/layout.mjs'
+import { resourceSource, packageSource } from '../build/layout.mjs'
 import { resourcePublicationScope } from './resource-publication-scope.mjs'
+import { pluginDependencyContract } from './plugin-dependency-contract.mjs'
+import { satisfiesPackageRange } from '../commands/package-range.mjs'
 
 const { kinds } = resourcePublicationScope(process.argv.slice(2))
 const destination = join(releaseRoot, 'catalogs')
@@ -46,7 +48,17 @@ async function entry({ id, version, path, kind, key, metadata = {} }) {
     platform: ['win32'], architecture: ['x64'], downloadUrl: baseUrl ? `${baseUrl}/${key}` : pathToFileURL(path).href,
     sha256: await fileDigest(path), size, restartRequired: kind === 'plugin', rollbackSupported: kind !== 'mcp', ...metadata }, privateKey, keyId)
 }
-const plugins = await Promise.all(records.map(record => entry({ ...record, kind: record.kind ?? 'plugin', key: `plugins/${record.id.split('/').at(-1)}/${record.version}/${record.path.split(/[\\/]/).at(-1)}`, metadata: { ...record.manifest, dependencies: record.dependencies } })))
+const integrations = JSON.parse(await readFile(join(root, 'config/integrations/upstream-sources.json'), 'utf8'))
+const plugins = await Promise.all(records.map(async record => {
+  const sourcePath = record.id.startsWith('@zerowallscience/plugin-') ? join(root, 'plugins', record.id.slice('@zerowallscience/plugin-'.length), 'package.json')
+    : record.id === '@zerowallscience/dsh-bundle-science' ? join(await packageSource('dsh-bundle-science'), 'package.json') : undefined
+  const source = sourcePath ? JSON.parse(await readFile(sourcePath, 'utf8')) : undefined
+  return entry({ ...record, kind: record.kind ?? 'plugin', key: `plugins/${record.id.split('/').at(-1)}/${record.version}/${record.path.split(/[\\/]/).at(-1)}`, metadata: { ...record.manifest, ...pluginDependencyContract(record, source, integrations) } })
+}))
+for (const parent of plugins) for (const [id, range] of Object.entries(parent.dependencies ?? {})) {
+  const child = plugins.find(resource => resource.id === id)
+  if (child && !satisfiesPackageRange(child.version, range)) throw new Error(`Plugin catalog dependency closure is incompatible: ${parent.id} -> ${id}@${range}, selected ${child.version}`)
+}
 const skills = []
 const mcpServers = []
 const immutableResources = []
@@ -89,6 +101,8 @@ for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp',
     const version = resourceVersions.python?.['science-dependencies']
     if (!version) throw new Error('Python resource version must be pinned independently from Desktop')
     resources.push(await entry({ id: 'science-dependencies', version, path: await resourceSource('python', 'dependency-manifest.json'), kind, key: `python/layers/science/${version}/dependency-manifest.json`, metadata: { role: 'dependency-manifest', restartRequired: false } }))
+    const wheels = JSON.parse(await readFile(await resourceSource('python', 'fallback-wheels.json'), 'utf8'))
+    for (const wheel of wheels) resources.push(await entry({ id: `fallback-wheel-${wheel.name}`, version: wheel.version, path: join(releaseRoot, 'python-wheels', wheel.filename), kind, key: `python/wheels/3.12.10-r18/${wheel.filename}`, metadata: { role: 'fallback-wheel', restartRequired: false, rollbackSupported: false, desktop: { min: '8.1.3' } } }))
   }
   const document = signCatalog({ schema: 1, kind, applicationVersion: contract.version, localOnly,
     generatedAt: new Date().toISOString(), resources }, privateKey, keyId)

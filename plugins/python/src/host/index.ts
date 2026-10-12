@@ -1,19 +1,30 @@
+import { resolveFixedPythonRuntime } from '../shared/runtime-path.js'
+import { acquireRuntimeLease } from '../shared/runtime-leases.js'
+import { createPythonResult, readPythonResult } from './result-store.js'
+import { finished } from 'node:stream/promises'
 import { randomUUID } from 'node:crypto'
 import { registerEnvironmentTool } from './environment-tool.js'
-import { registerBioLocal } from './bio-local.js'
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
-import { access, lstat, readFile, mkdir, writeFile, rm } from 'node:fs/promises'
+import { access, lstat, readFile, mkdir, writeFile, rm, realpath } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
-import type { Context } from '@deepseek-ai/cordis'
+import { Service, type Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name = 'zerowall-python'
 export const inject = ['tools']
 
-interface PythonArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
-interface PythonResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; python: string }
+export interface PythonArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
+export interface PythonResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; python: string; cancelled?: boolean; result_id?: string }
+type PythonExecution = { signal: AbortSignal; agent?: { session: { header: { cwd?: string } } } }
+declare module '@deepseek-ai/cordis' { interface Context { zerowallPython: ZeroWallPythonService } }
+export class ZeroWallPythonService extends Service {
+  constructor(ctx: Context) { super(ctx, 'zerowallPython') }
+  resolve() { return resolveFixedPythonRuntime() }
+  run(args: PythonArgs, exec: PythonExecution) { return runPython(args, exec) }
+  lease(root: string) { return acquireRuntimeLease(root) }
+}
 interface RArgs { code: string; description: string; timeoutMs?: number; workdir?: string }
 interface RResult { exitCode: number; timedOut: boolean; stdout: string; stderr: string; rscript: string }
 interface CurrentRecord { root?: unknown; health?: unknown; manifest?: Manifest; runtimeRoot?: string; runtimeExecutable?: string; runtimeSitePackages?: string; runtimeLayout?: { relativeExecutable?: unknown; relativeSitePackages?: unknown }; generation?: boolean }
@@ -28,68 +39,20 @@ const MAX_TIMEOUT = 10 * 60_000
 const R_DEFAULT_TIMEOUT = 60_000
 
 function environmentRoot(): string | undefined {
-  const value = process.env.ZEROWALL_PYTHON_ROOT?.trim() ?? process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
+  const value = process.env.ZEROWALL_PYTHON_MANAGEMENT_ROOT?.trim() ?? process.env.ZEROWALL_PYTHON_ROOT?.trim() ?? process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT?.trim()
   return value === undefined || value === '' ? undefined : resolve(value)
 }
 
 export async function resolveManagedPython(): Promise<{ executable: string; root: string; sitePackages: string; snapshotRoot: string }> {
-  const root = environmentRoot()
-  if (root === undefined) throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python root is not configured.')
-  let current: CurrentRecord
-  try {
-    current = JSON.parse(await readFile(join(root, 'current.json'), 'utf8')) as CurrentRecord
-  } catch {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python is not installed or current.json is unreadable.')
-  }
-  if (current.health !== 'ready' || typeof current.root !== 'string' || current.root.trim() === '') {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python is not healthy. Retry initialization.')
-  }
-  // Pin each task and its lease to the immutable snapshot. The public Python
-  // junction is for discovery; updates must not redirect a running task.
-  const installRoot = resolve(current.root)
-  const manifest = current.manifest ?? JSON.parse(await readFile(join(installRoot, 'manifest.json'), 'utf8')) as Manifest
-  const within = relative(join(root, 'slots'), installRoot)
-  const generation = current.generation === true && within !== '..' && !within.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(within)
-  const canonicalManager = basename(root).toLowerCase() === '.zerowall'
-  const canonicalRuntimeRoot = canonicalManager ? resolve(root, '..') : undefined
-  const runtimeRoot = generation ? installRoot : canonicalRuntimeRoot ?? (current.runtimeRoot ? resolve(current.runtimeRoot) : resolve(root, '..'))
-  if ((generation || canonicalManager) && !current.runtimeRoot || current.runtimeRoot && resolve(current.runtimeRoot) !== runtimeRoot) {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall permits only its single shared Python runtime.')
-  }
-  const canonicalLayout = manifest.python?.relativeExecutable === 'python.exe' && manifest.python?.relativeSitePackages === 'Lib/site-packages'
-  const compatibilityLayout = manifest.python?.relativeExecutable === 'Python/python.exe' && manifest.python?.relativeSitePackages === 'Python/Lib/site-packages'
-  // The signed archive retains its original layout. The Host explicitly
-  // records the projection when activating it in the canonical flat runtime.
-  const projectedCanonicalLayout = compatibilityLayout && current.runtimeLayout?.relativeExecutable === manifest.python?.relativeExecutable && current.runtimeLayout?.relativeSitePackages === manifest.python?.relativeSitePackages
-  const flatRuntime = canonicalManager && !generation && installRoot === runtimeRoot && (canonicalLayout || projectedCanonicalLayout)
-  const nestedRuntime = compatibilityLayout && (!canonicalManager || generation)
-  if (!flatRuntime && !nestedRuntime) {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: Python manifest does not describe the managed shared runtime.')
-  }
-  const sharedPythonRoot = flatRuntime ? runtimeRoot : join(runtimeRoot, 'Python')
-  const executable = join(sharedPythonRoot, 'python.exe')
-  const sitePackages = join(sharedPythonRoot, 'Lib', 'site-packages')
-  const isContained = (candidate: string): boolean => {
-    const containment = relative(sharedPythonRoot, candidate)
-    return containment !== '..' && !containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) && !isAbsolute(containment)
-  }
-  if (!isContained(executable) || !isContained(sitePackages)) {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: Python executable escapes the managed environment.')
-  }
-  const [info, siteInfo] = await Promise.all([lstat(executable).catch(() => undefined), lstat(sitePackages).catch(() => undefined)])
-  if (info === undefined || !info.isFile() || info.isSymbolicLink()) {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python executable is missing.')
-  }
-  if (siteInfo === undefined || !siteInfo.isDirectory() || siteInfo.isSymbolicLink()) {
-    throw new Error('PYTHON_ENVIRONMENT_UNAVAILABLE: ZeroWall Python site-packages is missing.')
-  }
-  return { executable, root: sharedPythonRoot, sitePackages, snapshotRoot: generation ? installRoot : sharedPythonRoot }
+  return resolveFixedPythonRuntime()
 }
 
 function bounded(value: string): string { return value.length <= MAX_OUTPUT ? value : value.slice(-MAX_OUTPUT) }
 
 export function pythonChildEnvironment(sitePackages: string): NodeJS.ProcessEnv {
   const env = { ...process.env }
+  for (const key of ['PYTHONHOME', 'PYTHONPATH', 'VIRTUAL_ENV', 'CONDA_PREFIX']) delete env[key]
+  env.PYTHONNOUSERSITE = '1'; env.PYTHONIOENCODING = 'utf-8'; env.PYTHONUTF8 = '1'
   const ca = join(sitePackages, 'certifi', 'cacert.pem')
   const validFile = (path: string): boolean => { try { return statSync(path).isFile() } catch { return false } }
   for (const key of ['SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'PIP_CERT']) {
@@ -115,31 +78,47 @@ async function runPython(args: PythonArgs, exec: { signal: AbortSignal; agent?: 
   if (workdirRelative === '..' || workdirRelative.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(workdirRelative)) {
     throw new Error('Python workdir must remain inside the current session workspace.')
   }
-  const leaseDirectory = join(environmentRoot()!, 'leases')
-  await mkdir(leaseDirectory, { recursive: true })
-  const lease = join(leaseDirectory, `${process.pid}-${randomUUID()}.json`)
-  await writeFile(lease, JSON.stringify({ pid: process.pid, snapshot: resolved.snapshotRoot, kind: 'python', createdAt: new Date().toISOString() }))
+  const physicalRelative = relative(await realpath(workspaceRoot), await realpath(workdir))
+  if (physicalRelative === '..' || physicalRelative.startsWith('..\\') || physicalRelative.startsWith('../') || isAbsolute(physicalRelative)) throw new Error('Python workdir resolves outside the current session workspace.')
+  const releaseLease = await acquireRuntimeLease(resolved.root)
   const controller = new AbortController()
   const abort = () => controller.abort()
   exec.signal.addEventListener('abort', abort, { once: true })
-  try { return await new Promise<PythonResult>((resolveResult, reject) => {
+  try {
+    exec.signal.throwIfAborted()
+    const stored = sessionCwd ? await createPythonResult(sessionCwd) : undefined
+    return await new Promise<PythonResult>((resolveResult, reject) => {
     const bootstrap = `import sys\nif ${JSON.stringify(resolved.sitePackages)} not in sys.path: sys.path.insert(0, ${JSON.stringify(resolved.sitePackages)})\n${args.code}`
-    const child = spawn(resolved.executable, ['-c', bootstrap], {
+    const child = spawn(resolved.executable, ['-I', '-B', '-X', 'utf8', '-c', bootstrap], {
       cwd: workdir,
       windowsHide: true,
       env: { ...pythonChildEnvironment(resolved.sitePackages), ZEROWALL_NODE: process.execPath, ZEROWALL_INTEGRITY_WORKER: createRequire(import.meta.url).resolve('@zerowallscience/integrity-runtime/worker').replace(/app\.asar([\\/])/u, 'app.asar.unpacked$1'), PYTHONNOUSERSITE: '1', PYTHONPATH: resolved.sitePackages },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
-    let stdout = ''; let stderr = ''; let timedOut = false; let settled = false
+    let stdout = ''; let stderr = ''; let timedOut = false; let settled = false; let spawnFailure: Error | undefined
     const finish = (fn: () => void) => { if (settled) return; settled = true; clearTimeout(timer); exec.signal.removeEventListener('abort', abort); fn() }
-    const timer = setTimeout(() => { timedOut = true; child.kill(); }, timeoutMs)
-    controller.signal.addEventListener('abort', () => { child.kill() }, { once: true })
+    const kill = () => { if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); else child.kill() }
+    const flushed = stored ? Promise.all([finished(child.stdout.pipe(stored.stdout)), finished(child.stderr.pipe(stored.stderr))]) : Promise.resolve()
+    void flushed.catch(error => { kill(); finish(() => reject(error)) })
+    const timer = setTimeout(() => { timedOut = true; kill(); }, timeoutMs)
+    controller.signal.addEventListener('abort', kill, { once: true })
     child.stdout.on('data', chunk => { stdout = bounded(stdout + String(chunk)) })
     child.stderr.on('data', chunk => { stderr = bounded(stderr + String(chunk)) })
-    child.once('error', error => finish(() => reject(error)))
-    child.once('exit', (exitCode, signal) => finish(() => resolveResult({ exitCode: exitCode ?? -1, timedOut, stdout, stderr, python: resolved.executable })))
+    child.once('error', error => {
+      spawnFailure = error
+      // Failed spawn has no producer to end the two result streams.
+      stored?.stdout.end(); stored?.stderr.end()
+    })
+    child.once('close', (exitCode) => { void flushed.then(async () => {
+      const metadata = { exitCode: exitCode ?? -1, timedOut, python: resolved.executable, cancelled: exec.signal.aborted, ...(spawnFailure ? { error: spawnFailure.message } : {}) }
+      await stored?.complete(metadata)
+      exec.signal.throwIfAborted()
+      if (spawnFailure) throw spawnFailure
+      finish(() => resolveResult({ ...metadata, stdout, stderr, ...(stored ? { result_id: stored.id } : {}) }))
+    }).catch(error => finish(() => reject(error))) })
+    if (exec.signal.aborted) kill()
   })
-  } finally { await rm(lease, { force: true }).catch(() => undefined) }
+  } finally { await releaseLease() }
 }
 
 function resolveRscript(): string {
@@ -174,8 +153,8 @@ async function runR(args: RArgs, exec: { signal: AbortSignal; agent?: { session:
 }
 
 export function apply(ctx: Context): void {
+  const python = new ZeroWallPythonService(ctx)
   registerEnvironmentTool(ctx)
-  registerBioLocal(ctx, runPython)
   ctx.tools.register(defineTool({
     name: 'python',
     description: 'Execute Python in the signed ZeroWall Python runtime (科研默认环境，含科学计算、文献、Office 和生物信息学依赖). Uses the current session workspace unless workdir is explicitly needed.',
@@ -191,14 +170,28 @@ export function apply(ctx: Context): void {
         properties: {
           exitCode: { type: 'integer', required: true }, timedOut: { type: 'boolean', required: true },
           stdout: { type: 'string', required: true }, stderr: { type: 'string', required: true }, python: { type: 'string', required: true },
+          result_id: { type: 'string' }, truncated: { type: 'boolean' }, cancelled: { type: 'boolean' },
         },
       },
-      render: (_args, value) => [{ type: 'text', text: `Python exit=${String(value.exitCode)}${value.timedOut ? ' (timed out)' : ''}\nstdout:\n${value.stdout}\nstderr:\n${value.stderr}` }],
+      render: (_args, value) => [{ type: 'text', text: `Python exit=${String(value.exitCode)}${value.timedOut ? ' (timed out)' : ''}\nstdout:\n${value.stdout}\nstderr:\n${value.stderr}${value.result_id ? `\nFull result: python_result result_id=${value.result_id}` : ''}` }],
     },
     async execute(args, exec) {
       const input = args as PythonArgs
       if (input.code.trim() === '' || input.description.trim() === '') throw new Error('Python code and description are required.')
-      return await runPython(input, exec)
+      const result = await python.run(input, exec)
+      const workspace = exec.agent?.session.header.cwd
+      const first = workspace && result.result_id ? await readPythonResult(workspace, result.result_id, 'stdout', 0, 4000) : undefined
+      return { ...result, stdout: first?.text ?? result.stdout.slice(0, 4000), stderr: result.stderr.slice(-4000), truncated: (first ? first.total > 4000 : result.stdout.length > 4000) || result.stderr.length > 4000 }
+    },
+  }))
+  ctx.tools.register(defineTool({
+    name: 'python_result', description: 'Read a UTF-8 page of a completed Python result without executing it again. Offsets and totals are bytes; use next_offset for the next page.',
+    parameters: { result_id: { type: 'string', required: true }, offset: { type: 'integer' }, limit: { type: 'integer' }, stream: { type: 'string', enum: ['stdout', 'stderr'] } },
+    output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    async execute(args, exec) {
+      const workspace = exec.agent?.session.header.cwd
+      if (!workspace || !/^[a-f0-9-]{36}$/u.test(args.result_id)) throw new Error('Invalid Python result reference.')
+      return readPythonResult(workspace, args.result_id, args.stream ?? 'stdout', args.offset ?? 0, args.limit ?? 4000)
     },
   }))
   ctx.tools.register(defineTool({

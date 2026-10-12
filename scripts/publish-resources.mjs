@@ -37,6 +37,7 @@ for (const kind of kinds) {
     if (!source) source = entry.kind === 'skill' ? join(releaseRoot, 'skills', entry.id, entry.version, entry.id + '.tgz')
       : entry.id === 'scimaster' ? join(releaseRoot, 'mcp/scimaster', entry.version, 'scimaster.tgz')
       : entry.id === 'science-dependencies' ? join(root, 'resources/extensions/python/dependency-manifest.json')
+      : entry.role === 'fallback-wheel' ? join(releaseRoot, 'python-wheels', new URL(entry.downloadUrl).pathname.split('/').at(-1))
       : resolve(root, JSON.parse(await readFile(join(root, `config/catalogs/${kind}-catalog.json`), 'utf8')).resources.find(resource => resource.id === entry.id)?.path ?? '')
     if ((await stat(source)).size !== entry.size || await fileDigest(source) !== entry.sha256) throw new Error(`Resource artifact mismatch: ${entry.id}`)
     assets.set(key, { key, path: source, id: entry.id, version: entry.version, kind: entry.kind })

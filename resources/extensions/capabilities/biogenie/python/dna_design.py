@@ -3,6 +3,8 @@ import sys
 import json
 import os
 
+from seq_util import read_seq_input
+
 # 确保同目录可 import
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -19,7 +21,8 @@ def op_primer_design(args):
     from Bio.SeqUtils.MeltingTemp import Tm_NN
     import re
 
-    sequence = args.get('sequence', '').upper().replace(' ', '')
+    sequence_raw = args.get('sequence', '')
+    sequence = read_seq_input(sequence_raw, 'sequence').upper() if str(sequence_raw).strip() else ''
     product_size = args.get('product_size', 500)  # 期望产物大小
     primer_len_range = args.get('primer_len_range', [18, 25])  # 引物长度范围
     tm_target = args.get('tm_target', 60)  # 目标 Tm
@@ -123,7 +126,8 @@ def op_seq_optimize(args):
     from Bio.Seq import Seq
     from Bio.Data.CodonTable import CodonTable
 
-    sequence = args.get('sequence', '').upper().replace(' ', '')
+    sequence_raw = args.get('sequence', '')
+    sequence = read_seq_input(sequence_raw, 'sequence').upper() if str(sequence_raw).strip() else ''
     organism = args.get('organism', 'ecoli')  # ecoli | human | yeast
     remove_rare = args.get('remove_rare', True)
     gc_target = args.get('gc_target', None)  # 目标 GC%（可选）

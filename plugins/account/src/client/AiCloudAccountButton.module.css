@@ -54,7 +54,16 @@
 .accountCard { padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 20px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 12px; background: var(--dsw-alias-bg-layer-2, #f7f8f9); }
 .accountCard > div { display: grid; gap: 3px; }
 .identity small { display: inline-flex; align-items: center; gap: 5px; color: #27845a; }
-.externalActions { margin: 10px 0 0 auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.externalActions { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.accountCard { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.accountCard > .externalActions { display: flex; }
+.modelList { margin-top: 12px; padding: 12px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 12px; min-width: 0; }
+.modelList summary { cursor: pointer; color: var(--dsw-alias-link, #315b7d); }
+.modelList input { box-sizing: border-box; width: 100%; margin: 12px 0; padding: 8px; }
+.modelRows { max-height: 280px; overflow: auto; }
+.modelRows > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 12px; padding: 8px 0; border-bottom: 1px solid var(--dsw-alias-border-l2, #dfe3e6); font-size: 12px; overflow-wrap: anywhere; }
+.modelRows small { grid-column: 1 / -1; color: var(--dsw-alias-label-secondary, #687078); }
+@media (max-width: 600px) { .modelSync { flex-wrap: wrap; } .modelRows > div { grid-template-columns: minmax(0, 1fr); } .balance { min-width: 0; } .externalActions { justify-content: flex-start; } }
 .externalButton { min-height: 34px; padding: 0 11px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(49,91,125,.35); border-radius: 9px; color: var(--dsw-alias-link, #315b7d); background: rgba(49,91,125,.05); cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 500; }
 .externalButton:hover { background: rgba(49,91,125,.12); }
 .accountCard span, .accountCard small, .sectionHeading p, .ordersHeader p, .orderRow small { color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; }

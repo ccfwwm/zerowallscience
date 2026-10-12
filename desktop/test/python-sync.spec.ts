@@ -24,6 +24,18 @@ async function setup() {
 }
 
 describe('signed dependency sync', () => {
+  it('treats different installed versions as present for core and science layers', async () => {
+    const { root, manifest, updater, privateKey, key } = await setup()
+    updater.pythonInfo.mockResolvedValue({ ready: true, version: '3.12.10', packages: [{ name: 'NumPy', version: '1.26.4' }] } as never)
+    for (const layer of ['core', 'science'] as const) {
+      const { signature, ...unsigned } = manifest
+      const payload = { ...unsigned, layer }
+      const signed = { ...payload, signature: { ...signature, value: sign(null, Buffer.from(JSON.stringify(payload)), privateKey).toString('base64') } }
+      const service = new PythonSyncService({ root, updater: updater as any, keys: { test: key }, applicationVersion: '7.0.3', feedUrl: 'https://example.test', fetcher: vi.fn(async () => new Response(JSON.stringify(signed))) })
+      expect(await service.checkManifest(layer)).toMatchObject({ installedPackageCount: 1, pendingPackageCount: 0, changes: [] })
+      expect(await service.verifyInstalled(layer)).toMatchObject({ installedPackageCount: 1, pendingPackageCount: 0, changes: [] })
+    }
+  })
   it('local lists never fetch, install or persist catalog/status files', async () => {
     const { root, manifest, updater, key, apply } = await setup()
     const bundledManifestPath = join(root, 'bundled.json')

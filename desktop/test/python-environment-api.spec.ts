@@ -6,7 +6,9 @@ import { normalizePythonRuntimePath, PythonEnvironmentApi } from '../src/main/py
 import type { PythonUpdaterService } from '../src/main/python-updater-service.js'
 
 const roots: string[] = []
-afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
+const apis: PythonEnvironmentApi[] = []
+function createApi(...args: ConstructorParameters<typeof PythonEnvironmentApi>) { const api = new PythonEnvironmentApi(...args); apis.push(api); return api }
+afterEach(async () => { await Promise.all(apis.splice(0).map(api => api.flush())); await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 async function setup() {
   const root = await mkdtemp(join(tmpdir(), 'python-api-')); roots.push(root)
   let progressListener: ((status: any) => void) | undefined
@@ -19,7 +21,7 @@ async function setup() {
     watchProgress: vi.fn((listener: (status: any) => void) => { progressListener = listener }),
   }
   const sync = { checkManifest: vi.fn(async () => ({ revision: 'r1' })), previewSync: vi.fn(async () => ({ planId: 'plan-1' })), applySync: vi.fn(async () => ({ taskId: 'job-1' })) }
-  return { root, updater, sync, emitProgress: (status: any) => progressListener?.(status), api: new PythonEnvironmentApi(root, updater as unknown as PythonUpdaterService, sync) }
+  return { root, updater, sync, emitProgress: (status: any) => progressListener?.(status), api: createApi(root, updater as unknown as PythonUpdaterService, sync) }
 }
 async function waitForTask(api: PythonEnvironmentApi, taskId: string) {
   const deadline = Date.now() + 10_000
@@ -38,6 +40,45 @@ async function waitForSync(api: PythonEnvironmentApi, request: { action: 'sync';
   return api.request(request)
 }
 describe('shared Python environment API', () => {
+  it('reads status with a fixed installation root before current.json or Python exists', async () => {
+    const { root, updater, sync } = await setup()
+    const runtime = join(root, 'installation', 'Python')
+    const api = createApi(join(runtime, '.zerowall'), updater as unknown as PythonUpdaterService, sync, join(root, 'location.json'), join(root, 'installation'), runtime)
+    await expect(api.request({ action: 'status', requestId: 'fresh-install' })).resolves.toMatchObject({ runtimeRoot: runtime })
+    expect(updater.pythonInfo).not.toHaveBeenCalled()
+    expect(sync.applySync).not.toHaveBeenCalled()
+    await expect(readFile(join(runtime, 'python.exe'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+  it('pages a fresh local inventory while preserving the full detected count', async () => {
+    const { api, updater } = await setup()
+    updater.pythonInfo.mockResolvedValue({ ready: true, inventoryComplete: true, packageCount: 3, packages: [{ name: 'pandas', version: '1.0.0' }, { name: 'pandas-extra', version: '2' }, { name: 'numpy', version: '9' }] } as never)
+    expect(await api.request({ action: 'list_packages', requestId: 'paged', query: 'pandas', offset: 1, limit: 1 })).toMatchObject({ inventory: { packageCount: 3, packages: [{ name: 'pandas-extra', version: '2' }] }, total: 2, nextOffset: null })
+  })
+  it('does not interrupt a task still owned by another live worker or cache its old state', async () => {
+    const { api, root } = await setup()
+    const taskId = '00000000-0000-4000-8000-000000000001'
+    await mkdir(join(root, 'jobs'))
+    const task = { taskId, ownerPid: process.ppid, state: 'running', stage: 'installing', logLines: [] }
+    await writeFile(join(root, 'jobs/latest.json'), JSON.stringify({ taskId }))
+    await writeFile(join(root, 'jobs', taskId + '.json'), JSON.stringify(task))
+    expect(await api.request({ action: 'status', requestId: 'live-owner' })).toMatchObject({ task: { state: 'running' } })
+    await writeFile(join(root, 'jobs', taskId + '.json'), JSON.stringify({ ...task, state: 'succeeded' }))
+    expect(await api.request({ action: 'status', requestId: 'completed-owner' })).toMatchObject({ task: { state: 'succeeded' } })
+  })
+  it('cancels a pending package preview without starting the install when the preview returns late', async () => {
+    const { api, updater } = await setup()
+    let finish!: (value: unknown) => void
+    const previewPackages = vi.fn(() => new Promise(resolve => { finish = resolve }))
+    const applyPackagePlan = vi.fn()
+    Object.assign(updater, { previewPackages, applyPackagePlan, ensureReady: vi.fn(async () => ({ phase: 'ready' })), cancel: vi.fn() })
+    const accepted = await api.request({ action: 'install_package', requestId: 'cancel-preview', packageSpec: 'pandas', confirm: true })
+    await vi.waitFor(() => expect(previewPackages).toHaveBeenCalled())
+    await api.request({ action: 'cancel', requestId: 'cancel', taskId: String(accepted.taskId) })
+    finish({ planId: 'late', changes: [{ name: 'pandas', to: '3.0.5' }] })
+    await vi.waitFor(() => expect(api.hasPendingWork()).toBe(false))
+    expect(applyPackagePlan).not.toHaveBeenCalled()
+    expect(await api.request({ action: 'task_status', requestId: 'cancelled-status', taskId: String(accepted.taskId) })).toMatchObject({ task: { state: 'cancelled' } })
+  })
   it('reports missing MCP core packages from a ready interpreter without starting repair', async () => {
     const { root, updater, sync } = await setup()
     const apiRoot = join(root, 'zerowall-python'), generation = join(apiRoot, 'slots', 'a-test')
@@ -48,10 +89,10 @@ describe('shared Python environment API', () => {
     updater.pythonInfo.mockResolvedValue({ ready: true, coreReady: false, missingCorePackages: ['mcp==1.13.1'], packages: [] } as never)
     const ensureReady = vi.fn()
     ;(updater as typeof updater & { ensureReady: typeof ensureReady }).ensureReady = ensureReady
-    const api = new PythonEnvironmentApi(apiRoot, updater as unknown as PythonUpdaterService, sync)
+    const api = createApi(apiRoot, updater as unknown as PythonUpdaterService, sync)
     await api.request({ action: 'list_packages', requestId: 'initial-inventory' })
     await expect(api.request({ action: 'status', requestId: 'old-core' })).resolves.toMatchObject({
-      runtimeRoot: join(root, 'Python'), layers: { bootstrap: 'ready', core: 'error', science: 'not-installed' }, coreReady: false, missingCorePackages: ['mcp==1.13.1'],
+      runtimeRoot: join(root, 'Python'), layers: { bootstrap: 'ready', core: 'missing', science: 'not-installed' }, coreReady: false, missingCorePackages: ['mcp==1.13.1'],
     })
     updater.pythonInfo.mockResolvedValue({ ready: true, coreReady: true, missingCorePackages: [], packages: [] } as never)
     await api.request({ action: 'list_packages', requestId: 'repaired-inventory' })
@@ -77,7 +118,7 @@ describe('shared Python environment API', () => {
     expect(results[0]).toEqual(results[1]); expect(results[0]).toMatchObject({ queued: true })
     await waitForTask(api, String(results[0]!.taskId))
     expect(sync.applySync).toHaveBeenCalledTimes(1)
-    const restarted = new PythonEnvironmentApi(root, updater as unknown as PythonUpdaterService, sync)
+    const restarted = createApi(root, updater as unknown as PythonUpdaterService, sync)
     await expect(restarted.request(request)).resolves.toMatchObject({ taskId: results[0]!.taskId, underlyingTaskId: 'job-1', queued: false })
     expect(sync.applySync).toHaveBeenCalledTimes(1)
     await expect(restarted.request({ ...request, manifestRevision: 'r2' })).rejects.toThrow('REQUEST_ID_CONFLICT')
@@ -96,7 +137,7 @@ describe('shared Python environment API', () => {
     // The receipt is what makes a repeated click and a restart both resolve to
     // the same task rather than enqueueing the install again.
     await expect(api.request(request)).resolves.toMatchObject({ taskId: accepted.taskId, underlyingTaskId: 'job-1' })
-    const restarted = new PythonEnvironmentApi(root, { current: vi.fn(), rollback: vi.fn(), pythonInfo: vi.fn() } as unknown as PythonUpdaterService, sync)
+    const restarted = createApi(root, { current: vi.fn(), rollback: vi.fn(), pythonInfo: vi.fn() } as unknown as PythonUpdaterService, sync)
     await expect(restarted.request(request)).resolves.toMatchObject({ taskId: accepted.taskId, underlyingTaskId: 'job-1' })
     // Only the original submission reaches the sync service; the later two read
     // the receipt written by that first call.
@@ -111,7 +152,7 @@ describe('shared Python environment API', () => {
     expect(sync.applySync).not.toHaveBeenCalled()
   })
 
-  it('waits for the signed shared runtime before dependency operations', async () => {
+  it('checks manifests without initializing a missing runtime', async () => {
     const { api, updater, sync } = await setup()
     const ensureReady = vi.fn(async () => ({ phase: 'ready' as const }))
     ;(updater as typeof updater & { ensureReady: typeof ensureReady }).ensureReady = ensureReady
@@ -119,7 +160,7 @@ describe('shared Python environment API', () => {
     const accepted = await api.request({ action: 'check_manifest', requestId: 'runtime-gate' })
     expect(accepted).toMatchObject({ queued: true })
     await expect(waitForTask(api, String(accepted.taskId))).resolves.toMatchObject({ task: { state: 'succeeded', result: { manifest: { revision: 'r1' } } } })
-    expect(ensureReady).toHaveBeenCalledTimes(1)
+    expect(ensureReady).not.toHaveBeenCalled()
     expect(sync.checkManifest).toHaveBeenCalledTimes(1)
   })
   it('returns a local status snapshot without rescanning packages or contacting manifests', async () => {
@@ -156,7 +197,7 @@ describe('shared Python environment API', () => {
     expect(operations).toContain('Installing numpy')
     finishInstall!({ state: 'complete' })
     await waitForTask(api, String(accepted.taskId))
-    const restarted = new PythonEnvironmentApi(root, updater as unknown as PythonUpdaterService, sync)
+    const restarted = createApi(root, updater as unknown as PythonUpdaterService, sync)
     await expect(restarted.request({ action: 'status', requestId: 'restore-terminal-task' })).resolves.toMatchObject({ task: { taskId: accepted.taskId, state: 'succeeded', logLines: expect.arrayContaining(['Installing numpy']) } })
   })
   it('marks a task interrupted after restart while keeping its saved progress and logs', async () => {
@@ -167,7 +208,7 @@ describe('shared Python environment API', () => {
     await mkdir(join(root, 'jobs'), { recursive: true })
     await writeFile(join(root, 'jobs', `${taskId}.json`), JSON.stringify(task))
     await writeFile(join(root, 'jobs', 'latest.json'), JSON.stringify({ taskId, updatedAt: now }))
-    const restarted = new PythonEnvironmentApi(root, updater as unknown as PythonUpdaterService, sync)
+    const restarted = createApi(root, updater as unknown as PythonUpdaterService, sync)
     await expect(restarted.request({ action: 'status', requestId: 'recover-interrupted-task' })).resolves.toMatchObject({
       task: { taskId, state: 'interrupted', progress: 31, completedPackages: 4, totalPackages: 42, logLines: ['Collecting mcp', 'Installing mcp'] },
     })
@@ -227,12 +268,15 @@ describe('shared Python environment API', () => {
     expect(syncWithVerification.verifyInstalled).toHaveBeenCalledWith('core', undefined, expect.any(Function), expect.any(Array))
     expect(JSON.parse(await readFile(join(root, 'python-summary.json'), 'utf8'))).toMatchObject({ coreReady: true, corePackageCount: 42 })
   })
-  it('does not replace current science counts with a partial core inventory summary', async () => {
+  it('does not merge an old science inventory into a newer incomplete detection', async () => {
     const { root, api } = await setup()
     await mkdir(root, { recursive: true })
     await writeFile(join(root, 'python-summary.json'), JSON.stringify({ sciencePackageCount: 529, scienceInstalledPackageCount: 117, packageCount: 164, inventoryComplete: true }))
     await api.persistRuntimeSummary({ ready: true, coreReady: true, officialPackageCount: 42, corePackageCount: 42, sciencePackageCount: 0, scienceInstalledPackageCount: 0, inventoryComplete: false, missingCorePackages: [], packages: [] })
-    await expect(readFile(join(root, 'python-summary.json'), 'utf8').then(JSON.parse)).resolves.toMatchObject({ sciencePackageCount: 529, scienceInstalledPackageCount: 117, packageCount: 164, inventoryComplete: false, coreReady: true })
+    const saved = JSON.parse(await readFile(join(root, 'python-summary.json'), 'utf8'))
+    expect(saved).toMatchObject({ inventoryComplete: false, coreReady: true })
+    expect(saved).not.toHaveProperty('scienceInstalledPackageCount')
+    expect(saved).not.toHaveProperty('packageCount')
   })
   it('flushes progress and stops the updater before desktop shutdown completes', async () => {
     const { api, updater } = await setup()
@@ -265,13 +309,13 @@ describe('shared Python environment API', () => {
     const { root, api } = await setup()
     const result = await api.request({ action: 'configure', requestId: 'path', runtimeRoot: join(root, 'custom-runtime') })
     expect(result).toMatchObject({ restartRequired: true, runtimeRoot: join(root, 'custom-runtime', 'Python') })
-    expect(JSON.parse(await readFile(join(root, 'python-location.json'), 'utf8'))).toEqual({ runtimeRoot: join(root, 'custom-runtime', 'Python') })
+    expect(JSON.parse(await readFile(join(root, 'python-location.json'), 'utf8'))).toEqual({ schema: 2, source: 'user-selected', runtimeRoot: join(root, 'custom-runtime', 'Python') })
   })
 
   it('reports the LocalAppData-style default before any Roaming profile exists', async () => {
     const { root, updater, sync } = await setup()
     const missingRoamingLocation = join(root, 'not-created', 'zerowall-science', 'python-location.json')
-    const api = new PythonEnvironmentApi(join(root, 'zerowall-python'), updater as unknown as PythonUpdaterService, sync, missingRoamingLocation)
+    const api = createApi(join(root, 'zerowall-python'), updater as unknown as PythonUpdaterService, sync, missingRoamingLocation)
     await expect(api.request({ action: 'status', requestId: 'first-run-path' })).resolves.toMatchObject({ runtimeRoot: join(root, 'Python') })
     await expect(readFile(missingRoamingLocation, 'utf8')).rejects.toThrow()
   })
@@ -284,7 +328,7 @@ describe('shared Python environment API', () => {
     await mkdir(runtimeRoot, { recursive: true })
     await writeFile(join(managementRoot, 'current.json'), JSON.stringify({ root: runtimeRoot, runtimeRoot, health: 'ready' }))
     await writeFile(join(runtimeRoot, 'runtime.json'), JSON.stringify({ rootPath: runtimeRoot, executablePath: join(runtimeRoot, 'python.exe'), sitePackagesPath: join(runtimeRoot, 'Lib', 'site-packages'), pythonVersion: '3.12.10' }))
-    const api = new PythonEnvironmentApi(managementRoot, updater as unknown as PythonUpdaterService, sync, join(root, 'python-location.json'), undefined, runtimeRoot)
+    const api = createApi(managementRoot, updater as unknown as PythonUpdaterService, sync, join(root, 'python-location.json'), undefined, runtimeRoot)
     await expect(api.request({ action: 'status', requestId: 'single-directory-status' })).resolves.toMatchObject({
       runtimeRoot,
       runtime: expect.objectContaining({ rootPath: runtimeRoot }),
@@ -297,7 +341,7 @@ describe('shared Python environment API', () => {
     await mkdir(legacy, { recursive: true })
     await writeFile(join(root, 'current.json'), JSON.stringify({ health: 'ready', runtimeRoot: legacy, root: legacy }))
     await writeFile(join(legacy, 'runtime.json'), JSON.stringify({ rootPath: legacy }))
-    const api = new PythonEnvironmentApi(join(root, 'zerowall-python'), updater as unknown as PythonUpdaterService, sync)
+    const api = createApi(join(root, 'zerowall-python'), updater as unknown as PythonUpdaterService, sync)
     const result = await api.request({ action: 'status', requestId: 'ignore-legacy-runtime' })
     expect(result.runtimeRoot).toBe(join(root, 'Python'))
     expect(result.runtime).toBeUndefined()
@@ -315,9 +359,9 @@ describe('shared Python environment API', () => {
       root: join(root, 'slots', 'a'),
       manifest: { python: { relativeExecutable: 'bio-tools/python/python.exe', relativeSitePackages: 'bio-tools/python/Lib/site-packages' } },
     }))
-    const api = new PythonEnvironmentApi(apiRoot, updater as unknown as PythonUpdaterService, sync)
+    const api = createApi(apiRoot, updater as unknown as PythonUpdaterService, sync)
     await expect(api.request({ action: 'diagnose', requestId: 'legacy-diagnostics' })).resolves.toMatchObject({
-      diagnostics: { python: { status: 'pending', message: expect.stringContaining('不会迁移') } },
+      diagnostics: { python: { status: 'unavailable', message: expect.stringContaining('不会迁移') } },
     })
   })
 
@@ -326,7 +370,7 @@ describe('shared Python environment API', () => {
     const unavailableRuntime = join(root, 'missing-drive', 'zerowall-python')
     const control = join(root, 'local-control')
     const location = join(control, 'python-location.json')
-    const api = new PythonEnvironmentApi(unavailableRuntime, updater as unknown as PythonUpdaterService, sync, location)
+    const api = createApi(unavailableRuntime, updater as unknown as PythonUpdaterService, sync, location)
     const result = await api.request({ action: 'configure', requestId: 'recover-path', runtimeRoot: join(root, 'writable-runtime') })
     expect(result).toMatchObject({ restartRequired: true, runtimeRoot: join(root, 'writable-runtime', 'Python') })
     expect(JSON.parse(await readFile(location, 'utf8')).runtimeRoot).toBe(join(root, 'writable-runtime', 'Python'))

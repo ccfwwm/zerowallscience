@@ -1,5 +1,5 @@
 import type { ImageAnnotations } from '@zerowallscience/research-store/types'
-import { spawn } from 'node:child_process'
+import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runtime-process.js'
 import { createHash } from 'node:crypto'
 import { open, readFile, readdir, writeFile } from 'node:fs/promises'
 import { delimiter, dirname, join } from 'node:path'
