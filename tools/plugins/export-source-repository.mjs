@@ -12,7 +12,7 @@ const selected = tracked.filter(path => (/^(plugins\/|packages\/|store\/|tools\/
   && !/^packages\/(?:dsh\/)?(?:dsh-auto-review|dsh-capability-menu)(?:\/|$)/u.test(path))
 let copied = 0
 for (const path of selected) {
-  if (/node_modules|(?:^|\/)\.env(?:\.|$)|(?:^|\/)artifacts\/|(?:^|\/)(?:lib|payload|\.yarn)\//u.test(path)) throw new Error('Private/generated path selected')
+  if (/node_modules|(?:^|\/)\.env(?:\.|$)|(?:^|\/)artifacts\/|^(?:plugins|packages|store)\/.*(?:^|\/)(?:lib|payload|\.yarn)\//u.test(path)) throw new Error('Private/generated path selected: ' + path)
   await access(join(destination, path)).then(() => { throw new Error('Refusing to replace existing source: ' + path) }, error => { if (error.code !== 'ENOENT') throw error })
   await mkdir(dirname(join(destination, path)), { recursive: true })
   await cp(join(root, path), join(destination, path))
@@ -44,7 +44,7 @@ pkg.scripts = {
   'source:verify': 'node tools/plugins/verify-source-repository.mjs',
 }
 await writeFile(join(destination, 'package.json'), JSON.stringify(pkg, null, 2) + '\n')
-await writeFile(join(destination, '.gitignore'), 'node_modules/\nartifacts/\nlib/\ndist/\n.build/\n.env\n.env.*\n*.pem\n*.tsbuildinfo\n*.log\n__pycache__/\n')
+await writeFile(join(destination, '.gitignore'), 'node_modules/\nartifacts/\n/plugins/*/lib/\n/plugins/biogenie/payload/\n/packages/**/lib/\n/store/lib/\ndist/\n.build/\n.env\n.env.*\n*.pem\n*.tsbuildinfo\n*.log\n__pycache__/\n')
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 const dshCommit = execFileSync('git', ['-C', 'deepseek-harness', 'rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 const records = JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8'))
