@@ -49,7 +49,7 @@ export function apply(ctx) {
    const run=(name,args,suffix)=>ctx.tools.execute({name,arguments:args,callId:request.id+suffix,agent,signal:new AbortController().signal});
    let result;
    if(request.name==='skill')result=await run(request.name,request.args,'-direct');
-   else {const found=await run('tool_search',{query:request.name},'-search');if(found.isError)throw new Error(JSON.stringify(found));result=await run('tool_dispatch',{name:request.name,arguments:request.args},'-dispatch');}
+   else {result=await run(request.name,request.args,'-native');}
    await writeFile(join(root,request.id+'.json'),JSON.stringify({result}));
   } catch(error) {if(request)await writeFile(join(root,request.id+'.json'),JSON.stringify({error:String(error)}));}
   finally {busy=false;}
@@ -75,7 +75,7 @@ try {
     const response=await wait(()=>readFile(join(work,id+'.json'),'utf8').then(JSON.parse,()=>undefined),600000)
     assert.ok(!response.error,response.error)
     assert.ok(!response.result?.isError,JSON.stringify(response.result))
-    const value=response.result.value?.protocol==='dsh-progressive-tools/dispatch-v1'?response.result.value.value:response.result.value
+    const value=response.result.value
     return value?.structuredContent??value
   }
   const flow=(action,workflow_id,parameters)=>call('research_workflow',{action,workflow_id,parameters})

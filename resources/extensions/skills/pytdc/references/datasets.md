@@ -218,7 +218,11 @@ Record at minimum:
   "cache_path": ".pytdc-data",
   "split_method": "scaffold",
   "split_seed": 42,
-  "split_fractions": [0.7, 0.1, 0.2],
+  "split_fractions": [
+    0.7,
+    0.1,
+    0.2
+  ],
   "license_reviewed": true,
   "source_page": "https://tdcommons.ai/single_pred_tasks/adme"
 }

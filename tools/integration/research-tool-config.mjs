@@ -1,4 +1,3 @@
-import { DEFAULT_GROUPS } from '../../packages/dsh/dsh-progressive-tools/src/defaults.ts'
 const groups = [
   ['attachment-reading', '附件信息、阅读、总结和比较；本地 Office 单元格解析与分页读取，PDF/OCR 使用 MinerU', ['read_uploaded_file', 'extract_uploaded_file', 'materialize_uploaded_file', 'mineru_*']],
   ['presentation-authoring', '科研演示文稿：论文证据、多图素材、丰富内容规划、批量 Univer 排版检查及导出回读', ['presentation_*', 'generate_image', 'edit_image', 'univer_*']],
@@ -19,7 +18,7 @@ const groups = [
 export const researchToolConfig = {
   resultBudget: true,
   resultBudgetCharacters: 8000,
-  groups: [...DEFAULT_GROUPS, ...groups],
+  groups,
   skillBindings: [
     ['zerowall-presentation', ['presentation-authoring', 'image-generation']],
     ['univer-slide', ['presentation-authoring', 'image-generation']],

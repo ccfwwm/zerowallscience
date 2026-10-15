@@ -143,8 +143,16 @@ Requesting the endpoint for an unindexed column returns 400.
 `/sample/aminoAcidMutations` rows look like:
 
 ```json
-{"mutation": "S:L452W", "count": 3793, "coverage": 5211, "proportion": 0.728,
- "sequenceName": "S", "mutationFrom": "L", "mutationTo": "W", "position": 452}
+{
+  "mutation": "S:L452W",
+  "count": 3793,
+  "coverage": 5211,
+  "proportion": 0.728,
+  "sequenceName": "S",
+  "mutationFrom": "L",
+  "mutationTo": "W",
+  "position": 452
+}
 ```
 
 `proportion = count / coverage`, and **`coverage` is the number of sequences that resolved that
@@ -189,12 +197,28 @@ them separately rather than dropping them silently.
 Two error envelopes are in use, both carrying `detail`:
 
 ```json
-{"error": {"type": "about:blank", "title": "Bad request", "status": 400, "detail": "..."},
- "info":  {"dataVersion": null, "requestId": "...", "lapisVersion": "0.8.3"}}
+{
+  "error": {
+    "type": "about:blank",
+    "title": "Bad request",
+    "status": 400,
+    "detail": "..."
+  },
+  "info": {
+    "dataVersion": null,
+    "requestId": "...",
+    "lapisVersion": "0.8.3"
+  }
+}
 ```
 
 ```json
-{"type": "about:blank", "title": "Bad Request", "status": 400, "instance": "/open/v2/query/parse"}
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "instance": "/open/v2/query/parse"
+}
 ```
 
 `_error_detail()` reads both. Always surface `detail` — on a bad filter key it enumerates every

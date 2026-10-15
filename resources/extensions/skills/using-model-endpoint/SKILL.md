@@ -36,7 +36,10 @@ values into `run_in_context` commands.
   "title": "Existing endpoint inference",
   "command": "source ~/miniforge3/etc/profile.d/conda.sh && conda activate endpoint-client && python call_endpoint.py --input request.json --output /home/me/zerowall-results/endpoint/response.json",
   "timeout_secs": 300,
-  "input_paths": ["runs/call_endpoint.py", "data/request.json"],
+  "input_paths": [
+    "runs/call_endpoint.py",
+    "data/request.json"
+  ],
   "output_specs": [
     {
       "glob": "ssh://gpu-box/home/me/zerowall-results/endpoint/response.json",

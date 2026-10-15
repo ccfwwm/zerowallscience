@@ -17,30 +17,27 @@ ROI须排除平板外背景；反光、边缘、碎屑和融合菌落由人工�
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "run",
-    "workflow_id": "fiji",
-    "parameters": {
-      "request_id": "REPLACE_WITH_STABLE_REQUEST_ID",
-      "operation": "fiji.bacterial-cfu",
-      "arguments": {
-        "sourceAssetId": "REPLACE_WITH_ACTUAL_ASSET_ID",
-        "image": {
-          "kind": "bacterial-cfu",
-          "plateId": "P1",
-          "threshold": 150,
-          "polarity": "bright",
-          "minArea": 2,
-          "maxArea": 20,
-          "dilutionFactor": 100,
-          "platedVolumeMl": 0.1,
-          "roi": {
-            "x": 0,
-            "y": 0,
-            "width": 20,
-            "height": 12
-          }
+  "action": "run",
+  "workflow_id": "fiji",
+  "parameters": {
+    "request_id": "REPLACE_WITH_STABLE_REQUEST_ID",
+    "operation": "fiji.bacterial-cfu",
+    "arguments": {
+      "sourceAssetId": "REPLACE_WITH_ACTUAL_ASSET_ID",
+      "image": {
+        "kind": "bacterial-cfu",
+        "plateId": "P1",
+        "threshold": 150,
+        "polarity": "bright",
+        "minArea": 2,
+        "maxArea": 20,
+        "dilutionFactor": 100,
+        "platedVolumeMl": 0.1,
+        "roi": {
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 12
         }
       }
     }

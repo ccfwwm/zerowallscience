@@ -43,7 +43,16 @@ way to derive it — the mapping is a file that changes.
 Names beginning `X` are recombinants. Their alias entry is a **list of parents**, not a path:
 
 ```json
-{"XFG": ["LF.7", "LP.8.1.2"], "XFJ": ["LS.2.1.1", "LF.7.2"]}
+{
+  "XFG": [
+    "LF.7",
+    "LP.8.1.2"
+  ],
+  "XFJ": [
+    "LS.2.1.1",
+    "LF.7.2"
+  ]
+}
 ```
 
 LAPIS's own lineage definition does **not** carry this — it roots every `X*` lineage, and no entry

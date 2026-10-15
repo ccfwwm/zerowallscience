@@ -87,7 +87,10 @@ and checkpoint with bounded read-only discovery, then write a self-contained
   "title": "scGPT embedding for 50k cells",
   "command": "source ~/miniforge3/etc/profile.d/conda.sh && conda activate scgpt && python scgpt_embed.py --input dataset.h5ad --model-dir /srv/models/scgpt-human --output /home/me/zerowall-results/scgpt/embedded.h5ad",
   "timeout_secs": 1800,
-  "input_paths": ["runs/scgpt_embed.py", "data/dataset.h5ad"],
+  "input_paths": [
+    "runs/scgpt_embed.py",
+    "data/dataset.h5ad"
+  ],
   "output_specs": [
     {
       "glob": "ssh://gpu-box/home/me/zerowall-results/scgpt/embedded.h5ad",

@@ -117,7 +117,10 @@ Submit one persisted Run with `run_in_context`:
   "title": "scVI and scANVI on 80k cells",
   "command": "source ~/miniforge3/etc/profile.d/conda.sh && conda activate singlecell && python scvi_pipeline.py --input dataset.h5ad --output /home/me/zerowall-results/scvi/annotated.h5ad",
   "timeout_secs": 3600,
-  "input_paths": ["runs/scvi_pipeline.py", "data/dataset.h5ad"],
+  "input_paths": [
+    "runs/scvi_pipeline.py",
+    "data/dataset.h5ad"
+  ],
   "output_specs": [
     {
       "glob": "ssh://gpu-box/home/me/zerowall-results/scvi/annotated.h5ad",

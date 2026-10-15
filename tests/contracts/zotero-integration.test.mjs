@@ -7,7 +7,6 @@ import { pathToFileURL } from 'node:url'
 import test from 'node:test'
 import { loadZoteroReducer, snapshotFromLog } from './zotero-replay.mjs'
 import { zoteroDispatch } from '../../tools/packaging/zotero-dispatch.mjs'
-import { verifyZoteroDispatch } from '../../tools/packaging/verify-zotero-dispatch.mjs'
 import {
   adaptZoteroClient,
   adaptZoteroCommand,
@@ -22,14 +21,6 @@ import { decodeZoteroAuthorizationResponse } from '../../tools/packaging/zotero-
 
 const root = resolve(import.meta.dirname, '../..')
 const read = path => readFile(resolve(root, path), 'utf8')
-
-test('Progressive Tools 0.7 replays nested structured metadata and parent-only search logs', async () => {
-  const client = adaptZoteroClient(await read('desktop/node_modules/dsh-zotero/lib/client.js'))
-  const dispatcher = await read('packages/dsh/dsh-progressive-tools/lib/index.js')
-  verifyZoteroDispatch(client, dispatcher)
-  assert.throws(() => verifyZoteroDispatch(client, dispatcher.replace('parent: exec.token', 'parent: undefined')), /nested dispatch contract/u)
-  assert.throws(() => verifyZoteroDispatch(client, dispatcher.replace("protocol: 'dsh-progressive-tools/dispatch-v1'", "protocol: 'unknown'")), /presentation metadata/u)
-})
 
 test('Zotero runtime manifest accepts DSH rc.2 without changing the source package', () => {
   const source = JSON.stringify({
@@ -106,7 +97,7 @@ test('local authorization decodes the successful Host RPC envelope', async () =>
   assert.deepEqual(await decodeZoteroAuthorizationResponse(response), value)
 })
 
-test('shipped Zotero reducer restores dispatcher search rows and prefers structured metadata', async () => {
+test('shipped Zotero reducer reads historical routed search rows and prefers structured metadata', async () => {
   const client = adaptZoteroClient(await read('desktop/node_modules/dsh-zotero/lib/client.js'))
   assert.match(client, /function decodeZoteroAuthorizationResponse\(response\)/u)
   const reducer = loadZoteroReducer(client)
@@ -159,7 +150,7 @@ test('Zotero status command remains usable with the pinned commands API', async 
   assert.throws(() => adaptZoteroCommand('CommandDefinitionId(unknown)'), /Unrecognized/u)
 })
 
-test('Zotero Sources tab invalidates for nested Progressive Tools calls', async () => {
+test('Zotero Sources tab invalidates for historical nested tool calls', async () => {
   const original = await read('desktop/node_modules/dsh-zotero/lib/client.js')
   const adapted = adaptZoteroClient(original)
   assert.equal(adaptZoteroClient(adapted), adapted)
@@ -240,7 +231,7 @@ test('Zotero ships compiled entries and is mounted once in every profile', async
   for (const profile of ['development', 'preview', 'stable']) {
     const source = await read(`profiles/generated/${profile}.yml`)
     assert.equal((source.match(/'dsh-zotero'/gu) ?? []).length, 1)
-    assert.match(source, /'@everclear077\/dsh-progressive-tools'/u)
+    assert.doesNotMatch(source, /dsh-progressive-tools|@everclear077/u)
     assert.doesNotMatch(source, /fylar/iu)
   }
   const patch = await read('desktop/build/zerowall.patch.yml')
@@ -249,9 +240,9 @@ test('Zotero ships compiled entries and is mounted once in every profile', async
 })
 
 
-test('harvest saves populate the actual Zotero reducer in direct and dispatcher logs', async () => {
+test('harvest saves populate the actual Zotero reducer in native tool logs', async () => {
   const reducer = loadZoteroReducer(adaptZoteroClient(await read('desktop/node_modules/dsh-zotero/lib/client.js')))
-  for (const name of ['lit_save', 'lit_review_run', 'tool_dispatch']) {
+  for (const name of ['lit_save', 'lit_review_run']) {
     const save = { resolvedMode: 'zotero-api', zoteroItems: [{ ref: 'zotero://user/0/item/ABCD1234?server=local', title: 'New harvest paper' }] }
     const result = { kind: 'tool', callId: 'harvest', seq: 1, time: 1, isError: false, subCalls: [],
       call: { name, argsRaw: JSON.stringify({ name: 'lit_save', arguments: {} }) },

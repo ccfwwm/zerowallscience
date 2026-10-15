@@ -397,7 +397,10 @@ POST /api/podcasts/generate
 {
   "notebook_id": "notebook:abc123",
   "episode_profile_id": "episode_profile:xyz",
-  "speaker_profile_ids": ["speaker:a", "speaker:b"]
+  "speaker_profile_ids": [
+    "speaker:a",
+    "speaker:b"
+  ]
 }
 ```
 

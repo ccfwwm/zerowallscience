@@ -7,6 +7,7 @@ import { compareVersions } from './resource-catalog.mjs'
 // upgrade must be able to introduce a new bundled management surface without
 // rebuilding or replacing the user's selected plugin set.
 const PROFILE_ARCHITECTURE = 6
+const RETIRED_PLUGIN_IDS = new Set(['@everclear077/dsh-progressive-tools', 'dsh-progressive-tools'])
 const PROFILE_MIGRATIONS = [
   { from: 1, to: 2, add: ['@zerowallscience/plugin-extension-center'] },
   { from: 4, to: 5, remove: ['dsh-auto-review'] },
@@ -94,10 +95,41 @@ export async function initializeProfile(home, defaults, bundled = []) {
     const overlay = new Set(bundled.filter(item => item.managed === false && !item.core).map(item => item.id))
     bundles = bundles.filter(id => !overlay.has(id))
   }
-  if (architecture >= PROFILE_ARCHITECTURE) return
+  // Progressive Tools was retired in 8.2.1. This cleanup must also run for
+  // architecture-7 profiles created by the offline carrier, otherwise an old
+  // profile can continue loading the dispatch wrapper after an app upgrade.
+  const retiredBundles = bundles.filter(id => !RETIRED_PLUGIN_IDS.has(id))
+  if (retiredBundles.length !== bundles.length) {
+    bundles = retiredBundles
+    selectionChanged = true
+  }
+  for (const id of RETIRED_PLUGIN_IDS) {
+    if (Object.prototype.hasOwnProperty.call(dependencies, id)) {
+      dependencies = { ...dependencies }
+      delete dependencies[id]
+      selectionChanged = true
+    }
+    for (const field of ['devDependencies', 'optionalDependencies']) {
+      if (Object.prototype.hasOwnProperty.call(manifest[field] ?? {}, id)) {
+        manifest[field] = { ...manifest[field] }
+        delete manifest[field][id]
+        selectionChanged = true
+      }
+    }
+    const wasDisabled = disabled.delete(id)
+    const wasRemoved = removed.delete(id)
+    if (wasDisabled || wasRemoved) selectionChanged = true
+    if (Object.prototype.hasOwnProperty.call(selection.pinned ?? {}, id)) {
+      selection.pinned = { ...selection.pinned }
+      delete selection.pinned[id]
+      selectionChanged = true
+    }
+  }
+  const profileChanged = selectionChanged || JSON.stringify(existing) !== JSON.stringify(bundles) || JSON.stringify(manifest.dependencies ?? {}) !== JSON.stringify(dependencies)
+  if (architecture >= PROFILE_ARCHITECTURE && !profileChanged) return
   manifest.dependencies = dependencies
   manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }
-  manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: PROFILE_ARCHITECTURE, disabledPlugins: [...disabled].sort() }
+  manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: Math.max(architecture, PROFILE_ARCHITECTURE), disabledPlugins: [...disabled].sort() }
   if (legacyOverlay) manifest.zerowall.legacyOverlayMigrated = true
   if (selectionChanged) {
     await mkdir(join(home, 'resources/plugins'), { recursive: true })

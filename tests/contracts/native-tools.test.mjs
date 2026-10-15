@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict'
+import { readFile, readdir } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
+import test from 'node:test'
+import { submittedPlan, planAddress, parsePlanAddress } from '../../deepseek-harness/packages/client/ui-plan/src/client/plan.ts'
+
+const root = resolve(import.meta.dirname, '../..')
+const read = path => readFile(join(root, path), 'utf8')
+const legacyRoutes = /\b(?:tool_search|tool_dispatch|tool_result_read)\b/u
+const retiredPlugin = /(?:@everclear077\/)?dsh-progressive-tools/u
+
+test('native exit_plan_mode records expose a durable plan to the pinned sidebar reader', () => {
+  const markdown = '# 原生计划\n\n- 修复更新\n- 验证发布'
+  const native = {
+    type: 'tool/call',
+    data: { name: 'exit_plan_mode', callId: 'plan:1', arguments: JSON.stringify({ plan: markdown }) },
+  }
+  const plan = submittedPlan(native)
+  assert.deepEqual(plan, { callId: 'plan:1', title: '原生计划', markdown })
+  const address = { session: { kind: 'session', sessionId: 'session / 计划' }, callId: plan.callId }
+  assert.deepEqual(parsePlanAddress(planAddress(address)), address)
+  // This is the exact incompatible envelope that the retired plugin wrote.
+  assert.equal(submittedPlan({
+    ...native,
+    data: { ...native.data, name: 'tool_dispatch', arguments: JSON.stringify({ name: 'exit_plan_mode', arguments: { plan: markdown } }) },
+  }), undefined)
+})
+
+test('the shipped composition retains native plan services without the retired tool router', async () => {
+  const base = JSON.parse(await read('deepseek-harness/packages/bundle/base/package.json'))
+  const web = JSON.parse(await read('deepseek-harness/packages/bundle/web-app/package.json'))
+  assert.ok(base.dependencies['@deepseek-ai/dsh-plan-mode'])
+  assert.ok(web.dependencies['@deepseek-ai/dsh-client-ui-plan'])
+  const surfaces = [
+    'profiles/sources/shared.ts',
+    'profiles/generated/development.yml',
+    'profiles/generated/preview.yml',
+    'profiles/generated/stable.yml',
+    'config/layout/runtime-profile.json',
+    'config/deepseek-harness/plugin-inventory.json',
+    'pnpm-workspace.yaml',
+    'pnpm-lock.yaml',
+    'desktop/build/zerowall.patch.yml',
+    'packages/bundles/dsh-bundle-science/dsh.bundle.patch.yml',
+    'tools/plugins/generate-workspaces.mjs',
+    'tools/integration/research-tool-config.mjs',
+  ]
+  for (const path of surfaces) {
+    const text = await read(path)
+    assert.doesNotMatch(text, retiredPlugin, path)
+    assert.doesNotMatch(text, legacyRoutes, path)
+  }
+})
+
+test('every first-party plugin manifest and MCP patch use the native tool composition', async () => {
+  let checked = 0
+  for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'wechat') continue
+    const manifestPath = `plugins/${entry.name}/package.json`
+    const manifest = JSON.parse(await read(manifestPath))
+    if (!manifest.name.startsWith('@zerowallscience/plugin-')) continue
+    assert.doesNotMatch(JSON.stringify(manifest), retiredPlugin, manifestPath)
+    const patchPath = `plugins/${entry.name}/dsh.bundle.patch.yml`
+    assert.doesNotMatch(await read(patchPath), retiredPlugin, patchPath)
+    checked++
+  }
+  assert.ok(checked > 20, 'the contract must inspect the actual first-party plugin set')
+  assert.doesNotMatch(await read('plugins/mcp/src/host/index.ts'), legacyRoutes)
+})
+
+test('bundled Skill documents and references no longer instruct legacy routing', async () => {
+  let checked = 0
+  async function visit(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name)
+      if (entry.isDirectory() && !['.git', '__pycache__'].includes(entry.name)) await visit(path)
+      else if (entry.isFile() && entry.name.endsWith('.md')) {
+        assert.doesNotMatch(await readFile(path, 'utf8'), legacyRoutes, path)
+        checked++
+      }
+    }
+  }
+  await visit(join(root, 'resources/extensions/skills'))
+  assert.ok(checked > 100, 'the contract must inspect bundled Skills and their references')
+})

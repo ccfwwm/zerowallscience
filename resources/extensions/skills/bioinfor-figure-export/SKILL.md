@@ -18,7 +18,7 @@ description: >-
 
 These host rules override workflow examples below when they differ.
 
-- Use ZeroWall tools by their actual names and discover optional MCP capabilities with `tool_search`; do not assume a connector is installed.
+- Use ZeroWall tools by their actual names and use the exact optional MCP tool name exposed by the Host; do not assume a connector is installed.
 - Use `python` or `r` for short interactive work and `run_in_context` with Run Manager for long-running or high-resource jobs.
 - Resolve credentials only through **Settings > Credentials**. Never create, scan, or load project `.env` files and never print secret values.
 - Keep network calls, large transfers, overwrites, and destructive changes approval-gated. Start with read-only inspection or a dry-run plan.

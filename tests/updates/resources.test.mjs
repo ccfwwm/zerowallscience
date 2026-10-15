@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateKeyPairSync } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -59,6 +59,40 @@ test('a selected update links unchanged offline packages without resolving their
   assert.equal(JSON.parse(await readFile(join(offline, 'package.json'))).dependencies['@deepseek-ai/internal'], 'workspace:*')
 })
 
+test('selected updates repair missing legacy file dependencies from the signed catalog', async () => {
+  const f = await fixture()
+  try {
+    const staleId = 'legacy-plugin'
+    const stalePayload = join(f.home, 'legacy-plugin.tgz')
+    await writeFile(stalePayload, 'signed legacy payload')
+    const stale = { ...f.resource, id: staleId, downloadUrl: pathToFileURL(stalePayload).href, size: (await readFile(stalePayload)).length, sha256: await fileDigest(stalePayload) }
+    await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [f.resource, stale] }, f.privateKey, 'test')))
+    await initializeProfile(f.home, [f.resource.id, staleId])
+    const file = join(f.home, 'profiles/web/package.json')
+    const manifest = JSON.parse(await readFile(file, 'utf8'))
+    manifest.dependencies = {
+      [staleId]: 'file:' + join(f.home, 'artifacts/release/8.2.0/legacy-plugin.tgz').replaceAll('\\', '/'),
+      '@everclear077/dsh-progressive-tools': 'file:C:/old/progressive-tools.tgz',
+    }
+    manifest.dsh.profile.bundles.push('@everclear077/dsh-progressive-tools')
+    await writeFile(file, JSON.stringify(manifest))
+    const stalePath = manifest.dependencies[staleId].slice(5)
+    await writeFile(join(f.home, 'profiles/web/pnpm-lock.yaml'), `importers:\n  .:\n    dependencies:\n      ${staleId}:\n        specifier: file:${stalePath}\n        version: file:../../artifacts/release/8.2.0/legacy-plugin.tgz\n`)
+    const manager = createResourceManager({ ...f, target, yaml, local: true, runPlugin: async (_args, generation) => {
+      const candidate = JSON.parse(await readFile(join(f.home, 'profiles', generation, 'package.json')))
+      const lock = await readFile(join(f.home, 'profiles', generation, 'pnpm-lock.yaml'), 'utf8')
+      assert.match(candidate.dependencies[staleId], /^file:.*\.tgz$/u)
+      assert.equal(candidate.dependencies['@everclear077/dsh-progressive-tools'], undefined)
+      assert(!candidate.dsh.profile.bundles.includes('@everclear077/dsh-progressive-tools'))
+      assert(!lock.includes('artifacts/release/8.2.0'))
+      throw new Error('fixture stops before activation')
+    } })
+    await assert.rejects(manager.plugin(f.resource.id, f.source), /fixture stops/)
+  } finally {
+    await rm(f.home, { recursive: true, force: true })
+  }
+})
+
 test('candidate installation preserves reviewed native build policies and strict enforcement', async () => {
   const f = await fixture()
   await initializeProfile(f.home, [f.resource.id])
@@ -75,6 +109,25 @@ test('candidate installation preserves reviewed native build policies and strict
   } })
   await assert.rejects(manager.plugin(f.resource.id, f.source), /fixture stops/)
   assert.deepEqual(JSON.parse(await readFile(join(f.home, 'profiles/web/pnpm-workspace.yaml'))), policy)
+})
+
+test('repairing a missing tarball cannot change an unrelated pinned plugin version', async () => {
+  const f = await fixture()
+  try {
+    const legacy = { ...f.resource, id: 'legacy-pinned-plugin' }
+    await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [f.resource, legacy] }, f.privateKey, 'test')))
+    await initializeProfile(f.home, [f.resource.id, legacy.id])
+    const file = join(f.home, 'profiles/web/package.json')
+    const manifest = JSON.parse(await readFile(file))
+    manifest.dependencies = { [legacy.id]: 'file:missing-pinned-version.tgz' }
+    await writeFile(file, JSON.stringify(manifest))
+    await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
+    await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify({ pinned: { [legacy.id]: '0.0.9' } }))
+    const before = await readFile(file, 'utf8')
+    const manager = createResourceManager({ ...f, target, local: true, runPlugin: async () => assert.fail('Pinned repair must not start package installation') })
+    await assert.rejects(manager.plugin(f.resource.id, f.source), /version is pinned/)
+    assert.equal(await readFile(file, 'utf8'), before)
+  } finally { await rm(f.home, { recursive: true, force: true }) }
 })
 
 test('signature and runtime compatibility reject tampering and an incorrect rc version', async () => {

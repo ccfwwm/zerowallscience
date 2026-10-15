@@ -9,7 +9,7 @@ description: Build AI-ready project scaffolds from README requirements. Use this
 
 These host rules override workflow examples below when they differ.
 
-- Use ZeroWall tools by their actual names. Begin with `read`, `search`, and `grep`; discover optional MCP capabilities with `tool_search`.
+- Use ZeroWall tools by their actual names. Begin with `read`, `search`, and `grep`; use the exact optional MCP tool name exposed by the Host.
 - Keep all generated project files inside the active project or Session workspace and preserve unrelated user files.
 - Resolve credentials only through **Settings > Credentials**. Never create, scan, or load project `.env` files and never print secret values.
 - Keep network calls, overwrites, repository initialization, and destructive moves approval-gated.

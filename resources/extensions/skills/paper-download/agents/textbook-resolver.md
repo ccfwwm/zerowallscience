@@ -42,18 +42,24 @@ A JSON array of decisions, one per candidate, in the same order :
 
 ```json
 [
-  {"slug": "hopcroft_0000_untitled",
-   "action": "merge_into",
-   "target_slug": "hopcroft_2006_introduction_automata",
-   "rationale": "short_ref_of_same_textbook"},
-  {"slug": "sipser_0000_untitled",
-   "action": "complete",
-   "year": "2012",
-   "title": "Introduction to the Theory of Computation",
-   "rationale": "canonical_textbook_known_by_author"},
-  {"slug": "wolper_0000_untitled",
-   "action": "blocked",
-   "reason": "ambiguous_textbook_needs_human"}
+  {
+    "slug": "hopcroft_0000_untitled",
+    "action": "merge_into",
+    "target_slug": "hopcroft_2006_introduction_automata",
+    "rationale": "short_ref_of_same_textbook"
+  },
+  {
+    "slug": "sipser_0000_untitled",
+    "action": "complete",
+    "year": "2012",
+    "title": "Introduction to the Theory of Computation",
+    "rationale": "canonical_textbook_known_by_author"
+  },
+  {
+    "slug": "wolper_0000_untitled",
+    "action": "blocked",
+    "reason": "ambiguous_textbook_needs_human"
+  }
 ]
 ```
 

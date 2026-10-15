@@ -30,8 +30,13 @@ When complete:
   "indication_name": "...",
   "parent_indication": "... or null",
   "definition": "...",
-  "icd_codes": ["K70", "..."],
-  "aliases": ["..."],
+  "icd_codes": [
+    "K70",
+    "..."
+  ],
+  "aliases": [
+    "..."
+  ],
   "is_standard_diagnosis": true,
   "notes": "Any caveats about this indication's status (not ICD-coded, novel, etc.)"
 }
@@ -91,7 +96,12 @@ When complete:
 ```json
 {
   "sources": [
-    {"url": "...", "source_type": "...", "date_accessed": "...", "result": "success|failed|partial"}
+    {
+      "url": "...",
+      "source_type": "...",
+      "date_accessed": "...",
+      "result": "success|failed|partial"
+    }
   ]
 }
 ```

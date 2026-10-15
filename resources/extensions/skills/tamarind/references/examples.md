@@ -45,31 +45,40 @@ settings={"sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIE"})` → `valid: true`.
 
 ### AlphaFold — monomer
 ```json
-{ "sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALPDAQFEVVHSLAKWKR",
-  "numModels": "1", "numRecycles": 3 }
+{
+  "sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALPDAQFEVVHSLAKWKR",
+  "numModels": "1",
+  "numRecycles": 3
+}
 ```
 Only `sequence` is required; everything else has a default. `numModels` is a string
 dropdown (`"1"`–`"5"`).
 
 ### AlphaFold — multimer (colon-separated chains)
 ```json
-{ "sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIE:DIQMTQSPSSLSASVGDRVTITCRASQSISSYLN" }
+{
+  "sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIE:DIQMTQSPSSLSASVGDRVTITCRASQSISSYLN"
+}
 ```
 Join chains with `:`. No separate "multimer" flag — chain count drives it.
 
 ### Boltz-2 — sequence mode
 ```json
-{ "inputFormat": "sequence",
-  "sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALP" }
+{
+  "inputFormat": "sequence",
+  "sequence": "MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQAPILSRVGDGTQDNLSGAEKAVQVKVKALP"
+}
 ```
 `inputFormat` is **required** (`"sequence"` / `"list"` / `"molecules"` / `"yaml"`).
 Omitting it fails — see "What fails" below.
 
 ### DiffDock — protein + SMILES ligand
 ```json
-{ "ligandFormat": "SMILES",
+{
+  "ligandFormat": "SMILES",
   "ligandSmiles": "CC(=O)Oc1ccccc1C(=O)O",
-  "proteinFile": "<uploaded-path-or-inline-PDB-text>" }
+  "proteinFile": "<uploaded-path-or-inline-PDB-text>"
+}
 ```
 `ligandFormat` chooses the conditional field: `"SMILES"` → `ligandSmiles`;
 `"sdf/mol2 file"` → `ligandFile`. `proteinFile` is a file param — pass an uploaded
@@ -78,11 +87,17 @@ file's bare filename (`target.pdb`, not email-prefixed), a prior-job path
 
 ### Autodock Vina — protein + SMILES ligand (classical docking into a pocket)
 ```json
-{ "receptorFile": "receptor.pdb",
+{
+  "receptorFile": "receptor.pdb",
   "ligandFormat": "smiles",
   "ligandSmiles": "CC(=O)Oc1ccccc1C(=O)O",
-  "boxX": 15.19, "boxY": 53.903, "boxZ": 16.917,
-  "width": 20, "height": 20, "depth": 20 }
+  "boxX": 15.19,
+  "boxY": 53.903,
+  "boxZ": 16.917,
+  "width": 20,
+  "height": 20,
+  "depth": 20
+}
 ```
 Unlike DiffDock, Autodock Vina docks into a **fixed pocket**, so it requires a bounding
 box (`boxX/Y/Z` center + `width/height/depth`, all required) and the receptor in
@@ -92,9 +107,14 @@ don't copy DiffDock's value across. `exhaustiveness` (default 8) is optional. `v
 
 ### ProteinMPNN — design residues on a backbone
 ```json
-{ "pdbFile": "<uploaded-path-or-inline-PDB-text>",
-  "designedResidues": { "A": "1 2 3 4 5" },
-  "numSequences": 4, "modelType": "proteinmpnn" }
+{
+  "pdbFile": "<uploaded-path-or-inline-PDB-text>",
+  "designedResidues": {
+    "A": "1 2 3 4 5"
+  },
+  "numSequences": 4,
+  "modelType": "proteinmpnn"
+}
 ```
 Requires `pdbFile` + `designedResidues` (per-chain, space-separated resnums).
 `modelType` ∈ `proteinmpnn`/`ligandmpnn`/`solublempnn`/`hypermpnn`/`abmpnn`.
@@ -102,9 +122,22 @@ Note `designedChains` is `exclude:["api"]` — don't send it over the API.
 
 ### Batch (same tool, many jobs)
 ```json
-{ "batchName": "screen-1", "type": "alphafold",
-  "jobNames": ["s1", "s2"],
-  "settings": [ { "sequence": "MKT..." }, { "sequence": "AVF..." } ] }
+{
+  "batchName": "screen-1",
+  "type": "alphafold",
+  "jobNames": [
+    "s1",
+    "s2"
+  ],
+  "settings": [
+    {
+      "sequence": "MKT..."
+    },
+    {
+      "sequence": "AVF..."
+    }
+  ]
+}
 ```
 
 ## What fails (and the exact error) — confirmed live

@@ -2,7 +2,7 @@
 
 ## 三层参数与两种文件入口
 
-`tool_dispatch.name` 是发现到的 Host 工具名。`research_workflow.action` 是流程动作。`parameters.operation` 是精确业务 ID，业务参数仅放在 `parameters.arguments`。`describe` 的 `operation` 放在顶层。
+`research_workflow` 是发现到的 Host 工具名。`research_workflow.action` 是流程动作。`parameters.operation` 是精确业务 ID，业务参数仅放在 `parameters.arguments`。`describe` 的 `operation` 放在顶层。
 
 | 入口 | 作用 | 示例参数 |
 |---|---|---|
@@ -13,7 +13,14 @@
 发现入口后，查询 R 环境的完整包装：
 
 ```json
-{"name":"research_workflow","arguments":{"action":"query","workflow_id":"r.compute","parameters":{"operation":"r.runtime.capabilities","arguments":{}}}}
+{
+  "action": "query",
+  "workflow_id": "r.compute",
+  "parameters": {
+    "operation": "r.runtime.capabilities",
+    "arguments": {}
+  }
+}
 ```
 
 `query` 由服务端按副作用限制；下载数据、写文件、执行分析和管理操作走 `run`。旧调用通过 `run` 执行查询仍受支持。模型不能从名称猜测只读属性。

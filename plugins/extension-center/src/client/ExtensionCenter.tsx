@@ -207,6 +207,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
   const rollbackConflict = (job: Job): boolean => job.action === 'rollback' && Boolean(job.error?.includes('PLUGIN_ROLLBACK_CONFLICT'))
   const resourceStatus = (item: Resource): string => {
     if (isCoreResource(item, kind)) return t('systemCore')
+    if (item.source === 'removed') return t('source_removed')
     if (item.installState === 'missing' && item.source !== 'catalog') return t('missing')
     if (item.installState === 'missing' || item.source === 'catalog' || item.pythonNeedsInstall) return t('notInstalled')
     if (item.pythonLayer && !item.pythonInstalled) return t('notInstalled')

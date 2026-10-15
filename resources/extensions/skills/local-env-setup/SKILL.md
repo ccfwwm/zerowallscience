@@ -8,7 +8,7 @@ license: Apache-2.0
 
 ZeroWall uses its signed Python 3.12.10 runtime and managed snapshots. It does not require a separately downloaded Python, uv or venv.
 
-1. Discover `python_environment` with `tool_search` and dispatch `action="info"` to inspect the actual interpreter, snapshot, packages and health.
+1. Discover `python_environment` with Host tool registry and dispatch `action="info"` to inspect the actual interpreter, snapshot, packages and health.
 2. Load `zerowall-python-packages` for dependency changes. Preview and obtain confirmation before applying; never modify the active snapshot with pip, uv, conda or global PATH settings.
 3. Discover `mcp_connect` to inspect connections. Configure credentials in Settings. A disconnected MCP is not proof of missing Python dependencies.
 4. Query task status after changes and retain the previous healthy environment on failure.

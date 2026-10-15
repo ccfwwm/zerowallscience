@@ -376,8 +376,17 @@ Therefore:
 {
   "retrieved_at_utc": "2026-07-23T00:00:00Z",
   "endpoint": "https://api.materialsproject.org/materials/summary/",
-  "filters": {"material_ids": ["mp-149"]},
-  "fields": ["material_id", "formula_pretty", "origins", "last_updated"],
+  "filters": {
+    "material_ids": [
+      "mp-149"
+    ]
+  },
+  "fields": [
+    "material_id",
+    "formula_pretty",
+    "origins",
+    "last_updated"
+  ],
   "limit": 1,
   "client": {
     "mp-api": "0.46.4",

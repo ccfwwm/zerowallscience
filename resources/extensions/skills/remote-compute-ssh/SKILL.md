@@ -40,14 +40,18 @@ same idempotent remote handle.
   "title": "Motif enrichment across 2,000 backgrounds",
   "command": "source ~/miniforge3/etc/profile.d/conda.sh && conda activate genomics && python motif_enrichment_analysis.py",
   "timeout_secs": 14400,
-  "input_paths": ["scripts/motif_enrichment_analysis.py"]
+  "input_paths": [
+    "scripts/motif_enrichment_analysis.py"
+  ]
 }
 ```
 
 Then, when live monitoring is needed:
 
 ```json
-{ "run_id": "<id returned by run_in_context>" }
+{
+  "run_id": "<id returned by run_in_context>"
+}
 ```
 
 Pass that object to `monitor_run` once. The call may remain suspended for hours;

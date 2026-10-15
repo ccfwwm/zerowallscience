@@ -50,9 +50,15 @@ Manual observation on 2026-07-27 yielded the following body for `10.3760/cma.j.c
   "DOI": "10.3760/cma.j.cn112137-20231008-00670",
   "title": "宫颈腺癌中ProEXC和PRMT5的表达及其临床意义",
   "container-title": "中华医学杂志",
-  "volume": "103", "issue": "48", "page": "3967",
+  "volume": "103",
+  "issue": "48",
+  "page": "3967",
   "type": "article-journal",
-  "author": [{"given": "Cui Hongxia"}]
+  "author": [
+    {
+      "given": "Cui Hongxia"
+    }
+  ]
 }
 ```
 
@@ -118,10 +124,22 @@ The coordinate tuple is a deterministic **candidate query**, not a fuzzy title m
 **Critical limitation, measured 2026-07-27.** For a Chinese-language article, `esummary` returns the **English bracketed shadow title**, never the Chinese original:
 
 ```json
-{"title": "[Expression of ProEXC and PRMT5 in cervical adenocarcinoma ...].",
- "source": "Zhonghua Yi Xue Za Zhi", "volume": "103", "pages": "3967-3971",
- "lang": ["chi"], "issn": "0376-2491",
- "articleids": [{"idtype": "doi", "value": "10.3760/cma.j.cn112137-20231008-00670"}]}
+{
+  "title": "[Expression of ProEXC and PRMT5 in cervical adenocarcinoma ...].",
+  "source": "Zhonghua Yi Xue Za Zhi",
+  "volume": "103",
+  "pages": "3967-3971",
+  "lang": [
+    "chi"
+  ],
+  "issn": "0376-2491",
+  "articleids": [
+    {
+      "idtype": "doi",
+      "value": "10.3760/cma.j.cn112137-20231008-00670"
+    }
+  ]
+}
 ```
 
 A Chinese-to-English title cross-check is therefore **structurally impossible inside PubMed**. A unique coordinate hit is only a **candidate**, never a match by itself. The candidate's echoed ISSN, year, volume, and first page must not conflict wherever both sides provide them, and its DOI must then route to a Chinese RA that provides a machine-readable Chinese title. Only an ISTIC DOI whose CSL title is obtained within the allowlisted HTTPS boundary and exactly matches the cited Chinese title is promoted to `PUBMED_COORDINATE_VERIFIED`. No DOI, an unknown or non-Chinese RA, CNKI Handle existence without a title, a missing/unverifiable CSL title, a title mismatch, or any structural conflict all remain title-keyed `unresolvable`; none is negative evidence about the citation. Transport, unsafe redirect, non-JSON, or malformed-payload failure instead raises `ChineseLiteratureUnavailable` for the caller to map to `unreachable` — it never becomes a verdict.

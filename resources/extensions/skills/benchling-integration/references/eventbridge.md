@@ -122,20 +122,28 @@ Resources:
 
 ```json
 {
-  "detail-type": ["v2.assayRun.updated"],
+  "detail-type": [
+    "v2.assayRun.updated"
+  ],
   "detail": {
-    "updates": ["my_field"]
+    "updates": [
+      "my_field"
+    ]
   }
 }
 ```
 
 ```json
 {
-  "detail-type": ["v2.entity.registered"],
+  "detail-type": [
+    "v2.entity.registered"
+  ],
   "detail": {
     "entity": {
       "schema": {
-        "id": ["ts_MySchemaId"]
+        "id": [
+          "ts_MySchemaId"
+        ]
       }
     }
   }

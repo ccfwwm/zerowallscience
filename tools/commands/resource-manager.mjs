@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
@@ -12,6 +12,41 @@ async function atomic(path, value) {
   const candidate = path + '.' + randomUUID() + '.tmp'
   await writeFile(candidate, JSON.stringify(value, null, 2), { mode: 0o600 })
   await rename(candidate, path)
+}
+
+const RETIRED_PLUGIN_IDS = new Set(['@everclear077/dsh-progressive-tools', 'dsh-progressive-tools'])
+
+function retiredPackageSelector(selector) {
+  return selector.split('>').some(part => [...RETIRED_PLUGIN_IDS].some(id => part.trim() === id || part.trim().startsWith(id + '@')))
+}
+
+function removeRetiredPlugins(manifest) {
+  let changed = false
+  const bundles = manifest.dsh?.profile?.bundles
+  if (Array.isArray(bundles)) {
+    const filtered = bundles.filter(id => !RETIRED_PLUGIN_IDS.has(id))
+    if (filtered.length !== bundles.length) {
+      manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh.profile, bundles: filtered } }
+      changed = true
+    }
+  }
+  for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+    if (!manifest[field]) continue
+    for (const id of RETIRED_PLUGIN_IDS) {
+      if (Object.prototype.hasOwnProperty.call(manifest[field], id)) {
+        delete manifest[field][id]
+        changed = true
+      }
+    }
+  }
+  if (Array.isArray(manifest.zerowall?.disabledPlugins)) {
+    const filtered = manifest.zerowall.disabledPlugins.filter(id => !RETIRED_PLUGIN_IDS.has(id))
+    if (filtered.length !== manifest.zerowall.disabledPlugins.length) {
+      manifest.zerowall = { ...manifest.zerowall, disabledPlugins: filtered }
+      changed = true
+    }
+  }
+  return changed
 }
 
 /** Signed resource preparation and official DSH profile transactions. */
@@ -48,12 +83,17 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   async function preparePackageInstall(candidate, replacements = {}) {
     const file = join(candidate, 'package.json')
     const manifest = await json(file)
+    // Progressive Tools was retired in 8.2.1. Remove stale declarations from
+    // copied profiles before pnpm sees them, including profiles created by an
+    // older desktop build.
+    removeRetiredPlugins(manifest)
     const workspaceFile = join(candidate, 'pnpm-workspace.yaml')
     const text = await readFile(workspaceFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return '' })
     const workspace = text.trim() ? yaml.parse(text) : {}
     workspace.overrides = { ...workspace.overrides, ...replacements }
     delete workspace.overrides['dsh-auto-review']
     delete workspace.overrides['@zerowallscience/dsh-capability-menu']
+    for (const selector of Object.keys(workspace.overrides)) if (retiredPackageSelector(selector)) delete workspace.overrides[selector]
     // A peer lookup can resolve a catalog-only version through the registry
     // even with an override. Anchor the entire verified closure as direct
     // file dependencies, including packages absent from older profiles.
@@ -81,6 +121,76 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     workspace.allowBuilds = { ssh2: false, 'cpu-features': false, ...workspace.allowBuilds, '@scarf/scarf': false }
     await atomic(file, manifest)
     await writeFile(workspaceFile, yaml.stringify(workspace))
+    // A copied lock can still carry retired packages or resolver records for
+    // deleted build-machine tarballs. Drop only the affected resolver entries
+    // so pnpm resolves their verified replacements and preserves other locks.
+    const lockFile = join(candidate, 'pnpm-lock.yaml')
+    const lockText = await readFile(lockFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
+    if (lockText !== undefined) {
+      const lock = yaml.parse(lockText)
+      let changed = false
+      const replacedIds = new Set([...RETIRED_PLUGIN_IDS, ...Object.keys(replacements)])
+      for (const importer of Object.values(lock?.importers ?? {})) {
+        for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+          for (const id of replacedIds) if (Object.prototype.hasOwnProperty.call(importer[field] ?? {}, id)) { delete importer[field][id]; changed = true }
+        }
+      }
+      for (const field of ['packages', 'snapshots']) {
+        for (const key of Object.keys(lock?.[field] ?? {})) {
+          if ([...replacedIds].some(id => key === id || key.startsWith(id + '@'))) { delete lock[field][key]; changed = true }
+        }
+      }
+      for (const selector of Object.keys(lock?.overrides ?? {})) {
+        if (retiredPackageSelector(selector)) { delete lock.overrides[selector]; changed = true }
+      }
+      if (changed) await writeFile(lockFile, yaml.stringify(lock))
+    }
+  }
+
+  async function repairMissingFileDependencies(candidate, document, replacements, { signal } = {}) {
+    if (!document?.resources) return
+    const manifestFile = join(candidate, 'package.json')
+    const manifest = await json(manifestFile)
+    if (removeRetiredPlugins(manifest)) await atomic(manifestFile, manifest)
+    const choices = await readPluginSelection()
+    const repaired = new Map()
+    function visit(entry) {
+      if (repaired.has(entry.id) || replacements[entry.id]) return
+      assertCompatible(entry, target)
+      if (choices.removed.has(entry.id)) throw new Error('Required plugin was explicitly removed: ' + entry.id)
+      if (choices.pinned[entry.id] && choices.pinned[entry.id] !== entry.version) throw new Error('Plugin or dependency version is pinned: ' + entry.id)
+      repaired.set(entry.id, entry)
+      for (const [id, range] of Object.entries(entry.dependencies ?? {})) {
+        const child = document.resources.find(item => item.id === id && ['plugin', 'support'].includes(item.kind))
+        if (choices.removed.has(id)) throw new Error('Required plugin was explicitly removed: ' + id)
+        if (child) {
+          if (!satisfiesPackageRange(child.version, range)) throw new Error('Signed dependency version does not satisfy ' + entry.id + ': ' + id + '@' + range)
+          visit(child)
+        }
+      }
+    }
+    for (const [id, spec] of Object.entries(manifest.dependencies ?? {})) {
+      if (replacements[id] || typeof spec !== 'string' || !spec.startsWith('file:')) continue
+      const source = resolve(candidate, spec.slice(5))
+      const available = await stat(source).catch(error => {
+        if (error.code === 'ENOENT') return undefined
+        throw error
+      })
+      if (available) continue
+      const entry = document.resources.find(item => item.id === id && ['plugin', 'support'].includes(item.kind))
+      if (!entry) throw new Error(`Missing package source for ${id}; it is absent from the signed catalog`)
+      const installed = await packageVersion(active, id)
+      if (installed && compareVersions(entry.version, installed.version) < 0) throw new Error('Repair would downgrade an installed plugin: ' + id)
+      visit(entry)
+    }
+    for (const entry of repaired.values()) {
+      const installed = await packageVersion(active, entry.id)
+      if (installed && compareVersions(entry.version, installed.version) < 0) throw new Error('Repair would downgrade an installed plugin: ' + entry.id)
+      const cached = await downloadResource(entry, join(root, 'downloads'), { local, signal })
+      const tarball = cached + '.tgz'
+      await cp(cached, tarball)
+      replacements[entry.id] = 'file:' + tarball.replaceAll('\\', '/')
+    }
   }
 
   async function readPluginSelection() {
@@ -102,6 +212,11 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   }
 
   async function writePluginSelection(selection) {
+    for (const id of RETIRED_PLUGIN_IDS) {
+      selection.disabled.delete(id)
+      selection.removed.delete(id)
+      delete selection.pinned[id]
+    }
     await atomic(selectionFile, {
       ...selection,
       disabled: [...selection.disabled].sort(),
@@ -368,6 +483,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
         await atomic(journal, { state: 'preparing', candidate, completed, ...metadata })
       }
       await copyProfileSkeleton(active, candidate)
+      await repairMissingFileDependencies(candidate, document, overrides, { signal })
+      metadata.packageIds = [...new Set([...metadata.packageIds, ...Object.keys(overrides)])]
       await preparePackageInstall(candidate, overrides)
       checkCancelled()
       await runPlugin(['add', ...entries.map(entry => archives.get(entry.id))], generation, { signal })
@@ -388,6 +505,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   async function normalizeComposition(candidate, removed) {
     const file = join(candidate, 'package.json')
     const manifest = await json(file)
+    removeRetiredPlugins(manifest)
     const selection = await readPluginSelection()
     const disabled = new Set([...selection.disabled, ...(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : [])])
     const bundles = []

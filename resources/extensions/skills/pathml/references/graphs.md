@@ -203,11 +203,30 @@ For safer exchange, use bounded JSON rather than a pickled `.pt` object:
   "slide_id": "slide-001",
   "coordinate_unit": "um",
   "nodes": [
-    {"id": "cell-1", "x": 12.5, "y": 30.0, "features": [0.2, 1.3]},
-    {"id": "cell-2", "x": 15.0, "y": 32.0, "features": [0.4, 1.1]}
+    {
+      "id": "cell-1",
+      "x": 12.5,
+      "y": 30,
+      "features": [
+        0.2,
+        1.3
+      ]
+    },
+    {
+      "id": "cell-2",
+      "x": 15,
+      "y": 32,
+      "features": [
+        0.4,
+        1.1
+      ]
+    }
   ],
   "edges": [
-    {"source": "cell-1", "target": "cell-2"}
+    {
+      "source": "cell-1",
+      "target": "cell-2"
+    }
   ]
 }
 ```

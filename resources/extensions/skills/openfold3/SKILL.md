@@ -99,14 +99,35 @@ OpenFold3 does **not** read FASTA. Queries are a JSON object validated by
   "queries": {
     "my_complex": {
       "chains": [
-        {"molecule_type": "protein", "chain_ids": ["A"], "sequence": "MQIFVK…"},
-        {"molecule_type": "protein", "chain_ids": ["B", "C"], "sequence": "MVLSPA…"},
-        {"molecule_type": "ligand",  "chain_ids": ["L"], "smiles": "CC(=O)Oc1ccccc1C(=O)O"}
+        {
+          "molecule_type": "protein",
+          "chain_ids": [
+            "A"
+          ],
+          "sequence": "MQIFVK…"
+        },
+        {
+          "molecule_type": "protein",
+          "chain_ids": [
+            "B",
+            "C"
+          ],
+          "sequence": "MVLSPA…"
+        },
+        {
+          "molecule_type": "ligand",
+          "chain_ids": [
+            "L"
+          ],
+          "smiles": "CC(=O)Oc1ccccc1C(=O)O"
+        }
       ],
       "use_msas": true
     }
   },
-  "seeds": [42]
+  "seeds": [
+    42
+  ]
 }
 ```
 
@@ -159,9 +180,16 @@ out/
 
 ```json
 {
-  "avg_plddt": 78.96, "ptm": 0.667, "iptm": 0.0, "gpde": 0.73,
-  "has_clash": 0.0, "sample_ranking_score": 0.133,
-  "chain_ptm": {"A": 0.667}, "chain_pair_iptm": {}
+  "avg_plddt": 78.96,
+  "ptm": 0.667,
+  "iptm": 0,
+  "gpde": 0.73,
+  "has_clash": 0,
+  "sample_ranking_score": 0.133,
+  "chain_ptm": {
+    "A": 0.667
+  },
+  "chain_pair_iptm": {}
 }
 ```
 

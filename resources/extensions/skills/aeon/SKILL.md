@@ -2,7 +2,7 @@
 name: aeon
 description: This skill should be used for time series machine learning tasks including classification, regression, clustering, forecasting, anomaly detection, segmentation, and similarity search. Use when working with temporal data, sequential patterns, or time-indexed observations requiring specialized algorithms beyond standard ML approaches. Particularly suited for univariate and multivariate time series analysis with scikit-learn compatible APIs.
 license: BSD-3-Clause license
-allowed-tools: read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch
+allowed-tools: read write edit grep pwsh bash python r run_in_context get_run monitor_run cancel_run
 compatibility: Requires Python 3.10+ and the aeon package (uv pip install). Optional aeon[all_extras] for deep learning and extended dependencies.
 metadata:
   version: "1.0"
@@ -26,13 +26,13 @@ zerowall:
 
 These host rules override upstream examples when they differ:
 
-- Discover tools with `tool_search`; execute the exact returned name through `tool_dispatch` with its `arguments` object. Loading a Skill supplies instructions, not execution. Use `python` for the managed local interpreter, and discover `pwsh` on Windows or `bash` on Unix when shell work is needed.
+- Call the exact native tool name with its argument object; use the host tool list to confirm the current schema. Loading a Skill supplies instructions, not execution. Use `python` for the managed local interpreter, and discover `pwsh` on Windows or `bash` on Unix when shell work is needed.
 - Use `python` or `r` for short interactive work. Use `run_in_context` plus `monitor_run` for training, GPU, Nextflow, batch, remote, or otherwise long-running work; do not extend the ordinary `shell` timeout.
 - Resolve credentials only through **Settings > Credentials** and the approved execution-context environment. Never create, scan, or load project `.env` files and never print or persist secret values.
 - Treat network calls, cloud jobs, experiment submissions, writes, deletion, and physical equipment actions as approval-gated. Default to read-only inspection, validation, or dry-run planning until the user explicitly requests execution.
 - Use `zerowall-python-packages` for managed Python dependency changes: inspect, preview, obtain confirmation, apply, and verify. Do not run pip/uv/conda against the managed snapshot. Report missing external runtimes separately.
 - Use `pathlib`, project-relative paths, and platform temporary directories. Gate Unix-only commands behind an explicit WSL/SSH execution context.
-- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with `tool_search`.
+- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with Host tool registry.
 
 # Aeon Time Series Machine Learning
 
@@ -424,4 +424,3 @@ Detailed information available in `references/`:
 - GitHub: https://github.com/aeon-toolkit/aeon
 - Examples: https://www.aeon-toolkit.org/en/stable/examples.html
 - API Reference: https://www.aeon-toolkit.org/en/stable/api_reference.html
-

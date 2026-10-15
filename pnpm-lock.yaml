@@ -5,20 +5,6 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/cordis': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-agent': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-agent-loop': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-llm': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-scope': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-session': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-system-prompt': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-tools': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-attachment': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-session-projection': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-session-persistence': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-settings': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-user-approval': workspace:*
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-ptc-runtime': workspace:*
   micromark-util-types: 2.0.2
   tsdown: 0.22.2
   '@tsdown/css': 0.22.2
@@ -14716,9 +14702,6 @@ importers:
       '@dsh-external/zotero-harvest':
         specifier: workspace:*
         version: link:../packages/dsh/zotero-harvest
-      '@everclear077/dsh-progressive-tools':
-        specifier: workspace:*
-        version: link:../packages/dsh/dsh-progressive-tools
       '@zerowallscience/integrity-runtime':
         specifier: workspace:^
         version: link:../packages/support/integrity-runtime
@@ -15796,73 +15779,6 @@ importers:
       yaml:
         specifier: ^2.4.2
         version: 2.9.0
-
-  packages/dsh/dsh-progressive-tools:
-    dependencies:
-      '@deepseek-ai/schemastery':
-        specifier: link:../../../deepseek-harness/vendor/schemastery
-        version: link:../../../deepseek-harness/vendor/schemastery
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/vendor/cordis
-      '@deepseek-ai/dsh-agent':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/core/agent
-      '@deepseek-ai/dsh-agent-loop':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/core/agent-loop
-      '@deepseek-ai/dsh-attachment':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/attachment/attachment
-      '@deepseek-ai/dsh-llm':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/llm/llm
-      '@deepseek-ai/dsh-ptc-runtime':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/ptc-runtime/ptc-runtime
-      '@deepseek-ai/dsh-scope':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/core/scope
-      '@deepseek-ai/dsh-session':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/core/session
-      '@deepseek-ai/dsh-session-persistence':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/session/session-persistence
-      '@deepseek-ai/dsh-session-projection':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/session/session-projection
-      '@deepseek-ai/dsh-settings':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/settings/settings
-      '@deepseek-ai/dsh-system-prompt':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/core/system-prompt
-      '@deepseek-ai/dsh-tools':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/core/tools
-      '@deepseek-ai/dsh-user-approval':
-        specifier: workspace:*
-        version: link:../../../deepseek-harness/packages/interaction/user-approval
-      '@types/node':
-        specifier: ^22.19.0
-        version: 22.20.1
-      '@vitest/coverage-v8':
-        specifier: ^4.1.8
-        version: 4.1.10(vitest@4.1.11)
-      oxlint:
-        specifier: ^1.76.0
-        version: 1.81.0(oxlint-tsgolint@7.0.2001)
-      publint:
-        specifier: ^0.3.21
-        version: 0.3.23
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
-      vitest:
-        specifier: ^4.1.8
-        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.10)(happy-dom@20.11.8)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.3.0))(lightningcss@1.33.0)(tsx@4.23.13)(yaml@2.9.1)
 
   packages/dsh/dsh-session-notification:
     devDependencies:

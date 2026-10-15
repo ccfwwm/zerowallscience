@@ -16,8 +16,13 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
       "id": 1,
       "prompt": "User's example prompt",
       "expected_output": "Description of expected result",
-      "files": ["evals/files/sample1.pdf"],
-      "expectations": ["The output includes X", "The skill used script Y"]
+      "files": [
+        "evals/files/sample1.pdf"
+      ],
+      "expectations": [
+        "The output includes X",
+        "The skill used script Y"
+      ]
     }
   ]
 }
@@ -119,9 +124,9 @@ Output from the grader agent. Located at `<run-dir>/grading.json`.
     "transcript_chars": 3200
   },
   "timing": {
-    "executor_duration_seconds": 165.0,
-    "grader_duration_seconds": 26.0,
-    "total_duration_seconds": 191.0
+    "executor_duration_seconds": 165,
+    "grader_duration_seconds": 26,
+    "total_duration_seconds": 191
   },
   "claims": [
     {
@@ -132,9 +137,13 @@ Output from the grader agent. Located at `<run-dir>/grading.json`.
     }
   ],
   "user_notes_summary": {
-    "uncertainties": ["Used 2023 data, may be stale"],
+    "uncertainties": [
+      "Used 2023 data, may be stale"
+    ],
     "needs_review": [],
-    "workarounds": ["Fell back to text overlay for non-fillable fields"]
+    "workarounds": [
+      "Fell back to text overlay for non-fillable fields"
+    ]
   },
   "eval_feedback": {
     "suggestions": [
@@ -176,7 +185,10 @@ Output from the executor agent. Located at `<run-dir>/outputs/metrics.json`.
   },
   "total_tool_calls": 18,
   "total_steps": 6,
-  "files_created": ["filled_form.pdf", "field_values.json"],
+  "files_created": [
+    "filled_form.pdf",
+    "field_values.json"
+  ],
   "errors_encountered": 0,
   "output_chars": 12450,
   "transcript_chars": 3200
@@ -208,10 +220,10 @@ Wall clock timing for a run. Located at `<run-dir>/timing.json`.
   "total_duration_seconds": 23.3,
   "executor_start": "2026-01-15T10:30:00Z",
   "executor_end": "2026-01-15T10:32:45Z",
-  "executor_duration_seconds": 165.0,
+  "executor_duration_seconds": 165,
   "grader_start": "2026-01-15T10:32:46Z",
   "grader_end": "2026-01-15T10:33:12Z",
-  "grader_duration_seconds": 26.0
+  "grader_duration_seconds": 26
 }
 ```
 
@@ -229,10 +241,13 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
     "executor_model": "<model-id>",
     "analyzer_model": "<model-id>",
     "timestamp": "2026-01-15T10:30:00Z",
-    "evals_run": [1, 2, 3],
+    "evals_run": [
+      1,
+      2,
+      3
+    ],
     "runs_per_configuration": 3
   },
-
   "runs": [
     {
       "eval_id": 1,
@@ -249,29 +264,59 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
         "tool_calls": 18,
         "errors": 0
       },
-      "expectations": [{ "text": "...", "passed": true, "evidence": "..." }],
+      "expectations": [
+        {
+          "text": "...",
+          "passed": true,
+          "evidence": "..."
+        }
+      ],
       "notes": [
         "Used 2023 data, may be stale",
         "Fell back to text overlay for non-fillable fields"
       ]
     }
   ],
-
   "run_summary": {
     "with_skill": {
-      "pass_rate": { "mean": 0.85, "stddev": 0.05, "min": 0.8, "max": 0.9 },
-      "time_seconds": {
-        "mean": 45.0,
-        "stddev": 12.0,
-        "min": 32.0,
-        "max": 58.0
+      "pass_rate": {
+        "mean": 0.85,
+        "stddev": 0.05,
+        "min": 0.8,
+        "max": 0.9
       },
-      "tokens": { "mean": 3800, "stddev": 400, "min": 3200, "max": 4100 }
+      "time_seconds": {
+        "mean": 45,
+        "stddev": 12,
+        "min": 32,
+        "max": 58
+      },
+      "tokens": {
+        "mean": 3800,
+        "stddev": 400,
+        "min": 3200,
+        "max": 4100
+      }
     },
     "without_skill": {
-      "pass_rate": { "mean": 0.35, "stddev": 0.08, "min": 0.28, "max": 0.45 },
-      "time_seconds": { "mean": 32.0, "stddev": 8.0, "min": 24.0, "max": 42.0 },
-      "tokens": { "mean": 2100, "stddev": 300, "min": 1800, "max": 2500 }
+      "pass_rate": {
+        "mean": 0.35,
+        "stddev": 0.08,
+        "min": 0.28,
+        "max": 0.45
+      },
+      "time_seconds": {
+        "mean": 32,
+        "stddev": 8,
+        "min": 24,
+        "max": 42
+      },
+      "tokens": {
+        "mean": 2100,
+        "stddev": 300,
+        "min": 1800,
+        "max": 2500
+      }
     },
     "delta": {
       "pass_rate": "+0.50",
@@ -279,7 +324,6 @@ Output from Benchmark mode. Located at `benchmarks/<timestamp>/benchmark.json`.
       "tokens": "+1700"
     }
   },
-
   "notes": [
     "Assertion 'Output is a PDF file' passes 100% in both configurations - may not differentiate skill value",
     "Eval 3 shows high variance (50% ± 40%) - may be flaky or model-dependent",
@@ -333,7 +377,7 @@ Output from blind comparator. Located at `<grading-dir>/comparison-N.json`.
       },
       "content_score": 4.7,
       "structure_score": 4.3,
-      "overall_score": 9.0
+      "overall_score": 9
     },
     "B": {
       "content": {
@@ -359,11 +403,16 @@ Output from blind comparator. Located at `<grading-dir>/comparison-N.json`.
         "Well-formatted",
         "All fields present"
       ],
-      "weaknesses": ["Minor style inconsistency in header"]
+      "weaknesses": [
+        "Minor style inconsistency in header"
+      ]
     },
     "B": {
       "score": 5,
-      "strengths": ["Readable output", "Correct basic structure"],
+      "strengths": [
+        "Readable output",
+        "Correct basic structure"
+      ],
       "weaknesses": [
         "Missing date field",
         "Formatting inconsistencies",
@@ -376,13 +425,23 @@ Output from blind comparator. Located at `<grading-dir>/comparison-N.json`.
       "passed": 4,
       "total": 5,
       "pass_rate": 0.8,
-      "details": [{ "text": "Output includes name", "passed": true }]
+      "details": [
+        {
+          "text": "Output includes name",
+          "passed": true
+        }
+      ]
     },
     "B": {
       "passed": 3,
       "total": 5,
       "pass_rate": 0.6,
-      "details": [{ "text": "Output includes name", "passed": true }]
+      "details": [
+        {
+          "text": "Output includes name",
+          "passed": true
+        }
+      ]
     }
   }
 }
@@ -413,7 +472,9 @@ Output from post-hoc analyzer. Located at `<grading-dir>/analysis.json`.
   "instruction_following": {
     "winner": {
       "score": 9,
-      "issues": ["Minor: skipped optional logging step"]
+      "issues": [
+        "Minor: skipped optional logging step"
+      ]
     },
     "loser": {
       "score": 6,

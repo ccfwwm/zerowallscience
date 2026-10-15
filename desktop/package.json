@@ -1,7 +1,7 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "8.2.0",
-  "description": "ZeroWall Science 8.1.2 local-first scientific visualization and research workbench.",
+  "version": "8.2.1",
+  "description": "ZeroWall Science 8.2.1 local-first scientific visualization and research workbench.",
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
@@ -56,7 +56,6 @@
     "dsh-dream-skin": "10.9.3",
     "dsh-file-review": "workspace:*",
     "dsh-free-search": "0.8.3",
-    "@everclear077/dsh-progressive-tools": "workspace:*",
     "dsh-ssh-ops": "workspace:*",
     "dsh-univer-office": "0.3.7",
     "dsh-wechat": "workspace:*",

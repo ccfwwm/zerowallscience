@@ -11,4 +11,3 @@ Use the persisted ZeroWall research objects and the current Host/Runner schemas.
 ## Domain constraints
 
 Scout androgenetic alopecia, alopecia areata and unclassified hair loss separately, then freeze one phenotype. If NHANES is unsuitable, preserve the question and record a lawful external-data fallback or a feasibility stop.
-

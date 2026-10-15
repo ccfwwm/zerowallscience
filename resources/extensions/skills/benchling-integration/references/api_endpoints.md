@@ -59,8 +59,14 @@ All responses follow a consistent JSON structure:
 ```json
 {
   "results": [
-    {"id": "seq_1", "name": "Sequence 1"},
-    {"id": "seq_2", "name": "Sequence 2"}
+    {
+      "id": "seq_1",
+      "name": "Sequence 1"
+    },
+    {
+      "id": "seq_2",
+      "name": "Sequence 2"
+    }
   ],
   "nextToken": "token_for_next_page"
 }

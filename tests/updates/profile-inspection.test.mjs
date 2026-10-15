@@ -138,3 +138,42 @@ test('removes the retired third-party auto-review plugin while preserving other 
     assert(!selection.disabled.includes('dsh-auto-review'))
   } finally { await rm(home, { recursive: true, force: true }) }
 })
+
+test('cleans Progressive Tools from an already repaired architecture-7 profile', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-retired-progressive-'))
+  try {
+    const directory = join(home, 'profiles/web')
+    await mkdir(directory, { recursive: true })
+    await mkdir(join(home, 'resources/plugins'), { recursive: true })
+    const file = join(directory, 'package.json')
+    const progressive = '@everclear077/dsh-progressive-tools'
+    await writeFile(file, JSON.stringify({
+      private: true,
+      dependencies: { [progressive]: 'link:C:/old/progressive-tools', 'third-party-plugin': '1.2.3' },
+      devDependencies: { 'dsh-progressive-tools': 'file:C:/old/progressive-tools.tgz' },
+      optionalDependencies: { [progressive]: '1.0.0' },
+      zerowall: { pluginArchitecture: 7, disabledPlugins: ['dsh-progressive-tools'] },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', progressive, 'third-party-plugin'] } },
+    }))
+    await writeFile(join(home, 'resources/plugins/selection.json'), JSON.stringify({ removed: [progressive, 'dsh-progressive-tools'], disabled: [progressive, 'dsh-progressive-tools'], pinned: { [progressive]: '1.0.0', 'third-party-plugin': '1.2.3' } }))
+    await initializeProfile(home, ['@zerowallscience/plugin-extension-center'])
+    const migrated = JSON.parse(await readFile(file, 'utf8'))
+    assert.equal(migrated.zerowall.pluginArchitecture, 7)
+    assert(!migrated.dsh.profile.bundles.includes(progressive))
+    assert.equal(migrated.dependencies[progressive], undefined)
+    assert.equal(migrated.devDependencies['dsh-progressive-tools'], undefined)
+    assert.equal(migrated.optionalDependencies[progressive], undefined)
+    assert.equal(migrated.dependencies['third-party-plugin'], '1.2.3')
+    assert(!migrated.zerowall.disabledPlugins.includes('dsh-progressive-tools'))
+    const selection = JSON.parse(await readFile(join(home, 'resources/plugins/selection.json'), 'utf8'))
+    assert(!selection.removed.includes(progressive))
+    assert(!selection.disabled.includes('dsh-progressive-tools'))
+    assert(!selection.removed.includes('dsh-progressive-tools'))
+    assert(!selection.disabled.includes(progressive))
+    assert.equal(selection.pinned[progressive], undefined)
+    assert.equal(selection.pinned['third-party-plugin'], '1.2.3')
+    const before = await readFile(file, 'utf8')
+    await initializeProfile(home, ['@zerowallscience/plugin-extension-center'])
+    assert.equal(await readFile(file, 'utf8'), before)
+  } finally { await rm(home, { recursive: true, force: true }) }
+})

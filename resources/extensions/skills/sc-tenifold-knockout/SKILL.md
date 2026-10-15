@@ -2,7 +2,7 @@
 name: sc-tenifold-knockout
 description: 用中文编排非肿瘤单细胞 scTenifoldKnk 虚拟敲除全流程：基因建议、公开数据发现、QC、远程 R MCP 分析、机制解释、图表、报告和实验验证方案。结果是计算假设，不是真实基因敲除。
 license: GPL-3.0-or-later
-allowed-tools: read write edit grep python tool_search tool_dispatch
+allowed-tools: read write edit grep python
 metadata:
   method: scTenifoldKnk
   method_version: "1.0.3"
@@ -32,9 +32,9 @@ metadata:
 
 ## 工具调用
 
-远程精确操作、输入 schema 和任务映射见 [操作目录](references/operations.md)，路径以本 Skill 返回的 resourceBase 为根解析。远程提交使用 `tool_dispatch`：`{"name":"research_workflow","arguments":{"action":"describe","workflow_id":"sc.knockout","operation":"r.submit.sc.tenifold.knockout"}}`。run 使用 `parameters={operation,arguments,request_id}`；返回的本地 run_id 用于 status/cancel。远端 scTenifold 状态接口真实参数是 job_id，不是 run_id。保留本地 intake/QC/解释流程。
+远程精确操作、输入 schema 和任务映射见 [操作目录](references/operations.md)，路径以本 Skill 返回的 resourceBase 为根解析。远程提交使用 the native tool：`{"name":"research_workflow","arguments":{"action":"describe","workflow_id":"sc.knockout","operation":"r.submit.sc.tenifold.knockout"}}`。run 使用 `parameters={operation,arguments,request_id}`；返回的本地 run_id 用于 status/cancel。远端 scTenifold 状态接口真实参数是 job_id，不是 run_id。保留本地 intake/QC/解释流程。
 
-先通过 tool_search 发现 sc_tenifold_knockout_*，通过 tool_dispatch 调用，保留现有 intake/QC/解释流程。程序化远程敲除入口为 research_workflow，workflow_id=sc.knockout；describe 查询 r.submit.sc.tenifold.knockout 的实际参数。下述旧 r_* 名字表示能力名称，线上调用使用 rmcp 聚合工具及目录返回的 action；本地上传使用 r_files action=upload_workspace。首次上传用户数据需确认。
+先通过 the native tool registry 发现 sc_tenifold_knockout_*，通过 the native tool 调用，保留现有 intake/QC/解释流程。程序化远程敲除入口为 research_workflow，workflow_id=sc.knockout；describe 查询 r.submit.sc.tenifold.knockout 的实际参数。下述旧 r_* 名字表示能力名称，线上调用使用 rmcp 聚合工具及目录返回的 action；本地上传使用 r_files action=upload_workspace。首次上传用户数据需确认。
 
 ## 标准流程
 

@@ -1,7 +1,7 @@
 ---
 name: zerowall-claim-audit
 description: ZeroWall Science 7.0.0 主张审计；用于研究交付前核查主张是否有同一研究内、可追溯且已复核的证据支持。
-allowed-tools: tool_search tool_dispatch read
+allowed-tools: read
 metadata:
   zerowall:
     schema_version: 1
@@ -26,13 +26,10 @@ Asset、Document 或 Source。缺少任何引用时保留失败原因，不补�
 
 ```json
 {
-  "name": "research_study",
-  "arguments": {
-    "action": "audit_claim",
-    "study_id": "实际研究ID",
-    "claim_id": "实际主张ID",
-    "expected_version": 1
-  }
+  "action": "audit_claim",
+  "study_id": "实际研究ID",
+  "claim_id": "实际主张ID",
+  "expected_version": 1
 }
 ```
 

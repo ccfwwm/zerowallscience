@@ -53,7 +53,10 @@ In each `settings` param, only `name` and `required` are guaranteed; `type`, `de
 {
   "jobName": "my-protein-analysis",
   "type": "alphafold",
-  "settings": { "sequence": "MKT...", "numRecycles": 3 },
+  "settings": {
+    "sequence": "MKT...",
+    "numRecycles": 3
+  },
   "projectTag": "proj_xxxxxxxx"
 }
 ```
@@ -73,8 +76,18 @@ Two payload shapes appear in the official docs — the **Python** form uses para
 {
   "batchName": "egfr-screen",
   "type": "alphafold",
-  "jobNames": ["seq1", "seq2"],
-  "settings": [{ "sequence": "..." }, { "sequence": "..." }],
+  "jobNames": [
+    "seq1",
+    "seq2"
+  ],
+  "settings": [
+    {
+      "sequence": "..."
+    },
+    {
+      "sequence": "..."
+    }
+  ],
   "maxRuntimeSeconds": 3600,
   "weightedHoursBudget": 100
 }

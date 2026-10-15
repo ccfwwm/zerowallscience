@@ -1,7 +1,6 @@
 import { access, mkdir, readFile, rename, writeFile as writeRaw } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import { researchToolConfig } from '../integration/research-tool-config.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 // Avoid rewriting unchanged manifests while editors and compilers read them.
@@ -299,7 +298,6 @@ for (const plugin of plugins) {
     '- insert:',
     `    - id: ${{ 'ai-cloud': 'zerowall-ai-cloud-llm', images: 'zerowall-image-generation', publications: 'zerowall-publication', skills: 'zerowall-skills-plugin' }[plugin.id] ?? `zerowall-${plugin.id}`}`,
     `      name: '${name}'`,
-    ...(plugin.id === 'mcp' ? ['- id: progressive-tools', `  config: ${JSON.stringify(researchToolConfig)}`] : []),
     '',
   ].join('\n'))
   await writeFile(resolve(dir, 'tsconfig.json'), `${JSON.stringify({

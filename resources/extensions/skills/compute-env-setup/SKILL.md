@@ -45,7 +45,9 @@ replace container-specific paths with paths valid on the selected context.
   "title": "Set up singlecell environment",
   "command": "bash setup-singlecell.sh /home/me/envs/singlecell /home/me/zerowall-env-manifests/singlecell.json",
   "timeout_secs": 14400,
-  "input_paths": ["runs/setup-singlecell.sh"],
+  "input_paths": [
+    "runs/setup-singlecell.sh"
+  ],
   "output_specs": [
     {
       "glob": "ssh://gpu-box/home/me/zerowall-env-manifests/singlecell.json",

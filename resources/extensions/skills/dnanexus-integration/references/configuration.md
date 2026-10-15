@@ -56,7 +56,10 @@ This is valid JSON; comments are intentionally omitted.
     {
       "name": "reads",
       "class": "file",
-      "patterns": ["*.fastq", "*.fastq.gz"],
+      "patterns": [
+        "*.fastq",
+        "*.fastq.gz"
+      ],
       "help": "Input FASTQ file"
     }
   ],
@@ -64,7 +67,9 @@ This is valid JSON; comments are intentionally omitted.
     {
       "name": "report",
       "class": "file",
-      "patterns": ["*.html"]
+      "patterns": [
+        "*.html"
+      ]
     }
   ],
   "runSpec": {
@@ -95,7 +100,9 @@ project. Do not copy a static instance list from old documentation.
       "name": "reads",
       "label": "Reads",
       "class": "file",
-      "patterns": ["*.fastq.gz"],
+      "patterns": [
+        "*.fastq.gz"
+      ],
       "help": "A gzip-compressed FASTQ file"
     }
   ],
@@ -104,7 +111,9 @@ project. Do not copy a static instance list from old documentation.
       "name": "report",
       "label": "QC report",
       "class": "file",
-      "patterns": ["*.html"]
+      "patterns": [
+        "*.html"
+      ]
     }
   ],
   "runSpec": {
@@ -114,7 +123,9 @@ project. Do not copy a static instance list from old documentation.
     "release": "24.04",
     "version": "0",
     "timeoutPolicy": {
-      "main": {"hours": 4}
+      "main": {
+        "hours": 4
+      }
     },
     "executionPolicy": {
       "restartOn": {
@@ -226,8 +237,12 @@ available in the corresponding region.
   "regionalOptions": {
     "aws:us-east-1": {
       "systemRequirements": {
-        "main": {"instanceType": "mem2_ssd1_v2_x4"},
-        "process": {"instanceType": "mem3_ssd1_v2_x8"}
+        "main": {
+          "instanceType": "mem2_ssd1_v2_x4"
+        },
+        "process": {
+          "instanceType": "mem3_ssd1_v2_x8"
+        }
       }
     }
   }
@@ -294,8 +309,12 @@ Example:
       "maxRestarts": 4
     },
     "timeoutPolicy": {
-      "main": {"hours": 12},
-      "process": {"hours": 2}
+      "main": {
+        "hours": 12
+      },
+      "process": {
+        "hours": 2
+      }
     },
     "restartableEntryPoints": "all"
   }

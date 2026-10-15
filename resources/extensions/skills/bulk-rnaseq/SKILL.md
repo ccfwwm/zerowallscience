@@ -24,7 +24,7 @@ zerowall:
 
 These host rules override upstream examples when they differ:
 
-- Discover tools with `tool_search`; execute the exact returned name through `tool_dispatch` with its `arguments` object. Loading a Skill supplies instructions, not execution. Use `python` for the managed local interpreter, and discover `pwsh` on Windows or `bash` on Unix when shell work is needed.
+- Call the exact native tool name with its argument object; use the host tool list to confirm the current schema. Loading a Skill supplies instructions, not execution. Use `python` for the managed local interpreter, and discover `pwsh` on Windows or `bash` on Unix when shell work is needed.
 - Use `python` or `r` for short interactive work. Use `run_in_context` plus `monitor_run` for training, GPU, Nextflow, batch, remote, or otherwise long-running work; do not extend the ordinary `shell` timeout.
 - Resolve credentials only through **Settings > Credentials** and the approved execution-context environment. Never create, scan, or load project `.env` files and never print or persist secret values.
 - Treat network calls, cloud jobs, experiment submissions, writes, deletion, and physical equipment actions as approval-gated. Default to read-only inspection, validation, or dry-run planning until the user explicitly requests execution.
@@ -35,7 +35,7 @@ These host rules override upstream examples when they differ:
   external execution contexts and must not be described as local Python
   environments.
 - Use `pathlib`, project-relative paths, and platform temporary directories. Gate Unix-only commands behind an explicit WSL/SSH execution context.
-- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with `tool_search`.
+- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with Host tool registry.
 
 # Bulk RNA-seq
 
@@ -208,7 +208,7 @@ These cause most wrong or irreproducible bulk RNA-seq results:
 ## Integration with Other Skills
 
 - **Upstream execution:** `nextflow` (runs `nf-core/rnaseq`, Path A; HPC/cloud/containers).
-- **Reference data / gene IDs:** `gget` (`gget ref` for genome+GTF, `gget info`/`gget search` for ID mapping), `tool_search` (Ensembl/NCBI), `biopython`/`pysam` (FASTA/BAM handling).
+- **Reference data / gene IDs:** `gget` (`gget ref` for genome+GTF, `gget info`/`gget search` for ID mapping), Host tool registry (Ensembl/NCBI), `biopython`/`pysam` (FASTA/BAM handling).
 - **Differential expression:** `pydeseq2` (the DE engine this skill hands counts to).
 - **Enrichment:** `pathway-enrichment` (ORA + GSEA; its `scripts/run_enrichment.py` reads a DESeq2 results CSV directly).
 - **Figures & reporting:** `publication-figures`, `matplotlib`, `seaborn`; `paper-to-report` for the methods/results narrative.

@@ -4,9 +4,9 @@ import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { contract, root, releaseRoot, stageRoot } from '../build/paths.mjs'
-import { fileDigest, signCatalog, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
+import { downloadResource, fileDigest, signCatalog, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
 import { deterministicArchive } from './deterministic-archive.mjs'
-import { historicalResources, preserveImmutableResource } from './immutable-resource.mjs'
+import { historicalResources, preserveImmutableResource, publishedResources } from './immutable-resource.mjs'
 import { resourceSource, packageSource } from '../build/layout.mjs'
 import { resourcePublicationScope } from './resource-publication-scope.mjs'
 import { pluginDependencyContract } from './plugin-dependency-contract.mjs'
@@ -94,10 +94,17 @@ const skills = []
 const mcpServers = []
 const immutableResources = []
 const histories = new Map(await Promise.all(kinds.filter(kind => ['skill', 'mcp'].includes(kind)).map(async kind => [kind, await historicalResources(releaseRoot, kind)])))
+if (baseUrl && configured) for (const [kind, history] of histories) {
+  const published = await publishedResources({ baseUrl, kind, keys, cache: join(contract.cache, 'published-resources', kind) })
+  for (const [identity, entry] of published) history.set(identity, entry)
+}
 async function archiveResource(kind, id, version, source, path) {
   await deterministicArchive(source, path)
   const previous = histories.get(kind).get(id + '@' + version)
-  if (previous) immutableResources.push({ kind, id, version, ...await preserveImmutableResource(path, previous.path, previous.sha256) })
+  if (previous) {
+    const baseline = previous.entry ? await downloadResource(previous.entry, join(contract.cache, 'published-resources', kind)) : previous.path
+    immutableResources.push({ kind, id, version, ...await preserveImmutableResource(path, baseline, previous.sha256) })
+  }
 }
 const sciDirectory = join(stageRoot, 'resources/sci')
 if (kinds.includes('mcp') && await stat(join(sciDirectory, 'dist/mcp.cjs')).catch(() => undefined)) {

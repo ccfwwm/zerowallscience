@@ -1,7 +1,7 @@
 ---
 name: zerowall-nhanes
 description: NHANES 变量、周期、复杂抽样统计及可复现报告。
-allowed-tools: tool_search tool_dispatch read
+allowed-tools: read
 ---
 
 # NHANES 变量、周期、复杂抽样统计及可复现报告。
@@ -14,7 +14,7 @@ allowed-tools: tool_search tool_dispatch read
 
 ## 入口与准备
 
-先 `tool_search` 搜索 `research_workflow`，使用返回的真实工具名和 schema。下列 JSON 是交给 `tool_dispatch` 的完整包装；不要把工作流 ID 当工具名。只有一条物理连接 `rmcp`，工作流按需连接。
+直接调用 `research_workflow`，并以当前 schema 为准。下列 JSON 是该工具的参数；不要把工作流 ID 当工具名。只有一条物理连接 `rmcp`，工作流按需连接。
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 
@@ -24,24 +24,18 @@ allowed-tools: tool_search tool_dispatch read
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "describe",
-    "workflow_id": "r.nhanes",
-    "operation": "r.nhanes.catalog"
-  }
+  "action": "describe",
+  "workflow_id": "r.nhanes",
+  "operation": "r.nhanes.catalog"
 }
 ```
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "query",
-    "workflow_id": "r.nhanes",
-    "parameters": {
-      "operation": "r.nhanes.catalog",
-      "arguments": {}
-    }
+  "action": "query",
+  "workflow_id": "r.nhanes",
+  "parameters": {
+    "operation": "r.nhanes.catalog",
+    "arguments": {}
   }
 }
 ```
@@ -50,20 +44,17 @@ allowed-tools: tool_search tool_dispatch read
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "run",
-    "workflow_id": "r.nhanes",
-    "parameters": {
-      "operation": "r.nhanes.ensure.available",
-      "arguments": {
-        "project_id": "rmcp-demo",
-        "cycle": "2017-2018",
-        "domain": "Demographics",
-        "dataset": "DEMO_J"
-      },
-      "request_id": "demo-r-nhanes-1"
-    }
+  "action": "run",
+  "workflow_id": "r.nhanes",
+  "parameters": {
+    "operation": "r.nhanes.ensure.available",
+    "arguments": {
+      "project_id": "rmcp-demo",
+      "cycle": "2017-2018",
+      "domain": "Demographics",
+      "dataset": "DEMO_J"
+    },
+    "request_id": "demo-r-nhanes-1"
   }
 }
 ```
@@ -72,11 +63,8 @@ allowed-tools: tool_search tool_dispatch read
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "status",
-    "run_id": "<run_id>"
-  }
+  "action": "status",
+  "run_id": "<run_id>"
 }
 ```
 
@@ -87,7 +75,15 @@ ensure.available 可启动下载，虽无 confirm 也不是 query。datasets.ens
 正式研究分析通过 `research_study` 的 `run_nhanes_survey` 执行。先登记 DatasetContract、研究任务和 AnalysisPlan；工作台“研究计划”页也能选择同一记录并执行。
 
 ```json
-{"name":"research_study","arguments":{"action":"run_nhanes_survey","study_id":"<study-id>","contract_id":"<saved-contract-id>","plan_id":"<saved-plan-id>","task_id":"<plan-task-id>","expected_revision":1,"request_id":"<stable-request-id>"}}
+{
+  "action": "run_nhanes_survey",
+  "study_id": "<study-id>",
+  "contract_id": "<saved-contract-id>",
+  "plan_id": "<saved-plan-id>",
+  "task_id": "<plan-task-id>",
+  "expected_revision": 1,
+  "request_id": "<stable-request-id>"
+}
 ```
 
 以上 ID 与版本必须替换为真实登记记录。计划的 `inputs` 首版仅引用本次契约，`taskIds` 包含任务 ID，`nhanesSurvey` 为 `{ "kind":"summary", "variable":"RIDAGEYR" }` 或 `{ "kind":"regression", "outcome":"…", "predictors":["…"], "family":"gaussian" }`，并保存 `method`、`stoppingConditions`、`exploratory`。任务的探索身份必须与计划一致。验证任务须经人工门禁一且计划、契约与冻结快照一致。

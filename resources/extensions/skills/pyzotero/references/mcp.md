@@ -49,7 +49,11 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
   "mcpServers": {
     "zotero": {
       "command": "uvx",
-      "args": ["--from", "pyzotero[mcp]", "pyzotero-mcp"]
+      "args": [
+        "--from",
+        "pyzotero[mcp]",
+        "pyzotero-mcp"
+      ]
     }
   }
 }

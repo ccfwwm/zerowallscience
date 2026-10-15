@@ -5,7 +5,7 @@ import { list } from 'tar'
 import ts from 'typescript'
 
 function normalizedJavaScript(bytes, file) {
-  const source = ts.createSourceFile(file, bytes.toString('utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
+  const source = ts.createSourceFile(file, bytes.toString('utf8').replaceAll('\r\n', '\n'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS)
   assert.equal(source.parseDiagnostics.length, 0, `Invalid bundled JavaScript: ${file}`)
   const result = ts.transform(source, [context => {
     const visit = node => {
@@ -51,6 +51,15 @@ export async function preserveImmutablePackage(candidate, baseline) {
   for (const [file, original] of before) {
     const next = after.get(file)
     if (original.equals(next)) continue
+    if (file.endsWith('.tsbuildinfo') || file.endsWith('.map')) {
+      normalizedFiles.push(file)
+      continue
+    }
+    if (/\.(?:md|txt|json|ya?ml)$/u.test(file)
+      && original.toString('utf8').replaceAll('\r\n', '\n') === next.toString('utf8').replaceAll('\r\n', '\n')) {
+      normalizedFiles.push(file)
+      continue
+    }
     assert(/\.(?:cjs|mjs|js)$/u.test(file), `Same-version plugin content changed: ${file}; bump the component version`)
     assert.equal(normalizedJavaScript(next, file), normalizedJavaScript(original, file),
       `Same-version plugin executable content changed: ${file}; bump the component version`)

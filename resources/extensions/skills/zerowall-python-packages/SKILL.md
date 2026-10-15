@@ -5,7 +5,7 @@ description: Inspect fixed ZeroWall Python, supplement missing packages, and dia
 
 # ZeroWall Science Shared Python Runtime
 
-Discover `python_environment` with `tool_search`, then use `tool_dispatch` with the exact returned name and argument schema.
+Call `python_environment` directly with its current argument schema.
 
 The environment serves the entire application. The normal executable is `<actual application installation directory>/Python/python.exe`, or an explicitly selected fixed root, with its own `Lib/site-packages`. Read `runtimeRoot`, `executable` and `sitePackages` from the service. Never execute `.zerowall/slots`, backup, candidate, system Python, Conda, a venv or overlay. Old environments are retained without migration. Remote Linux runtimes are separate services.
 

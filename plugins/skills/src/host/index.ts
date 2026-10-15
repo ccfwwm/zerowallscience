@@ -9,6 +9,7 @@ import { apply as applySkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'zod'
 import type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSourceSnapshot, ZeroWallSkillDetail, ZeroWallSkillSummary } from '../shared/types.js'
+import { migrateUserSkillRouting } from './skill-routing-migration.js'
 
 export type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSourceSnapshot, ZeroWallSkillDetail, ZeroWallSkillSummary } from '../shared/types.js'
 
@@ -47,6 +48,14 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
       })
     }
     const userSkillsDir = userSkillDir()
+    try {
+      const migration = migrateUserSkillRouting(userSkillsDir)
+      if (migration.records.length > 0 || migration.failures.length > 0) {
+        runtimeCtx.logger.info(`zerowall-skills: migrated ${migration.records.length} user Skill routing records${migration.failures.length > 0 ? `; ${migration.failures.length} failed` : ''}`)
+      }
+    } catch (error) {
+      runtimeCtx.logger.warn(`zerowall-skills: user Skill routing migration skipped: ${error instanceof Error ? error.message : String(error)}`)
+    }
     if (typeof registry?.registerProvider === 'function') {
       void mkdir(userSkillsDir, { recursive: true })
       applySkillFilesystem(runtimeCtx, {

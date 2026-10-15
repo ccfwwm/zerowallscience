@@ -74,7 +74,9 @@ submit a self-contained runner with `run_in_context`:
   "title": "Borzoi prediction for one locus",
   "command": "HF_HOME=/srv/model-cache python borzoi_run.py --output /home/me/zerowall-results/borzoi/tracks.npz",
   "timeout_secs": 1800,
-  "input_paths": ["runs/borzoi_run.py"],
+  "input_paths": [
+    "runs/borzoi_run.py"
+  ],
   "output_specs": [
     {
       "glob": "ssh://gpu-box/home/me/zerowall-results/borzoi/tracks.npz",

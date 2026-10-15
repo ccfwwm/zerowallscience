@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { ZeroWallCapabilitiesService } from '../src/host/index.js'
+import { migrateSkillRoutingText, migrateUserSkillRouting } from '../src/host/skill-routing-migration.js'
 
 const summary = {
   name: 'literature-review',
@@ -17,6 +18,32 @@ const summary = {
 }
 
 describe('ZeroWall capabilities Remote', () => {
+  it('migrates Progressive Tools examples to native tool arguments', async () => {
+    const source = '---\nname: custom-routing\nallowed-tools: read tool_search tool_dispatch\n---\n\nCall `tool_dispatch` after `tool_search`.\n\n```json\n{"name":"research_workflow","arguments":{"action":"describe","workflow_id":"r.compute"}}\n```\n'
+    const migrated = migrateSkillRoutingText(source)
+    expect(migrated).not.toMatch(/\btool_search\b|\btool_dispatch\b/u)
+    expect(migrated).toContain('allowed-tools: read')
+    expect(migrated).toContain('"action": "describe"')
+    expect(migrated).not.toContain('"name": "research_workflow"')
+  })
+
+  it('backs up and migrates enabled and disabled user Skills atomically', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-routing-migration-'))
+    const enabled = join(root, 'enabled')
+    const disabled = join(root, 'disabled', 'disabled-routing')
+    await mkdir(join(enabled, 'enabled-routing'), { recursive: true })
+    await mkdir(disabled, { recursive: true })
+    const content = '---\nname: enabled-routing\n---\n\nCall `tool_dispatch` after `tool_search`.\n'
+    await writeFile(join(enabled, 'enabled-routing', 'SKILL.md'), content)
+    await writeFile(join(disabled, 'SKILL.md'), content.replace('enabled-routing', 'disabled-routing'))
+    const report = migrateUserSkillRouting(enabled)
+    expect(report.records.map(item => `${item.state}:${item.name}`).sort()).toEqual(['disabled:disabled-routing', 'enabled:enabled-routing'])
+    expect(report.failures).toEqual([])
+    expect(await readFile(join(enabled, 'enabled-routing', 'SKILL.md'), 'utf8')).not.toMatch(/tool_dispatch|tool_search/u)
+    expect(await readFile(join(disabled, 'SKILL.md'), 'utf8')).not.toMatch(/tool_dispatch|tool_search/u)
+    expect(report.records.every(item => item.backupPath.includes('history-routing'))).toBe(true)
+  })
+
   it('ships the editable presentation route and keeps the upstream Univer contract explicit', async () => {
     const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS
     const previousUser = process.env.ZEROWALL_USER_SKILLS

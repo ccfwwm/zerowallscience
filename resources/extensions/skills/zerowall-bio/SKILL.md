@@ -1,14 +1,14 @@
 ---
 name: zerowall-bio
 description: 统一生物能力导航，选择 Bio Tools 数据库检索、本地 BioGenie 分析或远程 Biomni Agent，避免重复后端调用。
-allowed-tools: tool_search tool_dispatch
+allowed-tools:
 ---
 
 数据库检索（PubMed、UniProt、注释、变异、公共数据）优先 Bio Tools；本地序列、文件、统计和图表使用 BioGenie；复杂 Agent、服务器数据湖和远程计算使用 zerowall-rbioagent。不要为了交叉验证无差别地调用多个同功能后端。
 
 AnnData、单细胞、空间和多组学专项分析使用 zerowall-omicverse；远程科研全局入口及 ID/文件约定见 zerowall-rmcp。OmicVerse 使用独立远程环境，与 Biomni 共享已完成的数据资源；不在本地科学环境安装 OmicVerse。NHANES 权重分析继续使用 zerowall-nhanes。
 
-用 tool_search 发现工具，用 tool_dispatch 执行：
+直接调用下列 Host 工具，并以当前 schema 为准：
 
 BioGenie 由独立 `plugin-biogenie` 注册唯一的 `bio_local`，上游固定 0.6.48。`list` / `describe` 不要求 Python 或工作区；执行才使用 `<实际安装目录>/Python/python.exe`。本地依赖按包名存在判断，不要求版本与线上清单相同。正式 PyDESeq2、GSEApy 和分组机器学习失败时保留真实错误，近似算法必须显式选择。文件输入必须位于工作区，序列文件多记录时要求明确选择。
 

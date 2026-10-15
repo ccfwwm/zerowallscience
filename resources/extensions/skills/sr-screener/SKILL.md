@@ -430,7 +430,17 @@ names for the methods text in `model_labels`. The cost check shows them before e
 For the `quality` profile, put these explicit per-role models in `screening_config.json`:
 
 ```json
-{"models": {"A": "sonnet", "B": "sonnet", "ADJ": "opus", "QC": "opus", "FTA": "opus", "FTB": "opus", "FTADJ": "opus"}}
+{
+  "models": {
+    "A": "sonnet",
+    "B": "sonnet",
+    "ADJ": "opus",
+    "QC": "opus",
+    "FTA": "opus",
+    "FTB": "opus",
+    "FTADJ": "opus"
+  }
+}
 ```
 
 Both named profiles pin every screening role; neither inherits the session model.

@@ -285,68 +285,80 @@ Creates `tmp_dcm2bids/helper/` with converted NIfTI files and JSON sidecars. Rev
 
 ```json
 {
-    "descriptions": [
-        {
-            "id": "id_t1w",
-            "datatype": "anat",
-            "suffix": "T1w",
-            "criteria": {
-                "SeriesDescription": "*MPRAGE*",
-                "ImageType": ["ORIGINAL", "PRIMARY", "M", "ND", "NORM"]
-            }
-        },
-        {
-            "id": "id_bold_rest",
-            "datatype": "func",
-            "suffix": "bold",
-            "custom_entities": "task-rest",
-            "criteria": {
-                "SeriesDescription": "*REST*BOLD*",
-                "ImageType": ["ORIGINAL", "PRIMARY", "M", "ND", "MOSAIC"]
-            },
-            "sidecar_changes": {
-                "TaskName": "rest"
-            }
-        },
-        {
-            "id": "id_bold_nback",
-            "datatype": "func",
-            "suffix": "bold",
-            "custom_entities": "task-nback",
-            "criteria": {
-                "SeriesDescription": "*NBACK*",
-                "EchoTime": 0.03
-            },
-            "sidecar_changes": {
-                "TaskName": "nback"
-            }
-        },
-        {
-            "id": "id_dwi",
-            "datatype": "dwi",
-            "suffix": "dwi",
-            "custom_entities": "dir-AP",
-            "criteria": {
-                "SeriesDescription": "*DTI*AP*"
-            }
-        },
-        {
-            "id": "id_fmap_phasediff",
-            "datatype": "fmap",
-            "suffix": "phasediff",
-            "criteria": {
-                "SeriesDescription": "*field*map*",
-                "EchoTime1": 0.00492,
-                "EchoTime2": 0.00738
-            },
-            "sidecar_changes": {
-                "IntendedFor": [
-                    "bids::sub-{subject}/func/sub-{subject}_task-rest_bold.nii.gz",
-                    "bids::sub-{subject}/func/sub-{subject}_task-nback_bold.nii.gz"
-                ]
-            }
-        }
-    ]
+  "descriptions": [
+    {
+      "id": "id_t1w",
+      "datatype": "anat",
+      "suffix": "T1w",
+      "criteria": {
+        "SeriesDescription": "*MPRAGE*",
+        "ImageType": [
+          "ORIGINAL",
+          "PRIMARY",
+          "M",
+          "ND",
+          "NORM"
+        ]
+      }
+    },
+    {
+      "id": "id_bold_rest",
+      "datatype": "func",
+      "suffix": "bold",
+      "custom_entities": "task-rest",
+      "criteria": {
+        "SeriesDescription": "*REST*BOLD*",
+        "ImageType": [
+          "ORIGINAL",
+          "PRIMARY",
+          "M",
+          "ND",
+          "MOSAIC"
+        ]
+      },
+      "sidecar_changes": {
+        "TaskName": "rest"
+      }
+    },
+    {
+      "id": "id_bold_nback",
+      "datatype": "func",
+      "suffix": "bold",
+      "custom_entities": "task-nback",
+      "criteria": {
+        "SeriesDescription": "*NBACK*",
+        "EchoTime": 0.03
+      },
+      "sidecar_changes": {
+        "TaskName": "nback"
+      }
+    },
+    {
+      "id": "id_dwi",
+      "datatype": "dwi",
+      "suffix": "dwi",
+      "custom_entities": "dir-AP",
+      "criteria": {
+        "SeriesDescription": "*DTI*AP*"
+      }
+    },
+    {
+      "id": "id_fmap_phasediff",
+      "datatype": "fmap",
+      "suffix": "phasediff",
+      "criteria": {
+        "SeriesDescription": "*field*map*",
+        "EchoTime1": 0.00492,
+        "EchoTime2": 0.00738
+      },
+      "sidecar_changes": {
+        "IntendedFor": [
+          "bids::sub-{subject}/func/sub-{subject}_task-rest_bold.nii.gz",
+          "bids::sub-{subject}/func/sub-{subject}_task-nback_bold.nii.gz"
+        ]
+      }
+    }
+  ]
 }
 ```
 

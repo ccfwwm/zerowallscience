@@ -287,11 +287,17 @@ Recommended strict JSON fields:
   "split": "train",
   "backend": "openslide",
   "level": 0,
-  "downsample": 1.0,
+  "downsample": 1,
   "mpp_x": null,
   "mpp_y": null,
-  "tile_size_ij": [512, 512],
-  "tile_stride_ij": [512, 512],
+  "tile_size_ij": [
+    512,
+    512
+  ],
+  "tile_stride_ij": [
+    512,
+    512
+  ],
   "tile_pad": false,
   "pipeline_id": "he-v1",
   "code_revision": "project-commit",

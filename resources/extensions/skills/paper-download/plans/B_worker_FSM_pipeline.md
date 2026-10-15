@@ -118,9 +118,16 @@ Un fichier append-only `10_SOURCES/_registry/_journal/{YYYY-MM-DD}.jsonl`.
 
 Chaque ligne =
 ```json
-{"ts":"2026-05-23T18:23:01Z","ref":"shannon_1948_mathematical",
- "from":"uid_resolved","to":"pdf_acquired","via":"crossref_oa",
- "meta":{"sha256":"a1b2..."}}
+{
+  "ts": "2026-05-23T18:23:01Z",
+  "ref": "shannon_1948_mathematical",
+  "from": "uid_resolved",
+  "to": "pdf_acquired",
+  "via": "crossref_oa",
+  "meta": {
+    "sha256": "a1b2..."
+  }
+}
 ```
 
 Usage :
@@ -255,8 +262,10 @@ Fichier visé : `/home/romi/dev/musicology-phd/.claude/settings.json` (ou `setti
       {
         "matchers": [],
         "hooks": [
-          { "type": "command",
-            "command": "cd /home/romi/dev/musicology-phd && python -m pipeline reactivate-ocr --quiet" }
+          {
+            "type": "command",
+            "command": "cd /home/romi/dev/musicology-phd && python -m pipeline reactivate-ocr --quiet"
+          }
         ]
       }
     ]

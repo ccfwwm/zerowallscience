@@ -17,28 +17,25 @@ description: 使用 ImageJ 对划痕图像 ROI 分割并计算相对同一样本
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "run",
-    "workflow_id": "fiji",
-    "parameters": {
-      "request_id": "REPLACE_WITH_STABLE_REQUEST_ID",
-      "operation": "fiji.scratch-wound",
-      "arguments": {
-        "sourceAssetId": "REPLACE_WITH_ACTUAL_ASSET_ID",
-        "image": {
-          "kind": "scratch-wound",
-          "sampleId": "S1",
-          "time": "24h",
-          "initialArea": 38,
-          "threshold": 150,
-          "polarity": "bright",
-          "roi": {
-            "x": 0,
-            "y": 0,
-            "width": 20,
-            "height": 12
-          }
+  "action": "run",
+  "workflow_id": "fiji",
+  "parameters": {
+    "request_id": "REPLACE_WITH_STABLE_REQUEST_ID",
+    "operation": "fiji.scratch-wound",
+    "arguments": {
+      "sourceAssetId": "REPLACE_WITH_ACTUAL_ASSET_ID",
+      "image": {
+        "kind": "scratch-wound",
+        "sampleId": "S1",
+        "time": "24h",
+        "initialArea": 38,
+        "threshold": 150,
+        "polarity": "bright",
+        "roi": {
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 12
         }
       }
     }

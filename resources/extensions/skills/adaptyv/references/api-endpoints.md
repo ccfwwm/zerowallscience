@@ -155,7 +155,9 @@ Calculates cost without creating an experiment.
     "experiment_type": "screening",
     "method": "bli",
     "target_id": "...",
-    "sequences": {"seq1": "MKTL..."},
+    "sequences": {
+      "seq1": "MKTL..."
+    },
     "n_replicates": 3
   }
 }

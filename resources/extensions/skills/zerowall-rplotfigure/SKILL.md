@@ -1,7 +1,7 @@
 ---
 name: zerowall-rplotfigure
 description: FigureYa 模板、输入引用、绘图计划、图表与报告。
-allowed-tools: tool_search tool_dispatch read
+allowed-tools: read
 ---
 
 # FigureYa 模板、输入引用、绘图计划、图表与报告。
@@ -14,7 +14,7 @@ allowed-tools: tool_search tool_dispatch read
 
 ## 入口与准备
 
-先 `tool_search` 搜索 `research_workflow`，使用返回的真实工具名和 schema。下列 JSON 是交给 `tool_dispatch` 的完整包装；不要把工作流 ID 当工具名。只有一条物理连接 `rmcp`，工作流按需连接。
+直接调用 `research_workflow`，并以当前 schema 为准。下列 JSON 是该工具的参数；不要把工作流 ID 当工具名。只有一条物理连接 `rmcp`，工作流按需连接。
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 
@@ -24,25 +24,19 @@ allowed-tools: tool_search tool_dispatch read
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "describe",
-    "workflow_id": "figureya",
-    "operation": "figureya.search"
-  }
+  "action": "describe",
+  "workflow_id": "figureya",
+  "operation": "figureya.search"
 }
 ```
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "query",
-    "workflow_id": "figureya",
-    "parameters": {
-      "operation": "figureya.search",
-      "arguments": {
-        "q": "volcano"
-      }
+  "action": "query",
+  "workflow_id": "figureya",
+  "parameters": {
+    "operation": "figureya.search",
+    "arguments": {
+      "q": "volcano"
     }
   }
 }
@@ -52,21 +46,18 @@ allowed-tools: tool_search tool_dispatch read
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "run",
-    "workflow_id": "figureya",
-    "parameters": {
-      "operation": "figureya.create.plan",
-      "arguments": {
-        "project_id": "rmcp-demo",
-        "action": "plan",
-        "mode": "custom_r",
-        "code": "png(\"plot.png\"); plot(1:3, c(2,4,7)); dev.off()",
-        "confirm": true
-      },
-      "request_id": "demo-figureya-1"
-    }
+  "action": "run",
+  "workflow_id": "figureya",
+  "parameters": {
+    "operation": "figureya.create.plan",
+    "arguments": {
+      "project_id": "rmcp-demo",
+      "action": "plan",
+      "mode": "custom_r",
+      "code": "png(\"plot.png\"); plot(1:3, c(2,4,7)); dev.off()",
+      "confirm": true
+    },
+    "request_id": "demo-figureya-1"
   }
 }
 ```
@@ -75,11 +66,8 @@ allowed-tools: tool_search tool_dispatch read
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "status",
-    "run_id": "<run_id>"
-  }
+  "action": "status",
+  "run_id": "<run_id>"
 }
 ```
 
@@ -90,7 +78,19 @@ plan_id 表示已保存计划，不表示绘图完成；figureya.generate.report
 从创建结果的 `result` 中取实际 `plan_id`，再执行：
 
 ```json
-{"name":"research_workflow","arguments":{"action":"run","workflow_id":"figureya","parameters":{"operation":"figureya.run.plan","arguments":{"project_id":"rmcp-demo","plan_id":"<创建结果中的 plan_id>","confirm":true},"request_id":"demo-figureya-render-1"}}}
+{
+  "action": "run",
+  "workflow_id": "figureya",
+  "parameters": {
+    "operation": "figureya.run.plan",
+    "arguments": {
+      "project_id": "rmcp-demo",
+      "plan_id": "<创建结果中的 plan_id>",
+      "confirm": true
+    },
+    "request_id": "demo-figureya-render-1"
+  }
+}
 ```
 
 跟踪本次返回的本地 `run_id`。完成后从 Manifest 取图像路径，经 Host `r_files` 的 `download_workspace` 下载到工作区；需要模型看图时再调用 `figureya.read.image`。若提示输入引用不存在，检查文件属于当前项目且 SHA-256 一致；若模板缺包，先查询模板依赖和包目录，不能把创建计划成功视为绘图成功。

@@ -3,7 +3,7 @@ name: deepspot-m
 description: Generate transcriptome-wide virtual spatial transcriptomics from H&E histology with DeepSpot-M. Use when you need spatial gene expression in log1p-CPM for 224x224 tiles at about 20x, want to query protein-coding genes by symbol instead of a fixed panel, or want to run prediction across a whole slide after tiling with histolab.
 license: PolyForm-Noncommercial-1.0.0
 compatibility: Needs deepspotm 1.0.0 from PyPI (Python 3.10 to 3.13) plus PyTorch. Weights at ratschlab/DeepSpotM on Hugging Face are gated and licensed CC-BY-NC-SA-4.0, so request access on the model page and then run huggingface-cli login. A CUDA GPU speeds up batched inference.
-allowed-tools: read write edit tool_search grep pwsh bash python r run_in_context get_run monitor_run cancel_run tool_dispatch
+allowed-tools: read write edit grep pwsh bash python r run_in_context get_run monitor_run cancel_run
 metadata:
   version: "1.0"
   skill-author: Ratschlab, ETH Zurich
@@ -26,13 +26,13 @@ zerowall:
 
 These host rules override upstream examples when they differ:
 
-- Discover tools with `tool_search`; execute the exact returned name through `tool_dispatch` with its `arguments` object. Loading a Skill supplies instructions, not execution. Use `python` for the managed local interpreter, and discover `pwsh` on Windows or `bash` on Unix when shell work is needed.
+- Call the exact native tool name with its argument object; use the host tool list to confirm the current schema. Loading a Skill supplies instructions, not execution. Use `python` for the managed local interpreter, and discover `pwsh` on Windows or `bash` on Unix when shell work is needed.
 - Use `python` or `r` for short interactive work. Use `run_in_context` plus `monitor_run` for training, GPU, Nextflow, batch, remote, or otherwise long-running work; do not extend the ordinary `shell` timeout.
 - Resolve credentials only through **Settings > Credentials** and the approved execution-context environment. Never create, scan, or load project `.env` files and never print or persist secret values.
 - Treat network calls, cloud jobs, experiment submissions, writes, deletion, and physical equipment actions as approval-gated. Default to read-only inspection, validation, or dry-run planning until the user explicitly requests execution.
 - Use `zerowall-python-packages` for managed Python dependency changes: inspect, preview, obtain confirmation, apply, and verify. Do not run pip/uv/conda against the managed snapshot. Report missing external runtimes separately.
 - Use `pathlib`, project-relative paths, and platform temporary directories. Gate Unix-only commands behind an explicit WSL/SSH execution context.
-- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with `tool_search`.
+- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with Host tool registry.
 
 # DeepSpot-M
 

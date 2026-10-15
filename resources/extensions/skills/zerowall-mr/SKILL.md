@@ -21,4 +21,3 @@ MR requires matched exposure/outcome definitions, ancestry, genome build, sample
 使用 `research_study action=run_genetic_analysis` 提交已登记 study、plan、contract 和 task；返回持久化 Run 后使用 `action=refresh_genetic_analysis` 取回状态与校验后的产物。重连时从 `action=tasks` 找到任务的 `runId`，不要凭聊天记录新建请求。前端研究计划页提供相同操作。
 
 目前仅支持 prepared MR 的 Wald、IVW、MR-Egger 以及单因果变异假设下的 `coloc.abf`。GWAS 下载、LD clumping、原始等位基因协调、MVMR、两步 MR 和 SuSiE 不在该 Runner 的已实现范围，不能把契约校验通过写成方法已执行。合成验收数据不能登记成用户研究的医学发现。
-

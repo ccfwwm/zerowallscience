@@ -11,7 +11,7 @@ const core = []
 // arrive through the signed profile catalog, so their patch rows must not
 // make the Core installer depend on their source packages.
 const optionalOverlayIds = new Set([
-  'ssh-ops', 'progressive-tools', 'session-notification', 'dream-skin',
+  'ssh-ops', 'session-notification', 'dream-skin',
   'better-sidebar', 'univer-office', 'zotero', 'zotero-harvest',
   'dsh-wechat', 'genui', 'archive-manager', 'oh-story',
 ])
@@ -64,7 +64,6 @@ await writeFile(join(stageRoot, 'commands/bundled-skill-versions.json'), JSON.st
 const optional = configuredDefaults.filter(id => !runtimeProfile.corePlugins.includes(id))
 await writeFile(join(stageRoot, 'commands/optional-plugins.json'), JSON.stringify(optional))
 await writeFile(join(stageRoot, 'commands/default-profile.patch.json'), JSON.stringify([
-  { id: 'progressive-tools', config: { mode: 'stable-proxy', toolName: 'tool_search', dispatchToolName: 'tool_dispatch', maxResults: 5, requireDiscovery: true, statusGrantsDiscovery: false, deferToolGuidance: true } },
   { id: 'univer-office', config: { telemetry: false } },
   { id: 'dsh-wechat', config: { autoStart: false } },
 ]))

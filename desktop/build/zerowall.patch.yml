@@ -127,17 +127,6 @@
     - id: ssh-ops
       name: 'dsh-ssh-ops'
 
-    - id: progressive-tools
-      name: '@everclear077/dsh-progressive-tools'
-      config:
-        mode: stable-proxy
-        toolName: tool_search
-        dispatchToolName: tool_dispatch
-        maxResults: 5
-        requireDiscovery: true
-        statusGrantsDiscovery: false
-        deferToolGuidance: true
-
     - id: session-notification
       name: '@dingyi222666/dsh-session-notification'
 

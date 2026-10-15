@@ -29,20 +29,6 @@ autoInstallPeers: false
 verifyDepsBeforeRun: false
 
 overrides:
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/cordis': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-agent': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-agent-loop': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-llm': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-scope': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-session': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-system-prompt': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-tools': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-attachment': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-session-projection': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-session-persistence': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-settings': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-user-approval': 'workspace:*'
-  '@everclear077/dsh-progressive-tools>@deepseek-ai/dsh-ptc-runtime': 'workspace:*'
   'micromark-util-types': '2.0.2'
   'tsdown': '0.22.2'
   '@tsdown/css': '0.22.2'

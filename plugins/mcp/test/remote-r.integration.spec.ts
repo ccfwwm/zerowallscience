@@ -1,4 +1,3 @@
-import * as progressiveTools from '../../../packages/dsh/dsh-progressive-tools/src/index.ts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -72,7 +71,6 @@ describe.runIf(process.env.ZEROWALL_LIVE_R_TESTS === '1' && Boolean(process.env.
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(SkillRegistry)
-      await ctx.plugin(progressiveTools, { mode: 'stable-proxy', requireDiscovery: false })
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       const configured = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')
@@ -80,10 +78,9 @@ describe.runIf(process.env.ZEROWALL_LIVE_R_TESTS === '1' && Boolean(process.env.
       const connected = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('compact-connect'), name: 'mcp_connect', arguments: { server: 'rmcp' }, agent })
       expect(connected.isError, JSON.stringify(connected.content)).toBe(false)
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')?.runtimeState, { timeout: 20_000, interval: 100 }).toBe('active')
-      const searched = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('compact-search'), name: 'tool_search', arguments: { query: 'FigureYa' }, agent })
-      expect(searched.isError, JSON.stringify(searched.content)).toBe(false)
-      expect(JSON.stringify(searched.isError ? {} : searched.value)).toContain('figureya.entry')
-      const executed = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('compact-execute'), name: 'tool_dispatch', arguments: { name: 'r_runtime', arguments: { action: 'health' } }, agent })
+		expect(ctx.tools.schemas().map(schema => schema.name)).toContain('r_runtime')
+		expect(ctx.tools.schemas().map(schema => schema.name)).not.toEqual(expect.arrayContaining(['tool_dispatch', 'tool_search']))
+		const executed = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('compact-execute'), name: 'r_runtime', arguments: { action: 'health' }, agent })
       expect(executed.isError, JSON.stringify(executed.content)).toBe(false)
       expect(JSON.stringify(executed.isError ? {} : executed.value)).toContain('mcp__rmcp__r_runtime')
       expect(executed.content.map(block => block.type)).toEqual(['text'])

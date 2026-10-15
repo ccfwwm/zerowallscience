@@ -4,7 +4,7 @@ import { generateKeyPairSync } from 'node:crypto'
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import * as yaml from 'yaml'
 import { c as createArchive } from 'tar'
@@ -89,4 +89,59 @@ test('a signed closure absent from the old profile installs with real pnpm offli
   const after=JSON.parse(await readFile(join(home,'profiles/web/package.json')))
   assert.deepEqual(after.dsh.profile.bundles,before.dsh.profile.bundles)
  }finally{await rm(home,{recursive:true,force:true})}
+})
+
+test('real pnpm repairs deleted legacy tarballs and their closure while removing retired lock and override entries', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-stale-lock-'))
+  const selected = '@zerowallscience/plugin-update-fixture'
+  const legacy = 'dsh-legacy-fixture'
+  const child = 'dsh-legacy-child-fixture'
+  const retired = '@everclear077/dsh-progressive-tools'
+  const pnpm = fileURLToPath(new URL('../../deepseek-harness/apps/desktop/node_modules/pnpm/bin/pnpm.cjs', import.meta.url))
+  const runPnpm = (directory, args) => {
+    const result = spawnSync(process.execPath, ['--expose-internals', pnpm, ...args, '--offline', '--ignore-scripts'], { cwd: directory, encoding: 'utf8', timeout: 60000 })
+    assert.equal(result.status, 0, result.stdout + '\n' + result.stderr)
+  }
+  try {
+    const pair = generateKeyPairSync('ed25519')
+    const resources = []
+    const archives = {}
+    async function archive(id, version, dependencies = {}) {
+      const directory = join(home, id.split('/').at(-1) + '-' + version)
+      await mkdir(join(directory, 'package'), { recursive: true })
+      await writeFile(join(directory, 'package/package.json'), JSON.stringify({ name: id, version, dependencies }))
+      const path = directory + '.tgz'
+      await createArchive({ file: path, cwd: directory, gzip: true }, ['package'])
+      return path
+    }
+    for (const [id, dependencies] of [[selected, {}], [legacy, { [child]: '0.2.0' }], [child, {}]]) {
+      const path = await archive(id, '0.2.0', dependencies)
+      resources.push({ id, kind: 'plugin', version: '0.2.0', dependencies, platform: ['win32'], architecture: ['x64'], desktopRange: { min: '8.1.3' }, dshRange: { min: target.dshVersion, max: target.dshVersion }, downloadUrl: pathToFileURL(path).href, size: (await readFile(path)).length, sha256: await fileDigest(path), restartRequired: true, rollbackSupported: true })
+    }
+    for (const [id, dependencies] of [[legacy, { [child]: '0.1.0' }], [child, {}], [retired, {}]]) archives[id] = await archive(id, '0.1.0', dependencies)
+    await initializeProfile(home, [selected, legacy, retired])
+    const active = join(home, 'profiles/web')
+    const file = join(active, 'package.json')
+    const manifest = JSON.parse(await readFile(file))
+    manifest.dependencies = { [legacy]: 'file:' + archives[legacy], [retired]: 'file:' + archives[retired] }
+    await writeFile(file, JSON.stringify(manifest))
+    await writeFile(join(active, 'pnpm-workspace.yaml'), yaml.stringify({ packages: ['.'], autoInstallPeers: false, overrides: { [child]: 'file:' + archives[child], [retired]: 'file:' + archives[retired] } }))
+    runPnpm(active, ['install', '--no-frozen-lockfile'])
+    for (const path of Object.values(archives)) await rm(path)
+    const source = join(home, 'catalog.json')
+    await writeFile(source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources }, pair.privateKey, 'test')))
+    const manager = createResourceManager({ home, target, local: true, yaml, keys: { test: pair.publicKey }, stopHost: async () => {}, startHost: async () => {}, runPlugin: async (args, generation) => {
+      const candidate = join(home, 'profiles', generation)
+      runPnpm(candidate, args)
+      const lock = await readFile(join(candidate, 'pnpm-lock.yaml'), 'utf8')
+      assert(!lock.includes('dsh-progressive-tools'))
+      for (const path of Object.values(archives)) assert(!lock.includes(path.replaceAll('\\', '/')))
+      for (const id of [selected, legacy, child]) assert.equal(JSON.parse(await readFile(join(candidate, 'node_modules', id, 'package.json'))).version, '0.2.0')
+    } })
+    const result = await manager.updatePlugins([selected], source)
+    assert.deepEqual(new Set(result.packageIds), new Set([selected, legacy, child]))
+    const installed = JSON.parse(await readFile(file))
+    assert.equal(installed.dependencies[retired], undefined)
+    assert(!installed.dsh.profile.bundles.includes(retired))
+  } finally { await rm(home, { recursive: true, force: true }) }
 })

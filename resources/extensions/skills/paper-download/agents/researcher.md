@@ -76,7 +76,10 @@ If `include_websearch: true`, complement with `WebSearch` for :
   "candidates": [
     {
       "title": "Petri Nets for Music Score Recognition",
-      "authors": ["Smith J", "Doe A"],
+      "authors": [
+        "Smith J",
+        "Doe A"
+      ],
       "year": 2020,
       "doi": "10.1234/example",
       "arxiv_id": null,
@@ -88,7 +91,9 @@ If `include_websearch: true`, complement with `WebSearch` for :
     },
     {
       "title": "Music Notation via Concurrent Systems",
-      "authors": ["Jones B"],
+      "authors": [
+        "Jones B"
+      ],
       "year": 2018,
       "doi": null,
       "arxiv_id": "1804.12345",
@@ -99,7 +104,12 @@ If `include_websearch: true`, complement with `WebSearch` for :
       "abstract": "..."
     }
   ],
-  "platforms_queried": ["semantic", "arxiv", "openalex", "crossref"],
+  "platforms_queried": [
+    "semantic",
+    "arxiv",
+    "openalex",
+    "crossref"
+  ],
   "elapsed_seconds": 18.4,
   "limitations": [
     "Semantic Scholar may miss some niche-domain venues",

@@ -19,28 +19,25 @@ description: 使用真实 Skeletonize3D 和 AnalyzeSkeleton 计算成管骨架�
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "run",
-    "workflow_id": "fiji",
-    "parameters": {
-      "request_id": "REPLACE_WITH_STABLE_REQUEST_ID",
-      "operation": "fiji.tube-formation",
-      "arguments": {
-        "sourceAssetId": "REPLACE_WITH_ACTUAL_ASSET_ID",
-        "image": {
-          "kind": "tube-formation",
-          "sampleId": "S1",
-          "threshold": 128,
-          "polarity": "bright",
-          "unit": "pixel",
-          "unitScale": 1,
-          "roi": {
-            "x": 0,
-            "y": 0,
-            "width": 20,
-            "height": 20
-          }
+  "action": "run",
+  "workflow_id": "fiji",
+  "parameters": {
+    "request_id": "REPLACE_WITH_STABLE_REQUEST_ID",
+    "operation": "fiji.tube-formation",
+    "arguments": {
+      "sourceAssetId": "REPLACE_WITH_ACTUAL_ASSET_ID",
+      "image": {
+        "kind": "tube-formation",
+        "sampleId": "S1",
+        "threshold": 128,
+        "polarity": "bright",
+        "unit": "pixel",
+        "unitScale": 1,
+        "roi": {
+          "x": 0,
+          "y": 0,
+          "width": 20,
+          "height": 20
         }
       }
     }

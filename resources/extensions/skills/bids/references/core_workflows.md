@@ -326,36 +326,41 @@ my_dataset/
 For **func (BOLD)**:
 ```json
 {
-    "RepetitionTime": 2.0,
-    "TaskName": "rest",
-    "PhaseEncodingDirection": "j-",
-    "TotalReadoutTime": 0.05,
-    "SliceTiming": [0, 0.5, 1.0, 1.5],
-    "EffectiveEchoSpacing": 0.00058,
-    "EchoTime": 0.03
+  "RepetitionTime": 2,
+  "TaskName": "rest",
+  "PhaseEncodingDirection": "j-",
+  "TotalReadoutTime": 0.05,
+  "SliceTiming": [
+    0,
+    0.5,
+    1,
+    1.5
+  ],
+  "EffectiveEchoSpacing": 0.00058,
+  "EchoTime": 0.03
 }
 ```
 
 For **anat**:
 ```json
 {
-    "MagneticFieldStrength": 3,
-    "Manufacturer": "Siemens",
-    "ManufacturersModelName": "Prisma",
-    "RepetitionTime": 2.3,
-    "EchoTime": 0.00293,
-    "FlipAngle": 8
+  "MagneticFieldStrength": 3,
+  "Manufacturer": "Siemens",
+  "ManufacturersModelName": "Prisma",
+  "RepetitionTime": 2.3,
+  "EchoTime": 0.00293,
+  "FlipAngle": 8
 }
 ```
 
 For **DWI**:
 ```json
 {
-    "PhaseEncodingDirection": "j-",
-    "TotalReadoutTime": 0.05,
-    "EchoTime": 0.089,
-    "RepetitionTime": 3.4,
-    "MultipartID": "dwi_1"
+  "PhaseEncodingDirection": "j-",
+  "TotalReadoutTime": 0.05,
+  "EchoTime": 0.089,
+  "RepetitionTime": 3.4,
+  "MultipartID": "dwi_1"
 }
 ```
 
@@ -400,32 +405,32 @@ The `participants.json` sidecar describes columns:
 
 ```json
 {
-    "age": {
-        "Description": "Age of the participant at time of scanning",
-        "Units": "years"
-    },
-    "sex": {
-        "Description": "Biological sex",
-        "Levels": {
-            "M": "male",
-            "F": "female"
-        }
-    },
-    "group": {
-        "Description": "Experimental group",
-        "Levels": {
-            "control": "Healthy control",
-            "patient": "Patient group"
-        }
-    },
-    "handedness": {
-        "Description": "Dominant hand",
-        "Levels": {
-            "right": "Right-handed",
-            "left": "Left-handed",
-            "ambidextrous": "Ambidextrous"
-        }
+  "age": {
+    "Description": "Age of the participant at time of scanning",
+    "Units": "years"
+  },
+  "sex": {
+    "Description": "Biological sex",
+    "Levels": {
+      "M": "male",
+      "F": "female"
     }
+  },
+  "group": {
+    "Description": "Experimental group",
+    "Levels": {
+      "control": "Healthy control",
+      "patient": "Patient group"
+    }
+  },
+  "handedness": {
+    "Description": "Dominant hand",
+    "Levels": {
+      "right": "Right-handed",
+      "left": "Left-handed",
+      "ambidextrous": "Ambidextrous"
+    }
+  }
 }
 ```
 

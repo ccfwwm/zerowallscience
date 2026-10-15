@@ -39,7 +39,6 @@ process.env.ZEROWALL_RESEARCH_DB = join(output, 'research.sqlite')
 const receipt = { candidate: prepared.candidate, complete: false, checks: [] }
 try {
   for (const id of ['@deepseek-ai/dsh-system-prompt', '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-session-projection', '@deepseek-ai/dsh-agent', '@deepseek-ai/dsh-llm', '@zerowallscience/plugin-python', '@zerowallscience/plugin-biogenie']) await ctx.plugin(await plugin(id))
-  await ctx.plugin(await plugin('@everclear077/dsh-progressive-tools'), { groups: [{ id: 'bio', include: ['bio_*', 'python*'], description: 'Scientific Python and BioGenie' }] })
   await ctx.plugin(await plugin('@deepseek-ai/dsh-agent-loop'), { agents: [] })
   ctx.on('llm/stream', () => (async function* () { yield { type: 'finish', reason: { kind: 'stop' } } })())
   const sessionId = SessionId('installed-python-tools')
@@ -49,20 +48,15 @@ try {
   const call = async (name, args, signal = new AbortController().signal) => {
     const result = await ctx.tools.execute({ name, arguments: args, callId: ToolCallId('installed-' + crypto.randomUUID()), signal, agent })
     assert.equal(result.isError, false, JSON.stringify(result.content))
-    if (name === 'tool_dispatch') {
-      assert.equal(result.value.protocol, 'dsh-progressive-tools/dispatch-v2')
-      return result.value.value
-    }
     return result.value
   }
-  const search = await call('tool_search', { query: 'bio_local', action: 'search' })
-  assert.match(JSON.stringify(search), /bio_local/u)
-  receipt.checks.push({ name: 'installed tool_search', foundBioLocal: true })
-  const bio = await call('tool_dispatch', { name: 'bio_local', arguments: { action: 'run', operation: 'seq_translate', arguments: { sequence: 'ATGGCCATTGTA' } } })
+  assert.ok(ctx.tools.schemas().some(schema => schema.name === 'bio_local'))
+  assert.ok(!ctx.tools.schemas().some(schema => ['tool_dispatch', 'tool_search'].includes(schema.name)))
+  const bio = await call('bio_local', { action: 'run', operation: 'seq_translate', arguments: { sequence: 'ATGGCCATTGTA' } })
   assert.match(JSON.stringify(bio), /MAIV/u)
-  receipt.checks.push({ name: 'installed tool_dispatch → bio_local', translated: 'MAIV' })
+  receipt.checks.push({ name: 'installed native bio_local tool', translated: 'MAIV' })
   const bioCall = async (operation, args) => {
-    const value = await call('tool_dispatch', { name: 'bio_local', arguments: { action: 'run', operation, arguments: args } })
+    const value = await call('bio_local', { action: 'run', operation, arguments: args })
     assert.equal(value.ok, true, JSON.stringify(value))
     assert.equal(value.provenance.executable.toLowerCase(), join(installation, 'Python/python.exe').toLowerCase())
     return value
@@ -71,7 +65,7 @@ try {
   assert.equal((await bioCall('seq_translate', { sequence: 'one.fasta' })).result.protein, 'MAIV')
   await writeFile(join(workspace, 'multiple.fasta'), '>one\nATGGCC\n>two\nATGGCC\n')
   for (const sequence of ['multiple.fasta', '../outside.fasta']) {
-    const value = await call('tool_dispatch', { name: 'bio_local', arguments: { action: 'run', operation: 'seq_translate', arguments: { sequence } } })
+    const value = await call('bio_local', { action: 'run', operation: 'seq_translate', arguments: { sequence } })
     assert.equal(value.ok, false, JSON.stringify(value))
   }
   const sbol = await bioCall('sbol_write', { components: [{ name: 'promoter', sequence: 'ATGGCC', role: 'promoter' }], output_file: 'design.xml' })
@@ -93,16 +87,14 @@ try {
   assert.equal(plot.result.graphic, true)
   await writeFile(join(output, 'installed-algorithms-receipt.json'), JSON.stringify({ sbol, de, gsea, ml, plot }, null, 2))
   receipt.checks.push({ name: 'installed formal DE/GSEA, grouped ML and plasmid plot', complete: true })
-  await call('tool_search', { query: 'python', action: 'search' })
-  const python = await call('tool_dispatch', { name: 'python', arguments: { code: 'import sys; print(sys.executable)', description: 'Verify fixed interpreter' } })
+  const python = await call('python', { code: 'import sys; print(sys.executable)', description: 'Verify fixed interpreter' })
   assert.match(JSON.stringify(python).toLowerCase(), /python[\\/]+python\.exe/u)
   assert.ok(!JSON.stringify(python).match(/slots[\\/]/iu))
   receipt.checks.push({ name: 'installed Python tool', result: python })
   const stored = await ctx.zerowallPython.run({ code: "import sys; sys.stderr.write('错'*400000)", description: 'Verify full stderr recording' }, { signal: new AbortController().signal, agent })
   const bytes = await readFile(join(workspace, '.zerowall/python-results', stored.result_id + '.stderr'))
   assert.equal(bytes.length, 1200000)
-  await call('tool_search', { query: 'python_result', action: 'search' })
-  const page = await call('tool_dispatch', { name: 'python_result', arguments: { result_id: stored.result_id, stream: 'stderr', offset: 1199997, limit: 4 } })
+  const page = await call('python_result', { result_id: stored.result_id, stream: 'stderr', offset: 1199997, limit: 4 })
   assert.match(JSON.stringify(page), /错/u)
   receipt.checks.push({ name: 'complete stderr result retained', bytes: bytes.length })
   const cancellation = new AbortController()

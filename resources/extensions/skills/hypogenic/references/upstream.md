@@ -164,8 +164,8 @@ The saved bank is a JSON object keyed by hypothesis text. Each value serializes
 ```json
 {
   "hypothesis": "candidate text",
-  "acc": 0.0,
-  "reward": 0.0,
+  "acc": 0,
+  "reward": 0,
   "num_visits": 0,
   "correct_examples": []
 }

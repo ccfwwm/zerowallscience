@@ -111,7 +111,7 @@ Write a JSON file with this structure:
       },
       "content_score": 4.7,
       "structure_score": 4.3,
-      "overall_score": 9.0
+      "overall_score": 9
     },
     "B": {
       "content": {
@@ -137,11 +137,16 @@ Write a JSON file with this structure:
         "Well-formatted",
         "All fields present"
       ],
-      "weaknesses": ["Minor style inconsistency in header"]
+      "weaknesses": [
+        "Minor style inconsistency in header"
+      ]
     },
     "B": {
       "score": 5,
-      "strengths": ["Readable output", "Correct basic structure"],
+      "strengths": [
+        "Readable output",
+        "Correct basic structure"
+      ],
       "weaknesses": [
         "Missing date field",
         "Formatting inconsistencies",
@@ -155,11 +160,26 @@ Write a JSON file with this structure:
       "total": 5,
       "pass_rate": 0.8,
       "details": [
-        { "text": "Output includes name", "passed": true },
-        { "text": "Output includes date", "passed": true },
-        { "text": "Format is PDF", "passed": true },
-        { "text": "Contains signature", "passed": false },
-        { "text": "Readable text", "passed": true }
+        {
+          "text": "Output includes name",
+          "passed": true
+        },
+        {
+          "text": "Output includes date",
+          "passed": true
+        },
+        {
+          "text": "Format is PDF",
+          "passed": true
+        },
+        {
+          "text": "Contains signature",
+          "passed": false
+        },
+        {
+          "text": "Readable text",
+          "passed": true
+        }
       ]
     },
     "B": {
@@ -167,11 +187,26 @@ Write a JSON file with this structure:
       "total": 5,
       "pass_rate": 0.6,
       "details": [
-        { "text": "Output includes name", "passed": true },
-        { "text": "Output includes date", "passed": false },
-        { "text": "Format is PDF", "passed": true },
-        { "text": "Contains signature", "passed": false },
-        { "text": "Readable text", "passed": true }
+        {
+          "text": "Output includes name",
+          "passed": true
+        },
+        {
+          "text": "Output includes date",
+          "passed": false
+        },
+        {
+          "text": "Format is PDF",
+          "passed": true
+        },
+        {
+          "text": "Contains signature",
+          "passed": false
+        },
+        {
+          "text": "Readable text",
+          "passed": true
+        }
       ]
     }
   }

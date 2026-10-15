@@ -193,8 +193,20 @@ of them. It has two parts:
 ```json
 {
   "filters": {
-    "terms": {"Modality": ["CT"], "collection_id": ["nlst"]},
-    "ranges": {"instanceCount": {"gte": 100, "lte": 200}}
+    "terms": {
+      "Modality": [
+        "CT"
+      ],
+      "collection_id": [
+        "nlst"
+      ]
+    },
+    "ranges": {
+      "instanceCount": {
+        "gte": 100,
+        "lte": 200
+      }
+    }
   }
 }
 ```
@@ -547,7 +559,12 @@ means raise the limit or aggregate/narrow instead. Explore narrow, then widen.
 Errors come in two shapes. Semantic problems are HTTP 400 with a uniform body:
 
 ```json
-{"error": {"code": "invalid_query", "message": "Unknown or non-term filter attribute: 'NotAnAttribute'. Use list_attributes to see valid attributes."}}
+{
+  "error": {
+    "code": "invalid_query",
+    "message": "Unknown or non-term filter attribute: 'NotAnAttribute'. Use list_attributes to see valid attributes."
+  }
+}
 ```
 
 Request-shape problems are HTTP 422 with FastAPI's `detail[]` array, which names the offending

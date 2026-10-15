@@ -2,16 +2,27 @@
 
 ## 本地文件往返
 
-前提：当前工作区有 `input/counts.csv`，本次传输已经在用户授权范围内。下面是交给 `tool_dispatch` 的 Host 包装，路径和确认字段在 Host 顶层。
+前提：当前工作区有 `input/counts.csv`，本次传输已经在用户授权范围内。下面是交给 the native tool 的 Host 包装，路径和确认字段在 Host 顶层。
 
 ```json
-{"name":"r_files","arguments":{"action":"upload_workspace","project_id":"rmcp-demo","local_path":"input/counts.csv","remote_path":"inputs/counts.csv","confirm":true}}
+{
+  "action": "upload_workspace",
+  "project_id": "rmcp-demo",
+  "local_path": "input/counts.csv",
+  "remote_path": "inputs/counts.csv",
+  "confirm": true
+}
 ```
 
 成功返回 `projectId/localPath/remotePath/bytes/sha256`；大文件还返回 `transferId`。保存这些字段，再按返回的远程路径下载：
 
 ```json
-{"name":"r_files","arguments":{"action":"download_workspace","project_id":"rmcp-demo","remote_path":"inputs/counts.csv","local_path":"output/counts-return.csv"}}
+{
+  "action": "download_workspace",
+  "project_id": "rmcp-demo",
+  "remote_path": "inputs/counts.csv",
+  "local_path": "output/counts-return.csv"
+}
 ```
 
 比较上传与下载的 `bytes/sha256`，确认内容一致。100 MiB 以上上传自动走分片恢复，当前最多 20 GiB；下载流式写入临时文件并验证校验和。网络中断后复用相同项目、路径和内容；目标文件冲突时选择新路径。
@@ -19,7 +30,17 @@
 查看服务器文件则使用工作流，不传 local_path：
 
 ```json
-{"name":"research_workflow","arguments":{"action":"query","workflow_id":"r.files","parameters":{"operation":"r.list.directory","arguments":{"project_id":"rmcp-demo","path":"inputs"}}}}
+{
+  "action": "query",
+  "workflow_id": "r.files",
+  "parameters": {
+    "operation": "r.list.directory",
+    "arguments": {
+      "project_id": "rmcp-demo",
+      "path": "inputs"
+    }
+  }
+}
 ```
 
 模板源文件使用 `download_figureya_module`，传 `module_id` 和本地相对目录 `local_path`；不把模板的服务器绝对路径作为项目路径。

@@ -340,7 +340,11 @@ Single-run input:
 
 ```json
 {
-  "caco2_wang": [0.1, 0.2, 0.3]
+  "caco2_wang": [
+    0.1,
+    0.2,
+    0.3
+  ]
 }
 ```
 
@@ -349,11 +353,51 @@ Multi-run input:
 ```json
 {
   "runs": [
-    {"seed": 1, "predictions": {"caco2_wang": [0.1, 0.2]}},
-    {"seed": 2, "predictions": {"caco2_wang": [0.1, 0.2]}},
-    {"seed": 3, "predictions": {"caco2_wang": [0.1, 0.2]}},
-    {"seed": 4, "predictions": {"caco2_wang": [0.1, 0.2]}},
-    {"seed": 5, "predictions": {"caco2_wang": [0.1, 0.2]}}
+    {
+      "seed": 1,
+      "predictions": {
+        "caco2_wang": [
+          0.1,
+          0.2
+        ]
+      }
+    },
+    {
+      "seed": 2,
+      "predictions": {
+        "caco2_wang": [
+          0.1,
+          0.2
+        ]
+      }
+    },
+    {
+      "seed": 3,
+      "predictions": {
+        "caco2_wang": [
+          0.1,
+          0.2
+        ]
+      }
+    },
+    {
+      "seed": 4,
+      "predictions": {
+        "caco2_wang": [
+          0.1,
+          0.2
+        ]
+      }
+    },
+    {
+      "seed": 5,
+      "predictions": {
+        "caco2_wang": [
+          0.1,
+          0.2
+        ]
+      }
+    }
   ]
 }
 ```

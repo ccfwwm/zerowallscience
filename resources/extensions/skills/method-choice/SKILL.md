@@ -56,7 +56,7 @@ silent, leave the field out.
 
 ## Execute the check
 
-Discover `method_check_evaluate` with `tool_search`, then dispatch the exact returned tool with `{ "context": { ...extracted fields... } }`. Do not rely on a fenced `method` block to trigger execution: no automatic block-to-tool bridge is installed.
+Discover `method_check_evaluate` with Host tool registry, then dispatch the exact returned tool with `{ "context": { ...extracted fields... } }`. Do not rely on a fenced `method` block to trigger execution: no automatic block-to-tool bridge is installed.
 
 The deterministic result contains `checker`, `status`, `findings`, `missing`, and `scope`. Preserve `insufficient_information` and `flagged`. `no_listed_issue` means only that the implemented rules found no issue in the supplied metadata; it never certifies scientific applicability. Include source locations for the extracted fields in the explanation. This read-only tool does not automatically persist reviewer cards or an approved evidence record.
 

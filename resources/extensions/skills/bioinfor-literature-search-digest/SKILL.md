@@ -9,7 +9,7 @@ description: Use when searching PubMed or biomedical preprints, retrieving paper
 
 These host rules override workflow examples below when they differ.
 
-- Use ZeroWall tools by their actual names and discover optional MCP capabilities with `tool_search`; do not assume a connector is installed.
+- Use ZeroWall tools by their actual names and use the exact optional MCP tool name exposed by the Host; do not assume a connector is installed.
 - Use `python` for normalization and small report-generation work; use `run_in_context` with Run Manager for long-running retrieval or batch processing.
 - Resolve credentials only through **Settings > Credentials**. Never create, scan, or load project `.env` files and never print secret values.
 - Keep network calls, large transfers, paid APIs, and external writes approval-gated. Bound searches before retrieval.

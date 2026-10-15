@@ -15,7 +15,12 @@ description: 对项目内图像的已接受 ROI 执行可追踪的原始像素�
 4. 视图或标注没有未保存修改时，调用：
 
 ```json
-{"action":"image_analyze","viewer_id":"实际Viewer ID","expected_revision":7,"annotation_revision_id":"可选的accepted修订ID"}
+{
+  "action": "image_analyze",
+  "viewer_id": "实际Viewer ID",
+  "expected_revision": 7,
+  "annotation_revision_id": "可选的accepted修订ID"
+}
 ```
 
 5. 只引用返回的 `imageAnalysis` 和 JSON Artifact。结果绑定源 Asset SHA-256、Viewer 版本、accepted 标注修订、尺寸、页数、通道和位深；Artifact 的 `scientificReview` 固定为 `pending`。

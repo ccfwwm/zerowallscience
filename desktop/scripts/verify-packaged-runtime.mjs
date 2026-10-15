@@ -17,7 +17,6 @@ import { verifyOfflineProfile, prepareOfflineCandidate } from '../../tools/comma
 import { locatePackagedApp } from './packaged-app.mjs'
 import { verifySettingsLocales } from './verify-settings-locales.mjs'
 import { prepareOfflineNetworkProbe, verifyOfflineNetworkProbe } from './offline-network-probe.mjs'
-import { verifyZoteroDispatch } from '../../tools/packaging/verify-zotero-dispatch.mjs'
 
 const hostCookies = new Map()
 const MIB = 1024 * 1024
@@ -198,8 +197,6 @@ const requiredArchivePaths = [
   'node_modules/dsh-ssh-ops/lib/client.js',
   'node_modules/dsh-ssh-ops/lib/typert.js',
   'node_modules/dsh-ssh-ops/cordis.patch.yml',
-  'node_modules/@everclear077/dsh-progressive-tools/lib/index.js',
-  'node_modules/@everclear077/dsh-progressive-tools/cordis.patch.yml',
   'node_modules/@dingyi222666/dsh-session-notification/lib/index.js',
   'node_modules/@dingyi222666/dsh-session-notification/lib/client.js',
   'node_modules/@dingyi222666/dsh-session-notification/cordis.patch.yml',
@@ -715,20 +712,20 @@ function verifyZoteroAdapters() {
   const legacyClient = client.includes('visit(root, key, 1)')
     && client.includes('order.push(`${key}:${block.callId}`)')
   if (!modernClient && !legacyClient) {
-    throw new Error('Packaged Zotero Sources tab cannot track nested Progressive Tools calls.')
-  }
-  const dispatcher = readArchiveFile('node_modules/@everclear077/dsh-progressive-tools/lib/index.js').toString('utf8')
-  const progressive = JSON.parse(readArchiveFile('node_modules/@everclear077/dsh-progressive-tools/package.json').toString('utf8'))
-  if (progressive.version !== pinnedIntegrations.progressiveTools.resourceVersion || ['agent', 'llm', 'system-prompt', 'tools'].some(name => progressive.peerDependencies?.[`@deepseek-ai/dsh-${name}`] !== '0.2.0-rc.2')) {
-    throw new Error('Packaged Progressive Tools manifest must use the audited rc.2 resource adaptation.')
-  }
-  const progressivePatch = yaml.parse(readArchiveFile('node_modules/@everclear077/dsh-progressive-tools/cordis.patch.yml').toString('utf8'))
-  if (progressivePatch?.[0]?.insert?.[0]?.name !== progressive.name) {
-    throw new Error('Packaged Progressive Tools bundle registration must match its package identity.')
+    throw new Error('Packaged Zotero Sources tab cannot track historical nested tool calls.')
   }
   const conversation = readArchiveFile('node_modules/@deepseek-ai/dsh-client-ui-conversation/lib/client.js').toString('utf8')
   const ssh = readArchiveFile('node_modules/dsh-ssh-ops/lib/client.js').toString('utf8')
-  verifyZoteroDispatch(client, dispatcher)
+  const base = readArchiveFile('node_modules/@zerowallscience/plugin-base/lib/index.js').toString('utf8')
+  const mcp = readArchiveFile('node_modules/@zerowallscience/plugin-mcp/lib/index.js').toString('utf8')
+  for (const [name, source] of [['Base', base], ['MCP', mcp]]) {
+    if (/tool_dispatch|tool_search|tool_result_read/u.test(source)) {
+      throw new Error(`Packaged ${name} runtime still depends on Progressive Tools routing.`)
+    }
+  }
+  if (archiveSet.has('node_modules/@everclear077/dsh-progressive-tools/package.json')) {
+    throw new Error('Progressive Tools must not be included in the packaged runtime.')
+  }
   if (!conversation.includes('data-conversation-view')) {
     throw new Error('Packaged conversation view isolation is missing.')
   }

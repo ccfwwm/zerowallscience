@@ -293,10 +293,14 @@ Or supply a bounded strict JSON model card containing only metadata:
   "schema_version": "1.0",
   "model_id": "reviewed-hovernet",
   "artifact_sha256": "hex-digest",
-  "input_shape": [3, 256, 256],
+  "input_shape": [
+    3,
+    256,
+    256
+  ],
   "dtype": "float32",
   "output_elements_per_tile": 589824,
-  "activation_multiplier": 8.0
+  "activation_multiplier": 8
 }
 ```
 

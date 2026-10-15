@@ -75,7 +75,9 @@ The evaluation contains one entry for every criterion:
   "status": "rated",
   "score": 3,
   "uncertainty": 0.5,
-  "evidence_ids": ["EVIDENCE-SYNTHETIC-METHOD"],
+  "evidence_ids": [
+    "EVIDENCE-SYNTHETIC-METHOD"
+  ],
   "rationale_ref": "LOCAL-RATING-RATIONALE-METHOD"
 }
 ```

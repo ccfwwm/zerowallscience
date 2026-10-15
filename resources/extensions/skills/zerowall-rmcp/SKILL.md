@@ -1,12 +1,12 @@
 ---
 name: zerowall-rmcp
 description: 远程科研总导航：选择 R、文件、包、GEO、NHANES、Biomni、FigureYa、scTenifold 或 OmicVerse，明确发现、参数、任务和结果规范。
-allowed-tools: tool_search tool_dispatch read
+allowed-tools: read
 ---
 
 # 远程科研入口
 
-所有模块共享一个物理连接 `rmcp`。默认业务工具为 Host `research_workflow`，本地文件传输为 Host `r_files`。先用 `tool_search` 搜索并发现精确工具，再由 `tool_dispatch` 调用。`mcp__rmcp__*` 是底层转发工具，不是独立连接。
+所有模块共享一个物理连接 `rmcp`。默认业务工具为 Host `research_workflow`，本地文件传输为 Host `r_files`。直接调用 Host 暴露的精确工具名，并以当前 schema 为准。`mcp__rmcp__*` 是底层转发工具，不是独立连接。
 
 | 用户任务 | Skill | workflow_id |
 |---|---|---|
@@ -22,21 +22,43 @@ allowed-tools: tool_search tool_dispatch read
 
 ## 首次调用
 
-`tool_search` 输入 `{"query":"research_workflow"}`。然后交给 `tool_dispatch`：
+Host tool registry 输入 `{"query":"research_workflow"}`。然后交给 the native tool：
 
 ```json
-{"name":"research_workflow","arguments":{"action":"search","workflow_id":"r.compute","query":"script","offset":0,"limit":25}}
+{
+  "action": "search",
+  "workflow_id": "r.compute",
+  "query": "script",
+  "offset": 0,
+  "limit": 25
+}
 ```
 
 ```json
-{"name":"research_workflow","arguments":{"action":"describe","workflow_id":"r.compute","operation":"r.submit.script"}}
+{
+  "action": "describe",
+  "workflow_id": "r.compute",
+  "operation": "r.submit.script"
+}
 ```
 
 ```json
-{"name":"research_workflow","arguments":{"action":"run","workflow_id":"r.compute","parameters":{"operation":"r.submit.script","arguments":{"project_id":"rmcp-demo","code":"writeLines(capture.output(sessionInfo()), file.path(Sys.getenv('R_PLATFORM_RESULT_DIR'), 'session-info.txt'))","confirm":true},"request_id":"runtime-demo-1"}}}
+{
+  "action": "run",
+  "workflow_id": "r.compute",
+  "parameters": {
+    "operation": "r.submit.script",
+    "arguments": {
+      "project_id": "rmcp-demo",
+      "code": "writeLines(capture.output(sessionInfo()), file.path(Sys.getenv('R_PLATFORM_RESULT_DIR'), 'session-info.txt'))",
+      "confirm": true
+    },
+    "request_id": "runtime-demo-1"
+  }
+}
 ```
 
-`tool_dispatch.name` 选 Host 工具；`action` 选流程动作；`workflow_id` 选模块；`parameters.operation` 选业务能力，业务参数放 `parameters.arguments`。`describe.operation` 是顶层字段，不能套用 run 包装。
+`research_workflow` 选 Host 工具；`action` 选流程动作；`workflow_id` 选模块；`parameters.operation` 选业务能力，业务参数放 `parameters.arguments`。`describe.operation` 是顶层字段，不能套用 run 包装。
 
 ## 结果与约定
 

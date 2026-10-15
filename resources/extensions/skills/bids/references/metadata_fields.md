@@ -86,12 +86,27 @@ This reference lists the required and recommended JSON sidecar fields for each B
 
 Example for ascending sequential (3 slices, TR=2s):
 ```json
-{"SliceTiming": [0.0, 0.667, 1.333]}
+{
+  "SliceTiming": [
+    0,
+    0.667,
+    1.333
+  ]
+}
 ```
 
 Example for interleaved (odd-first, 6 slices, TR=2s):
 ```json
-{"SliceTiming": [0.0, 0.667, 1.333, 0.333, 1.0, 1.667]}
+{
+  "SliceTiming": [
+    0,
+    0.667,
+    1.333,
+    0.333,
+    1,
+    1.667
+  ]
+}
 ```
 
 **PhaseEncodingDirection** values:
@@ -172,20 +187,20 @@ Example for interleaved (odd-first, 6 slices, TR=2s):
 **BIDS URI format** (recommended, v1.7+):
 ```json
 {
-    "IntendedFor": [
-        "bids::sub-01/func/sub-01_task-rest_bold.nii.gz",
-        "bids::sub-01/dwi/sub-01_dwi.nii.gz"
-    ]
+  "IntendedFor": [
+    "bids::sub-01/func/sub-01_task-rest_bold.nii.gz",
+    "bids::sub-01/dwi/sub-01_dwi.nii.gz"
+  ]
 }
 ```
 
 **Relative path format** (legacy):
 ```json
 {
-    "IntendedFor": [
-        "func/sub-01_task-rest_bold.nii.gz",
-        "dwi/sub-01_dwi.nii.gz"
-    ]
+  "IntendedFor": [
+    "func/sub-01_task-rest_bold.nii.gz",
+    "dwi/sub-01_dwi.nii.gz"
+  ]
 }
 ```
 

@@ -65,26 +65,26 @@ json.dump(payload, open("out.json", "w"), indent=2)
   "pages": [
     {
       "page_num": 1,
-      "width": 612.0,
-      "height": 792.0,
+      "width": 612,
+      "height": 792,
       "text": "Page 1 text...",
       "text_items": [
         {
           "text": "Introduction",
-          "x": 72.0,
-          "y": 100.0,
-          "width": 120.0,
-          "height": 14.0,
+          "x": 72,
+          "y": 100,
+          "width": 120,
+          "height": 14,
           "font_name": "Times-Bold",
-          "font_size": 12.0,
+          "font_size": 12,
           "confidence": null
         },
         {
           "text": "scanned phrase",
-          "x": 80.0,
-          "y": 400.0,
-          "width": 200.0,
-          "height": 12.0,
+          "x": 80,
+          "y": 400,
+          "width": 200,
+          "height": 12,
           "font_name": null,
           "font_size": null,
           "confidence": 0.94

@@ -1,7 +1,7 @@
 ---
 name: zerowall-r-packages
 description: 远程 R 包版本、依赖检查及批准的包管理。
-allowed-tools: tool_search tool_dispatch read
+allowed-tools: read
 ---
 
 # 远程 R 包版本、依赖检查及批准的包管理。
@@ -14,7 +14,7 @@ allowed-tools: tool_search tool_dispatch read
 
 ## 入口与准备
 
-先 `tool_search` 搜索 `research_workflow`，使用返回的真实工具名和 schema。下列 JSON 是交给 `tool_dispatch` 的完整包装；不要把工作流 ID 当工具名。只有一条物理连接 `rmcp`，工作流按需连接。
+直接调用 `research_workflow`，并以当前 schema 为准。下列 JSON 是该工具的参数；不要把工作流 ID 当工具名。只有一条物理连接 `rmcp`，工作流按需连接。
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 
@@ -24,28 +24,22 @@ allowed-tools: tool_search tool_dispatch read
 
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "describe",
-    "workflow_id": "r.packages",
-    "operation": "r.get.package.status"
-  }
+  "action": "describe",
+  "workflow_id": "r.packages",
+  "operation": "r.get.package.status"
 }
 ```
 ```json
 {
-  "name": "research_workflow",
-  "arguments": {
-    "action": "query",
-    "workflow_id": "r.packages",
-    "parameters": {
-      "operation": "r.get.package.status",
-      "arguments": {
-        "packages": [
-          "Matrix",
-          "Seurat"
-        ]
-      }
+  "action": "query",
+  "workflow_id": "r.packages",
+  "parameters": {
+    "operation": "r.get.package.status",
+    "arguments": {
+      "packages": [
+        "Matrix",
+        "Seurat"
+      ]
     }
   }
 }

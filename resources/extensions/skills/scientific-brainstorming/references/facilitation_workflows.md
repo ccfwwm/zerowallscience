@@ -33,14 +33,22 @@ date belongs in the record.
   "statement": "A concise candidate research direction.",
   "provenance": {
     "origin": "human",
-    "contributor_ids": ["P01"],
+    "contributor_ids": [
+      "P01"
+    ],
     "recorded_stage": "independent",
     "source_refs": [],
     "ai_tool": null
   },
-  "assumption_ids": ["A001"],
-  "predicted_observations": ["What would be expected if the idea were useful"],
-  "uncertainties": ["The main unresolved uncertainty"],
+  "assumption_ids": [
+    "A001"
+  ],
+  "predicted_observations": [
+    "What would be expected if the idea were useful"
+  ],
+  "uncertainties": [
+    "The main unresolved uncertainty"
+  ],
   "evidence_status": "not-checked",
   "status": "candidate"
 }
@@ -73,11 +81,17 @@ Useful categories include `causal`, `mechanistic`, `measurement`, `sampling`,
 {
   "idea_id": "I001",
   "checked_on": "2026-07-23",
-  "queries": ["Exact query or protocol identifier"],
-  "sources_screened": ["DOI or stable URL"],
+  "queries": [
+    "Exact query or protocol identifier"
+  ],
+  "sources_screened": [
+    "DOI or stable URL"
+  ],
   "support": [],
   "challenges": [],
-  "search_limits": ["Databases, date, language, or access limits"],
+  "search_limits": [
+    "Databases, date, language, or access limits"
+  ],
   "status": "search-incomplete",
   "reviewer_id": "P02"
 }
@@ -265,11 +279,18 @@ approved closed process.
   "decision_id": "D001",
   "date": "2026-07-23",
   "owner_id": "P01",
-  "candidate_ids": ["I001", "I002"],
+  "candidate_ids": [
+    "I001",
+    "I002"
+  ],
   "decision": "Advance I001 to a bounded literature review; no study approved.",
   "rationale": "Reason linked to criteria and qualitative review.",
-  "dissent": ["P02 preferred I002 because ..."],
-  "uncertainties": ["Feasibility estimate has not been checked."],
+  "dissent": [
+    "P02 preferred I002 because ..."
+  ],
+  "uncertainties": [
+    "Feasibility estimate has not been checked."
+  ],
   "gate_status": {
     "ethics": "not-assessed",
     "biosafety_or_dual_use": "not-applicable",

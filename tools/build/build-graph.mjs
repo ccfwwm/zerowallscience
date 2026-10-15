@@ -199,7 +199,7 @@ async function taskDefinition(id, taskArgs = []) {
     }
     if (!task && manifest.files?.length) return { id, inputPaths: [relative(root, sourceRoot)], dshCommit: '', dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, sourceRoot).replaceAll('\\', '/')]), dependencies: { ...dependencies, package: manifest.name, version: manifest.version, ...(name === 'python' ? { signingKeyId: process.env.ZEROWALL_RESOURCE_KEY_ID ?? 'local-development' } : {}) }, outputs: manifest.files.map(file => join(sourceRoot, file)), lockName: `package-${name}`, run: async () => {} }
     if (!task) throw new Error(`Package ${manifest.name} has no bundle/build script.`)
-    return { id, inputPaths: [relative(root, sourceRoot), 'tools/plugins/tsdown.ts', ...await sharedSourceInputs(root, sourceRoot)], dshCommit, dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, sourceRoot).replaceAll('\\', '/')], ['tsdown', 'typescript']), dependencies: { ...dependencies, package: manifest.name, version: manifest.version, task, script: manifest.scripts[task] }, outputs: [join(sourceRoot, 'lib')], lockName: `package-${name}`, run: async () => run(scriptArgs(['--filter', manifest.name, 'run', task, ...(manifest.name === '@everclear077/dsh-progressive-tools' ? ['--skipLibCheck'] : [])])) }
+    return { id, inputPaths: [relative(root, sourceRoot), 'tools/plugins/tsdown.ts', ...await sharedSourceInputs(root, sourceRoot)], dshCommit, dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, sourceRoot).replaceAll('\\', '/')], ['tsdown', 'typescript']), dependencies: { ...dependencies, package: manifest.name, version: manifest.version, task, script: manifest.scripts[task] }, outputs: [join(sourceRoot, 'lib')], lockName: `package-${name}`, run: async () => run(scriptArgs(['--filter', manifest.name, 'run', task])) }
   }
   if (id === 'dsh') {
     const outputDirectories = []
@@ -278,7 +278,7 @@ async function allComponents({ development = false } = {}) {
   const pin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
   const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
   if (!development) await writeJson(join(stageRoot, 'dsh/build-receipt.json'), { commit: pin.commit, version: pin.version, applicationVersion: version, builtAt: dsh.builtAt, compilationFingerprint: dsh.fingerprint })
-  for (const name of ['integrity-runtime', 'dsh-wechat', 'dsh-genui', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-ssh-ops', 'zotero-harvest', 'dsh-session-notification', 'dsh-progressive-tools', 'dsh-archive-manager', 'oh-story-dsh']) await runTask('package-build:' + name)
+  for (const name of ['integrity-runtime', 'dsh-wechat', 'dsh-genui', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-ssh-ops', 'zotero-harvest', 'dsh-session-notification', 'dsh-archive-manager', 'oh-story-dsh']) await runTask('package-build:' + name)
   // Store is a workspace package with the same independent task contract.
   await runTask('package-build:research-store')
   for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) if (entry.isDirectory() && entry.name !== 'wechat' && await exists(join(root, 'plugins', entry.name, 'package.json'))) await runTask('plugin-build:' + entry.name)

@@ -45,9 +45,7 @@ export function apply(ctx) {
     await ctx.zerowallMcp.ensureConnected(row.serverName); result={sessionId:agent.id};
    } else {
     const run=(name,args,suffix)=>ctx.tools.execute({name,arguments:args,callId:request.id+suffix,agent,signal:new AbortController().signal});
-    const search=await run('tool_search',{query:request.name},'-search');
-    if(search.isError)throw new Error(JSON.stringify(search));
-    result=await run('tool_dispatch',{name:request.name,arguments:request.args},'-dispatch');
+    result=await run(request.name,request.args,'-native');
    }
    await writeFile(join(root,request.id+'.json'),JSON.stringify({result}));
   } catch(error) {if(request)await writeFile(join(root,request.id+'.json'),JSON.stringify({error:String(error)}));}
@@ -87,8 +85,7 @@ try {
     assert.ok(!response.error,response.error)
     const result=response.result
     assert.ok(!result?.isError,JSON.stringify(result))
-    return result.value?.protocol === 'dsh-progressive-tools/dispatch-v1'
-      ? {value:result.value.value,content:result.content} : result
+    return result
   }
   await page.evaluate(async ({sessionId, cwd}) => {
     const method='session/create'

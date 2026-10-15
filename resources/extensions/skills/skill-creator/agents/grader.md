@@ -149,9 +149,9 @@ Write a JSON file with this structure:
     "transcript_chars": 3200
   },
   "timing": {
-    "executor_duration_seconds": 165.0,
-    "grader_duration_seconds": 26.0,
-    "total_duration_seconds": 191.0
+    "executor_duration_seconds": 165,
+    "grader_duration_seconds": 26,
+    "total_duration_seconds": 191
   },
   "claims": [
     {
@@ -168,9 +168,13 @@ Write a JSON file with this structure:
     }
   ],
   "user_notes_summary": {
-    "uncertainties": ["Used 2023 data, may be stale"],
+    "uncertainties": [
+      "Used 2023 data, may be stale"
+    ],
     "needs_review": [],
-    "workarounds": ["Fell back to text overlay for non-fillable fields"]
+    "workarounds": [
+      "Fell back to text overlay for non-fillable fields"
+    ]
   },
   "eval_feedback": {
     "suggestions": [

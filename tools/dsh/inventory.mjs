@@ -12,7 +12,6 @@ const productionPath = name => `resources/${runtimeProfile.corePlugins.includes(
 
 const thirdPartyOrder = [
   'dsh-ssh-ops',
-  '@everclear077/dsh-progressive-tools',
   '@dingyi222666/dsh-session-notification',
   'dsh-dream-skin',
   'dsh-better-sidebar',
@@ -139,7 +138,6 @@ const thirdPartyPlugins = thirdPartyPackages.map(name => ({
   package: name,
   version: name === 'dsh-dream-skin' ? integrations.dreamSkin.resourceVersion ?? integrations.dreamSkin.version
     : name === 'dsh-file-review' ? integrations.fileReviewTab.resourceVersion ?? integrations.fileReviewTab.version
-      : name === '@everclear077/dsh-progressive-tools' ? integrations.progressiveTools.resourceVersion ?? integrations.progressiveTools.version
       : desktop.dependencies?.[name] ?? null,
   owner: 'third-party',
   registrationSource: 'user-profile-bundle',

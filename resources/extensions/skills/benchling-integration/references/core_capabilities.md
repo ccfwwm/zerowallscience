@@ -293,10 +293,14 @@ Subscribe to Benchling changes via **AWS EventBridge** (customer-owned bus) or *
 
 ```json
 {
-  "detail-type": ["v2.request.created"],
+  "detail-type": [
+    "v2.request.created"
+  ],
   "detail": {
     "schema": {
-      "name": ["Validated Request"]
+      "name": [
+        "Validated Request"
+      ]
     }
   }
 }

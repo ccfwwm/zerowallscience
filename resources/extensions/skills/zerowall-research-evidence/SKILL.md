@@ -19,4 +19,3 @@ Use the persisted ZeroWall research objects and the current Host/Runner schemas.
 Discover `research_study` before reading `documents`, registering outputs with `register_evidence`, or auditing a claim with `audit_claim`. Use the returned schema and actual study, artifact and claim IDs. For the final audit load `zerowall-claim-audit`; a successful tool call is not Gate 2 approval.
 
 Record evidence type, uncertainty, scope, conflict, source and Run/Artifact references. Use the dedicated Host evidence registration path for executed outputs; the generic Agent proposal path cannot mint evidence or claims. Audit claims separately from computation: every claim must reference unique evidence document IDs, and only a deterministic audit with `auditStatus: passed` and `needsReview: false` can reach Gate 2. Negative and failed branches remain visible.
-

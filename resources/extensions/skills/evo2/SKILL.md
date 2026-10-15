@@ -107,7 +107,9 @@ self-contained scoring script through one `run_in_context` call:
   "title": "Evo 2 variant scoring",
   "command": "source ~/miniforge3/etc/profile.d/conda.sh && conda activate evo2 && HF_HOME=/srv/model-cache HF_HUB_OFFLINE=1 python score_evo2.py --output /home/me/zerowall-results/evo2/scores.json",
   "timeout_secs": 1800,
-  "input_paths": ["runs/score_evo2.py"],
+  "input_paths": [
+    "runs/score_evo2.py"
+  ],
   "output_specs": [
     {
       "glob": "ssh://gpu-box/home/me/zerowall-results/evo2/scores.json",

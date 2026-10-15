@@ -1,5 +1,5 @@
 {
-  "version": "8.2.0",
+  "version": "8.2.1",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
@@ -63,18 +63,6 @@
     "adapterRepository": "https://github.com/nullptr-DZF/dsh-academic-research-skills.git",
     "adapterCommit": "a6859a3752cfe582a166ca283c10d3a45e1f9c9c",
     "source": "resources/extensions/skills"
-  },
-  "progressiveTools": {
-    "repository": "https://github.com/everclear077/dsh-progressive-tools.git",
-    "tag": "v0.7.0",
-    "commit": "f929e86fb442bf289d56e268562b31d8fb8a390b",
-    "version": "0.7.0",
-    "package": "@everclear077/dsh-progressive-tools",
-    "license": "MIT",
-    "source": "packages/dsh/dsh-progressive-tools",
-    "runtime": "0.2.0-rc.2",
-    "resourceVersion": "0.7.2-zws.1",
-    "localAdaptation": "Strictly adapt the four audited DSH peers from exact rc.1 to exact rc.2 and the bundle registration to the scoped published package; retain upstream source and compatibility enforcement."
   },
   "sshOps": {
     "repository": "https://github.com/caoyiwei850/dsh-ssh-ops.git",

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.1.2",
+  "version": "8.2.1",
   "roots": {
     "dsh": [
       "dsh-archive-manager",
@@ -10,7 +10,6 @@
       "dsh-wechat",
       "dsh-session-notification",
       "dsh-ssh-ops",
-      "dsh-progressive-tools",
       "zotero-harvest",
       "oh-story-dsh"
     ],

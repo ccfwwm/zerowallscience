@@ -15,7 +15,16 @@ metadata:
 调用示例（替换真实 ID）：
 
 ```json
-{"action":"create_document","study_id":"实际研究ID","kind":"observation","payload":{"status":"unverified","text":"用户报告的现象","source":"user-statement"}}
+{
+  "action": "create_document",
+  "study_id": "实际研究ID",
+  "kind": "observation",
+  "payload": {
+    "status": "unverified",
+    "text": "用户报告的现象",
+    "source": "user-statement"
+  }
+}
 ```
 
 数据契约按 `zerowall-data-contract` 核验。计划使用实际契约 ID 的 inputs 数组，明确 method、stoppingConditions 和 exploratory；完整研究还需要预算、主要终点、候选集、调整集及方法前提。使用 `method_check_evaluate` 检查已知设计，检查无告警不等于获得执行批准。

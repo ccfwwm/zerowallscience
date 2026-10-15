@@ -197,7 +197,12 @@ Every material artifact produced by the pipeline carries a version label. These 
       "skill": "deep-research",
       "status": "completed",
       "mode": "socratic",
-      "outputs": ["RQ Brief", "Methodology Blueprint", "Bibliography (22 sources)", "Synthesis Report"],
+      "outputs": [
+        "RQ Brief",
+        "Methodology Blueprint",
+        "Bibliography (22 sources)",
+        "Synthesis Report"
+      ],
       "started_at": "conversation turn #3",
       "completed_at": "conversation turn #15",
       "checkpoint_confirmed": true,
@@ -208,32 +213,26 @@ Every material artifact produced by the pipeline carries a version label. These 
       "team_notes": null,
       "dialogue_log_ref": "turns #3..#15"
     },
-    "2": { "name": "WRITE", "skill": "academic-paper", "status": "completed", "mode": "plan -> full", "outputs": ["Paper Draft (5,200 words, IMRaD)"], "...": "same standard fields as stage \"1\"" },
-    "2.5": {
-      "name": "INTEGRITY",
-      "agent": "integrity_verification_agent",
+    "2": {
+      "name": "WRITE",
+      "skill": "academic-paper",
       "status": "completed",
-      "mode": "pre-review",
-      "verdict": "PASS",
-      "outputs": ["Integrity Report (Pre-review)", "62/62 refs verified", "0 issues"],
-      "retry_count": 0,
-      "issues_found": 0,
-      "issues_fixed": 0,
-      "started_at": "conversation turn #29",
-      "completed_at": "conversation turn #31",
-      "checkpoint_confirmed": true,
-      "checkpoint_type": "MANDATORY",
-      "schema_validated": true,
-      "assigned_to": null,
-      "approval_gate": true,
-      "team_notes": null
+      "mode": "plan -> full",
+      "outputs": [
+        "Paper Draft (5,200 words, IMRaD)"
+      ],
+      "...": "same standard fields as stage \"1\""
     },
     "3": {
       "name": "REVIEW",
       "skill": "academic-paper-reviewer",
       "status": "completed",
       "mode": "full",
-      "outputs": ["5 Review Reports (Journal-Fit Reviewer + R1 + R2 + R3 + Devil's Advocate)", "Editorial Decision: Major Revision", "Revision Roadmap (5 items)"],
+      "outputs": [
+        "5 Review Reports (Journal-Fit Reviewer + R1 + R2 + R3 + Devil's Advocate)",
+        "Editorial Decision: Major Revision",
+        "Revision Roadmap (5 items)"
+      ],
       "decision": "major_revision",
       "started_at": "conversation turn #32",
       "completed_at": "conversation turn #36",
@@ -252,7 +251,10 @@ Every material artifact produced by the pipeline carries a version label. These 
       "revision_round": 1,
       "items_addressed": 5,
       "items_total": 5,
-      "outputs": ["Revised Draft", "Response to Reviewers"],
+      "outputs": [
+        "Revised Draft",
+        "Response to Reviewers"
+      ],
       "started_at": "conversation turn #37",
       "completed_at": "conversation turn #42",
       "checkpoint_confirmed": true,
@@ -262,7 +264,71 @@ Every material artifact produced by the pipeline carries a version label. These 
       "approval_gate": false,
       "team_notes": null
     },
-    "3p": { "name": "RE-REVIEW", "skill": "academic-paper-reviewer", "status": "completed", "mode": "re-review", "decision": "accept", "outputs": ["Re-Review Report", "Editorial Decision: Accept"], "...": "same standard fields as stage \"3\"" },
+    "5": {
+      "name": "FINALIZE",
+      "skill": "academic-paper",
+      "status": "pending",
+      "mode": null,
+      "outputs": [],
+      "started_at": null,
+      "completed_at": null,
+      "checkpoint_confirmed": false,
+      "checkpoint_type": null,
+      "schema_validated": false,
+      "assigned_to": null,
+      "approval_gate": true,
+      "team_notes": null
+    },
+    "6": {
+      "name": "PROCESS SUMMARY",
+      "skill": "academic-pipeline",
+      "status": "pending",
+      "mode": null,
+      "outputs": [],
+      "started_at": null,
+      "completed_at": null,
+      "checkpoint_confirmed": false,
+      "checkpoint_type": null,
+      "schema_validated": false,
+      "assigned_to": null,
+      "approval_gate": true,
+      "team_notes": null
+    },
+    "2.5": {
+      "name": "INTEGRITY",
+      "agent": "integrity_verification_agent",
+      "status": "completed",
+      "mode": "pre-review",
+      "verdict": "PASS",
+      "outputs": [
+        "Integrity Report (Pre-review)",
+        "62/62 refs verified",
+        "0 issues"
+      ],
+      "retry_count": 0,
+      "issues_found": 0,
+      "issues_fixed": 0,
+      "started_at": "conversation turn #29",
+      "completed_at": "conversation turn #31",
+      "checkpoint_confirmed": true,
+      "checkpoint_type": "MANDATORY",
+      "schema_validated": true,
+      "assigned_to": null,
+      "approval_gate": true,
+      "team_notes": null
+    },
+    "3p": {
+      "name": "RE-REVIEW",
+      "skill": "academic-paper-reviewer",
+      "status": "completed",
+      "mode": "re-review",
+      "decision": "accept",
+      "outputs": [
+        "Re-Review Report",
+        "Editorial Decision: Accept"
+      ],
+      "...": "same standard fields as stage \"3\""
+    },
     "4p": {
       "name": "RE-REVISE",
       "skill": "academic-paper",
@@ -297,36 +363,6 @@ Every material artifact produced by the pipeline carries a version label. These 
       "assigned_to": null,
       "approval_gate": true,
       "team_notes": null
-    },
-    "5": {
-      "name": "FINALIZE",
-      "skill": "academic-paper",
-      "status": "pending",
-      "mode": null,
-      "outputs": [],
-      "started_at": null,
-      "completed_at": null,
-      "checkpoint_confirmed": false,
-      "checkpoint_type": null,
-      "schema_validated": false,
-      "assigned_to": null,
-      "approval_gate": true,
-      "team_notes": null
-    },
-    "6": {
-      "name": "PROCESS SUMMARY",
-      "skill": "academic-pipeline",
-      "status": "pending",
-      "mode": null,
-      "outputs": [],
-      "started_at": null,
-      "completed_at": null,
-      "checkpoint_confirmed": false,
-      "checkpoint_type": null,
-      "schema_validated": false,
-      "assigned_to": null,
-      "approval_gate": true,
-      "team_notes": null
     }
   },
   "revision_history": [
@@ -354,14 +390,20 @@ Every material artifact produced by the pipeline carries a version label. These 
   "schema_validation_log": [
     {
       "transition": "1 -> 2",
-      "schemas_checked": ["Schema 1 (RQ Brief)", "Schema 2 (Bibliography)", "Schema 3 (Synthesis)"],
+      "schemas_checked": [
+        "Schema 1 (RQ Brief)",
+        "Schema 2 (Bibliography)",
+        "Schema 3 (Synthesis)"
+      ],
       "result": "PASS",
       "missing_fields": [],
       "timestamp": "conversation turn #15"
     },
     {
       "transition": "2 -> 2.5",
-      "schemas_checked": ["Schema 4 (Paper Draft)"],
+      "schemas_checked": [
+        "Schema 4 (Paper Draft)"
+      ],
       "result": "PASS",
       "missing_fields": [],
       "timestamp": "conversation turn #28"
@@ -400,7 +442,11 @@ Every material artifact produced by the pipeline carries a version label. These 
       "timestamp": "conversation turn #15",
       "dialogue_log_ref": "turns #3..#15",
       "zone": "Zone 2",
-      "scores": { "delegation_intensity": 4, "cognitive_vigilance": 3, "cognitive_reallocation": 2 },
+      "scores": {
+        "delegation_intensity": 4,
+        "cognitive_vigilance": 3,
+        "cognitive_reallocation": 2
+      },
       "cross_model_divergence": null,
       "advisory_only": true
     }
@@ -587,9 +633,21 @@ Record one integrity history entry each time an integrity check is executed:
   "issues_fixed": 0,
   "retry_count": 0,
   "issues_detail": [
-    {"severity": "SERIOUS", "type": "reference", "description": "Incorrect DOI"},
-    {"severity": "SERIOUS", "type": "reference", "description": "Wrong journal name"},
-    {"severity": "MEDIUM", "type": "reference", "description": "Omitted co-author"}
+    {
+      "severity": "SERIOUS",
+      "type": "reference",
+      "description": "Incorrect DOI"
+    },
+    {
+      "severity": "SERIOUS",
+      "type": "reference",
+      "description": "Wrong journal name"
+    },
+    {
+      "severity": "MEDIUM",
+      "type": "reference",
+      "description": "Omitted co-author"
+    }
   ]
 }
 ```
@@ -609,7 +667,13 @@ Record one revision history entry each time Stage 4 or 4' (REVISE) is entered:
   "from_decision": "major_revision",
   "items_total": 5,
   "items_addressed": 0,
-  "items_pending": ["R1: ...", "R2: ...", "R3: ...", "R4: ...", "R5: ..."]
+  "items_pending": [
+    "R1: ...",
+    "R2: ...",
+    "R3: ...",
+    "R4: ...",
+    "R5: ..."
+  ]
 }
 ```
 

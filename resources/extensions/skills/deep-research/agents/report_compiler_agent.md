@@ -304,14 +304,22 @@ Canonical example (single manifest with one MNC and one claim-level NC):
       "claim_id": "C-001",
       "claim_text": "Preprint hallucinations survive into the published record at 85.3%.",
       "intended_evidence_kind": "empirical",
-      "planned_refs": ["zhao2026"],
+      "planned_refs": [
+        "zhao2026"
+      ],
       "negative_constraints": [
-        {"constraint_id": "NC-C001-1", "rule": "No causal claims about LLM authorship."}
+        {
+          "constraint_id": "NC-C001-1",
+          "rule": "No causal claims about LLM authorship."
+        }
       ]
     }
   ],
   "manifest_negative_constraints": [
-    {"constraint_id": "MNC-1", "rule": "No unqualified causal language across the report."}
+    {
+      "constraint_id": "MNC-1",
+      "rule": "No unqualified causal language across the report."
+    }
   ]
 }
 ```
@@ -334,7 +342,9 @@ When a claim is backed by the scholar's OWN experiment (not a literature citatio
   "claim_text": "Removing head pruning raises macro-F1 by 4.2 points on the held-out set.",
   "intended_evidence_kind": "empirical",
   "planned_refs": [],
-  "planned_experiment_ids": ["exp-ablation-A"]
+  "planned_experiment_ids": [
+    "exp-ablation-A"
+  ]
 }
 ```
 

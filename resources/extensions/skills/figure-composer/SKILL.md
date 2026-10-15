@@ -47,7 +47,10 @@ yourself; pixels cannot reveal the source data path.
   "claim": "Treatment restores the disease-associated trajectory.",
   "width_mm": 180,
   "ncol": 12,
-  "row_heights_mm": [42, 60],
+  "row_heights_mm": [
+    42,
+    60
+  ],
   "panels": [
     {
       "letter": "a",

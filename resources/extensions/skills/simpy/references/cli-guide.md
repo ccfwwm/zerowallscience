@@ -43,14 +43,14 @@ Every field is optional; defaults are shown:
 {
   "analysis_mode": "terminating",
   "base_seed": 20260723,
-  "horizon": 480.0,
+  "horizon": 480,
   "max_entities": 10000,
   "max_events": 200000,
-  "mean_interarrival": 4.0,
-  "mean_service": 6.0,
+  "mean_interarrival": 4,
+  "mean_service": 6,
   "queue_capacity": 20,
   "servers": 2,
-  "warm_up": 0.0
+  "warm_up": 0
 }
 ```
 
@@ -120,7 +120,7 @@ The trace is capped and contains no event `repr`:
   "event_type": "Initialize",
   "priority": 0,
   "queue_size_before": 1,
-  "time": 0.0
+  "time": 0
 }
 ```
 

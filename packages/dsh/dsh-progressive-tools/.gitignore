@@ -1,7 +1,0 @@
-node_modules/
-.pnpm-store/
-lib/
-coverage/
-*.tgz
-*.log
-.DS_Store
