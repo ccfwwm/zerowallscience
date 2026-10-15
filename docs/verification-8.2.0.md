@@ -1,7 +1,8 @@
 # ZeroWall Science 8.2.0 验收与发布记录
 
 - 分支：`main`
-- 父仓库 HEAD：`f727d39994bf396346e3bf249dc5758b3288d27a`
+- 父仓库 HEAD：`b5fc20202410f159e72e1a67d756265525685120`
+- Git 标签：`v8.2.0`（已推送至 `origin`）
 - DSH：`4af4cb76935bd893a6854f38403bd06928878074`，`zerowall/reviewer-history-opaque`，`0.2.0-rc.2`
 - 构建 ID：`1792008538381-25c2fcd4`
 - 安装包：`artifacts/packages/8.2.0/windows-x64/zerowall-science-8.2.0-win-x64.exe`
@@ -61,4 +62,12 @@ Python 依赖目录：
 - 40 项发布资源包括 36 个可执行插件、1 个组合声明和 3 个支持资源，已再次与安装版核对；组合包 `@zerowallscience/dsh-bundle-science@0.1.13` 保持声明性质，24 个组成插件分别安装和验签。完整机器可审计收据为 `artifacts/verification/8.2.0/goal-completion-audit.json`，设置与媒体 UI 收据为 `artifacts/verification/8.2.0/installed-restart-final/settings-media-computer-use-receipt.json`。
 - 独立 Playwright/CDP 设置探针在连接阶段由 Playwright 传输断言失败，未进入产品断言；该失败日志 `artifacts/logs/8.2.0/accepted-settings-installed-final.log` 保留，最终设置结论以原生 computer-use 观察为准。
 
-主仓库将在本验收记录更新后提交并推送为 `v8.2.0`；GitHub Release 的 URL、资产回源下载和 SHA-256 复核结果将在发布完成后补录。
+主仓库提交 `b5fc20202410f159e72e1a67d756265525685120` 已推送至 `origin/main`，标签 `v8.2.0` 已推送至 `origin`。
+
+## GitHub 发布
+
+GitHub Release 已正式发布：
+
+`https://github.com/ccfwwm/zerowallscience/releases/tag/v8.2.0`
+
+从 GitHub Release 独立回源下载 `zerowall-science-8.2.0-win-x64.exe` 后复核：大小 `317554262` 字节，SHA-256 `4f21394719675acdcb7e77229006d0b3c2f475f33d366dc32d5e89b75ee6e3b8`，与本地安装包和 Release 资产摘要一致。
