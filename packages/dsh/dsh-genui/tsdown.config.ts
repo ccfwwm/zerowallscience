@@ -245,19 +245,15 @@ function assetConfig(name: 'mermaid' | 'three' | 'echarts', entry: string): User
 
 const libConfig: UserConfig = {
   name: ID,
-  // Named entries keep the published layout stable (lib/index.js +
-  // lib/invariant.js) while src/index.ts becomes the canonical bundle
-  // source entry that plugin_check's tool-bundle contract expects.
-  entry: { index: 'src/index.ts', invariant: 'src/plugin/invariant.ts' },
+  // Keep the root plugin bundle at lib/index.js, built from src/index.ts.
+  entry: { index: 'src/index.ts' },
   outDir: 'lib',
   format: ['esm'],
   platform: 'node',
   target: 'es2024',
   fixedExtension: false,
   dts: false,
-  // Flatten entry outputs to lib/<basename>.js so package exports keep the
-  // stable paths lib/index.js + lib/invariant.js (a directory-mirroring
-  // default would emit lib/plugin/invariant.js).
+  // Keep the output name aligned with the package's root export.
   outputOptions: { entryFileNames: '[name].js' },
   // Cleanup happens in the build script (`rm -rf lib` before tsc): tsdown
   // must never wipe lib/types (tsc's declaration output) mid-pipeline.

@@ -100,9 +100,10 @@ test('CLI Python shell requires the fixed service root and rejects stale slots',
 test('managed Python PowerShell shell binds cwd, python and pip to the selected interpreter', { skip: process.platform !== 'win32' }, async context => {
   const localAppData = process.env.LOCALAPPDATA
   if (!localAppData) return context.skip('LOCALAPPDATA is unavailable')
-  const runtimeRoot = join(localAppData, 'ZeroWall Science', 'Python')
+  const runtimeRoot = resolve(process.env.ZEROWALL_PYTHON_RUNTIME_ROOT || join(localAppData, 'Programs', 'ZeroWallScience', 'Python'))
   const executable = join(runtimeRoot, 'python.exe')
-  await access(executable).catch(() => context.skip('Canonical ZeroWall Python runtime is not installed on this host'))
+  try { await access(executable) }
+  catch { return context.skip('Fixed ZeroWall Python runtime is not installed on this host') }
   const command = buildPowerShellPythonCommand(runtimeRoot, executable)
   const script = `${command}; Write-Output ('cwd=' + (Get-Location).Path); python -c 'import sys; print(sys.executable)'; pip -V; pip list --format=freeze | Select-Object -First 1`
   const result = await run('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true })

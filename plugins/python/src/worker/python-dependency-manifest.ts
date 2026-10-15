@@ -40,7 +40,7 @@ function validSourceFilename(pkg: { name: string; version: string; filename?: (s
 }
 
 /** Validate the entire signed payload before using names as pip arguments. */
-export function parsePythonDependencyManifest(value: unknown, keys: Record<string, string>, applicationVersion?: string): PythonDependencyManifest {
+export function parsePythonDependencyManifest(value: unknown, keys: Record<string, string>, _applicationVersion?: string): PythonDependencyManifest {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Python 依赖清单格式无效。')
   const doc = value as PythonDependencyManifest
   if (doc.schema !== 3 || doc.runtimeId !== 'zerowall-science-python' || doc.platform !== 'win32-x64') throw new Error('Python 依赖清单平台或版本不兼容。')
@@ -73,8 +73,9 @@ export function parsePythonDependencyManifest(value: unknown, keys: Record<strin
   }
   if (doc.layer === 'capability' && (typeof doc.capabilityId !== 'string' || doc.capabilityId.trim() === '')) throw new Error('能力层清单缺少 capabilityId。')
   if (!doc.compatibility || !/^\d+\.\d+\.\d+$/u.test(doc.compatibility.minApplicationVersion) || (doc.compatibility.maxApplicationVersion && !/^\d+\.\d+\.\d+$/u.test(doc.compatibility.maxApplicationVersion))) throw new Error('Python 应用兼容范围无效。')
-  const compare = (a: string, b: string) => { const aa = a.split('.').map(Number); const bb = b.split('.').map(Number); for (let i = 0; i < 3; i++) { const d = aa[i]! - bb[i]!; if (d) return d } return 0 }
-  if (applicationVersion && (compare(applicationVersion, doc.compatibility.minApplicationVersion) < 0 || (doc.compatibility.maxApplicationVersion && compare(applicationVersion, doc.compatibility.maxApplicationVersion) > 0))) throw new Error('请先更新 ZeroWall Science，再安装此依赖清单。')
+  // Desktop provenance is not a Python dependency constraint. Validate the
+  // signed schema, platform and packages; the resolver checks the interpreter
+  // and wheel tags before a file transaction can install anything.
   return doc
 }
 

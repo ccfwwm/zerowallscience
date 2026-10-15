@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "0.1.15",
+  "version": "0.1.17",
   "description": "ZeroWall Science base domain plugin (desktop 8.1.0).",
   "type": "module",
   "main": "./lib/index.js",
@@ -62,7 +62,8 @@
     },
     "requiredServices": [
       "webServer",
-      "systemPrompt"
+      "systemPrompt",
+      "workspaceRegistry"
     ],
     "optionalServices": [
       "updater"

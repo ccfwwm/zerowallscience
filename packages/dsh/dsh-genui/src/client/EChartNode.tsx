@@ -46,6 +46,12 @@ function readToken(name: string, fallback: string, el?: HTMLElement | null): str
   return fallback
 }
 
+/** Read a px-valued font token as a number for ECharts textStyle fields. */
+function readFontSize(name: string, fallback: number, el?: HTMLElement | null): number {
+  const parsed = Number.parseFloat(readToken(name, '', el))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
 /** Resolve the host accent and label colors for ECharts theming. */
 function themeColors(el?: HTMLElement | null): {
   accent: string
@@ -54,6 +60,9 @@ function themeColors(el?: HTMLElement | null): {
   labelTertiary: string
   border: string
   bgLayer1: string
+  fontData: number
+  fontMeta: number
+  fontDisplay: number
 } {
   return {
     accent: readToken('--dsw-alias-state-business-primary', '#4f8ef7', el),
@@ -62,6 +71,11 @@ function themeColors(el?: HTMLElement | null): {
     labelTertiary: readToken('--dsw-alias-label-tertiary', '#6b6b6b', el),
     border: readToken('--dsw-alias-border-l1', 'rgba(255,255,255,0.12)', el),
     bgLayer1: readToken('--dsw-alias-bg-layer-1', '#1a1a1e', el),
+    // The --dsl-g-* scale is declared on the .block/.panel roots; the chart
+    // container inherits it. Detached renders fall back to these literals.
+    fontData: readFontSize('--dsl-g-font-data', 12, el),
+    fontMeta: readFontSize('--dsl-g-font-meta', 12.5, el),
+    fontDisplay: readFontSize('--dsl-g-font-display', 28, el),
   }
 }
 
@@ -226,8 +240,8 @@ function presetOption(node: GenuiEChart, el?: HTMLElement | null): Record<string
           splitLine: { show: false },
           axisLabel: { show: false },
           pointer: { show: false },
-          title: { offsetCenter: [0, '32%'], color: t.labelTertiary, fontSize: 12 },
-          detail: { valueAnimation: true, fontSize: 26, offsetCenter: [0, '2%'], formatter: '{value}', color: t.labelPrimary },
+          title: { offsetCenter: [0, '32%'], color: t.labelTertiary, fontSize: t.fontData },
+          detail: { valueAnimation: true, fontSize: t.fontDisplay, offsetCenter: [0, '2%'], formatter: '{value}', color: t.labelPrimary },
           data: [{ value: Number(d.value) || 0, name: d.label }],
         })),
       }
@@ -307,7 +321,7 @@ function presetOption(node: GenuiEChart, el?: HTMLElement | null): Record<string
           type: 'graph',
           layout: 'force',
           roam: true,
-          label: { show: true, color: t.labelSecondary, fontSize: 11 },
+          label: { show: true, color: t.labelSecondary, fontSize: t.fontMeta },
           force: { repulsion: 200, edgeLength: 80 },
           lineStyle: { color: t.border, curveness: 0.1 },
           emphasis: { focus: 'adjacency' },

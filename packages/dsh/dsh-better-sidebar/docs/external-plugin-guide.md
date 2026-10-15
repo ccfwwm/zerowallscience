@@ -28,13 +28,13 @@
 | 内置类型接管 | 插件的 `editor` 类型以 `extension` 优先级认领 `dsh-resource://file/**`（压过内置 `ui-sidebar-documentpreview` 的 `text` 预览——即 `fallback` 带），并接管内置 `files` 页面 kind（`openTab('files')` 打开插件的文件树）；插件卸载/禁用时内置实现自动复位。**但认领是有选择的**：宿主自己的文档预览已经覆盖的格式（表格 / PDF / 图片 / Office，清单见 §5.4）由 `editor.canOpen` 主动**拒绝**，地址交回内置 `text` 档 |
 | 文件树实时刷新（v0.21.1+） | 插件接管了内置 `files` 页，所以宿主自己的按目录 watch 覆盖不到这棵树——插件自带一条 `/sidebar/ws/fs-watch` socket：客户端上报**已展开**的目录集，宿主侧按目录 `fs.watch`（150ms 去抖、每连接上限 64 个句柄），变动后只让那一层缓存失效并重列；目录折叠即退订。路径仍走 `fs.tree` 同一套词法解析 |
 | 编辑器预览自动刷新（#855） | 模型在会话里改完文件后，**正在看的那个预览**自己刷新，不必再手点刷新或重开文件。信号是插件自有的会话事件增量流 `changes.ops`（宿主 `src/index.ts` 路由），**每会话一个共享轮询器**（N 个编辑器 tab 每 tick 仍只有 1 个请求，全部隐藏即停；**叠加口径**：文件变动页的会话透镜有它自己的轮询器，两者同开时该会话每 tick 是 **2 个** `changes.ops` 请求，「1 个」只算编辑器这一份），**不新增 fs.watch / fsRead 指纹轮询**。只有 `write` / `edit` **结算成功**且路径命中本页文件的那些调用会触发重载（走既有的 `fsRead`/`load` 路径），未命中的文件零重读；**dirty 草稿与编辑态一律跳过**（脏态优先）。第三方 viewer 要保住自己的草稿就必须如实上报 `onToolbarState.dirty` / `mode`，见 §5.2 |
-| 地址里的行号（#826） | 宿主的 markdown 链接语法只认 GitHub 的 `#L131` 片段，`path:131` 形式（编译器诊断 / `grep` 的写法，模型输出很常见）会被当成**文件名的一部分**送进地址。插件的 `editor` 类型在把地址转成合成记录时把尾部行号规格（`:行` / `:起-止` / `:行:列`）切掉，tab 标题同样按切完的文件名给——否则点开就是一个报「文件不存在」的 `x.c:131`。切分只在这一步发生（`src/client/path-line.ts`），文件树 / 搜索 / 插件自有流程的路径不经过它；代价是**从聊天链接**打开一个真名以 `:数字` 结尾的文件会丢掉后缀（Windows 上 `:` 本就不是合法文件名字符）。行号随后顺着记录一路走到 viewer：两种写法落到**同一行**（`#L131` 由宿主解析成 `navigation.params.line`，`path:131` 由插件切出来，两者合流到 `SidebarTab.line`），文本编辑器在**到达时定位一次**并高亮该行，越界行号钳到最后一行。区间只取起始行、列号丢弃——编辑器只有一处光标。`line` 是**瞬态**：`sanitizePersistedTab` 的白名单不含它，刷新后不会把读者拽回几天前的那一行。markdown / html 收到行号时会**强制切到编辑态**再定位（预览里没有源码行号可放，而它自己的挂载滚动恢复也会和跳转打架）——引用要的是源码 |
+| 地址里的行号（#826） | 宿主的 markdown 链接语法只认 GitHub 的 `#L131` 片段，`path:131` 形式（编译器诊断 / `grep` 的写法，模型输出很常见）会被当成**文件名的一部分**送进地址。插件的 `editor` 类型在把地址转成合成记录时把尾部行号规格（`:行` / `:起-止` / `:行:列`）切掉，tab 标题同样按切完的文件名给——否则点开就是一个报「文件不存在」的 `x.c:131`。切分只在这一步发生（`src/client/path-line.ts`），文件树 / 搜索 / 插件自有流程的路径不经过它；代价是**从聊天链接**打开一个真名以 `:数字` 结尾的文件会丢掉后缀（Windows 上 `:` 本就不是合法文件名字符）。行号随后顺着记录一路走到 viewer：两种写法落到**同一行**（`#L131` 由宿主解析成 `navigation.params.line`，`path:131` 由插件切出来，两者合流到 `SidebarTab.line`），文本编辑器在**到达时定位一次**并高亮该行，越界行号钳到最后一行。区间只取起始行、列号丢弃——编辑器只有一处光标。`line` 是**瞬态**：`sanitizePersistedTab` 的白名单不含它，刷新后不会把读者拽回几天前的那一行。markdown / html 收到行号时会**强制切到编辑态**再定位（预览里没有源码行号可放，而它自己的挂载滚动恢复也会和跳转打架）——引用要的是源码。这条强制是**一次性导航、不是文件的模式**：viewer 定位完成后回调 `onLineConsumed?.()`，宿主（`EditorHost`，它比 viewer 活得久——一次 reload 会把 viewer 整个重建）就停止再下发同一个 `line`；不这样做的话，读者点「预览」触发的 reload 会让重建出来的 viewer 重新强制切回编辑态，永远回不去。不消费 `line` 的 viewer（如按扩展名认领、只渲染图片的）与本行为无关。**两条入口现在一致**：聊天正文由宿主解析出 `navigation.params.line`；插件自绘的 markdown 预览（编辑器预览 / 侧边对话转录 / 变更阅读窗 / 任务窗口）在 `MarkdownDelegate.openFile(path, { line })` 里收到同一个数字，转成 seed 的 `line` 再走同一条链路——所以预览里点 `#L42` 与聊天里点 `#L42` 行为相同（跳到第 42 行 + 切到编辑态）|
 | 链接接管（v0.21.1+） | DOM 层只接管**有类型通过 `urlTarget` 声明认领**的外链（Ctrl/Cmd/Shift/Alt 点击一律放行）；一个都没认领到时**不阻止默认行为**，交回宿主。见 §4.1 的 `urlTarget` |
 | path 种子的去向（v0.19.2+） | `path` seed 的含义**跟随类型**：只有 `editor`（唯一认领 `dsh-resource://file/**` 的类型）把 path 转成资源地址打开（文件落在编辑器）；**其余类型保留页面型打开**，path 随导航 params 落到合成记录的 `tab.path` 供组件消费——组件型 tab 的 path seed 不会被改道到文件编辑器（v0.19.0/0.19.1 上一切 path seed 都被改道，组件从未挂载，#632） |
 | 文件打开的认领判定 | 插件自己的一切文件入口（文件树点击 / 路径输入 / 文件变动页 / 「新标签页打开」，合并与分屏两种模式）都先问宿主原生 tab 注册表：`ctx.sidebarRightTabs.candidates(address)` 的头名若不是本插件的 `editor`，地址改走 `ctx.sidebarRight.openResource`，由**认领类型**渲染自己的 tab——第三方直接在宿主注册表按更具体 glob 注册的原生类型（如 `.drawio` 画板）从此在文件树里点得开（#695）；无人认领、宿主无注册表或探测失败时行为逐字保持原样（落到 `editor` / code 兜底） |
 | 终端（宿主一条 + 插件底部一条，彼此独立） | 插件**不在原生右侧栏提供终端**：宿主 0.1.6 起自带 `ui-sidebar-terminal`（kind `terminal`），插件侧 PTY 栈与 `terminal_*` 工具整体删除。**但插件自己的底部工作台有一条终端**（`terminal-bottom`，#774）：它不注册原生类型、不占 guide 条目（`bottomOnly`），页面是插件自绘的 xterm，进程由**宿主的会话级终端服务** `ctx.webTerminals` 供给——插件不持有 PTY，也不与右列那条共享进程（两条终端各自独立是有意的，右列仍是宿主的地盘）。宿主没挂终端控制器时该类型 `available` 为 false（菜单置灰），页面显示「宿主未提供终端能力」而不是崩 |
 | `bottomOnly`（#774） | 只投底部、永不注册原生承载面的类型（字段说明见 §4）。它同时意味着：`openTab` 落点强制 `'bottom'`（连 `target: 'side'` 也被改道——原生栏里的 tab 不在底部工作台的分栏树里，两者归属矛盾）、原生 tab 类型与 guide 条目都不注册。`hidden: true` **不是**它的替代品：那会连 `+` 菜单一起摘掉（`buildNewTabOptions` 过滤 `!hidden`），而它要的正是「留在 `+` 菜单、只离开原生栏」 |
-| 底部终端的恢复语义（#774） | 刷新后重新上屏同一页签时，页面用**同一份 `(sessionId, key, contentId)`** 再次调用宿主的 `webTerminals.view()`：宿主持久化在 localStorage 的 `(sessionId, contentId) → 终端 id` 绑定因此把**同一个** PTY 认回来（`contentId` 恒为 `dsh-better-sidebar:terminal-bottom`）。插件**不把 terminalId 写进 `tab.meta`**：`view()` 显式传 terminalId 会关掉宿主的「缺了就建」分支，一个过期的 id 会把页签永久卡在 `missingTerminal` 上。DSH 重启后 PTY 全没了而 localStorage 绑定还在，所以「新建终端」按钮把 `tab.meta.terminalRun` +1 换一代 `contentId`，让宿主另铸一个进程，而不是反复认领死绑定 |
+| 底部终端的恢复语义（#774） | 刷新后重新上屏同一页签时，页面用**同一份 `(sessionId, key, contentId)`** 再次调用宿主的 `webTerminals.view()`：宿主持久化在 localStorage 的 `(sessionId, contentId) → 终端 id` 绑定因此把**同一个** PTY 认回来（`contentId` 是 `dsh-better-sidebar:terminal-bottom:<instance>`——**每个页签一个实例，不再是恒定值**，#926）。插件**不把 terminalId 写进 `tab.meta`**：`view()` 显式传 terminalId 会关掉宿主的「缺了就建」分支，一个过期的 id 会把页签永久卡在 `missingTerminal` 上。DSH 重启后 PTY 全没了而 localStorage 绑定还在，所以「新建终端」按钮把 `tab.meta.terminalRun` +1 换一代 `contentId`，让宿主另铸一个进程，而不是反复认领死绑定 |
 | 底部工作台的开合 | 落到底部工作台的打开一律展开它（新建与聚焦都算），因此 `openTab` 的落点永远可见；开合按钮注册在 DSH 会话头的 utilities 槽（`conversation.session.header.utilities`），不在插件自己的宿主里 |
 | 在侧边打开（`target: 'side'`，v0.22.0+） | 原生栏里的 tab **不在插件底部工作台的分栏树里**，所以「在侧边打开」不能写 `bottomSplits`（那样会落到用户没展开的底部工作台 = 点了没反应）。服务改为把这一步交给宿主：带 path 的 `editor` seed 走 `openResource(address, { preferNewPane: true, revealIfOpened: false })`——宿主先按自己的两格上限与空间规则尝试分栏，分不了才回退到当前格；`revealIfOpened: false` 允许与已打开的同名资源并存，因此对同一个文件再点一次也会新开一格。其余类型若传 `target: 'side'`，同样以 `preferNewPane` 落原生栏（组件型 tab 的 path 仍是组件种子）——**唯一的例外是 `bottomOnly` 类型**（#774）：它没有原生承载面可落，`target: 'side'` 被改道回 `'bottom'`。path-less 的 `editor`（文件页）与 `'bottom'` 行为不变 |
 | 新建标签页列表 | 每个 tab 类型在原生 guide 里占一行：标题取 `title` + 图标取 `icon`（缺图标时宿主补一个方块占位），说明取可选的 `description`——**宿主只在 guide 列出的条目 ≤ 4 条时渲染说明**（上游 `MAX_DESCRIBED_ENTRIES = 4`），更长的列表整列丢掉所有说明；未声明 `description` 的条目渲染成单行「图标 + 标题」（rc.1 起 `description` 回到宿主契约，但**宿主与插件都没有兜底句**，所以插件恢复字段而不恢复旧的通用句）；`hidden: true` 的类型不占行，**`bottomOnly: true` 的类型同样不占行**（#774：它只活在插件自己的底部 `+` 菜单里）。插件的 `editor` 类型不再单独占行（它认领的文件资源由 `files` 接管页承载同一视图）。**本插件默认贡献 4 个 guide 条目**（文件 / 文件变动 / 任务管理 / 侧边对话，恰好在上限内），**但宿主的终端条目也占一行**——装了宿主终端即是 5 条，说明整列不渲染；要让说明回来，需在插件设置页关掉足够多的 tab 类型把总数压到 ≤ 4 条 |
@@ -51,7 +51,7 @@ better-sidebar 从 v0.4.0 起把自己改造成一个**注册表服务**：
 - **新页面（tab）**：注册一种新的侧边栏 tab 类型，出现在侧边栏 `+` 菜单里，用户点击后在自己的分栏里打开你的 React 页面；
 - **文件预览器（file viewer）**：注册一种文件类型预览器，让用户在侧边栏打开文件时走你的渲染组件（覆盖或补充内置的 markdown/html/code）。**宿主自己也有文档预览**——DSH 0.1.7 的 `ui-sidebar-documentpreview` 拿走了表格 / PDF / 图片 / Office 等只读格式，本插件因此**拒绝**认领那些扩展名，你的 viewer 也接不到它们（清单与原因见 §5.4）。
 
-内置的 6 个 tab（editor / git——「文件变动」统一 tab（Git 视角 + 本轮文件视角）/ subagent / sidechat / terminal-bottom / diff）和 3 个 viewer（markdown / html / code）**自己也是通过同一套 API 注册的**（吃自己的狗粮），所以外部插件的能力与内置功能完全对等。**不再内置 terminal / browser 两个 tab 类型**：DSH 0.1.6 自带右列终端（`ui-sidebar-terminal`、kind `terminal`），浏览器是 0.1.6 的 `ui-sidebar-browser`（kind `browser`，**0.1.7 起只在 desktop profile 挂载**，Web profile 没有这个 kind）；插件的同名类型会让读者看到两份实现。同理，0.1.7 的 `ui-sidebar-documentpreview` 让插件的 image / pdf / Office / 表格预览失去意义，那三个 viewer 描述符（image / pdf / binary-download）已删除。
+内置的 6 个 tab（editor / git——「文件变动」统一 tab（Git 视角 + 本轮文件视角）/ subagent / sidechat / terminal-bottom / diff）和 4 个 viewer（markdown / html / jsonl / code）**自己也是通过同一套 API 注册的**（吃自己的狗粮），所以外部插件的能力与内置功能完全对等。**不再内置 terminal / browser 两个 tab 类型**：DSH 0.1.6 自带右列终端（`ui-sidebar-terminal`、kind `terminal`），浏览器是 0.1.6 的 `ui-sidebar-browser`（kind `browser`，**0.1.7 起只在 desktop profile 挂载**，Web profile 没有这个 kind）；插件的同名类型会让读者看到两份实现。同理，0.1.7 的 `ui-sidebar-documentpreview` 让插件的 image / pdf / Office / 表格预览失去意义，那三个 viewer 描述符（image / pdf / binary-download）已删除。
 
 关键机制一句话：better-sidebar 的 client half 在 `apply()` 开头执行 `ctx.provide('betterSidebar', service)`（`src/client/index.tsx`），消费插件在 `inject` 里声明 `'betterSidebar'`，Cordis 保证服务就绪后才激活你的插件，然后你调用 `ctx.betterSidebar.registerTab(...)` / `registerFileViewer(...)` 完成注册，返回的 disposer 由 Cordis fiber 在卸载（HMR / 禁用）时自动调用。
 
@@ -458,7 +458,7 @@ ctx.effect(() => {
 | `subagent` | 30 | 是 | 否 | 任务管理（工作流图/树、团队任务板、后台任务抽屉） |
 | `sidechat` | 35 | 否（`sidechat:<uuid>`，按 `meta.threadId` 去重） | 否 | 侧边对话（每对话一 Tab）：打开即建空线程（首条消息赢得标签并同步标题）；线程 = 插件自建子会话（种子继承父会话上下文，进行中回合以 `interrupted` 闭合；种子带合法 `subagent/descriptor`，SubagentView 按 `Side: ` 前缀过滤），`origin:'subagent'` 隐藏于主列表；走 `/sidebar/api/sidechat.*` 路由；头部菜单切换/重开（`parkSidechatReopen` + 确定性 id），关 Tab 释放 live agent；重开经 `collectOwnEvents` 回源到种子边界；「保存为新会话」= `session.fork`（`this` 敏感）。[设计文档](plans/2026-08-20-sidechat-tab-design.md) |
 | `diff` | -1 | 否（按 id 去重） | 是 | 差异查看（changes tab 的预览面板「展开为独立页签」触发，同一渲染栈） |
-| `terminal-bottom` | 40 | 是 | 否 | 底部工作台的终端（#774）。**`bottomOnly`**（见 §4 与「原生承载面」表的说明）：没有原生 tab 类型、不占 guide 条目，只在底部 `+` 菜单里。页面是插件自绘的 xterm（`lib/client-terminal.js` chunk），**进程由宿主的会话级终端服务 `ctx.webTerminals` 供给**（结构化探测，不写进 `dsh.client.inject`——缺服务只会让这一行置灰，不会把整行拖成 `pending`）。恢复靠宿主持久化的 `(sessionId, contentId) → 终端 id` 绑定（`contentId` 恒定），关页签走 `onClose` → `webTerminals.close()` 结束进程（卸载**不**关：宿主的契约是「视图跨 DOM 卸载存活」，刷新要能认回同一个 shell），`tab.meta.terminalRun`（默认 0）是「新建终端」换代号用的代号位。[设计文档](plans/2026-10-05-bottom-terminal-tab.md) |
+| `terminal-bottom` | 40 | 否（`createTab` 每次铸新 id） | 否 | 底部工作台的终端（#774）。**`bottomOnly`**（见 §4 与「原生承载面」表的说明）：没有原生 tab 类型、不占 guide 条目，只在底部 `+` 菜单里。页面是插件自绘的 xterm（`lib/client-terminal.js` chunk），**进程由宿主的会话级终端服务 `ctx.webTerminals` 供给**（结构化探测，不写进 `dsh.client.inject`——缺服务只会让这一行置灰，不会把整行拖成 `pending`）。恢复靠宿主持久化的 `(sessionId, contentId) → 终端 id` 绑定（`contentId` 形如 `dsh-better-sidebar:terminal-bottom:<instance>`，**每个页签一个实例**，#926），关页签走 `onClose` → `webTerminals.close()` 结束进程（卸载**不**关：宿主的契约是「视图跨 DOM 卸载存活」，刷新要能认回同一个 shell），`tab.meta.terminalRun`（默认 0）是「新建终端」换代号用的代号位。[设计文档](plans/2026-10-05-bottom-terminal-tab.md) |
 
 你的 `id` 不可与上述重复，否则 `registerTab` 抛 `"tab type \"X\" already registered"`。
 
@@ -514,18 +514,27 @@ interface FileViewerProps {
   path: string
   title: string
   viewerId: string         // 命中 viewer 的 id（如 'code' / 'my-plugin:csv'）
-  content?: string         // fetchStrategy='fsRead' 时
-  truncated?: boolean      // fetchStrategy='fsRead' 时
+  content?: string         // fetchStrategy='fsRead' 时；超过编辑上限的文件不带它
+  size?: number            // 本次读取量到的文件字节数
+  largeFile?: { size: number }  // 见下方「超大文件」
   mtimeMs?: number         // fetchStrategy='fsRead' 时：本次读取的磁盘 mtime（保存冲突基线）
   mediaUrl?: string        // fetchStrategy='mediaUrl' 时
   customData?: unknown     // fetchStrategy='custom' 时（load() 的返回值）
+  // 引用带行号时才有（#826，见 §0「地址里的行号」）：一次性导航，不是文件的属性
+  line?: number            // 1 基行号（如 `a.c#L131` / `a.c:131`）；定位用得上的 viewer 消费它
+  onLineConsumed?: () => void // 已消费该 line 的回报；不调用则每次加载都会重新下发（默认不消费）
   // 以下为内置文本编辑器与 EditorHost 内部协作字段，外部 viewer 忽略：
   toolbar?: 'self' | 'host'
+  visible?: boolean        // 本 tab 是否在屏（原生 tab 停驻时仍挂载）
   onToolbarState?: (state: EditorToolbarState) => void
   onToolbarControls?: (controls: EditorToolbarControls | null) => void
   onReload?: () => void    // 从磁盘重新加载（保存冲突横幅的按钮回调）
 }
 ```
+
+> **超大文件（v0.26.0 起，`truncated` 已被取代）**：文件超过编辑上限（5 MiB，见 `src/editor-limits.ts` 的 `MAX_EDITABLE_BYTES`）时，`fs.read` 不再回一份被截断的文档，而是 `{ kind: 'too-large', size, mtimeMs, head }` —— **不带 `content`**。宿主把这个结果交给命中的 viewer 时，`content` 缺席、`largeFile: { size }` 到位（见 `planFsReadOutcome`）。内置的文本 viewer 据此渲染只读分页预览（`LargeFileView`），并提供下载出口；**你的 viewer 必须容忍 `content === undefined`**：要么自己处理 `largeFile`（分页预览 / 提示），要么把状态回给 `onToolbarState` 让宿主收起保存按钮。旧的 `truncated` 布尔字段与 `EditorToolbarState.truncated` 都已删除——「拿到半份文档但看起来能编辑」这个状态本身没有了，这正是它被删掉的原因（#732：保存半份文档会毁掉文件尾部）。
+>
+> **分页读取**：`fs.readPage({ sessionId, cwd?, path, offset })` 按字节窗口返回一页文本（宿主按行对齐，并在同一个文件内锁定宽字符编码），返回 `{ kind:'text', text, offset, nextOffset, eof, size, mtimeMs, encoding }`。消费方式就是**只向前追加**：把每页的 `text` 接到一起，下一次请求用上一页的 `nextOffset` 作为 `offset`，直到 `eof`。因此**必须串行**（下一页的偏移就是上一页的响应），也**不能跳到末尾**——随机访问需要打开时先扫全文件建索引，而那正是分页要避免的开销。内置预览在这之上加了两个策略：滚到底自动追加下一页，以及一条按**渲染行数**设的上限（`LargeFileView` 的 `MAX_PREVIEW_ROWS`），到顶后停止追加并提示下载。
 
 > **模型改完文件后的自动刷新（#855）**：`EditorHost` 订阅插件自有的会话事件增量流（`changes.ops`，**每会话一个共享轮询器**，2.5s 增量、无事件不落盘读），当**当前会话**的某次 `write` / `edit` 工具调用**结算成功**且路径命中本页文件时，自动重跑一次加载——即把页头的刷新按钮变成自动的（走同一条 `fetchStrategy` / `load()` 路径，`mtimeMs` 基线语义不变；命中判定用 `resolveSidebarPath` 把模型写的相对路径按会话 cwd 归一）。对第三方 viewer 有两条含义：① 你**什么都不用做**就会拿到新内容；② 若你的 viewer 持有**未保存的草稿**，必须在 `onToolbarState` 里如实上报 `dirty: true`——dirty 时自动刷新会跳过（脏态优先，绝不覆盖用户输入）；未上报 dirty 的 viewer 会被重挂（页面内 state 丢失、`content` 换成新字节）。处于编辑态的 viewer 同理应上报 `mode: 'edit'`（那条也会跳过，免得光标跳走）。**跳过不等于死路**：**未 dirty** 时既有的「编辑 → 预览」边沿照旧重载并拿到新内容（实测 `fsRead` 1→2）；**dirty 时这条边沿自身也被守卫抑制**（它的实现同样要求 `dirty !== true`，`EditorHost` 的边沿判定），此时用户的两条显式出口是**页头刷新按钮**（`window.confirm` 后重载）与**「保存 → `fs-conflict` 横幅里的 reload」**（保存带 `mtimeMs` 基线，模型写过就被拒成 `fs-conflict` 而不是静默覆盖模型字节）。一句话：**dirty 期间保持旧内容直到用户显式动作，不存在看不到新内容的死路**。
 
@@ -534,7 +543,7 @@ interface FileViewerProps {
 | 策略 | 字节来源 | 传给 component 的字段 | 适用 |
 |---|---|---|---|
 | `none` | 不需要字节 | （无） | 自渲染（如纯 UI） |
-| `fsRead` | `/sidebar/api` 的 `fs.read` | `content`, `truncated` | 文本类（CSV/JSON/XML） |
+| `fsRead` | `/sidebar/api` 的 `fs.read`（超大文件转 `fs.readPage` 分页） | `content`, `size`, `largeFile` | 文本类（CSV/JSON/XML） |
 | `mediaUrl` | `/sidebar/file` 媒体路由 URL | `mediaUrl` | 图片/PDF（viewer 自己 fetch 字节） |
 | `custom` | viewer 的 `load()` 函数 | `customData` | 自定义协议（如远程拉取） |
 | `binary-download` | 不预览，显示下载按钮 | （无） | 无客户端渲染器的二进制格式。**本插件现在没有任何内置 viewer 用这条策略**（`binary-download` viewer 已让给宿主）；策略本身仍在契约里，你的 viewer 可以照用 |
@@ -640,8 +649,9 @@ const { value } = await res.json()   // 错误时 { ok: false, error: { code, me
 | `session.cwd` | 会话权威 cwd（`{ cwd, root, parent }`） |
 | `fs.tree` / `fs.trees` | 目录列表（`{ path, entries: FsEntry[], truncated }`；FsEntry 含 `isSymlink`/`broken`，目录软链接的 `isDir` 按目标类型；请求可带 `exclude` 模式串，行上可带 `compact` 标记——单目录链由 client 折叠为面包屑行，匹配条目从列表与折叠探测中彻底移除）。`fs.trees` 是批量版（文件树的真实入口，同样吃 `exclude`） |
 | `fs.trees` | **批量**目录列表（v0.23.0+）：入参 `{ sessionId, cwd?, paths: string[] }`（最多 64 条，绝对或会话相对），一次请求返回 `{ levels: [{ path, entries, truncated, error? }] }`。每层与 `fs.tree` 同解析、同缓存；**某一层失败只在该层带 `error`**（`entries: []`），整个批次仍是成功响应——树的一次挂载/刷新因此是 1 个请求而不是 N 个 |
-| `fs.read` | 读文件：文本返回 `{ kind: 'text', content, truncated, mtimeMs }`；二进制返回 `{ kind: 'binary', size, truncated, mtimeMs, head }`（head = base64 前 4KB；`mtimeMs` = 本次读取的磁盘 mtime，保存冲突基线） |
-| `fs.write` | 原子写文件：`{ path, content, expectedMtimeMs? }`。带 `expectedMtimeMs` 时是乐观并发门——磁盘 mtime 与基线不符则拒绝（409，wire 错误码 `fs-conflict`），不覆盖对方字节；省略则不做门禁。成功返回 `{ ok: true, mtimeMs }`（新基线） |
+| `fs.read` | 读文件（v0.26.0 起三态）：文本 `{ kind: 'text', content, size, mtimeMs }`；二进制 `{ kind: 'binary', size, mtimeMs, head }`；**超过编辑上限**（5 MiB）`{ kind: 'too-large', size, mtimeMs, head }`（head = base64 前 4KB，用于 `detect` 重匹配；`mtimeMs` = 本次读取的磁盘 mtime，保存冲突基线）。**不再有 `truncated` 文本读**——截断文档既不可信也不能保存（#732），超大文件改走 `fs.readPage` 分页预览 |
+| `fs.readPage` | 大文本文件的分页读取（v0.26.0+）：`{ sessionId, cwd?, path, offset }` → `{ kind:'text', text, offset, nextOffset, eof, size, mtimeMs, encoding }`。窗口按行对齐（调用方可以直接当作整行/整条记录处理），单个超长行原样返回而不是空页；`nextOffset` 必然前进，`eof` 精确 |
+| `fs.write`（**已移至 raw 路由**） | v0.26.0 起保存走 `POST /sidebar/write?sessionId=&cwd=&path=&expectedMtimeMs=`，**请求体就是 LF 文档**（不再走 JSON，因此不再受 `/sidebar/api` 的 1 MiB body 上限约束）；响应仍是 `{ ok: true, value: { ok: true, mtimeMs? } }` 信封。语义不变：`expectedMtimeMs` 是乐观并发门，磁盘 mtime 与基线不符则拒绝（409，wire 错误码 `fs-conflict`），**目标已不存在（保存瞬间被删除或改名走）同样判 409**——数字基线只可能来自一次成功的读取，即该路径当时确实有文件，所以「读不到」是冲突而不是新建意图（新建走 `fs.createFile`、上传走上传路径，都不经过这条分支）。省略则不做门禁；宿主在写盘前按磁盘现状还原文件的行尾与字节编码（`restoreEol` + `encodeText`） |
 | `git.status` / `git.diff` / `git.log` 等 | 全套 Git 只读 + 写操作 |
 | `pty.close` / `agent-pty.close` | **已删除**（插件自带的 PTY 栈随终端一起移除；宿主 `ui-sidebar-terminal` 不通过本插件的路由暴露控制面） |
 | `settings.get` / `settings.update` | 侧边栏偏好读写（revision 守卫，冲突回 wire 错误码 `settings-conflict`）；后端在 0.1.7 上就是宿主的 `SettingsForms`，见 §8.2 |
@@ -659,11 +669,14 @@ const route = (path: string): string => ctx.betterSidebar.hostRouteUrl(path)
 // 1) 启动：paths 是会话命名空间里的绝对路径（与 fs.tree 的行 path 同形）
 const build = await fetch(route('sidebar/api/archive.build'), {
   method: 'POST', headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ sessionId, cwd, paths: ['/w/src', '/w/notes.md'], name: '报告.zip' }),
+  body: JSON.stringify({ sessionId, cwd, paths: ['/w/src', '/w/notes.md'], name: '报告' }),
 }).then(r => r.json())
-// → { ok: true, value: { id: 'ar-…', entries: 5 } }
+// → { ok: true, value: { id: 'ar-…', name: '报告.zip', entries: 2 } }
+//    name 是**最终**下载名：调用方只给词干，扩展名由宿主实际可用的工具决定
+//    （只有 tar 的机器产出 .tar.gz）
 
-// 2) 轮询：state 为 building | ready | error；done/total 是条目进度，bytes 是已读未压缩字节
+// 2) 轮询：state 为 building | ready | error；bytes 是临时文件已写入的字节数
+//    （v0.26.0 起没有 done/total：打包交给系统的 zip/tar 子进程，它不报逐条目进度）
 const status = await fetch(route('sidebar/api/archive.status'), {
   method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ id: build.value.id, sessionId }),
@@ -673,7 +686,14 @@ const status = await fetch(route('sidebar/api/archive.status'), {
 const url = route(`sidebar/archive?${new URLSearchParams({ sessionId, id: build.value.id })}`)
 ```
 
-约束与状态码：任务表最多 **4 个并发构建**（超出时 `archive.build` 回 `bad-request`，HTTP 409），完成/失败后保留 **5 分钟**（过期即消失）；`id` 只对**创建它的 session** 可用（其他 session 读是 `forbidden` 403）；`/sidebar/archive` 在构建中回 **409**、构建失败回 **410**（消息即失败原因）、未知/过期/已下载回 **404**。响应头为 `content-type: application/zip` + `content-disposition: attachment; filename="<ASCII 回退>"; filename*=UTF-8''<百分号编码>`（非 latin1 文件名走 RFC 5987，ASCII 档位对旧客户端生效）。上限沿用 `src/zip.ts` 的 `ZIP_MAX_ENTRIES = 10_000` 与 `ZIP_MAX_BYTES = 256 MiB`（未压缩总量）。
+约束与状态码：任务表最多 **4 个并发构建**（超出时 `archive.build` 回 `bad-request`，HTTP 409），完成/失败后保留 **5 分钟**（过期即消失）；`id` 只对**创建它的 session** 可用（其他 session 读是 `forbidden` 403）；`/sidebar/archive` 在构建中回 **409**、构建失败回 **410**（消息即打包工具的 stderr 尾部）、未知/过期/已下载回 **404**。响应头为 `content-type: application/zip`（只有 tar 时为 `application/gzip`）+ `content-disposition: attachment; filename="<ASCII 回退>"; filename*=UTF-8''<百分号编码>`（非 latin1 文件名走 RFC 5987，ASCII 档位对旧客户端生效）。
+
+**v0.26.0 起打包交给系统命令，不再由本插件自己写 ZIP**（`src/zip.ts` 已删除，随之消失的是 `ZIP_MAX_ENTRIES` / `ZIP_MAX_BYTES` 两道上限——因此打包不再有大小限制）：
+
+- 工具按 `zip` → `tar` 顺序探测（`src/archive-tools.ts`，结果按进程缓存）。`zip` 恒带 `-y`：不加它会**跟随**符号链接，一个 `a -> .` 的自指环会一直递归；`-y` 把链接本身存进包，既不会成环也更忠实。Windows 10 1803+ 自带 `tar.exe` 而没有 `zip`。
+- 入参是绝对路径，宿主取它们的**最深公共祖先**作为工作目录、把相对名交给工具——同一目录下的选择按 basename 入包，不同目录的同名文件自然落在各自父目录下（旧版「逐段长出父目录直到不重名」的算法因此不再需要）。选择本身等于公共祖先时祖先上移一级；选中文件系统根会被 `bad-request` 拒绝。
+- 命令的 stdout 直接写进 OS 临时目录里的临时文件，**从不整包进内存**；下载时 `createReadStream` 流式下发，流结束后才删除临时文件。插件的 teardown 会杀掉仍在跑的构建并清掉临时文件。
+- **两种工具都没有时**：`archive.build` 立刻回 wire 错误码 **`unavailable`**（HTTP 501），客户端把它显示成一句可操作的中文/英文提示，而不是把英文 wire 文本原样抛出。
 
 媒体/下载字节走 `/sidebar/file` 路由（`?sessionId=&path=&cwd=&download=1`）：
 
@@ -775,8 +795,18 @@ interface BetterSidebarService {
    *  （含 React 自己的渲染订阅），也不会把整条侧栏换成错误条——所以
    *  listener 里读宿主 state 的字段仍请自己判空，别指望异常能当哨兵。 */
   subscribeState(listener: () => void): () => void
-  /** 更新一个已打开 tab 的显示字段（title/path/meta）；tab 不存在时 no-op */
-  updateTab(tabId: string, patch: { title?: string; path?: string; meta?: unknown }): void
+  /** 更新一个已打开 tab 的显示字段（title/path/meta）；tab 不存在时 no-op。
+   *  **改 path 等于一次新的打开**：引用带的行号（#826）是那次导航的瞬态状态，
+   *  会随之清掉——原地切换文件 / 重命名若留着它，下一个文件会跳到上一个文件
+   *  的行号（markdown 还会被拉进编辑态）。
+   *  **写入在原生承载面上是「稳」的**（v0.26.0+）：`path` / `meta` 与宿主自己
+   *  投递的导航共用一道闸门——只有该记录**尚未采纳过的导航修订**才允许覆盖
+   *  它们，而原生承载面每次渲染都会重投同一次导航；所以插件侧的改址不会被
+   *  下一次渲染当渲染垃圾抹掉，宿主**真正**发起的新导航（新修订）仍按地址
+   *  改写记录。文件树的重命名 / 删除调解会一并处理原生承载面上的页签（跟着
+   *  改址 / 按既有的未保存确认关闭；枚举由承载面内部交回服务，不是公开方法），
+   *  消费插件不需要改任何代码。 */
+  updateTab(tabId: string, patch: { title?: string; path?: string; meta?: unknown }, sessionId?: string): void
   /** 激活一个已打开的 tab（tab 栏点击路径；触发 descriptor.onActivate；
    *  未知 id 严格 no-op）；scope（v0.12.0+）随回调传递，同 closeTab */
   activateTab(tabId: string, scope?: SessionScope): void
@@ -806,6 +836,10 @@ interface OpenTabSeed {
   /** 文件路径：editor = 打开文件资源；其余类型 = 组件种子（落在 tab.path，v0.19.2+） */
   path?: string
   diff?: SidebarTab['diff']
+  /** 文件引用带的行号（`a.c#L131` / `a.c:131`，1 基，#826）。只对 `editor`
+   *  有意义：它是一次性导航——编辑器到达时定位一次（markdown/html 因此
+   *  离开预览），随后记录就忘了它。不传 = 普通打开。 */
+  line?: SidebarTab['line']
   id?: string
   url?: string
   /** JSON 可序列化的自定义状态，随 tab 持久化（刷新后原样恢复）；

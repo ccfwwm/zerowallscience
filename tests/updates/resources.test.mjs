@@ -49,12 +49,32 @@ test('a selected update links unchanged offline packages without resolving their
     assert.equal(workspace.autoInstallPeers, false)
     assert.equal(workspace.allowBuilds.custom, false)
     assert.equal(workspace.allowBuilds['@scarf/scarf'], false)
+    assert.equal(workspace.allowBuilds.ssh2, false)
+    assert.equal(workspace.allowBuilds['cpu-features'], false)
     assert.equal(args[0], 'add')
     throw new Error('fixture stops before activation')
   } })
   await assert.rejects(manager.plugin(f.resource.id, f.source), /fixture stops/)
   assert.equal(await readFile(file, 'utf8'), before)
   assert.equal(JSON.parse(await readFile(join(offline, 'package.json'))).dependencies['@deepseek-ai/internal'], 'workspace:*')
+})
+
+test('candidate installation preserves reviewed native build policies and strict enforcement', async () => {
+  const f = await fixture()
+  await initializeProfile(f.home, [f.resource.id])
+  const policy = { strictDepBuilds: true, allowBuilds: { ssh2: true, 'cpu-features': true, 'custom-native': false } }
+  await writeFile(join(f.home, 'profiles/web/pnpm-workspace.yaml'), JSON.stringify(policy))
+  const manager = createResourceManager({ ...f, target, local: true, runPlugin: async (_args, generation) => {
+    const workspace = JSON.parse(await readFile(join(f.home, 'profiles', generation, 'pnpm-workspace.yaml')))
+    assert.equal(workspace.strictDepBuilds, true)
+    assert.equal(workspace.allowBuilds.ssh2, true)
+    assert.equal(workspace.allowBuilds['cpu-features'], true)
+    assert.equal(workspace.allowBuilds['custom-native'], false)
+    assert.equal(workspace.allowBuilds['unknown-native'], undefined)
+    throw new Error('fixture stops before activation')
+  } })
+  await assert.rejects(manager.plugin(f.resource.id, f.source), /fixture stops/)
+  assert.deepEqual(JSON.parse(await readFile(join(f.home, 'profiles/web/pnpm-workspace.yaml'))), policy)
 })
 
 test('signature and runtime compatibility reject tampering and an incorrect rc version', async () => {

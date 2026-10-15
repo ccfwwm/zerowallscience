@@ -15,6 +15,12 @@ function fixture(packages?: any[]) {
 }
 
 describe('shared Python dependency manifest', () => {
+  it.each(['6.0.0', '7.0.3', '8.2.0', '99.0.0'])('does not gate signed dependencies on desktop %s', version => {
+    const { doc, key } = fixture()
+    expect(parsePythonDependencyManifest(doc, { test: key }, version).packages[0]?.name).toBe('numpy')
+    doc.revision = 'tampered'
+    expect(() => parsePythonDependencyManifest(doc, { test: key }, version)).toThrow(/签名/)
+  })
   it('validates signed schema 3 documents and reports only missing installed packages', () => {
     const { doc, key } = fixture()
     const parsed = parsePythonDependencyManifest(doc, { test: key }, '7.0.3')

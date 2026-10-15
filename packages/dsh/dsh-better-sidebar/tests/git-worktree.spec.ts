@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parseWorktreeList, resolveWorktree, status, worktrees } from '../src/git.ts'
@@ -97,6 +97,38 @@ describe('linked Git worktrees', () => {
       await expect(resolveWorktree(main, agentPath)).rejects.toThrow('unknown linked worktree')
     } finally {
       try { git(main, ['worktree', 'remove', '--force', agent]) } catch { /* fixture may not be fully initialized */ }
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('counts an untracked directory as ONE entry in the inventory', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-worktree-count-'))
+    const main = join(root, 'main')
+    try {
+      git(root, ['init', '-q', main])
+      git(main, ['checkout', '-q', '-b', 'main'])
+      writeFileSync(join(main, 'tracked.txt'), 'base\n')
+      git(main, ['add', '-A'])
+      git(main, ['commit', '-q', '-m', 'base'])
+      // A large untracked tree. The inventory used to answer this by calling
+      // the full `status()` — FOUR processes per linked checkout, including the
+      // `--untracked-files=all` walk — on a 30 s poll, only to read
+      // `.entries.length`. "Does this checkout have changes" is the question,
+      // and one directory row is its answer: cheaper, and not silently capped
+      // at GIT_STATUS_LIMIT the way the expanded count was.
+      mkdirSync(join(main, 'vendor/nested'), { recursive: true })
+      for (let index = 0; index < 50; index += 1) {
+        writeFileSync(join(main, `vendor/nested/f${index}.txt`), 'x\n')
+      }
+
+      const listed = await worktrees(main)
+      expect(listed).toHaveLength(1)
+      expect(listed[0]!.changes).toBe(1)
+
+      // The per-file answer is untouched: the tree's ink and the changes page
+      // still expand the same tree file by file.
+      expect((await status(main)).entries).toHaveLength(50)
+    } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })

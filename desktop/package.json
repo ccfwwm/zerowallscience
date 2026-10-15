@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "8.1.3",
+  "version": "8.2.0",
   "description": "ZeroWall Science 8.1.2 local-first scientific visualization and research workbench.",
   "private": true,
   "type": "module",
@@ -28,6 +28,8 @@
     "@changfenhuang/dsh-genui": "workspace:*",
     "@dingyi222666/dsh-session-notification": "workspace:*",
     "@dsh-external/zotero-harvest": "workspace:*",
+    "@michengai/dsh-archive-manager": "workspace:*",
+    "@oh-story/dsh": "workspace:*",
     "@zerowallscience/integrity-runtime": "workspace:^",
     "@zerowallscience/plugin-account": "workspace:^",
     "@zerowallscience/plugin-ai-cloud": "workspace:^",

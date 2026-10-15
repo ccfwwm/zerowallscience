@@ -7,8 +7,7 @@
 // 3) actionable buttons show a brief local "已响应" feedback on click.
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MarkdownText } from './markdown-labels.tsx'
-import { hasFenceRegistry } from './helpers/fence-host'
+import { MarkdownText } from './genui-markdown.tsx'
 import { GenuiActionContext } from '../src/client/action-context.ts'
 import { GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { repairGenuiSpec, validateGenuiSpec } from '../src/client/guard.ts'
@@ -34,7 +33,7 @@ const paper = {
   ],
 }
 
-describe.skipIf(!hasFenceRegistry)('v2.6: local grading (zero round trip)', () => {
+describe('v2.6: local grading (zero round trip)', () => {
   it('grades IN PLACE: score, per-question ✓/✗, correct answers, explanations — NO action fired', () => {
     const actions: Array<[string, Record<string, unknown>]> = []
     const { container } = render(
@@ -127,7 +126,7 @@ describe.skipIf(!hasFenceRegistry)('v2.6: local grading (zero round trip)', () =
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('v2.6: fallback keeps v2.5 behavior without answers', () => {
+describe('v2.6: fallback keeps v2.5 behavior without answers', () => {
   it('sends ONE action when no question carries answer data', () => {
     const actions: Array<[string, Record<string, unknown>]> = []
     const { container } = render(
@@ -160,7 +159,7 @@ describe.skipIf(!hasFenceRegistry)('v2.6: fallback keeps v2.5 behavior without a
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('v2.6: button local click feedback', () => {
+describe('v2.6: button local click feedback', () => {
   it('shows 已触发 after clicking an actionable button, then clears', () => {
     const { container } = render(
       <GenuiActionContext.Provider value={() => {}}>
@@ -188,7 +187,7 @@ describe.skipIf(!hasFenceRegistry)('v2.6: button local click feedback', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('v2.6: guard coverage', () => {
+describe('v2.6: guard coverage', () => {
   it('repair keeps radio answer (index + label) / explanation and submit resetAction', () => {
     const spec = repairGenuiSpec({
       items: [

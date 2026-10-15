@@ -43,7 +43,8 @@ async function fixture(mode: 'no-token' | 'delayed-token' | 'fatal' | 'fatal-exi
     launchProcess: (_executable, args) => {
       const port = Number(args[args.indexOf('--port') + 1])
       emitToken = () => {
-        child.stdout.push(`dsh web: http://127.0.0.1:${port}/?tok`)
+        const actualPort = (server.address() as { port: number }).port
+        child.stdout.push(`dsh web: http://127.0.0.1:${actualPort}/?tok`)
         child.stdout.push('en=test-only\n')
       }
       server.listen(port, '127.0.0.1', () => {

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
 import { pluginIdentity, prepareOfflineCandidate, readOfflineReceipt, verifiedGeneration } from './offline-profile.mjs'
 import { satisfiesPackageRange } from './package-range.mjs'
+import { renameProfile } from './profile-rename.mjs'
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
 async function atomic(path, value) {
@@ -51,6 +52,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const text = await readFile(workspaceFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return '' })
     const workspace = text.trim() ? yaml.parse(text) : {}
     workspace.overrides = { ...workspace.overrides, ...replacements }
+    delete workspace.overrides['dsh-auto-review']
+    delete workspace.overrides['@zerowallscience/dsh-capability-menu']
+    // A peer lookup can resolve a catalog-only version through the registry
+    // even with an override. Anchor the entire verified closure as direct
+    // file dependencies, including packages absent from older profiles.
+    // Only the requested entries are passed to DSH for bundle activation.
+    manifest.dependencies = { ...manifest.dependencies, ...replacements }
     // Installer-owned packages already have their complete runtime closure.
     // Re-resolving their source manifests exposes workspace: dependencies that
     // cannot exist in a user's profile. Link these unchanged generations; only
@@ -67,7 +75,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       delete workspace.overrides[id]
     }
     workspace.autoInstallPeers = false
-    workspace.allowBuilds = { ...workspace.allowBuilds, '@scarf/scarf': false }
+    // ssh2 works without its optional native crypto/CPU accelerators. Explicit
+    // denials avoid pnpm's undecided-build failure on machines without build
+    // tools, while retaining a user's reviewed allow/deny policy.
+    workspace.allowBuilds = { ssh2: false, 'cpu-features': false, ...workspace.allowBuilds, '@scarf/scarf': false }
     await atomic(file, manifest)
     await writeFile(workspaceFile, yaml.stringify(workspace))
   }
@@ -218,8 +229,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     // active still contains the complete old profile. Never quarantine it
     // unless there is a complete backup to restore.
     if (await exists(backup)) {
-      if (await exists(active)) await rename(active, active + '.interrupted-' + randomUUID())
-      await rename(backup, active)
+      if (await exists(active)) await renameProfile(active, active + '.interrupted-' + randomUUID())
+      await renameProfile(backup, active)
     } else if (!await exists(active)) {
       throw new Error('Plugin update recovery has no complete active or backup profile')
     }
@@ -428,9 +439,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     let backedUp = false
     try {
       await stopHost()
-      await rename(active, backup)
+      await renameProfile(active, backup)
       backedUp = true
-      await rename(candidate, active)
+      await renameProfile(candidate, active)
       await startHost()
       await atomic(journal, { state: completionState, backup, ...metadata })
       await recordPluginGeneration(metadata, backup)
@@ -438,8 +449,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     } catch (error) {
       if (backedUp) {
         await stopHost()
-        if (await exists(active)) await rename(active, active + '.failed-' + randomUUID())
-        await rename(backup, active)
+        if (await exists(active)) await renameProfile(active, active + '.failed-' + randomUUID())
+        await renameProfile(backup, active)
       }
       await startHost()
       await atomic(journal, { state: 'rolled-back', backup, ...metadata })

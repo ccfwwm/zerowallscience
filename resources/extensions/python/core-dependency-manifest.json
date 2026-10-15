@@ -1,14 +1,14 @@
 {
   "schema": 3,
   "kind": "zerowall-science-python",
-  "applicationVersion": "8.1.3",
+  "applicationVersion": "8.2.0",
   "runtimeId": "zerowall-science-python",
   "platform": "win32-x64",
   "environmentVersion": "3.12.10",
-  "revision": "3.12.10-r18-core",
+  "revision": "3.12.10-r19-core",
   "pythonVersion": "3.12.10",
   "layer": "core",
-  "createdAt": "2026-10-12T03:40:24.277Z",
+  "createdAt": "2026-10-14T13:27:42.308Z",
   "index": {
     "indexUrl": "https://pypi.tuna.tsinghua.edu.cn/simple",
     "trustedHost": "pypi.tuna.tsinghua.edu.cn"
@@ -403,11 +403,11 @@
     }
   ],
   "compatibility": {
-    "minApplicationVersion": "8.1.3"
+    "minApplicationVersion": "0.0.0"
   },
   "signature": {
     "algorithm": "ed25519",
     "keyId": "stable-4",
-    "value": "POOu8j0k/4qx+GrtcDBxf2rXiMgC07Z56SUsL8CxKJnYTKdz3yGapchzGSompzM7fcwAMD9cpHOJ0z/TkUsVDw=="
+    "value": "n8y2UeY1wFLeVbX8FyMzxjPvMzr9p9FFN6mR4h/r/M91Feu71JEw7TY9a4eCpTl2wy4WXvFbmu1w+lTgrl/wAA=="
   }
 }

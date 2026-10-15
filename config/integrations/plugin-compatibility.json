@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "evidence": "docs/verification-three-plugin-upgrade-20261014.md",
+  "rules": [
+    {
+      "dependency": "dsh-better-sidebar",
+      "previousRange": "^0.25.0",
+      "testedVersion": "0.26.1-zws.1",
+      "consumers": [
+        { "id": "@zerowallscience/plugin-account", "version": "0.1.6" },
+        { "id": "@zerowallscience/plugin-account", "version": "0.1.7" },
+        { "id": "@zerowallscience/plugin-ai-cloud", "version": "0.1.6" },
+        { "id": "@zerowallscience/plugin-ai-cloud", "version": "0.1.15" },
+        { "id": "@zerowallscience/plugin-execution", "version": "0.1.1" },
+        { "id": "@zerowallscience/plugin-files", "version": "0.2.5" },
+        { "id": "@zerowallscience/plugin-images", "version": "0.2.7" },
+        { "id": "@zerowallscience/plugin-images", "version": "0.2.14" },
+        { "id": "@zerowallscience/plugin-mcp", "version": "0.2.11" },
+        { "id": "@zerowallscience/plugin-mineru", "version": "0.1.5" },
+        { "id": "@zerowallscience/plugin-projects", "version": "0.1.1" },
+        { "id": "@zerowallscience/plugin-publications", "version": "0.1.1" },
+        { "id": "@zerowallscience/plugin-pubmed", "version": "0.1.4" },
+        { "id": "@zerowallscience/plugin-research", "version": "0.1.11" },
+        { "id": "@zerowallscience/plugin-reviewer", "version": "0.1.4" },
+        { "id": "@zerowallscience/plugin-runs", "version": "0.1.1" },
+        { "id": "@zerowallscience/plugin-singlecell", "version": "0.1.4" },
+        { "id": "@zerowallscience/plugin-skills", "version": "0.2.4" },
+        { "id": "@zerowallscience/plugin-python", "version": "0.1.12" }
+      ]
+    }
+  ]
+}

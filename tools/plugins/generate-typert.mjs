@@ -37,7 +37,7 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   // packages that the desktop runtime actually installs may contribute to the
   // shared browser remote assembly; otherwise a removed plugin can survive in
   // the workspace and break startup through a stale generated import.
-  if (!runtimePackages.has(manifest.name) && !manifest.name?.startsWith('@zerowallscience/plugin-')) {
+  if (!runtimePackages.has(manifest.name) && !manifest.name?.startsWith('@zerowallscience/plugin-') && manifest.name !== '@oh-story/dsh') {
     continue
   }
   if (manifest.exports?.['./remote'] === undefined) {
@@ -57,7 +57,7 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   let artifacts
   try {
     artifacts = new WorkspaceTypertGenerator(root, {
-      packageRoots: ['deepseek-harness/packages', 'plugins', 'store'],
+      packageRoots: ['deepseek-harness/packages', 'plugins', 'packages/dsh', 'store'],
     }).generate([manifest.name], ['host'])
   } catch (error) {
     // rc.2 validates the manifest before returning the artifact. A few legacy

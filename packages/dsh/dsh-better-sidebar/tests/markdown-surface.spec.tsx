@@ -63,7 +63,7 @@ function nextSession(): string {
 interface Mounted {
   container: HTMLDivElement
   /** Every editor tab the sidebar currently holds (path-typed ones last). */
-  tabs: () => { type: string; path?: string }[]
+  tabs: () => { type: string; path?: string; line?: number }[]
   unmount: () => void
 }
 
@@ -72,7 +72,7 @@ interface Mounted {
 function sidebarCtx(sessionId: string): {
   ctx: Context
   store: ReturnType<typeof createSidebarStore>
-  tabs: () => { type: string; path?: string }[]
+  tabs: () => { type: string; path?: string; line?: number }[]
 } {
   const store = createSidebarStore()
   const service = createBetterSidebarService(store)
@@ -84,7 +84,11 @@ function sidebarCtx(sessionId: string): {
     get: (name: string) => name === 'betterSidebar' ? service : undefined,
     sessions: { list: { subscribe: () => () => {}, getSnapshot: () => ({ byId: { [sessionId]: { cwd: '/p' } } }) } },
   } as unknown as Context
-  return { ctx, store, tabs: () => allLeaves(store.getSnapshot().state!.bottomSplits).flatMap(leaf => leaf.tabs) }
+  return {
+    ctx,
+    store,
+    tabs: () => allLeaves(store.getSnapshot().state!.bottomSplits).flatMap(leaf => leaf.tabs),
+  }
 }
 
 /**
@@ -257,6 +261,37 @@ describe('the markdown preview surface', () => {
     expect(mounted.tabs().map(tab => tab.path)).toEqual(['/p/docs/other.md'])
     click(fileLink(surface, '/p/docs/third.md')!)
     expect(mounted.tabs().map(tab => tab.path)).toEqual(['/p/docs/other.md', '/p/docs/third.md'])
+    mounted.unmount()
+  })
+
+  it('carries a `#L42` destination through the open as the landing line (#826)', () => {
+    // The host hands the line over as its delegate's `options.line` and leaves
+    // the destination alone, so the surface has to forward it: without it the
+    // file opened at line 1 (and a markdown file stayed in preview, which
+    // renders no source lines to put a cursor on).
+    const mounted = mountEditor(
+      '[42](./target.md#L42) and [range](./range.md#L20-L25) and [anchor](./anchored.md#小节)\n',
+      '/p/docs/README.md',
+    )
+    // The host strips the line fragment from the button's title (it is the
+    // host's own `parseFileLink` that consumed it), so the link is found by
+    // its bare destination.
+    const surface = surfaceOf(mounted.container)
+    click(fileLink(surface, './target.md')!)
+    expect(mounted.tabs().map(tab => ({ path: tab.path, line: tab.line })))
+      .toEqual([{ path: '/p/docs/target.md', line: 42 }])
+    // A range contributes its start: the editor has exactly one caret.
+    click(fileLink(surface, './range.md')!)
+    expect(mounted.tabs()[1]?.line).toBe(20)
+    mounted.unmount()
+  })
+
+  it('parks a heading fragment instead of forwarding a line (it has none)', () => {
+    const mounted = mountEditor('[go](./anchored.md#小节)\n', '/p/docs/README.md')
+    click(fileLink(surfaceOf(mounted.container), './anchored.md#小节')!)
+    // A heading fragment rides the parked-anchor table (the target document does
+    // not exist yet), so the open itself carries no line.
+    expect(mounted.tabs()[0]?.line).toBeUndefined()
     mounted.unmount()
   })
 

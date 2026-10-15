@@ -3,6 +3,7 @@ import { globSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { historicalPackage } from './package-history.mjs'
+import { packageFiles } from './immutable-package.mjs'
 import { root } from '../build/paths.mjs'
 import { packageSource } from '../build/layout.mjs'
 
@@ -69,6 +70,18 @@ export async function preparePublishPackage(source, staging) {
   const publish = structuredClone(manifest)
   const baseline = await historicalPackage(manifest.name, manifest.version)
   const previous = baseline ? JSON.parse(execFileSync('tar', ['-xOf', baseline.path, 'package/package.json'], { encoding: 'utf8' })) : undefined
+  // Generating the unchanged plugin contract on another platform can change
+  // only its line endings. Keep the original published bytes in that case;
+  // all other differences still reach the immutable-package guard unchanged.
+  if (baseline) {
+    const original = (await packageFiles(baseline.path)).get('package/zerowall.plugin.json')
+    const path = join(staging, 'zerowall.plugin.json')
+    const current = await readFile(path).catch(error => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
+    if (original && current && original.toString('utf8').replaceAll('\r\n', '\n') === current.toString('utf8').replaceAll('\r\n', '\n')) await writeFile(path, original)
+  }
   delete publish.scripts
   delete publish.devDependencies
   delete publish.private

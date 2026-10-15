@@ -147,7 +147,7 @@ export function scienceManifestDocument({ environmentVersion, scienceRevision, p
     packages: packages.map(pkg => pkg.source === 'sdist'
       ? { name: pkg.name, version: pkg.version, sha256: pkg.sha256, required: true, capabilities: [], source: 'sdist', filename: pkg.filename }
       : { name: pkg.name, version: pkg.version, required: true, capabilities: [] }),
-    compatibility: { minApplicationVersion: applicationVersion },
+    compatibility: { minApplicationVersion: '0.0.0' },
     signature: { algorithm: 'ed25519', keyId, value: '' },
   }
 }
@@ -167,7 +167,7 @@ export function coreManifestDocument({ environmentVersion, revision, pythonVersi
     createdAt: generatedAt,
     index: { indexUrl: index.indexUrl, ...(index.trustedHost ? { trustedHost: index.trustedHost } : {}) },
     packages: packages.map(pkg => ({ name: pkg.name, version: pkg.version, ...(pkg.sha256 ? { sha256: pkg.sha256 } : {}), required: true, capabilities: ['core'] })),
-    compatibility: { minApplicationVersion: applicationVersion },
+    compatibility: { minApplicationVersion: '0.0.0' },
     signature: { algorithm: 'ed25519', keyId, value: '' },
   }
 }

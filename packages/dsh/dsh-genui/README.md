@@ -50,21 +50,21 @@ The walkthrough moves from an answer-embedded panel through forms, plotting, Mer
 
 <p align="center">
   <img src="./assets/showcase-panel.png" width="92%" alt="Real dsh-genui monitoring panel rendered inside a DSH conversation">
-  <br><em>Real output: refresh/reset controls, time-range selection, statistics, charts, and a service table live inside the assistant reply.</em>
+  <br><em>Real output: eyebrow stat cards, a filterable service table with drill-down rows, grouped totals, and spark/ring/bar cell types live inside the assistant reply.</em>
 </p>
 
 #### 2. A function plot redraws locally as its parameters change
 
 <p align="center">
   <img src="./assets/showcase-plot.png" width="76%" alt="Real dsh-genui function plot with draggable parameter sliders">
-  <br><em>Real output: `plot` renders curves while sliders, reset, and animation controls update the graph locally.</em>
+  <br><em>Real output: `plot` renders curves while parameter sliders update the graph locally — drag to redraw, no round-trip.</em>
 </p>
 
 #### 3. Layout primitives compose into structured work surfaces
 
 <p align="center">
   <img src="./assets/showcase.png" width="76%" alt="Real dsh-genui layout and card component composition">
-  <br><em>Real output: typography, grid, card, and row/column primitives combine into a hierarchy the model can describe declaratively.</em>
+  <br><em>Real output: display typography, eyebrow stat cards, a ring progress, and labeled chapter dividers combine into a hierarchy the model can describe declaratively.</em>
 </p>
 
 ---
@@ -96,7 +96,7 @@ The repository ships both renderer channels, the host plugin, and the built brow
 
 Prerequisites — all required:
 
-1. **dsh `^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-alpha.1 || >=0.2.0-rc.1 <0.3.0-0`** (DSH `0.2.0-rc.1` is currently a prerelease; verified host roles: minimum `dsh-v0.1.2-rc.1`, current `dsh-v0.1.7-rc.2`, next `dsh-v0.2.0-rc.2`; users on DSH `<=0.1.1-rc.x` should use dsh-genui `0.9.8`)
+1. **dsh `^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-alpha.1 || >=0.2.0-rc.1 <0.3.0-0`** (DSH `0.2.1-alpha.1` is currently a prerelease; verified host roles: minimum `dsh-v0.1.2-rc.1`, current `dsh-v0.2.0-rc.2`, next `dsh-v0.2.1-alpha.1`; users on DSH `<=0.1.1-rc.x` should use dsh-genui `0.9.8`)
 2. **`pnpm` on your PATH**: the `dsh plugin` command depends on it. If missing: `corepack enable` (or `npm i -g pnpm`), then **open a new terminal** and confirm `pnpm -v` prints a version
 
 Install and activate in DSH (one command, all dependencies included):
@@ -177,7 +177,15 @@ The following is the detailed capability reference. Every behavior is constraine
 - **Local-first principle**: state changes the UI can do itself (grading, quiz checking, resets, expand/collapse, selection) always happen locally and instantly; actions are reserved for things that genuinely need the model (generating new content, running tools, next-step suggestions)
 - **Honest interactions**: interactive components must carry `action`; buttons without one render disabled (kills the "looks clickable, does nothing" fake button); buttons with `action` show instant "triggered" local feedback (proof the local event fired, not that the model received it)
 - **Event loop**: buttons, checkboxes, radio buttons, switches, selects, inputs, textareas, submits, and quizzes send one event immediately per gesture; slider drags keep trailing-edge debounce, sending only the final value per slider, with different `id`s handled independently
-- **Tool channel**: the `render_ui` tool renders the same spec as a card in the tool row (deliverable-style UI goes through the tool, answer-style UI through the fence)
+- **Tool channel**: `render_ui` is registered by default and renders the same spec as a card in the tool row; `validate_dsh_ui` remains available. Set `renderUiTool: false` in this plugin's config to stop registering `render_ui`. The `dsh-ui` fence, `panel: true`, `/panel`, and historical `render_ui` results in the client tool view continue to work. Reload the host plugin after changing this setting.
+- **Disable the `render_ui` tool**: add `renderUiTool: false` under this plugin's `config:` in your profile:
+
+  ```yaml
+  - id: genui
+    name: '@changfenhuang/dsh-genui'
+    config:
+      renderUiTool: false
+  ```
 - **Session panel**: a persistent dock above the composer; `render_ui` / `panel: true` fences update the same surface in place; `/panel` opens it from the client (`/panel <instruction>` customizes via the model, `/panel clear` clears); the top border is draggable to resize; `append: true` merges incrementally — same-named tabs append content, new tabs get added; the whole panel caps at 200 nodes / 200 appends, after which the model should send `replace` to rebuild
 - **Fence auto-repair**: enabled by default; set `fenceFeedback: false` in this plugin's config (under the plugin entry's `config:` in your profile's cordis.patch.yml) to disable same-turn fence corrections. A validated GenUI turn that ends with reasoning only still becomes `EMPTY_RESPONSE` and uses the host's retry policy. When a reply's final dsh-ui fence fails to render, the plugin steers the SAME turn with the per-node diagnosis so the model can resend a fixed fence. At most two corrections are sent per turn, shared by render failures and validated turns with no formal delivery; each fence fingerprint is corrected once per turn, and a nothing-delivered reminder is sent once per turn. A new turn can correct the same failed fence again. Plugin reload restores the current turn's fence fingerprints and correction count, along with delivery reminders, from persisted correction messages. Corrections are never sent in subagent sessions.
 - **Self-healing & limits**: every fence passes a spec guard — bad nodes are silently dropped (the surviving siblings keep rendering: one bad component no longer degrades the whole fence), numbers clamped, strings truncated; the whole tree is capped at 200 nodes / 8 nesting levels; pathological specs never crash the UI
@@ -246,9 +254,9 @@ pnpm run check   # type check + full tests + build
 
 With the locked dependencies installed, the check script (`pnpm run check` or `npm run check`) uses the pinned DSH `0.1.2-rc.1` release packages.
 
-The verified host roles are minimum `dsh-v0.1.2-rc.1`, current `dsh-v0.1.7-rc.2`, and next `dsh-v0.2.0-rc.1`. DSH `0.2.0-rc.1` is currently a prerelease. CI keeps four primary lanes: Node 22 + current, and Node 24 + minimum/current/next. Replace these pinned tags as DSH publishes newer versions.
+The verified host roles are minimum `dsh-v0.1.2-rc.1`, current `dsh-v0.2.0-rc.2`, and next `dsh-v0.2.1-alpha.1`. DSH `0.2.1-alpha.1` is currently a prerelease. CI keeps four primary lanes: Node 22 + current, and Node 24 + minimum/current/next. Replace these pinned tags as DSH publishes newer versions.
 
-`pnpm run check:host-api dsh-v0.1.7-rc.2` and `pnpm run check:host-api dsh-v0.2.0-rc.1` install the corresponding published DSH packages and run TypeScript typecheck plus tsdown build. Each CI host lane then installs the generated tarball in its pinned DSH host and runs the packed smoke.
+`pnpm run check:host-api dsh-v0.2.0-rc.2` and `pnpm run check:host-api dsh-v0.2.1-alpha.1` install the corresponding published DSH packages (plus the host-app runtime closure those packages import without declaring) and run TypeScript typecheck, the **full unit test suite**, and tsdown build — every non-gated suite executes against the real new host packages. Note: the `skipIf(!hasFenceRegistry)`-gated suites stay skipped under every published host — `registerFenceRenderer` has never shipped in any published `dsh-client-ui-primitives` (the gated tests cover a host contract that only existed internally; see CHANGELOG). Each CI host lane then installs the generated tarball in its pinned DSH host and runs the packed smoke.
 
 Run `node scripts/verify-pack.mjs --keep` to retain the verified tarball for inspection or e2e use. The default `node scripts/verify-pack.mjs` removes its temporary directory after verification.
 

@@ -8,8 +8,7 @@
 //    per-click round trips.
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MarkdownText } from './markdown-labels.tsx'
-import { hasFenceRegistry } from './helpers/fence-host'
+import { MarkdownText } from './genui-markdown.tsx'
 import { GenuiActionContext } from '../src/client/action-context.ts'
 import { GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { repairGenuiSpec, validateGenuiSpec } from '../src/client/guard.ts'
@@ -26,7 +25,7 @@ function fenced(spec: unknown): string {
   return `\`\`\`dsh-ui\n${JSON.stringify(spec)}\n\`\`\``
 }
 
-describe.skipIf(!hasFenceRegistry)('v2.5: honest button affordance', () => {
+describe('v2.5: honest button affordance', () => {
   it('renders a button without action as DISABLED (display-only)', () => {
     const { container } = render(<MarkdownText text={fenced({ items: [
       { type: 'button', label: '导出', tone: 'primary' },
@@ -56,7 +55,7 @@ describe.skipIf(!hasFenceRegistry)('v2.5: honest button affordance', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('v2.5: textarea action', () => {
+describe('v2.5: textarea action', () => {
   it('fires on blur with the typed value', () => {
     const actions: Array<[string, Record<string, unknown>]> = []
     const { container } = render(
@@ -90,7 +89,7 @@ describe.skipIf(!hasFenceRegistry)('v2.5: textarea action', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('v2.5: quiz action', () => {
+describe('v2.5: quiz action', () => {
   it('sends the chosen answer to the model while keeping local judging', () => {
     const actions: Array<[string, Record<string, unknown>]> = []
     const { container } = render(
@@ -128,7 +127,7 @@ describe.skipIf(!hasFenceRegistry)('v2.5: quiz action', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('v2.5: submit 交卷 aggregation', () => {
+describe('v2.5: submit 交卷 aggregation', () => {
   const paper = {
     items: [
       { type: 'radio', label: '第1题', group: 'q1', options: ['A', 'B'] },
@@ -212,7 +211,7 @@ describe.skipIf(!hasFenceRegistry)('v2.5: submit 交卷 aggregation', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('v2.5: guard coverage', () => {
+describe('v2.5: guard coverage', () => {
   it('repair keeps action on quiz/textarea, group on radio, and the submit node', () => {
     const spec = repairGenuiSpec({
       items: [

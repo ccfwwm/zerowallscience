@@ -16,7 +16,7 @@
  * 退出码 0 = PASS，1 = FAIL。
  */
 import { spawn, spawnSync } from 'node:child_process'
-import { createWriteStream } from 'node:fs'
+import { createWriteStream, existsSync, readdirSync } from 'node:fs'
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -65,7 +65,7 @@ await new Promise(res => {
 })
 
 // playwright-core 解析顺序：显式 PLAYWRIGHT_PATH → agent-browser 全局依赖 →
-// 本仓库 node_modules。chromium 走系统 Chrome（channel: 'chrome'）。
+// 本仓库 node_modules。浏览器解析顺序见 launchBrowser()。
 async function loadPlaywright(): Promise<{ chromium: any }> {
   const candidates = [
     process.env.PLAYWRIGHT_PATH,
@@ -81,6 +81,72 @@ async function loadPlaywright(): Promise<{ chromium: any }> {
     }
   }
   throw new Error('未找到 playwright-core（可设 PLAYWRIGHT_PATH 指定 index.mjs）')
+}
+
+// 浏览器解析顺序：E2E_CHROMIUM 可执行文件 → 系统 Chrome（channel: 'chrome'，
+// 2026-09 基线路径）→ playwright 按注册表自管 Chromium → 扫描 ms-playwright
+// 缓存里已有的任意 chromium-* 构建。机器上没有 Chrome 也必须能跑视觉回归；
+// 最后一层解决「缓存构建号与本 playwright-core 期望不一致」（缓存由
+// agent-browser 等其他工具装的，版本常超前/落后于本库的注册表）。
+function discoverCachedChromium(): string | undefined {
+  const bases = process.platform === 'darwin'
+    ? [join(homedir(), 'Library/Caches/ms-playwright')]
+    : [join(homedir(), '.cache/ms-playwright')]
+  for (const base of bases) {
+    if (!existsSync(base)) continue
+    const builds = readdirSync(base)
+      .filter(n => /^chromium-\d+$/.test(n))
+      .sort((a, b) => Number(b.slice('chromium-'.length)) - Number(a.slice('chromium-'.length)))
+    for (const build of builds) {
+      const dir = join(base, build)
+      const binaries = [
+        join(dir, 'chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'),
+        join(dir, 'chrome-mac/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'),
+        join(dir, 'chrome-mac-arm64/Chromium.app/Contents/MacOS/Chromium'),
+        join(dir, 'chrome-mac/Chromium.app/Contents/MacOS/Chromium'),
+        join(dir, 'chrome-linux/chrome'),
+      ]
+      const hit = binaries.find(p => existsSync(p))
+      if (hit !== undefined) return hit
+    }
+  }
+  return undefined
+}
+
+async function launchBrowser(chromium: any) {
+  const exe = process.env.E2E_CHROMIUM
+  if (exe !== undefined && exe !== '') {
+    log(`浏览器：E2E_CHROMIUM → ${exe}`)
+    return chromium.launch({ executablePath: exe, headless: true })
+  }
+  try {
+    return await chromium.launch({ channel: 'chrome', headless: true })
+  } catch { /* 系统无 Chrome，继续回退 */ }
+  try {
+    return await chromium.launch({ headless: true })
+  } catch { /* 注册表构建缺失（版本错配），扫描缓存 */ }
+  const cached = discoverCachedChromium()
+  if (cached === undefined) fail('系统无 Chrome，ms-playwright 缓存里也没有可用的 chromium-* 构建（可设 E2E_CHROMIUM 指定可执行文件）')
+  log(`使用 ms-playwright 缓存构建：${cached}`)
+  return chromium.launch({ executablePath: cached, headless: true })
+}
+
+/** 空 profile 首次启动会弹内测声明：遮罩拦截一切指针事件。关闭/摘除是幂等
+ * 的——宿主可能在会话中途把遮罩重新挂回（React 重渲染重建节点），所以在每
+ * 段真实指针交互前都再跑一次。这是 scratch 实例的一次性页面，不是产品行为
+ * 断言（曾导致 tooltip 回归超时）。 */
+async function dismissHostOverlays(page: any): Promise<void> {
+  const onboarding = page.getByRole('button', { name: /继续|我知道了|开始使用|进入/ })
+  if (await onboarding.count() > 0) {
+    await onboarding.first().click().catch(() => {})
+    await page.waitForTimeout(500)
+  }
+  const masks = await page.evaluate(() => {
+    const found = document.querySelectorAll('[class*="_mask_"], [role="presentation"]')
+    for (const el of found) el.remove()
+    return found.length
+  })
+  if (masks > 0) log(`已移除 ${masks} 个遮罩节点`)
 }
 
 const DSH_HOME = await mkdtemp(join(tmpdir(), 'dsh-visual-'))
@@ -168,7 +234,7 @@ try {
 
   // ── 浏览器渲染 ───────────────────────────────────────────────────────────
   const { chromium } = await loadPlaywright()
-  browser = await chromium.launch({ channel: 'chrome', headless: true })
+  browser = await launchBrowser(chromium)
   // 本脚本包含中文 i18n 文案断言（如堆叠图 tooltip 的「合计」= block.total），
   // 因此显式固定 zh-CN，避免测试结果受运行环境的系统 locale 影响。
   // e2e.mjs 同样显式使用 zh-CN。
@@ -191,21 +257,7 @@ try {
   // 走带 token 的根 URL：浏览器完成 303 → cookie 交换，之后的资源请求已认证。
   await page.goto(launchUrl, { waitUntil: 'domcontentloaded', timeout: 60000 })
   await page.waitForTimeout(5000)
-  // 空 profile 首次启动会弹内测声明：它的遮罩会拦截一切指针事件，先关掉，
-  // 否则后面的 hover 断言会被 mask 抢走（曾导致 tooltip 回归超时）。
-  const onboarding = page.getByRole('button', { name: /继续|我知道了|开始使用|进入/ })
-  if (await onboarding.count() > 0) {
-    await onboarding.first().click().catch(() => {})
-    await page.waitForTimeout(500)
-  }
-  // 兜底：遮罩若仍在（按钮文案变化、二次弹出），直接摘掉它——这是 scratch
-  // 实例的一次性页面，不是产品行为断言。
-  const masks = await page.evaluate(() => {
-    const found = document.querySelectorAll('[class*="_mask_"], [role="presentation"]')
-    for (const el of found) el.remove()
-    return found.length
-  })
-  if (masks > 0) log(`已移除 ${masks} 个遮罩节点`)
+  await dismissHostOverlays(page)
 
   // 注入画廊围栏：真实 dsh-ui fence 表面（叶子语言标签 + 单一 <pre> 代码体），
   // DOM 通道应当发现它并以插件自己的 React root 挂载真实组件。
@@ -264,6 +316,27 @@ try {
   await page.waitForTimeout(6000)
   await page.screenshot({ path: join(OUT_DIR, 'gallery.png'), fullPage: true })
   log(`✓ 截图 gallery.png`)
+
+  // ── A5 夹具矩阵：深色主题 × 560px 窄列 ─────────────────────────────────
+  // #159 的教训是「浅色表面方向」这类问题只有换主题才现形；#280 一类溢出只有
+  // 窄列才现形。三张夹具与 gallery.png 一起构成 light/dark × wide/narrow 矩阵，
+  // 供视觉回归对比；截完恢复宽幅浅色基线，后续交互断言不受影响。
+  async function captureMatrixShot(name: string, dark: boolean, width: number): Promise<void> {
+    await page.setViewportSize({ width, height: 3000 })
+    await page.evaluate((isDark: boolean) => {
+      if (isDark) document.body.setAttribute('data-ds-dark-theme', '')
+      else document.body.removeAttribute('data-ds-dark-theme')
+    }, dark)
+    await page.waitForTimeout(600)
+    await page.screenshot({ path: join(OUT_DIR, name), fullPage: true })
+    log(`✓ 截图 ${name}`)
+  }
+  await captureMatrixShot('gallery-dark.png', true, 1440)
+  await captureMatrixShot('gallery-narrow.png', false, 560)
+  await captureMatrixShot('gallery-dark-narrow.png', true, 560)
+  await page.setViewportSize({ width: 1440, height: 3000 })
+  await page.evaluate(() => document.body.removeAttribute('data-ds-dark-theme'))
+  await page.waitForTimeout(400)
 
   // Per-component crops: the gallery is far taller than a viewport, so a
   // single full-page shot is useless for reviewing one component's design.
@@ -508,6 +581,7 @@ try {
   log(`✓ ECharts 配色：${hueCheck.canvases} 张画布，雷达图 ${hueCheck.hues} 种饱和色（${hueCheck.saturated} 像素）`)
 
   // ── 图表 tooltip 验证（真实 hover）────────────────────────────────────────
+  await dismissHostOverlays(page)
   const stackSeg = page.locator('[class*="stackSeg"]').first()
   if (await stackSeg.count() > 0) {
     await stackSeg.hover()
@@ -519,6 +593,7 @@ try {
     log(`✓ 图表 tooltip：${tipText.replace(/\s+/g, ' ').trim()}`)
   }
 
+  await dismissHostOverlays(page)
   const regressionChart = page.locator('[data-genui-chart="bars"]').filter({ hasText: 'Issue 206' }).first()
   const regressionStacks = regressionChart.locator('[class*="barCol"] > [class*="stack"]:not([class*="stackSeg"]):not([class*="stackValue"])')
   if (await regressionStacks.count() !== 2) throw new Error('Issue #206 回归图表未渲染出两根堆叠柱')

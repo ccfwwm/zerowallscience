@@ -29,6 +29,7 @@ export default defineConfig({
     tsconfigPaths({ projects: [resolve(root, 'deepseek-harness/tsconfig.base.json')] }),
   ],
   test: {
+    include: [resolve(process.cwd()) === root ? 'plugins/**/test/**/*.{test,spec}.{ts,tsx}' : 'test/**/*.{test,spec}.{ts,tsx}'],
     environment: 'node',
     passWithNoTests: true,
     restoreMocks: true,

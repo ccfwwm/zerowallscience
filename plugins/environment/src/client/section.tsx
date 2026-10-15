@@ -90,8 +90,8 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       if (accountRemote?.current === undefined) throw new LocalizedError('accountUnavailable')
       const snapshot = await unwrap(accountRemote.current()) as any
       if (cancelled) return
-      const rows = Array.isArray(snapshot?.models) ? snapshot.models : []
-      setImageModels(rows.filter((model: any) => model.capability === 'image-generation'))
+      const rows = Array.isArray(snapshot?.mediaModels) ? snapshot.mediaModels : []
+      setImageModels(rows.filter((model: any) => model.mediaType === 'image' && model.groupName?.trim() === '图片音频视频分组' && !model.stale))
     })
     void load('catalog', async () => {
       const value = await modelCatalog()
@@ -147,9 +147,9 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const reviewerModelIsKnown = reviewerModels.some((model: any) => model.providerId === reviewer.provider && model.modelId === reviewer.model)
 
   const imageModelValue = image.providerId && image.groupId && image.modelId
-    ? `${image.providerId}${VALUE_SEPARATOR}${image.groupId}${VALUE_SEPARATOR}${image.modelId}`
+    ? `${image.providerId}${VALUE_SEPARATOR}${image.groupId}${VALUE_SEPARATOR}${image.modelId}${VALUE_SEPARATOR}${image.profileId ?? ""}`
     : ''
-  const imageModelIsKnown = imageModels.some((model: any) => model.providerId === image.providerId && model.groupId === image.groupId && model.modelId === image.modelId)
+  const imageModelIsKnown = imageModels.some((model: any) => model.providerId === image.providerId && model.groupId === image.groupId && model.modelId === image.modelId && model.profileId === image.profileId)
   const imageGroups = useMemo(() => {
     const groups = new Map<string, { providerId: string; groupId: string; label: string; models: any[] }>()
     for (const model of imageModels) {
@@ -301,7 +301,12 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
 
       <article className={css.card}>
         <div className={css.cardHeader}><div><h3>{t('imageTitle')}</h3><p>{t('imageDescription')}</p></div><span className={css.status}>{statusText('account', t('imageSynced'))}</span></div>
-        <label className={css.field}><span>{t('currentImageModel')}</span><select className={css.control} value={imageModelIsKnown ? imageModelValue : ''} disabled={busy || status.account !== 'ready'} onChange={event => { const [providerId = '', groupId = '', modelId = ''] = event.target.value.split(VALUE_SEPARATOR); saveImageSelection({ providerId, groupId, modelId }) }}><option value="">{t('autoSelect')}</option>{!imageModelIsKnown && imageModelValue ? <option value={imageModelValue}>{image.providerId} / {image.modelId}{t('currentConfig')}</option> : null}{imageGroups.map(group => <optgroup key={`${group.providerId}${VALUE_SEPARATOR}${group.groupId}`} label={group.label}>{group.models.map((model: any) => <option key={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}`} value={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}`}>{model.modelId}{model.name && model.name !== model.modelId ? ` · ${model.name}` : ''}</option>)}</optgroup>)}</select></label>
+        <label className={css.field}><span>{t('currentImageModel')}</span><select className={css.control} value={imageModelIsKnown ? imageModelValue : ''} disabled={busy || status.account !== 'ready'} onChange={event => { const [providerId = '', groupId = '', modelId = '', profileId = ''] = event.target.value.split(VALUE_SEPARATOR); saveImageSelection({ providerId, groupId, modelId, profileId }) }}><option value="">请选择媒体分组模型</option>{!imageModelIsKnown && imageModelValue ? <option value={imageModelValue}>{image.providerId} / {image.modelId}{t('currentConfig')}</option> : null}{imageGroups.map(group => <optgroup key={`${group.providerId}${VALUE_SEPARATOR}${group.groupId}`} label={group.label}>{group.models.map((model: any) => <option key={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}${VALUE_SEPARATOR}${model.profileId}`} value={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}${VALUE_SEPARATOR}${model.profileId}`}>{model.modelId}{model.name && model.name !== model.modelId ? ` · ${model.name}` : ''}</option>)}</optgroup>)}</select></label>
+        {!imageModelIsKnown && imageModelValue && <p role="alert">历史模型或能力配置已失效，请重新选择。</p>}
+        {imageModels.filter((m:any) => m.profileId === image.profileId).map((m:any) => <div key={m.profileId}>
+          {([['resolution','分辨率',m.resolutions],['aspectRatio','比例',m.aspectRatios]] as const).map(([key,label,values]) => values?.length ? <label className={css.field} key={key}><span>{label}</span><select className={css.control} value={image[key] ?? ''} disabled={busy} onChange={event=>saveImageSelection({...image,[key]:event.target.value})}><option value="">默认</option>{values.map((v:string)=><option key={v}>{v}</option>)}</select></label> : null)}
+          {imageQuality !== 'auto' && !m.qualities.includes(imageQuality) && <p role="alert">当前模型不支持已保存的质量 {imageQuality}，请选择支持的质量或 auto。</p>}
+        </div>)}
         <label className={css.field}><span>{t('defaultQuality')}</span><select className={css.control} value={imageQuality} disabled={busy} onChange={event => saveImageQuality(event.target.value as ImageGenerationQuality)}><option value="auto">{t('auto')}</option><option value="low">{t('low')}</option><option value="medium">{t('medium')}</option><option value="high">{t('high')}</option></select><small>{t('qualityNote')}</small></label>
       </article>
 

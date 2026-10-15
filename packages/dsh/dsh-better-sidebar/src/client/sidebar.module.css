@@ -2490,3 +2490,179 @@ body[data-dsh-sidebar-dragging] .bottomPanel {
   animation: dsh-toc-flash 1.2s ease-out;
   border-radius: 4px;
 }
+
+/* ── Read-only paged preview (files above the editable threshold) ────────
+   The editor answers "too big to edit" with a windowed reader rather than a
+   refusal. Two row shapes share the chrome: the JSONL record list (one
+   expandable record per row) and the log-style line list (monospace, no
+   wrapping, horizontal scroll). Every ink is a theme token. */
+.largeFile {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.largeFileNotice {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-state-warn-label);
+  background: var(--dsw-alias-state-warn-tertiary);
+}
+
+.largeFileDownload {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* The notice's own "load all" action. It rides the notice's warn ink (the bar
+   is a warning surface, not a toolbar) and sits flush right, with the download
+   link beside it. `margin-left: auto` is what pins the PAIR to the far edge. */
+.largeFileNoticeAction {
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.largeFileNoticeAction:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.largeFileBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.largeFileRecords {
+  padding: 4px 0;
+}
+
+/* The record list is an <ol> whose `start` attribute is the first record's
+   absolute number: the marker itself is suppressed, since the number column
+   is rendered explicitly and must stay aligned with the summary row. */
+.largeFileList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.largeFileRecord {
+  display: flex;
+  gap: 8px;
+  padding: 2px 8px;
+}
+
+.largeFileRecordExpanded {
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.largeFileRecordInvalid {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.largeFileRecordNo {
+  flex: none;
+  min-width: 4ch;
+  text-align: right;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+  user-select: none;
+}
+
+.largeFileRecordBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.largeFileRecordSummary {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: var(--ds-font-family-code);
+  font-size: 12px;
+  color: var(--dsw-alias-label-primary);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.largeFileRecordSummary:disabled {
+  cursor: default;
+}
+
+.largeFileRecordRaw {
+  margin: 2px 0 0;
+  font: var(--ds-font-family-code);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.largeFileRecordTree {
+  margin-top: 2px;
+  font: var(--ds-font-family-code);
+  font-size: 12px;
+}
+
+.largeFileLines {
+  padding: 4px 0;
+  font: var(--ds-font-family-code);
+  font-size: 12px;
+  white-space: pre;
+}
+
+.largeFileLine {
+  display: flex;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.largeFileLineNo {
+  flex: none;
+  min-width: 5ch;
+  text-align: right;
+  color: var(--dsw-alias-label-tertiary);
+  user-select: none;
+}
+
+.largeFileLineText {
+  flex: none;
+  color: var(--dsw-alias-label-primary);
+}
+
+.largeFilePager {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.largeFilePageLabel {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

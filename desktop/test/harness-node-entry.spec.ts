@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, fork } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -6,6 +6,19 @@ import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
 
 const execute = promisify(execFile)
+
+it.each(['EACCES', 'EADDRINUSE'])('reports nested loopback listen %s through IPC', async code => {
+  const root = await mkdtemp(join(tmpdir(), 'zerowall-cli-port-'))
+  try {
+    const entry = join(root, 'cli.mjs')
+    await writeFile(entry, `export async function runCli() { throw new AggregateError([new Error('server setup', { cause: new Error('listen ${code}: permission denied 127.0.0.1:55191') })], 'plugins failed'); }`)
+    const child = fork(resolve('build/harness-node-entry.mjs'), [entry], { silent: true })
+    const exited = new Promise(resolve => child.once('exit', resolve))
+    const event = await new Promise((resolve, reject) => { child.once('message', resolve); child.once('error', reject); child.once('exit', () => reject(new Error('Host exited before reporting its failure'))) })
+    expect(event).toMatchObject({ type: 'zerowall:host:failed', listenError: code })
+    expect(await exited).toBe(1)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
 
 it('exits after a failed boot even if a plugin left a timer alive', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zerowall-cli-failure-'))

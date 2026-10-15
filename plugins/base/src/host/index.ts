@@ -1,8 +1,10 @@
 import { readFile } from 'node:fs/promises'
 import { installCacheDiagnostics } from './cache-diagnostics.ts'
+import { ensureDefaultWorkspace } from './default-workspace.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-workspace'
 import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
 
 // Persisted approval events remain readable even when automatic approval is off.
@@ -10,7 +12,7 @@ for (const type of ['autoReview/state', 'autoReview/verdict', 'autoReview/circui
   (KNOWN_SESSION_EVENT_TYPES as Set<string>).add(type)
 }
 
-export const inject = ['webServer', 'systemPrompt']
+export const inject = ['webServer', 'systemPrompt', 'workspaceRegistry']
 
 /** Changes to this value are recorded by cache diagnostics as a system-prompt change. */
 export const SCIENCE_SYSTEM_PROMPT_VERSION = '8.1.2-presentation.3'
@@ -37,7 +39,8 @@ export const DOCUMENT_PARSING_PROMPT = 'For attachment identification, reading, 
 
 export const BIOMNI_SYSTEM_PROMPT = 'For Biomni A1 and natural-language database queries, the trusted ZeroWall Host automatically forwards the selected model, API protocol, endpoint, and credential to rmcp. Do not ask to read configured keys or put keys in chat. Database LLM uses the same task model; a missing ANTHROPIC_API_KEY does not prevent using DeepSeek, Kimi, or another configured provider.'
 
-export function apply(ctx: Context): void {
+export async function apply(ctx: Context): Promise<void> {
+  if (process.env.ZEROWALL_USER_DATA_DIR) await ensureDefaultWorkspace(ctx.workspaceRegistry, process.env.ZEROWALL_USER_DATA_DIR)
   ctx.systemPrompt.section({ name: 'zerowall:shared-python', order: 91, text: 'ZeroWall Science has exactly one local Python interpreter and one shared site-packages directory for the whole application. On Windows the canonical runtimeRoot is normally %LOCALAPPDATA%\\ZeroWall Science\\Python. Always use the Host-reported runtimeExecutable and sitePackages fields for execution and imports; do not append Python/python.exe or Lib/site-packages yourself, and do not guess a legacy slot, Roaming, install-directory, or per-engine path. MCP, every Skill, scientific engine, script, notebook and analysis runner use this same managed Python; never create or activate a venv, conda environment, overlay, per-Skill dependency profile, or alternate interpreter, even if a Skill document recommends one. If Skill instructions conflict, this shared-runtime rule wins. Use python_environment to inspect status, check signed manifests, preview dependencies, synchronize them when the user requests installation, and diagnose failures. A user request to install or synchronize is authorization for the signed dependency plan; do not require another confirmation for the same action. Never directly modify site-packages or invent computational results. Installation and TLS failures must include the returned diagnostic and repair entry. Remote Linux environments are separate and require platform-specific manifests.' })
   ctx.systemPrompt.section({ name: 'zerowall:biomni-credentials', order: 93, text: BIOMNI_SYSTEM_PROMPT })
   installCacheDiagnostics(ctx)

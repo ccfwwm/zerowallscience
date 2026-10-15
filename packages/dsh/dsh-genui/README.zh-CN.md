@@ -50,21 +50,21 @@ https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
 
 <p align="center">
   <img src="./assets/showcase-panel.png" width="92%" alt="真实 DSH 对话中渲染的 dsh-genui 监控面板">
-  <br><em>真实输出：刷新/重置、时间范围、统计卡、图表和服务表都活在助手回答里。</em>
+  <br><em>真实输出：eyebrow 指标卡、可筛选可钻取的服务表、分组合计，以及 spark/ring/bar 单元格类型，都活在助手回答里。</em>
 </p>
 
 #### 2. 改参数时，函数图在本地即时重绘
 
 <p align="center">
   <img src="./assets/showcase-plot.png" width="76%" alt="带可拖动参数滑块的真实 dsh-genui 函数图">
-  <br><em>真实输出：`plot` 绘制曲线；拖动滑块、重置和动画控制都直接更新图形。</em>
+  <br><em>真实输出：`plot` 绘制曲线；拖动参数滑块即时重绘，零模型往返。</em>
 </p>
 
 #### 3. 布局原语可以组成有层级的工作界面
 
 <p align="center">
   <img src="./assets/showcase.png" width="76%" alt="真实 dsh-genui 排版和卡片组件组合">
-  <br><em>真实输出：文字、网格、卡片、行列原语可组合成模型能够声明的界面层级。</em>
+  <br><em>真实输出：display 引言、eyebrow 指标卡、环形进度和带名字的章节分隔线，组合成模型能够声明的界面层级。</em>
 </p>
 
 ---
@@ -96,7 +96,7 @@ CI 的 packed host smoke 会把实际生成的 npm tarball 安装到真实 DSH �
 
 前置条件，缺一不可：
 
-1. **dsh `^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-alpha.1 || >=0.2.0-rc.1 <0.3.0-0`**（DSH `0.2.0-rc.1` 当前属于预发布版本；已验证宿主角色：minimum `dsh-v0.1.2-rc.1`、current `dsh-v0.1.7-rc.2`、next `dsh-v0.2.0-rc.2`；使用 DSH `<=0.1.1-rc.x` 的用户请使用 dsh-genui `0.9.8`）
+1. **dsh `^0.1.2-rc.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-alpha.1 || >=0.2.0-rc.1 <0.3.0-0`**（DSH `0.2.1-alpha.1` 当前属于预发布版本；已验证宿主角色：minimum `dsh-v0.1.2-rc.1`、current `dsh-v0.2.0-rc.2`、next `dsh-v0.2.1-alpha.1`；使用 DSH `<=0.1.1-rc.x` 的用户请使用 dsh-genui `0.9.8`）
 2. **`pnpm` 在 PATH 上**：`dsh plugin` 命令依赖它。没有就 `corepack enable`（或 `npm i -g pnpm`），然后**新开一个终端**，确认 `pnpm -v` 有输出
 
 安装并在 DSH 中激活（一行命令，自动带上全部依赖）：
@@ -177,7 +177,15 @@ dsh plugin --profile web add link:$PWD
 - **本地优先原则**：UI 自己能完成的状态变化（判卷、判题、重置、展开、选中）一律本地即时完成；action 只用于必须模型参与的事（生成新内容、执行工具、下一步建议）
 - **诚实交互**：交互组件必须带 `action`；不带 `action` 的按钮渲染为禁用态（消灭"看着能点、点了没反应"的假按钮）；带 `action` 的按钮点击后立即显示「已触发」本地反馈（只证明本地事件已触发，不代表模型已收到）
 - **事件循环**：按钮、复选框、单选、开关、下拉、输入、文本域、提交和测验等离散交互按一次手势一次事件立即回传模型；`slider` 连续拖动保留尾沿防抖，同一滑块只回传最终值，不同 `id` 的滑块互不合并。
-- **工具通道**：`render_ui` 工具把同一份 spec 渲染成工具行卡片（交付物型 UI 走工具、回答型 UI 走围栏）
+- **工具通道**：默认注册 `render_ui`，并将同一份 spec 渲染成工具行卡片；`validate_dsh_ui` 始终可用。在本插件的 `config:` 中设置 `renderUiTool: false` 后，宿主不再注册 `render_ui`。正文 `dsh-ui` 围栏、`panel: true`、`/panel` 和客户端工具视图中的历史 `render_ui` 结果仍可使用。修改此设置后需要让宿主重新加载插件。
+- **关闭 `render_ui` 工具**：在用户 profile 中本插件条目的 `config:` 下添加：
+
+  ```yaml
+  - id: genui
+    name: '@changfenhuang/dsh-genui'
+    config:
+      renderUiTool: false
+  ```
 - **会话面板**：composer 上方常驻 dock，`render_ui` / `panel: true` 围栏原地更新同一块界面；`/panel` 命令客户端直开（`/panel <指令>` 转模型定制、`/panel clear` 清空）；顶边框可拖拽调高；`append: true` 增量合并——同名标签页追加内容、新标签页新增；整面板默认最多 200 节点 / 200 条追加，达到上限后模型应发送 `replace` 重建
 - **围栏自修**：默认开启；在 profile 的 cordis.patch.yml 中本插件条目的 `config:` 下设置 `fenceFeedback: false` 可以关闭同回合围栏修正。已调用 `validate_dsh_ui` 的 GenUI 回合若只输出 reasoning 并以 `stop` 结束，仍会转换为 `EMPTY_RESPONSE`，交给宿主重试策略处理。回答最终的 dsh-ui 围栏无法渲染时，插件借宿主的轮内转向（steer）把逐节点诊断送回**同一轮**，模型重发修好的围栏。每个 turn 最多发送两条 correction，渲染失败与“已验证但没有正式交付”共用该上限；同一 turn 内相同围栏 fingerprint 只修正一次，新 turn 可以重新修正相同错误；同一 turn 的零交付提醒只发送一次。plugin reload 后会从持久化的 correction message 恢复当前 turn 的围栏去重记录、已消费的 correction 次数以及零交付提醒记录。子代理回合不会收到围栏修正。
 - **自愈与上限**：每个围栏过规格守卫——坏节点静默丢弃（同围栏其余组件照常渲染，单个坏组件不再拖垮整条围栏）、数值钳位、字符串截断，整树 ≤200 节点 / 8 层嵌套，病态 spec 不会拖垮界面
@@ -260,9 +268,9 @@ pnpm run check   # 类型检查 + 全量测试 + 构建
 
 安装锁定依赖后，检查脚本（`pnpm run check` 或 `npm run check`）使用固定的 DSH `0.1.2-rc.1` 发布包。
 
-已验证宿主角色为 minimum `dsh-v0.1.2-rc.1`、current `dsh-v0.1.7-rc.2`、next `dsh-v0.2.0-rc.1`。DSH `0.2.0-rc.1` 当前属于预发布版本。CI 保持四条主要 lane：Node 22 + current，以及 Node 24 + minimum/current/next。DSH 发布新版本后，替换对应固定标签。
+已验证宿主角色为 minimum `dsh-v0.1.2-rc.1`、current `dsh-v0.2.0-rc.2`、next `dsh-v0.2.1-alpha.1`。DSH `0.2.1-alpha.1` 当前属于预发布版本。CI 保持四条主要 lane：Node 22 + current，以及 Node 24 + minimum/current/next。DSH 发布新版本后，替换对应固定标签。
 
-`pnpm run check:host-api dsh-v0.1.7-rc.2` 与 `pnpm run check:host-api dsh-v0.2.0-rc.1` 会安装对应 DSH 发布包，运行 TypeScript 类型检查与 tsdown 构建。每条 CI 宿主 lane 随后会把生成的 tarball 安装到固定版本的 DSH 宿主并运行 packed smoke。
+`pnpm run check:host-api dsh-v0.2.0-rc.2` 与 `pnpm run check:host-api dsh-v0.2.1-alpha.1` 会安装对应 DSH 发布包（以及这些包未声明、由宿主 App 外层提供的运行时依赖闭包），运行 TypeScript 类型检查、**全量单元测试**和 tsdown 构建——所有非门控套件都会对真实的新宿主包执行。注意：被 `skipIf(!hasFenceRegistry)` 门控的套件在任何已发布宿主下都会跳过——`registerFenceRenderer` 从未出现在任何已发布的 `dsh-client-ui-primitives` 中（这批门控测试覆盖的是一个仅内部存在过的宿主契约，详见 CHANGELOG）。每条 CI 宿主 lane 随后会把生成的 tarball 安装到固定版本的 DSH 宿主并运行 packed smoke。
 
 运行 `node scripts/verify-pack.mjs --keep` 可保留已验收的 tarball，便于检查或运行 e2e；默认的 `node scripts/verify-pack.mjs` 会在验收后清理临时目录。
 

@@ -462,10 +462,32 @@ test('plugin mounts into the DSH shell and survives a built-in tab sweep', async
   ).toBe(true)
   const eventsLive = await api.post(sidebarApi('sidechat.events'), { data: { childId } })
   expect(eventsLive.ok(), `sidechat.events (live): ${eventsLive.status()} ${await eventsLive.text()}`).toBe(true)
-  const eventsLiveBody = (await eventsLive.json()) as { ok: boolean; value?: { events?: Array<{ type: string }>; live?: unknown[] } }
+  const eventsLiveBody = (await eventsLive.json()) as { ok: boolean; value?: { events?: Array<{ type: string }>; live?: unknown[]; pending?: unknown[] } }
   expect(eventsLiveBody.ok, `sidechat.events envelope: ${JSON.stringify(eventsLiveBody)}`).toBe(true)
   expect(Array.isArray(eventsLiveBody.value?.events), 'sidechat.events must answer an events array').toBe(true)
   expect(Array.isArray(eventsLiveBody.value?.live), 'sidechat.events must answer a live-delta array').toBe(true)
+  expect(Array.isArray(eventsLiveBody.value?.pending), 'sidechat.events must answer a pending-queue array').toBe(true)
+  // Nothing is queued yet, so the queue is empty and dequeue is a no-op.
+  const dequeueIdle = await api.post(sidebarApi('sidechat.dequeue'), { data: { childId } })
+  expect(dequeueIdle.ok(), `sidechat.dequeue (idle): ${dequeueIdle.status()} ${await dequeueIdle.text()}`).toBe(true)
+  const dequeueIdleBody = (await dequeueIdle.json()) as { value?: { accepted?: boolean; removed?: number } }
+  expect(dequeueIdleBody.value, 'sidechat.dequeue must answer {accepted, removed}').toMatchObject({ accepted: true, removed: 0 })
+  // The per-thread model picker's catalog: the host service is present in the
+  // web profile, so the picker must be able to list groups (its ABSENCE is
+  // also a valid answer — `available: false` — but the shape must hold).
+  const models = await api.post(sidebarApi('sidechat.models'), { data: {} })
+  expect(models.ok(), `sidechat.models: ${models.status()} ${await models.text()}`).toBe(true)
+  const modelsBody = (await models.json()) as { ok: boolean; value?: { available?: boolean; groups?: unknown[] } }
+  expect(modelsBody.value, 'sidechat.models must answer {available, groups}').toMatchObject({ available: expect.any(Boolean) })
+  expect(Array.isArray(modelsBody.value?.groups), 'sidechat.models must answer a groups array').toBe(true)
+  // Model selection validates through the host LLM service: an unroutable
+  // provider is a bad-request, never a silent acceptance.
+  const badModel = await api.post(sidebarApi('sidechat.model'), {
+    data: { childId, provider: 'definitely-not-a-provider', model: 'nope' },
+  })
+  const badModelBody = (await badModel.json()) as { ok: boolean; error?: { code?: string } }
+  expect(badModelBody.ok, 'an unroutable model must be rejected').toBe(false)
+  expect(badModelBody.error?.code, 'the rejection must be a bad-request').toBe('bad-request')
   for (const method of ['sidechat.prompt', 'sidechat.cancel', 'sidechat.dispose']) {
     const response = await api.post(sidebarApi(method), {
       data: method === 'sidechat.prompt' ? { childId, text: 'follow-up' } : { childId },
@@ -476,6 +498,12 @@ test('plugin mounts into the DSH shell and survives a built-in tab sweep', async
   // PERSISTED log (the cold path a re-opened tab polls).
   const eventsCold = await api.post(sidebarApi('sidechat.events'), { data: { childId } })
   expect(eventsCold.ok(), `sidechat.events (cold): ${eventsCold.status()} ${await eventsCold.text()}`).toBe(true)
+  // A cold thread has no live inbox, so dequeue reports nothing removed
+  // instead of failing (the queue is a runtime object).
+  const dequeueCold = await api.post(sidebarApi('sidechat.dequeue'), { data: { childId, messageId: 'nope' } })
+  expect(dequeueCold.ok(), `sidechat.dequeue (cold): ${dequeueCold.status()} ${await dequeueCold.text()}`).toBe(true)
+  const dequeueColdBody = (await dequeueCold.json()) as { value?: { removed?: number } }
+  expect(dequeueColdBody.value, 'a cold dequeue removes nothing').toMatchObject({ accepted: true, removed: 0 })
 
   // The editor chunk (client-editor.js) only loads when the plugin's files
   // window renders. The plugin took the built-in `files` kind over, so the

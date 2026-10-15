@@ -43,6 +43,7 @@ import { useSelectionPopup } from './selection-popup.ts'
 import { buildSelectionInsert, linesOfSelection } from './selection-payload.ts'
 import { analyzeMarkdownHtml } from './markdown-html.ts'
 import { LazyMermaidMarkdown, MarkdownDocument, type MarkdownHtmlMedia } from './MarkdownHtml.tsx'
+import { LargeFileView } from './LargeFileView.tsx'
 import { useMarkdownSurface } from './use-markdown-surface.ts'
 import { MdToc } from './md-toc.tsx'
 import { splitMermaidBlocks } from './mermaid-blocks.ts'
@@ -72,7 +73,7 @@ function sameDocument(a: string, b: string): boolean {
 }
 
 export function TextEditor(props: FileViewerProps) {
-  const { ctx, scope, path, viewerId, content, truncated, line } = props
+  const { ctx, scope, path, viewerId, content, size, largeFile, line } = props
   const [mode, setMode] = useState<ViewMode>('preview')
   /** The editor's current text (null while clean); preview renders this. */
   const [draft, setDraft] = useState<string | null>(null)
@@ -123,6 +124,12 @@ export function TextEditor(props: FileViewerProps) {
   }, [markdownSurfaceRef])
   const markdown = viewerId === 'markdown'
   const html = viewerId === 'html'
+  /** Newline-delimited JSON: it has its own preview (one card per record) on
+   *  top of the shared editable CodeMirror surface. */
+  const jsonl = viewerId === 'jsonl'
+  /** The file is above the editable threshold: the viewer renders the
+   *  read-only paged preview and no editor at all. */
+  const readOnly = largeFile !== undefined
   /** The uncommitted-change gutter (issue #212): the `code` viewer only,
    *  gated by ONE boolean setting (on by default). Nothing else — no
    *  end-of-line author widget, no badges, no animation. Read reactively
@@ -136,7 +143,7 @@ export function TextEditor(props: FileViewerProps) {
     // client-side), so the store answers on both sides alike.
     useCallback(() => props.store.getSnapshot().prefs.editorGitGutter !== false, [props.store]),
   )
-  const gitGutterEnabled = viewerId === 'code' && gitGutterPref
+  const gitGutterEnabled = (viewerId === 'code' || viewerId === 'jsonl') && gitGutterPref
   /** Bumped by every save: the uncommitted diff moved while the file's git
    *  status entry (which only tracks its XY code) did not. */
   const [gitRevision, setGitRevision] = useState(0)
@@ -146,7 +153,17 @@ export function TextEditor(props: FileViewerProps) {
     () => ({ scope: { sessionId: scope.sessionId, cwd: scope.cwd, repoRoot: scope.repoRoot }, path }),
     [scope.sessionId, scope.cwd, scope.repoRoot, path],
   )
-  const gitKinds = useEditorGitGutter({ enabled: gitGutterEnabled, scope, path, content, revision: gitRevision })
+  const gitKinds = useEditorGitGutter({
+    enabled: gitGutterEnabled,
+    // A parked native tab stays MOUNTED (`keepMounted`), so the tab's own
+    // visibility is what decides whether the gutter does git work at all: a
+    // hidden editor holds no status subscription and no timer.
+    visible: props.visible !== false,
+    scope,
+    path,
+    content,
+    revision: gitRevision,
+  })
   /** Preview scroll position across the preview<->edit toggle. The preview
    *  container re-mounts on every mode switch and its scrollTop lives on that
    *  element, so capture it on scroll and restore after each remount. Seeded
@@ -262,11 +279,6 @@ export function TextEditor(props: FileViewerProps) {
         // is open, and the save key stays in the editor keymap unchanged.
         ...cmSearchExtensions(),
         searchPhrases.of(),
-        // A truncated read only carries the first readLimit bytes; edits made
-        // on partial content must never be saved over the full file (issue
-        // #732), so the document is rendered read-only until a full read
-        // replaces it.
-        ...(truncated === true ? [EditorState.readOnly.of(true)] : []),
         ...(language !== null ? [language] : []),
         CodeMirrorView.updateListener.of((update) => {
           if (update.docChanged) {
@@ -286,7 +298,7 @@ export function TextEditor(props: FileViewerProps) {
         // selection anchors the floating "add to conversation" button above
         // its head. Scrolling (geometry/viewport change) or losing focus
         // hides it; typing collapses the selection and hides it too.
-        ...(viewerId === 'code' || viewerId === 'markdown' ? [
+        ...(viewerId === 'code' || viewerId === 'markdown' || viewerId === 'jsonl' ? [
           CodeMirrorView.updateListener.of((update) => {
             if (update.geometryChanged || update.viewportChanged) {
               selectionPopup.hide()
@@ -340,7 +352,7 @@ export function TextEditor(props: FileViewerProps) {
     // tab's lifetime, and the dark flip is handled by the reconfigure
     // effect below (recreating the view here would drop the draft).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, path, truncated])
+  }, [content, path])
 
   // Native sidebar tabs stay mounted while another tab is active. If a file
   // is opened while that host is hidden, CodeMirror can measure its viewport at
@@ -408,14 +420,19 @@ export function TextEditor(props: FileViewerProps) {
     if (view === null) return
     const key = `${path}#${line}`
     if (landedAtRef.current === key) return
-    // A markdown/html file opens in preview, which has no source lines to put
-    // a cursor on. The reference asked for source, so land in the editor; the
-    // key is NOT recorded yet, so the re-run after the flip does the jump.
-    if ((markdown || html) && mode === 'preview') {
+    // A markdown/html/jsonl file opens in a preview, which has no source lines
+    // to put a cursor on. The reference asked for source, so land in the
+    // editor; the key is NOT recorded yet, so the re-run after the flip jumps.
+    if ((markdown || html || jsonl) && mode === 'preview') {
       setMode('edit')
       return
     }
     landedAtRef.current = key
+    // The reference asked for a LINE, so it wins over the preview's remembered
+    // reading position: the flip's own "enter edit where the reader was" effect
+    // is declared AFTER this one and would otherwise re-dispatch (and re-scroll
+    // to) the preview position in the same commit, silently undoing the jump.
+    previewSyncRef.current = { text: null, ratio: 0 }
     // Out-of-range references clamp to the last line rather than throwing —
     // the file can have changed since the link was written.
     const doc = view.state.doc
@@ -428,6 +445,13 @@ export function TextEditor(props: FileViewerProps) {
     // on the editor scroller can never touch anything outside the editor.
     view.requestMeasure()
     view.dispatch({ selection: { anchor: target } })
+    // Show the caret. A selection alone is invisible here: CodeMirror draws the
+    // cursor only in a FOCUSED editor, and a zero-length selection paints
+    // nothing — so an unfocused landing read as "the file just opened
+    // somewhere" (reported from the first manual test of this feature). Only a
+    // line reference focuses; an ordinary open leaves the reader's focus where
+    // it was (e.g. in the chat composer they clicked the link from).
+    view.focus()
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const block = view.lineBlockAt(target)
@@ -438,10 +462,15 @@ export function TextEditor(props: FileViewerProps) {
         view.requestMeasure()
       })
     })
+    // The navigation is SPENT now: tell the host, which owns that memory (a
+    // reload remounts this component, and a fresh instance handed the same line
+    // again would re-force a markdown/html file into the editor — the reader
+    // could never click their way back to preview).
+    props.onLineConsumed?.()
     // The reveal reads the live view ref; `markdown`/`html` are derived from
     // `viewerId`, which the view-creation effect already keys on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content, path, line, mode])
+  }, [content, path, line, mode, props.onLineConsumed])
 
   // Scheme flip: re-theme in place (the compartment holds only the
   // scheme-dependent extensions; everything else is untouched).
@@ -474,14 +503,14 @@ export function TextEditor(props: FileViewerProps) {
     view.dispatch({ effects: gitComp.reconfigure(gitGutterEnabled ? gitHost : null) })
   }, [gitGutterEnabled, gitHost])
 
-  // Push the line map into the live view. `content` / `truncated` re-run this
-  // after the view was rebuilt for a new file, and `gitGutterEnabled` after a
-  // re-install (a reconfigured state field starts empty).
+  // Push the line map into the live view. `content` re-runs this after the
+  // view was rebuilt for a new file, and `gitGutterEnabled` after a re-install
+  // (a reconfigured state field starts empty).
   useEffect(() => {
     const view = viewRef.current
     if (view === null) return
     applyGitLineKinds(view, gitKinds)
-  }, [gitKinds, gitGutterEnabled, content, path, truncated])
+  }, [gitKinds, gitGutterEnabled, content, path])
 
   // The editor may have been display:none while previewing; re-measure when
   // it becomes visible again (CodeMirror sizes itself on reveal). A mode
@@ -558,11 +587,6 @@ export function TextEditor(props: FileViewerProps) {
   const save = (): void => {
     const view = viewRef.current
     if (view === null || savingRef.current) return
-    // Defense in depth for issue #732: a truncated read only holds the first
-    // readLimit bytes, and fs.write replaces the whole file — saving partial
-    // content would destroy the tail. The readOnly extension already blocks
-    // edits; this guards the keymap path against future trigger points.
-    if (truncated === true) return
     savingRef.current = true
     setSaveState('saving')
     // Optimistic concurrency: the draft was based on the bytes read at
@@ -701,6 +725,16 @@ export function TextEditor(props: FileViewerProps) {
     )
   }
   const editable = content !== undefined
+  /**
+   * Whether the preview/edit toggle applies. It needs BOTH surfaces to exist:
+   * a read-only paged preview has no editor to switch to, and the `code`
+   * catch-all has no preview to switch to.
+   */
+  const toggleable = !readOnly && (markdown || html || jsonl)
+  /** A non-CodeMirror surface currently owns the pane (markdown/html render, or
+   *  the JSONL record list): the CodeMirror host stays mounted but hidden, so
+   *  unsaved edits survive the round trip. */
+  const showingPreview = !readOnly && mode === 'preview' && (markdown || html || jsonl)
   const saveLabel = saveState === 'saving' ? t('loading') : saveState === 'saved' ? t('saved') : saveState === 'failed' ? t('saveFailed') : ''
   // Per-feature sandbox escape hatch: the global side card setting (warned)
   // plus a per-surface temporary unlock. The unlock state starts at the
@@ -719,7 +753,7 @@ export function TextEditor(props: FileViewerProps) {
   const lastToolbarRef = useRef('')
   useEffect(() => {
     if (!hostToolbar) return
-    const state: EditorToolbarState = { modes: markdown || html, mode, dirty, editable, truncated: truncated === true, saveState }
+    const state: EditorToolbarState = { modes: toggleable, mode, dirty, editable, ...(readOnly ? { largeFile: true } : {}), saveState }
     const key = JSON.stringify(state)
     if (lastToolbarRef.current === key) return
     lastToolbarRef.current = key
@@ -734,11 +768,27 @@ export function TextEditor(props: FileViewerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hostToolbar])
 
+  // Above the editable threshold there is no document to edit: the viewer is
+  // the read-only paged preview and nothing else. Returning before the editor
+  // subtree exists is deliberate — it is what guarantees no CodeMirror state
+  // can be built for a file we never loaded.
+  if (readOnly && largeFile !== undefined) {
+    return (
+      <LargeFileView
+        scope={scope}
+        path={path}
+        size={largeFile.size}
+        visible={props.visible !== false}
+        revision={props.mtimeMs ?? 0}
+      />
+    )
+  }
+
   return (
     <>
       {!hostToolbar && (
       <div className={css.editorHeader}>
-        {(markdown || html) && (
+        {toggleable && (
           <div className={css.editorModeToggle}>
             <button
               type="button"
@@ -767,7 +817,7 @@ export function TextEditor(props: FileViewerProps) {
               // The panel lives in the CodeMirror surface: in preview mode the
               // editor is hidden, so switch to edit first (the search panel is
               // not part of the preview).
-              if (mode === 'preview' && (markdown || html)) setMode('edit')
+              if (mode === 'preview' && (markdown || html || jsonl)) setMode('edit')
               const view = viewRef.current
               if (view === null) return
               view.focus()
@@ -777,7 +827,7 @@ export function TextEditor(props: FileViewerProps) {
             <IconSearchOutlineRegular size={16} />
           </button>
         )}
-        {editable && truncated !== true && (
+        {editable && (
           <button
             type="button"
             className={css.iconButton}
@@ -793,7 +843,6 @@ export function TextEditor(props: FileViewerProps) {
       )}
       {editable && (
         <>
-          {truncated === true && <div className={css.editorBanner}>{t('truncation')}</div>}
           {conflict && (
             <div className={css.editorBanner}>
               {t('saveConflict')}
@@ -807,10 +856,19 @@ export function TextEditor(props: FileViewerProps) {
             </div>
           )}
           <div
-            className={clsx(css.editorCm, (markdown || html) && mode === 'preview' && css.editorCmHidden)}
+            className={clsx(css.editorCm, showingPreview && css.editorCmHidden)}
             ref={hostRef}
           />
         </>
+      )}
+      {jsonl && mode === 'preview' && (
+        <LargeFileView
+          scope={scope}
+          path={path}
+          size={size ?? content?.length ?? 0}
+          visible={props.visible !== false}
+          revision={props.mtimeMs ?? 0}
+        />
       )}
       {markdown && mode === 'preview' && (
         <div

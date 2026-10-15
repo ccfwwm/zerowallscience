@@ -50,7 +50,7 @@ import type { SidebarTab } from './state.ts'
 import { t } from './locales.ts'
 import { isDarkScheme, subscribeColorScheme } from './theme.ts'
 import {
-  bottomTerminalContentId, bottomTerminalKey, nextTerminalMeta, terminalRunOf, webTerminals,
+  bottomTerminalContentId, nextTerminalMeta, terminalInstanceOf, terminalRunOf, webTerminals,
   type HostTerminalEnvironment, type HostTerminalView, type HostTerminalViewState,
 } from './terminal-client.ts'
 import css from './terminal.module.css'
@@ -74,12 +74,17 @@ export function TerminalBottomView({ ctx, scope, tab, visible }: TerminalBottomP
   // it keeps the tray row disabled and renders the explanation below.
   const service = useMemo(() => webTerminals(ctx), [ctx])
   const run = terminalRunOf(tab)
+  const instance = terminalInstanceOf(tab)
+  // One identity value serves as BOTH the host occurrence key and the content
+  // identity (`view(sessionId, key, contentId)`), and the instance keeps two
+  // bottom terminals in one session from sharing it (#774 follow-up).
+  const contentId = bottomTerminalContentId(run, instance)
   // `view()` allocates the terminal eagerly and memoizes one model per
   // (session, key) on the host side, so this memo must be the ONLY creation
   // path: a repeat `view()` for the same key is free, a new key is a new PTY.
   const model = useMemo(
-    () => service?.view(sessionId, bottomTerminalKey(run), bottomTerminalContentId(run)),
-    [service, sessionId, run],
+    () => service?.view(sessionId, contentId, contentId),
+    [service, sessionId, contentId],
   )
   const state = useSyncExternalStore(
     useMemo(() => (callback: () => void) => model?.state.subscribe(callback) ?? (() => {}), [model]),

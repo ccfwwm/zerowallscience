@@ -11,8 +11,7 @@
 //    collection, and restore blank — while their own action still delivers.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { MarkdownText } from './markdown-labels.tsx'
-import { hasFenceRegistry } from './helpers/fence-host'
+import { MarkdownText } from './genui-markdown.tsx'
 import { GenuiActionContext } from '../src/client/action-context.ts'
 import { GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { GenuiBlock } from '../src/client/GenuiBlock.tsx'
@@ -49,7 +48,7 @@ const gradeSpec = {
   ],
 }
 
-describe.skipIf(!hasFenceRegistry)('forms inside tabs share the block answers registry', () => {
+describe('forms inside tabs share the block answers registry', () => {
   it('grades locally inside a tab and keeps the answer when switching tabs', () => {
     const onAction = vi.fn()
     renderBlock(gradeSpec, undefined, onAction)
@@ -108,7 +107,7 @@ describe.skipIf(!hasFenceRegistry)('forms inside tabs share the block answers re
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('field invariants', () => {
+describe('field invariants', () => {
   it('clearing an input re-disables submit', () => {
     const onAction = vi.fn()
     renderBlock({ items: [
@@ -163,7 +162,7 @@ describe.skipIf(!hasFenceRegistry)('field invariants', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('IME protection (three layers)', () => {
+describe('IME protection (three layers)', () => {
   const inputSpec = { items: [
     { type: 'input', label: 'F', id: 'f', action: 'input-action' },
     { type: 'textarea', label: 'T', id: 't', action: 'ta-action' },
@@ -224,7 +223,7 @@ describe.skipIf(!hasFenceRegistry)('IME protection (three layers)', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('password boundary (masked, never persisted, never collected)', () => {
+describe('password boundary (masked, never persisted, never collected)', () => {
   const KEY = 'boundary-test-key'
   const passSpec = { items: [
     { type: 'input', label: '口令', id: 'pw', inputType: 'password', action: 'pw-action' },

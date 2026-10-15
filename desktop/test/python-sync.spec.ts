@@ -24,6 +24,24 @@ async function setup() {
 }
 
 describe('signed dependency sync', () => {
+  it('allows compatible Python patch versions on an older desktop through plan and apply', async () => {
+    const { root, manifest, updater, apply, key } = await setup()
+    updater.pythonInfo.mockResolvedValue({ ready: true, version: '3.12.9', packages: [] })
+    const service = new PythonSyncService({ root, updater: updater as any, keys: { test: key }, applicationVersion: '6.0.0', feedUrl: 'https://example.test/latest.json', fetcher: vi.fn(async () => new Response(JSON.stringify(manifest))) as typeof fetch })
+    expect((await service.checkManifest()).changes).toHaveLength(1)
+    const plan = await service.previewSync()
+    await service.applySync(plan.planId, 'r1', true)
+    expect(apply).toHaveBeenCalledWith(plan.planId)
+  })
+  it('uses the installed interpreter when the manifest runtime version differs', async () => {
+    const { service, updater } = await setup()
+    updater.pythonInfo.mockResolvedValue({ ready: true, version: '3.11.10', packages: [] })
+    expect((await service.checkManifest()).changes).toHaveLength(1)
+    const plan = await service.previewSync()
+    await service.applySync(plan.planId, 'r1', true)
+    expect(updater.previewDependencyManifest).toHaveBeenCalled()
+    expect(updater.applyPackagePlan).toHaveBeenCalledWith(plan.planId)
+  })
   it('treats different installed versions as present for core and science layers', async () => {
     const { root, manifest, updater, privateKey, key } = await setup()
     updater.pythonInfo.mockResolvedValue({ ready: true, version: '3.12.10', packages: [{ name: 'NumPy', version: '1.26.4' }] } as never)

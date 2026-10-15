@@ -2,11 +2,12 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-locale'
 
 export const NS = 'zerowall.extensionCenter' as const
 export const zh = {
-  activationError: '激活失败', activationUnavailable: '尚未确认激活', unchecked: '尚未检查更新', summary: '资源更新摘要', lastChecked: '上次检查',
+  activationError: '运行异常', activationUnavailable: '运行状态暂不可用', activationHint: '桌面尚未返回此插件的运行状态；已安装和已启用不代表完成了运行健康检查。', unchecked: '尚未检查更新', summary: '资源更新摘要', lastChecked: '上次检查', filter: '筛选资源', filter_all: '全部', filter_updates: '有更新', filter_installed: '已安装', filter_disabled: '已停用', filter_missing: '未安装 / 缺失', systemCore: '系统核心', coreDescription: '由 DSH 核心提供，随桌面运行；无需单独激活。',
+  batchHint: '一键更新会先完成全部插件的下载和校验，最后统一重载一次。', batchUnsupported: '插件批量更新需要桌面 8.1.3 或更高版本。', operationComplete: '操作完成，已刷新本地状态。', pythonHint: 'Python 依赖层统一在这里管理；路径、镜像和包诊断可在「Python 环境」详细配置。', packages: '依赖包', pendingPackages: '待补齐 / 更新', pythonUnavailable: '此依赖层暂不可安装，请检查更新后重试。',
   localRefresh: '刷新本地列表', localReady: '本地资源', loadingLocal: '读取本地资源…', missing: '插件包缺失',
   pinned: '已固定版本', pin: '固定当前版本', unpin: '解除固定', updateSelected: '更新选中项', selectUpdate: '选择更新',
   dependentWarning: '此操作还会停用以下依赖插件，继续吗？',
-  title: '扩展中心',
+  title: '扩展中心', batchPlugins: '批量更新插件', name_biogenie: '生物科研引擎',
   intro: '自动检查插件与 Skills 更新，统一管理 MCP 和 Python；安装与升级由你选择。',
   refresh: '检查更新',
   checking: '正在检查…',
@@ -51,7 +52,8 @@ export const zh = {
   repair: '修复',
   disabled: '已停用',
   notInstalled: '未安装',
-  tasks: '更新任务',
+  tasks: '资源操作记录',
+  errorDetails: '查看失败详情', rollbackConflict: '旧版本依赖与当前插件不兼容，已保留当前版本。',
   noTasks: '暂无资源任务',
   retry: '重试',
   cancel: '取消',
@@ -60,11 +62,13 @@ export const zh = {
 } satisfies Record<string, string>
 
 export const en: typeof zh = {
-  activationError: 'Activation failed', activationUnavailable: 'Activation unconfirmed', unchecked: 'Updates not checked', summary: 'Resource update summary', lastChecked: 'Last checked',
+  errorDetails: 'View failure details', rollbackConflict: 'The previous dependencies conflict with current plugins. The current version was kept.',
+  activationError: 'Runtime error', activationUnavailable: 'Runtime status unavailable', activationHint: 'Desktop has not reported the runtime status. Installed and enabled do not confirm a runtime health check.', unchecked: 'Updates not checked', summary: 'Resource update summary', lastChecked: 'Last checked', filter: 'Filter resources', filter_all: 'All', filter_updates: 'Has updates', filter_installed: 'Installed', filter_disabled: 'Disabled', filter_missing: 'Not installed / missing', systemCore: 'System core', coreDescription: 'Provided by DSH core and runs with Desktop; no separate activation needed.',
+  batchHint: 'Update all downloads and verifies every plugin before one final reload.', batchUnsupported: 'Batch plugin updates require Desktop 8.1.3 or later.', operationComplete: 'Operation complete. Local status refreshed.', pythonHint: 'Manage Python dependency layers here. Configure paths, mirrors, and package diagnostics in Python environment.', packages: 'Packages', pendingPackages: 'Pending packages', pythonUnavailable: 'This layer cannot be installed yet. Check for updates and retry.',
   localRefresh: 'Refresh local list', localReady: 'Local resources', loadingLocal: 'Reading local resources…', missing: 'Plugin package missing',
   pinned: 'Pinned version', pin: 'Pin current version', unpin: 'Unpin', updateSelected: 'Update selected', selectUpdate: 'Select update',
   dependentWarning: 'This operation will also disable these dependent plugins. Continue?',
-  title: 'Extension Center',
+  title: 'Extension Center', batchPlugins: 'Update plugins together', name_biogenie: 'BioGenie',
   intro: 'Automatically check plugin and Skills updates, and manage MCP and Python. Choose when to install or upgrade.',
   refresh: 'Check for updates', checking: 'Checking…', ready: 'Check complete', unavailable: 'Desktop resource service unavailable', failed: 'Check failed', cancelled: 'Resource task was cancelled', empty: 'No updates are available.', installed: 'Installed', available: 'Update available', update: 'Update', updateAll: 'Update all available', rollback: 'Rollback', disable: 'Disable', enable: 'Enable', remove: 'Uninstall', restart: 'Host restart required', signed: 'Signature verified', unsigned: 'Unsigned', plugins: 'Plugins', skills: 'Skills', mcp: 'MCP', python: 'Python', pythonCore: 'Python Core', pythonScience: 'Python Science', task: 'Task', source: 'Source', version: 'Version', status: 'Status', noDesktop: 'The ZeroWall desktop resource bridge is unavailable.', catalogUnavailable: 'Local resources are shown; the signed catalog is unavailable.', catalogError: 'Catalog check failed', search: 'Search resources', import: 'Import', install: 'Install', repair: 'Repair', disabled: 'Disabled', notInstalled: 'Not installed', tasks: 'Resource tasks', noTasks: 'No resource tasks', retry: 'Retry', cancel: 'Cancel',
   source_profile: 'User installed', source_bundled: 'Built in', source_runtime: 'Core runtime', source_catalog: 'Remote catalog', source_removed: 'Removed', source_disabled: 'Disabled', runtimeCore: 'Provided by DSH core', bundledResource: 'Included in installer', localResource: 'Local resource',

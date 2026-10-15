@@ -58,6 +58,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ChatNode, ChatSnapshot } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { GenuiActionContext, type GenuiActionHandler } from './action-context.ts'
+import { withFileLinkContext, type FileLinkAvailability, type FileLinkCordisContext } from './file-link-context.tsx'
 import css from './GenuiBlock.module.css'
 import { renderSvgFence } from './svg-fence.tsx'
 import { repairFenceJson, trimToBalancedRoot } from '../shared/fence-repair.ts'
@@ -68,13 +69,42 @@ import { diagnoseUnknownGenuiFields } from './genui-runtime/diagnostics.ts'
 import { normalizeGenuiSpec } from './genui-runtime/normalize.ts'
 import { sourceFencesOfAssistant, sourceLanguageAt } from './source-fence.ts'
 
-/** Fence surfaces the channel can take over, newest host first: the shared
- * CodeBlock surface every rc.6+ markdown fence renders through
- * (`.md-code-block`) and the deepsuite-style surfaces some host builds
- * render instead (`.code-block` / `.code-block-small`). Surfaces with an
- * unlisted class are still found by the structural backstop (label + `<pre>`),
- * so this list is an optimization, not a hard contract. */
+/** 优先用宿主代码块内容的语义标记定位包装节点；隐藏语言或改变类名不能阻断
+ * 原始消息的围栏识别。类名也用于仍以这些表面呈现的代码块。 */
 const CODE_BLOCK_SELECTORS = '.md-code-block, .code-block, .code-block-small'
+
+/** 在同一处收集代码块包装节点，供候选扫描和原始围栏序号共用。 */
+function codeBlockSurfaces(scope: ParentNode): HTMLElement[] {
+  const surfaces = new Set(scope.querySelectorAll<HTMLElement>(CODE_BLOCK_SELECTORS))
+  for (const content of scope.querySelectorAll<HTMLElement>('[data-code-block-content]')) {
+    if (content.parentElement !== null) surfaces.add(content.parentElement)
+  }
+  return [...surfaces].sort((left, right) => left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)
+}
+
+/** 返回拥有代码内容语义节点、或已知代码块类名的最近包装节点。 */
+function closestCodeBlockSurface(
+  element: Element | null,
+  owners?: WeakMap<Element, Element | null>,
+): Element | null {
+  // 缓存仅在同一次同步候选扫描内复用，后续 DOM 更新会创建新的缓存。
+  const visited: Element[] = []
+  let owner: Element | null = null
+  for (let current = element; current !== null; current = current.parentElement) {
+    if (owners?.has(current)) {
+      owner = owners.get(current) ?? null
+      break
+    }
+    visited.push(current)
+    if (current.matches(CODE_BLOCK_SELECTORS)
+      || [...current.children].some(child => child.hasAttribute('data-code-block-content'))) {
+      owner = current
+      break
+    }
+  }
+  for (const current of visited) owners?.set(current, owner)
+  return owner
+}
 /** Marker attribute set on blocks this channel has taken over. */
 const PROCESSED = 'data-genui-rendered'
 /** The settled marker on AssistantMarkdown (absent = settled). */
@@ -86,6 +116,10 @@ const DIAGNOSTIC_CLASS = 'genui-dom-fence-diagnostic'
 /** Slow sweep interval: the observer catches everything, this is the 1s
  * belt-and-braces pass (history loads, missed attribute batches). */
 const SWEEP_MS = 1000
+const NO_FILE_LINK_AVAILABILITY: FileLinkAvailability = {
+  subscribe: () => () => {},
+  getSnapshot: () => false,
+}
 
 /** Max ancestors walked from a `<pre>` to its fence surface root (banner +
  * pre holder). Most hosts put the pre directly under the surface; some wrap
@@ -167,12 +201,12 @@ function isTextNode(node: Node): node is Text {
 /** 读取 DSH Desktop 0.11.0 将 dsh-ui 围栏呈现为纯文本标签时的正文。 */
 function tagTextBodyOf(block: Element): string | null {
   if (block.tagName !== 'SPAN' || block.childElementCount !== 0) return null
-  const flowKind = block.closest('[data-chat-flow-kind]')?.getAttribute('data-chat-flow-kind')
-  if (flowKind !== undefined && flowKind !== null && flowKind !== 'assistant-step') return null
   const text = block.textContent?.trim() ?? ''
   const opening = '<dsh-ui>'
   const closing = '</dsh-ui>'
   if (!text.startsWith(opening) || !text.endsWith(closing)) return null
+  const flowKind = block.closest('[data-chat-flow-kind]')?.getAttribute('data-chat-flow-kind')
+  if (flowKind !== undefined && flowKind !== null && flowKind !== 'assistant-step') return null
   return text.slice(opening.length, -closing.length).trim()
 }
 
@@ -196,7 +230,7 @@ function infostringOf(block: Element): 'dsh-ui' | 'svg' | null {
     // surface's banner, not `block`'s own banner. Only accept labels whose
     // nearest known surface is `block` itself (or none — unknown surfaces
     // stay supported by the structural backstop).
-    const owner = el.closest(CODE_BLOCK_SELECTORS)
+    const owner = closestCodeBlockSurface(el)
     if (owner !== null && owner !== block) continue
     return lang
   }
@@ -348,13 +382,14 @@ function implausibleLabeledAncestorOf(pre: HTMLElement, scope: ParentNode = docu
  * exact `dsh-ui` label is never taken over.
  */
 function findFenceCandidates(scope: ParentNode = document): HTMLElement[] {
+  const surfaceOwners = new WeakMap<Element, Element | null>()
   const seen = new Set<HTMLElement>()
   const out: HTMLElement[] = []
-  for (const el of scope.querySelectorAll<HTMLElement>(CODE_BLOCK_SELECTORS)) {
+  for (const el of codeBlockSurfaces(scope)) {
     // Modifier classes can sit inside a surface (e.g. a `code-block-small`
     // child of `code-block`): only the outermost matching element is a
     // candidate, so a fence is never double-counted or taken over twice.
-    if (el.parentElement !== null && el.parentElement.closest(CODE_BLOCK_SELECTORS) !== null) continue
+    if (closestCodeBlockSurface(el.parentElement, surfaceOwners) !== null) continue
     if (el.closest(`.${CONTAINER_CLASS}, .${DIAGNOSTIC_CLASS}, [data-genui-svg-fence]`) !== null) continue
     if (seen.has(el)) continue
     // Message-level containers that happen to carry a surface class must
@@ -373,7 +408,8 @@ function findFenceCandidates(scope: ParentNode = document): HTMLElement[] {
     // markdown root holding both a dsh-ui fence and a python block — and
     // the backstop would mislabel that whole container as a fence, hiding
     // every other code block with it (issue #13).
-    if (pre.closest(`${CODE_BLOCK_SELECTORS}, .${CONTAINER_CLASS}, .${DIAGNOSTIC_CLASS}, [data-genui-svg-fence]`) !== null) continue
+    if (closestCodeBlockSurface(pre, surfaceOwners) !== null
+      || pre.closest(`.${CONTAINER_CLASS}, .${DIAGNOSTIC_CLASS}, [data-genui-svg-fence]`) !== null) continue
     const surface = surfaceOf(pre, scope)
     if (surface === null) {
       // Diagnose the issue #19 guard: a labeled ancestor that is NOT a code
@@ -394,8 +430,10 @@ function findFenceCandidates(scope: ParentNode = document): HTMLElement[] {
     seen.add(surface)
   }
   for (const span of scope.querySelectorAll<HTMLElement>('span')) {
-    if (span.closest(`.${CONTAINER_CLASS}, .${DIAGNOSTIC_CLASS}, ${CODE_BLOCK_SELECTORS}, [data-chat-group-part="reasoning"], [data-tool], [data-sidebar-chat], [data-sidebar-right-session], [data-sidebar-right-panel], [data-panel-conversation], [data-plugin-panel]`) !== null) continue
+    // 普通文本不进入祖先和代码块归属查找。
     if (tagTextBodyOf(span) === null) continue
+    if (closestCodeBlockSurface(span, surfaceOwners) !== null
+      || span.closest(`.${CONTAINER_CLASS}, .${DIAGNOSTIC_CLASS}, [data-chat-group-part="reasoning"], [data-tool], [data-sidebar-chat], [data-sidebar-right-session], [data-sidebar-right-panel], [data-panel-conversation], [data-plugin-panel]`) !== null) continue
     out.push(span)
   }
   return out.sort((left, right) => left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)
@@ -476,8 +514,8 @@ function fenceIndexOf(ctx: Context, row: Element, block: Element, sourceLanguage
 
 /** Return outer host Markdown code surfaces in one assistant row's DOM order. */
 function hostFenceBlocksOf(row: Element): HTMLElement[] {
-  return [...row.querySelectorAll<HTMLElement>(CODE_BLOCK_SELECTORS)].filter(candidate => {
-    if (candidate.parentElement?.closest(CODE_BLOCK_SELECTORS) !== null) return false
+  return codeBlockSurfaces(row).filter(candidate => {
+    if (closestCodeBlockSurface(candidate.parentElement) !== null) return false
     if (candidate.closest(`.${CONTAINER_CLASS}, .${DIAGNOSTIC_CLASS}, [data-genui], [data-genui-svg-fence]`) !== null) return false
     if (candidate.closest('[data-chat-group-part="reasoning"], [data-tool], [data-sidebar-chat], [data-sidebar-right-session], [data-sidebar-right-panel], [data-panel-conversation], [data-plugin-panel]') !== null) return false
     if (candidate.closest(ASSISTANT_FLOW_ROW) !== row) return false
@@ -504,13 +542,18 @@ export function sourceLanguageOf(ctx: Context, block: Element): string | null | 
 }
 
 /** Cache each row's Markdown parse for one sweep and retain confirmed opening-line languages per host block. */
-function createSourceLanguageResolver(ctx: Context): { beginSweep: () => void; get: (block: Element) => string | null | undefined } {
+function createSourceLanguageResolver(ctx: Context): {
+  beginSweep: () => void
+  get: (block: Element) => string | null | undefined
+  isSessionUnavailable: () => boolean
+} {
   const stableLanguages = new WeakMap<Element, { sessionId: SessionId; nodeKey: string; language: string | null }>()
   let sweepLanguages = new Map<Element, string | null | undefined>()
   let parsedNodes = new Map<string, ReturnType<typeof sourceFencesOfAssistant>>()
   let sessionId: SessionId | undefined
   let chat: ChatSnapshot | undefined
   let chatRead = false
+  let sessionUnavailable = false
 
   return {
     beginSweep() {
@@ -519,13 +562,23 @@ function createSourceLanguageResolver(ctx: Context): { beginSweep: () => void; g
       sessionId = undefined
       chat = undefined
       chatRead = false
+      sessionUnavailable = false
+    },
+    isSessionUnavailable() {
+      return sessionUnavailable
     },
     get(block) {
       if (sweepLanguages.has(block)) return sweepLanguages.get(block)
       const row = block.closest<HTMLElement>(`${ASSISTANT_FLOW_ROW}[data-chat-node-key]`)
       if (row === null || row.dataset.chatGroupPart === 'reasoning') return undefined
       const nodeKey = row.dataset.chatNodeKey
-      const activeSessionId = sessionIdOfForSource(ctx)
+      const sourceSession = sourceSessionOf(ctx)
+      if (!sourceSession.available) {
+        sessionUnavailable = true
+        sweepLanguages.set(block, undefined)
+        return undefined
+      }
+      const activeSessionId = sourceSession.sessionId
       if (!nodeKey || activeSessionId === undefined) return undefined
 
       const stable = stableLanguages.get(block)
@@ -570,9 +623,19 @@ export function hostFenceIndexOf(row: Element, block: Element): number {
   return hostFenceBlocksOf(row).indexOf(block as HTMLElement)
 }
 
+/** Read the viewed session and report when Cordis rejects access to its Context. */
+function sourceSessionOf(ctx: Context): { available: true; sessionId: SessionId | undefined } | { available: false } {
+  try {
+    return { available: true, sessionId: resolveViewedSessionId(ctx.sessions.list.getSnapshot()) }
+  } catch {
+    return { available: false }
+  }
+}
+
 /** Read the currently viewed session for source Markdown lookup. */
 function sessionIdOfForSource(ctx: Context): SessionId | undefined {
-  return resolveViewedSessionId(ctx.sessions.list.getSnapshot())
+  const sourceSession = sourceSessionOf(ctx)
+  return sourceSession.available ? sourceSession.sessionId : undefined
 }
 
 /** Read uiConversation as an optional service so Cordis does not require a hard inject. */
@@ -650,6 +713,7 @@ function anchorSeqOf(row: Element): number {
 export function installDomFenceRenderer(
   ctx: Context,
   sendAction: (sessionId: SessionId, action: string, payload: Record<string, unknown>) => void,
+  fileLinkAvailability: FileLinkAvailability = NO_FILE_LINK_AVAILABILITY,
 ): () => void {
   if (typeof document === 'undefined') return () => {}
   driftWarned = false
@@ -665,12 +729,27 @@ export function installDomFenceRenderer(
   let unsubscribeChat: (() => void) | undefined
   const sourceLanguages = createSourceLanguageResolver(ctx)
 
-  const sessionIdOf = (): SessionId | undefined => {
-    try {
-      return resolveViewedSessionId(ctx.sessions.list.getSnapshot())
-    } catch {
-      return undefined
-    }
+  /** Apply both plugin contexts to every actual GenUI root render. */
+  function wrapFenceNode(node: ReactNode, context: GenuiFenceContext, handler: GenuiActionHandler, streaming: boolean): ReactNode {
+    const actionTree = <GenuiActionContext.Provider value={handler}>{node}</GenuiActionContext.Provider>
+    return withFileLinkContext(
+      ctx as unknown as FileLinkCordisContext,
+      fileLinkAvailability,
+      context.sessionId,
+      streaming,
+      actionTree,
+    )
+  }
+
+  const sessionIdOf = (): SessionId | undefined => sessionIdOfForSource(ctx)
+  let lastAvailableSessionId = sessionIdOf()
+
+  /** Keep a mounted fence's React identity stable while Cordis temporarily denies session access. */
+  function sessionIdForRender(preserveWhenUnavailable: boolean): SessionId | undefined {
+    const sourceSession = sourceSessionOf(ctx)
+    if (!sourceSession.available) return preserveWhenUnavailable ? lastAvailableSessionId : undefined
+    lastAvailableSessionId = sourceSession.sessionId
+    return sourceSession.sessionId
   }
 
   /** Retry ChatSnapshot subscription while the active session binding is unavailable. */
@@ -688,7 +767,7 @@ export function installDomFenceRenderer(
   /** Render context for a block: session always; the stable source identity
    * only once settled — streaming renders are identity-less (no panel
    * publish, no durable state), mirroring the registry channel. */
-  function contextOf(row: Element, block: Element, settled: boolean): { key: Key; context: GenuiFenceContext } {
+  function contextOf(row: Element, block: Element, settled: boolean, preserveSessionIdentity = false): { key: Key; context: GenuiFenceContext } {
     if (settled && row.getAttribute('data-chat-anchor-key') === null) {
       // Safari / fallback render path: the host omitted the row anchor (the
       // attribute is a React key that React drops when undefined). Fences
@@ -699,7 +778,7 @@ export function installDomFenceRenderer(
     const fenceIndex = fenceIndexOf(ctx, row, block, sourceLanguages.get)
     const anchorKey = row.getAttribute('data-chat-anchor-key') ?? 'unknown'
     const key = `dom:${anchorKey}:${fenceIndex}` as Key
-    const sessionId = sessionIdOf()
+    const sessionId = sessionIdForRender(preserveSessionIdentity)
     const context: GenuiFenceContext = {
       ...(sessionId === undefined ? {} : { sessionId }),
       ...(settled ? { source: { id: key as string, order: [anchorSeqOf(row), 0, fenceIndex] as const } } : {}),
@@ -868,7 +947,7 @@ export function installDomFenceRenderer(
     }
     try {
       const handler: GenuiActionHandler = (action, payload) => sendActionForBlock(block, action, payload)
-      root.render(<GenuiActionContext.Provider value={handler}>{payload}</GenuiActionContext.Provider>)
+      root.render(wrapFenceNode(payload, context, handler, !settled))
     } catch (error) {
       try {
         root.unmount()
@@ -941,7 +1020,9 @@ export function installDomFenceRenderer(
   function sweep(): void {
     if (disposed) return
     sourceLanguages.beginSweep()
-    const sessionId = sessionIdOf()
+    const sourceSession = sourceSessionOf(ctx)
+    const sessionId = sourceSession.available ? sourceSession.sessionId : undefined
+    if (sourceSession.available) lastAvailableSessionId = sourceSession.sessionId
     syncChatSubscription(sessionId)
     for (const [block, mount] of mounts) {
       if (!block.isConnected) {
@@ -953,13 +1034,15 @@ export function installDomFenceRenderer(
       const domLanguage = tagTextBodyOf(block) !== null ? 'dsh-ui' : domLanguageOf(block)
       const sourceLanguage = domLanguage === null ? sourceLanguages.get(block) : undefined
       const language = domLanguage ?? sourceLanguage
+      const sourceUnavailable = domLanguage === null
+        && (!sourceSession.available || sourceLanguages.isSessionUnavailable())
       const validGenui = language === 'dsh-ui'
         || (language === undefined && settled && isGenericGenuiFence(block, raw))
       if (mount.language === 'svg' && language !== 'svg') {
         unmountBlock(block)
         continue
       }
-      if (mount.language === 'dsh-ui' && !validGenui) {
+      if (mount.language === 'dsh-ui' && !validGenui && !sourceUnavailable) {
         unmountBlock(block)
         continue
       }
@@ -970,7 +1053,7 @@ export function installDomFenceRenderer(
       const contentWiped = !isPanelRoot(mount.lastNode) && mount.container.childElementCount === 0
       if (mount.lastRaw !== raw || mount.lastSettled !== settled || contentWiped) {
         const anchor = rowOf(block)
-        const { key, context } = contextOf(anchor, block, settled)
+        const { key, context } = contextOf(anchor, block, settled, true)
         const node = mount.language === 'svg' ? renderSvgFence(raw, key) : renderResolvedFenceNode(raw, key, context)
         if (node === null) {
           if (mount.skeleton && !settled) {
@@ -1002,7 +1085,7 @@ export function installDomFenceRenderer(
           try {
             const freshRoot = domRootFactory(fresh)
             const handler: GenuiActionHandler = (action, payload) => sendActionForBlock(block, action, payload)
-            freshRoot.render(<GenuiActionContext.Provider value={handler}>{node}</GenuiActionContext.Provider>)
+            freshRoot.render(wrapFenceNode(node, context, handler, !settled))
             mount.root = freshRoot
             mount.container = fresh
           } catch (error) {
@@ -1017,7 +1100,8 @@ export function installDomFenceRenderer(
           }
         } else {
           try {
-            mount.root.render(<GenuiActionContext.Provider value={(action, payload) => sendActionForBlock(block, action, payload)}>{node}</GenuiActionContext.Provider>)
+            const handler: GenuiActionHandler = (action, payload) => sendActionForBlock(block, action, payload)
+            mount.root.render(wrapFenceNode(node, context, handler, !settled))
           } catch (error) {
             // Never leave the stock block hidden behind a broken root: restore
             // the raw code block and drop the mount (issue #19).

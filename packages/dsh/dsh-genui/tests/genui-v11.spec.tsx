@@ -3,8 +3,7 @@
 // 收编 blocks diff/json/code render from a ```dsh-ui fence.
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { hasFenceRegistry } from './helpers/fence-host'
-import { MarkdownText } from './markdown-labels.tsx'
+import { MarkdownText } from './genui-markdown.tsx'
 import { compileMathExpr, sampleExpr } from '../src/client/safe-math.ts'
 
 afterEach(cleanup)
@@ -52,7 +51,7 @@ describe('SafeMath evaluator', () => {
 })
 
 describe('GenUI v1.1 components', () => {
-  it.skipIf(!hasFenceRegistry)('renders a plot with multiple series and a legend', () => {
+  it('renders a plot with multiple series and a legend', () => {
     render(<MarkdownText text={fenced({
       title: '函数图',
       items: [{ type: 'plot', title: 'sin vs cos', xMin: -3, xMax: 3, series: [
@@ -66,13 +65,13 @@ describe('GenUI v1.1 components', () => {
     expect(document.querySelectorAll('svg path')).not.toBeNull()
   })
 
-  it.skipIf(!hasFenceRegistry)('renders an empty plot fallback for an invalid expression', () => {
+  it('renders an empty plot fallback for an invalid expression', () => {
     render(<MarkdownText text={fenced({ items: [{ type: 'plot', series: [{ expr: 'bogus(x)' }] }] })} />)
     expect(document.querySelector('[data-genui-plot]')).not.toBeNull()
     expect(document.body.textContent).toContain('无法绘制')
   })
 
-  it.skipIf(!hasFenceRegistry)('renders callout with tone', () => {
+  it('renders callout with tone', () => {
     render(<MarkdownText text={fenced({ items: [
       { type: 'callout', tone: 'warning', title: '注意', content: '磁盘即将写满' },
     ] })} />)
@@ -81,7 +80,7 @@ describe('GenUI v1.1 components', () => {
     expect(document.querySelector('[data-genui-callout]')).not.toBeNull()
   })
 
-  it.skipIf(!hasFenceRegistry)('renders steps with completion state', () => {
+  it('renders steps with completion state', () => {
     render(<MarkdownText text={fenced({ items: [
       { type: 'steps', current: 2, steps: [
         { title: '解析', desc: '读取输入' },
@@ -95,7 +94,7 @@ describe('GenUI v1.1 components', () => {
     expect(document.querySelectorAll('li').length).toBe(3)
   })
 
-  it.skipIf(!hasFenceRegistry)('renders keyvalue pairs', () => {
+  it('renders keyvalue pairs', () => {
     render(<MarkdownText text={fenced({ items: [
       { type: 'keyvalue', pairs: [{ key: '版本', value: 'v2.4.1' }, { key: '模式', value: 'production' }] },
     ] })} />)

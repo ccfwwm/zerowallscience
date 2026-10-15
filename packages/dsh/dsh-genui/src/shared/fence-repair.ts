@@ -51,6 +51,7 @@ export function describeJsonFailure(raw: string): string | null {
  *    with ASCII quotes (e.g. `对"别名路径"判定失败`), which makes JSON.parse
  *    fail near that quote with "Expected ',' or ']'...".
  * 2. Trailing commas before `}` / `]` or at end of input.
+ * 3. Valueless object keys immediately before a complete key-and-colon pair.
  *
  * A shared grammar-aware scan distinguishes object keys from values and
  * checks the continuation after a potential string terminator. Ambiguous
@@ -92,6 +93,29 @@ function isJsonSpace(ch: string | undefined): boolean {
   return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r'
 }
 
+/** Skip only complete, valueless object keys followed by a valued member. */
+function skipValuelessKeys(raw: string, start: number, limit = raw.length): { start: number; repairs: number } | null {
+  let cursor = start
+  let repairs = 0
+  while (cursor < limit && raw[cursor] === '"') {
+    const keyStart = cursor++
+    while (cursor < limit && raw[cursor] !== '"') {
+      if (raw[cursor] === '\\') cursor += 2
+      else cursor++
+    }
+    if (cursor >= limit) return null
+    cursor++
+    try { JSON.parse(raw.slice(keyStart, cursor)) } catch { return null }
+    while (cursor < limit && isJsonSpace(raw[cursor])) cursor++
+    if (raw[cursor] === ':') return repairs > 0 ? { start: keyStart, repairs } : null
+    if (raw[cursor] !== ',') return null
+    repairs++
+    cursor++
+    while (cursor < limit && isJsonSpace(raw[cursor])) cursor++
+  }
+  return null
+}
+
 /**
  * Quote closure is contextual: only keys may be followed by `:`, and a comma
  * must introduce the next member of the enclosing object/array. Walk closing
@@ -130,6 +154,10 @@ function quoteCanClose(raw: string, index: number, key: boolean, scopes: JsonSco
   if (raw[cursor] === scope.closer) return true // a removable trailing comma
   if (scope.closer === ']') return /["[{tfn\-0-9]/.test(raw[cursor]!)
   if (raw[cursor] !== '"') return false
+  // A valueless sibling is removable; it must not make a real value's
+  // closing quote absorb that sibling into the preceding string.
+  const valueless = skipValuelessKeys(raw, cursor, limit)
+  if (valueless !== null) cursor = valueless.start
   // An object comma must be followed by a quoted key and its colon. Escapes
   // in that key are skipped without changing them.
   cursor++
@@ -205,6 +233,14 @@ function scanFenceCandidate(raw: string, complete: boolean, contentQuotes: Reado
     }
     if (ch === '"') {
       key = scopes[scopes.length - 1]?.expecting === 'key'
+      if (key) {
+        const valueless = skipValuelessKeys(raw, i)
+        if (valueless !== null) {
+          repairs += valueless.repairs
+          i = valueless.start - 1
+          continue
+        }
+      }
       interiorQuote = false
       inString = true
       out += ch

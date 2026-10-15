@@ -23,6 +23,7 @@ export function ImageNode({ node }: { node: GenuiImage }): ReactNode {
             style={{ maxHeight: 'min(70vh, 720px)', objectFit: 'contain' }}
             onError={() => setFailed(true)}
           />}
+      {node.caption !== undefined && <figcaption className={css.mediaCaption}>{renderInline(node.caption)}</figcaption>}
     </figure>
   )
 }

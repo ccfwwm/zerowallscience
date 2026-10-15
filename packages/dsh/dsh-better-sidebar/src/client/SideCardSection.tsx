@@ -638,6 +638,13 @@ export function SettingsBody(props: {
  * @returns the section element tree.
  */
 export function SideCardSection({ store, service }: SideCardSectionProps) {
+  const viewersHeading = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (document.body.dataset.zerowallFocusFileViewers !== 'true') return
+    delete document.body.dataset.zerowallFocusFileViewers
+    viewersHeading.current?.scrollIntoView({ block: 'center' })
+    viewersHeading.current?.focus({ preventScroll: true })
+  }, [])
   const [prefs, setPrefs] = useState<SidebarPrefs>(() => store.getPrefs())
   const [error, setError] = useState<string | null>(null)
   // Which feature's secondary settings popup is open (null = closed).
@@ -989,7 +996,7 @@ export function SideCardSection({ store, service }: SideCardSectionProps) {
 
       {/* 文件预览: one small card per registered file viewer. */}
       <div className={css.group}>
-        <div className={css.groupHeading}>
+          <div className={css.groupHeading} ref={viewersHeading} tabIndex={-1}>
           <span>{t('settingsViewersTitle')}</span>
           <span className={css.count}>{viewers.length}</span>
         </div>

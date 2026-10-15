@@ -1,18 +1,22 @@
 {
-  "version": "8.1.3",
+  "version": "8.2.0",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
-    "commit": "8c00ce78435cf35300654c41e69336e69dc758b1",
+    "commit": "4af4cb76935bd893a6854f38403bd06928878074",
     "branch": "zerowall/reviewer-history-opaque",
     "upstreamCommit": "639ed015397290b3745d163aafe02ffee4aa3f84"
   },
   "betterSidebar": {
     "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",
-    "tag": "v0.25.0",
-    "upstreamCommit": "64a61ccfe42f96e950c7e837c4cbc09942090ac9",
-    "commit": "64a61ccfe42f96e950c7e837c4cbc09942090ac9",
-    "source": "packages/dsh/dsh-better-sidebar"
+    "tag": "v0.26.0",
+    "upstreamCommit": "9323f48d0946432ffd94655df1c115a1cd89f34c",
+    "commit": "9323f48d0946432ffd94655df1c115a1cd89f34c",
+    "source": "packages/dsh/dsh-better-sidebar",
+    "version": "0.26.0",
+    "resourceVersion": "0.26.1-zws.1",
+    "package": "dsh-better-sidebar",
+    "localAdaptation": "Preserve ZeroWall Electron frameless titlebar, desktop environment, workspace notices and shell presets while integrating v0.26.0."
   },
   "fileReviewTab": {
     "repository": "https://github.com/left0ver/dsh-file-review.git",
@@ -42,14 +46,14 @@
   },
   "genui": {
     "repository": "https://github.com/omdsh-dev/dsh-genui.git",
-    "commit": "1e87eb103dafc32e2612341f1c004bb015c1c024",
-    "version": "0.11.4",
+    "commit": "fef7c7b1df78726737707ef4a806e7f0a5e92c10",
+    "version": "0.12.0",
     "license": "MIT",
     "package": "@changfenhuang/dsh-genui",
     "source": "packages/dsh/dsh-genui",
-    "tag": "v0.11.4",
-    "resourceVersion": "0.11.5-zws.3",
-    "localAdaptation": "Register /panel against both the dynamic client context and application-root input trigger service scopes; the runner facade does not expose ctx.inject."
+    "tag": "v0.12.0",
+    "resourceVersion": "0.12.1-zws.1",
+    "localAdaptation": "Retain ZeroWall panel slash-command registration and schema compatibility on latest upstream main, including post-v0.12.0 fence truncation fixes."
   },
   "academicResearchSkills": {
     "repository": "https://github.com/Imbad0202/academic-research-skills.git",
@@ -104,7 +108,7 @@
     "repository": "https://github.com/dream-num/dsh-univer-office",
     "tag": "v0.3.7",
     "version": "0.3.7",
-    "resourceVersion": "0.3.7-zws.2",
+    "resourceVersion": "0.3.7-zws.3",
     "telemetry": false,
     "commit": "8f85ce4074fdbe51416b6c337468bb916a302c2a"
   },
@@ -150,5 +154,16 @@
     "source": "packages/dsh/dsh-archive-manager",
     "catalogOptional": true,
     "localAdaptation": "Route plugin updates to ZeroWall Extension Center; omit upstream npm updater from published runtime; compile into artifacts/dev with audited upstream Host and Client behavior."
+  },
+  "ohStory": {
+    "repository": "https://github.com/zenstory-ai/oh-story-dsh.git",
+    "commit": "83cc99046338c9b74b9dd135ff6b2e80bb3cd35e",
+    "version": "0.1.15",
+    "resourceVersion": "0.1.16-zws.18",
+    "package": "@oh-story/dsh",
+    "license": "MIT",
+    "source": "packages/dsh/oh-story-dsh",
+    "catalogOptional": true,
+    "localAdaptation": "Conversation-first media creation with automatic session projects, native right sidebar, explicit user generation requests, preserved model choices and fixed-Python local composition. Retired fiction/game/drama/recap contributions excluded."
   }
 }

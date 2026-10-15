@@ -44,8 +44,8 @@ describe('signed plugin worker broker', () => {
   })
   it('loads the actual independently bundled worker and performs a read-only scan with no Python present', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-broker-')); roots.push(root)
-    const entry = resolve('plugins/python/lib/worker/python-updater-worker.js')
-    const publicKeys = JSON.parse(await readFile(resolve('config/catalogs/trusted-keys.json'), 'utf8'))
+    const entry = resolve(import.meta.dirname, '../../plugins/python/lib/worker/python-updater-worker.js')
+    const publicKeys = JSON.parse(await readFile(resolve(import.meta.dirname, '../../config/catalogs/trusted-keys.json'), 'utf8'))
     const broker = new PythonUpdaterService({ root: join(root, 'Python/.zerowall'), runtimeRoot: join(root, 'Python'), publish: vi.fn(), resolveWorker: async () => entry, publicKeys, allowDevelopment: true } as never); brokers.push(broker)
     broker.configureManager({ sync: { root: join(root, 'Python/.zerowall') }, locationPath: join(root, 'location.json') })
     await expect(broker.pythonInfo()).resolves.toMatchObject({ ready: false, inventoryComplete: true, packages: [] })

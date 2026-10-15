@@ -1,6 +1,6 @@
 import { fork, spawn, type ChildProcess } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { delimiter, dirname, join } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import { mkdir, readFile, writeFile, readdir, rename } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import type { McpEnvironmentControllerOptions } from './mcp-environment.js'
@@ -44,6 +44,10 @@ export class PythonUpdaterService {
    */
   private progressWatchers: Array<(status: McpEnvironmentStatus) => void> = []
   watchProgress(listener: (status: McpEnvironmentStatus) => void): void { this.progressWatchers.push(listener) }
+  /** In-process controller progress uses the same durable job identity as IPC. */
+  publishOperation(status: McpEnvironmentStatus): void {
+    this.publish({ ...status, updateJob: status.updateJob ? { ...status.updateJob, taskId: this.activeTaskId ?? status.updateJob.taskId, kind: this.activeMethod ?? status.updateJob.kind } : undefined })
+  }
   publish(status: McpEnvironmentStatus): void {
     this.status = status
     this.options.publish(status)
@@ -303,7 +307,7 @@ export class PythonUpdaterService {
     if (local.phase === 'ready' || local.phase === 'manual') {
       if (this.options.runtimeRoot) {
         const current = await readFile(join(this.options.root, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
-        if (current?.root !== this.options.runtimeRoot || current?.generation === true || local.packageInventory?.pipReady === false) {
+        if (typeof current?.root !== 'string' || resolve(current.root) !== resolve(this.options.runtimeRoot) || current?.health !== 'ready' || current?.generation === true || !local.environmentVersion || local.packageInventory?.pipReady === false) {
           const started = this.updateForUser()
           return started.updateJob?.taskId ? this.waitForTask(started.updateJob.taskId) : this.status
         }

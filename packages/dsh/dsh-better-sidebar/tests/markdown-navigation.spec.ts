@@ -10,13 +10,13 @@
  * same note): a destination with an ESCAPED parenthesis (`[x](./a\(1\).md)`) or
  * a single-quoted title (`[x](./a.md 'title')`) does not match the link grammar
  * and is therefore never claimed — it keeps rendering as plain text, exactly as
- * it did before this feature. A `#L24` line destination belongs to the host and
- * is not turned into a line jump.
+ * it did before this feature.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   githubHeadingSlug,
   isHostLineFragment,
+  lineOfHostFragment,
   markdownAnchorTarget,
   rememberMarkdownAnchor,
   rewriteLocalMarkdownLinks,
@@ -64,6 +64,20 @@ describe('isHostLineFragment', () => {
     expect(isHostLineFragment('l24')).toBe(false)
     expect(isHostLineFragment('L0')).toBe(false)
     expect(isHostLineFragment('标题')).toBe(false)
+  })
+})
+
+describe('lineOfHostFragment', () => {
+  it('reads the first line of the host line grammar, and nothing else', () => {
+    expect(lineOfHostFragment('L24')).toBe(24)
+    expect(lineOfHostFragment('L24-L30')).toBe(24)
+    // A heading anchor is not a line — it rides the parked-fragment table.
+    expect(lineOfHostFragment('小节')).toBeUndefined()
+    expect(lineOfHostFragment('')).toBeUndefined()
+    // The grammar already rejected these, but the parser must not invent a
+    // number from them either.
+    expect(lineOfHostFragment('L0')).toBeUndefined()
+    expect(lineOfHostFragment('l24')).toBeUndefined()
   })
 })
 

@@ -18,7 +18,7 @@ export interface AiCloudManagedModel {
   modelId: string
   baseUrl: string
   /** Capability exposed by the managed group. Image routes never enter chat. */
-  capability?: 'chat' | 'image-generation'
+  capability?: 'chat' | 'image-generation' | 'media'
   stale?: boolean
   contextWindow?: number
   maxOutputTokens?: number
@@ -28,6 +28,26 @@ export interface AiCloudModelSync {
   checkedAt: string
   status: 'succeeded' | 'partial' | 'failed'
   groups: Array<{ groupId: string; groupName: string; status: 'succeeded' | 'failed'; count: number; checkedAt: string; error?: string }>
+}
+
+export interface AiCloudMediaModel extends AiCloudManagedModel {
+  capability: 'media'
+  profileId: string
+  version: string
+  mediaType: 'image' | 'video' | 'audio'
+  operations: string[]
+  referenceField?: string
+  referenceShape?: string
+  duration: { mode?: string; values?: number[]; min?: number | null; max?: number | null; default?: number | null; required?: boolean }
+  sizes: string[]
+  resolutions: string[]
+  aspectRatios: string[]
+  qualities: string[]
+  formats: string[]
+  materials: Record<string, { formats?: string[]; max_count?: number | null; max_file_bytes?: number | null; max_duration_seconds?: string | null }>
+  pollSeconds: number
+  maxRequestBytes?: number
+  observationSeconds?: number
 }
 
 export interface AiCloudAccountSnapshot {
@@ -42,6 +62,8 @@ export interface AiCloudAccountSnapshot {
   gatewayBaseUrl?: string
   models: AiCloudManagedModel[]
   modelSync?: AiCloudModelSync
+  mediaModels?: AiCloudMediaModel[]
+  mediaSync?: AiCloudModelSync
 }
 
 export interface AiCloudGateway {

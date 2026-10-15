@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "0.1.15",
+  "version": "0.1.17",
   "applicationVersion": "8.1.0",
   "restartRequired": true,
   "desktop": {
@@ -15,7 +15,8 @@
   "client": "./lib/client.js",
   "requiredServices": [
     "webServer",
-    "systemPrompt"
+    "systemPrompt",
+    "workspaceRegistry"
   ],
   "optionalServices": [
     "updater"

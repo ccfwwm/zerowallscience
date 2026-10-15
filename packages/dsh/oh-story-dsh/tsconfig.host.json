@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/index.ts", "src/media-studio.ts", "src/media-types.ts", "src/media-route.ts", "src/media-skill.ts"]
+}

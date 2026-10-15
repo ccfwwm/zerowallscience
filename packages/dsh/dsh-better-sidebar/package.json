@@ -1,6 +1,6 @@
 {
   "name": "dsh-better-sidebar",
-  "version": "0.25.0",
+  "version": "0.26.1-zws.1",
   "description": "Better Sidebar for DSH — file tree, editor, changes, tasks and side chat in one column, separate for every conversation. Also exposes a service other plugins use to register sidebar tabs and file viewers.",
   "type": "module",
   "repository": {
@@ -145,6 +145,7 @@
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.8",
     "@deepseek-ai/schemastery": "^3.18.4",
+    "@formkit/auto-animate": "^0.10.0",
     "@lezer/highlight": "^1.2.3",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",

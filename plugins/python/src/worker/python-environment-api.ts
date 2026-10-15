@@ -290,7 +290,7 @@ export class PythonEnvironmentApi {
     const status = typeof updater.ensureReady === 'function'
       ? await updater.ensureReady()
       : updater.current()
-    if (status.phase !== 'ready' && status.phase !== 'manual') {
+    if (status.lastUpdateError || status.phase !== 'ready' && status.phase !== 'manual') {
       throw new Error(status.lastUpdateError ?? status.message ?? '共享 Python 尚未就绪，请先完成基础环境安装。')
     }
   }
@@ -589,7 +589,7 @@ export class PythonEnvironmentApi {
       await report({ stage: 'waiting-runtime', message: '等待基础 Python 环境就绪。' })
       const runtime = await (this.updater as PythonUpdaterService & { ensureReady?: (() => Promise<McpEnvironmentStatus>) | undefined }).ensureReady?.()
       checkPythonCancellation()
-      if (runtime && runtime.phase !== 'ready' && runtime.phase !== 'manual') throw new Error(runtime.lastUpdateError ?? runtime.message ?? '共享 Python 尚未就绪。')
+      if (runtime && (runtime.lastUpdateError || runtime.phase !== 'ready' && runtime.phase !== 'manual')) throw new Error(runtime.lastUpdateError ?? runtime.message ?? '共享 Python 尚未就绪。')
     }
     const savedTask = await this.readTask(taskId)
     const verifyCompletedLayer = async (underlyingTaskId: string, resumed: boolean, planId?: string) => {

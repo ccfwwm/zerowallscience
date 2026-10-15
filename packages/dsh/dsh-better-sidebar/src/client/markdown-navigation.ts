@@ -43,8 +43,10 @@
  *   below, so {@link rewriteLocalMarkdownLinks} never claims it. It keeps
  *   rendering as plain text — exactly what it did before this feature existed,
  *   i.e. no regression, but also no jump.
- * - A `#L24` line destination is left to the host (it rides `options.line`), so
- *   nothing scrolls the opened file to line 24.
+ * - A `#L24` line destination belongs to the host's own grammar: the renderer
+ *   leaves the destination alone and hands the number over as `options.line`,
+ *   so the surface forwards it as the open's landing line (see
+ *   {@link lineOfHostFragment}) — it is NOT a heading anchor and never parks.
  */
 import { maskCodeRegions } from './markdown-code.ts'
 import { normalizeLocalPath } from './markdown-images.ts'
@@ -93,6 +95,21 @@ const HOST_LINE_FRAGMENT_RE = /^L[1-9]\d*(?:-L[1-9]\d*)?$/
 /** Whether a fragment is the host's line destination rather than an anchor. */
 export function isHostLineFragment(fragment: string): boolean {
   return HOST_LINE_FRAGMENT_RE.test(fragment)
+}
+
+/**
+ * The FIRST line a host line fragment names (`L24` → 24, `L24-L30` → 24), or
+ * undefined when the fragment is a heading anchor.
+ *
+ * The host hands the same number over as `MarkdownDelegate.openFile`'s
+ * `options.line`, so this is the fallback for a caller that only has the
+ * destination (and the single place that knows the grammar — the editor has
+ * one caret, so a range contributes its start).
+ */
+export function lineOfHostFragment(fragment: string): number | undefined {
+  if (!isHostLineFragment(fragment)) return undefined
+  const line = Number.parseInt(fragment.slice(1).split('-', 1)[0] ?? '', 10)
+  return Number.isSafeInteger(line) && line > 0 ? line : undefined
 }
 
 /** Percent-decode one URL piece, tolerating a malformed escape (a literal `%`). */

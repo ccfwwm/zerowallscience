@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { readFile, readdir, stat, writeFile, mkdir } from 'node:fs/promises'
 import { createReadStream } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
+import { createInterface } from 'node:readline'
 import { join, relative, resolve } from 'node:path'
 import { root, artifactRoot, applicationVersion, buildId, targetPackageRoot, stageRoot } from './paths.mjs'
 
@@ -26,9 +27,12 @@ try {
 }
 
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
-const status = execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root, encoding: 'utf8' })
 const changeCounts = { added: 0, modified: 0, deleted: 0, renamed: 0, untracked: 0, other: 0 }
-for (const line of status.split(/\r?\n/u).filter(Boolean)) {
+// Count the complete status stream without execFileSync's 1 MiB stdout cap.
+// Large untracked stores remain untouched and still make the build dirty.
+const statusProcess = spawn('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root, windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'] })
+const statusExit = new Promise((resolve, reject) => { statusProcess.once('error', reject); statusProcess.once('exit', code => code === 0 ? resolve() : reject(new Error(`git status failed (${code})`))) })
+for await (const line of createInterface({ input: statusProcess.stdout, crlfDelay: Infinity })) {
   const code = line.slice(0, 2)
   if (code === '??') changeCounts.untracked++
   else if (code.includes('A')) changeCounts.added++
@@ -37,6 +41,7 @@ for (const line of status.split(/\r?\n/u).filter(Boolean)) {
   else if (code.includes('M')) changeCounts.modified++
   else changeCounts.other++
 }
+await statusExit
 
 const dshContract = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 const stageReceiptPath = join(stageRoot, 'desktop-package-receipt.json')
@@ -53,7 +58,7 @@ const manifest = {
   // package was produced from a clean checkout. A dirty build must not look
   // like a reproducible build of HEAD alone.
   commit,
-  source: { clean: status.length === 0, changeCounts },
+  source: { clean: Object.values(changeCounts).every(count => count === 0), changeCounts },
   dshCommit: dshContract.commit,
   stageReceipt: stageReceipt ? {
     path: relative(artifactRoot, stageReceiptPath).replaceAll('\\', '/'),

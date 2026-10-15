@@ -11,7 +11,8 @@
       "dsh-session-notification",
       "dsh-ssh-ops",
       "dsh-progressive-tools",
-      "zotero-harvest"
+      "zotero-harvest",
+      "oh-story-dsh"
     ],
     "support": [
       "integrity-runtime"

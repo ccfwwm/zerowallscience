@@ -2,7 +2,6 @@ import { spawnSync, type ChildProcess, type SpawnOptions } from 'node:child_proc
 import type { Readable, Writable } from 'node:stream'
 import { createWriteStream, existsSync, type WriteStream } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { createServer } from 'node:net'
 import { delimiter, dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { RuntimePhase, RuntimeSnapshot } from '../../shared/contracts.js'
@@ -33,6 +32,8 @@ export interface HarnessRuntimeOptions {
   shutdownForcePeriodMs?: number
   startupTimeoutMs?: number
   onChildStarted?(child: HarnessChildProcess): void | (() => void)
+  /** Unmount the connected renderer before its Host services are disposed. */
+  onBeforeStop?(): Promise<void>
   onChanged(snapshot: RuntimeSnapshot): void
 }
 
@@ -133,7 +134,7 @@ export class HarnessRuntime {
     return this.activeStart
   }
 
-  private async startOnce(launchDirectory: string): Promise<void> {
+  private async startOnce(launchDirectory: string, useDynamicPort = false, deadline = Date.now() + (this.options.startupTimeoutMs ?? (process.platform === 'win32' ? 120_000 : 45_000))): Promise<void> {
     await this.stop()
     const generation = this.generation
     this.launchDirectory = launchDirectory
@@ -172,13 +173,13 @@ export class HarnessRuntime {
     await mkdir(this.options.userSkillsPath, { recursive: true })
     await mkdir(dirname(this.options.researchDbPath), { recursive: true })
 
-    const port = await reservePort(await readPreferredPort(this.options.portPath))
-    if (this.options.portPath !== undefined) {
-      await writeFile(this.options.portPath, `${port}\n`, 'utf8').catch(() => undefined)
-    }
+    // Let the Host bind port 0 itself. Probing and closing a temporary socket
+    // leaves a race (and can select Windows reserved ports) before Host listen.
+    const port = useDynamicPort ? 0 : await readPreferredPort(this.options.portPath) ?? 0
     const url = `http://127.0.0.1:${port}`
     if (generation !== this.generation) return
     this.endpoint = url
+    let listenError: string | undefined
     const args = [
       ...(this.options.nodeResolverPath ? ['--import', pathToFileURL(this.options.nodeResolverPath).href] : []),
       '--expose-internals',
@@ -207,9 +208,12 @@ export class HarnessRuntime {
     child.stderr.on('data', (chunk: Buffer) => this.writeChunk('stderr', chunk))
     child.on('message', (message: unknown) => {
       if (this.child !== child || !message || typeof message !== 'object') return
-      const event = message as { type?: string; message?: string }
+      const event = message as { type?: string; message?: string; listenError?: string }
       if (event.type === 'zerowall:host:failed') {
-        this.fail(`核心服务启动失败：${event.message ?? '插件加载失败'}`)
+        if (port !== 0 && (event.listenError === 'EACCES' || event.listenError === 'EADDRINUSE')) {
+          listenError = event.listenError
+          this.writeLog(`[desktop] preferred port unavailable (${listenError}); retrying with an OS-assigned port`)
+        } else this.fail(`核心服务启动失败：${event.message ?? '插件加载失败'}`)
       }
     })
     child.once('error', (error) => {
@@ -220,10 +224,18 @@ export class HarnessRuntime {
     child.once('exit', (code, signal) => {
       if (this.child !== child) return
       this.child = undefined
-      if (this.phase !== 'failed') this.fail(`Harness stopped unexpectedly (${signal ?? `exit ${String(code)}`}). Startup details: ${this.options.logPath}`)
+      if (this.phase !== 'failed' && !listenError) this.fail(`Harness stopped unexpectedly (${signal ?? `exit ${String(code)}`}). Startup details: ${this.options.logPath}`)
     })
 
-    const ready = await waitUntilReady(() => this.authenticatedUrl, () => this.child === child && child.exitCode === null && this.phase !== 'failed', this.options.startupTimeoutMs ?? (process.platform === 'win32' ? 120_000 : 45_000))
+    const ready = await waitUntilReady(() => this.authenticatedUrl, () => this.child === child && child.exitCode === null && this.phase !== 'failed' && !listenError, Math.max(0, deadline - Date.now()))
+    if (listenError && generation === this.generation && Date.now() < deadline) {
+      await this.startOnce(launchDirectory, true, deadline)
+      return
+    }
+    if (generation !== this.generation) return
+    if (listenError && Date.now() >= deadline) {
+      this.fail(`核心服务端口不可用（${listenError}），启动期限内未能恢复。请查看日志后重试。`)
+    }
     if (this.child !== child) return
     if (!ready) {
       // Detach before terminating so an expected exit cannot overwrite the
@@ -237,13 +249,17 @@ export class HarnessRuntime {
     // Prefer the authenticated URL emitted by `dsh web`; the bare loopback
     // URL intentionally returns 401 and renders as a blank Electron window.
     this.url = this.authenticatedUrl
-    this.writeLog(`[desktop] ready ${url}`)
+    if (this.options.portPath !== undefined && this.url !== undefined) {
+      await writeFile(this.options.portPath, `${new URL(this.url).port}\n`, 'utf8').catch(() => undefined)
+    }
+    this.writeLog(`[desktop] ready ${this.endpoint}`)
     this.setState('ready', 'ZeroWall Science is ready.')
   }
 
   async stop(): Promise<void> {
     this.generation++
     const child = this.child
+    if (child !== undefined) await this.options.onBeforeStop?.()
     this.child = undefined
     this.disposeChildHooks?.()
     this.disposeChildHooks = undefined
@@ -303,7 +319,13 @@ export class HarnessRuntime {
       if (match?.[1] === undefined) return
       try {
         const candidate = new URL(match[1].replace(/[\])}>,.;]+$/u, ''))
-        if (candidate.origin !== this.endpoint || !candidate.searchParams.get('token')) return
+        const dynamicEndpoint = this.endpoint === 'http://127.0.0.1:0'
+        if (candidate.protocol !== 'http:' || candidate.hostname !== '127.0.0.1' || candidate.username || candidate.password || !candidate.searchParams.get('token')) return
+        if (dynamicEndpoint) {
+          const actualPort = Number(candidate.port)
+          if (!Number.isInteger(actualPort) || actualPort < 1024 || actualPort > 65_535) return
+          this.endpoint = candidate.origin
+        } else if (candidate.origin !== this.endpoint) return
         this.authenticatedUrl = candidate.href
       } catch { /* incomplete stdout chunk */ }
     }
@@ -343,30 +365,6 @@ async function waitForExit(exited: Promise<void>, timeoutMs: number): Promise<bo
   } finally {
     if (timeout !== undefined) clearTimeout(timeout)
   }
-}
-
-async function reservePort(preferredPort?: number): Promise<number> {
-  if (preferredPort !== undefined) {
-    try {
-      return await listenPort(preferredPort)
-    } catch {
-      // Another process may still own the previous port; use a free one.
-    }
-  }
-  return await listenPort(0)
-}
-
-async function listenPort(port: number): Promise<number> {
-  return await new Promise((resolve, reject) => {
-    const server = createServer()
-    server.unref()
-    server.once('error', reject)
-    server.listen({ host: '127.0.0.1', port }, () => {
-      const address = server.address()
-      if (address === null || typeof address === 'string') return reject(new Error('Could not reserve a local port.'))
-      server.close((error) => error === undefined ? resolve(address.port) : reject(error))
-    })
-  })
 }
 
 async function readPreferredPort(path: string | undefined): Promise<number | undefined> {

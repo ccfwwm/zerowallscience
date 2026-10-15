@@ -37,7 +37,7 @@ describe('git parsing', () => {
         repositories: [canonical(first), canonical(second)],
       })
     } finally {
-      await rm(workspace, { recursive: true, force: true })
+      await rm(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     }
   })
 
@@ -97,7 +97,7 @@ describe('git parsing', () => {
       expect(result.entries).toHaveLength(2_000)
       expect(result.truncated).toBe(true)
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     }
   })
 
@@ -110,7 +110,7 @@ describe('git parsing', () => {
       expect(result.entries).toHaveLength(3)
       expect(result.truncated).toBe(false)
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     }
   })
 

@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, verify } from 'node:crypto'
 import { scanFixedPython } from './python-local-inventory.js'
+import { resolveFixedPythonRuntime } from '../shared/runtime-path.js'
 import { assertWritablePythonRuntimePath } from './python-location.js'
 import { acquireRuntimeWriter, withRuntimeWriterContext } from '../shared/runtime-leases.js'
 import { commitFixedRuntime, recoverFixedTransactions, restoreFixedTransaction } from './python-fixed-transaction.js'
@@ -216,6 +217,12 @@ export class McpEnvironmentController {
     if (this.operation !== undefined) return this.current()
     try {
       const manifest = await this.fetchManifest()
+      if (this.singleDirectoryMode()) {
+        const local = await this.localStatus()
+        const installed = await this.readInstalledManifest(this.canonicalRoot()).catch(() => undefined)
+        const updateAvailable = !local.python?.ready || !installed || environmentVersion(installed) !== environmentVersion(manifest) || contentRevision(installed) !== contentRevision(manifest) || installed.archiveSha256 !== manifest.archiveSha256
+        return this.set({ ...local, onlineEnvironmentVersion: environmentVersion(manifest), onlineContentRevision: contentRevision(manifest), updateAvailable, updateRequired: updateAvailable && manifest.updatePolicy?.required === true, lastCheckedAt: new Date().toISOString() })
+      }
       const record = await readCurrent(this.options.root)
       const currentManifest = record?.root && record.health === 'ready' ? await this.readInstalledManifest(record.root).catch(() => undefined) : undefined
       const root = currentManifest ? record?.root ?? '' : ''
@@ -434,10 +441,20 @@ export class McpEnvironmentController {
 
   private async applyPackagePlanUnlocked(planId: string): Promise<McpPythonInfo> {
     if (!/^[a-f0-9-]{36}$/u.test(planId)) throw new Error('无效升级计划。')
-    const current = await readCurrent(this.options.root)
-    if (this.singleDirectoryMode() && (!current?.root || resolve(current.root) !== resolve(this.canonicalRoot()))) throw new Error('PYTHON_FIXED_PATH_REQUIRED: initialize the fixed runtime before applying a plan.')
+    let current = await readCurrent(this.options.root)
     const plan = JSON.parse(await readFile(join(this.options.root, 'plans', `${planId}.json`), 'utf8')) as StoredPackagePlan
     if (plan.dependencyManifest) parsePythonDependencyManifest(plan.dependencyManifest, { ...MCP_ENVIRONMENT_KEYRING, ...this.options.publicKeys })
+    if (this.singleDirectoryMode()) {
+      if (plan.error || resolve(plan.snapshotId) !== resolve(this.canonicalRoot())) throw new Error('环境已变化，请重新检查升级计划。')
+      if (!current?.root || resolve(current.root) !== resolve(this.canonicalRoot()) || current.health !== 'ready' || (current as Record<string, unknown>).generation === true || !await this.readInstalledManifest(this.canonicalRoot()).catch(() => undefined)) {
+        await this.pythonContext()
+        const info = await this.pythonInfo()
+        if (!info.ready || !info.pipReady) throw new Error(info.message ?? '请先修复固定目录中的 Python 和 pip。')
+        await assertWritablePythonRuntimePath(this.canonicalRoot())
+        await this.registerFixedRuntime(info, current)
+        current = await readCurrent(this.options.root)
+      }
+    }
     if (current?.root && plan.snapshotId !== current.root && !plan.error) {
       const applied = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
       if (applied?.planId === planId) return this.pythonInfo('', false, [...(current.extensionNames ?? []), ...Object.keys(current.customizations ?? {}), ...plan.changes.map(change => change.name)])
@@ -454,6 +471,9 @@ export class McpEnvironmentController {
       ...plan.changes.map(change => change.name),
     ])]
     const inventory = await this.pythonInfo('', false, trackedNames)
+    if (this.singleDirectoryMode() && inventory.version) {
+      context.manifest.python = { ...context.manifest.python, version: inventory.version }
+    }
     if (plan.dependencyManifest) {
       const present = new Set(inventory.packages.map(pkg => pythonPackageName(pkg.name)))
       plan.wheels = plan.wheels.filter(wheel => !present.has(pythonPackageName(wheel.name)))
@@ -664,9 +684,21 @@ export class McpEnvironmentController {
   }
 
   private async pythonContext(): Promise<{ root: string; executable: string; sitePackages: string; manifest: McpEnvironmentManifest; mirror: MirrorConfig }> {
+    if (this.singleDirectoryMode()) {
+      // The same fixed files that inventory and execution use also own plans.
+      // Preview is read-only: stale or absent management metadata is repaired
+      // only by explicit initialization/application, never by a slot switch.
+      const paths = await resolveFixedPythonRuntime(this.canonicalRoot())
+      const installed = await this.readInstalledManifest(paths.root).catch(() => undefined)
+      const manifest = installed ?? await this.fetchManifest()
+      // The signed archive manifest is provenance, not an installation gate
+      // for dependencies in an existing fixed interpreter. Wheel resolution
+      // probes this executable and the dependency manifest owns package bytes.
+      const settings = await readFile(join(this.options.settingsPath ?? this.options.root, 'settings.json'), 'utf8').then(JSON.parse, () => ({}))
+      return { root: paths.root, executable: paths.executable, sitePackages: paths.sitePackages, manifest: this.runtimeManifest(manifest), mirror: resolveMirror(settings.mirrorUrl ?? DEFAULT_INDEX_URL) }
+    }
     let current = await readCurrent(this.options.root)
     if (!current?.root || current.health !== 'ready') throw new Error('ZeroWall Python 尚未就绪。')
-    if (this.singleDirectoryMode() && resolve(current.root) !== resolve(this.canonicalRoot())) throw new Error('PYTHON_FIXED_PATH_REQUIRED: legacy slots are inactive. Initialize the fixed target first.')
     let installedManifest = this.runtimeManifest(await this.readInstalledManifest(current.root))
     let stableRoot = this.singleDirectoryMode() ? this.canonicalRoot() : (current.runtimeRoot ?? await stat(join(dirname(this.options.root), 'Python', 'python.exe')).then(() => dirname(this.options.root), () => undefined))
     const shared = this.singleDirectoryMode() || (!!stableRoot && basename(this.options.root).toLowerCase() === 'zerowall-python')
@@ -879,12 +911,22 @@ export class McpEnvironmentController {
     }
   }
 
-  /**
-   * Activate a downloaded bootstrap in the one public runtime directory.
-   * `.zerowall` stays in place because it contains the current pointer and
-   * durable task journals; only interpreter/runtime entries are swapped.
-   */
   /** Explicit installation only. Legacy pointers are never a runtime source. */
+  private async registerFixedRuntime(info: McpPythonInfo, previous: CurrentEnvironmentRecord | undefined): Promise<void> {
+    const root = this.canonicalRoot()
+    const canonicalPrevious = previous?.root && resolve(previous.root) === resolve(root) && (previous as Record<string, unknown>).generation !== true ? previous : undefined
+    // Re-read the signed bytes; runtimeManifest's path projection is not a
+    // signed envelope and must never replace the installed manifest.
+    const installed = await this.readInstalledManifest(root).catch(() => undefined)
+    const signed = installed ?? await this.fetchManifest()
+    if (!installed) await writeFile(join(root, 'manifest.json'), JSON.stringify(signed))
+    const runtime = this.runtimeManifest(signed)
+    // Preserve signed bytes verbatim; the local projection records the actual
+    // bundled interpreter instead of labelling it with a remote archive version.
+    runtime.python = { ...runtime.python, version: info.version ?? runtime.python.version }
+    await this.writeCurrent({ ...canonicalPrevious, mode: canonicalPrevious?.mode ?? 'manual', root, runtimeRoot: root, runtimeLayout: SHARED_LAYOUT, manifest: runtime, environmentVersion: environmentVersion(signed), contentRevision: contentRevision(signed), archiveSha256: signed.archiveSha256, health: 'ready', slot: 'manual', localRevision: (canonicalPrevious?.localRevision ?? 0) + 1, installedAt: new Date().toISOString(), rollbackAvailable: canonicalPrevious?.rollbackAvailable === true }, 'current.json', false)
+  }
+
   private async installFixedDirectory(): Promise<McpEnvironmentStatus> {
     const root = this.canonicalRoot()
     let staging: string | undefined
@@ -892,18 +934,22 @@ export class McpEnvironmentController {
       if (process.platform !== 'win32' || process.arch !== 'x64') return this.set({ phase: 'unavailable', message: 'ZeroWall Python 当前仅支持 Windows x64。' })
       await assertWritablePythonRuntimePath(root)
       const existing = await this.pythonInfo()
-      const manifest = await this.fetchManifest()
-      if (manifest.python.bootstrapOnly !== true) throw new Error('PYTHON_BOOTSTRAP_REQUIRED: 首次初始化只接受签名 Python + pip bootstrap。')
       const previous = await readCurrent(this.options.root)
       const canonicalPrevious = previous?.root && resolve(previous.root) === resolve(root) ? previous : undefined
-      const record = { mode: existing.ready ? 'manual' : 'managed', root, runtimeRoot: root, runtimeLayout: SHARED_LAYOUT, manifest, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), archiveSha256: manifest.archiveSha256, health: 'ready', slot: 'manual', localRevision: (canonicalPrevious?.localRevision ?? 0) + 1, installedAt: new Date().toISOString(), rollbackAvailable: false }
       if (existing.ready && existing.pipReady) {
         // Reconstruct management metadata during this explicit operation only.
-        await mkdir(this.options.root, { recursive: true })
-        if (!await this.readInstalledManifest(root).catch(() => undefined)) await writeFile(join(root, 'manifest.json'), JSON.stringify(manifest))
-        await this.writeCurrent(record, 'current.json', false)
+        const release = await acquireRuntimeWriter(root, undefined, pythonOperationSignal(24 * 60 * 60_000))
+        try { await withRuntimeWriterContext(root, async () => {
+          await recoverFixedTransactions(root)
+          const info = await this.pythonInfo()
+          if (!info.ready || !info.pipReady) throw new Error(info.message ?? 'Python 基础环境复检失败。')
+          await this.registerFixedRuntime(info, await readCurrent(this.options.root))
+        }) } finally { await release() }
         return this.localStatus()
       }
+      const manifest = await this.fetchManifest()
+      if (manifest.python.bootstrapOnly !== true) throw new Error('PYTHON_BOOTSTRAP_REQUIRED: 首次初始化只接受签名 Python + pip bootstrap。')
+      const record = { mode: existing.ready ? 'manual' : 'managed', root, runtimeRoot: root, runtimeLayout: SHARED_LAYOUT, manifest, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), archiveSha256: manifest.archiveSha256, health: 'ready', slot: 'manual', localRevision: (canonicalPrevious?.localRevision ?? 0) + 1, installedAt: new Date().toISOString(), rollbackAvailable: false }
       this.set({ phase: 'downloading', progress: 0, message: '正在下载签名 Python 基础环境。' })
       await mkdir(this.options.root, { recursive: true })
       await requireFreeSpace(this.options.root, manifest.archiveSize * 5 + 512 * 1024 ** 2)
@@ -1109,14 +1155,14 @@ export class McpEnvironmentController {
       const manifest = validateManifest(JSON.parse(await readFile(this.options.bundledManifestPath, 'utf8')))
       if (!verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) throw new Error('Bundled Python manifest signature is invalid.')
       const record = await readCurrent(this.options.root)
-      if (record?.root && record.health === 'ready') {
+      if (this.singleDirectoryMode() || record?.root && record.health === 'ready') {
         try {
-          const installed = await this.readInstalledManifest(record.root)
+          const installed = await this.readInstalledManifest(this.singleDirectoryMode() ? this.canonicalRoot() : record!.root!)
           const productRoot = basename(resolve(this.options.root)).toLowerCase() === 'zerowall-python'
-          const activeSharedRuntime = this.options.generationMode || !productRoot || (
+          const activeSharedRuntime = this.singleDirectoryMode() || this.options.generationMode || !productRoot || (
             installed.python.relativeExecutable === SHARED_LAYOUT.relativeExecutable
             && installed.python.relativeSitePackages === SHARED_LAYOUT.relativeSitePackages
-            && record.runtimeRoot === dirname(this.options.root)
+            && record?.runtimeRoot === dirname(this.options.root)
             && await isStablePythonDirectory(dirname(this.options.root))
           )
           // A newly installed desktop must never downgrade a runtime that has
@@ -1263,7 +1309,7 @@ export class McpEnvironmentController {
       ? { snapshotId: status.message, environmentVersion: status.environmentVersion ?? '', contentRevision: status.contentRevision ?? 1, pythonVersion: status.python.version ?? '3.12.10' }
       : this.status.activeEnvironment)
     const working = ['checking', 'downloading', 'verifying', 'installing'].includes(status.phase)
-    const job = working ? { taskId: this.status.updateJob?.taskId ?? randomUUID(), kind: 'initialize', stage: status.phase, canPause: status.phase !== 'verifying', ...status.updateJob, targetVersion: status.environmentVersion ?? this.status.updateJob?.targetVersion } : status.updateJob
+    const job = working ? { taskId: this.status.updateJob?.taskId ?? randomUUID(), kind: 'initialize', stage: status.phase, canPause: status.phase !== 'verifying', ...status.updateJob, targetVersion: status.updateJob?.targetVersion ?? status.environmentVersion ?? this.status.updateJob?.targetVersion } : status.updateJob
     this.status = { ...status, activeEnvironment: active, updateJob: job,
       ...(active ? { environmentVersion: active.environmentVersion, contentRevision: active.contentRevision } : {}) }
     this.options.publish(this.current()); return this.current()

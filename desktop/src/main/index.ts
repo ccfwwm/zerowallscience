@@ -11,6 +11,9 @@ import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, 
 import { DesktopNotifications } from './notifications.js'
 import { redactResourceDiagnostic } from './resource-diagnostics.js'
 import { startupFailure } from './startup-failure.js'
+import { WORKBENCH_READY_SCRIPT } from './workbench-ready.js'
+import { awaitWorkbenchStep, WorkbenchNavigation } from './workbench-navigation.js'
+import { nextStartupStatus } from './startup-status.js'
 import { resourceUpdateSummary, type CatalogCheck } from './resource-update-status.js'
 import updaterPackage from 'electron-updater'
 import { HarnessRuntime, type HarnessChildProcess } from './runtime/harness-runtime.js'
@@ -55,7 +58,7 @@ let quitting = false
 let restarting = false
 let startup: StartupStatus = { phase: 'starting', progress: 5, message: '正在准备本地工作台', startedAt: Date.now() }
 let hostStartedAt: number | undefined
-let navigation: Promise<void> | undefined
+const navigation = new WorkbenchNavigation()
 let runtimeReachedReady = false
 let initialRuntimeStartRequested = false
 const desktopPluginProcesses = new Map<string, ReturnType<typeof spawn>>()
@@ -351,7 +354,9 @@ function restartDesktop(): void {
 }
 
 function publishStartup(update: Partial<StartupStatus>): void {
-  startup = { ...startup, segment: undefined, durationMs: undefined, ...update }
+  const next = nextStartupStatus(startup, update)
+  if (next === startup) return
+  startup = next
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:startup-status', startup)
   if (startupCover && !startupCover.webContents.isDestroyed()) startupCover.webContents.send('desktop:startup-status', startup)
   const line = { timestamp: new Date().toISOString(), elapsedMs: Date.now() - startup.startedAt, ...update }
@@ -399,14 +404,17 @@ async function showSplash(): Promise<void> {
   if (!window.isDestroyed()) window.show()
 }
 
-async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
+async function showHarness(snapshot: RuntimeSnapshot, signal: AbortSignal): Promise<void> {
   const rendererStartedAt = Date.now()
   if (snapshot.phase !== 'ready' || snapshot.url === undefined) return
   // DSH first exposes the loopback endpoint and then prints an authenticated
   // URL. The bare endpoint intentionally returns 401 and renders as a blank
   // page, so wait for the token-bearing URL before navigating the window.
   if (!/[?&]token=/u.test(snapshot.url)) return
+  signal.throwIfAborted()
   const window = mainWindow ?? createWindow()
+  const deadline = rendererStartedAt + 45_000
+  const step = <T>(operation: () => Promise<T>): Promise<T> => awaitWorkbenchStep(operation, signal, deadline)
   publishStartup({ progress: 85, message: '正在打开工作台' })
   // Keep the same branded splash above the navigating document until every
   // client plugin has activated and React has painted the workbench.
@@ -415,37 +423,54 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
     preload: join(import.meta.dirname, '../preload/index.cjs'),
   } })
   startupCover = cover
+  let coverAttached = false
+  const closeCover = () => {
+    if (coverAttached && !window.isDestroyed()) { window.contentView.removeChildView(cover); coverAttached = false }
+    if (!cover.webContents.isDestroyed()) cover.webContents.close()
+    if (startupCover === cover) startupCover = undefined
+  }
+  signal.addEventListener('abort', closeCover, { once: true })
   const resizeCover = () => {
     const { width, height } = window.getContentBounds()
     cover.setBounds({ x: 0, y: 0, width, height })
   }
   cover.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   cover.webContents.on('will-navigate', event => event.preventDefault())
-  await cover.webContents.loadFile(resourcePath('splash.html'), {
+  try {
+  await step(() => cover.webContents.loadFile(resourcePath('splash.html'), {
     query: { icon: pathToFileURL(desktopIconPath()).href, version: app.getVersion() },
-  })
+  }))
+  signal.throwIfAborted()
   window.contentView.addChildView(cover)
+  coverAttached = true
   resizeCover()
   window.on('resize', resizeCover)
   cover.webContents.once('destroyed', () => window.removeListener('resize', resizeCover))
-  await window.loadURL(snapshot.url)
+  await step(() => window.loadURL(snapshot.url!))
+  signal.throwIfAborted()
   // Wait for the actual shell, not just the HTML load. This also surfaces a
   // renderer plugin failure instead of silently abandoning the startup page.
-  const deadline = Date.now() + 45_000
   while (!window.isDestroyed() && !quitting) {
-    const bootFailed = await window.webContents.executeJavaScript('document.querySelector("[data-dsh-boot-failed]") !== null')
+    signal.throwIfAborted()
+    const bootFailed = await step(() => window.webContents.executeJavaScript('document.querySelector("[data-dsh-boot-failed]") !== null'))
     if (bootFailed) throw new Error('客户端插件加载失败，请重试或打开日志查看详情。')
-    const mounted = await window.webContents.executeJavaScript('Boolean(!document.querySelector("[data-dsh-boot]") && Array.from(document.querySelectorAll("[contenteditable=true]")).some(el => { const rect = el.getBoundingClientRect(); const style = getComputedStyle(el); return rect.width > 0 && rect.height > 0 && style.visibility !== "hidden" && style.display !== "none" && el.getAttribute("aria-disabled") !== "true"; }))')
+    // A new profile (or a profile whose last workspace was removed) renders a
+    // valid workbench with an inert composer whose placeholder is
+    // "选择工作区开始". Requiring an editable composer here incorrectly keeps
+    // the splash above that usable UI and reports a startup timeout after an
+    // otherwise healthy plugin activation. Wait for the visible resident
+    // composer; genuine boot failures remain failures.
+    const mounted = await step(() => window.webContents.executeJavaScript(WORKBENCH_READY_SCRIPT))
+    signal.throwIfAborted()
     if (mounted) break
     if (Date.now() >= deadline) throw new Error('工作台界面加载超时，请打开日志检查客户端插件。')
     await new Promise(resolve => setTimeout(resolve, 200))
   }
-  if (!window.isDestroyed() && !quitting && startup.phase !== 'failed') {
+  if (!window.isDestroyed() && !quitting && !signal.aborted) {
     publishStartup({ phase: 'ready', progress: 100, message: '工作台已就绪', segment: 'renderer-ready', durationMs: Date.now() - rendererStartedAt })
     runtime?.workbenchReady()
-    window.contentView.removeChildView(cover)
-    cover.webContents.close()
-    startupCover = undefined
+    signal.removeEventListener('abort', closeCover)
+    closeCover()
     window.show()
     window.focus()
     const activeRuntime = runtime
@@ -459,6 +484,18 @@ async function showHarness(snapshot: RuntimeSnapshot): Promise<void> {
       }).catch(error => { console.error('Session deletion recovery failed:', error) })
     }
   }
+  } catch (error) {
+    if (!signal.aborted && !window.isDestroyed()) window.webContents.stop()
+    throw error
+  } finally {
+    signal.removeEventListener('abort', closeCover)
+    closeCover()
+  }
+}
+
+function navigateHarness(snapshot: RuntimeSnapshot): Promise<boolean> | undefined {
+  if (snapshot.phase !== 'ready' || snapshot.url === undefined || !/[?&]token=/u.test(snapshot.url)) return
+  return navigation.open(snapshot.url, signal => showHarness(snapshot, signal), failStartup)
 }
 
 
@@ -573,6 +610,10 @@ if (ownsInstance) app.whenReady().then(async () => {
     logPath: join(app.getPath('logs'), 'harness.log'),
     portPath: join(userData, 'harness', 'endpoint-port.txt'),
     launchProcess: (executable, args, options) => spawn(executable, args, options) as HarnessChildProcess,
+    onBeforeStop: async () => {
+      navigation.cancel()
+      if (!quitting) await showSplash()
+    },
     onChildStarted: (child) => {
       managementChild = child
       const managementListener = (message: unknown): void => {
@@ -595,9 +636,11 @@ if (ownsInstance) app.whenReady().then(async () => {
       }
     },
     onChanged: (snapshot) => {
+      if (snapshot.phase === 'idle' || snapshot.phase === 'stopping' || snapshot.phase === 'starting' || snapshot.phase === 'failed') navigation.cancel()
+      if (snapshot.phase === 'idle' || snapshot.phase === 'failed') hostStartedAt = undefined
       if (snapshot.phase === 'starting' && hostStartedAt === undefined) {
         hostStartedAt = Date.now()
-        publishStartup({ progress: 35, message: '正在加载核心服务与插件', segment: 'host:start' })
+        publishStartup({ phase: 'starting', progress: 35, message: '正在加载核心服务与插件', segment: 'host:start' })
       }
       if (snapshot.phase === 'ready' && hostStartedAt !== undefined) {
         publishStartup({ progress: 80, message: '本地服务已就绪', segment: 'host:ready', durationMs: Date.now() - hostStartedAt })
@@ -608,9 +651,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       // because a later start() replaces DSH's authenticated web token while
       // the renderer may already be connected to the previous URL.
       if (snapshot.phase === 'ready') runtimeReachedReady = true
-      if (snapshot.phase === 'ready' && navigation === undefined) {
-        navigation = showHarness(snapshot).catch(failStartup).finally(() => { navigation = undefined })
-      }
+      if (snapshot.phase === 'ready') void navigateHarness(snapshot)
       if (snapshot.phase === 'failed' && !quitting) void failStartup(snapshot.message)
     },
   })
@@ -719,7 +760,11 @@ if (ownsInstance) app.whenReady().then(async () => {
     const deadline = Date.now() + 30_000
     do {
       const health = await callHost('host.health', []) as { ready: boolean; entries: Array<{ state: number }> }
-      if (health.ready) return
+      if (health.ready) {
+        const rendered = await navigation.completion
+        if (rendered !== true || startup.phase !== 'ready') throw new Error('客户端工作台未能就绪；正在恢复更新前的插件配置。')
+        return
+      }
       if (health.entries.some(entry => entry.state === 3)) break
       await new Promise(accept => setTimeout(accept, 250))
     } while (Date.now() < deadline)
@@ -1318,7 +1363,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   const resourceUpdateInterval = setInterval(() => { void checkResourceCatalogs().catch(() => undefined) }, UPDATE_CHECK_INTERVAL_MS)
   resourceUpdateInterval.unref()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0 && runtime !== undefined) void showHarness(runtime.snapshot())
+    if (BrowserWindow.getAllWindows().length === 0 && runtime !== undefined) { navigation.cancel(); void navigateHarness(runtime.snapshot()) }
     else showMainWindow()
   })
 }).catch(failStartup)
@@ -1327,6 +1372,7 @@ app.on('before-quit', (event) => {
   if (quitting) return
   event.preventDefault()
   quitting = true
+  navigation.cancel()
   const activeRuntime = runtime
   void stopBeforeExit(() => activeRuntime?.stop() ?? Promise.resolve(), 6_000).then(async () => {
     await pythonEnvironmentApi?.shutdown()

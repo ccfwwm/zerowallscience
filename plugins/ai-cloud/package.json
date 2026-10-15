@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-ai-cloud",
-  "version": "0.1.6",
+  "version": "0.1.15",
   "description": "ZeroWall Science ai-cloud domain plugin (desktop 8.0.0).",
   "type": "module",
   "main": "./lib/index.js",
@@ -65,11 +65,13 @@
     ],
     "optionalServices": [],
     "capabilities": [
-      "llm.cloud"
+      "llm.cloud",
+      "media.cloud"
     ],
     "permissions": [
       "credentials",
-      "network"
+      "network",
+      "files"
     ],
     "profiles": [
       "development",

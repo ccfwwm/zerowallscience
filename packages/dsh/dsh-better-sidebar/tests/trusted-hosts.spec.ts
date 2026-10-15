@@ -16,6 +16,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { Writable } from 'node:stream'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,19 +31,44 @@ interface FakeRes {
   end(body?: string | Buffer): void
 }
 
+/**
+ * The response face these fence assertions read, backed by a REAL Writable.
+ *
+ * `/sidebar/file` STREAMS now (`createReadStream` → `pipeline` into the
+ * response), and `pipeline` needs an actual writable destination rather than a
+ * plain object with an `end`. The status/header/body facade the assertions use
+ * is layered on the same object, so the media cases keep reading exactly what
+ * they read before.
+ */
 function fakeRes(): FakeRes {
-  return {
-    status: 0,
-    headers: {},
-    body: '',
-    writeHead(status, headers = {}) {
-      this.status = status
-      this.headers = headers
+  const chunks: Buffer[] = []
+  const stream = new Writable({
+    write(chunk: Buffer, _encoding, callback) {
+      chunks.push(Buffer.from(chunk))
+      callback()
     },
-    end(body) {
-      if (body !== undefined) this.body = body.toString()
-    },
-  } as FakeRes
+  })
+  // Captured BEFORE the facade shadows the method: `facade === stream`, so
+  // calling `stream.end()` from the replacement would recurse into itself.
+  const finishStream = Writable.prototype.end.bind(stream)
+  const facade = stream as unknown as FakeRes
+  facade.status = 0
+  facade.headers = {}
+  facade.body = ''
+  const collect = (): void => { facade.body = Buffer.concat(chunks).toString('utf8') }
+  facade.writeHead = (status, headers = {}) => {
+    facade.status = status
+    facade.headers = headers
+  }
+  facade.end = (body) => {
+    if (body !== undefined) chunks.push(Buffer.from(body))
+    collect()
+    finishStream()
+  }
+  // `stream.end()` from the pipeline path never goes through `facade.end`, so
+  // the body is also harvested once the writable finishes.
+  stream.on('finish', collect)
+  return facade
 }
 
 function req(

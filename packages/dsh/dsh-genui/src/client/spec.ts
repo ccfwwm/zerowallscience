@@ -93,9 +93,12 @@ export interface GenuiSpec {
 
 export interface GenuiText {
   type: 'text'
-  size?: 'h1' | 'h2' | 'h3' | 'body' | 'muted' | 'caption'
+  size?: 'display' | 'h1' | 'h2' | 'h3' | 'body' | 'muted' | 'caption'
   content: string
+  /** Legacy boolean shorthand; `align: 'center'` is the canonical form. */
   center?: boolean
+  /** Horizontal alignment; `center?: true` normalizes to `align: 'center'`. */
+  align?: 'left' | 'center' | 'right'
 }
 
 export interface GenuiButton {
@@ -172,8 +175,10 @@ export interface GenuiLink {
 export interface GenuiImage {
   type: 'image'
   src: string
-  /** Visible caption and accessible image description. */
+  /** Visible label line above the image and accessible description. */
   alt?: string
+  /** Caption line below the image (source, reading, credit). */
+  caption?: string
 }
 
 /** User-controlled audio from a browser-reachable URL. */
@@ -243,6 +248,8 @@ export interface GenuiProgress {
 
 export interface GenuiDivider {
   type: 'divider'
+  /** Chapter separator: hairline + centered meta label (anthology program). */
+  label?: string
 }
 
 export interface GenuiAvatar {
@@ -279,6 +286,8 @@ export interface GenuiGrid {
 export interface GenuiCard {
   type: 'card'
   title?: string
+  /** Meta overline above the title (chaptering for card groups; use sparingly). */
+  eyebrow?: string
   /** Semantic tint for the card surface (default: neutral). */
   tone?: 'info' | 'success' | 'warning' | 'danger'
   /** Explicit accent (hex) driving the border, title and wash. */

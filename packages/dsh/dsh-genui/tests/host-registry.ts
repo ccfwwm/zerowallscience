@@ -11,6 +11,9 @@ type HostGenuiExt = {
   registerGenuiComponent?: (type: string, component: ComponentType<unknown>) => () => void
 }
 
+/** True only on contract-line hosts; every published primitives so far is pristine. */
+export const hasComponentRegistry: boolean = typeof (primitives as unknown as HostGenuiExt).registerGenuiComponent === 'function'
+
 export const registerGenuiComponent: NonNullable<HostGenuiExt['registerGenuiComponent']> = (type, component) => {
   const fn = (primitives as unknown as HostGenuiExt).registerGenuiComponent
   if (typeof fn !== 'function') throw new Error('registerGenuiComponent unavailable (pristine host); registry tests must be gated')

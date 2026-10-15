@@ -1,5 +1,5 @@
 /**
- * Built-in registration tests: the plugin registers 6 tabs and 3 file
+ * Built-in registration tests: the plugin registers 6 tabs and 4 file
  * viewers through the same service external plugins use (dogfooding);
  * the catch-all `code` viewer and the html sandbox settings pin the
  * registry's behavior. The read-only previews (image / pdf /
@@ -231,15 +231,15 @@ describe('built-in tab registrations', () => {
 })
 
 describe('built-in file viewer registrations', () => {
-  it('registers the 3 built-in file viewers (the read-only previews yielded to the host)', () => {
+  it('registers the 4 built-in file viewers (the read-only previews yielded to the host)', () => {
     const { service } = setup()
     expect(service.getFileViewers().map(v => v.id).sort()).toEqual(
-      ['code', 'html', 'markdown'],
+      ['code', 'html', 'jsonl', 'markdown'],
     )
     // The yielded ids are gone: the host's own document preview
     // (ui-sidebar-documentpreview) owns images, pdf, spreadsheets, office
-    // and plain text; the plugin keeps only markdown / html / the editable
-    // code catch-all.
+    // and plain text; the plugin keeps only markdown / html / the JSONL
+    // record preview / the editable code catch-all.
     for (const id of ['image', 'pdf', 'binary-download']) {
       expect(service.getFileViewers().map(v => v.id), `${id} must not be built in`).not.toContain(id)
     }
@@ -289,6 +289,17 @@ describe('built-in file viewer registrations', () => {
     expect(service.matchFileViewer('index.HTML')?.id).toBe('html')
   })
 
+  it('jsonl claims jsonl/ndjson before the catch-all', () => {
+    const { service } = setup()
+    // Newline-delimited JSON has its own record-per-row preview (and the
+    // JSONL editor behind the mode toggle) instead of the code catch-all's
+    // one-long-document surface. Plain `.json` stays with the catch-all.
+    expect(service.matchFileViewer('events.jsonl')?.id).toBe('jsonl')
+    expect(service.matchFileViewer('events.ndjson')?.id).toBe('jsonl')
+    expect(service.matchFileViewer('events.JSONL')?.id).toBe('jsonl')
+    expect(service.matchFileViewer('package.json')?.id).toBe('code')
+  })
+
   it('the html viewer declares its sandbox and default-unsafe related settings', () => {
     const { service } = setup()
     const toggles = service.getFileViewers().find(v => v.id === 'html')?.settings?.toggles ?? []
@@ -299,13 +310,24 @@ describe('built-in file viewer registrations', () => {
     expect(toggles[1]?.desc).toBeDefined()
   })
 
+  it('the jsonl viewer carries the code viewer\'s single git-gutter toggle', () => {
+    const { service } = setup()
+    const toggles = (id: string): string[] =>
+      (service.getFileViewers().find(v => v.id === id)?.settings?.toggles ?? []).map(t => t.key)
+    // The viewer is new; its declarative settings row must be the same ONE
+    // switch the editable code surface carries — no per-part switches.
+    expect(toggles('jsonl')).toEqual(['editorGitGutter'])
+    expect(toggles('jsonl')).toEqual(toggles('code'))
+  })
+
   it('no built-in viewer claims the yielded extensions (the host document preview does)', () => {
     const { service } = setup()
     // The spreadsheet / pdf / image / office set yielded to the host: the
     // only plugin-side match left is the catch-all code viewer, so the
     // `editor` type can hand these addresses over (see native/index.ts's
     // canOpen). Legacy doc/xls/ppt were previously claimed by the removed
-    // `binary-download` viewer and are now the host's too.
+    // `binary-download` viewer and are now the host's too. None of them is a
+    // JSONL file, so the `jsonl` viewer is correctly absent from this set.
     for (const path of [
       'book.xlsx', 'legacy.xls', 'macro.xlsb', 'sheet.xlt', 'template.xltx', 'macro.xltm',
       'flat.ods', 'flat.ots', 'flat.fods', 'data.csv', 'data.tsv',
@@ -331,9 +353,8 @@ describe('built-in file viewer registrations', () => {
     expect(service.matchFileViewer('blob.zzz', new Uint8Array([0x01, 0x00, 0x02]))?.id).toBe('code')
     const code = service.getFileViewers().find(v => v.id === 'code')
     expect(planFsReadOutcome(code!, {
-      binary: true,
-      content: '',
-      truncated: false,
+      kind: 'binary',
+      size: 3,
       head: Buffer.from([0x01, 0x00, 0x02]).toString('base64'),
     }, (head) => service.matchFileViewer('blob.zzz', head), () => '/media')).toEqual({ kind: 'binary' })
   })

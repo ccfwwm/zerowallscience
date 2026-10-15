@@ -120,7 +120,7 @@ function render(next) {
   tick()
 }
 function tick() {
-  const seconds = Math.max(0, Math.floor((Date.now() - state.startedAt) / 1000))
+  const seconds = Math.max(0, Math.floor(((state.finishedAt ?? Date.now()) - state.startedAt) / 1000))
   document.getElementById('elapsed').textContent = seconds + ' 秒'
 }
 bridge?.onStartupStatus(render)

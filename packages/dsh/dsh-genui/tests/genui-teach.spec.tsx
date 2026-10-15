@@ -2,7 +2,6 @@
 // Teaching components: quiz judging, plot animation bar, reset, staggered reveal.
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { hasFenceRegistry } from './helpers/fence-host'
 
 // jsdom 没有真正的 requestAnimationFrame 循环；用可控 mock 手动推进帧。
 let rafCallbacks: Array<(t: number) => void> = []
@@ -27,7 +26,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 import { vi } from 'vitest'
-import { MarkdownText } from './markdown-labels.tsx'
+import { MarkdownText } from './genui-markdown.tsx'
 
 afterEach(cleanup)
 
@@ -35,7 +34,7 @@ function fenced(spec: unknown): string {
   return `\`\`\`dsh-ui\n${JSON.stringify(spec)}\n\`\`\``
 }
 
-describe.skipIf(!hasFenceRegistry)('quiz component', () => {
+describe('quiz component', () => {
   it('judges correct and wrong answers in place', () => {
     const { container } = render(<MarkdownText text={fenced({ items: [
       { type: 'quiz', question: 'sin(0) 等于？', options: [
@@ -57,7 +56,7 @@ describe.skipIf(!hasFenceRegistry)('quiz component', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('plot animation', () => {
+describe('plot animation', () => {
   it('renders play button when a param has animateTo', () => {
     const { container } = render(<MarkdownText text={fenced({ items: [
       { type: 'plot', series: [{ expr: 'a*sin(x)', params: [{ name: 'a', value: 1, min: 0, max: 5, animateTo: 3 }] }] },
@@ -94,7 +93,7 @@ describe.skipIf(!hasFenceRegistry)('plot animation', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('staggered reveal', () => {
+describe('staggered reveal', () => {
   it('wraps root items with incremental reveal delays', () => {
     const { container } = render(<MarkdownText text={fenced({ items: [
       { type: 'stat', label: 'A', value: '1' },

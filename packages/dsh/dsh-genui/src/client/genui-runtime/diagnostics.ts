@@ -5,7 +5,7 @@ import type { ComponentRecordSchema, ComponentSchema } from './schema.ts'
 import { isTableDetailReachable } from '../table-details.ts'
 
 export interface GenuiDiagnostic {
-  readonly kind: 'alias' | 'unknown-field'
+  readonly kind: 'alias' | 'unknown-field' | 'truncated'
   readonly path: string
   readonly message: string
   readonly type?: string

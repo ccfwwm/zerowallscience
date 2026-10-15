@@ -36,13 +36,12 @@ export function UpdateButton(props: Props) {
 
   useEffect(() => {
     const desktopUpdate = status.phase === 'available' || status.phase === 'downloaded'
-    const resourcesUpdate = resourceStatus.phase === 'available' && resourceStatus.updateCount > 0
-    if (!desktopUpdate && !resourcesUpdate) return
-    const key = desktopUpdate ? `${status.phase}:${status.version ?? 'unknown'}` : `resources:${JSON.stringify(resourceStatus.kinds)}`
+    if (!desktopUpdate) return
+    const key = `${status.phase}:${status.version ?? 'unknown'}`
     if (autoOpened.current === key) return
     autoOpened.current = key
     setOpen(true)
-  }, [resourceStatus.checkedAt, resourceStatus.phase, resourceStatus.updateCount, status.phase, status.version])
+  }, [status.phase, status.version])
 
   useEffect(() => {
     const close = (event: KeyboardEvent) => {
@@ -70,15 +69,17 @@ export function UpdateButton(props: Props) {
   const hasResourceUpdate = resourceStatus.phase === 'available' && resourceStatus.updateCount > 0
   const hasAnyUpdate = hasUpdate || hasResourceUpdate
   const title = hasUpdate ? props.t('update.available') : hasResourceUpdate ? props.t('update.resourcesAvailable') : props.t('update.title')
-  const triggerLabel = hasAnyUpdate ? props.t('update.newVersion') : props.t('update.trigger')
+  const triggerLabel = hasUpdate ? props.t('update.newVersion') : hasResourceUpdate ? props.t('update.resourcesVersionAvailable', { count: resourceStatus.updateCount }) : props.t('update.trigger')
   const openResources = () => { setOpen(false); window.dispatchEvent(new CustomEvent('zerowall:open-settings', { detail: 'zerowall-extension-center' })) }
+  const openUpdates = () => {
+    if (hasResourceUpdate && !hasUpdate) { openResources(); return }
+    setOpen(true)
+    if (!hasAnyUpdate) void check()
+  }
 
   return <>
-    {hasAnyUpdate && <button className={css.statusBar} type="button" onClick={() => setOpen(true)} role="status">
-      <Download size={16} aria-hidden="true" /><span>{hasUpdate ? props.t('update.versionAvailable', { version: status.version ?? '' }) : props.t('update.resourcesVersionAvailable', { count: resourceStatus.updateCount })}</span><strong>{hasUpdate ? (status.phase === 'downloaded' ? props.t('update.restart') : props.t('update.newVersion')) : props.t('update.viewResources')}</strong>
-    </button>}
-    <button className={`${css.trigger} ${hasAnyUpdate ? css.triggerAvailable : ''}`} type="button" onClick={() => { setOpen(true); if (!hasAnyUpdate) void check() }} title={triggerLabel} aria-label={triggerLabel} data-update={status.phase}>
-      <ArrowUpCircle size={18} aria-hidden="true" />{props.wide && <span>{hasAnyUpdate ? props.t('update.newVersion') : props.t('update.nav')}</span>}
+    <button className={`${css.trigger} ${hasAnyUpdate ? css.triggerAvailable : ''}`} type="button" onClick={openUpdates} title={triggerLabel} aria-label={triggerLabel} data-update={status.phase}>
+      <ArrowUpCircle size={18} aria-hidden="true" />{props.wide && <span>{hasAnyUpdate ? triggerLabel : props.t('update.nav')}</span>}
       {hasAnyUpdate && <i aria-hidden="true" />}
     </button>
     {open && createPortal(<div className={css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>

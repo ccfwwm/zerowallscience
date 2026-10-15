@@ -1,0 +1,3 @@
+- insert:
+    - id: oh-story
+      name: '@oh-story/dsh'

@@ -97,8 +97,8 @@ const viewer: FileViewerDescriptor = {
   },
   settings: { pluginToggles: [{ key: 'delimiter', title: 'Delimiter', type: 'text', placeholder: ',' }] },
   component: (props: FileViewerProps) => {
-    const { customData, content, truncated, mediaUrl, viewerId, path, title } = props
-    void customData; void content; void truncated; void mediaUrl; void viewerId; void path; void title
+    const { customData, content, size, largeFile, mediaUrl, viewerId, path, title } = props
+    void customData; void content; void size; void largeFile; void mediaUrl; void viewerId; void path; void title
     return null
   },
 }

@@ -42,7 +42,7 @@ import { TreePanel } from './TreePanel.tsx'
 import { t } from './locales.ts'
 import { relativeTo } from './paths.ts'
 import { resolveSidebarPath } from './paths.ts'
-import { closePathTabs, retargetPathTabs } from './tree-mutations.ts'
+import { clearRetargetedPath, closePathTabs, consumeRetargetedPath, pathTabKey, retargetPathTabs } from './tree-mutations.ts'
 import type { EditorToolbarControls, EditorToolbarState, FileViewerDescriptor } from './service.ts'
 import { firstLeaf, insertLeafAt, leafWithTab, mintTabId, type SidebarStore, type SidebarTab } from './state.ts'
 import css from './sidebar.module.css'
@@ -50,7 +50,7 @@ import css from './sidebar.module.css'
 type EditorLoad =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; viewer: FileViewerDescriptor; content?: string; truncated?: boolean; mtimeMs?: number; mediaUrl?: string; customData?: unknown }
+  | { status: 'ready'; viewer: FileViewerDescriptor; content?: string; size?: number; largeFile?: { size: number }; mtimeMs?: number; mediaUrl?: string; customData?: unknown }
   | { status: 'binary' }
 
 /** The docked tree panel's width bounds (drag-resize clamps into them). */
@@ -139,6 +139,25 @@ export function EditorHost(props: {
   // Manual refresh (issue #167): bumping the sequence re-runs the load effect
   // with the same path/scope — the only reload entry besides open/close.
   const [reloadSeq, setReloadSeq] = useState(0)
+
+  // The reference's landing line, SPENT once per open (#826).
+  //
+  // `tab.line` is one navigation, but the record keeps it for as long as the
+  // tab is open (the host re-delivers its navigation on every notification).
+  // The viewer cannot own that memory: a reload REMOUNTS it — this host swaps
+  // in the loading row — and a fresh instance starts at preview mode with an
+  // empty journal, so it would apply the same line again. For markdown/html
+  // that means re-forcing the file into the editor, and since the preview
+  // button reloads by design (#167 part B), the reader could never get back to
+  // preview. This host survives every reload, so the spent line is remembered
+  // here; the key carries the line, so a NEW reference re-arms it, and a file
+  // switch drops it (coming back to a file is a fresh open).
+  const [spentLine, setSpentLine] = useState<string | null>(null)
+  const lineKey = tab.line === undefined ? null : `${path}#${tab.line}`
+  const onLineConsumed = useCallback(() => {
+    if (lineKey !== null) setSpentLine(lineKey)
+  }, [lineKey])
+  useEffect(() => { setSpentLine(null) }, [path])
 
   // Manual refresh (issue #167 + PR #228): a dirty draft is dropped by the
   // reload (the editor instance remounts), so confirm before discarding it.
@@ -328,7 +347,7 @@ export function EditorHost(props: {
   useEffect(() => {
     if (path === '' || isDir) return
     setEditorDirty(tab.id, toolbar?.dirty === true, scope.sessionId, path)
-    return () => { clearEditorDirty(tab.id) }
+    return () => { clearEditorDirty(tab.id, scope.sessionId) }
   }, [tab.id, toolbar?.dirty, scope.sessionId, path, isDir])
 
   // The docked panel's drag-resize: pointer capture on the handle itself
@@ -373,7 +392,35 @@ export function EditorHost(props: {
     if (finalWidth !== treeWidthOf(tab)) patchMeta(ctx, tab, scope.sessionId, { treeWidth: finalWidth })
   }
 
+  /** The rename-marker key for this tab (see `pathTabKey`): the session this
+   *  editor reads and writes in, plus the tab id. */
+  const retargetKey = pathTabKey(scope.sessionId, tab.id)
+  /** The path this editor last loaded (or was mounted on) — the rename retarget
+   *  announces itself as a move away from it. */
+  const loadedPathRef = useRef(path)
+  // A mounted editor is the only thing that can claim a retarget: once it is
+  // gone the announcement can never be applied, so it must not sit in the map
+  // for the rest of the page's life. A remount loads the record's current path
+  // either way, which is exactly what the marker would have preserved.
+  useEffect(() => () => { clearRetargetedPath(retargetKey) }, [retargetKey])
   useEffect(() => {
+    // A rename moved the file, not its bytes: the tab follows the new name
+    // (tree-mutations' retargetPathTabs) while the loaded document — and an
+    // unsaved draft, which lives only in the editor instance — stays put.
+    // Reloading here would swap the content for the very same bytes and drop
+    // the draft with it, so the retarget is consumed instead; the next save
+    // simply lands on the new name. A path that moved WITHOUT that marker is a
+    // real switch to another file, which must load as usual.
+    //
+    // This runs BEFORE the toolbar reset below: nothing reloads, so the viewer
+    // keeps reporting the state it already has — clearing it here dropped the
+    // dirty mark (and with it the close guard) of a draft that was still
+    // unsaved.
+    const previousPath = loadedPathRef.current
+    const pathChanged = previousPath !== path
+    loadedPathRef.current = path
+    if (pathChanged && consumeRetargetedPath(retargetKey, previousPath, path)) return
+    if (!pathChanged) clearRetargetedPath(retargetKey)
     // A (re)load or a path-less tab clears any hoisted toolbar state — the
     // fresh viewer re-registers its own.
     setToolbar(null)
@@ -398,7 +445,8 @@ export function EditorHost(props: {
             status: 'ready',
             viewer: action.viewer,
             content: action.content,
-            truncated: action.truncated,
+            size: action.size,
+            largeFile: action.largeFile,
             mediaUrl: action.mediaUrl,
             customData: action.customData,
           })
@@ -415,13 +463,9 @@ export function EditorHost(props: {
         case 'fetchFsRead':
           api.fsRead(scope, path).then((result) => {
             if (cancelled) return
-            // Binary reads carry the head bytes for the detect re-match.
-            const outcome = planFsReadOutcome(action.viewer, {
-              binary: result.kind === 'binary',
-              content: result.kind === 'text' ? result.content : '',
-              truncated: result.truncated,
-              head: result.kind === 'binary' ? result.head : undefined,
-            }, (head) => ctx.get('betterSidebar')?.matchFileViewer(path, head), mediaUrlOf)
+            // The host answers one of three shapes; binary and too-large both
+            // carry the head bytes for the detect re-match (see editor-load.ts).
+            const outcome = planFsReadOutcome(action.viewer, result, (head) => ctx.get('betterSidebar')?.matchFileViewer(path, head), mediaUrlOf)
             // Carry the read's mtime into the rendered viewer: the text
             // editor uses it as the save baseline (fs-conflict on drift).
             if (outcome.kind === 'render') setLoad({ ...outcome, status: 'ready', mtimeMs: result.mtimeMs })
@@ -568,7 +612,7 @@ export function EditorHost(props: {
           </div>
         )}
         {toolbar?.dirty === true && <span className={css.dirtyDot} title={t('unsaved')} />}
-        {toolbar?.editable === true && toolbar?.truncated !== true && (
+        {toolbar?.editable === true && toolbar?.largeFile !== true && (
           <button
             type="button"
             className={css.iconButton}
@@ -613,17 +657,22 @@ export function EditorHost(props: {
           {!showEmpty && load.status === 'ready' && createElement(load.viewer.component, {
             ctx, store, scope, path, title,
             viewerId: load.viewer.id,
-            // The reference's landing line, if the address carried one (#826).
-            // Only the text viewer acts on it; a markdown/html/image viewer
-            // gets the field and ignores it.
-            line: tab.line,
+            // The reference's landing line, if the address carried one (#826)
+            // AND this open has not spent it yet. Only the text viewer acts on
+            // it; a markdown/html/image viewer gets the field and ignores it.
+            line: lineKey !== null && lineKey !== spentLine ? tab.line : undefined,
+            onLineConsumed,
             content: load.content,
-            truncated: load.truncated,
+            size: load.size,
+            largeFile: load.largeFile,
             mtimeMs: load.mtimeMs,
             mediaUrl: load.mediaUrl,
             customData: load.customData,
             // The viewer's toolbar always hoists into this host's header.
             toolbar: 'host',
+            // Native tabs stay mounted while parked; an over-limit preview
+            // reads pages only while somebody is looking (see FileViewerProps).
+            visible,
             onToolbarState,
             onToolbarControls,
             onReload: refreshFile,

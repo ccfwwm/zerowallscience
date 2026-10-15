@@ -171,6 +171,12 @@
     - id: genui
       name: '@changfenhuang/dsh-genui'
 
+    - id: archive-manager
+      name: '@michengai/dsh-archive-manager'
+
+    - id: oh-story
+      name: '@oh-story/dsh'
+
     - id: zerowall-base
       name: '@zerowallscience/plugin-base'
 

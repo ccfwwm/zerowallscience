@@ -29,7 +29,11 @@ export async function restorePublishedOutput(source, { restore = true } = {}) {
   const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
   const catalog = verifySignedDocument(JSON.parse(await readFile(join(catalogRoot, 'catalogs/plugin-catalog.json'), 'utf8')), keys)
   const resource = catalog.resources.find(entry => entry.id === manifest.name && entry.version === manifest.version)
-  if (!resource || await fileDigest(baseline.path) !== resource.sha256) throw new Error('Published bootstrap archive differs from its signed catalog: ' + manifest.name)
+  // Independent releases can leave a newer packed version beside an older
+  // catalog snapshot. That snapshot cannot prove a bootstrap; build normally
+  // and retain the immutable-package comparison against the original archive.
+  if (!resource) return false
+  if (await fileDigest(baseline.path) !== resource.sha256) throw new Error('Published bootstrap archive differs from its signed catalog: ' + manifest.name)
   const files = await packageFiles(baseline.path)
   const reference = 'v' + baseline.path.replaceAll('\\', '/').match(/\/release\/([^/]+)\//u)?.[1]
   if (!/^v\d+\.\d+\.\d+$/u.test(reference)) return false
@@ -57,7 +61,14 @@ export async function restorePublishedOutput(source, { restore = true } = {}) {
     let published
     try { published = execFileSync('git', ['show', `${reference}:${path.replaceAll('\\', '/')}`], { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }) }
     catch { console.log(`BOOTSTRAP MISS ${manifest.name}: baseline source absent ${path}`); return false }
-    if (!published.equals(await readFile(join(root, path)))) { console.log(`BOOTSTRAP MISS ${manifest.name}: source changed ${path}`); return false }
+    const current = await readFile(join(root, path))
+    // Git stores LF while Windows checkouts can use CRLF. Only normalize
+    // text inputs; executable output is still restored from the signed archive
+    // and compared byte for byte by the immutable package guard.
+    const equal = /\.(?:ts|tsx|css|md|yml|yaml)$/u.test(path)
+      ? published.toString('utf8').replaceAll('\r\n', '\n') === current.toString('utf8').replaceAll('\r\n', '\n')
+      : published.equals(current)
+    if (!equal) { console.log(`BOOTSTRAP MISS ${manifest.name}: source changed ${path}`); return false }
   }
   const staging = join(stageRoot, 'published-bootstrap', manifest.name.split('/').at(-1))
   await preparePublishPackage(source, staging)

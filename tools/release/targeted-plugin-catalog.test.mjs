@@ -2,11 +2,25 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { generateKeyPairSync } from 'node:crypto'
 import { signCatalog } from './resource-catalog.mjs'
-import { mergePublishedPlugin, assertPublicationBaseline } from './targeted-plugin-catalog.mjs'
+import { mergePublishedPlugin, mergePublishedPlugins, selectedPluginArguments, assertPublicationBaseline } from './targeted-plugin-catalog.mjs'
 
 const { privateKey, publicKey } = generateKeyPairSync('ed25519')
 const keys = { test: publicKey }, sign = value => signCatalog(value, privateKey, 'test')
 const resource = (id, version = '1.0.0', sha256 = 'a'.repeat(64)) => sign({ id, version, sha256, size: 42, downloadUrl: `https://example.com/${id}/${version}.tgz` })
+
+test('five-resource publication keeps untouched signatures and rejects ambiguous selections', () => {
+  const previous = [resource('account'), resource('cloud'), resource('images'), resource('environment'), resource('unchanged')]
+  const selected = ['account', 'cloud', 'images', 'environment', 'story'].map(id => resource(id, '1.0.1'))
+  const result = mergePublishedPlugins(previous, selected, keys)
+  assert.equal(result.find(e => e.id === 'unchanged'), previous[4])
+  assert.deepEqual(result.map(e => e.id).sort(), ['account','cloud','environment','images','story','unchanged'])
+  assert.throws(() => mergePublishedPlugins(previous, [...selected, selected[0]], keys), /Duplicate/)
+  assert.throws(() => mergePublishedPlugins(previous, [selected[0], resource('images','1.0.0','b'.repeat(64))], keys), /bump/)
+  assert.equal(previous[0].version, '1.0.0')
+  assert.deepEqual(selectedPluginArguments(['--kind','plugin','--plugin','cloud','--plugin','story']), {remaining:['--kind','plugin'],plugins:['cloud','story']})
+  assert.throws(() => selectedPluginArguments(['--plugin','story','--plugin','story']), /duplicate/)
+  assert.throws(() => selectedPluginArguments(['--plugin','--kind']), /Invalid/)
+})
 
 test('one addition preserves every existing public entry and signature despite pending local versions', () => {
   const existing = [resource('images', '0.2.6'), resource('python', '0.1.7')]

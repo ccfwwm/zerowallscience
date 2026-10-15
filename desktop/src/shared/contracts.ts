@@ -13,6 +13,7 @@ export interface StartupStatus {
   progress: number
   message: string
   startedAt: number
+  finishedAt?: number
   segment?: string
   durationMs?: number
   diagnostics?: { code?: string; applicationVersion?: string; buildId?: string; contentDigest?: string; extraFiles?: number; missingFiles?: number; sizeMismatches?: number; hashMismatches?: number; logicalArchiveMismatch?: { extraFiles?: number; missingFiles?: number; sizeMismatches?: number; hashMismatches?: number } }

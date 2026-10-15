@@ -8,8 +8,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { hasFenceRegistry } from './helpers/fence-host'
-import { MarkdownText } from './markdown-labels.tsx'
+import { MarkdownText } from './genui-markdown.tsx'
 import { GenuiBlock } from '../src/client/GenuiBlock.tsx'
 import { clearBlockState, saveBlockState } from '../src/client/interaction-store.ts'
 import type { GenuiSpec } from '../src/client/spec.ts'
@@ -44,7 +43,7 @@ describe('GenUI table overflow', () => {
     clearBlockState(stateKey)
   })
 
-  it.skipIf(!hasFenceRegistry)('wraps the table in a scroll container (DOM structure)', () => {
+  it('wraps the table in a scroll container (DOM structure)', () => {
     const { container } = render(<MarkdownText text={fenced({
       title: 'AS vs Subagent Tree 对比',
       items: [

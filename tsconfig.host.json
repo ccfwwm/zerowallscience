@@ -3,31 +3,78 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@deepseek-ai/cordis": ["deepseek-harness/vendor/cordis/src/index.ts"],
-      "@deepseek-ai/dsh-typert-protocol": ["deepseek-harness/packages/typert/protocol/src/index.ts"],
-      "@zerowallscience/research-store": ["store/src/index.ts"],
-      "@zerowallscience/research-store/types": ["store/src/index.ts"],
-      "@zerowallscience/plugin-*/types": ["plugins/*/src/shared/types.ts"],
-      "@zerowallscience/plugin-*": ["plugins/*/src/host/index.ts"]
+      "@deepseek-ai/cordis": [
+        "deepseek-harness/vendor/cordis/src/index.ts"
+      ],
+      "@deepseek-ai/dsh-typert-protocol": [
+        "deepseek-harness/packages/typert/protocol/src/index.ts"
+      ],
+      "@zerowallscience/research-store": [
+        "store/src/index.ts"
+      ],
+      "@zerowallscience/research-store/types": [
+        "store/src/index.ts"
+      ],
+      "@zerowallscience/plugin-*/types": [
+        "plugins/*/src/shared/types.ts"
+      ],
+      "@zerowallscience/plugin-*": [
+        "plugins/*/src/host/index.ts"
+      ]
     }
   },
   "files": [],
   "references": [
-    { "path": "./deepseek-harness/packages/typert/protocol" },
-    { "path": "./store" },
-    { "path": "./desktop" },
-    { "path": "./plugins/account/tsconfig.host.json" },
-    { "path": "./plugins/environment/tsconfig.host.json" },
-    { "path": "./plugins/mineru/tsconfig.host.json" },
-    { "path": "./plugins/execution/tsconfig.host.json" },
-    { "path": "./plugins/files/tsconfig.host.json" },
-    { "path": "./plugins/mcp/tsconfig.host.json" },
-    { "path": "./plugins/projects/tsconfig.host.json" },
-    { "path": "./plugins/publications/tsconfig.host.json" },
-    { "path": "./plugins/pubmed/tsconfig.host.json" },
-    { "path": "./plugins/research/tsconfig.host.json" },
-    { "path": "./plugins/runs/tsconfig.host.json" },
-    { "path": "./plugins/skills/tsconfig.host.json" },
-    { "path": "./plugins/singlecell/tsconfig.host.json" }
+    {
+      "path": "./deepseek-harness/packages/typert/protocol"
+    },
+    {
+      "path": "./store"
+    },
+    {
+      "path": "./desktop"
+    },
+    {
+      "path": "./plugins/account/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/environment/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/mineru/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/execution/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/files/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/mcp/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/projects/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/publications/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/pubmed/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/research/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/runs/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/skills/tsconfig.host.json"
+    },
+    {
+      "path": "./plugins/singlecell/tsconfig.host.json"
+    },
+    {
+      "path": "./packages/dsh/oh-story-dsh/tsconfig.host.json"
+    }
   ]
 }

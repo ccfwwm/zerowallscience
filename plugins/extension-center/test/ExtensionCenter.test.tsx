@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ExtensionCenter } from '../src/client/ExtensionCenter.js'
 import { zh } from '../src/client/locales.js'
 
-afterEach(() => { cleanup(); vi.useRealTimers(); delete window.zerowallDesktop })
+afterEach(() => { cleanup(); vi.useRealTimers(); sessionStorage.clear(); delete window.zerowallDesktop })
 const t = (key: keyof typeof zh) => zh[key]
 function bridge() {
   const resources = {
@@ -19,6 +19,39 @@ function bridge() {
   return { resources, pythonLayers }
 }
 describe('local Extension Center', () => {
+  it('distinguishes a historical rollback conflict from a successful update and prevents ineffective retries', async () => {
+    const api = bridge(), retryJob = vi.fn()
+    Object.assign(api.resources, { retryJob, listJobs: vi.fn(async () => [
+      { taskId: 'upgrade', kind: 'plugin', id: '@zerowallscience/plugin-extension-center', action: 'update', status: 'succeeded', oldVersion: '0.1.10', newVersion: '0.1.11', updatedAt: '2026-10-13T00:00:00Z', progress: 100 },
+      { taskId: 'old-rollback', kind: 'plugin', id: '@zerowallscience/plugin-extension-center', action: 'rollback', status: 'failed', oldVersion: '0.1.10', updatedAt: '2026-10-12T17:45:53Z', progress: 100, error: 'PLUGIN_ROLLBACK_CONFLICT: environment requires base@0.1.11' },
+    ]) })
+    render(<ExtensionCenter {...{ t } as any} />)
+    const tasks = await screen.findByRole('region', { name: zh.tasks })
+    await within(tasks).findByText('更新 · 扩展中心')
+    expect(within(tasks).getByText('回滚 · 扩展中心')).toBeTruthy()
+    expect(within(tasks).getByText('回滚 · 失败')).toBeTruthy()
+    expect(within(tasks).getByText('0.1.10 → 0.1.11')).toBeTruthy()
+    expect(tasks.querySelectorAll('time')).toHaveLength(2)
+    expect(within(tasks).getByText(zh.rollbackConflict)).toBeTruthy()
+    const retry = within(tasks).getByRole('button', { name: '重试 · 回滚 · 扩展中心' })
+    expect(retry.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(retry)
+    expect(retryJob).not.toHaveBeenCalled()
+    expect(tasks.textContent).not.toContain('100%')
+  })
+  it('labels retry by the failed action and preserves its error details', async () => {
+    const api = bridge(), retryJob = vi.fn(async () => ({ taskId: 'retry' }))
+    Object.assign(api.resources, { retryJob, listJobs: vi.fn(async () => [
+      { taskId: 'update-failed', kind: 'plugin', id: 'a', action: 'update', status: 'failed', error: 'Download hash mismatch' },
+    ]) })
+    render(<ExtensionCenter {...{ t } as any} />)
+    const retry = await screen.findByRole('button', { name: '重试 · 更新 · a' })
+    expect(screen.getByText('更新 · 失败')).toBeTruthy()
+    expect(screen.getByText('Download hash mismatch')).toBeTruthy()
+    fireEvent.click(retry)
+    await waitFor(() => expect(retryJob).toHaveBeenCalledExactlyOnceWith('update-failed'))
+    expect(sessionStorage.getItem('zerowall.extension-center.operation')).toBeTruthy()
+  })
   it('uninstalled Python resources require an explicit install and are excluded from update all', async () => {
     const api = bridge()
     const startJob = vi.fn(async () => ({ taskId: 'done' }))
@@ -130,5 +163,109 @@ describe('local Extension Center', () => {
     await waitFor(() => expect(screen.getByText('1.0.0 → 1.1.0')).toBeTruthy())
     await act(async () => { for (const [kind, complete] of completions) complete({ kind, catalogStatus: 'local', resources: [{ id: kind + '-local', installedVersion: '1.0.0', version: '1.0.0' }] }) })
     expect(screen.getByText('1.0.0 → 1.1.0')).toBeTruthy()
+  })
+  it('filters updates and treats DSH core resources as read-only', async () => {
+    const api = bridge()
+    api.resources.list.mockImplementation(async kind => ({ kind, catalogStatus: 'local', checkedAt: '', resources: kind === 'plugin' ? [
+      { id: '@deepseek-ai/dsh-base', name: 'DSH Base', version: 'core', source: 'runtime', managed: false, installedVersion: 'core', updateAvailable: true, enabled: true },
+      { id: 'plugin-local', version: '1.0.0', installedVersion: '1.0.0', source: 'profile', enabled: true },
+    ] : [{ id: kind + '-local', version: '1.0.0', installedVersion: '1.0.0', source: 'profile', enabled: true }] } as any))
+    api.resources.check.mockImplementation(async kind => ({ kind, catalogStatus: 'checked', checkedAt: '', resources: kind === 'plugin' ? [
+      { id: '@deepseek-ai/dsh-base', name: 'DSH Base', version: 'core', source: 'runtime', managed: false, installedVersion: 'core', updateAvailable: true, enabled: true },
+      { id: 'plugin-local', version: '1.1.0', installedVersion: '1.0.0', source: 'profile', enabled: true, updateAvailable: true },
+    ] : [{ id: kind + '-local', version: '1.0.0', installedVersion: '1.0.0', source: 'profile', enabled: true }] } as any))
+    Object.assign(api.resources, { startJob: vi.fn(async () => ({ taskId: 'done' })), getJob: vi.fn(async () => ({ taskId: 'done', status: 'succeeded' })) })
+    render(<ExtensionCenter {...{ t } as any} />)
+    await waitFor(() => expect(screen.getByText('DSH Base', { selector: 'strong' })).toBeTruthy())
+    const core = screen.getByText('DSH Base', { selector: 'strong' }).closest('article')!
+    expect(within(core).getByText(zh.coreDescription)).toBeTruthy()
+    expect(within(core).queryByRole('button')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: zh.filter_updates }))
+    expect(screen.getByText('plugin-local', { selector: 'strong' })).toBeTruthy()
+    expect(screen.queryByText('DSH Base', { selector: 'strong' })).toBeNull()
+  })
+  it('keeps pinned updates visible and combines status filtering with search', async () => {
+    const api = bridge()
+    const resources = [
+      { id: 'available', version: '2', installedVersion: '1', source: 'profile', enabled: true, updateAvailable: true },
+      { id: 'pinned', version: '2', installedVersion: '1', source: 'profile', pinnedVersion: '1', updateAvailable: true },
+      { id: 'disabled', version: '1', installedVersion: '1', source: 'disabled', enabled: false },
+      { id: 'missing', version: '1', source: 'profile', installState: 'missing' },
+      { id: 'catalog', version: '1', source: 'catalog' },
+    ]
+    api.resources.check.mockImplementation(async kind => ({ kind, catalogStatus: 'checked', resources: kind === 'plugin' ? resources : [] } as any))
+    render(<ExtensionCenter {...{ t } as any} />)
+    await waitFor(() => expect(screen.getByText('pinned', { selector: 'strong' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: zh.filter_updates }))
+    expect(screen.getAllByRole('article')).toHaveLength(2)
+    const pinned = screen.getByText('pinned', { selector: 'strong' }).closest('article')!
+    expect(within(pinned).queryByRole('checkbox')).toBeNull()
+    expect(within(pinned).queryByRole('button', { name: zh.update })).toBeNull()
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'available' } })
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.filter_disabled }))
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: zh.filter_missing }))
+    expect(screen.getAllByRole('article')).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: zh.filter_installed }))
+    expect(screen.getAllByRole('article')).toHaveLength(3)
+  })
+  it('does not label a read-only bundled Skill as system core', async () => {
+    const api = bridge()
+    api.resources.check.mockImplementation(async kind => ({ kind, resources: [{ id: 'built-in', source: 'bundled', managed: false, version: '1', installedVersion: '1' }] } as any))
+    render(<ExtensionCenter {...{ t } as any} />)
+    await waitFor(() => expect(api.resources.check).toHaveBeenCalledTimes(3))
+    fireEvent.click(screen.getByRole('tab', { name: /Skills/ }))
+    await waitFor(() => expect(screen.getByText('built-in', { selector: 'strong' })).toBeTruthy())
+    expect(screen.queryByText(zh.coreDescription)).toBeNull()
+    expect(within(screen.getByRole('article')).getByText(zh.installed)).toBeTruthy()
+  })
+  it('keeps required ZeroWall plugins independently updatable without disable or remove actions', async () => {
+    const api = bridge()
+    api.resources.check.mockImplementation(async kind => ({ kind, resources: kind === 'plugin' ? [{ id: '@zerowallscience/plugin-extension-center', source: 'profile', managed: false, version: '0.1.10', installedVersion: '0.1.9', installState: 'installed', activationState: 'active', enabled: true, updateAvailable: true }] : [] } as any))
+    render(<ExtensionCenter {...{ t } as any} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: zh.update })).toBeTruthy())
+    expect(screen.queryByText(zh.coreDescription)).toBeNull()
+    expect(screen.queryByRole('button', { name: zh.disable })).toBeNull()
+    expect(screen.queryByRole('button', { name: zh.remove })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: zh.filter_updates }))
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+    expect(screen.getByRole('checkbox')).toBeTruthy()
+  })
+  it('updates hot resources first, submits all plugins once, and suppresses checks after reload', async () => {
+    const api = bridge(), calls: string[] = []
+    api.resources.check.mockImplementation(async kind => ({ kind, catalogStatus: 'checked', resources: kind === 'plugin' ? ['first', 'second', 'pinned', 'blocked'].map(id => ({ id, source: 'profile', version: '2', installedVersion: '1', updateAvailable: true, ...(id === 'pinned' ? { pinnedVersion: '1' } : {}), ...(id === 'blocked' ? { updateBlocked: 'Dependency version is pinned' } : {}) })) : [{ id: kind, source: 'profile', version: '2', installedVersion: '1', updateAvailable: true }] } as any))
+    const startJob = vi.fn(async (kind: string) => { calls.push(kind); return { taskId: kind } })
+    const updatePlugins = vi.fn(async () => { calls.push('plugin-batch'); return { taskId: 'batch' } })
+    Object.assign(api.resources, { startJob, updatePlugins, getJob: vi.fn(async () => ({ taskId: 'done', status: 'succeeded' })) })
+    const view = render(<ExtensionCenter {...{ t } as any} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: zh.refresh }).hasAttribute('disabled')).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: zh.updateAll }))
+    await waitFor(() => expect(screen.getByText(zh.operationComplete)).toBeTruthy())
+    expect(updatePlugins).toHaveBeenCalledExactlyOnceWith(['first', 'second'])
+    expect(calls).toEqual(['skill', 'mcp', 'plugin-batch'])
+    expect(api.resources.check).toHaveBeenCalledTimes(3)
+    expect(api.pythonLayers.check).toHaveBeenCalledTimes(3)
+    view.unmount()
+    render(<ExtensionCenter {...{ t } as any} />)
+    await waitFor(() => expect(screen.getByText('plugin-local', { selector: 'strong' })).toBeTruthy())
+    expect(api.resources.check).toHaveBeenCalledTimes(3)
+    fireEvent.click(screen.getByRole('button', { name: zh.refresh }))
+    await waitFor(() => expect(api.resources.check).toHaveBeenCalledTimes(6))
+  })
+  it('updates selected plugins only and surfaces a failed batch without retrying', async () => {
+    const api = bridge()
+    api.resources.check.mockImplementation(async kind => ({ kind, resources: ['a', 'b'].map(id => ({ id: kind + id, source: 'profile', version: '2', installedVersion: '1', updateAvailable: true })) } as any))
+    const updatePlugins = vi.fn(async () => ({ taskId: 'batch' }))
+    const startJob = vi.fn()
+    Object.assign(api.resources, { startJob, updatePlugins, getJob: vi.fn(async () => ({ taskId: 'batch', status: 'failed', error: 'Health check failed' })) })
+    render(<ExtensionCenter {...{ t } as any} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: zh.refresh }).hasAttribute('disabled')).toBe(false))
+    fireEvent.click(screen.getByRole('checkbox', { name: zh.selectUpdate + ' plugina' }))
+    fireEvent.click(screen.getByRole('button', { name: /更新选中项/ }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Health check failed'))
+    expect(updatePlugins).toHaveBeenCalledExactlyOnceWith(['plugina'])
+    expect(startJob).not.toHaveBeenCalled()
   })
 })

@@ -3,11 +3,59 @@ import { PassThrough } from 'node:stream'
 import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { createServer } from 'node:http'
 import type { HarnessChildProcess } from '../src/main/runtime/harness-runtime.js'
 import { describe, expect, it } from 'vitest'
 import { HarnessRuntime, buildHarnessArguments, buildHarnessSpawnOptions } from '../src/main/runtime/harness-runtime.js'
 
 describe('Harness runtime boundary', () => {
+  it.each(['EACCES', 'EADDRINUSE', 'new-profile'])('starts with an OS-assigned Host port after %s', async code => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-port-recovery-'))
+    const files = { dshEntryPath: join(root, 'dsh.js'), nodeExecutablePath: process.execPath, nodeEntryPath: join(root, 'bootstrap.mjs'), dshPatchPath: join(root, 'patch.yml'), runAsNode: false }
+    await Promise.all([files.dshEntryPath, files.nodeEntryPath, files.dshPatchPath].map(path => writeFile(path, '')))
+    const portPath = join(root, 'port')
+    if (code !== 'new-profile') await writeFile(portPath, '55191\n')
+    const server = createServer((_req, res) => res.end('__DSH_BOOT__'))
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const address = server.address() as { port: number }
+    const ports: string[] = [], phases: string[] = []
+    const runtime = new HarnessRuntime({ ...files, portPath, dshHome: root, userDataPath: root, userSkillsPath: root, researchDbPath: join(root, 'research.db'), bundledSkillsPath: root, mcpEnvironmentRoot: root, logPath: join(root, 'harness.log'), startupTimeoutMs: 3000, onChanged: snapshot => phases.push(snapshot.phase), launchProcess: (_exe, args) => {
+      const child = new EventEmitter() as HarnessChildProcess
+      Object.assign(child, { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null, kill: () => { Object.assign(child, { exitCode: 0 }); child.emit('exit', 0, null); return true } })
+      const port = args[args.indexOf('--port') + 1]!; ports.push(port)
+      queueMicrotask(() => {
+        if (ports.length === 1 && code !== 'new-profile') child.emit('message', { type: 'zerowall:host:failed', message: 'webserver failed', listenError: code })
+        else (child.stdout as PassThrough).write(`dsh web: http://127.0.0.1:${address.port}/?token=fixture\n`)
+      })
+      return child
+    } })
+    try {
+      await runtime.start(root)
+      expect(ports).toEqual(code === 'new-profile' ? ['0'] : ['55191', '0'])
+      expect(phases).not.toContain('failed')
+      expect(runtime.snapshot().phase).toBe('ready')
+      expect(runtime.snapshot().url).toContain(`127.0.0.1:${address.port}`)
+      expect((await readFile(portPath, 'utf8')).trim()).toBe(String(address.port))
+    } finally { await runtime.stop(); await new Promise<void>(resolve => server.close(() => resolve())) }
+  })
+  it('keeps ordinary plugin boot failures actionable without a port retry', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'zerowall-plugin-failure-'))
+    const files = { dshEntryPath: join(root, 'dsh.js'), nodeExecutablePath: process.execPath, nodeEntryPath: join(root, 'bootstrap.mjs'), dshPatchPath: join(root, 'patch.yml'), runAsNode: false }
+    await Promise.all([files.dshEntryPath, files.nodeEntryPath, files.dshPatchPath].map(path => writeFile(path, '')))
+    let launches = 0
+    const runtime = new HarnessRuntime({ ...files, dshHome: root, userDataPath: root, userSkillsPath: root, researchDbPath: join(root, 'research.db'), bundledSkillsPath: root, mcpEnvironmentRoot: root, logPath: join(root, 'harness.log'), onChanged: () => {}, launchProcess: () => {
+      launches++
+      const child = new EventEmitter() as HarnessChildProcess
+      Object.assign(child, { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null, kill: () => { Object.assign(child, { exitCode: 0 }); child.emit('exit', 0, null); return true } })
+      queueMicrotask(() => child.emit('message', { type: 'zerowall:host:failed', message: 'invalid plugin schema' }))
+      return child
+    } })
+    try {
+      await runtime.start(root)
+      expect(launches).toBe(1)
+      expect(runtime.snapshot()).toMatchObject({ phase: 'failed', message: '核心服务启动失败：invalid plugin schema' })
+    } finally { await runtime.stop() }
+  })
   it('binds the Host to an explicit loopback port and patch', () => {
     expect(buildHarnessArguments(43127, 'zerowall.patch.yml')).toEqual([
       'web', '--patch', 'zerowall.patch.yml', '--host', '127.0.0.1', '--port', '43127', '--no-open',
@@ -110,6 +158,11 @@ describe('Harness runtime boundary', () => {
     }
     await Promise.all(Object.values(files).filter((value): value is string => typeof value === 'string' && value !== process.execPath).map((value) => writeFile(value, '')))
     const terminations: boolean[] = []
+    let releaseRenderer!: () => void
+    let beginRendererStop!: () => void
+    const rendererStopped = new Promise<void>(resolve => { releaseRenderer = resolve })
+    const rendererStopping = new Promise<void>(resolve => { beginRendererStop = resolve })
+    let unmounted = false
     const child = new EventEmitter() as HarnessChildProcess
     Object.assign(child, {
       pid: 4242,
@@ -134,7 +187,15 @@ describe('Harness runtime boundary', () => {
         markLaunched?.()
         return child
       },
-      terminateProcessTree: (_pid, force) => terminations.push(force),
+      onBeforeStop: async () => {
+        beginRendererStop()
+        await rendererStopped
+        unmounted = true
+      },
+      terminateProcessTree: (_pid, force) => {
+        expect(unmounted).toBe(true)
+        terminations.push(force)
+      },
       shutdownGracePeriodMs: 5,
       shutdownForcePeriodMs: 5,
       onChanged: () => undefined,
@@ -142,7 +203,11 @@ describe('Harness runtime boundary', () => {
 
     const start = runtime.start(join(root, 'workspace'))
     await launched
-    await runtime.stop()
+    const stop = runtime.stop()
+    await rendererStopping
+    expect(terminations).toEqual([])
+    releaseRenderer()
+    await stop
     child.emit('exit', 0, null)
     await start
 

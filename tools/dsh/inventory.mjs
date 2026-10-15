@@ -22,6 +22,8 @@ const thirdPartyOrder = [
   '@dsh-external/zotero-harvest',
   'dsh-wechat',
   '@changfenhuang/dsh-genui',
+  '@michengai/dsh-archive-manager',
+  '@oh-story/dsh',
 ]
 const zeroWallOrder = [
   'base', 'secrets', 'environment', 'desktop-compat', 'projects', 'mcp',

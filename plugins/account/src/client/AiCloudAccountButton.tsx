@@ -10,7 +10,7 @@ import { accountSurface } from './account-surface.js'
 import css from './AiCloudAccountButton.module.css'
 
 export interface AiCloudModelView { providerId: string; groupId: string; groupName: string; modelId: string; baseUrl: string; capability?: string; stale?: boolean }
-export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; models: AiCloudModelView[]; modelSync?: AiCloudModelSync }
+export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; models: AiCloudModelView[]; modelSync?: AiCloudModelSync; mediaModels?: Array<{modelId:string;profileId:string;groupName:string;mediaType:string;stale?:boolean}>; mediaSync?: AiCloudModelSync }
 export interface AiCloudGatewayView { baseUrl: string; label: string; preferred: boolean }
 export interface AiCloudPublicView { registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; captchaEnabled: boolean; passwordResetEnabled?: boolean; rechargeUrl?: string; lowBalanceThreshold?: number }
 export interface AiCloudCheckoutView { enabled: boolean; minimumAmount: number; paymentTypes: string[]; rechargeUrl?: string }
@@ -446,6 +446,8 @@ export function AiCloudAccountButton(props: Props) {
             </button>
           </section>
           {account.modelSync && <div aria-live="polite">{account.modelSync.groups.map(group => <p key={group.groupId} role={group.status === 'failed' ? 'alert' : undefined}>{group.groupName} · {group.count} · {group.status} · {group.checkedAt}{group.error ? ` · ${group.error}` : ''}</p>)}</div>}
+          {account.mediaSync && <div aria-live="polite">{account.mediaSync.groups.map(group => <p key={group.groupId} role={group.status === 'failed' ? 'alert' : undefined}>{group.groupName} · {group.count} · {group.status}{group.error ? ` · ${group.error}` : ''}</p>)}</div>}
+          <details className={css.modelList}><summary>媒体模型（{account.mediaModels?.length ?? 0}）</summary><div className={css.modelRows}>{account.mediaModels?.map(model => <div key={`${model.profileId}:${model.modelId}`}><strong>{model.modelId}</strong><span>{model.groupName}</span><small>{model.mediaType} · {model.stale ? '目录已过期，请刷新' : '可选'}</small></div>)}</div></details>
           <details className={css.modelList}>
             <summary>{props.t('account.modelsList', { count: account.models.length })}</summary>
             <input aria-label={props.t('account.modelsSearch')} placeholder={props.t('account.modelsSearch')} value={modelQuery} onChange={event => setModelQuery(event.target.value)} />

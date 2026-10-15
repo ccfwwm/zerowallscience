@@ -52,7 +52,7 @@ const zerowallPackageRoots = [
   resolve(await packageSource('integrity-runtime')),
   ...await Promise.all(runtimeProfile.corePackageDependencies.map(async name => resolve(await packageSource(name)))),
   ...await pluginRoots(resolve(root, 'plugins'), new Set(offlineProfile ? configuredDefaults : runtimeProfile.corePlugins)),
-  ...(offlineProfile ? await Promise.all(['dsh-ssh-ops', 'dsh-progressive-tools', 'dsh-session-notification', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-wechat', 'dsh-genui', 'zotero-harvest'].map(async name => resolve(await packageSource(name)))) : []),
+  ...(offlineProfile ? await Promise.all(['dsh-ssh-ops', 'dsh-progressive-tools', 'dsh-session-notification', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-wechat', 'dsh-genui', 'zotero-harvest', 'dsh-archive-manager', 'oh-story-dsh'].map(async name => resolve(await packageSource(name)))) : []),
   ...(offlineProfile ? [resolve(root, 'store')] : []),
 ]
 const desktopRuntimeSeeds = [

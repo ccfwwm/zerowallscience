@@ -2,6 +2,72 @@
 
 ## [Unreleased]
 
+### 新增（选集美学纲领阶段二 · B2 试点）
+
+- **`divider` 支持 `label`（章节分隔）**：`{"type":"divider","label":"<章节名>"}` 渲染为「线 + 小标签 + 线」的居中章节分隔（meta 字号、次级色、章节级间距），用于报告从摘要切入数据、图表册开新章等场景。`title`/`text` 作为别名归一化到 `label`；超长标签在 repair 中截断到 64 字符，不丢弃节点。无 `label` 时保持原有细线渲染。SKILL.md 同步字段说明与「何时不用」（卡片/列表内部不用，一条回答 ≤3 个）；组件画廊加示例。
+- **SKILL.md 新增「编排范式」节（试点两例）**：「主表明细」（汇总 stat + input 筛选 + table details 钻取，数据问答默认结构）与「结论卡」（指标行 + tone 结论卡 + 行动按钮，分析收尾默认结构），每个带可渲染示例与「何时不用」——清单与示例值依据真实会话采纳审计（`callout+table` 为最高频组合、`table` 为第三大组件）；定位为「验证过的起点不是模板」，与既有「不要照抄组件序列」原则显式衔接。常驻系统提示词加一行触发器（多组件回答先看范式 + divider 章节分隔提示），其余四个范式（封面页/对比页/时间线叙事/测验页）按数据强度后续补齐。
+
+- **SKILL.md「编排范式」补齐全部六例**：新增封面页（hero + display 引言 + 章节 + 三卡摘要 bento）、对比页（tone 卡定性 + 数值表定量）、时间线叙事（timeline + 汇总卡）、测验页（radio 组 + submit 本地判卷）四例；节引言更新为六类场景索引。原定「审计数据后再铺开」的门槛经用户裁定豁免，审计改为合并后单一对比点。
+- **选集美学 B1/B3/B4 三字段**：`text.size:"display"`（引言级大字，v11 display 令牌，一条回答 ≤1）与 `text.align`（`center:true` 旧写法兼容归一化）；`card.eyebrow`（标题上方 meta 大写引题，卡片群章节化用，≤3 个）；`image.caption`（图下方图注；`alt` 保持图上方标签行）。全部经 schema registry 校验/repair/诊断并带测试。
+- **gallerySpec 选集化（C1）**：组件画廊从 50+ 节点零件目录重排为章节化选集（封面→摘要→数据→图表册→叙事与代码→交互→附录·全部词汇），示范 divider 章节、eyebrow、display、caption 等全部新字段；数值感知排序表保持页首 Q1 位，e2e 交互断言继续命中。
+- **GitHub Pages 选集页（C2）**：新增 `scripts/build-anthology-page.mts`——从 gallerySpec 经 artifact 导出管线生成自包含 HTML；部署 workflow 改为源码推送触发 CI 现场构建（8MB 产物不进 git，线上跟随 main）。
+- **README showcase 截图刷新（C3）**：三张真实输出截图从新选集重出（plot 演示补参数滑杆），中英文说明同步。
+- **视觉夹具矩阵（A5）**：`e2e-visual.mts` 新增深色 / 窄列 / 深色窄列三张全页截图，与浅色全页构成 light/dark × wide/narrow 矩阵。
+
+### 变更（设计系统 v11 · 选集美学纲领阶段一）
+
+- **字号刻度补洞并按归属命名**：新增 `--dsl-g-font-stat`（34，指标卡基础值）/ `--dsl-g-font-stat-hero`（44，单一超大指标）/ `--dsl-g-font-mega`（52，hero 封面大数字）三档——此前 stat 基础值借用 `--dsl-g-font-hero`、44px 与 52px 为游离死值；围栏标题（banner 22px→h1 档 24px，底部间距 18→`--dsl-g-gap-xl` 24px，章节呼吸）、hero 封面标题（20px→h2 档）、环形进度中心值（17px→h3 档）等全部游离字号收进刻度；四个折叠 chevron 字形统一 11px（图标字形不入字号刻度，但彼此一致）。新增 `--dsl-g-gap-xl: 24px` 章节间距档。
+- **动效令牌化**：新增 `--dsl-g-dur-fast`（0.15s 控件反馈）/ `--dsl-g-dur-grow`（0.6s 数据生长）/ `--dsl-g-dur-reveal`（0.45s 入场）与统一缓动 `--dsl-g-ease-out`；全部 transition/animation 字面量（0.12s/0.15s/0.18s/0.2s/0.5s/0.6s）按职责归档，`prefers-reduced-motion` 覆盖不变。
+- **交互态统一**：按钮 hover 从 brightness 滤镜迁到主题感知的 4% label wash（以 background-image 叠加，不覆盖 danger/success 底色；primary 单独提亮 accent）；面板头部/关闭/模板按钮的 `rgba(255,255,255,…)` hover 字面量在浅色主题下不可见，改为 `--dsl-g-hover` / `--dsl-g-hover-strong`（新增 8% 强档）；面板切换/模板/关闭按钮补齐 focus-visible 焦点环。
+- **ECharts preset 字号从令牌解析**：gauge 标题/中心值、graph 节点标签三处内嵌死值字号改读 `--dsl-g-font-data/meta/display`（图表容器在 `.block` 内继承令牌；脱离文档渲染回退同值字面量，行为不变）。
+- **视觉 e2e 不再强依赖系统 Chrome**：`e2e-visual.mts` 浏览器解析顺序改为 `E2E_CHROMIUM` 环境变量 → 系统 Chrome → playwright 注册表 → 自动扫描 ms-playwright 缓存中已有的 `chromium-*` 构建（缓存由 agent-browser 等工具安装、构建号与当前库不一致时也可用）；宿主遮罩清理幂等化（`dismissHostOverlays`），在每次真实指针交互前重跑——宿主 React 重渲染会把遮罩重新挂回，曾导致 tooltip 回归超时。注意 `link:` 安装的是 `lib/` 预构建产物，跑视觉回归前需先 `pnpm build`。
+
+### 修复
+
+- **`validate_dsh_ui` 不再把 `divider`/`spacer` 误报为未知类型**：发前校验的手写类型清单漏了这两个无必填字段的组件，任何包含它们的围栏走 `validate_dsh_ui` 都返回 "unknown type" 并要求模型修改（渲染管线按契约过滤该误报，所以线上渲染未受影响，但发前校验对这两类围栏一直是坏的）。divider.label 的 schema 测试暴露了这个问题；现在两者在校验 switch 中显式放行，字段类型检查仍由 schema registry 覆盖。
+- **#298 方向 A:政策性截断不再导致整条围栏被拒**。guard 的 tabs ≤12 / accordion ≤24 截断与围栏级「声明数 vs 渲染数」校验（#42）此前互相抵消——截断丢弃的节点被计为缺陷,超限 tabs 让整条围栏降级成代码块并触发纠错重发,截断路径实际是死路。现在声明计数器应用与 repair 相同的家族上限:政策截断的节点不计入「消失」账目,围栏截断后照常渲染;与既有的两类豁免（全局 200 节点预算的 intentional-cut、超深链的剪枝二次校验）行为一致。模型侧新增 `policy_truncated` 教学警告（`validate_dsh_ui` 输出,不触发纠错）,提示拆分组件;SKILL.md 使用规则同步注明 tabs/accordion 上限。
+
+### 修复
+
+- **quiz 选项按钮的可访问名不再混入 ○/✓/✗ 标记**：标记符号的 span 补上 `aria-hidden="true"`,读屏器与 `getByRole` 查询听到的名字就是选项文本本身（此前为「○对」这类拼合名）。
+
+### 测试
+
+- **`check:host-api` 改跑全量单元测试**：此前它只运行 2 个插件生命周期文件，切宿主时其余 97 个测试文件从不参与。现在对非 minimum 宿主运行完整 `vitest run`（隔离目录补拷 `scripts/`，`e2e-auth` 按相对路径读取其中源码），所有非门控套件都会对真实的新宿主包执行。配套改动：
+  - 发布宿主包存在**未声明的运行时依赖**（`ui-primitives` 直接 import `clsx`/`shiki`/`simple-icons`，`client-store` import `zustand`/`immer` 等，真实宿主由 App 外层提供）——隔离目录显式补装这份宿主运行时闭包，否则 vite 在模块加载阶段以 "Failed to resolve import" 拒绝整批测试文件；新宿主引入新的幽灵依赖时 vitest 会点名报错，届时在脚本清单中追加；
+  - 首次在 0.1.7-rc.2 / 0.2.0-rc.2 上执行全量套件即发现 `genui-diff-labels` 的「rc.1 diff 契约」用例失败（0.1.7+ 的 DiffBlock 工具栏不再随容器 `textContent` 暴露）。该用例改为只在最低宿主世代（≤0.1.2-rc.1，即锁定的 devDependencies）断言，0.1.7+/0.2.x 专属契约待真实宿主浏览器验证后补充。
+- **发现：`skipIf(!hasFenceRegistry)` 门控的 14 个测试文件（约 99 个用例）从未执行过**。核查 0.1.2-rc.1 → 0.2.0-rc.2 全部已发布 `dsh-client-ui-primitives`（npm 包与 DSH 源码仓库）：`registerFenceRenderer` 这个导出**从未存在**——宿主 `MarkdownText` 有自己的 fence 解析，但不消费任何注册的外部 fence 渲染器。即门控条件在所有环境下恒为 false，这批套件（fence 正文渲染、流式渲染、图表布局、`input-durable-value-priority` 等）自加入起就是死测试，覆盖的只是一个仅内部存在过的宿主契约（与 #275 中「fence-registry 扩展点已不存在」相互印证）。
+- **复活上述 96 个 fence 渲染用例**：新增测试双替身 `tests/genui-markdown.tsx`——散文照常渲染、`dsh-ui` 围栏交给插件真实的 `renderGenuiFence` 入口（DOM 通道生产环境调用的同一函数，settled 时提供合成 source、streaming 时包 `[data-streaming]`）。原先门控的 14 个文件改走该入口后全部执行；主套件从 1113 通过 / 99 死跳过变为 1209 通过 / 3 跳过。复活即修的陈旧断言：donut 图例格式（`{value} · {pct}%`）、gallery 音频 `preload="metadata"`、settled 渲染的导出入口与 spec 内同名按钮共存。3 个依赖 `registerGenuiComponent` 的用例改为按真实特性探测门控（`hasComponentRegistry`，同为从未发布的契约线扩展点）。
+- **发现并钉住一个真冲突（#298）**：`caps tabs at render time` 标记为 `it.fails`——guard 的 maxTabs 截断与围栏级「声明数 vs 渲染数」校验互相抵消，超限 tabs 节点导致整条围栏被拒成代码块，截断路径是死路。处置方向见 issue。
+
+## [0.12.0] - 2026-10-13
+
+### 新增
+
+- GenUI 正文、表格、工具卡片和会话面板支持本地文件链接，点击后在宿主右侧栏打开文件并定位到指定行；支持工作区相对路径和 Windows 路径（#273、PR #278）。
+- 增加默认开启的 `renderUiTool` 配置。设为 `false` 时只关闭 `render_ui` 工具及相关模型指引，发前校验、正文围栏和会话面板继续可用（#276、PR #281）。
+
+### 修复
+
+- JSON 对象中无值的字段名紧接正常字段时，围栏修复只移除无值字段，保留后续内容；浏览器渲染与发前校验共用这一修复，避免将两个字段名拼接后丢失卡片正文（#290、#291）。
+- 宿主隐藏 `dsh-ui` 语言、同时改变代码块包装类名时，DOM 通道现可通过宿主的代码内容语义标记定位包装节点，继续从原始消息识别围栏；不再因漏扫描而留下裸 JSON，正文和明确声明为普通代码的围栏保持原样（#275）。
+- 缺少结束标记的 `dsh-ui` 围栏若正文已经可以渲染（包括尾部工具残片或可修复的 JSON），不再要求模型重发同一张卡片；一条回复中只有无法渲染的围栏会进入纠错（#288）。
+- 修复单行表格中的行内代码导致文字越过列边界的问题，同时保留连续空格；需要更宽空间的表格通过容器横向滚动显示（#280）。
+- 表格页脚单元格中的行内代码同样沿用「表格内 chip 不重新开启断行」的规则；浏览器回归夹具补上宿主 `.markdown` 级联（`overflow-wrap: anywhere` 与 `:not(pre) > code` 的 `inline-flex`），让跨列溢出在夹具中可复现，并把重叠检查从首列相邻对扩展到所有相邻列对（#285）。
+- 发前校验遇到原生组件的未知字段时，返回结构化字段路径并要求修改后重验，不再指示直接发送围栏；JSON 已修复的路径同样执行这一判定（#275 追加反馈）。
+- 图表主题色先解析为实际 RGB/RGBA，修复第三方皮肤中 `calc()` 等颜色表达式导致 Mermaid 渲染失败的问题（PR #279）。
+- DOM 围栏扫描遇到已失效的 Cordis Context 时，会保留已挂载的流式围栏和组件状态，并在 Context 恢复后继续解析（#280）。
+
+### 兼容性
+
+- 将 DSH 当前宿主与下一测试版的接口、打包安装和发布验证目标更新为 `0.2.0-rc.2` 与 `0.2.1-alpha.1`。
+- 移除 DSH 已废弃的运行时诊断配套入口 `./invariant`、对应构建产物与 `@deepseek-ai/dsh-invariants` 直接依赖。
+- 对应宿主版本的公开依赖检查加入技能注册、插件重载和持久化纠错恢复测试；会话样本补齐新版要求的消息记录字段。
+
+### 变更
+
+- 完成态 GenUI 的导出入口改为无边框图标，沿用既有图标按钮的悬浮与聚焦反馈；保留“导出”提示和 HTML / GenUI JSON 菜单，并补齐第三方主题中的悬浮反馈（#274、PR #277）。
+
 ## [0.11.4] - 2026-10-08
 
 ### 修复

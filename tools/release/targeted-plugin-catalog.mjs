@@ -1,5 +1,27 @@
 import { canonical, compareVersions, verifySignedDocument } from './resource-catalog.mjs'
 
+export function selectedPluginArguments(args) {
+  const plugins = [], remaining = []
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] !== '--plugin') { remaining.push(args[i]); continue }
+    const id = args[++i]
+    if (!id || id.startsWith('--') || plugins.includes(id)) throw new Error('Invalid or duplicate --plugin selection')
+    plugins.push(id)
+  }
+  return { plugins, remaining }
+}
+
+export function mergePublishedPlugins(previous, selections, keys) {
+  const ids = new Set()
+  let result = previous
+  for (const selection of selections) {
+    if (ids.has(selection.id)) throw new Error('Duplicate selected plugin identity')
+    ids.add(selection.id)
+    result = mergePublishedPlugin(result, selection, keys)
+  }
+  return result
+}
+
 /** Keep every other published entry, including its original signature. */
 export function mergePublishedPlugin(previous, selected, keys) {
   verifySignedDocument(selected, keys)

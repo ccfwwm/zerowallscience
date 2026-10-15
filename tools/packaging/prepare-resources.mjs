@@ -3,7 +3,7 @@ import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { relative, resolve, sep } from 'node:path'
 import { patchSciMasterMcp } from '../release/scimaster-compat.mjs'
 import { readFile, writeFile } from 'node:fs/promises'
-import { execFileSync } from 'node:child_process'
+import { x as extractArchive } from 'tar'
 import { contract } from '../build/paths.mjs'
 import { createHash } from 'node:crypto'
 
@@ -74,7 +74,9 @@ if (!await stat(archive).catch(() => undefined)) {
   await writeFile(archive, bytes)
 }
 await mkdir(sci, { recursive: true })
-execFileSync('tar', ['-xzf', archive, '--strip-components=1', '-C', sci], { windowsHide: true })
+// Avoid PATH-dependent tar implementations interpreting Windows drive letters
+// as remote archive hosts. The archive is integrity-checked before extraction.
+await extractArchive({ file: archive, strip: 1, cwd: sci })
 await writeFile(resolve(sci, 'dist/mcp.cjs'), patchSciMasterMcp(await readFile(resolve(sci, 'dist/mcp.cjs'))))
 await cp(resolve(root, 'mcp-environment-staging/sci/zerowall-mcp-launcher.cjs'), resolve(sci, 'zerowall-mcp-launcher.cjs'))
 

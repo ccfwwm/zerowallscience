@@ -4,8 +4,10 @@
    sizes/gaps/radii (17 font sizes, 6 radii, 10+ gap values, 13 tint levels)
    into five scales:
 
-   · type      display 24 / h1 20 / h2 16 / h3·body 14 / title 13 / meta 12 / data 11
-   · spacing   4 · 8 · 12 · 16 (--dsl-g-gap-*)
+   · type      mega 52 / stat-hero 44 / stat 34 / display 28 / h1 24 / h2 19 /
+               h3 16 / body 14.5 / title 13.5 / meta 12.5 / data 12 (v11)
+   · spacing   4 · 8 · 12 · 16 · 24 (--dsl-g-gap-*; 24 is the section step)
+   · motion    fast 0.15s / grow 0.6s / reveal 0.45s on one ease-out curve (v11)
    · radius    surface 12 · control 8 · pill 999
    · color     one brand accent for interaction+data; success/warn/error only
                for state; tints normalized to 8% (subtle) / 14% (strong)
@@ -40,9 +42,13 @@ body[data-ds-dark-theme] .panel {
 
   /* Design system v4: the v3 scale was too compressed — every level sat
      within 26..12px, so nothing dominated. v4 restores a display contrast
-     (hero 34 / display 28 / h1 24 / h2 19 / h3 16) against a 14.5px body, and
-     the reading floor stays 12px. */
-  --dsl-g-font-hero: 34px;
+     (34/28/24/19/16) against a 14.5px body, and the reading floor stays 12px.
+     v11 names the three big figures by their OWNER: stat values, the single
+     hero stat, and the hero cover's mega figure are three different jobs on
+     one scale (before v11: "--dsl-g-font-hero", a bare 44px and a bare 52px). */
+  --dsl-g-font-stat: 34px;
+  --dsl-g-font-stat-hero: 44px;
+  --dsl-g-font-mega: 52px;
   --dsl-g-font-display: 28px;
   --dsl-g-font-h1: 24px;
   --dsl-g-font-h2: 19px;
@@ -53,9 +59,17 @@ body[data-ds-dark-theme] .panel {
   --dsl-g-font-data: 12px;
 
   --dsl-g-gap-lg: 16px;
+  --dsl-g-gap-xl: 24px;
   --dsl-g-gap-md: 12px;
   --dsl-g-gap-sm: 8px;
   --dsl-g-gap-xs: 4px;
+
+  /* Motion (v11): one deceleration curve; durations named by JOB, not by
+     component — control feedback, data growth, entrance reveal. */
+  --dsl-g-dur-fast: 0.15s;
+  --dsl-g-dur-grow: 0.6s;
+  --dsl-g-dur-reveal: 0.45s;
+  --dsl-g-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   --dsl-g-border: var(--dsw-alias-border-l1, var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12)));
   --dsl-g-border-strong: var(--dsw-alias-border-l2, rgba(255, 255, 255, 0.12));
@@ -64,6 +78,7 @@ body[data-ds-dark-theme] .panel {
   /* Row/surface hover: a 4% wash of the theme's own label color works on
    * dark AND light hosts without any off-brand literal. */
   --dsl-g-hover: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, transparent);
+  --dsl-g-hover-strong: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);
   /* Zebra rows / table header wash: half the hover strength, so a striped
      table still reads as one surface rather than a stack of bands. */
   --dsl-g-zebra: color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, transparent);
@@ -111,14 +126,16 @@ body[data-ds-dark-theme] .panel {
 .panel *, .panel *::before, .panel *::after { box-sizing: border-box; }
 
 .banner {
-  /* Hierarchy through type, not decoration: 22px/800 with generous space
-     below. The accent bars v4 added read as PPT chrome and are gone. */
-  font-size: 22px;
+  /* Hierarchy through type, not decoration: the fence title reads as the page
+     heading (h1, 800) with a section-scale breath below it (gap-xl, v11) —
+     components under it start a new "chapter", not another row. The accent
+     bars v4 added read as PPT chrome and are gone. */
+  font-size: var(--dsl-g-font-h1);
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--dsw-alias-label-primary);
-  padding-bottom: 14px;
-  margin-bottom: 18px;
+  padding-bottom: var(--dsl-g-gap-md);
+  margin-bottom: var(--dsl-g-gap-xl);
   border-bottom: 1px solid var(--dsl-g-border);
 }
 
@@ -149,6 +166,30 @@ body[data-ds-dark-theme] .panel {
   background: var(--dsw-alias-markdown-hr, var(--dsl-g-border));
   border: none;
   margin: var(--dsl-g-gap-xs) 0;
+}
+
+/* Labeled divider (`divider.label`, B2): a chapter break — hairline + meta
+   label + hairline. It separates CHAPTERS, not list rows, so it breathes at
+   the section step (gap-xl); the unlabeled hairline stays quiet above. */
+.dividerLabeled {
+  display: flex;
+  align-items: center;
+  gap: var(--dsl-g-gap-md);
+  margin: var(--dsl-g-gap-xl) 0;
+}
+.dividerLabeled::before,
+.dividerLabeled::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--dsw-alias-markdown-hr, var(--dsl-g-border));
+}
+.dividerLabelText {
+  font-size: var(--dsl-g-font-meta);
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-line;
+  text-align: center;
 }
 
 .card {
@@ -189,6 +230,17 @@ body[data-ds-dark-theme] .panel {
   color: var(--dsw-alias-label-secondary);
 }
 
+/* Card eyebrow (`card.eyebrow`, B3): the heroLabel language on a card — meta
+   uppercase overline for chaptering a card GROUP. Sparingly: not every card
+   in a row carries one. */
+.cardEyebrow {
+  font-size: var(--dsl-g-font-meta);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 /* ---------- text ---------- */
 
 .text { color: var(--dsw-alias-label-primary); white-space: pre-line; }
@@ -212,7 +264,17 @@ body[data-ds-dark-theme] .panel {
 .text.body { font-size: var(--dsl-g-font-body); line-height: 1.7; color: var(--dsw-alias-label-primary); text-wrap: pretty; max-width: 68ch; }
 .text.muted { font-size: var(--dsl-g-font-title); line-height: 1.65; color: var(--dsw-alias-label-secondary); }
 .text.caption { font-size: var(--dsl-g-font-meta); line-height: 1.6; color: var(--dsw-alias-label-secondary); }
+/* Display: the one-per-answer focal line (B1) — bigger than h1, carries the
+   opening statement of a report; vocabulary lives on the v11 scale. */
+.text.display {
+  font-size: var(--dsl-g-font-display);
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
 .text.center { text-align: center; }
+.text.left { text-align: left; }
+.text.right { text-align: right; }
 
 /* ---------- controls ---------- */
 
@@ -227,7 +289,7 @@ body[data-ds-dark-theme] .panel {
   font-family: inherit;
   line-height: 1.4;
   cursor: pointer;
-  transition: border-color 0.15s, filter 0.15s, background 0.15s, transform 0.1s;
+  transition: border-color var(--dsl-g-dur-fast), background var(--dsl-g-dur-fast), transform var(--dsl-g-dur-fast);
   text-align: center;
   white-space: pre-line;
   /* A button in a `col` must hug its label; only `full: true` stretches.
@@ -236,10 +298,14 @@ body[data-ds-dark-theme] .panel {
   align-self: flex-start;
 }
 
-.button:hover:not(:disabled) { border-color: var(--dsl-g-accent); filter: brightness(1.06); }
-.button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+/* Hover = the shared 4% label wash, painted as a background-image so it
+   overlays whatever surface each variant owns (tinted danger/success keep
+   their hue; ghost washes over the surface it sits on). v11 retires the
+   brightness-filter hover: filters ignored the theme's own hover language. */
+.button:hover:not(:disabled) { border-color: var(--dsl-g-accent); background-image: linear-gradient(var(--dsl-g-hover), var(--dsl-g-hover)); }
+.button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--dsl-g-accent) 92%, #fff); }
 /* Press feedback: a 1px sink makes every actionable control feel mechanical. */
-.button:active:not(:disabled) { transform: translateY(1px); filter: brightness(0.97); }
+.button:active:not(:disabled) { transform: translateY(1px); }
 /* Display-only buttons (no action): honest disabled affordance — the
  * clickable-looking dead button was the top interaction complaint. */
 .button:disabled {
@@ -331,6 +397,14 @@ body[data-ds-dark-theme] .panel {
   border-radius: var(--dsl-g-radius-surface);
 }
 .mediaLabel { font-size: var(--dsl-g-font-title); font-weight: 600; color: var(--dsw-alias-label-primary); }
+/* Image caption (`image.caption`, B4): the magazine note UNDER the picture —
+   source, reading or credit; quieter and smaller than the alt label above. */
+.mediaCaption {
+  font-size: var(--dsl-g-font-data);
+  color: var(--dsw-alias-label-tertiary);
+  line-height: 1.5;
+  text-align: center;
+}
 .mediaPlayer { display: block; width: 100%; min-width: 0; border-radius: var(--dsl-g-radius-control); }
 /* Reserve the box before the bytes arrive: without an intrinsic ratio an
    unloaded <img> collapses to 0px and the card looks broken. */
@@ -388,7 +462,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   align-items: baseline;
   gap: 4px;
   font-family: var(--dsl-g-font-mono);
-  font-size: 52px;
+  font-size: var(--dsl-g-font-mega);
   font-weight: 750;
   letter-spacing: -0.028em;
   line-height: 1;
@@ -397,7 +471,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 }
 .heroUnit { font-size: 0.44em; font-weight: 650; letter-spacing: 0; color: var(--dsw-alias-label-secondary); }
 .heroSpark { margin-left: auto; width: 168px; align-self: center; }
-.heroTitle { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; color: var(--dsw-alias-label-primary); line-height: 1.3; }
+.heroTitle { font-size: var(--dsl-g-font-h2); font-weight: 700; letter-spacing: -0.01em; color: var(--dsw-alias-label-primary); line-height: 1.3; }
 .heroSubtitle { font-size: var(--dsl-g-font-title); color: var(--dsw-alias-label-secondary); line-height: 1.6; text-wrap: pretty; }
 
 /* ---------- inline markup (inline.ts) ----------
@@ -421,6 +495,9 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 }
 .inlineLink { color: var(--dsl-g-accent); text-decoration: underline; text-underline-offset: 2px; }
 .inlineLink:hover { text-decoration-thickness: 2px; }
+.inlineFileLink { padding: 0; border: 0; background: none; color: var(--dsl-g-accent); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.inlineFileLink:hover { text-decoration-thickness: 2px; }
+.inlineFileLink:focus-visible { outline: 2px solid var(--dsl-g-accent); outline-offset: 2px; border-radius: 3px; }
 
 /* ---------- badges / stat / progress ---------- */
 
@@ -476,8 +553,8 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 }
 /* Hero stat: one number is the answer's anchor (use it once per fence). */
 .statHero { padding: 18px 20px 20px; }
-.statHero .statValue { font-size: 44px; line-height: 1.02; letter-spacing: -0.035em; }
-.statHero .statLabel { font-size: 13px; }
+.statHero .statValue { font-size: var(--dsl-g-font-stat-hero); line-height: 1.02; letter-spacing: -0.035em; }
+.statHero .statLabel { font-size: var(--dsl-g-font-title); }
 .grid > .stat, .row > .stat { border-left: 1px solid var(--dsl-g-border); }
 .statLabel {
   font-size: var(--dsl-g-font-meta);
@@ -491,7 +568,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   align-items: baseline;
   gap: 3px;
   font-family: var(--dsl-g-font-mono);
-  font-size: var(--dsl-g-font-hero);
+  font-size: var(--dsl-g-font-stat);
   font-weight: 700;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
@@ -551,7 +628,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   border-radius: var(--dsl-g-radius-pill);
   /* A faint top sheen keeps the accent bar from reading as a flat slab. */
   background: linear-gradient(180deg, color-mix(in srgb, var(--dsl-g-accent) 85%, white), var(--dsl-g-accent));
-  transition: width 0.5s ease;
+  transition: width var(--dsl-g-dur-grow) var(--dsl-g-ease-out);
 }
 
 /* ---------- list / table / chart / tabs / avatar ---------- */
@@ -651,6 +728,18 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 /* An inline code span keeps its own spacing too (a pasted snippet often lives
    inside backticks), matching the block-level code surface. */
 .inlineCode { white-space: pre-wrap; }
+/* Table cells are single-line by default, so a chip inside them must not
+   re-open line breaking. Host shells render message bodies inside `.markdown`,
+   which makes every chip an atomic `inline-flex` box and inherits
+   `overflow-wrap: anywhere` into the cell; together with `pre-wrap` the chip's
+   automatic minimum size collapses, the column can then be sized below its
+   content, and the still-unbroken text is painted over the next column (#280).
+   Keep the cell's own line-breaking contract for every table section. */
+.table > thead > tr > th:not(.tdCode):not(.tdMultiline) .inlineCode,
+.table > tbody > tr:not(.detailRow) > td:not(.tdCode):not(.tdMultiline) .inlineCode,
+.table > tfoot > tr > td:not(.tdCode):not(.tdMultiline) .inlineCode {
+  white-space: pre;
+}
 /* Rich-text owners must paint the real newlines kept by renderInline. Scope
    this to prose/labels: table data keeps nowrap and code keeps pre-wrap. For
    flex controls, target the label span so emphasis and plain text share one
@@ -664,9 +753,11 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 .accBody,
 .banner,
 .cardTitle,
-.mediaLabel,
-.heroLabel,
-.heroTitle,
+	.mediaLabel,
+	.mediaCaption,
+	.heroLabel,
+	.heroTitle,
+	.cardEyebrow,
 .heroSubtitle,
 .statLabel,
 .ringLabel,
@@ -704,7 +795,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   font-weight: inherit;
   cursor: pointer;
   text-align: left;
-  transition: color 0.12s;
+  transition: color var(--dsl-g-dur-fast);
 }
 .table th.thNum .thSort { text-align: right; width: 100%; }
 .thSort:hover { color: var(--dsw-alias-label-primary); }
@@ -831,9 +922,9 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   gap: 2px;
   border-radius: 5px 5px 0 0;
   overflow: hidden;
-  transition: height 0.6s ease;
+  transition: height var(--dsl-g-dur-grow) var(--dsl-g-ease-out);
 }
-.stackSeg { width: 100%; transition: height 0.6s ease, filter 0.15s; }
+.stackSeg { width: 100%; transition: height var(--dsl-g-dur-grow) var(--dsl-g-ease-out), filter var(--dsl-g-dur-fast); }
 .stackSeg:hover { filter: brightness(1.15); }
 .barFill {
   position: absolute;
@@ -842,7 +933,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   border-radius: 5px 5px 0 0;
   min-height: 2px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--dsl-g-accent) 78%, white), var(--dsl-g-accent));
-  transition: height 0.6s ease, filter 0.15s;
+  transition: height var(--dsl-g-dur-grow) var(--dsl-g-ease-out), filter var(--dsl-g-dur-fast);
 }
 .barFill:hover { filter: brightness(1.18); }
 .barLabel {
@@ -872,7 +963,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   margin-bottom: -1px;
   cursor: pointer;
   line-height: 1.5;
-  transition: color 0.15s, background 0.15s, border-bottom-color 0.15s;
+  transition: color var(--dsl-g-dur-fast), background var(--dsl-g-dur-fast), border-bottom-color var(--dsl-g-dur-fast);
 }
 .tab:hover { color: var(--dsw-alias-label-primary); background: var(--dsl-g-hover); }
 .tabActive { color: var(--dsw-alias-label-primary); font-weight: 650; border-bottom-color: var(--dsl-g-accent); }
@@ -951,7 +1042,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 /* The rail behind a finished step picks up the success tint, so the sequence
    reads as progress instead of a row of badges. */
 .stepDone:not(:last-child)::before { background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #3ecf8e) 45%, transparent); }
-.stepTitle { transition: color 0.15s; }
+.stepTitle { transition: color var(--dsl-g-dur-fast); }
 .stepActive .stepTitle { color: var(--dsl-g-accent); }
 .stepMarker {
   width: 24px;
@@ -971,7 +1062,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #3ecf8e) 18%, transparent);
   border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary, #3ecf8e) 55%, transparent);
   color: var(--dsw-alias-state-success-primary, #2f9e6b);
-  font-size: 13px;
+  font-size: var(--dsl-g-font-title);
 }
 .stepActive .stepMarker {
   background: color-mix(in srgb, var(--dsl-g-accent) var(--dsl-g-tint-strong), transparent);
@@ -1005,7 +1096,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 
 .lineChart { position: relative; display: flex; flex-direction: column; gap: var(--dsl-g-gap-sm); }
 .linePath { fill: none; stroke: var(--dsl-g-accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.lineDot { fill: var(--dsl-g-accent); transition: filter 0.15s; }
+.lineDot { fill: var(--dsl-g-accent); transition: filter var(--dsl-g-dur-fast); }
 .lineDot:hover { filter: brightness(1.3); }
 .lineGrid { stroke: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.07)); stroke-width: 1; }
 .lineGridAxis { stroke: var(--dsl-g-border-strong); stroke-width: 1; }
@@ -1041,15 +1132,15 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.groupedFill { flex: 0 0 auto; width: 100%; border-radius: 4px 4px 2px 2px; min-height: 3px; background: var(--dsl-g-accent); transition: filter 0.15s; }
+.groupedFill { flex: 0 0 auto; width: 100%; border-radius: 4px 4px 2px 2px; min-height: 3px; background: var(--dsl-g-accent); transition: filter var(--dsl-g-dur-fast); }
 .groupedFill:hover { filter: brightness(1.18); }
 
 .donut { position: relative; display: flex; align-items: center; gap: var(--dsl-g-gap-lg); }
 .donutTrack { stroke: var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.08)); }
-.donutSeg { transition: filter 0.15s; }
+.donutSeg { transition: filter var(--dsl-g-dur-fast); }
 .donutSeg:hover { filter: brightness(1.18); }
 .donutTotal { fill: var(--dsw-alias-label-primary); font-size: var(--dsl-g-font-h2); font-weight: 700; }
-.donutTotalLabel { fill: var(--dsw-alias-label-tertiary); font-size: 10px; }
+.donutTotalLabel { fill: var(--dsw-alias-label-tertiary); font-size: var(--dsl-g-font-data); }
 .donutLegend { display: flex; flex-direction: column; justify-content: center; gap: var(--dsl-g-gap-sm); font-size: var(--dsl-g-font-meta); color: var(--dsw-alias-label-secondary); line-height: 1.5; }
 .donutPct { color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }
 
@@ -1057,11 +1148,11 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 
 .ring { display: flex; align-items: center; gap: var(--dsl-g-gap-md); }
 .ringTrack { stroke: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent); }
-.ringFill { stroke: var(--dsl-g-accent); transition: stroke-dasharray 0.6s ease; }
+.ringFill { stroke: var(--dsl-g-accent); transition: stroke-dasharray var(--dsl-g-dur-grow) var(--dsl-g-ease-out); }
 .ringValue {
   fill: var(--dsw-alias-label-primary);
   font-family: var(--dsl-g-font-mono);
-  font-size: 17px;
+  font-size: var(--dsl-g-font-h3);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -1113,7 +1204,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   font-family: inherit;
   font-size: var(--dsl-g-font-meta);
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition: color var(--dsl-g-dur-fast), border-color var(--dsl-g-dur-fast), background var(--dsl-g-dur-fast);
 }
 .tableTool:hover { color: var(--dsw-alias-label-primary); border-color: var(--dsl-g-border-strong); background: var(--dsl-g-hover); }
 .tableTool:focus-visible { outline: 2px solid var(--dsl-g-accent); outline-offset: 1px; }
@@ -1127,11 +1218,17 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 /* Master-detail rows (table.details): a chevron in the first cell opens a
    full-width panel underneath, so a table can drill down without leaving the
    page or opening a modal. */
-.detailCell { padding-left: var(--dsl-g-gap-sm); }
+.detailCell { position: relative; padding-left: var(--dsl-g-gap-sm); }
 .detailToggle {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  vertical-align: middle;
+  width: 24px;
+  height: 24px;
+  margin-right: 4px;
   padding: 0;
   border: none;
   background: none;
@@ -1142,12 +1239,16 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   text-align: left;
 }
 .detailToggle:hover { color: var(--dsl-g-accent); }
+.detailCell:hover .detailToggle { color: var(--dsl-g-accent); }
 .detailToggle:focus-visible { outline: 2px solid var(--dsl-g-accent); outline-offset: 2px; border-radius: 4px; }
+.detailContent { position: relative; z-index: 1; vertical-align: middle; cursor: pointer; }
+/* Chevron glyphs share ONE optical size (11px) across every collapsible —
+   they are icon glyphs, not type-scale members, but they must agree. */
 .detailChevron {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
-  transition: transform 0.18s ease;
+  transition: transform var(--dsl-g-dur-fast) var(--dsl-g-ease-out);
 }
 .detailChevron[data-open="true"] { transform: rotate(90deg); }
 .table tbody tr.detailRow > td {
@@ -1182,10 +1283,17 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
 .table tbody tr.groupRow:first-child td { box-shadow: none; padding-top: 10px; }
 .table tbody tr.groupRow:hover { background: none; }
 .table tbody tr.groupRow:nth-child(even) { background: none; }
+.groupRow td { position: relative; }
 .groupToggle {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  vertical-align: middle;
+  width: 24px;
+  height: 24px;
+  margin-right: 7px;
   padding: 0;
   border: none;
   background: none;
@@ -1197,7 +1305,9 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   cursor: pointer;
 }
 .groupToggle:hover { color: var(--dsl-g-accent); }
+.groupLabel:hover { color: var(--dsl-g-accent); }
 .groupToggle:focus-visible { outline: 2px solid var(--dsl-g-accent); outline-offset: 2px; border-radius: 4px; }
+.groupLabel { position: relative; z-index: 1; display: inline-flex; vertical-align: middle; align-items: center; gap: 7px; cursor: pointer; }
 .groupChevron { color: var(--dsw-alias-label-tertiary); font-size: 11px; width: 10px; }
 .groupCount {
   padding: 0 7px;
@@ -1269,7 +1379,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   min-width: 2px;
   border-radius: var(--dsl-g-radius-sm);
   background: var(--dsl-g-accent);
-  transition: width 0.6s ease;
+  transition: width var(--dsl-g-dur-grow) var(--dsl-g-ease-out);
 }
 .hbarValue {
   width: 64px;
@@ -1399,7 +1509,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   border: 1px solid var(--dsl-g-border);
   background: var(--dsw-alias-bg-base, #17171a);
   position: relative;
-  transition: background 0.2s;
+  transition: background var(--dsl-g-dur-fast);
 }
 .switchOn { background: var(--dsl-g-accent); border-color: transparent; }
 .switchKnob {
@@ -1409,7 +1519,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   border-radius: 50%;
   background: #fff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  transition: left 0.2s;
+  transition: left var(--dsl-g-dur-fast);
 }
 .switchOn .switchKnob { left: 19px; }
 
@@ -1485,7 +1595,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   font-family: inherit;
   line-height: 1.5;
   text-align: left;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--dsl-g-dur-fast), color var(--dsl-g-dur-fast);
 }
 .accHead:hover { background: var(--dsl-g-hover); }
 .accHead[aria-expanded="true"] { border-bottom: 1px solid var(--dsl-g-border); }
@@ -1495,7 +1605,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   flex-shrink: 0;
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
-  transition: transform 0.2s ease;
+  transition: transform var(--dsl-g-dur-fast) var(--dsl-g-ease-out);
 }
 .accChevron[data-open="true"] { transform: rotate(90deg); }
 .accBody {
@@ -1519,7 +1629,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   font-family: inherit;
   cursor: pointer;
   width: fit-content;
-  transition: all 0.15s;
+  transition: all var(--dsl-g-dur-fast);
 }
 .copyChip:hover { border-color: var(--dsl-g-accent); }
 .copyChip:active { transform: translateY(1px); }
@@ -1610,7 +1720,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   /* A soft halo instead of a hard ring: the dot reads as a marker on the rail
      rather than a bullet stuck to the text. */
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsl-g-accent) 16%, transparent);
-  transition: transform 0.15s ease;
+  transition: transform var(--dsl-g-dur-fast) var(--dsl-g-ease-out);
 }
 .tlItem:hover .tlDot { transform: scale(1.15); }
 .tlLine { flex: 1; width: 1px; margin: 4px 0 0; background: var(--dsl-g-border); }
@@ -1652,7 +1762,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   min-height: 26px;
   padding: 2px var(--dsl-g-gap-xs);
   border-radius: var(--dsl-g-radius-sm);
-  transition: background 0.12s;
+  transition: background var(--dsl-g-dur-fast);
 }
 .ftRow:hover { background: color-mix(in srgb, var(--dsw-alias-label-primary) 5%, transparent); }
 /* One hairline per depth level: the rail that makes a tree read as a tree. */
@@ -1671,7 +1781,7 @@ img.mediaPlayer { aspect-ratio: 16 / 9; object-fit: cover; background: var(--dsl
   font-size: 10px;
   line-height: 1;
   color: var(--dsw-alias-label-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform var(--dsl-g-dur-fast) var(--dsl-g-ease-out);
   transform-origin: 50% 50%;
 }
 .ftChevron[data-open="true"] { transform: rotate(90deg); }
@@ -1774,14 +1884,14 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
 }
 
 .reveal {
-  animation: genuiReveal 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation: genuiReveal var(--dsl-g-dur-reveal) var(--dsl-g-ease-out) backwards;
 }
 
 /* "✓ 已触发" confirmation chip: appears next to the button without layout
    shift risk (it inherits the flex row's gap). `backwards`, not `both`: the
    chip's natural (post-animation) style is already visible/no-transform, so
    pinning the end keyframe would only retain an unnecessary transform. */
-.btnSent { animation: genuiPopIn 0.2s ease backwards; }
+.btnSent { animation: genuiPopIn 0.2s var(--dsl-g-ease-out) backwards; }
 
 /* 尊重用户的减弱动效偏好 */
 @media (prefers-reduced-motion: reduce) {
@@ -1858,12 +1968,13 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
   color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   line-height: 1.5;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--dsl-g-dur-fast), background var(--dsl-g-dur-fast);
 }
 .quizOpt:hover:not(:disabled) { border-color: var(--dsl-g-accent); background: var(--dsl-g-accent-soft); }
 .quizOpt:focus-visible, .button:focus-visible, .tab:focus-visible, .accHead:focus-visible,
 .copyChip:focus-visible, .link:focus-visible, .quizRetry:focus-visible, .resetBtn:focus-visible,
-.playBtn:focus-visible, .bcText:focus-visible {
+.playBtn:focus-visible, .bcText:focus-visible, .panelToggle:focus-visible,
+.panelTpl:focus-visible, .panelClose:focus-visible {
   outline: 2px solid var(--dsl-g-accent);
   outline-offset: 1px;
 }
@@ -2022,7 +2133,7 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
   cursor: pointer;
 }
 
-.panelToggle:hover { background: rgba(255, 255, 255, 0.04); }
+.panelToggle:hover { background: var(--dsl-g-hover); }
 
 /* In-place dismiss (issue #23): a compact ✕ at the right end of the header,
    distinct from the collapse/expand toggle. Applies the exact `/panel clear`
@@ -2040,20 +2151,18 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
   border-radius: 6px;
   background: transparent;
   color: inherit;
-  font-size: 13px;
+  font-size: var(--dsl-g-font-title);
   line-height: 1;
   cursor: pointer;
   opacity: 0.65;
 }
 
 .panelClose:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--dsl-g-hover-strong);
   opacity: 1;
 }
 
 .panelClose:focus-visible {
-  outline: 1px solid var(--dsw-alias-state-business-primary, #4f8ef7);
-  outline-offset: 1px;
   opacity: 1;
 }
 
@@ -2069,14 +2178,14 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
   border-radius: 8px;
   background: transparent;
   color: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.6));
-  font-size: 12px;
+  font-size: var(--dsl-g-font-data);
   line-height: 1.5;
   cursor: pointer;
   opacity: 0.85;
 }
 
 .panelTpl:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--dsl-g-hover-strong);
   opacity: 1;
 }
 
@@ -2093,7 +2202,7 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
   flex: 1;
   min-width: 0;
   padding: 0 8px;
-  font-size: 12px;
+  font-size: var(--dsl-g-font-data);
   line-height: 1.5;
   color: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.6));
 }
@@ -2101,7 +2210,7 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
 .panelFlash {
   padding: 6px 12px;
   border-top: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.12));
-  font-size: 12px;
+  font-size: var(--dsl-g-font-data);
   line-height: 1.5;
   color: var(--dsw-alias-state-success-primary, #6ccb5f);
   background: color-mix(in srgb, var(--dsw-alias-state-success-primary, #6ccb5f) 8%, transparent);
@@ -2110,7 +2219,7 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
 .panelHint {
   padding: 6px 14px;
   border-top: 1px solid var(--dsw-alias-border-l1, rgba(255, 255, 255, 0.12));
-  font-size: 12px;
+  font-size: var(--dsl-g-font-data);
   line-height: 1.5;
   color: var(--dsw-alias-state-business-primary, #4f8ef7);
   background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4f8ef7) 8%, transparent);
@@ -2151,21 +2260,21 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
 }
 
 .achToastName {
-  font-size: 13px;
+  font-size: var(--dsl-g-font-title);
   font-weight: 600;
   color: var(--dsw-alias-state-business-primary, #4f8ef7);
 }
 
 .achToastDesc {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--dsl-g-font-data);
   line-height: 1.5;
   color: var(--dsw-alias-label-secondary, rgba(255, 255, 255, 0.6));
 }
 
 .panelBadge {
   flex: none;
-  font-size: 11px;
+  font-size: var(--dsl-g-font-data);
   line-height: 1.6;
   padding: 0 var(--dsl-g-gap-sm);
   border-radius: 6px;
@@ -2214,7 +2323,7 @@ button.ftNameBtn[aria-expanded] { cursor: pointer; }
   cursor: ns-resize;
   touch-action: none;
   background: transparent;
-  transition: background 0.15s;
+  transition: background var(--dsl-g-dur-fast);
 }
 
 .panelResizeHandle:hover,

@@ -785,7 +785,10 @@ describe('GitLens (changes tab, git lens) change tree', () => {
         await flushEffects()
         expect(counted(container, '[data-path="src/a.ts"] [data-lines="count"]').added).toBe('1')
 
-        await act(async () => { await vi.advanceTimersByTimeAsync(2_600) })
+        // Past the store's automatic cadence (a 30 s baseline; see
+        // docs/plans/2026-10-13-git-poll-ladder-and-idle-notify.md) — that
+        // tick is what makes the second answer arrive at all.
+        await act(async () => { await vi.advanceTimersByTimeAsync(31_000) })
         await flushEffects()
         // Both caches had to notice: the store's field-by-field snapshot
         // compare AND the lens's content key. Either one ignoring the counts

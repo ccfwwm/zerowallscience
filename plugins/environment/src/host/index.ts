@@ -14,6 +14,9 @@ export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
     providerId: z.string().default(''),
     groupId: z.string().default(''),
     modelId: z.string().default(''),
+    profileId: z.string().default(''),
+    resolution: z.string().default(''),
+    aspectRatio: z.string().default(''),
   }).default({ providerId: '', groupId: '', modelId: '' }),
   imageQuality: z.union(['auto', 'low', 'medium', 'high'] as const).default('medium'),
 })
@@ -106,6 +109,9 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
       providerId: String(selection.providerId ?? '').trim(),
       groupId: String(selection.groupId ?? '').trim(),
       modelId: String(selection.modelId ?? '').trim(),
+      profileId: String(selection.profileId ?? '').trim(),
+      resolution: String(selection.resolution ?? '').trim(),
+      aspectRatio: String(selection.aspectRatio ?? '').trim(),
     }
     const empty = !value.providerId && !value.groupId && !value.modelId
     const partial = !empty && (!value.providerId || !value.groupId || !value.modelId)
@@ -113,6 +119,19 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     await this.replaceSettings({ ...this.settings, imageModel: value })
   }
 
+  @Remote('getMediaModelSelections')
+  async readMediaModelSelections(): Promise<Record<string, { selection: { groupId: string; modelId: string; profileId: string; operation: string }; parameters: { size?: string; quality?: string; resolution?: string; aspect_ratio?: string; duration?: number } }>> {
+    const value = await this.secrets.get('zerowall.ai-cloud.media-selections')
+    return value ? JSON.parse(value) : {}
+  }
+  @Remote('setMediaModelSelections')
+  async setMediaModelSelections(value: Record<string, { selection: { groupId: string; modelId: string; profileId: string; operation: string }; parameters: { size?: string; quality?: string; resolution?: string; aspect_ratio?: string; duration?: number } }>): Promise<void> {
+    for (const [kind, choice] of Object.entries(value)) {
+      const operations = kind === 'image' ? ['image','image_edit','gemini_image'] : kind === 'video' ? ['video'] : kind === 'music' ? ['chat_music'] : []
+      if (!operations.includes(choice.selection.operation) || !choice.selection.groupId || !choice.selection.profileId || !choice.selection.modelId) throw new Error('MEDIA_SELECTION_INVALID')
+    }
+    await this.secrets.set('zerowall.ai-cloud.media-selections', JSON.stringify(value))
+  }
   @Remote('listVariables')
   async listVariables(): Promise<EnvironmentVariableInfo[]> {
     await this.hydration

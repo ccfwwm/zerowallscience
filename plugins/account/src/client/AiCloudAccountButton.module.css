@@ -50,9 +50,9 @@
 .auth input:focus-visible, .auth select:focus-visible, .auth button:focus-visible { outline: 2px solid var(--dsw-alias-link, #315b7d); outline-offset: 2px; }
 .codeNotice, .authLead { overflow-wrap: anywhere; }
 .secondary { min-height: 38px; padding: 0 13px; border: 1px solid var(--dsw-alias-border-l2, #cfd5d9); border-radius: 9px; color: inherit; background: transparent; cursor: pointer; font-weight: 600; }
-.content { min-height: 0; overflow: auto; padding: 22px; background: var(--dsw-alias-bg-layer-2); }
+.content { min-height: 0; min-width: 0; container-type: inline-size; container-name: account; overflow: auto; padding: 22px; background: var(--dsw-alias-bg-layer-2); }
 .accountCard { padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 20px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 12px; background: var(--dsw-alias-bg-layer-2, #f7f8f9); }
-.accountCard > div { display: grid; gap: 3px; }
+.accountCard > div { display: grid; min-width: 0; gap: 3px; }
 .identity small { display: inline-flex; align-items: center; gap: 5px; color: #27845a; }
 .externalActions { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .accountCard { grid-template-columns: minmax(0, 1fr) auto auto auto; }
@@ -77,7 +77,7 @@
 .balance strong { font-size: 20px; letter-spacing: 0; }
 .logoutButton { min-height: 34px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--dsw-alias-border-l2, #cfd5d9); border-radius: 9px; color: var(--dsw-alias-label-secondary, #687078); background: transparent; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 500; }
 .logoutButton:hover { color: #9b3030; border-color: rgba(155,48,48,.35); background: rgba(155,48,48,.06); }
-.billingGrid { margin-top: 14px; display: grid; grid-template-columns: minmax(280px, .85fr) minmax(320px, 1.15fr); gap: 14px; }
+.billingGrid { margin-top: 14px; display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 14px; }
 .rechargeCard, .paymentCard { min-height: 300px; padding: 16px; display: flex; flex-direction: column; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 12px; }
 .sectionHeading { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
 .sectionHeading h3, .ordersHeader h3, .paymentEmpty h3 { margin: 0; font-size: 14px; letter-spacing: 0; }
@@ -133,3 +133,17 @@
 @media(prefers-reduced-motion:reduce) { .spin { animation:none; } }
 
 .segmented, .accountCard, .modelSync { background: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-layer-1)); }
+
+@container account (max-width: 760px) {
+  .accountCard { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .externalActions { margin-left: 0; justify-content: flex-start; }
+  .accountCard > .externalActions { grid-column: 1 / -1; }
+  .billingGrid { grid-template-columns: minmax(0, 1fr); }
+  .balance { min-width: 0; }
+}
+@container account (max-width: 460px) {
+  .accountCard { grid-template-columns: minmax(0, 1fr); }
+  .balance { text-align: left; }
+  .modelSync { align-items: stretch; flex-direction: column; }
+  .orderRow { grid-template-columns: minmax(0, 1fr) auto; }
+}

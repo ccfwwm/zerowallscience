@@ -158,7 +158,7 @@ async function persistedFeedbackHarness() {
     },
     assistant: (body: string) => {
       session.append('assistant/message', {
-        turn, step: 1,
+        turn, step: 1, stream: [],
         message: createAssistantMessage({
           content: [{ type: 'text', text: reply(body) }], source: { provider: 'test', model: 'test' },
         }),
@@ -243,9 +243,9 @@ describe('fenceFailures: only fences that would stay a code block', () => {
     expect(failures[0]!.fingerprint).toBe(fenceFingerprint(BROKEN))
   })
 
-  it('reports unparseable and unterminated bodies distinctly', () => {
+  it('reports unparseable and unrenderable unterminated bodies distinctly', () => {
     expect(fenceFailures('```dsh-ui\n{ not json\n```')[0]!.detail).toContain('error=invalid_json')
-    expect(fenceFailures('```dsh-ui\n{"items":[]}')[0]!.detail).toContain('error=unterminated_fence')
+    expect(fenceFailures(`\`\`\`dsh-ui\n${BROKEN}`)[0]!.detail).toContain('error=unterminated_fence')
   })
 
   it('accepts bodies repaired by the settled renderer pipeline', () => {
@@ -262,6 +262,15 @@ describe('fenceFailures: only fences that would stay a code block', () => {
   it('accepts a settled body repaired by tier-2 completion', () => {
     expect(fenceFailures(reply(CUT))).toEqual([])
     expect(fenceFailures(reply(TIER2_ONLY))).toEqual([])
+  })
+
+  it.each([
+    ['complete JSON', STAT_GROUP],
+    ['trailing tool syntax', `${STAT_GROUP}\n<|tool_calls_begin|>\n{"name":"render_ui",`],
+    ['tier-1 repair', REPAIRABLE],
+    ['settled tier-2 completion', TIER2_ONLY],
+  ])('does not reject a renderable unclosed fence: %s (#288)', (_name, body) => {
+    expect(fenceFailures(`\`\`\`dsh-ui\n${body}`)).toEqual([])
   })
 
   it('accepts the issue #200 keyvalue alias shape', () => {
@@ -283,6 +292,13 @@ describe('planFenceFeedback: the bounds that prevent a retry storm', () => {
     expect(plan!.kind).toBe('render')
     expect(plan!.fingerprints).toEqual([fenceFingerprint(BROKEN)])
     expect(plan!.text).toContain('next=resend_corrected_fence_only')
+  })
+
+  it('only resends the broken fence when another unclosed fence renders (#288)', () => {
+    const plan = planFenceFeedback({ ...base, text: `${reply(BROKEN)}\n\`\`\`dsh-ui\n${STAT_GROUP}` })
+    expect(plan!.fingerprints).toEqual([fenceFingerprint(BROKEN)])
+    expect(plan!.text).toContain('fences=1')
+    expect(plan!.text).not.toContain('fence=2')
   })
 
   it('checks the final reply body even when an earlier validated body was valid', () => {
@@ -397,6 +413,16 @@ describe('the steered correction message', () => {
 })
 
 describe('installFenceFeedback wiring', () => {
+  it('does not request a duplicate card for an unclosed renderable reply (#288)', () => {
+    const h = harness()
+    h.emitSession(userEvent())
+    h.emitSession(assistantEvent(`\`\`\`dsh-ui\n${STAT_GROUP}\n<|tool_calls_begin|>\n{"name":"render_ui",`))
+    const agent = { session: { id: 'sess-1', header: { id: 'sess-1', version: 4 } }, steer: h.steer }
+    h.boundary({ agent, turn: 4, signal: new AbortController().signal })
+    h.boundary({ agent, turn: 4, signal: new AbortController().signal })
+    expect(h.steer).not.toHaveBeenCalled()
+  })
+
   it('keeps stream recovery active and disables same-turn steering when configured off', () => {
     const h = harness({ enabled: false })
     expect(h.listeners.has('llm/stream')).toBe(true)
@@ -482,6 +508,7 @@ describe('installFenceFeedback wiring', () => {
     const message = h.steer.mock.calls[0]![0] as { content: Array<{ text: string }> }
     expect(message.content[0]!.text).toContain('status=nothing_delivered')
     expect(message.content[0]!.text).toContain('本轮尚未产生正式回答')
+    expect(message.content[0]!.text).toContain('或明确调用 render_ui')
     // Only one reminder per turn.
     h.boundary({ agent, turn: 7, signal: new AbortController().signal })
     expect(h.steer).toHaveBeenCalledTimes(1)
@@ -1065,7 +1092,7 @@ describe('persisted fence feedback lifecycle', () => {
       const restored = h.ctx.sessions.create('restored-feedback', { seed: h.session.snapshotEvents() })
       const steer = vi.fn()
       restored.append('assistant/message', {
-        turn: 7, step: 1,
+        turn: 7, step: 1, stream: [],
         message: createAssistantMessage({
           content: [{ type: 'text', text: reply('{"items":[{"type":"stat","label":"third"}]}') }],
           source: { provider: 'test', model: 'test' },

@@ -13,8 +13,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { MarkdownText } from './markdown-labels.tsx'
-import { hasFenceRegistry } from './helpers/fence-host'
+import { MarkdownText } from './genui-markdown.tsx'
 import { GenuiActionContext } from '../src/client/action-context.ts'
 import { GenuiBlock } from '../src/client/GenuiBlock.tsx'
 import { repairGenuiSpec } from '../src/client/guard.ts'
@@ -257,7 +256,7 @@ describe('bento card layout contract', () => {
 })
 
 describe('GenUI file-tree layout (issue #28)', () => {
-  it.skipIf(!hasFenceRegistry)('renders rows, indent and glyphs through the MarkdownText fence harness', () => {
+  it('renders rows, indent and glyphs through the MarkdownText fence harness', () => {
     const { container } = render(<MarkdownText text={fenced({ items: [fileTree] })} />)
     assertFileTreeLayout(container)
   })

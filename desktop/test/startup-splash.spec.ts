@@ -26,4 +26,5 @@ describe('desktop startup splash', () => {
     expect(html).not.toContain('工作台就绪后，将在后台连接已启用的 MCP 服务。')
     expect(html).not.toContain('你的会话与设置保存在本机')
   })
+
 })

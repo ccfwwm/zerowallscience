@@ -163,6 +163,14 @@ describe('shared Python environment API', () => {
     expect(ensureReady).not.toHaveBeenCalled()
     expect(sync.checkManifest).toHaveBeenCalledTimes(1)
   })
+  it.each(['sync', 'install_runtime'] as const)('reports initialization failure for %s even when the fixed interpreter remains ready', async action => {
+    const { api, updater, sync } = await setup()
+    Object.assign(updater, { ensureReady: vi.fn(async () => ({ phase: 'ready', lastUpdateError: 'Bootstrap signature is invalid.' })) })
+    const accepted = await api.request({ action, requestId: `failed-bootstrap-${action}`, confirm: true })
+    expect(await waitForTask(api, String(accepted.taskId))).toMatchObject({ task: { state: 'failed', error: 'Bootstrap signature is invalid.' } })
+    expect(sync.previewSync).not.toHaveBeenCalled()
+    expect(sync.applySync).not.toHaveBeenCalled()
+  })
   it('returns a local status snapshot without rescanning packages or contacting manifests', async () => {
     const { api, updater, sync } = await setup()
     await expect(api.request({ action: 'status', requestId: 'fast-status' })).resolves.toMatchObject({ task: undefined })

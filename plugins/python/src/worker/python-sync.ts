@@ -106,7 +106,8 @@ export class PythonSyncService {
     const selected = selectLayer(manifest, layer, capabilityId)
     await report?.({ stage: 'inventory', progress: 35, message: '正在读取当前 Python 包清单。' })
     const info = await this.packageInfo(selected.packages.map(pkg => pkg.name))
-    if (info.ready && info.version && info.version !== manifest.pythonVersion) throw new Error('依赖清单需要不同的 Python 版本，请先更新运行环境。')
+    // The manifest describes dependency content, not the installed interpreter.
+    // Resolve wheel compatibility through pip running from the fixed Python root.
     await report?.({ stage: 'compare', message: `正在检测 ${manifest.packages.length} 个依赖是否已安装。` })
     if (!options.localOnly) await this.save(this.manifestFile(layer), manifest)
     const installed = new Map(info.packages.map(item => [normalizeName(item.name), item.version]))

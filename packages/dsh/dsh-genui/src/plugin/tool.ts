@@ -162,6 +162,12 @@ function formatProcessWarnings(processed: GenuiProcessResult): string[] {
         ? `warning=alias_ignored path=${warning.path} canonical=${canonicalPath}`
         : `warning=alias_normalized path=${warning.path} canonical=${canonicalPath}`
     }
+    if (warning.kind === 'unknown-field') {
+      return `warning=unknown_field path=${JSON.stringify(warning.path)} detail=${JSON.stringify(warning.message)}`
+    }
+    if (warning.kind === 'truncated') {
+      return `warning=policy_truncated path=${JSON.stringify(warning.path)} detail=${JSON.stringify(warning.message)}`
+    }
     return `warning=process detail=${JSON.stringify(warning.message)}`
   })
 }
@@ -260,6 +266,7 @@ const VALIDATE_DESCRIPTION =
   + 'Pass the exact JSON text you are about to put inside the fence as the "spec" argument (a string). '
   + 'Returns a [genui-validation] protocol block with status, diagnostics, next action, and reply_language=conversation. '
   + 'When invalid JSON is repairable, repaired_json contains the fixed body; emit it only with next=emit_repaired_fence. '
+  + 'A warning=unknown_field requires fixing the indicated path and another validation call. '
   + 'A warning=block_markdown requires the indicated replacement node and another validation call.'
 
 const VALIDATE_PARAMETERS: Record<string, unknown> = {
@@ -368,6 +375,7 @@ export function createValidateDshUiTool(): ToolDefinition {
           if (processed.spec !== null && processed.errors.length === 0) {
             const warnings = formatProcessWarnings(processed)
             const inlineWarnings = formatInlineContentWarnings(processed.spec)
+            const requiresCorrection = inlineWarnings.length > 0 || processed.warnings.some(warning => warning.kind === 'unknown-field')
             return `${validationProtocol([
               'status=invalid',
               'error=invalid_json',
@@ -377,7 +385,7 @@ export function createValidateDshUiTool(): ToolDefinition {
               ...inlineWarnings,
               'repair=applied',
               `repair_count=${repaired.repairs}`,
-              inlineWarnings.length === 0 ? 'next=emit_repaired_fence' : 'next=fix_and_revalidate',
+              requiresCorrection ? 'next=fix_and_revalidate' : 'next=emit_repaired_fence',
             ])}\nrepaired_json:\n\`\`\`\n${repaired.text}\n\`\`\``
           }
         }
@@ -409,9 +417,10 @@ export function createValidateDshUiTool(): ToolDefinition {
       }
       const warnings = formatProcessWarnings(processed)
       const inlineWarnings = formatInlineContentWarnings(processed.spec)
+      const requiresCorrection = inlineWarnings.length > 0 || processed.warnings.some(warning => warning.kind === 'unknown-field')
       return validationProtocol([
         'status=valid', `rendered=${processed.renderedCount}`, ...warnings, ...inlineWarnings,
-        inlineWarnings.length === 0 ? 'next=emit_fence' : 'next=fix_and_revalidate',
+        requiresCorrection ? 'next=fix_and_revalidate' : 'next=emit_fence',
       ])
     },
     presentCall(): GenericCallView | undefined {

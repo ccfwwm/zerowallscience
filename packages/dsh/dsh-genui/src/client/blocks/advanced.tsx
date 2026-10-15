@@ -489,8 +489,10 @@ export const QuizNode = memo(function QuizNode({ node, onAction }: {
               }}
             >
               {/* Before answering: a radio affordance so the row reads as a
-                  choice. After: ✓ on the right answer, ✗ on a wrong pick. */}
-              <span className={css.quizMarker}>
+                  choice. After: ✓ on the right answer, ✗ on a wrong pick.
+                  aria-hidden keeps the glyph out of the accessible name — the
+                  option button must announce as its label alone. */}
+              <span className={css.quizMarker} aria-hidden="true">
                 {answered ? (opt.correct === true ? '✓' : isChosen ? '✗' : '') : isChosen ? '●' : '○'}
               </span>
               {renderInline(opt.label, false)}

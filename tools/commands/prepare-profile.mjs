@@ -13,7 +13,7 @@ const core = []
 const optionalOverlayIds = new Set([
   'ssh-ops', 'progressive-tools', 'session-notification', 'dream-skin',
   'better-sidebar', 'univer-office', 'zotero', 'zotero-harvest',
-  'dsh-wechat', 'genui',
+  'dsh-wechat', 'genui', 'archive-manager', 'oh-story',
 ])
 for (const line of lines) {
   if (/^    - id:/.test(line)) {

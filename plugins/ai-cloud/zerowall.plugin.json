@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-ai-cloud",
-  "version": "0.1.6",
+  "version": "0.1.15",
   "applicationVersion": "8.0.0",
   "restartRequired": true,
   "desktop": {
@@ -19,14 +19,16 @@
   ],
   "optionalServices": [],
   "capabilities": [
-    "llm.cloud"
+    "llm.cloud",
+    "media.cloud"
   ],
   "permissions": [
     "credentials",
-    "network"
+    "network",
+    "files"
   ],
   "network": true,
-  "files": false,
+  "files": true,
   "credentials": true,
   "approvals": false,
   "profiles": [

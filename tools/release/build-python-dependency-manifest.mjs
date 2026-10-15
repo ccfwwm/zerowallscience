@@ -11,7 +11,7 @@ const pythonRoot = await resourceSource('python')
 const output = resolve(process.env.ZEROWALL_PYTHON_DEPENDENCY_OUTPUT ?? join(releaseRoot, 'python-dependencies'))
 const pythonVersion = process.env.ZEROWALL_PYTHON_VERSION ?? '3.12.10'
 const environmentVersion = process.env.ZEROWALL_PYTHON_ENVIRONMENT_VERSION ?? pythonVersion
-const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r18`
+const revision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? `${environmentVersion}-r19`
 if (!/^[A-Za-z0-9_.-]{1,100}$/u.test(revision)) throw new Error('Invalid manifest revision.')
 const keyId = process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4'
 const trustedKeys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
@@ -71,7 +71,6 @@ for (const pkg of split.base) {
 const index = { indexUrl: 'https://pypi.tuna.tsinghua.edu.cn/simple', trustedHost: 'pypi.tuna.tsinghua.edu.cn' }
 const document = scienceManifestDocument({ environmentVersion, scienceRevision: revision, pythonVersion, applicationVersion, index, packages: split.science, keyId })
 document.fallbackWheels = JSON.parse(await readFile(join(pythonRoot, 'fallback-wheels.json'), 'utf8')).filter(wheel => document.packages.some(pkg => normalizePackageName(pkg.name) === normalizePackageName(wheel.name) && pkg.source === 'sdist'))
-document.compatibility.minApplicationVersion = '8.1.3'
 // Packages without a digest keep none: the client resolves their version from
 // the index above rather than verifying bytes the mirror is free to re-publish.
 document.packages = document.packages.map(pkg => {

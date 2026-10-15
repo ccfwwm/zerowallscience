@@ -4,9 +4,8 @@
 // (mermaid, scene3d) render from a ```dsh-ui fence without crashing.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MarkdownText } from './markdown-labels.tsx'
-import { registerGenuiComponent } from './host-registry.ts'
-import { hasFenceRegistry } from './helpers/fence-host'
+import { MarkdownText } from './genui-markdown.tsx'
+import { hasComponentRegistry, registerGenuiComponent } from './host-registry.ts'
 import { GenuiActionContext } from '../src/client/action-context.ts'
 import { GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { sampleExpr } from '../src/client/safe-math.ts'
@@ -20,7 +19,7 @@ function fenced(spec: unknown): string {
   return `\`\`\`dsh-ui\n${JSON.stringify(spec)}\n\`\`\``
 }
 
-describe.skipIf(!hasFenceRegistry)('chart variants', () => {
+describe('chart variants', () => {
   it('renders a line chart', () => {
     render(<MarkdownText text={fenced({ items: [
       { type: 'chart', kind: 'line', data: [
@@ -37,7 +36,8 @@ describe.skipIf(!hasFenceRegistry)('chart variants', () => {
       ] },
     ] })} />)
     expect(document.body.textContent).toContain('100')
-    expect(document.body.textContent).toContain('A · 30')
+    // 图例现行格式:`{value} · {pct}%`(charts.tsx 的 donutPct span)。
+    expect(document.body.textContent).toContain('30 · 30.0%')
   })
 
   it('renders grouped bars from series', () => {
@@ -51,7 +51,7 @@ describe.skipIf(!hasFenceRegistry)('chart variants', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('interactive controls', () => {
+describe('interactive controls', () => {
   it('renders a radio group with local selection', () => {
     render(<MarkdownText text={fenced({ items: [
       { type: 'radio', label: '主题', options: ['浅色', '深色', '跟随系统'] },
@@ -104,7 +104,7 @@ describe.skipIf(!hasFenceRegistry)('interactive controls', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('lazy advanced components', () => {
+describe('lazy advanced components', () => {
   it('renders a mermaid node with fallback while loading', async () => {
     render(<MarkdownText text={fenced({ items: [
       { type: 'mermaid', code: 'graph TD\nA[开始] --> B[结束]' },
@@ -128,7 +128,7 @@ describe.skipIf(!hasFenceRegistry)('lazy advanced components', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('v1.4 content structure components', () => {
+describe('v1.4 content structure components', () => {
   it('renders a timeline with markers', () => {
     render(<MarkdownText text={fenced({ items: [
       { type: 'timeline', items: [
@@ -167,7 +167,7 @@ describe.skipIf(!hasFenceRegistry)('v1.4 content structure components', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('GenUI v2 event loop', () => {
+describe('GenUI v2 event loop', () => {
   // Actions are trailing-debounced per name (GENUI_ACTION_DEBOUNCE_MS);
   // assertions advance past the window.
   it('fires onGenuiAction when a button with action is clicked', () => {
@@ -220,7 +220,7 @@ describe.skipIf(!hasFenceRegistry)('GenUI v2 event loop', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('GenUI v2 interactive plot', () => {
+describe('GenUI v2 interactive plot', () => {
   it('renders parameter sliders and re-renders on drag', () => {
     const { container } = render(<MarkdownText text={fenced({ items: [
       { type: 'plot', title: '可调正弦', series: [
@@ -252,8 +252,8 @@ describe.skipIf(!hasFenceRegistry)('GenUI v2 interactive plot', () => {
   })
 })
 
-describe.skipIf(!hasFenceRegistry)('GenUI component registry', () => {
-  it('renders a plugin-registered custom type', () => {
+describe('GenUI component registry', () => {
+  it.skipIf(!hasComponentRegistry)('renders a plugin-registered custom type', () => {
     const dispose = registerGenuiComponent('weather', ({ node }) => (
       <div data-testid="weather-card">{String(node.temp)}°C {String(node.condition)}</div>
     ))
@@ -275,7 +275,7 @@ describe.skipIf(!hasFenceRegistry)('GenUI component registry', () => {
     expect(container.querySelector('[data-genui]')).not.toBeNull()
   })
 
-  it('refuses duplicate registration', () => {
+  it.skipIf(!hasComponentRegistry)('refuses duplicate registration', () => {
     const d1 = registerGenuiComponent('dup-test', () => null)
     try {
       expect(() => registerGenuiComponent('dup-test', () => null)).toThrow(/already registered/)

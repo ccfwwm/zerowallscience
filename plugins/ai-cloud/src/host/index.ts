@@ -11,6 +11,13 @@ import { resolveProfiles } from '@deepseek-ai/dsh-llm-pi-ai/src/config.ts'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscience/plugin-account/types'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
+import { MediaJobLedger } from './media-jobs.js'
+import { createHash } from 'node:crypto'
+import type { ZeroWallMediaJobs } from '../shared/media.js'
+import { AiCloudMediaService } from './media.js'
+import type { ZeroWallMedia } from '../shared/media.js'
+export { AiCloudMediaService } from './media.js'
+export type { ZeroWallMedia, MediaRequest, MediaTask, MediaSelection } from '../shared/media.js'
 
 const KEY_PREFIX = 'zerowall.ai-cloud.group.'
 const ROUTE_PREFIX = 'zerowall-ai-cloud-'
@@ -40,6 +47,8 @@ declare module '@deepseek-ai/cordis' {
   interface Context {
     agentDefaultModel: AgentDefaultModelService
     zerowallAiCloudCredentialResolver: ManagedCredentialResolver
+    zerowallMedia: ZeroWallMedia
+    zerowallMediaJobs: ZeroWallMediaJobs
   }
 }
 
@@ -174,7 +183,7 @@ export class AiCloudLlmController {
   }
 
   async update(snapshot: AiCloudAccountSnapshot): Promise<void> {
-    const chatModels = snapshot.models.filter(model => model.capability !== 'image-generation')
+    const chatModels = snapshot.models.filter(model => model.capability !== 'image-generation' && model.capability !== 'media' && model.groupName.trim() !== '图片音频视频分组')
     const next = snapshot.status === 'signedIn' ? managedProfiles(chatModels) : new Map<string, ResolvedPiAiProviderProfile>()
     this.profiles = next
     const routes = [...next.keys()]
@@ -203,6 +212,13 @@ export function apply(ctx: Context): void {
   const controller = new AiCloudLlmController(ctx, { secrets })
   ctx.on('zerowall/account-updated', (snapshot) => controller.update(snapshot))
   const account = ctx.get('zerowallAccount') as { current(): Promise<AiCloudAccountSnapshot> }
+  const media = new AiCloudMediaService(ctx.get('zerowallAccount')!, secrets)
+  ctx.provide('zerowallMedia', media)
+  ctx.provide('zerowallMediaJobs', new MediaJobLedger(media, async () => {
+    const snapshot = await ctx.zerowallAccount.current()
+    if (snapshot.status !== 'signedIn' || !snapshot.email || !snapshot.gatewayBaseUrl) throw new Error('MEDIA_SIGN_IN_REQUIRED')
+    return createHash('sha256').update(snapshot.email.toLowerCase() + '\0' + snapshot.gatewayBaseUrl).digest('hex')
+  }))
   void account.current()
     .then((snapshot) => controller.update(snapshot))
     .catch((error: unknown) => {
@@ -344,3 +360,6 @@ function trustedBaseUrl(raw: string, api: 'openai-responses' | 'anthropic-messag
 }
 
 export default { name, inject, apply }
+
+
+export { mediaTarget } from './media-jobs.js'

@@ -74,6 +74,17 @@ function genericCodeBlock(raw: string, label = '代码块'): HTMLElement {
   return block
 }
 
+/** 宿主保留语义属性、但包装类名发生变化时的真实 CodeBlock 结构（#275）。 */
+function semanticCodeBlock(raw: string, label: string): HTMLElement {
+  const block = genericCodeBlock(raw, label)
+  block.className = 'host-code-surface'
+  const content = document.createElement('div')
+  content.setAttribute('data-code-block-content', '')
+  content.append(block.querySelector('pre')!)
+  block.append(content)
+  return block
+}
+
 /** Deepsuite-style fence surface (issue #6): `.code-block` / span language
  * label + copy button in the banner, body wrapped in a content div. */
 function deepsuiteCodeBlock(raw: string, lang: string, cls = 'code-block'): HTMLElement {
@@ -204,6 +215,106 @@ describe('installDomFenceRenderer', () => {
     try {
       expect(await waitFor(() => block.hasAttribute('data-genui-rendered'))).toBe(true)
       expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('你好，世界') === true)).toBe(true)
+    } finally { dispose() }
+  })
+
+  it('continues DOM scans while sessions context is inactive and resumes after recovery', async () => {
+    const row = assistantRow('inactive-sessions')
+    const block = genericCodeBlock(VALID_SPEC)
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const ctx = makeModernCtx('inactive-session')
+    const sessions = ctx.sessions
+    let inactive = false
+    Object.defineProperty(ctx, 'sessions', {
+      get: () => {
+        if (inactive) throw new Error('cannot get required service "sessions" in inactive context')
+        return sessions
+      },
+    })
+    const uncaught: unknown[] = []
+    const captureError = (event: ErrorEvent) => {
+      uncaught.push(event.error)
+      event.preventDefault()
+    }
+    window.addEventListener('error', captureError)
+    const dispose = installDomFenceRenderer(ctx, () => {})
+    let disposed = false
+    try {
+      expect(await waitFor(() => block.hasAttribute('data-genui-rendered'))).toBe(true)
+
+      inactive = true
+      expect(sourceLanguageOf(ctx, block)).toBeUndefined()
+      block.querySelector('code')!.textContent = '{"items":[{"type":"text","content":"会话不可用期间更新"}]}'
+      expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('会话不可用期间更新') === true)).toBe(true)
+      expect(uncaught).toEqual([])
+
+      inactive = false
+      block.querySelector('code')!.textContent = '{"items":[{"type":"text","content":"会话恢复后更新"}]}'
+      expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('会话恢复后更新') === true)).toBe(true)
+      expect(uncaught).toEqual([])
+
+      dispose()
+      disposed = true
+      block.querySelector('code')!.textContent = '{"items":[{"type":"text","content":"卸载后不再扫描"}]}'
+      await tick()
+      expect(row.querySelector('.genui-dom-fence')).toBeNull()
+      expect(uncaught).toEqual([])
+    } finally {
+      if (!disposed) dispose()
+      window.removeEventListener('error', captureError)
+    }
+  })
+
+  it('preserves a ChatSnapshot-mounted streaming fence while sessions context is inactive', async () => {
+    const currentSpec = JSON.stringify({
+      items: [{ type: 'table', columns: ['状态'], rows: [['进行中']], details: [[{ type: 'text', content: '初始详情' }]] }],
+    })
+    const inactiveSpec = JSON.stringify({
+      items: [{ type: 'table', columns: ['状态'], rows: [['进行中']], details: [[{ type: 'text', content: '失效期间更新' }]] }],
+    })
+    const recoveredSpec = JSON.stringify({
+      items: [{ type: 'table', columns: ['状态'], rows: [['已恢复']], details: [[{ type: 'text', content: '恢复后更新' }]] }],
+    })
+    let sourceMarkdown = `\`\`\`dsh-ui\n${currentSpec}\n\`\`\``
+    const chat = {
+      nodes: {
+        get: () => ({ kind: 'assistant-step', data: { blocks: [{ kind: 'text', text: sourceMarkdown }] } }),
+      },
+    }
+    const sourceCtx = makeSourceCtx('streaming-inactive-session', () => chat, () => () => {})
+    const sessions = sourceCtx.sessions
+    let inactive = false
+    Object.defineProperty(sourceCtx, 'sessions', {
+      get: () => {
+        if (inactive) throw new Error('cannot get required service "sessions" in inactive context')
+        return sessions
+      },
+    })
+    const row = assistantRow('streaming-inactive-source', true)
+    const block = genericCodeBlock(currentSpec)
+    row.appendChild(block)
+    document.body.appendChild(row)
+    expect(sourceLanguageOf(sourceCtx, block)).toBe('dsh-ui')
+    const dispose = installDomFenceRenderer(sourceCtx, () => {})
+    try {
+      expect(await waitFor(() => block.hasAttribute('data-genui-rendered'))).toBe(true)
+      expect(await waitFor(() => row.querySelector('[class*="detailToggle"]') !== null)).toBe(true)
+      fireEvent.click(row.querySelector('[class*="detailToggle"]')!)
+      expect(await waitFor(() => row.querySelector('[class*="detailRow"]')?.textContent?.includes('初始详情') === true)).toBe(true)
+      const mountedDetailRow = row.querySelector('[class*="detailRow"]')
+
+      inactive = true
+      block.querySelector('code')!.textContent = inactiveSpec
+      expect(await waitFor(() => row.querySelector('[class*="detailRow"]')?.textContent?.includes('失效期间更新') === true)).toBe(true)
+      expect(row.querySelector('[class*="detailRow"]')).toBe(mountedDetailRow)
+
+      sourceMarkdown = `\`\`\`dsh-ui\n${recoveredSpec}\n\`\`\``
+      inactive = false
+      block.querySelector('code')!.textContent = recoveredSpec
+      expect(await waitFor(() => row.querySelector('[class*="detailRow"]')?.textContent?.includes('恢复后更新') === true)).toBe(true)
+      expect(row.querySelector('[class*="detailRow"]')).toBe(mountedDetailRow)
+      expect(row.querySelector('[class*="detailToggle"]')?.getAttribute('aria-expanded')).toBe('true')
     } finally { dispose() }
   })
 
@@ -338,6 +449,36 @@ describe('installDomFenceRenderer', () => {
       expect(await waitFor(() => block.hasAttribute('data-genui-rendered'))).toBe(true)
       expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('你好，世界') === true)).toBe(true)
     } finally { dispose() }
+  })
+
+  it.each([false, true])('reads source languages across semantic code surfaces when class names change (streaming=%s, #275)', async streaming => {
+    const row = assistantRow('semantic-source', streaming)
+    const prose = document.createElement('p')
+    prose.innerHTML = '说明里提到 <code>dsh-ui</code>，不能隐藏整条消息'
+    const aliasSpec = '{"items":[{"type":"text","text":"275 别名内容"}]}'
+    const blocks = [
+      semanticCodeBlock('print("保持普通代码")', 'python'),
+      semanticCodeBlock(VALID_SPEC, 'json'),
+      semanticCodeBlock(VALID_SPEC, 'Code block'),
+      semanticCodeBlock(aliasSpec, 'Code block'),
+    ]
+    row.append(prose, ...blocks)
+    document.body.append(row)
+    const markdown = ['python', 'json', '', 'dsh-ui'].map((language, index) =>
+      `\`\`\`${language}\n${blocks[index]!.querySelector('pre')!.textContent}\n\`\`\``).join('\n')
+    const chat = { nodes: { get: () => ({ kind: 'assistant-step', data: { blocks: [{ kind: 'text', text: markdown }] } }) } }
+    const sourceCtx = makeSourceCtx('semantic-session', () => chat, () => () => {})
+    expect(blocks.map(block => sourceLanguageOf(sourceCtx, block))).toEqual(['python', 'json', null, 'dsh-ui'])
+    const dispose = installDomFenceRenderer(sourceCtx, () => {})
+    try {
+      expect(await waitFor(() => row.querySelector('.genui-dom-fence')?.textContent?.includes('275 别名内容') === true)).toBe(true)
+      expect(row.querySelectorAll('.genui-dom-fence')).toHaveLength(1)
+      expect(blocks[3]!.style.display).toBe('none')
+      for (const block of blocks.slice(0, 3)) expect(block.style.display).toBe('')
+      expect(prose.isConnected).toBe(true)
+      expect(row.style.display).toBe('')
+    } finally { dispose() }
+    expect(blocks[3]!.style.display).toBe('')
   })
 
   it('parses each assistant Markdown source once after the opening language is stable', async () => {

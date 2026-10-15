@@ -1,3 +1,4 @@
+import type {} from '@zerowallscience/plugin-ai-cloud'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
@@ -17,7 +18,8 @@ export const name = 'zerowall-image-generation'
 // The generator persists generated PNGs through the durable attachment store.
 // Declare the service explicitly so Cordis does not reject ctx.get('attachments')
 // in the composed Host loader.
-export const inject = ['tools', 'zerowallEnvironment', 'attachments', 'llm']
+export const inject = [
+  'zerowallMedia','tools', 'zerowallEnvironment', 'attachments', 'llm']
 
 export interface ResolvedImageModel {
   providerId: string
@@ -143,14 +145,22 @@ export function apply(ctx: Context): void {
   const account = new AiCloudClient({ secrets })
   const environment = ctx.get('zerowallEnvironment') as {
     readImageModelSelection(): Promise<import('@zerowallscience/plugin-environment/types').ImageModelSelection | undefined>
+    readMediaModelSelections?(): Promise<Record<string, { selection: import('@zerowallscience/plugin-ai-cloud/types').MediaSelection; parameters: NonNullable<import('@zerowallscience/plugin-ai-cloud/types').MediaRequest['parameters']> }>>
     getImageQuality?(): import('@zerowallscience/plugin-environment/types').ImageGenerationQuality
   }
   const generator = new AiCloudImageGenerator({
     secrets,
     account,
+    media: ctx.get('zerowallMedia')!,
     attachments: () => ctx.get('attachments'),
-    imageModel: () => environment.readImageModelSelection(),
-    imageQuality: async () => environment.getImageQuality?.() ?? 'auto',
+    imageModel: async () => {
+      const saved = (await environment.readMediaModelSelections?.())?.image
+      if (!saved) return environment.readImageModelSelection()
+      const snapshot = await account.current()
+      const model = snapshot.mediaModels?.find(m => m.groupId === saved.selection.groupId && m.modelId === saved.selection.modelId && m.profileId === saved.selection.profileId)
+      return { providerId: model?.providerId ?? '', ...saved.selection, ...(saved.parameters.resolution ? { resolution: saved.parameters.resolution } : {}), ...(saved.parameters.aspect_ratio ? { aspectRatio: saved.parameters.aspect_ratio } : {}) }
+    },
+    imageQuality: async () => (await environment.readMediaModelSelections?.())?.image?.parameters.quality as import('@zerowallscience/plugin-environment/types').ImageGenerationQuality ?? environment.getImageQuality?.() ?? 'auto',
   })
   ctx.on('zerowall/account-updated', snapshot => generator.update(snapshot))
   void account.current().then(snapshot => generator.update(snapshot)).catch(() => undefined)

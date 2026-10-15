@@ -4,8 +4,7 @@
 // back to the code block, and streaming renders plain (settled-only contract).
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { hasFenceRegistry } from './helpers/fence-host'
-import { MarkdownText } from './markdown-labels.tsx'
+import { MarkdownText } from './genui-markdown.tsx'
 
 afterEach(cleanup)
 
@@ -44,7 +43,7 @@ function fenced(spec: unknown): string {
 }
 
 describe('GenUI fence rendering', () => {
-  it.skipIf(!hasFenceRegistry)('renders a dsh-ui fence as interactive components between prose', () => {
+  it('renders a dsh-ui fence as interactive components between prose', () => {
     const { container } = render(<MarkdownText text={fenced(SPEC)} />)
     const block = container.querySelector('[data-genui]')
     expect(block).not.toBeNull()
@@ -58,12 +57,13 @@ describe('GenUI fence rendering', () => {
     expect(screen.getByText('+12.4%')).toBeTruthy()
     // Chart bars rendered (3 data points).
     expect(container.querySelectorAll('[class*="barFill"]')).toHaveLength(3)
-    // Buttons rendered and interactive.
-    const exportBtn = screen.getByRole('button', { name: '导出' })
-    expect(exportBtn).toBeTruthy()
+    // Buttons rendered and interactive. The settled render also exposes the
+    // block export affordance whose accessible name is also 导出, so assert
+    // presence rather than uniqueness.
+    expect(screen.getAllByRole('button', { name: '导出' }).length).toBeGreaterThanOrEqual(1)
   })
 
-  it.skipIf(!hasFenceRegistry)('switches tabs locally', () => {
+  it('switches tabs locally', () => {
     const { container } = render(<MarkdownText text={fenced(SPEC)} />)
     const tabs = container.querySelectorAll('[role="tab"]')
     expect(tabs).toHaveLength(2)
@@ -73,7 +73,7 @@ describe('GenUI fence rendering', () => {
     expect(container.textContent).not.toContain('#1042')
   })
 
-  it.skipIf(!hasFenceRegistry)('does not leak the raw fence into prose when rendered', () => {
+  it('does not leak the raw fence into prose when rendered', () => {
     const { container } = render(<MarkdownText text={fenced(SPEC)} />)
     expect(container.textContent).not.toContain('"items"')
     expect(container.textContent).not.toContain('type')
@@ -91,7 +91,7 @@ describe('GenUI fence rendering', () => {
     expect(container.querySelector('pre')).not.toBeNull()
   })
 
-  it.skipIf(!hasFenceRegistry)('renders a complete fence as components even while streaming', () => {
+  it('renders a complete fence as components even while streaming', () => {
     // A closed ```dsh-ui fence renders as components mid-stream: the closing
     // fence is the completion point, so the UI appears before the reply ends.
     const { container } = render(<MarkdownText text={fenced(SPEC)} streaming />)
@@ -109,7 +109,7 @@ describe('GenUI fence rendering', () => {
 })
 
 describe('GenUI nested list rendering', () => {
-  it.skipIf(!hasFenceRegistry)('renders row/text/badge children inside a list', () => {
+  it('renders row/text/badge children inside a list', () => {
     const spec = {
       items: [
         {
@@ -137,7 +137,7 @@ describe('GenUI nested list rendering', () => {
 })
 
 describe('GenUI chart skeleton (design system v2)', () => {
-  it.skipIf(!hasFenceRegistry)('gives bar charts a plot area with baseline + 25/50/75% gridlines and a separate label row', () => {
+  it('gives bar charts a plot area with baseline + 25/50/75% gridlines and a separate label row', () => {
     const spec = {
       items: [{ type: 'chart', data: [
         { label: '一', value: 42 }, { label: '二', value: 58 }, { label: '三', value: 49 },
@@ -158,7 +158,7 @@ describe('GenUI chart skeleton (design system v2)', () => {
     expect(container.querySelectorAll('[class*="barFill"]')).toHaveLength(3)
   })
 
-  it.skipIf(!hasFenceRegistry)('renders per-bar values in grouped charts inside the plot', () => {
+  it('renders per-bar values in grouped charts inside the plot', () => {
     const spec = {
       items: [{ type: 'chart', kind: 'bars', series: [
         { label: 'A', data: [{ label: '一', value: 30 }, { label: '二', value: 40 }] },
@@ -176,7 +176,7 @@ describe('GenUI chart skeleton (design system v2)', () => {
     expect(labels?.querySelectorAll('[class*="barLabel"]')).toHaveLength(2)
   })
 
-  it.skipIf(!hasFenceRegistry)('renders a Y axis with four ticks and gridlines on line charts', () => {
+  it('renders a Y axis with four ticks and gridlines on line charts', () => {
     const spec = {
       items: [{ type: 'chart', kind: 'line', data: [
         { label: '一', value: 10 }, { label: '二', value: 30 }, { label: '三', value: 20 },

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { renameWorkspaceEntry, removeWorkspaceEntry, mkdirWorkspaceEntry, writeWorkspaceUpload } from '../src/fs-operations.ts'
@@ -40,6 +40,25 @@ function chunksOf(text: string): AsyncIterable<string | Uint8Array> {
   }
 }
 
+/** `count` copies of one buffer, generated lazily: the payload is never held in memory. */
+function repeatedChunks(chunk: Uint8Array, count: number): AsyncIterable<string | Uint8Array> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (let i = 0; i < count; i++) yield chunk
+    },
+  }
+}
+
+/** A body that yields `text` in chunks and then DIES, as a dropped upload does. */
+function dyingChunks(text: string): AsyncIterable<string | Uint8Array> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (let i = 0; i < text.length; i += 2) yield text.slice(i, i + 2)
+      throw new Error('stream died')
+    },
+  }
+}
+
 /**
  * A temp project whose root directory carries letters, so a lowercase variant
  * of its path is a real spelling of the SAME directory (the win32 cases) and a
@@ -60,7 +79,6 @@ describe('writeWorkspaceUpload', () => {
       dir: root,
       relativePath: 'a.txt',
       chunks: chunksOf('hello 世界'),
-      limit: 1024,
     })
     expect(path).toBe(join(root, 'a.txt'))
     expect(size).toBe(Buffer.byteLength('hello 世界'))
@@ -73,7 +91,6 @@ describe('writeWorkspaceUpload', () => {
       dir: root,
       relativePath: 'docs/nested/deep.txt',
       chunks: chunksOf('x'),
-      limit: 1024,
     })
     expect(existsSync(path)).toBe(true)
   })
@@ -84,37 +101,36 @@ describe('writeWorkspaceUpload', () => {
       dir: join(root, 'docs'),
       relativePath: 'b.txt',
       chunks: chunksOf('y'),
-      limit: 1024,
     })
     expect(path).toBe(join(root, 'docs', 'b.txt'))
   })
 
   it('refuses traversal, empty segments, and absolute relativePaths', async () => {
     await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: '../evil.txt', chunks: chunksOf('x'), limit: 1024,
+      cwd: root, dir: root, relativePath: '../evil.txt', chunks: chunksOf('x'),
     })).rejects.toMatchObject({ code: 'bad-request' })
     await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: './a.txt', chunks: chunksOf('x'), limit: 1024,
+      cwd: root, dir: root, relativePath: './a.txt', chunks: chunksOf('x'),
     })).rejects.toMatchObject({ code: 'bad-request' })
     await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: 'a/../b.txt', chunks: chunksOf('x'), limit: 1024,
+      cwd: root, dir: root, relativePath: 'a/../b.txt', chunks: chunksOf('x'),
     })).rejects.toMatchObject({ code: 'bad-request' })
     await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: '//', chunks: chunksOf('x'), limit: 1024,
+      cwd: root, dir: root, relativePath: '//', chunks: chunksOf('x'),
     })).rejects.toMatchObject({ code: 'bad-request' })
     // Empty segments are refused, not silently collapsed.
     await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: 'a//b.txt', chunks: chunksOf('x'), limit: 1024,
+      cwd: root, dir: root, relativePath: 'a//b.txt', chunks: chunksOf('x'),
     })).rejects.toMatchObject({ code: 'bad-request' })
     await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: 'a/b/', chunks: chunksOf('x'), limit: 1024,
+      cwd: root, dir: root, relativePath: 'a/b/', chunks: chunksOf('x'),
     })).rejects.toMatchObject({ code: 'bad-request' })
     // Absolute paths (POSIX and Windows separators) are refused, not re-anchored.
     await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: '/x.txt', chunks: chunksOf('x'), limit: 1024,
+      cwd: root, dir: root, relativePath: '/x.txt', chunks: chunksOf('x'),
     })).rejects.toMatchObject({ code: 'bad-request' })
     await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: '\\x.txt', chunks: chunksOf('x'), limit: 1024,
+      cwd: root, dir: root, relativePath: '\\x.txt', chunks: chunksOf('x'),
     })).rejects.toMatchObject({ code: 'bad-request' })
   })
 
@@ -124,7 +140,7 @@ describe('writeWorkspaceUpload', () => {
       // ⚠️ PERMISSION CHANGE: the workspace fence is gone, so an absolute
       // directory the host user can write is a valid upload target.
       const result = await writeWorkspaceUpload({
-        cwd: root, dir: outside, relativePath: 'x.txt', chunks: chunksOf('x'), limit: 1024,
+        cwd: root, dir: outside, relativePath: 'x.txt', chunks: chunksOf('x'),
       })
       expect(result).toEqual({ path: join(outside, 'x.txt'), size: 1 })
       expect(readFileSync(join(outside, 'x.txt'), 'utf8')).toBe('x')
@@ -140,36 +156,48 @@ describe('writeWorkspaceUpload', () => {
     try {
       symlinkSync(outside, link)
       const viaLink = await writeWorkspaceUpload({
-        cwd: root, dir: link, relativePath: 'a.txt', chunks: chunksOf('a'), limit: 1024,
+        cwd: root, dir: link, relativePath: 'a.txt', chunks: chunksOf('a'),
       })
       expect(viaLink.path).toBe(join(link, 'a.txt'))
       // …and a relative path that walks through the link lands there too.
       const viaRelative = await writeWorkspaceUpload({
-        cwd: root, dir: root, relativePath: 'upload-link/b.txt', chunks: chunksOf('b'), limit: 1024,
+        cwd: root, dir: root, relativePath: 'upload-link/b.txt', chunks: chunksOf('b'),
       })
       expect(viaRelative.path).toBe(join(root, 'upload-link', 'b.txt'))
       expect(readFileSync(join(outside, 'a.txt'), 'utf8')).toBe('a')
       expect(readFileSync(join(outside, 'b.txt'), 'utf8')).toBe('b')
     } finally {
-      rmSync(link, { force: true })
+      unlinkSync(link)
       rmSync(outside, { recursive: true, force: true })
     }
   })
 
-  it('refuses oversized uploads without leaving a target or temp file', async () => {
+  it('streams a body well past the removed size cap and leaves nothing behind', async () => {
     const target = join(root, 'big.bin')
-    await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: 'big.bin', chunks: chunksOf('1234567890'), limit: 4,
-    })).rejects.toMatchObject({ code: 'too-large' })
-    expect(existsSync(target)).toBe(false)
+    // 16 KiB × 12288 = 192 MiB: half again the cap this case used to trip (the
+    // client pre-check and the host's per-request byte cap both refused at
+    // 128 MiB). Large bodies must simply flow through the same temp-file +
+    // rename path.
+    const chunk = Buffer.alloc(16 * 1024, 7)
+    const count = 12288
+    const expected = chunk.length * count
+    expect(expected).toBeGreaterThan(128 * 1024 * 1024)
+    const { path, size } = await writeWorkspaceUpload({
+      cwd: root, dir: root, relativePath: 'big.bin', chunks: repeatedChunks(chunk, count),
+    })
+    expect(path).toBe(target)
+    expect(size).toBe(expected)
+    expect(statSync(target).size).toBe(expected)
     expect(tmpLeftovers(root)).toEqual([])
+    // Assertions are done; keep 192 MiB out of tmp for the rest of the run.
+    rmSync(target, { force: true })
   })
 
   it('keeps concurrent uploads to the same target independent', async () => {
     const target = join(root, 'race.txt')
     await Promise.all([
-      writeWorkspaceUpload({ cwd: root, dir: root, relativePath: 'race.txt', chunks: chunksOf('first'), limit: 1024 }),
-      writeWorkspaceUpload({ cwd: root, dir: root, relativePath: 'race.txt', chunks: chunksOf('second'), limit: 1024 }),
+      writeWorkspaceUpload({ cwd: root, dir: root, relativePath: 'race.txt', chunks: chunksOf('first') }),
+      writeWorkspaceUpload({ cwd: root, dir: root, relativePath: 'race.txt', chunks: chunksOf('second') }),
     ])
     // Both renames succeed (unique temp names, no EEXIST cross-talk); the last
     // rename wins and the losers leave nothing behind.
@@ -177,13 +205,17 @@ describe('writeWorkspaceUpload', () => {
     expect(tmpLeftovers(root)).toEqual([])
   })
 
-  it('does not overwrite an existing file on a failed (oversized) retry', async () => {
+  it('does not overwrite an existing file when a retry dies mid-stream', async () => {
     const target = join(root, 'keep.txt')
-    await writeWorkspaceUpload({ cwd: root, dir: root, relativePath: 'keep.txt', chunks: chunksOf('original'), limit: 1024 })
+    await writeWorkspaceUpload({ cwd: root, dir: root, relativePath: 'keep.txt', chunks: chunksOf('original') })
+    // The retry fails part-way (a dead body stream, not a size refusal): the
+    // bytes already spilled into the temp sibling are discarded with it, so the
+    // committed target keeps its original content.
     await expect(writeWorkspaceUpload({
-      cwd: root, dir: root, relativePath: 'keep.txt', chunks: chunksOf('0123456789'), limit: 2,
-    })).rejects.toMatchObject({ code: 'too-large' })
+      cwd: root, dir: root, relativePath: 'keep.txt', chunks: dyingChunks('0123456789'),
+    })).rejects.toThrow('stream died')
     expect(readFileSync(target, 'utf8')).toBe('original')
+    expect(tmpLeftovers(root)).toEqual([])
   })
 })
 
@@ -300,7 +332,6 @@ describe('session-relative targets (the shared resolution contract, #646)', () =
         dir: '.',
         relativePath: 'up/rel.txt',
         chunks: chunksOf('rel'),
-        limit: 64,
       })
       expect(path).toBe(join(ws, 'up', 'rel.txt'))
       expect(size).toBe(3)

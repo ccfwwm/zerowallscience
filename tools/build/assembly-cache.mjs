@@ -49,6 +49,9 @@ export async function assembleRuntime(kind, run) {
     tasks.push({ task: receipt.task, fingerprint: receipt.fingerprint, outputIntegrity: receipt.outputIntegrity })
   }
   const recipes = {}
+  // Adaptation versions and telemetry settings change assembled manifests
+  // even when the upstream/compiler output is unchanged.
+  recipes['upstream-sources.json'] = createHash('sha256').update(await readFile(join(root, 'config/integrations/upstream-sources.json'))).digest('hex')
   for (const file of await readdir(join(root, 'tools/packaging'))) if (['prepare-runtime.mjs', 'dedupe-runtime.mjs'].includes(file) || file.startsWith('adapt-')) recipes[file] = createHash('sha256').update(await readFile(join(root, 'tools/packaging', file))).digest('hex')
   const key = createHash('sha256').update(JSON.stringify({ schema: 1, kind, profile, tasks: tasks.sort((a, b) => a.task.localeCompare(b.task)), recipes, native: JSON.parse(await readFile(join(cacheRoot, 'native-runtime.json'), 'utf8')), ...(offline ? {} : { applicationVersion }) })).digest('hex')
   const parent = join(stageRoot, offline ? 'offline-profile' : 'runtime')

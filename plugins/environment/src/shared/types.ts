@@ -7,6 +7,9 @@ export interface ImageModelSelection {
   providerId: string
   groupId: string
   modelId: string
+  profileId?: string
+  resolution?: string
+  aspectRatio?: string
 }
 
 export type ImageGenerationQuality = 'auto' | 'low' | 'medium' | 'high'

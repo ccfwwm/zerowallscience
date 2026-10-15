@@ -267,6 +267,20 @@ it('automatically installs a missing thin Python runtime at startup', async () =
   service.stop()
 })
 
+it('binds in-process package progress to its durable updater task', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-direct-progress-')); roots.push(root)
+  const progress: any[] = []
+  const service = new PythonUpdaterService({ root, publicKey: '', manifestUrl: 'https://unused.invalid', publish() {}, executeOperation: async method => {
+    if (method === 'initialize') service.publishOperation({ phase: 'installing', progress: 100, updateJob: { taskId: 'controller-plan', kind: 'package-plan', stage: 'installing', canPause: false, completedFiles: 1, totalFiles: 1, targetVersion: 'six' } })
+    return method === 'pythonInfo' ? { ready: true, packages: [] } : { phase: 'ready' }
+  } })
+  service.watchProgress(status => progress.push(status))
+  const accepted = service.updateForUser(), taskId = accepted.updateJob!.taskId
+  await expect.poll(() => progress.find(status => status.phase === 'installing')).toMatchObject({ progress: 100, updateJob: { taskId, kind: 'initialize', completedFiles: 1, totalFiles: 1, targetVersion: 'six' } })
+  await expect.poll(async () => JSON.parse(await readFile(join(root, 'jobs', `${taskId}.json`), 'utf8')).state).toBe('complete')
+  await service.shutdown()
+})
+
 it('automatically resumes an interrupted thin bootstrap before core dependency work', async () => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-thin-paused-')); roots.push(root)
   const jobs = join(root, 'jobs'); await mkdir(jobs)

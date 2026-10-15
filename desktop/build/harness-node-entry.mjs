@@ -22,7 +22,9 @@ function report(label, value) {
 
 function failStartup(error) {
   report('DSH entry failed', error)
-  process.send?.({ type: 'zerowall:host:failed', message: error instanceof Error ? error.message : String(error) })
+  const detail = formatError(error)
+  const listenError = /listen (EACCES|EADDRINUSE):[^\n]*127\.0\.0\.1/u.exec(detail)?.[1]
+  process.send?.({ type: 'zerowall:host:failed', message: error instanceof Error ? error.message : String(error), listenError })
   // Failed plugins can leave servers/timers alive. exitCode alone never ends
   // that process; give the desktop time to terminate its entire child tree.
   process.exitCode = 1

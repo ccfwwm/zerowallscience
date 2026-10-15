@@ -209,6 +209,34 @@ describe('validate_dsh_ui tool', () => {
     expect(String(await vtool.execute(good))).toContain('status=valid')
   })
 
+  it.each([
+    { type: 'list', title: '标题', items: [{ title: '条目', desc: '正文' }] },
+    { type: 'chart', kind: 'bars', title: '标题', data: [{ label: 'A', value: 1 }] },
+  ])('requires correction of an unsupported %s field before emitting', async node => {
+    const value = String(await vtool.execute({ spec: { items: [node] } }))
+    expect(value).toContain('warning=unknown_field path="items[0].title"')
+    expect(value).toContain('next=fix_and_revalidate')
+    expect(value).not.toContain('next=emit_fence')
+  })
+
+  it('does not green-light an unknown field after repairing JSON', async () => {
+    const value = String(await vtool.execute({ spec: '{"items":[{"type":"text","content":"正文","extra":true,}],}' }))
+    expect(value).toContain('repair=applied')
+    expect(value).toContain('warning=unknown_field path="items[0].extra"')
+    expect(value).toContain('next=fix_and_revalidate')
+    expect(value).not.toContain('next=emit_repaired_fence')
+  })
+
+  it('allows opaque custom fields and correctly escaped quotes', async () => {
+    const value = String(await vtool.execute({ spec: { items: [
+      { type: 'custom-widget', payload: { title: '私有字段' } },
+      { type: 'text', content: '含有 "引号" 的正文' },
+    ] } }))
+    expect(value).toContain('status=valid')
+    expect(value).toContain('next=emit_fence')
+    expect(value).not.toContain('warning=unknown_field')
+  })
+
   it('reports fenced code and Markdown table in canonical inline content', async () => {
     const value = String(await vtool.execute({ spec: JSON.stringify({ items: [
       { type: 'callout', tone: 'error', title: '围栏', content: '因为：```score = 1 - 0.05 × level ```于是照建不误' },

@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, readFileSync } from 'node:fs'
 import { access, mkdir, mkdtemp, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
+import { createServer as createHttpServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { delimiter, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -367,7 +368,11 @@ async function verifyArchivePolicy() {
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
   const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))
-  if (`v${betterSidebarManifest.version}` !== pinnedIntegrations.betterSidebar.tag) throw new Error(`Packaged dsh-better-sidebar must be ${pinnedIntegrations.betterSidebar.tag}; found ${betterSidebarManifest.version}.`)
+  const sidebarSource = pinnedIntegrations.betterSidebar
+  if (`v${sidebarSource.version}` !== sidebarSource.tag) throw new Error('Sidebar upstream tag and version contract disagree.')
+  const sidebarVersion = sidebarSource.resourceVersion ?? sidebarSource.version
+  const sidebarSourceManifest = JSON.parse(await readFile(resolve(repositoryRoot, sidebarSource.source, 'package.json'), 'utf8'))
+  if (betterSidebarManifest.version !== sidebarVersion || sidebarSourceManifest.version !== sidebarVersion) throw new Error(`Packaged and source dsh-better-sidebar must be ${sidebarVersion}; found ${betterSidebarManifest.version} and ${sidebarSourceManifest.version}.`)
   const betterSidebarClient = readArchiveFile('node_modules/dsh-better-sidebar/lib/client.js').toString('utf8')
   // Prove the dependency build chain reached the installer, including lazy
   // chunks; source-only tests cannot detect a stale prepared runtime.
@@ -1030,6 +1035,21 @@ async function verifyHostStartup() {
     await rename(resolve(home, 'profiles/web'), resolve(home, 'profiles/verification-before-repair'))
     await rename(result.candidate, resolve(home, 'profiles/web'))
   }
+  // The authorization status contract requires Zotero's Local API identity.
+  // Keep package verification independent of whether a user has Zotero open,
+  // and use an isolated read-only fixture rather than the user's application.
+  const zoteroFixture = !coreOnly ? createHttpServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json')
+    response.setHeader('Zotero-Server-ID', 'zerowall-package-verification')
+    response.setHeader('Zotero-API-Version', '3')
+    if (request.method !== 'GET') { response.writeHead(405); response.end('{}'); return }
+    response.end(JSON.stringify(request.url.startsWith('/api/users/') ? [] : {}))
+  }) : undefined
+  if (zoteroFixture) {
+    await new Promise(done => zoteroFixture.listen(0, '127.0.0.1', done))
+    await writeFile(resolve(root, 'harness/settings.yaml'), `zotero:\n  baseUrl: http://127.0.0.1:${zoteroFixture.address().port}/api\n`)
+    console.log('Zotero package RPC checks use an isolated read-only Local API fixture; live Zotero availability is separate.')
+  }
   const port = await reservePort()
   const url = `http://127.0.0.1:${port}`
   const dshEntry = resolve(asarPath, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
@@ -1137,6 +1157,7 @@ async function verifyHostStartup() {
       if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
       else child.kill('SIGTERM')
     }
+    if (zoteroFixture) { zoteroFixture.closeAllConnections(); await new Promise(done => zoteroFixture.close(done)) }
   }
 }
 

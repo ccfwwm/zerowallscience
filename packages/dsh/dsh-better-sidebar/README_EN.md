@@ -3,7 +3,7 @@
 > [!IMPORTANT]
 > **Built on DSH's native sidebar API** (since v0.19.0): the right column *is* DSH's own sidebar — the plugin registers every tab type as a native tab (no right panel of its own anymore) and keeps only its self-drawn bottom workbench and the `ctx.betterSidebar` service open to every plugin.
 >
-> **Since v0.24.1 the host support floor is DSH `0.2.0-rc.2+`** (peer floor `^0.2.0-rc.2`). Everything this plugin consumes from 0.2.0 is **purely additive** (zero removed exports, session format still v4, CLI and client runtime byte-identical), so this version carries no runtime compatibility branch — it only moves the support line. **Hosts on the 0.1.7 line should pin `dsh-better-sidebar@0.22.1` — a caret never spans a minor bump, and `^0.1.7-rc.1` is silently disabled by the 0.2.0 startup preflight**; the DSH-to-plugin version table is in [Installation](#-installation).
+> **Since v0.25.0 the host support floor is DSH `0.2.0-rc.2+`** (peer floor `^0.2.0-rc.2`; unchanged in v0.26.0). Everything this plugin consumes from 0.2.0 is **purely additive** (zero removed exports, session format still v4, CLI and client runtime byte-identical), so this support line carries no runtime compatibility branch — it only moves the baseline. **Hosts on the 0.1.7 line should pin `dsh-better-sidebar@0.22.1` — a caret never spans a minor bump, and `^0.1.7-rc.1` is silently disabled by the 0.2.0 startup preflight**; the DSH-to-plugin version table is in [Installation](#-installation).
 
 <!-- Hero -->
 <div align="center">
@@ -14,7 +14,7 @@
   <a href="https://github.com/omdsh-dev/DSH-better-sidebar/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/omdsh-dev/DSH-better-sidebar" /></a>
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
   <a href="https://dshfind.com/en/plugins/omdsh-dev/DSH-better-sidebar?ref=badge"><img alt="dshfind" src="https://dshfind.com/api/badge/omdsh-dev/DSH-better-sidebar?lang=en" /></a><br /><br />
-  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.24.1): 0.2.0-rc.2+" src="https://img.shields.io/badge/DSH-0.2.0--rc.2%2B-4d6bfe" /></a>
+  <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.26.0): 0.2.0-rc.2+" src="https://img.shields.io/badge/DSH-0.2.0--rc.2%2B-4d6bfe" /></a>
   <a href="https://github.com/topics/dsh-better-sidebar"><img alt="Plugin ecosystem: GitHub topic dsh-better-sidebar" src="https://img.shields.io/badge/plugin%20ecosystem-topic%20dsh--better--sidebar-4d6bfe" /></a><br /><br />
   <img alt="File management" src="https://img.shields.io/badge/-File%20management-4d6bfe" /> <img alt="Edit &amp; preview" src="https://img.shields.io/badge/-Edit%20%26%20preview-4d6bfe" /> <img alt="Bottom workbench" src="https://img.shields.io/badge/-Bottom%20workbench-4d6bfe" /> <img alt="Changes" src="https://img.shields.io/badge/-Changes-4d6bfe" /> <img alt="Background tasks" src="https://img.shields.io/badge/-Background%20tasks-4d6bfe" /> <img alt="Side Chat" src="https://img.shields.io/badge/-Side%20Chat-4d6bfe" /> <img alt="Plugin integration" src="https://img.shields.io/badge/-Plugin%20integration-4d6bfe" /><br /><br />
   <b>A dual workbench (right sidebar + bottom panel)</b> that opens its <code>ctx.betterSidebar</code> service to every plugin —<br />
@@ -62,16 +62,16 @@ What this plugin adds on top of DSH's stock sidebar:
 **Prerequisites**: DSH installed (`dsh web` boots), Node.js ≥ 20, pnpm ≥ 10.
 
 **Supported DSH versions**:
-<a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.24.0): 0.2.0-rc.2+" src="https://img.shields.io/badge/DSH-0.2.0--rc.2%2B-4d6bfe" /></a>
+<a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.26.0): 0.2.0-rc.2+" src="https://img.shields.io/badge/DSH-0.2.0--rc.2%2B-4d6bfe" /></a>
 
-> 📌 **Channel and support line**: `v0.24.1` targets DSH **0.2.0-rc.2+** (0.2.0's first candidate rides npm's `next` dist-tag; `latest` is still 0.1.7-rc.2). **Pin the DSH version exactly**: `npm i -g @deepseek-ai/dsh@0.2.0-rc.2`. **Hosts on the 0.1.7 line should pin `dsh-better-sidebar@0.22.1`**: 0.2.0 is a host minor bump, and caret ranges such as `^0.1.7-rc.1` fail the host's startup compatibility preflight on 0.2.0, which disables the whole profile row silently.
+> 📌 **Channel and support line**: `v0.26.0` targets DSH **0.2.0-rc.2+** (both `latest` and `next` on npm are `0.2.0-rc.2`). **Pin the DSH version exactly**: `npm i -g @deepseek-ai/dsh@0.2.0-rc.2` (the `alpha` channel's `0.2.1-alpha.x` is outside this release's support line). **Hosts on the 0.1.7 line should pin `dsh-better-sidebar@0.22.1`**: 0.2.0 is a host minor bump, and caret ranges such as `^0.1.7-rc.1` fail the host's startup compatibility preflight on 0.2.0, which disables the whole profile row silently.
 
 > 🧭 **Pick the plugin version that matches your DSH**:
 >
 > | Your DSH | Install command | Version / peer declared |
 > | --- | --- | --- |
-> | **0.2.0-rc.2+** (including a later 0.2.0 stable) | `dsh plugin --profile web add dsh-better-sidebar@latest` | **0.24.1**, `^0.2.0-rc.2` |
-> | **0.1.7-rc.1 – 0.1.7-rc.2** (and a later 0.1.7 stable; npm `latest` is still 0.1.7-rc.2) | `dsh plugin --profile web add dsh-better-sidebar@0.22.1` | **0.22.1**, `^0.1.7-rc.1` |
+> | **0.2.0-rc.2+** (including a later 0.2.0 stable) | `dsh plugin --profile web add dsh-better-sidebar@latest` | **0.26.0**, `^0.2.0-rc.2` |
+> | **0.1.7-rc.1 – 0.1.7-rc.2** (and a later 0.1.7 stable) | `dsh plugin --profile web add dsh-better-sidebar@0.22.1` | **0.22.1**, `^0.1.7-rc.1` |
 > | 0.1.7-alpha.1 / 0.1.7-alpha.2 | **nothing to install** — move DSH to rc.1 first, then run the row above:<br>`npm i -g @deepseek-ai/dsh@0.1.7-rc.1` | — |
 > | 0.1.6-alpha.2 and earlier, `0.1.5-rc.*` (including the 0.1.5-rc.3 that is npm's `latest`) | `dsh plugin --profile web add dsh-better-sidebar@0.19.1` | **0.19.1**, `^0.1.5-rc.1` |
 > | `0.1.5-alpha.2` | `dsh plugin --profile web add dsh-better-sidebar@0.19.0-alpha.1` | `^0.1.5-alpha.2` |
@@ -135,12 +135,12 @@ To debug local changes or track the dev branch, point the dependency at a local 
 1. git clone https://github.com/omdsh-dev/DSH-better-sidebar.git ~/Code/DSH-better-sidebar
    cd ~/Code/DSH-better-sidebar && pnpm install && pnpm build
 2. In ~/.dsh/profiles/web/package.json dependencies write "dsh-better-sidebar": "link:<absolute path of the clone>"
-3. Append this mount line to ~/.dsh/profiles/web/cordis.patch.yml (this row's `config` IS this plugin's settings form: the deployment limits `readLimit` / `mediaLimit` / `uploadLimit` / `listLimit` plus the user-preference fields — that is what the settings page writes; omit it and every field falls back to its schema default):
+3. Append this mount line to ~/.dsh/profiles/web/cordis.patch.yml (this row's `config` IS this plugin's settings form: the deployment limit `listLimit` plus the user-preference fields — that is what the settings page writes; omit it and every field falls back to its schema default. **`readLimit` / `mediaLimit` / `uploadLimit` were removed in v0.26.0**: upload, download, the HTML preview and archive packing all stream now, so there is no size limit left to configure. A retired key left in an old profile is silently ignored as an unknown field rather than rejected):
    - insert:
        - id: better-sidebar
          name: 'dsh-better-sidebar'
          config:
-           readLimit: 524288
+           listLimit: 1000
 4. Run pnpm install in ~/.dsh/profiles/web
 5. Restart DSH and hard-refresh
 ```
@@ -200,7 +200,19 @@ WeChat / QQ group QR codes will live here. After uploading the QR images (drag t
   <a href="https://github.com/user-attachments/assets/946f7028-4967-461e-a750-d1b5056b62d0"><img width="33%" alt="Service API base screenshot" src="https://github.com/user-attachments/assets/946f7028-4967-461e-a750-d1b5056b62d0" /></a>
 </div>
 
-**Supported DSH versions**: <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.24.0): 0.2.0-rc.2+" src="https://img.shields.io/badge/DSH-0.2.0--rc.2%2B-4d6bfe" /></a> · full release history on the [Releases](https://github.com/omdsh-dev/DSH-better-sidebar/releases) page
+**Supported DSH versions**: <a href="https://www.npmjs.com/package/@deepseek-ai/dsh?activeTab=versions"><img alt="Supported DSH versions (v0.26.0): 0.2.0-rc.2+" src="https://img.shields.io/badge/DSH-0.2.0--rc.2%2B-4d6bfe" /></a> · full release history on the [Releases](https://github.com/omdsh-dev/DSH-better-sidebar/releases) page
+
+### v0.26.0
+
+> 🚀 **Four headline changes**: ① **transfers are fully streamed** — upload, download, the HTML preview and archiving have no size ceiling left (the three deployment caps `readLimit` / `mediaLimit` / `uploadLimit` are gone with them), and saving from the editor dropped its 1 MiB request-body wall; ② **very large files** no longer open as a truncated half-document — they get a read-only paged preview (scroll to the end to append the next page, "load all", and a download hint at 50k rows) — plus a **fourth built-in viewer for `.jsonl` / `.ndjson`** (collapsible record cards + saveable edit); ③ **Side Chat reaches near-parity with a native session** — live push (invalidation frames + incremental refetch), a visible queue with per-item retraction, and per-thread model selection; ④ **the Tasks panel was rebuilt** (expand by group, token usage and duration, canvas motion with staggered entrances). Also: **multiple terminal tabs** in the bottom workbench, four follow-ups to **reference line numbers**, rename/delete now reaching the **native right-sidebar tabs** (fixing data-level bugs such as "saving recreated a renamed file" and "saving resurrected a deleted one"), and three silent data problems. Item by item in [CHANGELOG](./CHANGELOG.md#v0260).
+
+> ⚡ **Performance**: a git-status poll that made the whole UI stutter is gone — the editor no longer *owns* the poll after you open a file (it used to run `git status --untracked-files=all` plus two whole-repo `--numstat` diffs every 2.5 s; measured on a repository with a large unignored tree: 59,631 entries / 9.24 MB / 0.13 s per call), the baseline is **30 s** now with automatic back-off (60 s / 180 s / no automatic polling), and idle polls no longer re-render anything; two file-tree amplifiers (fold-chain preload, per-directory probing) were converged in the same batch.
+
+### v0.25.0
+
+> 📦 **Support line moved: DSH `0.2.0-rc.2+` only** (peer floor `^0.2.0-rc.2`, CI and the mount lane pin `@deepseek-ai/dsh@0.2.0-rc.2`). npm's `latest` for DSH is exactly **0.2.0-rc.2** now, and this release pins it. **Hosts on 0.2.0-rc.1 or older (including the 0.1.7 line) should pin v0.24.1** — `^0.2.0-rc.2` evaluates false against rc.1, so the host's startup compatibility preflight disables the whole row silently. The move itself is a **declaration-and-pin change only**: 0.2.0-rc.2 stays purely additive against everything this plugin consumes, with zero runtime changes.
+>
+> 🙏 This release carries work from several contributors (listed in merge order in [CHANGELOG](./CHANGELOG.md#v0250)).
 
 ### v0.24.1
 
@@ -233,9 +245,9 @@ WeChat / QQ group QR codes will live here. After uploading the QR images (drag t
 > 📦 **Stable release** (npm `latest`): the support line is **unchanged** — DSH **0.1.7-rc.1+** only (peer floor `^0.1.7-rc.1`, CI pins `@deepseek-ai/dsh@0.1.7-rc.1`), so v0.21.1 users can upgrade straight away. **Hosts on DSH 0.1.6-alpha.2 or earlier keep pinning v0.19.1.**
 
 - 🧩 **The Tasks page is now a workflow graph** (the primary view): the session tree renders as layered nodes joined by bezier edges — drag to pan, wheel-zoom to the cursor, fit to the content box, a control cluster bottom-right (graph/tree toggle + fold switch + zoom + fit); the **classic indented tree is kept** (keyboard-navigable) and both modes share one view model, so fold state and team enrichment never drift apart.
-- 🃏 **Two-segment node cards**: the top segment is the kind badge (main agent / subagent / teammate / workflow / completed aggregate) + phase badge + name + meta; the bottom bar is the state dot + state word + **the same merged activity line the main agent shows** (concurrent tools grouped and counted, with the running call's detail — wording from the host's `chat` namespace) + a fold button on finished nodes; a running bar is swept across its **whole** width (disabled under `prefers-reduced-motion`). 8px-rounded, hierarchy carried by a faint top-segment tint only, the session you are on wearing a heavier accent border.
+- 🃏 **Two-segment node cards**: the top segment is the kind badge (main agent / subagent / teammate / workflow / completed aggregate) + phase badge + a **mode chip** (one-shot / continuable, sharing the badge's row) + name — only a workflow run keeps a mono meta line (status / member tally); the bottom bar is the state dot + the **native status text** (**the same merged activity line the main agent shows**: concurrent tools grouped and counted, with the running call's detail — wording from the host's `chat` namespace, i.e. analyzing the request / reading a file · main.ts / preparing to read a file / running a command · npm run build). That line **takes the state word's place** for running and settled nodes (the state is no longer printed twice), while `idle` and `error` keep their word and a node with no activity data falls back to it; finished nodes carry a fold button on the bar; a running bar is swept across its **whole** width (disabled under `prefers-reduced-motion`). 8px-rounded, hierarchy carried by a faint top-segment tint only, the session you are on wearing a heavier accent border.
 - 🔀 **Workflow runs enter the graph**: runs folded from `tool-workflow/*` events (the same events the official panel folds) hang under their origin agent, with member agents re-parented below and boxed per phase with matching badges; members with no catalog row are synthesized from the run's own data, so a finished run still shows who took part.
-- 🗂 **Folding split into two groups that say what they hold**: `✓ N completed` (including failures, called out as `N failed`) and `N idle` (teammates that finished a turn and can be called back at any moment) are **two separate rows**; the manual fold button always works, the automatic rule only sweeps idle members once there are 3 or more, and an aggregate's name line reads "first two names + `+N`".
+- 🗂 **Folding split into two groups that say what they hold**: `✓ N completed` (including failures, called out as `N failed`) and `N idle` (teammates that finished a turn and can be called back at any moment) are **two separate rows**; the manual fold button always works, the automatic rule only sweeps idle members once there are 3 or more, and an aggregate's name line reads "first two names + `+N`" while its badge carries the **real count** (`✓ N completed` / `N idle`) and its bar is the action row (group glyph + `Expand` + the failure tail + the expand chevron). **Clicking an aggregate reveals THAT group only** — sibling groups and the page-level rule stay put; the page-level expand/collapse lives in the bottom-right cluster, and collapsing there drops the per-group openings too.
 - 🪟 **Two persistent floating windows** (extracted into a reusable `FloatingWindow`): background-job output and the shared task's detail/edit surface — draggable, resizable from every edge, a self-scrolling body, dismissed only by the close button or Escape (no outside click / blur / anchor observer); the task window hands its spare height to the description, so enlarging it gives the content room, and the action row is pinned to the bottom.
 - 👥 **Agent Teams board (experimental layer)**: members enrich their nodes and an always-visible strip lists the roster and shared tasks; the state machine follows the host (pending → claim → in progress → complete → reopen) with reassign / edit / two-step delete, and stale CAS revisions get their own notice; member activity is overlaid from `subagents.live`'s `running` flag.
 - 🔄 **Background jobs now read the host's client `ctx.jobs`** (a pushed roster plus a non-consuming output stream and `kill`): the plugin deleted its own `jobs.list` / `jobs.output` / `jobs.kill` routes and the event-replay mirror, never touching the model's `job_output` cursor; output streams in a persistent floating window with tail-follow, and the drawer auto-collapses at 8+ agents.
@@ -380,11 +392,12 @@ The GitHub topic [`dsh-better-sidebar`](https://github.com/topics/dsh-better-sid
 ### 🖼️ Viewer Plugins (file previewers)
 
 <details>
-<summary><b>3 plugins (click to expand)</b></summary>
+<summary><b>4 plugins (click to expand)</b></summary>
 
 | Plugin | ⭐ | Description |
 |---|---|---|
 | [HuanLinOTO/dsh-plugin-better-sidebar-plugin-office](https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office) | <img alt="stars" src="https://img.shields.io/github/stars/HuanLinOTO/dsh-plugin-better-sidebar-plugin-office?style=flat&color=4d6bfe" /> | Office-suite preview (.docx / .xlsx / .pptx) as a separate bundle to slim the core (in the official recommended catalog) |
+| [HuanLinOTO/dsh-plugin-better-sidebar-plugin-audio](https://github.com/HuanLinOTO/dsh-plugin-better-sidebar-plugin-audio) | <img alt="stars" src="https://img.shields.io/github/stars/HuanLinOTO/dsh-plugin-better-sidebar-plugin-audio?style=flat&color=4d6bfe" /> | Audio preview: zoomable waveform player (click/drag seek, A-B loop, channel switch, playback rate) + live spectrum (bars/line/waterfall) + whole-file spectrogram, with its own Range-capable streaming media route |
 | [zemul/dsh-video-preview](https://github.com/zemul/dsh-video-preview) | <img alt="stars" src="https://img.shields.io/github/stars/zemul/dsh-video-preview?style=flat&color=4d6bfe" /> | Inline video preview: .mp4 / .webm / .mov / .mkv / .avi with a /video host route supporting HTTP Range scrubbing |
 | [dong-victor/dsh-better-sidebar-jupyter](https://github.com/dong-victor/dsh-better-sidebar-jupyter) | <img alt="stars" src="https://img.shields.io/github/stars/dong-victor/dsh-better-sidebar-jupyter?style=flat&color=4d6bfe" /> | Runnable `.ipynb` notebook view: lazy-start Python kernel, streaming outputs, save-back |
 
