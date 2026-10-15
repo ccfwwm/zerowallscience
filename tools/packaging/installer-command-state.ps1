@@ -50,7 +50,9 @@ try {
         $remove = [Array]::IndexOf($parts,$owned)
         $kept = @(); for ($i=0; $i -lt $parts.Count; $i++) { if ($i -ne $remove) { $kept += $parts[$i] } }
     }
-    $expectedPath = (@($directoryPath) + $kept) -join ';'
+    # ZeroWall's commandPathWorker appends its managed entry to preserve the
+    # priority of commands already registered by the user.
+    $expectedPath = ($kept + @($directoryPath)) -join ';'
     $expectedKind = if ($before.path) { $before.path.kind } else { 'ExpandString' }
     $expectedAbsent = [int](($null -eq $before.path) -or ($owned -and $before.owner.PathWasAbsent.value -eq 1))
     $expectedRetained = @($kept | Where-Object { $_ -ceq $directoryPath }).Count

@@ -1,6 +1,5 @@
 $ErrorActionPreference='Stop'
 $helper=Join-Path $PSScriptRoot 'installer-command-state.ps1'
-. (Join-Path $PSScriptRoot '../../deepseek-harness/apps/desktop/scripts/command-path.ps1')
 $id=[Guid]::NewGuid().ToString('N')
 $key='Software\ZeroWallScience\InstallerRegression\'+$id
 $environmentKey=$key+'\Environment'
@@ -10,6 +9,7 @@ $directory=Join-Path ([IO.Path]::GetTempPath()) ('zws-command-regression-'+$id)
 [void](New-Item -Path $directory -ItemType Directory)
 $launcher=Join-Path $directory 'dsh.cmd'
 $snapshot=Join-Path $directory 'snapshot.json'
+$worker=Join-Path $directory 'command-path.ps1'
 Set-Content -LiteralPath $launcher -Value '@exit /b 0'
 function Assert([bool]$condition,[string]$message) { if (!$condition) { throw $message } }
 function Capture { & $helper -Operation capture -Snapshot $snapshot -Directory $directory -EnvironmentKey $environmentKey -OwnerKey $ownerKey -MutexName $mutex }
@@ -19,6 +19,12 @@ function Install {
     [void](Invoke-DshCommandPath -Request @{operation='install';directory=$directory;expected=$state.fingerprint} -EnvironmentKey $environmentKey -OwnerKey $ownerKey -MachinePath '' -MutexName $mutex)
 }
 try {
+    # Exercise the same adapted worker that ships in the ZeroWall installer.
+    # The upstream worker prepends PATH, whereas ZeroWall intentionally appends.
+    $generator=([Uri][IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../commands/path-worker.mjs'))).AbsoluteUri
+    & node --input-type=module --eval "const { writeFile } = await import('node:fs/promises'); const { commandPathWorker } = await import(process.argv[1]); await writeFile(process.argv[2], await commandPathWorker());" $generator $worker
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to generate the shipped command PATH worker' }
+    . $worker
     $environment=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($environmentKey)
     $owner=[Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($ownerKey)
     try {
@@ -30,7 +36,12 @@ try {
         $owner.SetValue('RetainedEntries',0,[Microsoft.Win32.RegistryValueKind]::DWord)
         $owner.SetValue('OtherUserValue','preserve')
     } finally { $environment.Dispose(); $owner.Dispose() }
-    Capture; Install; Restore
+    Capture; Install
+    $environment=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($environmentKey)
+    try {
+        Assert ($environment.GetValue('Path','',[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames) -ceq ('C:\First;C:\Last;;%ExistingReference%;'+$directory)) 'Installer must append its command directory'
+    } finally { $environment.Dispose() }
+    Restore
     $environment=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($environmentKey)
     $owner=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($ownerKey)
     try {
@@ -72,9 +83,35 @@ try {
         Assert ($environment.GetValue('Path') -ceq ($directory+';C:\Existing')) 'Pre-existing identical entry changed'
         Assert ($environment.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::String) 'String PATH kind changed'
     } finally { $environment.Dispose() }
-    Write-Output 'Command restoration passed: exact order/kind, no-op, concurrent-edit refusal, absent PATH/owner and pre-existing entries.'
+    # An old managed entry can coexist with a retained user-owned duplicate.
+    # Remove exactly one occurrence and restore both original occurrences.
+    $environment=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($environmentKey,$true)
+    $owner=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($ownerKey,$true)
+    try {
+        $duplicatePath='C:\First;'+$old+';C:\Middle;'+$old+';C:\Last'
+        $environment.SetValue('Path',$duplicatePath,[Microsoft.Win32.RegistryValueKind]::String)
+        $owner.SetValue('Directory',$old,[Microsoft.Win32.RegistryValueKind]::String)
+        $owner.SetValue('PathWasAbsent',0,[Microsoft.Win32.RegistryValueKind]::DWord)
+        $owner.SetValue('RetainedEntries',1,[Microsoft.Win32.RegistryValueKind]::DWord)
+    } finally { $environment.Dispose(); $owner.Dispose() }
+    Capture; Install
+    $environment=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($environmentKey)
+    try {
+        Assert ($environment.GetValue('Path') -ceq ('C:\First;C:\Middle;'+$old+';C:\Last;'+$directory)) 'Retained duplicate or append order changed'
+    } finally { $environment.Dispose() }
+    Restore
+    $environment=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($environmentKey)
+    $owner=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($ownerKey)
+    try {
+        Assert ($environment.GetValue('Path') -ceq $duplicatePath) 'Old owner duplicates were not restored exactly'
+        Assert ($environment.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::String) 'Duplicate PATH kind changed'
+        Assert ($owner.GetValue('Directory') -ceq $old) 'Duplicate owner not restored'
+        Assert ($owner.GetValue('RetainedEntries') -eq 1) 'Retained duplicate ownership not restored'
+        Assert ($owner.GetValue('OtherUserValue') -ceq 'preserve') 'Unrelated registry value changed'
+    } finally { $environment.Dispose(); $owner.Dispose() }
+    Write-Output 'Command restoration passed: shipped append order, exact order/kind, no-op, concurrent-edit refusal, absent PATH/owner, pre-existing entries and retained owner duplicates.'
 } finally {
     [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($key,$false)
-    Remove-Item -LiteralPath $launcher,$snapshot -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $launcher,$snapshot,$worker -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $directory -ErrorAction SilentlyContinue
 }
