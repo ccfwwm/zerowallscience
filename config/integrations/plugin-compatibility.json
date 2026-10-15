@@ -5,7 +5,7 @@
     {
       "dependency": "dsh-better-sidebar",
       "previousRange": "^0.25.0",
-      "testedVersion": "0.26.1-zws.1",
+      "testedVersion": "0.26.1-zws.2",
       "consumers": [
         { "id": "@zerowallscience/plugin-account", "version": "0.1.6" },
         { "id": "@zerowallscience/plugin-account", "version": "0.1.7" },

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { applyAuditedPluginCompatibility } from './plugin-compatibility.mjs'
-const sidebar = { id: 'dsh-better-sidebar', version: '0.26.1-zws.1' }
+const sidebar = { id: 'dsh-better-sidebar', version: '0.26.1-zws.2' }
 const consumer = { id: 'consumer', version: '1.0.0', dependencies: { 'dsh-better-sidebar': '^0.25.0' }, packageDependencies: { 'dsh-better-sidebar': '0.25.0' }, size: 42, sha256: 'a'.repeat(64), downloadUrl: 'https://example.com/consumer.tgz', signature: { value: 'old' } }
 const rule = { dependency: sidebar.id, previousRange: '^0.25.0', testedVersion: sidebar.version, consumers: [{ id: consumer.id, version: consumer.version }] }
 test('exact audited compatibility changes only signed metadata and retains archive contract', () => {
   const unchanged = { id: 'other' }
   const result = applyAuditedPluginCompatibility([sidebar, consumer, unchanged], [rule], [sidebar.id], entry => ({ ...entry, signature: { value: 'new' } }))
   assert.equal(result[2], unchanged)
-  assert.equal(result[1].dependencies[sidebar.id], '^0.25.0 || 0.26.1-zws.1')
+  assert.equal(result[1].dependencies[sidebar.id], '^0.25.0 || 0.26.1-zws.2')
   for (const key of ['id', 'version', 'size', 'sha256', 'downloadUrl', 'packageDependencies']) assert.deepEqual(result[1][key], consumer[key])
   assert.equal(consumer.signature.value, 'old')
   assert.deepEqual(applyAuditedPluginCompatibility([sidebar, consumer], [rule], ['genui'], () => { throw Error() }), [sidebar, consumer])
@@ -24,6 +24,6 @@ test('independently published consumer versions require separate audited identit
   const next = { ...consumer, version: '1.0.1' }
   const rules = [{ ...rule, consumers: [...rule.consumers, { id: consumer.id, version: next.version }] }]
   const result = applyAuditedPluginCompatibility([sidebar, consumer, next], rules, [sidebar.id], x => x)
-  for (const entry of result.slice(1)) assert.equal(entry.dependencies[sidebar.id], '^0.25.0 || 0.26.1-zws.1')
+  for (const entry of result.slice(1)) assert.equal(entry.dependencies[sidebar.id], '^0.25.0 || 0.26.1-zws.2')
   assert.throws(() => applyAuditedPluginCompatibility([sidebar, { ...next, version: '1.0.2' }], rules, [sidebar.id], x => x), /Unaudited/)
 })

@@ -197,7 +197,7 @@
     },
     {
       "package": "dsh-file-review",
-      "version": "0.8.9-zws.1",
+      "version": "0.8.9-zws.2",
       "owner": "third-party",
       "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
@@ -327,7 +327,7 @@
     {
       "id": "environment",
       "package": "@zerowallscience/plugin-environment",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "source": "plugins/environment",
       "manifest": "plugins/environment/zerowall.plugin.json",
       "client": true,
@@ -370,7 +370,7 @@
     {
       "id": "projects",
       "package": "@zerowallscience/plugin-projects",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "source": "plugins/projects",
       "manifest": "plugins/projects/zerowall.plugin.json",
       "client": true,
@@ -459,7 +459,7 @@
     {
       "id": "files",
       "package": "@zerowallscience/plugin-files",
-      "version": "0.2.5",
+      "version": "0.2.6",
       "source": "plugins/files",
       "manifest": "plugins/files/zerowall.plugin.json",
       "client": true,
@@ -487,7 +487,7 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "0.2.14",
+      "version": "0.2.15",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
@@ -535,7 +535,7 @@
     {
       "id": "pubmed",
       "package": "@zerowallscience/plugin-pubmed",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "source": "plugins/pubmed",
       "manifest": "plugins/pubmed/zerowall.plugin.json",
       "client": true,
@@ -563,7 +563,7 @@
     {
       "id": "mineru",
       "package": "@zerowallscience/plugin-mineru",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "source": "plugins/mineru",
       "manifest": "plugins/mineru/zerowall.plugin.json",
       "client": true,
@@ -631,7 +631,7 @@
     {
       "id": "execution",
       "package": "@zerowallscience/plugin-execution",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "source": "plugins/execution",
       "manifest": "plugins/execution/zerowall.plugin.json",
       "client": true,
@@ -673,7 +673,7 @@
     {
       "id": "biogenie",
       "package": "@zerowallscience/plugin-biogenie",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "source": "plugins/biogenie",
       "manifest": "plugins/biogenie/zerowall.plugin.json",
       "client": false,
@@ -697,7 +697,7 @@
     {
       "id": "runs",
       "package": "@zerowallscience/plugin-runs",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "source": "plugins/runs",
       "manifest": "plugins/runs/zerowall.plugin.json",
       "client": true,
@@ -717,7 +717,7 @@
     {
       "id": "publications",
       "package": "@zerowallscience/plugin-publications",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "source": "plugins/publications",
       "manifest": "plugins/publications/zerowall.plugin.json",
       "client": true,
@@ -759,7 +759,7 @@
     {
       "id": "reviewer",
       "package": "@zerowallscience/plugin-reviewer",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "source": "plugins/reviewer",
       "manifest": "plugins/reviewer/zerowall.plugin.json",
       "client": true,
