@@ -77,10 +77,22 @@
 - `stable/latest.yml`：2,264 字节，SHA-256 `05778b7f7c43ae461d594baf6ce5bb097dac9be6d71a642c129bd91ac8830ccb`。
 - `stable/releases/latest.json` 和 `stable/releases-zerowallsciencedev/latest.json`：各 2,325 字节，SHA-256 `839ed1846c47c90e64da6e807c06f97df9d8fe530a8ef7bf84ead723415ffe0f`。
 
-收据为 `artifacts/release/8.2.1/publication/qiniu-desktop-public.json`；日志为 `final-v3-desktop-publish.log` 和 `final-v3-desktop-verify.log`。
+收据为 `artifacts/release/8.2.1/publication/qiniu-desktop-public.json`；日志为 `final-v3-desktop-publish.log` 和 `final-v3-desktop-verify.log`。三个无 query 公网指针也已独立 GET，全文大小与 SHA-256 均匹配 manifest，收据 `qiniu-desktop-pointer-normal-urls-final.json` 为 `complete=true`。JSON 本身没有 build ID 字段，通过其内容哈希关联本次 manifest。
+
+## GitHub
+
+七牛正式验收完成后已推送源码 `main`，创建并推送 annotated tag `v8.2.1`，指向 `601284524621cbdd1c2c8374afa20ae33c340f6c`。后续验收文档更新不改变该标签或安装器字节。
+
+<https://github.com/ccfwwm/zerowallscience/releases/tag/v8.2.1> 为公开正式 Release（非 draft、非 prerelease）。四个附件为同一安装器、blockmap、`latest.yml` 和 `zerowall-science-8.2.1-latest.json`，状态均为 `uploaded`。
+
+通过 GitHub 官方 API 和官方附件服务分段下载全部四个附件，逐段检查 HTTP 206、Content-Range 和长度，再拼接安装器并计算完整 SHA-256。四个附件的大小和 SHA-256 均与本地 manifest 及七牛正式对象一致；安装器为 317,501,659 字节，SHA-256 `6e35076ec1ba27a2995f4b4e5f83b0c73441affd9b264fc1be7493dea4cf0f3d`。最终收据 `artifacts/verification/8.2.1/github-release-download-parallel-final.json` 为 `complete=true`，四项 `localMatches`、`qiniuMatches` 均为 `true`，验收时间为 `2026-10-15T13:12:34.810Z`。
+
+最初的单连接 gh 下载因速度过低受控停止，未完成文件以 `.partial` 保留，没有作为验收产物。正式完整下载位于 `artifacts/verification/8.2.1/github-download-parallel-final/`，分段恢复及安装器收据一并保留。
 
 ## 边界
 
 本次只构建 Windows x64；没有覆盖测试真实用户 profile、机器级 UAC、所有远程科研 API 或实际用户账户下的模型生成计划。原生计划交互由 DSH 回归覆盖，打包运行时另经 Host/Desktop 验收。已经安装同为 `8.2.1` 的用户需要下载本次安装器覆盖安装，桌面版本比较不会将同版本识别为更高版本；插件仍通过独立目录更新。
+
+GitHub 推送时报告默认分支已有 249 个 Dependabot 告警（10 critical、107 high、97 moderate、35 low）；本次没有逐项审计或修复这些依赖告警，`test:security` 通过不代表依赖漏洞已清零。
 
 两个旧 Progressive Tools 目录还存在生成输出 junction 和依赖目录。精确删除输出链接曾被自动审批拒绝（`blocked by policy`），未绕过；受跟踪源码、有效注册、最终 ASAR/runtime closure 和资源目录已移除该插件。用户数据、凭据、密钥、node_modules、已有缓存和其他未跟踪文件没有纳入提交。
