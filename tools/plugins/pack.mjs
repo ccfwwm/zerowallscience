@@ -8,6 +8,7 @@ import { basename, dirname, join } from 'node:path'
 import { root, stageRoot, releaseRoot, cacheRoot } from '../build/paths.mjs'
 import { preparePublishPackage } from './publish-package.mjs'
 import { preserveImmutablePackage } from './immutable-package.mjs'
+import { historicalPackage } from './package-history.mjs'
 import { packageSource } from '../build/layout.mjs'
 import { restorePublishedOutput } from './published-output.mjs'
 const pnpm = process.env.npm_execpath
@@ -66,6 +67,7 @@ for (const source of selectedSources) {
   const version = manifest.version
   const staging = join(stageRoot, 'plugin-packages', directory, randomUUID())
   const { publish } = await preparePublishPackage(source, staging)
+  const baseline = await historicalPackage(manifest.name, version)
   const sourceFingerprint = createHash('sha256').update(JSON.stringify(await offlineFiles(staging))).digest('hex')
   const destination = join(releaseRoot, 'plugins', directory, version)
   await mkdir(destination, { recursive: true })
@@ -73,7 +75,8 @@ for (const source of selectedSources) {
   if (reusable?.sha256 && (await stat(reusable.path).catch(() => undefined))?.size === reusable.size && await fileDigest(reusable.path) === reusable.sha256) {
     const archive = join(destination, basename(reusable.path))
     if (archive !== reusable.path) await copyFile(reusable.path, archive)
-    records.push({ ...reusable, path: archive })
+    if (baseline) immutableReceipts.push({ id: manifest.name, version, ...await preserveImmutablePackage(archive, baseline.path) })
+    records.push({ ...reusable, path: archive, size: (await stat(archive)).size, sha256: await fileDigest(archive) })
     immutableReceipts.push({ id: manifest.name, version, preserved: true, sha256: reusable.sha256, reason: 'unchanged content fingerprint and verified original archive' })
     console.log(`CACHE HIT plugin-pack:${manifest.name} ${reusable.sha256}; reused original tarball`)
     await checkpoint()
@@ -92,7 +95,6 @@ for (const source of selectedSources) {
   execFileSync(process.execPath, [pnpm, 'pack', '--pack-destination', destination], { cwd: staging, stdio: 'inherit' })
   const name = (await readdir(destination)).find(file => file.endsWith('.tgz'))
   const archive = join(destination, name)
-  const baseline = historical.find(item => item.id === manifest.name && item.version === version)
   if (baseline) immutableReceipts.push({ id: manifest.name, version, ...await preserveImmutablePackage(archive, baseline.path) })
   const packed = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], { encoding: 'utf8' }))
   if (JSON.stringify(packed.dependencies ?? {}).match(/workspace:|github:|git\+|git:/)) throw new Error(`Non-publishable dependency in ${manifest.name}`)
