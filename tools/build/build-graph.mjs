@@ -82,7 +82,7 @@ async function taskDefinition(id, taskArgs = []) {
       const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
       if (!manifest.dsh?.bundle || !manifest.zerowall?.rollbackSupported) throw new Error(`Package is not an independently managed plugin: ${name}`)
       return {
-        id, inputPaths: [relative(root, source), 'tools/plugins/pack.mjs', 'tools/plugins/publish-package.mjs'], dshCommit,
+        id, inputPaths: [relative(root, source), 'tools/plugins/pack.mjs', 'tools/plugins/publish-package.mjs', 'tools/plugins/snapshot.mjs'], dshCommit,
         dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, source).replaceAll('\\', '/')]),
         dependencies: { ...dependencies, package: manifest.name, version: manifest.version },
         outputs: [kind === 'plugin-build' ? join(source, 'lib') : join(contract.pluginStore, manifest.name.split('/').at(-1), manifest.version)],
@@ -95,6 +95,7 @@ async function taskDefinition(id, taskArgs = []) {
     const pluginPath = join(root, 'plugins', name)
     const manifest = await readFile(join(pluginPath, 'package.json'), 'utf8').then(JSON.parse)
     const inputs = [`plugins/${name}`, 'tools/plugins/tsdown.ts', 'tools/plugins/generate-typert.mjs', 'tools/plugins/prepare-pack.mjs', 'tools/plugins/inline-css.mjs', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json', ...await sharedSourceInputs(root, pluginPath)]
+    if (kind === 'plugin-pack') inputs.push('tools/plugins/pack.mjs', 'tools/plugins/publish-package.mjs', 'tools/plugins/snapshot.mjs')
     if (name === 'files') inputs.push('tools/plugins/viewer-style.mjs', 'tools/plugins/viewer-adapter.mjs')
     if (name === 'biogenie') inputs.push('resources/extensions/capabilities/biogenie', 'tools/integration/prepare-biogenie.mjs', 'tools/integration/generate-biogenie-catalog.py')
     if (name === 'python') inputs.push('tools/plugins/prepare-python-worker.mjs')

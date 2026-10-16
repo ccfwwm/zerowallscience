@@ -11,7 +11,7 @@
   </p>
 </div>
 
-ZeroWall Science 是一个模型无关的智能科研工作台，由 Electron、React、TypeScript、固定版本的 DeepSeek Harness（DSH）运行时、22 个一方领域插件包、Better Sidebar Office 集成和独立 SQLite 科研存储构成。它面向需要 AI 协助，同时又不能放弃项目数据、凭据、执行环境和科研产物谱系控制权的研究人员。
+ZeroWall Science 是一个模型无关的智能科研工作台，由 Electron、React、TypeScript、固定版本的 DeepSeek Harness（DSH）运行时、独立领域插件及平铺 DSH 集成、Better Sidebar Office 集成和独立 SQLite 科研存储构成。它面向需要 AI 协助，同时又不能放弃项目数据、凭据、执行环境和科研产物谱系控制权的研究人员。
 
 项目的核心判断简单但严格：一段 AI 回答还不是科研结果。可信科研系统必须保留研究问题如何转化为计划、哪个工具或模型采取了行动、代码在哪里运行、哪些数据进入、产生了什么产物、据此形成了什么决策，以及结果如何进入论文或演示。
 
@@ -118,7 +118,7 @@ deepseek-harness/    固定 DSH fork，提供 Agent、会话、工具、Skills�
 resources/     内置科研 Skills、运行时、环境、品牌资源和许可证
 tools/         插件生成、DSH 验证、打包、发布和安全自动化
 tests/         契约、安全、集成、打包和端到端检查
-docs/          详细双语架构文档和生成式架构视觉
+docs/          当前开发、打包、更新与领域合同
 ```
 
 ## Windows 开发
@@ -156,7 +156,7 @@ pnpm package:dir
 涉及已交付 DSH/Agent 组合的修改还必须通过：
 
 ```powershell
-pnpm test:dsh:alpha1
+pnpm test:dsh:composition
 ```
 
 自动化测试特意设计为不依赖真实 SSH 主机、WSL 发行版、GPU、API Key 或网络连接。
@@ -164,7 +164,7 @@ pnpm test:dsh:alpha1
 ## 打包
 
 ```powershell
-# Windows Preview 包
+# Windows Stable 别名
 pnpm package:win
 
 # Windows Stable 包
@@ -175,7 +175,7 @@ pnpm package:mac:x64
 pnpm package:mac:arm64
 ```
 
-Preview 与 Stable 使用独立应用标识、用户数据目录和更新通道。构建与发布控制见[项目开发与发布指南](docs/project-guide.zh-CN.md)。
+Windows 打包集成完整最新已验证插件清单，复用不变归档，旧运行时按需增量装配。具体流程见[开发与发布指导](docs/codex-development-guide.zh-CN.md)。
 
 ## 安全与适用范围
 
@@ -185,18 +185,7 @@ Preview 与 Stable 使用独立应用标识、用户数据目录和更新通道�
 
 ## 详细文档
 
-[项目开发与发布指南](docs/project-guide.zh-CN.md)包括：
-
-- 启动流程与稳定回环来源机制；
-- Electron/Host/Renderer 信任边界；
-- 全部插件领域及其责任；
-- 完整科研对象模型与七版数据库迁移；
-- 哈希链审计报告；
-- Run 恢复、租约、心跳、产物收集和文件传输；
-- 文件附件授权与完整性检查；
-- Agent、Skills、MCP 和多 Agent 编排；
-- 发表与演示状态机；
-- 创新性分析、限制与设计权衡。
+当前开发、打包、资源更新、Python 与演示合同见[文档索引](docs/README.md)。旧版本和一次性验收记录可在 Git 历史查询。
 
 ## 许可证
 

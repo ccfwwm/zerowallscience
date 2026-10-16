@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile, readdir, mkdir, writeFile, access } from 'node:fs/promises'
 import { resolve, relative, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { verificationRoot } from '../build/paths.mjs'
 const root = resolve(import.meta.dirname, '../..'); const directory = resolve(root, 'resources/extensions/skills')
 const rows = []; const names = new Map(); const hashes = new Map()
 const changed = new Set(execFileSync('git', ['diff', '--name-only', '--', 'resources/extensions/skills'], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/u))
@@ -33,7 +34,7 @@ for (const entry of await readdir(directory, { withFileTypes: true })) {
   const conditional = /API[_ -]?KEY|credential|token|GPU|CUDA|license|requires.*(?:install|account|server)/iu.test(content)
   rows.push({ name: name ?? entry.name, action: entry.name === 'zerowall-bio' ? '合并入口' : changed.has(`resources/extensions/skills/${entry.name}/SKILL.md`) ? '修复' : conditional ? '条件可用' : '保留', reason: entry.name === 'zerowall-bio' ? '统一 Bio Tools / BioGenie / Biomni 后端导航' : changed.has(`resources/extensions/skills/${entry.name}/SKILL.md`) ? '统一发现/调用与托管环境契约' : conditional ? '运行取决于凭据、后端、模型或可选运行时；不自动安装' : '未发现重复注册或过期发现入口', allowedTools: /^allowed-tools:\s*(.*)$/mu.exec(content)?.[1] ?? '', scripts, runtimes, brokenLinks: broken, reviewedExamples, issues })
 }
-const out = resolve(root, 'docs/integration/skills-mcp'); await mkdir(out, { recursive: true })
+const out = resolve(verificationRoot, 'skills-mcp'); await mkdir(out, { recursive: true })
 const summary = { total: rows.length, issues: rows.filter(r => r.issues.length).length, brokenLinks: rows.reduce((sum,r) => sum+r.brokenLinks.length,0), scripts: rows.reduce((sum,r) => sum+r.scripts.length,0) }
 await writeFile(resolve(out, 'skill-audit.json'), JSON.stringify({ generatedAt: new Date().toISOString(), summary, skills: rows }, null, 2))
 await writeFile(resolve(out, 'skill-audit.md'), `# Skills 逐项审计\n\n共 ${rows.length} 项。注册/全文重复/过期发现入口异常 ${summary.issues} 项，待核对链接 ${summary.brokenLinks} 项。此表是静态检查，不代表所有外部服务和模型已运行验收。详细脚本、环境、链接和工具声明见 skill-audit.json。\n\n| Skill | 处理 | 原因 | 链接异常 |\n|---|---|---|---|\n` + rows.map(row => `| ${row.name} | ${row.action} | ${row.reason} | ${row.brokenLinks.length} |`).join('\n') + '\n')

@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, writeFile, realpath, stat, access } from 'nod
 import { createHash } from 'node:crypto'
 import { offlineFiles } from '../commands/offline-profile.mjs'
 import { fileDigest } from '../commands/resource-catalog.mjs'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, sep } from 'node:path'
 import { root, stageRoot, releaseRoot, cacheRoot, pluginStoreRoot, pluginSnapshotStoreRoot } from '../build/paths.mjs'
 import { preparePublishPackage } from './publish-package.mjs'
 import { commitImmutablePackage } from './immutable-package.mjs'
@@ -12,6 +12,7 @@ import { historicalPackage } from './package-history.mjs'
 import { packageSource } from '../build/layout.mjs'
 import { restorePublishedOutput } from './published-output.mjs'
 import { integrationPublishSource, usesReviewedRuntime } from './publish-source.mjs'
+import { pluginSnapshotId as snapshotId, readVerifiedPluginFeed, assertFeedNotRegressed, mergePluginFeed } from './snapshot.mjs'
 const pnpm = process.env.npm_execpath
 if (!pnpm) throw new Error('Invoke with pnpm plugins:pack')
 const records = []
@@ -26,12 +27,7 @@ await mkdir(pluginStoreRoot, { recursive: true })
 await mkdir(pluginSnapshotStoreRoot, { recursive: true })
 const sharedRecordsPath = join(pluginStoreRoot, 'plugin-packages.json')
 
-function snapshotId(records, dshCommit) {
-  return createHash('sha256').update(JSON.stringify({ schema: 1, dshCommit,
-    plugins: records.map(({ id, version, kind, size, sha256 }) => ({ id, version, kind, size, sha256 }))
-      .sort((a, b) => `${a.id}@${a.version}`.localeCompare(`${b.id}@${b.version}`)),
-  })).digest('hex')
-}
+const sharedRecords = await readVerifiedPluginFeed(pluginStoreRoot) ?? []
 
 async function writeSnapshot(records) {
   const dshCommit = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8')).commit
@@ -53,16 +49,8 @@ async function verifyConsumerSnapshot() {
   // Plugin bytes live outside the application-version release directory.
   // A desktop-only version must consume this immutable feed rather than
   // guessing a historical application version by directory sort order.
-  const records = await readFile(sharedRecordsPath, 'utf8').then(JSON.parse, () => undefined)
+  const records = sharedRecords
   if (!records?.length) throw new Error('Consumer-only packaging requires an existing verified plugin snapshot; run the component build and plugins:pack once.')
-  for (const record of records) {
-    const expectedRoot = join(pluginStoreRoot, record.id.split('/').at(-1), record.version)
-    if (!resolve(record.path).startsWith(resolve(expectedRoot) + sep)) throw new Error(`Consumer-only plugin record escapes the shared plugin store: ${record.id}@${record.version}`)
-    const info = await stat(record.path).catch(() => undefined)
-    if (!info?.isFile() || info.size !== record.size || await fileDigest(record.path) !== record.sha256) {
-      throw new Error(`Consumer-only packaging found a missing or changed plugin artifact: ${record.id}@${record.version}`)
-    }
-  }
   const receipt = await readFile(join(stageRoot, 'build-receipt.json'), 'utf8').then(JSON.parse, () => undefined)
   const pin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
   if (!receipt?.pluginSnapshotId || receipt.pluginSnapshotId !== snapshotId(records, pin.commit)) {
@@ -153,7 +141,7 @@ for (const source of selectedSources) {
   const sourceFingerprint = createHash('sha256').update(JSON.stringify(await offlineFiles(staging))).digest('hex')
   const destination = join(pluginStoreRoot, directory, version)
   await mkdir(destination, { recursive: true })
-  const reusable = [...existingRecords, ...cachedRecords, ...historical].find(record => record.id === manifest.name && record.version === version && record.sourceFingerprint === sourceFingerprint)
+  const reusable = [...sharedRecords, ...existingRecords, ...cachedRecords, ...historical].find(record => record.id === manifest.name && record.version === version && record.sourceFingerprint === sourceFingerprint)
   if (reusable?.sha256 && (await stat(reusable.path).catch(() => undefined))?.size === reusable.size && await fileDigest(reusable.path) === reusable.sha256) {
     const archive = join(destination, basename(reusable.path))
     immutableReceipts.push({ id: manifest.name, version, ...await commitImmutablePackage(reusable.path, archive, baseline?.path) })
@@ -190,21 +178,18 @@ for (const source of selectedSources) {
 }
 const currentRecordsPath = join(releaseRoot, 'plugin-packages.json')
 const currentReceiptsPath = join(releaseRoot, 'immutable-package-receipt.json')
+const completeRecords = selectedPlugin ? mergePluginFeed(sharedRecords.length ? sharedRecords : existingRecords, records) : records
+assertFeedNotRegressed(sharedRecords, completeRecords)
 if (selectedPlugin) {
-  const prior = await readFile(currentRecordsPath, 'utf8').then(JSON.parse, () => [])
   // A feed advertises the current version for each plugin. Keep historical
   // archives in the content cache, not ahead of the new version in this list.
-  const replaced = new Set(records.map(record => record.id))
-  await writeFile(currentRecordsPath, JSON.stringify([...prior.filter(record => !replaced.has(record.id)), ...records], null, 2))
+  await writeFile(currentRecordsPath, JSON.stringify(completeRecords, null, 2))
   const priorReceipts = await readFile(currentReceiptsPath, 'utf8').then(JSON.parse, () => [])
   await writeFile(currentReceiptsPath, JSON.stringify([...priorReceipts, ...immutableReceipts], null, 2) + '\n')
 } else {
   await writeFile(currentRecordsPath, JSON.stringify(records, null, 2))
   await writeFile(currentReceiptsPath, JSON.stringify(immutableReceipts, null, 2) + '\n')
 }
-const completeRecords = selectedPlugin
-  ? await readFile(currentRecordsPath, 'utf8').then(JSON.parse)
-  : records
 await writeFile(sharedRecordsPath, JSON.stringify(completeRecords, null, 2) + '\n')
 const snapshot = await writeSnapshot(completeRecords)
 console.log(`PLUGIN SNAPSHOT ${snapshot.snapshotId}; ${completeRecords.length} immutable component artifacts`)

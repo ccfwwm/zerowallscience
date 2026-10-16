@@ -16,9 +16,6 @@ ZeroWall 将当前会话模型的供应商、模型名、协议、地址和 Key 
 
 ## 验证与运行
 
-- MCP bridge 和原生 DeepSeek Loader 路由测试：73 项通过。
-- AI Cloud、MCP、base 插件测试及受影响插件构建通过。
-- 实际桌面凭据库与 Host 组件联调：deepseek-v4-flash 的 A1 返回 `BIOMNI_LLM_OK`，数据库自然语言 UniProt 查询返回人胰岛素 P01308。
-- 上述实测是当前 AI Cloud 代理路由；DeepSeek/Kimi 官方地址及其他协议使用契约测试，不代表持有各供应商 Key 的生产实测。
+路由改动需要验证 MCP bridge、模型 Loader、AI Cloud 和受影响插件。契约测试通过只说明路由规则成立，不代表持有所有供应商凭据或完成线上推理。实际验收记录模型、协议、目标地址（脱敏）、任务返回和产物，存入 artifacts/verification/<version>，不要把一次性结果当永久支持保证。
 
-需要使用更新后的客户端 Host 构建并重新启动。服务端更新不会自动替换已经安装、正在运行的旧客户端。此次未发布新的安装包。
+需要使用更新后的客户端 Host 并重新启动；服务端更新不会自动替换已安装的旧客户端。插件独立发布和桌面集成按 [开发指导](codex-development-guide.zh-CN.md) 执行。

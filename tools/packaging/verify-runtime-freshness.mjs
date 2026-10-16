@@ -37,7 +37,7 @@ export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZE
     // reviewed runtime intentionally differs from the original source.
     if (!manifest.name?.startsWith('@zerowallscience/plugin-')) continue
     const core = runtimeProfile.corePlugins.includes(manifest.name)
-    if (!core && !runtimeProfile.optionalPluginPolicy?.bundled) continue
+    if (!core && !runtimeProfile.optionalPluginPolicy?.bundled && !runtimeProfile.optionalPluginPolicy?.offlineClosure) continue
     const target = resolve(stage, core ? 'runtime/node_modules' : 'offline-profile/modules', manifest.name)
     assertPluginDesktopCompatibility(manifest.zerowall?.desktop, app.version, manifest.name)
     for (const file of ['package.json', 'zerowall.plugin.json', ...await nestedFiles(join(source, 'lib'), 'lib/')]) {

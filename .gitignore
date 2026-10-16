@@ -45,6 +45,9 @@ __pycache__/
 /scripts/env/
 
 /artifacts/
+/.pnpm-store/
+/desktop/%SystemDrive%/
+Typora_Hook_Log.txt
 /plugins/dsh-archive-manager/lib/
 /plugins/dsh-file-review/lib/
 /plugins/dsh-ssh-ops/lib/

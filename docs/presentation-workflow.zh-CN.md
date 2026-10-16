@@ -1,6 +1,6 @@
 # 科研演示文稿工作流
 
-适用版本：桌面 8.3.0、Base 0.1.17、Images 0.2.16、Univer Office 0.3.7-zws.4；zerowall-presentation/univer-slide Skill 0.1.5、gpt-image-generator Skill 0.1.3。DSH 保持锁定在 0.2.0-rc.2；桌面、插件与 Skill 分别版本化。
+适用版本：桌面 8.3.1、Base 0.1.18、Images 0.2.18、Univer Office 0.3.7-zws.6；zerowall-presentation/univer-slide Skill 0.1.6、gpt-image-generator Skill 0.1.4。DSH 保持锁定在 0.2.0-rc.2；桌面、插件与 Skill 分别版本化。
 
 ## 成品标准
 
@@ -10,7 +10,7 @@
 
 内容先规划完整，再共同安排文字、图片、图表和表格。普通正文页用约 180–320 个中文字作参考，图表中的信息也算内容，不机械补字。标题 32–36 pt、正文 20–24 pt 只作未指定时的起点，按用户风格和实际内容调整字号、留白、页面节奏与信息密度。采用安装字体实测和明确换行。优先调整区域、列宽或页数，不依赖缩小正文。默认不自动加左上角小眉标、章节面包屑或装饰性页签，只有用户要求或页面计划明确需要时才加入。SVG 使用设计 px，字号 pt 转 px 除以 0.75；原生 Doc 文本 fs 使用其 API 的单位，不能把所有字体数字统一乘同一个系数。
 
-常用布局包括大证据图配解读、双图比较、图与概念说明、方法流程、定义行、原生数据表和结果图。避免全稿使用相同卡片，也避免把论文整页或完整幻灯片当背景。
+常用布局包括大证据图配解读、双图比较、图与概念说明、方法流程、定义行、原生数据表和结果图。每个新页面先生成完整、不可编辑的 PNG 模板原型，实际查看后再还原为可编辑对象；背景或插图不能替代整页原型。原型仅作参考，最终页面保留独立文字、形状、图表与表格。局部修改可复用已有原型，不重做无关页面。生图失败时保留进度并重试或报告，不能跳过原型步骤。
 
 ## 正常执行顺序
 
@@ -18,7 +18,7 @@
 2. 保存一份 presentation-spec.json：全稿页序、目的、最终文字、assetIds、notes、图文区域、字体、颜色和尺寸。空图页也显式使用 assetIds: []。
 3. 按区域尺寸选择论文完整图/完整面板或生成素材，保留原文件。生图使用 gpt-image-generator Skill 和 generate_image/edit_image，读取环境中的图片模型、分组、质量及适用的分辨率和比例；独立于媒体工作台配置，不创建媒体项目或任务。分组支持名称包含“生图”或“图片”的分组，同时识别普通图片接口与媒体目录的图片候选。质量以具体分组和模型为单位选择；`auto` 省略质量参数，`high`、`xhigh`、`max` 不跨分组推断支持，也不自动降低已保存质量。配置失效时报告具体错误，保留用户选择。生成提示根据用户的主题、样式、版面角色和需要呈现的文字制定；不强制统一色板、白底、固定分区或“禁止文字”。仅出现真实缺陷才编辑。最多两项生图并发。
 4. 建立 .univer、新草稿、Slide Unit，用 presentation_prepare 绑定 file、unitId、worktreeId、spec_path、manifest_path。
-5. 优先使用 presentation_generate_templates 并行生成完整页面 PNG 视觉模板，查看图片后用 presentation_plan_editable_pages 保存文字、形状、连接线、图片和原生图表/表格的内容与边界。模板注册为 role: template，仅作参考，不作为成品整页背景。根据模板编写 SVG，在每个计划元素上声明唯一的 data-zerowall-element-id 和匹配的 data-zerowall-element-type，再用 presentation_compile_pages 批量编译。独立页的生图与布局准备可并行，相同草稿的写入串行。最终 SVG 替换后插入原生图表、表格和备注；替换页面会删除该页旧对象。规划工具不会自动识别模板或代写全部可编辑对象。
+5. 必须先使用 presentation_generate_templates 并行生成每个新页面的完整 PNG 视觉模板，查看图片后用 presentation_plan_editable_pages 保存文字、形状、连接线、图片和原生图表/表格的内容与边界。模板注册为 role: template，仅作参考，不作为成品整页背景。根据模板编写 SVG，在每个计划元素上声明唯一的 data-zerowall-element-id 和匹配的 data-zerowall-element-type，再用 presentation_compile_pages 批量编译。独立页的生图与布局准备可并行，相同草稿的写入串行。最终 SVG 替换后插入原生图表、表格和备注；替换页面会删除该页旧对象。规划工具不会自动识别模板或代写全部可编辑对象。
 6. presentation_check_pages 返回实际 inspect/lint/screenshot 覆盖范围。复用已经返回的当前 PNG，不对未修改的已验收版本重复截图。编译失败立即处理，非致命 warning 在批量初稿后根据实际截图逐页修复或具体说明。查看所有页面 PNG，记录具体观察；工具 ok 不能代替视觉判断。
 7. 只修复失败页并检查它们。有效页面和成功素材继续复用。
 8. 导出明确草稿，回读 PPTX 对象与备注，并用 Office 渲染器逐页核对。验收后调用 univer_worktree(action: ready)、独立 univer_status、univer_worktree(action: merge)，重新从 trunk inspect，交付可直接打开的独立 .univer。status 不能传作 worktree action。
@@ -28,6 +28,8 @@
 univer_execute 只接受 code 或 codeFile 中的一项。兼容输入中的 codeFile: "/none"、"none" 和空字符串会在派发前按未提供归一化；真实文件路径和非空 code 同时出现时立即拒绝，应修正参数，不重试同一错误。
 
 ## 素材清单 v2
+
+可编辑还原及最后润色时仍可调用 gpt-image-generator 的 generate_image/edit_image，按模板风格生成独立插图、图标、纹理和背景。背景不含正式标题、正文和数据标签；这些内容继续作为可编辑对象。新素材实际查看后保留 PNG 与 .generation.json 回执，用独立 assetId 及 illustration/icon/background 角色登记，同时更新页面 assetIds、还原计划和 SVG。完整页面原型单独保留为 template，不能混作最终整页图片。简单图标和几何形状按需要用 SVG/原生对象；复杂图片仍可独立移动、替换。独立生图最多并发两项，同一草稿串行写入，修改后只重查受影响页面。
 
 visual-assets.json 的 schemaVersion 为 2，兼容旧 v1。素材按 assetId 引用，一页可以引用多个 ID，一个素材可用于多个明确用途。
 

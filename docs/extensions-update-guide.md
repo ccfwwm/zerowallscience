@@ -2,7 +2,7 @@
 
 ## 先升级桌面一次
 
-本文说明 8.3.0 的当前使用合同，不代表该版本已经公开上线。下载与发布状态以对应版本验证收据及正式发布公告为准；下方 Stable URL 是既有发布入口，不是 8.3.0 上线证明。
+8.3.0 已发布；本次维护不重打或覆盖其安装包。后续开发与打包流程见 [开发指导](codex-development-guide.zh-CN.md)。在线资源的当前版本以验签后的 catalog 为准，可能高于安装器内置版本。
 
 桌面核心与扩展资源分开更新。安装器携带已验证的默认功能签名离线闭包。插件、Skills、MCP 在启动后和每日读取、验签远端目录，检查只显示可用更新，不下载 payload、不安装、不激活、不重启。用户在设置或 CLI 明确操作后才执行这些变更。Python 是下文说明的后台自动维护例外。桌面升级保留账户、模型、项目、环境变量、第三方插件、停用和固定版本选择。
 
@@ -121,7 +121,7 @@ zws mcp rollback scimaster
 
 ## 七牛与 GitHub 资源（既有发布入口）
 
-以下 URL 保留历史发布入口及资源说明；它们当前指向的版本以在线签名内容为准，不能据此声称 8.3.0 已发布：
+以下为正式资源入口；实时版本以在线签名内容及公开下载校验为准：
 
 - [插件签名指针](https://zerowall.chengxunkeji.cn/stable/catalogs/plugin-latest.json)
 - [Skills 签名指针](https://zerowall.chengxunkeji.cn/stable/catalogs/skill-latest.json)
@@ -139,11 +139,11 @@ zws skill update zerowall-presentation --catalog https://zerowall.chengxunkeji.c
 
 ## 开发者发布一个资源
 
-8.3.0 的适配插件、Research Store、支持包和组合声明统一位于 `plugins/`；Skills/MCP 资源源码位于 `resources/extensions/`。插件源码仓库保留源码快照、构建工具及来源收据；历史 `skills/`、`mcp/` 和签名 `catalogs/` 继续保留历史发布记录，不代表本次源码快照已公开发布资源。
+8.3.0 的适配插件、Research Store、支持包和组合声明统一位于 `plugins/`；Skills/MCP 资源源码位于 `resources/extensions/`。插件源码仓库保留源码快照、构建工具及来源收据；历史 `skills/`、`mcp/` 和签名 `catalogs/` 继续保留历史发布记录，资源是否上线以签名目录和公开校验收据为准。
 
 1. 只提升改动资源的 semver，并更新它的兼容范围；不能更改已发布同 ID/版本的字节。
-2. 构建选定插件、执行对应测试和 `pnpm pack`；Skills 使用确定性 tar，MCP 配置/Server 分别打包。插件私有资源必须进入 tarball，发布依赖不能含 `workspace:` 或 Git 源依赖。
-3. 用正式 Ed25519 密钥签署资源条目、catalog 和指针；密钥仅放本地忽略目录或 GitHub Secrets。`stable-3` 公钥已经内置于 8.0.2，不能发布开发签名。
+2. 构建选定插件、执行对应测试和 `pnpm plugin:pack <id>`；Skills 使用确定性 tar，MCP 配置/Server 分别打包。插件私有资源必须进入 tarball，发布依赖不能含 `workspace:` 或 Git 源依赖。
+3. 用正式 Ed25519 密钥签署资源条目、catalog 和指针；密钥仅放本地忽略目录或 GitHub Secrets。8.3.0 使用 `stable-4`，以当前 trusted-keys 合同为准，不能发布开发签名。
 4. 上传 `stable/plugins/<id>/<version>/`、`stable/skills/<id>/<version>/` 或 `stable/mcp/<id>/<version>/`，再上传不可变 catalog。公开下载验证签名、大小及 SHA-256。
 5. 使用该不可变 catalog 在隔离 profile 测试安装、最小调用和回滚，再切换对应类型的 `*-latest.json`。只更新这一类资源目录，不修改桌面 `stable/latest.yml`。
 6. 在插件总仓库创建对应资源版本 Release，上传与七牛相同的包及签名清单。独立更新无需变更桌面版本。
@@ -158,7 +158,7 @@ node scripts/publish-resources.mjs promote
 node scripts/publish-resources.mjs verify
 ```
 
-桌面发布使用独立的 `publish-desktop.mjs stage|promote|verify`。独立资源脚本不会改变桌面更新指针。
+桌面发布使用 `pnpm release:publish:stable` 和 `pnpm release:verify:stable`。独立资源脚本不会改变桌面更新指针。
 
 ## Python 分层更新
 
@@ -179,6 +179,8 @@ Python 内容 revision、依赖层与桌面版本独立。固定解释器默认�
 
 插件包存于共享不可变目录 `artifacts/release/plugins/<插件目录名>/<独立版本>/`，不随桌面版本复制或重归档。组件构建验证插件字节后生成绑定 DSH commit 的插件快照和成功构建收据；相同 ID/版本出现不同文件或字节时必须停止，调查并提升真正变化的组件版本，不能覆盖历史归档或绕过签名。
 
-先完成组件构建及相关检查，再执行稳定桌面打包。`pnpm package:stable:win` 的 consumer-only 流程验证成功 stage、快照、插件大小和 SHA-256，只消费已验证的共享归档；不会重新构建或重新打包插件。失败、未完成、版本或快照不匹配的 stage 不可激活。完整离线功能仍须通过安装器和 ASAR/runtime closure 验证，不能用打包退出码代替验收。
+后续每个桌面版本必须集成共享 plugin-packages.json 中全部最新、已验证且兼容的插件与支持包，包括新增插件。复用的是不变 tgz 字节，不能因此冻结安装器内的插件版本。先独立构建/打包变化插件、同步组合/profile，再运行 pnpm package:stable:win。该入口检查最新快照及实际闭包版本；stage 过期会增量装配，未变化插件沿用原归档，不强制重编。
 
-历史 8.0.x 发布记录及其 URL 保留供追溯；8.3.0 的安装器、build ID、SHA-256 和公网状态应由实际验收收据补充。
+共享清单比源码新时先同步对应源码，不允许打包静默降级或丢包。单插件打包合并共享最新清单，保留其他插件的最新记录。完整离线闭包需要随安装器集成；tgz 不为每个桌面版本重复复制，也不在安装器里额外存一套。
+
+具体签名变量、资源定向合并、验收与发布顺序见 [开发指导](codex-development-guide.zh-CN.md)。本次仅更新后续流程和脚本，保留已发布 8.3.0 的安装包、build ID、SHA-256 和线上更新指针。

@@ -5,14 +5,26 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
+import { pluginSnapshotId } from '../plugins/snapshot.mjs'
 
 const execute = promisify(execFile)
-const snapshotId = 'a'.repeat(64)
+const archive = Buffer.from('verified plugin archive')
+const record = { id: '@fixture/plugin', version: '1.0.0', kind: 'plugin', size: archive.length, sha256: createHash('sha256').update(archive).digest('hex') }
+const snapshotId = pluginSnapshotId([record], 'dsh')
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'zws-stage-consumer-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   await mkdir(join(root, 'tools/build'), { recursive: true })
   await mkdir(join(root, 'tools/packaging'), { recursive: true })
+  await mkdir(join(root, 'tools/plugins'), { recursive: true })
+  await mkdir(join(root, 'config/deepseek-harness'), { recursive: true })
+  await copyFile(new URL('../plugins/snapshot.mjs', import.meta.url), join(root, 'tools/plugins/snapshot.mjs'))
+  await writeFile(join(root, 'config/deepseek-harness/upstream.json'), JSON.stringify({ commit: 'dsh' }))
+  const store = join(root, 'artifacts/release/plugins/plugin/1.0.0')
+  await mkdir(store, { recursive: true })
+  await writeFile(join(store, 'plugin.tgz'), archive)
+  await writeFile(join(root, 'artifacts/release/plugins/plugin-packages.json'), JSON.stringify([{ ...record, path: join(store, 'plugin.tgz') }]))
   await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', version: '8.3.0' }))
   for (const file of ['incremental-build.mjs', 'clone-current-stage.mjs', 'materialize-tree.mjs', 'package-windows.mjs']) await copyFile(new URL(file, import.meta.url), join(root, 'tools/build', file))
   await writeFile(join(root, 'tools/build/build-lock.mjs'), 'export async function acquireBuildLock() { return async () => {} }')
@@ -22,16 +34,45 @@ async function fixture(t) {
     import { appendFile, readFile } from 'node:fs/promises'; import { join } from 'node:path';
     export async function verifyRuntimeFreshness(root) {
       const pointer = JSON.parse(await readFile(join(root, 'artifacts/stage/8.3.0/current.json')));
-      if (pointer.buildId !== 'old-build') throw new Error('Candidate activated before freshness');
+      if (!process.env.PACKAGE_FLOW && pointer.buildId !== 'old-build') throw new Error('Candidate activated before freshness');
       await appendFile(join(root, 'calls.jsonl'), JSON.stringify(['freshness']) + '\\n');
       if (process.env.FAKE_FAIL === 'freshness') throw new Error('Injected freshness failure');
     }
   `)
   const command = `
-    import { appendFileSync, cpSync, readFileSync, writeFileSync } from 'node:fs'; import { join } from 'node:path';
+    import { appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'; import { join } from 'node:path';
+    import { pathToFileURL } from 'node:url';
+    import { createHash } from 'node:crypto';
     const args = process.argv.slice(2), root = process.cwd();
+    const { pluginSnapshotId } = await import(pathToFileURL(join(root, 'tools/plugins/snapshot.mjs')));
     appendFileSync(join(root, 'calls.jsonl'), JSON.stringify(args) + '\\n');
     if (process.env.PACKAGE_GATE_ONLY) process.exit(args.includes('--consumer-only') ? 23 : 22);
+    if (process.env.PACKAGE_FLOW) {
+      if (args[0] === 'build') {
+        const versionRoot = join(root, 'artifacts/stage/8.3.0');
+        const feed = JSON.parse(readFileSync(join(root, 'artifacts/release/plugins/plugin-packages.json')));
+        const id = args.includes('--consumer-only') ? 'consumer-build' : 'assembled-build';
+        const stage = join(versionRoot, id);
+        cpSync(join(versionRoot, 'old-build'), stage, { recursive: true });
+        const snapshotId = pluginSnapshotId(feed, 'dsh');
+        writeFileSync(join(stage, 'plugin-snapshot.json'), JSON.stringify({ applicationVersion: '8.3.0', snapshotId, plugins: feed }));
+        writeFileSync(join(stage, 'build-receipt.json'), JSON.stringify({ status: 'success', applicationVersion: '8.3.0', buildId: id, pluginSnapshotId: snapshotId }));
+        const signedFiles = [];
+        for (const record of feed) {
+          const path = join(stage, 'offline-profile/modules', record.id);
+          mkdirSync(path, { recursive: true });
+          const bytes = JSON.stringify({ name: record.id, version: record.version });
+          writeFileSync(join(path, 'package.json'), bytes);
+          signedFiles.push({ path: 'modules/' + record.id + '/package.json', sha256: createHash('sha256').update(bytes).digest('hex') });
+        }
+        writeFileSync(join(stage, 'offline-profile/receipt.json'), JSON.stringify({ schema: 2, files: signedFiles }));
+        writeFileSync(join(versionRoot, 'current.json'), JSON.stringify({ applicationVersion: '8.3.0', buildId: id }));
+        if (process.env.PACKAGE_FLOW === 'race' && args.includes('--consumer-only')) {
+          writeFileSync(join(root, 'artifacts/release/plugins/plugin-packages.json'), JSON.stringify([...feed, { ...feed[0], id: '@fixture/another', path: feed[0].path }]));
+        }
+      }
+      process.exit(0);
+    }
     if (process.env.FAKE_FAIL === args[0]) throw new Error('Injected ' + args[0] + ' failure');
     const versionRoot = join(root, 'artifacts/stage/8.3.0');
     if (JSON.parse(readFileSync(join(versionRoot, 'current.json'))).buildId !== 'old-build') throw new Error('Build candidate activated too early');
@@ -52,7 +93,10 @@ async function fixture(t) {
   for (const folder of ['runtime', 'dsh', 'offline-profile']) await mkdir(join(source, folder), { recursive: true })
   for (const file of ['dsh/build-receipt.json', 'offline-profile/receipt.json', 'runtime/integrity-receipt.json']) await writeFile(join(source, file), '{}')
   await writeFile(join(source, 'runtime/build-receipt.json'), JSON.stringify({ applicationVersion: '8.3.0', commit: 'dsh', version: '0.2.0-rc.2' }))
-  await writeFile(join(source, 'plugin-snapshot.json'), JSON.stringify({ applicationVersion: '8.3.0', snapshotId }))
+  await writeFile(join(source, 'plugin-snapshot.json'), JSON.stringify({ applicationVersion: '8.3.0', snapshotId, plugins: [record] }))
+  await mkdir(join(source, 'offline-profile/modules', record.id), { recursive: true })
+  await writeFile(join(source, 'offline-profile/modules', record.id, 'package.json'), JSON.stringify({ name: record.id, version: record.version }))
+  await writeFile(join(source, 'offline-profile/receipt.json'), JSON.stringify({ schema: 2, files: [{ path: `modules/${record.id}/package.json`, sha256: createHash('sha256').update(JSON.stringify({ name: record.id, version: record.version })).digest('hex') }] }))
   const receipt = { schema: 2, status: 'success', applicationVersion: '8.3.0', buildId: 'old-build', pluginSnapshotId: snapshotId }
   await writeFile(join(source, 'build-receipt.json'), JSON.stringify(receipt))
   const pointer = JSON.stringify({ applicationVersion: '8.3.0', buildId: 'old-build' })
@@ -131,4 +175,53 @@ for (const state of ['success', 'missing', 'failed', 'wrong-version', 'wrong-bui
   }
   await assert.rejects(f.run('package-windows.mjs', [], { PACKAGE_GATE_ONLY: '1' }))
   assert.deepEqual(await f.calls(), [state === 'success' ? ['build', '--consumer-only'] : ['build']])
+})
+
+for (const change of ['new-version', 'new-plugin', 'missing-module', 'old-carrier']) test(`Windows packaging refreshes the assembly for ${change}`, async t => {
+  const f = await fixture(t)
+  if (change === 'missing-module') await rm(join(f.source, 'offline-profile/modules', record.id, 'package.json'))
+  else if (change === 'old-carrier') await writeFile(join(f.source, 'offline-profile/receipt.json'), JSON.stringify({ schema: 2, files: [] }))
+  else {
+    const path = join(f.root, 'artifacts/release/plugins/plugin-packages.json')
+    const feed = JSON.parse(await readFile(path))
+    const next = { ...feed[0], ...(change === 'new-version' ? { version: '1.1.0' } : { id: '@fixture/new-plugin' }) }
+    const folder = join(f.root, 'artifacts/release/plugins', next.id.split('/').at(-1), next.version)
+    await mkdir(folder, { recursive: true })
+    next.path = join(folder, 'plugin.tgz')
+    await writeFile(next.path, archive)
+    await writeFile(path, JSON.stringify(change === 'new-version' ? [next] : [...feed, next]))
+  }
+  await assert.rejects(f.run('package-windows.mjs', [], { PACKAGE_GATE_ONLY: '1' }))
+  assert.deepEqual(await f.calls(), [['build']])
+})
+
+test('Windows packaging rejects corrupt latest archives without rebuilding or repacking', async t => {
+  const f = await fixture(t)
+  await writeFile(join(f.root, 'artifacts/release/plugins/plugin/1.0.0/plugin.tgz'), 'corrupt')
+  await assert.rejects(f.run('package-windows.mjs', [], { PACKAGE_GATE_ONLY: '1' }), /missing or changed plugin artifact/u)
+  await assert.rejects(f.calls(), { code: 'ENOENT' })
+})
+
+test('Windows packaging refreshes an outdated closure and consumes the latest set without changing original archives', async t => {
+  const f = await fixture(t)
+  const path = join(f.root, 'artifacts/release/plugins/plugin-packages.json')
+  const feed = JSON.parse(await readFile(path))
+  const next = { ...feed[0], id: '@fixture/added' }
+  const folder = join(f.root, 'artifacts/release/plugins/added/1.0.0')
+  await mkdir(folder, { recursive: true })
+  next.path = join(folder, 'added.tgz')
+  await writeFile(next.path, archive)
+  await writeFile(path, JSON.stringify([...feed, next]))
+  await f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'success' })
+  assert.deepEqual(await f.calls(), [['build'], ['build', '--consumer-only'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
+  assert.deepEqual(await readFile(feed[0].path), archive)
+  assert.deepEqual(await readFile(next.path), archive)
+  const installed = JSON.parse(await readFile(join(f.versionRoot, 'consumer-build/offline-profile/modules', next.id, 'package.json')))
+  assert.equal(installed.version, next.version)
+})
+
+test('a plugin feed change during consumer assembly prevents invoking Electron packaging', async t => {
+  const f = await fixture(t)
+  await assert.rejects(f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'race' }))
+  assert.deepEqual(await f.calls(), [['build', '--consumer-only']])
 })

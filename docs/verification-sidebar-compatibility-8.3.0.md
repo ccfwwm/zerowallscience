@@ -1,6 +1,6 @@
 # Sidebar compatibility for 8.3.0
 
-The 8.3.0 catalog selects `dsh-better-sidebar@0.26.1-zws.3`. The earlier audit is recorded in `docs/verification-three-plugin-upgrade-20261014.md`.
+The 8.3.0 catalog selects `dsh-better-sidebar@0.26.1-zws.3`. The earlier audit is retained in Git history: `git show e5720fb33ddfe7a70ff0d0a9e8d4025417698100:docs/verification-three-plugin-upgrade-20261014.md`.
 
 Compared with parent HEAD `8cfe6f15531a4b4e404759338a15146ea6cb2bf1` at `packages/dsh/dsh-better-sidebar`, the current `plugins/dsh-better-sidebar` source has no content changes except `package.json` (normalizing checkout CRLF to LF). Host, Client, public service types, patches and tests are unchanged. The new resource identity accompanies the flat directory migration and preserves the audited API.
 

@@ -10,7 +10,7 @@
   </p>
 </div>
 
-ZeroWall Science is a model-agnostic scientific research workbench built with Electron, React, TypeScript, a pinned DeepSeek Harness (DSH) runtime, 22 first-party domain plugin packages, the Better Sidebar Office integration, and an independent SQLite research store. It is designed for researchers who need AI assistance without surrendering control over project data, credentials, execution environments, or the provenance of scientific outputs.
+ZeroWall Science is a model-agnostic scientific research workbench built with Electron, React, TypeScript, a pinned DeepSeek Harness (DSH) runtime, independent domain plugins and flat DSH integrations, the Better Sidebar Office integration, and an independent SQLite research store. It is designed for researchers who need AI assistance without surrendering control over project data, credentials, execution environments, or the provenance of scientific outputs.
 
 The core idea is simple but demanding: an AI answer is not yet a research result. A trustworthy research system must preserve how a question became a plan, which tool or model acted, where code ran, what data entered, what artifact was produced, which decision followed, and how the result reached a paper or presentation.
 
@@ -117,7 +117,7 @@ deepseek-harness/    Pinned DSH fork providing Agent, session, tool, Skills, MCP
 resources/     Bundled scientific Skills, runtimes, environments, brand assets and licenses
 tools/         Plugin generation, DSH verification, packaging, release and security automation
 tests/         Contract, security, integration, packaging and end-to-end checks
-docs/          Detailed bilingual architecture and generated architecture visuals
+docs/          Current development, packaging, update and domain guides
 ```
 
 ## Development on Windows
@@ -155,7 +155,7 @@ pnpm package:dir
 Changes to the shipped DSH/Agent composition must also pass:
 
 ```powershell
-pnpm test:dsh:alpha5
+pnpm test:dsh:composition
 ```
 
 The automated suite is intentionally designed to run without real SSH hosts, WSL distributions, GPUs, API keys, or network access.
@@ -163,7 +163,7 @@ The automated suite is intentionally designed to run without real SSH hosts, WSL
 ## Packaging
 
 ```powershell
-# Windows Preview package
+# Windows Stable alias
 pnpm package:win
 
 # Windows Stable package
@@ -174,7 +174,7 @@ pnpm package:mac:x64
 pnpm package:mac:arm64
 ```
 
-Preview and Stable builds use separate application identities, user-data directories, and update channels. Build and release controls are documented in the [project guide](docs/project-guide.zh-CN.md).
+Windows packaging integrates the complete latest verified plugin feed and reuses unchanged immutable archives. Outdated runtime stages are refreshed incrementally. See the [development and release guide](docs/codex-development-guide.zh-CN.md).
 
 ## Security and Scope
 
@@ -184,18 +184,7 @@ These controls reduce accidental exposure and keep privileged decisions outside 
 
 ## Detailed Documentation
 
-The [project guide](docs/project-guide.zh-CN.md) covers:
-
-- runtime startup and stable loopback-origin behavior;
-- Electron/Host/Renderer trust boundaries;
-- all plugin domains and their ownership;
-- the complete research object model and seven schema migrations;
-- hash-chained audit reports;
-- Run recovery, leases, heartbeats, output harvesting and transfer behavior;
-- file attachment authorization and integrity checking;
-- Agent, Skills, MCP and multi-agent orchestration;
-- publication and presentation state machines;
-- innovation analysis, limitations and design tradeoffs.
+See the [documentation index](docs/README.md) for current development, packaging, resource updates, Python and presentation contracts. Historical release and one-off verification records remain available in Git history.
 
 ## License
 

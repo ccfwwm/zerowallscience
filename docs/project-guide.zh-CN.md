@@ -1,164 +1,51 @@
-# ZeroWall Science 项目开发与发布指南
+# ZeroWall Science 项目指南
 
-本文保留项目级目录、开发环境和通用构建说明。当前 Codex 的执行合同、DSH 固定版本、插件更新事务和 8.0.9 完整离线默认功能和发布边界以 [Codex 开发指导](codex-development-guide.zh-CN.md) 为准。源码和脚本是事实来源；旧版本验收记录、一次性审计结果和本地构建目录不属于项目源代码。
+当前桌面基线为 8.3.1。开发、打包、签名、最新插件集成及发布流程统一见 [开发指导](codex-development-guide.zh-CN.md)，文档入口见 [文档索引](README.md)。历史阶段文档由 Git 保存。
 
-## 1. 项目边界
+ZeroWall 使用 Electron 作为桌面壳，DSH 提供 Host/Agent 运行时，独立插件提供科研与界面功能，plugins/research-store 保存项目数据和审计记录。领域能力应在插件中扩展，桌面负责窗口、凭据桥接、安装、启动和桌面更新。
 
-ZeroWall Science 是 Windows 优先的 Electron 科研工作台：Electron 主进程负责窗口、更新、凭据和 Host 生命周期；React/TypeScript 插件提供科研工作台能力；`deepseek-harness` 提供 Agent、会话、工具、Skills、MCP 和 React 外壳运行时；Research Store 保存科研数据、审计和可复核产物。
+## 目录
 
-核心原则是：模型只能提出操作请求，Host 负责权限和执行，Research Store 保存事实，用户做最终科研判断。
+| 目录 | 内容 |
+| --- | --- |
+| desktop/ | Electron 主进程、preload、安装更新；build/ 是源码 |
+| plugins/ | 平铺插件、上游适配、Research Store、支持包和组合声明 |
+| deepseek-harness/ | 固定 DSH fork 子模块，版本以 config/deepseek-harness/upstream.json 为准 |
+| resources/ | extensions 下的 Skills/MCP/Python/引擎资源，以及 branding/cases/provenance |
+| profiles/、config/ | 组合生成结果及上游、布局、兼容和资源版本合同 |
+| tools/、scripts/ | 生成、构建、检查与发布自动化 |
+| tests/、docs/ | 验证源码及当前文档 |
+| artifacts/ | 开发输出、共享归档、stage、安装器、验收与日志；不提交 |
 
-## 2. 目录职责
+根 packages/store 不是源码入口；deepseek-harness/packages 属于子模块自身结构。开发 lib/dist/out 兼容链接指向 artifacts/dev，不是正式发布目录。
 
-| 目录 | 内容 | 是否提交 |
-| --- | --- | --- |
-| `desktop/` | Electron 主进程、preload、更新和安装包配置 | 是 |
-| `plugins/` | ZeroWall 一方产品插件 | 是 |
-| `packages/` | 按 `dsh/`、`support/`、`bundles/` 分组的适配器、支持库和组合声明；旧路径只读兼容 | 是 |
-| `store/` | SQLite Research Store、迁移、审计和快照 | 是 |
-| `deepseek-harness/` | 固定的 DSH fork 子模块 | 通过 gitlink 提交 |
-| `resources/` | `extensions/` 下的 Skills、MCP、Python、运行时与引擎，另有 cases、branding、provenance | 是 |
-| `profiles/`、`config/` | 配置生成和 DSH 固定版本声明 | 是 |
-| `tools/`、`scripts/` | 生成、检查、构建和发布自动化 | 是 |
-| `tests/` | 契约、安全、集成和发布测试 | 是 |
-| `docs/` | 当前架构、运行时和发布说明 | 是 |
+## 开发
 
-不应提交的本地生成物包括：`node_modules/`、`deepseek-harness/node_modules/`、`desktop/dist/`、`desktop/out/`、`runtime/`、`.tmp*/`、`test-results/`、`.upstream/`、`*.tsbuildinfo`、审计 JSON 和发布日志。`desktop/build/` 是已提交的打包配置和安装器模板，必须保留。
-
-## 3. 开发环境
-
-当前基线：Node.js `24.9.0`、pnpm `11.7.0`、Windows x64。
+使用 Node.js 24.9.0 和 pnpm 11.7.0，新克隆初始化子模块并安装锁定依赖：
 
 ```powershell
 git clone --recurse-submodules https://github.com/ccfwwm/zerowallscience.git
 Set-Location zerowallscience
-git submodule update --init --recursive
 pnpm install --frozen-lockfile
-```
-
-Python 由软件使用一个共享环境。项目不为 profile 创建独立 Python 环境；依赖版本以 `resources/extensions/python/requirements-*.lock`、`resources/extensions/python/dependency-manifest.json` 和 `resources/extensions/python/skill-dependencies.json` 为准。
-
-默认直接在当前 `main` checkout 开发，保留用户已有未提交文件；除非用户明确要求隔离，不创建 worktree。常用命令：
-
-```powershell
+pnpm build:dev
 pnpm dev
-pnpm typecheck
-pnpm test
-pnpm test:security
+```
+
+在现有工作区保留本地配置与 node_modules，不为清理重装。开始工作先记录 git status、HEAD、submodule 和 package version。默认直接在当前 main 开发。
+
+```powershell
+pnpm plugin:build images
+pnpm plugin:pack images
 pnpm plugins:typecheck
-pnpm dsh:verify
-```
-
-## 4. DSH 子模块提交控制
-
-父仓库只保存 `deepseek-harness` 的 gitlink，不能把子模块内部文件当作父仓库源码提交。当前 ZeroWall fork 使用远端 `https://github.com/ccfwwm/deepseek-harness.git`、分支 `zerowall/reviewer-history-opaque`、固定 commit `86b6740d0e671cee0b3fd0168de484c0efbf46ea`，版本合同为 `dsh-v0.2.0-rc.2`。
-
-修改 DSH：
-
-```powershell
-git -C deepseek-harness status --short --branch
-git -C deepseek-harness switch zerowall/reviewer-history-opaque
-# 修改后只添加明确文件
-git -C deepseek-harness add path/to/changed-file
-git -C deepseek-harness commit -m "fix: describe the DSH change"
-git -C deepseek-harness push zerowall HEAD:zerowall/reviewer-history-opaque
-# 更新父仓库 gitlink 和固定声明
-git -C deepseek-harness rev-parse HEAD
-# 将同一个 commit 写入 config/deepseek-harness/upstream.json
-pnpm dsh:verify
-git add deepseek-harness config/deepseek-harness/upstream.json
-git commit -m "chore(dsh): pin updated harness commit"
-```
-
-提交父仓库前，`config/deepseek-harness/upstream.json` 的 `repository`、`branch` 和 `commit` 必须与子模块当前 HEAD 一致。
-
-## 5. 构建与验证
-
-```powershell
-# 解包目录和运行时验证
-pnpm package:dir
-# Windows x64 Stable 安装包和更新 metadata
-pnpm package:stable:win
-pnpm release:metadata
-# 包、Host、Skills 和更新检查
-pnpm verify:package
-pnpm smoke:host
-pnpm smoke:update
-```
-
-构建前检查工作区，构建后不要把 `desktop/dist/`、`desktop/out/` 或临时验证目录加入 Git。正式输出位于 `artifacts/packages/<version>/<target>/`，发布前记录安装包大小、SHA-256、build ID 和 artifact manifest。
-
-## 6. 版本管理
-
-版本号至少同步根 `package.json`、`desktop/package.json`、相关插件 manifest、发布说明和更新 metadata。修改版本后运行：
-
-```powershell
+pnpm plugins:test
 pnpm profiles:check
 pnpm dsh:verify
-pnpm release:metadata
 ```
 
-当前版本说明放在 `docs/release-notes-<version>.md`。历史版本保留发布说明、公开收据和供增量打包复用的原始插件 tarball，不在工作树累积一次性验收目录；Windows 安装器、stage、临时验证和日志应在发布校验后按精确版本路径清理。有效的 `artifacts/cache/`、`artifacts/dev/`、`scripts/env/` 和签名私钥保留。
+只提升真正变化组件的独立版本。后续打包必须集成共享清单的全部最新插件，复用不变 tgz，变化时刷新离线闭包；不要直接继承旧 stage 或每次强制重编所有插件。正式 Windows 入口为 pnpm package:stable:win。本次文档与脚本维护不重打已发布的 8.3.0。
 
-## 7. 七牛云与 GitHub 发布
+## 运行与扩展
 
-正式发布必须先七牛云、后 GitHub。七牛凭据和运行时签名私钥只放在 Git 忽略的 `scripts/env/`，不能打印、提交或写入日志。
+插件、Skills、MCP 的发现与更新见 [扩展更新指南](extensions-update-guide.md)。Python 的签名后台依赖维护见 [Python 环境](python-environment.md)。演示生成见 [演示工作流](presentation-workflow.zh-CN.md)。
 
-```powershell
-pnpm release:metadata
-pnpm release:publish:stable
-pnpm release:verify:stable
-```
-
-七牛云验证必须检查公开 HTTP 状态、大小和 SHA-256，并完整下载 Windows 安装包与本地包比对。版本资产不可变，已存在的对象只有大小与 SHA-256 一致时才可复用；不同字节必须使用新版本。`release:publish:stable` 先完成 stage 的公网校验，再 promote 更新指针；`release:verify:stable` 重新下载并校验全部资产和指针。凭据继续从 `scripts/env/` 或 `ZEROWALL_QINIU_ENV_FILE` 读取；不因取消 worktree 流程而移动或提交凭据。
-
-七牛云通过后：
-
-```powershell
-git status --short --branch
-git push origin main
-git tag v<version>
-git push origin v<version>
-gh release create v<version> `
-  artifacts/packages/<version>/windows-x64/zerowall-science-<version>-win-x64.exe `
-  artifacts/packages/<version>/windows-x64/zerowall-science-<version>-win-x64.exe.blockmap `
-  artifacts/packages/<version>/windows-x64/zerowall-science-<version>-latest.json `
-  artifacts/packages/<version>/windows-x64/latest.yml `
-  --title "ZeroWall Science <version>" `
-  --notes-file docs/release-notes-<version>.md
-gh release view v<version> --json tagName,isDraft,isPrerelease,assets,url
-```
-
-GitHub 验证要确认 tag 指向发布 commit、Release 不是 draft/prerelease，资产状态为 `uploaded`，服务端摘要与本地摘要一致，并尽可能完整下载安装包复核。
-
-## 8. 清理规则
-
-不要把 `node_modules/`、pnpm store、`deepseek-harness/` 或 `desktop/build/` 当成一般缓存清理；项目级清理合同要求保留它们。`desktop/dist/`、`desktop/out/`、`.tmp*/` 和 `test-results/` 只有在确认是当前工作区拥有的生成物、没有正在运行的任务且不含待保留数据后，才可按精确路径单独清理。正式 artifacts 清理先运行 `pnpm artifacts:gc --dry-run`，核对候选与保护项后再按项目合同处理。
-
-不要清理 `.env`、`scripts/env/`、`.zerowall/`、用户科研数据、签名证书或未确认的外部挂载目录。发布前使用 `git status --short --untracked-files=all`，确保临时产物没有混入提交。
-
-## 8.0.9 增量构建与清理
-
-修改单个插件、Skill、MCP 或 Python 层时使用对应的 `plugin:*` 或 `resource:*` 命令，不触发完整 Electron 构建。正式产物只写入 `artifacts/`，构建收据和锁保证并发安全。清理前先运行 `pnpm artifacts:gc --dry-run`；受保护目录、当前 stage、回滚 generation、发布收据、用户数据和 `%SystemDrive%` 异常目录不会由 GC 处理。
-
-插件迭代先修改该插件源码及自己的 semver，按实际依赖关系更新需要同步变更的 manifest/profile；桌面版本无需跟随递增。以 `plugins/files` 为例，在主目录执行相关类型与功能测试后：
-
-```powershell
-pnpm plugin:pack files
-$env:ZEROWALL_RESOURCE_PRIVATE_KEY_FILE = Join-Path (Get-Location) 'scripts/env/resource-stable-4-private.pem'
-$env:ZEROWALL_RESOURCE_KEY_ID = 'stable-4'
-$env:ZEROWALL_RESOURCE_BASE_URL = 'https://zerowall.chengxunkeji.cn/stable'
-node tools/release/generate-resource-catalogs.mjs --kind plugin
-node scripts/publish-resources.mjs stage --kind plugin
-# 完成新插件的隔离安装、功能和回滚验收后再更新指针：
-node scripts/publish-resources.mjs promote --kind plugin
-node scripts/publish-resources.mjs verify --kind plugin
-```
-
-`plugin:pack` 会构建所选插件；其他插件沿用已校验的原始归档。`--kind plugin` 不读取 Skills 的 stage，只生成和发布插件 feed，保留 Skills/MCP/Python 目录与桌面 `latest.yml`。发布收据分别写入 `qiniu-resources-plugin-stage.json` 和 `qiniu-resources-plugin-public.json`；不带 `--kind` 的完整资源发布继续使用原有收据。
-
-## 8.0.9 完整离线 profile
-
-Core ASAR 与完整功能的离线默认 profile 分开构建。`pnpm build` 依次准备 Core、`offline-profile/modules`、默认 Skills/MCP、独立 tarball、catalog 和签名 receipt；普通 JS/JSON 资源收敛到 `profile-runtime.asar`，需要物理路径的 Office worker 和原生库按规则展开。`pnpm package:stable:win` 先执行增量 build 装配新 stage，再校验运行时并生成安装器。正式 build 使用内容指纹和输出哈希任务图，普通插件后续可独立构建、打包和上传，无需同步提升桌面版本。
-
-扩展资源列表和远端检测严格分离：`resources.list`、`pythonLayers.listLocal` 只读本地；点击检查更新才调用 `check`。桌面版本通过 ZeroWall 的 DSH 构建 wrapper 注入 `DSH_CLIENT_VERSION`；CLI `dsh --version` 继续显示独立 DSH 核心版本。
+桌面升级与插件更新分别发布，均保留用户配置。公开上传必须获得用户授权；七牛公开校验后再同步 GitHub。完整命令、签名要求与验收标准以开发指导为准。

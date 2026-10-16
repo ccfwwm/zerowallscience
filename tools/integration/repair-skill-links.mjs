@@ -1,7 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import { verificationRoot } from '../build/paths.mjs'
 import { resolve, basename } from 'node:path'
 const root = resolve(import.meta.dirname, '../..')
-const audit = JSON.parse(await readFile(resolve(root, 'docs/integration/skills-mcp/skill-audit.json'), 'utf8'))
+const audit = JSON.parse(await readFile(resolve(verificationRoot, 'skills-mcp/skill-audit.json'), 'utf8'))
 let count = 0
 for (const skill of audit.skills) for (const issue of [...new Set(skill.brokenLinks)]) {
   const [file, target] = issue.split(' -> ')
