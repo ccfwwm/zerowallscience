@@ -2,7 +2,7 @@ import { readFile, readdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 const root = resolve(import.meta.dirname, '../..')
-const roots = ['desktop/src', 'plugins', 'store/src', 'profiles']
+const roots = ['desktop/src', 'plugins', 'plugins/research-store/src', 'profiles']
 const forbidden = [
   { label: 'legacy ZeroWall host/client package', pattern: /@zerowallscience\/platform-(?:host|client)/u },
   { label: 'superseded DSH rc8 runtime dependency', pattern: /0\.1\.0-rc\.8/u },

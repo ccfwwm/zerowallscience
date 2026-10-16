@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { EventEmitter } from 'node:events'
 import * as childProcess from 'node:child_process'
 import { afterEach, expect, it, vi } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { HeSegmentationService } from '../src/host/he-segmentation.js'
 import { validateHeSegmentationParameters } from '../src/shared/he-segmentation.js'
 

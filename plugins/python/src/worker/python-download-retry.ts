@@ -22,9 +22,9 @@ export async function withPackageDownloadRetries<T>(options: PackageRetryOptions
       await options.validate(value, attempt)
       return value
     } catch (error) {
-      checkPythonCancellation()
       lastError = error
       await options.clear().catch(() => undefined)
+      checkPythonCancellation()
       if (attempt < attempts) await pause(500 * 2 ** (attempt - 1))
     }
   }

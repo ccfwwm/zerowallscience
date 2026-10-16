@@ -2,6 +2,12 @@
 !include "${__FILEDIR__}\..\out\installer-paths.nsh"
 
 !macro customHeader
+  ; Elevate the installer entry point before .onInit, the modern UI, or any
+  ; installation writes. perMachine controls registration scope, not token.
+  ; The temporary uninstaller-generation executable remains build-time only.
+  !ifndef BUILD_UNINSTALLER
+    RequestExecutionLevel admin
+  !endif
   ; makensis searches its working directory before include directories.
   ; Select the generated section explicitly without replacing the main script
   ; (which would disable electron-builder's uninstaller generation/signing).
@@ -14,22 +20,44 @@
 
 Var ZeroWallUiState
 Var ZeroWallPerfFile
+Var ZeroWallLogFile
 !ifdef BUILD_UNINSTALLER
 !macro customUnInit
   StrCpy $ZeroWallUiState ""
   StrCpy $ZeroWallPerfFile ""
+  StrCpy $ZeroWallLogFile ""
 !macroend
 !endif
 !ifndef BUILD_UNINSTALLER
 Var ZeroWallUiProcess
 !endif
+!macro ZW_LOG message
+  ${If} $ZeroWallLogFile != ""
+    Push $R8
+    Push $R9
+    System::Call 'kernel32::GetTickCount64() l.R8'
+    ClearErrors
+    FileOpen $R9 "$ZeroWallLogFile" a
+    ${IfNot} ${Errors}
+      ; NSIS append mode preserves content but leaves the cursor at offset 0.
+      FileSeek $R9 0 END
+      FileWriteUTF16LE /BOM $R9 "$R8|${message}$\r$\n"
+      FileClose $R9
+    ${EndIf}
+    Pop $R9
+    Pop $R8
+  ${EndIf}
+!macroend
 !macro ZW_PHASE value
+  !insertmacro ZW_LOG "phase=${value}"
   ${If} $ZeroWallPerfFile != ""
     Push $R8
     Push $R9
-    System::Call 'kernel32::GetTickCount64() l.r8'
+    System::Call 'kernel32::GetTickCount64() l.R8'
+    ClearErrors
     FileOpen $R9 "$ZeroWallPerfFile" a
     ${IfNot} ${Errors}
+      FileSeek $R9 0 END
       FileWrite $R9 "$R8|${value}$\r$\n"
       FileClose $R9
     ${EndIf}
@@ -67,8 +95,13 @@ FunctionEnd
 !macroend
 
 !macro customInstall
+  ; The isolated regression installer must not touch the formal command PATH
+  ; owner (HKCU\Software\ZeroWallScience\Command). Production builds leave
+  ; this guard undefined and retain the normal registration behavior.
+  !ifndef ZW_INSTALLER_TEST_MODE
   nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\commands\install-command-path.ps1" install'
   Pop $R0
+  !endif
   SetDetailsPrint both
   DetailPrint "桌面和开始菜单应用图标已创建，卸载信息已写入。"
   DetailPrint "ZeroWall Science 安装完成。"
@@ -86,7 +119,7 @@ FunctionEnd
     ${Do}
       ReadINIStr $R0 "$ZeroWallUiState" "Install" "Action"
       ${If} $R0 == "launch"
-        ${StdUtils.ExecShellAsUser} $0 "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "open" ""
+        Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
         ${Break}
       ${EndIf}
       ${If} $R0 == "close"
@@ -98,20 +131,27 @@ FunctionEnd
     SetErrorLevel 0
     Quit
   ${ElseIf} ${Silent}
-    ; --force-run is already handled by electron-builder: do not launch twice.
-    ${IfNot} ${isForceRun}
+    ; Start from the elevated installer so Host and plugin children inherit
+    ; its token. Do not delegate back to the unelevated Explorer process.
+    ${If} ${isForceRun}
+      Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --updated'
+    ${Else}
       ${GetParameters} $R0
       ${GetOptions} $R0 "/no-launch" $R1
       ${If} ${Errors}
-        ${StdUtils.ExecShellAsUser} $0 "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "open" ""
+        Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
       ${EndIf}
     ${EndIf}
+    SetErrorLevel 0
+    Quit
   ${EndIf}
 !macroend
 
 !macro customUnInstall
+  !ifndef ZW_INSTALLER_TEST_MODE
   nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\commands\install-command-path.ps1" remove'
   Pop $R0
+  !endif
 !macroend
 
 ; electron-builder's default recursively removes $INSTDIR. Use the exact
@@ -173,6 +213,17 @@ FunctionEnd
 !macro customInit
   StrCpy $ZeroWallUiState ""
   StrCpy $ZeroWallPerfFile ""
+  CreateDirectory "$LOCALAPPDATA\zerowall-science\logs"
+  System::Call 'kernel32::GetCurrentProcessId()i.r0'
+  StrCpy $ZeroWallLogFile "$LOCALAPPDATA\zerowall-science\logs\installer-${VERSION}-$0.log"
+  !insertmacro ZW_LOG "installer-start; version=${VERSION}"
+  ${IfNot} ${UAC_IsAdmin}
+    !insertmacro ZW_LOG "entry-token-not-elevated; abort-before-writes"
+    MessageBox MB_OK|MB_ICONSTOP "安装需要管理员权限，请重新打开安装程序并允许授权。"
+    SetErrorLevel 740
+    Quit
+  ${EndIf}
+  !insertmacro ZW_LOG "entry-token=administrator"
   ${GetParameters} $R0
   ${GetOptions} $R0 "/ZW_PERF=" $ZeroWallPerfFile
   ClearErrors
@@ -192,15 +243,7 @@ FunctionEnd
   ${EndIf}
   ; initMultiUser already restores the existing scope and directory, including
   ; /currentuser, /allusers and /D from the updater. Never force a scope migration.
-  ${If} $installMode == "all"
-    ${IfNot} ${UAC_IsAdmin}
-      !insertmacro UAC_RunElevated
-      ${If} $0 != 0
-        SetErrorLevel $0
-      ${EndIf}
-      Quit
-    ${EndIf}
-  ${Else}
+  ${If} $installMode != "all"
     ; The standard silent install section otherwise prefers HKLM even when
     ; a current-user installation was explicitly selected alongside it.
     StrCpy $hasPerMachineInstallation "0"
@@ -215,6 +258,7 @@ FunctionEnd
     WriteINIStr "$ZeroWallUiState" "Install" "Version" "${VERSION}"
     WriteINIStr "$ZeroWallUiState" "Install" "Directory" "$INSTDIR"
     WriteINIStr "$ZeroWallUiState" "Install" "Scope" "$installMode"
+    WriteINIStr "$ZeroWallUiState" "Install" "LogFile" "$ZeroWallLogFile"
     File /oname=$PLUGINSDIR\modern-installer.exe "${ZW_UI_BINARY}"
     System::Call 'kernel32::GetCurrentProcessId()i.r0'
     Exec '"$PLUGINSDIR\modern-installer.exe" "$ZeroWallUiState" $0'
@@ -251,10 +295,15 @@ FunctionEnd
     SetSilent silent
     !insertmacro ZW_PHASE "preparing"
   ${EndIf}
+  !insertmacro ZW_LOG "install-directory=$INSTDIR; scope=$installMode"
   ; electron-builder skips CHECK_APP_RUNNING for an elevated inner instance.
   ${If} ${UAC_IsInnerInstance}
     !insertmacro customCheckAppRunning
   ${EndIf}
+  ; Legacy 2.x probing can find and invoke a real user's old uninstaller. It is
+  ; part of the formal product upgrade only; the isolated test must never
+  ; inspect or stop that installation.
+  !ifndef ZW_INSTALLER_TEST_MODE
   StrCmp "${PRODUCT_NAME}" "ZeroWall Science" zerowall_migrate_v2 zerowall_migrate_done
 
   zerowall_migrate_v2:
@@ -294,4 +343,5 @@ FunctionEnd
     ${EndIf}
 
   zerowall_migrate_done:
+  !endif
 !macroend

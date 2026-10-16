@@ -113,12 +113,13 @@ static void authorizeStop() {
   std::wstring arguments=L"--stop-running \""+executable+L"\"";
   SHELLEXECUTEINFOW launch{sizeof(launch)};
   launch.fMask=SEE_MASK_NOCLOSEPROCESS;launch.hwnd=windowHandle;
-  launch.lpVerb=L"runas";launch.lpFile=helper;launch.lpParameters=arguments.c_str();launch.nShow=SW_HIDE;
+  // The installer already owns an administrator token from its PE entry.
+  launch.lpVerb=L"open";launch.lpFile=helper;launch.lpParameters=arguments.c_str();launch.nShow=SW_HIDE;
   if(ShellExecuteExW(&launch)) {
     elevatedStopProcess=launch.hProcess;
     write(L"Phase",L"elevating");phase=L"elevating";
   } else {
-    failure=GetLastError()==ERROR_CANCELLED?L"已取消授权。可重新授权，或手动退出应用后重新检测。":L"未能请求权限。可重试，或手动退出应用后重新检测。";
+    failure=L"未能关闭运行中的应用。请退出应用后重新检测。";
   }
 }
 static void loadBrand() {

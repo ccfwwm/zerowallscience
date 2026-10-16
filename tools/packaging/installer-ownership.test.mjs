@@ -35,6 +35,22 @@ async function signedPayload(root) {
   return { source, target, payloadPath, receipt }
 }
 
+test('installer preflight validates payload without changing the existing application, and persists failures', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-install-preflight-'))
+  try {
+    const { source, target, payloadPath } = await signedPayload(root)
+    const log = join(root, 'installer.log')
+    const args = [resolve('tools/commands/installer-copy-files.mjs'), source, target, '--preflight', '--log', log]
+    execFileSync(process.execPath, args, { windowsHide: true })
+    assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
+    assert.equal(await readFile(join(target, 'resources/offline-profile/obsolete.css'), 'utf8'), 'legacy extra')
+    await writeFile(join(source, 'resources/offline-profile', payloadPath), 'tampered')
+    assert.throws(() => execFileSync(process.execPath, args, { windowsHide: true, stdio: 'pipe' }))
+    assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
+    assert.match(await readFile(log, 'utf16le'), /Incoming offline payload size or SHA-256 mismatch/u)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 for (const oldReceipt of ['missing', 'corrupt', 'older expanded layout']) test(`upgrade replaces legacy offline payload with ${oldReceipt} receipt and deletes obsolete files`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-offline-upgrade-'))
   try {

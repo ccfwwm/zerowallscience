@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { stringify } from 'yaml'
-import { dependencyLockFingerprint, sharedSourceInputs } from './component-inputs.mjs'
+import { dependencyLockFingerprint, matchesHistoricalDependencyLock, MissingLockfileProofError, sharedSourceInputs } from './component-inputs.mjs'
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'zws-component-inputs-'))
@@ -22,6 +22,26 @@ test('desktop and unrelated lockfile changes keep a plugin dependency fingerprin
   f.lock.packages['unrelated@1.0.0'].resolution.integrity = 'new-unrelated-bytes'
   await f.save()
   assert.equal(await dependencyLockFingerprint(f.root, ['plugins/a'], ['tsdown']), before)
+})
+
+test('historical pre-migration importer is a cache miss, not equivalent or fatal', async t => {
+  const f = await fixture(t)
+  const historical = structuredClone(f.lock)
+  historical.importers.store = historical.importers['plugins/a']
+  delete historical.importers['plugins/a']
+  assert.equal(await matchesHistoricalDependencyLock(f.root, ['plugins/a'], ['tsdown'], stringify(historical)), false)
+  assert.equal(await matchesHistoricalDependencyLock(f.root, ['plugins/a'], ['tsdown'], stringify(f.lock)), true)
+})
+
+test('only missing historical proof becomes a cache miss', async t => {
+  const f = await fixture(t)
+  const historical = structuredClone(f.lock)
+  delete historical.importers['.'].devDependencies.tsdown
+  assert.equal(await matchesHistoricalDependencyLock(f.root, ['plugins/a'], ['tsdown'], stringify(historical)), false)
+  await assert.rejects(matchesHistoricalDependencyLock(f.root, ['plugins/a'], ['tsdown'], 'importers: [broken'), /YAML|flow|sequence/i)
+  delete f.lock.importers['plugins/a']
+  await f.save()
+  await assert.rejects(matchesHistoricalDependencyLock(f.root, ['plugins/a'], ['tsdown'], stringify(historical)), MissingLockfileProofError)
 })
 
 test('transitive runtime bytes and toolchain bytes invalidate the affected plugin', async t => {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { afterEach, expect, it } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { SangerService } from '../src/host/sanger.js'
 
 const cleanups: Array<() => Promise<void>> = []

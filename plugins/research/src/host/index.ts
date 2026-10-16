@@ -8,7 +8,7 @@ import {
   type CreateDecisionInput, type CreateExecutionContextInput, type CreatePaperInput, type CreateResearchEdgeInput,
   type CreateRunInput, type DataAssetRecord, type DecisionRecord, type ExecutionContextRecord, type PaperRecord,
   type ProjectRecord, type ResearchEdgeRecord, type ResearchProjectSnapshot, type RunRecord, type UpdateRunChanges, type AuditReport,
-  type JsonObject, type LiteratureGraph, type LiteratureSnapshot,
+  type LiteratureGraph, type LiteratureSnapshot,
   type ResearchStudyRecord, type ResearchDocumentRecord, type StudyFreezeRecord, type ResearchStudySnapshot,
   type CreateResearchStudyInput, type UpdateResearchStudyInput, type CreateResearchDocumentInput, type UpdateResearchDocumentInput,
   type ResearchRecordKind,
@@ -25,7 +25,24 @@ import { evaluateMethod } from './method-check.js'
 import { validateNhanesContract } from './nhanes-contract.js'
 import { NhanesSurveyService } from './nhanes-runner.js'
 import { GeneticAnalysisService, type GeneticWorkflow } from './genetic-runner.js'
-import type { NhanesSurveyRequest, GeneticAnalysisRequest, GeneticRefreshRequest } from '../shared/types.js'
+import type {
+  NhanesSurveyRequest, GeneticAnalysisRequest, GeneticRefreshRequest, ResearchExecutionContextInput, ResearchExecutionContextRecord, ResearchJsonObject as ResearchRemoteJsonObject,
+  ResearchDataAssetRecord as ResearchRemoteDataAssetRecord, ResearchViewerSessionRecord as ResearchRemoteViewerSessionRecord,
+  ResearchRunRecord as ResearchRemoteRunRecord, ResearchArtifactRecord as ResearchRemoteArtifactRecord,
+  ResearchPaperRecord as ResearchRemotePaperRecord, ResearchDecisionRecord as ResearchRemoteDecisionRecord,
+  ResearchEdgeRecord as ResearchRemoteEdgeRecord, ResearchAuditEventRecord as ResearchRemoteAuditEventRecord,
+  ResearchAuditReport as ResearchRemoteAuditReport, ResearchStudyRecord as ResearchRemoteStudyRecord,
+  ResearchDocumentRecord as ResearchRemoteDocumentRecord, ResearchFreezeRecord as ResearchRemoteFreezeRecord,
+  ResearchTaskRecord as ResearchRemoteTaskRecord, ResearchTaskBudgetReport as ResearchRemoteTaskBudgetReport,
+  ResearchProjectRecord as ResearchRemoteProjectRecord, ResearchStudySnapshot as ResearchRemoteStudySnapshot,
+  ResearchProjectSnapshot as ResearchRemoteProjectSnapshot, ResearchCreateDataAssetInput as ResearchRemoteCreateDataAssetInput,
+  ResearchCreateRunInput as ResearchRemoteCreateRunInput, ResearchUpdateRunChanges as ResearchRemoteUpdateRunChanges,
+  ResearchCreateArtifactInput as ResearchRemoteCreateArtifactInput, ResearchCreatePaperInput as ResearchRemoteCreatePaperInput,
+  ResearchCreateDecisionInput as ResearchRemoteCreateDecisionInput, ResearchCreateEdgeInput as ResearchRemoteCreateEdgeInput,
+  ResearchCreateStudyInput as ResearchRemoteCreateStudyInput, ResearchUpdateStudyInput as ResearchRemoteUpdateStudyInput,
+  ResearchCreateDocumentInput as ResearchRemoteCreateDocumentInput, ResearchUpdateDocumentInput as ResearchRemoteUpdateDocumentInput,
+  ResearchCreateTaskInput as ResearchRemoteCreateTaskInput, ResearchUpdateTaskInput as ResearchRemoteUpdateTaskInput,
+} from '../shared/types.js'
 import { validateGeneticContract } from './genetic-contract.js'
 import { ScienceViewerService } from './science-viewer.js'
 import { ImageViewerService } from './image-viewer.js'
@@ -107,7 +124,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     this.docking = new MoleculeDockingService(this.store, () => this.ctx.get('researchWorkflow')?.get(), async (input, exec) => {
       const result = await this.ctx.tools.execute({ name: 'r_files', arguments: { action: input.action, project_id: input.projectId, remote_path: input.remotePath, local_path: input.localPath, ...(input.action === 'upload_workspace' ? { confirm: true } : {}) }, callId: ToolCallId(`docking-files-${Date.now()}`), signal: exec.signal, parent: exec.token, ...(exec.agent ? { agent: exec.agent } : {}) })
       if (result.isError) throw new Error(result.content.map(item => item.type === 'text' ? item.text : '').filter(Boolean).join('\n') || 'Docking file transfer failed.')
-      return result.value as JsonObject
+      return result.value as ResearchRemoteJsonObject
     })
     this.canvas = new CanvasService(this.store)
     this.reports = new ReportService(this.store)
@@ -118,7 +135,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     this.genetics = new GeneticAnalysisService(this.store, () => this.ctx.get('researchWorkflow')?.get(), async (input, exec) => {
       const result = await this.ctx.tools.execute({ name: 'r_files', arguments: { action: 'download_workspace', project_id: input.projectId, remote_path: input.remotePath, local_path: input.localPath }, callId: ToolCallId(`genetics-files-${Date.now()}`), signal: exec.signal, parent: exec.token, ...(exec.agent ? { agent: exec.agent } : {}) })
       if (result.isError) throw new Error(result.content.map(item => item.type === 'text' ? item.text : '').filter(Boolean).join('\n') || 'Genetics artifact download failed.')
-      return result.value as JsonObject
+      return result.value as ResearchRemoteJsonObject
     })
     installResearchRuntimeProvenance(ctx, this.store, sessionId => this.getActiveResearchStudy({ sessionId }))
     ctx.provide('localScienceWorkflow', {
@@ -132,19 +149,19 @@ export class ZeroWallResearchService extends TypertRemoteService {
         if(action === 'run' && typeof parameters.operation === 'string' && parameters.operation !== 'fiji.western-blot') {
           const experiment = String(parameters.operation).slice('fiji.'.length) as 'scratch-wound'|'colony-formation'|'bacterial-cfu'|'tube-formation'
           const project = this.projectForSession({ sessionId }); if (!project) throw new Error('An active registered project session is required.')
-          const args = requireJsonObject(parameters.arguments)
-          const result = await this.fijiExperiments.execute(project, { sessionId, action: 'analyze', experiment, requestId: String(parameters.request_id ?? ''), ...(args.measurements === undefined ? {} : { measurements: requireJsonArray(args.measurements).map(requireJsonObject) }), ...(args.sourceAssetId === undefined ? {} : { sourceAssetId: String(args.sourceAssetId) }), ...(args.image === undefined ? {} : { image: requireJsonObject(args.image) as any }) })
-          return JSON.parse(JSON.stringify({ workflow_id: 'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as JsonObject
+          const args = requireResearchRemoteJsonObject(parameters.arguments)
+          const result = await this.fijiExperiments.execute(project, { sessionId, action: 'analyze', experiment, requestId: String(parameters.request_id ?? ''), ...(args.measurements === undefined ? {} : { measurements: requireJsonArray(args.measurements).map(requireResearchRemoteJsonObject) }), ...(args.sourceAssetId === undefined ? {} : { sourceAssetId: String(args.sourceAssetId) }), ...(args.image === undefined ? {} : { image: requireResearchRemoteJsonObject(args.image) as any }) })
+          return JSON.parse(JSON.stringify({ workflow_id: 'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as ResearchRemoteJsonObject
         }
         if (runId && action !== 'run' && this.store.getRun(runId)?.leaseOwner === 'fiji-experiment') {
           const project = this.projectForSession({ sessionId }); if (!project) throw new Error('An active registered project session is required.')
           const result = action === 'cancel' ? await this.fijiExperiments.cancel(project, runId) : await this.fijiExperiments.status(project, runId)
-          return JSON.parse(JSON.stringify({ workflow_id: 'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as JsonObject
+          return JSON.parse(JSON.stringify({ workflow_id: 'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as ResearchRemoteJsonObject
         }
-        const args = action === 'run' ? requireJsonObject(parameters.arguments) : {}
+        const args = action === 'run' ? requireResearchRemoteJsonObject(parameters.arguments) : {}
         const input: FijiWorkflowRequest = action === 'run' ? { sessionId, action: 'submit', requestId: String(parameters.request_id??''), ...(parameters.research_task_id === undefined ? {} : { researchTaskId: String(parameters.research_task_id) }), viewerId: String(args.viewerId??''), expectedVersion: Number(args.expectedVersion), annotationRevisionId: String(args.annotationRevisionId??''), plan: args.plan as unknown as NonNullable<FijiWorkflowRequest['plan']> } : { sessionId, action: action as 'status'|'cancel', ...(runId?{runId}:{}) }
         const result = await this.fijiWorkflow(input)
-        return JSON.parse(JSON.stringify({ workflow_id:'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as JsonObject
+        return JSON.parse(JSON.stringify({ workflow_id:'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as ResearchRemoteJsonObject
       },
     })
     ctx.inject(['systemPrompt'], promptCtx => {
@@ -179,7 +196,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     ctx.effect(() => async () => { this.he.dispose(); this.fijiExperiments.dispose(); this.fijiWorkflows.dispose(); this.nativeEngines.dispose(); await Promise.all([this.flow.dispose(), this.brain.dispose(), this.brainTransforms.dispose()]); this.store.close() }, 'zerowall-research: close research store')
   }
 
-  @Remote('createExecutionContext') createExecutionContext(input: CreateExecutionContextInput): ExecutionContextRecord { return this.store.createExecutionContext(input) }
+  @Remote('createExecutionContext') createExecutionContext(input: ResearchExecutionContextInput): ResearchExecutionContextRecord { return this.store.createExecutionContext(input as CreateExecutionContextInput) as ResearchExecutionContextRecord }
   @Remote('fijiWorkflow') async fijiWorkflow(input: FijiWorkflowRequest): Promise<FijiWorkflowResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
@@ -211,19 +228,19 @@ export class ZeroWallResearchService extends TypertRemoteService {
       throw error
     }
   }
-  async executeMoleculeDocking(input: MoleculeDockingRequest, exec: ToolRunContext): Promise<JsonObject> {
+  async executeMoleculeDocking(input: MoleculeDockingRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
     const sessionId = String(exec.agent?.session.id ?? '')
     if (sessionId !== input.sessionId) throw new Error('Docking request session does not match the execution context.')
     const project = this.projectForSession({ sessionId })
     if (!project) throw new Error('An active registered project session is required.')
     return this.docking.execute(project, input, exec)
   }
-  @Remote('moleculeDocking') async moleculeDocking(input: MoleculeDockingRequest): Promise<JsonObject> {
+  @Remote('moleculeDocking') async moleculeDocking(input: MoleculeDockingRequest): Promise<ResearchRemoteJsonObject> {
     const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
     if (!session) throw new Error('An active session is required.')
     return this.executeMoleculeDocking(input, { agent: { session }, callId: `rpc:docking:${input.requestId ?? input.runId ?? 'list'}`, signal: new AbortController().signal } as unknown as ToolRunContext)
   }
-  @Remote('brainTransform') async brainTransform(input: BrainTransformRequest): Promise<JsonObject> {
+  @Remote('brainTransform') async brainTransform(input: BrainTransformRequest): Promise<ResearchRemoteJsonObject> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
     return this.brainTransforms.execute(project, input)
@@ -241,7 +258,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
         return {} as ScienceViewerResponse
       }
     }
-    const emit = (type: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'], payload: JsonObject = {}): void => {
+    const emit = (type: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'], payload: ResearchRemoteJsonObject = {}): void => {
       if (!project || !tool) return
       this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type, tool, ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.runId ? { runId: input.runId } : {}), payload: { operation: input.action, ...(input.requestId ? { requestId: input.requestId } : {}), ...payload } })
     }
@@ -249,19 +266,19 @@ export class ZeroWallResearchService extends TypertRemoteService {
     emit(active ? 'run.accepted' : 'tab.focus')
     try {
       const result = await this.scienceViewerImpl(input)
-      const resultObject = result as unknown as JsonObject
-      const nestedRuns = Object.values(resultObject).flatMap(value => value && typeof value === 'object' && !Array.isArray(value) && 'run' in value && value.run && typeof value.run === 'object' && !Array.isArray(value.run) ? [value.run as JsonObject] : [])
-      const run = resultObject.run && typeof resultObject.run === 'object' && !Array.isArray(resultObject.run) ? resultObject.run as JsonObject : nestedRuns[0]
+      const resultObject = result as unknown as ResearchRemoteJsonObject
+      const nestedRuns = Object.values(resultObject).flatMap(value => value && typeof value === 'object' && !Array.isArray(value) && 'run' in value && value.run && typeof value.run === 'object' && !Array.isArray(value.run) ? [value.run as ResearchRemoteJsonObject] : [])
+      const run = resultObject.run && typeof resultObject.run === 'object' && !Array.isArray(resultObject.run) ? resultObject.run as ResearchRemoteJsonObject : nestedRuns[0]
       const runId = typeof run?.id === 'string' ? run.id : input.runId
       const status = typeof run?.status === 'string' ? run.status : undefined
       const eventType: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'] = status === 'succeeded' ? 'run.completed' : status === 'failed' || status === 'timed_out' ? 'run.failed' : status === 'cancelled' ? 'run.cancelled' : active ? 'run.progress' : 'tab.focus'
       emit(eventType, { ...(runId ? { runId } : {}), status: status ?? null, result: resultObject })
-      const artifacts: JsonObject[] = []
-      if (resultObject.artifact && typeof resultObject.artifact === 'object' && !Array.isArray(resultObject.artifact)) artifacts.push(resultObject.artifact as JsonObject)
+      const artifacts: ResearchRemoteJsonObject[] = []
+      if (resultObject.artifact && typeof resultObject.artifact === 'object' && !Array.isArray(resultObject.artifact)) artifacts.push(resultObject.artifact as ResearchRemoteJsonObject)
       for (const value of Object.values(resultObject)) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) continue
         const list = 'artifacts' in value && Array.isArray(value.artifacts) ? value.artifacts : []
-        for (const artifact of list) if (artifact && typeof artifact === 'object' && !Array.isArray(artifact)) artifacts.push(artifact as JsonObject)
+        for (const artifact of list) if (artifact && typeof artifact === 'object' && !Array.isArray(artifact)) artifacts.push(artifact as ResearchRemoteJsonObject)
       }
       for (const artifact of artifacts) if (typeof artifact.id === 'string') emit('artifact.created', { ...(runId ? { runId } : {}), artifactId: artifact.id, name: typeof artifact.name === 'string' ? artifact.name : null })
       return result
@@ -381,7 +398,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     return this.workbenchEventStore.read(project.id, input.sessionId, input.afterSequence, input.limit)
   }
 
-  @Remote('scienceWorkbench') async scienceWorkbench(input: ScienceWorkbenchRequest): Promise<JsonObject> {
+  @Remote('scienceWorkbench') async scienceWorkbench(input: ScienceWorkbenchRequest): Promise<ResearchRemoteJsonObject> {
     const sessionId = String(input.sessionId ?? '').trim()
     const requestId = String(input.requestId ?? '').trim()
     if (!sessionId || requestId === '') throw new Error('sessionId and requestId are required.')
@@ -404,26 +421,26 @@ export class ZeroWallResearchService extends TypertRemoteService {
       const priorOperation = typeof prior.payload.operation === 'string' ? prior.payload.operation : undefined
       const priorAction = typeof prior.payload.action === 'string' ? prior.payload.action : undefined
       if ((tool && priorTool && tool !== priorTool) || (priorAction && priorAction !== input.action) || (input.operation && priorOperation && input.operation !== priorOperation)) throw new Error('IDEMPOTENCY_CONFLICT: requestId was already used with different workbench inputs.')
-      return { status: 'accepted', idempotent: true, action: input.action, tool: priorTool ?? tool, ...(prior.runId ? { runId: prior.runId } : {}), event: prior, ...(prior.payload.result && typeof prior.payload.result === 'object' && !Array.isArray(prior.payload.result) ? { result: prior.payload.result as JsonObject } : {}) } as unknown as JsonObject
+      return { status: 'accepted', idempotent: true, action: input.action, tool: priorTool ?? tool, ...(prior.runId ? { runId: prior.runId } : {}), event: prior, ...(prior.payload.result && typeof prior.payload.result === 'object' && !Array.isArray(prior.payload.result) ? { result: prior.payload.result as ResearchRemoteJsonObject } : {}) } as unknown as ResearchRemoteJsonObject
     }
-    const emit = (type: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'], payload: JsonObject = {}): ScienceWorkbenchEvent => this.workbenchEventStore.append({ sessionId, projectId: project.id, type, ...(tool ? { tool } : {}), ...(input.studyId ? { studyId: input.studyId } : {}), ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.artifactId ? { artifactId: input.artifactId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.runId ? { runId: input.runId } : {}), payload: { ...context, ...payload, action: input.action, requestId } })
+    const emit = (type: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'], payload: ResearchRemoteJsonObject = {}): ScienceWorkbenchEvent => this.workbenchEventStore.append({ sessionId, projectId: project.id, type, ...(tool ? { tool } : {}), ...(input.studyId ? { studyId: input.studyId } : {}), ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.artifactId ? { artifactId: input.artifactId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.runId ? { runId: input.runId } : {}), payload: { ...context, ...payload, action: input.action, requestId } })
     if (input.action === 'open' || input.action === 'focus') {
       if (!tool) throw new Error('tool is required for workbench open/focus.')
       const event = emit(input.action === 'open' ? 'tab.open' : 'tab.focus', { title: workbenchTabTitle(tool), requestId: input.requestId })
       if (input.assetId) emit('asset.selected', { requestId: input.requestId })
-      return { status: 'accepted', action: input.action, tool, event } as unknown as JsonObject
+      return { status: 'accepted', action: input.action, tool, event } as unknown as ResearchRemoteJsonObject
     }
     if (input.action === 'engine') {
       const statuses = await this.probeScientificEngines({ sessionId: input.sessionId })
-      const event = emit('engine.status', { statuses: statuses as unknown as JsonObject, requestId: input.requestId })
-      return { status: 'succeeded', action: input.action, statuses: statuses as unknown as JsonObject, event } as unknown as JsonObject
+      const event = emit('engine.status', { statuses: statuses as unknown as ResearchRemoteJsonObject, requestId: input.requestId })
+      return { status: 'succeeded', action: input.action, statuses: statuses as unknown as ResearchRemoteJsonObject, event } as unknown as ResearchRemoteJsonObject
     }
     if (input.action === 'status') {
       if (!input.runId) throw new Error('runId is required for workbench status.')
       const run = this.store.getRun(input.runId)
       if (!run || run.projectId !== project.id) throw new Error('Run is not in the active project.')
       if (!this.workbenchEventStore.ownsRun(project.id, sessionId, run.id)) throw new Error('Run is not owned by this workbench session.')
-      return { status: run.status, run } as unknown as JsonObject
+      return { status: run.status, run } as unknown as ResearchRemoteJsonObject
     }
     if (input.action === 'cancel') {
       if (!input.runId) throw new Error('runId is required for workbench cancel.')
@@ -434,14 +451,14 @@ export class ZeroWallResearchService extends TypertRemoteService {
       const candidate = cancellation.run
       const updated = candidate && typeof candidate === 'object' && !Array.isArray(candidate) && typeof candidate.status === 'string' && typeof candidate.id === 'string' ? candidate as unknown as RunRecord : run
       const event = emit(updated.status === 'cancelled' ? 'run.cancelled' : 'run.progress', { status: updated.status, runId: updated.id })
-      return { status: updated.status, run: updated, event, ...(cancellation as unknown as JsonObject) } as unknown as JsonObject
+      return { status: updated.status, run: updated, event, ...(cancellation as unknown as ResearchRemoteJsonObject) } as unknown as ResearchRemoteJsonObject
     }
     if (input.action === 'export') {
       if (!input.artifactId) throw new Error('artifactId is required for workbench export.')
       const artifact = this.store.listArtifacts(project.id).find(item => item.id === input.artifactId)
       if (!artifact || artifact.projectId !== project.id) throw new Error('Artifact is not in the active project.')
       const event = emit('artifact.created', { requestId: input.requestId, exported: true })
-      return { status: 'succeeded', artifact, event } as unknown as JsonObject
+      return { status: 'succeeded', artifact, event } as unknown as ResearchRemoteJsonObject
     }
     if (input.action !== 'analyze') throw new Error(`Unsupported workbench action: ${input.action}`)
     if (!tool) throw new Error('tool is required for workbench analyze.')
@@ -451,71 +468,71 @@ export class ZeroWallResearchService extends TypertRemoteService {
       const parameters = input.parameters ?? {}
       // Context fields are owned by the router; parameters cannot smuggle a
       // different session or action into the deterministic service.
-      const { sessionId: _parameterSessionId, action: _parameterAction, ...safeParameters } = parameters as JsonObject & { sessionId?: unknown; action?: unknown }
+      const { sessionId: _parameterSessionId, action: _parameterAction, ...safeParameters } = parameters as ResearchRemoteJsonObject & { sessionId?: unknown; action?: unknown }
       void _parameterSessionId; void _parameterAction
       const result = await this.scienceViewerImpl({ ...(safeParameters as unknown as Partial<ScienceViewerRequest>), sessionId, action: operation as ScienceViewerRequest['action'], ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.expectedRevision === undefined ? {} : { expectedVersion: input.expectedRevision }), requestId })
-      const resultObject = result as unknown as JsonObject
-      const nestedRuns = Object.values(resultObject).flatMap(value => value && typeof value === 'object' && !Array.isArray(value) && 'run' in value && value.run && typeof value.run === 'object' && !Array.isArray(value.run) ? [value.run as JsonObject] : [])
-      const run = (resultObject.run && typeof resultObject.run === 'object' && !Array.isArray(resultObject.run)) ? resultObject.run as JsonObject : nestedRuns[0]
+      const resultObject = result as unknown as ResearchRemoteJsonObject
+      const nestedRuns = Object.values(resultObject).flatMap(value => value && typeof value === 'object' && !Array.isArray(value) && 'run' in value && value.run && typeof value.run === 'object' && !Array.isArray(value.run) ? [value.run as ResearchRemoteJsonObject] : [])
+      const run = (resultObject.run && typeof resultObject.run === 'object' && !Array.isArray(resultObject.run)) ? resultObject.run as ResearchRemoteJsonObject : nestedRuns[0]
       const runId = typeof run?.id === 'string' ? run.id : input.runId
       const runStatus = typeof run?.status === 'string' ? run.status : undefined
       const eventType: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'] = runStatus === 'succeeded' ? 'run.completed' : runStatus === 'failed' || runStatus === 'timed_out' ? 'run.failed' : runStatus === 'cancelled' ? 'run.cancelled' : 'run.progress'
       const event = emit(eventType, { requestId: input.requestId, operation, ...(runId ? { runId } : {}), result: resultObject })
-      return { status: 'succeeded', tool, operation, runId, result: resultObject, event } as unknown as JsonObject
+      return { status: 'succeeded', tool, operation, runId, result: resultObject, event } as unknown as ResearchRemoteJsonObject
     } catch (error) {
       const event = emit('run.failed', { requestId: input.requestId, operation, error: error instanceof Error ? error.message : String(error) })
       throw Object.assign(error instanceof Error ? error : new Error(String(error)), { workbenchEvent: event })
     }
   }
 
-  private async cancelWorkbenchRun(project: ProjectRecord, sessionId: string, run: RunRecord): Promise<JsonObject> {
+  private async cancelWorkbenchRun(project: ProjectRecord, sessionId: string, run: RunRecord): Promise<ResearchRemoteJsonObject> {
     const terminal = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
-    if (terminal.has(run.status)) return { run } as unknown as JsonObject
-    if (run.leaseOwner === 'fiji-experiment') return await this.fijiExperiments.cancel(project, run.id) as unknown as JsonObject
-    if (run.leaseOwner === 'fiji-workflow') return await this.fijiWorkflows.execute(project, { sessionId, action: 'cancel', runId: run.id }) as unknown as JsonObject
-    if (run.leaseOwner === 'he-segmentation') return await this.he.execute(project, { sessionId, action: 'cancel', runId: run.id }) as unknown as JsonObject
-    if (run.leaseOwner === 'flow-batch') return await this.flow.execute(project, { sessionId, action: 'batch_cancel', runId: run.id }) as unknown as JsonObject
+    if (terminal.has(run.status)) return { run } as unknown as ResearchRemoteJsonObject
+    if (run.leaseOwner === 'fiji-experiment') return await this.fijiExperiments.cancel(project, run.id) as unknown as ResearchRemoteJsonObject
+    if (run.leaseOwner === 'fiji-workflow') return await this.fijiWorkflows.execute(project, { sessionId, action: 'cancel', runId: run.id }) as unknown as ResearchRemoteJsonObject
+    if (run.leaseOwner === 'he-segmentation') return await this.he.execute(project, { sessionId, action: 'cancel', runId: run.id }) as unknown as ResearchRemoteJsonObject
+    if (run.leaseOwner === 'flow-batch') return await this.flow.execute(project, { sessionId, action: 'batch_cancel', runId: run.id }) as unknown as ResearchRemoteJsonObject
     throw new Error(`Run owner ${run.leaseOwner ?? 'unknown'} does not expose a safe cancellation adapter.`)
   }
 
-  @Remote('listExecutionContexts') listExecutionContexts(projectId: string): ExecutionContextRecord[] { return this.store.listExecutionContexts(projectId) }
-  @Remote('createDataAsset') createDataAsset(input: CreateDataAssetInput): DataAssetRecord { return this.store.createDataAsset(input) }
-  @Remote('registerLocalAsset') async registerLocalAsset(input: { sessionId: string; path: string }): Promise<DataAssetRecord> {
+  @Remote('listExecutionContexts') listExecutionContexts(projectId: string): ResearchExecutionContextRecord[] { return this.store.listExecutionContexts(projectId) as ResearchExecutionContextRecord[] }
+  @Remote('createDataAsset') createDataAsset(input: ResearchRemoteCreateDataAssetInput): ResearchRemoteDataAssetRecord { return this.store.createDataAsset(input as CreateDataAssetInput) as ResearchRemoteDataAssetRecord }
+  @Remote('registerLocalAsset') async registerLocalAsset(input: { sessionId: string; path: string }): Promise<ResearchRemoteDataAssetRecord> {
     const project = this.projectForSession(input)
     if (!project) throw new Error('Register the current workspace before adding assets.')
-    return registerLocalAsset(this.store, project, input.path)
+    return await registerLocalAsset(this.store, project, input.path) as ResearchRemoteDataAssetRecord
   }
-  @Remote('importLocalAsset') async importLocalAsset(input: { sessionId: string; sourcePath: string }): Promise<DataAssetRecord> {
+  @Remote('importLocalAsset') async importLocalAsset(input: { sessionId: string; sourcePath: string }): Promise<ResearchRemoteDataAssetRecord> {
     const project = this.projectForSession(input)
     if (!project) throw new Error('Register the current workspace before importing a science file.')
-    return importLocalScienceAsset(this.store, project, input.sourcePath)
+    return await importLocalScienceAsset(this.store, project, input.sourcePath) as ResearchRemoteDataAssetRecord
   }
-  @Remote('listDataAssets') listDataAssets(projectId: string): DataAssetRecord[] { return this.store.listDataAssets(projectId) }
-  @Remote('createRun') createRun(input: CreateRunInput): RunRecord { return this.store.createRun(input) }
-  @Remote('updateRun') updateRun(input: { id: string; changes: UpdateRunChanges }): RunRecord { return this.store.updateRun(input.id, input.changes) }
-  @Remote('listRuns') listRuns(projectId: string): RunRecord[] { return this.store.listRuns(projectId) }
-  @Remote('createArtifact') createArtifact(input: CreateArtifactInput): ArtifactRecord { return this.store.createArtifact(input) }
-  @Remote('listArtifacts') listArtifacts(projectId: string): ArtifactRecord[] { return this.store.listArtifacts(projectId) }
-  @Remote('createPaper') createPaper(input: CreatePaperInput): PaperRecord { return this.store.createPaper(input) }
-  @Remote('listPapers') listPapers(projectId: string): PaperRecord[] { return this.store.listPapers(projectId) }
-  saveLiteraturePapers(projectId: string, articles: JsonObject[]): PaperRecord[] { return this.store.saveLiteraturePapers(projectId, articles) }
+  @Remote('listDataAssets') listDataAssets(projectId: string): ResearchRemoteDataAssetRecord[] { return this.store.listDataAssets(projectId) as ResearchRemoteDataAssetRecord[] }
+  @Remote('createRun') createRun(input: ResearchRemoteCreateRunInput): ResearchRemoteRunRecord { return this.store.createRun(input as CreateRunInput) as ResearchRemoteRunRecord }
+  @Remote('updateRun') updateRun(input: { id: string; changes: ResearchRemoteUpdateRunChanges }): ResearchRemoteRunRecord { return this.store.updateRun(input.id, input.changes as UpdateRunChanges) as ResearchRemoteRunRecord }
+  @Remote('listRuns') listRuns(projectId: string): ResearchRemoteRunRecord[] { return this.store.listRuns(projectId) as ResearchRemoteRunRecord[] }
+  @Remote('createArtifact') createArtifact(input: ResearchRemoteCreateArtifactInput): ResearchRemoteArtifactRecord { return this.store.createArtifact(input as CreateArtifactInput) as ResearchRemoteArtifactRecord }
+  @Remote('listArtifacts') listArtifacts(projectId: string): ResearchRemoteArtifactRecord[] { return this.store.listArtifacts(projectId) as ResearchRemoteArtifactRecord[] }
+  @Remote('createPaper') createPaper(input: ResearchRemoteCreatePaperInput): ResearchRemotePaperRecord { return this.store.createPaper(input as CreatePaperInput) as ResearchRemotePaperRecord }
+  @Remote('listPapers') listPapers(projectId: string): ResearchRemotePaperRecord[] { return this.store.listPapers(projectId) as ResearchRemotePaperRecord[] }
+  saveLiteraturePapers(projectId: string, articles: ResearchRemoteJsonObject[]): PaperRecord[] { return this.store.saveLiteraturePapers(projectId, articles) }
   getLiteratureGraph(projectId: string): LiteratureSnapshot { return this.store.getLiteratureGraph(projectId) }
   commitLiteratureGraph(projectId: string, graph: LiteratureGraph): { addedNodes: number; addedEdges: number } { return this.store.commitLiteratureGraph(projectId, graph) }
   resetLiteratureGraph(projectId: string): void { this.store.resetLiteratureGraph(projectId) }
   @Remote('createDecision') createDecision(input: CreateDecisionInput): DecisionRecord { return this.store.createDecision(input) }
   @Remote('listDecisions') listDecisions(projectId: string): DecisionRecord[] { return this.store.listDecisions(projectId) }
-  @Remote('createResearchStudy') createResearchStudy(input: CreateResearchStudyInput): ResearchStudyRecord { return this.store.createResearchStudy(input) }
-  @Remote('getResearchStudy') getResearchStudy(studyId: string): ResearchStudyRecord | undefined { return this.store.getResearchStudy(studyId) }
-  @Remote('listResearchStudies') listResearchStudies(projectId: string): ResearchStudyRecord[] { return this.store.listResearchStudies(projectId) }
-  @Remote('updateResearchStudy') updateResearchStudy(input: { id: string; changes: UpdateResearchStudyInput }): ResearchStudyRecord { return this.store.updateResearchStudy(input.id, input.changes) }
-  @Remote('createResearchDocument') createResearchDocument(input: CreateResearchDocumentInput): ResearchDocumentRecord { return this.store.createResearchDocument(input) }
-  @Remote('getResearchDocument') getResearchDocument(documentId: string): ResearchDocumentRecord | undefined { return this.store.getResearchDocument(documentId) }
-  @Remote('listResearchDocuments') listResearchDocuments(input: { studyId: string; kind?: ResearchRecordKind }): ResearchDocumentRecord[] { return this.store.listResearchDocuments(input.studyId, input.kind) }
-  @Remote('updateResearchDocument') updateResearchDocument(input: { id: string; changes: UpdateResearchDocumentInput }): ResearchDocumentRecord {
-    return this.store.updateResearchDocument(input.id, input.changes)
+  @Remote('createResearchStudy') createResearchStudy(input: ResearchRemoteCreateStudyInput): ResearchRemoteStudyRecord { return this.store.createResearchStudy(input as CreateResearchStudyInput) as ResearchRemoteStudyRecord }
+  @Remote('getResearchStudy') getResearchStudy(studyId: string): ResearchRemoteStudyRecord | undefined { return this.store.getResearchStudy(studyId) as ResearchRemoteStudyRecord | undefined }
+  @Remote('listResearchStudies') listResearchStudies(projectId: string): ResearchRemoteStudyRecord[] { return this.store.listResearchStudies(projectId) as ResearchRemoteStudyRecord[] }
+  @Remote('updateResearchStudy') updateResearchStudy(input: { id: string; changes: ResearchRemoteUpdateStudyInput }): ResearchRemoteStudyRecord { return this.store.updateResearchStudy(input.id, input.changes as UpdateResearchStudyInput) as ResearchRemoteStudyRecord }
+  @Remote('createResearchDocument') createResearchDocument(input: ResearchRemoteCreateDocumentInput): ResearchRemoteDocumentRecord { return this.store.createResearchDocument(input as CreateResearchDocumentInput) as ResearchRemoteDocumentRecord }
+  @Remote('getResearchDocument') getResearchDocument(documentId: string): ResearchRemoteDocumentRecord | undefined { return this.store.getResearchDocument(documentId) as ResearchRemoteDocumentRecord | undefined }
+  @Remote('listResearchDocuments') listResearchDocuments(input: { studyId: string; kind?: ResearchRecordKind }): ResearchRemoteDocumentRecord[] { return this.store.listResearchDocuments(input.studyId, input.kind) as ResearchRemoteDocumentRecord[] }
+  @Remote('updateResearchDocument') updateResearchDocument(input: { id: string; changes: ResearchRemoteUpdateDocumentInput }): ResearchRemoteDocumentRecord {
+    return this.store.updateResearchDocument(input.id, input.changes as UpdateResearchDocumentInput) as ResearchRemoteDocumentRecord
   }
-  @Remote('validateAnalysisPlan') validateAnalysisPlan(planId: string): ResearchDocumentRecord { return this.store.validateAnalysisPlan(planId) }
-  @Remote('methodCheckEvaluate') methodCheckEvaluate(input: { studyId: string; method: string; assumptions?: JsonObject }): JsonObject {
+  @Remote('validateAnalysisPlan') validateAnalysisPlan(planId: string): ResearchRemoteDocumentRecord { return this.store.validateAnalysisPlan(planId) as ResearchRemoteDocumentRecord }
+  @Remote('methodCheckEvaluate') methodCheckEvaluate(input: { studyId: string; method: string; assumptions?: ResearchRemoteJsonObject }): ResearchRemoteJsonObject {
     const study = this.store.getResearchStudy(input.studyId)
     if (!study) throw new Error('Research study was not found.')
     const method = input.method.trim()
@@ -523,74 +540,74 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const result = evaluateMethod({ method, testUsed: method, ...(input.assumptions ?? {}) })
     return { studyId: study.id, ...result, checkedAt: new Date().toISOString() }
   }
-  @Remote('approveResearchGate') approveResearchGate(input: { studyId: string; gate: 1 | 2; status: 'approved' | 'rejected'; expectedVersion: number; rationale: string }): ResearchStudyRecord { return this.store.approveResearchGate(input.studyId, input.gate, input.status, input.expectedVersion, input.rationale) }
-  @Remote('freezeResearchStudy') freezeResearchStudy(input: { studyId: string; expectedVersion: number }): StudyFreezeRecord { return this.store.freezeResearchStudy(input.studyId, input.expectedVersion) }
-  @Remote('amendResearchStudy') amendResearchStudy(input: { studyId: string; reason: string; expectedVersion: number }): ResearchStudyRecord { return this.store.amendResearchStudy(input.studyId, input.reason, input.expectedVersion) }
-  @Remote('listStudyFreezes') listStudyFreezes(studyId: string): StudyFreezeRecord[] { return this.store.listStudyFreezes(studyId) }
-  @Remote('getResearchStudySnapshot') getResearchStudySnapshot(studyId: string): ResearchStudySnapshot { return this.store.getResearchStudySnapshot(studyId) }
-  @Remote('registerResearchEvidence') registerResearchEvidence(input: { sessionId: string; projectId: string; studyId: string; payload: JsonObject }): ResearchDocumentRecord {
+  @Remote('approveResearchGate') approveResearchGate(input: { studyId: string; gate: 1 | 2; status: 'approved' | 'rejected'; expectedVersion: number; rationale: string }): ResearchRemoteStudyRecord { return this.store.approveResearchGate(input.studyId, input.gate, input.status, input.expectedVersion, input.rationale) as ResearchRemoteStudyRecord }
+  @Remote('freezeResearchStudy') freezeResearchStudy(input: { studyId: string; expectedVersion: number }): ResearchRemoteFreezeRecord { return this.store.freezeResearchStudy(input.studyId, input.expectedVersion) as ResearchRemoteFreezeRecord }
+  @Remote('amendResearchStudy') amendResearchStudy(input: { studyId: string; reason: string; expectedVersion: number }): ResearchRemoteStudyRecord { return this.store.amendResearchStudy(input.studyId, input.reason, input.expectedVersion) as ResearchRemoteStudyRecord }
+  @Remote('listStudyFreezes') listStudyFreezes(studyId: string): ResearchRemoteFreezeRecord[] { return this.store.listStudyFreezes(studyId) as ResearchRemoteFreezeRecord[] }
+  @Remote('getResearchStudySnapshot') getResearchStudySnapshot(studyId: string): ResearchRemoteStudySnapshot { return this.store.getResearchStudySnapshot(studyId) as ResearchRemoteStudySnapshot }
+  @Remote('registerResearchEvidence') registerResearchEvidence(input: { sessionId: string; projectId: string; studyId: string; payload: ResearchRemoteJsonObject }): ResearchRemoteDocumentRecord {
     const active = this.projectForSession({ sessionId: input.sessionId })
     const project = this.store.getResearchStudy(input.studyId)?.projectId
     if (!active || active.id !== input.projectId || project !== input.projectId) throw new Error('Evidence study is not in the active project.')
-    return this.store.registerResearchEvidence(input)
+    return this.store.registerResearchEvidence(input) as ResearchRemoteDocumentRecord
   }
-  @Remote('validateNhanesContract') validateNhanesContractRemote(input: { studyId: string; contract: JsonObject }): JsonObject {
+  @Remote('validateNhanesContract') validateNhanesContractRemote(input: { studyId: string; contract: ResearchRemoteJsonObject }): ResearchRemoteJsonObject {
     if (!this.store.getResearchStudy(input.studyId)) throw new Error('Research study was not found.')
     return { studyId: input.studyId, ...validateNhanesContract(input.contract), checkedAt: new Date().toISOString() }
   }
-  async runNhanesSurvey(input: NhanesSurveyRequest, exec: ToolRunContext): Promise<JsonObject> {
+  async runNhanesSurvey(input: NhanesSurveyRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
     const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
     if (!project) throw new Error('An active registered project session is required.')
     return this.nhanes.execute(project, input, exec)
   }
-  @Remote('runNhanesSurvey') async runNhanesSurveyRemote(input: NhanesSurveyRequest & { sessionId: string }): Promise<JsonObject> {
+  @Remote('runNhanesSurvey') async runNhanesSurveyRemote(input: NhanesSurveyRequest & { sessionId: string }): Promise<ResearchRemoteJsonObject> {
     const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
     if (!session) throw new Error('An active session is required.')
     const exec = { agent: { session }, callId: `rpc:nhanes-survey:${input.requestId}`, rootCallId: `rpc:nhanes-survey:${input.requestId}`, signal: new AbortController().signal } as unknown as ToolRunContext
     return this.runNhanesSurvey(input, exec)
   }
-  async runGeneticAnalysis(input: GeneticAnalysisRequest, exec: ToolRunContext): Promise<JsonObject> {
+  async runGeneticAnalysis(input: GeneticAnalysisRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
     const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
     if (!project) throw new Error('An active registered project session is required.')
     return this.genetics.execute(project, input, exec)
   }
-  async refreshGeneticAnalysis(input: GeneticRefreshRequest, exec: ToolRunContext): Promise<JsonObject> {
+  async refreshGeneticAnalysis(input: GeneticRefreshRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
     const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
     if (!project) throw new Error('An active registered project session is required.')
     return this.genetics.refresh(project, input, exec)
   }
-  @Remote('runGeneticAnalysis') async runGeneticAnalysisRemote(input: GeneticAnalysisRequest & { sessionId: string }): Promise<JsonObject> {
+  @Remote('runGeneticAnalysis') async runGeneticAnalysisRemote(input: GeneticAnalysisRequest & { sessionId: string }): Promise<ResearchRemoteJsonObject> {
     const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
     if (!session) throw new Error('An active session is required.')
     return this.runGeneticAnalysis(input, { agent: { session }, callId: `rpc:genetics:${input.requestId}`, signal: new AbortController().signal } as unknown as ToolRunContext)
   }
-  @Remote('refreshGeneticAnalysis') async refreshGeneticAnalysisRemote(input: GeneticRefreshRequest & { sessionId: string }): Promise<JsonObject> {
+  @Remote('refreshGeneticAnalysis') async refreshGeneticAnalysisRemote(input: GeneticRefreshRequest & { sessionId: string }): Promise<ResearchRemoteJsonObject> {
     const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
     if (!session) throw new Error('An active session is required.')
     return this.refreshGeneticAnalysis(input, { agent: { session }, callId: `rpc:genetics-refresh:${input.runId}`, signal: new AbortController().signal } as unknown as ToolRunContext)
   }
-  @Remote('validateGeneticContract') validateGeneticContractRemote(input: { studyId: string; contract: JsonObject }): JsonObject {
+  @Remote('validateGeneticContract') validateGeneticContractRemote(input: { studyId: string; contract: ResearchRemoteJsonObject }): ResearchRemoteJsonObject {
     if (!this.store.getResearchStudy(input.studyId)) throw new Error('Research study was not found.')
     return { studyId: input.studyId, ...validateGeneticContract(input.contract), checkedAt: new Date().toISOString() }
   }
-  @Remote('auditResearchClaim') auditResearchClaim(input: { sessionId: string; claimId: string; expectedVersion: number }): ResearchDocumentRecord {
+  @Remote('auditResearchClaim') auditResearchClaim(input: { sessionId: string; claimId: string; expectedVersion: number }): ResearchRemoteDocumentRecord {
     const document = this.store.getResearchDocument(input.claimId)
     if (!document) throw new Error('Research claim was not found.')
     const study = this.store.getResearchStudy(document.studyId)
     const active = this.projectForSession({ sessionId: input.sessionId })
     if (!study || study.projectId !== document.projectId || !active || active.id !== study.projectId) throw new Error('Research claim is not in the active project.')
-    return this.store.auditResearchClaim(input.claimId, input.expectedVersion)
+    return this.store.auditResearchClaim(input.claimId, input.expectedVersion) as ResearchRemoteDocumentRecord
   }
-  @Remote('createResearchTask') createResearchTask(input: CreateResearchTaskInput): ResearchTaskRecord { return this.store.createResearchTask(input) }
-  @Remote('listResearchTasks') listResearchTasks(studyId: string): ResearchTaskRecord[] { return this.store.listResearchTasks(studyId) }
-  @Remote('updateResearchTask') updateResearchTask(input: { id: string; changes: UpdateResearchTaskInput }): ResearchTaskRecord { return this.store.updateResearchTask(input.id, input.changes) }
-  @Remote('refreshResearchTaskReadiness') refreshResearchTaskReadiness(studyId: string): ResearchTaskRecord[] { return this.store.refreshResearchTaskReadiness(studyId) }
-  @Remote('getResearchTaskBudget') getResearchTaskBudget(studyId: string): ResearchTaskBudgetReport { return this.store.getResearchTaskBudget(studyId) }
-  @Remote('reconcileResearchTaskRun') reconcileResearchTaskRun(input: { id: string; expectedVersion?: number }): ResearchTaskRecord { return this.store.reconcileResearchTaskRun(input.id, input.expectedVersion) }
-  @Remote('generateResearchReport') async generateResearchReport(input: { sessionId: string; studyId: string; mode?: 'draft' | 'final' }): Promise<JsonObject> {
+  @Remote('createResearchTask') createResearchTask(input: ResearchRemoteCreateTaskInput): ResearchRemoteTaskRecord { return this.store.createResearchTask(input as CreateResearchTaskInput) as ResearchRemoteTaskRecord }
+  @Remote('listResearchTasks') listResearchTasks(studyId: string): ResearchRemoteTaskRecord[] { return this.store.listResearchTasks(studyId) as ResearchRemoteTaskRecord[] }
+  @Remote('updateResearchTask') updateResearchTask(input: { id: string; changes: ResearchRemoteUpdateTaskInput }): ResearchRemoteTaskRecord { return this.store.updateResearchTask(input.id, input.changes as UpdateResearchTaskInput) as ResearchRemoteTaskRecord }
+  @Remote('refreshResearchTaskReadiness') refreshResearchTaskReadiness(studyId: string): ResearchRemoteTaskRecord[] { return this.store.refreshResearchTaskReadiness(studyId) as ResearchRemoteTaskRecord[] }
+  @Remote('getResearchTaskBudget') getResearchTaskBudget(studyId: string): ResearchRemoteTaskBudgetReport { return this.store.getResearchTaskBudget(studyId) as ResearchRemoteTaskBudgetReport }
+  @Remote('reconcileResearchTaskRun') reconcileResearchTaskRun(input: { id: string; expectedVersion?: number }): ResearchRemoteTaskRecord { return this.store.reconcileResearchTaskRun(input.id, input.expectedVersion) as ResearchRemoteTaskRecord }
+  @Remote('generateResearchReport') async generateResearchReport(input: { sessionId: string; studyId: string; mode?: 'draft' | 'final' }): Promise<ResearchRemoteJsonObject> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
-    return await this.reports.generate(project, input.studyId, input.mode ?? 'draft') as unknown as JsonObject
+    return await this.reports.generate(project, input.studyId, input.mode ?? 'draft') as unknown as ResearchRemoteJsonObject
   }
   /**
    * Probe every engine the Host knows about. The previous implementation
@@ -611,7 +628,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
    * environment setup, not a project analysis step, so it must work before a
    * project exists.
    */
-  @Remote('installBrainAtlas') async installBrainAtlas(input: { sessionId?: string; atlasDirectory?: string }): Promise<JsonObject> {
+  @Remote('installBrainAtlas') async installBrainAtlas(input: { sessionId?: string; atlasDirectory?: string }): Promise<ResearchRemoteJsonObject> {
     const result = await this.brain.installAtlas(input.atlasDirectory ? { atlasDirectory: input.atlasDirectory } : {})
     // Installing the managed atlas only prepares the engine.  It must not
     // create/select a project asset or open/read a viewer: those are explicit
@@ -641,17 +658,17 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (!project) throw new Error('An active registered project session is required.')
     return this.nativeEngines.list(project.id)
   }
-  @Remote('createEdge') createEdge(input: CreateResearchEdgeInput): ResearchEdgeRecord { return this.store.createResearchEdge(input) }
-  @Remote('listEdges') listEdges(projectId: string): ResearchEdgeRecord[] { return this.store.listResearchEdges(projectId) }
-  @Remote('listAuditEvents') listAuditEvents(projectId: string): AuditEventRecord[] { return this.store.listAuditEvents(projectId) }
-  @Remote('projectForSession') projectForSession(input: { sessionId: string }): ProjectRecord | undefined {
+  @Remote('createEdge') createEdge(input: ResearchRemoteCreateEdgeInput): ResearchRemoteEdgeRecord { return this.store.createResearchEdge(input as CreateResearchEdgeInput) as unknown as ResearchRemoteEdgeRecord }
+  @Remote('listEdges') listEdges(projectId: string): ResearchRemoteEdgeRecord[] { return this.store.listResearchEdges(projectId) as unknown as ResearchRemoteEdgeRecord[] }
+  @Remote('listAuditEvents') listAuditEvents(projectId: string): ResearchRemoteAuditEventRecord[] { return this.store.listAuditEvents(projectId) as unknown as ResearchRemoteAuditEventRecord[] }
+  @Remote('projectForSession') projectForSession(input: { sessionId: string }): ResearchRemoteProjectRecord | undefined {
     const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
     const cwd = session?.header.cwd
     if (!session) return undefined
     if (!cwd) return this.store.listProjects().find(item => resolve(item.rootPath) === this.defaultProjectRoot)
     return this.store.listProjects().filter(item => isWithin(cwd, item.rootPath)).sort((a, b) => b.rootPath.length - a.rootPath.length)[0]
   }
-  @Remote('registerSessionProject') async registerSessionProject(input: { sessionId: string }): Promise<ProjectRecord> {
+  @Remote('registerSessionProject') async registerSessionProject(input: { sessionId: string }): Promise<ResearchRemoteProjectRecord> {
     const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
     if (!session) throw new Error('An active local workspace session is required.')
     const cwd = session.header.cwd || this.defaultProjectRoot
@@ -663,21 +680,21 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const existing = this.projectForSession(input)
     if (existing) return existing
     const rootPath = resolve(cwd)
-    return this.store.createProject({ name: session.header.cwd ? basename(rootPath) || rootPath : '科研工作台', rootPath })
+    return this.store.createProject({ name: session.header.cwd ? basename(rootPath) || rootPath : '科研工作台', rootPath }) as unknown as ResearchRemoteProjectRecord
   }
-  @Remote('getActiveResearchStudy') getActiveResearchStudy(input: { sessionId: string }): ResearchStudyRecord | undefined {
+  @Remote('getActiveResearchStudy') getActiveResearchStudy(input: { sessionId: string }): ResearchRemoteStudyRecord | undefined {
     const project = this.projectForSession(input)
-    return project ? this.store.getSessionResearchStudy(project.id, input.sessionId) : undefined
+    return project ? this.store.getSessionResearchStudy(project.id, input.sessionId) as unknown as ResearchRemoteStudyRecord | undefined : undefined
   }
-  @Remote('setActiveResearchStudy') setActiveResearchStudy(input: { sessionId: string; studyId: string | null }): ResearchStudyRecord | undefined {
+  @Remote('setActiveResearchStudy') setActiveResearchStudy(input: { sessionId: string; studyId: string | null }): ResearchRemoteStudyRecord | undefined {
     const project = this.projectForSession(input)
     if (!project) throw new Error('An active project session is required.')
-    return this.store.setSessionResearchStudy(project.id, input.sessionId, input.studyId)
+    return this.store.setSessionResearchStudy(project.id, input.sessionId, input.studyId) as unknown as ResearchRemoteStudyRecord | undefined
   }
-  @Remote('getAuditReport') getAuditReport(projectId: string): AuditReport { return this.store.getAuditReport(projectId) }
+  @Remote('getAuditReport') getAuditReport(projectId: string): ResearchRemoteAuditReport { return this.store.getAuditReport(projectId) as unknown as ResearchRemoteAuditReport }
   @Remote('exportAuditReport') exportAuditReport(input: { projectId: string; format: 'json' | 'markdown' }): string { return this.store.exportAuditReport(input.projectId, input.format) }
-  @Remote('exportSnapshot') exportSnapshot(projectId: string): ResearchProjectSnapshot { return this.store.exportResearchSnapshot(projectId) }
-  @Remote('importSnapshot') importSnapshot(snapshot: ResearchProjectSnapshot): ProjectRecord { return this.store.importResearchSnapshot(snapshot) }
+  @Remote('exportSnapshot') exportSnapshot(projectId: string): ResearchRemoteProjectSnapshot { return this.store.exportResearchSnapshot(projectId) as unknown as ResearchRemoteProjectSnapshot }
+  @Remote('importSnapshot') importSnapshot(snapshot: ResearchRemoteProjectSnapshot): ResearchRemoteProjectRecord { return this.store.importResearchSnapshot(snapshot as unknown as ResearchProjectSnapshot) as unknown as ResearchRemoteProjectRecord }
   @Remote('preview') async preview(input: { projectId: string; uri: string; mediaType?: string }): Promise<ScientificPreviewPayload> {
     const project = this.store.listProjects().find(item => item.id === input.projectId)
     if (project === undefined) throw new Error(`Project was not found: ${input.projectId}`)
@@ -732,7 +749,7 @@ function registerResearchTools(ctx: Context): void {
         ...(args.artifact_id === undefined ? {} : { artifactId: String(args.artifact_id) }), ...(args.viewer_id === undefined ? {} : { viewerId: String(args.viewer_id) }),
         ...(args.run_id === undefined ? {} : { runId: String(args.run_id) }), ...(args.operation === undefined ? {} : { operation: String(args.operation) }),
         ...(args.skill_id === undefined ? {} : { skillId: String(args.skill_id) }), ...(args.action_id === undefined ? {} : { actionId: String(args.action_id) }),
-        ...(args.parameters === undefined ? {} : { parameters: requireJsonObject(args.parameters) }), ...(args.expected_revision === undefined ? {} : { expectedRevision: Number(args.expected_revision) }),
+        ...(args.parameters === undefined ? {} : { parameters: requireResearchRemoteJsonObject(args.parameters) }), ...(args.expected_revision === undefined ? {} : { expectedRevision: Number(args.expected_revision) }),
       })
     },
   })), 'zerowall-research: register science_workbench router')
@@ -788,7 +805,7 @@ function registerResearchTools(ctx: Context): void {
       const sessionId = exec.agent?.session.id
       if (!sessionId) throw new Error('An active project session is required.')
       if (String(args.action).startsWith('dock_')) {
-        return ctx.zerowallResearch.executeMoleculeDocking({ ...requireJsonObject(args.docking ?? {}), sessionId: String(sessionId), action: String(args.action).slice(5) } as unknown as MoleculeDockingRequest, exec)
+        return ctx.zerowallResearch.executeMoleculeDocking({ ...requireResearchRemoteJsonObject(args.docking ?? {}), sessionId: String(sessionId), action: String(args.action).slice(5) } as unknown as MoleculeDockingRequest, exec)
       }
       const result = await ctx.zerowallResearch.scienceViewer({
         sessionId: String(sessionId), action: args.action as ScienceViewerRequest['action'],
@@ -796,8 +813,8 @@ function registerResearchTools(ctx: Context): void {
         ...(args.asset_id === undefined ? {} : { assetId: String(args.asset_id) }),
         ...(args.viewer_id === undefined ? {} : { viewerId: String(args.viewer_id) }),
         ...(args.expected_revision === undefined ? {} : { expectedVersion: Number(args.expected_revision) }),
-        ...(args.state === undefined ? {} : { state: requireJsonObject(args.state) as unknown as NonNullable<ScienceViewerRequest['state']> }),
-        ...(args.sequence_options === undefined ? {} : { sequenceOptions: requireJsonObject(args.sequence_options) as NonNullable<ScienceViewerRequest['sequenceOptions']> }),
+        ...(args.state === undefined ? {} : { state: requireResearchRemoteJsonObject(args.state) as unknown as NonNullable<ScienceViewerRequest['state']> }),
+        ...(args.sequence_options === undefined ? {} : { sequenceOptions: requireResearchRemoteJsonObject(args.sequence_options) as NonNullable<ScienceViewerRequest['sequenceOptions']> }),
         ...(args.operation === undefined ? {} : { operation: args.operation as NonNullable<ScienceViewerRequest['operation']> }), ...(args.crispr_target === undefined ? {} : { crisprTarget: String(args.crispr_target) }), ...(args.crispr_max_mismatches === undefined ? {} : { crisprMaxMismatches: Number(args.crispr_max_mismatches) }),
         ...((args.threshold === undefined && args.window === undefined && args.reference === undefined && args.reverse_viewer_id === undefined) ? {} : { sanger: {
           sessionId: String(sessionId),
@@ -811,10 +828,10 @@ function registerResearchTools(ctx: Context): void {
           ...(args.window === undefined ? {} : { window: Number(args.window) }),
         ...(args.reference === undefined ? {} : { reference: String(args.reference) }),
         } }),
-        ...(args.he === undefined ? {} : { he: { ...requireJsonObject(args.he), sessionId: String(sessionId), action: String(args.action).slice(3) } as unknown as HeRequest }),
-        ...(args.molecule === undefined ? {} : { molecule: { ...requireJsonObject(args.molecule), sessionId: String(sessionId), action: String(args.action).slice(9) } as unknown as MoleculeRequest }),
-        ...(args.region === undefined ? {} : { region: requireJsonObject(args.region) as unknown as NonNullable<ScienceViewerRequest['region']> }),
-        ...(args.canvas_spec === undefined ? {} : { canvas: { sessionId: String(sessionId), action: String(args.action).slice(7) as 'render' | 'export', spec: requireJsonObject(args.canvas_spec) as unknown as NonNullable<ScienceViewerRequest['canvas']>['spec'] } }),
+        ...(args.he === undefined ? {} : { he: { ...requireResearchRemoteJsonObject(args.he), sessionId: String(sessionId), action: String(args.action).slice(3) } as unknown as HeRequest }),
+        ...(args.molecule === undefined ? {} : { molecule: { ...requireResearchRemoteJsonObject(args.molecule), sessionId: String(sessionId), action: String(args.action).slice(9) } as unknown as MoleculeRequest }),
+        ...(args.region === undefined ? {} : { region: requireResearchRemoteJsonObject(args.region) as unknown as NonNullable<ScienceViewerRequest['region']> }),
+        ...(args.canvas_spec === undefined ? {} : { canvas: { sessionId: String(sessionId), action: String(args.action).slice(7) as 'render' | 'export', spec: requireResearchRemoteJsonObject(args.canvas_spec) as unknown as NonNullable<ScienceViewerRequest['canvas']>['spec'] } }),
         ...((args.transform === undefined && args.cofactor === undefined && args.apply_compensation === undefined && args.gates === undefined && args.preview_limit === undefined && args.asset_ids === undefined && args.request_id === undefined && args.run_id === undefined) ? {} : { flow: {
           sessionId: String(sessionId),
           action: String(args.action).slice(5) as NonNullable<ScienceViewerRequest['flow']>['action'],
@@ -830,8 +847,8 @@ function registerResearchTools(ctx: Context): void {
           ...(args.request_id === undefined ? {} : { requestId: String(args.request_id) }),
           ...(args.run_id === undefined ? {} : { runId: String(args.run_id) }),
         } }),
-        ...(args.image_state === undefined ? {} : { imageState: requireJsonObject(args.image_state) as unknown as NonNullable<ScienceViewerRequest['imageState']> }),
-        ...(args.annotation === undefined ? {} : { annotation: requireJsonObject(args.annotation) as unknown as NonNullable<ScienceViewerRequest['annotation']> }),
+        ...(args.image_state === undefined ? {} : { imageState: requireResearchRemoteJsonObject(args.image_state) as unknown as NonNullable<ScienceViewerRequest['imageState']> }),
+        ...(args.annotation === undefined ? {} : { annotation: requireResearchRemoteJsonObject(args.annotation) as unknown as NonNullable<ScienceViewerRequest['annotation']> }),
         ...(args.annotation_revision_id === undefined ? {} : { annotationRevisionId: String(args.annotation_revision_id) }),
         ...(args.mask_asset_id === undefined ? {} : { maskAssetId: String(args.mask_asset_id) }),
         ...(args.mask_labels === undefined ? {} : { maskLabels: requireJsonArray(args.mask_labels).map(Number) }),
@@ -842,26 +859,26 @@ function registerResearchTools(ctx: Context): void {
         ...(args.gene === undefined ? {} : { gene: String(args.gene) }),
         ...(args.cell_limit === undefined ? {} : { cellLimit: Number(args.cell_limit) }),
         ...(args.group_by === undefined ? {} : { groupBy: String(args.group_by) }),
-        ...(args.cell_camera === undefined ? {} : { cellCamera: requireJsonObject(args.cell_camera) as unknown as NonNullable<ScienceViewerRequest['cellCamera']> }),
-        ...(args.cell_selection === undefined ? {} : { cellSelection: args.cell_selection === null ? null : requireJsonObject(args.cell_selection) as unknown as NonNullable<ScienceViewerRequest['cellSelection']> }),
+        ...(args.cell_camera === undefined ? {} : { cellCamera: requireResearchRemoteJsonObject(args.cell_camera) as unknown as NonNullable<ScienceViewerRequest['cellCamera']> }),
+        ...(args.cell_selection === undefined ? {} : { cellSelection: args.cell_selection === null ? null : requireResearchRemoteJsonObject(args.cell_selection) as unknown as NonNullable<ScienceViewerRequest['cellSelection']> }),
         ...(args.sanger_edits === undefined ? {} : { sanger: { sessionId: String(sessionId), action: 'revise' as const, edits: requireJsonArray(args.sanger_edits) as unknown as import('../shared/sanger-revision.js').SangerEdit[] } }),
-        ...(args.brain_transform === undefined ? {} : { brainTransform: { ...requireJsonObject(args.brain_transform), sessionId: String(exec.agent?.session.id ?? '') } as unknown as BrainTransformRequest }),
+        ...(args.brain_transform === undefined ? {} : { brainTransform: { ...requireResearchRemoteJsonObject(args.brain_transform), sessionId: String(exec.agent?.session.id ?? '') } as unknown as BrainTransformRequest }),
         ...(args.brain_axis === undefined ? {} : { brainAxis: Number(args.brain_axis) as 0 | 1 | 2 }), ...(args.brain_index === undefined ? {} : { brainIndex: Number(args.brain_index) }), ...(args.brain_downsample === undefined ? {} : { brainDownsample: Number(args.brain_downsample) }), ...(args.brain_region === undefined ? {} : { brainRegion: String(args.brain_region) }), ...(args.brain_regions === undefined ? {} : { brainRegions: requireJsonArray(args.brain_regions).map(String).slice(0, 16) }), ...(args.brain_title === undefined ? {} : { brainTitle: String(args.brain_title).slice(0, 200) }), ...(args.brain_point_radius === undefined ? {} : { brainPointRadius: Number(args.brain_point_radius) }), ...(args.brain_coordinates === undefined ? {} : { brainCoordinates: requireJsonArray(args.brain_coordinates).map(value => { const row = requireJsonArray(value); if (row.length !== 3) throw new Error('Brain coordinates must contain 3 values.'); return row.map(Number) as [number, number, number] }) }), ...(args.brain_coordinate_units === undefined ? {} : { brainCoordinateUnits: args.brain_coordinate_units as 'voxel' | 'micron' }), ...(args.brain_voxel_sizes === undefined ? {} : { brainVoxelSizes: requireJsonArray(args.brain_voxel_sizes).map(Number) as [number, number, number] }), ...(args.brain_orientation === undefined ? {} : { brainOrientation: String(args.brain_orientation) }), ...(args.brain_n_free_cpus === undefined ? {} : { brainNFreeCpus: Number(args.brain_n_free_cpus) }), ...(args.brain_start_plane === undefined ? {} : { brainStartPlane: Number(args.brain_start_plane) }), ...(args.brain_end_plane === undefined ? {} : { brainEndPlane: Number(args.brain_end_plane) }), ...(args.brain_skip_classification === undefined ? {} : { brainSkipClassification: Boolean(args.brain_skip_classification) }), ...(args.background_asset_id === undefined ? {} : { backgroundAssetId: String(args.background_asset_id) }), ...(args.max_cells === undefined ? {} : { maxCells: Number(args.max_cells) }),
       })
       // Preview pixels go to the viewer RPC only, not into an Agent's text context.
       if (result.image) {
         const { pngBase64: _pixels, ...imageMetadata } = result.image
-        return { ...result, image: imageMetadata } as unknown as JsonObject
+        return { ...result, image: imageMetadata } as unknown as ResearchRemoteJsonObject
       }
       if (result.cell?.preview) {
         const preview = result.cell.preview
-        return { ...result, cell: { ...result.cell, preview: { ...preview, cells: preview.cells.slice(0,100), ...(preview.embedding ? { embedding: { ...preview.embedding, returnedPointCount: preview.embedding.points.length, points: preview.embedding.points.slice(0,100) } } : {}), ...(preview.expression ? { expression: { ...preview.expression, values: preview.expression.values.slice(0,100) } } : {}), agentTextSampleOnly: true }, ...(result.cell.selection ? { selection: { ...result.cell.selection, previewIndices: result.cell.selection.previewIndices.slice(0,100) } } : {}) } } as unknown as JsonObject
+        return { ...result, cell: { ...result.cell, preview: { ...preview, cells: preview.cells.slice(0,100), ...(preview.embedding ? { embedding: { ...preview.embedding, returnedPointCount: preview.embedding.points.length, points: preview.embedding.points.slice(0,100) } } : {}), ...(preview.expression ? { expression: { ...preview.expression, values: preview.expression.values.slice(0,100) } } : {}), agentTextSampleOnly: true }, ...(result.cell.selection ? { selection: { ...result.cell.selection, previewIndices: result.cell.selection.previewIndices.slice(0,100) } } : {}) } } as unknown as ResearchRemoteJsonObject
       }
       if (result.canvas?.canvas) {
         const { svg, ...summary } = result.canvas.canvas
-        return { ...result, canvas: { ...result.canvas, canvas: { ...summary, svgBytes: Buffer.byteLength(svg), svgOmittedFromAgentText: true } } } as unknown as JsonObject
+        return { ...result, canvas: { ...result.canvas, canvas: { ...summary, svgBytes: Buffer.byteLength(svg), svgOmittedFromAgentText: true } } } as unknown as ResearchRemoteJsonObject
       }
-      return result as unknown as JsonObject
+      return result as unknown as ResearchRemoteJsonObject
     },
   })), 'zerowall-research: register science_viewer tool')
   ctx.effect(() => ctx.tools.register(defineTool({
@@ -877,46 +894,46 @@ function registerResearchTools(ctx: Context): void {
       if (!project) throw new Error('The active workspace is not registered as a ZeroWall project.')
       const requestedProjectId = args.project_id === undefined ? project.id : String(args.project_id)
       if (requestedProjectId !== project.id) throw new Error('Research study access is limited to the active project workspace.')
-      if (args.action === 'list') return { studies: service.listResearchStudies(requestedProjectId) as unknown as JsonObject }
+      if (args.action === 'list') return { studies: service.listResearchStudies(requestedProjectId) as unknown as ResearchRemoteJsonObject }
       const study = args.study_id ? service.getResearchStudy(String(args.study_id)) : undefined
       if (!study || study.projectId !== project.id) throw new Error('Research study is not in the active project.')
-      if (args.action === 'get') return { study: study as unknown as JsonObject }
-      if (args.action === 'documents') return { documents: service.listResearchDocuments({ studyId: String(args.study_id) }) as unknown as JsonObject }
+      if (args.action === 'get') return { study: study as unknown as ResearchRemoteJsonObject }
+      if (args.action === 'documents') return { documents: service.listResearchDocuments({ studyId: String(args.study_id) }) as unknown as ResearchRemoteJsonObject }
       if (args.action === 'generate_report') return await service.generateResearchReport({ sessionId: String(exec.agent?.session.id ?? ''), studyId: study.id, mode: args.report_mode === 'final' ? 'final' : 'draft' })
-      if (args.action === 'tasks') return { tasks: service.listResearchTasks(String(args.study_id)) as unknown as JsonObject }
+      if (args.action === 'tasks') return { tasks: service.listResearchTasks(String(args.study_id)) as unknown as ResearchRemoteJsonObject }
       if (['task_budget', 'refresh_tasks'].includes(String(args.action))) {
-        if (args.action === 'task_budget') return { budget: service.getResearchTaskBudget(String(args.study_id)) as unknown as JsonObject }
-        return { tasks: service.refreshResearchTaskReadiness(String(args.study_id)) as unknown as JsonObject }
+        if (args.action === 'task_budget') return { budget: service.getResearchTaskBudget(String(args.study_id)) as unknown as ResearchRemoteJsonObject }
+        return { tasks: service.refreshResearchTaskReadiness(String(args.study_id)) as unknown as ResearchRemoteJsonObject }
       }
       if (args.action === 'create_task') {
-        const task = requireJsonObject(args.task)
-        return { task: service.createResearchTask({ projectId: project.id, studyId: study.id, name: String(task.name ?? ''), kind: String(task.kind ?? ''), ...(task.dependencies === undefined ? {} : { dependencies: requireJsonArray(task.dependencies).map(String) }), exploratory: task.exploratory === true, budget: task.budget === undefined ? {} : requireJsonObject(task.budget) }) as unknown as JsonObject }
+        const task = requireResearchRemoteJsonObject(args.task)
+        return { task: service.createResearchTask({ projectId: project.id, studyId: study.id, name: String(task.name ?? ''), kind: String(task.kind ?? ''), ...(task.dependencies === undefined ? {} : { dependencies: requireJsonArray(task.dependencies).map(String) }), exploratory: task.exploratory === true, budget: task.budget === undefined ? {} : requireResearchRemoteJsonObject(task.budget) }) as unknown as ResearchRemoteJsonObject }
       }
       if (args.action === 'update_task') {
         const taskId = String(args.task_id ?? '')
         const current = service.listResearchTasks(study.id).find(task => task.id === taskId)
         if (!current) throw new Error('Research task is not in the active study.')
-        const changes = requireJsonObject(args.task)
-        return { task: service.updateResearchTask({ id: taskId, changes: { expectedVersion: Number(args.expected_version ?? current.version), ...(changes.status === undefined ? {} : { status: String(changes.status) as ResearchTaskRecord['status'] }), ...(changes.runId === undefined ? {} : { runId: changes.runId === null ? null : String(changes.runId) }), ...(changes.error === undefined ? {} : { error: changes.error === null ? null : String(changes.error) }) } } as any) as unknown as JsonObject }
+        const changes = requireResearchRemoteJsonObject(args.task)
+        return { task: service.updateResearchTask({ id: taskId, changes: { expectedVersion: Number(args.expected_version ?? current.version), ...(changes.status === undefined ? {} : { status: String(changes.status) as ResearchTaskRecord['status'] }), ...(changes.runId === undefined ? {} : { runId: changes.runId === null ? null : String(changes.runId) }), ...(changes.error === undefined ? {} : { error: changes.error === null ? null : String(changes.error) }) } } as any) as unknown as ResearchRemoteJsonObject }
       }
       if (args.action === 'reconcile_task_run') {
         const taskId = String(args.task_id ?? '')
         if (!service.listResearchTasks(study.id).some(task => task.id === taskId)) throw new Error('Research task is not in the active study.')
-        return { task: service.reconcileResearchTaskRun({ id: taskId, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) }) as unknown as JsonObject }
+        return { task: service.reconcileResearchTaskRun({ id: taskId, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) }) as unknown as ResearchRemoteJsonObject }
       }
-      if (args.action === 'register_evidence') return { document: service.registerResearchEvidence({ sessionId: String(exec.agent?.session.id ?? ''), projectId: project.id, studyId: study.id, payload: { ...requireJsonObject(args.payload), needsReview: true } }) as unknown as JsonObject }
-      if (args.action === 'audit_claim') return { document: service.auditResearchClaim({ sessionId: String(exec.agent?.session.id ?? ''), claimId: String(args.claim_id ?? ''), expectedVersion: Number(args.expected_version ?? 0) }) as unknown as JsonObject }
+      if (args.action === 'register_evidence') return { document: service.registerResearchEvidence({ sessionId: String(exec.agent?.session.id ?? ''), projectId: project.id, studyId: study.id, payload: { ...requireResearchRemoteJsonObject(args.payload), needsReview: true } }) as unknown as ResearchRemoteJsonObject }
+      if (args.action === 'audit_claim') return { document: service.auditResearchClaim({ sessionId: String(exec.agent?.session.id ?? ''), claimId: String(args.claim_id ?? ''), expectedVersion: Number(args.expected_version ?? 0) }) as unknown as ResearchRemoteJsonObject }
       if (args.action === 'create_document') {
         const kind = args.kind ?? 'observation'
         if (!['observation', 'question', 'dataset-contract', 'analysis-plan'].includes(kind)) throw new Error('Agents may propose observations, questions, contracts and plans; result ingestion and evidence approval require dedicated services.')
-        return { document: service.createResearchDocument({ projectId: project.id, studyId: study.id, kind: kind as ResearchRecordKind, payload: requireJsonObject(args.payload) }) as unknown as JsonObject }
+        return { document: service.createResearchDocument({ projectId: project.id, studyId: study.id, kind: kind as ResearchRecordKind, payload: requireResearchRemoteJsonObject(args.payload) }) as unknown as ResearchRemoteJsonObject }
       }
-      if (args.action === 'method_check_evaluate') return service.methodCheckEvaluate({ studyId: String(args.study_id), method: String(args.method ?? ''), ...(args.assumptions === undefined ? {} : { assumptions: requireJsonObject(args.assumptions) }) })
+      if (args.action === 'method_check_evaluate') return service.methodCheckEvaluate({ studyId: String(args.study_id), method: String(args.method ?? ''), ...(args.assumptions === undefined ? {} : { assumptions: requireResearchRemoteJsonObject(args.assumptions) }) })
       if (args.action === 'run_genetic_analysis') return service.runGeneticAnalysis({ studyId: study.id, contractId: String(args.contract_id ?? ''), planId: String(args.plan_id ?? study.currentPlanId ?? ''), taskId: String(args.task_id ?? ''), requestId: String(args.request_id ?? ''), expectedPlanVersion: Number(args.expected_revision ?? 0) }, exec)
       if (args.action === 'refresh_genetic_analysis') return service.refreshGeneticAnalysis({ studyId: study.id, runId: String(args.run_id ?? '') }, exec)
       if (args.action === 'run_nhanes_survey') return service.runNhanesSurvey({ studyId: study.id, contractId: String(args.contract_id ?? ''), planId: String(args.plan_id ?? study.currentPlanId ?? ''), taskId: String(args.task_id ?? ''), requestId: String(args.request_id ?? ''), expectedPlanVersion: Number(args.expected_revision ?? 0) }, exec)
-      if (args.action === 'validate_nhanes_contract') return service.validateNhanesContractRemote({ studyId: String(args.study_id), contract: requireJsonObject(args.contract) })
-      if (args.action === 'validate_genetic_contract') return service.validateGeneticContractRemote({ studyId: String(args.study_id), contract: requireJsonObject(args.contract) })
+      if (args.action === 'validate_nhanes_contract') return service.validateNhanesContractRemote({ studyId: String(args.study_id), contract: requireResearchRemoteJsonObject(args.contract) })
+      if (args.action === 'validate_genetic_contract') return service.validateGeneticContractRemote({ studyId: String(args.study_id), contract: requireResearchRemoteJsonObject(args.contract) })
       throw new Error('Unsupported research study action.')
     },
   })), 'zerowall-research: register research_study tool')
@@ -925,13 +942,13 @@ function registerResearchTools(ctx: Context): void {
     description: 'Deterministic method-fit checks of reported analysis metadata; unknown methods remain unverified. Does not certify correctness or approve research gates.',
     parameters: { context: { type: 'json', required: true } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
-    async execute(args) { return evaluateMethod(requireJsonObject(args.context)) },
+    async execute(args) { return evaluateMethod(requireResearchRemoteJsonObject(args.context)) },
   })), 'zerowall-research: register method check tool')
 }
 
-function requireJsonObject(value: unknown): JsonObject {
+function requireResearchRemoteJsonObject(value: unknown): ResearchRemoteJsonObject {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('A JSON object is required.')
-  return value as JsonObject
+  return value as ResearchRemoteJsonObject
 }
 
 function requireJsonArray(value: unknown): unknown[] {

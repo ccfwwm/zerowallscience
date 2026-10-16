@@ -35,15 +35,17 @@ it('invokes the imported CLI once with the forwarded profile arguments', async (
   try {
     const entry = join(root, 'cli.mjs')
     await writeFile(entry, `
-      export async function runCli() {
-        console.log(JSON.stringify({ args: process.argv.slice(2), main: import.meta.main }));
+      export async function runCli(options) {
+        console.log(JSON.stringify({ args: process.argv.slice(2), main: import.meta.main, packageManager: options.packageManager }));
       }
       if (import.meta.main) await runCli();
     `)
     const { stdout } = await execute(process.execPath, [
       resolve('build/harness-node-entry.mjs'), entry, 'web', '--port', '43127',
     ], { windowsHide: true })
-    expect(JSON.parse(stdout.trim())).toEqual({ args: ['web', '--port', '43127'], main: false })
+    const result = JSON.parse(stdout.trim())
+    expect(result).toMatchObject({ args: ['web', '--port', '43127'], main: false, packageManager: { command: process.execPath } })
+    expect(result.packageManager.args[1]).toMatch(/pnpm-executor\.mjs$/)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

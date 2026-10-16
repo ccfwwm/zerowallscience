@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { ResearchStore } from '../../store/src/index.js'
+import { ResearchStore } from '../../plugins/research-store/src/index.js'
 import { FijiExperimentService } from '../../plugins/research/src/host/fiji-experiments.js'
 import type { FijiImageConfig } from '../../plugins/research/src/shared/fiji-experiments.js'
 if(!process.argv.includes('--run'))throw new Error('Pass --run for actual native ImageJ.')

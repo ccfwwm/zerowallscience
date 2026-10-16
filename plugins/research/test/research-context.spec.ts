@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { assemblySessionId, researchContextText, RESEARCH_CONTEXT_VERSION } from '../src/host/research-context.js'
 
 describe('persistent session research context', () => {

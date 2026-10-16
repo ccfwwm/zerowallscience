@@ -1,9 +1,10 @@
 import { contract } from '../../tools/build/paths.mjs'
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { windowsFileVersion } from '../src/main/update-artifact.ts'
+import { commandRegistrationFingerprint, verifyInstallerTestContract } from '../../tools/packaging/installer-test-contract.mjs'
 
 // Build with the isolated appId in build/electron-builder.installer-test.cjs.
 // Never invoke the production installer from this test.
@@ -13,6 +14,7 @@ const root = join(contract.verification, `installer-test-${versionKey}`)
 const installer = join(root, `zerowall-installer-test-${version}.exe`)
 const directory = join(root, '科研应用 中文目录')
 const executable = join(directory, 'ZeroWallScience.exe')
+const elevatedRunner = process.platform === 'win32' && spawnSync('powershell.exe', ['-NoProfile', '-Command', '[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)'], { encoding: 'utf8', windowsHide: true }).stdout?.trim() === 'True'
 const children = []
 async function run(path, args) {
   return new Promise((ok, fail) => {
@@ -22,9 +24,12 @@ async function run(path, args) {
     child.once('exit', code => { clearTimeout(timer); ok(code) })
   })
 }
+await verifyInstallerTestContract(installer, version)
 await mkdir(directory, { recursive: true })
+const commandRegistrationBefore = await commandRegistrationFingerprint()
 try {
   assert.equal(await run(installer, ['/S', '/currentuser', '/no-launch', `/D=${directory}`]), 0)
+  assert.equal(await commandRegistrationFingerprint(), commandRegistrationBefore, 'Isolated installer changed the formal command PATH owner')
   assert.equal(await windowsFileVersion(executable), `${version}.0`)
   const sentinel = join(directory, 'user-data-sentinel.txt')
   await writeFile(sentinel, 'preserve researcher data')
@@ -40,11 +45,15 @@ try {
   await new Promise((ok, fail) => { unrelated.once('spawn', ok); unrelated.once('error', fail) })
   // No /D: the existing registration must keep the selected Chinese directory.
   assert.equal(await run(installer, ['--updated', '/S', '/no-launch']), 0)
+  assert.equal(await commandRegistrationFingerprint(), commandRegistrationBefore, 'Isolated upgrade changed the formal command PATH owner')
   assert.notEqual(target.exitCode, null)
   assert.equal(unrelated.exitCode, null)
   assert.equal(await windowsFileVersion(executable), `${version}.0`)
   assert.equal(await readFile(sentinel, 'utf8'), 'preserve researcher data')
-  const result = { passed: true, installationScope: 'current-user', directory, fileVersion: `${version}.0`, rememberedDirectory: true, runningTargetStopped: true, unrelatedProcessPreserved: true, dataPreserved: true, limitation: 'Standard-user test; machine-wide UAC consent requires an administrator and was not exercised.' }
+  const result = { passed: true, installationScope: 'current-user', elevatedRunner, directory, fileVersion: `${version}.0`, rememberedDirectory: true, runningTargetStopped: true, unrelatedProcessPreserved: true, dataPreserved: true, commandRegistrationUnchanged: true, limitation: elevatedRunner ? 'Isolated current-user install and upgrade executed with an elevated runner; machine-wide installation was not exercised.' : 'Standard-user test; machine-wide UAC consent requires an administrator and was not exercised.' }
   await writeFile(join(root, 'upgrade-verification.json'), JSON.stringify(result, null, 2))
   console.log(JSON.stringify(result, null, 2))
-} finally { for (const child of children) if (child.exitCode === null) child.kill() }
+} finally {
+  for (const child of children) if (child.exitCode === null) child.kill()
+  assert.equal(await commandRegistrationFingerprint(), commandRegistrationBefore, 'Isolated installer left the formal command PATH owner changed')
+}

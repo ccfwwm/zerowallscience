@@ -17,6 +17,9 @@ import { verifyOfflineProfile, prepareOfflineCandidate } from '../../tools/comma
 import { locatePackagedApp } from './packaged-app.mjs'
 import { verifySettingsLocales } from './verify-settings-locales.mjs'
 import { prepareOfflineNetworkProbe, verifyOfflineNetworkProbe } from './offline-network-probe.mjs'
+import { assertPythonManifests, assertPythonManifestBytes } from '../../tools/build/verify-python-manifests.mjs'
+import { resourceSource } from '../../tools/build/layout.mjs'
+import { executionLevel } from '../../tools/packaging/windows-execution-level.mjs'
 
 const hostCookies = new Map()
 const MIB = 1024 * 1024
@@ -41,6 +44,24 @@ if (process.argv.includes('--audit-source')) {
 }
 
 const packaged = await locatePackagedApp(packageRoot)
+if (process.platform === 'win32') {
+  const installer = resolve(packaged.root, '..', `zerowall-science-${desktopManifest.version}-win-x64.exe`)
+  const hasInstaller = await access(installer).then(() => true, () => false)
+  if (requireThinPython && !hasInstaller) throw new Error('Stable Windows verification requires the installer')
+  for (const executable of [packaged.executablePath, ...(hasInstaller ? [installer] : [])]) {
+    if (executionLevel(await readFile(executable)) !== 'requireAdministrator') throw new Error(`Windows executable must request administrator at entry: ${executable}`)
+  }
+  console.log('[elevation] installer and desktop request administrator at process entry.')
+}
+const pythonDocuments = []
+for (const name of ['dependency-manifest.json', 'core-dependency-manifest.json']) {
+  const source = await readFile(await resourceSource('python', name))
+  const bundled = await readFile(resolve(packaged.resourcesRoot, 'python', name))
+  const digest = assertPythonManifestBytes(source, bundled, name)
+  pythonDocuments.push(JSON.parse(bundled.toString('utf8')))
+  console.log(`[python] ${name} source/package SHA-256: ${digest}`)
+}
+assertPythonManifests(...pythonDocuments, desktopManifest.version, JSON.parse(await readFile(resolve(repositoryRoot, 'config/catalogs/trusted-keys.json'), 'utf8')))
 const asarPath = resolve(packaged.resourcesRoot, 'app.asar')
 await access(asarPath)
 const bundledPythonManifestPath = resolve(packaged.resourcesRoot, 'python', 'base-manifest.json')
@@ -376,7 +397,7 @@ async function verifyArchivePolicy() {
   for (const [archivePath, sourcePath] of [
     ['node_modules/@zerowallscience/plugin-base/lib/index.js', 'plugins/base/lib/index.js'],
     ['node_modules/@zerowallscience/plugin-base/lib/client.js', 'plugins/base/lib/client.js'],
-    ['node_modules/dsh-better-sidebar/lib/client-editor.js', 'packages/dsh/dsh-better-sidebar/lib/client-editor.js'],
+    ['node_modules/dsh-better-sidebar/lib/client-editor.js', 'plugins/dsh-better-sidebar/lib/client-editor.js'],
     ['node_modules/@deepseek-ai/dsh-client-ui-model-selection/lib/client.js', 'deepseek-harness/packages/client/ui-model-selection/lib/client.js'],
     ['node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js', 'deepseek-harness/packages/api/session-controller/lib/index.js'],
   ]) {
@@ -656,7 +677,9 @@ async function verifyCoreRuntimeArchive() {
       if (error?.code === 'ENOENT') return '{}'
       throw error
     }))
-    if (manifest.name && !runtimeProfile.corePlugins.includes(manifest.name)) optional.add(manifest.name)
+    // The flat source root also owns support libraries (for example the
+    // integrity worker). Only declared DSH bundles are optional plugins.
+    if (manifest.dsh?.bundle && manifest.name && !runtimeProfile.corePlugins.includes(manifest.name)) optional.add(manifest.name)
   }
   for (const name of layout.roots?.dsh ?? []) if (name !== 'dsh-better-sidebar') optional.add(name)
   for (const name of [
@@ -1570,6 +1593,12 @@ async function verifyDesktopStartup() {
   // launch instead of failing before the Harness can start.
   await mkdir(resolve(root, 'appdata'), { recursive: true })
   await mkdir(resolve(root, 'localappdata'), { recursive: true })
+  // Automatic Python startup must use a test-owned fixed root, rather than
+  // installing beside the packaged executable. An isolated LOCALAPPDATA alone
+  // does not override the installation-directory default.
+  const pythonLocation = resolve(root, 'localappdata/ZeroWall Science')
+  await mkdir(pythonLocation, { recursive: true })
+  await writeFile(resolve(pythonLocation, 'python-location.json'), JSON.stringify({ runtimeRoot: resolve(root, 'Python'), source: 'user-selected' }))
   const child = spawn(packaged.executablePath, ['--remote-debugging-port=0', `--user-data-dir=${resolve(root, 'chromium')}`], {
     cwd: packaged.root,
     // Isolate Electron's app.getPath('userData') as well as the Harness home.
@@ -1997,9 +2026,9 @@ async function verifySourceRuntimePolicy() {
     if (manifestText.includes(forbidden)) throw new Error(`Runtime manifests contain forbidden legacy reference: ${forbidden}`)
   }
 
-  const wechat = JSON.parse(await readFile(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'package.json'), 'utf8'))
+  const wechat = JSON.parse(await readFile(resolve(repositoryRoot, 'plugins', 'dsh-wechat', 'package.json'), 'utf8'))
   if (wechat.name !== 'dsh-wechat' || wechat.version !== pinnedIntegrations.wechat.version) throw new Error(`Expected the pinned dsh-wechat snapshot; found ${wechat.name}@${wechat.version}.`)
-  await access(resolve(repositoryRoot, 'packages', 'dsh-wechat', 'dist', 'index.js'))
+  await access(resolve(repositoryRoot, 'plugins', 'dsh-wechat', 'dist', 'index.js'))
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
   const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')
   const basePatch = await readFile(resolve(repositoryRoot, 'deepseek-harness', 'packages', 'bundle', 'base', 'cordis.patch.yml'), 'utf8')

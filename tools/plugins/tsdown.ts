@@ -8,8 +8,6 @@ import '../build/register-output-resolution.mjs'
 import { adaptViewerCore } from './viewer-adapter.mjs'
 const { typertPlugin } = await import('../../deepseek-harness/packages/typert/generator/lib/types/tsdown-plugin.js')
 
-const zerowallVersion = String(JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version)
-
 export interface ZeroWallBundleOptions {
   host?: boolean
   client?: boolean
@@ -21,6 +19,12 @@ export interface ZeroWallBundleOptions {
 
 export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) {
   const manifest = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'))
+  // Plugin bundles are independently versioned artifacts.  Embedding the
+  // desktop application's version here would make every desktop release
+  // invalidate an otherwise identical plugin bundle and defeat the shared
+  // immutable plugin store.  The runtime value therefore follows the plugin
+  // semver from its own manifest.
+  const pluginVersion = String(manifest.version)
   const hasRemote = manifest.exports?.['./remote'] !== undefined
   const host = options.host !== false
   const configs = []
@@ -67,7 +71,7 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
       dts: false,
       clean: false,
       define: {
-        'process.env.ZEROWALL_VERSION': JSON.stringify(zerowallVersion),
+        'process.env.ZEROWALL_VERSION': JSON.stringify(pluginVersion),
         'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
         'import.meta.env.MODE': JSON.stringify(process.env.NODE_ENV ?? 'production'),
         'import.meta.env': JSON.stringify({ MODE: process.env.NODE_ENV ?? 'production' }),

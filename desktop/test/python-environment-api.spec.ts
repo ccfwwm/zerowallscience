@@ -276,6 +276,46 @@ describe('shared Python environment API', () => {
     expect(syncWithVerification.verifyInstalled).toHaveBeenCalledWith('core', undefined, expect.any(Function), expect.any(Array))
     expect(JSON.parse(await readFile(join(root, 'python-summary.json'), 'utf8'))).toMatchObject({ coreReady: true, corePackageCount: 42 })
   })
+  it.each(['core', 'science'] as const)('keeps a skipped version pin pending in automatic %s sync when unresolved excludes it', async layer => {
+    const { root, api, updater, sync } = await setup()
+    const failure = { name: 'numpy', version: '2.0.0', message: 'mirror unavailable' }
+    sync.checkManifest = vi.fn(async () => ({ revision: 'r1', changes: [{ name: 'numpy', from: '1.0.0', to: '2.0.0' }] })) as never
+    sync.previewSync = vi.fn(async () => ({ planId: 'plan-1', manifestRevision: 'r1', changes: [{ name: 'numpy', from: '1.0.0', to: '2.0.0' }] })) as never
+    const verifyInstalled = vi.fn(async () => ({
+      layer, pendingPackageCount: 1, unresolvedPackageCount: 0, installedPackageCount: 41, skippedPackages: [failure],
+    }))
+    Object.assign(sync, { installFailures: vi.fn(async () => [failure]), verifyInstalled })
+    Object.assign(updater, { pythonCoreInfo: vi.fn(async () => ({ ready: true, coreReady: true, packages: [{ name: 'numpy', version: '1.0.0' }] })) })
+    const request = { action: 'sync' as const, layer, automatic: true as const, requestId: `automatic-${layer}-skipped-pin`, confirm: true as const }
+    const accepted = await api.request(request)
+    const expectedState = layer === 'core' ? 'failed' : 'partial'
+    await vi.waitFor(async () => expect(await api.request({ action: 'task_status', taskId: String(accepted.taskId), requestId: 'skipped-pin-status' })).toMatchObject({
+      task: { state: expectedState, ...(layer === 'core' ? { error: expect.stringContaining('1 个依赖缺失或版本未同步') } : { result: { partial: true, skippedPackages: [failure] } }) },
+    }))
+    expect(verifyInstalled).toHaveBeenCalledWith(layer, undefined, expect.any(Function), [failure], { includeVersionUpdates: true })
+    expect(updater.rollback).not.toHaveBeenCalled()
+    expect(sync.applySync).toHaveBeenCalledOnce()
+    expect(JSON.parse(await readFile(join(root, 'jobs', `${accepted.taskId}.json`), 'utf8'))).toMatchObject({ state: expectedState })
+  })
+  it.each(['queued', 'running', 'paused'] as const)('resumes the exact automatic core receipt when the updater persisted it as %s', async persistedState => {
+    const { root, api, updater } = await setup()
+    const taskId = 'ab111111-1111-4111-8111-111111111111'
+    const underlyingTaskId = 'bc222222-2222-4222-8222-222222222222'
+    const requestId = `resume-automatic-${persistedState}`
+    const now = new Date().toISOString()
+    const task = { taskId, underlyingTaskId, requestId, action: 'sync', layer: 'core', automatic: true, state: 'interrupted', stage: 'installing', progress: 58, completedPackages: 24, totalPackages: 42, currentPackage: 'numpy', message: '正在安装 numpy', error: '任务因桌面进程结束而中断。', logLines: ['Downloading numpy'], createdAt: now, updatedAt: now, completedAt: now }
+    await mkdir(join(root, 'jobs'), { recursive: true })
+    await mkdir(join(root, 'requests'), { recursive: true })
+    await writeFile(join(root, 'jobs', `${taskId}.json`), JSON.stringify(task))
+    await writeFile(join(root, 'requests', `${requestId}.json`), JSON.stringify({ fingerprint: 'automatic-receipt', state: 'failed', taskId }))
+    const resume = vi.fn(() => true)
+    Object.assign(updater, { resumeAutomaticCoreOperation: resume })
+    updater.taskStatus.mockResolvedValueOnce({ state: persistedState }).mockResolvedValue({ state: 'complete' })
+
+    await expect(api.resumeAutomaticSyncTask(taskId)).resolves.toMatchObject({ taskId, queued: true })
+    expect(resume).toHaveBeenCalledWith(underlyingTaskId)
+    await expect(waitForTask(api, taskId)).resolves.toMatchObject({ task: { state: 'succeeded', underlyingTaskId } })
+  })
   it('does not merge an old science inventory into a newer incomplete detection', async () => {
     const { root, api } = await setup()
     await mkdir(root, { recursive: true })

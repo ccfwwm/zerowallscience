@@ -1,5 +1,15 @@
 import { expect, it, vi } from 'vitest'
 import { AiCloudClient } from '../src/host/index.js'
+import { imageQualityChoices } from '../src/shared/types.js'
+
+it('scopes missing quality compatibility to the confirmed reverse GPT image group', () => {
+  expect(imageQualityChoices('gpt-image-2.5', [], '生图分组-gpt逆向')).toEqual(['auto', 'low', 'medium', 'high', 'xhigh', 'max'])
+  expect(imageQualityChoices('gpt-image-2.5', ['high'], '生图分组-gpt逆向')).toEqual(['high'])
+  expect(imageQualityChoices('gpt-image-2.5-4k', [], '图片音频视频分组')).toEqual([])
+  expect(imageQualityChoices('gpt-image-2.5', [], '生图分组-AZ-非常稳定')).toEqual([])
+  expect(imageQualityChoices('gemini-image', [], '生图分组-gpt逆向')).toEqual([])
+  expect(imageQualityChoices('gpt-image-2', [], '生图分组-gpt逆向')).toEqual([])
+})
 
 const json = (value: unknown, status = 200) => new Response(JSON.stringify({data:value}), {status})
 const capability = {profile_id:'mp_opaque',version:'1',model:'gemini-image',media_type:'image',operations:['gemini_image'],sizes:[],resolutions:['1K'],qualities:[],aspect_ratios:['1:1'],duration:{},materials:{},api_key:'SERVER_PRIVATE',account_ids:[123],cost_template:'SERVER_PRIVATE'}

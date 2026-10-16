@@ -10,7 +10,15 @@ const directory = join(verificationRoot, 'native-pack', randomUUID())
 const receipts = []
 for (const id of await readdir(join(root, 'plugins'))) {
   if (id === 'wechat') continue
-  const source = JSON.parse(await readFile(join(root, 'plugins', id, 'package.json'), 'utf8'))
+  const manifestPath = join(root, 'plugins', id, 'package.json')
+  const source = await readFile(manifestPath, 'utf8').then(JSON.parse, error => {
+    if (error?.code === 'ENOENT') return undefined
+    throw error
+  })
+  // Some upstream adapters intentionally keep only a patch or metadata in
+  // the canonical plugins directory. Their reviewed package is supplied by
+  // the offline profile and is not a native ZeroWall package to pack here.
+  if (!source) continue
   if (!source.name.startsWith('@zerowallscience/plugin-')) continue
   const target = join(directory, id)
   await mkdir(target, { recursive: true })

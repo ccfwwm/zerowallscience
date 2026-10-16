@@ -78,7 +78,7 @@ await mkdir(sci, { recursive: true })
 // as remote archive hosts. The archive is integrity-checked before extraction.
 await extractArchive({ file: archive, strip: 1, cwd: sci })
 await writeFile(resolve(sci, 'dist/mcp.cjs'), patchSciMasterMcp(await readFile(resolve(sci, 'dist/mcp.cjs'))))
-await cp(resolve(root, 'mcp-environment-staging/sci/zerowall-mcp-launcher.cjs'), resolve(sci, 'zerowall-mcp-launcher.cjs'))
+await cp(resolve(root, 'plugins/mcp/src/scimaster/zerowall-mcp-launcher.cjs'), resolve(sci, 'zerowall-mcp-launcher.cjs'))
 
 function includeSkillPath(candidate) {
   const path = relative(sourceRoot, candidate).replaceAll('\\', '/')

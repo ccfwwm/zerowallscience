@@ -98,6 +98,13 @@ const common = {
     { from: path.join(resourcePath('brand', 'zerowall'), 'zerowall-icon.png'), to: 'zerowall-icon.png' },
   ],
   win: {
+    // Profile activation and command-line plugin migration create Windows
+    // junctions under the shared user-data root. The packaged application
+    // therefore needs one elevated token for the whole runtime so installs,
+    // updates, enable/disable operations, and Host children use the same
+    // permission boundary. Development runs are unaffected because this is
+    // an electron-builder manifest setting, not an Electron source change.
+    requestedExecutionLevel: 'requireAdministrator',
     icon: path.join(resourcePath('brand', 'app-icons'), 'icon.ico'),
     target: [{ target: 'nsis', arch: ['x64'] }],
   },

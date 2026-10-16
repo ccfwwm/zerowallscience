@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-`packages/dsh/dsh-session-notification` is sourced from [dingyi222666/dsh-session-notification](https://github.com/dingyi222666/dsh-session-notification), BSD-3-Clause.
+`plugins/dsh-session-notification` is sourced from [dingyi222666/dsh-session-notification](https://github.com/dingyi222666/dsh-session-notification), BSD-3-Clause.
 
 ZeroWall Science first-party code is licensed separately under
 AGPL-3.0-only. This document preserves the copyright notices and license
@@ -18,9 +18,9 @@ The 7.4.0 desktop adapts the following pinned plugins. Their original LICENSE fi
 
 | Source package | Upstream revision | License |
 | --- | --- | --- |
-| `packages/dsh/dsh-wechat` | pan17/dsh-wechat `7e3274d1e504dabe56f2873fc15bf7779c985d30` (`v0.9.6`) | MIT |
-| `packages/dsh/dsh-file-review` | left0ver/dsh-file-review `856f761a38fb364704a8a9d98d88d50a554f11af` (`v0.8.5`), with ZeroWall Windows compatibility changes | MIT |
-| `packages/dsh/dsh-better-sidebar` | omdsh-dev/DSH-better-sidebar `a2751cfbde2dd425b8150737574bc6d1d57f73b8` (`v0.24.1`), with ZeroWall workspace fence | MIT |
+| `plugins/dsh-wechat` | pan17/dsh-wechat `7e3274d1e504dabe56f2873fc15bf7779c985d30` (`v0.9.6`) | MIT |
+| `plugins/dsh-file-review` | left0ver/dsh-file-review `856f761a38fb364704a8a9d98d88d50a554f11af` (`v0.8.5`), with ZeroWall Windows compatibility changes | MIT |
+| `plugins/dsh-better-sidebar` | omdsh-dev/DSH-better-sidebar `a2751cfbde2dd425b8150737574bc6d1d57f73b8` (`v0.24.1`), with ZeroWall workspace fence | MIT |
 
 | Internal package | Upstream | Fixed revision | License |
 | --- | --- | --- | --- |
@@ -552,7 +552,7 @@ their source metadata or adjacent notices.
 
 Source: https://github.com/Fisfzy/zotero-harvest
 Version: 0.2.0, commit 9635a4f27ba186f414d3ba23042bd12ee176cddc
-Copyright (c) 2026 Fisfzy. MIT License: packages/dsh/zotero-harvest/LICENSE.
+Copyright (c) 2026 Fisfzy. MIT License: plugins/zotero-harvest/LICENSE.
 Adapted for the pinned DSH runtime and authenticated Zotero Local API.
 
 ## ZeroWall research integrity adapters
@@ -562,7 +562,7 @@ Source: https://github.com/WuP1ao0/ManuSift. License retained at resources/exten
 The Python source is vendored unchanged; the ZeroWall CLI, normalization, evidence rendering and skills are separate adapters.
 
 The image region worker derives from PetCT/dsh-Bio-image-dup-check, commit 7051eb55f611a46db3d9cfa1768e56c7d1a91553.
-Source: https://github.com/PetCT/dsh-Bio-image-dup-check. MIT license retained at packages/support/integrity-runtime/LICENSE.
+Source: https://github.com/PetCT/dsh-Bio-image-dup-check. MIT license retained at plugins/integrity-runtime/LICENSE.
 ZeroWall adds a PNG normalization entry point; detector algorithms retain their upstream implementation.
 
 ## dsh-univer-office

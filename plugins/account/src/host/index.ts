@@ -8,6 +8,8 @@ import type {
   AiCloudSavedLogin, AiCloudMediaModel,
 } from '../shared/types.js'
 import type {} from 'zod'
+import { imageQualityChoices, isImageGenerationGroup, uniqueMediaModels } from '../shared/types.js'
+export { isImageGenerationGroup, uniqueMediaModels } from '../shared/types.js'
 
 export type {
   AiCloudAccountSnapshot, AiCloudCheckoutInfo, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudGetOrderRequest,
@@ -287,7 +289,7 @@ export class AiCloudClient {
             // itself. Keeping the protocol-specific base here avoids the
             // erroneous `/v1/v1/messages` URL for Claude routes.
             baseUrl: modelBaseUrl(session.baseUrl, modelId),
-            ...(isImageGenerationGroup(group.name) ? { capability: 'image-generation' as const } : {}),
+            ...(isImageGenerationGroup(group.name) ? { capability: 'image-generation' as const, qualities: imageQualityChoices(modelId, modelQualities(modelReply, modelId), group.name) } : {}),
           })
         }
         results.push({ groupId, groupName: group.name, status: 'succeeded', count: models.filter(model => model.groupId === groupId).length, checkedAt })
@@ -313,7 +315,7 @@ export class AiCloudClient {
     const modelSync: NonNullable<AiCloudAccountSnapshot['modelSync']> = { checkedAt, status: failures === 0 ? 'succeeded' : failures === results.length ? 'failed' : 'partial', groups: results }
     const mediaFailures = mediaResults.filter(group => group.status === 'failed').length
     const mediaSync: NonNullable<AiCloudAccountSnapshot['mediaSync']> = { checkedAt, status: mediaFailures === 0 ? 'succeeded' : mediaFailures === mediaResults.length ? 'failed' : 'partial', groups: mediaResults }
-    const updated = { ...live, models, groupIds, modelSync, mediaModels, mediaSync }
+    const updated = { ...live, models, groupIds, modelSync, mediaModels: uniqueMediaModels(mediaModels), mediaSync }
     await this.storeSession(updated, revision)
     return snapshot(updated, 'current')
   }
@@ -446,11 +448,11 @@ export class AiCloudClient {
     }
     return {
       ...parsed,
-      models: parsed.models.filter(model => model.capability !== 'media' && model.groupName.trim() !== '图片音频视频分组').map(model => ({
+      models: parsed.models.filter(model => model.capability !== 'media').map(model => ({
         ...model,
         providerId: managedProviderId(model.groupId, model.modelId),
         ...(model.capability === 'image-generation' || isImageGenerationGroup(model.groupName)
-          ? { capability: 'image-generation' as const } : {}),
+          ? { capability: 'image-generation' as const, qualities: imageQualityChoices(model.modelId, model.qualities ?? [], model.groupName) } : {}),
       })),
     }
   }
@@ -549,10 +551,6 @@ export class AiCloudClient {
   }
 }
 
-function isImageGenerationGroup(name: string): boolean {
-  return name.trim().includes('生图')
-}
-
 function parseMediaCapabilities(body: string, group: AvailableGroup, baseUrl: string): AiCloudMediaModel[] {
   const value = envelope(body)
   if (Number(value.group_id) !== group.id || value.platform !== 'imagevideo' || !Array.isArray(value.models)) throw new Error('INVALID_MEDIA_CATALOG')
@@ -575,7 +573,7 @@ function parseMediaCapabilities(body: string, group: AvailableGroup, baseUrl: st
       ...(typeof raw.reference_shape === 'string' ? { referenceShape: raw.reference_shape } : {}),
       duration: { ...(typeof duration.mode === 'string' ? { mode: duration.mode } : {}), values: Array.isArray(duration.values) ? duration.values.filter((x): x is number => typeof x === 'number') : [],
         ...Object.fromEntries(['min', 'max', 'default', 'required'].filter(key => ['number', 'boolean'].includes(typeof duration[key])).map(key => [key, duration[key]])) },
-      sizes: strings(raw.sizes), resolutions: strings(raw.resolutions), aspectRatios: strings(raw.aspect_ratios), qualities: strings(raw.qualities), formats: strings(raw.formats), materials,
+      sizes: strings(raw.sizes), resolutions: strings(raw.resolutions), aspectRatios: strings(raw.aspect_ratios), qualities: raw.media_type === 'image' ? imageQualityChoices(raw.model, strings(raw.qualities), group.name) : strings(raw.qualities), formats: strings(raw.formats), materials,
       pollSeconds: typeof raw.poll_seconds === 'number' ? Math.max(1, raw.poll_seconds) : 5,
       ...(typeof raw.max_request_bytes === 'number' ? { maxRequestBytes: raw.max_request_bytes } : {}),
       ...(typeof raw.observation_seconds === 'number' ? { observationSeconds: raw.observation_seconds } : {}),
@@ -681,6 +679,12 @@ function modelCapacity(body: string, id: string): Partial<AiCloudManagedModel> {
   const context = entry?.context_window ?? entry?.contextWindow
   const output = entry?.max_output_tokens ?? entry?.maxOutputTokens
   return { ...(positive(context) ? { contextWindow: context, capacitySource: 'gateway' as const } : {}), ...(positive(output) ? { maxOutputTokens: output, capacitySource: 'gateway' as const } : {}) }
+}
+function modelQualities(body: string, id: string): string[] {
+  const value = JSON.parse(body)
+  const rows = Array.isArray(value) ? value : value.data
+  const entry = Array.isArray(rows) ? rows.find((row: any) => row.id === id) : undefined
+  return Array.isArray(entry?.qualities) ? entry.qualities.filter((quality: unknown): quality is string => typeof quality === 'string') : []
 }
 function snapshot(session: StoredSession, freshness: 'current' | 'stale'): AiCloudAccountSnapshot { return { status: 'signedIn', email: session.email, balance: session.balance, currency: session.currency, balanceFreshness: freshness, gatewayBaseUrl: session.baseUrl, ...(session.rechargeUrl === undefined ? {} : { rechargeUrl: session.rechargeUrl }), lowBalance: session.lowBalanceThreshold !== undefined && session.balance <= session.lowBalanceThreshold, models: session.models, mediaModels: session.mediaModels ?? [], ...(session.mediaSync ? { mediaSync: session.mediaSync } : {}), ...(session.modelSync ? { modelSync: session.modelSync } : {}) } }
 function gatewayLabel(baseUrl: string): string { return baseUrl === PRIMARY_BASE ? 'Hong Kong (default)' : baseUrl.includes('.xyz') ? 'Global XYZ backup' : 'Global CN backup' }

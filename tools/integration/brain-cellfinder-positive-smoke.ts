@@ -5,7 +5,7 @@ import {mkdir,writeFile} from 'node:fs/promises'
 import {resolve,join} from 'node:path'
 import {promisify} from 'node:util'
 import {pathToFileURL} from 'node:url'
-import {ResearchStore} from '../../store/src/index.js'
+import {ResearchStore} from '../../plugins/research-store/src/index.js'
 import {BrainAtlasService} from '../../plugins/research/src/host/brain-atlas.js'
 import {CELLFINDER_RUNNER} from '../../plugins/research/src/host/brainglobe-runner.js'
 if(!process.argv.includes('--run'))throw new Error('Pass --run for actual CPU cellfinder synthetic positives.')

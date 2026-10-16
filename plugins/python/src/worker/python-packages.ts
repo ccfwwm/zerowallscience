@@ -15,14 +15,14 @@ import type { McpPythonInfo, PythonPackagePlan } from '../shared/contracts.js'
 import { assertManifestWheels, type PythonDependencyManifest } from './python-dependency-manifest.js'
 import { missingSourceRequirement, prepareRequestedSourceWheel, prepareSourceWheel, verifySourceWheel, type BuiltSourceWheel } from './python-source-packages.js'
 import { withPackageDownloadRetries } from './python-download-retry.js'
-import { commitFixedRuntime } from './python-fixed-transaction.js'
+import { commitFixedRuntime, completeFixedTransaction, restoreFixedTransaction } from './python-fixed-transaction.js'
 import { mayUseFallbackWheel, prepareFallbackWheel } from './python-fallback-wheel.js'
 
 interface Context { root: string; executable: string; sitePackages: string; manifest: McpEnvironmentManifest; mirror?: MirrorConfig | undefined; dependencyManifest?: (PythonDependencyManifest) | undefined; sourceWheels?: (BuiltSourceWheel[]) | undefined }
 interface Wheel { name: string; version: string; url?: (string) | undefined; hash?: (string) | undefined; sourceArchiveSha256?: (string) | undefined; sourceFilename?: (string) | undefined; sourceBuildId?: (string) | undefined; sourceUrl?: (string) | undefined; deferredSourceBuild?: (true) | undefined; deferredResolution?: (true) | undefined }
 /** The only requirement form the installer uses for a mirror-resolved package. */
 const pinnedRequirement = (wheel: { name: string; version: string }) => `${wheel.name}==${wheel.version}`
-export interface StoredPackagePlan extends PythonPackagePlan { wheels: Wheel[]; removals?: (string[]) | undefined; dependencyManifest?: (PythonDependencyManifest) | undefined; manifestInstalled?: (Array<{ name: string; version: string }>) | undefined; preparationFailures?: (PackageInstallFailure[]) | undefined; /** Written after apply: which packages landed and which were skipped. */ installOutcome?: (ApplyOutcome) | undefined }
+export interface StoredPackagePlan extends PythonPackagePlan { wheels: Wheel[]; removals?: (string[]) | undefined; dependencyManifest?: (PythonDependencyManifest) | undefined; manifestInstalled?: (Array<{ name: string; version: string }>) | undefined; preparationFailures?: (PackageInstallFailure[]) | undefined; /** Automatic signed updates may replace an older installed distribution. */ replaceInstalled?: boolean | undefined; /** Written after apply: which packages landed and which were skipped. */ installOutcome?: (ApplyOutcome) | undefined }
 /**
  * Outcome of a per-package install.
  *
@@ -252,14 +252,14 @@ export async function preparePackagePlan(root: string, context: Context, request
  * Installed packages are preserved even when their version differs from the manifest. */
 export interface ManifestPlanProgress { stage: string; message: string; progress?: (number) | undefined; completedPackages?: (number) | undefined; totalPackages?: (number) | undefined; currentPackage?: (string) | undefined; logLine?: (string) | undefined }
 
-export async function prepareManifestPackagePlan(root: string, context: Context, manifest: PythonDependencyManifest, info: McpPythonInfo, report?: (progress: ManifestPlanProgress) => void): Promise<StoredPackagePlan> {
+export async function prepareManifestPackagePlan(root: string, context: Context, manifest: PythonDependencyManifest, info: McpPythonInfo, report?: (progress: ManifestPlanProgress) => void, options: { includeVersionUpdates?: boolean } = {}): Promise<StoredPackagePlan> {
   const mirror = context.mirror ?? resolveMirror(manifest.index)
   const installedByName = new Map(info.packages.map(pkg => [normalize(pkg.name), pkg.version]))
-  const pending = manifest.packages.filter(pkg => !installedByName.has(normalize(pkg.name)))
+  const pending = manifest.packages.filter(pkg => !installedByName.has(normalize(pkg.name)) || options.includeVersionUpdates === true && installedByName.get(normalize(pkg.name)) !== pkg.version)
   const directory = join(root, 'plans')
   await mkdir(directory, { recursive: true })
   const manifestInstalled = info.packages.map(pkg => ({ name: pkg.name, version: pkg.version }))
-  const base = { planId: randomUUID(), snapshotId: context.root, requested: pending.map(pkg => `${pkg.name}==${pkg.version}`), wheels: [] as Wheel[], changes: pending.map(pkg => ({ name: pkg.name, from: info.packages.find(installed => normalize(installed.name) === normalize(pkg.name))?.version, to: pkg.version })), dependencyManifest: manifest, manifestInstalled }
+  const base = { planId: randomUUID(), snapshotId: context.root, requested: pending.map(pkg => `${pkg.name}==${pkg.version}`), wheels: [] as Wheel[], changes: pending.map(pkg => ({ name: pkg.name, from: info.packages.find(installed => normalize(installed.name) === normalize(pkg.name))?.version, to: pkg.version })), dependencyManifest: manifest, manifestInstalled, ...(options.includeVersionUpdates ? { replaceInstalled: true } : {}) }
   if (!pending.length) {
     const plan: StoredPackagePlan = { ...base, requested: [] }
     await writeFile(join(directory, `${plan.planId}.json`), JSON.stringify(plan))
@@ -288,7 +288,7 @@ export async function prepareManifestPackagePlan(root: string, context: Context,
   const planId = base.planId
   const uniqueWheels = [...new Map(wheels.map(wheel => [normalize(wheel.name), wheel])).values()]
   const plan: StoredPackagePlan = { ...base, planId, wheels: uniqueWheels, preparationFailures }
-  assertManifestWheels(manifest, plan.wheels, info.packages, preparationFailures.map(failure => failure.name))
+  assertManifestWheels(manifest, plan.wheels, info.packages, preparationFailures.map(failure => failure.name), plan.replaceInstalled === true)
   await writeFile(join(directory, `${plan.planId}.json`), JSON.stringify(plan))
   report?.({ stage: 'preflight-complete', progress: 0, message: `缺包队列已就绪：${plan.wheels.length} 个包将逐一安装。`, completedPackages: 0, totalPackages: pending.length })
   return plan
@@ -344,7 +344,7 @@ async function stagedFiles(root: string): Promise<string[]> {
   return result.sort()
 }
 
-async function installDistributionTransaction(executable: string, site: string, unpacked: string, packageName: string, version: string, _backup: string): Promise<void> {
+async function installDistributionTransaction(executable: string, site: string, unpacked: string, packageName: string, version: string, verifyImport: () => Promise<void | 'pending'>): Promise<string> {
   const before = await ownedDistributionFiles(executable, site, [packageName]).catch(error => {
     if (String(error).includes('No package metadata was found')) return []
     throw error
@@ -353,14 +353,77 @@ async function installDistributionTransaction(executable: string, site: string, 
   if (!after.length) throw new Error(`依赖 ${packageName} 的临时安装结果为空。`)
   const runtime = dirname(dirname(site))
   const prefix = relative(runtime, site)
-  await commitFixedRuntime(runtime, unpacked, async () => {
+  return commitFixedRuntime(runtime, unpacked, async () => {
     const verify = `import importlib.metadata as m,sys,re
 norm=lambda s:re.sub(r'[-_.]+','-',s).lower()
 d=next((d for d in m.distributions(path=[sys.argv[1]]) if norm(d.metadata.get('Name',''))==norm(sys.argv[2])),None)
 assert d is not None and d.version==sys.argv[3], 'installed distribution version mismatch'`
     await python(executable, verify, [site, packageName, version])
+    return verifyImport()
   }, { prefix, removals: before.filter(path => !after.includes(path)).map(path => join(prefix, path)) })
 }
+
+/** Import one distribution from the fixed runtime immediately after its
+ * transaction commits. Python -I does not add site-packages to sys.path, so
+ * the selected fixed directory is inserted explicitly. Only an external
+ * missing module with a declared dependency still queued may be deferred. */
+export async function verifyPackageImport(executable: string, site: string, packageName: string, pendingNames: string[] = []): Promise<{ deferred: boolean; message?: string | undefined }> {
+  const code = `import importlib,importlib.metadata as m,importlib.machinery,json,pathlib,re,sys,traceback
+site=pathlib.Path(sys.argv[1]).resolve(); sys.path.insert(0,str(site))
+norm=lambda s:re.sub(r'[-_.]+','-',s).lower()
+name=sys.argv[2]; pending=set(map(norm,json.loads(sys.argv[3])))
+d=next((item for item in m.distributions(path=[str(site)]) if norm(item.metadata.get('Name',''))==norm(name)),None)
+if d is None: raise RuntimeError('缺少已安装的 distribution: '+name)
+modules=[]
+for raw in (d.read_text('top_level.txt') or '').splitlines():
+  item=raw.strip()
+  if item.isidentifier() and (site/(item+'.py')).is_file() or item.isidentifier() and (site/item/'__init__.py').is_file(): modules.append(item)
+if not modules:
+  for item in d.files or []:
+    text=str(item).replace('\\\\','/')
+    parts=text.split('/'); filename=parts[-1]
+    if filename=='__init__.py': parts=parts[:-1]
+    else:
+      suffix=next((suffix for suffix in ['.py',*importlib.machinery.EXTENSION_SUFFIXES] if filename.endswith(suffix)),None)
+      if suffix is None: continue
+      parts[-1]=filename[:-len(suffix)]
+    if parts and all(part.isidentifier() and part!='__pycache__' for part in parts): modules.append('.'.join(parts))
+modules=sorted(set(modules),key=lambda value:(value.count('.'),value))
+modules=[item for item in modules if not any(item.startswith(parent+'.') for parent in modules if parent!=item)]
+if not modules: raise RuntimeError('缺少可验证的导入入口: '+name)
+try:
+ for module in modules:
+  imported=importlib.import_module(module)
+  origin=getattr(imported,'__file__',None)
+  if origin and not pathlib.Path(origin).resolve().is_relative_to(site): raise RuntimeError('导入入口不在选定目录: '+module)
+ checks={
+  'numpy':"import numpy as n; assert n.linalg.det(n.eye(3)) == 1",
+  'pandas':"import pandas as p; assert p.DataFrame({'x':[1,2]}).x.sum()==3",
+  'scipy':"from scipy.integrate import quad; assert abs(quad(lambda x:x,0,1)[0]-.5)<1e-8",
+  'opencv-python-headless':"import cv2,numpy as n; assert cv2.cvtColor(n.zeros((8,8,3),dtype=n.uint8),cv2.COLOR_BGR2GRAY).shape==(8,8)",
+  'pillow':"from PIL import Image; assert Image.new('RGB',(8,8)).resize((4,4)).size==(4,4)",
+  'imagehash':"import imagehash; from PIL import Image; assert imagehash.phash(Image.new('RGB',(8,8))) is not None",
+  'pyzotero':"from pyzotero import zotero; z=zotero.Zotero('1','user',None); assert callable(z.items)",
+ }
+ if norm(name) in checks: exec(checks[norm(name)])
+except ModuleNotFoundError as error:
+ required={norm(match.group(0)) for value in d.requires or [] if (match:=re.match(r'[A-Za-z0-9_.-]+',value))}
+ owned={value.split('.')[0] for value in modules}
+ if not error.name or error.name.split('.')[0] in owned or not required.intersection(pending): raise
+ print('\\nZEROWALL_IMPORT_RESULT:'+json.dumps({'deferred':True,'message':traceback.format_exc()}))
+else: print('\\nZEROWALL_IMPORT_RESULT:'+json.dumps({'deferred':False}))
+`
+  try {
+    const output = await pythonOutput(executable, code, [site, packageName, JSON.stringify(pendingNames)])
+    const result = output.split(/\r?\n/u).reverse().find(line => line.startsWith('ZEROWALL_IMPORT_RESULT:'))
+    if (!result) throw new Error('Python 未返回导入检测结果。')
+    const parsed = JSON.parse(result.slice('ZEROWALL_IMPORT_RESULT:'.length)) as { deferred: boolean; message?: string }
+    if (typeof parsed.deferred !== 'boolean') throw new Error('Python 导入检测结果无效。')
+    return parsed
+  } catch (error) { throw new PackageImportError(error instanceof Error ? error.message : String(error)) }
+}
+
+class PackageImportError extends Error {}
 
 async function removeDistributionsTransaction(executable: string, site: string, names: string[]): Promise<void> {
   const runtime = dirname(dirname(site))
@@ -409,9 +472,9 @@ export async function snapshotPythonPaths(root: string, manifest: McpEnvironment
 }
 
 export async function applyPackagePlanFiles(root: string, context: Context, target: string, plan: StoredPackagePlan, progress?: ApplyProgress): Promise<ApplyOutcome> {
-  if (plan.dependencyManifest) assertManifestWheels(plan.dependencyManifest, plan.wheels, plan.manifestInstalled, (plan.preparationFailures ?? []).map(failure => failure.name))
-  // Only locally built source wheels are still digest-checked: they are our own
-  // build output in our own cache, not an artifact a mirror re-publishes.
+  if (plan.dependencyManifest) assertManifestWheels(plan.dependencyManifest, plan.wheels, plan.manifestInstalled, (plan.preparationFailures ?? []).map(failure => failure.name), plan.replaceInstalled === true)
+  // Source build receipts are verified here; every downloaded wheel is also
+  // checked against the plan digest below before any runtime file is changed.
   for (const wheel of plan.wheels) if (wheel.sourceArchiveSha256 && !wheel.deferredSourceBuild) await verifySourceWheel(root, wheel)
   const executable = context.executable
   const targetSite = join(target, context.manifest.python.relativeSitePackages)
@@ -427,19 +490,29 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
   // failure rolled the whole layer back; now each package is attempted on its
   // own and a failure is recorded instead of aborting the run.
   //
-  // Each package is requested as `name==version` and resolved against the
-  // active mirror, so a wheel the mirror has rebuilt or re-compressed since
-  // the manifest was signed still installs. `--only-binary` is intentionally
-  // absent: several pinned science packages (flowio, nglview, docopt,
-  // bibtexparser, autograd-gamma) ship source only, and pip needs to be
-  // allowed to build them. A locally built source wheel keeps its exact
-  // digest pin, because that artifact is ours rather than the mirror's.
+  // Each package keeps the signed version and the exact resolved artifact
+  // digest. Source-only dependencies require a signed source-archive pin and
+  // a verified local wheel or signed fallback wheel.
   const skipped: PackageInstallFailure[] = [...(plan.preparationFailures ?? [])]
-  let installed = 0
-  for (const failure of skipped) progress?.({ completed: 0, total, name: failure.name, stage: `跳过 ${failure.name}`, logLine: failure.message })
+  let completed = 0
+  let importCheckPassed = true
+  const importFailures: string[] = []
+  const applied: Array<{ wheel: Wheel; id: string; pending: boolean }> = []
+  const transactionRoot = dirname(dirname(canonicalSite))
+  const recordFailure = async (failure: PackageInstallFailure) => {
+    skipped.push(failure)
+    await appendFile(join(root, 'plans', `${plan.planId}-skipped.jsonl`), JSON.stringify({ ...failure, at: new Date().toISOString() }) + '\n')
+    progress?.({ completed, total, name: failure.name, stage: `安装失败 ${failure.name}`, logLine: failure.message })
+  }
+  for (const failure of skipped) {
+    await appendFile(join(root, 'plans', `${plan.planId}-skipped.jsonl`), JSON.stringify({ ...failure, at: new Date().toISOString() }) + '\n')
+    completed++
+    progress?.({ completed, total, name: failure.name, stage: `跳过 ${failure.name}`, logLine: failure.message })
+  }
+  try {
   for (const [index, wheel] of plan.wheels.entries()) {
     checkPythonCancellation()
-    progress?.({ completed: installed, total, name: wheel.name, stage: `正在安装 ${wheel.name}` })
+    progress?.({ completed, total, name: wheel.name, stage: `正在安装 ${wheel.name}` })
     try {
       const name = wheel.name.replace(/[^A-Za-z0-9_.-]/gu, '-')
       const itemDir = join(wheelDir, `${index}-${name}`)
@@ -451,7 +524,7 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
         const resolveOne = (selectedMirror: MirrorConfig) => preparePackagePlan(root,
           { ...context, dependencyManifest: { ...plan.dependencyManifest!, packages: [source] }, mirror: selectedMirror },
           [pinnedRequirement(wheel)], { ready: true, packages: [] },
-          line => progress?.({ completed: installed, total, name: wheel.name, stage: `正在获取 ${wheel.name}`, logLine: line }))
+          line => progress?.({ completed, total, name: wheel.name, stage: `正在获取 ${wheel.name}`, logLine: line }))
         let resolved = await resolveOne(mirror)
         checkPythonCancellation()
         if (resolved.error && mirror.indexUrl !== PYPI_INDEX_URL && /No matching distribution|Could not find a version|timed? ?out|connection|TLS|SSL/iu.test(resolved.error)) {
@@ -466,8 +539,8 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
         const source = plan.dependencyManifest?.packages.find(pkg => normalize(pkg.name) === normalize(wheel.name))
         if (!source || source.source !== 'sdist' || source.filename !== wheel.sourceFilename || source.sha256 !== wheel.sourceArchiveSha256) throw new Error(`依赖 ${wheel.name} 的源码锁定信息与已确认的安装清单不匹配。`)
         const sourcePackage = { name: source.name, version: source.version, filename: source.filename!, sha256: source.sha256! }
-        progress?.({ completed: installed, total, name: wheel.name, stage: `正在构建 ${wheel.name}`, logLine: '正在下载并校验签名清单锁定的源码归档。' })
-        const onBuildLine = (line: string) => progress?.({ completed: installed, total, name: wheel.name, stage: `正在构建 ${wheel.name}`, logLine: line })
+        progress?.({ completed, total, name: wheel.name, stage: `正在构建 ${wheel.name}`, logLine: '正在下载并校验签名清单锁定的源码归档。' })
+        const onBuildLine = (line: string) => progress?.({ completed, total, name: wheel.name, stage: `正在构建 ${wheel.name}`, logLine: line })
         try {
           try {
             installWheel = await prepareSourceWheel(root, context, sourcePackage, mirror, onBuildLine)
@@ -497,11 +570,11 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
           const sourceWheel = fileURLToPath(installWheel.url)
           await cp(sourceWheel, join(itemDir, basename(sourceWheel)))
         } else await run(context.executable, ['download', '--no-deps', '--dest', itemDir, pinnedArtifactRequirement(installWheel)], [context.sitePackages], mirror,
-          line => progress?.({ completed: installed, total, name: wheel.name, stage: `正在下载 ${wheel.name}`, logLine: line }))
+          line => progress?.({ completed, total, name: wheel.name, stage: `正在下载 ${wheel.name}`, logLine: line }))
         await validateDownloadedWheel(context.executable, itemDir, installWheel)
         const installRequirement = installWheel.sourceArchiveSha256 && installWheel.url ? pinnedArtifactRequirement(installWheel) : pinnedRequirement(installWheel)
         await run(context.executable, ['install', '--no-index', '--find-links', itemDir, '--no-deps', '--target', unpacked, installRequirement], [context.sitePackages], undefined,
-          line => progress?.({ completed: installed, total, name: wheel.name, stage: `正在安装 ${wheel.name}`, logLine: line }))
+          line => progress?.({ completed, total, name: wheel.name, stage: `正在安装 ${wheel.name}`, logLine: line }))
         return unpacked
       }, validate: async directory => {
         const files = await readdir(directory).catch(() => [])
@@ -510,19 +583,64 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
       // The candidate is complete before touching the live directory. Remove
       // only the previous distribution's RECORD files; a failed download or
       // wheel install therefore leaves the old package intact.
-      await installDistributionTransaction(executable, canonicalSite, unpacked, wheel.name, wheel.version, join(itemDir, 'rollback'))
-      await rm(itemDir, { recursive: true, force: true })
-      installed++
+      let pending = false
+      const id = await installDistributionTransaction(executable, canonicalSite, unpacked, wheel.name, wheel.version, async () => {
+        progress?.({ completed, total, name: wheel.name, stage: `正在验证导入 ${wheel.name}` })
+        const verification = await verifyPackageImport(executable, canonicalSite, wheel.name, plan.wheels.slice(index + 1).map(item => item.name))
+        pending = verification.deferred
+        if (pending) {
+          progress?.({ completed, total, name: wheel.name, stage: `等待依赖验证 ${wheel.name}`, logLine: verification.message })
+          return 'pending'
+        }
+      })
+      applied.push({ wheel, id, pending })
+      // Temporary-file cleanup cannot turn a verified commit into a skipped
+      // package without restoring it. Keep a cleanup diagnostic separately.
+      await rm(itemDir, { recursive: true, force: true }).catch(error => progress?.({ completed, total, name: wheel.name, logLine: `临时目录清理失败：${String(error)}` }))
+      completed++
+      progress?.({ completed, total, name: wheel.name, stage: pending ? `等待依赖验证 ${wheel.name}` : `已安装 ${wheel.name}` })
     } catch (error) {
       checkPythonCancellation()
       const message = (error instanceof Error ? error.message : String(error)).slice(-1200)
-      skipped.push({ name: wheel.name, version: wheel.version, message })
-      // Record the skip durably so a later run can retry just these packages.
-      await appendFile(join(root, 'plans', `${plan.planId}-skipped.jsonl`), JSON.stringify({ name: wheel.name, version: wheel.version, message, at: new Date().toISOString() }) + '\n').catch(() => undefined)
-      progress?.({ completed: installed, total, name: wheel.name, stage: `安装失败 ${wheel.name}`, logLine: message })
-      continue
+      if (error instanceof PackageImportError) { importCheckPassed = false; importFailures.push(`${wheel.name}: ${message}`) }
+      completed++
+      await recordFailure({ name: wheel.name, version: wheel.version, message })
     }
-    progress?.({ completed: installed, total, name: wheel.name, stage: `已安装 ${wheel.name}` })
+  }
+  // Validate the complete retained set in fresh Python processes. A later
+  // package replacement or rollback can affect earlier imports, so repeat only
+  // when a failed package was removed. Every failed transaction is restored in
+  // reverse commit order and never contributes to the successful count.
+  while (applied.length) {
+    const failed: Array<{ entry: typeof applied[number]; message: string }> = []
+    for (const entry of applied) {
+      checkPythonCancellation()
+      progress?.({ completed, total, name: entry.wheel.name, stage: `最终导入验证 ${entry.wheel.name}` })
+      try { await verifyPackageImport(executable, canonicalSite, entry.wheel.name) }
+      catch (error) {
+        checkPythonCancellation()
+        failed.push({ entry, message: (error instanceof Error ? error.message : String(error)).slice(-1200) })
+      }
+    }
+    if (!failed.length) break
+    importCheckPassed = false
+    for (const { entry, message } of failed.reverse()) {
+      await restoreFixedTransaction(transactionRoot, entry.id)
+      applied.splice(applied.indexOf(entry), 1)
+      importFailures.push(`${entry.wheel.name}: ${message}`)
+      await recordFailure({ name: entry.wheel.name, version: entry.wheel.version, message })
+    }
+  }
+  for (const entry of applied) if (entry.pending) {
+    await completeFixedTransaction(transactionRoot, entry.id)
+    entry.pending = false
+    progress?.({ completed, total, name: entry.wheel.name, stage: `已安装 ${entry.wheel.name}` })
+  }
+  } catch (error) {
+    // Interrupted deferred imports remain retryable even before startup
+    // recovery runs. Fully verified successful packages stay installed.
+    for (const entry of [...applied].reverse()) if (entry.pending) await restoreFixedTransaction(transactionRoot, entry.id)
+    throw error
   }
   // `pip check` is advisory here: a skipped package legitimately leaves an
   // unsatisfied requirement, and failing the whole run for it would undo the
@@ -530,46 +648,8 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
   let pipCheckPassed = false; let pipCheckMessage: string | undefined
   try { await run(executable, ['check'], [canonicalSite]); pipCheckPassed = true }
   catch (error) { pipCheckMessage = error instanceof Error ? error.message.slice(-2000) : String(error).slice(-2000) }
-  // Only verify the packages that actually landed. A skipped package has no
-  // import entry point by definition, and asserting one here would turn a
-  // deliberate skip into a hard failure after the work is already done.
-  const verified = plan.wheels.map(wheel => wheel.name).filter(name => !skipped.some(item => normalize(item.name) === normalize(name)))
-  let importCheckPassed = true; let importCheckMessage: string | undefined
-  if (plan.dependencyManifest) {
-    try { await python(executable, `import importlib.metadata as m,json,sys
-present={d.metadata.get('Name','').lower().replace('_','-').replace('.','-') for d in m.distributions(path=[sys.argv[1]])}
-missing=[n for n in json.loads(sys.argv[2]) if n.lower().replace('_','-').replace('.','-') not in present]
-if missing: raise RuntimeError('Missing installed packages: '+', '.join(missing))`, [canonicalSite, JSON.stringify(verified)]) }
-    catch (error) { importCheckPassed = false; importCheckMessage = String(error).slice(-2000) }
-  } else {
-  if (verified.length) try { await python(executable, `import importlib,importlib.metadata as m,sys,json,pathlib
-names=json.loads(sys.argv[1])
-mapping=m.packages_distributions()
-for name in names:
- modules=[k for k,v in mapping.items() if any(n.lower().replace('_','-')==name.lower().replace('_','-') for n in v)]
- if not modules:
-  d=m.distribution(name)
-  modules=[p.split('/')[0][:-3] for p in map(str,d.files or []) if '/' not in p and p.endswith('.py')]
- if not modules: raise RuntimeError('缺少可验证的导入入口: '+name)
- for module in modules:
-  if module.isidentifier() and not module.startswith('_'): importlib.import_module(module)
-`, [JSON.stringify(verified)]) } catch (error) { importCheckPassed = false; importCheckMessage = error instanceof Error ? error.message.slice(-2000) : String(error).slice(-2000) }
-  try { await python(executable, `import json,sys,importlib.util
-names=set(json.loads(sys.argv[1]))
-checks={
- 'numpy':"import numpy as n; assert n.linalg.det(n.eye(3)) == 1",
- 'pandas':"import pandas as p; assert p.DataFrame({'x':[1,2]}).x.sum()==3",
- 'scipy':"from scipy.integrate import quad; assert abs(quad(lambda x:x,0,1)[0]-.5)<1e-8",
- 'opencv-python-headless':"import cv2,numpy as n; assert cv2.cvtColor(n.zeros((8,8,3),dtype=n.uint8),cv2.COLOR_BGR2GRAY).shape==(8,8)",
- 'pillow':"from PIL import Image; assert Image.new('RGB',(8,8)).resize((4,4)).size==(4,4)",
- 'imagehash':"import imagehash; from PIL import Image; assert imagehash.phash(Image.new('RGB',(8,8))) is not None",
- 'pyzotero':"from pyzotero import zotero; z=zotero.Zotero('1','user',None); assert callable(z.items)",
-}
-for name,code in checks.items():
- if name in names: exec(code)
-`, [JSON.stringify(verified.map(name => normalize(name)))]) } catch (error) { importCheckPassed = false; importCheckMessage = [importCheckMessage, error instanceof Error ? error.message.slice(-2000) : String(error).slice(-2000)].filter(Boolean).join('\n') }
-  }
-  return { installed, skipped, pipCheckPassed, pipCheckMessage, importCheckPassed, importCheckMessage }
+  const importCheckMessage = importFailures.length ? importFailures.join('\n').slice(-4000) : undefined
+  return { installed: applied.length, skipped, pipCheckPassed, pipCheckMessage, importCheckPassed, importCheckMessage }
 }
 
 export async function replayCustomizations(target: string, manifest: McpEnvironmentManifest, sitePackages: string, customizations: Record<string, string>, removals: string[] = []): Promise<void> {

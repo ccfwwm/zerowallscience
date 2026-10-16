@@ -47,6 +47,19 @@ it('preserves the bootstrap download error before a missing-runtime inventory ca
 })
 afterEach(async () => { state.children.length = 0; state.calls.length = 0; state.forks.length = 0; state.held.clear(); state.missing = false; state.coreIncomplete = false; for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
 
+it.each(['imports', 'pipCheck'] as const)('never completes an install whose %s health check failed', async check => {
+  const root = await mkdtemp(join(tmpdir(), 'python-package-health-')); roots.push(root)
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {}, executeOperation: async method => {
+    if (method === 'applyPackagePlan') return { ready: true, packages: [], verification: { imports: true, pipCheck: true, [check]: false, message: `${check} rejected installed packages` } }
+    return method === 'pythonInfo' ? { ready: true, packages: [] } : { phase: 'ready' }
+  } })
+  try {
+    const accepted = await service.applyPackagePlan('test-plan')
+    await expect.poll(async () => (await service.taskStatus(accepted.taskId) as { state: string }).state).toBe('failed')
+    expect(await service.taskStatus(accepted.taskId)).toMatchObject({ state: 'failed', error: expect.stringContaining(`${check} rejected`) })
+  } finally { await service.shutdown() }
+})
+
 it('adds packaged updater modules to the child lookup path and preserves existing Node paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-module-path-')); roots.push(root)
   const previousNodePath = process.env.NODE_PATH
@@ -300,12 +313,12 @@ it('automatically resumes an interrupted thin bootstrap before core dependency w
   service.stop()
 })
 
-it('resumes only the interrupted worker transaction owned by automatic core sync', async () => {
+it.each(['paused', 'queued', 'running'] as const)('resumes only the %s worker transaction owned by automatic core sync', async persistedState => {
   const root = await mkdtemp(join(tmpdir(), 'python-broker-core-resume-')); roots.push(root)
   const jobs = join(root, 'jobs'); await mkdir(jobs)
   const coreTask = '44444444-4444-4444-8444-444444444444'
   const unrelatedTask = '55555555-5555-4555-8555-555555555555'
-  await writeFile(join(jobs, `${coreTask}.json`), JSON.stringify({ taskId: coreTask, method: 'applyPackagePlan', args: ['core-plan'], state: 'paused', updatedAt: 1 }))
+  await writeFile(join(jobs, `${coreTask}.json`), JSON.stringify({ taskId: coreTask, method: 'applyPackagePlan', args: ['core-plan'], state: persistedState, updatedAt: 1 }))
   await writeFile(join(jobs, `${unrelatedTask}.json`), JSON.stringify({ taskId: unrelatedTask, method: 'installPythonPackage', args: ['user-package'], state: 'paused', updatedAt: 2 }))
   state.held.add('applyPackagePlan')
   state.held.add('installPythonPackage')

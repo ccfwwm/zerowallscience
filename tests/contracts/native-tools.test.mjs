@@ -41,7 +41,7 @@ test('the shipped composition retains native plan services without the retired t
     'pnpm-workspace.yaml',
     'pnpm-lock.yaml',
     'desktop/build/zerowall.patch.yml',
-    'packages/bundles/dsh-bundle-science/dsh.bundle.patch.yml',
+    'plugins/dsh-bundle-science/dsh.bundle.patch.yml',
     'tools/plugins/generate-workspaces.mjs',
     'tools/integration/research-tool-config.mjs',
   ]
@@ -53,14 +53,20 @@ test('the shipped composition retains native plan services without the retired t
 })
 
 test('every first-party plugin manifest and MCP patch use the native tool composition', async () => {
+  const inventory = JSON.parse(await read('config/deepseek-harness/plugin-inventory.json'))
+  assert.ok(Array.isArray(inventory.zeroWallPlugins), 'the inventory must declare the first-party plugin set')
+  const names = new Set()
   let checked = 0
-  for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name === 'wechat') continue
-    const manifestPath = `plugins/${entry.name}/package.json`
+  for (const entry of inventory.zeroWallPlugins) {
+    assert.equal(entry.source, `plugins/${entry.id}`, `inventory source for ${entry.id}`)
+    assert.equal(entry.package, `@zerowallscience/plugin-${entry.id}`, `inventory package for ${entry.id}`)
+    assert.ok(!names.has(entry.package), `duplicate inventory package: ${entry.package}`)
+    names.add(entry.package)
+    const manifestPath = `${entry.source}/package.json`
     const manifest = JSON.parse(await read(manifestPath))
-    if (!manifest.name.startsWith('@zerowallscience/plugin-')) continue
+    assert.equal(manifest.name, entry.package, manifestPath)
     assert.doesNotMatch(JSON.stringify(manifest), retiredPlugin, manifestPath)
-    const patchPath = `plugins/${entry.name}/dsh.bundle.patch.yml`
+    const patchPath = `${entry.source}/dsh.bundle.patch.yml`
     assert.doesNotMatch(await read(patchPath), retiredPlugin, patchPath)
     checked++
   }

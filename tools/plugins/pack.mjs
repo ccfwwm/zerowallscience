@@ -1,24 +1,79 @@
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { copyFile, mkdir, readFile, readdir, writeFile, realpath, stat } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile, realpath, stat, access } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { offlineFiles } from '../commands/offline-profile.mjs'
 import { fileDigest } from '../commands/resource-catalog.mjs'
-import { basename, dirname, join } from 'node:path'
-import { root, stageRoot, releaseRoot, cacheRoot } from '../build/paths.mjs'
+import { basename, dirname, join, resolve, sep } from 'node:path'
+import { root, stageRoot, releaseRoot, cacheRoot, pluginStoreRoot, pluginSnapshotStoreRoot } from '../build/paths.mjs'
 import { preparePublishPackage } from './publish-package.mjs'
-import { preserveImmutablePackage } from './immutable-package.mjs'
+import { commitImmutablePackage } from './immutable-package.mjs'
 import { historicalPackage } from './package-history.mjs'
 import { packageSource } from '../build/layout.mjs'
 import { restorePublishedOutput } from './published-output.mjs'
+import { integrationPublishSource, usesReviewedRuntime } from './publish-source.mjs'
 const pnpm = process.env.npm_execpath
 if (!pnpm) throw new Error('Invoke with pnpm plugins:pack')
 const records = []
 const immutableReceipts = []
 const historical = []
 const selectedPlugin = process.argv.includes('--plugin') ? process.argv[process.argv.indexOf('--plugin') + 1] : undefined
+const consumerOnly = process.argv.includes('--consumer-only')
+if (consumerOnly && selectedPlugin) throw new Error('Consumer-only packaging cannot target one plugin.')
 if (process.argv.includes('--plugin') && !selectedPlugin) throw new Error('Usage: pnpm plugin:pack <plugin-id>')
 await mkdir(releaseRoot, { recursive: true })
+await mkdir(pluginStoreRoot, { recursive: true })
+await mkdir(pluginSnapshotStoreRoot, { recursive: true })
+const sharedRecordsPath = join(pluginStoreRoot, 'plugin-packages.json')
+
+function snapshotId(records, dshCommit) {
+  return createHash('sha256').update(JSON.stringify({ schema: 1, dshCommit,
+    plugins: records.map(({ id, version, kind, size, sha256 }) => ({ id, version, kind, size, sha256 }))
+      .sort((a, b) => `${a.id}@${a.version}`.localeCompare(`${b.id}@${b.version}`)),
+  })).digest('hex')
+}
+
+async function writeSnapshot(records) {
+  const dshCommit = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8')).commit
+  const id = snapshotId(records, dshCommit)
+  const document = { schema: 1, snapshotId: id, dshCommit, createdAt: new Date().toISOString(),
+    applicationVersion: JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version,
+    plugins: records.map(({ id: packageId, version, kind, size, sha256, path }) => ({ id: packageId, version, kind, size, sha256, path })),
+  }
+  const directory = join(pluginSnapshotStoreRoot, id)
+  await mkdir(directory, { recursive: true })
+  const path = join(directory, 'snapshot.json')
+  try { await writeFile(path, JSON.stringify(document, null, 2) + '\n', { flag: 'wx' }) } catch (error) { if (error.code !== 'EEXIST') throw error }
+  await writeFile(join(releaseRoot, 'plugin-snapshot.json'), JSON.stringify(document, null, 2) + '\n')
+  await writeFile(join(stageRoot, 'plugin-snapshot.json'), JSON.stringify(document, null, 2) + '\n')
+  return document
+}
+
+async function verifyConsumerSnapshot() {
+  // Plugin bytes live outside the application-version release directory.
+  // A desktop-only version must consume this immutable feed rather than
+  // guessing a historical application version by directory sort order.
+  const records = await readFile(sharedRecordsPath, 'utf8').then(JSON.parse, () => undefined)
+  if (!records?.length) throw new Error('Consumer-only packaging requires an existing verified plugin snapshot; run the component build and plugins:pack once.')
+  for (const record of records) {
+    const expectedRoot = join(pluginStoreRoot, record.id.split('/').at(-1), record.version)
+    if (!resolve(record.path).startsWith(resolve(expectedRoot) + sep)) throw new Error(`Consumer-only plugin record escapes the shared plugin store: ${record.id}@${record.version}`)
+    const info = await stat(record.path).catch(() => undefined)
+    if (!info?.isFile() || info.size !== record.size || await fileDigest(record.path) !== record.sha256) {
+      throw new Error(`Consumer-only packaging found a missing or changed plugin artifact: ${record.id}@${record.version}`)
+    }
+  }
+  const receipt = await readFile(join(stageRoot, 'build-receipt.json'), 'utf8').then(JSON.parse, () => undefined)
+  const pin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
+  if (!receipt?.pluginSnapshotId || receipt.pluginSnapshotId !== snapshotId(records, pin.commit)) {
+    throw new Error('Consumer-only plugin snapshot differs from the verified component stage; run pnpm build before packaging updated plugins.')
+  }
+  await writeFile(join(releaseRoot, 'plugin-packages.json'), JSON.stringify(records, null, 2) + '\n')
+  const snapshot = await writeSnapshot(records)
+  console.log(`CONSUMER-ONLY plugin snapshot ${snapshot.snapshotId}; verified ${records.length} immutable artifacts`)
+  process.exit(0)
+}
+if (consumerOnly) await verifyConsumerSnapshot()
 for (const historyRoot of [dirname(releaseRoot), process.env.ZEROWALL_PACKAGE_HISTORY_ROOT].filter(Boolean)) for (const version of await readdir(historyRoot).catch(error => {
   if (error.code === 'ENOENT') return []
   throw error
@@ -36,20 +91,29 @@ async function checkpoint() {
   await writeFile(packCachePath, JSON.stringify([...cachedRecords.filter(record => !identities.has(`${record.id}@${record.version}:${record.sourceFingerprint}`)), ...records]))
 }
 const sources = (await readdir(join(root, 'plugins'))).filter(name => name !== 'wechat').map(name => join(root, 'plugins', name))
-sources.push(join(root, 'store'), await packageSource('integrity-runtime'), await packageSource('dsh-bundle-science'))
+sources.push(join(root, 'plugins', 'research-store'), await packageSource('integrity-runtime'), await packageSource('dsh-bundle-science'))
 sources.push(await packageSource('dsh-wechat'))
 // Optional catalog plugins do not require a desktop offline-profile build.
 const integrations = JSON.parse(await readFile(join(root, 'config/integrations/upstream-sources.json'), 'utf8'))
 for (const integration of Object.values(integrations)) {
-  if (integration?.catalogOptional && integration.source) sources.push(join(root, integration.source))
+  const source = integrationPublishSource(integration, { root, stageRoot })
+  if (!source) continue
+  // A missing reviewed runtime is a failed publication prerequisite, not
+  // permission to change an existing version's archive shape.
+  if (usesReviewedRuntime(integration)) await access(join(source, 'package.json'))
+  sources.push(source)
 }
-// This adapter's published runtime excludes generated TypeScript declarations.
-sources.push(join(stageRoot, 'offline-profile/modules/@dingyi222666/dsh-session-notification'))
 // Preserve the tested Office adapter Git pin as an independently signed
 // support tarball; pnpm 11 correctly rejects Git dependencies nested in bundles.
 sources.push(dirname(await realpath(join(root, 'plugins/files/node_modules/dsh-office-tools/package.json'))))
 if (!selectedPlugin) {
-  const knownSources = new Set(await Promise.all(sources.map(async source => JSON.parse(await readFile(join(source, 'package.json'), 'utf8')).name)))
+  const knownSources = new Set((await Promise.all(sources.map(async source => {
+    const manifest = await readFile(join(source, 'package.json'), 'utf8').then(JSON.parse, error => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
+    return manifest?.name
+  }))).filter(Boolean))
   const defaults = JSON.parse(await readFile(join(stageRoot, 'commands/default-plugins.json'), 'utf8'))
   for (const id of defaults) {
     if (id.startsWith('@deepseek-ai/') || knownSources.has(id)) continue
@@ -58,7 +122,25 @@ if (!selectedPlugin) {
     sources.push(join(stageRoot, 'offline-profile/modules', id))
   }
 }
-const selectedSources = selectedPlugin ? sources.filter(source => source.split(/[\\/]/u).at(-1) === selectedPlugin) : sources
+// One package can have a source tree and a reviewed/adapted runtime tree.
+// Resolve by package name and prefer the adapted stage output, then the
+// canonical plugin source, so the feed contains one archive per package.
+const sourceCandidates = []
+for (const source of sources) {
+  const manifest = await readFile(join(source, 'package.json'), 'utf8').then(JSON.parse, () => undefined)
+  if (!manifest?.name) continue
+  const priority = source.includes(`${sep}offline-profile${sep}modules${sep}`) ? 50
+    : source.includes(`${sep}plugins${sep}`) ? 30 : 20
+  sourceCandidates.push({ source, manifest, priority })
+}
+const sourceByPackage = new Map()
+for (const candidate of sourceCandidates) {
+  const current = sourceByPackage.get(candidate.manifest.name)
+  if (!current || candidate.priority > current.priority) sourceByPackage.set(candidate.manifest.name, candidate)
+}
+const selectedSources = selectedPlugin
+  ? [...sourceByPackage.values()].filter(({ source, manifest }) => source.split(/[\\/]/u).at(-1) === selectedPlugin || manifest.name === selectedPlugin).map(({ source }) => source)
+  : [...sourceByPackage.values()].map(({ source }) => source)
 if (selectedPlugin && !selectedSources.length) throw new Error(`Unknown plugin source: ${selectedPlugin}`)
 for (const source of selectedSources) {
   const manifest = await readFile(join(source, 'package.json'), 'utf8').then(JSON.parse, () => undefined)
@@ -69,13 +151,12 @@ for (const source of selectedSources) {
   const { publish } = await preparePublishPackage(source, staging)
   const baseline = await historicalPackage(manifest.name, version)
   const sourceFingerprint = createHash('sha256').update(JSON.stringify(await offlineFiles(staging))).digest('hex')
-  const destination = join(releaseRoot, 'plugins', directory, version)
+  const destination = join(pluginStoreRoot, directory, version)
   await mkdir(destination, { recursive: true })
   const reusable = [...existingRecords, ...cachedRecords, ...historical].find(record => record.id === manifest.name && record.version === version && record.sourceFingerprint === sourceFingerprint)
   if (reusable?.sha256 && (await stat(reusable.path).catch(() => undefined))?.size === reusable.size && await fileDigest(reusable.path) === reusable.sha256) {
     const archive = join(destination, basename(reusable.path))
-    if (archive !== reusable.path) await copyFile(reusable.path, archive)
-    if (baseline) immutableReceipts.push({ id: manifest.name, version, ...await preserveImmutablePackage(archive, baseline.path) })
+    immutableReceipts.push({ id: manifest.name, version, ...await commitImmutablePackage(reusable.path, archive, baseline?.path) })
     records.push({ ...reusable, path: archive, size: (await stat(archive)).size, sha256: await fileDigest(archive) })
     immutableReceipts.push({ id: manifest.name, version, preserved: true, sha256: reusable.sha256, reason: 'unchanged content fingerprint and verified original archive' })
     console.log(`CACHE HIT plugin-pack:${manifest.name} ${reusable.sha256}; reused original tarball`)
@@ -85,22 +166,25 @@ for (const source of selectedSources) {
   const published = await restorePublishedOutput(source, { restore: false })
   if (published) {
     const archive = join(destination, basename(published.path))
-    await copyFile(published.path, archive)
+    await commitImmutablePackage(published.path, archive, baseline?.path)
     records.push({ id: manifest.name, version, path: archive, kind: manifest.dsh?.bundle ? 'plugin' : 'support', manifest: publish.zerowall, dependencies: publish.dependencies, sourceFingerprint, size: (await stat(archive)).size, sha256: published.sha256 })
     immutableReceipts.push({ id: manifest.name, version, preserved: true, sha256: published.sha256, reason: 'signed archive and identical source, dependency, compiler and compiled bytes' })
     console.log(`CACHE HIT plugin-pack:${manifest.name} ${published.sha256}; verified published source and original tarball`)
     await checkpoint()
     continue
   }
-  execFileSync(process.execPath, [pnpm, 'pack', '--pack-destination', destination], { cwd: staging, stdio: 'inherit' })
-  const name = (await readdir(destination)).find(file => file.endsWith('.tgz'))
+  const pendingDirectory = join(staging, 'archive')
+  await mkdir(pendingDirectory, { recursive: true })
+  execFileSync(process.execPath, [pnpm, 'pack', '--pack-destination', pendingDirectory], { cwd: staging, stdio: 'inherit' })
+  const name = (await readdir(pendingDirectory)).find(file => file.endsWith('.tgz'))
+  const candidate = join(pendingDirectory, name)
   const archive = join(destination, name)
-  if (baseline) immutableReceipts.push({ id: manifest.name, version, ...await preserveImmutablePackage(archive, baseline.path) })
-  const packed = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], { encoding: 'utf8' }))
+  const packed = JSON.parse(execFileSync('tar', ['-xOf', candidate, 'package/package.json'], { encoding: 'utf8' }))
   if (JSON.stringify(packed.dependencies ?? {}).match(/workspace:|github:|git\+|git:/)) throw new Error(`Non-publishable dependency in ${manifest.name}`)
-  const contents = execFileSync('tar', ['-tf', archive], { encoding: 'utf8' })
+  const contents = execFileSync('tar', ['-tf', candidate], { encoding: 'utf8' })
   if (manifest.main && !contents.includes('package/' + manifest.main.replace(/^\.\//, ''))) throw new Error(`Missing Host bundle for ${manifest.name}`)
   if (manifest.zerowall?.capabilities && !manifest.zerowall?.rollbackSupported) throw new Error('Missing plugin rollback contract')
+  immutableReceipts.push({ id: manifest.name, version, ...await commitImmutablePackage(candidate, archive, baseline?.path) })
   records.push({ id: manifest.name, version, path: archive, kind: manifest.dsh?.bundle && manifest.name !== 'dsh-office-tools' ? 'plugin' : 'support', manifest: publish.zerowall, dependencies: publish.dependencies, sourceFingerprint, size: (await stat(archive)).size, sha256: await fileDigest(archive) })
   await checkpoint()
 }
@@ -118,3 +202,9 @@ if (selectedPlugin) {
   await writeFile(currentRecordsPath, JSON.stringify(records, null, 2))
   await writeFile(currentReceiptsPath, JSON.stringify(immutableReceipts, null, 2) + '\n')
 }
+const completeRecords = selectedPlugin
+  ? await readFile(currentRecordsPath, 'utf8').then(JSON.parse)
+  : records
+await writeFile(sharedRecordsPath, JSON.stringify(completeRecords, null, 2) + '\n')
+const snapshot = await writeSnapshot(completeRecords)
+console.log(`PLUGIN SNAPSHOT ${snapshot.snapshotId}; ${completeRecords.length} immutable component artifacts`)

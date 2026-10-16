@@ -1,7 +1,10 @@
 import type { SangerEdit } from './sanger-revision.js'
 import type { BrainTransformRequest } from './brain-transform.js'
-import type { ArtifactRecord, DataAssetRecord, ViewerSessionRecord, ImageAnnotations, ImageCoordinates, AnnotationRevisionRecord, AnnotationSaveResult, JsonObject, ImageRoi } from '@zerowallscience/research-store/types'
-import type { RunRecord } from '@zerowallscience/research-store/types'
+export interface ImageCoordinates { convention: 'pixel-edge-top-left'; width: number; height: number; pages: number; calibration: { x: number; y: number; unit: 'um' | 'mm'; source: string } | null }
+export type ImageRoi = { id: string; name: string; page: number } & ({ kind: 'rectangle'; x: number; y: number; width: number; height: number } | { kind: 'polygon'; points: Array<[number, number]> } | { kind: 'point'; x: number; y: number })
+export interface ImageAnnotations { coordinates: ImageCoordinates; rois: ImageRoi[] }
+export interface AnnotationRevisionRecord { id: string; projectId: string; assetId: string; sourceSha256: string; revision: number; baseRevisionId: string | null; status: 'accepted' | 'conflict'; origin: 'workbench' | 'fiji' | 'napari'; payload: ImageAnnotations; createdAt: string }
+export interface AnnotationSaveResult { revision: AnnotationRevisionRecord; head: AnnotationRevisionRecord; conflict: boolean }
 import type { WesternBlotPlan, WesternBlotResult } from './western-blot.js'
 import type { FijiExperimentId, FijiExperimentResult, FijiImageConfig } from './fiji-experiments.js'
 import type { BidirectionalSangerReview, SangerAnalysis, SangerTrace } from './sanger.js'
@@ -13,8 +16,54 @@ import type { CrisprCandidate, SequenceFeature } from '../host/sequence.js'
 import type { CellSelection, CellSelectionResult } from './cell-selection.js'
 import type { CellCamera } from './cell-camera.js'
 import type { MoleculeMeasurement, MoleculeRuntime, MoleculeSummary, MoleculeViewState } from './molecule.js'
+export type ResearchJsonValue = null | boolean | number | string | ResearchJsonValue[] | ResearchJsonObject
+export interface ResearchJsonObject { [key: string]: ResearchJsonValue }
+export type ResearchExecutionContextKind = 'local' | 'wsl' | 'ssh'
+export type ResearchRunStatus = 'draft' | 'submitted' | 'running' | 'paused' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out'
+export interface ResearchDataAssetRecord { id: string; projectId: string; name: string; uri: string; location: 'local' | 'wsl' | 'ssh' | 'object-storage' | 'web'; mediaType: string; byteSize?: number; checksumAlgorithm?: 'sha256' | 'sha512'; checksum?: string; provenance: ResearchJsonObject; version: number; createdAt: string; updatedAt: string }
+export interface ResearchViewerSessionRecord { id: string; projectId: string; assetId: string; tool: 'sequence' | 'image' | 'flow' | 'cells' | 'brain' | 'molecule'; state: ResearchJsonObject; version: number; createdAt: string; updatedAt: string }
+export interface ResearchExecutionContextInput { projectId: string; name: string; kind: ResearchExecutionContextKind; config?: ResearchJsonObject }
+export interface ResearchExecutionContextRecord { id: string; projectId: string; name: string; kind: ResearchExecutionContextKind; config: ResearchJsonObject; version: number; createdAt: string; updatedAt: string }
+export interface ResearchRunRecord { id: string; projectId: string; executionContextId?: string; name: string; status: ResearchRunStatus; command: string; workingDirectory: string; progress: number; pid?: number; remotePid?: string; leaseOwner?: string; leaseExpiresAt?: string; heartbeatAt?: string; timeoutAt?: string; logUri?: string; inputs: Array<{ name: string; uri: string; mediaType?: string }>; outputs: Array<{ name: string; uri: string; mediaType?: string }>; error?: string; version: number; createdAt: string; updatedAt: string }
+export interface ResearchArtifactRecord { id: string; projectId: string; runId?: string; name: string; uri: string; mediaType: string; checksum?: string; metadata: ResearchJsonObject; version: number; createdAt: string; updatedAt: string }
+export interface ResearchPaperRecord { id: string; projectId: string; title: string; doi?: string; uri?: string; citation: ResearchJsonObject; notes: string; version: number; createdAt: string; updatedAt: string }
+export interface ResearchDecisionRecord { id: string; projectId: string; title: string; rationale: string; status: 'proposed' | 'accepted' | 'rejected' | 'superseded'; version: number; createdAt: string; updatedAt: string }
+export interface ResearchEdgeRecord { id: string; projectId: string; fromId: string; toId: string; relation: string; metadata: ResearchJsonObject; createdAt: string }
+export interface ResearchAuditEventRecord { id: string; projectId: string; entityId?: string; action: string; details: ResearchJsonObject; createdAt: string }
+export interface ResearchAuditReport { projectId: string; generatedAt: string; eventCount: number; chainHash: string; chainValid: boolean; events: Array<ResearchAuditEventRecord & { eventHash: string }>; warnings: string[] }
+export type ResearchStudyPhase = 'question' | 'data' | 'planning' | 'frozen' | 'analysis' | 'evidence' | 'report' | 'completed'
+export type ResearchStudyStatus = 'draft' | 'active' | 'blocked' | 'completed' | 'archived'
+export type ResearchGateStatus = 'pending' | 'approved' | 'rejected'
+export type ResearchRecordKind = 'observation' | 'question' | 'dataset-contract' | 'analysis-plan' | 'evidence' | 'claim' | 'viewer-session' | 'annotation-revision' | 'benchmark-task' | 'evaluation'
+export interface ResearchStudyRecord { id: string; projectId: string; title: string; phase: ResearchStudyPhase; status: ResearchStudyStatus; currentQuestionId?: string; currentPlanId?: string; currentFreezeId?: string; budget: ResearchJsonObject; gate1: ResearchGateStatus; gate2: ResearchGateStatus; version: number; createdAt: string; updatedAt: string }
+export interface ResearchDocumentRecord { id: string; projectId: string; studyId: string; kind: ResearchRecordKind; payload: ResearchJsonObject; version: number; createdAt: string; updatedAt: string }
+export interface ResearchFreezeRecord { id: string; projectId: string; studyId: string; version: number; snapshot: ResearchJsonObject; createdAt: string }
+export type ResearchTaskStatus = 'pending' | 'ready' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled'
+export interface ResearchTaskRecord { id: string; projectId: string; studyId: string; name: string; kind: string; status: ResearchTaskStatus; dependencies: string[]; exploratory: boolean; budget: ResearchJsonObject; runId?: string; attempt: number; error?: string; version: number; createdAt: string; updatedAt: string }
+export interface ResearchTaskBudgetReport { studyId: string; accounting: 'estimated-per-attempt'; modes: Record<string, 'concurrent' | 'cumulative'>; limits: ResearchJsonObject; usage: ResearchJsonObject; available: ResearchJsonObject; reservations: Array<{ taskId: string; status: ResearchTaskStatus; attempt: number; budget: ResearchJsonObject }>; exceeded: string[] }
+export interface ResearchProjectRecord { id: string; name: string; rootPath: string; description: string; createdAt: string; updatedAt: string }
+export interface ResearchLiteratureNode extends ResearchJsonObject { id: string; type: string; label: string }
+export interface ResearchLiteratureEdge extends ResearchJsonObject { source: string; target: string; kind: string }
+export interface ResearchLiteratureGraph { nodes: ResearchLiteratureNode[]; edges: ResearchLiteratureEdge[] }
+export interface ResearchLiteratureSnapshot extends ResearchLiteratureGraph { identifiers: Array<{ paperId: string; namespace: string; value: string }> }
+export interface ResearchStudySnapshot { study: ResearchStudyRecord; documents: ResearchDocumentRecord[]; freezes: ResearchFreezeRecord[]; tasks?: ResearchTaskRecord[] }
+export interface ResearchProjectSnapshot { format: 'zerowall-science-research-project'; version: 1 | 2 | 3; exportedAt: string; project: ResearchProjectRecord; executionContexts: ResearchExecutionContextRecord[]; dataAssets: ResearchDataAssetRecord[]; runs: ResearchRunRecord[]; artifacts: ResearchArtifactRecord[]; papers: ResearchPaperRecord[]; decisions: ResearchDecisionRecord[]; edges: ResearchEdgeRecord[]; auditEvents: ResearchAuditEventRecord[]; literature?: ResearchLiteratureSnapshot; researchStudies?: ResearchStudyRecord[]; researchDocuments?: ResearchDocumentRecord[]; studyFreezes?: ResearchFreezeRecord[]; viewerSessions?: ResearchViewerSessionRecord[]; researchTasks?: ResearchTaskRecord[] }
+export interface ResearchCreateExecutionContextInput { projectId: string; name: string; kind: ResearchExecutionContextKind; config?: ResearchJsonObject }
+export interface ResearchCreateDataAssetInput { projectId: string; name: string; uri: string; location: ResearchDataAssetRecord['location']; mediaType: string; byteSize?: number; checksumAlgorithm?: ResearchDataAssetRecord['checksumAlgorithm']; checksum?: string; provenance?: ResearchJsonObject }
+export interface ResearchCreateRunInput { projectId: string; executionContextId?: string; name: string; command: string; workingDirectory: string; status?: ResearchRunStatus; progress?: number; pid?: number; remotePid?: string; leaseOwner?: string; leaseExpiresAt?: string; heartbeatAt?: string; timeoutAt?: string; logUri?: string; inputs?: ResearchRunRecord['inputs']; outputs?: ResearchRunRecord['outputs']; error?: string }
+export interface ResearchUpdateRunChanges { status?: ResearchRunStatus; progress?: number; pid?: number; remotePid?: string; leaseOwner?: string; leaseExpiresAt?: string; heartbeatAt?: string; timeoutAt?: string; logUri?: string; inputs?: ResearchRunRecord['inputs']; outputs?: ResearchRunRecord['outputs']; error?: string }
+export interface ResearchCreateArtifactInput { projectId: string; runId?: string; name: string; uri: string; mediaType: string; checksum?: string; metadata?: ResearchJsonObject }
+export interface ResearchCreatePaperInput { projectId: string; title: string; doi?: string; uri?: string; citation?: ResearchJsonObject; notes?: string }
+export interface ResearchCreateDecisionInput { projectId: string; title: string; rationale: string; status: ResearchDecisionRecord['status'] }
+export interface ResearchCreateEdgeInput { projectId: string; fromId: string; toId: string; relation: string; metadata?: ResearchJsonObject }
+export interface ResearchCreateStudyInput { projectId: string; title: string; phase?: ResearchStudyPhase; budget?: ResearchJsonObject }
+export interface ResearchUpdateStudyInput { title?: string; phase?: ResearchStudyPhase; status?: ResearchStudyStatus; currentQuestionId?: string | null; currentPlanId?: string | null; budget?: ResearchJsonObject; gate1?: ResearchGateStatus; gate2?: ResearchGateStatus; expectedVersion: number }
+export interface ResearchCreateDocumentInput { projectId: string; studyId: string; kind: ResearchRecordKind; payload: ResearchJsonObject }
+export interface ResearchUpdateDocumentInput { payload: ResearchJsonObject; expectedVersion: number }
+export interface ResearchCreateTaskInput { projectId: string; studyId: string; name: string; kind: string; dependencies?: string[]; exploratory?: boolean; budget?: ResearchJsonObject }
+export interface ResearchUpdateTaskInput { status?: ResearchTaskStatus; runId?: string | null; error?: string | null; expectedVersion: number }
 export interface MoleculeRequest { sessionId: string; action: 'runtime' | 'open' | 'read' | 'save' | 'measure' | 'export'; assetId?: string; viewerId?: string; expectedVersion?: number; state?: MoleculeViewState; atomA?: number; atomB?: number; pngBase64?: string }
-export interface MoleculeResponse { viewer?: ViewerSessionRecord; summary?: MoleculeSummary; state?: MoleculeViewState; source?: string; measurement?: MoleculeMeasurement; artifact?: ArtifactRecord; artifacts?: ArtifactRecord[]; runtime?: MoleculeRuntime }
+export interface MoleculeResponse { viewer?: ResearchViewerSessionRecord; summary?: MoleculeSummary; state?: MoleculeViewState; source?: string; measurement?: MoleculeMeasurement; artifact?: ResearchArtifactRecord; artifacts?: ResearchArtifactRecord[]; runtime?: MoleculeRuntime }
 export interface BrainAtlasRequest {
   sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'cells' | 'trajectory' | 'register' | 'cellfinder' | 'render'
   viewerId?: string; expectedVersion?: number; atlas?: string; axis?: 0 | 1 | 2; index?: number; downsample?: number
@@ -26,27 +75,27 @@ export interface BrainSlice { axis: 0 | 1 | 2; index: number; width: number; hei
 export interface BrainRegionResult { query: string; matches: Array<{ id: number; acronym: string; name: string; parentId: number | null; voxelCount?: number; volumeUm3?: number }>; notes: string[] }
 export interface BrainCellRecord { index: number; coordinate: [number, number, number]; regionId: number | string; acronym: string; hemisphere: string; }
 export interface BrainCellAnalysis { total: number; mapped: number; outside: number; byRegion: Array<{ acronym: string; regionId: number | string; count: number }>; cells: BrainCellRecord[]; notes: string[] }
-export interface BrainAtlasResponse { summary?: BrainAtlasSummary; slice?: BrainSlice; region?: BrainRegionResult; analysis?: BrainCellAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; registration?: { status: 'succeeded'; outputDirectory: string; command: string[]; notes: string[] }; cellfinder?: { status: 'succeeded'; detected: number; sourceAssetId: string; backgroundAssetId?: string; voxelSizes: [number, number, number]; notes: string[] }; rendering?: { status: 'succeeded'; outputDirectory: string; pngUri: string; htmlUri: string; regions: string[]; coordinateCount: number; notes: string[] } }
+export interface BrainAtlasResponse { summary?: BrainAtlasSummary; slice?: BrainSlice; region?: BrainRegionResult; analysis?: BrainCellAnalysis; viewer?: ResearchViewerSessionRecord; artifact?: ResearchArtifactRecord; registration?: { status: 'succeeded'; outputDirectory: string; command: string[]; notes: string[] }; cellfinder?: { status: 'succeeded'; detected: number; sourceAssetId: string; backgroundAssetId?: string; voxelSizes: [number, number, number]; notes: string[] }; rendering?: { status: 'succeeded'; outputDirectory: string; pngUri: string; htmlUri: string; regions: string[]; coordinateCount: number; notes: string[] } }
 export interface CellViewerRequest { sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'select' | 'export_selection' | 'view'; camera?: CellCamera; assetId?: string; viewerId?: string; expectedVersion?: number; embedding?: string; embeddingLimit?: number; gene?: string; cellLimit?: number; groupBy?: string; selection?: CellSelection | null }
 export interface CellEmbedding { key: string; dimensions: number; points: Array<{ index: number; x: number; y: number; z?: number; group?: string | number | boolean | null }> }
 export interface CellDatasetSummary { encodingType: string; nObs: number; nVars: number; obsColumns: Array<{ name: string; kind: string }>; varColumns: Array<{ name: string; kind: string }>; varNames: string[]; varNamesTruncated: boolean; embeddings: Array<{ key: string; dimensions: number }>; backed: true }
 export interface CellPreview { summary: CellDatasetSummary; sampling: 'first-n'; truncated: boolean; embedding?: CellEmbedding; cells: Array<{ index: number; id: string; obs: Record<string, string | number | boolean | null> }>; expression?: { gene: string; values: Array<{ index: number; value: number }> } }
 export interface CellQcSummary { cells: number; genes: number; totalCounts: { min: number; max: number; mean: number }; detectedGenes: { min: number; max: number; mean: number }; notes: string[] }
 export interface CellAnalysis { qc: CellQcSummary; groups?: Array<{ group: string | number | boolean | null; cells: number; meanTotalCounts: number }>; gene?: { gene: string; cells: number; detectedCells: number; mean: number; max: number } }
-export interface CellResponse { preview?: CellPreview; analysis?: CellAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; selection?: CellSelectionResult }
+export interface CellResponse { preview?: CellPreview; analysis?: CellAnalysis; viewer?: ResearchViewerSessionRecord; artifact?: ResearchArtifactRecord; selection?: CellSelectionResult }
 export interface SangerRequest { sessionId: string; action: 'open' | 'analyze' | 'export' | 'review' | 'revise'; edits?: SangerEdit[]; assetId?: string; viewerId?: string; reverseViewerId?: string; expectedReverseVersion?: number; expectedVersion?: number; threshold?: number; window?: number; reference?: string }
-export interface SangerResponse { trace?: SangerTrace; analysis?: SangerAnalysis; review?: BidirectionalSangerReview; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord }
+export interface SangerResponse { trace?: SangerTrace; analysis?: SangerAnalysis; review?: BidirectionalSangerReview; viewer?: ResearchViewerSessionRecord; artifact?: ResearchArtifactRecord }
 export interface FlowRequest { sessionId: string; action: 'open' | 'analyze' | 'export' | 'import' | 'workspace_import' | 'batch_submit' | 'batch_status' | 'batch_cancel' | 'batch_list'; requestId?: string; runId?: string; importAssetId?: string; assetId?: string; assetIds?: string[]; viewerId?: string; expectedVersion?: number; transform?: 'none' | 'arcsinh'; cofactor?: number; applyCompensation?: boolean; gates?: FlowGate[]; previewLimit?: number }
 export interface FlowBatchItem { assetId: string; sourceSha256?: string; sampleId?: string; groups?: string[]; analysis?: FlowAnalysis; error?: string }
-export interface FlowResponse { dataset?: FlowDataset; analysis?: FlowAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; run?: RunRecord; runs?: RunRecord[]; batch?: { items: FlowBatchItem[]; workspaceSha256?: string; notes: string[] } }
+export interface FlowResponse { dataset?: FlowDataset; analysis?: FlowAnalysis; viewer?: ResearchViewerSessionRecord; artifact?: ResearchArtifactRecord; run?: ResearchRunRecord; runs?: ResearchRunRecord[]; batch?: { items: FlowBatchItem[]; workspaceSha256?: string; notes: string[] } }
 export interface HeRequest { sessionId: string; action: 'open' | 'read' | 'analyze' | 'export' | 'segment' | 'status' | 'cancel'; requestId?: string; runId?: string; segmentation?: HeSegmentationParameters; assetId?: string; viewerId?: string; expectedVersion?: number; region?: HeRegion }
-export interface HeResponse { run?: RunRecord; artifacts?: ArtifactRecord[]; segmentation?: HeSegmentationResult; analysis?: HeAnalysis; viewer?: ViewerSessionRecord; artifact?: ArtifactRecord; he?: HeSlideMetadata; tile?: HeTile }
+export interface HeResponse { run?: ResearchRunRecord; artifacts?: ResearchArtifactRecord[]; segmentation?: HeSegmentationResult; analysis?: HeAnalysis; viewer?: ResearchViewerSessionRecord; artifact?: ResearchArtifactRecord; he?: HeSlideMetadata; tile?: HeTile }
 export interface CanvasRequest { sessionId: string; action: 'render' | 'export'; spec: CanvasSpec }
-export interface CanvasResponse { spec?: CanvasSpec; canvas?: CanvasRender; artifact?: ArtifactRecord; artifacts?: ArtifactRecord[] }
+export interface CanvasResponse { spec?: CanvasSpec; canvas?: CanvasRender; artifact?: ResearchArtifactRecord; artifacts?: ResearchArtifactRecord[] }
 export interface FijiWorkflowRequest { sessionId: string; action: 'list' | 'submit' | 'status' | 'cancel'; runId?: string; requestId?: string; researchTaskId?: string; viewerId?: string; expectedVersion?: number; annotationRevisionId?: string; plan?: WesternBlotPlan }
-export interface FijiWorkflowResponse { run?: RunRecord; runs?: RunRecord[]; artifacts?: ArtifactRecord[]; result?: WesternBlotResult }
-export interface FijiExperimentRequest { sessionId: string; action: 'list' | 'analyze' | 'status' | 'cancel'; runId?: string; experiment?: FijiExperimentId; requestId?: string; measurements?: JsonObject[]; sourceAssetId?: string; image?: FijiImageConfig }
-export interface FijiExperimentResponse { run?: RunRecord; artifacts?: ArtifactRecord[]; result?: FijiExperimentResult; runs?: RunRecord[]; annotations?: AnnotationRevisionRecord[]; experiments?: FijiExperimentId[] }
+export interface FijiWorkflowResponse { run?: ResearchRunRecord; runs?: ResearchRunRecord[]; artifacts?: ResearchArtifactRecord[]; result?: WesternBlotResult }
+export interface FijiExperimentRequest { sessionId: string; action: 'list' | 'analyze' | 'status' | 'cancel'; runId?: string; experiment?: FijiExperimentId; requestId?: string; measurements?: ResearchJsonObject[]; sourceAssetId?: string; image?: FijiImageConfig }
+export interface FijiExperimentResponse { run?: ResearchRunRecord; artifacts?: ResearchArtifactRecord[]; result?: FijiExperimentResult; runs?: ResearchRunRecord[]; annotations?: AnnotationRevisionRecord[]; experiments?: FijiExperimentId[] }
 export interface ScientificPreviewPayload { uri: string; mediaType: string; byteSize: number; base64: string }
 /** Scientific executable/environment identifiers supported by the workbench. */
 export type ScientificEngineId = 'fiji' | 'napari' | 'brain-globe' | 'he-python' | 'he-stardist' | 'remote-r'
@@ -155,15 +204,15 @@ export interface ScienceViewerRequest {
   brainAxis?: 0 | 1 | 2; brainIndex?: number; brainDownsample?: number; brainRegion?: string; brainCoordinates?: Array<[number, number, number]>; brainCoordinateUnits?: 'voxel' | 'micron'; cellsAssetId?: string; backgroundAssetId?: string; brainVoxelSizes?: [number, number, number]; brainOrientation?: string; brainNFreeCpus?: number; brainStartPlane?: number; brainEndPlane?: number; brainSkipClassification?: boolean; brainRegions?: string[]; brainTitle?: string; brainPointRadius?: number; maxCells?: number
 }
 export interface ScienceViewerResponse {
-  brainTransform?: JsonObject
+  brainTransform?: ResearchJsonObject
   launch?: ScientificEngineLaunchResult
   launches?: ScientificEngineLaunchResult[]
-  assets?: DataAssetRecord[]
-  viewers?: ViewerSessionRecord[]
-  viewer?: ViewerSessionRecord
+  assets?: ResearchDataAssetRecord[]
+  viewers?: ResearchViewerSessionRecord[]
+  viewer?: ResearchViewerSessionRecord
   window?: SequenceWindow
   analysis?: SequenceAnalysis
-  artifact?: ArtifactRecord
+  artifact?: ResearchArtifactRecord
   image?: ImagePreview
   annotations?: AnnotationRevisionRecord[]
   annotationHead?: AnnotationRevisionRecord

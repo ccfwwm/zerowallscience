@@ -215,10 +215,10 @@ test('Zotero 0.12 ships native annotation traversal and the adapter stays idempo
 })
 
 test('Zotero ships compiled entries and is mounted once in every profile', async () => {
-  const harvest = JSON.parse(await read('packages/dsh/zotero-harvest/package.json'))
+  const harvest = JSON.parse(await read('plugins/zotero-harvest/package.json'))
   assert.equal(harvest.dsh.bundle.patch, './cordis.patch.yml')
   assert(harvest.files.includes('cordis.patch.yml'))
-  assert.match(await read('packages/dsh/zotero-harvest/cordis.patch.yml'), /name: '@dsh-external\/zotero-harvest'/u)
+  assert.match(await read('plugins/zotero-harvest/cordis.patch.yml'), /name: '@dsh-external\/zotero-harvest'/u)
   const desktop = JSON.parse(await read('desktop/package.json'))
   assert.equal(desktop.dependencies['dsh-zotero'], '0.12.1')
   assert.equal(desktop.dependencies['@fylar/dsh-fylar-office-editor'], undefined)

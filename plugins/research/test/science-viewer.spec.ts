@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { ScienceViewerService } from '../src/host/science-viewer.js'
 
 const cleanup: Array<() => Promise<void>> = []

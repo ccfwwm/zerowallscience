@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { ResearchStore } from '../../store/src/index.js'
+import { ResearchStore } from '../../plugins/research-store/src/index.js'
 import { CanvasService } from '../../plugins/research/src/host/canvas.js'
 if (!process.argv.includes('--run')) throw new Error('Pass --run for the synthetic canvas reference.')
 const require = createRequire(resolve('plugins/research/package.json'))

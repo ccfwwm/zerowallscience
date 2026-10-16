@@ -89,6 +89,8 @@ export interface PythonDependencyTask {
   ownerPid?: number | undefined
   underlyingTaskId?: (string) | undefined
   requestId: string
+  /** True when the desktop startup reconciler owns this task and may resume it. */
+  automatic?: boolean | undefined
   action: 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'install_runtime'
   layer: PythonDependencyLayer
   packageSpec?: (string) | undefined

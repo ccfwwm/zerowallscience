@@ -12,13 +12,12 @@ async function firstExisting(paths) {
   return paths.at(-1)
 }
 
-/** Resolve a package by its legacy directory name without changing package identity. */
+/** Resolve a package by its stable plugin directory name without changing package identity. */
 export async function packageSource(name) {
   const rootName = name.startsWith('@') ? name.split('/').at(-1) : name
   const group = Object.entries(packageLayout.roots).find(([, names]) => names.includes(rootName))?.[0]
-  const candidates = group
-    ? [join(contract.packageRoots[group], rootName), join(contract.packageRoots.legacy, rootName)]
-    : [join(contract.packageRoots.legacy, rootName)]
+  const candidates = [join(contract.packageRoots.dsh, rootName)]
+  if (group && group !== 'dsh') candidates.unshift(join(contract.packageRoots[group], rootName))
   return firstExisting(candidates)
 }
 

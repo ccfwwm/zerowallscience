@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { acceptedFijiReview, validateScratchTimeline, matchScratchBaseline } from '../src/host/fiji-review.js'
 import { cfuMeasurement, colonyMeasurement, type ScratchImageConfig } from '../src/shared/fiji-experiments.js'
 

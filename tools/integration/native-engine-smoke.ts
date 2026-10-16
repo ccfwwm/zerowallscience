@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { deflateSync } from 'node:zlib'
 import { createHash } from 'node:crypto'
-import { ResearchStore } from '../../store/src/index.js'
+import { ResearchStore } from '../../plugins/research-store/src/index.js'
 import { NativeEngineService } from '../../plugins/research/src/host/native-engines.js'
 
 if (!process.argv.includes('--run')) throw new Error('Pass --run to open local Fiji and napari windows with synthetic data. Close only these test windows afterwards.')

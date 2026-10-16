@@ -38,13 +38,15 @@ export interface PythonEnvironmentRequest {
   limit?: (number) | undefined
   expectedRevision?: (number) | undefined
   confirm?: (boolean) | undefined
+  /** Startup-owned work may reconcile signed dependency layers without UI confirmation. */
+  automatic?: (boolean) | undefined
 }
 interface Settings { revision: number; mirrorUrl: string }
 interface SyncService {
-  checkManifest(layer?: PythonDependencyLayer, capabilityId?: string, report?: ReportPythonSyncProgress): Promise<unknown>
-  previewSync(layer?: PythonDependencyLayer, capabilityId?: string, taskId?: string, report?: ReportPythonSyncProgress): Promise<unknown>
+  checkManifest(layer?: PythonDependencyLayer, capabilityId?: string, report?: ReportPythonSyncProgress, options?: { includeVersionUpdates?: boolean }): Promise<unknown>
+  previewSync(layer?: PythonDependencyLayer, capabilityId?: string, taskId?: string, report?: ReportPythonSyncProgress, options?: { includeVersionUpdates?: boolean }): Promise<unknown>
   applySync(planId: string, revision: string, confirm: boolean): Promise<unknown>
-  verifyInstalled?(layer: PythonDependencyLayer, capabilityId?: string, report?: ReportPythonSyncProgress, knownFailures?: Array<{ name: string; version: string; message: string }>): Promise<unknown>
+  verifyInstalled?(layer: PythonDependencyLayer, capabilityId?: string, report?: ReportPythonSyncProgress, knownFailures?: Array<{ name: string; version: string; message: string }>, options?: { includeVersionUpdates?: boolean }): Promise<unknown>
   installFailures?(planId: string): Promise<Array<{ name: string; version: string; message: string }>>
 }
 interface ManifestSummary { revision: string; changes: Array<{ name: string; from?: (string) | undefined; to: string }>; packageCount: number }
@@ -411,7 +413,7 @@ export class PythonEnvironmentApi {
       const existing = [...this.taskCache.values()].find(task => task.action === 'install_runtime' && (task.state === 'running' || task.state === 'queued'))
       if (existing) return this.responseForTask(existing)
     }
-    if (input.action === 'sync' && input.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
+    if (input.action === 'sync' && input.confirm !== true && input.automatic !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
     if (input.action === 'apply_sync' && (!input.planId || !input.manifestRevision || input.confirm !== true)) throw new Error('CONFIRMATION_REQUIRED: review and approve the concrete dependency plan first.')
     if (input.action === 'install_package' && (!input.packageSpec || !/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\[[A-Za-z0-9_,.-]+\])?(?:[=<>!~]=?[A-Za-z0-9.*+!<>=~,.-]+)?$/u.test(input.packageSpec.trim()) || input.confirm !== true)) throw new Error('CONFIRMATION_REQUIRED: enter a valid package name and optional version, then confirm its installation.')
     const directory = join(this.controlRoot(), 'requests')
@@ -438,7 +440,7 @@ export class PythonEnvironmentApi {
     const now = new Date().toISOString()
     const task: PythonDependencyTask = {
       taskId, ownerPid: process.pid, requestId: input.requestId, action: input.action as AsyncPythonAction,
-      layer: input.layer ?? 'science', ...(input.packageSpec ? { packageSpec: input.packageSpec.trim() } : {}), state: 'queued', stage: 'queued',
+      layer: input.layer ?? 'science', ...(input.automatic === true ? { automatic: true } : {}), ...(input.packageSpec ? { packageSpec: input.packageSpec.trim() } : {}), state: 'queued', stage: 'queued',
       message: '任务已加入队列，桌面可以继续使用。', logLines: [], createdAt: now, updatedAt: now,
     }
     this.taskCache.set(taskId, task)
@@ -466,6 +468,29 @@ export class PythonEnvironmentApi {
     if (current.state !== 'interrupted' || this.activeTaskIds.has(taskId)) return undefined
 
     const input: PythonEnvironmentRequest = { action: 'sync', layer: 'core', confirm: true, requestId: current.requestId }
+    return this.resumeSyncTask(current, input, taskId)
+  }
+
+  /** Resume only a startup-owned interrupted sync after a desktop restart. */
+  async resumeAutomaticSyncTask(taskId: string): Promise<Record<string, unknown> | undefined> {
+    if (!/^[a-f0-9-]{36}$/u.test(taskId)) throw new Error('Invalid Python task id')
+    const current = await this.readTask(taskId)
+    if (!current?.automatic || current.action !== 'sync') return undefined
+    if (current.state === 'queued' || current.state === 'running') return this.responseForTask(current)
+    if (current.state !== 'interrupted' || this.activeTaskIds.has(taskId)) return undefined
+    if (current.underlyingTaskId) {
+      const underlying = await this.updater.taskStatus(current.underlyingTaskId) as { state?: string }
+      if (['queued', 'running', 'paused'].includes(underlying.state ?? '') && !this.updater.resumeAutomaticCoreOperation(current.underlyingTaskId)) {
+        throw new Error('Python 自动任务的原始安装收据不可恢复；已保留日志和完成的依赖。')
+      }
+      if (!underlying.state || ['missing', 'failed', 'cancelled'].includes(underlying.state)) throw new Error('Python 自动任务的原始安装收据不可用；已保留日志和完成的依赖。')
+    } else {
+      this.updater.resumeAutomaticCoreOperation()
+    }
+    return this.resumeSyncTask(current, { action: 'sync', layer: current.layer, confirm: true, automatic: true, requestId: current.requestId }, taskId)
+  }
+
+  private async resumeSyncTask(current: PythonDependencyTask, input: PythonEnvironmentRequest, taskId: string): Promise<Record<string, unknown> | undefined> {
     const receiptPath = join(this.controlRoot(), 'requests', `${current.requestId}.json`)
     const receipt = await readFile(receiptPath, 'utf8').then(text => JSON.parse(text) as PythonJobReceipt, () => undefined)
     if (!receipt?.fingerprint || receipt.taskId !== taskId) throw new Error('Python 中断任务的持久收据不完整，不能安全续接。')
@@ -574,7 +599,7 @@ export class PythonEnvironmentApi {
       await this.persistRuntimeSummary(inventory)
       return { inventory, runtimeRoot: inventory.runtimeRoot }
     }
-    if ((input.action === 'sync' || input.action === 'install_package') && input.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
+    if ((input.action === 'sync' || input.action === 'install_package') && input.confirm !== true && input.automatic !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
     // A healthy fixed interpreter does not need bootstrap or management-record
     // repair merely to acknowledge an already installed package.
     if (input.action === 'install_package' && !/[=<>!~]/u.test(input.packageSpec!)) {
@@ -596,11 +621,16 @@ export class PythonEnvironmentApi {
       await this.waitForInstall(underlyingTaskId, taskId, layer, input.capabilityId, report)
       const knownFailures = planId && this.sync.installFailures ? await this.sync.installFailures(planId) : []
       const verification = this.sync.verifyInstalled
-        ? await this.sync.verifyInstalled(layer, input.capabilityId, report, knownFailures) as Record<string, unknown>
+        ? await this.sync.verifyInstalled(layer, input.capabilityId, report, knownFailures, ...(input.automatic === true ? [{ includeVersionUpdates: true }] : [])) as Record<string, unknown>
         : undefined
       const unresolved = verification ? Number(verification.unresolvedPackageCount ?? verification.pendingPackageCount ?? 0) : 0
-      if (verification && unresolved > 0 && layer === 'core') {
-        throw new Error(`安装后仍缺少 ${verification.pendingPackageCount} 个依赖；请查看失败包日志后重试。`)
+      // A skipped pin still leaves core out of sync even when the package's
+      // old version makes the local name-presence check report coreReady.
+      // Keep successful transactions and the old package, but fail the layer
+      // until every signed version is present.
+      const pending = verification ? Number(verification.pendingPackageCount ?? unresolved) : 0
+      if (verification && pending > 0 && layer === 'core') {
+        throw new Error(`安装后仍有 ${pending} 个依赖缺失或版本未同步；请查看失败包日志后重试。`)
       }
       if (layer === 'core') {
         const pythonCoreInfo = (this.updater as PythonUpdaterService & { pythonCoreInfo?: (() => Promise<McpPythonInfo>) | undefined }).pythonCoreInfo
@@ -618,7 +648,7 @@ export class PythonEnvironmentApi {
     // If shutdown happened after the package transaction started, continue
     // observing that exact durable updater job. Re-running check/preview/apply
     // here could create a second plan while the original transaction resumes.
-    if (input.action === 'sync' && layer === 'core' && savedTask?.underlyingTaskId) {
+    if (input.action === 'sync' && savedTask?.underlyingTaskId && (layer === 'core' || input.automatic === true)) {
       await report({ stage: 'installing', message: '正在续接原有核心依赖安装事务；保留已完成包和日志。', progress: savedTask.progress, completedPackages: savedTask.completedPackages, totalPackages: savedTask.totalPackages, currentPackage: savedTask.currentPackage })
       return verifyCompletedLayer(savedTask.underlyingTaskId, true)
     }
@@ -663,15 +693,15 @@ export class PythonEnvironmentApi {
     let changed: ManifestSummary | undefined
     if (input.action === 'sync') {
       if (layer !== 'core' && layer !== 'science' && layer !== 'capability') throw new Error('不支持的 Python 依赖层。')
-      changed = await this.sync.checkManifest(layer, input.capabilityId, report) as ManifestSummary
-      plan = await this.sync.previewSync(layer, input.capabilityId, taskId, report) as typeof plan
+      changed = await this.sync.checkManifest(layer, input.capabilityId, report, { includeVersionUpdates: input.automatic === true }) as ManifestSummary
+      plan = await this.sync.previewSync(layer, input.capabilityId, taskId, report, { includeVersionUpdates: input.automatic === true }) as typeof plan
       if (!plan) throw new Error('未生成缺包安装队列。')
       if (plan.error) throw new Error(`依赖清单已改变，无法同步：${plan.error}`)
       if (!plan.changes.length) return { upToDate: true, manifestRevision: plan.manifestRevision, changes: [] }
       planId = plan.planId
       manifestRevision = plan.manifestRevision
     }
-    if (!planId || !manifestRevision || input.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: review and approve the concrete dependency plan first.')
+    if (!planId || !manifestRevision || (input.confirm !== true && input.automatic !== true)) throw new Error('CONFIRMATION_REQUIRED: review and approve the concrete dependency plan first.')
     await report({ stage: 'install-queued', message: '正在按顺序逐包安装缺失依赖。', ...(savedTask?.completedPackages ? {} : { progress: 0, completedPackages: 0 }) })
     checkPythonCancellation()
     const applied = await this.sync.applySync(planId, manifestRevision, true) as { taskId?: (string) | undefined; partial?: (boolean) | undefined; skippedPackages?: (Array<{ name: string; version: string; message: string }>) | undefined; noInstallablePackages?: (boolean) | undefined }

@@ -8,7 +8,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { cpus, totalmem } from 'node:os'
-import { ResearchStore } from '../../store/src/index.js'
+import { ResearchStore } from '../../plugins/research-store/src/index.js'
 import { CellViewerService } from '../../plugins/research/src/host/cell-viewer.js'
 
 if (!process.argv.includes('--run')) throw new Error('Pass --run for the isolated 100k-cell acceptance.')

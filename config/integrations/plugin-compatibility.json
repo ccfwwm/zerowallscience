@@ -1,11 +1,11 @@
 {
   "schema": 1,
-  "evidence": "docs/verification-three-plugin-upgrade-20261014.md",
+  "evidence": "docs/verification-sidebar-compatibility-8.3.0.md",
   "rules": [
     {
       "dependency": "dsh-better-sidebar",
       "previousRange": "^0.25.0",
-      "testedVersion": "0.26.1-zws.2",
+      "testedVersion": "0.26.1-zws.3",
       "consumers": [
         { "id": "@zerowallscience/plugin-account", "version": "0.1.6" },
         { "id": "@zerowallscience/plugin-account", "version": "0.1.7" },

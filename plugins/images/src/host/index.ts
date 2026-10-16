@@ -15,6 +15,18 @@ import { installVisualAssets } from './visual-assets.js'
 
 export * from './generator.js'
 export const name = 'zerowall-image-generation'
+type ImageEnvironmentSettings = {
+  readImageModelSelection(): Promise<import('@zerowallscience/plugin-environment/types').ImageModelSelection | undefined>
+  getImageQuality?(): Promise<import('@zerowallscience/plugin-environment/types').ImageGenerationQuality | undefined> | import('@zerowallscience/plugin-environment/types').ImageGenerationQuality | undefined
+}
+
+/** The standalone image skill reads only its own environment settings. */
+export function createImageConfiguration(environment: ImageEnvironmentSettings) {
+  return {
+    imageModel: () => environment.readImageModelSelection(),
+    imageQuality: async () => await environment.getImageQuality?.() ?? 'auto' as const,
+  }
+}
 // The generator persists generated PNGs through the durable attachment store.
 // Declare the service explicitly so Cordis does not reject ctx.get('attachments')
 // in the composed Host loader.
@@ -50,9 +62,9 @@ const IMAGE_OUTPUT_SCHEMA = {
     requestedSize: { type: 'string' as const, required: true },
     actualWidth: { type: 'integer' as const, required: true },
     actualHeight: { type: 'integer' as const, required: true },
-    quality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high'] as const, required: true },
-    requestedQuality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high'] as const, required: true },
-    actualQuality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high', 'unreported'] as const, required: true },
+    quality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const, required: true },
+    requestedQuality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const, required: true },
+    actualQuality: { type: 'string' as const, enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max', 'unreported'] as const, required: true },
     modelInfo: {
       type: 'object' as const,
       additionalProperties: false,
@@ -143,24 +155,13 @@ export function apply(ctx: Context): void {
   installVisualAssets(ctx)
   const secrets = new SecretBrokerClient()
   const account = new AiCloudClient({ secrets })
-  const environment = ctx.get('zerowallEnvironment') as {
-    readImageModelSelection(): Promise<import('@zerowallscience/plugin-environment/types').ImageModelSelection | undefined>
-    readMediaModelSelections?(): Promise<Record<string, { selection: import('@zerowallscience/plugin-ai-cloud/types').MediaSelection; parameters: NonNullable<import('@zerowallscience/plugin-ai-cloud/types').MediaRequest['parameters']> }>>
-    getImageQuality?(): import('@zerowallscience/plugin-environment/types').ImageGenerationQuality
-  }
+  const environment = ctx.get('zerowallEnvironment') as ImageEnvironmentSettings
   const generator = new AiCloudImageGenerator({
     secrets,
     account,
     media: ctx.get('zerowallMedia')!,
     attachments: () => ctx.get('attachments'),
-    imageModel: async () => {
-      const saved = (await environment.readMediaModelSelections?.())?.image
-      if (!saved) return environment.readImageModelSelection()
-      const snapshot = await account.current()
-      const model = snapshot.mediaModels?.find(m => m.groupId === saved.selection.groupId && m.modelId === saved.selection.modelId && m.profileId === saved.selection.profileId)
-      return { providerId: model?.providerId ?? '', ...saved.selection, ...(saved.parameters.resolution ? { resolution: saved.parameters.resolution } : {}), ...(saved.parameters.aspect_ratio ? { aspectRatio: saved.parameters.aspect_ratio } : {}) }
-    },
-    imageQuality: async () => (await environment.readMediaModelSelections?.())?.image?.parameters.quality as import('@zerowallscience/plugin-environment/types').ImageGenerationQuality ?? environment.getImageQuality?.() ?? 'auto',
+    ...createImageConfiguration(environment),
   })
   ctx.on('zerowall/account-updated', snapshot => generator.update(snapshot))
   void account.current().then(snapshot => generator.update(snapshot)).catch(() => undefined)
@@ -177,13 +178,13 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'generate_image',
-      description: '使用环境配置中选择的生图模型生成 PNG。需要修改已有图片时请使用 edit_image。',
+      description: '生成独立 PNG 与真实生成回执，包括 PPT/PPTX、幻灯片、文档和报告配图。先加载 gpt-image-generator，沿用环境配置的生图模型、分组和参数，不创建媒体项目/任务。修改已有图使用 edit_image。',
     parameters: {
       prompt: { type: 'string', required: true, description: 'Detailed image-generation prompt.' },
       output_path: { type: 'string', required: true, description: 'New PNG path inside the current session working directory.' },
         model: { type: 'string', description: '可选的生图模型 ID；未填写时使用环境配置或账户目录中的唯一可用模型。' },
       size: { type: 'string', description: 'auto 或 WIDTHxHEIGHT，例如 2048x2048；不要假设 1024x1024 是最大尺寸。' },
-      quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high'], description: 'Optional explicit override. Omit unless the user requested a quality level; the environment setting is otherwise authoritative (default: medium). Image dimensions do not imply high quality.' },
+      quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], description: 'Optional explicit override. Omit unless the user requested a quality level; the environment setting is otherwise authoritative (default: medium). Image dimensions do not imply high quality.' },
       overwrite: { type: 'boolean', description: 'Replace an existing output file. Defaults to false.' },
     },
     output: {
@@ -214,7 +215,7 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'edit_image',
-    description: '使用环境配置中选择的生图模型编辑 PNG、JPEG 或 WebP 图片，并按请求保留被引用内容。',
+    description: '编辑 PNG、JPEG 或 WebP 并保留被引用内容，适用于 PPT/PPTX 配图及普通改图。使用 gpt-image-generator 和环境配置的生图模型、分组、参数，返回 PNG 与生成回执，不创建媒体项目/任务。',
     parameters: {
       prompt: { type: 'string', required: true, description: 'Detailed edit instruction, including what must remain unchanged.' },
       input_paths: { type: 'array', items: { type: 'string' }, description: 'Optional source image paths inside the session working directory.' },
@@ -223,7 +224,7 @@ export function apply(ctx: Context): void {
       output_path: { type: 'string', required: true, description: 'PNG output path inside the current session working directory.' },
         model: { type: 'string', description: '可选的生图模型 ID；未填写时使用环境配置或账户目录中的唯一可用模型。' },
       size: { type: 'string', description: 'auto 或 WIDTHxHEIGHT，例如 2048x2048；不要假设 1024x1024 是最大尺寸。' },
-      quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high'], description: 'Optional explicit override. Omit unless the user requested a quality level; the environment setting is otherwise authoritative (default: medium). Image dimensions do not imply high quality.' },
+      quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], description: 'Optional explicit override. Omit unless the user requested a quality level; the environment setting is otherwise authoritative (default: medium). Image dimensions do not imply high quality.' },
       overwrite: { type: 'boolean', description: 'Replace an existing output file, including a source image. Defaults to false.' },
     },
     output: {

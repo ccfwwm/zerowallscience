@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.2.1",
+  "version": "8.3.0",
   "roots": {
     "dsh": [
       "dsh-archive-manager",
@@ -21,10 +21,11 @@
       "dsh-bundle-core"
     ]
   },
+  "canonicalRoot": "plugins",
   "legacyRoot": "packages",
   "migration": {
-    "readLegacy": true,
-    "writeCanonical": false,
-    "deleteLegacy": false
+    "readLegacy": false,
+    "writeCanonical": true,
+    "deleteLegacy": true
   }
 }

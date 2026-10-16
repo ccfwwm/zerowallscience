@@ -108,7 +108,7 @@ export async function fetchPythonDependencyManifest(url: string, keys: Record<st
  * artifact digest, verify that too; otherwise the plan records the exact
  * SHA-256 returned by the selected mirror's index.
  */
-export function assertManifestWheels(manifest: PythonDependencyManifest, wheels: Array<{ name: string; version: string; hash?: (string) | undefined; sourceArchiveSha256?: (string) | undefined }>, installed: Array<{ name: string; version: string }> = [], failedNames: Iterable<string> = []): void {
+export function assertManifestWheels(manifest: PythonDependencyManifest, wheels: Array<{ name: string; version: string; hash?: (string) | undefined; sourceArchiveSha256?: (string) | undefined }>, installed: Array<{ name: string; version: string }> = [], failedNames: Iterable<string> = [], allowInstalledReplacement = false): void {
   const locked = new Map(manifest.packages.map(pkg => [normalize(pkg.name), pkg]))
   // Readiness is based on distribution presence for every layer. The signed
   // version and digest constrain new downloads, never a user's installed copy.
@@ -121,7 +121,7 @@ export function assertManifestWheels(manifest: PythonDependencyManifest, wheels:
     seen.add(name)
     const expected = locked.get(name)
     if (!expected || expected.version !== wheel.version) throw new Error(`依赖 ${wheel.name} 与签名清单的版本不一致，已拒绝安装。`)
-    if (present.has(name)) throw new Error(`依赖 ${wheel.name} 已安装，已拒绝覆盖现有版本。`)
+    if (present.has(name) && !allowInstalledReplacement) throw new Error(`依赖 ${wheel.name} 已安装，已拒绝覆盖现有版本。`)
     if (expected.sha256 && (expected.source === 'sdist' ? wheel.sourceArchiveSha256 !== expected.sha256 : wheel.hash !== expected.sha256)) throw new Error(`依赖 ${wheel.name} 与签名清单的 SHA-256 不一致，已拒绝安装。`)
     present.add(name)
   }
@@ -129,8 +129,8 @@ export function assertManifestWheels(manifest: PythonDependencyManifest, wheels:
   for (const name of failed) if (!locked.has(name)) throw new Error(`安装计划把清单外依赖 ${name} 标记为失败。`)
 }
 
-/** Report only absent manifest dependencies; installed package versions are left alone. */
-export function dependencyManifestChanges(manifest: PythonDependencyManifest, installed: Array<{ name: string; version: string }>) {
-  const existing = new Set(installed.map(pkg => normalize(pkg.name)))
-  return manifest.packages.filter(pkg => !existing.has(normalize(pkg.name))).map(pkg => ({ name: pkg.name, to: pkg.version, required: pkg.required, capabilities: pkg.capabilities }))
+/** Report absent or explicitly outdated manifest dependencies. */
+export function dependencyManifestChanges(manifest: PythonDependencyManifest, installed: Array<{ name: string; version: string }>, includeVersionUpdates = false) {
+  const versions = new Map(installed.map(pkg => [normalize(pkg.name), pkg.version]))
+  return manifest.packages.filter(pkg => !versions.has(normalize(pkg.name)) || includeVersionUpdates && versions.get(normalize(pkg.name)) !== pkg.version).map(pkg => ({ name: pkg.name, ...(versions.get(normalize(pkg.name)) ? { from: versions.get(normalize(pkg.name)) } : {}), to: pkg.version, required: pkg.required, capabilities: pkg.capabilities }))
 }

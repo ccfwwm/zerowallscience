@@ -21,9 +21,12 @@ test('resource path helper normalizes Windows separators and retains a legacy fa
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('layout resolver reads canonical package and resource roots before legacy paths', async () => {
+test('layout resolver uses the single canonical plugin root and resolves resources', async () => {
   const canonicalPackage = await packageSource('dsh-better-sidebar')
-  assert.ok(canonicalPackage.endsWith(join('packages', 'dsh', 'dsh-better-sidebar')) || canonicalPackage.endsWith(join('packages', 'dsh-better-sidebar')))
+  assert.ok(canonicalPackage.endsWith(join('plugins', 'dsh-better-sidebar')))
+  for (const name of ['dsh-bundle-science', 'integrity-runtime', 'research-store']) {
+    assert.ok((await packageSource(name)).endsWith(join('plugins', name)))
+  }
   const skill = await resourceSource('skills', 'example')
   assert.ok(skill.endsWith(join('resources', 'skills', 'example')) || skill.endsWith(join('resources', 'extensions', 'skills', 'example')))
 })

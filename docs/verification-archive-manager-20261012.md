@@ -8,7 +8,7 @@
 - 插件源码仓库分支：`main`，本次父 HEAD：`53724a9122425ce77ecd579b7fbe1d5ac4428669`。
 - 固定 DSH：`8c00ce78435cf35300654c41e69336e69dc758b1`，版本 `0.2.0-rc.2`。
 - [上游](https://github.com/MichengAI/dsh-archive-manager)：commit `1f65ada8cc553fbea0a3cfa1564b9136ef196cf8`，版本 `1.0.17`，Apache-2.0。
-- 插件路径：`packages/dsh/dsh-archive-manager/`。源码、测试、locale、assets 与许可证进入 Git；`lib/` 兼容链接及 `node_modules/` 不进入 Git。
+- 插件路径：`plugins/dsh-archive-manager/`。源码、测试、locale、assets 与许可证进入 Git；`lib/` 兼容链接及 `node_modules/` 不进入 Git。
 - ZeroWall 适配将更新入口接到扩展中心；上游 npm 更新器不进入运行包。签名下载、candidate profile、健康检查、原子激活与回滚使用已有 8.1.3 桌面资源服务。
 - 可选插件进入独立目录与打包清单，不加入桌面默认离线 profile。发布工具支持选定单个插件、复用其他已发布字节并检查并发发布基线。
 

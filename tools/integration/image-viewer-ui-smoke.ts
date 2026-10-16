@@ -4,7 +4,7 @@ import { createRequire } from 'node:module'
 import { mkdir } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { ResearchStore } from '../../store/src/index.js'
+import { ResearchStore } from '../../plugins/research-store/src/index.js'
 import { ImageViewerService } from '../../plugins/research/src/host/image-viewer.js'
 import { ScienceViewerService } from '../../plugins/research/src/host/science-viewer.js'
 

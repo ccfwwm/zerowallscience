@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { ResearchStore } from '../../store/src/index.js'
+import { ResearchStore } from '../../plugins/research-store/src/index.js'
 import { ScienceViewerService } from '../../plugins/research/src/host/science-viewer.js'
 import {pcrTemplate,pcrForward,pcrReverse,pcrExpected,gibsonSequences,gibsonExpected,goldenSequences,goldenExpected,fixtureReverseComplement} from '../../plugins/research/test/sequence-simulation-fixture.js'
 

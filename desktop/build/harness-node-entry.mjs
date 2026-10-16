@@ -1,4 +1,6 @@
 import { pathToFileURL } from 'node:url'
+import { existsSync } from 'node:fs'
+import { resolve, join } from 'node:path'
 
 const [dshEntryPath, ...dshArguments] = process.argv.slice(2)
 
@@ -41,7 +43,10 @@ if (!dshEntryPath) {
   process.argv = [process.execPath, dshEntryPath, ...dshArguments]
   try {
     const { runCli } = await import(pathToFileURL(dshEntryPath).href)
-    await runCli()
+    const installedCommands = resolve(import.meta.dirname, '../../commands')
+    const commandRoot = existsSync(join(installedCommands, 'package-runtime.mjs')) ? installedCommands : resolve(import.meta.dirname, '../../tools/commands')
+    const { packageRuntime } = await import(pathToFileURL(join(commandRoot, 'package-runtime.mjs')).href)
+    await runCli({ packageManager: packageRuntime({ commandRoot }) })
     process.send?.({ type: 'zerowall:host:booted' })
   } catch (error) {
     failStartup(error)

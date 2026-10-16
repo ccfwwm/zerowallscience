@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { ResearchStore } from '../../store/src/index.js'
+import { ResearchStore } from '../../plugins/research-store/src/index.js'
 import { FlowService } from '../../plugins/research/src/host/flow.js'
 
 if (!process.argv.includes('--run')) throw new Error('Pass --run to execute the local Chromium FlowJo batch acceptance check.')

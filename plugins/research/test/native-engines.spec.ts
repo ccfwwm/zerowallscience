@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { DEFAULT_REMOTE_R_MCP_URL, defaultScientificEngineConfig, discoverFijiExecutable, discoverNapariExecutable, discoverStarDistCommands, engineArguments, engineEnvironment, engineExecutable, NativeEngineService } from '../src/host/native-engines.js'
 import { BrainAtlasService, atlasStatus, defaultAtlasDirectory, resolveManagedBrainPython } from '../src/host/brain-atlas.js'
 

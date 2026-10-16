@@ -6,17 +6,23 @@ import { basename, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { prepareSourceWheel } from '../../desktop/src/main/python-source-packages.js'
 import { sanitizePythonTlsEnvironment } from '../../desktop/src/main/python-mirror.js'
+import { preserveFallbackWheelUrl } from './python-layer-split.mjs'
 
 const execute = promisify(execFile)
 const root = resolve(import.meta.dirname, '../..')
+const applicationVersion = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
+const dependencyManifest = JSON.parse(await readFile(join(root, 'resources/extensions/python/dependency-manifest.json'), 'utf8'))
+const wheelRevision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? dependencyManifest.revision
+if (typeof wheelRevision !== 'string' || !/^[A-Za-z0-9_.-]{1,100}$/u.test(wheelRevision)) throw new Error(`Invalid Python dependency revision: ${wheelRevision ?? '(missing)'}`)
 const bootstrap = process.env.ZEROWALL_WHEEL_BUILD_PYTHON_ROOT
 if (!bootstrap) throw new Error('Set ZEROWALL_WHEEL_BUILD_PYTHON_ROOT to a verified clean CPython 3.12.10 bootstrap.')
-const output = resolve(root, 'artifacts/release/8.1.3/python-wheels')
+const output = resolve(root, `artifacts/release/${applicationVersion}/python-wheels`)
 const executable = join(bootstrap, 'python.exe')
 const environment = sanitizePythonTlsEnvironment()
 const probe = await execute(executable, ['-I', '-B', '-c', "import sys,struct,importlib.metadata as m; assert sys.version_info[:3]==(3,12,10) and struct.calcsize('P')==8; assert {d.metadata['Name'].lower() for d in m.distributions()}=={'pip'}"], { env: environment, windowsHide: true })
 await mkdir(output, { recursive: true })
 const packages = JSON.parse(await readFile(join(root, 'resources/extensions/python/source-distributions.json'), 'utf8'))
+const previousWheels = JSON.parse(await readFile(join(root, 'resources/extensions/python/fallback-wheels.json'), 'utf8'))
 const wheels = []
 for (const pkg of packages) {
   const built = await prepareSourceWheel(output, { executable, sitePackages: join(bootstrap, 'Lib/site-packages') }, pkg, { indexUrl: 'https://pypi.org/simple' })
@@ -35,7 +41,7 @@ with zipfile.ZipFile(sys.argv[1]) as z:
  w=email.parser.Parser().parsestr(z.read(next(n for n in z.namelist() if n.endswith('.dist-info/WHEEL'))).decode())
  tags=w.get_all('Tag'); assert set(t for tag in tags for t in parse_tag(tag)).intersection(sys_tags()); print(json.dumps(tags))`
   const checked = await execute(python, ['-I', '-B', '-c', code, join(output, filename), pkg.name, pkg.version], { env: environment, windowsHide: true, timeout: 30_000 })
-  wheels.push({ name: pkg.name, version: pkg.version, filename, size: bytes.length, sha256, tags: JSON.parse(checked.stdout.trim()), sourceArchiveSha256: pkg.sha256, url: `https://zerowall.chengxunkeji.cn/stable/python/wheels/3.12.10-r18/${filename}` })
+  wheels.push(preserveFallbackWheelUrl({ name: pkg.name, version: pkg.version, filename, size: bytes.length, sha256, tags: JSON.parse(checked.stdout.trim()), sourceArchiveSha256: pkg.sha256, url: `https://zerowall.chengxunkeji.cn/stable/python/wheels/${wheelRevision}/${filename}` }, previousWheels))
   await writeFile(join(output, 'build-receipt.json'), JSON.stringify({ complete: wheels.length === packages.length, pythonVersion: '3.12.10', wheels }, null, 2))
   process.stdout.write(`Built and installed ${pkg.name} ${pkg.version}\n`)
 }

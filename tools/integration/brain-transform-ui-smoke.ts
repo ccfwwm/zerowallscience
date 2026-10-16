@@ -8,7 +8,7 @@ import {join,resolve} from 'node:path'
 import {pathToFileURL} from 'node:url'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
-import {ResearchStore} from '../../store/src/index.js'
+import {ResearchStore} from '../../plugins/research-store/src/index.js'
 import {BrainTransformService,createBrainTransformContract} from '../../plugins/research/src/host/brain-transform.js'
 if(!process.argv.includes('--run'))throw new Error('Pass --run for synthetic transform UI acceptance.')
 const require=createRequire(resolve('plugins/research/package.json'));const viteRequire=createRequire(require.resolve('vitest/package.json'))

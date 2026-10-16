@@ -5,6 +5,25 @@ import { parse } from 'yaml'
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
+export class MissingLockfileProofError extends Error {
+  constructor(message) {
+    super(message)
+    this.name = 'MissingLockfileProofError'
+  }
+}
+
+// Current lockfile errors remain fatal. Historical releases may predate a
+// workspace relocation or compiler pin; absence is not equivalence evidence.
+export async function matchesHistoricalDependencyLock(root, importers, tools, historicalLock) {
+  const current = await dependencyLockFingerprint(root, importers, tools)
+  try {
+    return current === await dependencyLockFingerprint(root, importers, tools, historicalLock)
+  } catch (error) {
+    if (error instanceof MissingLockfileProofError) return false
+    throw error
+  }
+}
+
 export async function dependencyLockFingerprint(root, importers, tools = [], lockText) {
   const lock = parse(lockText ?? await readFile(join(root, 'pnpm-lock.yaml'), 'utf8'))
   const selected = {}, seen = new Set()
@@ -19,14 +38,14 @@ export async function dependencyLockFingerprint(root, importers, tools = [], loc
   }
   for (const importer of importers) {
     const record = lock.importers?.[importer]
-    if (!record) throw new Error('Missing lockfile importer: ' + importer)
+    if (!record) throw new MissingLockfileProofError('Missing lockfile importer: ' + importer)
     selected['importer:' + importer] = record
     for (const [name, entry] of Object.entries({ ...record.dependencies, ...record.devDependencies, ...record.optionalDependencies })) visit(name, entry.version)
   }
   const toolEntries = {}
   for (const name of tools) {
     const entry = lock.importers?.['.']?.devDependencies?.[name]
-    if (!entry) throw new Error('Missing build tool lock: ' + name)
+    if (!entry) throw new MissingLockfileProofError('Missing build tool lock: ' + name)
     toolEntries[name] = entry
     visit(name, entry.version)
   }

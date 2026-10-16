@@ -1,4 +1,4 @@
-import type { JsonObject } from '@zerowallscience/research-store/types'
+import type { ResearchJsonObject } from './types.js'
 
 /** Stable identifiers used by the conversation router and the workbench UI. */
 export type ScienceToolId =
@@ -60,7 +60,7 @@ export type ScienceWorkbenchEvent = {
   toolCallId?: string
   messageId?: string
   type: ScienceWorkbenchEventType
-  payload: JsonObject
+  payload: ResearchJsonObject
   createdAt: string
 }
 
@@ -79,7 +79,7 @@ export type ScienceWorkbenchRequest = {
   operation?: string
   skillId?: string
   actionId?: string
-  parameters?: JsonObject
+  parameters?: ResearchJsonObject
   requestId: string
   expectedRevision?: number
 }
@@ -101,6 +101,6 @@ export function requireScienceTool(value: unknown): ScienceToolId {
   return value
 }
 
-export function eventJson(event: ScienceWorkbenchEvent): JsonObject {
-  return JSON.parse(JSON.stringify(event)) as JsonObject
+export function eventJson(event: ScienceWorkbenchEvent): ResearchJsonObject {
+  return JSON.parse(JSON.stringify(event)) as ResearchJsonObject
 }

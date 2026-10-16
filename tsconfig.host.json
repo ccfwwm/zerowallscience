@@ -10,10 +10,10 @@
         "deepseek-harness/packages/typert/protocol/src/index.ts"
       ],
       "@zerowallscience/research-store": [
-        "store/src/index.ts"
+        "plugins/research-store/src/index.ts"
       ],
       "@zerowallscience/research-store/types": [
-        "store/src/index.ts"
+        "plugins/research-store/src/index.ts"
       ],
       "@zerowallscience/plugin-*/types": [
         "plugins/*/src/shared/types.ts"
@@ -74,7 +74,7 @@
       "path": "./plugins/singlecell/tsconfig.host.json"
     },
     {
-      "path": "./packages/dsh/oh-story-dsh/tsconfig.host.json"
+      "path": "./plugins/oh-story-dsh/tsconfig.host.json"
     }
   ]
 }

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { expect, it } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { ReportService } from '../src/host/report.js'
 
 it('exports a useful reconnaissance draft while retaining all unapproved release gates', async () => {

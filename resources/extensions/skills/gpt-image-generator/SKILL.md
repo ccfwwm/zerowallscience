@@ -1,11 +1,13 @@
 ---
 name: gpt-image-generator
-description: Generate or edit PNG images with ZeroWall's built-in generate_image and edit_image tools and the current AI Cloud account's configured gpt-image-2 model. Use for 生图、生成图片、改图、局部重绘、换背景、删除元素、调整颜色、保持构图、插画、海报、封面、背景图、视觉概念图、科研配图 or other raster-image requests. When the user has not supplied a separate API key and endpoint, automatically use the signed-in ZeroWall AI Cloud configuration without asking for credentials again.
+description: Generate or edit PNG images with ZeroWall's built-in generate_image and edit_image tools and the environment's configured image model, group and parameters. Use for PPT/PPTX 配图、幻灯片插图、报告配图、生图、生成图片、改图、局部重绘、换背景、删除元素、调整颜色、保持构图、插画、海报、封面、背景图、视觉概念图、科研配图 or other raster-image requests. Use the configured image route without asking for credentials again.
 ---
 
 # ZeroWall Image Generation
 
 这是 ZeroWall 唯一默认的生图工作流。直接使用当前对话上下文，不启动额外提示词摘要模型；尽量保留用户原话，只补足缺少的构图、用途、格式或尺寸约束。
+
+PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `generate_image` / `edit_image` 取得工作区 PNG 与真实 `.generation.json` 回执，再交给 `presentation_record_assets` 和 Univer；不调用 `media_models`、`media_import`、`media_project` 或 `media_job`，不创建媒体项目、时间线或任务。用户另行明确要求独立媒体项目、视频、音乐或宣传片时，该独立交付物才使用 `media-create`。图片配置由 Host 从环境配置读取，助手不要读取或打印环境变量中的秘密；环境配置错误要如实报告，不能改走媒体任务、切换分组或换模型。
 
 ## 工具路由
 
@@ -24,7 +26,7 @@ description: Generate or edit PNG images with ZeroWall's built-in generate_image
    - `output_path`：当前项目内的相对或绝对 PNG 路径。
    - `model`：用户未指定时省略，沿用环境配置的生图模型；用户明确指定时只覆盖当前请求。
    - `size`：用户未指定时省略，沿用 Host 配置；指定时使用 `WIDTHxHEIGHT`。
-   - `quality`：用户未指定时不要自行填写；工具会先读取环境配置并明确把最终值发送给 API。正常环境默认是 `medium`，没有环境配置时发送 `auto`。用户明确指定时才传 `low`、`medium`、`high` 或 `auto`。
+   - `quality`：用户未指定时省略，读取环境配置；用户明确指定时可传 `auto`、`low`、`medium`、`high`、`xhigh` 或 `max`，并遵守当前分组及模型的实际质量选项。`auto` 省略 API 质量参数，不擅自改变已保存的质量。“生图分组-gpt逆向”的 GPT Image 2.5 可选 `high`、`xhigh`、`max`，不将此能力推广到其他分组的同名模型。
    - `overwrite`：只有用户明确要求替换已有图时才设为 `true`。
    - `input_attachment_ids`：优先传当前会话附件 ID；`input_paths` 可用于用户指定或当前已生成的工作区资源，按源图优先级排列，主图放第一张。
 - `mask_path`：仅 `edit_image` 可选；必须是独立于 `input_paths[0]` 的 alpha 蒙版，且与主图尺寸、格式一致。整图编辑时省略此字段，禁止传空字符串，也绝不能把主图路径重复填入 `mask_path`；工具会将这种模型回显视为未提供蒙版。
@@ -36,7 +38,7 @@ description: Generate or edit PNG images with ZeroWall's built-in generate_image
 
 - 用户没有显式提供独立 Key 和地址时，必须直接调用 `generate_image` / `edit_image` 使用当前 AI Cloud 配置；不要扫描项目 `.env`、用户目录、Codex/Claude 配置或进程环境，也不要要求已经登录的用户再次提供 Key。
 - 不得把 `gpt-image-2` 发送到聊天 `/messages` 或 `/chat/completions`；新图走 Image generations，编辑走 Image edits。
-- 如果工具提示未登录、没有 `gpt-image-2` 或分组凭据缺失，引导用户打开左下角 AI Cloud，登录并刷新模型列表，然后重试。
+- 如果工具提示未登录、所选生图模型不可用或分组凭据缺失，按实际错误引导用户检查 AI Cloud 登录、模型目录或环境中的生图配置后重试；保留所选模型、分组、质量和参数，不擅自降级或切换路线。
 - 如果用户明确指定了另一套 Key/地址，只能通过用户明确授权的外部连接方式临时使用；不得把凭据写进脚本、技能、日志、项目文件或持久化配置。
 
 ## 输出约束

@@ -326,7 +326,12 @@ test('unpublished catalogs keep complete local inventory and bundled versions wi
 
 test('failed Host activation restores the old profile, while successful activation supports rollback', async () => {
   const f = await fixture()
-  await initializeProfile(f.home, [f.resource.id])
+  const unrelated = '@zerowallscience/plugin-unrelated'
+  await initializeProfile(f.home, [f.resource.id, unrelated])
+  const activeManifest = join(f.home, 'profiles/web/package.json')
+  const manifest = JSON.parse(await readFile(activeManifest, 'utf8'))
+  manifest.dependencies = { ...(manifest.dependencies ?? {}), [unrelated]: '0.4.0' }
+  await writeFile(activeManifest, JSON.stringify(manifest))
   let rejectActivation = true
   let starts = 0
   const manager = createResourceManager({ ...f, target, local: true,
@@ -337,6 +342,8 @@ test('failed Host activation restores the old profile, while successful activati
       const file = join(f.home, 'profiles', generation, 'package.json')
       const value = JSON.parse(await readFile(file)); value.testVersion = 'new'
       await writeFile(file, JSON.stringify(value))
+      await mkdir(join(f.home, 'profiles', generation, 'node_modules', unrelated), { recursive: true })
+      await writeFile(join(f.home, 'profiles', generation, 'node_modules', unrelated, 'package.json'), JSON.stringify({ name: unrelated, version: '0.4.0' }))
     }, stopHost: async () => {}, startHost: async () => {
       starts++
       if (rejectActivation && starts === 1) throw new Error('Host failed')
@@ -349,6 +356,7 @@ test('failed Host activation restores the old profile, while successful activati
   assert.equal(JSON.parse(await readFile(file)).testVersion, 'new')
   await manager.rollbackPlugin(f.resource.id)
   assert.equal(JSON.parse(await readFile(file)).testVersion, undefined)
+  assert.equal(JSON.parse(await readFile(join(f.home, 'profiles/web/node_modules', unrelated, 'package.json'))).version, '0.4.0')
 })
 test('repair and local import preserve the offline closure without resolving workspace dependencies', async () => {
   for (const args of [['install'], ['add', 'user-plugin.tgz']]) {

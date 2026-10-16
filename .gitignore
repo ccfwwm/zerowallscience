@@ -40,15 +40,12 @@ __pycache__/
 *.pyc
 *.pyo
 .vscode
-mcp-environment-staging/*
-!mcp-environment-staging/sci/
-mcp-environment-staging/sci/*
-!mcp-environment-staging/sci/zerowall-mcp-launcher.cjs
+# MCP/Python staging is build-owned and lives under artifacts/stage/<version>/<build-id>.
 .secrets/
 /scripts/env/
 
 /artifacts/
-/packages/dsh/dsh-archive-manager/lib/
-/packages/dsh/dsh-file-review/lib/
-/packages/dsh/dsh-ssh-ops/lib/
-/packages/dsh/zotero-harvest/lib/
+/plugins/dsh-archive-manager/lib/
+/plugins/dsh-file-review/lib/
+/plugins/dsh-ssh-ops/lib/
+/plugins/zotero-harvest/lib/

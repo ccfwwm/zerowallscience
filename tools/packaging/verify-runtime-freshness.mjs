@@ -33,6 +33,9 @@ export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZE
     })
     if (manifestText === undefined) continue
     const manifest = JSON.parse(manifestText)
+    // Upstream adapters are verified by the signed offline closure. Their
+    // reviewed runtime intentionally differs from the original source.
+    if (!manifest.name?.startsWith('@zerowallscience/plugin-')) continue
     const core = runtimeProfile.corePlugins.includes(manifest.name)
     if (!core && !runtimeProfile.optionalPluginPolicy?.bundled) continue
     const target = resolve(stage, core ? 'runtime/node_modules' : 'offline-profile/modules', manifest.name)

@@ -23,16 +23,8 @@ const old = `!insertmacro uninstallOldVersion SHELL_CONTEXT
 if (section.split(old).length !== 2) throw new Error('Unexpected upstream uninstall sequence')
 section = section.replace('!include installer.nsh', `!include "${resolve(templates, 'include/installer.nsh')}"`)
 section = section.replace(old, `; Never invoke an earlier recursive uninstaller.
-; Embed the current remover, including when upgrading a pre-inventory release.
-DetailPrint "正在原位置覆盖升级，保留 Python 和用户文件..."
-InitPluginsDir
-File /oname=$PLUGINSDIR\\zerowall-owned-files.ps1 "${resolve(desktop, '../tools/commands/uninstall-owned-files.ps1')}"
-nsExec::ExecToLog '"$SYSDIR\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\zerowall-owned-files.ps1" -InstallRoot "$INSTDIR" -PreserveIfUnmanaged'
-Pop $R0
-\${If} $R0 != 0
-  MessageBox MB_OK|MB_ICONSTOP "旧安装文件仍被占用或归属清单无效，无法安全升级。请关闭 ZeroWall Science 后重试。Python 和用户文件已保留。"
-  Abort
-\${EndIf}`)
+; Validate the incoming runtime before removing any installed application file.
+DetailPrint "正在原位置覆盖升级，保留 Python 和用户文件..."`)
 const output = resolve(stageRoot, 'nsis-overlay')
 await mkdir(output, { recursive: true })
 await writeFile(resolve(output, 'installSection.nsh'), `${section}\n!cd "${templates}"\n`)
@@ -54,14 +46,32 @@ extraction = extraction.replace(extractMacro, `!macro extractUsing7za FILE
   Pop $R0
   SetOutPath $R0
   File /oname=$PLUGINSDIR\\zerowall-copy-files.mjs "${resolve(desktop, '../tools/commands/installer-copy-files.mjs')}"
+  File /oname=$PLUGINSDIR\\zerowall-owned-files.ps1 "${resolve(desktop, '../tools/commands/uninstall-owned-files.ps1')}"
   ; CopyFiles silently omits MAX_PATH files. The bundled Node API handles
   ; long Unicode paths and reports every incomplete copy as an install error.
   System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", w "1")'
-  nsExec::ExecToLog '"$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR"'
+  nsExec::ExecToStack '"$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR" --preflight --log "$ZeroWallLogFile"'
   Pop $R0
+  Pop $R1
+  !insertmacro ZW_LOG "preflight-exit=$R0; $R1"
+  \${If} $R0 == 0
+    nsExec::ExecToStack '"$SYSDIR\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\zerowall-owned-files.ps1" -InstallRoot "$INSTDIR" -PreserveIfUnmanaged'
+    Pop $R0
+    Pop $R1
+    !insertmacro ZW_LOG "remove-owned-exit=$R0; $R1"
+    \${If} $R0 == 0
+      nsExec::ExecToStack '"$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR" --log "$ZeroWallLogFile"'
+      Pop $R0
+      Pop $R1
+      !insertmacro ZW_LOG "copy-exit=$R0; $R1"
+    \${EndIf}
+  \${EndIf}
   System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", p 0)'
   \${If} $R0 != 0
-    MessageBox MB_OK|MB_ICONSTOP "应用文件复制失败，请检查目录权限、磁盘空间和文件占用后重试。Python 和用户文件已保留。"
+    \${If} $ZeroWallUiState != ""
+      WriteINIStr "$ZeroWallUiState" "Install" "Error" "安装失败（退出码 $R0）。日志：$ZeroWallLogFile"
+    \${EndIf}
+    MessageBox MB_OK|MB_ICONSTOP "应用文件安装失败（退出码 $R0）。日志：$ZeroWallLogFile。Python 和用户文件已保留。"
     SetErrorLevel 2
     Abort
   \${EndIf}

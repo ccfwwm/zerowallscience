@@ -6,7 +6,7 @@
     "types": ["node"],
     "noCheck": true,
     "paths": {
-      "@zerowallscience/research-store": ["store/src/index.ts"],
+      "@zerowallscience/research-store": ["plugins/research-store/src/index.ts"],
       "@zerowallscience/plugin-*/types": ["plugins/*/src/shared/types.ts"],
       "@zerowallscience/plugin-*/client": ["plugins/*/src/client/index.ts"],
       "@zerowallscience/plugin-*": ["plugins/*/src/host/index.ts"]

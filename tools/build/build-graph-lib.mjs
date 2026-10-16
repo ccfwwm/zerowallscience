@@ -47,10 +47,7 @@ export function tasksForChangedFiles(files, { pythonCapabilities = [] } = {}) {
   for (const file of files) {
     const parts = file.replaceAll('\\', '/').split('/')
     if (parts[0] === 'plugins' && parts.length > 1 && parts[1] !== 'wechat') tasks.add(`plugin-build:${parts[1]}`)
-    else if (parts[0] === 'packages' && parts.length > 1) {
-      const name = ['dsh', 'support', 'bundles'].includes(parts[1]) ? parts[2] : parts[1]
-      if (name) tasks.add(`package-build:${name}`)
-    } else if (parts[0] === 'resources') {
+    else if (parts[0] === 'resources') {
       const kind = parts[1] === 'extensions' ? parts[2] : parts[1]
       const name = parts[1] === 'extensions' ? parts[3] : parts[2]
       if (kind === 'skills' && name) tasks.add(`resource:skill:${name}`)
@@ -74,7 +71,7 @@ export function tasksForChangedFiles(files, { pythonCapabilities = [] } = {}) {
       tasks.add('dsh')
       tasks.add('runtime')
     } else if (parts[0] === 'desktop') tasks.add('desktop')
-    else if (['profiles', 'store'].includes(parts[0]) || parts[0] === 'config' || parts[0] === 'tools' && ['plugins', 'dsh', 'packaging'].includes(parts[1])) tasks.add('runtime')
+    else if (parts[0] === 'profiles' || parts[0] === 'config' || parts[0] === 'tools' && ['plugins', 'dsh', 'packaging'].includes(parts[1])) tasks.add('runtime')
   }
   // Runtime/desktop preparation must consume the newly built inputs.
   const order = id => id === 'dsh' ? 0 : id === 'runtime' ? 2 : id === 'desktop' ? 3 : 1

@@ -7,6 +7,35 @@ import { assetsForPage, hash, readManifest, readSpecification, recordVisualAsset
 export interface LayoutFinding { rule: string; page: number; elementIds: string[]; message: string }
 export interface PageSnapshot { page: number; id: string; fingerprint: string; data: Record<string, any> }
 
+/**
+ * Keep the persisted editable reconstruction plan attached to the SVG that is
+ * compiled into the draft.  A plan is useful only when every planned object
+ * has a corresponding editable SVG node; otherwise a caller could persist the
+ * JSON and compile an unrelated page.  Authors mark nodes with the stable
+ * `data-zerowall-element-id` and `data-zerowall-element-type` attributes.
+ */
+export async function validateEditableSvgPlan(cwd: string, source: string, plan: { page: number; elements: Array<{ id: string; type: string }> }): Promise<void> {
+  const path = await workspacePath(cwd, source), raw = await readFile(path, 'utf8')
+  if (/<!DOCTYPE|<!ENTITY/iu.test(raw)) throw new Error('SVG entity declarations are not supported.')
+  const errors: string[] = []
+  const doc = new DOMParser({ onError: (_level, message) => { errors.push(message) } }).parseFromString(raw, 'image/svg+xml')
+  if (errors.length || doc.documentElement?.localName !== 'svg') throw new Error('Invalid SVG: repair syntax before retrying.')
+  const seen = new Map<string, string>()
+  for (const node of Array.from(doc.getElementsByTagName('*'))) {
+    const id = node.getAttribute('data-zerowall-element-id')
+    if (!id) continue
+    const type = node.getAttribute('data-zerowall-element-type')
+    if (!type) throw new Error(`Editable SVG element ${id} must declare data-zerowall-element-type.`)
+    if (seen.has(id)) throw new Error(`Editable SVG element ID ${id} is declared more than once.`)
+    seen.set(id, type)
+  }
+  for (const element of plan.elements) {
+    const actual = seen.get(element.id)
+    if (!actual) throw new Error(`Page ${plan.page}: SVG is missing planned editable element ${element.id}.`)
+    if (actual !== element.type) throw new Error(`Page ${plan.page}: SVG element ${element.id} has type ${actual}; expected ${element.type}.`)
+  }
+}
+
 /** The Office exporter ignores image shape opacity. Bake only the bitmap alpha;
  * never rasterize the page or its editable text. Originals remain untouched. */
 export async function prepareSvg(cwd: string, source: string, specPath: string, manifestPath: string, page: number): Promise<string> {

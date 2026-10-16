@@ -7,6 +7,7 @@ import { access, cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } f
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
 import { adaptUniverOfficeManifest, adaptUniverSkill, UNIVER_SKILL_HASHES } from './adapt-univer-office.mjs'
+import { adaptUniverSlideCapture } from './adapt-univer-slide-capture.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
 import { adaptDirectoryPicker } from './adapt-directory-picker.mjs'
@@ -52,7 +53,7 @@ const zerowallPackageRoots = [
   ...await Promise.all(runtimeProfile.corePackageDependencies.map(async name => resolve(await packageSource(name)))),
   ...await pluginRoots(resolve(root, 'plugins'), new Set(offlineProfile ? configuredDefaults : runtimeProfile.corePlugins)),
   ...(offlineProfile ? await Promise.all(['dsh-ssh-ops', 'dsh-session-notification', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-wechat', 'dsh-genui', 'zotero-harvest', 'dsh-archive-manager', 'oh-story-dsh'].map(async name => resolve(await packageSource(name)))) : []),
-  ...(offlineProfile ? [resolve(root, 'store')] : []),
+  ...(offlineProfile ? [resolve(root, 'plugins/research-store')] : []),
 ]
 const desktopRuntimeSeeds = [
   // The packaged Web Host resolves its SPA entry through this package's
@@ -325,6 +326,13 @@ async function copyRuntimePackage(package_, targetRoot) {
     await writeFile(resolve(targetRoot, 'package.json'), adaptUniverOfficeManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8'), provenance.resourceVersion ?? provenance.version))
     // The Gateway and render workers must execute from physical files in Electron.
     for (const entry of ['lib', 'docs', 'skills', 'artifacts', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
+    const renderAssets = resolve(targetRoot, 'artifacts/render-machine/assets')
+    const bundles = (await readdir(renderAssets)).filter(name => /^index-.*\.js$/u.test(name))
+    if (bundles.length !== 1) throw new Error('Expected one pinned Univer render entry bundle')
+    const renderPath = resolve(renderAssets, bundles[0])
+    const renderSource = await readFile(renderPath, 'utf8')
+    if (provenance.commit !== '8f85ce4074fdbe51416b6c337468bb916a302c2a' || createHash('sha256').update(renderSource).digest('hex') !== 'dcdb80d5154b4e9551d144fa84bb4d60fc8176efe2aae17a4fd7f1d223ba4a85') throw new Error('Univer renderer identity changed; review capture adapter before packaging')
+    await writeFile(renderPath, adaptUniverSlideCapture(renderSource))
     const skillReceipts = []
     for (const skill of Object.keys(UNIVER_SKILL_HASHES)) {
       const path = resolve(targetRoot, 'skills', skill, 'SKILL.md')

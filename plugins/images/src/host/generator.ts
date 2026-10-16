@@ -8,6 +8,7 @@ import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscien
 import type { ImageGenerationQuality, ImageModelSelection } from '@zerowallscience/plugin-environment/types'
 import { AiCloudMediaService, type ZeroWallMedia, type MediaRequest } from '@zerowallscience/plugin-ai-cloud'
 import type { AiCloudMediaModel } from '@zerowallscience/plugin-account/types'
+import { isImageGenerationGroup, uniqueMediaModels } from '@zerowallscience/plugin-account'
 import { withPresentationLock } from './visual-assets.js'
 
 const MAX_INPUT_IMAGES = 16
@@ -132,15 +133,13 @@ export class AiCloudImageGenerator {
   /** Resolve the exact quality value that must be sent to the image API. */
   async resolveQuality(explicit?: ImageGenerationQuality): Promise<ImageGenerationQuality> {
     if (explicit !== undefined) {
-      if (!isImageQuality(explicit)) throw new Error('quality must be auto, low, medium, or high')
+      if (!isImageQuality(explicit)) throw new Error('quality must be auto, low, medium, high, xhigh, or max')
       return explicit
     }
-    try {
-      const configured = await this.options.imageQuality?.()
-      return isImageQuality(configured) ? configured : DEFAULT_IMAGE_QUALITY
-    } catch {
-      return DEFAULT_IMAGE_QUALITY
-    }
+    let configured: ImageGenerationQuality | undefined
+    try { configured = await this.options.imageQuality?.() } catch { throw new Error('IMAGE_CONFIGURATION_UNAVAILABLE: 无法读取环境配置中的生图质量，请恢复配置服务后重试。') }
+    if (configured !== undefined && !isImageQuality(configured)) throw new Error('IMAGE_CONFIGURATION_INVALID: 环境配置中的生图质量无效，请重新选择。')
+    return configured ?? DEFAULT_IMAGE_QUALITY
   }
 
   async generate(input: GenerateImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
@@ -153,12 +152,12 @@ export class AiCloudImageGenerator {
     const workspace = await workspaceRoot(cwd)
     const target = await safeOutputPath(workspace, input.outputPath, true)
     const model = await this.resolveModel(input.model)
-    const requestHash = this.requestHash('generate', model, prompt, size, quality, []) + createHash('sha256').update(JSON.stringify(await this.options.imageModel?.() ?? {})).digest('hex')
+    const requestHash = this.requestHash('generate', model, prompt, size, quality, []) + createHash('sha256').update(JSON.stringify(await this.readImageModel())).digest('hex')
     const cached = await this.cached(target, requestHash, signal)
     if (cached) return cached
     await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     try {
-    const response = await this.mediaResponse(model as AiCloudMediaModel, { prompt, size, quality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex') }, signal)
+    const response = await this.imageResponse(model, { prompt, size, quality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex') }, signal)
     const result = await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
     return await this.receipt(result, prompt, [], workspace, requestHash)
     } catch (error) {
@@ -199,12 +198,12 @@ export class AiCloudImageGenerator {
     if (mask !== undefined) validateMask(mask, images[0]!)
 
     const model = await this.resolveModel(input.model)
-    const requestHash = this.requestHash('edit', model, prompt, size, quality, images.map(image => image.data), mask?.data) + createHash('sha256').update(JSON.stringify(await this.options.imageModel?.() ?? {})).digest('hex')
+    const requestHash = this.requestHash('edit', model, prompt, size, quality, images.map(image => image.data), mask?.data) + createHash('sha256').update(JSON.stringify(await this.readImageModel())).digest('hex')
     const cached = await this.cached(target, requestHash, signal)
     if (cached) return cached
     await safeOutputPath(workspace, input.outputPath, input.overwrite ?? false)
     try {
-    const response = await this.mediaResponse(model as AiCloudMediaModel, { prompt, size, quality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex'), references: images.map(image => ({ mediaType: image.mediaType, base64: Buffer.from(image.data).toString('base64'), name: basename(image.path) })), ...(mask ? { mask: { mediaType: mask.mediaType, base64: Buffer.from(mask.data).toString('base64') } } : {}) }, signal)
+    const response = await this.imageResponse(model, { prompt, size, quality, requestId: 'image-' + createHash('sha256').update(target + requestHash).digest('hex'), references: images.map(image => ({ mediaType: image.mediaType, base64: Buffer.from(image.data).toString('base64'), name: basename(image.path) })), ...(mask ? { mask: { mediaType: mask.mediaType, base64: Buffer.from(mask.data).toString('base64') } } : {}) }, signal)
     const result = await this.finishResponse(response, workspace, target, model, size, quality, input.overwrite ?? false, signal)
     return await this.receipt(result, prompt, images.map(image => image.data), workspace, requestHash)
     } catch (error) {
@@ -251,17 +250,25 @@ export class AiCloudImageGenerator {
   async resolveModel(requested?: string): Promise<AiCloudManagedModel> {
     const snapshot = this.snapshot ?? await this.options.account.current()
     this.snapshot = snapshot
-    const configured = await this.options.imageModel?.()
+    const configured = await this.readImageModel()
     if (snapshot.status !== 'signedIn') throw new Error('请先登录 ZeroWall AI Cloud，再生成演示文稿视觉。')
-    const imageModels = (snapshot.mediaModels ?? []).filter(model => model.mediaType === 'image' && model.groupName.trim() === '图片音频视频分组' && !model.stale)
+    const imageModels: AiCloudManagedModel[] = [
+      ...snapshot.models.filter(model => model.capability === 'image-generation' && isImageGenerationGroup(model.groupName) && !model.stale),
+      ...uniqueMediaModels((snapshot.mediaModels ?? []).filter(model => model.mediaType === 'image' && isImageGenerationGroup(model.groupName) && !model.stale)),
+    ]
     const selectedCandidates = configured?.modelId
       ? imageModels.filter(candidate => candidate.modelId === configured.modelId
-        && candidate.providerId === configured.providerId && candidate.groupId === configured.groupId && (!configured.profileId || candidate.profileId === configured.profileId))
+        && candidate.providerId === configured.providerId && candidate.groupId === configured.groupId && (!configured.profileId || ('profileId' in candidate && candidate.profileId === configured.profileId)))
       : []
     const selected = selectedCandidates.length === 1 ? selectedCandidates[0] : undefined
     const requestedId = requested?.trim()
     if (requestedId) {
       if (selected?.modelId === requestedId) return selected
+      if (configured?.modelId === requestedId && configured.profileId !== undefined
+        && configured.providerId && configured.groupId
+        && !selectedCandidates.length) {
+        throw new Error('当前环境中的生图模型能力配置已失效，请在“环境配置”中重新选择具体配置。')
+      }
       const candidates = imageModels.filter(model => model.modelId === requestedId)
       if (candidates.length > 1) throw new Error('该模型有多套能力配置，请在环境配置中选择具体配置。')
       const candidate = candidates[0]
@@ -269,22 +276,51 @@ export class AiCloudImageGenerator {
       throw new Error(`当前账户没有可用的 ${requestedId} 生图模型，请在“环境配置”中刷新或选择生图模型。`)
     }
     if (selected) return selected
-    if (!configured && imageModels.length) return imageModels[0]!
-    throw new Error('请在环境配置中选择图片音频视频分组的生图模型；历史选择失效时需重新选择。')
+    throw new Error('请在环境配置中选择名称含“图片”或“生图”的分组中的生图模型；历史选择失效时需重新选择。')
+  }
+
+  private async imageResponse(model: AiCloudManagedModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: MediaRequest['references']; mask?: MediaRequest['mask'] }, signal?: AbortSignal): Promise<Response> {
+    if (model.capability === 'media') return this.mediaResponse(model as AiCloudMediaModel, input, signal)
+    const url = new URL(model.baseUrl)
+    if (url.protocol !== 'https:' || !['hkcode.aicodeme.xyz', 'code.aicodeme.xyz', 'code.aicodeme.cn'].includes(url.hostname) || url.port || url.username || url.password || url.search || url.hash || !['/v1', '/v1/'].includes(url.pathname)) throw new Error('IMAGE_UNTRUSTED_GATEWAY')
+    if (input.quality !== 'auto' && model.qualities?.length && !model.qualities.includes(input.quality)) throw new Error('IMAGE_UNSUPPORTED_QUALITY: 当前模型不支持所选质量，请选择其他质量或自动。')
+    const key = await this.options.secrets.get(`zerowall.ai-cloud.group.${model.groupId}`)
+    if (!key?.trim()) throw new Error('IMAGE_CREDENTIAL_UNAVAILABLE: 请刷新账号。')
+    const headers: Record<string, string> = { authorization: `Bearer ${key.trim()}`, 'Idempotency-Key': input.requestId }
+    const parameters = { model: model.modelId, prompt: input.prompt, ...(input.size === 'auto' ? {} : { size: input.size }), ...(input.quality === 'auto' ? {} : { quality: input.quality }) }
+    let body: string | FormData
+    const editing = Boolean(input.references?.length)
+    if (editing) {
+      body = new FormData()
+      for (const [name, value] of Object.entries(parameters)) body.set(name, value)
+      for (const image of input.references!) body.append('image[]', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mediaType }), image.name ?? 'reference.png')
+      if (input.mask) body.set('mask', new Blob([Buffer.from(input.mask.base64, 'base64')], { type: input.mask.mediaType }), 'mask.png')
+    } else { headers['content-type'] = 'application/json'; body = JSON.stringify(parameters) }
+    return imageSlot(() => this.fetcher(`${url.origin}/v1/images/${editing ? 'edits' : 'generations'}`, { method: 'POST', headers, body, redirect: 'error', ...(signal ? { signal } : {}) }), signal)
   }
 
   private async mediaResponse(model: AiCloudMediaModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: MediaRequest['references']; mask?: MediaRequest['mask'] }, signal?: AbortSignal): Promise<Response> {
     const editing = (input.references?.length ?? 0) > 0
     const operation = model.operations.includes('gemini_image') ? 'gemini_image' : editing ? 'image_edit' : 'image'
-    const configured = await this.options.imageModel?.()
+    const configured = await this.readImageModel()
+    const appliesParameters = configured !== undefined
+      && configured.providerId === model.providerId
+      && configured.groupId === model.groupId
+      && configured.modelId === model.modelId
+      && (configured.profileId === undefined || configured.profileId === model.profileId)
     const task = await imageSlot(async () => {
-      const request: MediaRequest = { groupId: model.groupId, modelId: model.modelId, profileId: model.profileId, operation, requestId: input.requestId, prompt: input.prompt, parameters: { ...(input.size === 'auto' && !model.sizes.includes('auto') ? {} : { size: input.size }), ...(input.quality === 'auto' && !model.qualities.includes('auto') ? {} : { quality: input.quality }), ...(configured?.resolution ? {resolution:configured.resolution} : {}), ...(configured?.aspectRatio ? {aspect_ratio:configured.aspectRatio} : {}) }, ...(input.references ? { references: input.references } : {}), ...(input.mask ? { mask: input.mask } : {}), async: true }
+      const request: MediaRequest = { groupId: model.groupId, modelId: model.modelId, profileId: model.profileId, operation, requestId: input.requestId, prompt: input.prompt, parameters: { ...(input.size === 'auto' && !model.sizes.includes('auto') ? {} : { size: input.size }), ...(input.quality === 'auto' && !model.qualities.includes('auto') ? {} : { quality: input.quality }), ...(appliesParameters && configured?.resolution ? {resolution:configured.resolution} : {}), ...(appliesParameters && configured?.aspectRatio ? {aspect_ratio:configured.aspectRatio} : {}) }, ...(input.references ? { references: input.references } : {}), ...(input.mask ? { mask: input.mask } : {}), async: true }
       const submitted = await this.media.submit(request, signal)
       return ['completed', 'succeeded'].includes(submitted.status) ? submitted : this.media.wait(submitted.requestId, 600_000, signal)
     }, signal)
     if (!['completed', 'succeeded'].includes(task.status) || !task.artifacts.length) throw new Error('媒体任务未完成，请恢复原任务：' + task.requestId)
     const result = await this.media.download(task.requestId, task.artifacts[0]!.key, signal)
     return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from(result.bytes).toString('base64'), revised_prompt: task.artifacts[0]?.revisedPrompt, quality: task.artifacts[0]?.quality }] }), { headers: { 'content-type': 'application/json' } })
+  }
+
+  private async readImageModel(): Promise<ImageModelSelection | undefined> {
+    try { return await this.options.imageModel?.() }
+    catch { throw new Error('IMAGE_CONFIGURATION_UNAVAILABLE: 无法读取环境配置中的生图模型，请恢复配置服务后重试。') }
   }
 
   private async finishResponse(
@@ -374,7 +410,7 @@ export function validateImageSize(raw: string | undefined): ImageSize {
 }
 
 function isImageQuality(value: unknown): value is ImageGenerationQuality {
-  return value === 'auto' || value === 'low' || value === 'medium' || value === 'high'
+  return value === 'auto' || value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === 'max'
 }
 
 async function workspaceRoot(cwd: string): Promise<string> {

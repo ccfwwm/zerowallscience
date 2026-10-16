@@ -5,7 +5,7 @@ import { patchSciMasterMcp, SCIMASTER_0315_MCP_PATCHED_SHA256, SCIMASTER_0315_MC
 import { access, readFile } from 'node:fs/promises'
 
 test('SciMaster compatibility patch is guarded and normalizes year output', async (t) => {
-  const sourceUrl = new URL('../../mcp-environment-staging/sci/dist/mcp.cjs', import.meta.url)
+  const sourceUrl = new URL('../../plugins/mcp/src/scimaster/dist/mcp.cjs', import.meta.url)
   try {
     await access(sourceUrl)
   } catch {

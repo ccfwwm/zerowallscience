@@ -17,7 +17,7 @@
 | 8.0.7 发布状态 | 独立资源目录、桌面安装器和 Stable 指针已发布至七牛并通过公网校验；[GitHub v8.0.7 Release](https://github.com/ccfwwm/zerowallscience/releases/tag/v8.0.7) 已公开，四项资产已下载复核 |
 | 8.0.7 发布标签 | `v8.0.7` 指向 `f5d04dc0dafd468809ba8eef35e2f9eb2027045a`；后续文档提交不改变发布资产 |
 | 8.0.7 安装器收据 | build ID `1791439688519-5aba5d34`，229,670,236 字节，SHA-256 `78b1bcb9613ac8b5f2eaf349c13c59ceac575b425587c7d2b0f94ab2370302f7` |
-| DSH 子模块 | `8c00ce78435cf35300654c41e69336e69dc758b1`；保留 `0.2.0-rc.2` 版本线，新增可选 managed 供应商展示 |
+| DSH 子模块 | `4af4cb76935bd893a6854f38403bd06928878074`；保留 `0.2.0-rc.2` 版本线 |
 | DSH 分支 | `zerowall/reviewer-history-opaque` |
 | DSH 标签 | `dsh-v0.2.0-rc.2` |
 | GitHub | `https://github.com/ccfwwm/zerowallscience` |
@@ -79,8 +79,7 @@ Get-Content config/deepseek-harness/upstream.json
 | --- | --- | --- |
 | `desktop/` | Electron 主进程、preload、Host 生命周期、凭据、更新和安装器 | 桌面核心改动需要完整类型检查和 Electron/Host 验收 |
 | `plugins/` | ZeroWall 一方领域插件源码 | 每个插件保持独立 manifest、Host/Client/remote 边界和版本 |
-| `packages/` | DSH 适配、第三方集成、组合 bundle 和支持包 | 先确认是否被 workspace、profile 或 runtime closure 使用 |
-| `store/` | SQLite Research Store、迁移、审计、快照 | 数据结构变更必须有迁移和契约测试 |
+| `plugins/` | DSH 适配、第三方集成、组合 bundle、Research Store 和支持包 | 所有当前源码包均从这里加载；旧 `packages/` 仅作迁移历史，不得作为当前合同 |
 | `deepseek-harness/` | 固定 DSH fork 子模块 | 父仓库只提交 gitlink；子模块改动按专门流程处理 |
 | `resources/` | Skills、Python 清单、品牌和小型运行时资源 | 大型 Python 环境不放入默认安装包 |
 | `profiles/`、`config/` | profile 生成、上游锁定、catalog、公钥和版本表 | 生成结果变化要检查来源和用户选择迁移 |
@@ -104,11 +103,11 @@ artifacts/
 
 `desktop/dist/`、`desktop/out/`、根 `.build/`、源码目录下的 `lib/` 和各插件临时目录不是正式输出目录。它们可作为兼容链接或历史生成物存在，但新正式构建必须由 `tools/build/paths.*` 指向 `artifacts/`。`node_modules/`、pnpm store、用户数据、忽略的签名文件和现有缓存不要移动或删除。
 
-8.0.7 的资源源码按 `resources/extensions/{skills,mcp,python,runtimes}`、`resources/extensions/engines/r`、`resources/extensions/capabilities/biogenie`、`resources/cases/research` 和 `resources/branding` 分层。路径消费者使用 layout resolver，并在迁移期只读兼容旧路径。根级 `mcp-environment-staging/` 仅保留源码管理的 SciMaster launcher 输入；实际 MCP/Python 中间 staging 放在 `artifacts/stage/<version>/<build-id>/mcp-environment-staging/`。脚本直接准备 Python 环境时，优先传 `--input` 或设置 `ZEROWALL_BUILD_ID`，不要把 staging 写回源码目录。
+8.3.0 的资源源码按 `resources/extensions/{skills,mcp,python,runtimes}`、`resources/extensions/engines/r`、`resources/extensions/capabilities/biogenie`、`resources/cases/research` 和 `resources/branding` 分层。路径消费者使用 layout resolver；当前源码包统一位于 `plugins/`，不再把 `packages/store` 或 `packages/mcp-environment-staging` 当作当前合同。SciMaster launcher 源码位于 `plugins/mcp/src/scimaster/`；根级 `mcp-environment-staging/` 不再作为源码输入；实际 MCP/Python 中间 staging 放在 `artifacts/stage/<version>/<build-id>/mcp-environment-staging/`。脚本直接准备 Python 环境时，优先传 `--input` 或设置 `ZEROWALL_BUILD_ID`，不要把 staging 写回源码目录。
 
 ## 4. DSH 子模块合同
 
-父仓库当前使用 ZeroWall DSH fork `8c00ce78435cf35300654c41e69336e69dc758b1`，仍属于 `dsh-v0.2.0-rc.2` 版本线。`config/deepseek-harness/upstream.json` 必须与子模块 HEAD、仓库、分支和标签一致。执行 `pnpm dsh:verify` 之前不要声称 DSH 已锁定。
+父仓库当前使用 ZeroWall DSH fork `4af4cb76935bd893a6854f38403bd06928878074`，仍属于 `dsh-v0.2.0-rc.2` 版本线。`config/deepseek-harness/upstream.json` 必须与子模块 HEAD、仓库、分支和标签一致。执行 `pnpm dsh:verify` 之前不要声称 DSH 已锁定。
 
 检查：
 
@@ -173,17 +172,17 @@ pnpm plugins:pack
 
 插件更新、修复、本地导入和启停的 candidate profile 必须保留安装器已验证离线闭包。对未被本次签名更新替换、且位于用户资源 `offline/` generation 内的包，使用 `link:` 引用其完整运行时，不让 pnpm 重新解析源码 manifest 中的 `workspace:`。选中的插件和签名依赖闭包仍使用验签 tarball。不要删除依赖或放宽版本断言来规避 `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`。包管理失败应显示退出码、脱敏 stdout/stderr 和 profile diagnostics，不能只显示通用失败提示。
 
-### Python 分层合同（8.1.3）
+### Python 分层合同（8.3.0）
 
-- 运行时根目录固定为 `<实际 EXE 安装目录>\\Python`，或用户明确选择的固定根目录。正常执行只用根目录的 `python.exe` 和 `Lib/site-packages`。旧 LocalAppData、Roaming 和 slots 不迁移、不删除，也不再执行。
+- 运行时根目录固定为 `<实际 EXE 安装目录>\\Python`，或用户明确选择的固定根目录。桌面可在启动完成后后台安装和更新签名 core/science 依赖，逐包核对在线签名 manifest 与哈希；旧 LocalAppData、Roaming 和 slots 不迁移、不删除，也不再执行。
 - `bootstrap` 只表示解释器是否存在，`core` 表示 ZeroWall/MCP 最小依赖，`science` 表示科研依赖，`capability` 表示某个 Skill 或流程的可选依赖。解释器就绪不等于科研层已安装。
-- 默认启动只读；远端 catalog 检查也不下载或安装。Python + pip bootstrap、43 个核心依赖、529 个科研依赖均由用户明确选择安装；任务异步返回持久 ID。
+- 插件、Skills、MCP 的默认启动和远端 catalog 检查仍只读。8.3.0 的 Python 例外是在桌面可用后后台执行签名 bootstrap/recovery，并在固定根目录通过持久队列自动安装和更新全部 core/science 依赖；在线签名依赖变化逐包检测并进入持久任务。capability 依赖仍需用户手动选择。任务异步返回持久 ID。
 - 新桌面版本使用固定版本的 Python bootstrap manifest；首次安装只接受 `python.bootstrapOnly=true` 的清单。发布的运行时 ZIP 只含 CPython 3.12.10 与 pip，拒绝旧的 387 包科研环境清单，避免新用户误下载近 1 GB 的完整环境。bootstrap 资源使用独立的版本目录；验证阶段只上传不可变对象，不更新 `latest.json`。
-- 核心任务写入持久 task receipt，持续记录阶段、包计数、当前包、实时 pip 日志和错误。设置页轮询本地快照，不重复扫描完整 site-packages；关闭或重启后恢复最近任务状态，等待用户选择继续后续接核心同步。
-- 科研层和 capability 层不随启动自动安装。显式安装使用同目录文件事务、写锁和执行租约；回滚恢复到相同目录，不切换解释器路径。候选只用于安装器内部校验，不注册为活动运行时。
+- 核心任务写入持久 task receipt，持续记录阶段、包计数、当前包、实时 pip 日志和错误。设置页轮询本地快照，不重复扫描完整 site-packages；关闭或重启后，带有 `automatic` 标记且仍为 queued/running/interrupted 的启动任务由恢复流程继续并在完成后接续 science，同步失败立即报告任务 ID 和错误；手动暂停的任务仍等待用户明确继续。
+- 科研层由 8.3.0 后台队列按签名 manifest reconciliation，capability 层仍不随启动自动安装。所有同步使用同目录文件事务、写锁和执行租约；回滚恢复到相同目录，不切换解释器路径。候选只用于安装器内部校验，不注册为活动运行时。
 - `core-dependency-manifest.json` 与 `dependency-manifest.json` 独立签名；同步计划必须绑定所选层和 manifest hash，资源不可用时不创建安装任务。
 - Python 状态、路径和错误必须从 Host 返回的稳定字段读取，不能从旧 snapshot 的物理路径推导 UI 路径。
-- 本地真实检测优先使用固定解释器的 `-m pip list --format=json`，pip 故障时同解释器 metadata fallback。所有默认层、预览、补缺和核验按包名存在判断，保留已安装版本。资源签名与下载哈希校验保持严格。
+- 本地真实检测优先使用固定解释器的 `-m pip list --format=json`，pip 故障时同解释器 metadata fallback。手动预览、补缺和 capability 安装按包名存在判断并保留已安装版本；automatic core/science reconciliation 同时比较签名版本，版本变化逐包替换并在导入失败时恢复同一目录中的旧文件。资源签名与下载哈希校验保持严格。
 - Python 插件的默认及恢复默认镜像均为中科大 `https://mirrors.ustc.edu.cn/pypi/simple`；用户明确保存的镜像优先。依赖清单记录生成时的解析源，不覆盖应用设置。安装不关闭 HTTPS 验证，也不修改全局 pip 配置。镜像验收包含连续完整 wheel 下载和大小/SHA-256 校验，不能以一次索引请求成功代替。
 - Python 插件拥有管理页面和 ABI 1 验签 worker；桌面只保留 IPC、worker 验真和生命周期协调。更新后旧 worker 完成原任务，新任务使用新 worker，持久任务记录 `ownerPid` 防止误恢复。
 - Python 解释器、pip、依赖层、导入诊断和 MCP 连接分别报告。完整 stdout/stderr 保存在工作区结果文件，模型可见输出有预算并支持分页；模型上下文错误不能改成 Python 失败或重执行已完成工具。
@@ -228,7 +227,7 @@ zws python status
 
 ### 8.0.9 模块化构建、增量打包与资源布局
 
-8.0.7 新增 `config/layout/resource-layout.json`、`package-layout.json` 和 `package-role-manifest.json`。8.0.9 继续使用这些布局，解析器先尝试 `resources/extensions/*`、`resources/cases`、`resources/branding` 与 `packages/{dsh,support,bundles}`，再回退旧路径；在所有生成器和消费者完成验证前，不要手工删除或复制旧目录。
+8.0.7 新增 `config/layout/resource-layout.json`、`package-layout.json` 和 `package-role-manifest.json`。8.3.0 继续使用资源布局，包目录统一为 `plugins/*`（包括 `research-store`、`integrity-runtime` 与 composition bundles）；`package-layout.json` 禁止旧包目录回退。资源兼容回退由 `resource-layout.json` 控制，不等于保留旧包目录合同。
 
 增量入口是 `pnpm build:changed`、`pnpm plugin:build <id>`、`pnpm plugin:pack <id>`、`pnpm package:build <id>`、`pnpm resource:build skill|mcp|python <id-or-layer>`。Windows Stable 打包先执行增量 `pnpm build`，检查全部组件指纹和输出哈希，用有效缓存装配新的 build ID，再验证 runtime stage 的新鲜度并生成安装器。`pnpm build:full` 显式强制重建；单个插件迭代只使用对应的 `plugin:*` 命令。每项收据包含实际依赖闭包指纹、DSH commit、输出哈希、build ID、耗时和重建原因。`pnpm artifacts:gc --dry-run` 默认只读；只有核对候选清单后才使用 `--apply`。
 

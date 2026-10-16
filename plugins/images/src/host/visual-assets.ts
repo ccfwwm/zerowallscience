@@ -66,9 +66,10 @@ export function assetsForPage(spec: PresentationSpecification, manifest: VisualM
   if (slide.assetIds) return slide.assetIds.map(id => {
     const asset = manifest.assets.find(item => item.assetId === id)
     if (!asset) throw new Error(`Page ${page}: unknown asset ${id}. Register it before compilation.`)
+    if (asset.role === 'template') throw new Error(`Page ${page}: template asset ${id} is reference-only; reconstruct editable slide elements instead.`)
     return asset
   })
-  return manifest.assets.filter(asset => (asset.slideNumber === page || asset.slideNumbers?.includes(page)) && !['style-candidate', 'content-seed'].includes(asset.role))
+  return manifest.assets.filter(asset => (asset.slideNumber === page || asset.slideNumbers?.includes(page)) && !['style-candidate', 'content-seed', 'template'].includes(asset.role))
 }
 export function pagesForAsset(spec: PresentationSpecification, manifest: VisualManifest, assetId: string): number[] {
   return spec.slides.flatMap((_, i) => assetsForPage(spec, manifest, i + 1).some(asset => asset.assetId === assetId) ? [i + 1] : [])

@@ -10,6 +10,7 @@ import {
 import { resolveProfiles } from '@deepseek-ai/dsh-llm-pi-ai/src/config.ts'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscience/plugin-account/types'
+import { isImageGenerationGroup } from '@zerowallscience/plugin-account'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 import { MediaJobLedger } from './media-jobs.js'
 import { createHash } from 'node:crypto'
@@ -183,7 +184,7 @@ export class AiCloudLlmController {
   }
 
   async update(snapshot: AiCloudAccountSnapshot): Promise<void> {
-    const chatModels = snapshot.models.filter(model => model.capability !== 'image-generation' && model.capability !== 'media' && model.groupName.trim() !== '图片音频视频分组')
+    const chatModels = snapshot.models.filter(model => model.capability !== 'image-generation' && model.capability !== 'media' && !isImageGenerationGroup(model.groupName))
     const next = snapshot.status === 'signedIn' ? managedProfiles(chatModels) : new Map<string, ResolvedPiAiProviderProfile>()
     this.profiles = next
     const routes = [...next.keys()]

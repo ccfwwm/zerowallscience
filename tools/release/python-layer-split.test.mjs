@@ -10,6 +10,7 @@ import {
   parseDirectRequirements,
   parseLockedPackages,
   partitionLock,
+  preserveFallbackWheelUrl,
   scienceManifestDocument,
   scienceManifestName,
   signDocument,
@@ -17,6 +18,16 @@ import {
 } from './python-layer-split.mjs'
 
 const hash = letter => letter.repeat(64)
+
+test('unchanged fallback wheels retain their published URL across manifest revisions', () => {
+  const old = { name: 'example', version: '1.0.0', filename: 'example-1.0.0-py3-none-any.whl', size: 42, sha256: hash('a'), sourceArchiveSha256: hash('b'), tags: ['py3-none-any'], url: 'https://example.test/wheels/r18/example-1.0.0-py3-none-any.whl' }
+  const next = { ...old, url: old.url.replace('/r18/', '/r19/') }
+  assert.equal(preserveFallbackWheelUrl(next, [old]).url, old.url)
+  for (const change of [{ sha256: hash('c') }, { size: 43 }, { sourceArchiveSha256: hash('c') }]) {
+    assert.equal(preserveFallbackWheelUrl({ ...next, ...change }, [old]).url, next.url)
+  }
+  assert.throws(() => preserveFallbackWheelUrl(next, [{ ...old, url: 'http://example.test/' + old.filename }]), /Invalid previous fallback wheel URL/u)
+})
 const LOCK = [
   '# synthetic lock',
   'anyio==4.15.1 --hash=sha256:' + hash('a'),

@@ -9,7 +9,7 @@ function buildPaths(repositoryRoot = root) {
   if (!/^[a-zA-Z0-9._-]+$/.test(buildId)) throw new Error('Invalid build ID')
   const target = process.env.ZEROWALL_TARGET || (process.platform === 'win32' ? 'windows-x64' : `macos-${process.arch}`)
   const source = join(repositoryRoot, 'resources')
-  const packageSource = join(repositoryRoot, 'packages')
+  const packageSource = join(repositoryRoot, 'plugins')
   const resource = (...parts) => {
     const logical = parts.join('/').replaceAll('\\', '/')
     const aliases = {
@@ -28,15 +28,20 @@ function buildPaths(repositoryRoot = root) {
     return { logical, preferred, legacy }
   }
   const packageRoots = {
-    dsh: join(packageSource, 'dsh'),
-    support: join(packageSource, 'support'),
-    bundles: join(packageSource, 'bundles'),
+    dsh: packageSource,
+    support: packageSource,
+    bundles: packageSource,
     legacy: packageSource,
   }
   return { root: repositoryRoot, version, buildId, target, artifacts, active, source, resource, packageRoots,
     stage: join(artifacts, 'stage', version, buildId), dev: join(artifacts, 'dev'),
     packages: resolve(process.env.ZEROWALL_PACKAGE_OUTPUT || join(artifacts, 'packages', version, target)),
     verification: join(artifacts, 'verification', version), release: join(artifacts, 'release', version),
+    // Plugin payloads are immutable component artifacts. Keep them outside
+    // the application-version directory so Desktop-only releases can point
+    // at the same bytes without copying or repacking every plugin.
+    pluginStore: join(artifacts, 'release', 'plugins'),
+    pluginSnapshotStore: join(artifacts, 'release', 'plugin-snapshots'),
     cache: join(artifacts, 'cache'), logs: join(artifacts, 'logs', version) }
 }
 module.exports = { buildPaths }

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { expect, it } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { importLocalAsset, registerLocalAsset } from '../src/host/local-assets.js'
 
 it('registers local bytes in place, deduplicates unchanged assets and preserves changed source revisions', async () => {

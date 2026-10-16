@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { ScienceWorkbenchEventStore } from '../src/host/workbench-events.js'
 import { scienceViewerAction, workbenchTabTitle } from '../src/host/workbench-router.js'
 

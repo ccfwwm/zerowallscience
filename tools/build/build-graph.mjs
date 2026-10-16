@@ -77,7 +77,7 @@ async function taskDefinition(id, taskArgs = []) {
   const packageManifest = await readFile(join(root, 'package.json'), 'utf8').then(JSON.parse)
   const dependencies = { node: process.version, pnpm: packageManifest.packageManager, platform: process.platform, architecture: process.arch, nodeAbi: process.versions.modules }
   if (kind === 'plugin-build' || kind === 'plugin-pack') {
-    if (!await exists(join(root, 'plugins', name, 'package.json'))) {
+    if (!await exists(join(root, 'plugins', name, 'tsdown.config.ts')) || !(await readFile(join(root, 'plugins', name, 'package.json'), 'utf8').then(JSON.parse, () => ({}))).name?.startsWith('@zerowallscience/plugin-')) {
       const source = await packageSource(name)
       const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
       if (!manifest.dsh?.bundle || !manifest.zerowall?.rollbackSupported) throw new Error(`Package is not an independently managed plugin: ${name}`)
@@ -85,7 +85,7 @@ async function taskDefinition(id, taskArgs = []) {
         id, inputPaths: [relative(root, source), 'tools/plugins/pack.mjs', 'tools/plugins/publish-package.mjs'], dshCommit,
         dependencyLockHash: await dependencyLockFingerprint(root, [relative(root, source).replaceAll('\\', '/')]),
         dependencies: { ...dependencies, package: manifest.name, version: manifest.version },
-        outputs: [kind === 'plugin-build' ? join(source, 'lib') : join(contract.release, 'plugins', manifest.name.split('/').at(-1), manifest.version)],
+        outputs: [kind === 'plugin-build' ? join(source, 'lib') : join(contract.pluginStore, manifest.name.split('/').at(-1), manifest.version)],
         lockName: `plugin-${name}`, run: async () => {
           await runTask(`package-build:${name}`)
           if (kind === 'plugin-pack') run([process.execPath, join(root, 'tools/plugins/pack.mjs'), '--plugin', name])
@@ -98,7 +98,7 @@ async function taskDefinition(id, taskArgs = []) {
     if (name === 'files') inputs.push('tools/plugins/viewer-style.mjs', 'tools/plugins/viewer-adapter.mjs')
     if (name === 'biogenie') inputs.push('resources/extensions/capabilities/biogenie', 'tools/integration/prepare-biogenie.mjs', 'tools/integration/generate-biogenie-catalog.py')
     if (name === 'python') inputs.push('tools/plugins/prepare-python-worker.mjs')
-    const output = kind === 'plugin-build' ? join(pluginPath, 'lib') : join(contract.release, 'plugins', manifest.name.split('/').at(-1), manifest.version)
+    const output = kind === 'plugin-build' ? join(pluginPath, 'lib') : join(contract.pluginStore, manifest.name.split('/').at(-1), manifest.version)
     const dependencyLockHash = await dependencyLockFingerprint(root, [`plugins/${name}`], ['tsdown', 'typescript', '@tsdown/css'])
     return { id, inputPaths: inputs, dshCommit, dependencyLockHash, dependencies: { ...dependencies, package: manifest.name, version: manifest.version, ...(name === 'python' ? { signingKeyId: process.env.ZEROWALL_RESOURCE_KEY_ID ?? 'local-development' } : {}) }, outputs: [output, ...(kind === 'plugin-build' ? [join(pluginPath, 'lib/index.js')] : [])], lockName: `plugin-${name}`, run: async () => {
       run([process.execPath, join(root, 'tools/plugins/generate-typert.mjs'), '--plugin', manifest.name])
@@ -164,7 +164,10 @@ async function taskDefinition(id, taskArgs = []) {
     const catalogReference = join(stageRoot, 'refs', 'python', layer, ...(capabilityId ? [capabilityId] : []), 'catalog.json')
     const inputs = ['resources/extensions/python', 'config/python/capability-layers.json', 'tools/release/python-layer-split.mjs', 'tools/release/build-python-dependency-manifest.mjs', 'config/catalogs/trusted-keys.json', 'package.json', 'tools/build/content-store.mjs']
     inputs.push('tools/release/build-resource-catalog-item.mjs', 'tools/release/resource-signing.mjs', 'tools/release/resource-catalog.mjs', 'config/deepseek-harness/upstream.json')
-    return { id: taskId, inputPaths: inputs, dshCommit: '', dependencies: { ...dependencies, layer, capabilityId, pythonRevision: process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? '3.12.10-r18', manifestSigningKeyId: process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4', catalogSigningKeyId: process.env.ZEROWALL_RESOURCE_KEY_ID ?? 'local-development' }, outputs: [output, receipt, reference, itemCatalog, catalogReference], lockName: `resource-python-${layer}-${capabilityId ?? 'all'}`, run: async () => {
+    const bundledPythonManifest = JSON.parse(await readFile(await resourceSource('python', 'dependency-manifest.json'), 'utf8'))
+    const pythonRevision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? bundledPythonManifest.revision
+    if (typeof pythonRevision !== 'string' || !/^[A-Za-z0-9_.-]{1,100}$/u.test(pythonRevision)) throw new Error(`Invalid Python dependency revision: ${pythonRevision ?? '(missing)'}`)
+    return { id: taskId, inputPaths: inputs, dshCommit: '', dependencies: { ...dependencies, layer, capabilityId, pythonRevision, manifestSigningKeyId: process.env.ZEROWALL_MCP_ENVIRONMENT_KEY_ID ?? 'stable-4', catalogSigningKeyId: process.env.ZEROWALL_RESOURCE_KEY_ID ?? 'local-development' }, outputs: [output, receipt, reference, itemCatalog, catalogReference], lockName: `resource-python-${layer}-${capabilityId ?? 'all'}`, run: async () => {
       run([process.execPath, join(root, 'tools/release/build-python-dependency-manifest.mjs'), '--layer', layer, ...(capabilityId ? [capabilityId] : []), '--output', output])
       await storeAndLink(output, { referencePath: reference })
       const manifest = JSON.parse(await readFile(output, 'utf8'))
@@ -175,7 +178,7 @@ async function taskDefinition(id, taskArgs = []) {
     } }
   }
   if (kind === 'package-build') {
-    const sourceRoot = name === 'research-store' ? join(root, 'store') : await packageSource(name)
+    const sourceRoot = name === 'research-store' ? join(root, 'plugins', 'research-store') : await packageSource(name)
     const manifest = await readFile(join(sourceRoot, 'package.json'), 'utf8').then(JSON.parse)
     const task = name === 'dsh-better-sidebar' ? 'build' : manifest.scripts?.bundle ? 'bundle' : manifest.scripts?.build ? 'build' : undefined
     if (!task && manifest.zerowall?.composition) {
@@ -214,7 +217,7 @@ async function taskDefinition(id, taskArgs = []) {
     await collect(join(root, 'deepseek-harness'))
     return { id, inputPaths: ['deepseek-harness', 'tools/dsh/build-zerowall.mjs', 'config/deepseek-harness/upstream.json'], dshCommit, dependencyLockHash: createHash('sha256').update(await readFile(join(root, 'deepseek-harness/pnpm-lock.yaml'))).digest('hex'), dependencies, outputs: [...outputDirectories, join(root, 'deepseek-harness/apps/cli/lib/bin.js'), join(root, 'deepseek-harness/apps/web/dist')], lockName: 'runtime', run: async () => run(scriptArgs(['dsh:build:zerowall', ...(command === 'development' ? ['--development'] : [])])) }
   }
-  if (id === 'runtime') return { id, inputPaths: ['plugins', 'packages', 'profiles', 'tools/dsh', 'tools/plugins', 'config/deepseek-harness', 'config/layout'], dshCommit, dependencies, outputs: [join(stageRoot, 'dsh/runtime-closure.json')], lockName: 'runtime', run: async () => {
+  if (id === 'runtime') return { id, inputPaths: ['plugins', 'profiles', 'tools/dsh', 'tools/plugins', 'config/deepseek-harness', 'config/layout'], dshCommit, dependencies, outputs: [join(stageRoot, 'dsh/runtime-closure.json')], lockName: 'runtime', run: async () => {
     run(scriptArgs(['profiles:generate']))
     run(scriptArgs(['dsh:runtime:closure']))
   } }
@@ -235,7 +238,7 @@ async function runTask(id, extra = []) {
   try {
   const prior = await readFile(file, 'utf8').then(JSON.parse, () => undefined)
   const pluginSource = id.startsWith('plugin-build:') ? join(root, 'plugins', id.split(':')[1]) : undefined
-  const publishedSource = pluginSource ? await exists(join(pluginSource, 'package.json')) ? pluginSource : await packageSource(id.split(':')[1]) : id.startsWith('package-build:') ? id.endsWith(':research-store') ? join(root, 'store') : await packageSource(id.split(':')[1]) : undefined
+  const publishedSource = pluginSource ? await exists(join(pluginSource, 'package.json')) ? pluginSource : await packageSource(id.split(':')[1]) : id.startsWith('package-build:') ? id.endsWith(':research-store') ? join(root, 'plugins', 'research-store') : await packageSource(id.split(':')[1]) : undefined
   if (publishedSource && !process.argv.includes('--force') && (!prior || process.argv.includes('--bootstrap-published')) && await restorePublishedOutput(publishedSource)) {
     const receipt = { schema: 2, task: id, status: 'success', ...input, outputs: definition.outputs, outputIntegrity: await outputIntegrity(definition.outputs), finishedAt: new Date().toISOString(), durationMs: Date.now() - startedMs, reason: 'verified published source and compiled output bootstrap', buildId: contract.buildId }
     await writeJson(file, receipt)
@@ -281,7 +284,11 @@ async function allComponents({ development = false } = {}) {
   for (const name of ['integrity-runtime', 'dsh-wechat', 'dsh-genui', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-ssh-ops', 'zotero-harvest', 'dsh-session-notification', 'dsh-archive-manager', 'oh-story-dsh']) await runTask('package-build:' + name)
   // Store is a workspace package with the same independent task contract.
   await runTask('package-build:research-store')
-  for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) if (entry.isDirectory() && entry.name !== 'wechat' && await exists(join(root, 'plugins', entry.name, 'package.json'))) await runTask('plugin-build:' + entry.name)
+  for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === 'wechat') continue
+    const manifest = await readFile(join(root, 'plugins', entry.name, 'package.json'), 'utf8').then(JSON.parse, () => undefined)
+    if (manifest?.name?.startsWith('@zerowallscience/plugin-')) await runTask('plugin-build:' + entry.name)
+  }
 }
 
 if (command === 'development') {

@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { contract, root } from '../build/paths.mjs'
 import { verifyOfflineProfile } from '../commands/offline-profile.mjs'
+import { commandRegistrationFingerprint, verifyInstallerTestContract } from './installer-test-contract.mjs'
 
 const key = contract.version.replaceAll('.', '')
 const testRoot = join(contract.verification, `installer-test-${key}`)
@@ -14,6 +15,7 @@ const testRoot = join(contract.verification, `installer-test-${key}`)
 // short enough for the Office runtime's nested physical resources.
 const directory = join(await mkdtemp(join(tmpdir(), `zws-${key}-`)), '科研应用 中文目录')
 const installer = join(testRoot, `zerowall-installer-test-${contract.version}.exe`)
+await verifyInstallerTestContract(installer, contract.version)
 await mkdir(directory, { recursive: true })
 // Reproduce the installed 8.1.0 carrier in an isolated installation, including
 // obsolete physical assets. This is a read-only copy of the selected fixture.
@@ -34,13 +36,7 @@ await writeFile(sentinel, 'preserve researcher data')
 // NSIS GetOptions expects the custom performance option without outer quotes.
 // Keep this optional trace in the workspace, apart from the Unicode /D target.
 const performanceFile = join(testRoot, 'installer-performance.log')
-const commandSnapshot = join(testRoot, 'command-registration-before.json')
-function commandState(operation) {
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', join(import.meta.dirname, 'installer-command-state.ps1'), '-Operation', operation, '-Snapshot', commandSnapshot, '-Directory', join(directory, 'resources/commands')], { windowsHide: true, encoding: 'utf8' })
-  if (result.error) throw result.error
-  if (result.status !== 0) throw new Error(`Isolated command registration ${operation} failed: ${result.stderr || result.stdout}`)
-}
-commandState('capture')
+const commandRegistrationBefore = await commandRegistrationFingerprint()
 let code
 try { code = await new Promise((accept, reject) => {
   const child = spawn(installer, ['/S', '/currentuser', '/no-launch', `/ZW_PERF=${performanceFile}`, `/D=${directory}`], { windowsHide: true, stdio: 'ignore' })
@@ -51,7 +47,9 @@ try { code = await new Promise((accept, reject) => {
   }, 180000)
   child.once('error', error => { clearTimeout(timer); reject(error) })
   child.once('exit', code => { clearTimeout(timer); accept(code) })
-}) } finally { commandState('restore') }
+}) } finally {
+  assert.equal(await commandRegistrationFingerprint(), commandRegistrationBefore, 'Isolated installer changed the formal command PATH owner')
+}
 assert.equal(code, 0, 'Isolated NSIS installation must succeed')
 const verifiedOffline = await verifyOfflineProfile(offline, keys, target)
 assert.equal(await readFile(sentinel, 'utf8'), 'preserve researcher data')
@@ -72,7 +70,7 @@ await writeFile(join(testRoot, 'installation-receipt.json'), JSON.stringify({
   appId: `com.zerowall.science.installer-test-${key}`, installationScope: 'current-user',
   stableAsarSha256, installedAsarSha256, identicalPayload: true, physicalOfficeResources: Object.keys(nativeManifest.files).length, checkedAt: new Date().toISOString(),
   rejectedOldCarrier, signedOfflineVerified: true, payloadFiles: verifiedOffline.receipt.payloadFiles.length, userSentinelPreserved: true,
-  commandRegistrationRestored: true,
+  commandRegistrationUnchanged: true,
   installerExitCode: code, installerPhases: await readFile(performanceFile, 'utf8').catch(() => undefined),
   limitation: 'Production registration and machine-wide UAC were not exercised.'
 }, null, 2) + '\n')

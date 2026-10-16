@@ -30,7 +30,7 @@ async function workspaceDependencyManifest(source, name) {
   if (name.startsWith('@zerowallscience/plugin-')) {
     candidates.push(join(root, 'plugins', name.slice('@zerowallscience/plugin-'.length), 'package.json'))
   } else if (name === '@zerowallscience/research-store') {
-    candidates.push(join(root, 'store', 'package.json'))
+    candidates.push(join(root, 'plugins/research-store', 'package.json'))
   } else if (name === '@zerowallscience/integrity-runtime') {
     candidates.push(join(await packageSource('integrity-runtime'), 'package.json'))
   } else if (name.startsWith('@zerowallscience/')) {

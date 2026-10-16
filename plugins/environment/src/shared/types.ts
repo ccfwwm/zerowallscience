@@ -12,7 +12,7 @@ export interface ImageModelSelection {
   aspectRatio?: string
 }
 
-export type ImageGenerationQuality = 'auto' | 'low' | 'medium' | 'high'
+export type ImageGenerationQuality = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export interface EnvironmentSettingsValue {
   retiredVariablesRemoved?: boolean

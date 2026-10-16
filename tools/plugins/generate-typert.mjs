@@ -5,15 +5,9 @@ const { WorkspaceTypertGenerator } = await import('../../deepseek-harness/packag
 
 const root = resolve(import.meta.dirname, '../..')
 const pluginsRoot = resolve(root, 'plugins')
-// Workspace packages are grouped under the 8.0.7 layout. Keep the scan
-// explicit so nested DSH/support/bundle packages participate in generation
-// without treating arbitrary artifact directories as packages.
-const packageRoots = [
-  pluginsRoot,
-  resolve(root, 'packages/dsh'),
-  resolve(root, 'packages/support'),
-  resolve(root, 'packages/bundles'),
-]
+// Plugin, integration, support, and composition sources share one flat root.
+// Scan it once so each remote contract is generated once per invocation.
+const packageRoots = [pluginsRoot]
 const desktopManifest = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
 const baseManifest = JSON.parse(await readFile(resolve(pluginsRoot, 'base/package.json'), 'utf8'))
 const runtimePackages = new Set([
@@ -57,7 +51,7 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   let artifacts
   try {
     artifacts = new WorkspaceTypertGenerator(root, {
-      packageRoots: ['deepseek-harness/packages', 'plugins', 'packages/dsh', 'store'],
+      packageRoots: ['deepseek-harness/packages', 'plugins', 'plugins/research-store'],
     }).generate([manifest.name], ['host'])
   } catch (error) {
     // rc.2 validates the manifest before returning the artifact. A few legacy

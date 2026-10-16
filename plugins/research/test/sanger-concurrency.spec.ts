@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { SangerService } from '../src/host/sanger.js'
 import { reviewBidirectionalSanger } from '../src/shared/sanger.js'
 const exportGate=vi.hoisted(()=>({block:false,entered:undefined as (()=>void)|undefined,release:undefined as Promise<void>|undefined}))

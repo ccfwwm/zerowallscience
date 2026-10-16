@@ -12,17 +12,15 @@ import {
 import type {
   CreateMcpServerInput,
   McpServerRecord,
-  ProjectPreferencesRecord,
   UpdateMcpServerInput,
   UpdateProjectInput,
 } from '@zerowallscience/research-store/types'
-import type { JsonObject } from '@zerowallscience/research-store/types'
 import type {
   CreateProjectRequest,
   ImportProjectRequest,
   PlatformHealth,
   ProjectBundleV1,
-  ProjectDto,
+  ProjectDto, ProjectsJsonObject, ProjectsPreferencesRecord, ProjectsProjectBundle,
 } from '../shared/types.js'
 import type {} from 'zod'
 
@@ -93,25 +91,27 @@ export class ZeroWallProjectsService extends TypertRemoteService {
   }
 
   @Remote('getSettings')
-  getSettings(projectId: string): ProjectPreferencesRecord {
-    return this[RESEARCH_STORE].getProjectPreferences(projectId)
+  getSettings(projectId: string): ProjectsPreferencesRecord {
+    const value = this[RESEARCH_STORE].getProjectPreferences(projectId)
+    return { ...value, settings: value.settings as ProjectsJsonObject }
   }
 
   @Remote('updateSettings')
-  updateSettings(input: { projectId: string; settings: JsonObject }): ProjectPreferencesRecord {
-    return this[RESEARCH_STORE].updateProjectSettings(input.projectId, input.settings)
+  updateSettings(input: { projectId: string; settings: ProjectsJsonObject }): ProjectsPreferencesRecord {
+    const value = this[RESEARCH_STORE].updateProjectSettings(input.projectId, input.settings)
+    return { ...value, settings: value.settings as ProjectsJsonObject }
   }
 
   @Remote('exportBundle')
-  async exportBundle(id: string): Promise<ProjectBundleV1> {
+  async exportBundle(id: string): Promise<ProjectsProjectBundle> {
     const bundle = this[RESEARCH_STORE].exportProjectBundle(id)
     const archives = await collectProjectSessionArchives(this.sessionPersistence(), bundle.project.rootPath)
-    return this[RESEARCH_STORE].exportProjectBundle(id, archives)
+    return this[RESEARCH_STORE].exportProjectBundle(id, archives) as unknown as ProjectsProjectBundle
   }
 
   @Remote('importBundle')
   async importBundle(input: ImportProjectRequest): Promise<ProjectDto> {
-    const bundle = parseProjectBundle(input.bundle)
+    const bundle = parseProjectBundle(input.bundle as unknown as ProjectBundleV1)
     const sessions = this.ctx.get('sessions')
     const restored = bundle.sessionArchives.length === 0
       ? []

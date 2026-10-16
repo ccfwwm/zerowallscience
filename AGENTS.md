@@ -12,7 +12,7 @@ This file is automatically loaded when Codex works in this repository. It is the
 
 ## Repository contracts
 
-- Electron desktop core is in `desktop/`; ZeroWall domain features are independent packages under `plugins/`; reusable integrations and support packages are under `packages/`; Research Store is under `store/`; the pinned DSH fork is the `deepseek-harness/` submodule.
+- Electron desktop core is in `desktop/`; ZeroWall domain features are independent packages under `plugins/`; DSH integrations, composition bundles and support packages are also flat under `plugins/`; Research Store is under `plugins/research-store/`; the pinned DSH fork is the `deepseek-harness/` submodule.
 - Formal build output belongs under `artifacts/`: `cache/`, `dev/`, `stage/<version>/<build-id>/`, `packages/<version>/<target>/`, `verification/<version>/`, `release/<version>/`, and `logs/<version>/`. Do not make `desktop/dist/`, `desktop/out/`, `.build/`, plugin `lib/`, or source directories the formal output location.
 - `tools/build/paths.cjs` and `tools/build/paths.mjs` are the artifact path contract. Keep `node_modules`, pnpm store, user data, ignored credentials, signing keys, and existing release caches in place.
 - The DSH commit, tag, repository, and branch in `config/deepseek-harness/upstream.json` must match the submodule and pass `pnpm dsh:verify`. Do not upgrade DSH for a ZeroWall-only feature; place domain behavior in a plugin.
@@ -50,7 +50,7 @@ When packaging is requested, use a new build ID and verify the installer, ASAR/r
 
 ## Resource updates
 
-- Startup and daily catalog checks are read-only. They may verify signatures and display available versions, but must not download, install, restart, or remove anything without an explicit user action.
+- Plugin, Skills and MCP startup and daily catalog checks are read-only. Python is the explicit 8.3.0 exception: after the desktop is usable, signed bootstrap/recovery and core/science reconciliation run in the durable background queue at the fixed root; resume only eligible automatic tasks. They may verify signatures and display available versions, but must not download, install, restart, or remove anything without an explicit user action.
 - Plugin updates use candidate profiles, health checks, atomic activation, transaction journals, and per-plugin rollback. Skills may hot-refresh. MCP configuration may refresh and MCP servers may be started, stopped, or restarted. Python always executes from the fixed installation root (or an explicitly selected fixed root); verified file transactions and rollback restore that same path. Content revisions invalidate consumers; legacy slots are never activated or migrated.
 - Keep user-imported Skills, MCP configuration, account/model settings, projects, environment-variable references, third-party plugins, disabled selections, and pinned versions intact during desktop upgrades.
 - Never reuse a published resource ID/version for different bytes. If Qiniu reports an immutable-object size or SHA-256 conflict, stop, investigate, increment the resource version, regenerate the signed catalog, and re-test. Never bypass the signature or overwrite guard.

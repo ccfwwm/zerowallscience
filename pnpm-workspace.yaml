@@ -1,12 +1,7 @@
 packages:
   - desktop
-  - store
   - plugins/*
   - '!plugins/wechat'
-  - packages/*
-  - packages/dsh/*
-  - packages/support/*
-  - packages/bundles/*
   - deepseek-harness
   - deepseek-harness/vendor/*
   - deepseek-harness/packages/*/*
@@ -119,4 +114,4 @@ packageExtensions:
 
 patchedDependencies:
   '@earendil-works/pi-ai@0.87.1': deepseek-harness/patches/@earendil-works__pi-ai@0.87.1.patch
-  dsh-dream-skin@10.9.3: patches/dsh-dream-skin@10.9.3.patch
+  dsh-dream-skin@10.9.3: plugins/dsh-dream-skin/patches/dsh-dream-skin@10.9.3.patch

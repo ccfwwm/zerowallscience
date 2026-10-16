@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "applicationVersion": "8.1.2",
+  "applicationVersion": "8.3.0",
   "capabilities": [
     "zerowall-image-dup"
   ]

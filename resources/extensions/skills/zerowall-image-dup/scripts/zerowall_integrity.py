@@ -122,7 +122,7 @@ def worker_path():
     if configured:
         return Path(configured)
     for parent in ROOT.parents:
-        candidate = parent / 'packages/support/integrity-runtime/hash-worker.mjs'
+        candidate = parent / 'plugins/integrity-runtime/hash-worker.mjs'
         if candidate.is_file():
             return candidate
     raise RuntimeError('ZeroWall image worker is unavailable; repair the application runtime.')

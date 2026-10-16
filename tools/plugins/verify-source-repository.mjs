@@ -1,9 +1,24 @@
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, lstat } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { fileDigest, verifyCatalog, verifySignedDocument } from '../release/resource-catalog.mjs'
 const root = resolve(import.meta.dirname, '../..')
-const keys = JSON.parse(await readFile(join(root, 'catalogs/trusted-keys.json'), 'utf8'))
 const provenance = JSON.parse(await readFile(join(root, 'source-provenance.json'), 'utf8'))
+if (provenance.sourceOnly) {
+  const { isExportableSource } = await import('./source-files.mjs')
+  let checked = 0
+  for (const entry of await readdir(join(root, 'plugins'), { recursive: true, withFileTypes: true })) {
+    const path = join(entry.parentPath, entry.name)
+    if ((await lstat(path)).isSymbolicLink()) throw new Error('Source export contains a symlink')
+    if (!entry.isFile()) continue
+    const relative = path.slice(root.length + 1).replaceAll('\\', '/')
+    if (!isExportableSource(relative)) throw new Error('Private/generated export path: ' + relative)
+    checked++
+  }
+  for (const path of ['plugins/research-store/package.json', 'plugins/mcp/src/scimaster/zerowall-mcp-launcher.cjs']) await readFile(join(root, path))
+  console.log(`Current source snapshot verified: ${checked} plugin files; publication not asserted`)
+  process.exit(0)
+}
+const keys = JSON.parse(await readFile(join(root, 'catalogs/trusted-keys.json'), 'utf8'))
 let resources = 0, plugins = 0, optionalPlugins = 0
 const catalogs = new Map()
 for (const kind of ['plugin', 'skill', 'mcp', 'python']) {
@@ -13,9 +28,11 @@ for (const kind of ['plugin', 'skill', 'mcp', 'python']) {
   for (const item of catalog.resources) { verifySignedDocument(item, keys); resources++ }
 }
 for (const name of await readdir(join(root, 'plugins'))) {
+  if (!(await lstat(join(root, 'plugins', name))).isDirectory()) continue
   const manifest = JSON.parse(await readFile(join(root, 'plugins', name, 'package.json'), 'utf8'))
   if (name === 'wechat') continue // Retained historical facade; dsh-wechat is the active package.
-  if (!manifest.version || !manifest.dsh?.bundle || !manifest.zerowall?.dsh) throw new Error('Missing independent plugin contract: ' + name)
+  if (!manifest.dsh?.bundle || !manifest.zerowall?.dsh) continue // Support/store/composition packages are not independently published plugins.
+  if (!manifest.version) throw new Error('Missing independent plugin contract: ' + name)
   const released = provenance.packages.find(item => item.id === manifest.name)
   if (!released || released.version !== manifest.version) throw new Error('Source and published plugin version differ: ' + name)
   plugins++

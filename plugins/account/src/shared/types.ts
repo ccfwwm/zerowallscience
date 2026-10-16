@@ -1,6 +1,25 @@
 export type AiCloudAccountStatus = 'signedOut' | 'signedIn' | 'authExpired'
 export type AiCloudBalanceFreshness = 'current' | 'stale'
 
+/** Managed image groups are named by the account, not a fixed group id/name. */
+export function isImageGenerationGroup(name: string): boolean { return /生图|图片/u.test(name.trim()) }
+
+/** Quality support belongs to a route, not just a model name. */
+export function imageQualityChoices(modelId: string, declared: string[], groupName: string): string[] {
+  return declared.length || !/^gpt-image-2\.5(?:-|$)/u.test(modelId) || groupName.trim() !== '生图分组-gpt逆向'
+    ? declared
+    : ['auto', 'low', 'medium', 'high', 'xhigh', 'max']
+}
+
+export function mediaModelIdentity(model: Pick<AiCloudMediaModel, 'providerId' | 'groupId' | 'modelId' | 'profileId'>): string {
+  return JSON.stringify([model.providerId, model.groupId, model.modelId, model.profileId])
+}
+
+/** Repeated catalog rows must not create repeated choices; distinct profiles remain distinct. */
+export function uniqueMediaModels<T extends AiCloudMediaModel>(models: T[]): T[] {
+  return [...new Map(models.map(model => [mediaModelIdentity(model), model])).values()]
+}
+
 export interface AiCloudPublicConfig {
   registrationEnabled: boolean
   emailVerifyEnabled: boolean
@@ -19,6 +38,8 @@ export interface AiCloudManagedModel {
   baseUrl: string
   /** Capability exposed by the managed group. Image routes never enter chat. */
   capability?: 'chat' | 'image-generation' | 'media'
+  /** Explicit image quality choices for this group/model route. Empty means omit quality. */
+  qualities?: string[]
   stale?: boolean
   contextWindow?: number
   maxOutputTokens?: number

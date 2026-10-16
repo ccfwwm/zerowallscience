@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 import type { AiCloudAccountSnapshot, AiCloudMediaModel } from '@zerowallscience/plugin-account/types'
+import { isImageGenerationGroup, uniqueMediaModels } from '@zerowallscience/plugin-account'
 import type { MediaArtifact, MediaCatalog, MediaRequest, MediaSelection, MediaTask, ZeroWallMedia } from '../shared/media.js'
 import { artifactFormat } from './artifact-format.js'
 import { externalArtifact } from './artifact-network.js'
@@ -50,14 +51,15 @@ export class AiCloudMediaService implements ZeroWallMedia {
     const snapshot = await (refresh ? this.account.discoverModels() : this.account.current())
     if (snapshot.status !== 'signedIn') return { models: [], status: 'signedOut', error: '请登录 AI 云平台。' }
     const status = snapshot.mediaSync?.status ?? 'unavailable'
-    return { models: (snapshot.mediaModels ?? []).filter(m=>m.groupName.trim()==='图片音频视频分组'), status, ...(status === 'succeeded' ? {} : { error: '媒体能力目录不可用，请刷新账号目录。' }) }
+    return { models: uniqueMediaModels((snapshot.mediaModels ?? []).filter(m => isImageGenerationGroup(m.groupName))), status, ...(status === 'succeeded' ? {} : { error: '媒体能力目录不可用，请刷新账号目录。' }) }
   }
 
   private async resolve(input: MediaSelection): Promise<{ model: AiCloudMediaModel; key: string; snapshot: AiCloudAccountSnapshot; base: string }> {
     const snapshot = await this.account.current()
     if (snapshot.status !== 'signedIn') throw new Error('MEDIA_SIGN_IN_REQUIRED')
-    const model = snapshot.mediaModels?.find(m => m.groupId === input.groupId && m.modelId === input.modelId && m.profileId === input.profileId && m.operations.includes(input.operation))
-    if (!model || model.groupName.trim() !== '图片音频视频分组' || model.stale || !snapshot.mediaSync?.groups.some(g => g.groupId === input.groupId && g.status === 'succeeded')) throw new Error('MEDIA_SELECTION_INVALID: 请重新选择当前目标分组中的模型。')
+    const candidates = uniqueMediaModels(snapshot.mediaModels ?? []).filter(m => m.groupId === input.groupId && m.modelId === input.modelId && m.profileId === input.profileId && m.operations.includes(input.operation))
+    const model = candidates.length === 1 ? candidates[0] : undefined
+    if (!model || !isImageGenerationGroup(model.groupName) || model.stale || !snapshot.mediaSync?.groups.some(g => g.groupId === input.groupId && g.status === 'succeeded')) throw new Error('MEDIA_SELECTION_INVALID: 请重新选择当前目标分组中的模型。')
     const key = await this.secrets.get(`zerowall.ai-cloud.group.${model.groupId}`)
     if (!key?.trim()) throw new Error('MEDIA_CREDENTIAL_UNAVAILABLE: 请刷新账号。')
     return { model, key: key.trim(), snapshot, base: gateway(model.baseUrl) }
@@ -69,7 +71,10 @@ export class AiCloudMediaService implements ZeroWallMedia {
     const p = input.parameters ?? {}
     for (const [key, allowed] of [['size', model.sizes], ['quality', model.qualities], ['resolution', model.resolutions], ['aspect_ratio', model.aspectRatios]] as const) {
       const selected = p[key]
-      if (selected !== undefined && (allowed.length === 0 || !allowed.includes(selected))) throw new Error(`MEDIA_UNSUPPORTED_PARAMETER: ${key}`)
+      // Some image routes accept optional quality without listing its values.
+      // Preserve the explicit request and let the provider validate it.
+      if (key === 'quality' && allowed.length === 0) continue
+      if (selected !== undefined && (allowed.length === 0 || !allowed.includes(selected))) throw new Error(`MEDIA_UNSUPPORTED_PARAMETER: ${key}; 当前所选模型配置不支持此值，请在环境配置中确认参数。`)
     }
     if (p.duration !== undefined) {
       const d = model.duration

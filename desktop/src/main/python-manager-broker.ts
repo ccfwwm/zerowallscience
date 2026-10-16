@@ -123,6 +123,7 @@ export class PythonUpdaterService {
     })
   }
   environmentRequest(request: PythonEnvironmentRequest): Promise<Record<string, unknown>> { return this.rpc('api', 'request', [request], request.taskId) }
+  resumeAutomaticSyncTask(taskId: string): Promise<Record<string, unknown> | undefined> { return this.rpc('api', 'resumeAutomaticSyncTask', [taskId], taskId) }
   pythonInfo(query = ''): Promise<McpPythonInfo> { return this.rpc('manager', 'pythonInfo', [query]) }
   pythonCoreInfo(): Promise<McpPythonInfo> { return this.rpc('manager', 'pythonCoreInfo') }
   pythonPackages(names: string[]): Promise<McpPythonInfo> { return this.rpc('manager', 'pythonPackages', [names]) }

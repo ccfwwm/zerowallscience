@@ -54,6 +54,16 @@ describe('signed dependency sync', () => {
       expect(await service.verifyInstalled(layer)).toMatchObject({ installedPackageCount: 1, pendingPackageCount: 0, changes: [] })
     }
   })
+  it('flags an installed old version during automatic post-install verification', async () => {
+    const { service, updater, manifest } = await setup()
+    await service.checkManifest()
+    updater.pythonInfo.mockResolvedValue({ ready: true, version: '3.12.10', packages: [{ name: 'NumPy', version: '1.26.4' }] } as never)
+    expect(await service.verifyInstalled('science', undefined, undefined, [], { includeVersionUpdates: true })).toMatchObject({
+      installedPackageCount: 0,
+      pendingPackageCount: 1,
+      changes: [{ name: 'numpy', from: '1.26.4', to: '2.3.0' }],
+    })
+  })
   it('local lists never fetch, install or persist catalog/status files', async () => {
     const { root, manifest, updater, key, apply } = await setup()
     const bundledManifestPath = join(root, 'bundled.json')
@@ -106,6 +116,15 @@ describe('signed dependency sync', () => {
     const { service, apply, root } = await setup()
     await service.checkManifest(); const preview = await service.previewSync()
     await writeFile(join(root, 'plans', `${preview.planId}.json`), JSON.stringify({ ...preview, wheels: [{ ...preview.wheels[0], version: '2.4.0' }] }))
+    await expect(service.applySync(preview.planId, 'r1', true)).rejects.toThrow(/已改变/)
+    expect(apply).not.toHaveBeenCalled()
+  })
+  it('rejects a plan whose overwrite policy changed after preview', async () => {
+    const { service, apply, root } = await setup()
+    await service.checkManifest(); const preview = await service.previewSync()
+    const planPath = join(root, 'plans', `${preview.planId}.json`)
+    const stored = JSON.parse(await readFile(planPath, 'utf8')) as Record<string, unknown>
+    await writeFile(planPath, JSON.stringify({ ...stored, replaceInstalled: true }))
     await expect(service.applySync(preview.planId, 'r1', true)).rejects.toThrow(/已改变/)
     expect(apply).not.toHaveBeenCalled()
   })

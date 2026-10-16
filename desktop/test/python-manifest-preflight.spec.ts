@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { prepareManifestPackagePlan } from '../src/main/python-packages.js'
+import { applyPackagePlanFiles, prepareManifestPackagePlan } from '../src/main/python-packages.js'
 
 const spawned = vi.hoisted(() => vi.fn(() => { throw new Error('Preview must not invoke pip or download packages') }))
 vi.mock('node:child_process', async original => ({ ...await original<typeof import('node:child_process')>(), spawn: spawned }))
@@ -37,4 +37,21 @@ it('queues only missing names without network preflight, preserving order and ze
   expect(plan.changes.map(change => change.name)).toEqual(['brainglobe', 'docopt', 'numpy'])
   expect(progress.at(-1)).toMatchObject({ completedPackages: 0, totalPackages: 3, progress: 0 })
   expect(JSON.parse(await readFile(join(root, 'plans', plan.planId + '.json'), 'utf8')).wheels).toEqual(plan.wheels)
+})
+
+it('reaches the total after a preparation failure and a skipped wheel without Python or pip', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-package-progress-')); roots.push(root)
+  const events: Array<{ completed: number; total: number; name?: string; stage?: string }> = []
+  const outcome = await applyPackagePlanFiles(root, {
+    root, executable: join(root, 'missing-python.exe'), sitePackages: join(root, 'site'),
+    manifest: { python: { relativeExecutable: 'missing-python.exe', relativeSitePackages: 'site' } } as never,
+  }, root, {
+    planId: 'offline-progress', snapshotId: root, requested: ['broken-source==1.0.0', 'wheel-failure==1.0.0'],
+    changes: [{ name: 'broken-source', to: '1.0.0' }, { name: 'wheel-failure', to: '1.0.0' }],
+    preparationFailures: [{ name: 'broken-source', version: '1.0.0', message: '签名清单中的源码文件名或 SHA-256 缺失。' }],
+    wheels: [{ name: 'wheel-failure', version: '1.0.0', deferredResolution: true }],
+  }, event => events.push(event))
+
+  expect(outcome).toMatchObject({ installed: 0, skipped: [{ name: 'broken-source' }, { name: 'wheel-failure' }] })
+  expect(events.filter(event => event.stage?.startsWith('跳过') || event.stage?.startsWith('安装失败')).map(event => [event.name, event.completed, event.total])).toEqual([['broken-source', 1, 2], ['wheel-failure', 2, 2]])
 })

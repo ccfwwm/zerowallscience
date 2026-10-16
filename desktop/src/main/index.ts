@@ -26,6 +26,7 @@ import { findDesktopWorkspaceRoot, resolveBundledSkillsPath, resolveDesktopIconP
 import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-manager-broker.js'
 import { createPythonTerminalLaunch, managedPythonTerminalPaths } from './python-terminal.js'
+import { ensurePythonCoreAtStartup } from './python-startup.js'
 
 import type { PythonEnvironmentApi, PythonEnvironmentRequest } from './python-environment-api.js'
 import { resolvePythonLocation } from './python-location.js'
@@ -229,7 +230,7 @@ function developmentStagePath(...parts: string[]): string {
 }
 
 function attachDesktopBridge(child: HarnessChildProcess): () => void {
-  const onMessage = (message: unknown) => {
+  const onMessage = async (message: unknown) => {
     if (!message || typeof message !== 'object') return
     const value = message as { type?: string; requestId?: string; op?: string; args?: readonly string[]; invokingDir?: string }
     if (value.type === 'zerowall:desktop:restart-runtime') {
@@ -248,12 +249,12 @@ function attachDesktopBridge(child: HarnessChildProcess): () => void {
     if (value.op !== 'runPlugin' && value.op !== 'run') return
     const args = Array.isArray(value.args) ? [...value.args] : []
     const invokingDir = value.invokingDir ?? join(app.getPath('userData'), 'harness')
-    const command = nodeExecutablePath()
-    const pnpmEntry = app.isPackaged ? join(process.resourcesPath, 'commands/pnpm/bin/pnpm.cjs') : process.env.npm_execpath
-    if (!pnpmEntry) throw new Error('Bundled pnpm is unavailable')
     let operation: ReturnType<typeof spawn>
     try {
-      operation = spawn(command, ['--expose-internals', pnpmEntry, ...args], { cwd: invokingDir, env: { ...process.env, ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}) }, windowsHide: true, shell: false })
+      const commandRoot = app.isPackaged ? join(process.resourcesPath, 'commands') : join(findWorkspaceRoot(), 'tools/commands')
+      const { packageRuntime } = await import(pathToFileURL(join(commandRoot, 'package-runtime.mjs')).href)
+      const manager = packageRuntime({ commandRoot, executable: nodeExecutablePath(), runAsNode: app.isPackaged || nodeExecutablePath() === process.execPath })
+      operation = spawn(manager.command, [...manager.args, ...args], { cwd: invokingDir, env: { ...process.env, ...manager.env }, windowsHide: true, shell: false })
     } catch (error) {
       child.send({ type: 'zerowall:desktop:result', requestId: value.requestId, result: { ok: false, error: error instanceof Error ? error.message : String(error) } })
       return
@@ -729,6 +730,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   }
   const pythonApi = {
     request: (request: PythonEnvironmentRequest) => mcpEnvironment.environmentRequest(request),
+    resumeAutomaticSyncTask: (taskId: string) => mcpEnvironment.resumeAutomaticSyncTask(taskId),
     persistRuntimeSummary: (info: McpPythonInfo) => mcpEnvironment.rpc<void>('api', 'persistRuntimeSummary', [info]),
     shutdown: () => mcpEnvironment.shutdown(),
   }
@@ -743,6 +745,21 @@ if (ownsInstance) app.whenReady().then(async () => {
   // managed ZeroWall plugins belong in the user profile; loading both layers
   // would register Univer/Sidebar services twice after a 7.5 migration.
   await initializeProfile(dshHome, defaults, bundledPlugins)
+  // An explicitly isolated verification/user-data root must never discover the
+  // machine's real legacy CLI profile. Existing normal installs import only
+  // selected third-party bundles and retain the official DSH admission path.
+  if (!process.env.ZEROWALL_USER_DATA_DIR?.trim() && !process.env.DSH_HOME?.trim()) {
+    try {
+      const { importLegacyCliPlugins } = await import(pathToFileURL(join(commandRoot, 'legacy-cli-profile.mjs')).href)
+      const legacy = await importLegacyCliPlugins(dshHome, { installAnchor: dshEntryPath() })
+      if (legacy.imported.length) console.info(`Imported ${legacy.imported.length} selected legacy CLI plugins`)
+    } catch (error) {
+      // Legacy migration is opportunistic. A malformed or partially removed
+      // CLI profile must not prevent the already initialized desktop profile
+      // from starting; the next explicit plugin operation can retry it.
+      console.warn('Legacy CLI plugin migration skipped:', error instanceof Error ? error.message : String(error))
+    }
+  }
   const profileDoctor = () => inspectProfile(dshHome, bundledPlugins, { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version })
   const callHost = (operation: string, args: unknown[]): Promise<unknown> => {
     if (!managementChild?.connected) return Promise.reject(new Error('Host is not ready'))
@@ -997,7 +1014,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (request.operation === 'resource.rollback') return request.args[0] === 'plugin' ? resources.rollbackPlugin(String(request.args[1])) : resources.rollback()
     if (request.operation === 'resource.mcp.rollback') return resources.rollbackMcp(request.args[0])
     if (request.operation === 'resource.import') return resources.resource(...request.args)
-    if (request.operation === 'resource.update') return resourceAction(String(request.args[0]) as ResourceKind, 'update', request.args[1] === undefined ? undefined : String(request.args[1]))
+    if (request.operation === 'resource.update') return resources.update(String(request.args[0]) as ResourceKind, request.args[1] === undefined ? undefined : String(request.args[1]))
     if (request.operation.startsWith('resource.plugin.')) {
       const action = request.operation.slice('resource.plugin.'.length)
       const id = request.args[0] === undefined ? undefined : String(request.args[0])
@@ -1345,6 +1362,27 @@ if (ownsInstance) app.whenReady().then(async () => {
   if (repair.blocked?.length) notifications.show({ title: '默认插件需要修复', body: '固定版本缺失。请在扩展中心导入对应版本或明确解除固定；用户配置已保留。', tag: 'profile-repair' })
   await launch()
   await navigation
+  // Python bootstrap and signed core/science dependency reconciliation are
+  // durable background work. Start after the workbench is navigable so a
+  // slow mirror, wheel build, or retry never blocks desktop startup.
+  // Python bootstrap and signed dependency reconciliation are durable
+  // background work. Start only after navigation succeeds so a slow mirror,
+  // wheel build, or retry never blocks desktop startup. A shared promise
+  // prevents the periodic check from creating duplicate worker tasks.
+  let pythonBackgroundTask: Promise<unknown> | undefined
+  const runPythonBackgroundReconcile = (): void => {
+    if (pythonBackgroundTask) return
+    pythonBackgroundTask = ensurePythonCoreAtStartup(mcpEnvironment, pythonApi, () => randomUUID()).then(result => {
+      if (result.state === 'sync-failed' || result.state === 'runtime-unavailable' || result.state === 'sync-partial') {
+        const detail = result.state === 'sync-failed' ? result.error : result.state === 'runtime-unavailable' ? result.status.message : 'Science dependency sync completed partially; failed packages remain available for retry.'
+        console.warn('Python automatic dependency sync did not complete:', detail ?? result.state)
+      }
+    }).catch(error => console.warn('Python automatic dependency sync failed:', error instanceof Error ? error.message : String(error))).finally(() => { pythonBackgroundTask = undefined })
+  }
+  const pythonBackgroundTimer = setTimeout(runPythonBackgroundReconcile, 1_000)
+  pythonBackgroundTimer.unref()
+  const pythonBackgroundInterval = setInterval(runPythonBackgroundReconcile, UPDATE_CHECK_INTERVAL_MS)
+  pythonBackgroundInterval.unref()
   const updateRecordPath = join(userData, 'updates', 'last-check.json')
   const runScheduledUpdateCheck = async (force = false): Promise<void> => {
     const record = await readUpdateCheckRecord(updateRecordPath)

@@ -1,4 +1,8 @@
 import type { ProjectBundleV1 as ResearchProjectBundleV1 } from '@zerowallscience/research-store/types'
+export type ProjectsJsonValue = null | boolean | number | string | ProjectsJsonValue[] | ProjectsJsonObject
+export interface ProjectsJsonObject { [key: string]: ProjectsJsonValue }
+export interface ProjectsPreferencesRecord { projectId: string; settings: ProjectsJsonObject; lastOpenedAt?: string; updatedAt: string }
+export interface ProjectsProjectBundle { format: 'zerowall-science-project'; version: 1; exportedAt: string; project: ProjectDto; sessionArchives: ProjectsJsonObject[]; research?: ProjectsJsonObject }
 export type {
   ArtifactRecord, AuditEventRecord, CreateArtifactInput, CreateDataAssetInput, CreateDecisionInput,
   CreateExecutionContextInput, CreatePaperInput, CreateResearchEdgeInput, CreateRunInput, DataAssetRecord,
@@ -46,6 +50,4 @@ export interface CreateProjectRequest {
   description?: string
 }
 
-export interface ImportProjectRequest {
-  bundle: ProjectBundleV1
-}
+export interface ImportProjectRequest { bundle: ProjectsProjectBundle }

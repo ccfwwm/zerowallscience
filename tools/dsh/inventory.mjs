@@ -165,7 +165,7 @@ const inventory = {
   profiles: profileInventory,
   thirdPartyPlugins,
   zeroWallPlugins,
-  sharedPackages: [{ package: '@zerowallscience/integrity-runtime', source: 'packages/support/integrity-runtime', plugin: false, productionPath: 'resources/app.asar/node_modules/@zerowallscience/integrity-runtime' }],
+  sharedPackages: [{ package: '@zerowallscience/integrity-runtime', source: 'plugins/integrity-runtime', plugin: false, productionPath: 'resources/app.asar/node_modules/@zerowallscience/integrity-runtime' }],
 }
 
 await writeFile(output, `${JSON.stringify(inventory, null, 2)}\n`)

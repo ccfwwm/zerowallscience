@@ -76,7 +76,7 @@ export class PythonSyncService {
   async listLocal(layer: PythonDependencyLayer = 'science') {
     return this.checkManifest(layer, undefined, undefined, { localOnly: true })
   }
-  async checkManifest(layer: PythonDependencyLayer = 'science', capabilityId?: string, report?: ReportPythonSyncProgress, options: { localOnly?: (boolean) | undefined } = {}) {
+  async checkManifest(layer: PythonDependencyLayer = 'science', capabilityId?: string, report?: ReportPythonSyncProgress, options: { localOnly?: (boolean) | undefined; includeVersionUpdates?: boolean } = {}) {
     await report?.({ stage: 'manifest', progress: 5, message: '正在读取并验签依赖清单。' })
     const candidates: Array<{ manifest: PythonDependencyManifest; source: ManifestSource }> = []
     const bundled = await this.bundled(layer)
@@ -114,15 +114,16 @@ export class PythonSyncService {
     const changes: Array<{ name: string; from?: (string) | undefined; to: string; required: boolean; capabilities: string[] }> = []
     for (let index = 0; index < selected.packages.length; index++) {
       const pkg = selected.packages[index]!
-      if (!installed.has(normalizeName(pkg.name))) changes.push({ name: pkg.name, to: pkg.version, required: pkg.required, capabilities: pkg.capabilities })
+      const installedVersion = installed.get(normalizeName(pkg.name))
+      if (!installed.has(normalizeName(pkg.name)) || options.includeVersionUpdates === true && installedVersion !== pkg.version) changes.push({ name: pkg.name, ...(installedVersion ? { from: installedVersion } : {}), to: pkg.version, required: pkg.required, capabilities: pkg.capabilities })
       if ((index + 1) % 25 === 0 || index + 1 === selected.packages.length) {
         await report?.({ stage: 'compare', message: `正在检测依赖 ${index + 1}/${selected.packages.length}。` })
       }
     }
-    const installedPackageCount = selected.packages.filter(pkg => installed.has(normalizeName(pkg.name))).length
+    const installedPackageCount = selected.packages.filter(pkg => installed.has(normalizeName(pkg.name)) && (options.includeVersionUpdates !== true || installed.get(normalizeName(pkg.name)) === pkg.version)).length
     const capabilityCounts = layer === 'core' ? undefined : Object.fromEntries([...new Set(selected.packages.flatMap(pkg => pkg.capabilities))].sort().map(capability => {
       const packages = selected.packages.filter(pkg => pkg.capabilities.includes(capability))
-      const pending = packages.filter(pkg => !installed.has(normalizeName(pkg.name)))
+      const pending = packages.filter(pkg => !installed.has(normalizeName(pkg.name)) || options.includeVersionUpdates === true && installed.get(normalizeName(pkg.name)) !== pkg.version)
       return [capability, {
         packageCount: packages.length,
         installedPackageCount: packages.length - pending.length,
@@ -135,11 +136,11 @@ export class PythonSyncService {
     await report?.({ stage: 'complete', message: `依赖检查完成：${installedPackageCount}/${selected.packages.length} 已安装，${result.pendingPackageCount} 待安装。` })
     return result
   }
-  async previewSync(layer: PythonDependencyLayer = 'science', capabilityId?: string, taskId?: string, report?: ReportPythonSyncProgress): Promise<StoredPackagePlan & { manifestRevision: string; manifestSha256: string }> {
+  async previewSync(layer: PythonDependencyLayer = 'science', capabilityId?: string, taskId?: string, report?: ReportPythonSyncProgress, options: { includeVersionUpdates?: boolean } = {}): Promise<StoredPackagePlan & { manifestRevision: string; manifestSha256: string }> {
     // `checkManifest` normally runs immediately before preview. Keep this
     // method usable on its own too: a fresh profile has no cached manifest yet,
     // so resolve and persist the signed catalog before building the plan.
-    const manifest = await this.cached(layer).catch(async () => await this.checkManifest(layer, capabilityId, report).then(value => {
+    const manifest = await this.cached(layer).catch(async () => await this.checkManifest(layer, capabilityId, report, options).then(value => {
       if (!value || typeof value !== 'object' || !('revision' in value)) throw new Error('依赖清单检查未返回有效清单。')
       // checkManifest returns a summary; reload the verified persisted manifest
       // so the preview remains bound to the exact signed bytes.
@@ -148,9 +149,9 @@ export class PythonSyncService {
     const selected = selectLayer(manifest, layer, capabilityId)
     if (selected.packages.length === 0) throw new Error(`未找到 ${layer}${capabilityId ? `:${capabilityId}` : ''} 的已签名依赖资源。`)
     await report?.({ stage: 'preflight', progress: 0, message: `正在生成缺包安装队列。`, totalPackages: selected.packages.length })
-    const plan = await this.options.updater.previewDependencyManifest(selected, taskId)
+    const plan = await this.options.updater.previewDependencyManifest(selected, taskId, options)
     if (plan.error) throw new Error(plan.error)
-    assertManifestWheels(selected, plan.wheels, plan.manifestInstalled, (plan.preparationFailures ?? []).map(failure => failure.name))
+    assertManifestWheels(selected, plan.wheels, plan.manifestInstalled, (plan.preparationFailures ?? []).map(failure => failure.name), plan.replaceInstalled === true)
     const bound = { ...plan, dependencyManifest: selected, manifestRevision: manifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(selected)) }
     await this.save(`${plan.planId}.json`, bound)
     return bound
@@ -165,12 +166,12 @@ export class PythonSyncService {
     // Read the updater's actual plan too: a changed on-disk plan must not
     // inherit the approval of the previously reviewed file.
     const stored = JSON.parse(await readFile(join(this.options.root, 'plans', `${planId}.json`), 'utf8')) as StoredPackagePlan
-    if (JSON.stringify(stored.wheels) !== JSON.stringify(plan.wheels) || JSON.stringify(stored.preparationFailures ?? []) !== JSON.stringify(plan.preparationFailures ?? []) || JSON.stringify(stored.changes) !== JSON.stringify(plan.changes) || stored.snapshotId !== plan.snapshotId || !stored.dependencyManifest || stored.dependencyManifest.revision !== revision || dependencyManifestSha256(JSON.stringify(stored.dependencyManifest)) !== plan.manifestSha256) throw new Error('依赖安装计划已改变，请重新预览。')
+    if (JSON.stringify(stored.wheels) !== JSON.stringify(plan.wheels) || JSON.stringify(stored.preparationFailures ?? []) !== JSON.stringify(plan.preparationFailures ?? []) || JSON.stringify(stored.changes) !== JSON.stringify(plan.changes) || stored.snapshotId !== plan.snapshotId || stored.replaceInstalled !== plan.replaceInstalled || !stored.dependencyManifest || stored.dependencyManifest.revision !== revision || dependencyManifestSha256(JSON.stringify(stored.dependencyManifest)) !== plan.manifestSha256) throw new Error('依赖安装计划已改变，请重新预览。')
     const installed = await this.packageInfo((stored.dependencyManifest?.packages ?? []).map(pkg => pkg.name))
     // Packages may have been installed from the terminal since preview. Keep
     // those copies and validate only the wheels that are still missing.
     const present = new Set(installed.packages.map(pkg => normalizeName(pkg.name)))
-    assertManifestWheels(stored.dependencyManifest, stored.wheels.filter(wheel => !present.has(normalizeName(wheel.name))), installed.packages, (stored.preparationFailures ?? []).map(failure => failure.name))
+    assertManifestWheels(stored.dependencyManifest, stored.wheels.filter(wheel => stored.replaceInstalled === true || !present.has(normalizeName(wheel.name))), installed.packages, (stored.preparationFailures ?? []).map(failure => failure.name), stored.replaceInstalled === true)
     if (stored.wheels.length === 0 && (stored.preparationFailures?.length ?? 0) > 0) {
       if (layer === 'core') throw new Error(`基础运行层有 ${stored.preparationFailures!.length} 个必需依赖没有可安装资源，不能跳过。`)
       const skippedPackages = stored.preparationFailures ?? []
@@ -188,13 +189,13 @@ export class PythonSyncService {
     return [...new Map(failures.map(failure => [normalizeName(failure.name), failure])).values()]
   }
 
-  async verifyInstalled(layer: PythonDependencyLayer, capabilityId?: string, report?: ReportPythonSyncProgress, knownFailures: PackageInstallFailure[] = []) {
+  async verifyInstalled(layer: PythonDependencyLayer, capabilityId?: string, report?: ReportPythonSyncProgress, knownFailures: PackageInstallFailure[] = [], options: { includeVersionUpdates?: boolean } = {}) {
     await report?.({ stage: 'verifying', progress: 97, message: '正在确认包是否已安装。' })
     const manifest = selectLayer(await this.cached(layer), layer, capabilityId)
     const info = await this.packageInfo(manifest.packages.map(pkg => pkg.name))
     const installed = new Map(info.packages.map(item => [normalizeName(item.name), item.version]))
     const skippedByName = new Map(knownFailures.map(failure => [normalizeName(failure.name), failure]))
-    const changes = manifest.packages.filter(pkg => !installed.has(normalizeName(pkg.name)))
+    const changes = manifest.packages.filter(pkg => !installed.has(normalizeName(pkg.name)) || options.includeVersionUpdates === true && installed.get(normalizeName(pkg.name)) !== pkg.version)
       .map(pkg => ({ name: pkg.name, ...(installed.get(normalizeName(pkg.name)) ? { from: installed.get(normalizeName(pkg.name)) } : {}), to: pkg.version, required: pkg.required, capabilities: pkg.capabilities }))
     const installedPackageCount = manifest.packages.length - changes.length
     const skippedPackages = changes.flatMap(change => {

@@ -5,7 +5,17 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 // Electron virtualizes .asar paths. Installation must copy their actual bytes.
-const { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, readdirSync, rmdirSync, openSync, readSync, closeSync } = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nativeFs
+const { appendFileSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, readdirSync, rmdirSync, openSync, readSync, closeSync } = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nativeFs
+const logIndex = process.argv.indexOf('--log', 4)
+const logFile = logIndex < 0 ? undefined : process.argv[logIndex + 1]
+function log(message) {
+  if (logFile) try {
+    if (!existsSync(logFile)) appendFileSync(logFile, '\ufeff', 'utf16le')
+    appendFileSync(logFile, `${new Date().toISOString()}|${message}\r\n`, 'utf16le')
+  } catch { /* Preserve the original installation error. */ }
+}
+process.on('uncaughtExceptionMonitor', error => log(error.stack ?? String(error)))
+log('copy-runtime-start; mode=' + (process.argv.includes('--preflight') ? 'preflight' : 'install'))
 
 // NSIS CopyFiles uses legacy shell copying and can silently omit paths at
 // MAX_PATH. Node's Windows file API supports extended paths without changing
@@ -93,6 +103,11 @@ if (existsSync(newReceiptPath)) {
     inspectOld(offlineRoot)
   }
 }
+log(`payload-preflight-complete; files=${files.length}`)
+if (process.argv.includes('--preflight')) {
+  console.log(`Installer payload verified before removal: ${files.length} files.`)
+  process.exit(0)
+}
 safeDirectory(target)
 // Remove only stale physical files inside the product-owned runtime.
 const staleDirectories = new Set()
@@ -108,3 +123,4 @@ for (const file of files) {
   if (statSync(file.destination).size !== file.size) throw new Error('Installer copy incomplete')
 }
 console.log(`Application files copied: ${files.length}; obsolete runtime files removed: ${stale.length}; Python and user data preserved.`)
+log(`copy-complete; files=${files.length}; obsolete=${stale.length}`)

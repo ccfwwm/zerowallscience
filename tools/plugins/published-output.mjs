@@ -6,7 +6,7 @@ import { packageFiles } from './immutable-package.mjs'
 import { historicalPackage } from './package-history.mjs'
 import { preparePublishPackage } from './publish-package.mjs'
 import { offlineFiles } from '../commands/offline-profile.mjs'
-import { dependencyLockFingerprint, sharedSourceInputs } from '../build/component-inputs.mjs'
+import { matchesHistoricalDependencyLock, sharedSourceInputs } from '../build/component-inputs.mjs'
 import { root, stageRoot, contract } from '../build/paths.mjs'
 
 /** Bootstrap an empty component cache from an immutable release. Prove its
@@ -16,7 +16,7 @@ export async function restorePublishedOutput(source, { restore = true } = {}) {
   const manifest = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
   const sourcePath = relative(root, source).replaceAll('\\', '/')
   const firstParty = manifest.name.startsWith('@zerowallscience/plugin-')
-  if (!firstParty && !(sourcePath === 'store' || sourcePath.startsWith('packages/'))) return false
+  if (!sourcePath.startsWith('plugins/')) return false
   if (!manifest.main?.replace(/^\.\//u, '').startsWith('lib/')) return false
   const baseline = await historicalPackage(manifest.name, manifest.version)
   if (!baseline) return false
@@ -50,7 +50,10 @@ export async function restorePublishedOutput(source, { restore = true } = {}) {
     console.log(`BOOTSTRAP MISS ${manifest.name}: baseline tag ${reference} is unavailable`)
     return false
   }
-  if (await dependencyLockFingerprint(root, [importer], tools) !== await dependencyLockFingerprint(root, [importer], tools, baselineLock)) return false
+  if (!await matchesHistoricalDependencyLock(root, [importer], tools, baselineLock)) {
+    console.log(`BOOTSTRAP MISS ${manifest.name}: historical dependency proof unavailable or changed`)
+    return false
+  }
   const own = execFileSync('git', ['ls-files', '--', relative(root, source)], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/u)
   const shared = [...await sharedSourceInputs(root, source), 'tools/plugins/tsdown.ts', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json']
   for (const path of new Set([...own, ...shared])) {

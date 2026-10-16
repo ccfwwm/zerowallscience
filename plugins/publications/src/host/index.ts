@@ -1,7 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { ResearchStore } from '@zerowallscience/research-store'
-import type { CreatePublicationInput, JsonObject, PublicationRecord, RunRecord } from '@zerowallscience/research-store/types'
+import type { PublicationsCreateInput, PublicationsJsonObject, PublicationsRecord, PublicationsRunSubmission } from '../shared/types.js'
+import type { PublicationRecord, RunRecord } from '@zerowallscience/research-store/types'
 import type { RunSubmission, ZeroWallRunsService } from '@zerowallscience/plugin-runs'
 import { writePublicationBundle } from './export.js'
 import type {} from 'zod'
@@ -10,12 +11,12 @@ declare module '@deepseek-ai/cordis' { interface Context { zerowallPublication: 
 export class ZeroWallPublicationService extends TypertRemoteService {
   private readonly store: ResearchStore
   constructor(ctx: Context) { super(ctx, 'zerowallPublication'); const path = process.env.ZEROWALL_RESEARCH_DB?.trim(); if (!path) throw new Error('ZEROWALL_RESEARCH_DB is required.'); this.store = new ResearchStore(path); ctx.effect(() => () => this.store.close(), 'zerowall-publication: close research store') }
-  @Remote('create') create(input: CreatePublicationInput): PublicationRecord { return this.store.createPublication(input) }
-  @Remote('get') get(id: string): PublicationRecord { return this.refresh(id) }
-  @Remote('list') list(projectId: string): PublicationRecord[] { return this.store.listPublications(projectId).map(item => this.refresh(item.id)) }
-  @Remote('freeze') freeze(id: string): PublicationRecord { return this.store.freezePublication(id) }
-  @Remote('validate') validate(id: string): PublicationRecord { return this.store.validatePublication(id) }
-  @Remote('reproduce') reproduce(input: { id: string; run?: Partial<RunSubmission> }): PublicationRecord {
+  @Remote('create') create(input: PublicationsCreateInput): PublicationsRecord { return this.store.createPublication(input) as unknown as PublicationsRecord }
+  @Remote('get') get(id: string): PublicationsRecord { return this.refresh(id) as unknown as PublicationsRecord }
+  @Remote('list') list(projectId: string): PublicationsRecord[] { return this.store.listPublications(projectId).map(item => this.refresh(item.id) as unknown as PublicationsRecord) }
+  @Remote('freeze') freeze(id: string): PublicationsRecord { return this.store.freezePublication(id) as unknown as PublicationsRecord }
+  @Remote('validate') validate(id: string): PublicationsRecord { return this.store.validatePublication(id) as unknown as PublicationsRecord }
+  @Remote('reproduce') reproduce(input: { id: string; run?: Partial<PublicationsRunSubmission> }): PublicationsRecord {
     const publication = this.required(input.id)
     if (publication.frozenSnapshot === undefined) throw new Error('Freeze the publication before starting reproduction.')
     const configured = reproductionConfig(publication.manifest)
@@ -31,14 +32,14 @@ export class ZeroWallPublicationService extends TypertRemoteService {
       ...((input.run?.timeoutMs ?? configured.timeoutMs) === undefined ? {} : { timeoutMs: input.run?.timeoutMs ?? configured.timeoutMs }),
       inputs: input.run?.inputs ?? configured.inputs ?? [], outputs: input.run?.outputs ?? configured.outputs ?? [],
     } as RunSubmission)
-    return this.refresh(this.store.startPublicationReproduction(publication.id, run.id).id)
+    return this.refresh(this.store.startPublicationReproduction(publication.id, run.id).id) as unknown as PublicationsRecord
   }
-  @Remote('refreshReproduction') refreshReproduction(id: string): PublicationRecord { return this.refresh(id) }
-  @Remote('export') async export(input: { id: string; uri: string }): Promise<PublicationRecord> {
+  @Remote('refreshReproduction') refreshReproduction(id: string): PublicationsRecord { return this.refresh(id) as unknown as PublicationsRecord }
+  @Remote('export') async export(input: { id: string; uri: string }): Promise<PublicationsRecord> {
     const publication = this.refresh(input.id)
     if (publication.status !== 'ready') throw new Error('Only a ready publication can be exported.')
     await writePublicationBundle(publication, input.uri)
-    return this.store.exportPublication(input.id, input.uri)
+    return this.store.exportPublication(input.id, input.uri) as unknown as PublicationsRecord
   }
 
   private refresh(id: string): PublicationRecord {
@@ -75,7 +76,7 @@ interface ReproductionConfig {
   outputs?: RunRecord['outputs']
 }
 
-function reproductionConfig(manifest: JsonObject): ReproductionConfig {
+function reproductionConfig(manifest: PublicationsJsonObject): ReproductionConfig {
   const raw = manifest.reproduction
   if (raw === undefined || raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {}
   const value = raw as Record<string, unknown>

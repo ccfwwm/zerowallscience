@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { expect, it, vi } from 'vitest'
 import sharp from 'sharp'
 import { recordAssetReview, recordVisualAssets, validatePresentationAssets, hash } from '../src/host/visual-assets.js'
-import { prepareSvg, lintImageOcclusion } from '../src/host/presentation-layout.js'
-import { actualCoverage, exportBlockers, refreshPages, installPresentationWorkflow, type PresentationWorkflow } from '../src/host/presentation-workflow.js'
+import { prepareSvg, lintImageOcclusion, validateEditableSvgPlan } from '../src/host/presentation-layout.js'
+import { actualCoverage, editableReconstructionFailures, exportBlockers, normalizeUniverExecutionSource, refreshPages, installPresentationWorkflow, runPresentationImageTasks, validateEditablePagePlan, type PresentationWorkflow } from '../src/host/presentation-workflow.js'
 
 async function fixture(action: (root: string) => Promise<void>) {
   const root = await mkdtemp(join(tmpdir(), 'zerowall-presentation-'))
@@ -23,6 +23,58 @@ async function images(root: string) {
   ])
 }
 const flow = { spec: 'spec.json', manifest: 'assets.json', mode: 'new' as const }
+it('runs independent template image tasks with bounded concurrency and stable order', async () => {
+  let active = 0, maximum = 0
+  const values = await runPresentationImageTasks([
+    { id: 'page-1', page: 1, run: async () => { active++; maximum = Math.max(maximum, active); await new Promise(resolve => setTimeout(resolve, 12)); active--; return 'one' } },
+    { id: 'page-2', page: 2, run: async () => { active++; maximum = Math.max(maximum, active); await new Promise(resolve => setTimeout(resolve, 2)); active--; return 'two' } },
+    { id: 'page-3', page: 3, run: async () => { active++; maximum = Math.max(maximum, active); await new Promise(resolve => setTimeout(resolve, 4)); active--; return 'three' } },
+  ], 2)
+  expect(values).toEqual(['one', 'two', 'three']); expect(maximum).toBeLessThanOrEqual(2)
+})
+it('validates editable reconstruction plans while keeping template assets reference-only', () => {
+  const plan = validateEditablePagePlan(1, 'template-page-1', [
+    { id: 'title', type: 'text', x: 40, y: 30, width: 800, height: 64, content: 'Editable title', editable: true },
+    { id: 'chart', type: 'chart', x: 60, y: 150, width: 840, height: 280, role: 'primary-result' },
+  ], 'balanced')
+  expect(plan).toMatchObject({ page: 1, templateAssetId: 'template-page-1', density: 'balanced' })
+  expect(() => validateEditablePagePlan(1, 'template-page-1', [{ id: 'bad', type: 'text', x: 0, y: 0, width: 20, height: 20 }])).toThrow('requires content')
+  expect(() => validateEditablePagePlan(1, 'template-page-1', [{ id: 'bad', type: 'shape', x: 0, y: 0, width: 0, height: 20 }])).toThrow('positive bounds')
+})
+
+it('requires the compiled SVG to carry every planned editable element', async () => fixture(async root => {
+  await writeFile(join(root, 'planned.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><text data-zerowall-element-id="title" data-zerowall-element-type="text">Title</text><rect data-zerowall-element-id="panel" data-zerowall-element-type="shape" width="10" height="10"/></svg>')
+  const plan = { page: 1, elements: [{ id: 'title', type: 'text' }, { id: 'panel', type: 'shape' }] }
+  await expect(validateEditableSvgPlan(root, 'planned.svg', plan)).resolves.toBeUndefined()
+  await writeFile(join(root, 'planned.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><text data-zerowall-element-id="title" data-zerowall-element-type="shape">Title</text></svg>')
+  await expect(validateEditableSvgPlan(root, 'planned.svg', plan)).rejects.toThrow('expected text')
+  await writeFile(join(root, 'planned.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><text data-zerowall-element-id="title" data-zerowall-element-type="text">Title</text></svg>')
+  await expect(validateEditableSvgPlan(root, 'planned.svg', plan)).rejects.toThrow('missing planned editable element panel')
+}))
+it('requires actual native reconstruction objects, content and bounds before export', () => {
+  const plan = validateEditablePagePlan(1, 'template', [
+    { id: 'title', type: 'text', x: 10, y: 10, width: 200, height: 60, content: 'Editable title' },
+    { id: 'chart', type: 'chart', x: 20, y: 100, width: 300, height: 200 },
+    { id: 'table', type: 'table', x: 400, y: 100, width: 300, height: 200 },
+  ])
+  const text = { type: 'shape', transform: { left: 10, top: 10, width: 180, height: 40 }, shapeData: { shapeText: { text: 'Editable title' } } }
+  const chart = { type: 'chart', chartId: 'real-chart', transform: { left: 20, top: 100, width: 300, height: 200 } }
+  const table = { type: 'table', tableId: 'real-table', transform: { left: 400, top: 100, width: 300, height: 200 } }
+  const snapshot = { page: 1, id: 'p1', fingerprint: 'r1', data: { elements: { text, chart, table } } }
+  expect(editableReconstructionFailures(snapshot, plan)).toEqual([])
+  expect(editableReconstructionFailures({ ...snapshot, data: { elements: { text, chart: { ...chart, type: 'shape' }, table } } }, plan).join()).toContain('Planned chart chart')
+  expect(editableReconstructionFailures({ ...snapshot, data: { elements: { text: { ...text, shapeData: { shapeText: { text: 'wrong content' } } }, chart, table } } }, plan).join()).toContain('Planned text title')
+  expect(editableReconstructionFailures({ ...snapshot, data: { elements: { text, chart, table: { ...table, transform: { ...table.transform, left: 800 } } } } }, plan).join()).toContain('Planned table table')
+  const state: PresentationWorkflow = { schemaVersion: 2, spec: '', manifest: '', mode: 'new', changedPages: [1], pages: {}, phase: 'reviewed', reconstructionFailures: { 1: ['missing native chart'] } }
+  expect(exportBlockers(state)).toEqual([1])
+})
+it('normalizes the /none execution-source sentinel and rejects real dual sources', () => {
+  expect(normalizeUniverExecutionSource({ file: 'deck.univer', unitId: 'slides', worktreeId: 'draft', code: 'return 1', codeFile: '/none' }))
+    .toEqual({ file: 'deck.univer', unitId: 'slides', worktreeId: 'draft', code: 'return 1' })
+  expect(() => normalizeUniverExecutionSource({ code: 'return 1', codeFile: 'scripts/mutate.js' }))
+    .toThrow('INVALID_EXECUTION_SOURCE')
+  expect(normalizeUniverExecutionSource({ codeFile: 'scripts/mutate.js' })).toEqual({ codeFile: 'scripts/mutate.js' })
+})
 it('accepts multi-image literature/generated pages without style ceremony and ignores unused failed art', async () => fixture(async root => {
   await images(root)
   await expect(validatePresentationAssets(root, flow, 1)).rejects.toThrow('review')
@@ -90,15 +142,18 @@ it('does not intercept other Office Units/files or read-only tools in unbound se
   const hooks: Record<string, any> = {}, tools: any[] = []
   installPresentationWorkflow({ effect: () => {}, on: (name: string, hook: any) => { hooks[name] = hook }, tools: { register: (tool: any) => tools.push(tool) }, llm: {} } as any)
   const agent = { session: { snapshotEvents: () => [], header: { cwd: 'unused' } } }, next = vi.fn(async () => ({ isError: false }))
-  await hooks['tools/execute']({ name: 'univer_execute', arguments: { file: 'book.univer', unitId: 'sheet', worktreeId: 'draft' }, agent }, next)
+  const execution = { name: 'univer_execute', arguments: { file: 'book.univer', unitId: 'sheet', worktreeId: 'draft', code: 'return 1', codeFile: '/none' }, agent }
+  await hooks['tools/execute'](execution, next)
+  expect(execution.arguments).toEqual({ file: 'book.univer', unitId: 'sheet', worktreeId: 'draft', code: 'return 1' })
   expect(next).toHaveBeenCalledOnce(); expect(tools.some(tool => tool.name === 'presentation_compile_pages')).toBe(true)
+  await expect(hooks['tools/execute']({ name: 'univer_execute', arguments: { file: 'book.univer', unitId: 'sheet', worktreeId: 'draft', code: 'return 1', codeFile: 'real.js' }, agent }, next)).rejects.toThrow('INVALID_EXECUTION_SOURCE')
 })
 
 // Exercise the installed tools, nested dispatch, locks and on-disk journal, not
 // just refreshPages in isolation. Rendering remains a separate real-Univer test.
 function runtime(root: string, snapshots: any[], events: any[] = []) {
   const hooks: Record<string, any> = {}, registered = new Map<string, any>()
-  const counts: Record<string, number> = {}, controls = { screenshots: [1, 2], failPage: 0 }
+  const counts: Record<string, number> = {}, controls = { screenshots: [1, 2], failPage: 0 }, imageCalls: any[] = []
   const scope = { file: join(root, 'report.univer'), unitId: 'slides', worktreeId: 'draft' }
   const agent = { session: { id: 'reviewing-model', header: { cwd: root }, snapshotEvents: () => events, append: (type: string, data: unknown) => events.push({ type, data: structuredClone(data) }) } }
   const ctx: any = { effect: () => {}, on: (name: string, hook: any) => { hooks[name] = hook }, llm: { resolveModelInfo: async () => ({ inputModalities: ['text', 'image'] }) }, tools: {
@@ -109,7 +164,13 @@ function runtime(root: string, snapshots: any[], events: any[] = []) {
         if (registered.has(exec.name)) return { isError: false, value: await registered.get(exec.name).execute(exec.arguments, execution), content: [] }
         counts[exec.name] = (counts[exec.name] ?? 0) + 1
         let value: any
-        if (exec.name === 'univer_execute') value = { result: { value: snapshots } }
+        if (exec.name === 'generate_image') {
+          imageCalls.push(exec.arguments)
+          const bytes = await sharp({ create: { width: 40, height: 20, channels: 3, background: '#183a5a' } }).png().toBuffer()
+          await writeFile(join(root, exec.arguments.output_path), bytes)
+          await writeFile(join(root, exec.arguments.output_path + '.generation.json'), JSON.stringify({ sha256: hash(bytes), model: 'configured', inputImageHashes: [] }))
+          value = { path: exec.arguments.output_path, model: 'configured', providerId: 'provider', groupId: 'group', requestedSize: 'auto', quality: 'medium', requestedQuality: 'medium', actualQuality: 'medium' }
+        } else if (exec.name === 'univer_execute') value = { result: { value: snapshots } }
         else if (exec.name === 'univer_compile_svg') {
           if (exec.arguments.page === controls.failPage) throw new Error('temporary compiler failure')
           snapshots[exec.arguments.page - 1].fingerprint += '-compiled'; value = { ok: true }
@@ -131,7 +192,7 @@ function runtime(root: string, snapshots: any[], events: any[] = []) {
     for await (const _ of hooks['llm/stream']({ sessionId: agent.session.id, provider: 'selected', model: 'selected' }, async function* () {})) { /* vision capability */ }
     return call('presentation_prepare', { ...scope, spec_path: 'spec.json', manifest_path: 'assets.json', mode: 'new' })
   }
-  return { call, prepare, scope, counts, controls, events }
+  return { call, prepare, scope, counts, controls, events, imageCalls }
 }
 async function runtimeFixture(action: (root: string, snapshots: any[]) => Promise<void>) {
   await fixture(async root => {
@@ -181,4 +242,64 @@ it('journals a failed batch without losing successful pages and resumes only the
   await restored.call('presentation_compile_pages', { pages: [{ page: 2, source: 'page.svg' }] })
   expect(snapshots.map(s => s.fingerprint)).toEqual(['rev1-compiled', 'rev2-compiled'])
   expect((await restored.call('presentation_status')).state.failure).toBeUndefined()
+}))
+
+it('generates reference-only page templates through the image route and persists editable overlays', async () => runtimeFixture(async (root, snapshots) => {
+  const rt = runtime(root, snapshots)
+  await rt.prepare()
+  const generated = await rt.call('presentation_generate_templates', {
+    templates: [
+      { page: 1, prompt: 'A complete scientific slide composition used only as a raster reference.', output_path: 'template-page-1.png', asset_id: 'template-page-1' },
+      { page: 2, prompt: 'A complete scientific comparison slide composition used only as a raster reference.', output_path: 'template-page-2.png', asset_id: 'template-page-2' },
+    ],
+    concurrency: 2,
+  })
+  expect(generated.templates.map((item: any) => item.assetId)).toEqual(['template-page-1', 'template-page-2'])
+  expect(rt.imageCalls).toEqual([
+    { prompt: 'A complete scientific slide composition used only as a raster reference.', output_path: 'template-page-1.png' },
+    { prompt: 'A complete scientific comparison slide composition used only as a raster reference.', output_path: 'template-page-2.png' },
+  ])
+  expect(Object.keys(rt.counts).filter(name => name.startsWith('media_'))).toEqual([])
+  const manifest = JSON.parse(await readFile(join(root, 'assets.json'), 'utf8'))
+  expect(manifest.assets.filter((asset: any) => asset.role === 'template').map((asset: any) => asset.slideNumber)).toEqual([1, 2])
+  const planned = await rt.call('presentation_plan_editable_pages', {
+    plans: [
+      { page: 1, template_asset_id: 'template-page-1', density: 'balanced', elements: [{ id: 'title', type: 'text', x: 40, y: 30, width: 800, height: 60, content: 'Editable title' }, { id: 'result-chart', type: 'chart', x: 60, y: 140, width: 840, height: 280 }] },
+      { page: 2, template_asset_id: 'template-page-2', elements: [{ id: 'comparison', type: 'table', x: 60, y: 120, width: 840, height: 300 }] },
+    ],
+  })
+  expect(planned.plans.map((plan: any) => plan.templateAssetId)).toEqual(['template-page-1', 'template-page-2'])
+  expect((await rt.call('presentation_status')).state.phase).toBe('planned-editable-reconstruction')
+  await expect(rt.call('presentation_compile_pages', { pages: [{ page: 1, source: 'page.svg' }] })).rejects.toThrow('missing planned editable element title')
+  await writeFile(join(root, 'page.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><text data-zerowall-element-id="title" data-zerowall-element-type="text">Editable title</text><rect data-zerowall-element-id="result-chart" data-zerowall-element-type="chart" width="10" height="10"/></svg>')
+  await expect(rt.call('presentation_compile_pages', { pages: [{ page: 1, source: 'page.svg' }] })).resolves.toBeTruthy()
+  await rt.call('presentation_check_pages', { pages: [1, 2], output: 'screenshots' })
+  await rt.call('presentation_record_reviews', { reviews: pageReviews })
+  await expect(rt.call('univer_export', rt.scope)).rejects.toThrow('matching editable reconstruction')
+  expect((await rt.call('presentation_status')).state.reconstructionFailures['1'].join()).toContain('result-chart')
+  snapshots[0].data.elements = {
+    title: { type: 'text', text: 'Editable title', transform: { left: 40, top: 30, width: 800, height: 60 } },
+    chart: { type: 'chart', chartId: 'native-result', transform: { left: 60, top: 140, width: 840, height: 280 } },
+  }
+  snapshots[1].data.elements = { table: { type: 'table', tableId: 'native-comparison', transform: { left: 60, top: 120, width: 840, height: 300 } } }
+  snapshots[0].fingerprint += '-native'; snapshots[1].fingerprint += '-native'
+  await rt.call('presentation_check_pages', { pages: [1, 2], output: 'screenshots' })
+  await rt.call('presentation_record_reviews', { reviews: pageReviews })
+  await expect(rt.call('univer_export', rt.scope)).resolves.toEqual({ ok: true })
+  await expect(rt.call('presentation_plan_editable_pages', { plans: [{ page: 1, template_asset_id: 'art', elements: [{ id: 'title', type: 'text', x: 0, y: 0, width: 100, height: 40, content: 'Title' }] }] })).rejects.toThrow('generated template')
+  await writeFile(join(root, 'template.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540"><image href="template-page-1.png" width="960" height="540"/></svg>')
+  await expect(prepareSvg(root, 'template.svg', 'spec.json', 'assets.json', 1)).rejects.toThrow('not in this page')
+  const spec = JSON.parse(await readFile(join(root, 'spec.json'), 'utf8'))
+  spec.slides[0].assetIds = ['template-page-1']
+  await writeFile(join(root, 'spec.json'), JSON.stringify(spec))
+  await expect(validatePresentationAssets(root, flow, 1)).rejects.toThrow('reference-only')
+}))
+
+it('rejects invalid template batches before image dispatch', async () => runtimeFixture(async (root, snapshots) => {
+  const rt = runtime(root, snapshots); await rt.prepare()
+  const first = { page: 1, prompt: 'Reference template', output_path: 'template.png', asset_id: 'template-1' }
+  await expect(rt.call('presentation_generate_templates', { templates: [{ ...first, page: 3 }] })).rejects.toThrow('outside')
+  await expect(rt.call('presentation_generate_templates', { templates: [first, { ...first, asset_id: 'template-2' }] })).rejects.toThrow('paths must be unique')
+  await expect(rt.call('presentation_generate_templates', { templates: [first, { ...first, output_path: 'second.png' }] })).rejects.toThrow('IDs must be unique')
+  expect(rt.imageCalls).toEqual([])
 }))

@@ -19,6 +19,14 @@ const env = { ...process.env, ZEROWALL_USER_DATA_DIR: userdata, ZEROWALL_DISABLE
   APPDATA: join(directory, 'appdata'), LOCALAPPDATA: join(directory, 'localappdata') }
 delete env.ELECTRON_RUN_AS_NODE
 await Promise.all(['appdata', 'localappdata'].map(name => mkdir(join(directory, name), { recursive: true })))
+// Startup now reconciles Python automatically. Select a test-owned fixed root
+// through the same persisted location contract as the settings UI, so this
+// packaged check cannot install beside the user's running desktop.
+const pythonRuntimeRoot = join(directory, 'Python')
+const pythonLocation = join(env.LOCALAPPDATA, 'ZeroWall Science')
+await mkdir(pythonLocation, { recursive: true })
+await writeFile(join(pythonLocation, 'python-location.json'), JSON.stringify({ runtimeRoot: pythonRuntimeRoot, source: 'user-selected' }))
+const expectedFiles = JSON.parse(await readFile(join(import.meta.dirname, '../../plugins/files/package.json'), 'utf8'))
 const application = await _electron.launch({ executablePath: packaged.executablePath, env, args: [`--user-data-dir=${join(directory, 'chromium')}`], timeout: 120_000 })
 
 async function execute(argv, input, wrapper = false) {
@@ -49,7 +57,7 @@ try {
   const doctor = await zws(['doctor'])
   assert.equal(doctor.host, 'ready')
   const files = doctor.plugins.find(item => item.id === '@zerowallscience/plugin-files')
-  assert.equal(files.version, '0.2.0')
+  assert.equal(files.version, expectedFiles.version)
   assert.equal(files.source, 'bundled')
   assert.equal(files.compatibility, 'compatible')
   assert((await zws(['plugin', 'list'])).bundles.includes('@zerowallscience/plugin-skills'))
@@ -83,6 +91,6 @@ try {
   await zws(['mcp', 'remove', mcp.id])
   await zws(['python', 'status'])
   await writeFile(join(directory, 'receipt.json'), JSON.stringify({ applicationVersion: contract.version, dshVersion: '0.2.0-rc.2', ok: true,
-    commandWrappers: true, pluginProfileList: true, actualFilePlugin: files, safeEnvironment: true, skillsImportRefreshRollback: true, mcpStartStopRestart: true, pythonStatus: true }, null, 2))
+    commandWrappers: true, pluginProfileList: true, actualFilePlugin: files, safeEnvironment: true, skillsImportRefreshRollback: true, mcpStartStopRestart: true, pythonStatus: true, pythonRuntimeRoot }, null, 2))
   console.log('Packaged commands verified:', directory)
 } finally { await application.close() }

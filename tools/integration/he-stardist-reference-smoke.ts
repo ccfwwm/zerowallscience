@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { ResearchStore } from '../../store/src/index.js'
+import { ResearchStore } from '../../plugins/research-store/src/index.js'
 import { HeService } from '../../plugins/research/src/host/he.js'
 import { heSegmentationPython } from '../../plugins/research/src/host/he-segmentation.js'
 

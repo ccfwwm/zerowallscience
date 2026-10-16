@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mkdtemp, mkdir, readFile, writeFile, symlink, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { commitFixedRuntime, restoreFixedTransaction, recoverFixedTransactions } from '../src/main/python-fixed-transaction.js'
+import { commitFixedRuntime, completeFixedTransaction, restoreFixedTransaction, recoverFixedTransactions } from '../src/main/python-fixed-transaction.js'
 
 async function fixture(run: (root: string, candidate: string, base: string) => Promise<void>) {
   const base = await mkdtemp(join(tmpdir(), 'zws-fixed-tx-'))
@@ -36,6 +36,32 @@ describe('fixed directory transactions', () => {
     await recoverFixedTransactions(root)
     expect(await readFile(join(root, 'Lib', 'site-packages', 'old.py'), 'utf8')).toBe('old')
     await expect(readFile(join(root, 'Lib', 'site-packages', 'new.py'))).rejects.toThrow()
+  }))
+  it('recovers a transaction that stopped after preparing its journal', () => fixture(async (root, candidate) => {
+    await writeFile(join(root, 'package.py'), 'old'); await writeFile(join(candidate, 'package.py'), 'new')
+    const id = await commitFixedRuntime(root, candidate, async () => {})
+    const path = join(root, '.zerowall', 'transactions', id, 'journal.json')
+    const record = JSON.parse(await readFile(path, 'utf8')); record.state = 'prepared'; await writeFile(path, JSON.stringify(record))
+    await recoverFixedTransactions(root)
+    expect(await readFile(join(root, 'package.py'), 'utf8')).toBe('old')
+    expect(JSON.parse(await readFile(path, 'utf8')).state).toBe('restored')
+  }))
+  it('restores a deferred package when startup recovers its pending import verification', () => fixture(async (root, candidate) => {
+    await writeFile(join(root, 'package.py'), 'old'); await writeFile(join(candidate, 'package.py'), 'new')
+    const id = await commitFixedRuntime(root, candidate, async () => 'pending')
+    const path = join(root, '.zerowall', 'transactions', id, 'journal.json')
+    expect(JSON.parse(await readFile(path, 'utf8')).state).toBe('pending-verification')
+    await recoverFixedTransactions(root)
+    expect(await readFile(join(root, 'package.py'), 'utf8')).toBe('old')
+    expect(JSON.parse(await readFile(path, 'utf8')).state).toBe('restored')
+  }))
+  it('retains a deferred package once its final import verification is committed', () => fixture(async (root, candidate) => {
+    await writeFile(join(root, 'package.py'), 'old'); await writeFile(join(candidate, 'package.py'), 'new')
+    const id = await commitFixedRuntime(root, candidate, async () => 'pending')
+    await completeFixedTransaction(root, id)
+    await recoverFixedTransactions(root)
+    expect(await readFile(join(root, 'package.py'), 'utf8')).toBe('new')
+    expect(JSON.parse(await readFile(join(root, '.zerowall', 'transactions', id, 'journal.json'), 'utf8')).state).toBe('committed')
   }))
   it('rejects a linked ancestor before modifying external files', () => fixture(async (root, candidate, base) => {
     const external = join(base, 'external'); await mkdir(external)

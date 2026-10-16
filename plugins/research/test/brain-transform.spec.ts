@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url'
 import {promisify} from 'node:util'
 import {createHash} from 'node:crypto'
 import {afterEach,beforeAll,expect,it} from 'vitest'
-import {ResearchStore} from '../../../store/src/index.js'
+import {ResearchStore} from '../../research-store/src/index.js'
 import {BrainTransformService,runBrainTransform,brainFileHash} from '../src/host/brain-transform.js'
 
 const roots:string[]=[]

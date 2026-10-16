@@ -10,6 +10,8 @@ export interface BuildPaths {
   packages: string
   verification: string
   release: string
+  pluginStore: string
+  pluginSnapshotStore: string
   cache: string
   logs: string
 }
@@ -23,6 +25,8 @@ export const packageRoot: string
 export const targetPackageRoot: string
 export const verificationRoot: string
 export const releaseRoot: string
+export const pluginStoreRoot: string
+export const pluginSnapshotStoreRoot: string
 export const logRoot: string
 export const cacheRoot: string
 export function artifactPath(...parts: string[]): string

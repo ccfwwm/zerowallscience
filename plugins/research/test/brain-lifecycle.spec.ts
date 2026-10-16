@@ -4,7 +4,7 @@ import {expect,it} from 'vitest'
 import {BrainJobScope} from '../src/host/brain-process.js'
 import {BrainAtlasService} from '../src/host/brain-atlas.js'
 import {BrainTransformService} from '../src/host/brain-transform.js'
-import {ResearchStore} from '../../../store/src/index.js'
+import {ResearchStore} from '../../research-store/src/index.js'
 
 it('shutdown stops its owned native process tree and waits for termination',async()=>{
  const scope=new BrainJobScope()

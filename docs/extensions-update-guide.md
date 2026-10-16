@@ -1,8 +1,10 @@
-# ZeroWall 8.0.8：插件、Skills、MCP 与 Python 单独更新教程
+# ZeroWall 8.3.0：插件、Skills、MCP 与 Python 单独更新教程
 
 ## 先升级桌面一次
 
-桌面核心与扩展资源分开更新。8.0.8 安装器携带完整默认功能的签名离线包。扩展启动和每日远端检测关闭；打开扩展中心、切换标签和刷新本地列表不会联网检测。点击“检查更新”才获取并验签目录，安装、更新和重启仍由用户选择。已有 8.0.6 用户升级时保留账户、模型、项目、环境变量、第三方插件和停用选择。
+本文说明 8.3.0 的当前使用合同，不代表该版本已经公开上线。下载与发布状态以对应版本验证收据及正式发布公告为准；下方 Stable URL 是既有发布入口，不是 8.3.0 上线证明。
+
+桌面核心与扩展资源分开更新。安装器携带已验证的默认功能签名离线闭包。插件、Skills、MCP 在启动后和每日读取、验签远端目录，检查只显示可用更新，不下载 payload、不安装、不激活、不重启。用户在设置或 CLI 明确操作后才执行这些变更。Python 是下文说明的后台自动维护例外。桌面升级保留账户、模型、项目、环境变量、第三方插件、停用和固定版本选择。
 
 升级后启动桌面，重新打开一个 PowerShell 窗口：
 
@@ -14,7 +16,7 @@ zws doctor
 zws plugin list
 ```
 
-`dsh` 应显示 `0.2.0-rc.2`，`zws` 应显示桌面 `8.0.8`。`zws doctor` 会报告实际加载的插件版本和来源。命令需要正在运行的桌面 Host；若提示先启动 ZeroWall Science，请启动应用后再操作。
+`dsh` 应显示 `0.2.0-rc.2`，`zws` 应显示桌面 `8.3.0`。`zws doctor` 会报告实际加载的插件版本和来源。命令需要正在运行的桌面 Host；若提示先启动 ZeroWall Science，请启动应用后再操作。
 
 如果 Windows 安装目录变过或旧终端仍持有旧 PATH，关闭并重开终端。程序会按 owner receipt 管理命令，避免覆盖不属于 ZeroWall 的 `dsh`。
 
@@ -39,6 +41,8 @@ zws plugin update plugin-extension-center
 zws plugin update plugin-files
 zws plugin rollback plugin-files
 ```
+
+GUI 与 CLI 使用同一插件发现、安装和 profile 激活流程。扩展中心可发现 CLI 安装的合法 DSH bundle 并导入桌面 profile；读取列表不会触发重装，已有禁用、移除和固定版本选择保持不变。
 
 完整包 ID 也可以使用，例如 `@zerowallscience/plugin-files`。需要的自有依赖会一起准备和验签，随后通过 candidate profile 和 Host 健康检查切换；不重新下载整个桌面安装包。
 
@@ -115,9 +119,9 @@ zws mcp rollback scimaster
 
 连接模板更新会保留已有启用状态；模板没有独立 Server generation，因此不提供 Server 包式回滚。SciMaster 支持 Server 包历史回滚；模型及 API Key 仍使用自己的设置。
 
-## 七牛与 GitHub 资源
+## 七牛与 GitHub 资源（既有发布入口）
 
-官方客户端默认目录：
+以下 URL 保留历史发布入口及资源说明；它们当前指向的版本以在线签名内容为准，不能据此声称 8.3.0 已发布：
 
 - [插件签名指针](https://zerowall.chengxunkeji.cn/stable/catalogs/plugin-latest.json)
 - [Skills 签名指针](https://zerowall.chengxunkeji.cn/stable/catalogs/skill-latest.json)
@@ -135,7 +139,7 @@ zws skill update zerowall-presentation --catalog https://zerowall.chengxunkeji.c
 
 ## 开发者发布一个资源
 
-源码总仓库保存 `plugins/`、`skills/`、`mcp/`、签名 `catalogs/`、构建工具及来源收据。8.0.2 桌面主仓库保留当次集成源码以重现历史构建；后续扩展改动在总仓库开发，集成桌面时同步固定提交，不在两边手工重复修改。
+8.3.0 的适配插件、Research Store、支持包和组合声明统一位于 `plugins/`；Skills/MCP 资源源码位于 `resources/extensions/`。插件源码仓库保留源码快照、构建工具及来源收据；历史 `skills/`、`mcp/` 和签名 `catalogs/` 继续保留历史发布记录，不代表本次源码快照已公开发布资源。
 
 1. 只提升改动资源的 semver，并更新它的兼容范围；不能更改已发布同 ID/版本的字节。
 2. 构建选定插件、执行对应测试和 `pnpm pack`；Skills 使用确定性 tar，MCP 配置/Server 分别打包。插件私有资源必须进入 tarball，发布依赖不能含 `workspace:` 或 Git 源依赖。
@@ -158,10 +162,23 @@ node scripts/publish-resources.mjs verify
 
 ## Python 分层更新
 
-Python generation 与桌面版本独立。`core` 是启动所需最小依赖，`science` 和 `capability` 按需安装；检查不会下载。设置页或 Host 任务确认后才执行 generation 切换，失败自动回滚到上一个 `current.json`。关闭桌面后可从任务 receipt 恢复。
+Python 内容 revision、依赖层与桌面版本独立。固定解释器默认位于实际安装目录的 `Python/python.exe`，也可使用用户明确选择的固定根目录；不会切换 Roaming、LocalAppData 或 legacy slots 中的解释器。
+
+桌面可用后，后台队列执行签名 bootstrap/recovery，逐包检查并自动安装、更新全部 `core` 和 `science` 依赖；在线签名依赖清单按小时检查。安装核对签名、下载大小和 SHA-256，并通过实际 import 验证；尚未验证的包不能标记为完成。任务和日志持久化，可恢复符合条件的自动任务，不阻塞界面。
+
+失败时按文件事务恢复同一固定根目录中的旧文件，记录失败与恢复结果，不通过切换 `current.json` 或 generation 路径回滚。`capability` 是可选依赖，仍由用户显式选择安装。打开扩展中心只读取任务与状态，后台维护由 Python 启动及周期流程负责。
 
 ## 固定版本与修复
 
 插件支持“固定当前版本”和“解除固定”，`zws plugin pin <id>`、`zws plugin unpin <id>` 使用同一选择记录。“全部更新”跳过固定项和固定依赖冲突项并给出原因。停用、卸载存在依赖的插件时先展示受影响插件，用户确认后再处理。
 
-升级自动修复损坏的 8.0.7 architecture 6 profile，并保留明确停用、卸载和第三方配置。缺失的固定版本必须导入精确版本或由用户解除固定。离线签名或健康检查失败保留原 profile 和失败 receipt；不要手工清空用户配置。MCP 缺凭据显示待配置，Python 显示各层真实安装程度，不会因打开扩展中心自动安装科研依赖。
+升级自动修复损坏的 8.0.7 architecture 6 profile，并保留明确停用、卸载和第三方配置。缺失的固定版本必须导入精确版本或由用户解除固定。离线签名或健康检查失败保留原 profile 和失败 receipt；不要手工清空用户配置。MCP 缺凭据显示待配置，Python 显示各层真实安装程度及后台任务，capability 安装仍需显式选择。
+
+
+## 开发者：共享不可变插件与稳定桌面打包
+
+插件包存于共享不可变目录 `artifacts/release/plugins/<插件目录名>/<独立版本>/`，不随桌面版本复制或重归档。组件构建验证插件字节后生成绑定 DSH commit 的插件快照和成功构建收据；相同 ID/版本出现不同文件或字节时必须停止，调查并提升真正变化的组件版本，不能覆盖历史归档或绕过签名。
+
+先完成组件构建及相关检查，再执行稳定桌面打包。`pnpm package:stable:win` 的 consumer-only 流程验证成功 stage、快照、插件大小和 SHA-256，只消费已验证的共享归档；不会重新构建或重新打包插件。失败、未完成、版本或快照不匹配的 stage 不可激活。完整离线功能仍须通过安装器和 ASAR/runtime closure 验证，不能用打包退出码代替验收。
+
+历史 8.0.x 发布记录及其 URL 保留供追溯；8.3.0 的安装器、build ID、SHA-256 和公网状态应由实际验收收据补充。

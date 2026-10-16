@@ -40,9 +40,10 @@ const defaults = [...new Set([
 const bundled = []
 for (const name of await readdir(join(root, 'plugins'))) {
   if (name === 'wechat') continue
-  const manifest = JSON.parse(await readFile(join(root, 'plugins', name, 'package.json'), 'utf8'))
+  const manifest = await readFile(join(root, 'plugins', name, 'package.json'), 'utf8').then(JSON.parse, () => undefined)
+  if (!manifest?.name?.startsWith('@zerowallscience/plugin-')) continue
   if (!defaults.includes(manifest.name)) defaults.push(manifest.name)
-  bundled.push({ id: manifest.name, version: manifest.version, desktop: manifest.zerowall.desktop, dsh: manifest.zerowall.dsh, managed: true, core: runtimeProfile.corePlugins.includes(manifest.name), offline: true })
+  bundled.push({ id: manifest.name, version: manifest.version, desktop: manifest.zerowall?.desktop, dsh: manifest.zerowall?.dsh, managed: true, core: runtimeProfile.corePlugins.includes(manifest.name), offline: true })
 }
 const known = new Set(bundled.map(item => item.id))
 const coreIds = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-experimental-voice-input-bundle'])

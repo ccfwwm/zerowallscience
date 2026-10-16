@@ -359,7 +359,7 @@ export class McpEnvironmentController {
     return preparePackagePlan(this.options.root, context, names, await this.pythonInfo())
   }
 
-  async previewDependencyManifest(manifest: PythonDependencyManifest, taskId?: string): Promise<StoredPackagePlan> {
+  async previewDependencyManifest(manifest: PythonDependencyManifest, taskId?: string, options: { includeVersionUpdates?: boolean } = {}): Promise<StoredPackagePlan> {
     const verified = parsePythonDependencyManifest(manifest, { ...MCP_ENVIRONMENT_KEYRING, ...this.options.publicKeys })
     const context = await this.pythonContext()
     const info = await this.pythonInfo('', false, verified.packages.map(pkg => pkg.name))
@@ -393,10 +393,15 @@ export class McpEnvironmentController {
       })
     }
     const installed = new Map(info.packages.map(pkg => [pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'), pkg.version]))
-    const pendingCount = verified.packages.filter(pkg => !installed.has(pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'))).length
+    const pendingCount = verified.packages.filter(pkg => !installed.has(pkg.name.toLowerCase().replace(/[-_.]+/gu, '-')) || options.includeVersionUpdates === true && installed.get(pkg.name.toLowerCase().replace(/[-_.]+/gu, '-')) !== pkg.version).length
     report({ stage: 'inventory', message: `已核对 ${info.packages.length}/${verified.packages.length} 个目标依赖，开始预检 ${pendingCount} 个待安装依赖。`, progress: 0, completedPackages: 0, totalPackages: pendingCount })
     try {
-      return await prepareManifestPackagePlan(this.options.root, context, verified, info, report)
+      // Preserve the established read-only call shape for ordinary previews;
+      // only automatic startup reconciliation needs the extra replacement
+      // option to be forwarded to the package planner.
+      return options.includeVersionUpdates === true
+        ? await prepareManifestPackagePlan(this.options.root, context, verified, info, report, options)
+        : await prepareManifestPackagePlan(this.options.root, context, verified, info, report)
     } finally {
       // A read-only preview must not leave the shared runtime in a permanent
       // `checking` phase. The durable Python task owns preview progress and
@@ -476,8 +481,8 @@ export class McpEnvironmentController {
     }
     if (plan.dependencyManifest) {
       const present = new Set(inventory.packages.map(pkg => pythonPackageName(pkg.name)))
-      plan.wheels = plan.wheels.filter(wheel => !present.has(pythonPackageName(wheel.name)))
-      plan.changes = plan.changes.filter(change => !present.has(pythonPackageName(change.name)))
+      plan.wheels = plan.wheels.filter(wheel => plan.replaceInstalled === true || !present.has(pythonPackageName(wheel.name)))
+      plan.changes = plan.changes.filter(change => plan.replaceInstalled === true || !present.has(pythonPackageName(change.name)))
       plan.manifestInstalled = inventory.packages.map(pkg => ({ name: pkg.name, version: pkg.version }))
     }
     // 8.0.6 uses one canonical directory.  Package transactions operate on
@@ -585,7 +590,7 @@ export class McpEnvironmentController {
       if (plan.dependencyManifest) {
         const syncDirectory = join(this.options.root, 'dependency-sync')
         const previousStatus = await readFile(join(syncDirectory, 'status.json'), 'utf8').then(JSON.parse, () => ({}))
-        const syncStatus = { ...previousStatus, manifestRevision: plan.dependencyManifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(plan.dependencyManifest)), packageCount: plan.dependencyManifest.packages.length, pythonVersion: plan.dependencyManifest.pythonVersion, environmentVersion: plan.dependencyManifest.environmentVersion, changes: dependencyManifestChanges(plan.dependencyManifest, info.packages), skippedPackages: outcome.skipped, partial: outcome.skipped.length > 0, checkedAt: new Date().toISOString(), needsRuntime: false }
+        const syncStatus = { ...previousStatus, manifestRevision: plan.dependencyManifest.revision, manifestSha256: dependencyManifestSha256(JSON.stringify(plan.dependencyManifest)), packageCount: plan.dependencyManifest.packages.length, pythonVersion: plan.dependencyManifest.pythonVersion, environmentVersion: plan.dependencyManifest.environmentVersion, changes: dependencyManifestChanges(plan.dependencyManifest, info.packages, plan.replaceInstalled === true), skippedPackages: outcome.skipped, partial: outcome.skipped.length > 0, checkedAt: new Date().toISOString(), needsRuntime: false }
         await mkdir(syncDirectory, { recursive: true })
         const statusPath = join(syncDirectory, 'status.json'); const statusTemp = `${statusPath}.tmp-${randomUUID()}`
         await writeFile(statusTemp, JSON.stringify(syncStatus)); await renameWithRetry(statusTemp, statusPath)

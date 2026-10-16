@@ -18,7 +18,7 @@ export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
     resolution: z.string().default(''),
     aspectRatio: z.string().default(''),
   }).default({ providerId: '', groupId: '', modelId: '' }),
-  imageQuality: z.union(['auto', 'low', 'medium', 'high'] as const).default('medium'),
+  imageQuality: z.union(['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const).default('medium'),
 })
 
 const VARIABLE_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u
@@ -99,7 +99,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 
   @Remote('setImageQuality')
   async setImageQuality(quality: ImageGenerationQuality): Promise<void> {
-    if (!['auto', 'low', 'medium', 'high'].includes(quality)) throw new Error('生图质量必须是 auto、low、medium 或 high。')
+    if (!['auto', 'low', 'medium', 'high', 'xhigh', 'max'].includes(quality)) throw new Error('生图质量必须是 auto、low、medium、high、xhigh 或 max。')
     await this.replaceSettings({ ...this.settings, imageQuality: quality })
   }
 

@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import sharp from 'sharp'
 import { afterEach, expect, it } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { HeService, hePythonPath } from '../src/host/he.js'
 import { analyzeHeRgb, validateHeRegion, validateHeTileRegion } from '../src/shared/he.js'
 

@@ -2,6 +2,21 @@ export type MineruMode = 'auto' | 'precision' | 'agent'
 export type MineruApi = 'precision' | 'agent'
 export type MineruModelVersion = 'pipeline' | 'vlm' | 'MinerU-HTML'
 export type MineruExtraFormat = 'docx' | 'html' | 'latex'
+export type MineruJsonValue = null | boolean | number | string | MineruJsonValue[] | MineruJsonObject
+export interface MineruJsonObject { [key: string]: MineruJsonValue }
+export interface MineruArtifactRecord {
+  id: string
+  projectId: string
+  runId?: string
+  name: string
+  uri: string
+  mediaType: string
+  checksum?: string
+  metadata: MineruJsonObject
+  version: number
+  createdAt: string
+  updatedAt: string
+}
 
 export interface MineruConfig {
   apiBaseUrl: string

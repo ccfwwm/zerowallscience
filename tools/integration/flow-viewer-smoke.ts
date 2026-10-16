@@ -8,7 +8,7 @@ import { cpus, platform, release, totalmem } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { spawn } from 'node:child_process'
-import { ResearchStore } from '../../store/src/index.js'
+import { ResearchStore } from '../../plugins/research-store/src/index.js'
 import { FlowService } from '../../plugins/research/src/host/flow.js'
 import { FLOW_STREAM_LIMITS } from '../../plugins/research/src/host/flow-reader.js'
 

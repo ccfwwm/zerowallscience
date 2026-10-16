@@ -60,6 +60,7 @@ process.on('message', async (message: any) => {
     if (message.scope === 'api') {
       if (!api) throw new Error('Python API is not configured')
       if (message.method === 'request') result = await api.request(message.args[0])
+      else if (message.method === 'resumeAutomaticSyncTask') result = await api.resumeAutomaticSyncTask(message.args[0])
       else if (message.method === 'persistRuntimeSummary') result = await api.persistRuntimeSummary(message.args[0])
       else throw new Error('Unknown Python API operation')
     } else if (message.scope === 'sync') {

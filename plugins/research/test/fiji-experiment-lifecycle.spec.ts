@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { expect, it } from 'vitest'
-import { ResearchStore } from '../../../store/src/index.js'
+import { ResearchStore } from '../../research-store/src/index.js'
 import { FijiExperimentService } from '../src/host/fiji-experiments.js'
 
 it('retains completed measurements across retries and marks expired lost ownership honestly', async () => {

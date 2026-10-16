@@ -13,6 +13,7 @@ import { pluginDependencyContract } from './plugin-dependency-contract.mjs'
 import { satisfiesPackageRange } from '../commands/package-range.mjs'
 import { mergePublishedPlugins, selectedPluginArguments } from './targeted-plugin-catalog.mjs'
 import { applyAuditedPluginCompatibility } from './plugin-compatibility.mjs'
+import { prepareFallbackWheel } from './python-wheel-artifacts.mjs'
 
 const publicationArgs = process.argv.slice(2)
 const { plugins: selectedPlugins, remaining } = selectedPluginArguments(publicationArgs)
@@ -103,7 +104,11 @@ async function archiveResource(kind, id, version, source, path) {
   const previous = histories.get(kind).get(id + '@' + version)
   if (previous) {
     const baseline = previous.entry ? await downloadResource(previous.entry, join(contract.cache, 'published-resources', kind)) : previous.path
-    immutableResources.push({ kind, id, version, ...await preserveImmutableResource(path, baseline, previous.sha256) })
+    try {
+      immutableResources.push({ kind, id, version, ...await preserveImmutableResource(path, baseline, previous.sha256) })
+    } catch (cause) {
+      throw new Error(`Immutable ${kind} resource conflict: ${id}@${version}. ${cause.message}`, { cause })
+    }
   }
 }
 const sciDirectory = join(stageRoot, 'resources/sci')
@@ -138,9 +143,17 @@ for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp',
   if (kind === 'python') {
     const version = resourceVersions.python?.['science-dependencies']
     if (!version) throw new Error('Python resource version must be pinned independently from Desktop')
-    resources.push(await entry({ id: 'science-dependencies', version, path: await resourceSource('python', 'dependency-manifest.json'), kind, key: `python/layers/science/${version}/dependency-manifest.json`, metadata: { role: 'dependency-manifest', restartRequired: false, desktop: { min: '0.0.0' } } }))
+    const manifestPath = await resourceSource('python', 'dependency-manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    const wheelRevision = process.env.ZEROWALL_PYTHON_DEPENDENCY_REVISION ?? manifest.revision
+    if (typeof wheelRevision !== 'string' || !/^[A-Za-z0-9_.-]{1,100}$/u.test(wheelRevision)) throw new Error(`Invalid Python dependency revision: ${wheelRevision ?? '(missing)'}`)
+    resources.push(await entry({ id: 'science-dependencies', version, path: manifestPath, kind, key: `python/layers/science/${version}/dependency-manifest.json`, metadata: { role: 'dependency-manifest', restartRequired: false, desktop: { min: '0.0.0' }, revision: manifest.revision } }))
     const wheels = JSON.parse(await readFile(await resourceSource('python', 'fallback-wheels.json'), 'utf8'))
-    for (const wheel of wheels) resources.push(await entry({ id: `fallback-wheel-${wheel.name}`, version: wheel.version, path: join(releaseRoot, 'python-wheels', wheel.filename), kind, key: `python/wheels/3.12.10-r18/${wheel.filename}`, metadata: { role: 'fallback-wheel', restartRequired: false, rollbackSupported: false, desktop: { min: '8.1.3' } } }))
+    const trustedKeys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
+    for (const wheel of wheels) {
+      const path = await prepareFallbackWheel(wheel, { manifest, keys: trustedKeys, cache: join(contract.cache, 'python-wheels'), output: join(releaseRoot, 'python-wheels') })
+      resources.push(await entry({ id: `fallback-wheel-${wheel.name}`, version: wheel.version, path, kind, key: `python/wheels/${wheelRevision}/${wheel.filename}`, metadata: { downloadUrl: wheel.url, role: 'fallback-wheel', restartRequired: false, rollbackSupported: false, desktop: { min: '8.1.3' }, revision: wheelRevision } }))
+    }
   }
   const document = signCatalog({ schema: 1, kind, applicationVersion: contract.version, localOnly,
     generatedAt: new Date().toISOString(), resources }, privateKey, keyId)

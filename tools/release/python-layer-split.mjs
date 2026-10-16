@@ -24,6 +24,21 @@ export function normalizePackageName(name) {
   return name.trim().toLowerCase().replace(/[-_.]+/gu, '-')
 }
 
+/** Reuse an immutable wheel location while its bytes and source identity match. */
+export function preserveFallbackWheelUrl(wheel, previousWheels) {
+  const previous = previousWheels.find(candidate =>
+    normalizePackageName(candidate.name) === normalizePackageName(wheel.name)
+    && candidate.version === wheel.version && candidate.filename === wheel.filename
+    && candidate.size === wheel.size && candidate.sha256 === wheel.sha256
+    && candidate.sourceArchiveSha256 === wheel.sourceArchiveSha256
+    && JSON.stringify([...(candidate.tags ?? [])].sort()) === JSON.stringify([...wheel.tags].sort()))
+  if (!previous?.url) return wheel
+  const url = new URL(previous.url)
+  if (url.protocol !== 'https:' || url.username || url.password
+    || decodeURIComponent(url.pathname.split('/').at(-1) ?? '') !== wheel.filename) throw new Error(`Invalid previous fallback wheel URL: ${wheel.name}`)
+  return { ...wheel, url: previous.url }
+}
+
 /** Lock entries keyed by normalised name, retaining the original spelling pip shows. */
 export function parseLockedPackages(lockText) {
   const packages = new Map()
