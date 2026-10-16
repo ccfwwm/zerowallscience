@@ -87,7 +87,12 @@ try {\n${original}\n} finally { loader.load = load; }
   const expand = page.getByRole('button', { name: '展开快捷入口', exact: true })
   if (await expand.isVisible()) await expand.click()
   async function send(channel, status) {
-    await application.evaluate(({ BrowserWindow }, { channel, status }) => {
+    await application.evaluate(({ BrowserWindow, ipcMain }, { channel, status }) => {
+      // Sidebar collapse remounts its footer. Keep the fixture getter in sync
+      // with the event so a new subscriber receives the same current status.
+      const getter = channel === 'desktop:update-status' ? 'desktop:get-update-status' : channel
+      ipcMain.removeHandler(getter)
+      ipcMain.handle(getter, () => status)
       for (const window of BrowserWindow.getAllWindows()) window.webContents.send(channel, status)
     }, { channel, status })
   }
