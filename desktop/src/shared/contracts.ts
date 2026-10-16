@@ -170,7 +170,7 @@ export interface McpPythonInfo {
   missingCorePackages?: (string[]) | undefined
   packages: McpPythonPackage[]
   skillAudit?: (McpSkillAudit) | undefined
-  verification?: ({ imports: boolean; pipCheck: boolean; message: string; installed?: (number) | undefined; failedPackages?: (string[]) | undefined; upToDate?: (boolean) | undefined }) | undefined
+  verification?: ({ imports?: boolean | undefined; pipCheck?: boolean | undefined; diagnosticsSkipped?: boolean | undefined; message: string; installed?: (number) | undefined; failedPackages?: (string[]) | undefined; upToDate?: (boolean) | undefined }) | undefined
   message?: (string) | undefined
 }
 

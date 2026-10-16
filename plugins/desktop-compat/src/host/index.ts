@@ -1,4 +1,4 @@
-import { isAbsolute } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { attachManagement } from './management.js'
 import { PassThrough } from 'node:stream'
 import type { Context } from '@deepseek-ai/cordis'
@@ -104,7 +104,8 @@ export function apply(ctx: Context): void {
   attachManagement(ctx)
   const existingProfiles = ctx.get('desktopProfiles') as DesktopProfilesLike | undefined
   const existingPnpm = ctx.get('desktopPnpm') as DesktopPnpmLike | undefined
-  const bridge = existingProfiles === undefined && typeof process.send === 'function' ? createProcessBridge() : undefined
+  const profile = ctx.get('profileContext') as { name: string; dir: string } | undefined
+  const bridge = existingProfiles === undefined && typeof process.send === 'function' ? createProcessBridge(profile) : undefined
   const profiles = existingProfiles ?? bridge?.profiles
   const pnpm = existingPnpm ?? bridge?.pnpm
   if (existingProfiles === undefined && profiles !== undefined) ctx.provide('desktopProfiles', profiles)
@@ -115,7 +116,7 @@ export function apply(ctx: Context): void {
 
 interface BridgeResult { ok: boolean; result?: unknown; error?: string }
 
-function createProcessBridge(): { profiles: DesktopProfilesLike; pnpm: DesktopPnpmLike } {
+function createProcessBridge(profile?: { name: string; dir: string }): { profiles: DesktopProfilesLike; pnpm: DesktopPnpmLike } {
   const requests = new Map<string, { stdout: PassThrough; stderr: PassThrough; resolve: (value: DesktopPnpmOutcome) => void; reject: (error: Error) => void }>()
   process.on('message', (message: unknown) => {
     if (!message || typeof message !== 'object') return
@@ -130,9 +131,9 @@ function createProcessBridge(): { profiles: DesktopProfilesLike; pnpm: DesktopPn
     else pending.reject(new Error(value.result?.error ?? 'Desktop plugin operation failed.'))
   })
   const profiles: DesktopProfilesLike = {
-    current: { name: 'stable', dir: process.env.DSH_HOME ?? process.cwd() },
-    list: () => [{ name: 'stable', dir: process.env.DSH_HOME ?? process.cwd(), selectable: true }, { name: 'preview', dir: process.env.DSH_HOME ?? process.cwd(), selectable: true }, { name: 'development', dir: process.env.DSH_HOME ?? process.cwd(), selectable: true }],
-    select: async (_name) => undefined,
+    current: profile ?? { name: 'web', dir: join(process.env.DSH_HOME ?? process.cwd(), 'profiles', 'web') },
+    list: () => [{ ...profiles.current, selectable: false }],
+    select: async (name) => { if (name !== profiles.current.name) throw new Error('Switch desktop channels through their separate desktop installations.') },
   }
   const pnpm: DesktopPnpmLike = {
     run: (args, signal) => run('run', args, process.cwd(), signal),

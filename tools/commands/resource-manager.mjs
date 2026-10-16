@@ -5,6 +5,7 @@ import { assertCompatible, compareVersions, downloadResource, verifyCatalog, ver
 import { pluginIdentity, prepareOfflineCandidate, readOfflineReceipt, verifiedGeneration } from './offline-profile.mjs'
 import { satisfiesPackageRange } from './package-range.mjs'
 import { renameProfile } from './profile-rename.mjs'
+import { repairProfileLayout } from './profile-layout.mjs'
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
 async function atomic(path, value) {
@@ -75,7 +76,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   async function copyProfileSkeleton(source, destination) {
     await mkdir(destination, { recursive: true })
     for (const name of await readdir(source)) {
-      if (name === 'node_modules' || name.startsWith('.')) continue
+      if (name === 'node_modules' || (name.startsWith('.') && name !== '.npmrc' && name !== '.pnpmfile.cjs')) continue
       await cp(join(source, name), join(destination, name), { recursive: true })
     }
   }
@@ -338,7 +339,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (error.code === 'ENOENT') return undefined
       throw error
     })
-    if (!pending || pending.state !== 'activating') return
+    if (!pending || pending.state !== 'activating') {
+      // Local-only migration of pre-8.3.1 candidate paths; no downloads or pnpm
+      // operations run during ordinary startup.
+      const layout = await repairProfileLayout(active, { home })
+      if (layout.changed) await atomic(join(root, 'profile-layout-migration.json'), { ...layout, at: new Date().toISOString() })
+      return
+    }
     const backup = ownedBackup(pending.backup)
     // Before the first rename (or after recovery has restored the backup),
     // active still contains the complete old profile. Never quarantine it
@@ -346,9 +353,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     if (await exists(backup)) {
       if (await exists(active)) await renameProfile(active, active + '.interrupted-' + randomUUID())
       await renameProfile(backup, active)
+      await repairProfileLayout(active, { from: backup, home })
     } else if (!await exists(active)) {
       throw new Error('Plugin update recovery has no complete active or backup profile')
-    }
+    } else await repairProfileLayout(active, { home })
     if (pending.selectionBefore) await atomic(selectionFile, pending.selectionBefore)
     await atomic(journal, { ...pending, state: 'recovered' })
   }
@@ -543,12 +551,17 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await writePluginSelection(selection)
     manifest.zerowall = { ...manifest.zerowall, disabledPlugins: [...disabled].sort() }
     await atomic(file, manifest)
-    await cp(join(active, 'node_modules'), join(candidate, 'node_modules'), { recursive: true, dereference: false }).catch(error => { if (error.code !== 'ENOENT') throw error })
+    await cp(join(active, 'node_modules'), join(candidate, 'node_modules'), { recursive: true, dereference: false, verbatimSymlinks: true }).catch(error => { if (error.code !== 'ENOENT') throw error })
+    await requireProfileLayout(candidate, active)
     await normalizeComposition(candidate)
     return activate(candidate, { operation: enabled ? 'enable' : 'disable', packageId: id, enabled })
   }
 
   async function activate(candidate, metadata, completionState = 'complete') {
+    // Normalize relative external links before the deeper history move. The
+    // signed offline generation itself is never traversed or modified.
+    await requireProfileLayout(active, active)
+    await requireProfileLayout(candidate, candidate)
     const backup = join(root, 'history', 'zerowall-' + randomUUID())
     await mkdir(resolve(backup, '..'), { recursive: true })
     // Persist the recovery instruction before stopping the Host. If that
@@ -559,7 +572,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       await stopHost()
       await renameProfile(active, backup)
       backedUp = true
+      await requireProfileLayout(backup, active)
       await renameProfile(candidate, active)
+      await requireProfileLayout(active, candidate)
       await startHost()
       await atomic(journal, { state: completionState, backup, ...metadata })
       await recordPluginGeneration(metadata, backup)
@@ -569,11 +584,18 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
         await stopHost()
         if (await exists(active)) await renameProfile(active, active + '.failed-' + randomUUID())
         await renameProfile(backup, active)
+        await requireProfileLayout(active, backup)
       }
       await startHost()
       await atomic(journal, { state: 'rolled-back', backup, ...metadata })
       throw error
     }
+  }
+
+  async function requireProfileLayout(directory, from) {
+    const result = await repairProfileLayout(directory, { from, home })
+    if (result.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: use the plugin repair action with the bundled pnpm before activation')
+    return result
   }
 
   async function mutate(args, acknowledgedDependents = []) {
@@ -632,7 +654,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await copyProfileSkeleton(active, candidate)
     // Rollback is a surgical profile change. Keep every other installed
     // package from the active generation so updating A cannot remove B.
-    await cp(join(active, 'node_modules'), join(candidate, 'node_modules'), { recursive: true }).catch(error => { if (error.code !== 'ENOENT') throw error })
+    await cp(join(active, 'node_modules'), join(candidate, 'node_modules'), { recursive: true, dereference: false, verbatimSymlinks: true }).catch(error => { if (error.code !== 'ENOENT') throw error })
+    await requireProfileLayout(candidate, active)
     await restorePluginGeneration(candidate, previous.profile, previous.packageIds, id)
     await normalizeComposition(candidate)
     const manifest = await json(join(candidate, 'package.json'))

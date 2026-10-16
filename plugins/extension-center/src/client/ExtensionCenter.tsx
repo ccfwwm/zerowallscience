@@ -278,7 +278,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
       await waitForJob(started.taskId)
       if (!alive()) return
       setSelected(new Set()); setMessage(t('operationComplete')); await refresh(); await refreshJobs()
-    } catch (error) { if (!alive()) return; setOperationFailed(true); setMessage(error instanceof Error ? error.message : t('failed')) }
+    } catch (error) { if (!alive()) return; setOperationFailed(true); setMessage(error instanceof Error ? error.message : t('failed')); await Promise.allSettled([refresh(), refreshJobs()]) }
     finally { if (alive()) setBusy(false) }
   }
 
@@ -304,7 +304,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
       if (pluginIds.length) { const started = await api.updatePlugins!(pluginIds); await waitForJob(started.taskId) }
       if (!alive()) return
       setSelected(new Set()); setMessage(t('operationComplete')); await refresh(); await refreshJobs()
-    } catch (error) { if (!alive()) return; setOperationFailed(true); setMessage(error instanceof Error ? error.message : t('failed')) }
+    } catch (error) { if (!alive()) return; setOperationFailed(true); setMessage(error instanceof Error ? error.message : t('failed')); await Promise.allSettled([refresh(), refreshJobs()]) }
     finally { if (alive()) setBusy(false) }
   }
 

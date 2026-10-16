@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { assertCompatible, compareVersions, fileDigest, verifySignedDocument } from './resource-catalog.mjs'
 import { carrierIndex, carrierName, offlineContentDigest } from './offline-carrier.mjs'
 import { physicalFs } from './physical-fs.mjs'
+import { repairProfileLayout } from './profile-layout.mjs'
 const { copyFile, lstat, readdir } = physicalFs.promises
 
 export function pluginIdentity(id) {
@@ -265,7 +266,9 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   const removed = new Set(selection.removed ?? [])
   const pins = selection.pinned ?? {}
   const candidate = join(home, 'profiles', 'zerowall-offline-' + randomUUID())
-  await cp(active, candidate, { recursive: true, dereference: false })
+  await cp(active, candidate, { recursive: true, dereference: false, verbatimSymlinks: true })
+  const layout = await repairProfileLayout(candidate, { from: active, home })
+  if (layout.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: repair the plugin profile before upgrading its offline resources')
   const packages = new Map(receipt.plugins.map(entry => [entry.id, entry]))
   const changed = [], blocked = []
   const bundles = new Set(manifest.dsh?.profile?.bundles ?? [])

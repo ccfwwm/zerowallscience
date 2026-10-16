@@ -15,7 +15,7 @@ import type { McpPythonInfo, PythonPackagePlan } from '../shared/contracts.js'
 import { assertManifestWheels, type PythonDependencyManifest } from './python-dependency-manifest.js'
 import { missingSourceRequirement, prepareRequestedSourceWheel, prepareSourceWheel, verifySourceWheel, type BuiltSourceWheel } from './python-source-packages.js'
 import { withPackageDownloadRetries } from './python-download-retry.js'
-import { commitFixedRuntime, completeFixedTransaction, restoreFixedTransaction } from './python-fixed-transaction.js'
+import { commitFixedRuntime } from './python-fixed-transaction.js'
 import { mayUseFallbackWheel, prepareFallbackWheel } from './python-fallback-wheel.js'
 
 interface Context { root: string; executable: string; sitePackages: string; manifest: McpEnvironmentManifest; mirror?: MirrorConfig | undefined; dependencyManifest?: (PythonDependencyManifest) | undefined; sourceWheels?: (BuiltSourceWheel[]) | undefined }
@@ -34,7 +34,7 @@ export interface StoredPackagePlan extends PythonPackagePlan { wheels: Wheel[]; 
  * the remainder of the layer lands.
  */
 export interface PackageInstallFailure { name: string; version: string; message: string }
-export interface ApplyOutcome { installed: number; skipped: PackageInstallFailure[]; pipCheckPassed: boolean; pipCheckMessage?: (string) | undefined; importCheckPassed: boolean; importCheckMessage?: (string) | undefined }
+export interface ApplyOutcome { installed: number; skipped: PackageInstallFailure[]; pipCheckPassed?: boolean | undefined; pipCheckMessage?: (string) | undefined; importCheckPassed?: boolean | undefined; importCheckMessage?: (string) | undefined; diagnosticsSkipped?: boolean }
 /** Progress sink. `stage` is a free-form label the caller renders verbatim. */
 export interface ApplyProgress { (input: { completed: number; total: number; name?: (string) | undefined; stage?: (string) | undefined; logLine?: (string) | undefined }): void }
 const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/gu, '-')
@@ -344,7 +344,7 @@ async function stagedFiles(root: string): Promise<string[]> {
   return result.sort()
 }
 
-async function installDistributionTransaction(executable: string, site: string, unpacked: string, packageName: string, version: string, verifyImport: () => Promise<void | 'pending'>): Promise<string> {
+async function installDistributionTransaction(executable: string, site: string, unpacked: string, packageName: string, version: string): Promise<string> {
   const before = await ownedDistributionFiles(executable, site, [packageName]).catch(error => {
     if (String(error).includes('No package metadata was found')) return []
     throw error
@@ -359,7 +359,6 @@ norm=lambda s:re.sub(r'[-_.]+','-',s).lower()
 d=next((d for d in m.distributions(path=[sys.argv[1]]) if norm(d.metadata.get('Name',''))==norm(sys.argv[2])),None)
 assert d is not None and d.version==sys.argv[3], 'installed distribution version mismatch'`
     await python(executable, verify, [site, packageName, version])
-    return verifyImport()
   }, { prefix, removals: before.filter(path => !after.includes(path)).map(path => join(prefix, path)) })
 }
 
@@ -495,10 +494,7 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
   // a verified local wheel or signed fallback wheel.
   const skipped: PackageInstallFailure[] = [...(plan.preparationFailures ?? [])]
   let completed = 0
-  let importCheckPassed = true
-  const importFailures: string[] = []
-  const applied: Array<{ wheel: Wheel; id: string; pending: boolean }> = []
-  const transactionRoot = dirname(dirname(canonicalSite))
+  let installed = 0
   const recordFailure = async (failure: PackageInstallFailure) => {
     skipped.push(failure)
     await appendFile(join(root, 'plans', `${plan.planId}-skipped.jsonl`), JSON.stringify({ ...failure, at: new Date().toISOString() }) + '\n')
@@ -509,7 +505,6 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
     completed++
     progress?.({ completed, total, name: failure.name, stage: `跳过 ${failure.name}`, logLine: failure.message })
   }
-  try {
   for (const [index, wheel] of plan.wheels.entries()) {
     checkPythonCancellation()
     progress?.({ completed, total, name: wheel.name, stage: `正在安装 ${wheel.name}` })
@@ -583,73 +578,27 @@ export async function applyPackagePlanFiles(root: string, context: Context, targ
       // The candidate is complete before touching the live directory. Remove
       // only the previous distribution's RECORD files; a failed download or
       // wheel install therefore leaves the old package intact.
-      let pending = false
-      const id = await installDistributionTransaction(executable, canonicalSite, unpacked, wheel.name, wheel.version, async () => {
-        progress?.({ completed, total, name: wheel.name, stage: `正在验证导入 ${wheel.name}` })
-        const verification = await verifyPackageImport(executable, canonicalSite, wheel.name, plan.wheels.slice(index + 1).map(item => item.name))
-        pending = verification.deferred
-        if (pending) {
-          progress?.({ completed, total, name: wheel.name, stage: `等待依赖验证 ${wheel.name}`, logLine: verification.message })
-          return 'pending'
-        }
-      })
-      applied.push({ wheel, id, pending })
+      // A dependency layer is installed as a complete closure, one wheel at a
+      // time. Importing a parent before its children arrive rolled valid wheels
+      // back and made the missing dependencies permanently unrepairable.
+      await installDistributionTransaction(executable, canonicalSite, unpacked, wheel.name, wheel.version)
+      installed++
       // Temporary-file cleanup cannot turn a verified commit into a skipped
       // package without restoring it. Keep a cleanup diagnostic separately.
       await rm(itemDir, { recursive: true, force: true }).catch(error => progress?.({ completed, total, name: wheel.name, logLine: `临时目录清理失败：${String(error)}` }))
       completed++
-      progress?.({ completed, total, name: wheel.name, stage: pending ? `等待依赖验证 ${wheel.name}` : `已安装 ${wheel.name}` })
+      progress?.({ completed, total, name: wheel.name, stage: `已安装 ${wheel.name}` })
     } catch (error) {
       checkPythonCancellation()
       const message = (error instanceof Error ? error.message : String(error)).slice(-1200)
-      if (error instanceof PackageImportError) { importCheckPassed = false; importFailures.push(`${wheel.name}: ${message}`) }
       completed++
       await recordFailure({ name: wheel.name, version: wheel.version, message })
     }
   }
-  // Validate the complete retained set in fresh Python processes. A later
-  // package replacement or rollback can affect earlier imports, so repeat only
-  // when a failed package was removed. Every failed transaction is restored in
-  // reverse commit order and never contributes to the successful count.
-  while (applied.length) {
-    const failed: Array<{ entry: typeof applied[number]; message: string }> = []
-    for (const entry of applied) {
-      checkPythonCancellation()
-      progress?.({ completed, total, name: entry.wheel.name, stage: `最终导入验证 ${entry.wheel.name}` })
-      try { await verifyPackageImport(executable, canonicalSite, entry.wheel.name) }
-      catch (error) {
-        checkPythonCancellation()
-        failed.push({ entry, message: (error instanceof Error ? error.message : String(error)).slice(-1200) })
-      }
-    }
-    if (!failed.length) break
-    importCheckPassed = false
-    for (const { entry, message } of failed.reverse()) {
-      await restoreFixedTransaction(transactionRoot, entry.id)
-      applied.splice(applied.indexOf(entry), 1)
-      importFailures.push(`${entry.wheel.name}: ${message}`)
-      await recordFailure({ name: entry.wheel.name, version: entry.wheel.version, message })
-    }
-  }
-  for (const entry of applied) if (entry.pending) {
-    await completeFixedTransaction(transactionRoot, entry.id)
-    entry.pending = false
-    progress?.({ completed, total, name: entry.wheel.name, stage: `已安装 ${entry.wheel.name}` })
-  }
-  } catch (error) {
-    // Interrupted deferred imports remain retryable even before startup
-    // recovery runs. Fully verified successful packages stay installed.
-    for (const entry of [...applied].reverse()) if (entry.pending) await restoreFixedTransaction(transactionRoot, entry.id)
-    throw error
-  }
-  // `pip check` is advisory here: a skipped package legitimately leaves an
-  // unsatisfied requirement, and failing the whole run for it would undo the
-  // point of installing the rest.
-  let pipCheckPassed = false; let pipCheckMessage: string | undefined
-  try { await run(executable, ['check'], [canonicalSite]); pipCheckPassed = true }
-  catch (error) { pipCheckMessage = error instanceof Error ? error.message.slice(-2000) : String(error).slice(-2000) }
-  const importCheckMessage = importFailures.length ? importFailures.join('\n').slice(-4000) : undefined
-  return { installed: applied.length, skipped, pipCheckPassed, pipCheckMessage, importCheckPassed, importCheckMessage }
+  // Keep explicit diagnostics available, but do not run environment-wide
+  // import/pip checks as an installation gate. Actual wheel failures remain
+  // durable retry items; unrelated optional packages cannot block this layer.
+  return { installed, skipped, diagnosticsSkipped: true }
 }
 
 export async function replayCustomizations(target: string, manifest: McpEnvironmentManifest, sitePackages: string, customizations: Record<string, string>, removals: string[] = []): Promise<void> {

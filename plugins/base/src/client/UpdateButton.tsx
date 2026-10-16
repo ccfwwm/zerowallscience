@@ -85,7 +85,7 @@ export function UpdateButton(props: Props) {
     {open && createPortal(<div className={css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
       <section className={css.panel} role="dialog" aria-modal="true" aria-labelledby="zerowall-update-title">
         <header><div><p>ZeroWall Science</p><h2 id="zerowall-update-title">{title}</h2></div><button type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button></header>
-        <div className={css.content}>
+        <div className={css.content} tabIndex={0} aria-label={props.t('update.notes')}>
           <div className={css.icon} data-phase={hasAnyUpdate ? 'available' : status.phase}>{hasAnyUpdate ? <Download size={28} /> : status.phase === 'upToDate' ? <CheckCircle2 size={28} /> : <RefreshCw size={28} />}</div>
           <div className={css.copy}><strong>{hasResourceUpdate && !hasUpdate ? props.t('update.resourcesVersionAvailable', { count: resourceStatus.updateCount }) : statusLine(status, props.t)}</strong><p>{hasResourceUpdate && !hasUpdate ? props.t('update.resourcesDescription') : statusDescription(status, props.t)}</p></div>
           {status.notes !== undefined && status.notes.length > 0 && (

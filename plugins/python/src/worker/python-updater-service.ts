@@ -186,8 +186,8 @@ export class PythonUpdaterService {
           this.publish({ ...this.status, ...result, lastUpdateError: message, updateJob: { taskId, kind: method, stage: 'failed', canPause: false } })
           return
         }
-        if (method === 'applyPackagePlan' && result?.verification && (result.verification.imports === false || result.verification.pipCheck === false)) {
-          throw new Error(result.verification.message ?? 'Python 依赖安装后导入或 pip check 未通过；已完成的单包事务保留，可重试失败项。')
+        if (method === 'applyPackagePlan' && result?.verification?.failedPackages?.length) {
+          throw new Error(result.verification.message ?? '部分依赖尚未安装；已安装依赖保留，失败项可继续重试。')
         }
         const info = result?.packages ? result : method === 'initialize' ? await this.pythonCoreInfo() : await this.pythonInfo()
         const next = await this.rpc<McpEnvironmentStatus>('localStatus')

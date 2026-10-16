@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
+import { createConnection } from 'node:net'
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { contract, root } from '../../tools/build/paths.mjs'
@@ -129,11 +130,22 @@ try {\n${original}\n} finally { loader.load = load; }
   assert.equal(await trigger.getAttribute('title'), '4 个扩展可更新')
   await screenshot('collapsed-sidebar-resource-updates')
   evidence.checks.push('clearing resources removes the badge; collapsed sidebar retains the icon and count tooltip')
-  await send('desktop:update-status', { phase: 'available', currentVersion: contract.version, version: '99.0.0' })
+  await page.setViewportSize({ width: 800, height: 480 })
+  await send('desktop:update-status', { phase: 'available', currentVersion: contract.version, version: '99.0.0', notes: Array.from({ length: 45 }, (_, i) => `第 ${i + 1} 项更新：插件安装、Python 依赖与工作流改进。`) })
   const desktopDialog = page.getByRole('dialog', { name: '发现新版本', exact: true })
   await desktopDialog.waitFor()
   await desktopDialog.getByRole('button', { name: '下载更新', exact: true }).waitFor()
   await desktopDialog.getByRole('button', { name: '打开扩展中心', exact: true }).waitFor()
+  const geometry = await desktopDialog.evaluate(dialog => {
+    const content = dialog.querySelector('[tabindex="0"]'), footer = dialog.querySelector('footer')
+    return { contentHeight: content.clientHeight, scrollHeight: content.scrollHeight, footerBottom: footer.getBoundingClientRect().bottom, dialogTop: dialog.getBoundingClientRect().top, viewportHeight: innerHeight }
+  })
+  assert(geometry.scrollHeight > geometry.contentHeight, 'Long update notes have an internal scrollbar')
+  assert(geometry.dialogTop >= 0 && geometry.footerBottom <= geometry.viewportHeight, 'Footer buttons remain inside the short viewport')
+  await desktopDialog.locator('[tabindex="0"]').evaluate(element => { element.scrollTop = element.scrollHeight })
+  assert(await desktopDialog.locator('[tabindex="0"]').evaluate(element => element.scrollTop > 0), 'Update content actually scrolls')
+  evidence.scrollGeometry = geometry
+  evidence.checks.push('45 release notes scroll at 800x480 while footer actions remain visible')
   assert.equal(await page.getByRole('status').filter({ hasText: /可更新|新版本/u }).count(), 0)
   await screenshot('desktop-and-resource-updates')
   await page.keyboard.press('Escape')
@@ -142,6 +154,36 @@ try {\n${original}\n} finally { loader.load = load; }
   evidence.checks.push('desktop update still opens its confirmation dialog, with an Extension Center action when both kinds are available')
   assert.deepEqual(evidence.pageErrors, [])
   assert.deepEqual(evidence.routeErrors, [])
+  if (process.argv.includes('--plugin-install-smoke')) {
+    const endpoint = JSON.parse(await readFile(join(output, 'user-data/command-endpoint.json'), 'utf8'))
+    async function command(operation, args) {
+      return new Promise((accept, reject) => {
+        const socket = createConnection(endpoint.address)
+        let response = ''
+        socket.setTimeout(600_000, () => { socket.destroy(); reject(new Error('Plugin smoke operation timed out')) })
+        socket.on('error', reject)
+        socket.on('connect', () => socket.write(JSON.stringify({ token: endpoint.token, operation, args }) + '\n'))
+        socket.on('data', chunk => { response += chunk })
+        socket.on('end', () => {
+          try { const value = JSON.parse(response); if (!value.ok) throw new Error(value.error); accept(value.result) }
+          catch (error) { reject(error) }
+        })
+      })
+    }
+    const installed = await command('plugin.run', ['add', 'dsh-orb@0.1.7'])
+    assert.equal(installed.restarted, true)
+    const pluginPath = join(output, 'user-data/harness/profiles/web/node_modules/dsh-orb/package.json')
+    assert.equal(JSON.parse(await readFile(pluginPath, 'utf8')).version, '0.1.7')
+    const doctor = await command('profile.doctor', [])
+    assert(doctor.plugins.some(item => item.id === 'dsh-orb' && item.version === '0.1.7'))
+    const removed = await command('plugin.run', ['remove', 'dsh-orb'])
+    assert.equal(removed.restarted, true)
+    assert(!JSON.parse(await readFile(profilePath, 'utf8')).dsh.profile.bundles.includes('dsh-orb'))
+    const after = await command('profile.doctor', [])
+    assert(!after.plugins.some(item => item.id === 'dsh-orb'))
+    evidence.checks.push('Official dsh-orb 0.1.7 installed, loaded through profile activation, then removed through the real desktop command endpoint; both Host restarts passed')
+    evidence.pluginSmoke = { id: 'dsh-orb', version: '0.1.7', installed: true, removed: true }
+  }
   evidence.complete = true
   console.log('Update entry Electron verification passed:', output)
 } catch (error) {

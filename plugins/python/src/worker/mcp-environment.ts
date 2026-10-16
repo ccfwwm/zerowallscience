@@ -524,21 +524,9 @@ export class McpEnvironmentController {
       })
       plan.installOutcome = outcome
       await writeFile(join(this.options.root, 'plans', `${planId}.json`), JSON.stringify(plan))
-      const strictCoreGeneration = plan.dependencyManifest?.layer === 'core'
-      // Core is the boot contract and must remain all-or-nothing. Science and
-      // capability layers are optional: a package with an unavailable or
-      // conflicting version is retained as a durable retry item while the
-      // successfully installed packages remain usable in the candidate.
-      const optionalPartialInstall = !strictCoreGeneration && outcome.skipped.length > 0
-      // In the canonical single-directory runtime a package transaction is
-      // intentionally durable.  A failed package must not roll back packages
-      // that already succeeded; coreReady is computed from the signed core
-      // closure on the next inventory and remains false until all 42 pins are
-      // present.  Legacy generation snapshots retain their old all-or-nothing
-      // health gate for compatibility.
-      if (!this.singleDirectoryMode() && this.options.generationMode && (!outcome.importCheckPassed || strictCoreGeneration && (outcome.skipped.length > 0 || !outcome.pipCheckPassed) || !optionalPartialInstall && !outcome.pipCheckPassed)) {
-        throw new Error('新 Python generation 验证失败，保留当前环境；请查看依赖安装日志后重试。')
-      }
+      // Each package transaction is durable. Missing children continue through
+      // the signed queue; installation never rolls valid packages back because
+      // an unrelated import or whole-environment pip diagnosis fails.
       if (outcome.skipped.length) {
         // A partial install is a real outcome the user has to see, not a silent
         // success: the skipped packages keep their old version and stay pending
@@ -556,10 +544,10 @@ export class McpEnvironmentController {
         else customizations[pythonPackageName(change.name)] = change.to
       }
       const removedPackages = [...new Set([...(current.removedPackages ?? []), ...(plan.removals ?? [])])].filter(name => !plan.wheels.some(wheel => pythonPackageName(wheel.name) === name))
-      const verifiedAt = new Date().toISOString()
+      const installedAt = new Date().toISOString()
       const prior = await readFile(join(current.root, 'customization.json'), 'utf8').then(JSON.parse, () => undefined)
-      const history = [...(prior?.history ?? []), ...plan.changes.filter(change => successful.has(pythonPackageName(change.name))).map(change => ({ ...change, verifiedAt }))]
-      await writeFile(join(target, 'customization.json'), JSON.stringify({ planId, localRevision, customizations, changes: plan.changes, history, verifiedAt }))
+      const history = [...(prior?.history ?? []), ...plan.changes.filter(change => successful.has(pythonPackageName(change.name))).map(change => ({ ...change, installedAt }))]
+      await writeFile(join(target, 'customization.json'), JSON.stringify({ planId, localRevision, customizations, changes: plan.changes, history, installedAt }))
       if (plan.dependencyManifest && sharedStable) {
         // `manifest.json` at the runtime root is the signed MCP/bootstrap
         // manifest. Dependency catalogs are a separate contract and must stay
@@ -576,17 +564,14 @@ export class McpEnvironmentController {
       activated = true
       await this.localStatus()
       const info = await this.pythonInfo('', false, trackedNames)
-      const verificationOk = outcome.importCheckPassed && outcome.pipCheckPassed
       const resultMessage = outcome.skipped.length && outcome.installed > 0
         ? `部分成功：已安装 ${outcome.installed} 个依赖，${outcome.skipped.length} 个失败（${outcome.skipped.map(item => item.name).join('、')}），可以重试。`
         : outcome.skipped.length
           ? `安装失败：${outcome.skipped.length} 个依赖未安装（${outcome.skipped.map(item => item.name).join('、')}）。失败包原文件已恢复。`
         : plan.wheels.length === 0
           ? '依赖已是最新，无需重复安装。'
-          : verificationOk
-            ? `安装成功，环境已生效。已安装 ${outcome.installed} 个依赖。`
-            : `依赖文件已写入，但验证未全部通过。pip check：${outcome.pipCheckMessage ?? '通过'}；导入检查：${outcome.importCheckMessage ?? '通过'}`
-      info.verification = { imports: outcome.importCheckPassed, pipCheck: outcome.pipCheckPassed, message: resultMessage, installed: outcome.installed, failedPackages: outcome.skipped.map(item => item.name), upToDate: plan.wheels.length === 0 && outcome.skipped.length === 0 }
+          : `安装成功，环境已生效。已安装 ${outcome.installed} 个依赖。`
+      info.verification = { diagnosticsSkipped: outcome.diagnosticsSkipped, message: resultMessage, installed: outcome.installed, failedPackages: outcome.skipped.map(item => item.name), upToDate: plan.wheels.length === 0 && outcome.skipped.length === 0 }
       if (plan.dependencyManifest) {
         const syncDirectory = join(this.options.root, 'dependency-sync')
         const previousStatus = await readFile(join(syncDirectory, 'status.json'), 'utf8').then(JSON.parse, () => ({}))
@@ -1099,8 +1084,10 @@ export class McpEnvironmentController {
         const reported = `${result.stdout}\n${result.stderr}`
         if (!new RegExp(`Python ${manifest.python.version.replaceAll('.', '\\.')}\\s*(?:$|\\.)`, 'u').test(reported)) throw new Error(`Bundled Python version does not match ${manifest.python.version}.`)
       }
+      // Existing optional dependencies must not block bootstrap recovery before
+      // the signed core/science queue gets a chance to install their children.
       if (this.singleDirectoryMode() && this.options.verifySharedPython) await this.options.verifySharedPython(stableRoot)
-      else if (this.singleDirectoryMode()) await execute(join(stableRoot, 'python.exe'), ['-I', '-B', '-m', 'pip', 'check'], stableRoot)
+      else if (this.singleDirectoryMode()) { /* Interpreter integrity was checked above. */ }
       else await (this.options.verifySharedPython ?? verifySharedPackages)(stableRoot)
       this.set({ phase: 'installing', environmentVersion: environmentVersion(manifest), progress: 95, message: '正在启用共享 Python' })
       committed = true

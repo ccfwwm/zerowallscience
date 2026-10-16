@@ -2,7 +2,6 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { AdapterRegistrationHandle, LlmAdapter } from '@deepseek-ai/dsh-llm'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import {
-  PiAiAdapter,
   type PiAiAdapterOptions,
   type PiAiProviderProfile,
   type ResolvedPiAiProviderProfile,
@@ -16,6 +15,7 @@ import { MediaJobLedger } from './media-jobs.js'
 import { createHash } from 'node:crypto'
 import type { ZeroWallMediaJobs } from '../shared/media.js'
 import { AiCloudMediaService } from './media.js'
+import { ManagedPiAiAdapter, managedRetryPolicy } from './managed-adapter.js'
 import type { ZeroWallMedia } from '../shared/media.js'
 export { AiCloudMediaService } from './media.js'
 export type { ZeroWallMedia, MediaRequest, MediaTask, MediaSelection } from '../shared/media.js'
@@ -73,7 +73,7 @@ export class AiCloudLlmController {
   constructor(private readonly ctx: Context, options: AiCloudLlmControllerOptions = {}) {
     ctx.llm.registerConfigurableProviders([{ provider: 'zerowall-ai-cloud', displayName: 'ZeroWall AI 云平台', settingsNs: 'zerowall-ai-cloud', settingsPath: [], configurationMode: 'managed' }])
     this.secrets = options.secrets ?? new SecretBrokerClient()
-    this.adapter = (options.createAdapter ?? ((adapterOptions) => new PiAiAdapter(adapterOptions)))({
+    this.adapter = (options.createAdapter ?? ((adapterOptions) => new ManagedPiAiAdapter(adapterOptions)))({
       profiles: () => this.profiles,
       resolveApiKey: async (provider) => {
         const groupId = groupIdOf(provider)
@@ -260,6 +260,7 @@ function managedProfiles(models: readonly AiCloudManagedModel[]): Map<string, Re
       api,
       baseURL: entry.baseURL,
       compat: managedCompat(api),
+      retryPolicy: managedRetryPolicy,
       // Model availability comes from the account catalog. Input modalities
       // stay part of the route contract; they are not discovered by making a
       // probe request to the provider.
