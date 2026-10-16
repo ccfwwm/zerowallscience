@@ -118,6 +118,7 @@ if (fullOffline) {
   const probeHome = await mkdtemp(resolve(tmpdir(), 'zerowall-离线闭包-'))
   const { initializeProfile } = await import('../../tools/commands/profile.mjs')
   const defaults = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8'))
+  const bundledPlugins = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/bundled-plugins.json'), 'utf8'))
   const bundledSkillVersions = JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/bundled-skill-versions.json'), 'utf8'))
   const skillVersions = JSON.parse(await readFile(resolve(repositoryRoot, 'config/catalogs/resource-versions.json'), 'utf8')).skill
   for (const [id, version] of Object.entries(bundledSkillVersions)) {
@@ -125,7 +126,7 @@ if (fullOffline) {
   }
   await initializeProfile(probeHome, defaults, offlineReceipt.plugins)
   offlineProbe = await prepareOfflineCandidate({ home: probeHome, source: resolve(packaged.resourcesRoot, 'offline-profile'), keys,
-    target: { desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit, platform: process.platform, architecture: process.arch }, defaults, yaml,
+    target: { desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit, platform: process.platform, architecture: process.arch }, defaults, bundledPlugins, yaml,
   })
   if (offlineProbe.blocked.length) throw new Error('New offline import profile unexpectedly blocked')
 }

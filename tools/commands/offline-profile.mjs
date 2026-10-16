@@ -219,7 +219,7 @@ export async function verifiedGeneration(home, digest, keys, target, ids, { loca
 }
 
 /** Materialize a verified immutable generation in user-owned storage. */
-export async function prepareOfflineCandidate({ home, source, keys, target, defaults, bundledPlugins, yaml, local = false, staging = false, onPhase = () => {} }) {
+export async function prepareOfflineCandidate({ home, source, keys, target, defaults, bundledPlugins = [], yaml, local = false, staging = false, onPhase = () => {} }) {
   let started = Date.now()
   const metadata = await readOfflineReceipt(source, keys, target, { local })
   const { receipt, digest } = metadata

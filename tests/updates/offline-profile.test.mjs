@@ -113,6 +113,13 @@ test('offline desktop repair retains a newer independently installed plugin gene
   assert.equal(await readFile(join(directory, 'user-generation.json'), 'utf8'), '{"preserve":true}')
 })
 
+test('offline preparation supports callers without a bundled management inventory', async t => {
+  const f = await fixture(t)
+  const result = await prepareOfflineCandidate({ ...f, bundledPlugins: undefined })
+  assert.deepEqual(result.blocked, [])
+  assert.equal(result.changed.length, defaults.length)
+})
+
 test('desktop upgrade replaces an older unpinned managed catalog installation offline', async t => {
   const f = await fixture(t), directory = join(f.home, 'profiles/web/node_modules', defaults[1])
   await mkdir(directory, { recursive: true })
