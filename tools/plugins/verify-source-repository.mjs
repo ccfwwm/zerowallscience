@@ -1,5 +1,6 @@
 import { readFile, readdir, lstat } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
+import { parse } from 'yaml'
 import { fileDigest, verifyCatalog, verifySignedDocument } from '../release/resource-catalog.mjs'
 const root = resolve(import.meta.dirname, '../..')
 const provenance = JSON.parse(await readFile(join(root, 'source-provenance.json'), 'utf8'))
@@ -19,6 +20,7 @@ if (provenance.sourceOnly) {
   process.exit(0)
 }
 const keys = JSON.parse(await readFile(join(root, 'catalogs/trusted-keys.json'), 'utf8'))
+const workspace = parse(await readFile(join(root, 'pnpm-workspace.yaml'), 'utf8'))
 let resources = 0, plugins = 0, optionalPlugins = 0
 const catalogs = new Map()
 for (const kind of ['plugin', 'skill', 'mcp', 'python']) {
@@ -29,7 +31,18 @@ for (const kind of ['plugin', 'skill', 'mcp', 'python']) {
 }
 for (const name of await readdir(join(root, 'plugins'))) {
   if (!(await lstat(join(root, 'plugins', name))).isDirectory()) continue
-  const manifest = JSON.parse(await readFile(join(root, 'plugins', name, 'package.json'), 'utf8'))
+  let manifest
+  try { manifest = JSON.parse(await readFile(join(root, 'plugins', name, 'package.json'), 'utf8')) }
+  catch (error) {
+    if (error.code !== 'ENOENT') throw error
+    // Registry adapters may contain only the patch referenced by pnpm, rather
+    // than a workspace package. Keep verifying the declared patch itself.
+    const patches = Object.values(workspace.patchedDependencies ?? {}).filter(path =>
+      typeof path === 'string' && path.startsWith(`plugins/${name}/patches/`) && !path.split('/').includes('..'))
+    if (!patches.length) throw error
+    for (const path of patches) await readFile(join(root, path))
+    continue
+  }
   if (name === 'wechat') continue // Retained historical facade; dsh-wechat is the active package.
   if (!manifest.dsh?.bundle || !manifest.zerowall?.dsh) continue // Support/store/composition packages are not independently published plugins.
   if (!manifest.version) throw new Error('Missing independent plugin contract: ' + name)
