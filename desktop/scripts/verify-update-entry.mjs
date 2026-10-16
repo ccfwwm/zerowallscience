@@ -101,7 +101,7 @@ try {\n${original}\n} finally { loader.load = load; }
   }
   await send('desktop:update-status', { phase: 'upToDate', currentVersion: contract.version })
   await resources(4)
-  const trigger = page.getByRole('button', { name: '4 个扩展可更新', exact: true })
+  const trigger = page.getByRole('button', { name: '4 个插件或 Skills 可更新', exact: true })
   await trigger.waitFor()
   assert.equal(await page.getByRole('dialog', { name: '发现资源更新' }).count(), 0)
   assert.equal(await page.getByRole('status').filter({ hasText: /可更新|新版本/u }).count(), 0)
@@ -127,7 +127,7 @@ try {\n${original}\n} finally { loader.load = load; }
   await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
   await trigger.waitFor()
   await page.waitForFunction(() => document.querySelector('button[data-update] span') === null)
-  assert.equal(await trigger.getAttribute('title'), '4 个扩展可更新')
+  assert.equal(await trigger.getAttribute('title'), '4 个插件或 Skills 可更新')
   await screenshot('collapsed-sidebar-resource-updates')
   evidence.checks.push('clearing resources removes the badge; collapsed sidebar retains the icon and count tooltip')
   await page.setViewportSize({ width: 800, height: 480 })
