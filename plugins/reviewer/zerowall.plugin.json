@@ -1,10 +1,10 @@
 {
   "name": "@zerowallscience/plugin-reviewer",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "applicationVersion": "8.0.0",
   "restartRequired": true,
   "desktop": {
-    "min": "8.0.0"
+    "min": "8.3.2"
   },
   "rollbackSupported": true,
   "dsh": {

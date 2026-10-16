@@ -284,14 +284,27 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
       } else { bundles.add(id); continue }
     }
     bundles.add(id)
-    // Explicitly installed packages have precedence even at an older version.
-    // Only installer-owned generations participate in seed replacement.
+    if (record.core) {
+      // Core plugin code lives in the verified desktop runtime. Remove only
+      // older, unpinned managed shadows; retain the package tree for rollback.
+      if (installed?.version && bundledPlugins.some(item => item.id === id && item.managed !== false)
+        && compareVersions(installed.version, record.version) < 0) {
+        const path = join(candidate, 'node_modules', id)
+        await rename(path, path + '.previous-' + randomUUID())
+        for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) if (manifest[field]?.[id]) delete manifest[field][id]
+        changed.push({ id, from: installed.version, to: record.version })
+      }
+      continue
+    }
+    // A desktop upgrade is an explicit install action. Update its unpinned
+    // managed packages even when a previous catalog/pnpm install shadows the
+    // bundled closure. Preserve unrelated packages and newer generations.
     const installedRoot = installed && await realpath(join(candidate, 'node_modules', id)).catch(() => undefined)
     const offlineRoot = join(home, 'resources/offline')
     const owned = installedRoot && !relative(offlineRoot, installedRoot).startsWith('..') && !isAbsolute(relative(offlineRoot, installedRoot))
-    if (installed?.version && !owned) continue
+    const managed = bundledPlugins.some(item => item.id === id && item.managed !== false && !item.core)
+    if (installed?.version && !owned && !managed) continue
     if (installed?.version && compareVersions(installed.version, record.version) > 0) continue
-    if (record.core) continue
     const replacement = join(generationModules(cache, receipt), id)
     if (installed?.version === record.version && installedRoot === await realpath(replacement)) continue
     const physical = JSON.parse(await readFile(join(replacement, 'package.json'), 'utf8'))

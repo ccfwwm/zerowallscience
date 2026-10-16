@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ToolCallId, createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { assessEvidence, canAutoCorrect, normalizeReport, serializeTranscript, shouldAutoReview } from '../src/host/index.js'
-import { KNOWN_SESSION_EVENT_TYPES } from '@deepseek-ai/dsh-session'
+import { KNOWN_SESSION_EVENT_TYPES, Session, SessionId } from '@deepseek-ai/dsh-session'
 
 function event<T extends SessionEvent['type']>(
   type: T,
@@ -126,8 +126,18 @@ describe('Reviewer transcript and trigger policy', () => {
     expect(report.citationCoverage).toBe(100)
   })
 
-  it('keeps reviewer custom events in the persistence allow-list', () => {
-    expect(KNOWN_SESSION_EVENT_TYPES.has('zerowall/reviewer/mode')).toBe(true)
-    expect(KNOWN_SESSION_EVENT_TYPES.has('zerowall/reviewer/report')).toBe(true)
+  it('keeps core admission independent of the optional reviewer and preserves marked metadata', () => {
+    expect(KNOWN_SESSION_EVENT_TYPES.has('zerowall/reviewer/mode')).toBe(false)
+    expect(KNOWN_SESSION_EVENT_TYPES.has('zerowall/reviewer/report')).toBe(false)
+    const session = Session.create(SessionId('reviewer-info'))
+    session.append('zerowall/reviewer/mode', { mode: 'on' }, { ignorable: true })
+    const report = normalizeReport({ summary: 'legacy', findings: [] }, 'mock/model', { coverage: 100, gaps: [] }, 1, '')
+    session.append('zerowall/reviewer/report', report, { ignorable: true })
+    const restored = Session.create(SessionId('reviewer-reloaded'), JSON.parse(JSON.stringify(session.snapshotEvents())))
+    expect(restored.snapshotEvents().filter(event => event.type.startsWith('zerowall/reviewer/'))).toEqual([
+      expect.objectContaining({ type: 'zerowall/reviewer/mode', ignorable: true }),
+      expect.objectContaining({ type: 'zerowall/reviewer/report', ignorable: true }),
+    ])
+    expect(restored.deriveMessages()).toEqual([])
   })
 })

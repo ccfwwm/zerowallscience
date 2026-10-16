@@ -829,6 +829,12 @@ if (ownsInstance) app.whenReady().then(async () => {
   const { createResourceManager } = await import(pathToFileURL(join(commandRoot, 'resource-manager.mjs')).href)
   const keys = JSON.parse(await readFile(app.isPackaged ? join(commandRoot, 'trusted-keys.json') : join(findWorkspaceRoot(), 'config/catalogs/trusted-keys.json'), 'utf8'))
   const bundledSkillVersions = JSON.parse(await readFile(join(commandRoot, 'bundled-skill-versions.json'), 'utf8'))
+  const { reconcileBundledCatalogSkills } = await import(pathToFileURL(join(commandRoot, 'bundled-skills.mjs')).href)
+  try {
+    const skillUpgrade = await reconcileBundledCatalogSkills({ home: dshHome, bundledRoot: bundledSkillsPath(), versions: bundledSkillVersions,
+      yaml: createRequire(app.isPackaged ? join(process.resourcesPath, 'app.asar/package.json') : join(findWorkspaceRoot(), 'package.json'))('yaml') })
+    if (skillUpgrade.updated.length) console.info(`Using ${skillUpgrade.updated.length} newer bundled Skills; previous catalog copies retained in rollback history`)
+  } catch { console.warn('Bundled Skill reconciliation deferred; existing user Skills preserved') }
   const resources = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins, bundledSkillVersions, runtimeModules: app.isPackaged ? join(process.resourcesPath, 'app.asar/node_modules') : developmentStagePath('runtime', 'node_modules'), target: { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version, dshCommit: dshIdentity.commit, platform: process.platform, architecture: process.arch }, runPlugin,
     offlineStaging: !app.isPackaged,
     onOfflinePhase: (event: { phase: string; state: string; durationMs?: number }) => {

@@ -2,7 +2,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, LlmModelInfo } from '@deepseek-ai/dsh-llm'
-import { KNOWN_SESSION_EVENT_TYPES, type Session, type SessionEvent, type SessionEventMap } from '@deepseek-ai/dsh-session'
+import { type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-subagent'
@@ -20,12 +20,6 @@ declare module '@deepseek-ai/dsh-llm' {
     'plugin:zerowall-reviewer': { kind: typeof REVIEWER_MESSAGE_SOURCE_KIND }
   }
 }
-
-// Reviewer events are durable plugin-owned session events. Register them with
-// the rc8 persistence allow-list during composition instead of a global patch.
-const sessionEventTypes = KNOWN_SESSION_EVENT_TYPES as Set<string>
-sessionEventTypes.add('zerowall/reviewer/mode')
-sessionEventTypes.add('zerowall/reviewer/report')
 
 export type ReviewerMode = 'inherit' | 'on' | 'off'
 export type ReviewerModelMode = 'follow-session' | 'fixed'
@@ -501,8 +495,7 @@ async function runReview(ctx: Context, agent: Agent, events: readonly SessionEve
 }
 
 function appendReport(session: Session, report: ReviewReport): void {
-  const append = session.append.bind(session) as (type: 'zerowall/reviewer/report', data: SessionEventMap['zerowall/reviewer/report']) => unknown
-  append('zerowall/reviewer/report', report)
+  session.append('zerowall/reviewer/report', report, { ignorable: true })
 }
 
 function correctionPrompt(report: ReviewReport): string {
@@ -618,7 +611,7 @@ export function apply(ctx: Context, config: ReviewerSettings): void {
   command('review', async (agent, raw, signal) => {
     const action = raw.trim().split(/\s+/u)[0] || 'status'
     if (action === 'on' || action === 'off' || action === 'follow') {
-      agent.session.append('zerowall/reviewer/mode', { mode: action === 'follow' ? 'inherit' : action })
+      agent.session.append('zerowall/reviewer/mode', { mode: action === 'follow' ? 'inherit' : action }, { ignorable: true })
       const label = action === 'on' ? '本会话已开启审核' : action === 'off' ? '本会话已关闭审核' : '已跟随审核设置'
       return { kind: 'success', text: label }
     }

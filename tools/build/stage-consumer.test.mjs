@@ -39,6 +39,13 @@ async function fixture(t) {
       if (process.env.FAKE_FAIL === 'freshness') throw new Error('Injected freshness failure');
     }
   `)
+  await writeFile(join(root, 'tools/packaging/verify-bundled-resources.mjs'), `
+    import { appendFile } from 'node:fs/promises'; import { join } from 'node:path';
+    export async function verifyBundledResources({ root }) {
+      await appendFile(join(root, 'calls.jsonl'), JSON.stringify(['bundled-resources']) + '\\n');
+      return { plugins: [], skills: [] };
+    }
+  `)
   const command = `
     import { appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'; import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
@@ -213,7 +220,7 @@ test('Windows packaging refreshes an outdated closure and consumes the latest se
   await writeFile(next.path, archive)
   await writeFile(path, JSON.stringify([...feed, next]))
   await f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'success' })
-  assert.deepEqual(await f.calls(), [['build'], ['build', '--consumer-only'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
+  assert.deepEqual(await f.calls(), [['build'], ['build', '--consumer-only'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
   assert.deepEqual(await readFile(feed[0].path), archive)
   assert.deepEqual(await readFile(next.path), archive)
   const installed = JSON.parse(await readFile(join(f.versionRoot, 'consumer-build/offline-profile/modules', next.id, 'package.json')))

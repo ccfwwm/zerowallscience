@@ -1,6 +1,6 @@
 # ZeroWall Science 开发、打包与发布指导
 
-本文是后续开发的操作合同。当前桌面基线为 **8.3.1**；已发布的 8.3.0 不重打、不覆盖。历史说明以 Git 记录追溯，当前入口见 [文档索引](README.md)。
+本文是后续开发的操作合同。当前桌面基线为 **8.3.2**；已发布的 8.3.0 不重打、不覆盖。历史说明以 Git 记录追溯，当前入口见 [文档索引](README.md)。
 
 ## 1. 开始工作
 
@@ -15,7 +15,7 @@ node -p "require('./package.json').version"
 
 基线工具：Node.js 24.9.0、pnpm 11.7.0。不要用另一个 pnpm 主版本操作现有 profile 的 node_modules；由桌面插件安装服务管理用户 profile 的 store 与安装事务。
 
-DSH 固定为 0.2.0-rc.2，fork 分支 zerowall/reviewer-history-opaque，commit `4af4cb76935bd893a6854f38403bd06928878074`。权威来源是 config/deepseek-harness/upstream.json 与子模块 gitlink。ZeroWall 领域功能放入插件，不因桌面功能随意升级 DSH。
+DSH 固定为 0.2.0-rc.2，fork 分支 zerowall/reviewer-history-opaque，commit `cf5cb0fc02a1e08dda3540c037835ceb58a85851`。权威来源是 config/deepseek-harness/upstream.json 与子模块 gitlink。ZeroWall 领域功能放入插件，不因桌面功能随意升级 DSH。
 
 ## 2. 目录与职责
 
@@ -102,6 +102,8 @@ pnpm package:stable:win
 安装器携带最新插件的实际可运行离线闭包（profile-runtime.asar 及必要物理文件）、默认 Skills 与小型 MCP 资源；共享 tgz 留在独立资源仓库，不再为每个桌面版本复制一套，也不在安装器里额外重复携带一套 tgz。运行时装配可能硬链接或按需复制文件，这是离线运行要求，不等于重新编译/归档插件。
 
 发布验收应保存本次 plugin-snapshot.json 与成功 build-receipt，逐项核对最新清单、集成版本和签名离线闭包。桌面升级保留用户的禁用、卸载、固定版本和第三方选择，不强行启用全部内置插件。
+
+8.3.2 起，稳定打包还核对七牛已签名的插件、Skills 最新 catalog；安装器不能集成低于公开版本的资源。同版本必须保持归档摘要一致，Skills 的实际文件树、安装版本索引和签名归档须逐项一致，证据保存在 stage/bundled-resource-receipt.json。桌面升级会替换旧 profile 内未固定版本的托管插件；更高版本、第三方来源及显式选择继续保留。未经用户修改的旧 catalog Skill 副本若遮蔽新版内置 Skill，会移入正常回滚历史，让内置新版生效；导入、自定义、编辑过和禁用的 Skill 保留。
 
 ## 5. 正式签名、版本和验收
 
@@ -195,6 +197,10 @@ promote 前必须与线上基线核对；只提升相关资源指针，不修改
 8.3.1 起，候选、活动和历史 profile 的每次移动都必须同步 pnpm virtual-store 元数据和内部链接；外部离线/CLI 链接保留真实目标，禁止跟随并改写签名缓存。复制使用 verbatimSymlinks，并在新位置修正链接。store 修复只能由明确的插件写操作触发，保存原依赖树及声明文件，失败恢复。`dsh-orb` 是验收样本，不属于集成插件。
 
 升级弹窗应限制在视口内，正文独立滚动、底部按钮固定可见；对该组件的修改应验收长说明和小窗口。
+
+8.3.2 默认启用配置 HMR：desktop/build/zerowall.patch.yml 中 `hmr` 为 `disabled: false`、`config.root: []`。这允许官方插件管理器动态安装、停用、卸载；不能改成监听 `.`，以免会话写入触发重复模块重载。已加载 JavaScript 的版本替换继续使用候选 profile、健康检查和 Host 重启。插件必须通过 Cordis effect 注册可撤销的资源。
+
+插件的纯信息性会话事件必须用 `session.append(type, data, { ignorable: true })` 写入；禁止修改 KNOWN_SESSION_EVENT_TYPES 全局集合。影响核心消息重建的事件不能标记可忽略。历史兼容规则由桌面会话后端配置显式列出，读取旧元数据时仅补充内存视图，保留原始日志，不依赖可卸载插件的当前组合。新增事件须验收真实落盘、关闭、重启以及插件卸载后的历史读取。
 
 Python 是 8.3.0 已实现的后台维护例外：桌面可用后，在固定安装根进行签名 bootstrap/recovery、core/science 按完整清单逐包安装（不以 import/pip check 阻断），并定期核对线上签名依赖。队列持久化并只恢复符合条件的自动任务；capability 仍需用户明确选择。不能切换 legacy slots，失败通过文件事务恢复同一路径。详见 [Python 合同](python-environment.md)。
 

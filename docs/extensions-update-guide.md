@@ -1,8 +1,8 @@
-# ZeroWall 8.3.0：插件、Skills、MCP 与 Python 单独更新教程
+# ZeroWall 8.3.2：插件、Skills、MCP 与 Python 单独更新教程
 
 ## 先升级桌面一次
 
-8.3.0 已发布；本次维护不重打或覆盖其安装包。后续开发与打包流程见 [开发指导](codex-development-guide.zh-CN.md)。在线资源的当前版本以验签后的 catalog 为准，可能高于安装器内置版本。
+8.3.2 集成发布时最新的插件与 Skills，并默认启用配置 HMR。后续独立发布的资源仍以验签后的 catalog 为准。开发与打包流程见 [开发指导](codex-development-guide.zh-CN.md)。
 
 桌面核心与扩展资源分开更新。安装器携带已验证的默认功能签名离线闭包。插件、Skills、MCP 在启动后和每日读取、验签远端目录，检查只显示可用更新，不下载 payload、不安装、不激活、不重启。用户在设置或 CLI 明确操作后才执行这些变更。Python 是下文说明的后台自动维护例外。桌面升级保留账户、模型、项目、环境变量、第三方插件、停用和固定版本选择。
 
@@ -16,7 +16,7 @@ zws doctor
 zws plugin list
 ```
 
-`dsh` 应显示 `0.2.0-rc.2`，`zws` 应显示桌面 `8.3.0`。`zws doctor` 会报告实际加载的插件版本和来源。命令需要正在运行的桌面 Host；若提示先启动 ZeroWall Science，请启动应用后再操作。
+`dsh` 应显示 `0.2.0-rc.2`，`zws` 应显示桌面 `8.3.2`。`zws doctor` 会报告实际加载的插件版本和来源。命令需要正在运行的桌面 Host；若提示先启动 ZeroWall Science，请启动应用后再操作。
 
 如果 Windows 安装目录变过或旧终端仍持有旧 PATH，关闭并重开终端。程序会按 owner receipt 管理命令，避免覆盖不属于 ZeroWall 的 `dsh`。
 
@@ -184,3 +184,15 @@ Python 内容 revision、依赖层与桌面版本独立。固定解释器默认�
 共享清单比源码新时先同步对应源码，不允许打包静默降级或丢包。单插件打包合并共享最新清单，保留其他插件的最新记录。完整离线闭包需要随安装器集成；tgz 不为每个桌面版本重复复制，也不在安装器里额外存一套。
 
 具体签名变量、资源定向合并、验收与发布顺序见 [开发指导](codex-development-guide.zh-CN.md)。本次仅更新后续流程和脚本，保留已发布 8.3.0 的安装包、build ID、SHA-256 和线上更新指针。
+# 动态插件安装与卸载（8.3.2）
+
+8.3.2 已默认启用配置 HMR，无需用户额外操作。对于自定义 DSH Web profile，可在该 profile 的 `cordis.patch.yml` 中加入下列配置并重启一次 Host：
+
+```yaml
+- id: hmr
+  disabled: false
+  config:
+    root: []
+```
+
+`root: []` 只开启配置重载，不监听工作区与会话文件。官方插件管理器可动态安装、启停、卸载满足生命周期契约的插件。已加载代码的版本替换由 ZeroWall 的候选 profile 和 Host 重启流程处理；固定版本、禁用、移除和第三方插件选择会保留。

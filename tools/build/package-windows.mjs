@@ -42,6 +42,10 @@ await verifyStagePluginFeed(join(stageRoot, activeStage.buildId), await readVeri
 process.env.ZEROWALL_BUILD_ID = activeStage.buildId
 const { contract } = await import('./paths.mjs')
 const { verifyRuntimeFreshness } = await import('../packaging/verify-runtime-freshness.mjs')
+const { verifyBundledResources } = await import('../packaging/verify-bundled-resources.mjs')
+const integrated = await verifyBundledResources({ root, stage: contract.stage, release: contract.release, cache: contract.cache,
+  publicBase: process.env.ZEROWALL_RESOURCE_BASE_URL ?? 'https://zerowall.chengxunkeji.cn/stable' })
+console.log(`Verified latest bundled resources: ${integrated.plugins.length} packages and ${integrated.skills.length} Skills`)
 const releaseLock = await acquireBuildLock(contract.cache, 'runtime')
 try {
 await verifyRuntimeFreshness(root)

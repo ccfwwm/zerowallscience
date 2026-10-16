@@ -369,9 +369,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const expected = defaultPlugins.filter(id => !selection.removed.has(id) && !selection.disabled.has(id) && !manifest.zerowall?.disabledPlugins?.includes(id))
     const missing = []
     for (const id of expected) {
-      if (document.plugins.find(entry => entry.id === id)?.core && !selection.pinned[id]) continue
       const installed = await packageVersion(active, id)
       const seed = document.plugins.find(entry => entry.id === id)
+      if (seed?.core && !selection.pinned[id]) {
+        if (installed?.version && bundledPlugins.some(item => item.id === id && item.managed !== false)
+          && compareVersions(installed.version, seed.version) < 0) missing.push(id)
+        continue
+      }
       if (!installed && seed?.core && selection.pinned[id] === seed.version) continue
       if (!installed || (selection.pinned[id] && installed.version !== selection.pinned[id])) missing.push(id)
     }

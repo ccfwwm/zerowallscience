@@ -9,6 +9,9 @@ import { preservePptxNotes } from './presentation-export.js'
 import { chartAxisCode } from './presentation-chart.js'
 
 type Scope = { file: string; unitId: string; worktreeId: string }
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap { 'zerowall/presentation-workflow': PresentationWorkflow }
+}
 type Check = { fingerprint: string; findings: unknown[]; screenshot?: string }
 export interface PresentationWorkflow {
   schemaVersion: 2; spec: string; manifest: string; mode: 'new' | 'edit'; scope?: Scope; journal?: string
@@ -186,7 +189,7 @@ export function installPresentationWorkflow(ctx: Context): void {
   }
   async function persist(exec: ToolRunContext | ToolDispatchExecution, state: PresentationWorkflow): Promise<void> {
     if (state.journal) await saveJson(await workspacePath(cwd(exec), state.journal), state)
-    exec.agent?.session.append(EVENT as any, state as any)
+    exec.agent?.session.append(EVENT, state, { ignorable: true })
   }
   async function dispatch(exec: ToolRunContext | ToolDispatchExecution, name: string, args: any, internal = false): Promise<any> {
     const callId = `presentation-${randomUUID()}` as any

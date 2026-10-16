@@ -1,11 +1,10 @@
 - id: hmr
   name: '@deepseek-ai/dsh-hmr'
-  # HMR is a development watcher. In the packaged desktop it can observe
-  # session/config files written by the running Host and repeatedly reload
-  # plugin fibers, growing the embedded Node heap until the window is blank.
-  disabled: true
+  # Configuration-only HMR enables official live install/disable/remove.
+  # Never watch the workspace/session tree or packed JavaScript modules.
+  disabled: false
   config:
-    root: ['.']
+    root: []
 
 # Model-visible tool text has a bounded surface; original session events stay
 # available. User profile patches are applied after these product defaults.
@@ -64,6 +63,14 @@
   config:
     root: !!js dshHomePath('sessions')
     compression: none
+    # These extension records never change the core message surface. Old
+    # writers omitted their envelope marker. Adapt the decoded view only:
+    # preserve raw history and all plugin payloads even after plugin removal.
+    legacyInformationalEventTypes:
+      - zerowall/presentation-workflow
+      - zerowall/file-extraction
+      - zerowall/reviewer/mode
+      - zerowall/reviewer/report
 
 # dsh-free-search owns the default search seam. Its provider id remains `ddg`
 # while the preferred engine is Bing; keep the independent HTTP fetch provider.

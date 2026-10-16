@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-reviewer",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "ZeroWall Science reviewer domain plugin (desktop 8.0.0).",
   "type": "module",
   "main": "./lib/index.js",
@@ -53,7 +53,7 @@
   },
   "zerowall": {
     "desktop": {
-      "min": "8.0.0"
+      "min": "8.3.2"
     },
     "dsh": {
       "min": "0.2.0-rc.2",

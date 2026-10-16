@@ -3,7 +3,7 @@
   "harness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "branch": "zerowall/reviewer-history-opaque",
-    "commit": "4af4cb76935bd893a6854f38403bd06928878074",
+    "commit": "cf5cb0fc02a1e08dda3540c037835ceb58a85851",
     "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "upstreamCommit": "639ed015397290b3745d163aafe02ffee4aa3f84",
     "tag": "dsh-v0.2.0-rc.2",
@@ -459,7 +459,7 @@
     {
       "id": "files",
       "package": "@zerowallscience/plugin-files",
-      "version": "0.2.6",
+      "version": "0.2.7",
       "source": "plugins/files",
       "manifest": "plugins/files/zerowall.plugin.json",
       "client": true,
@@ -487,7 +487,7 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "0.2.18",
+      "version": "0.2.19",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
@@ -759,7 +759,7 @@
     {
       "id": "reviewer",
       "package": "@zerowallscience/plugin-reviewer",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "source": "plugins/reviewer",
       "manifest": "plugins/reviewer/zerowall.plugin.json",
       "client": true,

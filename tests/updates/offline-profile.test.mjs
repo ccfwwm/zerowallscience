@@ -112,6 +112,36 @@ test('offline desktop repair retains a newer independently installed plugin gene
   assert.equal(JSON.parse(await readFile(join(directory, 'package.json'))).version, '0.3.0')
   assert.equal(await readFile(join(directory, 'user-generation.json'), 'utf8'), '{"preserve":true}')
 })
+
+test('desktop upgrade replaces an older unpinned managed catalog installation offline', async t => {
+  const f = await fixture(t), directory = join(f.home, 'profiles/web/node_modules', defaults[1])
+  await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'package.json'), JSON.stringify({ name: defaults[1], version: '0.1.0' }))
+  const result = await f.manager.repairOffline(f.source)
+  assert.equal(result.repaired, true)
+  assert.equal(JSON.parse(await readFile(join(directory, 'package.json'))).version, '0.2.0')
+})
+
+test('desktop upgrade removes an older core shadow but preserves an exact pin', async t => {
+  const f = await fixture(t), id = defaults[0], active = join(f.home, 'profiles/web')
+  f.unsigned.plugins[0].core = true
+  await writeFile(join(f.source, 'receipt.json'), JSON.stringify(signCatalog(f.unsigned, f.pair.privateKey, 'test')))
+  const directory = join(active, 'node_modules', id)
+  await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'package.json'), JSON.stringify({ name: id, version: '0.1.0' }))
+  const manifest = JSON.parse(await readFile(join(active, 'package.json')))
+  manifest.dependencies = { [id]: '0.1.0' }
+  await writeFile(join(active, 'package.json'), JSON.stringify(manifest))
+  await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
+  await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify({ pinned: { [id]: '0.1.0' } }))
+  await f.manager.repairOffline(f.source)
+  assert.equal(JSON.parse(await readFile(join(directory, 'package.json'))).version, '0.1.0')
+  await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify({ pinned: {} }))
+  assert.equal((await f.manager.repairOffline(f.source)).repaired, true)
+  await assert.rejects(readFile(join(directory, 'package.json')), { code: 'ENOENT' })
+  assert.equal(JSON.parse(await readFile(join(active, 'package.json'))).dependencies[id], undefined)
+  assert.equal((await f.manager.repairOffline(f.source)).repaired, false)
+})
 test('candidate health failure restores the previous profile and records the failed repair', async t => {
   const f = await fixture(t), file = join(f.home, 'profiles/web/package.json')
   const before = await readFile(file)

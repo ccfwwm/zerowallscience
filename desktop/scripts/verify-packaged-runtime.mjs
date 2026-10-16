@@ -1279,8 +1279,12 @@ async function verifyPluginInventory(url) {
     throw new Error(`Packaged Host plugin inventory is unavailable: ${JSON.stringify(envelope)}`)
   }
   const entries = envelope.result.value.entries
-  if (entries.some(entry => entry?.moduleName === '@deepseek-ai/dsh-hmr' && entry.enabled === true)) {
-    throw new Error('Packaged desktop must disable the development HMR watcher.')
+  const hmr = entries.find(entry => entry?.moduleName === '@deepseek-ai/dsh-hmr')
+  const patchText = await readFile(resolve(packaged.resourcesRoot, 'zerowall.patch.yml'), 'utf8')
+  const hmrPatch = yaml.parse(patchText.split(/\r?\n(?=- id:)/u)[0])?.[0]
+  if (hmr?.enabled !== true || hmr.fiberPhase !== 'active' || hmrPatch?.id !== 'hmr'
+    || hmrPatch.disabled !== false || !Array.isArray(hmrPatch.config?.root) || hmrPatch.config.root.length !== 0) {
+    throw new Error('Packaged desktop requires active configuration HMR with no workspace/module watch roots.')
   }
   if (entries.some(entry => /opencode-zen-free-provider|plugin-opencode|opencode2dsh/u.test(String(entry?.moduleName)))) {
     throw new Error('Retired OpenCode free provider is still present in the running Host inventory.')

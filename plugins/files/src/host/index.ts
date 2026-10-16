@@ -16,7 +16,7 @@ import type { WorkspaceFileScope } from '@deepseek-ai/dsh-api-workspace-files'
 import type { OfficeToPdf } from '@deepseek-ai/dsh-office-to-pdf'
 import type { OfficeExtension, OfficeSourceKey } from '@deepseek-ai/dsh-office-to-pdf/types'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { SessionId, KNOWN_SESSION_EVENT_TYPES, type Session } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { apply as applyOfficeTools } from 'dsh-office-tools'
 import type { FileAttachmentRef, FileExtraction, MaterializedUploadedFile, PreparedFile, StoredAttachment, UploadedFileBytes, UploadedFileReadResult } from '../shared/types.js'
@@ -47,7 +47,6 @@ declare module '@deepseek-ai/dsh-session/types' {
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap { 'zerowall-files': { kind: 'zerowall-files'; form: 'notice'; summary: string } }
 }
-(KNOWN_SESSION_EVENT_TYPES as Set<string>).add('zerowall/file-extraction')
 interface StoredFile extends FileAttachmentRef {
   sourcePath: string
   sessionIds: string[]
@@ -687,7 +686,7 @@ export function installAttachmentParsing(ctx: Context): void {
         const persisted = agent.session.snapshotEvents().some(event => event.type === 'user/message' && event.data.source.kind === 'zerowall-files' && event.data.content.some(block => block.type === 'text' && block.text === text))
         if (seen.get(key) === digest(text) && persisted) continue
         const metadata = await service.inspectOriginalMetadata({ sessionId, attachmentId })
-        for (const extraction of [metadata.localExtraction, metadata.mineruExtraction]) if (extraction) agent.session.append('zerowall/file-extraction', { attachmentId, extraction })
+        for (const extraction of [metadata.localExtraction, metadata.mineruExtraction]) if (extraction) agent.session.append('zerowall/file-extraction', { attachmentId, extraction }, { ignorable: true })
         decision.messages.push(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'zerowall-files', form: 'notice', summary: `附件解析 · ${metadata.name}` } }))
         seen.set(key, digest(text))
       } catch (error) { ctx.logger.warn('Attachment preparation: %s', String(error)) }

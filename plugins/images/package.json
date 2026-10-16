@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "description": "ZeroWall Science images domain plugin (desktop 8.0.1).",
   "type": "module",
   "main": "./lib/index.js",
@@ -53,7 +53,7 @@
   },
   "zerowall": {
     "desktop": {
-      "min": "8.0.6"
+      "min": "8.3.2"
     },
     "dsh": {
       "min": "0.2.0-rc.2",
