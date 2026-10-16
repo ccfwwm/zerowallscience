@@ -93,7 +93,19 @@ try {\n${original}\n} finally { loader.load = load; }
       const getter = channel === 'desktop:update-status' ? 'desktop:get-update-status' : channel
       ipcMain.removeHandler(getter)
       ipcMain.handle(getter, () => status)
-      for (const window of BrowserWindow.getAllWindows()) window.webContents.send(channel, status)
+      for (const window of BrowserWindow.getAllWindows()) {
+        const contents = window.webContents
+        if (!contents.__updateEntryFixtureSend) {
+          const send = contents.send.bind(contents)
+          contents.__updateEntryFixtureSend = send
+          // Real catalog checks continue in the background. Their events must
+          // not replace this UI fixture between an event and its assertion.
+          contents.send = (event, ...args) => {
+            if (event !== 'desktop:update-status' && event !== 'desktop:resource-update-status') send(event, ...args)
+          }
+        }
+        contents.__updateEntryFixtureSend(channel, status)
+      }
     }, { channel, status })
   }
   async function resources(updateCount) {
@@ -193,6 +205,14 @@ try {\n${original}\n} finally { loader.load = load; }
   console.log('Update entry Electron verification passed:', output)
 } catch (error) {
   evidence.error = error.message
+  evidence.errorStack = error.stack
+  if (page) evidence.failureState = await page.evaluate(async () => ({
+    resourceStatus: await window.zerowallDesktop?.getResourceUpdateStatus?.(),
+    updateStatus: await window.zerowallDesktop?.getUpdateStatus?.(),
+    updateButtons: Array.from(document.querySelectorAll('button[data-update]'), element => ({
+      label: element.getAttribute('aria-label'), title: element.getAttribute('title'), phase: element.getAttribute('data-update'),
+    })),
+  })).catch(() => undefined)
   if (page) await screenshotFailure().catch(() => {})
   throw error
 } finally {
