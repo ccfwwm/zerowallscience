@@ -14,6 +14,7 @@ import { mediaTarget } from '@zerowallscience/plugin-ai-cloud'
 import { commandOutput } from './host-python.js'
 import type { CompositionJob, MediaProject } from './media-types.js'
 import { PROJECT_ID } from './media-types.js'
+import { validateMediaJobKind } from './media-contract.js'
 const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('hex')
 const MAX = 256 * 1024 * 1024
 const mime: Record<string,string> = { '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.mp4':'video/mp4','.mov':'video/quicktime','.webm':'video/webm','.m4a':'audio/mp4','.aac':'audio/aac','.wav':'audio/wav','.mp3':'audio/mpeg','.ogg':'audio/ogg','.flac':'audio/flac' }
@@ -29,6 +30,7 @@ export class MediaStudioService extends TypertRemoteService {
   constructor(private host: Context) { super(host, 'zerowallMediaStudio') }
   active(sessionId: string): boolean { return this.activeSessions.has(sessionId) }
   async generate(sessionId: string, input: any): Promise<MediaJob> {
+    validateMediaJobKind(input)
     const next = this.generations.then(() => this.generateOnce(sessionId, input), () => this.generateOnce(sessionId, input))
     this.generations = next.catch(() => {})
     return next
@@ -36,6 +38,7 @@ export class MediaStudioService extends TypertRemoteService {
   private async generateOnce(sessionId: string, input: any): Promise<MediaJob> {
     const scope = await this.scope(sessionId, input.projectId ?? defaultMediaProjectId(sessionId), true)
     const previous = input.id ? (await this.host.zerowallMediaJobs.list(scope)).find(job => job.id === input.id) : undefined
+    if (previous) validateMediaJobKind(previous)
     if (previous && !['prepared', 'model-required'].includes(previous.state)) return previous
     const draft = await this.prepare(scope, { ...input, autoSelect: true })
     if (draft.state === 'model-required') return draft
@@ -117,9 +120,11 @@ export class MediaStudioService extends TypertRemoteService {
     await writeFile(temp,JSON.stringify(value,null,2)+'\n',{flag:'wx'});await rename(temp,target)
   }
   private async prepare(scope:MediaScope,input:any):Promise<MediaJob> {
+    validateMediaJobKind(input)
     this.activeSessions.add(scope.sessionId)
     await this.ensure(scope)
     const old = input.id ? (await this.host.zerowallMediaJobs.list(scope)).find(j => j.id === input.id) : undefined
+    if (old) validateMediaJobKind(old)
     let selection:MediaSelection|undefined=input.selection
     if(input.selection===undefined&&!selection){selection=old?.selection;if(!input.parameters)input.parameters=old?.parameters}
     if (!selection && input.selection!==null) {
@@ -187,9 +192,14 @@ export class MediaStudioService extends TypertRemoteService {
     })
   }
   @Remote('call') async call(sessionId:string,action:string,payloadJson:string):Promise<string>{
-    const input=JSON.parse(payloadJson||'{}'),scope=await this.scope(sessionId,input.projectId??'default',!['list','catalog','preflight','legacy','choices'].includes(action))
+    const input=JSON.parse(payloadJson||'{}')
+    if(action==='prepare'||action==='generate')validateMediaJobKind(input)
+    const scope=await this.scope(sessionId,input.projectId??'default',!['list','catalog','preflight','legacy','choices'].includes(action))
     if(action==='activate'){this.activeSessions.add(sessionId);return '{}'}
-    if(action==='catalog')return JSON.stringify(await this.host.zerowallMedia.catalog(input.refresh===true))
+    if(action==='catalog'){
+      const catalog=await this.host.zerowallMedia.catalog(input.refresh===true)
+      return JSON.stringify({...catalog,models:catalog.models.filter(model=>model.operations.some(operation=>operation==='video'||operation==='chat_music'))})
+    }
     if(action==='choices')return JSON.stringify(await this.host.zerowallEnvironment.readMediaModelSelections())
     if(action==='save-choices'){await this.host.zerowallEnvironment.setMediaModelSelections(input.choices);return '{}'}
     if(action==='list'){
@@ -204,7 +214,11 @@ export class MediaStudioService extends TypertRemoteService {
     if(action==='create'){this.activeSessions.add(sessionId);return JSON.stringify(await this.ensure(scope))}
     if(action==='prepare')return JSON.stringify(await this.prepare(scope,input))
     if(action==='generate')return JSON.stringify(await this.generate(sessionId,{...input,projectId:scope.projectId}))
-    if(action==='submit')return JSON.stringify(await this.host.zerowallMediaJobs.submitReviewed(scope,input.reviews))
+    if(action==='submit'){
+      const jobs=await this.host.zerowallMediaJobs.list(scope)
+      for(const review of input.reviews??[]){const job=jobs.find(job=>job.id===review.id);if(job)validateMediaJobKind(job)}
+      return JSON.stringify(await this.host.zerowallMediaJobs.submitReviewed(scope,input.reviews))
+    }
     if(action==='refresh')return JSON.stringify(await this.host.zerowallMediaJobs.refresh(scope,input.id))
     if(action==='save')return this.lock(async()=>{
       const old=await this.project(scope),next=input.project as MediaProject

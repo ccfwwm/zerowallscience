@@ -1,5 +1,5 @@
 {
-  "version": "8.3.2",
+  "version": "8.3.3",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
@@ -97,7 +97,7 @@
     "repository": "https://github.com/dream-num/dsh-univer-office",
     "tag": "v0.3.7",
     "version": "0.3.7",
-    "resourceVersion": "0.3.7-zws.6",
+    "resourceVersion": "0.3.7-zws.7",
     "telemetry": false,
     "commit": "8f85ce4074fdbe51416b6c337468bb916a302c2a"
   },
@@ -148,7 +148,7 @@
     "repository": "https://github.com/zenstory-ai/oh-story-dsh.git",
     "commit": "83cc99046338c9b74b9dd135ff6b2e80bb3cd35e",
     "version": "0.1.15",
-    "resourceVersion": "0.1.16-zws.19",
+    "resourceVersion": "0.1.16-zws.20",
     "package": "@oh-story/dsh",
     "license": "MIT",
     "source": "plugins/oh-story-dsh",

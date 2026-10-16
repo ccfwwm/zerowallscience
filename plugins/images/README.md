@@ -4,7 +4,7 @@
 
 ## Desktop 8.3.0 功能说明
 
-- PPT/PPTX、文档和报告中的配图使用 `gpt-image-generator` Skill 与 `generate_image` / `edit_image`。视频、音乐和用户明确请求的独立媒体项目由 `media-create` / `media_*` 处理。图片工具底层复用 AI Cloud 传输服务，不等于创建媒体工作台项目或调用媒体任务工具。
+- 普通生图、改图及 PPT/PPTX、文档和报告中的配图使用 `gpt-image-generator` Skill 与 `generate_image` / `edit_image`。只有用户明确请求的视频、音频/音乐或宣传片由 `media-create` / `media_*` 处理，其中图片仅作为视频参考素材。图片工具底层复用 AI Cloud 传输服务，不等于创建媒体工作台项目或调用媒体任务工具。
 - 先调用 `presentation_prepare` 绑定内容计划、素材清单和 Slide 草稿，再用 `presentation_generate_templates` 生成整页 PNG 视觉参考。批次默认最多同时执行两项生图任务，结果保留实际 PNG、SHA-256 和 `.generation.json` 回执；无效页码、重复 ID 和输出路径在生成前拒绝。底层图片服务也限制同时请求数为两项。
 - 整页 PNG 注册为 `role: template`，仅作视觉参考，不编译为整页背景。`presentation_plan_editable_pages` 保存每页文字、形状、图片、表格、图表和连接线的类型、内容及边界。随后根据计划编写完整 SVG；每个计划元素都必须在 SVG 节点上声明唯一的 `data-zerowall-element-id` 与匹配的 `data-zerowall-element-type`，否则 `presentation_compile_pages` 会拒绝编译。通过校验后再编译，并通过 Univer 插入原生图表、表格和备注。规划工具不会自动识别 PNG 或自动生成全部可编辑对象。
 - 不同页的独立生图和布局准备可并行推进。修改同一个草稿的编译串行执行；生图失败时已成功的 PNG 与回执留在工作区，可沿用相同请求恢复。一个批次全部生成成功后才批量登记模板。

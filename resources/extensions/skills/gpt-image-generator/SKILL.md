@@ -7,7 +7,7 @@ description: Generate or edit PNG images with ZeroWall's built-in generate_image
 
 这是 ZeroWall 唯一默认的生图工作流。直接使用当前对话上下文，不启动额外提示词摘要模型；尽量保留用户原话，只补足缺少的构图、用途、格式或尺寸约束。
 
-PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `generate_image` / `edit_image` 取得工作区 PNG 与真实 `.generation.json` 回执，再交给 `presentation_record_assets` 和 Univer；不调用 `media_models`、`media_import`、`media_project` 或 `media_job`，不创建媒体项目、时间线或任务。用户另行明确要求独立媒体项目、视频、音乐或宣传片时，该独立交付物才使用 `media-create`。图片配置由 Host 从环境配置读取，助手不要读取或打印环境变量中的秘密；环境配置错误要如实报告，不能改走媒体任务、切换分组或换模型。
+PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `generate_image` / `edit_image` 取得工作区 PNG 与真实 `.generation.json` 回执，再交给 `presentation_record_assets` 和 Univer；不调用 `media_models`、`media_import`、`media_project` 或 `media_job`，不创建媒体项目、时间线或任务。只有用户另行明确要求生成视频、音频/音乐或宣传片时，该交付物才使用 `media-create`；其中图片仅作为视频参考素材，普通生图和改图始终使用本技能。图片配置由 Host 从环境配置读取，助手不要读取或打印环境变量中的秘密；环境配置错误要如实报告，不能改走媒体任务、切换分组或换模型。
 
 ## 工具路由
 

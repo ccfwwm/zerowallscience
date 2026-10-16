@@ -36,7 +36,7 @@ it('serializes imports and prevents cross-session, wrong-offset, oversized or ou
  await expect(f.call('session-a','import-chunk',{projectId:'promo',id:upload.id,offset:0,base64:'YWJj'})).rejects.toThrow('IMPORT_OFFSET')
  await expect(f.call('session-a','import-start',{projectId:'promo',name:'../fixture.png'})).rejects.toThrow('IMPORT_FORMAT')
  ctxMedia(f.ctx)
- await expect(f.call('session-a','prepare',{projectId:'promo',kind:'image',prompt:'test',reference_paths:['../fixture.png']})).rejects.toThrow('REFERENCE_OUTSIDE_PROJECT')
+ await expect(f.call('session-a','prepare',{projectId:'promo',kind:'video',prompt:'test',reference_paths:['../fixture.png']})).rejects.toThrow('REFERENCE_OUTSIDE_PROJECT')
  await f.ctx.fiber.dispose()
 })
 function ctxMedia(ctx:Context){ctx.provide('zerowallEnvironment',{readMediaModelSelections:async()=>({}),readImageModelSelection:async()=>undefined} as never)}

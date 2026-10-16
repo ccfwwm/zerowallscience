@@ -1,11 +1,13 @@
 ---
 name: media-create
-description: 通过对话创作独立媒体项目中的图片、视频、音乐与宣传片。PPT/PPTX、文档和报告配图使用 gpt-image-generator。
+description: 通过对话创作用户明确要求的独立视频、音乐与宣传片。普通图片生成和编辑使用 gpt-image-generator；媒体项目中的图片只作为视频参考素材。
 ---
 
 # 多媒体创作
 
-先按交付物选择能力：PPT/PPTX、幻灯片、文档和报告配图以及普通 PNG 生图/改图，加载 `gpt-image-generator`，调用 `generate_image` / `edit_image`，沿用环境配置的生图模型、分组及参数。PPT 同时遵循 `zerowall-presentation` / `univer-slide`，使用真实 PNG 和 `.generation.json` 回执注册配图；不为配图建立媒体项目、不调用本技能的媒体工具。生图配置出错时保留草稿并报告，不用媒体任务作为替代。用户明确要求独立媒体项目、视频、音乐或宣传片时使用下面的流程；混合需求分别交付。
+先按交付物严格选择能力。普通图片生成、图片编辑、海报、插画、封面、PPT/PPTX、幻灯片、文档和报告配图，加载 `gpt-image-generator`，调用 `generate_image` / `edit_image`，沿用环境配置的生图模型、分组及参数。PPT 同时遵循 `zerowall-presentation` / `univer-slide`，使用真实 PNG 和 `.generation.json` 回执注册配图；不为普通配图建立媒体项目，不调用本技能的媒体工具。生图配置出错时报告实际错误，不用媒体任务作为替代。
+
+只有用户明确要求独立视频、音频/音乐或宣传片时，才使用下面的媒体流程。视频可以使用用户提供或已生成的图片作为参考素材，但这不改变图片请求的路由。不要因为“生成”“制作一张”“做一张图”等泛化措辞调用媒体工具；“生成一张海报”仍然是 `gpt-image-generator`。混合需求分别交付：图片走图片工具，明确的视频或音乐另行走媒体工具。
 
 保持当前会话的文字模型、协议与推理参数。通过 media_project 管理 media-projects/<projectId>/ 下的方案、分镜和素材。
 
@@ -13,7 +15,7 @@ description: 通过对话创作独立媒体项目中的图片、视频、音乐�
 
 不要把项目标题、文件路径、中文名称、空字符串或占位符当作 `project_id`；默认项目省略该字段。任务 `id` 只使用真实工具结果中的值（8–128 位字母、数字、下划线或短横线），首次 prepare/generate 省略。需要恢复任务但不知道 ID 时，先 `media_job(action: "status")` 且省略 id 列出原任务，再按返回的项目 ID 和任务 ID 查询；不要为了查状态重新生成。ID 校验失败要纠正调用，不能伪造 ID 或绕过校验。
 
-用户明确说“生成”“制作一张”“做一段”等时使用 media_job generate：kind 为 image、video 或 music，填写 prompt。插件沿用已有模型和参数，首次未配置时自动选可用模型；费用和限制在后台检查，直接提交，不要求用户再次确认。仅讨论方案、修改文案或用户说“先给草稿”时用 prepare，不提交付费生成。无权限时明确说明分组权限问题，不假装成功。失效选择不擅自换模型。
+用户明确要求独立视频、音频/音乐或宣传片并且要实际生成时，使用 media_job generate：kind 只能为 video 或 music，填写 prompt。普通图片生成和编辑不能使用 media_job；不要传 kind=image。插件沿用已有模型和参数，首次未配置时自动选可用模型；费用和限制在后台检查，直接提交，不要求用户再次确认。仅讨论方案、修改文案或用户说“先给草稿”时用 prepare，不提交付费生成。无权限时明确说明分组权限问题，不假装成功。失效选择不擅自换模型。
 
 使用 media_models list 查询真实能力、choices 查询已有选择、select 按用户明确要求更换模型与参数。不要编造模型。media_job 支持项目内 reference_paths、会话图片 input_attachment_ids、mask_path。使用 media_import 导入用户在当前对话发来的图片、视频、音频附件，或工作区路径；project_id 可省略。导入后使用返回的素材路径，所有临时认证及凭据由 Host 管理。用户说“把这个视频作为第二镜头”“导入这段音乐”时直接导入和保存方案，不要求手工导入。
 

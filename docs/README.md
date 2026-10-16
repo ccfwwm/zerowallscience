@@ -7,7 +7,8 @@
 - [演示文稿工作流](presentation-workflow.zh-CN.md)：独立生图配置、模板生成、可编辑还原与导出。
 - [Biomni 模型路由](biomni-model-routing.md)：模型与凭据转发边界。
 - [科学引擎模型包](science-engine-packages.md)：模型数据格式与外部运行时边界。
-- [8.3.2 发布说明](release-notes-8.3.2.md)：当前版本元数据使用的说明。
+- [8.3.3 发布说明](release-notes-8.3.3.md)：当前版本元数据使用的说明。
+- [8.3.2 发布说明](release-notes-8.3.2.md)：上一稳定版本。
 - [8.3.1 发布说明](release-notes-8.3.1.md)：上一稳定版本。
 - [8.3.0 发布说明](release-notes-8.3.0.md)：上一稳定版本。
 - [Sidebar 兼容证据](verification-sidebar-compatibility-8.3.0.md)：兼容配置仍引用的验收记录。

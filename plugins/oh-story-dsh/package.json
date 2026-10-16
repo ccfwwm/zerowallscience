@@ -1,11 +1,10 @@
 {
   "name": "@oh-story/dsh",
-  "version": "0.1.16-zws.19",
-  "description": "通过对话创作图片、视频、音乐和宣传片",
+  "version": "0.1.16-zws.20",
+  "description": "通过对话创作视频、音乐和宣传片，图片仅作为视频参考素材",
   "keywords": [
     "dsh-plugin",
     "media-creation",
-    "image",
     "video",
     "music",
     "promotion-video"

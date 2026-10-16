@@ -32,7 +32,7 @@ export function apply(ctx:Context){
  ctx.uiConversation.events.register(mediaTurnDefinition)
  ctx.slots.inject('conversation.chat.turnTail',()=>ctx.slots.register({name:'conversation.chat.turnTail',id:'zerowall:media-results',order:4,inject:()=>({call})},MediaTurnResults))
  ctx.slots.inject('tool.call.toolview', () => ['media_job','media_import','media_project'].map(key => ctx.slots.register({name:'tool.call.toolview',key,inject:()=>({call})},MediaToolRow)))
- ctx.effect(()=>sidebar.registerTab({id:'zerowall:media-studio',title:'多媒体创作',description:'图片、视频、音乐与宣传片，模型设置与作品预览',single:true,order:22,
+ ctx.effect(()=>sidebar.registerTab({id:'zerowall:media-studio',title:'多媒体创作',description:'视频、音乐与宣传片创作，图片作为视频参考素材',single:true,order:22,
  icon:(size:number)=><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="18" height="15" rx="3"/><path d="m9 10 6 4-6 4zM8 2v4m8-4v4"/></svg>,
  component:({scope,visible}:{scope:{sessionId:string};visible:boolean})=><MediaWorkspace key={scope.sessionId} sessionId={scope.sessionId} call={call} send={prompt=>send(scope.sessionId,prompt)} visible={visible}/>
  }), 'oh-story: media sidebar')

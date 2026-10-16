@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { expect, it, vi } from 'vitest'
-import { MEDIA_CONVERSATION_PROMPT, validateMediaToolIds } from '../src/media-contract.js'
+import { MEDIA_CONVERSATION_PROMPT, validateMediaJobKind, validateMediaToolIds } from '../src/media-contract.js'
 import { createMediaSkillProvider } from '../src/media-skill.js'
 
 const studio = vi.hoisted(() => ({ scope: vi.fn(async () => ({ sessionId: 's1', projectId: 'session-s1' })), generate: vi.fn(async (_session: string, input: any) => ({ id: input.id, state: 'queued' })), call: vi.fn(async () => '{}'), importSource: vi.fn(async () => ({})) }))
@@ -24,13 +24,26 @@ it('publishes consistent discovery routes for deck illustrations and independent
   const f = await fixture()
   expect(f.prompts[0].text).toBe(MEDIA_CONVERSATION_PROMPT)
   expect(f.prompts[0].text).toContain('加载 gpt-image-generator')
-  expect(f.prompts[0].text).toContain('用户明确要求独立媒体项目、视频、音乐或宣传片时')
+  expect(f.prompts[0].text).toContain('只有用户明确要求独立视频、音频/音乐或宣传片时')
+  expect(f.prompts[0].text).toContain('不要因为“生成”“制作一张”“做一张图”等泛化措辞调用媒体工具')
   const provider = createMediaSkillProvider(new URL('../knowledge/media-create', import.meta.url).pathname)
   const candidates = await provider.list()
-  expect(candidates[0]?.description).toContain('PPT/PPTX、文档和报告配图使用 gpt-image-generator')
+  expect(candidates[0]?.description).toContain('普通图片生成和编辑使用 gpt-image-generator')
   const skill = await readFile(new URL('../knowledge/media-create/SKILL.md', import.meta.url), 'utf8')
-  expect(skill).toContain('不为配图建立媒体项目')
-  for (const name of ['media_job', 'media_project', 'media_import']) expect(f.tools.get(name).description).toContain('PPT/PPTX')
+  expect(skill).toContain('不为普通配图建立媒体项目')
+  expect(f.tools.get('media_job').description).toContain('普通图片生成和编辑必须使用 gpt-image-generator')
+  expect(f.tools.get('media_import').description).toContain('用于视频参考的图片')
+  expect(f.tools.get('media_project').description).toContain('不用于 PPT/PPTX')
+})
+
+it('rejects standalone image media jobs while preserving video and music jobs', async () => {
+  expect(() => validateMediaJobKind({ kind: 'image' })).toThrow('MEDIA_IMAGE_ROUTE_DISABLED')
+  expect(() => validateMediaJobKind({ kind: 'video' })).not.toThrow()
+  expect(() => validateMediaJobKind({ kind: 'music' })).not.toThrow()
+  const f = await fixture(), tool = f.tools.get('media_job')
+  await expect(tool.execute({ action: 'generate', kind: 'image', prompt: '海报' }, f.exec)).rejects.toThrow('must be one of ["video","music"]')
+  await expect(f.tools.get('media_models').execute({action:'select',choices_json:JSON.stringify({image:{selection:{groupId:'99',modelId:'image',profileId:'p',operation:'image'}}})},f.exec)).rejects.toThrow('MEDIA_IMAGE_ROUTE_DISABLED')
+  expect(studio.generate).not.toHaveBeenCalled()
 })
 
 it('rejects invented titles, paths and short task IDs before creating projects or jobs', async () => {
