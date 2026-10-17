@@ -268,9 +268,6 @@ const requiredArchivePaths = [
   'node_modules/@zerowallscience/plugin-mineru/package.json',
   'node_modules/@zerowallscience/plugin-mineru/zerowall.plugin.json',
   'node_modules/@zerowallscience/integrity-runtime/hash-worker.mjs',
-  'node_modules/dsh-univer-office/lib/index.js',
-  'node_modules/dsh-univer-office/lib/client.js',
-  'node_modules/dsh-univer-office/artifacts/gateway.cjs',
   'node_modules/dsh-file-review/lib/index.js',
   'node_modules/dsh-file-review/lib/client.js',
   'node_modules/dsh-file-review/cordis.patch.yml',
@@ -279,14 +276,10 @@ const requiredArchivePaths = [
   'node_modules/dsh-free-search/lib/index.js',
   'node_modules/dsh-free-search/lib/client.js',
   'node_modules/dsh-free-search/package.json',
-  'node_modules/@changfenhuang/dsh-genui/lib/index.js',
-  'node_modules/@changfenhuang/dsh-genui/lib/client.js',
-  'node_modules/@changfenhuang/dsh-genui/lib/assets/mermaid.js',
-  'node_modules/@changfenhuang/dsh-genui/lib/assets/three.js',
-  'node_modules/@changfenhuang/dsh-genui/lib/assets/echarts-core.js',
-  'node_modules/@changfenhuang/dsh-genui/lib/assets/echarts-full.js',
-  'node_modules/@changfenhuang/dsh-genui/SKILL.md',
-  'node_modules/@changfenhuang/dsh-genui/cordis.patch.yml',
+  'node_modules/dsh-ppt-maker/lib/index.js',
+  'node_modules/dsh-ppt-maker/lib/client.js',
+  'node_modules/dsh-ppt-maker/skills/ppt-maker/SKILL.md',
+  'node_modules/dsh-ppt-maker/cordis.patch.yml',
   'node_modules/dsh-wechat/cordis.patch.yml',
   'node_modules/@zerowallscience/research-store/lib/index.js',
   'node_modules/jszip/lib/index.js',
@@ -685,7 +678,7 @@ async function verifyCoreRuntimeArchive() {
   for (const name of layout.roots?.dsh ?? []) if (name !== 'dsh-better-sidebar') optional.add(name)
   for (const name of [
     '@dsh-external/zotero-harvest', '@dingyi222666/dsh-session-notification',
-    '@changfenhuang/dsh-genui', 'dsh-free-search', 'dsh-zotero',
+    'dsh-ppt-maker', 'dsh-free-search', 'dsh-zotero',
   ]) optional.add(name)
   const includedOptional = [...optional].filter(name => rawArchiveFiles.some(path => path.startsWith(`node_modules/${name}/`)))
   if (includedOptional.length > 0) throw new Error(`Optional plugins were embedded in the Core ASAR: ${includedOptional.join(', ')}`)
@@ -777,18 +770,7 @@ function hasForbiddenRuntimeDirectory(path) {
   if (['node_modules/dsh-zotero/docs', 'node_modules/dsh-zotero/docs/images', 'node_modules/dsh-zotero/docs/images/icon.png'].includes(path)) return false
   const forbidden = new Set(['test', 'tests', '__tests__', 'example', 'examples', 'docs'])
   const segments = path.split('/')
-  return segments.some((segment, index) => {
-    const lower = segment.toLowerCase()
-    const isUniverDocsPackage = lower === 'docs'
-      && index === 2
-      && segments[0]?.toLowerCase() === 'node_modules'
-      && segments[1]?.toLowerCase() === '@univerjs'
-    const isUniverBundledDocumentation = lower === 'docs'
-      && index === 2
-      && segments[0] === 'node_modules'
-      && segments[1] === 'dsh-univer-office'
-    return forbidden.has(lower) && !isUniverDocsPackage && !isUniverBundledDocumentation
-  })
+  return segments.some(segment => forbidden.has(segment.toLowerCase()))
 }
 
 async function verifyExternalPolicy() {
@@ -1297,7 +1279,7 @@ async function verifyPluginInventory(url) {
     'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',
     'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications', 'extension-center',
   ].map(name => `@zerowallscience/plugin-${name}`)
-  if (!coreOnly) expected.push('@dsh-external/zotero-harvest', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', '@changfenhuang/dsh-genui', 'dsh-zotero')
+  if (!coreOnly) expected.push('@dsh-external/zotero-harvest', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', 'dsh-ppt-maker', 'dsh-zotero')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
   if (missing.length > 0) throw new Error(`Packaged Host plugin inventory is missing: ${missing.join(', ')}`)
@@ -1685,7 +1667,7 @@ async function verifyDesktopStartup() {
       '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-reviewer',
       '@zerowallscience/plugin-research',
       'dsh-free-search', 'dsh-zotero',
-      '@changfenhuang/dsh-genui',
+      'dsh-ppt-maker',
     ]
     for (const id of expectedBootModules) {
       if (!ids.includes(id)) throw new Error(`Packaged desktop Web boot is missing ${id}. Found: ${ids.join(', ')}`)

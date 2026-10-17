@@ -6,10 +6,11 @@ import sharp from 'sharp'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 import type { AiCloudAccountSnapshot, AiCloudManagedModel } from '@zerowallscience/plugin-account/types'
 import type { ImageGenerationQuality, ImageModelSelection } from '@zerowallscience/plugin-environment/types'
-import { AiCloudMediaService, type ZeroWallMedia, type MediaRequest } from '@zerowallscience/plugin-ai-cloud'
+import { AiCloudMediaService, downloadImageBytes, type ZeroWallMedia, type MediaRequest } from '@zerowallscience/plugin-ai-cloud'
 import type { AiCloudMediaModel } from '@zerowallscience/plugin-account/types'
 import { isImageGenerationGroup, uniqueMediaModels } from '@zerowallscience/plugin-account'
 import { withPresentationLock } from './visual-assets.js'
+import { imageConcurrency, withImageSlot } from './image-concurrency.js'
 
 const MAX_INPUT_IMAGES = 16
 const MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024
@@ -38,6 +39,7 @@ export interface GenerateImageInput {
   size?: ImageSize
   quality?: ImageGenerationQuality
   overwrite?: boolean
+  concurrency?: number
 }
 
 export interface EditImageInput extends GenerateImageInput {
@@ -78,6 +80,10 @@ export interface GenerateImageResult {
   promptHash?: string
   inputImageHashes?: string[]
   cached?: boolean
+  resumedDownload?: boolean
+  responseFormat?: 'url' | 'b64_json'
+  timings?: { providerMs: number; downloadMs: number; processingMs: number; totalMs: number }
+  downloadTransport?: 'single' | 'range'
 }
 
 export interface AccountReader { current(): Promise<AiCloudAccountSnapshot> }
@@ -93,20 +99,10 @@ export interface AiCloudImageGeneratorOptions {
   imageQuality?: () => Promise<ImageGenerationQuality | undefined>
   media?: ZeroWallMedia
   retryDelayMs?: number
+  /** Total CDN transfer budget; slow transfers use ranges before this expires. */
+  downloadTimeoutMs?: number
 }
 
-let activeImages = 0
-const imageQueue: Array<() => void> = []
-async function imageSlot<T>(action: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-  signal?.throwIfAborted()
-  await new Promise<void>((accept, reject) => {
-    const start = () => { signal?.removeEventListener('abort', abort); activeImages++; accept() }
-    const abort = () => { const i = imageQueue.indexOf(start); if (i >= 0) imageQueue.splice(i, 1); reject(signal?.reason) }
-    if (activeImages < 2) start()
-    else { imageQueue.push(start); signal?.addEventListener('abort', abort, { once: true }) }
-  })
-  try { signal?.throwIfAborted(); return await action() } finally { activeImages--; imageQueue.shift()?.() }
-}
 export type ImageSize = 'auto' | `${number}x${number}`
 
 interface InspectedImage {
@@ -122,10 +118,11 @@ export class AiCloudImageGenerator {
   private readonly fetcher: typeof fetch
   private snapshot?: AiCloudAccountSnapshot
   private readonly media: ZeroWallMedia
+  private readonly responseInfo = new WeakMap<Response, { providerMs: number; downloadMs?: number; pendingKey?: string; resumed?: boolean }>()
 
   constructor(private readonly options: AiCloudImageGeneratorOptions) {
     this.fetcher = options.fetch ?? fetch
-    this.media = options.media ?? new AiCloudMediaService({ current: () => options.account.current(), discoverModels: () => options.account.current() }, options.secrets, { fetch: this.fetcher, ...(options.mediaCacheDir?{cacheDir:options.mediaCacheDir}:{}) })
+    this.media = options.media ?? new AiCloudMediaService({ current: () => options.account.current(), discoverModels: () => options.account.current() }, options.secrets, { ...(options.fetch ? { fetch: options.fetch } : {}), ...(options.mediaCacheDir?{cacheDir:options.mediaCacheDir}:{}) })
   }
 
   update(snapshot: AiCloudAccountSnapshot): void { this.snapshot = snapshot }
@@ -143,7 +140,8 @@ export class AiCloudImageGenerator {
   }
 
   async generate(input: GenerateImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
-    return withPresentationLock(`image:${resolve(cwd, input.outputPath)}`, () => this.generateOnce(input, cwd, signal))
+    const concurrency = imageConcurrency(input.concurrency)
+    return withPresentationLock(`image:${resolve(cwd, input.outputPath)}`, () => withImageSlot(concurrency, () => this.generateOnce(input, cwd, signal), signal))
   }
   private async generateOnce(input: GenerateImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
     const prompt = nonEmptyPrompt(input.prompt)
@@ -167,7 +165,8 @@ export class AiCloudImageGenerator {
   }
 
   async edit(input: EditImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
-    return withPresentationLock(`image:${resolve(cwd, input.outputPath)}`, () => this.editOnce(input, cwd, signal))
+    const concurrency = imageConcurrency(input.concurrency)
+    return withPresentationLock(`image:${resolve(cwd, input.outputPath)}`, () => withImageSlot(concurrency, () => this.editOnce(input, cwd, signal), signal))
   }
   private async editOnce(input: EditImageInput, cwd: string, signal?: AbortSignal): Promise<GenerateImageResult> {
     const prompt = nonEmptyPrompt(input.prompt)
@@ -286,8 +285,22 @@ export class AiCloudImageGenerator {
     if (input.quality !== 'auto' && model.qualities?.length && !model.qualities.includes(input.quality)) throw new Error('IMAGE_UNSUPPORTED_QUALITY: 当前模型不支持所选质量，请选择其他质量或自动。')
     const key = await this.options.secrets.get(`zerowall.ai-cloud.group.${model.groupId}`)
     if (!key?.trim()) throw new Error('IMAGE_CREDENTIAL_UNAVAILABLE: 请刷新账号。')
+    const pendingKey = `zerowall.ai-cloud.image-pending.${input.requestId}`
+    const owner = createHash('sha256').update(key.trim()).digest('hex')
+    const pending = await this.options.secrets.get(pendingKey)
+    if (pending) {
+      let saved: { owner?: string; payload?: unknown; providerMs?: number }
+      try { saved = JSON.parse(pending) } catch { throw new Error('IMAGE_PENDING_INVALID: 已生成结果记录损坏，请先检查原请求。') }
+      if (saved.owner !== owner) throw new Error('IMAGE_PENDING_ACCOUNT_MISMATCH: 请使用原账号恢复下载。')
+      const response = new Response(JSON.stringify(saved.payload), { headers: { 'content-type': 'application/json' } })
+      this.responseInfo.set(response, { providerMs: saved.providerMs ?? 0, pendingKey, resumed: true })
+      return response
+    }
     const headers: Record<string, string> = { authorization: `Bearer ${key.trim()}`, 'Idempotency-Key': input.requestId }
-    const parameters = { model: model.modelId, prompt: input.prompt, ...(input.size === 'auto' ? {} : { size: input.size }), ...(input.quality === 'auto' ? {} : { quality: input.quality }) }
+    // This compatibility parameter is verified for this gateway route only.
+    // AZ rejects it, even for the same model; keep that route's native default.
+    const responseFormat = model.groupName.trim() === '生图分组-gpt逆向' && /^gpt-image-/u.test(model.modelId) ? 'b64_json' : undefined
+    const parameters = { model: model.modelId, prompt: input.prompt, ...(input.size === 'auto' ? {} : { size: input.size }), ...(input.quality === 'auto' ? {} : { quality: input.quality }), ...(responseFormat ? { response_format: responseFormat } : {}) }
     let body: string | FormData
     const editing = Boolean(input.references?.length)
     if (editing) {
@@ -296,10 +309,24 @@ export class AiCloudImageGenerator {
       for (const image of input.references!) body.append('image[]', new Blob([Buffer.from(image.base64, 'base64')], { type: image.mediaType }), image.name ?? 'reference.png')
       if (input.mask) body.set('mask', new Blob([Buffer.from(input.mask.base64, 'base64')], { type: input.mask.mediaType }), 'mask.png')
     } else { headers['content-type'] = 'application/json'; body = JSON.stringify(parameters) }
-    return imageSlot(() => this.fetcher(`${url.origin}/v1/images/${editing ? 'edits' : 'generations'}`, { method: 'POST', headers, body, redirect: 'error', ...(signal ? { signal } : {}) }), signal)
+    const started = performance.now()
+    {
+      const raw = await this.fetcher(`${url.origin}/v1/images/${editing ? 'edits' : 'generations'}`, { method: 'POST', headers, body, redirect: 'error', ...(signal ? { signal } : {}) })
+      if (!raw.ok) return raw
+      const payload: unknown = await raw.json()
+      const providerMs = Math.round(performance.now() - started)
+      const hasUrl = isRecord(payload) && Array.isArray(payload.data) && isRecord(payload.data[0]) && typeof payload.data[0].url === 'string' && !payload.data[0].b64_json
+      // URLs can contain private signatures. Keep recovery state in the
+      // encrypted credential store, never in the workspace failure receipt.
+      if (hasUrl) await this.options.secrets.set(pendingKey, JSON.stringify({ owner, payload, providerMs }))
+      const response = new Response(JSON.stringify(payload), { headers: { 'content-type': 'application/json' } })
+      this.responseInfo.set(response, { providerMs, ...(hasUrl ? { pendingKey } : {}) })
+      return response
+    }
   }
 
   private async mediaResponse(model: AiCloudMediaModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: MediaRequest['references']; mask?: MediaRequest['mask'] }, signal?: AbortSignal): Promise<Response> {
+    const started = performance.now()
     const editing = (input.references?.length ?? 0) > 0
     const operation = model.operations.includes('gemini_image') ? 'gemini_image' : editing ? 'image_edit' : 'image'
     const configured = await this.readImageModel()
@@ -308,14 +335,17 @@ export class AiCloudImageGenerator {
       && configured.groupId === model.groupId
       && configured.modelId === model.modelId
       && (configured.profileId === undefined || configured.profileId === model.profileId)
-    const task = await imageSlot(async () => {
+    const task = await (async () => {
       const request: MediaRequest = { groupId: model.groupId, modelId: model.modelId, profileId: model.profileId, operation, requestId: input.requestId, prompt: input.prompt, parameters: { ...(input.size === 'auto' && !model.sizes.includes('auto') ? {} : { size: input.size }), ...(input.quality === 'auto' && !model.qualities.includes('auto') ? {} : { quality: input.quality }), ...(appliesParameters && configured?.resolution ? {resolution:configured.resolution} : {}), ...(appliesParameters && configured?.aspectRatio ? {aspect_ratio:configured.aspectRatio} : {}) }, ...(input.references ? { references: input.references } : {}), ...(input.mask ? { mask: input.mask } : {}), async: true }
       const submitted = await this.media.submit(request, signal)
       return ['completed', 'succeeded'].includes(submitted.status) ? submitted : this.media.wait(submitted.requestId, 600_000, signal)
-    }, signal)
+    })()
     if (!['completed', 'succeeded'].includes(task.status) || !task.artifacts.length) throw new Error('媒体任务未完成，请恢复原任务：' + task.requestId)
+    const providerMs = Math.round(performance.now() - started)
     const result = await this.media.download(task.requestId, task.artifacts[0]!.key, signal)
-    return new Response(JSON.stringify({ data: [{ b64_json: Buffer.from(result.bytes).toString('base64'), revised_prompt: task.artifacts[0]?.revisedPrompt, quality: task.artifacts[0]?.quality }] }), { headers: { 'content-type': 'application/json' } })
+    const response = new Response(JSON.stringify({ data: [{ b64_json: Buffer.from(result.bytes).toString('base64'), revised_prompt: task.artifacts[0]?.revisedPrompt, quality: task.artifacts[0]?.quality }] }), { headers: { 'content-type': 'application/json' } })
+    this.responseInfo.set(response, { providerMs, downloadMs: Math.round(performance.now() - started) - providerMs })
+    return response
   }
 
   private async readImageModel(): Promise<ImageModelSelection | undefined> {
@@ -338,7 +368,11 @@ export class AiCloudImageGenerator {
       throw new Error(`Image request failed (HTTP ${response.status}). ${action}`)
     }
     signal?.throwIfAborted()
-    const decoded = await decodeImagePayload(await response.json() as unknown, this.fetcher, signal)
+    const started = performance.now()
+    const info = this.responseInfo.get(response)
+    const decoded = await decodeImagePayload(await response.json() as unknown, this.options.fetch, signal, this.options.downloadTimeoutMs)
+    const downloadMs = (info?.downloadMs ?? 0) + Math.round(performance.now() - started)
+    const processingStarted = performance.now()
     const png = await normalizePng(decoded.bytes, signal)
     const metadata = await sharp(png, { failOn: 'error' }).metadata()
     if (!Number.isInteger(metadata.width) || !Number.isInteger(metadata.height)) {
@@ -358,9 +392,14 @@ export class AiCloudImageGenerator {
       quality,
       requestedQuality: quality,
       actualQuality: decoded.actualQuality ?? 'unreported',
+      responseFormat: decoded.responseFormat,
+      timings: { providerMs: info?.providerMs ?? 0, downloadMs, processingMs: Math.round(performance.now() - processingStarted), totalMs: (info?.resumed ? 0 : info?.providerMs ?? 0) + downloadMs + Math.round(performance.now() - processingStarted) },
+      ...(info?.resumed ? { resumedDownload: true } : {}),
+      ...(decoded.transport ? { downloadTransport: decoded.transport } : {}),
       ...(decoded.revisedPrompt === undefined ? {} : { revisedPrompt: decoded.revisedPrompt }),
     }
     const attachments = this.options.attachments?.()
+    if (info?.pendingKey) await this.options.secrets.delete(info.pendingKey)
     if (attachments === undefined) {
       return { ...base, previewWarning: 'Image preview is unavailable because no attachment service is mounted.' }
     }
@@ -522,30 +561,23 @@ function trustedBaseUrl(raw: string): string {
 
 async function decodeImagePayload(
   payload: unknown,
-  fetcher: typeof fetch,
+  fetcher?: typeof fetch,
   signal?: AbortSignal,
-): Promise<{ bytes: Uint8Array; revisedPrompt?: string; actualQuality?: ImageGenerationQuality }> {
+  downloadTimeoutMs = 600_000,
+): Promise<{ bytes: Uint8Array; responseFormat: 'url' | 'b64_json'; transport?: 'single' | 'range'; revisedPrompt?: string; actualQuality?: ImageGenerationQuality }> {
   if (!isRecord(payload) || !Array.isArray(payload.data) || !isRecord(payload.data[0])) throw new Error('Image request returned no image.')
   const item = payload.data[0]
   const revisedPrompt = typeof item.revised_prompt === 'string' && item.revised_prompt.trim() ? item.revised_prompt : undefined
   const actualQuality = isImageQuality(item.quality) ? item.quality : isImageQuality(item.actual_quality) ? item.actual_quality : undefined
   if (typeof item.b64_json === 'string' && item.b64_json.length > 0) {
-    return { bytes: Buffer.from(item.b64_json, 'base64'), ...(revisedPrompt === undefined ? {} : { revisedPrompt }), ...(actualQuality === undefined ? {} : { actualQuality }) }
+    if (item.b64_json.length > MAX_OUTPUT_IMAGE_BYTES * 1.4 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(item.b64_json)) throw new Error('Image request returned invalid or oversized base64.')
+    return { bytes: Buffer.from(item.b64_json, 'base64'), responseFormat: 'b64_json', ...(revisedPrompt === undefined ? {} : { revisedPrompt }), ...(actualQuality === undefined ? {} : { actualQuality }) }
   }
   if (typeof item.url === 'string') {
     const url = new URL(item.url)
-    if (url.protocol !== 'https:') throw new Error('Image request returned an unsafe image URL.')
-    let response: Response
-    try {
-      response = await fetcher(url, signal === undefined ? {} : { signal })
-    } catch (error) {
-      if (isAbortError(error) || (signal?.aborted ?? false)) throw error
-      throw new Error('Generated image download failed before receiving a response. Check the image CDN connection and retry.', { cause: error })
-    }
-    if (!response.ok) throw new Error(`Generated image download failed (HTTP ${response.status}).`)
-    const length = Number(response.headers.get('content-length'))
-    if (Number.isFinite(length) && length > MAX_OUTPUT_IMAGE_BYTES) throw new Error('Generated image exceeds the 64 MiB safety limit.')
-    return { bytes: new Uint8Array(await response.arrayBuffer()), ...(revisedPrompt === undefined ? {} : { revisedPrompt }), ...(actualQuality === undefined ? {} : { actualQuality }) }
+    const downloaded = await downloadImageBytes(url, { ...(signal ? { signal } : {}), timeoutMs: downloadTimeoutMs,
+      ...(fetcher ? { fetch: (url, signal, headers) => fetcher(url, { signal, ...(headers ? { headers } : {}), redirect: 'error' }) } : {}) })
+    return { bytes: downloaded.bytes, transport: downloaded.transport, responseFormat: 'url', ...(revisedPrompt === undefined ? {} : { revisedPrompt }), ...(actualQuality === undefined ? {} : { actualQuality }) }
   }
   throw new Error('Image request returned neither image bytes nor a download URL.')
 }

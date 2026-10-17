@@ -6,7 +6,7 @@ import { openQiniuStore } from '../tools/release/qiniu-store.mjs'
 import { verifyCatalog, verifySignedDocument, fileDigest } from '../tools/release/resource-catalog.mjs'
 import { resourcePublicationScope } from '../tools/release/resource-publication-scope.mjs'
 import { downloadResource } from '../tools/release/resource-catalog.mjs'
-import { assertPublicationBaseline } from '../tools/release/targeted-plugin-catalog.mjs'
+import { assertPublicationBaseline, assertResourcePublicationBaseline, selectedPluginArguments, selectedSkillArguments } from '../tools/release/targeted-plugin-catalog.mjs'
 import { t as listTar } from 'tar'
 
 async function verifyPythonWorkerRelease(path) {
@@ -23,7 +23,12 @@ async function verifyPythonWorkerRelease(path) {
 
 const mode = process.argv[2] ?? 'stage'
 if (!['stage', 'promote', 'verify'].includes(mode)) throw new Error('Usage: node scripts/publish-resources.mjs stage|promote|verify')
-const { kinds, receiptSuffix } = resourcePublicationScope(process.argv.slice(3).filter(value => value !== '--reuse-published'))
+const args = process.argv.slice(3).filter(value => value !== '--reuse-published')
+const { plugins: selectedPlugins, remaining: afterPlugins } = selectedPluginArguments(args)
+const { skills: selectedSkills, remaining } = selectedSkillArguments(afterPlugins)
+const { kinds, receiptSuffix: scopeSuffix } = resourcePublicationScope(remaining)
+const receiptIds = [...selectedPlugins, ...selectedSkills].map(id => id.replace(/[^A-Za-z0-9._-]/gu, '-'))
+const receiptSuffix = receiptIds.length ? `${scopeSuffix}-${receiptIds.join('_')}` : scopeSuffix
 const store = await openQiniuStore(root)
 const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
 const output = join(releaseRoot, 'publication')
@@ -50,7 +55,11 @@ for (const kind of kinds) {
     verifySignedDocument(entry, keys)
     const key = keyFor(entry.downloadUrl)
     let source = records.find(record => record.id === entry.id && record.version === entry.version)?.path
-    if (!source && reusePublished && ['plugin', 'support'].includes(entry.kind)) {
+    if (!source && entry.kind === 'skill') {
+      const candidate = join(releaseRoot, 'skills', entry.id, entry.version, entry.id + '.tgz')
+      if (await stat(candidate).catch(() => undefined)) source = candidate
+    }
+    if (!source && reusePublished && ['plugin', 'support', 'skill'].includes(entry.kind)) {
       // Exact public signed bytes can belong to an older local build. Keep
       // its record independent of the pending local plugin-packages feed.
       const cached = await downloadResource(entry, join(releaseRoot, 'published'))
@@ -83,12 +92,19 @@ if (mode === 'stage') {
   if (!saved.complete || saved.assets.length !== assets.size) throw new Error('Resource publication has not passed all public asset checks')
   for (const asset of assets.values()) if (!saved.assets.some(item => item.key === asset.key && item.sha256) || await fileDigest(asset.path) !== saved.assets.find(item => item.key === asset.key).sha256) throw new Error('Staged resource was modified')
   if (mode === 'promote') {
-    if (reusePublished && kinds.includes('plugin')) {
+    if (reusePublished && kinds.includes('plugin') && selectedPlugins.length) {
       const baseline = JSON.parse(await readFile(join(releaseRoot, 'catalogs/plugin-targeted-baseline.json'), 'utf8'))
       const intended = JSON.parse(await readFile(join(releaseRoot, 'catalogs/plugin-latest.json'), 'utf8'))
       const response = await fetch(`${store.base}/stable/catalogs/plugin-latest.json`, { cache: 'no-store', signal: AbortSignal.timeout(15000) })
       if (!response.ok) throw new Error('Cannot recheck the public plugin pointer before promotion')
       assertPublicationBaseline(await response.json(), baseline.pointer, intended, keys)
+    }
+    if (reusePublished && kinds.includes('skill') && selectedSkills.length) {
+      const baseline = JSON.parse(await readFile(join(releaseRoot, 'catalogs/skill-targeted-baseline.json'), 'utf8'))
+      const intended = JSON.parse(await readFile(join(releaseRoot, 'catalogs/skill-latest.json'), 'utf8'))
+      const response = await fetch(`${store.base}/stable/catalogs/skill-latest.json`, { cache: 'no-store', signal: AbortSignal.timeout(15000) })
+      if (!response.ok) throw new Error('Cannot recheck the public skill pointer before promotion')
+      assertResourcePublicationBaseline(await response.json(), baseline.pointer, intended, keys, 'skill')
     }
     for (const asset of pointers) await store.upload(asset, true)
     await store.refresh(pointers.map(asset => asset.key))

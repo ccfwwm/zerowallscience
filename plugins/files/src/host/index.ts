@@ -317,7 +317,7 @@ export class ZeroWallFilesService extends TypertRemoteService {
     }))
     ctx.tools.register(defineTool({
       name: 'extract_uploaded_file',
-      description: 'Reuse or extract current-session attachments. auto uses structured local Office/cell parsing and configured MinerU for PDF/OCR. Results are paged with read_uploaded_file; Univer is for authoring, not passive reading.',
+      description: 'Reuse or extract current-session attachments. auto uses structured local Office/cell parsing and configured MinerU for PDF/OCR. Results are paged with read_uploaded_file.',
       parameters: { attachment_id: { type: 'string', required: true }, mode: { type: 'string', enum: ['local', 'auto', 'mineru'] } },
       output: { schema: { type: 'object', additionalProperties: true, properties: { kind: { type: 'string', required: true }, state: { type: 'string', required: true }, parser: { type: 'string', required: true }, artifactPath: { type: 'string' }, taskId: { type: 'string' }, textChars: { type: 'integer' }, error: { type: 'string' }, createdAt: { type: 'string', required: true } } }, render: (_args, value) => [{ type: 'text', text: `${value.kind} extraction: ${value.state}. ${value.artifactPath ?? value.error ?? value.warning ?? ''}` }] },
       execute: async (args, exec) => {

@@ -48,7 +48,7 @@ test('Skill, MCP and Python changes each select only their independent resource 
 test('flat package sources route through plugins while retired roots do not schedule work', () => {
   assert.deepEqual(tasksForChangedFiles(['plugins/research-store/src/index.ts']), ['plugin-build:research-store'])
   assert.deepEqual(tasksForChangedFiles(['plugins/dsh-bundle-science/package.json']), ['plugin-build:dsh-bundle-science'])
-  assert.deepEqual(tasksForChangedFiles(['packages/dsh/dsh-genui/src/index.ts', 'store/src/index.ts', 'artifacts/packages/8.3.0/windows-x64/installer.exe']), [])
+  assert.deepEqual(tasksForChangedFiles(['packages/dsh/retired-ui/src/index.ts', 'store/src/index.ts', 'artifacts/packages/8.3.0/windows-x64/installer.exe']), [])
   assert.deepEqual(tasksForChangedFiles(['deepseek-harness/packages/client/store/src/index.ts']), ['dsh', 'runtime'])
 })
 

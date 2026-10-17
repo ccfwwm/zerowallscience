@@ -44,7 +44,7 @@ export async function importLegacyCliPlugins(home, { installAnchor, legacyHome =
     const recorded = new Set(receipt.imported)
     const selection = await json(join(home, 'resources/plugins/selection.json'), {})
     const oldSelection = await json(join(legacyHome, 'resources/plugins/selection.json'), {})
-    const excluded = new Set([...(selection.disabled ?? []), ...(selection.removed ?? []), ...Object.keys(selection.pinned ?? {}), ...(manifest.zerowall?.disabledPlugins ?? []), ...(oldSelection.disabled ?? []), ...(oldSelection.removed ?? []), ...(old.zerowall?.disabledPlugins ?? []), 'dsh-auto-review', 'dsh-progressive-tools', '@everclear077/dsh-progressive-tools'])
+    const excluded = new Set([...(selection.disabled ?? []), ...(selection.removed ?? []), ...Object.keys(selection.pinned ?? {}), ...(manifest.zerowall?.disabledPlugins ?? []), ...(oldSelection.disabled ?? []), ...(oldSelection.removed ?? []), ...(old.zerowall?.disabledPlugins ?? []), 'dsh-auto-review', 'dsh-progressive-tools', '@everclear077/dsh-progressive-tools', 'dsh-univer-office', 'dsh-genui', '@changfenhuang/dsh-genui'])
     const existing = new Set([...(manifest.dsh?.profile?.bundles ?? []), ...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.devDependencies ?? {}), ...Object.keys(manifest.optionalDependencies ?? {})])
     const sourceProfile = boot.loadProfileDirectory('dsh', source, installAnchor)
     const sourceHomePatch = await (async () => {

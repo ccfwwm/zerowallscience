@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "8.3.3",
+  "version": "8.3.5",
   "description": "ZeroWall Science 8.3.0 local-first scientific visualization and research workbench.",
   "private": true,
   "type": "module",
@@ -25,7 +25,6 @@
     "installer:build": "node scripts/prepare-nsis-overlay.mjs && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-installer-ui.ps1"
   },
   "dependencies": {
-    "@changfenhuang/dsh-genui": "workspace:*",
     "@dingyi222666/dsh-session-notification": "workspace:*",
     "@dsh-external/zotero-harvest": "workspace:*",
     "@michengai/dsh-archive-manager": "workspace:*",
@@ -56,8 +55,8 @@
     "dsh-dream-skin": "10.9.3",
     "dsh-file-review": "workspace:*",
     "dsh-free-search": "0.8.3",
+    "dsh-ppt-maker": "workspace:*",
     "dsh-ssh-ops": "workspace:*",
-    "dsh-univer-office": "0.3.7",
     "dsh-wechat": "workspace:*",
     "dsh-zotero": "0.12.1",
     "yauzl": "3.4.0"

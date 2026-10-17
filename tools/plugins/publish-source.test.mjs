@@ -6,7 +6,7 @@ import { integrationPublishSource, usesReviewedRuntime } from './publish-source.
 
 test('only established runtime-only adapters use the reviewed projection', () => {
   const roots = { root: '/repo', stageRoot: '/stage' }
-  for (const name of ['@changfenhuang/dsh-genui', '@dingyi222666/dsh-session-notification', '@dsh-external/zotero-harvest']) {
+  for (const name of ['@dingyi222666/dsh-session-notification', '@dsh-external/zotero-harvest']) {
     const integration = { package: name, source: 'plugins/example' }
     assert.equal(usesReviewedRuntime(integration), true)
     assert.equal(integrationPublishSource(integration, roots), join('/stage', 'offline-profile/modules', name))

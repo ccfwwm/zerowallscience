@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { generateKeyPairSync } from 'node:crypto'
 import { signCatalog } from './resource-catalog.mjs'
-import { mergePublishedPlugin, mergePublishedPlugins, selectedPluginArguments, assertPublicationBaseline } from './targeted-plugin-catalog.mjs'
+import { mergePublishedPlugin, mergePublishedPlugins, mergePublishedSkills, selectedPluginArguments, selectedSkillArguments, assertPublicationBaseline, assertResourcePublicationBaseline } from './targeted-plugin-catalog.mjs'
 
 const { privateKey, publicKey } = generateKeyPairSync('ed25519')
 const keys = { test: publicKey }, sign = value => signCatalog(value, privateKey, 'test')
@@ -30,6 +30,15 @@ test('one addition preserves every existing public entry and signature despite p
   assert.equal(merged[0], existing[0])
   assert.deepEqual(existing.map(e => e.version), ['0.2.6', '0.1.7'])
 })
+test('targeted skill updates preserve every other signed entry and reject version regression', () => {
+  const previous = [resource('gpt-image-generator', '0.1.6'), resource('other-skill', '1.2.0')]
+  const selected = resource('gpt-image-generator', '0.1.7')
+  const merged = mergePublishedSkills(previous, [selected], keys)
+  assert.deepEqual(merged, [previous[1], selected])
+  assert.equal(merged[0], previous[1])
+  assert.deepEqual(selectedSkillArguments(['--kind', 'skill', '--skill', 'gpt-image-generator']), { skills: ['gpt-image-generator'], remaining: ['--kind', 'skill'] })
+  assert.throws(() => mergePublishedSkills(previous, [resource('gpt-image-generator', '0.1.5')], keys), /downgrade/u)
+})
 test('updates replace only the selected plugin and reject downgrade, duplicate identity, or same-version changed bytes', () => {
   const existing = [resource('archive'), resource('other')]
   assert.deepEqual(mergePublishedPlugin(existing, resource('archive', '1.0.1'), keys), [existing[1], resource('archive', '1.0.1')])
@@ -48,4 +57,5 @@ test('promotion detects concurrent publication and permits idempotent retry', ()
   assertPublicationBaseline(intended, baseline, intended, keys)
   assert.throws(() => assertPublicationBaseline(sign({ kind: 'pointer', catalog: { sha256: 'concurrent' } }), baseline, intended, keys), /changed/u)
   assert.throws(() => assertPublicationBaseline({ ...baseline, kind: 'modified' }, baseline, intended, keys), /signature/u)
+  assert.throws(() => assertResourcePublicationBaseline(sign({ kind: 'pointer', catalog: { sha256: 'concurrent' } }), baseline, intended, keys, 'skill'), /skill pointer changed/u)
 })

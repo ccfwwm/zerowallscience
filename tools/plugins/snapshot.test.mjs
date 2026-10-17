@@ -21,6 +21,17 @@ test('feed guards refuse missing entries, semver downgrades and same-version cha
   assert.doesNotThrow(() => assertFeedNotRegressed([{ ...prior[0], version: '1.0.0-rc.9' }], [{ ...prior[0], version: '1.0.0-rc.10' }]))
 })
 
+test('retired plugins are omitted from the active feed without requiring their old archives', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-retired-plugin-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const store = join(root, 'plugins')
+  await mkdir(store, { recursive: true })
+  const retired = { id: '@changfenhuang/dsh-genui', version: '0.12.1-zws.1', kind: 'plugin',
+    size: 1, sha256: 'a'.repeat(64), path: join(store, 'missing-retired-archive.tgz') }
+  await writeFile(join(store, 'plugin-packages.json'), JSON.stringify([retired]))
+  assert.deepEqual(await readVerifiedPluginFeed(store), [])
+})
+
 test('verified archives are reused unchanged and bound to actual installed plugin versions', async t => {
   const root = await mkdtemp(join(tmpdir(), 'zws-latest-plugin-'))
   t.after(() => rm(root, { recursive: true, force: true }))

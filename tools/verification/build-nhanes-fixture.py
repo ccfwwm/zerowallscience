@@ -1,9 +1,9 @@
-"""Measured editable layouts. Real compilation/export uses pinned Univer."""
+"""Measured editable layouts. Real compilation/export uses dsh-ppt-maker."""
 from pathlib import Path
 import json, shutil, hashlib, re, html
 import fitz
 from PIL import ImageFont, Image
-ROOT=Path('artifacts/verification/8.1.2/presentation-regression').resolve()
+ROOT=Path('artifacts/verification/8.3.5/ppt-maker-smoke').resolve()
 (ROOT/'assets').mkdir(parents=True,exist_ok=True)
 source=Path('C:/codekg/zeroproject/nhanesreview/nhanes_diet_aging.pdf')
 shutil.copy2(source,ROOT/'source.pdf');pdf=fitz.open(source)

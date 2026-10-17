@@ -35,7 +35,7 @@ const common = {
     '**/node-pty/**/*',
     '**/sharp/**/*',
     '**/@zerowallscience/integrity-runtime/**/*',
-    '**/dsh-univer-office/**/*',
+    '**/dsh-ppt-maker/**/*',
     '**/@deepseek-ai/libreoffice-kit/**/*',
     '**/@deepseek-ai/libreoffice-kit-win32-x64/**/*',
     '**/@deepseek-ai/libreoffice-kit-win32-arm64/**/*',

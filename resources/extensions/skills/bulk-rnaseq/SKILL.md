@@ -35,7 +35,7 @@ These host rules override upstream examples when they differ:
   external execution contexts and must not be described as local Python
   environments.
 - Use `pathlib`, project-relative paths, and platform temporary directories. Gate Unix-only commands behind an explicit WSL/SSH execution context.
-- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with Host tool registry.
+- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `ppt-maker`, `generate_image`, and bundled MCP tools discovered with Host tool registry.
 
 # Bulk RNA-seq
 

@@ -62,8 +62,6 @@ allowBuilds:
   ssh2: false
 
 minimumReleaseAgeExclude:
-  # Explicitly requested integration pin, published today.
-  - 'dsh-univer-office@0.3.7'
   - '@earendil-works/pi-ai@0.87.1'
   - dsh-better-sidebar@0.25.0
   - dsh-dream-skin@10.9.3

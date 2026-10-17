@@ -12,7 +12,7 @@ export async function treeHashes(directory, prefix = '') {
   return result
 }
 async function snapshot(root, stage) {
-  const packages = ['@deepseek-ai/libreoffice-kit', '@deepseek-ai/libreoffice-kit-win32-x64', '@deepseek-ai/dsh-client-ui-sidebar-documentpreview', 'dsh-univer-office']
+  const packages = ['@deepseek-ai/libreoffice-kit', '@deepseek-ai/libreoffice-kit-win32-x64', '@deepseek-ai/dsh-client-ui-sidebar-documentpreview', 'dsh-ppt-maker']
   const result = { skillsSource: await treeHashes(join(root, 'resources/extensions/skills')), skillsRuntime: await treeHashes(join(stage, 'resources/extensions/skills')), runtime: {} }
   for (const id of packages) {
     const directory = join(stage, 'runtime/node_modules', id)

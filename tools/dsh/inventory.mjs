@@ -16,11 +16,10 @@ const thirdPartyOrder = [
   'dsh-dream-skin',
   'dsh-better-sidebar',
   'dsh-file-review',
-  'dsh-univer-office',
+  'dsh-ppt-maker',
   'dsh-zotero',
   '@dsh-external/zotero-harvest',
   'dsh-wechat',
-  '@changfenhuang/dsh-genui',
   '@michengai/dsh-archive-manager',
   '@oh-story/dsh',
 ]

@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    // tests/ 里的宿主路由（plugin/host/*.mjs）是 plain JS，不写 .d.ts；
+    // 关掉这条才让 TS7016 别响——生产代码（src/）不受影响（src 自己全部是 .ts）。
+    "noImplicitAny": false,
+    "declaration": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "tests/**/*.ts", "tests/**/*.d.ts", "vitest.config.ts", "tsup.config.ts"]
+}

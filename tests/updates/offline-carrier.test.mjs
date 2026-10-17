@@ -59,7 +59,7 @@ test('v2 carrier binds packed and physical bytes and rejects archive or unpacked
 test('stale physical assets from an in-place upgrade block activation without weakening signed file-set checks', async t => {
   const f = await fixture(t)
   const before = await readFile(join(f.home, 'profiles/web/package.json'))
-  const stale = join(f.source, carrierName + '.unpacked/node_modules/dsh-univer-office/old-hash.js')
+  const stale = join(f.source, carrierName + '.unpacked/node_modules/retired-presentation/old-hash.js')
   await mkdir(join(stale, '..'), { recursive: true })
   await writeFile(stale, 'old installer asset')
   await assert.rejects(f.manager.repairOffline(f.source), /file set mismatch/)

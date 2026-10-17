@@ -9,6 +9,7 @@ import { isImageGenerationGroup, uniqueMediaModels } from '@zerowallscience/plug
 import type { MediaArtifact, MediaCatalog, MediaRequest, MediaSelection, MediaTask, ZeroWallMedia } from '../shared/media.js'
 import { artifactFormat } from './artifact-format.js'
 import { externalArtifact } from './artifact-network.js'
+import { downloadImageBytes } from './image-download.js'
 
 interface Account { current(): Promise<AiCloudAccountSnapshot>; discoverModels(): Promise<AiCloudAccountSnapshot> }
 interface StoredArtifact extends MediaArtifact { source?: string; file?: string }
@@ -38,13 +39,13 @@ function dto(task: StoredTask): MediaTask {
 export class AiCloudMediaService implements ZeroWallMedia {
   private readonly fetcher: typeof fetch
   private readonly cacheDir: string
-  private readonly externalFetch: (url: URL, signal: AbortSignal) => Promise<Response>
+  private readonly externalFetch: typeof externalArtifact
   private readonly operations = new Map<string, Promise<MediaTask>>()
   private writes: Promise<unknown> = Promise.resolve()
   constructor(private readonly account: Account, private readonly secrets: AccountSecretStore, options: { fetch?: typeof fetch; cacheDir?: string } = {}) {
     this.fetcher = options.fetch ?? fetch
     this.cacheDir = options.cacheDir ?? join(process.env.DSH_HOME || join(homedir(), '.zerowall'), 'media')
-    this.externalFetch = options.fetch ? (url, signal) => options.fetch!(url, { redirect: 'error', signal }) : externalArtifact
+    this.externalFetch = options.fetch ? (url, signal, headers) => options.fetch!(url, { redirect: 'error', signal, ...(headers ? { headers } : {}) }) : externalArtifact
   }
 
   async catalog(refresh = false): Promise<MediaCatalog> {
@@ -301,6 +302,14 @@ export class AiCloudMediaService implements ZeroWallMedia {
     }
     if (!artifact.source) throw new Error('MEDIA_ARTIFACT_UNAVAILABLE')
     const url = this.artifactURL(task.gateway, artifact.source)
+    if (artifact.mediaType.startsWith('image/')) {
+      const result = await downloadImageBytes(url, { ...(signal ? { signal } : {}), fetch: url.origin === task.gateway
+        ? (url, signal, headers) => this.fetcher(url, { redirect: 'error', headers: { ...headers, authorization: `Bearer ${key}` }, signal })
+        : this.externalFetch })
+      await this.cache(task, artifact, result.bytes)
+      await this.save(task)
+      return { bytes: result.bytes, mediaType: artifact.mediaType, sha256: artifact.sha256! }
+    }
     const downloadSignal = signal ?? AbortSignal.timeout(120_000)
     const response = url.origin === task.gateway
       ? await this.fetcher(url, { redirect: 'error', headers: { authorization: `Bearer ${key}` }, signal: downloadSignal })

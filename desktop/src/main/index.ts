@@ -743,7 +743,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   const dshIdentity = JSON.parse(await readFile(app.isPackaged ? join(process.resourcesPath, 'licenses/deepseek-harness.version.json') : join(findWorkspaceRoot(), 'config/deepseek-harness/upstream.json'), 'utf8')) as { version: string; commit: string }
   // Core DSH overlays are already inserted by zerowall.patch.yml. Only
   // managed ZeroWall plugins belong in the user profile; loading both layers
-  // would register Univer/Sidebar services twice after a 7.5 migration.
+  // would register retired sidebar services twice after a profile migration.
   await initializeProfile(dshHome, defaults, bundledPlugins)
   // An explicitly isolated verification/user-data root must never discover the
   // machine's real legacy CLI profile. Existing normal installs import only

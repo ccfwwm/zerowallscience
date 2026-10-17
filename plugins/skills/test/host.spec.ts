@@ -44,7 +44,7 @@ describe('ZeroWall capabilities Remote', () => {
     expect(report.records.every(item => item.backupPath.includes('history-routing'))).toBe(true)
   })
 
-  it('ships the editable presentation route and keeps the upstream Univer contract explicit', async () => {
+  it('ships the PPT Maker presentation route with image-first and editable modes', async () => {
     const previousBundled = process.env.ZEROWALL_BUNDLED_SKILLS
     const previousUser = process.env.ZEROWALL_USER_SKILLS
     process.env.ZEROWALL_BUNDLED_SKILLS = resolve(import.meta.dirname, '../../../resources/extensions/skills')
@@ -54,17 +54,16 @@ describe('ZeroWall capabilities Remote', () => {
       await ctx.plugin(SkillRegistry)
       const detail = await new ZeroWallCapabilitiesService(ctx).getSkill('zerowall-presentation')
       expect(detail.source).toBe('bundled')
-      expect(detail.content).toContain('univer-slide')
-      expect(detail.content).toContain('univer_compile_svg')
-      expect(detail.content).toContain('univer_export')
-      expect(detail.content).toContain('Never rasterize complete slides')
-      expect(detail.content).toContain('editable formal text/shapes/connectors')
-      expect(detail.content).toContain('presentation_compile_pages')
-      expect(detail.content).toContain('source_kind')
-      expect(detail.content).toContain('Only referenced assets block compilation')
-      expect(detail.content).toContain('Do not require three style samples')
-      expect(detail.content).toContain('selected chat/image model')
-      expect(detail.content).toContain('exported PPTX')
+      expect(detail.content).toContain('dsh-ppt-maker')
+      expect(detail.content).toContain('ppt_create')
+      expect(detail.content).toContain('ppt_check')
+      expect(detail.content).toContain('ppt_render')
+      expect(detail.content).toContain('ppt_export')
+      expect(detail.content).toContain('output_mode: image')
+      expect(detail.content).toContain('output_mode: editable')
+      expect(detail.content).toContain('原始 prompt')
+      expect(detail.content).not.toContain('univer_')
+      expect(detail.content).not.toContain('GenUI')
     } finally {
       await ctx.fiber.dispose()
       if (previousBundled === undefined) delete process.env.ZEROWALL_BUNDLED_SKILLS

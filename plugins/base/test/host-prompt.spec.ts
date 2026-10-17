@@ -8,13 +8,15 @@ describe('ZeroWall Science system prompt', () => {
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('capability_search')
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('mcp__rmcp__')
     expect(SCIENCE_SYSTEM_PROMPT).toContain(SCIENCE_SYSTEM_PROMPT_VERSION)
-    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^8\.1\.2-/u)
+    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^8\.3\.5-/u)
   })
 
-  it('routes presentation requests to editable Univer objects', () => {
+  it('routes presentation requests to the PPT Maker image and editable modes', () => {
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('zerowall-presentation')
-    expect(SCIENCE_PRESENTATION_PROMPT).toContain('univer-slide')
-    expect(SCIENCE_PRESENTATION_PROMPT).toContain('Keep formal text/charts/tables/notes editable')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('ppt-maker')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('Default to a complete page PNG')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('When the user asks for editability')
+    expect(SCIENCE_PRESENTATION_PROMPT).toContain('formal text/charts/tables/notes editable')
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('current model/quality/protocol settings')
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('Passive Office reading')
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('No mandatory three-style exploration')
@@ -24,6 +26,8 @@ describe('ZeroWall Science system prompt', () => {
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('take precedence')
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('small top-left kicker')
     expect(SCIENCE_PRESENTATION_PROMPT).toContain('universal no-text')
+    expect(SCIENCE_PRESENTATION_PROMPT).not.toContain('Univer')
+    expect(SCIENCE_PRESENTATION_PROMPT).not.toContain('univer_')
   })
 
   it('keeps the research layer explicit and bounded', () => {

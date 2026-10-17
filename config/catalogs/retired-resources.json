@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "plugin": [
+    "@changfenhuang/dsh-genui",
+    "dsh-univer-office"
+  ],
+  "skill": [
+    "univer",
+    "univer-doc",
+    "univer-sheet",
+    "univer-slide"
+  ]
+}

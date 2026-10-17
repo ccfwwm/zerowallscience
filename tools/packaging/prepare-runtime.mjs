@@ -6,8 +6,6 @@ import { createHash } from 'node:crypto'
 import { access, cp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
-import { adaptUniverOfficeManifest, adaptUniverSkill, UNIVER_SKILL_HASHES } from './adapt-univer-office.mjs'
-import { adaptUniverSlideCapture } from './adapt-univer-slide-capture.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
 import { adaptDirectoryPicker } from './adapt-directory-picker.mjs'
@@ -52,7 +50,7 @@ const zerowallPackageRoots = [
   resolve(await packageSource('integrity-runtime')),
   ...await Promise.all(runtimeProfile.corePackageDependencies.map(async name => resolve(await packageSource(name)))),
   ...await pluginRoots(resolve(root, 'plugins'), new Set(offlineProfile ? configuredDefaults : runtimeProfile.corePlugins)),
-  ...(offlineProfile ? await Promise.all(['dsh-ssh-ops', 'dsh-session-notification', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-wechat', 'dsh-genui', 'zotero-harvest', 'dsh-archive-manager', 'oh-story-dsh'].map(async name => resolve(await packageSource(name)))) : []),
+  ...(offlineProfile ? await Promise.all(['dsh-ssh-ops', 'dsh-session-notification', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-wechat', 'zotero-harvest', 'dsh-archive-manager', 'oh-story-dsh'].map(async name => resolve(await packageSource(name)))) : []),
   ...(offlineProfile ? [resolve(root, 'plugins/research-store')] : []),
 ]
 const desktopRuntimeSeeds = [
@@ -321,40 +319,6 @@ async function copyRuntimePackage(package_, targetRoot) {
     return
   }
 
-  if (manifest.name === 'dsh-univer-office') {
-    const provenance = JSON.parse(await readFile(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8')).univerOffice
-    await writeFile(resolve(targetRoot, 'package.json'), adaptUniverOfficeManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8'), provenance.resourceVersion ?? provenance.version))
-    // The Gateway and render workers must execute from physical files in Electron.
-    for (const entry of ['lib', 'docs', 'skills', 'artifacts', 'LICENSE', 'cordis.patch.yml']) await copyEntry(sourceRoot, targetRoot, entry)
-    const renderAssets = resolve(targetRoot, 'artifacts/render-machine/assets')
-    const bundles = (await readdir(renderAssets)).filter(name => /^index-.*\.js$/u.test(name))
-    if (bundles.length !== 1) throw new Error('Expected one pinned Univer render entry bundle')
-    const renderPath = resolve(renderAssets, bundles[0])
-    const renderSource = await readFile(renderPath, 'utf8')
-    if (provenance.commit !== '8f85ce4074fdbe51416b6c337468bb916a302c2a' || createHash('sha256').update(renderSource).digest('hex') !== 'dcdb80d5154b4e9551d144fa84bb4d60fc8176efe2aae17a4fd7f1d223ba4a85') throw new Error('Univer renderer identity changed; review capture adapter before packaging')
-    await writeFile(renderPath, adaptUniverSlideCapture(renderSource))
-    const skillReceipts = []
-    for (const skill of Object.keys(UNIVER_SKILL_HASHES)) {
-      const path = resolve(targetRoot, 'skills', skill, 'SKILL.md')
-      const before = await readFile(path, 'utf8')
-      const after = adaptUniverSkill(skill, before, manifest.version, provenance.commit)
-      await writeFile(path, after)
-      skillReceipts.push({ skill, version: manifest.version, commit: provenance.commit, sourceSha256: UNIVER_SKILL_HASHES[skill], adaptedSha256: createHash('sha256').update(after).digest('hex') })
-    }
-    await writeFile(resolve(targetRoot, 'skills/zerowall-adaptation.json'), JSON.stringify(skillReceipts, null, 2))
-    const hostPath = resolve(targetRoot, 'lib/index.js')
-    const host = await readFile(hostPath, 'utf8')
-    const anchor = 'var PLUGIN_NODE_MODULES = fileURLToPath(new URL("../../node_modules/", import.meta.url));'
-    if (!host.includes(anchor)) throw new Error('Univer 0.3.2 physical artifact adapter no longer matches.')
-    await writeFile(hostPath, host.replace(anchor, anchor + String.raw`
-GATEWAY_ENTRY = GATEWAY_ENTRY.replace(/app\.asar([\\/])/g, 'app.asar.unpacked$1');
-VIEWER_ROOT = VIEWER_ROOT.replace(/app\.asar([\\/])/g, 'app.asar.unpacked$1');
-UNIT_CONTENT_WORKER_ENTRY = UNIT_CONTENT_WORKER_ENTRY.replace(/app\.asar([\\/])/g, 'app.asar.unpacked$1');
-RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar.unpacked$1');
-`))
-    return
-  }
-
   if (manifest.name === 'dsh-zotero') {
     for (const entry of ['lib', 'LICENSE', 'cordis.patch.yml', 'docs/images/icon.png', 'locale']) await copyEntry(sourceRoot, targetRoot, entry)
     await writeFile(resolve(targetRoot, 'package.json'), adaptZoteroManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8')))
@@ -395,15 +359,6 @@ RENDER_MACHINE_ROOT = RENDER_MACHINE_ROOT.replace(/app\.asar([\\/])/g, 'app.asar
     // Keep the package boundary and
     // exclude repository-only tests/docs through the common runtime filter.
     for (const entry of ['lib', 'dist', 'icons', 'resources', 'cordis.patch.yml']) {
-      await copyEntry(sourceRoot, targetRoot, entry)
-    }
-    return
-  }
-
-  if (manifest.name === '@changfenhuang/dsh-genui') {
-    // Keep the renderer core, lazy engine assets, skill, and bundle patch;
-    // repository docs/tests/site files are not part of the desktop runtime.
-    for (const entry of ['lib', 'SKILL.md', 'cordis.patch.yml']) {
       await copyEntry(sourceRoot, targetRoot, entry)
     }
     return
@@ -512,7 +467,7 @@ function includeRuntimeFile(sourceRoot, candidate) {
   // npm packages frequently publish executable JavaScript under `src`, even
   // when `main` itself lives at the package root. Keep every src directory;
   // guessing whether it is development-only creates incomplete runtimes.
-  if (segments.some(segment => segment === 'node_modules' || (forbiddenDirectories.has(segment) && !(segment === 'docs' && sourceRoot.replaceAll('\\', '/').endsWith('/dsh-univer-office'))))) return false
+  if (segments.some(segment => segment === 'node_modules' || forbiddenDirectories.has(segment))) return false
   const lower = path.toLowerCase()
   if (lower.endsWith('.d.ts') || lower.endsWith('.tsbuildinfo') || forbiddenExtensions.has(extname(lower))) return false
   if (/\.(?:spec|test)\.[cm]?js$/.test(lower)) return false

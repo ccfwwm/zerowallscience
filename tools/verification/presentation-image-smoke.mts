@@ -10,7 +10,7 @@ chunks.length = 0
 const values = new Map<string, string>()
 const secrets = { get: async (key: string) => values.get(key), set: async (key: string, value: string) => { values.set(key, value) }, delete: async (key: string) => { values.delete(key) } }
 const account = new AiCloudClient({ secrets, fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(60000) }) })
-const root = resolve('artifacts/verification/8.1.2/presentation-regression')
+const root = resolve('artifacts/verification/8.3.5/ppt-maker-smoke')
 await mkdir(resolve(root, 'assets'), { recursive: true })
 try {
   const started = performance.now()

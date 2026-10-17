@@ -103,9 +103,9 @@ test('early modular profiles shed duplicate desktop overlays while preserving pa
     const id = '@zerowallscience/plugin-files'
     await mkdir(join(home, 'profiles/web'), { recursive: true })
     const file = join(home, 'profiles/web/package.json')
-    const manifest = { private: true, zerowall: { pluginArchitecture: 3 }, dependencies: { 'dsh-univer-office': '0.3.5' }, dsh: { profile: { bundles: [id, 'dsh-univer-office', 'dsh-better-sidebar', 'third-party-plugin'] } } }
+    const manifest = { private: true, zerowall: { pluginArchitecture: 3 }, dependencies: { 'dsh-univer-office': '0.3.5', 'dsh-genui': '0.9.0' }, dsh: { profile: { bundles: [id, 'dsh-univer-office', 'dsh-genui', 'dsh-better-sidebar', 'third-party-plugin'] } } }
     await writeFile(file, JSON.stringify(manifest))
-    await initializeProfile(home, [id, '@zerowallscience/plugin-images'], [{ id: 'dsh-univer-office', managed: false }, { id: 'dsh-better-sidebar', managed: false }])
+    await initializeProfile(home, [id, '@zerowallscience/plugin-images'], [{ id: 'dsh-univer-office', managed: false }, { id: 'dsh-genui', managed: false }, { id: 'dsh-better-sidebar', managed: false }])
     const result = JSON.parse(await readFile(file, 'utf8'))
     assert.deepEqual(result.dsh.profile.bundles, [id, 'third-party-plugin'])
     assert.deepEqual(result.dependencies, manifest.dependencies)

@@ -80,6 +80,15 @@ const IMAGE_OUTPUT_SCHEMA = {
     promptHash: { type: 'string' as const },
     inputImageHashes: { type: 'array' as const, items: { type: 'string' as const } },
     cached: { type: 'boolean' as const },
+    resumedDownload: { type: 'boolean' as const },
+    responseFormat: { type: 'string' as const, enum: ['url', 'b64_json'] as const },
+    downloadTransport: { type: 'string' as const, enum: ['single', 'range'] as const },
+    timings: { type: 'object' as const, additionalProperties: false, properties: {
+      providerMs: { type: 'integer' as const, required: true },
+      downloadMs: { type: 'integer' as const, required: true },
+      processingMs: { type: 'integer' as const, required: true },
+      totalMs: { type: 'integer' as const, required: true },
+    } },
     image: {
       type: 'object' as const,
       additionalProperties: false,
@@ -108,10 +117,17 @@ const IMAGE_OUTPUT_SCHEMA = {
   },
 } as const
 
-function renderResult(verb: 'Generated' | 'Edited', value: GenerateImageResult) {
+export function renderImageResult(verb: 'Generated' | 'Edited', value: GenerateImageResult) {
   const warning = value.previewWarning === undefined ? '' : ` Preview warning: ${value.previewWarning}`
   const quality = value.actualQuality === 'unreported' ? `requested ${value.requestedQuality} quality; actual quality unreported by provider` : `${value.actualQuality} quality`
-  return [{ type: 'text' as const, text: `${verb} ${value.path} with ${value.model} at ${quality} (${value.actualWidth}x${value.actualHeight}, requested ${value.requestedSize}, ${value.bytes} bytes).${warning}` }]
+  const destination = value.path.replace(/\\/gu, '/').replace(/[%<>\r\n]/gu, character => encodeURIComponent(character))
+  const markdown = `![${verb === 'Generated' ? 'Generated image' : 'Edited image'}](<${destination}>)`
+  const content = [{ type: 'text' as const, text: `${verb} ${value.path} with ${value.model} at ${quality} (${value.actualWidth}x${value.actualHeight}, requested ${value.requestedSize}, ${value.bytes} bytes).${warning}\n\nDisplay this saved image directly in your final reply by copying the following Markdown image embed verbatim, outside code/backticks. Do not return only a path or a download link:\n${markdown}` }]
+  const attachment = value.attachment ?? value.image
+  return attachment === undefined ? content : [
+    ...content,
+    { type: 'image' as const, attachment: attachment as ImageAttachmentRef },
+  ]
 }
 
 function presentationMeta(value: GenerateImageResult): JsonValue {
@@ -131,6 +147,10 @@ function presentationMeta(value: GenerateImageResult): JsonValue {
     receiptPath: value.receiptPath ?? null,
     promptHash: value.promptHash ?? null,
     inputImageHashes: value.inputImageHashes ?? [],
+    responseFormat: value.responseFormat ?? null,
+    timings: value.timings ? { ...value.timings } : null,
+    resumedDownload: value.resumedDownload ?? false,
+    downloadTransport: value.downloadTransport ?? null,
   }
   const attachmentValue = value.attachment ?? value.image
   if (attachmentValue !== undefined) {
@@ -186,10 +206,11 @@ export function apply(ctx: Context): void {
       size: { type: 'string', description: 'auto 或 WIDTHxHEIGHT，例如 2048x2048；不要假设 1024x1024 是最大尺寸。' },
       quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], description: 'Optional explicit override. Omit unless the user requested a quality level; the environment setting is otherwise authoritative (default: medium). Image dimensions do not imply high quality.' },
       overwrite: { type: 'boolean', description: 'Replace an existing output file. Defaults to false.' },
+      concurrency: { type: 'integer', description: 'Maximum concurrent image jobs in this batch (positive integer, default 10). When the user specifies a limit, pass the same value to every generate_image/edit_image call in the batch.' },
     },
     output: {
       schema: IMAGE_OUTPUT_SCHEMA,
-      render: (_args, value) => renderResult('Generated', value as GenerateImageResult),
+      render: (_args, value) => renderImageResult('Generated', value as GenerateImageResult),
       presentationMeta: (_args, value) => presentationMeta(value as GenerateImageResult),
     },
     isConcurrencySafe: () => true,
@@ -203,6 +224,7 @@ export function apply(ctx: Context): void {
         ...(args.size === undefined ? {} : { size: validateImageSize(args.size) }),
         ...(args.quality === undefined ? {} : { quality: args.quality }),
         ...(args.overwrite === undefined ? {} : { overwrite: args.overwrite }),
+        ...(args.concurrency === undefined ? {} : { concurrency: args.concurrency }),
       }, cwd, exec.signal)
     },
     presentCall: args => ({
@@ -226,10 +248,11 @@ export function apply(ctx: Context): void {
       size: { type: 'string', description: 'auto 或 WIDTHxHEIGHT，例如 2048x2048；不要假设 1024x1024 是最大尺寸。' },
       quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], description: 'Optional explicit override. Omit unless the user requested a quality level; the environment setting is otherwise authoritative (default: medium). Image dimensions do not imply high quality.' },
       overwrite: { type: 'boolean', description: 'Replace an existing output file, including a source image. Defaults to false.' },
+      concurrency: { type: 'integer', description: 'Maximum concurrent image jobs in this batch (positive integer, default 10). Use the same value for every generate_image/edit_image call in the batch.' },
     },
     output: {
       schema: IMAGE_OUTPUT_SCHEMA,
-      render: (_args, value) => renderResult('Edited', value as GenerateImageResult),
+      render: (_args, value) => renderImageResult('Edited', value as GenerateImageResult),
       presentationMeta: (_args, value) => presentationMeta(value as GenerateImageResult),
     },
     isConcurrencySafe: () => true,
@@ -246,6 +269,7 @@ export function apply(ctx: Context): void {
         ...(args.size === undefined ? {} : { size: validateImageSize(args.size) }),
         ...(args.quality === undefined ? {} : { quality: args.quality }),
         ...(args.overwrite === undefined ? {} : { overwrite: args.overwrite }),
+        ...(args.concurrency === undefined ? {} : { concurrency: args.concurrency }),
       }, cwd, exec.signal) } finally { await Promise.all(attachmentPaths.map(path => unlink(path).catch(() => undefined))) }
     },
     presentCall: args => ({

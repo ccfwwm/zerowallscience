@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "version": "8.3.0",
+  "version": "8.3.5",
   "roots": {
     "dsh": [
       "dsh-archive-manager",
       "dsh-better-sidebar",
       "dsh-file-review",
-      "dsh-genui",
+      "dsh-ppt-maker",
       "dsh-wechat",
       "dsh-session-notification",
       "dsh-ssh-ops",

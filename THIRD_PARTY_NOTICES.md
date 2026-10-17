@@ -31,9 +31,9 @@ The 7.4.0 desktop adapts the following pinned plugins. Their original LICENSE fi
 
 | `resources/extensions/skills/academic-*`, `resources/extensions/skills/deep-research`, `resources/extensions/skills/ars-*` | [`Imbad0202/academic-research-skills`](https://github.com/Imbad0202/academic-research-skills) `v3.21.2` (`8fa3d651ad45da9e02762a6ba1fa3d1f231f91b6`) via [`nullptr-DZF/dsh-academic-research-skills`](https://github.com/nullptr-DZF/dsh-academic-research-skills) (`a6859a3752cfe582a166ca283c10d3a45e1f9c9c`) | CC-BY-NC-4.0 |
 
-The former Better Sidebar Office viewer is no longer bundled. DSH 0.2.0
-provides file previews; `dsh-univer-office` remains available for its
-independent office workbench.
+The former Better Sidebar Office viewer and the retired Univer Office
+workbench are no longer bundled. PPTX authoring is provided by the MIT
+licensed `dsh-ppt-maker` plugin listed below.
 
 ZeroWall Science also bundles the pinned Zotero DSH plugin as an independent
 DSH bundle.
@@ -565,10 +565,10 @@ The image region worker derives from PetCT/dsh-Bio-image-dup-check, commit 7051e
 Source: https://github.com/PetCT/dsh-Bio-image-dup-check. MIT license retained at plugins/integrity-runtime/LICENSE.
 ZeroWall adds a PNG normalization entry point; detector algorithms retain their upstream implementation.
 
-## dsh-univer-office
+## dsh-ppt-maker
 
-Version 0.3.2, Apache-2.0. Source: https://github.com/dream-num/dsh-univer-office.
-Provides Office generation/editing, Gateway, Viewer, and eight bundled skills. Telemetry is disabled in the ZeroWall profile.
+Version 1.0.0, MIT. Source: https://github.com/OMSociety/dsh-ppt-maker.
+Provides the PPTD project workflow, local PPTX export, rendering and quality checks used by ZeroWall Science.
 
 ## Universal file preview
 

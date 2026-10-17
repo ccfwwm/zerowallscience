@@ -1,5 +1,5 @@
 {
-  "version": "8.3.3",
+  "version": "8.3.5",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
@@ -44,17 +44,6 @@
     "license": "MIT",
     "source": "plugins/dsh-wechat"
   },
-  "genui": {
-    "repository": "https://github.com/omdsh-dev/dsh-genui.git",
-    "commit": "fef7c7b1df78726737707ef4a806e7f0a5e92c10",
-    "version": "0.12.0",
-    "license": "MIT",
-    "package": "@changfenhuang/dsh-genui",
-    "source": "plugins/dsh-genui",
-    "tag": "v0.12.0",
-    "resourceVersion": "0.12.1-zws.1",
-    "localAdaptation": "Retain ZeroWall panel slash-command registration and schema compatibility on latest upstream main, including post-v0.12.0 fence truncation fixes."
-  },
   "academicResearchSkills": {
     "repository": "https://github.com/Imbad0202/academic-research-skills.git",
     "tag": "v3.23.0",
@@ -92,14 +81,6 @@
       "commit": "7051eb55f611a46db3d9cfa1768e56c7d1a91553",
       "source": "plugins/integrity-runtime/hash-worker.mjs"
     }
-  },
-  "univerOffice": {
-    "repository": "https://github.com/dream-num/dsh-univer-office",
-    "tag": "v0.3.7",
-    "version": "0.3.7",
-    "resourceVersion": "0.3.7-zws.7",
-    "telemetry": false,
-    "commit": "8f85ce4074fdbe51416b6c337468bb916a302c2a"
   },
   "dreamSkin": {
     "repository": "https://github.com/RevolutionLA/dsh-dream-skin.git",
@@ -148,11 +129,21 @@
     "repository": "https://github.com/zenstory-ai/oh-story-dsh.git",
     "commit": "83cc99046338c9b74b9dd135ff6b2e80bb3cd35e",
     "version": "0.1.15",
-    "resourceVersion": "0.1.16-zws.20",
+    "resourceVersion": "0.1.16-zws.21",
     "package": "@oh-story/dsh",
     "license": "MIT",
     "source": "plugins/oh-story-dsh",
     "catalogOptional": true,
     "localAdaptation": "Conversation-first media creation with automatic session projects, native right sidebar, explicit user generation requests, preserved model choices and fixed-Python local composition. Retired fiction/game/drama/recap contributions excluded."
+  },
+  "pptMaker": {
+    "repository": "https://github.com/OMSociety/dsh-ppt-maker.git",
+    "commit": "b66f50c233bf265f18478417cb58c271611d8b13",
+    "version": "1.0.0",
+    "license": "MIT",
+    "package": "dsh-ppt-maker",
+    "source": "plugins/dsh-ppt-maker",
+    "tag": null,
+    "localAdaptation": "Integrated as the default PPTD/PPTX workflow with raster-first generation, explicit editable mode, image prompt receipts, and literature/project provenance."
   }
 }

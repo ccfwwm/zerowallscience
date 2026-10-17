@@ -1,6 +1,40 @@
 import { createHash } from 'node:crypto'
 import { lstat, readFile, realpath } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { root } from '../build/paths.mjs'
+
+const retiredPluginConfigPath = join(root, 'config/catalogs/retired-plugins.json')
+const retiredResourceConfigPath = join(root, 'config/catalogs/retired-resources.json')
+
+export async function readRetiredPluginIds() {
+  const config = JSON.parse(await readFile(retiredPluginConfigPath, 'utf8'))
+  if (config.schema !== 1 || !Array.isArray(config.plugins)) throw new Error('Invalid retired plugin catalog.')
+  const ids = new Set()
+  for (const plugin of config.plugins) {
+    if (typeof plugin.id !== 'string' || !/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u.test(plugin.id)
+      || typeof plugin.reason !== 'string' || !plugin.reason.trim() || ids.has(plugin.id)) {
+      throw new Error('Invalid or duplicate retired plugin entry: ' + plugin.id)
+    }
+    ids.add(plugin.id)
+  }
+  return ids
+}
+
+export async function readRetiredResourceIds(kind) {
+  if (!['plugin', 'skill'].includes(kind)) throw new Error('Invalid retired resource kind: ' + kind)
+  const config = JSON.parse(await readFile(retiredResourceConfigPath, 'utf8'))
+  if (config.schema !== 1 || !Array.isArray(config[kind])) throw new Error('Invalid retired resource catalog.')
+  const ids = new Set()
+  for (const id of config[kind]) {
+    if (typeof id !== 'string' || !id.trim() || ids.has(id)) throw new Error('Invalid or duplicate retired resource entry: ' + id)
+    ids.add(id)
+  }
+  return ids
+}
+
+export function withoutRetiredPlugins(records, retiredIds) {
+  return records.filter(record => !retiredIds.has(record.id))
+}
 
 export function pluginSnapshotId(records, dshCommit) {
   return createHash('sha256').update(JSON.stringify({ schema: 1, dshCommit,
@@ -17,6 +51,7 @@ export async function readVerifiedPluginFeed(store) {
   })
   if (records === undefined) return undefined
   if (!Array.isArray(records) || !records.length) throw new Error('The latest plugin feed is empty or invalid.')
+  const retiredIds = await readRetiredPluginIds()
   const ids = new Set()
   for (const record of records) {
     if (!/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u.test(record.id ?? '') || ids.has(record.id)
@@ -24,6 +59,7 @@ export async function readVerifiedPluginFeed(store) {
       || !/^[a-f0-9]{64}$/u.test(record.sha256 ?? '') || !Number.isSafeInteger(record.size) || record.size <= 0
       || typeof record.path !== 'string') throw new Error('Invalid or duplicate plugin artifact record: ' + record.id)
     ids.add(record.id)
+    if (retiredIds.has(record.id)) continue
     const expected = resolve(store, record.id.split('/').at(-1), record.version)
     const path = resolve(record.path)
     const physical = await realpath(path)
@@ -34,7 +70,7 @@ export async function readVerifiedPluginFeed(store) {
       throw new Error(`Latest feed has a missing or changed plugin artifact, or an unsafe path: ${record.id}@${record.version}`)
     }
   }
-  return records
+  return withoutRetiredPlugins(records, retiredIds)
 }
 
 /** A valid old build receipt alone cannot prove that new plugin packages were integrated. */

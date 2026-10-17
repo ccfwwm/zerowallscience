@@ -5,9 +5,17 @@ description: Generate or edit PNG images with ZeroWall's built-in generate_image
 
 # ZeroWall Image Generation
 
+## Latency and delivery
+
+Call `generate_image` or `edit_image` directly and deliver the returned PNG promptly. Avoid extra model calls for prompt summaries or unnecessary regeneration. The result and `.generation.json` receipt include provider, download and processing timings. If the tool reports a preview warning while returning a PNG path, treat the image as successful and report the warning briefly. The tool result carries a durable image attachment for the first tool response; preserve that image in the conversation.
+
+Keep the user's configured model, group, quality and size. `high`, `xhigh` and `max` are explicit user/environment choices; never lower them to hide latency. The Host handles both native image groups and image profiles in 图片音频视频分组 behind these same tools. It selects the verified response format for the configured route; do not force `response_format` across groups or change the route yourself.
+
+A CDN URL means generation has succeeded. The Host accelerates slow URL transfers with validated HTTP byte ranges and retries incomplete segments. On `IMAGE_DOWNLOAD_FAILED` or `IMAGE_DOWNLOAD_TIMEOUT`, retry the same tool once with exactly the same prompt, output path, model, size, quality and references: the encrypted pending result restores the download without another generation POST. Do not choose a new filename to recover a download. If recovery still fails, report the error and preserve successful assets for later recovery.
+
 这是 ZeroWall 唯一默认的生图工作流。直接使用当前对话上下文，不启动额外提示词摘要模型；尽量保留用户原话，只补足缺少的构图、用途、格式或尺寸约束。
 
-PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `generate_image` / `edit_image` 取得工作区 PNG 与真实 `.generation.json` 回执，再交给 `presentation_record_assets` 和 Univer；不调用 `media_models`、`media_import`、`media_project` 或 `media_job`，不创建媒体项目、时间线或任务。只有用户另行明确要求生成视频、音频/音乐或宣传片时，该交付物才使用 `media-create`；其中图片仅作为视频参考素材，普通生图和改图始终使用本技能。图片配置由 Host 从环境配置读取，助手不要读取或打印环境变量中的秘密；环境配置错误要如实报告，不能改走媒体任务、切换分组或换模型。
+PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `generate_image` / `edit_image` 取得工作区 PNG 与真实 `.generation.json` 回执，再交给 `dsh-ppt-maker`；将图片原样放入工程素材，并把每张图的原始 prompt 逐字保存在素材清单和 speaker notes 中。不调用 `media_models`、`media_import`、`media_project` 或 `media_job`，不创建媒体项目、时间线或任务。只有用户另行明确要求生成视频、音频/音乐或宣传片时，该交付物才使用 `media-create`；其中图片仅作为视频参考素材，普通生图和改图始终使用本技能。图片配置由 Host 从环境配置读取，助手不要读取或打印环境变量中的秘密；环境配置错误要如实报告，不能改走媒体任务、切换分组或换模型。
 
 ## 工具路由
 
@@ -30,9 +38,11 @@ PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `gene
    - `overwrite`：只有用户明确要求替换已有图时才设为 `true`。
    - `input_attachment_ids`：优先传当前会话附件 ID；`input_paths` 可用于用户指定或当前已生成的工作区资源，按源图优先级排列，主图放第一张。
 - `mask_path`：仅 `edit_image` 可选；必须是独立于 `input_paths[0]` 的 alpha 蒙版，且与主图尺寸、格式一致。整图编辑时省略此字段，禁止传空字符串，也绝不能把主图路径重复填入 `mask_path`；工具会将这种模型回显视为未提供蒙版。
-4. 返回生成或编辑文件的绝对路径，并简要说明实际模型与尺寸意图。成功结果会直接显示在对话中；预览失败但文件已保存时，明确报告预览警告，不把文件结果判为失败。需要多张变体时使用不同文件名，可在合理并发范围内生成。
+4. 并发由 `concurrency` 控制，默认上限为 10。识别用户提示词中的并发要求，例如“生成 20 张，并发上限 5”就把 `concurrency: 5` 传给这一批的每个 `generate_image` / `edit_image` 调用；同一批必须使用同一个正整数，未指定时省略参数并使用默认 10。使用工具的并发调用生成多张变体，不要逐张串行；编辑依赖必须等待对应主图完成。这个上限只用于 Host 排队，不要把 `concurrency` 写入生图提示词或 provider 请求。
+5. 首次成功回复必须直接显示图片：工具返回的 image attachment 会由 DSH 渲染；助手最终文本也必须逐张原样复制工具返回的 `![...](<绝对路径>)` Markdown 图片嵌入，放在普通文本中且不放入反引号。不要只返回路径、普通下载链接或“图片已附上”。Windows 路径使用 `/`，含空格的路径保留 `<...>`。多图逐张嵌入，只展示成功输出并保留 warning；不要为了展示再次生图。
+6. 返回生成或编辑文件的绝对路径，并简要说明实际模型与尺寸意图。预览失败但文件已保存时，明确报告预览警告，不把文件结果判为失败。
 
-科研 PPT 遵循 `zerowall-presentation`：根据用户指定的模板、视觉语言和页面角色直接生成；不强制三张样张、内容种子或逐图二次编辑。用户要求的文字可以进入生成图，需按版面给出准确文案、层级和放置区域，并检查中文 glyph、拼写和可读性；正式标题、正文、公式、数值和图表仍保留为 Univer 可编辑对象。没有用户样式要求时才从主题推导统一风格，不固定白底、色板、分区数量或“禁止文字”。图片、生成回执和视觉清单分别保留；失败后复用成功资产。
+科研 PPT 遵循 `zerowall-presentation`：根据用户指定的模板、视觉语言和页面角色直接生成；不强制三张样张、内容种子或逐图二次编辑。默认快速生成整页 PNG 图片型 PPTX；用户明确要求可编辑时，依据 PNG 视觉稿构建独立文字、形状、表格、图表和图片对象。用户要求的文字可以进入生成图，需按版面给出准确文案、层级和放置区域，并检查中文 glyph、拼写和可读性；没有用户样式要求时才从主题推导统一风格，不固定白底、色板、分区数量或“禁止文字”。优先使用用户项目图片、文献原图和数据图；保留图片来源、原始 prompt、生成回执和视觉清单，失败后复用成功资产。
 
 ## 凭据与失败处理
 

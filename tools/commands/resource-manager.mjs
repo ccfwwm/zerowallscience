@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/p
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
-import { pluginIdentity, prepareOfflineCandidate, readOfflineReceipt, verifiedGeneration } from './offline-profile.mjs'
+import { archiveProfileCandidate, pluginIdentity, prepareProfileCandidate, prepareOfflineCandidate, readOfflineReceipt, verifiedGeneration } from './offline-profile.mjs'
 import { satisfiesPackageRange } from './package-range.mjs'
 import { renameProfile } from './profile-rename.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
@@ -15,7 +15,7 @@ async function atomic(path, value) {
   await rename(candidate, path)
 }
 
-const RETIRED_PLUGIN_IDS = new Set(['@everclear077/dsh-progressive-tools', 'dsh-progressive-tools'])
+const RETIRED_PLUGIN_IDS = new Set(['@everclear077/dsh-progressive-tools', 'dsh-progressive-tools', 'dsh-univer-office', 'dsh-genui', '@changfenhuang/dsh-genui'])
 
 function retiredPackageSelector(selector) {
   return selector.split('>').some(part => [...RETIRED_PLUGIN_IDS].some(id => part.trim() === id || part.trim().startsWith(id + '@')))
@@ -100,6 +100,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     // file dependencies, including packages absent from older profiles.
     // Only the requested entries are passed to DSH for bundle activation.
     manifest.dependencies = { ...manifest.dependencies, ...replacements }
+    const refreshedIds = new Set([...RETIRED_PLUGIN_IDS, ...Object.keys(replacements)])
     // Installer-owned packages already have their complete runtime closure.
     // Re-resolving their source manifests exposes workspace: dependencies that
     // cannot exist in a user's profile. Link these unchanged generations; only
@@ -113,7 +114,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       const installed = await json(join(path, 'package.json'))
       if (installed.name !== id) throw new Error('Offline package identity mismatch: ' + id)
       manifest.dependencies[id] = 'link:' + path.replaceAll('\\', '/')
-      delete workspace.overrides[id]
+      // Historical tarball snapshots can still refer to this package by
+      // semver. Anchor transitive lookups to the same verified generation.
+      workspace.overrides[id] = manifest.dependencies[id]
+      refreshedIds.add(id)
     }
     workspace.autoInstallPeers = false
     // ssh2 works without its optional native crypto/CPU accelerators. Explicit
@@ -130,19 +134,22 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     if (lockText !== undefined) {
       const lock = yaml.parse(lockText)
       let changed = false
-      const replacedIds = new Set([...RETIRED_PLUGIN_IDS, ...Object.keys(replacements)])
       for (const importer of Object.values(lock?.importers ?? {})) {
         for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-          for (const id of replacedIds) if (Object.prototype.hasOwnProperty.call(importer[field] ?? {}, id)) { delete importer[field][id]; changed = true }
+          for (const id of refreshedIds) if (Object.prototype.hasOwnProperty.call(importer[field] ?? {}, id)) { delete importer[field][id]; changed = true }
         }
       }
       for (const field of ['packages', 'snapshots']) {
         for (const key of Object.keys(lock?.[field] ?? {})) {
-          if ([...replacedIds].some(id => key === id || key.startsWith(id + '@'))) { delete lock[field][key]; changed = true }
+          if ([...refreshedIds].some(id => key === id || key.startsWith(id + '@'))) { delete lock[field][key]; changed = true }
         }
       }
       for (const selector of Object.keys(lock?.overrides ?? {})) {
         if (retiredPackageSelector(selector)) { delete lock.overrides[selector]; changed = true }
+        else if (refreshedIds.has(selector) && lock.overrides[selector] !== workspace.overrides[selector]) {
+          lock.overrides[selector] = workspace.overrides[selector]
+          changed = true
+        }
       }
       if (changed) await writeFile(lockFile, yaml.stringify(lock))
     }
@@ -351,7 +358,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     // active still contains the complete old profile. Never quarantine it
     // unless there is a complete backup to restore.
     if (await exists(backup)) {
-      if (await exists(active)) await renameProfile(active, active + '.interrupted-' + randomUUID())
+      if (await exists(active)) await archiveProfileCandidate(home, active, 'interrupted')
       await renameProfile(backup, active)
       await repairProfileLayout(active, { from: backup, home })
     } else if (!await exists(active)) {
@@ -479,7 +486,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (installed && compareVersions(entry.version, installed.version) < 0) throw new Error('Plugin downgrade requires an explicit rollback: ' + entry.id)
       visit(entry)
     }
-    const generation = 'zerowall-' + randomUUID(), candidate = join(profiles, generation)
+    const generation = 'zerowall', candidate = await prepareProfileCandidate(home)
     const batchId = randomUUID(), metadata = { batchId, plugins: entries.map(entry => ({ id: entry.id, version: entry.version })), packageIds: [...closure.keys()] }
     await atomic(journal, { state: 'preparing', candidate, ...metadata })
     const overrides = {}, archives = new Map()
@@ -509,7 +516,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       return { ...result, updated: entries.length }
     } catch (error) {
       const state = await json(journal).catch(() => undefined)
-      if (state?.batchId === batchId && state.state === 'preparing') await atomic(journal, { ...state, state: signal?.aborted ? 'cancelled' : 'preparation-failed', error: String(error) })
+      if (state?.batchId === batchId && state.state === 'preparing') {
+        const archived = await archiveProfileCandidate(home, candidate, 'preparation-failed')
+        await atomic(journal, { ...state, candidate: archived ?? candidate, state: signal?.aborted ? 'cancelled' : 'preparation-failed', error: String(error) })
+      }
       throw error
     }
   }
@@ -532,8 +542,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
 
   async function setPluginEnabled(id, enabled, acknowledgedDependents = []) {
     if (typeof id !== 'string' || !/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) || id.split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid plugin identity')
-    const generation = 'zerowall-' + randomUUID()
-    const candidate = join(profiles, generation)
+    const candidate = await prepareProfileCandidate(home)
     await mkdir(candidate, { recursive: true })
     await copyProfileSkeleton(active, candidate)
     await preparePackageInstall(candidate)
@@ -586,7 +595,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     } catch (error) {
       if (backedUp) {
         await stopHost()
-        if (await exists(active)) await renameProfile(active, active + '.failed-' + randomUUID())
+        if (await exists(active)) await archiveProfileCandidate(home, active, 'failed')
         await renameProfile(backup, active)
         await requireProfileLayout(active, backup)
       }
@@ -604,8 +613,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
 
   async function mutate(args, acknowledgedDependents = []) {
     if (!Array.isArray(args) || !args.every(item => typeof item === 'string') || !['add', 'remove', 'update', 'install'].includes(args[0])) throw new Error('Invalid plugin mutation')
-    const generation = 'zerowall-' + randomUUID()
-    const candidate = join(profiles, generation)
+    const generation = 'zerowall'
+    const candidate = await prepareProfileCandidate(home)
     await mkdir(candidate, { recursive: true })
     await copyProfileSkeleton(active, candidate)
     await preparePackageInstall(candidate)
@@ -653,8 +662,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (await exists(records[index].profile)) { previous = records[index]; break }
     }
     if (!previous) throw new Error('No previous generation is available for this plugin')
-    const generation = 'zerowall-' + randomUUID()
-    const candidate = join(profiles, generation)
+    const candidate = await prepareProfileCandidate(home)
     await copyProfileSkeleton(active, candidate)
     // Rollback is a surgical profile change. Keep every other installed
     // package from the active generation so updating A cannot remove B.

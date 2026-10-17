@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "plugins": [
+    {
+      "id": "@changfenhuang/dsh-genui",
+      "reason": "Removed from ZeroWall Science 8.3.5 by product decision."
+    },
+    {
+      "id": "dsh-univer-office",
+      "reason": "Replaced by dsh-ppt-maker in ZeroWall Science 8.3.5."
+    }
+  ]
+}

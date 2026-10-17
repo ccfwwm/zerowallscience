@@ -4,7 +4,7 @@ import json, sys, zipfile, hashlib, io, re, subprocess, shutil, uuid
 import xml.etree.ElementTree as ET
 import fitz
 from PIL import Image
-root=Path('artifacts/verification/8.1.2/presentation-regression').resolve()
+root=Path('artifacts/verification/8.3.5/ppt-maker-smoke').resolve()
 mode=sys.argv[1] if len(sys.argv)>1 else 'pilot'
 stem='NHANES-两页验证' if mode=='pilot' else 'NHANES-14页丰富版'
 pptx=root/(stem+'.pptx');render=root/(mode+'-export-render');pdf=render/(stem+'.pdf')

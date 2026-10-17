@@ -65,8 +65,8 @@ test('recovery restores the old profile after a candidate became active and reta
   await rename(f.candidate, f.active)
   await f.manager.recover()
   assert.equal((await f.readActive()).marker, 'old')
-  const interrupted = (await readdir(join(f.home, 'profiles'))).find(name => name.includes('interrupted'))
-  assert.equal(JSON.parse(await readFile(join(f.home, 'profiles', interrupted, 'package.json'))).marker, 'new')
+  const interrupted = (await readdir(join(f.home, 'resources/history'))).find(name => name.startsWith('interrupted-'))
+  assert.equal(JSON.parse(await readFile(join(f.home, 'resources/history', interrupted, 'package.json'))).marker, 'new')
 })
 
 test('recovery can repeat after restoring the backup but before completing the journal', async t => {

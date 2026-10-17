@@ -11,7 +11,7 @@ test('exact audited compatibility changes only signed metadata and retains archi
   assert.equal(result[1].dependencies[sidebar.id], '^0.25.0 || 0.26.1-zws.2')
   for (const key of ['id', 'version', 'size', 'sha256', 'downloadUrl', 'packageDependencies']) assert.deepEqual(result[1][key], consumer[key])
   assert.equal(consumer.signature.value, 'old')
-  assert.deepEqual(applyAuditedPluginCompatibility([sidebar, consumer], [rule], ['genui'], () => { throw Error() }), [sidebar, consumer])
+  assert.deepEqual(applyAuditedPluginCompatibility([sidebar, consumer], [rule], ['retired-plugin'], () => { throw Error() }), [sidebar, consumer])
 })
 test('new consumer versions, mismatched ranges and untested sidebar versions fail closed', () => {
   for (const edited of [{ ...consumer, version: '1.0.1' }, { ...consumer, dependencies: { [sidebar.id]: '^0.24.0' } }, { ...consumer, id: 'unreviewed' }]) {

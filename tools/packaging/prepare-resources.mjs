@@ -48,19 +48,6 @@ for (const [source, destination] of [
     return !segments.some(segment => forbiddenDirectories.has(segment) || ['node_modules', '.venv', 'venv', '.cache'].includes(segment)) && !/\.py[co]$/u.test(candidate)
   } })
 }
-// Catalogs distribute the reviewed authoring descriptions too. The runtime
-// copy was hash-checked and adapted without changing the upstream package.
-// Univer is an optional package in the 8.0.7 Core box. A Core-only build must
-// therefore remain valid when that package is not installed in the runtime.
-const univerSkillsRoot = resolve(stageRoot, 'offline-profile/modules/dsh-univer-office/skills')
-if (await stat(univerSkillsRoot).catch(() => undefined)) {
-  for (const name of ['univer', 'univer-slide', 'univer-doc', 'univer-sheet']) {
-    const source = resolve(univerSkillsRoot, name)
-    if (!await stat(source).catch(() => undefined)) continue
-    await cp(source, resolve(outputRoot, name), { recursive: true, filter: includeSkillPath })
-  }
-}
-
 // Small, self-contained CLI resource; Python remains an on-demand download.
 // Pin the npm tarball and apply the existing verified compatibility patch.
 const sci = resolve(stageRoot, 'resources/sci')

@@ -5,7 +5,33 @@ import { assertCompatible, compareVersions, fileDigest, verifySignedDocument } f
 import { carrierIndex, carrierName, offlineContentDigest } from './offline-carrier.mjs'
 import { physicalFs } from './physical-fs.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
+import { renameProfile } from './profile-rename.mjs'
 const { copyFile, lstat, readdir } = physicalFs.promises
+
+/** Keep one staging name. Preserve displaced candidates and diagnostic data
+ * in managed history instead of merging trees or discarding rollback data. */
+export async function archiveProfileCandidate(home, directory, kind = 'candidate') {
+  const profiles = resolve(home, 'profiles')
+  const name = relative(profiles, resolve(directory))
+  if (!['web', 'zerowall'].includes(name)) throw new Error('Invalid managed profile candidate')
+  const info = await lstat(directory).catch(error => { if (error.code !== 'ENOENT') throw error })
+  if (!info) return undefined
+  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Managed profile candidate must be a physical directory')
+  const destination = join(home, 'resources/history', kind + '-' + randomUUID())
+  await mkdir(dirname(destination), { recursive: true })
+  await renameProfile(directory, destination)
+  // Rebase internal links where possible; failed preparation may have an
+  // incomplete tree, which is retained for diagnostics rather than activated.
+  try { await repairProfileLayout(destination, { from: directory, home }) }
+  catch (error) { await writeFile(join(destination, 'profile-archive-diagnostic.json'), JSON.stringify({ error: String(error) })) }
+  return destination
+}
+
+export async function prepareProfileCandidate(home) {
+  const candidate = join(home, 'profiles/zerowall')
+  await archiveProfileCandidate(home, candidate)
+  return candidate
+}
 
 export function pluginIdentity(id) {
   if (typeof id !== 'string' || !/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) || id.split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid plugin identity')
@@ -265,7 +291,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   const disabled = new Set([...(selection.disabled ?? []), ...(manifest.zerowall?.disabledPlugins ?? [])])
   const removed = new Set(selection.removed ?? [])
   const pins = selection.pinned ?? {}
-  const candidate = join(home, 'profiles', 'zerowall-offline-' + randomUUID())
+  const candidate = await prepareProfileCandidate(home)
   await cp(active, candidate, { recursive: true, dereference: false, verbatimSymlinks: true })
   const layout = await repairProfileLayout(candidate, { from: active, home })
   if (layout.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: repair the plugin profile before upgrading its offline resources')

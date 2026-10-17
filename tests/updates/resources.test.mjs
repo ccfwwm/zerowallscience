@@ -44,7 +44,7 @@ test('a selected update links unchanged offline packages without resolving their
     const workspace = JSON.parse(await readFile(join(candidate, 'pnpm-workspace.yaml')))
     assert.equal(next.dependencies['legacy-plugin'], 'link:' + offline.replaceAll('\\', '/'))
     assert.match(next.dependencies[f.resource.id], /^file:.*\.tgz$/u)
-    assert.equal(workspace.overrides['legacy-plugin'], undefined)
+    assert.equal(workspace.overrides['legacy-plugin'], 'link:' + offline.replaceAll('\\', '/'))
     assert.equal(workspace.overrides.custom, '1.2.3')
     assert.equal(workspace.autoInstallPeers, false)
     assert.equal(workspace.allowBuilds.custom, false)

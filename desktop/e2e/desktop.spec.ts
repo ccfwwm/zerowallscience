@@ -279,26 +279,6 @@ describe('ZeroWall Science Electron', () => {
     await page.screenshot({ path: join(contract.verification, 'electron', 'markdown-images.png') })
   })
 
-  it('opens GenUI locally, renders a chart template and inserts its editable instruction', async () => {
-    const editor = page.locator('[contenteditable="true"]').first()
-    await editor.fill('/panel')
-    await editor.press('Enter')
-    const panel = page.locator('[data-genui-panel]')
-    await panel.waitFor()
-    await panel.getByRole('button', { name: '模板中心', exact: true }).click()
-    await panel.getByRole('tab', { name: '图表', exact: true }).click()
-    await panel.getByRole('button', { name: /趋势柱状图/ }).click()
-    const preview = panel.locator('[data-genui-template-preview]')
-    await preview.locator('svg').first().waitFor()
-    await preview.getByRole('button', { name: '试用：插入输入框', exact: true }).click()
-    await expect.poll(() => editor.innerText()).toContain('请用 dsh-ui')
-    const output = join(contract.verification, 'electron')
-    mkdirSync(output, { recursive: true })
-    await panel.screenshot({ path: join(output, 'genui-chart-template.png') })
-    await panel.getByRole('button', { name: '关闭面板', exact: true }).click()
-    await editor.fill('')
-  })
-
   it('registers a workspace and restores its research workbench in the packaged application', async () => {
     const pane = page.locator('[data-sidebar-right-panel]')
     await pane.getByRole('button', { name: '新标签页', exact: true }).click()
@@ -848,7 +828,7 @@ describe('ZeroWall Science Electron', () => {
     const mcpId = '@zerowallscience/plugin-mcp'
     const disabledId = '@zerowallscience/plugin-pubmed'
     const removedId = '@zerowallscience/plugin-mineru'
-    const pinnedId = '@changfenhuang/dsh-genui'
+    const pinnedId = 'dsh-ppt-maker'
     const pinnedVersion = JSON.parse(readFileSync(join(active, 'node_modules', pinnedId, 'package.json'), 'utf8')).version
     const imported = join(active, 'node_modules/parity-user-plugin')
     const importedSource = 'export function apply() {}\n'

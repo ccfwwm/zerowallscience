@@ -18,6 +18,7 @@ import { AiCloudMediaService } from './media.js'
 import { ManagedPiAiAdapter, managedRetryPolicy } from './managed-adapter.js'
 import type { ZeroWallMedia } from '../shared/media.js'
 export { AiCloudMediaService } from './media.js'
+export { downloadImageBytes } from './image-download.js'
 export type { ZeroWallMedia, MediaRequest, MediaTask, MediaSelection } from '../shared/media.js'
 
 const KEY_PREFIX = 'zerowall.ai-cloud.group.'

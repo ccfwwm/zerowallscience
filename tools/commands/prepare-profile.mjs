@@ -12,8 +12,8 @@ const core = []
 // make the Core installer depend on their source packages.
 const optionalOverlayIds = new Set([
   'ssh-ops', 'session-notification', 'dream-skin',
-  'better-sidebar', 'univer-office', 'zotero', 'zotero-harvest',
-  'dsh-wechat', 'genui', 'archive-manager', 'oh-story',
+  'better-sidebar', 'ppt-maker', 'zotero', 'zotero-harvest',
+  'dsh-wechat', 'archive-manager', 'oh-story',
 ])
 for (const line of lines) {
   if (/^    - id:/.test(line)) {
@@ -65,7 +65,7 @@ await writeFile(join(stageRoot, 'commands/bundled-skill-versions.json'), JSON.st
 const optional = configuredDefaults.filter(id => !runtimeProfile.corePlugins.includes(id))
 await writeFile(join(stageRoot, 'commands/optional-plugins.json'), JSON.stringify(optional))
 await writeFile(join(stageRoot, 'commands/default-profile.patch.json'), JSON.stringify([
-  { id: 'univer-office', config: { telemetry: false } },
+  { id: 'ppt-maker', config: {} },
   { id: 'dsh-wechat', config: { autoStart: false } },
 ]))
 console.log(`Complete offline default profile owns ${profileDefaults.length} plugins; ${optional.length} domain plugins remain independently catalog-managed`)

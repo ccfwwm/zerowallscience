@@ -11,7 +11,7 @@ export interface VisualAsset {
   assetId: string; role: string; slideNumber?: number; slideNumbers?: number[]; path: string; sha256: string
   mediaType: string; width: number; height: number; sourceKind?: SourceKind; source?: SourceReference
   model?: string; providerId?: string; groupId?: string; requestedQuality?: string; actualQuality?: string
-  requestedSize?: string; promptHash?: string; inputImageHashes: string[]; styleReferenceIds: string[]
+  requestedSize?: string; prompt?: string; promptHash?: string; inputImageHashes: string[]; styleReferenceIds: string[]
   sourceSeedPath?: string; revisedPrompt?: string; createdAt: string; parentAssetId?: string
 }
 export interface VisualManifest {
@@ -102,7 +102,7 @@ async function inspectAsset(cwd: string, input: AssetInput): Promise<VisualAsset
   if (sourceKind === 'generated') {
     const receipt = JSON.parse(await readFile(await workspacePath(cwd, path + '.generation.json'), 'utf8'))
     if (asset.sha256 !== receipt.sha256) throw new Error('Visual asset generation checksum mismatch.')
-    for (const key of ['model', 'providerId', 'groupId', 'requestedQuality', 'actualQuality', 'requestedSize', 'promptHash', 'revisedPrompt', 'createdAt'] as const) if (receipt[key] !== undefined) asset[key] = receipt[key]
+    for (const key of ['model', 'providerId', 'groupId', 'requestedQuality', 'actualQuality', 'requestedSize', 'prompt', 'promptHash', 'revisedPrompt', 'createdAt'] as const) if (receipt[key] !== undefined) asset[key] = receipt[key]
     asset.inputImageHashes = receipt.inputImageHashes ?? []
     if (input.sourceSeedPath) asset.sourceSeedPath = await workspacePath(cwd, input.sourceSeedPath)
   } else if (sourceKind === 'derived') {

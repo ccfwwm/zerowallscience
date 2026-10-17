@@ -145,10 +145,8 @@
     - id: better-sidebar
       name: 'dsh-better-sidebar'
 
-    - id: univer-office
-      name: 'dsh-univer-office'
-      config:
-        telemetry: false
+    - id: ppt-maker
+      name: 'dsh-ppt-maker'
 
     - id: zotero
       name: 'dsh-zotero'
@@ -162,10 +160,6 @@
         # QR/login is user initiated in the packaged desktop so it cannot
         # hold the first client boot behind an external network request.
         autoStart: false
-
-    # GenUI renders dsh-ui fences inline and keeps its heavy engines lazy.
-    - id: genui
-      name: '@changfenhuang/dsh-genui'
 
     - id: archive-manager
       name: '@michengai/dsh-archive-manager'

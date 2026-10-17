@@ -6,6 +6,7 @@ import { list } from 'tar'
 import { offlineFiles } from '../commands/offline-profile.mjs'
 import { compareVersions, verifyCatalog, verifySignedDocument } from '../release/resource-catalog.mjs'
 import { publishedResources } from '../release/immutable-resource.mjs'
+import { readRetiredResourceIds } from '../plugins/snapshot.mjs'
 
 export function assertLatestResources(packaged, published, { requireAll = false } = {}) {
   const available = new Map(packaged.map(entry => [entry.id, entry]))
@@ -46,7 +47,8 @@ export async function verifyBundledResources({ root, stage, release, cache, publ
     for (const entry of catalog.resources) verifySignedDocument(entry, keys)
     if (publicBase) {
       const online = await publishedResources({ baseUrl: publicBase, kind, keys, cache: join(cache, 'published-resources', kind) })
-      assertLatestResources(catalog.resources, [...online.values()].map(value => value.entry), { requireAll: kind === 'skill' })
+      const retired = await readRetiredResourceIds(kind)
+      assertLatestResources(catalog.resources, [...online.values()].map(value => value.entry).filter(entry => !retired.has(entry.id)), { requireAll: kind === 'skill' })
     }
     if (kind === 'plugin') { result.plugins = catalog.resources.map(({ id, version, sha256 }) => ({ id, version, sha256 })); continue }
     assert.deepEqual(Object.keys(versions).sort(), catalog.resources.map(entry => entry.id).sort(), 'Bundled Skill version index and signed catalog differ')

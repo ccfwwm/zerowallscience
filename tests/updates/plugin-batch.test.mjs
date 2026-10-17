@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateKeyPairSync } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -54,6 +54,18 @@ test('cancellation during downloads preserves the active Host and profile', () =
   assert.deepEqual(f.calls, [])
   assert.equal(await readFile(path, 'utf8'), before)
 }))
+
+test('repeated failed updates reuse one staging name and preserve each diagnostic profile in history', () => fixture(async f => {
+  for (let i = 0; i < 3; i++) {
+    await assert.rejects(f.manager.updatePlugins(f.ids.slice(0, 2), f.source), /preparation failed/)
+    assert.deepEqual(await readdir(join(f.home, 'profiles')), ['web'])
+    const state = JSON.parse(await readFile(join(f.home, 'resources/transaction.json')))
+    assert.equal(state.state, 'preparation-failed')
+    assert.match(state.candidate, /history[\\/]preparation-failed-/)
+    assert.equal(JSON.parse(await readFile(join(state.candidate, 'package.json'))).private, true)
+  }
+  assert.equal((await readdir(join(f.home, 'resources/history'))).length, 3)
+}, 'prepare-failure'))
 
 test('a signed closure absent from the old profile installs with real pnpm offline and keeps unrelated selections', async()=>{
  const home=await mkdtemp(join(tmpdir(),'zws-local-closure-'))
@@ -143,5 +155,62 @@ test('real pnpm repairs deleted legacy tarballs and their closure while removing
     const installed = JSON.parse(await readFile(file))
     assert.equal(installed.dependencies[retired], undefined)
     assert(!installed.dsh.profile.bundles.includes(retired))
+  } finally { await rm(home, { recursive: true, force: true }) }
+})
+
+test('a historical tarball lock cannot re-resolve unchanged offline packages through the registry', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-mixed-offline-'))
+  const selected = '@zerowallscience/plugin-update-fixture'
+  const legacy = '@zerowallscience/legacy-bundle-fixture'
+  const child = '@zerowallscience/private-child-fixture'
+  const pnpm = fileURLToPath(new URL('../../deepseek-harness/apps/desktop/node_modules/pnpm/bin/pnpm.cjs', import.meta.url))
+  const runPnpm = (directory, args) => {
+    const result = spawnSync(process.execPath, ['--expose-internals', pnpm, ...args, '--offline', '--ignore-scripts'], { cwd: directory, encoding: 'utf8', timeout: 60000 })
+    assert.equal(result.status, 0, result.stdout + '\n' + result.stderr)
+  }
+  try {
+    const pair = generateKeyPairSync('ed25519')
+    const archives = {}
+    for (const [id, dependencies] of [[legacy, { [child]: '^0.1.0' }], [child, {}], [selected, {}]]) {
+      const directory = join(home, 'archives', id.split('/').at(-1))
+      await mkdir(join(directory, 'package'), { recursive: true })
+      await writeFile(join(directory, 'package/package.json'), JSON.stringify({ name: id, version: '0.1.0', dependencies }))
+      const path = directory + '.tgz'
+      await createArchive({ file: path, cwd: directory, gzip: true }, ['package'])
+      archives[id] = path
+    }
+    await initializeProfile(home, [selected, legacy])
+    const active = join(home, 'profiles/web')
+    const file = join(active, 'package.json')
+    const manifest = JSON.parse(await readFile(file))
+    manifest.dependencies = { [legacy]: 'file:' + archives[legacy], [child]: 'file:' + archives[child] }
+    await writeFile(file, JSON.stringify(manifest))
+    await writeFile(join(active, 'pnpm-workspace.yaml'), yaml.stringify({ packages: ['.'], autoInstallPeers: false, overrides: { [legacy]: manifest.dependencies[legacy], [child]: manifest.dependencies[child] } }))
+    runPnpm(active, ['install', '--no-frozen-lockfile'])
+    // Desktop migration switched direct dependencies to the verified offline
+    // runtime, but retained historical tarball overrides and resolver records.
+    for (const [id, dependencies] of [[legacy, { [child]: 'workspace:^' }], [child, {}]]) {
+      const directory = join(home, 'resources/offline/verified-generation/node_modules', id)
+      await mkdir(directory, { recursive: true })
+      await writeFile(join(directory, 'package.json'), JSON.stringify({ name: id, version: '0.1.1', dependencies }))
+      manifest.dependencies[id] = 'file:' + directory.replaceAll('\\', '/')
+    }
+    manifest.zerowall = { disabledPlugins: [legacy] }
+    await writeFile(file, JSON.stringify(manifest))
+    const path = archives[selected]
+    const resources = [{ id: selected, kind: 'plugin', version: '0.1.0', dependencies: {}, platform: ['win32'], architecture: ['x64'], desktopRange: { min: '8.1.3' }, dshRange: { min: target.dshVersion, max: target.dshVersion }, downloadUrl: pathToFileURL(path).href, size: (await readFile(path)).length, sha256: await fileDigest(path), restartRequired: true, rollbackSupported: true }]
+    const source = join(home, 'catalog.json')
+    await writeFile(source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources }, pair.privateKey, 'test')))
+    const manager = createResourceManager({ home, target, local: true, yaml, keys: { test: pair.publicKey }, stopHost: async () => {}, startHost: async () => {}, runPlugin: async (args, generation) => {
+      const candidate = join(home, 'profiles', generation)
+      runPnpm(candidate, args)
+      for (const id of [legacy, child]) assert.equal(JSON.parse(await readFile(join(candidate, 'node_modules', id, 'package.json'))).version, '0.1.1')
+      const lock = await readFile(join(candidate, 'pnpm-lock.yaml'), 'utf8')
+      for (const id of [legacy, child]) assert(!lock.includes(archives[id].replaceAll('\\', '/')))
+    } })
+    await manager.updatePlugins([selected], source)
+    const installed = JSON.parse(await readFile(file))
+    assert.deepEqual(installed.dsh.profile.bundles, manifest.dsh.profile.bundles.filter(id => id !== legacy))
+    assert.deepEqual(installed.zerowall, manifest.zerowall)
   } finally { await rm(home, { recursive: true, force: true }) }
 })

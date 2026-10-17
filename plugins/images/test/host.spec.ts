@@ -7,16 +7,17 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import sharp from 'sharp'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AiCloudImageGenerator } from '../src/host/generator.js'
-import { createImageConfiguration } from '../src/host/index.js'
+import { createImageConfiguration, renderImageResult } from '../src/host/index.js'
 import { recordVisualAsset } from '../src/host/visual-assets.js'
 import type { AiCloudMediaModel } from '@zerowallscience/plugin-account/types'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
+import { assertCredentialKey } from '../../../desktop/src/main/credentials/vault.js'
 
 class MemorySecrets implements AccountSecretStore {
   readonly values = new Map<string, string>()
-  async get(key: string): Promise<string | undefined> { return this.values.get(key) }
-  async set(key: string, value: string): Promise<void> { this.values.set(key, value) }
-  async delete(key: string): Promise<void> { this.values.delete(key) }
+  async get(key: string): Promise<string | undefined> { assertCredentialKey(key); return this.values.get(key) }
+  async set(key: string, value: string): Promise<void> { assertCredentialKey(key); this.values.set(key, value) }
+  async delete(key: string): Promise<void> { assertCredentialKey(key); this.values.delete(key) }
 }
 
 const roots: string[] = []
@@ -49,7 +50,7 @@ it.each(['high', 'xhigh', 'max', 'auto'] as const)('uses the selected native ima
   const model = { providerId: 'zerowall-ai-cloud-53-responses', groupId: '53', groupName: '生图分组-gpt逆向', modelId: 'gpt-image-2.5', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, qualities: [] }
   const fetcher = vi.fn<typeof fetch>(async (url, init) => {
     expect(url).toBe('https://code.aicodeme.xyz/v1/images/generations')
-    expect(JSON.parse(String(init?.body))).toEqual({ model: 'gpt-image-2.5', prompt: 'full slide template', ...(quality === 'auto' ? {} : { quality }) })
+    expect(JSON.parse(String(init?.body))).toEqual({ model: 'gpt-image-2.5', prompt: 'full slide template', response_format: 'b64_json', ...(quality === 'auto' ? {} : { quality }) })
     return imageResponse(await raster(), { quality })
   })
   const media = { submit: vi.fn() }
@@ -60,7 +61,7 @@ it.each(['high', 'xhigh', 'max', 'auto'] as const)('uses the selected native ima
   expect(fetcher).toHaveBeenCalledOnce()
 })
 
-function generator(fetcher: typeof fetch, attachment?: ImageAttachmentRef | Error, imageQuality?: () => Promise<'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined>, models = signedIn().mediaModels) {
+function generator(fetcher: typeof fetch, attachment?: ImageAttachmentRef | Error, imageQuality?: () => Promise<'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined>, models = signedIn().mediaModels, downloadTimeoutMs?: number) {
   const mediaCacheDir=mkdtempSync(join(tmpdir(),'images-media-test-'));roots.push(mediaCacheDir)
   const secrets = new MemorySecrets()
   for (const model of models) secrets.values.set(`zerowall.ai-cloud.group.${model.groupId}`, 'host-only-secret')
@@ -72,6 +73,7 @@ function generator(fetcher: typeof fetch, attachment?: ImageAttachmentRef | Erro
     imageModel: async () => ({providerId:models[0]!.providerId,groupId:models[0]!.groupId,modelId:models[0]!.modelId}),
     fetch: fetcher,
     ...(imageQuality === undefined ? {} : { imageQuality }),
+    ...(downloadTimeoutMs === undefined ? {} : { downloadTimeoutMs }),
     ...(attachment === undefined ? {} : {
       attachments: () => ({
         saveImage: async () => {
@@ -109,12 +111,45 @@ it('resumes matching successful requests without another generation and preserve
   expect(fetcher).toHaveBeenCalledOnce(); expect(restored.cached).toBe(true); expect(restored.sha256).toBe(first.sha256)
   await expect(generator(fetcher as typeof fetch).generate({ prompt: 'verified concept', outputPath: 'cached.png', quality: 'high' }, workspace)).rejects.toThrow('already exists')
 })
-it('limits image requests to two concurrent jobs and deduplicates concurrent identical targets', async () => {
+it('allows ten concurrent jobs by default and deduplicates concurrent identical targets', async () => {
   const workspace = await root(), png = await raster(); let active = 0, maximum = 0
-  const fetcher = vi.fn(async () => { active++; maximum = Math.max(maximum, active); await new Promise(resolve => setTimeout(resolve, 15)); active--; return imageResponse(png) })
+  const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>()
+  const fetcher = vi.fn(async () => { active++; maximum = Math.max(maximum, active); if (active === 10) started.resolve(); await release.promise; active--; return imageResponse(png) })
   const service = generator(fetcher as typeof fetch)
-  await Promise.all([1, 2, 3, 3].map(number => service.generate({ prompt: `concept ${number}`, outputPath: `parallel-${number}.png` }, workspace)))
-  expect(maximum).toBe(2); expect(fetcher).toHaveBeenCalledTimes(3)
+  const pending = Promise.all([...Array.from({ length: 12 }, (_, index) => index + 1), 3].map(number => service.generate({ prompt: `concept ${number}`, outputPath: `parallel-${number}.png` }, workspace)))
+  await started.promise
+  expect(maximum).toBe(10)
+  release.resolve()
+  await pending
+  expect(maximum).toBe(10); expect(fetcher).toHaveBeenCalledTimes(12)
+})
+it('honors a prompt-selected lower concurrency limit without forwarding it to the provider', async () => {
+  const workspace = await root(), png = await raster(); let active = 0, maximum = 0
+  const started = Promise.withResolvers<void>(), release = Promise.withResolvers<void>()
+  const fetcher = vi.fn(async (_url, init) => {
+    active++; maximum = Math.max(maximum, active)
+    if (active === 3) started.resolve()
+    expect(JSON.parse(String(init?.body))).not.toHaveProperty('concurrency')
+    await release.promise; active--; return imageResponse(png)
+  })
+  const service = generator(fetcher as typeof fetch)
+  const pending = Promise.all(Array.from({ length: 6 }, (_, index) => service.generate({ prompt: `limited ${index}`, outputPath: `limited-${index}.png`, concurrency: 3 }, workspace)))
+  await started.promise
+  expect(maximum).toBe(3)
+  release.resolve()
+  await pending
+  expect(maximum).toBe(3); expect(fetcher).toHaveBeenCalledTimes(6)
+})
+it('renders a durable image block alongside the assistant-facing Markdown embed', () => {
+  const result = renderImageResult('Generated', {
+    path: 'C:\\workspace\\images\\final image.png', model: 'gpt-image-2', providerId: 'provider', groupId: 'group',
+    bytes: 12, requestedSize: 'auto', actualWidth: 4, actualHeight: 3, quality: 'auto', requestedQuality: 'auto', actualQuality: 'auto',
+    image: { attachmentId: 'sha256:' + 'a'.repeat(64), mediaType: 'image/png', bytes: 12, width: 4, height: 3, name: 'final image.png' },
+  })
+  expect(result).toHaveLength(2)
+  expect(result[0]).toMatchObject({ type: 'text' })
+  expect((result[0] as { text: string }).text).toContain('![Generated image](<C:/workspace/images/final image.png>)')
+  expect(result[1]).toMatchObject({ type: 'image', attachment: { mediaType: 'image/png', width: 4, height: 3 } })
 })
 it('recovers transient 503 with the original idempotency key and rejects definitive parameter errors', async () => {
   const workspace = await root(), png = await raster()
@@ -440,6 +475,34 @@ describe('AI Cloud image generation and editing', () => {
 
     const broken = generator(vi.fn(async () => new Response('bad', { status: 429 })) as typeof fetch)
     await expect(broken.generate({ prompt: 'x', outputPath: 'http.png' }, workspace)).rejects.toThrow('MEDIA_HTTP_429')
+  })
+
+  it('bounds a CDN URL that never finishes delivering the image', async () => {
+    const workspace = await root()
+    const fetcher = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).includes('/images/generations')) {
+        return new Response(JSON.stringify({ data: [{ url: 'https://cdn.example.test/stalled.png' }] }), { status: 200 })
+      }
+      await new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('timed out', 'TimeoutError')), { once: true })
+      })
+      throw new Error('unreachable')
+    })
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.group.57', 'test-only')
+    const model = { providerId: 'zerowall-ai-cloud-57-responses', groupId: '57', groupName: '生图分组-AZ-非常稳定', modelId: 'gpt-image-2.5-sunburst', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const }
+    const service = new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, fetch: fetcher as typeof fetch, downloadTimeoutMs: 10 })
+    await expect(service.generate({ prompt: 'stalled CDN', outputPath: 'stalled.png' }, workspace))
+      .rejects.toThrow('IMAGE_DOWNLOAD_TIMEOUT')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).not.toHaveProperty('response_format')
+    const png = await raster()
+    fetcher.mockImplementationOnce(async () => new Response(png))
+    const recovered = await service.generate({ prompt: 'stalled CDN', outputPath: 'stalled.png' }, workspace)
+    expect(recovered.resumedDownload).toBe(true)
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('/images/generations'))).toHaveLength(1)
+    expect(await readFile(recovered.receiptPath!, 'utf8')).not.toContain('cdn.example.test')
+    expect([...secrets.values.keys()].some(key => key.startsWith('zerowall.ai-cloud.image-pending.'))).toBe(false)
   })
 
   it('rejects paths outside the session and unconfigured image models before network access', async () => {

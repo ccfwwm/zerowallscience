@@ -32,7 +32,7 @@ These host rules override upstream examples when they differ:
 - Treat network calls, cloud jobs, experiment submissions, writes, deletion, and physical equipment actions as approval-gated. Default to read-only inspection, validation, or dry-run planning until the user explicitly requests execution.
 - Use `zerowall-python-packages` for managed Python dependency changes: inspect, preview, obtain confirmation, apply, and verify. Do not run pip/uv/conda against the managed snapshot. Report missing external runtimes separately.
 - Use `pathlib`, project-relative paths, and platform temporary directories. Gate Unix-only commands behind an explicit WSL/SSH execution context.
-- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `univer-slide`, `generate_image`, and bundled MCP tools discovered with Host tool registry.
+- Current companion capabilities take precedence over upstream names: `publication-figures`, `figure-style`, `paper-to-report`, `literature-review`, `citation-reviewer`, `probe-compute-environment`, `ppt-maker`, `generate_image`, and bundled MCP tools discovered with Host tool registry.
 
 # PyDESeq2
 

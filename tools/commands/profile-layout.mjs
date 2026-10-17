@@ -24,7 +24,7 @@ export async function repairProfileLayout(directory, { from, home } = {}) {
   const recorded = typeof virtual === 'string' ? resolve(modules, virtual) : expected
   const recordedRoot = dirname(dirname(recorded))
   const profiles = resolve(home ?? join(directory, '../..'), 'profiles')
-  const managedRecorded = inside(profiles, recordedRoot) && /^zerowall-[a-zA-Z0-9-]+$/u.test(relative(profiles, recordedRoot))
+  const managedRecorded = inside(profiles, recordedRoot) && /^zerowall(?:-[a-zA-Z0-9-]+)?$/u.test(relative(profiles, recordedRoot))
   const original = from ? resolve(from) : directory
   const roots = [...new Set([original, ...(managedRecorded ? [recordedRoot] : [])])].filter(root => root !== directory)
   if (recorded !== expected && (!manifest || !['hoisted', 'isolated'].includes(manifest.nodeLinker)
