@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { cp, mkdir, readFile, writeFile, access, unlink } from 'node:fs/promises'
+import { cp, mkdir, readFile, writeFile, access, unlink, rmdir } from 'node:fs/promises'
 import { join, resolve, dirname } from 'node:path'
 import { root, stageRoot, releaseRoot, contract } from '../build/paths.mjs'
 import { sourceFiles, isExportableSource } from './source-files.mjs'
@@ -10,6 +10,7 @@ await mkdir(destination, { recursive: true })
 const sourceOnly = process.argv.includes('--source-only')
 const update = process.argv.includes('--update')
 if (update) {
+  await access(join(destination, '.git')) // Never stage into an enclosing checkout.
   const status = execFileSync('git', ['status', '--porcelain'], { cwd: destination, encoding: 'utf8' })
   if (status.trim()) throw new Error('Refusing to update a dirty source repository')
 }
@@ -17,12 +18,23 @@ const selected = sourceFiles(root)
 const selectedSet = new Set(selected)
 if (update) {
   const previous = execFileSync('git', ['ls-files', '-z'], { cwd: destination, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean)
+  const obsoleteDirectories = new Set()
   for (const path of previous) {
-    if (!selectedSet.has(path) && (isExportableSource(path) || /^(?:packages|store)\//u.test(path))) {
+    const obsoleteSkillSnapshot = !sourceOnly && path.startsWith('skills/') && await access(join(stageRoot, 'resources/extensions', path))
+      .then(() => false, error => { if (error.code !== 'ENOENT') throw error; return true })
+    if ((!selectedSet.has(path) && (isExportableSource(path) || /^(?:packages|store)\//u.test(path))) || obsoleteSkillSnapshot) {
       // Remove only individually tracked obsolete source files; preserve all
       // untracked/ignored state and independent publication receipts.
       await unlink(join(destination, path)).catch(error => { if (error.code !== 'ENOENT') throw error })
+      for (let directory = dirname(path); directory !== '.'; directory = dirname(directory)) obsoleteDirectories.add(directory)
     }
+  }
+  // Git does not record empty folders. Remove only scaffolding made obsolete
+  // above; a nonempty folder, ignored file or local state is always preserved.
+  for (const directory of [...obsoleteDirectories].sort((a, b) => b.length - a.length)) {
+    await rmdir(join(destination, directory)).catch(error => {
+      if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes(error.code)) throw error
+    })
   }
 }
 let copied = 0
@@ -68,6 +80,7 @@ await writeFile(join(destination, 'package.json'), JSON.stringify(pkg, null, 2) 
 await writeFile(join(destination, '.gitignore'), 'node_modules/\nartifacts/\n/plugins/*/lib/\n/plugins/biogenie/payload/\ndist/\n.build/\n.env\n.env.*\n/scripts/env/\n*.pem\n*.tsbuildinfo\n*.log\n__pycache__/\n')
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 const dshCommit = execFileSync('git', ['-C', 'deepseek-harness', 'rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
+if (update) execFileSync('git', ['update-index', '--cacheinfo', `160000,${dshCommit},deepseek-harness`], { cwd: destination })
 const integrations = JSON.parse(await readFile(join(root, 'config/integrations/upstream-sources.json'), 'utf8'))
 await writeFile(join(destination, 'README.md'), sourceRepositoryReadme({ version: contract.version, sourceOnly, sourceCommit, dshCommit, integrations }))
 const records = sourceOnly ? [] : JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8'))
