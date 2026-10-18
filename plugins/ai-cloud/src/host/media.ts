@@ -10,6 +10,9 @@ import type { MediaArtifact, MediaCatalog, MediaRequest, MediaSelection, MediaTa
 import { artifactFormat } from './artifact-format.js'
 import { externalArtifact } from './artifact-network.js'
 import { downloadImageBytes } from './image-download.js'
+import { downloadMediaBytes } from './media-download.js'
+import { mediaAbortable } from './media-abort.js'
+import { mediaHttpError } from './media-retry.js'
 
 interface Account { current(): Promise<AiCloudAccountSnapshot>; discoverModels(): Promise<AiCloudAccountSnapshot> }
 interface StoredArtifact extends MediaArtifact { source?: string; file?: string }
@@ -31,7 +34,7 @@ function gateway(raw: string): string {
 function dto(task: StoredTask): MediaTask {
   return { requestId: task.requestId, ...(task.taskId ? { taskId: task.taskId } : {}), account: task.account, gateway: task.gateway,
     selection: { groupId: task.selection.groupId, profileId: task.selection.profileId, modelId: task.selection.modelId, operation: task.selection.operation },
-    parametersHash: task.parametersHash, status: task.status, createdAt: task.createdAt, updatedAt: task.updatedAt,
+    parametersHash: task.parametersHash, status: task.status, ...(task.artifactsPending ? { artifactsPending: true } : {}), createdAt: task.createdAt, updatedAt: task.updatedAt,
     artifacts: task.artifacts.map(a => ({ key: a.key, mediaType: a.mediaType, ...(a.bytes !== undefined ? { bytes: a.bytes } : {}), ...(a.duration !== undefined ? { duration: a.duration } : {}), ...(a.sha256 ? { sha256: a.sha256 } : {}), ...(a.revisedPrompt ? { revisedPrompt: a.revisedPrompt } : {}), ...(a.quality ? { quality: a.quality } : {}) })) }
 }
 
@@ -145,9 +148,11 @@ export class AiCloudMediaService implements ZeroWallMedia {
   }
 
   private async json(base: string, path: string, key: string, init: RequestInit = {}): Promise<any> {
-    const response = await this.fetcher(base + path, { ...init, redirect: 'error', headers: { ...(typeof init.body === 'string' ? { 'content-type': 'application/json' } : {}), ...init.headers, authorization: `Bearer ${key}` }, signal: init.signal ?? AbortSignal.timeout(185_000) })
-    if (!response.ok) { await response.body?.cancel(); throw new Error(`MEDIA_HTTP_${response.status}`) }
-    return response.json()
+    const timeout = AbortSignal.timeout(init.method === 'POST' && !path.endsWith('/estimates') ? 185_000 : 30_000)
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
+    const response = await mediaAbortable(this.fetcher(base + path, { ...init, redirect: 'error', headers: { ...(typeof init.body === 'string' ? { 'content-type': 'application/json' } : {}), ...init.headers, authorization: `Bearer ${key}` }, signal }), signal)
+    if (!response.ok) { void response.body?.cancel().catch(() => {}); throw mediaHttpError('MEDIA_HTTP', response) }
+    return mediaAbortable(response.json(), signal)
   }
 
   async estimate(input: MediaRequest): Promise<{ currency: string; maximumCharge?: string; total?: string }> {
@@ -203,25 +208,29 @@ export class AiCloudMediaService implements ZeroWallMedia {
   private async accept(task: StoredTask, reply: any): Promise<void> {
     // The unified task endpoint uses in_progress while provider protocols use running.
     if (reply?.status === 'in_progress') reply = { ...reply, status: 'running' }
-    if (!reply || typeof reply !== 'object' || (reply.status !== undefined && !['queued', 'submitting', 'running', 'processing', 'completed', 'succeeded', 'failed', 'cancelled', 'manual_review', 'pending_usage', 'unknown'].includes(reply.status))) throw new Error('MEDIA_INVALID_TASK_RESPONSE')
+    if (!reply || typeof reply !== 'object' || (reply.status !== undefined && (typeof reply.status !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(reply.status)))) throw new Error('MEDIA_INVALID_TASK_RESPONSE')
+    if (reply.error && !['failed', 'rejected', 'cancelled', 'manual_review'].includes(reply.status)) throw new Error('MEDIA_PROVIDER_REPORTED_ERROR')
     if (reply.model && reply.model !== task.selection.modelId) throw new Error('MEDIA_TASK_IDENTITY_MISMATCH')
     if (reply.status !== undefined && (typeof reply.id !== 'string' || !/^mt_[A-Za-z0-9_-]+$/.test(reply.id))) throw new Error('MEDIA_INVALID_TASK_RESPONSE')
     if (typeof reply.id === 'string' && /^mt_[A-Za-z0-9_-]+$/.test(reply.id)) task.taskId = reply.id
     task.status = typeof reply.status === 'string' ? reply.status : 'completed'
     if (!task.taskId && !['completed', 'succeeded'].includes(task.status)) throw new Error('MEDIA_INVALID_TASK_RESPONSE')
-    const entries: any[] = Array.isArray(reply.data) ? reply.data : []
+    const entries: any[] = Array.isArray(reply.data) && reply.data.length ? [...reply.data] : Array.isArray(reply.artifacts) ? [...reply.artifacts] : []
     if (!entries.length) {
       for (const candidate of reply.candidates ?? []) for (const part of candidate.content?.parts ?? []) if (part.inlineData?.data) entries.push({ b64_json: part.inlineData.data, mime_type: part.inlineData.mimeType })
       for (const choice of reply.choices ?? []) if (choice.message?.audio?.data) entries.push({ b64_json: choice.message.audio.data, mime_type: 'audio/wav' })
     }
     const artifacts: StoredArtifact[] = []
+    let pending = !entries.length
     for (const [index, entry] of entries.entries()) {
+      if (entry.available === false) { pending = true; continue }
       const key = typeof entry.key === 'string' && /^[\w-]+$/.test(entry.key) ? entry.key : String(index)
       const fallback = task.selection.operation === 'video' ? 'video/mp4' : task.selection.operation === 'chat_music' ? 'audio/wav' : 'image/png'
       const artifact: StoredArtifact = { key, mediaType: typeof entry.mime_type === 'string' ? entry.mime_type : fallback,
         ...(typeof entry.revised_prompt === 'string' ? { revisedPrompt: entry.revised_prompt } : {}),
         ...(typeof entry.quality === 'string' ? { quality: entry.quality } : {}),
-        ...(typeof entry.duration_seconds === 'string' || typeof entry.duration === 'number' ? { duration: Number(entry.duration_seconds ?? entry.duration) } : {}) }
+        ...(Number.isFinite(Number(entry.duration_seconds ?? entry.duration)) && Number(entry.duration_seconds ?? entry.duration) > 0 ? { duration: Number(entry.duration_seconds ?? entry.duration) } : {}),
+        ...(Number.isSafeInteger(entry.size_bytes) && entry.size_bytes > 0 ? { bytes: entry.size_bytes } : {}) }
       const existing = task.artifacts.find(a => a.key === key && a.file)
       if (existing) Object.assign(artifact, { file: existing.file, sha256: existing.sha256, bytes: existing.bytes })
       if (typeof entry.b64_json === 'string') {
@@ -231,7 +240,9 @@ export class AiCloudMediaService implements ZeroWallMedia {
         artifact.source = this.artifactURL(task.gateway, entry.content_url ?? entry.url).href
       }
       if (artifact.file || artifact.source) artifacts.push(artifact)
+      else pending = true
     }
+    task.artifactsPending = pending
     if (artifacts.length) task.artifacts = artifacts
     if (!task.taskId && !task.artifacts.length) throw new Error('MEDIA_EMPTY_RESULT')
     await this.save(task)
@@ -310,15 +321,12 @@ export class AiCloudMediaService implements ZeroWallMedia {
       await this.save(task)
       return { bytes: result.bytes, mediaType: artifact.mediaType, sha256: artifact.sha256! }
     }
-    const downloadSignal = signal ?? AbortSignal.timeout(120_000)
-    const response = url.origin === task.gateway
-      ? await this.fetcher(url, { redirect: 'error', headers: { authorization: `Bearer ${key}` }, signal: downloadSignal })
-      : await this.externalFetch(url, downloadSignal)
-    if (!response.ok || !response.body) { await response.body?.cancel(); throw new Error(`MEDIA_DOWNLOAD_HTTP_${response.status}`) }
-    if (Number(response.headers.get('content-length')) > MAX_BYTES) { await response.body.cancel(); throw new Error('MEDIA_ARTIFACT_TOO_LARGE') }
-    const chunks: Uint8Array[] = []; let size = 0
-    for await (const chunk of response.body as any as AsyncIterable<Uint8Array>) { size += chunk.length; if (size > MAX_BYTES) throw new Error('MEDIA_ARTIFACT_TOO_LARGE'); chunks.push(chunk) }
-    const bytes = Buffer.concat(chunks)
+    const downloadSignal = signal ?? new AbortController().signal
+    const authenticated = url.origin === task.gateway
+    const bytes = await downloadMediaBytes((headers, partSignal) => authenticated
+      ? this.fetcher(url, { redirect: 'error', headers: { ...headers, authorization: `Bearer ${key}` }, signal: partSignal })
+      : this.externalFetch(url, partSignal), downloadSignal, authenticated)
+    if (artifact.bytes !== undefined && artifact.bytes !== bytes.length) throw new Error('MEDIA_TRUNCATED_ARTIFACT')
     await this.cache(task, artifact, bytes)
     await this.save(task)
     return { bytes, mediaType: artifact.mediaType, sha256: artifact.sha256!, ...(artifact.duration!==undefined?{duration:artifact.duration}:{}) }
@@ -374,9 +382,10 @@ export class AiCloudMediaService implements ZeroWallMedia {
     this.writes = operation; await operation
   }
   async list(): Promise<MediaTask[]> {
-    const snapshot = await this.account.current()
+    const signal = AbortSignal.timeout(30_000)
+    const snapshot = await mediaAbortable(this.account.current(), signal)
     if (snapshot.status !== 'signedIn') return []
-    await this.writes
-    return (await this.all()).filter(t => t.account === snapshot.email && t.gateway === gateway(snapshot.gatewayBaseUrl ?? '')).map(dto)
+    await mediaAbortable(this.writes, signal)
+    return (await mediaAbortable(this.all(), signal)).filter(t => t.account === snapshot.email && t.gateway === gateway(snapshot.gatewayBaseUrl ?? '')).map(dto)
   }
 }

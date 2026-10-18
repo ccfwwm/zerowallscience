@@ -14,10 +14,13 @@
  */
 import path from 'node:path'
 import { access, readFile } from 'node:fs/promises'
-import { reverseImport, ReverseImportError } from '../core/reverse/index.js'
+import { ReverseImportError } from '../core/reverse/error.js'
+import { retryableImport } from '../core/lazy-module.js'
 import { ProjectError, resolveProjectDir } from '../core/project/store.js'
 import { renderSummary, resultSchema, resolveSessionCwd, sessionIdOf, toolError, type PluginToolCtx } from './shared.js'
 import type { PluginToolCtxWithOpen } from './open.js'
+
+const loadReverseEngine = retryableImport(() => import('../core/reverse/index.js'))
 
 async function manifestRevisionOf(projectDir: string): Promise<number> {
   const raw = await readFile(path.join(projectDir, 'manifest.json'), 'utf8')
@@ -104,6 +107,7 @@ export function registerImportTool(ctx: PluginToolCtxWithOpen): (() => void) | u
         const title = typeof args.title === 'string' ? args.title : path.basename(source, path.extname(source))
         const open = args.open !== false
 
+        const { reverseImport } = await loadReverseEngine()
         const result = await reverseImport({
           cwd,
           source: sourceAbs,

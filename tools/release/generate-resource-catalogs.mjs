@@ -14,6 +14,8 @@ import { satisfiesPackageRange } from '../commands/package-range.mjs'
 import { mergePublishedPlugins, mergePublishedSkills, selectedPluginArguments, selectedSkillArguments } from './targeted-plugin-catalog.mjs'
 import { applyAuditedPluginCompatibility } from './plugin-compatibility.mjs'
 import { prepareFallbackWheel } from './python-wheel-artifacts.mjs'
+import { RETIRED_PLUGIN_IDS } from '../commands/retired-plugins.mjs'
+import { readRetiredResourceIds } from '../plugins/snapshot.mjs'
 
 const publicationArgs = process.argv.slice(2)
 const { plugins: selectedPlugins, remaining } = selectedPluginArguments(publicationArgs)
@@ -47,7 +49,7 @@ if (configured) {
 const baseUrl = process.env.ZEROWALL_RESOURCE_BASE_URL?.replace(/\/$/, '')
 const localOnly = !baseUrl
 if (targeted && (kinds.length !== 1 || !['plugin', 'skill'].includes(kinds[0]) || localOnly || !configured)) throw new Error('Targeted catalogs require --kind plugin --plugin <package-name> or --kind skill --skill <skill-name>, a public base URL and a release signing key')
-const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')).filter(record => !targeted || selectedPlugins.includes(record.id)) : []
+const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')).filter(record => !RETIRED_PLUGIN_IDS.has(record.id) && (!targeted || selectedPlugins.includes(record.id))) : []
 for (const id of selectedPlugins) if (records.filter(r => r.id === id).length !== 1) throw new Error('Targeted plugin has no unique packed artifact: ' + id)
 const resourceVersions = JSON.parse(await readFile(join(root, 'config/catalogs/resource-versions.json'), 'utf8'))
 async function entry({ id, version, path, kind, key, metadata = {} }) {
@@ -125,7 +127,7 @@ if (kinds.includes('mcp') && await stat(join(sciDirectory, 'dist/mcp.cjs')).catc
   } }))
 }
 const skillsRoot = join(stageRoot, 'resources/extensions/skills')
-const selectedSkillNames = selectedSkills.length > 0 ? selectedSkills : await readdir(skillsRoot)
+const selectedSkillNames = !kinds.includes('skill') ? [] : selectedSkills.length > 0 ? selectedSkills : await readdir(skillsRoot)
 for (const name of kinds.includes('skill') ? selectedSkillNames : []) {
   // Targeted Skill publication must package the current source tree. A cloned
   // desktop stage may intentionally retain the previous bundled Skill set.
@@ -149,7 +151,7 @@ if (selectedSkills.length > 0) {
   if (bytes.length !== pointer.catalog.size || createHash('sha256').update(bytes).digest('hex') !== pointer.catalog.sha256) throw new Error('Published skill catalog integrity mismatch')
   const previous = verifyCatalog(JSON.parse(bytes), keys)
   if (previous.kind !== 'skill' || previous.localOnly) throw new Error('Invalid published skill catalog')
-  skills.splice(0, skills.length, ...mergePublishedSkills(previous.resources, skills, keys))
+  skills.splice(0, skills.length, ...mergePublishedSkills(previous.resources, skills, keys, await readRetiredResourceIds('skill')))
   await writeFile(join(destination, 'skill-targeted-baseline.json'), JSON.stringify({ selectedSkills, pointer, previousCatalog: previous }, null, 2) + '\n')
 }
 for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp', mcpServers], ['python', []]]) {

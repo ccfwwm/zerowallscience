@@ -204,9 +204,11 @@ promote 前必须与线上基线核对；只提升相关资源指针，不修改
 
 Python 是 8.3.0 已实现的后台维护例外：桌面可用后，在固定安装根进行签名 bootstrap/recovery、core/science 按完整清单逐包安装（不以 import/pip check 阻断），并定期核对线上签名依赖。队列持久化并只恢复符合条件的自动任务；capability 仍需用户明确选择。不能切换 legacy slots，失败通过文件事务恢复同一路径。详见 [Python 合同](python-environment.md)。
 
-PPTX 使用环境配置中的独立 gpt-image-generator 路由，分组匹配“生图”或“图片”；媒体工作台图片模型不得覆盖它。质量可选，保留 high/xhigh/max 等用户配置，不因目录缺能力标记就自动降级。完整页面模板并行生图，再还原可编辑对象，详见 [演示工作流](presentation-workflow.zh-CN.md)。
+PPTX 使用环境配置中的独立 gpt-image-generator 路由，分组匹配“生图”或“图片”；媒体工作台图片模型不得覆盖它。质量可选，保留 high/xhigh/max 等用户配置，不因目录缺能力标记就自动降级。完整页面模板并行生图后先核验文字、布局和内容，问题原图编辑修复并复核；默认输出图片型 PPTX，明确要求可编辑时再还原独立对象。事实图片按指定位置原字节嵌入，详见 [演示工作流](presentation-workflow.zh-CN.md)。
 
 升级保留账户/模型、项目、环境变量引用、第三方插件、自定义 Skill/MCP、固定版本与禁用/移除选择。禁止清空用户 profile 来解决升级问题。
+
+8.3.6 的活动插件根固定为 `harness/profiles/web/node_modules/<插件名>`，安装后的托管插件入口是实体目录。安装、升级和缺目录修复直接使用安装包内的签名插件供给，不先复制成用户侧 `resources/offline` 缓存，不搬迁旧离线目录。插件共享依赖在同一 profile 的固定依赖目录，允许保持包内部的标准依赖链接以保留版本和 peer 关系；DSH 核心继续由桌面共享运行时供给。已有 `resources/offline` 及历史 generation 保留，只有保留高版本、固定版本插件时才按需读取，不得成为 Host 的解析回退。历史跨 DSH 插件只可按原签名、实际兼容范围和逐文件摘要导入独立插件及必要非核心闭包，验证当前核心依赖后再经候选健康检查激活；不得放宽整载体 DSH pin 或引入旧核心。
 
 ## 8. 清理与交付
 

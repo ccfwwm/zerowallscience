@@ -149,7 +149,7 @@ const plugins = [
   { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'], requiredServices: ['skills', 'systemPrompt'] },
   { id: 'extension-center', client: true, capabilities: ['resource-management', 'plugin-updates', 'skill-updates', 'mcp-updates'], permissions: ['files', 'network'], dependencies: ['base'], requiredServices: [] },
   { id: 'reviewer', client: true, capabilities: ['reviewer'], permissions: ['approvals'], dependencies: ['base'], requiredServices: ['settings', 'subagents', 'commands', 'llm'] },
-  { id: 'research', client: true, remote: true, capabilities: ['research', 'data-assets', 'artifacts'], permissions: ['files'], dependencies: ['projects', 'base'] },
+  { id: 'research', client: true, remote: true, capabilities: ['research', 'data-assets', 'artifacts'], permissions: ['files'], dependencies: ['projects', 'base'], requiredServices: ['tools'], optionalServices: ['webServer'] },
   { id: 'mineru', client: true, remote: true, capabilities: ['document-parsing', 'artifacts'], permissions: ['files', 'network', 'attachments', 'credentials', 'processes'], dependencies: ['secrets', 'files', 'research', 'base'], requiredServices: ['tools', 'sessions', 'zerowallFiles', 'zerowallResearch'], optionalServices: ['webServer', 'zerowallExecution', 'zerowallRuns'] },
   { id: 'singlecell', client: true, remote: true, capabilities: ['singlecell-analysis', 'public-data-acquisition', 'scTenifoldKnk', 'analysis-workflow'], permissions: ['files', 'network', 'attachments', 'processes', 'approvals'], dependencies: ['base', 'files', 'projects', 'research', 'runs'], requiredServices: ['tools', 'sessions'], optionalServices: ['zerowallFiles', 'zerowallProjects', 'zerowallResearch', 'zerowallRuns', 'webServer'] },
   { id: 'execution', client: true, remote: true, capabilities: ['execution-contexts'], permissions: ['processes', 'files'] },
@@ -220,6 +220,7 @@ for (const plugin of plugins) {
       migrationVersion: 1,
       restartRequired: true,
       rollbackSupported: true,
+      ...(plugin.id === 'files' ? { runtimeFiles: ['lib/viewer-runtime.js'] } : plugin.id === 'research' ? { runtimeFiles: ['brainglobe', 'canvas', 'cells', 'flow', 'he', 'imagej', 'molecule', 'sanger', 'sequence'].map(name => `lib/research-assets/${name}.png`) } : {}),
     },
     scripts: {
       prepack: 'node ../../tools/plugins/prepare-pack.mjs',
@@ -327,7 +328,7 @@ for (const plugin of plugins) {
       : plugin.id === 'mcp'
         ? String.raw`, hostAlwaysBundle: [/^@deepseek-ai\/dsh-mcp-client\/src\//]`
         : plugin.id === 'research'
-          ? ', inlinePngAssets: true'
+          ? ', staticPngAssets: true'
           : plugin.id === 'files'
             ? ', universalViewer: true'
           : plugin.id === 'python' ? ', pythonWorker: true' : ''} })`,

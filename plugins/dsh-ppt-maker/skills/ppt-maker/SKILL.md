@@ -7,6 +7,10 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 用 PPTD（YAML 中间格式，单页自包含）写 deck，**工具层直接产出最终 .pptx**。
 
+默认采用 `output_mode: image`：调用生图技能生成整页视觉稿，再以整页图片导出 PPTX；明确要求“可编辑”时采用 `output_mode: editable`，生成独立文字、形状、表格、图表及图片对象。用户要求双版本时复用同一已审整页图与素材账本，另建 editable 工程，在 `presentation_plan_editable_pages` 显式设置 `template_asset_id` 为旧图片型资产 ID，避免重复生图；分别导出并验证。
+
+项目图片、文献图和数据图必须原样嵌入 `media/`，不能让生图模型重新绘制事实素材。整页图片型也应先生成背景与留白区域，再将原图无损合成到预留区域；提示词逐字保存，并明确“在指定区域原样插入所附图片，不改动图中文字、数据、比例和内容”。保存原始 prompt、来源路径、文献页码/图号、模型参数和 SHA-256 到素材账本、页面 notes 与交付说明。
+
 ## 工具优先
 
 做 PPT 一律先走工具，不要手写脚本调库。十一个工具（全部 raw JSON-Schema 注册，参数里有 `dir` 的都是工程目录，相对会话 cwd）：
@@ -19,7 +23,7 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 | `ppt_undo` / `ppt_redo` | 撤销/重做（游标移动，append-only 快照） | `{ok, revision}` |
 | `ppt_render` | 渲染每页 PNG 预览（libreoffice-kit 光栅化最终 pptx） | `{ok, images:[{page,path}]}` |
 | `ppt_check` | 质检（规则层默认跑；`ai:true` 追加 AI 视觉质检） | `{ok, pass, issues:[...]}` |
-| `ppt_export` | 导出 .pptx（规则质检 blocker 会拦住，`skipCheck:true` 绕过） | `{ok, path, revision, check}` |
+| `ppt_export` | 导出 .pptx（规则质检 blocker 会拦住；`skipCheck:true` 仅跳过规则检查，受管整页图审核仍强制执行） | `{ok, path, revision, check}` |
 | `ppt_import` | 把既有 .pptx 逆向成 PPTD 工程（`mode:'full'`；`surgical` 只回提示不建工程） | `{ok, dir, report}` |
 | `ppt_patch` | 对 .pptx 外科手术式轻改（改字/换图/调页序），库不建模的部件原样保留 | `{ok, path, lostParts}` |
 | `ppt_open` | 用右侧栏工作台打开一个工程（只登记打开请求，不改工程） | `{ok}` |
@@ -42,16 +46,36 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 | 输入 | 仅主题 / 完整文档 / 逐页大纲 |
 | 页数 | 用户指定优先；只给文档时先给页数估算并确认 |
 
-- 先读完用户上传的全部文件与 URL。PPTD 的格式约束读 `docs/pptd-spec.md`（仓库内）；上游继承字段的细则读 `reference/pptd.md`。
+- 先读完用户上传的全部文件与 URL。PPTD 的格式约束读本技能目录下的 `../../docs/pptd-spec.md`（随插件安装）；上游继承字段的细则读 `reference/pptd.md`。
 - 内容不足以撑满演示时，先用检索补充材料（除非用户明确说不扩展）。
 - 需求冲突或无法判定时**先问用户**：调用 `ask_user_question` 把冲突项摆成选项（推荐项放首位并加 `(Recommended)`），一次一问；不要自行脑补。
 
 ### 二、用工具建工程
 
 1. `ppt_themes` 看有哪些设计系统（学术/咨询/金融/促销/工作），用户指定了就用指定族，没指定就按场景挑一个；自定风格不要硬套预设。
-2. `ppt_create` 建工程（给 `dir`/`title`/`designSystem`/`theme`），拿回 `manifest.revision`（乐观锁的基准）。
-3. `ppt_edit` 批量加页加元素：一次调用发一串 ops（`add_page` / `add_element` / `update_element` / …），原子生效。**每次都要带上一次的 `baseRevision`**，返回 409 就是游标过期，重新读再改。
-4. 改错了用 `ppt_undo` / `ppt_redo`（合并窗内的连续编辑算一步）。
+2. 新建整页生图或可编辑转换先写 `presentation-spec.json`（每页 `text` 为逐字正文），以及空或已登记的 `visual-assets.json`，再调用 `presentation_prepare(mode: new, output_mode: image)` 绑定目录。工程不存在时该工具自动 `ppt_create` 并打开演示台；明确要求可编辑时使用 `output_mode: editable`。未绑定不能调用 `presentation_generate_templates`、计划或构建工具。
+3. 绑定后并发生成、逐页查看审核和局部返修，全部通过再用 `presentation_build_pages`；可编辑模式先保存独立对象计划。避免同工程多个子智能体争用 `baseRevision`。
+4. 已有原生工程的普通编辑继续 `ppt_import` / `ppt_open` / `ppt_edit`；仅使用底层原生工具新建时用 `ppt_create`。`ppt_edit` 一次提交多项 ops，携带最新 `baseRevision`，409 后重读。改错用 `ppt_undo` / `ppt_redo`。
+
+最小 `presentation-spec.json`：
+
+```json
+{"width":960,"height":540,"fonts":{},"palette":{},"slides":[{"text":["逐字标题","逐字正文"]}]}
+```
+
+空 `visual-assets.json` 为 `{"schemaVersion":2,"assets":[]}`。调用 `presentation_prepare` 的参数：
+
+```json
+{"spec_path":"presentation-spec.json","manifest_path":"visual-assets.json","dir":"presentation-image","mode":"new","output_mode":"image"}
+```
+
+省略 `assetIds` 时自动按目标页匹配已登记素材；显式提供该字段时须随新素材登记追加 ID，不能保留空数组漏掉事实图。已有工程需要受管生图或模板转换时，用 `mode: edit` 绑定。
+
+创建与首次编辑会自动打开右侧演示台，需要重新展开时调用 `ppt_open`。并行准备不同页的内容和图片，但用一次 `ppt_edit` 批量提交同一工程，避免相同 baseRevision 的竞争。已绑定内容计划时，使用 `presentation_generate_templates` 并发生图（默认并发 10），再通过 `presentation_build_pages` 批量写入。
+
+**整页生图先审后用**：`spec.slides[].text` 保存逐字文本。生成完成后必须实际打开返回 PNG、全分辨率检查乱码、错漏字、图中文字、布局与事实准确性；无法直接显示时按返回绝对路径查看。用 `presentation_review_templates` 记录当前图片 SHA、实际看到的逐字 `text_transcription` 和三项检查，转录与 spec 不符必须判失败。失败图使用 `presentation_repair_templates` 调用原图 `edit_image` 局部返修，只重做受影响页，保留原始及返修 prompt、父图 SHA、模型与质量参数；新图需重新打开复核。代码阻止未审、失败或变更后的图片进入组装、可编辑转换与导出，不能靠普通 asset review 或 `skipCheck` 跳过。
+
+图片型事实图必须在 `spec.slides[].assetPlacements` 提供 `{assetId,bounds:[x,y,width,height]}`，在明确留白区以原文件字节图片对象覆盖，保持比例。缺位置阻断，不能把未引用的 media 复制称为嵌入；可编辑计划也必须实际引用原图。通过前置图像审核后再构建原生对象，最终仍需渲染 QA；两层核验各自保留记录。
 
 ### 三、生成内容的纪律
 
@@ -74,9 +98,11 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 2. **视觉 QA**：`ppt_render` 出每页 PNG（最终 pptx 光栅化，所见即所得），逐页核对：图片清晰不变形、文字未压住关键画面、元素未越界、文字与背景对比足够、对齐/间距/字号层级统一。可疑页 `read_image` 全分辨率确认后再改，改完重跑直到全部通过。
 3. **AI 深检（按需）**：`ppt_check` 传 `ai: true`。路由不支持图像时会降级成 PNG 路径清单 + 版式摘要，由你自行 `read_image` 完成视觉复核。
 
+已绑定内容计划时，`presentation_check_pages` 只重做缺失或变化页。查看 PNG 后用 `presentation_record_reviews` 保存具体观察和接受的 warning 哈希；导出报错先读 `presentation_status.requirements`，缺审阅只补审阅，不反复重跑未变化页。
+
 ### 五、导出与交付
 
-`ppt_export` 落盘最终 .pptx（默认先跑规则质检，blocker 拦下；`skipCheck: true` 可绕过但不建议）。成功后摘要在 `manifest.exportReport` 落账。
+`ppt_export` 落盘最终 .pptx（默认先跑规则质检，blocker 拦下；`skipCheck: true` 仅跳过规则检查，不能跳过整页图文字、布局、内容审核或绑定工作流的最终页面审阅）。成功后摘要在 `manifest.exportReport` 落账。
 
 ### 字体嵌入（本地 TS 链路原生，默认开启）
 
@@ -96,4 +122,4 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 ## 动画与备注
 
-默认**不加**（阅读/自学/打印/发送类 deck 不需要）。用户明确要求或确属现场演示时才加，每页 1~3 组，优先 fade/fly/zoom；`notes` 同理。动画词表 95 个、转场 42 个的完整清单见 `docs/pptd-spec.md` 附录 A/B。
+默认**不加**（阅读/自学/打印/发送类 deck 不需要）。用户明确要求或确属现场演示时才加，每页 1~3 组，优先 fade/fly/zoom；溯源 notes 始终保留。动画词表 95 个、转场 42 个的完整清单见 `../../docs/pptd-spec.md` 附录 A/B。

@@ -40,6 +40,7 @@ export interface ProjectEntry {
 /** /state 回包里的 manifest 轮廓（宿主只挑这几栏快速返回）。 */
 export interface ManifestOutline {
   revision: number
+  checksum?: string
   title?: string | null
   designSystem?: string | null
   theme?: string | null
@@ -74,6 +75,7 @@ export interface ProjectPayload {
     source?: unknown
   }
   pages: Array<{ path: string }>
+  pageData?: Record<string, unknown>
   issues?: unknown[]
   checksumMismatch?: boolean
 }

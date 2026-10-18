@@ -422,7 +422,7 @@
     {
       "id": "ai-cloud",
       "package": "@zerowallscience/plugin-ai-cloud",
-      "version": "0.1.24",
+      "version": "0.1.27",
       "source": "plugins/ai-cloud",
       "manifest": "plugins/ai-cloud/zerowall.plugin.json",
       "client": true,
@@ -447,7 +447,7 @@
     {
       "id": "files",
       "package": "@zerowallscience/plugin-files",
-      "version": "0.2.9",
+      "version": "0.2.12",
       "source": "plugins/files",
       "manifest": "plugins/files/zerowall.plugin.json",
       "client": true,
@@ -475,7 +475,7 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "0.2.24",
+      "version": "0.2.27",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
@@ -502,7 +502,7 @@
     {
       "id": "research",
       "package": "@zerowallscience/plugin-research",
-      "version": "0.1.14",
+      "version": "0.1.16",
       "source": "plugins/research",
       "manifest": "plugins/research/zerowall.plugin.json",
       "client": true,
@@ -516,8 +516,12 @@
       "permissions": [
         "files"
       ],
-      "requiredServices": [],
-      "optionalServices": [],
+      "requiredServices": [
+        "tools"
+      ],
+      "optionalServices": [
+        "webServer"
+      ],
       "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-research"
     },
     {

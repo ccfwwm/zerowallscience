@@ -3,12 +3,13 @@
  * { ok, path, revision, check: { pass, blockerCount } }.
  *
  * The rule-layer review runs by default and blockers abort the export;
- * `skipCheck: true` bypasses the gate (spec §11). On success the export
+ * `skipCheck: true` bypasses rule QA (spec §11), but never the managed
+ * generated-image review gate. On success the export
  * summary lands in manifest.exportReport (spec §3.2 落账契约).
  */
 import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { buildProjectDeck, checkProject, saveProjectPptx } from '../core/export-pipeline.js'
+import { buildProjectDeck, checkBuiltProject, saveProjectPptx } from '../core/lazy-export-pipeline.js'
 import { loadProject, ProjectError, writeExportReport, writeQaReport } from '../core/project/store.js'
 import { renderSummary, resultSchema, resolveSessionCwd, toolError, type PluginToolCtx } from './shared.js'
 
@@ -17,7 +18,7 @@ export function registerExportTool(ctx: PluginToolCtx): (() => void) | undefined
     name: 'ppt_export',
     description:
       '把工程导出为 .pptx：构建引擎产物并落盘到 <out>。默认先跑规则质检（出界/文字溢出/结构），' +
-      '有 blocker 时拒绝导出；传 skipCheck: true 可绕过。成功导出后把摘要写进 manifest.exportReport。',
+      '有 blocker 时拒绝导出；传 skipCheck: true 仅跳过规则质检。托管整页图片必须先核验文字、版式和内容，修复后复核当前图片，才能导出或转可编辑。成功导出后把摘要写进 manifest.exportReport。',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -54,12 +55,13 @@ export function registerExportTool(ctx: PluginToolCtx): (() => void) | undefined
         const dir = args.dir as string
         const out = args.out as string
         const skipCheck = args.skipCheck === true
+        const pipeline = await buildProjectDeck(cwd, dir)
 
         /** 质检摘要（skipCheck 时为 null）；既进 exportReport 也进 qaReport。 */
         let checkSummary: { pass: boolean; issueCount: number; blockerCount: number } | null = null
 
         if (skipCheck !== true) {
-          const check = await checkProject(cwd, dir, { withMissingFonts: true })
+          const check = await checkBuiltProject(pipeline, { withMissingFonts: true })
           checkSummary = {
             pass: check.pass,
             issueCount: check.issues.length,
@@ -99,7 +101,6 @@ export function registerExportTool(ctx: PluginToolCtx): (() => void) | undefined
           }
         }
 
-        const pipeline = await buildProjectDeck(cwd, dir)
         const saved = await saveProjectPptx(pipeline)
         const bytes = saved.bytes
 

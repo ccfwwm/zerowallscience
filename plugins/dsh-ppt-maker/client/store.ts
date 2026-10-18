@@ -55,6 +55,7 @@ export interface PptState {
   currentPageRevision: number
   /** 活动工程 revision：轮询看见它变了，就得决定静默重载 / 亮提示（见 applyPoll）。 */
   lastSeenRevision: number
+  lastSeenChecksum: string | null
   /** 每页 AST 缓存（DOM 直渲用）：pageIndex → {page, revision}。缩略图条也要逐页渲染。 */
   pagesAst: Record<number, { page: unknown; revision: number }>
   /** 屏上正在看的那一页（ThumbStrip 点选后填）。 */
@@ -88,6 +89,7 @@ function initialState(sessionId: string): PptState {
     currentPageData: null,
     currentPageRevision: -1,
     lastSeenRevision: -1,
+    lastSeenChecksum: null,
     pagesAst: {},
     currentPage: 0,
     selection: null,
@@ -168,25 +170,34 @@ export function createPptStore(sessionId: string) {
    * 草稿 / 冲突 / 外部修改横幅一同清零（draft 本来就是 per 工程的状态）。
    * 点同一条 = noop。失败 → 挂 status:error + toast，不改 activeKey。
    */
-  async function switchProject(key: string): Promise<boolean> {
-    if (!key || key === state.activeKey) return true
+  async function switchProject(key: string, force = false): Promise<boolean> {
+    if (!key || (key === state.activeKey && !force)) return true
     try {
       const res = await api.project(state.sessionId, key)
+      const sameProject = key === state.activeKey
+      const deckPages = Array.isArray(res.deck?.pages) ? res.deck.pages : []
+      const currentPage = sameProject ? Math.min(state.currentPage, Math.max(0, deckPages.length - 1)) : 0
+      const pagesAst: PptState['pagesAst'] = {}
+      for (const [index, rel] of deckPages.entries()) {
+        if (res.pageData && Object.hasOwn(res.pageData, rel)) pagesAst[index] = { page: res.pageData[rel], revision: res.revision }
+      }
       patch({
         status: 'ready',
+        error: null,
         activeKey: key,
         manifest: res.manifest,
         deck: res.deck,
-        deckPages: Array.isArray(res.deck?.pages) ? res.deck.pages : [],
-        currentPageData: null,
-        currentPageRevision: -1,
+        deckPages,
+        currentPageData: pagesAst[currentPage]?.page ?? null,
+        currentPageRevision: pagesAst[currentPage] ? res.revision : -1,
         lastSeenRevision: res.revision,
-        currentPage: 0,
+        lastSeenChecksum: (res.manifest as { checksum?: string } | null)?.checksum ?? null,
+        currentPage,
         selection: null,
         draft: null,
         conflict: null,
         externalChange: null,
-        pagesAst: {},
+        pagesAst,
       })
       return true
     } catch (error) {
@@ -211,6 +222,7 @@ export function createPptStore(sessionId: string) {
     const nextKey = st.activeKey ?? null
     // manifest 是「如果当前有 activeKey，就带上它的 revision」的轮廓（供「外部修改」判对）。
     const nextRevision = nextKey && st.manifest ? st.manifest.revision : -1
+    const nextChecksum = st.manifest?.checksum ?? null
 
     const patchBase: Partial<PptState> = {
       // 不保留 error：applyPoll 只在 /state 成功时被调用（失败走 init/轮询的 catch，根本到不了这里），
@@ -241,25 +253,23 @@ export function createPptStore(sessionId: string) {
         patch({ ...patchBase, externalChange: { revision: nextRevision } })
         return
       }
-      await switchProject(nextKey)
+      if (!(await switchProject(nextKey))) {
+        patch({ projects })
+        return
+      }
       // switchProject 里已经 patch 了 activeKey / revision；这里补轮询数据即可
       patch(patchBase)
       return
     }
 
     // activeKey 相同，看 revision 有没有动
-    if (nextRevision > state.lastSeenRevision) {
+    if ((nextRevision >= 0 && nextRevision !== state.lastSeenRevision) || (nextChecksum !== null && nextChecksum !== state.lastSeenChecksum)) {
       if (state.draft || state.conflict) {
         patch({ ...patchBase, externalChange: { revision: nextRevision } })
         return
       }
-      patch({
-        ...patchBase,
-        lastSeenRevision: nextRevision,
-        currentPageData: null,
-        currentPageRevision: -1,
-        pagesAst: {},
-      })
+      if (!(await switchProject(nextKey, true))) return
+      patch({ ...patchBase, lastSeenRevision: Math.max(nextRevision, state.lastSeenRevision), lastSeenChecksum: nextChecksum ?? state.lastSeenChecksum })
       void actions.ensurePageLoaded()
       return
     }
@@ -670,13 +680,13 @@ export function createPptStore(sessionId: string) {
      */
     async acceptExternal() {
       patch({ externalChange: null, draft: null, conflict: null })
-      if (state.activeKey) await switchProject(state.activeKey)
+      if (state.activeKey) await switchProject(state.activeKey, true)
     },
 
     /** 「冲突」横幅上的「采用服务端版本」：清冲突 + 清草稿，重载磁盘上的样子。 */
     async resolveConflictTheirs() {
       patch({ conflict: null, draft: null })
-      if (state.activeKey) await switchProject(state.activeKey)
+      if (state.activeKey) await switchProject(state.activeKey, true)
     },
 
     flush,

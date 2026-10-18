@@ -35,6 +35,28 @@ async function fixture() {
 }
 function value(result: any): any { expect(result.isError, JSON.stringify(result.content)).toBe(false); return result.value }
 
+it('keeps scientific services and tools available in a headless Host without webServer', async () => {
+  const { ctx, call } = await fixture()
+  expect(ctx.get('webServer')).toBeUndefined()
+  expect(Research.inject).toEqual(['tools'])
+  expect(ctx.zerowallResearch).toBeDefined()
+  expect(ctx.tools.get('science_workbench')).toBeDefined()
+  expect(ctx.tools.get('science_viewer')).toBeDefined()
+  expect(value(await call('science_viewer', { action: 'native_status' }))).toEqual({ launches: [] })
+})
+
+it('mounts optional image routes when webServer arrives after the headless scientific tools', async () => {
+  const { ctx, call } = await fixture()
+  const dispose = vi.fn()
+  const register = vi.fn(() => dispose)
+  ctx.provide('webServer', { register } as any)
+  await vi.waitFor(() => expect(register).toHaveBeenCalledOnce())
+  expect(register.mock.calls[0]?.[0]).toMatchObject({ kind: 'prefix', path: '/zerowall/research-assets', handler: expect.any(Function) })
+  expect(value(await call('science_viewer', { action: 'native_status' }))).toEqual({ launches: [] })
+  await ctx.fiber.dispose()
+  expect(dispose).toHaveBeenCalledOnce()
+})
+
 it('registers only an existing session workspace idempotently and without creating a study', async () => {
   const { ctx, store, root, sessions } = await fixture()
   const cwd = join(root, 'ordinary-workspace'); await mkdir(cwd)

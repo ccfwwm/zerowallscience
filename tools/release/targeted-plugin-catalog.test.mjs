@@ -39,6 +39,20 @@ test('targeted skill updates preserve every other signed entry and reject versio
   assert.deepEqual(selectedSkillArguments(['--kind', 'skill', '--skill', 'gpt-image-generator']), { skills: ['gpt-image-generator'], remaining: ['--kind', 'skill'] })
   assert.throws(() => mergePublishedSkills(previous, [resource('gpt-image-generator', '0.1.5')], keys), /downgrade/u)
 })
+
+test('targeted publication removes retired resources while preserving unrelated signatures', () => {
+  const other = resource('other-skill', '1.2.0')
+  const selected = resource('zerowall-presentation', '0.2.6')
+  const retired = new Set(['univer', 'univer-slide'])
+  const previous = [resource('univer'), other, resource('univer-slide')]
+  assert.deepEqual(mergePublishedSkills(previous, [selected], keys, retired), [other, selected])
+  assert.equal(mergePublishedSkills(previous, [selected], keys, retired)[0], other)
+  assert.throws(() => mergePublishedSkills(previous, [resource('univer')], keys, retired), /retired skill/u)
+  assert.throws(() => mergePublishedSkills([{ ...previous[0], size: 43 }, other], [selected], keys, retired), /signature/u)
+  const plugin = resource('dsh-ppt-maker')
+  assert.deepEqual(mergePublishedPlugins([resource('dsh-univer-office'), resource('@changfenhuang/dsh-genui'), other], [plugin], keys), [other, plugin])
+  assert.throws(() => mergePublishedPlugins([other], [resource('dsh-univer-office')], keys), /retired plugin/u)
+})
 test('updates replace only the selected plugin and reject downgrade, duplicate identity, or same-version changed bytes', () => {
   const existing = [resource('archive'), resource('other')]
   assert.deepEqual(mergePublishedPlugin(existing, resource('archive', '1.0.1'), keys), [existing[1], resource('archive', '1.0.1')])

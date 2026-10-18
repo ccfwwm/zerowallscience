@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-research",
-  "version": "0.1.14",
+  "version": "0.1.16",
   "description": "ZeroWall Science research domain plugin (desktop 8.0.6).",
   "type": "module",
   "main": "./lib/index.js",
@@ -67,8 +67,12 @@
       "min": "0.2.0-rc.2",
       "max": "0.2.0-rc.2"
     },
-    "requiredServices": [],
-    "optionalServices": [],
+    "requiredServices": [
+      "tools"
+    ],
+    "optionalServices": [
+      "webServer"
+    ],
     "capabilities": [
       "research",
       "data-assets",
@@ -84,7 +88,18 @@
     ],
     "migrationVersion": 1,
     "restartRequired": true,
-    "rollbackSupported": true
+    "rollbackSupported": true,
+    "runtimeFiles": [
+      "lib/research-assets/brainglobe.png",
+      "lib/research-assets/canvas.png",
+      "lib/research-assets/cells.png",
+      "lib/research-assets/flow.png",
+      "lib/research-assets/he.png",
+      "lib/research-assets/imagej.png",
+      "lib/research-assets/molecule.png",
+      "lib/research-assets/sanger.png",
+      "lib/research-assets/sequence.png"
+    ]
   },
   "scripts": {
     "prepack": "node ../../tools/plugins/prepare-pack.mjs",

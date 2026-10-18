@@ -215,13 +215,16 @@ export function apply(ctx: any): void {
   ctx.effect(() => {
     let stopped = false
     let warned = false
-    const seenSessions = new Set<string>()
+    let polling = false
     const tick = async () => {
-      if (stopped || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return
+      if (stopped || polling || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return
       const sessionId = currentSessionId(ctx, readMounted)
       if (!sessionId) return
+      polling = true
       try {
         const st = await api.state(sessionId)
+        // A slow response must not reveal a project in a different conversation.
+        if (stopped || currentSessionId(ctx, readMounted) !== sessionId) return
         warned = false
         // openRequests（复数数组，宿主 pendingOpenRequests）一来就自动打开。tabOpened 是幂等的
         // （宿主回包不依赖旧状态），即便面板已经开着、或 openTab 本地还没到，也让它每轮把
@@ -230,24 +233,16 @@ export function apply(ctx: any): void {
         for (const req of reqs) {
           if (req && req.key) openIfRequested(sessionId, req.key)
         }
-        // 面板自己的 init() 已拉过 /state；第一轮 tick 不重复 push 一遍，但第二轮起
-        // 通通都进 store（skeleton 的 ProjectList / 空面板都靠 store.projects）。
-        // 例外：init() 还没成功（loading=仍在等宿主就绪，error=已失败）时首轮不许跳过——
-        // 这一轮成功的 /state 正是恢复信号，applyPoll 会把面板救回 ready/empty。
-        const firstPoll = !seenSessions.has(sessionId)
-        seenSessions.add(sessionId)
         const store = stores.get(sessionId)
-        if (store) {
-          const status = store.getSnapshot().status
-          if (firstPoll && (status === 'ready' || status === 'empty')) return
-          await store.actions.applyPoll(st)
-        }
+        if (store) await store.actions.applyPoll(st)
       } catch (error) {
         // 宿主刚起来时路由可能还没注册：每个「未就绪期」只报一次，别每 3 秒刷屏
         if (!warned) {
           warned = true
           console.warn('[dsh-ppt-maker] 轮询失败（宿主路由可能尚未就绪）：', error)
         }
+      } finally {
+        polling = false
       }
     }
     const timer = setInterval(() => void tick(), POLL_MS)

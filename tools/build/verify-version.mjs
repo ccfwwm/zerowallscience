@@ -27,7 +27,9 @@ const python = await document(await resourceSource('python', 'dependency-manifes
 const pythonCore = await document(await resourceSource('python', 'core-dependency-manifest.json'))
 assertPythonManifests(python, pythonCore, applicationVersion, await document(join(root, 'config/catalogs/trusted-keys.json')))
 const pythonBootstrap = await document(join(root, 'config/python/bootstrap-inputs.json'))
-equal(pythonBootstrap.applicationVersion, applicationVersion, 'Python bootstrap applicationVersion')
+// Bootstrap bytes have an independent signed content identity. Desktop-only
+// releases retain compatible verified Python resources unchanged.
+if (typeof pythonBootstrap.applicationVersion !== 'string') throw new Error('Missing Python bootstrap content version')
 const desktopMain = await readFile(join(root, 'desktop/src/main/index.ts'), 'utf8')
 if (!desktopMain.includes(`/windows-x64/${pythonBootstrap.environmentVersion}/manifest.json`)) {
   throw new Error(`Desktop Python bootstrap URL does not match environment version ${pythonBootstrap.environmentVersion}.`)

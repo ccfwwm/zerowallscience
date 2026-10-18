@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { editableReconstructionFailures, exportBlockers, refreshPages, runPresentationImageTasks, validateEditablePagePlan, type PresentationWorkflow } from '../src/host/presentation-workflow.js'
+import { editableReconstructionFailures, exportBlockers, exportRequirements, refreshPages, runPresentationImageTasks, validateEditablePagePlan, type PresentationWorkflow } from '../src/host/presentation-workflow.js'
 
 it('runs page image tasks with bounded concurrency and stable result order', async () => {
   let active = 0
@@ -51,4 +51,8 @@ it('invalidates only changed pages and blocks export until checks, render and re
   expect(exportBlockers(state)).toEqual([])
   state.pages[2]!.fingerprint = 'changed'
   expect(exportBlockers(state)).toEqual([2])
+  expect(exportRequirements(state)).toMatchObject([{ page: 2, missingChecks: true, missingRender: true, missingReview: true }])
+  refreshPages(state, snapshots.slice(0, 1), { 1: 'asset-a' })
+  expect(exportBlockers(state)).toEqual([])
+  expect(state.changedPages).toEqual([1])
 })

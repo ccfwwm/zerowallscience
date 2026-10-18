@@ -3,7 +3,7 @@ import { constants, createReadStream } from 'node:fs'
 import { homedir } from 'node:os'
 import { copyFile, lstat, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join, relative, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { registerViewerAssets } from './viewer-assets.js'
 import { setTimeout as delay } from 'node:timers/promises'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-agent'
@@ -698,22 +698,7 @@ export function apply(ctx: Context): void {
   ctx.plugin(ZeroWallFilesService)
   applyOfficeTools(ctx, { enablePptTools: false })
   installAttachmentParsing(ctx)
-  ctx.webServer.register({ kind: 'prefix', path: '/zerowall/viewer-assets', handler: async (request, response) => {
-    const suffix = new URL(request.url ?? '/', 'http://localhost').pathname.slice('/zerowall/viewer-assets/'.length)
-    const assetManifest = JSON.parse(await readFile(new URL('./viewer-assets/asset-manifest.json', import.meta.url), 'utf8')) as { version: string }
-    const versioned = suffix.match(/^([a-f0-9]{64})\/(.+)$/u)
-    if (versioned && versioned[1] !== assetManifest.version) { response.writeHead(404); response.end(); return }
-    const assetPath = versioned?.[2] ?? suffix
-    const pdfAsset = /^(build|cmaps|standard_fonts|wasm|iccs)\/[A-Za-z0-9_.-]+$/u.test(assetPath)
-    const mapAsset = /^leaflet\/(?:leaflet\.css|images\/[A-Za-z0-9_-]+\.png)$/u.test(assetPath)
-    if (!pdfAsset && !mapAsset) { response.writeHead(404); response.end(); return }
-    try {
-      const bytes = await readFile(fileURLToPath(new URL(`./viewer-assets/${assetPath}`, import.meta.url)))
-      const mediaType = assetPath.endsWith('.css') ? 'text/css; charset=utf-8' : assetPath.endsWith('.png') ? 'image/png' : assetPath.endsWith('.mjs') ? 'text/javascript' : assetPath.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream'
-      response.writeHead(200, { 'content-type': mediaType, 'cache-control': versioned ? 'public, max-age=31536000, immutable' : 'no-cache', 'x-content-type-options': 'nosniff' })
-      response.end(bytes)
-    } catch { response.writeHead(404); response.end() }
-  } })
+  registerViewerAssets(ctx)
 }
 
 export default { name, inject, apply }

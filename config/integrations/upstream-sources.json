@@ -1,5 +1,5 @@
 {
-  "version": "8.3.5",
+  "version": "8.3.6",
   "deepseekHarness": {
     "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
     "tag": "dsh-v0.2.0-rc.2",
@@ -129,7 +129,7 @@
     "repository": "https://github.com/zenstory-ai/oh-story-dsh.git",
     "commit": "83cc99046338c9b74b9dd135ff6b2e80bb3cd35e",
     "version": "0.1.15",
-    "resourceVersion": "0.1.16-zws.21",
+    "resourceVersion": "0.1.16-zws.25",
     "package": "@oh-story/dsh",
     "license": "MIT",
     "source": "plugins/oh-story-dsh",
@@ -144,6 +144,7 @@
     "package": "dsh-ppt-maker",
     "source": "plugins/dsh-ppt-maker",
     "tag": null,
-    "localAdaptation": "Integrated as the default PPTD/PPTX workflow with raster-first generation, explicit editable mode, image prompt receipts, and literature/project provenance."
+    "localAdaptation": "Integrated as the default PPTD/PPTX workflow with raster-first generation, explicit editable mode, image prompt receipts, and literature/project provenance.",
+    "localVersion": "1.0.1-zws.6"
   }
 }

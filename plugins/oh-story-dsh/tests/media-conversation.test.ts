@@ -17,7 +17,7 @@ async function fixture(saved: any = {}) {
   const environment = {readMediaModelSelections:async()=>structuredClone(choices),readImageModelSelection:async()=>undefined,getImageQuality:()=> 'medium',setMediaModelSelections:vi.fn(async next=>{choices=next})}
   ctx.provide('typert',{lookups:new Map([['agent',{resolve:async()=>({session:{header:{cwd},snapshotEvents:()=>[]},ctx:{get:(key:string)=>key==='fs'?{processPathFromHostPath:(path:string)=>path}:{resolve:()=>({mode:'workspace-write'})}}})}]])} as never)
   ctx.provide('zerowallEnvironment',environment as never);ctx.provide('zerowallMedia',media as never)
-  const ledger = new MediaJobLedger(media as any,async()=> 'account',join(cwd,'ledger'))
+  const ledger = new MediaJobLedger(media as any,async()=> 'account',join(cwd,'ledger'),{autoCollect:false})
   ctx.provide('zerowallMediaJobs',ledger as never)
   const studio = new MediaStudioService(ctx)
   return {cwd,ctx,media,environment,ledger,studio,model}

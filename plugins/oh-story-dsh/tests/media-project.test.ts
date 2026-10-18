@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
-import { MediaStudioService } from '../src/media-studio.js'
+import { MediaStudioService, defaultMediaProjectId } from '../src/media-studio.js'
 
 const roots:string[]=[]
 afterEach(async()=>{await Promise.all(roots.splice(0).map(p=>rm(p,{recursive:true,force:true})))})
@@ -17,6 +17,24 @@ async function fixture(){
  const call=async(sessionId:string,action:string,input:any={})=>JSON.parse(await service.call(sessionId,action,JSON.stringify(input)))
  return {cwd,ctx,service,call}
 }
+it('uses the same session default for tools and UI calls while retaining explicit legacy projects and session ownership',async()=>{
+ const f=await fixture()
+ try{
+  const legacy=await f.call('session-a','create',{projectId:'default'})
+  const project=await f.call('session-a','create')
+  expect(project.id).toBe(defaultMediaProjectId('session-a'))
+  for(const projectId of [null,'',' \t\n']){
+   expect(await f.call('session-a','create',{projectId})).toEqual(project)
+   expect((await f.service.scope('session-a',projectId)).projectId).toBe(project.id)
+  }
+  expect((await f.call('session-a','list')).projects).toEqual(expect.arrayContaining([legacy,project]))
+  const other=await f.call('session-b','create')
+  expect(other.id).toBe(defaultMediaProjectId('session-b'));expect(other.id).not.toBe(project.id)
+  expect((await f.call('session-b','list')).projects).toEqual([other])
+  await expect(f.call('session-b','create',{projectId:project.id})).rejects.toThrow('OWNER_MISMATCH')
+  for(const projectId of ['标题','../outside',123])await expect(f.call('session-a','create',{projectId})).rejects.toThrow('MEDIA_PROJECT_ID_INVALID')
+ }finally{await f.ctx.fiber.dispose()}
+})
 it('keeps session-owned projects, assets and outputs through edits, and rejects stale or cross-session writes',async()=>{
  const f=await fixture(),p=await f.call('session-a','create',{projectId:'promo'})
  expect(p.sessionId).toBe('session-a')

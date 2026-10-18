@@ -13,7 +13,7 @@
 import { readFileSync, existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { unzipSync, zipSync, strToU8, strFromU8 } from 'fflate'
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom'
 import { createPresentation, addBlankSlide, savePresentation, addSlideTextBox, emu } from '@office-kit/pptx'
@@ -228,18 +228,27 @@ describe('字体子系统 · EOT 封装与四件套注入', () => {
     expect(() => wrapEot(ottoHeader())).toThrow(/非 TrueType 轮廓/)
   })
 
-  itFont('embedFontsPostProcess：向空产物注入真件后四件套齐；二次注入幂等（字节相等）', { timeout: 90000, retry: 2 }, async () => {
+  itFont('embedFontsPostProcess：四件套齐；跨 ZIP 时钟二次注入字节相等', { timeout: 90000, retry: 2 }, async () => {
     const ttf = readReal()
     const bare = await barePptxBytes()
     const plan = [{ typeface: REAL_FAMILY!, slot: 'regular' as const, bytes: ttf, subsetted: false }]
 
-    const r1 = embedFontsPostProcess(bare, plan)
-    selfCheckEmbedded(r1.bytes, { fontPlan: plan })
+    const clock = vi.spyOn(Date, 'now')
+    try {
+      clock.mockReturnValue(Date.UTC(2020, 0, 1))
+      const r1 = embedFontsPostProcess(bare, plan)
+      selfCheckEmbedded(r1.bytes, { fontPlan: plan })
 
-    // 复用同一 plan 二次注入到原 bare 产物：字节稳定（不重嵌，不累计）
-    const r2 = embedFontsPostProcess(bare, plan)
-    selfCheckEmbedded(r2.bytes, { fontPlan: plan })
-    expect(r2.bytes).toEqual(r1.bytes)
+      // 同一输入跨过 ZIP 的两秒时间精度后，所有字节仍须相等。
+      clock.mockReturnValue(Date.UTC(2020, 0, 1, 0, 0, 10))
+      const r2 = embedFontsPostProcess(bare, plan)
+      selfCheckEmbedded(r2.bytes, { fontPlan: plan })
+      // Native byte equality keeps a failure from allocating a multi-MB
+      // per-byte assertion diff, while retaining exact byte comparison.
+      expect(Buffer.from(r2.bytes).equals(Buffer.from(r1.bytes))).toBe(true)
+    } finally {
+      clock.mockRestore()
+    }
   })
 
   itFont('selfCheckEmbedded 对正向产物 0 fail', async () => {

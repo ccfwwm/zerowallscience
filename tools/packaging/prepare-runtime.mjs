@@ -459,6 +459,7 @@ function includeRuntimeFile(sourceRoot, candidate) {
   // This exact declared metadata asset is runtime content, even though its
   // upstream location sits under the otherwise excluded documentation tree.
   if (path === 'docs/images/icon.png' && basename(sourceRoot) === 'dsh-zotero') return true
+  if (basename(sourceRoot) === 'dsh-ppt-maker' && ['docs', 'docs/pptd-spec.md'].includes(path)) return true
   const segments = path.toLowerCase().split('/')
   // Repository marker files are excluded by electron-builder. Exclude them
   // before signing the immutable offline file set as well.

@@ -279,5 +279,8 @@ export function embedFontsPostProcess(pptxBytes: Uint8Array, fontPlan: FontPlanE
     if (name === '[Content_Types].xml') continue
     out[name] = name.endsWith('.fntdata') ? [data, { level: 6 }] : [data, { level: 0 }]
   }
-  return { bytes: zipSync(out), writtenParts, facesEmbedded, log }
+  // ZIP entry timestamps must not make identical font inputs produce new
+  // bytes. Use the earliest DOS date in local fields for stable archive data
+  // across clock ticks and time zones.
+  return { bytes: zipSync(out, { mtime: new Date(1980, 0, 1) }), writtenParts, facesEmbedded, log }
 }

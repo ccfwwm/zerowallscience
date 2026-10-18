@@ -2,8 +2,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { FileViewerProps } from 'dsh-better-sidebar/client/service'
-import { createViewer, imagePlugin, videoPlugin, audioPlugin, pdfPlugin, officePlugin, archivePlugin, emailPlugin, drawingPlugin, xmindPlugin, cadPlugin, model3dPlugin, gisPlugin, epubPlugin, xpsPlugin, ofdPlugin, assetPlugin, fallbackPlugin } from '@open-file-viewer/core'
-import * as pdfjs from 'viewer-pdfjs'
+import type { createViewer } from '@open-file-viewer/core'
+import { loadViewerRuntime } from './viewer-runtime-loader.js'
 import viewerCss, { assetVersion } from 'zerowall:viewer-style'
 import { readPreviewBytes, type ByteWindow } from './bounded-read.js'
 import { NATIVE_OFFICE_EXTENSIONS, openNativeViewer, workspaceFileAddress } from './file-routing.js'
@@ -19,34 +19,6 @@ export function previewCapability(name: string): '基础预览' | '仅元数据'
   return /\.(dwg|dwf|step|stp|iges|ifc|usd|usdz|ai|eps)$/iu.test(name) ? '仅元数据' : '基础预览'
 }
 const root = `/zerowall/viewer-assets/${assetVersion}/`
-function localGisPlugin(): ReturnType<typeof gisPlugin> {
-  const plugin = gisPlugin()
-  return { ...plugin, async render(ctx) {
-    // The core's width:auto/height:auto SVG rule overrides Leaflet's size
-    // attributes and clips large polygons to a default SVG viewport. Retain
-    // Leaflet's pixel dimensions after creation, zoom and container resizing.
-    const sizeLayers = () => {
-      for (const svg of ctx.viewport.querySelectorAll<SVGSVGElement>('.leaflet-overlay-pane > svg')) {
-        for (const dimension of ['width', 'height'] as const) {
-          const pixels = Number(svg.getAttribute(dimension))
-          if (pixels > 0) svg.style[dimension] = `${pixels}px`
-        }
-        svg.style.maxWidth = 'none'; svg.style.maxHeight = 'none'
-      }
-    }
-    const observer = new MutationObserver(sizeLayers)
-    observer.observe(ctx.viewport, { subtree: true, childList: true, attributes: true, attributeFilter: ['width', 'height'] })
-    try {
-      const instance = await plugin.render(ctx)
-      sizeLayers()
-      return { ...instance, destroy() { observer.disconnect(); instance.destroy?.() } }
-    } catch (cause) { observer.disconnect(); throw cause }
-  } }
-}
-function plugins() {
-  const pdf = { pdfjs: pdfjs as any, workerSrc: root + 'build/pdf.worker.mjs', cMapUrl: root + 'cmaps/', standardFontDataUrl: root + 'standard_fonts/', wasmUrl: root + 'wasm/', webFallbackScripts: 'never' as const }
-  return [imagePlugin(), videoPlugin(), audioPlugin(), pdfPlugin(pdf), officePlugin({ pdf, docx: { ignoreFonts: false } }), epubPlugin(), xpsPlugin(), ofdPlugin(), archivePlugin(), emailPlugin(), drawingPlugin(), xmindPlugin(), cadPlugin({ libreDwg: false, webglDwg: false }), model3dPlugin(), localGisPlugin(), assetPlugin(), fallbackPlugin()]
-}
 
 export function UniversalPreview({ name, bytes, retry, fallback, nativeFallback }: { name: string; bytes: Uint8Array; retry?: () => void; fallback?: () => void; nativeFallback?: () => void }) {
   const host = useRef<HTMLDivElement>(null)
@@ -59,15 +31,16 @@ export function UniversalPreview({ name, bytes, retry, fallback, nativeFallback 
     let viewer: ReturnType<typeof createViewer> | undefined
     setError(undefined); setStage('初始化渲染器')
     container.replaceChildren()
-    try {
+    let frame: number | undefined
+    void loadViewerRuntime().then(runtime => {
+      if (!live) return
       const buffer = new ArrayBuffer(bytes.byteLength)
       new Uint8Array(buffer).set(bytes)
-      viewer = createViewer({ container, file: buffer, fileName: name, width: '100%', height: '100%', fit: 'contain', toolbar: true, theme: 'auto', plugins: plugins(), onError: cause => { if (live) setError(cause.message) } })
+      viewer = runtime.createViewer({ container, file: buffer, fileName: name, width: '100%', height: '100%', fit: 'contain', toolbar: true, theme: 'auto', plugins: runtime.plugins(), onError: cause => { if (live) setError(cause.message) } })
       setStage('渲染文件')
-      const frame = requestAnimationFrame(() => { if (live) viewer?.resize() })
-      return () => { live = false; cancelAnimationFrame(frame); viewer?.destroy() }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) }
-    return () => { live = false; viewer?.destroy() }
+      frame = requestAnimationFrame(() => { if (live) viewer?.resize() })
+    }).catch(cause => { if (live) setError(cause instanceof Error ? cause.message : String(cause)) })
+    return () => { live = false; if (frame !== undefined) cancelAnimationFrame(frame); viewer?.destroy() }
   }, [bytes, name])
   const download = () => {
     const url = URL.createObjectURL(new Blob([Uint8Array.from(bytes)]))

@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import { registerResearchAssets } from './research-assets.js'
 import { SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
@@ -722,6 +723,7 @@ function isWithin(path: string, root: string): boolean {
 }
 
 export function apply(ctx: Context): void {
+  ctx.inject(['webServer'], webCtx => registerResearchAssets(webCtx))
   ctx.plugin(ZeroWallResearchService)
   ctx.inject(['zerowallResearch'], registerResearchTools)
 }

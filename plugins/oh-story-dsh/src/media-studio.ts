@@ -14,7 +14,7 @@ import { mediaTarget } from '@zerowallscience/plugin-ai-cloud'
 import { commandOutput } from './host-python.js'
 import type { CompositionJob, MediaProject } from './media-types.js'
 import { PROJECT_ID } from './media-types.js'
-import { validateMediaJobKind } from './media-contract.js'
+import { validateMediaJobKind, validateMediaToolIds } from './media-contract.js'
 const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('hex')
 const MAX = 256 * 1024 * 1024
 const mime: Record<string,string> = { '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.mp4':'video/mp4','.mov':'video/quicktime','.webm':'video/webm','.m4a':'audio/mp4','.aac':'audio/aac','.wav':'audio/wav','.mp3':'audio/mpeg','.ogg':'audio/ogg','.flac':'audio/flac' }
@@ -24,19 +24,21 @@ declare module '@deepseek-ai/cordis' { interface Context { zerowallMediaStudio: 
 export class MediaStudioService extends TypertRemoteService {
   private activeSessions = new Set<string>()
   private writes: Promise<unknown> = Promise.resolve()
-  private generations: Promise<unknown> = Promise.resolve()
+  private generations = new Map<string, Promise<unknown>>()
   private activeRenders = new Map<string, Promise<MediaAsset>>()
   private uploads = new Map<string, { scope: MediaScope; path: string; name: string; bytes: number }>()
   constructor(private host: Context) { super(host, 'zerowallMediaStudio') }
   active(sessionId: string): boolean { return this.activeSessions.has(sessionId) }
   async generate(sessionId: string, input: any): Promise<MediaJob> {
     validateMediaJobKind(input)
-    const next = this.generations.then(() => this.generateOnce(sessionId, input), () => this.generateOnce(sessionId, input))
-    this.generations = next.catch(() => {})
+    const key=sessionId+':'+(input.id??'new'),prior=this.generations.get(key)??Promise.resolve()
+    const next = prior.then(() => this.generateOnce(sessionId, input), () => this.generateOnce(sessionId, input))
+    const settled=next.catch(()=>{});this.generations.set(key,settled)
+    void settled.finally(()=>{if(this.generations.get(key)===settled)this.generations.delete(key)})
     return next
   }
   private async generateOnce(sessionId: string, input: any): Promise<MediaJob> {
-    const scope = await this.scope(sessionId, input.projectId ?? defaultMediaProjectId(sessionId), true)
+    const scope = await this.scope(sessionId, input.projectId, true)
     const previous = input.id ? (await this.host.zerowallMediaJobs.list(scope)).find(job => job.id === input.id) : undefined
     if (previous) validateMediaJobKind(previous)
     if (previous && !['prepared', 'model-required'].includes(previous.state)) return previous
@@ -53,7 +55,7 @@ export class MediaStudioService extends TypertRemoteService {
     return JSON.parse(await this.call(sessionId, 'import-finish', JSON.stringify({ projectId, id })))
   }
   async importSource(sessionId: string, input: { projectId?: string; path?: string; attachmentId?: string }): Promise<MediaAsset> {
-    const scope = await this.scope(sessionId, input.projectId ?? defaultMediaProjectId(sessionId), true)
+    const scope = await this.scope(sessionId, input.projectId, true)
     this.activeSessions.add(sessionId)
     if (input.path && input.attachmentId) throw new Error('MEDIA_IMPORT_ONE_SOURCE_REQUIRED')
     if (input.path) {
@@ -94,8 +96,8 @@ export class MediaStudioService extends TypertRemoteService {
     return authorized
   }
   private lock<T>(fn:()=>Promise<T>) { const next=this.writes.then(fn,fn);this.writes=next.catch(()=>{});return next }
-  async scope(sessionId: string, projectId: string = 'default', writing: boolean = false): Promise<MediaScope> {
-    if (!PROJECT_ID.test(projectId)) throw new Error('MEDIA_PROJECT_ID_INVALID')
+  async scope(sessionId: string, requestedProjectId?: string | null, writing: boolean = false): Promise<MediaScope> {
+    const projectId = validateMediaToolIds({ project_id: requestedProjectId }).project_id ?? defaultMediaProjectId(sessionId)
     const agent = await this.host.typert.lookups.get('agent')?.resolve(SessionId(sessionId)) as Agent | undefined
     if (!agent?.session.header.cwd || agent.session.header.parentSession || agent.session.header.origin === 'subagent') throw new Error('MEDIA_SESSION_UNAVAILABLE')
     const cwd = agent.session.header.cwd, fs = agent.ctx.get('fs'), policy = agent.ctx.get('sandboxPolicy')
@@ -194,7 +196,7 @@ export class MediaStudioService extends TypertRemoteService {
   @Remote('call') async call(sessionId:string,action:string,payloadJson:string):Promise<string>{
     const input=JSON.parse(payloadJson||'{}')
     if(action==='prepare'||action==='generate')validateMediaJobKind(input)
-    const scope=await this.scope(sessionId,input.projectId??'default',!['list','catalog','preflight','legacy','choices'].includes(action))
+    const scope=await this.scope(sessionId,input.projectId,!['list','catalog','preflight','legacy','choices'].includes(action))
     if(action==='activate'){this.activeSessions.add(sessionId);return '{}'}
     if(action==='catalog'){
       const catalog=await this.host.zerowallMedia.catalog(input.refresh===true)
@@ -219,7 +221,8 @@ export class MediaStudioService extends TypertRemoteService {
       for(const review of input.reviews??[]){const job=jobs.find(job=>job.id===review.id);if(job)validateMediaJobKind(job)}
       return JSON.stringify(await this.host.zerowallMediaJobs.submitReviewed(scope,input.reviews))
     }
-    if(action==='refresh')return JSON.stringify(await this.host.zerowallMediaJobs.refresh(scope,input.id))
+    if(action==='refresh')return JSON.stringify(await this.host.zerowallMediaJobs.refresh(scope,input.id,{background:true,automatic:input.automatic===true}))
+    if(action==='pause')return JSON.stringify(await this.host.zerowallMediaJobs.pause(scope,input.id))
     if(action==='save')return this.lock(async()=>{
       const old=await this.project(scope),next=input.project as MediaProject
       if(next.editRevision!==undefined?next.editRevision!==old.editRevision:next.revision!==old.revision)throw new Error('MEDIA_PROJECT_STALE: 方案已被修改，请读取最新项目并合并本次修改后保存。')
@@ -255,20 +258,8 @@ export class MediaStudioService extends TypertRemoteService {
     if(action==='preflight')return JSON.stringify(await this.preflight())
     if(action==='compose')return JSON.stringify(await this.compose(scope,input.revision,input.editRevision,input.requestId))
     if(action==='legacy-recover'){
-      const tasks=await this.host.zerowallMedia.list(),previous=tasks.find(t=>t.requestId===input.requestId)
-      if(!previous)throw new Error('MEDIA_LEGACY_TASK_NOT_FOUND')
-      const task=await this.host.zerowallMedia.query(previous.requestId),assets:MediaAsset[]=[]
-      if(['completed','succeeded'].includes(task.status))for(const artifact of task.artifacts){
-        const data=await this.host.zerowallMedia.download(task.requestId,artifact.key)
-        const ext:Record<string,string>={'image/png':'png','image/jpeg':'jpg','image/webp':'webp','video/mp4':'mp4','audio/mp4':'m4a','audio/aac':'aac','audio/mpeg':'mp3','audio/wav':'wav','audio/ogg':'ogg'}
-        if(!ext[data.mediaType])throw new Error('MEDIA_FORMAT_INVALID')
-        if(!/^[\w-]+$/.test(artifact.key))throw new Error('MEDIA_ARTIFACT_INVALID')
-        const path=`media-projects/${scope.projectId}/assets/legacy-${hash(Buffer.from(task.requestId)).slice(0,24)}-${artifact.key}.${ext[data.mediaType]}`,target=await mediaTarget(scope.cwd,path,true)
-        try{await writeFile(target,data.bytes,{flag:'wx'})}catch(e:any){if(e.code!=='EEXIST'||hash(await readFile(target))!==data.sha256)throw e}
-        assets.push({id:artifact.key,projectId:scope.projectId,sessionId:scope.sessionId,path,mediaType:data.mediaType,bytes:data.bytes.length,sha256:data.sha256,...((data.duration??artifact.duration)?{duration:data.duration??artifact.duration}:{})})
-      }
-      if(assets.length){await this.ensure(scope);await this.lock(async()=>{const project=await this.project(scope);for(const asset of assets)if(!project.assets.some(a=>a.path===asset.path))project.assets.push(asset);project.revision++;await this.save(scope,project)})}
-      return JSON.stringify({task,assets})
+      await this.ensure(scope)
+      return JSON.stringify(await this.host.zerowallMediaJobs.recover(scope,input.requestId))
     }
     if(action==='legacy')return JSON.stringify(await this.host.zerowallMedia.list())
     throw new Error('MEDIA_ACTION_INVALID')

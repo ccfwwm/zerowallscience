@@ -16,6 +16,10 @@ if (signer.localOnly) throw new Error('Stable offline closure requires a configu
 const plugins = JSON.parse(await readFile(join(stageRoot, 'commands/bundled-plugins.json'), 'utf8'))
 const pin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 const files = await offlineFiles(join(directory, 'modules'), 'modules/')
+for (const plugin of plugins.filter(entry => !entry.core)) {
+  const manifest = JSON.parse(await readFile(join(directory, 'modules', plugin.id, 'package.json'), 'utf8'))
+  for (const entry of manifest.zerowall?.runtimeFiles ?? []) if (!files.some(file => file.path === `modules/${plugin.id}/${entry}`)) throw new Error(`Offline runtime asset missing: ${plugin.id}/${entry}`)
+}
 const require = createRequire(join(root, 'desktop/package.json'))
 const { createPackageWithOptions } = require('@electron/asar')
 const input = join(stageRoot, 'profile-carrier-input')

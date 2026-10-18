@@ -2,7 +2,7 @@
  * Cordis host plugin entry for dsh-ppt-maker — a thin shell.
  *
  * The plugin body lives in `src/` and ships as the built single-file ESM bundle
- * `lib/index.js`, which is committed (DSH installs packages without building
+ * `lib/index.js` plus sibling lazy chunks (DSH installs packages without building
  * them). This file only re-exports that bundle, so the entry point stays stable
  * while `package.json#main` keeps pointing at a path that exists both in the
  * repo and in the published tarball.

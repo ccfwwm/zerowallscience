@@ -1,6 +1,6 @@
 {
   "name": "dsh-ppt-maker",
-  "version": "1.0.0",
+  "version": "1.0.1-zws.6",
   "type": "module",
   "description": "DeepSeek Harness plugin that bundles the ppt-maker skill and the PPT tool surface: create, inspect, edit, undo and redo a PPTD project that exports to a locally generated .pptx.",
   "author": "OMSociety (https://github.com/OMSociety)",
@@ -43,7 +43,8 @@
     "cordis.patch.yml",
     "README.md",
     "README_en.md",
-    "LICENSE"
+    "LICENSE",
+    "docs/pptd-spec.md"
   ],
   "peerDependencies": {
     "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.0-rc.2 <0.3.0-0",
@@ -81,7 +82,7 @@
     }
   },
   "scripts": {
-    "build": "tsup && node scripts/build-client.mjs",
+    "build": "node scripts/clean-host-output.mjs && tsup && node scripts/build-client.mjs",
     "check:build": "node scripts/check-build.mjs",
     "check:mounts": "node scripts/check-mounts.mjs",
     "test": "vitest run",
@@ -94,5 +95,12 @@
   },
   "allowScripts": {
     "esbuild@0.27.7": true
+  },
+  "zerowall": {
+    "runtimeFiles": [
+      "docs/pptd-spec.md",
+      "skills/ppt-maker/SKILL.md",
+      "skills/ppt-maker/reference/pptd.md"
+    ]
   }
 }

@@ -7,4 +7,4 @@ catch (error) {
   if (error.code !== 'MODULE_NOT_FOUND') throw error
   semver = require('../../deepseek-harness/apps/desktop/node_modules/pnpm/dist/node_modules/semver')
 }
-export const satisfiesPackageRange = (version, range) => semver.satisfies(version, range)
+export const satisfiesPackageRange = (version, range, options) => semver.satisfies(version, range, options)

@@ -1,6 +1,6 @@
 import { defineConfig } from 'tsdown'
 import { readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { viewerStylePlugin } from './viewer-style.mjs'
@@ -13,6 +13,7 @@ export interface ZeroWallBundleOptions {
   client?: boolean
   hostAlwaysBundle?: RegExp[]
   inlinePngAssets?: boolean
+  staticPngAssets?: boolean
   universalViewer?: boolean
   pythonWorker?: boolean
 }
@@ -44,6 +45,7 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
       fixedExtension: false,
       dts: false,
       clean: false,
+      ...(options.universalViewer || options.staticPngAssets ? { define: { 'process.env.ZEROWALL_VERSION': JSON.stringify(pluginVersion) } } : {}),
       ...options.hostAlwaysBundle === undefined ? {} : {
         deps: { alwaysBundle: options.hostAlwaysBundle },
       },
@@ -137,7 +139,7 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
           const match = candidate.match(/^(.*\/mammoth)\/lib\/(unzip|docx\/files)(?:\.js)?$/u)
           return match ? `${match[1]}/browser/${match[2]}.js` : null
         },
-      }] : []), ...(options.inlinePngAssets ? [{
+      }] : []), ...(options.inlinePngAssets || options.staticPngAssets ? [{
         name: 'zerowall-inline-png-assets',
         resolveId(source: string, importer?: string) {
           if (!source.endsWith('.png?inline') || !importer) return null
@@ -146,6 +148,11 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         load(id: string) {
           if (!id.endsWith('.png?inline')) return null
           const png = readFileSync(id.slice(0, -'?inline'.length))
+          if (options.staticPngAssets) {
+            const name = basename(id.slice(0, -'?inline'.length))
+            this.emitFile({ type: 'asset', fileName: `research-assets/${name}`, source: png })
+            return `export default ${JSON.stringify(`/zerowall/research-assets/${pluginVersion}/${name}`)}`
+          }
           return `export default ${JSON.stringify(`data:image/png;base64,${png.toString('base64')}`)}`
         },
       }] : []), {
@@ -206,6 +213,12 @@ export async function apply(ctx, config) {
         },
       }],
     })
+    if (options.universalViewer) {
+      const client = configs.at(-1)!
+      configs.push({ ...client, name: `${id}/viewer-runtime`, entry: { 'viewer-runtime': 'src/client/viewer-runtime.ts' }, format: ['iife'],
+        outputOptions: { inlineDynamicImports: true, entryFileNames: 'viewer-runtime.js' },
+      })
+    }
   }
   return defineConfig(configs)
 }

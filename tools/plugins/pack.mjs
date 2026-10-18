@@ -171,6 +171,7 @@ for (const source of selectedSources) {
   const packed = JSON.parse(execFileSync('tar', ['-xOf', candidate, 'package/package.json'], { encoding: 'utf8' }))
   if (JSON.stringify(packed.dependencies ?? {}).match(/workspace:|github:|git\+|git:/)) throw new Error(`Non-publishable dependency in ${manifest.name}`)
   const contents = execFileSync('tar', ['-tf', candidate], { encoding: 'utf8' })
+  for (const entry of manifest.zerowall?.runtimeFiles ?? []) if (!contents.split(/\r?\n/u).includes('package/' + entry)) throw new Error(`Missing runtime asset for ${manifest.name}: ${entry}`)
   if (manifest.main && !contents.includes('package/' + manifest.main.replace(/^\.\//, ''))) throw new Error(`Missing Host bundle for ${manifest.name}`)
   if (manifest.zerowall?.capabilities && !manifest.zerowall?.rollbackSupported) throw new Error('Missing plugin rollback contract')
   immutableReceipts.push({ id: manifest.name, version, ...await commitImmutablePackage(candidate, archive, baseline?.path) })

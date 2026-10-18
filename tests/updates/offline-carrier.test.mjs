@@ -4,11 +4,14 @@ import { generateKeyPairSync } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile, rename, realpath, symlink, cp, readdir, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { carrierIndex, carrierName, offlineContentDigest, readCarrierFile } from '../../tools/commands/offline-carrier.mjs'
-import { offlineFiles, verifyOfflineProfile } from '../../tools/commands/offline-profile.mjs'
+import { offlineFiles, profileCarrier, readOfflineReceipt, verifiedGeneration, verifyOfflineProfile } from '../../tools/commands/offline-profile.mjs'
+import { copyProfileTree } from '../../tools/commands/profile-copy.mjs'
+import { repairProfileLayout } from '../../tools/commands/profile-layout.mjs'
+import { materializationFile, verifyMaterializedProfile } from '../../tools/commands/profile-materialization.mjs'
 import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
 import { initializeProfile } from '../../tools/commands/profile.mjs'
 import { signCatalog, fileDigest } from '../../tools/commands/resource-catalog.mjs'
@@ -39,6 +42,23 @@ async function fixture(t) {
   const manager = createResourceManager({ home, keys, target, defaultPlugins: defaults, onOfflinePhase: event => phases.push(event), stopHost: async () => {}, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
   return { root, home, source, keys, unsigned, pair, id, manager, phases }
 }
+
+test('signed schema 2 history uses its original range and exact DSH identity across a desktop upgrade', async t => {
+  const f = await fixture(t), upgraded = { ...target, desktopVersion: '8.0.10' }
+  const before = await readFile(join(f.source, 'receipt.json'), 'utf8')
+  const accepted = await readOfflineReceipt(f.source, f.keys, upgraded, { generation: true })
+  assert.equal(accepted.receipt.applicationVersion, target.desktopVersion)
+  assert.deepEqual(accepted.receipt.desktopRange, f.unsigned.desktopRange)
+  assert.equal(await readFile(join(f.source, 'receipt.json'), 'utf8'), before)
+  await assert.rejects(readOfflineReceipt(f.source, f.keys, { ...upgraded, dshCommit: 'b'.repeat(40) }, { generation: true }), error => error.code === 'OFFLINE_PROFILE_MISMATCH'
+    && error.diagnostics.receiptDshCommit === target.dshCommit && error.diagnostics.expectedDshCommit === 'b'.repeat(40))
+  await assert.rejects(readOfflineReceipt(f.source, f.keys, { ...upgraded, dshVersion: '0.2.1' }, { generation: true }), /different exact runtime/u)
+  const incompatible = { ...f.unsigned, desktopRange: { min: target.desktopVersion, max: target.desktopVersion } }
+  incompatible.contentDigest = offlineContentDigest(incompatible)
+  await writeFile(join(f.source, 'receipt.json'), JSON.stringify(signCatalog(incompatible, f.pair.privateKey, 'test')))
+  await assert.rejects(readOfflineReceipt(f.source, f.keys, upgraded, { generation: true }), /different exact runtime/u)
+  await assert.rejects(readOfflineReceipt(f.source, f.keys, upgraded), /different exact runtime/u)
+})
 
 test('v2 carrier binds packed and physical bytes and rejects archive or unpacked corruption', async t => {
   const f = await fixture(t)
@@ -78,7 +98,19 @@ test('Desktop rebuild and compatible patch upgrade reuse generation without acti
   assert.equal((await next.repairOffline(f.source)).repaired, false)
   assert.equal(activated, false)
   assert.deepEqual(await readFile(manifestFile), before)
-  assert.equal(f.phases.filter(event => event.phase === 'offline-copy' && event.state === 'started').length, 1)
+  assert.equal(f.phases.filter(event => event.phase === 'offline-copy' && event.state === 'started').length, 0)
+  assert.equal(f.phases.filter(event => event.phase === 'profile-prepare' && event.state === 'started').length, 1)
+})
+
+test('candidate copying reuses signed fixed-root metadata without an active archive', async t => {
+  const f = await fixture(t)
+  await f.manager.repairOffline(f.source)
+  const active = join(f.home, 'profiles/web')
+  const candidate = join(f.home, 'profiles/copy-fixture')
+  await copyProfileTree(active, candidate)
+  await repairProfileLayout(candidate, { from: active, home: f.home })
+  const reused = await verifyMaterializedProfile({ profile: candidate, keys: f.keys, target, expected: [f.id], digest: f.unsigned.contentDigest })
+  assert.equal(reused?.digest, f.unsigned.contentDigest)
 })
 
 test('first preparation rejects changed source bytes without activating a profile', async t => {
@@ -112,7 +144,7 @@ test('a changed signed runtime switches owned links even when plugin semver is u
 test('missing required entry repairs an owned generation atomically', async t => {
   const f = await fixture(t)
   await f.manager.repairOffline(f.source)
-  const entry = join(f.home, 'resources/offline', f.unsigned.contentDigest, carrierName + '.unpacked/node_modules', f.id, 'index.js')
+  const entry = join(f.home, 'profiles/web/node_modules', f.id, 'index.js')
   await rm(entry)
   assert.equal((await f.manager.repairOffline(f.source)).repaired, true)
   assert.match(await readFile(entry, 'utf8'), /require/)
@@ -121,14 +153,14 @@ test('missing required entry repairs an owned generation atomically', async t =>
 test('damaged cached signature repairs only from a fully authenticated installer source', async t => {
   const f = await fixture(t)
   await f.manager.repairOffline(f.source)
-  const cached = join(f.home, 'resources/offline', f.unsigned.contentDigest, 'receipt.json')
+  const cached = join(f.home, 'profiles/web', materializationFile)
   const document = JSON.parse(await readFile(cached, 'utf8'))
-  document.buildId = 'tampered'
+  document.receipt.buildId = 'tampered'
   await writeFile(cached, JSON.stringify(document))
   assert.equal((await f.manager.repairOffline(f.source)).repaired, true)
-  assert.equal(JSON.parse(await readFile(cached, 'utf8')).buildId, 'first')
-  document.applicationVersion = 'tampered'
-  await writeFile(join(f.source, 'receipt.json'), JSON.stringify(document))
+  assert.equal(JSON.parse(await readFile(cached, 'utf8')).receipt.buildId, 'first')
+  document.receipt.applicationVersion = 'tampered'
+  await writeFile(join(f.source, 'receipt.json'), JSON.stringify(document.receipt))
   await assert.rejects(f.manager.repairOffline(f.source), /signature/i)
 })
 
@@ -143,6 +175,49 @@ test('an independently installed older plugin takes precedence over the offline 
   assert.deepEqual(result.changed, [])
   assert.equal(await readFile(join(installed, 'package.json'), 'utf8'), bytes)
   assert.equal(await readFile(join(installed, 'index.js'), 'utf8'), 'module.exports = "independent"')
+})
+
+test('8.3.5 legacy links migrate inside profile while retained pins, settings and rollback remain independent', async t => {
+  const f = await fixture(t)
+  await f.manager.repairOffline(f.source)
+  const active = join(f.home, 'profiles/web'), file = join(active, 'package.json')
+  const manifest = JSON.parse(await readFile(file))
+  // Recreate the actual 8.3.5 layout rather than seeding through the new copier.
+  const packagePath = join(active, 'node_modules', f.id)
+  await rm(packagePath, {recursive:true})
+  await cp(f.source, join(f.home, 'resources/offline', f.unsigned.contentDigest), { recursive: true })
+  const oldModules = join(f.home, 'resources/offline', f.unsigned.contentDigest, carrierName + '.unpacked/node_modules')
+  await symlink(join(oldModules, f.id), packagePath, process.platform === 'win32' ? 'junction' : 'dir')
+  const pinned = 'pinned-third-party', oldPinned = join(oldModules, pinned)
+  await mkdir(oldPinned, { recursive: true })
+  await writeFile(join(oldPinned, 'package.json'), JSON.stringify({name:pinned, version:'9.0.0'}))
+  // This package is independently retained; use a physical package pin fixture.
+  await mkdir(join(active,'node_modules',pinned), {recursive:true})
+  await cp(oldPinned,join(active,'node_modules',pinned),{recursive:true})
+  manifest.dependencies = { [f.id]: 'file:' + join(oldModules, f.id).replaceAll('\\','/'), [pinned]:'9.0.0', 'dsh-univer-office':'0.3.7', 'dsh-genui':'0.12.1' }
+  manifest.dsh.profile.bundles.push('dsh-univer-office','dsh-genui',pinned)
+  delete manifest.zerowall.profileLayout
+  await writeFile(file,JSON.stringify(manifest))
+  for(const id of ['dsh-univer-office','dsh-genui']) await symlink(join(oldModules,f.id),join(active,'node_modules',id),process.platform === 'win32' ? 'junction' : 'dir')
+  const shadow = 'old-plugin.previous-00000000-0000-4000-8000-000000000000'
+  await mkdir(join(active,'node_modules',shadow),{recursive:true})
+  await writeFile(join(active,'node_modules',shadow,'old'),'retained in rollback')
+  await writeFile(join(active,'settings.json'),'{"model":"chosen","effort":"max"}')
+  await writeFile(join(f.home,'resources/plugins/selection.json'),JSON.stringify({pinned:{[pinned]:'9.0.0'},disabled:['custom-disabled']}))
+  assert.equal((await f.manager.repairOffline(f.source)).repaired,true)
+  const after = JSON.parse(await readFile(file))
+  assert.equal(after.zerowall.profileLayout,3)
+  assert(!after.dsh.profile.bundles.some(id => ['dsh-univer-office','dsh-genui'].includes(id)))
+  assert.equal(await realpath(packagePath),packagePath)
+  assert.equal(JSON.parse(await readFile(join(active,'node_modules',pinned,'package.json'))).version,'9.0.0')
+  assert.equal(await readFile(join(active,'settings.json'),'utf8'),'{"model":"chosen","effort":"max"}')
+  const names=await readdir(join(active,'node_modules'))
+  assert(!names.some(name=>name.includes('.previous-') || name==='dsh-genui' || name==='dsh-univer-office'))
+  // Cache corruption cannot mutate active bytes, and ordinary launch never
+  // falls back into that supply directory after the migration.
+  await rename(join(f.home,'resources/offline'),join(f.home,'resources/offline-retained'))
+  assert.equal((await f.manager.repairOffline(f.source)).repaired,false)
+  assert.match(await readFile(join(packagePath,'index.js'),'utf8'),/require/)
 })
 
 test('Electron resolves physical plugin entry plus archived CJS and ESM dependencies', { skip: !process.env.ZEROWALL_TEST_ELECTRON }, async t => {

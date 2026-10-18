@@ -4,6 +4,7 @@ import { mkdir, readFile, realpath, symlink, lstat, unlink } from 'node:fs/promi
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { RETIRED_PLUGIN_IDS } from './retired-plugins.mjs'
 
 const validId = id => typeof id === 'string' && /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u.test(id) && !id.split('/').some(part => part === '.' || part === '..')
 function disabledPatchFor(patches, id) {
@@ -44,7 +45,7 @@ export async function importLegacyCliPlugins(home, { installAnchor, legacyHome =
     const recorded = new Set(receipt.imported)
     const selection = await json(join(home, 'resources/plugins/selection.json'), {})
     const oldSelection = await json(join(legacyHome, 'resources/plugins/selection.json'), {})
-    const excluded = new Set([...(selection.disabled ?? []), ...(selection.removed ?? []), ...Object.keys(selection.pinned ?? {}), ...(manifest.zerowall?.disabledPlugins ?? []), ...(oldSelection.disabled ?? []), ...(oldSelection.removed ?? []), ...(old.zerowall?.disabledPlugins ?? []), 'dsh-auto-review', 'dsh-progressive-tools', '@everclear077/dsh-progressive-tools', 'dsh-univer-office', 'dsh-genui', '@changfenhuang/dsh-genui'])
+    const excluded = new Set([...(selection.disabled ?? []), ...(selection.removed ?? []), ...Object.keys(selection.pinned ?? {}), ...(manifest.zerowall?.disabledPlugins ?? []), ...(oldSelection.disabled ?? []), ...(oldSelection.removed ?? []), ...(old.zerowall?.disabledPlugins ?? []), ...RETIRED_PLUGIN_IDS])
     const existing = new Set([...(manifest.dsh?.profile?.bundles ?? []), ...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.devDependencies ?? {}), ...Object.keys(manifest.optionalDependencies ?? {})])
     const sourceProfile = boot.loadProfileDirectory('dsh', source, installAnchor)
     const sourceHomePatch = await (async () => {
@@ -54,6 +55,7 @@ export async function importLegacyCliPlugins(home, { installAnchor, legacyHome =
     const imported = []
     for (const layer of sourceProfile.layers) {
       const id = layer.packageName
+      if (RETIRED_PLUGIN_IDS.has(id)) continue
       if (!validId(id) || recorded.has(id) || existing.has(id) || excluded.has(id) || !Object.hasOwn(old.dependencies ?? {}, id)) continue
       // A user-disabled row remains disabled by declining to activate its old
       // bundle; never import arbitrary user patch config into another profile.

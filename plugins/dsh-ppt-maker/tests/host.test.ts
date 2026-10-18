@@ -245,6 +245,23 @@ describe('host 路由', () => {
     expect(manifest.title).toBe('host 测试工程')
   })
 
+  it('GET /project 一次返回所有已解析页，state 内容摘要跟随同修订号合并编辑', async () => {
+    await startServer()
+    const { key } = await seedProject()
+    const before = await apiJson(`${API_PREFIX}/state?sessionId=${SESSION}`)
+    const beforeChecksum = (before.json!.manifest as Record<string, unknown>).checksum
+    await apiJson(`${API_PREFIX}/edit`, {
+      method: 'POST',
+      body: { sessionId: SESSION, key, baseRevision: 0, ops: [{ op: 'add_page', content: { elements: [] } }] },
+    })
+    const state = await apiJson(`${API_PREFIX}/state?sessionId=${SESSION}`)
+    expect((state.json!.manifest as Record<string, unknown>).checksum).not.toBe(beforeChecksum)
+    const result = await apiJson(`${API_PREFIX}/project?sessionId=${SESSION}&key=${key}`)
+    const pages = (result.json!.deck as { pages: string[] }).pages
+    expect(Object.keys(result.json!.pageData as object)).toEqual(pages)
+    expect(result.json!.pageData).toMatchObject({ [pages[0]]: { elements: [] } })
+  })
+
   it('写方法没 content-type: application/json → 415', async () => {
     await startServer()
     await seedProject()

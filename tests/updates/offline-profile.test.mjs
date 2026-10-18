@@ -1,10 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { generateKeyPairSync } from 'node:crypto'
-import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { createHash, generateKeyPairSync } from 'node:crypto'
+import { lstat, mkdtemp, mkdir, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
-import { offlineFiles, prepareOfflineCandidate, verifyOfflineProfile } from '../../tools/commands/offline-profile.mjs'
+import { migrateOfflineProfileLinks, offlineFiles, prepareOfflineCandidate, readOfflineReceipt, verifyOfflineProfile } from '../../tools/commands/offline-profile.mjs'
 import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
 import { initializeProfile } from '../../tools/commands/profile.mjs'
 import { signCatalog } from '../../tools/release/resource-catalog.mjs'
@@ -28,6 +28,46 @@ async function fixture(t) {
   const manager = createResourceManager({ home, keys, target, defaultPlugins: defaults, bundledPlugins: unsigned.plugins, yaml: JSON, stopHost: async () => {}, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
   return { root, home, source, keys, target, defaults, bundledPlugins: unsigned.plugins, yaml: JSON, manager, unsigned, pair }
 }
+test('signed schema 1 history admits the actual desktop range without weakening current installer or DSH checks', async t => {
+  const f = await fixture(t)
+  const old = { ...f.unsigned, applicationVersion: '8.0.7', desktopRange: { min: '8.0.7', max: target.desktopVersion } }
+  const text = JSON.stringify(signCatalog(old, f.pair.privateKey, 'test'))
+  await writeFile(join(f.source, 'receipt.json'), text)
+  const historical = await readOfflineReceipt(f.source, f.keys, target, { generation: true })
+  assert.equal(historical.receipt.applicationVersion, '8.0.7')
+  assert.deepEqual(historical.receipt.desktopRange, old.desktopRange)
+  assert.equal(await readFile(join(f.source, 'receipt.json'), 'utf8'), text)
+  await assert.rejects(readOfflineReceipt(f.source, f.keys, target), error => error.code === 'OFFLINE_PROFILE_MISMATCH'
+    && error.diagnostics.expectedDesktopVersion === target.desktopVersion && error.diagnostics.generation === false)
+  await assert.rejects(readOfflineReceipt(f.source, f.keys, { ...target, dshCommit: '0'.repeat(40) }, { generation: true }), error => error.code === 'OFFLINE_PROFILE_MISMATCH'
+    && error.diagnostics.expectedDshCommit === '0'.repeat(40) && error.diagnostics.receiptDshCommit === target.dshCommit)
+  const bounded = { ...old, desktopRange: { min: '8.0.7', max: '8.0.7' } }
+  await writeFile(join(f.source, 'receipt.json'), JSON.stringify(signCatalog(bounded, f.pair.privateKey, 'test')))
+  await assert.rejects(readOfflineReceipt(f.source, f.keys, target, { generation: true }), /different exact runtime/u)
+  await writeFile(join(f.source, 'receipt.json'), JSON.stringify({ ...signCatalog(old, f.pair.privateKey, 'test'), applicationVersion: target.desktopVersion }))
+  await assert.rejects(readOfflineReceipt(f.source, f.keys, target, { generation: true }), /signature/u)
+})
+
+test('offline-link migration accepts a historical profile without node_modules', async t => {
+  const f = await fixture(t), active = join(f.home, 'profiles/web')
+  const manifest = JSON.parse(await readFile(join(active, 'package.json')))
+  const before = structuredClone(manifest)
+  await assert.rejects(lstat(join(active, 'node_modules')), { code: 'ENOENT' })
+  await migrateOfflineProfileLinks(active, f.home, manifest, f.keys, f.target, false)
+  assert.deepEqual(manifest, before)
+  await assert.rejects(lstat(join(active, 'node_modules')), { code: 'ENOENT' })
+})
+
+test('offline-link migration still rejects a missing signed generation inside an existing dependency tree', async t => {
+  const f = await fixture(t), active = join(f.home, 'profiles/web')
+  const manifest = JSON.parse(await readFile(join(active, 'package.json')))
+  const directory = join(active, 'node_modules/@third-party')
+  await mkdir(directory, { recursive: true })
+  const generation = join(f.home, 'resources/offline', 'a'.repeat(64), 'node_modules/plugin')
+  await symlink(generation, join(directory, 'plugin'), process.platform === 'win32' ? 'junction' : 'dir')
+  await assert.rejects(migrateOfflineProfileLinks(active, f.home, manifest, f.keys, f.target, false), { code: 'ENOENT' })
+})
+
 test('damaged architecture 6 is repaired offline and repeated repair preserves explicit choices', async t => {
   const f = await fixture(t), active = join(f.home, 'profiles/web')
   await writeFile(join(active, 'custom-config.json'), '{"model":"selected-model","reasoningEffort":"xhigh"}')
@@ -91,6 +131,87 @@ test('8.0.6 architecture 5 migration retains account, model, MCP and exact pinne
   assert.deepEqual(JSON.parse(await readFile(join(f.home, 'resources/plugins/selection.json'))), selection)
   assert.equal((await f.manager.repairOffline(f.source)).repaired, false)
 })
+
+test('legacy schema 1 migration imports retained pins and archives disabled supply links without activating retired plugins', async t => {
+  const f = await fixture(t), active = join(f.home, 'profiles/web'), oldSource = join(f.root, 'legacy-source')
+  const retained = [[defaults[1], '0.1.9'], [defaults[2], '0.1.8']]
+  const retired = ['dsh-univer-office', 'dsh-genui', '@changfenhuang/dsh-genui']
+  for (const [id, version] of [...retained, ...retired.map(id => [id, '1.0.0'])]) {
+    const directory = join(oldSource, 'modules', id)
+    await mkdir(join(directory, 'data'), { recursive: true })
+    await writeFile(join(directory, 'package.json'), JSON.stringify({ name: id, version, main: 'index.js' }))
+    await writeFile(join(directory, 'index.js'), 'export const ready = true\n')
+    await writeFile(join(directory, 'data/schema.previous-version.json'), 'signed original asset')
+  }
+  const unsigned = { ...f.unsigned, applicationVersion: '8.0.7', desktopRange: { min: '8.0.7', max: target.desktopVersion }, buildId: 'legacy-schema-1', plugins: [...retained.map(([id, version]) => ({ id, version })), ...retired.map(id => ({ id, version: '1.0.0' }))], files: (await offlineFiles(oldSource)).sort((a,b) => a.path.localeCompare(b.path)) }
+  const text = JSON.stringify(signCatalog(unsigned, f.pair.privateKey, 'test')), digest = createHash('sha256').update(text).digest('hex')
+  const oldGeneration = join(f.home, 'resources/offline', digest)
+  await mkdir(oldGeneration, { recursive: true })
+  await rename(join(oldSource, 'modules'), join(oldGeneration, 'node_modules'))
+  await writeFile(join(oldGeneration, 'receipt.json'), text)
+  const manifest = JSON.parse(await readFile(join(active, 'package.json')))
+  manifest.dependencies = {}
+  for (const id of [...retained.map(([id]) => id), ...retired]) {
+    const original = join(oldGeneration, 'node_modules', id), link = join(active, 'node_modules', id)
+    await mkdir(resolve(link, '..'), { recursive: true })
+    await symlink(original, link, process.platform === 'win32' ? 'junction' : 'dir')
+    manifest.dependencies[id] = 'link:' + original.replaceAll('\\', '/')
+  }
+  manifest.dsh.profile.bundles.push(...retired)
+  await writeFile(join(active, 'package.json'), JSON.stringify(manifest))
+  const disabledId = defaults[2], originalDisabledTarget = join(oldGeneration, 'node_modules', disabledId)
+  const disabledEvidence = JSON.stringify({ id: disabledId, originalSource: oldGeneration, receiptText: text })
+  await mkdir(join(active, '.zerowall/plugin-imports'), { recursive: true })
+  await writeFile(join(active, '.zerowall/plugin-imports', encodeURIComponent(disabledId) + '.json'), disabledEvidence)
+  const selection = { pinned: { [defaults[1]]: '0.1.9' }, disabled: [defaults[2]], removed: [], custom: { keep: true } }
+  await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
+  await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify(selection))
+  const retiredAsset = join(oldGeneration, 'node_modules', retained[0][0], 'data/schema.previous-version.json')
+  const before = await readFile(join(active, 'package.json'))
+  await writeFile(retiredAsset, 'corrupt signed retired bytes')
+  await assert.rejects(f.manager.repairOffline(f.source), /signed size or SHA-256 mismatch/u)
+  assert.deepEqual(await readFile(join(active, 'package.json')), before)
+  await writeFile(retiredAsset, 'signed original asset')
+  const originalGenerationFiles = await offlineFiles(oldGeneration)
+  assert.equal((await f.manager.repairOffline(f.source)).repaired, true)
+  const migrated = JSON.parse(await readFile(join(active, 'package.json')))
+  assert.equal(await readFile(join(oldGeneration, 'receipt.json'), 'utf8'), text)
+  const [pinnedId, pinnedVersion] = retained[0], pinnedRoot = join(active, 'node_modules', pinnedId)
+  assert.equal(JSON.parse(await readFile(join(pinnedRoot, 'package.json'))).version, pinnedVersion)
+  assert.equal((await lstat(pinnedRoot)).isSymbolicLink(), false)
+  assert.equal(await realpath(pinnedRoot), pinnedRoot)
+  assert(migrated.dsh.profile.bundles.includes(pinnedId))
+  const evidence = JSON.parse(await readFile(join(active, '.zerowall/plugin-imports', encodeURIComponent(pinnedId) + '.json')))
+  assert.equal(evidence.receiptText, text)
+  const pinnedPrefix = 'modules/' + pinnedId + '/'
+  assert.deepEqual(await offlineFiles(pinnedRoot), unsigned.files.filter(file => file.path.startsWith(pinnedPrefix)).map(file => ({ ...file, path: file.path.slice(pinnedPrefix.length) })))
+  assert(!migrated.dsh.profile.bundles.includes(disabledId))
+  assert(migrated.zerowall.disabledPlugins.includes(disabledId))
+  assert.equal(migrated.dependencies?.[disabledId], undefined)
+  await assert.rejects(lstat(join(active, 'node_modules', disabledId)), { code: 'ENOENT' })
+  await assert.rejects(lstat(join(active, '.zerowall/plugin-imports', encodeURIComponent(disabledId) + '.json')), { code: 'ENOENT' })
+  const historyRoot = join(active, '.zerowall/inactive-plugin-history'), history = await readdir(historyRoot)
+  assert.equal(history.length, 1)
+  const archived = join(historyRoot, history[0]), archivedPackage = join(archived, 'package')
+  assert((await lstat(archivedPackage)).isSymbolicLink())
+  assert.equal(resolve(await readlink(archivedPackage)), originalDisabledTarget)
+  assert.equal(JSON.parse(await readFile(join(archivedPackage, 'package.json'))).version, retained[1][1])
+  const archiveReceipt = JSON.parse(await readFile(join(archived, 'receipt.json')))
+  assert.equal(archiveReceipt.id, disabledId)
+  assert.deepEqual(archiveReceipt.declarations, { dependencies: manifest.dependencies[disabledId] })
+  assert.equal(await readFile(join(archived, 'provenance.json'), 'utf8'), disabledEvidence)
+  for (const id of retired) {
+    assert(!migrated.dsh.profile.bundles.includes(id))
+    assert.equal(migrated.dependencies?.[id], undefined)
+    await assert.rejects(lstat(join(active, 'node_modules', id)), /ENOENT/u)
+  }
+  assert.deepEqual(await offlineFiles(oldGeneration), originalGenerationFiles)
+  assert.deepEqual(JSON.parse(await readFile(join(f.home, 'resources/plugins/selection.json'))), selection)
+  await rename(join(f.home, 'resources/offline'), join(f.home, 'resources/offline-retained'))
+  assert.equal(await readFile(join(pinnedRoot, 'data/schema.previous-version.json'), 'utf8'), 'signed original asset')
+  assert.equal(await readFile(join(archived, 'provenance.json'), 'utf8'), disabledEvidence)
+  assert.equal((await f.manager.repairOffline(f.source)).repaired, false)
+})
 test('signature, changed bytes, target mismatch and unexpected files prevent offline activation', async t => {
   const f = await fixture(t)
   await verifyOfflineProfile(f.source, f.keys, target)
@@ -118,6 +239,26 @@ test('offline preparation supports callers without a bundled management inventor
   const result = await prepareOfflineCandidate({ ...f, bundledPlugins: undefined })
   assert.deepEqual(result.blocked, [])
   assert.equal(result.changed.length, defaults.length)
+})
+
+test('offline candidates remove retired manifest and workspace resolver rules while preserving the active profile', async t => {
+  const f = await fixture(t), active = join(f.home, 'profiles/web')
+  const file = join(active, 'package.json'), manifest = JSON.parse(await readFile(file, 'utf8'))
+  manifest.pnpm = { overrides: { 'dsh-univer-office': 'file:old-univer.tgz', kept: '2' }, onlyBuiltDependencies: ['kept'] }
+  manifest.overrides = { 'dsh-genui': '1', kept: { '.': '2', shared: '3' } }
+  manifest.resolutions = { '**/@changfenhuang/dsh-genui': '1', '**/@other/dsh-genui': '4' }
+  const workspace = { packages: ['.'], overrides: { 'dsh-univer-office': 'file:old-univer.tgz', '@changfenhuang/dsh-genui': '1', '@other/dsh-genui': '4', kept: '2' }, allowBuilds: { kept: false } }
+  await writeFile(file, JSON.stringify(manifest))
+  await writeFile(join(active, 'pnpm-workspace.yaml'), JSON.stringify(workspace))
+  const before = await readFile(file, 'utf8')
+  const result = await prepareOfflineCandidate(f)
+  const candidate = JSON.parse(await readFile(join(result.candidate, 'package.json'), 'utf8'))
+  assert.deepEqual(candidate.pnpm, { overrides: { kept: '2' }, onlyBuiltDependencies: ['kept'] })
+  assert.deepEqual(candidate.overrides, { kept: { '.': '2', shared: '3' } })
+  assert.deepEqual(candidate.resolutions, { '**/@other/dsh-genui': '4' })
+  assert.deepEqual(JSON.parse(await readFile(join(result.candidate, 'pnpm-workspace.yaml'), 'utf8')), { ...workspace, overrides: { '@other/dsh-genui': '4', kept: '2' } })
+  assert.equal(await readFile(file, 'utf8'), before)
+  assert.deepEqual(JSON.parse(await readFile(join(active, 'pnpm-workspace.yaml'), 'utf8')), workspace)
 })
 
 test('desktop upgrade replaces an older unpinned managed catalog installation offline', async t => {

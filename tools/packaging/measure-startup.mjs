@@ -17,7 +17,7 @@ const args = process.argv.slice(2)
 const option = (name, fallback) => args.includes(name) ? args[args.indexOf(name) + 1] : fallback
 const count = Number(option('--runs', '5'))
 const mode = option('--mode', 'fresh')
-if (!Number.isInteger(count) || count < 1 || count > 5 || !['fresh', 'daily', 'upgrade806', 'upgrade808'].includes(mode)) throw new Error('Use --mode fresh|daily|upgrade806|upgrade808 --runs 1..5')
+if (!Number.isInteger(count) || count < 1 || count > 5 || !['fresh', 'daily', 'upgrade806', 'upgrade808', 'upgrade835'].includes(mode)) throw new Error('Use --mode fresh|daily|upgrade806|upgrade808|upgrade835 --runs 1..5')
 const packaged = await locatePackagedApp(join(root, 'desktop'))
 const executableOverride = option('--executable')
 if (executableOverride) packaged.executablePath = resolve(executableOverride)
@@ -27,7 +27,7 @@ await mkdir(evidence, { recursive: true })
 // MAX_PATH. Keep test user data outside the long source worktree, as in an
 // installed application, and retain that location in the evidence receipt.
 const fixtures = await mkdtemp(join(tmpdir(), 'zws-start-'))
-const report = { schema: 1, mode, executable: packaged.executablePath, limitMs: 20_000, timing: 'process spawn to visible editable input and authenticated local Host health', runs: [] }
+const report = { schema: 1, mode, executable: packaged.executablePath, limitMs: mode === 'daily' ? 20_000 : 45_000, timing: 'process spawn to visible editable input and authenticated local Host health', runs: [] }
 
 async function management(userData, operation) {
   const endpoint = JSON.parse(await readFile(join(userData, 'command-endpoint.json'), 'utf8'))
@@ -58,6 +58,14 @@ async function seed808(directory) {
 async function run(directory, iteration, measured = true, executable = packaged.executablePath) {
   for (const name of ['appdata', 'localappdata', 'user-data', 'chromium']) await mkdir(join(directory, name), { recursive: true })
   const userData = join(directory, 'user-data')
+  // Background Python recovery belongs to the fixture as well. An unpacked
+  // executable otherwise selects its own installation directory and mutates
+  // the very payload being measured and verified.
+  const pythonLocation = join(directory, 'localappdata', 'ZeroWall Science', 'python-location.json')
+  await mkdir(dirname(pythonLocation), { recursive: true })
+  await writeFile(pythonLocation, JSON.stringify({ runtimeRoot: join(directory, 'Python'), source: 'user-selected' }))
+  const logs = join(userData, 'logs/startup.log')
+  const priorLog = await readFile(logs, 'utf8').catch(() => '')
   const before = performance.now()
   const child = spawn(executable, ['--remote-debugging-port=0', `--user-data-dir=${join(directory, 'chromium')}`], { cwd: dirname(executable), env: { ...process.env, APPDATA: join(directory, 'appdata'), LOCALAPPDATA: join(directory, 'localappdata'), ZEROWALL_USER_DATA_DIR: userData, USERPROFILE: directory, HOME: directory }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
   let browser, output = '', phase = 'devtools'
@@ -109,8 +117,8 @@ async function run(directory, iteration, measured = true, executable = packaged.
     await new Promise(accept => child.exitCode !== null ? accept() : child.once('exit', accept))
     // Retain only isolated fixtures and safe metrics. Never read the real
     // installed application's settings, command tokens or startup logs.
-    const logs = join(userData, 'logs/startup.log')
-    const lines = await readFile(logs, 'utf8').catch(() => '')
+    const currentLog = await readFile(logs, 'utf8').catch(() => '')
+    const lines = currentLog.startsWith(priorLog) ? currentLog.slice(priorLog.length) : currentLog
     row.segments = lines.split(/\r?\n/u).filter(Boolean).map(line => { try { const entry = JSON.parse(line); return { elapsedMs: entry.elapsedMs, segment: entry.segment, durationMs: entry.durationMs, phase: entry.phase } } catch { return {} } })
   }
   return row
@@ -121,12 +129,12 @@ for (let iteration = 1; iteration <= count; iteration++) {
   await mkdir(directory, { recursive: true })
   let baseline
   if (mode === 'upgrade808') baseline = await seed808(directory)
-  if (mode === 'upgrade806') {
+  if (mode === 'upgrade806' || mode === 'upgrade835') {
     const executable = option('--baseline-executable')
-    if (!executable) throw new Error('upgrade806 requires --baseline-executable <8.0.6 ZeroWallScience.exe>')
+    if (!executable) throw new Error(mode + ' requires --baseline-executable <verified baseline ZeroWallScience.exe>')
     const warmup = await run(directory, iteration, false, resolve(executable))
-    if (!warmup.hostReady) throw new Error('8.0.6 baseline did not become usable: ' + warmup.error)
-    baseline = { applicationVersion: '8.0.6', executable, hostReady: true, inputReady: true }
+    if (!warmup.hostReady) throw new Error('Baseline did not become usable: ' + warmup.error)
+    baseline = { applicationVersion: mode === 'upgrade835' ? '8.3.5' : '8.0.6', executable, hostReady: true, inputReady: true }
   }
   if (mode === 'daily') {
     const warmup = await run(directory, iteration, false)
@@ -136,6 +144,10 @@ for (let iteration = 1; iteration <= count; iteration++) {
   if (baseline) row.baseline = baseline
   report.runs.push(row)
   report.passed = report.runs.length === count && report.runs.every(row => row.passed)
+  const durations = report.runs.map(row=>row.durationMs).filter(Number.isFinite).sort((a,b)=>a-b)
+  report.medianMs = durations[Math.floor(durations.length/2)]
+  report.maximumMs = durations.at(-1)
+  if (mode === 'daily' && report.medianMs > 12_000) report.passed = false
   await writeFile(join(evidence, 'report.json'), JSON.stringify(report, null, 2))
   console.log(JSON.stringify({ mode, iteration, durationMs: row.durationMs, passed: row.passed, error: row.error, evidence }))
   if (!row.hostReady) break

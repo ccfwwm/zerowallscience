@@ -25,7 +25,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { PACKAGE_ROOT } from './root.js'
-import { buildProjectDeck, saveProjectPptx } from './core/export-pipeline.js'
+import { buildProjectDeck, renderProjectPreviews, saveProjectPptx, saveRawProjectPptx } from './core/lazy-export-pipeline.js'
 import {
   ProjectError,
   editProject,
@@ -50,6 +50,7 @@ import { registerRedoTool } from './tools/redo.js'
 import { registerRenderTool } from './tools/render.js'
 import { registerThemesTool } from './tools/themes.js'
 import { registerUndoTool } from './tools/undo.js'
+import { workbenchTools } from './tools/workbench.js'
 
 export const name = 'dsh-ppt-maker'
 export const inject = ['tools', 'sessions', 'skills', 'webServer']
@@ -131,6 +132,8 @@ interface HostRoutesModule {
       restoreProject: typeof restoreProject
       buildProjectDeck: typeof buildProjectDeck
       saveProjectPptx: typeof saveProjectPptx
+      saveRawProjectPptx: typeof saveRawProjectPptx
+      renderProjectPreviews: typeof renderProjectPreviews
       writeExportReport: typeof writeExportReport
       ProjectError: typeof ProjectError
     }
@@ -146,7 +149,10 @@ function loadHostModules(): Promise<{ routes: HostRoutesModule; store: HostStore
     const storeUrl = pathToFileURL(path.join(PACKAGE_ROOT, 'plugin', 'host', 'store.mjs')).href
     hostModulesPromise = Promise.all([import(routesUrl), import(storeUrl)]).then(
       ([routes, store]) => ({ routes: routes as HostRoutesModule, store: store as HostStoreModule })
-    )
+    ).catch((error: unknown) => {
+      hostModulesPromise = null
+      throw error
+    })
   }
   return hostModulesPromise
 }
@@ -195,6 +201,8 @@ function registerRoutes(ctx: ApplyCtx, bridge: PptMakerHostBridge): () => void {
             restoreProject,
             buildProjectDeck,
             saveProjectPptx,
+            saveRawProjectPptx,
+            renderProjectPreviews,
             writeExportReport,
             ProjectError
           }
@@ -248,7 +256,14 @@ export function apply(ctx: ApplyCtx): void {
   const resolveBridge = (): PptMakerHostBridge | undefined => cachedBridge
 
   if (ctx.tools) {
-    const tools = ctx.tools
+    const tools = ctx.webServer ? workbenchTools(
+      { tools: ctx.tools, sessions: ctx.sessions },
+      async () => {
+        if (!cachedBridge) cachedBridge = buildPptMakerBridge((await loadHostModules()).store)
+        return cachedBridge
+      },
+      (message) => ctx.logger?.warn?.(`[dsh-ppt-maker] ${message}`)
+    ) : ctx.tools
     /** 注册全部 11 个 ppt_* 工具，返回合并注销函数。懒展开触发时整组进场。 */
     const registerToolSuite = (): (() => void) => {
       const suiteOffs: Array<() => void> = []
@@ -279,17 +294,11 @@ export function apply(ctx: ApplyCtx): void {
             get attachments() {
               return ctx.get?.('attachments') as ApplyCtx['attachments']
             },
-            pptMaker: undefined,
-            // Lazy getter: the bridge is filled in once the host-store module
-            // finishes loading (microtask after apply). Tool calls always come
-            // after apply, so by the time execute runs the bridge is present.
-            ...(register === registerImportTool || register === registerOpenTool
-              ? {
-                  get pptMaker() {
-                    return resolveBridge()
-                  }
-                }
-              : {})
+            // Keep this as a getter on the actual context object: spreading an
+            // object containing a getter eagerly snapshots its undefined value.
+            get pptMaker() {
+              return resolveBridge()
+            }
           })
           if (typeof off === 'function') suiteOffs.push(off)
         } catch (err) {

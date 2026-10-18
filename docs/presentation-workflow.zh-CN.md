@@ -1,6 +1,6 @@
 # PPT/PPTX 工作流
 
-适用版本：桌面 8.3.5、Images 0.2.24、`dsh-ppt-maker` 1.0.0。演示文稿工具由 `dsh-ppt-maker` 提供，图片由 `gpt-image-generator` 路由提供。DSH 继续锁定在 0.2.0-rc.2；桌面、插件和 Skill 分开版本化。
+适用版本：桌面 8.3.6、Images 0.2.27、`dsh-ppt-maker` 1.0.1-zws.4、`zerowall-presentation` 0.2.6。演示文稿工具由 `dsh-ppt-maker` 提供，图片由 `gpt-image-generator` 路由提供。DSH 继续锁定在 0.2.0-rc.2；桌面、插件和 Skill 分开版本化。
 
 ## 输出模式
 
@@ -10,7 +10,7 @@
 
 ## 工具链
 
-新建工程调用 `ppt_themes`、`ppt_create` 和 `ppt_edit`。导出前调用 `ppt_check`，再调用 `ppt_render` 逐页检查，最后调用 `ppt_export`。编辑已有 PPTX 时，完整逆向使用 `ppt_import`；只改文字、替图或调页序时使用 `ppt_patch`，避免破坏未建模部件。
+新建生图工程先保存含逐字文本的内容计划和素材账本，调用 `presentation_prepare` 绑定并自动创建、打开演示台，再生成和审核图片。审核通过后调用 `presentation_build_pages`，可编辑模式先保存原生对象计划。导出前检查、渲染并记录逐页审核，最后调用 `ppt_export`。编辑已有 PPTX 时，完整逆向使用 `ppt_import`；只改文字、替图或调页序时使用 `ppt_patch`，避免破坏未建模部件。
 
 ## 图片和来源
 
@@ -28,12 +28,12 @@
 ## 执行顺序
 
 1. 读取全部文档、图片和数据，确定页数、受众、主题、素材和输出模式。
-2. 使用 `ppt_create` 创建 PPTD 工程，保存内容计划和素材账本。
-3. 并行生成各页完整 PNG 视觉稿。图片型模式直接把 PNG 放入页面；可编辑模式根据 PNG 还原独立对象。
-4. 使用 `ppt_edit` 原子写入页面和元素，每次携带最新 `baseRevision`。发生版本冲突时重新读取工程再提交。
+2. 保存含逐字文本的内容计划和素材账本，调用 `presentation_prepare(mode:new, output_mode:image|editable)`，自动创建并绑定工程、打开演示台。
+3. 并行生成各页完整 PNG 视觉稿，实际查看图片并逐字核对计划中的文字，同时核验布局和内容。使用 `presentation_review_templates` 记录绑定当前图片 SHA-256 的结果；发现乱码、漏字、错误数据或不合理布局时，使用 `presentation_repair_templates` 编辑问题原图并重新核验。只有通过的图片才能构建页面或进入可编辑转换。项目图和文献图通过明确的 `assetPlacements` 原字节嵌入指定区域，不交给生图重绘。
+4. 图片型调用 `presentation_build_pages` 批量写入；可编辑型先用 `presentation_plan_editable_pages` 保存原生对象计划，再构建。工具内部使用 `ppt_edit` 原子提交，直接编辑时每次携带最新 `baseRevision`，冲突后重新读取工程再提交。
 5. 使用 `ppt_check` 修复所有 blocker，再用 `ppt_render` 渲染最终 PPTX 并逐页检查清晰度、裁切、溢出、重叠、对比度和数据准确性。
 6. 使用 `ppt_export` 导出 PPTX。导出后再次读取或渲染，确认图片型页面仍是整页图片，可编辑页面保留文字、表格、图表和图片对象。
 
 ## 质量和恢复
 
-规则质检阻断文字溢出、出界、结构损坏和关键字体问题。AI 视觉质检只提供建议，不能替代实际 PNG 检查。失败时保留 PPTD、PNG、素材回执和 QA 报告，只重做受影响页面。导出、渲染和回读都通过后，才把 PPTX 交给用户。
+规则质检阻断文字溢出、出界、结构损坏和关键字体问题。整页图片核验与最终页面 PNG 核验都必须实际查看图片；自动规则不能判断图片内所有文字是否正确。返修或换图后旧审核自动失效，只重做受影响页面。失败时保留 PPTD、PNG、素材回执和 QA 报告。导出、渲染和回读都通过后，才把 PPTX 交给用户。

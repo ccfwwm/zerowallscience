@@ -1,6 +1,7 @@
 import { lstat, readFile, readdir, readlink, rename, symlink, unlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { bounded } from './profile-copy.mjs'
 
 const inside = (root, path) => { const child = relative(root, path); return child === '' || (child !== '..' && !child.startsWith('..' + sep) && !isAbsolute(child)) }
 const optional = (path) => readFile(path, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error })
@@ -8,9 +9,16 @@ const optional = (path) => readFile(path, 'utf8').catch(error => { if (error.cod
 /** pnpm 11 writes absolute virtual-store paths on Windows. Profile transactions
  * move a complete tree, so both its metadata and internal links must move with it.
  * Never traverse an external junction or edit the signed offline generation. */
-export async function repairProfileLayout(directory, { from, home } = {}) {
+export async function repairProfileLayout(directory, { from, home, pendingRoots = [] } = {}) {
   directory = resolve(directory)
   const modules = join(directory, 'node_modules')
+  // An installer candidate can deliberately omit exact managed package roots
+  // which it will materialize next. Never defer unrelated or external targets.
+  const pendingPackages = pendingRoots.map(path => {
+    const root = resolve(path), id = relative(modules, root).replaceAll('\\', '/')
+    if (!/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) || id.split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid pending profile package root')
+    return root
+  })
   const file = join(modules, '.modules.yaml')
   const text = await optional(file)
   // The bundled pnpm 11 manifest is JSON despite its historical .yaml name.
@@ -50,17 +58,30 @@ export async function repairProfileLayout(directory, { from, home } = {}) {
         const root = roots.find(root => inside(root, previousTarget))
         const nextTarget = root ? join(directory, relative(root, previousTarget)) : previousTarget
         if (!isAbsolute(target) || resolve(dirname(link), target) !== nextTarget) repairs.push({ link, target, nextTarget, internal: !!root })
-      } else if (entry.isDirectory()) await scan(link)
+      } else if (entry.isDirectory() && entry.name !== '.zerowall-carriers') next.push(link)
     }
   }
-  await scan(modules)
+  let level = [modules], next = []
+  while (level.length) { next = []; await bounded(level, scan); level = next }
   // Prove every relocated link resolves before changing any link. External
   // links retain their original target, including CLI and offline resources.
-  for (const repair of repairs) if (repair.internal) await lstat(repair.nextTarget)
+  const pendingTargets = new Set()
+  await bounded(repairs.filter(repair => repair.internal), async repair => {
+    try { await lstat(repair.nextTarget) }
+    catch (error) {
+      if (error.code !== 'ENOENT' || !pendingPackages.some(root => inside(root, repair.nextTarget))) throw error
+      pendingTargets.add(repair.nextTarget)
+    }
+  })
   const applied = []
   let metadataChanged = false
   try {
     for (const repair of repairs) {
+      // Keep the original link until its new target exists. In particular,
+      // Windows must not guess whether a missing target needs a Junction or a
+      // file symlink. The caller must strictly recheck every deferred target
+      // and rerun layout repair after materializing the planned packages.
+      if (repair.internal && pendingTargets.has(repair.nextTarget)) continue
       const targetInfo = await lstat(repair.nextTarget).catch(error => { if (error.code !== 'ENOENT') throw error })
       const type = process.platform === 'win32' && targetInfo?.isDirectory() ? 'junction' : undefined
       await unlink(repair.link)
@@ -81,5 +102,6 @@ export async function repairProfileLayout(directory, { from, home } = {}) {
     for (const repair of applied.reverse()) { await unlink(repair.link); await symlink(repair.target, repair.link, repair.type) }
     throw error
   }
-  return { changed: metadataChanged || repairs.length > 0, links: repairs.length }
+  return { changed: metadataChanged || applied.length > 0, links: applied.length,
+    ...(pendingTargets.size ? { pendingTargets: [...pendingTargets].sort() } : {}) }
 }

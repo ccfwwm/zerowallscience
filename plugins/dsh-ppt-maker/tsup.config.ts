@@ -1,11 +1,11 @@
 import { defineConfig } from 'tsup'
 
 /**
- * Single-file ESM build → lib/index.js (committed with the package;
- * plugin/index.mjs is a thin shell re-exporting it).
+ * ESM entry + lazy implementation chunks in lib/.
+ * plugin/index.mjs remains the stable thin shell re-exporting lib/index.js.
  *
  * Host-provided deps stay external (peer/runtime), our small deps get inlined
- * so the published file is self-contained.
+ * so the published lib/ tree is self-contained.
  */
 export default defineConfig({
   entry: { index: 'src/index.ts' },
@@ -13,14 +13,21 @@ export default defineConfig({
   platform: 'node',
   target: 'node18',
   outDir: 'lib',
-  // 产物是固定单文件 index.js，clean 没有收益；client.js 由 build-client.mjs
-  // 写入同一目录，clean: true 会让「只跑 tsup」把浏览器半侧产物一起抹掉。
+  splitting: true,
+  // root.ts uses its module directory to find package assets. Shared chunks
+  // must stay beside index.js, including when root.ts moves into a chunk.
+  esbuildOptions(options) {
+    options.chunkNames = 'chunk-[hash]'
+  },
+  // The explicit prebuild helper prunes only index.js and old Host chunks.
+  // tsup's clean array still starts with **/*, so leave it disabled to keep
+  // the separately built client.js and unrelated files intact.
   clean: false,
   dts: false,
   sourcemap: false,
   // `yaml` is CJS: inlining it into ESM leaves esbuild's `__require` shim with
   // no `require` in scope ("Dynamic require of \"process\" is not supported").
-  // Defining it from import.meta.url keeps the bundle single-file + working.
+  // Define it in every chunk so a shared CJS dependency also works lazily.
   banner: {
     js: [
       "import { createRequire as __pptCreateRequire } from 'node:module';",

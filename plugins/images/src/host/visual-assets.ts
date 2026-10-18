@@ -17,6 +17,16 @@ export interface VisualAsset {
 export interface VisualManifest {
   schemaVersion: 1 | 2; assets: VisualAsset[]; selectedStyleAssetId?: string; styleReview?: string
   assetReviews?: Record<string, string | { sha256: string; observations: string; reviewedAt: string }>
+  templateReviews?: Record<string, TemplateReview>
+  // Failed bytes remain failed across asset aliases and metadata replacement.
+  // Keep the page/spec evidence as well as the content hash for repair lineage.
+  templateFailures?: Record<string, TemplateReview>
+}
+export interface TemplateReview {
+  schemaVersion: 1; sha256: string; status: 'passed' | 'repair-required'
+  textIntegrity: 'pass' | 'fail'; layout: 'pass' | 'fail'; contentAccuracy: 'pass' | 'fail'
+  observations: string; issues: string[]; reviewedAt: string
+  page: number; specFingerprint: string; textTranscription: string[]
 }
 export interface SlideSpecification {
   purpose?: string; text?: string[]; assetIds?: string[]; source?: string; notes?: string; svg?: string
@@ -52,7 +62,9 @@ export async function readManifest(cwd: string, path: string): Promise<VisualMan
     if (error.code === 'ENOENT') return { schemaVersion: 2, assets: [] }; throw error
   })
   if (![1, 2].includes(value.schemaVersion ?? 1) || !Array.isArray(value.assets)) throw new Error('Invalid visual manifest schema.')
-  return { ...value, schemaVersion: value.schemaVersion ?? 1 }
+  const templateFailures = { ...value.templateFailures }
+  for (const review of Object.values(value.templateReviews ?? {}) as TemplateReview[]) if (review.status === 'repair-required') templateFailures[templateFailureKey(review)] = review
+  return { ...value, schemaVersion: value.schemaVersion ?? 1, templateFailures }
 }
 export async function readSpecification(cwd: string, path: string): Promise<PresentationSpecification> {
   const spec = JSON.parse(await readFile(await workspacePath(cwd, path), 'utf8'))
@@ -74,9 +86,72 @@ export function assetsForPage(spec: PresentationSpecification, manifest: VisualM
 export function pagesForAsset(spec: PresentationSpecification, manifest: VisualManifest, assetId: string): number[] {
   return spec.slides.flatMap((_, i) => assetsForPage(spec, manifest, i + 1).some(asset => asset.assetId === assetId) ? [i + 1] : [])
 }
+export function assetsWithReferences(manifest: VisualManifest, assets: VisualAsset[]): VisualAsset[] {
+  const result = new Map<string, VisualAsset>()
+  function visit(asset: VisualAsset): void {
+    if (result.has(asset.assetId)) return
+    result.set(asset.assetId, asset)
+    for (const id of [...(asset.styleReferenceIds ?? []), ...(asset.parentAssetId ? [asset.parentAssetId] : [])]) {
+      const reference = manifest.assets.find(item => item.assetId === id)
+      if (!reference) throw new Error(`Unknown source/style asset ${id}.`)
+      visit(reference)
+    }
+  }
+  assets.forEach(visit)
+  return [...result.values()]
+}
+export function templateFailure(manifest: VisualManifest, sha256: string): TemplateReview | undefined {
+  return [...Object.values(manifest.templateFailures ?? {}), ...Object.values(manifest.templateReviews ?? {})].find(review => review.sha256 === sha256 && review.status === 'repair-required')
+}
+function templateFailureKey(review: TemplateReview): string { return `${review.sha256}:${review.page}:${review.specFingerprint}` }
+function repairsTemplateFailure(manifest: VisualManifest, asset: VisualAsset, failedSha256: string, visited = new Set<string>()): boolean {
+  if (visited.has(asset.assetId) || asset.sha256 === failedSha256 || asset.sourceKind !== 'generated' || !asset.parentAssetId) return false
+  visited.add(asset.assetId)
+  const parent = manifest.assets.find(item => item.assetId === asset.parentAssetId)
+  if (!parent || !asset.inputImageHashes.includes(parent.sha256)) return false
+  return parent.sha256 === failedSha256 || repairsTemplateFailure(manifest, parent, failedSha256, visited)
+}
+function hasRequiredRepairLineage(manifest: VisualManifest, asset: VisualAsset, page: number, specFingerprint: string): boolean {
+  const failures = Object.values(manifest.templateFailures ?? {}).filter(review => review.page === page && review.specFingerprint === specFingerprint)
+  return !failures.length || failures.some(review => repairsTemplateFailure(manifest, asset, review.sha256))
+}
 export function hasAssetReview(manifest: VisualManifest, asset: VisualAsset): boolean {
   const review = manifest.assetReviews?.[asset.assetId]
   return typeof review === 'string' ? review.length >= 20 : !!review && review.sha256 === asset.sha256 && review.observations.length >= 20
+}
+export function hasTemplateReview(manifest: VisualManifest, asset: VisualAsset): boolean {
+  const review = manifest.templateReviews?.[asset.assetId]
+  return !templateFailure(manifest, asset.sha256) && !!review && review.schemaVersion === 1 && review.sha256 === asset.sha256 && review.status === 'passed'
+    && [review.textIntegrity, review.layout, review.contentAccuracy].every(value => value === 'pass')
+    && Array.isArray(review.issues) && review.issues.length === 0 && review.observations.trim().length >= 20
+    && Number.isFinite(Date.parse(review.reviewedAt))
+    && hasRequiredRepairLineage(manifest, asset, review.page, review.specFingerprint)
+}
+export async function requireTemplateReview(cwd: string, manifest: VisualManifest, asset: VisualAsset): Promise<TemplateReview> {
+  if (!['slide-image', 'template'].includes(asset.role) || !hasTemplateReview(manifest, asset)
+    || hash(await readFile(await workspacePath(cwd, asset.path))) !== asset.sha256) throw new Error(`Template ${asset.assetId} requires current SHA-256-bound text, layout and content review. Repair failed images with presentation_repair_templates and review the new image before building or editable conversion.`)
+  return manifest.templateReviews![asset.assetId]!
+}
+export async function recordTemplateReview(cwd: string, manifestPath: string, assetId: string, expectedSha256: string, input: Omit<TemplateReview, 'schemaVersion' | 'sha256' | 'reviewedAt'>): Promise<TemplateReview> {
+  const path = await workspacePath(cwd, manifestPath)
+  return withPresentationLock(path, async () => {
+    const manifest = await readManifest(cwd, path), asset = manifest.assets.find(item => item.assetId === assetId)
+    if (!asset || !['slide-image', 'template'].includes(asset.role) || !/^[a-f0-9]{64}$/u.test(expectedSha256) || asset.sha256 !== expectedSha256
+      || hash(await readFile(await workspacePath(cwd, asset.path))) !== expectedSha256) throw new Error('Template review target is missing, changed or not a full-page image.')
+    if (!['passed', 'repair-required'].includes(input.status) || ![input.textIntegrity, input.layout, input.contentAccuracy].every(value => ['pass', 'fail'].includes(value))
+      || !Array.isArray(input.issues) || input.issues.some(issue => typeof issue !== 'string' || !issue.trim()) || input.observations.trim().length < 20
+      || !Number.isInteger(input.page) || input.page < 1 || !/^[a-f0-9]{64}$/u.test(input.specFingerprint) || !Array.isArray(input.textTranscription) || input.textTranscription.some(text => typeof text !== 'string')) throw new Error('Record concrete text, layout and content observations and explicit issue descriptions.')
+    const passed = [input.textIntegrity, input.layout, input.contentAccuracy].every(value => value === 'pass') && input.issues.length === 0
+    if (passed !== (input.status === 'passed') || !passed && input.issues.length === 0) throw new Error('Only three passing checks with no issues may pass; failures must list issues and require repair.')
+    if (input.status === 'passed') {
+      if (templateFailure(manifest, expectedSha256)) throw new Error('A failed image must be repaired with edit_image and reviewed as a new image; the same failed bytes cannot be marked passed.')
+      if (!hasRequiredRepairLineage(manifest, asset, input.page, input.specFingerprint)) throw new Error('A failed page requires changed image bytes from edit_image with a receipt bound to the failed original; registering a fresh ID or unrelated generation cannot replace repair.')
+    }
+    const review: TemplateReview = { ...input, schemaVersion: 1, sha256: expectedSha256, reviewedAt: new Date().toISOString() }
+    if (review.status === 'repair-required') manifest.templateFailures = { ...manifest.templateFailures, [templateFailureKey(review)]: review }
+    manifest.templateReviews = { ...manifest.templateReviews, [assetId]: review }; await saveJson(path, manifest)
+    return review
+  })
 }
 export async function validatePresentationAssets(cwd: string, workflow: { spec: string; manifest: string; mode: 'new' | 'edit' }, page?: number) {
   const spec = await readSpecification(cwd, workflow.spec), manifest = await readManifest(cwd, workflow.manifest)
@@ -104,6 +179,7 @@ async function inspectAsset(cwd: string, input: AssetInput): Promise<VisualAsset
     if (asset.sha256 !== receipt.sha256) throw new Error('Visual asset generation checksum mismatch.')
     for (const key of ['model', 'providerId', 'groupId', 'requestedQuality', 'actualQuality', 'requestedSize', 'prompt', 'promptHash', 'revisedPrompt', 'createdAt'] as const) if (receipt[key] !== undefined) asset[key] = receipt[key]
     asset.inputImageHashes = receipt.inputImageHashes ?? []
+    if (input.parentAssetId) asset.parentAssetId = input.parentAssetId
     if (input.sourceSeedPath) asset.sourceSeedPath = await workspacePath(cwd, input.sourceSeedPath)
   } else if (sourceKind === 'derived') {
     const receipt = JSON.parse(await readFile(await workspacePath(cwd, path + '.derivation.json'), 'utf8'))
@@ -137,10 +213,17 @@ export async function recordVisualAssets(cwd: string, inputs: AssetInput[]): Pro
       changedAssetIds.push(asset.assetId)
       manifest.assets = [...manifest.assets.filter(item => item.assetId !== asset.assetId), asset]
       manifest.assetReviews = { ...manifest.assetReviews }; delete manifest.assetReviews[asset.assetId]
-      for (const dependent of manifest.assets) if (dependent.parentAssetId === asset.assetId || dependent.sourceSeedPath === asset.path || dependent.styleReferenceIds?.includes(asset.assetId)) delete manifest.assetReviews[dependent.assetId]
+      manifest.templateReviews = { ...manifest.templateReviews }; delete manifest.templateReviews[asset.assetId]
+      for (const dependent of manifest.assets) if (dependent.parentAssetId === asset.assetId || dependent.sourceSeedPath === asset.path || dependent.styleReferenceIds?.includes(asset.assetId)) { delete manifest.assetReviews[dependent.assetId]; delete manifest.templateReviews[dependent.assetId] }
       if (asset.assetId === manifest.selectedStyleAssetId) delete manifest.styleReview
     }
-    for (const asset of assets) for (const id of [...asset.styleReferenceIds, ...(asset.parentAssetId ? [asset.parentAssetId] : [])]) if (!manifest.assets.some(item => item.assetId === id)) throw new Error(`Unknown source/style asset ${id}.`)
+    for (const asset of assets) {
+      for (const id of [...asset.styleReferenceIds, ...(asset.parentAssetId ? [asset.parentAssetId] : [])]) if (!manifest.assets.some(item => item.assetId === id)) throw new Error(`Unknown source/style asset ${id}.`)
+      if (asset.parentAssetId) {
+        const parent = manifest.assets.find(item => item.assetId === asset.parentAssetId)!
+        if (!asset.inputImageHashes.includes(parent.sha256)) throw new Error('Child image generation receipt must bind the original parent SHA-256.')
+      }
+    }
     manifest.schemaVersion = 2
     if (changedAssetIds.length) await saveJson(path, manifest)
     return { assets, changedAssetIds }

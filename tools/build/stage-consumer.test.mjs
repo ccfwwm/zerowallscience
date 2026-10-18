@@ -19,6 +19,9 @@ async function fixture(t) {
   await mkdir(join(root, 'tools/packaging'), { recursive: true })
   await mkdir(join(root, 'tools/plugins'), { recursive: true })
   await mkdir(join(root, 'config/deepseek-harness'), { recursive: true })
+  await mkdir(join(root, 'config/catalogs'), { recursive: true })
+  await writeFile(join(root, 'config/catalogs/retired-plugins.json'), JSON.stringify({schema:1,plugins:[]}))
+  await writeFile(join(root, 'config/catalogs/retired-resources.json'), JSON.stringify({schema:1,plugin:[],skill:[]}))
   await copyFile(new URL('../plugins/snapshot.mjs', import.meta.url), join(root, 'tools/plugins/snapshot.mjs'))
   await writeFile(join(root, 'config/deepseek-harness/upstream.json'), JSON.stringify({ commit: 'dsh' }))
   const store = join(root, 'artifacts/release/plugins/plugin/1.0.0')
@@ -29,7 +32,7 @@ async function fixture(t) {
   for (const file of ['incremental-build.mjs', 'clone-current-stage.mjs', 'materialize-tree.mjs', 'package-windows.mjs']) await copyFile(new URL(file, import.meta.url), join(root, 'tools/build', file))
   await writeFile(join(root, 'tools/build/build-lock.mjs'), 'export async function acquireBuildLock() { return async () => {} }')
   await writeFile(join(root, 'tools/build/assembly-cache.mjs'), 'export async function assembleRuntime() {}')
-  await writeFile(join(root, 'tools/build/paths.mjs'), "import { join } from 'node:path'; export const contract = { cache: join(import.meta.dirname, '../../artifacts/cache') }")
+  await writeFile(join(root, 'tools/build/paths.mjs'), "import { join } from 'node:path'; export const root = join(import.meta.dirname, '../..'); export const contract = { cache: join(root, 'artifacts/cache') }")
   await writeFile(join(root, 'tools/packaging/verify-runtime-freshness.mjs'), `
     import { appendFile, readFile } from 'node:fs/promises'; import { join } from 'node:path';
     export async function verifyRuntimeFreshness(root) {

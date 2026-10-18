@@ -17632,7 +17632,7 @@ importers:
         specifier: link:../../deepseek-harness/vendor/schemastery
         version: link:../../deepseek-harness/vendor/schemastery
       '@zerowallscience/plugin-ai-cloud':
-        specifier: ^0.1.15
+        specifier: ^0.1.27
         version: link:../../artifacts/dev/publish/plugin-ai-cloud
       '@zerowallscience/plugin-environment':
         specifier: workspace:^

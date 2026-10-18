@@ -15,6 +15,7 @@ import { MediaJobLedger } from './media-jobs.js'
 import { createHash } from 'node:crypto'
 import type { ZeroWallMediaJobs } from '../shared/media.js'
 import { AiCloudMediaService } from './media.js'
+import { mediaAbortable } from './media-abort.js'
 import { ManagedPiAiAdapter, managedRetryPolicy } from './managed-adapter.js'
 import type { ZeroWallMedia } from '../shared/media.js'
 export { AiCloudMediaService } from './media.js'
@@ -212,17 +213,44 @@ export const inject = ['llm', 'zerowallAccount']
 export function apply(ctx: Context): void {
   const secrets = new SecretBrokerClient()
   const controller = new AiCloudLlmController(ctx, { secrets })
-  ctx.on('zerowall/account-updated', (snapshot) => controller.update(snapshot))
+  let mediaIdentityKnown = false, mediaOwner: string | undefined
+  const rememberAccount = (snapshot: AiCloudAccountSnapshot) => {
+    mediaIdentityKnown = true
+    mediaOwner = snapshot.status === 'signedIn' && snapshot.email && snapshot.gatewayBaseUrl
+      ? createHash('sha256').update(snapshot.email.toLowerCase() + '\0' + snapshot.gatewayBaseUrl).digest('hex') : undefined
+    return snapshot
+  }
+  let mediaJobs: MediaJobLedger | undefined
+  ctx.on('zerowall/account-updated', (snapshot) => {
+    const previousOwner = mediaOwner
+    rememberAccount(snapshot)
+    if (previousOwner !== mediaOwner) mediaJobs?.suspend()
+    if (mediaOwner) void mediaJobs?.resumePending().catch(() => {})
+    return controller.update(snapshot)
+  })
   const account = ctx.get('zerowallAccount') as { current(): Promise<AiCloudAccountSnapshot> }
+  const initialAccount = account.current().then((snapshot) => {
+    // A login, logout or gateway publication is newer than this bootstrap
+    // request. Its late response must not restore an earlier owner or routes.
+    if (mediaIdentityKnown) return
+    rememberAccount(snapshot)
+    return controller.update(snapshot)
+  })
   const media = new AiCloudMediaService(ctx.get('zerowallAccount')!, secrets)
   ctx.provide('zerowallMedia', media)
-  ctx.provide('zerowallMediaJobs', new MediaJobLedger(media, async () => {
-    const snapshot = await ctx.zerowallAccount.current()
-    if (snapshot.status !== 'signedIn' || !snapshot.email || !snapshot.gatewayBaseUrl) throw new Error('MEDIA_SIGN_IN_REQUIRED')
-    return createHash('sha256').update(snapshot.email.toLowerCase() + '\0' + snapshot.gatewayBaseUrl).digest('hex')
-  }))
-  void account.current()
-    .then((snapshot) => controller.update(snapshot))
+  mediaJobs = new MediaJobLedger(media, async () => {
+    // Ownership comes from authenticated account publications, including logout
+    // and gateway changes. Stopping local IO must not wait for /auth/me or model
+    // discovery on every journal read/write. Provider query/download still check
+    // the current account and original credential before remote access.
+    if (!mediaIdentityKnown) await mediaAbortable(initialAccount, AbortSignal.timeout(30_000))
+    if (!mediaOwner) throw new Error('MEDIA_SIGN_IN_REQUIRED')
+    return mediaOwner
+  })
+  ctx.provide('zerowallMediaJobs', mediaJobs)
+  ctx.effect(() => () => mediaJobs?.dispose())
+  void initialAccount.then(() => mediaJobs?.resumePending()).catch(() => {})
+  void initialAccount
     .catch((error: unknown) => {
       ctx.logger.warn('ZeroWall AI Cloud model routes could not be restored.')
       ctx.logger.warn(error)

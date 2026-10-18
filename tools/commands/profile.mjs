@@ -2,12 +2,12 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { compareVersions } from './resource-catalog.mjs'
+import { RETIRED_PLUGIN_IDS, removeRetiredResolutionRules } from './retired-plugins.mjs'
 
 // Profile architecture migrations are deliberately additive.  A desktop
 // upgrade must be able to introduce a new bundled management surface without
 // rebuilding or replacing the user's selected plugin set.
 const PROFILE_ARCHITECTURE = 6
-const RETIRED_PLUGIN_IDS = new Set(['@everclear077/dsh-progressive-tools', 'dsh-progressive-tools'])
 const PROFILE_MIGRATIONS = [
   { from: 1, to: 2, add: ['@zerowallscience/plugin-extension-center'] },
   { from: 4, to: 5, remove: ['dsh-auto-review'] },
@@ -125,7 +125,8 @@ export async function initializeProfile(home, defaults, bundled = []) {
       selectionChanged = true
     }
   }
-  const profileChanged = selectionChanged || JSON.stringify(existing) !== JSON.stringify(bundles) || JSON.stringify(manifest.dependencies ?? {}) !== JSON.stringify(dependencies)
+  const resolutionChanged = removeRetiredResolutionRules(manifest)
+  const profileChanged = resolutionChanged || selectionChanged || JSON.stringify(existing) !== JSON.stringify(bundles) || JSON.stringify(manifest.dependencies ?? {}) !== JSON.stringify(dependencies)
   if (architecture >= PROFILE_ARCHITECTURE && !profileChanged) return
   manifest.dependencies = dependencies
   manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles } }

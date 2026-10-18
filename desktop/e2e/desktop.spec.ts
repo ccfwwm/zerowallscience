@@ -1,6 +1,6 @@
 import { contract } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -109,9 +109,15 @@ afterAll(async () => {
 afterEach(async context => {
   if (context.task.result?.state === 'fail') {
     const diagnostic = join(contract.verification, 'electron'); mkdirSync(diagnostic, { recursive: true })
+    writeFileSync(join(diagnostic, 'failed-process.log'), applicationOutput)
+    for (const name of ['startup.log', 'harness.log']) {
+      try { writeFileSync(join(diagnostic, 'failed-' + name), readFileSync(join(root, 'zerowall-user-data/logs', name))) }
+      catch { /* Preserve any logs that exist before fixture cleanup. */ }
+    }
     await page.screenshot({ path: join(diagnostic, 'failed-workbench.png') }).catch(() => undefined)
     console.log('Failed packaged UI', (await page.locator('body').innerText().catch(() => '')).slice(-16000), rendererOutput.filter(line => line.startsWith('[pageerror]')).slice(-5))
   }
+  if (page.isClosed()) return
   await page.setViewportSize({ width: 1280, height: 900 })
   // Restore the normal panel after a failed fullscreen interaction so one
   // failed assertion cannot obscure every later Settings/credentials check.
@@ -847,9 +853,16 @@ describe('ZeroWall Science Electron', () => {
     const selections = { disabled: [disabledId], removed: [removedId], pinned: { [pinnedId]: pinnedVersion } }
     mkdirSync(join(home, 'resources/plugins'), { recursive: true })
     writeFileSync(join(home, 'resources/plugins/selection.json'), JSON.stringify(selections))
-    const mcpLink = join(active, 'node_modules', mcpId)
-    expect(lstatSync(mcpLink).isSymbolicLink()).toBe(true)
-    unlinkSync(mcpLink)
+    const mcpRoot = join(active, 'node_modules', mcpId)
+    expect(lstatSync(mcpRoot).isDirectory()).toBe(true)
+    expect(lstatSync(mcpRoot).isSymbolicLink()).toBe(false)
+    expect(realpathSync(mcpRoot)).toBe(resolve(mcpRoot))
+    const mcpManifest = join(mcpRoot, 'package.json')
+    const mcpManifestBefore = readFileSync(mcpManifest)
+    // Damage one signed entry in the physical package rather than removing
+    // the directory. Startup must restore it from the installer supply.
+    unlinkSync(mcpManifest)
+    expect(existsSync(mcpManifest)).toBe(false)
     const packaged = await locatePackagedApp(desktopRoot)
     applicationOutput = ''
     application = spawn(packaged.executablePath, ['--remote-debugging-port=0', `--user-data-dir=${join(root, 'chromium')}`], {
@@ -862,6 +875,10 @@ describe('ZeroWall Science Electron', () => {
     await completeFirstRunOnboarding(page)
     const repaired = JSON.parse(readFileSync(join(active, 'package.json'), 'utf8'))
     expect(repaired.zerowall.pluginArchitecture).toBe(7)
+    expect(repaired.zerowall.profileLayout).toBe(3)
+    expect(lstatSync(mcpRoot).isSymbolicLink()).toBe(false)
+    expect(realpathSync(mcpRoot)).toBe(resolve(mcpRoot))
+    expect(readFileSync(mcpManifest)).toEqual(mcpManifestBefore)
     expect(readFileSync(join(active, 'cordis.patch.yml'))).toEqual(patchBefore)
     expect(readFileSync(join(imported, 'index.js'), 'utf8')).toBe(importedSource)
     expect(JSON.parse(readFileSync(join(home, 'resources/plugins/selection.json'), 'utf8'))).toEqual(selections)

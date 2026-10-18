@@ -16,7 +16,7 @@ export interface MediaArtifact {
 }
 export interface MediaTask {
   requestId: string; taskId?: string; account: string; gateway: string; selection: MediaSelection
-  parametersHash: string; status: string; artifacts: MediaArtifact[]; createdAt: string; updatedAt: string
+  parametersHash: string; status: string; artifacts: MediaArtifact[]; artifactsPending?: boolean; createdAt: string; updatedAt: string
 }
 export interface MediaCatalog { models: AiCloudMediaModel[]; status: string; error?: string }
 
@@ -50,6 +50,10 @@ export interface MediaJob {
   references: Array<{ name: string; mediaType: string; bytes: number; sha256: string; mask?: boolean }>
   estimate?: { currency: string; maximumCharge?: string; total?: string }
   state: string; error?: string; requestId: string; taskId?: string; assets: MediaAsset[]
+  /** Local result transfer is independent of the provider's generation status. */
+  collection?: 'querying' | 'downloading' | 'waiting' | 'ready' | 'failed' | 'paused'
+  /** Original-task continuation survives Host restarts and has no overall generation deadline. */
+  collectionRetry?: { attempts: number; startedAt: number; nextAttemptAt: number; backoff?: number; reason?: 'provider-pending' | 'result-not-ready' | 'temporary-error'; /** Read-only compatibility with older journals; never enforced. */ deadlineAt?: number }
   createdAt: string; updatedAt: string
 }
 export interface MediaReview { id: string; revision: number; authorization: string }
@@ -58,7 +62,11 @@ export interface ZeroWallMediaJobs {
   submitRequested(scope: Pick<MediaScope, 'sessionId' | 'cwd'>, id: string, revision: number): Promise<MediaJob>
   prepare(scope: MediaScope, draft: MediaDraft, id?: string): Promise<MediaJob>
   list(scope: Pick<MediaScope, 'sessionId' | 'cwd'>): Promise<MediaJob[]>
-  refresh(scope: MediaScope, id: string): Promise<MediaJob>
+  /** Adopt a trusted account history entry and collect the original paid task in the background. */
+  recover(scope: MediaScope, requestId: string): Promise<MediaJob>
+  refresh(scope: MediaScope, id: string, options?: { background?: boolean; signal?: AbortSignal; automatic?: boolean }): Promise<MediaJob>
+  /** Stop only local query/download; never claim the paid provider task was cancelled. */
+  pause(scope: MediaScope, id: string): Promise<MediaJob>
   authorize(scope: Pick<MediaScope, 'sessionId' | 'cwd'>, id: string, revision: number): Promise<string>
   submitReviewed(scope: Pick<MediaScope, 'sessionId' | 'cwd'>, reviews: MediaReview[]): Promise<MediaJob[]>
 }

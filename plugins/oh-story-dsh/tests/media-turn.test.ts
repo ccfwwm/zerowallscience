@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { expect,it } from 'vitest'
 import { mediaTurnDefinition } from '../src/client/media-turn.js'
 import { ConversationNodeAssembler } from '../../../deepseek-harness/packages/client/ui-conversation/src/client/conversation/assembler.js'

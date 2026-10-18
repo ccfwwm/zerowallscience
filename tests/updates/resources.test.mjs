@@ -330,8 +330,11 @@ test('failed Host activation restores the old profile, while successful activati
   await initializeProfile(f.home, [f.resource.id, unrelated])
   const activeManifest = join(f.home, 'profiles/web/package.json')
   const manifest = JSON.parse(await readFile(activeManifest, 'utf8'))
-  manifest.dependencies = { ...(manifest.dependencies ?? {}), [unrelated]: '0.4.0' }
+  manifest.zerowall = { ...(manifest.zerowall ?? {}), pluginArchitecture: 7, offlineGeneration: 'b'.repeat(64), disabledPlugins: [] }
+  manifest.dependencies = { ...(manifest.dependencies ?? {}), [f.resource.id]: '0.0.1', [unrelated]: '0.4.0' }
   await writeFile(activeManifest, JSON.stringify(manifest))
+  await mkdir(join(f.home, 'profiles/web/node_modules', f.resource.id), { recursive: true })
+  await writeFile(join(f.home, 'profiles/web/node_modules', f.resource.id, 'package.json'), JSON.stringify({ name: f.resource.id, version: '0.0.1' }))
   let rejectActivation = true
   let starts = 0
   const manager = createResourceManager({ ...f, target, local: true,
@@ -339,9 +342,8 @@ test('failed Host activation restores the old profile, while successful activati
       const workspace = JSON.parse(await readFile(join(f.home, 'profiles', generation, 'pnpm-workspace.yaml'), 'utf8'))
       assert.equal(workspace.allowBuilds['@scarf/scarf'], false)
       assert.equal(workspace.dangerouslyAllowAllBuilds, undefined)
-      const file = join(f.home, 'profiles', generation, 'package.json')
-      const value = JSON.parse(await readFile(file)); value.testVersion = 'new'
-      await writeFile(file, JSON.stringify(value))
+      await mkdir(join(f.home, 'profiles', generation, 'node_modules', f.resource.id), { recursive: true })
+      await writeFile(join(f.home, 'profiles', generation, 'node_modules', f.resource.id, 'package.json'), JSON.stringify({ name: f.resource.id, version: f.resource.version }))
       await mkdir(join(f.home, 'profiles', generation, 'node_modules', unrelated), { recursive: true })
       await writeFile(join(f.home, 'profiles', generation, 'node_modules', unrelated, 'package.json'), JSON.stringify({ name: unrelated, version: '0.4.0' }))
     }, stopHost: async () => {}, startHost: async () => {
@@ -350,12 +352,23 @@ test('failed Host activation restores the old profile, while successful activati
     }, callHost: async () => {} })
   await assert.rejects(manager.plugin(f.resource.id, f.source), /Host failed/)
   const file = join(f.home, 'profiles/web/package.json')
-  assert.equal(JSON.parse(await readFile(file)).testVersion, undefined)
+  assert.equal(JSON.parse(await readFile(join(f.home, 'profiles/web/node_modules', f.resource.id, 'package.json'))).version, '0.0.1')
   rejectActivation = false
   await manager.plugin(f.resource.id, f.source)
-  assert.equal(JSON.parse(await readFile(file)).testVersion, 'new')
+  assert.equal(JSON.parse(await readFile(join(f.home, 'profiles/web/node_modules', f.resource.id, 'package.json'))).version, f.resource.version)
+  const currentManifest = JSON.parse(await readFile(file))
+  currentManifest.zerowall = { ...currentManifest.zerowall, profileLayout: 2, offlineGeneration: 'a'.repeat(64), disabledPlugins: ['kept-disabled-plugin'] }
+  currentManifest.customSettings = { model: 'selected-model', imageModel: 'selected-image-model', reasoningEffort: 'xhigh' }
+  await writeFile(file, JSON.stringify(currentManifest))
+  await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
+  await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify({ disabled: ['kept-disabled-plugin'], removed: [], pinned: {} }))
   await manager.rollbackPlugin(f.resource.id)
-  assert.equal(JSON.parse(await readFile(file)).testVersion, undefined)
+  const rolledBack = JSON.parse(await readFile(file))
+  assert.equal(JSON.parse(await readFile(join(f.home, 'profiles/web/node_modules', f.resource.id, 'package.json'))).version, '0.0.1')
+  assert.equal(rolledBack.zerowall.profileLayout, 2)
+  assert.equal(rolledBack.zerowall.offlineGeneration, 'a'.repeat(64))
+  assert.deepEqual(rolledBack.zerowall.disabledPlugins, ['kept-disabled-plugin'])
+  assert.deepEqual(rolledBack.customSettings, currentManifest.customSettings)
   assert.equal(JSON.parse(await readFile(join(f.home, 'profiles/web/node_modules', unrelated, 'package.json'))).version, '0.4.0')
 })
 test('repair and local import preserve the offline closure without resolving workspace dependencies', async () => {
@@ -379,4 +392,20 @@ test('repair and local import preserve the offline closure without resolving wor
     await assert.rejects(manager.mutate(args), /fixture stops/)
     assert.equal(await readFile(file, 'utf8'), before)
   }
+})
+
+test('invalid batches and signed transitive retired plugins cannot enter a candidate', async () => {
+  const f = await fixture()
+  try {
+    await initializeProfile(f.home, [f.resource.id])
+    let installs = 0
+    const manager = createResourceManager({ ...f, target, local: true, runPlugin: async () => { installs++ } })
+    await assert.rejects(manager.updatePlugins(undefined), /Invalid plugin batch/)
+    await assert.rejects(manager.updatePlugins('plugin'), /Invalid plugin batch/)
+    const entry = { ...f.resource, dependencies: { 'dsh-genui': '^0.12.0' } }
+    const retired = { ...f.resource, id: 'dsh-genui', version: '0.12.1' }
+    await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [entry, retired] }, f.privateKey, 'test')))
+    await assert.rejects(manager.plugin(f.resource.id, f.source), /dependency has been retired/)
+    assert.equal(installs, 0)
+  } finally { await rm(f.home, { recursive: true, force: true }) }
 })

@@ -32,7 +32,7 @@ export function toolError(err: unknown): ToolErrorResult {
 export interface SessionsLike {
   get(id: string):
     | {
-        header?: { cwd?: unknown }
+        header?: { cwd?: unknown; parentSession?: unknown; origin?: unknown }
         requestHeader?: () => { config?: { provider?: string; model?: string } } | undefined
       }
     | undefined

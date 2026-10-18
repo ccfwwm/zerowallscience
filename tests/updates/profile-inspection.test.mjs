@@ -5,6 +5,30 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { initializeProfile, inspectProfile } from '../../tools/commands/profile.mjs'
 
+test('modern profile initialization removes retired resolver policy without restoring user selections', async t => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-profile-resolvers-'))
+  t.after(() => rm(home, { recursive: true, force: true }))
+  await initializeProfile(home, ['third-party'])
+  const file = join(home, 'profiles/web/package.json')
+  const manifest = JSON.parse(await readFile(file, 'utf8'))
+  manifest.zerowall = { pluginArchitecture: 7, profileLayout: 2, disabledPlugins: ['third-party'], model: 'selected-model' }
+  manifest.dsh.profile.bundles = ['@deepseek-ai/dsh-base']
+  manifest.pnpm = { overrides: { 'dsh-univer-office': 'file:old-univer.tgz', kept: '2' }, onlyBuiltDependencies: ['kept'] }
+  manifest.overrides = { 'dsh-genui': '1', kept: { '.': '2', shared: '3' } }
+  manifest.resolutions = { '**/@changfenhuang/dsh-genui': '1', '**/@other/dsh-genui': '4' }
+  await writeFile(file, JSON.stringify(manifest))
+  await initializeProfile(home, ['third-party', 'another-default'])
+  const result = JSON.parse(await readFile(file, 'utf8'))
+  assert.deepEqual(result.dsh, manifest.dsh)
+  assert.deepEqual(result.zerowall, manifest.zerowall)
+  assert.deepEqual(result.pnpm, { overrides: { kept: '2' }, onlyBuiltDependencies: ['kept'] })
+  assert.deepEqual(result.overrides, { kept: { '.': '2', shared: '3' } })
+  assert.deepEqual(result.resolutions, { '**/@other/dsh-genui': '4' })
+  const before = await readFile(file, 'utf8')
+  await initializeProfile(home, ['third-party', 'another-default'])
+  assert.equal(await readFile(file, 'utf8'), before)
+})
+
 test('reports shadowed old plugins without restoring removed bundles or rewriting pins', async () => {
   const home = await mkdtemp(join(tmpdir(), 'zws-profile-doctor-'))
   const id = '@zerowallscience/plugin-files'
@@ -103,12 +127,12 @@ test('early modular profiles shed duplicate desktop overlays while preserving pa
     const id = '@zerowallscience/plugin-files'
     await mkdir(join(home, 'profiles/web'), { recursive: true })
     const file = join(home, 'profiles/web/package.json')
-    const manifest = { private: true, zerowall: { pluginArchitecture: 3 }, dependencies: { 'dsh-univer-office': '0.3.5', 'dsh-genui': '0.9.0' }, dsh: { profile: { bundles: [id, 'dsh-univer-office', 'dsh-genui', 'dsh-better-sidebar', 'third-party-plugin'] } } }
+    const manifest = { private: true, zerowall: { pluginArchitecture: 3 }, dependencies: { 'dsh-univer-office': '0.3.5', 'dsh-genui': '0.9.0', 'third-party-plugin': '1.2.3' }, dsh: { profile: { bundles: [id, 'dsh-univer-office', 'dsh-genui', 'dsh-better-sidebar', 'third-party-plugin'] } } }
     await writeFile(file, JSON.stringify(manifest))
     await initializeProfile(home, [id, '@zerowallscience/plugin-images'], [{ id: 'dsh-univer-office', managed: false }, { id: 'dsh-genui', managed: false }, { id: 'dsh-better-sidebar', managed: false }])
     const result = JSON.parse(await readFile(file, 'utf8'))
     assert.deepEqual(result.dsh.profile.bundles, [id, 'third-party-plugin'])
-    assert.deepEqual(result.dependencies, manifest.dependencies)
+    assert.deepEqual(result.dependencies, { 'third-party-plugin': '1.2.3' })
     assert.equal(result.zerowall.pluginArchitecture, 6)
   } finally { await rm(home, { recursive: true, force: true }) }
 })

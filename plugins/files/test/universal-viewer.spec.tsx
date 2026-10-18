@@ -2,14 +2,20 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { createElement, type ComponentType } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+const { loadViewerRuntime, createViewer } = vi.hoisted(() => ({
+  createViewer: vi.fn(() => ({ resize: vi.fn(), destroy: vi.fn() })),
+  loadViewerRuntime: vi.fn(),
+}))
+vi.mock('../src/client/viewer-runtime-loader.js', () => ({ loadViewerRuntime }))
 vi.mock('@open-file-viewer/core', () => {
   const factory = () => ({})
   return { createViewer: () => ({ resize() {}, destroy() {} }), ...Object.fromEntries(['imagePlugin', 'videoPlugin', 'audioPlugin', 'pdfPlugin', 'officePlugin', 'archivePlugin', 'emailPlugin', 'drawingPlugin', 'xmindPlugin', 'cadPlugin', 'model3dPlugin', 'gisPlugin', 'epubPlugin', 'xpsPlugin', 'ofdPlugin', 'assetPlugin', 'fallbackPlugin'].map(name => [name, factory])) }
 })
 vi.mock('viewer-pdfjs', () => ({}))
-import { installUniversalViewer, DEFAULT_VIEWER_EXTENSIONS } from '../src/client/universal-viewer.js'
+import { installUniversalViewer, DEFAULT_VIEWER_EXTENSIONS, UniversalPreview } from '../src/client/universal-viewer.js'
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+loadViewerRuntime.mockImplementation(async () => ({ createViewer, plugins: () => [] }))
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); createViewer.mockClear(); loadViewerRuntime.mockImplementation(async () => ({ createViewer, plugins: () => [] })) })
 it('opens a native sidebar resource through the public tab hook, then explicitly switches to the native renderer', async () => {
   vi.stubGlobal('requestAnimationFrame', () => 1); vi.stubGlobal('cancelAnimationFrame', () => {})
   let Body!: ComponentType<any>
@@ -43,6 +49,17 @@ it('opens a native sidebar resource through the public tab hook, then explicitly
   await waitFor(() => expect(openResource).toHaveBeenCalledWith(address, { kind: 'text' }))
   expect(screen.queryByRole('button', { name: 'Office→PDF' })).toBeNull()
   disposers.forEach(dispose => dispose())
+})
+
+it('does not create a viewer when the preview closes before the local runtime loads', async () => {
+  let loaded!: (value: any) => void
+  loadViewerRuntime.mockImplementationOnce(() => new Promise(resolve => { loaded = resolve }))
+  const view = render(createElement(UniversalPreview, { name: 'large.pdf', bytes: new Uint8Array([1, 2]) }))
+  expect(loadViewerRuntime).toHaveBeenCalled()
+  view.unmount()
+  loaded({ createViewer, plugins: () => [] })
+  await Promise.resolve()
+  expect(createViewer).not.toHaveBeenCalled()
 })
 
 it('converts an explicit Office fallback through the scope-bound Remote and cancels on close', async () => {

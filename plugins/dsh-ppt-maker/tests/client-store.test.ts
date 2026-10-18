@@ -185,6 +185,69 @@ describe('PptStore（S6 骨架纪律）', () => {
     store.dispose()
   })
 
+  it('同修订号合并编辑仍按 checksum 同步页清单，整份 AST 一次载入', async () => {
+    const store = seedStore()
+    mockApi.project.mockResolvedValueOnce({ ...PROJECT_R1, manifest: { revision: 1, checksum: 'before' } })
+    await store.actions.init()
+    const pages = Array.from({ length: 40 }, (_, index) => `pages/${String(index + 1).padStart(2, '0')}.page`)
+    mockApi.project.mockResolvedValueOnce({
+      ...PROJECT_R1,
+      manifest: { revision: 1, checksum: 'after' },
+      deck: { ...DECK, pages },
+      pageData: Object.fromEntries(pages.map((rel) => [rel, PAGE_1])),
+    })
+    mockApi.page.mockClear()
+    await store.actions.applyPoll({ ...STATE_R1, manifest: { revision: 1, checksum: 'after', pageCount: 40 } })
+    const snap = store.getSnapshot()
+    expect(snap.deckPages).toEqual(pages)
+    expect(snap.lastSeenChecksum).toBe('after')
+    expect(snap.lastSeenRevision).toBe(1)
+    expect(Object.keys(snap.pagesAst)).toHaveLength(40)
+    await store.actions.ensureAllPages()
+    await store.actions.ensurePageLoaded()
+    expect(mockApi.page).not.toHaveBeenCalled()
+    store.dispose()
+  })
+
+  it('模型撤销导致修订号下降时也刷新，并保留当前页位置', async () => {
+    const store = seedStore()
+    await store.actions.init()
+    store.actions.setPage(1)
+    mockApi.project.mockResolvedValueOnce({ ...PROJECT_R1, revision: 0 })
+    await store.actions.applyPoll({ ...STATE_R1, manifest: { revision: 0 } })
+    expect(store.getSnapshot().lastSeenRevision).toBe(0)
+    expect(store.getSnapshot().currentPage).toBe(1)
+    store.dispose()
+  })
+
+  it('同修订号内容变化仍保护用户草稿；采用服务端版本确实重拉同一工程', async () => {
+    const store = seedStore()
+    mockApi.project.mockResolvedValueOnce({ ...PROJECT_R1, manifest: { revision: 1, checksum: 'before' } })
+    await store.actions.init()
+    await store.actions.stage({ op: 'update_page', page: DECK.pages[0], patch: { name: 'draft' } })
+    mockApi.project.mockClear()
+    await store.actions.applyPoll({ ...STATE_R1, manifest: { revision: 1, checksum: 'after' } })
+    expect(mockApi.project).not.toHaveBeenCalled()
+    expect(store.getSnapshot().draft).not.toBeNull()
+    expect(store.getSnapshot().externalChange).toEqual({ revision: 1 })
+    await store.actions.acceptExternal()
+    expect(mockApi.project).toHaveBeenCalledWith('s1', 'k1')
+    expect(store.getSnapshot().draft).toBeNull()
+    store.dispose()
+  })
+
+  it('轮询打开工程失败保留错误态，后续重试可恢复', async () => {
+    const store = seedStore()
+    mockApi.project.mockRejectedValueOnce(new Error('temporary read error'))
+    await store.actions.init()
+    expect(store.getSnapshot().status).toBe('error')
+    expect(store.getSnapshot().error).toContain('temporary read error')
+    await store.actions.applyPoll(STATE_R1)
+    expect(store.getSnapshot().status).toBe('ready')
+    expect(store.getSnapshot().error).toBeNull()
+    store.dispose()
+  })
+
   it('applyPoll 有冲突时 revision 前进也只亮「外部已修改」，不静默重载', async () => {
     const store = seedStore()
     await store.actions.init()

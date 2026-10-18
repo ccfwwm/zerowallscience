@@ -2,7 +2,7 @@ import { stageRoot, targetPackageRoot } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, readFileSync } from 'node:fs'
-import { access, mkdir, mkdtemp, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, mkdtemp, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { createServer as createHttpServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -127,8 +127,18 @@ if (fullOffline) {
   await initializeProfile(probeHome, defaults, offlineReceipt.plugins)
   offlineProbe = await prepareOfflineCandidate({ home: probeHome, source: resolve(packaged.resourcesRoot, 'offline-profile'), keys,
     target: { desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit, platform: process.platform, architecture: process.arch }, defaults, bundledPlugins, yaml,
+    runtimeModules: resolve(asarPath, 'node_modules'),
   })
   if (offlineProbe.blocked.length) throw new Error('New offline import profile unexpectedly blocked')
+  for (const plugin of offlineReceipt.plugins.filter(entry => !entry.core)) {
+    const info = await lstat(resolve(offlineProbe.candidate, 'node_modules', plugin.id))
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Active plugin root must be a physical profile directory: ' + plugin.id)
+  }
+  // Installation reads the signed bundled source directly. Runtime imports
+  // must work without creating a second home-owned offline supply directory.
+  if (await lstat(resolve(probeHome, 'resources/offline')).catch(error => { if (error.code !== 'ENOENT') throw error })) {
+    throw new Error('Profile installation must not duplicate the bundled offline supply in user data')
+  }
 }
 
 if (archiveFiles.some(path => path.includes('node_modules/@fylar/'))) {
@@ -348,6 +358,14 @@ if (!hostOnly) await verifyDesktopStartup()
 console.log(`Packaged ZeroWall ASAR runtime and package policy verified; startup: ${hostOnly ? 'Host' : desktopOnly ? 'Desktop' : 'Host and Desktop'}.`)
 
 async function verifyArchivePolicy() {
+  // PPTD is loaded by the shipped skill at runtime. Verify the exact required
+  // files before applying the general development-document exclusion.
+  const pptPrefix = 'node_modules/dsh-ppt-maker/'
+  const pptManifest = JSON.parse(readArchiveFile(pptPrefix + 'package.json').toString('utf8'))
+  for (const file of ['docs/pptd-spec.md', 'skills/ppt-maker/SKILL.md', 'skills/ppt-maker/reference/pptd.md']) {
+    if (!pptManifest.zerowall?.runtimeFiles?.includes(file) || !archiveSet.has(pptPrefix + file)) throw new Error('Packaged PPT runtime asset missing: ' + file)
+    if (!readArchiveFile(pptPrefix + file).equals(await readFile(resolve(repositoryRoot, 'plugins/dsh-ppt-maker', file)))) throw new Error('Packaged PPT runtime asset differs from source: ' + file)
+  }
   // BioGenie executes this signed resource payload and verifies every file
   // before use. Its agent guides are part of that payload, not build docs.
   const bioPrefix = 'node_modules/@zerowallscience/plugin-biogenie/payload/'
@@ -768,6 +786,7 @@ function verifyZoteroAdapters() {
 function hasForbiddenRuntimeDirectory(path) {
   if (path.startsWith('node_modules/@zerowallscience/plugin-biogenie/payload/docs/')) return false
   if (['node_modules/dsh-zotero/docs', 'node_modules/dsh-zotero/docs/images', 'node_modules/dsh-zotero/docs/images/icon.png'].includes(path)) return false
+  if (['node_modules/dsh-ppt-maker/docs', 'node_modules/dsh-ppt-maker/docs/pptd-spec.md'].includes(path)) return false
   const forbidden = new Set(['test', 'tests', '__tests__', 'example', 'examples', 'docs'])
   const segments = path.split('/')
   return segments.some(segment => forbidden.has(segment.toLowerCase()))
@@ -1033,6 +1052,7 @@ async function verifyHostStartup() {
       keys: JSON.parse(await readFile(resolve(repositoryRoot, 'config/catalogs/trusted-keys.json'), 'utf8')),
       target: { desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit, platform: process.platform, architecture: process.arch },
       defaults: JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8')), yaml,
+      runtimeModules: resolve(asarPath, 'node_modules'),
     })
     if (result.blocked.length) throw new Error('New offline profile unexpectedly has blocked plugins')
     await rename(resolve(home, 'profiles/web'), resolve(home, 'profiles/verification-before-repair'))

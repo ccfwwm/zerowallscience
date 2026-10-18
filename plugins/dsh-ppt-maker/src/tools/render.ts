@@ -4,9 +4,8 @@
  * pptx bytes BEFORE font embedding (LibreOffice 会误用嵌入的子集 EOT 字体，
  * 预览必须走未嵌入字节，由系统字体承担渲染).
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { buildProjectDeck, renderPptxImages, saveRawProjectPptx } from '../core/export-pipeline.js'
+import { renderProjectPreviews } from '../core/lazy-export-pipeline.js'
 import { renderSummary, resultSchema, resolveSessionCwd, toolError, type PluginToolCtx } from './shared.js'
 
 export function registerRenderTool(ctx: PluginToolCtx): (() => void) | undefined {
@@ -57,40 +56,16 @@ export function registerRenderTool(ctx: PluginToolCtx): (() => void) | undefined
       try {
         const cwd = resolveSessionCwd(exec, ctx.sessions)
         const dir = args.dir as string
-        const pipeline = await buildProjectDeck(cwd, dir)
-        // 渲染用未嵌字体的裸字节：LibreOffice 会误用嵌入的子集 EOT（字形错乱），
-        // 预览必须反映版面本身，由系统字体承担渲染。
-        const bytes = await saveRawProjectPptx(pipeline)
-
-        const rendered = await renderPptxImages(bytes, {
+        const rendered = await renderProjectPreviews(cwd, dir, {
           pages: args.pages as number[] | undefined,
           dpi: (args.dpi as number | undefined) ?? 96
         })
-        try {
-          const previewDir = path.join(pipeline.dir, '.previews')
-          await mkdir(previewDir, { recursive: true })
-          const images: Array<{ page: number; path: string; width: number; height: number }> = []
-          for (const image of rendered.result.images) {
-            const page = image.page ?? image.index + 1
-            const target = path.join(previewDir, `page-${String(page).padStart(2, '0')}.png`)
-            const bytesIn = await readFile(image.path)
-            await writeFile(target, bytesIn)
-            images.push({
-              page,
-              path: path.relative(cwd, target).replace(/\\/g, '/'),
-              width: image.width,
-              height: image.height
-            })
-          }
-          return {
-            ok: true,
-            revision: pipeline.revision,
-            images,
-            missingFonts: rendered.result.missingFonts,
-            warnings: pipeline.buildWarnings
-          }
-        } finally {
-          await rendered.cleanup()
+        return {
+          ok: true,
+          revision: rendered.revision,
+          images: rendered.images.map((image) => ({ ...image, path: path.relative(cwd, image.path).replace(/\\/g, '/') })),
+          missingFonts: rendered.missingFonts,
+          warnings: rendered.warnings
         }
       } catch (err) {
         return toolError(err)

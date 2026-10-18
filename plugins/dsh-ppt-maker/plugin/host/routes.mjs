@@ -258,6 +258,7 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
   }
 
   const thumbDir = (abs, revision) => path.join(abs, '.thumb-cache', `r${String(revision).padStart(4, '0')}`)
+  const thumbnailBatches = new Map()
 
   return async function handle(req, res) {
     if (!sameOrigin(req)) return fail(res, 403, '拒绝跨站请求')
@@ -280,6 +281,7 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
               const loaded = await loadProject(cwd, hit.dir)
               manifest = {
                 revision: loaded.manifest.revision,
+                checksum: loaded.manifest.checksum,
                 title: loaded.deck.title ?? null,
                 designSystem: loaded.manifest.designSystem ?? null,
                 theme: loaded.manifest.theme ?? null,
@@ -321,6 +323,9 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
           manifest: loaded.manifest,
           deck: loaded.deck,
           pages: loaded.deck.pages.map((rel) => ({ path: rel })),
+          // loadProject already parsed all pages. Send them once so a 40-page
+          // workbench does not reparse the full deck through 40 /page requests.
+          pageData: Object.fromEntries(loaded.pages),
           issues: loaded.issues,
           checksumMismatch: loaded.checksumMismatch,
         })
@@ -347,6 +352,25 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
         const revQ = Number(url.searchParams.get('rev') || '')
         if (!Number.isInteger(page) || page < 1) return fail(res, 400, 'page 必须是 ≥1 的整数')
         if (!Number.isInteger(revQ) || revQ < 0) return fail(res, 400, 'rev 必须是 ≥0 的整数')
+        if (typeof core.renderProjectPreviews === 'function') {
+          // The workbench requests all thumbnails together. Build/load the
+          // saved deck once and render the missing pages as one native batch.
+          const batchKey = `${abs}:${revQ}`
+          let batch = thumbnailBatches.get(batchKey)
+          if (!batch) {
+            batch = core.renderProjectPreviews(cwd, relDir)
+            thumbnailBatches.set(batchKey, batch)
+          }
+          let previews
+          try { previews = await batch }
+          finally { if (thumbnailBatches.get(batchKey) === batch) thumbnailBatches.delete(batchKey) }
+          if (previews.revision !== revQ) return fail(res, 409, '工程修订已变化，请刷新缩略图')
+          const image = previews.images.find((item) => item.page === page)
+          if (!image) return fail(res, 404, `页 ${page} 不存在`)
+          const bytes = await fsp.readFile(image.path)
+          res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-cache' })
+          return res.end(bytes)
+        }
         const cacheDir = thumbDir(abs, revQ)
         const cached = path.join(cacheDir, `page-${page}.png`)
         try {
@@ -357,7 +381,9 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
           /* 没命中 → 现渲染 */
         }
         const pipeline = await buildProjectDeck(cwd, relDir)
-        const { bytes } = await saveProjectPptx(pipeline)
+        const bytes = typeof core.saveRawProjectPptx === 'function'
+          ? await core.saveRawProjectPptx(pipeline)
+          : (await saveProjectPptx(pipeline)).bytes
         const tmpRoot = path.join(abs, '.thumb-cache')
         const tmp = await fsp.mkdtemp(path.join(tmpRoot, 'tmp-'))
         const inputPath = path.join(tmp, 'deck.pptx')

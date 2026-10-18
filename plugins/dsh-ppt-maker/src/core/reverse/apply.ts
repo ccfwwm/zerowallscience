@@ -16,6 +16,8 @@ import { loadReverseModel } from './read.js'
 import { mapReverseModel } from './map.js'
 import { writeReverseProject } from './writeProject.js'
 import type { ReverseWriteResult } from './types.js'
+import { ReverseImportError } from './error.js'
+export { ReverseImportError } from './error.js'
 
 export interface ImportOptions {
   cwd: string
@@ -25,18 +27,6 @@ export interface ImportOptions {
   targetDir: string
   title?: string
   sessionId?: string | null
-}
-
-export class ReverseImportError extends Error {
-  readonly code: 'SourceNotFound' | 'SourceOutsideCwd' | 'ParseFailed'
-  readonly detail?: unknown
-
-  constructor(code: ReverseImportError['code'], message: string, detail?: unknown) {
-    super(message)
-    this.name = 'ReverseImportError'
-    this.code = code
-    this.detail = detail
-  }
 }
 
 async function sourceBytes(cwd: string, source: Uint8Array | string): Promise<{ bytes: Uint8Array; path: string }> {

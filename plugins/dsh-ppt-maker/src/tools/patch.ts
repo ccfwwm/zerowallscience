@@ -22,25 +22,12 @@
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import {
-  findShapeById,
-  findShapesAtPoint,
-  findShapesByName,
-  getShapeId,
-  getSlideAt,
-  getSlideCount,
-  getSlides,
-  loadPresentation,
-  moveSlide,
-  savePresentation,
-  setShapeImage,
-  setShapeText,
-  type PresentationData,
-  type SlideShapeData
-} from '@office-kit/pptx'
+import type { PresentationData, SlideShapeData } from '@office-kit/pptx'
+import { retryableImport } from '../core/lazy-module.js'
 import { ProjectError } from '../core/project/store.js'
-import { listPackageParts } from '@office-kit/pptx'
 import { renderSummary, resultSchema, resolveSessionCwd, sessionIdOf, toolError, type PluginToolCtx } from './shared.js'
+
+const loadPptx = retryableImport(() => import('@office-kit/pptx'))
 
 type PatchOp =
   | { op: 'set_text'; slide: number; shapeId?: number; shapeName?: string; at?: [number, number]; text: string }
@@ -67,7 +54,8 @@ interface ShapeRef {
   at?: [number, number]
 }
 
-function pickShape(pres: PresentationData, ref: ShapeRef): SlideShapeData {
+function pickShape(pres: PresentationData, ref: ShapeRef, api: typeof import('@office-kit/pptx')): SlideShapeData {
+  const { getSlideAt, findShapeById, findShapesByName, findShapesAtPoint } = api
   const slide = getSlideAt(pres, ref.slide - 1)
   if (!slide) {
     throw new ProjectError('SlideIndexOutOfRange', `源文件没有第 ${ref.slide} 页`, { status: 404 })
@@ -208,6 +196,9 @@ export function registerPatchTool(ctx: PluginToolCtx): (() => void) | undefined 
         const sourceBytes = new Uint8Array(await readFile(sourceAbs))
         const beforeSha1 = createHash('sha1').update(sourceBytes).digest('hex')
 
+        const pptx = await loadPptx()
+        const { getShapeId, getSlideAt, getSlideCount, getSlides, loadPresentation, moveSlide,
+          savePresentation, setShapeImage, setShapeText, listPackageParts } = pptx
         const pres = await loadPresentation(sourceBytes)
         const slides = getSlides(pres)
         if (slides.length === 0) throw new ProjectError('NoSlides', '源文件没有页面', { status: 409 })
@@ -222,14 +213,14 @@ export function registerPatchTool(ctx: PluginToolCtx): (() => void) | undefined 
           }
           switch (op.op) {
             case 'set_text': {
-              const shape = pickShape(pres, op as ShapeRef)
+              const shape = pickShape(pres, op as ShapeRef, pptx)
               if (typeof op.text !== 'string') throw new ProjectError('TextRequired', `ops[${i}] set_text 需要 text 字符串`, { status: 400 })
               setShapeText(shape, op.text, { newlines: 'paragraph' })
               appliedOps.push(`set_text p${slideIndex}#${getShapeId(shape)} «${op.text.slice(0, 30)}»`)
               break
             }
             case 'replace_image': {
-              const shape = pickShape(pres, op as ShapeRef)
+              const shape = pickShape(pres, op as ShapeRef, pptx)
               if (!op.image) throw new ProjectError('ImageRequired', `ops[${i}] replace_image 需要 image 字段`, { status: 400 })
               const bytes = await readImageBytes(cwd, op.image)
               setShapeImage(shape, bytes)

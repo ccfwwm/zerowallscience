@@ -64,7 +64,7 @@ it('stops background querying when an asynchronous result is downloaded',async()
  vi.useFakeTimers()
  const asset={id:'a',path:'media-projects/p/assets/music.m4a',mediaType:'audio/mp4',bytes:100,sha256:'hash'}
  const job={id:'job-00001',requestId:'request-00001',projectId:'p',state:'queued',assets:[]}
- const call=vi.fn(async()=>({...job,state:'completed',assets:[asset]}))
+ const call=vi.fn(async(_:string,action:string)=>action==='list'?{jobs:[{...job,state:'completed',assets:[asset]}]}:{...job,state:'completed',assets:[asset]})
  await act(async()=>{render(<MediaToolRow {...{phase:'result',sessionId:'s',toolName:'media_job',block:{kind:'tool-result',content:[{type:'text',text:JSON.stringify(job)}],isError:false}} as any} call={call}/>)})
  await act(async()=>{await vi.advanceTimersByTimeAsync(15000)})
  expect(call).toHaveBeenCalledOnce();expect(document.querySelector('audio')).toBeTruthy()
@@ -88,4 +88,121 @@ it('opens accessible enlarged previews and closes them without leaving the conve
 it('assigns independent project ids to sessions in the same workspace',()=>{
  expect(sessionProjectId('session-one')).not.toBe(sessionProjectId('session-two'))
  expect(sessionProjectId('session-one')).toMatch(/^[A-Za-z0-9_-]{1,80}$/)
+})
+
+it('shows persisted completed tasks and working reacquire/stop controls while the model catalog never returns',async()=>{
+ let job:any={id:'job-recover-01',requestId:'request-recover-01',taskId:'mt_original',sessionId:'s',projectId:'p',revision:1,kind:'video',prompt:'原视频',selection,parameters:{},references:[],state:'completed',assets:[]}
+ const call=vi.fn(async(_:string,action:string)=>{
+  if(action==='list')return {projects:[],jobs:[job]}
+  if(action==='catalog')return new Promise(()=>{})
+  if(action==='refresh'){job={...job,collection:'downloading'};return job}
+  if(action==='pause'){job={...job,collection:'paused'};return job}
+  return {}
+ })
+ const view=render(<MediaWorkspace sessionId="s" call={call} send={vi.fn()}/>)
+ await screen.findByText('原视频');await screen.findByText('生成完成，正在下载')
+ fireEvent.click(screen.getByRole('button',{name:'停止本地收集'}))
+ await screen.findByText('本地收集已停止')
+ fireEvent.click(screen.getByRole('button',{name:'重新获取'}))
+ await screen.findByText('生成完成，正在下载')
+ expect(call.mock.calls.some(c=>c[1]==='generate')).toBe(false)
+ view.rerender(<MediaWorkspace sessionId="new-session" call={vi.fn(async(_:string,action:string)=>action==='list'?{projects:[],jobs:[]}:action==='catalog'?{models:[],status:'succeeded'}:{})} send={vi.fn()}/>)
+ await screen.findByText('从一句话开始')
+})
+it('moves history recovery into the cancellable task view immediately and never generates a replacement',async()=>{
+ let job:any
+ const history={requestId:'legacy-request-0001',taskId:'mt_history',status:'completed',selection}
+ const call=vi.fn(async(_:string,action:string)=>{
+  if(action==='list')return {projects:[],jobs:job?[job]:[]}
+  if(action==='catalog')return new Promise(()=>{})
+  if(action==='legacy')return [history]
+  if(action==='legacy-recover'){job={...history,id:'recovered-job-0001',projectId:'p',sessionId:'s',kind:'video',prompt:'恢复历史视频任务',parameters:{},references:[],state:'completed',collection:'querying',assets:[],revision:1};return job}
+  if(action==='pause'){job={...job,collection:'paused'};return job}
+  if(action==='refresh')return job
+  return {}
+ })
+ render(<MediaWorkspace sessionId="s" call={call} send={vi.fn()}/>)
+ fireEvent.click(screen.getByRole('button',{name:'作品素材'}))
+ fireEvent.click(screen.getByRole('button',{name:'读取历史任务'}))
+ fireEvent.click(await screen.findByRole('button',{name:'恢复原任务'}))
+ await screen.findByDisplayValue('恢复历史视频任务')
+ fireEvent.click(screen.getByRole('button',{name:'停止本地收集'}))
+ await screen.findByText('本地收集已停止')
+ expect(call.mock.calls.filter(c=>c[1]==='legacy-recover')).toHaveLength(1)
+ expect(call.mock.calls.some(c=>['submit','generate'].includes(c[1]))).toBe(false)
+})
+
+it('marks stale workspace polling as automatic so Host can preserve a newer pause',async()=>{
+ const a:any={id:'job-a-0001',requestId:'request-a-0001',sessionId:'s',projectId:'p',revision:1,kind:'video',prompt:'先处理任务',selection,parameters:{},references:[],state:'completed',assets:[]}
+ let b:any={...a,id:'job-b-0001',requestId:'request-b-0001',prompt:'已停止任务'},releaseA!:()=>void,paused=false,staleRefreshes=0
+ const gate=new Promise<void>(resolve=>{releaseA=resolve})
+ const call=vi.fn(async(_:string,action:string,input:any={})=>{
+  if(action==='list')return {projects:[],jobs:[structuredClone(a),structuredClone(b)]}
+  if(action==='catalog')return {models:[],status:'succeeded'}
+  if(action==='refresh'&&input.id===a.id){await gate;return a}
+  if(action==='pause'){paused=true;b={...b,collection:'paused'};return b}
+  if(action==='refresh'&&input.id===b.id){
+   if(paused)staleRefreshes++
+   if(!(input.automatic===true&&b.collection==='paused'))b={...b,collection:'querying'}
+   return b
+  }
+  return {}
+ })
+ render(<MediaWorkspace sessionId="s" call={call} send={vi.fn()}/>)
+ await waitFor(()=>expect(call.mock.calls.some(([,action,input])=>action==='refresh'&&input.id===a.id)).toBe(true))
+ const card=screen.getByDisplayValue(b.prompt).closest('article')!
+ fireEvent.click(Array.from(card.querySelectorAll('button')).find(button=>button.textContent==='停止本地收集')!)
+ await screen.findByText('本地收集已停止')
+ releaseA()
+ await waitFor(()=>expect(staleRefreshes).toBe(1))
+ expect(b.collection).toBe('paused')
+ expect(call.mock.calls.filter(([,action])=>action==='refresh').every(([, ,input])=>input.automatic===true)).toBe(true)
+})
+
+it.each(['workspace','conversation'])('keeps partial original artifacts stoppable and manually retryable in %s',async surface=>{
+ let job:any={id:'partial-job-0001',requestId:'original-request-0001',taskId:'mt_original',projectId:'p',sessionId:'s',revision:1,kind:'video',prompt:'原任务部分结果',selection,parameters:{},references:[],state:'completed',collection:'downloading',assets:[{id:'first',projectId:'p',sessionId:'s',path:'media-projects/p/assets/first.mp4',mediaType:'video/mp4',bytes:10,sha256:'fixture'}]}
+ const call=vi.fn(async(_:string,action:string,input:any={})=>{
+  if(action==='list')return {projects:[],jobs:[structuredClone(job)]}
+  if(action==='catalog')return {models:[],status:'succeeded'}
+  if(action==='pause'){job={...job,collection:'paused'};return job}
+  if(action==='refresh'){
+   if(input.automatic!==true)job={...job,collection:'downloading'}
+   return job
+  }
+  return {}
+ })
+ if(surface==='workspace')render(<MediaWorkspace sessionId="s" call={call} send={vi.fn()}/>)
+ else render(<MediaToolRow {...{phase:'result',sessionId:'s',toolName:'media_job',block:{kind:'tool-result',content:[{type:'text',text:JSON.stringify(job)}],isError:false}} as any} call={call}/>)
+ await screen.findByText('已获取 1 个文件，正在下载其余作品')
+ expect(document.querySelector('video')).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'停止本地收集'}))
+ await screen.findByText('本地收集已停止')
+ expect(document.querySelector('video')).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'重新获取'}))
+ await screen.findByText('已获取 1 个文件，正在下载其余作品')
+ expect(call.mock.calls.some(([,action,input])=>action==='refresh'&&input.id===job.id&&input.automatic!==true)).toBe(true)
+ expect(call.mock.calls.some(([,action])=>['submit','generate'].includes(action))).toBe(false)
+})
+
+it.each(['workspace','conversation'])('shows automatic waiting, keeps partial files playable, and can stop and explicitly resume in %s',async surface=>{
+ const asset={id:'first',projectId:'p',sessionId:'s',path:'media-projects/p/assets/first.mp4',mediaType:'video/mp4',bytes:10,sha256:'fixture'}
+ let job:any={id:'waiting-job-0001',requestId:'waiting-request-0001',taskId:'mt_waiting',projectId:'p',sessionId:'s',revision:1,kind:'video',prompt:'正在等待原作品',selection,parameters:{},references:[],state:'completed',collection:'waiting',collectionRetry:{attempts:120,startedAt:1,nextAttemptAt:Date.now()+30000,reason:'result-not-ready'},assets:[asset]}
+ const call=vi.fn(async(_:string,action:string,input:any={})=>{
+  if(action==='list')return {projects:[],jobs:[structuredClone(job)]}
+  if(action==='catalog')return {models:[],status:'succeeded'}
+  if(action==='pause'){job={...job,collection:'paused'};return job}
+  if(action==='refresh'&&input.automatic!==true){job={...job,collection:'ready'};return job}
+  return structuredClone(job)
+ })
+ if(surface==='workspace')render(<MediaWorkspace sessionId="s" call={call} send={vi.fn()}/>)
+ else render(<MediaToolRow {...{phase:'result',sessionId:'s',toolName:'media_job',block:{kind:'tool-result',content:[{type:'text',text:JSON.stringify(job)}],isError:false}} as any} call={call}/>)
+ await screen.findByText('已获取 1 个文件，等待其余作品可用')
+ expect(document.querySelector('video')).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'停止本地收集'}))
+ await screen.findByText('本地收集已停止')
+ expect(document.querySelector('video')).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'重新获取'}))
+ await screen.findByText('已完成')
+ expect(call.mock.calls.some(([,action])=>['submit','generate','prepare','estimate'].includes(action))).toBe(false)
+ expect(call.mock.calls.filter(([,action])=>['pause','refresh'].includes(action)).every(([, ,input])=>input.id==='waiting-job-0001')).toBe(true)
 })

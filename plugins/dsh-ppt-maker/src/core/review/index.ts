@@ -18,7 +18,11 @@ import {
   findOverlappingShapePairs,
   findShapesOutsideCanvas,
   getShapeFillColorResolved,
+  getShapeBounds,
+  getShapeKind,
   getShapeName,
+  getShapePreset,
+  getShapeRotation,
   getShapeText,
   getSlideShapes,
   getSlides,
@@ -139,6 +143,7 @@ export function reviewDeck(pres: PresentationData, options: ReviewOptions = {}):
     }
 
     for (const [a, b] of findOverlappingShapePairs(slide)) {
+      if (isContainingBackdrop(a, b)) continue
       issues.push({
         page,
         severity: 'warning',
@@ -176,6 +181,20 @@ export function reviewDeck(pres: PresentationData, options: ReviewOptions = {}):
     issues,
     missingFonts: []
   }
+}
+
+/**
+ * A text-free rectangular card behind its fully contained child is a normal
+ * container, not a collision. Keep equal-size overlays, foreground covers,
+ * text/text, picture and chart intersections visible to the reviewer.
+ */
+function isContainingBackdrop(back: SlideShapeData, front: SlideShapeData): boolean {
+  if (getShapeKind(back) !== 'shape' || hasText(back) || (getShapeRotation(back) ?? 0) !== 0) return false
+  if (!['rect', 'roundRect'].includes(getShapePreset(back) ?? '')) return false
+  const a = getShapeBounds(back), b = getShapeBounds(front)
+  if (!a || !b || a.w <= 0 || a.h <= 0 || b.w <= 0 || b.h <= 0) return false
+  return a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h
+    && (a.w > b.w || a.h > b.h)
 }
 
 function bodyTextColorOf(slide: SlideData): string | null {

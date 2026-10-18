@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-research",
-  "version": "0.1.14",
+  "version": "0.1.16",
   "applicationVersion": "8.1.0",
   "restartRequired": true,
   "desktop": {
@@ -14,8 +14,12 @@
   },
   "host": "./lib/index.js",
   "client": "./lib/client.js",
-  "requiredServices": [],
-  "optionalServices": [],
+  "requiredServices": [
+    "tools"
+  ],
+  "optionalServices": [
+    "webServer"
+  ],
   "capabilities": [
     "research",
     "data-assets",

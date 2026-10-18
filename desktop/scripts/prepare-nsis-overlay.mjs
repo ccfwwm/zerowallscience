@@ -50,22 +50,10 @@ extraction = extraction.replace(extractMacro, `!macro extractUsing7za FILE
   ; CopyFiles silently omits MAX_PATH files. The bundled Node API handles
   ; long Unicode paths and reports every incomplete copy as an install error.
   System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", w "1")'
-  nsExec::ExecToStack '"$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR" --preflight --log "$ZeroWallLogFile"'
+  nsExec::ExecToStack '"$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR" --move-source --log "$ZeroWallLogFile"'
   Pop $R0
   Pop $R1
-  !insertmacro ZW_LOG "preflight-exit=$R0; $R1"
-  \${If} $R0 == 0
-    nsExec::ExecToStack '"$SYSDIR\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\\zerowall-owned-files.ps1" -InstallRoot "$INSTDIR" -PreserveIfUnmanaged'
-    Pop $R0
-    Pop $R1
-    !insertmacro ZW_LOG "remove-owned-exit=$R0; $R1"
-    \${If} $R0 == 0
-      nsExec::ExecToStack '"$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR" --log "$ZeroWallLogFile"'
-      Pop $R0
-      Pop $R1
-      !insertmacro ZW_LOG "copy-exit=$R0; $R1"
-    \${EndIf}
-  \${EndIf}
+  !insertmacro ZW_LOG "transaction-exit=$R0; $R1"
   System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", p 0)'
   \${If} $R0 != 0
     \${If} $ZeroWallUiState != ""

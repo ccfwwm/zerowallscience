@@ -4,7 +4,7 @@ import type { StartupStatus } from '../shared/contracts.js'
 export function nextStartupStatus(current: StartupStatus, update: Partial<StartupStatus>, now = Date.now()): StartupStatus {
   if (current.phase !== 'starting' && update.phase === undefined) return current
   const next = { ...current, segment: undefined, durationMs: undefined, ...update }
-  if (update.phase === 'starting') {
+  if (update.phase === 'starting' && current.phase !== 'starting') {
     next.startedAt = now
     next.finishedAt = undefined
     next.diagnostics = undefined

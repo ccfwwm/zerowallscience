@@ -9,7 +9,7 @@
  * + layout digest for the main model's own read_image". AI findings are
  * advisory only — they never block; rule-layer blockers do.
  */
-import { checkProject } from '../core/export-pipeline.js'
+import { checkProject } from '../core/lazy-export-pipeline.js'
 import { writeQaReport } from '../core/project/store.js'
 import { sessionIdOf, renderSummary, resultSchema, resolveSessionCwd, toolError, type PluginToolCtx } from './shared.js'
 

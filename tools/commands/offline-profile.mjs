@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { cp, mkdir, readFile, realpath, rename, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readlink, realpath, rename, symlink, unlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { assertCompatible, compareVersions, fileDigest, verifySignedDocument } from './resource-catalog.mjs'
 import { carrierIndex, carrierName, offlineContentDigest } from './offline-carrier.mjs'
 import { physicalFs } from './physical-fs.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
 import { renameProfile } from './profile-rename.mjs'
+import { bounded, copyProfileTree } from './profile-copy.mjs'
+import { RETIRED_PLUGIN_IDS, removeRetiredPlugins, removeRetiredPatch, removeRetiredResolutionRules } from './retired-plugins.mjs'
+import { PROFILE_LAYOUT, materializationFile, materializeOfflinePackages, preserveMaterializedDependencies, verifyMaterializedProfile } from './profile-materialization.mjs'
+import { importHistoricalPlugin, verifyHistoricalPluginImports } from './historical-plugin.mjs'
 const { copyFile, lstat, readdir } = physicalFs.promises
 
 /** Keep one staging name. Preserve displaced candidates and diagnostic data
@@ -126,8 +130,12 @@ export async function readOfflineReceipt(source, keys, target, { local = false, 
   const receipt = verifySignedDocument(JSON.parse(text), keys)
   if (![1, 2].includes(receipt.schema) || receipt.kind !== 'offline-profile' || receipt.profileArchitecture !== 7 || !Array.isArray(receipt.files) || !Array.isArray(receipt.plugins) || !Array.isArray(receipt.defaultPatch)) throw new Error('Invalid offline profile receipt')
   if (receipt.localOnly && !local) throw new Error('Development offline profile cannot enter a stable installation')
-  if ((!generation && receipt.schema === 1 && receipt.applicationVersion !== target.desktopVersion) || receipt.dshCommit !== target.dshCommit) throw new Error('Offline profile does not match this Desktop/DSH build')
-  assertCompatible(receipt, generation && receipt.schema === 1 ? { ...target, desktopVersion: receipt.applicationVersion } : target)
+  if ((!generation && receipt.schema === 1 && receipt.applicationVersion !== target.desktopVersion) || receipt.dshCommit !== target.dshCommit) throw mismatch('Offline profile does not match this Desktop/DSH build', receipt, {
+    source, generation, expectedDesktopVersion: target.desktopVersion, expectedDshCommit: target.dshCommit, receiptDshCommit: receipt.dshCommit,
+  })
+  // A historical generation may have been published by an older desktop,
+  // but only its original signed range can admit this actual runtime.
+  assertCompatible(receipt, target)
   const paths = new Set()
   for (const entry of [...receipt.files, ...(receipt.payloadFiles ?? [])]) {
     if (typeof entry.path !== 'string' || entry.path.includes('\\') || entry.path.split('/').some(part => !part || part === '.' || part === '..') || isAbsolute(entry.path) || !/^[a-f0-9]{64}$/u.test(entry.sha256) || !Number.isSafeInteger(entry.size) || entry.size < 0 || paths.has(entry.path)) throw new Error('Invalid signed offline file')
@@ -206,9 +214,14 @@ export function generationModules(cache, receipt) {
 
 /** Ordinary launch authenticates the receipt and required entrypoints only.
  * Full content verification happens before atomic generation commit. */
-export async function verifiedGeneration(home, digest, keys, target, ids, { local = false } = {}) {
+export function profileCarrier(profile, digest) {
+  if (!/^[a-f0-9]{64}$/u.test(digest ?? '')) throw new Error('Invalid profile carrier identity')
+  return join(profile, 'node_modules/.zerowall-carriers', digest)
+}
+
+export async function verifiedGeneration(home, digest, keys, target, ids, { local = false, directory } = {}) {
   if (!/^[a-f0-9]{64}$/u.test(digest ?? '')) return undefined
-  const cache = join(home, 'resources/offline', digest)
+  const cache = directory ?? join(home, 'resources/offline', digest)
   try {
     const verified = await readOfflineReceipt(cache, keys, target, { local, generation: true })
     if (verified.digest !== digest) return undefined
@@ -230,7 +243,7 @@ export async function verifiedGeneration(home, digest, keys, target, ids, { loca
       if (!record || manifest.name !== id || manifest.version !== record.version) return undefined
       if (manifest.zerowall?.desktop) assertCompatible({ ...receipt, desktopRange: manifest.zerowall.desktop }, target)
       const exported = Object.values(manifest.exports ?? {}).map(entry => typeof entry === 'string' ? entry : entry?.default).filter(entry => typeof entry === 'string' && !entry.includes('*') && !entry.endsWith('.ts'))
-      const entryPaths = [...new Set(['package.json', manifest.main, manifest.dsh?.bundle?.patch, ...exported].filter(entry => typeof entry === 'string').map(entry => entry.replace(/^\.\//u, '')))]
+      const entryPaths = [...new Set(['package.json', manifest.main, manifest.dsh?.bundle?.patch, ...exported, ...(manifest.zerowall?.runtimeFiles ?? [])].filter(entry => typeof entry === 'string').map(entry => entry.replace(/^\.\//u, '')))]
       for (const entry of entryPaths) {
         const signed = files.get('modules/' + id + '/' + entry)
         if (!signed || await fileDigest(join(modules, id, entry)) !== signed.sha256) return undefined
@@ -244,45 +257,115 @@ export async function verifiedGeneration(home, digest, keys, target, ids, { loca
   }
 }
 
-/** Materialize a verified immutable generation in user-owned storage. */
-export async function prepareOfflineCandidate({ home, source, keys, target, defaults, bundledPlugins = [], yaml, local = false, staging = false, onPhase = () => {} }) {
+/** Profile-owned, independent bytes. Offline storage supplies repairs only. */
+export async function materializeProfileCarrier(profile, source, digest, receipt, keys, target, local) {
+  const destination = profileCarrier(profile, digest)
+  const ids = receipt.plugins.filter(entry => !entry.core && !RETIRED_PLUGIN_IDS.has(entry.id)).map(entry => entry.id)
+  if (await verifiedGeneration('', digest, keys, target, ids, { local, directory: destination })) return destination
+  if (await lstat(destination).catch(() => undefined)) await rename(destination, destination + '.damaged-' + randomUUID())
+  await mkdir(destination, { recursive: true })
+  if (receipt.schema === 1) {
+    // A legacy generation is immutable signed supply, not an active profile.
+    // Preserve every receipt byte, including retired packages and asset names
+    // resembling old shadows; only active links/declarations are retired.
+    await bounded(receipt.files, async entry => {
+      const localPath = entry.path.replace(/^modules\//u, 'node_modules/'), path = join(destination, localPath)
+      await mkdir(dirname(path), { recursive: true })
+      await copyFile(join(source, localPath), path)
+      if ((await lstat(path)).size !== entry.size || await fileDigest(path) !== entry.sha256) throw new Error('Copied profile module differs from signed receipt')
+    })
+  }
+  else await bounded(receipt.payloadFiles, async entry => {
+    const path = join(destination, entry.path)
+    await mkdir(dirname(path), { recursive: true })
+    await copyFile(join(source, entry.path), path)
+  })
+  await writeFile(join(destination, 'receipt.json'), JSON.stringify(receipt))
+  if (receipt.schema === 2) await verifyOfflineProfile(destination, keys, target, { local })
+  if (receipt.schema === 2) await writeFile(join(destination, 'verified.json'), JSON.stringify({ contentDigest: digest, archiveMtimeMs: (await lstat(join(destination, carrierName))).mtimeMs }))
+  return destination
+}
+
+export async function migrateOfflineProfileLinks(profile, home, manifest, keys, target, local, runtimeModules) {
+  const imported = new Map()
+  async function replacePath(path, id) {
+    const normalized = path.replaceAll('\\', '/')
+    const match = /^(.*\/(?:resources\/offline|node_modules\/\.zerowall-carriers))\/([a-f0-9]{64})\/(?:profile-runtime\.asar(?:\.unpacked)?\/node_modules|node_modules)\/(.+)$/u.exec(normalized)
+    if (!match) return path
+    const source = resolve(match[1], match[2]), digest = match[2]
+    const child = relative(resolve(home), source)
+    if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Historical plugin source is outside managed storage')
+    if (!imported.has(id)) {
+      const promise = importHistoricalPlugin({ profile, source, digest, id, keys, target, runtimeModules, local })
+      imported.set(id, promise)
+    }
+    return (await imported.get(id)).path
+  }
+  const modules = join(profile, 'node_modules')
+  // Historical profiles may legitimately have no dependencies. Only absence
+  // of this root is empty; failures encountered inside an existing tree fail.
+  const modulesInfo = await lstat(modules).catch(error => { if (error.code !== 'ENOENT') throw error })
+  let level = modulesInfo ? [modules] : []
+  while (level.length) {
+    const next = []
+    await bounded(level, async directory => {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name)
+        if (entry.name === '.zerowall-carriers') continue
+        if (entry.isSymbolicLink()) {
+          const original = resolve(dirname(path), await readlink(path))
+          const id = relative(modules, path).replaceAll('\\', '/')
+          // Only root package entries are imported. Their private dependency
+          // closure is reconstructed by the signed single-package importer.
+          if (/^(?:@[^/]+\/)?[^/]+$/u.test(id)) await replacePath(original, id)
+          else if (/\/(?:resources\/offline|\.zerowall-carriers)\//u.test(original.replaceAll('\\', '/'))) throw new Error('Nested offline dependency requires a verified plugin import')
+        } else if (entry.isDirectory()) next.push(path)
+      }
+    })
+    level = next
+  }
+  for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+    for (const [id, spec] of Object.entries(manifest[field] ?? {})) {
+      if (!/^(file|link):/u.test(spec)) continue
+      const original = resolve(profile, spec.slice(5)), replacement = imported.has(id) ? (await imported.get(id)).path : await replacePath(original, id)
+      if (replacement !== original || imported.has(id)) manifest[field][id] = 'link:./' + relative(profile, replacement).replaceAll('\\', '/')
+    }
+  }
+  const oldCarriers = join(profile, 'node_modules/.zerowall-carriers')
+  if (await lstat(oldCarriers).catch(() => undefined)) {
+    const history = join(home, 'resources/history', 'legacy-carriers-' + randomUUID())
+    await mkdir(dirname(history), { recursive: true }); await rename(oldCarriers, history)
+  }
+}
+
+/** A manual rollback is an explicit install action. Authenticate every copied
+ * carrier before activation, without modifying its historical source. */
+export async function verifyProfileCarriers(profile, keys, target, { local = false } = {}) {
+  const root = join(profile, 'node_modules/.zerowall-carriers')
+  const entries = await readdir(root, { withFileTypes: true }).catch(error => { if (error.code !== 'ENOENT') throw error; return [] })
+  for (const entry of entries) {
+    if (!/^[a-f0-9]{64}$/u.test(entry.name)) continue
+    if (!entry.isDirectory() || entry.isSymbolicLink()) throw new Error('Rollback carrier must be a physical directory')
+    const directory = join(root, entry.name), verified = await readOfflineReceipt(directory, keys, target, { local, generation: true })
+    if (verified.digest !== entry.name) throw new Error('Rollback carrier identity mismatch')
+    const { receipt } = verified
+    const actual = (await offlineFiles(directory)).filter(file => !['receipt.json', 'verified.json'].includes(file.path))
+      .map(file => receipt.schema === 1 ? { ...file, path: file.path.replace(/^node_modules\//u, 'modules/') } : file)
+    const differences = compareEntries(actual, receipt.schema === 2 ? receipt.payloadFiles : receipt.files)
+    if (Object.values(differences).some(items => items.length)) throw mismatch('Rollback carrier size, SHA-256 or file set mismatch', receipt, differences)
+    if (receipt.schema === 2) await writeFile(join(directory, 'verified.json'), JSON.stringify({ contentDigest: verified.digest, archiveMtimeMs: (await lstat(join(directory, carrierName))).mtimeMs }))
+  }
+}
+
+/** Install authenticated supply bytes directly into a profile candidate. */
+export async function prepareOfflineCandidate({ home, source, keys, target, defaults, bundledPlugins = [], yaml, runtimeModules, local = false, staging = false, onPhase = () => {} }) {
   let started = Date.now()
   const metadata = await readOfflineReceipt(source, keys, target, { local })
   const { receipt, digest } = metadata
-  const cache = join(home, 'resources/offline', digest)
-  const cacheReady = await verifiedGeneration(home, digest, keys, target, receipt.plugins.filter(entry => !entry.core).map(entry => entry.id), { local })
-  if (!cacheReady) {
-    onPhase({ phase: 'offline-verify', state: 'started' })
-    if (receipt.schema === 1) await verifyOfflineProfile(source, keys, target, { local, staging })
-    else await assertCarrierSourceFiles(source, receipt, staging)
-    onPhase({ phase: 'offline-verify', state: 'complete', durationMs: Date.now() - started })
-    started = Date.now()
-    onPhase({ phase: 'offline-copy', state: 'started' })
-    const pending = cache + '.candidate-' + randomUUID()
-    await mkdir(pending, { recursive: true })
-    if (receipt.schema === 1) await copySignedModules(source, join(pending, 'node_modules'), receipt.files)
-    else {
-      await concurrentFiles(receipt.payloadFiles, async entry => {
-        const path = join(pending, entry.path)
-        await mkdir(dirname(path), { recursive: true })
-        await copyFile(join(source, entry.path), path)
-      })
-    }
-    await writeFile(join(pending, 'receipt.json'), JSON.stringify(receipt))
-    onPhase({ phase: 'offline-copy', state: 'complete', durationMs: Date.now() - started })
-    started = Date.now()
-    if (receipt.schema === 2) {
-      // Verify the actual copied candidate, including all physical hashes
-      // and the archive's logical set. This binds source bytes without a
-      // duplicate full read and closes copy-time changes before activation.
-      onPhase({ phase: 'offline-verify-candidate', state: 'started' })
-      await verifyOfflineProfile(pending, keys, target, { local })
-      await writeFile(join(pending, 'verified.json'), JSON.stringify({ contentDigest: digest, archiveMtimeMs: (await lstat(join(pending, carrierName))).mtimeMs }))
-      onPhase({ phase: 'offline-verify-candidate', state: 'complete', durationMs: Date.now() - started })
-    }
-    if (await lstat(cache).catch(() => undefined)) await rename(cache, cache + '.damaged-' + randomUUID())
-    await rename(pending, cache)
-  }
+  onPhase({ phase: 'offline-verify', state: 'started' })
+  if (receipt.schema === 1) await verifyOfflineProfile(source, keys, target, { local, staging })
+  else await assertCarrierSourceFiles(source, receipt, staging)
+  onPhase({ phase: 'offline-verify', state: 'complete', durationMs: Date.now() - started })
   started = Date.now()
   onPhase({ phase: 'profile-prepare', state: 'started' })
   const active = join(home, 'profiles/web')
@@ -291,23 +374,92 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   const disabled = new Set([...(selection.disabled ?? []), ...(manifest.zerowall?.disabledPlugins ?? [])])
   const removed = new Set(selection.removed ?? [])
   const pins = selection.pinned ?? {}
-  const candidate = await prepareProfileCandidate(home)
-  await cp(active, candidate, { recursive: true, dereference: false, verbatimSymlinks: true })
-  const layout = await repairProfileLayout(candidate, { from: active, home })
-  if (layout.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: repair the plugin profile before upgrading its offline resources')
   const packages = new Map(receipt.plugins.map(entry => [entry.id, entry]))
-  const changed = [], blocked = []
+  const oldMaterialization = await readFile(join(active, materializationFile), 'utf8').then(JSON.parse).catch(error => { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; return {} })
+  const installedPackages = new Map(), replacing = new Set()
+  for (const id of defaults) {
+    pluginIdentity(id)
+    if (removed.has(id) || disabled.has(id) || RETIRED_PLUGIN_IDS.has(id)) continue
+    const record = packages.get(id)
+    if (!record) throw new Error('Default plugin absent from signed offline closure: ' + id)
+    const installed = await readFile(join(active, 'node_modules', id, 'package.json'), 'utf8').then(JSON.parse).catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
+    installedPackages.set(id, installed)
+    if (record.core) continue
+    if (pins[id] && installed?.version === pins[id]) {
+      // A pin protects the selected version, not damaged bytes. The installer
+      // may restore that exact immutable version without consulting old supply.
+      if (record.version === pins[id] && !await verifyMaterializedProfile({ profile: active, keys, target, expected: [id], local })) replacing.add(id)
+      continue
+    }
+    const root = installed && await realpath(join(active, 'node_modules', id)).catch(() => undefined)
+    const owned = oldMaterialization.ids?.includes(id) || root && [join(home, 'resources/offline'), join(active, 'node_modules/.zerowall-carriers')].some(base => !relative(base, root).startsWith('..') && !isAbsolute(relative(base, root)))
+    const managed = bundledPlugins.some(item => item.id === id && item.managed !== false && !item.core)
+    if (!installed || (owned || managed) && compareVersions(installed.version, record.version) <= 0) replacing.add(id)
+  }
+  const candidate = await prepareProfileCandidate(home)
+  // Supplied replacements are installed once. A broken old entry or missing
+  // old offline directory cannot block an installer that already owns its bytes.
+  await copyProfileTree(active, candidate, { filter: path => ![...replacing].some(id => path === 'node_modules/' + id) })
+  const inactiveArchived = []
+  // Disabled/removed managed leftovers must not import an obsolete supply.
+  // Keep their bytes/links and original declarations as rollback evidence,
+  // outside the active dependency tree; third-party packages are untouched.
+  for (const id of new Set([...disabled, ...removed])) {
+    pluginIdentity(id)
+    if (!bundledPlugins.some(item => item.id === id && item.managed !== false && !item.core)) continue
+    const root = join(candidate, 'node_modules', id)
+    const info = await lstat(root).catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
+    const pending = info ? [{ path: root, info }] : []
+    let obsolete = false
+    while (pending.length && !obsolete) {
+      const { path, info } = pending.pop()
+      if (info.isSymbolicLink()) {
+        const destination = resolve(dirname(path), await readlink(path)).replaceAll('\\', '/')
+        obsolete = /\/(?:resources\/offline|node_modules\/\.zerowall-carriers)\/[a-f0-9]{64}\//u.test(destination)
+      } else if (info.isDirectory()) for (const entry of await readdir(path, { withFileTypes: true })) {
+        if (entry.isDirectory() || entry.isSymbolicLink()) pending.push({ path: join(path, entry.name), info: entry })
+      }
+    }
+    if (!obsolete) continue
+    const history = join(candidate, '.zerowall/inactive-plugin-history', encodeURIComponent(id) + '-' + randomUUID())
+    await mkdir(history, { recursive: true })
+    await rename(root, join(history, 'package'))
+    const declarations = {}
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) if (Object.hasOwn(manifest[field] ?? {}, id)) {
+      declarations[field] = manifest[field][id]
+      delete manifest[field][id]
+    }
+    const provenance = join(candidate, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')
+    if (await lstat(provenance).catch(error => { if (error.code !== 'ENOENT') throw error })) await rename(provenance, join(history, 'provenance.json'))
+    await writeFile(join(history, 'receipt.json'), JSON.stringify({ id, reason: 'Inactive managed package referenced obsolete supply', declarations }))
+    inactiveArchived.push(id)
+  }
+  const layout = await repairProfileLayout(candidate, { from: active, home, pendingRoots: [...replacing].map(id => join(candidate, 'node_modules', id)) })
+  if (layout.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: repair the plugin profile before upgrading its offline resources')
+  removeRetiredPlugins(manifest)
+  const workspacePath = join(candidate, 'pnpm-workspace.yaml')
+  const workspaceText = await readFile(workspacePath, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
+  if (workspaceText?.trim()) {
+    const workspace = yaml.parse(workspaceText)
+    if (workspace && removeRetiredResolutionRules(workspace)) await writeFile(workspacePath, yaml.stringify(workspace))
+  }
+  const changed = [], blocked = [], materialized = []
+  async function displace(path) {
+    const history = join(home, 'resources/history', 'upgrade-shadow-' + randomUUID())
+    await mkdir(dirname(history), { recursive: true })
+    await rename(path, history)
+  }
   const bundles = new Set(manifest.dsh?.profile?.bundles ?? [])
   for (const id of defaults) {
     pluginIdentity(id)
-    if (removed.has(id) || disabled.has(id)) continue
+    if (removed.has(id) || disabled.has(id) || RETIRED_PLUGIN_IDS.has(id)) continue
     const record = packages.get(id)
     if (!record) throw new Error('Default plugin absent from signed offline closure: ' + id)
-    const installed = await readFile(join(candidate, 'node_modules', id, 'package.json'), 'utf8').then(JSON.parse).catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })
+    const installed = installedPackages.get(id)
     if (pins[id]) {
       if (installed?.version !== pins[id]) {
         if (record.version !== pins[id]) { blocked.push({ id, version: pins[id], reason: 'Pinned package is missing; import this exact version or explicitly unpin' }); continue }
-      } else { bundles.add(id); continue }
+      } else if (!replacing.has(id)) { bundles.add(id); continue }
     }
     bundles.add(id)
     if (record.core) {
@@ -316,7 +468,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
       if (installed?.version && bundledPlugins.some(item => item.id === id && item.managed !== false)
         && compareVersions(installed.version, record.version) < 0) {
         const path = join(candidate, 'node_modules', id)
-        await rename(path, path + '.previous-' + randomUUID())
+        await displace(path)
         for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) if (manifest[field]?.[id]) delete manifest[field][id]
         changed.push({ id, from: installed.version, to: record.version })
       }
@@ -325,36 +477,56 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     // A desktop upgrade is an explicit install action. Update its unpinned
     // managed packages even when a previous catalog/pnpm install shadows the
     // bundled closure. Preserve unrelated packages and newer generations.
-    const installedRoot = installed && await realpath(join(candidate, 'node_modules', id)).catch(() => undefined)
-    const offlineRoot = join(home, 'resources/offline')
-    const owned = installedRoot && !relative(offlineRoot, installedRoot).startsWith('..') && !isAbsolute(relative(offlineRoot, installedRoot))
-    const managed = bundledPlugins.some(item => item.id === id && item.managed !== false && !item.core)
-    if (installed?.version && !owned && !managed) continue
-    if (installed?.version && compareVersions(installed.version, record.version) > 0) continue
-    const replacement = join(generationModules(cache, receipt), id)
-    if (installed?.version === record.version && installedRoot === await realpath(replacement)) continue
-    const physical = JSON.parse(await readFile(join(replacement, 'package.json'), 'utf8'))
-    if (physical.version !== record.version || physical.name !== id) throw new Error('Offline plugin identity/version mismatch')
+    if (!replacing.has(id)) continue
     const path = join(candidate, 'node_modules', id)
     await mkdir(resolve(path, '..'), { recursive: true })
-    if (await lstat(path).catch(() => undefined)) await rename(path, path + '.previous-' + randomUUID())
-    await symlink(replacement, path, process.platform === 'win32' ? 'junction' : 'dir')
+    if (await lstat(path).catch(() => undefined)) await displace(path)
+    const oldProvenance = join(candidate, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')
+    if (await lstat(oldProvenance).catch(() => undefined)) await displace(oldProvenance)
+    materialized.push(id)
     manifest.dependencies ??= {}
-    manifest.dependencies[id] = 'file:' + replacement.replaceAll('\\', '/')
+    manifest.dependencies[id] = 'link:./node_modules/' + id
     changed.push({ id, from: installed?.version ?? null, to: record.version })
   }
   // DSH resolves imported bundles directly from profile node_modules.
   // Preserve their dependency declarations: a file reference into this
   // temporary candidate would break when activation renames it to web.
   if (blocked.length) return { candidate, receipt, digest, changed, blocked }
-  manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...bundles].filter(id => !removed.has(id) && !disabled.has(id) && id !== 'dsh-auto-review') } }
-  manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: 7, disabledPlugins: [...disabled].sort(), offlineGeneration: digest }
+  const preserved = await preserveMaterializedDependencies({ profile: candidate, previous: oldMaterialization, replacedIds: materialized, removedIds: [...removed, ...inactiveArchived] })
+  const previousDependencies = join(candidate, 'node_modules/.zerowall-dependencies')
+  if (await lstat(previousDependencies).catch(() => undefined)) await displace(previousDependencies)
+  const materializingAt = Date.now()
+  await materializeOfflinePackages({ profile: candidate, source, receipt, digest, ids: materialized, keys, target, runtimeModules, preserved: preserved.sources, local })
+  onPhase({ phase: 'profile-prepare', state: 'materialized', durationMs: Date.now() - materializingAt })
+  try { await migrateOfflineProfileLinks(candidate, home, manifest, keys, target, local, runtimeModules) }
+  catch (error) {
+    if (error.code !== 'HISTORICAL_PLUGIN_IMPORT_BLOCKED') throw error
+    blocked.push({ id: error.pluginId, reason: error.reason })
+    return { candidate, receipt, digest, changed, blocked }
+  }
+  if (layout.pendingTargets?.length) {
+    // Already-rebased links are not visited as repairs again. Explicitly
+    // prove every deferred target exists before strict relocation and the
+    // original complete signed-content verification below.
+    await bounded(layout.pendingTargets, path => lstat(path))
+    const completedLayout = await repairProfileLayout(candidate, { from: active, home })
+    if (completedLayout.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: repair the plugin profile before upgrading its offline resources')
+  }
+  const oldCarriers = join(candidate, 'node_modules/.zerowall-carriers')
+  if (await lstat(oldCarriers).catch(() => undefined)) await displace(oldCarriers)
+  const expected = defaults.filter(id => !removed.has(id) && !disabled.has(id) && !RETIRED_PLUGIN_IDS.has(id))
+  const verifyingAt = Date.now()
+  if (!await verifyMaterializedProfile({ profile: candidate, keys, target, expected, digest, local, full: true })) throw new Error('Signed installed profile candidate mismatch')
+  await verifyHistoricalPluginImports({ profile: candidate, keys, target, runtimeModules, local, full: true })
+  onPhase({ phase: 'profile-prepare', state: 'content-verified', durationMs: Date.now() - verifyingAt })
+  manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...bundles].filter(id => !removed.has(id) && !disabled.has(id) && !RETIRED_PLUGIN_IDS.has(id)) } }
+  manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: 7, profileLayout: PROFILE_LAYOUT, disabledPlugins: [...disabled].filter(id => !RETIRED_PLUGIN_IDS.has(id)).sort(), offlineGeneration: digest }
   const patchPath = join(candidate, 'cordis.patch.yml')
   const existingPatch = yaml.parse(await readFile(patchPath, 'utf8')) ?? []
   if (!Array.isArray(existingPatch)) throw new Error('Profile patch must remain an array')
   // Existing settings always win; only fill the missing product defaults.
   const patches = receipt.defaultPatch.filter(row => !existingPatch.some(existing => existing.id === row.id))
-  await writeFile(patchPath, yaml.stringify([...patches, ...existingPatch]))
+  await writeFile(patchPath, yaml.stringify(removeRetiredPatch([...patches, ...existingPatch])))
   await writeFile(join(candidate, 'package.json'), JSON.stringify(manifest, null, 2))
   onPhase({ phase: 'profile-prepare', state: 'complete', durationMs: Date.now() - started })
   return { candidate, receipt, digest, changed, blocked }
