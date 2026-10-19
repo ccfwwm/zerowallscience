@@ -141,7 +141,8 @@ export function fillToCss(
     const raw = typeof f.src === 'string' ? f.src : undefined
     if (!raw) return undefined
     const src = resolveMedia ? resolveMedia(raw) : raw
-    return `url(${src}) center/cover no-repeat`
+    const escaped = src.replace(/[\\"\n\r\f]/g, (value) => `\\${value.charCodeAt(0).toString(16)} `)
+    return `url("${escaped}") center/cover no-repeat`
   }
   return undefined
 }

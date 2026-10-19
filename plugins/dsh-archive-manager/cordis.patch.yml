@@ -7,10 +7,8 @@
 # 自定义侧栏通过优先级覆盖插槽；发布后的安装命令：
 #   dsh plugin --profile web add @michengai/dsh-archive-manager
 #
-# ui-settings-unarchive-sessions：DSH 0.1.6+官方「已归档会话」设置页，只能单条恢复；
-# 禁用后只保留本插件的归档管理入口。旧宿主没有该 id 时补丁被忽略。
-- id: ui-settings-unarchive-sessions
-  disabled: true
+# DSH 0.2.1-rc.1 起官方已无 ui-settings-unarchive-sessions 入口；
+# 再 disable 会在 dump-config 告警「entry not found」，故不再写入该补丁。
 - id: ui-workspace
   disabled: false
 - insert:

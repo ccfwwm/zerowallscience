@@ -2,11 +2,16 @@ import { join } from 'node:path'
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
-import { findDesktopWorkspaceRoot, resolveBundledSkillsPath, resolveDesktopIconPath, resolveDesktopResourcePath } from '../src/main/paths.js'
+import { findDesktopWorkspaceRoot, resolveBundledSkillsPath, resolveDesktopIconPath, resolveDesktopWindowIconPath, resolveDesktopResourcePath } from '../src/main/paths.js'
 
 const workspaceRoot = join(import.meta.dirname, '..', '..')
 
 describe('desktop resource paths', () => {
+  it('uses Windows ICO for native windows while preserving PNG for page resources', () => {
+    const options = { appPath: workspaceRoot, isPackaged: true, resourcesPath: join('C:', 'ZeroWall', 'resources') }
+    expect(resolveDesktopWindowIconPath({ ...options, platform: 'win32' })).toBe(join(options.resourcesPath, 'icon.ico'))
+    expect(resolveDesktopWindowIconPath({ ...options, platform: 'darwin' })).toBe(resolveDesktopIconPath(options))
+  })
   it('prefers the canonical optional Skills root and reads a legacy root without migrating it', async () => {
     const root = await mkdtemp(join(tmpdir(), 'zws-resource-path-'))
     try {

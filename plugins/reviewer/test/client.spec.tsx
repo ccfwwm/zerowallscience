@@ -27,11 +27,16 @@ describe('Reviewer UI projection', () => {
     expect(screen.getByText('修正建议')).toBeTruthy()
   })
 
-  it('folds a re-review event into the original report context', () => {
-    const first = { type: 'zerowall/reviewer/report', seq: 4, time: 4, data: report } as never
-    const second = { type: 'zerowall/reviewer/report', seq: 5, time: 5, data: { ...report, reReviewed: true, correction: 'completed', reviewStatus: 'passed', findings: [] } } as never
+  it.each(['zerowall/reviewer/report', 'plugin:zerowall/reviewer/report'])('folds a re-review into the original report for %s', type => {
+    const first = { type, ignorable: true, seq: 4, time: 4, data: report } as never
+    const second = { type, ignorable: true, seq: 5, time: 5, data: { ...report, reReviewed: true, correction: 'completed', reviewStatus: 'passed', findings: [] } } as never
     expect(reviewerReportDefinition.match(first)).toEqual({ id: 'review-1', role: 'start' })
     expect(reviewerReportDefinition.match(second)).toEqual({ id: 'review-1', role: 'update' })
+  })
+
+  it('ignores malformed stored records and unmarked plugin events', () => {
+    expect(reviewerReportDefinition.match({ type: 'plugin:zerowall/reviewer/report', seq: 4, time: 4, data: report } as never)).toBeNull()
+    expect(reviewerReportDefinition.match({ type: 'plugin:zerowall/reviewer/report', ignorable: true, seq: 4, time: 4, data: { ...report, findings: [{}] } } as never)).toBeNull()
   })
 
   it('shows the original citation and warning for unverified evidence', () => {

@@ -29,6 +29,17 @@ export function resolveDesktopIconPath(options: {
   return resolveWorkspaceResourcePath(findDesktopWorkspaceRoot(options.appPath), 'brand', 'app-icons', 'icon.png')
 }
 
+export function resolveDesktopWindowIconPath(options: {
+  appPath: string
+  isPackaged: boolean
+  resourcesPath: string
+  platform?: NodeJS.Platform
+}): string {
+  if ((options.platform ?? process.platform) !== 'win32') return resolveDesktopIconPath(options)
+  if (options.isPackaged) return join(options.resourcesPath, 'icon.ico')
+  return resolveWorkspaceResourcePath(findDesktopWorkspaceRoot(options.appPath), 'brand', 'app-icons', 'icon.ico')
+}
+
 /** Resolve an authoring resource in development while accepting both the
  * 8.0.7 logical layout and the 8.0.6 source path. Packaged resources keep
  * their explicitly configured destinations and do not use this resolver. */

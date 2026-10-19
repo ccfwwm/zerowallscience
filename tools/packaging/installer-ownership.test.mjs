@@ -35,6 +35,29 @@ async function signedPayload(root) {
   return { source, target, payloadPath, receipt }
 }
 
+test('moved installer files inherit Shell-readable destination ACLs without touching user or Python ACLs', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-installer-acl-'))
+  const acl = path => execFileSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
+    Buffer.from(`$ErrorActionPreference='Stop'; $acl=Get-Acl -LiteralPath '${path.replaceAll("'", "''")}'; [pscustomobject]@{protected=$acl.AreAccessRulesProtected;sddl=$acl.Sddl}|ConvertTo-Json -Compress`, 'utf16le').toString('base64')], { windowsHide: true, encoding: 'utf8' }).trim()
+  try {
+    const { source, target } = await signedPayload(root)
+    await writeFile(join(source, 'resources/icon.ico'), 'native icon bytes')
+    await writeInstallerOwnership(source)
+    const sid = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value'], { windowsHide: true, encoding: 'utf8' }).trim()
+    for (const local of ['app.exe', 'resources/icon.ico']) execFileSync('icacls.exe', [join(source, local), '/inheritance:r', '/grant:r', `*${sid}:(F)`], { windowsHide: true, stdio: 'pipe' })
+    const python = acl(join(target, 'Python/python.exe')), user = acl(join(target, 'resources/user.txt'))
+    assert.equal(JSON.parse(acl(join(source, 'app.exe'))).protected, true)
+    execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target, '--move-source'], { windowsHide: true, stdio: 'pipe' })
+    for (const local of ['app.exe', 'resources/icon.ico']) {
+      const installed = JSON.parse(acl(join(target, local)))
+      assert.equal(installed.protected, false)
+      assert.match(installed.sddl, /\(A;[^)]*ID;/u)
+    }
+    assert.equal(acl(join(target, 'Python/python.exe')), python)
+    assert.equal(acl(join(target, 'resources/user.txt')), user)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
 test('installer preflight validates payload without changing the existing application, and persists failures', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-install-preflight-'))
   try {

@@ -95,6 +95,7 @@ const common = {
     { from: path.join(stage, 'runtime/build-receipt.json'), to: 'licenses/build-receipt.json' },
     { from: path.join(stage, 'commands'), to: 'commands', filter: ['**/*'] },
     { from: path.join(resourcePath('brand', 'app-icons'), 'icon.png'), to: 'icon.png' },
+    { from: path.join(resourcePath('brand', 'app-icons'), 'icon.ico'), to: 'icon.ico' },
     { from: path.join(resourcePath('brand', 'zerowall'), 'zerowall-icon.png'), to: 'zerowall-icon.png' },
   ],
   win: {

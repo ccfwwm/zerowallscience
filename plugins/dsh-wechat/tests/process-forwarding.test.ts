@@ -224,7 +224,12 @@ describe("grouped process delivery", () => {
     b().config.textChunkLimit = 20;
     const first = b().sendReply("u1", "a".repeat(45)); const second = b().sendReply("u1", "later");
     await Promise.all([first, second]); expect(texts().at(-1)).toBe("later");
-    expect(texts().slice(0, -1).join("")).toBe("a".repeat(45));
+    // `splitText` now numbers multi-segment bodies, so the prose arrives as
+    // `（i/n）…` pieces (all four before the later reply, in order). Compare
+    // the recovered body, not the raw join.
+    const prose = texts().slice(0, -1).join("").replace(/（\d+\/\d+）\s*/g, "");
+    expect(prose).toBe("a".repeat(45));
+    expect(texts().slice(0, -1)).toHaveLength(4);
   });
 
   it("does not retain offline/unbound process and clears output on disposal/error", async () => {

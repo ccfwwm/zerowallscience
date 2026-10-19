@@ -43,11 +43,26 @@ const hooks =
 				},
 			})
 		: void 0;
-let JsonlSessionPersistence;
+let mountJsonlPersistence;
 try {
-	({ default: JsonlSessionPersistence } = await import(
-		"@deepseek-ai/dsh-session-persistence-jsonl"
-	));
+	const jsonl = await import("@deepseek-ai/dsh-session-persistence-jsonl");
+	/** alpha.3+：JSONL 改为 Cordis apply 插件，不再导出可直接 new 的类。 */
+	mountJsonlPersistence = async (ctx, config) => {
+		// alpha.3+：Cordis apply 插件；更早版本仍导出可 new 的 default 类。
+		if (typeof jsonl.apply === "function") {
+			await jsonl.apply(ctx, config);
+			const persistence = ctx.get("sessionPersistence");
+			if (persistence === undefined) {
+				throw new Error("session-persistence-jsonl apply did not provide sessionPersistence");
+			}
+			return persistence;
+		}
+		const Ctor = jsonl.default;
+		if (typeof Ctor !== "function") {
+			throw new Error("session-persistence-jsonl exports neither apply nor a default constructor");
+		}
+		return new Ctor(ctx, config);
+	};
 } finally {
 	hooks?.deregister();
 }
@@ -59,7 +74,7 @@ async function setup(t, compression = "none") {
 	await mkdir(cwd);
 	const ctx = new Context();
 	const sessions = new SessionStore(ctx);
-	const persistence = new JsonlSessionPersistence(ctx, {
+	const persistence = await mountJsonlPersistence(ctx, {
 		root: join(root, "sessions"),
 		compression,
 	});
@@ -234,7 +249,7 @@ for (const compression of ["none", "zstd"]) {
 		assert.deepEqual(await env.query.listSessions(), []);
 		const fresh = new Context();
 		new SessionStore(fresh);
-		const reopened = new JsonlSessionPersistence(fresh, {
+		const reopened = await mountJsonlPersistence(fresh, {
 			root: join(env.root, "sessions"),
 			compression,
 		});
@@ -281,7 +296,7 @@ for (const compression of ["none", "zstd"]) {
 			(await env.query.listSessions()).map((item) => item.header.id),
 			["fork"],
 		);
-		const restarted = new JsonlSessionPersistence(new Context(), {
+		const restarted = await mountJsonlPersistence(new Context(), {
 			root: join(env.root, "sessions"),
 			compression,
 		});
@@ -389,14 +404,8 @@ for (const { previousCache, seeded } of ["缺失", "无版本", "旧代际"].fla
 				rows: { title: { ver: 1, seq: event.seq, val: "旧代际标题" } },
 			});
 		}
-		// 插件经 ctx.get 取服务方法，cordis 会把它包成只有 apply 陷阱的 shadow method：
-		// Function.prototype.toString 只留 [native code]，正文探测在真实宿主恒为 false。
-		// 夹具必须走插件同一条取用路径按形参个数判定，否则两条分支互相掩盖。
-		const cacheService = env.ctx.get("sessionProjectionCache");
-		const usesProjectionKeys = cacheService.cachedSnapshot.length === 2;
-		const snapshot = (header, count) => usesProjectionKeys ? cache.cachedSnapshot(header) : cache.cachedSnapshot(header, count);
-		// 回归护栏：插件必须按宿主签名形态读取缓存，不能被包装层悄悄切成另一分支。
-		// 包装必须保留宿主原形参个数，否则探针会被自己的替身带偏。
+		// 插件经 ctx.get 取服务方法。回归护栏：剩余宿主只按头部读取缓存。
+		const snapshot = (header) => cache.cachedSnapshot(header);
 		const cachedSnapshotArgCounts = [];
 		const rawCachedSnapshot = cache.cachedSnapshot.bind(cache);
 		const cachedSnapshotSpy = function (...args) {
@@ -405,10 +414,7 @@ for (const { previousCache, seeded } of ["缺失", "无版本", "旧代际"].fla
 		};
 		Object.defineProperty(cachedSnapshotSpy, "length", { value: cache.cachedSnapshot.length });
 		cache.cachedSnapshot = cachedSnapshotSpy;
-		assert.equal(
-			snapshot(session.header, inheritedEventCount),
-			void 0,
-		);
+		assert.equal(snapshot(session.header), void 0);
 		let reads = 0;
 		const read = env.registry.readStoredProjectionSource.bind(env.registry);
 		env.registry.readStoredProjectionSource = async (...args) => {
@@ -418,7 +424,7 @@ for (const { previousCache, seeded } of ["缺失", "无版本", "旧代际"].fla
 		const first = await env.registry.archivedSessionMetadata();
 		assert.deepEqual(first.repairedSessionIds, [session.id]);
 		assert.deepEqual(
-			snapshot(session.header, inheritedEventCount),
+			snapshot(session.header),
 			{ asOfSeq: event.seq, values: { title: "从原文恢复的标题" } },
 			"修复成功必须产生官方缓存可读取的标题和正确水位",
 		);
@@ -430,18 +436,12 @@ for (const { previousCache, seeded } of ["缺失", "无版本", "旧代际"].fla
 			records.get(session.id).identity.inheritedEventCount,
 			inheritedEventCount,
 		);
-		if (seeded && !usesProjectionKeys)
-			assert.equal(
-				cache.cachedSnapshot(session.header, inheritedEventCount + 1),
-				void 0,
-				"错误的继承切点不能命中缓存",
-			);
 		const second = await env.registry.archivedSessionMetadata();
 		assert.equal(second.repairedSessionIds, void 0);
 		assert.ok(
 			cachedSnapshotArgCounts.length > 0
-			&& cachedSnapshotArgCounts.every((argCount) => argCount === (usesProjectionKeys ? 1 : 2)),
-			`插件读取缓存的调用形态必须与宿主签名一致，实际：${cachedSnapshotArgCounts.join(",")}`,
+			&& cachedSnapshotArgCounts.every((argCount) => argCount === 1),
+			`插件读取缓存只能传头部，实际：${cachedSnapshotArgCounts.join(",")}`,
 		);
 		assert.equal(
 			reads,

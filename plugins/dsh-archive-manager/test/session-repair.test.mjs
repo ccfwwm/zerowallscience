@@ -23,6 +23,14 @@ test("仅转换已知自动化消息来源，保留正文和归属且不修改�
   assert.deepEqual(JSON.parse(result.rows[1].data.source.summary), source);
   assert.equal(result.rows[1].data.content, "正文");
   assert.throws(() => normalizeAutomationSources([{ type: "session", version: 0 }, { type: "user/message", data: { source: { kind: "automation" } } }]), /归属/);
+  const bare = new Error("format v4 tool/result at seq 1313 requires toolCallId matching its tool source");
+  bare.name = "SessionFormatError";
+  const emptyTail = classifySessionError(bare);
+  assert.equal(emptyTail.code, "corrupt");
+  assert.match(emptyTail.reason, /toolCallId/);
+  assert.match(emptyTail.advice, /不自动截断/);
+  assert.doesNotMatch(emptyTail.advice, /可以永久删除/);
+  assert.equal(classifySessionError("SessionFormatError: format v4 tool/result at seq 4 requires toolCallId matching its tool source").code, "corrupt");
   assert.equal(classifySessionError("cannot safely transform unclassified message source").code, "legacy-source");
   assert.equal(classifySessionError("ENOENT").code, "missing");
 });

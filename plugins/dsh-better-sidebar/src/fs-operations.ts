@@ -22,6 +22,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
+import { setTimeout as delay } from 'node:timers/promises'
 import { createWriteStream } from 'node:fs'
 import { access, lstat, mkdir, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
@@ -106,7 +107,16 @@ export async function writeWorkspaceUpload(input: WorkspaceUploadInput): Promise
     // Windows keeps the temp file locked until the descriptor closes.
     await closed
     if (streamError !== undefined) throw streamError
-    await rename(tmp, safeTarget)
+    for (let attempt = 0; ; attempt++) {
+      try { await rename(tmp, safeTarget); break }
+      catch (error) {
+        // Windows can briefly retain a destination handle during concurrent
+        // publication or antivirus inspection. Retry the atomic replacement;
+        // never remove the committed destination to make the rename succeed.
+        if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes((error as NodeJS.ErrnoException).code ?? '') || attempt >= 5) throw error
+        await delay(20 * 2 ** attempt)
+      }
+    }
     const info = await stat(safeTarget)
     // The target's level (and, for a new folder, its parent) is now stale.
     invalidateDirectoryCache(dirname(safeTarget))

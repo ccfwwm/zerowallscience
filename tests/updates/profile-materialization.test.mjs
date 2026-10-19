@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { generateKeyPairSync } from 'node:crypto'
+import { createHash, generateKeyPairSync } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -14,17 +14,19 @@ import { repairProfileLayout } from '../../tools/commands/profile-layout.mjs'
 import { initializeProfile } from '../../tools/commands/profile.mjs'
 import { signCatalog } from '../../tools/commands/resource-catalog.mjs'
 import { physicalFs } from '../../tools/commands/physical-fs.mjs'
+import { importHistoricalPlugin, verifyHistoricalPluginImports } from '../../tools/commands/historical-plugin.mjs'
 
 const target = { desktopVersion: '8.3.6', dshVersion: '0.2.0-rc.2', dshCommit: 'a'.repeat(40), platform: 'win32', architecture: 'x64' }
-async function fixture(t, ids = ['plugin-a', 'plugin-b']) {
+async function fixture(t, ids = ['plugin-a', 'plugin-b'], { supportIds = [] } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'zws-physical-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const home = join(root, '用户 项目'), runtimeModules = join(root, 'runtime/node_modules')
   const pair = generateKeyPairSync('ed25519'), keys = { test: pair.publicKey }
   await initializeProfile(home, ids)
-  async function supply(version, pluginFields = {}, { sharedFields = {}, extraFiles = [] } = {}) {
+  const allIds = [...ids, ...supportIds]
+  async function supply(version, pluginFields = {}, { sharedFields = {}, extraFiles = [], runtimeTarget = target } = {}) {
     const source = join(root, 'installer-' + version)
-    for (const id of [...ids, 'shared']) {
+    for (const id of [...allIds, 'shared']) {
       const path = join(source, 'modules', id)
       await mkdir(path, { recursive: true })
       await writeFile(join(path, 'package.json'), JSON.stringify({ name: id, version, main: 'index.cjs', ...(id === 'shared' ? sharedFields : { dependencies: { shared: version }, ...(typeof pluginFields === 'function' ? pluginFields(id) : pluginFields) }) }))
@@ -34,14 +36,89 @@ async function fixture(t, ids = ['plugin-a', 'plugin-b']) {
       const file = join(source, 'modules', local)
       await mkdir(dirname(file), { recursive: true }); await writeFile(file, bytes)
     }
-    const receipt = { schema: 1, kind: 'offline-profile', profileArchitecture: 7, applicationVersion: target.desktopVersion, buildId: version, dshCommit: target.dshCommit, dshRange: { min: target.dshVersion, max: target.dshVersion }, desktopRange: { min: target.desktopVersion }, platform: ['win32'], architecture: ['x64'], plugins: ids.map(id => ({ id, version })), files: await offlineFiles(source), defaultPatch: [] }
+    const receipt = { schema: 1, kind: 'offline-profile', profileArchitecture: 7, applicationVersion: runtimeTarget.desktopVersion, buildId: version, dshCommit: runtimeTarget.dshCommit, dshRange: { min: runtimeTarget.dshVersion, max: runtimeTarget.dshVersion }, desktopRange: { min: runtimeTarget.desktopVersion }, platform: ['win32'], architecture: ['x64'], plugins: allIds.map(id => ({ id, version })), files: await offlineFiles(source), defaultPatch: [] }
     await writeFile(join(source, 'receipt.json'), JSON.stringify(signCatalog(receipt, pair.privateKey, 'test')))
     return source
   }
   let activations = 0
-  const manager = createResourceManager({ home, keys, target, runtimeModules, defaultPlugins: ids, bundledPlugins: ids.map(id => ({ id, managed: true })), yaml: JSON, stopHost: async () => { activations++ }, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
-  return { root, home, ids, keys, manager, supply, runtimeModules, active: join(home, 'profiles/web'), activations: () => activations }
+  const createManager = (runtimeTarget = target) => createResourceManager({ home, keys, target: runtimeTarget, runtimeModules, defaultPlugins: ids, bundledPlugins: allIds.map(id => ({ id, managed: true })), yaml: JSON, stopHost: async () => { activations++ }, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
+  return { root, home, ids, keys, manager: createManager(), createManager, supply, runtimeModules, active: join(home, 'profiles/web'), activations: () => activations }
 }
+
+for (const mode of ['active', 'pinned', 'disabled', 'removed']) test(`DSH upgrade handles historical managed support provenance without enabling it as a bundle (${mode})`, async t => {
+  const id = '@dsh-external/zotero-harvest', f = await fixture(t, ['plugin-a'], { supportIds: [id] })
+  const first = await f.supply('1.0.0'), text = await readFile(join(first, 'receipt.json'), 'utf8')
+  await rename(join(first, 'modules'), join(first, 'node_modules'))
+  await importHistoricalPlugin({ profile: f.active, source: first, digest: createHash('sha256').update(text).digest('hex'), id, keys: f.keys, target, runtimeModules: f.runtimeModules })
+  const file = join(f.active, 'package.json'), manifest = JSON.parse(await readFile(file))
+  manifest.dependencies[id] = 'link:./node_modules/' + id
+  await writeFile(file, JSON.stringify(manifest))
+  const selection = mode === 'pinned' ? { pinned: { [id]: '1.0.0' } } : mode === 'active' ? undefined : { [mode]: [id] }
+  if (selection) {
+    await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
+    await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify(selection))
+  }
+  const upgraded = { ...target, desktopVersion: '8.4.0', dshVersion: '0.2.1-rc.2', dshCommit: 'b'.repeat(40) }
+  const second = await f.supply('2.0.0', {}, { runtimeTarget: upgraded }), manager = f.createManager(upgraded)
+  const result = await manager.repairOffline(second)
+  if (mode === 'pinned') {
+    assert.equal(result.repaired, false)
+    assert.equal(result.blocked[0].id, id)
+    assert.match(result.blocked[0].reason, /Pinned package cannot run on the current runtime/u)
+    assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules', id, 'package.json'))).version, '1.0.0')
+    assert.equal(f.activations(), 0)
+    return
+  }
+  assert.equal(result.repaired, true)
+  if (mode === 'disabled' || mode === 'removed') {
+    await assert.rejects(lstat(join(f.active, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')), { code: 'ENOENT' })
+    await assert.rejects(lstat(join(f.active, 'node_modules', id)), { code: 'ENOENT' })
+    assert.deepEqual(JSON.parse(await readFile(join(f.home, 'resources/plugins/selection.json'))), selection)
+    assert.equal((await manager.repairOffline(second)).repaired, false)
+    return
+  }
+  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules', id, 'package.json'))).version, '2.0.0')
+  assert(!(JSON.parse(await readFile(file))).dsh.profile.bundles.includes(id))
+  assert.deepEqual(await verifyHistoricalPluginImports({ profile: f.active, keys: f.keys, target: upgraded, runtimeModules: f.runtimeModules }), [])
+  assert(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target: upgraded, expected: [...f.ids, id], full: true }))
+  assert.equal((await manager.repairOffline(second)).repaired, false)
+})
+
+test('8.4.0 replaces newer-looking managed releases and their old exact-runtime provenance while retaining user plugins', async t => {
+  const support = '@dsh-external/zotero-harvest', user = 'dsh-context'
+  const f = await fixture(t, ['plugin-a'], { supportIds: [support] })
+  const old = await f.supply('0.2.2')
+  await f.manager.repairOffline(old)
+  const text = await readFile(join(old, 'receipt.json'), 'utf8')
+  await rename(join(old, 'modules'), join(old, 'node_modules'))
+  await importHistoricalPlugin({ profile: f.active, source: old, digest: createHash('sha256').update(text).digest('hex'), id: support, keys: f.keys, target, runtimeModules: f.runtimeModules })
+  const manifestPath = join(f.active, 'package.json'), manifest = JSON.parse(await readFile(manifestPath))
+  manifest.dependencies[support] = 'link:./node_modules/' + support
+  manifest.dependencies[user] = '^0.70.0'
+  manifest.dsh.profile.bundles.push(user)
+  await writeFile(manifestPath, JSON.stringify(manifest))
+  const userRoot = join(f.active, 'node_modules', user)
+  await mkdir(userRoot, { recursive: true })
+  const userManifest = JSON.stringify({ name: user, version: '0.70.0', main: 'index.cjs' })
+  await writeFile(join(userRoot, 'package.json'), userManifest)
+  await writeFile(join(userRoot, 'index.cjs'), 'module.exports="user-installed"')
+  const upgraded = { ...target, desktopVersion: '8.4.0', dshVersion: '0.2.1-rc.2', dshCommit: 'b'.repeat(40) }
+  const current = await f.supply('0.2.2-zws.1', {}, { runtimeTarget: upgraded }), manager = f.createManager(upgraded)
+  assert.equal((await manager.repairOffline(current)).repaired, true)
+  const marker = JSON.parse(await readFile(join(f.active, materializationFile)))
+  assert.equal(marker.receipt.applicationVersion, '8.4.0')
+  assert.deepEqual(marker.preserved, [])
+  assert(marker.ids.includes(support))
+  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules', support, 'package.json'))).version, '0.2.2-zws.1')
+  assert.deepEqual(await verifyHistoricalPluginImports({ profile: f.active, keys: f.keys, target: upgraded, runtimeModules: f.runtimeModules }), [])
+  assert.equal(await readFile(join(f.active, 'node_modules', user, 'package.json'), 'utf8'), userManifest)
+  assert.equal(createRequire(manifestPath)(user), 'user-installed')
+  const updated = JSON.parse(await readFile(manifestPath))
+  assert.equal(updated.dependencies[user], '^0.70.0')
+  assert(updated.dsh.profile.bundles.includes(user))
+  assert(!(updated.dsh.profile.bundles.includes(support)))
+  assert.equal((await manager.repairOffline(current)).repaired, false)
+})
 
 test('installer bytes create physical plugin roots and fixed profile dependencies without creating an offline cache', async t => {
   const f = await fixture(t), source = await f.supply('1.0.0')
@@ -93,6 +170,37 @@ test('full profile checks hash all bytes of non-entrypoint assets, including bey
   assert(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target, expected: f.ids, full: true }))
   bytes[bytes.length - 1] ^= 1
   await writeFile(join(f.active, 'node_modules/plugin-a/assets/chart.bin'), bytes)
+  assert.equal(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target, expected: f.ids, full: true }), undefined)
+})
+
+test('warning plugin policy permits signature and installed digest differences but requires runtime entrypoints', async t => {
+  const f = await fixture(t), source = await f.supply('1.0.0', {}, { extraFiles: [['plugin-a/assets/info.txt', 'original asset']] })
+  await f.manager.repairOffline(source)
+  const relaxed = { ...target, pluginVerification: { signature: 'warn', installedContent: 'warn' } }
+  const markerPath = join(f.active, materializationFile)
+  const marker = JSON.parse(await readFile(markerPath, 'utf8'))
+  marker.receipt.signature.value = 'invalid'
+  await writeFile(markerPath, JSON.stringify(marker))
+  await writeFile(join(f.active, 'node_modules/plugin-a/index.cjs'), 'module.exports="local change"')
+  await rm(join(f.active, 'node_modules/plugin-a/assets/info.txt'))
+  const warnings = []
+  t.mock.method(console, 'warn', message => warnings.push(message))
+  assert(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target: relaxed, expected: f.ids, full: true }))
+  assert(warnings.some(message => message.includes('signature')))
+  assert(warnings.some(message => message.includes('SHA-256')))
+  assert(warnings.some(message => message.includes('asset is missing')))
+  assert.equal(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target, expected: f.ids, full: true }), undefined)
+  await rm(join(f.active, 'node_modules/plugin-a/index.cjs'))
+  assert.equal(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target: relaxed, expected: f.ids, full: true }), undefined)
+})
+
+test('named plugin locale exports survive materialization and are required at startup', async t => {
+  const f = await fixture(t)
+  const source = await f.supply('1.0.0', { exports: { '.': './index.cjs', './locale/en.json': './locale/en.json' } },
+    { extraFiles: f.ids.map(id => [id + '/locale/en.json', '{"hello":"Hello"}']) })
+  assert.equal((await f.manager.repairOffline(source)).repaired, true)
+  assert(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target, expected: f.ids, full: true }))
+  await rm(join(f.active, 'node_modules/plugin-a/locale/en.json'))
   assert.equal(await verifyMaterializedProfile({ profile: f.active, keys: f.keys, target, expected: f.ids, full: true }), undefined)
 })
 

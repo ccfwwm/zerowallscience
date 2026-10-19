@@ -18,6 +18,9 @@ import { FileReviewService, transformFile } from '../src/file-review-service.ts'
 import { TYPERT } from '../src/typert.host.ts'
 import { TYPERT_REMOTE } from '../src/remote.ts'
 
+// Windows exposes the writable flag, not POSIX owner/group bits.
+const fixtureMode = (mode: number): number => process.platform === 'win32' ? 0o666 : mode
+
 const roots: string[] = []
 
 afterEach(async () => {
@@ -54,7 +57,7 @@ describe('Host file-review change engine', () => {
   it('undoes and reapplies a created UTF-8 file', async () => {
     const root = await workspace()
     const filename = join(root, 'created.txt')
-    await writeFile(filename, 'created\n', { mode: 0o640 })
+    await writeFile(filename, 'created\n', { mode: fixtureMode(0o640) })
     const agent = fakeAgent(root)
     const request: FileReviewRequest = {
       action: 'undo',
@@ -68,7 +71,7 @@ describe('Host file-review change engine', () => {
               newText: 'created\n',
               oldStart: 1,
               newStart: 1,
-              lifecycle: { kind: 'create', mode: 0o640 },
+              lifecycle: { kind: 'create', mode: fixtureMode(0o640) },
             },
           ],
         },
@@ -90,7 +93,7 @@ describe('Host file-review change engine', () => {
       files: [{ path: 'created.txt', state: 'applied', changed: true }],
     })
     expect(await readFile(filename, 'utf8')).toBe('created\n')
-    expect((await lstat(filename)).mode & 0o777).toBe(0o640)
+    expect((await lstat(filename)).mode & 0o777).toBe(fixtureMode(0o640))
   })
 
   // 验证空文件也能撤销和恢复；若实际权限与快照不一致，则报告冲突并保留文件。
@@ -98,8 +101,8 @@ describe('Host file-review change engine', () => {
     const root = await workspace()
     const empty = join(root, 'empty.txt')
     const drifted = join(root, 'drifted.txt')
-    await writeFile(empty, '', { mode: 0o600 })
-    await writeFile(drifted, 'content', { mode: 0o600 })
+    await writeFile(empty, '', { mode: fixtureMode(0o600) })
+    await writeFile(drifted, 'content', { mode: fixtureMode(0o600) })
     const agent = fakeAgent(root)
     const emptyCreate: FileReviewChange = {
       path: 'empty.txt',
@@ -108,7 +111,7 @@ describe('Host file-review change engine', () => {
           path: 'empty.txt',
           oldText: null,
           newText: '',
-          lifecycle: { kind: 'create', mode: 0o600 },
+          lifecycle: { kind: 'create', mode: fixtureMode(0o600) },
         },
       ],
     }
@@ -119,7 +122,7 @@ describe('Host file-review change engine', () => {
           path: 'drifted.txt',
           oldText: null,
           newText: 'content',
-          lifecycle: { kind: 'create', mode: 0o640 },
+          lifecycle: { kind: 'create', mode: process.platform === 'win32' ? 0o444 : 0o640 },
         },
       ],
     }
@@ -177,7 +180,7 @@ describe('Host file-review change engine', () => {
               newText: '',
               oldStart: 1,
               newStart: 1,
-              lifecycle: { kind: 'delete', mode: 0o600 },
+              lifecycle: { kind: 'delete', mode: fixtureMode(0o600) },
             },
           ],
         },
@@ -188,7 +191,7 @@ describe('Host file-review change engine', () => {
       files: [{ path: 'deleted.txt', state: 'undone', changed: true }],
     })
     expect(await readFile(filename, 'utf8')).toBe('deleted\n')
-    expect((await lstat(filename)).mode & 0o777).toBe(0o600)
+    expect((await lstat(filename)).mode & 0o777).toBe(fixtureMode(0o600))
 
     expect(await applyChange(agent, { ...request, action: 'redo' })).toEqual({
       files: [{ path: 'deleted.txt', state: 'applied', changed: true }],
@@ -199,7 +202,7 @@ describe('Host file-review change engine', () => {
   // 验证同一文件的创建、删除和文本编辑差异能够组合为完整状态，并正确撤销和重新应用。
   it('transforms combined lifecycle and text changes as one file state', async () => {
     const root = await workspace()
-    await writeFile(join(root, 'created-edited.txt'), 'B', { mode: 0o640 })
+    await writeFile(join(root, 'created-edited.txt'), 'B', { mode: fixtureMode(0o640) })
     await writeFile(join(root, 'replaced.txt'), 'new')
     await chmod(join(root, 'replaced.txt'), 0o666)
     const request: FileReviewRequest = {
@@ -212,7 +215,7 @@ describe('Host file-review change engine', () => {
               path: 'created-edited.txt',
               oldText: null,
               newText: 'A',
-              lifecycle: { kind: 'create', mode: 0o640 },
+              lifecycle: { kind: 'create', mode: fixtureMode(0o640) },
             },
             { path: 'created-edited.txt', oldText: 'A', newText: 'B' },
           ],
@@ -225,7 +228,7 @@ describe('Host file-review change engine', () => {
               path: 'edited-deleted.txt',
               oldText: 'edited',
               newText: '',
-              lifecycle: { kind: 'delete', mode: 0o644 },
+              lifecycle: { kind: 'delete', mode: fixtureMode(0o644) },
             },
           ],
         },
@@ -236,7 +239,7 @@ describe('Host file-review change engine', () => {
               path: 'replaced.txt',
               oldText: 'old',
               newText: '',
-              lifecycle: { kind: 'delete', mode: 0o644 },
+              lifecycle: { kind: 'delete', mode: fixtureMode(0o644) },
             },
             {
               path: 'replaced.txt',
@@ -253,13 +256,13 @@ describe('Host file-review change engine', () => {
               path: 'created-deleted.txt',
               oldText: null,
               newText: 'temporary',
-              lifecycle: { kind: 'create', mode: 0o644 },
+              lifecycle: { kind: 'create', mode: fixtureMode(0o644) },
             },
             {
               path: 'created-deleted.txt',
               oldText: 'temporary',
               newText: '',
-              lifecycle: { kind: 'delete', mode: 0o644 },
+              lifecycle: { kind: 'delete', mode: fixtureMode(0o644) },
             },
           ],
         },
@@ -294,8 +297,8 @@ describe('Host file-review change engine', () => {
   // 验证文件在记录操作后被外部修改或重新创建时，撤销和重新应用不会删除或覆盖这些内容。
   it('never removes or overwrites lifecycle paths changed after the recorded operation', async () => {
     const root = await workspace()
-    await writeFile(join(root, 'created.txt'), 'user edit', { mode: 0o640 })
-    await writeFile(join(root, 'deleted.txt'), 'replacement', { mode: 0o600 })
+    await writeFile(join(root, 'created.txt'), 'user edit', { mode: fixtureMode(0o640) })
+    await writeFile(join(root, 'deleted.txt'), 'replacement', { mode: fixtureMode(0o600) })
     const agent = fakeAgent(root)
     const create = {
       path: 'created.txt',
@@ -304,7 +307,7 @@ describe('Host file-review change engine', () => {
           path: 'created.txt',
           oldText: null,
           newText: 'agent content',
-          lifecycle: { kind: 'create' as const, mode: 0o640 },
+          lifecycle: { kind: 'create' as const, mode: fixtureMode(0o640) },
         },
       ],
     }
@@ -315,7 +318,7 @@ describe('Host file-review change engine', () => {
           path: 'deleted.txt',
           oldText: 'deleted content',
           newText: '',
-          lifecycle: { kind: 'delete' as const, mode: 0o600 },
+          lifecycle: { kind: 'delete' as const, mode: fixtureMode(0o600) },
         },
       ],
     }
@@ -434,7 +437,7 @@ describe('Host file-review change engine', () => {
           path,
           oldText: 'old',
           newText: '',
-          lifecycle: { kind: 'delete', mode: 0o644 },
+          lifecycle: { kind: 'delete', mode: fixtureMode(0o644) },
         },
       ],
     })
@@ -460,13 +463,13 @@ describe('Host file-review change engine', () => {
     const root = await workspace()
     const filename = join(root, 'script.sh')
     await writeFile(filename, 'NEW')
-    await chmod(filename, 0o640)
+    await chmod(filename, fixtureMode(0o640))
     await applyChange(fakeAgent(root), {
       action: 'undo',
       files: [change('script.sh', 'OLD', 'NEW')],
     })
     expect(await readFile(filename, 'utf8')).toBe('OLD')
-    expect((await lstat(filename)).mode & 0o777).toBe(0o640)
+    expect((await lstat(filename)).mode & 0o777).toBe(fixtureMode(0o640))
   })
 
   // 验证非 UTF-8 文件返回明确错误，会话没有工作区时拒绝执行状态查询。

@@ -73,11 +73,37 @@ const BLANK_LOG_MAX_BYTES = 1024;
 /** @type {Map<string, CacheEntry>} */
 const cache = new Map();
 
-/** Read `$DSH_HOME`, falling back to the platform default `~/.dsh`. */
-function resolveDshHome() {
+/**
+ * Expand a supported tilde prefix against the OS home. Mirrors
+ * `@deepseek-ai/dsh-home-paths`'s `expandHomePath`: only `~`, `~/` and
+ * `~\` expand — `~other/...` is left alone, like the host.
+ */
+function expandHomePath(value) {
+  if (value === "~") return os.homedir();
+  if (value.startsWith("~/") || value.startsWith("~\\")) {
+    return path.join(os.homedir(), value.slice(2));
+  }
+  return value;
+}
+
+/**
+ * The absolute session root. Mirrors the host's `resolveDshHome`: an
+ * explicit root or `$DSH_HOME` (a blank value counts as unset), then
+ * `~/.dsh`, in every case tilde-expanded and made absolute.
+ *
+ * The resolve is not cosmetic. A relative `$DSH_HOME` or a root like
+ * `~/.dsh` would otherwise be interpolated into the path verbatim and
+ * the listing would read (or fail to read) a directory that no DSH
+ * process ever wrote to — `/s list` silently loses every session.
+ */
+function resolveDshHome(configured) {
   const fromEnv = process.env.DSH_HOME;
-  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) return fromEnv;
-  return path.join(os.homedir(), ".dsh");
+  const selected = configured !== undefined
+    ? configured
+    : typeof fromEnv === "string" && fromEnv.trim().length > 0
+      ? fromEnv
+      : path.join(os.homedir(), ".dsh");
+  return path.resolve(expandHomePath(selected));
 }
 
 /**
@@ -111,13 +137,36 @@ function projectKey(cwd) {
 
 /**
  * Reproduce `@deepseek-ai/dsh-session-persistence-jsonl`'s
- * `encodeSegment` for the per-session directory name. The host uses
- * `encodeURIComponent` with a few safe chars re-added; we mirror
- * that exact set so a path built here resolves to the same on-disk
- * directory as one written by DSH.
+ * `encodeSegment` — the per-session directory name. Verbatim port of
+ * the host algorithm: safe code units (`A-Za-z0-9._-`) stay literal and
+ * EVERY other UTF-16 code unit becomes `~XXXX` uppercase hex, `~`
+ * itself included (`~007E`). `.` and `..` are special-cased so a whole
+ * segment cannot traverse upward.
+ *
+ * Why not `encodeURIComponent`: the two agree on `session-<uuid>` (the
+ * ids this plugin mints) but diverge on everything else. `encodeURIComponent`
+ * leaves `~ ! * ' ( )` alone and writes UTF-8 percent escapes for
+ * non-ASCII, so an id containing any of those resolves to a directory
+ * the host never wrote — the log lookup fails silently and the session
+ * looks empty rather than missing.
  */
 function encodeSegment(segment) {
-  return encodeURIComponent(segment);
+  if (typeof segment !== "string" || segment.length === 0) {
+    throw new Error("encodeSegment: segment must be a non-empty string");
+  }
+  if (segment === ".") return "~002E";
+  if (segment === "..") return "~002E~002E";
+  let out = "";
+  for (let i = 0; i < segment.length; i++) {
+    const code = segment.charCodeAt(i);
+    const ch = String.fromCharCode(code);
+    if (ch !== "~" && /^[A-Za-z0-9._-]$/.test(ch)) {
+      out += ch;
+    } else {
+      out += "~" + code.toString(16).toUpperCase().padStart(4, "0");
+    }
+  }
+  return out;
 }
 
 /**
@@ -126,7 +175,7 @@ function encodeSegment(segment) {
  * we just read what exists at the compressed path or the plain path.
  */
 function sessionLogPath(cwd, sessionId, root) {
-  const base = root || resolveDshHome();
+  const base = resolveDshHome(root);
   const projectDir = path.join(base, "sessions", projectKey(cwd));
   return path.join(projectDir, encodeSegment(sessionId), `session${COMPRESSED_SUFFIX}`);
 }
@@ -674,6 +723,7 @@ function readSessionRuntimePreset(cwd, sessionId, root) {
 module.exports = {
   COMPRESSED_SUFFIX,
   clearSessionLogCache,
+  encodeSegment,
   locateSessionLog,
   parseGenerationLogFilename,
   projectKey,

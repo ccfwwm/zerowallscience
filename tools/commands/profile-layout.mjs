@@ -1,4 +1,4 @@
-import { lstat, readFile, readdir, readlink, rename, symlink, unlink, writeFile } from 'node:fs/promises'
+import { lstat, stat, readFile, readdir, readlink, rename, symlink, unlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { bounded } from './profile-copy.mjs'
@@ -15,7 +15,8 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
   // An installer candidate can deliberately omit exact managed package roots
   // which it will materialize next. Never defer unrelated or external targets.
   const pendingPackages = pendingRoots.map(path => {
-    const root = resolve(path), id = relative(modules, root).replaceAll('\\', '/')
+    const root = resolve(path), local = relative(modules, root).replaceAll('\\', '/')
+    const id = local.startsWith('.zerowall-dependencies/node_modules/') ? local.slice('.zerowall-dependencies/node_modules/'.length) : local
     if (!/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) || id.split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid pending profile package root')
     return root
   })
@@ -39,7 +40,6 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
       || !roots.some(root => recorded === join(root, 'node_modules', '.pnpm')))) {
     return { changed: false, links: 0, needsRelink: true }
   }
-  if (!from && recorded === expected) return { changed: false, links: 0 }
   const info = await lstat(modules).catch(error => { if (error.code !== 'ENOENT') throw error })
   if (!info) return { changed: false, links: 0 }
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Profile node_modules must be a physical directory')
@@ -47,7 +47,7 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
     const store = await lstat(expected).catch(error => { if (error.code !== 'ENOENT') throw error })
     if (!store?.isDirectory() || store.isSymbolicLink()) return { changed: false, links: 0, needsRelink: true }
   }
-  const repairs = []
+  const repairs = [], internalTargets = new Set()
   async function scan(path) {
     for (const entry of await readdir(path, { withFileTypes: true })) {
       const link = join(path, entry.name)
@@ -57,20 +57,34 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
         const previousTarget = resolve(dirname(previousLink), target)
         const root = roots.find(root => inside(root, previousTarget))
         const nextTarget = root ? join(directory, relative(root, previousTarget)) : previousTarget
-        if (!isAbsolute(target) || resolve(dirname(link), target) !== nextTarget) repairs.push({ link, target, nextTarget, internal: !!root })
+        if (root || inside(directory, nextTarget)) internalTargets.add(nextTarget)
+        if (!isAbsolute(target) || resolve(dirname(link), target) !== nextTarget) repairs.push({ link, target, nextTarget, internal: !!root || inside(directory, nextTarget) })
       } else if (entry.isDirectory() && entry.name !== '.zerowall-carriers') next.push(link)
     }
   }
-  let level = [modules], next = []
+  const sources = join(directory, '.zerowall')
+  const sourcesInfo = await lstat(sources).catch(error => { if (error.code !== 'ENOENT') throw error })
+  if (sourcesInfo && (!sourcesInfo.isDirectory() || sourcesInfo.isSymbolicLink())) throw new Error('Profile package sources must be a physical directory')
+  // root-links is an archival receipt, not part of the active dependency graph.
+  // Its old carrier can intentionally be absent after authenticated migration.
+  // pnpm sources and retained dependency closures do participate in relocation.
+  const sourceRoots = []
+  if (sourcesInfo) for (const name of ['install-sources', 'dependency-history']) {
+    const path = join(sources, name)
+    const info = await lstat(path).catch(error => { if (error.code !== 'ENOENT') throw error })
+    if (info && (!info.isDirectory() || info.isSymbolicLink())) throw new Error('Profile package source namespace must be a physical directory')
+    if (info) sourceRoots.push(path)
+  }
+  let level = [modules, ...sourceRoots], next = []
   while (level.length) { next = []; await bounded(level, scan); level = next }
   // Prove every relocated link resolves before changing any link. External
   // links retain their original target, including CLI and offline resources.
   const pendingTargets = new Set()
-  await bounded(repairs.filter(repair => repair.internal), async repair => {
-    try { await lstat(repair.nextTarget) }
+  await bounded([...internalTargets], async target => {
+    try { await stat(target) }
     catch (error) {
-      if (error.code !== 'ENOENT' || !pendingPackages.some(root => inside(root, repair.nextTarget))) throw error
-      pendingTargets.add(repair.nextTarget)
+      if (error.code !== 'ENOENT' || !pendingPackages.some(root => inside(root, target))) throw error
+      pendingTargets.add(target)
     }
   })
   const applied = []

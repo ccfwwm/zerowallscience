@@ -16,7 +16,7 @@ describe('createLocalSettingsScope', () => {
     expect(snapshot.status).toBe('ready')
     expect(snapshot.value).toEqual(DEFAULT_NOTIFICATION_SETTINGS)
     expect(snapshot.writable).toBe(true)
-    expect(snapshot.mode).toBe('memory')
+    expect(scope.getSnapshot()).toBe(snapshot)
   })
 
   it('persists a scalar field write and re-reads it from a fresh scope', async () => {

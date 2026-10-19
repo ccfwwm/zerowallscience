@@ -9,7 +9,7 @@ describe('native desktop notification bridge', () => {
     vi.stubGlobal('zerowallDesktop', { showNotification })
     expect(browserPermission()).toBe('granted')
     expect(await requestBrowserPermission()).toBe('granted')
-    expect(showBrowserNotification('完成', '研究会话', 'completed', 'session-b')).toBe(true)
+    expect(showBrowserNotification('完成', '研究会话', 'completed', undefined, 'session-b')).toBe(true)
     expect(showNotification).toHaveBeenCalledWith({ title: '完成', body: '研究会话', tag: 'completed', sessionId: 'session-b' })
   })
   it('keeps browser permission behavior when no desktop bridge exists', () => {

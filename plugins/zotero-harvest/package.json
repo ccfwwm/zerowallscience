@@ -1,16 +1,31 @@
 {
   "name": "@dsh-external/zotero-harvest",
-  "version": "0.2.1",
+  "version": "0.2.2-zws.1",
   "private": true,
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
-  "files": ["lib", "LICENSE", "README.md", "README.upstream.md", "cordis.patch.yml"],
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "files": [
+    "lib",
+    "LICENSE",
+    "README.md",
+    "README.upstream.md",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "license": "MIT",
-  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "node --test tests/*.test.mjs" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test tests/*.test.mjs"
+  },
   "dependencies": {
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-credentials": "workspace:*"
-  }
+  },
+  "packageManager": "pnpm@11.28.5"
 }

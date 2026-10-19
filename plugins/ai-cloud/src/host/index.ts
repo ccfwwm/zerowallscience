@@ -1,5 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { AdapterRegistrationHandle, LlmAdapter } from '@deepseek-ai/dsh-llm'
+import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { ModelSelection } from '@deepseek-ai/dsh-agent'
 import {
   type PiAiAdapterOptions,
@@ -94,7 +95,7 @@ export class AiCloudLlmController {
           key = await this.secrets.get(secretName)
         }
         if (key === undefined || key.trim().length === 0) {
-          throw new Error(`ZeroWall AI Cloud has no credential for managed route "${provider}". Sign in again or refresh the account model list.`)
+          throw new LlmError(`ZeroWall AI Cloud has no credential for managed route "${provider}". Sign in again or refresh the account model list.`, 'MISSING_CREDENTIAL')
         }
         return key.trim()
       },

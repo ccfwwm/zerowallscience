@@ -90,13 +90,22 @@ test("日期范围写入开始和结束，清空时清除条件", () => {
   const React = { createElement: (type, props, ...children) => ({ type, props, children }) };
   const { DiscoveryFilters } = createDiscoveryTools(React);
   const calls = [];
+  const nodes = node => Array.isArray(node) ? node.flatMap(nodes) : node?.props ? [node, ...nodes(node.props.children), ...nodes(node.children)] : [];
   const tree = DiscoveryFilters({
     t: key => key, from: "2026-01-02", to: "2026-01-09", invalid: false,
     onFrom: value => calls.push(["from", value]), onTo: value => calls.push(["to", value]), onClear: () => calls.push(["clear"])
   });
-  const picker = tree.children.find(node => node?.props?.onChange);
-  picker.props.onChange([ { format: () => "2026-02-01" }, { format: () => "2026-02-03" } ]);
-  picker.props.onChange(null);
+  const range = tree.children.find(node => typeof node?.type === "function" && node.props?.onFrom);
+  const rendered = range.type(range.props);
+  const dates = nodes(rendered).filter(node => node.props?.type === "date");
+  dates[0].props.onChange({ target: { value: "2026-02-01" } });
+  dates[1].props.onChange({ target: { value: "2026-02-03" } });
+  const cleared = DiscoveryFilters({
+    t: key => key, from: "", to: "", invalid: false,
+    onFrom: value => calls.push(["from", value]), onTo: value => calls.push(["to", value]), onClear: () => calls.push(["clear"])
+  });
+  const clearedRange = cleared.children.find(node => typeof node?.type === "function" && node.props?.onFrom);
+  nodes(clearedRange.type(clearedRange.props)).find(node => node.props?.type === "date").props.onChange({ target: { value: "" } });
   assert.deepEqual(calls, [["from", "2026-02-01"], ["to", "2026-02-03"], ["clear"]]);
 });
 

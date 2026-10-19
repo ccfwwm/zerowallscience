@@ -30,21 +30,23 @@ export function adaptSessionDelete(source) {
 		}
 `
 
-  const menuRegistration = /([\r\n]\s*yield ctx\.slots\.register\(\{\s*name: "sidebar\.workspaces\.session\.menu\.item",\s*id: "archive",[\s\S]*?\}, ArchiveSessionMenuItem\);)(\s*[\r\n]\s*\}\);)/
-  if (!menuRegistration.test(source)) {
+  // Archive is no longer the last upstream entry (Copy session ID follows it).
+  // Anchor to its exact registration, preserving every subsequent slot entry.
+  const menuRegistration = /[\r\n]\s*yield ctx\.slots\.register\(\{\s*name: "sidebar\.workspaces\.session\.menu\.item",\s*id: "archive",\s*order: 400,\s*locale: NS,\s*inject: archiveInjected\s*\}, ArchiveSessionMenuItem\);/g
+  if ([...source.matchAll(menuRegistration)].length !== 1) {
     throw new Error('Unrecognized session menu registrations; review the desktop deletion adapter')
   }
 
   const adapted = source
     .replace(applyMarker, `${component}\n\t\t${applyMarker}`)
-    .replace(menuRegistration, `$1
+    .replace(menuRegistration, `$&
 				yield ctx.slots.register({
 					name: "sidebar.workspaces.session.menu.item",
 					id: "zerowall-delete-session",
 					order: 500,
 					locale: NS,
 					inject: () => ({})
-				}, ZeroWallDeleteSessionMenuItem);$2`)
+				}, ZeroWallDeleteSessionMenuItem);`)
 
   if (!adapted.includes('window.zerowallDesktop.deleteSession') || !adapted.includes('id: "zerowall-delete-session"')) {
     throw new Error('Desktop session deletion action was not installed')

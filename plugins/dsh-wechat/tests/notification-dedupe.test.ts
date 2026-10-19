@@ -142,7 +142,7 @@ describe("pushed-card dedupe: question cards", () => {
     const second = texts.find((t) => t.includes("Continue?"));
     expect(second).toBeDefined();
     expect(second).toContain("提问卡 2/2");
-    expect(second).toContain("来自其他会话");
+    expect(second).toContain("❗来自其他会话");
     expect(second).toContain("P2=");
   });
 

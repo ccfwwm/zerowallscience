@@ -19,6 +19,8 @@ import {
   parseRejectQuestionCommand,
   parseSessionCommand,
   parseSilentCommand,
+  parseFinalCommand,
+  parseFlushCommand,
   parseSurfaceCommand,
   parseStatusCommand,
   parseStopCommand,
@@ -50,6 +52,19 @@ describe("slash parsers", () => {
     expect(parseSilentCommand("/silent off")).toEqual({ kind: "silent", mode: "off" });
     expect(parseSilentCommand("/silent status")).toEqual({ kind: "silent", mode: "status" });
     expect(parseSilentCommand("/silent maybe")).toBeNull();
+  });
+
+  it("parseFinalCommand: bare → status, on/off/status subcommands, /f is NOT an alias", () => {
+    expect(parseFinalCommand("/final")).toEqual({ kind: "final", mode: "status" });
+    expect(parseFinalCommand("/fo on")).toEqual({ kind: "final", mode: "on" });
+    expect(parseFinalCommand("/final off")).toEqual({ kind: "final", mode: "off" });
+    expect(parseFinalCommand("/final status")).toEqual({ kind: "final", mode: "status" });
+    expect(parseFinalCommand("/final maybe")).toBeNull();
+    // `/f` belongs to /flush — "take back what is held" is the opposite of
+    // "start holding", so the two must never collide.
+    expect(parseFinalCommand("/f")).toBeNull();
+    expect(parseFinalCommand("/f on")).toBeNull();
+    expect(parseFlushCommand("/f")).toBe(true);
   });
 
   it("parseSurfaceCommand: bare → status, on/off/status subcommands", () => {
@@ -91,6 +106,19 @@ describe("slash parsers", () => {
     expect(parseWorkspaceCommand("/workspace")).toBeNull();
   });
 
+  it("parseWorkspaceCommand accepts a list window", () => {
+    expect(parseWorkspaceCommand("/workspace list 50")).toEqual({ kind: "list", limit: 50 });
+    expect(parseWorkspaceCommand("/ws list all")).toEqual({ kind: "list", all: true });
+    expect(parseWorkspaceCommand("/workspace list ALL")).toEqual({ kind: "list", all: true });
+    expect(parseWorkspaceCommand("/workspace list all 5")).toEqual({ kind: "list", limit: 5, all: true });
+    expect(parseWorkspaceCommand("/workspace list 5 all")).toEqual({ kind: "list", limit: 5, all: true });
+    // Invalid windows fall through to the unknown-command hint.
+    expect(parseWorkspaceCommand("/workspace list 0")).toBeNull();
+    expect(parseWorkspaceCommand("/workspace list abc")).toBeNull();
+    expect(parseWorkspaceCommand("/workspace list 5 5")).toBeNull();
+    expect(parseWorkspaceCommand("/workspace list all all")).toBeNull();
+  });
+
   it("parseSessionCommand", () => {
     expect(parseSessionCommand("/session list")).toEqual({ kind: "list" });
     expect(parseSessionCommand("/s list current")).toEqual({ kind: "list", scope: "current" });
@@ -103,6 +131,33 @@ describe("slash parsers", () => {
     expect(parseSessionCommand("/s switch current")).toBeNull();
     expect(parseSessionCommand("/s switch abc")).toBeNull();
     expect(parseSessionCommand("/session")).toBeNull();
+  });
+
+  it("parseSessionCommand accepts a list window on either side of current", () => {
+    expect(parseSessionCommand("/s list 50")).toEqual({ kind: "list", limit: 50 });
+    expect(parseSessionCommand("/s list all")).toEqual({ kind: "list", all: true });
+    expect(parseSessionCommand("/s list current 50")).toEqual({ kind: "list", scope: "current", limit: 50 });
+    expect(parseSessionCommand("/s list 50 current")).toEqual({ kind: "list", scope: "current", limit: 50 });
+    expect(parseSessionCommand("/s list current all")).toEqual({ kind: "list", scope: "current", all: true });
+    expect(parseSessionCommand("/s list all current")).toEqual({ kind: "list", scope: "current", all: true });
+    expect(parseSessionCommand("/s list current 0")).toBeNull();
+    expect(parseSessionCommand("/s list current current")).toBeNull();
+  });
+
+  it("parseSessionCommand accepts pin and unpin", () => {
+    expect(parseSessionCommand("/s pin")).toEqual({ kind: "pin" });
+    expect(parseSessionCommand("/session pin")).toEqual({ kind: "pin" });
+    expect(parseSessionCommand("/s pin 3")).toEqual({ kind: "pin", index: 3 });
+    expect(parseSessionCommand("/session pin 12")).toEqual({ kind: "pin", index: 12 });
+    expect(parseSessionCommand("/s unpin")).toEqual({ kind: "unpin" });
+    expect(parseSessionCommand("/session unpin")).toEqual({ kind: "unpin" });
+    expect(parseSessionCommand("/s unpin 3")).toEqual({ kind: "unpin", index: 3 });
+    // Invalid targets fall through to the unknown-command path, exactly like
+    // `/s switch abc` does, instead of guessing a row.
+    expect(parseSessionCommand("/s pin abc")).toBeNull();
+    expect(parseSessionCommand("/s pin 1 2")).toBeNull();
+    expect(parseSessionCommand("/s unpin x")).toBeNull();
+    expect(parseSessionCommand("/s pin -1")).toBeNull();
   });
 
   it("parsePresetCommand", () => {
@@ -208,6 +263,8 @@ describe("slash parsers", () => {
     expect(help).toContain("/perm");
     expect(help).toContain("/reasoning");
     expect(help).toContain("/silent");
+    expect(help).toContain("/final");
+    expect(help).toContain("/flush");
     expect(help).toContain("/surface");
     expect(help).toContain("/stop");
     expect(help).toContain("/next");
@@ -232,14 +289,24 @@ describe("isBypassSlashCommand", () => {
     expect(isBypassSlashCommand("/silent on")).toBe(true);
     expect(isBypassSlashCommand("/silent")).toBe(true);
     expect(isBypassSlashCommand("/sl off")).toBe(true);
+    expect(isBypassSlashCommand("/final on")).toBe(true);
+    expect(isBypassSlashCommand("/final")).toBe(true);
+    expect(isBypassSlashCommand("/fo off")).toBe(true);
     expect(isBypassSlashCommand("/surface")).toBe(true);
     expect(isBypassSlashCommand("/surface off")).toBe(true);
     expect(isBypassSlashCommand("/wxprompt on")).toBe(true);
     expect(isBypassSlashCommand("/status")).toBe(true);
     expect(isBypassSlashCommand("/workspace list")).toBe(true);
     expect(isBypassSlashCommand("/ws switch 1")).toBe(true);
+    expect(isBypassSlashCommand("/workspace list all")).toBe(true);
+    expect(isBypassSlashCommand("/workspace list 50")).toBe(true);
     expect(isBypassSlashCommand("/session new")).toBe(true);
     expect(isBypassSlashCommand("/s list current")).toBe(true);
+    expect(isBypassSlashCommand("/s list all")).toBe(true);
+    expect(isBypassSlashCommand("/s list current 50")).toBe(true);
+    expect(isBypassSlashCommand("/s pin")).toBe(true);
+    expect(isBypassSlashCommand("/s pin 3")).toBe(true);
+    expect(isBypassSlashCommand("/s unpin 3")).toBe(true);
     expect(isBypassSlashCommand("/preset list")).toBe(true);
     expect(isBypassSlashCommand("/p switch build")).toBe(true);
     expect(isBypassSlashCommand("/model list")).toBe(true);
@@ -388,6 +455,31 @@ describe("createUserMessage (vendored)", () => {
     expect(typeof message.id).toBe("string");
     expect(message.id.length).toBeGreaterThan(0);
     expect(Object.isFrozen(message)).toBe(true);
+    expect(Object.isFrozen(message.content)).toBe(true);
+  });
+
+  it("structuredClones the input: the caller's objects are neither frozen nor shared", () => {
+    // Host parity. Without the clone the deep freeze reaches INTO the
+    // caller's `content` / `source`: the caller's own arrays become frozen
+    // (its next push throws in strict mode) and the published message keeps
+    // pointing at objects the caller still mutates.
+    const content = [{ type: "text" as const, text: "hello" }];
+    const source = { kind: "user" as const };
+    const input = { content, source };
+
+    const message = createUserMessage(input);
+
+    expect(Object.isFrozen(input)).toBe(false);
+    expect(Object.isFrozen(content)).toBe(false);
+    expect(Object.isFrozen(source)).toBe(false);
+    // A live reference into published "immutable" history would let a later
+    // caller mutation rewrite a message the host already persisted.
+    expect(message.content).not.toBe(content);
+    expect(message.source).not.toBe(source);
+    expect(message.content[0]).not.toBe(content[0]);
+
+    content[0]!.text = "mutated after publication";
+    expect((message.content[0] as { text: string }).text).toBe("hello");
     expect(Object.isFrozen(message.content)).toBe(true);
   });
 });

@@ -1,16 +1,16 @@
 {
   "name": "@zerowallscience/plugin-skills",
-  "version": "0.2.5",
+  "version": "0.2.7",
   "applicationVersion": "8.0.2",
   "restartRequired": true,
   "desktop": {
-    "min": "8.0.2"
+    "min": "8.4.0"
   },
   "rollbackSupported": true,
   "remote": "./lib/typert.remote-client.js",
   "dsh": {
-    "min": "0.2.0-rc.2",
-    "max": "0.2.0-rc.2"
+    "min": "0.2.1-rc.2",
+    "max": "0.2.1-rc.2"
   },
   "host": "./lib/index.js",
   "client": "./lib/client.js",

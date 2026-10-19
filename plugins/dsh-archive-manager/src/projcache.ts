@@ -13,7 +13,6 @@ interface CacheCompat extends Omit<SessionProjectionCache, "write"> {
  installWritePath(): void;
  requireTable(): CacheTable;
  put(id: string, identity: CheckpointIdentity, rows: CheckpointRecord["rows"]): Promise<void>;
- putSoft?(id: string, identity: CheckpointIdentity, rows: CheckpointRecord["rows"], what: string): Promise<void>;
  [Service.init](): Promise<void>;
 }
 const CacheBase = SessionProjectionCache as unknown as { new(ctx: Context, config: Config): CacheCompat; prototype: CacheCompat } & Pick<typeof SessionProjectionCache, "Config" | "inject">;
@@ -301,10 +300,6 @@ var ArchiveProjectionCache = class extends CacheBase {
 		await super.write(session);
 		if (this.deletedSessionIds.has(session.id)) await this.requireTable().delete(session.id);
 	}
-	/**
-	 * 守住所有底层写入。rc.2 的冷读经 `putSoft -> put`，alpha.2 则
-	 * 直接经 `put`；把墓碑与 whenIdle 跟踪放在这里可同时兼容两代实现。
-	 */
 	put(id: string, identity: CheckpointIdentity, rows: CheckpointRecord["rows"]) {
 		// alpha.2 coldSnapshot unconditionally chains `.catch()` onto put().
 		// A blocked write must therefore preserve the upstream Promise contract.
@@ -316,16 +311,6 @@ var ArchiveProjectionCache = class extends CacheBase {
 	async putCore(id: string, identity: CheckpointIdentity, rows: CheckpointRecord["rows"]) {
 		await super.put(id, identity, rows);
 		if (this.deletedSessionIds.has(id)) await this.requireTable().delete(id);
-	}
-	/** rc.2 公开的 fail-soft 辅助在 alpha.2 已移除；保留同形兼容入口。 */
-	async putSoft(id: string, identity: CheckpointIdentity, rows: CheckpointRecord["rows"], what: string) {
-		const upstream = CacheBase.prototype.putSoft;
-		if (typeof upstream === "function") return upstream.call(this, id, identity, rows, what);
-		try {
-			await this.put(id, identity, rows);
-		} catch (error) {
-			this.ctx.logger.warn(`session projection cache: ${what} for "${id}" failed (cache stays stale): ${String(error)}`);
-		}
 	}
 	/**
 	 * 全部被跟踪的在途写入落定后 resolve（含失败）。空闲缓存上调用立即返回。

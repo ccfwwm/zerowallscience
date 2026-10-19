@@ -53,6 +53,15 @@ test('pending root declarations cannot widen the exception to node_modules or ex
   }
 })
 
+test('strict validation detects an unchanged dangling internal link', async t => {
+  const f = await deferredFixture(t)
+  await rm(f.link)
+  await symlink(f.target, f.link, process.platform === 'win32' ? 'junction' : 'dir')
+  await assert.rejects(repairProfileLayout(f.candidate), { code: 'ENOENT', path: f.target })
+  await mkdir(f.target, { recursive: true })
+  assert.equal((await repairProfileLayout(f.candidate)).pendingTargets, undefined)
+})
+
 test('real bundled pnpm can install and remove after candidate activation and history restoration', async t => {
   const root = await mkdtemp(join(tmpdir(), 'zws-layout-'))
   t.after(() => rm(root, { recursive: true, force: true }))

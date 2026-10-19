@@ -50,9 +50,7 @@ import {
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import clsx from 'clsx'
-// Type-only: pulls the settings shell's SlotMap merges ('settings.section').
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SettingsSectionOwnerProps } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { SidebarPrefs } from '../prefs-shared.ts'
 import { api } from './api.ts'
 import { parsePrefs } from './prefs.ts'
@@ -75,7 +73,7 @@ export interface SideCardSectionInjected {
 }
 
 /** Full section props: the runtime share plus the injected face. */
-export type SideCardSectionProps = PropsRuntime<'settings.section'> & SideCardSectionInjected
+export type SideCardSectionProps = SettingsSectionOwnerProps & SideCardSectionInjected
 
 /** Map one wire failure to the inline message (the conflict gets friendly copy). */
 function messageOf(error: unknown): string {

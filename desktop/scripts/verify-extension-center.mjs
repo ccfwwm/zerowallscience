@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { _electron } from 'playwright'
 import { contract } from '../../tools/build/paths.mjs'
 import { locatePackagedApp } from './packaged-app.mjs'
+import { pinnedDsh } from '../../tools/packaging/adapt-reviewed-dsh.mjs'
 
 const packaged = await locatePackagedApp(join(import.meta.dirname, '..'))
 const directory = join(contract.verification, 'extension-center', randomUUID())
@@ -45,7 +46,7 @@ try {
   assert(!(await section.innerText()).includes('Catalog download failed'))
   const core = section.locator('article').filter({ has: page.getByText('@deepseek-ai/dsh-base', { exact: true }) })
   assert.equal(await core.getByRole('button').count(), 0, 'Core cannot be disabled or removed')
-  assert((await core.innerText()).includes('0.2.0-rc.2'), 'Real core version')
+  assert((await core.innerText()).includes(pinnedDsh.version), 'Real core version')
   const inventory = await page.evaluate(() => window.zerowallDesktop.resources.check('plugin', true))
   assert(inventory.resources.some(item => item.id === 'dsh-better-sidebar' && item.version !== 'core'))
   assert(inventory.resources.find(item => item.id === '@zerowallscience/plugin-skills')?.enabled)

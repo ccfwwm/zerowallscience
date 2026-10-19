@@ -28,7 +28,8 @@ test('CLI home matches existing Roaming/new Local desktop policy and preserves e
     assert.equal(runtime.command, process.execPath)
     assert.match(runtime.args[1], /pnpm-executor\.mjs$/u)
     const result = await execute(runtime.command, [...runtime.args, '--version'], { env: { ...process.env, ...runtime.env }, windowsHide: true })
-    assert.equal(result.stdout.trim(), '11.7.0')
+    const bundled = JSON.parse(await readFile(resolve('deepseek-harness/apps/desktop/node_modules/pnpm/package.json')))
+    assert.equal(result.stdout.trim(), bundled.version)
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 

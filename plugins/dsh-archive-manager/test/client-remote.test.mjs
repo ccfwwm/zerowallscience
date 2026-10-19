@@ -21,6 +21,11 @@ const statics = {};
 for (const spec of ["react", "react/jsx-runtime", "react-dom", "react-dom/client", "@deepseek-ai/cordis", "@deepseek-ai/dsh-client-ui-slots"]) {
 	statics[spec] = await import(pathToFileURL(requireFallback.resolve(spec)).href);
 }
+// alpha.3 typert-registry browser client requires zod at ModuleLoader materialize time.
+{
+	const registryRequire = createRequire(requireFallback.resolve("@deepseek-ai/dsh-typert-registry/package.json"));
+	statics["zod"] = await import(pathToFileURL(registryRequire.resolve("zod")).href);
+}
 const clientStore = await loadClientStore();
 statics[clientStore.id] = clientStore.exports;
 statics["@deepseek-ai/dsh-client-ui-primitives"] = new Proxy({}, { get: (t, p) => (typeof p === "string" ? (t[p] ??= () => null) : t[p]) });
@@ -31,10 +36,19 @@ const factories = new Map();
 window.__ModuleLoader__ = { load: (h) => { factories.set(h.id, h.factory); } };
 
 async function loadBundle(pkg) {
-	// packages export "./client" (or nothing); resolve the bundle file directly
-	const pkgJson = requireFallback.resolve(`${pkg}/package.json`);
-	const dir = pkgJson.slice(0, -"/package.json".length);
-	await import(pathToFileURL(join(dir, "lib/client.js")).href);
+	// packages export "./client"; alpha.3+ splits node/browser entrypoints.
+	// This harness drives window.__ModuleLoader__, so prefer the browser bundle.
+	const pkgJsonPath = requireFallback.resolve(`${pkg}/package.json`);
+	const dir = pkgJsonPath.slice(0, -"/package.json".length);
+	const manifest = JSON.parse(await (await import("node:fs/promises")).readFile(pkgJsonPath, "utf8"));
+	const clientExport = manifest.exports?.["./client"];
+	let rel = "lib/client.js";
+	if (typeof clientExport === "string") rel = clientExport.replace(/^\.\//, "");
+	else if (clientExport && typeof clientExport === "object") {
+		const pick = clientExport.browser || clientExport.default || clientExport.node;
+		if (typeof pick === "string") rel = pick.replace(/^\.\//, "");
+	}
+	await import(pathToFileURL(join(dir, rel)).href);
 }
 function materialize(id) {
 	const factory = factories.get(id);

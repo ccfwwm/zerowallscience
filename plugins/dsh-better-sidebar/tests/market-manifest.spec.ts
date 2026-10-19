@@ -22,11 +22,12 @@
  * script rebuilds the gitignored lib/, like the release flow does).
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { removeTree } from './temp-tree.ts'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 
@@ -63,7 +64,7 @@ function packedManifest(): Record<string, unknown> {
     execFileSync('tar', ['-xzf', `${pkg.name}-${pkg.version}.tgz`, 'package/package.json'], { cwd: dir, stdio: 'pipe' })
     return JSON.parse(readFileSync(join(dir, 'package/package.json'), 'utf8')) as Record<string, unknown>
   } finally {
-    rmSync(dir, { recursive: true, force: true })
+    removeTree(dir)
   }
 }
 
@@ -141,7 +142,7 @@ describe('DSH community-market manifest compatibility', () => {
     const dshPeers = Object.keys(peers).filter(name => name === '@deepseek-ai/dsh' || name.startsWith('@deepseek-ai/dsh-'))
     expect(dshPeers.length).toBeGreaterThan(10)
     for (const name of dshPeers) {
-      expect(peers[name], name).toMatch(/^\^0\.2\.0-[a-z0-9.]+$/)
+      expect(peers[name], name).toMatch(/^\^0\.2\.1-rc\.1$/)
     }
   })
 })

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { renameWorkspaceEntry, removeWorkspaceEntry, mkdirWorkspaceEntry, writeWorkspaceUpload } from '../src/fs-operations.ts'
+import { removeTree } from './temp-tree.ts'
 
 /** The test workspace root (each suite gets its own temp tree). */
 const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-upload-'))
@@ -16,12 +17,12 @@ const canSymlink = (() => {
   } catch {
     return false
   } finally {
-    rmSync(dir, { recursive: true, force: true })
+    removeTree(dir)
   }
 })()
 
 afterAll(() => {
-  rmSync(root, { recursive: true, force: true })
+  removeTree(root)
 })
 
 /** Names of leftover temp files under `dir` (must be empty after every run). */
@@ -145,7 +146,7 @@ describe('writeWorkspaceUpload', () => {
       expect(result).toEqual({ path: join(outside, 'x.txt'), size: 1 })
       expect(readFileSync(join(outside, 'x.txt'), 'utf8')).toBe('x')
     } finally {
-      rmSync(outside, { recursive: true, force: true })
+      removeTree(outside)
     }
   })
 
@@ -168,7 +169,7 @@ describe('writeWorkspaceUpload', () => {
       expect(readFileSync(join(outside, 'b.txt'), 'utf8')).toBe('b')
     } finally {
       unlinkSync(link)
-      rmSync(outside, { recursive: true, force: true })
+      removeTree(outside)
     }
   })
 
@@ -318,7 +319,7 @@ describe('removeWorkspaceEntry', () => {
       expect(existsSync(join(ws, 'link-to-proj'))).toBe(false)
       expect(existsSync(join(inner, 'src', 'keep.ts'))).toBe(true)
     } finally {
-      rmSync(ws, { recursive: true, force: true })
+      removeTree(ws)
     }
   })
 })
@@ -338,7 +339,7 @@ describe('session-relative targets (the shared resolution contract, #646)', () =
       expect(readFileSync(path, 'utf8')).toBe('rel')
       expect(tmpLeftovers(ws)).toEqual([])
     } finally {
-      rmSync(ws, { recursive: true, force: true })
+      removeTree(ws)
     }
   })
 
@@ -350,7 +351,7 @@ describe('session-relative targets (the shared resolution contract, #646)', () =
       expect(renamed.path).toBe(join(ws, 'b.txt'))
       expect(existsSync(join(ws, 'b.txt'))).toBe(true)
     } finally {
-      rmSync(ws, { recursive: true, force: true })
+      removeTree(ws)
     }
   })
 
@@ -362,7 +363,7 @@ describe('session-relative targets (the shared resolution contract, #646)', () =
       expect(removed.path).toBe(join(ws, 'gone.txt'))
       expect(existsSync(join(ws, 'gone.txt'))).toBe(false)
     } finally {
-      rmSync(ws, { recursive: true, force: true })
+      removeTree(ws)
     }
   })
 
@@ -373,7 +374,7 @@ describe('session-relative targets (the shared resolution contract, #646)', () =
       expect(made.path).toBe(join(ws, 'sub'))
       expect(existsSync(join(ws, 'sub'))).toBe(true)
     } finally {
-      rmSync(ws, { recursive: true, force: true })
+      removeTree(ws)
     }
   })
 })
@@ -400,7 +401,7 @@ describe.runIf(process.platform === 'win32')('workspace-root guard across path s
         .rejects.toMatchObject({ code: 'fs-error' })
       expect(existsSync(join(inner, 'src', 'keep.ts'))).toBe(true)
     } finally {
-      rmSync(ws, { recursive: true, force: true })
+      removeTree(ws)
     }
   })
 
@@ -411,7 +412,7 @@ describe.runIf(process.platform === 'win32')('workspace-root guard across path s
         .rejects.toMatchObject({ code: 'fs-error' })
       expect(existsSync(join(inner, 'src', 'keep.ts'))).toBe(true)
     } finally {
-      rmSync(ws, { recursive: true, force: true })
+      removeTree(ws)
     }
   })
 
@@ -422,7 +423,7 @@ describe.runIf(process.platform === 'win32')('workspace-root guard across path s
         .rejects.toMatchObject({ code: 'fs-error' })
       expect(existsSync(join(inner, 'src', 'keep.ts'))).toBe(true)
     } finally {
-      rmSync(ws, { recursive: true, force: true })
+      removeTree(ws)
     }
   })
 
@@ -436,7 +437,7 @@ describe.runIf(process.platform === 'win32')('workspace-root guard across path s
       expect(existsSync(join(inner, 'Sub'))).toBe(false)
       expect(existsSync(inner)).toBe(true)
     } finally {
-      rmSync(ws, { recursive: true, force: true })
+      removeTree(ws)
     }
   })
 })

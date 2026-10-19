@@ -3,9 +3,11 @@ import { cp, mkdir, readFile, writeFile, lstat, realpath, readdir, readlink, ren
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import { physicalFs } from './physical-fs.mjs'
 import { carrierIndex, carrierName, offlineContentDigest } from './offline-carrier.mjs'
-import { assertCompatible, verifySignedDocument } from './resource-catalog.mjs'
+import { assertCompatible } from './resource-catalog.mjs'
 import { RETIRED_PLUGIN_IDS } from './retired-plugins.mjs'
 import { verifyCurrentRuntimeDependency } from './historical-plugin.mjs'
+import { pluginVerificationIssue, pluginVerificationMode, verifyPluginDocument } from './plugin-verification.mjs'
+import { pluginRuntimeEntries as entryPaths } from './plugin-entrypoints.mjs'
 
 export const PROFILE_LAYOUT = 3
 export const materializationFile = '.zerowall/materialized-profile.json'
@@ -29,8 +31,8 @@ async function fileDigest(path, size) {
 // Reuse reads only within one completed-layout verification. Source archive
 // hashes never enter this cache: every installed file is checked after writes,
 // and each subsequent repair, activation or launch starts a fresh verifier.
-function profileFileVerifier(profile) {
-  const directories = new Map(), files = new Map()
+function profileFileVerifier(profile, target) {
+  const directories = new Map(), files = new Map(), digests = new Map()
   let readers = 0
   const waiting = []
   async function withReader(read) {
@@ -48,35 +50,36 @@ function profileFileVerifier(profile) {
     })())
     await directories.get(directory)
   }
-  return async (path, entry, digest = true) => {
-    const key = JSON.stringify([resolve(path), entry.size, entry.sha256])
+  return async (path, entry, digest = true, required = true) => {
+    const key = JSON.stringify([resolve(path), entry?.size, entry?.sha256, required])
     let checked = files.get(key)
     if (!checked) {
       checked = { metadata: (async () => {
         await checkDirectory(dirname(path))
-        const info = await lstat(path)
-        if (!info.isFile() || info.isSymbolicLink() || info.size !== entry.size) throw new Error('Materialized file size or type mismatch: ' + path)
+        const info = await lstat(path).catch(error => {
+          if (error.code !== 'ENOENT' || required) throw error
+          pluginVerificationIssue(target, 'installedContent', 'Non-entry plugin asset is missing: ' + path)
+        })
+        if (!info) return false
+        if (!info.isFile() || info.isSymbolicLink()) throw new Error('Materialized file type mismatch: ' + path)
+        if (!entry) pluginVerificationIssue(target, 'installedContent', 'Plugin entry is absent from its receipt: ' + path)
+        else if (info.size !== entry.size) pluginVerificationIssue(target, 'installedContent', 'Materialized file size mismatch: ' + path)
+        return true
       })() }
       files.set(key, checked)
     }
-    await checked.metadata
-    if (digest) {
-      checked.digest ??= withReader(async () => {
-        if (await fileDigest(path, entry.size) !== entry.sha256) throw new Error('Materialized file SHA-256 mismatch: ' + path)
-      })
-      await checked.digest
+    if (!await checked.metadata) return
+    if (digest && entry) {
+      // Required entries and optional asset sweeps share bytes, while their
+      // separate metadata checks still enforce the stricter missing-file rule.
+      const digestKey = JSON.stringify([resolve(path), entry.size, entry.sha256])
+      if (!digests.has(digestKey)) digests.set(digestKey, withReader(async () => {
+        const size = (await lstat(path)).size
+        if (await fileDigest(path, size) !== entry.sha256) pluginVerificationIssue(target, 'installedContent', 'Materialized file SHA-256 mismatch: ' + path)
+      }))
+      await digests.get(digestKey)
     }
   }
-}
-function entryPaths(manifest) {
-  const exports = []
-  function visit(value) {
-    if (typeof value === 'string') exports.push(value)
-    else if (value && typeof value === 'object') for (const [condition, child] of Object.entries(value)) if (condition !== 'types') visit(child)
-  }
-  visit(manifest.exports)
-  return [...new Set(['package.json', manifest.main, manifest.dsh?.bundle?.patch, ...exports, ...(manifest.zerowall?.runtimeFiles ?? [])]
-    .filter(value => typeof value === 'string' && !value.includes('*') && !value.endsWith('.ts')).map(value => value.replace(/^\.\//u, '')))]
 }
 async function dependencyAt(source, id) {
   let directory = source
@@ -102,6 +105,10 @@ export async function physicalizeProfilePlugins({ profile, ids }) {
     if (manifest?.name !== id) throw new Error('Fixed-root package identity mismatch: ' + id)
     const previous = join(profile, '.zerowall/root-links', encodeURIComponent(id) + '-' + Date.now())
     await mkdir(dirname(previous), { recursive: true }); await rename(root, previous)
+    // pnpm may emit a relative root link. Its archived location has another
+    // parent, so retain the resolved source rather than the old relative text.
+    await unlink(previous)
+    await symlink(source, previous, process.platform === 'win32' ? 'junction' : 'dir')
     await cp(source, root, { recursive: true, dereference: false, verbatimSymlinks: true, filter: path => relative(source, path) !== 'node_modules' })
     for (const dependency of Object.keys({ ...manifest.peerDependencies, ...manifest.dependencies, ...manifest.optionalDependencies })) {
       if (!/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(dependency) || RETIRED_PLUGIN_IDS.has(dependency)) throw new Error('Invalid fixed-root dependency')
@@ -175,7 +182,7 @@ async function bounded(entries, task, concurrency = 16) {
   if (failure) throw failure.reason
 }
 function authenticate(receipt, digest, keys, target, local) {
-  verifySignedDocument(receipt, keys)
+  verifyPluginDocument(receipt, keys, target)
   if (![1, 2].includes(receipt.schema) || receipt.kind !== 'offline-profile' || receipt.profileArchitecture !== 7 || !Array.isArray(receipt.files) || !Array.isArray(receipt.plugins)) throw new Error('Invalid materialized profile receipt')
   if (receipt.localOnly && !local) throw new Error('Development offline profile cannot enter a stable installation')
   if (receipt.dshCommit !== target.dshCommit) throw new Error('Materialized profile DSH identity mismatch')
@@ -337,7 +344,7 @@ export async function materializeOfflinePackages({ profile, source, receipt, dig
  * opens the offline supply directory, downloads, or resolves a package tree. */
 export async function verifyMaterializedProfile({ profile, keys, target, expected = [], digest, local = false, full = false }) {
   try {
-    const verifyFile = profileFileVerifier(profile)
+    const verifyFile = profileFileVerifier(profile, target)
     const marker = JSON.parse(await readFile(join(profile, materializationFile), 'utf8'))
     if (marker.schema !== 1 || marker.layout !== PROFILE_LAYOUT || !Array.isArray(marker.ids) || digest && marker.digest !== digest) return undefined
     authenticate(marker.receipt, marker.digest, keys, target, local)
@@ -375,7 +382,7 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
       await verifyGraph('modules/' + id, id)
       for (const localPath of entryPaths(manifest)) {
         const entry = signed.get('modules/' + id + '/' + localPath)
-        if (!entry) return undefined
+        if (!entry && pluginVerificationMode(target, 'installedContent') !== 'warn') return undefined
         await verifyFile(join(root, localPath), entry)
       }
       for (const dependency of Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies, ...manifest.optionalDependencies })) {
@@ -402,7 +409,7 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
         await verifyPreviousGraph('modules/' + id, id)
         for (const local of entryPaths(manifest)) {
           const entry = source.receipt.files.find(file => file.path === 'modules/' + id + '/' + local)
-          if (!entry) return undefined
+          if (!entry && pluginVerificationMode(target, 'installedContent') !== 'warn') return undefined
           await verifyFile(join(root, local), entry)
         }
         for (const dependency of Object.keys({ ...manifest.peerDependencies, ...manifest.dependencies, ...manifest.optionalDependencies })) {
@@ -422,7 +429,7 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
           if (RETIRED_PLUGIN_IDS.has(id) || id.startsWith('@deepseek-ai/') || coreIds.has(id)) return
           if (previousIds.has(id) && !retainedIds.has(id)) return
           const path = previousIds.has(id) ? join(profile, 'node_modules', id, localPath) : join(oldDependencies, id, localPath)
-          await verifyFile(path, entry)
+          await verifyFile(path, entry, true, false)
         }, 4)
       }
     }
@@ -435,9 +442,9 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
         const id = packageRoot(entry.path)[1]
         if (RETIRED_PLUGIN_IDS.has(id) || id.startsWith('@deepseek-ai/') || coreIds.has(id)) return
         if (selected.has(id) && selectedVersions.get(id) !== signedVersions.get(id)) return
-        await verifyFile(plannedPath(profile, entry, selected), entry)
+        await verifyFile(plannedPath(profile, entry, selected), entry, true, false)
       }, 4)
     }
     return marker
-  } catch { return undefined }
+  } catch (error) { console.warn('[PLUGIN_PROFILE_INVALID] ' + error.message); return undefined }
 }

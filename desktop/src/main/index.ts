@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs'
 import { access, appendFile, cp, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { app, BrowserWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, WebContentsView, clipboard, ClipboardItem, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, safeStorage, shell, Tray, type OpenDialogOptions } from 'electron'
 import { DesktopNotifications } from './notifications.js'
 import { redactResourceDiagnostic } from './resource-diagnostics.js'
 import { startupFailure } from './startup-failure.js'
@@ -22,7 +22,7 @@ import { CredentialVault } from './credentials/vault.js'
 import { secureWindow } from './security.js'
 import { isZoteroOpenUrl } from './security-policy.js'
 import { resolveDesktopIdentity } from './identity.js'
-import { findDesktopWorkspaceRoot, resolveBundledSkillsPath, resolveDesktopIconPath, resolveDesktopResourcePath, resolveWorkspaceResourcePath } from './paths.js'
+import { findDesktopWorkspaceRoot, resolveBundledSkillsPath, resolveDesktopIconPath, resolveDesktopWindowIconPath, resolveDesktopResourcePath, resolveWorkspaceResourcePath } from './paths.js'
 import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-manager-broker.js'
 import { createPythonTerminalLaunch, managedPythonTerminalPaths } from './python-terminal.js'
@@ -103,7 +103,7 @@ const LEGACY_PYTHON_DATA_DIRECTORIES = new Set([
 
 function configureIdentity(): void {
   app.setName(identity.productName)
-  if (process.platform === 'win32') app.setAppUserModelId(identity.channel === 'stable' ? 'com.zerowall.science' : 'com.zerowall.science.preview')
+  if (process.platform === 'win32') app.setAppUserModelId(identity.appId)
   let appDataPath: string | undefined
   try { appDataPath = app.getPath('appData') } catch { /* use LocalAppData */ }
   const userData = resolveDesktopUserDataPath({
@@ -174,6 +174,10 @@ function resourcePath(name: string): string {
 
 function desktopIconPath(): string {
   return resolveDesktopIconPath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
+}
+
+function desktopWindowIconPath(): string {
+  return resolveDesktopWindowIconPath({ appPath: app.getAppPath(), isPackaged: app.isPackaged, resourcesPath: process.resourcesPath })
 }
 
 function bundledSkillsPath(): string {
@@ -310,7 +314,7 @@ function createWindow(): BrowserWindow {
     minHeight: 680,
     show: false,
     title: identity.productName,
-    icon: desktopIconPath(),
+    icon: desktopWindowIconPath(),
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#17181a' : '#f7f4ed',
     webPreferences: {
       contextIsolation: true,
@@ -321,6 +325,13 @@ function createWindow(): BrowserWindow {
       backgroundThrottling: false,
       autoplayPolicy: 'no-user-gesture-required',
     },
+  })
+  if (process.platform === 'win32') window.setAppDetails({
+    appId: identity.appId,
+    appIconPath: desktopWindowIconPath(),
+    appIconIndex: 0,
+    relaunchCommand: app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${app.getAppPath()}"`,
+    relaunchDisplayName: identity.productName,
   })
   window.on('page-title-updated', (event) => {
     event.preventDefault()
@@ -835,7 +846,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       yaml: createRequire(app.isPackaged ? join(process.resourcesPath, 'app.asar/package.json') : join(findWorkspaceRoot(), 'package.json'))('yaml') })
     if (skillUpgrade.updated.length) console.info(`Using ${skillUpgrade.updated.length} newer bundled Skills; previous catalog copies retained in rollback history`)
   } catch { console.warn('Bundled Skill reconciliation deferred; existing user Skills preserved') }
-  const resources = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins, bundledSkillVersions, runtimeModules: app.isPackaged ? join(process.resourcesPath, 'app.asar/node_modules') : developmentStagePath('runtime', 'node_modules'), target: { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version, dshCommit: dshIdentity.commit, platform: process.platform, architecture: process.arch }, runPlugin,
+  const resources = createResourceManager({ home: dshHome, keys, defaultPlugins: defaults, bundledPlugins, bundledSkillVersions, offlineSource: app.isPackaged ? join(process.resourcesPath, 'offline-profile') : developmentStagePath('offline-profile'), runtimeModules: app.isPackaged ? join(process.resourcesPath, 'app.asar/node_modules') : developmentStagePath('runtime', 'node_modules'), target: { desktopVersion: app.getVersion(), dshVersion: dshIdentity.version, dshCommit: dshIdentity.commit, platform: process.platform, architecture: process.arch }, runPlugin,
     offlineStaging: !app.isPackaged,
     onOfflinePhase: (event: { phase: string; state: string; durationMs?: number }) => {
       const labels: Record<string, string> = { 'offline-verify': '正在校验离线插件', 'offline-verify-candidate': '正在验证本地插件文件', 'offline-copy': '正在准备离线插件文件', 'profile-prepare': '正在准备用户插件配置', 'offline-reuse': '已复用本地插件' }
@@ -1110,7 +1121,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   const notifications = new DesktopNotifications({
     supported: () => Notification.isSupported(),
     create: options => new Notification(options),
-    icon: desktopIconPath(),
+    icon: desktopWindowIconPath(),
     activate: sessionId => {
       showMainWindow()
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:notification-activated', sessionId)
@@ -1283,12 +1294,12 @@ if (ownsInstance) app.whenReady().then(async () => {
       return true
     } catch { return false }
   })
-  ipcMain.handle('desktop:clipboard-copy-image', (_event, input: { data?: unknown }) => {
+  ipcMain.handle('desktop:clipboard-copy-image', async (_event, input: { data?: unknown }) => {
     if (typeof input?.data !== 'string' || input.data.length === 0 || input.data.length > 70_000_000) return false
     try {
       const image = nativeImage.createFromBuffer(Buffer.from(input.data, 'base64'))
       if (image.isEmpty()) return false
-      clipboard.writeImage(image)
+      await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(image.toPNG())], { type: 'image/png' }) })])
       return true
     } catch { return false }
   })

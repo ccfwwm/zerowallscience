@@ -158,71 +158,16 @@ test("设置页批量恢复串行调用官方 unarchiveSession", async () => {
 	assert.deepEqual(result.archivedSessionIds, ["s2"]);
 });
 
-test("restore prefers official unarchiveSession when the host provides it", async () => {
+test("restore requires the official unarchiveSession", async () => {
 	const official = [];
-	const remote = [];
 	const unarchive = t.createUnarchiveSession({
 		async unarchiveSession(id) {
 			official.push(id);
 		}
-	}, () => ({
-		async unarchiveSession(id) {
-			remote.push(id);
-			return { ok: true, value: { archivedSessionIds: [] } };
-		}
-	}));
+	});
 	await unarchive("s1");
 	assert.deepEqual(official, ["s1"]);
-	assert.deepEqual(remote, []);
-});
-
-test("restore falls back to plugin remote unarchiveSession on older hosts", async () => {
-	const archived = ["s1", "s2"];
-	const remote = [];
-	const unarchive = t.createUnarchiveSession({
-		list: { getSnapshot: () => ({ archivedSessionIds: ["s1", "s2"] }) }
-	}, () => ({
-		async unarchiveSession(id) {
-			remote.push(id);
-			const i = archived.indexOf(id);
-			if (i !== -1) archived.splice(i, 1);
-			return { ok: true, value: { archivedSessionIds: [...archived] } };
-		}
-	}));
-	await unarchive("s1");
-	assert.deepEqual(remote, ["s1"]);
-	assert.deepEqual(archived, ["s2"]);
-});
-
-test("legacy batch restore counts from the plugin remote set when the official snapshot lags", async () => {
-	const archived = ["s1", "s2", "s3"];
-	const remote = [];
-	const workspaces = {
-		list: { getSnapshot: () => ({ archivedSessionIds: ["s1", "s2", "s3"] }) }
-	};
-	const unarchive = t.createUnarchiveSession(workspaces, () => ({
-		async unarchiveSession(id) {
-			remote.push(id);
-			const i = archived.indexOf(id);
-			if (i !== -1) archived.splice(i, 1);
-			return { ok: true, value: { archivedSessionIds: [...archived] } };
-		}
-	}));
-	const result = await t.unarchiveSessionsViaOfficial(workspaces, ["s1", "s1", "s3"], async () => {}, unarchive);
-	assert.deepEqual(remote, ["s1", "s3"]);
-	assert.deepEqual(result.unarchivedSessionIds, ["s1", "s3"]);
-	assert.deepEqual(result.archivedSessionIds, ["s2"]);
-});
-
-test("plugin remote restore surfaces host errors and missing registry", async () => {
-	const missing = t.createUnarchiveSession({}, () => undefined);
-	await assert.rejects(() => missing("s1"), /archive-manager remote service is unavailable/);
-	const failed = t.createUnarchiveSession({}, () => ({
-		async unarchiveSession() {
-			return { ok: false, error: { message: "workspace locked" } };
-		}
-	}));
-	await assert.rejects(() => failed("s1"), /workspace locked/);
+	await assert.rejects(() => t.createUnarchiveSession({})("s1"), /host unarchiveSession is unavailable/);
 });
 
 test("设置页与侧栏批量归档串行调用官方 archiveSession", async () => {
@@ -339,7 +284,7 @@ test("forked row stylesheet does not reuse the official workspace class prefix",
 		assert.equal(text.includes("YDXeBa_"), false);
 		assert.equal(text.includes(".dshamRow_projectRow,.dshamRow_sessionRow{cursor:pointer"), true);
 		assert.equal(text.includes("padding:0 8px"), true);
-		assert.equal(text.includes("ensureLegacyWorkspaceCss"), true);
+		assert.equal(source.includes("ctx.sessions.open("), false);
 	}
 	const injected = [];
 	const previous = document.createElement;
@@ -367,10 +312,10 @@ test("bundle resolves only the pinned client-store contract", () => {
 	assert.equal(alphaRequests.includes("@deepseek-ai/dsh-client-store"), true);
 	assert.equal(alphaRequests.includes("@deepseek-ai/dsh-client-runtime/client"), false);
 	assert.equal(typeof bundle.__test.createWorkspaceViewStore().create, "function");
-	assert.equal(bundle.__test.hasSplitClientStore, true);
+	assert.throws(() => materialize("@michengai/dsh-archive-manager"), /smoke require miss: @deepseek-ai\/dsh-client-store/);
 });
 
-test("manifest keeps one DSH peer range and both client contracts optional", async () => {
+test("manifest keeps one DSH peer range and resolves the configured Host contracts", async () => {
 	assert.equal(PACKAGE_MANIFEST.engines?.node, "^22.19.0 || >=24.0.0");
 	const rootManifest = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8'));
 	assert.equal(PACKAGE_MANIFEST.packageManager, rootManifest.packageManager);
@@ -382,20 +327,22 @@ test("manifest keeps one DSH peer range and both client contracts optional", asy
 		.map(([, version]) => version);
 	assert.ok(dshPeerRanges.length > 0);
 	assert.equal(new Set(dshPeerRanges).size, 1);
-	assert.equal(dshPeerRanges[0], "0.1.2-rc.1 || 0.1.5-rc.1 || 0.1.5-rc.2 || 0.1.5-rc.3 || 0.1.7-rc.1 || 0.1.7-rc.2 || 0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-alpha.2");
-	for (const version of ["0.1.2-rc.1", "0.1.5-rc.1", "0.1.5-rc.2", "0.1.5-rc.3", "0.1.7-rc.1", "0.1.7-rc.2", "0.2.0-rc.1", "0.2.0-rc.2", "0.2.1-alpha.2"]) {
-		assert.ok(semver.satisfies(version, dshPeerRanges[0]), `peer 范围必须接纳已验证宿主 ${version}`);
+	assert.equal(dshPeerRanges[0], "0.2.0-rc.1 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2");
+	for (const version of ["0.2.0-rc.1", "0.2.0-rc.2", "0.2.1-rc.1", "0.2.1-rc.2"]) {
+		assert.ok(semver.satisfies(version, dshPeerRanges[0], { includePrerelease: true }), `peer 范围必须接纳已验证宿主 ${version}`);
 	}
-	for (const version of ["0.1.0-rc.5", "0.1.0-rc.8", "0.1.0-rc.9", "0.1.1-rc.2", "0.1.3-alpha.2", "0.1.5", "0.1.6", "0.1.6-alpha.1", "0.1.6-alpha.2", "0.1.7-alpha.1", "0.1.7-rc.3", "0.1.7", "0.2.0", "0.2.0-rc.3"]) {
-		assert.equal(semver.satisfies(version, dshPeerRanges[0]), false, `不接纳未声明版本 ${version}`);
+	for (const version of ["0.1.0-rc.8", "0.1.1-rc.2", "0.1.2-rc.1", "0.1.5-rc.1", "0.1.5-rc.2", "0.1.5-rc.3", "0.1.6-alpha.1", "0.1.6-alpha.2", "0.1.7-alpha.1", "0.1.7-rc.1", "0.1.7-rc.2", "0.2.0", "0.2.0-rc.3", "0.2.1", "0.2.1-alpha.1", "0.2.1-alpha.5", "0.2.1-rc.3"]) {
+		assert.equal(semver.satisfies(version, dshPeerRanges[0], { includePrerelease: true }), false, `不接纳未声明版本 ${version}`);
 	}
 	assert.ok(dshDevelopmentVersions.length > 0);
-	assert.deepEqual([...new Set(dshDevelopmentVersions)], ["workspace:*"]);
+	const pin = JSON.parse(await readFile(new URL('../../../config/deepseek-harness/upstream.json', import.meta.url), 'utf8'));
+	assert.deepEqual([...new Set(dshDevelopmentVersions)], [pin.version]);
 	for (const [name] of Object.entries(PACKAGE_MANIFEST.devDependencies).filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))) {
 		const dependency = JSON.parse(await readFile(requireFallback.resolve(name + '/package.json'), 'utf8'));
-		assert.equal(dependency.version, '0.2.0-rc.2', `${name} must resolve the pinned ZeroWall Harness`);
+		assert.equal(dependency.version, pin.version, `${name} must resolve the pinned ZeroWall Harness`);
 	}
-	assert.equal(PACKAGE_MANIFEST.peerDependenciesMeta?.["@deepseek-ai/dsh-client-store"]?.optional, true);
+	assert.ok(PACKAGE_MANIFEST.peerDependencies["@deepseek-ai/dsh-client-store"]);
+	assert.equal(PACKAGE_MANIFEST.peerDependenciesMeta?.["@deepseek-ai/dsh-session-format-catalog"]?.optional, true);
 	assert.equal(PACKAGE_MANIFEST.peerDependenciesMeta?.["@deepseek-ai/dsh-client-runtime"], undefined);
 	assert.equal(PACKAGE_MANIFEST.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"), false);
 });
@@ -419,34 +366,21 @@ test("bindObservable preserves receiver-sensitive alpha store methods", () => {
 	assert.equal(observed, 42);
 });
 
-test("侧栏注册的打开和分叉操作委托新版导航服务，并保留旧宿主回退", async () => {
-	for (const modern of [true, false]) {
-		const opened = [];
-		const forked = [];
-		const registrations = new Map();
-		const navigation = modern ? {
-			openSession: (id) => opened.push(id),
-			forkSession: async (id) => { forked.push(id); }
-		} : {};
-		const ctx = {
-			get: (name) => name === "uiWorkspace" ? navigation : void 0,
-			sessions: {
-				open: (id) => { assert.equal(modern, false); opened.push(id); },
-				fork: async ({ sessionId }) => { assert.equal(modern, false); forked.push(sessionId); return "fork"; }
-			},
-			workspaces: {},
-			slots: { inject: (name, callback) => name === "archiveManager.sidebar.directoryFlow" ? () => {} : callback(), register: (options) => registrations.set(options.name, options) },
-			// 本测试只执行槽位接线；字典、观察器和自动选中由各自测试覆盖。
-			effect() {}
-		};
-		const dispose = await bundle.apply(ctx);
-		const actions = registrations.get("sidebar.workspaces").inject();
-		actions.open("s1");
-		await actions.forkSession("s1");
-		assert.deepEqual(opened, modern ? ["s1"] : ["s1", "fork"]);
-		assert.deepEqual(forked, ["s1"]);
-		await dispose();
-	}
+test("侧栏不再替换官方列表，打开和分叉交给宿主导航", async () => {
+	const registrations = new Map();
+	const ctx = {
+		get: () => undefined,
+		sessions: { open() {}, fork: async () => "fork" },
+		workspaces: {},
+		slots: {
+			inject: (name, callback) => name === "archiveManager.sidebar.directoryFlow" ? () => {} : callback(),
+			register: (options) => registrations.set(options.name, options)
+		},
+		effect() {}
+	};
+	const dispose = await bundle.apply(ctx);
+	assert.equal(registrations.has("sidebar.workspaces"), false);
+	await dispose();
 });
 
 test("Typert remotes 同时带 create 和 schema", () => {
@@ -463,7 +397,7 @@ test("Typert remotes 同时带 create 和 schema", () => {
 test("deriveGroups: 当前会话优先 retainedBy.mainView，没有再看 list.current", () => {
 	const view = { expandedGroups: ["w1", "w2"], showArchived: false };
 	const withCurrent = t.deriveGroups({ ...list, current: "s3" }, workspaces, [], noPendingInteractions, view);
-	assert.equal(withCurrent.find((g) => g.workspaceId === "w2").containsCurrent, true);
+	assert.equal(withCurrent.find((g) => g.workspaceId === "w2").containsCurrent, false);
 	const staleCurrent = t.deriveGroups({
 		...list,
 		current: "s1",

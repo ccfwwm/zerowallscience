@@ -1,6 +1,8 @@
-/** Add diagnostics around the native lazy Excel renderer in the curated rc.2 copy. */
+import { assertPinnedDsh } from './adapt-reviewed-dsh.mjs'
+
+/** Add diagnostics around the native lazy Excel renderer in the pinned copy. */
 export function adaptDocumentPreview(source, version) {
-  if (version !== '0.2.0-rc.2') throw new Error('Native Excel diagnostics require the reviewed DSH rc.2 bundle.')
+  assertPinnedDsh(version, 'native Excel diagnostics')
   const lazy = 'const LoadedExcelBody = (0, react.lazy)(async () => ({ default: (await require.async("./client.excel.js")).ExcelBody }));'
   const entry = 'function LazyExcelBody(props) {'
   if (source.split(lazy).length !== 2 || source.split(entry).length !== 2) throw new Error('Native Excel diagnostics anchors changed.')
@@ -30,7 +32,7 @@ function ZeroWallLoadedExcelBody(props) {`)
 }
 
 export function adaptExcelChunk(source, version) {
-  if (version !== '0.2.0-rc.2') throw new Error('Excel Worker diagnostics require reviewed DSH rc.2.')
+  assertPinnedDsh(version, 'Excel Worker diagnostics')
   const error = 'if ("error" in state) return'
   const success = 'const hasFormulas = state.value.sheets.some('
   if (source.split(error).length !== 2 || source.split(success).length !== 2) throw new Error('Excel diagnostics anchors changed.')

@@ -1,17 +1,21 @@
 import { errorMessage } from "./contracts.js";
 import type { Translate, SearchInput, SearchHit, Failure, SessionDetail, SessionSummary } from "./contracts.js";
-import dayjs from "dayjs";
-import "dayjs/locale/zh-cn";
-import { Button, Disclosure, RangePicker, Segmented } from "./antd-ui.js";
+import { DateRange, Disclosure } from "./plugin-ui.js";
+import type { ArchivePreviewResult } from "./archive-discovery.js";
+import type * as ReactTypes from "react";
+import type { ComponentType, ReactNode } from "react";
 interface SearchState { key?: string; status: string; items: SearchHit[]; failures: Failure[]; done?: number; total?: number; error?: string }
-type PreviewValue = ReturnType<typeof import("./archive-discovery.js").previewResultSchema.parse>;
 interface PreviewTarget { session: SessionSummary; query: string }
-interface PreviewState { key?: PreviewTarget | null; status: string; value?: PreviewValue; error?: string }
+interface PreviewState { key?: PreviewTarget | null; status: string; value?: ArchivePreviewResult; error?: string }
 interface MarkdownProps { text: string; streaming: boolean; labels: { code: { copyLabel: string; copiedLabel: string }; footnotes: string } }
 import { searchArchiveBatches, detailsResultSchema, findTextRange } from "./archive-discovery.js";
 
+type HostButton = ComponentType<Record<string, unknown>>;
+type HostSegmented = (props: { id: string; label: string; value: string; options: readonly { value: string; label: string }[]; onChange(value: string): void }) => ReactNode;
+type ReactNamespace = typeof ReactTypes;
+
 /** 搜索异步状态和预览展示独立于页面业务操作，防止旧请求覆盖新筛选。 */
-export function createDiscoveryTools(React: typeof import("react")) {
+export function createDiscoveryTools(React: ReactNamespace, host: { Button?: HostButton; SegmentedControl?: HostSegmented } = {}) {
   const h = React.createElement;
   function HighlightedText({ text, query = "" }: { text: string; query?: string }) {
     const match = findTextRange(text, query);
@@ -68,7 +72,7 @@ export function createDiscoveryTools(React: typeof import("react")) {
     // 只缓存读取结果和本地错误键；语言切换在渲染时生效，不触发重复读取。
     const items = current.items.map(row => row.errorKey ? { ...row, error: t ? t(row.errorKey) : row.errorKey } : row);
     return { ...current, items, byId: Object.fromEntries(items.map(row => [row.sessionId, row])), retry: () => setRevision(value => value + 1) };
-  }  function useArchivePreview(call: ((input: { sessionId: string; query: string }) => Promise<PreviewValue>) | undefined, eligibleIds: readonly string[]) {
+  }  function useArchivePreview(call: ((input: { sessionId: string; query: string }) => Promise<ArchivePreviewResult>) | undefined, eligibleIds: readonly string[]) {
     const [target, setTarget] = React.useState<PreviewTarget | null>(null);
     const [state, setState] = React.useState<PreviewState>({ status: "idle" });
     const [revision, setRevision] = React.useState(0);
@@ -106,24 +110,13 @@ export function createDiscoveryTools(React: typeof import("react")) {
     return h(Disclosure, { title, open, onToggle: () => setOpen(value => !value) }, list);
   }
   function textButton(label: string, props: { disabled?: boolean; onClick(): void }) {
-    return h(Button, { shape: "round", ...props }, label);
+    const Button = host.Button ?? ((buttonProps: { disabled?: boolean; onClick?: () => void; children?: ReactNode }) => h("button", { type: "button", disabled: buttonProps.disabled, onClick: buttonProps.onClick }, buttonProps.children));
+    return h(Button, { variant: "outline", size: "sm", ...props }, label);
   }
   function DiscoveryFilters({ t, from, to, onFrom, onTo, invalid, onClear }: { t: Translate; from: string; to: string; onFrom(value: string): void; onTo(value: string): void; invalid: boolean; onClear(): void }) {
-    dayjs.locale(typeof document !== "undefined" && document.documentElement.lang.toLowerCase().startsWith("en") ? "en" : "zh-cn");
-    const start = from === "" ? null : dayjs(from);
-    const end = to === "" ? null : dayjs(to);
     return h("div", { className: "dsham_dateFilter" },
-      h(RangePicker, {
-        allowClear: true, format: "YYYY-MM-DD", inputReadOnly: true, status: invalid ? "error" : "",
-        "aria-label": t("discovery.date"), placeholder: [t("discovery.from"), t("discovery.to")],
-        value: [start, end],
-        onChange: (dates: [dayjs.Dayjs | null, dayjs.Dayjs | null] | null) => {
-          if (dates == null || (dates[0] == null && dates[1] == null)) { onClear(); return; }
-          onFrom(dates[0] == null ? "" : dates[0].format("YYYY-MM-DD"));
-          onTo(dates[1] == null ? "" : dates[1].format("YYYY-MM-DD"));
-        }
-      }),
-      invalid ? h("p", { role: "alert" }, t("discovery.invalidDate")) : null);
+      h(DateRange, { from, to, invalid, label: t("discovery.date"), fromLabel: t("discovery.from"), toLabel: t("discovery.to"), onFrom, onTo, onClear }),
+      invalid ? h("p", { className: "dsham_dateAlert", role: "alert" }, t("discovery.invalidDate")) : null);
   }
   function SearchStatus({ state, t }: { state: SearchState & { retry(): void }; t: Translate }) {
     if (state.status === "idle") return null;
@@ -133,7 +126,7 @@ export function createDiscoveryTools(React: typeof import("react")) {
       state.failures.length > 0 && h(FailureDetails, { title: t("discovery.failed", { n: state.failures.length }), failures: state.failures, separator: t("common.separator") }),
       (state.status === "error" || (state.status === "ready" && state.failures.length > 0)) && textButton(t("discovery.retry"), { onClick: state.retry }));
   }
-  function PreviewContent({ preview, t, MarkdownText }: { preview: PreviewState & { target?: PreviewTarget | null; retry(): void }; t: Translate; MarkdownText?: import("react").ComponentType<MarkdownProps> }) {
+  function PreviewContent({ preview, t, MarkdownText }: { preview: PreviewState & { target?: PreviewTarget | null; retry(): void }; t: Translate; MarkdownText?: ComponentType<MarkdownProps> }) {
     const [raw, setRaw] = React.useState(false);
     if (preview.status === "loading") return h("p", { role: "status" }, t("discovery.loading"));
     if (preview.status === "error") return h("div", null, h("p", { role: "alert" }, preview.error), textButton(t("discovery.retry"), { onClick: preview.retry }));
@@ -142,10 +135,10 @@ export function createDiscoveryTools(React: typeof import("react")) {
     return h("div", { className: "dsham_previewMessages" },
       h("div", { className: "dsham_previewToolbar" },
         h("span", { title: t("discovery.previewHint") }, t("discovery.readOnly"), " · ", t("discovery.messageCount", { n: value.messages.length })),
-        MarkdownText && h(Segmented, {
-          "aria-label": t("discovery.displayMode"), value: raw ? "raw" : "formatted",
+        MarkdownText && h(host.SegmentedControl ?? "div", {
+          id: "dsham-preview-mode", label: t("discovery.displayMode"), value: raw ? "raw" : "formatted",
           options: [{ value: "formatted", label: t("discovery.formatted") }, { value: "raw", label: t("discovery.raw") }],
-          onChange: value => setRaw(value === "raw")
+          onChange: (value: string) => setRaw(value === "raw")
         })),
       value.hasEarlier && h("p", null, t("discovery.earlier")),
       !value.messages.length && h("p", null, t("discovery.empty")),
@@ -155,16 +148,50 @@ export function createDiscoveryTools(React: typeof import("react")) {
   return { HighlightedText, useSessionDetails, useArchiveSearch, useArchivePreview, DiscoveryFilters, SearchStatus, PreviewContent };
 }
 
-export const discoveryCss = ".dsham_dateFilter{flex:1 1 140px;width:auto;min-width:0;max-width:none;display:flex;flex-direction:column;overflow:hidden}.dsham_dateFilter .ant-picker{width:100%;min-width:0}.dsham_dateFilter p{margin:4px 0 0;font-size:12px}.dsham_discoveryStatus{font-size:12px;margin-bottom:12px;overflow-wrap:anywhere}.dsham_settingsSnippet{display:block;width:100%;padding:0;margin:4px 0 0;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.dsham_previewMessages{max-height:65vh;overflow:auto;overflow-wrap:anywhere;padding-right:8px}.dsham_previewToolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;color:var(--dsw-alias-label-secondary);font-size:12px}.dsham_previewRole{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px}.dsham_previewRole>span{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--dsw-alias-bg-layer-3);font-size:11px}.dsham_previewRole[data-role=user]>span{color:var(--dsw-alias-state-business-primary)}.dsham_previewRaw{white-space:pre-wrap;font:13px/1.8 ui-monospace,monospace;overflow-wrap:anywhere}.dsham_previewMessage pre:not(.dsham_previewRaw){white-space:pre;overflow-x:auto;max-width:100%}.dsham_previewMessage table{display:block;max-width:100%;overflow-x:auto}.dsham_previewMessage img{max-width:100%}@media(max-width:520px){.dsham_previewToolbar{align-items:flex-start;flex-wrap:wrap}}.dsham_previewMessage{padding:18px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}.dsham_previewMessage p{font-size:14px;line-height:1.8}.dsham_previewHint,.dsham_previewMessage small{color:var(--dsw-alias-label-secondary);font-size:12px}.dsham_settings mark,.dsham_previewMessages mark{background:var(--dsw-alias-state-warn-tertiary);color:inherit;border-radius:2px}.dsham_settingsSnippet:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}";
+export const discoveryCss = [
+  ".dsham_dateFilter{display:flex;align-items:center;gap:8px;min-width:0}",
+  ".dsham_dateAlert{margin:0;font-size:12px;color:var(--dsw-alias-state-error-primary)}",
+  ".dsham_dateRange{display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;height:32px;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,8px);background:var(--dsw-alias-bg-layer-1);box-sizing:border-box}",
+  ".dsham_dateRange:hover{border-color:var(--dsw-alias-border-l3)}",
+  ".dsham_dateRange:focus-within{border-color:var(--dsw-alias-state-business-primary);outline:1px solid var(--dsw-alias-state-business-primary)}",
+  ".dsham_date{border:0;outline:none;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;line-height:20px;height:24px;padding:0;color-scheme:dark;flex:1 1 0;min-width:0}",
+  ".dsham_dateSep{flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px;user-select:none}",
+  ".dsham_dateClearBtn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;margin-left:2px;border:0;background:transparent;color:var(--dsw-alias-label-tertiary);border-radius:50%;cursor:pointer;font-size:14px;line-height:1}",
+  ".dsham_dateClearBtn:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}",
+  ".dsham_discoveryStatus{font-size:12px;margin-bottom:12px;overflow-wrap:anywhere}",
+  ".dsham_settingsSnippet{display:block;width:100%;padding:0;margin:4px 0 0;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}",
+  ".dsham_previewMessages{max-height:65vh;overflow:auto;overflow-wrap:anywhere;padding-right:8px}",
+  ".dsham_previewToolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;color:var(--dsw-alias-label-secondary);font-size:12px}",
+  ".dsham_previewRole{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px}",
+  ".dsham_previewRole>span{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--dsw-alias-bg-layer-3);font-size:11px}",
+  ".dsham_previewRole[data-role=user]>span{color:var(--dsw-alias-state-business-primary)}",
+  ".dsham_previewRaw{white-space:pre-wrap;font:13px/1.8 ui-monospace,monospace;overflow-wrap:anywhere}",
+  ".dsham_previewMessage pre:not(.dsham_previewRaw){white-space:pre;overflow-x:auto;max-width:100%}",
+  ".dsham_previewMessage table{display:block;max-width:100%;overflow-x:auto}",
+  ".dsham_previewMessage img{max-width:100%}",
+  "@media(max-width:520px){.dsham_previewToolbar{align-items:flex-start;flex-wrap:wrap}}",
+  ".dsham_previewMessage{padding:18px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}",
+  ".dsham_previewMessage p{font-size:14px;line-height:1.8}",
+  ".dsham_previewHint,.dsham_previewMessage small{color:var(--dsw-alias-label-secondary);font-size:12px}",
+  ".dsham_settings mark,.dsham_previewMessages mark{background:var(--dsw-alias-state-warn-tertiary);color:inherit;border-radius:2px}",
+  ".dsham_settingsSnippet:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}"
+].join("");
 export const discoveryZh = {
   "common.separator": "：", "details.notReturned": "宿主未返回会话详情",
   "copy.empty": "没有可复制的内容", "copy.unavailable": "当前环境不支持剪贴板，请在 HTTPS 或本机地址中打开页面", "copy.denied": "复制失败，请允许浏览器访问剪贴板后重试", "discovery.you": "你", "discovery.ai": "AI",
-  "discovery.readOnly": "只读预览", "discovery.messageCount": "本次显示 {n} 条消息", "discovery.displayMode": "显示方式", "discovery.formatted": "排版", "discovery.raw": "原文与高亮", "discovery.copyCode": "复制代码", "discovery.footnotes": "注释", "details.turns": "{n} 轮", "details.unknown": "轮次未知", "details.pending": "轮次读取中", "details.hint": "按用户提交消息数统计，不含工具调用和插件注入", "details.more": "轮次最多", "details.less": "轮次最少", "details.failed": "{n} 条会话详情读取失败", "details.copyId": "复制会话 ID", "details.copyPath": "复制会话路径", "details.copied": "已复制", "details.noPath": "宿主未提供可复制的会话路径", "discovery.date": "日期", "discovery.dateActive": "日期·已选", "discovery.clearDate": "清除日期", "discovery.active": "已启用", "discovery.scope": "查找范围", "discovery.titleOnly": "仅标题", "discovery.titleAndContent": "标题与正文", "discovery.from": "更新时间从", "discovery.to": "至", "discovery.clear": "清除条件", "discovery.invalidDate": "开始日期不能晚于结束日期，请检查日期范围。",
+  "discovery.readOnly": "只读预览", "discovery.messageCount": "本次显示 {n} 条消息", "discovery.displayMode": "显示方式", "discovery.formatted": "排版", "discovery.raw": "原文与高亮", "discovery.copyCode": "复制代码", "discovery.footnotes": "注释", "details.turns": "{n} 轮", "details.unknown": "轮次未知", "details.pending": "轮次读取中", "details.hint": "按用户提交消息数统计，不含工具调用和插件注入", "details.more": "轮次最多", "details.less": "轮次最少", "details.failed": "{n} 条会话详情读取失败", "details.copyId": "复制会话 ID", "details.copyPath": "复制会话路径", "details.copied": "已复制", "details.noPath": "宿主未提供可复制的会话路径", "discovery.date": "日期", "discovery.timeRange": "时间范围", "discovery.allTime": "全部时间", "discovery.today": "今天", "discovery.last7Days": "近 7 天", "discovery.last30Days": "近 30 天", "discovery.last90Days": "近 90 天", "discovery.customRange": "自定义…", "discovery.dateActive": "日期·已选", "discovery.clearDate": "清除日期", "discovery.active": "已启用", "discovery.scope": "查找范围", "discovery.titleOnly": "仅标题", "discovery.titleAndContent": "标题与正文", "discovery.from": "更新时间从", "discovery.to": "至", "discovery.clear": "清除条件", "discovery.invalidDate": "开始日期不能晚于结束日期，请检查日期范围。",
   "discovery.searching": "正在检索正文：{done} / {total}", "discovery.searched": "正文检索完成：{done} / {total}", "discovery.searchError": "正文检索未完成，当前结果可能不完整。", "discovery.failed": "{n} 条会话读取失败", "discovery.retry": "重试", "discovery.preview": "快速预览", "discovery.loading": "正在读取会话…", "discovery.previewHint": "只读预览原始对话文本，不恢复会话；不含工具输出、附件、推理和系统内容。", "discovery.earlier": "前面还有消息，可打开完整会话查看。", "discovery.later": "后面还有消息，可打开完整会话查看。", "discovery.empty": "没有可预览的用户或助手文本。", "discovery.truncated": "本条仅显示部分内容。", "discovery.user": "用户", "discovery.assistant": "助手", "discovery.openFull": "打开完整会话", "discovery.searchPlaceholder": "搜索标题或正文"
 };
 export const discoveryEn = {
   "common.separator": ": ", "details.notReturned": "The host did not return session details",
   "copy.empty": "Nothing to copy", "copy.unavailable": "Clipboard unavailable. Open the page over HTTPS or localhost.", "copy.denied": "Copy failed. Allow clipboard access and retry.", "discovery.you": "You", "discovery.ai": "AI",
-  "discovery.readOnly": "Read-only preview", "discovery.messageCount": "Showing {n} messages", "discovery.displayMode": "Display mode", "discovery.formatted": "Formatted", "discovery.raw": "Source and highlights", "discovery.copyCode": "Copy code", "discovery.footnotes": "Footnotes", "details.turns": "{n} turns", "details.unknown": "Unknown turns", "details.pending": "Loading turns", "details.hint": "User submissions; excludes tool calls and injected messages", "details.more": "Most turns", "details.less": "Fewest turns", "details.failed": "Could not read turns for {n} sessions", "details.copyId": "Copy session ID", "details.copyPath": "Copy session path", "details.copied": "Copied", "details.noPath": "The host did not provide a session path", "discovery.date": "Date", "discovery.dateActive": "Date · Set", "discovery.clearDate": "Clear dates", "discovery.active": "Active", "discovery.scope": "Search in", "discovery.titleOnly": "Titles", "discovery.titleAndContent": "Titles and content", "discovery.from": "Updated from", "discovery.to": "To", "discovery.clear": "Clear filters", "discovery.invalidDate": "Check the date range: the start must not be after the end.",
+  "discovery.readOnly": "Read-only preview", "discovery.messageCount": "Showing {n} messages", "discovery.displayMode": "Display mode", "discovery.formatted": "Formatted", "discovery.raw": "Source and highlights", "discovery.copyCode": "Copy code", "discovery.footnotes": "Footnotes", "details.turns": "{n} turns", "details.unknown": "Unknown turns", "details.pending": "Loading turns", "details.hint": "User submissions; excludes tool calls and injected messages", "details.more": "Most turns", "details.less": "Fewest turns", "details.failed": "Could not read turns for {n} sessions", "details.copyId": "Copy session ID", "details.copyPath": "Copy session path", "details.copied": "Copied", "details.noPath": "The host did not provide a session path", "discovery.date": "Date", "discovery.timeRange": "Time range", "discovery.allTime": "All time", "discovery.today": "Today", "discovery.last7Days": "Past 7 days", "discovery.last30Days": "Past 30 days", "discovery.last90Days": "Past 90 days", "discovery.customRange": "Custom…", "discovery.dateActive": "Date · Set", "discovery.clearDate": "Clear dates", "discovery.active": "Active", "discovery.scope": "Search in", "discovery.titleOnly": "Titles", "discovery.titleAndContent": "Titles and content", "discovery.from": "Updated from", "discovery.to": "To", "discovery.clear": "Clear filters", "discovery.invalidDate": "Check the date range: the start must not be after the end.",
   "discovery.searching": "Searching content: {done} / {total}", "discovery.searched": "Content search complete: {done} / {total}", "discovery.searchError": "Content search is incomplete; results may be missing.", "discovery.failed": "Could not read {n} conversations", "discovery.retry": "Retry", "discovery.preview": "Quick preview", "discovery.loading": "Reading conversation…", "discovery.previewHint": "Read-only original conversation text; keeps the conversation archived. Excludes tools, attachments, reasoning and system content.", "discovery.earlier": "More messages before this preview. Open the full conversation to read them.", "discovery.later": "More messages after this preview. Open the full conversation to read them.", "discovery.empty": "No user or assistant text to preview.", "discovery.truncated": "Only part of this message is shown.", "discovery.user": "User", "discovery.assistant": "Assistant", "discovery.openFull": "Open full conversation", "discovery.searchPlaceholder": "Search titles or content"
+};
+
+export const discoveryRu = {
+  "common.separator": ": ", "details.notReturned": "Хост не вернул сведения о сессии",
+  "copy.empty": "Нечего копировать", "copy.unavailable": "Буфер обмена недоступен. Откройте страницу по HTTPS или localhost.", "copy.denied": "Не удалось скопировать. Разрешите доступ к буферу обмена и повторите.", "discovery.you": "Вы", "discovery.ai": "ИИ",
+  "discovery.readOnly": "Предпросмотр только для чтения", "discovery.messageCount": "Показано сообщений: {n}", "discovery.displayMode": "Режим отображения", "discovery.formatted": "Форматировано", "discovery.raw": "Исходник и подсветка", "discovery.copyCode": "Копировать код", "discovery.footnotes": "Сноски", "details.turns": "{n} ходов", "details.unknown": "Ходов неизвестно", "details.pending": "Загрузка ходов", "details.hint": "По числу сообщений пользователя; без вызовов инструментов и инъекций плагинов", "details.more": "Больше ходов", "details.less": "Меньше ходов", "details.failed": "Не удалось прочитать ходы для {n} сессий", "details.copyId": "Копировать ID сессии", "details.copyPath": "Копировать путь сессии", "details.copied": "Скопировано", "details.noPath": "Хост не предоставил путь сессии", "discovery.date": "Дата", "discovery.timeRange": "Период", "discovery.allTime": "Все время", "discovery.today": "Сегодня", "discovery.last7Days": "Последние 7 дней", "discovery.last30Days": "Последние 30 дней", "discovery.last90Days": "Последние 90 дней", "discovery.customRange": "Свой период…", "discovery.dateActive": "Дата · Выбрана", "discovery.clearDate": "Сбросить даты", "discovery.active": "Включено", "discovery.scope": "Искать в", "discovery.titleOnly": "Названия", "discovery.titleAndContent": "Названия и содержимое", "discovery.from": "Обновлено с", "discovery.to": "По", "discovery.clear": "Сбросить фильтры", "discovery.invalidDate": "Проверьте диапазон дат: начало не должно быть позже конца.",
+  "discovery.searching": "Поиск по содержимому: {done} / {total}", "discovery.searched": "Поиск по содержимому завершён: {done} / {total}", "discovery.searchError": "Поиск по содержимому неполный; результаты могут быть неполными.", "discovery.failed": "Не удалось прочитать {n} разговоров", "discovery.retry": "Повторить", "discovery.preview": "Быстрый предпросмотр", "discovery.loading": "Чтение разговора…", "discovery.previewHint": "Только чтение исходного текста разговора; сессия остаётся в архиве. Без вывода инструментов, вложений, рассуждений и системного содержимого.", "discovery.earlier": "Перед предпросмотром есть ещё сообщения. Откройте полный разговор, чтобы их прочитать.", "discovery.later": "После предпросмотра есть ещё сообщения. Откройте полный разговор, чтобы их прочитать.", "discovery.empty": "Нет текста пользователя или ассистента для предпросмотра.", "discovery.truncated": "Показана только часть этого сообщения.", "discovery.user": "Пользователь", "discovery.assistant": "Ассистент", "discovery.openFull": "Открыть полный разговор", "discovery.searchPlaceholder": "Поиск по названиям или содержимому"
 };

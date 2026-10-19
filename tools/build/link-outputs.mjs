@@ -116,9 +116,18 @@ async function mirrorDependencies(source, destination) {
     const target = join(destination, entry.name)
     const original = join(source, entry.name)
     if (entry.name.startsWith('@') && entry.isDirectory()) { await mirrorDependencies(original, target); continue }
-    if (!await lstat(target).catch(() => undefined)) {
-      const physical = await realpath(original).catch(() => undefined)
-      if (physical) await symlink(physical, target, process.platform === 'win32' ? 'junction' : 'dir')
+    const physical = await realpath(original).catch(() => undefined)
+    if (!physical) continue
+    const existing = await lstat(target).catch(() => undefined)
+    if (existing) {
+      const previous = await realpath(target).catch(() => undefined)
+      if (previous === physical) continue
+      // These are generated resolution mirrors, never installed dependencies.
+      // Refresh a stale link after a workspace dependency upgrade; retaining it
+      // binds emitted types and runtime code to different SDK versions.
+      if (!existing.isSymbolicLink() || (previous && (relative(root, previous).startsWith('..') || isAbsolute(relative(root, previous))))) throw new Error(`Unknown output dependency: ${target}`)
+      await unlink(target)
     }
+    await symlink(physical, target, process.platform === 'win32' ? 'junction' : 'dir')
   }
 }

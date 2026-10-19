@@ -1,16 +1,17 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { appendFile, mkdir, readFile, readdir, rename, writeFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { repairProfileLayout } from './profile-layout.mjs'
+import { runProfilePnpmTransaction } from './profile-pnpm-transaction.mjs'
 
 const [pnpm, ...args] = process.argv.slice(2)
 if (!pnpm) throw new Error('Missing installation-owned pnpm')
 const executable = process.env.ZEROWALL_PNPM_NODE || process.execPath
-async function run(arguments_) {
+async function run(arguments_, cwd = process.cwd()) {
   return new Promise((accept, reject) => {
-    const child = spawn(executable, ['--expose-internals', pnpm, ...arguments_], { cwd: process.cwd(), env: process.env, windowsHide: true, stdio: ['inherit', 'pipe', 'pipe'] })
+    const child = spawn(executable, ['--expose-internals', pnpm, ...arguments_], { cwd, env: process.env, windowsHide: true, stdio: ['inherit', 'pipe', 'pipe'] })
     let tail = ''
     for (const stream of ['stdout', 'stderr']) child[stream].on('data', chunk => {
       process[stream].write(chunk)
@@ -28,6 +29,19 @@ async function run(arguments_) {
 
 const action = args.find(arg => !arg.startsWith('-'))
 const mutating = ['add', 'install', 'i', 'update', 'up', 'remove', 'rm', 'uninstall'].includes(action)
+const manifest = await readFile('package.json', 'utf8').then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error })
+const fixedRoots = Object.entries(manifest?.dependencies ?? {}).some(([id, spec]) => /^(file|link):/u.test(spec) && resolve(spec.slice(5)) === resolve('node_modules', id))
+const activeProfile = basename(process.cwd()) === 'web' && manifest?.zerowall?.profileLayout >= 3
+if (mutating && (fixedRoots || activeProfile)) {
+  const cancellation = new AbortController()
+  for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => cancellation.abort())
+  try {
+    const outcome = await runProfilePnpmTransaction({ profile: process.cwd(), args, run, signal: cancellation.signal,
+      lifecycleId: process.env.ZEROWALL_PROFILE_TRANSACTION_ID,
+      ownerPid: process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER ? Number(process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER) : undefined })
+    process.exitCode = outcome.code
+  } catch (error) { process.stderr.write(`ZeroWall: ${error.message}\n`); process.exitCode = 1 }
+} else {
 if (mutating) {
   const migrations = join(process.cwd(), '.plugin-manager', 'store-migrations')
   for (const entry of await readdir(migrations).catch(error => { if (error.code !== 'ENOENT') throw error; return [] })) {
@@ -126,3 +140,4 @@ if (result.code !== 0 && /ERR_PNPM_UNEXPECTED_(?:VIRTUAL_)?STORE/u.test(result.t
     throw error
   }
 } else process.exitCode = result.code
+}

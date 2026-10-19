@@ -33,9 +33,10 @@ if (status !== '' && !allowDirty) {
 
 // ZeroWall carries its own Electron main process. Build the official Host
 // library pass without bundling a second, unused Desktop shell.
-runPnpm(['--filter', '@deepseek-ai/dsh-root', 'exec', 'tsc', '-b', 'tsconfig.host.json'], { NODE_OPTIONS: '--max-old-space-size=8192' })
+runPnpm(['--filter', '@deepseek-ai/dsh-root', 'exec', 'tsx', 'scripts/compile-referenced-projects.ts', 'host'], { NODE_OPTIONS: '--max-old-space-size=8192' })
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'exec', 'tsdown', '--env.DSH_BUILD_FACE', 'host'], { NODE_OPTIONS: '--max-old-space-size=8192' })
-runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:lib:client'], { NODE_OPTIONS: '--max-old-space-size=8192' })
+runPnpm(['--filter', '@deepseek-ai/dsh-root', 'exec', 'tsx', 'scripts/compile-referenced-projects.ts', 'client'], { NODE_OPTIONS: '--max-old-space-size=8192' })
+runPnpm(['--filter', '@deepseek-ai/dsh-root', 'exec', 'tsdown', '--env.DSH_BUILD_FACE', 'client'], { NODE_OPTIONS: '--max-old-space-size=8192' })
 runPnpm(['--filter', '@deepseek-ai/dsh-root', 'run', 'build:web'])
 if (!process.argv.includes('--development')) {
   await mkdir(resolve(stageRoot, 'dsh'), { recursive: true })

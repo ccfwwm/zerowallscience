@@ -6,12 +6,18 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createElement } from 'react'
+import { createElement, type ReactElement } from 'react'
 import { act } from 'react-dom/test-utils'
 import { renderRoot } from './test-utils.ts'
 import { SubagentView } from '../src/client/SubagentView.tsx'
 import { createSidebarStore } from '../src/client/state.ts'
 import { attachLocale } from '../src/client/locales.ts'
+import { ContextDiagnosticsHost } from '../src/client/context-diagnostics-ui.tsx'
+import type {
+  ContextDiagnosticTarget,
+  ContextDiagnostics,
+  ContextDiagnosticsSnapshot,
+} from '../src/client/context-diagnostics.ts'
 import type {
   Context,
   SidebarClientJobsService,
@@ -25,6 +31,36 @@ import type {
   SidebarTeamProjection,
   SidebarTeamTaskView,
 } from '../src/context-types.ts'
+
+/**
+ * A diagnostics controller double: the snapshot is driven by the test, and
+ * every `open` is recorded so the page's addressing can be asserted.
+ */
+function makeController(initial: ContextDiagnosticsSnapshot) {
+  let snapshot = initial
+  const listeners = new Set<() => void>()
+  const opens: ContextDiagnosticTarget[] = []
+  const controller: ContextDiagnostics = {
+    getSnapshot: () => snapshot,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    open: (target: ContextDiagnosticTarget) => { opens.push(target) },
+    dismissError: () => {},
+    dispose: () => {},
+  }
+  return {
+    controller,
+    opens,
+    publish: (next: ContextDiagnosticsSnapshot): void => {
+      snapshot = next
+      for (const listener of [...listeners]) listener()
+    },
+  }
+}
+
+type ControllerFake = ReturnType<typeof makeController>
 
 /** A subscribable sessions-list snapshot (mirror of the runtime list feed). */
 function makeStore(initial: SidebarSessionList) {
@@ -1682,5 +1718,180 @@ describe('Tasks page: the tree disclosure', () => {
     await act(async () => { row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
     expect(container.textContent).toContain('孙代理 0')
     unmount()
+  })
+})
+
+/**
+ * The optional dsh-context diagnostics entry points on this page: the agent
+ * node's detail card and a job's output window. Both are gated on the
+ * controller `SubagentView` reaches through the provider, and both address the
+ * conversation through the TREE MODEL — never through the jobs roster's
+ * `ownerSessionId`, which names the session a job was watched under rather than
+ * the session that owns it.
+ */
+describe('Tasks page: the context diagnostics entry points', () => {
+  /** A controller double plus the provider-wrapped page under test. */
+  function pageWithDiagnostics(
+    content: (ctx: Context) => ReactElement,
+    snapshot: ContextDiagnosticsSnapshot = { available: true, busy: false },
+  ): { controller: ControllerFake; container: HTMLDivElement; unmount: () => void } {
+    const controller = makeController(snapshot)
+    const store = makeStore(snapshotWithChildren(1))
+    const rendered = renderRoot(createElement(
+      ContextDiagnosticsHost,
+      { controller: controller.controller },
+      content(makeCtx(store)),
+    ))
+    return { controller, container: rendered.container, unmount: rendered.unmount }
+  }
+
+  /** The page element for one context. */
+  function page(ctx: Context): ReactElement {
+    return createElement(SubagentView, { sessionId: 'root', active: true, ctx })
+  }
+
+  it('offers NO entry point on a page without a controller', async () => {
+    const store = makeStore(snapshotWithChildren(1))
+    const { container, unmount } = renderRoot(page(makeCtx(store)))
+    const foldToggle = container.querySelector('button[aria-label="展开已完成的节点"]') as HTMLButtonElement
+    await act(async () => { foldToggle.click() })
+    await act(async () => { (container.querySelector('[data-graph-node="child-0"]') as HTMLElement).click() })
+    expect(document.querySelector('[data-dsh-ctx-entry="agent"]')).toBeNull()
+    await act(async () => { unmount() })
+  })
+
+  it("opens a CHILD node's conversation from its card, addressed by the tree model", async () => {
+    const rendered = pageWithDiagnostics(page)
+    const { container } = rendered
+    const foldToggle = container.querySelector('button[aria-label="展开已完成的节点"]') as HTMLButtonElement
+    await act(async () => { foldToggle.click() })
+    await act(async () => { (container.querySelector('[data-graph-node="child-0"]') as HTMLElement).click() })
+
+    const button = document.querySelector('[data-dsh-ctx-entry="agent"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.getAttribute('aria-busy')).toBeNull()
+    await act(async () => { button.click() })
+    // The node's OWN address (parent + child + mode), never a guess from the
+    // rendered label.
+    expect(rendered.controller.opens).toEqual([{
+      sessionId: 'child-0',
+      label: '子代理 0',
+      address: { parentSessionId: 'root', childSessionId: 'child-0', mode: 'one-shot' },
+    }])
+    expect(button.isConnected, 'the source overlay must close after dispatch').toBe(false)
+    await act(async () => { rendered.unmount() })
+  })
+
+  it('addresses the ROOT node by its session id (the root has no child address)', async () => {
+    const rendered = pageWithDiagnostics(page)
+    await act(async () => {
+      (rendered.container.querySelector('[data-graph-node="root"]') as HTMLElement).click()
+    })
+    const button = document.querySelector('[data-dsh-ctx-entry="agent"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    await act(async () => { button.click() })
+    expect(rendered.controller.opens).toEqual([{ sessionId: 'root', label: '主会话' }])
+    await act(async () => { rendered.unmount() })
+  })
+
+  it('addresses a job by its OWNER resolved in the tree, never by the watched roster key', async () => {
+    // The roster announces the job under `root` (the watched session) while the
+    // job's owner is `child-0`: the button must target the owner's node —
+    // addressed by the model — and the roster key must not leak into it.
+    jobsFake.emit({
+      rows: {
+        root: [{
+          id: 'bash-9', kind: 'bash', label: 'echo owned', status: 'running', startedAt: 1_000, owner: 'child-0',
+        }],
+      },
+    })
+    const rendered = pageWithDiagnostics(page)
+    await flushJobs()
+    // The owner node has to be ON the page: a folded-away node is not part of
+    // the model, and the page never addresses a conversation it does not show.
+    await act(async () => {
+      (rendered.container.querySelector('button[aria-label="展开已完成的节点"]') as HTMLButtonElement).click()
+    })
+    const row = rendered.container.querySelector('button[aria-label*="echo owned"]') as HTMLButtonElement
+    await act(async () => { row.click() })
+
+    const button = document.querySelector('[data-dsh-ctx-entry="job"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    await act(async () => { button.click() })
+    expect(rendered.controller.opens).toEqual([{
+      sessionId: 'child-0',
+      label: '子代理 0',
+      address: { parentSessionId: 'root', childSessionId: 'child-0', mode: 'one-shot' },
+    }])
+    expect(button.isConnected, 'the source overlay must close after dispatch').toBe(false)
+    await act(async () => { rendered.unmount() })
+  })
+
+  it('offers no job entry point while the owning node is not on the page', async () => {
+    // The owner is a real tree member, but FOLDED away: the model has no node
+    // for it, so the window has nothing to address. Unfolding the node brings
+    // the control back — the entry point follows the model, not the roster.
+    jobsFake.emit({
+      rows: {
+        root: [{
+          id: 'bash-8', kind: 'bash', label: 'folded owner job', status: 'running', startedAt: 1_000, owner: 'child-0',
+        }],
+      },
+    })
+    const rendered = pageWithDiagnostics(page)
+    await flushJobs()
+    const row = rendered.container.querySelector('button[aria-label*="folded owner job"]') as HTMLButtonElement
+    await act(async () => { row.click() })
+    expect(document.querySelector('[data-dsh-ctx-entry="job"]')).toBeNull()
+    expect(rendered.controller.opens).toEqual([])
+
+    const foldToggle = rendered.container.querySelector('button[aria-label="展开已完成的节点"]') as HTMLButtonElement
+    await act(async () => { foldToggle.click() })
+    const button = document.querySelector('[data-dsh-ctx-entry="job"]') as HTMLButtonElement
+    expect(button, 'the owner is on the page now').not.toBeNull()
+    await act(async () => { button.click() })
+    expect(rendered.controller.opens).toEqual([{
+      sessionId: 'child-0',
+      label: '子代理 0',
+      address: { parentSessionId: 'root', childSessionId: 'child-0', mode: 'one-shot' },
+    }])
+    expect(button.isConnected, 'the source overlay must close after dispatch').toBe(false)
+    await act(async () => { rendered.unmount() })
+  })
+
+  it('never diagnoses the watching session for an unowned job', async () => {
+    const rendered = pageWithDiagnostics(page)
+    await flushJobs()
+    const row = rendered.container.querySelector('button[aria-label*="sleep 300"]') as HTMLButtonElement
+    await act(async () => { row.click() })
+    expect(document.querySelector('[data-dsh-ctx-entry="job"]')).toBeNull()
+    expect(rendered.controller.opens).toEqual([])
+    expect(jobsFake.observations).toContainEqual({ sessionId: 'root', jobId: 'bash-1' })
+    await act(async () => { rendered.unmount() })
+  })
+
+  it('hides the job entry point while the controller reports the capability unavailable', async () => {
+    jobsFake.emit({ rows: { root: [{ id: 'bash-1', kind: 'bash', label: 'sleep 300', status: 'running', startedAt: 1_000, owner: 'root' }] } })
+    const rendered = pageWithDiagnostics(page, { available: false, busy: false })
+    await flushJobs()
+    const row = rendered.container.querySelector('button[aria-label*="sleep 300"]') as HTMLButtonElement
+    await act(async () => { row.click() })
+    expect(document.querySelector('[data-dsh-ctx-entry="job"]')).toBeNull()
+    await act(async () => { rendered.unmount() })
+  })
+
+  it('disables every entry point while an open is in flight', async () => {
+    jobsFake.emit({ rows: { root: [{ id: 'bash-1', kind: 'bash', label: 'sleep 300', status: 'running', startedAt: 1_000, owner: 'root' }] } })
+    const rendered = pageWithDiagnostics(page, { available: true, busy: true })
+    await flushJobs()
+    const row = rendered.container.querySelector('button[aria-label*="sleep 300"]') as HTMLButtonElement
+    await act(async () => { row.click() })
+    const button = document.querySelector('[data-dsh-ctx-entry="job"]') as HTMLButtonElement
+    expect(button).not.toBeNull()
+    expect(button.disabled).toBe(true)
+    expect(button.getAttribute('aria-busy')).toBe('true')
+    await act(async () => { button.click() })
+    expect(rendered.controller.opens).toEqual([])
+    await act(async () => { rendered.unmount() })
   })
 })

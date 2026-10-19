@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
@@ -10,6 +10,7 @@ import {
   restoreEol,
   type TextEncoding,
 } from '../src/text-encoding.ts'
+import { removeTree } from './temp-tree.ts'
 
 const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-encoding-'))
 
@@ -25,7 +26,7 @@ const ROUND_TRIPS: [TextEncoding, string][] = [
 ]
 
 afterAll(() => {
-  rmSync(root, { recursive: true, force: true })
+  removeTree(root)
 })
 
 describe('text encoding', () => {

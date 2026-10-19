@@ -1,3 +1,4 @@
+import { reviewerReportOf, reviewerModeOf } from '../shared/records.js'
 import type { ChatConversationViewNode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type {
   ConversationNodeContext,
@@ -53,24 +54,11 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   }
 }
 
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    'zerowall/reviewer/mode': { mode: ReviewerMode }
-    'zerowall/reviewer/report': ReviewerReportData
-  }
-}
 
-function reportEvent(event: SessionEvent): event is SessionEvent<'zerowall/reviewer/report'> {
-  return event.type === 'zerowall/reviewer/report'
-}
-
-function modeEvent(event: SessionEvent): event is SessionEvent<'zerowall/reviewer/mode'> {
-  return event.type === 'zerowall/reviewer/mode'
-}
 
 function reportNode(context: ConversationNodeContext<ReviewerReportData>): ChatConversationViewNode | null {
   const match = context.start
-  if (match === undefined || !reportEvent(match.event)) return null
+  if (match === undefined || !reviewerReportOf(match.event)) return null
   return {
     key: context.key,
     id: context.id,
@@ -85,7 +73,7 @@ function reportNode(context: ConversationNodeContext<ReviewerReportData>): ChatC
 
 function modeNode(context: ConversationNodeContext<ReviewerModeData>): ChatConversationViewNode | null {
   const match = context.start
-  if (match === undefined || !modeEvent(match.event)) return null
+  if (match === undefined || !reviewerModeOf(match.event)) return null
   return {
     key: context.key,
     id: context.id,
@@ -101,14 +89,14 @@ function modeNode(context: ConversationNodeContext<ReviewerModeData>): ChatConve
 export const reviewerReportDefinition: ConversationNodeDefinition<ReviewerReportData> = {
   kind: 'zerowall-reviewer-report',
   target: 'chat',
-  match: event => reportEvent(event) ? { id: event.data.id, role: event.data.reReviewed === true ? 'update' : 'start' } : null,
+  match: event => { const record = reviewerReportOf(event); return record ? { id: record.data.id, role: record.data.reReviewed === true ? 'update' : 'start' } : null },
   start: (_context, match) => {
-    if (!reportEvent(match.event)) throw new Error('reviewer report start requires a reviewer report event')
-    return match.event.data
+    if (!reviewerReportOf(match.event)) throw new Error('reviewer report start requires a reviewer report event')
+    return reviewerReportOf(match.event)!.data
   },
   update: (context, match) => {
-    if (!reportEvent(match.event)) return context.state
-    return match.event.data
+    if (!reviewerReportOf(match.event)) return context.state
+    return reviewerReportOf(match.event)!.data
   },
   buildViewNode: reportNode,
 }
@@ -116,10 +104,10 @@ export const reviewerReportDefinition: ConversationNodeDefinition<ReviewerReport
 export const reviewerModeDefinition: ConversationNodeDefinition<ReviewerModeData> = {
   kind: 'zerowall-reviewer-mode',
   target: 'chat',
-  match: event => modeEvent(event) ? { id: String(event.seq), role: 'start' } : null,
+  match: event => reviewerModeOf(event) ? { id: String(event.seq), role: 'start' } : null,
   start: (_context, match) => {
-    if (!modeEvent(match.event)) throw new Error('reviewer mode start requires a reviewer mode event')
-    return { mode: match.event.data.mode, seq: match.event.seq }
+    if (!reviewerModeOf(match.event)) throw new Error('reviewer mode start requires a reviewer mode event')
+    return { mode: reviewerModeOf(match.event)!.data.mode, seq: match.event.seq }
   },
   update: context => context.state,
   buildViewNode: modeNode,

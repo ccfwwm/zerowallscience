@@ -10,6 +10,9 @@ import { FileReviewService } from '../src/file-review-service.ts'
 import { apply, inject } from '../src/index.ts'
 import { markerFromContent } from '../src/ptc-marker.ts'
 
+// Windows exposes the writable flag, not POSIX owner/group bits.
+const fixtureMode = (mode: number): number => process.platform === 'win32' ? 0o666 : mode
+
 let ctx: Context | undefined
 let root: string | undefined
 
@@ -44,7 +47,7 @@ describe('file review smoke', () => {
     root = await mkdtemp(resolve('.e2e', 'dsh-file-review-smoke-'))
     const createdPath = join(root, 'created.txt')
     const deletedPath = join(root, 'deleted.txt')
-    await writeFile(deletedPath, 'before deletion\n', { mode: 0o600 })
+    await writeFile(deletedPath, 'before deletion\n', { mode: fixtureMode(0o600) })
 
     ctx = new Context()
     await ctx.plugin(SystemPrompt, { persona: '' })
@@ -69,7 +72,7 @@ describe('file review smoke', () => {
           ],
         }),
         async execute() {
-          await writeFile(createdPath, 'created\n', { mode: 0o640 })
+          await writeFile(createdPath, 'created\n', { mode: fixtureMode(0o640) })
           await rm(deletedPath)
           return 'done'
         },
@@ -115,7 +118,7 @@ describe('file review smoke', () => {
     })
     await expect(access(createdPath)).rejects.toThrow()
     expect(await readFile(deletedPath, 'utf8')).toBe('before deletion\n')
-    expect((await lstat(deletedPath)).mode & 0o777).toBe(0o600)
+    expect((await lstat(deletedPath)).mode & 0o777).toBe(fixtureMode(0o600))
 
     expect(await service.apply(agent, { ...request, action: 'redo' })).toEqual({
       files: [
@@ -124,7 +127,7 @@ describe('file review smoke', () => {
       ],
     })
     expect(await readFile(createdPath, 'utf8')).toBe('created\n')
-    expect((await lstat(createdPath)).mode & 0o777).toBe(0o640)
+    expect((await lstat(createdPath)).mode & 0o777).toBe(fixtureMode(0o640))
     await expect(access(deletedPath)).rejects.toThrow()
   })
 })

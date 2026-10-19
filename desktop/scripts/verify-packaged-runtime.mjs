@@ -260,7 +260,8 @@ const requiredArchivePaths = [
   'node_modules/@deepseek-ai/dsh-subagent-codex/lib/index.js',
   'node_modules/@deepseek-ai/dsh-client-ui-user-questions/lib/client.js',
   'node_modules/@deepseek-ai/schemastery/lib/index.mjs',
-  'node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js',
+  'node_modules/@modelcontextprotocol/client/dist/index.mjs',
+  'node_modules/@modelcontextprotocol/client/dist/stdio.mjs',
   'node_modules/@earendil-works/pi-ai/dist/index.js',
   'node_modules/@pdf-lib/fontkit/dist/fontkit.es.js',
   'node_modules/@deepseek-ai/cordis-plugin-group/lib/index.js',
@@ -394,7 +395,7 @@ async function verifyArchivePolicy() {
   // Different Sharp native builds share libvips in one Windows Host process.
   // Mixed versions can load successfully yet corrupt colourspace operations.
   const sharpVersions = new Set(archiveFiles.filter(path => /(?:^|\/)node_modules\/sharp\/package\.json$/.test(path)).map(path => JSON.parse(readArchiveFile(path).toString('utf8')).version))
-  if (sharpVersions.size !== 1 || !sharpVersions.has('0.35.3')) throw new Error(`Packaged Host must use one Sharp 0.35.3 native ABI; found ${[...sharpVersions].join(', ')}.`)
+  if (sharpVersions.size !== 1) throw new Error(`Packaged Host must use one resolved Sharp native ABI; found ${[...sharpVersions].join(', ')}.`)
   const betterSidebarPackages = archiveFiles.filter(path => path.endsWith('node_modules/dsh-better-sidebar/package.json'))
   if (betterSidebarPackages.length !== 1) throw new Error(`dsh-better-sidebar must be packaged exactly once; found ${betterSidebarPackages.length}.`)
   const betterSidebarManifest = JSON.parse(readArchiveFile('node_modules/dsh-better-sidebar/package.json').toString('utf8'))
@@ -460,7 +461,7 @@ async function verifyArchivePolicy() {
   const sourceDreamSkinClient = await readFile(resolve(repositoryRoot, 'desktop/node_modules/dsh-dream-skin/lib/client.js'))
   const { adaptDreamSkinClient } = await import('../../tools/packaging/adapt-dream-skin.mjs')
   if (!dreamSkinClient.equals(Buffer.from(adaptDreamSkinClient(sourceDreamSkinClient.toString('utf8'))))) {
-    throw new Error('Packaged Dream Skin client must match the pinned v10.9.3 source and ZeroWall appearance patch.')
+    throw new Error('Packaged Dream Skin client must match the configured source and ZeroWall appearance patch.')
   }
   const dreamSkinSource = dreamSkinClient.toString('utf8')
   const factoryDefaults = dreamSkinSource.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1]
@@ -957,7 +958,7 @@ async function verifyNativeRuntime() {
     resolve(ptyRoot, 'conpty.node'),
   ]
   const nativePaths = [
-    resolve(unpackedModules, '@img', 'sharp-win32-x64', 'lib', 'sharp-win32-x64-0.35.3.node'),
+    resolve(unpackedModules, '@img', 'sharp-win32-x64', 'lib', `sharp-win32-x64-${JSON.parse(readArchiveFile('node_modules/sharp/package.json').toString('utf8')).version}.node`),
     resolve(unpackedModules, '@koromix', 'koffi-win32-x64', 'win32_x64', 'koffi.node'),
   ]
   const ripgrepPath = resolve(unpackedModules, '@vscode', 'ripgrep-win32-x64', 'bin', 'rg.exe')
@@ -1702,11 +1703,27 @@ async function verifyDesktopStartup() {
       const snapshot = (await page.locator('body').innerText().catch(() => '')).slice(0, 4_000)
       throw new Error(`Packaged desktop did not render the ZeroWall Science brand. body=${JSON.stringify(snapshot)} errors=${JSON.stringify(browserErrors.slice(-20))}\n${error.message}`)
     }
-    const bodyText = await page.locator('body').innerText()
     const startupDeadline = Date.now() + 60_000
-    while (Date.now() < startupDeadline && (await page.evaluate(() => window.zerowallDesktop.getStartupStatus())).phase !== 'ready') await new Promise(resolve => setTimeout(resolve, 200))
-    const startup = await page.evaluate(() => window.zerowallDesktop.getStartupStatus())
-    if (startup.phase !== 'ready') {
+    let startup, activation
+    while (Date.now() < startupDeadline) {
+      try {
+        startup = await page.evaluate(() => window.zerowallDesktop.getStartupStatus())
+        activation = await readFile(resolve(root, 'user-data/harness/resources/transaction.json'), 'utf8').then(JSON.parse, error => {
+          if (error.code !== 'ENOENT') throw error
+          return undefined
+        })
+        // The renderer can paint before the candidate health check commits.
+        // A later rollback must never turn that first paint into a false pass.
+        if (startup.phase === 'failed' || (startup.phase === 'ready' && activation?.state === 'complete')) break
+      } catch (error) {
+        // Profile initialization can navigate the renderer while the startup
+        // IPC is pending. Retry that navigation race within the same deadline;
+        // readiness failures and every other evaluation error still fail.
+        if (!/Execution context was destroyed, most likely because of a navigation/u.test(String(error?.message))) throw error
+      }
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+    if (startup?.phase !== 'ready' || activation?.state !== 'complete') {
       const renderer = await page.evaluate(() => ({
         body: document.body?.innerText?.slice(0, 2_000) ?? null,
         boot: document.querySelector('[data-dsh-boot]')?.textContent?.slice(0, 600) ?? null,
@@ -1715,8 +1732,9 @@ async function verifyDesktopStartup() {
         editable: document.querySelector('[contenteditable]') !== null,
         legacyBootState: document.documentElement.dataset.zerowallBoot ?? null,
       }))
-      throw new Error(`Desktop startup failed: ${startup.message}; renderer=${JSON.stringify(renderer)}; browser=${JSON.stringify(browserErrors.slice(-30)).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}; process=${output.slice(-4_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}; evidence=${root}`)
+      throw new Error(`Desktop startup failed: ${startup?.message ?? 'No stable startup status before deadline'}; renderer=${JSON.stringify(renderer)}; browser=${JSON.stringify(browserErrors.slice(-30)).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}; process=${output.slice(-4_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}; evidence=${root}`)
     }
+    const bodyText = await page.locator('body').innerText()
     console.log(`Packaged startup ready in ${Date.now() - startup.startedAt} ms; saved SSH profiles: ${Object.keys(sshProfile.tables.profiles).length}; evidence: ${root}`)
     if (await readFile(sshPath, 'utf8') !== JSON.stringify(sshProfile)) throw new Error('Startup unexpectedly rewrote saved SSH profiles.')
     if (/Failed to load plugins|missed the module table|Cannot use import statement outside a module/iu.test(bodyText)) {
@@ -1734,7 +1752,21 @@ async function verifyDesktopStartup() {
       await credential.waitFor({ state: 'hidden' })
     }
     await handleResourceUpdateNotices(page)
-    await page.getByRole('button', { name: /^(设置|Settings)$/ }).click()
+    const login = page.getByRole('dialog', { name: /^(登录或注册|Sign in or register)$/u })
+    if (await login.isVisible()) {
+      await page.keyboard.press('Escape')
+      await login.waitFor({ state: 'hidden' })
+    }
+    try {
+      const settingsEntry = page.getByRole('button', { name: /^(设置|Settings)$/u })
+        .or(page.getByRole('menuitem', { name: /^(设置|Settings)$/u }))
+      if (!await settingsEntry.isVisible()) await page.getByRole('button', { name: /^(更多|More|账户菜单|账号菜单|Account menu)$/u }).click()
+      await settingsEntry.click()
+    } catch (error) {
+      await writeFile(resolve(root, 'settings-trigger-debug.txt'), await page.locator('body').innerText().catch(() => ''))
+      await page.screenshot({ path: resolve(root, 'settings-trigger-debug.png'), fullPage: true }).catch(() => {})
+      throw error
+    }
     const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
     // Only inspect the Settings shell navigation. Extension Center renders a
     // nested resource-tab <nav>; including its buttons makes the last item
@@ -2008,9 +2040,11 @@ function readArchiveFile(path) {
 
 async function verifySourceRuntimePolicy() {
   const upstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
-  if (!/^0\.2\.0-rc\.2$/u.test(String(upstream.version)) || upstream.tag !== `dsh-v${upstream.version}`) {
-    throw new Error(`Pinned DSH must be dsh-v0.2.0-rc.2; found ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
+  if (!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/u.test(String(upstream.version)) || upstream.tag !== `dsh-v${upstream.version}`) {
+    throw new Error(`Invalid configured DSH version/tag: ${upstream.version ?? 'unknown'} (${upstream.tag ?? 'no tag'}).`)
   }
+  const pinCheck = spawnSync(process.execPath, [resolve(repositoryRoot, 'tools/dsh/verify.mjs')], { cwd: repositoryRoot, encoding: 'utf8', windowsHide: true })
+  if (pinCheck.error || pinCheck.status !== 0) throw new Error(`DSH source pin verification failed: ${pinCheck.error?.message ?? pinCheck.stderr ?? pinCheck.stdout}`)
   const sourceDsh = JSON.parse(await readFile(resolve(repositoryRoot, 'deepseek-harness', 'package.json'), 'utf8'))
   if (sourceDsh.version !== upstream.version) throw new Error(`DSH source package must be ${upstream.version}; found ${sourceDsh.version}.`)
 
@@ -2034,7 +2068,7 @@ async function verifySourceRuntimePolicy() {
   }
 
   const wechat = JSON.parse(await readFile(resolve(repositoryRoot, 'plugins', 'dsh-wechat', 'package.json'), 'utf8'))
-  if (wechat.name !== 'dsh-wechat' || wechat.version !== pinnedIntegrations.wechat.version) throw new Error(`Expected the pinned dsh-wechat snapshot; found ${wechat.name}@${wechat.version}.`)
+  if (wechat.name !== 'dsh-wechat' || wechat.version !== (pinnedIntegrations.wechat.resourceVersion ?? pinnedIntegrations.wechat.version)) throw new Error(`Expected the pinned dsh-wechat adaptation; found ${wechat.name}@${wechat.version}.`)
   await access(resolve(repositoryRoot, 'plugins', 'dsh-wechat', 'dist', 'index.js'))
   const stableProfile = await readFile(resolve(repositoryRoot, 'profiles', 'generated', 'stable.yml'), 'utf8')
   const desktopPatch = await readFile(resolve(repositoryRoot, 'desktop', 'build', 'zerowall.patch.yml'), 'utf8')

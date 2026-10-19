@@ -3,6 +3,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import { symbols } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-host-webserver";
 import { record } from "./contracts.js";
+import { guardReleaseAgeExclude, mergeMinimumReleaseAgeExclude, recordReleaseAgeExclude } from "./release-age.js";
 interface DesktopPnpm { runPlugin(args: string[], directory: string): { done: Promise<{ exitCode: number }> } }
 interface PackageManagerLaunch { command: string; args: readonly string[]; env?: NodeJS.ProcessEnv }
 interface PluginManagerInstall { installBundle(spec: string): Promise<{ application?: string; error?: { message?: string }; packageResult?: { output?: string } }> }
@@ -317,15 +318,26 @@ async function runPluginManagerInstall(target: UpdateRuntime, packageSpec: strin
   throw new Error(result.error?.message || result.packageResult?.output || "更新失败，请查看服务端日志。");
 }
 async function install(target: UpdateRuntime, packageSpec: string) {
+  await guardReleaseAgeExclude(target.profileDir, packageSpec);
   if (target.desktopPnpm !== void 0) {
     const handle = target.desktopPnpm.runPlugin(["add", "--config.minimumReleaseAge=0", packageSpec, "--registry=https://registry.npmjs.org/"], target.profileDir);
     const result = await handle.done;
     if (result.exitCode !== 0) throw new Error(`更新进程退出码 ${String(result.exitCode)}。`);
+    await recordReleaseAgeExclude(target.profileDir, packageSpec);
     return;
   }
-  if (target.packageManager !== void 0) return runPackageManagerInstall(target, packageSpec);
-  if (target.pluginManager !== void 0) return runPluginManagerInstall(target, packageSpec);
-  return runCliInstall(target, packageSpec);
+  if (target.packageManager !== void 0) {
+    await runPackageManagerInstall(target, packageSpec);
+    await recordReleaseAgeExclude(target.profileDir, packageSpec);
+    return;
+  }
+  if (target.pluginManager !== void 0) {
+    await runPluginManagerInstall(target, packageSpec);
+    await recordReleaseAgeExclude(target.profileDir, packageSpec);
+    return;
+  }
+  await runCliInstall(target, packageSpec);
+  await recordReleaseAgeExclude(target.profileDir, packageSpec);
 }
 function json(response: ServerResponse, statusCode: number, value: unknown) {
   response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -431,6 +443,8 @@ export {
   isDshCliEntry,
   isNewerVersion,
   isTrustedUpdateRequest,
+  mergeMinimumReleaseAgeExclude,
+  recordReleaseAgeExclude,
   registerPluginUpdater,
   resolveUpdateRuntime,
   shouldNotifyParent

@@ -38,7 +38,26 @@ export type OutboundMessage =
   | { kind: "text"; text: string }
   | { kind: "file"; filePath: string; fileName: string };
 
+/**
+ * Soft cap for the outbound FIFO. Reaching it makes `parkOutbound` try to
+ * force-send the oldest item instead of dropping it, so a full queue means
+ * "try harder", not "discard".
+ */
 export const MAX_OUTBOUND_QUEUE = 100;
+
+/**
+ * Hard ceiling for the outbound FIFO — the actual memory bound.
+ *
+ * The soft cap alone cannot bound memory: when the force-send fails (invalid
+ * token, gateway rejection, closed message window) nothing leaves the queue,
+ * yet the caller still appends. Without a ceiling the queue — and the
+ * `state.json` snapshot written from it — grows without limit for as long as
+ * the outage lasts. This ceiling is the point where the oldest item is
+ * dropped *with a loud log* instead, trading the least-recent message for a
+ * bounded process. It sits well above the soft cap so the force-send path has
+ * room to work before any loss is contemplated.
+ */
+export const MAX_OUTBOUND_QUEUE_HARD = MAX_OUTBOUND_QUEUE * 4;
 
 export interface OutboundState {
   version: 1;

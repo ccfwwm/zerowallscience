@@ -6,6 +6,7 @@ import { offlineFiles } from '../commands/offline-profile.mjs'
 import { carrierName } from '../commands/offline-carrier.mjs'
 import { fileDigest } from '../commands/resource-catalog.mjs'
 import { commitCache } from '../build/commit-cache.mjs'
+import { shareImmutableFiles } from '../build/share-immutable-files.mjs'
 
 export async function carrierPayload(path) {
   const archive = await lstat(join(path, carrierName)), unpacked = await lstat(join(path, carrierName + '.unpacked'))
@@ -32,7 +33,7 @@ async function materializeCarrier(cached, output, key, files, linkFile) {
     hardlinkedFiles, copiedFiles: files.length - hardlinkedFiles,
     bytes: files.reduce((sum, file) => sum + file.size, 0), files: materialized }
 }
-export async function reuseOfflineCarrier({ cache, output, key, prepare, linkFile }) {
+export async function reuseOfflineCarrier({ cache, output, key, prepare, linkFile, objectRoot }) {
   if (!/^[A-Za-z0-9_-]+$/u.test(key)) throw new Error('Invalid offline carrier cache key')
   const cached = join(cache, key)
   const prior = await readFile(join(cached, 'payload.json'), 'utf8').then(JSON.parse, () => undefined)
@@ -46,6 +47,7 @@ export async function reuseOfflineCarrier({ cache, output, key, prepare, linkFil
   await mkdir(pending, { recursive: true })
   await prepare(pending)
   const files = await carrierPayload(pending)
+  if (objectRoot) await shareImmutableFiles(pending, files, objectRoot)
   await writeFile(join(pending, 'payload.json'), JSON.stringify({ cacheKey: key, files, createdAt: new Date().toISOString() }, null, 2))
   await commitCache(pending, cached)
   const materialization = await materializeCarrier(cached, output, key, files, linkFile)

@@ -4,7 +4,7 @@
  * One fetch here is `git status --untracked-files=all` plus two `--numstat`
  * diffs, so an automatic poll is real work — and it used to run every 2.5 s for
  * as long as any consumer was on screen, notified on every tick whether or not
- * anything had changed. Four behaviours are pinned:
+ * anything had changed. Five behaviours are pinned:
  *
  *  - OWNERSHIP: only a `poll: true` consumer starts the timer. A `poll: false`
  *    consumer (the editor's gutter) reads the shared answer and refreshes on
@@ -18,6 +18,11 @@
  *  - THE LADDER: the baseline is 30 s, a slow round trip drops the slot to
  *    60 s then 180 s, and a really slow one stops the automatic timer
  *    altogether; a fast answer climbs straight back to the baseline.
+ *  - RETENTION: a slot whose last consumer went away is forgotten, and the
+ *    registry is capped, so a long session cannot pin one snapshot per scope
+ *    it ever visited (v0.25's `keepMounted` means every visited tab body keeps
+ *    walking new scopes). A retained consumer, or a fetch in flight, is never
+ *    evicted.
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -33,7 +38,7 @@ vi.mock('../src/client/api.ts', async (importOriginal) => {
 })
 
 import { renderRoot, setupReactAct } from './test-utils.ts'
-import { useGitStatus, type GitStatusView } from '../src/client/ui/git-status.ts'
+import { invalidateGitStatus, useGitStatus, type GitStatusView } from '../src/client/ui/git-status.ts'
 
 setupReactAct()
 
@@ -244,5 +249,85 @@ describe('the shared git status store cadence', () => {
     await tick(0)
     await flush()
     expect(gitStatus).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('the shared git status store retention', () => {
+  /**
+   * The probe drives a scope that is HIDDEN first: a consumer that mounts while
+   * invisible mints its slot without ever retaining (and therefore never
+   * releases) it — the one path only the registry cap can bound.
+   */
+  it('forgets a released slot instead of remembering every scope it ever saw', async () => {
+    vi.useFakeTimers()
+    gitStatus.mockResolvedValue(REPO)
+    // The file tree, the changes page and the editor's gutter mint one slot per
+    // scope (session + cwd + repo + worktree), and a kept-mounted tab keeps
+    // walking new scopes for the whole page. Forty of them, one session.
+    for (let index = 0; index < 40; index++) {
+      const probe = renderRoot(createElement(Probe, {
+        scope: { sessionId: 'prune', cwd: `/tmp/p${index}` },
+        commits: { value: 0 },
+      }))
+      await tick(0)
+      await flush()
+      probe.unmount()
+    }
+    expect(gitStatus).toHaveBeenCalledTimes(40)
+
+    // Every consumer released, so the session has no live slot left. That is
+    // the observable probe: `invalidateGitStatus` re-reads the slots it still
+    // knows, so a store that remembered the released keys answers with forty
+    // further fetches (one per remembered scope) instead of none.
+    await act(async () => { invalidateGitStatus('prune') })
+    await flush()
+    expect(gitStatus).toHaveBeenCalledTimes(40)
+  })
+
+  it('re-fetches after the last consumer went away (the snapshot went with the slot)', async () => {
+    vi.useFakeTimers()
+    gitStatus.mockResolvedValue(REPO)
+    const scope = scopeFor('rejoin')
+    const commits: Counter = { value: 0 }
+    mounted = renderRoot(createElement(Probe, { scope, commits }))
+    await tick(0)
+    await flush()
+    expect(gitStatus).toHaveBeenCalledTimes(1)
+    expect(latest?.snapshot).not.toBeNull()
+
+    // Parked: the slot is released (and forgotten), so its snapshot is gone.
+    mounted.rerender(createElement(Probe, { scope, visible: false, commits }))
+    await flush()
+    expect(latest?.snapshot).toBeNull()
+
+    // Coming back must read the truth again, not serve the parked answer.
+    mounted.rerender(createElement(Probe, { scope, commits }))
+    await tick(0)
+    await flush()
+    expect(gitStatus).toHaveBeenCalledTimes(2)
+    expect(latest?.snapshot).not.toBeNull()
+  })
+
+  it('caps the registry for keys no consumer ever releases', async () => {
+    vi.useFakeTimers()
+    gitStatus.mockResolvedValue(REPO)
+    // 260 distinct hidden scopes of ONE session: each render mints a slot, none
+    // of them is retained (so nothing releases them) and none fetches.
+    for (let index = 0; index < 260; index++) {
+      renderRoot(createElement(Probe, {
+        scope: { sessionId: 'cap', cwd: `/tmp/c${index}` },
+        visible: false,
+        commits: { value: 0 },
+      })).unmount()
+    }
+    expect(gitStatus).not.toHaveBeenCalled()
+
+    // The cap keeps at most 256 keys (the constant in ui/git-status.ts): the
+    // session-wide invalidate can therefore re-read at most that many. Without
+    // the cap this is 260 — one remembered slot per scope ever mounted.
+    await act(async () => { invalidateGitStatus('cap') })
+    await flush()
+    expect(gitStatus.mock.calls.length).toBeGreaterThan(0)
+    expect(gitStatus.mock.calls.length).toBeLessThanOrEqual(256)
   })
 })

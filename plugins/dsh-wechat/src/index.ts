@@ -30,6 +30,9 @@ export interface PluginConfig {
   textChunkLimit?: number;
   cardTimeoutMs?: number;
   silent?: boolean;
+  finalOnly?: boolean;
+  finalOnlyIdleMs?: number;
+  finalOnlyCeilingMs?: number;
   surfacePromptEnabled?: boolean;
   surfacePrompt?: string;
 }
@@ -49,6 +52,13 @@ export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise
       options?: boolean | { prepend?: boolean; global?: boolean },
     ): () => void;
     inject?: (deps: string[], callback: (ctx: unknown) => unknown) => unknown;
+    /**
+     * Cordis lifecycle effect. A disposer returned from the body is run in
+     * reverse order when the owning fiber unloads. Optional in the declared
+     * shape so a host that predates it degrades to the `ctx.inject` fiber
+     * disposer instead of failing to apply.
+     */
+    effect?: (body: () => unknown) => unknown;
   };
 
   const bridge = new WeChatDSHBridge(context, config, undefined, configStore);
@@ -72,6 +82,20 @@ export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise
     if (sessionId) bridge.clearSessionOutput(sessionId);
   });
 
+  // ─── Agent idleness → 结论模式 (final-only) quiescence ───
+  // The goal round-driver wakes the NEXT round exactly when `agent.status`
+  // flips to `idle`, so this is also the signal that tells the hold "more
+  // rounds are coming" (running cancels the countdown) versus "the task is
+  // genuinely finished" (idle arms it). `agent.id` IS the session id in DSH
+  // (`Agent.id: SessionId`), so no session lookup is needed.
+  context.on("agent/status", (payload) => {
+    const data = payload as { agent?: { id?: string }; status?: string };
+    const sessionId = data?.agent?.id;
+    const status = data?.status;
+    if (!sessionId || !status) return;
+    bridge.handleAgentStatus(sessionId, status);
+  });
+
   // ─── Agent errors → WeChat notification ───
   context.on("agent/error", (payload) => {
     const agentId = (payload as { agent?: { id?: string } })?.agent?.id;
@@ -93,50 +117,72 @@ export function apply(ctx: unknown, rawConfig: PluginConfig = {}): () => Promise
   // ─── send_wechat tool: agent-initiated push to the bound user ───
   // (Approval/question cards are fully native — the Host waterfalls below
   // race WeChat against the GUI so whoever answers first wins.)
+  //
+  // The registration ALWAYS goes through `ctx.effect` / the `ctx.inject`
+  // fiber so its disposer is parked on the plugin's fiber: `register()`
+  // returns the exact disposer that unregisters the tool, and discarding
+  // it leaves `send_wechat` bound to a stale bridge after the plugin is
+  // reloaded or removed. Both paths dispose identically — `effect` gives
+  // the disposer an explicit, labelled owner and is the host's own idiom
+  // (see `packages/host/open-in-app`).
   if (typeof context.inject === "function") {
     context.inject(["tools"], (toolsCtx) => {
       const toolsService = (toolsCtx as {
         get<T = unknown>(name: string): T | undefined;
       }).get<{
-        register(definition: unknown): unknown;
+        register(definition: unknown): (() => void) | undefined;
       }>("tools");
       if (!toolsService) return;
 
-      toolsService.register({
-        name: "send_wechat",
-        description:
-          "Send a text message or a local file to a WeChat user. " +
-          "If the calling session is bound to a WeChat user, the message goes to that user; " +
-          "otherwise it goes to the first known WeChat user (single-user deployments are the norm). " +
-          "Use this to proactively push results, confirmations, or files to WeChat.",
-        parameters: {
-          type: "object",
-          properties: {
-            text: {
-              type: "string",
-              description: "The text message to send to WeChat.",
-            },
-            file_path: {
-              type: "string",
-              description: "Absolute path of a local file to send to WeChat.",
+      const registerSendWechatTool = () => {
+        const dispose = toolsService.register({
+          name: "send_wechat",
+          description:
+            "Send a text message or a local file to a WeChat user. " +
+            "If the calling session is bound to a WeChat user, the message goes to that user; " +
+            "otherwise it goes to the first known WeChat user (single-user deployments are the norm). " +
+            "Use this to proactively push results, confirmations, or files to WeChat.",
+          parameters: {
+            type: "object",
+            properties: {
+              text: {
+                type: "string",
+                description: "The text message to send to WeChat.",
+              },
+              file_path: {
+                type: "string",
+                description: "Absolute path of a local file to send to WeChat.",
+              },
             },
           },
-        },
-      output: {
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            ok: { type: "boolean" },
-            message: { type: "string" },
+          output: {
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                ok: { type: "boolean" },
+                message: { type: "string" },
+              },
+            },
+            render: (_args: unknown, value: unknown) => [{ type: "text", text: JSON.stringify(value) }],
           },
-        },
-        render: (_args: unknown, value: unknown) => [{ type: "text", text: JSON.stringify(value) }],
-      },
-      async execute(args: { text?: string; file_path?: string }, exec: { agent?: { id?: string } }) {
-        return bridge.handleSendWeChat(exec.agent?.id ?? "", args);
-      },
-    });
+          async execute(args: { text?: string; file_path?: string }, exec: { agent?: { id?: string } }) {
+            return bridge.handleSendWeChat(exec.agent?.id ?? "", args);
+          },
+        });
+        return () => {
+          if (typeof dispose === "function") dispose();
+        };
+      };
+
+      if (typeof context.effect === "function") {
+        context.effect(registerSendWechatTool);
+      } else {
+        // Legacy host without `ctx.effect`: `register()` still binds the
+        // tool to the calling (injected) scope, and `ctx.inject` returns
+        // the child fiber that owns it, so unload already unregisters it.
+        registerSendWechatTool();
+      }
     });
   } else {
     console.warn("[dsh-wechat] ctx.inject unavailable; send_wechat tool disabled");

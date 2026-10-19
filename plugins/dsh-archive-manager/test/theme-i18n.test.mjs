@@ -8,6 +8,7 @@ import { ZH, EN } from '../src/plugin-update-model.ts';
 
 test('错误分类优先稳定代码，未知宿主代码才回退文案', () => {
   assert.equal(classifySessionError({ code: 'EACCES', message: 'not found' }).code, 'permission');
+  assert.equal(classifySessionError({ code: 'EACCES', message: 'requires toolCallId matching its tool source' }).code, 'permission');
   assert.equal(classifySessionError({ code: 'legacy-source', message: '完全不同的说明' }).code, 'legacy-source');
   assert.equal(classifySessionError({ code: 'NEW_HOST_CODE', message: 'unclassified message source' }).code, 'legacy-source');
 });

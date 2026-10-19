@@ -3,7 +3,24 @@ import { test } from 'node:test'
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { preparePublishPackage } from '../../tools/plugins/publish-package.mjs'
+import { preparePublishPackage, preserveHistoricalLicenses } from '../../tools/plugins/publish-package.mjs'
+
+test('same-version staging retains only missing historical license files without replacing current files', async () => {
+  const staging = await mkdtemp(join(tmpdir(), 'zws-publish-license-'))
+  await writeFile(join(staging, 'COPYING.txt'), 'current license')
+  const original = Buffer.from('original license\r\n')
+  await preserveHistoricalLicenses(staging, new Map([
+    ['package/LICENSE', original],
+    ['package/COPYING.txt', Buffer.from('previous license')],
+    ['package/README.md', Buffer.from('do not restore')],
+    ['package/lib/index.js', Buffer.from('do not restore')],
+    ['package/../LICENSE.txt', Buffer.from('do not escape')],
+  ]))
+  assert.deepEqual(await readFile(join(staging, 'LICENSE')), original)
+  assert.equal(await readFile(join(staging, 'COPYING.txt'), 'utf8'), 'current license')
+  await assert.rejects(readFile(join(staging, 'README.md')), { code: 'ENOENT' })
+  await assert.rejects(readFile(join(staging, 'lib/index.js')), { code: 'ENOENT' })
+})
 
 test('new plugin releases resolve current workspace sources instead of stale publish links', async () => {
   const source = await mkdtemp(join(tmpdir(), 'zws-publish-source-'))

@@ -10,11 +10,12 @@
  * gate the request was given (and a cache hit spends nothing at all). The
  * route's per-request gate SHARING is asserted in tests/smoke.spec.ts.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createProbeGate, listDirectory, type ProbeGate } from '../src/fs-tree.ts'
+import { removeTree } from './temp-tree.ts'
 
 /** A gate that only COUNTS acquisitions: it bounds nothing of its own, so the
  *  count it reports is exactly the probes the caller routed through it. */
@@ -105,7 +106,7 @@ describe('listDirectory probe budget', () => {
       expect(counted.calls()).toBe(spent)
       expect(cached).toBe(listing)
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      removeTree(dir)
     }
   })
 
@@ -132,7 +133,62 @@ describe('listDirectory probe budget', () => {
         expect(listing.entries.filter(entry => entry.compact === true)).toHaveLength(3)
       }
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
+    }
+  })
+
+  /**
+   * The fold mark is decoration, so a wide level must not pay one `opendir`
+   * per directory row: past the per-level cap the remaining rows stay
+   * un-folded (and, crucially, un-probed).
+   */
+  it('caps the compact probes of one wide level', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-probe-cap-'))
+    try {
+      const level = join(root, 'wide')
+      mkdirSync(level)
+      // 100 singleton chains: without the cap every one of them is probed.
+      for (let index = 0; index < 100; index += 1) {
+        mkdirSync(join(level, `only-${String(index).padStart(3, '0')}`))
+        writeFileSync(join(level, `only-${String(index).padStart(3, '0')}`, 'child.txt'), 'x')
+      }
+
+      const counted = countingGate()
+      const listing = await listDirectory(level, 1000, undefined, counted.gate)
+      expect(listing.entries).toHaveLength(100)
+      expect(counted.calls()).toBe(32)
+      // Probed in row order: the first 32 rows are folded, the rest are left
+      // alone rather than probed.
+      const folded = listing.entries.filter(entry => entry.compact === true)
+      expect(folded).toHaveLength(32)
+      expect(folded.map(entry => entry.name)).toEqual(
+        listing.entries.slice(0, 32).map(entry => entry.name),
+      )
+    } finally {
+      removeTree(root)
+    }
+  })
+
+  it('skips the compact probe entirely on a truncated level', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-sidebar-probe-truncated-'))
+    try {
+      const level = join(root, 'wide')
+      mkdirSync(level)
+      for (let index = 0; index < 6; index += 1) {
+        mkdirSync(join(level, `only-${index}`))
+        writeFileSync(join(level, `only-${index}`, 'child.txt'), 'x')
+      }
+
+      const counted = countingGate()
+      // A row cap below the level's width flags it truncated: the rows on
+      // screen are an arbitrary slice, so none of them is folded.
+      const listing = await listDirectory(level, 3, undefined, counted.gate)
+      expect(listing.truncated).toBe(true)
+      expect(listing.entries).toHaveLength(3)
+      expect(counted.calls()).toBe(0)
+      expect(listing.entries.every(entry => entry.compact === undefined)).toBe(true)
+    } finally {
+      removeTree(root)
     }
   })
 })

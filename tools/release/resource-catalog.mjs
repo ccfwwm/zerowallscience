@@ -17,7 +17,7 @@ export function signCatalog(document, privateKey, keyId) {
   return { ...document, signature: { algorithm: 'ed25519', keyId, value: sign(null, signingBytes(document), privateKey).toString('base64') } }
 }
 export function verifyCatalog(document, publicKeys, target) {
-  verifySignedDocument(document, publicKeys)
+  verifySignedDocument(document, publicKeys, { mode: target?.signatureMode })
   if (document.schema !== 1 || !Array.isArray(document.resources)) throw new Error('Invalid resource catalog')
   const identities = new Set()
   for (const entry of document.resources) {
@@ -31,10 +31,15 @@ export function verifyCatalog(document, publicKeys, target) {
   }
   return document
 }
-export function verifySignedDocument(document, publicKeys) {
+export function verifySignedDocument(document, publicKeys, { mode = 'strict' } = {}) {
   const signature = document?.signature
   const key = publicKeys[signature?.keyId]
-  if (!key || signature?.algorithm !== 'ed25519' || !verify(null, signingBytes(document), key, Buffer.from(signature.value, 'base64'))) throw new Error('Resource catalog signature is invalid or untrusted')
+  let valid = false
+  try { valid = Boolean(key && signature?.algorithm === 'ed25519' && verify(null, signingBytes(document), key, Buffer.from(signature.value, 'base64'))) } catch { /* Malformed signatures use the same policy as untrusted keys. */ }
+  if (!valid) {
+    if (mode !== 'warn') throw new Error('Resource catalog signature is invalid or untrusted')
+    console.warn('[PLUGIN_VERIFICATION_WARNING] Resource catalog signature is invalid or untrusted; continuing under the configured plugin policy')
+  }
   return document
 }
 export function compareVersions(left, right) {

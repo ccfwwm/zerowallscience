@@ -253,6 +253,19 @@ test('GC keeps current verification payloads and external references to historic
   assert.equal(await readFile(join(current, 'payload'), 'utf8'), 'keep')
 })
 
+test('desktop version retention keeps the previous installer rollback verification intact', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-gc-version-evidence-')); t.after(() => rm(root, { recursive: true, force: true }))
+  const previous = join(root, 'artifacts/verification/8.3.6/profile-performance')
+  const retired = join(root, 'artifacts/verification/8.3.2/isolated-old')
+  for (const path of [previous, retired]) {
+    await mkdir(path, { recursive: true }); await writeFile(join(path, 'payload'), 'rollback evidence')
+  }
+  const plan = await createCleanupPlan({ root, policy: { ...policy, version: '8.4.0', defaults: { ...policy.defaults, keepDesktopVersions: 2 } }, pruneIncomplete: true })
+  assert.ok(plan.exclusions.some(item => item.path === join(root, 'artifacts/verification/8.3.6') && item.reason === 'retained-version-verification'))
+  assert.ok(!plan.candidates.some(item => item.path.includes('8.3.6')))
+  assert.ok(plan.candidates.some(item => item.path === retired))
+})
+
 test('explicit incomplete pruning removes owned cache candidates while retaining rollback snapshots', async t => {
   const root = await mkdtemp(join(tmpdir(), 'zws-gc-cache-candidate-')); t.after(() => rm(root, { recursive: true, force: true }))
   const cache = join(root, 'artifacts/cache/runtime-assemblies/core')

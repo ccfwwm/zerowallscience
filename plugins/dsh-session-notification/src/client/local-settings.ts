@@ -71,12 +71,13 @@ export function createLocalSettingsScope(): ConfigForm<NotificationSettings> {
     user: undefined,
     revision,
     writable: true,
-    mode: 'memory',
   })
+  let currentSnapshot = snapshot()
 
   const commit = (next: NotificationSettings, persist: boolean): void => {
     value = next
     revision += 1
+    currentSnapshot = snapshot()
     if (persist) {
       try {
         storage()?.setItem(LOCAL_STORAGE_KEY, JSON.stringify(next))
@@ -97,7 +98,7 @@ export function createLocalSettingsScope(): ConfigForm<NotificationSettings> {
   }
 
   return {
-    getSnapshot: snapshot,
+    getSnapshot: () => currentSnapshot,
     subscribe(listener: () => void): () => void {
       listeners.add(listener)
       return () => { listeners.delete(listener) }

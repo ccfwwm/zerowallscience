@@ -6,6 +6,9 @@ import { pathToFileURL } from 'node:url'
 import { assertPluginDesktopCompatibility } from '../plugins/compatibility.mjs'
 import { verifyRuntimeIntegrity } from './runtime-integrity.mjs'
 import { verifyOfflineProfile } from '../commands/offline-profile.mjs'
+import { verifyCurrentRuntimeDependency } from '../commands/historical-plugin.mjs'
+import { pluginRuntimeEntries } from '../commands/plugin-entrypoints.mjs'
+import { runtimeRecipes } from '../build/runtime-recipes.mjs'
 
 export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZEROWALL_ALLOW_DIRTY_DSH === '1' } = {}) {
   const { stage } = paths.buildPaths(root)
@@ -15,6 +18,11 @@ export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZE
   const runtimeProfile = await json('config/layout/runtime-profile.json')
   const build = await json(`${stage}/dsh/build-receipt.json`)
   const runtime = await json(`${stage}/runtime/build-receipt.json`)
+  const recipes = await runtimeRecipes(root)
+  for (const folder of ['runtime', ...(runtimeProfile.optionalPluginPolicy?.offlineClosure ? ['offline-profile'] : [])]) {
+    const receipt = await json(`${stage}/${folder}/build-receipt.json`)
+    if (JSON.stringify(receipt.recipes) !== JSON.stringify(recipes)) throw new Error('Stale runtime adapters or upstream configuration. Run pnpm build before packaging.')
+  }
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: resolve(root, 'deepseek-harness'), encoding: 'utf8' }).trim()
   const dirty = execFileSync('git', ['status', '--porcelain'], { cwd: resolve(root, 'deepseek-harness'), encoding: 'utf8' }).trim()
   if (dirty && !allowDirty) throw new Error('Harness source changed since the pinned build. Commit and rebuild it before packaging.')
@@ -48,8 +56,27 @@ export async function verifyRuntimeFreshness(root, { allowDirty = process.env.ZE
     }
   }
   await verifyRuntimeIntegrity(root, stage)
-  if (runtimeProfile.optionalPluginPolicy?.offlineClosure) await verifyOfflineProfile(join(stage, 'offline-profile'),
-    await json('config/catalogs/trusted-keys.json'), { desktopVersion: app.version, dshVersion: pin.version, dshCommit: pin.commit, platform: process.platform, architecture: process.arch }, { staging: true })
+  if (runtimeProfile.optionalPluginPolicy?.offlineClosure) {
+    const policy = await json('config/catalogs/plugin-verification.json')
+    if (JSON.stringify(policy) !== JSON.stringify(await json(`${stage}/commands/plugin-verification.json`))) throw new Error('Stale packaged plugin verification policy. Run pnpm build.')
+    const target = { desktopVersion: app.version, dshVersion: pin.version, dshCommit: pin.commit, platform: process.platform, architecture: process.arch }
+    const { receipt } = await verifyOfflineProfile(join(stage, 'offline-profile'),
+      await json('config/catalogs/trusted-keys.json'), target, { staging: true })
+    const included = new Set(receipt.files.map(entry => entry.path))
+    // Validate declared shared peers before creating an installer. A signed
+    // plugin payload cannot supply a missing desktop-owned DSH package.
+    for (const plugin of receipt.plugins.filter(entry => !entry.core)) {
+      const manifest = await json(`${stage}/offline-profile/modules/${plugin.id}/package.json`)
+      for (const entry of pluginRuntimeEntries(manifest)) {
+        if (!included.has(`modules/${plugin.id}/${entry}`)) throw new Error(`Incomplete offline plugin runtime: ${plugin.id}/${entry}. Run pnpm build.`)
+      }
+      for (const [id, range] of Object.entries({ ...manifest.peerDependencies, ...manifest.dependencies, ...manifest.optionalDependencies })) {
+        if (!id.startsWith('@deepseek-ai/')) continue
+        await verifyCurrentRuntimeDependency({ id, range, runtimeModules: join(stage, 'runtime/node_modules'), target,
+          optional: Boolean(manifest.optionalDependencies?.[id] || manifest.peerDependenciesMeta?.[id]?.optional) })
+      }
+    }
+  }
   return { commit: head, version: app.version, checked }
 }
 

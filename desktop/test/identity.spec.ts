@@ -5,6 +5,7 @@ describe('desktop release identity', () => {
   it('keeps Preview isolated from the stable application', () => {
     expect(resolveDesktopIdentity('preview')).toEqual({
       channel: 'preview',
+      appId: 'com.zerowall.science.preview',
       productName: 'ZeroWall Science',
       userDataDirectory: 'zerowall-science-preview',
     })
@@ -13,6 +14,7 @@ describe('desktop release identity', () => {
   it('uses the stable product identity only for an explicit stable build', () => {
     expect(resolveDesktopIdentity('stable')).toEqual({
       channel: 'stable',
+      appId: 'com.zerowall.science',
       productName: 'ZeroWall Science',
       userDataDirectory: 'zerowall-science',
     })

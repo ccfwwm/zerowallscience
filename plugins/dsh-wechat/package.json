@@ -1,6 +1,6 @@
 {
   "name": "dsh-wechat",
-  "version": "0.9.11",
+  "version": "0.11.1-zws.1",
   "description": "Bridge WeChat (iLink bot) to DeepSeek Harness (DSH)",
   "type": "module",
   "files": [
@@ -30,13 +30,23 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/semver": "^7.8.0",
     "qrcode-generator": "^2.0.4",
+    "semver": "^7.8.5",
     "typescript": "^5.5.0",
     "vitest": "^4.1.8"
   },
   "engines": {
     "node": ">=20.0.0",
-    "dsh": ">=0.2.0-rc.2"
+    "dsh": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
   },
   "dsh": {
     "client": {
@@ -62,5 +72,16 @@
     "cordis",
     "bridge",
     "agent"
-  ]
+  ],
+  "zerowall": {
+    "upstreamVersion": "0.11.0",
+    "desktop": {
+      "min": "8.4.0"
+    },
+    "dsh": {
+      "min": "0.2.1-rc.2",
+      "max": "0.2.1-rc.2"
+    }
+  },
+  "packageManager": "pnpm@11.28.5"
 }

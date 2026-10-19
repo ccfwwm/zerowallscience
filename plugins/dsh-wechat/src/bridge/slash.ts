@@ -11,6 +11,7 @@
 export type HelpCommand = { kind: "help" };
 export type StatusCommand = { kind: "status" };
 export type SilentCommand = { kind: "silent"; mode: "on" | "off" | "status" };
+export type FinalCommand = { kind: "final"; mode: "on" | "off" | "status" };
 export type SurfaceCommand = { kind: "surface"; mode: "on" | "off" | "status" };
 export type StopCommand = { kind: "stop" };
 export type RejectQuestionCommand = { kind: "reject-question" };
@@ -26,6 +27,7 @@ export type SlashCommand =
   | HelpCommand
   | StatusCommand
   | SilentCommand
+  | FinalCommand
   | StopCommand
   | RejectQuestionCommand
   | RejectPermissionCommand;
@@ -55,6 +57,24 @@ export function parseSilentCommand(text: string): SilentCommand | null {
   const m = trimmed.match(/^\/(?:silent|sl)\s+(on|off|status)\s*$/);
   if (!m) return null;
   return { kind: "silent", mode: m[1] as "on" | "off" | "status" };
+}
+
+/**
+ * Parse `/final` (alias `/fo`) — query or toggle 结论模式 (final-only).
+ * Bare command defaults to status.
+ *
+ * `/f` is deliberately NOT an alias: it already means `/flush`, and
+ * "take back what is held" is the opposite of "start holding". `/fo`
+ * is the shortest unambiguous prefix.
+ */
+export function parseFinalCommand(text: string): FinalCommand | null {
+  const trimmed = text.trim().toLowerCase();
+  if (trimmed === "/final" || trimmed === "/fo") {
+    return { kind: "final", mode: "status" };
+  }
+  const m = trimmed.match(/^\/(?:final|fo)\s+(on|off|status)\s*$/);
+  if (!m) return null;
+  return { kind: "final", mode: m[1] as "on" | "off" | "status" };
 }
 
 /**
@@ -112,6 +132,16 @@ export function parseNotifyCommand(text: string): NotifyCommand | null {
  */
 export function parseNextCommand(text: string): boolean {
   return text.trim().toLowerCase() === "/next";
+}
+
+/**
+ * Parse `/flush` (alias `/f`) — deliver whatever 结论模式 (final-only) is
+ * currently holding, without waiting for the quiescence timer. This is the
+ * escape hatch for "I can see it is done, tell me now".
+ */
+export function parseFlushCommand(text: string): boolean {
+  const trimmed = text.trim().toLowerCase();
+  return trimmed === "/flush" || trimmed === "/f";
 }
 
 /** Parse `/reject-question` (alias `/rq`). */
@@ -218,17 +248,28 @@ export function parseCommandName(text: string): string | null {
 
 // ─── Workspace / Session / Agent / Model ───
 
+/**
+ * Rows shown by a numbered list command (`/s list`, `/workspace list`)
+ * when the caller does not ask for more. `all` (or an explicit larger
+ * number) lifts the window; the default is deliberately small because
+ * WeChat splits a long reply into 4000-char messages and only 10 of
+ * those fit in one gateway window.
+ */
+export const LIST_DEFAULT = 20;
+
 export type WorkspaceCommand =
-  | { kind: "list" }
+  | { kind: "list"; limit?: number; all?: boolean }
   | { kind: "status" }
   | { kind: "switch"; target: string }
   | { kind: "add"; path: string };
 
 export type SessionCommand =
-  | { kind: "list"; scope?: "current" }
+  | { kind: "list"; scope?: "current"; limit?: number; all?: boolean }
   | { kind: "switch"; index: number; scope?: "current" }
   | { kind: "new" }
-  | { kind: "status" };
+  | { kind: "status" }
+  | { kind: "pin"; index?: number }
+  | { kind: "unpin"; index?: number };
 
 export type PresetCommand =
   | { kind: "list" }
@@ -258,8 +299,45 @@ export type EnterCommand =
   | { kind: "switch"; target: "queue" | "steer" };
 
 /**
+ * Parse the trailing `[all|<count>]` of a list command.
+ *
+ * Grammar (shared by `/s list` and `/workspace list`):
+ *   (nothing)      → default window (caller applies LIST_DEFAULT)
+ *   50             → show 50 rows
+ *   all            → show every row
+ *   all 5 / 5 all  → `all` wins (an explicit count alongside it is not an error)
+ *
+ * Returns `undefined` for anything else — `0`, `abc`, a repeated token, or
+ * trailing garbage — so the caller can fall through to the unknown-command
+ * hint and forward the text to the agent instead of guessing.
+ */
+function parseListLimit(tokens: string[]): { limit?: number; all?: boolean } | undefined {
+  let all = false;
+  let limit: number | undefined;
+  for (const token of tokens) {
+    if (/^all$/i.test(token)) {
+      if (all) return undefined;
+      all = true;
+      continue;
+    }
+    if (/^\d+$/.test(token)) {
+      if (limit !== undefined) return undefined;
+      const n = parseInt(token, 10);
+      if (!Number.isFinite(n) || n <= 0) return undefined;
+      limit = n;
+      continue;
+    }
+    return undefined;
+  }
+  return {
+    ...(limit !== undefined ? { limit } : {}),
+    ...(all ? { all: true } : {}),
+  };
+}
+
+/**
  * Parse `/workspace` (alias `/ws`):
- *   list | status | switch <path|n> | add <path>
+ *   list [all|<数量>] | status | switch <path|n> | add <path>
  */
 export function parseWorkspaceCommand(text: string): WorkspaceCommand | null {
   const trimmed = text.trim();
@@ -268,9 +346,12 @@ export function parseWorkspaceCommand(text: string): WorkspaceCommand | null {
   const sub = m[1] as "list" | "status" | "switch" | "add";
   const rest = (m[2] ?? "").trim();
   switch (sub) {
-    case "list":
     case "status":
       return { kind: sub };
+    case "list": {
+      const window = parseListLimit(rest ? rest.split(/\s+/) : []);
+      return window === undefined ? null : { kind: "list", ...window };
+    }
     case "switch":
       if (!rest) return null;
       return { kind: "switch", target: rest };
@@ -282,27 +363,49 @@ export function parseWorkspaceCommand(text: string): WorkspaceCommand | null {
 
 /**
  * Parse `/session` (alias `/s`):
- *   list [current] | switch [current] <n> | new | status
+ *   list [current] [all|<数量>] | switch [current] <n> | new | status
+ *   | pin [编号] | unpin [编号]
  *
  * `switch current <n>` selects the same current-working-directory scope as
  * `list current`; the explicit scope keeps the command deterministic instead
- * of relying on a hidden "last list" state.
+ * of relying on a hidden "last list" state. The window tokens may appear on
+ * either side of `current` (`list current 50` / `list 50 current`).
+ *
+ * `pin` / `unpin` carry an optional row number from the latest `/s list`
+ * (same numbering `switch` uses). Without one they act on the user's
+ * currently bound session, so a bare `/s pin` needs no list first.
  */
 export function parseSessionCommand(text: string): SessionCommand | null {
   const trimmed = text.trim();
-  const m = trimmed.match(/^\/(?:session|s)\s+(list|switch|new|status)(?:\s+(.*))?$/);
+  const m = trimmed.match(/^\/(?:session|s)\s+(list|switch|new|status|pin|unpin)(?:\s+(.*))?$/);
   if (!m) return null;
-  const sub = m[1] as "list" | "switch" | "new" | "status";
+  const sub = m[1] as "list" | "switch" | "new" | "status" | "pin" | "unpin";
   const rest = (m[2] ?? "").trim();
   switch (sub) {
     case "list": {
-      if (!rest) return { kind: "list" };
-      if (rest === "current") return { kind: "list", scope: "current" };
-      return null;
+      const tokens = rest ? rest.split(/\s+/) : [];
+      let scope: "current" | undefined;
+      const windowTokens: string[] = [];
+      for (const token of tokens) {
+        if (token === "current" && scope === undefined) {
+          scope = "current";
+          continue;
+        }
+        windowTokens.push(token);
+      }
+      const window = parseListLimit(windowTokens);
+      if (window === undefined) return null;
+      return { kind: "list", ...(scope ? { scope } : {}), ...window };
     }
     case "new":
     case "status":
       return { kind: sub };
+    case "pin":
+    case "unpin": {
+      if (!rest) return { kind: sub };
+      if (!/^\d+$/.test(rest)) return null;
+      return { kind: sub, index: parseInt(rest, 10) };
+    }
     case "switch": {
       const scoped = rest.match(/^current\s+(\d+)$/);
       if (scoped) {
@@ -562,7 +665,9 @@ export function isBypassSlashCommand(text: string): boolean {
   return (
     parseHelpCommand(text) ||
     parseNextCommand(text) ||
+    parseFlushCommand(text) ||
     parseSilentCommand(text) !== null ||
+    parseFinalCommand(text) !== null ||
     parseSurfaceCommand(text) !== null ||
     parseStatusCommand(text) !== null ||
     parseWorkspaceCommand(text) !== null ||
@@ -605,10 +710,14 @@ export const LOCAL_COMMAND_NAMES: ReadonlySet<string> = new Set([
   "busy",
   "silent",
   "sl",
+  "final",
+  "fo",
   "surface",
   "wxprompt",
   "stop",
   "next",
+  "flush",
+  "f",
   "history",
   "rp",
   "reject-permission",
@@ -628,14 +737,16 @@ export function formatHelp(
     "",
     "• /help (h, ?) — 显示帮助",
     "• /status — 当前会话、工作区、Agent、待处理卡、默认/当前会话 Preset、模型状态",
-    "• /workspace (ws) — list | status | switch <路径|编号> | add <路径>",
-    "• /session (s) — list [current] | switch [current] <编号> | new | status",
+    "• /workspace (ws) — list [all|<数量>] | status | switch <路径|编号> | add <路径>（默认显示 20 个）",
+    "• /session (s) — list [current] [all|<数量>] | switch [current] <编号> | pin [编号] | unpin [编号] | new | status（默认显示 20 个；pin/unpin 省略编号时作用于当前会话）",
     "• /preset (p) — list | switch <名称|编号> | status（默认 preset，与 GUI 同步；status 看全局默认，不是当前会话）",
     "• /model — list [提供商] | switch <提供商/模型> | status",
     "• /perm (permission) — status | list | switch <名称|编号> | default [名称|编号]（会话权限实时切换；默认写入 DSH 设置，与 GUI 同步）",
     "• /reasoning — 查看/设置推理等级：/reasoning [list|default|switch <等级>]",
     "• /enter (busy) — queue|steer|status 繁忙时消息投递（排队/插话，与 DSH 设置「繁忙时 Enter 键行为」同步）",
     "• /silent on|off (sl) — 开启仅每轮最终回复；关闭显示合并的思考与工具执行过程",
+    "• /final on|off (fo) — 结论模式：跨轮次暂存，整条任务停下后只发一条最终结论（优先于 /silent）",
+    "• /flush (f) — 立即取回结论模式暂存的最终结论，不必等静默期",
     "• /surface on|off|status (wxprompt) — 微信渠道提示词注入开关（默认关；正文在设置页编辑）",
     "• /notify on|off|status (watch) — 跨会话决策推送：权限/提问卡整卡（默认关闭）；/notify tasks on|off 跨会话任务完成提醒",
     "• /history [all] [数量] — 查看最近历史（默认 5 条，最多 20 条；默认只看你和助手，all 含压缩/注入等系统消息）；有待处理卡时会完整重发",

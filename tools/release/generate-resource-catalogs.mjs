@@ -5,8 +5,7 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { contract, root, releaseRoot, stageRoot } from '../build/paths.mjs'
 import { downloadResource, fileDigest, signCatalog, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
-import { deterministicArchive } from './deterministic-archive.mjs'
-import { historicalResources, preserveImmutableResource, publishedResources } from './immutable-resource.mjs'
+import { historicalResources, publishedResources } from './immutable-resource.mjs'
 import { resourceSource, packageSource } from '../build/layout.mjs'
 import { resourcePublicationScope } from './resource-publication-scope.mjs'
 import { pluginDependencyContract } from './plugin-dependency-contract.mjs'
@@ -16,6 +15,7 @@ import { applyAuditedPluginCompatibility } from './plugin-compatibility.mjs'
 import { prepareFallbackWheel } from './python-wheel-artifacts.mjs'
 import { RETIRED_PLUGIN_IDS } from '../commands/retired-plugins.mjs'
 import { readRetiredResourceIds } from '../plugins/snapshot.mjs'
+import { reuseResourceArchive } from './resource-archive-cache.mjs'
 
 const publicationArgs = process.argv.slice(2)
 const { plugins: selectedPlugins, remaining } = selectedPluginArguments(publicationArgs)
@@ -52,10 +52,11 @@ if (targeted && (kinds.length !== 1 || !['plugin', 'skill'].includes(kinds[0]) |
 const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')).filter(record => !RETIRED_PLUGIN_IDS.has(record.id) && (!targeted || selectedPlugins.includes(record.id))) : []
 for (const id of selectedPlugins) if (records.filter(r => r.id === id).length !== 1) throw new Error('Targeted plugin has no unique packed artifact: ' + id)
 const resourceVersions = JSON.parse(await readFile(join(root, 'config/catalogs/resource-versions.json'), 'utf8'))
+const dshPin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 async function entry({ id, version, path, kind, key, metadata = {} }) {
   const size = (await stat(path)).size
   return signCatalog({ id, version, kind, applicationVersion: contract.version,
-    dshRange: metadata.dsh ?? { min: '0.2.0-rc.2', max: '0.2.0-rc.2' }, desktopRange: metadata.desktop ?? { min: '8.0.0' },
+    dshRange: metadata.dsh ?? { min: dshPin.version, max: dshPin.version }, desktopRange: metadata.desktop ?? { min: '8.4.0' },
     platform: ['win32'], architecture: ['x64'], downloadUrl: baseUrl ? `${baseUrl}/${key}` : pathToFileURL(path).href,
     sha256: await fileDigest(path), size, restartRequired: kind === 'plugin', rollbackSupported: kind !== 'mcp', ...metadata }, privateKey, keyId)
 }
@@ -103,20 +104,13 @@ if (baseUrl && configured) for (const [kind, history] of histories) {
   for (const [identity, entry] of published) history.set(identity, entry)
 }
 async function archiveResource(kind, id, version, source, path) {
-  await deterministicArchive(source, path)
   const previous = histories.get(kind).get(id + '@' + version)
-  if (previous) {
-    const baseline = previous.entry ? await downloadResource(previous.entry, join(contract.cache, 'published-resources', kind)) : previous.path
-    try {
-      immutableResources.push({ kind, id, version, ...await preserveImmutableResource(path, baseline, previous.sha256) })
-    } catch (cause) {
-      throw new Error(`Immutable ${kind} resource conflict: ${id}@${version}. ${cause.message}`, { cause })
-    }
-  }
+  const baseline = previous && (previous.entry ? await downloadResource(previous.entry, join(contract.cache, 'published-resources', kind)) : previous.path)
+  immutableResources.push(await reuseResourceArchive({ kind, id, version, source, destination: path, artifactRoot: contract.artifacts, baseline, expectedDigest: previous?.sha256 }))
 }
 const sciDirectory = join(stageRoot, 'resources/sci')
 if (kinds.includes('mcp') && await stat(join(sciDirectory, 'dist/mcp.cjs')).catch(() => undefined)) {
-  const version = '0.3.15-zws.2'
+  const version = JSON.parse(await readFile(join(root, 'config/catalogs/mcp-server-bundles.json'), 'utf8')).scimaster.version
   const directory = join(releaseRoot, 'mcp', 'scimaster', version)
   await mkdir(directory, { recursive: true })
   const path = join(directory, 'scimaster.tgz')

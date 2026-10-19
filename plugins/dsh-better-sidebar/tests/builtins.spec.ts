@@ -65,6 +65,7 @@ describe('built-in tab registrations', () => {
   it('the git (changes) tab is a single-instance badge-carrying visible tab', () => {
     const { service } = setup()
     const changes = service.getTab('git')
+    expect(typeof changes?.title === 'function' ? changes.title() : changes?.title).toBe('Git')
     expect(changes?.single).toBe(true)
     expect(changes?.hidden).not.toBe(true)
     expect(changes?.badge).toBeDefined()

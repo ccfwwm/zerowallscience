@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
 import { viewerStylePlugin } from './tools/plugins/viewer-style.mjs'
+import { standardDecoratorPlugin, vitestExecArgv } from './deepseek-harness/vitest.shared.ts'
 
 const root = import.meta.dirname
 const workspaceRequire = createRequire(resolve(root, 'package.json'))
@@ -24,11 +25,16 @@ export default defineConfig({
     ],
   },
   plugins: [
+    standardDecoratorPlugin(),
     viewerStylePlugin(),
     tsconfigPaths({ projects: [resolve(root, 'tsconfig.plugins.json')] }),
     tsconfigPaths({ projects: [resolve(root, 'deepseek-harness/tsconfig.base.json')] }),
   ],
   test: {
+    // pnpm runs several plugin projects together; bound each project's
+    // filesystem/Python integration workers to avoid multiplying that budget.
+    maxWorkers: 2,
+    execArgv: vitestExecArgv,
     include: [resolve(process.cwd()) === root ? 'plugins/**/test/**/*.{test,spec}.{ts,tsx}' : 'test/**/*.{test,spec}.{ts,tsx}'],
     environment: 'node',
     passWithNoTests: true,

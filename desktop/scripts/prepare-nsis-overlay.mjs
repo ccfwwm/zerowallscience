@@ -2,6 +2,7 @@ import { stageRoot } from '../../tools/build/paths.mjs'
 import { readFile, realpath, mkdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
+import { createHash } from 'node:crypto'
 
 // Retain electron-builder's signed uninstaller generation and installer engine.
 // Override only its install section so an upgrade does not invoke an old
@@ -10,8 +11,13 @@ const desktop = resolve(import.meta.dirname, '..')
 const requireBuilder = createRequire(await realpath(resolve(desktop, 'node_modules/electron-builder/package.json')))
 const builder = dirname(requireBuilder.resolve('app-builder-lib/package.json'))
 const manifest = JSON.parse(await readFile(resolve(builder, 'package.json'), 'utf8'))
-if (manifest.version !== '26.15.3') throw new Error('Review the NSIS upgrade adaptation before changing electron-builder')
+const adaptation = JSON.parse(await readFile(resolve(desktop, '../config/build/nsis-adaptation.json'), 'utf8'))
+if (adaptation.schema !== 1 || manifest.version !== adaptation.builderVersion) throw new Error('Review the NSIS upgrade adaptation before changing electron-builder')
 const templates = resolve(builder, 'templates/nsis')
+for (const [file, expected] of Object.entries(adaptation.templates)) {
+  const actual = createHash('sha256').update(await readFile(resolve(templates, file))).digest('hex')
+  if (actual !== expected) throw new Error(`Review the changed NSIS template: ${file}`)
+}
 let section = (await readFile(resolve(templates, 'installSection.nsh'), 'utf8')).replaceAll('\r\n', '\n')
 const old = `!insertmacro uninstallOldVersion SHELL_CONTEXT
 !insertmacro handleUninstallResult SHELL_CONTEXT
@@ -65,7 +71,7 @@ extraction = extraction.replace(extractMacro, `!macro extractUsing7za FILE
   \${EndIf}
 !macroend`)
 await writeFile(resolve(output, 'extractAppPackage.nsh'), extraction)
-console.log('Prepared NSIS in-place upgrade section from electron-builder 26.15.3')
+console.log(`Prepared NSIS in-place upgrade section from electron-builder ${manifest.version}`)
 
 await mkdir(resolve(desktop, 'out'), { recursive: true })
 await writeFile(resolve(desktop, 'out/installer-paths.nsh'), '!define ZW_NSIS_OVERLAY "'+output+'"\n!define ZW_UI_BINARY "'+resolve(stageRoot, 'installer-ui/modern-installer.exe')+'"\n')

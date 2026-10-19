@@ -1,7 +1,8 @@
 import { Context } from '@deepseek-ai/cordis'
 import { SessionId, SessionLogOffset, type SessionHeader, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import { jsonlPersistenceConfig } from '@deepseek-ai/dsh-session-persistence-jsonl'
 import { createSessionFormatCatalogWithChildren, sessionFormatCatalog } from '@deepseek-ai/dsh-session-format-catalog'
 import { createSessionArchive } from '@zerowallscience/research-store'
 import type { SessionArchiveV1 } from '@zerowallscience/research-store/types'
@@ -42,7 +43,8 @@ export async function restoreSessionArchives(
   archives: readonly SessionArchiveV1[],
   isLive: (id: string) => boolean = () => false,
 ): Promise<RestoredSessionArchive[]> {
-  if (!(persistence instanceof JsonlSessionPersistence)) {
+  const storageConfig = jsonlPersistenceConfig(persistence)
+  if (storageConfig === undefined) {
     throw new Error('ZeroWall session import requires the JSONL DSH session backend.')
   }
   const ids = new Set<string>()
@@ -70,12 +72,12 @@ export async function restoreSessionArchives(
   }
   if (prepared.length === 0) return []
 
-  const root = resolve(persistence.config.root)
+  const root = resolve(storageConfig.root)
   await mkdir(root, { recursive: true })
   // A sibling directory keeps hard-link publication on the same filesystem.
   const staging = await mkdtemp(join(dirname(root), '.zerowall-session-import-'))
   const ctx = new Context()
-  const fiber = await ctx.plugin(JsonlSessionPersistence, { ...persistence.config, root: staging })
+  const fiber = await ctx.plugin(JsonlSessionPersistence, { ...storageConfig, root: staging })
   const restored: RestoredSessionArchive[] = []
   try {
     const staged = new Map<string, string>()

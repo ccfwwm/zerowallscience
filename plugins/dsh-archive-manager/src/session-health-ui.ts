@@ -1,6 +1,6 @@
 import { errorMessage } from "./contracts.js";
 import type { Translate, SessionDetail, SessionSummary } from "./contracts.js";
-import { Button, Disclosure } from "./antd-ui.js";
+import { Disclosure } from "./plugin-ui.js";
 type HealthResult = Partial<ReturnType<typeof import("./archive-discovery.js").repairResultSchema.parse>> & { repairable: boolean };
 interface HealthProps {
  items: SessionDetail[]; sessions: (SessionSummary & { displayTitle?: string })[]; t?: Translate; isArchived?: boolean;
@@ -8,8 +8,8 @@ interface HealthProps {
  repairSession?: (input: {sessionId: string; token?: string}) => Promise<HealthResult>;
  retry(): void; pending: boolean;
 }
-import { healthZh, healthEn } from "./session-health-locales.js";
-export { healthZh, healthEn };
+import { healthZh, healthEn, healthRu } from "./session-health-locales.js";
+export { healthZh, healthEn, healthRu };
 const defaultT: Translate = (key, args = {}) => Object.entries(args).reduce((text, [name, value]) => text.replaceAll("{" + name + "}", String(value)), (healthZh as Record<string, string>)[key] ?? key);
 
 import { classifySessionError } from "./archive-discovery.js";
@@ -36,12 +36,13 @@ export const sessionHealthCss = `
 `;
 
 /** 异常默认折叠；只在服务端完成诊断后提供确认修复。 */
-export function createSessionHealthPanel(React: typeof import("react"), icons: Record<string, import("react").ComponentType<{ size?: number; className?: string; width?: number; height?: number }>> = {}) {
+export function createSessionHealthPanel(React: typeof import("react"), icons: Record<string, import("react").ComponentType<{ size?: number; className?: string; width?: number; height?: number }>> = {}, Button?: import("react").ComponentType<Record<string, unknown>>) {
   const h = React.createElement;
   const icon = (name: string, className?: string) => icons[name] ? h('span', { className, 'aria-hidden': true }, h(icons[name], { width: 16, height: 16 })) : null;
   function actionButton(label: string, options: { primary?: boolean; subtle?: boolean; disabled?: boolean; onClick(): void }, glyph: import("react").ReactNode) {
-    const type = options.primary ? "primary" : options.subtle ? "text" : "default";
-    return h(Button, { shape: "round", type, disabled: options.disabled, onClick: options.onClick, icon: glyph ?? undefined }, label);
+    const variant = options.primary ? "primary" : options.subtle ? "ghost" : "outline";
+    const Control = Button ?? ((buttonProps: { disabled?: boolean; onClick?: () => void; children?: import("react").ReactNode }) => h("button", { type: "button", disabled: buttonProps.disabled, onClick: buttonProps.onClick }, buttonProps.children));
+    return h(Control, { variant, size: "sm", disabled: options.disabled, onClick: options.onClick, icon: glyph ?? undefined }, label);
   }
   function TechnicalDetails({ title, glyph, children }: { title: string; glyph: import("react").ReactNode; children?: import("react").ReactNode }) {
     const [open, setOpen] = React.useState(false);

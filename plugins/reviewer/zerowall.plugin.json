@@ -1,15 +1,15 @@
 {
   "name": "@zerowallscience/plugin-reviewer",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "applicationVersion": "8.0.0",
   "restartRequired": true,
   "desktop": {
-    "min": "8.3.2"
+    "min": "8.4.0"
   },
   "rollbackSupported": true,
   "dsh": {
-    "min": "0.2.0-rc.2",
-    "max": "0.2.0-rc.2"
+    "min": "0.2.1-rc.2",
+    "max": "0.2.1-rc.2"
   },
   "host": "./lib/index.js",
   "client": "./lib/client.js",
@@ -17,7 +17,9 @@
     "settings",
     "subagents",
     "commands",
-    "llm"
+    "llm",
+    "agentPresets",
+    "tools"
   ],
   "optionalServices": [],
   "capabilities": [

@@ -76,8 +76,20 @@ export async function apply(ctx, config) {
   treeShaking: true,
   define: { "process.env.NODE_ENV": '"production"' },
   minify: true,
-  external: ["@deepseek-ai/*", "react", "react/jsx-runtime", "react-dom", "react-dom/client"],
-  plugins: [inlineCss],
+  external: ["react", "react/jsx-runtime", "react-dom", "react-dom/client"],
+  plugins: [inlineCss, {
+    name: 'dsh-client-runtime-boundary',
+    setup(builder) {
+      builder.onResolve({ filter: /^@deepseek-ai\// }, args => {
+        // Generated remotes need this pure helper inside their owning client;
+        // other DSH services remain supplied by the browser ModuleLoader.
+        if (args.path === '@deepseek-ai/dsh-typert-protocol/remote-info') {
+          return { path: resolve(root, '../../deepseek-harness/packages/typert/protocol/lib/types/remote-info.js') };
+        }
+        return { path: args.path, external: true };
+      });
+    },
+  }],
   banner: { js: "window.__ModuleLoader__.load({id:\"@oh-story/dsh\",factory:(require)=>{var module={exports:{}};var exports=module.exports;" },
   footer: { js: ";return module.exports;}});" }
 });
@@ -97,6 +109,9 @@ for (const forbidden of ["react-dom.development", "react.development", "process.
   if (clientBundle.includes(forbidden)) {
     throw new Error(`Browser bundle retained development runtime code: ${forbidden}`);
   }
+}
+if (/require\(["']@deepseek-ai\/dsh-typert-protocol\/remote-info["']\)/u.test(clientBundle)) {
+  throw new Error('Generated remote helper escaped into the browser ModuleLoader');
 }
 const clientBytes = Buffer.byteLength(clientBundle);
 if (clientBytes > 400_000) {

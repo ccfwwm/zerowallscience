@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import test from 'node:test'
+import { adaptDreamSkinManifest } from '../../tools/packaging/adapt-dream-skin.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 
@@ -9,7 +10,8 @@ test('Dream Skin adapted resource settings title follows the active Chinese or E
   const manifest = JSON.parse(await readFile(resolve(root, 'desktop/node_modules/dsh-dream-skin/package.json'), 'utf8'))
   const client = await readFile(resolve(root, 'desktop/node_modules/dsh-dream-skin/lib/client.js'), 'utf8')
   const sources = JSON.parse(await readFile(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8'))
-  assert.equal(manifest.version, sources.dreamSkin.resourceVersion)
+  assert.equal(manifest.zerowall.upstreamVersion, sources.dreamSkin.version)
+  assert.equal(JSON.parse(adaptDreamSkinManifest(JSON.stringify(manifest))).version, sources.dreamSkin.resourceVersion)
 
   const labelFor = (locale) => {
     const value = client.match(new RegExp(`const ${locale} = \\{\\s*"section\\.nav": "([^"]+)"`, 'u'))?.[1]

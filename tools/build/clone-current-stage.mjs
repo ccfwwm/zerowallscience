@@ -98,7 +98,7 @@ export async function cloneCurrentStage({ root = repositoryRoot, buildId, create
     const materialization = await materializeTree({ source, destination, sourceKey: active.buildId,
       // These script-owned areas are refreshed during packaging. Copy them
       // privately so an in-place adaptation cannot alter the prior stage.
-      shouldCopy: path => path === 'plugin-snapshot.json' || mutableReceipt(path) || /^(?:commands|resources|electron-app|installer-ui|nsis-overlay|python-updater)\//u.test(path),
+      shouldCopy: path => path === 'plugin-snapshot.json' || path === 'bundled-resource-receipt.json' || path === 'resources/zerowall-core.patch.yml' || mutableReceipt(path) || /^(?:commands|electron-app|installer-ui|nsis-overlay|python-updater)\//u.test(path),
       include: path => !/^(?:stage-clone-(?:receipt|failure)|build-failure)\.json$/u.test(path),
     })
     await writeFile(join(destination, 'stage-clone-receipt.json'), `${JSON.stringify({

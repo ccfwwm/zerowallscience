@@ -10,6 +10,9 @@ import { apply, inject } from '../src/index.ts'
 import { markerFromContent } from '../src/ptc-marker.ts'
 
 let ctx: Context | undefined
+// Windows exposes the writable flag, not POSIX owner/group bits.
+const fixtureMode = (mode: number): number => process.platform === 'win32' ? 0o666 : mode
+
 const roots: string[] = []
 
 afterEach(async () => {
@@ -70,7 +73,7 @@ describe('tool lifecycle capture', () => {
           diffs: [{ path: args.path, oldText: null, newText: args.content }],
         }),
         async execute(args) {
-          await writeFile(join(root, args.path), args.content, { mode: 0o640 })
+          await writeFile(join(root, args.path), args.content, { mode: fixtureMode(0o640) })
           return args.path
         },
       }),
@@ -98,7 +101,7 @@ describe('tool lifecycle capture', () => {
             newText: 'created',
             oldStart: 1,
             newStart: 1,
-            lifecycle: { kind: 'create', mode: 0o640 },
+            lifecycle: { kind: 'create', mode: fixtureMode(0o640) },
           },
         ],
       },
@@ -110,7 +113,7 @@ describe('tool lifecycle capture', () => {
   it('persists the deleted file contents and permissions for a generic delete tool', async () => {
     const root = await workspace()
     const filename = join(root, 'deleted.txt')
-    await writeFile(filename, 'deleted', { mode: 0o600 })
+    await writeFile(filename, 'deleted', { mode: fixtureMode(0o600) })
     const callId = 'delete-call'
     ctx = new Context()
     await ctx.plugin(SystemPrompt, { persona: '' })
@@ -161,7 +164,7 @@ describe('tool lifecycle capture', () => {
             newText: '',
             oldStart: 1,
             newStart: 1,
-            lifecycle: { kind: 'delete', mode: 0o600 },
+            lifecycle: { kind: 'delete', mode: fixtureMode(0o600) },
           },
         ],
       },
@@ -297,6 +300,76 @@ describe('tool lifecycle capture', () => {
     ])
   })
 
+  // 验证调用参数用相对路径、结果展示用绝对路径（DSH 0.2.1 的 edit/write）时，同一文件只记录一次。
+  it('merges result presentation paths that spell the captured file differently', async () => {
+    const root = await workspace()
+    await writeFile(join(root, 'edited.txt'), 'alpha\nbefore\nomega\n')
+    const callId = 'spelling-call'
+    ctx = new Context()
+    await ctx.plugin(SystemPrompt, { persona: '' })
+    await ctx.plugin(Tools, {})
+    const mounted = ctx.plugin({ apply, inject })
+    await mounted.await()
+    ctx.tools.register(
+      defineTool({
+        name: 'fixture_resolved_edit',
+        description: 'edit a fixture file and present its resolved path',
+        parameters: { path: { type: 'string', required: true } },
+        output: {
+          schema: { type: 'string' },
+          render: (_args, value) => [{ type: 'text', text: value }],
+        },
+        presentCall: (args) => ({
+          card: 'diff',
+          title: `Edit ${args.path}`,
+          locations: [{ path: args.path }],
+          diffs: [{ path: args.path, oldText: 'before', newText: 'after' }],
+        }),
+        // `root` is the unresolved tmpdir spelling, so this also crosses the /var symlink on macOS.
+        presentResult: (args) => ({
+          card: 'diff',
+          diffs: [
+            {
+              path: join(root, args.path),
+              oldText: 'alpha\nbefore\nomega',
+              newText: 'alpha\nafter\nomega',
+            },
+          ],
+        }),
+        async execute(args) {
+          await writeFile(join(root, args.path), 'alpha\nafter\nomega\n')
+          return args.path
+        },
+      }),
+    )
+
+    const result = await ctx.tools.execute({
+      callId,
+      name: 'fixture_resolved_edit',
+      arguments: { path: 'edited.txt' },
+      agent: agent(root, callId),
+      signal: new AbortController().signal,
+    })
+
+    expect(
+      markerFromContent(result.content, { rootCallId: callId, subCallId: callId })?.files,
+    ).toEqual([
+      {
+        path: 'edited.txt',
+        source: 'result',
+        diffs: [
+          {
+            path: 'edited.txt',
+            oldText: 'before\n',
+            newText: 'after\n',
+            oldStart: 2,
+            newStart: 2,
+          },
+        ],
+      },
+    ])
+  })
+
   // 验证一次工具调用同时编辑和新建或删除文件时，普通编辑差异与生命周期快照都被保留。
   it('keeps ordinary edit diffs beside captured lifecycle diffs from the same call', async () => {
     const root = await workspace()
@@ -333,7 +406,7 @@ describe('tool lifecycle capture', () => {
           ],
         }),
         async execute() {
-          await writeFile(join(root, 'created.txt'), 'created', { mode: 0o640 })
+          await writeFile(join(root, 'created.txt'), 'created', { mode: fixtureMode(0o640) })
           await writeFile(join(root, 'edited.txt'), 'new')
           return 'done'
         },
@@ -363,7 +436,7 @@ describe('tool lifecycle capture', () => {
             newText: 'created',
             oldStart: 1,
             newStart: 1,
-            lifecycle: { kind: 'create', mode: 0o640 },
+            lifecycle: { kind: 'create', mode: fixtureMode(0o640) },
           },
         ],
       },

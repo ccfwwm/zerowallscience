@@ -21,6 +21,7 @@ import { createRequire, syncBuiltinESMExports } from "node:module";
 import { Context, Service } from "@deepseek-ai/cordis";
 import { TypertRegistry } from "@deepseek-ai/dsh-typert-registry";
 import { TypertGatewayService } from "@deepseek-ai/dsh-api-gateway";
+import { gatewayCall } from "./helpers/gateway-peer.mjs";
 import { remoteMethods } from "@deepseek-ai/dsh-typert-protocol";
 import { DomainFacility } from "@deepseek-ai/dsh-storage-domain";
 import { sessionDir } from "@deepseek-ai/dsh-spill-local";
@@ -37,6 +38,13 @@ import {
 const SID = (n) =>
 	`session-${String(n).padStart(5, "0")}-0000-0000-0000-000000000000`;
 const require = createRequire(import.meta.url);
+
+test("剩余宿主不再走早于 0.2.0 的投影、只读和列表回退", () => {
+	const source = readFileSync(new URL("../src/workspace.ts", import.meta.url), "utf8");
+	assert.equal(source.includes("cache.cachedSnapshot(header, inheritedEventCount)"), false);
+	assert.equal(source.includes("persistence.readFrom"), false);
+	assert.equal(source.includes("item as Header"), false);
+});
 
 /** Map-backed domain table facade matching the storage-domain table contract. */
 class FakeTable {
@@ -158,7 +166,7 @@ function buildRoot({
 	const domain = new FakeDomain({ workspaces: table }, global);
 	const persistence = {
 		headers: [...canonicalHeaders],
-		list: async () => [...persistence.headers],
+		list: async () => persistence.headers.map((header) => ({ header })),
 		prepared: [],
 		released: [],
 		prepare: async (id) => {
@@ -612,7 +620,7 @@ test("archivedSessionMetadata lists stored headers once while pruning unknowns",
 	let lists = 0;
 	env.persistence.list = async () => {
 		lists += 1;
-		return [...env.persistence.headers];
+		return env.persistence.headers.map((header) => ({ header }));
 	};
 	await registry.archivedSessionMetadata();
 	assert.equal(lists, 1, "prune must not rebuild the full header listing once per unknown id");
@@ -650,17 +658,10 @@ for (const version of [0, 3])
 		const cacheReads = [];
 		const reads = [];
 		const puts = [];
-		// 真实宿主 0.1.2～0.1.6 的签名是 (meta, inheritedEventCount, keys?)：替身必须
-		// 保持同一形状，否则按形参个数区分代际的探测会把它误判成 0.1.7 的投影键形态。
-		env.projCache.cachedSnapshot = (meta, inheritedEventCount, keys) => {
-			void keys;
-			cacheReads.push({ id: meta.id, inheritedEventCount });
-			const record = records.get(meta.id);
-			return record !== void 0 &&
-				JSON.stringify(record.identity) ===
-					JSON.stringify(identityOf(meta, inheritedEventCount))
-				? record.snapshot
-				: void 0;
+		// 剩余宿主只按头部查缓存，第二参数是可选投影键，不再传继承切点。
+		env.projCache.cachedSnapshot = (meta) => {
+			cacheReads.push({ id: meta.id });
+			return records.get(meta.id)?.snapshot;
 		};
 		env.projCache.put = async (id, identity, rows) => {
 			puts.push({ id, identity, rows });
@@ -669,12 +670,13 @@ for (const version of [0, 3])
 				snapshot: { asOfSeq: 9, values: { title: rows.title.val } },
 			});
 		};
-		env.persistence.readFrom = async (id, fromSeq) => {
-			reads.push({ id, fromSeq });
+		env.persistence.open = async (id) => {
+			reads.push({ id, fromSeq: 0 });
 			return {
-				meta: env.persistence.headers.find((item) => item.id === id),
+				header: env.persistence.headers.find((item) => item.id === id),
 				inheritedEventCount: 3,
-				events: [{ seq: 0, type: "session/start", data: {} }],
+				read: async () => ({ events: [{ seq: 0, type: "session/start", data: {} }] }),
+				close: async () => {},
 			};
 		};
 		env.ctx.provide("sessionProjections", {
@@ -704,8 +706,8 @@ for (const version of [0, 3])
 			"only the missing archive reads its transcript",
 		);
 		assert.deepEqual(cacheReads, [
-			{ id: s1, inheritedEventCount: 0 },
-			{ id: s2, inheritedEventCount: 3 },
+			{ id: s1 },
+			{ id: s2 },
 		]);
 		assert.deepEqual(puts, [
 			{
@@ -739,10 +741,10 @@ for (const version of [0, 3])
 			"播种会话必须读取继承事件数，普通已缓存会话无需读取原文",
 		);
 		assert.deepEqual(cacheReads, [
-			{ id: s1, inheritedEventCount: 0 },
-			{ id: s2, inheritedEventCount: 3 },
-			{ id: s1, inheritedEventCount: 0 },
-			{ id: s2, inheritedEventCount: 3 },
+			{ id: s1 },
+			{ id: s2 },
+			{ id: s1 },
+			{ id: s2 },
 		]);
 	});
 
@@ -755,9 +757,13 @@ test("archivedSessionMetadata skips seeded projection repair when the inherited 
 	const reads = [];
 	let restored = false;
 	let put = false;
-	env.persistence.readFrom = async (id, fromSeq) => {
-		reads.push({ id, fromSeq });
-		return { meta: env.persistence.headers[0], events: [] };
+	env.persistence.open = async (id) => {
+		reads.push({ id, fromSeq: 0 });
+		return {
+			header: env.persistence.headers[0],
+			read: async () => ({ events: [] }),
+			close: async () => {},
+		};
 	};
 	env.projCache.cachedSnapshot = () => void 0;
 	env.projCache.put = async () => {
@@ -909,6 +915,105 @@ for (const filename of [
 	});
 }
 
+test("deleteSession removes the directory when header read throws the synthetic tool result error", async () => {
+	const env = buildRoot({ headers: [header(s1)], archived: [s1] });
+	const directory = installJsonlLayout(env, s1);
+	const registry = await mountWorkspaceRegistry(env);
+	registry.readSessionHeader = async () => {
+		throw new Error("SessionFormatError: format v4 tool/result at seq 1313 requires toolCallId matching its tool source");
+	};
+
+	assert.deepEqual(await registry.deleteSession(s1), { deleted: true });
+	assert.equal(existsSync(directory), false, "已缓存头部必须足够定位并删除");
+	assert.deepEqual(env.global.archivedSessionIds, []);
+});
+
+test("deleteSession reports transcript corruption without telling the user to delete again", async () => {
+	const env = buildRoot({ headers: [header(s1)], archived: [s1] });
+	const directory = installJsonlLayout(env, s1);
+	const registry = await mountWorkspaceRegistry(env);
+	registry.headers.delete(s1);
+	registry.sessionKnown = async () => true;
+	registry.readSessionHeader = async () => {
+		throw new Error("SessionFormatError: format v4 tool/result at seq 1313 requires toolCallId matching its tool source");
+	};
+
+	await assert.rejects(() => registry.deleteSession(s1), /requires toolCallId matching its tool source/);
+	await assert.rejects(() => registry.deleteSession(s1), (error) => {
+		assert.doesNotMatch(error.message, /可以永久删除|删除未完成|没有权限/);
+		return true;
+	});
+	const batch = await registry.deleteArchivedSessions({ scope: "sessions", sessionIds: [s1] });
+	assert.match(batch.failures[0].message, /requires toolCallId matching its tool source/);
+	assert.doesNotMatch(batch.failures[0].message, /可以永久删除|删除未完成|没有权限/);
+	assert.equal(existsSync(directory), true, "没有头部时不能猜路径删除");
+	assert.deepEqual(env.global.archivedSessionIds, [s1]);
+});
+
+test("deleteSession still removes a present directory when stat cannot certify a corrupt body", async () => {
+	const env = buildRoot({ headers: [header(s1)], archived: [s1] });
+	const directory = installJsonlLayout(env, s1);
+	const registry = await mountWorkspaceRegistry(env);
+	const corrupt = new Error("SessionFormatError: format v4 tool/result at seq 1313 requires toolCallId matching its tool source");
+	env.persistence.stat = async () => {
+		throw corrupt;
+	};
+	env.persistence.prepare = async () => {
+		throw corrupt;
+	};
+
+	assert.deepEqual(await registry.deleteSession(s1), { deleted: true });
+	assert.equal(existsSync(directory), false);
+	assert.deepEqual(env.global.archivedSessionIds, []);
+});
+
+test("deleteSession keeps bookkeeping when post-removal stat throws and the targeted path was never present", async () => {
+	const env = buildRoot({ headers: [header(s1)], archived: [s1] });
+	const directory = installJsonlLayout(env, s1);
+	const registry = await mountWorkspaceRegistry(env);
+	const missing = join(env.root, "not-the-session", "session.v4.jsonl");
+	env.persistence.locate = () => ({ kind: "jsonl", path: missing });
+	env.persistence.stat = async () => {
+		throw new Error("SessionFormatError: format v4 tool/result at seq 1313 requires toolCallId matching its tool source");
+	};
+
+	await assert.rejects(() => registry.deleteSession(s1), /cannot verify|cannot delete/);
+	const batch = await registry.deleteArchivedSessions({ scope: "sessions", sessionIds: [s1] });
+	assert.equal(batch.failures.length, 1);
+	assert.doesNotMatch(batch.failures[0].message, /可以永久删除/);
+	assert.equal(existsSync(directory), true, "定位错了不能把真实目录记成已删除");
+	assert.deepEqual(env.global.archivedSessionIds, [s1], "无法确认删除时必须保留归档标记");
+});
+
+test("pruneUnknownArchivedSessionIds removes ghost entries even if headers cache still contains the id", async () => {
+	const env = buildRoot({
+		headers: [header(s1, cwdA, { createdAt: 100 }), header(s2, cwdA, { createdAt: 200 })],
+		workspaces: { [A]: workspace("D:\\proj-a", [s1, s2]) },
+		archived: [s1, s2],
+	});
+	const registry = await mountWorkspaceRegistry(env);
+	// 磁盘上 s2 文件被手工移除，persistence.stat 返回 undefined
+	env.persistence.stat = async (id) => {
+		if (id === s2) return undefined;
+		const path = env.located.get(id);
+		return path === void 0 ? undefined : { path };
+	};
+	// persistence.list 也已经没有 s2 了
+	env.persistence.headers = env.persistence.headers.filter((item) => item.id !== s2);
+	// 但是宿主内存里的 registry.headers 仍保留 s2（模拟宿主 headers 内存只增不减）
+	assert.equal(registry.headers.has(s2), true);
+
+	// 执行剪枝
+	const pruned = await registry.pruneUnknownArchivedSessionIds();
+	assert.deepEqual(pruned, [s1], "已不存在于磁盘的幽灵会话必须被剪掉");
+	assert.deepEqual(env.global.archivedSessionIds, [s1], "持久化归档标记必须已清除幽灵会话");
+	assert.equal(registry.headers.has(s2), false, "剪枝必须清掉宿主内存索引");
+	await registry.indexHeaders([header(s2, cwdA, { createdAt: 200 })]);
+	assert.equal(registry.headers.has(s2), false, "墓碑必须挡住 stale list() 把幽灵加回");
+	env.persistence.headers.push(header(s2, cwdA, { createdAt: 999 }));
+	assert.equal(await registry.sessionKnown(s2), true, "同 id 的新生命周期必须能冷复用");
+});
+
 test("新版快照列表中的冷子会话仍被级联删除，fork 保留", async () => {
 	const env = buildRoot({
 		headers: [
@@ -966,6 +1071,36 @@ test("持久化仍能观察到会话时不得提交删除记账或完成通知",
 	assert.deepEqual(env.global.archivedSessionIds, [s1]);
 	assert.equal(registry.deletedSessionIds.has(s1), false);
 	assert.deepEqual(removed, []);
+});
+
+test("batch delete failure keeps the host detail instead of a Chinese diagnosis", async () => {
+	const env = buildRoot({ headers: [header(s1)], archived: [s1] });
+	installJsonlLayout(env, s1);
+	const registry = await mountWorkspaceRegistry(env);
+	const denied = Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
+	env.persistence.locate = () => {
+		throw denied;
+	};
+	const batch = await registry.deleteArchivedSessions({ scope: "sessions", sessionIds: [s1] });
+	assert.match(batch.failures[0].message, /EPERM: operation not permitted/);
+	assert.doesNotMatch(batch.failures[0].message, /没有权限|检查目录访问权限/);
+	await assert.rejects(() => registry.deleteSession(s1), /EPERM: operation not permitted/);
+	await assert.rejects(() => registry.deleteSession(s1), (error) => {
+		assert.doesNotMatch(error.message, /没有权限|检查目录访问权限/);
+		return true;
+	});
+});
+
+test("stat text that mentions still present does not override a confirmed removal", async () => {
+	const env = buildRoot({ headers: [header(s1)], archived: [s1] });
+	const directory = installJsonlLayout(env, s1);
+	const registry = await mountWorkspaceRegistry(env);
+	env.persistence.stat = async () => {
+		throw new Error("session is still present in persistence after artifact removal");
+	};
+	assert.deepEqual(await registry.deleteSession(s1), { deleted: true });
+	assert.equal(existsSync(directory), false);
+	assert.deepEqual(env.global.archivedSessionIds, []);
 });
 
 test("新版投影读取失败仍关闭只读句柄", async () => {
@@ -1327,7 +1462,9 @@ test("批量删除只为级联预取一次存储列举，墓碑淘汰后也不�
 	const indexedDuring = [];
 	env.persistence.list = async () => {
 		lists += 1;
-		return env.persistence.headers.filter((item) => existsSync(env.located.get(item.id)));
+		return env.persistence.headers
+			.filter((item) => existsSync(env.located.get(item.id)))
+			.map((header) => ({ header }));
 	};
 	const originalIndex = registry.indexHeader.bind(registry);
 	registry.indexHeader = async (header) => {
@@ -1361,7 +1498,9 @@ test("批量级联预取失败后按会话重试列举，不缓存失败结果",
 	env.persistence.list = async () => {
 		lists += 1;
 		if (lists === 1) throw new Error("list failed");
-		return env.persistence.headers.filter((item) => existsSync(env.located.get(item.id)));
+		return env.persistence.headers
+			.filter((item) => existsSync(env.located.get(item.id)))
+			.map((header) => ({ header }));
 	};
 
 	const result = await registry.deleteArchivedSessions({ scope: "all" });
@@ -2322,15 +2461,14 @@ test("ArchiveProjectionCache tombstone guards both cold-read write-back paths an
 		"alpha.2 coldSnapshot must be able to chain .catch() onto put()",
 	);
 	await blockedPut;
-	await cache.putSoft(
+	await cache.put(
 		s3,
 		identity,
 		{ title: { ver: 1, seq: 9, val: "t" } },
-		"cold-read write-back",
 	);
 	assert.ok(
 		!table.has(projectionCacheStorageKey(s3)),
-		"put/putSoft after delete must not recreate the row",
+		"put after delete must not recreate the row",
 	);
 	// 删除落在写回进行中：写回完成后补删自己的残留行。
 	cache.clearTombstone(s3);
@@ -2348,11 +2486,10 @@ test("ArchiveProjectionCache tombstone guards both cold-read write-back paths an
 		await released;
 		return put(...args);
 	};
-	const pendingWrite = cache.putSoft(
+	const pendingWrite = cache.put(
 		s3,
 		identity,
 		{ title: { ver: 1, seq: 9, val: "t" } },
-		"cold-read write-back",
 	);
 	await writing;
 	await cache.delete(s3);
@@ -2360,7 +2497,7 @@ test("ArchiveProjectionCache tombstone guards both cold-read write-back paths an
 	await pendingWrite;
 	assert.ok(
 		!table.has(projectionCacheStorageKey(s3)),
-		"an in-flight putSoft must not resurrect the deleted row",
+		"an in-flight put must not resurrect the deleted row",
 	);
 	await cache.whenIdle();
 	assert.ok(!table.has(projectionCacheStorageKey(s3)));
@@ -2457,29 +2594,34 @@ test("typert gateway SRC: claims + dispatch single and batch archive methods end
 	);
 	assert.equal(captured.channel, "/api");
 	assert.equal(captured.matches("workspaceRegistry/setSessionFavorite"), true);
-	const favorite = await captured.handler("workspaceRegistry/setSessionFavorite", { args: { input: { sessionId: s1, favorite: true } } }, void 0);
+	const favorite = await gatewayCall(captured.handler, "workspaceRegistry/setSessionFavorite", { input: { sessionId: s1, favorite: true } });
 	assert.equal(favorite.ok, true);
 	assert.deepEqual(favorite.value.favoriteSessionIds, [s1]);
-	const favorites = await captured.handler("workspaceRegistry/favoriteSessions", { args: {} }, void 0);
+	const favorites = await gatewayCall(captured.handler, "workspaceRegistry/favoriteSessions", {});
 	assert.deepEqual(favorites.value.favoriteSessionIds, [s1]);
-	const malformedFavorite = await captured.handler("workspaceRegistry/setSessionFavorite", { args: { input: { sessionId: s1, favorite: "true" } } }, void 0);
+	const malformedFavorite = await gatewayCall(captured.handler, "workspaceRegistry/setSessionFavorite", { input: { sessionId: s1, favorite: "true" } });
 	assert.equal(malformedFavorite.ok, false);
 	// 通过真实网关验证新描述符的参数解析、只读调用及返回编解码。
     await registry.archiveSession(s1);
-    env.persistence.readFrom = async () => ({ events: [{ seq: 1, type: "user/message", data: { content: "检索测试正文" } }] });
-    const searched = await captured.handler("workspaceRegistry/searchArchivedContent", { args: { input: { sessionIds: [s1], query: "正文" } } }, void 0);
+    env.persistence.open = async () => ({
+      header: env.persistence.headers.find((item) => item.id === s1),
+      inheritedEventCount: 0,
+      read: async () => ({ events: [{ seq: 1, type: "user/message", data: { content: "检索测试正文" } }] }),
+      close: async () => {},
+    });
+    const searched = await gatewayCall(captured.handler, "workspaceRegistry/searchArchivedContent", { input: { sessionIds: [s1], query: "正文" } });
     assert.equal(searched.ok, true);
     assert.equal(searched.value.items[0].sessionId, s1);
-    const previewed = await captured.handler("workspaceRegistry/previewArchivedSession", { args: { input: { sessionId: s1 } } }, void 0);
+    const previewed = await gatewayCall(captured.handler, "workspaceRegistry/previewArchivedSession", { input: { sessionId: s1 } });
     assert.equal(previewed.ok, true);
     assert.equal(previewed.value.messages[0].text, "检索测试正文");
-    const details = await captured.handler("workspaceRegistry/sessionDetails", { args: { input: { sessionIds: [s1] } } }, void 0);
+    const details = await gatewayCall(captured.handler, "workspaceRegistry/sessionDetails", { input: { sessionIds: [s1] } });
     assert.equal(details.ok, true);
     assert.equal(details.value.items[0].turnCount, 1);
     assert.equal(details.value.items[0].path, env.located.get(s1));
-    const invalidDetails = await captured.handler("workspaceRegistry/sessionDetails", { args: { input: { sessionIds: [] } } }, void 0);
+    const invalidDetails = await gatewayCall(captured.handler, "workspaceRegistry/sessionDetails", { input: { sessionIds: [] } });
     assert.equal(invalidDetails.ok, false);
-    const invalidSearch = await captured.handler("workspaceRegistry/searchArchivedContent", { args: { input: { sessionIds: [s1], query: "" } } }, void 0);
+    const invalidSearch = await gatewayCall(captured.handler, "workspaceRegistry/searchArchivedContent", { input: { sessionIds: [s1], query: "" } });
     assert.equal(invalidSearch.ok, false);
     // SRC claims for the new endpoints
 	assert.equal(captured.matches("workspaceRegistry/unarchiveSession"), true);
@@ -2496,19 +2638,11 @@ test("typert gateway SRC: claims + dispatch single and batch archive methods end
 	assert.equal(captured.matches("workspace.archiveSession"), false);
 	assert.equal(captured.matches("workspace.list"), false);
 	// dispatch: unarchiveSession
-	const unarchive = await captured.handler(
-		"workspaceRegistry/unarchiveSession",
-		{ args: { sessionId: s1 } },
-		void 0,
-	);
+	const unarchive = await gatewayCall(captured.handler, "workspaceRegistry/unarchiveSession", { sessionId: s1 });
 	assert.equal(unarchive.ok, true);
 	assert.deepEqual(unarchive.value, { archivedSessionIds: [] });
 	await registry.archiveSession(s1);
-	const metadata = await captured.handler(
-		"workspaceRegistry/archivedSessionMetadata",
-		{ args: {} },
-		void 0,
-	);
+	const metadata = await gatewayCall(captured.handler, "workspaceRegistry/archivedSessionMetadata", {});
 	assert.equal(metadata.ok, true);
 	assert.deepEqual(metadata.value, {
 		items: [{ sessionId: s1, createdAt: 1700000000000 }],
@@ -2516,21 +2650,13 @@ test("typert gateway SRC: claims + dispatch single and batch archive methods end
 	await registry.unarchiveSession(s1);
 	await registry.archiveSession(s1);
 	await registry.archiveSession(s2);
-	const deleteBatch = await captured.handler(
-		"workspaceRegistry/deleteArchivedSessions",
-		{ args: { target: { scope: "workspace", workspaceId: A } } },
-		void 0,
-	);
+	const deleteBatch = await gatewayCall(captured.handler, "workspaceRegistry/deleteArchivedSessions", { target: { scope: "workspace", workspaceId: A } });
 	assert.equal(deleteBatch.ok, true);
 	assert.deepEqual(deleteBatch.value.requestedSessionIds, [s1, s2]);
 	assert.deepEqual(deleteBatch.value.deletedSessionIds, [s1, s2]);
 	assert.deepEqual(deleteBatch.value.failures, []);
 	// dispatch: deleteSession
-	const del = await captured.handler(
-		"workspaceRegistry/deleteSession",
-		{ args: { sessionId: s3 } },
-		void 0,
-	);
+	const del = await gatewayCall(captured.handler, "workspaceRegistry/deleteSession", { sessionId: s3 });
 	assert.equal(del.ok, true);
 	assert.deepEqual(del.value, { deleted: true });
 	assert.deepEqual(env.table.get(B).sessionIds, []);
@@ -2540,19 +2666,11 @@ test("typert gateway SRC: claims + dispatch single and batch archive methods end
 		"transcript dir removed via gateway dispatch",
 	);
 	// dispatch: unknown session is cleaned without failing the rpc
-	const unknown = await captured.handler(
-		"workspaceRegistry/deleteSession",
-		{ args: { sessionId: sUnknown } },
-		void 0,
-	);
+	const unknown = await gatewayCall(captured.handler, "workspaceRegistry/deleteSession", { sessionId: sUnknown });
 	assert.equal(unknown.ok, true);
 	assert.deepEqual(unknown.value, { deleted: true });
 	// dispatch: missing args is rejected
-	const bad = await captured.handler(
-		"workspaceRegistry/unarchiveSession",
-		{ args: {} },
-		void 0,
-	);
+	const bad = await gatewayCall(captured.handler, "workspaceRegistry/unarchiveSession", {});
 	assert.equal(bad.ok, false);
 });
 
@@ -2622,7 +2740,10 @@ test("归档检索与预览只读日志，不激活会话、不修改归档或�
   const env = buildRoot({ headers: [header(s1), header(s2)], archived: [s1, s2] });
   const registry = await mountWorkspaceRegistry(env);
   const events = [{ type: "user/message", seq: 0, data: { content: [{ type: "text", text: "订单退款" }] } }];
-  env.persistence.readFrom = async id => { if (id === s2) throw new Error("读取失败"); return { events }; };
+  env.persistence.open = async id => {
+    if (id === s2) throw new Error("读取失败");
+    return { header: env.persistence.headers.find((item) => item.id === id), inheritedEventCount: 0, read: async () => ({ events }), close: async () => {} };
+  };
   const found = await registry.searchArchivedContent({ sessionIds: [s1, s2], query: "退款" });
   assert.equal(found.items[0].sessionId, s1);
   assert.equal(found.failures[0].sessionId, s2);
@@ -2651,13 +2772,18 @@ test("新版预览关闭只读句柄，失败也关闭，期间恢复的会话�
 test("会话详情统计用户轮次，读取失败保留定位路径且不激活会话", async () => {
   const env = buildRoot({ headers: [header(s1), header(s2)], archived: [s1] });
   const registry = await mountWorkspaceRegistry(env);
-  env.persistence.readFrom = async id => {
+  env.persistence.open = async id => {
     if (id === s2) throw new Error("旧日志无法转换");
-    return { events: [
-      { seq: 0, type: "user/message", data: { source: { kind: "user" }, content: [{ type: "image" }] } },
-      { seq: 1, type: "user/message", data: { source: { kind: "plugin" }, content: "注入" } },
-      { seq: 2, type: "assistant/message", data: { message: { content: "回复" } } }
-    ] };
+    return {
+      header: env.persistence.headers.find((item) => item.id === id),
+      inheritedEventCount: 0,
+      read: async () => ({ events: [
+        { seq: 0, type: "user/message", data: { source: { kind: "user" }, content: [{ type: "image" }] } },
+        { seq: 1, type: "user/message", data: { source: { kind: "plugin" }, content: "注入" } },
+        { seq: 2, type: "assistant/message", data: { message: { content: "回复" } } }
+      ] }),
+      close: async () => {},
+    };
   };
   const result = await registry.sessionDetails({ sessionIds: [s1, s2] });
   assert.equal(result.items[0].turnCount, 1);
@@ -2675,7 +2801,7 @@ test("会话路径定位旧代际目录，当前代际未生成时不复制虚�
   const directory = installJsonlLayout(env, s1);
   env.located.set(s1, join(directory, "session.v3.jsonl.zstd"));
   const registry = await mountWorkspaceRegistry(env);
-  env.persistence.readFrom = async () => { throw new Error("来源无法识别"); };
+  env.persistence.open = async () => { throw new Error("来源无法识别"); };
   const result = await registry.sessionDetails({ sessionIds: [s1] });
   assert.equal(result.items[0].path, directory);
   assert.equal(result.items[0].turnCount, null);
@@ -2701,7 +2827,7 @@ for (const [code, message] of [["missing", "ENOENT"], ["permission", "EACCES"], 
 test('诊断未知会话及修复令牌校验，不对未知错误写文件', async () => {
   const env = buildRoot({ headers: [header(s1)], archived: [s1] });
   const registry = await mountWorkspaceRegistry(env);
-  env.persistence.readFrom = async () => { throw new Error('ENOENT'); };
+  env.persistence.open = async () => { throw new Error('ENOENT'); };
   const report = await registry.diagnoseSession({ sessionId: s1 });
   assert.equal(report.repairable, false);
   assert.equal(report.code, "missing");
@@ -2713,7 +2839,7 @@ test('诊断未知会话及修复令牌校验，不对未知错误写文件', as
 test('修复需要已归档且未打开，诊断正常会话不生成新日志', async () => {
   const env = buildRoot({ headers: [header(s1)], archived: [] });
   const registry = await mountWorkspaceRegistry(env);
-  env.persistence.readFrom = async () => ({ events: [] });
+  env.persistence.open = async () => ({ header: header(s1), inheritedEventCount: 0, read: async () => ({ events: [] }), close: async () => {} });
   assert.match((await registry.diagnoseSession({ sessionId: s1 })).reason, /正常/);
   await assert.rejects(registry.sessionRepairPlan(s1), /先归档/);
 });
@@ -2721,7 +2847,7 @@ test('修复需要已归档且未打开，诊断正常会话不生成新日志',
 test('未归档正文搜索读取已知会话且不改变归档状态', async()=>{
  const env=buildRoot({headers:[header(s1)],archived:[]});
  const registry=await mountWorkspaceRegistry(env);
- env.persistence.readFrom=async()=>({events:[{seq:0,type:'user/message',data:{source:{kind:'user'},content:'审查订单'}}]});
+ env.persistence.open=async()=>({header:header(s1),inheritedEventCount:0,read:async()=>({events:[{seq:0,type:'user/message',data:{source:{kind:'user'},content:'审查订单'}}]}),close:async()=>{}});
  const result=await registry.searchSessionContent({sessionIds:[s1],query:'审查'});
  assert.equal(result.items[0].sessionId,s1);
  assert.deepEqual(env.global.archivedSessionIds,[]);

@@ -20,6 +20,18 @@ async function fixture(t) {
   await mkdir(join(root, 'tools/plugins'), { recursive: true })
   await mkdir(join(root, 'config/deepseek-harness'), { recursive: true })
   await mkdir(join(root, 'config/catalogs'), { recursive: true })
+  await mkdir(join(root, 'config/build'), { recursive: true })
+  const stable = JSON.parse(await readFile(new URL('../../config/build/stable.json', import.meta.url), 'utf8'))
+  stable.retention.afterPackage = false
+  stable.signing.privateKeyFile = 'fixture-signing-reference'
+  await writeFile(join(root, 'fixture-signing-reference'), 'test fixture; no signing operations')
+  await writeFile(join(root, 'config/build/stable.json'), JSON.stringify(stable))
+  await writeFile(join(root, 'config/build/desktop-release.json'), JSON.stringify({ schema: 1, version: '8.3.0', description: 'fixture' }))
+  for (const file of ['desktop/package.json', 'config/layout/package-layout.json', 'config/layout/runtime-profile.json', 'config/integrations/upstream-sources.json']) {
+    const path = join(root, file)
+    await mkdir(join(path, '..'), { recursive: true })
+    await writeFile(path, JSON.stringify({ version: '8.3.0', ...(file.endsWith('package.json') ? { description: 'fixture' } : {}) }))
+  }
   await writeFile(join(root, 'config/catalogs/retired-plugins.json'), JSON.stringify({schema:1,plugins:[]}))
   await writeFile(join(root, 'config/catalogs/retired-resources.json'), JSON.stringify({schema:1,plugin:[],skill:[]}))
   await copyFile(new URL('../plugins/snapshot.mjs', import.meta.url), join(root, 'tools/plugins/snapshot.mjs'))
@@ -28,8 +40,8 @@ async function fixture(t) {
   await mkdir(store, { recursive: true })
   await writeFile(join(store, 'plugin.tgz'), archive)
   await writeFile(join(root, 'artifacts/release/plugins/plugin-packages.json'), JSON.stringify([{ ...record, path: join(store, 'plugin.tgz') }]))
-  await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', version: '8.3.0' }))
-  for (const file of ['incremental-build.mjs', 'clone-current-stage.mjs', 'materialize-tree.mjs', 'package-windows.mjs']) await copyFile(new URL(file, import.meta.url), join(root, 'tools/build', file))
+  await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', version: '8.3.0', description: 'fixture' }))
+  for (const file of ['incremental-build.mjs', 'clone-current-stage.mjs', 'materialize-tree.mjs', 'hardlink.mjs', 'package-windows.mjs', 'paths.cjs', 'stable-config.mjs', 'sync-desktop-release.mjs']) await copyFile(new URL(file, import.meta.url), join(root, 'tools/build', file))
   await writeFile(join(root, 'tools/build/build-lock.mjs'), 'export async function acquireBuildLock() { return async () => {} }')
   await writeFile(join(root, 'tools/build/assembly-cache.mjs'), 'export async function assembleRuntime() {}')
   await writeFile(join(root, 'tools/build/paths.mjs'), "import { join } from 'node:path'; export const root = join(import.meta.dirname, '../..'); export const contract = { cache: join(root, 'artifacts/cache') }")
@@ -39,12 +51,16 @@ async function fixture(t) {
       const pointer = JSON.parse(await readFile(join(root, 'artifacts/stage/8.3.0/current.json')));
       if (!process.env.PACKAGE_FLOW && pointer.buildId !== 'old-build') throw new Error('Candidate activated before freshness');
       await appendFile(join(root, 'calls.jsonl'), JSON.stringify(['freshness']) + '\\n');
+      if (process.env.FAKE_STALE_STAGE && pointer.buildId === 'old-build') throw new Error('Shared DSH runtime dependency is missing');
       if (process.env.FAKE_FAIL === 'freshness') throw new Error('Injected freshness failure');
     }
   `)
   await writeFile(join(root, 'tools/packaging/verify-bundled-resources.mjs'), `
-    import { appendFile } from 'node:fs/promises'; import { join } from 'node:path';
-    export async function verifyBundledResources({ root }) {
+    import { appendFile, readFile } from 'node:fs/promises'; import { join } from 'node:path';
+    export async function verifyBundledResources({ root, stage, release }) {
+      const version = JSON.parse(await readFile(join(root, 'package.json'))).version;
+      const pointer = JSON.parse(await readFile(join(root, 'artifacts/stage', version, 'current.json')));
+      if (stage !== join(root, 'artifacts/stage', version, pointer.buildId) || release !== join(root, 'artifacts/release', version)) throw new Error('Resource verification received stale paths');
       await appendFile(join(root, 'calls.jsonl'), JSON.stringify(['bundled-resources']) + '\\n');
       return { plugins: [], skills: [] };
     }
@@ -94,15 +110,23 @@ async function fixture(t) {
       const stage = join(versionRoot, process.env.ZEROWALL_BUILD_ID);
       writeFileSync(join(stage, 'plugin-snapshot.json'), JSON.stringify({ applicationVersion: '8.3.0', snapshotId: '${snapshotId}' }));
     }
+    if (args[0] === 'commands:prepare') {
+      const stage = join(versionRoot, process.env.ZEROWALL_BUILD_ID);
+      mkdirSync(join(stage, 'commands'), { recursive: true });
+      writeFileSync(join(stage, 'commands/offline-profile.mjs'), 'current desktop repair');
+    }
   `
   await writeFile(join(root, 'fake-pnpm.mjs'), command)
   await writeFile(join(root, 'tools/build/build-graph.mjs'), command)
   await writeFile(join(root, 'tools/build/prepare-native.mjs'), '')
+  await writeFile(join(root, 'tools/packaging/verify-runtime-adapters.mjs'), '')
   await writeFile(join(root, 'tools/packaging/write-runtime-integrity.mjs'), '')
   const versionRoot = join(root, 'artifacts/stage/8.3.0'), source = join(versionRoot, 'old-build')
   for (const folder of ['runtime', 'dsh', 'offline-profile']) await mkdir(join(source, folder), { recursive: true })
   for (const file of ['dsh/build-receipt.json', 'offline-profile/receipt.json', 'runtime/integrity-receipt.json']) await writeFile(join(source, file), '{}')
   await writeFile(join(source, 'runtime/build-receipt.json'), JSON.stringify({ applicationVersion: '8.3.0', commit: 'dsh', version: '0.2.0-rc.2' }))
+  await mkdir(join(source, 'commands'), { recursive: true })
+  await writeFile(join(source, 'commands/offline-profile.mjs'), 'old desktop repair')
   await writeFile(join(source, 'plugin-snapshot.json'), JSON.stringify({ applicationVersion: '8.3.0', snapshotId, plugins: [record] }))
   await mkdir(join(source, 'offline-profile/modules', record.id), { recursive: true })
   await writeFile(join(source, 'offline-profile/modules', record.id, 'package.json'), JSON.stringify({ name: record.id, version: record.version }))
@@ -129,10 +153,12 @@ test('consumer verifies freshness before activation and binds the final receipt 
   assert.equal(receipt.status, 'success')
   assert.equal(receipt.pluginSnapshotId, snapshotId)
   assert.equal(receipt.buildId, pointer.buildId)
-  assert.deepEqual(await f.calls(), [['version:check'], ['dsh:verify'], ['plugins:pack', '--consumer-only'], ['desktop'], ['freshness']])
+  assert.equal(await readFile(join(f.versionRoot, pointer.buildId, 'commands/offline-profile.mjs'), 'utf8'), 'current desktop repair')
+  assert.equal(await readFile(join(f.source, 'commands/offline-profile.mjs'), 'utf8'), 'old desktop repair')
+  assert.deepEqual(await f.calls(), [['version:check'], ['dsh:verify'], ['plugins:pack', '--consumer-only'], ['commands:prepare'], ['desktop'], ['freshness']])
 })
 
-for (const failure of ['plugins:pack', 'desktop', 'freshness']) test(`consumer ${failure} failure retains diagnostics and the previous active stage`, async t => {
+for (const failure of ['plugins:pack', 'commands:prepare', 'desktop', 'freshness']) test(`consumer ${failure} failure retains diagnostics and the previous active stage`, async t => {
   const f = await fixture(t)
   await assert.rejects(f.run('incremental-build.mjs', ['--consumer-only'], { FAKE_FAIL: failure }), /Injected/u)
   assert.equal(await readFile(join(f.versionRoot, 'current.json'), 'utf8'), f.pointer)
@@ -184,7 +210,7 @@ for (const state of ['success', 'missing', 'failed', 'wrong-version', 'wrong-bui
     await writeFile(file, JSON.stringify({ ...f.receipt, ...changes[state] }))
   }
   await assert.rejects(f.run('package-windows.mjs', [], { PACKAGE_GATE_ONLY: '1' }))
-  assert.deepEqual(await f.calls(), [state === 'success' ? ['build', '--consumer-only'] : ['build']])
+  assert.deepEqual(await f.calls(), state === 'success' ? [['freshness'], ['build', '--consumer-only']] : [['build']])
 })
 
 for (const change of ['new-version', 'new-plugin', 'missing-module', 'old-carrier']) test(`Windows packaging refreshes the assembly for ${change}`, async t => {
@@ -223,15 +249,40 @@ test('Windows packaging refreshes an outdated closure and consumes the latest se
   await writeFile(next.path, archive)
   await writeFile(path, JSON.stringify([...feed, next]))
   await f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'success' })
-  assert.deepEqual(await f.calls(), [['build'], ['build', '--consumer-only'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
+  assert.deepEqual(await f.calls(), [['build'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
   assert.deepEqual(await readFile(feed[0].path), archive)
   assert.deepEqual(await readFile(next.path), archive)
-  const installed = JSON.parse(await readFile(join(f.versionRoot, 'consumer-build/offline-profile/modules', next.id, 'package.json')))
+  const installed = JSON.parse(await readFile(join(f.versionRoot, 'assembled-build/offline-profile/modules', next.id, 'package.json')))
   assert.equal(installed.version, next.version)
 })
 
 test('a plugin feed change during consumer assembly prevents invoking Electron packaging', async t => {
   const f = await fixture(t)
   await assert.rejects(f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'race' }))
-  assert.deepEqual(await f.calls(), [['build', '--consumer-only']])
+  assert.deepEqual(await f.calls(), [['freshness'], ['build', '--consumer-only']])
+})
+
+test('packaging resolves final resource paths after config sync and consumer activation', async t => {
+  const f = await fixture(t)
+  await copyFile(new URL('paths.mjs', import.meta.url), join(f.root, 'tools/build/paths.mjs'))
+  await writeFile(join(f.root, 'package.json'), JSON.stringify({ type: 'module', version: '8.2.9', description: 'old manifest' }))
+  await f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'success' })
+  assert.equal(JSON.parse(await readFile(join(f.root, 'package.json'))).version, '8.3.0')
+  assert.deepEqual(await f.calls(), [['freshness'], ['build', '--consumer-only'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
+})
+
+test('Windows packaging rebuilds a stale shared runtime even when the signed plugin feed matches', async t => {
+  const f = await fixture(t)
+  await f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'success', FAKE_STALE_STAGE: '1' })
+  assert.deepEqual(await f.calls(), [['freshness'], ['build'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
+})
+
+test('stable packaging refuses an existing installer before any build or resource mutation', async t => {
+  const f = await fixture(t)
+  const output = join(f.root, 'artifacts/packages/8.3.0/windows-x64')
+  await mkdir(output, { recursive: true })
+  await writeFile(join(output, 'zerowall-science-8.3.0-win-x64.exe'), 'immutable installer')
+  await assert.rejects(f.run('package-windows.mjs'), /stable installer already exists/u)
+  await assert.rejects(f.calls(), { code: 'ENOENT' })
+  assert.equal(await readFile(join(output, 'zerowall-science-8.3.0-win-x64.exe'), 'utf8'), 'immutable installer')
 })

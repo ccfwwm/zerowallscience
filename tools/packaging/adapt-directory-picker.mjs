@@ -1,7 +1,9 @@
+import { assertPinnedDsh } from './adapt-reviewed-dsh.mjs'
+
 // Koffi 3.1.1 offers a copying UTF-16 decoder. Generic decoding of a
 // manufactured pointer buffer can request external memory in Electron.
 export function adaptDirectoryPicker(source, version) {
-  if (version !== '0.2.0-rc.2') throw new Error('Review the directory picker adaptation for this DSH version')
+  assertPinnedDsh(version, 'the directory picker adaptation')
   if (source.includes('ZeroWall UTF16 copy')) return source
   const reader = /function readUtf16\(koffi, address, pointerSize\) \{[\s\S]*?\n\}/u
   if (!reader.test(source) || !source.includes('pointer.writeBigUInt64LE')) throw new Error('Unrecognized Win32 UTF16 decoder')

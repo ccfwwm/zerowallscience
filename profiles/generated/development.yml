@@ -1,7 +1,7 @@
 version: 1
 id: zerowall-development
 channel: development
-dsh: 0.2.0-rc.2
+dsh: 0.2.1-rc.2
 plugins:
   - 'dsh-ssh-ops'
   - '@dingyi222666/dsh-session-notification'

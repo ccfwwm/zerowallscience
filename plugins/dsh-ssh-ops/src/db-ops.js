@@ -334,13 +334,24 @@ export class DbOpsManager {
     if (conn.dead) throw new Error(`SSH connection ${sshConnectionId} is dead`);
     return new Promise((resolve, reject) => {
       const server = net.createServer((socket) => {
-        conn.client.forwardOut("127.0.0.1", 0, dbHost, dbPort, (error, stream) => {
-          if (error) { socket.destroy(); return; }
-          stream.on("error", () => socket.destroy());
-          socket.on("error", () => stream.destroy());
-          socket.pipe(stream);
-          stream.pipe(socket);
-        });
+        // forwardOut throws synchronously ('Not connected') once the SSH
+        // transport is gone instead of reporting through the callback; that
+        // throw would escape this event callback and crash the host (#32).
+        try {
+          conn.client.forwardOut("127.0.0.1", 0, dbHost, dbPort, (error, stream) => {
+            if (error || socket.destroyed) {
+              socket.destroy();
+              stream?.destroy?.();
+              return;
+            }
+            stream.on("error", () => socket.destroy());
+            socket.on("error", () => stream.destroy());
+            socket.pipe(stream);
+            stream.pipe(socket);
+          });
+        } catch {
+          socket.destroy();
+        }
       });
       server.once("error", reject);
       server.listen(0, "127.0.0.1", () => {
@@ -521,6 +532,19 @@ export class DbOpsManager {
     }
     const target = `${record.config.host}:${record.config.port}`;
     this.warn(`database connection ${id} (${record.type} ${target}) dropped: ${error?.message ?? error}`);
+  }
+
+  /**
+   * Retire every database connection routed through an SSH connection that is
+   * going away. Their local listeners are independent of `conn.tunnels`, so
+   * leaving them behind would let a stale DB tunnel accept after its SSH
+   * transport has disappeared (or reconnected as a different client).
+   */
+  closeForSshConnection(sshConnectionId) {
+    for (const [id, record] of [...this.dbConnections.entries()]) {
+      if (record.config?.sshConnectionId !== sshConnectionId) continue;
+      this.handleDbTransportLoss(id, record.client, new Error(`SSH connection ${sshConnectionId} closed`));
+    }
   }
 
   warn(...args) {

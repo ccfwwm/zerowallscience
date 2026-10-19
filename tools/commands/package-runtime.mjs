@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { beginProfilePackageChange } from './profile-pnpm-transaction.mjs'
 
 /** Match the desktop's existing Roaming/new LocalAppData policy without creating directories. */
 export function resolveCommandUserData(env = process.env, userHome = homedir()) {
@@ -24,5 +25,6 @@ export function packageRuntime({ commandRoot = import.meta.dirname, executable =
     command: executable,
     args: ['--expose-internals', join(commandRoot, 'pnpm-executor.mjs'), pnpm],
     env: { ...(runAsNode ? { ELECTRON_RUN_AS_NODE: '1' } : {}), ZEROWALL_PNPM_NODE: executable },
+    beginTransaction: beginProfilePackageChange,
   }
 }

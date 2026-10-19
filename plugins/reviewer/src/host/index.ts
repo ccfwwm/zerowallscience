@@ -1,16 +1,19 @@
+import { reviewerModeOf, reviewerReportOf } from '../shared/records.js'
+import type { ReviewerStoredReport } from '../shared/records.js'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, LlmModelInfo } from '@deepseek-ai/dsh-llm'
-import { type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { appendPluginRecord, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { CommandResult } from '@deepseek-ai/dsh-commands'
 import type {} from '@deepseek-ai/dsh-subagent'
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 
 export const name = 'zerowall-reviewer'
-export const inject = ['settings', 'subagents', 'commands', 'llm']
+export const inject = ['settings', 'subagents', 'commands', 'llm', 'agentPresets', 'tools']
 export const REVIEWER_SETTINGS_NS = 'zerowall-reviewer' as SettingsNamespace
 export const REVIEWER_MESSAGE_SOURCE_KIND = 'plugin:zerowall-reviewer' as const
 
@@ -27,12 +30,7 @@ export type ReviewStatus = 'passed' | 'failed' | 'unreviewable' | 'error'
 export type EvidenceStatus = 'verified' | 'auto-repaired' | 'unverified' | 'legacy'
 export type ReviewerCoverageGapCode = 'tool-empty' | 'tool-truncated' | 'transcript-truncated' | 'finding-citation-unverified' | 'summary-citation-unverified'
 
-export interface ReviewerCoverageGap {
-  code: ReviewerCoverageGapCode
-  messageIndex?: number
-  seq?: number
-  detail?: string
-}
+export type ReviewerCoverageGap = NonNullable<ReviewerStoredReport['coverageGapDetails']>[number]
 
 export interface ReviewerSettings {
   autoReview: boolean
@@ -53,49 +51,15 @@ export const ReviewerSettingsSchema: z<ReviewerSettings> = z.object({
 })
 export const Config = ReviewerSettingsSchema.volatile()
 
-export interface ReviewFinding {
-  messageIndex: number
-  claim: string
-  evidence: string
-  reportedEvidence?: string
-  evidenceStatus?: EvidenceStatus
-  fix: string
-  verdict: 'warn' | 'fail' | 'inconclusive'
-  severity: 'low' | 'medium' | 'high'
-  status: 'open' | 'resolved' | 'unaddressed'
-}
+export type ReviewFinding = ReviewerStoredReport['findings'][number]
+export type ReviewReport = ReviewerStoredReport
 
-export interface ReviewReport {
-  id: string
-  turn: number
-  summary: string
-  findings: ReviewFinding[]
-  reviewerModel: string
-  reviewerEffort?: string
-  reviewerBackend: string
-  reviewStatus: ReviewStatus
-  evidenceCoverage: number
-  citationCoverage?: number
-  hasUnverifiedEvidence?: boolean
-  summaryEvidenceStatus?: 'verified' | 'unverified' | 'legacy'
-  coverageGaps: string[]
-  coverageGapDetails?: ReviewerCoverageGap[]
-  correction?: 'none' | 'requested' | 'completed'
-  reReviewed?: boolean
-}
-
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    'zerowall/reviewer/mode': { mode: ReviewerMode }
-    'zerowall/reviewer/report': ReviewReport
-  }
-}
 
 const PER_TOOL_CAP = 4_000
 const TOTAL_CAP = 80_000
 const MAX_FINDINGS = 8
 const REVIEW_TIMEOUT_MS = 60_000
-const ACTIVE_REVIEWER_PARENTS = new Map<string, string | undefined>()
+const REVIEWER_PRESET = 'zerowall-reviewer'
 const REVIEWER_PERSONA = `You are ZeroWall Science's independent Reviewer. Trace the supplied transcript only. Do not recompute or use outside knowledge. Every finding must cite a [msg:N ...] block and copy evidence verbatim from that block. Do not paraphrase evidence, add markdown wrappers, or invent text. If a concern cannot be supported by an exact transcript quote, still return the finding with the best reported evidence and let the host mark it unverified. Any factual statement in summary must be supported by summaryEvidence. Return only the requested structured object. Do not report correct work. IMPORTANT OUTPUT LANGUAGE: write summary, claim, and fix in Simplified Chinese. Keep evidence exactly as quoted from the transcript, even when the transcript is English. Do not write English explanations or headings.`
 const REVIEW_SCHEMA: ObjectJsonSchema = {
   type: 'object',
@@ -401,8 +365,8 @@ export function normalizeReport(
 }
 
 function latestMode(session: Session): ReviewerMode {
-  const event = [...session.snapshotEvents()].reverse().find(item => item.type === 'zerowall/reviewer/mode')
-  return event?.type === 'zerowall/reviewer/mode' ? event.data.mode : 'inherit'
+  const event = [...session.snapshotEvents()].reverse().map(reviewerModeOf).find(Boolean)
+  return event?.data.mode ?? 'inherit'
 }
 
 function effectiveEnabled(session: Session, settings: ReviewerSettings): boolean {
@@ -445,57 +409,41 @@ function reviewerModelCandidate(entry: LlmModelInfo): boolean {
 }
 
 async function runReview(ctx: Context, agent: Agent, events: readonly SessionEvent[], turn: number, signal: AbortSignal, settings: ReviewerSettings): Promise<ReviewReport> {
-  let model = currentModel(agent, events, settings)
+  const model = currentModel(agent, events, settings)
   if (model.options?.provider && model.options.model) {
-    try {
-      const models = await ctx.llm.listModels(model.options.provider)
-      if (!models.some((entry: LlmModelInfo) => entry.id === model.options?.model && reviewerModelCandidate(entry))) {
-        if (settings.modelMode !== 'fixed') throw new Error(`Reviewer model is unavailable: ${model.label}`)
-        model = currentModel(agent, events, { ...settings, modelMode: 'follow-session' })
-      }
-    } catch (error) {
-      if (settings.modelMode !== 'fixed') throw error
-      model = currentModel(agent, events, { ...settings, modelMode: 'follow-session' })
-    }
+    const models = await ctx.llm.listModels(model.options.provider)
+    if (!models.some((entry: LlmModelInfo) => entry.id === model.options?.model && reviewerModelCandidate(entry))) throw new Error(`Reviewer model is unavailable: ${model.label}`)
   }
   const evidence = assessEvidenceDetailed(events)
   const transcript = serializeTranscript(events)
   const prompt = `${REVIEWER_PERSONA}\n\nTranscript:\n${transcript}\n\nAssess every claim against cited tool evidence. Use messageIndex values from the transcript.`
   const timeout = AbortSignal.timeout(REVIEW_TIMEOUT_MS)
   const reviewSignal = AbortSignal.any([signal, timeout])
-  ACTIVE_REVIEWER_PARENTS.set(String(agent.id), model.effort)
-  let run
-  try {
-    run = await ctx.subagents.start('spawn', {
+  const run = await ctx.subagents.startActivation({
+    provider: 'spawn', label: 'ZeroWall Reviewer', delivery: 'caller', signal: reviewSignal,
+    request: {
       parent: agent,
-      signal: reviewSignal,
+      agentPreset: REVIEWER_PRESET,
       prompt: [{ type: 'text', text: prompt }],
-      persona: REVIEWER_PERSONA,
       outputSchema: REVIEW_SCHEMA,
-      // `structured_output` is attached by the in-process spawn driver as a
-      // child-local runtime tool, not a global registry entry. An allow-list
-      // naming it is rejected by tools.restrict() as an unknown global tool.
-      // Keep every global tool out of the reviewer while allowing the driver
-      // to add its scoped structured-output tool after composition.
-      toolFilter: { allow: [] },
-      ...(model.options === undefined ? {} : { agentOptions: model.options }),
-    })
-  } catch (error) {
-    ACTIVE_REVIEWER_PARENTS.delete(String(agent.id))
-    throw error
-  }
+      agentOptions: { ...model.options, ...(model.effort === undefined ? {} : { reasoningEffort: ReasoningEffortId(model.effort) }) },
+    },
+  })
+  const cancel = () => { void run.dispose().catch(error => ctx.logger.warn('Reviewer cancellation failed', error)) }
+  reviewSignal.addEventListener('abort', cancel, { once: true })
   try {
+    if (reviewSignal.aborted) { await run.dispose(); reviewSignal.throwIfAborted() }
     const result = await run.result
     if (result.stopReason !== 'completed' || result.structured === undefined) throw new Error(`Reviewer child ended with ${result.stopReason}.`)
     return normalizeReport(result.structured, model.label, evidence, turn, transcript, model.effort)
   } finally {
-    ACTIVE_REVIEWER_PARENTS.delete(String(agent.id))
+    reviewSignal.removeEventListener('abort', cancel)
     await run.dispose()
   }
 }
 
 function appendReport(session: Session, report: ReviewReport): void {
-  session.append('zerowall/reviewer/report', report, { ignorable: true })
+  appendPluginRecord(session, 'plugin:zerowall/reviewer/report', report)
 }
 
 function correctionPrompt(report: ReviewReport): string {
@@ -510,6 +458,13 @@ export function canAutoCorrect(report: ReviewReport): boolean {
 }
 
 export function apply(ctx: Context, config: ReviewerSettings): void {
+  ctx.effect(() => ctx.agentPresets.register({
+    id: REVIEWER_PRESET, name: 'ZeroWall Reviewer',
+    plugins: [{ name: '@deepseek-ai/dsh-persona', config: { prefix: REVIEWER_PERSONA, complete: true, includeRuntimeContext: false } }],
+  }), 'reviewer.preset')
+  ctx.on('agent/created', ({ agent }) => {
+    if (agent.session.header.agentPreset === REVIEWER_PRESET) agent.ctx.tools.restrict({ allow: [] })
+  })
   let settings = config
   ctx.on('settings/document-updated', (ns) => {
     if (ns !== REVIEWER_SETTINGS_NS) return
@@ -525,13 +480,6 @@ export function apply(ctx: Context, config: ReviewerSettings): void {
       ctx.logger.warn(`Reviewer settings migration failed: ${error instanceof Error ? error.message : String(error)}`)
     })
   }
-  ctx.on('agent/request', async ({ agent }, next) => {
-    const parent = agent.session.header.parentSession
-    if (parent === undefined || !ACTIVE_REVIEWER_PARENTS.has(String(parent))) return await next()
-    const config = await next()
-    const effort = ACTIVE_REVIEWER_PARENTS.get(String(parent))
-    return effort === undefined ? config : { ...config, reasoningEffort: ReasoningEffortId(effort) }
-  })
   const review = async (agent: Agent, turn: number, signal: AbortSignal, allowCorrection: boolean): Promise<ReviewReport | undefined> => {
     const events = currentTurnEvents(agent.session, turn)
     if (events.length === 0) return undefined
@@ -560,8 +508,8 @@ export function apply(ctx: Context, config: ReviewerSettings): void {
 
   ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
     if (agent.session.header.parentSession !== undefined || agent.session.header.origin === 'subagent') return
-    const prior = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'zerowall/reviewer/report' && event.data.turn === turn)
-    if (prior?.type === 'zerowall/reviewer/report') {
+    const prior = [...agent.session.snapshotEvents()].reverse().map(reviewerReportOf).find(event => event?.data.turn === turn)
+    if (prior) {
       if (prior.data.reReviewed === true || prior.data.correction !== 'requested') return
       try {
         const followUp = await runReview(ctx, agent, currentTurnEvents(agent.session, turn), turn, signal, settings)
@@ -611,7 +559,7 @@ export function apply(ctx: Context, config: ReviewerSettings): void {
   command('review', async (agent, raw, signal) => {
     const action = raw.trim().split(/\s+/u)[0] || 'status'
     if (action === 'on' || action === 'off' || action === 'follow') {
-      agent.session.append('zerowall/reviewer/mode', { mode: action === 'follow' ? 'inherit' : action }, { ignorable: true })
+      appendPluginRecord(agent.session, 'plugin:zerowall/reviewer/mode', { mode: action === 'follow' ? 'inherit' : action })
       const label = action === 'on' ? '本会话已开启审核' : action === 'off' ? '本会话已关闭审核' : '已跟随审核设置'
       return { kind: 'success', text: label }
     }

@@ -119,7 +119,16 @@ export interface Agent {
   session?: AgentSession;
   followup(message: UserMessage): void;
   steer(message: UserMessage): void;
-  cancel(cause: string, options?: { keepInbox?: boolean }): void;
+  /**
+   * Cancel the running turn. DSH 0.2.x validates the cause at runtime
+   * (`abortedCancelCause` ends in `assertNever`), so the object union is
+   * required — the pre-0.2 `"user-stop"` string now throws
+   * `unreachable variant` from the agent loop.
+   */
+  cancel(
+    cause: { kind: "user" } | { kind: "parent" } | { kind: "hook"; reason: string } | { kind: "disposed" },
+    options?: { keepInbox?: boolean },
+  ): void;
   whenIdle(): Promise<void>;
   /**
    * Run a non-turn maintenance operation only while the agent is idle. Used by

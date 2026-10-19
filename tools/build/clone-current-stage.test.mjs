@@ -46,6 +46,7 @@ test('clones the active runtime stage under a new build ID and switches the poin
     })
     assert.equal(cloneReceipt.materialization.mode, 'mixed')
     assert.equal((await stat(join(source, 'runtime/payload.bin'))).ino, (await stat(join(result.stage, 'runtime/payload.bin'))).ino)
+    assert.equal((await stat(join(source, 'resources/extensions/skills/example/SKILL.md'))).ino, (await stat(join(result.stage, 'resources/extensions/skills/example/SKILL.md'))).ino)
     assert.notEqual((await stat(join(source, 'runtime/build-receipt.json'))).ino, (await stat(join(result.stage, 'runtime/build-receipt.json'))).ino)
     await writeFile(join(result.stage, 'runtime/build-receipt.json'), JSON.stringify({
       commit: 'new-commit', version: '0.2.0-rc.2', applicationVersion: '8.0.7',

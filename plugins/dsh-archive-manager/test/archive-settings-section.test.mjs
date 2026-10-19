@@ -8,7 +8,7 @@ const clientPath = fileURLToPath(new URL("../src/client.ts", import.meta.url));
 test("归档入口注册在设置的连接器之后，并移除旧的视图选项入口", async () => {
   const client = await readFile(clientPath, "utf8");
 
-  assert.match(client, /name: "settings\.section",[\s\S]*id: "archived-sessions",[\s\S]*order: 18/);
+  assert.match(client, /name: "settings\.section",[\s\S]*id: "archived-sessions",[\s\S]*order: 45/);
   assert.match(client, /id: "archived-sessions",[\s\S]*icon: "archive"/);
   assert.match(client, /ArchivedSessionsSection/);
   assert.doesNotMatch(client, /id: "show-archived"/);
@@ -46,19 +46,18 @@ test("归档设置页在标题区提供项目与反馈入口，不混入批量�
   const client = await readFile(clientPath, "utf8");
 
   assert.match(client, /className: "dsham_settingsTitleRow"/);
-  assert.match(client, /href: "https:\/\/github\.com\/MichengAI\/dsh-archive-manager"/);
+  assert.match(client, /https:\/\/github\.com\/MichengAI\/dsh-archive-manager/);
   assert.match(client, /function GithubMark16\(\)/);
   assert.match(client, /GithubMark16, \{\}/);
-  assert.match(client, /href: "https:\/\/github\.com\/MichengAI\/dsh-archive-manager\/issues"/);
-  assert.match(client, /IconListPenOutline16/);
+  assert.match(client, /https:\/\/github\.com\/MichengAI\/dsh-archive-manager\/issues/);
+  assert.match(client, /FeedbackIcon/);
   assert.doesNotMatch(client, /IconDislikeOutline16/);
-  assert.match(client, /target: "_blank", rel: "noreferrer"/);
   assert.match(client, /"archives\.viewProject": "GitHub"/);
-  assert.equal((client.match(/"archives\.viewProject": "GitHub"/g) ?? []).length, 2);
+  assert.equal((client.match(/"archives\.viewProject": "GitHub"/g) ?? []).length, 3);
   assert.match(client, /"archives\.feedback": "问题反馈"/);
   assert.match(client, /"archives\.feedback": "Issues"/);
   assert.equal((client.match(/className: "dsham_settingsTitleRow"/g) ?? []).length, 1);
-  assert.equal((client.match(/href: "https:\/\/github\.com\/MichengAI\/dsh-archive-manager\/issues"/g) ?? []).length, 1);
+  assert.equal((client.match(/https:\/\/github\.com\/MichengAI\/dsh-archive-manager\/issues/g) ?? []).length, 1);
   assert.doesNotMatch(client, /dsham_settingsHeaderActions[\s\S]{0,700}archives\.viewProject/);
 });
 
@@ -117,7 +116,8 @@ test("归档设置页下拉菜单不强制宿主主题", async () => {
   const client = await readFile(clientPath, "utf8");
 
   assert.doesNotMatch(client, /\.dsham_settingsFilter\{color-scheme:/);
-  assert.match(client, /AntdProvider/);
+  assert.doesNotMatch(client, /AntdProvider/);
+  assert.match(client, /SegmentedTabs/);
 });
 
 test("单条删除与批量删除分别调用宿主单会话和作用域接口", async () => {
@@ -164,11 +164,11 @@ test("删除文案中英键齐全，并统一使用子代理用语", async () =>
   assert.match(client, /showArchivedToast\(formatUnarchiveError/);
 });
 
-test("归档设置页筛选使用 Ant Design 下拉，而不是原生 select", async () => {
+test("归档设置页筛选使用宿主官方原语 Menu，而不是原生 select 或 AntdSelect", async () => {
   const client = await readFile(clientPath, "utf8");
 
   assert.match(client, /function ArchiveProjectSelect/);
-  assert.match(client, /AntdSelect/);
+  assert.match(client, /Menu/);
   assert.doesNotMatch(client, /className: "dsham_selectMenu"/);
   assert.doesNotMatch(client, /\.dsham_selectMenu\{/);
   assert.doesNotMatch(client, /\.dsham_selectOption/);
@@ -191,8 +191,8 @@ test("每个项目分组提供恢复全部与删除全部菜单", async () => {
   assert.match(client, /function ArchivedGroupActions/);
   assert.match(client, /archives\.restoreProject/);
   assert.match(client, /archives\.deleteProject/);
-  assert.match(client, /id: "restore",[\s\S]*IconRefreshOutline16/);
-  assert.match(client, /IconEllipsisOutline16/);
+  assert.match(client, /id: "restore",[\s\S]*?IconUnarchiveOutlineMedium/);
+  assert.match(client, /IconEllipsisOutlineMedium/);
   assert.match(client, /archivedBatchTargetForGroup\(group\.key\)/);
   assert.match(client, /archives\.deleteProjectDesc/);
 });

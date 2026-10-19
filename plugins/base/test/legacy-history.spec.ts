@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import { SESSION_FORMAT_VERSION, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
-import JsonlSessionPersistence from '../../../deepseek-harness/packages/session/session-persistence-jsonl/src/index.ts'
+import * as JsonlSessionPersistence from '../../../deepseek-harness/packages/session/session-persistence-jsonl/src/index.ts'
 import { generationLogPath } from '../../../deepseek-harness/packages/session/session-persistence-jsonl/src/format.ts'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

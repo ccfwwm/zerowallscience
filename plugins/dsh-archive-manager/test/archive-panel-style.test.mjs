@@ -15,68 +15,63 @@ test("归档会话使用卡片布局，并始终显示恢复与删除操作", as
   assert.match(client, /background:var\(--dsw-alias-button-elevated-fill\)/);
 });
 
-test("设置页 antd 别名令牌映射到宿主 --dsw-alias-*，不沿用 antd 自带深色面色", async () => {
-  const antdUi = await readFile(new URL("../src/antd-ui.ts", import.meta.url), "utf8");
-
-  // 面色、边框、文字必须走宿主令牌：antd 暗色层阶方向与宿主相反。
-  assert.match(antdUi, /colorBgContainer:\s*"var\(--dsw-alias-bg-layer-3\)"/);
-  assert.match(antdUi, /colorBgElevated:\s*"var\(--dsw-alias-button-elevated-fill\)"/);
-  assert.doesNotMatch(antdUi, /colorBgElevated:\s*"var\(--dsw-alias-bg-layer-3\)"/);
-  assert.match(antdUi, /colorText:\s*"var\(--dsw-alias-label-primary\)"/);
-  assert.match(antdUi, /colorBorder:\s*"var\(--dsw-alias-border-l3\)"/);
-  // 主色是颜色推导种子，必须是具体色值：给 CSS 变量会让 hover/active 退化成近黑。
-  assert.match(antdUi, /hostPrimary = \{ light: "#4176e6", dark: "#7aaaff", active: "#4868b2" \}/);
-  assert.doesNotMatch(antdUi, /colorPrimary:\s*"var\(/);
+test("设置页不再桥接 Ant，控件直接使用宿主原语和令牌", async () => {
+  const client = await readFile(clientPath, "utf8");
+  const discovery = await readFile(new URL("../src/archive-discovery-ui.ts", import.meta.url), "utf8");
+  const organizer = await readFile(new URL("../src/archive-organizer-ui.ts", import.meta.url), "utf8");
+  for (const source of [client, discovery, organizer]) {
+    assert.doesNotMatch(source, /from ["']antd|antd-ui\.js|from ["']dayjs/);
+  }
+  assert.match(client, /SegmentedTabs/);
+  assert.match(client, /dsham_modalDialog/);
+  assert.match(client, /--dsw-radius-panel/);
+  assert.match(client, /--dsw-alias-bg-layer-2/);
+  assert.match(discovery, /SegmentedControl/);
+  assert.match(organizer, /NumberField/);
 });
 
-test("深色主色在算法之后仍是宿主 info 色，浮层比输入框亮一级", async () => {
-  const [{ default: getDesignToken }, theme] = await Promise.all([
-    import("antd/es/theme/getDesignToken.js"),
-    import("../src/antd-ui.ts"),
-  ]);
-  const dark = getDesignToken({
-    algorithm: theme.hostThemeAlgorithm(true),
-    token: { ...theme.hostAliasTokens, colorPrimary: theme.hostPrimary.dark },
-  });
-  const light = getDesignToken({
-    algorithm: theme.hostThemeAlgorithm(false),
-    token: { ...theme.hostAliasTokens, colorPrimary: theme.hostPrimary.light },
-  });
+test("图标按钮样式全局注入，侧栏卡片不依赖设置页先渲染", async () => {
+  const client = await readFile(clientPath, "utf8");
+  const settingsStart = client.indexOf("const ARCHIVE_SETTINGS_CSS = [");
+  const settingsCss = client.slice(settingsStart, client.indexOf('].join("");', settingsStart));
 
-  assert.equal(dark.colorPrimary, "#7aaaff");
-  assert.equal(dark.colorPrimaryHover, "#4176e6");
-  assert.equal(dark.colorPrimaryActive, "#4868b2");
-  assert.equal(dark.colorLink, "#7aaaff");
-  assert.equal(light.colorPrimary, "#4176e6");
-  assert.equal(light.colorPrimaryHover, "#7aaaff");
-  assert.equal(dark.colorBgElevated, "var(--dsw-alias-button-elevated-fill)");
-  assert.equal(dark.colorBgContainer, "var(--dsw-alias-bg-layer-3)");
-  assert.notEqual(dark.colorBgElevated, dark.colorBgContainer);
+  // 侧栏归档卡片与设置页共用图标按钮类，样式必须挂在启动时注入的全局 style 上。
+  assert.match(client, /dsh-archive-manager\/IconAction\.css/);
+  assert.match(client, /const ICON_ACTION_CSS = "\.dsham_iconAction\{[^"]*display:inline-flex/);
+  assert.doesNotMatch(settingsCss, /dsham_iconAction/);
+  assert.doesNotMatch(client, /dsham_archiveCardDelete/);
 });
 
-test("分段控件轨道与选中块分属不同层级，选中态在亮暗下都可见", async () => {
-  const antdUi = await readFile(new URL("../src/antd-ui.ts", import.meta.url), "utf8");
-
-  // antd 默认 trackBg 取 colorBgLayout（暗色下纯黑），是面板里最扎眼的黑带。
-  assert.match(antdUi, /trackBg:\s*"var\(--dsw-alias-bg-module-platform/);
-  // 暗色下 bg-module-platform 与 bg-layer-3 同为 #353638；选中块必须再上一级，
-  // 否则轨道与选中块同色，用户看不出选中项。
-  assert.match(antdUi, /itemSelectedBg:\s*"var\(--dsw-alias-button-elevated-fill\)"/);
-  assert.doesNotMatch(antdUi, /itemSelectedBg:\s*"var\(--dsw-alias-bg-layer-3\)"/);
+test("模态与侧栏确认卡片样式全局注入，侧栏删除不依赖设置页渲染 (Issue #59 / #60)", async () => {
+  const client = await readFile(clientPath, "utf8");
+  assert.match(client, /dsh-archive-manager\/Modal\.css/);
+  assert.match(client, /dsh-archive-manager\/SidebarPopover\.css/);
+  assert.match(client, /dsham_sidebarCardRoot/);
+  assert.match(client, /dsham_sidebarCardBtnCancel/);
 });
 
-test("归档设置页删除确认使用红色危险样式", async () => {
+test("删除与停止确认用红色描边按钮，对齐宿主警告样式", async () => {
   const client = await readFile(clientPath, "utf8");
 
-  assert.match(client, /danger: true, disabled: busy, onClick: confirmDelete/);
+  assert.match(client, /modalFooterButton\(\{ danger: true, disabled: busy, onClick: confirmDelete/);
+  assert.match(client, /\.dsham_btnDanger:not\(:disabled\)\{[^}]*color:var\(--dsw-alias-state-error-primary/);
+  assert.doesNotMatch(client, /variant: "primary", disabled: busy, onClick: confirmDelete/);
+  assert.doesNotMatch(client, /dsham_modalDanger/);
   assert.doesNotMatch(client, /dsham_settingsDeleteConfirm/);
 });
 
-test("全部归档确认使用红色提示样式", async () => {
+test("弹窗底部按钮用宿主默认尺寸，危险操作统一自带红色描边类", async () => {
   const client = await readFile(clientPath, "utf8");
+  const helper = client.slice(client.indexOf("function modalFooterButton"), client.indexOf("function tabsShell"));
 
-  assert.match(client, /className: "dsham_archiveWorkspaceConfirm"/);
-  assert.match(client, /\.dsham_archiveWorkspaceConfirm\{color:var\(--dsw-alias-state-error-primary\)!important;background:transparent!important;border-color:var\(--dsw-alias-state-error-primary\)!important/);
-  assert.match(client, /\.dsham_archiveWorkspaceConfirm:hover:not\(:disabled\)\{background:color-mix\(in srgb,var\(--dsw-alias-state-error-primary\) 20%,transparent\)!important\}/);
-  assert.match(client, /\.dsham_archiveWorkspaceConfirm:focus-visible\{outline:2px solid var\(--dsw-alias-state-error-secondary\);outline-offset:2px\}/);
+  assert.match(helper, /function modalFooterButton/);
+  assert.doesNotMatch(helper, /size:/);
+  assert.match(helper, /danger \? "outline" : variant/);
+  assert.match(helper, /danger \? "dsham_btnDanger" : undefined/);
+  assert.match(client, /modalFooterButton\(\{ variant: "primary"/);
+  assert.doesNotMatch(client, /dsham_modalDanger/);
+  // 宿主哈希类名随版本漂移，不能再引用，否则红色在运行时悄悄失效。
+  assert.doesNotMatch(client, /WorkspaceBrowser_module_css_default\.deleteAction/);
+  assert.doesNotMatch(client, /dsham_archiveWorkspaceConfirm/);
+  assert.doesNotMatch(client, /border-color:var\(--dsw-alias-state-error-primary\)!important/);
 });

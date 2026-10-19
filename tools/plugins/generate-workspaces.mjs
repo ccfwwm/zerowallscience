@@ -13,6 +13,31 @@ async function writeFile(path, content) {
 }
 const rootPackage = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const applicationVersion = String(rootPackage.version)
+const upstream = JSON.parse(await readFile(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8'))
+const dshPin = JSON.parse(await readFile(resolve(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
+const runtimeDependencies = JSON.parse(await readFile(resolve(root, 'config/build/runtime-dependencies.json'), 'utf8'))
+const integrityFile = resolve(root, 'plugins/integrity-runtime/package.json')
+const integrityManifest = JSON.parse(await readFile(integrityFile, 'utf8'))
+integrityManifest.dependencies.sharp = runtimeDependencies.sharp
+await writeFile(integrityFile, JSON.stringify(integrityManifest, null, 2) + '\n')
+const cordisVersion = JSON.parse(await readFile(resolve(root, 'deepseek-harness/vendor/cordis/package.json'), 'utf8')).version
+const schemaVersion = JSON.parse(await readFile(resolve(root, 'deepseek-harness/vendor/schemastery/package.json'), 'utf8')).version
+const mcpClientDependencies = JSON.parse(await readFile(resolve(root, 'deepseek-harness/packages/mcp/mcp-client/package.json'), 'utf8')).dependencies
+const officeSource = 'github:kw78/dsh-office-tools#' + upstream.officeTools.commit
+for (const source of Object.values(upstream)) {
+  if (!source?.source?.startsWith('plugins/')) continue
+  const packageFile = resolve(root, source.source, 'package.json')
+  const manifest = JSON.parse(await readFile(packageFile, 'utf8'))
+  manifest.packageManager = rootPackage.packageManager
+  await writeFile(packageFile, JSON.stringify(manifest, null, 2) + '\n')
+  const file = resolve(root, source.source, 'dsh.plugin.json')
+  const text = await readFile(file, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error })
+  if (text === undefined) continue
+  const registry = JSON.parse(text)
+  registry.version = manifest.version
+  registry.engines = { ...registry.engines, dsh: dshPin.version }
+  await writeFile(file, JSON.stringify(registry, null, 2) + '\n')
+}
 const migrationBaseline = '0.1.0'
 const hostCompilerOptions = JSON.parse(await readFile(resolve(root, 'tsconfig.plugin.host.json'), 'utf8')).compilerOptions
 const clientInject = [
@@ -56,7 +81,7 @@ const externalClientDependencies = {
   // ZeroWall compatibility changes are reproducible without overwriting the
   // custom host integration with a remote package snapshot.
   'dsh-better-sidebar': 'workspace:^',
-  'dsh-dream-skin': '10.9.3',
+  'dsh-dream-skin': upstream.dreamSkin.version,
 }
 
 const dshDependencies = {
@@ -109,16 +134,16 @@ const npmDependencies = {
   base: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   projects: { '@deepseek-ai/dsh-session-format-catalog': 'workspace:^', '@deepseek-ai/dsh-session-persistence-jsonl': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   account: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
-  files: { '@open-file-viewer/core': '0.1.49', 'viewer-pdfjs': 'npm:pdfjs-dist@6.3.289', '@deepseek-ai/dsh-api-workspace-files': 'workspace:^', '@deepseek-ai/dsh-office-to-pdf': 'workspace:^', '@deepseek-ai/dsh-client-ui-sidebar-right': 'workspace:^', '@deepseek-ai/dsh-client-file-upload': 'workspace:^', 'dsh-office-tools': 'github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb', jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
-  images: { sharp: '^0.35.3', '@xmldom/xmldom': '0.9.12', fflate: '0.8.3', 'lucide-react': '^0.468.0', react: '^18.2.0', yaml: '2.8.1' },
+  files: { '@open-file-viewer/core': '0.1.49', 'viewer-pdfjs': 'npm:pdfjs-dist@6.3.289', '@deepseek-ai/dsh-api-workspace-files': 'workspace:^', '@deepseek-ai/dsh-office-to-pdf': 'workspace:^', '@deepseek-ai/dsh-client-ui-sidebar-right': 'workspace:^', '@deepseek-ai/dsh-client-file-upload': 'workspace:^', 'dsh-office-tools': officeSource, jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
+  images: { sharp: runtimeDependencies.sharp, '@xmldom/xmldom': '0.9.12', fflate: '0.8.3', 'lucide-react': '^0.468.0', react: '^18.2.0', yaml: '2.8.1' },
   mcp: { '@zerowallscience/plugin-secrets': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   skills: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   'extension-center': { 'lucide-react': '^0.468.0', react: '^18.2.0' },
-  reviewer: { 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
+  reviewer: { '@deepseek-ai/dsh-agent-preset-registry': 'workspace:^', '@deepseek-ai/dsh-persona': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
   environment: { 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
   mineru: { jszip: '3.10.1', 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
   singlecell: { 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },
-  research: { '@zerowallscience/research-store': 'workspace:^', 'fast-xml-parser': '^5.11.0', 'lucide-react': '^0.468.0', molstar: '5.11.0', react: '^18.2.0', 'react-dom': '^18.2.0', sharp: '0.35.3', zod: '^4.4.3' },
+  research: { '@zerowallscience/research-store': 'workspace:^', 'fast-xml-parser': '^5.11.0', 'lucide-react': '^0.468.0', molstar: '5.11.0', react: '^18.2.0', 'react-dom': '^18.2.0', sharp: runtimeDependencies.sharp, zod: '^4.4.3' },
   execution: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   runs: { '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
   publications: { '@zerowallscience/research-store': 'workspace:^', jszip: '3.10.1', zod: '^4.4.3' },
@@ -148,7 +173,7 @@ const plugins = [
   { id: 'mcp', client: true, remote: true, capabilities: ['mcp'], permissions: ['files', 'network', 'credentials'], dependencies: ['projects', 'base', 'secrets'], requiredServices: ['zerowallProjects', 'tools'] },
   { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'], requiredServices: ['skills', 'systemPrompt'] },
   { id: 'extension-center', client: true, capabilities: ['resource-management', 'plugin-updates', 'skill-updates', 'mcp-updates'], permissions: ['files', 'network'], dependencies: ['base'], requiredServices: [] },
-  { id: 'reviewer', client: true, capabilities: ['reviewer'], permissions: ['approvals'], dependencies: ['base'], requiredServices: ['settings', 'subagents', 'commands', 'llm'] },
+  { id: 'reviewer', client: true, capabilities: ['reviewer'], permissions: ['approvals'], dependencies: ['base'], requiredServices: ['settings', 'subagents', 'commands', 'llm', 'agentPresets', 'tools'] },
   { id: 'research', client: true, remote: true, capabilities: ['research', 'data-assets', 'artifacts'], permissions: ['files'], dependencies: ['projects', 'base'], requiredServices: ['tools'], optionalServices: ['webServer'] },
   { id: 'mineru', client: true, remote: true, capabilities: ['document-parsing', 'artifacts'], permissions: ['files', 'network', 'attachments', 'credentials', 'processes'], dependencies: ['secrets', 'files', 'research', 'base'], requiredServices: ['tools', 'sessions', 'zerowallFiles', 'zerowallResearch'], optionalServices: ['webServer', 'zerowallExecution', 'zerowallRuns'] },
   { id: 'singlecell', client: true, remote: true, capabilities: ['singlecell-analysis', 'public-data-acquisition', 'scTenifoldKnk', 'analysis-workflow'], permissions: ['files', 'network', 'attachments', 'processes', 'approvals'], dependencies: ['base', 'files', 'projects', 'research', 'runs'], requiredServices: ['tools', 'sessions'], optionalServices: ['zerowallFiles', 'zerowallProjects', 'zerowallResearch', 'zerowallRuns', 'webServer'] },
@@ -211,7 +236,7 @@ for (const plugin of plugins) {
     },
     zerowall: {
       desktop: previous.zerowall?.desktop ?? { min: '8.0.0' },
-      dsh: { min: '0.2.0-rc.2', max: '0.2.0-rc.2' },
+      dsh: { min: dshPin.version, max: dshPin.version },
       requiredServices: plugin.requiredServices ?? [],
       optionalServices: plugin.optionalServices ?? [],
       capabilities: plugin.capabilities,
@@ -230,7 +255,7 @@ for (const plugin of plugins) {
         : 'tsc -p tsconfig.host.json --noEmit',
       test: `vitest run --config ../../vitest.plugins.config.ts${['skills', 'research'].includes(plugin.id) ? ' --no-file-parallelism' : ''}`,
     },
-    publishConfig: { directory: `../../artifacts/dev/publish/plugin-${plugin.id}` },
+    publishConfig: { directory: `../../artifacts/dev/publish/plugin-${plugin.id}`, linkDirectory: false },
     license: 'AGPL-3.0-only',
     files: [
       'lib', 'src',
@@ -248,15 +273,15 @@ for (const plugin of plugins) {
     ],
     dependencies: {
     ...dshDependencies,
-    ...(plugin.id === 'files' ? { '@deepseek-ai/dsh-fs': 'workspace:^', 'dsh-office-tools': 'github:kw78/dsh-office-tools#d92ac3863ece6248a5f8c1e4aa1958a60b8aaccb' } : {}),
+    ...(plugin.id === 'files' ? { '@deepseek-ai/dsh-fs': 'workspace:^', 'dsh-office-tools': officeSource } : {}),
       ...(plugin.client && !['base', 'environment', 'extension-center'].includes(plugin.id) ? externalClientDependencies : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),
       ...(plugin.id === 'images' ? { '@zerowallscience/plugin-ai-cloud': '^0.1.20' } : {}),
       ...(npmDependencies[plugin.id] ?? {}),
-      ...(plugin.id === 'mcp' ? { '@modelcontextprotocol/sdk': '1.30.0', '@modelcontextprotocol/client': '2.0.0' } : {}),
+        ...(plugin.id === 'mcp' ? { '@modelcontextprotocol/client': mcpClientDependencies['@modelcontextprotocol/client'] } : {}),
     },
     peerDependencies: {
-      '@deepseek-ai/cordis': '4.0.4',
+      '@deepseek-ai/cordis': cordisVersion,
     },
     devDependencies: {
       ...(plugin.id === 'base' ? { '@deepseek-ai/dsh-scope': 'workspace:^' } : {}),
@@ -268,7 +293,7 @@ for (const plugin of plugins) {
   }
   for (const [dependency, range] of Object.entries(packageJson.dependencies)) {
     if (!dependency.startsWith('@deepseek-ai/')) continue
-    packageJson.peerDependencies[dependency] = dependency === '@deepseek-ai/cordis' ? '4.0.4' : dependency === '@deepseek-ai/schemastery' ? '3.18.4' : '0.2.0-rc.2'
+    packageJson.peerDependencies[dependency] = dependency === '@deepseek-ai/cordis' ? cordisVersion : dependency === '@deepseek-ai/schemastery' ? schemaVersion : dshPin.version
     packageJson.devDependencies[dependency] = range
     delete packageJson.dependencies[dependency]
   }

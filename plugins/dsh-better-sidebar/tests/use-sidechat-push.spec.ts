@@ -3,12 +3,18 @@
  * tab, opened under `/sidebar/ws/sidechat`, whose `watch` frames carry the
  * WHOLE subscription set (a replacement, never an incremental add), whose
  * notices are routed to `onInvalidate` for WATCHED ids only, and which does
- * not exist at all while the id list is empty.
+ * not exist at all while the id list is empty or the tab is parked.
  *
  * The identity guard mirrors the fs-watch hook's: the wanted set derives from
  * the CONTENT of the id list (a NUL-joined key), so a caller re-rendering
  * with a fresh array of the same ids neither reopens the socket nor re-sends
  * the watch frame.
+ *
+ * The visibility gate: the host keeps every visited tab body mounted, so a
+ * parked side-chat tab must hold no socket (and must ignore a late notice
+ * from the one it dropped — re-pulling there is a transcript request for a
+ * panel nobody can see). Coming back subscribes again immediately and pulls
+ * once, because the host's notices during the parked window went nowhere.
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -50,32 +56,38 @@ class FakeSocket {
   }
 }
 
-function Probe(props: { threadIds: string[]; onInvalidate: (id: string) => void }): ReactNode {
-  useSidechatPush({ threadIds: props.threadIds, onInvalidate: props.onInvalidate })
+function Probe(props: { threadIds: string[]; visible: boolean; onInvalidate: (id: string) => void }): ReactNode {
+  useSidechatPush({ threadIds: props.threadIds, visible: props.visible, onInvalidate: props.onInvalidate })
   return null
 }
 
 interface Harness {
-  rerender: (threadIds: string[]) => void
+  rerender: (threadIds: string[], visible?: boolean) => void
   /** The single open socket; throws when the list was empty. */
   socket: () => FakeSocket
   unmount: () => void
 }
 
-function mountProbe(onInvalidate: (id: string) => void, initial: string[] = ['t1']): Harness {
+function mountProbe(
+  onInvalidate: (id: string) => void,
+  initial: string[] = ['t1'],
+  visible = true,
+): Harness {
   const container = document.createElement('div')
   document.body.append(container)
-  const root: Root = createRoot(container)
-  const render = (threadIds: string[]): void => { root.render(createElement(Probe, { threadIds, onInvalidate })) }
-  act(() => { render(initial) })
+  const reactRoot: Root = createRoot(container)
+  const render = (threadIds: string[], shown: boolean): void => {
+    reactRoot.render(createElement(Probe, { threadIds, visible: shown, onInvalidate }))
+  }
+  act(() => { render(initial, visible) })
   return {
-    rerender: (threadIds: string[]) => { act(() => { render(threadIds) }) },
+    rerender: (threadIds: string[], shown = visible) => { act(() => { render(threadIds, shown) }) },
     socket: () => {
       const socket = FakeSocket.instances[0]
       if (socket === undefined) throw new Error('no socket opened')
       return socket
     },
-    unmount: () => { act(() => { root.unmount() }); container.remove() },
+    unmount: () => { act(() => { reactRoot.unmount() }); container.remove() },
   }
 }
 
@@ -161,5 +173,51 @@ describe('useSidechatPush', () => {
     act(() => { socket.open() })
     harness.unmount()
     expect(socket.closed).toBe(true)
+  })
+
+  it('holds no socket while parked, and a late notice from the dropped one pulls nothing', () => {
+    const onInvalidate = vi.fn()
+    // Parked from the start: not subscribed at all.
+    const parked = mountProbe(onInvalidate, ['t1'], false)
+    expect(FakeSocket.instances).toHaveLength(0)
+    parked.unmount()
+
+    // Parked after being visible: the socket goes with the subscription...
+    const harness = mountProbe(onInvalidate)
+    const socket = harness.socket()
+    act(() => { socket.open() })
+    harness.rerender(['t1'], false)
+    expect(socket.closed).toBe(true)
+    expect(FakeSocket.instances).toHaveLength(1)
+    // ...and a notice that still reaches the torn-down socket must not re-pull
+    // a transcript nobody can see.
+    act(() => { socket.frame({ threadId: 't1' }) })
+    expect(onInvalidate).not.toHaveBeenCalled()
+    harness.unmount()
+  })
+
+  it('re-subscribes and pulls exactly once when it comes back', () => {
+    const onInvalidate = vi.fn()
+    const harness = mountProbe(onInvalidate, ['t1'], false)
+    expect(FakeSocket.instances).toHaveLength(0)
+
+    harness.rerender(['t1'], true)
+    const socket = harness.socket()
+    act(() => { socket.open() })
+    // The whole watched set is re-announced on the new connection...
+    expect(socket.frames()).toEqual([{ op: 'watch', threadIds: ['t1'] }])
+    // ...and the parked window is covered by ONE re-pull through the same
+    // invalidation path the host's own frames use.
+    expect(onInvalidate.mock.calls.map(([id]) => id)).toEqual(['t1'])
+
+    // Staying visible is not a refresh loop.
+    harness.rerender(['t1'], true)
+    expect(onInvalidate).toHaveBeenCalledTimes(1)
+    // A second park/unpark cycle pulls once more, on its own new socket.
+    harness.rerender(['t1'], false)
+    harness.rerender(['t1'], true)
+    expect(onInvalidate).toHaveBeenCalledTimes(2)
+    expect(FakeSocket.instances).toHaveLength(2)
+    harness.unmount()
   })
 })

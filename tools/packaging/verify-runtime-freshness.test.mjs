@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { verifyRuntimeFreshness } from './verify-runtime-freshness.mjs'
 import { writeRuntimeIntegrity } from './runtime-integrity.mjs'
+import { runtimeRecipes } from '../build/runtime-recipes.mjs'
 
 test('rejects stale plugin bytes and a different Harness build even when versions match', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zerowall-freshness-'))
@@ -20,7 +21,10 @@ test('rejects stale plugin bytes and a different Harness build even when version
     git(['init', '-q'])
     git(['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'fixture'])
     const commit = git(['rev-parse', 'HEAD'])
-    const receipt = { commit, version: '0.1.5-rc.2', applicationVersion: '6.7.0', builtAt: '2026-09-20' }
+    await put('config/integrations/upstream-sources.json', { version: '6.7.0', dreamSkin: { resourceVersion: '10.16.1-zws.2' } })
+    await put('tools/packaging/adapt-dream-skin.mjs', 'current adapter')
+    await put('tools/build/stamp-desktop-version.mjs', 'version stamp')
+    const receipt = { commit, version: '0.1.5-rc.2', applicationVersion: '6.7.0', builtAt: '2026-09-20', recipes: await runtimeRecipes(root) }
     await put('package.json', { version: '6.7.0' })
     await put('config/deepseek-harness/upstream.json', { commit, version: receipt.version })
     await put('config/layout/runtime-profile.json', { corePlugins: ['@zerowallscience/plugin-base'] })
@@ -39,9 +43,16 @@ test('rejects stale plugin bytes and a different Harness build even when version
     for (const id of ['@deepseek-ai/libreoffice-kit', '@deepseek-ai/libreoffice-kit-win32-x64', '@deepseek-ai/dsh-client-ui-sidebar-documentpreview']) await put(`artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/${id}/runtime.js`, 'reviewed resource')
     await writeRuntimeIntegrity(root, stage)
     assert.equal((await verifyRuntimeFreshness(root)).checked, 3)
-    await put('artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/retired-presentation/runtime.js', 'unexpected optional plugin')
+    await put('tools/packaging/adapt-dream-skin.mjs', 'fixed adapter, same package version')
+    await assert.rejects(verifyRuntimeFreshness(root), /Stale runtime adapters/u)
+    await put('tools/packaging/adapt-dream-skin.mjs', 'current adapter')
+    await put('config/integrations/upstream-sources.json', { version: '6.7.0', dreamSkin: { resourceVersion: '10.16.1-zws.3' } })
+    await assert.rejects(verifyRuntimeFreshness(root), /Stale runtime adapters/u)
+    await put('config/integrations/upstream-sources.json', { version: '8.4.0', dreamSkin: { resourceVersion: '10.16.1-zws.2' } })
+    assert.equal((await verifyRuntimeFreshness(root)).checked, 3, 'Desktop-only version change can reuse the same adapter recipes')
+    await put('artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/dsh-ppt-maker/runtime.js', 'unexpected optional plugin')
     await assert.rejects(verifyRuntimeFreshness(root), /Office resources/)
-    await rm(join(stage, 'runtime/node_modules/retired-presentation'), { recursive: true, force: true })
+    await rm(join(stage, 'runtime/node_modules/dsh-ppt-maker'), { recursive: true, force: true })
     await put('artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/@deepseek-ai/libreoffice-kit/runtime.js', 'stale native resource')
     await assert.rejects(verifyRuntimeFreshness(root), /Office resources/)
     await put('artifacts/stage/6.7.0/6.7.0-dev/runtime/node_modules/@deepseek-ai/libreoffice-kit/runtime.js', 'reviewed resource')

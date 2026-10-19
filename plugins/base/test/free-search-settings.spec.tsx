@@ -14,10 +14,11 @@ afterEach(() => {
   document.querySelector('[data-plugin="dsh-free-search"]')?.remove()
 })
 
-it('opens and saves the official Free Search 0.8.3 configuration card', async () => {
+it('opens and saves the pinned official Free Search configuration card', async () => {
   const root = resolve(import.meta.dirname, '../../..')
   const manifest = JSON.parse(readFileSync(resolve(root, 'desktop/node_modules/dsh-free-search/package.json'), 'utf8'))
-  expect(manifest.version).toBe('0.8.3')
+  const upstream = JSON.parse(readFileSync(resolve(root, 'config/integrations/upstream-sources.json'), 'utf8'))
+  expect(manifest.version).toBe(upstream.freeSearch.version)
   const source = readFileSync(resolve(root, 'desktop/node_modules/dsh-free-search/lib/client.js'), 'utf8')
   let plugin: { apply(ctx: unknown): void } | undefined
   Object.defineProperty(window, '__ModuleLoader__', {

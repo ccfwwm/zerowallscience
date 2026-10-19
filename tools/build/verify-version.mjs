@@ -6,6 +6,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { assertPluginDesktopCompatibility } from '../plugins/compatibility.mjs'
 import { resourceSource } from './layout.mjs'
 import { assertPythonManifests } from './verify-python-manifests.mjs'
+import { syncDesktopRelease } from './sync-desktop-release.mjs'
 
 async function document(file, required = true) {
   try { return JSON.parse(await readFile(file, 'utf8')) }
@@ -19,6 +20,7 @@ async function sha256(path) {
   for await (const chunk of createReadStream(path)) digest.update(chunk)
   return digest.digest('hex')
 }
+await syncDesktopRelease(root, { check: true })
 for (const file of ['desktop/package.json', 'config/integrations/upstream-sources.json']) {
   equal((await document(join(root, file))).version, applicationVersion, file)
 }
@@ -38,6 +40,9 @@ const dshContract = await document(join(root, 'config/deepseek-harness/upstream.
 if (typeof dshContract.commit !== 'string' || dshContract.commit.length !== 40) {
   throw new Error(`DSH upstream contract has an invalid commit: ${dshContract.commit ?? '(missing)'}`)
 }
+if (typeof dshContract.version !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(dshContract.version)) {
+  throw new Error('DSH upstream contract has an invalid version')
+}
 for (const name of await readdir(join(root, 'plugins'))) {
   // Retired adapter source remains for historical compatibility. The active
   // WeChat bundle is plugins/dsh-wechat with its own upstream version.
@@ -46,8 +51,8 @@ for (const name of await readdir(join(root, 'plugins'))) {
   if (!manifest?.name?.startsWith('@zerowallscience/plugin-')) continue
   if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) throw new Error(`Invalid independent plugin version: ${name}`)
   assertPluginDesktopCompatibility(manifest.zerowall.desktop, applicationVersion, name)
-  equal(manifest.zerowall.dsh.min, '0.2.0-rc.2', `${name} DSH minimum`)
-  equal(manifest.zerowall.dsh.max, '0.2.0-rc.2', `${name} DSH maximum`)
+  equal(manifest.zerowall.dsh.min, dshContract.version, `${name} DSH minimum`)
+  equal(manifest.zerowall.dsh.max, dshContract.version, `${name} DSH maximum`)
 }
 const strict = process.argv.includes('--artifacts')
 const receipt = await document(join(contract.stage, 'dsh/build-receipt.json'), strict)

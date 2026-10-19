@@ -2,7 +2,9 @@
  * Bot-token gate + outbound cache cap.
  *
  * Context tokens are no longer a send gate. Missing / invalid bot tokens
- * drop outbound (no park). Rate-limit overflow still uses outboundCache.
+ * drop outbound (no park). Rate-limit overflow still uses outboundCache,
+ * and reaching the cache cap force-SENDS the oldest item rather than
+ * discarding it.
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
@@ -235,19 +237,55 @@ describe("outbound cache cap", () => {
     vi.clearAllMocks();
   });
 
-  it("parkOutbound drops the OLDEST items beyond the cap", () => {
+  it("parkOutbound force-sends the oldest at the cap instead of dropping it", async () => {
     const mock = makeMockAgent("wx-s1");
     const { bridge } = makeBridge(mock, true);
     const anyBridge = bridge as unknown as {
-      parkOutbound(userId: string, item: { kind: "text"; text: string }): void;
+      parkOutbound(userId: string, item: { kind: "text"; text: string }): Promise<void>;
+      wechatMsgCount: number;
       outboundCache: Array<{ kind: string; text?: string }>;
     };
-    for (let i = 0; i < 105; i++) {
-      anyBridge.parkOutbound("u1", { kind: "text", text: `msg-${i}` });
+    // A closed gateway window is what fills the queue in the first place.
+    anyBridge.wechatMsgCount = 10;
+    for (let i = 0; i < 100; i++) {
+      await anyBridge.parkOutbound("u1", { kind: "text", text: `msg-${i}` });
     }
-    const cache = anyBridge.outboundCache!;
-    expect(cache).toHaveLength(100);
-    expect(cache[0]!.text).toBe("msg-5");
-    expect(cache[cache.length - 1]!.text).toBe("msg-104");
+    expect(anyBridge.outboundCache).toHaveLength(100);
+
+    const sent = () => sendTextMessage.mock.calls.map((c) => (c as [string, string])[1]);
+    expect(sent()).toEqual([]);
+
+    // Over the cap: the OLDEST item leaves the queue by being SENT, not by
+    // being discarded. It goes out even though the window is closed — the
+    // gateway is the authority on that, and dropping is the one outcome the
+    // cap must never produce.
+    await anyBridge.parkOutbound("u1", { kind: "text", text: "msg-100" });
+    expect(sent()).toEqual(["msg-0"]);
+    expect(anyBridge.outboundCache).toHaveLength(100);
+    expect(anyBridge.outboundCache[0]!.text).toBe("msg-1");
+    expect(anyBridge.outboundCache[99]!.text).toBe("msg-100");
+  });
+
+  it("nothing is discarded across repeated cap pressure", async () => {
+    const mock = makeMockAgent("wx-s1");
+    const { bridge } = makeBridge(mock, true);
+    const anyBridge = bridge as unknown as {
+      parkOutbound(userId: string, item: { kind: "text"; text: string }): Promise<void>;
+      wechatMsgCount: number;
+      outboundCache: Array<{ kind: string; text?: string }>;
+    };
+    anyBridge.wechatMsgCount = 10;
+    for (let i = 0; i < 140; i++) {
+      await anyBridge.parkOutbound("u1", { kind: "text", text: `msg-${i}` });
+    }
+    const sent = sendTextMessage.mock.calls.map((c) => (c as [string, string])[1]);
+    const queued = anyBridge.outboundCache.map((i) => i.text);
+    // Every enqueued message is either in the queue or was force-sent; the
+    // union is exactly the input, with no gap and no duplicate.
+    const all = [...sent, ...queued].sort((a, b) => Number(a!.slice(4)) - Number(b!.slice(4)));
+    expect(all).toHaveLength(140);
+    for (let i = 0; i < 140; i++) expect(all[i]).toBe(`msg-${i}`);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(queued).toHaveLength(100);
   });
 });

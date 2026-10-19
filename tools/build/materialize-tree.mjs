@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { constants, createReadStream } from 'node:fs'
 import { copyFile, link, lstat, mkdir, readdir } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { tryHardlink } from './hardlink.mjs'
 
 const contains = (parent, path) => {
   const rel = relative(parent, path)
@@ -56,11 +57,10 @@ export async function materializeTree({ source, destination, sourceKey, mode = '
       let fileMode = mode === 'copy' || shouldCopy(entry.path) ? 'copy' : 'hardlink'
       let fallback
       if (fileMode === 'hardlink') {
-        try { await linkFile(input, output) }
-        catch (error) {
-          if (!['EXDEV', 'EPERM', 'EACCES', 'ENOTSUP', 'EMLINK'].includes(error.code)) throw error
+        const sharing = await tryHardlink(input, output, linkFile)
+        if (!sharing.linked) {
           fileMode = 'copy'
-          fallback = error.code
+          fallback = sharing.fallback
         }
       }
       if (fileMode === 'copy') await copyFile(input, output, constants.COPYFILE_EXCL)

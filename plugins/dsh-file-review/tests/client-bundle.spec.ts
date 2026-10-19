@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { pathToFileURL } from 'node:url'
+import { readFile } from 'node:fs/promises'
+import { runInNewContext } from 'node:vm'
+import { resolve } from 'node:path'
 import * as React from 'react'
 import * as jsxRuntime from 'react/jsx-runtime'
 import { describe, expect, it } from 'vitest'
@@ -21,8 +23,8 @@ describe('published browser artifact', () => {
         handoff = value
       },
     }
-    const artifact = pathToFileURL(new URL('../lib/client.js', import.meta.url).pathname)
-    await import(/* @vite-ignore */ `${artifact.href}?test=${String(Date.now())}`)
+    const artifact = await readFile(resolve('lib/client.js'), 'utf8')
+    runInNewContext(artifact, { window, document, console }, { filename: 'dsh-file-review/client.js' })
 
     expect(handoff?.id).toBe('dsh-file-review')
     const shared: Record<string, unknown> = {

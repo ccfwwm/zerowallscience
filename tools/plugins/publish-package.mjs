@@ -9,6 +9,16 @@ import { packageSource } from '../build/layout.mjs'
 
 const workspaceManifestCache = new Map()
 
+/** Keep a same-version archive's license when publish staging omits it. */
+export async function preserveHistoricalLicenses(staging, files) {
+  for (const [file, bytes] of files) {
+    if (!/^package\/(?:licen[cs]e|copying)(?:\.(?:md|txt))?$/iu.test(file)) continue
+    await writeFile(join(staging, file.slice('package/'.length)), bytes, { flag: 'wx' }).catch(error => {
+      if (error.code !== 'EEXIST') throw error
+    })
+  }
+}
+
 /**
  * Resolve a workspace dependency manifest without relying on the temporary
  * publish links created by `artifacts:links`. Those links are intentionally
@@ -74,7 +84,9 @@ export async function preparePublishPackage(source, staging) {
   // only its line endings. Keep the original published bytes in that case;
   // all other differences still reach the immutable-package guard unchanged.
   if (baseline) {
-    const original = (await packageFiles(baseline.path)).get('package/zerowall.plugin.json')
+    const files = await packageFiles(baseline.path)
+    await preserveHistoricalLicenses(staging, files)
+    const original = files.get('package/zerowall.plugin.json')
     const path = join(staging, 'zerowall.plugin.json')
     const current = await readFile(path).catch(error => {
       if (error.code === 'ENOENT') return undefined

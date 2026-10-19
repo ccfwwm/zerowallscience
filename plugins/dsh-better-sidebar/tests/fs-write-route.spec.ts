@@ -29,9 +29,10 @@ import { join } from 'node:path'
 import { apply } from '../src/index.ts'
 import { encodeText } from '../src/text-encoding.ts'
 import type { SidebarWebRoute } from '../src/context-types.ts'
+import { removeTree } from './temp-tree.ts'
 
 interface FakeContext {
-  webRuntime: { trustedHosts: readonly string[] }
+  connection: { requestRejection: () => undefined }
   webServer: {
     register: (route: SidebarWebRoute) => () => void
     registerUpgrade: () => () => void
@@ -55,7 +56,7 @@ interface Mounted {
 function mountApi(workspace: string): Mounted {
   const routes: SidebarWebRoute[] = []
   const ctx: FakeContext = {
-    webRuntime: { trustedHosts: [] },
+    connection: { requestRejection: () => undefined },
     webServer: { register: (route) => { routes.push(route); return () => {} }, registerUpgrade: () => () => {} },
     sessions: { get: () => ({ header: { cwd: workspace } }) },
     tools: { register: () => () => {} },
@@ -158,7 +159,7 @@ describe('/sidebar/write route', () => {
       expect(['first', 'second', 'third']).toContain(readFileSync(target, 'utf8'))
       expect(tempLeftovers(workspace)).toEqual([])
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -177,7 +178,7 @@ describe('/sidebar/write route', () => {
       expect(readFileSync(target, 'utf8')).toBe('v3')
       expect(tempLeftovers(workspace)).toEqual([])
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -207,7 +208,7 @@ describe('/sidebar/write route', () => {
       expect(readFileSync(target, 'utf8')).toBe('disk-v2')
       expect(tempLeftovers(workspace)).toEqual([])
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -235,7 +236,7 @@ describe('/sidebar/write route', () => {
       expect(second).toMatchObject({ ok: true, status: 200 })
       expect(readFileSync(target, 'utf8')).toBe('disk-v3')
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -263,7 +264,7 @@ describe('/sidebar/write route', () => {
       expect(readFileSync(target, 'utf8')).toBe(content)
       expect(tempLeftovers(workspace)).toEqual([])
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -299,7 +300,7 @@ describe('/sidebar/write route', () => {
       expect(existsSync(target)).toBe(false)
       expect(tempLeftovers(workspace)).toEqual([])
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -325,7 +326,7 @@ describe('/sidebar/write route', () => {
       expect({ ...JSON.parse(out.body) as Invoked, status: out.status })
         .toMatchObject({ ok: false, status: 400, error: { code: 'bad-request' } })
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -343,7 +344,7 @@ describe('/sidebar/write route', () => {
       const baseline = read.value?.mtimeMs
       // A rename/removal of the parent directory: the writer's `mkdir -p` used
       // to rebuild the tree for a single file.
-      rmSync(nested, { recursive: true, force: true })
+      removeTree(nested)
 
       const stale = await invokeWrite(route, {
         sessionId: 's', path: target, content: 'my-draft', expectedMtimeMs: baseline,
@@ -351,7 +352,7 @@ describe('/sidebar/write route', () => {
       expect(stale).toMatchObject({ ok: false, status: 409, error: { code: 'fs-conflict' } })
       expect(existsSync(nested)).toBe(false)
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -367,7 +368,7 @@ describe('/sidebar/write route', () => {
       expect(result).toMatchObject({ ok: true, status: 200 })
       expect(readFileSync(target, 'utf8')).toBe('overwritten')
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -395,7 +396,7 @@ describe('/sidebar/write route', () => {
       // No bare LF may survive — that is precisely the whole-file diff.
       expect(written.replaceAll('\r\n', '')).not.toContain('\n')
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -417,7 +418,7 @@ describe('/sidebar/write route', () => {
       expect(written).toBe('one\ntwo edited\n')
       expect(written).not.toContain('\r')
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 
@@ -442,7 +443,7 @@ describe('/sidebar/write route', () => {
       // that assertion ever gets relaxed.
       expect(readFileSync(target).toString('utf8')).not.toContain('\r\r')
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   })
 })

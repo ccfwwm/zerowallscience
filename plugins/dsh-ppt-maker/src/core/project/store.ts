@@ -12,9 +12,10 @@
  *    succeeded, so an `ops[]` batch is atomic: either the whole batch lands or
  *    nothing changes on disk.
  */
-import { mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm } from 'node:fs/promises'
 import path from 'node:path'
 import {
+  isSafeRelativePath,
   parseDeckText,
   parsePageText,
   parseProject,
@@ -38,6 +39,7 @@ import {
   revisionLabel,
   sha1Of,
   verifyMedia,
+  writeAtomic,
   type SnapshotMeta,
   type SnapshotState
 } from './history.js'
@@ -113,10 +115,7 @@ async function readManifest(projectDir: string): Promise<Manifest> {
 
 /** The single write path for manifest.json: temp file + rename, never a torn write. */
 async function writeManifest(projectDir: string, manifest: Manifest): Promise<void> {
-  const target = path.join(projectDir, MANIFEST_FILE)
-  const tmp = `${target}.tmp-${process.pid}`
-  await writeFile(tmp, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-  await rename(tmp, target)
+  await writeAtomic(path.join(projectDir, MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`)
 }
 
 /**
@@ -224,8 +223,9 @@ export async function loadProject(cwd: string, dir: string): Promise<LoadedProje
   const manifest = await readManifest(abs)
 
   const deckParsed = parseDeckText(deckText)
+  // Path safety is validated by parseDeckText (blocker); never read outside the project dir.
   const declared = Array.isArray(deckParsed.value?.pages)
-    ? deckParsed.value.pages.filter((p): p is string => typeof p === 'string')
+    ? deckParsed.value.pages.filter((p): p is string => typeof p === 'string' && isSafeRelativePath(p))
     : []
   const pageEntries: Array<{ path: string; text: string }> = []
   for (const rel of declared) {
@@ -293,12 +293,6 @@ async function writeModel(projectDir: string, model: ProjectModel): Promise<void
     await mkdir(path.dirname(target), { recursive: true })
     await writeAtomic(target, stringifyPage(page))
   }
-}
-
-async function writeAtomic(target: string, content: string): Promise<void> {
-  const tmp = `${target}.tmp-${process.pid}`
-  await writeFile(tmp, content, 'utf8')
-  await rename(tmp, target)
 }
 
 /* ------------------------------------------------------------------ *
@@ -407,7 +401,20 @@ function requirePage(model: ProjectModel, index: number, op: string, pagePath: u
 }
 
 function pageKeyOf(pagePath: unknown): string | null {
-  return typeof pagePath === 'string' && pagePath !== '' ? pagePath.replace(/\\/g, '/') : null
+  if (typeof pagePath !== 'string' || pagePath === '') return null
+  const key = pagePath.replace(/\\/g, '/')
+  return isSafeRelativePath(key) ? key : null
+}
+
+/**
+ * `page` / `newPage` on a writing op: absent means "auto-number", present but
+ * unsafe is an error — silently renumbering an escaped path would hide a bug.
+ */
+function requirePageKey(index: number, op: string, pagePath: unknown): string | null {
+  if (pagePath === undefined) return null
+  const key = pageKeyOf(pagePath)
+  if (key === null) throw opError(index, op, `页路径必须是工程目录内的相对路径：${JSON.stringify(pagePath)}`)
+  return key
 }
 
 /** Next free `pages/NN.page` name. */
@@ -429,7 +436,7 @@ function applyOp(model: ProjectModel, raw: OpRecord, index: number): string {
 
   switch (op) {
     case 'add_page': {
-      const key = pageKeyOf(raw.page) ?? nextPagePath(model)
+      const key = requirePageKey(index, name, raw.page) ?? nextPagePath(model)
       if (model.pages.has(key) || model.deck.pages.includes(key)) throw opError(index, name, `页已存在：${key}`)
       const content = (raw.content ?? { elements: [] }) as Page
       if (typeof content !== 'object' || content === null || Array.isArray(content)) throw opError(index, name, 'content 必须是页对象')
@@ -467,7 +474,7 @@ function applyOp(model: ProjectModel, raw: OpRecord, index: number): string {
     case 'page_duplicate': {
       const key = pageKeyOf(raw.page)
       const page = requirePage(model, index, name, key)
-      const newKey = pageKeyOf(raw.newPage) ?? nextPagePath(model)
+      const newKey = requirePageKey(index, name, raw.newPage) ?? nextPagePath(model)
       if (model.pages.has(newKey) || model.deck.pages.includes(newKey)) throw opError(index, name, `目标页已存在：${newKey}`)
       const copy = JSON.parse(JSON.stringify(page)) as Page
       const at = typeof raw.index === 'number' ? Math.max(0, Math.min(raw.index, model.deck.pages.length)) : model.deck.pages.indexOf(key as string) + 1
@@ -559,9 +566,16 @@ export async function editProject(cwd: string, options: EditOptions): Promise<Ed
       issues.push(...validatePage(page, { profile, path: rel, themeKeys }))
     }
 
-    // New edit from an older cursor: the abandoned forward branch is pruned
-    // before appending, so revision numbers cannot collide.
-    await pruneAbove(abs, base)
+    // Nothing is written when the batch would land an invalid project: a
+    // blocker here would only surface later at export/check time, after the
+    // bad revision had already become the cursor.
+    const blockers = issues.filter((issue) => issue.level === 'blocker')
+    if (blockers.length > 0) {
+      throw new ProjectError('ValidationBlockers', `写入前校验发现 ${blockers.length} 个阻断问题，本次改动未落盘`, {
+        status: 409,
+        detail: blockers
+      })
+    }
 
     const state = await snapshotStateOf(abs, model)
     const appended = await appendSnapshot(abs, state, {
@@ -580,6 +594,10 @@ export async function editProject(cwd: string, options: EditOptions): Promise<Ed
       checksum: checksumOf(state.deck, state.pages)
     }
     await writeManifest(abs, manifest)
+    // Only after the new revision is fully on disk: the abandoned forward
+    // branch (revisions above the new cursor) is dead, but if any write above
+    // failed it must still be there to fall back on.
+    await pruneAbove(abs, revision)
 
     const warnings = issues.map((issue) => `[${issue.level}/${issue.code}] ${issue.path ?? ''} ${issue.message}`.trim())
     return { revision, appliedOps, warnings, issues, merged: appended.merged }

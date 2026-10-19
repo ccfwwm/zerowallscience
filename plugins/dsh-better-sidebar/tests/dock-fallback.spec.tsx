@@ -12,7 +12,7 @@
  * document 出发；afterEach 清理 body 上的残留，避免跨用例串扰。
  */
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
 import { act } from 'react-dom/test-utils'
 // First import: browser globals before the primitive-carrying sidebar graph loads.
@@ -52,10 +52,83 @@ function clickFallbackToggle(): void {
   act(() => { element.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
 }
 
+/**
+ * 周期表账本：`setInterval` 被换成记账的假表，测试因此不用真的等 500ms，
+ * 也能直接断言「这条表到底建没建」。`clearInterval` 一起换掉（id 是假的）。
+ */
+const intervals = new Map<number, { fn: () => void; ms: number | undefined }>()
+let intervalSeq = 0
+
+/** 触发所有指定间隔的周期表回调（在 act 里调）。 */
+function runIntervals(ms: number): void {
+  for (const entry of [...intervals.values()]) {
+    if (entry.ms === ms) entry.fn()
+  }
+}
+
+/** 隐藏/恢复页面：实现分别读 `document.hidden` 与 `document.visibilityState`。 */
+function setPageHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden })
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => (hidden ? 'hidden' : 'visible'),
+  })
+}
+
+/**
+ * 命中测试桩：每次调用计数并返回给定的「占位栈」。
+ * @returns 还原函数（必须在 finally 里调）。
+ */
+function stubHitTest(stack: () => Element[]): { hits: () => number; reset: () => void; restore: () => void } {
+  const original = document.elementsFromPoint
+  const spy = vi.fn(() => stack())
+  Object.defineProperty(document, 'elementsFromPoint', { configurable: true, writable: true, value: spy })
+  return {
+    hits: () => spy.mock.calls.length,
+    reset: () => { spy.mockClear() },
+    restore: () => {
+      if (original === undefined) Reflect.deleteProperty(document, 'elementsFromPoint')
+      else Object.defineProperty(document, 'elementsFromPoint', { configurable: true, writable: true, value: original })
+    },
+  }
+}
+
+/** 宿主角落锚点（收起形态），rect 固定在指定位置。 */
+function appendAnchor(left: number, top = 10): HTMLButtonElement {
+  const anchor = document.createElement('button')
+  anchor.setAttribute('data-sidebar-right-expand', 'true')
+  anchor.getBoundingClientRect = () => ({
+    x: left, y: top, left, top, width: 28, height: 28, right: left + 28, bottom: top + 28,
+    toJSON: () => ({}),
+  }) as DOMRect
+  document.body.append(anchor)
+  return anchor
+}
+
+/** 等相位（与其它异步 mock）落地。 */
+async function settle(): Promise<void> {
+  await act(async () => { await new Promise(resolve => { setTimeout(resolve, 0) }) })
+}
+
 describe('dock fallback（空白会话入口）', () => {
+  beforeEach(() => {
+    intervals.clear()
+    vi.spyOn(globalThis, 'setInterval').mockImplementation(((fn: () => void, ms?: number) => {
+      const id = ++intervalSeq
+      intervals.set(id, { fn, ms })
+      return id
+    }) as never)
+    vi.spyOn(globalThis, 'clearInterval').mockImplementation(((id: number) => {
+      intervals.delete(id)
+    }) as never)
+  })
+
   // 失败用例可能把 portal 节点留在 body 上：每个用例后清干净，避免串扰。
   afterEach(() => {
     for (const element of document.querySelectorAll('[data-dsh-dock-fallback]')) element.remove()
+    Reflect.deleteProperty(document, 'hidden')
+    Reflect.deleteProperty(document, 'visibilityState')
+    vi.restoreAllMocks()
   })
 
   it('renders the fallback entry and flips the bottom workbench through the store', async () => {
@@ -224,6 +297,110 @@ describe('dock fallback（空白会话入口）', () => {
       expect(document.querySelector('[data-dsh-dock-fallback]'), '降级时不渲染备用入口').toBeNull()
     } finally {
       unmount()
+    }
+  })
+
+  // ==== 稳态开销（v0.25 回归：常驻轮询、隐藏页面、无界走查）====
+  // 500ms 周期表原来注册在早退之前：一个正常（非 blank）会话里组件始终返回 null，
+  // 表却一直在跑，每次还带一遍最多 400 步的命中测试退让走查。
+
+  it('does not create the realign interval in a non-blank session', async () => {
+    phaseIs(false)
+    const anchor = appendAnchor(500)
+    const hit = stubHitTest(() => [])
+    const { unmount } = renderDockFallback()
+    try {
+      await settle()
+      expect(vi.mocked(sessionPhase), '相位必须已经读过一次').toHaveBeenCalled()
+      expect(document.querySelector('[data-dsh-dock-fallback]')).toBeNull()
+      // 组件返回 null，但页面里仍有一条 500ms 表（DockFallback 自己也订阅的
+      // 右侧面板展开态共享 poller）。判别点不是「表的总数」而是「有没有人测量」：
+      // 让位走查是这条表唯一会读布局的动作。
+      const atMount = hit.hits()
+      act(() => { runIntervals(500) })
+      expect(hit.hits(), '非 blank 会话里重对齐表不该存在，更不该测量').toBe(atMount)
+    } finally {
+      unmount()
+      hit.restore()
+      anchor.remove()
+    }
+  })
+
+  it('does not measure on the 500ms tick while the page is hidden', async () => {
+    phaseIs(true)
+    const anchor = appendAnchor(500)
+    const hit = stubHitTest(() => [])
+    const { unmount } = renderDockFallback()
+    try {
+      await settle()
+      expect(document.querySelector('[data-dsh-dock-fallback]'), '相位已读到 blank').not.toBeNull()
+      // 切到后台：相位是隐藏前读到的，入口仍在渲染（渲染条件本身不看可见性）。
+      act(() => {
+        setPageHidden(true)
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      const atMount = hit.hits()
+      act(() => { runIntervals(500) })
+      expect(hit.hits(), '隐藏期间的 tick 不得测量').toBe(atMount)
+    } finally {
+      unmount()
+      hit.restore()
+      anchor.remove()
+    }
+  })
+
+  it('re-measures exactly once when the page becomes visible again', async () => {
+    phaseIs(true)
+    const anchor = appendAnchor(500)
+    const hit = stubHitTest(() => [])
+    const { unmount } = renderDockFallback()
+    try {
+      await settle()
+      act(() => {
+        setPageHidden(true)
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      hit.reset()
+      act(() => {
+        setPageHidden(false)
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      // 槽位空着时一次 measure() 采样 5 个点（slotFree 的 5 个 dx），即 5 次命中测试。
+      expect(hit.hits(), '回到可见必须立刻补测一次，且只补一次').toBe(5)
+      // 周期表还在：再走一个 tick 就再测一次（隐藏时它是空转的，不是被拆掉的）。
+      act(() => { runIntervals(500) })
+      expect(hit.hits(), '恢复后周期表必须继续跑').toBe(10)
+    } finally {
+      unmount()
+      hit.restore()
+      anchor.remove()
+    }
+  })
+
+  it('bounds the retreat walk at 100 steps (400px)', async () => {
+    phaseIs(true)
+    const anchor = appendAnchor(500)
+    // 一个「整排都被占着」的页面：每个采样点都被同一个不透明芯片盖住。
+    const chip = document.createElement('div')
+    chip.style.backgroundColor = 'rgb(40, 40, 40)'
+    document.body.append(chip)
+    const hit = stubHitTest(() => [chip])
+    const { unmount } = renderDockFallback()
+    try {
+      await settle()
+      hit.reset()
+      act(() => { runIntervals(500) })
+      // 走查每步的**第一个**采样点就被占 → 一次 tick 恰好 100 次命中测试。
+      expect(hit.hits(), '让位走查必须封顶在 100 步（400px）').toBe(100)
+      const shell = document.querySelector<HTMLElement>('[data-dsh-dock-fallback]')
+      // 锚点在 500、按钮 28px、间距 8px → 起点 464；100 步 × 4px = 400px → 64。
+      // 旧上限（400 步）会一路退到视口左缘并停成 4px。
+      expect(shell!.style.left, '耗尽上限后停在 464 - 400，而不是视口左缘').toBe('64px')
+    } finally {
+      unmount()
+      hit.restore()
+      anchor.remove()
+      chip.remove()
     }
   })
 })

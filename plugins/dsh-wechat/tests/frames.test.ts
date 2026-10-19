@@ -591,3 +591,108 @@ describe("waterfall race: WeChat vs GUI", () => {
     void pending;
   });
 });
+
+describe("WeChat-answer receipts", () => {
+  let bridge: WeChatDSHBridge;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    bridge = makeBridge();
+  });
+
+  /**
+   * Receipts are fire-and-forget `void sendReply(...)`, and `sendReply`
+   * reserves its slot in the outbound serial synchronously — so awaiting the
+   * serial after the handler returns is enough to observe them.
+   */
+  async function settle(): Promise<void> {
+    await (bridge as unknown as { outboundSerial: Promise<void> }).outboundSerial;
+  }
+
+  function sentTexts(): string[] {
+    return sendTextMessage.mock.calls.map((c) => String(c[1]));
+  }
+
+  it("replying 1 to an approval card confirms it with the card's P number", async () => {
+    const anyBridge = bridge as unknown as { handleMuxFrame(f: unknown): void };
+    anyBridge.handleMuxFrame(approvalFrame("a-rpc", "a-1", "pwsh"));
+    captureApprovalOutcomes(bridge);
+    await (bridge as unknown as { handleApprovalReply(u: string, t: string): Promise<void> })
+      .handleApprovalReply("u1", "1");
+    await settle();
+    expect(sentTexts()).toContain("✅ 已允许权限卡 P1（pwsh）。");
+  });
+
+  it("replying 2 to an approval card confirms the rejection", async () => {
+    const anyBridge = bridge as unknown as { handleMuxFrame(f: unknown): void };
+    anyBridge.handleMuxFrame(approvalFrame("a-rpc", "a-1", "bash"));
+    captureApprovalOutcomes(bridge);
+    await (bridge as unknown as { handleApprovalReply(u: string, t: string): Promise<void> })
+      .handleApprovalReply("u1", "2");
+    await settle();
+    expect(sentTexts()).toContain("⛔ 已拒绝权限卡 P1（bash）。");
+  });
+
+  it("answering a question card confirms it with the card's P number", async () => {
+    const anyBridge = bridge as unknown as { handleMuxFrame(f: unknown): void };
+    anyBridge.handleMuxFrame(questionFrame("q-rpc"));
+    captureQuestionAnswers(bridge);
+    await (bridge as unknown as { handleQuestionReply(u: string, t: string): Promise<void> })
+      .handleQuestionReply("u1", "2");
+    await settle();
+    expect(sentTexts()).toContain("✅ 已回复提问卡 P1。");
+  });
+
+  it("a P1=/P2= batch confirms each card with the number the user typed", async () => {
+    // Regression lock: settling a card deletes it from the live tables, so a
+    // number looked up at receipt time is gone — measured, not shifted: the
+    // receipt degrades to the numberless fallback. Both numbers must survive
+    // the batch, which is what the pre-batch snapshot buys.
+    const anyBridge = bridge as unknown as {
+      handleMuxFrame(f: unknown): void;
+      handleMessage(m: unknown): Promise<void>;
+    };
+    anyBridge.handleMuxFrame(approvalFrame("a-rpc", "a-1", "pwsh"));
+    anyBridge.handleMuxFrame(approvalFrame("b-rpc", "b-1", "bash"));
+    captureApprovalOutcomes(bridge);
+    await anyBridge.handleMessage(userTextMessage("P1=1 P2=2"));
+    await settle();
+
+    const texts = sentTexts();
+    expect(texts).toContain("✅ 已允许权限卡 P1（pwsh）。");
+    expect(texts).toContain("⛔ 已拒绝权限卡 P2（bash）。");
+    expect(texts.filter((t) => t.includes("已允许权限卡 P1"))).toHaveLength(1);
+  });
+
+  it("a card already settled elsewhere reports that instead of a false success", async () => {
+    const anyBridge = bridge as unknown as {
+      handleMuxFrame(f: unknown): void;
+      handleApprovalReply(u: string, t: string): Promise<void>;
+      pendingApprovals: Map<string, Array<{ settled: boolean }>>;
+    };
+    anyBridge.handleMuxFrame(approvalFrame("a-rpc", "a-1", "pwsh"));
+    anyBridge.pendingApprovals.get("u1")![0]!.settled = true;
+    await anyBridge.handleApprovalReply("u1", "1");
+    await settle();
+
+    const texts = sentTexts();
+    expect(texts.some((t) => t.includes("已在其他端处理"))).toBe(true);
+    expect(texts.some((t) => t.includes("已允许权限卡"))).toBe(false);
+  });
+
+  it("a question already answered elsewhere reports that instead of a false success", async () => {
+    const anyBridge = bridge as unknown as {
+      handleMuxFrame(f: unknown): void;
+      handleQuestionReply(u: string, t: string): Promise<void>;
+      pendingQuestions: Map<string, Array<{ settled: boolean }>>;
+    };
+    anyBridge.handleMuxFrame(questionFrame("q-rpc"));
+    anyBridge.pendingQuestions.get("u1")![0]!.settled = true;
+    await anyBridge.handleQuestionReply("u1", "2");
+    await settle();
+
+    const texts = sentTexts();
+    expect(texts.some((t) => t.includes("已在其他端回答"))).toBe(true);
+    expect(texts.some((t) => t.includes("已回复提问卡"))).toBe(false);
+  });
+});

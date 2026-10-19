@@ -10,6 +10,7 @@ import { WorkspaceRegistry } from "@deepseek-ai/dsh-workspace";
 import { SessionProjectionCache } from "@deepseek-ai/dsh-session-projection-cache";
 import { remoteMethods } from "@deepseek-ai/dsh-typert-protocol";
 import { apply, inject } from "../lib/host-install.js";
+import { gatewayCall } from "./helpers/gateway-peer.mjs";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -81,7 +82,7 @@ async function mountOfficialHost({ fileUploads } = {}) {
 	assert.ok(captured, "网关必须在 /api 上注册拦截器");
 	/** 经真实网关调用一个端点，返回业务结果或稳定失败码。 */
 	const call = async (endpoint, args) => {
-		const outcome = await captured.handler(endpoint, { args }, void 0);
+		const outcome = await gatewayCall(captured.handler, endpoint, args);
 		return outcome.ok ? { ok: true, value: outcome.value } : { ok: false, code: outcome.error?.code };
 	};
 	const enable = async () => {

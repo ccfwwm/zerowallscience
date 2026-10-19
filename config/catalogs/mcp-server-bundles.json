@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "scimaster": {
+    "package": "scimaster-cli",
+    "upstreamVersion": "0.3.15",
+    "version": "0.3.15-zws.2"
+  }
+}

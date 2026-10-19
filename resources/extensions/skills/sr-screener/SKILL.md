@@ -15,6 +15,8 @@ metadata:
 
 # SR-Screener v1.0.0 — Protocol-Driven Screening Decisions
 
+Shared academic contracts and reference paths beginning with `shared/` resolve from [Academic Research Shared](../academic-research-shared/SKILL.md), under its `shared/` directory. Load those files from that resource base; hooks described upstream apply only in runtimes that install them.
+
 Screening is where a systematic review quietly loses studies: criteria drift, tired reviewers,
 records that fall between two batches. This skill makes each screening decision explicit and
 traceable. The criteria are fixed before any record is read, every record gets two independent
@@ -31,7 +33,7 @@ log instead of CSV files).
 > **Routing discipline (v3.9.2):** plugin and skills-copy installs do not load this repository's `.claude/CLAUDE.md`, so its routing core is repeated below, identical to `shared/references/routing_core.md` (#892). If routing has not settled when this skill loads, apply the core before dispatching any agent.
 
 <!-- routing-core:begin -->
-**Step 0 — Escape hatch check (before any classification):** If the user's first message begins with `[direct-mode]` (case-insensitive byte-0 token, optionally preceded by whitespace/newlines that are stripped on parse), record this fact, strip the prefix and surrounding whitespace from the message, and skip directly to **Step 1 explicit-intent handling** on the stripped content. The literal `[direct-mode]` is NOT passed through to the dispatched agent. If the stripped message itself has no clear skill named, Step 1 falls through to Step 3 clarification (the escape hatch bypasses cross-phase clarification (Step 2), not all routing). When the token is honored and the named agent or skill needs inputs the message does not supply, read that agent's or skill's file and ask for what it requires, in its terms. Without the byte-0 token, naming an agent is not explicit intent: such a message goes through Steps 1-3 like any other, so cross-phase materials still get Step 2 clarification.
+**Step 0 — Escape hatch check (before any classification):** If the user's first message begins with `[direct-mode]` (case-insensitive byte-0 token, optionally preceded by whitespace/newlines that are stripped on parse), record this fact, strip the prefix and surrounding whitespace from the message, and skip directly to **Step 1 explicit-intent handling** on the stripped content. The literal `[direct-mode]` is NOT passed through to the dispatched agent. If the stripped message itself has no clear skill named, Step 1 falls through to Step 3 clarification (the escape hatch bypasses cross-phase clarification (Step 2), not all routing). When the token is honored and the named agent or skill needs inputs the message does not supply, read that agent's or skill's file and ask for what it requires, in its terms. A `[direct-mode]` token after any other non-whitespace character is not the escape hatch, even when the message asks to skip questions: classify the message through Steps 1-3 as if the token were absent, and do not forward the token. Without the byte-0 token, naming an agent is not explicit intent: such a message goes through Steps 1-3 like any other, so cross-phase materials still get Step 2 clarification.
 
 Otherwise, classify the user's input:
 
@@ -430,17 +432,7 @@ names for the methods text in `model_labels`. The cost check shows them before e
 For the `quality` profile, put these explicit per-role models in `screening_config.json`:
 
 ```json
-{
-  "models": {
-    "A": "sonnet",
-    "B": "sonnet",
-    "ADJ": "opus",
-    "QC": "opus",
-    "FTA": "opus",
-    "FTB": "opus",
-    "FTADJ": "opus"
-  }
-}
+{"models": {"A": "sonnet", "B": "sonnet", "ADJ": "opus", "QC": "opus", "FTA": "opus", "FTB": "opus", "FTADJ": "opus"}}
 ```
 
 Both named profiles pin every screening role; neither inherits the session model.

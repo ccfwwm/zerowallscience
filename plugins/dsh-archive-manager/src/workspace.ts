@@ -100,6 +100,28 @@ function jsonlSessionDirectory(persistence: PersistenceCompat, header: Header, l
 	return directory;
 }
 
+async function pathExists(path: string) {
+	try {
+		await lstat(path);
+		return true;
+	} catch (error) {
+		if (errorCode(error) === "ENOENT") return false;
+		throw error;
+	}
+}
+
+class PersistenceStillPresentError extends Error {
+	constructor(sessionId: string) {
+		super(`session "${sessionId}" is still present in persistence after artifact removal`);
+		this.name = "PersistenceStillPresentError";
+	}
+}
+
+function deletionFailureMessage(error: unknown) {
+	// 失败详情会进各语言模板的 {detail}。这里只留宿主原文，不拼中文诊断。
+	return errorMessage(error).slice(0, 400);
+}
+
 /** alpha.1 读 schema.parse；alpha.2 只接受 create()。两套字段一起带上。 */
 function strictCodec(typeSymbol: string, schema: Schema<unknown>) {
 	return {
@@ -381,7 +403,7 @@ export function bindArchiveManagerRemote(ctx: Context): () => void {
 		return () => {};
 	}
 }
-/** 0.1.6 及更早的 generationFormat 自带 createRestore；0.1.7 起用本次修复收集到的直属子会话证据建目录。没有子会话时才传空数组。 */
+/** generationFormat 已带 createRestore 时直接用；否则用本次修复收集到的直属子会话证据建目录。没有子会话时才传空数组。 */
 async function hostRepairFormat(format: RepairFormat | undefined, children: readonly Record<string, unknown>[] = []): Promise<RepairFormat> {
 	if (!format || !Number.isInteger(format.currentVersion) || format.currentVersion < 3) throw new Error("当前宿主不支持此修复，请升级 DSH 后重试");
 	if (typeof format.createRestore === "function") return format;
@@ -402,18 +424,8 @@ async function activeSessionErrorType() {
 		: null;
 	return activeSessionError ?? undefined;
 }
-function snapshotUsesProjectionKeys(cache: { cachedSnapshot: (...args: never[]) => unknown }) {
-	// 只能按形参个数判定：cordis 经 ctx.get 取服务方法时会包成只有 apply 陷阱的
-	// shadow method，Function.prototype.toString 只剩 [native code]，正文探测在真实宿主
-	// 恒为 false（已实测）。宿主历史形状：0.1.0/0.1.1 为 (meta)=1；0.1.2～0.1.6 为
-	// (meta, inheritedEventCount, keys)=3；0.1.7 起为 (meta, keys)=2。形参个数穿过
-	// 包装层且不受压缩影响；非 2 的一侧传继承切点即可——1 参宿主会忽略多余实参。
-	return cache.cachedSnapshot.length === 2;
-}
-function projectionSnapshot(cache: { cachedSnapshot(header: Header, inheritedOrKeys?: number | readonly string[]): unknown }, header: Header, inheritedEventCount: number) {
-	// 0.1.7 用生命周期身份匹配，第二参数是要查看的投影键；更早宿主用继承切点。
-	if (snapshotUsesProjectionKeys(cache)) return cache.cachedSnapshot(header);
-	return cache.cachedSnapshot(header, inheritedEventCount);
+function projectionSnapshot(cache: { cachedSnapshot(header: Header, keys?: readonly string[]): unknown }, header: Header) {
+	return cache.cachedSnapshot(header);
 }
 function hostEvent(ctx: HostContext, name: "waterfall" | "parallel") {
 	const caller = (ctx as HostContext & { waterfall?: unknown; parallel?: unknown })[name];
@@ -488,7 +500,7 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
         const live = this.ctx.get("sessions")?.get(sessionId);
         if (typeof live?.snapshotEvents === "function") return live.snapshotEvents();
         const persistence = this.ctx.get("sessionPersistence");
-        if (!persistence || (typeof persistence.readFrom !== "function" && typeof persistence.open !== "function")) throw new Error("当前宿主不支持只读会话，请打开完整会话查看");
+        if (!persistence || typeof persistence.open !== "function") throw new Error("当前宿主不支持只读会话，请打开完整会话查看");
         return (await this.readStoredProjectionSource(persistence, sessionId)).events;
     }
     /** 只读取当前宿主已知会话；路径由宿主定位，不根据错误文本或 ID 拼接。 */
@@ -714,11 +726,20 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 					if (await this.coldReuseKnown(sessionId)) kept.push(sessionId);
 					continue;
 				}
-				if (this.headers.has(sessionId) || listed.has(sessionId)) {
+				if (listed.has(sessionId)) {
 					kept.push(sessionId);
 					continue;
 				}
-				if (!(await this.sessionArtifactMissing(sessionId))) kept.push(sessionId);
+				// 宿主内存 this.headers 只增不减。stat 明确返回缺失时剪掉，并打墓碑，
+				// 避免随后的 stale list() 经 indexHeaders 把幽灵加回。
+				if (await this.sessionArtifactMissing(sessionId)) {
+					const header = this.headers.get(sessionId);
+					this.forgetIndexedSession(sessionId);
+					// 和正常删除一样记下头部身份，否则同 id 的新生命周期无法冷复用。
+					if (header !== void 0) this.deletedIdentities.set(sessionId, headerIdentity(header));
+					continue;
+				}
+				kept.push(sessionId);
 			}
 			if (
 				kept.length === state.archivedSessionIds.length &&
@@ -773,16 +794,14 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 			return false;
 		if (
 			persistence === void 0 ||
-			(typeof persistence.readFrom !== "function" &&
-				typeof persistence.open !== "function") ||
+			(typeof persistence.open !== "function") ||
 			projections === void 0 ||
 			typeof projections.restore !== "function"
 		)
 			return false;
 		try {
 			// 未播种会话的继承事件数恒为零，先查缓存可避免读取完整会话原文。
-			// 0.1.7 起第二参数是投影键，不再是继承切点。
-			if (!header.isSeeded && projectionSnapshot(cache, header, 0) !== void 0)
+			if (!header.isSeeded && projectionSnapshot(cache, header) !== void 0)
 				return false;
 			const stored = await this.readStoredProjectionSource(persistence, header.id);
 			const meta = stored.meta ?? header;
@@ -799,7 +818,7 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 				);
 				return false;
 			}
-			if (projectionSnapshot(cache, meta, inheritedEventCount) !== void 0) return false;
+			if (projectionSnapshot(cache, meta) !== void 0) return false;
 			const restored = projections.restore(
 				{},
 				stored.events,
@@ -833,10 +852,8 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 			return false;
 		}
 	}
-	/** 新版读句柄必须关闭；旧版仍沿用 readFrom，避免激活 Agent 或写入会话日志。 */
+	/** 只读句柄必须关闭，避免激活 Agent 或写入会话日志。 */
 	async readStoredProjectionSource(persistence: PersistenceCompat, sessionId: string) {
-		if (typeof persistence.readFrom === "function")
-			return persistence.readFrom(sessionId, 0);
 		const handle = await persistence.open(sessionId, "read");
 		try {
 			const { events } = await handle.read(0);
@@ -876,7 +893,7 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 			if (stopActivity && ActiveSession !== undefined) await this.stopSessionActivity(sessionId);
 		});
 	}
-	/** 0.1.7 起宿主用 waterfall 报告仍在运行的回合、子代理、任务和提醒。旧宿主没有该事件。 */
+	/** 宿主用 waterfall 报告仍在运行的回合、子代理、任务和提醒。 */
 	async sessionActivity(sessionId: string) {
 		const waterfall = hostEvent(this.ctx, "waterfall");
 		if (waterfall === undefined) return [];
@@ -970,7 +987,7 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 					if (result?.skipped) skippedSessionIds.push(sessionId);
 					else deletedSessionIds.push(sessionId);
 				} catch (error) {
-					failures.push({ sessionId, message: String(error) });
+					failures.push({ sessionId, message: deletionFailureMessage(error) });
 				}
 			}
 			return {
@@ -1179,14 +1196,12 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 		if (this.deletedSessionIds.has(header.id)) return;
 		return super.indexHeader(header);
 	}
-	/** 统一旧版头部数组与 0.1.3 的持久化快照，供父类索引和本插件枚举共用。 */
+	/** 持久化列表返回快照，这里只取出头部。 */
 	async listStoredHeaders() {
-		return (await this.ctx.sessionPersistence.list()).map(
-			(item) => "header" in item && item.header ? item.header : item as Header,
-		);
+		return (await this.ctx.sessionPersistence.list()).map((item) => item.header);
 	}
-	async indexHeaders(items: (Header | { header: Header })[]) {
-		for (const item of items) await this.indexHeader("header" in item && item.header ? item.header : item as Header);
+	async indexHeaders(items: Header[]) {
+		for (const item of items) await this.indexHeader(item);
 	}
 	/** 为未处于实时状态的持久化会话发布相同的移除事件。 */
 	async publishColdSessionRemoval(sessionId: string, sessions: SessionsCompat) {
@@ -1216,7 +1231,9 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 				`cannot delete session "${sessionId}": the session persistence backend does not expose locate() to resolve its transcript artifact`,
 			);
 		}
-		const header = await this.readSessionHeader(sessionId);
+		// 列表里已有头部时不再读转录。宿主恢复校验抛出的合成 tool/result
+		// 发生在读取阶段，不能挡在 rm 之前。
+		const header = this.headers?.get(sessionId) ?? await this.readSessionHeader(sessionId);
 		const location = persistence.locate(header);
 		if (location === void 0 || typeof location.path !== "string") {
 			throw new Error(
@@ -1250,16 +1267,28 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 					`archive-manager: session "${sessionId}": JSONL directory ownership could not be verified; falling back to artifact-only deletion at "${location.path}" (parent directory retained)`,
 				);
 			}
+			const existed = await pathExists(target.path);
 			await rm(target.path, { recursive: true, force: true });
-			// 新版 locate() 只是当前代际的诊断路径；以存储观察确认删除已生效，
-			// 避免不存在的目标被 force 忽略后，仍把可读会话记为已删除。
-			if (
-				typeof persistence.stat === "function" &&
-				(await persistence.stat(sessionId)) !== void 0
-			) {
-				throw new Error(
-					`session "${sessionId}" is still present in persistence after artifact removal`,
-				);
+			// stat 不读日志。它抛错只说明无法自证，不能当成已经删掉。
+			// 只有删除前目标确实存在、删除后该路径已消失，才接受这次校验失败。
+			if (typeof persistence.stat === "function") {
+				try {
+					const postStat = await persistence.stat(sessionId);
+					if (postStat !== void 0) {
+						throw new PersistenceStillPresentError(sessionId);
+					}
+				} catch (error) {
+					if (error instanceof PersistenceStillPresentError) throw error;
+					const gone = !(await pathExists(target.path));
+					if (!existed || !gone) {
+						throw new Error(
+							`cannot verify removal of session "${sessionId}": stat failed and "${target.path}" was not a present artifact removed by this deletion`,
+						);
+					}
+					this.ctx.logger.warn(
+						`archive-manager: session "${sessionId}" stat check after artifact removal failed; removal confirmed because "${target.path}" existed before rm and is gone now: ${String(error)}`,
+					);
+				}
 			}
 		} catch (error) {
 			const message = `cannot delete session "${sessionId}": cleanup of ${target.kind} "${target.path}" failed; bookkeeping retained for retry`;
@@ -1379,16 +1408,38 @@ var ArchiveWorkspaceRegistry = class extends (WorkspaceRegistry as unknown as Wo
 //#endregion
 const workspaceOverlay = Symbol.for("dsh-archive-manager.workspace-overlay");
 interface WorkspaceOverlayHost {
-	host: { sessionPath(id: string): string | undefined };
+	host: {
+		sessionPath?(id: string): string | undefined;
+		candidateMatches?(id: string, path: string): boolean;
+	};
 	invalidSessionPaths: { has(id: string): boolean };
 	archivedWorkspacePath(sessionId: string): string | undefined;
 	[workspaceOverlay]?: boolean;
 }
 /** 只保护仍在归档集合里、但路径索引还没编上的记账，避免官方 mutate 把归档会话写丢。 */
 function protectArchivedSessionPath(registry: WorkspaceOverlayHost): () => void {
-	const indexedPath = registry.host.sessionPath;
-	registry.host.sessionPath = (id) => {
-		const path = indexedPath(id);
+	const host = registry.host;
+	// DSH 0.2.1-alpha.3+：Workspace.sessionIds 经 host.candidateMatches 过滤（读 sessionPaths / missingSessionPaths）。
+	if (typeof host.candidateMatches === "function") {
+		const original = host.candidateMatches;
+		host.candidateMatches = (id, path) => {
+			if (original.call(host, id, path)) return true;
+			if (registry.invalidSessionPaths.has(id)) return false;
+			try {
+				return registry.archivedWorkspacePath(id) === path;
+			} catch {
+				return false;
+			}
+		};
+		return () => {
+			host.candidateMatches = original;
+		};
+	}
+	// 更早宿主：经 host.sessionPath 决定成员可见性。卸下时必须还原同一函数引用。
+	if (typeof host.sessionPath !== "function") return () => {};
+	const indexedPath = host.sessionPath;
+	host.sessionPath = (id) => {
+		const path = indexedPath.call(host, id);
 		if (path !== undefined) return path;
 		// 未归档会话仍走官方过滤，不改工作区成员语义。
 		if (registry.invalidSessionPaths.has(id)) return undefined;
@@ -1399,7 +1450,7 @@ function protectArchivedSessionPath(registry: WorkspaceOverlayHost): () => void 
 		}
 	};
 	return () => {
-		registry.host.sessionPath = indexedPath;
+		host.sessionPath = indexedPath;
 	};
 }
 /**

@@ -37,6 +37,7 @@ async function zstdCompressBuffer(buf: Buffer): Promise<Buffer> {
 const require = createRequire(import.meta.url);
 const log = require("../src/dsh/session-log.cjs") as {
   clearSessionLogCache: () => void;
+  encodeSegment: (segment: string) => string;
   locateSessionLog: (cwd: string, sessionId: string, root?: string) => string | undefined;
   parseGenerationLogFilename: (filename: string) => number | undefined;
   projectKey: (cwd: string) => string;
@@ -52,6 +53,8 @@ const log = require("../src/dsh/session-log.cjs") as {
     sessionId: string,
     root?: string,
   ) => { status: "used"; time?: number } | { status: "blank" } | { status: "unknown" };
+  resolveDshHome: (configured?: string) => string;
+  sessionLogPath: (cwd: string, sessionId: string, root?: string) => string;
 };
 
 async function writeLog(opts: {
@@ -254,8 +257,7 @@ describe("session-log runtime preset cache", () => {
   });
 });
 
-describe("session-log generation filenames (DSH 0.1.5 V3)", () => {
-  it("parseGenerationLogFilename accepts canonical names only", () => {
+describe("session-log generation filenames (DSH 0.1.5 V3)", () => {  it("parseGenerationLogFilename accepts canonical names only", () => {
     expect(log.parseGenerationLogFilename("session.jsonl")).toBe(0);
     expect(log.parseGenerationLogFilename("session.jsonl.zstd")).toBe(0);
     expect(log.parseGenerationLogFilename("session.v2.jsonl.zstd")).toBe(2);
@@ -323,5 +325,157 @@ describe("session-log generation filenames (DSH 0.1.5 V3)", () => {
       title: "迁移后的会话",
       lastUserMessageTime: 99,
     });
+  });
+});
+
+/**
+ * `encodeSegment` must match the host's encoder EXACTLY. Any divergence
+ * resolves to a directory no DSH process ever wrote, and the failure is
+ * silent: the session just looks missing.
+ */
+describe("session-log: host encodeSegment parity", () => {
+  it("leaves the safe set literal — plain session ids are unchanged", () => {
+    expect(log.encodeSegment("session-2f4c1c2e-9b3a-4d5e-8f01-abcdef012345"))
+      .toBe("session-2f4c1c2e-9b3a-4d5e-8f01-abcdef012345");
+    expect(log.encodeSegment("A-Z.a_z-0")).toBe("A-Z.a_z-0");
+  });
+
+  it("escapes ~ as ~007E (encodeURIComponent leaves it literal)", () => {
+    expect(log.encodeSegment("a~b")).toBe("a~007Eb");
+    // The exact divergence that motivated the port: same input, two names.
+    expect(decodeURIComponent(encodeURIComponent("a~b"))).toBe("a~b");
+    expect(log.encodeSegment("a~b")).not.toBe(encodeURIComponent("a~b"));
+  });
+
+  it("escapes ! * ' ( ) which encodeURIComponent also leaves literal", () => {
+    // `1` is in the safe set and stays literal — only the five markers escape.
+    expect(log.encodeSegment("s!(1)*'")).toBe("s~0021~00281~0029~002A~0027");
+    expect(log.encodeSegment("s!(1)*'")).not.toBe(encodeURIComponent("s!(1)*'"));
+  });
+
+  it("escapes non-ASCII code units instead of percent-encoding UTF-8", () => {
+    expect(log.encodeSegment("会话")).toBe("~4F1A~8BDD");
+    expect(log.encodeSegment("会话")).not.toBe(encodeURIComponent("会话"));
+    // Astral characters escape code unit by code unit, preserving lone surrogates.
+    expect(log.encodeSegment("👋")).toBe("~D83D~DC4B");
+    expect(log.encodeSegment("\uD83C")).toBe("~D83C");
+  });
+
+  it("special-cases . and .. so a whole segment cannot traverse upward", () => {
+    expect(log.encodeSegment(".")).toBe("~002E");
+    expect(log.encodeSegment("..")).toBe("~002E~002E");
+  });
+
+  it("uses uppercase hex, zero-padded to four digits", () => {
+    expect(log.encodeSegment("\u0000")).toBe("~0000");
+    expect(log.encodeSegment("\u00e9")).toBe("~00E9");
+    expect(log.encodeSegment("\u4F1A")).toBe("~4F1A");
+  });
+
+  it("rejects an empty segment rather than producing an empty path component", () => {
+    expect(() => log.encodeSegment("")).toThrow(/non-empty/);
+  });
+
+  it("sessionLogPath uses the host encoding for the session directory", () => {
+    const cwd = "C:\\work";
+    const sessionId = "s~1!";
+    const root = "C:\\home\\.dsh";
+    const built = log.sessionLogPath(cwd, sessionId, root);
+    expect(path.basename(path.dirname(built))).toBe("s~007E1~0021");
+    // Compare against the root the implementation ACTUALLY uses, not the raw
+    // literal: `sessionLogPath` runs its root through `resolveDshHome`, which
+    // makes it absolute. On POSIX a Windows-shaped literal is a RELATIVE path,
+    // so it resolves under the cwd and the literal is not a prefix of the
+    // result — asserting on it passed only on Windows and failed CI (Linux).
+    expect(built.startsWith(path.join(log.resolveDshHome(root), "sessions"))).toBe(true);
+  });
+
+  it("sessionLogPath places the log under a platform-native root", () => {
+    // The shape that exists in production: `resolveDshHome()` returns an
+    // absolute, platform-native directory. This must hold on every OS, which
+    // is what the Windows-only literal above could not prove.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-home-slog-path-"));
+    try {
+      const built = log.sessionLogPath("C:\\work", "s~1!", root);
+      expect(built.startsWith(path.join(root, "sessions"))).toBe(true);
+      expect(path.basename(path.dirname(built))).toBe("s~007E1~0021");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * A relative or `~`-prefixed session root is normalised exactly like the
+ * host's `resolveDshHome`; without it the reader looks in a directory DSH
+ * never wrote to and every listing silently comes back empty.
+ */
+describe("session-log: session root normalisation", () => {
+  let originalEnv: string | undefined;
+
+  beforeEach(() => {
+    log.clearSessionLogCache();
+    originalEnv = process.env.DSH_HOME;
+  });
+
+  afterEach(() => {
+    log.clearSessionLogCache();
+    if (originalEnv === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = originalEnv;
+  });
+
+  it("expands a leading ~ against the OS home", () => {
+    const home = os.homedir();
+    expect(log.resolveDshHome("~")).toBe(path.resolve(home));
+    expect(log.resolveDshHome("~/.dsh")).toBe(path.resolve(path.join(home, ".dsh")));
+    expect(log.resolveDshHome("~\\.dsh")).toBe(path.resolve(path.join(home, ".dsh")));
+    // Two-character `~x` prefixes are NOT expanded, like the host.
+    expect(log.resolveDshHome("~other/.dsh").endsWith(path.join("~other", ".dsh"))).toBe(true);
+  });
+
+  it("resolves a relative root to an absolute path", () => {
+    const resolved = log.resolveDshHome("relative-dsh");
+    expect(path.isAbsolute(resolved)).toBe(true);
+    expect(resolved).toBe(path.resolve("relative-dsh"));
+    expect(resolved.endsWith("relative-dsh")).toBe(true);
+  });
+
+  it("applies the same normalisation to $DSH_HOME and to an explicit root", () => {
+    process.env.DSH_HOME = "~/env-shape";
+    expect(log.resolveDshHome()).toBe(path.resolve(os.homedir(), "env-shape"));
+    expect(log.resolveDshHome("~/explicit-shape")).toBe(path.resolve(os.homedir(), "explicit-shape"));
+    // An explicit root wins over the environment, like the host.
+    expect(log.resolveDshHome("rel-root")).toBe(path.resolve("rel-root"));
+  });
+
+  it("treats a blank $DSH_HOME as unset", () => {
+    process.env.DSH_HOME = "   ";
+    expect(log.resolveDshHome()).toBe(path.resolve(os.homedir(), ".dsh"));
+  });
+
+  it("finds a log written under a ~-prefixed root", async () => {
+    // The realistic misconfiguration: the operator sets DSH_HOME=~/.dsh-2.
+    // The reader must resolve it to the same absolute directory the host
+    // used, or the session is reported as missing.
+    const real = fs.mkdtempSync(path.join(process.cwd(), "dsh-home-tilde-"));
+    const originalHome = os.homedir;
+    // Point `~` at the temp dir for this case only.
+    try {
+      Object.defineProperty(os, "homedir", { value: () => path.dirname(real), configurable: true });
+      const cwd = "C:\\work";
+      await writeLog({
+        dshHome: real,
+        cwd,
+        sessionId: "s-tilde",
+        headerAgentPreset: "cordis",
+        events: [{ type: "user/message", data: {}, time: 42 }],
+      });
+      const tildeRoot = `~/${path.basename(real)}`;
+      expect(log.resolveDshHome(tildeRoot)).toBe(path.resolve(real));
+      expect(log.readSessionRuntimePreset(cwd, "s-tilde", tildeRoot)).toBe("cordis");
+    } finally {
+      Object.defineProperty(os, "homedir", { value: originalHome, configurable: true });
+      fs.rmSync(real, { recursive: true, force: true });
+    }
   });
 });

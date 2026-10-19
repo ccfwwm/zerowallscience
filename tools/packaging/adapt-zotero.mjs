@@ -1,28 +1,36 @@
 import { zoteroDispatch } from './zotero-dispatch.mjs'
 import { ZeroWallZoteroDetails } from './zotero-live.mjs'
 import { decodeZoteroAuthorizationResponse, ZeroWallZoteroAuthorization } from './zotero-authorization.mjs'
+import { readFileSync } from 'node:fs'
+import { pinnedDsh } from './adapt-reviewed-dsh.mjs'
 
-// dsh-zotero 0.12.1 was published before the 0.2.0-rc.2 release and pins
-// every DSH peer to 0.1.7-rc.2. The source package remains untouched; this
-// adapter updates only the curated production copy used by ZeroWall.
+const zoteroPin = JSON.parse(readFileSync(new URL('../../config/integrations/upstream-sources.json', import.meta.url), 'utf8')).zotero
+
+// Include the explicitly reviewed prerelease in the curated production copy.
+// npm ranges normally exclude prereleases with a different base version.
 export function adaptZoteroManifest(source) {
   const manifest = JSON.parse(source)
-  const runtimeRange = '^0.1.7-rc.2 || ^0.2.0-rc.2'
-  if (manifest.name !== 'dsh-zotero' || manifest.version !== '0.12.1') {
+  const versions = zoteroPin.runtimeDshVersions
+  if (!Array.isArray(versions) || !versions.includes(pinnedDsh.version) || versions.some(version => !/^\d+\.\d+\.\d+(?:-[\w.]+)?$/u.test(version))) {
+    throw new Error('Review the configured Zotero compatibility range for the pinned DSH.')
+  }
+  const runtimeRange = versions.join(' || ')
+  if (manifest.name !== 'dsh-zotero' || manifest.version !== zoteroPin.version) {
     throw new Error('Unexpected Zotero manifest identity; review the pinned runtime adapter.')
   }
+  manifest.version = zoteroPin.resourceVersion ?? zoteroPin.version
   if (manifest.engines?.dsh !== undefined) manifest.engines.dsh = runtimeRange
   if (manifest.dsh?.engines?.dsh !== undefined) manifest.dsh.engines.dsh = runtimeRange
   if (manifest.dsh?.harnessRange !== undefined) manifest.dsh.harnessRange = runtimeRange
   if (manifest.peerDependencies && typeof manifest.peerDependencies === 'object') {
     for (const [name, range] of Object.entries(manifest.peerDependencies)) {
-      if (name.startsWith('@deepseek-ai/dsh') && typeof range === 'string' && range === '0.1.7-rc.2') {
+      if (name.startsWith('@deepseek-ai/dsh') && typeof range === 'string') {
         manifest.peerDependencies[name] = runtimeRange
       }
     }
   }
   if (manifest.dsh?.compatibility?.dshReleases) {
-    manifest.dsh.compatibility.dshReleases['0.2.0-rc.2'] = 'compatible'
+    manifest.dsh.compatibility.dshReleases[pinnedDsh.version] = 'compatible'
   }
   return `${JSON.stringify(manifest, null, 2)}\n`
 }

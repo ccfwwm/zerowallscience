@@ -32,7 +32,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
-  rmSync,
+
   writeFileSync,
   writeSync,
 } from 'node:fs'
@@ -59,6 +59,7 @@ import {
 } from '../src/archive-tools.ts'
 import { writeError } from '../src/wire.ts'
 import type { SidebarHttpResponse, SidebarWebRoute, SidebarWebUpgradeRoute } from '../src/context-types.ts'
+import { removeTree } from './temp-tree.ts'
 
 /** The OS temp directory as it was BEFORE this file points TMPDIR at a scratch dir. */
 const realTmp = tmpdir()
@@ -176,7 +177,7 @@ function responseRecorder(): { res: SidebarHttpResponse; wire: Wire } {
 function mountHost(): { api: SidebarWebRoute; download: SidebarWebRoute } {
   const routes: SidebarWebRoute[] = []
   const ctx = {
-    webRuntime: { trustedHosts: [] },
+    connection: { requestRejection: () => undefined },
     webServer: {
       register: (route: SidebarWebRoute) => { routes.push(route); return () => {} },
       registerUpgrade: (route: SidebarWebUpgradeRoute) => { void route; return () => {} },
@@ -280,8 +281,8 @@ afterEach(async () => {
   resetArchiveToolCache()
   vi.useRealTimers()
   vi.restoreAllMocks()
-  rmSync(scratch, { recursive: true, force: true })
-  rmSync(tempDir, { recursive: true, force: true })
+  removeTree(scratch)
+  removeTree(tempDir)
 })
 
 /** A directory inside the per-test fixture tree (removed with it). */

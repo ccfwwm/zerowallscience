@@ -155,7 +155,9 @@ describe('ZeroWall AI Cloud LLM routes', () => {
   })
 
   it('defaults every non-DeepSeek managed model to vision input and keeps generic Claude thinking controls disabled', async () => {
-    const { ctx, controller } = await setup(new MemorySecrets())
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.group.2', 'fixture-secret')
+    const { ctx, controller } = await setup(secrets)
     await controller.update({
       status: 'signedIn', balanceFreshness: 'current', lowBalance: false,
       models: [

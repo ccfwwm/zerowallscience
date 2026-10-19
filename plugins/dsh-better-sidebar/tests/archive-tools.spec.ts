@@ -21,7 +21,7 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
-  rmSync,
+
   statSync,
   symlinkSync,
   writeFileSync,
@@ -44,6 +44,7 @@ import {
   type ArchiveToolSpec,
 } from '../src/archive-tools.ts'
 import { SidebarError } from '../src/wire.ts'
+import { removeTree } from './temp-tree.ts'
 
 /** What one scripted child answers, per phase. */
 interface Script {
@@ -166,7 +167,7 @@ afterEach(() => {
   resetArchiveToolCache()
   vi.useRealTimers()
   vi.restoreAllMocks()
-  while (roots.length > 0) rmSync(roots.pop()!, { recursive: true, force: true })
+  while (roots.length > 0) removeTree(roots.pop()!)
 })
 
 describe('planArchive', () => {
@@ -491,7 +492,7 @@ describe('real tool (only when one is installed)', () => {
         expect(readFileSync(out).includes('loop/loop')).toBe(false)
       }
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTree(root)
     }
   }, 30_000)
 })

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, readlink, realpath, rename, symlink, unlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import { assertCompatible, compareVersions, fileDigest, verifySignedDocument } from './resource-catalog.mjs'
+import { assertCompatible, compareVersions, fileDigest } from './resource-catalog.mjs'
 import { carrierIndex, carrierName, offlineContentDigest } from './offline-carrier.mjs'
 import { physicalFs } from './physical-fs.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
@@ -10,6 +10,7 @@ import { bounded, copyProfileTree } from './profile-copy.mjs'
 import { RETIRED_PLUGIN_IDS, removeRetiredPlugins, removeRetiredPatch, removeRetiredResolutionRules } from './retired-plugins.mjs'
 import { PROFILE_LAYOUT, materializationFile, materializeOfflinePackages, preserveMaterializedDependencies, verifyMaterializedProfile } from './profile-materialization.mjs'
 import { importHistoricalPlugin, verifyHistoricalPluginImports } from './historical-plugin.mjs'
+import { verifyPluginDocument } from './plugin-verification.mjs'
 const { copyFile, lstat, readdir } = physicalFs.promises
 
 /** Keep one staging name. Preserve displaced candidates and diagnostic data
@@ -127,7 +128,7 @@ async function copySignedModules(source, destination, files) {
 }
 export async function readOfflineReceipt(source, keys, target, { local = false, generation = false } = {}) {
   const text = await readFile(join(source, 'receipt.json'), 'utf8')
-  const receipt = verifySignedDocument(JSON.parse(text), keys)
+  const receipt = verifyPluginDocument(JSON.parse(text), keys, target)
   if (![1, 2].includes(receipt.schema) || receipt.kind !== 'offline-profile' || receipt.profileArchitecture !== 7 || !Array.isArray(receipt.files) || !Array.isArray(receipt.plugins) || !Array.isArray(receipt.defaultPatch)) throw new Error('Invalid offline profile receipt')
   if (receipt.localOnly && !local) throw new Error('Development offline profile cannot enter a stable installation')
   if ((!generation && receipt.schema === 1 && receipt.applicationVersion !== target.desktopVersion) || receipt.dshCommit !== target.dshCommit) throw mismatch('Offline profile does not match this Desktop/DSH build', receipt, {
@@ -358,7 +359,7 @@ export async function verifyProfileCarriers(profile, keys, target, { local = fal
 }
 
 /** Install authenticated supply bytes directly into a profile candidate. */
-export async function prepareOfflineCandidate({ home, source, keys, target, defaults, bundledPlugins = [], yaml, runtimeModules, local = false, staging = false, onPhase = () => {} }) {
+export async function prepareOfflineCandidate({ home, source, keys, target, defaults, bundledPlugins = [], yaml, runtimeModules, local = false, staging = false, repairOnly = false, onPhase = () => {} }) {
   let started = Date.now()
   const metadata = await readOfflineReceipt(source, keys, target, { local })
   const { receipt, digest } = metadata
@@ -375,11 +376,31 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   const removed = new Set(selection.removed ?? [])
   const pins = selection.pinned ?? {}
   const packages = new Map(receipt.plugins.map(entry => [entry.id, entry]))
+  // A desktop upgrade owns the managed packages declared by its bundled
+  // inventory. Rebuild those roots from this installer's signed closure so a
+  // previous desktop/DSH generation cannot remain active through a link or a
+  // historical provenance receipt. Packages outside this set are user-owned
+  // and remain untouched (for example dsh-context).
+  const bundledManagedIds = new Set(bundledPlugins
+    .filter(item => item && item.managed !== false && !item.core)
+    .map(item => item.id))
   const oldMaterialization = await readFile(join(active, materializationFile), 'utf8').then(JSON.parse).catch(error => { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; return {} })
+  // Supporting packages are not DSH bundles, but previously imported managed
+  // roots still need the current installer's compatible bytes and provenance.
+  // Otherwise an old exact-runtime receipt survives a desktop/DSH upgrade.
+  const installationIds = new Set(defaults)
+  for (const record of receipt.plugins) {
+    if (record.core || record.managed === false || !bundledPlugins.some(item => item.id === record.id && item.managed !== false && !item.core)) continue
+    const id = pluginIdentity(record.id)
+    if (oldMaterialization.ids?.includes(id)
+      || ['dependencies', 'devDependencies', 'optionalDependencies'].some(field => Object.hasOwn(manifest[field] ?? {}, id))
+      || await lstat(join(active, 'node_modules', id)).catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
+      || await lstat(join(active, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')).catch(error => { if (error.code !== 'ENOENT') throw error })) installationIds.add(id)
+  }
   const installedPackages = new Map(), replacing = new Set()
-  for (const id of defaults) {
+  for (const id of installationIds) {
     pluginIdentity(id)
-    if (removed.has(id) || disabled.has(id) || RETIRED_PLUGIN_IDS.has(id)) continue
+    if (removed.has(id) || (!repairOnly && disabled.has(id)) || RETIRED_PLUGIN_IDS.has(id)) continue
     const record = packages.get(id)
     if (!record) throw new Error('Default plugin absent from signed offline closure: ' + id)
     const installed = await readFile(join(active, 'node_modules', id, 'package.json'), 'utf8').then(JSON.parse).catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
@@ -393,8 +414,17 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     }
     const root = installed && await realpath(join(active, 'node_modules', id)).catch(() => undefined)
     const owned = oldMaterialization.ids?.includes(id) || root && [join(home, 'resources/offline'), join(active, 'node_modules/.zerowall-carriers')].some(base => !relative(base, root).startsWith('..') && !isAbsolute(relative(base, root)))
-    const managed = bundledPlugins.some(item => item.id === id && item.managed !== false && !item.core)
-    if (!installed || (owned || managed) && compareVersions(installed.version, record.version) <= 0) replacing.add(id)
+    const managed = bundledManagedIds.has(id)
+    const declared = ['dependencies', 'devDependencies', 'optionalDependencies']
+      .some(field => Object.hasOwn(manifest[field] ?? {}, id))
+    const provenance = await lstat(join(active, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json'))
+      .catch(error => { if (error.code !== 'ENOENT') throw error })
+    // A declared managed package belongs to the desktop profile even when its
+    // version happens to be newer than the bundled record. Keeping that tree
+    // would also keep its old exact-runtime receipt and reproduce the startup
+    // failure. An undeclared newer package is an independent user install and
+    // is deliberately preserved.
+    if (!installed || owned || provenance || managed && (declared || compareVersions(installed.version, record.version) <= 0)) replacing.add(id)
   }
   const candidate = await prepareProfileCandidate(home)
   // Supplied replacements are installed once. A broken old entry or missing
@@ -420,10 +450,17 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
         if (entry.isDirectory() || entry.isSymbolicLink()) pending.push({ path: join(path, entry.name), info: entry })
       }
     }
+    // Physical historical imports can also retain an obsolete exact-runtime
+    // receipt without any carrier link. Keep inactive bytes as history rather
+    // than letting their provenance block every future startup.
+    if (!obsolete) {
+      try { await verifyHistoricalPluginImports({ profile: candidate, keys, target, runtimeModules, local, full: false, ids: [id] }) }
+      catch { obsolete = true }
+    }
     if (!obsolete) continue
     const history = join(candidate, '.zerowall/inactive-plugin-history', encodeURIComponent(id) + '-' + randomUUID())
     await mkdir(history, { recursive: true })
-    await rename(root, join(history, 'package'))
+    if (info) await rename(root, join(history, 'package'))
     const declarations = {}
     for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) if (Object.hasOwn(manifest[field] ?? {}, id)) {
       declarations[field] = manifest[field][id]
@@ -431,7 +468,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     }
     const provenance = join(candidate, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')
     if (await lstat(provenance).catch(error => { if (error.code !== 'ENOENT') throw error })) await rename(provenance, join(history, 'provenance.json'))
-    await writeFile(join(history, 'receipt.json'), JSON.stringify({ id, reason: 'Inactive managed package referenced obsolete supply', declarations }))
+    await writeFile(join(history, 'receipt.json'), JSON.stringify({ id, reason: 'Inactive managed package referenced obsolete supply or incompatible provenance', declarations }))
     inactiveArchived.push(id)
   }
   const layout = await repairProfileLayout(candidate, { from: active, home, pendingRoots: [...replacing].map(id => join(candidate, 'node_modules', id)) })
@@ -450,18 +487,24 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     await rename(path, history)
   }
   const bundles = new Set(manifest.dsh?.profile?.bundles ?? [])
-  for (const id of defaults) {
+  const defaultBundles = new Set(defaults)
+  for (const id of installationIds) {
     pluginIdentity(id)
-    if (removed.has(id) || disabled.has(id) || RETIRED_PLUGIN_IDS.has(id)) continue
+    if (removed.has(id) || (!repairOnly && disabled.has(id)) || RETIRED_PLUGIN_IDS.has(id)) continue
     const record = packages.get(id)
     if (!record) throw new Error('Default plugin absent from signed offline closure: ' + id)
     const installed = installedPackages.get(id)
     if (pins[id]) {
       if (installed?.version !== pins[id]) {
         if (record.version !== pins[id]) { blocked.push({ id, version: pins[id], reason: 'Pinned package is missing; import this exact version or explicitly unpin' }); continue }
-      } else if (!replacing.has(id)) { bundles.add(id); continue }
+      } else if (!replacing.has(id)) {
+        try { await verifyHistoricalPluginImports({ profile: candidate, keys, target, runtimeModules, local, full: false, ids: [id] }) }
+        catch (error) { blocked.push({ id, version: pins[id], reason: 'Pinned package cannot run on the current runtime; explicitly unpin to use the bundled version: ' + error.message }); continue }
+        if (defaultBundles.has(id)) bundles.add(id)
+        continue
+      }
     }
-    bundles.add(id)
+    if (defaultBundles.has(id)) bundles.add(id)
     if (record.core) {
       // Core plugin code lives in the verified desktop runtime. Remove only
       // older, unpinned managed shadows; retain the package tree for rollback.
@@ -514,9 +557,9 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   }
   const oldCarriers = join(candidate, 'node_modules/.zerowall-carriers')
   if (await lstat(oldCarriers).catch(() => undefined)) await displace(oldCarriers)
-  const expected = defaults.filter(id => !removed.has(id) && !disabled.has(id) && !RETIRED_PLUGIN_IDS.has(id))
+  const expected = [...installationIds].filter(id => !removed.has(id) && (repairOnly || !disabled.has(id)) && !RETIRED_PLUGIN_IDS.has(id))
   const verifyingAt = Date.now()
-  if (!await verifyMaterializedProfile({ profile: candidate, keys, target, expected, digest, local, full: true })) throw new Error('Signed installed profile candidate mismatch')
+  if (!await verifyMaterializedProfile({ profile: candidate, keys, target, expected, digest, local, full: true })) throw new Error('Installed plugin candidate is incomplete or invalid; previous profile preserved')
   await verifyHistoricalPluginImports({ profile: candidate, keys, target, runtimeModules, local, full: true })
   onPhase({ phase: 'profile-prepare', state: 'content-verified', durationMs: Date.now() - verifyingAt })
   manifest.dsh = { ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: [...bundles].filter(id => !removed.has(id) && !disabled.has(id) && !RETIRED_PLUGIN_IDS.has(id)) } }

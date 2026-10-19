@@ -14,4 +14,5 @@ await writeFile(join(output, 'command-path.ps1'), worker)
 
 await cp(join(root, 'tools/release/resource-catalog.mjs'), join(output, 'resource-catalog.mjs'))
 await cp(join(root, 'config/catalogs/trusted-keys.json'), join(output, 'trusted-keys.json'))
+await cp(join(root, 'config/catalogs/plugin-verification.json'), join(output, 'plugin-verification.json'))
 await import('./prepare-profile.mjs')

@@ -94,7 +94,7 @@ async function taskDefinition(id, taskArgs = []) {
     }
     const pluginPath = join(root, 'plugins', name)
     const manifest = await readFile(join(pluginPath, 'package.json'), 'utf8').then(JSON.parse)
-    const inputs = [`plugins/${name}`, 'tools/plugins/tsdown.ts', 'tools/plugins/generate-typert.mjs', 'tools/plugins/prepare-pack.mjs', 'tools/plugins/inline-css.mjs', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json', ...await sharedSourceInputs(root, pluginPath)]
+    const inputs = [`plugins/${name}`, 'tools/plugins/tsdown.ts', 'tools/plugins/generate-typert.mjs', 'tools/plugins/typert-workspace.mjs', 'tsconfig.host.json', 'tools/plugins/prepare-pack.mjs', 'tools/plugins/inline-css.mjs', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json', ...await sharedSourceInputs(root, pluginPath)]
     if (kind === 'plugin-pack') inputs.push('tools/plugins/pack.mjs', 'tools/plugins/publish-package.mjs', 'tools/plugins/snapshot.mjs')
     if (name === 'files') inputs.push('tools/plugins/viewer-style.mjs', 'tools/plugins/viewer-adapter.mjs')
     if (name === 'biogenie') inputs.push('resources/extensions/capabilities/biogenie', 'tools/integration/prepare-biogenie.mjs', 'tools/integration/generate-biogenie-catalog.py')

@@ -11,6 +11,8 @@ import { RETIRED_PLUGIN_IDS, retiredPackageSelector, removeRetiredPlugins, remov
 import { restorePackageClosure } from './profile-restore.mjs'
 import { PROFILE_LAYOUT, materializationFile, physicalizeProfilePlugins, preparePhysicalRootsForPnpm, verifyMaterializedProfile } from './profile-materialization.mjs'
 import { archiveHistoricalPluginProvenance, verifyHistoricalPluginImports } from './historical-plugin.mjs'
+import { acquireProfileMutation } from './profile-mutation-lock.mjs'
+import { pluginVerificationMode, verifyPluginDocument } from './plugin-verification.mjs'
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
 async function atomic(path, value, { raw = false } = {}) {
@@ -21,7 +23,7 @@ async function atomic(path, value, { raw = false } = {}) {
 }
 
 /** Signed resource preparation and official DSH profile transactions. */
-export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, runtimeModules, local = false, offlineStaging = false, onOfflinePhase = () => {}, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], bundledSkillVersions = {}, defaultPlugins = [] }) {
+export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, runtimeModules, offlineSource, local = false, offlineStaging = false, onOfflinePhase = () => {}, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], bundledSkillVersions = {}, defaultPlugins = [] }) {
   const root = join(home, 'resources')
   const profiles = join(home, 'profiles')
   const active = join(profiles, 'web')
@@ -30,7 +32,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   const selectionFile = join(pluginStateRoot, 'selection.json')
   let queue = Promise.resolve()
   let selectionBefore
-  const exclusive = task => { const result = queue.then(task); queue = result.catch(() => {}); return result }
+  const exclusive = task => { const result = queue.then(async () => {
+    const release = await acquireProfileMutation(active)
+    try { return await task() } finally { await release() }
+  }); queue = result.catch(() => {}); return result }
   const selectionTransaction = async task => {
     const previousText = await readFile(selectionFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error })
     const previous = previousText === undefined ? {} : JSON.parse(previousText)
@@ -48,9 +53,39 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     throw error
   })
 
-  async function copyProfileSkeleton(source, destination, options) {
+  async function copyProfileSkeleton(source, destination, { pendingIds = [], ...options } = {}) {
     await copyProfileTree(source, destination, options)
-    await requireProfileLayout(destination, source)
+    const layout = await repairProfileLayout(destination, { from: source, home,
+      pendingRoots: pendingIds.map(id => packagePath(destination, id)) })
+    if (layout.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: use the plugin repair action with the bundled pnpm before activation')
+  }
+
+  async function prepareMutationCandidate(candidate, replacements, document, { signal } = {}) {
+    const manifest = await json(join(active, 'package.json'))
+    const missing = []
+    for (const [id, spec] of Object.entries(manifest.dependencies ?? {})) {
+      if (replacements[id] || !/^(file|link):/u.test(spec) || RETIRED_PLUGIN_IDS.has(id)) continue
+      const source = resolve(active, spec.slice(5))
+      const info = await stat(source).catch(error => { if (error.code !== 'ENOENT') throw error })
+      if (info?.isFile()) continue
+      if (!info || !await exists(source)) missing.push(id)
+    }
+    if (missing.length && offlineSource) {
+      const { receipt } = await readOfflineReceipt(offlineSource, keys, target, { local })
+      const selection = await readPluginSelection()
+      const available = missing.every(id => receipt.plugins.some(entry => entry.id === id && !entry.core
+        && (!selection.pinned[id] || selection.pinned[id] === entry.version)))
+      if (available) {
+        const prepared = await prepareOfflineCandidate({ home, source: offlineSource, keys, target, defaults: missing, bundledPlugins, yaml, runtimeModules,
+          local, staging: offlineStaging, repairOnly: true, onPhase: onOfflinePhase })
+        if (prepared.blocked.length) throw new Error('PLUGIN_REPAIR_BLOCKED: ' + JSON.stringify(prepared.blocked))
+        if (prepared.candidate !== candidate) throw new Error('Unexpected plugin repair candidate')
+        return missing
+      }
+    }
+    const repaired = missing.length ? await repairMissingFileDependencies(active, document ?? await catalog(feedBase + '/plugin-latest.json', { signal }), replacements, { signal }) : []
+    await copyProfileSkeleton(active, candidate, { pendingIds: Object.keys(replacements) })
+    return repaired ?? []
   }
 
   async function preparePackageInstall(candidate, replacements = {}, { forPnpm = false } = {}) {
@@ -134,11 +169,11 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     }
   }
 
-  async function repairMissingFileDependencies(candidate, document, replacements, { signal } = {}) {
+  async function repairMissingFileDependencies(profile, document, replacements, { signal } = {}) {
     if (!document?.resources) return
-    const manifestFile = join(candidate, 'package.json')
+    const manifestFile = join(profile, 'package.json')
     const manifest = await json(manifestFile)
-    if (removeRetiredPlugins(manifest)) await atomic(manifestFile, manifest)
+    removeRetiredPlugins(manifest)
     const choices = await readPluginSelection()
     const repaired = new Map()
     function visit(entry) {
@@ -157,13 +192,16 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       }
     }
     for (const [id, spec] of Object.entries(manifest.dependencies ?? {})) {
-      if (replacements[id] || typeof spec !== 'string' || !spec.startsWith('file:')) continue
-      const source = resolve(candidate, spec.slice(5))
+      if (replacements[id] || typeof spec !== 'string' || !/^(file|link):/u.test(spec)) continue
+      const source = resolve(profile, spec.slice(5))
       const available = await stat(source).catch(error => {
         if (error.code === 'ENOENT') return undefined
         throw error
       })
-      if (available) continue
+      if (available && (!available.isDirectory() || await json(join(source, 'package.json')).catch(error => {
+        if (['ENOENT', 'ENOTDIR'].includes(error.code)) return undefined
+        throw error
+      }))) continue
       const entry = document.resources.find(item => item.id === id && ['plugin', 'support'].includes(item.kind))
       if (!entry) throw new Error(`Missing package source for ${id}; it is absent from the signed catalog`)
       const installed = await packageVersion(active, id)
@@ -178,6 +216,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       await cp(cached, tarball)
       replacements[entry.id] = 'file:' + tarball.replaceAll('\\', '/')
     }
+    return [...repaired.keys()]
   }
 
   async function readPluginSelection() {
@@ -382,7 +421,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     await atomic(join(result.candidate, 'package.json'), candidateManifest)
     await preparePackageInstall(result.candidate)
     try {
-      const activation = await activate(result.candidate, { operation: 'offline-repair', buildId: document.buildId, offlineGeneration: result.digest })
+      const repairedIds = document.plugins.filter(entry => !entry.core).map(entry => entry.id)
+      const repairedDependencyIds = [...new Set(document.files.map(entry => /^modules\/((?:@[^/]+\/)?[^/]+)\/package\.json$/u.exec(entry.path)?.[1]).filter(Boolean))]
+      const activation = await activate(result.candidate, { operation: 'offline-repair', buildId: document.buildId, offlineGeneration: result.digest, repairedIds, repairedDependencyIds })
       await atomic(receiptPath, { state: 'complete', architecture: 7, buildId: document.buildId, changed: result.changed, ...activation })
       return { repaired: true, architecture: 7, changed: result.changed }
     } catch (error) {
@@ -391,7 +432,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     }
   }
 
-  async function catalog(source, { signal } = {}) {
+  async function catalog(source, { signal, kind = 'plugin' } = {}) {
     let document
     if (/^https:\/\//.test(source)) {
       const response = await fetch(source, { cache: 'no-store', redirect: 'error', signal: signal ?? AbortSignal.timeout(10_000) })
@@ -409,12 +450,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       document = JSON.parse(Buffer.concat(chunks).toString('utf8'))
     } else document = await json(resolve(source))
     if (document.kind === 'pointer') {
-      verifySignedDocument(document, keys)
+      if (kind === 'plugin') verifyPluginDocument(document, keys, target)
+      else verifySignedDocument(document, keys)
       if (document.localOnly && !local) throw new Error('Development pointer cannot be activated by a release installation')
       const file = await downloadResource(document.catalog, join(root, 'catalogs'), { local, signal })
       document = await json(file)
     }
-    verifyCatalog(document, keys, { local })
+    verifyCatalog(document, keys, { local, signatureMode: kind === 'plugin' ? pluginVerificationMode(target, 'signature') : 'strict' })
     if (document.localOnly && !local) throw new Error('Development catalog cannot be activated by a release installation')
     return document
   }
@@ -473,9 +515,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
         await report({ phase: 'preparing', completed: ++completed, total: closure.size, currentPlugin: item.id })
         await atomic(journal, { state: 'preparing', candidate, completed, ...metadata })
       }
-      await copyProfileSkeleton(active, candidate)
+      // Discover and authenticate missing sources before relocating internal
+      // links. Strict relocation cannot succeed until these exact roots exist.
+      metadata.repairedIds = await prepareMutationCandidate(candidate, overrides, document, { signal })
       for (const item of closure.values()) await archiveHistoricalPluginProvenance({ profile: candidate, id: item.id })
-      await repairMissingFileDependencies(candidate, document, overrides, { signal })
       metadata.packageIds = [...new Set([...metadata.packageIds, ...Object.keys(overrides)])]
       await preparePackageInstall(candidate, overrides, { forPnpm: true })
       checkCancelled()
@@ -483,6 +526,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       checkCancelled()
       if (install) { const selection = await readPluginSelection(); for (const id of ids) selection.removed.delete(id); await writePluginSelection(selection) }
       await normalizeComposition(candidate)
+      await requireProfileLayout(candidate, active)
       checkCancelled()
       await report({ phase: 'activating', completed, total: closure.size })
       const result = await activate(candidate, { ...metadata, ...(ids.length === 1 ? { id: ids[0], packageId: ids[0], version: entries[0].version } : {}) })
@@ -557,7 +601,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   async function activate(candidate, metadata, completionState = 'complete') {
     // Normalize relative external links before the deeper history move. The
     // signed offline generation itself is never traversed or modified.
-    await requireProfileLayout(active, active)
+    await requireProfileLayout(active, active, metadata.repairedIds, metadata.repairedDependencyIds)
     await requireProfileLayout(candidate, candidate)
     const backup = join(root, 'history', 'zerowall-' + randomUUID())
     await mkdir(resolve(backup, '..'), { recursive: true })
@@ -569,7 +613,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       await stopHost()
       await renameProfile(active, backup)
       backedUp = true
-      try { await requireProfileLayout(backup, active) }
+      try {
+        const layout = await requireProfileLayout(backup, active, metadata.repairedIds, metadata.repairedDependencyIds)
+        if (layout.pendingTargets?.length) await atomic(join(backup, 'profile-archive-diagnostic.json'), {
+          reason: 'The pre-repair snapshot contained missing authenticated package roots',
+          missingTargets: layout.pendingTargets,
+        })
+      }
       catch (error) {
         // A repair may replace an already broken managed dependency tree.
         // Retain that original snapshot for diagnosis without allowing its
@@ -596,8 +646,11 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     }
   }
 
-  async function requireProfileLayout(directory, from) {
-    const result = await repairProfileLayout(directory, { from, home })
+  async function requireProfileLayout(directory, from, pendingIds = [], pendingDependencyIds = []) {
+    const result = await repairProfileLayout(directory, { from, home, pendingRoots: [
+      ...pendingIds.map(id => packagePath(directory, id)),
+      ...pendingDependencyIds.map(id => join(directory, 'node_modules/.zerowall-dependencies/node_modules', id)),
+    ] })
     if (result.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: use the plugin repair action with the bundled pnpm before activation')
     return result
   }
@@ -608,12 +661,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const generation = 'zerowall'
     const candidate = await prepareProfileCandidate(home)
     await mkdir(candidate, { recursive: true })
-    await copyProfileSkeleton(active, candidate)
+    const replacements = {}
+    const repairedIds = await prepareMutationCandidate(candidate, replacements)
     if (['add', 'update', 'install'].includes(args[0])) for (const selector of args.slice(1)) {
       const selected = /^((?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+)(?:@[^\s]+)?$/u.exec(selector)?.[1]
       if (selected) await archiveHistoricalPluginProvenance({ profile: candidate, id: selected })
     }
-    await preparePackageInstall(candidate, {}, { forPnpm: true })
+    await preparePackageInstall(candidate, replacements, { forPnpm: true })
     const manifest = await json(join(candidate, 'package.json'))
     if (args[0] === 'remove' && args[1]) {
       await archiveHistoricalPluginProvenance({ profile: candidate, id: args[1] })
@@ -635,7 +689,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       if (Object.keys(manifest.dependencies ?? {}).length) await runPlugin(['install'], generation)
     } else await runPlugin(args, generation)
     await normalizeComposition(candidate, args[0] === 'remove' ? args[1] : undefined)
-    return activate(candidate, { operation: args[0], packages: args.slice(1) })
+    await requireProfileLayout(candidate, active)
+    return activate(candidate, { operation: args[0], packages: args.slice(1), repairedIds })
   }
 
   async function rollback() {
@@ -710,7 +765,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   }
 
   async function resource(kind, id, source) {
-    const document = await catalog(source ?? `${feedBase}/${kind}-latest.json`)
+    const document = await catalog(source ?? `${feedBase}/${kind}-latest.json`, { kind })
     const entry = document.resources.find(item => item.id === id && item.kind === kind)
     if (!entry) throw new Error('Resource is absent from the signed catalog')
     assertCompatible(entry, target)
@@ -781,7 +836,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     throw new Error('This Python resource requires the dedicated runtime updater')
   }
   async function update(kind, source) {
-    const document = await catalog(source ?? `${feedBase}/${kind}-latest.json`)
+    const document = await catalog(source ?? `${feedBase}/${kind}-latest.json`, { kind })
     if (kind === 'plugin') {
       const manifest = await json(join(active, 'package.json'))
       const ids = [], skipped = []
@@ -811,7 +866,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     let unpublished = false
     try {
       if (!options.localOnly) {
-        document = await catalog(source ?? `${feedBase}/${kind}-latest.json`, { signal: options.signal })
+        document = await catalog(source ?? `${feedBase}/${kind}-latest.json`, { signal: options.signal, kind })
         await atomic(join(root, 'catalogs', kind + '-verified.json'), document)
       } else {
         const cached = await json(join(root, 'catalogs', kind + '-verified.json')).catch(error => { if (error.code !== 'ENOENT') throw error; return undefined })

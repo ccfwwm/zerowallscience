@@ -168,7 +168,7 @@ function buildPptMakerBridge(store: HostStoreModule): PptMakerHostBridge {
   }
 }
 
-function registerRoutes(ctx: ApplyCtx, bridge: PptMakerHostBridge): () => void {
+function registerRoutes(ctx: ApplyCtx): () => void {
   if (typeof ctx.effect !== 'function') return () => {}
   const disposer = ctx.effect(() => {
     const webServer = ctx.webServer
@@ -217,7 +217,6 @@ function registerRoutes(ctx: ApplyCtx, bridge: PptMakerHostBridge): () => void {
       dispose()
     }
   })
-  void bridge
   return typeof disposer === 'function' ? (disposer as () => void) : () => {}
 }
 
@@ -264,9 +263,21 @@ export function apply(ctx: ApplyCtx): void {
       },
       (message) => ctx.logger?.warn?.(`[dsh-ppt-maker] ${message}`)
     ) : ctx.tools
-    /** 注册全部 11 个 ppt_* 工具，返回合并注销函数。懒展开触发时整组进场。 */
+    /** 注册全部 11 个 ppt_* 工具，返回合并注销函数。懒展开触发时整组进场。
+     *  任一工具注册失败：先注销本组已注册的工具，再把失败整体抛出——`armLazyTools`
+     *  据此置 revealPending 并在下个轮次重试，而不是留下一张残缺的工具表。 */
     const registerToolSuite = (): (() => void) => {
       const suiteOffs: Array<() => void> = []
+      const failures: string[] = []
+      const disposeSuite = (): void => {
+        for (const off of suiteOffs.splice(0)) {
+          try {
+            off()
+          } catch {
+            /* teardown must not throw */
+          }
+        }
+      }
       for (const register of [
         registerCreateTool,
         registerThemesTool,
@@ -302,18 +313,16 @@ export function apply(ctx: ApplyCtx): void {
           })
           if (typeof off === 'function') suiteOffs.push(off)
         } catch (err) {
-          ctx.logger?.warn?.(`[dsh-ppt-maker] tool registration failed: ${(err as Error).message}`)
+          const label = register.name || 'tool'
+          ctx.logger?.warn?.(`[dsh-ppt-maker] ${label} 注册失败: ${(err as Error).message}`)
+          failures.push(`${label}: ${(err as Error).message}`)
         }
       }
-      return () => {
-        for (const off of suiteOffs.splice(0)) {
-          try {
-            off()
-          } catch {
-            /* teardown must not throw */
-          }
-        }
+      if (failures.length > 0) {
+        disposeSuite()
+        throw new Error(`${failures.length} 个工具注册失败：${failures.join('；')}`)
       }
+      return disposeSuite
     }
     // 懒展开（browser-skill 同款）：常驻的只有技能目录行；模型 invoke "ppt-maker"
     // 技能成功后整组工具才进场。webServer 路由不进懒展开——工作台面板随时要用。
@@ -322,19 +331,7 @@ export function apply(ctx: ApplyCtx): void {
 
   // webServer 路由在 apply 之后再起：先把 store/bridge 装配好，再让 handler
   // 见到它们。effect 本身就是 cordis 的清理通道。
-  const effectOff = registerRoutes(
-    ctx,
-    new Proxy(
-      {},
-      {
-        get(_t, prop) {
-          const bridge = resolveBridge()
-          if (!bridge) return undefined
-          return bridge[prop as keyof PptMakerHostBridge]
-        }
-      }
-    ) as PptMakerHostBridge
-  )
+  const effectOff = registerRoutes(ctx)
   if (typeof effectOff === 'function') offs.push(effectOff as () => void)
 
   // Eagerly warm the module load so bridge is ready before the first tool call.

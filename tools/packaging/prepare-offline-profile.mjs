@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { join, resolve, relative } from 'node:path'
 import { createRequire } from 'node:module'
-import { root, stageRoot, cacheRoot, applicationVersion, buildId } from '../build/paths.mjs'
+import { root, stageRoot, cacheRoot, applicationVersion, buildId, artifactRoot } from '../build/paths.mjs'
 import { offlineFiles } from '../commands/offline-profile.mjs'
 import { carrierName, offlineContentDigest } from '../commands/offline-carrier.mjs'
 import { compareVersions, fileDigest } from '../commands/resource-catalog.mjs'
@@ -31,7 +31,7 @@ const physicalRoots = [...plugins.filter(entry => !entry.core).map(entry => `nod
   'node_modules/sharp', 'node_modules/@img', 'node_modules/koffi',
   'node_modules/@koromix', 'node_modules/@zerowallscience/integrity-runtime']
 const cacheKey = createHash('sha256').update(JSON.stringify({ files, physicalRoots, archiver: require('@electron/asar/package.json').version, recipe: await fileDigest(import.meta.filename) })).digest('hex')
-const carrier = await reuseOfflineCarrier({ cache: join(cacheRoot, 'offline-carriers'), output: directory, key: cacheKey, prepare: async candidate => {
+const carrier = await reuseOfflineCarrier({ cache: join(cacheRoot, 'offline-carriers'), objectRoot: artifactRoot, output: directory, key: cacheKey, prepare: async candidate => {
   // Rename the owned staging directory while archiving rather than copying
   // the entire expanded closure again. Always restore it for tarball gates.
   await mkdir(input, { recursive: true })

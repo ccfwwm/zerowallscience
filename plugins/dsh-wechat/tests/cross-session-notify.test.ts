@@ -174,7 +174,7 @@ describe("cross-session gates: cards on, tasks off", () => {
     const card = texts.find((t: string) => t.includes("pwsh"));
     expect(card).toBeDefined();
     expect(card).toContain("权限");
-    expect(card).toContain("来自其他会话");
+    expect(card).toContain("❗来自其他会话");
     expect(card).toContain("P1=1");
   });
 
@@ -236,6 +236,155 @@ describe("cross-session gates: both on", () => {
     const texts = sendTextMessage.mock.calls.map((c: any) => c[1] as string);
     expect(texts.some((t: string) => t.includes("Continue?"))).toBe(true);
     expect(texts.some((t: string) => t.includes("任务已完成"))).toBe(true);
+  });
+});
+
+describe("cross-session recipient resolution uses the host's path canon", () => {
+  /**
+   * The workspace/cwd lookup is a fallback used only when the session is not
+   * in anyone's `watchedSessions` — exactly the path this test drives.
+   * Real directories are required: the canon is `fs.promises.realpath`, and
+   * a fake `C:\...` spelling would not normalize on the Linux CI runner.
+   *
+   * Two users make the assertion discriminating: `state.all()[0]` is the
+   * last-resort recipient, so a failed cwd match would silently deliver the
+   * notice to the wrong person instead of failing loudly.
+   */
+  function makeBridgeForCwd(opts: {
+    workspacePath: string;
+    sessionCwd: string;
+    users: Array<{ id: string; cwd: string }>;
+    /**
+     * Workspace session accounting. Defaults to accounting the session, which
+     * lets the `sessionIds.includes(...)` fallback resolve the owner; pass
+     * `[]` to force the decision through the cwd/path comparison alone.
+     */
+    workspaceSessionIds?: string[];
+  }) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-wx-recip-"));
+    const ctx: any = {
+      get: (name: string) => {
+        if (name === "workspaceRegistry") {
+          return {
+            list: () => [
+              {
+                path: opts.workspacePath,
+                title: "ws",
+                sessionIds: opts.workspaceSessionIds ?? ["sess-B"],
+                createdAt: "",
+                id: "ws1",
+              },
+            ],
+            archivedSessionIds: [],
+          };
+        }
+        if (name === "sessionQuery") {
+          return {
+            listSessions: async () => [
+              { header: { id: "sess-B", cwd: opts.sessionCwd, createdAt: Date.now() }, live: true, persisted: true },
+            ],
+            readTitle: async () => ({ title: "后台任务" }),
+            listEvents: async () => [],
+          };
+        }
+        return undefined;
+      },
+      on: () => () => {},
+    };
+    const cfg = defaultConfig();
+    cfg.storageDir = dir;
+    cfg.notifyTaskEvents = true;
+    const bridge = new WeChatDSHBridge(ctx, cfg) as any;
+    for (const u of opts.users) {
+      bridge.state.ensureUser(u.id, u.cwd);
+      // Bound to a DIFFERENT session so the "skip the current session" guard
+      // in the notifier never suppresses the notice.
+      bridge.state.update(u.id, { sessionId: `bound-${u.id}` });
+      // Deliberately do NOT watch sess-B: that shortcut would bypass the
+      // workspace/cwd resolution under test.
+    }
+    bridge.token = { baseUrl: "https://x", token: "t" };
+    bridge.ops.readSessionTitle = async () => "后台任务";
+    return bridge;
+  }
+
+  function completionNotices(): Array<{ to: string; text: string }> {
+    return sendTextMessage.mock.calls
+      .map((c: any) => ({ to: c[0] as string, text: c[1] as string }))
+      .filter((c) => c.text.includes("任务已完成"));
+  }
+
+  /**
+   * Poll until `predicate` holds or the deadline passes.
+   *
+   * The notice path is fire-and-forget (`void (async () => …)()`) and now
+   * performs real filesystem I/O — `fs.promises.realpath` per distinct cwd —
+   * so a fixed sleep loses the race under load. Polling for the outcome is
+   * deterministic; the assertion that follows still checks the exact
+   * recipient.
+   */
+  async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  }
+
+  it("notifies the user whose cwd matches, not the first-known-user fallback", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-wx-recip-"));
+    const unrelated = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-wx-recip-"));
+    const bridge = makeBridgeForCwd({
+      workspacePath: dir,
+      sessionCwd: dir,
+      // u1 is inserted first (so it is the all()[0] fallback) but owns an
+      // unrelated directory; u2 owns the workspace, spelled differently.
+      users: [
+        { id: "u1", cwd: unrelated },
+        { id: "u2", cwd: `${dir}${path.sep}` },
+      ],
+    });
+    bridge.handleSessionEvent("sess-B", { type: "turn/end", time: Date.now(), data: {} });
+    await waitFor(() => completionNotices().length > 0);
+    const notices = completionNotices();
+    expect(notices.map((n) => n.to)).toEqual(["u2"]);
+  });
+
+  it("notifies the matching user when the SESSION cwd is the respelled one", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-wx-recip-"));
+    const unrelated = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-wx-recip-"));
+    const bridge = makeBridgeForCwd({
+      workspacePath: dir,
+      // Trailing separator: `path.join(dir, ".")` would collapse it before
+      // the comparison ever runs, hiding the spelling difference.
+      sessionCwd: `${dir}${path.sep}`,
+      users: [
+        { id: "u1", cwd: unrelated },
+        { id: "u2", cwd: dir },
+      ],
+      // No session accounting: the cwd comparison is the ONLY way to find the
+      // owning workspace, so this isolates the path canon from the
+      // `sessionIds` fallback.
+      workspaceSessionIds: [],
+    });
+    bridge.handleSessionEvent("sess-B", { type: "turn/end", time: Date.now(), data: {} });
+    await waitFor(() => completionNotices().length > 0);
+    expect(completionNotices().map((n) => n.to)).toEqual(["u2"]);
+  });
+
+  it("falls back to the first known user when no workspace owns the cwd", async () => {
+    // Guards the deliberate last-resort path (single-user deployments), which
+    // must stay reachable when the cwd genuinely matches nothing.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-wx-recip-"));
+    const other = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-wx-recip-"));
+    const bridge = makeBridgeForCwd({
+      workspacePath: dir,
+      sessionCwd: other,
+      users: [{ id: "u1", cwd: other }],
+    });
+    bridge.handleSessionEvent("sess-B", { type: "turn/end", time: Date.now(), data: {} });
+    await waitFor(() => completionNotices().length > 0);
+    expect(completionNotices().map((n) => n.to)).toEqual(["u1"]);
   });
 });
 
@@ -517,5 +666,117 @@ describe("inbound intercept follows the decision gate", () => {
     expect(bridge.pendingApprovals.get("u1")?.length).toBe(1);
     await bridge.handleMessage(wechatText("/rq"));
     expect(bridge.pendingApprovals.get("u1")?.length).toBe(1);
+  });
+});
+
+/**
+ * The quoted excerpt in a cross-session completion notice.
+ *
+ * Two things were wrong with a head slice: the CONCLUSION of an assistant
+ * message is at its END (the head is preamble, shown exactly when the notice
+ * matters most), and raw prose can quote a credential the model was shown.
+ */
+describe("cross-session completion preview", () => {
+  const FIRST_WORDS = "先看看这个文件的结构然后再决定怎么做";
+  const LAST_WORDS = "最终结论：缓存层已经修好了。";
+  const longText = `${FIRST_WORDS}${"中间过程".repeat(30)}${LAST_WORDS}`;
+
+  async function completionText(bridge: any, text: string): Promise<string> {
+    bridge.handleSessionEvent("sess-B", {
+      type: "assistant/message",
+      time: Date.now(),
+      data: { message: { content: [{ type: "text", text }] } },
+    });
+    bridge.handleSessionEvent("sess-B", { type: "turn/end", time: Date.now(), data: {} });
+    await flushTicks();
+    await new Promise((r) => setTimeout(r, 10));
+    const notices = sendTextMessage.mock.calls
+      .map((c: any) => c[1] as string)
+      .filter((t: string) => t.includes("任务已完成"));
+    expect(notices).toHaveLength(1);
+    return notices[0]!;
+  }
+
+  it("quotes the TAIL of the message, not the head", async () => {
+    const bridge = makeBridgeWithConfig(false, true);
+    const notice = await completionText(bridge, longText);
+    expect(notice).toContain(LAST_WORDS);
+    expect(notice).not.toContain(FIRST_WORDS);
+  });
+
+  it("measures the tail in code points, never half a surrogate pair", async () => {
+    const bridge = makeBridgeWithConfig(false, true);
+    const emoji = "👋".repeat(120);
+    const notice = await completionText(bridge, `${"x".repeat(200)}${emoji}`);
+    expect(notice).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+    expect(notice).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+    // …and the truncation marker survives: it must come from the code-point
+    // walk, not from comparing code points against UTF-16 units.
+    expect(notice).toContain("…");
+  });
+
+  it("masks a credential quoted in the excerpt", async () => {
+    const bridge = makeBridgeWithConfig(false, true);
+    const notice = await completionText(
+      bridge,
+      `${"x".repeat(200)} failure was Authorization: Bearer abcDEF1234567890`,
+    );
+    expect(notice).toContain("Bearer ***");
+    expect(notice).not.toContain("abcDEF1234567890");
+  });
+
+  it("leaves a short message's own words intact (no head truncation)", async () => {
+    const bridge = makeBridgeWithConfig(false, true);
+    const notice = await completionText(bridge, "一句话结论");
+    expect(notice).toContain("> 一句话结论");
+  });
+});
+
+describe("WeChat-answer receipts are not gated by the cross-session switches", () => {
+  /**
+   * The cross-session switches gate *unsolicited* notices. A receipt for an
+   * answer the user just typed is a direct acknowledgement (same class as the
+   * `/rq` receipt), so it must arrive with both gates off — otherwise the
+   * user's own action looks swallowed.
+   */
+  function receiptTexts(): string[] {
+    return sendTextMessage.mock.calls.map((c: any) => c[1] as string);
+  }
+
+  it("both gates off: answering a current-session approval still confirms it", async () => {
+    const bridge = makeBridgeWithConfig(false, false);
+    // sess-A is u1's current session, so this card is answerable bare.
+    bridge.handleMuxFrame(approvalFrame("a-cur", "ap-cur", "sess-A"));
+    await flushTicks();
+    sendTextMessage.mockClear();
+
+    await bridge.handleMessage(wechatText("1"));
+    await (bridge as any).outboundSerial;
+
+    expect(receiptTexts().some((t: string) => t.includes("已允许权限卡 P1（pwsh）。"))).toBe(true);
+  });
+
+  it("both gates off: answering a current-session question still confirms it", async () => {
+    const bridge = makeBridgeWithConfig(false, false);
+    bridge.handleMuxFrame(questionFrame("q-cur", "sess-A"));
+    await flushTicks();
+    sendTextMessage.mockClear();
+
+    await bridge.handleMessage(wechatText("2"));
+    await (bridge as any).outboundSerial;
+
+    expect(receiptTexts().some((t: string) => t.includes("已回复提问卡 P1。"))).toBe(true);
+  });
+
+  it("a current-session card carries no cross-session warning marker", async () => {
+    const bridge = makeBridgeWithConfig(true, false);
+    bridge.handleMuxFrame(questionFrame("q-cur", "sess-A"));
+    await flushTicks();
+    await new Promise((r) => setTimeout(r, 10));
+
+    const card = receiptTexts().find((t: string) => t.includes("Continue?"));
+    expect(card).toBeDefined();
+    expect(card).not.toContain("来自其他会话");
+    expect(card).not.toContain("❗");
   });
 });

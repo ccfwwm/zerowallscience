@@ -26,8 +26,18 @@ export const NOTIFICATION_TAG_PREFIX = 'dsh-session-notification'
  */
 const liveNotifications = new Set<Notification>()
 
+interface DesktopNotificationBridge {
+  showNotification(input: { title: string; body: string; tag: string; sessionId?: string }): Promise<boolean>
+}
+
+function desktopBridge(): DesktopNotificationBridge | undefined {
+  const bridge = (globalThis as typeof globalThis & { zerowallDesktop?: DesktopNotificationBridge }).zerowallDesktop
+  return typeof bridge?.showNotification === 'function' ? bridge : undefined
+}
+
 /** The current notification permission state. */
 export function browserPermission(): BrowserPermission {
+  if (desktopBridge()) return 'granted'
   if (typeof Notification === 'undefined') return 'unsupported'
   return Notification.permission
 }
@@ -38,6 +48,7 @@ export function browserPermission(): BrowserPermission {
  * @returns the resulting permission state.
  */
 export async function requestBrowserPermission(): Promise<BrowserPermission> {
+  if (desktopBridge()) return 'granted'
   if (typeof Notification === 'undefined') return 'unsupported'
   let permission = Notification.permission
   if (permission === 'default') {
@@ -72,7 +83,7 @@ function iconUrlOf(link: HTMLLinkElement | null): string | undefined {
  * preload); the main frame always carries it.
  */
 export function isDesktopShell(): boolean {
-  return typeof globalThis !== 'undefined' && 'dshDesktop' in globalThis
+  return desktopBridge() !== undefined || (typeof globalThis !== 'undefined' && 'dshDesktop' in globalThis)
 }
 
 /**
@@ -101,6 +112,7 @@ function pageIconUrl(): string | undefined {
  * @param tag - collapse key; alerts of one kind share it, kinds differ.
  * @param onActivate - click action, run after the page is focused (the client
  * wiring navigates to the event's session here).
+ * @param sessionId - session opened by the native desktop bridge on activation.
  * @returns whether a notification was actually shown.
  */
 export function showBrowserNotification(
@@ -108,7 +120,15 @@ export function showBrowserNotification(
   body: string,
   tag: string = NOTIFICATION_TAG_PREFIX,
   onActivate?: () => void,
+  sessionId?: string,
 ): boolean {
+  const bridge = desktopBridge()
+  if (bridge) {
+    void bridge.showNotification({ title, body, tag, ...(sessionId === undefined ? {} : { sessionId }) })
+      .then(shown => { if (!shown) console.warn('[dsh-session-notification] native notification was not shown') })
+      .catch(error => { console.warn('[dsh-session-notification] native notification failed', error) })
+    return true
+  }
   if (typeof Notification === 'undefined') {
     console.warn('[dsh-session-notification] browser Notification API is unavailable (insecure context or unsupported browser)')
     return false

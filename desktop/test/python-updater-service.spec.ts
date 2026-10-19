@@ -47,7 +47,7 @@ it('preserves the bootstrap download error before a missing-runtime inventory ca
 })
 afterEach(async () => { state.children.length = 0; state.calls.length = 0; state.forks.length = 0; state.held.clear(); state.missing = false; state.coreIncomplete = false; for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
 
-it.each(['imports', 'pipCheck'] as const)('never completes an install whose %s health check failed', async check => {
+it.each(['imports', 'pipCheck'] as const)('retains %s diagnostics without rejecting a completed package install', async check => {
   const root = await mkdtemp(join(tmpdir(), 'python-package-health-')); roots.push(root)
   const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {}, executeOperation: async method => {
     if (method === 'applyPackagePlan') return { ready: true, packages: [], verification: { imports: true, pipCheck: true, [check]: false, message: `${check} rejected installed packages` } }
@@ -55,8 +55,21 @@ it.each(['imports', 'pipCheck'] as const)('never completes an install whose %s h
   } })
   try {
     const accepted = await service.applyPackagePlan('test-plan')
+    await expect.poll(async () => (await service.taskStatus(accepted.taskId) as { state: string }).state).toBe('complete')
+    expect(service.current()).toMatchObject({ packageInventory: { verification: { [check]: false, message: `${check} rejected installed packages` } } })
+  } finally { await service.shutdown() }
+})
+
+it('fails an install when the worker reports packages that were not installed', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'python-package-failure-')); roots.push(root)
+  const service = new PythonUpdaterService({ root, manifestUrl: 'https://fixture', publicKey: 'key', publish() {}, executeOperation: async method => {
+    if (method === 'applyPackagePlan') return { ready: true, packages: [], verification: { failedPackages: ['numpy'], message: 'numpy download failed' } }
+    return method === 'pythonInfo' ? { ready: true, packages: [] } : { phase: 'ready' }
+  } })
+  try {
+    const accepted = await service.applyPackagePlan('test-plan')
     await expect.poll(async () => (await service.taskStatus(accepted.taskId) as { state: string }).state).toBe('failed')
-    expect(await service.taskStatus(accepted.taskId)).toMatchObject({ state: 'failed', error: expect.stringContaining(`${check} rejected`) })
+    expect(await service.taskStatus(accepted.taskId)).toMatchObject({ state: 'failed', error: expect.stringContaining('numpy download failed') })
   } finally { await service.shutdown() }
 })
 

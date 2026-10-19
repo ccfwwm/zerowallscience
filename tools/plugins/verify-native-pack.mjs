@@ -34,6 +34,7 @@ for (const id of await readdir(join(root, 'plugins'))) {
   if (descriptor.client) {
     const clientSource = execFileSync('tar', ['-xOf', archive, `package/${descriptor.client.replace(/^\.\//, '')}`], { encoding: 'utf8', maxBuffer: 128 * 1024 ** 2 })
     assert(!/require\(["']@zerowallscience\/plugin-base\/client-helpers["']\)/u.test(clientSource), `${source.name}: client helper escaped into the DSH module table`)
+    assert(!/require\(["']@deepseek-ai\/dsh-typert-protocol\/remote-info["']\)/u.test(clientSource), `${source.name}: generated remote helper escaped into the DSH module table`)
   }
   for (const section of ['dependencies', 'peerDependencies']) {
     assert(!/workspace:|github:|git\+|git:/.test(JSON.stringify(manifest[section] ?? {})), `${source.name}: unpublished dependency`)

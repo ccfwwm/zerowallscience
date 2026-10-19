@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -8,9 +8,11 @@ const workflow = readFileSync(
   new URL('../.github/workflows/release-draft.yml', import.meta.url),
   'utf8',
 )
+const gitBash = join(process.env.ProgramFiles ?? 'C:/Program Files', 'Git/bin/bash.exe')
+const bash = process.platform === 'win32' && existsSync(gitBash) ? gitBash : 'bash'
 
 const extractRunBlock = (name: string): string => {
-  const lines = workflow.split('\n')
+  const lines = workflow.split(/\r?\n/)
   const step = lines.findIndex((line) => line === `      - name: ${name}`)
   const run = lines.findIndex((line, index) => index > step && line === '        run: |')
   const end = lines.findIndex((line, index) => index > run && line.startsWith('      - name: '))
@@ -60,8 +62,10 @@ exit 97
 
   try {
     const result = spawnSync(
-      'bash',
-      ['-c', extractRunBlock('Create or update concise draft release')],
+      bash,
+      ['-c', (process.platform === 'win32'
+        ? 'export PATH="/usr/bin:/bin:$PATH"\nexport PATH="$(cygpath -u "$FIXTURE_BIN"):$PATH"\n'
+        : 'export PATH="$FIXTURE_BIN:$PATH"\n') + extractRunBlock('Create or update concise draft release')],
       {
         cwd: root,
         encoding: 'utf8',
@@ -73,11 +77,12 @@ exit 97
           GITHUB_SERVER_URL: 'https://github.com',
           GITHUB_STEP_SUMMARY: join(root, 'step-summary'),
           OVERWRITE_EXISTING_DRAFT: 'false',
-          PATH: `${bin}:${process.env.PATH ?? ''}`,
+          FIXTURE_BIN: bin.replaceAll('\\', '/'),
           TARGET_TAG: 'v0.5.3-rc.1',
         },
       },
     )
+    if (!existsSync(calls)) throw new Error(`Release fixture failed (${result.status}): ${result.stdout}\n${result.stderr}`)
     return { calls: readFileSync(calls, 'utf8'), result }
   } finally {
     rmSync(root, { force: true, recursive: true })

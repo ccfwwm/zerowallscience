@@ -29,7 +29,7 @@
  * descendant count is mono micro-type, and the canvas / tree / board / drawer
  * own their own chrome.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSyncExternalStore } from 'react'
 import {
   Button, IconRefreshOutlineRegular,
@@ -60,6 +60,8 @@ import {
   clientJobs, collectRows, useJobObservation, useJobWatchers, useJobsSnapshot,
 } from './jobs-client.ts'
 import { t } from './locales.ts'
+import { diagnosticAddressOf } from './context-diagnostics-ui.tsx'
+import type { ContextDiagnosticTarget } from './context-diagnostics.ts'
 import { buildTasksModel, type TasksAgentNode, type TasksFoldNode, type TasksWorkflowNode } from './tasks-model.ts'
 import { TasksGraph } from './TasksGraph.tsx'
 import { TasksTree } from './TasksTree.tsx'
@@ -70,12 +72,84 @@ import { TeamBoard } from './TeamBoard.tsx'
 import { TaskWindow } from './TaskWindow.tsx'
 import type { SidebarStore } from './state.ts'
 import type { WorkflowRunView } from '../workflow-runs.ts'
+import type { ProcessActivitySummary } from '../process-activity.ts'
 import legacy from './SubagentView.module.css'
 
 /** Poll cadence of the live "last text + tool call" lines while a child runs. */
 const POLL_MS = 3000
 /** Poll cadence of the workflow-run and team views while the page is visible. */
 const TELEMETRY_POLL_MS = 5000
+
+/** The empty live map / run list: ONE identity, so a reset that changes
+ *  nothing (or a poll that returns nothing) never re-renders the page. */
+const NO_LIVE: Readonly<Record<string, SidebarChildLiveView>> = {}
+const NO_RUNS: readonly WorkflowRunView[] = []
+
+/**
+ * Whether two activity summaries say the same thing. Every field the cards
+ * read is compared — the activity line (`running`, `preparing`,
+ * `runningDetail`) and the settled tally (`counts`) — and nothing else, so a
+ * re-serialized but equal summary is not a change.
+ */
+function sameSummary(left: ProcessActivitySummary | undefined, right: ProcessActivitySummary | undefined): boolean {
+  if (left === right) return true
+  if (left === undefined || right === undefined) return false
+  if (left.running !== right.running || left.preparing !== right.preparing
+    || left.runningDetail !== right.runningDetail || left.counts.length !== right.counts.length) return false
+  return left.counts.every((entry, index) => {
+    const other = right.counts[index]!
+    return entry.kind === other.kind && entry.count === other.count
+  })
+}
+
+/** Whether two children's live views say the same thing (see the card render
+ *  sites for the fields: the running flag, the detail text, the summary). */
+function sameLiveView(left: SidebarChildLiveView | undefined, right: SidebarChildLiveView | undefined): boolean {
+  if (left === right) return true
+  if (left === undefined || right === undefined) return false
+  return left.running === right.running && left.text === right.text
+    && left.lastEventTime === right.lastEventTime && sameSummary(left.summary, right.summary)
+}
+
+/**
+ * Whether two `subagents.live` answers are the same map. The route answers with
+ * a FRESH object graph on every tick; publishing it unconditionally re-derived
+ * the whole agent tree and the graph layout every 3 s although nothing had
+ * changed.
+ */
+function sameLive(
+  left: Readonly<Record<string, SidebarChildLiveView>>,
+  right: Readonly<Record<string, SidebarChildLiveView>>,
+): boolean {
+  if (left === right) return true
+  const keys = Object.keys(left)
+  if (keys.length !== Object.keys(right).length) return false
+  return keys.every(key => Object.prototype.hasOwnProperty.call(right, key) && sameLiveView(left[key], right[key]))
+}
+
+/** Whether two workflow-run answers are the same list (runs → phases →
+ *  members, field by field). */
+function sameRuns(left: readonly WorkflowRunView[], right: readonly WorkflowRunView[]): boolean {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+  return left.every((run, index) => {
+    const other = right[index]!
+    if (run.runId !== other.runId || run.name !== other.name
+      || run.originSessionId !== other.originSessionId || run.status !== other.status
+      || run.stopReason !== other.stopReason || run.startedSeq !== other.startedSeq
+      || run.startedAt !== other.startedAt || run.finishedAt !== other.finishedAt
+      || run.phases.length !== other.phases.length) return false
+    return run.phases.every((phase, phaseIndex) => {
+      const peer = other.phases[phaseIndex]!
+      if (phase.title !== peer.title || phase.members.length !== peer.members.length) return false
+      return phase.members.every((member, memberIndex) => {
+        const mate = peer.members[memberIndex]!
+        return member.seq === mate.seq && member.label === mate.label && member.phase === mate.phase
+          && member.childId === mate.childId && member.outcome === mate.outcome
+      })
+    })
+  })
+}
 
 /**
  * The workspace face's "show this conversation" verb. DSH moved child and
@@ -102,15 +176,32 @@ function useSubagentLive(
   rootId: string | undefined,
   active: boolean,
 ): Readonly<Record<string, SidebarChildLiveView>> {
-  const [live, setLive] = useState<Record<string, SidebarChildLiveView>>({})
+  const [live, setLive] = useState<Readonly<Record<string, SidebarChildLiveView>>>(NO_LIVE)
+  /**
+   * What has been PUBLISHED. An equal answer must not reach React at all: even
+   * handing `setLive` an updater that returns the previous state lets React
+   * render the component once ("React may still need to render that specific
+   * component again before bailing out"), and one render re-derives the whole
+   * tasks model and the graph layout hanging off it.
+   */
+  const published = useRef<Readonly<Record<string, SidebarChildLiveView>>>(NO_LIVE)
 
   // A new tree must never inherit another root's live previews.
-  useEffect(() => { setLive({}) }, [rootId])
+  useEffect(() => {
+    published.current = NO_LIVE
+    setLive(current => (Object.keys(current).length === 0 ? current : NO_LIVE))
+  }, [rootId])
 
   const poll = useCallback(async (signal: AbortSignal): Promise<void> => {
     if (rootId === undefined) return
     const result = await api.subagentsLive(rootId, signal)
-    if (!signal.aborted) setLive(result.live)
+    if (signal.aborted) return
+    // The route answers with FRESH objects every tick; publishing them as-is
+    // re-derived the agent tree (and the graph layout) every 3 s although
+    // nothing had changed.
+    if (sameLive(published.current, result.live)) return
+    published.current = result.live
+    setLive(current => (sameLive(current, result.live) ? current : result.live))
   }, [rootId])
   usePolling(rootId !== undefined && active, poll, {
     intervalMs: POLL_MS,
@@ -123,12 +214,22 @@ function useSubagentLive(
 
 /** The folded workflow runs of the tree (poll-driven; empty when none). */
 function useWorkflowRuns(rootId: string | undefined, active: boolean): readonly WorkflowRunView[] {
-  const [runs, setRuns] = useState<readonly WorkflowRunView[]>([])
-  useEffect(() => { setRuns([]) }, [rootId])
+  const [runs, setRuns] = useState<readonly WorkflowRunView[]>(NO_RUNS)
+  const published = useRef<readonly WorkflowRunView[]>(NO_RUNS)
+  useEffect(() => {
+    published.current = NO_RUNS
+    setRuns(current => (current.length === 0 ? current : NO_RUNS))
+  }, [rootId])
   const poll = useCallback(async (signal: AbortSignal): Promise<void> => {
     if (rootId === undefined) return
     const result = await api.workflowsList(rootId, signal)
-    if (!signal.aborted) setRuns(result.runs)
+    if (signal.aborted) return
+    // Same identity rule as the live map: the run list is a model dependency,
+    // so an equal answer (the common case — a run's phases only move when an
+    // event commits) must publish nothing.
+    if (sameRuns(published.current, result.runs)) return
+    published.current = result.runs
+    setRuns(current => (sameRuns(current, result.runs) ? current : result.runs))
   }, [rootId])
   usePolling(rootId !== undefined && active, poll, {
     intervalMs: TELEMETRY_POLL_MS,
@@ -287,6 +388,36 @@ export function SubagentView(props: {
       })),
     [byId, catalogs, rootId, sessionId, live, metrics, runs, teamMembers, team, folded, foldedIds, expandedGroups],
   )
+
+  /**
+   * The tree's agent nodes by their session id — the ONLY sanctioned source of
+   * a job's diagnostics target. A jobs row is a roster entry under a WATCHED
+   * session (`row.ownerSessionId`) whose real owner is `job.owner`; a roster
+   * payload without an owner is announced under the watching session, which is
+   * not necessarily the session that owns the job. Resolving through the model
+   * therefore answers both halves at once: whether the owning session is in
+   * this tree at all, and what that node's address is (the root node has none
+   * — it IS the tree's main session — and must be addressed by its own id).
+   */
+  const agentNodeBySession = useMemo((): ReadonlyMap<string, TasksAgentNode> => {
+    const nodes = new Map<string, TasksAgentNode>()
+    for (const node of model) if (node.kind === 'agent') nodes.set(node.id, node)
+    return nodes
+  }, [model])
+
+  /**
+   * The diagnostics target of one conversation, when this tree holds its node.
+   * The label is the NODE's own — the card's durable label, resolved by the
+   * model — never a caller's title: a jobs row only knows the watched
+   * session's display title, which is not the owning agent's name.
+   */
+  const diagnosticsTargetOf = useCallback((ownerId: string): ContextDiagnosticTarget | undefined => {
+    const node = agentNodeBySession.get(ownerId)
+    if (node === undefined) return undefined
+    const address = diagnosticAddressOf(node.id, node.childAddress)
+    if (node.parentId !== undefined && address === undefined) return undefined
+    return { sessionId: node.id, label: node.label, ...(address === undefined ? {} : { address }) }
+  }, [agentNodeBySession])
 
   /**
    * Show one conversation in the main view. DSH moved child and session
@@ -537,6 +668,7 @@ export function SubagentView(props: {
           observed={treeJobs.observed[row.job.id]}
           anchor={popover.anchor}
           onClose={closePopover}
+          diagnostics={row.job.owner === undefined ? undefined : diagnosticsTargetOf(row.job.owner)}
         />
       )
     }
@@ -557,6 +689,7 @@ export function SubagentView(props: {
           asideAvailable={asideAvailable}
           onJump={jumpToNode}
           onOpenTask={openTaskById}
+          onClose={closePopover}
         />
       )
     }
@@ -677,6 +810,10 @@ export function SubagentView(props: {
         jobs={treeJobs.jobs}
         observed={observedJob}
         openJobId={popover?.kind === 'job' ? popover.jobId : undefined}
+        // The page's own visibility, exactly as the pollers read it: a parked
+        // Tasks tab keeps the drawer's rows (they are already rendered) but
+        // runs no per-second clock.
+        visible={active}
         onOpenOutput={(row, anchor) => {
           setPopover(popover?.kind === 'job' && popover.jobId === row.job.id
             ? null

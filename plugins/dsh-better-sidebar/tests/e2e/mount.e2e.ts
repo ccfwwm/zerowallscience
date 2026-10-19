@@ -30,8 +30,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
-import { PAGE_URL, createHostApi, gotoPage, hostRpc, sendFirstMessage, sidebarApi } from './host'
+import { test, expect, type APIRequestContext } from '@playwright/test'
+import { PAGE_URL, createHostApi, dismissOnboarding, gotoPage, hostRpc, sendFirstMessage, sidebarApi } from './host'
 
 /** Workspace the sidebar renders against (created by the lane's seeding). */
 const WORKSPACE_PATH = process.env.DSH_E2E_WORKSPACE ?? join(tmpdir(), 'dsh-e2e-workspace')
@@ -155,44 +155,6 @@ test.beforeAll(async () => {
   await seedSession()
 })
 
-/**
- * Dismiss the keyless boot's onboarding takeovers, which mask the whole shell:
- * a versioned welcome notice ("Continue", persists its acknowledgement to
- * settings) and, once that is acknowledged, a provider-config dialog
- * ("Configure later", session-only — always present while no credential is
- * configured). Both mount only after the settings join resolves. Wait
- * (bounded) for one to appear; a DSH build without onboarding proceeds
- * straight on.
- *
- * Dismissal loops until none remain, in any stacking order — a masked click is
- * retried next round instead of failing.
- * @param page - the lane's page.
- */
-async function dismissOnboarding(page: Page): Promise<void> {
-  try {
-    await expect
-      .poll(() => page.getByRole('button', { name: /^(Continue|Configure later)$/ }).count(), { timeout: 60_000 })
-      .toBeGreaterThan(0)
-  } catch {
-    console.warn('[e2e] no onboarding takeover appeared; proceeding without dismissal')
-  }
-  for (let round = 0; round < 8; round++) {
-    let dismissed = false
-    for (const name of ['Continue', 'Configure later']) {
-      const button = page.getByRole('button', { name, exact: true }).first()
-      if ((await button.count()) === 0) continue
-      try {
-        await button.click({ timeout: 4_000 })
-        dismissed = true
-        await page.waitForTimeout(1_000)
-      } catch {
-        // Masked by the takeover stacked above it; the next round tries the
-        // other button first.
-      }
-    }
-    if (!dismissed) break
-  }
-}
 
 test.afterAll(async () => {
   await api?.dispose()
@@ -335,7 +297,19 @@ test('plugin mounts into the DSH shell and survives a built-in tab sweep', async
     if (await page.locator('[data-sidebar-right-guide]').count() === 0) await addTab.click()
     const entry = page.locator(`[data-sidebar-right-guide-entry="${kind}"]`)
     await expect(entry, `guide entry "${kind}" must be reachable`).toHaveCount(1, { timeout: 30_000 })
+    let changesRequests = 0
+    /** Count the session-event requests the browser actually issues while idle. */
+    const countChangesRequest = (request: { url(): string }): void => {
+      if (request.url().includes('/sidebar/api/changes.ops')) changesRequests += 1
+    }
+    if (kind === 'git') page.on('request', countChangesRequest)
     await entry.click()
+    if (kind === 'git') {
+      await page.locator('[data-dsh-native-tab-host]:visible').getByRole('tab', { name: /^(Session|本轮文件)$/ }).click()
+      await page.waitForTimeout(8_000)
+      page.off('request', countChangesRequest)
+      expect(changesRequests, '空窗 8 秒内应有一次基线请求和一条等待中的增量请求').toBe(2)
+    }
     await page.waitForTimeout(1_500)
     await assertNoCrash()
   }
@@ -731,6 +705,18 @@ test('the bottom workbench opens the plugin terminal (#774) without shadowing th
   // seeded editor tab is open on arrival — clicking unconditionally would
   // collapse it, and every later query would then measure the slid-off
   // (translateY(102%)) panel.
+  //
+  // It is also HIDDEN while the host right sidebar is open (the plugin's own
+  // rule: that corner belongs to the host's Split/Fullscreen/Collapse cluster),
+  // so the sidebar opened above must be collapsed again before the toggle can
+  // be clicked at all. Waiting for it while the panel is open was a race the
+  // suite used to win by landing inside the 500 ms re-check window — and lost
+  // on 2026-10-15 (identical commit, one run green and one red).
+  await page.locator('[data-sidebar-right-toggle]').first().click()
+  await expect(
+    page.locator('[data-sidebar-right-expand]').first(),
+    'the right sidebar must be collapsed before the workbench toggle can render',
+  ).toBeVisible({ timeout: 30_000 })
   const bottomExpand = page.locator('[data-dsh-bottom-toggle]:visible').first()
   await expect(bottomExpand).toBeAttached({ timeout: 60_000 })
   if ((await bottomExpand.getAttribute('data-active')) !== 'true') await bottomExpand.click()
@@ -782,6 +768,10 @@ test('the bottom workbench opens the plugin terminal (#774) without shadowing th
   // Shadowing check: the plugin's entry is bottom-only, so the host's own
   // guide STILL lists exactly one `terminal` capsule — with the plugin's
   // terminal now open beside it — and never one for `terminal-bottom`.
+  // The sidebar was collapsed to reach the workbench toggle above, so it is
+  // re-opened here: this check IS about the host's guide being intact.
+  await page.locator('[data-sidebar-right-expand]').first().click()
+  await expect(guide).toBeVisible({ timeout: 30_000 })
   await expect(
     hostTerminalEntry,
     'the plugin must not shadow the host terminal',
@@ -888,10 +878,10 @@ test('a shell-stamped render URL mounts normally; plugin chrome carries the stab
   expect(regions.layerChild, 'panels stay no-drag so their controls keep receiving clicks').toBe('no-drag')
 })
 
-test('the custom-CSS escape hatch injects the user stylesheet live', async ({ request, page }) => {
+test('the custom-CSS escape hatch injects the user stylesheet live', async ({ page }) => {
   // The one setting the removed scheme row really owned: user-space CSS. It
   // has no scheme gate any more — a non-empty customCss is always applied.
-  const update = await request.post(sidebarApi('settings.update'), {
+  const update = await api.post(sidebarApi('settings.update'), {
     data: { patch: { customCss: 'html { --dsh-e2e-marker: 1; }' } },
   })
   expect(update.ok(), `settings.update: ${update.status()}`).toBe(true)
@@ -903,6 +893,6 @@ test('the custom-CSS escape hatch injects the user stylesheet live', async ({ re
     const marker = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--dsh-e2e-marker').trim())
     expect(marker).toBe('1')
   } finally {
-    await request.post(sidebarApi('settings.update'), { data: { patch: { customCss: '' } } })
+    await api.post(sidebarApi('settings.update'), { data: { patch: { customCss: '' } } })
   }
 })

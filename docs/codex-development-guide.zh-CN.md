@@ -1,6 +1,6 @@
 # ZeroWall Science 开发、打包与发布指导
 
-本文是后续开发的操作合同。当前桌面基线为 **8.3.3**；已发布的版本不重打、不覆盖。历史说明以 Git 记录追溯，当前入口见 [文档索引](README.md)。
+本文是后续开发的操作合同。桌面版本由 `config/build/desktop-release.json` 定义；已发布的版本不重打、不覆盖。历史说明以 Git 记录追溯，当前入口见 [文档索引](README.md)。
 
 ## 1. 开始工作
 
@@ -13,9 +13,9 @@ node -p "require('./package.json').version"
 
 在当前 main checkout 开发，保留无关修改、忽略文件及未跟踪文件，不创建或切换 worktree。保留用户选择的模型、推理强度、生图模型、协议和参数。先检查源文件、生成器、manifest、相关测试和 config/tools 合同，生成文件应修改生成器。
 
-基线工具：Node.js 24.9.0、pnpm 11.7.0。不要用另一个 pnpm 主版本操作现有 profile 的 node_modules；由桌面插件安装服务管理用户 profile 的 store 与安装事务。
+基线工具：Node.js 24.9.0、pnpm 11.28.5。不要用另一个 pnpm 主版本操作现有 profile 的 node_modules；由桌面插件安装服务管理用户 profile 的 store 与安装事务。
 
-DSH 固定为 0.2.0-rc.2，fork 分支 zerowall/reviewer-history-opaque，commit `cf5cb0fc02a1e08dda3540c037835ceb58a85851`。权威来源是 config/deepseek-harness/upstream.json 与子模块 gitlink。ZeroWall 领域功能放入插件，不因桌面功能随意升级 DSH。
+DSH 固定为 0.2.1-rc.2，fork 分支 zerowall/reviewer-history-opaque，commit `683cb0318b9a0fa09362794588d01acb0366850f`。权威来源是 config/deepseek-harness/upstream.json 与子模块 gitlink。ZeroWall 领域功能放入插件，不因桌面功能随意升级 DSH。
 
 ## 2. 目录与职责
 
@@ -77,6 +77,8 @@ build:dev 仅检查组件指纹并编译变化部分，不产生正式 runtime�
 
 插件/支持包源码在 plugins 平铺；上游来源、pin 和适配声明见 config/integrations/upstream-sources.json。更新适配插件时保留本地修复，修改适配生成器并验证最终 runtime。dsh-bundle-core/science 只声明组合，不能静态聚合所有插件代码。退休的 dsh-auto-review、dsh-capability-menu 不能重新进入闭包；DSH 官方 Auto Review 保留。
 
+插件运行时验证策略在 `config/catalogs/plugin-verification.json` 定义，随 commands 装配。8.4.0 按用户要求将插件签名与已安装文件摘要差异设为 `warn`：记录告警并继续，不以摘要差异触发反复重装。运行入口缺失、路径越界、断链、格式与兼容性错误仍需修复；候选 Host 健康检查和回滚保留。下载传输摘要、正式构建/发布验证及其他资源验证保持各自合同。装配须包含通配符和具名 locale 导出，打包前核对每项插件运行入口已进入离线清单。
+
 插件包已发布的同 ID/版本必须保持原字节。大小、SHA-256 或执行内容冲突时停止，调查并提升组件版本，不能绕过签名/不可变保护。同版本纯格式变化也应复用已发布归档。
 
 ## 4. 后续桌面发布必须集成最新插件
@@ -85,11 +87,17 @@ build:dev 仅检查组件指纹并编译变化部分，不产生正式 runtime�
 
 打包前先完成插件独立构建/打包与相关检查，让 artifacts/release/plugins/plugin-packages.json 表示本次要集成的完整最新集合。该清单是当前选择，不根据磁盘目录名猜版本，也不会在打包时自动从网上找未审核代码。拿到比本地源码新的包时先同步对应源码和配置；禁止静默降级或丢弃清单条目。
 
-Windows 正式入口：
+固定流程速查见 [稳定版打包](packaging-stable.zh-CN.md)。Windows 正式入口：
 
 ```powershell
 pnpm package:stable:win
 ```
+
+流程配置固定在 `config/build/stable.json`：只打稳定版，定义目标、资源/发布地址、签名文件引用和保留策略。版本与产品描述只改 `config/build/desktop-release.json`，发布说明写其 `notes` 模板对应的 Markdown；执行 `pnpm release:sync` 同步根/desktop manifest 和桌面布局版本，再生成并检查 profile。插件信息仍由各自 package.json、`config/integrations/upstream-sources.json` 和 `config/catalogs/` 管理，Skills 版本在 `resource-versions.json`，SciMaster 上游和资源版本在 `mcp-server-bundles.json`。独立资源版本不随桌面同步。
+
+相同组件复用编译输出与不可变归档；runtime 和离线载体按内容缓存，变化闭包内相同文件通过 SHA-256 对象硬链接共享。资源树（完整 Skills 和小型 MCP）独立于桌面版本缓存；版本戳只在新 stage 原子替换少量文件，缓存和旧 stage 保持原字节。新装配已含桌面输出时直接打包，不再额外克隆一套。已有稳定版安装器立即拒绝覆盖，复用/验收现有文件或提升桌面版本。
+
+成功打包后按配置回收旧桌面版本及多余 stage/cache，默认保留当前桌面、一个成功 stage 和每类一个最近缓存；当前 stage 仍引用的缓存继续保留。共享插件 tgz、签名目录、开发依赖、密钥和用户数据不随桌面版本回收。`artifacts:gc --dry-run --output <plan.json>` 可保存精确清单，`--apply --plan <plan.json>` 执行前会重验路径归属、活动构建和文件身份；无法访问的旧验收子目录逐项列出，其余目标继续清理。
 
 脚本按顺序执行：
 
@@ -97,19 +105,19 @@ pnpm package:stable:win
 2. 检查成功 stage 收据、绑定 DSH 的插件快照及 runtime/offline 中实际插件版本；离线签名文件清单必须绑定同一插件 manifest，防止只更新 modules 却仍携带旧 profile-runtime.asar。
 3. stage 缺失、插件版本变化、新增插件或闭包缺包时，运行增量 pnpm build，重新装配候选 stage。编译与 tgz 由指纹缓存复用，不强制重打所有插件。
 4. 再次确认完整最新集合已集成，防止旧源码把共享清单降级或丢项。
-5. consumer-only 克隆到新 build ID，只构建桌面；重新核对最新快照和运行时新鲜度后生成安装器。失败不得使用旧 stage 冒充成功。
+5. 复用既有 stage 时，consumer-only 克隆到新 build ID，重新执行 commands:prepare 装配当前命令脚本，再构建桌面；刚完成全量装配时直接使用本次新 stage。命令脚本不能随旧 runtime 缓存冻结。重新核对最新快照和运行时新鲜度后生成安装器。失败不得使用旧 stage 冒充成功。
 
 安装器携带最新插件的实际可运行离线闭包（profile-runtime.asar 及必要物理文件）、默认 Skills 与小型 MCP 资源；共享 tgz 留在独立资源仓库，不再为每个桌面版本复制一套，也不在安装器里额外重复携带一套 tgz。运行时装配可能硬链接或按需复制文件，这是离线运行要求，不等于重新编译/归档插件。
 
 发布验收应保存本次 plugin-snapshot.json 与成功 build-receipt，逐项核对最新清单、集成版本和签名离线闭包。桌面升级保留用户的禁用、卸载、固定版本和第三方选择，不强行启用全部内置插件。
 
-8.3.2 起，稳定打包还核对七牛已签名的插件、Skills 最新 catalog；安装器不能集成低于公开版本的资源。同版本必须保持归档摘要一致，Skills 的实际文件树、安装版本索引和签名归档须逐项一致，证据保存在 stage/bundled-resource-receipt.json。桌面升级会替换旧 profile 内未固定版本的托管插件；更高版本、第三方来源及显式选择继续保留。未经用户修改的旧 catalog Skill 副本若遮蔽新版内置 Skill，会移入正常回滚历史，让内置新版生效；导入、自定义、编辑过和禁用的 Skill 保留。
+8.3.2 起，稳定打包还核对七牛已签名的插件、Skills 最新 catalog；安装器不能集成低于公开版本的资源。同版本必须保持归档摘要一致，Skills 的实际文件树、安装版本索引和签名归档须逐项一致，证据保存在 stage/bundled-resource-receipt.json。桌面升级直接使用当前安装包的兼容闭包替换其声明的未固定版本托管插件及已安装支持包，并移走对应旧运行时来源收据；不因旧上游正式版高于新适配版的预发布 semver 而保留旧 DSH 供给。清单外的用户插件（如 dsh-context）、固定版本及显式选择继续保留。未经用户修改的旧 catalog Skill 副本若遮蔽新版内置 Skill，会移入正常回滚历史，让内置新版生效；导入、自定义、编辑过和禁用的 Skill 保留。
 
 ## 5. 正式签名、版本和验收
 
 发布新桌面版本时执行下列流程。每次使用独立版本目录和新 build ID，不覆盖 8.3.0 等已发布的 metadata 或安装包。
 
-更新根/desktop package.json、相关 config 版本源及新版本 release notes；通过插件/profile 生成器同步，不手工补生成文件。Python 依赖清单中独立签名的旧 applicationVersion/revision 不是桌面版本替换目标。
+更新 `config/build/desktop-release.json` 和对应 release notes，执行 `pnpm release:sync`；通过插件/profile 生成器同步，不手工补生成文件。Python 依赖清单中独立签名的旧 applicationVersion/revision 不是桌面版本替换目标。
 
 ```powershell
 pnpm plugins:generate
@@ -119,13 +127,9 @@ pnpm profiles:check
 pnpm dsh:verify
 ```
 
-正式打包须从已提权 PowerShell 开始。安装器与应用入口会要求管理员权限，不能先跑到中途才提权；UAC 由用户确认。正式资源签名环境仅指向已有忽略文件，不在日志打印内容：
+正式打包须从已提权 PowerShell 开始。安装器与应用入口会要求管理员权限，不能先跑到中途才提权；UAC 由用户确认。稳定配置默认引用已有的忽略签名文件；需要覆盖时使用对应环境变量，不在日志打印内容：
 
 ```powershell
-$env:ZEROWALL_RESOURCE_PRIVATE_KEY_FILE = Join-Path (Get-Location) 'scripts/env/resource-stable-4-private.pem'
-$env:ZEROWALL_RESOURCE_KEY_ID = 'stable-4'
-$env:ZEROWALL_RESOURCE_BASE_URL = 'https://zerowall.chengxunkeji.cn/stable'
-$env:ZEROWALL_RELEASE_BASE_URL = 'https://zerowall.chengxunkeji.cn'
 pnpm package:stable:win
 pnpm release:metadata
 pnpm artifacts:manifest

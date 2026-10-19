@@ -102,6 +102,10 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
           // classic script fail at runtime with "missed the module table".
           /^@zerowallscience\/plugin-base\/client-helpers$/,
           /[\\/]plugins[\\/]base[\\/]src[\\/]shared[\\/]client-helpers(?:\.[cm]?[jt]s)?$/u,
+          // Generated DSH remotes use this pure leaf; it is not a browser
+          // ModuleLoader entry. Inline it without pulling in the protocol root.
+          /^@deepseek-ai\/dsh-typert-protocol\/remote-info$/u,
+          /[\\/]typert[\\/]protocol[\\/]lib[\\/]types[\\/]remote-info\.js$/u,
           /^@zerowallscience\/plugin-[^/]+\/(?:client\/|src\/)/,
           /^dsh-file-review(?:\/|$)/,
           /^lucide-react(?:\/|$)/,
@@ -166,6 +170,9 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         // it is not a shared client service and remains independently
         // publishable.
         resolveId(source: string) {
+          if (source === '@deepseek-ai/dsh-typert-protocol/remote-info') {
+            return resolve(dirname(fileURLToPath(import.meta.url)), '../../deepseek-harness/packages/typert/protocol/lib/types/remote-info.js')
+          }
           if (source === '@zerowallscience/plugin-base/client-helpers') {
             return resolve(dirname(fileURLToPath(import.meta.url)), '../../plugins/base/src/shared/client-helpers.ts')
           }

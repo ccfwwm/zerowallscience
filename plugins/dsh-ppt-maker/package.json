@@ -1,6 +1,6 @@
 {
   "name": "dsh-ppt-maker",
-  "version": "1.0.1-zws.6",
+  "version": "1.0.1-zws.9",
   "type": "module",
   "description": "DeepSeek Harness plugin that bundles the ppt-maker skill and the PPT tool surface: create, inspect, edit, undo and redo a PPTD project that exports to a locally generated .pptx.",
   "author": "OMSociety (https://github.com/OMSociety)",
@@ -47,16 +47,16 @@
     "docs/pptd-spec.md"
   ],
   "peerDependencies": {
-    "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.0-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-client-ui-sidebar-right": ">=0.2.0-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-host-webserver": ">=0.2.0-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-session": ">=0.2.0-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-skill": ">=0.2.0-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-tools": ">=0.2.0-rc.2 <0.3.0-0"
+    "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-sidebar-right": ">=0.2.0-rc.2",
+    "@deepseek-ai/dsh-host-webserver": ">=0.2.0-rc.2",
+    "@deepseek-ai/dsh-native-command": ">=0.2.1-rc.2",
+    "@deepseek-ai/dsh-session": ">=0.2.0-rc.2",
+    "@deepseek-ai/dsh-skill": ">=0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": ">=0.2.0-rc.2"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-native-command": "0.2.0-rc.2",
-    "@deepseek-ai/libreoffice-kit": "0.1.2",
+    "@deepseek-ai/libreoffice-kit": "0.1.5",
     "@office-kit/pptx": "0.24.0",
     "@office-kit/pptx-preview": "0.15.0",
     "@xmldom/xmldom": "^0.9.8",
@@ -66,6 +66,7 @@
     "yaml": "^2.8.1"
   },
   "devDependencies": {
+    "@deepseek-ai/dsh-native-command": "workspace:*",
     "@types/node": "^24.10.1",
     "@types/react": "^18.3.31",
     "esbuild": "0.27.7",
@@ -78,7 +79,10 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "platform": "web"
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
     }
   },
   "scripts": {
@@ -90,7 +94,7 @@
     "prepack": "node scripts/clean-pycache.mjs"
   },
   "engines": {
-    "node": ">=18",
+    "node": ">=22.19.0",
     "dsh": ">=0.2.0-rc.2 <0.3.0-0"
   },
   "allowScripts": {
@@ -101,6 +105,15 @@
       "docs/pptd-spec.md",
       "skills/ppt-maker/SKILL.md",
       "skills/ppt-maker/reference/pptd.md"
-    ]
-  }
+    ],
+    "upstreamVersion": "1.0.0",
+    "desktop": {
+      "min": "8.4.0"
+    },
+    "dsh": {
+      "min": "0.2.1-rc.2",
+      "max": "0.2.1-rc.2"
+    }
+  },
+  "packageManager": "pnpm@11.28.5"
 }

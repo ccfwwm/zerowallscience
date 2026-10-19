@@ -30,13 +30,15 @@ async function main() {
   const desktopPackage = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
   const version = String(desktopPackage.version)
   const installer = resolve(targetPackageRoot, `zerowall-science-${version}-win-x64.exe`)
-  const notes = await readFile(resolve(root, `docs/release-notes-${version}.md`), 'utf8')
+  const release = JSON.parse(await readFile(resolve(root, 'config/build/desktop-release.json'), 'utf8'))
+  const stable = JSON.parse(await readFile(resolve(root, 'config/build/stable.json'), 'utf8'))
+  const notes = await readFile(resolve(root, release.notes.replaceAll('{version}', version)), 'utf8')
   const metadata = await createWindowsReleaseMetadata({
     installer,
     version,
     notes,
     publishedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
-    releaseBaseUrl: process.env.ZEROWALL_RELEASE_BASE_URL ?? 'https://zerowall.chengxunkeji.cn',
+    releaseBaseUrl: process.env.ZEROWALL_RELEASE_BASE_URL ?? stable.releaseBaseUrl,
   })
   const payload = `${JSON.stringify(metadata, null, 2)}\n`
   const outputs = [

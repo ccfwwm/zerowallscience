@@ -44,17 +44,22 @@ test("离开页面后恢复完成不产生迟到导航", async () => {
 });
 
 function navigationFixture() {
-  let current;
+  const byId = { old: { id: "old", retainedBy: {} } };
   let panel = "settings";
   let fail = false;
   const sessions = {
-    list: { getSnapshot: () => ({ current }) },
-    open(id) { current = id; navigation.clearArchivedCurrent(); if (fail) throw new Error("open failed"); }
+    list: { getSnapshot: () => ({ byId }) },
+    retain() { return { sessionId: "old", release() {} }; }
   };
   const workspaces = { list: { getSnapshot: () => ({ archivedSessionIds: ["old"] }) } };
   const navigation = {
-    clearArchivedCurrent() { if (current === "old") current = undefined; },
-    openSession(id) { sessions.open(id); panel = null; }
+    clearArchivedCurrent() {
+      if ((byId.old.retainedBy.mainView ?? 0) > 0) byId.old = { id: "old", retainedBy: {} };
+    },
+    openSession(id) {
+      if (fail) throw new Error("open failed");
+      byId[id] = { id, retainedBy: { mainView: 1 } };
+    }
   };
   const warnings = [];
   const options = { onOpened() { panel = null; }, warn: (...args) => warnings.push(args) };
@@ -69,11 +74,11 @@ test("归档打开验证成功后才退出设置；失败清除放行状态并�
   assert.throws(() => guard.open("old"), /open failed/);
   assert.equal(env.panel, "settings");
   env.navigation.clearArchivedCurrent();
-  assert.equal(env.sessions.list.getSnapshot().current, undefined);
+  assert.equal(currentSessionId(env.sessions.list.getSnapshot()), undefined);
   env.fail = false;
   guard.open("old");
   assert.equal(env.panel, null);
-  assert.equal(env.sessions.list.getSnapshot().current, "old");
+  assert.equal(currentSessionId(env.sessions.list.getSnapshot()), "old");
   guard.dispose();
 });
 
@@ -98,20 +103,20 @@ test("他人覆盖导航后拒绝不可靠的归档打开，卸载不覆盖他�
   assert.equal(env.panel, "settings");
 });
 
-test("旧宿主无清理方法时诊断并使用会话接口，未保留目标时不退出设置", () => {
+test("没有 openSession 时拒绝打开，未保留目标时不退出设置", () => {
   const env = navigationFixture();
-  const sessions = { ...env.sessions, open() {} };
+  const sessions = { ...env.sessions };
   const guard = allowArchivedNavigation(undefined, sessions, env.workspaces, env.options);
   assert.equal(env.warnings.length, 0, "挂载不警告");
-  assert.throws(() => guard.open("old"), { code: "sessionNotRetained" });
+  assert.throws(() => guard.open("old"), { code: "navigationUnavailable" });
   assert.equal(env.panel, "settings");
   assert.ok(env.warnings.length > 0);
   guard.dispose();
 });
 
-test("目标会话未保留时不调用会提前关闭设置的官方 openSession", () => {
+test("目标会话未保留时不退出设置", () => {
   const env = navigationFixture();
-  env.sessions.open = () => {};
+  env.navigation.openSession = () => {};
   const guard = allowArchivedNavigation(env.navigation, env.sessions, env.workspaces, env.options);
   assert.equal(env.warnings.length, 0, "挂载不警告");
   assert.throws(() => guard.open("old"), { code: "sessionNotRetained" });
@@ -128,27 +133,24 @@ test("打开前中止进行中的工作区导航，避免其他工作区抢走�
   });
   guard.open("old");
   assert.deepEqual(navigations, ["begin"]);
-  assert.equal(env.sessions.list.getSnapshot().current, "old");
+  assert.equal(currentSessionId(env.sessions.list.getSnapshot()), "old");
   assert.equal(env.panel, null);
   guard.dispose();
 });
 
-test("旧宿主正常打开归档不警告", () => {
-  let current;
+test("没有 openSession 时不把 sessions.open 当成打开接口", () => {
   const warnings = [];
-  const sessions = { list: { getSnapshot: () => ({ current }) }, open(id) { current = id; } };
+  const sessions = { list: { getSnapshot: () => ({ byId: { old: { id: "old", retainedBy: { mainView: 1 } } } }) }, open() { throw new Error("不应调用 sessions.open"); } };
   const workspaces = { list: { getSnapshot: () => ({ archivedSessionIds: ["old"] }) } };
   const guard = allowArchivedNavigation(undefined, sessions, workspaces, { warn: (...args) => warnings.push(args) });
-  assert.equal(warnings.length, 0);
-  guard.open("old");
-  assert.equal(current, "old");
-  assert.equal(warnings.length, 0);
+  assert.throws(() => guard.open("old"), { code: "navigationUnavailable" });
+  assert.equal(warnings.length > 0, true);
   guard.dispose();
 });
 
 test("当前会话优先 retainedBy.mainView，没有再读 list.current", () => {
   assert.equal(currentSessionId({ current: "legacy", byId: { other: { id: "other", retainedBy: { mainView: 1 } } } }), "other");
-  assert.equal(currentSessionId({ current: "legacy", byId: { idle: { id: "idle", retainedBy: {} } } }), "legacy");
+  assert.equal(currentSessionId({ current: "legacy", byId: { idle: { id: "idle", retainedBy: {} } } }), undefined);
   assert.equal(currentSessionId({
     byId: {
       idle: { id: "idle", retainedBy: {} },
@@ -158,7 +160,7 @@ test("当前会话优先 retainedBy.mainView，没有再读 list.current", () =>
   assert.equal(currentSessionId({ byId: { idle: { id: "idle", retainedBy: {} } } }), undefined);
   assert.equal(currentSessionId(undefined), undefined);
   assert.equal(sessionIsCurrent({ current: "legacy", byId: { old: { id: "old", retainedBy: { mainView: 1 } } } }, "old"), true);
-  assert.equal(sessionIsCurrent({ current: "legacy" }, "old"), false);
+  assert.equal(sessionIsCurrent({ current: "legacy" }, "legacy"), false);
 });
 
 test("alpha.2 无 sessions.open 时走 openSession，并用 mainView 判断保留", () => {
@@ -248,6 +250,21 @@ test("没有 sessions.open 也没有 openSession 时拒绝打开", () => {
   guard.dispose();
 });
 
+test("没有 mainView 时不把 list.current 当成当前会话", () => {
+  assert.equal(currentSessionId({ current: "legacy", byId: { idle: { id: "idle", retainedBy: {} } } }), undefined);
+  assert.equal(sessionIsCurrent({ current: "legacy" }, "legacy"), false);
+});
+
+test("没有 openSession 时不调用 sessions.open", () => {
+  const sessions = {
+    list: { getSnapshot: () => ({ byId: { old: { id: "old", retainedBy: { mainView: 1 } } } }) },
+    open() { throw new Error("不应调用 sessions.open"); }
+  };
+  const workspaces = { list: { getSnapshot: () => ({ archivedSessionIds: ["old"] }) } };
+  const guard = allowArchivedNavigation(undefined, sessions, workspaces);
+  assert.throws(() => guard.open("old"), { code: "navigationUnavailable" });
+  guard.dispose();
+});
 test("导航错误按界面语言翻译，宿主错误保留原始消息", () => {
   const dictionaries = {
     zh: { "archives.navigationUnavailable": "请恢复后打开", "archives.sessionNotRetained": "会话未保留" },

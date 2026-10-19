@@ -511,8 +511,10 @@ describe('buildTasksModel: duplicate workflow members', () => {
 })
 
 describe('shared task status rule (taskBlocked / taskStatusLabel / taskTone)', () => {
-  beforeEach(() => attachLocale({ getSnapshot: () => ({ active: 'en' }) }))
-  afterEach(() => attachLocale(undefined))
+  // These assertions use English, regardless of the runner's browser/OS locale.
+  beforeEach(() => { attachLocale({ getSnapshot: () => ({ active: 'en' }) }) })
+  afterEach(() => { attachLocale(undefined) })
+
   const facts = (status: 'pending' | 'in_progress' | 'completed', ready: boolean) => ({ status, ready })
 
   it('calls a queued task with an open blocker blocked', () => {

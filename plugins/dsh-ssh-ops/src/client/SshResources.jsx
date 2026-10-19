@@ -9,6 +9,7 @@ import { requestPaneOpen } from "./pane-selection.js";
 import { privateKeyProblem } from "./pemkey.js";
 import { t } from "../i18n/core.js";
 import { useLanguage } from "./locale.js";
+import { TIER_ORDER, execPolicyLabel, execPolicyLooseningDetail } from "./exec-policy-ui.js";
 
 /** Injected at build time from package.json (scripts/build-client.mjs). */
 // eslint-disable-next-line no-undef
@@ -59,6 +60,8 @@ function emptyForm() {
     groupId: "",
     credentialId: "",
     defaultProjectPath: "",
+    loginCommand: "",
+    execPolicy: "",
     proxyJump: [],
     secret: "",
     passphrase: "",
@@ -83,6 +86,8 @@ function profileToForm(profile) {
     groupId: profile.groupId ?? "",
     credentialId: profile.credentialId ?? "",
     defaultProjectPath: profile.defaultProjectPath ?? "",
+    loginCommand: profile.loginCommand ?? "",
+    execPolicy: profile.execPolicy ?? "",
     proxyJump: (profile.proxyJump ?? []).map((hop) => ({ ...hop, authKind: hop.authKind ?? "credential", password: "", privateKey: "", passphrase: "" }))
   };
 }
@@ -142,7 +147,9 @@ function ResourceEditor({ initial, groups, profiles, sharedCredentials = [], cre
   const [advancedOpen, setAdvancedOpen] = useState(() => Boolean(
     initial
     && ((initial.defaultProjectPath ?? "") !== ""
+      || (initial.loginCommand ?? "") !== ""
       || (initial.hostKeyMode ?? "accept-new") !== "accept-new"
+      || (initial.execPolicy ?? "") !== ""
       || initial.secondaryConfigured
       || initial.agentForward === true)
   ));
@@ -186,7 +193,7 @@ function ResourceEditor({ initial, groups, profiles, sharedCredentials = [], cre
       // "valid-looking but rejected by the server": catch it before anything
       // is persisted instead of surfacing later as a bare auth failure.
       if (form.authKind === "key" && form.secret.trim()) {
-        const problem = privateKeyProblem(form.secret);
+        const problem = privateKeyProblem(form.secret, form.passphrase);
         if (problem) {
           setError(problem);
           return;
@@ -204,6 +211,8 @@ function ResourceEditor({ initial, groups, profiles, sharedCredentials = [], cre
         groupId: form.groupId || null,
         credentialId: form.credentialId || null,
         defaultProjectPath: form.defaultProjectPath.trim() || null,
+        loginCommand: form.loginCommand.trim() || null,
+        execPolicy: form.execPolicy || null,
         proxyJump: form.proxyJump.map((hop) => ({ profileId: hop.profileId }))
       });
       const primaryRef = form.authKind === "password" ? saved.credentialRefs.password : saved.credentialRefs.privateKey;
@@ -277,11 +286,14 @@ function ResourceEditor({ initial, groups, profiles, sharedCredentials = [], cre
           {form.proxyJump.map((hop, index) => <div key={index} style={styles.jumpRow}><select value={hop.profileId ?? ""} onChange={(event) => updateJump(index, "profileId", event.target.value)} style={styles.input}><option value="">{t("选择已保存服务器")}</option>{profiles.filter((profile) => profile.profileId !== form.profileId).map((profile) => <option key={profile.profileId} value={profile.profileId}>{profile.name} · {profile.username}@{profile.host}:{profile.port}</option>)}</select><button type="button" onClick={() => removeJump(index)} style={styles.danger}>{t("移除")}</button></div>)}
           <button type="button" onClick={addJump} style={styles.secondary}>{t("＋ 添加跳板机")}</button>
         </Field>
-        <button type="button" onClick={() => setAdvancedOpen((open) => !open)} style={styles.advToggle} aria-expanded={advancedOpen}>{t(`${advancedOpen ? "▾" : "▸"} 高级选项${advancedOpen ? "" : t("（项目目录 · 指纹 · 第二因素 · Agent 转发）")}`)}</button>
+        <button type="button" onClick={() => setAdvancedOpen((open) => !open)} style={styles.advToggle} aria-expanded={advancedOpen}>{t(`${advancedOpen ? "▾" : "▸"} 高级选项${advancedOpen ? "" : t("（项目目录 · 指纹 · 第二因素 · Agent 转发 · 登录命令 · 执行策略）")}`)}</button>
         {advancedOpen && (
           <div style={styles.credentialColumns}>
             <Field label={t("默认项目目录")}>
               <input value={form.defaultProjectPath} onChange={set("defaultProjectPath")} placeholder={t("例如 /srv/apps/my-service")} style={styles.input} />
+            </Field>
+            <Field label={t("登录命令（可选）")} hint={t("设置后终端以该命令作为登录会话打开，替代服务器默认 shell")}>
+              <input value={form.loginCommand} onChange={set("loginCommand")} placeholder={t("例如 bash -l")} style={styles.input} title={t("在默认 shell 不兼容的服务器（如 zsh）上填 bash -l 可临时改用 bash；命令即整个登录会话，想要正常 profile 加载请带 -l；留空按服务器默认。")} />
             </Field>
             <Field label={t("主机指纹校验")}>
               <select value={form.hostKeyMode} onChange={set("hostKeyMode")} style={styles.input}>
@@ -322,6 +334,14 @@ function ResourceEditor({ initial, groups, profiles, sharedCredentials = [], cre
             <Field label={t("SSH Agent 转发")} hint={t("连接后可从这台服务器的终端用本机密钥继续登录更深层的机器")}>
               <Check label={t("转发本机 ssh-agent（需本机已运行）")} checked={form.agentForward} onChange={set("agentForward")} />
             </Field>
+            <Field label={t("执行策略")} hint={t("覆盖全局 AI 命令拦截档位；生产机保持「跟随全局设置」即可")}>
+              <select value={form.execPolicy} onChange={set("execPolicy")} style={styles.input}>
+                <option value="">{t("跟随全局设置")}</option>
+                <option value="standard">{t("标准")}</option>
+                <option value="custom">{t("自定义放行")}</option>
+                <option value="allowAll">{t("全部放行")}</option>
+              </select>
+            </Field>
           </div>
         )}
         {error && <div style={styles.error} role="alert">{error}</div>}
@@ -349,7 +369,7 @@ function SharedCredentialEditor({ initial, credentials, api, onClose, onSaved })
     if (file.size > 1024 * 1024) return setError(t("私钥文件不能超过 1 MB"));
     try { const text = await file.text(); if (!text.trim()) throw new Error(t("所选私钥文件为空")); const problem = privateKeyProblem(text); if (problem) throw new Error(problem); setSecret(text); setError(null); } catch (cause) { setError(cause?.message ?? t("无法读取私钥文件")); }
   };
-  const save = async () => { if (!name.trim()) return setError(t("请填写凭据名称")); setBusy(true); try { const saved = await api.credentialSave({ ...(initial?.credentialId ? { credentialId: initial.credentialId } : {}), name: name.trim(), authKind }); const ref = authKind === "password" ? saved.credentialRefs.password : saved.credentialRefs.privateKey; if (secret) await credentialWrite(credentials, ref, secret); if (authKind === "key" && passphrase) await credentialWrite(credentials, saved.credentialRefs.passphrase, passphrase); const secondaryRef = authKind === "password" ? saved.credentialRefs.privateKey : saved.credentialRefs.password; if (secondary.trim()) await credentialWrite(credentials, secondaryRef, secondary); await onSaved(); onClose(); } catch (cause) { setError(cause?.message ?? String(cause)); } finally { setBusy(false); } };
+  const save = async () => { if (!name.trim()) return setError(t("请填写凭据名称")); if (authKind === "key" && secret) { const problem = privateKeyProblem(secret, passphrase); if (problem) return setError(problem); } setBusy(true); try { const saved = await api.credentialSave({ ...(initial?.credentialId ? { credentialId: initial.credentialId } : {}), name: name.trim(), authKind }); const ref = authKind === "password" ? saved.credentialRefs.password : saved.credentialRefs.privateKey; if (secret) await credentialWrite(credentials, ref, secret); if (authKind === "key" && passphrase) await credentialWrite(credentials, saved.credentialRefs.passphrase, passphrase); const secondaryRef = authKind === "password" ? saved.credentialRefs.privateKey : saved.credentialRefs.password; if (secondary.trim()) await credentialWrite(credentials, secondaryRef, secondary); await onSaved(); onClose(); } catch (cause) { setError(cause?.message ?? String(cause)); } finally { setBusy(false); } };
   return <div style={styles.backdrop} onClick={onClose}><div className="dsh-ssh-ops-resource-modal" style={styles.dialog} onClick={(event) => event.stopPropagation()} onDragOver={(event) => { if (authKind === "key") event.preventDefault(); }} onDrop={(event) => { if (authKind !== "key") return; event.preventDefault(); importKey(event.dataTransfer.files?.[0]); }}><div style={styles.dialogTitle}>{initial ? t("编辑共享凭据") : t("新增共享凭据")}</div><Field label={t("名称")}><input value={name} onChange={(event) => setName(event.target.value)} placeholder={t("生产环境运维私钥")} style={styles.input} /></Field><Field label={t("认证方式")}><select value={authKind} onChange={(event) => setAuthKind(event.target.value)} style={styles.input}><option value="key">{t("PEM / 私钥")}</option><option value="password">{t("密码")}</option></select></Field><Field label={authKind === "key" ? t("私钥") : t("密码")} hint={initial?.credentialConfigured ? t("已保存；留空保持不变") : ""}>{authKind === "key" ? <><textarea value={secret} onChange={(event) => setSecret(event.target.value)} rows={4} style={{ ...styles.input, fontFamily: "monospace" }} /><input ref={fileInput} type="file" accept=".pem,.key,.rsa,.ed25519,.txt,text/plain" onChange={(event) => { importKey(event.target.files?.[0]); event.target.value = ""; }} style={{ display: "none" }} /><button type="button" onClick={() => fileInput.current?.click()} style={styles.secondary}>{t("选择私钥文件")}</button><small style={styles.hint}>{t("也可将 PEM / 私钥文件拖入此窗口。")}</small></> : <input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} style={styles.input} />}</Field>{authKind === "key" && <Field label={t("私钥口令")}><input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} style={styles.input} /></Field>}<Field label={authKind === "password" ? t("第二因素：私钥（可选）") : t("第二因素：密码（可选）")} hint={initial?.secondaryConfigured ? t("已保存；留空保持不变") : t("双因素设备（AuthenticationMethods password+publickey）才需要填写")}>{authKind === "password" ? <textarea value={secondary} onChange={(event) => setSecondary(event.target.value)} rows={4} style={{ ...styles.input, fontFamily: "monospace" }} /> : <input type="password" value={secondary} onChange={(event) => setSecondary(event.target.value)} style={styles.input} />}</Field>{error && <div style={styles.error}>{error}</div>}<div style={styles.actions}><button type="button" onClick={onClose} style={styles.secondary}>{t("取消")}</button><button type="button" disabled={busy} onClick={save} style={styles.primary}>{busy ? t("保存中…") : t("保存凭据")}</button></div></div></div>;
 }
 
@@ -419,6 +439,12 @@ export function SshResources({ api, credentials }) {
   // null = not loaded yet; the checkbox stays disabled until the host answers.
   const [agentAutoConnect, setAgentAutoConnect] = useState(null);
   const [agentSaving, setAgentSaving] = useState(false);
+  // Execution policy (AI high-risk command gate): null = loading; the segment
+  // and checklist stay disabled until the host answers.
+  const [execPolicy, setExecPolicy] = useState(null);
+  const [execPolicyAllow, setExecPolicyAllow] = useState([]);
+  const [policyCategories, setPolicyCategories] = useState([]);
+  const [policySaving, setPolicySaving] = useState(false);
   // Self-update: 检查更新 opens the dialog and runs a check; the meta rows,
   // manual-update command and auto-update all live inside the dialog.
   // The interface follows the host's language automatically (root resolver);
@@ -500,9 +526,17 @@ export function SshResources({ api, credentials }) {
       // data: load it once and let the toggle own it from there.
       try {
         const settings = await api.agentSettingsGet();
-        if (alive) setAgentAutoConnect(settings.agentAutoConnect === true);
+        if (alive) {
+          setAgentAutoConnect(settings.agentAutoConnect === true);
+          setExecPolicy(settings.execPolicy ?? "standard");
+          setExecPolicyAllow(settings.execPolicyAllow ?? []);
+          setPolicyCategories(settings.categories ?? []);
+        }
       } catch {
-        if (alive) setAgentAutoConnect(false);
+        if (alive) {
+          setAgentAutoConnect(false);
+          setExecPolicy("standard");
+        }
       }
       if (alive) await refresh();
     })();
@@ -528,6 +562,47 @@ export function SshResources({ api, credentials }) {
     } finally {
       setAgentSaving(false);
     }
+  };
+
+  /**
+   * Persist the global execution policy and (for the custom tier) the released
+   * categories. Saves carry the auto-connect switch too, since the settings
+   * row is one record — the current state travels with the policy.
+   */
+  const saveExecPolicy = async (policy, allow) => {
+    setPolicySaving(true);
+    try {
+      const saved = await api.agentSettingsSave(agentAutoConnect === true, policy, allow);
+      setExecPolicy(saved.execPolicy ?? "standard");
+      setExecPolicyAllow(saved.execPolicyAllow ?? []);
+      setError(null);
+    } catch (cause) {
+      setError(cause?.message ?? String(cause));
+    } finally {
+      setPolicySaving(false);
+    }
+  };
+
+  const chooseExecPolicy = (policy) => {
+    if (policySaving || execPolicy === null || policy === execPolicy) return;
+    // Loosening is the direction that can destroy data, so it asks first —
+    // the same rule (and the same wording) the terminal panel's policy pill
+    // follows. Tightening applies at once, because nobody needs to confirm
+    // making the gate stricter.
+    if (TIER_ORDER[policy] > TIER_ORDER[execPolicy]) {
+      const detail = execPolicyLooseningDetail(policy, execPolicyAllow.length);
+      if (!window.confirm(`${t(`确认放宽为「${execPolicyLabel(policy)}」？`)}\n\n${detail}`)) return;
+    }
+    void saveExecPolicy(policy, execPolicyAllow);
+  };
+
+  const togglePolicyCategory = (key) => {
+    if (policySaving) return;
+    const next = execPolicyAllow.includes(key)
+      ? execPolicyAllow.filter((item) => item !== key)
+      : [...execPolicyAllow, key];
+    setExecPolicyAllow(next);
+    void saveExecPolicy("custom", next);
   };
 
   const connect = async (profile) => {
@@ -573,6 +648,9 @@ export function SshResources({ api, credentials }) {
     if (!window.confirm(t(`删除 SSH 资源“${profile.name}”？这会删除该资源保存的凭据，但不会断开已经建立的连接。`))) return;
     try {
       await api.profileDelete(profile.profileId);
+      // Also drop the saved host-key trust record so the deleted server does
+      // not linger in the "trusted hosts (not saved as resources)" group.
+      try { await api.forgetHostKey(profile.host, profile.port); } catch {}
       await refresh();
     } catch (cause) {
       setError(cause?.message ?? String(cause));
@@ -710,16 +788,71 @@ export function SshResources({ api, credentials }) {
           <button type="button" style={styles.primary} onClick={() => setEditor({ mode: "new" })}>{t("新增服务器")}</button>
         </div>
       </div>
-      <div className="dsh-ssh-ops-segmented" style={styles.segmented} role="tablist" aria-label={t("服务器分组与共享凭据")}>
-        <span className="dsh-ssh-ops-segmented-thumb" aria-hidden="true" style={{ ...styles.segmentThumb, transform: setupTab === "credentials" ? "translateX(calc(100% + 3px))" : "translateX(0)" }} />
+      <div className="dsh-ssh-ops-segmented" style={styles.segmented} role="tablist" aria-label={t("服务器分组、共享凭据与执行策略")}>
+        <span className="dsh-ssh-ops-segmented-thumb" aria-hidden="true" style={{ ...styles.segmentThumb, transform: `translateX(calc(${["groups", "credentials", "policy"].indexOf(setupTab)} * (100% + 3px)))` }} />
         <button type="button" role="tab" aria-selected={setupTab === "groups"} onClick={() => setSetupTab("groups")} className="dsh-ssh-ops-segment" style={setupTab === "groups" ? styles.segmentActive : styles.segment}>{t("服务器分组")}</button>
         <button type="button" role="tab" aria-selected={setupTab === "credentials"} onClick={() => setSetupTab("credentials")} className="dsh-ssh-ops-segment" style={setupTab === "credentials" ? styles.segmentActive : styles.segment}>{t("共享 SSH 凭据")}</button>
+        <button type="button" role="tab" aria-selected={setupTab === "policy"} onClick={() => setSetupTab("policy")} className="dsh-ssh-ops-segment" style={setupTab === "policy" ? styles.segmentActive : styles.segment}>{t("AI 命令执行策略")}</button>
       </div>
       {setupTab === "groups" && <section style={styles.groupPanel}>
         <div style={styles.groupCreate}><input value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") createGroup(); }} placeholder={t("例如：生产环境")} style={{ ...styles.input, flex: 1, minWidth: 0, maxWidth: 340 }} /><button type="button" disabled={creatingGroup || !newGroupName.trim()} onClick={createGroup} style={styles.secondary}>{creatingGroup ? t("创建中…") : t("创建")}</button></div>
         {groups.length > 0 && <div style={styles.groupChips}>{groups.map((group) => <span key={group.groupId} style={styles.groupChip}>{t(`${group.name}（${group.profileCount}）`)}<button type="button" onClick={() => deleteGroup(group)} title={t(`删除分组 ${group.name}`)} style={styles.chipDelete}>×</button></span>)}</div>}
       </section>}
       {setupTab === "credentials" && <section style={styles.groupPanel}><button type="button" onClick={() => setCredentialEditor({})} style={styles.secondary}>{t("新增共享凭据")}</button>{sharedCredentials.length > 0 && <div style={styles.credentialList}>{sharedCredentials.map((item) => <div key={item.credentialId} style={styles.credentialRow}><span title={item.name} style={styles.credentialLabel}>{item.name} · {item.authKind === "key" ? t("私钥") : t("密码")}{item.secondaryConfigured ? " + " + (item.authKind === "key" ? t("密码") : t("私钥")) : ""} · {item.credentialConfigured ? t("已保存") : t("未配置")}</span><span style={styles.credentialActions}><button type="button" onClick={() => setCredentialEditor(item)} title={t(`编辑共享凭据 ${item.name}`)} aria-label={t(`编辑共享凭据 ${item.name}`)} style={styles.iconButton}>✎</button><button type="button" onClick={async () => { if (!window.confirm(t(`删除共享凭据“${item.name}”？仍被服务器或跳板机引用时不会删除。`))) return; try { await api.credentialDelete(item.credentialId); await refresh({ showLoading: false }); } catch (cause) { setError(cause?.message ?? String(cause)); } }} title={t(`删除共享凭据 ${item.name}`)} aria-label={t(`删除共享凭据 ${item.name}`)} style={{ ...styles.iconButton, color: "#f07171" }}>×</button></span></div>)}</div>}</section>}
+      {setupTab === "policy" && <section style={{ ...styles.groupPanel, ...styles.policyPanel }}>
+          <div style={styles.policyHead}>
+            <div style={styles.groupTitle}>{t("AI 命令执行策略")}</div>
+            <div style={styles.policyHint}>{t("控制 AI（agent）发起的破坏性命令拦截强度。你在右侧终端亲手敲的命令不受影响。")}</div>
+          </div>
+          <div style={styles.policySegments} role="radiogroup" aria-label={t("AI 命令执行策略")}>
+            {["standard", "custom", "allowAll"].map((tier) => (
+              <button
+                key={tier}
+                type="button"
+                role="radio"
+                aria-checked={execPolicy === tier}
+                disabled={execPolicy === null || policySaving}
+                onClick={() => chooseExecPolicy(tier)}
+                style={{
+                  ...styles.policySegment,
+                  ...(tier === "allowAll" ? styles.policySegmentAllowAll : {}),
+                  ...(execPolicy === tier ? { ...styles.policySegmentActive, ...(tier === "allowAll" ? styles.policySegmentAllowAllActive : {}) } : {})
+                }}
+                title={
+                  tier === "standard" ? t("破坏性命令一律拦截，弹出确认卡片由操作者执行")
+                  : tier === "custom" ? t("仅放行勾选的类别，其余照常拦截")
+                  : t("AI 可直接执行任何命令，含不可逆删除（不进回收站）")
+                }
+              >
+                {tier === "standard" ? t("标准") : tier === "custom" ? t("自定义放行") : t("全部放行")}
+              </button>
+            ))}
+          </div>
+          {execPolicy === "custom" && (
+            <div style={styles.policyChecklist}>
+              {policyCategories.map((category) => (
+                <label key={category.key} style={styles.policyCheckItem}>
+                  <input
+                    type="checkbox"
+                    checked={execPolicyAllow.includes(category.key)}
+                    disabled={policySaving || execPolicy === null}
+                    onChange={() => togglePolicyCategory(category.key)}
+                    style={styles.policyCheckBox}
+                  />
+                  <span>{t(category.label)}</span>
+                </label>
+              ))}
+              {execPolicyAllow.length === 0 && (
+                <div style={styles.policyHint}>{t("尚未勾选任何类别：行为与「标准」相同。")}</div>
+              )}
+            </div>
+          )}
+          {execPolicy === "allowAll" && (
+            <div style={{ ...styles.policyHint, color: "#f07171" }}>
+              {t("全部放行后，AI 删除文件不进回收站、可直接格式化磁盘或重启关机。仅建议用于测试或可丢弃的环境。")}
+            </div>
+          )}
+      </section>}
       {error && <div style={styles.error} role="alert">{error}</div>}
       {loading ? <div style={styles.empty}>{t("加载 SSH 资源中…")}</div> : profiles.length === 0 ? <div style={styles.empty}>{t("还没有保存的服务器。新增后可一键连接并打开右侧终端。")}</div> : <div style={styles.groupedList}>{groups.map((group) => {
         const key = `group:${group.groupId}`;
@@ -762,6 +895,7 @@ export function SshResources({ api, credentials }) {
           })}</div>
         </section>
       )}
+
       {updateOpen && (
         <UpdateDialog
           status={update}
@@ -861,7 +995,7 @@ const styles = {
   // The pill is one absolutely-positioned thumb that slides between segments so
   // switching animates instead of hopping; its width matches one segment and
   // the label buttons paint above it (zIndex 1), keeping hit-testing on them.
-  segmentThumb: { position: "absolute", top: 3, bottom: 3, left: 3, boxSizing: "border-box", width: "calc(50% - 4.5px)", borderRadius: 6, border: "1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.3))", background: "var(--dsw-alias-button-elevated-fill, #fff)", boxShadow: "0 1px 2px rgba(0,0,0,.18)", transition: "transform .18s cubic-bezier(.4,0,.2,1)", pointerEvents: "none" },
+  segmentThumb: { position: "absolute", top: 3, bottom: 3, left: 3, boxSizing: "border-box", width: "calc(33.333% - 4px)", borderRadius: 6, border: "1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.3))", background: "var(--dsw-alias-button-elevated-fill, #fff)", boxShadow: "0 1px 2px rgba(0,0,0,.18)", transition: "transform .18s cubic-bezier(.4,0,.2,1)", pointerEvents: "none" },
   segment: { position: "relative", zIndex: 1, flex: "1 1 0", minWidth: 0, border: "1px solid transparent", borderRadius: 6, padding: "6px 10px", background: "transparent", color: "var(--dsw-alias-label-secondary, inherit)", cursor: "pointer", font: "inherit", fontSize: 13, lineHeight: "20px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   segmentActive: { position: "relative", zIndex: 1, flex: "1 1 0", minWidth: 0, border: "1px solid transparent", borderRadius: 6, padding: "6px 10px", background: "transparent", color: "var(--dsw-alias-label-primary, inherit)", cursor: "default", font: "inherit", fontSize: 13, lineHeight: "20px", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   groupTitle: { fontSize: 13, fontWeight: 650, marginBottom: 8 }, groupCreate: { display: "flex", gap: 8, flexWrap: "nowrap", alignItems: "center" }, groupChips: { display: "flex", gap: 7, flexWrap: "wrap", marginTop: 10 }, groupChip: { display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 7px", borderRadius: 99, background: "rgba(127,127,127,.16)", fontSize: 12 }, chipDelete: { border: 0, background: "transparent", color: "#f07171", cursor: "pointer", padding: 0, fontSize: 15, lineHeight: 1 }, credentialList: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 6, maxHeight: 168, overflowY: "auto", marginTop: 8, paddingRight: 2 }, credentialRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5, minWidth: 0 }, credentialActions: { display: "flex", alignItems: "center", gap: 2 }, credentialLabel: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12 }, groupedList: { display: "grid", gap: 18 }, groupHeadingButton: { border: 0, padding: 0, margin: "0 0 8px", background: "transparent", color: "inherit", cursor: "pointer", textAlign: "left" }, groupHeading: { fontSize: 14, fontWeight: 650 }, groupCount: { fontWeight: 400, opacity: 0.72 }, groupEmpty: { padding: 12, color: "inherit", opacity: 0.76, border: "1px dashed rgba(127,127,127,.55)", borderRadius: 8, fontSize: 12 },
@@ -880,7 +1014,12 @@ const styles = {
   updateHeading: { margin: "0 0 6px", fontSize: 14, lineHeight: "20px", fontWeight: 600 },
   updateCommand: { display: "flex", alignItems: "flex-start", gap: 8, border: "1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.35))", borderRadius: 7, padding: 10, background: "var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-layer-1, #101418))" },
   updateCode: { minWidth: 0, flex: 1, fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: 12, lineHeight: "18px", whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
-  agentToggle: { display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, whiteSpace: "nowrap", marginTop: 4, cursor: "pointer", color: "inherit" }, agentToggleBox: { accentColor: "#2ea44f", width: 15, height: 15, margin: 0, cursor: "pointer" }, headerActions: { display: "flex", alignItems: "flex-start", gap: 14, flexShrink: 0 }, input: { width: "100%", boxSizing: "border-box", border: "1px solid var(--dsw-alias-border-l4, rgba(127,127,127,.55))", borderRadius: 7, padding: "7px 8px", background: "var(--dsw-alias-bg-layer-1, #101418)", color: "var(--dsw-alias-label-primary, inherit)", fontSize: 13 }, credentialColumns: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }, jumpRow: { display: "grid", gridTemplateColumns: "1fr auto", gap: 5, alignItems: "center", marginBottom: 6 }, check: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#f07171" }, actions: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }, error: { padding: "8px 10px", borderRadius: 7, background: "rgba(240,113,113,.15)", color: "#ff8a8a", fontSize: 13 }
+  agentToggle: { display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13, whiteSpace: "nowrap", marginTop: 4, cursor: "pointer", color: "inherit" }, agentToggleBox: { accentColor: "#2ea44f", width: 15, height: 15, margin: 0, cursor: "pointer" }, headerActions: { display: "flex", alignItems: "flex-start", gap: 14, flexShrink: 0 }, input: { width: "100%", boxSizing: "border-box", border: "1px solid var(--dsw-alias-border-l4, rgba(127,127,127,.55))", borderRadius: 7, padding: "7px 8px", background: "var(--dsw-alias-bg-layer-1, #101418)", color: "var(--dsw-alias-label-primary, inherit)", fontSize: 13 }, credentialColumns: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }, jumpRow: { display: "grid", gridTemplateColumns: "1fr auto", gap: 5, alignItems: "center", marginBottom: 6 }, check: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#f07171" }, actions: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }, error: { padding: "8px 10px", borderRadius: 7, background: "rgba(240,113,113,.15)", color: "#ff8a8a", fontSize: 13 },
+  // execution-policy section: width-capped and compact so it reads as a
+  // settings row, not a full-bleed panel.
+  policyPanel: { maxWidth: 620, padding: "10px 12px", marginBottom: 16 },
+  policyHead: { display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 8 },
+  policyHint: { fontSize: 12, color: "var(--dsw-alias-label-tertiary, #8b93a1)", flex: "1 1 260px", minWidth: 0 }, policySegments: { display: "inline-flex", gap: 3, padding: 3, borderRadius: 8, background: "rgba(127,127,127,.14)", border: "1px solid var(--dsw-alias-border-l2, rgba(127,127,127,.22))", marginBottom: 8 }, policySegment: { border: 0, borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer", background: "transparent", color: "inherit" }, policySegmentActive: { background: "var(--dsw-alias-bg-layer-3, #232a33)", color: "var(--dsw-alias-label-primary, inherit)", fontWeight: 600, boxShadow: "0 0 0 1px var(--dsw-alias-border-l3, rgba(127,127,127,.4))" }, policySegmentAllowAll: { color: "#d64541" }, policySegmentAllowAllActive: { color: "#f07171" }, policyChecklist: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 6, marginTop: 2 }, policyCheckItem: { display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, cursor: "pointer", color: "inherit" }, policyCheckBox: { accentColor: "#b7791f", width: 14, height: 14, margin: 0, cursor: "pointer" }
 };
 
 function ResourceFormTheme() {

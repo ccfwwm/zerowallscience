@@ -179,6 +179,9 @@ window.__ModuleLoader__.load({
 						surfacePromptEnabled: !!r.body.config?.surfacePromptEnabled,
 						surfacePrompt: r.body.config?.surfacePrompt ?? "",
 						silent: !!(r.body.config?.silent ?? (firstUser && firstUser.silent)),
+						finalOnly: !!r.body.config?.finalOnly,
+						sendWechatRateLimitPerMinute: String(r.body.config?.sendWechatRateLimitPerMinute ?? ""),
+						allowedUsers: (r.body.config?.allowedUsers ?? []).join("\n"),
 					});
 				}).catch(() => {});
 			}, []);
@@ -234,6 +237,18 @@ window.__ModuleLoader__.load({
 							crossSessionNotify: !!form.crossSessionNotify,
 							notifyTaskEvents: !!form.notifyTaskEvents,
 							silent: !!form.silent,
+							finalOnly: !!form.finalOnly,
+							// An empty string must NOT become 0 (which means
+							// "unlimited") — `Number("")` is 0, so the blank
+							// case is mapped to undefined and the stored value
+							// is left alone.
+							sendWechatRateLimitPerMinute: form.sendWechatRateLimitPerMinute.trim() === ""
+								? undefined
+								: Number(form.sendWechatRateLimitPerMinute),
+							allowedUsers: form.allowedUsers
+								.split(/[\n,]+/)
+								.map((entry) => entry.trim())
+								.filter((entry) => entry !== ""),
 							surfacePromptEnabled: !!form.surfacePromptEnabled,
 							surfacePrompt: form.surfacePrompt,
 						}),
@@ -332,6 +347,14 @@ window.__ModuleLoader__.load({
 							createElement("span", { className: "wx_field_label" }, "cardTimeoutMs",
 								createElement(HelpTip, { text: "提问 / 权限卡软超时（毫秒），默认 1800000（30 分钟）。超时未答复的卡会被自动撤回。" })),
 							createElement("input", { value: form.cardTimeoutMs, onChange: set("cardTimeoutMs"), placeholder: "1800000" })),
+						createElement("label", null,
+							createElement("span", { className: "wx_field_label" }, "sendWechatRateLimitPerMinute",
+								createElement(HelpTip, { text: "agent 主动推送（send_wechat 工具）每分钟上限，默认 10，0 = 不限。超限时工具会明确返回失败并告知模型，而不是继续刷屏。留空 = 保持原值。" })),
+							createElement("input", { value: form.sendWechatRateLimitPerMinute, onChange: set("sendWechatRateLimitPerMinute"), placeholder: "10" })),
+						createElement("label", { className: "wide" },
+							createElement("span", { className: "wx_field_label" }, "allowedUsers",
+								createElement(HelpTip, { text: "入站白名单：每行一个微信 user id（也可用逗号分隔）。留空 = 现有行为（首个给你发消息的人成为绑定对端）。填了就只处理名单内的 id，其余在去重/建会话/命令分发之前被拦下并记日志，绝不回复。" })),
+							createElement("textarea", { value: form.allowedUsers, onChange: set("allowedUsers"), placeholder: "（留空 = 不限制）" })),
 					) : null,
 					createElement("div", { className: "wx_row", style: { marginTop: "4px" } },
 						createElement("label", { className: "wx_check" },
@@ -346,6 +369,11 @@ window.__ModuleLoader__.load({
 							createElement("input", { type: "checkbox", checked: !!form?.silent, onChange: (e) => setForm({ ...form, silent: e.target.checked }) }),
 							createElement("span", null, "静默"),
 							createElement(HelpTip, { text: "开启后每轮只发送最后一条助手正文。关闭后，思考与工具调用/结果合并为一条「执行过程」，按桌面端单行条目显示，收到下一段正文首个流式片段时立即推送，正文完成后单独发送；提问/审批卡或轮次结束也会发送待发过程。" }),
+						),
+						createElement("label", { className: "wx_check" },
+							createElement("input", { type: "checkbox", checked: !!form?.finalOnly, onChange: (e) => setForm({ ...form, finalOnly: e.target.checked }) }),
+							createElement("span", null, "结论模式"),
+							createElement(HelpTip, { text: "只回最终结论：跨轮次的中间过程一律暂存，整条任务彻底停下来后只发一条最终结论（自动续跑再多轮也只发一条）。权限卡、提问卡、报错始终立即推送，不会被压住。默认静默 45 秒后交付，最长 10 分钟必发一次；想看当前进度可随时在微信发 /flush。开启后优先于「静默」。微信端也可用 /final on|off 切换（与这里同一个值）。" }),
 						),
 						createElement("label", { className: "wx_check" },
 							createElement("input", { type: "checkbox", checked: !!form?.surfacePromptEnabled, onChange: (e) => setForm({ ...form, surfacePromptEnabled: e.target.checked }) }),
@@ -397,12 +425,21 @@ window.__ModuleLoader__.load({
 		}
 
 		function apply(ctx) {
-			ctx.slots.inject("settings.section", () => ctx.slots.register({
+			// Park the registration on the plugin's fiber. `slots.inject`
+			// returns a disposer; dropping it leaves the WeChat panel
+			// registered after the plugin is unloaded (and re-registering on
+			// the next load stacks a duplicate entry). `ctx.effect` is the
+			// documented owner for exactly this (see ui-sidebar-terminal /
+			// ui-sidebar-files), with the plain call kept as a fallback for a
+			// client kernel that predates it.
+			const register = () => ctx.slots.inject("settings.section", () => ctx.slots.register({
 				name: "settings.section",
 				id: "wechat",
 				order: 40,
 				label: "WeChat",
 			}, WechatSection));
+			if (ctx.effect) ctx.effect(register);
+			else register();
 		}
 
 		exports.apply = apply;

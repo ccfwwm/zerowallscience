@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "channel": "stable",
+  "target": "windows-x64",
+  "bundlePython": false,
+  "releaseBaseUrl": "https://zerowall.chengxunkeji.cn",
+  "resourceBaseUrl": "https://zerowall.chengxunkeji.cn/stable",
+  "signing": {
+    "keyId": "stable-4",
+    "privateKeyFile": "scripts/env/resource-stable-4-private.pem"
+  },
+  "retention": {
+    "keepDesktopVersions": 2,
+    "keepStagesPerVersion": 1,
+    "keepRuntimeAssembliesPerKind": 1,
+    "keepOfflineCarriers": 1,
+    "keepResourceTrees": 1,
+    "objectDays": 1,
+    "afterPackage": false
+  }
+}

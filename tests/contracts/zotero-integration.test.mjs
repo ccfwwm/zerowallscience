@@ -18,11 +18,12 @@ import {
   adaptZoteroStatusCodec,
 } from '../../tools/packaging/adapt-zotero.mjs'
 import { decodeZoteroAuthorizationResponse } from '../../tools/packaging/zotero-authorization.mjs'
+import { pinnedDsh } from '../../tools/packaging/adapt-reviewed-dsh.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const read = path => readFile(resolve(root, path), 'utf8')
 
-test('Zotero runtime manifest accepts DSH rc.2 without changing the source package', () => {
+test('Zotero runtime manifest accepts the pinned DSH without changing the source package', async () => {
   const source = JSON.stringify({
     name: 'dsh-zotero', version: '0.12.1',
     engines: { dsh: '0.1.7-rc.2' },
@@ -30,12 +31,20 @@ test('Zotero runtime manifest accepts DSH rc.2 without changing the source packa
     peerDependencies: { '@deepseek-ai/dsh-tools': '0.1.7-rc.2', react: '^18.2.0' },
   })
   const adapted = JSON.parse(adaptZoteroManifest(source))
-  assert.equal(adapted.engines.dsh, '^0.1.7-rc.2 || ^0.2.0-rc.2')
-  assert.equal(adapted.dsh.harnessRange, '^0.1.7-rc.2 || ^0.2.0-rc.2')
-  assert.equal(adapted.peerDependencies['@deepseek-ai/dsh-tools'], '^0.1.7-rc.2 || ^0.2.0-rc.2')
+  const versions = JSON.parse(await read('config/integrations/upstream-sources.json')).zotero.runtimeDshVersions
+  const range = versions.join(' || ')
+  assert.equal(adapted.engines.dsh, range)
+  assert.equal(adapted.dsh.harnessRange, range)
+  assert.equal(adapted.peerDependencies['@deepseek-ai/dsh-tools'], range)
+  assert(versions.includes(pinnedDsh.version))
   assert.equal(adapted.peerDependencies.react, '^18.2.0')
   assert.throws(() => adaptZoteroManifest(JSON.stringify({ name: 'dsh-zotero', version: '0.12.0' })), /Unexpected Zotero manifest identity/u)
   assert.equal(JSON.parse(source).engines.dsh, '0.1.7-rc.2')
+  const actual = JSON.parse(adaptZoteroManifest(await read('desktop/node_modules/dsh-zotero/package.json')))
+  assert.equal(actual.version, JSON.parse(await read('config/integrations/upstream-sources.json')).zotero.resourceVersion)
+  for (const [name, peer] of Object.entries(actual.peerDependencies)) {
+    if (name.startsWith('@deepseek-ai/dsh')) assert(peer.split(' || ').includes(pinnedDsh.version), name)
+  }
 })
 
 test('live item and citation endpoints preserve provider refs and configured styles', async () => {

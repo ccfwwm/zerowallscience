@@ -114,10 +114,18 @@ describe('Python startup dependency reconciliation', () => {
   it('waits for an already-running automatic core task, then continues with science', async () => {
     const task = makeTask({ state: 'running', automatic: true })
     const { updater, api } = setup({ task })
-    await expect(ensurePythonCoreAtStartup(updater as never, api as never)).resolves.toMatchObject({ state: 'inventory-unavailable' })
+    const ready = makeInfo({ coreReady: true, corePackageCount: 42 })
+    updater.pythonCoreInfo.mockResolvedValue(ready)
+    await expect(ensurePythonCoreAtStartup(updater as never, api as never)).resolves.toMatchObject({ state: 'core-ready', info: ready })
     expect(api.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'task_status', taskId: task.taskId }))
     expect(api.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'sync', layer: 'science', automatic: true }))
     expect(api.request).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'sync', layer: 'core', automatic: true }))
+  })
+
+  it('reconciles core again when a recovered successful task still leaves the fixed runtime incomplete', async () => {
+    const { updater, api } = setup({ task: makeTask({ state: 'running', automatic: true }) })
+    await expect(ensurePythonCoreAtStartup(updater as never, api as never)).resolves.toMatchObject({ state: 'inventory-unavailable' })
+    expect(api.request).toHaveBeenCalledWith(expect.objectContaining({ action: 'sync', layer: 'core', automatic: true }))
   })
 
   it('reports a failed package task with its durable ID and does not start science', async () => {

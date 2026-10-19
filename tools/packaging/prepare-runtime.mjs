@@ -9,7 +9,7 @@ import { adaptBetterSidebarClient } from './adapt-better-sidebar.mjs'
 import { adaptConversationClient } from './adapt-conversation.mjs'
 import { adaptSessionDelete } from './adapt-session-delete.mjs'
 import { adaptDirectoryPicker } from './adapt-directory-picker.mjs'
-import { adaptDreamSkinClient } from './adapt-dream-skin.mjs'
+import { adaptDreamSkinClient, adaptDreamSkinHost, adaptDreamSkinManifest } from './adapt-dream-skin.mjs'
 import {
   adaptZoteroClient,
   adaptZoteroCommand,
@@ -200,7 +200,7 @@ while (queue.length > 0) {
 
 const deduplication = await dedupeRuntime(outputRoot, packageRecords)
 const desktopVersion = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')).version
-for (const name of [...workspacePackages.keys()].filter(name => name.startsWith('@deepseek-ai/'))) {
+for (const name of cacheOutput ? [] : [...workspacePackages.keys()].filter(name => name.startsWith('@deepseek-ai/'))) {
   const directory = join(outputRoot, name)
   if (await stat(directory).catch(() => undefined)) await applyDesktopMetadata(directory)
 }
@@ -303,7 +303,7 @@ async function copyRuntimePackage(package_, targetRoot) {
     await mkdir(dirname(target), { recursive: true })
     await cp(source, target)
   }
-  if (manifest.dsh && manifest.exports?.['./locale/*.json']) await copyEntry(sourceRoot, targetRoot, 'locale')
+  if (manifest.dsh && Object.keys(manifest.exports ?? {}).some(key => key.startsWith('./locale/'))) await copyEntry(sourceRoot, targetRoot, 'locale')
 
   if (manifest.name === 'node-pty') {
     await copyEntry(sourceRoot, targetRoot, 'lib')
@@ -366,8 +366,11 @@ async function copyRuntimePackage(package_, targetRoot) {
 
   if (manifest.name === 'dsh-dream-skin') {
     await copyEntry(sourceRoot, targetRoot, 'lib')
+    await writeFile(resolve(targetRoot, 'package.json'), adaptDreamSkinManifest(await readFile(resolve(targetRoot, 'package.json'), 'utf8')))
     const clientPath = resolve(targetRoot, 'lib/client.js')
     await writeFile(clientPath, adaptDreamSkinClient(await readFile(clientPath, 'utf8')))
+    const hostPath = resolve(targetRoot, 'lib/index.js')
+    await writeFile(hostPath, adaptDreamSkinHost(await readFile(hostPath, 'utf8')))
     try { await access(resolve(sourceRoot, 'cordis.patch.yml')); await copyEntry(sourceRoot, targetRoot, 'cordis.patch.yml') } catch { /* optional in newer Dream Skin releases */ }
     return
   }

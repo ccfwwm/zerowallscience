@@ -136,11 +136,8 @@ function mountReadingPane(path: string, markdown: string, sessionId: string = ne
     onClose: () => {},
     onExpand: () => {},
   }))
-  // Reading mode is off by default: the raw diff is what a change shows first.
-  const toggle = [...mounted.container.querySelectorAll('button')]
-    .find(button => button.textContent === 'Reading')
-  if (toggle === undefined) throw new Error('reading toggle not found')
-  click(toggle)
+  // The pane's content tab renders markdown by default (the reading view IS
+  // the content view now) — no toggle click needed to reach the surface.
   return { container: mounted.container, tabs, unmount: mounted.unmount }
 }
 
@@ -581,19 +578,22 @@ describe('the markdown preview surface', () => {
     expect(shapeOf(lf)).toEqual(crlf)
   })
 
-  it('resolves every README anchor from a CRLF copy, on every lane', () => {
+  it('resolves every table-of-contents anchor from a CRLF copy, on every lane', () => {
     // The acceptance case below reads whatever line endings the checkout has,
     // so on the ubuntu/macOS lanes it never sees the spelling the `ci-windows`
     // lane checks out. This copy pins that spelling on EVERY lane, and it
-    // asserts synchronously for the reason given in the case above.
-    const crlf = readFileSync(join(process.cwd(), 'README.md'), 'utf8')
+    // asserts synchronously for the reason given in the case above. The
+    // document is the TOC fixture: the READMEs carried this GitHub-style
+    // table of contents until they dropped it, and the fixture keeps the
+    // 0/16-anchors regression guard alive.
+    const source = readFileSync(join(process.cwd(), 'tests/fixtures/github-toc-anchors.md'), 'utf8')
+    const crlf = source
       .replace(/\r\n/g, '\n')
       .replace(/\n/g, '\r\n')
-    const mounted = mountEditor(crlf, '/p/README.md')
+    const mounted = mountEditor(crlf, '/p/github-toc-anchors.md')
     const surface = surfaceOf(mounted.container)
     const headings = [...surface.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
-    const tocAnchors = crlf.split(/\r?\n/).slice(34, 44)
-      .flatMap(line => [...line.matchAll(/\]\((#[^)\s]*)\)/g)])
+    const tocAnchors = [...crlf.matchAll(/\]\((#[^)\s]*)\)/g)]
       .map(match => match[1] ?? '')
       .filter(anchor => anchor !== '')
     expect(tocAnchors.length).toBeGreaterThanOrEqual(15)
@@ -608,46 +608,41 @@ describe('the markdown preview surface', () => {
     mounted.unmount()
   })
 
-  it('resolves and scrolls for EVERY table-of-contents anchor of the repo\u2019s own READMEs', () => {
+  it('resolves and scrolls for EVERY table-of-contents anchor of the GitHub-style TOC fixture', () => {
     // The acceptance case for the slug fix, through the real renderer: the
-    // READMEs are the documents whose anchors were 0/15 before it (the heading
+    // fixture carries the shape whose anchors were 0/15 before it (the heading
     // `🚀 安装` got the id `安装` while its contents entry pointed at `#-安装`,
     // so the click was claimed and then did nothing). The probe takes each
     // TOC bullet's link, finds the heading with that very id, and requires the
     // click to move the surface's own scroller.
-    for (const name of ['README.md', 'README_EN.md']) {
-      const mounted = mountEditor(readFileSync(join(process.cwd(), name), 'utf8'), `/p/${name}`)
-      const surface = surfaceOf(mounted.container)
-      const headings = [...surface.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
-      // CRLF checkout: a README line carries a `\r` terminator, so split on
-      // both endings. (The anchor pattern below happens to survive a trailing
-      // `\r` — `\s` is excluded from the destination — but the slice must not
-      // depend on that accident.)
-      const tocLines = readFileSync(join(process.cwd(), name), 'utf8').split(/\r?\n/).slice(34, 44)
-      const tocAnchors = tocLines.flatMap(line => [...line.matchAll(/\]\((#[^)\s]*)\)/g)])
-        .map(match => match[1] ?? '')
-        .filter(anchor => anchor !== '')
-      expect(tocAnchors.length, name).toBeGreaterThanOrEqual(15)
+    const name = 'tests/fixtures/github-toc-anchors.md'
+    const source = readFileSync(join(process.cwd(), name), 'utf8')
+    const mounted = mountEditor(source, `/p/${name}`)
+    const surface = surfaceOf(mounted.container)
+    const headings = [...surface.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
+    const tocAnchors = [...source.matchAll(/\]\((#[^)\s]*)\)/g)]
+      .map(match => match[1] ?? '')
+      .filter(anchor => anchor !== '')
+    expect(tocAnchors.length, name).toBeGreaterThanOrEqual(15)
 
-      stubRectTop(surface, 0)
-      const readScrollTop = watchScrollTop(surface)
-      const unresolved: string[] = []
-      for (const anchor of tocAnchors) {
-        const fragment = decodeURIComponent(anchor.slice(1))
-        const heading = headings.find(candidate => candidate.id === fragment)
-        const link = [...surface.querySelectorAll<HTMLButtonElement>('button')].find(button => button.title === anchor)
-        if (heading === undefined || link === undefined) {
-          unresolved.push(`${anchor} (id=${heading === undefined ? 'missing' : 'ok'}, link=${link === undefined ? 'missing' : 'ok'})`)
-          continue
-        }
-        stubRectTop(heading, 300)
-        surface.scrollTop = 0
-        click(link)
-        if (readScrollTop() === 0) unresolved.push(`${anchor} (click did not scroll)`)
+    stubRectTop(surface, 0)
+    const readScrollTop = watchScrollTop(surface)
+    const unresolved: string[] = []
+    for (const anchor of tocAnchors) {
+      const fragment = decodeURIComponent(anchor.slice(1))
+      const heading = headings.find(candidate => candidate.id === fragment)
+      const link = [...surface.querySelectorAll<HTMLButtonElement>('button')].find(button => button.title === anchor)
+      if (heading === undefined || link === undefined) {
+        unresolved.push(`${anchor} (id=${heading === undefined ? 'missing' : 'ok'}, link=${link === undefined ? 'missing' : 'ok'})`)
+        continue
       }
-      expect(unresolved, name).toEqual([])
-      mounted.unmount()
+      stubRectTop(heading, 300)
+      surface.scrollTop = 0
+      click(link)
+      if (readScrollTop() === 0) unresolved.push(`${anchor} (click did not scroll)`)
     }
+    expect(unresolved, name).toEqual([])
+    mounted.unmount()
   })
 })
 

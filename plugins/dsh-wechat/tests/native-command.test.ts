@@ -261,6 +261,36 @@ describe("Native command dispatch via ctx.commands", () => {
     expect(hintText).toContain("未知命令 /plan");
   });
 
+  it("a native `final` command must NOT shadow the local /final handler", async () => {
+    // `LOCAL_COMMAND_NAMES` is what keeps a host-registered name from
+    // stealing a local command. `/final` is in it, so even a profile that
+    // happens to register `final` resolves to the local 结论模式 switch —
+    // and `/fo` (the alias) must survive too, since the registry would
+    // never own a two-letter name it did not declare.
+    const mock = makeMockAgent("wx-s1");
+    const commands = makeMockCommands({
+      registry: new Map([
+        ["final", { description: "host-owned final", reply: { kind: "success", text: "SHADOWED" } }],
+      ]),
+    });
+    const bridge = makeBridge({ agent: mock, commands });
+    const anyBridge = bridge as unknown as {
+      state: { ensureUser(u: string, c: string): unknown };
+      config: { finalOnly: boolean };
+    };
+    anyBridge.state.ensureUser("u1", "C:\\work");
+
+    await (bridge as unknown as { handleMessage: (m: unknown) => Promise<void> }).handleMessage(
+      wechatTextMessage("/final on"),
+    );
+
+    expect(anyBridge.config.finalOnly).toBe(true);
+    expect(mock.received.length).toBe(0);
+    const texts = sendTextMessage.mock.calls.map((c) => c[1] as string);
+    expect(texts.some((t) => t.includes("SHADOWED"))).toBe(false);
+    expect(texts.some((t) => t.includes("结论模式已开启"))).toBe(true);
+  });
+
   it("bypasses a pending approval card when the line is a registered native command", async () => {
     const mock = makeMockAgent("wx-s1");
     const commands = makeMockCommands({

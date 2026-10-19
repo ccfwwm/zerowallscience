@@ -26,6 +26,32 @@ CHANGELOG.md 是 GitHub Release Notes 的数据源，以下情况**需要更新*
 - 内部重构（不影响用户）
 - 文档/注释调整
 
+### 检查 DSH 版本约束
+
+宿主版本要求写在 `package.json` 的**两处**，两者机制不同、**必须同时更新且值逐字相同**：
+
+| 字段 | 谁在读 | 写错的后果 |
+|---|---|---|
+| `engines.dsh` | **只有**插件市场 `dshmarket`（宿主代码零处读它） | 市场展示的兼容性错误；不拦安装 |
+| `peerDependencies["@deepseek-ai/dsh"]` | **宿主 `evaluatePluginCompatibility`，强制** | **整个 bundle 被跳过**，插件在桌面端消失 |
+
+当前值（两处一致）：
+
+```json
+"engines": { "dsh": ">=0.2.0-rc.2 <0.3.0-0" },
+"peerDependencies": { "@deepseek-ai/dsh": ">=0.2.0-rc.2 <0.3.0-0" },
+"peerDependenciesMeta": { "@deepseek-ai/dsh": { "optional": true } }
+```
+
+改这个范围时必须遵守四条，每条都有实测依据：
+
+1. **必须带上界。** 只写 `>=0.2.0-rc.2` 会把 `0.3.0`、`1.0.0` 判为兼容（这正是旧值的缺陷）。
+2. **上界必须是 `<0.3.0-0`，不能写 `<0.3.0`。** 宿主与市场都以 `{ includePrerelease: true }` 求值，`<0.3.0` 会放行 `0.3.0-rc.1`。
+3. **peer 必须同时标 `peerDependenciesMeta.optional`。** 不加会**安装失败**：peer 被当成真实依赖解析，`@deepseek-ai/dsh` 是带 82 条 dependencies 的元包，会拉进 530 个包并撞上未发布包 `@deepseek-ai/dsh-type-meta` 的 npm 404。宿主门禁**不读** `peerDependenciesMeta`，所以标 `optional` 不影响强制力。
+4. **不要改用前发布元组枚举。** 唯一消费者在 `includePrerelease` 语义下求值，单段 arm 已覆盖全部 0.2.x 前发布版；枚举永远补不全（每出现一个新的 0.2.x 元组都要再加一段）。
+
+改完直接跑测试即可验证——`tests/host-line.test.ts` 已把准入/拒绝矩阵、两处声明的一致性、`optional` 标记、以及 `<0.3.0` 会漏 `0.3.0-rc.1` 这些全部钉死，写错会立刻变红。
+
 ---
 
 ## 发布流程
@@ -39,6 +65,14 @@ npm ci          # 安装依赖（lockfile 精确版本）
 npm run build   # tsc → dist/ + client bundle
 npm test        # vitest 全部用例
 ```
+
+> 若本次改过 `package.json` 的 `dependencies` / `devDependencies` / `engines` / `peerDependencies`，先同步 lockfile 再跑上面三步：
+>
+> ```bash
+> npm install --package-lock-only   # 只更新 package-lock.json，不动 node_modules
+> ```
+>
+> CI（`.github/workflows/ci.yml`）与发布工作流用的都是 `npm ci`，它要求 lockfile 与 `package.json` 严格一致——**不同步会直接失败**，而不是回退到解析依赖。
 
 发布前可本地验证产物：
 

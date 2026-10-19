@@ -3,6 +3,7 @@ import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { execFileSync } from 'node:child_process'
 
 // Electron virtualizes .asar paths. Installation must copy their actual bytes.
 const fs = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nativeFs
@@ -261,6 +262,12 @@ try {
     if (!moved) await copyFile(file.source, staged)
     if ((await stat(staged)).size !== file.size || digest(staged) !== expected) throw new Error('Installer staging verification failed')
   })
+  // Same-volume moves preserve the elevated extractor's protected DACL.
+  // Reset only incoming owned files, under the checked transaction stage,
+  // so Explorer can read EXE/icon resources through normal inheritance.
+  if (process.platform === 'win32') {
+    execFileSync('icacls.exe', [join(recovery, 'stage'), '/reset', '/T', '/Q'], { windowsHide: true, stdio: 'pipe' })
+  }
   log('transaction-stage-verified')
   transaction.state = 'applying'; persist(transaction)
   await bounded(rows, async (row,index) => {

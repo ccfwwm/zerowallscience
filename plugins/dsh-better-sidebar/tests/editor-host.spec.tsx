@@ -29,12 +29,26 @@ const treeAnswers = (): { calls: number; landedAt: number[] } =>
 
 /**
  * Test script for the tree seam, used by the dropped-answer case below:
- * `slow` lists the 1-based call numbers that answer only after a beat (so a
+ * `slow` lists the 1-based call numbers held until `release` is called (so a
  * refresh tick can land while they are in flight) and `hang` those that never
  * answer at all. On `globalThis` for the same hoisting reason as `treeAnswers`.
  */
-const treeScript = (): { slow: number[]; hang: number[] } =>
-  ((globalThis as unknown as { __treeScript?: { slow: number[]; hang: number[] } }).__treeScript ??= { slow: [], hang: [] })
+const treeScript = (): { slow: number[]; hang: number[]; release?: () => void } =>
+  ((globalThis as unknown as { __treeScript?: { slow: number[]; hang: number[]; release?: () => void } }).__treeScript ??= { slow: [], hang: [] })
+
+// Layout persistence is process-global: `setSession` hydrates whatever the
+// previous case persisted for the same session id, so one case's `treeOpen:
+// false` silently decides whether the next case mounts its tree at all. The
+// tree seam's call numbers are per-case scripting for the same reason.
+beforeEach(() => {
+  localStorage.clear()
+  const answers = treeAnswers()
+  answers.calls = 0
+  answers.landedAt = []
+  const script = treeScript()
+  script.slow = []
+  script.hang = []
+})
 
 // The tree mounts inside EditorHost in these scenarios, so the api seam must
 // answer without a host (the sibling FileTree specs mock it the same way).
@@ -47,7 +61,7 @@ vi.mock('../src/client/api.ts', () => ({
       // The call index must be read BEFORE any await: `calls` keeps moving.
       const index = answers.calls
       const script = treeScript()
-      if (script.slow.includes(index)) await new Promise(resolve => { setTimeout(resolve, 300) })
+      if (script.slow.includes(index)) await new Promise<void>(resolve => { script.release = resolve })
       if (script.hang.includes(index)) await new Promise<never>(() => {})
       const answer = {
         levels: paths.map(path => ({
@@ -88,9 +102,18 @@ const fsRead = vi.fn()
 import { setupReactAct } from './test-utils.ts'
 setupReactAct()
 
-// Every scenario starts from its declared layout. Store instances restore the
-// same session from localStorage, including treeOpen changed by earlier tests.
-beforeEach(() => { localStorage.clear() })
+let sessionSeq = 0
+let sessionId: string
+beforeEach(() => {
+  // Each store persists after 200ms; another test must never restore its tabs.
+  sessionId = `editor-home-session-${++sessionSeq}`
+  treeAnswers().calls = 0
+  treeAnswers().landedAt = []
+  treeScript().slow = []
+  treeScript().hang = []
+  treeScript().release = undefined
+  fsRead.mockReset()
+})
 
 /**
  * How long a rendered CONDITION may take to appear on a loaded runner.
@@ -118,10 +141,22 @@ beforeEach(() => { localStorage.clear() })
  *    hit the SUITE clock (15s, a real `fs.watch` + 150ms debounce) in a local
  *    run under heap pressure — i.e. the worker, not the wait, ran out of
  *    runway. The suite's own clock is now 30s (`vitest.config.ts`).
- * The affected `describe` raises its clock to 35s, so a genuinely missing row
+ *  - 20s → 60s: 2026-10-15, the same two cases in the SAME commit produced a
+ *    green run and a red one. Measured on both: this file takes **609ms** in
+ *    the green CI run (108ms locally) and **50554ms** in the red one, where
+ *    the tree had received its three `fs.trees` answers (all landing before
+ *    the wait even started) and still never rendered a row. That is an ~80x
+ *    stall of the worker, not a slow wait, so the budget buys margin without
+ *    weakening the assertion: a tree that never lists the row still fails.
+ * The affected `describe` raises its clock to 120s, so a genuinely missing row
  * still fails on the ASSERTION, never on the test clock.
+ *
+ * The 2026-10-13 red runs were a different class: `panel=ABSENT` came from a
+ * fixture leak (the shared session id let a later case restore `treeOpen=false`
+ * from the delayed store write), which the per-case session id below fixes.
+ * More waiting could never have repaired that.
  */
-const RENDER_WAIT_MS = 20_000
+const RENDER_WAIT_MS = 60_000
 
 /**
  * Wait until the tree has rendered the row for `name` — the precondition of
@@ -189,7 +224,7 @@ function setup(): {
   const service = createBetterSidebarService(store)
   // The openTab path needs a registered editor descriptor (dedupe by path).
   service.registerTab({ id: 'editor', title: 'Editor', dedupeKey: (tab) => tab.path, component: () => null })
-  store.setSession('editor-home-session')
+  store.setSession(sessionId)
   // The workbench seeds EMPTY (the right panel that used to carry the default
   // files window is DSH's native Sidebar now), so these editor-host scenarios
   // open the path-less files window explicitly — exactly what the shell does
@@ -199,7 +234,7 @@ function setup(): {
     allLeaves(store.getSnapshot().state!.bottomSplits).flatMap(leaf => leaf.tabs)
       .find(tab => tab.type === 'editor' && tab.path === undefined)!
   // openSidebarFile reads the session cwd from ctx.sessions.
-  const sessionsSnapshot = { byId: { 'editor-home-session': { cwd: '/tmp' } }, current: 'editor-home-session' }
+  const sessionsSnapshot = { byId: { [sessionId]: { cwd: '/tmp' } }, current: sessionId }
   const ctx = {
     betterSidebar: service,
     get: (name: string) => name === 'betterSidebar' ? service : undefined,
@@ -221,7 +256,7 @@ function mountHost(ctx: Context, store: ReturnType<typeof createSidebarStore>, t
     root.render(createElement(EditorHost, {
       ctx,
       store,
-      scope: { sessionId: 'editor-home-session' },
+      scope: { sessionId },
       tab: tab(),
       expanded: [],
       revealed: [],
@@ -258,7 +293,7 @@ async function mountHostWithTreeWithCwd(ctx: Context, store: ReturnType<typeof c
     root.render(createElement(EditorHost, {
       ctx,
       store,
-      scope: { sessionId: 'editor-home-session', cwd: '/tmp' },
+      scope: { sessionId, cwd: '/tmp' },
       tab: tab(),
       expanded: [],
       revealed: [],
@@ -389,7 +424,7 @@ describe('EditorHost (files window)', () => {
       typeAndCommit(container.querySelector('input[placeholder^="File path"]')!, '/tmp/board.drawio')
       // The claiming type received the file's session-scoped address…
       expect(resources).toHaveLength(1)
-      expect(resources[0]).toContain('editor-home-session')
+      expect(resources[0]).toContain(sessionId)
       expect(resources[0]).toContain('board.drawio')
       // …and the editor tab was NOT switched in place (its file is unchanged).
       expect(fileTab().path).toBe('/tmp/a.ts')
@@ -624,7 +659,7 @@ describe('EditorHost (files window)', () => {
       path: '/work/src',
       id: 'editor:/work/src',
       meta: { dir: true },
-    }, { sessionId: 'editor-home-session' })
+    }, { sessionId })
     const dirTab = (): SidebarTab =>
       allLeaves(store.getSnapshot().state!.bottomSplits).flatMap(leaf => leaf.tabs)
         .find(tab => tab.path === '/work/src')!
@@ -659,7 +694,7 @@ describe('EditorHost (files window)', () => {
  */
 // 35s clock: the tree wait above budgets 20s (and reports for 5s more when it
 // expires), so the ASSERTION stays the thing that fails, not the test clock.
-describe('EditorHost native-tab context-menu actions', { timeout: 35_000 }, () => {
+describe('EditorHost native-tab context-menu actions', { timeout: 120_000 }, () => {
   /** A service whose openTab calls are recorded (surface undefined = native). */
   function spyService(store: ReturnType<typeof createSidebarStore>): {
     service: ReturnType<typeof createBetterSidebarService>
@@ -677,7 +712,7 @@ describe('EditorHost native-tab context-menu actions', { timeout: 35_000 }, () =
 
   /** The fake client ctx (service + session feed); cwd matches api.fsTree. */
   function fakeCtx(service: ReturnType<typeof createBetterSidebarService>): Context {
-    const sessionsSnapshot = { byId: { 'editor-home-session': { cwd: '/tmp' } }, current: 'editor-home-session' }
+    const sessionsSnapshot = { byId: { [sessionId]: { cwd: '/tmp' } }, current: sessionId }
     return {
       betterSidebar: service,
       get: (name: string) => name === 'betterSidebar' ? service : undefined,
@@ -707,7 +742,7 @@ describe('EditorHost native-tab context-menu actions', { timeout: 35_000 }, () =
         ctx,
         store,
         // The tree needs a root: the real seat hands the session cwd in scope.
-        scope: { sessionId: 'editor-home-session', cwd: '/tmp' },
+        scope: { sessionId, cwd: '/tmp' },
         visible: true,
         tab: nativeTab,
         expanded: [],
@@ -751,7 +786,7 @@ describe('EditorHost native-tab context-menu actions', { timeout: 35_000 }, () =
     const store = createSidebarStore()
     const { service, opens } = spyService(store)
     service.registerTab({ id: 'editor', title: 'Editor', dedupeKey: (tab) => tab.path, component: () => null })
-    store.setSession('editor-home-session')
+    store.setSession(sessionId)
     // A native surface is what makes the service native-hosted at all: the
     // fake records what the service asks of the host (the real one forwards to
     // `ctx.sidebarRight`).
@@ -797,7 +832,7 @@ describe('EditorHost native-tab context-menu actions', { timeout: 35_000 }, () =
     const store = createSidebarStore()
     const { service } = spyService(store)
     service.registerTab({ id: 'editor', title: 'Editor', dedupeKey: (tab) => tab.path, component: () => null })
-    store.setSession('editor-home-session')
+    store.setSession(sessionId)
     store.setPrefs({ ...store.getPrefs(), editorExplorer: false })
     service.openTab({ type: 'editor', title: 'a.ts', path: '/tmp/a.ts', id: 'editor:/tmp/a.ts', meta: { treeOpen: true } })
     const fileTab = (): SidebarTab =>
@@ -805,10 +840,16 @@ describe('EditorHost native-tab context-menu actions', { timeout: 35_000 }, () =
         .find(tab => tab.path === '/tmp/a.ts')!
     const { container, unmount } = await mountHostWithTreeWithCwd(fakeCtx(service) as unknown as Context, store, fileTab)
     try {
-      // The real trigger: TreePanel bumps its refresh tick on a window focus.
+      // Hold the first answer until focus has started the forced re-list.
+      expect(treeAnswers().calls).toBe(1)
       await act(async () => { window.dispatchEvent(new Event('focus')) })
+      expect(treeAnswers().calls).toBe(2)
+      await act(async () => { script.release!() })
       await waitForTreeRow(container, 'a.ts')
+      expect(treeAnswers().calls).toBe(3)
+      expect(treeAnswers().landedAt).toHaveLength(2)
     } finally {
+      script.release?.()
       script.slow = []
       script.hang = []
       unmount()
@@ -819,7 +860,7 @@ describe('EditorHost native-tab context-menu actions', { timeout: 35_000 }, () =
     const store = createSidebarStore()
     const { service } = spyService(store)
     service.registerTab({ id: 'editor', title: 'Editor', dedupeKey: (tab) => tab.path, component: () => null })
-    store.setSession('editor-home-session')
+    store.setSession(sessionId)
     const ctx = fakeCtx(service)
     const opens: Array<{ target?: string }> = []
     const real = service.openTab.bind(service)
@@ -851,7 +892,7 @@ describe('EditorHost native-tab context-menu actions', { timeout: 35_000 }, () =
     const store = createSidebarStore()
     const { service } = spyService(store)
     service.registerTab({ id: 'editor', title: 'Editor', dedupeKey: (tab) => tab.path, component: () => null })
-    store.setSession('editor-home-session')
+    store.setSession(sessionId)
     const ctx = fakeCtx(service)
     // The failure the host route now reports when EVERY opener branch dies.
     vi.mocked(api.openExternal).mockRejectedValueOnce(new Error('spawn cmd.exe ENOENT'))

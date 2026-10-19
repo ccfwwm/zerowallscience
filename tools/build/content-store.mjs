@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { copyFile, link, lstat, mkdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, lstat, mkdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { artifactRoot } from './paths.mjs'
+import { tryHardlink } from './hardlink.mjs'
 
 export async function digestFile(path) {
   const hash = createHash('sha256')
@@ -66,10 +67,15 @@ export async function storeAndLink(source, options = {}) {
   const absoluteSource = resolve(source)
   const reference = await storeObject(absoluteSource, options)
   if (resolve(reference.objectPath) === absoluteSource) return reference
+  const [sourceInfo, objectInfo] = await Promise.all([lstat(absoluteSource, { bigint: true }), lstat(reference.objectPath, { bigint: true })])
+  if (sourceInfo.dev === objectInfo.dev && sourceInfo.ino === objectInfo.ino) return reference
 
   const temporaryLink = `${absoluteSource}.${randomUUID()}.link`
   const backup = `${absoluteSource}.${randomUUID()}.original`
-  await link(reference.objectPath, temporaryLink)
+  const sharing = await tryHardlink(reference.objectPath, temporaryLink)
+  // The source is already a verified private copy. Keep it when the filesystem
+  // cannot add another link; all other identical files still share the object.
+  if (!sharing.linked) return { ...reference, materialization: 'copy', fallback: sharing.fallback }
   const linked = await lstat(temporaryLink)
   if (!linked.isFile() || linked.isSymbolicLink() || linked.size !== reference.size || await digestFile(temporaryLink) !== reference.digest) {
     await unlink(temporaryLink).catch(() => undefined)

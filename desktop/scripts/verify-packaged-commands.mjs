@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { _electron } from 'playwright'
 import { contract } from '../../tools/build/paths.mjs'
 import { locatePackagedApp } from './packaged-app.mjs'
+import { pinnedDsh } from '../../tools/packaging/adapt-reviewed-dsh.mjs'
 
 const packaged = await locatePackagedApp(join(import.meta.dirname, '..'))
 const directory = join(contract.verification, 'commands', randomUUID())
@@ -51,7 +52,7 @@ async function waitFor(task) {
 
 try {
   await waitFor(async () => { await zws(['env', 'list']); return true })
-  assert.match(await execute(['dsh.cmd', '--version'], undefined, true), /0\.2\.0-rc\.2/)
+  assert.equal((await execute(['dsh.cmd', '--version'], undefined, true)).trim(), pinnedDsh.version)
   assert.equal(JSON.parse(await execute(['zws.cmd', '--version'], undefined, true)).applicationVersion, contract.version)
   assert((JSON.parse(await execute(['help']))).commands.plugin)
   const doctor = await zws(['doctor'])
@@ -90,7 +91,7 @@ try {
   await zws(['mcp', 'logs', mcp.id])
   await zws(['mcp', 'remove', mcp.id])
   await zws(['python', 'status'])
-  await writeFile(join(directory, 'receipt.json'), JSON.stringify({ applicationVersion: contract.version, dshVersion: '0.2.0-rc.2', ok: true,
+  await writeFile(join(directory, 'receipt.json'), JSON.stringify({ applicationVersion: contract.version, dshVersion: pinnedDsh.version, ok: true,
     commandWrappers: true, pluginProfileList: true, actualFilePlugin: files, safeEnvironment: true, skillsImportRefreshRollback: true, mcpStartStopRestart: true, pythonStatus: true, pythonRuntimeRoot }, null, 2))
   console.log('Packaged commands verified:', directory)
 } finally { await application.close() }

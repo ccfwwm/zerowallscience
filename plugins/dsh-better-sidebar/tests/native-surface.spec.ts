@@ -5,10 +5,12 @@
  * (src/client/service.ts `setSurface`).
  */
 import { describe, expect, it, vi } from 'vitest'
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
 import { createNativeTabRecords, NativeTabBody, NativeTabTitle } from '../src/client/native/tab-adapter.tsx'
+import { ContextDiagnosticsButton } from '../src/client/context-diagnostics-ui.tsx'
+import type { ContextDiagnosticTarget, ContextDiagnostics, ContextDiagnosticsSnapshot } from '../src/client/context-diagnostics.ts'
 import { createNativeSurface } from '../src/client/native/surface.ts'
 import { fileParamsOf, registerNativeSurface } from '../src/client/native/index.ts'
 import { createBetterSidebarService, type SidebarSurface, type TabComponentProps } from '../src/client/service.ts'
@@ -826,6 +828,100 @@ describe('NativeTabBody full-height host wrapper', () => {
     expect(wrapper!.querySelector('[data-stub-body]'), 'the descriptor component renders inside the wrapper').not.toBeNull()
     expect(wrapper!.childElementCount).toBe(1)
     act(() => { root?.unmount() })
+    host.remove()
+  })
+})
+
+/**
+ * The diagnostics controller reaches a native tab body through the injected
+ * bag (`NativeSurfaceDeps.diagnostics` → `inject()` → `NativeTabBody`'s
+ * provider): a body renders in the HOST's tree, so the plugin shell's own
+ * provider cannot reach it. A body whose registration carried no controller
+ * renders exactly as before — no entry point, no crash.
+ */
+describe('NativeTabBody — the diagnostics provider comes from the injected bag', () => {
+  /** A snapshot-driven controller double; it records the targets it is asked to open. */
+  const makeDiagnostics = (): { controller: ContextDiagnostics; opens: ContextDiagnosticTarget[] } => {
+    const opens: ContextDiagnosticTarget[] = []
+    const snapshot: ContextDiagnosticsSnapshot = { available: true, busy: false }
+    const controller: ContextDiagnostics = {
+      getSnapshot: () => snapshot,
+      subscribe: () => () => {},
+      open: (target: ContextDiagnosticTarget) => { opens.push(target) },
+      dismissError: () => {},
+      dispose: () => {},
+    }
+    return { controller, opens }
+  }
+
+  function renderBody(diagnostics?: ContextDiagnostics): { host: HTMLDivElement; root: Root } {
+    const store = createSidebarStore()
+    store.setSession('s1')
+    const service = createBetterSidebarService(store)
+    // The body asks for the diagnostics entry point of a job; the value it can
+    // address comes from the provider, so it exists only where the bag carried
+    // a controller down to this body.
+    const component = (): ReactNode => createElement(ContextDiagnosticsButton, {
+      kind: 'job',
+      target: { sessionId: 's1', label: 'job owner' },
+      iconSize: 12,
+    })
+    service.registerTab({ id: 'probe', title: 'Probe', component })
+    const records = createNativeTabRecords()
+    const ctx = { sessions: { list: { subscribe: () => () => {}, getSnapshot: () => ({ byId: {} }) } } } as never
+    const info = {
+      tab: {
+        id: 'native-11',
+        kind: 'probe',
+        title: 'Probe',
+        contentId: 'sidebar://probe',
+        visible: true,
+        navigation: { address: 'sidebar://probe', params: undefined, revision: 0 },
+        signal: new AbortController().signal,
+      },
+    }
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    let root: Root | undefined
+    act(() => {
+      root = createRoot(host)
+      root.render(createElement(NativeTabBody, {
+        sessionId: 's1',
+        ctx,
+        store,
+        service,
+        records,
+        descriptorId: 'probe',
+        useTabInfo: () => info,
+        ...(diagnostics === undefined ? {} : { diagnostics }),
+      }))
+    })
+    return { host, root: root! }
+  }
+
+  it('offers no entry point without a controller, and renders one with it', async () => {
+    const bare = renderBody()
+    expect(bare.host.querySelector('[data-dsh-ctx-entry="job"]')).toBeNull()
+    act(() => { bare.root.unmount() })
+    bare.host.remove()
+
+    const fake = makeDiagnostics()
+    const wired = renderBody(fake.controller)
+    const button = wired.host.querySelector('[data-dsh-ctx-entry="job"]') as HTMLButtonElement
+    expect(button, 'the injected controller must reach the body').not.toBeNull()
+    await act(async () => { button.click() })
+    expect(fake.opens).toEqual([{ sessionId: 's1', label: 'job owner' }])
+    act(() => { wired.root.unmount() })
+    wired.host.remove()
+  })
+
+  it('keeps the full-height host wrapper contract with the provider in place', () => {
+    const fake = makeDiagnostics()
+    const { host, root } = renderBody(fake.controller)
+    const wrapper = host.querySelector('[data-dsh-native-tab-host=""]')
+    expect(wrapper, 'the paneBody fill contract is unchanged').not.toBeNull()
+    expect(wrapper!.querySelector('[data-dsh-ctx-entry="job"]'), 'the entry point lives in the wrapper').not.toBeNull()
+    act(() => { root.unmount() })
     host.remove()
   })
 })

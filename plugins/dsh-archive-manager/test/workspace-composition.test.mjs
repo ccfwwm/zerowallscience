@@ -44,8 +44,13 @@ const archive = await load("@michengai/dsh-archive-manager", fileURLToPath(new U
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const source = (state) => ({ getSnapshot: () => state, subscribe: () => () => {} });
 // 0.1.7-rc.2 起官方工作区与侧栏客户端在 cordis inject 里要求 shortcuts 服务；
-// 夹具不提供它，官方的 apply 根本不会运行，本文件就无法验证组合行为。
-const provideShortcuts = (root) => root.provide("shortcuts", { register: () => () => {}, catalog: source([]) });
+// 0.2.1-alpha.3 起还要求 remoteAccess（侧栏权限钩子），缺一则官方 apply 不跑。
+const provideShortcuts = (root) => {
+	root.provide("shortcuts", { register: () => () => {}, catalog: source([]) });
+	if (root.get("remoteAccess") === undefined) {
+		root.provide("remoteAccess", { source: () => undefined });
+	}
+};
 
 test("归档诊断读取没有列表摘要的 ID", async () => {
   const effects = [], calls = [];
@@ -122,11 +127,10 @@ test("真实官方导航监听器：显式查看归档不再被清空，切换�
   const stock = root.plugin(official);
   await stock;
   const navigation = root.get("uiWorkspace");
-  if (typeof navigation?.clearArchivedCurrent !== "function") { await stock.dispose(); t.skip("此旧宿主无新版导航监听器"); return; }
+  if (typeof navigation.openSession !== "function") { await stock.dispose(); t.skip("此宿主无会话打开接口"); return; }
   const selected = () => currentSessionId(list.getSnapshot());
   const selectWithoutGuard = (id) => {
-    if (typeof navigation.openSession === "function") navigation.openSession(id);
-    else sessions.open(id);
+    navigation.openSession(id);
     // alpha.2 在 retain 之后才写入 mainReference；官方清理看随后的列表刷新。
     list.update({ ...list.getSnapshot() });
   };
@@ -217,9 +221,9 @@ test("安装补丁保持官方 ui-workspace 启用", async () => {
 	assert.doesNotMatch(patch, /id: ui-workspace\s+disabled: true/);
 });
 
-test("安装补丁关闭官方已归档设置页，但不关掉宿主 workspace", async () => {
+test("安装补丁不再禁用已消失的官方已归档设置页，也不关掉宿主 workspace", async () => {
 	const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
-	assert.match(patch, /id: ui-settings-unarchive-sessions\s+disabled: true/);
+	assert.doesNotMatch(patch, /id: ui-settings-unarchive-sessions/);
 	assert.doesNotMatch(patch, /id: workspace\s+disabled: true/);
 	assert.doesNotMatch(patch, /id: session-projection-cache\s+disabled: true/);
 	assert.doesNotMatch(patch, /id: archive-manager-host/);
@@ -280,8 +284,8 @@ for (const archiveFirst of [false, true]) test(`官方选择器和导航保持�
 			const deletion = slots.entries(sessionMenu).find((entry) => entry.options.id === "archive-manager.delete-session");
 			assert.equal(deletion.options.order, 500);
 		} else {
-			assert.equal(slots.entries("sidebar.workspaces").length, 2);
-			assert.equal(slots.entries("sidebar.workspaces")[0].component !== stockSidebar.component, true);
+			assert.equal(slots.entries("sidebar.workspaces").length, 1);
+			assert.equal(slots.entries("sidebar.workspaces")[0].component, stockSidebar.component);
 		}
 		assert.deepEqual(slots.entries("conversation.hero.workspace"), [picker]);
 		assert.equal(root.get("uiWorkspace")?.archiveCompositionMarker, navigation ? "official-instance" : undefined);
@@ -292,22 +296,13 @@ for (const archiveFirst of [false, true]) test(`官方选择器和导航保持�
 			assert.ok(opened.includes("new-session"));
 		}
 		if (!extensible) {
-			const flow = () => null;
-			const injected = () => ({ pick: "official" });
-			const disposeFlow = slots.register({ name: "sidebar.workspaces.directoryFlow", inject: injected }, flow);
-			await tick();
-			const mirror = slots.entries("archiveManager.sidebar.directoryFlow")[0];
-			assert.equal(mirror.component, flow);
-			assert.equal(mirror.inject, injected);
-			disposeFlow();
-			await tick();
 			assert.equal(slots.entries("archiveManager.sidebar.directoryFlow").length, 0);
 		}
 		// 父插槽消失后重建，两个插件必须重新注册，且目录声明不能残留。
 		disposeRoot();
 		disposeRoot = declare();
 		await tick();
-		assert.equal(slots.entries("sidebar.workspaces").length, extensible ? 1 : 2);
+		assert.equal(slots.entries("sidebar.workspaces").length, 1);
 		assert.equal(slots.entries("conversation.hero.workspace").length, 1);
 		await custom.dispose();
 		assert.equal(slots.entries("sidebar.workspaces").length, 1);
@@ -435,7 +430,7 @@ test("归档 TAB 默认与切换、多项目选择、确认提交和状态刷新
  const render=()=>{cursor=0;return client.__test.ArchivedSessionsSection(props);};
  const nodes=(node)=>Array.isArray(node)?node.flatMap(nodes):node?.props?[node,...nodes(node.props.children)]:[];
  let tree=render();
- const tabs=()=>nodes(tree).find(n=>n.props?.["aria-label"]==="archives.title" && typeof n.props.onChange==="function");
+ const tabs=()=>nodes(tree).find(n=> (n.props?.label==="archives.title" || n.props?.["aria-label"]==="archives.title") && typeof n.props.onChange==="function" && (n.props.items || n.props.options));
  const tab=(name)=>({ props: { onClick: () => tabs().props.onChange(name), "aria-selected": tabs().props.value===name } });
  assert.equal(tab("archived").props["aria-selected"],true);
  assert.equal(nodes(tree).some(n=>n.type==="header" && nodes(n.props.children).some(child=>child.props.role==="tablist")),false,"归档页签不得被 Codex UI 的 header [role=tablist] 会话顶栏适配器命中");
@@ -489,9 +484,9 @@ test("归档 TAB 默认与切换、多项目选择、确认提交和状态刷新
   const actions=nodes(tree).find(n=>n.props.group && n.props.onArchive);
   assert.ok(actions,"未归档项目与未分组均提供更多菜单");
   const menu=actions.type(actions.props);
-  assert.deepEqual(menu.props.menu.items.map(item=>item.key),["archive"]);
-  assert.equal(menu.props.menu.items[0].danger,true);
-  menu.props.menu.items[0].onClick();tree=render();
+  assert.deepEqual(menu.props.items.map(item=>item.id),["archive"]);
+  assert.equal(menu.props.items[0].danger,true);
+  menu.props.onSelect("archive");tree=render();
   const groupDialog=nodes(tree).find(n=>n.props.open===true && n.props.description===(ungrouped?"archives.archiveUngroupedDesc":"archives.archiveProjectDesc"));
   assert.ok(groupDialog,"确认框说明整个分组的范围");
   await nodes(groupDialog.props.footer).find(n=>n.props.children==="archives.archiveSelected").props.onClick();
@@ -499,6 +494,48 @@ test("归档 TAB 默认与切换、多项目选择、确认提交和状态刷新
   tree=render();tab("archived").props.onClick();tree=render();
  }
 
+});
+
+test("归档处理完成后不等列表刷新就关闭确认框", async () => {
+	const values = []; let cursor = 0;
+	const hooks = { ...statics.react,
+		useSyncExternalStore: (_subscribe, snapshot) => snapshot(),
+		useState: initial => { const i = cursor++; if (!(i in values)) values[i] = typeof initial === "function" ? initial() : initial; return [values[i], value => { values[i] = typeof value === "function" ? value(values[i]) : value; }]; },
+		useRef: initial => { const i = cursor++; return values[i] ??= { current: initial }; },
+		useMemo: fn => fn(), useEffect: () => {}
+	};
+	const client = factories.get("@michengai/dsh-archive-manager")(name => name === "react" ? hooks : statics[name]);
+	let releaseRefresh;
+	const props = {
+		sessionStore: source({ byId: { one: { id: "one", title: "one", updatedAt: 1 } } }),
+		workspaceStore: source({ items: [{ workspaceId: "a", title: "项目 A", sessionIds: ["one"] }], archivedSessionIds: [] }),
+		archivedSessionMetadata: async () => ({ items: [] }),
+		organizeBatch: async (_kind, _ids, options) => {
+			options.onProgress({ total: 1, done: 1, succeeded: 1, skipped: 0, failed: 0 });
+			await new Promise(resolve => { releaseRefresh = resolve; });
+			return { succeeded: ["one"], skipped: [], failures: [], remaining: [], unprocessed: [], refreshError: null };
+		},
+		t: key => key
+	};
+	const nodes = node => Array.isArray(node) ? node.flatMap(nodes) : node?.props ? [node, ...nodes(node.props.children)] : [];
+	let tree;
+	const render = () => { cursor = 0; tree = client.__test.ArchivedSessionsSection(props); };
+	render();
+	const tabs = () => nodes(tree).find(node => (node.props?.label === "archives.title" || node.props?.["aria-label"] === "archives.title") && typeof node.props.onChange === "function" && (node.props.items || node.props.options));
+	tabs().props.onChange("unarchived");
+	render();
+	nodes(tree).find(node => typeof node.props?.onChange === "function" && typeof node.props.checked === "boolean").props.onChange({ target: { checked: true } });
+	render();
+	nodes(tree).find(node => node.props.onArchive).props.onArchive();
+	render();
+	const dialog = () => nodes(tree).find(node => node.props.open === true && node.props.description === "archives.archiveSelectedDesc");
+	assert.ok(dialog(), "确认前应打开归档确认框");
+	const pending = nodes(dialog().props.footer).find(node => node.props.children === "archives.archiveSelected").props.onClick();
+	await Promise.resolve();
+	render();
+	assert.equal(dialog(), undefined, "处理完成后必须关闭确认框，不能等列表刷新");
+	releaseRefresh();
+	await pending;
 });
 
 test("整理页收藏、闲置预览、部分失败重试及撤回形成完整闭环", async () => {
@@ -528,7 +565,7 @@ test("整理页收藏、闲置预览、部分失败重试及撤回形成完整�
   let tree;
   const render = () => { cursor = 0; tree = client.__test.ArchivedSessionsSection(props); };
   const panel = () => nodes(tree).find(node => node.type?.name === "OrganizerPanel");
-  const tab = name => { const control = nodes(tree).find(node => node.props?.options?.some?.(option => option.value === "archived") && typeof node.props.onChange === "function"); return { props: { onClick: () => control.props.onChange(name) } }; };
+  const tab = name => { const control = nodes(tree).find(node => (node.props?.items || node.props?.options)?.some?.(option => option.value === "archived") && typeof node.props.onChange === "function"); return { props: { onClick: () => control.props.onChange(name) } }; };
   render();
   await panel().props.onReload(); render();
   assert.equal(panel().props.ready, true);
@@ -539,9 +576,9 @@ test("整理页收藏、闲置预览、部分失败重试及撤回形成完整�
   const menuNode = nodes(tree).find(node => node.type?.name === "ArchivedSessionMenu");
   assert.ok(menuNode, "已归档行通过更多菜单提供恢复打开和删除");
   const menu = menuNode.type(menuNode.props);
-  assert.deepEqual(menu.props.menu.items.map(item => item.key), ["restoreOpen", "copyId", "delete"]);
-  assert.equal(menu.props.menu.items.at(-1).danger, true);
-  menu.props.menu.items.at(-1).onClick(); render();
+  assert.deepEqual(menu.props.items.map(item => item.id), ["restoreOpen", "copyId", "delete"]);
+  assert.equal(menu.props.items.at(-1).danger, true);
+  menu.props.onSelect("delete"); render();
   const deleteDialog = nodes(tree).find(node => node.props.open === true);
   assert.ok(deleteDialog, "删除菜单先打开确认框");
   deleteDialog.props.onClose(); render();
@@ -571,9 +608,9 @@ test("整理页收藏、闲置预览、部分失败重试及撤回形成完整�
   assert.deepEqual(calls, ["a", "b"]);
   assert.deepEqual(panel().props.result.succeeded, ["a"]);
   assert.deepEqual(panel().props.result.remaining, ["b", "c"]);
-  nodes(tree).find(node => node.props?.options?.some?.(option => option.value === "archived")).props.onChange("archived"); render();
+  nodes(tree).find(node => (node.props?.items || node.props?.options)?.some?.(option => option.value === "archived")).props.onChange("archived"); render();
   assert.equal(panel().props.result, null, "归档结果不得出现在另一页签");
-  nodes(tree).find(node => node.props?.options?.some?.(option => option.value === "archived")).props.onChange("unarchived"); render();
+  nodes(tree).find(node => (node.props?.items || node.props?.options)?.some?.(option => option.value === "archived")).props.onChange("unarchived"); render();
   assert.deepEqual(panel().props.result.remaining, ["b", "c"], "返回原页签仍可重试失败项");
   assert.equal(panel().props.undoCount, 1);
   await panel().props.onRetry(); await tick(); render();
@@ -629,7 +666,7 @@ test("删除确认框显示失败原因、允许重试，并阻止重复提交",
   let tree;
   const render = () => { cursor = 0; tree = client.__test.ArchivedSessionsSection(props); };
   const dialog = () => nodes(tree).find(node => node.props.open === true && node.props.title === "deleteSession.title");
-  const confirm = () => nodes(dialog().props.footer).find(node => node.props.danger);
+  const confirm = () => nodes(dialog().props.footer).find(node => node.props.className === "dsham_btnDanger");
   const alerts = () => nodes(dialog().props.children).filter(node => node.props.role === "alert");
   const open = () => { nodes(tree).find(node => node.type?.name === "ArchivedSessionMenu").props.onDelete(); render(); };
   render(); open();
@@ -650,7 +687,7 @@ test("删除确认框显示失败原因、允许重试，并阻止重复提交",
   dialog().props.onClose(); render();
   nodes(tree).find(node => node.type?.name === "ArchivedGroupActions").props.onDelete(); render();
   const batchDialog = nodes(tree).find(node => node.props.open === true);
-  await nodes(batchDialog.props.footer).find(node => node.props.danger).props.onClick(); render();
+  await nodes(batchDialog.props.footer).find(node => node.props.className === "dsham_btnDanger").props.onClick(); render();
   const failedBatch = nodes(tree).find(node => node.props.open === true);
   assert.equal(nodes(failedBatch.props.children).find(node => node.props.role === "alert").props.children, "deleteSession.failed: batch backend failed");
 });
@@ -668,14 +705,13 @@ test("归档确认框挂在所属设置页内，普通独立弹窗仍回退到 b
   const nodes = node => Array.isArray(node) ? node.flatMap(nodes) : node?.props ? [node, ...nodes(node.props.children)] : [];
   const modal = nodes(tree).find(node => node.type?.name === "SettingsModal");
   const rendered = modal.type(modal.props);
-  const anchor = rendered.props.children[0].ref;
-  const dialog = nodes(rendered).find(node => typeof node.props.getContainer === "function");
+  const anchor = rendered.props.children[0];
   const settings = { className: "dsham_settings" };
-  anchor.current = { closest: selector => selector === ".dsham_settings" ? settings : null };
-  assert.equal(dialog.props.getContainer(), settings, "弹窗须留在当前设置页受保护的分支内");
-  assert.equal(dialog.props.destroyOnHidden, true, "关闭后不保留可能被设置壳隔离的旧内容");
-  anchor.current = { closest: () => null };
-  assert.equal(dialog.props.getContainer(), document.body, "没有归档页的独立弹窗保留 body 入口");
+  anchor.props.refObject.current = { closest: selector => selector === ".dsham_settings" ? settings : null };
+  assert.equal(anchor.props.getContainer(), settings, "弹窗须留在当前设置页受保护的分支内");
+  assert.equal(rendered.props.children[1], null, "关闭后不保留可能被设置壳隔离的旧内容");
+  anchor.props.refObject.current = { closest: () => null };
+  assert.equal(anchor.props.getContainer(), document.body, "没有归档页的独立弹窗保留 body 入口");
 });
 
 test("归档发现入口提供组合日期筛选及只读预览", async () => {
@@ -699,23 +735,23 @@ test("归档发现入口提供组合日期筛选及只读预览", async () => {
   assert.equal(nodes(tree).find(n => n.props.className === "dsham_settingsCount").props.children, "1", "日期筛选后的数量必须与可见会话一致");
   const menuNode = nodes(tree).find(n => n.type?.name === "ArchivedSessionMenu");
   const menu = menuNode.type(menuNode.props);
-  assert.deepEqual(menu.props.menu.items.map(i => i.key), ["preview", "restoreOpen", "copyId", "delete"]);
+  assert.deepEqual(menu.props.items.map(i => i.id), ["preview", "restoreOpen", "copyId", "delete"]);
   await menuNode.props.onCopyId(); tree = render();
   assert.equal(nodes(tree).find(n => n.props.role === "alert").props.children, "copy.unavailable");
-  menu.props.menu.items.find(item => item.key === "preview").onClick(); tree = render();
+  menu.props.onSelect("preview"); tree = render();
   assert.ok(nodes(tree).some(n => n.props.open && n.props.title === "九月"), "预览弹窗应打开且仍保持归档列表");
-  nodes(tree).find(n => n.props?.options?.some?.(option => option.value === "archived")).props.onChange("unarchived"); tree = render();
+  nodes(tree).find(n => (n.props?.items || n.props?.options)?.some?.(option => option.value === "archived")).props.onChange("unarchived"); tree = render();
   assert.equal(nodes(tree).some(n => n.props.open), false, "未主动关闭预览，切页签也应关闭");
-  nodes(tree).find(n => n.props?.options?.some?.(option => option.value === "archived")).props.onChange("archived"); tree = render();
+  nodes(tree).find(n => (n.props?.items || n.props?.options)?.some?.(option => option.value === "archived")).props.onChange("archived"); tree = render();
   assert.equal(nodes(tree).some(n => n.props.open), false, "切回已归档不能重新打开预览");
   const reopenedMenu = nodes(tree).find(n => n.type?.name === "ArchivedSessionMenu");
-  reopenedMenu.type(reopenedMenu.props).props.menu.items.find(item => item.key === "preview").onClick(); tree = render();
+  reopenedMenu.type(reopenedMenu.props).props.onSelect("preview"); tree = render();
   assert.ok(nodes(tree).some(n => n.props.open), "用户主动打开仍然可用");
   nodes(tree).find(n => n.props.open).props.onClose(); tree = render();
   assert.equal(nodes(tree).some(n => n.props.open), false);
   nodes(tree).find(n => n.type?.name === "DiscoveryFilters").props.onClear(); tree = render();
   assert.equal(nodes(tree).filter(n => n.props?.className === "dsham_settingsRow").length, 2);
-  nodes(tree).find(n => n.props?.options?.some?.(option => option.value === "archived")).props.onChange("unarchived"); tree = render();
+  nodes(tree).find(n => (n.props?.items || n.props?.options)?.some?.(option => option.value === "archived")).props.onChange("unarchived"); tree = render();
   assert.ok(nodes(tree).some(n => n.props.id === 'dsham-search-scope'), '未归档同样提供标题与正文范围');
   assert.ok(nodes(tree).find(n => n.props.id === 'dsham-sort-filter').props.options.some(option => option.value === 'created'), '未归档同样支持创建时间排序');
 });

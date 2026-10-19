@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { resolve } from 'node:path'
 import test from 'node:test'
 import { describePluginUpdate, handlePluginUpdateEscape, manualPluginUpdateCommand } from '../src/plugin-update-model.ts'
-import { isDshCliEntry, isNewerVersion, isTrustedUpdateRequest, PLUGIN_UPDATE_HEADER, registerPluginUpdater, resolveUpdateRuntime, shouldNotifyParent } from '../src/plugin-updater.ts'
+import { isDshCliEntry, isNewerVersion, isTrustedUpdateRequest, mergeMinimumReleaseAgeExclude, recordReleaseAgeExclude, PLUGIN_UPDATE_HEADER, registerPluginUpdater, resolveUpdateRuntime, shouldNotifyParent } from '../src/plugin-updater.ts'
 
 test('归档会话独立更新只接受同源专用请求', () => {
   assert.equal(isNewerVersion('0.1.30', '0.1.31'), true)
@@ -95,8 +97,8 @@ test('归档客户端与 Host 绑定自身更新入口', async () => {
   assert.doesNotMatch(client, /react-dom\/client/)
   assert.match(updateUi, /data-mpi-label/)
   assert.match(updateUi, /document\.addEventListener\("keydown"/)
-  assert.match(updateUi, /size: "small", shape: "default"/)
-  assert.match(updateUi, /width: 680/)
+  assert.match(updateUi, /variant: "outline", size: "sm"/)
+  assert.doesNotMatch(updateUi, /width:\s*680/)
   assert.match(updateUi, /if \(version\.textContent !== versionLabel\)/)
   assert.match(updateUi, /color: \"#e8b15a\"/)
   assert.match(await readFile(new URL('../src/plugin-update-model.ts', import.meta.url), 'utf8'), /else if \(payload\.latestCheckFailed\)/)
@@ -188,4 +190,57 @@ test('发现新版本时提示使用提醒色，已是最新仍用成功色', ()
     latestCheckFailed: false,
   }, 'idle', { type: 'status' })
   assert.equal(latest.kind, 'success')
+})
+
+test('自更新把刚安装的版本并进已有发布年龄白名单，不另起一行', () => {
+  const created = mergeMinimumReleaseAgeExclude('packages:\n  - .\n', '@michengai/dsh-archive-manager@1.1.0')
+  assert.match(created, /minimumReleaseAgeExclude:\n  - '@michengai\/dsh-archive-manager@1\.1\.0'\n/)
+  assert.doesNotMatch(created, /minimumReleaseAgeExclude:\n  - '@michengai\/dsh-archive-manager'\n/)
+  const merged = mergeMinimumReleaseAgeExclude(
+    "minimumReleaseAgeExclude:\n  - '@michengai/dsh-archive-manager@1.0.19 || 1.0.20'\n  - keep@1.0.0\n",
+    '@michengai/dsh-archive-manager@1.1.0',
+  )
+  assert.match(merged, /'@michengai\/dsh-archive-manager@1\.0\.19 \|\| 1\.0\.20 \|\| 1\.1\.0'/)
+  assert.match(merged, /keep@1\.0\.0/)
+  assert.equal(merged.split('@michengai/dsh-archive-manager').length - 1, 1)
+})
+
+test('同名白名单多行先并进第一条，读不懂的块则停止更新', () => {
+  const merged = mergeMinimumReleaseAgeExclude(
+    "minimumReleaseAgeExclude:\n  - '@michengai/dsh-archive-manager@1.0.19'\n  - keep@1.0.0\n  - '@michengai/dsh-archive-manager@1.0.20'\n",
+    '@michengai/dsh-archive-manager@1.1.0',
+  )
+  assert.match(merged, /'@michengai\/dsh-archive-manager@1\.0\.19 \|\| 1\.0\.20 \|\| 1\.1\.0'/)
+  assert.equal(merged.split('@michengai/dsh-archive-manager').length - 1, 1)
+  assert.throws(() => mergeMinimumReleaseAgeExclude('minimumReleaseAgeExclude: [keep@1.0.0]\n', '@michengai/dsh-archive-manager@1.1.0'), /无法安全合并/)
+})
+
+test('合并白名单保留行内注释、CRLF 和文件结尾换行', () => {
+  const merged = mergeMinimumReleaseAgeExclude(
+    "minimumReleaseAgeExclude:\r\n  - '@michengai/dsh-archive-manager@1.0.20' # 保留\r\n  - keep@1.0.0\r\n",
+    '@michengai/dsh-archive-manager@1.1.0',
+  )
+  assert.match(merged, /'@michengai\/dsh-archive-manager@1\.0\.20 \|\| 1\.1\.0' # 保留/)
+  assert.ok(merged.includes('\r\n'))
+  assert.equal(merged.at(-1), '\n')
+})
+
+test('安装成功后才写入白名单，安装前先检查能否合并', async () => {
+  const source = await readFile(new URL('../src/plugin-updater.ts', import.meta.url), 'utf8')
+  const install = source.slice(source.indexOf('async function install'), source.indexOf('function json'))
+  assert.match(install, /await guardReleaseAgeExclude[\s\S]*runPlugin[\s\S]*await recordReleaseAgeExclude/)
+  assert.match(install, /await runCliInstall[\s\S]*await recordReleaseAgeExclude/)
+})
+
+test('白名单先写临时文件再替换，不留下临时文件', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dsh-archive-age-'))
+  try {
+    await writeFile(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - .\nminimumReleaseAgeExclude:\n  - '@michengai/dsh-archive-manager@1.0.20' # 保留\n", 'utf8')
+    await recordReleaseAgeExclude(dir, '@michengai/dsh-archive-manager@1.1.0')
+    const text = await readFile(join(dir, 'pnpm-workspace.yaml'), 'utf8')
+    assert.match(text, /1\.0\.20 \|\| 1\.1\.0' # 保留/)
+    assert.deepEqual(await readdir(dir), ['pnpm-workspace.yaml'])
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
 })

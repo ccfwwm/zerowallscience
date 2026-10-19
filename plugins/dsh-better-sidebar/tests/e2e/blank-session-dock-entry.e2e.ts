@@ -14,7 +14,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
-import { PAGE_URL, createHostApi, hostRpc, sendFirstMessage } from './host'
+import { PAGE_URL, createHostApi, dismissOnboarding, hostRpc, sendFirstMessage } from './host'
 
 /** 本用例自己的 workspace（与其它 spec 互不干扰）。 */
 const WORKSPACE_PATH = join(tmpdir(), 'dsh-e2e-blank-session-workspace')
@@ -36,31 +36,6 @@ test.afterAll(async () => {
   await api?.dispose()
 })
 
-/** keyless 启动会叠一层 onboarding 浮层（吃掉指针事件）：先等它出现，再反复点掉。 */
-async function dismissOnboarding(page: Page): Promise<void> {
-  try {
-    await expect
-      .poll(() => page.getByRole('button', { name: /^(Continue|Configure later)$/ }).count(), { timeout: 60_000 })
-      .toBeGreaterThan(0)
-  } catch {
-    return
-  }
-  for (let round = 0; round < 10; round++) {
-    let dismissed = false
-    for (const name of ['Continue', 'Configure later']) {
-      const button = page.getByRole('button', { name, exact: true }).first()
-      if ((await button.count()) === 0) continue
-      try {
-        await button.click({ timeout: 4_000 })
-        dismissed = true
-        await page.waitForTimeout(1_000)
-      } catch {
-        // 被更上层浮层挡住：下一轮换另一个按钮再试。
-      }
-    }
-    if (!dismissed) break
-  }
-}
 
 /** 屏幕内可见的底部入口数量（与插件探针同一判据：rect 与视口相交）。 */
 async function onScreenCount(page: Page): Promise<number> {

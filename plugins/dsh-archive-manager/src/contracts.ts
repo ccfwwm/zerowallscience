@@ -28,7 +28,7 @@ export interface SessionSummary {
   runningSubagentCount?: number;
   pendingInteraction?: unknown;
 }
-export interface SessionList { byId: Record<string, SessionSummary | undefined>; current?: string }
+export interface SessionList { byId: Record<string, SessionSummary | undefined> }
 export interface Snapshot<T> { getSnapshot(): T }
 export interface ArchiveState { archivedSessionIds: string[] }
 export interface BatchProgress { total: number; done: number; succeeded: number; skipped: number; failed: number }

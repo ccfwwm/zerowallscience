@@ -1,5 +1,7 @@
-import { readFile, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
+import { initializeProfile } from '../commands/profile.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const dshRoot = resolve(root, 'deepseek-harness')
@@ -37,18 +39,25 @@ const expectedOrder = [
   ...zeroWallOrder.slice(8).map(id => `@zerowallscience/plugin-${id}`),
 ]
 const thirdPartyPackages = [...thirdPartyOrder, 'dsh-free-search']
-// The customized Host persists these bundles into the editable web profile.
+// The desktop initializer persists these bundles into the editable profile.
 // Duplicating their rows in the desktop overlay would register them twice.
 const profileBundles = new Set(['dsh-free-search', 'dsh-file-review'])
-const hostProfileSource = await readFile(resolve(dshRoot, 'packages/boot/app-boot/src/profile.ts'), 'utf8')
 for (const name of profileBundles) {
-  assert(hostProfileSource.includes(`if (!nextBundles.includes('${name}')) nextBundles.push('${name}')`)
-    || (name === 'dsh-file-review' && hostProfileSource.includes("if (process.env.ZEROWALL_USER_DATA_DIR && !nextBundles.includes('dsh-file-review'))")),
-  `${name} must be included by the customized Host web profile`)
   const manifest = JSON.parse(await readFile(resolve(root, 'desktop/node_modules', name, 'package.json'), 'utf8'))
   assert(typeof manifest.dsh?.bundle?.patch === 'string', `${name} must declare its bundle patch`)
   await readFile(resolve(root, 'desktop/node_modules', name, manifest.dsh.bundle.patch), 'utf8')
 }
+
+// Exercise the actual initializer with the authoritative composition instead
+// of depending on an upstream function's spelling. Existing selections must
+// remain editable; Host loading must not re-add an explicitly removed bundle.
+const fixture = await mkdtemp(join(tmpdir(), 'zerowall-inventory-profile-'))
+try {
+  await initializeProfile(fixture, expectedOrder)
+  const manifest = JSON.parse(await readFile(join(fixture, 'profiles/web/package.json'), 'utf8'))
+  for (const name of profileBundles) assert(manifest.dsh.profile.bundles.filter(id => id === name).length === 1,
+    `${name} must be initialized exactly once in the Desktop web profile`)
+} finally { await rm(fixture, { recursive: true, force: true }) }
 
 const zeroWallPlugins = []
 for (const id of zeroWallOrder) {

@@ -1,31 +1,31 @@
 {
-  "version": "8.3.6",
+  "version": "8.4.0",
   "deepseekHarness": {
-    "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
-    "tag": "dsh-v0.2.0-rc.2",
-    "commit": "4af4cb76935bd893a6854f38403bd06928878074",
+    "repository": "https://github.com/ccfwwm/deepseek-harness.git",
+    "tag": "dsh-v0.2.1-rc.2",
+    "commit": "683cb0318b9a0fa09362794588d01acb0366850f",
     "branch": "zerowall/reviewer-history-opaque",
-    "upstreamCommit": "639ed015397290b3745d163aafe02ffee4aa3f84"
+    "upstreamCommit": "687f282e8625c6b8d11ff58211a90524be2e4317"
   },
   "betterSidebar": {
     "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",
-    "tag": "v0.26.0",
-    "upstreamCommit": "9323f48d0946432ffd94655df1c115a1cd89f34c",
-    "commit": "9323f48d0946432ffd94655df1c115a1cd89f34c",
+    "tag": "v0.28.0",
+    "upstreamCommit": "83faf70940160e5cd4c5332f5400aa8f4dbbb6d6",
+    "commit": "83faf70940160e5cd4c5332f5400aa8f4dbbb6d6",
     "source": "plugins/dsh-better-sidebar",
-    "version": "0.26.0",
-    "resourceVersion": "0.26.1-zws.3",
+    "version": "0.28.0",
+    "resourceVersion": "0.28.1-zws.1",
     "package": "dsh-better-sidebar",
-    "localAdaptation": "Preserve ZeroWall Electron frameless titlebar, desktop environment, workspace notices and shell presets while integrating v0.26.0."
+    "localAdaptation": "Preserve ZeroWall Electron frameless titlebar, desktop environment, workspace notices and shell presets while integrating v0.28.0."
   },
   "fileReviewTab": {
     "repository": "https://github.com/left0ver/dsh-file-review.git",
-    "tag": "v0.8.8",
-    "commit": "7636242d1145708b9f602b32c46cb3a57524ae7e",
-    "version": "0.8.8",
+    "tag": "v0.8.10",
+    "commit": "c13a616efe69680d4cc168edd888113e917e5fa9",
+    "version": "0.8.10",
     "license": "MIT",
     "source": "plugins/dsh-file-review",
-    "resourceVersion": "0.8.9-zws.3",
+    "resourceVersion": "0.8.11-zws.1",
     "localAdaptation": "Remove upstream GitHub promotion from the settings card; retain display controls and review behavior."
   },
   "zotero": {
@@ -33,32 +33,40 @@
     "tag": "v0.12.1",
     "commit": "77604ad4829dea52d0e9f498d635c9b59f1cae38",
     "version": "0.12.1",
+    "resourceVersion": "0.12.2-zws.1",
+    "runtimeDshVersions": [
+      "0.1.7-rc.2",
+      "0.2.0-rc.2",
+      "0.2.1-rc.2"
+    ],
     "license": "MIT"
   },
   "wechat": {
     "repository": "https://github.com/pan17/dsh-wechat.git",
     "branch": "main",
-    "tag": "v0.9.11",
-    "commit": "4eb2800a1197cef2e5a6055418149fd26262f097",
-    "version": "0.9.11",
+    "tag": "v0.11.0",
+    "commit": "218537511681be7557589f5ae0eab84f80267dc8",
+    "version": "0.11.0",
     "license": "MIT",
-    "source": "plugins/dsh-wechat"
+    "source": "plugins/dsh-wechat",
+    "resourceVersion": "0.11.1-zws.1"
   },
   "academicResearchSkills": {
     "repository": "https://github.com/Imbad0202/academic-research-skills.git",
-    "tag": "v3.23.0",
-    "commit": "6ab4b03bf70a118a1b3ee7f3263ed9f19031061b",
+    "tag": "v3.23.1",
+    "commit": "4c5449017f46eb64d112a301d4817d22c7c9f3d9",
     "license": "CC-BY-NC-4.0",
     "adapterRepository": "https://github.com/nullptr-DZF/dsh-academic-research-skills.git",
     "adapterCommit": "a6859a3752cfe582a166ca283c10d3a45e1f9c9c",
-    "source": "resources/extensions/skills"
+    "source": "resources/extensions/skills",
+    "version": "3.23.1"
   },
   "sshOps": {
     "repository": "https://github.com/caoyiwei850/dsh-ssh-ops.git",
-    "tag": "v0.3.19",
-    "commit": "262953e614db3aae97594a6fe6d76dc1128c2645",
-    "version": "0.3.19",
-    "resourceVersion": "0.3.19-zws.3",
+    "tag": "v0.3.22",
+    "commit": "f7216b847f2c47fe6cde1cc95d6093921a20980d",
+    "version": "0.3.22",
+    "resourceVersion": "0.3.23-zws.1",
     "license": "MIT",
     "source": "plugins/dsh-ssh-ops"
   },
@@ -84,26 +92,28 @@
   },
   "dreamSkin": {
     "repository": "https://github.com/RevolutionLA/dsh-dream-skin.git",
-    "version": "10.9.3",
-    "resourceVersion": "10.9.4-zws.2",
-    "commit": "927a6f1c1a0d694dfc2ec4557f26266a85f91f22",
+    "version": "10.16.0",
+    "resourceVersion": "10.16.1-zws.3",
+    "commit": "f8cc0704b5062365214c72f58aa5ad6f7746aeaf",
     "license": "MIT",
-    "tag": "v10.9.3"
+    "tag": "v10.16.0"
   },
   "freeSearch": {
     "repository": "https://github.com/DDDMUC/dsh-free-search.git",
-    "version": "0.8.3",
-    "tag": "v0.8.3",
-    "commit": "0b122443597a9af7964e59e556541b27d71492fd",
+    "version": "0.9.4",
+    "tag": "v0.9.4",
+    "commit": "a86b90589cfc869bd9ecc118246e1ca969548207",
     "license": "MIT"
   },
   "sessionNotification": {
     "repository": "https://github.com/dingyi222666/dsh-session-notification.git",
-    "version": "0.2.3-zws.3",
-    "upstreamVersion": "0.2.3",
-    "tag": "v0.2.3",
-    "commit": "794f6536ee060e3254a8a027c5954ed20e369fd8",
-    "license": "BSD-3-Clause"
+    "version": "0.2.6",
+    "upstreamVersion": "0.2.6",
+    "tag": "v0.2.6",
+    "commit": "64055baed0d7cb10ad6d40e24187bdfa39e818fe",
+    "license": "BSD-3-Clause",
+    "source": "plugins/dsh-session-notification",
+    "resourceVersion": "0.2.7-zws.1"
   },
   "openFileViewer": {
     "repository": "https://github.com/wenhongquan/dsh-open-file-viewer",
@@ -115,36 +125,52 @@
   },
   "archiveManager": {
     "repository": "https://github.com/MichengAI/dsh-archive-manager.git",
-    "commit": "1f65ada8cc553fbea0a3cfa1564b9136ef196cf8",
+    "commit": "4b8cd2f364f2dcf78011b74bd5d9bbfeec093a50",
     "npmGitHead": "38bdbdea87ef8fbe356df2d291593d9aefc701ec",
-    "version": "1.0.17",
-    "resourceVersion": "1.0.17-zws.2",
+    "version": "1.1.1",
+    "resourceVersion": "1.1.2-zws.1",
     "package": "@michengai/dsh-archive-manager",
     "license": "Apache-2.0",
     "source": "plugins/dsh-archive-manager",
     "catalogOptional": true,
-    "localAdaptation": "Route plugin updates to ZeroWall Extension Center; omit upstream npm updater from published runtime; compile into artifacts/dev with audited upstream Host and Client behavior."
+    "localAdaptation": "Route plugin updates to ZeroWall Extension Center; omit upstream npm updater from published runtime; compile into artifacts/dev with audited upstream Host and Client behavior.",
+    "tag": "v1.1.1"
   },
   "ohStory": {
     "repository": "https://github.com/zenstory-ai/oh-story-dsh.git",
-    "commit": "83cc99046338c9b74b9dd135ff6b2e80bb3cd35e",
-    "version": "0.1.15",
-    "resourceVersion": "0.1.16-zws.25",
+    "commit": "d4fca12fa8a71c9d91944bd25a9d8c6b519084f5",
+    "version": "0.1.16",
+    "resourceVersion": "0.1.17-zws.4",
     "package": "@oh-story/dsh",
     "license": "MIT",
     "source": "plugins/oh-story-dsh",
     "catalogOptional": true,
-    "localAdaptation": "Conversation-first media creation with automatic session projects, native right sidebar, explicit user generation requests, preserved model choices and fixed-Python local composition. Retired fiction/game/drama/recap contributions excluded."
+    "localAdaptation": "Conversation-first media creation with automatic session projects, native right sidebar, explicit user generation requests, preserved model choices and fixed-Python local composition. Retired fiction/game/drama/recap contributions excluded.",
+    "tag": "v0.1.16"
   },
   "pptMaker": {
     "repository": "https://github.com/OMSociety/dsh-ppt-maker.git",
-    "commit": "b66f50c233bf265f18478417cb58c271611d8b13",
+    "commit": "a9fcf037a02742573b2bca673012ae57375ba4ef",
     "version": "1.0.0",
     "license": "MIT",
     "package": "dsh-ppt-maker",
     "source": "plugins/dsh-ppt-maker",
     "tag": null,
     "localAdaptation": "Integrated as the default PPTD/PPTX workflow with raster-first generation, explicit editable mode, image prompt receipts, and literature/project provenance.",
-    "localVersion": "1.0.1-zws.6"
+    "localVersion": "1.0.1-zws.9"
+  },
+  "libreOfficeKit": {
+    "package": "@deepseek-ai/libreoffice-kit",
+    "repository": "https://github.com/deepseek-ai/dsh-libreoffice-kit",
+    "version": "0.1.5",
+    "runtimeVersions": [
+      "0.1.5"
+    ]
+  },
+  "officeTools": {
+    "repository": "https://github.com/kw78/dsh-office-tools.git",
+    "tag": "v1.0.6",
+    "version": "1.0.6",
+    "commit": "6c9faa36409961226623480c0ba6ef8fd6313beb"
   }
 }

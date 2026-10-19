@@ -8,7 +8,9 @@ it('keeps fast downloads on one connection and does not send credentials', async
     expect(headers).toEqual({ 'Accept-Encoding': 'identity' })
     return new Response(bytes, { headers: { 'content-length': String(bytes.length) } })
   })
-  expect(await downloadImageBytes(url, { fetch: fetcher })).toMatchObject({ bytes, transport: 'single', attempts: 1 })
+  const result = await downloadImageBytes(url, { fetch: fetcher })
+  expect(Buffer.from(result.bytes).equals(bytes)).toBe(true)
+  expect(result).toMatchObject({ transport: 'single', attempts: 1 })
 })
 
 it('accelerates a stalled connection, preserves its prefix and retries only a reset segment tail', async () => {

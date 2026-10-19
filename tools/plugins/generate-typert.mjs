@@ -1,9 +1,26 @@
 import { access, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { fingerprintInputs } from '../build/build-graph-lib.mjs'
 import '../build/register-output-resolution.mjs'
+import { refreshTypertWorkspace } from './typert-workspace.mjs'
 const { WorkspaceTypertGenerator } = await import('../../deepseek-harness/packages/typert/generator/lib/types/workspace.js')
 
 const root = resolve(import.meta.dirname, '../..')
+await refreshTypertWorkspace(root)
+const checkedInputs = () => fingerprintInputs({ root, inputs: ['deepseek-harness', 'plugins', 'tsconfig.host.json', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json', 'tools/plugins/generate-typert.mjs', 'tools/plugins/typert-workspace.mjs', 'desktop', 'package.json'] })
+const fingerprint = (await checkedInputs()).fingerprint
+const diagnosticsFile = resolve(root, 'artifacts/cache/typert/diagnostics.json')
+const diagnostics = await readFile(diagnosticsFile, 'utf8').then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error })
+if (diagnostics?.fingerprint !== fingerprint) {
+  console.log('Checking the complete workspace before Typert emission.')
+  const pnpm = process.env.npm_execpath
+  if (!pnpm) throw new Error('Run Typert generation through pnpm so the workspace diagnostics gate uses the pinned toolchain.')
+  execFileSync(process.execPath, [pnpm, 'typecheck'], { cwd: root, stdio: 'inherit' })
+  if ((await checkedInputs()).fingerprint !== fingerprint) throw new Error('Workspace sources changed during the Typert diagnostics gate; retry generation.')
+  await mkdir(resolve(diagnosticsFile, '..'), { recursive: true })
+  await writeFile(diagnosticsFile, JSON.stringify({ fingerprint, checkedAt: new Date().toISOString() }) + '\n')
+}
 const pluginsRoot = resolve(root, 'plugins')
 // Plugin, integration, support, and composition sources share one flat root.
 // Scan it once so each remote contract is generated once per invocation.
@@ -50,9 +67,9 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   if (['dsh-file-review', 'dsh-ssh-ops'].includes(manifest.name)) continue
   let artifacts
   try {
-    artifacts = new WorkspaceTypertGenerator(root, {
-      packageRoots: ['deepseek-harness/packages', 'plugins', 'plugins/research-store'],
-    }).generate([manifest.name], ['host'])
+    // The content-bound full tsc gate above owns diagnostics, just as in the
+    // upstream tsdown integration. Typert still validates every face boundary.
+    artifacts = new WorkspaceTypertGenerator(root, { checkDiagnostics: false }).generate([manifest.name], ['host'])
   } catch (error) {
     // rc.2 validates the manifest before returning the artifact. A few legacy
     // gateway packages intentionally publish a checked-in remote descriptor

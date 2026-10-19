@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile, mkdir, rename, symlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
-import { assertCompatible, verifySignedDocument } from './resource-catalog.mjs'
+import { assertCompatible } from './resource-catalog.mjs'
+import { verifyPluginDocument } from './plugin-verification.mjs'
 import { carrierIndex, carrierName, offlineContentDigest } from './offline-carrier.mjs'
 import { satisfiesPackageRange } from './package-range.mjs'
 import { physicalFs } from './physical-fs.mjs'
@@ -24,7 +25,7 @@ const blocked = (id, reason) => Object.assign(new Error('HISTORICAL_PLUGIN_IMPOR
 /** Authenticate historical provenance as an independent package source. This
  * does not admit the old carrier, its core, or its DSH commit for activation. */
 function authenticate(text, keys, target, digest, local) {
-  const receipt = verifySignedDocument(JSON.parse(text), keys)
+  const receipt = verifyPluginDocument(JSON.parse(text), keys, target)
   if (![1, 2].includes(receipt.schema) || receipt.kind !== 'offline-profile' || receipt.profileArchitecture !== 7 || !Array.isArray(receipt.files) || !Array.isArray(receipt.plugins) || !Array.isArray(receipt.defaultPatch)) throw new Error('Invalid historical plugin receipt')
   if (receipt.localOnly && !local) throw new Error('Development historical plugin cannot enter a stable installation')
   // Always use the actual current versions and the original signed ranges.

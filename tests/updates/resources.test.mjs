@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateKeyPairSync } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -91,6 +91,36 @@ test('selected updates repair missing legacy file dependencies from the signed c
   } finally {
     await rm(f.home, { recursive: true, force: true })
   }
+})
+
+test('updating base repairs a missing self-linked skin before relocating retained plugin dependencies', async () => {
+  const f = await fixture()
+  try {
+    const skin = 'dsh-dream-skin', retained = '@zerowallscience/plugin-retained'
+    const payload = join(f.home, 'skin.tgz'); await writeFile(payload, 'signed skin')
+    const entry = { ...f.resource, id: skin, downloadUrl: pathToFileURL(payload).href, size: 11, sha256: await fileDigest(payload) }
+    await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [f.resource, entry] }, f.privateKey, 'test')))
+    await initializeProfile(f.home, [f.resource.id, skin, retained])
+    const active = join(f.home, 'profiles/web'), file = join(active, 'package.json')
+    const manifest = JSON.parse(await readFile(file, 'utf8'))
+    manifest.dependencies = { [skin]: 'link:./node_modules/' + skin }
+    await writeFile(file, JSON.stringify(manifest))
+    await mkdir(join(active, 'node_modules', retained, 'node_modules'), { recursive: true })
+    await writeFile(join(active, 'node_modules', retained, 'package.json'), JSON.stringify({ name: retained, version: '1.0.0' }))
+    await symlink(join(active, 'node_modules', skin), join(active, 'node_modules', retained, 'node_modules', skin), process.platform === 'win32' ? 'junction' : 'dir')
+    let ran = false
+    const manager = createResourceManager({ ...f, target, local: true, runPlugin: async (_args, generation) => {
+      ran = true
+      const candidate = join(f.home, 'profiles', generation)
+      const prepared = JSON.parse(await readFile(join(candidate, 'package.json')))
+      assert.match(prepared.dependencies[skin], /^file:.*\.tgz$/u)
+      await mkdir(join(candidate, 'node_modules', skin), { recursive: true })
+      await writeFile(join(candidate, 'node_modules', skin, 'package.json'), JSON.stringify({ name: skin, version: entry.version }))
+    }, stopHost: async () => {}, startHost: async () => {} })
+    await manager.plugin(f.resource.id, f.source)
+    assert.equal(ran, true)
+    assert.equal(JSON.parse(await readFile(join(active, 'node_modules', skin, 'package.json'))).version, entry.version)
+  } finally { await rm(f.home, { recursive: true, force: true }) }
 })
 
 test('candidate installation preserves reviewed native build policies and strict enforcement', async () => {

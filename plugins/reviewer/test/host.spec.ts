@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ToolCallId, createAssistantMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { assessEvidence, canAutoCorrect, normalizeReport, serializeTranscript, shouldAutoReview } from '../src/host/index.js'
-import { KNOWN_SESSION_EVENT_TYPES, Session, SessionId } from '@deepseek-ai/dsh-session'
+import { appendPluginRecord, KNOWN_SESSION_EVENT_TYPES, Session, SessionId } from '@deepseek-ai/dsh-session'
 
 function event<T extends SessionEvent['type']>(
   type: T,
@@ -130,13 +130,13 @@ describe('Reviewer transcript and trigger policy', () => {
     expect(KNOWN_SESSION_EVENT_TYPES.has('zerowall/reviewer/mode')).toBe(false)
     expect(KNOWN_SESSION_EVENT_TYPES.has('zerowall/reviewer/report')).toBe(false)
     const session = Session.create(SessionId('reviewer-info'))
-    session.append('zerowall/reviewer/mode', { mode: 'on' }, { ignorable: true })
+    appendPluginRecord(session, 'plugin:zerowall/reviewer/mode', { mode: 'on' })
     const report = normalizeReport({ summary: 'legacy', findings: [] }, 'mock/model', { coverage: 100, gaps: [] }, 1, '')
-    session.append('zerowall/reviewer/report', report, { ignorable: true })
+    appendPluginRecord(session, 'plugin:zerowall/reviewer/report', report)
     const restored = Session.create(SessionId('reviewer-reloaded'), JSON.parse(JSON.stringify(session.snapshotEvents())))
-    expect(restored.snapshotEvents().filter(event => event.type.startsWith('zerowall/reviewer/'))).toEqual([
-      expect.objectContaining({ type: 'zerowall/reviewer/mode', ignorable: true }),
-      expect.objectContaining({ type: 'zerowall/reviewer/report', ignorable: true }),
+    expect(restored.snapshotEvents().filter(event => event.type.startsWith('plugin:zerowall/reviewer/'))).toEqual([
+      expect.objectContaining({ type: 'plugin:zerowall/reviewer/mode', ignorable: true }),
+      expect.objectContaining({ type: 'plugin:zerowall/reviewer/report', ignorable: true }),
     ])
     expect(restored.deriveMessages()).toEqual([])
   })

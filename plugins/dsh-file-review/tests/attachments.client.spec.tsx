@@ -1,69 +1,43 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
-import { createElement } from "react";
-import { afterEach, expect, it, vi } from "vitest";
-import { ReviewUserMessage } from "../src/client/ReviewUserMessage.tsx";
+import { cleanup, render } from '@testing-library/react'
+import { afterEach, expect, it, vi } from 'vitest'
+import { UserMessageNodeView } from '../../../deepseek-harness/packages/client/ui-chat/src/client/chat/MessageItem.tsx'
+import { reviewCommentsTextRule } from '../src/client/ReviewCommentsText.tsx'
 
-// The Harness browser bundle uses a ModuleLoader that is not present in this
-// source-level plugin test. Its own attachment-actions test exercises the real
-// card; here we verify the plugin's renderer passes the required scope to it.
-const { bubbles } = vi.hoisted(() => ({ bubbles: vi.fn() }));
-vi.mock("@deepseek-ai/dsh-client-ui-chat/client", () => ({
-  UserStyleBubble: (props: { actions?: (text: string) => unknown }) => {
-    bubbles(props);
-    return createElement("div", null, props.actions?.("review fixture"));
-  },
-}));
+// The Host owns the message renderer; File Review contributes a text rule.
+// Its projection must preserve shared attachment content and action scope.
+vi.mock('@deepseek-ai/dsh-client-ui-primitives', () => ({ JsonBlock: () => null, StateDot: () => null, TextShimmer: () => null }))
+vi.mock('../../../deepseek-harness/packages/client/ui-chat/src/client/chat/CompactionItem.tsx', () => ({ CompactionItem: () => null }))
+vi.mock('../../../deepseek-harness/packages/client/ui-chat/src/client/chat/ContextInjectionRow.tsx', () => ({ ContextInjectionRow: () => null }))
+vi.mock('../../../deepseek-harness/packages/client/ui-chat/src/client/chat/MessageIconActions.tsx', () => ({ MessageIconActions: () => null }))
+afterEach(cleanup)
 
-afterEach(() => {
-  cleanup();
-  vi.unstubAllGlobals();
-  bubbles.mockClear();
-});
+const file = { attachmentId: `sha256:${'a'.repeat(64)}`, name: 'paper.pdf', bytes: 1024, mediaType: 'application/pdf' }
 
-const file = {
-  attachmentId: `sha256:${"a".repeat(64)}`,
-  name: "paper.pdf",
-  bytes: 1024,
-  mediaType: "application/pdf",
-};
-
-function message(content: readonly unknown[]) {
-  return {
-    node: { data: { content, time: 1 } },
-    sessionId: "session",
-    cwd: "C:/workspace",
-    renderMessageImages: () => null,
-    openFile: vi.fn(),
-    openSkill: vi.fn(),
-    t: (key: string) => key,
-    reviewT: (key: string) => key,
-  } as unknown as Parameters<typeof ReviewUserMessage>[0];
+function renderMessage(text: string) {
+  const slot = vi.fn(() => null)
+  const props = {
+    node: { data: { content: [{ type: 'text', text }, { type: 'file', attachment: file }], time: 1 } },
+    sessionId: 'session', cwd: 'C:/workspace', renderFactorySlot: slot,
+    loadImage: vi.fn(), t: (key: string) => key,
+  } as unknown as Parameters<typeof UserMessageNodeView>[0]
+  render(<UserMessageNodeView {...props} />)
+  expect(slot).toHaveBeenCalledWith('conversation.chat.user.content', expect.objectContaining({
+    interactive: true,
+    fileActionScope: { sessionId: 'session', cwd: 'C:/workspace' },
+    content: { text, attachments: [{ type: 'file', file }], extraBlocks: [] },
+  }))
 }
 
-it("passes current session and workspace to the shared attachment card in ordinary messages", () => {
-  const content = [
-    { type: "file", attachment: file },
-    { type: "text", text: "Read this paper" },
-  ];
-  render(<ReviewUserMessage {...message(content)} />);
-  expect(bubbles).toHaveBeenCalledOnce();
-  expect(bubbles.mock.calls[0]![0]).toMatchObject({
-    content,
-    fileActionScope: { sessionId: "session", cwd: "C:/workspace" },
-  });
-});
+it('passes session and workspace to shared attachment content in ordinary messages', () => {
+  renderMessage('Read this paper')
+})
 
-it("keeps file attachments actionable alongside projected review comments", () => {
-  const text =
-    '<file_review_comments><file path="a.md"><comment kind="add" old_line="" new_line="1"><feedback>Keep this</feedback></comment></file></file_review_comments>\n\nPlease review.';
-  const block = { type: "file", attachment: file };
-  const view = render(<ReviewUserMessage {...message([{ type: "text", text }, block])} />);
-  expect(view.getByText("Please review.")).toBeTruthy();
-  expect(bubbles).toHaveBeenCalledOnce();
-  expect(bubbles.mock.calls[0]![0]).toMatchObject({
-    content: [block],
-    fileActionScope: { sessionId: "session", cwd: "C:/workspace" },
-  });
-  expect(view.queryByText("message.extraBlock")).toBeNull();
-});
+it('preserves attachment actions when the plugin projects review comments as a text node', () => {
+  const envelope = '<file_review_comments><file path="a.md"><comment kind="add" old_line="" new_line="1"><feedback>Keep this</feedback></comment></file></file_review_comments>'
+  const text = envelope + '\n\nPlease review.'
+  const projected = reviewCommentsTextRule.match(text, 0, { read: () => undefined })
+  expect(projected).toMatchObject({ id: 'file-review-comments', start: 0, end: envelope.length, data: { comments: [{ path: 'a.md', body: 'Keep this' }] } })
+  expect(text.slice(envelope.length + 2)).toBe('Please review.')
+  renderMessage(text)
+})

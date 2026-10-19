@@ -1,3 +1,30 @@
+import { readFileSync } from 'node:fs'
+
+const dreamSkinPin = JSON.parse(readFileSync(new URL('../../config/integrations/upstream-sources.json', import.meta.url), 'utf8')).dreamSkin
+
+/** Keep the adapted resource identity in configuration, independent of pnpm's source patch. */
+export function adaptDreamSkinManifest(source) {
+  const manifest = JSON.parse(source)
+  const version = dreamSkinPin.resourceVersion ?? dreamSkinPin.version
+  if (manifest.name !== 'dsh-dream-skin' || !/^\d+\.\d+\.\d+(?:-[\w.]+)?$/u.test(version ?? '')) {
+    throw new Error('Invalid configured Dream Skin resource identity')
+  }
+  manifest.version = version
+  return `${JSON.stringify(manifest, null, 2)}\n`
+}
+
+/** DSH 0.2.1 owns authority checks and browser credentials in Connection. */
+export function adaptDreamSkinHost(source) {
+  const oldInject = 'export const inject = ["webServer", "webRuntime"];'
+  const newInject = 'export const inject = ["webServer", "connection"];'
+  const oldFence = 'if (!isTrustedApiRequest(req, ctx.webRuntime.trustedHosts)) {\n\t\t\t\twriteJson(res, 403, { ok: false, error: { code: "forbidden", message: "forbidden" } });'
+  const newFence = 'const rejection = ctx.connection.requestRejection(req);\n\t\t\tif (rejection !== undefined) {\n\t\t\t\twriteJson(res, rejection, { ok: false, error: { code: "forbidden", message: "forbidden" } });'
+  const normalized = source.replace(/\r\n/gu, '\n')
+  if (normalized.includes(newInject) && normalized.includes(newFence)) return normalized
+  if (!normalized.includes(oldInject) || !normalized.includes(oldFence)) throw new Error('Pinned Dream Skin host changed; review Connection adapter')
+  return normalized.replace(oldInject, newInject).replace(oldFence, newFence)
+}
+
 /** Seed readable ZeroWall first-run surfaces without rewriting user choices. */
 export function adaptDreamSkinClient(source) {
   // pnpm applies the checked-in 10.9.3 patch before this runtime copy. Accept

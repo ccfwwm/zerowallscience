@@ -13,28 +13,31 @@ export function within(root, candidate) {
 const hasDependencyDirectory = path => resolve(path).split(/[\\/]/u).some(part => part.toLowerCase() === 'node_modules')
 
 async function inventory(path, files = [], dirs = [], protectedPaths = [], { protectDependencies = true } = {}) {
-  if (protectDependencies && hasDependencyDirectory(path)) {
-    protectedPaths.push(path)
-    return { mostRecentMs: 0, bytes: 0, files, dirs, protectedPaths }
-  }
-  const info = await lstat(path, { bigint: true }).catch(error => error.code === 'ENOENT' ? undefined : Promise.reject(error))
-  if (!info || info.isSymbolicLink()) return { mostRecentMs: 0, bytes: 0, files, dirs, protectedPaths }
-  if (info.isFile()) {
-    files.push({ path, size: Number(info.size), inode: `${info.dev}:${info.ino}`, links: Number(info.nlink), mtimeMs: Number(info.mtimeMs) })
-    return { mostRecentMs: Number(info.mtimeMs), bytes: Number(info.size), files, dirs, protectedPaths }
-  }
-  if (!info.isDirectory()) return { mostRecentMs: Number(info.mtimeMs), bytes: 0, files, dirs, protectedPaths }
-  dirs.push(path)
-  let mostRecentMs = Number(info.mtimeMs), bytes = 0
-  for (const child of await readdir(path)) {
-    const item = await inventory(join(path, child), files, dirs, protectedPaths, { protectDependencies })
-    mostRecentMs = Math.max(mostRecentMs, item.mostRecentMs)
-    bytes += item.bytes
+  let mostRecentMs = 0, bytes = 0, next = 0
+  const pending = [path]
+  while (next < pending.length) {
+    const batch = pending.slice(next, next + 32)
+    next += batch.length
+    const results = await Promise.allSettled(batch.map(async current => {
+      if (protectDependencies && hasDependencyDirectory(current)) { protectedPaths.push(current); return }
+      const info = await lstat(current, { bigint: true }).catch(error => error.code === 'ENOENT' ? undefined : Promise.reject(error))
+      if (!info || info.isSymbolicLink()) return
+      mostRecentMs = Math.max(mostRecentMs, Number(info.mtimeMs))
+      if (info.isFile()) {
+        files.push({ path: current, size: Number(info.size), inode: `${info.dev}:${info.ino}`, links: Number(info.nlink), mtimeMs: Number(info.mtimeMs) })
+        bytes += Number(info.size)
+      } else if (info.isDirectory()) {
+        dirs.push(current)
+        pending.push(...(await readdir(current)).map(child => join(current, child)))
+      }
+    }))
+    const failed = results.find(result => result.status === 'rejected')
+    if (failed) throw failed.reason
   }
   return { mostRecentMs, bytes, files, dirs, protectedPaths }
 }
 
-async function treeDigest(path, { protectDependencies = true, data, hashes = new Map() } = {}) {
+async function treeDigest(path, { protectDependencies = true, data, hashes = new Map(), digestMode = 'content' } = {}) {
   data ??= await inventory(path, [], [], [], { protectDependencies })
   if (data.protectedPaths.length) throw new Error(`Refusing to remove a tree containing protected node_modules: ${path}`)
   const digest = createHash('sha256')
@@ -46,6 +49,10 @@ async function treeDigest(path, { protectDependencies = true, data, hashes = new
     while (next < files.length) {
       const index = next++, file = files[index]
       const key = `${file.inode}:${file.size}:${file.mtimeMs}`
+      if (digestMode === 'metadata') {
+        rows[index] = [relative(base, file.path).replaceAll('\\', '/'), key]
+        continue
+      }
       if (!hashes.has(key)) hashes.set(key, (async () => {
         const fileHash = createHash('sha256')
         for await (const chunk of createReadStream(file.path)) fileHash.update(chunk)
@@ -69,6 +76,17 @@ function inodeSummary(files) {
   }
   return { files: files.length, bytes: files.reduce((sum, file) => sum + file.size, 0), uniqueBytes: [...inodes.values()].reduce((sum, item) => sum + item.bytes, 0),
     reclaimableBytes: [...inodes.values()].reduce((sum, item) => sum + (item.selectedLinks === item.links ? item.bytes : 0), 0) }
+}
+
+function summarizeInodes(inodes) {
+  const summary = { files: 0, bytes: 0, uniqueBytes: 0, reclaimableBytes: 0 }
+  for (const item of inodes.values()) {
+    summary.files += item.selectedLinks
+    summary.bytes += item.bytes * item.selectedLinks
+    summary.uniqueBytes += item.bytes
+    if (item.selectedLinks === item.links) summary.reclaimableBytes += item.bytes
+  }
+  return summary
 }
 
 export async function measureArtifactSpace(paths) {
@@ -121,7 +139,7 @@ async function isReferenced(candidate, buildId, referenceFiles, contents = new M
   return false
 }
 
-async function collectJsonFiles(path, files = []) {
+async function collectJsonFiles(path, files = [], depth = 0) {
   if (hasDependencyDirectory(path)) return files
   const info = await lstat(path).catch(() => undefined)
   if (!info || info.isSymbolicLink()) return files
@@ -133,8 +151,11 @@ async function collectJsonFiles(path, files = []) {
   for (const entry of await readdir(path, { withFileTypes: true })) {
     // Cleanup plans list candidates for audit; they do not keep those bytes.
     if (entry.name === 'cleanup' && path.split(/[\\/]/u).includes('verification')) continue
+    // Test installations and extracted environments are payloads, not durable
+    // build references. Never descend into their package/user-data trees.
+    if (/^(?:node_modules|Python|Lib|\.zerowall|\.git|modules|app|resources|user-data)$/iu.test(entry.name)) continue
     if (entry.isDirectory() || (entry.isFile() && entry.name.toLowerCase().endsWith('.json'))) {
-      await collectJsonFiles(join(path, entry.name), files)
+      await collectJsonFiles(join(path, entry.name), files, depth + 1)
     }
   }
   return files
@@ -143,14 +164,28 @@ async function collectJsonFiles(path, files = []) {
 export async function createCleanupPlan({ root, policy, now = Date.now(), pruneIncomplete = false, pruneUnpacked = false, onCandidate = () => {} }) {
   const repositoryRoot = resolve(root)
   const artifacts = join(repositoryRoot, 'artifacts')
+  const currentVersion = await readFile(join(repositoryRoot, 'package.json'), 'utf8').then(JSON.parse, () => ({})).then(pkg => pkg.version ?? policy.version)
+  const strictVersions = policy.defaults.keepDesktopVersions != null
+  const retainedVersions = new Set([currentVersion])
+  if (strictVersions) {
+    const versions = new Set()
+    for (const family of ['stage', 'packages', 'release', 'verification', 'logs']) for (const path of await directChildren(join(artifacts, family))) {
+      const name = path.split(/[\\/]/u).at(-1)
+      if (/^\d+\.\d+\.\d+$/u.test(name)) versions.add(name)
+    }
+    const order = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); return y[0]-x[0] || y[1]-x[1] || y[2]-x[2] }
+    for (const version of [...versions].filter(v => v !== currentVersion).sort(order).slice(0, Math.max(0, policy.defaults.keepDesktopVersions - 1))) retainedVersions.add(version)
+  }
   let referenceFiles
-  const durableReferences = [...await collectJsonFiles(join(artifacts, 'release')), ...await collectJsonFiles(join(artifacts, 'verification'))]
+  const durableReferences = strictVersions
+    ? await collectJsonFiles(join(artifacts, 'packages', currentVersion))
+    : [...await collectJsonFiles(join(artifacts, 'release')), ...await collectJsonFiles(join(artifacts, 'verification'))]
   const cacheReferences = [...durableReferences]
   const candidates = []
   const exclusions = []
-  const contents = new Map(), hashes = new Map(), selectedFiles = []
+  const contents = new Map(), hashes = new Map(), selectedInodes = new Map()
   await assertNoActiveBuilds(repositoryRoot)
-  const addCandidate = async (managedRoot, path, cutoffDays, reason, buildId, references = durableReferences, { protectDependencies = true, preserveEvidence = false } = {}) => {
+  const addCandidate = async (managedRoot, path, cutoffDays, reason, buildId, references = durableReferences, { protectDependencies = true, preserveEvidence = false, retiredVersion } = {}) => {
     const absoluteRoot = resolve(repositoryRoot, managedRoot)
     const absolute = resolve(path)
     const protectedRoot = (policy.protectedRoots ?? []).some(item => {
@@ -158,6 +193,7 @@ export async function createCleanupPlan({ root, policy, now = Date.now(), pruneI
       // `%SystemDrive%` anomaly directory local to this repository instead of
       // expanding it to `C:\`, which would accidentally protect every artifact.
       const protectedPath = resolve(repositoryRoot, item)
+      if (retiredVersion && item === 'artifacts/release') return false
       return absolute.toLowerCase() === protectedPath.toLowerCase() || absolute.toLowerCase().startsWith(`${protectedPath.toLowerCase()}${sep}`)
     })
     if (!within(absoluteRoot, absolute) || !within(artifacts, absolute) || protectedRoot) {
@@ -172,27 +208,55 @@ export async function createCleanupPlan({ root, policy, now = Date.now(), pruneI
     await assertPhysicalAncestors(repositoryRoot, absolute)
     // A recently touched tree cannot have expired. Avoid scanning or hashing it.
     if (cutoffDays > 0 && (now - info.mtimeMs) / 86_400_000 < cutoffDays) return
-    if (await isReferenced(absolute.replaceAll('\\', '/'), buildId, references, contents)) {
+    if (!retiredVersion && await isReferenced(absolute.replaceAll('\\', '/'), buildId, references, contents)) {
       exclusions.push({ path: absolute, reason: 'referenced-build' })
       return
     }
     onCandidate({ path: absolute, reason })
-    const inventoryData = await inventory(absolute, [], [], [], { protectDependencies })
+    let inventoryData
+    try { inventoryData = await inventory(absolute, [], [], [], { protectDependencies }) }
+    catch (error) { exclusions.push({ path: absolute, reason: 'unreadable-candidate', error: `${error.code}: ${error.path ?? absolute}` }); return }
     if (inventoryData.protectedPaths.length) {
       exclusions.push({ path: absolute, reason: 'contains-protected-node-modules' })
       return
     }
     const ageDays = (now - inventoryData.mostRecentMs) / 86_400_000
     if (cutoffDays > 0 && ageDays < cutoffDays) return
-    const digest = await treeDigest(absolute, { protectDependencies, data: inventoryData, hashes })
-    selectedFiles.push(...inventoryData.files)
-    candidates.push({ path: absolute, managedRoot: absoluteRoot, repositoryRoot, reason, ageDays: Math.floor(ageDays), protectDependencies, preserveEvidence,
+    const digestMode = strictVersions ? 'metadata' : 'content'
+    const digest = await treeDigest(absolute, { protectDependencies, data: inventoryData, hashes, digestMode })
+    for (const file of inventoryData.files) {
+      const item = selectedInodes.get(file.inode) ?? { bytes: file.size, links: file.links, selectedLinks: 0 }
+      item.selectedLinks++; selectedInodes.set(file.inode, item)
+    }
+    candidates.push({ path: absolute, managedRoot: absoluteRoot, repositoryRoot, reason, ageDays: Math.floor(ageDays), protectDependencies, preserveEvidence, digestMode, ...(strictVersions ? { referenceVersion: currentVersion } : {}), ...(retiredVersion ? { retiredVersion, retainedVersion: currentVersion } : {}),
       ...(managedRoot === 'artifacts/stage' ? { stageState: reason.startsWith('failed-') ? 'failed' : reason.startsWith('successful-') ? 'success' : inventoryData.files.length ? 'incomplete' : 'empty' } : {}), ...digest })
+  }
+
+  const retireVersion = async (family, path, version) => {
+    if (['stage', 'verification'].includes(family) && path === join(artifacts, family, version)) {
+      for (const child of await directChildren(path)) await retireVersion(family, child, version)
+      return
+    }
+    const before = exclusions.length
+    await addCandidate(`artifacts/${family}`, path, 0, 'retired-desktop-version', undefined, [], { protectDependencies: false, retiredVersion: version })
+    if (exclusions.slice(before).some(item => item.path === resolve(path) && item.reason === 'unreadable-candidate')) {
+      // Isolate inaccessible old test data instead of keeping every other
+      // installation under that version. These exact children remain auditable.
+      try { for (const child of await directChildren(path)) await retireVersion(family, child, version) }
+      catch (error) { exclusions.push({ path, reason: 'unreadable-directory', error: `${error.code}: ${error.path ?? path}` }) }
+    }
+  }
+  if (strictVersions) for (const family of ['stage', 'packages', 'release', 'verification', 'logs']) {
+    for (const path of await directChildren(join(artifacts, family))) {
+      const version = path.split(/[\\/]/u).at(-1)
+      if (/^\d+\.\d+\.\d+$/u.test(version) && !retainedVersions.has(version)) await retireVersion(family, path, version)
+    }
   }
 
   const stageRoot = join(artifacts, 'stage')
   for (const versionPath of await directChildren(stageRoot).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
     const version = versionPath.split(/[\\/]/u).at(-1)
+    if (strictVersions && !retainedVersions.has(version)) continue
     const active = await readFile(join(versionPath, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
     const builds = []
     for (const buildPath of await directChildren(versionPath)) {
@@ -211,7 +275,7 @@ export async function createCleanupPlan({ root, policy, now = Date.now(), pruneI
     for (const { path: buildPath, buildId, failed, success } of builds) {
       if (active?.buildId === buildId) { exclusions.push({ path: buildPath, reason: 'active-stage' }); continue }
       if (retained.has(buildId)) { exclusions.push({ path: buildPath, reason: 'retained-successful-stage' }); continue }
-      if (failed) await addCandidate('artifacts/stage', buildPath, policy.defaults.failedBuildDays, 'failed-build-expired', buildId, durableReferences, { protectDependencies: false })
+      if (failed) await addCandidate('artifacts/stage', buildPath, pruneIncomplete ? 0 : policy.defaults.failedBuildDays, 'failed-build-expired', buildId, durableReferences, { protectDependencies: false })
       else if (success && keepCount != null) await addCandidate('artifacts/stage', buildPath, 0, 'successful-stage-over-retention', buildId, durableReferences, { protectDependencies: false })
       else if (pruneIncomplete) await addCandidate('artifacts/stage', buildPath, 0, 'incomplete-build-expired', buildId, durableReferences, { protectDependencies: false })
       else await addCandidate('artifacts/stage', buildPath, policy.defaults.stageDays, 'unreferenced-stage-expired', buildId, durableReferences, { protectDependencies: false })
@@ -245,6 +309,7 @@ export async function createCleanupPlan({ root, policy, now = Date.now(), pruneI
   const assemblyRoot = join(artifacts, 'cache/runtime-assemblies')
   for (const kind of await directChildren(assemblyRoot)) if ((await lstat(kind)).isDirectory()) await retainCache('artifacts/cache/runtime-assemblies', kind, policy.defaults.keepRuntimeAssembliesPerKind ?? 2, 'receipt.json')
   await retainCache('artifacts/cache/offline-carriers', join(artifacts, 'cache/offline-carriers'), policy.defaults.keepOfflineCarriers ?? 2, 'payload.json')
+  await retainCache('artifacts/cache/resource-trees', join(artifacts, 'cache/resource-trees'), policy.defaults.keepResourceTrees ?? 1, 'receipt.json')
 
   for (const [rootName, days, reason] of [
     ['artifacts/dev', policy.defaults.devDays, 'development-output-expired'],
@@ -255,6 +320,12 @@ export async function createCleanupPlan({ root, policy, now = Date.now(), pruneI
     const base = join(repositoryRoot, rootName)
     for (const child of await directChildren(base).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
       const leaf = child.split(/[\\/]/u).at(-1)
+      if (strictVersions && rootName === 'artifacts/logs' && /^\d+\.\d+\.\d+$/u.test(leaf)) continue
+      const logVersion = rootName === 'artifacts/logs' && leaf.match(/^(\d+\.\d+\.\d+)-/u)?.[1]
+      if (strictVersions && logVersion && !retainedVersions.has(logVersion)) {
+        await addCandidate(rootName, child, 0, 'retired-version-log', undefined, [], { protectDependencies: false })
+        continue
+      }
       await addCandidate(rootName, child, days, reason, leaf)
     }
   }
@@ -263,11 +334,14 @@ export async function createCleanupPlan({ root, policy, now = Date.now(), pruneI
   // and native package copies are disposable once their receipts remain.
   // Keep the current application version complete and retain only small
   // receipts/logs for older versions.
-  const currentVersion = policy.version
   const verificationRoot = join(artifacts, 'verification')
   for (const versionPath of await directChildren(verificationRoot).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
     const version = versionPath.split(/[\\/]/u).at(-1)
-    if (version === currentVersion) continue
+    if (strictVersions && !retainedVersions.has(version)) continue
+    if (version === currentVersion || strictVersions && retainedVersions.has(version)) {
+      exclusions.push({ path: versionPath, reason: 'retained-version-verification' })
+      continue
+    }
     for (const child of await directChildren(versionPath)) {
       const name = child.split(/[\\/]/u).at(-1)
       if (/^(?:isolated-|native-pack$|installer-test(?:-|$)|unpacked-|profile-)/u.test(name)) {
@@ -298,10 +372,14 @@ export async function createCleanupPlan({ root, policy, now = Date.now(), pruneI
     for (const objectPath of await directChildren(prefixPath)) {
       const digest = objectPath.split(/[\\/]/u).at(-1)
       if (!/^[a-f0-9]{64}$/u.test(digest) || digest.slice(0, 2) !== prefix) continue
+      if ((await lstat(objectPath)).nlink > 1) { exclusions.push({ path: objectPath, reason: 'linked-content-object' }); continue }
       // Recent objects cannot be candidates. Avoid reading every runtime
       // JSON for each new object in the content store.
       if ((now - (await lstat(objectPath)).mtimeMs) / 86_400_000 < (policy.defaults.objectDays ?? 30)) continue
-      referenceFiles ??= await collectJsonFiles(artifacts)
+      // Historical cleanup plans/provenance must not pin discarded objects.
+      // Hard-linked shared archives are protected above; strict retention only
+      // keeps references from current distributables and the active stage.
+      referenceFiles ??= strictVersions ? cacheReferences : await collectJsonFiles(artifacts)
       if (await isReferenced(relative(artifacts, objectPath).replaceAll('\\', '/'), undefined, referenceFiles, contents)) {
         exclusions.push({ path: objectPath, reason: 'referenced-content-object' })
         continue
@@ -309,7 +387,7 @@ export async function createCleanupPlan({ root, policy, now = Date.now(), pruneI
       await addCandidate('artifacts/objects', objectPath, policy.defaults.objectDays ?? 30, 'unreferenced-content-object-expired')
     }
   }
-  return { generatedAt: new Date(now).toISOString(), candidates: candidates.sort((a, b) => a.path.localeCompare(b.path)), exclusions, space: inodeSummary(selectedFiles) }
+  return { generatedAt: new Date(now).toISOString(), candidates: candidates.sort((a, b) => a.path.localeCompare(b.path)), exclusions, space: summarizeInodes(selectedInodes) }
 }
 
 export async function assertNoActiveBuilds(repositoryRoot) {
@@ -349,27 +427,51 @@ async function retainVerificationEvidence(path) {
 export async function removeCandidate(candidate, expected) {
   const root = resolve(candidate.managedRoot)
   const path = resolve(candidate.path)
+  if (candidate.repositoryRoot) {
+    const artifacts = join(resolve(candidate.repositoryRoot), 'artifacts')
+    if (!within(artifacts, root) || !within(artifacts, path)) throw new Error('Cleanup candidate is outside repository artifacts')
+    const protectedParts = relative(artifacts, path).split(/[\\/]/u).map(part => part.toLowerCase())
+    if (protectedParts[0] === 'source' || (protectedParts[0] === 'release' && !candidate.retiredVersion)) throw new Error('Cleanup candidate targets protected source or shared release resources')
+  }
   if (!within(root, path)) throw new Error(`Refusing to remove path outside managed root: ${path}`)
   await assertPhysicalAncestors(candidate.repositoryRoot ?? root, path)
   const info = await lstat(path)
   if (info.isSymbolicLink()) throw new Error(`Refusing to remove symbolic link: ${path}`)
-  if (candidate.repositoryRoot) {
+  if (candidate.repositoryRoot && candidate.retiredVersion) {
     await assertNoActiveBuilds(candidate.repositoryRoot)
+    const version = JSON.parse(await readFile(join(candidate.repositoryRoot, 'package.json'), 'utf8')).version
+    const versionRoot = join(root, candidate.retiredVersion)
+    if (version !== candidate.retainedVersion || version === candidate.retiredVersion || (path !== versionRoot && !within(versionRoot, path)) || !/^\d+\.\d+\.\d+$/u.test(candidate.retiredVersion)) throw new Error('Desktop version changed since cleanup planning')
+  } else if (candidate.repositoryRoot) {
+    await assertNoActiveBuilds(candidate.repositoryRoot)
+    if (candidate.referenceVersion && JSON.parse(await readFile(join(candidate.repositoryRoot, 'package.json'), 'utf8')).version !== candidate.referenceVersion) throw new Error('Desktop version changed since cleanup planning')
     const artifacts = join(candidate.repositoryRoot, 'artifacts')
-    const references = [...await collectJsonFiles(join(artifacts, 'release')), ...await collectJsonFiles(join(artifacts, 'verification'))]
+    const references = candidate.referenceVersion
+      ? await collectJsonFiles(join(artifacts, 'packages', candidate.referenceVersion))
+      : [...await collectJsonFiles(join(artifacts, 'release')), ...await collectJsonFiles(join(artifacts, 'verification'))]
     const id = candidate.reason.startsWith('historical-verification') || candidate.reason === 'disposable-package-unpacked' ? undefined : path.split(/[\\/]/u).at(-1)
     // A stage can become active or acquire a durable reference after planning.
     for (const version of await directChildren(join(artifacts, 'stage'))) {
+      if (candidate.referenceVersion && version.split(/[\\/]/u).at(-1) !== candidate.referenceVersion) continue
       const active = await readFile(join(version, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
       if (!active?.buildId || !/^[A-Za-z0-9._-]+$/u.test(active.buildId)) continue
-      if (path === join(version, active.buildId)) throw new Error('Cleanup candidate became the active stage')
-      references.push(...await collectJsonFiles(join(version, active.buildId)))
+      const activeStage = join(version, active.buildId)
+      if (path === activeStage || within(path, activeStage)) throw new Error('Cleanup candidate contains the active stage')
+      // Clone receipts and signed offline documents retain the source build ID
+      // as provenance. A complete clone has its own ordinary files; the source
+      // stage is not a runtime dependency. Cache/object references still count.
+      if (!candidate.referenceVersion || !within(join(artifacts, 'stage'), path)) references.push(...await collectJsonFiles(activeStage))
     }
     if (await isReferenced(path, id, references)) throw new Error('Cleanup candidate acquired a protected reference')
   }
-  const current = await treeDigest(path, { protectDependencies: expected.protectDependencies !== false })
+  const current = await treeDigest(path, { protectDependencies: expected.protectDependencies !== false, digestMode: expected.digestMode })
   if (current.sha256 !== expected.sha256 || current.bytes !== expected.bytes) throw new Error(`Cleanup candidate changed after dry-run: ${path}`)
   const evidence = candidate.preserveEvidence ? await retainVerificationEvidence(path) : undefined
   await rm(path, { recursive: info.isDirectory(), force: false })
+  if (candidate.retiredVersion) for (let parent = dirname(path); within(root, parent); parent = dirname(parent)) {
+    const info = await lstat(parent)
+    if (!info.isDirectory() || info.isSymbolicLink() || (await readdir(parent)).length) break
+    await rm(parent, { recursive: true })
+  }
   return evidence
 }

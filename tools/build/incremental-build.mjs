@@ -22,8 +22,9 @@ async function pluginSnapshotId(stage) {
 try {
   if (consumerOnly) {
     // Stable packaging consumes a previously verified runtime stage. It is
-    // deliberately fail-closed: no plugin compiler, profile generator,
-    // runtime assembly, or resource preparation may run on this path.
+    // deliberately fail-closed: no plugin compiler, runtime assembly, or
+    // resource preparation may run on this path. Commands are desktop-owned
+    // code and must refresh even when the plugin/runtime closure is unchanged.
     const pointer = await readFile(join(artifacts, 'stage', version, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
     if (!pointer?.buildId) throw new Error(`Consumer-only packaging requires an active verified stage for ${version}; run pnpm build once to create it.`)
     const { cloneCurrentStage, activateStage } = await import('./clone-current-stage.mjs')
@@ -37,6 +38,7 @@ try {
       run(['version:check'])
       run(['dsh:verify'])
       run(['plugins:pack', '--consumer-only'])
+      run(['commands:prepare'])
       execFileSync(process.execPath, [join(root, 'tools/build/build-graph.mjs'), 'desktop'], { cwd: root, env: process.env, stdio: 'inherit' })
       const { verifyRuntimeFreshness } = await import('../packaging/verify-runtime-freshness.mjs')
       await verifyRuntimeFreshness(root)
@@ -63,6 +65,7 @@ try {
     execFileSync(process.execPath, [join(root, 'tools/build/build-graph.mjs'), 'components', ...(force ? ['--force'] : [])], { cwd: root, env: process.env, stdio: 'inherit' })
     execFileSync(process.execPath, [join(root, 'tools/build/prepare-native.mjs')], { cwd: root, env: process.env, stdio: 'inherit' })
     run(['dsh:runtime:closure'])
+    execFileSync(process.execPath, [join(root, 'tools/packaging/verify-runtime-adapters.mjs')], { cwd: root, env: process.env, stdio: 'inherit' })
     const { assembleRuntime } = await import('./assembly-cache.mjs')
     for (const kind of ['core', 'offline']) await assembleRuntime(kind, (task, args = []) => run([task, ...args]))
     run(['resources:prepare'])
