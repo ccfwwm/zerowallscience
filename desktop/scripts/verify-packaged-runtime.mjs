@@ -2,7 +2,7 @@ import { stageRoot, targetPackageRoot } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, readFileSync } from 'node:fs'
-import { access, lstat, mkdir, mkdtemp, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, mkdtemp, readFile, readdir, rename, stat, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { createServer as createHttpServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -20,6 +20,7 @@ import { prepareOfflineNetworkProbe, verifyOfflineNetworkProbe } from './offline
 import { assertPythonManifests, assertPythonManifestBytes } from '../../tools/build/verify-python-manifests.mjs'
 import { resourceSource } from '../../tools/build/layout.mjs'
 import { executionLevel } from '../../tools/packaging/windows-execution-level.mjs'
+import { verifyCommandRuntime } from '../../tools/packaging/verify-command-runtime.mjs'
 
 const hostCookies = new Map()
 const MIB = 1024 * 1024
@@ -34,6 +35,7 @@ const coreOnly = runtimeProfile.optionalPluginPolicy?.bundled === false && !full
 const desktopOnly = process.argv.includes('--desktop-only')
 const hostOnly = process.argv.includes('--host-only')
 const offlineNetwork = process.argv.includes('--offline-network')
+const verifyLinkRepair = process.argv.includes('--verify-link-repair')
 const requireBundledPython = process.argv.includes('--require-bundled-python')
 const requireThinPython = process.argv.includes('--require-thin-python')
 
@@ -44,14 +46,16 @@ if (process.argv.includes('--audit-source')) {
 }
 
 const packaged = await locatePackagedApp(packageRoot)
+await verifyCommandRuntime({ ...packaged, report: resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version, 'packaged-command-runtime.json') })
+console.log('[commands] isolated packaged metadata, add/remove, retained closure and rollback verified.')
 if (process.platform === 'win32') {
   const installer = resolve(packaged.root, '..', `zerowall-science-${desktopManifest.version}-win-x64.exe`)
   const hasInstaller = await access(installer).then(() => true, () => false)
   if (requireThinPython && !hasInstaller) throw new Error('Stable Windows verification requires the installer')
   for (const executable of [packaged.executablePath, ...(hasInstaller ? [installer] : [])]) {
-    if (executionLevel(await readFile(executable)) !== 'requireAdministrator') throw new Error(`Windows executable must request administrator at entry: ${executable}`)
+    if (executionLevel(await readFile(executable)) !== 'asInvoker') throw new Error(`Windows executable must preserve the launching user identity: ${executable}`)
   }
-  console.log('[elevation] installer and desktop request administrator at process entry.')
+  console.log('[elevation] installer and desktop preserve the launching user; protected installer writes elevate separately.')
 }
 const pythonDocuments = []
 for (const name of ['dependency-manifest.json', 'core-dependency-manifest.json']) {
@@ -1045,6 +1049,7 @@ async function verifyDirectoryPickerWorker() {
 
 async function verifyHostStartup() {
   const root = await mkdtemp(resolve(tmpdir(), 'zerowall-离线验收-'))
+  let linkRepairEvidence
   const { initializeProfile } = await import('./../../tools/commands/profile.mjs')
   await initializeProfile(resolve(root, 'harness'), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8')), JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/bundled-plugins.json'), 'utf8')))
   if (fullOffline) {
@@ -1058,6 +1063,37 @@ async function verifyHostStartup() {
     if (result.blocked.length) throw new Error('New offline profile unexpectedly has blocked plugins')
     await rename(resolve(home, 'profiles/web'), resolve(home, 'profiles/verification-before-repair'))
     await rename(result.candidate, resolve(home, 'profiles/web'))
+    if (verifyLinkRepair) {
+      const active = resolve(home, 'profiles/web')
+      const images = resolve(active, 'node_modules/@zerowallscience/plugin-images')
+      const broken = resolve(images, 'node_modules/yaml')
+      await mkdir(resolve(images, 'node_modules'), { recursive: true })
+      const previous = await lstat(broken).catch(error => { if (error.code !== 'ENOENT') throw error })
+      if (previous) await rename(broken, resolve(root, 'yaml-before-corruption'))
+      await symlink(broken, broken, 'junction')
+      await stat(broken).then(() => { throw new Error('Self-referencing yaml did not reproduce ELOOP') }, error => { if (error.code !== 'ELOOP') throw error })
+      const repaired = await prepareOfflineCandidate({ home, source: resolve(packaged.resourcesRoot, 'offline-profile'),
+        keys: JSON.parse(await readFile(resolve(repositoryRoot, 'config/catalogs/trusted-keys.json'), 'utf8')),
+        target: { desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit, platform: process.platform, architecture: process.arch },
+        defaults: JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/default-plugins.json'), 'utf8')),
+        bundledPlugins: JSON.parse(await readFile(resolve(packaged.resourcesRoot, 'commands/bundled-plugins.json'), 'utf8')),
+        yaml, runtimeModules: resolve(asarPath, 'node_modules'), repairOnly: true,
+      })
+      if (repaired.blocked.length) throw new Error('Signed yaml repair was blocked: ' + JSON.stringify(repaired.blocked))
+      await rename(active, resolve(home, 'profiles/damaged-before-repair'))
+      await rename(repaired.candidate, active)
+      const expression = `
+        const { createRequire } = await import('node:module');
+        const load = createRequire(${JSON.stringify(resolve(images, 'package.json'))});
+        const yaml = load('yaml');
+        if (yaml.parse('repaired: true').repaired !== true) throw new Error('Repaired images yaml failed');
+        const images = await import(${JSON.stringify(pathToFileURL(resolve(images, 'lib/index.js')).href)});
+        if (images.validateImageSize('1024x1024') !== '1024x1024') throw new Error('Repaired images function failed');
+        console.log('Repaired plugin-images loaded yaml and validated image dimensions.');
+      `
+      await runEmbeddedNode(['--import', pathToFileURL(resolve(asarPath, 'runtime/runtime-esm-register.mjs')).href, '--input-type=module', '--eval', expression], { cwd: packaged.root })
+      linkRepairEvidence = { selfJunctionReproduced: true, signedRecovery: true, actualImagesYamlLoaded: true, imageDimensionValidation: true, profile: active, damagedOriginal: resolve(home, 'profiles/damaged-before-repair') }
+    }
   }
   // The authorization status contract requires Zotero's Local API identity.
   // Keep package verification independent of whether a user has Zotero open,
@@ -1162,6 +1198,10 @@ async function verifyHostStartup() {
             await mkdir(resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version), { recursive: true })
             await writeFile(resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version, 'offline-host.json'), JSON.stringify({ ...evidence, guard: networkGuardEvidence, applicationVersion: desktopManifest.version, fullDefaultProfile: fullOffline, evidenceRoot: root }, null, 2))
             console.log('Full default Host activated with outbound networking blocked and zero package installation attempts.')
+          }
+          if (linkRepairEvidence) {
+            await writeFile(resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version, 'packaged-link-repair.json'), JSON.stringify({ ...linkRepairEvidence, hostHealthy: true, activeImagePlugin: true }, null, 2))
+            console.log('Host and image plugin healthy after signed recovery of an actual yaml self-junction.')
           }
           return
         } catch (error) {
@@ -1759,9 +1799,16 @@ async function verifyDesktopStartup() {
     }
     try {
       const settingsEntry = page.getByRole('button', { name: /^(设置|Settings)$/u })
-        .or(page.getByRole('menuitem', { name: /^(设置|Settings)$/u }))
-      if (!await settingsEntry.isVisible()) await page.getByRole('button', { name: /^(更多|More|账户菜单|账号菜单|Account menu)$/u }).click()
+      await settingsEntry.waitFor({ state: 'visible' })
+      if (await page.getByRole('button', { name: /^(更多|More|账户菜单|账号菜单|Account menu)$/u }).count()) throw new Error('Retired sidebar popup launcher remains visible')
+      if (await settingsEntry.getAttribute('aria-haspopup') !== 'dialog') throw new Error('Settings launcher must open the dialog directly')
       await settingsEntry.click()
+      const opened = page.getByRole('dialog', { name: /^(设置|Settings)$/u })
+      await opened.waitFor({ state: 'visible' })
+      await opened.getByRole('button', { name: /^(关闭|Close)$/u }).click()
+      await opened.waitFor({ state: 'hidden' })
+      await settingsEntry.focus()
+      await settingsEntry.press('Enter')
     } catch (error) {
       await writeFile(resolve(root, 'settings-trigger-debug.txt'), await page.locator('body').innerText().catch(() => ''))
       await page.screenshot({ path: resolve(root, 'settings-trigger-debug.png'), fullPage: true }).catch(() => {})

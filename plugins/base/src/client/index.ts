@@ -9,6 +9,7 @@ import { GithubButton } from './GithubButton.tsx'
 import { WechatStatusButton } from './WechatStatusButton.tsx'
 import { AboutSection } from './AboutSection.tsx'
 import { PluginSettingsSection } from './PluginSettingsSection.tsx'
+import { SettingsLauncher } from './SettingsLauncher.tsx'
 
 export { en, NS, zh, type ZeroWallKey } from './locales.js'
 export { unwrapRemoteResult } from './remote-result.js'
@@ -37,6 +38,11 @@ export async function apply(ctx: ClientContext): Promise<void> {
   registerZeroWallBrand(ctx)
   applyDefaultLightTheme(ctx)
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'zerowall: dictionaries')
+  ctx.effect(() => ctx.locale.register('zerowall.settingsLauncher', { zh: { label: '设置' }, en: { label: 'Settings' } }), 'zerowall: settings launcher dictionary')
+  ctx.slots.inject('settings.launcher', () => ctx.slots.register({
+    name: 'settings.launcher', priority: -100, locale: 'zerowall.settingsLauncher',
+    inject: () => ({}),
+  }, SettingsLauncher))
   ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action', id: 'zerowall-update', order: -10, locale: NS,
     inject: () => ({}),

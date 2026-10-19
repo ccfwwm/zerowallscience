@@ -7,8 +7,27 @@ import { execFileSync } from 'node:child_process'
 
 // Electron virtualizes .asar paths. Installation must copy their actual bytes.
 const fs = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nativeFs
-const { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, readdirSync, rmdirSync, openSync, readSync, closeSync, renameSync, writeFileSync, fsyncSync } = fs
-const { copyFile, rename, stat } = fs.promises
+const { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, readdirSync, rmdirSync, openSync, readSync, closeSync, writeFileSync, fsyncSync } = fs
+const { copyFile, stat } = fs.promises
+const transient = error => ['EPERM', 'EBUSY', 'EACCES'].includes(error.code)
+function retrySync(action) {
+  for (let attempt = 0; ; attempt++) {
+    try { return action() } catch (error) {
+      if (!transient(error) || attempt === 5) throw error
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * (attempt + 1))
+    }
+  }
+}
+const unlinkSync = path => retrySync(() => fs.unlinkSync(path))
+const renameSync = (from, to) => retrySync(() => fs.renameSync(from, to))
+async function rename(from, to) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fs.promises.rename(from, to) } catch (error) {
+      if (!transient(error) || attempt === 5) throw error
+      await new Promise(done => setTimeout(done, 100 * (attempt + 1)))
+    }
+  }
+}
 const logIndex = process.argv.indexOf('--log', 4)
 const logFile = logIndex < 0 ? undefined : process.argv[logIndex + 1]
 function log(message) {
@@ -197,14 +216,26 @@ function rollback(document) {
       safeDirectory(dirname(path)); renameSync(backup, path)
     } else if (document.state === 'applying' && !row.original && row.incoming && !existsSync(staged) && existsSync(path)) unlinkSync(path)
   }
-  cleanup(document)
+  document.state = 'rolled-back'
+  persist(document)
+}
+function finishCleanup(document) {
+  try {
+    if (process.env.ZEROWALL_TEST_INSTALLER_CLEANUP_FAILURE === '1') throw Object.assign(new Error('Injected installer cleanup access denial'), { code: 'EACCES' })
+    cleanup(document); return true
+  }
+  catch (error) {
+    log('cleanup-error; ' + (error.stack ?? error.message))
+    persist({ ...document, cleanupPending: true, cleanupError: { code: error.code, message: error.message } })
+    return false
+  }
 }
 if (existsSync(recovery)) {
   checkParent(recovery)
   if (!existsSync(journalFile)) recoverInitialJournal()
   else {
   const prior = JSON.parse(readFileSync(journalFile, 'utf8'))
-  if (prior.schema !== 1 || prior.root !== target || !['staging','applying','committed'].includes(prior.state) || !Array.isArray(prior.rows)) throw new Error('Invalid installer recovery journal')
+  if (prior.schema !== 1 || prior.root !== target || !['staging','applying','committed','rolled-back'].includes(prior.state) || !Array.isArray(prior.rows)) throw new Error('Invalid installer recovery journal')
   for (const row of prior.rows) {
     validateLocal(row.local)
     for (const kind of ['stage','backup']) {
@@ -218,8 +249,8 @@ if (existsSync(recovery)) {
       if (existsSync(path) && (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink())) throw new Error('Unsafe recovery file')
     }
   }
-  if (prior.state === 'committed') cleanup(prior)
-  else rollback(prior)
+  if (!['committed', 'rolled-back'].includes(prior.state)) rollback(prior)
+  if (!finishCleanup(prior)) throw new Error('INSTALLER_RECOVERY_CLEANUP_PENDING: close applications using the installation directory and retry')
   }
   // Rollback may restore obsolete closed-runtime files that were absent from
   // both the preflight tree and an older ownership inventory. Recalculate
@@ -281,10 +312,18 @@ try {
   // file. Advance the in-memory state only after the commit is durable.
   persist({ ...transaction, state: 'committed' }); transaction.state = 'committed'
 } catch(error) {
-  rollback(transaction)
-  log('transaction-rolled-back')
+  log('primary-error; ' + (error.stack ?? error.message))
+  try {
+    rollback(transaction)
+    log('transaction-rolled-back')
+    finishCleanup(transaction)
+  } catch (rollbackError) {
+    log('rollback-error; ' + (rollbackError.stack ?? rollbackError.message))
+    try { persist({ ...transaction, primaryError: { code: error.code, message: error.message }, rollbackError: { code: rollbackError.code, message: rollbackError.message } }) }
+    catch (journalError) { log('recovery-journal-error; ' + journalError.message) }
+  }
   throw error
 }
-cleanup(transaction)
+finishCleanup(transaction)
 console.log(`Application files copied: ${files.length}; obsolete runtime files removed: ${stale.length}; Python and user data preserved.`)
 log(`copy-complete; files=${files.length}; obsolete=${stale.length}`)

@@ -3,7 +3,8 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { copyProfileTree } from './profile-copy.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
-import { physicalizeProfilePlugins, preparePhysicalRootsForPnpm } from './profile-materialization.mjs'
+import { physicalizeProfilePlugins } from './profile-materialization.mjs'
+import { preparePnpmResolution, mergePnpmResolution } from './profile-pnpm-resolution.mjs'
 import { acquireProfileMutation } from './profile-mutation-lock.mjs'
 
 const exists = path => lstat(path).then(() => true, error => { if (error.code !== 'ENOENT') throw error; return false })
@@ -182,15 +183,15 @@ async function runCandidate({ profile, args, run, signal, lifecycleId, ownerPid 
     const manifest = await read(join(candidate, 'package.json'))
     const ids = Object.entries(manifest.dependencies ?? {}).filter(([, spec]) => /^(?:file|link):/u.test(spec) && inside(candidate, resolve(candidate, spec.slice(5)))).map(([id]) => id)
     await physicalizeProfilePlugins({ profile: candidate, ids })
-    await preparePhysicalRootsForPnpm({ profile: candidate, ids, manifest })
-    await writeFile(join(candidate, 'package.json'), JSON.stringify(manifest, null, 2) + '\n')
-    const result = await run(args, candidate)
+    const resolution = await preparePnpmResolution({ profile: candidate, manifest, args })
+    const result = await run(resolution.args, resolution.directory)
     if (result.code !== 0 || signal?.aborted) {
       await record(directory, { ...state, state: 'preparation-failed' })
       await cleanupTransaction(profile, directory, state, 'preparation-failed')
       return { ...result, code: result.code || 1 }
     }
-    await physicalizeProfilePlugins({ profile: candidate, ids })
+    await mergePnpmResolution(resolution)
+    await physicalizeProfilePlugins({ profile: candidate, ids: ids.filter(id => !resolution.removed.has(id)) })
     const after = await read(join(candidate, 'package.json'))
     for (const id of Object.keys(after.dependencies ?? {})) {
       const installed = await read(join(candidate, 'node_modules', id, 'package.json'))

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, writeFile, rm, cp, readdir } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile, rm, cp, readdir, lstat } from 'node:fs/promises'
 import { createHash, generateKeyPairSync } from 'node:crypto'
 import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -34,6 +34,29 @@ async function signedPayload(root) {
   await writeFile(join(target, 'resources/user.txt'), 'user resource')
   return { source, target, payloadPath, receipt }
 }
+
+for (const primaryFailure of [false, true]) test(`cleanup access denial preserves ${primaryFailure ? 'the primary failure and rolled-back' : 'the committed'} transaction for recovery`, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-cleanup-pending-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { source, target } = await signedPayload(root), log = join(root, 'install.log')
+  const args = [resolve('tools/commands/installer-copy-files.mjs'), source, target, '--log', log]
+  try {
+    execFileSync(process.execPath, args, { windowsHide: true, stdio: 'pipe', env: { ...process.env, ZEROWALL_TEST_INSTALLER_CLEANUP_FAILURE: '1', ...(primaryFailure ? { ZEROWALL_TEST_INSTALLER_FAILURE_AT: '0' } : {}) } })
+    assert.equal(primaryFailure, false)
+  } catch (error) {
+    assert.equal(primaryFailure, true)
+    assert.match(error.stderr.toString(), /Injected installer transaction failure/u)
+  }
+  const journal = JSON.parse(await readFile(join(target, 'resources/installer-recovery/transaction.json')))
+  assert.equal(journal.state, primaryFailure ? 'rolled-back' : 'committed')
+  assert.equal(journal.cleanupPending, true)
+  assert.equal(journal.cleanupError.code, 'EACCES')
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), primaryFailure ? 'old application' : 'new application')
+  assert.match(await readFile(log, 'utf16le'), /cleanup-error/u)
+  execFileSync(process.execPath, args, { windowsHide: true, stdio: 'pipe' })
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
+  await assert.rejects(lstat(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
+})
 
 test('moved installer files inherit Shell-readable destination ACLs without touching user or Python ACLs', { skip: process.platform !== 'win32' }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-installer-acl-'))

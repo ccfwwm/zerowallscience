@@ -64,8 +64,11 @@ export async function copyProfileTree(source, destination, { filter = () => true
   await bounded(files, local => copyFile(join(source, local), join(destination, local)))
   await bounded(links, async local => {
     const target = await readlink(join(source, local))
-    const info = await stat(join(source, local)).catch(error => { if (error.code !== 'ENOENT') throw error })
-    await symlink(resolve(dirname(join(source, local)), target), join(destination, local), process.platform === 'win32' && info?.isDirectory() ? 'junction' : undefined)
+    // Preserve broken directory links without following them. An authenticated
+    // repair can replace their package roots in the candidate; an ordinary
+    // transaction still rejects them during strict layout verification.
+    const info = await stat(join(source, local)).catch(error => { if (!['ENOENT', 'ELOOP'].includes(error.code)) throw error })
+    await symlink(resolve(dirname(join(source, local)), target), join(destination, local), process.platform === 'win32' && (!info || info.isDirectory()) ? 'junction' : undefined)
   })
   return { files: files.length, links: links.length }
 }

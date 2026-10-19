@@ -83,7 +83,7 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
   await bounded([...internalTargets], async target => {
     try { await stat(target) }
     catch (error) {
-      if (error.code !== 'ENOENT' || !pendingPackages.some(root => inside(root, target))) throw error
+      if (!['ENOENT', 'ELOOP'].includes(error.code) || !pendingPackages.some(root => inside(root, target))) throw error
       pendingTargets.add(target)
     }
   })

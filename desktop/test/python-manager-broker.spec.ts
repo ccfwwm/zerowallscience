@@ -4,9 +4,15 @@ import { join, resolve } from 'node:path'
 import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PythonUpdaterService } from '../src/main/python-manager-broker.js'
+import { assertWritablePythonRuntimePath } from '../src/main/python-location.js'
+import { protectedPythonChannel } from '../src/main/python-protected-channel.js'
+import { fork } from 'node:child_process'
+
+vi.mock('../src/main/python-location.js', () => ({ assertWritablePythonRuntimePath: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../src/main/python-protected-channel.js', () => ({ protectedPythonChannel: vi.fn() }))
 
 const roots: string[] = []; const brokers: PythonUpdaterService[] = []
-afterEach(async () => { await Promise.all(brokers.splice(0).map(b => b.shutdown())); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
+afterEach(async () => { await Promise.all(brokers.splice(0).map(b => b.shutdown())); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); vi.clearAllMocks(); vi.mocked(assertWritablePythonRuntimePath).mockResolvedValue(undefined) })
 function canonical(value: any): any { return Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value }
 async function fixture(root: string, name: string) {
   const directory = join(root, name); await mkdir(directory)
@@ -19,6 +25,27 @@ async function fixture(root: string, name: string) {
   return { entry: join(directory, file), key: publicKey.export({ format: 'pem', type: 'spki' }).toString() }
 }
 describe('signed plugin worker broker', () => {
+  it('blocks automatic protected writes and arbitrary packages before requesting elevation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'python-broker-')); roots.push(root)
+    const worker = await fixture(root, 'signed')
+    const broker = new PythonUpdaterService({ root, runtimeRoot: join(root, 'Python'), publish: vi.fn(), resolveWorker: async () => worker.entry, publicKeys: { signed: worker.key } } as never); brokers.push(broker)
+    vi.mocked(assertWritablePythonRuntimePath).mockRejectedValue(new Error('EACCES'))
+    await expect(broker.environmentRequest({ action: 'sync', automatic: true, confirm: true } as never)).rejects.toThrow('PYTHON_AUTHORIZATION_REQUIRED')
+    await expect(broker.environmentRequest({ action: 'install_package', confirm: true } as never)).rejects.toThrow('PYTHON_PROTECTED_OPERATION_DENIED')
+    expect(protectedPythonChannel).not.toHaveBeenCalled()
+  })
+  it('dispatches confirmed signed transactions to a separate worker and keeps read-only scans unelevated', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'python-broker-')); roots.push(root)
+    const worker = await fixture(root, 'signed'), runtimeRoot = join(root, 'Python')
+    const broker = new PythonUpdaterService({ root, runtimeRoot, publish: vi.fn(), resolveWorker: async () => worker.entry, publicKeys: { signed: worker.key } } as never); brokers.push(broker)
+    const original = await broker.pythonInfo() as any
+    vi.mocked(assertWritablePythonRuntimePath).mockRejectedValue(new Error('EACCES'))
+    vi.mocked(protectedPythonChannel).mockImplementation(async entry => fork(entry, [], { execArgv: [], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] }))
+    const protectedResult = await broker.environmentRequest({ action: 'sync', confirm: true } as never) as any
+    expect(protectedResult.pid).not.toBe(original.pid)
+    expect(protectedPythonChannel).toHaveBeenCalledWith(worker.entry, runtimeRoot)
+    expect((await broker.pythonInfo() as any).pid).toBe(original.pid)
+  })
   it('starts new tasks on the new worker and keeps nested task ownership on the busy previous worker', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-broker-')); roots.push(root)
     const first = await fixture(root, 'one'); const second = await fixture(root, 'two')

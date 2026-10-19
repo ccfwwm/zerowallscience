@@ -1,6 +1,6 @@
 # Python 环境与后台依赖维护
 
-当前合同适用于 8.3.1。Python 插件及桌面桥接共同管理一个固定运行时，Python 内容 revision、依赖层版本和桌面版本独立。资源维护操作见 [扩展更新指南](extensions-update-guide.md)，构建发布见 [开发指导](codex-development-guide.zh-CN.md)。
+当前合同适用于 8.4.1。Python 插件及桌面桥接共同管理一个固定运行时，Python 内容 revision、依赖层版本和桌面版本独立。资源维护操作见 [扩展更新指南](extensions-update-guide.md)，构建发布见 [开发指导](codex-development-guide.zh-CN.md)。
 
 ## 固定路径
 
@@ -8,7 +8,7 @@
 
 当前稳定安装器采用薄包，不携带完整 Python ZIP 或全部科学依赖。首次在线准备依赖签名 bootstrap 和依赖清单；离线首次安装不能声称 Python 科学环境已就绪。已有健康环境直接复用。运行时文件和依赖缓存、任务记录分别管理。
 
-安装器和应用从入口请求管理员权限，避免运行到文件写入阶段才提权。UAC 由用户确认。后台维护失败保留诊断，不通过悄悄更换解释器路径绕过权限。
+安装器外层和应用保留原用户身份。可写目录按现有后台策略维护；固定 Python 根需要额外权限时，自动任务报告 `PYTHON_AUTHORIZATION_REQUIRED` 并等待用户在 Python 设置手动确认。只有签名 Python worker 单独请求 UAC，提权前与提权进程启动时分别复核 worker 签名及文件摘要；受保护通道仅允许固定根的签名 bootstrap、签名依赖层事务、状态、取消及回滚。任意包安装不能通过该通道提权。界面、账户、Host 和凭据仍由原用户进程持有。升级改变应用目录时，将已有 Python 根保存为原用户的明确固定路径，不移动解释器。
 
 ## 自动维护
 

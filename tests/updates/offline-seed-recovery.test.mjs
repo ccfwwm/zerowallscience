@@ -12,7 +12,7 @@ import { signCatalog } from '../../tools/release/resource-catalog.mjs'
 const id = 'dsh-ppt-maker'
 const target = { desktopVersion: '8.3.6', dshVersion: '0.2.0-rc.2', dshCommit: 'c'.repeat(40), platform: 'win32', architecture: 'x64' }
 
-async function fixture(t, { version = '1.0.1-zws.1', pin } = {}) {
+async function fixture(t, { version = '1.0.1-zws.1', pin, failStart = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'zws-seed-recovery-'))
   t.after(async () => { assert(resolve(root).startsWith(resolve(tmpdir()) + sep)); await rm(root, { recursive: true, force: true }) })
   const home = join(root, '用户 配置'), source = join(root, 'installer/offline-profile')
@@ -36,9 +36,20 @@ async function fixture(t, { version = '1.0.1-zws.1', pin } = {}) {
   if (pin) { await mkdir(join(home, 'resources/plugins'), { recursive: true }); await writeFile(join(home, 'resources/plugins/selection.json'), JSON.stringify({ pinned: { [id]: pin } })) }
   const calls = { stop: 0, start: 0, host: 0 }
   const manager = createResourceManager({ home, keys, target, defaultPlugins: [id], bundledPlugins: receipt.plugins, yaml: JSON,
-    stopHost: async () => { calls.stop++ }, startHost: async () => { calls.start++ }, callHost: async () => { calls.host++; return { ready: true, entries: [] } } })
+    stopHost: async () => { calls.stop++ }, startHost: async () => { calls.start++; if (failStart) throw new Error('candidate unhealthy') }, callHost: async () => { calls.host++; return { ready: true, entries: [] } } })
   return { home, source, active, plugin, manifestFile, missingGeneration, manager, calls, version }
 }
+
+test('failed repair restores the already broken original and preserves the primary Host error', async t => {
+  const f = await fixture(t, { failStart: true }), before = await readFile(f.manifestFile)
+  await assert.rejects(f.manager.repairOffline(f.source), /candidate unhealthy/u)
+  assert.deepEqual(await readFile(f.manifestFile), before)
+  assert((await lstat(f.plugin)).isSymbolicLink())
+  const journal = JSON.parse(await readFile(join(f.home, 'resources/transaction.json')))
+  assert.equal(journal.state, 'rolled-back')
+  assert.equal(journal.error, 'candidate unhealthy')
+  assert(journal.recoveryErrors.some(row => row.phase === 'original-host'))
+})
 
 for (const version of ['1.0.0', '1.0.1-zws.1']) test(`signed installer ${version} replaces a default broken old offline link without the old receipt`, async t => {
   const f = await fixture(t, { version })

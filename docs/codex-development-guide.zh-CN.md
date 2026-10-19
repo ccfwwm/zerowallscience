@@ -109,6 +109,8 @@ pnpm package:stable:win
 
 安装器携带最新插件的实际可运行离线闭包（profile-runtime.asar 及必要物理文件）、默认 Skills 与小型 MCP 资源；共享 tgz 留在独立资源仓库，不再为每个桌面版本复制一套，也不在安装器里额外重复携带一套 tgz。运行时装配可能硬链接或按需复制文件，这是离线运行要求，不等于重新编译/归档插件。
 
+外置 commands 的 YAML 解析通过 command-yaml.mjs 从同安装的 app.asar 加载，不依赖会被打包过滤的 commands/node_modules，也不依赖 NODE_PATH 或开发目录。独立 Electron-as-Node 进程不会继承 Host 的模块加载钩子。afterPack 和 verify:package 均运行 verify-command-runtime.mjs，将分发命令与 ASAR 复制到源码目录外、清除模块环境变量后，实际验证插件信息只读查询、安装/卸载、保留依赖和回滚；该检查失败时不得交付安装器。
+
 发布验收应保存本次 plugin-snapshot.json 与成功 build-receipt，逐项核对最新清单、集成版本和签名离线闭包。桌面升级保留用户的禁用、卸载、固定版本和第三方选择，不强行启用全部内置插件。
 
 8.3.2 起，稳定打包还核对七牛已签名的插件、Skills 最新 catalog；安装器不能集成低于公开版本的资源。同版本必须保持归档摘要一致，Skills 的实际文件树、安装版本索引和签名归档须逐项一致，证据保存在 stage/bundled-resource-receipt.json。桌面升级直接使用当前安装包的兼容闭包替换其声明的未固定版本托管插件及已安装支持包，并移走对应旧运行时来源收据；不因旧上游正式版高于新适配版的预发布 semver 而保留旧 DSH 供给。清单外的用户插件（如 dsh-context）、固定版本及显式选择继续保留。未经用户修改的旧 catalog Skill 副本若遮蔽新版内置 Skill，会移入正常回滚历史，让内置新版生效；导入、自定义、编辑过和禁用的 Skill 保留。
@@ -127,7 +129,7 @@ pnpm profiles:check
 pnpm dsh:verify
 ```
 
-正式打包须从已提权 PowerShell 开始。安装器与应用入口会要求管理员权限，不能先跑到中途才提权；UAC 由用户确认。稳定配置默认引用已有的忽略签名文件；需要覆盖时使用对应环境变量，不在日志打印内容：
+正式打包不要求提权 PowerShell。8.4.1 起安装器外层和应用入口使用 asInvoker，保留启动用户身份；仅当目标目录不可写或选择全用户安装时请求 UAC。用户注册、PATH、用户快捷方式及应用启动由原用户外层完成，不使用另一管理员账户的用户目录。稳定配置默认引用已有的忽略签名文件；需要覆盖时使用对应环境变量，不在日志打印内容：
 
 ```powershell
 pnpm package:stable:win
@@ -142,7 +144,7 @@ pnpm smoke:update
 
 资源 base URL 必须带 /stable，桌面 base 不带。不得把开发签名公钥加入稳定安装器，不发布 localOnly catalog。上述脚本通过不代表真实 GUI/升级路径已经验收；按修改范围补实际安装、启动、旧用户升级、插件更新/回滚、Python 后台恢复验证。安装器退出码不能代替验收。
 
-至少记录新 build ID、安装器路径/字节数/SHA-256、artifact manifest、ASAR/runtime closure、dsh --version、zws --version、集成插件快照和实际版本。requireAdministrator EXE 的版本检查从提权环境使用 Node spawnSync 捕获输出，不能把 GUI EXE 空日志算成功。
+至少记录新 build ID、安装器路径/字节数/SHA-256、artifact manifest、ASAR/runtime closure、dsh --version、zws --version、集成插件快照和实际版本。使用 Node spawnSync 捕获版本输出，不能把 GUI EXE 空日志算成功；检查应用及安装器 manifest 为 asInvoker。
 
 检查按范围执行：
 

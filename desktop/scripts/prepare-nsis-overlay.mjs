@@ -27,7 +27,11 @@ const old = `!insertmacro uninstallOldVersion SHELL_CONTEXT
   !insertmacro handleUninstallResult HKEY_CURRENT_USER
 \${endIf}`
 if (section.split(old).length !== 2) throw new Error('Unexpected upstream uninstall sequence')
-section = section.replace('!include installer.nsh', `!include "${resolve(templates, 'include/installer.nsh')}"`)
+section = section.replace('!include installer.nsh', '; Installer macros are loaded by the ZeroWall header for original-user callbacks.')
+section = section.replace('Var /GLOBAL keepShortcuts', '; keepShortcuts is declared by the ZeroWall header.')
+const registrations = `!insertmacro registryAddInstallInfo\n!insertmacro addStartMenuLink $keepShortcuts\n!insertmacro addDesktopLink $keepShortcuts`
+if (section.split(registrations).length !== 2) throw new Error('Unexpected upstream installation registration sequence')
+section = section.replace(registrations, `\${If} \${UAC_IsInnerInstance}\n\${AndIf} $installMode != "all"\n  StrCpy $R7 $installMode\n  !insertmacro UAC_AsUser_Call Function ZeroWallRegisterUser \${UAC_SYNCREGISTERS}|\${UAC_SYNCINSTDIR}\n\${Else}\n  ${registrations}\n\${EndIf}`)
 section = section.replace(old, `; Never invoke an earlier recursive uninstaller.
 ; Validate the incoming runtime before removing any installed application file.
 DetailPrint "正在原位置覆盖升级，保留 Python 和用户文件..."`)
@@ -53,10 +57,17 @@ extraction = extraction.replace(extractMacro, `!macro extractUsing7za FILE
   SetOutPath $R0
   File /oname=$PLUGINSDIR\\zerowall-copy-files.mjs "${resolve(desktop, '../tools/commands/installer-copy-files.mjs')}"
   File /oname=$PLUGINSDIR\\zerowall-owned-files.ps1 "${resolve(desktop, '../tools/commands/uninstall-owned-files.ps1')}"
+  ; Never execute an EXE which the transaction will move or roll back. Electron
+  ; needs ICU and both V8 snapshots even in RUN_AS_NODE mode.
+  CreateDirectory "$PLUGINSDIR\\copy-runtime"
+  CopyFiles /SILENT "$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\copy-runtime\\copy-runtime.exe"
+  CopyFiles /SILENT "$PLUGINSDIR\\7z-out\\icudtl.dat" "$PLUGINSDIR\\copy-runtime\\icudtl.dat"
+  CopyFiles /SILENT "$PLUGINSDIR\\7z-out\\snapshot_blob.bin" "$PLUGINSDIR\\copy-runtime\\snapshot_blob.bin"
+  CopyFiles /SILENT "$PLUGINSDIR\\7z-out\\v8_context_snapshot.bin" "$PLUGINSDIR\\copy-runtime\\v8_context_snapshot.bin"
   ; CopyFiles silently omits MAX_PATH files. The bundled Node API handles
   ; long Unicode paths and reports every incomplete copy as an install error.
   System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", w "1")'
-  nsExec::ExecToStack '"$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR" --move-source --log "$ZeroWallLogFile"'
+  nsExec::ExecToStack '"$PLUGINSDIR\\copy-runtime\\copy-runtime.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR" --move-source --log "$ZeroWallLogFile"'
   Pop $R0
   Pop $R1
   !insertmacro ZW_LOG "transaction-exit=$R0; $R1"
@@ -71,6 +82,7 @@ extraction = extraction.replace(extractMacro, `!macro extractUsing7za FILE
   \${EndIf}
 !macroend`)
 await writeFile(resolve(output, 'extractAppPackage.nsh'), extraction)
+await writeFile(resolve(output, 'installer-definitions.nsh'), `!include "${resolve(templates, 'include/installer.nsh')}"\n`)
 console.log(`Prepared NSIS in-place upgrade section from electron-builder ${manifest.version}`)
 
 await mkdir(resolve(desktop, 'out'), { recursive: true })

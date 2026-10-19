@@ -4,7 +4,7 @@ import { createHash, generateKeyPairSync } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, writeFile, lstat } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, writeFile, lstat, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { offlineFiles } from '../../tools/commands/offline-profile.mjs'
@@ -15,6 +15,43 @@ import { initializeProfile } from '../../tools/commands/profile.mjs'
 import { signCatalog } from '../../tools/commands/resource-catalog.mjs'
 import { physicalFs } from '../../tools/commands/physical-fs.mjs'
 import { importHistoricalPlugin, verifyHistoricalPluginImports } from '../../tools/commands/historical-plugin.mjs'
+import { scanProfileLinks } from '../../tools/commands/profile-link-scan.mjs'
+
+for (const damage of ['self', 'multi-hop', 'dangling']) test(`signed repair recovers an existing ${damage} nested dependency and remains stable`, async t => {
+  const f = await fixture(t), source = await f.supply('1.0.0')
+  await f.manager.repairOffline(source)
+  const dependency = join(f.active, 'node_modules/plugin-a/node_modules/shared')
+  await unlink(dependency)
+  const second = join(f.active, '.zerowall/install-sources/broken/node_modules/shared')
+  await mkdir(dirname(second), { recursive: true })
+  await symlink(damage === 'self' ? dependency : damage === 'multi-hop' ? second : join(f.root, 'absent'), dependency, process.platform === 'win32' ? 'junction' : 'dir')
+  if (damage === 'multi-hop') await symlink(dependency, second, process.platform === 'win32' ? 'junction' : 'dir')
+  const evidence = await scanProfileLinks(f.active)
+  assert(evidence.some(row => row.fault === (damage === 'dangling' ? 'dangling' : 'cycle')))
+  assert.equal((await f.manager.repairOffline(source)).repaired, true)
+  const loaded = await promisify(execFile)(process.execPath, ['-e', 'console.log(require("./node_modules/plugin-a"))'], { cwd: f.active, windowsHide: true })
+  assert.equal(loaded.stdout.trim(), '1.0.0')
+  assert.equal((await f.manager.repairOffline(source)).repaired, false)
+})
+
+test('physicalization copies nested dependency bytes and preserves a normal package cycle', async t => {
+  const f = await fixture(t, ['plugin-a'])
+  const source = join(f.active, '.zerowall/install-sources/test')
+  const nested = join(source, 'node_modules/yaml')
+  await mkdir(join(nested, 'node_modules'), { recursive: true })
+  await writeFile(join(source, 'package.json'), JSON.stringify({ name: 'plugin-a', version: '1.0.0', dependencies: { yaml: '1.0.0' } }))
+  await writeFile(join(nested, 'package.json'), JSON.stringify({ name: 'yaml', version: '1.0.0', main: 'index.cjs', dependencies: { 'plugin-a': '1.0.0' } }))
+  await writeFile(join(nested, 'index.cjs'), 'module.exports="nested-bytes"')
+  await symlink(source, join(nested, 'node_modules/plugin-a'), process.platform === 'win32' ? 'junction' : 'dir')
+  await mkdir(join(f.active, 'node_modules'), { recursive: true })
+  await symlink(source, join(f.active, 'node_modules/plugin-a'), process.platform === 'win32' ? 'junction' : 'dir')
+  await physicalizeProfilePlugins({ profile: f.active, ids: ['plugin-a'] })
+  const actual = join(f.active, 'node_modules/plugin-a/node_modules/yaml')
+  assert.equal((await lstat(actual)).isSymbolicLink(), false)
+  assert.equal(await readFile(join(actual, 'index.cjs'), 'utf8'), 'module.exports="nested-bytes"')
+  assert.equal(await realpath(join(actual, 'node_modules/plugin-a')), await realpath(join(f.active, 'node_modules/plugin-a')))
+  assert.deepEqual(await scanProfileLinks(f.active), [])
+})
 
 const target = { desktopVersion: '8.3.6', dshVersion: '0.2.0-rc.2', dshCommit: 'a'.repeat(40), platform: 'win32', architecture: 'x64' }
 async function fixture(t, ids = ['plugin-a', 'plugin-b'], { supportIds = [] } = {}) {

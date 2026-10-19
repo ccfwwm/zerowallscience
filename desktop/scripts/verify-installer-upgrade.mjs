@@ -1,8 +1,8 @@
 import { contract } from '../../tools/build/paths.mjs'
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises'
-import { resolve, join } from 'node:path'
+import { copyFile, mkdir, readFile, writeFile, lstat } from 'node:fs/promises'
+import { resolve, join, basename, parse } from 'node:path'
 import { windowsFileVersion } from '../src/main/update-artifact.ts'
 import { commandRegistrationFingerprint, verifyInstallerTestContract } from '../../tools/packaging/installer-test-contract.mjs'
 
@@ -50,7 +50,18 @@ try {
   assert.equal(unrelated.exitCode, null)
   assert.equal(await windowsFileVersion(executable), `${version}.0`)
   assert.equal(await readFile(sentinel, 'utf8'), 'preserve researcher data')
-  const result = { passed: true, installationScope: 'current-user', elevatedRunner, directory, fileVersion: `${version}.0`, rememberedDirectory: true, runningTargetStopped: true, unrelatedProcessPreserved: true, dataPreserved: true, commandRegistrationUnchanged: true, limitation: elevatedRunner ? 'Isolated current-user install and upgrade executed with an elevated runner; machine-wide installation was not exercised.' : 'Standard-user test; machine-wide UAC consent requires an administrator and was not exercised.' }
+  const pythonSentinel = join(directory, 'Python/preserve-python.txt')
+  await mkdir(join(directory, 'Python'), { recursive: true }); await writeFile(pythonSentinel, 'fixed Python root')
+  const movedDirectory = resolve(process.env.ZEROWALL_TEST_INSTALLER_MOVE_ROOT ?? join(root, 'zws-installer-841-改目录'))
+  assert(basename(movedDirectory).startsWith('zws-installer-841-'), 'Directory move must use an isolated 8.4.1 test destination')
+  assert.notEqual(movedDirectory, directory)
+  assert.equal(await run(installer, ['/S', '/currentuser', '/no-launch', `/D=${movedDirectory}`]), 0)
+  assert.equal(await windowsFileVersion(join(movedDirectory, 'ZeroWallScience.exe')), `${version}.0`)
+  await assert.rejects(lstat(executable), { code: 'ENOENT' })
+  assert.equal(await readFile(sentinel, 'utf8'), 'preserve researcher data')
+  assert.equal(await readFile(pythonSentinel, 'utf8'), 'fixed Python root')
+  assert.equal(unrelated.exitCode, null)
+  const result = { passed: true, installationScope: 'current-user', elevatedRunner, directory, movedDirectory, crossDriveUpgrade: parse(directory).root.toLowerCase() !== parse(movedDirectory).root.toLowerCase(), fileVersion: `${version}.0`, rememberedDirectory: true, runningTargetStopped: true, unrelatedProcessPreserved: true, dataPreserved: true, previousFixedPythonPreserved: true, oldOwnedExecutableRemoved: true, commandRegistrationUnchanged: true, limitation: elevatedRunner ? 'Isolated current-user install and upgrade executed with an elevated runner; machine-wide installation was not exercised.' : 'Standard-user test; machine-wide UAC consent requires an administrator and was not exercised.' }
   await writeFile(join(root, 'upgrade-verification.json'), JSON.stringify(result, null, 2))
   console.log(JSON.stringify(result, null, 2))
 } finally {

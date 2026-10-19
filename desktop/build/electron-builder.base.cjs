@@ -16,6 +16,9 @@ const common = {
   afterPack: async context => {
     if (context.electronPlatformName !== 'win32') return
     const { pathToFileURL } = require('node:url')
+    const { verifyCommandRuntime } = await import(pathToFileURL(path.join(root, 'tools/packaging/verify-command-runtime.mjs')).href)
+    await verifyCommandRuntime({ resourcesRoot: path.join(context.appOutDir, 'resources'), executablePath: path.join(context.appOutDir, 'ZeroWallScience.exe'),
+      report: path.join(buildPaths.verification, 'packaged-command-runtime.json') })
     const { writeInstallerOwnership } = await import(pathToFileURL(path.join(root, 'tools/packaging/installer-ownership.mjs')).href)
     await writeInstallerOwnership(context.appOutDir)
   },
@@ -99,13 +102,9 @@ const common = {
     { from: path.join(resourcePath('brand', 'zerowall'), 'zerowall-icon.png'), to: 'zerowall-icon.png' },
   ],
   win: {
-    // Profile activation and command-line plugin migration create Windows
-    // junctions under the shared user-data root. The packaged application
-    // therefore needs one elevated token for the whole runtime so installs,
-    // updates, enable/disable operations, and Host children use the same
-    // permission boundary. Development runs are unaffected because this is
-    // an electron-builder manifest setting, not an Electron source change.
-    requestedExecutionLevel: 'requireAdministrator',
+    // Account storage, Host and profile operations belong to the launching
+    // user. Only a constrained installer write transaction may elevate.
+    requestedExecutionLevel: 'asInvoker',
     icon: path.join(resourcePath('brand', 'app-icons'), 'icon.ico'),
     target: [{ target: 'nsis', arch: ['x64'] }],
   },

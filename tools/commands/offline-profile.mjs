@@ -7,6 +7,7 @@ import { physicalFs } from './physical-fs.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
 import { renameProfile } from './profile-rename.mjs'
 import { bounded, copyProfileTree } from './profile-copy.mjs'
+import { scanProfileLinks } from './profile-link-scan.mjs'
 import { RETIRED_PLUGIN_IDS, removeRetiredPlugins, removeRetiredPatch, removeRetiredResolutionRules } from './retired-plugins.mjs'
 import { PROFILE_LAYOUT, materializationFile, materializeOfflinePackages, preserveMaterializedDependencies, verifyMaterializedProfile } from './profile-materialization.mjs'
 import { importHistoricalPlugin, verifyHistoricalPluginImports } from './historical-plugin.mjs'
@@ -370,6 +371,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   started = Date.now()
   onPhase({ phase: 'profile-prepare', state: 'started' })
   const active = join(home, 'profiles/web')
+  const damagedLinks = await scanProfileLinks(active)
   const manifest = JSON.parse(await readFile(join(active, 'package.json'), 'utf8'))
   const selection = JSON.parse(await readFile(join(home, 'resources/plugins/selection.json'), 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return '{}' }))
   const disabled = new Set([...(selection.disabled ?? []), ...(manifest.zerowall?.disabledPlugins ?? [])])
@@ -403,7 +405,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     if (removed.has(id) || (!repairOnly && disabled.has(id)) || RETIRED_PLUGIN_IDS.has(id)) continue
     const record = packages.get(id)
     if (!record) throw new Error('Default plugin absent from signed offline closure: ' + id)
-    const installed = await readFile(join(active, 'node_modules', id, 'package.json'), 'utf8').then(JSON.parse).catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
+    const installed = await readFile(join(active, 'node_modules', id, 'package.json'), 'utf8').then(JSON.parse).catch(error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error })
     installedPackages.set(id, installed)
     if (record.core) continue
     if (pins[id] && installed?.version === pins[id]) {
@@ -419,6 +421,10 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
       .some(field => Object.hasOwn(manifest[field] ?? {}, id))
     const provenance = await lstat(join(active, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json'))
       .catch(error => { if (error.code !== 'ENOENT') throw error })
+    if (installed && !owned && !provenance && compareVersions(installed.version, record.version) > 0
+      && damagedLinks.some(link => link.path.startsWith('node_modules/' + id + '/'))) {
+      throw new Error('Nested offline dependency requires a verified plugin import: ' + id + '@' + installed.version + '; exact trusted recovery source is unavailable')
+    }
     // A declared managed package belongs to the desktop profile even when its
     // version happens to be newer than the bundled record. Keeping that tree
     // would also keep its old exact-runtime receipt and reproduce the startup
@@ -430,6 +436,17 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   // Supplied replacements are installed once. A broken old entry or missing
   // old offline directory cannot block an installer that already owns its bytes.
   await copyProfileTree(active, candidate, { filter: path => ![...replacing].some(id => path === 'node_modules/' + id) })
+  if (damagedLinks.length) {
+    const evidence = join(candidate, '.zerowall/link-recovery', randomUUID())
+    await mkdir(evidence, { recursive: true })
+    await writeFile(join(evidence, 'links.json'), JSON.stringify({ source: active, replacing: [...replacing], links: damagedLinks }, null, 2))
+    for (const link of damagedLinks) {
+      if (!link.path.startsWith('.zerowall/install-sources/')) continue
+      const path = join(candidate, link.path)
+      const info = await lstat(path).catch(error => { if (error.code !== 'ENOENT') throw error })
+      if (info?.isSymbolicLink()) await rename(path, join(evidence, encodeURIComponent(link.path)))
+    }
+  }
   const inactiveArchived = []
   // Disabled/removed managed leftovers must not import an obsolete supply.
   // Keep their bytes/links and original declarations as rollback evidence,

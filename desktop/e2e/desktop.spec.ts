@@ -2,6 +2,7 @@ import { contract } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { createServer } from 'node:http'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
@@ -260,7 +261,9 @@ describe('ZeroWall Science Electron', () => {
     await reloadWithoutCredentials(page)
     await page.getByText('markdown-images', { exact: true }).first().click()
     await page.getByText('图片与模型回归', { exact: true }).first().click()
-    await page.getByRole('button', { name: /选择模型，当前/ }).first().waitFor({ timeout: 60_000 })
+    // This isolated profile has no configured model credentials. The pinned
+    // client labels an unselected model explicitly instead of inventing a selection.
+    await page.getByRole('button', { name: /^(请选择模型|选择模型，当前.*)$/u }).first().waitFor({ timeout: 60_000 })
     // This credential-free request finishes itself. Clicking a disappearing
     // stop button races the terminal composer replacement.
     await expect.poll(() => page.getByRole('button', { name: '停止生成', exact: true }).count(), { timeout: 30_000 }).toBe(0)
@@ -495,7 +498,8 @@ describe('ZeroWall Science Electron', () => {
     expect(await page.getByRole('button', { name: '科研项目' }).count()).toBe(0)
     // The workbench is mounted in the right-side guide after a workspace is
     // selected; it is not a global shell button on a fresh renderer.
-    expect(await page.getByRole('button', { name: '科研工作台' }).count()).toBe(0)
+    expect(await page.getByRole('button', { name: '科研工作台' }).evaluateAll(buttons =>
+      buttons.filter(button => !button.closest('[data-sidebar-right-panel]')).length)).toBe(0)
     expect(await page.getByRole('button', { name: 'MCP 连接' }).count()).toBe(0)
     const bootEntries = await page.evaluate(() => {
       const boot = (window as unknown as { __DSH_BOOT__?: { entries?: Array<{ id: string }> } }).__DSH_BOOT__
@@ -670,7 +674,7 @@ describe('ZeroWall Science Electron', () => {
     await expect.poll(() => page.getByRole('dialog', { name: '设置' }).count()).toBe(0)
     await page.getByRole('button', { name: '插件', exact: true }).click()
     await page.getByRole('heading', { name: '插件', exact: true }).waitFor()
-    await page.getByRole('button', { name: /添加插件/ }).waitFor()
+    await page.getByRole('button', { name: '添加插件', exact: true }).waitFor()
     const bundles = await rpc(page, 'pluginManager/listBundles', {})
     const skills = bundles.find((bundle: { name: string }) => bundle.name === '@zerowallscience/plugin-skills')
     expect(skills).toMatchObject({ enabled: true, version: JSON.parse(readFileSync(join(desktopRoot, '../plugins/skills/package.json'), 'utf8')).version })
@@ -686,6 +690,50 @@ describe('ZeroWall Science Electron', () => {
     await page.getByRole('button', { name: '新建会话', exact: true }).first().click()
     await page.locator('[data-plugin-panel]').waitFor({ state: 'hidden' })
   })
+
+  it('reads plugin metadata from the installed command runtime before any installation', async () => {
+    let bundleDeclared = false
+    let requests = 0
+    const server = createServer((_request, response) => {
+      requests++
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ name: 'dsh-ops', 'dist-tags': { latest: '0.3.0' }, versions: { '0.3.0': {
+        name: 'dsh-ops', version: '0.3.0', description: 'Packaged metadata regression fixture',
+        ...(bundleDeclared ? { dsh: { bundle: { patch: 'cordis.patch.yml' } } } : {}),
+      } } }))
+    })
+    await new Promise<void>(accept => server.listen(0, '127.0.0.1', accept))
+    const address = server.address()
+    if (!address || typeof address === 'string') throw new Error('Metadata fixture has no TCP address')
+    const registry = `http://127.0.0.1:${address.port}/`
+    const manifest = join(root, 'zerowall-user-data/harness/profiles/web/package.json')
+    const before = readFileSync(manifest, 'utf8')
+    try {
+      await page.getByRole('button', { name: '插件', exact: true }).click()
+      await page.getByRole('button', { name: '添加插件', exact: true }).click()
+      const dialog = page.getByRole('dialog', { name: '添加插件', exact: true })
+      await dialog.getByRole('textbox', { name: '包名或地址', exact: true }).fill('dsh-ops')
+      await dialog.getByRole('button', { name: /^安装源/ }).click()
+      await page.getByRole('textbox', { name: '自定义地址', exact: true }).fill(registry)
+      await page.keyboard.press('Escape')
+      await dialog.getByRole('button', { name: '安装', exact: true }).click()
+      await expect.poll(() => dialog.getByRole('alert').innerText(), { timeout: 30_000 }).toContain('这个包没有声明组合包')
+      expect(await dialog.getByRole('alert').innerText()).not.toMatch(/ERR_MODULE_NOT_FOUND|无法获取插件信息/)
+      mkdirSync(join(contract.verification, 'electron'), { recursive: true })
+      await dialog.screenshot({ path: join(contract.verification, 'electron/plugin-metadata-query.png') })
+      await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+      bundleDeclared = true
+      const inspection = await rpc(page, 'pluginManager/inspect', { spec: 'dsh-ops', options: { registry } })
+      expect(inspection).toMatchObject({ status: 'accepted', name: 'dsh-ops', version: '0.3.0' })
+      expect(requests).toBeGreaterThanOrEqual(2)
+      expect(readFileSync(manifest, 'utf8')).toBe(before)
+      writeFileSync(join(contract.verification, 'electron/plugin-metadata-query.json'), JSON.stringify({ passed: true,
+        uiQuery: true, acceptedHostInspection: true, profileUnchanged: true, registry: 'isolated loopback fixture', requests }, null, 2))
+    } finally {
+      await new Promise<void>(accept => server.close(() => accept()))
+      await page.getByRole('button', { name: '新建会话', exact: true }).first().click()
+    }
+  }, 60_000)
 
   it('shows environment configuration as a list with AIchem credentials and live model catalog', async () => {
     await page.getByRole('button', { name: '设置' }).click()

@@ -192,12 +192,19 @@ static void browse() {
   IFileDialog* dialog=nullptr;
   if(SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog)))) {
     dialog->SetOptions(FOS_PICKFOLDERS|FOS_FORCEFILESYSTEM); dialog->SetTitle(L"选择安装文件夹");
-    if(SUCCEEDED(dialog->Show(windowHandle))) { IShellItem* item=nullptr; if(SUCCEEDED(dialog->GetResult(&item))) { PWSTR path=nullptr; if(SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH,&path))) { installPath=path; if(installPath.find(L"ZeroWall Science")==std::wstring::npos) installPath+=L"\\ZeroWall Science"; SetWindowTextW(directoryEdit,installPath.c_str()); CoTaskMemFree(path); } item->Release(); } }
+    if(SUCCEEDED(dialog->Show(windowHandle))) { IShellItem* item=nullptr; if(SUCCEEDED(dialog->GetResult(&item))) { PWSTR path=nullptr; if(SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH,&path))) { installPath=path; SetWindowTextW(directoryEdit,installPath.c_str()); CoTaskMemFree(path); } item->Release(); } }
     dialog->Release();
   }
 }
 static bool validatePath() {
   wchar_t value[32768]; GetWindowTextW(directoryEdit,value,32768); installPath=value;
+  while(!installPath.empty()&&iswspace(installPath.front()))installPath.erase(0,1);
+  while(!installPath.empty()&&iswspace(installPath.back()))installPath.pop_back();
+  if(installPath.size()<4 || installPath[1]!=L':' || (installPath[2]!=L'\\'&&installPath[2]!=L'/')) { MessageBoxW(windowHandle,L"请输入本地磁盘上的完整应用文件夹路径。",L"检查安装位置",MB_OK|MB_ICONINFORMATION); return false; }
+  wchar_t canonical[32768]; DWORD length=GetFullPathNameW(installPath.c_str(),32768,canonical,nullptr);
+  if(length&&length<32768)installPath=canonical;
+  while(installPath.size()>3&&installPath.back()==L'\\')installPath.pop_back();
+  SetWindowTextW(directoryEdit,installPath.c_str());
   if(installPath.size()<4 || installPath.size()>220 || installPath[1]!=L':' || installPath[2]!=L'\\' || installPath.find_first_of(L"\"<>|?*\r\n")!=std::wstring::npos) { MessageBoxW(windowHandle,L"请选择本地磁盘下的应用文件夹，不要选择磁盘根目录。",L"检查安装位置",MB_OK|MB_ICONINFORMATION); return false; }
   wchar_t windowsDir[MAX_PATH]; GetWindowsDirectoryW(windowsDir,MAX_PATH);
   std::wstring lowered=installPath; std::transform(lowered.begin(),lowered.end(),lowered.begin(),::towlower);
@@ -205,11 +212,8 @@ static bool validatePath() {
   if(lowered==win || lowered.rfind(win+L"\\",0)==0) { MessageBoxW(windowHandle,L"不能安装到 Windows 系统目录。",L"检查安装位置",MB_OK|MB_ICONWARNING); return false; }
   ULARGE_INTEGER freeBytes; std::wstring root=installPath.substr(0,3);
   if(!GetDiskFreeSpaceExW(root.c_str(),&freeBytes,nullptr,nullptr)||freeBytes.QuadPart<3ULL*1024*1024*1024) { MessageBoxW(windowHandle,L"安装需要至少 3 GB 可用空间，请选择其他磁盘。",L"可用空间不足",MB_OK|MB_ICONWARNING); return false; }
-  int result=SHCreateDirectoryExW(windowHandle,installPath.c_str(),nullptr);
-  if(result!=ERROR_SUCCESS&&result!=ERROR_ALREADY_EXISTS&&result!=ERROR_FILE_EXISTS) { MessageBoxW(windowHandle,L"无法创建安装目录，请选择当前用户可写入的位置。",L"无法安装",MB_OK|MB_ICONWARNING); return false; }
-  auto probe=installPath+L"\\.zerowall-write-test-"+std::to_wstring(GetCurrentProcessId());
-  HANDLE file=CreateFileW(probe.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE,nullptr);
-  if(file==INVALID_HANDLE_VALUE) { MessageBoxW(windowHandle,L"安装目录不可写，请选择当前用户可写入的位置。",L"无法安装",MB_OK|MB_ICONWARNING); return false; } CloseHandle(file); return true;
+  // The outer installer probes access and requests UAC only when needed.
+  return true;
 }
 static void finish(bool launch) { write(L"Action",launch?L"launch":L"close"); finished=true; DestroyWindow(windowHandle); }
 static LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
@@ -263,6 +267,13 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
   int argc; auto argv=CommandLineToArgvW(GetCommandLineW(),&argc);
   if(argc!=3) {if(argv)LocalFree(argv);return 2;}
+  if(wcscmp(argv[1],L"--can-write")==0){
+    std::wstring candidate=argv[2];LocalFree(argv);
+    while(GetFileAttributesW(candidate.c_str())==INVALID_FILE_ATTRIBUTES){auto at=candidate.find_last_of(L"\\/");if(at==std::wstring::npos||at<2)return 2;auto size=at==2?3:at;if(size>=candidate.size())return 2;candidate.resize(size);}
+    auto probe=candidate+L"\\.zerowall-install-probe-"+std::to_wstring(GetCurrentProcessId());
+    HANDLE file=CreateFileW(probe.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE,nullptr);
+    if(file==INVALID_HANDLE_VALUE)return 1;CloseHandle(file);return 0;
+  }
   if(wcscmp(argv[1],L"--check-running")==0||wcscmp(argv[1],L"--stop-running")==0){int result=targetProcesses(argv[2],wcscmp(argv[1],L"--stop-running")==0);LocalFree(argv);return result;}
   statePath=argv[1]; parentPid=_wtoi(argv[2]); LocalFree(argv);
   parentProcess=OpenProcess(SYNCHRONIZE,FALSE,parentPid);

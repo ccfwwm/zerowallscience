@@ -10,7 +10,7 @@ const { parse: parseYaml } = createRequire(resolve(root, 'deepseek-harness/packa
 test('stable profile pins rc.2 and includes the bundled WeChat plugin', async () => {
   const profile = await readFile(resolve(root, 'profiles/generated/stable.yml'), 'utf8')
   assert.match(profile, /channel: stable/)
-  assert.match(profile, /dsh: 0\.2\.0-rc\.2/)
+  assert.match(profile, /dsh: 0\.2\.1-rc\.2/)
   assert.match(profile, /'dsh-wechat'/)
 })
 
@@ -38,7 +38,7 @@ test('better-sidebar contains the merged v0.25.0 compatibility changes', async (
 
 test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-dream-skin'], '10.9.3')
+  assert.equal(desktop.dependencies['dsh-dream-skin'], '10.16.0')
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
   assert.equal((patch.match(/\bid: dream-skin\b/gu) ?? []).length, 1)
   assert.ok(patch.indexOf('id: dream-skin') < patch.indexOf('id: better-sidebar'))
@@ -48,7 +48,7 @@ test('Dream Skin is a single pinned theme layer loaded before ZeroWall UI', asyn
   }
 })
 
-test('Dream Skin 10.9.3 preserves the factory skin and defers wallpaper seeding', async () => {
+test('Dream Skin 10.16.0 preserves the factory skin and defers wallpaper seeding', async () => {
   const source = await readFile(resolve(root, 'desktop/node_modules/dsh-dream-skin/lib/client.js'), 'utf8')
   const defaults = source.match(/const FACTORY_DEFAULTS = \{([\s\S]*?)\n\t\t\};/u)?.[1]
   assert.ok(defaults, 'Dream Skin factory defaults must be present')
@@ -109,14 +109,14 @@ test('all ZeroWall plugins expose a manifest and rc.2 range', async () => {
   for (const name of names) {
     const manifest = JSON.parse(await readFile(resolve(root, `plugins/${name}/zerowall.plugin.json`), 'utf8'))
     assert.match(manifest.name, /^@zerowallscience\/plugin-/)
-    assert.equal(manifest.dsh.min, '0.2.0-rc.2')
-    assert.equal(manifest.dsh.max, '0.2.0-rc.2')
+    assert.equal(manifest.dsh.min, '0.2.1-rc.2')
+    assert.equal(manifest.dsh.max, '0.2.1-rc.2')
   }
 })
 
 test('dsh-free-search directly replaces the removed ZeroWall search plugin', async () => {
   const desktop = JSON.parse(await readFile(resolve(root, 'desktop/package.json'), 'utf8'))
-  assert.equal(desktop.dependencies['dsh-free-search'], '0.8.3')
+  assert.equal(desktop.dependencies['dsh-free-search'], '0.9.4')
   assert.equal(desktop.dependencies['@zerowallscience/plugin-web-search'], undefined)
 
   const patch = await readFile(resolve(root, 'desktop/build/zerowall.patch.yml'), 'utf8')
@@ -134,7 +134,7 @@ test('dsh-free-search directly replaces the removed ZeroWall search plugin', asy
 test('the pinned dsh-free-search package uses current client services and has no self-updater', async () => {
   const packageRoot = resolve(root, 'desktop/node_modules/dsh-free-search')
   const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
-  assert.equal(manifest.version, '0.8.3')
+  assert.equal(manifest.version, '0.9.4')
   assert.equal(manifest.license, 'MIT')
   assert.deepEqual(manifest.dsh.client.inject, [
     '@deepseek-ai/dsh-client-ui-commands',
@@ -151,8 +151,8 @@ test('the pinned dsh-free-search package uses current client services and has no
   assert.match(client, /free-search-engine/u)
 
   const lockfile = parseYaml(await readFile(resolve(root, 'pnpm-lock.yaml'), 'utf8'))
-  assert.equal(lockfile.packages['dsh-free-search@0.8.3'].resolution.integrity,
-    'sha512-GofSod7DqBWzxwLSxQyyLGzkpDr2ZZk10IoivuTadL22efIRvIjRZ6X4VbKJshc7gYpPYXxCYR8E8PkNunYM5w==')
+  assert.equal(lockfile.packages['dsh-free-search@0.9.4'].resolution.integrity,
+    'sha512-EL3nlZDZBysGk2MhfwH/Uec6yRsvUCzKxP+F/Ql5HVC04t53n6mMsYDh78CCpiNK0LyFoR+f+3JecsfllcV0Jw==')
 })
 
 test('About remains the final Settings navigation section', async () => {

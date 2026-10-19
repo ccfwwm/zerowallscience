@@ -96,6 +96,10 @@ async function dependencyAt(source, id) {
  * dependency graph but expose each managed plugin through a physical root. */
 export async function physicalizeProfilePlugins({ profile, ids }) {
   profile = resolve(profile)
+  // Resolve the complete nested graph before replacing any of its root links.
+  // In particular, a package-local dependency must be copied, not linked to
+  // the very node_modules/<dependency> path that we are about to create.
+  const plans = new Map(), roots = []
   for (const id of ids) {
     const root = join(profile, 'node_modules', id), info = await lstat(root).catch(error => { if (error.code !== 'ENOENT') throw error })
     if (!info?.isSymbolicLink()) continue
@@ -103,22 +107,48 @@ export async function physicalizeProfilePlugins({ profile, ids }) {
     if (!inside(profile, source) || /\/(?:resources\/offline|\.zerowall-carriers)\//u.test(source.replaceAll('\\', '/'))) throw new Error('Managed plugin requires authenticated fixed-root migration: ' + id)
     const manifest = await manifestAt(source)
     if (manifest?.name !== id) throw new Error('Fixed-root package identity mismatch: ' + id)
+    roots.push({ id, root, source })
+    plans.set(source, { source, destination: root, manifest })
+  }
+  async function plan(instance) {
+    if (instance.edges) return
+    instance.edges = []
+    for (const dependency of Object.keys({ ...instance.manifest.peerDependencies, ...instance.manifest.dependencies, ...instance.manifest.optionalDependencies })) {
+      if (!/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(dependency) || RETIRED_PLUGIN_IDS.has(dependency)) throw new Error('Invalid fixed-root dependency')
+      const resolved = await dependencyAt(instance.source, dependency)
+      if (!resolved) continue // Shared runtime or compiler-inlined dependency.
+      if (!inside(profile, resolved)) throw new Error('Fixed-root dependency is outside candidate profile: ' + dependency)
+      let child = plans.get(resolved)
+      if (!child && inside(instance.source, resolved)) {
+        child = { source: resolved, destination: join(instance.destination, relative(instance.source, resolved)), manifest: await manifestAt(resolved) }
+        plans.set(resolved, child)
+      }
+      instance.edges.push({ dependency, resolved })
+      if (child) await plan(child)
+    }
+  }
+  for (const instance of [...plans.values()]) await plan(instance)
+  for (const { id, root, source } of roots) {
     const previous = join(profile, '.zerowall/root-links', encodeURIComponent(id) + '-' + Date.now())
     await mkdir(dirname(previous), { recursive: true }); await rename(root, previous)
     // pnpm may emit a relative root link. Its archived location has another
     // parent, so retain the resolved source rather than the old relative text.
     await unlink(previous)
     await symlink(source, previous, process.platform === 'win32' ? 'junction' : 'dir')
-    await cp(source, root, { recursive: true, dereference: false, verbatimSymlinks: true, filter: path => relative(source, path) !== 'node_modules' })
-    for (const dependency of Object.keys({ ...manifest.peerDependencies, ...manifest.dependencies, ...manifest.optionalDependencies })) {
-      if (!/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(dependency) || RETIRED_PLUGIN_IDS.has(dependency)) throw new Error('Invalid fixed-root dependency')
-      const resolved = await dependencyAt(source, dependency)
-      if (!resolved) continue // Shared runtime or compiler-inlined dependency.
-      if (!inside(profile, resolved)) throw new Error('Fixed-root dependency is outside candidate profile: ' + dependency)
-      const link = join(root, 'node_modules', dependency)
-      const destination = inside(source, resolved) ? join(root, relative(source, resolved)) : resolved
-      await mkdir(dirname(link), { recursive: true }); await symlink(destination, link, process.platform === 'win32' ? 'junction' : 'dir')
+  }
+  for (const { source, destination } of plans.values()) {
+    await mkdir(dirname(destination), { recursive: true })
+    await cp(source, destination, { recursive: true, dereference: false, verbatimSymlinks: true, filter: path => relative(source, path) !== 'node_modules' })
+  }
+  for (const instance of plans.values()) for (const { dependency, resolved } of instance.edges) {
+    const link = join(instance.destination, 'node_modules', dependency)
+    const destination = plans.get(resolved)?.destination ?? resolved
+    if (resolve(link) === resolve(destination)) {
+      if (!(await manifestAt(destination))) throw new Error('Fixed-root nested dependency was not materialized: ' + dependency)
+      continue
     }
+    await mkdir(dirname(link), { recursive: true })
+    await symlink(destination, link, process.platform === 'win32' ? 'junction' : 'dir')
   }
 }
 

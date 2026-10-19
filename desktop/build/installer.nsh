@@ -2,17 +2,40 @@
 !include "${__FILEDIR__}\..\out\installer-paths.nsh"
 
 !macro customHeader
-  ; Elevate the installer entry point before .onInit, the modern UI, or any
-  ; installation writes. perMachine controls registration scope, not token.
-  ; The temporary uninstaller-generation executable remains build-time only.
   !ifndef BUILD_UNINSTALLER
-    RequestExecutionLevel admin
+    RequestExecutionLevel user
   !endif
   ; makensis searches its working directory before include directories.
   ; Select the generated section explicitly without replacing the main script
   ; (which would disable electron-builder's uninstaller generation/signing).
   !ifndef BUILD_UNINSTALLER
     !cd "${ZW_NSIS_OVERLAY}"
+    !include "${ZW_NSIS_OVERLAY}\installer-definitions.nsh"
+    Function ZeroWallRegisterUser
+      SetShellVarContext current
+      StrCpy $appExe "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+      StrCpy $keepShortcuts "false"
+      !insertmacro setLinkVars
+      !insertmacro registryAddInstallInfo
+      !insertmacro addStartMenuLink $keepShortcuts
+      !insertmacro addDesktopLink $keepShortcuts
+      ${If} $ZeroWallUiState != ""
+        ReadINIStr $R0 "$ZeroWallUiState" "Install" "DesktopShortcut"
+        ${If} $R0 == "0"
+          Delete "$newDesktopLink"
+        ${EndIf}
+      ${EndIf}
+    FunctionEnd
+    !ifndef ZW_INSTALLER_TEST_MODE
+    Function ZeroWallUserPath
+      nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\commands\installer-user-upgrade.ps1" -InstallRoot "$INSTDIR" -OldInstallRoot "$ZeroWallOldDirectory"'
+      Pop $R0
+      !ifndef ZW_INSTALLER_TEST_MODE
+        nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\commands\install-command-path.ps1" install'
+        Pop $R0
+      !endif
+    FunctionEnd
+    !endif
   !endif
   ShowInstDetails show
   ShowUninstDetails show
@@ -21,11 +44,18 @@
 Var ZeroWallUiState
 Var ZeroWallPerfFile
 Var ZeroWallLogFile
+Var ZeroWallOldDirectory
+!ifndef BUILD_UNINSTALLER
+Var ZeroWallSelectedDirectory
+Var ZeroWallSelectedMode
+Var keepShortcuts
+!endif
 !ifdef BUILD_UNINSTALLER
 !macro customUnInit
   StrCpy $ZeroWallUiState ""
   StrCpy $ZeroWallPerfFile ""
   StrCpy $ZeroWallLogFile ""
+  StrCpy $ZeroWallOldDirectory ""
 !macroend
 !endif
 !ifndef BUILD_UNINSTALLER
@@ -99,9 +129,21 @@ FunctionEnd
   ; owner (HKCU\Software\ZeroWallScience\Command). Production builds leave
   ; this guard undefined and retain the normal registration behavior.
   !ifndef ZW_INSTALLER_TEST_MODE
-  nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\commands\install-command-path.ps1" install'
-  Pop $R0
+  ${If} ${UAC_IsInnerInstance}
+    !insertmacro UAC_AsUser_Call Function ZeroWallUserPath ${UAC_SYNCINSTDIR}
+  ${Else}
+    Call ZeroWallUserPath
+  ${EndIf}
   !endif
+  ${If} $ZeroWallOldDirectory != ""
+  ${AndIf} $ZeroWallOldDirectory != $INSTDIR
+    ; Incoming signed payload and ownership have committed. Remove only files
+    ; listed by the old installation; its Python and user files remain in place.
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\commands\uninstall-owned-files.ps1" -InstallRoot "$ZeroWallOldDirectory" -PreserveIfUnmanaged'
+    Pop $R0
+    Pop $R1
+    !insertmacro ZW_LOG "old-application-cleanup-exit=$R0; $R1"
+  ${EndIf}
   SetDetailsPrint both
   DetailPrint "桌面和开始菜单应用图标已创建，卸载信息已写入。"
   DetailPrint "ZeroWall Science 安装完成。"
@@ -119,7 +161,7 @@ FunctionEnd
     ${Do}
       ReadINIStr $R0 "$ZeroWallUiState" "Install" "Action"
       ${If} $R0 == "launch"
-        Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
+        !insertmacro UAC_AsUser_ExecShell "open" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR" SW_SHOWNORMAL
         ${Break}
       ${EndIf}
       ${If} $R0 == "close"
@@ -131,15 +173,13 @@ FunctionEnd
     SetErrorLevel 0
     Quit
   ${ElseIf} ${Silent}
-    ; Start from the elevated installer so Host and plugin children inherit
-    ; its token. Do not delegate back to the unelevated Explorer process.
     ${If} ${isForceRun}
-      Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --updated'
+      !insertmacro UAC_AsUser_ExecShell "open" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "--updated" "$INSTDIR" SW_SHOWNORMAL
     ${Else}
       ${GetParameters} $R0
       ${GetOptions} $R0 "/no-launch" $R1
       ${If} ${Errors}
-        Exec '"$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
+        !insertmacro UAC_AsUser_ExecShell "open" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "" "$INSTDIR" SW_SHOWNORMAL
       ${EndIf}
     ${EndIf}
     SetErrorLevel 0
@@ -207,23 +247,48 @@ FunctionEnd
     SetErrorLevel 2
     Quit
   ${EndIf}
+  ${If} $ZeroWallOldDirectory != ""
+  ${AndIf} $ZeroWallOldDirectory != $INSTDIR
+    nsExec::Exec '"$PLUGINSDIR\zerowall-process-control.exe" --stop-running "$ZeroWallOldDirectory\${APP_EXECUTABLE_FILENAME}"'
+    Pop $R0
+    ${If} $R0 != 1
+      !insertmacro ZW_LOG "old-executable-still-running; path=$ZeroWallOldDirectory\${APP_EXECUTABLE_FILENAME}"
+      SetErrorLevel 2
+      Quit
+    ${EndIf}
+  ${EndIf}
   !insertmacro ZW_PHASE "extracting"
 !macroend
 
 !macro customInit
+  ${If} ${UAC_IsInnerInstance}
+    !insertmacro UAC_AsUser_GetGlobal $INSTDIR $ZeroWallSelectedDirectory
+    !insertmacro UAC_AsUser_GetGlobal $installMode $ZeroWallSelectedMode
+    !insertmacro UAC_AsUser_GetGlobal $ZeroWallOldDirectory $ZeroWallOldDirectory
+    !insertmacro UAC_AsUser_GetGlobal $ZeroWallUiState $ZeroWallUiState
+    !insertmacro UAC_AsUser_GetGlobal $ZeroWallLogFile $ZeroWallLogFile
+    !insertmacro UAC_AsUser_GetGlobal $ZeroWallPerfFile $ZeroWallPerfFile
+    ${If} $ZeroWallUiState != ""
+      ReadINIStr $R1 "$ZeroWallUiState" "Install" "UiPid"
+      System::Call 'kernel32::OpenProcess(i 0x100000, i 0, i R1)p.s'
+      Pop $ZeroWallUiProcess
+    ${EndIf}
+    ${If} $installMode == "all"
+      SetShellVarContext all
+    ${Else}
+      SetShellVarContext current
+      StrCpy $hasPerMachineInstallation "0"
+    ${EndIf}
+    SetSilent silent
+    Goto zerowall_identity_ready
+  ${EndIf}
   StrCpy $ZeroWallUiState ""
   StrCpy $ZeroWallPerfFile ""
   CreateDirectory "$LOCALAPPDATA\zerowall-science\logs"
   System::Call 'kernel32::GetCurrentProcessId()i.r0'
   StrCpy $ZeroWallLogFile "$LOCALAPPDATA\zerowall-science\logs\installer-${VERSION}-$0.log"
   !insertmacro ZW_LOG "installer-start; version=${VERSION}"
-  ${IfNot} ${UAC_IsAdmin}
-    !insertmacro ZW_LOG "entry-token-not-elevated; abort-before-writes"
-    MessageBox MB_OK|MB_ICONSTOP "安装需要管理员权限，请重新打开安装程序并允许授权。"
-    SetErrorLevel 740
-    Quit
-  ${EndIf}
-  !insertmacro ZW_LOG "entry-token=administrator"
+  !insertmacro ZW_LOG "entry-token=invoker"
   ${GetParameters} $R0
   ${GetOptions} $R0 "/ZW_PERF=" $ZeroWallPerfFile
   ClearErrors
@@ -248,6 +313,7 @@ FunctionEnd
     ; a current-user installation was explicitly selected alongside it.
     StrCpy $hasPerMachineInstallation "0"
   ${EndIf}
+  ReadRegStr $ZeroWallOldDirectory SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
   ${IfNot} ${Silent}
     InitPluginsDir
     StrCpy $ZeroWallUiState "$PLUGINSDIR\zerowall-install.ini"
@@ -295,6 +361,56 @@ FunctionEnd
     SetSilent silent
     !insertmacro ZW_PHASE "preparing"
   ${EndIf}
+  StrCpy $ZeroWallSelectedDirectory $INSTDIR
+  StrCpy $ZeroWallSelectedMode $installMode
+  InitPluginsDir
+  File /oname=$PLUGINSDIR\zerowall-access-check.exe "${ZW_UI_BINARY}"
+  nsExec::ExecToStack '"$PLUGINSDIR\zerowall-access-check.exe" --can-write "$INSTDIR"'
+  Pop $R0
+  Pop $R1
+  ${If} $R0 == 0
+  ${AndIf} $ZeroWallOldDirectory != ""
+  ${AndIf} $ZeroWallOldDirectory != $INSTDIR
+    nsExec::ExecToStack '"$PLUGINSDIR\zerowall-access-check.exe" --can-write "$ZeroWallOldDirectory"'
+    Pop $R0
+    Pop $R1
+  ${EndIf}
+  ${If} $R0 != 0
+  ${OrIf} $installMode == "all"
+    ${IfNot} ${UAC_IsAdmin}
+      !insertmacro ZW_PHASE "elevating"
+      StrCpy $R6 0
+      zerowall_retry_elevation:
+      !insertmacro UAC_RunElevated
+      ${If} $0 == 0
+      ${AndIf} $1 == 3
+        IntOp $R6 $R6 + 1
+        ${If} $R6 < 3
+          Goto zerowall_retry_elevation
+        ${EndIf}
+        StrCpy $0 740
+      ${EndIf}
+      ${If} $0 == 0
+      ${AndIf} $1 == 1
+        ; The wrapper has waited for the inner process. Preserve its result.
+        SetErrorLevel $2
+        Quit
+      ${EndIf}
+      ${If} $0 != 0
+        !insertmacro ZW_LOG "elevation-failed; code=$0"
+        ${If} $ZeroWallUiState != ""
+          WriteINIStr "$ZeroWallUiState" "Install" "Error" "授权已取消或无法获得目录写入权限。用户数据未修改。"
+        ${EndIf}
+        SetErrorLevel $0
+        Quit
+      ${EndIf}
+      ${If} $1 != 2
+        SetErrorLevel 740
+        Quit
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+  zerowall_identity_ready:
   !insertmacro ZW_LOG "install-directory=$INSTDIR; scope=$installMode"
   ; electron-builder skips CHECK_APP_RUNNING for an elevated inner instance.
   ${If} ${UAC_IsInnerInstance}

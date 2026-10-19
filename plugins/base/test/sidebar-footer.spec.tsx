@@ -6,10 +6,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { GithubButton } from '../src/client/GithubButton.js'
 import { WechatStatusButton } from '../src/client/WechatStatusButton.js'
 import { translator } from './locale.js'
+import { SettingsLauncher } from '../src/client/SettingsLauncher.js'
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('sidebar footer actions', () => {
+  it.each([true, false])('opens Settings directly with wide=%s', wide => {
+    const openSettings = vi.fn()
+    render(<SettingsLauncher wide={wide} settingsOpen={false} openSettings={openSettings} openOnboarding={vi.fn()} t={() => '设置'} />)
+    const button = screen.getByRole('button', { name: '设置' })
+    fireEvent.click(button)
+    expect(openSettings).toHaveBeenCalledOnce()
+    expect(button.getAttribute('aria-haspopup')).toBe('dialog')
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
   it('keeps GitHub as a real link without a connection status dot', () => {
     render(<GithubButton wide t={translator()} />)
     const github = screen.getByRole('link', { name: 'GitHub 项目' })

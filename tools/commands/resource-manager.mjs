@@ -256,7 +256,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   }
 
   async function packageVersion(profile, id) {
-    const installed = await json(join(packagePath(profile, id), 'package.json')).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
+    const installed = await json(join(packagePath(profile, id), 'package.json')).catch(error => { if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) return undefined; throw error })
     if (installed) return installed
     if (runtimeModules) return json(join(runtimeModules, pluginIdentity(id), 'package.json')).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
     return undefined
@@ -601,7 +601,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   async function activate(candidate, metadata, completionState = 'complete') {
     // Normalize relative external links before the deeper history move. The
     // signed offline generation itself is never traversed or modified.
-    await requireProfileLayout(active, active, metadata.repairedIds, metadata.repairedDependencyIds)
+    if (metadata.operation !== 'offline-repair') await requireProfileLayout(active, active, metadata.repairedIds, metadata.repairedDependencyIds)
     await requireProfileLayout(candidate, candidate)
     const backup = join(root, 'history', 'zerowall-' + randomUUID())
     await mkdir(resolve(backup, '..'), { recursive: true })
@@ -624,7 +624,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
         // A repair may replace an already broken managed dependency tree.
         // Retain that original snapshot for diagnosis without allowing its
         // missing link to invalidate the fully checked replacement candidate.
-        if (metadata.operation !== 'offline-repair' || error.code !== 'ENOENT') throw error
+        if (metadata.operation !== 'offline-repair' || !['ENOENT', 'ELOOP'].includes(error.code)) throw error
         await atomic(join(backup, 'profile-archive-diagnostic.json'), { code: error.code, reason: 'The pre-repair snapshot already contained a missing dependency target' })
       }
       await renameProfile(candidate, active)
@@ -634,14 +634,26 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       await recordPluginGeneration(metadata, backup)
       return { ...metadata, restarted: true, rollbackSupported: true }
     } catch (error) {
-      if (backedUp) {
-        await stopHost()
-        if (await exists(active)) await archiveProfileCandidate(home, active, 'failed')
-        await renameProfile(backup, active)
-        await requireProfileLayout(active, backup)
-      }
-      await startHost()
-      await atomic(journal, { state: 'rolled-back', backup, ...metadata })
+      const recoveryErrors = []
+      let restored = !backedUp
+      try {
+        if (backedUp) {
+          await stopHost()
+          if (await exists(active)) await archiveProfileCandidate(home, active, 'failed')
+          await renameProfile(backup, active)
+          restored = true
+          try { await requireProfileLayout(active, backup) }
+          catch (layoutError) {
+            // The original may already be broken. Restoring its evidence must
+            // not replace the candidate health failure with a second ELOOP.
+            if (metadata.operation !== 'offline-repair' || !['ENOENT', 'ELOOP'].includes(layoutError.code)) throw layoutError
+            recoveryErrors.push({ phase: 'original-layout', code: layoutError.code, message: layoutError.message })
+          }
+        }
+      } catch (rollbackError) { recoveryErrors.push({ phase: 'rollback', message: rollbackError.message }) }
+      if (restored) try { await startHost() }
+      catch (restartError) { recoveryErrors.push({ phase: 'original-host', message: restartError.message }) }
+      await atomic(journal, { state: restored ? 'rolled-back' : 'rollback-failed', backup, ...metadata, error: error.message, recoveryErrors })
       throw error
     }
   }

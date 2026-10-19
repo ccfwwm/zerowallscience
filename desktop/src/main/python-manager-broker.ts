@@ -5,6 +5,8 @@ import { dirname, delimiter, isAbsolute, join, relative, resolve } from 'node:pa
 import type { McpEnvironmentControllerOptions } from './mcp-environment.js'
 import type { McpEnvironmentStatus, McpPythonInfo } from '../shared/contracts.js'
 import type { PythonEnvironmentRequest } from './python-environment-api.js'
+import { assertWritablePythonRuntimePath } from './python-location.js'
+import { protectedPythonChannel } from './python-protected-channel.js'
 
 interface Worker { child: ChildProcess; identity: string; busy: boolean; retired: boolean; pending: number }
 function canonical(value: any): any { return Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value }
@@ -20,6 +22,8 @@ export class PythonUpdaterService {
   private configuration?: Record<string, unknown>
   private connecting?: Promise<Worker>
   private stopped = false
+  private protected?: Worker
+  private protecting?: Promise<Worker>
   constructor(private options: McpEnvironmentControllerOptions & { resolveWorker: () => Promise<string>; allowDevelopment?: boolean }) {}
   configureManager(config: Record<string, unknown>) { this.configuration = config }
   current() { return this.status }
@@ -33,7 +37,7 @@ export class PythonUpdaterService {
     this.connecting = this.loadWorker().finally(() => { this.connecting = undefined })
     return this.connecting
   }
-  private async loadWorker(): Promise<Worker> {
+  private async loadWorker(protectedMode = false): Promise<Worker> {
     if (this.stopped) throw new Error('Python broker is shutting down.')
     const entry = await this.options.resolveWorker(); const directory = dirname(entry)
     const manifestBytes = await readFile(join(directory, 'worker-manifest.json'))
@@ -69,8 +73,8 @@ export class PythonUpdaterService {
     actual.delete('receipt.json')
     if (manifest.localOnly && this.options.allowDevelopment) actual.delete('development-keys.json')
     if (actual.size !== seen.size || [...actual].some(path => !seen.has(path))) throw new Error('PYTHON_WORKER_FILES: worker closure contains unsigned files.')
-    if (this.active?.identity === identity) return this.active
-    const child = fork(entry, [], { execPath: process.execPath, execArgv: ['--max-old-space-size=256'], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NODE_PATH: [join(directory, 'modules'), process.env.NODE_PATH].filter(Boolean).join(delimiter) }, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] })
+    if (!protectedMode && this.active?.identity === identity) return this.active
+    const child = protectedMode ? await protectedPythonChannel(entry, this.options.runtimeRoot!) : fork(entry, [], { execPath: process.execPath, execArgv: ['--max-old-space-size=256'], env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', NODE_PATH: [join(directory, 'modules'), process.env.NODE_PATH].filter(Boolean).join(delimiter) }, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] })
     const worker: Worker = { child, identity, busy: true, retired: false, pending: 0 }
     this.workers.add(worker); child.stderr?.resume()
     child.on('message', (message: any) => {
@@ -96,6 +100,7 @@ export class PythonUpdaterService {
     const fail = (error: Error) => {
       for (const [id, request] of this.pending) if (request.worker === worker) { this.pending.delete(id); request.reject(error) }
       this.workers.delete(worker); if (this.active === worker) this.active = undefined
+      if (this.protected === worker) this.protected = undefined
       for (const [id, owner] of this.owners) if (owner === worker) this.owners.delete(id)
     }
     child.once('error', fail); child.once('exit', () => fail(new Error('PYTHON_WORKER_EXITED: inspect interrupted tasks before resuming.')))
@@ -109,20 +114,34 @@ export class PythonUpdaterService {
     })
     child.send({ type: 'configure', config: { ...config, manager: this.configuration } })
     await configured
+    if (protectedMode) { this.protected = worker; return worker }
     const previous = this.active; this.active = worker
     if (previous) { previous.retired = true; this.retire(previous) }
     return worker
   }
-  async rpc<T = any>(scope: string, method: string, args: unknown[] = [], taskId?: string): Promise<T> {
+  async rpc<T = any>(scope: string, method: string, args: unknown[] = [], taskId?: string, selected?: Worker): Promise<T> {
     const owner = taskId && this.owners.get(taskId)
-    const worker = owner || await this.connect(); const id = randomUUID(); worker.pending++
+    const worker = selected || owner || await this.connect(); const id = randomUUID(); worker.pending++
     return new Promise((accept, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); worker.pending--; worker.child.send({ type: 'cancel', id }); reject(new Error('PYTHON_RPC_TIMEOUT: inspect task status before retrying.')); this.retire(worker) }, ['pythonInfo', 'pythonCoreInfo', 'pythonPackages'].includes(method) ? 46_000 : 900_000)
       this.pending.set(id, { worker, accept: result => { clearTimeout(timer); accept(result) }, reject: error => { clearTimeout(timer); reject(error) } })
       worker.child.send({ id, scope, method, args }, error => { if (error) { this.pending.delete(id); worker.pending--; clearTimeout(timer); reject(error) } })
     })
   }
-  environmentRequest(request: PythonEnvironmentRequest): Promise<Record<string, unknown>> { return this.rpc('api', 'request', [request], request.taskId) }
+  async environmentRequest(request: PythonEnvironmentRequest): Promise<Record<string, unknown>> {
+    const mutation = ['install_runtime', 'sync', 'apply_sync', 'install_package', 'rollback'].includes(request.action)
+    if (process.platform === 'win32' && mutation && this.options.runtimeRoot) {
+      try { await assertWritablePythonRuntimePath(this.options.runtimeRoot) }
+      catch (error) {
+        if (request.automatic || request.confirm !== true) throw new Error('PYTHON_AUTHORIZATION_REQUIRED: 固定 Python 目录需要写入授权，请在 Python 设置中手动确认安装或同步。', { cause: error })
+        if (request.action === 'install_package') throw new Error('PYTHON_PROTECTED_OPERATION_DENIED: 受保护目录仅接受签名运行时和签名依赖层事务，请通过依赖同步安装。')
+        if (!this.protected) this.protecting ??= this.loadWorker(true).finally(() => { this.protecting = undefined })
+        const worker = this.protected ?? await this.protecting!
+        return this.rpc('api', 'request', [request], request.taskId, worker)
+      }
+    }
+    return this.rpc('api', 'request', [request], request.taskId)
+  }
   resumeAutomaticSyncTask(taskId: string): Promise<Record<string, unknown> | undefined> { return this.rpc('api', 'resumeAutomaticSyncTask', [taskId], taskId) }
   pythonInfo(query = ''): Promise<McpPythonInfo> { return this.rpc('manager', 'pythonInfo', [query]) }
   pythonCoreInfo(): Promise<McpPythonInfo> { return this.rpc('manager', 'pythonCoreInfo') }
