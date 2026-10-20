@@ -13,6 +13,8 @@ import { PROFILE_LAYOUT, materializationFile, physicalizeProfilePlugins, prepare
 import { archiveHistoricalPluginProvenance, verifyHistoricalPluginImports } from './historical-plugin.mjs'
 import { acquireProfileMutation } from './profile-mutation-lock.mjs'
 import { pluginVerificationMode, verifyPluginDocument } from './plugin-verification.mjs'
+import { commitPackagePaths, restorePackagePaths } from './profile-package-commit.mjs'
+import { enqueuePendingPlugin, readPendingPlugin, writePendingPlugin, listPendingPlugins, targetLocked } from './profile-pending.mjs'
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
 async function atomic(path, value, { raw = false } = {}) {
@@ -23,7 +25,7 @@ async function atomic(path, value, { raw = false } = {}) {
 }
 
 /** Signed resource preparation and official DSH profile transactions. */
-export function createResourceManager({ home, keys, target, runPlugin, stopHost, startHost, callHost, applyPython, runtimeModules, offlineSource, local = false, offlineStaging = false, onOfflinePhase = () => {}, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], bundledSkillVersions = {}, defaultPlugins = [] }) {
+export function createResourceManager({ home, keys, target, runPlugin, stopHost: stopHostCallback, startHost: startHostCallback, callHost, readHealth, applyPython, runtimeModules, offlineSource, local = false, offlineStaging = false, onOfflinePhase = () => {}, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], bundledSkillVersions = {}, defaultPlugins = [] }) {
   const root = join(home, 'resources')
   const profiles = join(home, 'profiles')
   const active = join(profiles, 'web')
@@ -32,6 +34,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   const selectionFile = join(pluginStateRoot, 'selection.json')
   let queue = Promise.resolve()
   let selectionBefore
+  let hostNeedsRestart = false, pendingActivationBaseline
+  const stopHost = async () => { await stopHostCallback(); hostNeedsRestart = true }
+  const startHost = async options => { await startHostCallback(options); hostNeedsRestart = false }
   const exclusive = task => { const result = queue.then(async () => {
     const release = await acquireProfileMutation(active)
     try { return await task() } finally { await release() }
@@ -54,14 +59,21 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   })
 
   async function copyProfileSkeleton(source, destination, { pendingIds = [], ...options } = {}) {
-    await copyProfileTree(source, destination, options)
+    const filter = options.filter ?? (() => true)
+    await copyProfileTree(source, destination, { ...options, filter: (path, entry) => !/^\.plugin-manager(?:\/|$)|(?:^|\/)package\.json\.lock(?:\/|$)/u.test(path) && filter(path, entry) })
     const layout = await repairProfileLayout(destination, { from: source, home,
-      pendingRoots: pendingIds.map(id => packagePath(destination, id)) })
+      diagnoseMissingTargets: true, pendingRoots: pendingIds.map(id => packagePath(destination, id)) })
     if (layout.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: use the plugin repair action with the bundled pnpm before activation')
   }
 
   async function prepareMutationCandidate(candidate, replacements, document, { signal } = {}) {
     const manifest = await json(join(active, 'package.json'))
+    // Current profiles resolve only the selected packages in a private pnpm
+    // namespace. An unrelated lost import/source is diagnosed independently.
+    if (manifest.zerowall?.profileLayout >= 3) {
+      await copyProfileSkeleton(active, candidate, { pendingIds: Object.keys(replacements) })
+      return []
+    }
     const missing = []
     for (const [id, spec] of Object.entries(manifest.dependencies ?? {})) {
       if (replacements[id] || !/^(file|link):/u.test(spec) || RETIRED_PLUGIN_IDS.has(id)) continue
@@ -92,7 +104,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     const file = join(candidate, 'package.json')
     const manifest = await json(file)
     const managedIds = bundledPlugins.filter(item => !item.core && item.managed !== false).map(item => item.id)
-    if (forPnpm) await preparePhysicalRootsForPnpm({ profile: candidate, ids: managedIds, manifest })
+    if (forPnpm && !(manifest.zerowall?.profileLayout >= 3)) await preparePhysicalRootsForPnpm({ profile: candidate, ids: managedIds, manifest })
     // Progressive Tools was retired in 8.2.1. Remove stale declarations from
     // copied profiles before pnpm sees them, including profiles created by an
     // older desktop build.
@@ -107,6 +119,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     // file dependencies, including packages absent from older profiles.
     // Only the requested entries are passed to DSH for bundle activation.
     manifest.dependencies = { ...manifest.dependencies, ...replacements }
+    if (forPnpm && Object.keys(replacements).length) await atomic(join(candidate, '.zerowall/resolution-targets.json'), replacements)
     const refreshedIds = new Set([...RETIRED_PLUGIN_IDS, ...Object.keys(replacements)])
     // Installer-owned packages already have their complete runtime closure.
     // Re-resolving their source manifests exposes workspace: dependencies that
@@ -364,11 +377,19 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     if (!pending || pending.state !== 'activating') {
       // Local-only migration of pre-8.3.1 candidate paths; no downloads or pnpm
       // operations run during ordinary startup.
-      const layout = await repairProfileLayout(active, { home })
+      const layout = await repairProfileLayout(active, { home, diagnoseMissingTargets: true })
       if (layout.changed) await atomic(join(root, 'profile-layout-migration.json'), { ...layout, at: new Date().toISOString() })
       return
     }
     const backup = ownedBackup(pending.backup)
+    if (pending.packageTransaction) {
+      const directory = join(backup, 'transaction')
+      const state = await json(join(directory, 'journal.json'))
+      if (state.state === 'committing') await restorePackagePaths(active, directory, state)
+      if (pending.selectionBefore) await atomic(selectionFile, pending.selectionBefore)
+      await atomic(journal, { ...pending, state: 'recovered' })
+      return
+    }
     // Before the first rename (or after recovery has restored the backup),
     // active still contains the complete old profile. Never quarantine it
     // unless there is a complete backup to restore.
@@ -423,7 +444,15 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     try {
       const repairedIds = document.plugins.filter(entry => !entry.core).map(entry => entry.id)
       const repairedDependencyIds = [...new Set(document.files.map(entry => /^modules\/((?:@[^/]+\/)?[^/]+)\/package\.json$/u.exec(entry.path)?.[1]).filter(Boolean))]
-      const activation = await activate(result.candidate, { operation: 'offline-repair', buildId: document.buildId, offlineGeneration: result.digest, repairedIds, repairedDependencyIds })
+      // Layout 3 profiles must use the same exact-path package transaction as
+      // ordinary plugin operations.  Passing the repaired package roots makes
+      // the offline generation replace only those roots plus its shared,
+      // profile-owned dependency namespace; the profile directory itself is
+      // never renamed while Host/renderer handles exist.
+      const activation = await activate(result.candidate, {
+        operation: 'offline-repair', buildId: document.buildId, offlineGeneration: result.digest,
+        repairedIds, repairedDependencyIds, packageIds: repairedIds,
+      })
       await atomic(receiptPath, { state: 'complete', architecture: 7, buildId: document.buildId, changed: result.changed, ...activation })
       return { repaired: true, architecture: 7, changed: result.changed }
     } catch (error) {
@@ -462,6 +491,23 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   }
 
   async function plugin(id, source) { return pluginBatch([id], source, undefined, { install: true }) }
+
+  async function repairPlugin(id, source) {
+    pluginIdentity(id)
+    if (bundledPlugins.some(item => item.id === id && item.managed !== false && !item.core) || source && /^https?:\/\//u.test(source)) return plugin(id, source)
+    const manifest = await json(join(active, 'package.json'))
+    const spec = manifest.dependencies?.[id]
+    if (typeof spec !== 'string') throw new Error('PLUGIN_REPAIR_SOURCE_REQUIRED: re-import this custom plugin from its original source')
+    if (/^(?:file|link):/u.test(spec)) {
+      const path = resolve(active, spec.slice(5))
+      if (path === resolve(active, 'node_modules', id)) {
+        if (!await packageVersion(active, id)) throw new Error('PLUGIN_REPAIR_SOURCE_REQUIRED: re-import this custom plugin from its original source')
+        return mutate(['update', id])
+      }
+      return mutate(['add', spec.slice(0, 5) + path])
+    }
+    return mutate(['add', id + '@' + spec])
+  }
 
   async function pluginBatch(ids, source, snapshot, { signal, report = () => {}, install = false } = {}) {
     if (!Array.isArray(ids) || !ids.length || ids.length > 200 || ids.some(id => typeof id !== 'string')) throw new Error('Invalid plugin batch')
@@ -544,9 +590,14 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   async function normalizeComposition(candidate, removed) {
     const file = join(candidate, 'package.json')
     const manifest = await json(file)
-    await physicalizeProfilePlugins({ profile: candidate, ids: bundledPlugins.filter(item => !item.core && item.managed !== false).map(item => item.id) })
+    const physicalIds = []
+    for (const id of Object.keys(manifest.dependencies ?? {})) {
+      if (await json(join(candidate, 'node_modules', id, 'package.json')).catch(error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error })) physicalIds.push(id)
+    }
+    if (manifest.zerowall?.profileLayout >= 3) await physicalizeProfilePlugins({ profile: candidate, ids: physicalIds })
+    else await physicalizeProfilePlugins({ profile: candidate, ids: physicalIds.filter(id => bundledPlugins.some(item => item.id === id && !item.core && item.managed !== false)) })
     for (const entry of bundledPlugins.filter(item => !item.core && item.managed !== false)) {
-      const installed = await json(join(candidate, 'node_modules', entry.id, 'package.json')).catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
+      const installed = await json(join(candidate, 'node_modules', entry.id, 'package.json')).catch(error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error })
       if (installed && manifest.dependencies?.[entry.id]?.startsWith('link:')) manifest.dependencies[entry.id] = 'link:./node_modules/' + entry.id
     }
     removeRetiredPlugins(manifest)
@@ -599,6 +650,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   }
 
   async function activate(candidate, metadata, completionState = 'complete') {
+    const current = await json(join(active, 'package.json'))
+    if (current.zerowall?.profileLayout >= 3) return activatePackages(candidate, metadata, completionState)
     // Normalize relative external links before the deeper history move. The
     // signed offline generation itself is never traversed or modified.
     if (metadata.operation !== 'offline-repair') await requireProfileLayout(active, active, metadata.repairedIds, metadata.repairedDependencyIds)
@@ -658,8 +711,74 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     }
   }
 
+  async function activatePackages(candidate, metadata, completionState) {
+    await requireProfileLayout(candidate, candidate)
+    const before = await json(join(active, 'package.json')), after = await json(join(candidate, 'package.json'))
+    const ids = new Set(metadata.packageIds ?? [])
+    if (!['enable', 'disable'].includes(metadata.operation)) {
+      for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) for (const id of new Set([...Object.keys(before[field] ?? {}), ...Object.keys(after[field] ?? {})])) {
+        if (before[field]?.[id] !== after[field]?.[id] || (await packageVersion(active, id))?.version !== (await packageVersion(candidate, id))?.version) ids.add(id)
+      }
+      for (const id of metadata.packages ?? []) if (/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id)) ids.add(id)
+    }
+    const backup = join(root, 'history', 'zerowall-' + randomUUID())
+    // A snapshot supplies per-plugin rollback without moving the live profile.
+    await copyProfileSkeleton(active, backup)
+    const directory = join(backup, 'transaction')
+    await mkdir(directory, { recursive: true })
+    const state = { state: 'preparing', schema: 2, items: [], created: Date.now(), pid: process.pid }
+    await atomic(join(directory, 'journal.json'), state)
+    const record = { state: 'activating', backup, candidate, packageTransaction: true, ...metadata, ...(selectionBefore ? { selectionBefore } : {}) }
+    await atomic(journal, record)
+    const baseline = pendingActivationBaseline ?? await readHealth?.().catch(() => undefined)
+    let committed = false
+    try {
+      await stopHost()
+      await commitPackagePaths({ profile: active, candidate, directory, state, ids: [...ids], includeDependencyRoot: metadata.operation === 'offline-repair' })
+      committed = true
+      const affectedIds = [...new Set([...ids, ...(metadata.packageId ? [metadata.packageId] : [])])]
+      await startHost({ baseline, ids: affectedIds, affectedEntries: await affectedPluginEntries(affectedIds, [active, backup]) })
+      // The global journal is the commit decision. Until it is durable recovery
+      // restores exact paths, even if the process dies after health succeeds.
+      await atomic(journal, { ...record, state: completionState })
+      await atomic(join(directory, 'journal.json'), { ...state, state: 'complete' }).catch(() => {})
+      let historyPending = false
+      await recordPluginGeneration({ ...metadata, packageIds: [...ids] }, backup).catch(() => { historyPending = true })
+      return { ...metadata, restarted: true, rollbackSupported: !historyPending, ...(historyPending ? { historyPending } : {}) }
+    } catch (error) {
+      const recoveryErrors = []
+      try {
+        if (committed) await stopHost()
+        if (state.state === 'committing') await restorePackagePaths(active, directory, state)
+      } catch (failure) { recoveryErrors.push({ phase: 'rollback', message: failure.message }) }
+      try { await startHost() } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
+      await atomic(journal, { ...record, state: recoveryErrors.some(item => item.phase === 'rollback') ? 'rollback-failed' : 'rolled-back', error: error.message, recoveryErrors })
+      throw error
+    }
+  }
+
+  async function affectedPluginEntries(ids, directories) {
+    const entries = []
+    const seen = new WeakSet()
+    const collect = value => {
+      if (!value || typeof value !== 'object' || seen.has(value)) return
+      seen.add(value)
+      if (typeof value.name === 'string') entries.push({ name: value.name, ...(typeof value.id === 'string' ? { id: value.id } : {}) })
+      for (const child of Object.values(value)) if (child && typeof child === 'object') collect(child)
+    }
+    for (const directory of directories) for (const id of ids) {
+      const root = join(directory, 'node_modules', id), info = await packageVersion(directory, id)
+      const patches = info?.dsh?.bundle?.patch
+      for (const file of typeof patches === 'string' ? [patches] : Array.isArray(patches) ? patches : []) {
+        if (typeof file !== 'string' || relative(root, resolve(root, file)).startsWith('..') || isAbsolute(file)) throw new Error('Invalid plugin bundle patch path')
+        collect(yaml.parse(await readFile(resolve(root, file), 'utf8')))
+      }
+    }
+    return entries
+  }
+
   async function requireProfileLayout(directory, from, pendingIds = [], pendingDependencyIds = []) {
-    const result = await repairProfileLayout(directory, { from, home, pendingRoots: [
+    const result = await repairProfileLayout(directory, { from, home, diagnoseMissingTargets: true, pendingRoots: [
       ...pendingIds.map(id => packagePath(directory, id)),
       ...pendingDependencyIds.map(id => join(directory, 'node_modules/.zerowall-dependencies/node_modules', id)),
     ] })
@@ -670,6 +789,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
   async function mutate(args, acknowledgedDependents = []) {
     if (!Array.isArray(args) || !args.every(item => typeof item === 'string') || !['add', 'remove', 'update', 'install'].includes(args[0])) throw new Error('Invalid plugin mutation')
     if (args.slice(1).some(retiredPackageSelector)) throw new Error('Plugin has been retired')
+    if (args[0] === 'remove' && (args.length !== 2 || !/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(args[1]))) throw new Error('Remove one plugin identity at a time')
     const generation = 'zerowall'
     const candidate = await prepareProfileCandidate(home)
     await mkdir(candidate, { recursive: true })
@@ -698,7 +818,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
       selection.disabled.delete(args[1])
       await writePluginSelection(selection)
       await atomic(join(candidate, 'package.json'), manifest)
-      if (Object.keys(manifest.dependencies ?? {}).length) await runPlugin(['install'], generation)
+      // Removing a selection with no dependency needs no resolver run.
     } else await runPlugin(args, generation)
     await normalizeComposition(candidate, args[0] === 'remove' ? args[1] : undefined)
     await requireProfileLayout(candidate, active)
@@ -1004,5 +1124,37 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost,
     reads.set(identity, pending)
     return pending
   }
-  return { recover: () => exclusive(recover), repairOffline: source => exclusive(() => repairOffline(source)), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => exclusive(() => selectionTransaction(() => rollbackPlugin(id))), setPluginEnabled: (id, enabled, dependents) => exclusive(() => selectionTransaction(() => setPluginEnabled(id, enabled, dependents))), mutate: (args, dependents) => exclusive(() => selectionTransaction(() => mutate(args, dependents))), updatePlugins: (ids, source, options) => exclusive(() => selectionTransaction(() => pluginBatch(ids, source, undefined, options))), plugin: (id, source) => exclusive(() => selectionTransaction(() => plugin(id, source))), rollback: () => exclusive(() => selectionTransaction(rollback)), update: (kind, source) => exclusive(() => update(kind, source)), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)) }
+  const operations = { mutate, setPluginEnabled, rollbackPlugin, plugin, repairPlugin, updatePlugins: (ids, source) => pluginBatch(ids, source), update, rollback }
+  const pendingAction = (method, args, task) => exclusive(async () => {
+    try { return await selectionTransaction(task ?? (() => operations[method](...args))) }
+    catch (error) { if (!targetLocked(error)) throw error; return enqueuePendingPlugin(home, { method, args }) }
+  })
+  const resumePending = id => exclusive(async () => {
+    const record = await readPendingPlugin(home, id)
+    if (record.state !== 'pending-restart' || !Object.hasOwn(operations, record.intent?.method) || !Array.isArray(record.intent.args)) throw new Error('Pending operation cannot be resumed')
+    // Own the mutation lease before stopping the Host, and preserve its health
+    // baseline across the explicit restart. Other queued operations keep their
+    // Host until this retry has exclusive access to the profile.
+    const baseline = await readHealth?.().catch(() => undefined)
+    pendingActivationBaseline = baseline
+    try {
+      let result
+      try {
+        await stopHost()
+        result = await selectionTransaction(() => operations[record.intent.method](...record.intent.args))
+      } finally {
+        if (hostNeedsRestart) await startHost({ baseline })
+      }
+      await writePendingPlugin(home, { ...record, state: 'complete', completedAt: new Date().toISOString() })
+      return result
+    } catch (error) { if (targetLocked(error)) return { pendingRestart: true, pendingId: id, reason: '目标文件仍被其他进程占用，请关闭占用程序后重试。' }; throw error }
+    finally { pendingActivationBaseline = undefined }
+  })
+  const cancelPending = id => exclusive(async () => {
+    const record = await readPendingPlugin(home, id)
+    if (record.state !== 'pending-restart') throw new Error('Pending operation is already settled')
+    await writePendingPlugin(home, { ...record, state: 'cancelled' })
+    return { cancelled: true }
+  })
+  return { recover: () => exclusive(recover), repairOffline: source => exclusive(() => repairOffline(source)), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => exclusive(() => rollbackMcp(id)), rollbackPlugin: id => pendingAction('rollbackPlugin', [id]), setPluginEnabled: (id, enabled, dependents = []) => pendingAction('setPluginEnabled', [id, enabled, dependents]), mutate: (args, dependents = []) => pendingAction('mutate', [args, dependents]), updatePlugins: (ids, source, options) => pendingAction('updatePlugins', [ids, source], () => pluginBatch(ids, source, undefined, options)), plugin: (id, source) => pendingAction('plugin', [id, source]), repairPlugin: (id, source) => pendingAction('repairPlugin', [id, source]), rollback: () => pendingAction('rollback', []), update: (kind, source) => pendingAction('update', [kind, source]), resource: (kind, id, source) => exclusive(() => resource(kind, id, source)), resumePending, cancelPending, pending: () => listPendingPlugins(home) }
 }

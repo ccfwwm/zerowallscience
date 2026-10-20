@@ -25,6 +25,7 @@ export const zh = {
   enable: '启用',
   remove: '卸载',
   restart: '需要重启 Host',
+  restartAndContinue: '重启 Host 并继续', pendingRestartHint: '目标文件仍被占用，操作尚未完成。可稍后在操作记录中重启 Host 并继续。', 'job_pending-restart': '等待重启 Host',
   signed: '已验签',
   unsigned: '未签名',
   plugins: '插件',
@@ -62,6 +63,7 @@ export const zh = {
 } satisfies Record<string, string>
 
 export const en: typeof zh = {
+  restartAndContinue: 'Restart Host and continue', pendingRestartHint: 'Files are still in use. This operation is pending. Restart Host from the task record when ready.', 'job_pending-restart': 'Waiting for Host restart',
   errorDetails: 'View failure details', rollbackConflict: 'The previous dependencies conflict with current plugins. The current version was kept.',
   activationError: 'Runtime error', activationUnavailable: 'Runtime status unavailable', activationHint: 'Desktop has not reported the runtime status. Installed and enabled do not confirm a runtime health check.', unchecked: 'Updates not checked', summary: 'Resource update summary', lastChecked: 'Last checked', filter: 'Filter resources', filter_all: 'All', filter_updates: 'Has updates', filter_installed: 'Installed', filter_disabled: 'Disabled', filter_missing: 'Not installed / missing', systemCore: 'System core', coreDescription: 'Provided by DSH core and runs with Desktop; no separate activation needed.',
   batchHint: 'Update all downloads and verifies every plugin before one final reload.', batchUnsupported: 'Batch plugin updates require Desktop 8.1.3 or later.', operationComplete: 'Operation complete. Local status refreshed.', pythonHint: 'Manage Python dependency layers here. Configure paths, mirrors, and package diagnostics in Python environment.', packages: 'Packages', pendingPackages: 'Pending packages', pythonUnavailable: 'This layer cannot be installed yet. Check for updates and retry.',

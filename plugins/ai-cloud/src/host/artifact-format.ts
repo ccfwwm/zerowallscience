@@ -52,6 +52,7 @@ export function artifactFormat(data: Uint8Array): { mediaType: string; duration?
     if (!audio && !video) throw new Error('MEDIA_INVALID_MP4')
     return { mediaType: video ? 'video/mp4' : 'audio/mp4', ...(duration !== undefined ? { duration } : {}) }
   }
+  if (bytes.length >= 32 && bytes.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3])) && bytes.subarray(0,4096).includes(Buffer.from('webm'))) return { mediaType: 'video/webm' }
   // ADTS AAC also starts with 0xff; inspect its layer bits before MPEG audio.
   if (bytes.length >= 7 && bytes[0] === 255 && (bytes[1]! & 0xf6) === 0xf0) return { mediaType: 'audio/aac' }
   if (bytes.length >= 4 && bytes.toString('ascii',0,4) === 'fLaC') return { mediaType: 'audio/flac' }

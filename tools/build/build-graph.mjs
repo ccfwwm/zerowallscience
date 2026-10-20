@@ -282,7 +282,7 @@ async function allComponents({ development = false } = {}) {
   const pin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
   const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
   if (!development) await writeJson(join(stageRoot, 'dsh/build-receipt.json'), { commit: pin.commit, version: pin.version, applicationVersion: version, builtAt: dsh.builtAt, compilationFingerprint: dsh.fingerprint })
-  for (const name of ['integrity-runtime', 'dsh-wechat', 'dsh-ppt-maker', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-ssh-ops', 'zotero-harvest', 'dsh-session-notification', 'dsh-archive-manager', 'oh-story-dsh']) await runTask('package-build:' + name)
+  for (const name of ['integrity-runtime', 'dsh-wechat', 'dsh-ppt-maker', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-ssh-ops', 'zotero-harvest', 'dsh-session-notification', 'dsh-archive-manager', 'videos']) await runTask('package-build:' + name)
   // Store is a workspace package with the same independent task contract.
   await runTask('package-build:research-store')
   for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) {

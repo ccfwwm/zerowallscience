@@ -1,7 +1,9 @@
 import type { AiCloudMediaModel } from '@zerowallscience/plugin-account/types'
 
 export interface MediaSelection { groupId: string; modelId: string; profileId: string; operation: string }
-export interface MediaReference { mediaType: string; base64: string; name?: string; role?: string }
+export type MediaReference = { mediaType: string; name?: string; role?: string; duration?: number } & (
+  { base64: string; url?: never } | { url: string; base64?: never }
+)
 export interface MediaRequest extends MediaSelection {
   requestId: string
   prompt: string
@@ -47,7 +49,9 @@ export interface MediaProject {
 export interface MediaJob {
   id: string; sessionId: string; projectId: string; revision: number; kind: MediaKind; prompt: string
   selection?: MediaSelection; parameters: NonNullable<MediaRequest['parameters']>
-  references: Array<{ name: string; mediaType: string; bytes: number; sha256: string; mask?: boolean }>
+  references: Array<{ name: string; mediaType: string; bytes: number; sha256: string; role?: string; source?: 'base64' | 'url'; mask?: boolean }>
+  /** A corrected submission has a new identity; the rejected job stays immutable. */
+  correctedFrom?: string
   estimate?: { currency: string; maximumCharge?: string; total?: string }
   state: string; error?: string; requestId: string; taskId?: string; assets: MediaAsset[]
   /** Local result transfer is independent of the provider's generation status. */
@@ -62,6 +66,8 @@ export interface ZeroWallMediaJobs {
   submitRequested(scope: Pick<MediaScope, 'sessionId' | 'cwd'>, id: string, revision: number): Promise<MediaJob>
   prepare(scope: MediaScope, draft: MediaDraft, id?: string): Promise<MediaJob>
   list(scope: Pick<MediaScope, 'sessionId' | 'cwd'>): Promise<MediaJob[]>
+  /** Host-only lookup for reusing original references; never return through tools. */
+  references(scope: MediaScope, id: string): Promise<MediaReference[]>
   /** Adopt a trusted account history entry and collect the original paid task in the background. */
   recover(scope: MediaScope, requestId: string): Promise<MediaJob>
   refresh(scope: MediaScope, id: string, options?: { background?: boolean; signal?: AbortSignal; automatic?: boolean }): Promise<MediaJob>

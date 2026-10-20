@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
 import { artifactFormat } from './artifact-format.js'
+import { referenceBytes, referenceValue, validateFrameReferences } from './media-reference.js'
 import { mediaAbortable } from './media-abort.js'
 import { mediaRetryAfter, retryableMediaError } from './media-retry.js'
 import type { MediaDraft, MediaJob, MediaReview, MediaScope, MediaRequest, ZeroWallMedia, ZeroWallMediaJobs } from '../shared/media.js'
@@ -89,27 +90,33 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
     return this.mutate([id], async () => {
       if (!/^[a-zA-Z0-9_-]{1,80}$/.test(scope.projectId) || !scope.sessionId || !['image', 'video', 'music'].includes(draft.kind) || !draft.prompt?.trim()) throw new Error('MEDIA_DRAFT_INVALID')
       await mediaTarget(scope.cwd, `media-projects/${scope.projectId}/project.json`)
-      for (const ref of [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])]) {
-        if (!/^[A-Za-z0-9+/]+={0,2}$/.test(ref.base64) || Buffer.byteLength(ref.base64,'base64') > 50*1024*1024 || !/^image\/(png|jpeg|webp)$/.test(ref.mediaType) || artifactFormat(Buffer.from(ref.base64,'base64')).mediaType !== ref.mediaType) throw new Error('MEDIA_REFERENCE_INVALID')
-      }
+      for (const ref of [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])]) referenceBytes(ref)
+      validateFrameReferences(draft.references ?? [])
       if ((draft.references?.length ?? 0) > 16) throw new Error('MEDIA_REFERENCE_LIMIT')
       const owner = await this.owner()
       const old = await this.read(id).catch(e => { if (e.code !== 'ENOENT') throw e; return undefined })
-      if (old) { await this.check(old, scope); if (old.submitted) throw new Error('MEDIA_JOB_ALREADY_SUBMITTED'); if (old.scope.projectId !== scope.projectId) throw new Error('MEDIA_JOB_OWNER_MISMATCH') }
+      if (old) { await this.check(old, scope); if (old.submitted && old.job.state !== 'rejected') throw new Error('MEDIA_JOB_ALREADY_SUBMITTED'); if (old.scope.projectId !== scope.projectId) throw new Error('MEDIA_JOB_OWNER_MISMATCH') }
       if (old && draft.references === undefined && old.draft.references) draft.references = old.draft.references
       if (old && draft.mask === undefined && old.draft.mask) draft.mask = old.draft.mask
       if (draft.selection) {
         const allowed = draft.kind === 'image' ? ['image', 'image_edit', 'gemini_image'] : draft.kind === 'video' ? ['video'] : ['chat_music']
         if (!allowed.includes(draft.selection.operation)) throw new Error('MEDIA_OPERATION_KIND_MISMATCH')
       }
+      const correctedFrom = old?.submitted ? old.job.id : undefined
+      if (correctedFrom) id = randomUUID()
       const now = new Date().toISOString(), revision = (old?.job.revision ?? 0) + 1
       const frozen: MediaDraft = structuredClone(draft), requestId = 'media-' + digest({ scope, id, revision, draft })
       const estimate = draft.selection ? await this.media.estimate({ ...draft.selection, requestId, prompt: draft.prompt, parameters: draft.parameters ?? {}, ...(draft.references ? { references: draft.references } : {}), ...(draft.mask ? { mask: draft.mask } : {}), async: true }) : undefined
       if (estimate && (!estimate.currency || (estimate.maximumCharge === undefined && estimate.total === undefined) || !Number.isFinite(Number(estimate.maximumCharge ?? estimate.total)) || Number(estimate.maximumCharge ?? estimate.total) < 0)) throw new Error('MEDIA_ESTIMATE_UNAVAILABLE')
       if (owner !== await this.owner()) throw new Error('MEDIA_ACCOUNT_CHANGED')
-      const job: MediaJob = { id, sessionId: scope.sessionId, projectId: scope.projectId, revision, kind: draft.kind, prompt: draft.prompt, ...(draft.selection ? { selection: draft.selection } : {}), parameters: draft.parameters ?? {}, references: [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])].map(ref => ({ name: ref.name ?? '参考素材', mediaType: ref.mediaType, bytes: Buffer.byteLength(ref.base64, 'base64'), sha256: digest(Buffer.from(ref.base64, 'base64')), ...(ref === draft.mask ? { mask: true } : {}) })), ...(estimate ? { estimate } : {}), state: estimate ? 'prepared' : 'model-required', requestId, assets: [], createdAt: old?.job.createdAt ?? now, updatedAt: now }
+      const job: MediaJob = { id, sessionId: scope.sessionId, projectId: scope.projectId, revision, kind: draft.kind, prompt: draft.prompt, ...(draft.selection ? { selection: draft.selection } : {}), parameters: draft.parameters ?? {}, references: [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])].map(ref => ({ name: ref.name ?? '参考素材', mediaType: ref.mediaType, bytes: ref.url !== undefined ? 0 : Buffer.byteLength(ref.base64!, 'base64'), sha256: digest(ref.url !== undefined ? referenceValue(ref) : Buffer.from(ref.base64!, 'base64')), source: ref.url !== undefined ? 'url' as const : 'base64' as const, ...(ref.role ? { role: ref.role } : {}), ...(ref === draft.mask ? { mask: true } : {}) })), ...(estimate ? { estimate } : {}), ...(correctedFrom ? { correctedFrom } : {}), state: estimate ? 'prepared' : 'model-required', requestId, assets: [], createdAt: old?.job.createdAt ?? now, updatedAt: now }
       await this.lock(() => this.save({ scope, owner, draft: frozen, job, submitted: false })); return structuredClone(job)
     })
+  }
+  async references(scope: MediaScope, id: string) {
+    const value = await this.read(id); await this.check(value, scope)
+    if (value.scope.projectId !== scope.projectId) throw new Error('MEDIA_JOB_OWNER_MISMATCH')
+    return structuredClone(value.draft.references ?? [])
   }
   async list(scope: Pick<MediaScope, 'sessionId' | 'cwd'>): Promise<MediaJob[]> {
     const owner = await this.owner(), names = await readdir(this.root).catch(e => { if (e.code !== 'ENOENT') throw e; return [] })
@@ -206,11 +213,13 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
         const task = await this.media.submit(this.request(value))
         if (this.disposed) return
         const latest = await this.read(value.job.id); await this.check(latest, value.scope)
-        value = latest; value.job.state = task.status; if (task.taskId) value.job.taskId = task.taskId
-      } catch {
+        value = latest; value.job.state = task.status; if (task.status === 'rejected') value.job.error = '服务端明确拒绝了参考素材格式；请提供对应素材的公网 HTTPS 直链，修正后提交新请求。'; if (task.taskId) value.job.taskId = task.taskId
+      } catch (error) {
         if (this.disposed) return
         value = await this.read(value.job.id)
-        value.job.state = 'submission-uncertain'; value.job.error = '提交状态待核查；请恢复原任务，不要重新生成。'
+        const rejected = (error as any)?.rejected === true
+        value.job.state = rejected ? 'rejected' : 'submission-uncertain'
+        value.job.error = rejected ? (error instanceof Error && error.message.startsWith('MEDIA_REFERENCE_URL_REQUIRED') ? '服务端明确拒绝了参考素材格式；请提供对应素材的公网 HTTPS 直链，修正后提交新请求。' : '请求已被拒绝；请检查模型、参数、费用和账号状态，修正后提交新请求。') : '提交状态待核查；请恢复原任务，不要重新生成。'
       }
       value.job.updatedAt = new Date().toISOString(); await this.lock(async () => { if (!this.disposed) await this.save(value) })
     })().catch(() => {}).finally(() => {
@@ -290,7 +299,7 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
           const querySignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)])
           const task = await mediaAbortable(this.media.query(value.job.requestId, querySignal), querySignal); signal.throwIfAborted()
           if (task.requestId !== value.job.requestId || value.job.taskId && task.taskId !== value.job.taskId) throw new Error('MEDIA_TASK_IDENTITY_MISMATCH')
-          value.job.state = task.status; if (task.taskId) value.job.taskId = task.taskId
+          value.job.state = task.status; if (task.status === 'rejected') value.job.error = '服务端明确拒绝了参考素材格式；请提供对应素材的公网 HTTPS 直链，修正后提交新请求。'; if (task.taskId) value.job.taskId = task.taskId
           if (!['completed', 'succeeded'].includes(task.status)) {
             if (TERMINAL_STATES.includes(task.status)) {
               delete value.job.collection; delete value.job.collectionRetry

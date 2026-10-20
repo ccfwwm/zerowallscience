@@ -1,0 +1,51 @@
+{
+  "name": "@oh-story/dsh",
+  "version": "0.1.17-zws.6",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "媒体创作旧包兼容入口，请使用 @zerowallscience/plugin-videos",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "dsh.bundle.patch.yml",
+    "zerowall.plugin.json",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "dsh.bundle.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@zerowallscience/plugin-videos"
+      ]
+    }
+  },
+  "dependencies": {
+    "@zerowallscience/plugin-videos": "0.2.1"
+  },
+  "zerowall": {
+    "desktop": {
+      "min": "8.4.0"
+    },
+    "dsh": {
+      "min": "0.2.1-rc.2",
+      "max": "0.2.1-rc.2"
+    },
+    "restartRequired": true,
+    "rollbackSupported": true,
+    "capabilities": [
+      "media.compatibility"
+    ],
+    "permissions": [],
+    "renamedTo": "@zerowallscience/plugin-videos"
+  }
+}

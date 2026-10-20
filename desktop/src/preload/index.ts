@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
     getJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-get', taskId) as ResourceJob | undefined,
     statusJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-status', taskId) as ResourceJob | undefined,
     listJobs: async (): Promise<ResourceJob[]> => await ipcRenderer.invoke('desktop:resource-job-list') as ResourceJob[],
+    resumeJob: async (taskId: string): Promise<{ taskId: string }> => ipcRenderer.invoke('desktop:resource-job-resume', taskId),
     retryJob: async (taskId: string): Promise<{ taskId: string }> => await ipcRenderer.invoke('desktop:resource-job-retry', taskId) as { taskId: string },
     cancelJob: async (taskId: string): Promise<ResourceJob | undefined> => await ipcRenderer.invoke('desktop:resource-job-cancel', taskId) as ResourceJob | undefined,
     onJob: (listener: (job: ResourceJob) => void): (() => void) => {

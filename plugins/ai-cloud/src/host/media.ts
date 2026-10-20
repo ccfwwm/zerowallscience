@@ -13,6 +13,7 @@ import { downloadImageBytes } from './image-download.js'
 import { downloadMediaBytes } from './media-download.js'
 import { mediaAbortable } from './media-abort.js'
 import { mediaHttpError } from './media-retry.js'
+import { referenceBytes, referenceValue, validateFrameReferences, MAX_MEDIA_REQUEST_BYTES } from './media-reference.js'
 
 interface Account { current(): Promise<AiCloudAccountSnapshot>; discoverModels(): Promise<AiCloudAccountSnapshot> }
 interface StoredArtifact extends MediaArtifact { source?: string; file?: string }
@@ -86,16 +87,25 @@ export class AiCloudMediaService implements ZeroWallMedia {
     } else if (model.duration.required && model.duration.mode !== 'fixed') throw new Error('MEDIA_DURATION_REQUIRED')
     if (p.n !== undefined && p.n !== 1) throw new Error('MEDIA_OUTPUT_COUNT_REQUIRES_ONE')
     if (p.seed !== undefined && (!Number.isSafeInteger(p.seed) || p.seed < 0)) throw new Error('MEDIA_INVALID_SEED')
-    for (const ref of [...(input.references ?? []), ...(input.mask ? [input.mask] : [])]) {
-      if (!/^image\/(png|jpeg|webp)$/.test(ref.mediaType) || !/^[A-Za-z0-9+/]+={0,2}$/.test(ref.base64)) throw new Error('MEDIA_INVALID_REFERENCE')
-      const isMask = ref === input.mask
-      const limit = model.materials[isMask ? 'mask' : 'image']
-      if (!limit || !limit.max_count || limit.max_count < (isMask ? 1 : input.references?.length ?? 0) || !limit.max_file_bytes || Buffer.byteLength(ref.base64, 'base64') > limit.max_file_bytes) throw new Error('MEDIA_REFERENCE_LIMIT')
-      const actual = artifactFormat(Buffer.from(ref.base64, 'base64'))
-      if (actual.mediaType !== ref.mediaType || (isMask && ref.mediaType !== 'image/png')) throw new Error('MEDIA_INVALID_REFERENCE')
-      const wireFormats = input.operation === 'image_edit' ? ['file', 'file_' + ref.mediaType.split('/')[1]] : model.referenceShape === 'url_object' || model.referenceShape === 'native_content' ? ['data_url_in_url_object'] : ['data_url']
-      if (limit.formats?.length && !wireFormats.some(f => limit.formats!.includes(f))) throw new Error('MEDIA_REFERENCE_FORMAT')
-      if (ref.role && model.referenceShape !== 'native_content') throw new Error('MEDIA_REFERENCE_ROLE_UNSUPPORTED')
+    const references = input.references ?? []
+    if (references.length > 16) throw new Error('MEDIA_REFERENCE_LIMIT')
+    validateFrameReferences(references)
+    const counts: Record<string, number> = {}
+    for (const ref of [...references, ...(input.mask ? [input.mask] : [])]) {
+      const bytes = referenceBytes(ref), isMask = ref === input.mask
+      const kind = isMask ? 'mask' : ref.mediaType.split('/')[0]!
+      counts[kind] = (counts[kind] ?? 0) + 1
+      const limit = model.materials[kind]
+      if (!limit?.max_count || counts[kind]! > limit.max_count || !limit.max_file_bytes || bytes && bytes.length > limit.max_file_bytes) throw new Error('MEDIA_REFERENCE_LIMIT: ' + kind)
+      if (isMask && (ref.mediaType !== 'image/png' || !bytes)) throw new Error('MEDIA_INVALID_REFERENCE')
+      if (input.operation !== 'video' && (kind !== 'image' && !isMask || ref.url !== undefined)) throw new Error('MEDIA_REFERENCE_FORMAT')
+      if (model.requestFormat === 'v6k_url' && ref.url === undefined) throw new Error('MEDIA_PUBLIC_URL_REQUIRED: 当前模型需要公网参考' + ({image:'图片',video:'视频',audio:'音频'}[kind] ?? '素材') + '地址，请提供可直接访问的 HTTPS 链接。')
+      if (input.operation === 'video' && kind !== 'image' && model.requestFormat !== 'yunfei_multimodal' && !(model.requestFormat === 'v6k_url' && limit.reference_field)) throw new Error('MEDIA_REFERENCE_TYPE_UNSUPPORTED: ' + kind)
+      const object = ref.role === 'first_frame' || ref.role === 'last_frame' || model.requestFormat === 'v6k_url' || model.referenceShape === 'url_object' || model.referenceShape === 'native_content'
+      const wireFormats = input.operation === 'image_edit' ? ['file', 'file_' + ref.mediaType.split('/')[1]] : ref.url !== undefined ? [object ? 'public_url_object' : 'public_url_string', object ? 'url_object' : 'url_string'] : [object ? 'data_url_in_url_object' : 'data_url']
+      if (limit.formats?.length && !wireFormats.some(f => limit.formats!.includes(f))) throw new Error('MEDIA_REFERENCE_FORMAT: ' + kind)
+      if (limit.max_duration_seconds != null && ref.duration !== undefined && (!Number.isFinite(ref.duration) || ref.duration <= 0 || ref.duration > Number(limit.max_duration_seconds))) throw new Error('MEDIA_REFERENCE_DURATION_LIMIT: ' + kind)
+      if (ref.role && !['reference', 'reference_image'].includes(ref.role) && model.requestFormat !== 'yunfei_multimodal' && model.referenceShape !== 'native_content') throw new Error('MEDIA_REFERENCE_ROLE_UNSUPPORTED')
     }
     if (input.mask && input.operation !== 'image_edit') throw new Error('MEDIA_MASK_UNSUPPORTED')
   }
@@ -110,12 +120,12 @@ export class AiCloudMediaService implements ZeroWallMedia {
       case 'image_edit': {
         if (!input.references?.length) throw new Error('MEDIA_EDIT_REQUIRES_REFERENCE')
         path = '/v1/images/edits'
-        payload.image = input.references.map(ref => `data:${ref.mediaType};base64,${ref.base64}`)
+        payload.image = input.references.map(ref => referenceValue(ref))
         if (input.mask) payload.mask = `data:${input.mask.mediaType};base64,${input.mask.base64}`
         const form = new FormData()
         for (const [key, value] of Object.entries(payload)) if (!['image', 'mask'].includes(key)) form.set(key, String(value))
-        for (const ref of input.references) form.append('image[]', new Blob([Buffer.from(ref.base64, 'base64')], { type: ref.mediaType }), ref.name ?? 'reference.png')
-        if (input.mask) form.set('mask', new Blob([Buffer.from(input.mask.base64, 'base64')], { type: input.mask.mediaType }), 'mask.png')
+        for (const ref of input.references) form.append('image[]', new Blob([Buffer.from(ref.base64!, 'base64')], { type: ref.mediaType }), ref.name ?? 'reference.png')
+        if (input.mask) form.set('mask', new Blob([Buffer.from(input.mask.base64!, 'base64')], { type: input.mask.mediaType }), 'mask.png')
         return { path, payload, body: form }
       }
       case 'gemini_image':
@@ -126,9 +136,23 @@ export class AiCloudMediaService implements ZeroWallMedia {
         break
       case 'video':
         path = '/v1/videos'
+        if (model.requestFormat === 'yunfei_multimodal' || model.requestFormat === 'v6k_url') {
+          if (model.requestFormat === 'v6k_url') {
+            if (parameters.duration !== undefined) { payload.seconds = parameters.duration; delete payload.duration }
+            if (parameters.aspect_ratio !== undefined) { payload.ratio = parameters.aspect_ratio; delete payload.aspect_ratio }
+          }
+          for (const kind of ['image', 'video', 'audio']) {
+            const refs = (input.references ?? []).filter(ref => ref.mediaType.startsWith(kind + '/'))
+            if (!refs.length) continue
+            const field = model.requestFormat === 'yunfei_multimodal' ? 'reference_' + kind + 's' : kind === 'image' ? 'images' : model.materials[kind]?.reference_field
+            if (!field || !['images','videos','audios','reference_video_urls','reference_audio_urls','reference_videos','reference_audios'].includes(field) && model.requestFormat === 'v6k_url') throw new Error('MEDIA_REFERENCE_SHAPE_UNAVAILABLE')
+            payload[field] = refs.map(ref => model.requestFormat === 'v6k_url' ? { url: referenceValue(ref) } : ref.role === 'first_frame' || ref.role === 'last_frame' ? { url: referenceValue(ref), role: ref.role } : referenceValue(ref))
+          }
+          break
+        }
         if (parameters.duration !== undefined) { payload.seconds = parameters.duration; delete payload.duration }
         if (input.references?.length) {
-          const refs = input.references.map(ref => `data:${ref.mediaType};base64,${ref.base64}`)
+          const refs = input.references.map(ref => referenceValue(ref))
           const field = model.referenceField
           if (!field) throw new Error('MEDIA_REFERENCE_SHAPE_UNAVAILABLE')
           if (model.referenceShape === 'native_content') payload.metadata = { content: input.references.map((ref, i) => ({ type: 'image_url', image_url: { url: refs[i] }, role: ref.role ?? 'reference_image' })) }
@@ -144,14 +168,27 @@ export class AiCloudMediaService implements ZeroWallMedia {
         break
       default: throw new Error('MEDIA_OPERATION_UNAVAILABLE')
     }
-    return { path, payload, body: JSON.stringify(payload) }
+    const body = JSON.stringify(payload)
+    if (Math.max(Buffer.byteLength(body), Buffer.byteLength(JSON.stringify({ operation: input.operation, request: payload }))) > Math.min(MAX_MEDIA_REQUEST_BYTES, model.maxRequestBytes ?? MAX_MEDIA_REQUEST_BYTES)) throw new Error('MEDIA_REQUEST_TOO_LARGE')
+    return { path, payload, body }
   }
 
   private async json(base: string, path: string, key: string, init: RequestInit = {}): Promise<any> {
     const timeout = AbortSignal.timeout(init.method === 'POST' && !path.endsWith('/estimates') ? 185_000 : 30_000)
     const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
     const response = await mediaAbortable(this.fetcher(base + path, { ...init, redirect: 'error', headers: { ...(typeof init.body === 'string' ? { 'content-type': 'application/json' } : {}), ...init.headers, authorization: `Bearer ${key}` }, signal }), signal)
-    if (!response.ok) { void response.body?.cancel().catch(() => {}); throw mediaHttpError('MEDIA_HTTP', response) }
+    if (!response.ok) {
+      const error = mediaHttpError('MEDIA_HTTP', response)
+      // Read only a bounded error envelope; never propagate provider text or URLs.
+      let raw = '', total = 0
+      const reader = response.body?.getReader()
+      try { if (reader) for (;;) { const part = await reader.read(); if (part.done) break; total += part.value.length; if (total > 8192) break; raw += new TextDecoder().decode(part.value) } } finally { await reader?.cancel().catch(() => {}) }
+      try {
+        const value = JSON.parse(raw), code = value.error?.code ?? value.code
+        if ([400,415,422].includes(response.status) && ['unsupported_reference_format','base64_not_supported','reference_url_required'].includes(code)) throw Object.assign(new Error('MEDIA_REFERENCE_URL_REQUIRED: 服务端明确拒绝了参考素材格式；请为相应素材提供公网 HTTPS 直链。'), { rejected: true })
+      } catch (cause) { if ((cause as any)?.rejected) throw cause }
+      throw error
+    }
     return mediaAbortable(response.json(), signal)
   }
 
@@ -182,6 +219,7 @@ export class AiCloudMediaService implements ZeroWallMedia {
     if (old) {
       await this.assertOwner(old, snapshot, key)
       if (old.parametersHash !== parametersHash) throw new Error('MEDIA_IDEMPOTENCY_CONFLICT')
+      if (old.status === 'rejected') throw Object.assign(new Error('MEDIA_REQUEST_REJECTED: 修正素材或参数后请使用新请求。'), { rejected: true })
       if (old.taskId || old.status === 'completed') return old.taskId ? this.query(old.requestId, signal) : dto(old)
       // An uncertain POST can only be replayed with its exact original idempotency
       // key and body. There is no automatic new submission or new paid request.
@@ -194,9 +232,9 @@ export class AiCloudMediaService implements ZeroWallMedia {
       await this.accept(task, reply)
       return dto(task)
     } catch (error) {
-      if (error instanceof Error && /^MEDIA_HTTP_(400|401|403|404|409|413|422|429)$/.test(error.message)) {
+      if (error instanceof Error && (/^MEDIA_HTTP_(400|401|403|404|409|413|415|422|429)$/.test(error.message) || (error as any).rejected)) {
         task.status = 'rejected'; await this.save(task)
-        throw new Error(error.message + ': 请检查模型、参数、费用和账号状态后重试。')
+        throw Object.assign(new Error(error.message + ': 请检查模型、参数、费用和账号状态后重试。'), { rejected: true })
       }
       task.status = 'submission-uncertain'
       await this.save(task)
@@ -213,7 +251,7 @@ export class AiCloudMediaService implements ZeroWallMedia {
     if (reply.model && reply.model !== task.selection.modelId) throw new Error('MEDIA_TASK_IDENTITY_MISMATCH')
     if (reply.status !== undefined && (typeof reply.id !== 'string' || !/^mt_[A-Za-z0-9_-]+$/.test(reply.id))) throw new Error('MEDIA_INVALID_TASK_RESPONSE')
     if (typeof reply.id === 'string' && /^mt_[A-Za-z0-9_-]+$/.test(reply.id)) task.taskId = reply.id
-    task.status = typeof reply.status === 'string' ? reply.status : 'completed'
+    task.status = reply.status === 'failed' && reply.diagnostic === 'reference_url_required' ? 'rejected' : typeof reply.status === 'string' ? reply.status : 'completed'
     if (!task.taskId && !['completed', 'succeeded'].includes(task.status)) throw new Error('MEDIA_INVALID_TASK_RESPONSE')
     const entries: any[] = Array.isArray(reply.data) && reply.data.length ? [...reply.data] : Array.isArray(reply.artifacts) ? [...reply.artifacts] : []
     if (!entries.length) {

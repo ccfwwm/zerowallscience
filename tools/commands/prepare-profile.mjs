@@ -13,7 +13,7 @@ const core = []
 const optionalOverlayIds = new Set([
   'ssh-ops', 'session-notification', 'dream-skin',
   'better-sidebar', 'ppt-maker', 'zotero', 'zotero-harvest',
-  'dsh-wechat', 'archive-manager', 'oh-story',
+  'dsh-wechat', 'archive-manager', 'oh-story', 'videos',
 ])
 for (const line of lines) {
   if (/^    - id:/.test(line)) {
@@ -48,7 +48,9 @@ for (const name of await readdir(join(root, 'plugins'))) {
 const known = new Set(bundled.map(item => item.id))
 const coreIds = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-experimental-voice-input-bundle'])
 const overlayIds = new Set([...core.join('\n').matchAll(/^\s+name: ['"]([^'"]+)['"]/gm)].map(match => match[1]))
-for (const id of [...new Set([...defaults, ...coreIds])]) {
+// Compatibility/support packages are available for existing installs and
+// explicit recovery, without adding a second bundle to default activation.
+for (const id of [...new Set([...defaults, ...coreIds, ...Object.keys(runtimeProfile.offlinePackageDependencies ?? {})])]) {
   if (known.has(id)) continue
   const manifest = JSON.parse(await readFile(join(stageRoot, coreIds.has(id) ? 'runtime/node_modules' : 'offline-profile/modules', id, 'package.json'), 'utf8'))
   bundled.push({ id, version: manifest.version, core: coreIds.has(id), managed: !coreIds.has(id) && !overlayIds.has(id), offline: !coreIds.has(id) })

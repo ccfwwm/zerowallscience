@@ -134,9 +134,45 @@ if (fullOffline) {
     runtimeModules: resolve(asarPath, 'node_modules'),
   })
   if (offlineProbe.blocked.length) throw new Error('New offline import profile unexpectedly blocked')
+  const supportIds = new Set(Object.keys(runtimeProfile.offlinePackageDependencies ?? {}))
   for (const plugin of offlineReceipt.plugins.filter(entry => !entry.core)) {
+    if (supportIds.has(plugin.id)) {
+      if (defaults.includes(plugin.id)) throw new Error('Offline support package must not be activated by default: ' + plugin.id)
+      const installed = await lstat(resolve(offlineProbe.candidate, 'node_modules', plugin.id)).catch(error => { if (error.code !== 'ENOENT') throw error })
+      if (installed) throw new Error('Unselected offline support package was installed by default: ' + plugin.id)
+      continue
+    }
     const info = await lstat(resolve(offlineProbe.candidate, 'node_modules', plugin.id))
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Active plugin root must be a physical profile directory: ' + plugin.id)
+  }
+  if (supportIds.size) {
+    // Support packages remain available to existing installs without adding a
+    // second media bundle to new profiles. Exercise their signed recovery too.
+    const supportHome = await mkdtemp(resolve(tmpdir(), 'zerowall-support-recovery-'))
+    await initializeProfile(supportHome, [], bundledPlugins)
+    const manifestPath = resolve(supportHome, 'profiles/web/package.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.dependencies ??= {}
+    for (const id of supportIds) {
+      const record = offlineReceipt.plugins.find(entry => entry.id === id && !entry.core)
+      if (!record) throw new Error('Offline support package absent from signed receipt: ' + id)
+      manifest.dependencies[id] = record.version
+    }
+    await writeFile(manifestPath, JSON.stringify(manifest))
+    const recovered = await prepareOfflineCandidate({ home: supportHome, source: resolve(packaged.resourcesRoot, 'offline-profile'), keys,
+      target: { desktopVersion: desktopManifest.version, dshVersion: pinnedUpstream.version, dshCommit: pinnedUpstream.commit, platform: process.platform, architecture: process.arch }, defaults: [], bundledPlugins, yaml,
+      runtimeModules: resolve(asarPath, 'node_modules'),
+    })
+    if (recovered.blocked.length) throw new Error('Offline support package recovery unexpectedly blocked')
+    const recoveredManifest = JSON.parse(await readFile(resolve(recovered.candidate, 'package.json'), 'utf8'))
+    for (const id of supportIds) {
+      const info = await lstat(resolve(recovered.candidate, 'node_modules', id))
+      if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Recovered support root must be a physical profile directory: ' + id)
+      const installed = JSON.parse(await readFile(resolve(recovered.candidate, 'node_modules', id, 'package.json'), 'utf8'))
+      if (installed.version !== offlineReceipt.plugins.find(entry => entry.id === id).version) throw new Error('Recovered support package version differs from signed supply: ' + id)
+      if (recoveredManifest.dsh?.profile?.bundles?.includes(id)) throw new Error('Support recovery must preserve bundle activation choices: ' + id)
+    }
+    console.log(`[offline] ${supportIds.size} support packages verified: excluded from defaults and recoverable from signed supply.`)
   }
   // Installation reads the signed bundled source directly. Runtime imports
   // must work without creating a second home-owned offline supply directory.

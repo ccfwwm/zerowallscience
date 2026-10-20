@@ -67,7 +67,7 @@ test('repeated failed updates reuse one staging name and preserve each diagnosti
   assert.equal((await readdir(join(f.home, 'resources/history'))).length, 3)
 }, 'prepare-failure'))
 
-test('a signed closure absent from the old profile installs with real pnpm offline and keeps unrelated selections', async()=>{
+for (const modern of [false, true]) test(`a signed closure installs with real pnpm offline and keeps unrelated selections (layout ${modern ? 3 : 'legacy'})`, async()=>{
  const home=await mkdtemp(join(tmpdir(),'zws-local-closure-'))
  try {
   const account='@zerowallscience/plugin-closure-fixture',sidebar='dsh-sidebar-closure-fixture',peer='dsh-peer-closure-fixture'
@@ -82,6 +82,12 @@ test('a signed closure absent from the old profile installs with real pnpm offli
     manifest.dependencies={[peer]:'file:'+path};await writeFile(file,JSON.stringify(manifest))
    }else resources.push({id,kind:'plugin',version,dependencies,platform:['win32'],architecture:['x64'],desktopRange:{min:'8.1.3'},dshRange:{min:target.dshVersion,max:target.dshVersion},downloadUrl:pathToFileURL(path).href,size:(await readFile(path)).length,sha256:await fileDigest(path),restartRequired:true,rollbackSupported:true})
   }
+  if (modern) {
+   const file=join(home,'profiles/web/package.json'),manifest=JSON.parse(await readFile(file))
+   manifest.zerowall={profileLayout:3};await writeFile(file,JSON.stringify(manifest))
+   await mkdir(join(home,'profiles/web/node_modules',peer),{recursive:true})
+   await writeFile(join(home,'profiles/web/node_modules',peer,'package.json'),JSON.stringify({name:peer,version,peerDependencies:{[sidebar]:version}}))
+  }
   await writeFile(join(home,'profiles/web/pnpm-workspace.yaml'),yaml.stringify({packages:['.'],autoInstallPeers:false,nodeLinker:'hoisted',overrides:{'dsh-auto-review':'file:retired.tgz',custom:'1.2.3'}}))
   const source=join(home,'catalog.json');await writeFile(source,JSON.stringify(signCatalog({schema:1,localOnly:true,resources},pair.privateKey,'test')))
   const before=JSON.parse(await readFile(join(home,'profiles/web/package.json')))
@@ -93,13 +99,15 @@ test('a signed closure absent from the old profile installs with real pnpm offli
    assert.equal(workspace.overrides.custom,'1.2.3')
    assert.equal(args.length,2)
    const pnpm=new URL('../../deepseek-harness/apps/desktop/node_modules/pnpm/bin/pnpm.cjs',import.meta.url)
-   const result=spawnSync(process.execPath,['--expose-internals',pnpm.pathname.replace(/^\/(?:([A-Za-z]:))/,'$1'),...args,'--offline','--ignore-scripts'],{cwd:candidate,encoding:'utf8',timeout:60000})
+   const executor=fileURLToPath(new URL('../../tools/commands/pnpm-executor.mjs',import.meta.url))
+   const result=spawnSync(process.execPath,[...(modern?[executor]:['--expose-internals']),fileURLToPath(pnpm),...args,'--offline','--ignore-scripts'],{cwd:candidate,encoding:'utf8',timeout:60000})
    assert.equal(result.status,0,result.stdout+'\n'+result.stderr)
    assert.equal(JSON.parse(await readFile(join(candidate,'node_modules',sidebar,'package.json'))).version,version)
   }})
   await manager.updatePlugins([account],source)
   const after=JSON.parse(await readFile(join(home,'profiles/web/package.json')))
   assert.deepEqual(after.dsh.profile.bundles,before.dsh.profile.bundles)
+  for (const id of [account,sidebar]) assert.equal(JSON.parse(await readFile(join(home,'profiles/web/node_modules',id,'package.json'))).version,version)
  }finally{await rm(home,{recursive:true,force:true})}
 })
 

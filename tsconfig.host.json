@@ -2438,7 +2438,7 @@
       "path": "./plugins/singlecell/tsconfig.host.json"
     },
     {
-      "path": "./plugins/oh-story-dsh/tsconfig.host.json"
+      "path": "./plugins/videos/tsconfig.host.json"
     }
   ]
 }

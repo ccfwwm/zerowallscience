@@ -85,7 +85,7 @@ sources.push(await packageSource('dsh-wechat'))
 // Optional catalog plugins do not require a desktop offline-profile build.
 const integrations = JSON.parse(await readFile(join(root, 'config/integrations/upstream-sources.json'), 'utf8'))
 for (const integration of Object.values(integrations)) {
-  const source = integrationPublishSource(integration, { root, stageRoot })
+  const source = integrationPublishSource(integration, { root, stageRoot, selectedPlugin })
   if (!source) continue
   // A missing reviewed runtime is a failed publication prerequisite, not
   // permission to change an existing version's archive shape.

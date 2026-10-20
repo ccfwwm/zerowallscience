@@ -48,7 +48,7 @@
         "@dsh-external/zotero-harvest",
         "dsh-wechat",
         "@michengai/dsh-archive-manager",
-        "@oh-story/dsh",
+        "@zerowallscience/plugin-videos",
         "@zerowallscience/plugin-base",
         "@zerowallscience/plugin-secrets",
         "@zerowallscience/plugin-environment",
@@ -88,7 +88,7 @@
         "@dsh-external/zotero-harvest",
         "dsh-wechat",
         "@michengai/dsh-archive-manager",
-        "@oh-story/dsh",
+        "@zerowallscience/plugin-videos",
         "@zerowallscience/plugin-base",
         "@zerowallscience/plugin-secrets",
         "@zerowallscience/plugin-environment",
@@ -128,7 +128,7 @@
         "@dsh-external/zotero-harvest",
         "dsh-wechat",
         "@michengai/dsh-archive-manager",
-        "@oh-story/dsh",
+        "@zerowallscience/plugin-videos",
         "@zerowallscience/plugin-base",
         "@zerowallscience/plugin-secrets",
         "@zerowallscience/plugin-environment",
@@ -247,13 +247,13 @@
       "productionPath": "resources/offline-profile/modules/@michengai/dsh-archive-manager"
     },
     {
-      "package": "@oh-story/dsh",
+      "package": "@zerowallscience/plugin-videos",
       "version": "workspace:*",
       "owner": "third-party",
       "registrationSource": "user-profile-bundle",
       "source": "desktop/package.json",
       "loadOrder": 11,
-      "productionPath": "resources/offline-profile/modules/@oh-story/dsh"
+      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-videos"
     },
     {
       "package": "dsh-free-search",
@@ -269,7 +269,7 @@
     {
       "id": "base",
       "package": "@zerowallscience/plugin-base",
-      "version": "0.1.22",
+      "version": "0.1.23",
       "source": "plugins/base",
       "manifest": "plugins/base/zerowall.plugin.json",
       "client": true,
@@ -402,7 +402,7 @@
     {
       "id": "account",
       "package": "@zerowallscience/plugin-account",
-      "version": "0.1.12",
+      "version": "0.1.13",
       "source": "plugins/account",
       "manifest": "plugins/account/zerowall.plugin.json",
       "client": true,
@@ -422,7 +422,7 @@
     {
       "id": "ai-cloud",
       "package": "@zerowallscience/plugin-ai-cloud",
-      "version": "0.1.28",
+      "version": "0.1.29",
       "source": "plugins/ai-cloud",
       "manifest": "plugins/ai-cloud/zerowall.plugin.json",
       "client": true,
@@ -475,7 +475,7 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "0.2.29",
+      "version": "0.2.30",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
@@ -777,7 +777,7 @@
     {
       "id": "extension-center",
       "package": "@zerowallscience/plugin-extension-center",
-      "version": "0.1.14",
+      "version": "0.1.15",
       "source": "plugins/extension-center",
       "manifest": "plugins/extension-center/zerowall.plugin.json",
       "client": true,

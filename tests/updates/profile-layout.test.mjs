@@ -62,6 +62,27 @@ test('strict validation detects an unchanged dangling internal link', async t =>
   assert.equal((await repairProfileLayout(f.candidate)).pendingTargets, undefined)
 })
 
+test('relocation validates multihop Junctions against the entire planned graph', async t => {
+  const f = await deferredFixture(t)
+  await rm(f.link)
+  const intermediate = join(f.candidate, 'node_modules/intermediate')
+  await mkdir(join(f.candidate, '.zerowall/install-sources/closure/assets'), { recursive: true })
+  await symlink(join(f.active, '.zerowall/install-sources/closure'), intermediate, process.platform === 'win32' ? 'junction' : 'dir')
+  await symlink(join(f.active, 'node_modules/intermediate/assets'), f.link, process.platform === 'win32' ? 'junction' : 'dir')
+  await rm(f.active, { recursive: true, force: true })
+  await repairProfileLayout(f.candidate, { from: f.active, home: f.home })
+  assert.equal(await realpath(f.link), await realpath(join(f.candidate, '.zerowall/install-sources/closure/assets')))
+})
+
+test('diagnostic relocation isolates an unrelated broken link while strict validation still rejects it', async t => {
+  const f = await deferredFixture(t)
+  await rm(f.active, { recursive: true, force: true })
+  const result = await repairProfileLayout(f.candidate, { from: f.active, diagnoseMissingTargets: true })
+  assert.deepEqual(result.brokenTargets, [f.target])
+  assert.equal(await readlink(f.link), f.oldTarget)
+  await assert.rejects(repairProfileLayout(f.candidate, { from: f.active }), { code: 'ENOENT' })
+})
+
 test('real bundled pnpm can install and remove after candidate activation and history restoration', async t => {
   const root = await mkdtemp(join(tmpdir(), 'zws-layout-'))
   t.after(() => rm(root, { recursive: true, force: true }))

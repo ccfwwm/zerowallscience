@@ -1,0 +1,20 @@
+{
+  "name": "@oh-story/dsh",
+  "version": "0.1.17-zws.6",
+  "desktop": {
+    "min": "8.4.0"
+  },
+  "dsh": {
+    "min": "0.2.1-rc.2",
+    "max": "0.2.1-rc.2"
+  },
+  "restartRequired": true,
+  "rollbackSupported": true,
+  "capabilities": [
+    "media.compatibility"
+  ],
+  "permissions": [],
+  "renamedTo": "@zerowallscience/plugin-videos",
+  "host": "./index.js",
+  "client": "./client.js"
+}

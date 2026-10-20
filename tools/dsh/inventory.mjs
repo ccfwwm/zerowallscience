@@ -23,7 +23,7 @@ const thirdPartyOrder = [
   '@dsh-external/zotero-harvest',
   'dsh-wechat',
   '@michengai/dsh-archive-manager',
-  '@oh-story/dsh',
+  '@zerowallscience/plugin-videos',
 ]
 const zeroWallOrder = [
   'base', 'secrets', 'environment', 'desktop-compat', 'projects', 'mcp',

@@ -4,6 +4,13 @@ import { join } from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { integrationPublishSource, usesReviewedRuntime } from './publish-source.mjs'
 
+test('targeted native packaging does not require unrelated reviewed desktop projections', () => {
+  const integration = { package:'@dsh-external/zotero-harvest', source:'plugins/zotero-harvest' }
+  const roots = { root:'/repo', stageRoot:'/new-component-stage', selectedPlugin:'videos' }
+  assert.equal(integrationPublishSource(integration, roots), undefined)
+  assert.equal(integrationPublishSource(integration, {...roots,selectedPlugin:'zotero-harvest'}), join('/new-component-stage','offline-profile/modules/@dsh-external/zotero-harvest'))
+})
+
 test('only established runtime-only adapters use the reviewed projection', () => {
   const roots = { root: '/repo', stageRoot: '/stage' }
   for (const name of ['@dingyi222666/dsh-session-notification', '@dsh-external/zotero-harvest']) {
@@ -11,7 +18,7 @@ test('only established runtime-only adapters use the reviewed projection', () =>
     assert.equal(usesReviewedRuntime(integration), true)
     assert.equal(integrationPublishSource(integration, roots), join('/stage', 'offline-profile/modules', name))
   }
-  for (const name of ['dsh-better-sidebar', '@michengai/dsh-archive-manager', '@oh-story/dsh', '@zerowallscience/plugin-base']) {
+  for (const name of ['dsh-better-sidebar', '@michengai/dsh-archive-manager', '@zerowallscience/plugin-videos', '@zerowallscience/plugin-base']) {
     const integration = { package: name, source: 'plugins/example', catalogOptional: true }
     assert.equal(usesReviewedRuntime(integration), false)
     assert.equal(integrationPublishSource(integration, roots), join('/repo', 'plugins/example'))

@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 /** Runtime-only publication is an explicit per-adapter contract, never a
  * consequence of catalog visibility or the availability of a desktop stage. */
@@ -13,8 +13,9 @@ export function usesReviewedRuntime(integration) {
   return reviewedRuntimePackages.has(integration?.package)
 }
 
-export function integrationPublishSource(integration, { root, stageRoot }) {
+export function integrationPublishSource(integration, { root, stageRoot, selectedPlugin }) {
   if (!integration?.package || !integration.source) return undefined
+  if (selectedPlugin && selectedPlugin !== integration.package && selectedPlugin !== basename(integration.source)) return undefined
   if (usesReviewedRuntime(integration)) return join(stageRoot, 'offline-profile', 'modules', integration.package)
   return join(root, integration.source)
 }

@@ -24,6 +24,7 @@ test('rejects stale plugin bytes and a different Harness build even when version
     await put('config/integrations/upstream-sources.json', { version: '6.7.0', dreamSkin: { resourceVersion: '10.16.1-zws.2' } })
     await put('tools/packaging/adapt-dream-skin.mjs', 'current adapter')
     await put('tools/build/stamp-desktop-version.mjs', 'version stamp')
+    await put('config/layout/runtime-profile.json', { corePlugins: ['@zerowallscience/plugin-base'] })
     const receipt = { commit, version: '0.1.5-rc.2', applicationVersion: '6.7.0', builtAt: '2026-09-20', recipes: await runtimeRecipes(root) }
     await put('package.json', { version: '6.7.0' })
     await put('config/deepseek-harness/upstream.json', { commit, version: receipt.version })

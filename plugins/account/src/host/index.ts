@@ -561,6 +561,7 @@ function parseMediaCapabilities(body: string, group: AvailableGroup, baseUrl: st
     const materials: AiCloudMediaModel['materials'] = {}
     if (isRecord(raw.materials)) for (const [key, v] of Object.entries(raw.materials)) if (isRecord(v)) materials[key] = {
       formats: strings(v.formats),
+      ...(typeof v.reference_field === 'string' ? { reference_field: v.reference_field } : {}),
       ...(typeof v.max_count === 'number' ? { max_count: v.max_count } : {}),
       ...(typeof v.max_file_bytes === 'number' ? { max_file_bytes: v.max_file_bytes } : {}),
       ...(typeof v.max_duration_seconds === 'string' ? { max_duration_seconds: v.max_duration_seconds } : {}),
@@ -571,6 +572,7 @@ function parseMediaCapabilities(body: string, group: AvailableGroup, baseUrl: st
       version: typeof raw.version === 'string' ? raw.version : '', mediaType: raw.media_type as AiCloudMediaModel['mediaType'], operations: strings(raw.operations),
       ...(typeof raw.reference_field === 'string' ? { referenceField: raw.reference_field } : {}),
       ...(typeof raw.reference_shape === 'string' ? { referenceShape: raw.reference_shape } : {}),
+      requestFormat: raw.request_format === undefined || raw.request_format === 'legacy' ? 'legacy' : raw.request_format === 'yunfei_multimodal' || raw.request_format === 'v6k_url' ? raw.request_format : (() => { throw new Error('INVALID_MEDIA_REQUEST_FORMAT') })(),
       duration: { ...(typeof duration.mode === 'string' ? { mode: duration.mode } : {}), values: Array.isArray(duration.values) ? duration.values.filter((x): x is number => typeof x === 'number') : [],
         ...Object.fromEntries(['min', 'max', 'default', 'required'].filter(key => ['number', 'boolean'].includes(typeof duration[key])).map(key => [key, duration[key]])) },
       sizes: strings(raw.sizes), resolutions: strings(raw.resolutions), aspectRatios: strings(raw.aspect_ratios), qualities: raw.media_type === 'image' ? imageQualityChoices(raw.model, strings(raw.qualities), group.name) : strings(raw.qualities), formats: strings(raw.formats), materials,

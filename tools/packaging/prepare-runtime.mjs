@@ -49,8 +49,9 @@ const workspaceModules = resolve(root, 'node_modules')
 const zerowallPackageRoots = [
   resolve(await packageSource('integrity-runtime')),
   ...await Promise.all(runtimeProfile.corePackageDependencies.map(async name => resolve(await packageSource(name)))),
+  ...(offlineProfile ? await Promise.all(Object.values(runtimeProfile.offlinePackageDependencies ?? {}).map(async name => resolve(await packageSource(name)))) : []),
   ...await pluginRoots(resolve(root, 'plugins'), new Set(offlineProfile ? configuredDefaults : runtimeProfile.corePlugins)),
-  ...(offlineProfile ? await Promise.all(['dsh-ssh-ops', 'dsh-session-notification', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-wechat', 'zotero-harvest', 'dsh-archive-manager', 'oh-story-dsh'].map(async name => resolve(await packageSource(name)))) : []),
+  ...(offlineProfile ? await Promise.all(['dsh-ssh-ops', 'dsh-session-notification', 'dsh-better-sidebar', 'dsh-file-review', 'dsh-wechat', 'zotero-harvest', 'dsh-archive-manager', 'videos'].map(async name => resolve(await packageSource(name)))) : []),
   ...(offlineProfile ? [resolve(root, 'plugins/research-store')] : []),
 ]
 const desktopRuntimeSeeds = [
@@ -127,7 +128,7 @@ await rm(resolve(expectedOutputParent, 'build-receipt.json'), { force: true })
 await removeTree(outputRoot)
 await mkdir(outputRoot, { recursive: true })
 
-const queue = [...new Set(offlineProfile ? [...configuredDefaults, '@zerowallscience/integrity-runtime', '@zerowallscience/research-store'] : [...dshNames, ...workspacePackages.keys(), ...desktopRuntimeSeeds])].map(name => ({ name, optional: false }))
+const queue = [...new Set(offlineProfile ? [...configuredDefaults, ...Object.keys(runtimeProfile.offlinePackageDependencies ?? {}), '@zerowallscience/integrity-runtime', '@zerowallscience/research-store'] : [...dshNames, ...workspacePackages.keys(), ...desktopRuntimeSeeds])].map(name => ({ name, optional: false }))
 const copiedTargets = new Map()
 const packageRecords = []
 const topLevelPackages = new Map()

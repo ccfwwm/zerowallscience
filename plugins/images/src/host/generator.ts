@@ -12,6 +12,7 @@ import { isImageGenerationGroup, uniqueMediaModels } from '@zerowallscience/plug
 import { withPresentationLock } from './visual-assets.js'
 import { imageConcurrency, withImageSlot } from './image-concurrency.js'
 
+type ImageReference = Extract<NonNullable<MediaRequest['mask']>, { base64: string }>
 const MAX_INPUT_IMAGES = 16
 const MAX_INPUT_IMAGE_BYTES = 50 * 1024 * 1024
 const MAX_OUTPUT_IMAGE_BYTES = 64 * 1024 * 1024
@@ -278,7 +279,7 @@ export class AiCloudImageGenerator {
     throw new Error('请在环境配置中选择名称含“图片”或“生图”的分组中的生图模型；历史选择失效时需重新选择。')
   }
 
-  private async imageResponse(model: AiCloudManagedModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: MediaRequest['references']; mask?: MediaRequest['mask'] }, signal?: AbortSignal): Promise<Response> {
+  private async imageResponse(model: AiCloudManagedModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
     if (model.capability === 'media') return this.mediaResponse(model as AiCloudMediaModel, input, signal)
     const url = new URL(model.baseUrl)
     if (url.protocol !== 'https:' || !['hkcode.aicodeme.xyz', 'code.aicodeme.xyz', 'code.aicodeme.cn'].includes(url.hostname) || url.port || url.username || url.password || url.search || url.hash || !['/v1', '/v1/'].includes(url.pathname)) throw new Error('IMAGE_UNTRUSTED_GATEWAY')
@@ -325,7 +326,7 @@ export class AiCloudImageGenerator {
     }
   }
 
-  private async mediaResponse(model: AiCloudMediaModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: MediaRequest['references']; mask?: MediaRequest['mask'] }, signal?: AbortSignal): Promise<Response> {
+  private async mediaResponse(model: AiCloudMediaModel, input: { prompt: string; size: ImageSize; quality: ImageGenerationQuality; requestId: string; references?: ImageReference[]; mask?: ImageReference }, signal?: AbortSignal): Promise<Response> {
     const started = performance.now()
     const editing = (input.references?.length ?? 0) > 0
     const operation = model.operations.includes('gemini_image') ? 'gemini_image' : editing ? 'image_edit' : 'image'

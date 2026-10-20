@@ -95,21 +95,34 @@ export async function preparePnpmResolution({ profile, manifest, args }) {
   if (['update', 'up', 'upgrade'].includes(command) && !operands.length) {
     for (const field of fields) for (const id of Object.keys(manifest[field] ?? {})) targets.add(id)
   }
+  // Resource candidates authorize the complete verified signed closure, even
+  // though only its requested entry is passed to DSH for bundle activation.
+  const extraTargets = await read(join(profile, '.zerowall/resolution-targets.json')).catch(error => { if (error.code !== 'ENOENT') throw error; return {} })
+  for (const [id, spec] of Object.entries(extraTargets)) {
+    if (packageName(id) !== id || manifest.dependencies?.[id] !== spec || !/^file:/u.test(spec)) throw new Error('PLUGIN_RESOLUTION_TARGET_INVALID')
+    targets.add(id)
+  }
   const resolvedArgs = [...args]
   for (let index = 1; index < resolvedArgs.length; index++) {
     const value = resolvedArgs[index]
     const prefix = /^(file:|link:)/u.exec(value)?.[0]
     if (prefix || /^(?:\.{1,2}[\\/]|[A-Za-z]:[\\/]|\/)/u.test(value) || /\.(?:tgz|tar\.gz)$/u.test(value)) {
-      resolvedArgs[index] = (prefix ?? '') + resolve(profile, prefix ? value.slice(prefix.length) : value)
+      // An imported plugin is an installed snapshot at its fixed root. pnpm's
+      // link: leaves its runtime graph outside the transaction; file: resolves
+      // the complete graph into this private namespace before publication.
+      resolvedArgs[index] = (prefix === 'link:' ? 'file:' : prefix ?? '') + resolve(profile, prefix ? value.slice(prefix.length) : value)
     }
   }
-  const retained = new Map()
+  const retained = new Map(), damaged = new Map()
   for (const field of fields) for (const [id, spec] of Object.entries(manifest[field] ?? {})) {
     if (targets.has(id)) {
       if (/^(?:file|link):/u.test(spec)) manifest[field][id] = spec.slice(0, 5) + resolve(profile, spec.slice(5))
       continue
     }
-    const root = join(profile, 'node_modules', id), installed = await read(join(root, 'package.json'))
+    const root = join(profile, 'node_modules', id), installed = await read(join(root, 'package.json')).catch(error => {
+      if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error
+    })
+    if (!installed) { damaged.set(id, { field, spec }); delete manifest[field][id]; continue }
     if (installed.name !== id) throw new Error('PLUGIN_RETAINED_IDENTITY_MISMATCH: ' + id)
     retained.set(id, { field, spec, root, version: installed.version, source: await realpath(root) })
     manifest[field][id] = 'link:' + root
@@ -126,30 +139,38 @@ export async function preparePnpmResolution({ profile, manifest, args }) {
   // No workspace discovery, stale resolver snapshots, or self-link overrides.
   delete workspace.packages
   workspace.overrides ??= {}
-  for (const id of [...retained.keys(), ...targets]) delete workspace.overrides[id]
+  for (const id of [...retained.keys(), ...targets, ...damaged.keys()]) delete workspace.overrides[id]
+  // Signed resource closures supply verified archives for transitive edges as
+  // well as direct entries. Keep those edges pinned to their authenticated bytes.
+  for (const [id, spec] of Object.entries(extraTargets)) workspace.overrides[id] = spec
   for (const [id, item] of retained) workspace.overrides[id] = 'link:' + item.root
   workspace.autoInstallPeers = false
   workspace.linkWorkspacePackages = false
   await writeFile(join(directory, 'pnpm-workspace.yaml'), stringify(workspace))
   if (await exists(join(profile, '.npmrc'))) await cp(join(profile, '.npmrc'), join(directory, '.npmrc'))
-  return { directory, profile, original, retained, graph, targets, args: resolvedArgs, removed: new Set() }
+  return { directory, profile, original, retained, damaged, graph, targets, args: resolvedArgs, removed: new Set() }
 }
 
 export async function mergePnpmResolution(state) {
-  const { profile, directory, original, retained, targets } = state
+  const { profile, directory, original, retained, targets, damaged } = state
   if (JSON.stringify(await retainedGraph(retained)) !== JSON.stringify(state.graph)) throw new Error('PLUGIN_RETAINED_CLOSURE_CHANGED: retained files or dependency instances were modified during resolution')
   const after = await read(join(directory, 'package.json'))
   const remaining = new Set(fields.flatMap(field => Object.keys(after[field] ?? {})))
   for (const field of fields) {
     for (const id of Object.keys(original[field] ?? {})) if (!remaining.has(id)) {
+      if (damaged.has(id)) continue
       if (!targets.has(id)) throw new Error('PLUGIN_UNRELATED_REMOVAL: ' + id)
       state.removed.add(id)
       const root = join(profile, 'node_modules', id)
-      if (await exists(root)) await rename(root, join(directory, 'removed-' + encodeURIComponent(id)))
+      if (await exists(root)) {
+        const archive = join(profile, '.zerowall/root-links', 'removed-' + randomUUID())
+        await mkdir(dirname(archive), { recursive: true }); await rename(root, archive)
+      }
     }
-    if (!after[field]) { delete original[field]; continue }
+    if (!after[field]) after[field] = {}
     original[field] = { ...after[field] }
     for (const [id] of Object.entries(after[field])) {
+      if (damaged.has(id)) throw new Error('PLUGIN_DAMAGED_DEPENDENCY_REQUIRED: ' + id)
       const kept = after[field][id] === 'link:' + retained.get(id)?.root ? retained.get(id) : undefined
       if (kept) {
         const installed = await read(join(kept.root, 'package.json'))
@@ -162,7 +183,10 @@ export async function mergePnpmResolution(state) {
       const source = await realpath(incoming)
       const sameInstance = await exists(root) && await realpath(root) === source
       if (!sameInstance) {
-        if (await exists(root)) await rename(root, join(directory, 'previous-' + encodeURIComponent(id)))
+        if (await exists(root)) {
+          const archive = join(profile, '.zerowall/root-links', 'previous-' + randomUUID())
+          await mkdir(dirname(archive), { recursive: true }); await rename(root, archive)
+        }
         await mkdir(dirname(root), { recursive: true })
       // Keep the resolver's full instance graph. Publication relocates both
       // this link and that graph together; no transitive versions are guessed.
@@ -173,6 +197,7 @@ export async function mergePnpmResolution(state) {
         original[field][id] = spec.slice(0, 5) + './' + relative(profile, resolve(directory, spec.slice(5))).replaceAll('\\', '/')
       }
     }
+    for (const [id, item] of damaged) if (item.field === field) original[field][id] = item.spec
   }
   await writeFile(join(profile, 'package.json'), JSON.stringify(original, null, 2) + '\n')
   // The resolution's lock is scoped to its own namespace. The legacy root

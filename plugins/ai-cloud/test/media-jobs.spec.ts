@@ -213,3 +213,15 @@ describe('authenticated media review ledger',()=>{
   expect(f.media.submit).toHaveBeenCalledOnce()
  })
 })
+
+it('keeps an explicitly rejected job immutable and creates a corrected identity',async()=>{
+ const f=await fixture();f.media.submit.mockRejectedValueOnce(Object.assign(new Error('MEDIA_REFERENCE_URL_REQUIRED'),{rejected:true}))
+ const original=await f.ledger.prepare(f.scope,{...f.draft,references:[{mediaType:'image/png',url:'https://example.com/ref.png?signature=secret'}]})
+ expect(JSON.stringify(original)).not.toContain('signature')
+ await f.ledger.submitRequested(f.scope,original.id,original.revision);await settle(f)
+ expect((await f.ledger.list(f.scope))[0]?.state).toBe('rejected')
+ const corrected=await f.ledger.prepare(f.scope,{...f.draft,prompt:'fixed'},original.id)
+ expect(corrected.id).not.toBe(original.id);expect(corrected.requestId).not.toBe(original.requestId);expect(corrected.correctedFrom).toBe(original.id)
+ expect(await f.ledger.list(f.scope)).toHaveLength(2)
+ await expect(f.ledger.references({...f.scope,sessionId:'wrong'},original.id)).rejects.toThrow('OWNER_MISMATCH')
+})

@@ -53,6 +53,14 @@ it('retains stale media after directory failure and reuses a newly created group
   expect(values.has('zerowall.ai-cloud.group.99')).toBe(true)
 })
 
+it.each([undefined, 'legacy', 'yunfei_multimodal', 'v6k_url'])('preserves the configured media protocol %s and verified material field', async format=>{
+  const {secrets}=fixture()
+  const fetcher=vi.fn<typeof fetch>(async(url)=>String(url).includes('/groups/available')?json([{id:99,name:'图片音频视频分组',platform:'imagevideo',enabled:true}]):String(url).includes('/keys?')?json({items:[{group_id:99,key:'GROUP_PRIVATE'}]}):json({group_id:99,platform:'imagevideo',models:[{...capability,request_format:format,materials:{video:{formats:['public_url_object'],reference_field:'videos',max_count:1,max_file_bytes:1024,max_duration_seconds:'5'}}}]}))
+  const state=await new AiCloudClient({secrets,fetch:fetcher}).discoverModels()
+  expect(state.mediaModels?.[0]?.requestFormat).toBe(format??'legacy')
+  expect(state.mediaModels?.[0]?.materials.video).toMatchObject({reference_field:'videos',max_duration_seconds:'5'})
+})
+
 it('logout waits for a pending secure write and removes late media keys instead of restoring credentials',async()=>{
   const {secrets,values}=fixture();let pending:(()=>void)|undefined
   const original=secrets.set

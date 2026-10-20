@@ -13,7 +13,7 @@ type ResourceKindOnly = Exclude<Kind, 'python'>
 type Resource = ResourceCheckItem & { pythonLayer?: PythonLayer; capabilityId?: string; pythonInstalled?: boolean; pythonNeedsInstall?: boolean; packageCount?: number; installedPackageCount?: number; pendingPackageCount?: number; pythonAvailable?: boolean }
 type CheckResult = ResourceCheckResult
 type ResourceFilter = 'all' | 'updates' | 'installed' | 'disabled' | 'missing'
-type Job = { taskId: string; kind: ResourceKindOnly; id?: string; action: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; retries?: number; error?: string; createdAt?: string; updatedAt?: string; oldVersion?: string; newVersion?: string }
+type Job = { taskId: string; kind: ResourceKindOnly; id?: string; action: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'pending-restart'; phase?: string; progress?: number; retries?: number; error?: string; createdAt?: string; updatedAt?: string; oldVersion?: string; newVersion?: string }
 type PythonJob = { taskId: string; layer: PythonLayer; state: 'queued' | 'running' | 'succeeded' | 'partial' | 'failed' | 'interrupted' | 'cancelled'; progress?: number; currentPackage?: string; error?: string; message?: string }
 type DesktopResources = NonNullable<NonNullable<Window['zerowallDesktop']>['resources']>
 type DesktopPythonLayers = NonNullable<NonNullable<Window['zerowallDesktop']>['pythonLayers']>
@@ -216,7 +216,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
     return t('installed')
   }
 
-  const waitForJob = async (taskId: string): Promise<void> => {
+  const waitForJob = async (taskId: string): Promise<Job | undefined> => {
     const generation = lifecycle.current
     let job = await boundedRequest(api!.getJob(taskId), 5000) as Job | undefined
     while (job && (job.status === 'queued' || job.status === 'running')) {
@@ -229,6 +229,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
     if (job) setJobs(current => [job, ...current.filter(item => item.taskId !== taskId)])
     if (!job || job.status === 'failed') throw new Error(job?.error ?? t('failed'))
     if (job.status === 'cancelled') throw new Error(t('cancelled'))
+    return job
   }
 
   const updatePythonLayer = async (item: Resource): Promise<void> => {
@@ -275,11 +276,27 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
       }
       rememberOperation()
       const started = await api.startJob(kind, action, id ?? source, source)
-      await waitForJob(started.taskId)
+      const result = await waitForJob(started.taskId)
       if (!alive()) return
-      setSelected(new Set()); setMessage(t('operationComplete')); await refresh(); await refreshJobs()
+      setSelected(new Set()); setMessage(t(result?.status === 'pending-restart' ? 'pendingRestartHint' : 'operationComplete')); await refresh(); await refreshJobs()
     } catch (error) { if (!alive()) return; setOperationFailed(true); setMessage(error instanceof Error ? error.message : t('failed')); await Promise.allSettled([refresh(), refreshJobs()]) }
     finally { if (alive()) setBusy(false) }
+  }
+
+  const resumeJob = async (job: Job) => {
+    if (!api?.resumeJob || busy) return
+    const generation = lifecycle.current
+    setBusy(true); setMessage(undefined); setOperationFailed(false); rememberOperation()
+    try {
+      const started = await api.resumeJob(job.taskId)
+      const result = await waitForJob(started.taskId)
+      if (generation !== lifecycle.current) return
+      setMessage(t(result?.status === 'pending-restart' ? 'pendingRestartHint' : 'operationComplete'))
+      await refresh(); await refreshJobs()
+    } catch (error) {
+      if (generation !== lifecycle.current) return
+      setOperationFailed(true); setMessage(String(error)); await refreshJobs()
+    } finally { if (generation === lifecycle.current) setBusy(false) }
   }
 
   const updateAll = async (onlySelected = false) => {
@@ -301,9 +318,10 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
         await waitForJob(started.taskId)
       }
       if (!alive()) return
-      if (pluginIds.length) { const started = await api.updatePlugins!(pluginIds); await waitForJob(started.taskId) }
+      let pendingRestart = false
+      if (pluginIds.length) { const started = await api.updatePlugins!(pluginIds); pendingRestart = (await waitForJob(started.taskId))?.status === 'pending-restart' }
       if (!alive()) return
-      setSelected(new Set()); setMessage(t('operationComplete')); await refresh(); await refreshJobs()
+      setSelected(new Set()); setMessage(t(pendingRestart ? 'pendingRestartHint' : 'operationComplete')); await refresh(); await refreshJobs()
     } catch (error) { if (!alive()) return; setOperationFailed(true); setMessage(error instanceof Error ? error.message : t('failed')); await Promise.allSettled([refresh(), refreshJobs()]) }
     finally { if (alive()) setBusy(false) }
   }
@@ -385,8 +403,9 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
           {job.error && <details className={css.jobError}><summary>{rollbackConflict(job) ? t('rollbackConflict') : t('errorDetails')}</summary><p>{job.error}</p></details>}
         </div>
         <span>{job.status === 'failed' ? `${jobAction(job)} · ${t('job_failed')}` : t(`job_${job.status}` as 'job_running')}{['queued', 'running'].includes(job.status) ? ` · ${job.progress ?? 0}%` : ''}</span>
-        {(job.status === 'failed' || job.status === 'cancelled') && api?.retryJob && <button type="button" disabled={operationBusy || rollbackConflict(job)} title={rollbackConflict(job) ? t('rollbackConflict') : undefined} aria-label={`${t('retry')} · ${jobName(job)}`} onClick={() => { rememberOperation(); void api.retryJob(job.taskId).then(refreshJobs).catch(error => { setOperationFailed(true); setMessage(String(error)) }) }}>{t('retry')} {jobAction(job)}</button>}
-        {(job.status === 'queued' || job.status === 'running') && api?.cancelJob && <button type="button" onClick={() => void api.cancelJob(job.taskId).then(refreshJobs).catch(error => { setOperationFailed(true); setMessage(String(error)) })}>{t('cancel')}</button>}
+        {(job.status === 'failed' || job.status === 'cancelled') && job.phase !== 'resumed' && job.action !== 'resume-pending' && api?.retryJob && <button type="button" disabled={operationBusy || rollbackConflict(job)} title={rollbackConflict(job) ? t('rollbackConflict') : undefined} aria-label={`${t('retry')} · ${jobName(job)}`} onClick={() => { rememberOperation(); void api.retryJob(job.taskId).then(refreshJobs).catch(error => { setOperationFailed(true); setMessage(String(error)) }) }}>{t('retry')} {jobAction(job)}</button>}
+        {job.status === 'pending-restart' && api?.resumeJob && <button type="button" disabled={operationBusy} onClick={() => void resumeJob(job)}>{t('restartAndContinue')}</button>}
+        {(job.status === 'queued' || job.status === 'running' || job.status === 'pending-restart') && api?.cancelJob && <button type="button" disabled={operationBusy} onClick={() => void api.cancelJob(job.taskId).then(refreshJobs).catch(error => { setOperationFailed(true); setMessage(String(error)) })}>{t('cancel')}</button>}
       </div>)}
       {pythonJob && <div className={css.job} key={pythonJob.taskId}><span title={pythonJob.taskId}>{pythonJob.layer}{pythonJob.currentPackage ? ` · ${pythonJob.currentPackage}` : ''}{pythonJob.error && <small>{pythonJob.error}</small>}</span><span>{t(`pythonJob_${pythonJob.state}` as 'pythonJob_running')} · {pythonJob.progress ?? 0}%</span></div>}
       {jobs.length === 0 && !pythonJob && <p className={css.empty}>{t('noTasks')}</p>}

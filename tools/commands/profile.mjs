@@ -7,7 +7,7 @@ import { RETIRED_PLUGIN_IDS, removeRetiredResolutionRules } from './retired-plug
 // Profile architecture migrations are deliberately additive.  A desktop
 // upgrade must be able to introduce a new bundled management surface without
 // rebuilding or replacing the user's selected plugin set.
-const PROFILE_ARCHITECTURE = 6
+const PROFILE_ARCHITECTURE = 7
 const PROFILE_MIGRATIONS = [
   { from: 1, to: 2, add: ['@zerowallscience/plugin-extension-center'] },
   { from: 4, to: 5, remove: ['dsh-auto-review'] },
@@ -61,6 +61,13 @@ export async function initializeProfile(home, defaults, bundled = []) {
     ...(Array.isArray(selection.disabled) ? selection.disabled : []),
     ...(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : []),
   ])
+  // Rename only the managed adaptation; exact pins and custom installs retain
+  // their identity and suppress the new default to avoid loading two copies.
+  const oldMedia = '@oh-story/dsh', newMedia = '@zerowallscience/plugin-videos'
+  const oldSpec = manifest.dependencies?.[oldMedia]
+  let oldInstalled
+  try { oldInstalled = JSON.parse(await readFile(join(directory,'node_modules',oldMedia,'package.json'),'utf8')) } catch (error) { if (error.code !== 'ENOENT') throw error }
+  const customMedia = Object.prototype.hasOwnProperty.call(selection.pinned ?? {}, oldMedia) || (oldSpec && (!/^[~^]?0\.1\.\d+-zws\.\d+$/.test(oldSpec) || !oldSpec.startsWith('^') && !oldSpec.startsWith('~'))) || (oldInstalled && !/-zws\.\d+$/.test(oldInstalled.version ?? ''))
   // Before 8.0 the desktop overlay activated the ZeroWall domains, so their
   // absence from a 7.5 profile is not an uninstall choice. Also repair the
   // first 8.0.2 migration which added only extension-center and lost those
@@ -123,6 +130,19 @@ export async function initializeProfile(home, defaults, bundled = []) {
       selection.pinned = { ...selection.pinned }
       delete selection.pinned[id]
       selectionChanged = true
+    }
+  }
+  if (defaults.includes(newMedia)) {
+    if (customMedia) {
+      bundles = bundles.filter(id => id !== newMedia)
+      if (!removed.has(oldMedia) && !disabled.has(oldMedia) && existing.includes(oldMedia)) bundles = [...new Set([...bundles, oldMedia])]
+    } else {
+      if (removed.has(oldMedia)) { removed.add(newMedia); selectionChanged = true }
+      if (disabled.has(oldMedia)) { disabled.add(newMedia); selectionChanged = true }
+      const hadOld = bundles.includes(oldMedia)
+      bundles = bundles.filter(id => id !== oldMedia && !(id === newMedia && (removed.has(newMedia) || disabled.has(newMedia))))
+      if (hadOld && !removed.has(newMedia) && !disabled.has(newMedia)) bundles = [...new Set([...bundles, newMedia])]
+      if (Object.prototype.hasOwnProperty.call(dependencies,oldMedia)) { dependencies = {...dependencies}; delete dependencies[oldMedia]; selectionChanged = true }
     }
   }
   const resolutionChanged = removeRetiredResolutionRules(manifest)

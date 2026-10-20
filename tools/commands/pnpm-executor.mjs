@@ -5,6 +5,7 @@ import { basename, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { repairProfileLayout } from './profile-layout.mjs'
 import { runProfilePnpmTransaction } from './profile-pnpm-transaction.mjs'
+import { enqueuePendingPlugin, targetLocked } from './profile-pending.mjs'
 
 const [pnpm, ...args] = process.argv.slice(2)
 if (!pnpm) throw new Error('Missing installation-owned pnpm')
@@ -31,7 +32,7 @@ const action = args.find(arg => !arg.startsWith('-'))
 const mutating = ['add', 'install', 'i', 'update', 'up', 'remove', 'rm', 'uninstall'].includes(action)
 const manifest = await readFile('package.json', 'utf8').then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error })
 const fixedRoots = Object.entries(manifest?.dependencies ?? {}).some(([id, spec]) => /^(file|link):/u.test(spec) && resolve(spec.slice(5)) === resolve('node_modules', id))
-const activeProfile = basename(process.cwd()) === 'web' && manifest?.zerowall?.profileLayout >= 3
+const activeProfile = manifest?.zerowall?.profileLayout >= 3
 if (mutating && (fixedRoots || activeProfile)) {
   const cancellation = new AbortController()
   for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => cancellation.abort())
@@ -40,7 +41,13 @@ if (mutating && (fixedRoots || activeProfile)) {
       lifecycleId: process.env.ZEROWALL_PROFILE_TRANSACTION_ID,
       ownerPid: process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER ? Number(process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER) : undefined })
     process.exitCode = outcome.code
-  } catch (error) { process.stderr.write(`ZeroWall: ${error.message}\n`); process.exitCode = 1 }
+  } catch (error) {
+    if (targetLocked(error) && basename(process.cwd()) === 'web') {
+      const pending = await enqueuePendingPlugin(resolve(process.cwd(), '../..'), { method: 'mutate', args: [args] })
+      process.stderr.write(`ZeroWall: PLUGIN_RESTART_REQUIRED ${pending.pendingId}: ${pending.reason}\n`)
+    } else process.stderr.write(`ZeroWall: ${error.message}\n`)
+    process.exitCode = 1
+  }
 } else {
 if (mutating) {
   const migrations = join(process.cwd(), '.plugin-manager', 'store-migrations')

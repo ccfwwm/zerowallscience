@@ -1,0 +1,3 @@
+- insert:
+    - id: videos
+      name: '@zerowallscience/plugin-videos'

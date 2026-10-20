@@ -164,8 +164,8 @@
     - id: archive-manager
       name: '@michengai/dsh-archive-manager'
 
-    - id: oh-story
-      name: '@oh-story/dsh'
+    - id: videos
+      name: '@zerowallscience/plugin-videos'
 
     - id: zerowall-base
       name: '@zerowallscience/plugin-base'

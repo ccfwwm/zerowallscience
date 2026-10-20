@@ -1,5 +1,5 @@
 {
-  "version": "8.4.2",
+  "version": "8.4.3",
   "deepseekHarness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "tag": "dsh-v0.2.1-rc.2",
@@ -136,14 +136,14 @@
     "localAdaptation": "Route plugin updates to ZeroWall Extension Center; omit upstream npm updater from published runtime; compile into artifacts/dev with audited upstream Host and Client behavior.",
     "tag": "v1.1.1"
   },
-  "ohStory": {
+  "videos": {
     "repository": "https://github.com/zenstory-ai/oh-story-dsh.git",
     "commit": "d4fca12fa8a71c9d91944bd25a9d8c6b519084f5",
     "version": "0.1.16",
-    "resourceVersion": "0.1.17-zws.4",
-    "package": "@oh-story/dsh",
+    "resourceVersion": "0.2.1",
+    "package": "@zerowallscience/plugin-videos",
     "license": "MIT",
-    "source": "plugins/oh-story-dsh",
+    "source": "plugins/videos",
     "catalogOptional": true,
     "localAdaptation": "Conversation-first media creation with automatic session projects, native right sidebar, explicit user generation requests, preserved model choices and fixed-Python local composition. Retired fiction/game/drama/recap contributions excluded.",
     "tag": "v0.1.16"

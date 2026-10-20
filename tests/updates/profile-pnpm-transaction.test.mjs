@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { beginProfilePackageChange, runProfilePnpmTransaction, recoverPnpmTransactions } from '../../tools/commands/profile-pnpm-transaction.mjs'
+import { holdWindowsFile, releaseWindowsFiles } from './plugin-lock-fixture.mjs'
 
 const execute = promisify(execFile)
 const pnpm = resolve('deepseek-harness/apps/desktop/node_modules/pnpm/bin/pnpm.cjs')
@@ -14,7 +15,7 @@ const executor = resolve('tools/commands/pnpm-executor.mjs')
 const transactionModule = pathToFileURL(resolve('tools/commands/profile-pnpm-transaction.mjs')).href
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'zws-pnpm-candidate-'))
-  t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5 }))
+  t.after(async () => { await releaseWindowsFiles(t); await rm(root, { recursive: true, force: true, maxRetries: 5 }) })
   const profile = join(root, 'profiles/web')
   const retained = join(profile, 'node_modules/@dingyi222666/dsh-session-notification')
   const leaf = join(profile, 'node_modules/.zerowall-dependencies/node_modules/leaf')
@@ -54,6 +55,23 @@ test('real pnpm add preserves a scoped self-linked plugin and its dependency clo
   assert.deepEqual(manifest.preserved, { model: 'user-selected', effort: 'max' })
   assert.deepEqual(manifest.dsh.profile.bundles, ['@dingyi222666/dsh-session-notification'])
   assert.equal(JSON.parse(await readFile(join(f.profile, 'node_modules/third-party/package.json'))).version, '1.0.0')
+})
+
+test('real pnpm add and remove succeed with an unrelated native file held open and a broken plugin', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t)
+  const manifestPath = join(f.profile, 'package.json'), manifest = JSON.parse(await readFile(manifestPath))
+  manifest.dependencies['broken-plugin'] = 'link:./node_modules/broken-plugin'
+  await writeFile(manifestPath, JSON.stringify(manifest))
+  await symlink(join(f.profile, 'missing-source'), join(f.profile, 'node_modules/broken-plugin'), 'junction')
+  const paths = ['node_modules', 'node_modules/@dingyi222666', 'node_modules/.zerowall-dependencies'].map(name => join(f.profile, name))
+  const identities = await Promise.all(paths.map(path => lstat(path).then(info => info.ino)))
+  const release = await holdWindowsFile(t, join(f.retained, 'index.js'))
+  for (const args of [['add', 'file:' + f.addition], ['remove', 'third-party']]) {
+    await execute(process.execPath, [executor, pnpm, ...args], { cwd: f.profile, env: { ...process.env, npm_config_offline: 'true', npm_config_ignore_scripts: 'true' }, windowsHide: true })
+    assert.deepEqual(await Promise.all(paths.map(path => lstat(path).then(info => info.ino))), identities)
+    assert.equal(JSON.parse(await readFile(manifestPath)).dependencies['broken-plugin'], manifest.dependencies['broken-plugin'])
+  }
+  await release()
 })
 
 test('fresh pnpm resolution cannot prune plugins claimed by stale hoisted metadata', async t => {

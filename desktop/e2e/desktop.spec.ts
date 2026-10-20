@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
 import JSZip from 'jszip'
+import { parse as parseYaml } from 'yaml'
 import { locatePackagedApp } from '../scripts/packaged-app.mjs'
 import { clipboardCapability } from '../scripts/clipboard-capability.mjs'
 import { handleResourceUpdateNotices, resourceUpdateNotice } from '../scripts/update-notice-handler.mjs'
@@ -878,7 +879,7 @@ describe('ZeroWall Science Electron', () => {
   it('repairs a damaged architecture 6 profile with the real Host while preserving user choices', async () => {
     const home = join(root, 'zerowall-user-data/harness')
     const active = join(home, 'profiles/web')
-    const patchBefore = readFileSync(join(active, 'cordis.patch.yml'))
+    const patchBefore = parseYaml(readFileSync(join(active, 'cordis.patch.yml'), 'utf8')) as unknown[]
     const mcpId = '@zerowallscience/plugin-mcp'
     const disabledId = '@zerowallscience/plugin-pubmed'
     const removedId = '@zerowallscience/plugin-mineru'
@@ -927,7 +928,15 @@ describe('ZeroWall Science Electron', () => {
     expect(lstatSync(mcpRoot).isSymbolicLink()).toBe(false)
     expect(realpathSync(mcpRoot)).toBe(resolve(mcpRoot))
     expect(readFileSync(mcpManifest)).toEqual(mcpManifestBefore)
-    expect(readFileSync(join(active, 'cordis.patch.yml'))).toEqual(patchBefore)
+    const repairedPatch = parseYaml(readFileSync(join(active, 'cordis.patch.yml'), 'utf8')) as unknown[]
+    const withoutEnvironmentMigrationMarker = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(withoutEnvironmentMigrationMarker)
+      if (!value || typeof value !== 'object') return value
+      return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'retiredVariablesRemoved')
+        .map(([key, child]) => [key, withoutEnvironmentMigrationMarker(child)]))
+    }
+    const comparableRepairedPatch = withoutEnvironmentMigrationMarker(repairedPatch)
+    for (const entry of patchBefore) expect(comparableRepairedPatch).toContainEqual(withoutEnvironmentMigrationMarker(entry))
     expect(readFileSync(join(imported, 'index.js'), 'utf8')).toBe(importedSource)
     expect(JSON.parse(readFileSync(join(home, 'resources/plugins/selection.json'), 'utf8'))).toEqual(selections)
     const entries = (await rpc(page, 'pluginInventory/list', {})).entries

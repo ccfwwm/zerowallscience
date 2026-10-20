@@ -9,7 +9,7 @@ export const bundledPlugins = [
   '@dsh-external/zotero-harvest',
   'dsh-wechat',
   '@michengai/dsh-archive-manager',
-  '@oh-story/dsh',
+  '@zerowallscience/plugin-videos',
   '@zerowallscience/plugin-base',
   '@zerowallscience/plugin-secrets',
   '@zerowallscience/plugin-environment',

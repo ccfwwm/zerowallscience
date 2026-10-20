@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-account",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "ZeroWall Science account domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

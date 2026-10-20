@@ -168,3 +168,59 @@ it('previews costs without submitting media and never sends authorization to ext
   expect(fetcher).toHaveBeenCalledOnce()
   const task = await service.submit(request()); await service.download(task.requestId, '0')
 })
+
+
+it('encodes Yunfei mixed references once for identical estimate and submit contracts', async () => {
+ const calls: any[]=[]
+ const fetcher=vi.fn<typeof fetch>(async(url,init)=>{calls.push(JSON.parse(String(init?.body)));return String(url).endsWith('/estimates')?json({currency:'USD',maximum_charge:'0.01'}):json({id:'mt_mixed',model:'fixture-model',status:'queued'},202)})
+ const {service,state}=await setup(fetcher,'video')
+ Object.assign(state.mediaModels![0]!,{requestFormat:'yunfei_multimodal',duration:{mode:'enum',values:[5]},materials:Object.fromEntries(['image','video','audio'].map(k=>[k,{max_count:3,max_file_bytes:4096,formats:['data_url','data_url_in_url_object','public_url_string'],max_duration_seconds:'30'}]))})
+ const input:MediaRequest={...request('video'),parameters:{duration:5,aspect_ratio:'1:1'},references:[{mediaType:'image/png',base64:png.toString('base64')},{mediaType:'audio/wav',base64:wav.toString('base64')},{mediaType:'video/mp4',url:'https://media.example.com/motion.mp4'}]}
+ await service.estimate(input);await service.submit(input)
+ expect(calls[0].request).toEqual(calls[1]);expect(calls[1]).toMatchObject({duration:5,aspect_ratio:'1:1',reference_images:[expect.stringContaining('data:image/png;base64,')],reference_audios:[expect.stringContaining('data:audio/wav;base64,')],reference_videos:['https://media.example.com/motion.mp4']})
+ expect(calls[1].seconds).toBeUndefined();expect(calls[1].images).toBeUndefined()
+})
+
+it('preserves Yunfei frame order and blocks mixed, duplicate, or non-image frame roles', async()=>{
+ const fetcher=vi.fn<typeof fetch>(async()=>json({currency:'USD',maximum_charge:'0'}));const {service,state}=await setup(fetcher,'video')
+ Object.assign(state.mediaModels![0]!,{requestFormat:'yunfei_multimodal',materials:{image:{max_count:3,max_file_bytes:4096,formats:['data_url_in_url_object','data_url']}}})
+ const frames=[{mediaType:'image/png',base64:png.toString('base64'),role:'first_frame'},{mediaType:'image/png',base64:png.toString('base64'),role:'last_frame'}]
+ await service.estimate({...request('video'),references:frames})
+ expect(JSON.parse(String(fetcher.mock.calls[0]![1]!.body)).request.reference_images.map((r:any)=>r.role)).toEqual(['first_frame','last_frame'])
+ for(const refs of [[...frames,{...frames[0]!,role:'reference'}],[frames[0]!,frames[0]!],[{...frames[0]!,mediaType:'audio/wav'}]])await expect(service.estimate({...request('video'),references:refs})).rejects.toThrow(/MEDIA_(FRAME_REFERENCE_CONFLICT|REFERENCE_ROLE_UNSUPPORTED)/)
+ expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+it('sends v6k public URL objects and blocks local or undeclared video inputs before POST',async()=>{
+ const fetcher=vi.fn<typeof fetch>(async()=>json({id:'mt_v6k',model:'fixture-model',status:'queued'},202));const {service,state}=await setup(fetcher,'video')
+ Object.assign(state.mediaModels![0]!,{requestFormat:'v6k_url',materials:{image:{max_count:2,max_file_bytes:4096,formats:['public_url_object']},video:{max_count:1,max_file_bytes:4096,formats:['public_url_object']}}})
+ await service.submit({...request('video'),parameters:{duration:30,aspect_ratio:'1:1'},references:[{mediaType:'image/png',url:'https://media.example.com/ref.png?signature=private'}]})
+ const body=JSON.parse(String(fetcher.mock.calls[0]![1]!.body));expect(body).toMatchObject({seconds:30,ratio:'1:1',images:[{url:'https://media.example.com/ref.png?signature=private'}]});expect(body.duration).toBeUndefined();expect(body.aspect_ratio).toBeUndefined()
+ await expect(service.estimate({...request('video'),references:[{mediaType:'image/png',base64:png.toString('base64')}]})).rejects.toThrow('MEDIA_PUBLIC_URL_REQUIRED')
+ await expect(service.estimate({...request('video'),references:[{mediaType:'video/mp4',url:'https://media.example.com/ref.mp4'}]})).rejects.toThrow('MEDIA_REFERENCE_TYPE_UNSUPPORTED')
+ expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+it('bounds encoded request size during estimate and does not leak reference rejection bodies', async()=>{
+ const fetcher=vi.fn<typeof fetch>(async()=>json({error:{code:'unsupported_reference_format',message:'secret-base64-provider-body'}},400));const {service,state}=await setup(fetcher,'video')
+ Object.assign(state.mediaModels![0]!,{requestFormat:'yunfei_multimodal',maxRequestBytes:100})
+ await expect(service.estimate({...request('video'),references:[{mediaType:'image/png',base64:png.toString('base64')}]})).rejects.toThrow('MEDIA_REQUEST_TOO_LARGE');expect(fetcher).not.toHaveBeenCalled()
+ state.mediaModels![0]!.maxRequestBytes=100000
+ await expect(service.submit(request('video'))).rejects.toMatchObject({rejected:true,message:expect.stringContaining('MEDIA_REFERENCE_URL_REQUIRED')})
+ expect((await service.list())[0]!.status).toBe('rejected')
+ await expect(service.submit(request('video'))).rejects.toThrow('MEDIA_REQUEST_REJECTED');expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+it('preserves an asynchronous unaccepted format rejection across restart', async () => {
+ const fetcher = vi.fn<typeof fetch>(async (_, init) => init?.method === 'POST' ? json({id:'mt_reject',model:'fixture-model',status:'queued'},202) : json({id:'mt_reject',model:'fixture-model',status:'failed',diagnostic:'reference_url_required',data:[]}))
+ const f=await setup(fetcher,'video');await f.service.submit(request('video'))
+ expect((await f.make().query(request().requestId)).status).toBe('rejected')
+ await expect(f.make().submit(request('video'))).rejects.toThrow('MEDIA_REQUEST_REJECTED')
+ expect(fetcher.mock.calls.filter(([,init])=>init?.method==='POST')).toHaveLength(1)
+})
+
+it.each(['auth_failed','insufficient_balance','content_rejected','rate_limit'])('does not reinterpret asynchronous %s as a reference rejection', async diagnostic => {
+ const fetcher=vi.fn<typeof fetch>(async(_,init)=>json({id:'mt_reject',model:'fixture-model',status:init?.method==='POST'?'queued':'failed',diagnostic}))
+ const f=await setup(fetcher,'video');await f.service.submit(request('video'))
+ expect((await f.service.query(request().requestId)).status).toBe('failed')
+})

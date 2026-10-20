@@ -6,11 +6,11 @@ import { repairProfileLayout } from './profile-layout.mjs'
 import { physicalizeProfilePlugins } from './profile-materialization.mjs'
 import { preparePnpmResolution, mergePnpmResolution } from './profile-pnpm-resolution.mjs'
 import { acquireProfileMutation } from './profile-mutation-lock.mjs'
+import { commitPackagePaths, restorePackagePaths } from './profile-package-commit.mjs'
 
 const exists = path => lstat(path).then(() => true, error => { if (error.code !== 'ENOENT') throw error; return false })
 const read = path => readFile(path, 'utf8').then(JSON.parse)
 const inside = (root, path) => { const child = relative(root, path); return !isAbsolute(child) && child !== '..' && !child.startsWith('..' + sep) }
-const ownedNames = ['node_modules', '.zerowall', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml']
 const declarativeNames = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'cordis.patch.yml', 'compatibility.json']
 const transactionId = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u
 async function record(directory, state) {
@@ -126,6 +126,7 @@ export async function beginProfilePackageChange(profile) {
 }
 
 async function restore(profile, directory, state) {
+  if (state.schema === 2) return restorePackagePaths(profile, directory, state)
   const failed = join(directory, 'failed'), backup = join(directory, 'before')
   await mkdir(failed, { recursive: true })
   for (const item of [...state.items].reverse()) {
@@ -150,7 +151,10 @@ export async function runProfilePnpmTransaction(options) {
     const lease = await read(join(dirname(resolve(profile)), '.zerowall-plugin-mutation.lock'))
     if (parent.state !== 'pending' || parent.pid !== options.ownerPid || lease.pid !== parent.pid) throw new Error('PLUGIN_LIFECYCLE_INVALID')
   }
-  const release = lifecycleId ? undefined : await acquireProfileMutation(resolve(profile))
+  // A resource candidate is already protected by the desktop's active-profile
+  // lease. Give its nested CLI a separate lease rather than deadlocking it.
+  const lockProfile = resolve(profile).split(/[\\/]/u).at(-1) === 'web' ? resolve(profile) : join(resolve(profile), '.plugin-manager', 'candidate')
+  const release = lifecycleId ? undefined : await acquireProfileMutation(lockProfile)
   try { return await runCandidate(options) } finally { await release?.() }
 }
 
@@ -159,16 +163,6 @@ async function runCandidate({ profile, args, run, signal, lifecycleId, ownerPid 
   if (args.some(arg => /^(?:--(?:dir|prefix|workspace-dir|global-dir)|-C|-g|--global|--workspace-root|-w)(?:=|$)/u.test(arg))) throw new Error('PLUGIN_CWD_OVERRIDE_DENIED')
   await recoverPnpmTransactions(profile, { lifecycleId })
   const before = await read(join(profile, 'package.json'))
-  const dependencies = { ...before.dependencies, ...before.devDependencies, ...before.optionalDependencies }
-  for (const [id, spec] of Object.entries(dependencies)) {
-    if (!/^(?:file|link):/u.test(spec)) continue
-    // Missing sources must be recovered through the signed resource manager,
-    // before pnpm is allowed to prune or rewrite the active dependency graph.
-    const source = resolve(profile, spec.slice(5))
-    if ((await lstat(source).catch(error => { if (error.code !== 'ENOENT') throw error }))?.isFile()) continue
-    const manifest = await read(join(source, 'package.json')).catch(error => { if (error.code !== 'ENOENT') throw error })
-    if (!manifest || manifest.name !== id) throw new Error(`PLUGIN_SOURCE_MISSING: ${id}; repair plugins in ZeroWall Extension Center before installing`)
-  }
   const directory = join(profile, '.plugin-manager', 'package-transactions', randomUUID())
   // The candidate must be outside the source; the live lock and operation logs
   // remain at their stable paths while DSH performs compatibility checks/HMR.
@@ -178,10 +172,15 @@ async function runCandidate({ profile, args, run, signal, lifecycleId, ownerPid 
   await record(directory, state)
   try {
     await copyProfileTree(profile, candidate, { filter: local => !/^\.plugin-manager(?:\/|$)|(?:^|\/)package\.json\.lock(?:\/|$)/u.test(local) })
-    const layout = await repairProfileLayout(candidate, { from: profile })
+    const layout = await repairProfileLayout(candidate, { from: profile, diagnoseMissingTargets: true })
     if (layout.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: repair plugins with the bundled package manager')
     const manifest = await read(join(candidate, 'package.json'))
-    const ids = Object.entries(manifest.dependencies ?? {}).filter(([, spec]) => /^(?:file|link):/u.test(spec) && inside(candidate, resolve(candidate, spec.slice(5)))).map(([id]) => id)
+    const ids = []
+    for (const [id, spec] of Object.entries(manifest.dependencies ?? {})) {
+      if (!/^(?:file|link):/u.test(spec) || !inside(candidate, resolve(candidate, spec.slice(5)))) continue
+      const installed = await read(join(candidate, 'node_modules', id, 'package.json')).catch(error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error })
+      if (installed?.name === id) ids.push(id)
+    }
     await physicalizeProfilePlugins({ profile: candidate, ids })
     const resolution = await preparePnpmResolution({ profile: candidate, manifest, args })
     const result = await run(resolution.args, resolution.directory)
@@ -191,43 +190,40 @@ async function runCandidate({ profile, args, run, signal, lifecycleId, ownerPid 
       return { ...result, code: result.code || 1 }
     }
     await mergePnpmResolution(resolution)
-    await physicalizeProfilePlugins({ profile: candidate, ids: ids.filter(id => !resolution.removed.has(id)) })
+    await physicalizeProfilePlugins({ profile: candidate, ids: [...resolution.targets].filter(id => !resolution.removed.has(id)) })
     const after = await read(join(candidate, 'package.json'))
     for (const id of Object.keys(after.dependencies ?? {})) {
+      if (resolution.damaged.has(id)) continue
       const installed = await read(join(candidate, 'node_modules', id, 'package.json'))
       if (installed.name !== id) throw new Error('PLUGIN_CANDIDATE_IDENTITY_MISMATCH: ' + id)
     }
     if (!['update', 'up'].includes(args[0])) for (const [id, spec] of Object.entries(before.dependencies ?? {})) {
+      if (resolution.targets.has(id)) continue
+      if (resolution.damaged.has(id)) continue
       if (after.dependencies?.[id] !== manifest.dependencies?.[id]) continue
       const previous = await read(join(profile, 'node_modules', id, 'package.json'))
       const next = await read(join(candidate, 'node_modules', id, 'package.json'))
       if (previous.version !== next.version) throw new Error('PLUGIN_UNRELATED_VERSION_CHANGED: ' + id)
     }
-    if ((await repairProfileLayout(candidate, { from: candidate })).needsRelink) throw new Error('PLUGIN_CANDIDATE_LAYOUT_INVALID')
+    const finalLayout = await repairProfileLayout(candidate, { from: candidate, diagnoseMissingTargets: true })
+    if (finalLayout.needsRelink) throw new Error('PLUGIN_CANDIDATE_LAYOUT_INVALID')
+    state.diagnostics = { damagedPlugins: [...resolution.damaged.keys()], brokenTargets: finalLayout.brokenTargets ?? [] }
     if (signal?.aborted) throw new Error('PLUGIN_INSTALL_CANCELLED')
-    state.items = await Promise.all(ownedNames.map(async name => ({ name, existed: await exists(join(profile, name)) })))
-    state.state = 'committing'
-    await record(directory, state)
-    const backup = join(directory, 'before')
-    await mkdir(backup)
     try {
-      for (const item of state.items) {
-        if (item.existed) await rename(join(profile, item.name), join(backup, item.name))
-        if (await exists(join(candidate, item.name))) await rename(join(candidate, item.name), join(profile, item.name))
-      }
-      await repairProfileLayout(profile, { from: candidate })
+      await commitPackagePaths({ profile, candidate, directory, state, ids: [...resolution.targets] })
       // Keep rollback bytes at the original link locations until a rollback is
       // requested; no reader follows this archived tree during normal loading.
       await record(directory, { ...state, state: lifecycleId ? 'awaiting-validation' : 'complete' })
-    } catch (error) { await restore(profile, directory, state); throw error }
+    } catch (error) { if (state.state === 'committing') await restore(profile, directory, state); throw error }
     if (!lifecycleId) {
       await cleanupTransaction(profile, directory, state, 'complete')
     }
     return result
   } catch (error) {
     if (state.state !== 'committing') {
-      await record(directory, { ...state, state: 'preparation-failed', error: error.message })
-      await cleanupTransaction(profile, directory, state, 'preparation-failed')
+      const terminal = state.state === 'rolled-back' ? 'rolled-back' : 'preparation-failed'
+      await record(directory, { ...state, state: terminal, error: error.message })
+      await cleanupTransaction(profile, directory, state, terminal)
     }
     throw error
   }

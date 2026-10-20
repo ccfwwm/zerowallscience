@@ -137,7 +137,7 @@ export interface ResourceCheckItem {
   updateBlocked?: string
 }
 export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; catalogStatus?: 'checked' | 'unavailable' | 'local' | 'unpublished'; domainAvailable?: boolean; error?: string }
-export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
+export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'pending-restart'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
 export type PythonLayer = 'core' | 'science' | 'capability'
 export interface PythonLayerChange { name: string; from?: string; to: string; required: boolean; capabilities: string[] }
 export interface PythonLayerCheck {
@@ -212,6 +212,8 @@ export interface ZeroWallDesktopApi {
     startJob(kind: ResourceKind, action: string, id?: string, source?: string): Promise<{ taskId: string }>
     getJob(taskId: string): Promise<ResourceJob | undefined>
     listJobs(): Promise<ResourceJob[]>
+    resumeJob?(taskId: string): Promise<{ taskId: string }>
+    retryJob?(taskId: string): Promise<{ taskId: string }>
     cancelJob(taskId: string): Promise<ResourceJob | undefined>
     onJob(listener: (job: ResourceJob) => void): () => void
   }

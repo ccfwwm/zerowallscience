@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.4.2",
+  "version": "8.4.3",
   "roots": {
     "dsh": [
       "dsh-archive-manager",
@@ -11,10 +11,11 @@
       "dsh-session-notification",
       "dsh-ssh-ops",
       "zotero-harvest",
-      "oh-story-dsh"
+      "videos"
     ],
     "support": [
-      "integrity-runtime"
+      "integrity-runtime",
+      "videos-compat"
     ],
     "bundles": [
       "dsh-bundle-science",

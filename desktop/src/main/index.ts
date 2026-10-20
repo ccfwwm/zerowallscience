@@ -27,6 +27,7 @@ import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-manager-broker.js'
 import { createPythonTerminalLaunch, managedPythonTerminalPaths } from './python-terminal.js'
 import { ensurePythonCoreAtStartup } from './python-startup.js'
+import { unchangedPluginFailure, type PluginHealth, type PluginActivationScope } from './plugin-health.js'
 
 import type { PythonEnvironmentApi, PythonEnvironmentRequest } from './python-environment-api.js'
 import { resolvePythonLocation } from './python-location.js'
@@ -782,18 +783,19 @@ if (ownsInstance) app.whenReady().then(async () => {
       child.send({ type: 'zerowall:management', id, operation, args })
     })
   }
-  const startHost = async (): Promise<void> => {
+  const startHost = async (options?: PluginActivationScope): Promise<void> => {
     await harnessRuntime.start(join(userData, 'workspace'))
     if (harnessRuntime.snapshot().phase !== 'ready') throw new Error('Host activation failed')
     const deadline = Date.now() + 30_000
     do {
-      const health = await callHost('host.health', []) as { ready: boolean; entries: Array<{ state: number }> }
-      if (health.ready) {
+      const health = await callHost('host.health', []) as PluginHealth
+      const existingFailure = (entry: PluginHealth['entries'][number]): boolean => unchangedPluginFailure(entry, options)
+      if (health.ready || health.entries.length > 0 && health.entries.every(entry => entry.state === 2 || existingFailure(entry))) {
         const rendered = await navigation.completion
         if (rendered !== true || startup.phase !== 'ready') throw new Error('客户端工作台未能就绪；正在恢复更新前的插件配置。')
         return
       }
-      if (health.entries.some(entry => entry.state === 3)) break
+      if (health.entries.some(entry => entry.state === 3 && !existingFailure(entry))) break
       await new Promise(accept => setTimeout(accept, 250))
     } while (Date.now() < deadline)
     throw new Error('A configured ZeroWall plugin could not activate; restoring the previous profile')
@@ -859,7 +861,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       const plan = await pythonSync.previewSync()
       return pythonSync.applySync(plan.planId, plan.manifestRevision, true)
     },
-    stopHost: () => harnessRuntime.stop(), startHost, callHost, yaml: createRequire(app.isPackaged ? join(process.resourcesPath, 'app.asar/package.json') : join(findWorkspaceRoot(), 'package.json'))('yaml') })
+    stopHost: () => harnessRuntime.stop(), startHost, readHealth: () => callHost('host.health', []), callHost, yaml: createRequire(app.isPackaged ? join(process.resourcesPath, 'app.asar/package.json') : join(findWorkspaceRoot(), 'package.json'))('yaml') })
   await resources.recover()
   type ResourceKind = 'plugin' | 'skill' | 'mcp'
   type ResourceUpdateStatus = { phase: 'idle' | 'checking' | 'available' | 'upToDate' | 'error'; checkedAt?: string; updateCount: number; kinds: Partial<Record<ResourceKind, number>>; error?: string }
@@ -889,7 +891,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     })().finally(() => { resourceCheckInFlight = undefined })
     return resourceCheckInFlight
   }
-  type ResourceJob = { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
+  type ResourceJob = { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'pending-restart'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
   const resourceJobRoot = join(userData, 'harness', 'resources', 'jobs')
   const resourceJobs = new Map<string, ResourceJob>()
   const resourceJobControllers = new Map<string, AbortController>()
@@ -907,6 +909,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:resource-job', job)
   }
   const resourceAction = async (kind: ResourceKind, action: string, id?: string, source?: string): Promise<unknown> => {
+    if (action === 'resume-pending') { if (!id) throw new Error('Pending identity is required'); return resources.resumePending(id) }
     if (action === 'check') return resources.check(kind, source)
     if (action === 'list') return resources.list(kind)
     if (action === 'update') {
@@ -924,7 +927,7 @@ if (ownsInstance) app.whenReady().then(async () => {
         if (source && !/^https?:\/\//u.test(source) && /\.(?:tgz|tar\.gz|tar)$/iu.test(source)) return resources.mutate(['add', source])
         return resources.plugin(id, source)
       }
-      if (action === 'repair') return resources.mutate(['install'])
+      if (action === 'repair') { if (!id) throw new Error('Resource identity is required'); return resources.repairPlugin(id, source) }
       if (id === undefined) throw new Error('Resource identity is required')
       if (action === 'pin' || action === 'unpin') return resources.pinPlugin(id, action === 'pin')
       const acknowledgment = source && ['disable', 'remove'].includes(action) ? JSON.parse(source) as { dependents?: unknown } : undefined
@@ -973,6 +976,10 @@ if (ownsInstance) app.whenReady().then(async () => {
             report: async (progress: { phase: string; completed: number; total: number; currentPlugin?: string }) => persistResourceJob({ ...(resourceJobs.get(taskId) ?? running), phase: progress.phase, progress: progress.phase === 'activating' ? 90 : 10 + Math.floor(progress.completed / Math.max(1, progress.total) * 75), updatedAt: new Date().toISOString() }),
           })
           : await resourceAction(kind, action, id, source)
+        if (result && typeof result === 'object' && (result as { pendingRestart?: boolean }).pendingRestart) {
+          await persistResourceJob({ ...running, status: 'pending-restart', phase: 'pending-restart', progress: 0, result, updatedAt: new Date().toISOString() })
+          return
+        }
         const latest = resourceJobs.get(taskId)
         const newVersion = id ? (await resources.list(kind).catch(() => undefined))?.resources.find((item: { id: string; installedVersion?: string }) => item.id === id)?.installedVersion : undefined
         await persistResourceJob({ ...running, status: 'succeeded', phase: 'health-check', progress: 90, newVersion, result, updatedAt: new Date().toISOString() })
@@ -982,6 +989,10 @@ if (ownsInstance) app.whenReady().then(async () => {
       } catch (error) {
         const latest = resourceJobs.get(taskId)
         if (latest?.status === 'cancelled') return
+        if (action === 'resume-pending' && (await resources.pending()).some((pending: { id: string }) => pending.id === id)) {
+          await persistResourceJob({ ...running, status: 'pending-restart', phase: 'pending-restart', progress: 0, result: { pendingRestart: true, pendingId: id }, error: safeResourceError(error), updatedAt: new Date().toISOString() })
+          return
+        }
         const cancelled = action === 'update-batch' && latest?.cancelRequested && batchController.signal.aborted
         await persistResourceJob({ ...running, status: cancelled ? 'cancelled' : 'failed', phase: cancelled ? 'cancelled' : 'failed', progress: 100, error: safeResourceError(error), updatedAt: new Date().toISOString() })
       } finally { resourceJobControllers.delete(taskId) }
@@ -990,8 +1001,32 @@ if (ownsInstance) app.whenReady().then(async () => {
   }
   const retryResourceJob = async (taskId: string): Promise<{ taskId: string }> => {
     const previous = resourceJobs.get(taskId)
-    if (previous === undefined || !['failed', 'cancelled'].includes(previous.status)) throw new Error('Only failed or cancelled resource tasks can be retried')
+    if (previous === undefined || !['failed', 'cancelled'].includes(previous.status) || previous.phase === 'resumed' || previous.action === 'resume-pending') throw new Error('This resource task cannot be retried; use its current pending operation')
     return startResourceJob(previous.kind, previous.action, previous.id, previous.source, previous.taskId, (previous.retries ?? 0) + 1)
+  }
+  const resumingResourceJobs = new Set<string>()
+  const resumeResourceJob = async (taskId: string): Promise<{ taskId: string }> => {
+    const previous = resourceJobs.get(taskId)
+    const pendingId = (previous?.result as { pendingId?: string } | undefined)?.pendingId
+    if (previous?.status !== 'pending-restart' || !pendingId) throw new Error('Task is not waiting for a Host restart')
+    if (resumingResourceJobs.has(taskId)) throw new Error('Task is already being resumed')
+    resumingResourceJobs.add(taskId)
+    try {
+      const started = await startResourceJob('plugin', 'resume-pending', pendingId, undefined, taskId, (previous.retries ?? 0) + 1)
+      await persistResourceJob({ ...previous, status: 'cancelled', phase: 'resumed', updatedAt: new Date().toISOString() })
+      return started
+    } finally { resumingResourceJobs.delete(taskId) }
+  }
+  const cancelResourceJob = async (taskId: string): Promise<ResourceJob | undefined> => {
+    if (resumingResourceJobs.has(taskId)) throw new Error('Task is already being resumed')
+    const job = resourceJobs.get(taskId)
+    resourceJobControllers.get(taskId)?.abort()
+    if (job?.status === 'pending-restart') {
+      await resources.cancelPending((job.result as { pendingId: string }).pendingId)
+      await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
+    } else if (job?.status === 'queued') await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
+    else if (job?.status === 'running') await persistResourceJob({ ...job, phase: 'cancellation-requested', cancelRequested: true, updatedAt: new Date().toISOString() })
+    return resourceJobs.get(taskId)
   }
   const loadResourceJobs = async (): Promise<void> => {
     const entries = await readdir(resourceJobRoot, { withFileTypes: true }).catch(() => [])
@@ -1005,6 +1040,10 @@ if (ownsInstance) app.whenReady().then(async () => {
     }
   }
   await loadResourceJobs()
+  for (const pending of await resources.pending()) {
+    if ([...resourceJobs.values()].some(job => (job.result as { pendingId?: string } | undefined)?.pendingId === pending.id && job.status === 'pending-restart')) continue
+    await persistResourceJob({ taskId: pending.id, kind: 'plugin', action: 'resume-pending', status: 'pending-restart', result: { pendingId: pending.id, pendingRestart: true }, retries: 0, createdAt: pending.createdAt, updatedAt: pending.createdAt })
+  }
   let commandQueue: Promise<unknown> = Promise.resolve()
   const dispatchCommand = async (request: { operation: string; args: unknown[] }): Promise<unknown> => {
     if (request.operation === 'profile.doctor') return profileDoctor()
@@ -1021,13 +1060,8 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (request.operation === 'resource.job.get' || request.operation === 'resource.job.status') return resourceJobs.get(String(request.args[0]))
     if (request.operation === 'resource.job.list') return [...resourceJobs.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     if (request.operation === 'resource.job.retry') return retryResourceJob(String(request.args[0]))
-    if (request.operation === 'resource.job.cancel') {
-      const job = resourceJobs.get(String(request.args[0]))
-      resourceJobControllers.get(String(request.args[0]))?.abort()
-      if (job?.status === 'queued') await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
-      else if (job?.status === 'running') await persistResourceJob({ ...job, phase: 'cancellation-requested', cancelRequested: true, updatedAt: new Date().toISOString() })
-      return resourceJobs.get(String(request.args[0]))
-    }
+    if (request.operation === 'resource.job.resume') return resumeResourceJob(String(request.args[0]))
+    if (request.operation === 'resource.job.cancel') return cancelResourceJob(String(request.args[0]))
     if (request.operation === 'resource.rollback') return request.args[0] === 'plugin' ? resources.rollbackPlugin(String(request.args[1])) : resources.rollback()
     if (request.operation === 'resource.mcp.rollback') return resources.rollbackMcp(request.args[0])
     if (request.operation === 'resource.import') return resources.resource(...request.args)
@@ -1331,13 +1365,8 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:resource-job-status', (_event, taskId: unknown) => resourceJobs.get(String(taskId)))
   ipcMain.handle('desktop:resource-job-list', () => [...resourceJobs.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))
   ipcMain.handle('desktop:resource-job-retry', (_event, taskId: unknown) => retryResourceJob(String(taskId)))
-  ipcMain.handle('desktop:resource-job-cancel', async (_event, taskId: unknown) => {
-    const job = resourceJobs.get(String(taskId))
-    resourceJobControllers.get(String(taskId))?.abort()
-    if (job?.status === 'queued') await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() })
-    else if (job?.status === 'running') await persistResourceJob({ ...job, phase: 'cancellation-requested', cancelRequested: true, updatedAt: new Date().toISOString() })
-    return resourceJobs.get(String(taskId))
-  })
+  ipcMain.handle('desktop:resource-job-resume', (_event, taskId: unknown) => resumeResourceJob(String(taskId)))
+  ipcMain.handle('desktop:resource-job-cancel', (_event, taskId: unknown) => cancelResourceJob(String(taskId)))
     ipcMain.handle('desktop:mcp-environment:pause', () => mcpEnvironment.pause())
     ipcMain.handle('desktop:mcp-environment:rollback', () => mcpEnvironment.rollback())
     ipcMain.handle('desktop:mcp-python:preview', (_event, names: string[]) => mcpEnvironment.previewPackages(names))

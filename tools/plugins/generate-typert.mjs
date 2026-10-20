@@ -48,7 +48,7 @@ for (const rootDir of packageRoots) for (const entry of await readdir(rootDir, {
   // packages that the desktop runtime actually installs may contribute to the
   // shared browser remote assembly; otherwise a removed plugin can survive in
   // the workspace and break startup through a stale generated import.
-  if (!runtimePackages.has(manifest.name) && !manifest.name?.startsWith('@zerowallscience/plugin-') && manifest.name !== '@oh-story/dsh') {
+  if (!runtimePackages.has(manifest.name) && !manifest.name?.startsWith('@zerowallscience/plugin-') && manifest.name !== '@zerowallscience/plugin-videos') {
     continue
   }
   if (manifest.exports?.['./remote'] === undefined) {

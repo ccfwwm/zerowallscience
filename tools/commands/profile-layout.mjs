@@ -9,7 +9,7 @@ const optional = (path) => readFile(path, 'utf8').catch(error => { if (error.cod
 /** pnpm 11 writes absolute virtual-store paths on Windows. Profile transactions
  * move a complete tree, so both its metadata and internal links must move with it.
  * Never traverse an external junction or edit the signed offline generation. */
-export async function repairProfileLayout(directory, { from, home, pendingRoots = [] } = {}) {
+export async function repairProfileLayout(directory, { from, home, pendingRoots = [], diagnoseMissingTargets = false } = {}) {
   directory = resolve(directory)
   const modules = join(directory, 'node_modules')
   // An installer candidate can deliberately omit exact managed package roots
@@ -47,7 +47,7 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
     const store = await lstat(expected).catch(error => { if (error.code !== 'ENOENT') throw error })
     if (!store?.isDirectory() || store.isSymbolicLink()) return { changed: false, links: 0, needsRelink: true }
   }
-  const repairs = [], internalTargets = new Set()
+  const repairs = [], internalTargets = new Set(), plannedLinks = new Map()
   async function scan(path) {
     for (const entry of await readdir(path, { withFileTypes: true })) {
       const link = join(path, entry.name)
@@ -57,6 +57,7 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
         const previousTarget = resolve(dirname(previousLink), target)
         const root = roots.find(root => inside(root, previousTarget))
         const nextTarget = root ? join(directory, relative(root, previousTarget)) : previousTarget
+        plannedLinks.set(resolve(link), nextTarget)
         if (root || inside(directory, nextTarget)) internalTargets.add(nextTarget)
         if (!isAbsolute(target) || resolve(dirname(link), target) !== nextTarget) repairs.push({ link, target, nextTarget, internal: !!root || inside(directory, nextTarget) })
       } else if (entry.isDirectory() && entry.name !== '.zerowall-carriers') next.push(link)
@@ -79,10 +80,33 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
   while (level.length) { next = []; await bounded(level, scan); level = next }
   // Prove every relocated link resolves before changing any link. External
   // links retain their original target, including CLI and offline resources.
-  const pendingTargets = new Set()
+  const pendingTargets = new Set(), brokenTargets = new Set()
+  // Resolve against the complete planned graph. A target can pass through a
+  // Junction which still points at the old candidate until this plan commits.
+  // stat(target) here would follow that stale intermediate link on Windows.
+  async function plannedStat(target) {
+    let path = resolve(target)
+    const seen = new Set()
+    for (let hops = 0; hops < 256; hops++) {
+      if (seen.has(path)) throw Object.assign(new Error('Cyclic profile package link: ' + target), { code: 'ELOOP' })
+      seen.add(path)
+      let cursor = path, replacement
+      for (;;) {
+        if (plannedLinks.has(cursor)) { replacement = resolve(plannedLinks.get(cursor), relative(cursor, path)); break }
+        const parent = dirname(cursor)
+        if (parent === cursor) break
+        cursor = parent
+      }
+      if (!replacement) return stat(path)
+      path = replacement
+    }
+    throw Object.assign(new Error('Profile package link depth exceeded: ' + target), { code: 'ELOOP' })
+  }
+  const targetTypes = new Map()
   await bounded([...internalTargets], async target => {
-    try { await stat(target) }
+    try { targetTypes.set(target, await plannedStat(target)) }
     catch (error) {
+      if (diagnoseMissingTargets && ['ENOENT', 'ELOOP'].includes(error.code)) { brokenTargets.add(target); return }
       if (!['ENOENT', 'ELOOP'].includes(error.code) || !pendingPackages.some(root => inside(root, target))) throw error
       pendingTargets.add(target)
     }
@@ -95,8 +119,8 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
       // Windows must not guess whether a missing target needs a Junction or a
       // file symlink. The caller must strictly recheck every deferred target
       // and rerun layout repair after materializing the planned packages.
-      if (repair.internal && pendingTargets.has(repair.nextTarget)) continue
-      const targetInfo = await lstat(repair.nextTarget).catch(error => { if (error.code !== 'ENOENT') throw error })
+      if (repair.internal && (pendingTargets.has(repair.nextTarget) || brokenTargets.has(repair.nextTarget))) continue
+      const targetInfo = targetTypes.get(repair.nextTarget) ?? await plannedStat(repair.nextTarget).catch(error => { if (error.code !== 'ENOENT') throw error })
       const type = process.platform === 'win32' && targetInfo?.isDirectory() ? 'junction' : undefined
       await unlink(repair.link)
       try { await symlink(repair.nextTarget, repair.link, type) }
@@ -117,5 +141,6 @@ export async function repairProfileLayout(directory, { from, home, pendingRoots 
     throw error
   }
   return { changed: metadataChanged || applied.length > 0, links: applied.length,
+    ...(brokenTargets.size ? { brokenTargets: [...brokenTargets].sort() } : {}),
     ...(pendingTargets.size ? { pendingTargets: [...pendingTargets].sort() } : {}) }
 }

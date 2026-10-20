@@ -30,6 +30,12 @@ for (const source of Object.values(upstream)) {
   const manifest = JSON.parse(await readFile(packageFile, 'utf8'))
   manifest.packageManager = rootPackage.packageManager
   await writeFile(packageFile, JSON.stringify(manifest, null, 2) + '\n')
+  if (manifest.name === '@zerowallscience/plugin-videos') {
+    const pluginFile = resolve(root, source.source, 'zerowall.plugin.json')
+    const previousPlugin = await readFile(pluginFile, 'utf8').then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error; return {} })
+    // Desktop releases consume independently versioned, immutable plugin bytes.
+    await writeFile(pluginFile, JSON.stringify({ name: manifest.name, version: manifest.version, applicationVersion: previousPlugin.applicationVersion ?? applicationVersion, ...manifest.zerowall, host: './lib/index.js', client: './lib/client.js', remote: './lib/typert.remote-client.js' }, null, 2) + '\n')
+  }
   const file = resolve(root, source.source, 'dsh.plugin.json')
   const text = await readFile(file, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error })
   if (text === undefined) continue
@@ -38,6 +44,26 @@ for (const source of Object.values(upstream)) {
   registry.engines = { ...registry.engines, dsh: dshPin.version }
   await writeFile(file, JSON.stringify(registry, null, 2) + '\n')
 }
+// A small forwarding package lets installed desktops update the old identity
+// through their existing signed catalog without embedding a second implementation.
+const videoManifest = JSON.parse(await readFile(resolve(root, 'plugins/videos/package.json'), 'utf8'))
+const compatibilityRoot = resolve(root, 'plugins/videos-compat')
+await mkdir(compatibilityRoot, { recursive: true })
+const compatibilityManifest = {
+  name: '@oh-story/dsh', version: '0.1.17-zws.6', private: true, type: 'module', license: 'MIT',
+  description: '媒体创作旧包兼容入口，请使用 @zerowallscience/plugin-videos',
+  main: './index.js', exports: { '.': './index.js', './client': './client.js', './package.json': './package.json' },
+  files: ['index.js', 'client.js', 'dsh.bundle.patch.yml', 'zerowall.plugin.json', 'README.md'],
+  dsh: { bundle: { patch: 'dsh.bundle.patch.yml' }, client: { platform: 'web', inject: ['@zerowallscience/plugin-videos'] } },
+  dependencies: { '@zerowallscience/plugin-videos': videoManifest.version },
+  zerowall: { desktop: videoManifest.zerowall.desktop, dsh: videoManifest.zerowall.dsh, restartRequired: true, rollbackSupported: true, capabilities: ['media.compatibility'], permissions: [], renamedTo: videoManifest.name },
+}
+await writeFile(resolve(compatibilityRoot, 'package.json'), JSON.stringify(compatibilityManifest, null, 2) + '\n')
+await writeFile(resolve(compatibilityRoot, 'index.js'), "export * from '@zerowallscience/plugin-videos'\nexport { default } from '@zerowallscience/plugin-videos'\n")
+await writeFile(resolve(compatibilityRoot, 'client.js'), 'window.__ModuleLoader__.load({id:"@oh-story/dsh",factory:(require)=>require("@zerowallscience/plugin-videos")});\n')
+await writeFile(resolve(compatibilityRoot, 'dsh.bundle.patch.yml'), "- insert:\n    - id: oh-story\n      name: '@oh-story/dsh'\n")
+await writeFile(resolve(compatibilityRoot, 'zerowall.plugin.json'), JSON.stringify({ name: compatibilityManifest.name, version: compatibilityManifest.version, ...compatibilityManifest.zerowall, host: './index.js', client: './client.js' }, null, 2) + '\n')
+await writeFile(resolve(compatibilityRoot, 'README.md'), '# 媒体创作兼容入口\n\n本包仅转发到 @zerowallscience/plugin-videos，供旧桌面的已安装插件更新使用。固定版本、禁用和卸载选择由原资源管理器保留。新安装使用新包；不包含独立任务或素材存储。\n')
 const migrationBaseline = '0.1.0'
 const hostCompilerOptions = JSON.parse(await readFile(resolve(root, 'tsconfig.plugin.host.json'), 'utf8')).compilerOptions
 const clientInject = [

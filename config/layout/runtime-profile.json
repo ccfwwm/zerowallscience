@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.4.2",
+  "version": "8.4.3",
   "corePlugins": [
     "@zerowallscience/plugin-base",
     "@zerowallscience/plugin-secrets",
@@ -9,6 +9,9 @@
     "@zerowallscience/plugin-extension-center"
   ],
   "corePackageDependencies": [],
+  "offlinePackageDependencies": {
+    "@oh-story/dsh": "videos-compat"
+  },
   "coreRuntimeSeeds": [
     "@deepseek-ai/dsh-web-frontend",
     "@deepseek-ai/dsh-client-store",

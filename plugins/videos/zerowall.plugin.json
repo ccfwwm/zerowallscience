@@ -1,0 +1,48 @@
+{
+  "name": "@zerowallscience/plugin-videos",
+  "version": "0.2.1",
+  "applicationVersion": "8.4.2",
+  "desktop": {
+    "min": "8.4.0"
+  },
+  "dsh": {
+    "min": "0.2.1-rc.2",
+    "max": "0.2.1-rc.2"
+  },
+  "requiredServices": [
+    "skills",
+    "tools",
+    "typert",
+    "webServer",
+    "zerowallMedia",
+    "zerowallMediaJobs",
+    "zerowallPython",
+    "zerowallEnvironment",
+    "attachments",
+    "connection"
+  ],
+  "capabilities": [
+    "media.create",
+    "media.edit",
+    "media.compose"
+  ],
+  "permissions": [
+    "files",
+    "network",
+    "processes",
+    "credentials",
+    "approvals"
+  ],
+  "restartRequired": true,
+  "rollbackSupported": true,
+  "upstreamVersion": "0.1.16",
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1,
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "remote": "./lib/typert.remote-client.js"
+}

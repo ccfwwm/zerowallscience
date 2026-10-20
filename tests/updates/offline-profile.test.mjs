@@ -92,6 +92,25 @@ test('damaged architecture 6 is repaired offline and repeated repair preserves e
   await rename(f.source, f.source + '.retained')
   assert.equal(JSON.parse(await readFile(join(active, 'node_modules', defaults[1], 'package.json'))).version, '0.2.0')
 })
+
+test('layout 3 offline repair keeps the active profile root and commits package paths', async t => {
+  const f = await fixture(t), active = join(f.home, 'profiles/web')
+  const manifestFile = join(active, 'package.json')
+  const manifest = JSON.parse(await readFile(manifestFile, 'utf8'))
+  manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: 7, profileLayout: 3 }
+  await writeFile(manifestFile, JSON.stringify(manifest))
+  const activeIdentity = await realpath(active)
+
+  const result = await f.manager.repairOffline(f.source)
+
+  assert.equal(result.repaired, true)
+  assert.equal(await realpath(active), activeIdentity)
+  assert.equal(JSON.parse(await readFile(manifestFile, 'utf8')).zerowall.profileLayout, 3)
+  assert.equal((await lstat(join(active, 'node_modules', defaults[1], 'package.json'))).isFile(), true)
+  assert.equal((await lstat(join(active, 'node_modules/.zerowall-dependencies'))).isDirectory(), true)
+  assert.equal((await f.manager.repairOffline(f.source)).repaired, false)
+})
+
 test('an unavailable pinned version is reported without replacing the active profile', async t => {
   const f = await fixture(t), file = join(f.home, 'profiles/web/package.json')
   await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
