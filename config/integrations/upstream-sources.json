@@ -140,7 +140,7 @@
     "repository": "https://github.com/zenstory-ai/oh-story-dsh.git",
     "commit": "d4fca12fa8a71c9d91944bd25a9d8c6b519084f5",
     "version": "0.1.16",
-    "resourceVersion": "0.2.1",
+    "resourceVersion": "0.2.2",
     "package": "@zerowallscience/plugin-videos",
     "license": "MIT",
     "source": "plugins/videos",

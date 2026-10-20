@@ -29,6 +29,8 @@
 
 发布使用现有 `stable-4` 信任根，定向合并线上目录。目录保留其他 37 个资源的原签名和字节，仅替换上述两个版本并移除兼容包条目。`stage` 已逐一公开下载并验证 40 个不可变对象（39 个包及 1 个目录）。发布全过程不修改桌面 `stable/latest.yml`；切换与公开复核收据存于 `artifacts/release/8.4.3/publication/`。
 
+`promote` 与 `verify` 均已完成。独立读取公开签名指针确认两个新版本和兼容包退役，桌面 `latest.yml` 发布前后 SHA-256 均为 `fbca6fcc3cc4795acd8b3038924177a74d141f8e644b558e0b15aae845f2da63`。
+
 ## 验证记录
 
 - AI Cloud：158 项；创作插件：64 项；其他非 Research 插件检查通过，保留原有跳过。
