@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-videos",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "通过对话创作视频、音乐和宣传片，图片仅作为视频参考素材",
   "license": "MIT",
@@ -138,7 +138,7 @@
     "@deepseek-ai/dsh-system-prompt": "workspace:*"
   },
   "dependencies": {
-    "@zerowallscience/plugin-ai-cloud": "^0.1.29",
+    "@zerowallscience/plugin-ai-cloud": "^0.1.30",
     "@zerowallscience/plugin-python": "^0.1.10",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-environment": "workspace:^"

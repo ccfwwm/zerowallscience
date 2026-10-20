@@ -9,9 +9,7 @@
     "@zerowallscience/plugin-extension-center"
   ],
   "corePackageDependencies": [],
-  "offlinePackageDependencies": {
-    "@oh-story/dsh": "videos-compat"
-  },
+  "offlinePackageDependencies": {},
   "coreRuntimeSeeds": [
     "@deepseek-ai/dsh-web-frontend",
     "@deepseek-ai/dsh-client-store",

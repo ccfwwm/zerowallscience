@@ -20660,7 +20660,7 @@ importers:
         specifier: link:../../deepseek-harness/vendor/schemastery
         version: link:../../deepseek-harness/vendor/schemastery
       '@zerowallscience/plugin-ai-cloud':
-        specifier: ^0.1.29
+        specifier: ^0.1.30
         version: link:../ai-cloud
       '@zerowallscience/plugin-environment':
         specifier: workspace:^
@@ -20779,12 +20779,6 @@ importers:
         version: 4.4.3
     linkDirectory: false
     publishDirectory: ../../artifacts/dev/publish/plugin-videos
-
-  plugins/videos-compat:
-    dependencies:
-      '@zerowallscience/plugin-videos':
-        specifier: 0.2.1
-        version: link:../videos
 
   plugins/zotero-harvest:
     dependencies:

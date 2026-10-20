@@ -26,6 +26,28 @@ async function setup(fetcher: typeof fetch, operation = 'image') {
   return { service: make(), make, values, state, cacheDir, setState: (next: AiCloudAccountSnapshot) => { state = next } }
 }
 
+it.each(['v6k_url', 'yunfei_multimodal'])('forwards the complete website manifest and future options with %s despite stale catalog limits', async format => {
+  const calls: any[] = []
+  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+    calls.push(JSON.parse(String(init?.body)))
+    return String(url).endsWith('/estimates') ? json({currency:'USD',maximum_charge:'0.1'}) : json({id:'mt_five_refs',status:'queued'},202)
+  })
+  const {service,state} = await setup(fetcher,'video')
+  Object.assign(state.mediaModels![0]!, {requestFormat:format,materials:{image:{max_count:1,max_file_bytes:1}},duration:{mode:'enum',values:[15]}})
+  const base='https://zerowall.chengxunkeji.cn/webfiles/'
+  const images=['zerowall-icon.png','01-medical-research-workspace.png','02-singlecell-virtual-knockout.png','03-genetics-brand-finale.png'].map(name=>({url:base+name,role:'reference',provider_weight:0.7}))
+  const videos=[{url:base+'zerowallsciencevideo.mp4',provider_motion:'preserve'}]
+  const input={...request('video'),parameters:{duration:5,quality:'future-quality',future_options:{preserve:true},images,videos}}
+  await service.estimate(input);const task=await service.submit(input)
+  expect(calls[0].request).toEqual(calls[1])
+  expect(calls[1][format==='v6k_url'?'images':'reference_images']).toEqual(images)
+  expect(calls[1][format==='v6k_url'?'videos':'reference_videos']).toEqual(videos)
+  expect(calls[1]).toMatchObject({future_options:{preserve:true},quality:'future-quality'})
+  expect(task.diagnostics).toMatchObject({stage:'accepted',references:{image:4,video:1,audio:0}})
+  await expect(service.estimate({...input,references:[{url:base+'different.png',mediaType:'image/png'}]})).rejects.toThrow('INPUT_CONFLICT')
+  await expect(service.estimate({...input,parameters:{...input.parameters,model:'replacement'}})).rejects.toThrow('RESERVED_PARAMETER')
+})
+
 it('keeps a durable 202 task and restores/downloads it with the original key without another POST', async () => {
   const bytes = png
   const fetcher = vi.fn<typeof fetch>(async (input, init) => {
@@ -38,7 +60,7 @@ it('keeps a durable 202 task and restores/downloads it with the original key wit
   const { service, make } = await setup(fetcher)
   expect((await service.submit(request())).status).toBe('queued')
   const restored = make(); const task = await restored.wait(request().requestId, 1)
-  expect(task.status).toBe('completed'); expect(JSON.stringify(task)).not.toContain('private-fixture-key'); expect(JSON.stringify(task)).not.toContain('content_url')
+  expect(task.status).toBe('completed'); expect(JSON.stringify(task)).not.toContain('private-fixture-key'); expect(JSON.stringify(task.artifacts)).not.toContain('content_url')
   const output = await restored.download(task.requestId, 'image_0')
   expect(output.bytes).toEqual(bytes); expect(output.sha256).toMatch(/^[a-f0-9]{64}$/)
   await restored.submit(request())
@@ -79,7 +101,7 @@ it('rejects unsupported duration, mask and reference bytes before estimating or 
   const fetcher=vi.fn<typeof fetch>(); const {service,state}=await setup(fetcher,'video')
   state.mediaModels![0]!.duration={mode:'enum',values:[5],required:true}
   await expect(service.estimate(request('video'))).rejects.toThrow('MEDIA_DURATION_REQUIRED')
-  await expect(service.submit({...request('video'),parameters:{duration:8}})).rejects.toThrow('MEDIA_UNSUPPORTED_DURATION')
+  await expect(service.submit({...request('video'),parameters:{duration:-1}})).rejects.toThrow('MEDIA_UNSUPPORTED_DURATION')
   await expect(service.submit({...request('video'),parameters:{duration:5},references:[{mediaType:'image/png',base64:Buffer.from('not png').toString('base64')}]})).rejects.toThrow('MEDIA_UNRECOGNIZED_ARTIFACT_FORMAT')
   expect(fetcher).not.toHaveBeenCalled()
 })
@@ -149,7 +171,6 @@ it.each(['gemini_image', 'chat_music'])('decodes synchronous %s and uses the mat
 it('blocks stale selections, invalid bounds, account changes and a changed original key before paid/network work', async () => {
   const fetcher = vi.fn<typeof fetch>(async () => json({ data: [{ b64_json: png.toString('base64') }] }))
   const { service, state, setState, values } = await setup(fetcher)
-  await expect(service.submit({ ...request(), parameters: { size: 'unsupported' } })).rejects.toThrow('MEDIA_UNSUPPORTED_PARAMETER')
   await expect(service.submit({ ...request(), profileId: 'removed' })).rejects.toThrow('MEDIA_SELECTION_INVALID')
   expect(fetcher).not.toHaveBeenCalled()
   await service.submit(request()); values.set('zerowall.ai-cloud.group.7', 'other-key')
@@ -191,14 +212,15 @@ it('preserves Yunfei frame order and blocks mixed, duplicate, or non-image frame
  expect(fetcher).toHaveBeenCalledTimes(1)
 })
 
-it('sends v6k public URL objects and blocks local or undeclared video inputs before POST',async()=>{
+it('sends v6k URL objects and undeclared video inputs while keeping URL-only transport',async()=>{
  const fetcher=vi.fn<typeof fetch>(async()=>json({id:'mt_v6k',model:'fixture-model',status:'queued'},202));const {service,state}=await setup(fetcher,'video')
  Object.assign(state.mediaModels![0]!,{requestFormat:'v6k_url',materials:{image:{max_count:2,max_file_bytes:4096,formats:['public_url_object']},video:{max_count:1,max_file_bytes:4096,formats:['public_url_object']}}})
  await service.submit({...request('video'),parameters:{duration:30,aspect_ratio:'1:1'},references:[{mediaType:'image/png',url:'https://media.example.com/ref.png?signature=private'}]})
  const body=JSON.parse(String(fetcher.mock.calls[0]![1]!.body));expect(body).toMatchObject({seconds:30,ratio:'1:1',images:[{url:'https://media.example.com/ref.png?signature=private'}]});expect(body.duration).toBeUndefined();expect(body.aspect_ratio).toBeUndefined()
  await expect(service.estimate({...request('video'),references:[{mediaType:'image/png',base64:png.toString('base64')}]})).rejects.toThrow('MEDIA_PUBLIC_URL_REQUIRED')
- await expect(service.estimate({...request('video'),references:[{mediaType:'video/mp4',url:'https://media.example.com/ref.mp4'}]})).rejects.toThrow('MEDIA_REFERENCE_TYPE_UNSUPPORTED')
- expect(fetcher).toHaveBeenCalledTimes(1)
+ await service.estimate({...request('video'),references:[{mediaType:'video/mp4',url:'https://media.example.com/ref.mp4'}]})
+ expect(JSON.parse(String(fetcher.mock.calls[1]![1]!.body)).request.videos).toEqual([{url:'https://media.example.com/ref.mp4'}])
+ expect(fetcher).toHaveBeenCalledTimes(2)
 })
 
 it('bounds encoded request size during estimate and does not leak reference rejection bodies', async()=>{
@@ -223,4 +245,17 @@ it.each(['auth_failed','insufficient_balance','content_rejected','rate_limit'])(
  const fetcher=vi.fn<typeof fetch>(async(_,init)=>json({id:'mt_reject',model:'fixture-model',status:init?.method==='POST'?'queued':'failed',diagnostic}))
  const f=await setup(fetcher,'video');await f.service.submit(request('video'))
  expect((await f.service.query(request().requestId)).status).toBe('failed')
+})
+
+
+it('keeps malformed replies attempted and sanitizes accepted upstream failure evidence', async () => {
+  let reply: any = { status: 'queued' }
+  const { service } = await setup(vi.fn(async () => json(reply)), 'video')
+  await expect(service.submit(request('video'))).rejects.toThrow('SUBMISSION_UNCERTAIN')
+  expect((await service.list())[0]?.diagnostics?.stage).toBe('attempted')
+  reply = { id:'mt_rejected', model:'fixture-model', status:'failed', diagnostic:'UPSTREAM_REF_LIMIT: Bearer private-fixture-key', submission:{stage:'attempted',request:{future_token:'secret',images:[{url:'https://u:p@media.example.com/a.png?sig=secret'}]}} }
+  const result = await service.submit({...request('video'),requestId:'request-failure-0002'})
+  expect(result.error).toContain('UPSTREAM_REF_LIMIT')
+  expect(result.diagnostics?.upstream).toMatchObject({stage:'attempted'})
+  expect(JSON.stringify(result)).not.toMatch(/private-fixture-key|sig=secret|u:p@/)
 })

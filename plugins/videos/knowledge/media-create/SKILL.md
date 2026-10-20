@@ -36,3 +36,12 @@ description: 通过对话创作用户明确要求的独立视频、音乐与宣�
 本地图片、视频、音频参考默认由 Host 编码为 Base64；使用 references_json 有序描述素材，URL 填 media_type，角色为 reference/first_frame/last_frame，首尾帧不可混普通图片。音乐参考仅影响视频，不自动额外生成音乐。能力要求公网 URL 或服务端明确拒绝 Base64 时，只询问缺失素材的 HTTPS 直链，不上传七牛或其他图床。已有 URL 或原任务 reference_id 直接复用，不重复导入或上传。明确未受理的 rejected 任务修正后生成新请求，保留旧记录；超时、断网、5xx 或已受理任务只恢复原任务，不自动重提。鉴权、余额、内容拒绝、限流不能一概要求改 URL。
 
 `references_json` 示例：`[{"path":"media-projects/<真实项目>/assets/ref.mp4","role":"reference"},{"url":"https://example.com/ref.jpg","media_type":"image/jpeg","role":"first_frame"}]`。每项仅一个来源：项目 path、会话 attachment_id、公网 url，或当前任务摘要返回的 reference_id（sha256）。使用新参数时不能再传 reference_paths/input_attachment_ids；不要输出 Base64、凭据或签名 URL。
+
+
+### 参考素材完整性
+
+通过 `media_job.references_file` 读取工作区 JSON 清单（与 `references_json`、旧参考输入互斥），例如 `source/reference-inputs.json`。清单每项包含 `url`、`media_type`，可带 `role` 与供应商附加属性。不能仅把目录路径写进 prompt。
+
+URL 模式保持公网直链原值；V6K 使用 `images/videos/audios`，云飞使用 `reference_images/reference_videos/reference_audios`。能力目录仅作提示，可选供应商参数由上游校验。相同语义字段冲突时明确报错，不覆盖素材。
+
+估价失败返回 `validation-failed` 草稿及原 ID，素材仍保存。修正参数时复用原任务，省略参考输入会继承项目意图；`[]` 不会清空已有素材，只有用户明确要求无参考创作时才使用 `clear_references`。不得因报错去掉图片或视频、更换模型或重建空参考任务。提交前核对返回的参考数量；准备参数、尝试发送和上游受理是不同状态，历史未记录时不得推断素材已经发送。

@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
 import { artifactFormat } from './artifact-format.js'
-import { referenceBytes, referenceValue, validateFrameReferences } from './media-reference.js'
+import { referenceBytes, referenceValue, referenceSignature, normalizeMediaReferences, validateFrameReferences } from './media-reference.js'
 import { mediaAbortable } from './media-abort.js'
 import { mediaRetryAfter, retryableMediaError } from './media-retry.js'
 import type { MediaDraft, MediaJob, MediaReview, MediaScope, MediaRequest, ZeroWallMedia, ZeroWallMediaJobs } from '../shared/media.js'
@@ -90,12 +90,17 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
     return this.mutate([id], async () => {
       if (!/^[a-zA-Z0-9_-]{1,80}$/.test(scope.projectId) || !scope.sessionId || !['image', 'video', 'music'].includes(draft.kind) || !draft.prompt?.trim()) throw new Error('MEDIA_DRAFT_INVALID')
       await mediaTarget(scope.cwd, `media-projects/${scope.projectId}/project.json`)
+      if (draft.kind === 'video') draft = normalizeMediaReferences(draft)
       for (const ref of [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])]) referenceBytes(ref)
       validateFrameReferences(draft.references ?? [])
       if ((draft.references?.length ?? 0) > 16) throw new Error('MEDIA_REFERENCE_LIMIT')
       const owner = await this.owner()
       const old = await this.read(id).catch(e => { if (e.code !== 'ENOENT') throw e; return undefined })
       if (old) { await this.check(old, scope); if (old.submitted && old.job.state !== 'rejected') throw new Error('MEDIA_JOB_ALREADY_SUBMITTED'); if (old.scope.projectId !== scope.projectId) throw new Error('MEDIA_JOB_OWNER_MISMATCH') }
+      if (old?.draft.references?.length && draft.references !== undefined && referenceSignature(draft.references) !== referenceSignature(old.draft.references) && !draft.clearReferences && !draft.references.length) throw new Error('MEDIA_REFERENCES_CLEAR_REQUIRED: 请使用明确清除参考操作。')
+      if (old?.draft.references?.length && draft.references && !draft.clearReferences && !draft.replaceReferences) for (const kind of ['image','video','audio']) { if (draft.references.filter(ref=>ref.mediaType.startsWith(kind+'/')).length < old.draft.references.filter(ref=>ref.mediaType.startsWith(kind+'/')).length) throw new Error('MEDIA_REFERENCE_INTENT_MISMATCH: ' + kind) }
+      delete draft.replaceReferences
+      if (draft.clearReferences) { draft.references = []; delete draft.clearReferences }
       if (old && draft.references === undefined && old.draft.references) draft.references = old.draft.references
       if (old && draft.mask === undefined && old.draft.mask) draft.mask = old.draft.mask
       if (draft.selection) {
@@ -106,11 +111,23 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
       if (correctedFrom) id = randomUUID()
       const now = new Date().toISOString(), revision = (old?.job.revision ?? 0) + 1
       const frozen: MediaDraft = structuredClone(draft), requestId = 'media-' + digest({ scope, id, revision, draft })
-      const estimate = draft.selection ? await this.media.estimate({ ...draft.selection, requestId, prompt: draft.prompt, parameters: draft.parameters ?? {}, ...(draft.references ? { references: draft.references } : {}), ...(draft.mask ? { mask: draft.mask } : {}), async: true }) : undefined
-      if (estimate && (!estimate.currency || (estimate.maximumCharge === undefined && estimate.total === undefined) || !Number.isFinite(Number(estimate.maximumCharge ?? estimate.total)) || Number(estimate.maximumCharge ?? estimate.total) < 0)) throw new Error('MEDIA_ESTIMATE_UNAVAILABLE')
-      if (owner !== await this.owner()) throw new Error('MEDIA_ACCOUNT_CHANGED')
-      const job: MediaJob = { id, sessionId: scope.sessionId, projectId: scope.projectId, revision, kind: draft.kind, prompt: draft.prompt, ...(draft.selection ? { selection: draft.selection } : {}), parameters: draft.parameters ?? {}, references: [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])].map(ref => ({ name: ref.name ?? '参考素材', mediaType: ref.mediaType, bytes: ref.url !== undefined ? 0 : Buffer.byteLength(ref.base64!, 'base64'), sha256: digest(ref.url !== undefined ? referenceValue(ref) : Buffer.from(ref.base64!, 'base64')), source: ref.url !== undefined ? 'url' as const : 'base64' as const, ...(ref.role ? { role: ref.role } : {}), ...(ref === draft.mask ? { mask: true } : {}) })), ...(estimate ? { estimate } : {}), ...(correctedFrom ? { correctedFrom } : {}), state: estimate ? 'prepared' : 'model-required', requestId, assets: [], createdAt: old?.job.createdAt ?? now, updatedAt: now }
-      await this.lock(() => this.save({ scope, owner, draft: frozen, job, submitted: false })); return structuredClone(job)
+      const job: MediaJob = { id, sessionId: scope.sessionId, projectId: scope.projectId, revision, kind: draft.kind, prompt: draft.prompt, ...(draft.selection ? { selection: draft.selection } : {}), parameters: draft.parameters ?? {}, references: [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])].map(ref => ({ name: ref.name ?? '参考素材', mediaType: ref.mediaType, bytes: ref.url !== undefined ? 0 : Buffer.byteLength(ref.base64!, 'base64'), sha256: digest(ref.url !== undefined ? referenceValue(ref) : Buffer.from(ref.base64!, 'base64')), source: ref.url !== undefined ? 'url' as const : 'base64' as const, ...(ref.role ? { role: ref.role } : {}), ...(ref === draft.mask ? { mask: true } : {}) })), ...(correctedFrom ? { correctedFrom } : {}), state: draft.selection ? 'validation-failed' : 'model-required', requestId, assets: [], createdAt: old?.job.createdAt ?? now, updatedAt: now }
+      const stored: Stored = { scope, owner, draft: frozen, job, submitted: false }
+      await this.lock(() => this.save(stored))
+      if (draft.selection) {
+        try {
+          if (this.media.preview) job.diagnostics = await this.media.preview(this.request(stored))
+          const estimate = await this.media.estimate(this.request(stored))
+          if (!estimate.currency || !Number.isFinite(Number(estimate.maximumCharge ?? estimate.total)) || Number(estimate.maximumCharge ?? estimate.total) < 0) throw new Error('MEDIA_ESTIMATE_UNAVAILABLE')
+          if (owner !== await this.owner()) throw new Error('MEDIA_ACCOUNT_CHANGED')
+          job.estimate = estimate; job.state = 'prepared'
+        } catch (error) {
+          if (owner !== await this.owner()) throw new Error('MEDIA_ACCOUNT_CHANGED')
+          job.error = error instanceof Error ? error.message : 'MEDIA_ESTIMATE_FAILED'
+        }
+        await this.lock(() => this.save(stored))
+      }
+      return structuredClone(job)
     })
   }
   async references(scope: MediaScope, id: string) {
@@ -213,13 +230,13 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
         const task = await this.media.submit(this.request(value))
         if (this.disposed) return
         const latest = await this.read(value.job.id); await this.check(latest, value.scope)
-        value = latest; value.job.state = task.status; if (task.status === 'rejected') value.job.error = '服务端明确拒绝了参考素材格式；请提供对应素材的公网 HTTPS 直链，修正后提交新请求。'; if (task.taskId) value.job.taskId = task.taskId
+        value = latest; value.job.state = task.status; if (task.diagnostics) value.job.diagnostics = task.diagnostics; if (task.error) value.job.error = task.error; else if (task.status === 'rejected') value.job.error = '服务端明确拒绝请求，请核对诊断信息并修正后重试。'; if (task.taskId) value.job.taskId = task.taskId
       } catch (error) {
         if (this.disposed) return
         value = await this.read(value.job.id)
         const rejected = (error as any)?.rejected === true
         value.job.state = rejected ? 'rejected' : 'submission-uncertain'
-        value.job.error = rejected ? (error instanceof Error && error.message.startsWith('MEDIA_REFERENCE_URL_REQUIRED') ? '服务端明确拒绝了参考素材格式；请提供对应素材的公网 HTTPS 直链，修正后提交新请求。' : '请求已被拒绝；请检查模型、参数、费用和账号状态，修正后提交新请求。') : '提交状态待核查；请恢复原任务，不要重新生成。'
+        value.job.error = rejected ? (error instanceof Error && error.message.startsWith('MEDIA_REFERENCE_URL_REQUIRED') ? '服务端明确拒绝了参考素材格式；请提供对应素材的公网 HTTPS 直链，修正后提交新请求。' : (error instanceof Error ? error.message : 'MEDIA_REQUEST_REJECTED')) : '提交状态待核查；请恢复原任务，不要重新生成。'
       }
       value.job.updatedAt = new Date().toISOString(); await this.lock(async () => { if (!this.disposed) await this.save(value) })
     })().catch(() => {}).finally(() => {
@@ -297,9 +314,9 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
         retry.attempts = Math.min(Number.MAX_SAFE_INTEGER, retry.attempts + 1); value.job.collection = 'querying'; value.job.updatedAt = new Date(this.now()).toISOString(); await persist()
         try {
           const querySignal = AbortSignal.any([signal, AbortSignal.timeout(30_000)])
-          const task = await mediaAbortable(this.media.query(value.job.requestId, querySignal), querySignal); signal.throwIfAborted()
+          const task = await mediaAbortable(this.media.query(value.job.requestId, querySignal), querySignal); signal.throwIfAborted(); if (task.diagnostics) value.job.diagnostics = task.diagnostics
           if (task.requestId !== value.job.requestId || value.job.taskId && task.taskId !== value.job.taskId) throw new Error('MEDIA_TASK_IDENTITY_MISMATCH')
-          value.job.state = task.status; if (task.status === 'rejected') value.job.error = '服务端明确拒绝了参考素材格式；请提供对应素材的公网 HTTPS 直链，修正后提交新请求。'; if (task.taskId) value.job.taskId = task.taskId
+          value.job.state = task.status; if (task.diagnostics) value.job.diagnostics = task.diagnostics; if (task.error) value.job.error = task.error; else if (task.status === 'rejected') value.job.error = '服务端明确拒绝请求，请核对诊断信息并修正后重试。'; if (task.taskId) value.job.taskId = task.taskId
           if (!['completed', 'succeeded'].includes(task.status)) {
             if (TERMINAL_STATES.includes(task.status)) {
               delete value.job.collection; delete value.job.collectionRetry

@@ -22,8 +22,8 @@ export function selectedSkillArguments(args) {
   return { skills, remaining }
 }
 
-export function mergePublishedPlugins(previous, selections, keys) {
-  return mergePublishedResources(previous, selections, keys, 'plugin')
+export function mergePublishedPlugins(previous, selections, keys, retiredIds = RETIRED_PLUGIN_IDS) {
+  return mergePublishedResources(previous, selections, keys, 'plugin', retiredIds)
 }
 
 export function mergePublishedSkills(previous, selections, keys, retiredIds = new Set()) {

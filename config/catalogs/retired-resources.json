@@ -1,6 +1,7 @@
 {
   "schema": 1,
   "plugin": [
+    "@oh-story/dsh",
     "@changfenhuang/dsh-genui",
     "dsh-univer-office"
   ],

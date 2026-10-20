@@ -12,12 +12,21 @@
 
 `media_job.references_json` 接受有序参考数组，每项仅选 `path`、`attachment_id`、`url` 或 `reference_id` 一个来源。URL 须声明 `media_type`；`reference_id` 复用当前任务摘要的 SHA-256，不向模型返回原始编码或签名地址。旧的 `reference_paths`、`input_attachment_ids` 继续可用，但不能与新参数同时传入。图片角色可为 `reference`、`first_frame`、`last_frame`；首尾帧不可混入普通图片参考。
 
-协议由网关能力目录的 `request_format` 明确指定，缺省沿用 `legacy`。`yunfei_multimodal` 使用真实 MIME 的 Base64 data URL，支持图片、视频、音频参考；`v6k_url` 使用公网 HTTPS 直链，视频和音频须另外配置经过确认的字段。Grok 保留其专用 `image.url` 适配。实际可用类型、数量、大小、时长和角色受所选模型能力约束，不根据模型名称推测支持范围。
+协议由网关能力目录的 `request_format` 明确指定，缺省沿用 `legacy`。`yunfei_multimodal` 使用真实 MIME 的 Base64 data URL，支持图片、视频、音频参考；`v6k_url` 使用公网 HTTPS 直链，字段为 `images/videos/audios`。Grok 保留其专用 `image.url` 适配。目录能力用于提示，上游决定实际可用类型、数量和供应商可选参数；身份、费用和网络安全边界继续校验。
 
 本期不接对象存储、不自动上传素材。用户已有 URL 时直接复用；模型需要 URL 或服务端明确拒绝 Base64 格式时，仅请求缺失素材的公网直链。补地址后建立新请求并保留旧拒绝记录；超时、5xx、断网和已有任务 ID 时保留原身份核查，不自动创建新的付费任务。
 
 小说、游戏、短剧、解说页面及相应工具、Skills、Roles、Hooks和资源已退出运行与发布包。用户历史项目文件保留，不自动迁移或改写。
 
-包名从 `@oh-story/dsh` 迁移为 `@zerowallscience/plugin-videos`。托管升级继承禁用和卸载选择，固定版本及自定义来源保留；旧桌面通过仅转发代码的兼容包更新。项目目录、作品、会话事件和任务账本继续复用，不搬迁用户数据。
+包名从 `@oh-story/dsh` 迁移为 `@zerowallscience/plugin-videos`。托管升级继承禁用和卸载选择，旧 ID 的固定版本记录保留，托管兼容包退出运行闭包并迁移到正式创作插件；自定义同名第三方来源保留。已有新插件的显式选择优先。项目目录、作品、会话事件和任务账本继续复用，不搬迁用户数据。
 
 上游：zenstory-ai/oh-story-dsh，版本 0.1.16，固定提交 d4fca12fa8a71c9d91944bd25a9d8c6b519084f5。保留 MIT LICENSE；README.upstream.md 记录来源。当前验证基线 Desktop 8.4.2、DSH 0.2.1-rc.2。
+
+
+### 参考素材完整性
+
+通过 `media_job.references_file` 读取工作区 JSON 清单（与 `references_json`、旧参考输入互斥），例如 `source/reference-inputs.json`。清单每项包含 `url`、`media_type`，可带 `role` 与供应商附加属性。不能仅把目录路径写进 prompt。
+
+URL 模式保持公网直链原值；V6K 使用 `images/videos/audios`，云飞使用 `reference_images/reference_videos/reference_audios`。能力目录仅作提示，可选供应商参数由上游校验。相同语义字段冲突时明确报错，不覆盖素材。
+
+估价失败返回 `validation-failed` 草稿及原 ID，素材仍保存。修正参数时复用原任务，省略参考输入会继承项目意图；`[]` 不会清空已有素材，只有用户明确要求无参考创作时才使用 `clear_references`。不得因报错去掉图片或视频、更换模型或重建空参考任务。提交前核对返回的参考数量；准备参数、尝试发送和上游受理是不同状态，历史未记录时不得推断素材已经发送。

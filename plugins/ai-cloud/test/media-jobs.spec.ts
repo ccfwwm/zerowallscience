@@ -68,7 +68,7 @@ describe('authenticated media review ledger',()=>{
   await expect(f.ledger.submitReviewed(f.scope,[review])).rejects.toThrow('OWNER_MISMATCH')
   f.owner('account-a');await expect(f.ledger.submitReviewed(f.scope,[review,review])).rejects.toThrow('REVIEW_INVALID')
   f.media.estimate.mockRejectedValueOnce(new Error('estimate down'))
-  await expect(f.ledger.prepare(f.scope,f.draft)).rejects.toThrow('estimate down');expect(f.media.submit).not.toHaveBeenCalled()
+  const failed = await f.ledger.prepare(f.scope,f.draft); expect(failed).toMatchObject({state:'validation-failed',error:'estimate down'});expect((await f.ledger.list(f.scope)).some(job=>job.id===failed.id)).toBe(true);expect(f.media.submit).not.toHaveBeenCalled()
  })
  it('rechecks changed cost without charging any item in the batch',async()=>{
   const f=await fixture(),a=await f.ledger.prepare(f.scope,f.draft),b=await f.ledger.prepare(f.scope,f.draft)
@@ -224,4 +224,14 @@ it('keeps an explicitly rejected job immutable and creates a corrected identity'
  expect(corrected.id).not.toBe(original.id);expect(corrected.requestId).not.toBe(original.requestId);expect(corrected.correctedFrom).toBe(original.id)
  expect(await f.ledger.list(f.scope)).toHaveLength(2)
  await expect(f.ledger.references({...f.scope,sessionId:'wrong'},original.id)).rejects.toThrow('OWNER_MISMATCH')
+})
+
+it('retains the provider failure reason through original-task refresh',async()=>{
+ const f=await fixture(),job=await f.ledger.prepare(f.scope,f.draft)
+ f.media.submit.mockResolvedValueOnce({requestId:job.requestId,status:'failed',artifacts:[],error:'UPSTREAM_UNSUPPORTED_REFERENCE: original images retained'} as any)
+ await f.ledger.submitRequested(f.scope,job.id,job.revision);await settle(f)
+ expect((await f.ledger.list(f.scope))[0]?.error).toContain('UPSTREAM_UNSUPPORTED_REFERENCE')
+ f.media.query.mockResolvedValueOnce({requestId:job.requestId,status:'failed',artifacts:[],error:'UPSTREAM_UNSUPPORTED_REFERENCE: original images retained'} as any)
+ expect((await f.ledger.refresh(f.scope,job.id)).error).toContain('UPSTREAM_UNSUPPORTED_REFERENCE')
+ expect(f.media.submit).toHaveBeenCalledOnce();await f.ledger.dispose()
 })

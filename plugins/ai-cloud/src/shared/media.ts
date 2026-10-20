@@ -1,13 +1,13 @@
 import type { AiCloudMediaModel } from '@zerowallscience/plugin-account/types'
 
 export interface MediaSelection { groupId: string; modelId: string; profileId: string; operation: string }
-export type MediaReference = { mediaType: string; name?: string; role?: string; duration?: number } & (
+export type MediaReference = { mediaType: string; name?: string; role?: string; duration?: number; properties?: Record<string, unknown> } & (
   { base64: string; url?: never } | { url: string; base64?: never }
 )
 export interface MediaRequest extends MediaSelection {
   requestId: string
   prompt: string
-  parameters?: { size?: string; quality?: string; duration?: number; resolution?: string; aspect_ratio?: string; n?: number; seed?: number }
+  parameters?: { size?: string; quality?: string; duration?: number; resolution?: string; aspect_ratio?: string; n?: number; seed?: number; [key: string]: unknown }
   references?: MediaReference[]
   mask?: MediaReference
   async?: boolean
@@ -19,10 +19,18 @@ export interface MediaArtifact {
 export interface MediaTask {
   requestId: string; taskId?: string; account: string; gateway: string; selection: MediaSelection
   parametersHash: string; status: string; artifacts: MediaArtifact[]; artifactsPending?: boolean; createdAt: string; updatedAt: string
+  diagnostics?: MediaDiagnostics
+  error?: string
+}
+export interface MediaDiagnostics {
+  stage: 'prepared' | 'attempted' | 'accepted'
+  requestHash: string; request: Record<string, unknown>; response?: unknown
+  references: Record<string, number>; upstream?: unknown
 }
 export interface MediaCatalog { models: AiCloudMediaModel[]; status: string; error?: string }
 
 export interface ZeroWallMedia {
+  preview?(input: MediaRequest): Promise<MediaDiagnostics>
   catalog(refresh?: boolean): Promise<MediaCatalog>
   estimate(input: MediaRequest): Promise<{ currency: string; maximumCharge?: string; total?: string }>
   submit(input: MediaRequest, signal?: AbortSignal): Promise<MediaTask>
@@ -37,6 +45,8 @@ export interface MediaScope { sessionId: string; cwd: string; projectId: string 
 export interface MediaDraft {
   kind: MediaKind; prompt: string; selection?: MediaSelection
   parameters?: MediaRequest['parameters']; references?: MediaReference[]; mask?: MediaReference | null
+  clearReferences?: boolean
+  replaceReferences?: boolean
 }
 export interface MediaAsset { id: string; path: string; mediaType: string; bytes: number; sha256: string; duration?: number; projectId?: string; sessionId?: string }
 export interface MediaShot { id: string; asset: string; duration: number; trimStart?: number; motion?: 'none' | 'zoom-in' | 'zoom-out'; caption?: string }
@@ -54,6 +64,7 @@ export interface MediaJob {
   correctedFrom?: string
   estimate?: { currency: string; maximumCharge?: string; total?: string }
   state: string; error?: string; requestId: string; taskId?: string; assets: MediaAsset[]
+  diagnostics?: MediaDiagnostics
   /** Local result transfer is independent of the provider's generation status. */
   collection?: 'querying' | 'downloading' | 'waiting' | 'ready' | 'failed' | 'paused'
   /** Original-task continuation survives Host restarts and has no overall generation deadline. */

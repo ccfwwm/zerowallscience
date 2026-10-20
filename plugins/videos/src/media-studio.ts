@@ -10,7 +10,7 @@ import type { MediaDraft, MediaJob, MediaSelection, MediaScope, MediaAsset, Medi
 import type {} from '@zerowallscience/plugin-ai-cloud'
 import type {} from '@zerowallscience/plugin-python'
 import type {} from '@zerowallscience/plugin-environment'
-import { mediaTarget, publicReferenceURL } from '@zerowallscience/plugin-ai-cloud'
+import { mediaTarget, publicReferenceURL, normalizeMediaReferences } from '@zerowallscience/plugin-ai-cloud'
 import { commandOutput } from './host-python.js'
 import type { CompositionJob, MediaProject } from './media-types.js'
 import { PROJECT_ID } from './media-types.js'
@@ -26,6 +26,7 @@ export class MediaStudioService extends TypertRemoteService {
   private writes: Promise<unknown> = Promise.resolve()
   private generations = new Map<string, Promise<unknown>>()
   private activeRenders = new Map<string, Promise<MediaAsset>>()
+  private preparations = new Map<string, Promise<unknown>>()
   private uploads = new Map<string, { scope: MediaScope; path: string; name: string; bytes: number }>()
   constructor(private host: Context) { super(host, 'zerowallMediaStudio') }
   active(sessionId: string): boolean { return this.activeSessions.has(sessionId) }
@@ -41,9 +42,9 @@ export class MediaStudioService extends TypertRemoteService {
     const scope = await this.scope(sessionId, input.projectId, true)
     const previous = input.id ? (await this.host.zerowallMediaJobs.list(scope)).find(job => job.id === input.id) : undefined
     if (previous) validateMediaJobKind(previous)
-    if (previous && !['prepared', 'model-required', 'rejected'].includes(previous.state)) return previous
+    if (previous && !['prepared', 'model-required', 'validation-failed', 'rejected'].includes(previous.state)) return previous
     const draft = await this.prepare(scope, { ...input, autoSelect: true })
-    if (draft.state === 'model-required') return draft
+    if (draft.state !== 'prepared') return draft
     return this.host.zerowallMediaJobs.submitRequested(scope, draft.id, draft.revision)
   }
   private async importBytes(sessionId: string, projectId: string, name: string, bytes: Uint8Array): Promise<MediaAsset> {
@@ -130,13 +131,20 @@ export class MediaStudioService extends TypertRemoteService {
     await writeFile(temp,JSON.stringify(value,null,2)+'\n',{flag:'wx'});await rename(temp,target)
   }
   private async prepare(scope:MediaScope,input:any):Promise<MediaJob> {
+    const key=scope.sessionId+':'+scope.projectId, previous=this.preparations.get(key)??Promise.resolve()
+    const next=previous.then(()=>this.prepareOnce(scope,input),()=>this.prepareOnce(scope,input)),settled=next.catch(()=>{})
+    this.preparations.set(key,settled)
+    void settled.finally(()=>{if(this.preparations.get(key)===settled)this.preparations.delete(key)})
+    return next
+  }
+  private async prepareOnce(scope:MediaScope,input:any):Promise<MediaJob> {
     validateMediaJobKind(input)
     this.activeSessions.add(scope.sessionId)
     await this.ensure(scope)
     const old = input.id ? (await this.host.zerowallMediaJobs.list(scope)).find(j => j.id === input.id) : undefined
     if (old) validateMediaJobKind(old)
     let selection:MediaSelection|undefined=input.selection
-    if(input.selection===undefined&&!selection){selection=old?.selection;if(!input.parameters)input.parameters=old?.parameters}
+    if(input.selection===undefined&&!selection){selection=old?.selection;if(old?.parameters)input.parameters={...old.parameters,...(input.parameters??{})}}
     if (!selection && input.selection!==null) {
       const legacy=await this.host.zerowallEnvironment.readMediaModelSelections()
       if (!legacy.image) {
@@ -145,13 +153,13 @@ export class MediaStudioService extends TypertRemoteService {
         if(model.length===1)legacy.image={selection:{groupId:model[0]!.groupId,modelId:model[0]!.modelId,profileId:model[0]!.profileId,operation:model[0]!.operations.includes('gemini_image')?'gemini_image':'image'},parameters:{...(previous?.resolution?{resolution:previous.resolution}:{}),...(previous?.aspectRatio?{aspect_ratio:previous.aspectRatio}:{}),...(model[0]!.qualities.includes(this.host.zerowallEnvironment.getImageQuality())?{quality:this.host.zerowallEnvironment.getImageQuality()}:{})}}
       }
       selection=legacy?.[input.kind]?.selection
-      if (selection && !input.parameters) input.parameters=legacy?.[input.kind]?.parameters
+      if (selection) input.parameters={...(legacy?.[input.kind]?.parameters??{}),...(input.parameters??{})}
       if (!selection && input.autoSelect && !(input.kind === 'image' && await this.host.zerowallEnvironment.readImageModelSelection())) {
         const operations = input.kind === 'image' ? (input.reference_paths?.length || input.input_attachment_ids?.length ? ['image_edit', 'gemini_image'] : ['image', 'gemini_image']) : input.kind === 'video' ? ['video'] : ['chat_music']
         const model = (await this.host.zerowallMedia.catalog()).models.find(m => !m.stale && m.operations.some(op => operations.includes(op)))
         if (model) {
           selection = { groupId: model.groupId, modelId: model.modelId, profileId: model.profileId, operation: model.operations.find(op => operations.includes(op))! }
-          const parameters = { ...(model.duration.required && model.duration.mode !== 'fixed' ? { duration: model.duration.default ?? model.duration.values?.[0] ?? model.duration.min ?? undefined } : {}), ...(input.parameters ?? {}) }
+          const parameters = { ...(model.duration.required && model.duration.mode !== 'fixed' && input.parameters?.duration === undefined && input.parameters?.seconds === undefined ? { duration: model.duration.default ?? model.duration.values?.[0] ?? model.duration.min ?? undefined } : {}), ...(input.parameters ?? {}) }
           input.parameters = parameters
           await this.host.zerowallEnvironment.setMediaModelSelections({ ...legacy, [input.kind]: { selection, parameters } })
         }
@@ -159,7 +167,7 @@ export class MediaStudioService extends TypertRemoteService {
     }
     if (selection) {
       const model = (await this.host.zerowallMedia.catalog()).models.find(m => !m.stale && m.groupId === selection!.groupId && m.modelId === selection!.modelId && m.profileId === selection!.profileId)
-      if (model?.duration.required && model.duration.mode !== 'fixed' && input.parameters?.duration === undefined) {
+      if (model?.duration.required && model.duration.mode !== 'fixed' && input.parameters?.duration === undefined && input.parameters?.seconds === undefined) {
         input.parameters = { ...(input.parameters ?? {}), duration: model.duration.default ?? model.duration.values?.[0] ?? model.duration.min }
       }
       if (input.kind === 'image') {
@@ -169,22 +177,40 @@ export class MediaStudioService extends TypertRemoteService {
         if (model?.operations.includes(operation)) selection = { ...selection, operation }
       }
     }
-    if (input.references_json !== undefined && (input.reference_paths !== undefined || input.input_attachment_ids !== undefined)) throw new Error('MEDIA_REFERENCE_INPUT_CONFLICT: references_json 不能与旧参考参数同时使用。')
+    const sourceInputs = ['references_file', 'references_json', 'reference_paths', 'input_attachment_ids'].filter(key => input[key] !== undefined)
+    if (sourceInputs.length > 1) throw new Error('MEDIA_REFERENCE_INPUT_CONFLICT')
+    if (input.references_file !== undefined) {
+      const target = await mediaTarget(scope.cwd, input.references_file), info = await stat(target)
+      if (!info.isFile() || info.size > 1024 * 1024) throw new Error('MEDIA_REFERENCE_MANIFEST_INVALID')
+      input.references_json = await readFile(target, 'utf8')
+    }
     const descriptors = input.references_json === undefined ? undefined : typeof input.references_json === 'string' ? JSON.parse(input.references_json) : input.references_json
-    if (descriptors !== undefined && (!Array.isArray(descriptors) || descriptors.length > 16)) throw new Error('MEDIA_REFERENCES_INVALID')
+    const intentFile = await mediaTarget(scope.cwd, `media-projects/${scope.projectId}/reference-intent.json`, true)
+    const intent = await readFile(intentFile, 'utf8').then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error; return undefined })
+    const referenceKeys = Object.keys(input.parameters ?? {}).filter(key => /^(images|videos|audios|reference_(images|videos|audios|image_urls|video_urls|audio_urls))$/.test(key))
+    const hasParameterRefs = referenceKeys.some(key => Array.isArray(input.parameters[key]) && input.parameters[key].length > 0)
+    if (referenceKeys.length && !hasParameterRefs && intent?.references?.length && !input.clearReferences) throw new Error('MEDIA_REFERENCES_CLEAR_REQUIRED')
+    if (input.clearReferences) {
+      input.references_json = '[]'
+      for (const key of referenceKeys) delete input.parameters[key]
+    } else if (descriptors?.length === 0 && intent?.references?.length) throw new Error('MEDIA_REFERENCES_CLEAR_REQUIRED: 素材意图已保存，不能以空数组继续生成。')
+    if (descriptors === undefined && !hasParameterRefs && intent?.references?.length && !old && !input.clearReferences) input.references_json = JSON.stringify(intent.references)
+    const selectedDescriptors = input.clearReferences ? [] : input.references_json === undefined ? descriptors : typeof input.references_json === 'string' ? JSON.parse(input.references_json) : input.references_json
+    if (selectedDescriptors !== undefined && (!Array.isArray(selectedDescriptors) || selectedDescriptors.length > 16)) throw new Error('MEDIA_REFERENCES_INVALID')
     const references: MediaReference[] = []
     for (const path of input.reference_paths ?? []) references.push(await this.reference(scope, path))
     for (const attachmentId of input.input_attachment_ids ?? []) {
       const asset = await this.importSource(scope.sessionId, { projectId: scope.projectId, attachmentId })
       references.push(await this.reference(scope, asset.path))
     }
-    for (const item of descriptors ?? []) {
-      if (!item || typeof item !== 'object' || Object.keys(item).some(key => !['path','attachment_id','url','reference_id','media_type','role','name'].includes(key)) || ['path','attachment_id','url','reference_id'].filter(key => typeof item[key] === 'string' && item[key]).length !== 1) throw new Error('MEDIA_REFERENCE_ONE_SOURCE_REQUIRED')
+    for (const item of selectedDescriptors ?? []) {
+      if (!item || typeof item !== 'object' || ['path','attachment_id','url','reference_id'].filter(key => typeof item[key] === 'string' && item[key]).length !== 1) throw new Error('MEDIA_REFERENCE_ONE_SOURCE_REQUIRED')
       let ref: MediaReference
       if (item.reference_id) {
-        if (!old) throw new Error('MEDIA_REFERENCE_NOT_FOUND')
-        const index = old.references.filter(ref => !ref.mask).findIndex(ref => ref.sha256 === item.reference_id)
-        const original = (await this.host.zerowallMediaJobs.references(scope, old.id))[index]
+        const referenceOwner = old ?? (await this.host.zerowallMediaJobs.list(scope)).find(job => job.id === intent?.jobId)
+        if (!referenceOwner) throw new Error('MEDIA_REFERENCE_NOT_FOUND')
+        const index = referenceOwner.references.filter(ref => !ref.mask).findIndex(ref => ref.sha256 === item.reference_id)
+        const original = (await this.host.zerowallMediaJobs.references(scope, referenceOwner.id))[index]
         if (!original) throw new Error('MEDIA_REFERENCE_NOT_FOUND')
         ref = original
       } else if (item.url) {
@@ -195,12 +221,29 @@ export class MediaStudioService extends TypertRemoteService {
         ref = await this.reference(scope, asset?.path ?? item.path)
         if (item.media_type && item.media_type !== ref.mediaType) throw new Error('MEDIA_REFERENCE_MIME_MISMATCH')
       }
+      const { path: _path, attachment_id: _attachment, reference_id: _reference, url: _url, media_type: _mime, role: _role, name: _name, ...properties } = item
+      ref.properties = { ...ref.properties, ...properties, ...(item.name !== undefined ? { name: item.name } : {}) }
       if (item.role !== undefined) ref.role = item.role
       references.push(ref)
     }
     const mask=input.mask_path?await this.reference(scope,input.mask_path):undefined
-    const draft:MediaDraft={kind:input.kind,prompt:input.prompt,...(selection?{selection}:{}),...(input.parameters?{parameters:input.parameters}:{}),...(references.length||descriptors!==undefined||input.reference_paths!==undefined||input.input_attachment_ids!==undefined?{references}:{}),...(mask?{mask}:input.mask_path===null?{mask:null}:{})}
-    return this.host.zerowallMediaJobs.prepare(scope,draft,input.id)
+    let draft:MediaDraft={...(input.clearReferences?{clearReferences:true}:{}),kind:input.kind,prompt:input.prompt,...(selection?{selection}:{}),...(input.parameters?{parameters:input.parameters}:{}),...(references.length||selectedDescriptors!==undefined||input.reference_paths!==undefined||input.input_attachment_ids!==undefined?{references}:{}),...(mask?{mask}:input.mask_path===null?{mask:null}:{})}
+    draft = normalizeMediaReferences(draft)
+    if (!input.clearReferences && !input.replaceReferences && intent?.jobId) {
+      const expected = await this.host.zerowallMediaJobs.references(scope, intent.jobId)
+      draft.references ??= expected
+      for (const kind of ['image','video','audio']) {
+        if (draft.references.filter(ref=>ref.mediaType.startsWith(kind+'/')).length < expected.filter(ref=>ref.mediaType.startsWith(kind+'/')).length) throw new Error('MEDIA_REFERENCE_INTENT_MISMATCH: ' + kind + '；保留原素材，明确修改参考后再提交。')
+      }
+    }
+    if (input.replaceReferences) draft.replaceReferences = true
+    // Persist project intent before estimate/validation, including failed drafts.
+    const job = await this.host.zerowallMediaJobs.prepare(scope,draft,input.id)
+    const retained = await this.host.zerowallMediaJobs.references(scope, job.id)
+    const intentReferences = retained.map((ref, index) => ref.url !== undefined ? { ...ref.properties, url: ref.url, media_type: ref.mediaType, ...(ref.role ? { role: ref.role } : {}) } : { reference_id: job.references.filter(ref => !ref.mask)[index]!.sha256, ...(ref.role ? { role: ref.role } : {}) })
+    const temporary = intentFile + '.' + randomUUID() + '.tmp'
+    await writeFile(temporary, JSON.stringify({ references: intentReferences, jobId: job.id }), { flag: 'wx' }); await rename(temporary, intentFile)
+    return job
   }
   private async reference(scope:MediaScope,path:string){
     if(!path.startsWith(`media-projects/${scope.projectId}/assets/`))throw new Error('MEDIA_REFERENCE_OUTSIDE_PROJECT')

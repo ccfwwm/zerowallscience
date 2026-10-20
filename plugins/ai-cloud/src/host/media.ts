@@ -6,14 +6,15 @@ import { setTimeout as delay } from 'node:timers/promises'
 import type { AccountSecretStore } from '@zerowallscience/plugin-account'
 import type { AiCloudAccountSnapshot, AiCloudMediaModel } from '@zerowallscience/plugin-account/types'
 import { isImageGenerationGroup, uniqueMediaModels } from '@zerowallscience/plugin-account'
-import type { MediaArtifact, MediaCatalog, MediaRequest, MediaSelection, MediaTask, ZeroWallMedia } from '../shared/media.js'
+import type { MediaArtifact, MediaCatalog, MediaDiagnostics, MediaRequest, MediaSelection, MediaTask, ZeroWallMedia } from '../shared/media.js'
+import { safeMediaValue, safeMediaResponse } from './media-diagnostics.js'
 import { artifactFormat } from './artifact-format.js'
 import { externalArtifact } from './artifact-network.js'
 import { downloadImageBytes } from './image-download.js'
 import { downloadMediaBytes } from './media-download.js'
 import { mediaAbortable } from './media-abort.js'
 import { mediaHttpError } from './media-retry.js'
-import { referenceBytes, referenceValue, validateFrameReferences, MAX_MEDIA_REQUEST_BYTES } from './media-reference.js'
+import { referenceBytes, referenceValue, referenceProperties, normalizeMediaReferences, validateFrameReferences, MAX_MEDIA_REQUEST_BYTES } from './media-reference.js'
 
 interface Account { current(): Promise<AiCloudAccountSnapshot>; discoverModels(): Promise<AiCloudAccountSnapshot> }
 interface StoredArtifact extends MediaArtifact { source?: string; file?: string }
@@ -35,7 +36,7 @@ function gateway(raw: string): string {
 function dto(task: StoredTask): MediaTask {
   return { requestId: task.requestId, ...(task.taskId ? { taskId: task.taskId } : {}), account: task.account, gateway: task.gateway,
     selection: { groupId: task.selection.groupId, profileId: task.selection.profileId, modelId: task.selection.modelId, operation: task.selection.operation },
-    parametersHash: task.parametersHash, status: task.status, ...(task.artifactsPending ? { artifactsPending: true } : {}), createdAt: task.createdAt, updatedAt: task.updatedAt,
+    parametersHash: task.parametersHash, ...(task.diagnostics ? { diagnostics: task.diagnostics } : {}), ...(task.error ? { error: task.error } : {}), status: task.status, ...(task.artifactsPending ? { artifactsPending: true } : {}), createdAt: task.createdAt, updatedAt: task.updatedAt,
     artifacts: task.artifacts.map(a => ({ key: a.key, mediaType: a.mediaType, ...(a.bytes !== undefined ? { bytes: a.bytes } : {}), ...(a.duration !== undefined ? { duration: a.duration } : {}), ...(a.sha256 ? { sha256: a.sha256 } : {}), ...(a.revisedPrompt ? { revisedPrompt: a.revisedPrompt } : {}), ...(a.quality ? { quality: a.quality } : {}) })) }
 }
 
@@ -74,45 +75,27 @@ export class AiCloudMediaService implements ZeroWallMedia {
     if (!/^[a-zA-Z0-9_-]{8,128}$/.test(input.requestId)) throw new Error('MEDIA_INVALID_REQUEST_ID')
     if (!input.prompt?.trim() || input.prompt.length > 100_000) throw new Error('MEDIA_PROMPT_REQUIRED')
     const p = input.parameters ?? {}
-    for (const [key, allowed] of [['size', model.sizes], ['quality', model.qualities], ['resolution', model.resolutions], ['aspect_ratio', model.aspectRatios]] as const) {
-      const selected = p[key]
-      // Some image routes accept optional quality without listing its values.
-      // Preserve the explicit request and let the provider validate it.
-      if (key === 'quality' && allowed.length === 0) continue
-      if (selected !== undefined && (allowed.length === 0 || !allowed.includes(selected))) throw new Error(`MEDIA_UNSUPPORTED_PARAMETER: ${key}; 当前所选模型配置不支持此值，请在环境配置中确认参数。`)
-    }
-    if (p.duration !== undefined) {
-      const d = model.duration
-      if (!Number.isSafeInteger(p.duration) || p.duration <= 0 || (d.values?.length && !d.values.includes(p.duration)) || (d.min != null && p.duration < d.min) || (d.max != null && p.duration > d.max)) throw new Error('MEDIA_UNSUPPORTED_DURATION')
-    } else if (model.duration.required && model.duration.mode !== 'fixed') throw new Error('MEDIA_DURATION_REQUIRED')
+    // Capability catalogs are advisory; the selected upstream validates optional values.
+    if (p.duration !== undefined && (!Number.isSafeInteger(p.duration) || p.duration <= 0)) throw new Error('MEDIA_UNSUPPORTED_DURATION')
+    if (p.duration === undefined && p.seconds === undefined && model.duration.required && model.duration.mode !== 'fixed') throw new Error('MEDIA_DURATION_REQUIRED')
+    for (const key of ['model', 'public_profile_id', 'prompt', 'requestId']) if (p[key] !== undefined) throw new Error('MEDIA_RESERVED_PARAMETER: ' + key)
     if (p.n !== undefined && p.n !== 1) throw new Error('MEDIA_OUTPUT_COUNT_REQUIRES_ONE')
     if (p.seed !== undefined && (!Number.isSafeInteger(p.seed) || p.seed < 0)) throw new Error('MEDIA_INVALID_SEED')
     const references = input.references ?? []
     if (references.length > 16) throw new Error('MEDIA_REFERENCE_LIMIT')
     validateFrameReferences(references)
-    const counts: Record<string, number> = {}
     for (const ref of [...references, ...(input.mask ? [input.mask] : [])]) {
       const bytes = referenceBytes(ref), isMask = ref === input.mask
-      const kind = isMask ? 'mask' : ref.mediaType.split('/')[0]!
-      counts[kind] = (counts[kind] ?? 0) + 1
-      const limit = model.materials[kind]
-      if (!limit?.max_count || counts[kind]! > limit.max_count || !limit.max_file_bytes || bytes && bytes.length > limit.max_file_bytes) throw new Error('MEDIA_REFERENCE_LIMIT: ' + kind)
       if (isMask && (ref.mediaType !== 'image/png' || !bytes)) throw new Error('MEDIA_INVALID_REFERENCE')
-      if (input.operation !== 'video' && (kind !== 'image' && !isMask || ref.url !== undefined)) throw new Error('MEDIA_REFERENCE_FORMAT')
-      if (model.requestFormat === 'v6k_url' && ref.url === undefined) throw new Error('MEDIA_PUBLIC_URL_REQUIRED: 当前模型需要公网参考' + ({image:'图片',video:'视频',audio:'音频'}[kind] ?? '素材') + '地址，请提供可直接访问的 HTTPS 链接。')
-      if (input.operation === 'video' && kind !== 'image' && model.requestFormat !== 'yunfei_multimodal' && !(model.requestFormat === 'v6k_url' && limit.reference_field)) throw new Error('MEDIA_REFERENCE_TYPE_UNSUPPORTED: ' + kind)
-      const object = ref.role === 'first_frame' || ref.role === 'last_frame' || model.requestFormat === 'v6k_url' || model.referenceShape === 'url_object' || model.referenceShape === 'native_content'
-      const wireFormats = input.operation === 'image_edit' ? ['file', 'file_' + ref.mediaType.split('/')[1]] : ref.url !== undefined ? [object ? 'public_url_object' : 'public_url_string', object ? 'url_object' : 'url_string'] : [object ? 'data_url_in_url_object' : 'data_url']
-      if (limit.formats?.length && !wireFormats.some(f => limit.formats!.includes(f))) throw new Error('MEDIA_REFERENCE_FORMAT: ' + kind)
-      if (limit.max_duration_seconds != null && ref.duration !== undefined && (!Number.isFinite(ref.duration) || ref.duration <= 0 || ref.duration > Number(limit.max_duration_seconds))) throw new Error('MEDIA_REFERENCE_DURATION_LIMIT: ' + kind)
-      if (ref.role && !['reference', 'reference_image'].includes(ref.role) && model.requestFormat !== 'yunfei_multimodal' && model.referenceShape !== 'native_content') throw new Error('MEDIA_REFERENCE_ROLE_UNSUPPORTED')
+      if (input.operation !== 'video' && (!ref.mediaType.startsWith('image/') && !isMask || ref.url !== undefined)) throw new Error('MEDIA_REFERENCE_FORMAT')
+      if (model.requestFormat === 'v6k_url' && ref.url === undefined) throw new Error('MEDIA_PUBLIC_URL_REQUIRED: 当前协议需要公网 HTTPS 素材直链。')
     }
     if (input.mask && input.operation !== 'image_edit') throw new Error('MEDIA_MASK_UNSUPPORTED')
   }
 
   private wire(input: MediaRequest, model: AiCloudMediaModel): { path: string; payload: Record<string, unknown>; body: string | FormData } {
     const parameters = input.parameters ?? {}
-    const payload: Record<string, unknown> = { model: input.modelId, public_profile_id: input.profileId, prompt: input.prompt, ...parameters, async: input.async ?? true }
+    const payload: Record<string, unknown> = { ...parameters, model: input.modelId, public_profile_id: input.profileId, prompt: input.prompt, async: input.async ?? true }
     // Both estimates and generation use this exact documented operation shape.
     let path: string
     switch (input.operation) {
@@ -138,27 +121,30 @@ export class AiCloudMediaService implements ZeroWallMedia {
         path = '/v1/videos'
         if (model.requestFormat === 'yunfei_multimodal' || model.requestFormat === 'v6k_url') {
           if (model.requestFormat === 'v6k_url') {
-            if (parameters.duration !== undefined) { payload.seconds = parameters.duration; delete payload.duration }
-            if (parameters.aspect_ratio !== undefined) { payload.ratio = parameters.aspect_ratio; delete payload.aspect_ratio }
+            if (parameters.duration !== undefined) { if (payload.seconds !== undefined && payload.seconds !== parameters.duration) throw new Error('MEDIA_ALIAS_CONFLICT: duration/seconds'); payload.seconds = parameters.duration; delete payload.duration }
+            if (parameters.aspect_ratio !== undefined) { if (payload.ratio !== undefined && payload.ratio !== parameters.aspect_ratio) throw new Error('MEDIA_ALIAS_CONFLICT: aspect_ratio/ratio'); payload.ratio = parameters.aspect_ratio; delete payload.aspect_ratio }
           }
           for (const kind of ['image', 'video', 'audio']) {
             const refs = (input.references ?? []).filter(ref => ref.mediaType.startsWith(kind + '/'))
             if (!refs.length) continue
-            const field = model.requestFormat === 'yunfei_multimodal' ? 'reference_' + kind + 's' : kind === 'image' ? 'images' : model.materials[kind]?.reference_field
-            if (!field || !['images','videos','audios','reference_video_urls','reference_audio_urls','reference_videos','reference_audios'].includes(field) && model.requestFormat === 'v6k_url') throw new Error('MEDIA_REFERENCE_SHAPE_UNAVAILABLE')
-            payload[field] = refs.map(ref => model.requestFormat === 'v6k_url' ? { url: referenceValue(ref) } : ref.role === 'first_frame' || ref.role === 'last_frame' ? { url: referenceValue(ref), role: ref.role } : referenceValue(ref))
+            const field = model.requestFormat === 'yunfei_multimodal' ? 'reference_' + kind + 's' : kind + 's'
+            payload[field] = refs.map(ref => {
+              const props = referenceProperties(ref)
+              return model.requestFormat === 'v6k_url' || Object.keys(props).length ? { ...props, url: referenceValue(ref) } : referenceValue(ref)
+            })
           }
           break
         }
-        if (parameters.duration !== undefined) { payload.seconds = parameters.duration; delete payload.duration }
+        if (parameters.duration !== undefined) { if (payload.seconds !== undefined && payload.seconds !== parameters.duration) throw new Error('MEDIA_ALIAS_CONFLICT: duration/seconds'); payload.seconds = parameters.duration; delete payload.duration }
         if (input.references?.length) {
           const refs = input.references.map(ref => referenceValue(ref))
           const field = model.referenceField
           if (!field) throw new Error('MEDIA_REFERENCE_SHAPE_UNAVAILABLE')
-          if (model.referenceShape === 'native_content') payload.metadata = { content: input.references.map((ref, i) => ({ type: 'image_url', image_url: { url: refs[i] }, role: ref.role ?? 'reference_image' })) }
-          else if (model.referenceShape === 'url_object') { if (refs.length !== 1) throw new Error('MEDIA_REFERENCE_LIMIT'); payload[field] = { url: refs[0] } }
+          if (model.referenceShape === 'native_content' && (parameters.metadata as any)?.content !== undefined) throw new Error('MEDIA_REFERENCE_INPUT_CONFLICT: native content')
+          if (model.referenceShape === 'native_content') payload.metadata = { ...(parameters.metadata as Record<string, unknown> ?? {}), content: input.references.map((ref, i) => { const kind=ref.mediaType.split('/')[0]!; return { ...referenceProperties(ref), type: kind+'_url', [kind+'_url']: { url: refs[i] }, role: ref.role ?? (kind==='image'?'reference_image':'reference') } }) }
+          else if (model.referenceShape === 'url_object') { if (refs.length !== 1) throw new Error('MEDIA_REFERENCE_LIMIT'); payload[field] = { ...referenceProperties(input.references[0]!), url: refs[0] } }
           else if (model.referenceShape === 'single') { if (refs.length !== 1) throw new Error('MEDIA_REFERENCE_LIMIT'); payload[field] = refs[0] }
-          else payload[field] = refs
+          else payload[field] = input.references.map((ref, i) => Object.keys(referenceProperties(ref)).length ? { ...referenceProperties(ref), url: refs[i] } : refs[i])
         }
         break
       case 'chat_music':
@@ -167,6 +153,14 @@ export class AiCloudMediaService implements ZeroWallMedia {
         payload.stream = false
         break
       default: throw new Error('MEDIA_OPERATION_UNAVAILABLE')
+    }
+    if (input.operation === 'video' && ['v6k_url','yunfei_multimodal'].includes(model.requestFormat ?? '')) {
+      for (const kind of ['image','video','audio']) {
+        const expected=(input.references??[]).filter(ref=>ref.mediaType.startsWith(kind+'/'))
+        const field=(model.requestFormat==='v6k_url'?'':'reference_')+kind+'s'
+        const sent=payload[field] as Array<string|Record<string,unknown>>|undefined
+        if ((sent?.length??0)!==expected.length || expected.some((ref,i)=>(typeof sent![i]==='string'?sent![i]:(sent![i] as any).url)!==referenceValue(ref))) throw new Error('MEDIA_REFERENCE_INTENT_MISMATCH: '+field)
+      }
     }
     const body = JSON.stringify(payload)
     if (Math.max(Buffer.byteLength(body), Buffer.byteLength(JSON.stringify({ operation: input.operation, request: payload }))) > Math.min(MAX_MEDIA_REQUEST_BYTES, model.maxRequestBytes ?? MAX_MEDIA_REQUEST_BYTES)) throw new Error('MEDIA_REQUEST_TOO_LARGE')
@@ -187,12 +181,27 @@ export class AiCloudMediaService implements ZeroWallMedia {
         const value = JSON.parse(raw), code = value.error?.code ?? value.code
         if ([400,415,422].includes(response.status) && ['unsupported_reference_format','base64_not_supported','reference_url_required'].includes(code)) throw Object.assign(new Error('MEDIA_REFERENCE_URL_REQUIRED: 服务端明确拒绝了参考素材格式；请为相应素材提供公网 HTTPS 直链。'), { rejected: true })
       } catch (cause) { if ((cause as any)?.rejected) throw cause }
+      const value = (() => { try { return JSON.parse(raw) } catch { return {} } })()
+      const detail = safeMediaValue(value.error ?? value, [key])
+      Object.assign(error, { response: { status: response.status, error: detail } })
+      const code = typeof detail?.code === 'string' ? detail.code : ''
+      const message = typeof detail?.message === 'string' ? detail.message : ''
+      if (code || message) error.message += ': ' + [code, message].filter(Boolean).join(' — ').slice(0, 1000)
       throw error
     }
     return mediaAbortable(response.json(), signal)
   }
 
+  async preview(input: MediaRequest): Promise<MediaDiagnostics> {
+    if (input.operation === 'video') input = normalizeMediaReferences(input)
+    const { model, key } = await this.resolve(input)
+    this.validate(input, model)
+    const { payload } = this.wire(input, model)
+    return { stage:'prepared', requestHash:hash(JSON.stringify(canonical(payload))), request:safeMediaValue(payload,[key]), references:Object.fromEntries(['image','video','audio'].map(kind=>[kind,(input.references??[]).filter(ref=>ref.mediaType.startsWith(kind+'/')).length])) }
+  }
+
   async estimate(input: MediaRequest): Promise<{ currency: string; maximumCharge?: string; total?: string }> {
+    if (input.operation === 'video') input = normalizeMediaReferences(input)
     const { model, key, base } = await this.resolve(input)
     this.validate(input, model)
     const reply = await this.json(base, '/v1/sub2api/estimates', key, { method: 'POST', body: JSON.stringify({ operation: input.operation, request: this.wire(input, model).payload }) })
@@ -200,6 +209,7 @@ export class AiCloudMediaService implements ZeroWallMedia {
   }
 
   async submit(input: MediaRequest, signal?: AbortSignal): Promise<MediaTask> {
+    if (input.operation === 'video') input = normalizeMediaReferences(input)
     // Hash the request before sharing in-flight work: reusing an id for a different
     // prompt must never silently join another submission.
     const parametersHash = hash(JSON.stringify(canonical(input)))
@@ -226,20 +236,23 @@ export class AiCloudMediaService implements ZeroWallMedia {
     }
     const now = new Date().toISOString()
     const task: StoredTask = old ?? { requestId: input.requestId, parametersHash, account: snapshot.email ?? '', gateway: base, keyHash: hash(key), selection: { groupId: input.groupId, modelId: input.modelId, profileId: input.profileId, operation: input.operation }, status: 'submitting', artifacts: [], createdAt: now, updatedAt: now }
+    task.diagnostics = { stage: 'attempted', requestHash: hash(JSON.stringify(canonical(payload))), request: safeMediaValue(payload, [key]), references: Object.fromEntries(['image', 'video', 'audio'].map(kind => [kind, (input.references ?? []).filter(ref => ref.mediaType.startsWith(kind + '/')).length])) }
     await this.save(task)
     try {
       const reply = await this.json(base, path, key, { method: 'POST', body, headers: { 'Idempotency-Key': input.requestId }, ...(signal ? { signal } : {}) })
+      task.diagnostics.response = safeMediaResponse(reply, [key]); task.diagnostics.upstream = safeMediaResponse(reply.submission, [key])
       await this.accept(task, reply)
       return dto(task)
     } catch (error) {
-      if (error instanceof Error && (/^MEDIA_HTTP_(400|401|403|404|409|413|415|422|429)$/.test(error.message) || (error as any).rejected)) {
+      if ((error as any)?.response) task.diagnostics.response = (error as any).response
+      if (error instanceof Error && (/^MEDIA_HTTP_(400|401|403|404|409|413|415|422|429)(:|$)/.test(error.message) || (error as any).rejected)) {
         task.status = 'rejected'; await this.save(task)
         throw Object.assign(new Error(error.message + ': 请检查模型、参数、费用和账号状态后重试。'), { rejected: true })
       }
       task.status = 'submission-uncertain'
       await this.save(task)
       // No raw network/provider text is allowed to cross the credential boundary.
-      throw new Error(`MEDIA_SUBMISSION_UNCERTAIN: ${input.requestId}; 请用原请求恢复。`, { cause: error instanceof Error && /^MEDIA_HTTP_\d+$/.test(error.message) ? new Error(error.message) : undefined })
+      throw new Error(`MEDIA_SUBMISSION_UNCERTAIN: ${input.requestId}; 请用原请求恢复。${error instanceof Error && /^MEDIA_HTTP_/.test(error.message) ? ' ' + error.message : ''}`, { cause: error instanceof Error && /^MEDIA_HTTP_\d+$/.test(error.message) ? new Error(error.message) : undefined })
     }
   }
 
@@ -283,6 +296,14 @@ export class AiCloudMediaService implements ZeroWallMedia {
     task.artifactsPending = pending
     if (artifacts.length) task.artifacts = artifacts
     if (!task.taskId && !task.artifacts.length) throw new Error('MEDIA_EMPTY_RESULT')
+    if (task.diagnostics) task.diagnostics.stage = 'accepted'
+    if (['failed', 'rejected', 'cancelled', 'manual_review', 'unknown'].includes(task.status)) {
+      const key = await this.secrets.get(`zerowall.ai-cloud.group.${task.selection.groupId}`)
+      const reason = reply.diagnostic || reply.error?.message || reply.error?.code
+      if (typeof reason === 'string') task.error = safeMediaValue(reason, key ? [key] : [])
+      else if (task.status !== 'unknown') task.error = `MEDIA_TASK_${task.status.toUpperCase()}`
+      else delete task.error
+    } else delete task.error
     await this.save(task)
   }
 
@@ -315,6 +336,7 @@ export class AiCloudMediaService implements ZeroWallMedia {
     if (!task.taskId) { if (task.status === 'completed') return dto(task); throw new Error('MEDIA_SUBMISSION_UNCERTAIN: 请使用原请求及同一 requestId 恢复。') }
     const reply = await this.json(task.gateway, `/v1/tasks/${encodeURIComponent(task.taskId)}`, key, signal ? { signal } : {})
     if (reply.id !== task.taskId || reply.model !== task.selection.modelId) throw new Error('MEDIA_TASK_IDENTITY_MISMATCH')
+    if (task.diagnostics) { task.diagnostics.response = safeMediaResponse(reply, [key]); task.diagnostics.upstream = safeMediaResponse(reply.submission, [key]) }
     await this.accept(task, reply)
     return dto(task)
   }

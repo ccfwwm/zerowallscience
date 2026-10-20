@@ -14,8 +14,7 @@
       "videos"
     ],
     "support": [
-      "integrity-runtime",
-      "videos-compat"
+      "integrity-runtime"
     ],
     "bundles": [
       "dsh-bundle-science",

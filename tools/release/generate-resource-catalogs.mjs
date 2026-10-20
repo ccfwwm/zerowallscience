@@ -14,7 +14,7 @@ import { mergePublishedPlugins, mergePublishedSkills, selectedPluginArguments, s
 import { applyAuditedPluginCompatibility } from './plugin-compatibility.mjs'
 import { prepareFallbackWheel } from './python-wheel-artifacts.mjs'
 import { RETIRED_PLUGIN_IDS } from '../commands/retired-plugins.mjs'
-import { readRetiredResourceIds } from '../plugins/snapshot.mjs'
+import { readRetiredPluginIds, readRetiredResourceIds } from '../plugins/snapshot.mjs'
 import { reuseResourceArchive } from './resource-archive-cache.mjs'
 
 const publicationArgs = process.argv.slice(2)
@@ -49,7 +49,8 @@ if (configured) {
 const baseUrl = process.env.ZEROWALL_RESOURCE_BASE_URL?.replace(/\/$/, '')
 const localOnly = !baseUrl
 if (targeted && (kinds.length !== 1 || !['plugin', 'skill'].includes(kinds[0]) || localOnly || !configured)) throw new Error('Targeted catalogs require --kind plugin --plugin <package-name> or --kind skill --skill <skill-name>, a public base URL and a release signing key')
-const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')).filter(record => !RETIRED_PLUGIN_IDS.has(record.id) && (!targeted || selectedPlugins.includes(record.id))) : []
+const retiredCatalogPluginIds = new Set([...RETIRED_PLUGIN_IDS, ...await readRetiredPluginIds()])
+const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')).filter(record => !retiredCatalogPluginIds.has(record.id) && (!targeted || selectedPlugins.includes(record.id))) : []
 for (const id of selectedPlugins) if (records.filter(r => r.id === id).length !== 1) throw new Error('Targeted plugin has no unique packed artifact: ' + id)
 const resourceVersions = JSON.parse(await readFile(join(root, 'config/catalogs/resource-versions.json'), 'utf8'))
 const dshPin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
@@ -82,7 +83,7 @@ if (selectedPlugins.length > 0) {
   if (bytes.length !== pointer.catalog.size || createHash('sha256').update(bytes).digest('hex') !== pointer.catalog.sha256) throw new Error('Published plugin catalog integrity mismatch')
   const previous = verifyCatalog(JSON.parse(bytes), keys)
   if (previous.kind !== 'plugin' || previous.localOnly) throw new Error('Invalid published plugin catalog')
-  const merged = mergePublishedPlugins(previous.resources, plugins, keys)
+  const merged = mergePublishedPlugins(previous.resources, plugins, keys, retiredCatalogPluginIds)
   plugins.splice(0, plugins.length, ...merged)
   await writeFile(join(destination, 'plugin-targeted-baseline.json'), JSON.stringify({ selectedPlugins, pointer, previousCatalog: previous }, null, 2) + '\n')
 }

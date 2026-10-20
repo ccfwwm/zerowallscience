@@ -396,4 +396,4 @@ export default { name, inject, apply }
 
 export { mediaTarget } from './media-jobs.js'
 
-export { publicReferenceURL } from './media-reference.js'
+export { publicReferenceURL, normalizeMediaReferences } from './media-reference.js'

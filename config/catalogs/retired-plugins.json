@@ -2,6 +2,10 @@
   "schema": 1,
   "plugins": [
     {
+      "id": "@oh-story/dsh",
+      "reason": "Managed media compatibility package replaced by @zerowallscience/plugin-videos; custom user installations retain their identity."
+    },
+    {
       "id": "@changfenhuang/dsh-genui",
       "reason": "Removed from ZeroWall Science 8.3.5 by product decision."
     },

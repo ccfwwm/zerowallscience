@@ -53,6 +53,16 @@ test('targeted publication removes retired resources while preserving unrelated 
   assert.deepEqual(mergePublishedPlugins([resource('dsh-univer-office'), resource('@changfenhuang/dsh-genui'), other], [plugin], keys), [other, plugin])
   assert.throws(() => mergePublishedPlugins([other], [resource('dsh-univer-office')], keys), /retired plugin/u)
 })
+test('catalog-only media retirement keeps unrelated signed packages and rejects reintroduction', () => {
+  const retired = new Set(['@oh-story/dsh'])
+  const custom = resource('@custom/media')
+  const selected = resource('@zerowallscience/plugin-videos', '0.2.2')
+  const previous = [resource('@oh-story/dsh'), custom]
+  assert.deepEqual(mergePublishedPlugins(previous, [selected], keys, retired), [custom, selected])
+  assert.throws(() => mergePublishedPlugins(previous, [resource('@oh-story/dsh')], keys, retired), /retired plugin/u)
+  assert.throws(() => mergePublishedPlugins([{ ...previous[0], size: 43 }, custom], [selected], keys, retired), /signature/u)
+})
+
 test('updates replace only the selected plugin and reject downgrade, duplicate identity, or same-version changed bytes', () => {
   const existing = [resource('archive'), resource('other')]
   assert.deepEqual(mergePublishedPlugin(existing, resource('archive', '1.0.1'), keys), [existing[1], resource('archive', '1.0.1')])

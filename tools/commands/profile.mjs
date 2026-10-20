@@ -67,7 +67,8 @@ export async function initializeProfile(home, defaults, bundled = []) {
   const oldSpec = manifest.dependencies?.[oldMedia]
   let oldInstalled
   try { oldInstalled = JSON.parse(await readFile(join(directory,'node_modules',oldMedia,'package.json'),'utf8')) } catch (error) { if (error.code !== 'ENOENT') throw error }
-  const customMedia = Object.prototype.hasOwnProperty.call(selection.pinned ?? {}, oldMedia) || (oldSpec && (!/^[~^]?0\.1\.\d+-zws\.\d+$/.test(oldSpec) || !oldSpec.startsWith('^') && !oldSpec.startsWith('~'))) || (oldInstalled && !/-zws\.\d+$/.test(oldInstalled.version ?? ''))
+  const managedMedia = Boolean(oldInstalled?.zerowall?.renamedTo === newMedia || (!oldInstalled && oldSpec && /^[~^]?0\.1\.\d+-zws\.\d+$/.test(oldSpec)))
+  const customMedia = Boolean((oldSpec || oldInstalled) && !managedMedia)
   // Before 8.0 the desktop overlay activated the ZeroWall domains, so their
   // absence from a 7.5 profile is not an uninstall choice. Also repair the
   // first 8.0.2 migration which added only extension-center and lost those
@@ -134,11 +135,15 @@ export async function initializeProfile(home, defaults, bundled = []) {
   }
   if (defaults.includes(newMedia)) {
     if (customMedia) {
-      bundles = bundles.filter(id => id !== newMedia)
-      if (!removed.has(oldMedia) && !disabled.has(oldMedia) && existing.includes(oldMedia)) bundles = [...new Set([...bundles, oldMedia])]
+      // An explicit new selection wins; retain the custom package without double loading.
+      bundles = bundles.filter(id => id !== (existing.includes(newMedia) ? oldMedia : newMedia))
+      if (!existing.includes(newMedia) && !removed.has(oldMedia) && !disabled.has(oldMedia) && existing.includes(oldMedia)) bundles = [...new Set([...bundles, oldMedia])]
     } else {
-      if (removed.has(oldMedia)) { removed.add(newMedia); selectionChanged = true }
-      if (disabled.has(oldMedia)) { disabled.add(newMedia); selectionChanged = true }
+      if (!existing.includes(newMedia) && removed.has(oldMedia)) { removed.add(newMedia); selectionChanged = true }
+      if (!existing.includes(newMedia) && disabled.has(oldMedia)) { disabled.add(newMedia); selectionChanged = true }
+      if (managedMedia && Object.prototype.hasOwnProperty.call(selection.pinned ?? {}, oldMedia) && selection.renamed?.[oldMedia] !== newMedia) {
+        selection.renamed = { ...selection.renamed, [oldMedia]: newMedia }; selectionChanged = true
+      }
       const hadOld = bundles.includes(oldMedia)
       bundles = bundles.filter(id => id !== oldMedia && !(id === newMedia && (removed.has(newMedia) || disabled.has(newMedia))))
       if (hadOld && !removed.has(newMedia) && !disabled.has(newMedia)) bundles = [...new Set([...bundles, newMedia])]
