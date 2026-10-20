@@ -19,8 +19,12 @@ const common = {
     const { verifyCommandRuntime } = await import(pathToFileURL(path.join(root, 'tools/packaging/verify-command-runtime.mjs')).href)
     await verifyCommandRuntime({ resourcesRoot: path.join(context.appOutDir, 'resources'), executablePath: path.join(context.appOutDir, 'ZeroWallScience.exe'),
       report: path.join(buildPaths.verification, 'packaged-command-runtime.json') })
-    const { writeInstallerOwnership } = await import(pathToFileURL(path.join(root, 'tools/packaging/installer-ownership.mjs')).href)
-    await writeInstallerOwnership(context.appOutDir)
+    const { writeInstallerOwnership, installerPayloadMetrics } = await import(pathToFileURL(path.join(root, 'tools/packaging/installer-ownership.mjs')).href)
+    const owned = await writeInstallerOwnership(context.appOutDir)
+    const metrics = await installerPayloadMetrics(context.appOutDir, owned)
+    fs.mkdirSync(path.join(stage, 'nsis-overlay'), { recursive: true })
+    fs.writeFileSync(path.join(stage, 'nsis-overlay/installer-payload.nsh'),
+      `!define ZW_PAYLOAD_BYTES ${metrics.bytes}\n!define ZW_HELPER_BYTES ${metrics.helperBytes}\n!define ZW_PAYLOAD_PATH ${metrics.longestPath}\n`)
   },
   beforePack: async () => {
     const { pathToFileURL } = require('node:url')
@@ -84,6 +88,8 @@ const common = {
     { from: path.join(stage, 'resources/extensions/capabilities/biogenie'), to: 'extensions/capabilities/biogenie', filter: ['**/*'] },
     { from: path.join(stage, 'resources/sci'), to: 'sci', filter: ['**/*'] },
     { from: path.join(stage, 'python-updater'), to: 'python-updater', filter: ['**/*'] },
+    { from: path.join(stage, 'python-base-3.12.10/latest.json'), to: 'python/base-manifest.json' },
+    { from: path.join(stage, 'python-base-3.12.10/zerowall-python-windows-x64-3.12.10.zip'), to: 'python/base-runtime.zip' },
     { from: resourcePath('python', 'dependency-manifest.json'), to: 'python/dependency-manifest.json' },
     { from: resourcePath('python', 'core-dependency-manifest.json'), to: 'python/core-dependency-manifest.json' },
     { from: path.join(stage, 'resources/zerowall-core.patch.yml'), to: 'zerowall.patch.yml' },

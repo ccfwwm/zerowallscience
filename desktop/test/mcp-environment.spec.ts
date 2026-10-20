@@ -270,6 +270,73 @@ describe('MCP environment upgrades', () => {
     expect(await readdir(runtimeRoot)).not.toContain('zerowall-python')
   })
 
+  it('uses the bundled bootstrap for a missing runtime despite a stale newer science manifest', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'zws-bootstrap-selection-')); roots.push(directory)
+    const runtimeRoot = join(directory, 'Python'), root = join(runtimeRoot, '.zerowall')
+    await mkdir(root, { recursive: true })
+    const bootstrap = signedSharedManifest()
+    bootstrap.python.bootstrapOnly = true
+    bootstrap.python.modules = ['pip']
+    bootstrap.signature.value = sign(null, canonicalManifest(bootstrap), keys.privateKey).toString('base64')
+    const science = signedSharedManifest()
+    science.environmentVersion = '9.0.0'
+    science.signature.value = sign(null, canonicalManifest(science), keys.privateKey).toString('base64')
+    const bundledManifestPath = join(directory, 'base.json'), bundledArchivePath = join(directory, 'base.zip')
+    await writeFile(bundledManifestPath, JSON.stringify(bootstrap)); await writeFile(bundledArchivePath, sharedTestArchive)
+    await writeFile(join(runtimeRoot, 'manifest.json'), JSON.stringify(science))
+    await writeFile(join(root, 'current.json'), JSON.stringify({ root: runtimeRoot, runtimeRoot, health: 'ready', manifest: science }))
+    const fetcher = vi.fn(async () => { throw new Error('offline') })
+    const controller = new McpEnvironmentController({ root, runtimeRoot, bundledManifestPath, bundledArchivePath,
+      manifestUrl: 'https://example.test/science.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      fetcher, healthCheck: async () => {}, verifySharedPython: async () => {}, publish() {} })
+    vi.spyOn(controller, 'pythonInfo').mockResolvedValue({ ready: true, pipReady: true, packages: [], runtimeRoot, executable: join(runtimeRoot, 'python.exe') }).mockResolvedValueOnce({ ready: false, pipReady: false, packages: [] })
+    const status = await controller.initialize()
+    expect(status, JSON.stringify(status)).toMatchObject({ phase: 'ready', environmentVersion: '1.0.0' })
+    expect(JSON.parse(await readFile(join(runtimeRoot, 'manifest.json'), 'utf8')).python.bootstrapOnly).toBe(true)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('repairs only pip offline while retaining the newer science identity and user packages', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'zws-pip-only-repair-')); roots.push(directory)
+    const runtimeRoot = join(directory, 'Python'), root = join(runtimeRoot, '.zerowall')
+    await mkdir(join(runtimeRoot, 'Lib/site-packages'), { recursive: true })
+    await mkdir(root, { recursive: true })
+    const archive = await new JSZip()
+      .file('Python/python.exe', 'bootstrap interpreter')
+      .file('Python/Lib/site-packages/pip/__init__.py', 'repaired pip')
+      .file('Python/Lib/site-packages/pip-25.0.dist-info/METADATA', 'Name: pip\nVersion: 25.0\n')
+      .generateAsync({ type: 'nodebuffer' })
+    const bootstrap = signedSharedManifest()
+    bootstrap.python.bootstrapOnly = true; bootstrap.python.modules = ['pip']
+    bootstrap.archiveSize = archive.length; bootstrap.archiveSha256 = createHash('sha256').update(archive).digest('hex')
+    bootstrap.signature.value = sign(null, canonicalManifest(bootstrap), keys.privateKey).toString('base64')
+    const science = signedSharedManifest()
+    science.environmentVersion = '9.0.0'; science.contentRevision = 7
+    science.signature.value = sign(null, canonicalManifest(science), keys.privateKey).toString('base64')
+    const manifestBytes = JSON.stringify(science)
+    await writeFile(join(runtimeRoot, 'manifest.json'), manifestBytes)
+    await writeFile(join(runtimeRoot, 'python.exe'), 'original interpreter')
+    await writeFile(join(runtimeRoot, 'Lib/site-packages/user_package.py'), 'user package')
+    await writeFile(join(root, 'current.json'), JSON.stringify({ mode: 'managed', root: runtimeRoot, runtimeRoot, health: 'ready', manifest: science, customizations: { user_package: '1.0' }, rollbackAvailable: true }))
+    const bundledManifestPath = join(directory, 'base.json'), bundledArchivePath = join(directory, 'base.zip')
+    await writeFile(bundledManifestPath, JSON.stringify(bootstrap)); await writeFile(bundledArchivePath, archive)
+    const fetcher = vi.fn(async () => { throw new Error('offline') })
+    const controller = new McpEnvironmentController({ root, runtimeRoot, bundledManifestPath, bundledArchivePath,
+      manifestUrl: 'https://example.test/science.json', publicKey: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+      fetcher, healthCheck: async () => {}, publish() {} })
+    vi.spyOn(controller, 'pythonInfo').mockResolvedValue({ ready: true, pipReady: true, packages: [], runtimeRoot, executable: join(runtimeRoot, 'python.exe'), version: '3.12' })
+      .mockResolvedValueOnce({ ready: true, pipReady: false, packages: [], runtimeRoot })
+    const status = await controller.initialize()
+    expect(status, JSON.stringify(status)).toMatchObject({ phase: 'ready', environmentVersion: '9.0.0', contentRevision: 7 })
+    const current = JSON.parse(await readFile(join(root, 'current.json'), 'utf8'))
+    expect(current).toMatchObject({ environmentVersion: '9.0.0', contentRevision: 7, archiveSha256: science.archiveSha256, customizations: { user_package: '1.0' }, rollbackAvailable: true })
+    expect(await readFile(join(runtimeRoot, 'manifest.json'), 'utf8')).toBe(manifestBytes)
+    expect(await readFile(join(runtimeRoot, 'python.exe'), 'utf8')).toBe('original interpreter')
+    expect(await readFile(join(runtimeRoot, 'Lib/site-packages/user_package.py'), 'utf8')).toBe('user package')
+    expect(await readFile(join(runtimeRoot, 'Lib/site-packages/pip/__init__.py'), 'utf8')).toBe('repaired pip')
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
   it('recovers from a compact legacy current record whose standalone manifest is missing', async () => {
     const userData = await mkdtemp(join(tmpdir(), 'zerowall-python-stale-current-')); roots.push(userData)
     const root = join(userData, 'zerowall-python'); const stale = join(root, 'slots', 'a')

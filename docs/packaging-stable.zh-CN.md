@@ -29,7 +29,7 @@ pnpm dsh:verify
 pnpm package:stable:win
 ```
 
-正式打包需使用已提权的 PowerShell。签名配置默认引用已有的忽略文件，私钥内容不进入配置和日志；显式环境变量仍可覆盖签名引用和发布地址。版本同步不会提升插件、Skills、MCP 或 Python 的独立版本。新增原生插件按现有插件/profile 声明纳入完整共享清单。
+正式打包不要求提权 PowerShell。签名配置默认引用已有的忽略文件，私钥内容不进入配置和日志；显式环境变量仍可覆盖签名引用和发布地址。版本同步不会提升插件、Skills、MCP 或 Python 的独立版本。新增原生插件按现有插件/profile 声明纳入完整共享清单。8.4.4 必须携带 config/python/bundled-bootstrap.json 固定的已发布签名 Python + pip 基础包；完整科学依赖仍由桌面可用后的后台队列安装。
 
 组件编译后、运行时装配前，固定流程会用实际编译文件预检全部运行时适配器及 JavaScript 语法；菜单、预览、目录选择器或上游结构变化时先失败，不生成缺补丁的载体。LibreOfficeKit 的审核版本同样由 `upstream-sources.json` 定义，结构锚点继续严格检查。
 

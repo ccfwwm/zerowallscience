@@ -54,6 +54,28 @@ describe('shared Python environment API', () => {
     updater.pythonInfo.mockResolvedValue({ ready: true, inventoryComplete: true, packageCount: 3, packages: [{ name: 'pandas', version: '1.0.0' }, { name: 'pandas-extra', version: '2' }, { name: 'numpy', version: '9' }] } as never)
     expect(await api.request({ action: 'list_packages', requestId: 'paged', query: 'pandas', offset: 1, limit: 1 })).toMatchObject({ inventory: { packageCount: 3, packages: [{ name: 'pandas-extra', version: '2' }] }, total: 2, nextOffset: null })
   })
+  it('keeps status, inventory and scans usable when management storage and diagnostics cannot be written', async () => {
+    const { root, updater, sync } = await setup()
+    const runtime = join(root, 'Python'), control = join(runtime, '.zerowall')
+    await mkdir(runtime)
+    // A blocked storage path deterministically exercises failed persistence on
+    // Windows too, without relying on the test runner's administrator token.
+    await writeFile(control, 'unavailable management storage')
+    const sink = vi.fn(() => { throw Object.assign(new Error('diagnostic access denied'), { code: 'EPERM' }) })
+    const api = createApi(control, updater as unknown as PythonUpdaterService, sync, join(root, 'location.json'), undefined, runtime, sink)
+    updater.pythonInfo.mockResolvedValue({ ready: true, inventoryComplete: true, runtimeRoot: runtime, packages: [{ name: 'numpy', version: '2.1.3' }] } as never)
+    await expect(api.request({ action: 'status', requestId: 'protected-status' })).resolves.toMatchObject({ runtimeRoot: runtime })
+    await expect(api.request({ action: 'configure', requestId: 'protected-settings' })).resolves.toMatchObject({ revision: 0 })
+    await expect(api.request({ action: 'list_packages', requestId: 'protected-list' })).resolves.toMatchObject({ total: 1 })
+    await api.request({ action: 'scan_local', requestId: 'protected-scan' })
+    await vi.waitFor(async () => {
+      expect(await api.request({ action: 'status', requestId: 'scan-result' })).toMatchObject({ scan: { state: 'complete', inventory: { ready: true } } })
+    })
+    await api.flush()
+    expect(sink).toHaveBeenCalled()
+    expect(await readFile(control, 'utf8')).toBe('unavailable management storage')
+    expect(sync.applySync).not.toHaveBeenCalled()
+  })
   it('does not interrupt a task still owned by another live worker or cache its old state', async () => {
     const { api, root } = await setup()
     const taskId = '00000000-0000-4000-8000-000000000001'
@@ -220,6 +242,7 @@ describe('shared Python environment API', () => {
     await expect(restarted.request({ action: 'status', requestId: 'recover-interrupted-task' })).resolves.toMatchObject({
       task: { taskId, state: 'interrupted', progress: 31, completedPackages: 4, totalPackages: 42, logLines: ['Collecting mcp', 'Installing mcp'] },
     })
+    expect(JSON.parse(await readFile(join(root, 'jobs', `${taskId}.json`), 'utf8'))).toEqual(task)
   })
   it('resumes an interrupted core sync with the same task id and keeps its saved progress', async () => {
     const { root, api, updater, sync } = await setup()
@@ -372,6 +395,9 @@ describe('shared Python environment API', () => {
     const result = await api.request({ action: 'configure', requestId: 'path', runtimeRoot: join(root, 'custom-runtime') })
     expect(result).toMatchObject({ restartRequired: true, runtimeRoot: join(root, 'custom-runtime', 'Python') })
     expect(JSON.parse(await readFile(join(root, 'python-location.json'), 'utf8'))).toEqual({ schema: 2, source: 'user-selected', runtimeRoot: join(root, 'custom-runtime', 'Python') })
+    await expect(readFile(join(root, 'requests', 'path.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(api.request({ action: 'sync', requestId: 'old-root-sync', confirm: true })).rejects.toThrow('PYTHON_RESTART_REQUIRED')
+    await expect(api.resumeAutomaticSyncTask('00000000-0000-4000-8000-000000000001')).rejects.toThrow('PYTHON_RESTART_REQUIRED')
   })
 
   it('reports the LocalAppData-style default before any Roaming profile exists', async () => {

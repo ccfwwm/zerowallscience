@@ -31,7 +31,7 @@ static IDWriteFactory* textFactory;
 static ID2D1Bitmap* brandBitmap;
 static HANDLE parentProcess, elevatedStopProcess;
 static std::wstring statePath, installPath, version, phase=L"welcome", failure;
-static bool advanced=false, desktopShortcut=true, reducedMotion=false, finished=false;
+static bool advanced=false, desktopShortcut=true, reducedMotion=false, finished=false, parentGone=false;
 static float scale=1, elapsed=0;
 static ULONGLONG started=0;
 static int parentPid=0;
@@ -113,7 +113,7 @@ static void authorizeStop() {
   std::wstring arguments=L"--stop-running \""+executable+L"\"";
   SHELLEXECUTEINFOW launch{sizeof(launch)};
   launch.fMask=SEE_MASK_NOCLOSEPROCESS;launch.hwnd=windowHandle;
-  // The installer already owns an administrator token from its PE entry.
+  // Process control uses the current token; failure returns to manual retry.
   launch.lpVerb=L"open";launch.lpFile=helper;launch.lpParameters=arguments.c_str();launch.nShow=SW_HIDE;
   if(ShellExecuteExW(&launch)) {
     elevatedStopProcess=launch.hProcess;
@@ -154,7 +154,7 @@ static void paint() {
       label(cards[i],x+54,y+24,92,28,15,0x525E78,true);
     }
     if(phase==L"welcome") {
-      label(L"一键安装，开箱即用，立即开始完整科研流程",48,276,640,26,15,0x4E5970);
+      label(read(L"Notice",L"一键安装，开箱即用，立即开始完整科研流程"),48,270,664,44,13,0x4E5970);
       label(advanced?L"⌄  高级选项":L"›  高级选项",48,318,180,28,13,0x6674BC);
       if(advanced) {
         label(L"安装位置",48,352,78,28,12,0x7C8498);
@@ -165,8 +165,9 @@ static void paint() {
       label(L"本地优先 · 专注科研",48,445,350,24,12,0x9199AA);
     } else {
       std::wstring message=phase==L"complete"?L"安装完成":phase==L"failed"?failure:phase==L"process-blocked"?(failure.empty()?L"应用仍在运行，需要授权结束进程后继续安装。":failure):phase==L"elevating"?L"正在授权关闭应用，完成后将自动继续安装":phase==L"stopping"?L"正在关闭运行中的应用，随后继续安装":phase==L"finalizing"?L"正在创建快捷方式，完成安装":phase==L"extracting"?L"正在解压应用与科研运行时":L"正在准备安装";
-      label(message,48,286,662,60,16,phase==L"failed"?0xB35159:0x4E5970,true);
-      rect(48,360,664,14,0xE2E6F0,7);
+      if(phase==L"failed") label(L"失败阶段："+read(L"FailureStage",L"installer-process"),48,265,664,22,12,0xB35159,true);
+      label(message,48,phase==L"failed"?291:280,662,phase==L"failed"?94:66,phase==L"failed"?12:16,phase==L"failed"?0xB35159:0x4E5970,true);
+      if(phase!=L"failed")rect(48,360,664,14,0xE2E6F0,7);
       if(phase==L"complete") rect(48,360,664,14,0x7473DB,7);
       else if(phase!=L"failed") {
         float amount=phase==L"finalizing"?.92f:phase==L"extracting"?.20f:.07f;
@@ -176,12 +177,16 @@ static void paint() {
         for(int j=0;j<20;j++) rect(48+travel+j*6,360,6,14,0x9A91E6,0,.12f+.55f*std::sin((float)j/20*3.14159f));
         target->PopAxisAlignedClip();
       }
-      label(phase==L"complete"?L"所有步骤已完成":phase==L"failed"?L"原有项目和账户数据不会被清除":L"准备安装       ·       解压文件       ·       完成配置",48,394,664,30,12,0x8A93A7);
+      label(phase==L"complete"?read(L"Notice",L"所有步骤已完成"):phase==L"failed"?L"日志："+read(L"LogFile"):L"准备安装       ·       解压文件       ·       完成配置",48,390,664,37,11,0x8A93A7);
       if(phase==L"process-blocked") {
         rect(48,432,154,44,0xE9ECF7,11);label(L"已关闭，重新检测",61,444,140,26,13,0x5868A4,true);
         rect(480,432,232,44,0x6867D8,11);label(L"授权结束进程并继续",496,443,212,28,15,0xFFFFFF,true);
       } else if(phase==L"complete"||phase==L"failed") {
-        rect(534,432,178,44,0x6867D8,11); label(phase==L"complete"?L"立即开启":L"关闭并重试",572,443,140,28,15,0xFFFFFF,true);
+        if(phase==L"failed") {
+          rect(48,432,140,44,0xE9ECF7,11);label(L"查看日志",76,444,110,26,13,0x5868A4,true);
+          if(!parentGone){rect(312,432,202,44,0xE9ECF7,11);label(L"更换安装目录",347,444,160,26,13,0x5868A4,true);}
+        }
+        rect(534,432,178,44,0x6867D8,11); label(phase==L"complete"?L"立即开启":parentGone?L"关闭":L"重试安装",572,443,140,28,15,0xFFFFFF,true);
       } else label(L"正在处理，请稍候  ·  "+std::to_wstring((int)((GetTickCount64()-started)/1000))+L" 秒",48,445,640,26,12,0x9199AA);
     }
     HRESULT hr=target->EndDraw(); if(hr==D2DERR_RECREATE_TARGET) { release(brandBitmap);release(target); }
@@ -196,6 +201,54 @@ static void browse() {
     dialog->Release();
   }
 }
+static std::wstring extendedPath(const std::wstring& path) {
+  return path.rfind(L"\\\\?\\",0)==0?path:L"\\\\?\\"+path;
+}
+static bool volumeCapacity(std::wstring path, ULARGE_INTEGER& available, std::wstring& identity) {
+  // Resolve the nearest existing parent, including mounted folders and junctions.
+  while(GetFileAttributesW(extendedPath(path).c_str())==INVALID_FILE_ATTRIBUTES) {
+    const auto split=path.find_last_of(L"\\/");
+    if(split==std::wstring::npos||split<2)return false;
+    path=split==2?path.substr(0,3):path.substr(0,split);
+    if(path.size()==3&&GetFileAttributesW(path.c_str())==INVALID_FILE_ATTRIBUTES)return false;
+  }
+  HANDLE directory=CreateFileW(extendedPath(path).c_str(),0,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS,nullptr);
+  if(directory==INVALID_HANDLE_VALUE)return false;
+  wchar_t finalPath[32768];
+  const DWORD length=GetFinalPathNameByHandleW(directory,finalPath,32768,FILE_NAME_NORMALIZED|VOLUME_NAME_GUID);
+  CloseHandle(directory);
+  if(!length||length>=32768||!GetDiskFreeSpaceExW(extendedPath(path).c_str(),&available,nullptr,nullptr))return false;
+  identity=finalPath;
+  const auto end=identity.find(L'}');
+  if(end==std::wstring::npos)return false;
+  identity.resize(end+1);
+  return true;
+}
+static bool validateCapacity(std::wstring& reason) {
+  const auto bytes=_wcstoui64(read(L"PayloadBytes",L"0").c_str(),nullptr,10);
+  const auto helper=_wcstoui64(read(L"HelperBytes",L"0").c_str(),nullptr,10);
+  const auto longest=_wcstoui64(read(L"PayloadPath",L"0").c_str(),nullptr,10);
+  auto temporary=read(L"TempDirectory");
+  if(!bytes||!longest||temporary.size()<3||installPath.size()<3) {reason=L"安装载荷信息不完整，请重新下载安装包。";return false;}
+  // Extraction uses the 7z plugin's Win32 paths; destination writes use Node's
+  // extended Unicode paths. Check the actual longest inventory entry.
+  if(temporary.size()+1+longest>=260) {reason=L"临时解压路径过长，请将 Windows TEMP 设置到较短的可写目录后重试。";return false;}
+  if(installPath.size()+1+longest>=32760||installPath.size()+64>=1024) {reason=L"安装路径超出安装引擎或文件系统限制，请选择较短的目录。";return false;}
+  ULARGE_INTEGER targetFree{},tempFree{};
+  std::wstring targetRoot,tempRoot;
+  if(!volumeCapacity(installPath,targetFree,targetRoot)||!volumeCapacity(temporary,tempFree,tempRoot)){reason=L"无法读取临时磁盘或目标磁盘空间，请检查磁盘是否可用。";return false;}
+  constexpr ULONGLONG margin=16ULL*1024*1024;
+  // Existing backups are same-volume renames, so their bytes are already
+  // allocated. A fresh payload plus helper is required even for a retry.
+  WIN32_FILE_ATTRIBUTE_DATA archive{};
+  const auto archivePath=read(L"ArchiveFile");
+  const ULONGLONG archiveBytes=!archivePath.empty()&&GetFileAttributesExW(archivePath.c_str(),GetFileExInfoStandard,&archive)?(static_cast<ULONGLONG>(archive.nFileSizeHigh)<<32)|archive.nFileSizeLow:0;
+  const auto temporaryRequired=bytes+helper+archiveBytes+margin;
+  const auto destinationRequired=_wcsicmp(targetRoot.c_str(),tempRoot.c_str())==0?temporaryRequired:bytes+margin;
+  if(tempFree.QuadPart<temporaryRequired){reason=L"临时磁盘空间不足，需至少 "+std::to_wstring((temporaryRequired+1048575)/1048576)+L" MB 可用空间。请清理空间后重试。";return false;}
+  if(targetFree.QuadPart<destinationRequired){reason=L"目标磁盘空间不足，需至少 "+std::to_wstring((destinationRequired+1048575)/1048576)+L" MB 可用空间。请选择其他目录。";return false;}
+  return true;
+}
 static bool validatePath() {
   wchar_t value[32768]; GetWindowTextW(directoryEdit,value,32768); installPath=value;
   while(!installPath.empty()&&iswspace(installPath.front()))installPath.erase(0,1);
@@ -205,13 +258,13 @@ static bool validatePath() {
   if(length&&length<32768)installPath=canonical;
   while(installPath.size()>3&&installPath.back()==L'\\')installPath.pop_back();
   SetWindowTextW(directoryEdit,installPath.c_str());
-  if(installPath.size()<4 || installPath.size()>220 || installPath[1]!=L':' || installPath[2]!=L'\\' || installPath.find_first_of(L"\"<>|?*\r\n")!=std::wstring::npos) { MessageBoxW(windowHandle,L"请选择本地磁盘下的应用文件夹，不要选择磁盘根目录。",L"检查安装位置",MB_OK|MB_ICONINFORMATION); return false; }
+  if(installPath.size()<4 || installPath[1]!=L':' || installPath[2]!=L'\\' || installPath.find_first_of(L"\"<>|?*\r\n",2)!=std::wstring::npos || installPath.find(L':',2)!=std::wstring::npos) { MessageBoxW(windowHandle,L"请选择本地磁盘下的应用文件夹，不要选择磁盘根目录。",L"检查安装位置",MB_OK|MB_ICONINFORMATION); return false; }
   wchar_t windowsDir[MAX_PATH]; GetWindowsDirectoryW(windowsDir,MAX_PATH);
   std::wstring lowered=installPath; std::transform(lowered.begin(),lowered.end(),lowered.begin(),::towlower);
   std::wstring win=windowsDir; std::transform(win.begin(),win.end(),win.begin(),::towlower);
   if(lowered==win || lowered.rfind(win+L"\\",0)==0) { MessageBoxW(windowHandle,L"不能安装到 Windows 系统目录。",L"检查安装位置",MB_OK|MB_ICONWARNING); return false; }
-  ULARGE_INTEGER freeBytes; std::wstring root=installPath.substr(0,3);
-  if(!GetDiskFreeSpaceExW(root.c_str(),&freeBytes,nullptr,nullptr)||freeBytes.QuadPart<3ULL*1024*1024*1024) { MessageBoxW(windowHandle,L"安装需要至少 3 GB 可用空间，请选择其他磁盘。",L"可用空间不足",MB_OK|MB_ICONWARNING); return false; }
+  std::wstring reason;
+  if(!validateCapacity(reason)) {MessageBoxW(windowHandle,reason.c_str(),L"安装预检",MB_OK|MB_ICONWARNING);return false;}
   // The outer installer probes access and requests UAC only when needed.
   return true;
 }
@@ -227,9 +280,12 @@ static LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
       }
       elapsed=(GetTickCount64()-started)/1000.0f;
       auto next=read(L"Phase",L"welcome");
-      if(phase!=L"failed" && next!=L"welcome") phase=next;
-      if(parentProcess&&WaitForSingleObject(parentProcess,0)==WAIT_OBJECT_0&&phase!=L"complete") { phase=L"failed"; failure=L"安装进程已退出，请重新运行安装程序。"; }
-      if(phase==L"failed"&&failure.empty()) failure=read(L"Error",L"安装失败，请检查磁盘空间与目录权限后重试。");
+      if(next!=phase) {
+        if(next==L"welcome"){installPath=read(L"Directory",installPath.c_str());SetWindowTextW(directoryEdit,installPath.c_str());advanced=true;}
+        failure.clear();phase=next;
+      }
+      if(parentProcess&&WaitForSingleObject(parentProcess,0)==WAIT_OBJECT_0&&phase!=L"complete") { parentGone=true;phase=L"failed";failure=read(L"Error",L"安装进程已退出，请查看日志后重新运行安装程序。"); }
+      if(phase==L"failed"&&!parentGone) failure=read(L"Error",L"安装失败，请检查磁盘空间与目录权限后重试。");
       bool showEdit=advanced&&phase==L"welcome";
       if((IsWindowVisible(directoryEdit)!=FALSE)!=showEdit)ShowWindow(directoryEdit,showEdit?SW_SHOWNA:SW_HIDE);
       InvalidateRect(hwnd,nullptr,FALSE); return 0;
@@ -245,7 +301,11 @@ static LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
       } else if(phase==L"process-blocked"&&y>432&&y<480) {
         if(x>480)authorizeStop();
         else if(x>=48&&x<=202){failure.clear();write(L"Phase",L"stopping");write(L"Action",L"retry-process");phase=L"stopping";}
-      } else if(y>432&&y<480&&x>534&&(phase==L"complete"||phase==L"failed")) finish(phase==L"complete");
+      } else if(phase==L"failed"&&y>432&&y<480) {
+        if(x>=48&&x<=188) {auto log=read(L"LogFile");ShellExecuteW(hwnd,L"open",L"notepad.exe",(L"\""+log+L"\"").c_str(),nullptr,SW_SHOW);}
+        else if(!parentGone&&x>=312&&x<=514)write(L"Action",L"change-directory");
+        else if(x>534) {if(parentGone)finish(false);else {write(L"Action",L"retry-install");}}
+      } else if(y>432&&y<480&&x>534&&phase==L"complete") finish(true);
       InvalidateRect(hwnd,nullptr,FALSE);return 0;
     }
     case WM_NCHITTEST: { LRESULT hit=DefWindowProcW(hwnd,message,wp,lp); POINT p{GET_X_LPARAM(lp),GET_Y_LPARAM(lp)}; ScreenToClient(hwnd,&p); return p.y<48*scale&&p.x<710*scale?HTCAPTION:hit; }
@@ -255,7 +315,8 @@ static LRESULT CALLBACK procedure(HWND hwnd,UINT message,WPARAM wp,LPARAM lp) {
       if(wp==VK_RETURN) {
         if(phase==L"process-blocked")authorizeStop();
         else if(phase==L"welcome"&&validatePath()) {write(L"Directory",installPath);write(L"DesktopShortcut",desktopShortcut?L"1":L"0");write(L"Action",L"start");phase=L"preparing";started=GetTickCount64();}
-        else if(phase==L"complete"||phase==L"failed")finish(phase==L"complete");
+        else if(phase==L"complete")finish(true);
+        else if(phase==L"failed"){if(parentGone)finish(false);else write(L"Action",L"retry-install");}
       }
       return 0;
     case WM_DESTROY: if(!finished) write(L"Action",L"close"); PostQuitMessage(0); return 0;
@@ -267,12 +328,21 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
   int argc; auto argv=CommandLineToArgvW(GetCommandLineW(),&argc);
   if(argc!=3) {if(argv)LocalFree(argv);return 2;}
+  if(wcscmp(argv[1],L"--preflight")==0){
+    statePath=argv[2];LocalFree(argv);installPath=read(L"Directory");std::wstring reason;
+    if(validateCapacity(reason))return 0;
+    WritePrivateProfileStringW(L"Result",L"Reason",reason.c_str(),statePath.c_str());return 1;
+  }
   if(wcscmp(argv[1],L"--can-write")==0){
-    std::wstring candidate=argv[2];LocalFree(argv);
+    std::wstring candidate=extendedPath(argv[2]);LocalFree(argv);
     while(GetFileAttributesW(candidate.c_str())==INVALID_FILE_ATTRIBUTES){auto at=candidate.find_last_of(L"\\/");if(at==std::wstring::npos||at<2)return 2;auto size=at==2?3:at;if(size>=candidate.size())return 2;candidate.resize(size);}
     auto probe=candidate+L"\\.zerowall-install-probe-"+std::to_wstring(GetCurrentProcessId());
-    HANDLE file=CreateFileW(probe.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY|FILE_FLAG_DELETE_ON_CLOSE,nullptr);
-    if(file==INVALID_HANDLE_VALUE)return 1;CloseHandle(file);return 0;
+    auto renamed=probe+L".renamed";
+    HANDLE file=CreateFileW(probe.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY,nullptr);
+    if(file==INVALID_HANDLE_VALUE)return 1;CloseHandle(file);
+    bool allowed=MoveFileExW(probe.c_str(),renamed.c_str(),0)!=FALSE;
+    bool cleaned=DeleteFileW((allowed?renamed:probe).c_str())!=FALSE;
+    return allowed&&cleaned?0:1;
   }
   if(wcscmp(argv[1],L"--check-running")==0||wcscmp(argv[1],L"--stop-running")==0){int result=targetProcesses(argv[2],wcscmp(argv[1],L"--stop-running")==0);LocalFree(argv);return result;}
   statePath=argv[1]; parentPid=_wtoi(argv[2]); LocalFree(argv);

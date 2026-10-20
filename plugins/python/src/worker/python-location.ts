@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { renameFile } from './atomic-file.js'
 import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 
@@ -6,7 +7,7 @@ export interface PythonLocation {
   managementRoot: string
   runtimeRoot: string
   locationPath: string
-  source: 'install-default' | 'user-selected'
+  source: 'install-default' | 'user-selected' | 'user-fallback'
 }
 
 export interface PythonLocationOptions {
@@ -60,7 +61,7 @@ export async function resolvePythonLocation(options: PythonLocationOptions): Pro
       const privateRuntime = /(?:^|[\\/])(?:\.zerowall|slots)(?:[\\/]|$)/iu.test(saved)
       if (!privateRuntime && configured.source !== 'install-default' && (!wasOldDefault || configured.source === 'user-selected')) {
         candidate = saved
-        source = 'user-selected'
+        source = configured.source === 'user-fallback' ? 'user-fallback' : 'user-selected'
       }
     } catch (error) {
       console.warn('Ignoring invalid saved Python path:', error instanceof Error ? error.message : String(error))
@@ -78,6 +79,30 @@ export async function resolvePythonLocation(options: PythonLocationOptions): Pro
     locationPath,
     source,
   }
+}
+
+/** Choose the first writable fixed root before any consumer or queue starts.
+ * Existing interpreters and explicit selections are never moved. */
+export async function preparePythonLocation(options: PythonLocationOptions): Promise<PythonLocation> {
+  const location = await resolvePythonLocation(options)
+  if (location.source !== 'install-default') return location
+  const interpreter = await lstat(join(location.runtimeRoot, 'python.exe')).catch(error => {
+    if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return undefined
+    // Unreadable existing environments must not be mistaken for an empty root.
+    return true
+  })
+  if (interpreter) return location
+  try { await assertWritablePythonRuntimePath(location.runtimeRoot, options.applicationInstallRoot); return location }
+  catch { /* Only an uninitialized implicit default may fall back. */ }
+  const runtimeRoot = join(options.localAppDataPath, 'ZeroWall Science', 'managed-python', 'Python')
+  await assertWritablePythonRuntimePath(runtimeRoot)
+  await mkdir(dirname(location.locationPath), { recursive: true })
+  const temporary = `${location.locationPath}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temporary, JSON.stringify({ schema: 2, source: 'user-fallback', runtimeRoot }) + '\n', { flag: 'wx' })
+    await renameFile(temporary, location.locationPath)
+  } finally { await rm(temporary, { force: true }).catch(() => undefined) }
+  return { ...location, runtimeRoot, managementRoot: join(runtimeRoot, '.zerowall'), source: 'user-fallback' }
 }
 
 /** Test actual write access up front. The install directory is allowed when a

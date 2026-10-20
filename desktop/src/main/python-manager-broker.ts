@@ -1,6 +1,6 @@
 import { fork, type ChildProcess } from 'node:child_process'
 import { createHash, randomUUID, verify } from 'node:crypto'
-import { lstat, readFile, realpath, readdir } from 'node:fs/promises'
+import { appendFile, mkdir, lstat, readFile, realpath, readdir } from 'node:fs/promises'
 import { dirname, delimiter, isAbsolute, join, relative, resolve } from 'node:path'
 import type { McpEnvironmentControllerOptions } from './mcp-environment.js'
 import type { McpEnvironmentStatus, McpPythonInfo } from '../shared/contracts.js'
@@ -24,6 +24,8 @@ export class PythonUpdaterService {
   private stopped = false
   private protected?: Worker
   private protecting?: Promise<Worker>
+  private restartRequired = false
+  private switching = false
   constructor(private options: McpEnvironmentControllerOptions & { resolveWorker: () => Promise<string>; allowDevelopment?: boolean }) {}
   configureManager(config: Record<string, unknown>) { this.configuration = config }
   current() { return this.status }
@@ -83,6 +85,12 @@ export class PythonUpdaterService {
         if (typeof id === 'string') this.owners.set(id, worker)
         if (worker === this.active || (worker.busy && id && this.owners.get(id) === worker && this.status.updateJob?.taskId === id)) { this.status = message.status; this.options.publish(message.status) }
       }
+      else if (message.type === 'diagnostic') {
+        if (this.options.diagnosticPath && message.event && typeof message.event === 'object') {
+          const path = join(dirname(this.options.diagnosticPath), 'python-environment-events.jsonl')
+          void mkdir(dirname(path), { recursive: true }).then(() => appendFile(path, JSON.stringify(message.event).slice(0, 64 * 1024) + '\n')).catch(() => undefined)
+        }
+      }
       else if (message.type === 'activity') { worker.busy = message.busy; this.retire(worker) }
       else if (message.id) {
         const request = this.pending.get(message.id)
@@ -104,7 +112,7 @@ export class PythonUpdaterService {
       for (const [id, owner] of this.owners) if (owner === worker) this.owners.delete(id)
     }
     child.once('error', fail); child.once('exit', () => fail(new Error('PYTHON_WORKER_EXITED: inspect interrupted tasks before resuming.')))
-    const { publish, resolveWorker, allowDevelopment, fetcher, healthCheck, ...config } = this.options
+    const { publish, resolveWorker, allowDevelopment, fetcher, healthCheck, diagnosticPath, ...config } = this.options
     const configured = new Promise<void>((accept, reject) => {
       const timer = setTimeout(() => { cleanup(); child.kill(); reject(new Error('PYTHON_WORKER_ABI: configuration handshake timed out.')) }, 10_000)
       const ready = (message: any) => { if (message.type === 'configured') { cleanup(); message.abi === 1 ? accept() : reject(new Error('PYTHON_WORKER_ABI: unsupported handshake.')) } }
@@ -120,6 +128,14 @@ export class PythonUpdaterService {
     return worker
   }
   async rpc<T = any>(scope: string, method: string, args: unknown[] = [], taskId?: string, selected?: Worker): Promise<T> {
+    const mutation = scope === 'manager' && ['autoUpdate', 'ensureReady', 'updateForUser', 'retry', 'installPythonPackage', 'updatePythonPackages', 'applyPackagePlan', 'rollback', 'selectManual', 'previewPackages', 'previewUninstall'].includes(method) || scope === 'api' && method === 'resumeAutomaticSyncTask'
+    if (mutation) {
+      if (this.restartRequired || this.switching) throw new Error('PYTHON_RESTART_REQUIRED: 请重启桌面后继续。')
+      if (this.options.runtimeRoot) {
+        try { await assertWritablePythonRuntimePath(this.options.runtimeRoot) }
+        catch (error) { throw new Error('PYTHON_AUTHORIZATION_REQUIRED: 固定 Python 目录不可写，请在设置中选择可写目录或手动授权签名安装。', { cause: error }) }
+      }
+    }
     const owner = taskId && this.owners.get(taskId)
     const worker = selected || owner || await this.connect(); const id = randomUUID(); worker.pending++
     return new Promise((accept, reject) => {
@@ -129,6 +145,16 @@ export class PythonUpdaterService {
     })
   }
   async environmentRequest(request: PythonEnvironmentRequest): Promise<Record<string, unknown>> {
+    if (request.action === 'configure' && request.runtimeRoot !== undefined) {
+      if (this.switching) throw new Error('PYTHON_LOCATION_BUSY')
+      this.switching = true
+      try {
+        const result = await this.rpc<Record<string, unknown>>('api', 'request', [request])
+        this.restartRequired = result.restartRequired === true
+        return result
+      } finally { this.switching = false }
+    }
+    if ((this.restartRequired || this.switching) && !['status', 'task_status', 'cancel', 'list_packages', 'scan_local', 'diagnose'].includes(request.action)) throw new Error('PYTHON_RESTART_REQUIRED: 请重启桌面后继续。')
     const mutation = ['install_runtime', 'sync', 'apply_sync', 'install_package', 'rollback'].includes(request.action)
     if (process.platform === 'win32' && mutation && this.options.runtimeRoot) {
       try { await assertWritablePythonRuntimePath(this.options.runtimeRoot) }

@@ -3,6 +3,7 @@
 
 !macro customHeader
   !ifndef BUILD_UNINSTALLER
+    !include "${ZW_NSIS_OVERLAY}\installer-payload.nsh"
     RequestExecutionLevel user
   !endif
   ; makensis searches its working directory before include directories.
@@ -48,6 +49,10 @@ Var ZeroWallOldDirectory
 !ifndef BUILD_UNINSTALLER
 Var ZeroWallSelectedDirectory
 Var ZeroWallSelectedMode
+Var ZeroWallPayloadDirectory
+Var ZeroWallAttempt
+Var ZeroWallFailureStage
+Var ZeroWallFailureReason
 Var keepShortcuts
 !endif
 !ifdef BUILD_UNINSTALLER
@@ -143,6 +148,11 @@ FunctionEnd
     Pop $R0
     Pop $R1
     !insertmacro ZW_LOG "old-application-cleanup-exit=$R0; $R1"
+    ${If} $R0 != 0
+      ${If} $ZeroWallUiState != ""
+        WriteINIStr "$ZeroWallUiState" "Install" "Notice" "新版本已安装；旧目录暂未清理，请由管理员稍后处理。"
+      ${EndIf}
+    ${EndIf}
   ${EndIf}
   SetDetailsPrint both
   DetailPrint "桌面和开始菜单应用图标已创建，卸载信息已写入。"
@@ -253,8 +263,8 @@ FunctionEnd
     Pop $R0
     ${If} $R0 != 1
       !insertmacro ZW_LOG "old-executable-still-running; path=$ZeroWallOldDirectory\${APP_EXECUTABLE_FILENAME}"
-      SetErrorLevel 2
-      Quit
+      ; A separate old installation must not block a writable new directory.
+      ; Its owned-file cleanup is best effort after the new commit.
     ${EndIf}
   ${EndIf}
   !insertmacro ZW_PHASE "extracting"
@@ -292,6 +302,10 @@ FunctionEnd
   ${GetParameters} $R0
   ${GetOptions} $R0 "/ZW_PERF=" $ZeroWallPerfFile
   ClearErrors
+  ${GetOptions} $R0 "/allusers" $R1
+  ${If} ${Errors}
+    !insertmacro setInstallModePerUser
+  ${EndIf}
   ; When both scopes exist, the running updater's explicit directory decides
   ; which registration to replace instead of starting a different installed copy.
   !insertmacro GetDParameter $R0
@@ -314,6 +328,9 @@ FunctionEnd
     StrCpy $hasPerMachineInstallation "0"
   ${EndIf}
   ReadRegStr $ZeroWallOldDirectory SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${If} $ZeroWallOldDirectory == ""
+    ReadRegStr $ZeroWallOldDirectory HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ${EndIf}
   ${IfNot} ${Silent}
     InitPluginsDir
     StrCpy $ZeroWallUiState "$PLUGINSDIR\zerowall-install.ini"
@@ -325,6 +342,11 @@ FunctionEnd
     WriteINIStr "$ZeroWallUiState" "Install" "Directory" "$INSTDIR"
     WriteINIStr "$ZeroWallUiState" "Install" "Scope" "$installMode"
     WriteINIStr "$ZeroWallUiState" "Install" "LogFile" "$ZeroWallLogFile"
+    WriteINIStr "$ZeroWallUiState" "Install" "PayloadBytes" "${ZW_PAYLOAD_BYTES}"
+    WriteINIStr "$ZeroWallUiState" "Install" "HelperBytes" "${ZW_HELPER_BYTES}"
+    WriteINIStr "$ZeroWallUiState" "Install" "PayloadPath" "${ZW_PAYLOAD_PATH}"
+    WriteINIStr "$ZeroWallUiState" "Install" "TempDirectory" "$PLUGINSDIR"
+    WriteINIStr "$ZeroWallUiState" "Install" "ArchiveFile" "$EXEPATH"
     File /oname=$PLUGINSDIR\modern-installer.exe "${ZW_UI_BINARY}"
     System::Call 'kernel32::GetCurrentProcessId()i.r0'
     Exec '"$PLUGINSDIR\modern-installer.exe" "$ZeroWallUiState" $0'
@@ -344,6 +366,7 @@ FunctionEnd
       SetErrorLevel 2
       Quit
     ${EndIf}
+    zerowall_wait_selection:
     ${Do}
       ReadINIStr $R0 "$ZeroWallUiState" "Install" "Action"
       ${If} $R0 == "start"
@@ -368,13 +391,6 @@ FunctionEnd
   nsExec::ExecToStack '"$PLUGINSDIR\zerowall-access-check.exe" --can-write "$INSTDIR"'
   Pop $R0
   Pop $R1
-  ${If} $R0 == 0
-  ${AndIf} $ZeroWallOldDirectory != ""
-  ${AndIf} $ZeroWallOldDirectory != $INSTDIR
-    nsExec::ExecToStack '"$PLUGINSDIR\zerowall-access-check.exe" --can-write "$ZeroWallOldDirectory"'
-    Pop $R0
-    Pop $R1
-  ${EndIf}
   ${If} $R0 != 0
   ${OrIf} $installMode == "all"
     ${IfNot} ${UAC_IsAdmin}
@@ -393,6 +409,18 @@ FunctionEnd
       ${If} $0 == 0
       ${AndIf} $1 == 1
         ; The wrapper has waited for the inner process. Preserve its result.
+        ${If} $2 != 0
+        ${AndIf} $ZeroWallUiState != ""
+          StrCpy $installMode CurrentUser
+          SetShellVarContext current
+          StrCpy $hasPerMachineInstallation "0"
+          StrCpy $INSTDIR "$LOCALAPPDATA\Programs\ZeroWallScience"
+          WriteINIStr "$ZeroWallUiState" "Install" "Directory" "$INSTDIR"
+          WriteINIStr "$ZeroWallUiState" "Install" "Notice" "上次安装未完成。已选择当前用户目录，可继续安装；详情见日志。"
+          WriteINIStr "$ZeroWallUiState" "Install" "Action" "waiting"
+          !insertmacro ZW_PHASE "welcome"
+          Goto zerowall_wait_selection
+        ${EndIf}
         SetErrorLevel $2
         Quit
       ${EndIf}
@@ -401,6 +429,20 @@ FunctionEnd
         ${If} $ZeroWallUiState != ""
           WriteINIStr "$ZeroWallUiState" "Install" "Error" "授权已取消或无法获得目录写入权限。用户数据未修改。"
         ${EndIf}
+        ${If} $ZeroWallUiState != ""
+          ; This is the original-user outer process, even when different
+          ; administrator credentials were entered into the UAC dialog.
+          StrCpy $installMode CurrentUser
+          SetShellVarContext current
+          StrCpy $hasPerMachineInstallation "0"
+          StrCpy $INSTDIR "$LOCALAPPDATA\Programs\ZeroWallScience"
+          WriteINIStr "$ZeroWallUiState" "Install" "Directory" "$INSTDIR"
+          WriteINIStr "$ZeroWallUiState" "Install" "Notice" "未取得授权，已选择当前用户目录。请点击安装继续。"
+          WriteINIStr "$ZeroWallUiState" "Install" "Action" "waiting"
+          !insertmacro ZW_PHASE "welcome"
+          Goto zerowall_wait_selection
+        ${EndIf}
+        ; Silent callers receive the actual failure and a durable log.
         SetErrorLevel $0
         Quit
       ${EndIf}
@@ -416,48 +458,5 @@ FunctionEnd
   ${If} ${UAC_IsInnerInstance}
     !insertmacro customCheckAppRunning
   ${EndIf}
-  ; Legacy 2.x probing can find and invoke a real user's old uninstaller. It is
-  ; part of the formal product upgrade only; the isolated test must never
-  ; inspect or stop that installation.
-  !ifndef ZW_INSTALLER_TEST_MODE
-  StrCmp "${PRODUCT_NAME}" "ZeroWall Science" zerowall_migrate_v2 zerowall_migrate_done
-
-  zerowall_migrate_v2:
-    StrCpy $R8 ""
-    ; Tauri 2.x registers its uninstaller under the product name. Reading the
-    ; command first also covers a user-selected installation directory.
-    ReadRegStr $R8 HKCU "${ZEROWALL_V2_UNINSTALL_REGKEY}" "UninstallString"
-    ${If} $R8 == ""
-      ReadRegStr $R8 HKLM "${ZEROWALL_V2_UNINSTALL_REGKEY}" "UninstallString"
-    ${EndIf}
-    ; Historical releases predate the stable registry contract. Keep their
-    ; two known per-user paths as explicit, auditable fallbacks.
-    ${If} $R8 == ""
-    ${AndIf} ${FileExists} "${ZEROWALL_V2_LOCAL_DIR}\uninstall.exe"
-      StrCpy $R8 '"${ZEROWALL_V2_LOCAL_DIR}\uninstall.exe"'
-    ${EndIf}
-    ${If} $R8 == ""
-    ${AndIf} ${FileExists} "${ZEROWALL_V1_LOCAL_DIR}\uninstall.exe"
-      StrCpy $R8 '"${ZEROWALL_V1_LOCAL_DIR}\uninstall.exe"'
-    ${EndIf}
-
-    ${If} $R8 != ""
-      ${IfNot} ${Silent}
-        Banner::show /NOUNLOAD "ZeroWall Science 升级" "检测到 ZeroWall Science 2.x，正在安全卸载旧程序。项目和账户数据不会删除。"
-      ${EndIf}
-      ; /T terminates the Tauri process tree, including any legacy DSH Host,
-      ; before the old uninstaller removes locked files.
-      nsExec::Exec `"$SYSDIR\taskkill.exe" /F /T /IM "zerowall-tauri.exe"`
-      ExecWait '$R8 /S' $R9
-      ${IfNot} ${Silent}
-        Banner::destroy
-      ${EndIf}
-      ${If} $R9 != 0
-        SetErrorLevel 2
-        Abort "ZeroWall Science 2.x 卸载失败（退出代码 $R9）。请关闭旧版本后重试。"
-      ${EndIf}
-    ${EndIf}
-
-  zerowall_migrate_done:
-  !endif
+  ; Earlier uninstallers are never run before the new transaction commits.
 !macroend

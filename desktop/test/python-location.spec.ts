@@ -2,12 +2,34 @@ import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { assertWritablePythonRuntimePath, normalizePythonRuntimePath, resolvePythonLocation } from '../src/main/python-location.js'
+import { assertWritablePythonRuntimePath, normalizePythonRuntimePath, preparePythonLocation, resolvePythonLocation } from '../src/main/python-location.js'
 
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))) })
 
 describe('shared Python location', () => {
+  it('persists a user fallback only for an uninitialized unwritable default', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
+    const install = join(root, 'blocked-install'); await writeFile(install, 'file blocks the default directory')
+    const options = { localAppDataPath: join(root, 'Local'), applicationInstallRoot: install }
+    const result = await preparePythonLocation(options)
+    expect(result.source).toBe('user-fallback')
+    expect(result.runtimeRoot).toBe(join(root, 'Local', 'ZeroWall Science', 'managed-python', 'Python'))
+    expect(await resolvePythonLocation(options)).toEqual(result)
+    await expect(lstat(join(result.runtimeRoot, 'python.exe'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('keeps an existing interpreter and an explicit selection when preparing consumers', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
+    const options = { localAppDataPath: join(root, 'Local'), applicationInstallRoot: join(root, 'app') }
+    await mkdir(join(root, 'app', 'Python'), { recursive: true })
+    await writeFile(join(root, 'app', 'Python', 'python.exe'), 'existing interpreter')
+    expect((await preparePythonLocation(options)).source).toBe('install-default')
+    await mkdir(join(root, 'Local', 'ZeroWall Science'), { recursive: true })
+    const selected = join(root, 'explicit', 'Python')
+    await writeFile(join(root, 'Local', 'ZeroWall Science', 'python-location.json'), JSON.stringify({ runtimeRoot: selected, source: 'user-selected' }))
+    expect((await preparePythonLocation(options)).runtimeRoot).toBe(selected)
+  })
   it('resolves from the actual executable on first launch without a Roaming profile', async () => {
     const root = await mkdtemp(join(tmpdir(), 'python-location-')); roots.push(root)
     const result = await resolvePythonLocation({ localAppDataPath: join(root, 'Local'), applicationInstallRoot: join(root, 'install') })

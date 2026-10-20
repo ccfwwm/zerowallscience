@@ -81,7 +81,10 @@ export class PythonEnvironmentApi {
    */
   private progress: Array<Record<string, unknown>> = []
   private progressTimer?: (NodeJS.Timeout) | undefined
-  constructor(private root: string, private updater: PythonUpdaterService, private sync: SyncService, private locationPath = join(root, 'python-location.json'), private applicationInstallRoot?: string, private canonicalRuntimeRoot?: string) {
+  private diagnosticEvents: Record<string, unknown>[] = []
+  private restartRequired = false
+  private switching = false
+  constructor(private root: string, private updater: PythonUpdaterService, private sync: SyncService, private locationPath = join(root, 'python-location.json'), private applicationInstallRoot?: string, private canonicalRuntimeRoot?: string, private diagnosticSink?: (event: Record<string, unknown>) => void) {
     updater.watchProgress?.(status => this.recordProgress(status))
   }
 
@@ -116,7 +119,7 @@ export class PythonEnvironmentApi {
     if (previous && previous.stage === entry.stage && previous.phase === entry.phase && previous.logLine === entry.logLine) this.progress[this.progress.length - 1] = entry
     else this.progress.push(entry)
     if (this.progress.length > 200) this.progress.splice(0, this.progress.length - 200)
-    this.progressTimer ??= setTimeout(() => { this.progressTimer = undefined; void this.flushProgress() }, 500)
+    this.progressTimer ??= setTimeout(() => { this.progressTimer = undefined; void this.flushProgress().catch(() => undefined) }, 500)
   }
 
   private async flushProgress(): Promise<void> {
@@ -124,8 +127,7 @@ export class PythonEnvironmentApi {
     const rows = this.progress.splice(0)
     if (!rows.length) return
     const operation = (async () => {
-      await mkdir(join(this.controlRoot(), 'logs'), { recursive: true })
-      await appendFile(join(this.controlRoot(), 'logs', 'environment-events.jsonl'), rows.map(row => JSON.stringify({ requestId: String(row.taskId ?? 'progress'), ...row }, (_key, value) => typeof value === 'string' ? this.safeTaskText(value) : value) + '\n').join('')).catch(() => undefined)
+      for (const row of rows) await this.diagnostic({ requestId: String(row.taskId ?? 'progress'), ...row })
     })()
     this.progressFlush = operation
     try { await operation } finally { if (this.progressFlush === operation) this.progressFlush = undefined }
@@ -188,7 +190,7 @@ export class PythonEnvironmentApi {
   }
   private async readTask(taskId: string): Promise<PythonDependencyTask | undefined> {
     const cached = this.taskCache.get(taskId)
-    if (cached && this.activeTaskIds.has(taskId)) return cached
+    if (cached && (this.activeTaskIds.has(taskId) || cached.state === 'interrupted')) return cached
     const value = await readFile(this.taskPath(taskId), 'utf8').then(text => JSON.parse(text) as PythonDependencyTask, () => undefined)
     if (value) this.taskCache.set(taskId, value)
     return value
@@ -237,7 +239,7 @@ export class PythonEnvironmentApi {
         try { process.kill(task.ownerPid, 0); ownerAlive = true } catch (error) { ownerAlive = (error as NodeJS.ErrnoException).code === 'EPERM' }
       }
       if (task && (task.state === 'queued' || task.state === 'running') && !this.activeTaskIds.has(task.taskId) && !ownerAlive) {
-        await this.updateTask(task.taskId, { state: 'interrupted', message: '桌面关闭或重启时任务尚未完成；以下为最后一次保存的进度和日志。', error: '任务因桌面进程结束而中断。' })
+        this.taskCache.set(task.taskId, { ...task, state: 'interrupted', message: '桌面关闭或重启时任务尚未完成；以下为最后一次保存的进度和日志。', error: '任务因桌面进程结束而中断。' })
       }
     })()
     await this.recovery
@@ -328,8 +330,8 @@ export class PythonEnvironmentApi {
         ])
         if (this.scan?.scanId !== scanId) return
         this.scan = { ...this.scan, state: inventory.inventoryComplete === false ? 'failed' : 'complete', completedAt: new Date().toISOString(), inventory, ...(inventory.message ? { error: inventory.message } : {}) }
-        if (inventory.inventoryComplete !== false) await this.writeJsonAtomic(join(this.controlRoot(), 'local-inventory.json'), this.scan)
-        if (this.scan.scanId === scanId) await this.persistRuntimeSummary(inventory)
+        if (inventory.inventoryComplete !== false) await this.writeJsonAtomic(join(this.controlRoot(), 'local-inventory.json'), this.scan).catch(() => undefined)
+        if (this.scan.scanId === scanId) await this.persistRuntimeSummary(inventory).catch(() => undefined)
       } catch (error) {
         if (this.scan?.scanId === scanId) this.scan = { ...this.scan, state: 'failed', completedAt: new Date().toISOString(), error: this.safeTaskText(error instanceof Error ? error.message : String(error)) }
       } finally { clearTimeout(timer) }
@@ -341,6 +343,19 @@ export class PythonEnvironmentApi {
 
   async request(input: PythonEnvironmentRequest): Promise<Record<string, unknown>> {
     if (!input || typeof input.requestId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/u.test(input.requestId)) throw new Error('Invalid Python requestId')
+    // Location changes belong to the per-user pointer, never the old root's
+    // durable request directory. Do not allow two roots to accept new work.
+    if (input.action === 'configure' && input.runtimeRoot !== undefined) {
+      if (this.switching) throw new Error('PYTHON_TASK_ACTIVE: 正在保存环境目录。')
+      this.switching = true
+      try {
+        await this.mutation.catch(() => undefined)
+        if (this.hasPendingWork()) throw new Error('PYTHON_TASK_ACTIVE: 请等待或停止当前任务后更换目录。')
+        return await this.auditedExecute(input)
+      } finally { this.switching = false }
+    }
+    const writes = ['open_shell', 'check_manifest', 'preview_sync', 'apply_sync', 'sync', 'install_package', 'install_runtime', 'rollback'].includes(input.action) || input.action === 'configure' && input.mirrorUrl !== undefined
+    if (writes) await this.assertMutationAllowed()
     if (input.action === 'open_shell') {
       await openPythonShell(this.canonicalRuntimeRoot ?? dirname(this.root))
       return { opened: true, requestId: input.requestId }
@@ -473,6 +488,7 @@ export class PythonEnvironmentApi {
 
   /** Resume only a startup-owned interrupted sync after a desktop restart. */
   async resumeAutomaticSyncTask(taskId: string): Promise<Record<string, unknown> | undefined> {
+    await this.assertMutationAllowed()
     if (!/^[a-f0-9-]{36}$/u.test(taskId)) throw new Error('Invalid Python task id')
     const current = await this.readTask(taskId)
     if (!current?.automatic || current.action !== 'sync') return undefined
@@ -738,19 +754,40 @@ export class PythonEnvironmentApi {
   }
 
   private async log(input: PythonEnvironmentRequest, status: string, extra: Record<string, unknown> = {}): Promise<void> {
-    await mkdir(join(this.controlRoot(), 'logs'), { recursive: true })
-    await appendFile(join(this.controlRoot(), 'logs', 'environment-events.jsonl'), JSON.stringify({ requestId: input.requestId, action: input.action, status, createdAt: new Date().toISOString(), ...extra }, (_key, value) => typeof value === 'string' ? this.safeTaskText(value) : value) + '\n')
+    await this.diagnostic({ requestId: input.requestId, action: input.action, status, createdAt: new Date().toISOString(), ...extra })
+  }
+
+  private async diagnostic(event: Record<string, unknown>): Promise<void> {
+    const safe = JSON.parse(JSON.stringify(event, (_key, value) => typeof value === 'string' ? this.safeTaskText(value) : value))
+    this.diagnosticEvents.push(safe); this.diagnosticEvents = this.diagnosticEvents.slice(-50)
+    try {
+      if (this.diagnosticSink) this.diagnosticSink(safe)
+      // Standalone consumers retain best-effort logs. Desktop workers send
+      // diagnostics to the original, non-elevated broker instead.
+      else {
+        await mkdir(join(this.controlRoot(), 'logs'), { recursive: true })
+        await appendFile(join(this.controlRoot(), 'logs', 'environment-events.jsonl'), JSON.stringify(safe) + '\n')
+      }
+    } catch { /* Optional diagnostics never change the operation result. */ }
+  }
+
+  private async assertMutationAllowed(): Promise<void> {
+    if (this.switching) throw new Error('PYTHON_TASK_ACTIVE: 正在保存环境目录。')
+    const saved = await readFile(this.locationPath, 'utf8').then(JSON.parse, () => undefined)
+    if (this.restartRequired || this.canonicalRuntimeRoot && typeof saved?.runtimeRoot === 'string' && resolve(saved.runtimeRoot) !== resolve(this.canonicalRuntimeRoot)) throw new Error('PYTHON_RESTART_REQUIRED: 目录已保存，请重启桌面后继续。')
+    await assertWritablePythonRuntimePath(this.canonicalRuntimeRoot ?? dirname(this.root), this.applicationInstallRoot)
   }
 
   private async events(): Promise<unknown[]> {
     const file = await open(join(this.controlRoot(), 'logs', 'environment-events.jsonl'), 'r').catch(() => undefined)
-    if (!file) return []
+    if (!file) return this.diagnosticEvents.slice().reverse()
     try {
       const { size } = await file.stat(); const length = Math.min(size, 64 * 1024)
       const buffer = Buffer.alloc(length); await file.read(buffer, 0, length, size - length)
       const lines = buffer.toString('utf8').split('\n')
       if (size > length) lines.shift()
-      return lines.filter(Boolean).slice(-50).flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } }).reverse()
+      const persisted = lines.filter(Boolean).slice(-50).flatMap(line => { try { return [JSON.parse(line)] } catch { return [] } })
+      return [...new Map([...persisted, ...this.diagnosticEvents].map(event => [JSON.stringify(event), event])).values()].slice(-50).reverse()
     } finally { await file.close() }
   }
 
@@ -848,7 +885,7 @@ export class PythonEnvironmentApi {
         // installer reports an empty inventory until a Python operation or
         // explicit install requests the signed runtime.
         const inventory = await this.updater.pythonInfo()
-        await this.persistRuntimeSummary(inventory)
+        await this.persistRuntimeSummary(inventory).catch(() => undefined)
         const manifest = await readFile(join(this.root, 'dependency-sync', 'manifest.json'), 'utf8').then(text => parsePythonDependencyManifest(JSON.parse(text), MCP_ENVIRONMENT_KEYRING)).catch(() => undefined)
         const normalize = (name: string) => name.toLowerCase().replace(/[-_.]+/gu, '-')
         const packages = new Map(manifest?.packages.map(pkg => [normalize(pkg.name), pkg]))
@@ -905,6 +942,7 @@ export class PythonEnvironmentApi {
             // The updater is bound to its root for the lifetime of the Host.
             // Return a restart requirement instead of pretending the path has
             // changed while an active worker still owns the old environment.
+            this.restartRequired = true
             return { ...previous, runtimeRoot: selected, restartRequired: true }
           }
           if (input.mirrorUrl === undefined) return { ...previous }

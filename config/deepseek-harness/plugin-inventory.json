@@ -422,7 +422,7 @@
     {
       "id": "ai-cloud",
       "package": "@zerowallscience/plugin-ai-cloud",
-      "version": "0.1.30",
+      "version": "0.1.31",
       "source": "plugins/ai-cloud",
       "manifest": "plugins/ai-cloud/zerowall.plugin.json",
       "client": true,
@@ -643,7 +643,7 @@
     {
       "id": "python",
       "package": "@zerowallscience/plugin-python",
-      "version": "0.1.23",
+      "version": "0.1.24",
       "source": "plugins/python",
       "manifest": "plugins/python/zerowall.plugin.json",
       "client": true,

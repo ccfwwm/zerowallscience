@@ -24,3 +24,14 @@ export async function writeInstallerOwnership(root) {
   await writeFile(join(root, 'resources/installer-owned.json'), JSON.stringify({ schema: 1, files }, null, 2) + '\n')
   return files
 }
+
+export async function installerPayloadMetrics(root, files) {
+  let bytes = 0, helperBytes = 0, longestPath = 0
+  for (const local of files) {
+    const size = (await lstat(join(root, local))).size
+    bytes += size
+    longestPath = Math.max(longestPath, local.length)
+    if (['ZeroWallScience.exe', 'icudtl.dat', 'snapshot_blob.bin', 'v8_context_snapshot.bin'].includes(local)) helperBytes += size
+  }
+  return { bytes, helperBytes, longestPath }
+}

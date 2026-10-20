@@ -88,7 +88,6 @@ export class AiCloudMediaService implements ZeroWallMedia {
       const bytes = referenceBytes(ref), isMask = ref === input.mask
       if (isMask && (ref.mediaType !== 'image/png' || !bytes)) throw new Error('MEDIA_INVALID_REFERENCE')
       if (input.operation !== 'video' && (!ref.mediaType.startsWith('image/') && !isMask || ref.url !== undefined)) throw new Error('MEDIA_REFERENCE_FORMAT')
-      if (model.requestFormat === 'v6k_url' && ref.url === undefined) throw new Error('MEDIA_PUBLIC_URL_REQUIRED: 当前协议需要公网 HTTPS 素材直链。')
     }
     if (input.mask && input.operation !== 'image_edit') throw new Error('MEDIA_MASK_UNSUPPORTED')
   }
@@ -127,10 +126,11 @@ export class AiCloudMediaService implements ZeroWallMedia {
           for (const kind of ['image', 'video', 'audio']) {
             const refs = (input.references ?? []).filter(ref => ref.mediaType.startsWith(kind + '/'))
             if (!refs.length) continue
-            const field = model.requestFormat === 'yunfei_multimodal' ? 'reference_' + kind + 's' : kind + 's'
+            // The gateway owns provider-specific field names.
+            const field = kind + 's'
             payload[field] = refs.map(ref => {
               const props = referenceProperties(ref)
-              return model.requestFormat === 'v6k_url' || Object.keys(props).length ? { ...props, url: referenceValue(ref) } : referenceValue(ref)
+              return (model.requestFormat === 'v6k_url' && ref.url !== undefined) || Object.keys(props).length ? { ...props, url: referenceValue(ref) } : referenceValue(ref)
             })
           }
           break
@@ -157,7 +157,7 @@ export class AiCloudMediaService implements ZeroWallMedia {
     if (input.operation === 'video' && ['v6k_url','yunfei_multimodal'].includes(model.requestFormat ?? '')) {
       for (const kind of ['image','video','audio']) {
         const expected=(input.references??[]).filter(ref=>ref.mediaType.startsWith(kind+'/'))
-        const field=(model.requestFormat==='v6k_url'?'':'reference_')+kind+'s'
+        const field=kind+'s'
         const sent=payload[field] as Array<string|Record<string,unknown>>|undefined
         if ((sent?.length??0)!==expected.length || expected.some((ref,i)=>(typeof sent![i]==='string'?sent![i]:(sent![i] as any).url)!==referenceValue(ref))) throw new Error('MEDIA_REFERENCE_INTENT_MISMATCH: '+field)
       }

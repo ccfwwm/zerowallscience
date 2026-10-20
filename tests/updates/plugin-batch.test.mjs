@@ -34,6 +34,51 @@ async function fixture(run, mode) {
     await run({ home, manager, ids, source, calls, abort })
   } finally { await rm(home, { recursive: true, force: true }) }
 }
+for (const failHealth of [false, true]) test(`modern batch resolves old and new bundle patches without reading history (health failure: ${failHealth})`, async t => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-batch-patch-'))
+  t.after(() => rm(home, { recursive: true, force: true, maxRetries: 5 }))
+  const id = '@zerowallscience/plugin-secrets', shared = '@zerowallscience/plugin-shared'
+  await initializeProfile(home, [id, shared])
+  const active = join(home, 'profiles/web'), runtimeModules = join(home, 'runtime/node_modules')
+  const manifest = JSON.parse(await readFile(join(active, 'package.json')))
+  manifest.zerowall = { profileLayout: 3 }
+  manifest.dependencies = { [id]: '1.0.0', [shared]: '1.0.0' }
+  await writeFile(join(active, 'package.json'), JSON.stringify(manifest))
+  async function bundle(root, name, version, entry) {
+    const path = join(root, name)
+    await mkdir(path, { recursive: true })
+    await writeFile(join(path, 'package.json'), JSON.stringify({ name, version, dsh: { bundle: { patch: 'dsh.bundle.patch.yml' } } }))
+    await writeFile(join(path, 'dsh.bundle.patch.yml'), yaml.stringify([{ name: `${name}/service`, id: entry }]))
+  }
+  await bundle(join(active, 'node_modules'), id, '1.0.0', 'old-secrets')
+  await bundle(runtimeModules, shared, '1.0.0', 'runtime-shared')
+  const pair = generateKeyPairSync('ed25519'), resources = []
+  for (const name of [id, shared]) {
+    const path = join(home, name.split('/').at(-1) + '.tgz')
+    await writeFile(path, name)
+    resources.push({ id: name, kind: 'plugin', version: '2.0.0', dependencies: {}, platform: ['win32'], architecture: ['x64'], desktopRange: { min: target.desktopVersion }, dshRange: { min: target.dshVersion, max: target.dshVersion }, downloadUrl: pathToFileURL(path).href, size: Buffer.byteLength(name), sha256: await fileDigest(path), restartRequired: true, rollbackSupported: true })
+  }
+  const source = join(home, 'catalog.json')
+  await writeFile(source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources }, pair.privateKey, 'test')))
+  const starts = []
+  const manager = createResourceManager({ home, target, runtimeModules, yaml, local: true, keys: { test: pair.publicKey },
+    runPlugin: async (_args, generation) => {
+      for (const name of [id, shared]) await bundle(join(home, 'profiles', generation, 'node_modules'), name, '2.0.0', 'new-' + name.split('-').at(-1))
+    }, stopHost: async () => {}, startHost: async options => {
+      starts.push(options)
+      if (failHealth && starts.length === 1) throw new Error('injected health failure')
+    },
+  })
+  const update = manager.updatePlugins([id, shared], source)
+  if (failHealth) await assert.rejects(update, /injected health failure/)
+  else await update
+  assert.deepEqual(new Set(starts[0].affectedEntries.map(entry => entry.id)), new Set(['old-secrets', 'runtime-shared', 'new-secrets', 'new-shared']))
+  assert.equal(JSON.parse(await readFile(join(active, 'node_modules', id, 'package.json'))).version, failHealth ? '1.0.0' : '2.0.0')
+  const journal = JSON.parse(await readFile(join(home, 'resources/transaction.json')))
+  assert.equal(journal.packageTransaction, true)
+  await assert.rejects(readFile(join(journal.backup, 'node_modules', shared, 'dsh.bundle.patch.yml')), { code: 'ENOENT' })
+})
+
 test('two plugins with shared closure prepare once and activate with one Host restart', () => fixture(async f => {
   const progress = []
   const result = await f.manager.updatePlugins([f.ids[0], f.ids[1], f.ids[0]], f.source, { report: value => progress.push(value) })

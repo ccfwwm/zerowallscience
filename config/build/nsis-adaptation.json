@@ -1,6 +1,15 @@
 {
   "schema": 1,
   "builderVersion": "26.17.0",
+  "features": [
+    "current-user-default",
+    "uac-user-fallback",
+    "payload-capacity-preflight",
+    "fresh-payload-retry",
+    "phase-error-receipt",
+    "commit-before-registration",
+    "no-preinstall-uninstaller"
+  ],
   "templates": {
     "installSection.nsh": "74c4dbb4163cdd90ca4850b75d304e916235c882d6af7b5cdad63bffbc977072",
     "include/installUtil.nsh": "97bd546b5cd2aaf16b77bc9e2be8a18962dd74ab5c4d23b35b163ca89bf4dd2a",

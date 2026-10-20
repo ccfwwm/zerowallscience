@@ -28,6 +28,24 @@ async function rename(from, to) {
     }
   }
 }
+async function copyWithRetry(from, to) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await copyFile(from, to) } catch (error) {
+      if (!transient(error) || attempt === 5) throw error
+      await new Promise(done => setTimeout(done, 100 * (attempt + 1)))
+    }
+  }
+}
+const resultIndex = process.argv.indexOf('--result')
+const resultFile = resultIndex < 0 ? undefined : process.argv[resultIndex + 1]
+let phase = 'payload-validation', rollbackResult = 'not-needed'
+function result(error) {
+  if (!resultFile) return
+  const reason = error ? `${error.code ?? 'INSTALLER_ERROR'}: ${error.message}` : 'OK'
+  // This diagnostic is outside the install transaction. It must never replace
+  // the original error, including an unsuccessful rollback.
+  try { writeFileSync(resultFile, '\ufeff[Result]\r\nPhase=' + phase + '\r\nReason=' + reason.replace(/[\r\n]/g, ' ') + '\r\nRollback=' + rollbackResult + '\r\n', 'utf16le') } catch {}
+}
 const logIndex = process.argv.indexOf('--log', 4)
 const logFile = logIndex < 0 ? undefined : process.argv[logIndex + 1]
 function log(message) {
@@ -36,7 +54,8 @@ function log(message) {
     appendFileSync(logFile, `${new Date().toISOString()}|${message}\r\n`, 'utf16le')
   } catch { /* Preserve the original installation error. */ }
 }
-process.on('uncaughtExceptionMonitor', error => log(error.stack ?? String(error)))
+process.on('uncaughtExceptionMonitor', error => { log(error.stack ?? String(error)); result(error) })
+if (process.argv.includes('--self-test')) { phase = 'helper-self-test'; result(); console.log('ZEROWALL_COPY_HELPER_READY'); process.exit(0) }
 log('copy-runtime-start; mode=' + (process.argv.includes('--preflight') ? 'preflight' : 'install'))
 
 // NSIS CopyFiles uses legacy shell copying and can silently omit paths at
@@ -52,7 +71,7 @@ function inside(root, path) {
 const checkedDirectories = new Set()
 function safeDirectory(directory) {
   if (checkedDirectories.has(directory)) return
-  if (directory !== target) safeDirectory(dirname(directory))
+  if (directory !== dirname(directory)) safeDirectory(dirname(directory))
   if (existsSync(directory)) {
     const info = lstatSync(directory)
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Installer destination is occupied by a file or link')
@@ -151,11 +170,37 @@ function validateLocal(local) {
 for (const file of files) validateLocal(file.local.replaceAll('\\', '/'))
 for (const path of stale) validateLocal(relative(target, path).replaceAll('\\', '/'))
 log(`payload-preflight-complete; files=${files.length}`)
+phase = 'destination-preflight'
+// Probe the nearest existing ancestor without creating the selected tree.
+// A rename is required by the transaction, not just file creation.
+let ancestor = target
+while (!existsSync(ancestor)) ancestor = dirname(ancestor)
+const probe = join(ancestor, `.zerowall-install-probe-${process.pid}`), renamedProbe = probe + '.renamed'
+try { writeFileSync(probe, '', { flag: 'wx' }); renameSync(probe, renamedProbe) }
+finally { for (const path of [probe, renamedProbe]) if (existsSync(path)) unlinkSync(path) }
+function preflightAllocation() {
+const incomingBytes = files.reduce((total, file) => total + file.size, 0)
+const backupBytes = [...new Set([...files.map(file => file.destination), ...stale])].reduce((total, path) => total + (existsSync(path) ? statSync(path).size : 0), 0)
+const volume = fs.statfsSync(ancestor, { bigint: true })
+// Backups are same-volume renames and already occupy disk. Incoming staging
+// requires new allocation for cross-volume installs; reserve metadata as well.
+const moveOnSameVolume = process.argv.includes('--move-source') && statSync(source).dev === statSync(ancestor).dev
+const required = (moveOnSameVolume ? 0n : BigInt(incomingBytes)) + 16n * 1024n * 1024n
+log(`space-preflight; incoming=${incomingBytes}; backup=${backupBytes}; available=${volume.bavail * volume.bsize}; required=${required}`)
+if (volume.bavail * volume.bsize < required) throw Object.assign(new Error(`目标磁盘空间不足，需要 ${required} 字节可用空间。`), { code: 'ENOSPC' })
+for (const path of new Set([...files.map(file => file.destination), ...stale])) if (existsSync(path)) {
+  const handle = retrySync(() => openSync(path, 'r+'))
+  closeSync(handle)
+}
+}
 if (process.argv.includes('--preflight')) {
+  preflightAllocation()
+  result()
   console.log(`Installer payload verified before removal: ${files.length} files.`)
   process.exit(0)
 }
 safeDirectory(target)
+phase = 'transaction-recovery'
 const recovery = join(target, 'resources/installer-recovery'), journalFile = join(recovery, 'transaction.json')
 function persist(document) {
   safeDirectory(recovery)
@@ -226,7 +271,8 @@ function finishCleanup(document) {
   }
   catch (error) {
     log('cleanup-error; ' + (error.stack ?? error.message))
-    persist({ ...document, cleanupPending: true, cleanupError: { code: error.code, message: error.message } })
+    try { persist({ ...document, cleanupPending: true, cleanupError: { code: error.code, message: error.message } }) }
+    catch (journalError) { log('cleanup-journal-error; ' + journalError.message) }
     return false
   }
 }
@@ -269,8 +315,13 @@ if (existsSync(oldInventory)) {
     if (!seen.has(local) && existsSync(join(target, local))) stale.push(join(target, local))
   }
 }
+// Restore an interrupted installation before checking new allocation. Recovery
+// can free the previous staging tree and must also work when the disk is full.
+phase = 'destination-preflight'
+preflightAllocation()
 const rows = [...new Set([...files.map(file => file.local.replaceAll('\\', '/')), ...stale.map(path => relative(target,path).replaceAll('\\', '/'))])].map(local => ({ local, original: existsSync(join(target,local)), incoming: seen.has(local) }))
 const transaction = { schema: 1, root: target, state: 'staging', rows }
+phase = 'transaction-staging'
 persist(transaction)
 async function bounded(entries, task) {
   let next = 0
@@ -290,7 +341,7 @@ try {
       try { await rename(file.source,staged); moved = true }
       catch(error) { if (!['EXDEV','EPERM','EBUSY','EACCES'].includes(error.code)) throw error }
     }
-    if (!moved) await copyFile(file.source, staged)
+    if (!moved) await copyWithRetry(file.source, staged)
     if ((await stat(staged)).size !== file.size || digest(staged) !== expected) throw new Error('Installer staging verification failed')
   })
   // Same-volume moves preserve the elevated extractor's protected DACL.
@@ -300,6 +351,7 @@ try {
     execFileSync('icacls.exe', [join(recovery, 'stage'), '/reset', '/T', '/Q'], { windowsHide: true, stdio: 'pipe' })
   }
   log('transaction-stage-verified')
+  phase = 'transaction-commit'
   transaction.state = 'applying'; persist(transaction)
   await bounded(rows, async (row,index) => {
     const path = join(target,row.local), backup = join(recovery,'backup',row.local)
@@ -315,9 +367,11 @@ try {
   log('primary-error; ' + (error.stack ?? error.message))
   try {
     rollback(transaction)
+    rollbackResult = 'restored'
     log('transaction-rolled-back')
     finishCleanup(transaction)
   } catch (rollbackError) {
+    rollbackResult = 'pending: ' + rollbackError.message
     log('rollback-error; ' + (rollbackError.stack ?? rollbackError.message))
     try { persist({ ...transaction, primaryError: { code: error.code, message: error.message }, rollbackError: { code: rollbackError.code, message: rollbackError.message } }) }
     catch (journalError) { log('recovery-journal-error; ' + journalError.message) }
@@ -325,5 +379,6 @@ try {
   throw error
 }
 finishCleanup(transaction)
+phase = 'complete'; result()
 console.log(`Application files copied: ${files.length}; obsolete runtime files removed: ${stale.length}; Python and user data preserved.`)
 log(`copy-complete; files=${files.length}; obsolete=${stale.length}`)

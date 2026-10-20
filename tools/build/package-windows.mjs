@@ -60,6 +60,9 @@ process.env.ZEROWALL_BUILD_ID = activeStage.buildId
 // Snapshot helpers may have loaded paths.mjs before config sync or assembly.
 // Read the final version/build ID now instead of reusing that module's snapshot.
 const contract = paths.buildPaths(root)
+const { prepareBundledPython } = await import('../packaging/bundled-python.mjs')
+if (!stable.bundlePython) throw new Error('Stable Windows installers require the signed offline Python bootstrap')
+await prepareBundledPython(root, contract.stage, contract.cache)
 const { verifyBundledResources } = await import('../packaging/verify-bundled-resources.mjs')
 const integrated = await verifyBundledResources({ root, stage: contract.stage, release: contract.release, cache: contract.cache,
   publicBase: process.env.ZEROWALL_RESOURCE_BASE_URL ?? 'https://zerowall.chengxunkeji.cn/stable' })

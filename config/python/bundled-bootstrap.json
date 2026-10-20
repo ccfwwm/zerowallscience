@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "manifestUrl": "https://zerowall.chengxunkeji.cn/stable/zerowall-python-bootstrap/windows-x64/1.5.2/manifest.json",
+  "environmentVersion": "1.5.2",
+  "pythonVersion": "3.12.10",
+  "archiveSize": 12974485,
+  "archiveSha256": "2eeec9d008f195d42a8d5a83fdb6367b8f6b39656d9fc0205a10b94d91236c7a"
+}

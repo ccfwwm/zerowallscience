@@ -722,6 +722,10 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       for (const id of metadata.packages ?? []) if (/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id)) ids.add(id)
     }
     const backup = join(root, 'history', 'zerowall-' + randomUUID())
+    // Capture old entries while their physical paths exist, before journaling
+    // activation. History may omit packages supplied by the shared runtime.
+    const affectedIds = [...new Set([...ids, ...(metadata.packageId ? [metadata.packageId] : [])])]
+    const previousEntries = await affectedPluginEntries(affectedIds, [active])
     // A snapshot supplies per-plugin rollback without moving the live profile.
     await copyProfileSkeleton(active, backup)
     const directory = join(backup, 'transaction')
@@ -736,8 +740,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       await stopHost()
       await commitPackagePaths({ profile: active, candidate, directory, state, ids: [...ids], includeDependencyRoot: metadata.operation === 'offline-repair' })
       committed = true
-      const affectedIds = [...new Set([...ids, ...(metadata.packageId ? [metadata.packageId] : [])])]
-      await startHost({ baseline, ids: affectedIds, affectedEntries: await affectedPluginEntries(affectedIds, [active, backup]) })
+      await startHost({ baseline, ids: affectedIds, affectedEntries: [...previousEntries, ...await affectedPluginEntries(affectedIds, [active])] })
       // The global journal is the commit decision. Until it is durable recovery
       // restores exact paths, even if the process dies after health succeeds.
       await atomic(journal, { ...record, state: completionState })
@@ -767,7 +770,16 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       for (const child of Object.values(value)) if (child && typeof child === 'object') collect(child)
     }
     for (const directory of directories) for (const id of ids) {
-      const root = join(directory, 'node_modules', id), info = await packageVersion(directory, id)
+      // The manifest and its patch must come from the same physical package.
+      // A missing history entry may be supplied by the shared runtime; using
+      // packageVersion's fallback with the history root produced ENOENT during
+      // otherwise healthy batch commits.
+      let root = join(directory, 'node_modules', id)
+      let info = await json(join(root, 'package.json')).catch(error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error })
+      if (!info && runtimeModules) {
+        root = join(runtimeModules, pluginIdentity(id))
+        info = await json(join(root, 'package.json')).catch(error => { if (error.code !== 'ENOENT') throw error })
+      }
       const patches = info?.dsh?.bundle?.patch
       for (const file of typeof patches === 'string' ? [patches] : Array.isArray(patches) ? patches : []) {
         if (typeof file !== 'string' || relative(root, resolve(root, file)).startsWith('..') || isAbsolute(file)) throw new Error('Invalid plugin bundle patch path')

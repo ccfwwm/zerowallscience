@@ -65,6 +65,15 @@ async function fixture(t) {
       return { plugins: [], skills: [] };
     }
   `)
+  await writeFile(join(root, 'tools/packaging/bundled-python.mjs'), `
+    import { appendFile, readFile } from 'node:fs/promises'; import { join } from 'node:path';
+    export async function prepareBundledPython(root, stage, cache) {
+      const pointer = JSON.parse(await readFile(join(root, 'artifacts/stage/8.3.0/current.json')));
+      if (stage !== join(root, 'artifacts/stage/8.3.0', pointer.buildId) || cache !== join(root, 'artifacts/cache')) throw new Error('Bootstrap staging received stale paths');
+      if (process.env.FAKE_FAIL === 'bootstrap') throw new Error('Injected bootstrap failure');
+      await appendFile(join(root, 'calls.jsonl'), JSON.stringify(['bundled-python']) + '\\n');
+    }
+  `)
   const command = `
     import { appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'; import { join } from 'node:path';
     import { pathToFileURL } from 'node:url';
@@ -249,7 +258,7 @@ test('Windows packaging refreshes an outdated closure and consumes the latest se
   await writeFile(next.path, archive)
   await writeFile(path, JSON.stringify([...feed, next]))
   await f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'success' })
-  assert.deepEqual(await f.calls(), [['build'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
+  assert.deepEqual(await f.calls(), [['build'], ['bundled-python'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
   assert.deepEqual(await readFile(feed[0].path), archive)
   assert.deepEqual(await readFile(next.path), archive)
   const installed = JSON.parse(await readFile(join(f.versionRoot, 'assembled-build/offline-profile/modules', next.id, 'package.json')))
@@ -268,13 +277,19 @@ test('packaging resolves final resource paths after config sync and consumer act
   await writeFile(join(f.root, 'package.json'), JSON.stringify({ type: 'module', version: '8.2.9', description: 'old manifest' }))
   await f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'success' })
   assert.equal(JSON.parse(await readFile(join(f.root, 'package.json'))).version, '8.3.0')
-  assert.deepEqual(await f.calls(), [['freshness'], ['build', '--consumer-only'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
+  assert.deepEqual(await f.calls(), [['freshness'], ['build', '--consumer-only'], ['bundled-python'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
 })
 
 test('Windows packaging rebuilds a stale shared runtime even when the signed plugin feed matches', async t => {
   const f = await fixture(t)
   await f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'success', FAKE_STALE_STAGE: '1' })
-  assert.deepEqual(await f.calls(), [['freshness'], ['build'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
+  assert.deepEqual(await f.calls(), [['freshness'], ['build'], ['bundled-python'], ['bundled-resources'], ['freshness'], ['--filter', '@zerowallscience/desktop', 'run', 'package:stable:win']])
+})
+
+test('a failed signed Python bootstrap prevents invoking Electron packaging', async t => {
+  const f = await fixture(t)
+  await assert.rejects(f.run('package-windows.mjs', [], { PACKAGE_FLOW: 'success', FAKE_FAIL: 'bootstrap' }), /Injected bootstrap failure/u)
+  assert.deepEqual(await f.calls(), [['freshness'], ['build', '--consumer-only']])
 })
 
 test('stable packaging refuses an existing installer before any build or resource mutation', async t => {

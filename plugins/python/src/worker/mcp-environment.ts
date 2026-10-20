@@ -77,6 +77,7 @@ export interface McpEnvironmentControllerOptions {
    * move the mirror and request history into the interpreter tree. */
   settingsPath?: (string) | undefined
   manifestUrl: string
+  bootstrapManifestUrl?: string | undefined
   publicKey: string
   /** Signed base runtime distributed with the desktop installer. When present,
    * archive installation is offline and never falls back to the legacy feed. */
@@ -937,7 +938,7 @@ export class McpEnvironmentController {
         }) } finally { await release() }
         return this.localStatus()
       }
-      const manifest = await this.fetchManifest()
+      const manifest = await this.fetchManifest(true)
       if (manifest.python.bootstrapOnly !== true) throw new Error('PYTHON_BOOTSTRAP_REQUIRED: 首次初始化只接受签名 Python + pip bootstrap。')
       const record = { mode: existing.ready ? 'manual' : 'managed', root, runtimeRoot: root, runtimeLayout: SHARED_LAYOUT, manifest, environmentVersion: environmentVersion(manifest), contentRevision: contentRevision(manifest), archiveSha256: manifest.archiveSha256, health: 'ready', slot: 'manual', localRevision: (canonicalPrevious?.localRevision ?? 0) + 1, installedAt: new Date().toISOString(), rollbackAvailable: false }
       this.set({ phase: 'downloading', progress: 0, message: '正在下载签名 Python 基础环境。' })
@@ -961,12 +962,15 @@ export class McpEnvironmentController {
         await mkdir(repair, { recursive: true })
         for (const name of await readdir(source)) if (name === 'pip' || /^pip-[^/]+\.dist-info$/u.test(name)) await cp(join(source, name), join(repair, name), { recursive: true })
         const release = await acquireRuntimeWriter(root, undefined, pythonOperationSignal(24 * 60 * 60_000))
-        try {
+        try { await withRuntimeWriterContext(root, async () => {
           await recoverFixedTransactions(root)
           await commitFixedRuntime(root, repair, () => this.verifyHealth(root, this.runtimeManifest(manifest)), { prefix: 'Lib/site-packages' })
+          // Repairing pip does not replace the installed science release.
+          // Reconstruct metadata from its verified manifest and retain pins,
+          // customizations and rollback identity at the same fixed root.
           if (!await this.readInstalledManifest(root).catch(() => undefined)) await writeFile(join(root, 'manifest.json'), JSON.stringify(manifest))
-          await this.writeCurrent(record, 'current.json', false)
-        } finally { await release() }
+          await this.registerFixedRuntime(await this.pythonInfo(), await readCurrent(this.options.root))
+        }) } finally { await release() }
       } else {
         await writeFile(join(staging, 'manifest.json'), JSON.stringify(manifest))
         await this.activateSingleDirectoryCandidate(staging, manifest, canonicalPrevious, record)
@@ -1139,13 +1143,18 @@ export class McpEnvironmentController {
     }
   }
 
-  private async fetchManifest(): Promise<McpEnvironmentManifest> {
+  private async fetchManifest(bootstrap = false): Promise<McpEnvironmentManifest> {
     if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('ZeroWall Python 仅支持 Windows x64。')
     if (this.options.publicKey.trim() === '') throw new Error('ZeroWall Python verification key is not configured.')
     if (this.options.bundledManifestPath) {
       if (!this.options.bundledArchivePath) throw new Error('The bundled Python base archive is not configured.')
       const manifest = validateManifest(JSON.parse(await readFile(this.options.bundledManifestPath, 'utf8')))
       if (!verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) throw new Error('Bundled Python manifest signature is invalid.')
+      if (bootstrap) {
+        if (manifest.python.bootstrapOnly !== true) throw new Error('PYTHON_BOOTSTRAP_REQUIRED: 内置基础清单必须为 Python + pip bootstrap。')
+        await this.recordDiagnostic({ event: 'bootstrap_manifest_selected', source: 'bundled', version: environmentVersion(manifest), sha256: manifest.archiveSha256 })
+        return manifest
+      }
       const record = await readCurrent(this.options.root)
       if (this.singleDirectoryMode() || record?.root && record.health === 'ready') {
         try {
@@ -1171,8 +1180,11 @@ export class McpEnvironmentController {
       }
       return manifest
     }
-    const manifest = validateManifest(await downloadPythonManifest(this.options.manifestUrl, this.options.fetcher))
+    const url = bootstrap ? this.options.bootstrapManifestUrl ?? 'https://zerowall.chengxunkeji.cn/stable/zerowall-python-bootstrap/windows-x64/1.5.2/manifest.json' : this.options.manifestUrl
+    const manifest = validateManifest(await downloadPythonManifest(url, this.options.fetcher))
     if (!verifyManifestWithKeyring(manifest, this.options.publicKey, this.options.publicKeys)) throw new Error('MCP environment manifest signature is invalid.')
+    if (bootstrap && manifest.python.bootstrapOnly !== true) throw new Error('PYTHON_BOOTSTRAP_REQUIRED: 首次初始化只接受签名 Python + pip bootstrap。')
+    if (bootstrap) await this.recordDiagnostic({ event: 'bootstrap_manifest_selected', source: 'bootstrap-feed', version: environmentVersion(manifest), sha256: manifest.archiveSha256 })
     return manifest
   }
 

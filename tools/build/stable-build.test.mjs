@@ -85,7 +85,7 @@ test('stable environment reads configuration and preserves explicit signer setti
   const config = await readStableConfig(root)
   const env = stableEnvironment(root, config, { ZEROWALL_RESOURCE_KEY_ID: 'stable-3' })
   assert.equal(env.ZEROWALL_RESOURCE_KEY_ID, 'stable-3')
-  assert.equal(env.ZEROWALL_BUNDLE_PYTHON, '0')
+  assert.equal(env.ZEROWALL_BUNDLE_PYTHON, '1')
 })
 
 test('a saved strict cleanup plan cannot remove caches after the desktop version changes', async t => {

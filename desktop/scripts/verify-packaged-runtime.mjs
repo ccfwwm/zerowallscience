@@ -21,6 +21,7 @@ import { assertPythonManifests, assertPythonManifestBytes } from '../../tools/bu
 import { resourceSource } from '../../tools/build/layout.mjs'
 import { executionLevel } from '../../tools/packaging/windows-execution-level.mjs'
 import { verifyCommandRuntime } from '../../tools/packaging/verify-command-runtime.mjs'
+import { verifyBundledPython } from '../../tools/packaging/bundled-python.mjs'
 
 const hostCookies = new Map()
 const MIB = 1024 * 1024
@@ -51,7 +52,7 @@ console.log('[commands] isolated packaged metadata, add/remove, retained closure
 if (process.platform === 'win32') {
   const installer = resolve(packaged.root, '..', `zerowall-science-${desktopManifest.version}-win-x64.exe`)
   const hasInstaller = await access(installer).then(() => true, () => false)
-  if (requireThinPython && !hasInstaller) throw new Error('Stable Windows verification requires the installer')
+  if ((requireThinPython || requireBundledPython) && !hasInstaller) throw new Error('Stable Windows verification requires the installer')
   for (const executable of [packaged.executablePath, ...(hasInstaller ? [installer] : [])]) {
     if (executionLevel(await readFile(executable)) !== 'asInvoker') throw new Error(`Windows executable must preserve the launching user identity: ${executable}`)
   }
@@ -90,6 +91,7 @@ try {
   console.log('[python] no bundled base runtime; this verification was run without --require-bundled-python.')
 }
 if (bundledPythonManifest !== undefined) {
+  await verifyBundledPython(repositoryRoot, bundledPythonManifestPath, bundledPythonArchivePath)
   if (bundledPythonManifest.schema !== 2 || bundledPythonManifest.environmentId !== 'zerowall-python' || bundledPythonManifest.platform !== 'win32' || bundledPythonManifest.architecture !== 'x64' || typeof bundledPythonManifest.environmentVersion !== 'string' || bundledPythonManifest.signature?.algorithm !== 'ed25519') {
     throw new Error(`Packaged ZeroWall Python manifest identity or target is invalid: schema=${bundledPythonManifest.schema}, environmentId=${bundledPythonManifest.environmentId}, platform=${bundledPythonManifest.platform}, architecture=${bundledPythonManifest.architecture}.`)
   }

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/desktop",
-  "version": "8.4.3",
+  "version": "8.4.4",
   "description": "ZeroWall Science local-first scientific visualization and research workbench.",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "test:e2e:legacy-packaged": "vitest run --config e2e/vitest.config.ts e2e/desktop.spec.ts",
     "test:e2e:source": "vitest run --config e2e/vitest.config.ts e2e/desktop-source.spec.ts",
     "package:dir": "node scripts/verify-target.mjs win32 x64 && node ../tools/packaging/prepare-desktop-app.mjs && electron-builder --config build/electron-builder.stable.cjs --dir --publish never && node scripts/verify-packaged-runtime.mjs --desktop-only",
-    "package:win": "node scripts/verify-target.mjs win32 x64 && pnpm installer:build && node ../tools/packaging/prepare-desktop-app.mjs && electron-builder --config build/electron-builder.stable.cjs --win --x64 --publish never && node scripts/verify-packaged-runtime.mjs --desktop-only --require-thin-python && node ../tools/release/generate-windows-metadata.mjs && pnpm --dir .. artifacts:manifest",
+    "package:win": "node scripts/verify-target.mjs win32 x64 && pnpm installer:build && node ../tools/packaging/prepare-desktop-app.mjs && electron-builder --config build/electron-builder.stable.cjs --win --x64 --publish never && node scripts/verify-packaged-runtime.mjs --desktop-only --require-bundled-python && node ../tools/release/generate-windows-metadata.mjs && pnpm --dir .. artifacts:manifest",
     "package:mac:x64": "pnpm run package:stable:mac:x64",
     "package:mac:arm64": "pnpm run package:stable:mac:arm64",
     "package:stable:win": "pnpm run package:win",

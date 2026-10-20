@@ -78,7 +78,7 @@ process.on('message', async (message: any) => {
     if (message.config.manager) {
       const config = message.config.manager
       sync = new PythonSyncService({ ...config.sync, updater: manager })
-      api = new PythonEnvironmentApi(message.config.root, manager, sync, config.locationPath, config.applicationInstallRoot, message.config.runtimeRoot)
+      api = new PythonEnvironmentApi(message.config.root, manager, sync, config.locationPath, config.applicationInstallRoot, message.config.runtimeRoot, event => send({ type: 'diagnostic', event }))
       manager.setEnvironmentHandler(request => api.request(request))
     }
     send({ type: 'configured', abi: 1 })

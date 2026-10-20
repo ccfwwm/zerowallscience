@@ -30,7 +30,7 @@ import { ensurePythonCoreAtStartup } from './python-startup.js'
 import { unchangedPluginFailure, type PluginHealth, type PluginActivationScope } from './plugin-health.js'
 
 import type { PythonEnvironmentApi, PythonEnvironmentRequest } from './python-environment-api.js'
-import { resolvePythonLocation } from './python-location.js'
+import { preparePythonLocation, resolvePythonLocation } from './python-location.js'
 import { resolveDesktopUserDataPath } from './user-data-location.js'
 import { mcpEnvironmentDiagnostic, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
@@ -541,7 +541,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   // saved Python target; no files are read or copied from those profiles.
   let appDataPath: string | undefined
   try { appDataPath = app.getPath('appData') } catch { /* Python remains independent of Roaming */ }
-  const pythonLocation = await resolvePythonLocation({
+  const pythonLocationOptions = {
     localAppDataPath: process.env.LOCALAPPDATA?.trim() || join(process.env.USERPROFILE ?? app.getPath('home'), 'AppData', 'Local'),
     legacyRoamingRoots: appDataPath ? [
       userData,
@@ -550,6 +550,10 @@ if (ownsInstance) app.whenReady().then(async () => {
       join(appDataPath, 'zerowall-science-3'),
     ] : [],
     applicationInstallRoot: app.isPackaged ? dirname(process.execPath) : undefined,
+  }
+  const pythonLocation = await preparePythonLocation(pythonLocationOptions).catch(async error => {
+    console.error('Python location preparation failed; open settings to repair:', error)
+    return resolvePythonLocation(pythonLocationOptions)
   })
   const mcpEnvironmentRoot = pythonLocation.managementRoot
   // Do not copy the old Roaming profile. The updater recreates the managed

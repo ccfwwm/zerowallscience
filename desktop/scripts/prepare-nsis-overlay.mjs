@@ -13,6 +13,9 @@ const builder = dirname(requireBuilder.resolve('app-builder-lib/package.json'))
 const manifest = JSON.parse(await readFile(resolve(builder, 'package.json'), 'utf8'))
 const adaptation = JSON.parse(await readFile(resolve(desktop, '../config/build/nsis-adaptation.json'), 'utf8'))
 if (adaptation.schema !== 1 || manifest.version !== adaptation.builderVersion) throw new Error('Review the NSIS upgrade adaptation before changing electron-builder')
+for (const feature of ['current-user-default', 'uac-user-fallback', 'payload-capacity-preflight', 'fresh-payload-retry', 'phase-error-receipt', 'commit-before-registration', 'no-preinstall-uninstaller']) {
+  if (!adaptation.features?.includes(feature)) throw new Error(`Missing reviewed NSIS adaptation feature: ${feature}`)
+}
 const templates = resolve(builder, 'templates/nsis')
 for (const [file, expected] of Object.entries(adaptation.templates)) {
   const actual = createHash('sha256').update(await readFile(resolve(templates, file))).digest('hex')
@@ -48,39 +51,10 @@ await writeFile(resolve(output, 'installUtil.nsh'), utilities)
 let extraction = (await readFile(resolve(templates, 'include/extractAppPackage.nsh'), 'utf8')).replaceAll('\r\n', '\n')
 const extractMacro = /^!macro extractUsing7za FILE\n[\s\S]*?^!macroend/gm
 if ([...extraction.matchAll(extractMacro)].length !== 1) throw new Error('Unexpected upstream archive extraction macro')
-extraction = extraction.replace(extractMacro, `!macro extractUsing7za FILE
-  Push $OUTDIR
-  CreateDirectory "$PLUGINSDIR\\7z-out"
-  SetOutPath "$PLUGINSDIR\\7z-out"
-  Nsis7z::Extract "\${FILE}"
-  Pop $R0
-  SetOutPath $R0
-  File /oname=$PLUGINSDIR\\zerowall-copy-files.mjs "${resolve(desktop, '../tools/commands/installer-copy-files.mjs')}"
-  File /oname=$PLUGINSDIR\\zerowall-owned-files.ps1 "${resolve(desktop, '../tools/commands/uninstall-owned-files.ps1')}"
-  ; Never execute an EXE which the transaction will move or roll back. Electron
-  ; needs ICU and both V8 snapshots even in RUN_AS_NODE mode.
-  CreateDirectory "$PLUGINSDIR\\copy-runtime"
-  CopyFiles /SILENT "$PLUGINSDIR\\7z-out\\ZeroWallScience.exe" "$PLUGINSDIR\\copy-runtime\\copy-runtime.exe"
-  CopyFiles /SILENT "$PLUGINSDIR\\7z-out\\icudtl.dat" "$PLUGINSDIR\\copy-runtime\\icudtl.dat"
-  CopyFiles /SILENT "$PLUGINSDIR\\7z-out\\snapshot_blob.bin" "$PLUGINSDIR\\copy-runtime\\snapshot_blob.bin"
-  CopyFiles /SILENT "$PLUGINSDIR\\7z-out\\v8_context_snapshot.bin" "$PLUGINSDIR\\copy-runtime\\v8_context_snapshot.bin"
-  ; CopyFiles silently omits MAX_PATH files. The bundled Node API handles
-  ; long Unicode paths and reports every incomplete copy as an install error.
-  System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", w "1")'
-  nsExec::ExecToStack '"$PLUGINSDIR\\copy-runtime\\copy-runtime.exe" "$PLUGINSDIR\\zerowall-copy-files.mjs" "$PLUGINSDIR\\7z-out" "$INSTDIR" --move-source --log "$ZeroWallLogFile"'
-  Pop $R0
-  Pop $R1
-  !insertmacro ZW_LOG "transaction-exit=$R0; $R1"
-  System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", p 0)'
-  \${If} $R0 != 0
-    \${If} $ZeroWallUiState != ""
-      WriteINIStr "$ZeroWallUiState" "Install" "Error" "安装失败（退出码 $R0）。日志：$ZeroWallLogFile"
-    \${EndIf}
-    MessageBox MB_OK|MB_ICONSTOP "应用文件安装失败（退出码 $R0）。日志：$ZeroWallLogFile。Python 和用户文件已保留。"
-    SetErrorLevel 2
-    Abort
-  \${EndIf}
-!macroend`)
+const transactionMacro = (await readFile(resolve(desktop, 'build/installer-extraction.nsh'), 'utf8'))
+  .replaceAll('@ZW_COPY_SCRIPT@', resolve(desktop, '../tools/commands/installer-copy-files.mjs'))
+  .replaceAll('@ZW_UNINSTALL_SCRIPT@', resolve(desktop, '../tools/commands/uninstall-owned-files.ps1'))
+extraction = extraction.replace(extractMacro, () => transactionMacro.trimEnd())
 await writeFile(resolve(output, 'extractAppPackage.nsh'), extraction)
 await writeFile(resolve(output, 'installer-definitions.nsh'), `!include "${resolve(templates, 'include/installer.nsh')}"\n`)
 console.log(`Prepared NSIS in-place upgrade section from electron-builder ${manifest.version}`)
