@@ -141,15 +141,18 @@ export class AiCloudMediaService implements ZeroWallMedia {
       const reader = response.body?.getReader()
       try { if (reader) for (;;) { const part = await reader.read(); if (part.done) break; total += part.value.length; if (total > 8192) break; raw += new TextDecoder().decode(part.value) } } finally { await reader?.cancel().catch(() => {}) }
       try {
-        const value = JSON.parse(raw), code = value.error?.code ?? value.code
+        const value = JSON.parse(raw), code = value.error?.code ?? value.error?.type ?? value.code
         if ([400,415,422].includes(response.status) && ['unsupported_reference_format','base64_not_supported','reference_url_required'].includes(code)) throw Object.assign(new Error('MEDIA_REFERENCE_URL_REQUIRED: 服务端明确拒绝了参考素材格式；请为相应素材提供公网 HTTPS 直链。'), { rejected: true })
       } catch (cause) { if ((cause as any)?.rejected) throw cause }
       const value = (() => { try { return JSON.parse(raw) } catch { return {} } })()
       const detail = safeMediaValue(value.error ?? value, [key])
       Object.assign(error, { response: { status: response.status, error: detail } })
-      const code = typeof detail?.code === 'string' ? detail.code : ''
+      const code = typeof detail?.code === 'string' ? detail.code : typeof detail?.type === 'string' ? detail.type : ''
       const message = typeof detail?.message === 'string' ? detail.message : ''
       if (code || message) error.message += ': ' + [code, message].filter(Boolean).join(' — ').slice(0, 1000)
+      if ([400, 409].includes(response.status) && ['invalid_public_profile', 'estimate_configuration_changed'].includes(code)) {
+        error.message += '；请刷新同一分组和模型的能力后重新估价，本次不会自动重新提交。'
+      }
       throw error
     }
     return mediaAbortable(response.json(), signal)

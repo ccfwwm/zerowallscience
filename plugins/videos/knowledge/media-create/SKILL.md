@@ -33,6 +33,10 @@ description: 通过对话创作用户明确要求的独立视频、音乐与宣�
 
 ## 多媒体参考与请求恢复
 
+每次新建或明确重试草稿前，读取最近一次已完成的账号能力目录，避免每个生成请求都触发上游模型发现与限流。`profile_id` / `public_profile_id` 是服务端配置版本，不是模型名；版本失效时，仅当同一分组、同一模型、同一操作存在唯一当前能力时更新 profile，保留用户选择的模型、参数和全部参考素材。需要刷新目录时通过模型列表同步操作执行。出现多条候选或模型下线时报告实际选择错误，不擅自切换模型。`invalid_public_profile` 与 `estimate_configuration_changed` 表示目录或模板配置已变化：保留原草稿，刷新后重新估价；已明确 rejected 的请求保留拒绝记录并使用新请求 ID。超时、断网、5xx、`submission-uncertain` 或已有 task ID 只恢复原任务，不能因刷新目录自动重提生成。
+
+视频时长使用用户提供的 `seconds`，兼容的 `duration` 会由 Host 映射为 `seconds`；比例 `aspect_ratio` 映射为 `ratio`。两种写法同时提供且值不同会明确拒绝，不自动覆盖。图片、视频、音频参考分别使用统一 `images`、`videos`、`audios` 数组，协议字段和编码由管理员绑定的固定模板版本处理。价格由渠道定价按公开模型名匹配，插件不维护独立价格。
+
 本地图片、视频、音频参考默认由 Host 编码为 Base64。创作者优先通过 `images`、`videos`、`audios` 提交统一素材数组，支持 URL、完整 MIME Data URL，以及带 `role` 或其他模板属性的对象；也可用 `references_file` 读取含公网 URL 的清单。不得根据模型名或上游域名选择协议字段，模型绑定的协议模板由管理员配置。`parameters_json` 只用于兼容其他模型参数；若重复提供统一素材字段，内容必须一致，否则先修正冲突。旧 `references_json` 仍可用于描述项目文件、会话附件、公网 URL 或当前任务的 `reference_id`；URL 填 `media_type`，图片角色可为 reference/first_frame/last_frame，首尾帧不可混普通图片。音乐参考仅影响视频，不自动额外生成音乐。能力要求公网 URL 或服务端明确拒绝 Base64 时，只询问缺失素材的 HTTPS 直链，不上传七牛或其他图床。已有 URL 或原任务 reference_id 直接复用，不重复导入或上传。明确未受理的 rejected 任务修正后生成新请求，保留旧记录；超时、断网、5xx 或已受理任务只恢复原任务，不自动重提。鉴权、余额、内容拒绝、限流不能一概要求改 URL。
 
 `references_json` 示例：`[{"path":"media-projects/<真实项目>/assets/ref.mp4","role":"reference"},{"url":"https://example.com/ref.jpg","media_type":"image/jpeg","role":"first_frame"}]`。每项仅一个来源：项目 path、会话 attachment_id、公网 url，或当前任务摘要返回的 reference_id（sha256）。使用新参数时不能再传 reference_paths/input_attachment_ids；不要输出 Base64、凭据或签名 URL。

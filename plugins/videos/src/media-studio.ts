@@ -6,7 +6,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { MediaDraft, MediaJob, MediaPreparationInput, MediaSelection, MediaScope, MediaAsset, MediaReference } from '@zerowallscience/plugin-ai-cloud/types'
+import type { MediaCatalog, MediaDraft, MediaJob, MediaPreparationInput, MediaSelection, MediaScope, MediaAsset, MediaReference } from '@zerowallscience/plugin-ai-cloud/types'
 import type {} from '@zerowallscience/plugin-ai-cloud'
 import type {} from '@zerowallscience/plugin-python'
 import type {} from '@zerowallscience/plugin-environment'
@@ -178,20 +178,23 @@ export class MediaStudioService extends TypertRemoteService {
       if (recovered) input = { ...recovered, ...input, parameters: { ...(recovered.parameters ?? {}), ...(input.parameters ?? {}) } }
     }
     input.id ??= old?.id ?? randomUUID()
+    // Reuse the latest completed account sync without triggering discovery.
+    let catalog: Promise<MediaCatalog> | undefined
+    const readCatalog = () => catalog ??= this.host.zerowallMedia.catalog()
     let selection:MediaSelection|undefined=input.selection
     if(input.selection===undefined&&!selection){selection=old?.selection;if(old?.parameters)input.parameters={...old.parameters,...(input.parameters??{})}}
     if (!selection && input.selection!==null) {
       const legacy=await this.host.zerowallEnvironment.readMediaModelSelections()
       if (!legacy.image) {
         const previous=await this.host.zerowallEnvironment.readImageModelSelection()
-        const model=previous?(await this.host.zerowallMedia.catalog()).models.filter(m=>!m.stale&&m.groupId===previous.groupId&&m.modelId===previous.modelId&&(!previous.profileId||m.profileId===previous.profileId)):[]
+        const model=previous?(await readCatalog()).models.filter(m=>!m.stale&&m.groupId===previous.groupId&&m.modelId===previous.modelId&&(!previous.profileId||m.profileId===previous.profileId)):[]
         if(model.length===1)legacy.image={selection:{groupId:model[0]!.groupId,modelId:model[0]!.modelId,profileId:model[0]!.profileId,operation:model[0]!.operations.includes('gemini_image')?'gemini_image':'image'},parameters:{...(previous?.resolution?{resolution:previous.resolution}:{}),...(previous?.aspectRatio?{aspect_ratio:previous.aspectRatio}:{}),...(model[0]!.qualities.includes(this.host.zerowallEnvironment.getImageQuality())?{quality:this.host.zerowallEnvironment.getImageQuality()}:{})}}
       }
       selection=legacy?.[input.kind]?.selection
       if (selection) input.parameters={...(legacy?.[input.kind]?.parameters??{}),...(input.parameters??{})}
       if (!selection && input.autoSelect && !(input.kind === 'image' && await this.host.zerowallEnvironment.readImageModelSelection())) {
         const operations = input.kind === 'image' ? (input.reference_paths?.length || input.input_attachment_ids?.length ? ['image_edit', 'gemini_image'] : ['image', 'gemini_image']) : input.kind === 'video' ? ['video'] : input.kind === 'speech' ? ['speech'] : ['chat_music','audio']
-        const model = (await this.host.zerowallMedia.catalog()).models.find(m => !m.stale && m.operations.some(op => operations.includes(op)))
+        const model = (await readCatalog()).models.find(m => !m.stale && m.operations.some(op => operations.includes(op)))
         if (model) {
           selection = { groupId: model.groupId, modelId: model.modelId, profileId: model.profileId, operation: model.operations.find(op => operations.includes(op))! }
           const parameters = { ...(model.duration.required && model.duration.mode !== 'fixed' && input.parameters?.duration === undefined && input.parameters?.seconds === undefined ? { duration: model.duration.default ?? model.duration.values?.[0] ?? model.duration.min ?? undefined } : {}), ...(input.parameters ?? {}) }
@@ -201,7 +204,9 @@ export class MediaStudioService extends TypertRemoteService {
       }
     }
     if (selection) {
-      const model = (await this.host.zerowallMedia.catalog()).models.find(m => !m.stale && m.groupId === selection!.groupId && m.modelId === selection!.modelId && m.profileId === selection!.profileId)
+      const candidates = (await readCatalog()).models.filter(m => !m.stale && m.groupId === selection!.groupId && m.modelId === selection!.modelId && m.operations.includes(selection!.operation))
+      const model = candidates.find(m => m.profileId === selection!.profileId) ?? (candidates.length === 1 ? candidates[0] : undefined)
+      if (model) selection = { ...selection, profileId: model.profileId }
       if (model?.duration.required && model.duration.mode !== 'fixed' && input.parameters?.duration === undefined && input.parameters?.seconds === undefined) {
         input.parameters = { ...(input.parameters ?? {}), duration: model.duration.default ?? model.duration.values?.[0] ?? model.duration.min }
       }

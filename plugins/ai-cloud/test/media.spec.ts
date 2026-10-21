@@ -16,6 +16,14 @@ function model(operation = 'image'): AiCloudMediaModel {
   return { providerId: 'zerowall-ai-cloud-7', groupId: '7', groupName: '图片音频视频分组', baseUrl: 'https://hkcode.aicodeme.xyz/v1', modelId: 'fixture-model', capability: 'media', profileId: 'opaque', version: '1', mediaType: operation === 'video' ? 'video' : operation === 'chat_music' ? 'audio' : 'image', operations: [operation], sizes: ['1024x1024'], qualities: ['medium'], resolutions: ['1K'], aspectRatios: ['1:1'], duration: {}, materials: { image: { max_count: 1, max_file_bytes: 4096, formats: ['data_url', 'file'] } }, formats: [], pollSeconds: 1, maxRequestBytes: 100_000 }
 }
 const request = (operation = 'image'): MediaRequest => ({ requestId: 'request-fixture-0001', modelId: 'fixture-model', profileId: 'opaque', groupId: '7', operation, prompt: 'tiny fixture', async: true })
+it.each([[400,'invalid_public_profile'],[409,'estimate_configuration_changed']] as const)('handles gateway error.type %s without repeating a rejected POST',async(status,type)=>{
+  const fetcher=vi.fn<typeof fetch>(async()=>json({error:{type,message:'Configuration changed'}},status))
+  const {service}=await setup(fetcher,'video')
+  await expect(service.submit({...request('video'),parameters:{duration:5}})).rejects.toMatchObject({rejected:true,message:expect.stringContaining(type)})
+  expect((await service.list())[0]!.status).toBe('rejected')
+  await expect(service.submit({...request('video'),parameters:{duration:5}})).rejects.toThrow('MEDIA_REQUEST_REJECTED')
+  expect(fetcher).toHaveBeenCalledOnce()
+})
 async function setup(fetcher: typeof fetch, operation = 'image') {
   const values = new Map([['zerowall.ai-cloud.group.7', 'private-fixture-key']])
   const secrets = { get: async (k: string) => values.get(k), set: async (k: string, v: string) => { values.set(k, v) }, delete: async (k: string) => { values.delete(k) } }

@@ -20660,7 +20660,7 @@ importers:
         specifier: link:../../deepseek-harness/vendor/schemastery
         version: link:../../deepseek-harness/vendor/schemastery
       '@zerowallscience/plugin-ai-cloud':
-        specifier: ^0.1.30
+        specifier: ^0.1.33
         version: link:../ai-cloud
       '@zerowallscience/plugin-environment':
         specifier: workspace:^

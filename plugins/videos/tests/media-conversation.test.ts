@@ -143,6 +143,29 @@ it('preserves explicit saved model parameters and refuses to replace an invalid 
   expect(await g.studio.generate('s1',{id:'chat-retired-0001',kind:'video',prompt:'test'})).toMatchObject({id:'chat-retired-0001',state:'validation-failed',error:'MEDIA_SELECTION_INVALID'})
   expect(g.media.submit).not.toHaveBeenCalled();expect(g.environment.setMediaModelSelections).not.toHaveBeenCalled();await g.ctx.fiber.dispose()
 })
+it('refreshes an expired profile only for the same unique group/model/operation and preserves parameters',async()=>{
+  const selection={groupId:'99',modelId:'chosen',profileId:'expired',operation:'video'}
+  const f=await fixture({video:{selection,parameters:{duration:5,quality:'high'}}})
+  try{
+    const draft=JSON.parse(await f.studio.call('s1','prepare',JSON.stringify({kind:'video',prompt:'preserve my settings'})))
+    expect(f.media.catalog).toHaveBeenCalledWith()
+    expect(draft.selection).toEqual({...selection,profileId:'p'})
+    expect(f.media.estimate.mock.calls[0]?.[0]).toMatchObject({profileId:'p',parameters:{duration:5,quality:'high'}})
+    expect(f.environment.setMediaModelSelections).not.toHaveBeenCalled()
+  }finally{await f.ctx.fiber.dispose()}
+})
+it('keeps an expired saved selection when refreshed candidates are ambiguous',async()=>{
+  const selection={groupId:'99',modelId:'chosen',profileId:'expired',operation:'video'}
+  const f=await fixture({video:{selection,parameters:{duration:5}}})
+  try{
+    f.media.catalog.mockResolvedValue({models:[f.model,{...f.model,profileId:'other'}],status:'succeeded'})
+    f.media.estimate.mockRejectedValue(new Error('MEDIA_SELECTION_INVALID'))
+    const job=await f.studio.generate('s1',{kind:'video',prompt:'same model'})
+    expect(job).toMatchObject({state:'validation-failed',selection})
+    expect(f.media.submit).not.toHaveBeenCalled()
+    expect(f.environment.setMediaModelSelections).not.toHaveBeenCalled()
+  }finally{await f.ctx.fiber.dispose()}
+})
 it('retains image references while changing a video draft and submitting through the conversation', async () => {
   const f = await fixture()
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')

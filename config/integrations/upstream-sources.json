@@ -140,12 +140,12 @@
     "repository": "https://github.com/zenstory-ai/oh-story-dsh.git",
     "commit": "d4fca12fa8a71c9d91944bd25a9d8c6b519084f5",
     "version": "0.1.16",
-    "resourceVersion": "0.2.3",
+    "resourceVersion": "0.2.5",
     "package": "@zerowallscience/plugin-videos",
     "license": "MIT",
     "source": "plugins/videos",
     "catalogOptional": true,
-    "localAdaptation": "Conversation-first media creation with automatic session projects, native right sidebar, explicit user generation requests, preserved model choices and fixed-Python local composition. Retired fiction/game/drama/recap contributions excluded.",
+    "localAdaptation": "Conversation-first video and audio generation with stale profile reconciliation, preserved model parameters and references, explicit paid request identity, native media workspace, and fixed-Python composition. Retired fiction/game/drama/recap contributions excluded.",
     "tag": "v0.1.16"
   },
   "pptMaker": {
