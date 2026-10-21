@@ -2,15 +2,16 @@ import type { AiCloudModelSync } from '../shared/types.js'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import QRCode from 'qrcode/lib/browser.js'
-import { CheckCircle2, Cloud, CreditCard, ExternalLink, LogOut, RefreshCw, Send, ShieldCheck, X } from 'lucide-react'
+import { Cloud, CreditCard, ExternalLink, Eye, EyeOff, LogOut, RefreshCw, Search, Send, ShieldCheck, X } from 'lucide-react'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { PropsLocale, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from '@zerowallscience/plugin-base/client-helpers'
 import { accountSurface } from './account-surface.js'
+import { accountConnection, gatewayPlatformUrl } from './platform.js'
 import css from './AiCloudAccountButton.module.css'
 
 export interface AiCloudModelView { providerId: string; groupId: string; groupName: string; modelId: string; baseUrl: string; capability?: string; stale?: boolean }
-export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; models: AiCloudModelView[]; modelSync?: AiCloudModelSync; mediaModels?: Array<{modelId:string;profileId:string;groupName:string;mediaType:string;stale?:boolean}>; mediaSync?: AiCloudModelSync }
+export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; models: AiCloudModelView[]; modelSync?: AiCloudModelSync; mediaModels?: Array<{providerId?:string;groupId?:string;modelId:string;profileId:string;groupName:string;mediaType:string;stale?:boolean}>; mediaSync?: AiCloudModelSync }
 export interface AiCloudGatewayView { baseUrl: string; label: string; preferred: boolean }
 export interface AiCloudPublicView { registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; captchaEnabled: boolean; passwordResetEnabled?: boolean; rechargeUrl?: string; lowBalanceThreshold?: number }
 export interface AiCloudCheckoutView { enabled: boolean; minimumAmount: number; paymentTypes: string[]; rechargeUrl?: string }
@@ -57,6 +58,7 @@ export function AiCloudAccountButton(props: Props) {
   useEffect(() => accountSurface.subscribeOpen(() => setOpen(true)), [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const [rememberPassword, setRememberPassword] = useState(true)
   const [code, setCode] = useState('')
   const [codeCooldown, setCodeCooldown] = useState(0)
@@ -268,7 +270,7 @@ export function AiCloudAccountButton(props: Props) {
       await props.refreshModelCatalog?.()
       if (request !== modelSyncRequest.current) return
       setAccount(next)
-      setSuccess(props.t('account.modelsSynced', { count: next.models.length }))
+      setSuccess(props.t(hasIncompleteCatalog(next) ? 'account.modelsSyncPartial' : 'account.modelsSynced', { count: next.models.length }))
     } catch (reason) {
       if (request === modelSyncRequest.current) setError(message(reason))
     } finally {
@@ -306,6 +308,7 @@ export function AiCloudAccountButton(props: Props) {
       setActiveOrder(undefined)
       const saved = await props.savedLogin?.()
       setRegistering(false)
+      setPasswordVisible(false)
       setEmail(saved?.email ?? '')
       setPassword(saved?.password ?? '')
       setTimeout(() => document.querySelector<HTMLInputElement>('input[autocomplete="current-password"]')?.focus(), 0)
@@ -357,6 +360,7 @@ export function AiCloudAccountButton(props: Props) {
   const changeMode = (mode: 'login' | 'register' | 'reset') => {
     formEdited.current = true
     setForgotMode(mode === 'reset'); setRegistering(mode === 'register')
+    setPasswordVisible(false)
     setError(undefined); setSuccess(undefined)
     if (mode !== 'register') setCodeNotice(undefined)
     if (mode === 'reset') setPassword('')
@@ -375,8 +379,12 @@ export function AiCloudAccountButton(props: Props) {
     [activeOrder?.paymentType, paymentType, props.t],
   )
   const usageUrl = signedIn ? usagePageUrl(account?.gatewayBaseUrl) : undefined
-  const connection = signedIn ? 'online' : account === undefined && busy ? 'waiting' : 'offline'
-  const accountStatusText = signedIn ? props.t('account.status.connected') : props.t('account.status.signedOut')
+  const platformUrl = gatewayPlatformUrl(selectedGateway)
+  const filteredModels = account?.models.filter(model => `${model.groupName} ${model.modelId} ${model.providerId} ${model.capability ?? 'chat'}`.toLowerCase().includes(modelQuery.toLowerCase())) ?? []
+  const modelGroups = groupModels(filteredModels)
+  const mediaModelGroups = groupModels(account?.mediaModels ?? [])
+  const connection = accountConnection(account, account === undefined && error !== undefined)
+  const accountStatusText = props.t(`account.connection.${connection}`)
 
   return <>
     <button className={css.trigger} data-zerowall-footer-action data-connection={connection} type="button" onClick={() => { setOpen(true); void refresh() }} title={`${props.t('account.trigger')} · ${accountStatusText}`} aria-label={props.t('account.trigger')}>
@@ -385,8 +393,11 @@ export function AiCloudAccountButton(props: Props) {
     {(open || target) && createPortal(<div className={target ? css.embedded : css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
       <section className={css.panel} data-auth={!signedIn} role={target ? undefined : "dialog"} aria-modal={target ? undefined : true} aria-labelledby="zerowall-account-title">
         <header className={css.header}>
-          <div><p>ZeroWall Science</p><h2 id="zerowall-account-title">{signedIn ? props.t('account.centerTitle') : forgotMode ? props.t('account.resetTitle') : props.t('account.title')}</h2></div>
-          {!target && <button className={css.iconButton} type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button>}
+          <div className={css.headerIdentity}><span className={css.brandIcon}><Cloud size={22} aria-hidden="true" /></span><div><p>ZeroWall Science</p><h2 id="zerowall-account-title">{signedIn ? props.t('account.centerTitle') : forgotMode ? props.t('account.resetTitle') : props.t('account.title')}</h2></div></div>
+          <div className={css.headerActions}>
+            {platformUrl !== undefined && <button className={css.iconButton} type="button" onClick={() => openExternal(platformUrl)} title={props.t('account.openPlatform')} aria-label={props.t('account.openPlatform')}><ExternalLink size={18} /></button>}
+            {!target && <button className={css.iconButton} type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button>}
+          </div>
         </header>
         {error && <p className={css.error} role="alert">{accountError(error, props.t)}</p>}
         {success && <p className={css.success} role="status">{success}</p>}
@@ -404,7 +415,7 @@ export function AiCloudAccountButton(props: Props) {
           </div>}
           <label>{props.t('account.email')}<input type="email" value={email} disabled={busy} onChange={event => { formEdited.current = true; setEmail(event.target.value); clearVerification(); setSuccess(undefined); setError(undefined) }} autoComplete="username" autoCapitalize="none" spellCheck={false} /></label>
           {!forgotMode && <>
-            <label>{props.t('account.password')}<input type="password" value={password} disabled={busy} onChange={event => { formEdited.current = true; setPassword(event.target.value) }} autoComplete={registering ? 'new-password' : 'current-password'} /></label>
+            <div className={css.passwordField}><label htmlFor="zerowall-account-password">{props.t('account.password')}</label><div><input id="zerowall-account-password" type={passwordVisible ? 'text' : 'password'} value={password} disabled={busy} onChange={event => { formEdited.current = true; setPassword(event.target.value) }} autoComplete={registering ? 'new-password' : 'current-password'} /><button className={css.iconButton} type="button" disabled={busy} aria-label={props.t(passwordVisible ? 'account.hidePassword' : 'account.showPassword')} title={props.t(passwordVisible ? 'account.hidePassword' : 'account.showPassword')} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></div>
             {registering && <p className={css.authLead}>{props.t('account.passwordHint')}</p>}
             <label className={css.remember}><input type="checkbox" disabled={busy} checked={rememberPassword} onChange={event => { const checked = event.target.checked; setRememberPassword(checked); if (!checked) void props.forgetLogin().then(() => undefined).catch(reason => setError(message(reason))) }} />{props.t('account.rememberPassword')}</label>
           </>}
@@ -430,7 +441,7 @@ export function AiCloudAccountButton(props: Props) {
         </form> : <div className={css.content}>
           <GatewaySelector gateways={gateways} selected={account?.gatewayBaseUrl} disabled={busy} onChange={switchGateway} t={props.t} />
           <div className={css.accountCard}>
-            <div className={css.identity}><span>{props.t('account.currentAccount')}</span><strong>{account.email}</strong><small><CheckCircle2 size={13} />{account.balanceFreshness === 'stale' ? props.t('account.lastBalance') : props.t('account.signedIn')}</small></div>
+            <div className={css.identity}><span>{props.t('account.currentAccount')}</span><strong>{account.email}</strong><small><span className={css.connectionBadge} data-connection={connection}><i aria-hidden="true" />{accountStatusText}</span>{account.balanceFreshness === 'stale' ? props.t('account.lastBalance') : props.t('account.signedIn')}</small></div>
             <div className={css.balance}><span>{props.t('account.balance')}</span><strong>{formatBalance(account)}</strong></div>
             <button className={css.logoutButton} type="button" onClick={() => void logout()} disabled={busy}><LogOut size={16} />{props.t('account.logout')}</button>
           <div className={css.externalActions}>
@@ -445,13 +456,23 @@ export function AiCloudAccountButton(props: Props) {
               {syncingModels ? props.t('account.modelsSyncing') : props.t('account.modelsSync')}
             </button>
           </section>
-          {account.modelSync && <div aria-live="polite">{account.modelSync.groups.map(group => <p key={group.groupId} role={group.status === 'failed' ? 'alert' : undefined}>{group.groupName} · {group.count} · {group.status} · {group.checkedAt}{group.error ? ` · ${group.error}` : ''}</p>)}</div>}
-          {account.mediaSync && <div aria-live="polite">{account.mediaSync.groups.map(group => <p key={group.groupId} role={group.status === 'failed' ? 'alert' : undefined}>{group.groupName} · {group.count} · {group.status}{group.error ? ` · ${group.error}` : ''}</p>)}</div>}
-          <details className={css.modelList}><summary>媒体模型（{account.mediaModels?.length ?? 0}）</summary><div className={css.modelRows}>{account.mediaModels?.map(model => <div key={`${model.profileId}:${model.modelId}`}><strong>{model.modelId}</strong><span>{model.groupName}</span><small>{model.mediaType} · {model.stale ? '目录已过期，请刷新' : '可选'}</small></div>)}</div></details>
+          {hasIncompleteCatalog(account) && <p className={css.catalogNotice} role="status">{props.t('account.modelsSyncPartial')}</p>}
+          <details className={css.modelList}>
+            <summary>媒体模型（{account.mediaModels?.length ?? 0}）</summary>
+            <div className={css.modelGroups}>{mediaModelGroups.map(group => <details className={css.modelGroup} key={group.key}>
+              <summary><span>{group.groupName}</span><small>{group.models.length}</small></summary>
+              <div className={css.modelRows}>{group.models.map(model => <div key={`${model.providerId ?? group.key}:${model.profileId}:${model.modelId}`}><strong>{model.modelId}</strong><small>{model.mediaType} · {props.t(model.stale ? 'account.modelsStale' : 'account.modelsAvailable')}</small></div>)}</div>
+            </details>)}</div>
+            {mediaModelGroups.length === 0 && <p className={css.catalogEmpty}>{props.t('account.modelsEmpty')}</p>}
+          </details>
           <details className={css.modelList}>
             <summary>{props.t('account.modelsList', { count: account.models.length })}</summary>
-            <input aria-label={props.t('account.modelsSearch')} placeholder={props.t('account.modelsSearch')} value={modelQuery} onChange={event => setModelQuery(event.target.value)} />
-            <div className={css.modelRows}>{account.models.filter(model => `${model.groupName} ${model.modelId} ${model.providerId} ${model.capability ?? 'chat'}`.toLowerCase().includes(modelQuery.toLowerCase())).map(model => <div key={`${model.providerId}:${model.modelId}`}><strong>{model.modelId}</strong><span>{model.groupName}</span><small>{model.providerId.split('-').at(-1)} · {model.capability ?? 'chat'} · {props.t(model.stale ? 'account.modelsStale' : 'account.modelsAvailable')}</small></div>)}</div>
+            <label className={css.modelSearch}><Search size={16} aria-hidden="true" /><input aria-label={props.t('account.modelsSearch')} placeholder={props.t('account.modelsSearch')} value={modelQuery} onChange={event => setModelQuery(event.target.value)} /></label>
+            <div className={css.modelGroups}>{modelGroups.map(group => <details className={css.modelGroup} key={group.key} open={modelQuery.trim() ? true : undefined}>
+              <summary><span>{group.groupName}</span><small>{group.models.length}</small></summary>
+              <div className={css.modelRows}>{group.models.map(model => <div key={`${model.providerId}:${model.modelId}`}><strong>{model.modelId}</strong><small>{model.providerId.split('-').at(-1)} · {model.capability ?? 'chat'} · {props.t(model.stale ? 'account.modelsStale' : 'account.modelsAvailable')}</small></div>)}</div>
+            </details>)}</div>
+            {modelGroups.length === 0 && <p className={css.catalogEmpty}>{props.t(modelQuery.trim() ? 'account.modelsNoMatches' : 'account.modelsEmpty')}</p>}
           </details>
           {(account.lowBalance || (account.balance !== undefined && account.balance <= 0)) && <p className={css.warning} role="alert">{account.balance !== undefined && account.balance <= 0 ? props.t('account.balanceEmpty') : props.t('account.lowBalance')}</p>}
           <div className={css.billingGrid}>
@@ -501,6 +522,21 @@ function GatewaySelector({ gateways, selected, disabled, onChange, t }: { gatewa
   return <label className={css.gateway}><span>{t('account.gateway')}</span><select aria-label={t('account.gateway')} value={value} disabled={disabled} onChange={event => onChange(event.target.value)}>{gateways.map(gateway => <option value={gateway.baseUrl} key={gateway.baseUrl}>{gateway.label} ({gateway.baseUrl.replace('https://', '')})</option>)}</select></label>
 }
 
+function groupModels<T extends { groupId?: string; groupName: string }>(models: readonly T[]): Array<{ key: string; groupName: string; models: T[] }> {
+  const groups = new Map<string, { key: string; groupName: string; models: T[] }>()
+  for (const model of models) {
+    const key = model.groupId ?? model.groupName
+    let group = groups.get(key)
+    if (!group) { group = { key, groupName: model.groupName, models: [] }; groups.set(key, group) }
+    group.models.push(model)
+  }
+  return [...groups.values()]
+}
+
+function hasIncompleteCatalog(account: AiCloudAccountView): boolean {
+  return [account.modelSync, account.mediaSync].some(sync => sync !== undefined && sync.status !== 'succeeded')
+}
+
 function displayPaymentType(value: string): string { return ['wechat', 'wechat_pay', 'wxpay', 'wxpay_direct'].includes(value.toLowerCase()) ? 'wechat' : 'alipay' }
 export function mergePaymentOrder(previous: AiCloudOrderView, next: AiCloudOrderView): AiCloudOrderView {
   if (previous.id !== next.id) return next
@@ -528,12 +564,8 @@ function withSelection(raw: string, amount: string, paymentType: string): string
 function formatBalance(account: AiCloudAccountView): string { return account.balance === undefined ? '--' : `${account.balance.toFixed(2)} ${account.currency ?? 'CNY'}` }
 function formatDate(value?: string): string { if (!value) return ''; const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleString() }
 function usagePageUrl(baseUrl?: string): string | undefined {
-  const raw = (baseUrl ?? 'https://hkcode.aicodeme.xyz').replace(/\/$/u, '')
-  try {
-    const url = new URL(raw)
-    if (url.protocol !== 'https:' || !['hkcode.aicodeme.xyz', 'code.aicodeme.xyz', 'code.aicodeme.cn'].includes(url.hostname)) return undefined
-    return `${url.origin}/usage`
-  } catch { return undefined }
+  const platform = gatewayPlatformUrl(baseUrl)
+  return platform === undefined ? undefined : `${platform}/usage`
 }
 const modelPricingUrl = 'https://hkcode.aicodeme.xyz/model-plaza?embedded=1'
 function openExternal(url: string): void { window.open(url, '_blank', 'noopener,noreferrer') }
