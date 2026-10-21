@@ -12,6 +12,7 @@ import { RETIRED_PLUGIN_IDS, removeRetiredPlugins, removeRetiredPatch, removeRet
 import { PROFILE_LAYOUT, materializationFile, materializeOfflinePackages, preserveMaterializedDependencies, verifyMaterializedProfile } from './profile-materialization.mjs'
 import { importHistoricalPlugin, verifyHistoricalPluginImports } from './historical-plugin.mjs'
 import { verifyPluginDocument } from './plugin-verification.mjs'
+import { legacyMediaId, mediaId, managedLegacyMedia } from './media-identity.mjs'
 const { copyFile, lstat, readdir } = physicalFs.promises
 
 /** Keep one staging name. Preserve displaced candidates and diagnostic data
@@ -448,16 +449,32 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     }
   }
   const inactiveArchived = []
+  // Initialization changes declarations only. Remove the old managed media
+  // root and its provenance in the same candidate transaction as its successor.
+  // Otherwise it is re-imported (or preserved) using an obsolete exact DSH pin.
+  const inactive = new Set([...disabled, ...removed, ...RETIRED_PLUGIN_IDS])
+  const oldMedia = await readFile(join(candidate, 'node_modules', legacyMediaId, 'package.json'), 'utf8').then(JSON.parse)
+    .catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
+  const renamedMedia = bundledManagedIds.has(mediaId) && !pins[legacyMediaId]
+    && !manifest.dsh?.profile?.bundles?.includes(legacyMediaId)
+    && !['dependencies', 'devDependencies', 'optionalDependencies'].some(field => Object.hasOwn(manifest[field] ?? {}, legacyMediaId))
+    && managedLegacyMedia(oldMedia)
+  if (renamedMedia) inactive.add(legacyMediaId)
   // Disabled/removed managed leftovers must not import an obsolete supply.
   // Keep their bytes/links and original declarations as rollback evidence,
   // outside the active dependency tree; third-party packages are untouched.
-  for (const id of new Set([...disabled, ...removed])) {
+  for (const id of inactive) {
     pluginIdentity(id)
-    if (!bundledPlugins.some(item => item.id === id && item.managed !== false && !item.core)) continue
+    const retired = RETIRED_PLUGIN_IDS.has(id) || id === legacyMediaId && renamedMedia
+    if (!retired && !bundledPlugins.some(item => item.id === id && item.managed !== false && !item.core)) continue
     const root = join(candidate, 'node_modules', id)
     const info = await lstat(root).catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
+    const provenance = join(candidate, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')
+    const hasProvenance = await lstat(provenance).catch(error => { if (error.code !== 'ENOENT') throw error })
+    const declared = ['dependencies', 'devDependencies', 'optionalDependencies'].some(field => Object.hasOwn(manifest[field] ?? {}, id))
+    if (!info && !hasProvenance && !declared) continue
     const pending = info ? [{ path: root, info }] : []
-    let obsolete = false
+    let obsolete = retired
     while (pending.length && !obsolete) {
       const { path, info } = pending.pop()
       if (info.isSymbolicLink()) {
@@ -475,7 +492,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
       catch { obsolete = true }
     }
     if (!obsolete) continue
-    const history = join(candidate, '.zerowall/inactive-plugin-history', encodeURIComponent(id) + '-' + randomUUID())
+    const history = join(candidate, retired ? '.zerowall/retired-plugin-history' : '.zerowall/inactive-plugin-history', encodeURIComponent(id) + '-' + randomUUID())
     await mkdir(history, { recursive: true })
     if (info) await rename(root, join(history, 'package'))
     const declarations = {}
@@ -483,8 +500,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
       declarations[field] = manifest[field][id]
       delete manifest[field][id]
     }
-    const provenance = join(candidate, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')
-    if (await lstat(provenance).catch(error => { if (error.code !== 'ENOENT') throw error })) await rename(provenance, join(history, 'provenance.json'))
+    if (hasProvenance) await rename(provenance, join(history, 'provenance.json'))
     await writeFile(join(history, 'receipt.json'), JSON.stringify({ id, reason: 'Inactive managed package referenced obsolete supply or incompatible provenance', declarations }))
     inactiveArchived.push(id)
   }
@@ -529,7 +545,10 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
         && compareVersions(installed.version, record.version) < 0) {
         const path = join(candidate, 'node_modules', id)
         await displace(path)
+        const provenance = join(candidate, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')
+        if (await lstat(provenance).catch(error => { if (error.code !== 'ENOENT') throw error })) await displace(provenance)
         for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) if (manifest[field]?.[id]) delete manifest[field][id]
+        inactiveArchived.push(id)
         changed.push({ id, from: installed.version, to: record.version })
       }
       continue
@@ -589,5 +608,5 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   await writeFile(patchPath, yaml.stringify(removeRetiredPatch([...patches, ...existingPatch])))
   await writeFile(join(candidate, 'package.json'), JSON.stringify(manifest, null, 2))
   onPhase({ phase: 'profile-prepare', state: 'complete', durationMs: Date.now() - started })
-  return { candidate, receipt, digest, changed, blocked }
+  return { candidate, receipt, digest, changed, blocked, archivedIds: inactiveArchived }
 }

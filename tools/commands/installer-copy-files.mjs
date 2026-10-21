@@ -34,24 +34,51 @@ async function removePartial(path) {
     try { await unlink(path); return } catch (error) {
       if (error.code === 'ENOENT') return
       if (!transient(error) || attempt === 10) throw error
+      // CopyFile can leave the source's read-only attribute on an incomplete
+      // destination. Only this transaction-owned temporary file is writable.
+      const info = await fs.promises.lstat(path).catch(failure => { if (failure.code !== 'ENOENT') throw failure })
+      if (info?.isFile() && !info.isSymbolicLink()) await fs.promises.chmod(path, 0o600).catch(() => {})
       await new Promise(done => setTimeout(done, retryDelay(attempt)))
     }
   }
+}
+async function copyBytes(from, to) {
+  if (process.env.ZEROWALL_TEST_INSTALLER_BYTE_EPERM_FILE === from.split(/[\\/]/u).at(-1)) {
+    throw Object.assign(new Error('Injected destination write permission denial'), { code: 'EPERM' })
+  }
+  const input = await fs.promises.open(from, 'r')
+  let output
+  try {
+    output = await fs.promises.open(to, 'wx', 0o600)
+    const buffer = Buffer.allocUnsafe(1024 * 1024)
+    for (let bytes; (bytes = (await input.read(buffer, 0, buffer.length, null)).bytesRead) > 0;) {
+      for (let offset = 0; offset < bytes;) {
+        const written = (await output.write(buffer, offset, bytes - offset)).bytesWritten
+        if (written === 0) throw Object.assign(new Error('Installer byte copy made no progress'), { code: 'EIO' })
+        offset += written
+      }
+    }
+    await output.sync()
+  } finally { await Promise.all([output?.close(), input.close()]) }
 }
 let injectedCopyFailures = Number(process.env.ZEROWALL_TEST_INSTALLER_COPY_EPERM_COUNT ?? 0)
 async function copyOnce(from, to) {
   if (process.env.ZEROWALL_TEST_INSTALLER_COPY_EPERM_FILE === from.split(/[\\/]/u).at(-1) && injectedCopyFailures > 0) {
     injectedCopyFailures--
     await fs.promises.writeFile(to, 'injected incomplete copy')
+    if (process.env.ZEROWALL_TEST_INSTALLER_COPY_READONLY_PARTIAL === '1') await fs.promises.chmod(to, 0o400)
     throw Object.assign(new Error('Injected transient Windows file lock'), { code: 'EPERM' })
   }
   return copyFile(from, to)
 }
 async function copyWithRetry(from, to) {
+  let byteCopy = false
   for (let attempt = 0; ; attempt++) {
-    try { return await copyOnce(from, to) } catch (error) {
+    try { return await (byteCopy ? copyBytes(from, to) : copyOnce(from, to)) } catch (error) {
       if (!transient(error) || attempt === 10) throw error
       await removePartial(to)
+      if (!byteCopy) log('native-copy-denied; using verified byte copy; file=' + from.split(/[\\/]/u).at(-1) + '; code=' + error.code)
+      byteCopy = true
       await new Promise(done => setTimeout(done, retryDelay(attempt)))
     }
   }

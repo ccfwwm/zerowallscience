@@ -97,7 +97,7 @@ test('installer preflight validates payload without changing the existing applic
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('installer retries a transient EPERM while atomically staging the DirectX runtime DLL', async () => {
+test('installer bypasses persistent native CopyFile EPERM and removes its read-only partial before verified byte staging', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-installer-eperm-copy-'))
   try {
     const { source, target } = await signedPayload(root)
@@ -105,13 +105,15 @@ test('installer retries a transient EPERM while atomically staging the DirectX r
     await writeFile(join(source, dll), 'complete DirectX runtime payload')
     await writeFile(join(source, `${dll}.partial`), 'legitimate payload file ending in .partial')
     await writeInstallerOwnership(source)
-    execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target], {
+    const log = join(root, 'install.log')
+    execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target, '--log', log], {
       windowsHide: true,
       stdio: 'pipe',
       env: {
         ...process.env,
         ZEROWALL_TEST_INSTALLER_COPY_EPERM_FILE: dll,
-        ZEROWALL_TEST_INSTALLER_COPY_EPERM_COUNT: '7',
+        ZEROWALL_TEST_INSTALLER_COPY_EPERM_COUNT: '11',
+        ZEROWALL_TEST_INSTALLER_COPY_READONLY_PARTIAL: '1',
       },
     })
     assert.equal(await readFile(join(target, dll), 'utf8'), 'complete DirectX runtime payload')
@@ -119,6 +121,7 @@ test('installer retries a transient EPERM while atomically staging the DirectX r
     assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
     assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
     assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
+    assert.match(await readFile(log, 'utf16le'), /native-copy-denied; using verified byte copy; file=d3dcompiler_47\.dll; code=EPERM/u)
     await assert.rejects(readdir(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
   } finally { await rm(root, { recursive: true, force: true }) }
 })
@@ -133,7 +136,7 @@ test('persistent staging EPERM returns the permission code only after restoring 
     assert.throws(() => execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target, '--result', result], {
       windowsHide: true,
       stdio: 'pipe',
-      env: { ...process.env, ZEROWALL_TEST_INSTALLER_COPY_EPERM_FILE: dll, ZEROWALL_TEST_INSTALLER_COPY_EPERM_COUNT: '11' },
+      env: { ...process.env, ZEROWALL_TEST_INSTALLER_COPY_EPERM_FILE: dll, ZEROWALL_TEST_INSTALLER_COPY_EPERM_COUNT: '11', ZEROWALL_TEST_INSTALLER_BYTE_EPERM_FILE: dll },
     }), /EPERM/u)
     const outcome = await readFile(result, 'utf16le')
     assert.match(outcome, /Phase=transaction-staging\r?\nCode=EPERM\r?\n/u)
@@ -392,7 +395,7 @@ test('interrupted recovery recalculates closed offline files restored from backu
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
-test('bundled Electron copies raw ASAR bytes and ignores runtime files outside the ownership inventory', { skip: !process.env.ZEROWALL_TEST_ELECTRON }, async () => {
+for (const byteFallback of [false, true]) test(`bundled Electron copies raw ASAR bytes and ignores unowned runtime files with byte fallback ${byteFallback}`, { skip: !process.env.ZEROWALL_TEST_ELECTRON }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-electron-copy-'))
   const source = join(root, 'source'), input = join(root, 'archive-input'), target = join(root, 'target')
   try {
@@ -404,7 +407,9 @@ test('bundled Electron copies raw ASAR bytes and ignores runtime files outside t
     await writeInstallerOwnership(source)
     await mkdir(join(source, 'Python'), { recursive: true })
     await writeFile(join(source, 'Python/not-owned.txt'), 'test-environment')
-    execFileSync(process.env.ZEROWALL_TEST_ELECTRON, [resolve('tools/commands/installer-copy-files.mjs'), source, target], { windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } })
+    execFileSync(process.env.ZEROWALL_TEST_ELECTRON, [resolve('tools/commands/installer-copy-files.mjs'), source, target], { windowsHide: true, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1',
+      ...(byteFallback ? { ZEROWALL_TEST_INSTALLER_COPY_EPERM_FILE: 'app.asar', ZEROWALL_TEST_INSTALLER_COPY_EPERM_COUNT: '11', ZEROWALL_TEST_INSTALLER_COPY_READONLY_PARTIAL: '1' } : {}),
+    } })
     assert.deepEqual(await readFile(join(target, 'resources/app.asar')), await readFile(join(source, 'resources/app.asar')))
     await assert.rejects(readFile(join(target, 'Python/not-owned.txt')), /ENOENT/)
   } finally { await rm(root, { recursive: true, force: true }) }

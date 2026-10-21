@@ -62,8 +62,8 @@ export function compareVersions(left, right) {
 }
 export function assertCompatible(entry, target) {
   if (!entry.platform.includes(target.platform) || !entry.architecture.includes(target.architecture)) throw new Error('Resource target is incompatible')
-  for (const [range, installed] of [[entry.dshRange, target.dshVersion], [entry.desktopRange, target.desktopVersion]]) {
-    if (range.min === range.max && installed !== range.min) throw new Error('Resource requires a different exact runtime')
+  for (const [runtime, range, installed] of [['DSH', entry.dshRange, target.dshVersion], ['Desktop', entry.desktopRange, target.desktopVersion]]) {
+    if (range.min === range.max && installed !== range.min) throw new Error(`Resource requires a different exact runtime: ${entry.id ?? entry.kind ?? 'resource'}; ${runtime} requires ${range.min}, installed ${installed}`)
     if (compareVersions(installed, range.min) < 0 || (range.max && compareVersions(installed, range.max) > 0)) throw new Error('Resource runtime is incompatible')
   }
 }

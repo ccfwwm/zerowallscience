@@ -3,11 +3,12 @@ import assert from 'node:assert/strict'
 import { createHash, generateKeyPairSync } from 'node:crypto'
 import { lstat, mkdtemp, mkdir, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve, sep } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 import { migrateOfflineProfileLinks, offlineFiles, prepareOfflineCandidate, readOfflineReceipt, verifyOfflineProfile } from '../../tools/commands/offline-profile.mjs'
 import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
 import { initializeProfile } from '../../tools/commands/profile.mjs'
 import { signCatalog } from '../../tools/release/resource-catalog.mjs'
+import { materializationFile } from '../../tools/commands/profile-materialization.mjs'
 
 const target = { desktopVersion: '8.0.8', dshVersion: '0.2.0-rc.2', dshCommit: '86b6740d0e671cee0b3fd0168de484c0efbf46ea', platform: 'win32', architecture: 'x64' }
 const defaults = ['base', 'mcp', 'skills', 'python'].map(id => '@zerowallscience/plugin-' + id)
@@ -28,6 +29,81 @@ async function fixture(t) {
   const manager = createResourceManager({ home, keys, target, defaultPlugins: defaults, bundledPlugins: unsigned.plugins, yaml: JSON, stopHost: async () => {}, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
   return { root, home, source, keys, target, defaults, bundledPlugins: unsigned.plugins, yaml: JSON, manager, unsigned, pair }
 }
+
+for (const layout of [2, 3]) test(`desktop upgrade archives a pre-rename media adaptation and obsolete provenance in layout ${layout}`, async t => {
+  const f = await fixture(t), old = '@oh-story/dsh', next = '@zerowallscience/plugin-videos'
+  const active = join(f.home, 'profiles/web'), oldRoot = join(active, 'node_modules', old)
+  const currentDefaults = [...defaults, next]
+  await mkdir(join(f.source, 'modules', next), { recursive: true })
+  await writeFile(join(f.source, 'modules', next, 'package.json'), JSON.stringify({ name: next, version: '0.2.0', main: 'index.js' }))
+  await writeFile(join(f.source, 'modules', next, 'index.js'), 'export const ready = true\n')
+  const plugins = [...f.bundledPlugins, { id: next, version: '0.2.0' }]
+  const incoming = { ...f.unsigned, plugins, files: (await offlineFiles(f.source)).filter(row => row.path !== 'receipt.json') }
+  await writeFile(join(f.source, 'receipt.json'), JSON.stringify(signCatalog(incoming, f.pair.privateKey, 'test')))
+  await mkdir(oldRoot, { recursive: true })
+  const oldManifest = { name: old, version: '0.1.16-zws.25', main: 'index.js', zerowall: {
+    capabilities: ['media.create'], requiredServices: ['zerowallMedia'], dsh: { min: '0.2.0-rc.1', max: '0.2.0-rc.1' },
+  } }
+  await writeFile(join(oldRoot, 'package.json'), JSON.stringify(oldManifest))
+  await writeFile(join(oldRoot, 'index.js'), 'old adaptation bytes')
+  const manifest = JSON.parse(await readFile(join(active, 'package.json')))
+  manifest.dependencies = { [old]: 'link:./node_modules/' + old }
+  manifest.dsh.profile.bundles.push(old)
+  manifest.zerowall.profileLayout = layout
+  await writeFile(join(active, 'package.json'), JSON.stringify(manifest))
+  // An older signed exact runtime was retained by the previous layout. It
+  // must never be authenticated as an active source after the rename.
+  const oldReceipt = signCatalog({ ...f.unsigned, dshRange: { min: '0.2.0-rc.1', max: '0.2.0-rc.1' }, plugins: [{ id: old, version: oldManifest.version }] }, f.pair.privateKey, 'test')
+  await mkdir(join(active, '.zerowall/plugin-imports'), { recursive: true })
+  const provenance = JSON.stringify({ schema: 1, kind: 'historical-plugin-import', id: old, receiptText: JSON.stringify(oldReceipt), digest: 'a'.repeat(64) })
+  await writeFile(join(active, '.zerowall/plugin-imports', encodeURIComponent(old) + '.json'), provenance)
+  await writeFile(join(active, materializationFile), JSON.stringify({ ids: [old], receipt: oldReceipt, digest: 'a'.repeat(64), preserved: [] }))
+  const selectionFile = join(f.home, 'resources/plugins/selection.json')
+  await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
+  const selection = JSON.stringify({ disabled: [], pinned: {}, custom: 'preserved' })
+  await writeFile(selectionFile, selection)
+  const settings = '{"model":"selected-model","reasoningEffort":"xhigh"}'
+  await writeFile(join(active, 'settings.json'), settings)
+  await initializeProfile(f.home, currentDefaults, plugins)
+  const initialized = JSON.parse(await readFile(join(active, 'package.json')))
+  assert(!initialized.dsh.profile.bundles.includes(old))
+  assert(initialized.dsh.profile.bundles.includes(next))
+  const initializedSelection = await readFile(selectionFile, 'utf8')
+  assert.deepEqual(JSON.parse(initializedSelection), { ...JSON.parse(selection), removed: [] })
+  const manager = createResourceManager({ ...f, defaultPlugins: currentDefaults, bundledPlugins: plugins,
+    stopHost: async () => {}, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
+  assert.equal((await manager.repairOffline(f.source)).repaired, true)
+  await assert.rejects(lstat(oldRoot), { code: 'ENOENT' })
+  await assert.rejects(lstat(join(active, '.zerowall/plugin-imports', encodeURIComponent(old) + '.json')), { code: 'ENOENT' })
+  assert.equal(JSON.parse(await readFile(join(active, 'node_modules', next, 'package.json'))).name, next)
+  assert.equal(await readFile(selectionFile, 'utf8'), initializedSelection)
+  assert.equal(await readFile(join(active, 'settings.json'), 'utf8'), settings)
+  assert.equal((await manager.repairOffline(f.source)).repaired, false)
+})
+
+test('desktop upgrade archives incompatible provenance for a managed non-media plugin', async t => {
+  const f = await fixture(t), id = '@dsh-external/zotero-harvest', active = join(f.home, 'profiles/web')
+  const root = join(active, 'node_modules', id), provenancePath = join(active, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')
+  await mkdir(root, { recursive: true }); await writeFile(join(root, 'package.json'), JSON.stringify({ name: id, version: '0.2.2', main: 'index.js' }))
+  await writeFile(join(root, 'index.js'), 'old runtime')
+  const manifest = JSON.parse(await readFile(join(active, 'package.json')))
+  manifest.dependencies = { [id]: 'link:./node_modules/' + id }; manifest.dsh.profile.bundles.push(id)
+  await writeFile(join(active, 'package.json'), JSON.stringify(manifest))
+  const oldReceipt = signCatalog({ ...f.unsigned, dshRange: { min: '0.2.0-rc.1', max: '0.2.0-rc.1' }, plugins: [{ id, version: '0.2.2' }] }, f.pair.privateKey, 'test')
+  await mkdir(dirname(provenancePath), { recursive: true })
+  await writeFile(provenancePath, JSON.stringify({ schema: 1, kind: 'historical-plugin-import', id, receiptText: JSON.stringify(oldReceipt), digest: 'b'.repeat(64) }))
+  const next = { ...f.unsigned, plugins: [...f.unsigned.plugins, { id, version: '0.2.3' }] }
+  await mkdir(join(f.source, 'modules', id), { recursive: true })
+  await writeFile(join(f.source, 'modules', id, 'package.json'), JSON.stringify({ name: id, version: '0.2.3', main: 'index.js' }))
+  await writeFile(join(f.source, 'modules', id, 'index.js'), 'new runtime')
+  next.files = (await offlineFiles(f.source)).filter(row => row.path !== 'receipt.json')
+  await writeFile(join(f.source, 'receipt.json'), JSON.stringify(signCatalog(next, f.pair.privateKey, 'test')))
+  const manager = createResourceManager({ ...f, defaultPlugins: [...f.defaults, id], bundledPlugins: next.plugins,
+    stopHost: async () => {}, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
+  assert.equal((await manager.repairOffline(f.source)).repaired, true)
+  assert.equal(JSON.parse(await readFile(join(root, 'package.json'))).version, '0.2.3')
+  await assert.rejects(lstat(provenancePath), { code: 'ENOENT' })
+})
 test('signed schema 1 history admits the actual desktop range without weakening current installer or DSH checks', async t => {
   const f = await fixture(t)
   const old = { ...f.unsigned, applicationVersion: '8.0.7', desktopRange: { min: '8.0.7', max: target.desktopVersion } }
@@ -289,7 +365,7 @@ test('desktop upgrade replaces an older unpinned managed catalog installation of
   assert.equal(JSON.parse(await readFile(join(directory, 'package.json'))).version, '0.2.0')
 })
 
-test('desktop upgrade removes an older core shadow but preserves an exact pin', async t => {
+for (const layout of [2, 3]) test(`desktop upgrade removes an undeclared older core shadow but preserves an exact pin in layout ${layout}`, async t => {
   const f = await fixture(t), id = defaults[0], active = join(f.home, 'profiles/web')
   f.unsigned.plugins[0].core = true
   await writeFile(join(f.source, 'receipt.json'), JSON.stringify(signCatalog(f.unsigned, f.pair.privateKey, 'test')))
@@ -297,7 +373,9 @@ test('desktop upgrade removes an older core shadow but preserves an exact pin', 
   await mkdir(directory, { recursive: true })
   await writeFile(join(directory, 'package.json'), JSON.stringify({ name: id, version: '0.1.0' }))
   const manifest = JSON.parse(await readFile(join(active, 'package.json')))
-  manifest.dependencies = { [id]: '0.1.0' }
+  // A physical leftover can shadow the desktop runtime even after its old
+  // dependency declaration was removed by initialization.
+  manifest.zerowall.profileLayout = layout
   await writeFile(join(active, 'package.json'), JSON.stringify(manifest))
   await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
   await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify({ pinned: { [id]: '0.1.0' } }))

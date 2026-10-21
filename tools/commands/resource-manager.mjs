@@ -442,7 +442,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     await atomic(join(result.candidate, 'package.json'), candidateManifest)
     await preparePackageInstall(result.candidate)
     try {
-      const repairedIds = document.plugins.filter(entry => !entry.core).map(entry => entry.id)
+      const repairedIds = [...new Set([...document.plugins.filter(entry => !entry.core).map(entry => entry.id), ...(result.archivedIds ?? [])])]
       const repairedDependencyIds = [...new Set(document.files.map(entry => /^modules\/((?:@[^/]+\/)?[^/]+)\/package\.json$/u.exec(entry.path)?.[1]).filter(Boolean))]
       // Layout 3 profiles must use the same exact-path package transaction as
       // ordinary plugin operations.  Passing the repaired package roots makes

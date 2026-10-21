@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { compareVersions } from './resource-catalog.mjs'
 import { RETIRED_PLUGIN_IDS, removeRetiredResolutionRules } from './retired-plugins.mjs'
+import { legacyMediaId, mediaId, managedLegacyMedia } from './media-identity.mjs'
 
 // Profile architecture migrations are deliberately additive.  A desktop
 // upgrade must be able to introduce a new bundled management surface without
@@ -63,11 +64,11 @@ export async function initializeProfile(home, defaults, bundled = []) {
   ])
   // Rename only the managed adaptation; exact pins and custom installs retain
   // their identity and suppress the new default to avoid loading two copies.
-  const oldMedia = '@oh-story/dsh', newMedia = '@zerowallscience/plugin-videos'
+  const oldMedia = legacyMediaId, newMedia = mediaId
   const oldSpec = manifest.dependencies?.[oldMedia]
   let oldInstalled
   try { oldInstalled = JSON.parse(await readFile(join(directory,'node_modules',oldMedia,'package.json'),'utf8')) } catch (error) { if (error.code !== 'ENOENT') throw error }
-  const managedMedia = Boolean(oldInstalled?.zerowall?.renamedTo === newMedia || (!oldInstalled && oldSpec && /^[~^]?0\.1\.\d+-zws\.\d+$/.test(oldSpec)))
+  const managedMedia = managedLegacyMedia(oldInstalled, oldSpec)
   const customMedia = Boolean((oldSpec || oldInstalled) && !managedMedia)
   // Before 8.0 the desktop overlay activated the ZeroWall domains, so their
   // absence from a 7.5 profile is not an uninstall choice. Also repair the

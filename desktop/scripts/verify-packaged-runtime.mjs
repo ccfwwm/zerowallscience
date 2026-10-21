@@ -2046,7 +2046,10 @@ async function verifyPlaintextSessionPersistence(url, root) {
     // Current Harness releases can persist newer session schemas (for example
     // v4) while retaining the same plaintext JSONL contract. Verify the
     // contract independently of the schema version.
-    const jsonl = files.find(path => /(?:^|\/)session\.v\d+\.jsonl$/u.test(path))
+    // A retried Host probe may already have persisted an earlier smoke
+    // session. Inspect the session this request created, not the first file
+    // returned by directory enumeration; keep its header identity assertion.
+    const jsonl = files.find(path => path.split('/').includes(sessionId) && /(?:^|\/)session\.v\d+\.jsonl$/u.test(path))
     if (jsonl !== undefined) {
       const firstLine = (await readFile(resolve(sessionsRoot, jsonl), 'utf8')).split('\n', 1)[0]
       if (JSON.parse(firstLine).id !== sessionId) throw new Error('Packaged Host persisted the wrong session id.')
