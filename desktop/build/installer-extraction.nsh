@@ -84,9 +84,77 @@
   ${EndIf}
   IfFileExists "$PLUGINSDIR\copy-result.ini" 0 zerowall_extract_failed
   ReadINIStr $ZeroWallFailureStage "$PLUGINSDIR\copy-result.ini" "Result" "Phase"
+  ReadINIStr $ZeroWallFailureCode "$PLUGINSDIR\copy-result.ini" "Result" "Code"
   ReadINIStr $ZeroWallFailureReason "$PLUGINSDIR\copy-result.ini" "Result" "Reason"
-  ReadINIStr $R1 "$PLUGINSDIR\copy-result.ini" "Result" "Rollback"
-  StrCpy $ZeroWallFailureReason "$ZeroWallFailureReason；恢复状态：$R1"
+  ReadINIStr $ZeroWallRollbackState "$PLUGINSDIR\copy-result.ini" "Result" "Rollback"
+  ; A permission failure after a successful rollback can be retried once with
+  ; the same directory and scope under UAC. Do not elevate for EBUSY, unknown
+  ; failures, pending rollback, or a process that already ran elevated.
+  ${If} $ZeroWallFailureStage == "transaction-staging"
+  ${AndIf} $ZeroWallRollbackState == "restored"
+  ${AndIf} $ZeroWallStagingElevationAttempted == 0
+  ${AndIfNot} ${UAC_IsAdmin}
+    ${If} $ZeroWallFailureCode == "EPERM"
+    ${OrIf} $ZeroWallFailureCode == "EACCES"
+    StrCpy $ZeroWallStagingElevationAttempted 1
+    StrCpy $ZeroWallSelectedDirectory $INSTDIR
+    StrCpy $ZeroWallSelectedMode $installMode
+    !insertmacro ZW_LOG "staging-permission-elevation-requested; code=$ZeroWallFailureCode"
+    !insertmacro ZW_PHASE "elevating"
+    !insertmacro UAC_RunElevated
+      ${If} $0 == 0
+      ${AndIf} $1 == 1
+        ${If} $2 == 0
+          SetErrorLevel 0
+          Quit
+        ${EndIf}
+        ${If} $ZeroWallUiState != ""
+          ReadINIStr $R0 "$ZeroWallUiState" "Install" "Action"
+          ${If} $R0 == "close"
+            SetErrorLevel $2
+            Quit
+          ${ElseIf} $R0 == "change-directory"
+            ; The inner instance returned to the original-user UI. Wait here,
+            ; inside this install section, then retry the selected directory.
+            WriteINIStr "$ZeroWallUiState" "Install" "Notice" "管理员权限重试未完成；请重新选择目录或重试安装。"
+            WriteINIStr "$ZeroWallUiState" "Install" "Action" "waiting"
+            !insertmacro ZW_PHASE "welcome"
+            Call ZeroWallWaitSelection
+            ; Selection happens after customInit; repeat its destination and
+            ; running-process checks before extracting another payload.
+            nsExec::Exec '"$PLUGINSDIR\zerowall-access-check.exe" --can-write "$INSTDIR"'
+            Pop $R0
+            ${If} $R0 != 0
+              StrCpy $ZeroWallFailureStage "destination-preflight"
+              StrCpy $ZeroWallFailureReason "此目录不可写，请选择当前用户目录，或重新运行安装程序申请授权。"
+              Goto zerowall_extract_failed
+            ${EndIf}
+            nsExec::Exec '"$PLUGINSDIR\zerowall-access-check.exe" --stop-running "$INSTDIR\${APP_EXECUTABLE_FILENAME}"'
+            Pop $R0
+            ${If} $R0 != 1
+              StrCpy $ZeroWallFailureStage "destination-preflight"
+              StrCpy $ZeroWallFailureReason "请关闭目标目录中运行的应用后重试。"
+              Goto zerowall_extract_failed
+            ${EndIf}
+            StrCpy $ZeroWallSelectedDirectory $INSTDIR
+            StrCpy $ZeroWallSelectedMode $installMode
+            Goto zerowall_extract_retry
+          ${EndIf}
+        ${EndIf}
+        StrCpy $ZeroWallFailureReason "$ZeroWallFailureReason；管理员权限重试未完成（退出码 $2）。"
+      ${EndIf}
+      ${If} $0 == 1223
+        StrCpy $ZeroWallFailureReason "$ZeroWallFailureReason；UAC 授权已取消，未更改安装目录和范围。"
+      ${ElseIf} $0 != 0
+        StrCpy $ZeroWallFailureReason "$ZeroWallFailureReason；UAC 授权失败（错误码 $0）。"
+      ${ElseIf} $1 == 3
+        StrCpy $ZeroWallFailureReason "$ZeroWallFailureReason；UAC 未启动提权安装，请确认使用管理员账户后重试。"
+      ${ElseIf} $1 == 0
+        StrCpy $ZeroWallFailureReason "$ZeroWallFailureReason；Windows 未提供 UAC 提权支持。"
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+  StrCpy $ZeroWallFailureReason "$ZeroWallFailureReason；恢复状态：$ZeroWallRollbackState"
   zerowall_extract_failed:
   System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_RUN_AS_NODE", p 0)'
   !insertmacro ZW_LOG "installation-failed; stage=$ZeroWallFailureStage; reason=$ZeroWallFailureReason; attempt=$ZeroWallAttempt"

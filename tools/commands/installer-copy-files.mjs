@@ -8,8 +8,9 @@ import { execFileSync } from 'node:child_process'
 // Electron virtualizes .asar paths. Installation must copy their actual bytes.
 const fs = process.versions.electron ? createRequire(import.meta.url)('original-fs') : nativeFs
 const { appendFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, readdirSync, rmdirSync, openSync, readSync, closeSync, writeFileSync, fsyncSync } = fs
-const { copyFile, stat } = fs.promises
+const { copyFile, stat, unlink } = fs.promises
 const transient = error => ['EPERM', 'EBUSY', 'EACCES'].includes(error.code)
+const retryDelay = attempt => Math.min(250 * (attempt + 1), 1500)
 function retrySync(action) {
   for (let attempt = 0; ; attempt++) {
     try { return action() } catch (error) {
@@ -23,16 +24,35 @@ const renameSync = (from, to) => retrySync(() => fs.renameSync(from, to))
 async function rename(from, to) {
   for (let attempt = 0; ; attempt++) {
     try { return await fs.promises.rename(from, to) } catch (error) {
-      if (!transient(error) || attempt === 5) throw error
-      await new Promise(done => setTimeout(done, 100 * (attempt + 1)))
+      if (!transient(error) || attempt === 10) throw error
+      await new Promise(done => setTimeout(done, retryDelay(attempt)))
     }
   }
 }
+async function removePartial(path) {
+  for (let attempt = 0; ; attempt++) {
+    try { await unlink(path); return } catch (error) {
+      if (error.code === 'ENOENT') return
+      if (!transient(error) || attempt === 10) throw error
+      await new Promise(done => setTimeout(done, retryDelay(attempt)))
+    }
+  }
+}
+let injectedCopyFailures = Number(process.env.ZEROWALL_TEST_INSTALLER_COPY_EPERM_COUNT ?? 0)
+async function copyOnce(from, to) {
+  if (process.env.ZEROWALL_TEST_INSTALLER_COPY_EPERM_FILE === from.split(/[\\/]/u).at(-1) && injectedCopyFailures > 0) {
+    injectedCopyFailures--
+    await fs.promises.writeFile(to, 'injected incomplete copy')
+    throw Object.assign(new Error('Injected transient Windows file lock'), { code: 'EPERM' })
+  }
+  return copyFile(from, to)
+}
 async function copyWithRetry(from, to) {
   for (let attempt = 0; ; attempt++) {
-    try { return await copyFile(from, to) } catch (error) {
-      if (!transient(error) || attempt === 5) throw error
-      await new Promise(done => setTimeout(done, 100 * (attempt + 1)))
+    try { return await copyOnce(from, to) } catch (error) {
+      if (!transient(error) || attempt === 10) throw error
+      await removePartial(to)
+      await new Promise(done => setTimeout(done, retryDelay(attempt)))
     }
   }
 }
@@ -44,7 +64,7 @@ function result(error) {
   const reason = error ? `${error.code ?? 'INSTALLER_ERROR'}: ${error.message}` : 'OK'
   // This diagnostic is outside the install transaction. It must never replace
   // the original error, including an unsuccessful rollback.
-  try { writeFileSync(resultFile, '\ufeff[Result]\r\nPhase=' + phase + '\r\nReason=' + reason.replace(/[\r\n]/g, ' ') + '\r\nRollback=' + rollbackResult + '\r\n', 'utf16le') } catch {}
+  try { writeFileSync(resultFile, '\ufeff[Result]\r\nPhase=' + phase + '\r\nCode=' + (error?.code ?? (error ? 'INSTALLER_ERROR' : 'OK')) + '\r\nReason=' + reason.replace(/[\r\n]/g, ' ') + '\r\nRollback=' + rollbackResult + '\r\n', 'utf16le') } catch {}
 }
 const logIndex = process.argv.indexOf('--log', 4)
 const logFile = logIndex < 0 ? undefined : process.argv[logIndex + 1]
@@ -243,7 +263,7 @@ function recoverInitialJournal() {
 }
 function cleanup(document) {
   const directories = new Set([recovery])
-  for (const row of document.rows) for (const kind of ['stage', 'backup']) {
+  for (const row of document.rows) for (const kind of ['stage', 'stage-partial', 'backup']) {
     const path = join(recovery, kind, row.local)
     if (existsSync(path)) unlinkSync(path)
     let cursor = dirname(path)
@@ -284,7 +304,7 @@ if (existsSync(recovery)) {
   if (prior.schema !== 1 || prior.root !== target || !['staging','applying','committed','rolled-back'].includes(prior.state) || !Array.isArray(prior.rows)) throw new Error('Invalid installer recovery journal')
   for (const row of prior.rows) {
     validateLocal(row.local)
-    for (const kind of ['stage','backup']) {
+    for (const kind of ['stage', 'stage-partial', 'backup']) {
       const path = join(recovery, kind, row.local)
       // Validate transaction parents separately: their root is installer-owned.
       let cursor = dirname(path)
@@ -323,9 +343,9 @@ const rows = [...new Set([...files.map(file => file.local.replaceAll('\\', '/'))
 const transaction = { schema: 1, root: target, state: 'staging', rows }
 phase = 'transaction-staging'
 persist(transaction)
-async function bounded(entries, task) {
+async function bounded(entries, task, width = 12) {
   let next = 0
-  const results = await Promise.allSettled(Array.from({ length: Math.min(12,entries.length) }, async () => {
+  const results = await Promise.allSettled(Array.from({ length: Math.min(width,entries.length) }, async () => {
     while(next < entries.length) { const index = next++; await task(entries[index],index) }
   }))
   const failure = results.find(result => result.status === 'rejected')
@@ -334,6 +354,7 @@ async function bounded(entries, task) {
 try {
   await bounded(files, async file => {
     const staged = join(recovery, 'stage', file.local)
+    const partial = join(recovery, 'stage-partial', file.local)
     safeDirectory(dirname(staged))
     const expected = sourceDigests.get(file.local) ?? digest(file.source)
     let moved = false
@@ -341,9 +362,17 @@ try {
       try { await rename(file.source,staged); moved = true }
       catch(error) { if (!['EXDEV','EPERM','EBUSY','EACCES'].includes(error.code)) throw error }
     }
-    if (!moved) await copyWithRetry(file.source, staged)
+    if (!moved) {
+      // Keep temporary copies in a separate tree: a payload may legitimately
+      // contain both "a.dll" and "a.dll.partial".
+      safeDirectory(dirname(partial))
+      await copyWithRetry(file.source, partial)
+      if ((await stat(partial)).size !== file.size || digest(partial) !== expected) throw new Error('Installer staging verification failed')
+      await rename(partial, staged)
+    }
     if ((await stat(staged)).size !== file.size || digest(staged) !== expected) throw new Error('Installer staging verification failed')
-  })
+    if (process.env.ZEROWALL_TEST_INSTALLER_STAGING_EPERM_FILE === file.local) throw Object.assign(new Error('Injected installer staging permission denial'), { code: 'EPERM' })
+  }, 4)
   // Same-volume moves preserve the elevated extractor's protected DACL.
   // Reset only incoming owned files, under the checked transaction stage,
   // so Explorer can read EXE/icon resources through normal inheritance.

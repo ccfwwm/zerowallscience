@@ -164,7 +164,7 @@ static void paint() {
       rect(508,432,204,44,0x6867D8,11); label(L"安装 ZeroWall Science",529,443,185,28,14,0xFFFFFF,true);
       label(L"本地优先 · 专注科研",48,445,350,24,12,0x9199AA);
     } else {
-      std::wstring message=phase==L"complete"?L"安装完成":phase==L"failed"?failure:phase==L"process-blocked"?(failure.empty()?L"应用仍在运行，需要授权结束进程后继续安装。":failure):phase==L"elevating"?L"正在授权关闭应用，完成后将自动继续安装":phase==L"stopping"?L"正在关闭运行中的应用，随后继续安装":phase==L"finalizing"?L"正在创建快捷方式，完成安装":phase==L"extracting"?L"正在解压应用与科研运行时":L"正在准备安装";
+      std::wstring message=phase==L"complete"?L"安装完成":phase==L"failed"?failure:phase==L"process-blocked"?(failure.empty()?L"应用仍在运行，需要授权结束进程后继续安装。":failure):phase==L"elevating"?L"正在请求目录写入权限，完成后将自动继续安装":phase==L"stopping"?L"正在关闭运行中的应用，随后继续安装":phase==L"finalizing"?L"正在创建快捷方式，完成安装":phase==L"extracting"?L"正在解压应用与科研运行时":L"正在准备安装";
       if(phase==L"failed") label(L"失败阶段："+read(L"FailureStage",L"installer-process"),48,265,664,22,12,0xB35159,true);
       label(message,48,phase==L"failed"?291:280,662,phase==L"failed"?94:66,phase==L"failed"?12:16,phase==L"failed"?0xB35159:0x4E5970,true);
       if(phase!=L"failed")rect(48,360,664,14,0xE2E6F0,7);
@@ -203,6 +203,58 @@ static void browse() {
 }
 static std::wstring extendedPath(const std::wstring& path) {
   return path.rfind(L"\\\\?\\",0)==0?path:L"\\\\?\\"+path;
+}
+static bool ensureProbeDirectory(const std::wstring& path,std::vector<std::wstring>& created) {
+  const auto full=extendedPath(path);
+  const DWORD attributes=GetFileAttributesW(full.c_str());
+  if(attributes!=INVALID_FILE_ATTRIBUTES)return (attributes&FILE_ATTRIBUTE_DIRECTORY)!=0;
+  if(!CreateDirectoryW(full.c_str(),nullptr)) {
+    if(GetLastError()!=ERROR_ALREADY_EXISTS)return false;
+    const DWORD raced=GetFileAttributesW(full.c_str());
+    return raced!=INVALID_FILE_ATTRIBUTES&&(raced&FILE_ATTRIBUTE_DIRECTORY)!=0;
+  }
+  created.push_back(path);
+  return true;
+}
+static bool canWriteTransactionStage(const std::wstring& targetPath) {
+  std::vector<std::wstring> created;
+  std::vector<std::wstring> missing;
+  std::wstring root=targetPath;
+  while(GetFileAttributesW(extendedPath(root).c_str())==INVALID_FILE_ATTRIBUTES) {
+    const auto split=root.find_last_of(L"\\/");
+    if(split==std::wstring::npos||split<2)return false;
+    missing.push_back(root);
+    root=split==2?root.substr(0,3):root.substr(0,split);
+  }
+  const DWORD rootAttributes=GetFileAttributesW(extendedPath(root).c_str());
+  if(rootAttributes==INVALID_FILE_ATTRIBUTES||(rootAttributes&FILE_ATTRIBUTE_DIRECTORY)==0)return false;
+  for(auto it=missing.rbegin();it!=missing.rend();++it)if(!ensureProbeDirectory(*it,created))goto cleanup;
+
+  {
+    std::wstring stage=targetPath;
+    for(const auto* part:{L"resources",L"installer-recovery",L"stage"}) {
+      if(!stage.empty()&&stage.back()!=L'\\')stage+=L'\\';
+      stage+=part;
+      if(!ensureProbeDirectory(stage,created))goto cleanup;
+    }
+    const auto probe=stage+L"\\.zerowall-install-probe-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
+    const auto renamed=probe+L".renamed";
+    HANDLE file=CreateFileW(extendedPath(probe).c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY,nullptr);
+    if(file==INVALID_HANDLE_VALUE)goto cleanup;
+    CloseHandle(file);
+    bool moved=MoveFileExW(extendedPath(probe).c_str(),extendedPath(renamed).c_str(),MOVEFILE_WRITE_THROUGH)!=FALSE;
+    bool removed=DeleteFileW(extendedPath(moved?renamed:probe).c_str())!=FALSE;
+    if(!moved||!removed)goto cleanup;
+  }
+
+  {
+    bool clean=true;
+    for(auto it=created.rbegin();it!=created.rend();++it)if(!RemoveDirectoryW(extendedPath(*it).c_str()))clean=false;
+    return clean;
+  }
+cleanup:
+  for(auto it=created.rbegin();it!=created.rend();++it)RemoveDirectoryW(extendedPath(*it).c_str());
+  return false;
 }
 static bool volumeCapacity(std::wstring path, ULARGE_INTEGER& available, std::wstring& identity) {
   // Resolve the nearest existing parent, including mounted folders and junctions.
@@ -334,15 +386,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     WritePrivateProfileStringW(L"Result",L"Reason",reason.c_str(),statePath.c_str());return 1;
   }
   if(wcscmp(argv[1],L"--can-write")==0){
-    std::wstring candidate=extendedPath(argv[2]);LocalFree(argv);
-    while(GetFileAttributesW(candidate.c_str())==INVALID_FILE_ATTRIBUTES){auto at=candidate.find_last_of(L"\\/");if(at==std::wstring::npos||at<2)return 2;auto size=at==2?3:at;if(size>=candidate.size())return 2;candidate.resize(size);}
-    auto probe=candidate+L"\\.zerowall-install-probe-"+std::to_wstring(GetCurrentProcessId());
-    auto renamed=probe+L".renamed";
-    HANDLE file=CreateFileW(probe.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_TEMPORARY,nullptr);
-    if(file==INVALID_HANDLE_VALUE)return 1;CloseHandle(file);
-    bool allowed=MoveFileExW(probe.c_str(),renamed.c_str(),0)!=FALSE;
-    bool cleaned=DeleteFileW((allowed?renamed:probe).c_str())!=FALSE;
-    return allowed&&cleaned?0:1;
+    std::wstring candidate=argv[2];LocalFree(argv);
+    return canWriteTransactionStage(candidate)?0:1;
   }
   if(wcscmp(argv[1],L"--check-running")==0||wcscmp(argv[1],L"--stop-running")==0){int result=targetProcesses(argv[2],wcscmp(argv[1],L"--stop-running")==0);LocalFree(argv);return result;}
   statePath=argv[1]; parentPid=_wtoi(argv[2]); LocalFree(argv);

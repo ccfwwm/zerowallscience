@@ -97,6 +97,103 @@ test('installer preflight validates payload without changing the existing applic
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
+test('installer retries a transient EPERM while atomically staging the DirectX runtime DLL', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-installer-eperm-copy-'))
+  try {
+    const { source, target } = await signedPayload(root)
+    const dll = 'd3dcompiler_47.dll'
+    await writeFile(join(source, dll), 'complete DirectX runtime payload')
+    await writeFile(join(source, `${dll}.partial`), 'legitimate payload file ending in .partial')
+    await writeInstallerOwnership(source)
+    execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target], {
+      windowsHide: true,
+      stdio: 'pipe',
+      env: {
+        ...process.env,
+        ZEROWALL_TEST_INSTALLER_COPY_EPERM_FILE: dll,
+        ZEROWALL_TEST_INSTALLER_COPY_EPERM_COUNT: '7',
+      },
+    })
+    assert.equal(await readFile(join(target, dll), 'utf8'), 'complete DirectX runtime payload')
+    assert.equal(await readFile(join(target, `${dll}.partial`), 'utf8'), 'legitimate payload file ending in .partial')
+    assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
+    assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
+    assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
+    await assert.rejects(readdir(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('persistent staging EPERM returns the permission code only after restoring the old installation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-installer-eperm-persistent-'))
+  try {
+    const { source, target } = await signedPayload(root)
+    const dll = 'd3dcompiler_47.dll', result = join(root, 'copy-result.ini')
+    await writeFile(join(source, dll), 'complete DirectX runtime payload')
+    await writeInstallerOwnership(source)
+    assert.throws(() => execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target, '--result', result], {
+      windowsHide: true,
+      stdio: 'pipe',
+      env: { ...process.env, ZEROWALL_TEST_INSTALLER_COPY_EPERM_FILE: dll, ZEROWALL_TEST_INSTALLER_COPY_EPERM_COUNT: '11' },
+    }), /EPERM/u)
+    const outcome = await readFile(result, 'utf16le')
+    assert.match(outcome, /Phase=transaction-staging\r?\nCode=EPERM\r?\n/u)
+    assert.match(outcome, /Rollback=restored\r?\n/u)
+    assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
+    assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
+    assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
+    await assert.rejects(lstat(join(target, dll)), { code: 'ENOENT' })
+    await assert.rejects(lstat(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('installer recovery removes an interrupted atomic-copy partial before retrying', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-installer-partial-recovery-'))
+  try {
+    const { source, target } = await signedPayload(root)
+    const dll = 'd3dcompiler_47.dll'
+    await writeFile(join(source, dll), 'complete DirectX runtime payload')
+    await writeInstallerOwnership(source)
+    const recovery = join(target, 'resources/installer-recovery')
+    const partial = join(recovery, 'stage-partial', dll)
+    await mkdir(dirname(partial), { recursive: true })
+    await writeFile(partial, 'interrupted partial bytes')
+    await writeFile(join(recovery, 'transaction.json'), JSON.stringify({
+      schema: 1,
+      root: target,
+      state: 'staging',
+      rows: [{ local: dll, original: false, incoming: true }],
+    }))
+    execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target], { windowsHide: true, stdio: 'pipe' })
+    assert.equal(await readFile(join(target, dll), 'utf8'), 'complete DirectX runtime payload')
+    assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
+    await assert.rejects(readdir(recovery), { code: 'ENOENT' })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('permission retry reextracts a complete payload after move-source staging consumed files', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-installer-move-retry-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { source, target } = await signedPayload(root)
+  const archive = join(root, 'archive'), retry = join(root, 'payload-2'), result = join(root, 'copy-result.ini')
+  await cp(source, archive, { recursive: true })
+  const script = resolve('tools/commands/installer-copy-files.mjs')
+  assert.throws(() => execFileSync(process.execPath, [script, source, target, '--move-source', '--result', result], {
+    windowsHide: true, stdio: 'pipe',
+    env: { ...process.env, ZEROWALL_TEST_INSTALLER_STAGING_EPERM_FILE: 'app.exe' },
+  }), /EPERM/u)
+  assert.match(await readFile(result, 'utf16le'), /Phase=transaction-staging\r?\nCode=EPERM\r?\n/u)
+  assert.match(await readFile(result, 'utf16le'), /Rollback=restored\r?\n/u)
+  await assert.rejects(lstat(join(source, 'app.exe')), { code: 'ENOENT' })
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
+  await cp(archive, retry, { recursive: true })
+  execFileSync(process.execPath, [script, retry, target, '--move-source'], { windowsHide: true, stdio: 'pipe' })
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
+  assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
+  assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
+  const extraction = await readFile(resolve('desktop/build/installer-extraction.nsh'), 'utf8')
+  assert.match(extraction, /zerowall_extract_retry:[\s\S]*IntOp \$ZeroWallAttempt \$ZeroWallAttempt \+ 1[\s\S]*StrCpy \$ZeroWallPayloadDirectory "\$PLUGINSDIR\\payload-\$ZeroWallAttempt"[\s\S]*Nsis7z::Extract/u)
+})
+
 for (const oldReceipt of ['missing', 'corrupt', 'older expanded layout']) test(`upgrade replaces legacy offline payload with ${oldReceipt} receipt and deletes obsolete files`, async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-offline-upgrade-'))
   try {

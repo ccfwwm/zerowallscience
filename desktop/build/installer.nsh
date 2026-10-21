@@ -53,6 +53,9 @@ Var ZeroWallPayloadDirectory
 Var ZeroWallAttempt
 Var ZeroWallFailureStage
 Var ZeroWallFailureReason
+Var ZeroWallStagingElevationAttempted
+Var ZeroWallFailureCode
+Var ZeroWallRollbackState
 Var keepShortcuts
 !endif
 !ifdef BUILD_UNINSTALLER
@@ -110,6 +113,24 @@ Function .onInstFailed
   ${If} $ZeroWallUiState != ""
     MessageBox MB_OK|MB_ICONSTOP "安装未完成，请检查磁盘空间和目录权限后重试。用户数据未被删除。"
   ${EndIf}
+FunctionEnd
+
+Function ZeroWallWaitSelection
+  ${Do}
+    ReadINIStr $R0 "$ZeroWallUiState" "Install" "Action"
+    ${If} $R0 == "start"
+      ${Break}
+    ${EndIf}
+    ${If} $R0 == "close"
+      Quit
+    ${EndIf}
+    System::Call 'kernel32::WaitForSingleObject(p $ZeroWallUiProcess, i 100)i.r1'
+    ${If} $1 == 0
+      Quit
+    ${EndIf}
+  ${Loop}
+  ReadINIStr $INSTDIR "$ZeroWallUiState" "Install" "Directory"
+  SetSilent silent
 FunctionEnd
 !endif
 
@@ -271,6 +292,11 @@ FunctionEnd
 !macroend
 
 !macro customInit
+  ; A failed staging retry may request elevation at most once. Keep this flag
+  ; in the outer NSIS process so a returned inner instance cannot loop.
+  ${IfNot} ${UAC_IsInnerInstance}
+    StrCpy $ZeroWallStagingElevationAttempted 0
+  ${EndIf}
   ${If} ${UAC_IsInnerInstance}
     !insertmacro UAC_AsUser_GetGlobal $INSTDIR $ZeroWallSelectedDirectory
     !insertmacro UAC_AsUser_GetGlobal $installMode $ZeroWallSelectedMode
@@ -367,21 +393,7 @@ FunctionEnd
       Quit
     ${EndIf}
     zerowall_wait_selection:
-    ${Do}
-      ReadINIStr $R0 "$ZeroWallUiState" "Install" "Action"
-      ${If} $R0 == "start"
-        ${Break}
-      ${EndIf}
-      ${If} $R0 == "close"
-        Quit
-      ${EndIf}
-      System::Call 'kernel32::WaitForSingleObject(p $ZeroWallUiProcess, i 100)i.r1'
-      ${If} $1 == 0
-        Quit
-      ${EndIf}
-    ${Loop}
-    ReadINIStr $INSTDIR "$ZeroWallUiState" "Install" "Directory"
-    SetSilent silent
+    Call ZeroWallWaitSelection
     !insertmacro ZW_PHASE "preparing"
   ${EndIf}
   StrCpy $ZeroWallSelectedDirectory $INSTDIR
