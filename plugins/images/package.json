@@ -115,7 +115,7 @@
     "fflate": "0.8.3",
     "lucide-react": "^0.468.0",
     "react": "^18.2.0",
-    "yaml": "2.8.1"
+    "yaml": "2.8.3"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.5",
