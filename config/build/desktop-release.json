@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.4.4",
+  "version": "8.4.5",
   "description": "ZeroWall Science local-first scientific visualization and research workbench.",
   "notes": "docs/release-notes-{version}.md"
 }
