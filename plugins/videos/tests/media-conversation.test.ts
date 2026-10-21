@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -7,7 +7,11 @@ import { MediaStudioService, defaultMediaProjectId } from '../src/media-studio.j
 import { MediaJobLedger } from '../../../plugins/ai-cloud/src/host/media-jobs.js'
 
 const roots: string[] = []
-afterEach(async () => { await Promise.all(roots.splice(0).map(p => rm(p, {recursive:true,force:true}))) })
+const ledgers: MediaJobLedger[] = []
+afterEach(async () => {
+  await Promise.all(ledgers.splice(0).map(ledger => ledger.dispose()))
+  await Promise.all(roots.splice(0).map(p => rm(p, {recursive:true,force:true})))
+})
 async function fixture(saved: any = {}) {
   const cwd = await mkdtemp(join(tmpdir(), 'media-dialog-')); roots.push(cwd)
   const ctx = new Context()
@@ -17,7 +21,7 @@ async function fixture(saved: any = {}) {
   const environment = {readMediaModelSelections:async()=>structuredClone(choices),readImageModelSelection:async()=>undefined,getImageQuality:()=> 'medium',setMediaModelSelections:vi.fn(async next=>{choices=next})}
   ctx.provide('typert',{lookups:new Map([['agent',{resolve:async()=>({session:{header:{cwd},snapshotEvents:()=>[]},ctx:{get:(key:string)=>key==='fs'?{processPathFromHostPath:(path:string)=>path}:{resolve:()=>({mode:'workspace-write'})}}})}]])} as never)
   ctx.provide('zerowallEnvironment',environment as never);ctx.provide('zerowallMedia',media as never)
-  const ledger = new MediaJobLedger(media as any,async()=> 'account',join(cwd,'ledger'),{autoCollect:false})
+  const ledger = new MediaJobLedger(media as any,async()=> 'account',join(cwd,'ledger'),{autoCollect:false});ledgers.push(ledger)
   ctx.provide('zerowallMediaJobs',ledger as never)
   const studio = new MediaStudioService(ctx)
   return {cwd,ctx,media,environment,ledger,studio,model}
@@ -32,23 +36,62 @@ it('persists a manifest through failed estimates, restart and new-call retries, 
     const failed=await f.studio.generate('s1',{kind:'video',prompt:'animate with all materials',references_file:'references.json',parameters:{duration:5}})
     expect(failed.state).toBe('validation-failed');expect(failed.references).toHaveLength(5);expect(f.media.submit).not.toHaveBeenCalled()
     await expect(f.studio.generate('s1',{kind:'video',prompt:'retry',references_json:'[]'})).rejects.toThrow('CLEAR_REQUIRED')
-    await expect(f.studio.generate('s1',{kind:'video',prompt:'retry with missing video',parameters:{images:refs.slice(1)}})).rejects.toThrow('INTENT_MISMATCH')
+    const mismatch=await f.studio.generate('s1',{kind:'video',prompt:'retry with missing video',parameters:{images:refs.slice(1)}})
+    expect(mismatch).toMatchObject({state:'validation-failed',error:expect.stringContaining('INTENT_MISMATCH')})
     const restartContext=new Context()
     for(const key of ['typert','zerowallEnvironment','zerowallMedia'])restartContext.provide(key,f.ctx.get(key) as never)
-    restartContext.provide('zerowallMediaJobs',new MediaJobLedger(f.media as any,async()=> 'account',join(f.cwd,'ledger'),{autoCollect:false}) as never)
+    const restartedLedger=new MediaJobLedger(f.media as any,async()=> 'account',join(f.cwd,'ledger'),{autoCollect:false});ledgers.push(restartedLedger)
+    restartContext.provide('zerowallMediaJobs',restartedLedger as never)
     const restarted=new MediaStudioService(restartContext)
-    const retried=await restarted.generate('s1',{kind:'video',prompt:'retry',parameters:{duration:5}})
+    const retried=await restarted.generate('s1',{id:failed.id,kind:'video',prompt:'retry',parameters:{duration:5}})
     await vi.waitFor(()=>expect(f.media.submit).toHaveBeenCalledOnce())
-    expect(f.media.submit.mock.calls[0]![0].references).toHaveLength(5)
-    expect(f.media.submit.mock.calls[0]![0].references[1]).toMatchObject({properties:{weight:0.5}})
+    expect(retried.id).toBe(failed.id)
+    const estimatedRequest=f.media.estimate.mock.calls.at(-1)?.[0]
+    const submittedRequest=f.media.submit.mock.calls[0]![0]
+    expect(estimatedRequest?.references).toHaveLength(5)
+    expect(estimatedRequest?.references.map((ref:any)=>ref.url)).toEqual(refs.map(ref=>ref.url))
+    expect(estimatedRequest?.references[1]).toMatchObject({role:'reference',properties:{weight:0.5}})
+    expect(submittedRequest.references).toEqual(estimatedRequest?.references)
+    expect(submittedRequest.parameters).toEqual(estimatedRequest?.parameters)
     const draft=JSON.parse(await restarted.call('s1','prepare',JSON.stringify({projectId,kind:'video',prompt:'new draft'})))
     await restarted.call('s1','prepare',JSON.stringify({projectId,id:draft.id,kind:'video',prompt:'explicit text-only',clearReferences:true}))
     expect(JSON.parse(await readFile(join(f.cwd,`media-projects/${projectId}/reference-intent.json`),'utf8')).references).toEqual([])
     expect(retried.references).toHaveLength(5)
     await expect(restarted.call('s1','prepare',JSON.stringify({projectId,kind:'video',prompt:'bad',references_file:'../outside.json'}))).rejects.toThrow('OUTSIDE_WORKSPACE')
-    await expect(restarted.call('s1','prepare',JSON.stringify({projectId,kind:'video',prompt:'bad',references_file:'references.json',references_json:'[]'}))).rejects.toThrow('INPUT_CONFLICT')
+    const conflict=JSON.parse(await restarted.call('s1','prepare',JSON.stringify({projectId,kind:'video',prompt:'bad',references_file:'references.json',references_json:'[]'})))
+    expect(conflict).toMatchObject({state:'validation-failed',error:'MEDIA_REFERENCE_INPUT_CONFLICT'})
     await restartContext.fiber.dispose()
   }finally{await f.ctx.fiber.dispose()}
+})
+it('persists local reference validation failures and retries corrected material with the same id after restart',async()=>{
+  const f=await fixture(),projectId=defaultMediaProjectId('s1'),assetRoot=join(f.cwd,'media-projects',projectId,'assets')
+  const unsupported='media-projects/'+projectId+'/assets/reference.txt',corrected='media-projects/'+projectId+'/assets/reference.png'
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64')
+  await mkdir(assetRoot,{recursive:true});await writeFile(join(assetRoot,'reference.txt'),'not media');await writeFile(join(assetRoot,'reference.png'),png)
+  vi.spyOn(f.studio as any,'probe').mockResolvedValue({streams:[{codec_type:'video',codec_name:'png'}],format:{format_name:'png_pipe'}})
+  const id='chat-reference-validation-0001'
+  let restartContext:Context|undefined
+  try{
+    const failed=await f.studio.generate('s1',{id,kind:'video',prompt:'用参考素材生成视频',reference_paths:[unsupported]})
+    expect(failed).toMatchObject({id,state:'validation-failed',error:'MEDIA_REFERENCE_TYPE_UNSUPPORTED'})
+    expect(f.media.estimate).not.toHaveBeenCalled();expect(f.media.submit).not.toHaveBeenCalled()
+    expect(await f.ledger.preparationInput({sessionId:'s1',cwd:f.cwd,projectId},id)).toEqual({reference_paths:[unsupported]})
+
+    restartContext=new Context()
+    for(const key of ['typert','zerowallEnvironment','zerowallMedia'])restartContext.provide(key,f.ctx.get(key) as never)
+    const restartedLedger=new MediaJobLedger(f.media as any,async()=> 'account',join(f.cwd,'ledger'),{autoCollect:false});ledgers.push(restartedLedger)
+    restartContext.provide('zerowallMediaJobs',restartedLedger as never)
+    const restarted=new MediaStudioService(restartContext)
+    vi.spyOn(restarted as any,'probe').mockResolvedValue({streams:[{codec_type:'video',codec_name:'png'}],format:{format_name:'png_pipe'}})
+    const recovered=await restarted.generate('s1',{id,kind:'video',prompt:'用参考素材生成视频',parameters:{duration:5}})
+    expect(recovered).toMatchObject({id,state:'validation-failed',error:'MEDIA_REFERENCE_TYPE_UNSUPPORTED'})
+    expect(f.media.estimate).not.toHaveBeenCalled();expect(f.media.submit).not.toHaveBeenCalled()
+
+    const retried=await restarted.generate('s1',{id,kind:'video',prompt:'用参考素材生成视频',reference_paths:[corrected],parameters:{duration:5}})
+    await vi.waitFor(()=>expect(f.media.submit).toHaveBeenCalledOnce())
+    expect(retried.id).toBe(id)
+    expect(f.media.submit.mock.calls[0]![0]).toMatchObject({parameters:{duration:5},references:[{mediaType:'image/png',base64:png.toString('base64')}]})
+  }finally{await restartContext?.fiber.dispose();await f.ctx.fiber.dispose()}
 })
 it('rejects ordinary image generation at direct and workspace entry points before any paid request',async()=>{
   const f=await fixture(),input={kind:'image',prompt:'生成一张测试图片'}
@@ -144,8 +187,8 @@ it('accepts ordered URL references, reuses their hidden source, and rejects mixe
  expect(job.references.map((r:any)=>r.mediaType)).toEqual(['video/mp4','audio/wav']);expect(JSON.stringify(job)).not.toContain('private');
  const next=JSON.parse(await f.studio.call('s1','prepare',JSON.stringify({...input,id:job.id,references_json:JSON.stringify(job.references.map((r:any)=>({reference_id:r.sha256})))})))
  expect((await f.ledger.references({cwd:f.cwd,sessionId:'s1',projectId},next.id))[0]?.url).toBe('https://media.example.com/ref.mp4?signature=private')
- await expect(f.studio.call('s1','prepare',JSON.stringify({...input,reference_paths:[]}))).rejects.toThrow('MEDIA_REFERENCE_INPUT_CONFLICT')
- await expect(f.studio.call('s1','prepare',JSON.stringify({...input,references_json:[{url:'https://media.example.com/ref.mp4',path:'x',media_type:'video/mp4'}]}))).rejects.toThrow('ONE_SOURCE')
+ expect(JSON.parse(await f.studio.call('s1','prepare',JSON.stringify({...input,reference_paths:[]})))).toMatchObject({state:'validation-failed',error:'MEDIA_REFERENCE_INPUT_CONFLICT'})
+ expect(JSON.parse(await f.studio.call('s1','prepare',JSON.stringify({...input,references_json:[{url:'https://media.example.com/ref.mp4',path:'x',media_type:'video/mp4'}]})))).toMatchObject({state:'validation-failed',error:expect.stringContaining('ONE_SOURCE')})
  expect(f.media.submit).not.toHaveBeenCalled()
  }finally{await f.ctx.fiber.dispose()}
 })

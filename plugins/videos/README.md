@@ -10,9 +10,9 @@
 
 安装、验签、候选 profile 健康、原子激活和回滚由既有资源管理器处理。任务中断后恢复原请求；停止等待不等于服务端取消或退款，状态不确定时显示待核查。历史任务仅允许查询和下载。发布前须验收对应网关与真实模型，插件更新无需重打桌面安装器。
 
-`media_job.references_json` 接受有序参考数组，每项仅选 `path`、`attachment_id`、`url` 或 `reference_id` 一个来源。URL 须声明 `media_type`；`reference_id` 复用当前任务摘要的 SHA-256，不向模型返回原始编码或签名地址。旧的 `reference_paths`、`input_attachment_ids` 继续可用，但不能与新参数同时传入。图片角色可为 `reference`、`first_frame`、`last_frame`；首尾帧不可混入普通图片参考。
+创作者统一使用 `images`、`videos`、`audios` 传入有序素材数组，支持 HTTPS URL、完整 MIME Data URL，以及带附加属性的对象；无需按上游协议改写字段。管理员在网关为模型绑定协议模板，由模板定义素材字段映射、编码方式、对象结构和任务响应解析。模型目录用于提示，不代表上游一定接受某类素材；服务端错误会保留在任务诊断中。身份、费用和网络安全边界继续校验。
 
-协议由网关能力目录的 `request_format` 明确指定，缺省沿用 `legacy`。`yunfei_multimodal` 使用真实 MIME 的 Base64 data URL，支持图片、视频、音频参考；`v6k_url` 使用公网 HTTPS 直链，字段为 `images/videos/audios`。Grok 保留其专用 `image.url` 适配。目录能力用于提示，上游决定实际可用类型、数量和供应商可选参数；身份、费用和网络安全边界继续校验。
+兼容入口 `media_job.references_json` 接受有序参考数组，每项仅选 `path`、`attachment_id`、`url` 或 `reference_id` 一个来源。URL 须声明 `media_type`；`reference_id` 复用当前任务摘要的 SHA-256，不向模型返回原始编码或签名地址。旧的 `reference_paths`、`input_attachment_ids` 继续可用，但不能与其他素材清单入口同时传入。图片角色可为 `reference`、`first_frame`、`last_frame`；首尾帧不可混入普通图片参考。兼容的 `parameters_json` 可以继续携带统一素材字段，但不得与顶层字段提供不同内容。
 
 本期不接对象存储、不自动上传素材。用户已有 URL 时直接复用；模型需要 URL 或服务端明确拒绝 Base64 格式时，仅请求缺失素材的公网直链。补地址后建立新请求并保留旧拒绝记录；超时、5xx、断网和已有任务 ID 时保留原身份核查，不自动创建新的付费任务。
 
@@ -25,8 +25,8 @@
 
 ### 参考素材完整性
 
-通过 `media_job.references_file` 读取工作区 JSON 清单（与 `references_json`、旧参考输入互斥），例如 `source/reference-inputs.json`。清单每项包含 `url`、`media_type`，可带 `role` 与供应商附加属性。不能仅把目录路径写进 prompt。
+通过 `media_job.references_file` 读取工作区 JSON 清单（与 `references_json`、旧参考输入互斥），例如 `source/reference-inputs.json`。清单每项包含 `url`、`media_type`，可带 `role` 与模型模板附加属性。不能仅把目录路径写进 prompt。标准字段与旧参数 JSON 中的同名字段语义相同时合并；内容冲突或字段类型错误会在创建任务前拒绝。
 
-URL 模式保持公网直链原值；V6K 使用 `images/videos/audios`，云飞使用 `reference_images/reference_videos/reference_audios`。能力目录仅作提示，可选供应商参数由上游校验。相同语义字段冲突时明确报错，不覆盖素材。
+公网 URL 和 Base64/Data URL 的实际发送格式由管理员选择的模型模板决定。插件不根据域名或模型名称猜测协议，也不自动移除可选字段。
 
 估价失败返回 `validation-failed` 草稿及原 ID，素材仍保存。修正参数时复用原任务，省略参考输入会继承项目意图；`[]` 不会清空已有素材，只有用户明确要求无参考创作时才使用 `clear_references`。不得因报错去掉图片或视频、更换模型或重建空参考任务。提交前核对返回的参考数量；准备参数、尝试发送和上游受理是不同状态，历史未记录时不得推断素材已经发送。

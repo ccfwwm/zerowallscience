@@ -18,6 +18,6 @@ export function safeMediaValue(value: unknown, secrets: string[] = [], depth = 0
 export function safeMediaResponse(value: unknown, secrets: string[]): any {
   const clean = safeMediaValue(value, secrets)
   const removeLocations = (v: any): any => Array.isArray(v) ? v.map(removeLocations) : v && typeof v === 'object'
-    ? Object.fromEntries(Object.entries(v).filter(([k]) => k !== 'content_url').map(([k, item]) => [k, removeLocations(item)])) : v
+    ? Object.fromEntries(Object.entries(v).filter(([k]) => !['content_url','submission','upstream_model','execution_template','template_rules','binding_versions','account_id','upstream_request'].includes(k)).map(([k, item]) => [k, removeLocations(item)])) : v
   return removeLocations(clean)
 }

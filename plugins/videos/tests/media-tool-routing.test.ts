@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { MediaJobLedger } from '../../ai-cloud/src/host/media-jobs.js'
-import { MEDIA_CONVERSATION_PROMPT, validateMediaJobKind, validateMediaToolIds } from '../src/media-contract.js'
+import { MEDIA_CONVERSATION_PROMPT, mergeStandardReferenceParameters, validateMediaJobKind, validateMediaToolIds } from '../src/media-contract.js'
 import { createMediaSkillProvider } from '../src/media-skill.js'
 
 const studio = vi.hoisted(() => ({ scope: vi.fn(async () => ({ sessionId: 's1', projectId: 'session-s1' })), generate: vi.fn(async (_session: string, input: any) => ({ id: input.id, state: 'queued' })), call: vi.fn(async () => '{}'), importSource: vi.fn(async () => ({})) }))
@@ -48,10 +48,53 @@ it('rejects standalone image media jobs while preserving video and music jobs', 
   expect(() => validateMediaJobKind({ kind: 'image' })).toThrow('MEDIA_IMAGE_ROUTE_DISABLED')
   expect(() => validateMediaJobKind({ kind: 'video' })).not.toThrow()
   expect(() => validateMediaJobKind({ kind: 'music' })).not.toThrow()
+  expect(() => validateMediaJobKind({ kind: 'speech' })).not.toThrow()
   const f = await fixture(), tool = f.tools.get('media_job')
-  await expect(tool.execute({ action: 'generate', kind: 'image', prompt: '海报' }, f.exec)).rejects.toThrow('must be one of ["video","music"]')
+  await expect(tool.execute({ action: 'generate', kind: 'image', prompt: '海报' }, f.exec)).rejects.toThrow('must be one of ["video","music","speech"]')
   await expect(f.tools.get('media_models').execute({action:'select',choices_json:JSON.stringify({image:{selection:{groupId:'99',modelId:'image',profileId:'p',operation:'image'}}})},f.exec)).rejects.toThrow('MEDIA_IMAGE_ROUTE_DISABLED')
   expect(studio.generate).not.toHaveBeenCalled()
+})
+
+it('passes unified reference fields and safely merges matching legacy parameter fields', async () => {
+  const f = await fixture(), tool = f.tools.get('media_job')
+  const image = { url: 'https://assets.example/reference.png', role: 'first_frame', vendor: { quality: 'high', seed: 17 } }
+  const parameters = {
+    seconds: 5,
+    images: [{ vendor: { seed: 17, quality: 'high' }, role: 'first_frame', url: 'https://assets.example/reference.png' }],
+  }
+  const videos = ['data:video/mp4;base64,AAAA']
+  const audios = [{ b64_json: 'AAAA', media_type: 'audio/mpeg', role: 'guide' }]
+
+  await tool.execute({
+    action: 'generate', kind: 'video', prompt: '保持素材内容',
+    images: [image], videos, audios, parameters_json: JSON.stringify(parameters),
+  }, f.exec)
+
+  expect(studio.generate).toHaveBeenCalledWith('s1', expect.objectContaining({
+    parameters: { seconds: 5, images: [image], videos, audios },
+  }))
+  expect(mergeStandardReferenceParameters(parameters, { images: [image] })).toEqual({
+    seconds: 5, images: [image],
+  })
+})
+
+it('rejects conflicting or malformed unified reference fields before creating a task', async () => {
+  const f = await fixture(), tool = f.tools.get('media_job')
+  await expect(tool.execute({
+    action: 'generate', kind: 'video', prompt: '保留两份参考',
+    images: ['https://assets.example/one.png'],
+    parameters_json: JSON.stringify({ images: ['https://assets.example/two.png'] }),
+  }, f.exec)).rejects.toThrow('MEDIA_REFERENCE_INPUT_CONFLICT: images')
+  await expect(tool.execute({
+    action: 'generate', kind: 'video', prompt: '参数必须是对象', parameters_json: '[]',
+  }, f.exec)).rejects.toThrow('MEDIA_PARAMETERS_INVALID')
+  await expect(tool.execute({
+    action: 'generate', kind: 'video', prompt: '素材必须是数组', videos: 'https://assets.example/clip.mp4',
+  }, f.exec)).rejects.toThrow('must be an array')
+  expect(() => mergeStandardReferenceParameters(undefined, { videos: 'https://assets.example/clip.mp4' })).toThrow('MEDIA_REFERENCES_INVALID: videos')
+
+  expect(studio.generate).not.toHaveBeenCalled()
+  expect(studio.scope).not.toHaveBeenCalled()
 })
 
 it('rejects invented titles, paths and short task IDs before creating projects or jobs', async () => {

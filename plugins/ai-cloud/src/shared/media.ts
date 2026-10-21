@@ -40,13 +40,21 @@ export interface ZeroWallMedia {
   download(requestId: string, artifactKey: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array; mediaType: string; sha256: string; duration?: number }>
 }
 
-export type MediaKind = 'image' | 'video' | 'music'
+export type MediaKind = 'image' | 'video' | 'music' | 'speech'
 export interface MediaScope { sessionId: string; cwd: string; projectId: string }
 export interface MediaDraft {
   kind: MediaKind; prompt: string; selection?: MediaSelection
   parameters?: MediaRequest['parameters']; references?: MediaReference[]; mask?: MediaReference | null
   clearReferences?: boolean
   replaceReferences?: boolean
+}
+export interface MediaPreparationInput {
+  references_file?: string
+  references_json?: string
+  reference_paths?: string[]
+  input_attachment_ids?: string[]
+  mask_path?: string | null
+  parameters?: MediaRequest['parameters']
 }
 export interface MediaAsset { id: string; path: string; mediaType: string; bytes: number; sha256: string; duration?: number; projectId?: string; sessionId?: string }
 export interface MediaShot { id: string; asset: string; duration: number; trimStart?: number; motion?: 'none' | 'zoom-in' | 'zoom-out'; caption?: string }
@@ -76,6 +84,8 @@ export interface ZeroWallMediaJobs {
   /** Explicit conversation generation request; estimate and idempotency remain Host-owned. */
   submitRequested(scope: Pick<MediaScope, 'sessionId' | 'cwd'>, id: string, revision: number): Promise<MediaJob>
   prepare(scope: MediaScope, draft: MediaDraft, id?: string): Promise<MediaJob>
+  recordValidationFailure(scope: MediaScope, draft: MediaDraft, error: string, id?: string, recoveryInput?: MediaPreparationInput): Promise<MediaJob>
+  preparationInput(scope: MediaScope, id: string): Promise<MediaPreparationInput | undefined>
   list(scope: Pick<MediaScope, 'sessionId' | 'cwd'>): Promise<MediaJob[]>
   /** Host-only lookup for reusing original references; never return through tools. */
   references(scope: MediaScope, id: string): Promise<MediaReference[]>

@@ -79,15 +79,15 @@ export class AiCloudMediaService implements ZeroWallMedia {
     if (p.duration !== undefined && (!Number.isSafeInteger(p.duration) || p.duration <= 0)) throw new Error('MEDIA_UNSUPPORTED_DURATION')
     if (p.duration === undefined && p.seconds === undefined && model.duration.required && model.duration.mode !== 'fixed') throw new Error('MEDIA_DURATION_REQUIRED')
     for (const key of ['model', 'public_profile_id', 'prompt', 'requestId']) if (p[key] !== undefined) throw new Error('MEDIA_RESERVED_PARAMETER: ' + key)
-    if (p.n !== undefined && p.n !== 1) throw new Error('MEDIA_OUTPUT_COUNT_REQUIRES_ONE')
+    if (p.n !== undefined && (!Number.isSafeInteger(p.n) || Number(p.n)<1)) throw new Error('MEDIA_INVALID_OUTPUT_COUNT')
     if (p.seed !== undefined && (!Number.isSafeInteger(p.seed) || p.seed < 0)) throw new Error('MEDIA_INVALID_SEED')
     const references = input.references ?? []
     if (references.length > 16) throw new Error('MEDIA_REFERENCE_LIMIT')
     validateFrameReferences(references)
     for (const ref of [...references, ...(input.mask ? [input.mask] : [])]) {
-      const bytes = referenceBytes(ref), isMask = ref === input.mask
-      if (isMask && (ref.mediaType !== 'image/png' || !bytes)) throw new Error('MEDIA_INVALID_REFERENCE')
-      if (input.operation !== 'video' && (!ref.mediaType.startsWith('image/') && !isMask || ref.url !== undefined)) throw new Error('MEDIA_REFERENCE_FORMAT')
+      referenceBytes(ref); const isMask = ref === input.mask
+      if (isMask && ref.mediaType !== 'image/png') throw new Error('MEDIA_INVALID_REFERENCE')
+      if (!/^(image|video|audio)\//.test(ref.mediaType)) throw new Error('MEDIA_REFERENCE_FORMAT')
     }
     if (input.mask && input.operation !== 'image_edit') throw new Error('MEDIA_MASK_UNSUPPORTED')
   }
@@ -95,72 +95,35 @@ export class AiCloudMediaService implements ZeroWallMedia {
   private wire(input: MediaRequest, model: AiCloudMediaModel): { path: string; payload: Record<string, unknown>; body: string | FormData } {
     const parameters = input.parameters ?? {}
     const payload: Record<string, unknown> = { ...parameters, model: input.modelId, public_profile_id: input.profileId, prompt: input.prompt, async: input.async ?? true }
-    // Both estimates and generation use this exact documented operation shape.
-    let path: string
-    switch (input.operation) {
-      case 'image': path = '/v1/images/generations'; break
-      case 'image_edit': {
-        if (!input.references?.length) throw new Error('MEDIA_EDIT_REQUIRES_REFERENCE')
-        path = '/v1/images/edits'
-        payload.image = input.references.map(ref => referenceValue(ref))
-        if (input.mask) payload.mask = `data:${input.mask.mediaType};base64,${input.mask.base64}`
-        const form = new FormData()
-        for (const [key, value] of Object.entries(payload)) if (!['image', 'mask'].includes(key)) form.set(key, String(value))
-        for (const ref of input.references) form.append('image[]', new Blob([Buffer.from(ref.base64!, 'base64')], { type: ref.mediaType }), ref.name ?? 'reference.png')
-        if (input.mask) form.set('mask', new Blob([Buffer.from(input.mask.base64!, 'base64')], { type: input.mask.mediaType }), 'mask.png')
-        return { path, payload, body: form }
-      }
-      case 'gemini_image':
-        path = `/v1beta/models/${encodeURIComponent(input.modelId)}:generateContent`
-        payload.contents = [{ role: 'user', parts: [{ text: input.prompt }, ...(input.references ?? []).map(ref => ({ inlineData: { mimeType: ref.mediaType, data: ref.base64 } }))] }]
-        payload.generationConfig = { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { ...(parameters.aspect_ratio ? { aspectRatio: parameters.aspect_ratio } : {}), ...(parameters.resolution ? { imageSize: parameters.resolution } : {}) } }
-        for (const field of ['prompt', 'aspect_ratio', 'resolution']) delete payload[field]
-        break
-      case 'video':
-        path = '/v1/videos'
-        if (model.requestFormat === 'yunfei_multimodal' || model.requestFormat === 'v6k_url') {
-          if (model.requestFormat === 'v6k_url') {
-            if (parameters.duration !== undefined) { if (payload.seconds !== undefined && payload.seconds !== parameters.duration) throw new Error('MEDIA_ALIAS_CONFLICT: duration/seconds'); payload.seconds = parameters.duration; delete payload.duration }
-            if (parameters.aspect_ratio !== undefined) { if (payload.ratio !== undefined && payload.ratio !== parameters.aspect_ratio) throw new Error('MEDIA_ALIAS_CONFLICT: aspect_ratio/ratio'); payload.ratio = parameters.aspect_ratio; delete payload.aspect_ratio }
-          }
-          for (const kind of ['image', 'video', 'audio']) {
-            const refs = (input.references ?? []).filter(ref => ref.mediaType.startsWith(kind + '/'))
-            if (!refs.length) continue
-            // The gateway owns provider-specific field names.
-            const field = kind + 's'
-            payload[field] = refs.map(ref => {
-              const props = referenceProperties(ref)
-              return (model.requestFormat === 'v6k_url' && ref.url !== undefined) || Object.keys(props).length ? { ...props, url: referenceValue(ref) } : referenceValue(ref)
-            })
-          }
-          break
-        }
-        if (parameters.duration !== undefined) { if (payload.seconds !== undefined && payload.seconds !== parameters.duration) throw new Error('MEDIA_ALIAS_CONFLICT: duration/seconds'); payload.seconds = parameters.duration; delete payload.duration }
-        if (input.references?.length) {
-          const refs = input.references.map(ref => referenceValue(ref))
-          const field = model.referenceField
-          if (!field) throw new Error('MEDIA_REFERENCE_SHAPE_UNAVAILABLE')
-          if (model.referenceShape === 'native_content' && (parameters.metadata as any)?.content !== undefined) throw new Error('MEDIA_REFERENCE_INPUT_CONFLICT: native content')
-          if (model.referenceShape === 'native_content') payload.metadata = { ...(parameters.metadata as Record<string, unknown> ?? {}), content: input.references.map((ref, i) => { const kind=ref.mediaType.split('/')[0]!; return { ...referenceProperties(ref), type: kind+'_url', [kind+'_url']: { url: refs[i] }, role: ref.role ?? (kind==='image'?'reference_image':'reference') } }) }
-          else if (model.referenceShape === 'url_object') { if (refs.length !== 1) throw new Error('MEDIA_REFERENCE_LIMIT'); payload[field] = { ...referenceProperties(input.references[0]!), url: refs[0] } }
-          else if (model.referenceShape === 'single') { if (refs.length !== 1) throw new Error('MEDIA_REFERENCE_LIMIT'); payload[field] = refs[0] }
-          else payload[field] = input.references.map((ref, i) => Object.keys(referenceProperties(ref)).length ? { ...referenceProperties(ref), url: refs[i] } : refs[i])
-        }
-        break
-      case 'chat_music':
-        path = '/v1/chat/completions'
-        payload.messages = [{ role: 'user', content: input.prompt }]
-        payload.stream = false
-        break
-      default: throw new Error('MEDIA_OPERATION_UNAVAILABLE')
+    const paths: Record<string, string> = {
+      image: '/v1/images/generations', image_edit: '/v1/images/edits',
+      gemini_image: '/v1beta/models/'+encodeURIComponent(input.modelId)+':generateContent',
+      video: '/v1/videos', chat_music: '/v1/chat/completions', audio: '/v1/audio/generations', speech: '/v1/audio/speech'
     }
-    if (input.operation === 'video' && ['v6k_url','yunfei_multimodal'].includes(model.requestFormat ?? '')) {
-      for (const kind of ['image','video','audio']) {
-        const expected=(input.references??[]).filter(ref=>ref.mediaType.startsWith(kind+'/'))
-        const field=kind+'s'
-        const sent=payload[field] as Array<string|Record<string,unknown>>|undefined
-        if ((sent?.length??0)!==expected.length || expected.some((ref,i)=>(typeof sent![i]==='string'?sent![i]:(sent![i] as any).url)!==referenceValue(ref))) throw new Error('MEDIA_REFERENCE_INTENT_MISMATCH: '+field)
+    const path = paths[input.operation]
+    if (!path) throw new Error('MEDIA_OPERATION_UNAVAILABLE')
+    if (input.operation === 'image_edit' && !input.references?.length) throw new Error('MEDIA_EDIT_REQUIRES_REFERENCE')
+    if (input.operation === 'speech') payload.input = input.prompt
+    if (input.operation === 'video') {
+      for (const [canonicalField, alias] of [['seconds','duration'],['ratio','aspect_ratio']] as const) {
+        if (payload[alias] !== undefined) {
+          if (payload[canonicalField] !== undefined && payload[canonicalField] !== payload[alias]) throw new Error('MEDIA_ALIAS_CONFLICT: '+alias+'/'+canonicalField)
+          payload[canonicalField]=payload[alias];delete payload[alias]
+        }
       }
+    }
+    for (const kind of ['image','video','audio']) {
+      const refs = (input.references ?? []).filter(ref => ref.mediaType.startsWith(kind + '/'))
+      if (!refs.length) continue
+      const field=kind+'s', values=refs.map(ref => Object.keys(referenceProperties(ref)).length ? { ...referenceProperties(ref), url: referenceValue(ref) } : referenceValue(ref))
+      if (payload[field] !== undefined && JSON.stringify(canonical(payload[field])) !== JSON.stringify(canonical(values))) throw new Error('MEDIA_REFERENCE_INPUT_CONFLICT: '+field)
+      payload[field]=values
+    }
+    if (input.mask) payload.masks=[{ ...referenceProperties(input.mask), url: referenceValue(input.mask) }]
+    for (const kind of ['image','video','audio']) {
+      const expected=(input.references??[]).filter(ref=>ref.mediaType.startsWith(kind+'/'))
+      const sent=payload[kind+'s'] as Array<string|Record<string,unknown>>|undefined
+      if (expected.length && ((sent?.length??0)!==expected.length || expected.some((ref,i)=>(typeof sent![i]==='string'?sent![i]:(sent![i] as any).url)!==referenceValue(ref)))) throw new Error('MEDIA_REFERENCE_INTENT_MISMATCH: '+kind+'s')
     }
     const body = JSON.stringify(payload)
     if (Math.max(Buffer.byteLength(body), Buffer.byteLength(JSON.stringify({ operation: input.operation, request: payload }))) > Math.min(MAX_MEDIA_REQUEST_BYTES, model.maxRequestBytes ?? MAX_MEDIA_REQUEST_BYTES)) throw new Error('MEDIA_REQUEST_TOO_LARGE')
@@ -240,7 +203,7 @@ export class AiCloudMediaService implements ZeroWallMedia {
     await this.save(task)
     try {
       const reply = await this.json(base, path, key, { method: 'POST', body, headers: { 'Idempotency-Key': input.requestId }, ...(signal ? { signal } : {}) })
-      task.diagnostics.response = safeMediaResponse(reply, [key]); task.diagnostics.upstream = safeMediaResponse(reply.submission, [key])
+      task.diagnostics.response = safeMediaResponse(reply, [key]); task.diagnostics.upstream = safeMediaResponse(reply.inputs, [key])
       await this.accept(task, reply)
       return dto(task)
     } catch (error) {
@@ -276,7 +239,7 @@ export class AiCloudMediaService implements ZeroWallMedia {
     for (const [index, entry] of entries.entries()) {
       if (entry.available === false) { pending = true; continue }
       const key = typeof entry.key === 'string' && /^[\w-]+$/.test(entry.key) ? entry.key : String(index)
-      const fallback = task.selection.operation === 'video' ? 'video/mp4' : task.selection.operation === 'chat_music' ? 'audio/wav' : 'image/png'
+      const fallback = task.selection.operation === 'video' ? 'video/mp4' : ['chat_music','audio','speech'].includes(task.selection.operation) ? 'audio/wav' : 'image/png'
       const artifact: StoredArtifact = { key, mediaType: typeof entry.mime_type === 'string' ? entry.mime_type : fallback,
         ...(typeof entry.revised_prompt === 'string' ? { revisedPrompt: entry.revised_prompt } : {}),
         ...(typeof entry.quality === 'string' ? { quality: entry.quality } : {}),
@@ -336,7 +299,7 @@ export class AiCloudMediaService implements ZeroWallMedia {
     if (!task.taskId) { if (task.status === 'completed') return dto(task); throw new Error('MEDIA_SUBMISSION_UNCERTAIN: 请使用原请求及同一 requestId 恢复。') }
     const reply = await this.json(task.gateway, `/v1/tasks/${encodeURIComponent(task.taskId)}`, key, signal ? { signal } : {})
     if (reply.id !== task.taskId || reply.model !== task.selection.modelId) throw new Error('MEDIA_TASK_IDENTITY_MISMATCH')
-    if (task.diagnostics) { task.diagnostics.response = safeMediaResponse(reply, [key]); task.diagnostics.upstream = safeMediaResponse(reply.submission, [key]) }
+    if (task.diagnostics) { task.diagnostics.response = safeMediaResponse(reply, [key]); task.diagnostics.upstream = safeMediaResponse(reply.inputs, [key]) }
     await this.accept(task, reply)
     return dto(task)
   }

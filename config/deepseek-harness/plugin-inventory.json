@@ -315,7 +315,7 @@
     {
       "id": "environment",
       "package": "@zerowallscience/plugin-environment",
-      "version": "0.1.15",
+      "version": "0.1.16",
       "source": "plugins/environment",
       "manifest": "plugins/environment/zerowall.plugin.json",
       "client": true,
@@ -402,7 +402,7 @@
     {
       "id": "account",
       "package": "@zerowallscience/plugin-account",
-      "version": "0.1.13",
+      "version": "0.1.14",
       "source": "plugins/account",
       "manifest": "plugins/account/zerowall.plugin.json",
       "client": true,
@@ -422,7 +422,7 @@
     {
       "id": "ai-cloud",
       "package": "@zerowallscience/plugin-ai-cloud",
-      "version": "0.1.31",
+      "version": "0.1.32",
       "source": "plugins/ai-cloud",
       "manifest": "plugins/ai-cloud/zerowall.plugin.json",
       "client": true,

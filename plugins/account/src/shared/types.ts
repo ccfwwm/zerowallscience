@@ -59,7 +59,7 @@ export interface AiCloudMediaModel extends AiCloudManagedModel {
   operations: string[]
   referenceField?: string
   referenceShape?: string
-  requestFormat?: 'legacy' | 'yunfei_multimodal' | 'v6k_url'
+  requestFormat?: 'legacy' | 'yunfei_multimodal' | 'v6k_url' | 'unified'
   duration: { mode?: string; values?: number[]; min?: number | null; max?: number | null; default?: number | null; required?: boolean }
   sizes: string[]
   resolutions: string[]

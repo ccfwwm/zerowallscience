@@ -127,7 +127,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
   @Remote('setMediaModelSelections')
   async setMediaModelSelections(value: Record<string, { selection: { groupId: string; modelId: string; profileId: string; operation: string }; parameters: { size?: string; quality?: string; resolution?: string; aspect_ratio?: string; duration?: number } }>): Promise<void> {
     for (const [kind, choice] of Object.entries(value)) {
-      const operations = kind === 'image' ? ['image','image_edit','gemini_image'] : kind === 'video' ? ['video'] : kind === 'music' ? ['chat_music'] : []
+      const operations = kind === 'image' ? ['image','image_edit','gemini_image'] : kind === 'video' ? ['video'] : kind === 'music' ? ['chat_music','audio'] : kind === 'speech' ? ['speech'] : []
       if (!operations.includes(choice.selection.operation) || !choice.selection.groupId || !choice.selection.profileId || !choice.selection.modelId) throw new Error('MEDIA_SELECTION_INVALID')
     }
     await this.secrets.set('zerowall.ai-cloud.media-selections', JSON.stringify(value))

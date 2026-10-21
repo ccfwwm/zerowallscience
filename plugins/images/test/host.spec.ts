@@ -61,6 +61,31 @@ it.each(['high', 'xhigh', 'max', 'auto'] as const)('uses the selected native ima
   expect(fetcher).toHaveBeenCalledOnce()
 })
 
+it('keeps repeated multipart image fields and the mask on the independent native image route', async () => {
+  const workspace = await root(), png = await raster()
+  await writeFile(join(workspace, 'source.png'), png)
+  await writeFile(join(workspace, 'mask.png'), png)
+  const secrets = new MemorySecrets()
+  secrets.values.set('zerowall.ai-cloud.group.53', 'host-only-secret')
+  const model = { providerId: 'zerowall-ai-cloud-53-responses', groupId: '53', groupName: '生图分组-gpt逆向', modelId: 'gpt-image-2.5', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, qualities: [] }
+  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+    expect(url).toBe('https://code.aicodeme.xyz/v1/images/edits')
+    const form = init?.body as FormData
+    expect(form).toBeInstanceOf(FormData)
+    expect(form.getAll('image[]')).toHaveLength(1)
+    expect(Buffer.from(await (form.get('image[]') as File).arrayBuffer())).toEqual(png)
+    expect(Buffer.from(await (form.get('mask') as File).arrayBuffer())).toEqual(png)
+    expect(form.get('quality')).toBe('high')
+    expect(new Headers(init?.headers).has('content-type')).toBe(false)
+    return imageResponse(png)
+  })
+  const media = { submit: vi.fn() }
+  const service = new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, fetch: fetcher, media: media as any })
+  await service.edit({ prompt: 'native edit', inputPaths: ['source.png'], maskPath: 'mask.png', outputPath: 'edited.png', quality: 'high' }, workspace)
+  expect(media.submit).not.toHaveBeenCalled()
+  expect(fetcher).toHaveBeenCalledOnce()
+})
+
 function generator(fetcher: typeof fetch, attachment?: ImageAttachmentRef | Error, imageQuality?: () => Promise<'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined>, models = signedIn().mediaModels, downloadTimeoutMs?: number) {
   const mediaCacheDir=mkdtempSync(join(tmpdir(),'images-media-test-'));roots.push(mediaCacheDir)
   const secrets = new MemorySecrets()
@@ -207,7 +232,7 @@ describe('AI Cloud image generation and editing', () => {
     await service.edit({ prompt: 'configured edit', inputPaths: ['source.png'], outputPath: 'configured-edit.png' }, workspace)
     await service.generate({ prompt: 'explicit', outputPath: 'explicit.png', quality: 'auto' }, workspace)
     expect(JSON.parse(String(bodies[0]))).toMatchObject({ quality: 'medium' })
-    expect((bodies[1] as FormData).get('quality')).toBe('medium')
+    expect(JSON.parse(String(bodies[1]))).toMatchObject({ quality: 'medium', images: [`data:image/png;base64,${png.toString('base64')}`] })
     expect(JSON.parse(String(bodies[2]))).toMatchObject({ quality: 'auto' })
   })
 
@@ -284,12 +309,9 @@ describe('AI Cloud image generation and editing', () => {
     const workspace = await root()
     const png = await raster()
     const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      if (init?.body instanceof FormData) {
-        expect(init.body.get('size')).toBe('2048x2048')
-        expect(init.body.get('quality')).toBe('high')
-      } else {
-        expect(JSON.parse(String(init?.body))).toMatchObject({ size: '2048x2048', quality: 'low' })
-      }
+      const body = JSON.parse(String(init?.body))
+      expect(body).toMatchObject({ size: '2048x2048', quality: body.images ? 'high' : 'low' })
+      if (body.images) expect(body.images).toEqual([`data:image/png;base64,${png.toString('base64')}`])
       return imageResponse(png)
     })
     const service = generator(fetcher as typeof fetch)
@@ -308,20 +330,22 @@ describe('AI Cloud image generation and editing', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
-  it('sends repeated image[] multipart fields without an explicit content-type boundary', async () => {
+  it('sends complete canonical image and mask arrays for administrator template serialization', async () => {
     const workspace = await root()
     await writeFile(join(workspace, 'one.png'), await raster('png', 8, 6))
     await writeFile(join(workspace, 'two.webp'), await raster('webp', 5, 5))
     await writeFile(join(workspace, 'mask.png'), await raster('png', 8, 6, true))
     const png = await raster('png', 12, 10)
     const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const form = init?.body as FormData
-      expect(form).toBeInstanceOf(FormData)
-      expect(form.getAll('image[]')).toHaveLength(2)
-      expect(form.get('mask')).toBeInstanceOf(File)
-      expect(form.get('model')).toBe('gpt-image-2')
-      expect(form.get('input_fidelity')).toBeNull()
-      expect(new Headers(init?.headers).has('content-type')).toBe(false)
+      const body = JSON.parse(String(init?.body))
+      expect(body.images).toEqual([
+        `data:image/png;base64,${(await readFile(join(workspace, 'one.png'))).toString('base64')}`,
+        `data:image/webp;base64,${(await readFile(join(workspace, 'two.webp'))).toString('base64')}`,
+      ])
+      expect(body.masks).toEqual([{ url: `data:image/png;base64,${(await readFile(join(workspace, 'mask.png'))).toString('base64')}` }])
+      expect(body.model).toBe('gpt-image-2')
+      expect(body).not.toHaveProperty('input_fidelity')
+      expect(new Headers(init?.headers).get('content-type')).toBe('application/json')
       return imageResponse(png)
     })
     const service = generator(fetcher as typeof fetch)
@@ -343,9 +367,9 @@ describe('AI Cloud image generation and editing', () => {
     await writeFile(join(workspace, 'source.png'), await raster('png', 8, 6))
     const png = await raster('png', 8, 6)
     const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const form = init?.body as FormData
-      expect(form.get('mask')).toBeNull()
-      expect(form.getAll('image[]')).toHaveLength(1)
+      const body = JSON.parse(String(init?.body))
+      expect(body).not.toHaveProperty('masks')
+      expect(body.images).toEqual([`data:image/png;base64,${(await readFile(join(workspace, 'source.png'))).toString('base64')}`])
       return imageResponse(png)
     })
     const service = generator(fetcher as typeof fetch)
@@ -364,9 +388,9 @@ describe('AI Cloud image generation and editing', () => {
     await writeFile(join(workspace, 'source.png'), await raster('png', 8, 6, false))
     const png = await raster('png', 8, 6)
     const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
-      const form = init?.body as FormData
-      expect(form.get('mask')).toBeNull()
-      expect(form.getAll('image[]')).toHaveLength(1)
+      const body = JSON.parse(String(init?.body))
+      expect(body).not.toHaveProperty('masks')
+      expect(body.images).toEqual([`data:image/png;base64,${(await readFile(join(workspace, 'source.png'))).toString('base64')}`])
       return imageResponse(png)
     })
     const service = generator(fetcher as typeof fetch)

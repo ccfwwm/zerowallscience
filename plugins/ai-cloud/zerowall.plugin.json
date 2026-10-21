@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-ai-cloud",
-  "version": "0.1.31",
+  "version": "0.1.32",
   "applicationVersion": "8.0.0",
   "restartRequired": true,
   "desktop": {

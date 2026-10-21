@@ -15,7 +15,7 @@ import { defaultMediaProjectId, MediaStudioService } from './media-studio.js'
 import { createMediaSkillProvider } from './media-skill.js'
 import { registerMediaRoute } from './media-route.js'
 import { assertTrustedWorkspaceAuthority } from './workspace-request-trust.js'
-import { MEDIA_CONVERSATION_PROMPT, MEDIA_PROJECT_ID_PARAMETER, MEDIA_JOB_ID_PARAMETER, validateMediaJobKind, validateMediaToolIds } from './media-contract.js'
+import { MEDIA_CONVERSATION_PROMPT, MEDIA_PROJECT_ID_PARAMETER, MEDIA_JOB_ID_PARAMETER, mergeStandardReferenceParameters, validateMediaJobKind, validateMediaToolIds } from './media-contract.js'
 import { ownMediaRuntime } from './shared-runtime.js'
 export { MediaStudioService } from './media-studio.js'
 export const name='videos'
@@ -32,7 +32,8 @@ export async function installMediaStudio(context:Context,config:Config={}){
     text:MEDIA_CONVERSATION_PROMPT
   }))
   const output={schema:{type:'object' as const,additionalProperties:false,properties:{result:{type:'string' as const,required:true as const}}},render:(_:unknown,value:{result:string})=>[{type:'text' as const,text:value.result}]}
-  context.tools.register(defineTool({name:'media_models',description:'查询当前账号可用的视频和音乐能力与已选默认模型，或按用户明确要求保存模型选择。普通图片使用 gpt-image-generator，不在此选择。无需供应商密钥。',parameters:{action:{type:'string',required:true,enum:['list','choices','select']},choices_json:{type:'string',description:'select 时传默认选择 JSON {video|music:{selection:{groupId,modelId,profileId,operation},parameters:{}}}，须先查询真实目录，保留未修改类别'}},output,isConcurrencySafe:()=>false,async execute(args,exec){
+  const mediaReferences={type:'array',items:{oneOf:[{type:'string'},{type:'object',additionalProperties:true}]},description:'统一参考素材数组，支持 HTTPS URL、完整 MIME Data URL，或 {url:...}/{b64_json:...} 对象；对象可附带 role 和模板参数。'} as const
+  context.tools.register(defineTool({name:'media_models',description:'查询当前账号可用的视频和音乐能力与已选默认模型，或按用户明确要求保存模型选择。普通图片使用 gpt-image-generator，不在此选择。无需供应商密钥。',parameters:{action:{type:'string',required:true,enum:['list','choices','select']},choices_json:{type:'string',description:'select 时传默认选择 JSON {video|music|speech:{selection:{groupId,modelId,profileId,operation},parameters:{}}}，须先查询真实目录，保留未修改类别'}},output,isConcurrencySafe:()=>false,async execute(args,exec){
     if(!exec.agent)throw new Error('MEDIA_SESSION_REQUIRED')
     const sessionId=String(exec.agent.session.id)
     if(args.action==='select'){
@@ -46,12 +47,16 @@ export async function installMediaStudio(context:Context,config:Config={}){
     }
     return {result:await studio.call(sessionId,args.action==='list'?'catalog':'choices','{}')}
   }}))
-  context.tools.register(defineTool({name:'media_job',description:'生成用户明确要求的独立视频或音乐任务；普通图片生成和编辑必须使用 gpt-image-generator 的 generate_image/edit_image。图片仅可作为视频参考素材。明确视频/音乐生成用 generate，讨论方案用 prepare。status 查询状态并尊重 paused/failed，不恢复已停止或失败的收集；collect 明确恢复原任务的后台查询和下载并立即返回。waiting 表示等待原作品可用，Host 持续跟踪同一原任务，无整体时长或轮数上限，用户可手动停止；本地 collection=failed 不代表上游生成失败，只用 collect 恢复原任务，未经用户明确要求新生成不得再次 generate 或换模型。没有 ID 时省略 id 列出任务，不重新生成。pause 仅停止本地查询和下载，不取消上游任务。不要循环查询或等待，结果会自动显示。',parameters:{action:{type:'string',required:true,enum:['prepare','generate','status','collect','pause','clear_references']},project_id:MEDIA_PROJECT_ID_PARAMETER,id:MEDIA_JOB_ID_PARAMETER,kind:{type:'string',enum:['video','music'],description:'仅用于独立视频或音乐；不要传 image。视频可通过 references_json 使用图片、视频和音频参考；默认 Base64，URL 模型只询问缺失的公网地址。'},prompt:{type:'string'},references_file:{type:'string',description:'工作区内参考素材 JSON 清单路径，与其他参考输入互斥；读取并保留全部 URL、顺序、角色及附加参数。'},references_json:{type:'string',description:'有序参考数组 JSON；每项仅一个来源 path（已导入项目路径）、attachment_id（会话附件）、url（公网 HTTPS 直链）或 reference_id（当前任务参考摘要 sha256，复用原素材）。URL 必须给 media_type；可选 role: reference/first_frame/last_frame。首尾帧仅图片且不与普通图片参考混用。不与 reference_paths/input_attachment_ids 同传。需要公网地址时只询问缺失素材，不自动上传。'},reference_paths:{type:'array',items:{type:'string'}},input_attachment_ids:{type:'array',items:{type:'string'}},mask_path:{type:'string'},selection_json:{type:'string',description:'用户明确指定的目录选择；省略沿用已有选择或首次自动配置'},parameters_json:{type:'string',description:'用户要求的能力参数 JSON；省略沿用已选参数'}},output,isConcurrencySafe:args=>['status','collect','pause'].includes((args as any)?.action),async execute(args,exec){
+  context.tools.register(defineTool({name:'media_job',description:'生成用户明确要求的独立视频、音乐或语音任务；普通图片生成和编辑必须使用 gpt-image-generator 的 generate_image/edit_image。图片仅可作为视频参考素材。明确生成用 generate，讨论方案用 prepare。参考素材统一使用 images、videos、audios；status 查询状态并尊重 paused/failed，不会自动恢复；collect 明确恢复同一原任务的后台查询和下载；pause 仅停止本地查询和下载，不取消上游任务。没有 ID 时省略 id 列出任务；不要循环查询或等待，结果会自动显示。',parameters:{action:{type:'string',required:true,enum:['prepare','generate','status','collect','pause','clear_references']},project_id:MEDIA_PROJECT_ID_PARAMETER,id:MEDIA_JOB_ID_PARAMETER,kind:{type:'string',enum:['video','music','speech'],description:'用于独立视频、音乐或语音合成（speech）；不要传 image。'},prompt:{type:'string'},images:mediaReferences,videos:mediaReferences,audios:mediaReferences,references_file:{type:'string',description:'工作区内参考素材 JSON 清单路径，与其他参考输入互斥；读取并保留全部 URL、顺序、角色及附加参数。'},references_json:{type:'string',description:'兼容入口：有序参考数组 JSON；每项仅一个来源 path（已导入项目路径）、attachment_id（会话附件）、url（公网 HTTPS 直链）或 reference_id（当前任务参考摘要 sha256，复用原素材）。URL 必须给 media_type；可选 role: reference/first_frame/last_frame。首尾帧仅图片且不与普通图片参考混用。'},reference_paths:{type:'array',items:{type:'string'}},input_attachment_ids:{type:'array',items:{type:'string'}},mask_path:{type:'string'},selection_json:{type:'string',description:'用户明确指定的目录选择；省略沿用已有选择或首次自动配置'},parameters_json:{type:'string',description:'模型参数 JSON；省略沿用已选参数。不得与顶层 images/videos/audios 重复提供不同内容。'}},output,isConcurrencySafe:args=>['status','collect','pause'].includes((args as any)?.action),async execute(args,exec){
     if(!exec.agent)throw new Error('MEDIA_SESSION_REQUIRED')
     const {project_id,id}=validateMediaToolIds(args)
     validateMediaJobKind(args)
     const sessionId=String(exec.agent.session.id),projectId=project_id??defaultMediaProjectId(sessionId)
-    const input={...args,project_id,id,projectId,...(args.selection_json?{selection:JSON.parse(args.selection_json)}:{}),...(args.parameters_json?{parameters:JSON.parse(args.parameters_json)}:{})}
+    const parametersJson=typeof args.parameters_json==='string'?args.parameters_json:undefined
+    const selectionJson=typeof args.selection_json==='string'?args.selection_json:undefined
+    const parameters=mergeStandardReferenceParameters(parametersJson?JSON.parse(parametersJson):undefined,args)
+    const {images:_images,videos:_videos,audios:_audios,...toolArgs}=args
+    const input={...toolArgs,project_id,id,projectId,...(selectionJson?{selection:JSON.parse(selectionJson)}:{}),...(parameters!==undefined?{parameters}:{})}
     if(args.action==='clear_references') { if(!id) throw new Error('MEDIA_JOB_ID_REQUIRED'); const scope=await studio.scope(sessionId,projectId,true); const old=(await context.zerowallMediaJobs.list(scope)).find(job=>job.id===id); if(!old)throw new Error('MEDIA_JOB_NOT_FOUND'); return {result:await studio.call(sessionId,'prepare',JSON.stringify({...input,kind:old.kind,prompt:old.prompt,clearReferences:true}))} }
     if(args.action==='generate')return {result:JSON.stringify(await studio.generate(sessionId,{...input,id:id??'chat-'+createHash('sha256').update(sessionId+':'+exec.callId).digest('hex')}))}
     const scope=await studio.scope(sessionId,projectId,args.action==='prepare')

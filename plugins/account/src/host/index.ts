@@ -572,7 +572,7 @@ function parseMediaCapabilities(body: string, group: AvailableGroup, baseUrl: st
       version: typeof raw.version === 'string' ? raw.version : '', mediaType: raw.media_type as AiCloudMediaModel['mediaType'], operations: strings(raw.operations),
       ...(typeof raw.reference_field === 'string' ? { referenceField: raw.reference_field } : {}),
       ...(typeof raw.reference_shape === 'string' ? { referenceShape: raw.reference_shape } : {}),
-      requestFormat: raw.request_format === undefined || raw.request_format === 'legacy' ? 'legacy' : raw.request_format === 'yunfei_multimodal' || raw.request_format === 'v6k_url' ? raw.request_format : (() => { throw new Error('INVALID_MEDIA_REQUEST_FORMAT') })(),
+      requestFormat: raw.request_format === undefined || raw.request_format === 'legacy' ? 'legacy' : raw.request_format === 'unified' || raw.request_format === 'yunfei_multimodal' || raw.request_format === 'v6k_url' ? raw.request_format : (() => { throw new Error('INVALID_MEDIA_REQUEST_FORMAT') })(),
       duration: { ...(typeof duration.mode === 'string' ? { mode: duration.mode } : {}), values: Array.isArray(duration.values) ? duration.values.filter((x): x is number => typeof x === 'number') : [],
         ...Object.fromEntries(['min', 'max', 'default', 'required'].filter(key => ['number', 'boolean'].includes(typeof duration[key])).map(key => [key, duration[key]])) },
       sizes: strings(raw.sizes), resolutions: strings(raw.resolutions), aspectRatios: strings(raw.aspect_ratios), qualities: raw.media_type === 'image' ? imageQualityChoices(raw.model, strings(raw.qualities), group.name) : strings(raw.qualities), formats: strings(raw.formats), materials,

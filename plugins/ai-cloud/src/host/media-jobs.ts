@@ -7,11 +7,11 @@ import { artifactFormat } from './artifact-format.js'
 import { referenceBytes, referenceValue, referenceSignature, normalizeMediaReferences, validateFrameReferences } from './media-reference.js'
 import { mediaAbortable } from './media-abort.js'
 import { mediaRetryAfter, retryableMediaError } from './media-retry.js'
-import type { MediaDraft, MediaJob, MediaReview, MediaScope, MediaRequest, ZeroWallMedia, ZeroWallMediaJobs } from '../shared/media.js'
+import type { MediaDraft, MediaJob, MediaPreparationInput, MediaReview, MediaScope, MediaRequest, ZeroWallMedia, ZeroWallMediaJobs } from '../shared/media.js'
 
 const digest = (value: unknown) => createHash('sha256').update(typeof value === 'string' || value instanceof Uint8Array ? value : JSON.stringify(value)).digest('hex')
 const extensions: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/ogg': 'ogg', 'audio/flac': 'flac' }
-interface Stored { scope: MediaScope; owner: string; draft: MediaDraft; job: MediaJob; submitted: boolean; authorizationHash?: string; authorizationExpires?: number }
+interface Stored { scope: MediaScope; owner: string; draft: MediaDraft; job: MediaJob; submitted: boolean; recoveryInput?: MediaPreparationInput; authorizationHash?: string; authorizationExpires?: number }
 export const MEDIA_COLLECTION_MAX_BACKOFF_MS = 30_000
 export const MEDIA_COLLECTION_POLL_MS = 5_000
 const TERMINAL_STATES = ['failed', 'rejected', 'cancelled', 'manual_review', 'submission-uncertain']
@@ -88,7 +88,7 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
   }
   async prepare(scope: MediaScope, draft: MediaDraft, id = randomUUID()): Promise<MediaJob> {
     return this.mutate([id], async () => {
-      if (!/^[a-zA-Z0-9_-]{1,80}$/.test(scope.projectId) || !scope.sessionId || !['image', 'video', 'music'].includes(draft.kind) || !draft.prompt?.trim()) throw new Error('MEDIA_DRAFT_INVALID')
+      if (!/^[a-zA-Z0-9_-]{1,80}$/.test(scope.projectId) || !scope.sessionId || !['image', 'video', 'music', 'speech'].includes(draft.kind) || !draft.prompt?.trim()) throw new Error('MEDIA_DRAFT_INVALID')
       await mediaTarget(scope.cwd, `media-projects/${scope.projectId}/project.json`)
       if (draft.kind === 'video') draft = normalizeMediaReferences(draft)
       for (const ref of [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])]) referenceBytes(ref)
@@ -104,7 +104,7 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
       if (old && draft.references === undefined && old.draft.references) draft.references = old.draft.references
       if (old && draft.mask === undefined && old.draft.mask) draft.mask = old.draft.mask
       if (draft.selection) {
-        const allowed = draft.kind === 'image' ? ['image', 'image_edit', 'gemini_image'] : draft.kind === 'video' ? ['video'] : ['chat_music']
+        const allowed = draft.kind === 'image' ? ['image', 'image_edit', 'gemini_image'] : draft.kind === 'video' ? ['video'] : draft.kind === 'speech' ? ['speech'] : ['chat_music', 'audio']
         if (!allowed.includes(draft.selection.operation)) throw new Error('MEDIA_OPERATION_KIND_MISMATCH')
       }
       const correctedFrom = old?.submitted ? old.job.id : undefined
@@ -129,6 +129,42 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
       }
       return structuredClone(job)
     })
+  }
+  async recordValidationFailure(scope: MediaScope, draft: MediaDraft, error: string, id = randomUUID(), recoveryInput?: MediaPreparationInput): Promise<MediaJob> {
+    return this.mutate([id], async () => {
+      if (!/^[a-zA-Z0-9_-]{1,80}$/.test(scope.projectId) || !scope.sessionId || !['image', 'video', 'music', 'speech'].includes(draft.kind) || !draft.prompt?.trim()) throw new Error('MEDIA_DRAFT_INVALID')
+      await mediaTarget(scope.cwd, `media-projects/${scope.projectId}/project.json`)
+      for (const ref of [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])]) referenceBytes(ref)
+      validateFrameReferences(draft.references ?? [])
+      if ((draft.references?.length ?? 0) > 16) throw new Error('MEDIA_REFERENCE_LIMIT')
+      const owner = await this.owner()
+      const old = await this.read(id).catch(e => { if (e.code !== 'ENOENT') throw e; return undefined })
+      if (old) {
+        await this.check(old, scope)
+        if (old.submitted && old.job.state !== 'rejected') throw new Error('MEDIA_JOB_ALREADY_SUBMITTED')
+        if (old.scope.projectId !== scope.projectId) throw new Error('MEDIA_JOB_OWNER_MISMATCH')
+      }
+      if (old && draft.references === undefined && old.draft.references) draft.references = old.draft.references
+      if (old && draft.mask === undefined && old.draft.mask) draft.mask = old.draft.mask
+      const correctedFrom = old?.submitted ? old.job.id : undefined
+      if (correctedFrom) id = randomUUID()
+      const now = new Date().toISOString(), revision = (old?.job.revision ?? 0) + 1
+      const frozen: MediaDraft = structuredClone(draft), requestId = 'media-' + digest({ scope, id, revision, draft: frozen, validationError: error })
+      const message = String(error || 'MEDIA_VALIDATION_FAILED').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 1000)
+      const job: MediaJob = {
+        id, sessionId: scope.sessionId, projectId: scope.projectId, revision, kind: draft.kind, prompt: draft.prompt,
+        ...(draft.selection ? { selection: draft.selection } : {}), parameters: draft.parameters ?? {},
+        references: [...(draft.references ?? []), ...(draft.mask ? [draft.mask] : [])].map(ref => ({ name: ref.name ?? '参考素材', mediaType: ref.mediaType, bytes: ref.url !== undefined ? 0 : Buffer.byteLength(ref.base64!, 'base64'), sha256: digest(ref.url !== undefined ? referenceValue(ref) : Buffer.from(ref.base64!, 'base64')), source: ref.url !== undefined ? 'url' as const : 'base64' as const, ...(ref.role ? { role: ref.role } : {}), ...(ref === draft.mask ? { mask: true } : {}) })),
+        ...(correctedFrom ? { correctedFrom } : {}), state: 'validation-failed', error: message, requestId, assets: [], createdAt: old?.job.createdAt ?? now, updatedAt: now,
+      }
+      await this.lock(() => this.save({ scope, owner, draft: frozen, job, submitted: false, ...(recoveryInput ? { recoveryInput: structuredClone(recoveryInput) } : {}) }))
+      return structuredClone(job)
+    })
+  }
+  async preparationInput(scope: MediaScope, id: string): Promise<MediaPreparationInput | undefined> {
+    const value = await this.read(id); await this.check(value, scope)
+    if (value.scope.projectId !== scope.projectId || value.job.state !== 'validation-failed') return undefined
+    return value.recoveryInput ? structuredClone(value.recoveryInput) : undefined
   }
   async references(scope: MediaScope, id: string) {
     const value = await this.read(id); await this.check(value, scope)
@@ -159,7 +195,7 @@ export class MediaJobLedger implements ZeroWallMediaJobs {
       const existing = (await this.list(scope)).find(job => job.requestId === requestId)
       if (existing) return existing
       if (owner !== await this.owner()) throw new Error('MEDIA_ACCOUNT_CHANGED')
-      const now = new Date().toISOString(), kind = task.selection.operation === 'video' ? 'video' : task.selection.operation === 'chat_music' ? 'music' : 'image'
+      const now = new Date().toISOString(), kind = task.selection.operation === 'video' ? 'video' : task.selection.operation === 'speech' ? 'speech' : ['chat_music','audio'].includes(task.selection.operation) ? 'music' : 'image'
       const draft: MediaDraft = { kind, prompt: kind === 'video' ? '恢复历史视频任务' : kind === 'music' ? '恢复历史音乐任务' : '恢复历史图片任务', selection: structuredClone(task.selection), parameters: {} }
       const job: MediaJob = { id, sessionId: scope.sessionId, projectId: scope.projectId, revision: 1, kind, prompt: draft.prompt, selection: structuredClone(task.selection), parameters: {}, references: [], state: task.status, requestId: task.requestId, ...(task.taskId ? { taskId: task.taskId } : {}), assets: [], createdAt: now, updatedAt: now }
       // Freeze as already submitted before exposing it to any UI or tool. Even

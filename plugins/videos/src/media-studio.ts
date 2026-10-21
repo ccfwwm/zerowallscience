@@ -6,7 +6,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { MediaDraft, MediaJob, MediaSelection, MediaScope, MediaAsset, MediaReference } from '@zerowallscience/plugin-ai-cloud/types'
+import type { MediaDraft, MediaJob, MediaPreparationInput, MediaSelection, MediaScope, MediaAsset, MediaReference } from '@zerowallscience/plugin-ai-cloud/types'
 import type {} from '@zerowallscience/plugin-ai-cloud'
 import type {} from '@zerowallscience/plugin-python'
 import type {} from '@zerowallscience/plugin-environment'
@@ -19,6 +19,36 @@ const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('h
 const MAX = 256 * 1024 * 1024
 const mime: Record<string,string> = { '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.mp4':'video/mp4','.mov':'video/quicktime','.webm':'video/webm','.m4a':'audio/mp4','.aac':'audio/aac','.wav':'audio/wav','.mp3':'audio/mpeg','.ogg':'audio/ogg','.flac':'audio/flac' }
 export function mediaMime(path: string) { return mime[extname(path).toLowerCase()] }
+const referenceParameter = /^(images|videos|audios|reference_(images|videos|audios|image_urls|video_urls|audio_urls))$/
+const referenceSources = ['references_file', 'references_json', 'reference_paths', 'input_attachment_ids', 'mask_path'] as const
+function parameterReferences(value: unknown): string[] {
+  return value && typeof value === 'object' && !Array.isArray(value) ? Object.keys(value).filter(key => referenceParameter.test(key)) : []
+}
+function parametersWithoutReferences(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).filter(([key]) => !referenceParameter.test(key)))
+    : {}
+}
+function preparationInput(value: any): MediaPreparationInput | undefined {
+  const output: MediaPreparationInput = {}
+  if (value.references_file !== undefined) output.references_file = value.references_file
+  else if (value.references_json !== undefined) output.references_json = typeof value.references_json === 'string' ? value.references_json : JSON.stringify(value.references_json)
+  for (const key of ['reference_paths', 'input_attachment_ids'] as const) if (value[key] !== undefined) output[key] = structuredClone(value[key])
+  if (value.mask_path !== undefined) output.mask_path = value.mask_path
+  const keys = parameterReferences(value.parameters)
+  if (keys.length) output.parameters = Object.fromEntries(keys.map(key => [key, structuredClone(value.parameters[key])]))
+  return Object.keys(output).length ? output : undefined
+}
+function hasExplicitReferenceInput(value: any): boolean {
+  return value.clearReferences === true || referenceSources.some(key => value[key] !== undefined) || parameterReferences(value.parameters).length > 0
+}
+function recoverableReferenceError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  const code = message.split(':', 1)[0]!
+  if (['MEDIA_REFERENCES_CLEAR_REQUIRED', 'MEDIA_REFERENCE_OUTSIDE_PROJECT', 'MEDIA_PATH_OUTSIDE_WORKSPACE', 'MEDIA_SYMLINK_REJECTED', 'MEDIA_PARENT_INVALID', 'MEDIA_ATTACHMENT_NOT_IN_SESSION', 'MEDIA_ATTACHMENT_STORE_UNAVAILABLE'].includes(code)) return false
+  if (/^MEDIA_(REFERENCE|REFERENCES|FRAME_REFERENCE|PUBLIC_URL)/.test(code)) return true
+  return error instanceof SyntaxError || (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT')
+}
 export const defaultMediaProjectId = (sessionId: string) => 'session-' + sessionId.replace(/[^A-Za-z0-9_-]/g, '_').slice(-60)
 declare module '@deepseek-ai/cordis' { interface Context { zerowallMediaStudio: MediaStudioService } }
 export class MediaStudioService extends TypertRemoteService {
@@ -143,6 +173,11 @@ export class MediaStudioService extends TypertRemoteService {
     await this.ensure(scope)
     const old = input.id ? (await this.host.zerowallMediaJobs.list(scope)).find(j => j.id === input.id) : undefined
     if (old) validateMediaJobKind(old)
+    if (old?.state === 'validation-failed' && !hasExplicitReferenceInput(input)) {
+      const recovered = await this.host.zerowallMediaJobs.preparationInput(scope, old.id)
+      if (recovered) input = { ...recovered, ...input, parameters: { ...(recovered.parameters ?? {}), ...(input.parameters ?? {}) } }
+    }
+    input.id ??= old?.id ?? randomUUID()
     let selection:MediaSelection|undefined=input.selection
     if(input.selection===undefined&&!selection){selection=old?.selection;if(old?.parameters)input.parameters={...old.parameters,...(input.parameters??{})}}
     if (!selection && input.selection!==null) {
@@ -155,7 +190,7 @@ export class MediaStudioService extends TypertRemoteService {
       selection=legacy?.[input.kind]?.selection
       if (selection) input.parameters={...(legacy?.[input.kind]?.parameters??{}),...(input.parameters??{})}
       if (!selection && input.autoSelect && !(input.kind === 'image' && await this.host.zerowallEnvironment.readImageModelSelection())) {
-        const operations = input.kind === 'image' ? (input.reference_paths?.length || input.input_attachment_ids?.length ? ['image_edit', 'gemini_image'] : ['image', 'gemini_image']) : input.kind === 'video' ? ['video'] : ['chat_music']
+        const operations = input.kind === 'image' ? (input.reference_paths?.length || input.input_attachment_ids?.length ? ['image_edit', 'gemini_image'] : ['image', 'gemini_image']) : input.kind === 'video' ? ['video'] : input.kind === 'speech' ? ['speech'] : ['chat_music','audio']
         const model = (await this.host.zerowallMedia.catalog()).models.find(m => !m.stale && m.operations.some(op => operations.includes(op)))
         if (model) {
           selection = { groupId: model.groupId, modelId: model.modelId, profileId: model.profileId, operation: model.operations.find(op => operations.includes(op))! }
@@ -178,6 +213,10 @@ export class MediaStudioService extends TypertRemoteService {
       }
     }
     const sourceInputs = ['references_file', 'references_json', 'reference_paths', 'input_attachment_ids'].filter(key => input[key] !== undefined)
+    let draft: MediaDraft
+    let intentFile: string
+    let intent: any
+    try {
     if (sourceInputs.length > 1) throw new Error('MEDIA_REFERENCE_INPUT_CONFLICT')
     if (input.references_file !== undefined) {
       const target = await mediaTarget(scope.cwd, input.references_file), info = await stat(target)
@@ -185,8 +224,8 @@ export class MediaStudioService extends TypertRemoteService {
       input.references_json = await readFile(target, 'utf8')
     }
     const descriptors = input.references_json === undefined ? undefined : typeof input.references_json === 'string' ? JSON.parse(input.references_json) : input.references_json
-    const intentFile = await mediaTarget(scope.cwd, `media-projects/${scope.projectId}/reference-intent.json`, true)
-    const intent = await readFile(intentFile, 'utf8').then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error; return undefined })
+    intentFile = await mediaTarget(scope.cwd, `media-projects/${scope.projectId}/reference-intent.json`, true)
+    intent = await readFile(intentFile, 'utf8').then(JSON.parse, error => { if (error.code !== 'ENOENT') throw error; return undefined })
     const referenceKeys = Object.keys(input.parameters ?? {}).filter(key => /^(images|videos|audios|reference_(images|videos|audios|image_urls|video_urls|audio_urls))$/.test(key))
     const hasParameterRefs = referenceKeys.some(key => Array.isArray(input.parameters[key]) && input.parameters[key].length > 0)
     if (referenceKeys.length && !hasParameterRefs && intent?.references?.length && !input.clearReferences) throw new Error('MEDIA_REFERENCES_CLEAR_REQUIRED')
@@ -227,7 +266,7 @@ export class MediaStudioService extends TypertRemoteService {
       references.push(ref)
     }
     const mask=input.mask_path?await this.reference(scope,input.mask_path):undefined
-    let draft:MediaDraft={...(input.clearReferences?{clearReferences:true}:{}),kind:input.kind,prompt:input.prompt,...(selection?{selection}:{}),...(input.parameters?{parameters:input.parameters}:{}),...(references.length||selectedDescriptors!==undefined||input.reference_paths!==undefined||input.input_attachment_ids!==undefined?{references}:{}),...(mask?{mask}:input.mask_path===null?{mask:null}:{})}
+    draft={...(input.clearReferences?{clearReferences:true}:{}),kind:input.kind,prompt:input.prompt,...(selection?{selection}:{}),...(input.parameters?{parameters:input.parameters}:{}),...(references.length||selectedDescriptors!==undefined||input.reference_paths!==undefined||input.input_attachment_ids!==undefined?{references}:{}),...(mask?{mask}:input.mask_path===null?{mask:null}:{})}
     draft = normalizeMediaReferences(draft)
     if (!input.clearReferences && !input.replaceReferences && intent?.jobId) {
       const expected = await this.host.zerowallMediaJobs.references(scope, intent.jobId)
@@ -237,6 +276,16 @@ export class MediaStudioService extends TypertRemoteService {
       }
     }
     if (input.replaceReferences) draft.replaceReferences = true
+    } catch (error) {
+      if (!recoverableReferenceError(error)) throw error
+      const failedDraft: MediaDraft = {
+        kind: input.kind,
+        prompt: input.prompt,
+        ...(selection ? { selection } : {}),
+        parameters: parametersWithoutReferences(input.parameters),
+      }
+      return this.host.zerowallMediaJobs.recordValidationFailure(scope, failedDraft, error instanceof Error ? error.message : String(error), input.id, preparationInput(input))
+    }
     // Persist project intent before estimate/validation, including failed drafts.
     const job = await this.host.zerowallMediaJobs.prepare(scope,draft,input.id)
     const retained = await this.host.zerowallMediaJobs.references(scope, job.id)
@@ -272,7 +321,7 @@ export class MediaStudioService extends TypertRemoteService {
     if(action==='activate'){this.activeSessions.add(sessionId);return '{}'}
     if(action==='catalog'){
       const catalog=await this.host.zerowallMedia.catalog(input.refresh===true)
-      return JSON.stringify({...catalog,models:catalog.models.filter(model=>model.operations.some(operation=>operation==='video'||operation==='chat_music'))})
+      return JSON.stringify({...catalog,models:catalog.models.filter(model=>model.operations.some(operation=>['video','chat_music','audio','speech'].includes(operation)))})
     }
     if(action==='choices')return JSON.stringify(await this.host.zerowallEnvironment.readMediaModelSelections())
     if(action==='save-choices'){await this.host.zerowallEnvironment.setMediaModelSelections(input.choices);return '{}'}

@@ -15,7 +15,7 @@ description: 通过对话创作用户明确要求的独立视频、音乐与宣�
 
 不要把项目标题、文件路径、中文名称或占位符当作 `project_id`；默认项目省略该字段或传 `null`。工具兼容供应商补入的空字符串和纯空白，将其视为未提供，统一使用当前会话项目。任务 `id` 只使用真实工具结果中的值（8–128 位字母、数字、下划线或短横线），首次 prepare/generate 省略或传 `null`；空值同样视为未提供。需要恢复任务但不知道 ID 时，先 `media_job(action: "status")` 且省略 id 列出原任务，再按返回的项目 ID 和任务 ID 查询；不要为了查状态重新生成。非空 ID 校验失败要纠正调用，不能伪造 ID 或绕过校验。
 
-用户明确要求独立视频、音频/音乐或宣传片并且要实际生成时，使用 media_job generate：kind 只能为 video 或 music，填写 prompt。普通图片生成和编辑不能使用 media_job；不要传 kind=image。插件沿用已有模型和参数，首次未配置时自动选可用模型；费用和限制在后台检查，直接提交，不要求用户再次确认。仅讨论方案、修改文案或用户说“先给草稿”时用 prepare，不提交付费生成。无权限时明确说明分组权限问题，不假装成功。失效选择不擅自换模型。
+用户明确要求独立视频、音频/音乐、语音合成或宣传片并且要实际生成时，使用 media_job generate：kind 为 video、music 或 speech，填写 prompt。普通图片生成和编辑不能使用 media_job；不要传 kind=image。插件沿用已有模型和参数，首次未配置时自动选可用模型；费用和限制在后台检查，直接提交，不要求用户再次确认。仅讨论方案、修改文案或用户说“先给草稿”时用 prepare，不提交付费生成。无权限时明确说明分组权限问题，不假装成功。失效选择不擅自换模型。
 
 使用 media_models list 查询真实能力、choices 查询已有选择、select 按用户明确要求更换模型与参数。不要编造模型。media_job 支持项目内 reference_paths、会话图片 input_attachment_ids、mask_path。使用 media_import 导入用户在当前对话发来的图片、视频、音频附件，或工作区路径；project_id 可省略。导入后使用返回的素材路径，所有临时认证及凭据由 Host 管理。用户说“把这个视频作为第二镜头”“导入这段音乐”时直接导入和保存方案，不要求手工导入。
 
@@ -33,7 +33,7 @@ description: 通过对话创作用户明确要求的独立视频、音乐与宣�
 
 ## 多媒体参考与请求恢复
 
-本地图片、视频、音频参考默认由 Host 编码为 Base64；使用 references_json 有序描述素材，URL 填 media_type，角色为 reference/first_frame/last_frame，首尾帧不可混普通图片。音乐参考仅影响视频，不自动额外生成音乐。能力要求公网 URL 或服务端明确拒绝 Base64 时，只询问缺失素材的 HTTPS 直链，不上传七牛或其他图床。已有 URL 或原任务 reference_id 直接复用，不重复导入或上传。明确未受理的 rejected 任务修正后生成新请求，保留旧记录；超时、断网、5xx 或已受理任务只恢复原任务，不自动重提。鉴权、余额、内容拒绝、限流不能一概要求改 URL。
+本地图片、视频、音频参考默认由 Host 编码为 Base64。创作者优先通过 `images`、`videos`、`audios` 提交统一素材数组，支持 URL、完整 MIME Data URL，以及带 `role` 或其他模板属性的对象；也可用 `references_file` 读取含公网 URL 的清单。不得根据模型名或上游域名选择协议字段，模型绑定的协议模板由管理员配置。`parameters_json` 只用于兼容其他模型参数；若重复提供统一素材字段，内容必须一致，否则先修正冲突。旧 `references_json` 仍可用于描述项目文件、会话附件、公网 URL 或当前任务的 `reference_id`；URL 填 `media_type`，图片角色可为 reference/first_frame/last_frame，首尾帧不可混普通图片。音乐参考仅影响视频，不自动额外生成音乐。能力要求公网 URL 或服务端明确拒绝 Base64 时，只询问缺失素材的 HTTPS 直链，不上传七牛或其他图床。已有 URL 或原任务 reference_id 直接复用，不重复导入或上传。明确未受理的 rejected 任务修正后生成新请求，保留旧记录；超时、断网、5xx 或已受理任务只恢复原任务，不自动重提。鉴权、余额、内容拒绝、限流不能一概要求改 URL。
 
 `references_json` 示例：`[{"path":"media-projects/<真实项目>/assets/ref.mp4","role":"reference"},{"url":"https://example.com/ref.jpg","media_type":"image/jpeg","role":"first_frame"}]`。每项仅一个来源：项目 path、会话 attachment_id、公网 url，或当前任务摘要返回的 reference_id（sha256）。使用新参数时不能再传 reference_paths/input_attachment_ids；不要输出 Base64、凭据或签名 URL。
 
@@ -42,6 +42,6 @@ description: 通过对话创作用户明确要求的独立视频、音乐与宣�
 
 通过 `media_job.references_file` 读取工作区 JSON 清单（与 `references_json`、旧参考输入互斥），例如 `source/reference-inputs.json`。清单每项包含 `url`、`media_type`，可带 `role` 与供应商附加属性。不能仅把目录路径写进 prompt。
 
-URL 模式保持公网直链原值；V6K 使用 `images/videos/audios`，云飞使用 `reference_images/reference_videos/reference_audios`。能力目录仅作提示，可选供应商参数由上游校验。相同语义字段冲突时明确报错，不覆盖素材。
+URL 与 Base64 的序列化方式由管理员模板决定。插件始终提交统一的 `images`、`videos`、`audios` 字段；模型能力目录仅作提示。相同语义字段冲突时在提交前明确报错，不覆盖素材。
 
 估价失败返回 `validation-failed` 草稿及原 ID，素材仍保存。修正参数时复用原任务，省略参考输入会继承项目意图；`[]` 不会清空已有素材，只有用户明确要求无参考创作时才使用 `clear_references`。不得因报错去掉图片或视频、更换模型或重建空参考任务。提交前核对返回的参考数量；准备参数、尝试发送和上游受理是不同状态，历史未记录时不得推断素材已经发送。

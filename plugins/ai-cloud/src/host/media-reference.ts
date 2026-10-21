@@ -29,6 +29,17 @@ export function referenceBytes(ref: MediaReference): Uint8Array | undefined {
   return bytes
 }
 
+function decodeBase64Reference(encoded: string): { mediaType: string; base64: string } {
+  if (!encoded.length || encoded.length > Math.ceil(MAX_REFERENCE_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) throw new Error('MEDIA_REFERENCE_INVALID')
+  const bytes = Buffer.from(encoded, 'base64')
+  if (bytes.length > MAX_REFERENCE_BYTES || bytes.toString('base64') !== encoded) throw new Error('MEDIA_REFERENCE_INVALID')
+  try {
+    return { mediaType: artifactFormat(bytes).mediaType, base64: encoded }
+  } catch {
+    throw new Error('MEDIA_REFERENCE_INVALID')
+  }
+}
+
 export function validateFrameReferences(refs: MediaReference[]): void {
   const images = refs.filter(ref => ref.mediaType.startsWith('image/'))
   const frames = images.filter(ref => ref.role === 'first_frame' || ref.role === 'last_frame')
@@ -51,10 +62,20 @@ export function normalizeMediaReferences<T extends { parameters?: MediaRequest['
         if ((url !== undefined) === (b64_json !== undefined)) throw new Error('MEDIA_REFERENCE_ONE_SOURCE_REQUIRED')
         const source = url ?? b64_json
         if (typeof source !== 'string') throw new Error('MEDIA_REFERENCE_INVALID')
-        const encoded = /^data:([^;]+);base64,(.*)$/.exec(source)
-        const mediaType = typeof media_type === 'string' ? media_type : encoded?.[1] ?? (kind === 'image' ? 'image/png' : kind === 'video' ? 'video/mp4' : 'audio/mpeg')
+        const encoded = /^data:([a-z0-9.+-]+\/[a-z0-9.+-]+)(?:;[^,]*)?;base64,([A-Za-z0-9+/]+={0,2})$/i.exec(source)
+        const declaredType = typeof media_type === 'string' ? media_type.toLowerCase() : encoded?.[1]?.toLowerCase()
+        let normalized: { mediaType: string; base64?: string; url?: string }
+        if (encoded || b64_json !== undefined || /^[A-Za-z0-9+/]+={0,2}$/.test(source)) {
+          const decoded = decodeBase64Reference(encoded?.[2] ?? source)
+          if (declaredType && declaredType !== decoded.mediaType && !(decoded.mediaType === 'video/mp4' && declaredType === 'video/quicktime')) throw new Error('MEDIA_REFERENCE_INVALID')
+          normalized = { mediaType: declaredType ?? decoded.mediaType, base64: decoded.base64 }
+        } else {
+          if (declaredType && !declaredType.startsWith(kind + '/')) throw new Error('MEDIA_REFERENCE_MIME_MISMATCH')
+          normalized = { mediaType: declaredType ?? (kind === 'image' ? 'image/png' : kind === 'video' ? 'video/mp4' : 'audio/mpeg'), url: publicReferenceURL(source) }
+        }
+        const mediaType = normalized.mediaType
         if (!mediaType.startsWith(kind + '/')) throw new Error('MEDIA_REFERENCE_MIME_MISMATCH')
-        const ref: MediaReference = { mediaType, properties, ...(typeof properties.role === 'string' ? { role: properties.role } : {}), ...(encoded || b64_json !== undefined ? { base64: encoded?.[2] ?? source } : { url: publicReferenceURL(source) }) }
+        const ref: MediaReference = { mediaType, properties, ...(typeof properties.role === 'string' ? { role: properties.role } : {}), ...(normalized.base64 !== undefined ? { base64: normalized.base64 } : { url: normalized.url! }) }
         referenceBytes(ref)
         return ref
       })
