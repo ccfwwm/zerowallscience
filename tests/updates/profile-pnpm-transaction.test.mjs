@@ -31,6 +31,30 @@ async function fixture(t) {
   return { root, profile, addition, retained }
 }
 
+for (const state of ['rolled-back', 'complete', 'preparation-failed', 'preparing']) test(`recovery cleans an abandoned ${state} candidate while preserving the active profile`, async t => {
+  const f = await fixture(t), before = await readFile(join(f.profile, 'package.json'))
+  const candidate = join(f.root, 'profiles/zerowall-pnpm-11111111-1111-1111-1111-111111111111')
+  const directory = join(f.profile, '.plugin-manager/package-transactions/22222222-2222-2222-2222-222222222222')
+  await mkdir(candidate, { recursive: true })
+  await mkdir(directory, { recursive: true })
+  await writeFile(join(candidate, 'package.json'), '{}')
+  await writeFile(join(directory, 'journal.json'), JSON.stringify({ state, pid: 2147483647, candidate, created: 1, items: [] }))
+  await recoverPnpmTransactions(f.profile)
+  await assert.rejects(lstat(candidate), { code: 'ENOENT' })
+  assert.deepEqual(await readFile(join(f.profile, 'package.json')), before)
+  assert.equal(JSON.parse(await readFile(join(directory, 'journal.json'))).state, state === 'preparing' ? 'preparation-failed' : state)
+})
+
+test('recovery preserves a candidate owned by a running preparation', async t => {
+  const f = await fixture(t)
+  const candidate = join(f.root, 'profiles/zerowall-pnpm-11111111-1111-1111-1111-111111111111')
+  const directory = join(f.profile, '.plugin-manager/package-transactions/22222222-2222-2222-2222-222222222222')
+  await mkdir(candidate, { recursive: true }); await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'journal.json'), JSON.stringify({ state: 'preparing', pid: process.pid, candidate, created: 1, items: [] }))
+  await assert.rejects(recoverPnpmTransactions(f.profile), /still running/)
+  assert((await lstat(candidate)).isDirectory())
+})
+
 test('an untrusted lifecycle ID cannot bypass the profile mutation lease', async t => {
   const f = await fixture(t)
   let ran = false

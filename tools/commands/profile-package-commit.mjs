@@ -6,11 +6,13 @@ const inside = (root, path) => { const child = relative(root, path); return chil
 export const packageCommitFiles = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'cordis.patch.yml', 'compatibility.json']
 export const packageLocked = error => ['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY'].includes(error?.code)
 const validId = id => /^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) && !id.split('/').some(part => part === '.' || part === '..')
+const validHistoryPath = name => /^\.zerowall\/(?:retired|inactive)-plugin-history\/[A-Za-z0-9@%._-]+-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u.test(name)
 const validName = name => typeof name === 'string' && (packageCommitFiles.includes(name)
   || name === '.zerowall/materialized-profile.json'
   || name === 'node_modules/.zerowall-dependencies'
   || /^node_modules\/(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(name) && validId(name.slice(13))
   || /^\.zerowall\/(?:install-sources|dependency-history)\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(name)
+  || validHistoryPath(name)
   || /^\.zerowall\/plugin-imports\/[A-Za-z0-9@%._-]+\.json$/u.test(name))
 
 export async function writePackageJournal(directory, state) {
@@ -49,7 +51,7 @@ async function physicalParents(profile, name) {
 
 /** The active modules directory, scopes and retained plugin roots never move.
  * New closures have unique stable namespaces; rollback touches only this list. */
-export async function commitPackagePaths({ profile, candidate, directory, state, ids, files = packageCommitFiles, includeDependencyRoot = false }) {
+export async function commitPackagePaths({ profile, candidate, directory, state, ids, files = packageCommitFiles, includeDependencyRoot = false, replaceInstallSources = [], historyPaths = [] }) {
   profile = resolve(profile); candidate = resolve(candidate)
   ids = [...new Set(ids)]
   if (ids.some(id => !validId(id))) throw new Error('Invalid package publication identity')
@@ -61,6 +63,17 @@ export async function commitPackagePaths({ profile, candidate, directory, state,
       if (!await exists(join(profile, '.zerowall', namespace, name))) names.push('.zerowall/' + namespace + '/' + name)
     }
   }
+  const sourceNames = [...new Set(replaceInstallSources)]
+  for (const name of sourceNames) {
+    if (typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(name)) throw new Error('Invalid package source publication path')
+    const local = '.zerowall/install-sources/' + name
+    if (!await exists(join(candidate, local))) throw new Error('Missing package source publication path: ' + local)
+    if (!names.includes(local)) names.push(local)
+  }
+  for (const local of [...new Set(historyPaths)]) {
+    if (!validHistoryPath(local) || !await exists(join(candidate, local))) throw new Error('Invalid package history publication path')
+    if (!names.includes(local)) names.push(local)
+  }
   names.push(...ids.map(id => 'node_modules/' + id))
   for (const id of ids) {
     const name = '.zerowall/plugin-imports/' + encodeURIComponent(id) + '.json'
@@ -71,8 +84,12 @@ export async function commitPackagePaths({ profile, candidate, directory, state,
     if (!packageCommitFiles.includes(name) && name !== '.zerowall/materialized-profile.json' && name !== 'node_modules/.zerowall-dependencies') throw new Error('Invalid package publication file')
     if (await exists(join(candidate, name)) || await exists(join(profile, name))) names.push(name)
   }
-  const links = []
-  for (const name of names) if (await exists(join(candidate, name))) await relocateTree(join(candidate, name), candidate, profile, links)
+  const links = [], historyNames = new Set([...new Set(historyPaths)])
+  // Retired-plugin history is rollback evidence. Its links intentionally keep
+  // the original target path even when the corresponding package is moved to
+  // the transaction's before/ tree, so do not treat those links as active
+  // dependency graph edges during relocation or post-commit validation.
+  for (const name of names) if (!historyNames.has(name) && await exists(join(candidate, name))) await relocateTree(join(candidate, name), candidate, profile, links)
   // All source targets were proved before rewriting any links. The rewritten
   // links become valid together when their physical roots are published.
   for (const link of links) {

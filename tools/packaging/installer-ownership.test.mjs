@@ -2,16 +2,16 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, readFile, writeFile, rm, cp, readdir, lstat } from 'node:fs/promises'
 import { createHash, generateKeyPairSync } from 'node:crypto'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, toNamespacedPath } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { writeInstallerOwnership } from './installer-ownership.mjs'
 import { signCatalog } from '../release/resource-catalog.mjs'
 
-async function signedPayload(root) {
+async function signedPayload(root, payloadPath = 'profile-runtime.asar.unpacked/node_modules/plugin/new.css') {
   const source = join(root, 'source'), target = join(root, 'target')
-  const payloadPath = 'profile-runtime.asar.unpacked/node_modules/plugin/new.css'
   const payload = 'new signed runtime'
   await mkdir(join(source, 'resources/offline-profile', dirname(payloadPath)), { recursive: true })
   await mkdir(join(source, 'resources/commands'), { recursive: true })
@@ -58,20 +58,38 @@ for (const primaryFailure of [false, true]) test(`cleanup access denial preserve
   await assert.rejects(lstat(join(target, 'resources/installer-recovery')), { code: 'ENOENT' })
 })
 
-test('moved installer files inherit Shell-readable destination ACLs without touching user or Python ACLs', { skip: process.platform !== 'win32' }, async () => {
+test('moved installer files including long customer paths inherit destination ACLs without touching user or Python ACLs', { skip: process.platform !== 'win32' }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-installer-acl-'))
   const acl = path => execFileSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand',
     Buffer.from(`$ErrorActionPreference='Stop'; $acl=Get-Acl -LiteralPath '${path.replaceAll("'", "''")}'; [pscustomobject]@{protected=$acl.AreAccessRulesProtected;sddl=$acl.Sddl}|ConvertTo-Json -Compress`, 'utf16le').toString('base64')], { windowsHide: true, encoding: 'utf8' }).trim()
   try {
-    const { source, target } = await signedPayload(root)
+    const longPath = 'profile-runtime.asar.unpacked/node_modules/dsh-ppt-maker/skills/ppt-maker/reference/design_system/promotion/silver-gray-luxury-magazine/design.md'
+    const { source, target } = await signedPayload(root, longPath)
+    const stagedLongPath = join(target, 'resources/installer-recovery/stage/resources/offline-profile', longPath)
+    assert(stagedLongPath.length > 260, 'Regression must exercise the customer MAX_PATH failure')
     await writeFile(join(source, 'resources/icon.ico'), 'native icon bytes')
     await writeInstallerOwnership(source)
     const sid = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value'], { windowsHide: true, encoding: 'utf8' }).trim()
-    for (const local of ['app.exe', 'resources/icon.ico']) execFileSync('icacls.exe', [join(source, local), '/inheritance:r', '/grant:r', `*${sid}:(F)`], { windowsHide: true, stdio: 'pipe' })
+    const incoming = ['app.exe', 'resources/icon.ico', 'resources/offline-profile/' + longPath]
+    for (const local of incoming) execFileSync('icacls.exe', [toNamespacedPath(join(source, local)), '/inheritance:r', '/grant:r', `*${sid}:(F)`], { windowsHide: true, stdio: 'pipe' })
     const python = acl(join(target, 'Python/python.exe')), user = acl(join(target, 'resources/user.txt'))
     assert.equal(JSON.parse(acl(join(source, 'app.exe'))).protected, true)
-    execFileSync(process.execPath, [resolve('tools/commands/installer-copy-files.mjs'), source, target, '--move-source'], { windowsHide: true, stdio: 'pipe' })
-    for (const local of ['app.exe', 'resources/icon.ico']) {
+    // Record the native tool boundary: this machine has LongPathsEnabled=1,
+    // while customer installations must also work without that opt-in.
+    const preload = join(root, 'record-acl.mjs'), invocation = join(root, 'acl-argument.txt')
+    await writeFile(preload, `import childProcess from 'node:child_process'
+import { syncBuiltinESMExports } from 'node:module'
+import { writeFileSync } from 'node:fs'
+const execute = childProcess.execFileSync
+childProcess.execFileSync = function (file, args, options) {
+  if (file === 'icacls.exe') writeFileSync(${JSON.stringify(invocation)}, args[0])
+  return execute.call(this, file, args, options)
+}
+syncBuiltinESMExports()
+`)
+    execFileSync(process.execPath, ['--import', pathToFileURL(preload).href, resolve('tools/commands/installer-copy-files.mjs'), source, target, '--move-source'], { windowsHide: true, stdio: 'pipe' })
+    assert.equal(await readFile(invocation, 'utf8'), toNamespacedPath(join(target, 'resources/installer-recovery/stage')))
+    for (const local of incoming) {
       const installed = JSON.parse(acl(join(target, local)))
       assert.equal(installed.protected, false)
       assert.match(installed.sddl, /\(A;[^)]*ID;/u)
@@ -79,6 +97,31 @@ test('moved installer files inherit Shell-readable destination ACLs without touc
     assert.equal(acl(join(target, 'Python/python.exe')), python)
     assert.equal(acl(join(target, 'resources/user.txt')), user)
   } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+test('a genuine ACL failure restores the old installation and permits a clean retry', { skip: process.platform !== 'win32' }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-installer-acl-rollback-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const { source, target } = await signedPayload(root)
+  const preload = join(root, 'deny-acl.mjs'), result = join(root, 'result.ini')
+  await writeFile(preload, `import childProcess from 'node:child_process'
+import { syncBuiltinESMExports } from 'node:module'
+const execute = childProcess.execFileSync
+childProcess.execFileSync = function (file, ...args) {
+  if (file === 'icacls.exe') throw Object.assign(new Error('Injected native ACL denial'), { code: 'EPERM' })
+  return execute.call(this, file, ...args)
+}
+syncBuiltinESMExports()
+`)
+  const args = [resolve('tools/commands/installer-copy-files.mjs'), source, target, '--result', result]
+  assert.throws(() => execFileSync(process.execPath, ['--import', pathToFileURL(preload).href, ...args], { windowsHide: true, stdio: 'pipe' }), /Injected native ACL denial/u)
+  assert.match(await readFile(result, 'utf16le'), /Phase=transaction-staging\r?\nCode=EPERM\r?\n/u)
+  assert.match(await readFile(result, 'utf16le'), /Rollback=restored\r?\n/u)
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'old application')
+  assert.equal(await readFile(join(target, 'Python/python.exe'), 'utf8'), 'user Python')
+  assert.equal(await readFile(join(target, 'resources/user.txt'), 'utf8'), 'user resource')
+  execFileSync(process.execPath, args, { windowsHide: true, stdio: 'pipe' })
+  assert.equal(await readFile(join(target, 'app.exe'), 'utf8'), 'new application')
 })
 
 test('installer preflight validates payload without changing the existing application, and persists failures', async () => {

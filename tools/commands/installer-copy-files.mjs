@@ -1,7 +1,7 @@
 import nativeFs from 'node:fs'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, toNamespacedPath } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { execFileSync } from 'node:child_process'
 
@@ -402,9 +402,9 @@ try {
   }, 4)
   // Same-volume moves preserve the elevated extractor's protected DACL.
   // Reset only incoming owned files, under the checked transaction stage,
-  // so Explorer can read EXE/icon resources through normal inheritance.
+  // using extended paths so deep payloads do not require LongPathsEnabled.
   if (process.platform === 'win32') {
-    execFileSync('icacls.exe', [join(recovery, 'stage'), '/reset', '/T', '/Q'], { windowsHide: true, stdio: 'pipe' })
+    execFileSync('icacls.exe', [toNamespacedPath(join(recovery, 'stage')), '/reset', '/T', '/Q'], { windowsHide: true, stdio: 'pipe' })
   }
   log('transaction-stage-verified')
   phase = 'transaction-commit'

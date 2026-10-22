@@ -79,5 +79,11 @@ export async function openQiniuStore(root) {
     const cdn = new qiniu.cdn.CdnManager(mac)
     return new Promise((accept, reject) => cdn.refreshUrls(keys.map(key => `${base}/${key}`), (_error, _body, info) => info?.statusCode >= 200 && info.statusCode < 300 ? accept() : reject(new Error(`CDN refresh HTTP ${info?.statusCode ?? 'network error'}`))))
   }
-  return { base, exists, upload, verify, refresh }
+  async function remove(key) {
+    return new Promise((accept, reject) => manager.delete(env.QINIU_BUCKET, key, (_error, _body, info) => {
+      if (info?.statusCode === 200 || info?.statusCode === 612) accept({ key, deleted: info.statusCode === 200 })
+      else reject(new Error(`Qiniu delete ${key}: HTTP ${info?.statusCode ?? 'network error'}`))
+    }))
+  }
+  return { base, exists, upload, verify, refresh, remove }
 }

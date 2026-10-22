@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'n
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
-import { archiveProfileCandidate, migrateOfflineProfileLinks, pluginIdentity, prepareProfileCandidate, prepareOfflineCandidate, profileCarrier, readOfflineReceipt, verifiedGeneration, verifyProfileCarriers } from './offline-profile.mjs'
+import { archiveProfileCandidate, discardProfileCandidate, migrateOfflineProfileLinks, pluginIdentity, prepareProfileCandidate, prepareOfflineCandidate, profileCarrier, readOfflineReceipt, verifiedGeneration, verifyProfileCarriers } from './offline-profile.mjs'
 import { satisfiesInstalledPackageRange, satisfiesPackageRange } from './package-range.mjs'
 import { renameProfile } from './profile-rename.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
@@ -14,6 +14,7 @@ import { archiveHistoricalPluginProvenance, verifyHistoricalPluginImports } from
 import { acquireProfileMutation } from './profile-mutation-lock.mjs'
 import { pluginVerificationMode, verifyPluginDocument } from './plugin-verification.mjs'
 import { commitPackagePaths, restorePackagePaths } from './profile-package-commit.mjs'
+import { recoverPnpmTransactions } from './profile-pnpm-transaction.mjs'
 import { enqueuePendingPlugin, readPendingPlugin, writePendingPlugin, listPendingPlugins, targetLocked } from './profile-pending.mjs'
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
@@ -39,7 +40,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
   const startHost = async options => { await startHostCallback(options); hostNeedsRestart = false }
   const exclusive = task => { const result = queue.then(async () => {
     const release = await acquireProfileMutation(active)
-    try { return await task() } finally { await release() }
+    try { return await task() } finally {
+      // An unfinished candidate is diagnostic history, never another active
+      // profile. Cleanup failure cannot veto the accepted profile or startup.
+      try { await archiveProfileCandidate(home, join(profiles, 'zerowall'), 'unfinished-candidate') }
+      catch (error) { await atomic(join(root, 'profile-cleanup.json'), { pending: true, error: error.message }).catch(() => {}) }
+      await release()
+    }
   }); queue = result.catch(() => {}); return result }
   const selectionTransaction = async task => {
     const previousText = await readFile(selectionFile, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error })
@@ -370,6 +377,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
   }
 
   async function recover() {
+    await recoverPnpmTransactions(active)
     const pending = await json(journal).catch(error => {
       if (error.code === 'ENOENT') return undefined
       throw error
@@ -412,11 +420,15 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     const expected = defaultPlugins.filter(id => !RETIRED_PLUGIN_IDS.has(id) && !selection.removed.has(id) && !selection.disabled.has(id) && !manifest.zerowall?.disabledPlugins?.includes(id))
     const missing = []
     for (const id of expected) {
-      const installed = await packageVersion(active, id)
       const seed = document.plugins.find(entry => entry.id === id)
+      // Shared-runtime fallback is not a profile shadow. Only a real profile
+      // package can require core-shadow migration on the next launch.
+      const installed = seed?.core && !selection.pinned[id]
+        ? await json(join(active, 'node_modules', id, 'package.json')).catch(error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error })
+        : await packageVersion(active, id)
       if (seed?.core && !selection.pinned[id]) {
         if (installed?.version && bundledPlugins.some(item => item.id === id && item.managed !== false)
-          && compareVersions(installed.version, seed.version) < 0) missing.push(id)
+          && compareVersions(installed.version, seed.version) <= 0) missing.push(id)
         continue
       }
       if (!installed && seed?.core && selection.pinned[id] === seed.version) continue
@@ -452,6 +464,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       const activation = await activate(result.candidate, {
         operation: 'offline-repair', buildId: document.buildId, offlineGeneration: result.digest,
         repairedIds, repairedDependencyIds, packageIds: repairedIds,
+        replaceInstallSources: result.replacedInstallSources,
+        historyPaths: result.archivedHistoryPaths,
       })
       await atomic(receiptPath, { state: 'complete', architecture: 7, buildId: document.buildId, changed: result.changed, ...activation })
       return { repaired: true, architecture: 7, changed: result.changed }
@@ -738,7 +752,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     let committed = false
     try {
       await stopHost()
-      await commitPackagePaths({ profile: active, candidate, directory, state, ids: [...ids], includeDependencyRoot: metadata.operation === 'offline-repair' })
+      await commitPackagePaths({ profile: active, candidate, directory, state, ids: [...ids], includeDependencyRoot: metadata.operation === 'offline-repair', replaceInstallSources: metadata.replaceInstallSources, historyPaths: metadata.historyPaths })
       committed = true
       await startHost({ baseline, ids: affectedIds, affectedEntries: [...previousEntries, ...await affectedPluginEntries(affectedIds, [active])] })
       // The global journal is the commit decision. Until it is durable recovery
@@ -747,6 +761,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       await atomic(join(directory, 'journal.json'), { ...state, state: 'complete' }).catch(() => {})
       let historyPending = false
       await recordPluginGeneration({ ...metadata, packageIds: [...ids] }, backup).catch(() => { historyPending = true })
+      await discardProfileCandidate(home, candidate).catch(async error => {
+        await atomic(join(root, 'profile-cleanup.json'), { pending: true, error: error.message }).catch(() => {})
+      })
       return { ...metadata, restarted: true, rollbackSupported: !historyPending, ...(historyPending ? { historyPending } : {}) }
     } catch (error) {
       const recoveryErrors = []

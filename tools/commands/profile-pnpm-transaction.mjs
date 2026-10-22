@@ -30,7 +30,17 @@ export async function recoverPnpmTransactions(profile, { lifecycleId } = {}) {
   // A single CLI operation can invoke pnpm more than once. Unwind the newest
   // tree first, exactly as the caller's runtime-validation rollback does.
   for (const { directory, state } of records.sort((a, b) => b.state.created - a.state.created)) {
-    if (state.cleanupPending) await cleanupTransaction(profile, directory, state, state.state)
+    if (['complete', 'rolled-back', 'preparation-failed'].includes(state.state)) {
+      await cleanupTransaction(profile, directory, state, state.state)
+      continue
+    }
+    if (state.state === 'preparing') {
+      try { process.kill(state.pid, 0); throw new Error('Another profile package transaction is still running') }
+      catch (error) { if (error.code !== 'ESRCH') throw error }
+      await record(directory, { ...state, state: 'preparation-failed' })
+      await cleanupTransaction(profile, directory, state, 'preparation-failed')
+      continue
+    }
     if (!['committing', 'awaiting-validation'].includes(state.state)) continue
     if (state.state === 'awaiting-validation' && lifecycleId && state.lifecycleId === lifecycleId) continue
     if (state.state === 'awaiting-validation' && transactionId.test(state.lifecycleId ?? '')) {

@@ -46,6 +46,9 @@ for (const layout of [2, 3]) test(`desktop upgrade archives a pre-rename media a
   } }
   await writeFile(join(oldRoot, 'package.json'), JSON.stringify(oldManifest))
   await writeFile(join(oldRoot, 'index.js'), 'old adaptation bytes')
+  const legacyResolution = join(active, '.zerowall/install-sources/resolution-legacy-media/node_modules', old)
+  await mkdir(dirname(legacyResolution), { recursive: true })
+  await symlink(oldRoot, legacyResolution, process.platform === 'win32' ? 'junction' : 'dir')
   const manifest = JSON.parse(await readFile(join(active, 'package.json')))
   manifest.dependencies = { [old]: 'link:./node_modules/' + old }
   manifest.dsh.profile.bundles.push(old)
@@ -74,7 +77,13 @@ for (const layout of [2, 3]) test(`desktop upgrade archives a pre-rename media a
     stopHost: async () => {}, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
   assert.equal((await manager.repairOffline(f.source)).repaired, true)
   await assert.rejects(lstat(oldRoot), { code: 'ENOENT' })
+  await assert.rejects(lstat(legacyResolution), { code: 'ENOENT' })
   await assert.rejects(lstat(join(active, '.zerowall/plugin-imports', encodeURIComponent(old) + '.json')), { code: 'ENOENT' })
+  const historyRoot = join(active, '.zerowall/retired-plugin-history'), historyEntries = await readdir(historyRoot)
+  assert.equal(historyEntries.length, 1)
+  const archivedResolution = join(historyRoot, historyEntries[0], 'install-sources/resolution-legacy-media/node_modules', old)
+  assert((await lstat(archivedResolution)).isSymbolicLink())
+  assert.equal(resolve(dirname(archivedResolution), await readlink(archivedResolution)), oldRoot)
   assert.equal(JSON.parse(await readFile(join(active, 'node_modules', next, 'package.json'))).name, next)
   assert.equal(await readFile(selectionFile, 'utf8'), initializedSelection)
   assert.equal(await readFile(join(active, 'settings.json'), 'utf8'), settings)
@@ -372,6 +381,9 @@ for (const layout of [2, 3]) test(`desktop upgrade removes an undeclared older c
   const directory = join(active, 'node_modules', id)
   await mkdir(directory, { recursive: true })
   await writeFile(join(directory, 'package.json'), JSON.stringify({ name: id, version: '0.1.0' }))
+  const oldResolution = join(active, '.zerowall/install-sources/resolution-old-core/node_modules', id)
+  await mkdir(dirname(oldResolution), { recursive: true })
+  await symlink(directory, oldResolution, process.platform === 'win32' ? 'junction' : 'dir')
   const manifest = JSON.parse(await readFile(join(active, 'package.json')))
   // A physical leftover can shadow the desktop runtime even after its old
   // dependency declaration was removed by initialization.
@@ -384,9 +396,40 @@ for (const layout of [2, 3]) test(`desktop upgrade removes an undeclared older c
   await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify({ pinned: {} }))
   assert.equal((await f.manager.repairOffline(f.source)).repaired, true)
   await assert.rejects(readFile(join(directory, 'package.json')), { code: 'ENOENT' })
+  await assert.rejects(lstat(oldResolution), { code: 'ENOENT' })
+  const historyRoot = join(active, '.zerowall/inactive-plugin-history'), historyEntries = await readdir(historyRoot)
+  assert.equal(historyEntries.length, 1)
+  const archivedResolution = join(historyRoot, historyEntries[0], 'install-sources/resolution-old-core/node_modules', id)
+  assert((await lstat(archivedResolution)).isSymbolicLink())
   assert.equal(JSON.parse(await readFile(join(active, 'package.json'))).dependencies[id], undefined)
   assert.equal((await f.manager.repairOffline(f.source)).repaired, false)
 })
+for (const layout of [2, 3]) test(`migration removes equal-version core shadows with nested links to a retired base in layout ${layout}`, async t => {
+  const f = await fixture(t), active = join(f.home, 'profiles/web'), base = defaults[0], environment = defaults[1]
+  f.unsigned.plugins[0].core = true
+  f.unsigned.plugins[1].core = true
+  await writeFile(join(f.source, 'receipt.json'), JSON.stringify(signCatalog(f.unsigned, f.pair.privateKey, 'test')))
+  for (const [id, version] of [[base, '0.1.0'], [environment, '0.2.0']]) {
+    const root = join(active, 'node_modules', id)
+    await mkdir(root, { recursive: true })
+    await writeFile(join(root, 'package.json'), JSON.stringify({ name: id, version }))
+  }
+  const nested = join(active, 'node_modules', environment, 'node_modules', base)
+  await mkdir(dirname(nested), { recursive: true })
+  await symlink(join(active, 'node_modules', base), nested, process.platform === 'win32' ? 'junction' : 'dir')
+  const file = join(active, 'package.json'), manifest = JSON.parse(await readFile(file))
+  manifest.zerowall.profileLayout = layout
+  await writeFile(file, JSON.stringify(manifest))
+  const manager = createResourceManager({ ...f, defaultPlugins: defaults, runtimeModules: join(f.source, 'modules'),
+    stopHost: async () => {}, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
+  const result = await manager.repairOffline(f.source)
+  assert.equal(result.repaired, true)
+  for (const id of [base, environment]) await assert.rejects(lstat(join(active, 'node_modules', id)), { code: 'ENOENT' })
+  assert.equal(JSON.parse(await readFile(join(active, 'node_modules', defaults[2], 'package.json'))).version, '0.2.0')
+  assert.equal((await manager.repairOffline(f.source)).repaired, false)
+  await assert.rejects(lstat(join(f.home, 'profiles/zerowall')), { code: 'ENOENT' })
+})
+
 test('candidate health failure restores the previous profile and records the failed repair', async t => {
   const f = await fixture(t), file = join(f.home, 'profiles/web/package.json')
   const before = await readFile(file)
