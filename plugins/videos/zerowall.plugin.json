@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-videos",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "applicationVersion": "8.4.2",
   "desktop": {
     "min": "8.4.0"
