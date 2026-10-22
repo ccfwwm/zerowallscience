@@ -370,7 +370,7 @@ describe('ZeroWall Science Electron', () => {
 
   }, 300_000)
 
-  it('keeps the custom chrome clear and opens WeChat and right sidebar controls', async () => {
+  it('keeps the custom chrome clear with the compact footer, WeChat settings and right sidebar controls', async () => {
     const controls = await page.locator('#zerowall-window-controls').boundingBox()
     expect(controls).not.toBeNull()
     expect(controls!.x).toBeLessThan(8)
@@ -383,22 +383,21 @@ describe('ZeroWall Science Electron', () => {
       buttons.map(button => getComputedStyle(button).getPropertyValue('-webkit-app-region')))
     expect(chromeButtonRegions).toEqual(['no-drag', 'no-drag', 'no-drag'])
 
-    const github = page.getByRole('link', { name: 'GitHub 项目', exact: true })
-    await github.waitFor({ state: 'visible' })
-    expect(await github.getAttribute('href')).toBe('https://github.com/ccfwwm/zerowallscience')
-    expect(await github.locator('[data-zerowall-footer-status-dot]').count()).toBe(0)
+    expect(await page.getByRole('link', { name: 'GitHub 项目', exact: true }).count()).toBe(0)
+    expect(await page.getByRole('button', { name: /^微信 WebChat/ }).count()).toBe(0)
 
     const account = page.getByRole('button', { name: '登录AI平台', exact: true })
-    const wechat = page.getByRole('button', { name: /^微信 WebChat/ })
-    await account.waitFor({ state: 'visible' })
-    await wechat.waitFor({ state: 'visible' })
-    for (const action of [github, wechat, account]) {
+    const update = page.locator('button[data-update]')
+    const settingsLauncher = page.getByRole('button', { name: '设置', exact: true })
+    for (const action of [account, update, settingsLauncher]) {
+      await action.waitFor({ state: 'visible' })
       expect((await action.boundingBox())?.height).toBe(36)
+      expect(await action.evaluate(element => getComputedStyle(element).borderRadius)).toBe('8px')
+      expect((await action.locator('svg').boundingBox())?.width).toBe(18)
     }
+    expect((await page.locator('[data-zerowall-footer-action]').allTextContents()).map(text => text.trim())).toEqual(['登录AI平台', '更新', '设置'])
     expect(await account.locator('[data-zerowall-footer-status-dot]').count()).toBe(1)
-    expect(await wechat.locator('[data-zerowall-footer-status-dot]').count()).toBe(1)
     expect(await account.getAttribute('data-connection')).toMatch(/^(online|waiting|offline)$/)
-    expect(await wechat.getAttribute('data-connection')).toMatch(/^(online|waiting|offline)$/)
 
     const toggle = page.locator('#zerowall-window-controls [data-action="toggle-maximize"]')
     await expect.poll(async () => await toggle.getAttribute('aria-label')).toBe('最大化')
@@ -407,8 +406,10 @@ describe('ZeroWall Science Electron', () => {
     await toggle.click()
     await expect.poll(async () => await toggle.getAttribute('aria-label')).toBe('最大化')
 
-    await wechat.click()
+    await settingsLauncher.click()
     const settings = page.getByRole('dialog', { name: '设置' })
+    expect(await settings.getByRole('button', { name: '插件配置', exact: true }).count()).toBe(0)
+    await settings.getByRole('button', { name: 'WeChat', exact: true }).click()
     // Opening WeChat starts the user-requested QR flow. A network/provider
     // failure is still a visible, actionable state in credential-free smoke;
     // it must not be mistaken for a blank or unloaded dialog.

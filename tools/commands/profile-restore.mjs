@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, realpath, rm, symlink } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pluginIdentity } from './offline-profile.mjs'
 import { RETIRED_PLUGIN_IDS } from './retired-plugins.mjs'
+import { verifiedInlinedDependencies } from './inlined-dependencies.mjs'
 import { archiveHistoricalPluginProvenance, importHistoricalPlugin, restoreHistoricalPluginSnapshot, verifyCurrentRuntimeDependency } from './historical-plugin.mjs'
 
 const inside = (root, path) => { const child = relative(root, path); return child === '' || child !== '..' && !child.startsWith('..' + sep) && !isAbsolute(child) }
@@ -64,7 +65,9 @@ export async function restorePackageClosure({ candidate, previousProfile, packag
       if (info) { await mkdir(dirname(previous), { recursive: true }); await import('node:fs/promises').then(({ rename }) => rename(destination, previous)) }
     }
     await cp(source, destination, { recursive: true, dereference: true, filter: path => relative(source, path) !== 'node_modules' })
+    const inlined = await verifiedInlinedDependencies(destination, manifest)
     for (const id of Object.keys(dependencies ?? {})) {
+      if (inlined.has(id)) continue
       const optional = Boolean(manifest.optionalDependencies?.[id] || manifest.peerDependenciesMeta?.[id]?.optional)
       if (id.startsWith('@deepseek-ai/')) {
         await verifyCurrentRuntimeDependency({ id, range: dependencies[id], runtimeModules, target, optional })

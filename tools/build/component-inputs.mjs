@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
 import { parse } from 'yaml'
+import { isTestInputPath } from './build-graph-lib.mjs'
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
@@ -67,7 +68,7 @@ export async function sharedSourceInputs(root, sourceRoot) {
     const rel = relative(root, path).replaceAll('\\', '/')
     if (rel.startsWith('../')) throw new Error('Build import escapes repository')
     if (/(?:^|\/)(?:lib|dist|node_modules)\//u.test(rel)) return
-    if (!path.startsWith(sourceRoot + '\\') && !path.startsWith(sourceRoot + '/')) inputs.add(rel)
+    if ((!path.startsWith(sourceRoot + '\\') && !path.startsWith(sourceRoot + '/')) || isTestInputPath(rel)) inputs.add(rel)
     const source = await readFile(path, 'utf8')
     const imports = [...source.matchAll(/(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)['"]([^'"]+)['"]/gu)].map(match => match[1])
     for (const specifier of imports) {
@@ -87,8 +88,8 @@ export async function sharedSourceInputs(root, sourceRoot) {
       if (error.code === 'ENOENT') return []
       throw error
     })) {
-      if (['node_modules', 'lib', 'dist', 'test', 'tests', '__tests__'].includes(entry.name)) continue
       const path = join(directory, entry.name)
+      if (['node_modules', 'lib', 'dist'].includes(entry.name) || isTestInputPath(relative(sourceRoot, path))) continue
       if (entry.isDirectory()) await sourceEntries(path)
       else if (/\.[cm]?[jt]sx?$/u.test(entry.name) && !/\.(?:test|spec)\./u.test(entry.name)) await trace(path)
     }

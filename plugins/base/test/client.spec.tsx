@@ -29,6 +29,10 @@ describe('desktop update button', () => {
     render(<UpdateButton wide t={translator()} />)
     fireEvent.click(screen.getByRole('button', { name: '检查应用更新' }))
     expect(await screen.findByRole('dialog', { name: '应用更新' })).toBeTruthy()
+    const website = screen.getByRole('link', { name: '访问官网' })
+    expect(website.getAttribute('href')).toBe('https://zerowallscience.org/')
+    expect(website.getAttribute('target')).toBe('_blank')
+    expect(website.getAttribute('rel')).toBe('noopener noreferrer')
     await waitFor(() => expect(desktop.checkForUpdates).toHaveBeenCalledOnce())
   })
 

@@ -7,6 +7,7 @@ import { historicalPackage } from './package-history.mjs'
 import { preparePublishPackage } from './publish-package.mjs'
 import { offlineFiles } from '../commands/offline-profile.mjs'
 import { matchesHistoricalDependencyLock, sharedSourceInputs } from '../build/component-inputs.mjs'
+import { isTestInputPath } from '../build/build-graph-lib.mjs'
 import { root, stageRoot, contract } from '../build/paths.mjs'
 
 /** Bootstrap an empty component cache from an immutable release. Prove its
@@ -58,6 +59,9 @@ export async function restorePublishedOutput(source, { restore = true } = {}) {
   const shared = [...await sharedSourceInputs(root, source), 'tools/plugins/tsdown.ts', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json']
   for (const path of new Set([...own, ...shared])) {
     if (!path) continue
+    // Non-distributed tests cannot alter compiled output. Any test shipped in
+    // the archive or explicitly imported by production remains part of proof.
+    if (isTestInputPath(path) && !shared.includes(path) && !files.has('package/' + path.slice(sourcePath.length + 1))) continue
     // This Windows installation helper is neither compiled nor distributed
     // by the adapter's manifest. A PATH ownership fix cannot change its JS.
     if (!firstParty && path.endsWith('/scripts/install.ps1') && !files.has('package/scripts/install.ps1') && !Object.values(manifest.scripts ?? {}).some(script => script.includes('install.ps1'))) continue

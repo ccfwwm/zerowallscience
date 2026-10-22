@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowUpCircle, CheckCircle2, Download, RefreshCw, X } from 'lucide-react'
+import { ArrowUpCircle, CheckCircle2, Download, ExternalLink, RefreshCw, X } from 'lucide-react'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from './locales.js'
@@ -78,7 +78,7 @@ export function UpdateButton(props: Props) {
   }
 
   return <>
-    <button className={`${css.trigger} ${hasAnyUpdate ? css.triggerAvailable : ''}`} type="button" onClick={openUpdates} title={triggerLabel} aria-label={triggerLabel} data-update={status.phase}>
+    <button className={`${css.trigger} ${hasAnyUpdate ? css.triggerAvailable : ''}`} data-zerowall-footer-action type="button" onClick={openUpdates} title={triggerLabel} aria-label={triggerLabel} data-update={status.phase}>
       <ArrowUpCircle size={18} aria-hidden="true" />{props.wide && <span>{hasAnyUpdate ? triggerLabel : props.t('update.nav')}</span>}
       {hasAnyUpdate && <i aria-hidden="true" />}
     </button>
@@ -97,7 +97,7 @@ export function UpdateButton(props: Props) {
           {status.phase === 'downloading' && <div className={css.progress} aria-label={props.t('update.progress')}><span style={{ width: `${status.percent ?? 0}%` }} /></div>}
           <dl><div><dt>{props.t('update.current')}</dt><dd>{status.currentVersion || '—'}</dd></div>{hasUpdate && status.version && <div><dt>{props.t('update.latest')}</dt><dd>{status.version}</dd></div>}</dl>
         </div>
-        <footer><button className={css.secondary} type="button" onClick={() => setOpen(false)}>{props.t('common.close')}</button>{hasResourceUpdate && <button className={css.primary} type="button" onClick={openResources}>{props.t('update.viewResources')}</button>}{(hasUpdate || !hasResourceUpdate) && <button className={css.primary} type="button" onClick={() => void act()} disabled={busy || status.phase === 'unavailable'}>{actionLabel(status, props.t)}</button>}</footer>
+        <footer><a className={css.website} href="https://zerowallscience.org/" target="_blank" rel="noopener noreferrer"><ExternalLink size={15} aria-hidden="true" />{props.t('update.website')}</a><button className={css.secondary} type="button" onClick={() => setOpen(false)}>{props.t('common.close')}</button>{hasResourceUpdate && <button className={css.primary} type="button" onClick={openResources}>{props.t('update.viewResources')}</button>}{(hasUpdate || !hasResourceUpdate) && <button className={css.primary} type="button" onClick={() => void act()} disabled={busy || status.phase === 'unavailable'}>{actionLabel(status, props.t)}</button>}</footer>
       </section>
     </div>, document.body)}
   </>

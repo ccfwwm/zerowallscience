@@ -4,6 +4,7 @@ import { NS } from '../shared/client-helpers.js'
 
 /** Simplified Chinese is the product default and the key-set source of truth. */
 export const zh = {
+  'update.website': '访问官网',
   'account.balancePromptTitle': '账户余额不足',
   'account.balancePrompt': '当前余额已用完，充值后即可继续使用云端模型。你可以稍后处理。',
   'account.later': '稍后再说',
@@ -790,6 +791,7 @@ export type ZeroWallKey = keyof typeof zh
 
 /** English dictionary, kept key-identical to the Chinese source of truth. */
 export const en: Record<ZeroWallKey, string> = {
+  'update.website': 'Visit website',
   'account.balancePromptTitle': 'Your balance is empty',
   'account.balancePrompt': 'Top up to continue using cloud models. You can dismiss this reminder and return later.',
   'account.later': 'Later',

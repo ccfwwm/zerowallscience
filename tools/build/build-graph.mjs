@@ -4,7 +4,7 @@ import { copyFile, lstat, mkdir, readFile, readdir, rm, stat, writeFile } from '
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { contract, root, stageRoot } from './paths.mjs'
-import { fingerprintInputs, isContained } from './build-graph-lib.mjs'
+import { fingerprintInputs, isContained, matchesCompilationInputs } from './build-graph-lib.mjs'
 import { packageSource, resourceSource } from './layout.mjs'
 import { deterministicArchive } from '../release/deterministic-archive.mjs'
 import { storeAndLink } from './content-store.mjs'
@@ -232,7 +232,8 @@ async function taskDefinition(id, taskArgs = []) {
 async function runTask(id, extra = []) {
   const definition = await taskDefinition(id, extra)
   const startedMs = Date.now()
-  const input = await fingerprintInputs({ root, inputs: definition.inputPaths, dshCommit: definition.dshCommit, dependencyVersions: definition.dependencies, dependencyLockHash: definition.dependencyLockHash })
+  const excludeTests = /^(?:plugin-build:|package-build:)/u.test(id) || ['runtime', 'desktop'].includes(id)
+  const input = await fingerprintInputs({ root, inputs: definition.inputPaths, dshCommit: definition.dshCommit, dependencyVersions: definition.dependencies, dependencyLockHash: definition.dependencyLockHash, excludeTests })
   const file = await receiptPath(id)
   const releaseLock = await acquireLock(definition.lockName)
   const startedAt = new Date().toISOString()
@@ -246,7 +247,10 @@ async function runTask(id, extra = []) {
     return { id, status: 'cached', fingerprint: input.fingerprint, builtAt: receipt.finishedAt }
   }
   const outputs = await outputIntegrity(definition.outputs).catch(() => undefined)
-  if (!process.argv.includes('--force') && prior?.status === 'success' && prior.fingerprint === input.fingerprint && outputs && JSON.stringify(outputs) === JSON.stringify(prior.outputIntegrity)) {
+  const inputMatches = prior?.fingerprint === input.fingerprint
+  const migratedInputs = !inputMatches && excludeTests && matchesCompilationInputs(prior, input)
+  if (!process.argv.includes('--force') && prior?.status === 'success' && (inputMatches || migratedInputs) && outputs && JSON.stringify(outputs) === JSON.stringify(prior.outputIntegrity)) {
+    if (migratedInputs) await writeJson(file, { ...prior, ...input, inputPolicyUpdatedAt: new Date().toISOString() })
     console.log(`CACHE HIT ${id} ${input.fingerprint.slice(0, 12)} ${Date.now() - startedMs}ms; verified output SHA-256`)
     return { id, status: 'cached', fingerprint: input.fingerprint, builtAt: prior.finishedAt }
   }

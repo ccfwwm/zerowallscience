@@ -3,7 +3,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
 import { archiveProfileCandidate, migrateOfflineProfileLinks, pluginIdentity, prepareProfileCandidate, prepareOfflineCandidate, profileCarrier, readOfflineReceipt, verifiedGeneration, verifyProfileCarriers } from './offline-profile.mjs'
-import { satisfiesPackageRange } from './package-range.mjs'
+import { satisfiesInstalledPackageRange, satisfiesPackageRange } from './package-range.mjs'
 import { renameProfile } from './profile-rename.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
 import { copyProfileTree } from './profile-copy.mjs'
@@ -897,12 +897,22 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     await restorePluginGeneration(candidate, previous.profile, previous.packageIds, id)
     await normalizeComposition(candidate)
     const manifest = await json(join(candidate, 'package.json'))
+    const restoredIds = new Set(previous.packageIds ?? [id])
     for (const name of manifest.dsh?.profile?.bundles ?? []) {
       const item = await packageVersion(candidate, name)
+      const currentConsumer = await packageVersion(active, name)
       for (const [dependency, range] of Object.entries(item?.dependencies ?? {})) {
-        if (!(previous.packageIds ?? [id]).includes(dependency)) continue
+        if (!restoredIds.has(dependency)) continue
         const restored = await packageVersion(candidate, dependency)
-        if (!restored || !satisfiesPackageRange(restored.version, range)) throw new Error('PLUGIN_ROLLBACK_CONFLICT: ' + name + ' requires ' + dependency + '@' + range)
+        const currentDependency = await packageVersion(active, dependency)
+        // Transactions record the whole dependency closure, including unchanged
+        // adapted packages. Only changed requirements/resolutions can introduce
+        // a new conflict; retain the current generation's admitted relationships.
+        if (restored && restored.version === currentDependency?.version && range === currentConsumer?.dependencies?.[dependency]) continue
+        const reference = typeof range === 'string' && /^workspace:[~^]$/u.test(range)
+          ? await packageVersion(restoredIds.has(name) ? previous.profile : active, dependency)
+          : undefined
+        if (!restored || !satisfiesInstalledPackageRange(restored.version, range, reference?.version)) throw new Error('PLUGIN_ROLLBACK_CONFLICT: ' + name + ' requires ' + dependency + '@' + range)
       }
     }
     return activate(candidate, { operation: 'rollback', packageId: id, version: previous.version, rollback: true, packageIds: previous.packageIds }, 'rolled-back')

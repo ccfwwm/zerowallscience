@@ -19,6 +19,36 @@ function bridge() {
   return { resources, pythonLayers }
 }
 describe('local Extension Center', () => {
+  it.each(['profile', 'disabled', 'catalog'] as const)('hides composition packages from %s rows, counts, search and batch candidates', async source => {
+    const api = bridge()
+    const read = async (kind: string) => ({ kind, catalogStatus: 'checked', checkedAt: '', resources: kind === 'plugin' ? [
+      ...['core', 'science'].map(name => ({ id: `@zerowallscience/dsh-bundle-${name}`, name: `Hidden ${name}`, version: '2', installedVersion: source === 'catalog' ? undefined : '1', source, enabled: source !== 'disabled', updateAvailable: true })),
+      { id: 'normal-disabled', name: 'Normal disabled', version: '1', installedVersion: '1', source: 'disabled', enabled: false },
+      { id: 'normal-update', name: 'Normal update', version: '2', installedVersion: '1', source: 'profile', enabled: true, updateAvailable: true },
+    ] : [] })
+    api.resources.list.mockImplementation(read as any)
+    api.resources.check.mockImplementation(read as any)
+    const updatePlugins = vi.fn(async () => ({ taskId: 'batch' }))
+    const startJob = vi.fn(async () => ({ taskId: 'enable' }))
+    Object.assign(api.resources, { updatePlugins, startJob, getJob: vi.fn(async () => ({ taskId: 'done', status: 'succeeded' })) })
+    render(<ExtensionCenter {...{ t } as any} />)
+    await screen.findByText('Normal update', { selector: 'strong' })
+    await waitFor(() => expect(api.resources.check).toHaveBeenCalledTimes(3))
+    expect(screen.queryByText(/Hidden/)).toBeNull()
+    expect(screen.getByRole('button', { name: zh.filter_all }).textContent).toContain('2')
+    expect(screen.getByRole('button', { name: zh.filter_updates }).textContent).toContain('1')
+    fireEvent.change(screen.getByRole('textbox', { name: zh.search }), { target: { value: 'dsh-bundle' } })
+    expect(screen.queryByText(/Hidden/)).toBeNull()
+    expect(screen.getByText(zh.noMatches)).toBeTruthy()
+    fireEvent.change(screen.getByRole('textbox', { name: zh.search }), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: zh.filter_disabled }))
+    expect(screen.getByText('Normal disabled', { selector: 'strong' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: zh.enable }))
+    await waitFor(() => expect(startJob).toHaveBeenCalledWith('plugin', 'enable', 'normal-disabled', undefined))
+    await waitFor(() => expect(screen.getByRole('button', { name: zh.updateAll }).hasAttribute('disabled')).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: zh.updateAll }))
+    await waitFor(() => expect(updatePlugins).toHaveBeenCalledWith(['normal-update']))
+  })
   it('distinguishes a historical rollback conflict from a successful update and prevents ineffective retries', async () => {
     const api = bridge(), retryJob = vi.fn()
     Object.assign(api.resources, { retryJob, listJobs: vi.fn(async () => [

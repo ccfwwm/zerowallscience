@@ -5,10 +5,7 @@ import type {} from './desktop-api.js'
 import { en, NS, zh, type ZeroWallKey } from './locales.js'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { registerZeroWallBrand } from './Brand.tsx'
-import { GithubButton } from './GithubButton.tsx'
-import { WechatStatusButton } from './WechatStatusButton.tsx'
 import { AboutSection } from './AboutSection.tsx'
-import { PluginSettingsSection } from './PluginSettingsSection.tsx'
 import { SettingsLauncher } from './SettingsLauncher.tsx'
 
 export { en, NS, zh, type ZeroWallKey } from './locales.js'
@@ -47,19 +44,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
     name: 'sidebar.footer.action', id: 'zerowall-update', order: -10, locale: NS,
     inject: () => ({}),
   }, UpdateButton))
-  ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
-    name: 'sidebar.footer.action', id: 'zerowall-github', order: -100, locale: NS,
-    inject: () => ({}),
-  }, GithubButton))
-  ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
-    name: 'sidebar.footer.action', id: 'zerowall-wechat-status', order: -40, locale: NS,
-    inject: () => ({}),
-  }, WechatStatusButton))
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-about', order: Number.MAX_SAFE_INTEGER, locale: NS, label: () => ctx.locale.bind(NS)('about.nav'),
   }, AboutSection))
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
-    name: 'settings.section', id: 'zerowall-plugin-settings', order: 17,
-    locale: NS, label: () => ctx.locale.bind(NS)('pluginSettings.nav'),
-  }, PluginSettingsSection))
 }

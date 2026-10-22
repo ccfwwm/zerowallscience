@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { fingerprintInputs, isContained, tasksForChangedFiles } from './build-graph-lib.mjs'
+import { fingerprintInputs, isContained, matchesCompilationInputs, tasksForChangedFiles } from './build-graph-lib.mjs'
 
 test('build fingerprint changes when an input changes and records the dependency lock', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-build-graph-'))
@@ -27,6 +27,48 @@ test('containment rejects the root itself and parent traversal', () => {
   assert.equal(isContained('C:/repo/artifacts/dev', 'C:/repo/artifacts/dev/item'), true)
   assert.equal(isContained('C:/repo/artifacts/dev', 'C:/repo/artifacts'), false)
   assert.equal(isContained('C:/repo/artifacts/dev', 'C:/repo/artifacts/dev'), false)
+})
+
+test('compilation reuses test-only changes while package inputs and imported helpers remain strict', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-compile-test-inputs-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  execFileSync('git', ['init', '-q'], { cwd: root })
+  await mkdir(join(root, 'plugins/example/test'), { recursive: true })
+  await mkdir(join(root, 'plugins/example/src'), { recursive: true })
+  await writeFile(join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 1\n')
+  await writeFile(join(root, 'plugins/example/src/index.ts'), 'export const version = 1')
+  await writeFile(join(root, 'plugins/example/test/host.spec.ts'), 'first assertion')
+  const inputs = ['plugins/example']
+  const compiled = await fingerprintInputs({ root, inputs, excludeTests: true })
+  const packed = await fingerprintInputs({ root, inputs })
+  await writeFile(join(root, 'plugins/example/test/host.spec.ts'), 'second assertion')
+  const afterTestChange = await fingerprintInputs({ root, inputs, excludeTests: true })
+  assert.equal(afterTestChange.fingerprint, compiled.fingerprint)
+  assert.equal(matchesCompilationInputs(packed, afterTestChange), true)
+  const damagedReceipt = structuredClone(packed)
+  damagedReceipt.inputs[0].sha256 = '0'.repeat(64)
+  assert.equal(matchesCompilationInputs(damagedReceipt, afterTestChange), false)
+  assert.notEqual((await fingerprintInputs({ root, inputs })).fingerprint, packed.fingerprint)
+  const explicitInputs = [...inputs, 'plugins/example/test/host.spec.ts']
+  const imported = await fingerprintInputs({ root, inputs: explicitInputs, excludeTests: true })
+  await writeFile(join(root, 'plugins/example/test/host.spec.ts'), 'changed imported helper')
+  const afterImportedChange = await fingerprintInputs({ root, inputs: explicitInputs, excludeTests: true })
+  assert.notEqual(afterImportedChange.fingerprint, imported.fingerprint)
+  assert.equal(matchesCompilationInputs(packed, afterImportedChange), false)
+  await writeFile(join(root, 'plugins/example/src/index.ts'), 'export const version = 2')
+  const afterSourceChange = await fingerprintInputs({ root, inputs, excludeTests: true })
+  assert.notEqual(afterSourceChange.fingerprint, compiled.fingerprint)
+  assert.equal(matchesCompilationInputs(packed, afterSourceChange), false)
+  assert.equal(matchesCompilationInputs(packed, { ...afterTestChange, lockHash: 'changed dependency lock' }), false)
+  assert.equal(matchesCompilationInputs(packed, { ...afterTestChange, dshCommit: 'changed DSH pin' }), false)
+})
+
+test('task selection defers test-only cache decisions to the compilation fingerprint', () => {
+  // A production entry may import a helper from a test directory. Keep its
+  // build root eligible; fingerprinting decides whether compilation is needed.
+  assert.deepEqual(tasksForChangedFiles(['plugins/skills/test/helper.ts', 'desktop/test/harness-runtime.spec.ts', 'tools/plugins/snapshot.test.mjs']), ['plugin-build:skills', 'runtime', 'desktop'])
+  assert.deepEqual(tasksForChangedFiles(['resources/extensions/skills/example/tests/input.json']), ['resource:skill:example'])
+  assert.deepEqual(tasksForChangedFiles(['deepseek-harness/packages/agent/tests/agent.test.ts']), ['dsh', 'runtime'])
 })
 
 test('Skill, MCP and Python changes each select only their independent resource task', () => {

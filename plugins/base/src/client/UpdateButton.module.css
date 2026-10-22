@@ -1,8 +1,7 @@
-.trigger { position: relative; width: 100%; min-width: 32px; height: 32px; padding: 0 8px; display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; border: 0; border-radius: 11px; color: var(--dsw-alias-label-secondary, #687078); background: transparent; cursor: pointer; font: inherit; text-align: left; }
+.trigger { position: relative; }
 .trigger svg { flex-shrink: 0; }
 .trigger span { min-width: 0; padding-right: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.trigger:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 2px; }
-.triggerAvailable { color: #b85e2b; background: rgba(210,107,50,.10); }
+.trigger.triggerAvailable { color: #b85e2b; background: rgba(210,107,50,.10); }
 .trigger:hover { color: var(--dsw-alias-label-primary, #202428); background: var(--dsw-alias-interactive-bg-hover, rgba(24,32,40,.08)); }
 .trigger i { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border: 2px solid var(--dsw-alias-bg-layer-1, #fff); border-radius: 50%; background: #d26b32; }
 .backdrop { position: fixed; inset: 0; z-index: 1030; display: grid; place-items: center; padding: 20px; background: rgba(14,18,22,.42); }
@@ -29,6 +28,10 @@
 .content dt { color: var(--dsw-alias-label-secondary, #687078); }
 .content dd { margin: 0; font-weight: 650; }
 .panel footer { padding: 12px 18px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; border-top: 1px solid var(--dsw-alias-border-l2, #e3e6e8); }
+.website { display: inline-flex; align-items: center; gap: 5px; margin-inline-end: auto; min-height: 36px; color: var(--dsw-alias-link, #315b7d); text-decoration: none; font-size: 12px; }
+.website:hover { text-decoration: underline; }
+.website:focus-visible { outline: 2px solid var(--dsw-alias-link); outline-offset: 2px; border-radius: 4px; }
+@media (max-width: 380px) { .website { flex-basis: 100%; } }
 .secondary, .primary { min-height: 36px; padding: 0 13px; border-radius: 9px; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 600; }
 .secondary { border: 1px solid var(--dsw-alias-border-l2, #cfd5d9); color: inherit; background: transparent; }
 .primary { border: 0; color: #fff; background: var(--dsw-alias-brand-primary, #315b7d); }

@@ -5,7 +5,31 @@ import { relative, resolve, sep } from 'node:path'
 
 const hash = value => createHash('sha256').update(value).digest('hex')
 
-export async function fingerprintInputs({ root, inputs, dshCommit = '', lockPath = 'pnpm-lock.yaml', dependencyVersions = {}, dependencyLockHash }) {
+export function isTestInputPath(path) {
+  return /(?:^|\/)(?:test|tests|__tests__|e2e)(?:\/|$)|\.(?:test|spec)\.[^/]+$/u.test(path.replaceAll('\\', '/'))
+}
+
+function recordedFingerprint(input, records = input.inputs) {
+  const digest = createHash('sha256')
+  for (const record of records) digest.update(record.path).update('\0').update(record.sha256).update('\0')
+  digest.update(`dsh:${input.dshCommit}\0lock:${input.lockHash}\0dependencies:${JSON.stringify(input.dependencyVersions)}`)
+  return digest.digest('hex')
+}
+
+// Migrate an older all-files receipt only after proving that its input record
+// is intact and the new fingerprint differs solely by omitted test inputs.
+// The caller must independently verify the existing compiled output hashes.
+export function matchesCompilationInputs(prior, current) {
+  if (!Array.isArray(prior?.inputs) || !Array.isArray(current?.inputs)) return false
+  if (prior.lockHash !== current.lockHash || prior.dshCommit !== current.dshCommit || JSON.stringify(prior.dependencyVersions) !== JSON.stringify(current.dependencyVersions)) return false
+  if (!prior.inputs.every(record => record && typeof record.path === 'string' && /^[a-f0-9]{64}$/u.test(record.sha256))) return false
+  if (recordedFingerprint(prior) !== prior.fingerprint) return false
+  const retained = new Set(current.inputs.map(record => record.path))
+  const projected = prior.inputs.filter(record => !isTestInputPath(record.path) || retained.has(record.path))
+  return recordedFingerprint(prior, projected) === current.fingerprint
+}
+
+export async function fingerprintInputs({ root, inputs, dshCommit = '', lockPath = 'pnpm-lock.yaml', dependencyVersions = {}, dependencyLockHash, excludeTests = false }) {
   const repositoryRoot = resolve(root)
   const args = ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...inputs]
   const listed = execFileSync('git', args, { cwd: repositoryRoot, encoding: 'buffer' })
@@ -25,6 +49,9 @@ export async function fingerprintInputs({ root, inputs, dshCommit = '', lockPath
   const digest = createHash('sha256')
   const records = []
   for (const name of files) {
+    // Explicit file inputs (including helpers imported by production source)
+    // still count. Only implicit test files from directory inputs are omitted.
+    if (excludeTests && isTestInputPath(name) && !inputs.some(input => input.replaceAll('\\', '/') === name.replaceAll('\\', '/'))) continue
     const absolute = resolve(repositoryRoot, name)
     const rel = relative(repositoryRoot, absolute)
     if (!rel || rel === '..' || rel.startsWith(`..${sep}`)) throw new Error(`Input escaped repository root: ${name}`)

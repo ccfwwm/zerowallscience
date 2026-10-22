@@ -75,3 +75,16 @@ test('secondary adapter entries trace literal dynamic shared imports', async t =
   await writeFile(join(f.root, 'packages/shared/parser.ts'), 'export const result = 1')
   assert.deepEqual(await sharedSourceInputs(f.root, join(f.root, 'packages/adapter')), ['packages/shared/parser.ts'])
 })
+
+test('production imports from test directories remain explicit compilation inputs', async t => {
+  const f = await fixture(t)
+  await mkdir(join(f.root, 'plugins/a/src/host'), { recursive: true })
+  await mkdir(join(f.root, 'plugins/a/test'), { recursive: true })
+  await mkdir(join(f.root, 'plugins/a/src/e2e'), { recursive: true })
+  await writeFile(join(f.root, 'plugins/a/src/host/index.ts'), 'export { helper } from "../../test/helper.js"; export { data } from "../e2e/data.js"')
+  await writeFile(join(f.root, 'plugins/a/test/helper.ts'), 'export const helper = 1')
+  await writeFile(join(f.root, 'plugins/a/test/unrelated.spec.ts'), 'unrelated test')
+  await writeFile(join(f.root, 'plugins/a/src/e2e/data.ts'), 'export const data = 1')
+  await writeFile(join(f.root, 'plugins/a/src/e2e/unrelated.ts'), 'unrelated test')
+  assert.deepEqual(await sharedSourceInputs(f.root, join(f.root, 'plugins/a')), ['plugins/a/src/e2e/data.ts', 'plugins/a/test/helper.ts'])
+})

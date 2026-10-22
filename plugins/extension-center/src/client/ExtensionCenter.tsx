@@ -6,6 +6,7 @@ import { NS } from './locales.js'
 import css from './ExtensionCenter.module.css'
 import type { ResourceCheckItem, ResourceCheckResult } from '@zerowallscience/plugin-base/client'
 import { boundedRequest } from './requests.js'
+import { isVisibleResource } from '../../../base/src/shared/resource-visibility.js'
 
 type Props = PropsRuntime<'settings.section'> & PropsLocale<typeof NS>
 type Kind = 'plugin' | 'skill' | 'mcp' | 'python'
@@ -124,7 +125,8 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
           if (!current()) return
           if (remote && result.catalogStatus === 'unavailable') throw new Error(result.error ?? 'Catalog unavailable')
           if (remote) remoteApplied.current[item] = request
-          setRows(previous => [...previous.filter(row => row.kind !== item), result])
+          const visible = { ...result, resources: result.resources.filter(resource => isVisibleResource(item, resource.id)) }
+          setRows(previous => [...previous.filter(row => row.kind !== item), visible])
           if (result.domainAvailable === false) { setStates(previous => ({ ...previous, [item]: 'unavailable' })); return }
         }
         if (current()) { setStates(previous => ({ ...previous, [item]: 'ready' })); setErrors(previous => ({ ...previous, [item]: undefined })) }

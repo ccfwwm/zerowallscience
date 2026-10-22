@@ -3,6 +3,16 @@ import { resourceUpdateSummary } from '../src/main/resource-update-status.js'
 import { redactResourceDiagnostic } from '../src/main/resource-diagnostics.js'
 
 describe('resource update reporting', () => {
+  it('excludes composition declarations from desktop update reminders', () => {
+    expect(resourceUpdateSummary({ phase: 'idle', updateCount: 0, kinds: {} }, [
+      { kind: 'plugin', resources: [
+        { id: '@zerowallscience/dsh-bundle-core', updateAvailable: true },
+        { id: '@zerowallscience/dsh-bundle-science', updateAvailable: true },
+        { id: '@zerowallscience/plugin-account', updateAvailable: true },
+      ] },
+      { kind: 'skill', resources: [{ id: '@zerowallscience/dsh-bundle-core', updateAvailable: true }] },
+    ])).toMatchObject({ updateCount: 2, kinds: { plugin: 1, skill: 1 } })
+  })
   it('retains known updates when a fulfilled check reports catalog failure', () => {
     const previous = { phase: 'available' as const, updateCount: 2, kinds: { plugin: 2 } }
     expect(resourceUpdateSummary(previous, [{ kind: 'plugin', catalogStatus: 'unavailable', error: 'offline', resources: [] }])).toMatchObject({ phase: 'available', updateCount: 2, error: 'offline' })

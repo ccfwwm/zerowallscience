@@ -17,6 +17,31 @@ import { verifyHistoricalPluginImports } from '../../tools/commands/historical-p
 const execute = promisify(execFile)
 const { createPackageWithOptions } = createRequire(new URL('../../desktop/package.json', import.meta.url))('@electron/asar')
 
+test('sidebar rollback accepts owned inlined engines but rejects external imports and missing real dependencies', async t => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-restore-inlined-'))
+  t.after(() => rm(home, { recursive: true, force: true }))
+  const previousProfile = join(home, 'resources/history/old'), source = join(previousProfile, 'node_modules/dsh-better-sidebar')
+  await mkdir(join(source, 'lib'), { recursive: true })
+  const manifest = { name: 'dsh-better-sidebar', version: '1.0.0', dependencies: { mermaid: '^11.0.0', 'react-icons': '^5.0.0' } }
+  await writeFile(join(source, 'package.json'), JSON.stringify(manifest))
+  await writeFile(join(source, 'lib/client.js'), 'function GenIcon() {}')
+  await writeFile(join(source, 'lib/client-mermaid.js'), 'const flowchart = {}; const __dshChunks__ = {}')
+  let sequence = 0
+  const restore = () => restorePackageClosure({ home, previousProfile, candidate: join(home, 'profiles/candidate-' + sequence++), packageIds: ['dsh-better-sidebar'], local: true })
+  assert.equal((await restore()).get('dsh-better-sidebar'), 'link:./node_modules/dsh-better-sidebar')
+  await writeFile(join(source, 'lib/client-mermaid.js'), 'import mermaid from "mermaid"; const flowchart = {}; const __dshChunks__ = {}')
+  await assert.rejects(restore(), /dependency is missing: mermaid/)
+  await writeFile(join(source, 'lib/client-mermaid.js'), 'const flowchart = {}; const __dshChunks__ = {}')
+  await writeFile(join(source, 'external.cjs'), 'require("react-icons/fa")')
+  await assert.rejects(restore(), /dependency is missing/)
+  await rm(join(source, 'external.cjs'))
+  manifest.dependencies['real-missing-dependency'] = '^1.0.0'
+  await writeFile(join(source, 'package.json'), JSON.stringify(manifest))
+  await assert.rejects(restore(), /dependency is missing: real-missing-dependency/)
+  await rm(join(source, 'lib/client-mermaid.js'))
+  await assert.rejects(restore(), /dependency is missing: mermaid/)
+})
+
 test('rollback checks shared dependency ranges and optional metadata without accepting present invalid packages', async t => {
   const home = await mkdtemp(join(tmpdir(), 'zws-restore-shared-'))
   t.after(() => rm(home, { recursive: true, force: true }))
