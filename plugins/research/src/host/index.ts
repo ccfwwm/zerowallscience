@@ -67,6 +67,7 @@ import type { CanvasRequest, FijiExperimentRequest, FijiExperimentResponse, Flow
 import type { FijiWorkflowRequest, FijiWorkflowResponse } from '../shared/types.js'
 import { engineEnvironment, NativeEngineService } from './native-engines.js'
 import { readFile, stat, access, mkdir } from 'node:fs/promises'
+import { mkdirSync, statSync } from 'node:fs'
 import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runtime-process.js'
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -525,14 +526,26 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('createResearchStudy') createResearchStudy(input: ResearchRemoteCreateStudyInput): ResearchRemoteStudyRecord { return this.store.createResearchStudy(input as CreateResearchStudyInput) as ResearchRemoteStudyRecord }
   @Remote('getResearchStudy') getResearchStudy(studyId: string): ResearchRemoteStudyRecord | undefined { return this.store.getResearchStudy(studyId) as ResearchRemoteStudyRecord | undefined }
   @Remote('listResearchStudies') listResearchStudies(projectId: string): ResearchRemoteStudyRecord[] { return this.store.listResearchStudies(projectId) as ResearchRemoteStudyRecord[] }
-  @Remote('updateResearchStudy') updateResearchStudy(input: { id: string; changes: ResearchRemoteUpdateStudyInput }): ResearchRemoteStudyRecord { return this.store.updateResearchStudy(input.id, input.changes as UpdateResearchStudyInput) as ResearchRemoteStudyRecord }
-  @Remote('createResearchDocument') createResearchDocument(input: ResearchRemoteCreateDocumentInput): ResearchRemoteDocumentRecord { return this.store.createResearchDocument(input as CreateResearchDocumentInput) as ResearchRemoteDocumentRecord }
+  @Remote('updateResearchStudy') updateResearchStudy(input: { id: string; changes: ResearchRemoteUpdateStudyInput }): ResearchRemoteStudyRecord {
+    const study = this.store.updateResearchStudy(input.id, input.changes as UpdateResearchStudyInput) as ResearchRemoteStudyRecord
+    if (input.changes.currentQuestionId !== undefined || input.changes.currentPlanId !== undefined) this.tryAutomaticGate1(study.id)
+    return this.store.getResearchStudy(study.id) as ResearchRemoteStudyRecord
+  }
+  @Remote('createResearchDocument') createResearchDocument(input: ResearchRemoteCreateDocumentInput): ResearchRemoteDocumentRecord {
+    return this.store.createResearchDocument(input as CreateResearchDocumentInput) as ResearchRemoteDocumentRecord
+  }
   @Remote('getResearchDocument') getResearchDocument(documentId: string): ResearchRemoteDocumentRecord | undefined { return this.store.getResearchDocument(documentId) as ResearchRemoteDocumentRecord | undefined }
   @Remote('listResearchDocuments') listResearchDocuments(input: { studyId: string; kind?: ResearchRecordKind }): ResearchRemoteDocumentRecord[] { return this.store.listResearchDocuments(input.studyId, input.kind) as ResearchRemoteDocumentRecord[] }
   @Remote('updateResearchDocument') updateResearchDocument(input: { id: string; changes: ResearchRemoteUpdateDocumentInput }): ResearchRemoteDocumentRecord {
-    return this.store.updateResearchDocument(input.id, input.changes as UpdateResearchDocumentInput) as ResearchRemoteDocumentRecord
+    const document = this.store.updateResearchDocument(input.id, input.changes as UpdateResearchDocumentInput) as ResearchRemoteDocumentRecord
+    if (['question', 'dataset-contract', 'analysis-plan'].includes(document.kind)) this.tryAutomaticGate1(document.studyId)
+    return document
   }
-  @Remote('validateAnalysisPlan') validateAnalysisPlan(planId: string): ResearchRemoteDocumentRecord { return this.store.validateAnalysisPlan(planId) as ResearchRemoteDocumentRecord }
+  @Remote('validateAnalysisPlan') validateAnalysisPlan(planId: string): ResearchRemoteDocumentRecord {
+    const document = this.store.validateAnalysisPlan(planId) as ResearchRemoteDocumentRecord
+    this.tryAutomaticGate1(document.studyId)
+    return document
+  }
   @Remote('methodCheckEvaluate') methodCheckEvaluate(input: { studyId: string; method: string; assumptions?: ResearchRemoteJsonObject }): ResearchRemoteJsonObject {
     const study = this.store.getResearchStudy(input.studyId)
     if (!study) throw new Error('Research study was not found.')
@@ -542,6 +555,44 @@ export class ZeroWallResearchService extends TypertRemoteService {
     return { studyId: study.id, ...result, checkedAt: new Date().toISOString() }
   }
   @Remote('approveResearchGate') approveResearchGate(input: { studyId: string; gate: 1 | 2; status: 'approved' | 'rejected'; expectedVersion: number; rationale: string }): ResearchRemoteStudyRecord { return this.store.approveResearchGate(input.studyId, input.gate, input.status, input.expectedVersion, input.rationale) as ResearchRemoteStudyRecord }
+  @Remote('autoApproveResearchGate1') autoApproveResearchGate1(input: { sessionId: string; studyId: string; expectedVersion?: number }): ResearchRemoteJsonObject {
+    const study = this.requireStudyInActiveProject(input.sessionId, input.studyId)
+    this.verifyGate1Sources(study)
+    const result = this.store.approveResearchGateAutomatically(study.id, input.expectedVersion ?? study.version)
+    return result as unknown as ResearchRemoteJsonObject
+  }
+  @Remote('autoApproveResearchGate2') autoApproveResearchGate2(input: { sessionId: string; studyId: string; expectedVersion?: number }): ResearchRemoteJsonObject {
+    const study = this.requireStudyInActiveProject(input.sessionId, input.studyId)
+    const result = this.store.approveResearchGate2Automatically(study.id, input.expectedVersion ?? study.version)
+    return result as unknown as ResearchRemoteJsonObject
+  }
+  private tryAutomaticGate1(studyId: string): void {
+    const study = this.store.getResearchStudy(studyId)
+    if (!study || study.currentFreezeId || study.gate1 === 'approved' || study.status === 'archived') return
+    this.verifyGate1Sources(study)
+    this.store.approveResearchGateAutomatically(studyId, study.version)
+  }
+  private verifyGate1Sources(study: ResearchStudyRecord): void {
+    const plan = study.currentPlanId ? this.store.getResearchDocument(study.currentPlanId) : undefined
+    if (plan?.studyId !== study.id || !Array.isArray(plan.payload.inputs)) return
+    for (const id of plan.payload.inputs) {
+      if (typeof id !== 'string') continue
+      const contract = this.store.getResearchDocument(id)
+      if (contract?.studyId === study.id && contract.kind === 'dataset-contract') this.store.verifyDatasetContractSource(id)
+    }
+  }
+  private requireStudyInActiveProject(sessionId: string, studyId: string): ResearchStudyRecord {
+    const project = this.ensureResearchContext({ sessionId }).project
+    const study = this.store.getResearchStudy(studyId)
+    if (!study || study.projectId !== project.id) throw new Error('Research study access is limited to the active project workspace.')
+    return study
+  }
+  private gate1BeforeConfirmatoryRun(study: ResearchStudyRecord): ResearchRemoteJsonObject | undefined {
+    this.verifyGate1Sources(study)
+    const result = this.store.approveResearchGateAutomatically(study.id, study.version)
+    if (result.status === 'approved') return undefined
+    return { status: 'blocked', stage: 'gate1', studyId: study.id, label: '系统校验未通过', message: '系统校验发现缺项，已暂停确认性 Runner；检索和下载仍可继续。', blockers: result.blockers, recovery: '补齐列出的研究问题、数据契约和分析计划后，系统会自动重新校验。' } as unknown as ResearchRemoteJsonObject
+  }
   @Remote('freezeResearchStudy') freezeResearchStudy(input: { studyId: string; expectedVersion: number }): ResearchRemoteFreezeRecord { return this.store.freezeResearchStudy(input.studyId, input.expectedVersion) as ResearchRemoteFreezeRecord }
   @Remote('amendResearchStudy') amendResearchStudy(input: { studyId: string; reason: string; expectedVersion: number }): ResearchRemoteStudyRecord { return this.store.amendResearchStudy(input.studyId, input.reason, input.expectedVersion) as ResearchRemoteStudyRecord }
   @Remote('listStudyFreezes') listStudyFreezes(studyId: string): ResearchRemoteFreezeRecord[] { return this.store.listStudyFreezes(studyId) as ResearchRemoteFreezeRecord[] }
@@ -557,8 +608,16 @@ export class ZeroWallResearchService extends TypertRemoteService {
     return { studyId: input.studyId, ...validateNhanesContract(input.contract), checkedAt: new Date().toISOString() }
   }
   async runNhanesSurvey(input: NhanesSurveyRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
-    const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
-    if (!project) throw new Error('An active registered project session is required.')
+    const sessionId = String(exec.agent?.session.id ?? '')
+    const { project, study } = this.ensureResearchContext({ sessionId })
+    if (study.id !== input.studyId) throw new Error('NHANES run is outside the automatically bound research study.')
+    // Exploratory work still passes the Runner's full contract/schema checks,
+    // but it does not require a confirmatory plan freeze.
+    const task = this.store.listResearchTasks(study.id).find(item => item.id === input.taskId)
+    if (task?.exploratory !== true) {
+      const blocked = this.gate1BeforeConfirmatoryRun(study)
+      if (blocked) return blocked
+    }
     return this.nhanes.execute(project, input, exec)
   }
   @Remote('runNhanesSurvey') async runNhanesSurveyRemote(input: NhanesSurveyRequest & { sessionId: string }): Promise<ResearchRemoteJsonObject> {
@@ -568,8 +627,16 @@ export class ZeroWallResearchService extends TypertRemoteService {
     return this.runNhanesSurvey(input, exec)
   }
   async runGeneticAnalysis(input: GeneticAnalysisRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
-    const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
-    if (!project) throw new Error('An active registered project session is required.')
+    const sessionId = String(exec.agent?.session.id ?? '')
+    const { project, study } = this.ensureResearchContext({ sessionId })
+    if (study.id !== input.studyId) throw new Error('Genetic analysis is outside the automatically bound research study.')
+    // Exploratory work still passes the Runner's full contract/schema checks,
+    // but it does not require a confirmatory plan freeze.
+    const task = this.store.listResearchTasks(study.id).find(item => item.id === input.taskId)
+    if (task?.exploratory !== true) {
+      const blocked = this.gate1BeforeConfirmatoryRun(study)
+      if (blocked) return blocked
+    }
     return this.genetics.execute(project, input, exec)
   }
   async refreshGeneticAnalysis(input: GeneticRefreshRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
@@ -592,12 +659,15 @@ export class ZeroWallResearchService extends TypertRemoteService {
     return { studyId: input.studyId, ...validateGeneticContract(input.contract), checkedAt: new Date().toISOString() }
   }
   @Remote('auditResearchClaim') auditResearchClaim(input: { sessionId: string; claimId: string; expectedVersion: number }): ResearchRemoteDocumentRecord {
-    const document = this.store.getResearchDocument(input.claimId)
-    if (!document) throw new Error('Research claim was not found.')
-    const study = this.store.getResearchStudy(document.studyId)
+    const existingDocument = this.store.getResearchDocument(input.claimId)
+    if (!existingDocument) throw new Error('Research claim was not found.')
+    const study = this.store.getResearchStudy(existingDocument.studyId)
     const active = this.projectForSession({ sessionId: input.sessionId })
-    if (!study || study.projectId !== document.projectId || !active || active.id !== study.projectId) throw new Error('Research claim is not in the active project.')
-    return this.store.auditResearchClaim(input.claimId, input.expectedVersion) as ResearchRemoteDocumentRecord
+    if (!study || study.projectId !== existingDocument.projectId || !active || active.id !== study.projectId) throw new Error('Research claim is not in the active project.')
+    const document = this.store.auditResearchClaim(input.claimId, input.expectedVersion) as ResearchRemoteDocumentRecord
+    const latestStudy = this.store.getResearchStudy(document.studyId)
+    if (latestStudy?.currentFreezeId && document.payload.auditStatus === 'passed') this.store.approveResearchGate2Automatically(latestStudy.id, latestStudy.version)
+    return document
   }
   @Remote('createResearchTask') createResearchTask(input: ResearchRemoteCreateTaskInput): ResearchRemoteTaskRecord { return this.store.createResearchTask(input as CreateResearchTaskInput) as ResearchRemoteTaskRecord }
   @Remote('listResearchTasks') listResearchTasks(studyId: string): ResearchRemoteTaskRecord[] { return this.store.listResearchTasks(studyId) as ResearchRemoteTaskRecord[] }
@@ -606,9 +676,40 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('getResearchTaskBudget') getResearchTaskBudget(studyId: string): ResearchRemoteTaskBudgetReport { return this.store.getResearchTaskBudget(studyId) as ResearchRemoteTaskBudgetReport }
   @Remote('reconcileResearchTaskRun') reconcileResearchTaskRun(input: { id: string; expectedVersion?: number }): ResearchRemoteTaskRecord { return this.store.reconcileResearchTaskRun(input.id, input.expectedVersion) as ResearchRemoteTaskRecord }
   @Remote('generateResearchReport') async generateResearchReport(input: { sessionId: string; studyId: string; mode?: 'draft' | 'final' }): Promise<ResearchRemoteJsonObject> {
-    const project = this.projectForSession({ sessionId: input.sessionId })
-    if (!project) throw new Error('An active registered project session is required.')
-    return await this.reports.generate(project, input.studyId, input.mode ?? 'draft') as unknown as ResearchRemoteJsonObject
+    const { project, study } = this.ensureResearchContext({ sessionId: input.sessionId })
+    if (study.id !== input.studyId) throw new Error('Research report is outside the automatically bound research study.')
+    const mode = input.mode ?? 'draft'
+    if (mode === 'draft') return await this.reports.generate(project, study.id, mode) as unknown as ResearchRemoteJsonObject
+
+    const blocked = this.gate1BeforeConfirmatoryRun(study)
+    if (blocked) {
+      const report = await this.reports.generate(project, study.id, 'draft')
+      return { ...report, requestedMode: 'final', status: 'blocked', stage: 'gate1', label: '草稿报告；系统校验未通过', blockers: blocked.blockers, recovery: blocked.recovery } as unknown as ResearchRemoteJsonObject
+    }
+
+    const frozenStudy = this.store.getResearchStudy(study.id)!
+    const gate2 = this.store.approveResearchGate2Automatically(frozenStudy.id, frozenStudy.version)
+    if (gate2.status === 'blocked') {
+      const report = await this.reports.generate(project, gate2.study.id, 'draft')
+      return { ...report, requestedMode: 'final', status: 'blocked', stage: 'gate2', label: '草稿报告；系统校验未通过', blockers: gate2.blockers, recovery: '补充可核实的证据并完成所有结论的确定性审计后，系统会重新校验。' } as unknown as ResearchRemoteJsonObject
+    }
+
+    const report = await this.reports.generate(project, gate2.study.id, 'final')
+    // ReportService can still downgrade a final request when its own
+    // consistency checks find a blocker after Gate 2 (for example an
+    // unreviewed evidence record). Do not claim success while returning a
+    // draft artifact; expose the recoverable report blockers instead.
+    if (report.mode !== 'final' || report.needsReview || report.blockers.length > 0) {
+      return {
+        ...report,
+        requestedMode: 'final',
+        status: 'blocked',
+        stage: 'report',
+        label: '草稿报告；报告校验未通过',
+        recovery: '处理报告列出的阻断项后，系统会重新校验并生成正式报告。',
+      } as unknown as ResearchRemoteJsonObject
+    }
+    return { ...report, status: 'succeeded', label: '系统校验通过' } as unknown as ResearchRemoteJsonObject
   }
   /**
    * Probe every engine the Host knows about. The previous implementation
@@ -663,34 +764,54 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('listEdges') listEdges(projectId: string): ResearchRemoteEdgeRecord[] { return this.store.listResearchEdges(projectId) as unknown as ResearchRemoteEdgeRecord[] }
   @Remote('listAuditEvents') listAuditEvents(projectId: string): ResearchRemoteAuditEventRecord[] { return this.store.listAuditEvents(projectId) as unknown as ResearchRemoteAuditEventRecord[] }
   @Remote('projectForSession') projectForSession(input: { sessionId: string }): ResearchRemoteProjectRecord | undefined {
-    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
-    const cwd = session?.header.cwd
+    const sessionId = String(input.sessionId ?? '').trim()
+    if (!sessionId) return undefined
+    const session = this.ctx.get('sessions')?.get(SessionId(sessionId))
     if (!session) return undefined
-    if (!cwd) return this.store.listProjects().find(item => resolve(item.rootPath) === this.defaultProjectRoot)
-    return this.store.listProjects().filter(item => isWithin(cwd, item.rootPath)).sort((a, b) => b.rootPath.length - a.rootPath.length)[0]
+    return this.ensureResearchContext({ sessionId }).project as unknown as ResearchRemoteProjectRecord
+  }
+  /** One idempotent entry point shared by Research UI, MCP tools and Runners. */
+  @Remote('ensureResearchContext') ensureResearchContext(input: { sessionId: string; target?: string }): { project: ResearchRemoteProjectRecord; study: ResearchRemoteStudyRecord; createdProject: boolean; createdStudy: boolean; targetFingerprint: string } {
+    const sessionId = String(input.sessionId ?? '').trim()
+    if (!sessionId) throw new Error('An active conversation session is required.')
+    const session = this.ctx.get('sessions')?.get(SessionId(sessionId))
+    if (!session) throw new Error('The active conversation session is not available; research context can be retried when it reconnects.')
+    const cwd = session.header.cwd ? resolve(session.header.cwd) : this.defaultProjectRoot
+    if (!isAbsolute(cwd)) throw new Error('The session workspace path must be absolute.')
+    if (!session.header.cwd) mkdirSync(cwd, { recursive: true })
+    let info
+    try { info = statSync(cwd) } catch { throw new Error(`Research workspace is unavailable: ${cwd}; restore or select a valid workspace and retry.`) }
+    if (!info.isDirectory()) throw new Error(`Research workspace is not a directory: ${cwd}; select a valid workspace and retry.`)
+    // Use the same durable user-authored objective at every entry point. A
+    // tool's abbreviated target must not establish a different binding from
+    // the nested Runner, Gate or UI calls that read the conversation itself.
+    // Explicit hints remain useful for headless sessions without user text.
+    const target = researchTargetFromSession(session) || boundedResearchTarget(input.target)
+    const rootPath = resolve(cwd)
+    const result = this.store.ensureResearchContext({ sessionId, rootPath, projectName: session.header.cwd ? basename(rootPath) || rootPath : '科研工作台', ...(target ? { target } : {}) })
+    return {
+      project: result.project as ResearchRemoteProjectRecord,
+      study: result.study as ResearchRemoteStudyRecord,
+      createdProject: result.createdProject,
+      createdStudy: result.createdStudy,
+      targetFingerprint: result.targetFingerprint,
+    }
   }
   @Remote('registerSessionProject') async registerSessionProject(input: { sessionId: string }): Promise<ResearchRemoteProjectRecord> {
-    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
-    if (!session) throw new Error('An active local workspace session is required.')
-    const cwd = session.header.cwd || this.defaultProjectRoot
-    if (!isAbsolute(cwd)) throw new Error('The session workspace path must be absolute.')
-    if (!session.header.cwd) await mkdir(this.defaultProjectRoot, { recursive: true })
-    if (!(await stat(cwd)).isDirectory()) throw new Error('The current workspace is not an existing directory.')
-    // Check again after asynchronous filesystem validation so repeated UI requests
-    // in this Host cannot register duplicate projects. Never create a study here.
-    const existing = this.projectForSession(input)
-    if (existing) return existing
-    const rootPath = resolve(cwd)
-    return this.store.createProject({ name: session.header.cwd ? basename(rootPath) || rootPath : '科研工作台', rootPath }) as unknown as ResearchRemoteProjectRecord
+    return this.ensureResearchContext(input).project as unknown as ResearchRemoteProjectRecord
   }
   @Remote('getActiveResearchStudy') getActiveResearchStudy(input: { sessionId: string }): ResearchRemoteStudyRecord | undefined {
     const project = this.projectForSession(input)
     return project ? this.store.getSessionResearchStudy(project.id, input.sessionId) as unknown as ResearchRemoteStudyRecord | undefined : undefined
   }
   @Remote('setActiveResearchStudy') setActiveResearchStudy(input: { sessionId: string; studyId: string | null }): ResearchRemoteStudyRecord | undefined {
-    const project = this.projectForSession(input)
-    if (!project) throw new Error('An active project session is required.')
-    return this.store.setSessionResearchStudy(project.id, input.sessionId, input.studyId) as unknown as ResearchRemoteStudyRecord | undefined
+    const ensured = this.ensureResearchContext(input)
+    const project = ensured.project
+    if (input.studyId) {
+      const study = this.store.getResearchStudy(input.studyId)
+      if (!study || study.projectId !== project.id) throw new Error('Research study access is limited to the active project workspace.')
+    }
+    return this.store.setSessionResearchStudy(project.id, input.sessionId, input.studyId, ensured.targetFingerprint) as unknown as ResearchRemoteStudyRecord | undefined
   }
   @Remote('getAuditReport') getAuditReport(projectId: string): ResearchRemoteAuditReport { return this.store.getAuditReport(projectId) as unknown as ResearchRemoteAuditReport }
   @Remote('exportAuditReport') exportAuditReport(input: { projectId: string; format: 'json' | 'markdown' }): string { return this.store.exportAuditReport(input.projectId, input.format) }
@@ -714,6 +835,28 @@ export class ZeroWallResearchService extends TypertRemoteService {
 function mediaTypeFromPath(path: string): string {
   const extension = path.toLowerCase().split('.').pop()
   return ({ pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', csv: 'text/csv', tsv: 'text/tab-separated-values', fasta: 'text/x-fasta', fa: 'text/x-fasta', fastq: 'text/x-fastq', pdb: 'chemical/x-pdb', sdf: 'chemical/x-mdl-sdfile', scf: 'application/octet-stream', ab1: 'application/octet-stream', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml' } as Record<string, string>)[extension ?? ''] ?? 'application/octet-stream'
+}
+
+function boundedResearchTarget(value: unknown): string {
+  return typeof value === 'string' ? value.replaceAll('\0', '').trim().slice(0, 5000) : ''
+}
+
+/** Read only the user's own latest plain-text message; tool output, assistant text,
+ * attachments and injected context never become research instructions. */
+function researchTargetFromSession(session: Session): string {
+  const events = session.snapshotEvents() as readonly unknown[]
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index]
+    if (!event || typeof event !== 'object' || (event as { type?: unknown }).type !== 'user/message') continue
+    const data = (event as { data?: unknown }).data
+    if (!data || typeof data !== 'object') continue
+    const message = data as { source?: { kind?: unknown }; content?: unknown }
+    if (message.source?.kind !== undefined && message.source.kind !== 'user') continue
+    if (!Array.isArray(message.content)) continue
+    const text = message.content.filter((block): block is { type: 'text'; text: string } => !!block && typeof block === 'object' && (block as { type?: unknown }).type === 'text' && typeof (block as { text?: unknown }).text === 'string').map(block => block.text).join('\n')
+    return boundedResearchTarget(text)
+  }
+  return ''
 }
 
 function isWithin(path: string, root: string): boolean {
@@ -885,27 +1028,38 @@ function registerResearchTools(ctx: Context): void {
   })), 'zerowall-research: register science_viewer tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'research_study',
-    description: 'Read and update structured research records. Human gate approval and plan freezing remain UI-only actions.',
-    parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'method_check_evaluate', 'validate_nhanes_contract', 'run_nhanes_survey', 'run_genetic_analysis', 'refresh_genetic_analysis', 'validate_genetic_contract', 'generate_report', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, evaluation_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' }, run_id: { type: 'string' }, contract_id: { type: 'string' }, plan_id: { type: 'string' }, request_id: { type: 'string' }, expected_revision: { type: 'integer', description: 'Expected analysis plan version for run_nhanes_survey. The saved plan must contain nhanesSurvey and reference contract_id in inputs.' }, report_mode: { type: 'string', enum: ['draft', 'final'] } },
+    description: 'Read and update structured research records. Research Project/Study context and draft records are prepared automatically. The system may approve Gate 1 and freeze a validated plan, or return recoverable blockers; data discovery and downloads can continue while blockers are resolved. Gate 2 passes only after deterministic evidence audits succeed.',
+    parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'auto_gate1', 'auto_gate2', 'method_check_evaluate', 'validate_nhanes_contract', 'run_nhanes_survey', 'run_genetic_analysis', 'refresh_genetic_analysis', 'validate_genetic_contract', 'generate_report', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, target: { type: 'string', description: 'Fallback research objective for headless sessions without user text. The latest user-authored request is the canonical bounded draft when available.' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, evaluation_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' }, run_id: { type: 'string' }, contract_id: { type: 'string' }, plan_id: { type: 'string' }, request_id: { type: 'string' }, expected_revision: { type: 'integer', description: 'Expected analysis plan version for run_nhanes_survey. The saved plan must contain nhanesSurvey and reference contract_id in inputs.' }, report_mode: { type: 'string', enum: ['draft', 'final'] } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec: ToolRunContext) {
       const service = ctx.zerowallResearch
-      const cwd = exec.agent?.session.header.cwd
-      if (!cwd) throw new Error('An active workspace is required.')
-      const project = service.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
-      if (!project) throw new Error('The active workspace is not registered as a ZeroWall project.')
+      const sessionId = String(exec.agent?.session.id ?? '')
+      if (!sessionId) throw new Error('An active conversation session is required.')
+      const ensured = service.ensureResearchContext({ sessionId, ...(typeof args.target === 'string' ? { target: args.target } : {}) })
+      const project = ensured.project
       const requestedProjectId = args.project_id === undefined ? project.id : String(args.project_id)
       if (requestedProjectId !== project.id) throw new Error('Research study access is limited to the active project workspace.')
       if (args.action === 'list') return { studies: service.listResearchStudies(requestedProjectId) as unknown as ResearchRemoteJsonObject }
-      const study = args.study_id ? service.getResearchStudy(String(args.study_id)) : undefined
+      const studyId = args.study_id === undefined ? ensured.study.id : String(args.study_id)
+      const study = service.getResearchStudy(studyId)
       if (!study || study.projectId !== project.id) throw new Error('Research study is not in the active project.')
+      if (args.study_id !== undefined && study.id !== ensured.study.id) {
+        const active = service.getActiveResearchStudy({ sessionId })
+        if (active?.id !== study.id) throw new Error('The requested study is not the automatically bound study for this research objective. Select it in the research workspace first; frozen studies are never rebound to another objective.')
+      }
       if (args.action === 'get') return { study: study as unknown as ResearchRemoteJsonObject }
-      if (args.action === 'documents') return { documents: service.listResearchDocuments({ studyId: String(args.study_id) }) as unknown as ResearchRemoteJsonObject }
+      if (args.action === 'documents') return { documents: service.listResearchDocuments({ studyId: study.id }) as unknown as ResearchRemoteJsonObject }
       if (args.action === 'generate_report') return await service.generateResearchReport({ sessionId: String(exec.agent?.session.id ?? ''), studyId: study.id, mode: args.report_mode === 'final' ? 'final' : 'draft' })
-      if (args.action === 'tasks') return { tasks: service.listResearchTasks(String(args.study_id)) as unknown as ResearchRemoteJsonObject }
+      if (args.action === 'auto_gate1' || args.action === 'auto_gate2') {
+        const result = args.action === 'auto_gate1'
+          ? service.autoApproveResearchGate1({ sessionId, studyId: study.id, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) })
+          : service.autoApproveResearchGate2({ sessionId, studyId: study.id, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) })
+        return result.status === 'blocked' ? { ...result, stage: args.action === 'auto_gate1' ? 'gate1' : 'gate2', message: '系统校验发现阻断项，已暂停对应阶段；检索、下载和草稿整理仍可继续。', recovery: '补齐阻断项列出的材料并重试，系统会重新校验。' } as unknown as ResearchRemoteJsonObject : { ...result, label: '系统校验通过' } as unknown as ResearchRemoteJsonObject
+      }
+      if (args.action === 'tasks') return { tasks: service.listResearchTasks(study.id) as unknown as ResearchRemoteJsonObject }
       if (['task_budget', 'refresh_tasks'].includes(String(args.action))) {
-        if (args.action === 'task_budget') return { budget: service.getResearchTaskBudget(String(args.study_id)) as unknown as ResearchRemoteJsonObject }
-        return { tasks: service.refreshResearchTaskReadiness(String(args.study_id)) as unknown as ResearchRemoteJsonObject }
+        if (args.action === 'task_budget') return { budget: service.getResearchTaskBudget(study.id) as unknown as ResearchRemoteJsonObject }
+        return { tasks: service.refreshResearchTaskReadiness(study.id) as unknown as ResearchRemoteJsonObject }
       }
       if (args.action === 'create_task') {
         const task = requireResearchRemoteJsonObject(args.task)
@@ -924,18 +1078,23 @@ function registerResearchTools(ctx: Context): void {
         return { task: service.reconcileResearchTaskRun({ id: taskId, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) }) as unknown as ResearchRemoteJsonObject }
       }
       if (args.action === 'register_evidence') return { document: service.registerResearchEvidence({ sessionId: String(exec.agent?.session.id ?? ''), projectId: project.id, studyId: study.id, payload: { ...requireResearchRemoteJsonObject(args.payload), needsReview: true } }) as unknown as ResearchRemoteJsonObject }
-      if (args.action === 'audit_claim') return { document: service.auditResearchClaim({ sessionId: String(exec.agent?.session.id ?? ''), claimId: String(args.claim_id ?? ''), expectedVersion: Number(args.expected_version ?? 0) }) as unknown as ResearchRemoteJsonObject }
+      if (args.action === 'audit_claim') return { document: service.auditResearchClaim({ sessionId, claimId: String(args.claim_id ?? ''), expectedVersion: Number(args.expected_version ?? 0) }) as unknown as ResearchRemoteJsonObject }
       if (args.action === 'create_document') {
         const kind = args.kind ?? 'observation'
         if (!['observation', 'question', 'dataset-contract', 'analysis-plan'].includes(kind)) throw new Error('Agents may propose observations, questions, contracts and plans; result ingestion and evidence approval require dedicated services.')
-        return { document: service.createResearchDocument({ projectId: project.id, studyId: study.id, kind: kind as ResearchRecordKind, payload: requireResearchRemoteJsonObject(args.payload) }) as unknown as ResearchRemoteJsonObject }
+        const document = service.createResearchDocument({ projectId: project.id, studyId: study.id, kind: kind as ResearchRecordKind, payload: requireResearchRemoteJsonObject(args.payload) })
+        if (kind === 'question' || kind === 'analysis-plan') {
+          const latest = service.getResearchStudy(study.id)!
+          service.updateResearchStudy({ id: study.id, changes: { expectedVersion: latest.version, [kind === 'question' ? 'currentQuestionId' : 'currentPlanId']: document.id } as UpdateResearchStudyInput })
+        } else if (kind === 'dataset-contract') service.autoApproveResearchGate1({ sessionId, studyId: study.id })
+        return { document: document as unknown as ResearchRemoteJsonObject }
       }
-      if (args.action === 'method_check_evaluate') return service.methodCheckEvaluate({ studyId: String(args.study_id), method: String(args.method ?? ''), ...(args.assumptions === undefined ? {} : { assumptions: requireResearchRemoteJsonObject(args.assumptions) }) })
+      if (args.action === 'method_check_evaluate') return service.methodCheckEvaluate({ studyId: study.id, method: String(args.method ?? ''), ...(args.assumptions === undefined ? {} : { assumptions: requireResearchRemoteJsonObject(args.assumptions) }) })
       if (args.action === 'run_genetic_analysis') return service.runGeneticAnalysis({ studyId: study.id, contractId: String(args.contract_id ?? ''), planId: String(args.plan_id ?? study.currentPlanId ?? ''), taskId: String(args.task_id ?? ''), requestId: String(args.request_id ?? ''), expectedPlanVersion: Number(args.expected_revision ?? 0) }, exec)
       if (args.action === 'refresh_genetic_analysis') return service.refreshGeneticAnalysis({ studyId: study.id, runId: String(args.run_id ?? '') }, exec)
       if (args.action === 'run_nhanes_survey') return service.runNhanesSurvey({ studyId: study.id, contractId: String(args.contract_id ?? ''), planId: String(args.plan_id ?? study.currentPlanId ?? ''), taskId: String(args.task_id ?? ''), requestId: String(args.request_id ?? ''), expectedPlanVersion: Number(args.expected_revision ?? 0) }, exec)
-      if (args.action === 'validate_nhanes_contract') return service.validateNhanesContractRemote({ studyId: String(args.study_id), contract: requireResearchRemoteJsonObject(args.contract) })
-      if (args.action === 'validate_genetic_contract') return service.validateGeneticContractRemote({ studyId: String(args.study_id), contract: requireResearchRemoteJsonObject(args.contract) })
+      if (args.action === 'validate_nhanes_contract') return service.validateNhanesContractRemote({ studyId: study.id, contract: requireResearchRemoteJsonObject(args.contract) })
+      if (args.action === 'validate_genetic_contract') return service.validateGeneticContractRemote({ studyId: study.id, contract: requireResearchRemoteJsonObject(args.contract) })
       throw new Error('Unsupported research study action.')
     },
   })), 'zerowall-research: register research_study tool')

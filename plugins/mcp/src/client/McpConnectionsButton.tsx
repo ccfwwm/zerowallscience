@@ -43,6 +43,7 @@ export interface McpServerView {
   runtimeError: string
   missingEnvironmentVariables: string[]
   tools: string[]
+  toolDetails?: McpToolDetailView[]
   toolDiscoveryState: 'unknown' | 'pending' | 'complete' | 'failed'
   toolDiscoveryStartedAt?: string
   toolDiscoveryCompletedAt?: string
@@ -50,6 +51,13 @@ export interface McpServerView {
   lastDiscoveryError?: string
   createdAt: string
   updatedAt: string
+}
+
+export interface McpToolDetailView {
+  name: string
+  description: string
+  inputSchema?: Record<string, unknown>
+  schemaTruncated?: boolean
 }
 
 export interface McpServerInput {
@@ -114,6 +122,7 @@ export function McpConnectionsButton(props: Props) {
   const [deleteTarget, setDeleteTarget] = useState<McpServerView>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
+  const [toolQuery, setToolQuery] = useState('')
   const [environment, setEnvironment] = useState<{ phase: string; environmentVersion?: string; contentRevision?: number; currentSlot?: 'a' | 'b' | 'manual'; updated?: boolean; rollbackAvailable?: boolean; version?: string; progress?: number; message?: string; onlineEnvironmentVersion?: string; onlineContentRevision?: number; updateAvailable?: boolean; lastUpdateError?: string; python?: { ready: boolean; version?: string; sitePackages?: string; message?: string } }>()
   const [pythonBusy, setPythonBusy] = useState(false)
   const [sciMasterConfigured, setSciMasterConfigured] = useState(false)
@@ -146,7 +155,15 @@ export function McpConnectionsButton(props: Props) {
   }, [])
 
   const selected = useMemo(() => servers.find(server => server.id === selectedId), [servers, selectedId])
-  const managedConnection = selected !== undefined && ['zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'huagongshe', 'rmcp'].includes(selected.serverName)
+  const visibleToolDetails = useMemo(() => {
+    // Older Hosts only return tools: string[]. Synthesize bounded display
+    // records for those consumers so every discovered tool remains visible
+    // and clearly reports the missing schema contract.
+    const details: McpToolDetailView[] = selected?.tools.map(name => selected.toolDetails?.find(tool => tool.name === name) ?? { name, description: '' }) ?? []
+    const needle = toolQuery.trim().toLocaleLowerCase()
+    return needle === '' ? details : details.filter(tool => `${tool.name} ${tool.description} ${JSON.stringify(tool.inputSchema ?? {})}`.toLocaleLowerCase().includes(needle))
+  }, [selected, toolQuery])
+  const managedConnection = selected !== undefined && ['zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'huagongshe', 'rmcp', 'gpsadb'].includes(selected.serverName)
   const hasStartingServer = servers.some(server => server.runtimeState === 'starting')
 
   const refresh = useCallback(async (preferredId?: string) => {
@@ -370,6 +387,13 @@ export function McpConnectionsButton(props: Props) {
         </div>
       </header>
       <div className={css.workspace}>
+        <label className={css.serverPicker}><span>{props.t('mcp.title')}</span><select aria-label={props.t('mcp.title')} value={selectedId ?? NEW_SERVER} onChange={event => {
+          if (event.target.value === NEW_SERVER) chooseNew()
+          else { const server = servers.find(item => item.id === event.target.value); if (server) choose(server) }
+        }}>
+          <option value={NEW_SERVER}>{props.t('mcp.new')}</option>
+          {servers.map(server => <option key={server.id} value={server.id}>{server.name}</option>)}
+        </select></label>
         <aside className={css.sidebar}>
           <button className={`${css.serverRow} ${selectedId === NEW_SERVER ? css.selected : ''}`} type="button" onClick={chooseNew}>
             <span className={css.serverIcon}><Plus size={16} /></span><span><strong>{props.t('mcp.new')}</strong><small>{props.t('mcp.transportHint')}</small></span>
@@ -397,7 +421,12 @@ export function McpConnectionsButton(props: Props) {
             <div className={css.toolsHeading}><strong>{props.t('mcp.availableTools')}</strong><span>{selected.tools.length}</span></div>
             {selected.tools.length === 0
               ? <p>{selected.runtimeState === 'active-with-zero-tools' ? '已连接，但远端返回 0 个工具。' : selected.runtimeState === 'waiting-for-credentials' ? '等待 RMCP Authorization 凭据。' : selected.runtimeState === 'discovering-tools' || selected.runtimeState === 'starting' ? '正在发现远端工具…' : selected.runtimeState === 'active' ? props.t('mcp.noTools') : props.t('mcp.toolsUnavailable')}</p>
-              : <div className={css.toolList}>{selected.tools.map(tool => <code key={tool}>{tool}</code>)}</div>}
+              : <>
+                <label className={css.toolSearch}><span aria-hidden="true">⌕</span><input value={toolQuery} onChange={event => setToolQuery(event.target.value)} placeholder={props.t('mcp.searchTools')} aria-label={props.t('mcp.searchTools')} /></label>
+                {visibleToolDetails.length === 0
+                  ? <p>{props.t('mcp.noToolMatches')}</p>
+                  : <div className={css.toolDetails}>{visibleToolDetails.map(tool => <ToolDetailCard key={tool.name} tool={tool} t={props.t} />)}</div>}
+              </>}
           </section>}
           {false && selected?.serverName === 'zerowall_managed_scimaster' && <section className={css.sciMasterCard} aria-label={props.t('mcp.sciMasterSettings')}>
             <div className={css.sciMasterHeading}><strong>{props.t('mcp.sciMasterApiKey')}</strong><span className={sciMasterConfigured ? css.configured : css.missing}>{sciMasterConfigured ? props.t('mcp.sciMasterConfigured') : props.t('mcp.sciMasterMissing')}</span></div>
@@ -485,6 +514,27 @@ export { PythonEnvironmentPanel } from './PythonEnvironmentPanel.js'
 
 function Field({ label, children }: { label: string, children: React.ReactNode }) {
   return <label className={css.field}><span>{label}</span>{children}</label>
+}
+
+function ToolDetailCard({ tool, t }: { tool: McpToolDetailView; t: TranslateNS<typeof NS> }) {
+  const schema = tool.inputSchema ?? {}
+  const properties = schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)
+    ? Object.entries(schema.properties as Record<string, unknown>)
+    : []
+  const required = Array.isArray(schema.required) ? new Set(schema.required.filter((value): value is string => typeof value === 'string')) : new Set<string>()
+  return <details className={css.toolCard}>
+    <summary><span><strong>{tool.name}</strong><small>{tool.description || t('mcp.noToolDescription')}</small></span><span className={css.toolExpand}>{t('mcp.toolParameters')} {properties.length}</span></summary>
+    <div className={css.toolBody}>
+      {properties.length === 0 ? <p>{t('mcp.noParameterSchema')}</p> : <dl className={css.toolParameters}>{properties.map(([name, value]) => {
+        const property = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+        const type = Array.isArray(property.type) ? property.type.join(' | ') : typeof property.type === 'string' ? property.type : '未标注类型'
+        const enumeration = Array.isArray(property.enum) ? property.enum.map(String).join(', ') : undefined
+        return <div key={name}><dt>{name}{required.has(name) && <em>{t('mcp.required')}</em>}</dt><dd><code>{type}</code>{typeof property.description === 'string' && <span>{property.description}</span>}{enumeration && <span>{t('mcp.enumValues')}：{enumeration}</span>}{property.default !== undefined && <span>{t('mcp.defaultValue')}：<code>{JSON.stringify(property.default)}</code></span>}</dd></div>
+      })}</dl>}
+      {tool.schemaTruncated && <p className={css.schemaNotice}>{t('mcp.schemaTruncated')}</p>}
+      {Object.keys(schema).length > 0 && <details className={css.rawSchema}><summary>{t('mcp.viewSchema')}</summary><pre>{JSON.stringify(schema, null, 2)}</pre></details>}
+    </div>
+  </details>
 }
 
 function Toggle({ checked, onChange, label }: { checked: boolean, onChange: (checked: boolean) => void, label: string }) {

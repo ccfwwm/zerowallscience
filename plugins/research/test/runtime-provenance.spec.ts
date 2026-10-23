@@ -4,6 +4,7 @@ import { createSystemMessage, createUserMessage, type GenerateOptions, type Stre
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { ResearchStore } from '../../research-store/src/index.js'
 import { installResearchRuntimeProvenance, observedModelUsage, runtimePolicyFingerprint } from '../src/host/runtime-provenance.js'
+import { SCIENCE_SYSTEM_PROMPT_VERSION } from '../../base/src/host/index.js'
 import { ReportService } from '../src/host/report.js'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -27,7 +28,7 @@ describe('research runtime policy provenance', () => {
     // coreVersion tracks SCIENCE_SYSTEM_PROMPT_VERSION, the constant the Host
     // actually reports; the literal pin has to move with it or a prompt bump
     // reads as a provenance regression instead of a rename.
-    expect(first).toMatchObject({ coreVersion: '8.3.5-ppt-maker.1', contextVersion: '7.0.0-context.1', skillContextCount: 1 })
+    expect(first).toMatchObject({ coreVersion: SCIENCE_SYSTEM_PROMPT_VERSION, contextVersion: '7.0.0-context.1', skillContextCount: 1 })
     expect(JSON.stringify(first)).not.toContain('private instructions')
     expect(JSON.stringify(first)).not.toContain('secret prompt body')
     const changed = request()

@@ -1,7 +1,8 @@
 import { mkdirSync, existsSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, resolve, win32 } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { createHash, randomUUID } from 'node:crypto'
+import { DATASET_SOURCE_VERIFIER, inspectDatasetSource, type VerifiedDatasetSource } from './source-verification.ts'
 export * from './domain.ts'
 export * from './annotations.ts'
 import { validateAnnotationPayload, type AnnotationRevisionRecord, type CreateAnnotationRevisionInput, type AnnotationSaveResult } from './annotations.ts'
@@ -49,6 +50,38 @@ export interface ProjectPreferencesRecord {
   lastOpenedAt?: string
   updatedAt: string
 }
+
+export interface ResearchContextEnsureResult {
+  project: ProjectRecord
+  study: ResearchStudyRecord
+  createdProject: boolean
+  createdStudy: boolean
+  targetFingerprint: string
+}
+
+export interface ResearchGateBlocker {
+  code: string
+  message: string
+  documentId?: string
+}
+
+export type AutomaticGateResult =
+  | { status: 'approved'; study: ResearchStudyRecord; freeze?: StudyFreezeRecord; blockers: []; ruleVersion: string }
+  | { status: 'blocked'; study: ResearchStudyRecord; blockers: ResearchGateBlocker[]; ruleVersion: string }
+
+export const SYSTEM_RESEARCH_GATE_RULE_VERSION = 'research-gates-2'
+
+export interface DatasetSourceVerificationRecord extends VerifiedDatasetSource {
+  contractId: string
+  contractVersion: number
+  contractSha256: string
+  verifier: string
+  checkedAt: string
+}
+
+export type DatasetSourceVerificationResult =
+  | { status: 'verified'; verification: DatasetSourceVerificationRecord }
+  | { status: 'blocked'; documentId: string; code: 'CONTRACT_PROVENANCE_UNVERIFIED'; message: string }
 
 export const PROJECT_BUNDLE_FORMAT = 'zerowall-science-project' as const
 export const PROJECT_BUNDLE_VERSION = 1 as const
@@ -472,8 +505,43 @@ const MIGRATIONS = [
       CREATE INDEX viewer_sessions_project_idx ON viewer_sessions(project_id, updated_at DESC);
     `,
   },
+  {
+    version: 18,
+    sql: `
+      CREATE TABLE IF NOT EXISTS research_session_contexts (
+        session_id TEXT NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        study_id TEXT NOT NULL REFERENCES research_studies(id) ON DELETE CASCADE,
+        workspace_path TEXT NOT NULL,
+        target_fingerprint TEXT NOT NULL,
+        binding_origin TEXT NOT NULL CHECK(binding_origin IN ('automatic','explicit')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(session_id, project_id, target_fingerprint),
+        FOREIGN KEY(project_id, study_id) REFERENCES research_studies(project_id, id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS research_session_contexts_project_idx ON research_session_contexts(project_id, updated_at DESC);
+    `,
+  },
+  {
+    version: 19,
+    sql: `
+      CREATE TABLE IF NOT EXISTS contract_source_verifications (
+        contract_id TEXT NOT NULL REFERENCES research_documents(id) ON DELETE CASCADE,
+        contract_version INTEGER NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        contract_sha256 TEXT NOT NULL,
+        asset_id TEXT NOT NULL REFERENCES data_assets(id) ON DELETE CASCADE,
+        asset_version INTEGER NOT NULL,
+        source_json TEXT NOT NULL,
+        verifier TEXT NOT NULL,
+        checked_at TEXT NOT NULL,
+        PRIMARY KEY(contract_id, contract_version)
+      );
+    `,
+  },
 ] as const
-const CURRENT_SCHEMA_VERSION = 17
+const CURRENT_SCHEMA_VERSION = 19
 
 export class ResearchStore {
   private readonly database: DatabaseSync
@@ -483,7 +551,10 @@ export class ResearchStore {
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true })
     this.database = new DatabaseSync(path)
-    this.database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;')
+    // Configure the busy timeout before asking SQLite to change/query the
+    // journal mode. Otherwise simultaneous Host workers can race during the
+    // initial open and fail before SQLite's lock wait is enabled.
+    this.database.exec('PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;')
     const existing = this.database.prepare("SELECT name FROM sqlite_master WHERE name='schema_migrations'").get()
     if (existing && this.schemaVersion() > CURRENT_SCHEMA_VERSION) {
       const version = this.schemaVersion()
@@ -506,6 +577,211 @@ export class ResearchStore {
   schemaVersion(): number {
     const row = this.database.prepare('SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations').get() as { version: number }
     return row.version
+  }
+
+  /** Atomically ensure one project/study context per session, workspace and research target. */
+  ensureResearchContext(input: { sessionId: string; rootPath: string; projectName: string; target?: string }): ResearchContextEnsureResult {
+    return this.withTransaction(() => {
+      const sessionId = nonEmptyString(input.sessionId, 'Session ID')
+      const rootPath = normalizeResearchRoot(input.rootPath)
+      const projectName = nonEmptyString(input.projectName, 'Project name')
+      const requestedTarget = normalizeResearchTarget(input.target ?? '')
+      const target = isResearchContinuationTarget(requestedTarget) ? '' : requestedTarget
+      // Do not trust a caller-provided key: bind the idempotency key to the
+      // normalized goal text so unrelated tasks cannot alias one Study.
+      const fingerprint = createHash('sha256').update(target || 'general-research').digest('hex')
+
+      const existingProjectRow = (this.database.prepare('SELECT * FROM projects ORDER BY updated_at DESC, id').all() as Array<Record<string, unknown>>)
+        .find(row => typeof row.root_path === 'string' && normalizeResearchRoot(row.root_path) === rootPath)
+      const project = existingProjectRow ? projectFromRow(existingProjectRow as Record<string, string>) : this.createProject({ name: projectName, rootPath })
+      const createdProject = existingProjectRow === undefined
+
+      const selections = this.getProjectPreferences(project.id).settings.researchSessions
+      const selectedId = selections && typeof selections === 'object' && !Array.isArray(selections) && typeof selections[sessionId] === 'string'
+        ? String(selections[sessionId]) : undefined
+      const selected = selectedId ? this.getResearchStudy(selectedId) : undefined
+      const selectedContext = selected ? this.database.prepare('SELECT binding_origin,target_fingerprint FROM research_session_contexts WHERE session_id=? AND project_id=? AND study_id=? AND target_fingerprint=?').get(sessionId, project.id, selected.id, fingerprint) as { binding_origin: string; target_fingerprint: string } | undefined : undefined
+      const anySelectedContext = selected ? this.database.prepare('SELECT binding_origin,target_fingerprint FROM research_session_contexts WHERE session_id=? AND project_id=? AND study_id=? ORDER BY updated_at DESC LIMIT 1').get(sessionId, project.id, selected.id) as { binding_origin: string; target_fingerprint: string } | undefined : undefined
+      const generalFingerprint = createHash('sha256').update('general-research').digest('hex')
+      // A resume/status message carries no new scientific objective. Keep the
+      // durable session binding, including after restart, instead of creating
+      // another general-purpose Study on every continuation.
+      if (selected && selected.projectId === project.id && selected.status !== 'archived'
+        && !target) {
+        const retainedFingerprint = anySelectedContext?.target_fingerprint ?? this.researchStudyTargetFingerprint(selected) ?? generalFingerprint
+        if (!anySelectedContext) this.persistResearchSessionContext(sessionId, project, selected, retainedFingerprint, 'explicit')
+        this.createDraftsForBlankResearchStudy(project, selected, '', retainedFingerprint)
+        return { project, study: this.getResearchStudy(selected.id)!, createdProject, createdStudy: false, targetFingerprint: retainedFingerprint }
+      }
+      // A user may select a blank Study before the current message's objective
+      // has reached the Research tool. Let that explicit selection adopt its
+      // first concrete objective; never repurpose a frozen or populated Study.
+      const canAdoptFirstObjective = Boolean(selected && !selected.currentFreezeId && fingerprint !== generalFingerprint
+        && (!anySelectedContext || anySelectedContext.binding_origin === 'explicit')
+        && this.canAdoptResearchTarget(selected))
+      // A currently user-selected study with no prior automatic binding is an
+      // explicit choice. Once bound, scope it to the same goal fingerprint.
+      if (selected && selected.projectId === project.id && selected.status !== 'archived' && (
+        selectedContext?.binding_origin === 'explicit' ||
+        canAdoptFirstObjective ||
+        (!anySelectedContext && selectedContext === undefined && this.matchesResearchTarget(selected, fingerprint))
+      )) {
+        this.persistResearchSessionContext(sessionId, project, selected, fingerprint, 'explicit')
+        if (canAdoptFirstObjective) this.adoptResearchTargetForBlankStudy(selected, target, fingerprint)
+        else this.createDraftsForBlankResearchStudy(project, selected, target, fingerprint)
+        return { project, study: this.getResearchStudy(selected.id)!, createdProject, createdStudy: false, targetFingerprint: fingerprint }
+      }
+
+      const context = this.database.prepare('SELECT * FROM research_session_contexts WHERE session_id=? AND project_id=? AND target_fingerprint=?').get(sessionId, project.id, fingerprint) as Record<string, unknown> | undefined
+      const prior = context ? this.getResearchStudy(String(context.study_id)) : undefined
+      if (prior && prior.projectId === project.id && prior.status !== 'archived') {
+        this.setSessionResearchStudy(project.id, sessionId, prior.id)
+        this.persistResearchSessionContext(sessionId, project, prior, fingerprint, 'automatic')
+        this.createDraftsForBlankResearchStudy(project, prior, target, fingerprint)
+        return { project, study: this.getResearchStudy(prior.id)!, createdProject, createdStudy: false, targetFingerprint: fingerprint }
+      }
+
+      // Only untouched automatic drafts may adopt the first concrete goal or
+      // a strictly additive refinement. Existing user records, tasks and frozen
+      // plans are never rewritten based on a text similarity heuristic.
+      const previousQuestion = selected?.currentQuestionId ? this.getResearchDocument(selected.currentQuestionId) : undefined
+      const previousTarget = typeof previousQuestion?.payload.text === 'string' ? normalizeResearchTarget(previousQuestion.payload.text) : ''
+      const additiveSuffix = target.startsWith(previousTarget) ? target.slice(previousTarget.length) : ''
+      const isAdditiveRefinement = previousTarget.length >= 12 && /^[\s,;:，；：]+(?:with\b|using\b|including\b|adjust(?:ing|ed)?\b|among\b|补充|控制|调整|使用|采用|纳入|加入)/iu.test(additiveSuffix)
+      const canRefineAutomaticDraft = selected && selected.projectId === project.id && selected.status === 'draft' && !selected.currentFreezeId
+        && anySelectedContext?.binding_origin === 'automatic'
+        && (anySelectedContext.target_fingerprint === generalFingerprint || isAdditiveRefinement)
+        && this.canAdoptResearchTarget(selected, anySelectedContext.target_fingerprint)
+      if (canRefineAutomaticDraft) {
+        this.adoptResearchTargetForBlankStudy(selected, target, fingerprint)
+        this.persistResearchSessionContext(sessionId, project, selected, fingerprint, 'automatic')
+        this.recordAuditEvent(project.id, 'research-context.target-refined', { sessionId, studyId: selected.id, previousTargetFingerprint: anySelectedContext.target_fingerprint, targetFingerprint: fingerprint })
+        return { project, study: this.getResearchStudy(selected.id)!, createdProject, createdStudy: false, targetFingerprint: fingerprint }
+      }
+
+      const title = target ? target.slice(0, 160) : '科研任务草稿'
+      const study = this.createResearchStudy({ projectId: project.id, title, phase: 'question' })
+      this.persistResearchSessionContext(sessionId, project, study, fingerprint, 'automatic')
+      this.setSessionResearchStudy(project.id, sessionId, study.id)
+      this.createAutomaticResearchDrafts(project, study, target, fingerprint)
+      this.recordAuditEvent(project.id, 'research-context.ensured', { sessionId, studyId: study.id, targetFingerprint: fingerprint, createdProject, createdStudy: true, draftState: target ? 'awaiting-validation' : 'missing-research-goal' })
+      return { project, study: this.getResearchStudy(study.id)!, createdProject, createdStudy: true, targetFingerprint: fingerprint }
+    })
+  }
+
+  private persistResearchSessionContext(sessionId: string, project: ProjectRecord, study: ResearchStudyRecord, fingerprint: string, origin: 'automatic' | 'explicit'): void {
+    // Multiple refinements can finish within the same millisecond. Persist a
+    // strictly ordered timestamp so a later continuation recovers the actual
+    // latest target even after restart or an upsert of an older goal alias.
+    const previous = this.database.prepare('SELECT MAX(updated_at) AS updated_at FROM research_session_contexts WHERE session_id=? AND project_id=?').get(sessionId, project.id) as { updated_at: string | null }
+    const now = new Date(Math.max(Date.now(), previous.updated_at ? Date.parse(previous.updated_at) + 1 : 0)).toISOString()
+    this.database.prepare(`INSERT INTO research_session_contexts (session_id,project_id,study_id,workspace_path,target_fingerprint,binding_origin,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(session_id,project_id,target_fingerprint) DO UPDATE SET study_id=excluded.study_id,workspace_path=excluded.workspace_path,binding_origin=excluded.binding_origin,updated_at=excluded.updated_at`)
+      .run(sessionId, project.id, study.id, project.rootPath, fingerprint, origin, now, now)
+  }
+
+  private createAutomaticResearchDrafts(project: ProjectRecord, study: ResearchStudyRecord, target: string, fingerprint: string): void {
+    const prompt = target || ''
+    const question = this.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: {
+      text: prompt || '待补充：研究问题', status: prompt ? 'needs-validation' : 'incomplete', origin: 'system-draft', targetFingerprint: fingerprint,
+      missing: prompt ? ['研究对象/人群', '目标结局或估计量'] : ['用户研究目标'],
+    } })
+    const contract = this.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'dataset-contract', payload: {
+      status: 'pending', applicability: 'pending', sourceStatus: 'unknown', source: '', variables: [], origin: 'system-draft', targetFingerprint: fingerprint,
+      missing: ['可核实的数据来源', '目标变量及其定义'],
+    } })
+    const plan = this.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'analysis-plan', payload: {
+      status: 'pending', method: '', inputs: [contract.id], exploratory: true, stoppingConditions: ['停止条件待研究问题与数据来源校验后确定'],
+      origin: 'system-draft', targetFingerprint: fingerprint, missing: ['分析方法及依据', '可用数据契约', '具体变量和参数'],
+    } })
+    const current = this.getResearchStudy(study.id)!
+    this.updateResearchStudy(study.id, { expectedVersion: current.version, currentQuestionId: question.id, currentPlanId: plan.id })
+    this.recordAuditEvent(project.id, 'research-context.drafts-created', { studyId: study.id, questionId: question.id, contractId: contract.id, planId: plan.id, targetFingerprint: fingerprint, pendingValidation: true })
+  }
+
+  private createDraftsForBlankResearchStudy(project: ProjectRecord, study: ResearchStudyRecord, target: string, fingerprint: string): void {
+    if (!study.currentFreezeId && this.listResearchDocuments(study.id).length === 0 && this.canAdoptResearchTarget(study)) {
+      // A continuation can supply a durable goal key without supplying the
+      // original question text. Keep such drafts general and safely adoptable
+      // when the concrete objective next reaches this entry point.
+      const draftFingerprint = target ? fingerprint : createHash('sha256').update('general-research').digest('hex')
+      this.createAutomaticResearchDrafts(project, study, target, draftFingerprint)
+    }
+  }
+
+  /** Exact applicability never rewrites an existing question or frozen plan. */
+  private matchesResearchTarget(study: ResearchStudyRecord, fingerprint: string): boolean {
+    if (study.currentFreezeId) {
+      // A durable binding from another session in this project is also valid:
+      // selecting an existing frozen Study must not require a prior selection
+      // in the new session before that selection can succeed.
+      if (this.database.prepare('SELECT 1 FROM research_session_contexts WHERE project_id=? AND study_id=? AND target_fingerprint=? LIMIT 1').get(study.projectId, study.id, fingerprint)) return true
+    }
+    return this.researchStudyTargetFingerprint(study) === fingerprint
+  }
+
+  private researchStudyTargetFingerprint(study: ResearchStudyRecord): string | undefined {
+    let payload: JsonValue | undefined
+    if (study.currentFreezeId) {
+      const freeze = this.listStudyFreezes(study.id).find(item => item.id === study.currentFreezeId)
+      const question = freeze?.snapshot.question
+      payload = question && typeof question === 'object' && !Array.isArray(question) ? question.payload : undefined
+    } else {
+      const question = study.currentQuestionId ? this.getResearchDocument(study.currentQuestionId) : undefined
+      payload = question?.studyId === study.id && question.kind === 'question' ? question.payload : undefined
+    }
+    const text = payload && typeof payload === 'object' && !Array.isArray(payload) && typeof payload.text === 'string' ? normalizeResearchTarget(payload.text) : ''
+    return text.length > 0 && text !== normalizeResearchTarget('待补充：研究问题') ? createHash('sha256').update(text).digest('hex') : undefined
+  }
+
+  private canAdoptResearchTarget(study: ResearchStudyRecord, expectedFingerprint?: string): boolean {
+    const documents = this.listResearchDocuments(study.id)
+    // A manually selected, truly blank Study may adopt its first objective.
+    // Existing user content is never inferred to be compatible from a mutable
+    // `origin` field alone. A prior automatic general-purpose draft may adopt
+    // the first concrete objective only while it still exactly matches the
+    // Host-created template.
+    if (this.listResearchTasks(study.id).length > 0) return false
+    if (documents.length === 0) return study.currentQuestionId === undefined && study.currentPlanId === undefined
+    if (documents.length !== 3) return false
+    const byKind = new Map(documents.map(document => [document.kind, document]))
+    const question = byKind.get('question')
+    const contract = byKind.get('dataset-contract')
+    const plan = byKind.get('analysis-plan')
+    if (!question || !contract || !plan || study.currentQuestionId !== question.id || study.currentPlanId !== plan.id) return false
+    const generalFingerprint = createHash('sha256').update('general-research').digest('hex')
+    const draftFingerprint = expectedFingerprint ?? generalFingerprint
+    const questionText = draftFingerprint === generalFingerprint ? '' : typeof question.payload.text === 'string' ? question.payload.text : ''
+    if (draftFingerprint !== createHash('sha256').update(normalizeResearchTarget(questionText) || 'general-research').digest('hex')) return false
+    const equals = (actual: JsonObject, expected: JsonObject): boolean => JSON.stringify(actual) === JSON.stringify(expected)
+    return equals(question.payload, {
+      text: questionText || '待补充：研究问题', status: questionText ? 'needs-validation' : 'incomplete', origin: 'system-draft', targetFingerprint: draftFingerprint,
+      missing: questionText ? ['研究对象/人群', '目标结局或估计量'] : ['用户研究目标'],
+    }) && equals(contract.payload, {
+      status: 'pending', applicability: 'pending', sourceStatus: 'unknown', source: '', variables: [], origin: 'system-draft', targetFingerprint: draftFingerprint,
+      missing: ['可核实的数据来源', '目标变量及其定义'],
+    }) && equals(plan.payload, {
+      status: 'pending', method: '', inputs: [contract.id], exploratory: true, stoppingConditions: ['停止条件待研究问题与数据来源校验后确定'],
+      origin: 'system-draft', targetFingerprint: draftFingerprint, missing: ['分析方法及依据', '可用数据契约', '具体变量和参数'],
+    })
+  }
+
+  private adoptResearchTargetForBlankStudy(study: ResearchStudyRecord, target: string, fingerprint: string): void {
+    const documents = this.listResearchDocuments(study.id)
+    if (!documents.length) {
+      this.createAutomaticResearchDrafts(this.requireProject(study.projectId), study, target, fingerprint)
+      return
+    }
+    for (const document of documents) {
+      if (document.payload.origin !== 'system-draft') continue
+      const payload: JsonObject = { ...document.payload, targetFingerprint: fingerprint }
+      if (document.kind === 'question') {
+        payload.text = target
+        payload.status = 'needs-validation'
+        payload.missing = ['研究对象/人群', '目标结局或估计量']
+      }
+      this.updateResearchDocument(document.id, { expectedVersion: document.version, payload })
+    }
   }
 
   createProject(input: CreateProjectInput): ProjectRecord {
@@ -725,6 +1001,7 @@ export class ResearchStore {
       }
     }
     const payload = { ...claim.payload, auditStatus: errors.length === 0 ? 'passed' : 'failed', needsReview: errors.length !== 0, auditErrors: errors }
+    if (JSON.stringify(payload) === JSON.stringify(claim.payload)) return claim
     return this.updateResearchDocument(claim.id, { expectedVersion, payload })
   }
 
@@ -816,6 +1093,244 @@ export class ResearchStore {
     })
   }
 
+  /** System-only source inspection: the receipt is never accepted from a
+   * document, audit event, imported snapshot or caller-provided metadata. */
+  verifyDatasetContractSource(contractId: string): DatasetSourceVerificationResult {
+    return this.withTransaction(() => {
+      try {
+        const contract = this.getResearchDocument(contractId)
+        if (!contract || contract.kind !== 'dataset-contract') throw new Error('Dataset contract was not found.')
+        const study = this.getResearchStudy(contract.studyId)
+        if (!study || study.status === 'archived') throw new Error('The contract study is unavailable or archived.')
+        const source = this.inspectContractSource(contract)
+        const existing = this.getDatasetSourceVerification(contract.id)
+        const contractSha256 = researchDocumentSha256(contract)
+        if (existing && existing.contractSha256 === contractSha256 && JSON.stringify(source) === JSON.stringify(datasetSourceFromReceipt(existing))) return { status: 'verified', verification: existing }
+        if (this.listStudyFreezes(study.id).some(freeze => frozenDocumentIds(freeze.snapshot).has(contract.id))) throw new Error('The frozen data source no longer matches its system receipt; create an amendment before replacing it.')
+        const checkedAt = new Date().toISOString()
+        const verification: DatasetSourceVerificationRecord = { contractId: contract.id, contractVersion: contract.version, contractSha256, ...source, verifier: DATASET_SOURCE_VERIFIER, checkedAt }
+        this.database.prepare(`INSERT INTO contract_source_verifications
+          (contract_id,contract_version,project_id,contract_sha256,asset_id,asset_version,source_json,verifier,checked_at)
+          VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(contract_id,contract_version) DO UPDATE SET
+          contract_sha256=excluded.contract_sha256,asset_id=excluded.asset_id,asset_version=excluded.asset_version,
+          source_json=excluded.source_json,verifier=excluded.verifier,checked_at=excluded.checked_at`)
+          .run(contract.id, contract.version, contract.projectId, contractSha256, source.assetId, source.assetVersion, JSON.stringify(source), DATASET_SOURCE_VERIFIER, checkedAt)
+        this.recordAuditEvent(contract.projectId, 'dataset-contract.source-verified', { actor: 'system-validation', contractId, contractVersion: contract.version, contractSha256, assetId: source.assetId, sourceSha256: source.sourceSha256, verifier: DATASET_SOURCE_VERIFIER, scope: 'local-file-and-column-identity' })
+        return { status: 'verified', verification }
+      } catch (error) {
+        return { status: 'blocked', documentId: contractId, code: 'CONTRACT_PROVENANCE_UNVERIFIED', message: error instanceof Error ? error.message : 'The dataset source could not be verified.' }
+      }
+    })
+  }
+
+  private inspectContractSource(contract: ResearchDocumentRecord): VerifiedDatasetSource {
+    const assetId = contract.payload.assetId ?? contract.payload.sourceAssetId
+    if (typeof assetId !== 'string' || !assetId.trim() || (contract.payload.assetId !== undefined && contract.payload.sourceAssetId !== undefined && contract.payload.assetId !== contract.payload.sourceAssetId)) throw new Error('The data contract must reference one registered source asset.')
+    const asset = this.listDataAssets(contract.projectId).find(item => item.id === assetId)
+    if (!asset) throw new Error('The contract source asset is missing or belongs to another project.')
+    return inspectDatasetSource(contract, asset, this.requireProject(contract.projectId).rootPath)
+  }
+
+  private getDatasetSourceVerification(contractId: string): DatasetSourceVerificationRecord | undefined {
+    const contract = this.getResearchDocument(contractId)
+    if (!contract) return undefined
+    const row = this.database.prepare('SELECT * FROM contract_source_verifications WHERE contract_id=? AND contract_version=? AND project_id=?').get(contract.id, contract.version, contract.projectId) as Record<string, unknown> | undefined
+    if (!row) return undefined
+    const source = JSON.parse(String(row.source_json)) as VerifiedDatasetSource
+    return { contractId: String(row.contract_id), contractVersion: Number(row.contract_version), contractSha256: String(row.contract_sha256), ...source, verifier: String(row.verifier), checkedAt: String(row.checked_at) }
+  }
+
+  private contractHasVerifiedSource(contract: ResearchDocumentRecord): boolean {
+    const receipt = this.getDatasetSourceVerification(contract.id)
+    if (!receipt || receipt.contractSha256 !== researchDocumentSha256(contract) || receipt.verifier !== DATASET_SOURCE_VERIFIER) return false
+    try { return JSON.stringify(this.inspectContractSource(contract)) === JSON.stringify(datasetSourceFromReceipt(receipt)) }
+    catch { return false }
+  }
+
+  /**
+   * Run the deterministic system Gate 1 checks and freeze the approved inputs
+   * atomically. This method has no caller-supplied approval decision or status;
+   * it can only approve after all persisted documents pass validation.
+   */
+  approveResearchGateAutomatically(studyId: string, expectedVersion: number, options: { ruleVersion?: string } = {}): AutomaticGateResult {
+    return this.withTransaction(() => {
+      const ruleVersion = nonEmptyString(options.ruleVersion ?? SYSTEM_RESEARCH_GATE_RULE_VERSION, 'Research gate rule version')
+      const study = this.getResearchStudy(studyId)
+      if (!study) throw new Error(`Research study was not found: ${studyId}`)
+      if (study.status === 'archived') throw new Error('Archived research studies cannot be changed.')
+      // Concurrent confirmatory requests may arrive with the same pre-freeze
+      // version. Once one has atomically approved and frozen the Study, stale
+      // retries should reuse that immutable result instead of surfacing a
+      // revision error to the second request.
+      if (study.gate1 === 'approved' && study.currentFreezeId) {
+        const freeze = this.listStudyFreezes(studyId).find(item => item.id === study.currentFreezeId)
+        if (freeze && typeof freeze.snapshot.sha256 === 'string') {
+          const blockers = this.researchGate1Blockers(study)
+          if (!blockers.length) return { status: 'approved', study, freeze, blockers: [], ruleVersion }
+          return { status: 'blocked', study, blockers, ruleVersion }
+        }
+      }
+      if (study.version !== expectedVersion) throw new Error(`Research study revision conflict: expected ${expectedVersion}, current ${study.version}.`)
+      if (study.currentFreezeId) throw new Error('This study is already frozen; create an amendment before revalidating it.')
+
+      const blockers = this.researchGate1Blockers(study)
+      if (blockers.length) {
+        this.recordAuditEvent(study.projectId, 'research-study.system-gate1-blocked', {
+          studyId, reviewedVersion: expectedVersion, ruleVersion,
+          blockers: blockers.map(blocker => ({ code: blocker.code, message: blocker.message, ...(blocker.documentId ? { documentId: blocker.documentId } : {}) })),
+        })
+        return { status: 'blocked', study: this.getResearchStudy(studyId)!, blockers, ruleVersion }
+      }
+
+      const question = this.getResearchDocument(study.currentQuestionId!)!
+      const plan = this.getResearchDocument(study.currentPlanId!)!
+      const contractIds = plan.payload.inputs as string[]
+      const contracts = contractIds.map(id => this.getResearchDocument(id)!).sort((a, b) => a.id.localeCompare(b.id))
+      const documentHashes = [question, plan, ...contracts].map(document => ({
+        documentId: document.id, kind: document.kind, version: document.version,
+        sha256: createHash('sha256').update(JSON.stringify(document.payload) ?? '').digest('hex'),
+      }))
+      this.database.prepare("UPDATE research_studies SET gate1='approved',version=version+1,updated_at=? WHERE id=?")
+        .run(new Date().toISOString(), studyId)
+      const approved = this.getResearchStudy(studyId)!
+      const freeze = this.freezeResearchStudy(studyId, approved.version)
+      const frozenSnapshotSha256 = freeze.snapshot.sha256
+      if (typeof frozenSnapshotSha256 !== 'string') throw new Error('Frozen study snapshot checksum is missing.')
+      this.recordAuditEvent(study.projectId, 'research-study.system-gate1-approved', {
+        actor: 'system-validation', studyId, ruleVersion, reviewedVersion: expectedVersion,
+        resultingVersion: this.getResearchStudy(studyId)!.version, documentHashes,
+        freezeId: freeze.id, freezeVersion: freeze.version, frozenSnapshotSha256,
+      })
+      return { status: 'approved', study: this.getResearchStudy(studyId)!, freeze, blockers: [], ruleVersion }
+    })
+  }
+
+  /** Pass Gate 2 only when every persisted claim has a fresh deterministic
+   * audit and every referenced evidence item remains valid. Evidence records
+   * are never silently upgraded from needsReview=true to trusted. */
+  approveResearchGate2Automatically(studyId: string, expectedVersion: number, options: { ruleVersion?: string } = {}): AutomaticGateResult {
+    return this.withTransaction(() => {
+      const ruleVersion = nonEmptyString(options.ruleVersion ?? SYSTEM_RESEARCH_GATE_RULE_VERSION, 'Research gate rule version')
+      const study = this.getResearchStudy(studyId)
+      if (!study) throw new Error(`Research study was not found: ${studyId}`)
+      if (study.status === 'archived') throw new Error('Archived research studies cannot be changed.')
+      // Previously approved results still need fresh evidence/source checks.
+      // A stale retry may reuse approval only after those checks pass again.
+      const previouslyApproved = study.gate2 === 'approved' && study.gate1 === 'approved' && Boolean(study.currentFreezeId)
+      if (!previouslyApproved && study.version !== expectedVersion) throw new Error(`Research study revision conflict: expected ${expectedVersion}, current ${study.version}.`)
+      const blockers: ResearchGateBlocker[] = []
+      if (!study.currentFreezeId || study.gate1 !== 'approved') blockers.push({ code: 'PLAN_NOT_FROZEN', message: '分析方案尚未通过 Gate 1 并冻结，或冻结后研究方案已失效。' })
+      else blockers.push(...this.researchGate1Blockers(study))
+      const claims = this.listResearchDocuments(studyId, 'claim')
+      const auditedClaims: ResearchDocumentRecord[] = []
+      if (!claims.length) blockers.push({ code: 'CLAIMS_MISSING', message: '尚无可审计的研究结论。' })
+      for (const original of claims) {
+        // Recompute the audit from current evidence references instead of
+        // trusting a mutable `auditStatus` payload submitted by a caller.
+        const claim = this.auditResearchClaim(original.id, original.version)
+        auditedClaims.push(claim)
+        if (claim.payload.needsReview === true || claim.payload.auditStatus !== 'passed') {
+          blockers.push({ code: 'CLAIM_AUDIT_REQUIRED', message: '研究结论尚未通过确定性证据审计。', documentId: claim.id })
+          continue
+        }
+        const refs = claim.payload.evidenceIds
+        if (!Array.isArray(refs) || refs.length === 0) {
+          blockers.push({ code: 'CLAIM_EVIDENCE_MISSING', message: '研究结论缺少证据引用。', documentId: claim.id })
+          continue
+        }
+        for (const ref of refs) {
+          const evidence = typeof ref === 'string' ? this.getResearchDocument(ref) : undefined
+          if (!evidence || evidence.studyId !== studyId || evidence.kind !== 'evidence' || evidence.payload.needsReview !== false) {
+            blockers.push({ code: 'EVIDENCE_UNVERIFIED', message: '引用证据缺失、未经审阅或不属于当前 Study。', documentId: claim.id })
+            continue
+          }
+          try { this.validateResearchEvidenceReferences(study.projectId, studyId, evidence.payload) }
+          catch { blockers.push({ code: 'EVIDENCE_REFERENCE_INVALID', message: '引用证据的数据来源或对象引用已失效。', documentId: claim.id }) }
+        }
+      }
+      if (blockers.length) {
+        if (previouslyApproved && this.getResearchStudy(studyId)!.gate2 === 'approved') {
+          this.database.prepare("UPDATE research_studies SET gate2='pending',version=version+1,updated_at=? WHERE id=?").run(new Date().toISOString(), studyId)
+        }
+        this.recordAuditEvent(study.projectId, 'research-study.system-gate2-blocked', {
+          studyId, reviewedVersion: expectedVersion, ruleVersion,
+          blockers: blockers.map(blocker => ({ code: blocker.code, message: blocker.message, ...(blocker.documentId ? { documentId: blocker.documentId } : {}) })),
+        })
+        return { status: 'blocked', study: this.getResearchStudy(studyId)!, blockers, ruleVersion }
+      }
+      if (previouslyApproved && this.getResearchStudy(studyId)!.gate2 === 'approved') return { status: 'approved', study: this.getResearchStudy(studyId)!, blockers: [], ruleVersion }
+      const claimsDigest = createHash('sha256').update(JSON.stringify(auditedClaims.map(claim => ({ id: claim.id, version: claim.version, payload: claim.payload })).sort((a, b) => a.id.localeCompare(b.id)))).digest('hex')
+      const frozenStudyId = study.currentFreezeId ?? ''
+      const freezeHash = this.listStudyFreezes(studyId).find(freeze => freeze.id === frozenStudyId)?.snapshot.sha256 ?? ''
+      this.database.prepare("UPDATE research_studies SET gate2='approved',version=version+1,updated_at=? WHERE id=?")
+        .run(new Date().toISOString(), studyId)
+      this.recordAuditEvent(study.projectId, 'research-study.system-gate2-approved', {
+        actor: 'system-validation', studyId, ruleVersion, reviewedVersion: expectedVersion,
+        resultingVersion: this.getResearchStudy(studyId)!.version, freezeId: frozenStudyId,
+        freezeSha256: freezeHash,
+        claimsDigest,
+      })
+      return { status: 'approved', study: this.getResearchStudy(studyId)!, blockers: [], ruleVersion }
+    })
+  }
+
+  private researchGate1Blockers(study: ResearchStudyRecord): ResearchGateBlocker[] {
+    const blockers: ResearchGateBlocker[] = []
+    const question = study.currentQuestionId ? this.getResearchDocument(study.currentQuestionId) : undefined
+    if (!question || question.kind !== 'question' || question.studyId !== study.id) {
+      blockers.push({ code: 'QUESTION_MISSING', message: '研究问题草稿尚未建立或未关联到当前 Study。' })
+    } else {
+      // A free-form sentence is useful as a draft, but it is not enough to
+      // freeze a confirmatory plan. Gate 1 needs a structured study
+      // population/subject and a structured outcome or estimand. This also
+      // prevents `text` plus `missing: []` from being treated as complete.
+      const populationFields = ['population', 'phenotype', 'exposure', 'intervention', 'cohort', 'participants', 'subjects', 'sample']
+      const outcomeFields = ['outcome', 'estimand', 'endpoint', 'target']
+      const hasPopulation = populationFields.some(key => isMeaningfulResearchValue(question.payload[key]))
+      const hasOutcomeOrEstimand = outcomeFields.some(key => isMeaningfulResearchValue(question.payload[key]))
+      if (!hasPopulation || !hasOutcomeOrEstimand || (question.payload.status !== undefined && !isMeaningfulResearchValue(question.payload.status)) || (Array.isArray(question.payload.missing) && question.payload.missing.length > 0)) {
+        blockers.push({ code: 'QUESTION_INCOMPLETE', message: '研究问题仍缺少可核验的研究对象、目标结局或估计量。', documentId: question.id })
+      }
+    }
+    const plan = study.currentPlanId ? this.getResearchDocument(study.currentPlanId) : undefined
+    if (!plan || plan.kind !== 'analysis-plan' || plan.studyId !== study.id) {
+      blockers.push({ code: 'ANALYSIS_PLAN_MISSING', message: '尚无关联的分析计划。' })
+      return blockers
+    }
+    try {
+      this.validateAnalysisPlan(plan.id)
+      if ((plan.payload.status !== undefined && !isMeaningfulResearchValue(plan.payload.status)) || (Array.isArray(plan.payload.missing) && plan.payload.missing.length > 0)) {
+        blockers.push({ code: 'ANALYSIS_PLAN_INCOMPLETE', message: '分析计划仍包含待补全项。', documentId: plan.id })
+      }
+    } catch (error) {
+      blockers.push({ code: 'ANALYSIS_PLAN_INVALID', message: error instanceof Error ? error.message : '分析计划验证失败。', documentId: plan.id })
+    }
+    // Local file receipts cannot certify the remote datasets selected by the
+    // NHANES adapter or the provenance of caller-prepared genetic rows. Until
+    // a trusted pre-analysis verifier binds those exact inputs, a small local
+    // CSV must not be sufficient to authorize a confirmatory remote analysis.
+    if (plan.payload.exploratory !== true && (plan.payload.nhanesSurvey !== undefined || plan.payload.genetics !== undefined)) {
+      blockers.push({ code: 'CONTRACT_VERIFIER_UNAVAILABLE', message: '当前未提供能够核验正式 NHANES 或遗传分析实际远程输入的来源验证器；本地 CSV/TSV 核验不能替代远程数据身份及来源核验。仅暂停正式分析，检索、下载和探索整理仍可继续。', documentId: plan.id })
+    }
+    if (Array.isArray(plan.payload.inputs)) {
+      for (const ref of plan.payload.inputs) {
+        const contract = typeof ref === 'string' ? this.getResearchDocument(ref) : undefined
+        if (!contract || contract.kind !== 'dataset-contract' || contract.studyId !== study.id) continue
+        const variables = contract.payload.availableVariables ?? contract.payload.variables
+        if (!Array.isArray(variables) || variables.length === 0 || variables.some(variable => !isMeaningfulResearchValue(variable))) {
+          blockers.push({ code: 'CONTRACT_VARIABLES_UNKNOWN', message: '数据契约未提供经过核实的变量清单。', documentId: contract.id })
+        }
+        if (!this.contractHasVerifiedSource(contract)) {
+          blockers.push({ code: 'CONTRACT_PROVENANCE_UNVERIFIED', message: '数据契约的来源与变量清单缺少系统可审计的核验记录；状态字段本身不能作为证据。', documentId: contract.id })
+        }
+        if (contract.payload.status === 'pending' || contract.payload.status === 'incomplete' || (Array.isArray(contract.payload.missing) && contract.payload.missing.length > 0)) {
+          blockers.push({ code: 'CONTRACT_INCOMPLETE', message: '数据契约仍包含待补全项。', documentId: contract.id })
+        }
+      }
+    }
+    return blockers
+  }
+
   freezeResearchStudy(studyId: string, expectedVersion: number): StudyFreezeRecord {
     return this.withTransaction(() => {
     const study = this.getResearchStudy(studyId)
@@ -830,7 +1345,8 @@ export class ResearchStore {
     if (plan.studyId !== study.id) throw new Error('Current analysis plan is invalid.')
     const previous = (this.database.prepare('SELECT COALESCE(MAX(version), 0) AS version FROM study_freezes WHERE study_id = ?').get(study.id) as { version: number }).version
     const runtimeProvenance = this.listResearchRuntimeEvents(studyId)
-    const freeze: StudyFreezeRecord = { id: randomUUID(), projectId: study.projectId, studyId: study.id, version: previous + 1, snapshot: JSON.parse(JSON.stringify({ study, question, plan, contracts: plan.payload.inputs, documents: this.listResearchDocuments(studyId).filter(d => ['question', 'dataset-contract', 'analysis-plan'].includes(d.kind)), runtimeProvenance })), createdAt: new Date().toISOString() }
+    const sourceVerifications = (plan.payload.inputs as string[]).map(id => this.getDatasetSourceVerification(id)).filter(Boolean)
+    const freeze: StudyFreezeRecord = { id: randomUUID(), projectId: study.projectId, studyId: study.id, version: previous + 1, snapshot: JSON.parse(JSON.stringify({ study, question, plan, contracts: plan.payload.inputs, documents: this.listResearchDocuments(studyId).filter(d => ['question', 'dataset-contract', 'analysis-plan'].includes(d.kind)), runtimeProvenance, sourceVerifications })), createdAt: new Date().toISOString() }
     freeze.snapshot.sha256 = createHash('sha256').update(JSON.stringify(freeze.snapshot)).digest('hex')
     this.database.prepare('INSERT INTO study_freezes (id, project_id, study_id, version, snapshot_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
       .run(freeze.id, freeze.projectId, freeze.studyId, freeze.version, JSON.stringify(freeze.snapshot), freeze.createdAt)
@@ -1004,9 +1520,14 @@ export class ResearchStore {
 
   private invalidateResearchStudy(studyId: string, kind: ResearchRecordKind): void {
     if (['viewer-session', 'evaluation', 'benchmark-task'].includes(kind)) return
-    const affectsPlan = ['question', 'dataset-contract', 'analysis-plan', 'observation', 'annotation-revision'].includes(kind)
+    // A frozen plan is immutable. Observations and annotation revisions are
+    // post-freeze outputs that can require a fresh evidence review, but they
+    // do not change the question/contract/plan that Gate 1 froze. Treating
+    // them as plan edits leaves gate1=pending while retaining currentFreezeId;
+    // the next automatic Gate 1 attempt then fails with "already frozen".
+    const affectsPlan = ['question', 'dataset-contract', 'analysis-plan'].includes(kind)
     this.database.prepare(`UPDATE research_studies SET gate2='pending', ${affectsPlan ? "gate1='pending'," : ''} version=version+1, updated_at=? WHERE id=?`).run(new Date().toISOString(), studyId)
-    if (affectsPlan || kind === 'evidence') {
+    if (affectsPlan || kind === 'evidence' || kind === 'annotation-revision') {
       for (const doc of this.listResearchDocuments(studyId).filter(d => affectsPlan ? ['evidence', 'claim'].includes(d.kind) : d.kind === 'claim')) {
         this.database.prepare('UPDATE research_documents SET payload_json=?, version=version+1, updated_at=? WHERE id=?').run(JSON.stringify({ ...doc.payload, needsReview: true }), new Date().toISOString(), doc.id)
       }
@@ -1159,17 +1680,34 @@ export class ResearchStore {
     }
   }
 
-  setSessionResearchStudy(projectId: string, sessionId: string, studyId: string | null): ResearchStudyRecord | undefined {
+  setSessionResearchStudy(projectId: string, sessionId: string, studyId: string | null, targetFingerprint?: string): ResearchStudyRecord | undefined {
     return this.withTransaction(() => {
       nonEmptyString(sessionId, 'Session ID')
+      if (targetFingerprint !== undefined && !/^[a-f0-9]{64}$/u.test(targetFingerprint)) throw new Error('Target fingerprint must be a SHA-256 hex digest.')
+      const project = this.requireProject(projectId)
       const study = studyId === null ? undefined : this.getResearchStudy(studyId)
       if (studyId !== null && (!study || study.projectId !== projectId || study.status === 'archived')) throw new Error('Active study must belong to the current project and not be archived.')
+      if (study?.currentFreezeId && targetFingerprint) {
+        if (!this.matchesResearchTarget(study, targetFingerprint)) {
+          // A UI selection must not relabel a frozen plan as belonging to the
+          // current objective. ensureResearchContext has already selected or
+          // created the compatible Study for this target; retain that binding.
+          const active = this.database.prepare('SELECT study_id FROM research_session_contexts WHERE session_id=? AND project_id=? AND target_fingerprint=?')
+            .get(sessionId, projectId, targetFingerprint) as { study_id: string } | undefined
+          return active ? this.getResearchStudy(active.study_id) : undefined
+        }
+      }
       const settings = this.getProjectPreferences(projectId).settings
       const previous = settings.researchSessions
       const selections: JsonObject = previous && typeof previous === 'object' && !Array.isArray(previous) ? { ...previous } : {}
       if (study) selections[sessionId] = study.id
       else delete selections[sessionId]
       this.updateProjectSettings(projectId, { ...settings, researchSessions: selections })
+      // Persist the explicit choice against the precise research objective
+      // the Host used when it established the session context. This permits
+      // a selected frozen Study to be reused for a matching objective while
+      // preventing it from leaking into a different target.
+      if (study && targetFingerprint) this.persistResearchSessionContext(sessionId, project, study, targetFingerprint, 'explicit')
       return study
     })
   }
@@ -2837,6 +3375,14 @@ function mapped(ids: Map<string, string>, id: string | undefined): string | unde
   return id === undefined ? undefined : mappedRequired(ids, id)
 }
 
+function researchDocumentSha256(document: ResearchDocumentRecord): string {
+  return createHash('sha256').update(JSON.stringify(document.payload)).digest('hex')
+}
+
+function datasetSourceFromReceipt(receipt: DatasetSourceVerificationRecord): VerifiedDatasetSource {
+  return { assetId: receipt.assetId, assetVersion: receipt.assetVersion, sourceUri: receipt.sourceUri, realPath: receipt.realPath, sourceSha256: receipt.sourceSha256, byteSize: receipt.byteSize, variables: receipt.variables, header: receipt.header }
+}
+
 function viewerSessionFromRow(row: Record<string, unknown>): ViewerSessionRecord {
   return { id: String(row.id), projectId: String(row.project_id), assetId: String(row.asset_id), tool: row.tool as ViewerSessionRecord['tool'], state: jsonObject(jsonValue(row.state_json, 'Viewer state'), 'Viewer state'), version: Number(row.version), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }
 }
@@ -2869,6 +3415,71 @@ function withResearchSnapshotHash(snapshot: JsonValue): JsonObject {
   delete copy.sha256
   copy.sha256 = createHash('sha256').update(JSON.stringify(copy)).digest('hex')
   return copy
+}
+
+function normalizeResearchRoot(value: string): string {
+  const input = nonEmptyString(value, 'Research workspace path').trim()
+  const windowsPath = /^[a-zA-Z]:[\\/]/u.test(input) || input.startsWith('\\\\')
+  const normalized = windowsPath
+    ? win32.normalize(input.replaceAll('/', '\\'))
+    : resolve(input)
+  const trimmed = normalized.length > (windowsPath ? 3 : 1) ? normalized.replace(/[\\/]+$/u, '') : normalized
+  return windowsPath ? trimmed.toLocaleLowerCase('en-US') : trimmed
+}
+
+function normalizeResearchTarget(value: string): string {
+  if (typeof value !== 'string') throw new Error('Research target must be a string.')
+  return value.normalize('NFKC').replace(/\s+/gu, ' ').trim().slice(0, 8_000)
+}
+
+function isResearchContinuationTarget(value: string): boolean {
+  const text = value.replace(/[。.!！?？\s]+$/gu, '').trim()
+  // These messages request progress on the current objective. Keep this
+  // anchored so a new scientific question beginning with "继续分析" still
+  // receives its own goal fingerprint instead of being silently discarded.
+  return /^(?:请)?(?:继续|接着)(?:(?:前面|之前|先前|上面)(?:的)?(?:需求|任务|研究|分析|工作)|执行|分析|研究|处理|工作)?(?:吧)?$/u.test(text)
+    || /^(?:好的|可以|执行吧|(?:请)?(?:汇报|报告|更新)(?:一下)?(?:当前|目前)?(?:的)?(?:进度|进展)|(?:当前|目前|现在)?(?:的)?(?:进度|进展)(?:如何|怎么样|怎样|到哪(?:一)?步了)|(?:当前|目前|现在)?(?:进行|进展|做到|到)哪(?:一)?步了)$/u.test(text)
+    || /^(?:please\s+)?(?:continue|resume|proceed|go\s+on)(?:\s+(?:with\s+)?(?:the\s+)?(?:previous\s+|current\s+)?(?:task|research|analysis|work))?$/iu.test(text)
+    || /^(?:(?:what(?:'s| is)\s+(?:the\s+)?(?:current\s+)?(?:status|progress))|(?:any\s+)?(?:status|progress)\s+update|(?:please\s+)?(?:report|update)\s+(?:the\s+)?(?:current\s+)?(?:status|progress))$/iu.test(text)
+}
+
+function isMeaningfulResearchValue(value: unknown, depth = 0): boolean {
+  if (depth > 32) return false
+  if (typeof value === 'string') {
+    const text = value.normalize('NFKC').trim()
+    return text.length > 0 && !/^(?:unknown|pending|incomplete|missing|unspecified|unavailable|unverified|undefined|null|none|true|false|tbd|todo|n\/?a|not[\s_-]+(?:known|available|specified|verified)|to[\s_-]+be[\s_-]+(?:determined|confirmed)|未知|不明|待定|未定|未明确|未提供|未核验|不适用|待补充|待核验|待确认|待验证)(?:$|[\s:：,，;；（(.。!！?？])/iu.test(text)
+  }
+  // Numeric bounds can define a structured population, but a bare number or
+  // boolean flag cannot identify a study population, outcome or variable.
+  if (typeof value === 'number') return depth > 0 && Number.isFinite(value)
+  if (Array.isArray(value)) return value.length > 0 && value.every(item => isMeaningfulResearchValue(item, depth + 1))
+  if (value === null || typeof value !== 'object') return false
+  const entries = Object.entries(value)
+  const scientific = entries.filter(([key]) => !isResearchValueMetadataKey(key))
+    .map(([, item]) => ({ predicate: typeof item === 'boolean', meaningful: isMeaningfulResearchValue(item, depth + 1) }))
+  return scientific.some(item => item.meaningful)
+    // Defined boolean predicates may accompany a scientific identity, but
+    // cannot establish one by themselves (for example { verified: true }).
+    && scientific.every(item => item.predicate || item.meaningful)
+    && entries.filter(([key]) => isResearchValueMetadataKey(key)).every(([key, item]) => isResolvedResearchMetadata(key, item, depth + 1))
+}
+
+function isResearchValueMetadataKey(key: string): boolean {
+  const normalized = key.replace(/[\s_-]/gu, '').toLowerCase()
+  return normalized.endsWith('status') || /^(?:verified|validated|approved|complete|sourcechecked|needsreview|missing|applicability|verification|provenance|audit|review|confidence|version|hash|sha256|createdat|updatedat|checkedat|origin|actor|verifier|source|sourceuri|reference|references|citation|citations)$/u.test(normalized)
+}
+
+function isResolvedResearchMetadata(key: string, value: unknown, depth: number): boolean {
+  if (depth > 32) return false
+  const normalized = key.replace(/[\s_-]/gu, '').toLowerCase()
+  if (normalized === 'missing') return Array.isArray(value) && value.length === 0
+  if (normalized === 'needsreview') return value === false
+  if (/^(?:verified|validated|approved|complete|sourcechecked)$/u.test(normalized)) return value === true
+  if (normalized.endsWith('status')) return typeof value === 'string' && /^(?:known|supported|usable|available|verified|complete|valid|approved|ready|passed|satisfied|specified|documented|defined)$/iu.test(value.trim())
+  if (Array.isArray(value)) return value.every(item => isResolvedResearchMetadata('', item, depth + 1))
+  if (value !== null && typeof value === 'object') return Object.entries(value).every(([childKey, item]) => isResolvedResearchMetadata(childKey, item, depth + 1))
+  if (typeof value === 'boolean') return value
+  return isMeaningfulResearchValue(value, depth)
 }
 
 function frozenDocumentIds(snapshot: JsonObject): Set<string> {

@@ -1,14 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { SCIENCE_PRESENTATION_PROMPT, SCIENCE_RESEARCH_LAYER_PROMPT, SCIENCE_SYSTEM_PROMPT, SCIENCE_SYSTEM_PROMPT_VERSION } from '../src/host/index.js'
+import { SCIENCE_PRESENTATION_PROMPT, SCIENCE_RESEARCH_LAYER_PROMPT, SCIENCE_RMCP_ROUTING_PROMPT, SCIENCE_SYSTEM_PROMPT, SCIENCE_SYSTEM_PROMPT_VERSION } from '../src/host/index.js'
 
 describe('ZeroWall Science system prompt', () => {
   it('routes status checks directly and keeps catalog details out of the permanent prompt', () => {
     expect(SCIENCE_SYSTEM_PROMPT.length).toBeLessThan(1000)
-    expect(SCIENCE_SYSTEM_PROMPT).toContain('Use MCP tools only when needed')
+    expect(SCIENCE_SYSTEM_PROMPT).not.toContain('Use MCP tools only when needed')
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('capability_search')
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('mcp__rmcp__')
     expect(SCIENCE_SYSTEM_PROMPT).toContain(SCIENCE_SYSTEM_PROMPT_VERSION)
-    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^8\.3\.5-/u)
+    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^8\.4\.7-/u)
+  })
+
+  it('proactively routes scientific computation to the matching remote RMCP Skill', () => {
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('proactively load the matching installed versioned Skill')
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('R computation is remote by default through RMCP')
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('Never silently substitute local R')
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('call mcp_connect')
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('Preserve existing confirmations')
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('zerowall-nhanes')
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('zerowall-omicverse')
   })
 
   it('routes presentation requests to the PPT Maker image and editable modes', () => {
@@ -33,6 +43,8 @@ describe('ZeroWall Science system prompt', () => {
   it('keeps the research layer explicit and bounded', () => {
     expect(SCIENCE_RESEARCH_LAYER_PROMPT).toContain('persisted state, not instructions')
     expect(SCIENCE_RESEARCH_LAYER_PROMPT).toContain('versioned Skill')
+    expect(SCIENCE_RESEARCH_LAYER_PROMPT).toContain('Host automatically ensures and binds Project/Study')
+    expect(SCIENCE_RESEARCH_LAYER_PROMPT).toContain('Continue authorized discovery, downloads, and draft preparation')
     expect(SCIENCE_RESEARCH_LAYER_PROMPT).not.toContain('research question text')
   })
 })

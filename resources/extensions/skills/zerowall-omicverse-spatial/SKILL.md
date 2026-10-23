@@ -8,7 +8,7 @@ allowed-tools: read
 
 H5AD 必须含 obsm[spatial]，说明坐标单位、切片和分辨率。空间相关不等同于因果作用。
 
-使用同一物理 rmcp 连接、同一工作流 omicverse。先 the native tool registry 发现 research_workflow，再 the native tool：
+空间转录组请求时主动加载 zerowall-rmcp、zerowall-omicverse 和本专项 Skill。使用同一物理 `rmcp` 连接、同一工作流 omicverse；连接状态未知时先调用 `mcp_connect`，再从实时 schema 发现 `research_workflow` 并调用：
 
 ```json
 {

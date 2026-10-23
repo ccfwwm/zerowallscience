@@ -46,6 +46,16 @@ export const RESEARCH_TOOL_DESCRIPTORS: readonly ResearchToolDescriptor[] = [
  * into `en`, and the shell will resolve whichever form is present.
  */
 const zh = {
+  'research.systemValidation.button.gate1': '系统校验、审批并冻结方案',
+  'research.systemValidation.button.gate2': '系统校验声明与证据',
+  'research.systemValidation.running.gate1': '正在校验…',
+  'research.systemValidation.running.gate2': '正在审计证据…',
+  'research.systemValidation.passed': '系统校验通过',
+  'research.systemValidation.blocked': 'Gate {gate} 暂停：存在阻断项',
+  'research.systemValidation.recovery': '补齐或修正该项后重新运行系统校验',
+  'research.systemValidation.recoveryLabel': '恢复条件：',
+  'research.systemValidation.document': '文档',
+  'research.systemValidation.rules': '校验规则',
   'science.shell.tablist': '专业工具标签',
   'science.shell.more': '更多工具',
   'science.shell.analyse': '用自然语言分析',
@@ -286,6 +296,16 @@ const zh = {
 } as const
 
 const en: Record<keyof typeof zh, string> = {
+  'research.systemValidation.button.gate1': 'Validate, approve and freeze the plan',
+  'research.systemValidation.button.gate2': 'Validate claims and evidence',
+  'research.systemValidation.running.gate1': 'Validating…',
+  'research.systemValidation.running.gate2': 'Auditing evidence…',
+  'research.systemValidation.passed': 'System validation passed',
+  'research.systemValidation.blocked': 'Gate {gate} paused: blockers found',
+  'research.systemValidation.recovery': 'Resolve this item and run system validation again',
+  'research.systemValidation.recoveryLabel': 'Recovery condition: ',
+  'research.systemValidation.document': 'document',
+  'research.systemValidation.rules': 'Validation rules',
   'science.shell.tablist': 'Professional tool tabs',
   'science.shell.more': 'More tools',
   'science.shell.analyse': 'Analyse in natural language',

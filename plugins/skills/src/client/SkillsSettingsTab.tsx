@@ -39,6 +39,7 @@ export function SkillsSettingsTab(props: Props) {
   const [query, setQuery] = useState('')
   const [source, setSource] = useState('all')
   const [busy, setBusy] = useState(false)
+  const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string>()
   const [sourcesState, setSourcesState] = useState<SkillSourceView>({ enabled: [], disabled: [] })
   const [editorOpen, setEditorOpen] = useState(false)
@@ -54,16 +55,17 @@ export function SkillsSettingsTab(props: Props) {
       ])
       setSkills(next)
       setSourcesState(nextSources)
-      if (selectedName !== undefined && !next.some(skill => skill.name === selectedName)) {
-        setSelectedName(undefined)
-        setDetail(undefined)
-      }
+      const current = selectedName === undefined ? undefined : next.find(skill => skill.name === selectedName && !nextSources.disabled.includes(skill.name))
+      const target = current ?? next.find(skill => !nextSources.disabled.includes(skill.name))
+      setSelectedName(target?.name)
+      setDetail(target ? await props.getSkill(target.name) : undefined)
     } catch (reason) {
       setError(message(reason))
     } finally {
       setBusy(false)
+      setLoaded(true)
     }
-  }, [props.listSkills, selectedName])
+  }, [props.getSkill, props.listSkills, props.listSkillSources, selectedName])
 
   useEffect(() => { void refresh() }, [])
 
@@ -119,16 +121,27 @@ export function SkillsSettingsTab(props: Props) {
     </div>
     {error && <p className={css.error} role="alert">{error}</p>}
     <div className={css.workspace}>
+      <label className={css.skillPicker}><span>{props.t('skills.catalog')}</span><select aria-label={props.t('skills.catalog')} value={filtered.some(skill => skill.name === selectedName) ? selectedName : ''} disabled={busy || filtered.length === 0} onChange={event => {
+        const skill = filtered.find(item => item.name === event.target.value)
+        if (skill) void load(skill)
+      }}>
+        {!filtered.some(skill => skill.name === selectedName) && <option value="">{props.t(filtered.length === 0 ? 'skills.empty' : 'skills.selectTitle')}</option>}
+        {filtered.map(skill => <option key={skill.name} value={skill.name}>{skill.name}</option>)}
+      </select></label>
       <div className={css.list} aria-label={props.t('skills.catalog')}>
         {filtered.map(skill => <button key={skill.name} className={`${css.skillRow} ${selectedName === skill.name ? css.selected : ''}`} type="button" onClick={() => void load(skill)}>
           <span className={css.skillIcon}><BookOpen size={16} /></span>
           <span><strong>{skill.name}</strong><small>{skill.description}</small></span>
           <span className={css.source}>{sourcesState.disabled.includes(skill.name) ? props.t('skills.disabled') : skill.source}</span>
         </button>)}
-        {!busy && filtered.length === 0 && <p className={css.empty}>{props.t('skills.empty')}</p>}
+        {busy && skills.length === 0 && <p className={css.empty} role="status">{props.t('skills.loading')}</p>}
+        {loaded && !busy && !error && filtered.length === 0 && <p className={css.empty}>{props.t('skills.empty')}</p>}
+        {loaded && skills.length === 0 && error && <p className={css.empty} role="status">{props.t('skills.loadFailed')}</p>}
       </div>
       <article className={css.detail}>
-        {detail === undefined ? <div className={css.placeholder}><BookOpen size={28} /><h4>{props.t('skills.selectTitle')}</h4><p>{props.t('skills.selectDescription')}</p></div> : <>
+        {busy && selectedName !== undefined && detail === undefined ? <div className={css.placeholder} role="status"><BookOpen size={28} /><h4>{props.t('skills.loading')}</h4></div>
+          : error && detail === undefined ? <div className={css.placeholder} role="status"><BookOpen size={28} /><h4>{props.t('skills.loadFailed')}</h4><p>{error}</p></div>
+            : detail === undefined ? <div className={css.placeholder}><BookOpen size={28} /><h4>{props.t(skills.length === 0 ? 'skills.emptyTitle' : 'skills.selectTitle')}</h4><p>{props.t(skills.length === 0 ? 'skills.emptyDescription' : 'skills.selectDescription')}</p></div> : <>
           <div className={css.detailHead}><div><h4>{detail.name}</h4><p>{detail.description}</p></div><span>{detail.provider}</span></div>
           {selectedImported && <div className={css.detailActions}>
             {props.setSkillEnabled && <button className={css.actionButton} type="button" onClick={() => void runAction(() => props.setSkillEnabled!(detail.name, !selectedEnabled))} disabled={busy}><Power size={15} />{selectedEnabled ? props.t('skills.disable') : props.t('skills.enable')}</button>}

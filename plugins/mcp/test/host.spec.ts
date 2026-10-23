@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { McpServerRecord } from '@zerowallscience/research-store'
-import { aiCloudCredentialKey, managedBioDependenciesReady, managedEnvironmentFileSignature, managedEnvironmentRecord, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch } from '../src/host/index.js'
+import { aiCloudCredentialKey, managedBioDependenciesReady, managedEnvironmentFileSignature, managedEnvironmentRecord, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch, sanitizeMcpToolSchema } from '../src/host/index.js'
 beforeEach(() => { vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', ''); vi.stubEnv('ZEROWALL_PYTHON_MANAGEMENT_ROOT', '') })
 afterEach(() => vi.unstubAllEnvs())
 
@@ -16,6 +16,47 @@ const base: McpServerRecord = {
 }
 
 describe('ZeroWall MCP config boundary', () => {
+  it('keeps useful tool schema fields and bounds oversized or deeply nested values', () => {
+    const normal = sanitizeMcpToolSchema({ type: 'object', properties: { query: { type: 'string', description: 'Search term' } }, required: ['query'] })
+    expect(normal.truncated).toBe(false)
+    expect(normal.schema).toMatchObject({ properties: { query: { type: 'string', description: 'Search term' } }, required: ['query'] })
+
+    let deep: unknown = 'end'
+    for (let index = 0; index < 15; index++) deep = { nested: deep }
+    const bounded = sanitizeMcpToolSchema({ deep, large: 'x'.repeat(60_000), unsafe: { constructor: 'hidden', safe: true } })
+    expect(bounded.truncated).toBe(true)
+    expect(JSON.stringify(bounded.schema).length).toBeLessThan(52_000)
+    expect(JSON.stringify(bounded.schema)).not.toContain('hidden')
+    expect(JSON.stringify(bounded.schema)).toContain('[truncated]')
+  })
+  it('enforces the final 48 KB UTF-8 JSON limit after Unicode and escaping', () => {
+    const escaped = sanitizeMcpToolSchema({
+      type: 'object',
+      description: `${'\n"\\'.repeat(8_000)}${'🧬'.repeat(8_000)}${'测'.repeat(8_000)}`,
+      properties: Object.fromEntries(Array.from({ length: 200 }, (_, index) => [
+        `变量-${index}-${'\n'.repeat(100)}`,
+        { type: 'string', description: '🧬"\\'.repeat(500) },
+      ])),
+    })
+    expect(escaped.truncated).toBe(true)
+    expect(Buffer.byteLength(JSON.stringify(escaped.schema), 'utf8')).toBeLessThanOrEqual(48_000)
+
+    const multibyte = sanitizeMcpToolSchema({ examples: Array.from({ length: 100 }, () => '🧬'.repeat(4_096)) })
+    expect(multibyte.truncated).toBe(true)
+    expect(Buffer.byteLength(JSON.stringify(multibyte.schema), 'utf8')).toBeLessThanOrEqual(48_000)
+  })
+  it('returns JSON-safe schema values across the Remote boundary', () => {
+    const projected = sanitizeMcpToolSchema({
+      type: 'object',
+      optional: undefined,
+      callback: () => 'unsupported',
+      infinite: Number.POSITIVE_INFINITY,
+      examples: [undefined, Symbol('unsupported'), 1n, Number.NaN, null, 2],
+    })
+    expect(projected.truncated).toBe(true)
+    expect(projected.schema).toEqual({ type: 'object', examples: [null, null, null, null, null, 2] })
+    expect(JSON.parse(JSON.stringify(projected.schema))).toEqual(projected.schema)
+  })
   it('keeps the transport error and final Python exception in long redacted diagnostics', () => {
     const diagnostic = redactError(new Error('closed\nMCP stderr: ' + '  traceback frame token=secret-value\n'.repeat(250) + 'ImportError: missing required package'))
     expect(diagnostic.startsWith('closed')).toBe(true)

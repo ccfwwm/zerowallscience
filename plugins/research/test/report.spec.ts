@@ -6,7 +6,7 @@ import { expect, it } from 'vitest'
 import { ResearchStore } from '../../research-store/src/index.js'
 import { ReportService } from '../src/host/report.js'
 
-it('exports a useful reconnaissance draft while retaining all unapproved release gates', async () => {
+it('exports a useful reconnaissance draft and downgrades a blocked final request to a marked draft', async () => {
   const root = await mkdtemp(join(tmpdir(), 'science-report-'))
   const store = new ResearchStore(join(root, 'research.sqlite'))
   try {
@@ -23,8 +23,9 @@ it('exports a useful reconnaissance draft while retaining all unapproved release
     expect(markdown).toContain('Catalog only')
     const manifest = JSON.parse(await readFile(fileURLToPath(draft.manifest.uri), 'utf8'))
     expect(manifest.blockers).toEqual(draft.blockers)
-    await expect(service.generate(project, study.id, 'final')).rejects.toThrow('不能生成正式 IMRAD 报告')
-    expect(store.listArtifacts(project.id)).toHaveLength(2)
+    const blockedFinal = await service.generate(project, study.id, 'final')
+    expect(blockedFinal).toMatchObject({ mode: 'draft', requestedMode: 'final', needsReview: true, blockers: draft.blockers })
+    expect(store.listArtifacts(project.id)).toHaveLength(4)
     expect(store.getResearchStudy(study.id)?.gate1).toBe('pending')
   } finally { store.close(); await rm(root, { recursive: true, force: true }) }
 })

@@ -95,7 +95,7 @@ export function WorkbenchShell(props: WorkbenchShellProps): JSX.Element {
             </button>)}
           </div>
         </section>}
-        {hasContent && <div className={styles.viewer} hidden={isHome}>{props.children}</div>}
+        {hasContent && <div className={styles.viewer}>{props.children}</div>}
         {!isHome && !hasContent && <div className={styles.empty}>
             <p className={styles.emptyTitle}>{descriptor.emptyTitle}</p>
             <p className={styles.emptyHint}>{descriptor.emptyHint}</p>

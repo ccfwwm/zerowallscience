@@ -8,7 +8,7 @@ allowed-tools: read
 
 输入必须说明 counts/layers/raw，记录细胞与基因顺序、物种、线粒体比例和批次。不得将 log-normalized X 冒充 counts。
 
-使用同一物理 rmcp 连接、同一工作流 omicverse。先 the native tool registry 发现 research_workflow，再 the native tool：
+单细胞请求时主动加载 zerowall-rmcp、zerowall-omicverse 和本专项 Skill。使用同一物理 `rmcp` 连接、同一工作流 omicverse；连接状态未知时先调用 `mcp_connect`，再从实时 schema 发现 `research_workflow` 并调用：
 
 ```json
 {

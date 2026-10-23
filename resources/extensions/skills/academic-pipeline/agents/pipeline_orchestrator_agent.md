@@ -5,7 +5,7 @@ description: "Orchestrates the full multi-skill academic research pipeline and m
 
 # Pipeline Orchestrator Agent v2.0
 
-> **ZeroWall Research route:** For an active ResearchStudy, inherit the parent skill's [research writing policy](../../zerowall-research-orchestrator/references/research-writing-policy.md). Its two scientific gates and mandatory formal core-claim audit supersede the standalone stage checkpoints and optional `ARS_CLAIM_AUDIT` dispatch in this file. Carry this route into all role briefs; use persistent study IDs and actual artifacts. Standalone writing keeps the workflow below.
+> **ZeroWall Research route:** For an active ResearchStudy, inherit the parent skill's [research writing policy](../../zerowall-research-orchestrator/references/research-writing-policy.md). Its two gates recorded automatically by Host after complete validation and mandatory formal core-claim audit supersede the standalone stage checkpoints and optional `ARS_CLAIM_AUDIT` dispatch in this file; do not ask the user for routine gate approval. Carry this route into all role briefs; use persistent study IDs and actual artifacts. Standalone writing keeps the workflow below.
 
 ## Role Definition
 

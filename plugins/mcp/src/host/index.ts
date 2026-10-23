@@ -22,9 +22,9 @@ import type {
 } from '@zerowallscience/research-store/types'
 import type {} from 'zod'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
-import type { CreateMcpServerRequest, McpRuntimeState, McpServerDto, UpdateMcpServerRequest } from '../shared/types.js'
+import type { CreateMcpServerRequest, McpRuntimeState, McpSchemaObject, McpSchemaValue, McpServerDto, McpToolDetail, UpdateMcpServerRequest } from '../shared/types.js'
 
-export type { CreateMcpServerRequest, McpRuntimeState, McpServerDto, UpdateMcpServerChanges, UpdateMcpServerRequest } from '../shared/types.js'
+export type { CreateMcpServerRequest, McpRuntimeState, McpServerDto, McpToolDetail, UpdateMcpServerChanges, UpdateMcpServerRequest } from '../shared/types.js'
 
 // Credential vault keys are restricted to the ZeroWall domain and lowercase
 // POSIX-style segments. Keep the SciMaster key under the MCP namespace.
@@ -33,6 +33,26 @@ export const SCIMASTER_API_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/h
 export const HUAGONGSHE_URL = 'https://huagongshe.com/mcp'
 export const HUAGONGSHE_CREDENTIAL = 'zerowall.mcp.huagongshe_token'
 export const HUAGONGSHE_AUTH_ENV = 'HUAGONGSHE_MCP_AUTHORIZATION'
+export const GPSADB_MCP_URL = 'https://gpsadb.gzdlab.com/mcp'
+export const GPSADB_SERVER_NAME = 'gpsadb'
+/**
+ * GPSAdb's MCP annotations are not carried through the DSH bridge into Host.
+ * Keep its public integration read-only with a fail-closed tool allowlist.
+ */
+const GPSADB_READ_ONLY_TOOLS = new Set([
+  'get_database_info',
+  'search_datasets',
+  'get_dataset',
+  'get_download_links',
+  'get_differential_expression',
+  'get_gsea_results',
+  'query_gene',
+  'query_gene_set',
+  'search_gene_sets',
+  'run_biotrigger',
+  'run_fastgpsa',
+  'test_gene_set_in_dataset',
+])
 export const RDATALINUX_R_MCP_URL = 'https://rmcp.chengxunkeji.cn/r-platform/mcp'
 export const RDATALINUX_SERVER_NAME = 'rmcp'
 export const RDATALINUX_BIOMNI_SERVER_NAME = 'rbioagent'
@@ -171,6 +191,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
     super(ctx, 'zerowallMcp')
     this.managed = new ManagedGenerations(ctx, () => managedEnvironmentRecord()?.root)
     registerResearchWorkflow(ctx, this)
+    ctx.effect(() => ctx.tools.guard(exec => {
+      const prefix = `mcp__${GPSADB_SERVER_NAME}__`
+      if (!exec.name.startsWith(prefix)) return undefined
+      const remoteToolName = exec.name.slice(prefix.length)
+      return GPSADB_READ_ONLY_TOOLS.has(remoteToolName)
+        ? undefined
+        : `GPSAdb tool is not on the approved read-only allowlist: ${remoteToolName || '(empty name)'}`
+    }), 'zerowall-mcp: GPSAdb read-only tool allowlist')
     const service = this
     // Biomni execution runs through the DSH MCP bridge, but its model key is
     // owned by ZeroWall AI Cloud rather than the DSH credential-local store.
@@ -1060,6 +1088,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
         }
       }
     }
+    if (markerVersion < 10) {
+      // GPSAdb is a public, read-only product connection. Seed it once for
+      // existing installations; later boots preserve the user's enabled flag.
+      // A conflicting existing record is user data and is never rewritten.
+      if (!projects.listMcpServers().some(server => server.serverName === GPSADB_SERVER_NAME)) {
+        projects.createMcpServer({
+          name: 'GPSAdb', serverName: GPSADB_SERVER_NAME, transport: 'streamable-http',
+          enabled: true, url: GPSADB_MCP_URL, failOnStartupError: false,
+        })
+      }
+    }
     for (const server of projects.listMcpServers()) {
       if (server.serverName === RDATALINUX_SERVER_NAME && server.transport === 'streamable-http' && server.headerRefs.Authorization === undefined) {
         projects.updateMcpServer(server.id, { headerRefs: { ...server.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
@@ -1126,7 +1165,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       }
     }
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, '{"version":9}\n', 'utf8')
+    await writeFile(marker, '{"version":10}\n', 'utf8')
   }
 
   private projects() {
@@ -1339,6 +1378,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       runtimeError: runtimeState === 'active' ? '' : status.error,
       missingEnvironmentVariables: [...status.missingEnvironmentVariables],
       tools,
+      toolDetails: this.toolDetails(record.serverName, tools),
       toolDiscoveryState,
       ...(status.toolDiscoveryStartedAt ? { toolDiscoveryStartedAt: status.toolDiscoveryStartedAt } : {}),
       ...(status.toolDiscoveryCompletedAt ? { toolDiscoveryCompletedAt: status.toolDiscoveryCompletedAt } : {}),
@@ -1382,6 +1422,22 @@ export class ZeroWallMcpService extends TypertRemoteService {
       .sort((left, right) => left.localeCompare(right))
   }
 
+  private toolDetails(serverName: string, names: string[]): McpToolDetail[] {
+    const allowed = new Set(names)
+    return this.ctx.tools.schemas()
+      .filter(schema => allowed.has(schema.name) && schema.name.startsWith(`mcp__${serverName}__`))
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map(schema => {
+        const bounded = sanitizeMcpToolSchema(schema.parameters)
+        return {
+          name: schema.name,
+          description: schema.description.slice(0, 2_000),
+          inputSchema: bounded.schema,
+          ...(bounded.truncated ? { schemaTruncated: true } : {}),
+        }
+      })
+  }
+
   private async disposeOne(id: string): Promise<void> {
     const prior = this.projects().getMcpServer(id)
     if (prior) this.clearMcpToolIndex(prior.serverName)
@@ -1402,6 +1458,112 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
 function dshHome(): string { return resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh')) }
 function defaultMcpMarkerPath(): string { return join(dshHome(), 'zerowall-mcp-defaults-v1.json') }
+
+/** Keep remotely advertised schemas useful while imposing a strict DTO bound. */
+export function sanitizeMcpToolSchema(value: unknown): { schema: McpSchemaObject; truncated: boolean } {
+  const limits = { depth: 8, nodes: 500, bytes: 48_000 }
+  let nodes = 0
+  let truncated = false
+  const visit = (candidate: unknown, depth: number): McpSchemaValue | undefined => {
+    nodes++
+    if (nodes > limits.nodes || depth > limits.depth) { truncated = true; return '[truncated]' }
+    if (candidate === null || typeof candidate === 'boolean') return candidate
+    if (typeof candidate === 'number') {
+      if (Number.isFinite(candidate)) return candidate
+      truncated = true
+      return undefined
+    }
+    if (typeof candidate === 'string') {
+      const result = truncateJsonString(candidate, 4_096)
+      if (result !== candidate) truncated = true
+      return result
+    }
+    if (Array.isArray(candidate)) {
+      const result: McpSchemaValue[] = []
+      for (const item of candidate.slice(0, 100)) {
+        if (nodes >= limits.nodes) { truncated = true; break }
+        result.push(visit(item, depth + 1) ?? null)
+      }
+      if (candidate.length > result.length) truncated = true
+      return result
+    }
+    if (typeof candidate === 'object') {
+      const result: McpSchemaObject = {}
+      for (const [key, entry] of Object.entries(candidate as Record<string, unknown>).slice(0, 200)) {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') { truncated = true; continue }
+        if (nodes >= limits.nodes) { truncated = true; break }
+        // Bound the JSON-encoded key, not its UTF-16 length. Control characters
+        // and quotes can expand substantially when JSON.stringify escapes them.
+        const boundedKey = truncateJsonString(key, 128)
+        if (boundedKey.length !== key.length) truncated = true
+        if (Object.hasOwn(result, boundedKey)) { truncated = true; continue }
+        const projected = visit(entry, depth + 1)
+        if (projected !== undefined) result[boundedKey] = projected
+      }
+      if (Object.keys(candidate).length > Object.keys(result).length) truncated = true
+      return result
+    }
+    truncated = true
+    return undefined
+  }
+  const visited = visit(value, 0)
+  const sanitized = visited
+  if (sanitized === null || typeof sanitized !== 'object' || Array.isArray(sanitized)) return { schema: {}, truncated: true }
+
+  let schema = sanitized
+  if (jsonByteLength(schema) <= limits.bytes) return { schema, truncated }
+
+  // String values such as descriptions and examples can dominate a remotely
+  // advertised schema. Compact them in progressively smaller JSON-byte
+  // budgets, then measure the exact final serialization after escaping UTF-8.
+  for (const stringBudget of [2_048, 1_024, 512, 256, 128, 64, 32]) {
+    schema = compactSchemaStrings(schema, stringBudget)
+    truncated = true
+    if (jsonByteLength(schema) <= limits.bytes) return { schema, truncated }
+  }
+
+  // The remaining size can only come from structural keys/values. Return a
+  // small, valid schema summary rather than allowing an oversized DTO through.
+  const summary: McpSchemaObject = { 'x-zerowall-truncated': true }
+  if (typeof sanitized.type === 'string') {
+    summary.type = truncateJsonString(sanitized.type, 128)
+  }
+  if (jsonByteLength(summary) > limits.bytes) return { schema: {}, truncated: true }
+  return { schema: summary, truncated: true }
+}
+
+/** Truncate a string by its JSON-encoded UTF-8 size without splitting code points. */
+function truncateJsonString(value: string, maxJsonBytes: number): string {
+  let result = ''
+  let used = 2 // opening and closing quotes
+  if (maxJsonBytes < used) return ''
+  for (const character of value) {
+    const encoded = JSON.stringify(character)
+    const bytes = Buffer.byteLength(encoded, 'utf8') - 2
+    if (used + bytes > maxJsonBytes) break
+    result += character
+    used += bytes
+  }
+  return result
+}
+
+function jsonByteLength(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value) ?? 'null', 'utf8')
+}
+
+function compactSchemaStrings(value: McpSchemaObject, maxJsonBytes: number): McpSchemaObject {
+  const compact = (candidate: McpSchemaValue): McpSchemaValue => {
+    if (typeof candidate === 'string') return truncateJsonString(candidate, maxJsonBytes)
+    if (Array.isArray(candidate)) return candidate.map(compact)
+    if (candidate !== null && typeof candidate === 'object') {
+      const result: McpSchemaObject = {}
+      for (const [key, entry] of Object.entries(candidate)) result[key] = compact(entry)
+      return result
+    }
+    return candidate
+  }
+  return compact(value) as McpSchemaObject
+}
 
 /** CA overrides that make `requests`/`pip` abandon their bundled certificates. */
 const MANAGED_CA_ENV_KEYS = ['SSL_CERT_FILE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'PIP_CERT'] as const
@@ -1697,5 +1859,5 @@ export default { apply }
 
 
 function isManagedMcpName(name: string): boolean {
-  return ['rmcp', 'huagongshe', 'zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher'].includes(name)
+  return ['gpsadb', 'rmcp', 'huagongshe', 'zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher'].includes(name)
 }

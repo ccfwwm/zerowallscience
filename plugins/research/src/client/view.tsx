@@ -38,6 +38,20 @@ type ResearchTask = { id: string; name: string; kind: string; status: string; de
 type BudgetReport = { accounting: string; limits: Record<string, number>; usage: Record<string, number>; available: Record<string, number>; exceeded: string[]; reservations: Array<{ taskId: string; attempt: number }> }
 type Engine = { id: string; name: string; available: boolean; path?: string; version?: string; reason?: string }
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
+type AutoContext = { project?: { id?: string }; study?: Study }
+type GateCheck = { passed?: boolean; approved?: boolean; status?: string; message?: string; blockers?: Array<string | { code?: string; message?: string; missing?: string; stage?: string; recovery?: string; condition?: string; documentId?: string }>; recovery?: string | string[]; ruleVersion?: string; freeze?: { id?: string; version?: number }; study?: Study }
+
+type ReportResult = { mode: string; status?: string; stage?: string; label?: string; report?: { uri: string }; manifest?: { uri: string }; needsReview?: boolean; blockers?: GateCheck['blockers']; recovery?: string }
+
+function reportBlockerText(item: NonNullable<GateCheck['blockers']>[number]): string {
+  if (typeof item === 'string') return item
+  return [item.stage, item.code, item.message ?? item.missing, item.recovery ?? item.condition].filter(Boolean).join('：')
+}
+type WorkbenchRemote = Remote & {
+  ensureResearchContext?: (input: { sessionId: string; target?: string }) => Promise<unknown>
+  autoApproveResearchGate1?: (input: { sessionId: string; studyId: string; expectedVersion?: number }) => Promise<unknown>
+  autoApproveResearchGate2?: (input: { sessionId: string; studyId: string; expectedVersion?: number }) => Promise<unknown>
+}
 type ScienceToolId = 'imagej' | 'he' | 'molecule' | 'sanger' | 'flow' | 'canvas' | 'cells' | 'sequence' | 'brainglobe'
 type ActiveKey = ScienceToolId | 'home'
 /** The presentational shell is authored in parallel, so its own types are the contract. */
@@ -99,7 +113,7 @@ function translateFrom(ctx: unknown): Translate {
 }
 
 export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
-  const remote = props.remote
+  const remote = props.remote as WorkbenchRemote
   const ctx = (props as { ctx?: unknown }).ctx
   const t = useMemo(() => translateFrom(ctx), [ctx])
   const [page, setPage] = useState<Page>('overview')
@@ -114,22 +128,22 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
   const activeTab = tabState.tabs.find(tab => tab.id === tabState.activeId)
   const activeKey: ActiveKey = activeTab?.tool && activeTab.tool !== 'home' ? activeTab.tool : 'home'
   const [projectId, setProjectId] = useState<string>()
-  const [registrationNeeded, setRegistrationNeeded] = useState(false)
   const [studies, setStudies] = useState<Study[]>([])
   const [selectedStudy, setSelectedStudy] = useState<string>()
   const [snapshot, setSnapshot] = useState<Snapshot>()
   const [engines, setEngines] = useState<Engine[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
-  const [newTitle, setNewTitle] = useState('新建科研研究')
   const [documentKind, setDocumentKind] = useState('observation')
   const [documentText, setDocumentText] = useState('{\n  "status": "unverified"\n}')
-  const [rationale, setRationale] = useState('')
+  const [gate1Check, setGate1Check] = useState<GateCheck>()
+  const [gate2Check, setGate2Check] = useState<GateCheck>()
+  const [gateCheckBusy, setGateCheckBusy] = useState<1 | 2>()
   const [taskName, setTaskName] = useState('数据侦察')
   const [taskKind, setTaskKind] = useState('data-scout')
   const [taskBudget, setTaskBudget] = useState('{\n  "tokens": 100\n}')
   const [reportLoading, setReportLoading] = useState(false)
-  const [reportResult, setReportResult] = useState<{ mode: string; report?: { uri: string }; manifest?: { uri: string }; needsReview?: boolean; blockers?: string[] }>()
+  const [reportResult, setReportResult] = useState<ReportResult>()
   const [assistantText, setAssistantText] = useState('')
   const [assistantBusy, setAssistantBusy] = useState(false)
   const [engineSettingsOpen, setEngineSettingsOpen] = useState(false)
@@ -165,27 +179,35 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
     const generation = ++requestGeneration.current
     setLoading(true); setMessage('')
     try {
-      let project = sessionId && remote.projectForSession ? unwrapRemoteResult('zerowallResearch/projectForSession', await remote.projectForSession({ sessionId })) as { id: string } | undefined : undefined
-      if (!project?.id && sessionId && remote.registerSessionProject) {
-        project = unwrapRemoteResult('zerowallResearch/registerSessionProject', await remote.registerSessionProject({ sessionId })) as { id: string }
+      if (!sessionId) throw new Error('当前会话尚未就绪。')
+      let ensured: AutoContext | undefined
+      let project: { id: string } | undefined
+      if (remote.ensureResearchContext) {
+        ensured = unwrapRemoteResult('ensureResearchContext', await remote.ensureResearchContext({ sessionId }) as Parameters<typeof unwrapRemoteResult<AutoContext>>[1])
+        project = ensured.project?.id ? ensured.project as { id: string } : undefined
+      } else {
+        // Compatibility path for Hosts that predate automatic context provisioning.
+        project = remote.projectForSession ? unwrapRemoteResult('zerowallResearch/projectForSession', await remote.projectForSession({ sessionId })) as { id: string } | undefined : undefined
+        if (!project?.id && remote.registerSessionProject) {
+          project = unwrapRemoteResult('zerowallResearch/registerSessionProject', await remote.registerSessionProject({ sessionId })) as { id: string }
+        }
       }
-      if (!project?.id) {
-        if (generation === requestGeneration.current) { setProjectId(undefined); setRegistrationNeeded(true) }
-        throw new Error('科研目录尚未就绪，请刷新后重试。')
-      }
+      if (!project?.id) throw new Error('研究工作区自动准备未能完成；系统会在条件恢复后重试。')
       const listed = unwrapRemoteResult('zerowallResearch/listResearchStudies', await remote.listResearchStudies(project.id)) as Study[]
       const bound = remote.getActiveResearchStudy ? unwrapRemoteResult('getActiveResearchStudy', await remote.getActiveResearchStudy({ sessionId })) as Study | undefined : undefined
-      const requested = nextStudyId ?? bound?.id ?? selectedStudy
+      // The persisted Host binding is authoritative for this session/target.
+      // Local React state can refer to an older objective after navigation.
+      const requested = nextStudyId ?? bound?.id ?? ensured?.study?.id ?? selectedStudy
       const id = listed.some(study => study.id === requested) ? requested : listed[0]?.id
       const data = id ? unwrapRemoteResult('getResearchStudySnapshot', await remote.getResearchStudySnapshot(id)) as Snapshot : undefined
       if (id && data && typeof remote.getResearchTaskBudget === 'function') data.budget = unwrapRemoteResult('getResearchTaskBudget', await remote.getResearchTaskBudget(id)) as BudgetReport
       if (generation !== requestGeneration.current) return
-      setProjectId(project.id); setRegistrationNeeded(false); setStudies(listed); setSnapshot(data); setSelectedStudy(id)
+      setProjectId(project.id); setStudies(listed); setSnapshot(data); setSelectedStudy(id)
     } catch (error) { if (generation === requestGeneration.current) setMessage(error instanceof Error ? error.message : String(error)) }
     finally { if (generation === requestGeneration.current) setLoading(false) }
   }
   useEffect(() => {
-    setProjectId(undefined); setRegistrationNeeded(false); setStudies([]); setSnapshot(undefined); setSelectedStudy(undefined); setRationale('')
+    setProjectId(undefined); setStudies([]); setSnapshot(undefined); setSelectedStudy(undefined); setGate1Check(undefined); setGate2Check(undefined)
     void load()
     return () => { requestGeneration.current++ }
   }, [remote, sessionId])
@@ -197,31 +219,18 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
     return () => { disposed = true }
   }, [remote])
   const active = useMemo(() => studies.find(study => study.id === selectedStudy) ?? studies[0], [studies, selectedStudy])
-  const registerWorkspace = async (): Promise<void> => {
-    const generation = requestGeneration.current
-    setLoading(true)
-    try {
-      if (!sessionId || !remote.registerSessionProject) throw new Error('当前 Host 不支持工作区登记，请升级 Host。')
-      unwrapRemoteResult('registerSessionProject', await remote.registerSessionProject({ sessionId }))
-      if (generation === requestGeneration.current) await load()
-    } catch (error) { if (generation === requestGeneration.current) setMessage(error instanceof Error ? error.message : String(error)) }
-    finally { if (generation === requestGeneration.current) setLoading(false) }
-  }
   const selectStudy = async (studyId: string): Promise<void> => {
     try {
       if (!sessionId || !remote.setActiveResearchStudy) throw new Error('当前会话不支持研究绑定。')
-      unwrapRemoteResult('setActiveResearchStudy', await remote.setActiveResearchStudy({ sessionId, studyId }))
-      setRationale(''); await load(studyId)
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
+      const bound = unwrapRemoteResult('setActiveResearchStudy', await remote.setActiveResearchStudy({ sessionId, studyId })) as Study | undefined
+      setGate1Check(undefined); setGate2Check(undefined); await load(bound?.id)
+    } catch (error) {
+      // A rejected selection can leave the Host on another valid binding.
+      await load()
+      setMessage(error instanceof Error ? error.message : String(error))
+    }
   }
 
-  const createStudy = async (): Promise<void> => {
-    try {
-      if (!projectId) throw new Error('项目尚未加载。')
-      const created = unwrapRemoteResult('zerowallResearch/createResearchStudy', await remote.createResearchStudy({ projectId, title: newTitle.trim(), phase: 'question', budget: { maxRemoteThreads: 8, maxMemoryGiB: 24 } })) as Study
-      await selectStudy(created.id); setMessage('研究记录已创建。请先登记观察、数据契约、问题和分析计划。')
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
-  }
   const createDocument = async (): Promise<void> => {
     try {
       if (!active || !projectId) throw new Error('请先选择研究。')
@@ -234,18 +243,20 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
       await load(active.id); setMessage(`已登记 ${documentKind}。`)
     } catch (error) { setMessage(error instanceof Error ? error.message : `JSON 无法解析：${String(error)}`) }
   }
-  const approveGate = async (gate: 1 | 2): Promise<void> => {
+  const autoCheckGate = async (gate: 1 | 2): Promise<void> => {
     try {
       if (!active) throw new Error('请先选择研究。')
-      const updated = unwrapRemoteResult('zerowallResearch/approveResearchGate', await remote.approveResearchGate({ studyId: active.id, gate, status: 'approved', expectedVersion: active.version, rationale })) as Study
-      setStudies(items => items.map(item => item.id === updated.id ? updated : item)); await load(updated.id); setMessage(`门禁${gate}已记录为人工批准。`)
+      const check = gate === 1 ? remote.autoApproveResearchGate1 : remote.autoApproveResearchGate2
+      if (typeof check !== 'function') throw new Error('当前 Host 尚不支持系统自动校验。')
+      setGateCheckBusy(gate)
+      if (!sessionId) throw new Error('当前会话尚未就绪。')
+      const result = unwrapRemoteResult(`autoApproveResearchGate${gate}`, await check({ sessionId, studyId: active.id, expectedVersion: active.version }) as Parameters<typeof unwrapRemoteResult<GateCheck>>[1])
+      if (gate === 1) setGate1Check(result); else setGate2Check(result)
+      await load(active.id)
+      const passed = result.passed ?? result.approved ?? result.status === 'approved'
+      setMessage(passed ? `系统校验通过：Gate ${gate}${gate === 1 ? ' 已审批并冻结方案' : ' 证据审计通过'}。` : `系统校验发现阻断项：Gate ${gate} 暂未通过。`)
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
-  }
-  const freeze = async (): Promise<void> => {
-    try {
-      if (!active) throw new Error('请先选择研究。')
-      unwrapRemoteResult('zerowallResearch/freezeResearchStudy', await remote.freezeResearchStudy({ studyId: active.id, expectedVersion: active.version })); await load(active.id); setMessage('研究方案已冻结；后续修改必须通过 amendment。')
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
+    finally { setGateCheckBusy(undefined) }
   }
   const createTask = async (): Promise<void> => {
     try {
@@ -271,8 +282,11 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
     try {
       if (!active || !sessionId || typeof remote.generateResearchReport !== 'function') throw new Error('当前 Host 不支持 IMRAD 报告生成。')
       setReportLoading(true)
-      const result = unwrapRemoteResult('generateResearchReport', await remote.generateResearchReport({ sessionId, studyId: active.id, mode })) as { mode: string; report?: { uri: string }; manifest?: { uri: string }; needsReview?: boolean; blockers?: string[] }
-      setReportResult(result); setMessage(mode === 'final' ? '正式 IMRAD 报告已登记。' : 'IMRAD 报告草稿已登记，仍需人工审阅。')
+      const result = unwrapRemoteResult('generateResearchReport', await remote.generateResearchReport({ sessionId, studyId: active.id, mode })) as ReportResult
+      setReportResult(result)
+      setMessage(result.status === 'blocked'
+        ? `${result.label ?? '系统校验未通过'}（${result.stage ?? '研究门禁'}）：${result.blockers?.map(reportBlockerText).join('；') || '请检查研究材料'}${result.recovery ? `。${result.recovery}` : ''}`
+        : result.mode === 'final' && !result.needsReview && !result.blockers?.length ? '系统校验通过，正式 IMRAD 报告已登记。' : 'IMRAD 报告草稿已登记，仍需审阅。')
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)) }
     finally { setReportLoading(false) }
   }
@@ -316,7 +330,7 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
    * chooser and would hide the very viewer the click was meant to fill.
    */
   const importExternalPath = async (sourcePath: string): Promise<void> => {
-    if (!sessionId || !projectId) { setMessage('请先登记当前项目，再导入项目外的科研文件。'); return }
+    if (!sessionId || !projectId) { setMessage('研究工作区正在自动准备，请稍后重试导入。'); return }
     if (!remote.importLocalAsset) { setMessage('当前科研 Host 不支持导入科研文件。'); return }
     const descriptor = cardFor(activeKey)
     if (descriptor && (descriptor.acceptedExtensions.length === 0 || !descriptor.acceptedExtensions.some(ext => sourcePath.toLowerCase().endsWith(ext)))) {
@@ -358,7 +372,7 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
     if (destination) { openPage(destination); return }
     if (action === 'engine-settings' || action === 'engines') { setEngineSettingsOpen(true); return }
     if (action === 'refresh') { void load(); return }
-    if (action === 'register-workspace') { void registerWorkspace(); return }
+    if (action === 'register-workspace') { void load(); return }
     // A card that asks for a file routes through the same selection path as the
     // sidebar entry, so both hand the viewer an asset instead of leaving the tab.
     if (action === 'pick-file' || action === 'open-from-conversation') { pickFile(); return }
@@ -390,10 +404,6 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
       onAction={runAction}
       overflow={overflow}
     >
-      {registrationNeeded && <section aria-label={t('research.workbench.registration')} className={workbenchStyles.panel}>
-        <p>{t('research.workbench.registerIntro')}</p>
-        <button type="button" disabled={loading || !sessionId} onClick={() => void registerWorkspace()}>{t('research.workbench.register')}</button>
-      </section>}
       {activeKey === 'home' && <div className={workbenchStyles.homeShell}>
         {/* The research pages replace the old top-level tabs: they stay reachable as
             sidebar entries of the 主页 tab, in the approved card style. */}
@@ -407,10 +417,10 @@ export function ScienceWorkbench(props: ScienceWorkbenchProps): JSX.Element {
         </nav>
         <div className={workbenchStyles.homeMain}>
           {page === 'overview' && <HomePage active={active} snapshot={snapshot} engines={engines} onOpenEngineSettings={() => setEngineSettingsOpen(true)} t={t} />}
-          {page === 'overview' && <Overview studies={studies} active={active} newTitle={newTitle} setNewTitle={setNewTitle} selectedStudy={selectedStudy} selectStudy={id => { void selectStudy(id) }} createStudy={() => void createStudy()} t={t} />}
+          {page === 'overview' && <Overview studies={studies} active={active} selectedStudy={selectedStudy} selectStudy={id => { void selectStudy(id) }} t={t} />}
           {page === 'data' && <>{projectId && sessionId && <LocalAssetPanel remote={remote} sessionId={sessionId} onImported={(assetId, sourcePath, name) => openImportedAsset(assetId, sourcePath, name)} />}<DataPage active={active} snapshot={snapshot} documentKind={documentKind} setDocumentKind={setDocumentKind} documentText={documentText} setDocumentText={setDocumentText} createDocument={() => void createDocument()} t={t} /></>}
-          {page === 'plan' && <PlanPage active={active} snapshot={snapshot} rationale={rationale} setRationale={setRationale} approveGate={() => void approveGate(1)} freeze={() => void freeze()} taskName={taskName} setTaskName={setTaskName} taskKind={taskKind} setTaskKind={setTaskKind} taskBudget={taskBudget} setTaskBudget={setTaskBudget} createTask={() => void createTask()} refreshTasks={() => void refreshTasks()} reconcileTask={task => void reconcileTask(task)} t={t} />}
-          {page === 'evidence' && <EvidencePage active={active} snapshot={snapshot} rationale={rationale} setRationale={setRationale} approveGate={() => void approveGate(2)} t={t} />}
+          {page === 'plan' && <PlanPage active={active} snapshot={snapshot} check={gate1Check} checking={gateCheckBusy === 1} runCheck={() => void autoCheckGate(1)} taskName={taskName} setTaskName={setTaskName} taskKind={taskKind} setTaskKind={setTaskKind} taskBudget={taskBudget} setTaskBudget={setTaskBudget} createTask={() => void createTask()} refreshTasks={() => void refreshTasks()} reconcileTask={task => void reconcileTask(task)} t={t} />}
+          {page === 'evidence' && <EvidencePage active={active} snapshot={snapshot} check={gate2Check} checking={gateCheckBusy === 2} runCheck={() => void autoCheckGate(2)} t={t} />}
           {page === 'report' && <ReportPage active={active} result={reportResult} loading={reportLoading} generateReport={mode => void generateReport(mode)} t={t} />}
         </div>
       </div>}
@@ -454,26 +464,42 @@ function HomePage({ active, snapshot, engines, onOpenEngineSettings, t }: { acti
   </div>
 }
 
-function Overview({ studies, active, newTitle, setNewTitle, selectedStudy, selectStudy, createStudy, t }: { studies: Study[]; active?: Study | undefined; newTitle: string; setNewTitle: (value: string) => void; selectedStudy?: string | undefined; selectStudy: (id: string) => void; createStudy: () => void; t: Translate }): JSX.Element {
-  return <div className={workbenchStyles.grid}><Panel title={t('research.workbench.overview')}><StatusLine label={t('research.workbench.field.active')} value={active?.title ?? t('research.workbench.notCreated')} /><StatusLine label={t('research.workbench.field.stage')} value={active?.phase ?? 'question'} /><StatusLine label={t('research.workbench.field.status')} value={active?.status ?? 'draft'} /><StatusLine label={t('research.workbench.field.gate')} value={active ? `${t('research.workbench.field.gate1')} ${active.gate1} · ${t('research.workbench.field.gate2')} ${active.gate2}` : 'pending'} /></Panel><Panel title={t('research.workbench.studySelect')}><select aria-label={t('research.workbench.studySwitch')} value={selectedStudy ?? ''} onChange={event => selectStudy(event.target.value)}><option value="">{t('research.workbench.studySelect')}</option>{studies.map(study => <option key={study.id} value={study.id}>{study.title} · v{study.version}</option>)}</select><div className={workbenchStyles.inline}><input aria-label={t('research.workbench.studyTitle')} value={newTitle} onChange={event => setNewTitle(event.target.value)} /><button type="button" onClick={createStudy}>{t('research.workbench.newStudy')}</button></div><p>{t('research.workbench.genericStudyHint')}</p></Panel></div>
+function Overview({ studies, active, selectedStudy, selectStudy, t }: { studies: Study[]; active?: Study | undefined; selectedStudy?: string | undefined; selectStudy: (id: string) => void; t: Translate }): JSX.Element {
+  return <div className={workbenchStyles.grid}><Panel title={t('research.workbench.overview')}><StatusLine label={t('research.workbench.field.active')} value={active?.title ?? t('research.workbench.notCreated')} /><StatusLine label={t('research.workbench.field.stage')} value={active?.phase ?? 'question'} /><StatusLine label={t('research.workbench.field.status')} value={active?.status ?? 'draft'} /><StatusLine label={t('research.workbench.field.gate')} value={active ? `${t('research.workbench.field.gate1')} ${active.gate1} · ${t('research.workbench.field.gate2')} ${active.gate2}` : 'pending'} /></Panel><Panel title={t('research.workbench.studySelect')}><select aria-label={t('research.workbench.studySwitch')} value={selectedStudy ?? ''} onChange={event => selectStudy(event.target.value)}><option value="">{t('research.workbench.studySelect')}</option>{studies.map(study => <option key={study.id} value={study.id}>{study.title} · v{study.version}</option>)}</select><p>{t('research.workbench.genericStudyHint')}</p></Panel></div>
 }
 
 function DataPage({ active, snapshot, documentKind, setDocumentKind, documentText, setDocumentText, createDocument, t }: { active?: Study | undefined; snapshot?: Snapshot | undefined; documentKind: string; setDocumentKind: (value: string) => void; documentText: string; setDocumentText: (value: string) => void; createDocument: () => void; t: Translate }): JSX.Element {
   return <div className={workbenchStyles.grid}><Panel title={t('research.workbench.pages.data')}><StatusLine label={t('research.workbench.field.study')} value={active?.title ?? t('research.workbench.notSelected')} /><p>{t('research.workbench.contractHint')}</p><div className={workbenchStyles.inline}><select aria-label={t('research.workbench.recordType')} value={documentKind} onChange={event => setDocumentKind(event.target.value)}>{['observation', 'dataset-contract', 'question', 'analysis-plan', 'evidence', 'claim'].map(kind => <option key={kind}>{kind}</option>)}</select><button type="button" onClick={createDocument}>{t('research.workbench.registerRecord')}</button></div><textarea aria-label={t('research.workbench.recordJson')} value={documentText} onChange={event => setDocumentText(event.target.value)} rows={8} className={workbenchStyles.textarea} /></Panel><Panel title={t('research.workbench.records')}>{snapshot?.documents.length ? <ul>{snapshot.documents.map(document => <li key={document.id}><code>{document.kind}</code> · v{document.version} · {document.updatedAt}</li>)}</ul> : <p>{t('research.workbench.noRecords')}</p>}</Panel></div>
 }
 
-function PlanPage({ active, snapshot, rationale, setRationale, approveGate, freeze, taskName, setTaskName, taskKind, setTaskKind, taskBudget, setTaskBudget, createTask, refreshTasks, reconcileTask, t }: { active?: Study | undefined; snapshot?: Snapshot | undefined; rationale: string; setRationale: (value: string) => void; approveGate: () => void; freeze: () => void; taskName: string; setTaskName: (value: string) => void; taskKind: string; setTaskKind: (value: string) => void; taskBudget: string; setTaskBudget: (value: string) => void; createTask: () => void; refreshTasks: () => void; reconcileTask: (task: ResearchTask) => void; t: Translate }): JSX.Element {
+function PlanPage({ active, snapshot, check, checking, runCheck, taskName, setTaskName, taskKind, setTaskKind, taskBudget, setTaskBudget, createTask, refreshTasks, reconcileTask, t }: { active?: Study | undefined; snapshot?: Snapshot | undefined; check?: GateCheck | undefined; checking: boolean; runCheck: () => void; taskName: string; setTaskName: (value: string) => void; taskKind: string; setTaskKind: (value: string) => void; taskBudget: string; setTaskBudget: (value: string) => void; createTask: () => void; refreshTasks: () => void; reconcileTask: (task: ResearchTask) => void; t: Translate }): JSX.Element {
   const tasks = snapshot?.tasks ?? []
   const budget = snapshot?.budget
-  return <div className={workbenchStyles.grid}><Panel title={t('research.workbench.pages.plan')}><StatusLine label={t('research.workbench.field.gate1')} value={active?.gate1 ?? 'pending'} /><StatusLine label={t('research.workbench.field.freeze')} value={active?.currentFreezeId ?? t('research.workbench.notCreated')} /><p>{t('research.workbench.planIntro')}</p><textarea aria-label={t('research.workbench.reviewRationale')} value={rationale} onChange={event => setRationale(event.target.value)} rows={3} className={workbenchStyles.textarea} /><div className={workbenchStyles.inline}><button type="button" onClick={approveGate} disabled={!active || active.gate1 === 'approved'}>{t('research.workbench.approveGate1')}</button><button type="button" onClick={freeze} disabled={!active || active.gate1 !== 'approved' || Boolean(active.currentFreezeId)}>{t('research.workbench.freezePlan')}</button></div></Panel><Panel title={t('research.workbench.taskGraph')}><p>{t('research.workbench.taskGraphHint')}</p>{budget && <div><StatusLine label={t('research.workbench.budget')} value={budget.accounting} />{Object.keys(budget.usage).map(key => <StatusLine key={key} label={key} value={`${budget.usage[key]} · ${t('research.workbench.available2')} ${budget.available[key]}`} />)}</div>}<div className={workbenchStyles.inline}><input aria-label={t('research.workbench.taskName')} value={taskName} onChange={event => setTaskName(event.target.value)} /><input aria-label={t('research.workbench.taskKind')} value={taskKind} onChange={event => setTaskKind(event.target.value)} /><button type="button" onClick={createTask} disabled={!active}>{t('research.workbench.taskRegister')}</button><button type="button" onClick={refreshTasks} disabled={!active}>{t('research.workbench.taskRefresh')}</button></div><textarea aria-label={t('research.workbench.taskBudget')} value={taskBudget} onChange={event => setTaskBudget(event.target.value)} rows={3} className={workbenchStyles.textarea} />{tasks.length ? <ul>{tasks.map(task => <li key={task.id}><strong>{task.name}</strong> · <code>{task.status}</code> · attempt {task.attempt}{task.exploratory ? ` · ${t('research.workbench.exploratory')}` : ''}{task.dependencies.length ? ` · ${t('research.workbench.dependency')} ${task.dependencies.length}` : ''}{task.error ? ` · ${task.error}` : ''}{task.status === 'running' && <button type="button" onClick={() => reconcileTask(task)}>{t('research.workbench.reconcile')}</button>}</li>)}</ul> : <p>{t('research.workbench.noTasks')}</p>}</Panel></div>
+  return <div className={workbenchStyles.grid}><Panel title={t('research.workbench.pages.plan')}><StatusLine label={t('research.workbench.field.gate1')} value={active?.gate1 ?? 'pending'} /><StatusLine label={t('research.workbench.field.freeze')} value={active?.currentFreezeId ?? t('research.workbench.notCreated')} /><p>{t('research.workbench.planIntro')}</p><button type="button" onClick={runCheck} disabled={!active || checking || active.gate1 === 'approved'}>{checking ? t('research.systemValidation.running.gate1') : t('research.systemValidation.button.gate1')}</button><GateCheckResult result={check} gate={1} t={t} /></Panel><Panel title={t('research.workbench.taskGraph')}><p>{t('research.workbench.taskGraphHint')}</p>{budget && <div><StatusLine label={t('research.workbench.budget')} value={budget.accounting} />{Object.keys(budget.usage).map(key => <StatusLine key={key} label={key} value={`${budget.usage[key]} · ${t('research.workbench.available2')} ${budget.available[key]}`} />)}</div>}<div className={workbenchStyles.inline}><input aria-label={t('research.workbench.taskName')} value={taskName} onChange={event => setTaskName(event.target.value)} /><input aria-label={t('research.workbench.taskKind')} value={taskKind} onChange={event => setTaskKind(event.target.value)} /><button type="button" onClick={createTask} disabled={!active}>{t('research.workbench.taskRegister')}</button><button type="button" onClick={refreshTasks} disabled={!active}>{t('research.workbench.taskRefresh')}</button></div><textarea aria-label={t('research.workbench.taskBudget')} value={taskBudget} onChange={event => setTaskBudget(event.target.value)} rows={3} className={workbenchStyles.textarea} />{tasks.length ? <ul>{tasks.map(task => <li key={task.id}><strong>{task.name}</strong> · <code>{task.status}</code> · attempt {task.attempt}{task.exploratory ? ` · ${t('research.workbench.exploratory')}` : ''}{task.dependencies.length ? ` · ${t('research.workbench.dependency')} ${task.dependencies.length}` : ''}{task.error ? ` · ${task.error}` : ''}{task.status === 'running' && <button type="button" onClick={() => reconcileTask(task)}>{t('research.workbench.reconcile')}</button>}</li>)}</ul> : <p>{t('research.workbench.noTasks')}</p>}</Panel></div>
 }
 
-function EvidencePage({ active, snapshot, rationale, setRationale, approveGate, t }: { active?: Study | undefined; snapshot?: Snapshot | undefined; rationale: string; setRationale: (value: string) => void; approveGate: () => void; t: Translate }): JSX.Element {
+function EvidencePage({ active, snapshot, check, checking, runCheck, t }: { active?: Study | undefined; snapshot?: Snapshot | undefined; check?: GateCheck | undefined; checking: boolean; runCheck: () => void; t: Translate }): JSX.Element {
   const claims = snapshot?.documents.filter(document => document.kind === 'claim') ?? []
-  return <Panel title={t('research.workbench.pages.evidence')}><StatusLine label={t('research.workbench.field.gate2')} value={active?.gate2 ?? 'pending'} /><StatusLine label={t('research.workbench.field.claims')} value={`${claims.length}`} /><p>{t('research.workbench.evidenceHint')}</p><textarea aria-label={t('research.workbench.finalRationale')} value={rationale} onChange={event => setRationale(event.target.value)} rows={3} className={workbenchStyles.textarea} /><button type="button" onClick={approveGate} disabled={!active || !active.currentFreezeId}>{t('research.workbench.approveGate2')}</button></Panel>
+  return <Panel title={t('research.workbench.pages.evidence')}><StatusLine label={t('research.workbench.field.gate2')} value={active?.gate2 ?? 'pending'} /><StatusLine label={t('research.workbench.field.claims')} value={`${claims.length}`} /><p>{t('research.workbench.evidenceHint')}</p><button type="button" onClick={runCheck} disabled={!active || !active.currentFreezeId || checking || active.gate2 === 'approved'}>{checking ? t('research.systemValidation.running.gate2') : t('research.systemValidation.button.gate2')}</button><GateCheckResult result={check} gate={2} t={t} /></Panel>
 }
-function ReportPage({ active, result, loading, generateReport, t }: { active?: Study | undefined; result?: { mode: string; report?: { uri: string }; manifest?: { uri: string }; needsReview?: boolean; blockers?: string[] } | undefined; loading: boolean; generateReport: (mode: 'draft' | 'final') => void; t: Translate }): JSX.Element {
-  return <Panel title={t('research.workbench.pages.report')}><p>{t('research.workbench.reportHint')}</p><StatusLine label={t('research.workbench.field.active')} value={active?.title ?? t('research.workbench.notSelected')} /><StatusLine label={t('research.workbench.field.status')} value={active?.status ?? t('research.workbench.notCreated')} /><div className={workbenchStyles.inline}><button type="button" disabled={!active || loading} onClick={() => generateReport('draft')}>{loading ? t('research.workbench.generating') : t('research.workbench.draftReport')}</button><button type="button" disabled={!active || loading || active.gate2 !== 'approved'} onClick={() => generateReport('final')}>{t('research.workbench.finalReport')}</button></div>{result && <div role="status"><StatusLine label={t('research.workbench.field.mode')} value={result.mode} /><StatusLine label={t('research.workbench.field.review')} value={result.needsReview ? t('research.workbench.needsReview') : t('research.workbench.deliverable')} /><p>{t('research.workbench.report')}：<code>{result.report?.uri}</code><br />{t('research.workbench.manifest')}：<code>{result.manifest?.uri}</code></p>{result.blockers?.length ? <p>{t('research.workbench.blockers')}：{result.blockers.join('；')}</p> : null}</div>}</Panel>
+
+function GateCheckResult({ result, gate, t }: { result?: GateCheck | undefined; gate: 1 | 2; t: Translate }): JSX.Element | null {
+  if (!result) return null
+  const passed = result.passed ?? result.approved ?? result.status === 'approved'
+  const blockers = result.blockers ?? []
+  const recovery = Array.isArray(result.recovery) ? result.recovery : result.recovery ? [result.recovery] : []
+  return <div role="status" aria-live="polite">
+    <p><strong>{passed ? t('research.systemValidation.passed') : t('research.systemValidation.blocked').replace('{gate}', String(gate))}</strong>{result.message ? ` · ${result.message}` : ''}</p>
+    {blockers.length > 0 && <ul>{blockers.map((item, index) => {
+      if (typeof item === 'string') return <li key={`${index}:${item}`}>{item}</li>
+      return <li key={index}>{[item.stage, item.code, item.message ?? item.missing].filter(Boolean).join('：')}{item.documentId ? `（${t('research.systemValidation.document')} ${item.documentId}）` : ''}；{t('research.systemValidation.recoveryLabel')}{item.recovery ?? item.condition ?? t('research.systemValidation.recovery')}</li>
+    })}</ul>}
+    {recovery.length > 0 && <p>{t('research.systemValidation.recoveryLabel')}{recovery.join('；')}</p>}
+    {result.ruleVersion && <small>{t('research.systemValidation.rules')} {result.ruleVersion}</small>}
+  </div>
+}
+function ReportPage({ active, result, loading, generateReport, t }: { active?: Study | undefined; result?: ReportResult | undefined; loading: boolean; generateReport: (mode: 'draft' | 'final') => void; t: Translate }): JSX.Element {
+  return <Panel title={t('research.workbench.pages.report')}><p>{t('research.workbench.reportHint')}</p><StatusLine label={t('research.workbench.field.active')} value={active?.title ?? t('research.workbench.notSelected')} /><StatusLine label={t('research.workbench.field.status')} value={active?.status ?? t('research.workbench.notCreated')} /><div className={workbenchStyles.inline}><button type="button" disabled={!active || loading} onClick={() => generateReport('draft')}>{loading ? t('research.workbench.generating') : t('research.workbench.draftReport')}</button><button type="button" disabled={!active || loading} onClick={() => generateReport('final')}>{t('research.workbench.finalReport')}</button></div>{result && <div role="status"><StatusLine label={t('research.workbench.field.mode')} value={result.mode} /><StatusLine label={t('research.workbench.field.review')} value={result.needsReview ? t('research.workbench.needsReview') : t('research.workbench.deliverable')} /><p>{t('research.workbench.report')}：<code>{result.report?.uri}</code><br />{t('research.workbench.manifest')}：<code>{result.manifest?.uri}</code></p>{result.blockers?.length ? <p>{t('research.workbench.blockers')}：{result.blockers.map(reportBlockerText).join('；')}</p> : null}{result.recovery && <p>{t('research.systemValidation.recoveryLabel')}{result.recovery}</p>}</div>}</Panel>
 }
 
 function Panel({ title, children }: { title: string; children: ReactNode }): JSX.Element { return <section className={workbenchStyles.panel}><h3>{title}</h3>{children}</section> }

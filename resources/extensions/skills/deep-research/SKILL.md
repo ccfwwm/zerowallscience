@@ -16,7 +16,7 @@ metadata:
 
 ## ZeroWall Research route
 
-When supporting an active ZeroWall ResearchStudy, load [the shared research writing policy](../zerowall-research-orchestrator/references/research-writing-policy.md) relative to the returned `resourceBase`. Data candidates and literature findings remain observations until checked; frozen questions/methods and the two scientific gates come from ResearchStore. Independent literature research, fact checking and ordinary document work retain the standalone modes below.
+When supporting an active ZeroWall ResearchStudy, load [the shared research writing policy](../zerowall-research-orchestrator/references/research-writing-policy.md) relative to the returned `resourceBase`. Data candidates and literature findings remain observations until checked; frozen questions/methods and the two scientific gates come from ResearchStore. Host automatically records gate approval only after the required validations pass; do not request routine gate approval from the user. Blockers pause only the affected stage while independent discovery, downloads and drafts continue. Independent literature research, fact checking and ordinary document work retain the standalone modes below.
 
 Shared academic contracts and reference paths beginning with `shared/` resolve from [Academic Research Shared](../academic-research-shared/SKILL.md), under its `shared/` directory. Load those files from that resource base; hooks described upstream apply only in runtimes that install them.
 

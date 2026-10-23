@@ -8,12 +8,14 @@ import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import ZeroWallProjectsService from '../../projects/src/host/index.js'
 import ZeroWallMcpService, {
   ZeroWallMcpService as McpServiceClass,
   RDATALINUX_R_MCP_AUTHORIZATION_ENV,
   RDATALINUX_R_MCP_URL,
+  GPSADB_MCP_URL,
+  GPSADB_SERVER_NAME,
 } from '../src/host/index.js'
 
 const roots: string[] = []
@@ -255,7 +257,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       const mode = join(root, 'rmcp-mode.txt')
       writeFileSync(mode, 'zero')
       const launcher = join(root, 'rmcp-fixture.mjs')
-      writeFileSync(launcher, `import { readFileSync } from 'node:fs'; import { createInterface } from 'node:readline'; const mode=${JSON.stringify(mode)}; createInterface({input:process.stdin}).on('line',line=>{let req;try{req=JSON.parse(line)}catch{return}if(req.id===undefined)return;let result={};if(req.method==='initialize')result={protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'rmcp-fixture',version:'1'}};else if(req.method==='tools/list')result={tools:readFileSync(mode,'utf8').trim()==='one'?[{name:'echo',description:'fixture',inputSchema:{type:'object',properties:{}}}]:[]};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result})+'\\n')});`)
+      writeFileSync(launcher, `import { readFileSync } from 'node:fs'; import { createInterface } from 'node:readline'; const mode=${JSON.stringify(mode)}; createInterface({input:process.stdin}).on('line',line=>{let req;try{req=JSON.parse(line)}catch{return}if(req.id===undefined)return;let result={};if(req.method==='initialize')result={protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'rmcp-fixture',version:'1'}};else if(req.method==='tools/list')result={tools:readFileSync(mode,'utf8').trim()==='one'?[{name:'echo',description:'fixture description',inputSchema:{type:'object',properties:{query:{type:'string',description:'Search phrase'}},required:['query']}}]:[]};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result})+'\\n')});`)
       ctx.zerowallProjects.updateMcpServer(seeded.id, { command: process.execPath, args: [launcher] })
       const zero = await ctx.zerowallMcp.reload(seeded.id)
       expect(zero.runtimeState, zero.runtimeError).toBe('active-with-zero-tools')
@@ -268,6 +270,10 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(reloaded.runtimeState, reloaded.runtimeError).toBe('active')
       expect(reloaded.toolDiscoveryState).toBe('complete')
       expect(reloaded.tools).toEqual(['mcp__rmcp__echo'])
+      expect(reloaded.toolDetails).toEqual([{
+        name: 'mcp__rmcp__echo', description: 'fixture description',
+        inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'Search phrase' } }, required: ['query'] },
+      }])
       expect(ctx.tools.schemas().filter(tool => tool.name === 'mcp__rmcp__echo')).toHaveLength(1)
     } finally {
       await ctx.fiber.dispose()
@@ -431,12 +437,100 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       const servers = await ctx.zerowallMcp.list()
-      expect(servers).toHaveLength(5)
-      expect(servers.map(server => server.name)).toEqual(expect.arrayContaining(['Sci', 'Bio Tools', 'Ketcher Chemistry', 'rmcp', '化工社 AIchem']))
+      expect(servers).toHaveLength(6)
+      expect(servers.map(server => server.name)).toEqual(expect.arrayContaining(['Sci', 'Bio Tools', 'Ketcher Chemistry', 'rmcp', '化工社 AIchem', 'GPSAdb']))
       expect(servers.find(server => server.serverName === 'zerowall_filesystem')).toBeUndefined()
       expect(servers.every(server => server.enabled)).toBe(true)
+      expect(servers.find(server => server.serverName === GPSADB_SERVER_NAME)).toMatchObject({
+        transport: 'streamable-http', url: GPSADB_MCP_URL, enabled: true, headerRefs: {},
+      })
     } finally {
       await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
+  it('seeds GPSAdb enabled once and preserves a later user disable across restart', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-gpsadb-seed-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.ZEROWALL_DEFER_DEFAULT_MCP = '1'
+    const send = process.send
+    process.send = (() => true) as typeof process.send
+    const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
+    const createContext = async () => {
+      const ctx = new Context()
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(ZeroWallMcpService)
+      return ctx
+    }
+    let first: Context | undefined
+    let second: Context | undefined
+    try {
+      first = await createContext()
+      const initial = (await first.zerowallMcp.list()).find(server => server.serverName === GPSADB_SERVER_NAME)
+      expect(initial).toMatchObject({ enabled: true, url: GPSADB_MCP_URL, headerRefs: {} })
+      await first.zerowallMcp.update({ id: initial!.id, changes: { enabled: false } })
+      await first.fiber.dispose()
+      first = undefined
+
+      second = await createContext()
+      const restarted = (await second.zerowallMcp.list()).find(server => server.serverName === GPSADB_SERVER_NAME)
+      expect(restarted).toMatchObject({ enabled: false, runtimeState: 'disabled', url: GPSADB_MCP_URL })
+      expect(starts).not.toHaveBeenCalled()
+      await expect(second.zerowallMcp.update({ id: restarted!.id, changes: { url: 'https://attacker.invalid/mcp' } })).rejects.toThrow('Managed connection fields are read-only')
+      const renamed = await second.zerowallMcp.update({ id: restarted!.id, changes: { name: 'GPSAdb renamed' } })
+      expect(renamed.name).toBe('GPSAdb renamed')
+      await second.zerowallMcp.deleteConnection(restarted!.id)
+      expect((await second.zerowallMcp.list()).some(server => server.id === restarted!.id)).toBe(false)
+    } finally {
+      if (first) await first.fiber.dispose()
+      if (second) await second.fiber.dispose()
+      starts.mockRestore()
+      process.send = send
+    }
+  }, 30_000)
+
+  it('fails closed for GPSAdb tools outside the approved read-only allowlist', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-gpsadb-guard-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.ZEROWALL_DEFER_DEFAULT_MCP = '1'
+    const send = process.send
+    process.send = (() => true) as typeof process.send
+    const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
+    const ctx = new Context()
+    const calls: string[] = []
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(ZeroWallMcpService)
+      const definition = (name: string) => defineTool({
+        name,
+        description: 'GPSAdb test tool',
+        parameters: {},
+        output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+        execute: async () => { calls.push(name); return { ok: true } },
+      })
+      ctx.tools.register(definition('mcp__gpsadb__search_datasets'))
+      ctx.tools.register(definition('mcp__gpsadb__delete_dataset'))
+      const execute = (name: string) => ctx.tools.execute({
+        signal: new AbortController().signal, callId: ToolCallId(`gpsadb-${name}`), name, arguments: {},
+      })
+      const allowed = await execute('mcp__gpsadb__search_datasets')
+      const denied = await execute('mcp__gpsadb__delete_dataset')
+      expect(allowed.isError).toBe(false)
+      expect(denied.isError).toBe(true)
+      expect(denied.content.some(block => block.type === 'text' && block.text.includes('approved read-only allowlist'))).toBe(true)
+      expect(calls).toEqual(['mcp__gpsadb__search_datasets'])
+    } finally {
+      await ctx.fiber.dispose()
+      starts.mockRestore()
+      process.send = send
     }
   }, 30_000)
 })

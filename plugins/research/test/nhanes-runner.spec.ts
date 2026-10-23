@@ -62,9 +62,10 @@ async function fixture(exploratory = true, certified = true) {
   store.updateResearchStudy(study.id, { expectedVersion: latest.version, currentQuestionId: question.id, currentPlanId: plan.id })
   const execute = vi.fn(async (id: string) => ({ target: id, content: [], value: { structuredContent: { ...(certified ? { runner_contract: NHANES_SURVEY_RUNNER, analysis_complete: true } : {}), mean: 41, standard_error: 1.2, scientific_review: 'pending' } } }))
   const backend = { workflowRequest: vi.fn(async (_action: string, args: any) => { const operation = rWorkflows.modules.find(m => m.id === args.workflow_id)?.operations.find(o => o.id === args.operation); if (!operation) throw new Error('Wrong workflow or operation'); return operation }), ensureConnected: vi.fn(), executeCompactCapability: execute } as any
-  const workflow = new ResearchWorkflowService(store, join(root, 'workflows'), backend)
+  const researchContext = { ensureResearchContext: ({ sessionId }: { sessionId: string }) => store.ensureResearchContext({ sessionId, rootPath: root, projectName: 'Survey' }) }
+  const workflow = new ResearchWorkflowService(store, join(root, 'workflows'), backend, undefined, () => researchContext as any)
   const service = new NhanesSurveyService(store, () => workflow)
-  const exec = { signal: new AbortController().signal, agent: { session: { header: { cwd: root } } } } as any
+  const exec = { signal: new AbortController().signal, agent: { session: { id: 'nhanes-session', header: { cwd: root } } } } as any
   const input = { studyId: study.id, contractId: data.id, planId: plan.id, taskId: task.id, requestId: 'survey-1', expectedPlanVersion: plan.version }
   return { root, store, project, study, data, task, plan, execute, backend, service, input, exec }
 }

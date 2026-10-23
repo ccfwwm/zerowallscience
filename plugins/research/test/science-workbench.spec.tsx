@@ -11,12 +11,14 @@ const study = (id: string) => ({ id, projectId: 'p1', title: `研究 ${id}`, pha
 function fixture() {
   const remote = {
     projectForSession: vi.fn().mockResolvedValue(ok({ id: 'p1' })),
+    ensureResearchContext: vi.fn().mockResolvedValue(ok({ project: { id: 'p1' }, study: study('a') })),
     listResearchStudies: vi.fn().mockResolvedValue(ok([study('a'), study('b')])),
     getActiveResearchStudy: vi.fn().mockResolvedValue(ok(study('a'))),
     getResearchStudySnapshot: vi.fn(async id => ok({ study: study(id), documents: [], freezes: [] })),
     probeScientificEngines: vi.fn().mockResolvedValue(ok([])),
     setActiveResearchStudy: vi.fn().mockResolvedValue(ok(study('b'))),
-    approveResearchGate: vi.fn().mockResolvedValue({ ok: false, error: { code: 'VALIDATION', message: 'Current plan is incomplete' } }),
+    autoApproveResearchGate1: vi.fn().mockResolvedValue(ok({ status: 'blocked', blockers: [{ code: 'missing-source', message: '缺少数据来源' }], ruleVersion: 'gate1-v1' })),
+    autoApproveResearchGate2: vi.fn().mockResolvedValue(ok({ status: 'blocked', blockers: [{ code: 'claim-audit-pending', message: 'claim audit pending' }] })),
   }
   return { remote, props: { remote, scope: { sessionId: 's1', cwd: 'C:/p1' }, tab: {}, visible: true } as any }
 }
@@ -165,23 +167,109 @@ describe('Science 7 workbench', () => {
     expect(screen.queryByText(/allen_mouse_25um · Mus musculus/u)).toBeNull()
     expect(props.remote.scienceViewer.mock.calls.map(([input]) => input.action)).toEqual(['brain_open'])
   })
-  it('registers an ordinary workspace explicitly without requiring a research protocol', async () => {
+  it('automatically ensures a workspace and study before a viewer needs them', async () => {
     const { remote, props } = fixture()
-    remote.projectForSession.mockResolvedValueOnce(ok(undefined))
-    const registerSessionProject = vi.fn().mockResolvedValue(ok({ id: 'p1' }))
-    render(<ScienceWorkbench {...props} remote={{ ...remote, registerSessionProject }} />)
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
     fireEvent.click(screen.getByRole('button', { name: /ImageJ 图像.*进入查看器/u }))
-    await waitFor(() => expect(registerSessionProject).toHaveBeenCalledExactlyOnceWith({ sessionId: 's1' }))
-    await waitFor(() => expect(screen.queryByRole('button', { name: '登记当前工作区' })).toBeNull())
+    await waitFor(() => expect(remote.ensureResearchContext).toHaveBeenCalledExactlyOnceWith({ sessionId: 's1' }))
+    expect(remote.projectForSession).not.toHaveBeenCalled()
+    expect(remote.registerSessionProject).toBeUndefined()
+    expect(screen.queryByRole('button', { name: /登记当前工作区/u })).toBeNull()
+    expect(screen.queryByRole('button', { name: /新建研究/u })).toBeNull()
   })
   it('loads the session project and persists explicit study selection', async () => {
     const { remote, props } = fixture()
     render(<ScienceWorkbench {...props} />)
     await screen.findByText('研究 a')
-    expect(remote.projectForSession).toHaveBeenCalledWith({ sessionId: 's1' })
+    expect(remote.ensureResearchContext).toHaveBeenCalledWith({ sessionId: 's1' })
     fireEvent.change(screen.getByLabelText('切换研究'), { target: { value: 'b' } })
     await waitFor(() => expect(remote.setActiveResearchStudy).toHaveBeenCalledWith({ sessionId: 's1', studyId: 'b' }))
     await screen.findByText('研究 b')
+  })
+  it('shows the study actually returned by the Host when selection is redirected', async () => {
+    const { remote, props } = fixture()
+    remote.listResearchStudies.mockResolvedValue(ok([study('a'), study('b'), study('c')]))
+    remote.setActiveResearchStudy.mockResolvedValue(ok(study('c')))
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    fireEvent.change(screen.getByLabelText('切换研究'), { target: { value: 'b' } })
+    await screen.findByText('研究 c')
+    expect((screen.getByLabelText('切换研究') as HTMLSelectElement).value).toBe('c')
+    expect(remote.getResearchStudySnapshot).toHaveBeenLastCalledWith('c')
+    expect(remote.getResearchStudySnapshot).not.toHaveBeenCalledWith('b')
+  })
+  it.each(['empty', 'rejected'])('reloads the current Host binding after an %s selection result', async result => {
+    const { remote, props } = fixture()
+    if (result === 'empty') remote.setActiveResearchStudy.mockResolvedValue(ok(undefined))
+    else remote.setActiveResearchStudy.mockRejectedValue(new Error('研究目标不兼容'))
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    remote.getActiveResearchStudy.mockResolvedValue(ok(study('c')))
+    remote.listResearchStudies.mockResolvedValue(ok([study('a'), study('b'), study('c')]))
+    fireEvent.change(screen.getByLabelText('切换研究'), { target: { value: 'b' } })
+    await screen.findByText('研究 c')
+    expect((screen.getByLabelText('切换研究') as HTMLSelectElement).value).toBe('c')
+    expect(remote.getResearchStudySnapshot).toHaveBeenLastCalledWith('c')
+    expect(remote.getResearchStudySnapshot).not.toHaveBeenCalledWith('b')
+    if (result === 'rejected') expect(screen.getByText('研究目标不兼容')).toBeTruthy()
+  })
+  it('runs automated gate checks and exposes blockers without manual approval or freeze actions', async () => {
+    const { remote, props } = fixture()
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    fireEvent.click(within(screen.getByRole('navigation', { name: '研究页面' })).getByRole('button', { name: /^研究计划/u }))
+    fireEvent.click(screen.getByRole('button', { name: '系统校验、审批并冻结方案' }))
+    await screen.findByText(/Gate 1 暂停/u)
+    expect(remote.autoApproveResearchGate1).toHaveBeenCalledWith({ sessionId: 's1', studyId: 'a', expectedVersion: 8 })
+    expect(screen.getByText(/缺少数据来源/u)).toBeTruthy()
+    expect(screen.getByText(/补齐或修正该项后重新运行系统校验/u)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '人工批准门禁一' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '冻结研究方案' })).toBeNull()
+  })
+  it('runs Gate 2 only for a frozen study and reports evidence blockers', async () => {
+    const { remote, props } = fixture()
+    remote.listResearchStudies.mockResolvedValue(ok([{ ...study('a'), currentFreezeId: 'freeze-1' }, study('b')]))
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    fireEvent.click(within(screen.getByRole('navigation', { name: '研究页面' })).getByRole('button', { name: /^证据与结论/u }))
+    fireEvent.click(screen.getByRole('button', { name: '系统校验声明与证据' }))
+    await screen.findByText(/Gate 2 暂停/u)
+    expect(remote.autoApproveResearchGate2).toHaveBeenCalledWith({ sessionId: 's1', studyId: 'a', expectedVersion: 8 })
+    expect(screen.getByText(/claim audit pending/u)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '人工批准门禁二' })).toBeNull()
+  })
+  it('requests automatic report validation from a pending study and renders recoverable draft blockers', async () => {
+    const { props } = fixture()
+    props.remote.generateResearchReport = vi.fn().mockResolvedValue(ok({
+      mode: 'draft', status: 'blocked', stage: 'gate1', label: '草稿报告；系统校验未通过', needsReview: true,
+      report: { uri: 'file:///draft.md' }, manifest: { uri: 'file:///draft.json' },
+      blockers: [{ code: 'SOURCE_PENDING', message: '来源变量尚待核验', recovery: '下载后重新核验数据列' }, '分析计划尚待补齐'],
+      recovery: '材料补齐后自动重试',
+    }))
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    fireEvent.click(within(screen.getByRole('navigation', { name: '研究页面' })).getByRole('button', { name: /^报告与评估/u }))
+    const finalReport = screen.getByRole('button', { name: '生成正式报告' }) as HTMLButtonElement
+    expect(finalReport.disabled).toBe(false)
+    fireEvent.click(finalReport)
+    await waitFor(() => expect(props.remote.generateResearchReport).toHaveBeenCalledExactlyOnceWith({ sessionId: 's1', studyId: 'a', mode: 'final' }))
+    await screen.findAllByText(/来源变量尚待核验/u)
+    expect(screen.getAllByText(/下载后重新核验数据列/u).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/材料补齐后自动重试/u).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/分析计划尚待补齐/u).length).toBeGreaterThan(0)
+    expect(document.body.textContent).not.toContain('[object Object]')
+    expect(screen.queryByText('系统校验通过，正式 IMRAD 报告已登记。')).toBeNull()
+  })
+  it('does not label a draft report as final when the host returns a draft without a blocked status', async () => {
+    const { props } = fixture()
+    props.remote.generateResearchReport = vi.fn().mockResolvedValue(ok({ mode: 'draft', needsReview: true }))
+    render(<ScienceWorkbench {...props} />)
+    await screen.findByText('研究 a')
+    fireEvent.click(within(screen.getByRole('navigation', { name: '研究页面' })).getByRole('button', { name: /^报告与评估/u }))
+    fireEvent.click(screen.getByRole('button', { name: '生成正式报告' }))
+    await screen.findByText('IMRAD 报告草稿已登记，仍需审阅。')
+    expect(screen.queryByText('系统校验通过，正式 IMRAD 报告已登记。')).toBeNull()
   })
   it('shows nine image cards without research operations on the home screen', async () => {
     const { props } = fixture()
@@ -189,18 +277,18 @@ describe('Science 7 workbench', () => {
     const home = screen.getByRole('region', { name: '科研工具' })
     expect(within(home).getAllByRole('button')).toHaveLength(9)
     expect(home.querySelectorAll('img')).toHaveLength(9)
-    expect(screen.queryByRole('navigation', { name: '研究页面' })).toBeNull()
+    expect(screen.getByRole('navigation', { name: '研究页面' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '人工批准门禁一' })).toBeNull()
   })
   it('discards late responses from the previous session', async () => {
     const { remote, props } = fixture()
     let resolveOld!: (value: unknown) => void
-    remote.projectForSession.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+    remote.ensureResearchContext.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
     const view = render(<ScienceWorkbench {...props} />)
     view.rerender(<ScienceWorkbench {...props} scope={{ sessionId: 's2', cwd: 'C:/p2' }} />)
     await screen.findByText('研究 a')
     remote.listResearchStudies.mockResolvedValueOnce(ok([{ ...study('old'), title: '旧会话结果' }]))
-    resolveOld(ok({ id: 'old-project' }))
+    resolveOld(ok({ project: { id: 'old-project' }, study: study('old') }))
     await waitFor(() => expect(remote.listResearchStudies).toHaveBeenCalledWith('old-project'))
     expect(screen.queryByText('旧会话结果')).toBeNull()
     expect(screen.getByText('研究 a')).toBeTruthy()

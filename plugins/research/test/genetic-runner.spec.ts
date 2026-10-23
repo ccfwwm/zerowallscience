@@ -48,7 +48,22 @@ async function fixture(exploratory = true) {
     if (action === 'workflow_query') return (await execute(args.operation, args.arguments)).value.structuredContent
     throw new Error('Unsupported test workflow action')
   }) } as any
-  const workflow = new ResearchWorkflowService(store, join(root, 'workflows'), backend)
+  const researchContext = {
+    ensureResearchContext: ({ sessionId }: { sessionId: string }) => store.ensureResearchContext({ sessionId, rootPath: root, projectName: 'Genetics' }),
+    autoApproveResearchGate1: vi.fn(({ sessionId, studyId, expectedVersion }: { sessionId: string; studyId: string; expectedVersion?: number }) => {
+      const active = store.ensureResearchContext({ sessionId, rootPath: root, projectName: 'Genetics' })
+      const current = store.getResearchStudy(studyId)
+      if (!current || current.projectId !== active.project.id) throw new Error('Study is outside the active project.')
+      const currentPlan = current.currentPlanId ? store.getResearchDocument(current.currentPlanId) : undefined
+      if (Array.isArray(currentPlan?.payload.inputs)) {
+        for (const id of currentPlan.payload.inputs) {
+          if (typeof id === 'string') store.verifyDatasetContractSource(id)
+        }
+      }
+      return store.approveResearchGateAutomatically(current.id, expectedVersion ?? current.version)
+    }),
+  }
+  const workflow = new ResearchWorkflowService(store, join(root, 'workflows'), backend, undefined, () => researchContext as any)
   const download = vi.fn(async (request: { localPath: string; remotePath: string }) => {
     const name = request.remotePath.split('/').at(-1)!
     const content = files.get(name)!
@@ -56,9 +71,9 @@ async function fixture(exploratory = true) {
     return { sha256: sha(content), bytes: Buffer.byteLength(content) }
   })
   const service = new GeneticAnalysisService(store, () => workflow, download)
-  const exec = { signal: new AbortController().signal, agent: { session: { header: { cwd: root } } } } as any
+  const exec = { signal: new AbortController().signal, agent: { session: { id: 'genetics-session', header: { cwd: root } } } } as any
   const input = { studyId: study.id, contractId: contract.id, planId: plan.id, taskId: task.id, requestId: 'genetics-request-1', expectedPlanVersion: plan.version }
-  return { root, store, project, study, contract, task, plan, execute, download, service, exec, input, status: (s: string) => { status = s }, method: (s: string) => { methodStatus = s }, alter: () => { altered = true }, corrupt: () => { corrupt = true }, omitNumbers: () => { missingNumbers = true } }
+  return { root, store, project, study, contract, task, plan, execute, download, service, exec, input, researchContext, status: (s: string) => { status = s }, method: (s: string) => { methodStatus = s }, alter: () => { altered = true }, corrupt: () => { corrupt = true }, omitNumbers: () => { missingNumbers = true } }
 }
 
 describe('genetics durable Host adapter', () => {
@@ -104,14 +119,32 @@ describe('genetics durable Host adapter', () => {
     expect(done).toMatchObject({ analysisComplete: true, inputsCurrent: false, evidence: null })
     expect(f.store.listArtifacts(f.project.id)).toHaveLength(3)
   })
-  it('enforces the exact frozen plan and persisted task binding before confirmatory submission', async () => {
+  it('requires an exact frozen plan and rechecks remote provenance despite prior manual approval', async () => {
     const f = await fixture(false)
     await expect(f.service.execute(f.project, f.input, f.exec)).rejects.toThrow('approved frozen')
     expect(f.execute).not.toHaveBeenCalled()
+    expect(f.researchContext.autoApproveResearchGate1).not.toHaveBeenCalled()
+    const question = f.store.getResearchDocument(f.store.getResearchStudy(f.study.id)!.currentQuestionId!)!
+    f.store.updateResearchDocument(question.id, { expectedVersion: question.version, payload: { population: 'Synthetic subjects', outcome: 'Y', estimand: 'Synthetic exposure effect' } })
     const approved = f.store.approveResearchGate(f.study.id, 1, 'approved', f.store.getResearchStudy(f.study.id)!.version, 'Synthetic review')
-    f.store.freezeResearchStudy(f.study.id, approved.version)
-    expect(await f.service.execute(f.project, f.input, f.exec)).toMatchObject({ status: 'running' })
-    expect(f.store.getResearchStudy(f.study.id)?.gate1).toBe('approved')
+    const freeze = f.store.freezeResearchStudy(f.study.id, approved.version)
+    await expect(f.service.execute(f.project, f.input, f.exec)).rejects.toThrow('did not return its bound project Run')
+    expect(f.researchContext.autoApproveResearchGate1).toHaveBeenCalledWith({ sessionId: 'genetics-session', studyId: f.study.id, expectedVersion: f.store.getResearchStudy(f.study.id)!.version })
+    const gate = f.researchContext.autoApproveResearchGate1.mock.results[0]!.value
+    expect(gate).toMatchObject({ status: 'blocked' })
+    expect(gate.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'CONTRACT_VERIFIER_UNAVAILABLE', documentId: f.plan.id }),
+      expect.objectContaining({ code: 'CONTRACT_PROVENANCE_UNVERIFIED', documentId: f.contract.id }),
+    ]))
+    expect(gate.blockers.map(blocker => blocker.code)).not.toContain('QUESTION_INCOMPLETE')
+    expect(f.execute).not.toHaveBeenCalled()
+    expect(f.download).not.toHaveBeenCalled()
+    expect(f.store.listRuns(f.project.id)).toEqual([])
+    expect(f.store.listResearchDocuments(f.study.id, 'evidence')).toEqual([])
+    expect(f.store.listAuditEvents(f.project.id).some(event => event.action === 'genetics.submitted')).toBe(false)
+    expect(f.store.listResearchTasks(f.study.id).find(task => task.id === f.task.id)?.runId).toBeUndefined()
+    expect(f.store.getResearchStudy(f.study.id)).toMatchObject({ gate1: 'approved', currentFreezeId: freeze.id })
+    expect(f.store.listStudyFreezes(f.study.id)).toEqual([freeze])
   })
   it('rejects cross-project refresh and tampered local provenance', async () => {
     const f = await fixture(); const first = await f.service.execute(f.project, f.input, f.exec)

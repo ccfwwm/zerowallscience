@@ -1,12 +1,12 @@
 ---
 name: zerowall-rmcp
-description: 远程科研总导航：选择 R、文件、包、GEO、NHANES、Biomni、FigureYa、scTenifold 或 OmicVerse，明确发现、参数、任务和结果规范。
+description: 远程科研总导航：相关 R、生信、GEO、NHANES 与 OmicVerse 请求默认主动路由到远程 RMCP，并明确发现、参数、任务和结果规范。
 allowed-tools: read
 ---
 
 # 远程科研入口
 
-所有模块共享一个物理连接 `rmcp`。默认业务工具为 Host `research_workflow`，本地文件传输为 Host `r_files`。直接调用 Host 暴露的精确工具名，并以当前 schema 为准。`mcp__rmcp__*` 是底层转发工具，不是独立连接。
+所有模块共享一个物理连接 `rmcp`。涉及 R、统计、生信、GEO、NHANES、遗传或 OmicVerse 的请求应主动加载本导航和匹配的专项 Skill，发现 Host `research_workflow` / `r_files` 并按实时 schema 调用；R 计算默认远程运行。连接状态未知时调用 `mcp_connect`，再使用实际发现的工具 schema。`mcp__rmcp__*` 是底层转发工具，不是独立连接。远程连接失败时不得静默改成本地 R；可继续独立检索与准备，说明阻断步骤和恢复方法。
 
 | 用户任务 | Skill | workflow_id |
 |---|---|---|
@@ -67,8 +67,8 @@ Host tool registry 输入 `{"query":"research_workflow"}`。然后交给 the nat
 - `query` 仅接受服务端声明的只读能力，不创建计算 Run；副作用与 confirm 是否存在是不同概念。
 - `run` 返回本地 `run_id`，用 `status` 跟踪；远端 `job_id`、分析 `run_id`、下载 `download_job_id`、`plan_id` 各有用途。同步操作直接结束，不虚构远程任务。
 - 同一提交重试复用 `request_id`。连接中断先查状态/历史；改变参数必须新 ID。
-- 项目写操作可创建或复用关联项目；只读操作缺项目会明确报错。复用服务返回的项目和路径。
-- `confirm`、GEO 的 `confirm_large`、客户端 `config.confirmRemoteUpload` 分属不同契约。按既有授权范围执行，扩大数据传输范围时重新处理授权。
+- Host 按当前工作区自动创建或复用并关联 Project/Study，复用服务返回的项目和路径；公共目录查询及授权范围内的检索、下载不因缺项目或分析门禁而中断。
+- `confirm`、GEO 的 `confirm_large`、客户端 `config.confirmRemoteUpload` 分属不同契约。按既有授权范围执行，扩大数据传输范围时重新处理授权；主动路由不代表扩大上传、受限数据访问或管理权限。
 - 凭据由设置及 Host 管理。仅 Agent 或明确 LLM 能力转发当前模型，不把 key 写进参数、提示词或文件。
 - 终态成功还需验证必要产物；默认返回摘要和 Manifest。图片显式读取，大文件由 Host 传输。
 - `offline=true` 仅允许浏览快照；注册或导入检查不等于实算验证。GPU、模型、依赖缺失和上游禁用必须如实报告。

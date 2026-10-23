@@ -8,7 +8,7 @@ allowed-tools: read
 
 counts CSV 行为样本列为基因，metadata CSV 索引与样本严格一致。每组至少两个生物学重复；factor/test/reference 明确。
 
-使用同一物理 rmcp 连接、同一工作流 omicverse。先 the native tool registry 发现 research_workflow，再 the native tool：
+Bulk RNA-seq 请求时主动加载 zerowall-rmcp、zerowall-omicverse 和本专项 Skill。使用同一物理 `rmcp` 连接、同一工作流 omicverse；连接状态未知时先调用 `mcp_connect`，再从实时 schema 发现 `research_workflow` 并调用：
 
 ```json
 {

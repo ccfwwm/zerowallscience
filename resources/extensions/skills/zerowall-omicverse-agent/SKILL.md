@@ -6,9 +6,9 @@ allowed-tools: read
 
 # 可选 OmicVerse Agent 与当前模型调用
 
-仅明确选择 Agent 时调用。当前 provider/model/endpoint/api/key 由 Host 注入，密钥不能出现在提示词或任务文件；协议不支持时明确失败，不静默换模型。
+仅当用户明确选择 Agent 时调用。相关 OmicVerse 任务主动加载 zerowall-rmcp、zerowall-omicverse 和匹配的专项 Skill，并默认使用远程服务；本专项用于用户已选择的 Agent 模式。当前 provider/model/endpoint/api/key 由 Host 注入，密钥不能出现在提示词或任务文件；协议不支持时明确失败，不静默换模型。
 
-使用同一物理 rmcp 连接、同一工作流 omicverse。先 the native tool registry 发现 research_workflow，再 the native tool：
+使用同一物理 `rmcp` 连接、同一工作流 omicverse；连接状态未知时先调用 `mcp_connect`，再发现实时 `research_workflow` schema 并调用：
 
 ```json
 {

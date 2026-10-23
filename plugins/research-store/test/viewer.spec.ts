@@ -49,9 +49,9 @@ describe('persistent viewer sessions', () => {
     db.exec('DROP TABLE annotation_revisions; DROP TABLE viewer_sessions; DELETE FROM schema_migrations WHERE version >= 11')
     db.close()
     const migrated = new ResearchStore(path)
-    expect(migrated.schemaVersion()).toBe(17)
+    expect(migrated.schemaVersion()).toBe(19)
     expect(migrated.listViewerSessions(project.id)).toEqual([])
-    expect(existsSync(`${path}.pre-research-v17.sqlite`)).toBe(true)
+    expect(existsSync(`${path}.pre-research-v19.sqlite`)).toBe(true)
     migrated.close()
   })
   it('preserves v14 viewers during the cells migration and remaps cell snapshots', () => {
@@ -72,7 +72,7 @@ describe('persistent viewer sessions', () => {
       const imported = migrated.importResearchSnapshot(migrated.exportResearchSnapshot(project.id))
       expect(migrated.listViewerSessions(imported.id).find(v => v.tool === 'cells')).toMatchObject({ state: { gene: 'A', embedding: 'X_pca' } })
       expect(migrated.listViewerSessions(imported.id).find(v => v.tool === 'flow')).toMatchObject({ state: { transform: 'arcsinh' } })
-      expect(existsSync(`${path}.pre-research-v17.sqlite`)).toBe(true)
+      expect(existsSync(`${path}.pre-research-v19.sqlite`)).toBe(true)
     } finally { migrated.close() }
   })
 })

@@ -12,9 +12,22 @@ import type { ZeroWallMcpService } from './index.js'
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 type ObjectValue = { [key: string]: Json }
 type Lifecycle = { id_fields: readonly string[]; argument: string; status: string; cancel?: string; manifest?: string; log?: string }
-type Operation = { lifecycle?: Lifecycle | null; query_allowed?: boolean; id: string; public_tool: string; summary: string; input_schema: unknown; requires_confirmation: boolean }
+type Operation = { lifecycle?: Lifecycle | null; query_allowed?: boolean; effects?: string; execution?: string; id: string; public_tool: string; summary: string; input_schema: unknown; requires_confirmation: boolean }
 type Module = { id: string; skill: string; groups: readonly string[]; operations: readonly Operation[] }
 interface State { run_id: string; workflow_id: string; operation: string; workspace: string; request_id: string; fingerprint: string; research_task_id?: string; remote_id?: string; remote_key?: string; remote_project?: string; status_operation?: string; cancel_operation?: string; manifest_operation?: string; result?: ObjectValue; submission?: ObjectValue; lifecycle?: Lifecycle | null }
+type AutoContext = {
+  project: { id: string; rootPath: string }
+  study: { id: string; projectId: string; version: number; status: string; gate1: string; currentFreezeId?: string | null }
+  createdProject: boolean
+  createdStudy: boolean
+  targetFingerprint: string
+}
+type GateBlocker = { code: string; message: string; documentId?: string }
+type AutomaticGate = { status: 'approved' | 'blocked'; study: AutoContext['study']; blockers: GateBlocker[]; ruleVersion: string; freeze?: unknown }
+type ResearchContextRemote = {
+  ensureResearchContext(input: { sessionId: string; target?: string }): AutoContext | Promise<AutoContext>
+  autoApproveResearchGate1(input: { sessionId: string; studyId: string; expectedVersion: number }): AutomaticGate | Promise<AutomaticGate>
+}
 declare module '@deepseek-ai/cordis' {
   interface Context { researchWorkflow: { get(): ResearchWorkflowService } }
   interface Context { localScienceWorkflow: LocalScienceWorkflow }
@@ -38,7 +51,7 @@ export function workflowPayload(value: unknown): ObjectValue {
 /** A Host service, shared by the model tool and code callers. Only registered catalog operations execute. */
 export class ResearchWorkflowService {
   private readonly pending = new Map<string, Promise<ObjectValue>>()
-  constructor(private readonly store: ResearchStore, private readonly directory: string, private readonly mcp: Pick<ZeroWallMcpService, 'ensureConnected' | 'executeCompactCapability' | 'workflowRequest'>, private readonly local: () => LocalScienceWorkflow | undefined = () => undefined) {}
+  constructor(private readonly store: ResearchStore, private readonly directory: string, private readonly mcp: Pick<ZeroWallMcpService, 'ensureConnected' | 'executeCompactCapability' | 'workflowRequest'>, private readonly local: () => LocalScienceWorkflow | undefined = () => undefined, private readonly researchContext: () => ResearchContextRemote | undefined = () => undefined) {}
   private localService(): LocalScienceWorkflow { const local=this.local();if(!local)throw new Error('Local Fiji workflow service is unavailable.');return local }
   private sessionId(exec:ToolRunContext):string {const id=exec.agent?.session.id;if(!id)throw new Error('An active project session is required.');return String(id)}
   list(): ObjectValue { return { workflows: [...modules.map(module => ({ workflow_id: module.id, skill: module.skill, operation_count: module.operations.length })), ...(this.local()?[this.localService().list()]:[])] } }
@@ -61,11 +74,30 @@ export class ResearchWorkflowService {
   }
   async query(id: string, parameters: ObjectValue, exec: ToolRunContext): Promise<ObjectValue> {
     this.module(id)
+    await this.ensureContext(exec)
     return object(await this.mcp.workflowRequest('workflow_query', { workflow_id: id, operation: parameters.operation, arguments: object(parameters.arguments) }, exec))
   }
   private module(id: string): Module { const module = modules.find(item => item.id === id); if (!module) throw new Error(`UNKNOWN_WORKFLOW: ${id}`); return module }
   private operation(module: Module, id: string): Operation { const op = module.operations.find(item => item.id === id); if (!op) throw new Error(`Operation ${id} is not registered in ${module.id}`); return op }
-  private workspace(exec: ToolRunContext): string { const cwd = exec.agent?.session.header.cwd; if (!cwd) throw new Error('An active workspace is required.'); return resolve(cwd) }
+  private workspace(exec: ToolRunContext): string {
+    const cwd = exec.agent?.session.header.cwd
+    // Match the Research Host's managed default when a session has no explicit
+    // cwd so research can still provision its context without a registration UI.
+    if (cwd) return resolve(cwd)
+    const database = process.env.ZEROWALL_RESEARCH_DB?.trim()
+    if (database) return resolve(dirname(database), 'workspace')
+    throw new Error('An active workspace is required.')
+  }
+  private async ensureContext(exec: ToolRunContext): Promise<AutoContext> {
+    const contextRemote = this.researchContext()
+    if (!contextRemote) throw new Error('RESEARCH_CONTEXT_UNAVAILABLE: the Research Host context service is required for research workflows.')
+    const context = await contextRemote.ensureResearchContext({ sessionId: this.sessionId(exec) })
+    const projectRoot = resolve(context.project.rootPath)
+    const workspace = this.workspace(exec)
+    const sameWorkspace = process.platform === 'win32' ? projectRoot.toLowerCase() === workspace.toLowerCase() : projectRoot === workspace
+    if (!sameWorkspace) throw new Error('Research context belongs to another workspace.')
+    return context
+  }
   private path(id: string): string { if (!/^[a-f0-9-]{36}$/u.test(id)) throw new Error('Invalid workflow run id'); return join(this.directory, `${id}.json`) }
   private async save(state: State): Promise<void> { await mkdir(this.directory, { recursive: true }); const target = this.path(state.run_id); const temp = `${target}.${randomUUID()}.tmp`; await writeFile(temp, JSON.stringify(state)); await rename(temp, target) }
   private async load(id: string, exec: ToolRunContext): Promise<State> { const state = JSON.parse(await readFile(this.path(id), 'utf8')) as State; if (state.workspace !== this.workspace(exec)) throw new Error('Workflow belongs to another workspace'); return state }
@@ -102,15 +134,51 @@ export class ResearchWorkflowService {
     try { return await task } finally { this.pending.delete(key) }
   }
   private async submit(module: Module, operation: Operation, args: ObjectValue, workspace: string, requestId: string, exec: ToolRunContext, researchTaskId?: string): Promise<ObjectValue> {
-    const project = this.store.listProjects().find(item => resolve(item.rootPath) === workspace) ?? this.store.createProject({ name: workspace.split(/[\\/]/u).pop() || 'Research', rootPath: workspace })
+    const sessionId = this.sessionId(exec)
+    // The Research Host owns workspace validation and durable Project/Study
+    // idempotency. Keep dataset discovery/download on this path too so results
+    // attach to the active project, but do not apply Gate 1 to retrieval work.
+    const ensured = await this.ensureContext(exec)
+    const project = ensured.project
+    const contextRemote = this.researchContext()!
     const researchTask = researchTaskId === undefined ? undefined : this.findResearchTask(project.id, researchTaskId)
     const fingerprint = createHash('sha256').update(JSON.stringify(canonical({ workflow: module.id, operation: operation.id, args, ...(researchTaskId === undefined ? {} : { research_task_id: researchTaskId }) }))).digest('hex')
     const existing = this.store.listRuns(project.id).find(run => run.leaseOwner === 'research-workflow' && run.inputs.some(input => input.name === 'request_id' && input.uri === requestId))
     if (existing) { const state = await this.load(existing.id, exec); if (state.fingerprint !== fingerprint) throw new Error('IDEMPOTENCY_CONFLICT: request_id was already used for different parameters.'); return this.view(state) }
-    if (researchTask) {
-      const study = this.store.getResearchStudy(researchTask.studyId)!
-      if (['archived', 'completed', 'blocked'].includes(study.status)) throw new Error('The research study is not available for execution.')
-      if (!researchTask.exploratory && (!study.currentFreezeId || study.gate1 !== 'approved')) throw new Error('Confirmatory tasks require gate one approval and a frozen study plan.')
+    let study = researchTask ? this.store.getResearchStudy(researchTask.studyId) : ensured.study
+    if (!study || study.projectId !== project.id) throw new Error('The research study is not available in the active project.')
+    if (['archived', 'completed'].includes(study.status)) throw new Error('The research study is not available for execution.')
+    // Only confirmed, asynchronous analysis submissions need a frozen plan.
+    // Public catalog lookups, previews, and user-scope downloads remain usable
+    // while the automatically drafted contract is still pending.
+    const requiresGate = operation.requires_confirmation === true
+      && operation.execution === 'async_or_cached'
+      && operation.id !== 'biomni.prefetch.datalake'
+      && researchTask?.exploratory !== true
+    if (requiresGate && study.status === 'blocked') {
+      return {
+        status: 'blocked', stage: 'pre-run-gate1', workflow_id: module.id, operation: operation.id,
+        project_id: project.id, study_id: study.id, system_validation: 'blocked',
+        blockers: [{ code: 'STUDY_BLOCKED', message: '当前 Study 的确认性分析仍有待解决的阻断项。' }],
+        recovery: '解决 Study 阻断项后重试；检索、目录查询和数据下载可继续。',
+      }
+    }
+    // A prior freeze is not evidence that its source files are still intact.
+    // The Host revalidates existing approvals before every new submission.
+    if (requiresGate) {
+      const gate = await contextRemote.autoApproveResearchGate1({ sessionId, studyId: study.id, expectedVersion: study.version })
+      if (gate.status !== 'approved' || !gate.study.currentFreezeId || gate.study.gate1 !== 'approved') {
+        const blockers = gate.blockers.length ? gate.blockers : [{ code: 'GATE1_NOT_FROZEN', message: '系统校验未能冻结当前研究方案。' }]
+        return {
+          status: 'blocked', stage: 'pre-run-gate1', workflow_id: module.id, operation: operation.id,
+          project_id: project.id, study_id: study.id, system_validation: 'blocked', rule_version: gate.ruleVersion,
+          blockers, recovery: '补齐阻断项后重试；检索、目录查询和数据下载可继续。',
+        }
+      }
+      study = gate.study
+    }
+    if (requiresGate && researchTask && !researchTask.exploratory && (!study.currentFreezeId || study.gate1 !== 'approved')) {
+      throw new Error('Confirmatory tasks require gate one approval and a frozen study plan.')
     }
     const run = this.store.createRun({ projectId: project.id, name: `${module.id}: ${operation.id}`, command: 'research_workflow', workingDirectory: workspace, status: 'submitted', leaseOwner: 'research-workflow', inputs: [{ name: 'request_id', uri: requestId }] })
     const state: State = { run_id: run.id, workflow_id: module.id, operation: operation.id, workspace, request_id: requestId, fingerprint, ...(researchTask === undefined ? {} : { research_task_id: researchTask.id }), lifecycle: operation.lifecycle ?? null, ...(typeof args.project_id === 'string' ? { remote_project: args.project_id } : {}) }
@@ -219,14 +287,19 @@ export function registerResearchWorkflow(ctx: Context, mcp: ZeroWallMcpService):
   const get = () => {
     if (service) return service
     const path = process.env.ZEROWALL_RESEARCH_DB; if (!path) throw new Error('Research database is unavailable')
-    store = new ResearchStore(path); service = new ResearchWorkflowService(store, join(dirname(path), 'workflows'), mcp,()=>local)
+    store = new ResearchStore(path)
+    const contextRemote = (): ResearchContextRemote | undefined => {
+      try { return (ctx as unknown as { get(name: string): ResearchContextRemote }).get('zerowallResearch') }
+      catch { return undefined }
+    }
+    service = new ResearchWorkflowService(store, join(dirname(path), 'workflows'), mcp,()=>local,contextRemote)
     return service
   }
   // Code callers use the same service and must supply their ordinary ToolRunContext.
   ctx.provide('researchWorkflow', { get })
   ctx.effect(() => () => store?.close())
   ctx.tools.register(defineTool({
-    name: 'research_workflow', description: 'List/describe registered research workflows; submit once, inspect progress/artifact manifests, or cancel. Remote methods use the existing rmcp connection; Fiji runs through the local Host scientific service. Load the module skill first.',
+    name: 'research_workflow', description: 'List/describe registered research workflows; query user-scope data; submit once, inspect progress/artifact manifests, or cancel. Research Project/Study context is automatically ensured for data queries and submissions. A valid formal analysis plan is automatically system-validated and frozen before a confirmation Runner; missing inputs return recoverable blockers while catalog and download work can continue. Remote methods use the existing rmcp connection; Fiji runs through the local Host scientific service. Load the module skill first.',
     parameters: { action: { type: 'string', required: true, enum: ['list', 'search', 'describe', 'query', 'run', 'status', 'cancel'] }, workflow_id: { type: 'string' }, query: { type: 'string' }, offset: { type: 'number' }, limit: { type: 'number' }, offline: { type: 'boolean' }, operation: { type: 'string' }, parameters: { type: 'json' }, research_task_id: { type: 'string', description: 'Optional existing research task to reserve and reconcile with this Run.' }, run_id: { type: 'string' }, confirm: { type: 'boolean' } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec) {

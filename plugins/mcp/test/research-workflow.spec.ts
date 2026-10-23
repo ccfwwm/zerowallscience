@@ -1,6 +1,7 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ResearchStore } from '@zerowallscience/research-store'
 import { rWorkflows } from '../src/shared/r-workflows.js'
@@ -11,12 +12,18 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'workflow-')); roots.push(root)
   const store = new ResearchStore(join(root, 'db.sqlite')); stores.push(store)
   let remoteStatus = 'running'
+  const ensureResearchContext = vi.fn(async ({ sessionId, target }: { sessionId: string; target?: string }) => store.ensureResearchContext({ sessionId, rootPath: root, projectName: 'Workflow project', target }))
+  const autoApproveResearchGate1 = vi.fn(async ({ studyId }: { sessionId: string; studyId: string; expectedVersion: number }) => {
+    const study = store.getResearchStudy(studyId)!
+    return { status: 'approved' as const, study: { ...study, gate1: 'approved', currentFreezeId: 'freeze-test' }, blockers: [], ruleVersion: 'test-rule-v1', freeze: { id: 'freeze-test' } }
+  })
   const execute = vi.fn(async (id: string) => ({ target: id, content: [], value: { structuredContent: id === 'r.submit.script' ? { id: 'job-1', status: 'queued' } : id === 'r.get.job' ? { status: remoteStatus, progress: 25 } : id === 'r.get.job.manifest' ? { files: [{ path: 'plot.png', sha256: 'digest' }] } : {} } }))
   const workflowRequest = vi.fn(async (_action: string, args: any) => { const op = rWorkflows.modules.find(m => m.id === args.workflow_id)?.operations.find(o => o.id === args.operation); if (!op) throw new Error('Operation not registered'); return op })
   const backend = { workflowRequest, ensureConnected: vi.fn(async () => undefined), executeCompactCapability: execute } as any
-  const service = new ResearchWorkflowService(store, join(root, 'workflows'), backend)
-  const exec = { signal: new AbortController().signal, agent: { session: { header: { cwd: root } } } } as any
-  return { root, store, service, backend, execute, exec, status: (value: string) => { remoteStatus = value } }
+  const research = { ensureResearchContext, autoApproveResearchGate1 }
+  const service = new ResearchWorkflowService(store, join(root, 'workflows'), backend, undefined, () => research)
+  const exec = { signal: new AbortController().signal, agent: { session: { id: 'workflow-session', header: { cwd: root } } } } as any
+  return { root, store, service, backend, execute, exec, ensureResearchContext, autoApproveResearchGate1, status: (value: string) => { remoteStatus = value } }
 }
 const input = { operation: 'r.submit.script', arguments: { project_id: 'demo', code: 'print(1)', confirm: true }, request_id: 'submission-1' }
 it('submits once, persists remote IDs, resumes queries and returns checksummed manifests', async () => {
@@ -24,7 +31,7 @@ it('submits once, persists remote IDs, resumes queries and returns checksummed m
   const [first, same] = await Promise.all([f.service.run('r.compute', input, f.exec), f.service.run('r.compute', input, f.exec)])
   expect(first.run_id).toBe(same.run_id); expect(first.remote_id).toBe('job-1')
   expect(f.execute.mock.calls.filter(([id]) => id === 'r.submit.script')).toHaveLength(1)
-  const restored = new ResearchWorkflowService(f.store, join(f.root, 'workflows'), f.backend)
+  const restored = new ResearchWorkflowService(f.store, join(f.root, 'workflows'), f.backend, undefined, () => ({ ensureResearchContext: f.ensureResearchContext, autoApproveResearchGate1: f.autoApproveResearchGate1 } as any))
   f.status('succeeded')
   const done = await restored.status(String(first.run_id), f.exec)
   expect(done.status).toBe('succeeded'); expect(JSON.stringify(done)).toContain('digest')
@@ -48,9 +55,98 @@ it('blocks confirmatory task execution before gate one and freeze', async () => 
   const project = f.store.createProject({ name: 'Gated project', rootPath: f.root })
   const study = f.store.createResearchStudy({ projectId: project.id, title: 'Gated study', budget: { maxTokens: 100 } })
   const task = f.store.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Confirmatory', kind: 'runner', budget: { tokens: 10 } })
-  await expect(f.service.run('r.compute', { ...input, research_task_id: task.id }, f.exec)).rejects.toThrow(/gate one/i)
+  f.autoApproveResearchGate1.mockResolvedValueOnce({ status: 'blocked', study, blockers: [{ code: 'PLAN_INCOMPLETE', message: 'Analysis plan is incomplete.' }], ruleVersion: 'test-rule-v1' } as any)
+  const result = await f.service.run('r.compute', { ...input, research_task_id: task.id }, f.exec)
+  expect(result).toMatchObject({ status: 'blocked', stage: 'pre-run-gate1', system_validation: 'blocked', study_id: study.id })
+  expect(result.blockers).toEqual([{ code: 'PLAN_INCOMPLETE', message: 'Analysis plan is incomplete.' }])
   expect(f.store.listRuns(project.id)).toHaveLength(0)
 })
+
+it('ensures study context for a public GEO download but never gates download on a draft contract', async () => {
+  const f = await fixture()
+  f.autoApproveResearchGate1.mockClear()
+  const context = f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' })
+  const task = f.store.createResearchTask({ projectId: context.project.id, studyId: context.study.id, name: 'Confirmatory follow-up', kind: 'runner', budget: { tokens: 10 } })
+  f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent: id === 'r.geo.download' ? { job_id: 'geo-1', status: 'queued' } : {} } }))
+  const result = await f.service.run('r.geo', { operation: 'r.geo.download', arguments: { accession: 'GSE1000' }, request_id: 'geo-download-pending', research_task_id: task.id }, f.exec)
+  expect(result.status).toBe('running')
+  expect(f.ensureResearchContext).toHaveBeenCalledWith({ sessionId: expect.any(String) })
+  expect(f.autoApproveResearchGate1).not.toHaveBeenCalled()
+  expect(f.execute).toHaveBeenCalledWith('r.geo.download', expect.any(Object), f.exec)
+})
+
+it('continues public data downloads for a blocked Study while keeping confirmatory analysis paused', async () => {
+  const f = await fixture()
+  const context = f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' })
+  f.store.updateResearchStudy(context.study.id, { expectedVersion: context.study.version, status: 'blocked' })
+  f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent: id === 'r.geo.download' ? { job_id: 'geo-blocked-study', status: 'queued' } : {} } }))
+
+  const download = await f.service.run('r.geo', { operation: 'r.geo.download', arguments: { accession: 'GSE1000' }, request_id: 'download-blocked-study' }, f.exec)
+  expect(download.status).toBe('running')
+  expect(f.execute).toHaveBeenCalledWith('r.geo.download', expect.any(Object), f.exec)
+
+  const analysis = await f.service.run('r.compute', input, f.exec)
+  expect(analysis).toMatchObject({ status: 'blocked', stage: 'pre-run-gate1', study_id: context.study.id, blockers: [{ code: 'STUDY_BLOCKED' }] })
+  expect(f.execute.mock.calls.some(([id]) => id === 'r.submit.script')).toBe(false)
+  expect(f.autoApproveResearchGate1).not.toHaveBeenCalled()
+})
+
+it.each(['draft', 'blocked'] as const)('prefetches Biomni data for a %s Study without analysis approval while preserving confirmation', async status => {
+  const f = await fixture()
+  const context = f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' })
+  if (status === 'blocked') f.store.updateResearchStudy(context.study.id, { expectedVersion: context.study.version, status })
+  const task = f.store.createResearchTask({ projectId: context.project.id, studyId: context.study.id, name: 'Confirmatory follow-up', kind: 'runner', budget: { tokens: 10 } })
+  f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent: id === 'biomni.prefetch.datalake' ? { job_id: 'biomni-download', status: 'queued' } : {} } }))
+  const request = { operation: 'biomni.prefetch.datalake', arguments: { datasets: ['public-data'], confirm: false }, request_id: `biomni-prefetch-${status}`, research_task_id: task.id }
+
+  await expect(f.service.run('biomni', request, f.exec)).rejects.toThrow('CONFIRMATION_REQUIRED')
+  expect(f.execute).not.toHaveBeenCalled()
+  const result = await f.service.run('biomni', { ...request, arguments: { ...request.arguments, confirm: true } }, f.exec)
+  expect(result).toMatchObject({ status: 'running', remote_id: 'biomni-download' })
+  expect(f.execute).toHaveBeenCalledWith('biomni.prefetch.datalake', expect.objectContaining({ confirm: true }), f.exec)
+  expect(f.autoApproveResearchGate1).not.toHaveBeenCalled()
+})
+
+it('automatically validates the ensured study before formal async analysis and returns recoverable blockers without submitting', async () => {
+  const f = await fixture()
+  f.autoApproveResearchGate1.mockImplementationOnce(async ({ studyId }) => ({ status: 'blocked', study: f.store.getResearchStudy(studyId)!, blockers: [{ code: 'DATA_CONTRACT_PENDING', message: 'Data source and variables remain unknown.' }], ruleVersion: 'test-rule-v1' }) as any)
+  const result = await f.service.run('r.compute', input, f.exec)
+  expect(result).toMatchObject({ status: 'blocked', stage: 'pre-run-gate1', system_validation: 'blocked', recovery: expect.stringContaining('下载可继续') })
+  expect(f.autoApproveResearchGate1).toHaveBeenCalledWith({ sessionId: expect.any(String), studyId: expect.any(String), expectedVersion: expect.any(Number) })
+  expect(f.execute.mock.calls.some(([id]) => id === 'r.submit.script')).toBe(false)
+  expect(f.store.listRuns(f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' }).project.id).length).toBe(0)
+})
+
+it('rechecks frozen source bytes before each new confirmatory submission and preserves the original freeze', async () => {
+  const f = await fixture()
+  const { project, study } = f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' })
+  const source = join(f.root, 'verified.csv')
+  await writeFile(source, 'x,y\n1,2\n')
+  const asset = f.store.createDataAsset({ projectId: project.id, name: 'Verified input', uri: pathToFileURL(source).href, location: 'local', mediaType: 'text/csv' })
+  const contract = f.store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'dataset-contract', payload: { applicability: 'usable', sourceStatus: 'supported', source: asset.uri, assetId: asset.id, availableVariables: ['x', 'y'] } })
+  const question = f.store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: { population: 'Synthetic adults', outcome: 'y', estimand: 'mean difference' } })
+  const plan = f.store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'analysis-plan', payload: { method: 'linear regression', inputs: [contract.id], stoppingConditions: ['Stop if x or y are missing'], exploratory: false } })
+  f.store.updateResearchStudy(study.id, { expectedVersion: f.store.getResearchStudy(study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
+  expect(f.store.verifyDatasetContractSource(contract.id).status).toBe('verified')
+  const approved = f.store.approveResearchGateAutomatically(study.id, f.store.getResearchStudy(study.id)!.version)
+  expect(approved.status).toBe('approved')
+  const freeze = f.store.listStudyFreezes(study.id)
+  f.autoApproveResearchGate1.mockImplementation((async ({ studyId }) => {
+    f.store.verifyDatasetContractSource(contract.id)
+    return f.store.approveResearchGateAutomatically(studyId, f.store.getResearchStudy(studyId)!.version)
+  }) as any)
+
+  const first = await f.service.run('r.compute', input, f.exec)
+  expect(first.status).toBe('running')
+  await writeFile(source, 'x,y\n9,8\n')
+  const blocked = await f.service.run('r.compute', { ...input, request_id: 'changed-frozen-source' }, f.exec)
+  expect(blocked).toMatchObject({ status: 'blocked', stage: 'pre-run-gate1', study_id: study.id, blockers: [{ code: 'CONTRACT_PROVENANCE_UNVERIFIED' }] })
+  expect(f.autoApproveResearchGate1).toHaveBeenCalledTimes(2)
+  expect(f.execute.mock.calls.filter(([id]) => id === 'r.submit.script')).toHaveLength(1)
+  expect(f.store.listRuns(project.id)).toHaveLength(1)
+  expect(f.store.listStudyFreezes(study.id)).toEqual(freeze)
+})
+
 it('rejects unconfirmed mutations, invalid operations, conflicting idempotency keys and another workspace', async () => {
   const f = await fixture()
   await expect(f.service.run('r.compute', { ...input, arguments: { ...input.arguments, confirm: false } }, f.exec)).rejects.toThrow('CONFIRMATION_REQUIRED')

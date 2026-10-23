@@ -6,7 +6,7 @@ allowed-tools: read
 
 # 远程 OmicVerse 单细胞、bulk、空间、多组学和可选 Agent。
 
-单细胞和空间转录组优先本模块。NHANES 调查统计仍由 R 执行；通用生物数据库工具优先 Biomni；绘图模板优先 FigureYa。
+AnnData、单细胞、空间和多组学请求时主动加载 zerowall-rmcp、本 Skill 及匹配的专项 Skill，并默认通过 `rmcp` 远程执行。NHANES 调查统计仍使用远程 R；通用生物数据库工具优先 Biomni；绘图模板优先 FigureYa。连接状态未知时先调用 `mcp_connect`，远程失败不得静默转为本地 R/Python 分析。
 
 ## 功能地图
 
@@ -14,7 +14,7 @@ allowed-tools: read
 
 ## 入口与准备
 
-直接调用 `research_workflow`，并以当前 schema 为准。下列 JSON 是该工具的参数；不要把工作流 ID 当工具名。只有一条物理连接 `rmcp`，工作流按需连接。
+使用 Host `research_workflow` 的实时 schema。不要把工作流 ID 当工具名。OmicVerse 任务默认远程运行；连接未知时先调用 `mcp_connect`，再检查工具目录、环境和精确操作。数据上传遵守现有确认及授权范围。
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 

@@ -8,7 +8,7 @@ allowed-tools: read
 
 先搜索实时覆盖矩阵，确认方法的输入模态、样本配对和依赖。未验证 API 只作候选；缺 GPU/模型时报告不可用，不能承诺自动支持。
 
-使用同一物理 rmcp 连接、同一工作流 omicverse。先 the native tool registry 发现 research_workflow，再 the native tool：
+多组学请求时主动加载 zerowall-rmcp、zerowall-omicverse 和本专项 Skill。使用同一物理 `rmcp` 连接、同一工作流 omicverse；连接状态未知时先调用 `mcp_connect`，再从实时 schema 发现 `research_workflow` 并调用：
 
 ```json
 {

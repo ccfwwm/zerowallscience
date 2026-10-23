@@ -14,7 +14,7 @@ accession 与文件检索；缓存、下载和日志；表达矩阵检查；bulk
 
 ## 入口与准备
 
-直接调用 `research_workflow`，并以当前 schema 为准。下列 JSON 是该工具的参数；不要把工作流 ID 当工具名。只有一条物理连接 `rmcp`，工作流按需连接。
+GEO 查询、数据检索、下载或分析时主动加载 zerowall-rmcp 与本 Skill，通过唯一物理连接 `rmcp` 使用 Host `research_workflow` 的实时 schema。连接状态未知时先调用 `mcp_connect`；不要把工作流 ID 当工具名。公共数据发现和授权范围内下载可先继续，`confirm_large` 等现有大文件确认及数据范围授权保持有效。
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 

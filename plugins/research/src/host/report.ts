@@ -11,6 +11,7 @@ const RUNNER = 'zerowall-science-imrad-report/7.0.0-2'
 export type ReportMode = 'draft' | 'final'
 export interface ReportResponse {
   mode: ReportMode
+  requestedMode?: ReportMode
   report: { uri: string; checksum: string; artifactId: string }
   manifest: { uri: string; checksum: string; artifactId: string }
   needsReview: boolean
@@ -121,7 +122,9 @@ export class ReportService {
     const unaudited = claims.filter(document => document.payload.auditStatus !== 'passed')
     if (unaudited.length) blockers.push(`${unaudited.length} 条主张尚未通过证据审计`)
     if (evidence.some(document => document.payload.needsReview === true)) blockers.push('存在待人工复核证据')
-    if (mode === 'final' && blockers.length) throw new Error(`不能生成正式 IMRAD 报告：${blockers.join('；')}`)
+    // A final request remains useful when a non-gate report check blocks it:
+    // preserve the user's work and return a visibly marked draft with reasons.
+    const outputMode: ReportMode = mode === 'final' && blockers.length ? 'draft' : mode
 
     const root = await realpath(project.rootPath)
     const exportRoot = join(root, '.zerowall', 'science-exports')
@@ -131,25 +134,25 @@ export class ReportService {
     await mkdir(directoryRaw, { recursive: true })
     const directory = await containedFile(root, directoryRaw)
     const generatedAt = new Date().toISOString()
-    const markdown = renderMarkdown(snapshot, mode, generatedAt, blockers)
+    const markdown = renderMarkdown(snapshot, outputMode, generatedAt, blockers)
     const manifestValue: JsonObject = {
-      format: 'zerowall-science-imrad-report', version: 2, runner: RUNNER, mode, generatedAt,
+      format: 'zerowall-science-imrad-report', version: 2, runner: RUNNER, mode: outputMode, ...(mode !== outputMode ? { requestedMode: mode } : {}), generatedAt,
       studyId, studyVersion: study.version, gate1: study.gate1, gate2: study.gate2,
       documentIds: snapshot.documents.map(document => document.id),
       evidenceIds: evidence.map(document => document.id), claimIds: claims.map(document => document.id),
       taskIds: (snapshot.tasks ?? []).map(task => task.id), freezes: snapshot.freezes.map(freeze => freeze.id),
       runtimeProvenance: JSON.parse(JSON.stringify(runtimeProvenance)),
       provenanceScope: 'Observed provider-neutral requests only; absent history, provider wire transforms and unlinked subagents are not inferred.',
-      blockers, needsReview: mode !== 'final' || blockers.length > 0,
+      blockers, needsReview: outputMode !== 'final' || blockers.length > 0,
     }
     const reportPath = join(directory, 'imrad-report.md')
     const manifestPath = join(directory, 'manifest.json')
     const manifest = `${JSON.stringify(manifestValue, null, 2)}\n`
     try {
       await writeFile(reportPath, markdown, { flag: 'wx' }); await writeFile(manifestPath, manifest, { flag: 'wx' })
-      const report = this.store.createArtifact({ projectId: project.id, name: `IMRAD 报告：${study.title}`, uri: pathToFileURL(reportPath).href, mediaType: 'text/markdown', checksum: createHash('sha256').update(markdown).digest('hex'), metadata: { runner: RUNNER, studyId, studyVersion: study.version, mode, manifestUri: pathToFileURL(manifestPath).href, needsReview: mode !== 'final' } })
-      const manifestArtifact = this.store.createArtifact({ projectId: project.id, name: `IMRAD 报告清单：${study.title}`, uri: pathToFileURL(manifestPath).href, mediaType: 'application/json', checksum: createHash('sha256').update(manifest).digest('hex'), metadata: { runner: RUNNER, studyId, reportArtifactId: report.id, mode, needsReview: mode !== 'final' } })
-      return { mode, report: { uri: report.uri, checksum: report.checksum ?? '', artifactId: report.id }, manifest: { uri: manifestArtifact.uri, checksum: manifestArtifact.checksum ?? '', artifactId: manifestArtifact.id }, needsReview: mode !== 'final' || blockers.length > 0, blockers, documentIds: snapshot.documents.map(document => document.id) }
+      const report = this.store.createArtifact({ projectId: project.id, name: `IMRAD 报告：${study.title}`, uri: pathToFileURL(reportPath).href, mediaType: 'text/markdown', checksum: createHash('sha256').update(markdown).digest('hex'), metadata: { runner: RUNNER, studyId, studyVersion: study.version, mode: outputMode, manifestUri: pathToFileURL(manifestPath).href, needsReview: outputMode !== 'final' } })
+      const manifestArtifact = this.store.createArtifact({ projectId: project.id, name: `IMRAD 报告清单：${study.title}`, uri: pathToFileURL(manifestPath).href, mediaType: 'application/json', checksum: createHash('sha256').update(manifest).digest('hex'), metadata: { runner: RUNNER, studyId, reportArtifactId: report.id, mode: outputMode, needsReview: outputMode !== 'final' } })
+      return { mode: outputMode, ...(mode !== outputMode ? { requestedMode: mode } : {}), report: { uri: report.uri, checksum: report.checksum ?? '', artifactId: report.id }, manifest: { uri: manifestArtifact.uri, checksum: manifestArtifact.checksum ?? '', artifactId: manifestArtifact.id }, needsReview: outputMode !== 'final' || blockers.length > 0, blockers, documentIds: snapshot.documents.map(document => document.id) }
     } catch (error) {
       await rm(directory, { recursive: true, force: true }); throw error
     }

@@ -16,7 +16,7 @@ metadata:
 
 ## ZeroWall Research route
 
-For review of an active ZeroWall ResearchStudy, load [the shared research writing policy](../zerowall-research-orchestrator/references/research-writing-policy.md) from the returned `resourceBase`. Review registered evidence/claims and report unsupported or contradictory material; reviewers cannot approve their own human gate or promote conjectures into results. Formal core-claim audit is required. Keep the independent manuscript-review modes below for standalone review requests.
+For review of an active ZeroWall ResearchStudy, load [the shared research writing policy](../zerowall-research-orchestrator/references/research-writing-policy.md) from the returned `resourceBase`. Review registered evidence/claims and report unsupported or contradictory material; reviewers cannot approve their own gates or promote conjectures into results. Host automatically records gate approval only after complete deterministic validation; do not request routine gate approval from the user. Formal core-claim audit is required. Keep the independent manuscript-review modes below for standalone review requests.
 
 Shared academic contracts and reference paths beginning with `shared/` resolve from [Academic Research Shared](../academic-research-shared/SKILL.md), under its `shared/` directory. Load those files from that resource base; hooks described upstream apply only in runtimes that install them.
 

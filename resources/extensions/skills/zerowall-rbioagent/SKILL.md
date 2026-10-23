@@ -6,7 +6,7 @@ allowed-tools: read
 
 # 远程 Biomni 精确生物工具、数据湖、Python 与可选 Agent。
 
-明确生物能力优先检索精确工具；开放式复杂任务可用 Agent。AnnData 专项方法选择 OmicVerse；本地数据轻量计算或数据库查询见 zerowall-bio。
+生物数据库、基因/蛋白查询或远程生信能力请求时主动加载 zerowall-rmcp 与本 Skill，并通过唯一物理连接 `rmcp` 检索精确工具；开放式复杂任务仅在任务适合且用户意图允许时用 Agent。AnnData 专项方法选择 OmicVerse；本地文件的轻量查看可本地完成，但 R 计算默认远程。
 
 ## 功能地图
 
@@ -14,7 +14,7 @@ allowed-tools: read
 
 ## 入口与准备
 
-直接调用 `research_workflow`，并以当前 schema 为准。下列 JSON 是该工具的参数；不要把工作流 ID 当工具名。只有一条物理连接 `rmcp`，工作流按需连接。
+使用本模块时调用 Host `research_workflow` 的实时 schema；连接状态未知时先调用 `mcp_connect`，再进行目录搜索与 describe。不要把工作流 ID 当工具名。远程连接失败要报告实际阻断并保留可做的准备，不能伪造输出或静默切换到本地运行。
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 
