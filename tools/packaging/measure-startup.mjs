@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createConnection } from 'node:net'
-import { mkdir, mkdtemp, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { performance } from 'node:perf_hooks'
@@ -24,8 +24,7 @@ if (executableOverride) packaged.executablePath = resolve(executableOverride)
 const evidence = resolve(verificationRoot, 'startup', option('--label', mode + '-' + Date.now()))
 await mkdir(evidence, { recursive: true })
 // Electron's native ASAR reader on Windows rejects archive paths beyond
-// MAX_PATH. Keep test user data outside the long source worktree, as in an
-// installed application, and retain that location in the evidence receipt.
+// MAX_PATH. Keep temporary test user data outside the long source worktree.
 const fixtures = await mkdtemp(join(tmpdir(), 'zws-start-'))
 const report = { schema: 1, mode, executable: packaged.executablePath, limitMs: mode === 'daily' ? 20_000 : 45_000, timing: 'process spawn to visible editable input and authenticated local Host health', runs: [] }
 
@@ -69,7 +68,7 @@ async function run(directory, iteration, measured = true, executable = packaged.
   const before = performance.now()
   const child = spawn(executable, ['--remote-debugging-port=0', `--user-data-dir=${join(directory, 'chromium')}`], { cwd: dirname(executable), env: { ...process.env, APPDATA: join(directory, 'appdata'), LOCALAPPDATA: join(directory, 'localappdata'), ZEROWALL_USER_DATA_DIR: userData, USERPROFILE: directory, HOME: directory }, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
   let browser, output = '', phase = 'devtools'
-  const row = { iteration, fixture: directory, measured }
+  const row = { iteration, measured }
   try {
     const endpoint = await new Promise((accept, reject) => {
       const timer = setTimeout(() => reject(new Error('DevTools timeout')), 60_000)
@@ -110,12 +109,13 @@ async function run(directory, iteration, measured = true, executable = packaged.
   } catch (error) {
     row.passed = false; row.failedPhase = phase; row.error = error.message.replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')
     row.elapsedMs = Math.round(performance.now() - before)
-    await writeFile(join(directory, 'process-redacted.log'), output.replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]'))
+    row.processLog = join(evidence, `process-${iteration}-${measured ? 'measured' : 'baseline'}.log`)
+    await writeFile(row.processLog, output.replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]'))
   } finally {
     await browser?.close().catch(() => {})
     if (child.pid && child.exitCode === null) spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { windowsHide: true, stdio: 'ignore' })
     await new Promise(accept => child.exitCode !== null ? accept() : child.once('exit', accept))
-    // Retain only isolated fixtures and safe metrics. Never read the real
+    // Retain only isolated test metrics. Never read the real
     // installed application's settings, command tokens or startup logs.
     const currentLog = await readFile(logs, 'utf8').catch(() => '')
     const lines = currentLog.startsWith(priorLog) ? currentLog.slice(priorLog.length) : currentLog
@@ -124,32 +124,36 @@ async function run(directory, iteration, measured = true, executable = packaged.
   return row
 }
 
-for (let iteration = 1; iteration <= count; iteration++) {
-  const directory = join(fixtures, 'run-' + iteration)
-  await mkdir(directory, { recursive: true })
-  let baseline
-  if (mode === 'upgrade808') baseline = await seed808(directory)
-  if (mode === 'upgrade806' || mode === 'upgrade835') {
-    const executable = option('--baseline-executable')
-    if (!executable) throw new Error(mode + ' requires --baseline-executable <verified baseline ZeroWallScience.exe>')
-    const warmup = await run(directory, iteration, false, resolve(executable))
-    if (!warmup.hostReady) throw new Error('Baseline did not become usable: ' + warmup.error)
-    baseline = { applicationVersion: mode === 'upgrade835' ? '8.3.5' : '8.0.6', executable, hostReady: true, inputReady: true }
+try {
+  for (let iteration = 1; iteration <= count; iteration++) {
+    const directory = join(fixtures, 'run-' + iteration)
+    await mkdir(directory, { recursive: true })
+    let baseline
+    if (mode === 'upgrade808') baseline = await seed808(directory)
+    if (mode === 'upgrade806' || mode === 'upgrade835') {
+      const executable = option('--baseline-executable')
+      if (!executable) throw new Error(mode + ' requires --baseline-executable <verified baseline ZeroWallScience.exe>')
+      const warmup = await run(directory, iteration, false, resolve(executable))
+      if (!warmup.hostReady) throw new Error('Baseline did not become usable: ' + warmup.error)
+      baseline = { applicationVersion: mode === 'upgrade835' ? '8.3.5' : '8.0.6', executable, hostReady: true, inputReady: true }
+    }
+    if (mode === 'daily') {
+      const warmup = await run(directory, iteration, false)
+      if (!warmup.hostReady) { report.runs.push(warmup); break }
+    }
+    const row = await run(directory, iteration)
+    if (baseline) row.baseline = baseline
+    report.runs.push(row)
+    report.passed = report.runs.length === count && report.runs.every(row => row.passed)
+    const durations = report.runs.map(row=>row.durationMs).filter(Number.isFinite).sort((a,b)=>a-b)
+    report.medianMs = durations[Math.floor(durations.length/2)]
+    report.maximumMs = durations.at(-1)
+    if (mode === 'daily' && report.medianMs > 12_000) report.passed = false
+    await writeFile(join(evidence, 'report.json'), JSON.stringify(report, null, 2))
+    console.log(JSON.stringify({ mode, iteration, durationMs: row.durationMs, passed: row.passed, error: row.error, evidence }))
+    if (!row.hostReady) break
   }
-  if (mode === 'daily') {
-    const warmup = await run(directory, iteration, false)
-    if (!warmup.hostReady) { report.runs.push(warmup); break }
-  }
-  const row = await run(directory, iteration)
-  if (baseline) row.baseline = baseline
-  report.runs.push(row)
-  report.passed = report.runs.length === count && report.runs.every(row => row.passed)
-  const durations = report.runs.map(row=>row.durationMs).filter(Number.isFinite).sort((a,b)=>a-b)
-  report.medianMs = durations[Math.floor(durations.length/2)]
-  report.maximumMs = durations.at(-1)
-  if (mode === 'daily' && report.medianMs > 12_000) report.passed = false
-  await writeFile(join(evidence, 'report.json'), JSON.stringify(report, null, 2))
-  console.log(JSON.stringify({ mode, iteration, durationMs: row.durationMs, passed: row.passed, error: row.error, evidence }))
-  if (!row.hostReady) break
+  if (!report.passed) process.exitCode = 1
+} finally {
+  await rm(fixtures, { recursive: true, force: true, maxRetries: 3 })
 }
-if (!report.passed) process.exitCode = 1

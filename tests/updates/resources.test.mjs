@@ -1,4 +1,4 @@
-import { test } from 'node:test'
+import { afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { generateKeyPairSync } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile, symlink } from 'node:fs/promises'
@@ -12,8 +12,10 @@ import { createResourceManager } from '../../tools/commands/resource-manager.mjs
 import { initializeProfile } from '../../tools/commands/profile.mjs'
 
 const target = { desktopVersion: '8.0.0', dshVersion: '0.2.0-rc.2', platform: 'win32', architecture: 'x64' }
+const fixtureHomes = new Set()
 async function fixture() {
   const home = await mkdtemp(join(tmpdir(), 'zws-resource-test-'))
+  fixtureHomes.add(home)
   const pair = generateKeyPairSync('ed25519')
   const keys = { test: pair.publicKey }
   const path = join(home, 'plugin.tgz')
@@ -25,6 +27,11 @@ async function fixture() {
   await writeFile(source, JSON.stringify(document))
   return { home, resource, document, source, keys, path, privateKey: pair.privateKey }
 }
+
+afterEach(async () => {
+  await Promise.all([...fixtureHomes].map(home => rm(home, { recursive: true, force: true })))
+  fixtureHomes.clear()
+})
 
 test('a selected update links unchanged offline packages without resolving their workspace manifests', async () => {
   const f = await fixture()

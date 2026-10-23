@@ -19,7 +19,7 @@ import { MEDIA_CONVERSATION_PROMPT, MEDIA_PROJECT_ID_PARAMETER, MEDIA_JOB_ID_PAR
 import { ownMediaRuntime } from './shared-runtime.js'
 export { MediaStudioService } from './media-studio.js'
 export const name='videos'
-export const inject=['skills','tools','typert','webServer','zerowallMedia','zerowallMediaJobs','zerowallPython','zerowallEnvironment','attachments','connection']
+export const inject=['skills','tools','typert','webServer','zerowallMedia','zerowallMediaJobs','zerowallPython','zerowallEnvironment','attachments','connection','userQuestions']
 export interface Config { trustedHosts?:string[]; editorMaxBytes?:number }
 export const Config=z.object({trustedHosts:z.array(String).default([]),editorMaxBytes:z.natural().default(2097152)}) as z<Config>
 export async function installMediaStudio(context:Context,config:Config={}){
@@ -47,7 +47,7 @@ export async function installMediaStudio(context:Context,config:Config={}){
     }
     return {result:await studio.call(sessionId,args.action==='list'?'catalog':'choices','{}')}
   }}))
-  context.tools.register(defineTool({name:'media_job',description:'生成用户明确要求的独立视频、音乐或语音任务；普通图片生成和编辑必须使用 gpt-image-generator 的 generate_image/edit_image。图片仅可作为视频参考素材。明确生成用 generate，讨论方案用 prepare。参考素材统一使用 images、videos、audios；status 查询状态并尊重 paused/failed，不会自动恢复；collect 明确恢复同一原任务的后台查询和下载；pause 仅停止本地查询和下载，不取消上游任务。没有 ID 时省略 id 列出任务；不要循环查询或等待，结果会自动显示。',parameters:{action:{type:'string',required:true,enum:['prepare','generate','status','collect','pause','clear_references']},project_id:MEDIA_PROJECT_ID_PARAMETER,id:MEDIA_JOB_ID_PARAMETER,kind:{type:'string',enum:['video','music','speech'],description:'用于独立视频、音乐或语音合成（speech）；不要传 image。'},prompt:{type:'string'},images:mediaReferences,videos:mediaReferences,audios:mediaReferences,references_file:{type:'string',description:'工作区内参考素材 JSON 清单路径，与其他参考输入互斥；读取并保留全部 URL、顺序、角色及附加参数。'},references_json:{type:'string',description:'兼容入口：有序参考数组 JSON；每项仅一个来源 path（已导入项目路径）、attachment_id（会话附件）、url（公网 HTTPS 直链）或 reference_id（当前任务参考摘要 sha256，复用原素材）。URL 必须给 media_type；可选 role: reference/first_frame/last_frame。首尾帧仅图片且不与普通图片参考混用。'},reference_paths:{type:'array',items:{type:'string'}},input_attachment_ids:{type:'array',items:{type:'string'}},mask_path:{type:'string'},selection_json:{type:'string',description:'用户明确指定的目录选择；省略沿用已有选择或首次自动配置'},parameters_json:{type:'string',description:'模型参数 JSON；省略沿用已选参数。不得与顶层 images/videos/audios 重复提供不同内容。'}},output,isConcurrencySafe:args=>['status','collect','pause'].includes((args as any)?.action),async execute(args,exec){
+  context.tools.register(defineTool({name:'media_job',description:'生成用户明确要求的独立视频、音乐或语音任务；普通图片生成和编辑必须使用 gpt-image-generator 的 generate_image/edit_image。图片仅可作为视频参考素材。明确生成用 generate，讨论方案用 prepare。若当前对话已有未结束媒体任务，必须先通过提问窗口让用户选择是否继续提交新任务；只有用户选择继续后才提交，取消或无法提问时不得提交。参考素材统一使用 images、videos、audios；status 查询状态并尊重 paused/failed，不会自动恢复；collect 明确恢复同一原任务的后台查询和下载；pause 仅停止本地查询和下载，不取消上游任务。没有 ID 时省略 id 列出任务；不要循环查询或等待，结果会自动显示。',parameters:{action:{type:'string',required:true,enum:['prepare','generate','status','collect','pause','clear_references']},project_id:MEDIA_PROJECT_ID_PARAMETER,id:MEDIA_JOB_ID_PARAMETER,kind:{type:'string',enum:['video','music','speech'],description:'用于独立视频、音乐或语音合成（speech）；不要传 image。'},prompt:{type:'string'},images:mediaReferences,videos:mediaReferences,audios:mediaReferences,references_file:{type:'string',description:'工作区内参考素材 JSON 清单路径，与其他参考输入互斥；读取并保留全部 URL、顺序、角色及附加参数。'},references_json:{type:'string',description:'兼容入口：有序参考数组 JSON；每项仅一个来源 path（已导入项目路径）、attachment_id（会话附件）、url（公网 HTTPS 直链）或 reference_id（当前任务参考摘要 sha256，复用原素材）。URL 必须给 media_type；可选 role: reference/first_frame/last_frame。首尾帧仅图片且不与普通图片参考混用。'},reference_paths:{type:'array',items:{type:'string'}},input_attachment_ids:{type:'array',items:{type:'string'}},mask_path:{type:'string'},selection_json:{type:'string',description:'用户明确指定的目录选择；省略沿用已有选择或首次自动配置'},parameters_json:{type:'string',description:'模型参数 JSON；省略沿用已选参数。不得与顶层 images/videos/audios 重复提供不同内容。'}},output,isConcurrencySafe:args=>['status','collect','pause'].includes((args as any)?.action),async execute(args,exec){
     if(!exec.agent)throw new Error('MEDIA_SESSION_REQUIRED')
     const {project_id,id}=validateMediaToolIds(args)
     validateMediaJobKind(args)
@@ -58,7 +58,17 @@ export async function installMediaStudio(context:Context,config:Config={}){
     const {images:_images,videos:_videos,audios:_audios,...toolArgs}=args
     const input={...toolArgs,project_id,id,projectId,...(selectionJson?{selection:JSON.parse(selectionJson)}:{}),...(parameters!==undefined?{parameters}:{})}
     if(args.action==='clear_references') { if(!id) throw new Error('MEDIA_JOB_ID_REQUIRED'); const scope=await studio.scope(sessionId,projectId,true); const old=(await context.zerowallMediaJobs.list(scope)).find(job=>job.id===id); if(!old)throw new Error('MEDIA_JOB_NOT_FOUND'); return {result:await studio.call(sessionId,'prepare',JSON.stringify({...input,kind:old.kind,prompt:old.prompt,clearReferences:true}))} }
-    if(args.action==='generate')return {result:JSON.stringify(await studio.generate(sessionId,{...input,id:id??'chat-'+createHash('sha256').update(sessionId+':'+exec.callId).digest('hex')}))}
+    if(args.action==='generate'){
+      const result=await studio.generate(sessionId,{...input,id:id??'chat-'+createHash('sha256').update(sessionId+':'+exec.callId).digest('hex')},async activeJobs=>{
+        const questions=(context as any).get?.('userQuestions')??(context as any).userQuestions
+        if(!questions?.ask)throw new Error('MEDIA_DUPLICATE_CONFIRMATION_UNAVAILABLE: 无法打开用户确认窗口，本次未提交。')
+        const continueLabel='继续提交新任务',cancelLabel='取消本次提交'
+        const answer=await questions.ask({agent:exec.agent,signal:exec.signal,questions:[{id:'media-duplicate-submission',header:'媒体任务确认',question:'当前对话已有媒体任务尚未结束。仍要提交一个新的付费任务吗？',detail:activeJobs.map(job=>`- ${job.kind} / ${job.selection?.modelId??'模型待定'} / ${job.state}${job.taskId?` / ${job.taskId}`:''}`).join('\n'),options:[{label:continueLabel,description:'原任务继续运行，并额外提交一个新任务，可能产生额外费用。'},{label:cancelLabel,description:'保留原任务，不提交新任务。'}]}]})
+        const choice=answer.answers.find((item:any)=>item.id==='media-duplicate-submission')
+        return choice?.selected.length===1&&choice.selected[0]===continueLabel&&!choice.custom?.trim()
+      })
+      return {result:JSON.stringify(result)}
+    }
     const scope=await studio.scope(sessionId,projectId,args.action==='prepare')
     exec.signal?.throwIfAborted()
     // A user may quote the provider taskId instead of the local job id. Resolve

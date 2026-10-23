@@ -3,7 +3,7 @@ import '../../../tests/support/native-dialog.js'
 
 import React from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { AiCloudAccountButton, mergePaymentOrder } from '../src/client/AiCloudAccountButton.js'
 import { apply } from '../src/client/index.js'
 import { AccountSection } from '../src/client/account-surface.js'
@@ -44,11 +44,69 @@ function props() {
 }
 
 describe('AI Cloud account panel', () => {
+  it('shows shared group pricing and descriptions, searches descriptions across media and chat, and keeps details in the modal', async () => {
+    const actions = props()
+    actions.getAccount.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', balanceFreshness: 'current', lowBalance: false,
+      groups: [{ groupId: '1', groupName: '科研', description: '经济线路，适合批量分析', rateMultiplier: 0 }, { groupId: '2', groupName: '媒体', description: '高清画面线路', rateMultiplier: 0.6 }],
+      models: [{ providerId: 'cloud-1', groupId: '1', groupName: '科研', modelId: 'same', baseUrl: 'https://code.aicodeme.xyz' }],
+      mediaModels: [{ providerId: 'cloud-2', groupId: '2', groupName: '媒体', modelId: 'image', profileId: 'v1', mediaType: 'image' }],
+      modelSync: { checkedAt: '2026-10-22T01:02:03.000Z', status: 'partial', groups: [] },
+    })
+    render(<AiCloudAccountButton {...actions} />)
+    await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    const modal = await screen.findByRole('dialog', { name: '云账户与充值' })
+    expect(within(modal).getByText(/最近同步/)).toBeTruthy()
+    const chatList = within(modal).getByText('科研').closest('details')!.parentElement!.closest('details')!
+    fireEvent.click(chatList.querySelector('summary')!)
+    expect(chatList.open).toBe(true)
+    const info = within(modal).getByRole('button', { name: '分组介绍：科研' })
+    info.focus()
+    expect(document.activeElement).toBe(info)
+    fireEvent.click(info)
+    const details = within(modal).getByRole('dialog', { name: '分组介绍：科研' })
+    expect(within(details).getByText('经济线路，适合批量分析')).toBeTruthy()
+    expect(within(details).getByLabelText('分组倍率：0×')).toBeTruthy()
+    fireEvent.keyDown(within(details).getByRole('button', { name: '关闭介绍' }), { key: 'Escape' })
+    expect(document.activeElement).toBe(info)
+    const search = within(modal).getByRole('textbox', { name: /搜索模型/ })
+    fireEvent.change(search, { target: { value: '批量分析' } })
+    expect(within(modal).getByText('same').closest('details')?.open).toBe(true)
+    expect(within(modal).queryByText('image')).toBeNull()
+    fireEvent.change(search, { target: { value: '高清画面' } })
+    const media = within(modal).getByText('image').closest('details')!
+    expect(media.open).toBe(true)
+    expect(within(media).getAllByLabelText('分组倍率：0.6×')).toHaveLength(2)
+    expect(within(media).getByText(/媒体模型可能采用独立计费规则/)).toBeTruthy()
+    expect(within(modal).queryByText('same')).toBeNull()
+  })
+
+  it('prevents duplicate model sync while showing progress and preserves the usable catalog on failure', async () => {
+    const actions = props()
+    const account = { status: 'signedIn', email: 'user@example.com', balanceFreshness: 'current', lowBalance: false,
+      models: [{ providerId: 'cloud-1', groupId: '1', groupName: '科研', modelId: 'cached-model', baseUrl: 'https://code.aicodeme.xyz' }] }
+    actions.getAccount.mockResolvedValue(account)
+    let reject!: (reason: Error) => void
+    actions.discoverModels.mockReturnValue(new Promise((_resolve, fail) => { reject = fail }))
+    render(<AiCloudAccountButton {...actions} />)
+    await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    const sync = await screen.findByRole('button', { name: '同步模型' })
+    fireEvent.click(sync)
+    expect(screen.getByRole('button', { name: '正在同步…' })).toHaveProperty('disabled', true)
+    fireEvent.click(sync)
+    expect(actions.discoverModels).toHaveBeenCalledOnce()
+    await act(async () => reject(new Error('catalog offline')))
+    expect(screen.getByRole('button', { name: '同步模型' })).toHaveProperty('disabled', false)
+    expect(screen.getByText('cached-model')).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toContain('catalog offline')
+  })
+
   it('captures the account Remote before the sidebar renderer runs', async () => {
     const account = { current: vi.fn().mockResolvedValue({ ok: true, value: { status: 'signedOut', balanceFreshness: 'current', lowBalance: false, models: [] } }) }
     const session = { modelCatalog: vi.fn().mockResolvedValue({ ok: true, value: { groups: [], failures: [] } }) }
     let accountReads = 0
-    const remote = new Proxy({ zerowallAccount: account, session }, {
+    const remote = new Proxy({ zerowallAccount: account, session, $on: vi.fn(() => () => {}) }, {
       get(target, property, receiver) {
         if (property === 'zerowallAccount' && accountReads++ > 0) throw new Error('cannot get property "remote.zerowallAccount" without inject')
         return Reflect.get(target, property, receiver)
@@ -57,7 +115,8 @@ describe('AI Cloud account panel', () => {
     let injected: (() => Record<string, any>) | undefined
     const ctx = {
       remote,
-      locale: { bind: vi.fn(() => translator()) },
+      locale: { bind: vi.fn(() => translator()), register: vi.fn(() => () => {}) },
+      effect: (mount: () => unknown) => mount(), on: vi.fn(), inject: vi.fn(),
       get: vi.fn((name: string) => name === 'remote.zerowallAccount' ? account : name === 'remote.session' ? session : undefined),
       slots: {
         inject: vi.fn((_name: string, mount: () => unknown) => mount()),
@@ -77,8 +136,9 @@ describe('AI Cloud account panel', () => {
   it('turns a missing account Remote into a recoverable error', async () => {
     let injected: (() => Record<string, any>) | undefined
     const ctx = {
-      remote: { zerowallAccount: undefined, session: undefined },
-      locale: { bind: vi.fn(() => translator()) },
+      remote: { zerowallAccount: undefined, session: undefined, $on: vi.fn(() => () => {}) },
+      locale: { bind: vi.fn(() => translator()), register: vi.fn(() => () => {}) },
+      effect: (mount: () => unknown) => mount(), on: vi.fn(), inject: vi.fn(),
       get: vi.fn((name: string) => name === 'remote.zerowallAccount' ? undefined : undefined),
       slots: {
         inject: vi.fn((_name: string, mount: () => unknown) => mount()),

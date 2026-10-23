@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { preparePublishPackage, preserveHistoricalLicenses } from '../../tools/plugins/publish-package.mjs'
 
-test('same-version staging retains only missing historical license files without replacing current files', async () => {
+test('same-version staging retains only missing historical license files without replacing current files', async t => {
   const staging = await mkdtemp(join(tmpdir(), 'zws-publish-license-'))
+  t.after(() => rm(staging, { recursive: true, force: true, maxRetries: 3 }))
   await writeFile(join(staging, 'COPYING.txt'), 'current license')
   const original = Buffer.from('original license\r\n')
   await preserveHistoricalLicenses(staging, new Map([
@@ -22,8 +23,9 @@ test('same-version staging retains only missing historical license files without
   await assert.rejects(readFile(join(staging, 'lib/index.js')), { code: 'ENOENT' })
 })
 
-test('new plugin releases resolve current workspace sources instead of stale publish links', async () => {
+test('new plugin releases resolve current workspace sources instead of stale publish links', async t => {
   const source = await mkdtemp(join(tmpdir(), 'zws-publish-source-'))
+  t.after(() => rm(source, { recursive: true, force: true, maxRetries: 3 }))
   const dependency = '@zerowallscience/plugin-environment'
   const installed = join(source, 'node_modules', dependency)
   await mkdir(installed, { recursive: true })

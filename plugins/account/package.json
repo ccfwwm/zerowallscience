@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-account",
-  "version": "0.1.16",
+  "version": "0.1.18",
   "description": "ZeroWall Science account domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -54,7 +54,8 @@
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-attachment",
         "@deepseek-ai/dsh-client-ui-tool",
-        "@deepseek-ai/dsh-client-ui-workspace"
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-model-selection"
       ],
       "platform": "web"
     }
@@ -158,7 +159,9 @@
     "@deepseek-ai/dsh-client-ui-attachment": "0.2.1-rc.2",
     "@deepseek-ai/dsh-client-ui-tool": "0.2.1-rc.2",
     "@deepseek-ai/dsh-client-ui-primitives": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-model-selection": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings-models": "0.2.1-rc.2"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-client-ui-renderer": "workspace:^",
@@ -204,6 +207,8 @@
     "@deepseek-ai/dsh-client-ui-attachment": "workspace:^",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:^",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
-    "@deepseek-ai/dsh-client-ui-workspace": "workspace:^"
+    "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-model-selection": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-settings-models": "workspace:^"
   }
 }

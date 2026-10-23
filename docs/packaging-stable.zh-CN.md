@@ -29,7 +29,7 @@ pnpm dsh:verify
 pnpm package:stable:win
 ```
 
-正式打包不要求提权 PowerShell。签名配置默认引用已有的忽略文件，私钥内容不进入配置和日志；显式环境变量仍可覆盖签名引用和发布地址。版本同步不会提升插件、Skills、MCP 或 Python 的独立版本。新增原生插件按现有插件/profile 声明纳入完整共享清单。8.4.4 必须携带 config/python/bundled-bootstrap.json 固定的已发布签名 Python + pip 基础包；完整科学依赖仍由桌面可用后的后台队列安装。
+正式打包不要求提权 PowerShell。签名配置默认引用已有的忽略文件，私钥内容不进入配置和日志；显式环境变量仍可覆盖签名引用和发布地址。版本同步不会提升插件、Skills、MCP 或 Python 的独立版本。新增原生插件按现有插件/profile 声明纳入完整共享清单。Windows Stable 安装器必须携带 config/python/bundled-bootstrap.json 固定的已发布签名 Python + pip 基础包；完整科学依赖仍由桌面可用后的后台队列安装。
 
 组件编译后、运行时装配前，固定流程会用实际编译文件预检全部运行时适配器及 JavaScript 语法；菜单、预览、目录选择器或上游结构变化时先失败，不生成缺补丁的载体。LibreOfficeKit 的审核版本同样由 `upstream-sources.json` 定义，结构锚点继续严格检查。
 
@@ -41,19 +41,25 @@ pnpm package:stable:win
 
 运行时代码、离线载体和 Skills/MCP 资源树按内容缓存；相同文件通过 `artifacts/objects/sha256` 共享。桌面版本戳仅替换新 stage 中少量文件。每个 stage 有独立收据和 build ID，当前指针只在构建成功后切换。硬链接保留普通文件路径，删除一个历史 stage 不会删除其他链接仍引用的内容。
 
+插件、桌面和本地运行时编译指纹排除目录扫描带入的 `test`、`tests`、`__tests__`、`e2e` 和 `.test`/`.spec` 文件，单改测试不再触发这些组件重编译。生产源码实际导入的测试目录文件仍作为显式输入校验；DSH 子模块、插件归档与 Skill/MCP 资源文件不适用此排除规则，打包内容和不可变摘要继续完整校验。
+
+现有编译缓存不因上述排除规则直接作废：只有旧收据完整、剔除测试后输入指纹一致，且现有编译输出 SHA-256 全部匹配时，才更新缓存索引并复用输出。源码、依赖、工具链变化或输出损坏仍要求重编译。
+
 正式结果始终写入 `artifacts/packages/<version>/<target>`。安装器需要完整离线闭包，因此每个发布版本仍有自己的安装器；本地展开树与组件归档共享存储。共享缓存的完整性检查失败时停止使用该缓存，不能跳过摘要校验。
 
 ## 空间保留
 
-`stable.json` 的 `retention.afterPackage` 控制成功打包后是否自动运行受控清理，`keepDesktopVersions` 控制保留的桌面版本数。8.4.0 本地验收期间分别设置为 `false` 和 `2`，保护 8.3.6 的安装器与回滚证据。每个保留版本留下一个成功 stage、每类一个最近缓存，以及当前 stage 仍引用的缓存。失去全部外部硬链接且没有活动引用的内容对象保留一天宽限期，历史清理报告不会使它永久保留；下一轮 GC 回收符合条件的对象。普通清理按 TTL 保留近期失败 stage，显式 `--prune-incomplete` 立即回收失败和未完成 stage。克隆来源 ID 是溯源记录，不要求保留完整源 stage；当前分发包的持久引用仍受保护。共享插件/资源归档、开发依赖、签名文件和用户数据独立保留。
+`stable.json` 的 `retention.afterPackage` 控制成功打包后是否自动运行受控清理，`keepDesktopVersions` 控制保留的桌面版本数。当前策略在打包成功后自动清理，并只保留当前桌面版本；因此旧版本安装器和其版本目录不作为本地回滚副本保留。当前版本留下一个成功 stage、每类一个最近缓存，以及当前 stage 仍引用的缓存。失去全部外部硬链接且没有活动引用的内容对象保留一天宽限期，历史清理报告不会使它永久保留；下一轮 GC 回收符合条件的对象。普通清理按 TTL 保留近期失败 stage，显式 `--prune-incomplete` 立即回收失败和未完成 stage。克隆来源 ID 是溯源记录，不要求保留完整源 stage；当前分发包的持久引用仍受保护。共享插件/资源归档、开发依赖、签名文件和用户数据独立保留。
 
 需要立即清理失败或未完成 stage 时：
 
 ```powershell
-pnpm artifacts:gc --dry-run --prune-incomplete --output artifacts/verification/8.3.6/cleanup-plan.json
-pnpm artifacts:gc --apply --plan artifacts/verification/8.3.6/cleanup-plan.json
+$version = node -p "require('./package.json').version"
+$plan = "artifacts/verification/$version/cleanup/cleanup-plan.json"
+pnpm artifacts:gc --dry-run --prune-incomplete --output $plan
+pnpm artifacts:gc --apply --plan $plan
 ```
 
-将示例中的验收目录换成当前版本。执行前重验路径归属、活动构建、当前指针和文件身份；变更过或无权限的目标跳过并写入清理收据，不会把部分清理报告成完整成功。
+上述命令从当前 manifest 读取版本。执行前重验路径归属、活动构建、当前指针和文件身份；变更过或无权限的目标跳过并写入清理收据，不会把部分清理报告成完整成功。资源更新、归档管理器、Skills、凭据和 Host 测试，以及启动性能、命令和打包运行时验收，在结束时（包括断言或验证失败）清理各自创建的 Temp fixture；打包验收报告和诊断保存在当前版本的 verification 目录。强制结束进程仍可能留下临时目录。
 
 打包不等于发布。公网七牛/GitHub 发布仍须用户明确授权，并遵循开发指南中的公开下载与 SHA-256 验证流程。

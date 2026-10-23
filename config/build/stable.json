@@ -10,12 +10,12 @@
     "privateKeyFile": "scripts/env/resource-stable-4-private.pem"
   },
   "retention": {
-    "keepDesktopVersions": 2,
+    "keepDesktopVersions": 1,
     "keepStagesPerVersion": 1,
     "keepRuntimeAssembliesPerKind": 1,
     "keepOfflineCarriers": 1,
     "keepResourceTrees": 1,
     "objectDays": 1,
-    "afterPackage": false
+    "afterPackage": true
   }
 }

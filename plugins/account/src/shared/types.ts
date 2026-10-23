@@ -1,6 +1,35 @@
 export type AiCloudAccountStatus = 'signedOut' | 'signedIn' | 'authExpired'
 export type AiCloudBalanceFreshness = 'current' | 'stale'
 
+/** Public group information returned by the account's selected gateway. */
+export interface AiCloudGroup {
+  groupId: string
+  groupName: string
+  platform?: string
+  description?: string
+  rateMultiplier?: number
+}
+
+export interface AiCloudGroupCatalog {
+  gatewayBaseUrl?: string
+  groups: AiCloudGroup[]
+  routes: Array<{ providerId: string; groupId: string; modelId: string }>
+}
+
+/** Old snapshots can still name groups, without inventing a price or description. */
+export function accountGroupCatalog(account: Pick<AiCloudAccountSnapshot, 'status' | 'gatewayBaseUrl' | 'groups' | 'models' | 'mediaModels'>): AiCloudGroupCatalog {
+  if (account.status !== 'signedIn') return { groups: [], routes: [] }
+  const groups = new Map((account.groups ?? []).map(group => [group.groupId, group]))
+  for (const model of [...account.models, ...(account.mediaModels ?? [])]) {
+    if (!groups.has(model.groupId)) groups.set(model.groupId, { groupId: model.groupId, groupName: model.groupName })
+  }
+  return {
+    ...(account.gatewayBaseUrl ? { gatewayBaseUrl: account.gatewayBaseUrl } : {}),
+    groups: [...groups.values()],
+    routes: account.models.map(({ providerId, groupId, modelId }) => ({ providerId, groupId, modelId })),
+  }
+}
+
 /** Managed image groups are named by the account, not a fixed group id/name. */
 export function isImageGenerationGroup(name: string): boolean { return /生图|图片/u.test(name.trim()) }
 
@@ -82,6 +111,7 @@ export interface AiCloudAccountSnapshot {
   lowBalance: boolean
   /** Gateway selected for this account session. Public endpoint metadata only. */
   gatewayBaseUrl?: string
+  groups?: AiCloudGroup[]
   models: AiCloudManagedModel[]
   modelSync?: AiCloudModelSync
   mediaModels?: AiCloudMediaModel[]

@@ -16373,6 +16373,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-layout':
         specifier: workspace:^
         version: link:../../deepseek-harness/packages/client/ui-layout
+      '@deepseek-ai/dsh-client-ui-model-selection':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-model-selection
       '@deepseek-ai/dsh-client-ui-primitives':
         specifier: workspace:^
         version: link:../../deepseek-harness/packages/client/ui-primitives
@@ -16385,6 +16388,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-settings':
         specifier: workspace:^
         version: link:../../deepseek-harness/packages/client/ui-settings
+      '@deepseek-ai/dsh-client-ui-settings-models':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/client/ui-settings-models
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: workspace:^
         version: link:../../deepseek-harness/packages/client/ui-sidebar

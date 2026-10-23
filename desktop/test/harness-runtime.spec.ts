@@ -1,12 +1,22 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
-import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdtemp as createTemporaryDirectory, rm, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:http'
 import type { HarnessChildProcess } from '../src/main/runtime/harness-runtime.js'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { HarnessRuntime, buildHarnessArguments, buildHarnessSpawnOptions } from '../src/main/runtime/harness-runtime.js'
+
+const temporaryDirectories: string[] = []
+async function mkdtemp(prefix: string) {
+  const directory = await createTemporaryDirectory(prefix)
+  temporaryDirectories.push(directory)
+  return directory
+}
+afterEach(async () => {
+  await Promise.all(temporaryDirectories.splice(0).map(directory => rm(directory, { recursive: true, force: true, maxRetries: 3 })))
+})
 
 describe('Harness runtime boundary', () => {
   it.each(['EACCES', 'EADDRINUSE', 'new-profile'])('starts with an OS-assigned Host port after %s', async code => {

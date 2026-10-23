@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
+import { afterEach, test } from 'node:test'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -10,9 +10,16 @@ const root = resolve(import.meta.dirname, '../..')
 const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
 const pin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
+const fixtureDirectories = new Set()
+
+afterEach(async () => {
+  await Promise.all([...fixtureDirectories].map(directory => rm(directory, { recursive: true, force: true, maxRetries: 3 })))
+  fixtureDirectories.clear()
+})
 
 async function fixture() {
   const artifacts = await mkdtemp(join(tmpdir(), 'zws-plugin-consumer-'))
+  fixtureDirectories.add(artifacts)
   const store = join(artifacts, 'release/plugins/fixture/1.0.0')
   const stage = join(artifacts, 'stage', version, 'fixture')
   await mkdir(store, { recursive: true })

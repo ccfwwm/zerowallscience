@@ -131,6 +131,66 @@ it.each(['video','music'])('creates a %s project and chooses first model only wh
   const p=JSON.parse(await readFile(join(f.cwd,'media-projects',defaultMediaProjectId('s1'),'project.json'),'utf8'))
   expect(p.sessionId).toBe('s1');await f.ctx.fiber.dispose()
 })
+it('asks before submitting a new task while this conversation already has a pending generation',async()=>{
+ const f=await fixture()
+ try{
+  const first=await f.studio.generate('s1',{id:'chat-pending-first',kind:'video',prompt:'第一条任务'})
+  await vi.waitFor(()=>expect(f.media.submit).toHaveBeenCalledOnce())
+  expect(first.state).toBe('submitting')
+  const confirm=vi.fn(async(jobs:readonly any[])=>{
+   expect(jobs).toHaveLength(1)
+   expect(jobs[0]).toMatchObject({id:first.id,state:'submitting'})
+   return false
+  })
+  const second=await f.studio.generate('s1',{id:'chat-pending-second',kind:'video',prompt:'第二条任务'},confirm)
+  expect(second).toMatchObject({state:'confirmation-cancelled',submitted:false,activeTasks:[{id:first.id,state:'submitting'}]})
+  expect(confirm).toHaveBeenCalledOnce()
+  expect(f.media.submit).toHaveBeenCalledOnce()
+ }finally{await f.ctx.fiber.dispose()}
+})
+it('submits a new task only after the user confirms an existing pending generation',async()=>{
+ const f=await fixture()
+ try{
+  const first=await f.studio.generate('s1',{id:'chat-confirm-first',kind:'video',prompt:'第一条任务'})
+  await vi.waitFor(()=>expect(f.media.submit).toHaveBeenCalledOnce())
+  const second=await f.studio.generate('s1',{id:'chat-confirm-second',kind:'music',prompt:'第二条任务'},async jobs=>jobs.some(job=>job.id===first.id))
+  await vi.waitFor(()=>expect(f.media.submit).toHaveBeenCalledTimes(2))
+  expect(second).toMatchObject({id:'chat-confirm-second',state:'submitting'})
+ }finally{await f.ctx.fiber.dispose()}
+})
+it('estimates and submits a prompt after removing numbered image and video references',async()=>{
+ const f=await fixture()
+ try{
+  await f.studio.generate('s1',{id:'chat-index-free-01',kind:'video',prompt:'按 images[4] 的色调开场，并参考 videos[0] 的运镜，0–3秒逐渐推进。'})
+  await vi.waitFor(()=>expect(f.media.submit).toHaveBeenCalledOnce())
+  const expected='按 图片 的色调开场，并参考 视频 的运镜，0–3秒逐渐推进。'
+  expect(f.media.estimate.mock.calls[0]?.[0].prompt).toBe(expected)
+  expect(f.media.submit.mock.calls[0]?.[0].prompt).toBe(expected)
+ }finally{await f.ctx.fiber.dispose()}
+})
+it('normalizes numbered media references in prepared drafts before estimate and later submission',async()=>{
+ const f=await fixture(),projectId=defaultMediaProjectId('s1')
+ try{
+  const draft=JSON.parse(await f.studio.call('s1','prepare',JSON.stringify({projectId,kind:'video',prompt:'使用 reference_images[0] 开场，随后匹配 videos[n]，持续 5 秒。',selection:{groupId:'99',modelId:'chosen',profileId:'p',operation:'video'}})))
+  const expected='使用 图片 开场，随后匹配 视频，持续 5 秒。'
+  expect(draft.prompt).toBe(expected)
+  await f.ledger.submitRequested({sessionId:'s1',cwd:f.cwd},draft.id,draft.revision)
+  await vi.waitFor(()=>expect(f.media.submit).toHaveBeenCalledOnce())
+  expect(f.media.submit.mock.calls[0]?.[0].prompt).toBe(expected)
+ }finally{await f.ctx.fiber.dispose()}
+})
+it('does not block or ask for an already submitted task identity',async()=>{
+ const f=await fixture()
+ try{
+  const first=await f.studio.generate('s1',{id:'chat-idempotent-first',kind:'video',prompt:'复用同一任务'})
+  await vi.waitFor(()=>expect(f.media.submit).toHaveBeenCalledOnce())
+  const confirm=vi.fn(async()=>{throw new Error('must not ask for an existing task ID')})
+  const same=await f.studio.generate('s1',{id:first.id,kind:'video',prompt:'复用同一任务'},confirm)
+  expect(same).toMatchObject({id:first.id,state:'submitting'})
+  expect(confirm).not.toHaveBeenCalled()
+  expect(f.media.submit).toHaveBeenCalledOnce()
+ }finally{await f.ctx.fiber.dispose()}
+})
 it('preserves explicit saved model parameters and refuses to replace an invalid saved model',async()=>{
   const saved={video:{selection:{groupId:'99',modelId:'chosen',profileId:'p',operation:'video'},parameters:{quality:'high'}}}
   const f=await fixture(saved)

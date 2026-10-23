@@ -1,4 +1,4 @@
-import type { AiCloudModelSync } from '../shared/types.js'
+import type { AiCloudGroup, AiCloudModelSync } from '../shared/types.js'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import QRCode from 'qrcode/lib/browser.js'
@@ -9,15 +9,20 @@ import { NS } from '@zerowallscience/plugin-base/client-helpers'
 import { accountSurface } from './account-surface.js'
 import { accountConnection, gatewayPlatformUrl } from './platform.js'
 import css from './AiCloudAccountButton.module.css'
+import { GroupInfo, RateBadge } from './GroupInfo.js'
+import { defaultModelText, type ModelText } from './model-locales.js'
+import type { GroupCatalogStore } from './group-catalog.js'
 
 export interface AiCloudModelView { providerId: string; groupId: string; groupName: string; modelId: string; baseUrl: string; capability?: string; stale?: boolean }
-export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; models: AiCloudModelView[]; modelSync?: AiCloudModelSync; mediaModels?: Array<{providerId?:string;groupId?:string;modelId:string;profileId:string;groupName:string;mediaType:string;stale?:boolean}>; mediaSync?: AiCloudModelSync }
+export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; groups?: AiCloudGroup[]; models: AiCloudModelView[]; modelSync?: AiCloudModelSync; mediaModels?: Array<{providerId?:string;groupId?:string;modelId:string;profileId:string;groupName:string;mediaType:string;stale?:boolean}>; mediaSync?: AiCloudModelSync }
 export interface AiCloudGatewayView { baseUrl: string; label: string; preferred: boolean }
 export interface AiCloudPublicView { registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; captchaEnabled: boolean; passwordResetEnabled?: boolean; rechargeUrl?: string; lowBalanceThreshold?: number }
 export interface AiCloudCheckoutView { enabled: boolean; minimumAmount: number; paymentTypes: string[]; rechargeUrl?: string }
 export interface AiCloudOrderView { id: number; outTradeNo: string; status: string; amount: number; paymentType: string; paymentUrl?: string; qrCode?: string; createdAt?: string }
 
-interface Actions {
+export interface Actions {
+  catalog?: GroupCatalogStore
+  modelText?: ModelText
   getAccount: () => Promise<AiCloudAccountView>
   forgetLogin: () => Promise<void>
   savedLogin: () => Promise<{ email: string; password: string; baseUrl: string; rememberPassword: true } | undefined>
@@ -41,8 +46,12 @@ interface Actions {
 
 type Props = SidebarFooterActionOwnerProps & Actions & PropsLocale<typeof NS>
 const TERMINAL = new Set(['COMPLETED', 'FAILED', 'CANCELLED', 'EXPIRED', 'REFUNDED'])
+const noSubscription = () => () => {}
+const noCatalog = () => undefined
 
 export function AiCloudAccountButton(props: Props) {
+  const tModels = props.modelText ?? defaultModelText
+  const groupCatalog = useSyncExternalStore(props.catalog?.subscribe ?? noSubscription, props.catalog?.getSnapshot ?? noCatalog)
   const target = useSyncExternalStore(accountSurface.subscribe, accountSurface.getSnapshot)
   const firstCheck = useRef(false)
   const [open, setOpen] = useState(false)
@@ -174,7 +183,7 @@ export function AiCloudAccountButton(props: Props) {
   useEffect(() => {
     if (!open || target) return
     const close = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || balancePrompt) return
+      if (event.key !== 'Escape' || balancePrompt || (event.target instanceof Element && event.target.closest('[data-zws-group-info]'))) return
       event.preventDefault()
       event.stopImmediatePropagation()
       setOpen(false)
@@ -380,9 +389,11 @@ export function AiCloudAccountButton(props: Props) {
   )
   const usageUrl = signedIn ? usagePageUrl(account?.gatewayBaseUrl) : undefined
   const platformUrl = gatewayPlatformUrl(selectedGateway)
-  const filteredModels = account?.models.filter(model => `${model.groupName} ${model.modelId} ${model.providerId} ${model.capability ?? 'chat'}`.toLowerCase().includes(modelQuery.toLowerCase())) ?? []
+  const metadataGroups = groupCatalog?.groups ?? account?.groups ?? []
+  const groupMetadata = (groupId?: string) => metadataGroups.find(group => group.groupId === groupId)
+  const filteredModels = account?.models.filter(model => `${model.groupName} ${groupMetadata(model.groupId)?.description ?? ''} ${model.modelId} ${model.providerId} ${model.capability ?? 'chat'}`.toLowerCase().includes(modelQuery.trim().toLowerCase())) ?? []
   const modelGroups = groupModels(filteredModels)
-  const mediaModelGroups = groupModels(account?.mediaModels ?? [])
+  const mediaModelGroups = groupModels(account?.mediaModels?.filter(model => `${model.groupName} ${groupMetadata(model.groupId)?.description ?? ''} ${model.modelId} ${model.mediaType}`.toLowerCase().includes(modelQuery.trim().toLowerCase())) ?? [])
   const connection = accountConnection(account, account === undefined && error !== undefined)
   const accountStatusText = props.t(`account.connection.${connection}`)
 
@@ -450,27 +461,27 @@ export function AiCloudAccountButton(props: Props) {
           </div>
           </div>
           <section className={css.modelSync} aria-live="polite">
-            <div><h3>{props.t('account.modelsTitle')}</h3><p>{props.t('account.modelsDescription')}</p></div>
-            <button className={css.secondary} type="button" onClick={() => void syncModels()} disabled={busy || syncingModels}>
+            <div><h3>{props.t('account.modelsTitle')}</h3><p>{props.t('account.modelsDescription')}</p>{(account.modelSync?.checkedAt || account.mediaSync?.checkedAt) && <p>{tModels('updated')}：{formatDate([account.modelSync?.checkedAt, account.mediaSync?.checkedAt].filter(Boolean).sort().at(-1))}</p>}</div>
+            <button className={css.syncButton} type="button" onClick={() => void syncModels()} disabled={busy || syncingModels}>
               <RefreshCw size={15} className={syncingModels ? css.spin : undefined} />
               {syncingModels ? props.t('account.modelsSyncing') : props.t('account.modelsSync')}
             </button>
           </section>
           {hasIncompleteCatalog(account) && <p className={css.catalogNotice} role="status">{props.t('account.modelsSyncPartial')}</p>}
-          <details className={css.modelList}>
+          <label className={css.modelSearch}><Search size={16} aria-hidden="true" /><input aria-label={props.t('account.modelsSearch')} placeholder={props.t('account.modelsSearch')} value={modelQuery} onChange={event => setModelQuery(event.target.value)} /></label>
+          <details className={css.modelList} open={modelQuery.trim() ? true : undefined}>
             <summary>媒体模型（{account.mediaModels?.length ?? 0}）</summary>
-            <div className={css.modelGroups}>{mediaModelGroups.map(group => <details className={css.modelGroup} key={group.key}>
-              <summary><span>{group.groupName}</span><small>{group.models.length}</small></summary>
-              <div className={css.modelRows}>{group.models.map(model => <div key={`${model.providerId ?? group.key}:${model.profileId}:${model.modelId}`}><strong>{model.modelId}</strong><small>{model.mediaType} · {props.t(model.stale ? 'account.modelsStale' : 'account.modelsAvailable')}</small></div>)}</div>
+            <div className={css.modelGroups}>{mediaModelGroups.map(group => <details className={css.modelGroup} key={group.key} open={modelQuery.trim() ? true : undefined}>
+              <summary><span className={css.groupHeading}>{group.groupName}</span><RateBadge group={groupMetadata(group.key)} t={tModels} /><GroupInfo name={group.groupName} group={groupMetadata(group.key)} media t={tModels} /><small>{group.models.length}</small></summary>
+              <div className={css.modelRows}><p className={css.catalogEmpty}>{tModels('mediaBilling')}</p>{group.models.map(model => <div key={`${model.providerId ?? group.key}:${model.profileId}:${model.modelId}`}><strong>{model.modelId}</strong><RateBadge group={groupMetadata(group.key)} t={tModels} /><small>{model.mediaType} · {props.t(model.stale ? 'account.modelsStale' : 'account.modelsAvailable')}</small></div>)}</div>
             </details>)}</div>
-            {mediaModelGroups.length === 0 && <p className={css.catalogEmpty}>{props.t('account.modelsEmpty')}</p>}
+            {mediaModelGroups.length === 0 && <p className={css.catalogEmpty}>{props.t(modelQuery.trim() ? 'account.modelsNoMatches' : 'account.modelsEmpty')}</p>}
           </details>
-          <details className={css.modelList}>
+          <details className={css.modelList} open={modelQuery.trim() ? true : undefined}>
             <summary>{props.t('account.modelsList', { count: account.models.length })}</summary>
-            <label className={css.modelSearch}><Search size={16} aria-hidden="true" /><input aria-label={props.t('account.modelsSearch')} placeholder={props.t('account.modelsSearch')} value={modelQuery} onChange={event => setModelQuery(event.target.value)} /></label>
             <div className={css.modelGroups}>{modelGroups.map(group => <details className={css.modelGroup} key={group.key} open={modelQuery.trim() ? true : undefined}>
-              <summary><span>{group.groupName}</span><small>{group.models.length}</small></summary>
-              <div className={css.modelRows}>{group.models.map(model => <div key={`${model.providerId}:${model.modelId}`}><strong>{model.modelId}</strong><small>{model.providerId.split('-').at(-1)} · {model.capability ?? 'chat'} · {props.t(model.stale ? 'account.modelsStale' : 'account.modelsAvailable')}</small></div>)}</div>
+              <summary><span className={css.groupHeading}>{group.groupName}</span><RateBadge group={groupMetadata(group.key)} t={tModels} /><GroupInfo name={group.groupName} group={groupMetadata(group.key)} t={tModels} /><small>{group.models.length}</small></summary>
+              <div className={css.modelRows}>{group.models.map(model => <div key={`${model.providerId}:${model.modelId}`}><strong>{model.modelId}</strong><RateBadge group={groupMetadata(group.key)} t={tModels} /><small>{model.providerId.split('-').at(-1)} · {model.capability ?? 'chat'} · {props.t(model.stale ? 'account.modelsStale' : 'account.modelsAvailable')}</small></div>)}</div>
             </details>)}</div>
             {modelGroups.length === 0 && <p className={css.catalogEmpty}>{props.t(modelQuery.trim() ? 'account.modelsNoMatches' : 'account.modelsEmpty')}</p>}
           </details>

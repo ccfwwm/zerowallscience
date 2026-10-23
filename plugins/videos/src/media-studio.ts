@@ -14,7 +14,7 @@ import { mediaTarget, publicReferenceURL, normalizeMediaReferences } from '@zero
 import { commandOutput } from './host-python.js'
 import type { CompositionJob, MediaProject } from './media-types.js'
 import { PROJECT_ID } from './media-types.js'
-import { validateMediaJobKind, validateMediaToolIds } from './media-contract.js'
+import { removeNumberedMediaReferences, validateMediaJobKind, validateMediaToolIds } from './media-contract.js'
 const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('hex')
 const MAX = 256 * 1024 * 1024
 const mime: Record<string,string> = { '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.mp4':'video/mp4','.mov':'video/quicktime','.webm':'video/webm','.m4a':'audio/mp4','.aac':'audio/aac','.wav':'audio/wav','.mp3':'audio/mpeg','.ogg':'audio/ogg','.flac':'audio/flac' }
@@ -51,6 +51,16 @@ function recoverableReferenceError(error: unknown): boolean {
 }
 export const defaultMediaProjectId = (sessionId: string) => 'session-' + sessionId.replace(/[^A-Za-z0-9_-]/g, '_').slice(-60)
 declare module '@deepseek-ai/cordis' { interface Context { zerowallMediaStudio: MediaStudioService } }
+const terminalGenerationStates = new Set(['prepared', 'model-required', 'validation-failed', 'completed', 'succeeded', 'failed', 'rejected', 'cancelled', 'canceled', 'manual_review', 'ready'])
+function mayStillBeGenerating(job: MediaJob): boolean {
+  const state = job.state.trim().toLowerCase()
+  return !terminalGenerationStates.has(state) && (state !== 'unknown' || Boolean(job.taskId))
+}
+type DuplicateSubmissionResult = {
+  state: 'confirmation-required' | 'confirmation-cancelled'
+  submitted: false
+  activeTasks: Array<{ id: string; kind: MediaJob['kind']; state: string; taskId?: string; modelId?: string }>
+}
 export class MediaStudioService extends TypertRemoteService {
   private activeSessions = new Set<string>()
   private writes: Promise<unknown> = Promise.resolve()
@@ -60,19 +70,26 @@ export class MediaStudioService extends TypertRemoteService {
   private uploads = new Map<string, { scope: MediaScope; path: string; name: string; bytes: number }>()
   constructor(private host: Context) { super(host, 'zerowallMediaStudio') }
   active(sessionId: string): boolean { return this.activeSessions.has(sessionId) }
-  async generate(sessionId: string, input: any): Promise<MediaJob> {
+  async generate(sessionId: string, input: any, confirmDuplicate?: (jobs: readonly MediaJob[]) => Promise<boolean>): Promise<MediaJob | DuplicateSubmissionResult> {
     validateMediaJobKind(input)
-    const key=sessionId+':'+(input.id??'new'),prior=this.generations.get(key)??Promise.resolve()
-    const next = prior.then(() => this.generateOnce(sessionId, input), () => this.generateOnce(sessionId, input))
+    const key=sessionId,prior=this.generations.get(key)??Promise.resolve()
+    const next = prior.then(() => this.generateOnce(sessionId, input, confirmDuplicate), () => this.generateOnce(sessionId, input, confirmDuplicate))
     const settled=next.catch(()=>{});this.generations.set(key,settled)
     void settled.finally(()=>{if(this.generations.get(key)===settled)this.generations.delete(key)})
     return next
   }
-  private async generateOnce(sessionId: string, input: any): Promise<MediaJob> {
+  private async generateOnce(sessionId: string, input: any, confirmDuplicate?: (jobs: readonly MediaJob[]) => Promise<boolean>): Promise<MediaJob | DuplicateSubmissionResult> {
     const scope = await this.scope(sessionId, input.projectId, true)
-    const previous = input.id ? (await this.host.zerowallMediaJobs.list(scope)).find(job => job.id === input.id) : undefined
+    const jobs = await this.host.zerowallMediaJobs.list(scope)
+    const previous = input.id ? jobs.find(job => job.id === input.id) : undefined
     if (previous) validateMediaJobKind(previous)
     if (previous && !['prepared', 'model-required', 'validation-failed', 'rejected'].includes(previous.state)) return previous
+    const activeTasks = jobs.filter(job => job.id !== input.id && mayStillBeGenerating(job))
+    if (activeTasks.length) {
+      const summaries = activeTasks.map(job => ({ id: job.id, kind: job.kind, state: job.state, ...(job.taskId ? { taskId: job.taskId } : {}), ...(job.selection?.modelId ? { modelId: job.selection.modelId } : {}) }))
+      if (!confirmDuplicate) return { state: 'confirmation-required', submitted: false, activeTasks: summaries }
+      if (!await confirmDuplicate(activeTasks)) return { state: 'confirmation-cancelled', submitted: false, activeTasks: summaries }
+    }
     const draft = await this.prepare(scope, { ...input, autoSelect: true })
     if (draft.state !== 'prepared') return draft
     return this.host.zerowallMediaJobs.submitRequested(scope, draft.id, draft.revision)
@@ -161,6 +178,9 @@ export class MediaStudioService extends TypertRemoteService {
     await writeFile(temp,JSON.stringify(value,null,2)+'\n',{flag:'wx'});await rename(temp,target)
   }
   private async prepare(scope:MediaScope,input:any):Promise<MediaJob> {
+    // Normalize at the shared draft boundary so generate and prepare/review flows
+    // persist the same provider-safe prompt before estimate or submission.
+    if (typeof input.prompt === 'string') input = { ...input, prompt: removeNumberedMediaReferences(input.prompt) }
     const key=scope.sessionId+':'+scope.projectId, previous=this.preparations.get(key)??Promise.resolve()
     const next=previous.then(()=>this.prepareOnce(scope,input),()=>this.prepareOnce(scope,input)),settled=next.catch(()=>{})
     this.preparations.set(key,settled)

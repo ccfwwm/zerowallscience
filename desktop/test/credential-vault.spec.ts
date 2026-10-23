@@ -1,11 +1,21 @@
 import { EventEmitter } from 'node:events'
-import { mkdtemp, readFile } from 'node:fs/promises'
+import { mkdtemp as createTemporaryDirectory, rm, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { ChildProcess } from 'node:child_process'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { attachCredentialBroker } from '../src/main/credentials/broker.js'
 import { CredentialVault } from '../src/main/credentials/vault.js'
+
+const temporaryDirectories: string[] = []
+async function mkdtemp(prefix: string) {
+  const directory = await createTemporaryDirectory(prefix)
+  temporaryDirectories.push(directory)
+  return directory
+}
+afterEach(async () => {
+  await Promise.all(temporaryDirectories.splice(0).map(directory => rm(directory, { recursive: true, force: true, maxRetries: 3 })))
+})
 
 const encryption = {
   encrypt: (value: string) => Buffer.from(`encrypted:${Buffer.from(value).toString('base64')}`),

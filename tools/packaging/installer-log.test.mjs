@@ -6,8 +6,9 @@ import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 
 const compiler = resolve('artifacts/cache/electron-builder/nsis-3.0.4.1/nsis-3.0.4.1-1mx3n/makensis.exe')
-test('native NSIS log macros append Unicode phases even with an inherited error flag', { skip: process.platform !== 'win32' || !existsSync(compiler) }, () => {
+test('native NSIS log macros append Unicode phases even with an inherited error flag', { skip: process.platform !== 'win32' || !existsSync(compiler) }, t => {
   const directory = mkdtempSync(join(tmpdir(), 'zws-installer-log-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
   const source = readFileSync(resolve('desktop/build/installer.nsh'), 'utf8')
   const macros = source.match(/!macro ZW_LOG[\s\S]*?!macroend\r?\n!macro ZW_PHASE[\s\S]*?!macroend/u)?.[0]
   assert(macros)

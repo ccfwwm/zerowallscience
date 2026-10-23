@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-videos",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "description": "通过对话创作视频、音乐和宣传片，图片仅作为视频参考素材",
   "license": "MIT",
@@ -161,7 +161,8 @@
       "zerowallPython",
       "zerowallEnvironment",
       "attachments",
-      "connection"
+      "connection",
+      "userQuestions"
     ],
     "capabilities": [
       "media.create",

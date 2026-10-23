@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { copyFile, cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { copyFile, cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -12,25 +12,29 @@ const execute = promisify(execFile)
  * The isolated copy contains only distributed resources, never source imports. */
 export async function verifyCommandRuntime({ resourcesRoot, executablePath, report }) {
   const isolated = await mkdtemp(join(tmpdir(), 'zws-packaged-commands-'))
-  const resources = join(isolated, 'resources')
-  await mkdir(resources)
-  await cp(join(resourcesRoot, 'commands'), join(resources, 'commands'), { recursive: true })
-  await copyFile(join(resourcesRoot, 'app.asar'), join(resources, 'app.asar'))
-  await mkdir(join(resources, 'app.asar.unpacked'))
-  await copyFile(join(resourcesRoot, 'app.asar.unpacked/package.json'), join(resources, 'app.asar.unpacked/package.json'))
-  const script = join(isolated, 'probe.mjs')
-  await writeFile(script, probe)
-  const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', CI: 'false' }
-  for (const key of ['NODE_PATH', 'NODE_OPTIONS', 'DSH_HOME', 'ZEROWALL_RUNTIME_ANCHOR', 'ZEROWALL_PROFILE_ANCHOR', 'ZEROWALL_DEPENDENCIES_ANCHOR', 'ZEROWALL_PROFILE_TRANSACTION_ID', 'ZEROWALL_PROFILE_TRANSACTION_OWNER']) delete env[key]
-  const output = await execute(executablePath, [script], { cwd: isolated, env, windowsHide: true, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 })
-  const result = JSON.parse(output.stdout.trim())
-  assert.equal(result.passed, true)
-  const receipt = { ...result, isolated, packagedResources: resourcesRoot, executablePath }
-  if (report) {
-    await mkdir(dirname(report), { recursive: true })
-    await writeFile(report, JSON.stringify(receipt, null, 2) + '\n')
+  try {
+    const resources = join(isolated, 'resources')
+    await mkdir(resources)
+    await cp(join(resourcesRoot, 'commands'), join(resources, 'commands'), { recursive: true })
+    await copyFile(join(resourcesRoot, 'app.asar'), join(resources, 'app.asar'))
+    await mkdir(join(resources, 'app.asar.unpacked'))
+    await copyFile(join(resourcesRoot, 'app.asar.unpacked/package.json'), join(resources, 'app.asar.unpacked/package.json'))
+    const script = join(isolated, 'probe.mjs')
+    await writeFile(script, probe)
+    const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', CI: 'false' }
+    for (const key of ['NODE_PATH', 'NODE_OPTIONS', 'DSH_HOME', 'ZEROWALL_RUNTIME_ANCHOR', 'ZEROWALL_PROFILE_ANCHOR', 'ZEROWALL_DEPENDENCIES_ANCHOR', 'ZEROWALL_PROFILE_TRANSACTION_ID', 'ZEROWALL_PROFILE_TRANSACTION_OWNER']) delete env[key]
+    const output = await execute(executablePath, [script], { cwd: isolated, env, windowsHide: true, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 })
+    const result = JSON.parse(output.stdout.trim())
+    assert.equal(result.passed, true)
+    const receipt = { ...result, packagedResources: resourcesRoot, executablePath }
+    if (report) {
+      await mkdir(dirname(report), { recursive: true })
+      await writeFile(report, JSON.stringify(receipt, null, 2) + '\n')
+    }
+    return receipt
+  } finally {
+    await rm(isolated, { recursive: true, force: true, maxRetries: 3 })
   }
-  return receipt
 }
 
 const probe = String.raw`

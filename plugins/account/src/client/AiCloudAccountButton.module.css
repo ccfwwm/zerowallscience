@@ -79,7 +79,7 @@
 .modelRows small { grid-column: 1 / -1; color: var(--dsw-alias-label-secondary, #687078); }
 .catalogNotice, .catalogEmpty { margin: 10px 2px 0; color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; line-height: 1.5; }
 .catalogNotice { padding: 9px 11px; border-radius: 9px; background: rgba(193,133,28,.1); color: #735313; }
-@media (max-width: 600px) { .modelSync { flex-wrap: wrap; } .modelRows > div { grid-template-columns: minmax(0, 1fr); } .balance { min-width: 0; } .externalActions { justify-content: flex-start; } }
+@media (max-width: 600px) { .modelSync { flex-wrap: wrap; } .balance { min-width: 0; } .externalActions { justify-content: flex-start; } }
 .externalButton { min-height: 34px; padding: 0 11px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(49,91,125,.35); border-radius: 9px; color: var(--dsw-alias-link, #315b7d); background: rgba(49,91,125,.05); cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 500; }
 .externalButton:hover { background: rgba(49,91,125,.12); }
 .connectionBadge { display: inline-flex; align-items: center; gap: 5px; color: var(--dsw-alias-label-secondary, #687078); }
@@ -102,6 +102,10 @@
 .modelSync h3 { margin: 0; font-size: 13px; }
 .modelSync p { margin: 3px 0 0; color: var(--dsw-alias-label-secondary, #687078); font-size: 11px; }
 .spin { animation: zerowall-spin .8s linear infinite; }
+.syncButton { min-height:32px; padding:0 11px; display:inline-flex; align-items:center; justify-content:center; align-self:flex-start; flex:0 0 auto; gap:7px; border:1px solid var(--dsw-alias-border-l2, #cfd5d9); border-radius:8px; background:var(--dsw-alias-bg-layer-1); color:var(--dsw-alias-label-secondary, #687078); font-family:inherit; font-size:12px; font-weight:500; line-height:1.4; cursor:pointer; }
+.syncButton:hover:not(:disabled) { color:var(--dsw-alias-link, #315b7d); background:var(--dsw-alias-interactive-bg-hover, #8882); }
+.syncButton:disabled { opacity:.6; cursor:default; }
+.groupHeading { flex:1; min-width:0; overflow-wrap:anywhere; }
 @keyframes zerowall-spin { to { transform: rotate(360deg); } }
 .balance { min-width: 140px; text-align: right; }
 .balance strong { font-size: 20px; letter-spacing: 0; }

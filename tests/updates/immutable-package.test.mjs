@@ -1,10 +1,23 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
-import { mkdtemp, mkdir, readFile, writeFile, stat, readdir } from 'node:fs/promises'
+import { afterEach, test } from 'node:test'
+import { mkdtemp, mkdir, readFile, rm, writeFile, stat, readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { deterministicArchive } from '../../tools/release/deterministic-archive.mjs'
 import { preserveImmutablePackage, commitImmutablePackage } from '../../tools/plugins/immutable-package.mjs'
+
+const fixtureDirectories = new Set()
+
+async function createFixtureDirectory() {
+  const directory = await mkdtemp(join(tmpdir(), 'zws-immutable-'))
+  fixtureDirectories.add(directory)
+  return directory
+}
+
+afterEach(async () => {
+  await Promise.all([...fixtureDirectories].map(directory => rm(directory, { recursive: true, force: true })))
+  fixtureDirectories.clear()
+})
 
 async function archive(directory, label, files) {
   const source = join(directory, label, 'package')
@@ -20,7 +33,7 @@ async function archive(directory, label, files) {
 }
 
 test('same-version release reuses the first archive across build comments and CSS ordering', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'zws-immutable-'))
+  const directory = await createFixtureDirectory()
   const before = await archive(directory, 'before', {
     'package.json': '{"name":"fixture","version":"0.1.0"}',
     'client.js': '// original path\nvar style_module_css_default = { a: "one", b: "two" }; console.log(style_module_css_default.a);'
@@ -35,7 +48,7 @@ test('same-version release reuses the first archive across build comments and CS
 })
 
 test('same-version release rejects changed executable behavior and keeps the candidate intact', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'zws-immutable-'))
+  const directory = await createFixtureDirectory()
   const before = await archive(directory, 'before', { 'client.js': 'export const value = 1;' })
   const after = await archive(directory, 'after', { 'client.js': 'export const value = 2;' })
   const original = await readFile(after)
@@ -44,7 +57,7 @@ test('same-version release rejects changed executable behavior and keeps the can
 })
 
 test('same-version release rejects changed dependencies and missing physical resources', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'zws-immutable-'))
+  const directory = await createFixtureDirectory()
   const before = await archive(directory, 'before', { 'package.json': '{"dependencies":{"fixture":"0.1.0"}}', 'worker.wasm': 'native' })
   const dependency = await archive(directory, 'dependency', { 'package.json': '{"dependencies":{"fixture":"0.2.0"}}', 'worker.wasm': 'native' })
   await assert.rejects(preserveImmutablePackage(dependency, before), /content changed/)
@@ -53,7 +66,7 @@ test('same-version release rejects changed dependencies and missing physical res
 })
 
 test('same-version release tolerates generated cache and text line-ending changes', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'zws-immutable-'))
+  const directory = await createFixtureDirectory()
   const before = await archive(directory, 'before', {
     'README.md': 'line one\r\nline two\r\n',
     'dist/.tsbuildinfo': '{"fileInfos":{"0":{"version":"before"}}}',
@@ -72,7 +85,7 @@ test('same-version release tolerates generated cache and text line-ending change
 })
 
 test('failed validation cannot write or replace an immutable shared archive', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'zws-immutable-'))
+  const directory = await createFixtureDirectory()
   const before = await archive(directory, 'before', { 'client.js': 'export const value = 1;' })
   const after = await archive(directory, 'after', { 'client.js': 'export const value = 2;' })
   const destination = join(directory, 'shared', 'fixture.tgz')
@@ -85,7 +98,7 @@ test('failed validation cannot write or replace an immutable shared archive', as
 })
 
 test('concurrent archive publication preserves bytes and unchanged consumers preserve mtime', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'zws-immutable-'))
+  const directory = await createFixtureDirectory()
   const before = await archive(directory, 'before', { 'client.js': 'export const value = 1;' })
   const equivalent = await archive(directory, 'equivalent', { 'client.js': '// build comment\nexport const value = 1;' })
   const destination = join(directory, 'shared', 'fixture.tgz')

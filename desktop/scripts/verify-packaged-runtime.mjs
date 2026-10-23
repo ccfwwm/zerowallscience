@@ -2,7 +2,7 @@ import { stageRoot, targetPackageRoot } from '../../tools/build/paths.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, readFileSync } from 'node:fs'
-import { access, lstat, mkdir, mkdtemp, readFile, readdir, rename, stat, symlink, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, mkdtemp as createTemporaryDirectory, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { createServer as createHttpServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -23,6 +23,14 @@ import { executionLevel } from '../../tools/packaging/windows-execution-level.mj
 import { verifyCommandRuntime } from '../../tools/packaging/verify-command-runtime.mjs'
 import { verifyBundledPython } from '../../tools/packaging/bundled-python.mjs'
 
+const temporaryDirectories = new Set()
+async function mkdtemp(prefix) {
+  const directory = await createTemporaryDirectory(prefix)
+  temporaryDirectories.add(directory)
+  return directory
+}
+
+async function verifyPackagedRuntime() {
 const hostCookies = new Map()
 const MIB = 1024 * 1024
 const packageRoot = resolve(import.meta.dirname, '..')
@@ -30,6 +38,8 @@ const repositoryRoot = resolve(packageRoot, '..')
 const pinnedUpstream = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'deepseek-harness', 'upstream.json'), 'utf8'))
 const pinnedIntegrations = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'integrations', 'upstream-sources.json'), 'utf8'))
 const desktopManifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'))
+const evidenceRoot = resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version, 'package-runtime', String(Date.now()))
+await mkdir(evidenceRoot, { recursive: true })
 const runtimeProfile = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'layout', 'runtime-profile.json'), 'utf8'))
 const fullOffline = runtimeProfile.optionalPluginPolicy?.offlineClosure === 'offline-profile/modules'
 const coreOnly = runtimeProfile.optionalPluginPolicy?.bundled === false && !fullOffline
@@ -43,7 +53,7 @@ const requireThinPython = process.argv.includes('--require-thin-python')
 if (process.argv.includes('--audit-source')) {
   await verifySourceRuntimePolicy()
   console.log(`ZeroWall source runtime policy verified for DSH ${pinnedUpstream.version} and iLink-only WeChat.`)
-  process.exit(0)
+  return
 }
 
 const packaged = await locatePackagedApp(packageRoot)
@@ -224,7 +234,7 @@ if (coreOnly) {
   if (!desktopOnly) await verifyHostStartup()
   if (!hostOnly) await verifyDesktopStartup()
   console.log(`Packaged ZeroWall Core runtime verified; optional plugins and resource payloads remain profile-managed; startup: ${hostOnly ? 'Host' : desktopOnly ? 'Desktop' : 'Host and Desktop'}.`)
-  process.exit(0)
+  return
 }
 for (const [plugin, file] of ['mcp', 'research'].flatMap(plugin => ['lib/client.js', 'lib/index.js'].map(file => [plugin, file]))) {
   const path = `node_modules/@zerowallscience/plugin-${plugin}/${file}`
@@ -1130,7 +1140,7 @@ async function verifyHostStartup() {
         console.log('Repaired plugin-images loaded yaml and validated image dimensions.');
       `
       await runEmbeddedNode(['--import', pathToFileURL(resolve(asarPath, 'runtime/runtime-esm-register.mjs')).href, '--input-type=module', '--eval', expression], { cwd: packaged.root })
-      linkRepairEvidence = { selfJunctionReproduced: true, signedRecovery: true, actualImagesYamlLoaded: true, imageDimensionValidation: true, profile: active, damagedOriginal: resolve(home, 'profiles/damaged-before-repair') }
+      linkRepairEvidence = { selfJunctionReproduced: true, signedRecovery: true, actualImagesYamlLoaded: true, imageDimensionValidation: true, profile: active }
     }
   }
   // The authorization status contract requires Zotero's Local API identity.
@@ -1234,7 +1244,7 @@ async function verifyHostStartup() {
             const evidence = JSON.parse(await readFile(networkProbe.receipt, 'utf8'))
             if (!evidence.isolated || evidence.packageInstallsAttempted !== 0) throw new Error('Offline Host attempted package installation')
             await mkdir(resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version), { recursive: true })
-            await writeFile(resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version, 'offline-host.json'), JSON.stringify({ ...evidence, guard: networkGuardEvidence, applicationVersion: desktopManifest.version, fullDefaultProfile: fullOffline, evidenceRoot: root }, null, 2))
+            await writeFile(resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version, 'offline-host.json'), JSON.stringify({ ...evidence, guard: networkGuardEvidence, applicationVersion: desktopManifest.version, fullDefaultProfile: fullOffline, fixtureRetention: 'temporary' }, null, 2))
             console.log('Full default Host activated with outbound networking blocked and zero package installation attempts.')
           }
           if (linkRepairEvidence) {
@@ -1813,7 +1823,7 @@ async function verifyDesktopStartup() {
       throw new Error(`Desktop startup failed: ${startup?.message ?? 'No stable startup status before deadline'}; renderer=${JSON.stringify(renderer)}; browser=${JSON.stringify(browserErrors.slice(-30)).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}; process=${output.slice(-4_000).replace(/([?&]token=)[^\s&]+/gu, '$1[redacted]')}; evidence=${root}`)
     }
     const bodyText = await page.locator('body').innerText()
-    console.log(`Packaged startup ready in ${Date.now() - startup.startedAt} ms; saved SSH profiles: ${Object.keys(sshProfile.tables.profiles).length}; evidence: ${root}`)
+    console.log(`Packaged startup ready in ${Date.now() - startup.startedAt} ms; saved SSH profiles: ${Object.keys(sshProfile.tables.profiles).length}; evidence: ${evidenceRoot}`)
     if (await readFile(sshPath, 'utf8') !== JSON.stringify(sshProfile)) throw new Error('Startup unexpectedly rewrote saved SSH profiles.')
     if (/Failed to load plugins|missed the module table|Cannot use import statement outside a module/iu.test(bodyText)) {
       throw new Error(`Packaged desktop rendered a plugin loading error: ${bodyText.slice(0, 4_000)}`)
@@ -1848,8 +1858,8 @@ async function verifyDesktopStartup() {
       await settingsEntry.focus()
       await settingsEntry.press('Enter')
     } catch (error) {
-      await writeFile(resolve(root, 'settings-trigger-debug.txt'), await page.locator('body').innerText().catch(() => ''))
-      await page.screenshot({ path: resolve(root, 'settings-trigger-debug.png'), fullPage: true }).catch(() => {})
+      await writeFile(resolve(evidenceRoot, 'settings-trigger-debug.txt'), await page.locator('body').innerText().catch(() => ''))
+      await page.screenshot({ path: resolve(evidenceRoot, 'settings-trigger-debug.png'), fullPage: true }).catch(() => {})
       throw error
     }
     const settings = page.getByRole('dialog', { name: /^(设置|Settings)$/ })
@@ -1864,8 +1874,8 @@ async function verifyDesktopStartup() {
     try {
       await settingsNav.first().waitFor({ state: 'visible', timeout: 30_000 })
     } catch (error) {
-      await writeFile(resolve(root, 'settings-debug.html'), await settings.evaluate(node => node.outerHTML).catch(() => '<settings dialog unavailable>'))
-      await writeFile(resolve(root, 'settings-debug.txt'), await page.locator('body').innerText().catch(() => ''))
+      await writeFile(resolve(evidenceRoot, 'settings-debug.html'), await settings.evaluate(node => node.outerHTML).catch(() => '<settings dialog unavailable>'))
+      await writeFile(resolve(evidenceRoot, 'settings-debug.txt'), await page.locator('body').innerText().catch(() => ''))
       throw error
     }
     const settingsNavLabels = (await settingsNav.allInnerTexts()).map(label => label.trim()).filter(Boolean)
@@ -1888,26 +1898,26 @@ async function verifyDesktopStartup() {
       for (const result of localChecks.checks) {
         if (result.catalogStatus !== 'local' || !Array.isArray(result.resources)) throw new Error(`Core local catalog inspection failed: ${JSON.stringify(result)}`)
       }
-      await writeFile(resolve(root, 'core-catalog-checks.json'), JSON.stringify(localChecks, null, 2))
-      await page.screenshot({ path: resolve(root, 'core-extension-center.png'), fullPage: true })
+      await writeFile(resolve(evidenceRoot, 'core-catalog-checks.json'), JSON.stringify(localChecks, null, 2))
+      await page.screenshot({ path: resolve(evidenceRoot, 'core-extension-center.png'), fullPage: true })
       await settingsNav.last().click()
       try {
         await settings.getByRole('heading', { name: 'ZeroWall Science', exact: true }).waitFor({ state: 'visible' })
       } catch (error) {
-        await page.screenshot({ path: resolve(root, 'core-about-failure.png'), fullPage: true }).catch(() => undefined)
-        await writeFile(resolve(root, 'core-about-failure.txt'), await page.locator('body').innerText().catch(() => ''))
+        await page.screenshot({ path: resolve(evidenceRoot, 'core-about-failure.png'), fullPage: true }).catch(() => undefined)
+        await writeFile(resolve(evidenceRoot, 'core-about-failure.txt'), await page.locator('body').innerText().catch(() => ''))
         throw error
       }
       await settings.getByText(desktopManifest.version, { exact: true }).waitFor({ state: 'visible' })
-      await page.screenshot({ path: resolve(root, 'core-version.png'), fullPage: true })
-      console.log(`Packaged Core startup and Extension Center are ready; optional plugins and resources remain profile-managed. Evidence: ${root}`)
+      await page.screenshot({ path: resolve(evidenceRoot, 'core-version.png'), fullPage: true })
+      console.log(`Packaged Core startup and Extension Center are ready; optional plugins and resources remain profile-managed. Evidence: ${evidenceRoot}`)
       return
     }
     await settingsNav.last().click()
     await settings.getByRole('heading', { name: 'ZeroWall Science', exact: true }).waitFor({ state: 'visible' })
     await settings.getByText(desktopManifest.version, { exact: true }).waitFor({ state: 'visible' })
-    await page.screenshot({ path: resolve(root, 'settings-about-last.png'), fullPage: true })
-    console.log(`Packaged Settings keeps About last and reports version ${desktopManifest.version}. Evidence: ${root}`)
+    await page.screenshot({ path: resolve(evidenceRoot, 'settings-about-last.png'), fullPage: true })
+    console.log(`Packaged Settings keeps About last and reports version ${desktopManifest.version}. Evidence: ${evidenceRoot}`)
     await settings.getByRole('button', { name: 'Zotero', exact: true }).click()
     await settings.locator('input[value="http://127.0.0.1:23119/api"]').waitFor({ state: 'visible', timeout: 30_000 })
     // Locale assertions use controlled fixture names; user-supplied names
@@ -1916,9 +1926,9 @@ async function verifyDesktopStartup() {
     await settings.getByRole('button', { name: /^(关闭|Close)$/ }).click()
     if (process.env.ZEROWALL_ZOTERO_REPLAY_LOG) {
       try { await verifyConversationViews(page, root) } catch (error) {
-        await page.screenshot({ path: resolve(root, 'replay-failure.png'), fullPage: true })
-        await writeFile(resolve(root, 'replay-failure.txt'), await page.locator('body').innerText())
-        throw new Error(`${error.message}\nReplay evidence: ${root}\nBrowser errors: ${browserErrors.slice(-10).join('\n')}`)
+        await page.screenshot({ path: resolve(evidenceRoot, 'replay-failure.png'), fullPage: true })
+        await writeFile(resolve(evidenceRoot, 'replay-failure.txt'), await page.locator('body').innerText())
+        throw new Error(`${error.message}\nReplay evidence: ${evidenceRoot}\nBrowser errors: ${browserErrors.slice(-10).join('\n')}`)
       }
     }
     const clientCss = await page.evaluate(() => {
@@ -1975,7 +1985,7 @@ async function verifyConversationViews(page, root) {
   const draft = await editor.innerText()
   if (!draft.includes('zotero://')) throw new Error('Source action did not populate the resident draft')
   await switchTo('zotero')
-  await page.screenshot({ path: resolve(root, 'zotero.png'), fullPage: true })
+  await page.screenshot({ path: resolve(evidenceRoot, 'zotero.png'), fullPage: true })
   await tabs.locator('[data-conversation-tab="chat"]').click()
   const sshAction = tabs.locator('[data-dsh-ssh-ops-tab="true"]')
   await sshAction.click()
@@ -1987,7 +1997,7 @@ async function verifyConversationViews(page, root) {
   if (!await composer.isVisible() || await editor.innerText() !== draft) throw new Error('Opening the SSH Sidebar hid the Chat composer or lost its draft')
   await sshAction.click()
   if (await ssh.count() !== 1) throw new Error('Repeated SSH action created a duplicate terminal pane')
-  await page.screenshot({ path: resolve(root, 'ssh.png'), fullPage: true })
+  await page.screenshot({ path: resolve(evidenceRoot, 'ssh.png'), fullPage: true })
   for (const id of await tabs.locator('[data-conversation-tab]').evaluateAll(elements => elements.map(el => el.getAttribute('data-conversation-tab')))) {
     if (id !== 'chat') await switchTo(id)
   }
@@ -2199,4 +2209,18 @@ async function pluginManifestPaths() {
     }
   }
   return manifests
+}
+}
+
+try {
+  await verifyPackagedRuntime()
+} finally {
+  const directories = [...temporaryDirectories]
+  const results = await Promise.allSettled(directories.map(directory => rm(directory, { recursive: true, force: true, maxRetries: 3 })))
+  for (const [index, result] of results.entries()) {
+    if (result.status === 'rejected') {
+      console.error(`Temporary fixture cleanup failed: ${directories[index]} (${result.reason?.code ?? 'unknown'})`)
+      process.exitCode = 1
+    }
+  }
 }

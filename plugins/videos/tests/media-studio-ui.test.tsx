@@ -20,6 +20,19 @@ it('keeps video drafts free of submissions, then directly generates once on expl
  await waitFor(()=>expect(call.mock.calls.filter(c=>c[1]==='generate')).toHaveLength(1))
  expect(call.mock.calls.some(c=>['submit','authorize'].includes(c[1]))).toBe(false)
 })
+it('shows a video task creation timestamp with seconds so recent generations are distinguishable',async()=>{
+ const createdAt='2026-10-23T07:08:09.000Z'
+ const output={id:'generated-video',projectId:'default',sessionId:'fixture-session',path:'media-projects/default/assets/latest.mp4',mediaType:'video/mp4',bytes:10,sha256:'generated-hash'}
+ const job={id:'timestamp-video',sessionId:'fixture-session',projectId:'default',revision:1,kind:'video',prompt:'最新视频',selection,parameters:{},references:[],createdAt,state:'queued',assets:[output]}
+ const call=vi.fn(async(_:string,action:string)=>action==='list'?{projects:[],jobs:[job]}:action==='catalog'?{models:[model],status:'succeeded'}:{})
+ render(<MediaWorkspace sessionId="fixture-session" call={call} send={vi.fn()}/> )
+ const timestamp=await screen.findByLabelText('任务创建时间')
+ expect(timestamp.tagName.toLowerCase()).toBe('time')
+ expect(timestamp.getAttribute('datetime')).toBe(createdAt)
+ expect(timestamp.textContent).toMatch(/^创建于 /u)
+ fireEvent.click(screen.getByRole('button',{name:'作品素材'}))
+ expect(screen.getAllByLabelText('任务创建时间')).toHaveLength(1)
+})
 it('keeps ordinary image generation out of the media workspace examples',async()=>{
  const send=vi.fn(async()=>{}),call=vi.fn(async(_:string,action:string)=>action==='list'?{projects:[],jobs:[]}:action==='catalog'?{models:[model],status:'succeeded'}:{})
  render(<MediaWorkspace sessionId="fixture-session" call={call} send={send}/>)

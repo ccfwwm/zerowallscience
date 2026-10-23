@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, writeFile, readdir, lstat } from 'node:fs/promises'
+import { mkdtemp, rm, mkdir, readFile, writeFile, readdir, lstat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
@@ -10,7 +10,8 @@ import { repairProfileLayout } from '../commands/profile-layout.mjs'
 import { runProfilePnpmTransaction, beginProfilePackageChange } from '../commands/profile-pnpm-transaction.mjs'
 
 const original = resolve(process.argv[2])
-const root = await mkdtemp(join(tmpdir(), 'zws-profile-841-'))
+const root = await mkdtemp(join(tmpdir(), 'zws-profile-install-'))
+try {
 const profile = join(root, 'profiles/web'), addition = join(root, 'probe')
 await copyProfileTree(original, profile, { filter: local => !local.startsWith('.plugin-manager') && !local.endsWith('package.json.lock') })
 await repairProfileLayout(profile, { from: original })
@@ -55,8 +56,12 @@ await runProfilePnpmTransaction({ profile, args: ['add', 'file:' + addition, '--
   lifecycleId: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_ID, ownerPid: process.pid })
 await lifecycle.finish(false)
 await lstat(join(profile, 'node_modules/zws-install-verification')).then(() => { throw new Error('Rollback failed') }, error => { if (error.code !== 'ENOENT') throw error })
-const receipt = { passed: true, isolatedProfile: profile, retained, addedAndRemoved: true, runtimeRollback: true, actualPluginImagesYaml: true }
+const receipt = { passed: true, retained, addedAndRemoved: true, runtimeRollback: true, actualPluginImagesYaml: true }
 const report = resolve(process.argv[3])
 await mkdir(join(report, '..'), { recursive: true })
 await writeFile(report, JSON.stringify(receipt, null, 2))
-console.log(JSON.stringify({ passed: true, retainedCount: Object.keys(retained).length, actualPluginImagesYaml: true, report, isolatedProfile: profile }))
+console.log(JSON.stringify({ passed: true, retainedCount: Object.keys(retained).length, actualPluginImagesYaml: true, report }))
+
+} finally {
+  await rm(root, { recursive: true, force: true, maxRetries: 3 })
+}

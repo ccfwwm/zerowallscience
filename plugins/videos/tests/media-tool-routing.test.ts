@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { MediaJobLedger } from '../../ai-cloud/src/host/media-jobs.js'
-import { MEDIA_CONVERSATION_PROMPT, mergeStandardReferenceParameters, validateMediaJobKind, validateMediaToolIds } from '../src/media-contract.js'
+import { MEDIA_CONVERSATION_PROMPT, mergeStandardReferenceParameters, removeNumberedMediaReferences, validateMediaJobKind, validateMediaToolIds } from '../src/media-contract.js'
 import { createMediaSkillProvider } from '../src/media-skill.js'
 
 const studio = vi.hoisted(() => ({ scope: vi.fn(async () => ({ sessionId: 's1', projectId: 'session-s1' })), generate: vi.fn(async (_session: string, input: any) => ({ id: input.id, state: 'queued' })), call: vi.fn(async () => '{}'), importSource: vi.fn(async () => ({})) }))
@@ -39,6 +39,7 @@ it('publishes consistent discovery routes for deck illustrations and independent
   expect(skill).toContain('不为普通配图建立媒体项目')
   expect(f.tools.get('media_job').description).toContain('普通图片生成和编辑必须使用 gpt-image-generator')
   expect(f.tools.get('media_job').description).toContain('status 查询状态并尊重 paused/failed')
+  expect(f.tools.get('media_job').description).toContain('通过提问窗口让用户选择是否继续提交新任务')
   expect(skill).toContain('用户明确要求继续、重试收集或重新获取时才用 collect')
   expect(f.tools.get('media_import').description).toContain('用于视频参考的图片')
   expect(f.tools.get('media_project').description).toContain('不用于 PPT/PPTX')
@@ -53,6 +54,11 @@ it('rejects standalone image media jobs while preserving video and music jobs', 
   await expect(tool.execute({ action: 'generate', kind: 'image', prompt: '海报' }, f.exec)).rejects.toThrow('must be one of ["video","music","speech"]')
   await expect(f.tools.get('media_models').execute({action:'select',choices_json:JSON.stringify({image:{selection:{groupId:'99',modelId:'image',profileId:'p',operation:'image'}}})},f.exec)).rejects.toThrow('MEDIA_IMAGE_ROUTE_DISABLED')
   expect(studio.generate).not.toHaveBeenCalled()
+})
+
+it('removes numbered media selectors from prompt text without changing ordinary numbers',()=>{
+ expect(removeNumberedMediaReferences('使用 images[0] 和 image [ 4 ]，参考 videos[0]、reference-audio[n]、reference_images[2]，镜头在 0–3 秒开始。'))
+  .toBe('使用 图片 和 图片，参考 视频、音频、图片，镜头在 0–3 秒开始。')
 })
 
 it('passes unified reference fields and safely merges matching legacy parameter fields', async () => {
@@ -72,7 +78,7 @@ it('passes unified reference fields and safely merges matching legacy parameter 
 
   expect(studio.generate).toHaveBeenCalledWith('s1', expect.objectContaining({
     parameters: { seconds: 5, images: [image], videos, audios },
-  }))
+  }), expect.any(Function))
   expect(mergeStandardReferenceParameters(parameters, { images: [image] })).toEqual({
     seconds: 5, images: [image],
   })
@@ -123,7 +129,7 @@ it.each([undefined, null, '', ' \t\n'])('treats unused optional IDs (%j) as omis
   expect(f.jobs.refresh).not.toHaveBeenCalled();expect(studio.generate).not.toHaveBeenCalled()
   const parameters={quality:'high',duration:8,aspect_ratio:'16:9'}
   await tool.execute({action:'generate',kind:'video',prompt:'独立视频',parameters_json:JSON.stringify(parameters),...input},f.exec)
-  expect(studio.generate).toHaveBeenCalledWith('s1',expect.objectContaining({project_id:undefined,projectId:'session-s1',id:expect.stringMatching(/^chat-[a-f0-9]{64}$/),parameters}))
+  expect(studio.generate).toHaveBeenCalledWith('s1',expect.objectContaining({project_id:undefined,projectId:'session-s1',id:expect.stringMatching(/^chat-[a-f0-9]{64}$/),parameters}),expect.any(Function))
   expect(studio.scope).toHaveBeenCalledWith('s1','session-s1',false)
   expect(validateMediaToolIds(input)).toEqual({project_id:undefined,id:undefined})
 })
@@ -147,7 +153,26 @@ it('recovers real media tasks without generating a replacement and still support
   expect(f.jobs.refresh).toHaveBeenCalledWith({ sessionId: 's1', projectId: 'session-s1' }, 'actual-job-0001', {background:true,signal:undefined})
   expect(studio.generate).not.toHaveBeenCalled()
   await tool.execute({ action: 'generate', kind: 'video', prompt: '独立宣传视频' }, f.exec)
-  expect(studio.generate).toHaveBeenCalledWith('s1', expect.objectContaining({ kind: 'video', projectId: 'session-s1', id: expect.stringMatching(/^chat-[a-f0-9]{64}$/) }))
+  expect(studio.generate).toHaveBeenCalledWith('s1', expect.objectContaining({ kind: 'video', projectId: 'session-s1', id: expect.stringMatching(/^chat-[a-f0-9]{64}$/) }), expect.any(Function))
+})
+
+it('uses the user question window for pending-task confirmation and fails closed when unavailable',async()=>{
+ const f=await fixture(),tool=f.tools.get('media_job')
+ const ask=vi.fn(async()=>({answers:[{id:'media-duplicate-submission',selected:['取消本次提交']}]}))
+ f.context.userQuestions={ask}
+ await tool.execute({action:'generate',kind:'video',prompt:'新宣传片'},f.exec)
+ const confirmation=studio.generate.mock.calls.at(-1)?.[2]
+ expect(confirmation).toBeTypeOf('function')
+ const active=[{id:'existing-job',kind:'video',state:'queued',selection:{modelId:'XXsedanco2.5S'},taskId:'upstream-task'}]
+ await expect(confirmation(active)).resolves.toBe(false)
+ expect(ask).toHaveBeenCalledWith(expect.objectContaining({agent:f.exec.agent,signal:f.exec.signal,questions:[expect.objectContaining({
+  question:'当前对话已有媒体任务尚未结束。仍要提交一个新的付费任务吗？',
+  options:[expect.objectContaining({label:'继续提交新任务'}),expect.objectContaining({label:'取消本次提交'})],
+ })]}))
+ f.context.userQuestions=undefined
+ await tool.execute({action:'generate',kind:'video',prompt:'另一条新视频'},f.exec)
+ const unavailable=studio.generate.mock.calls.at(-1)?.[2]
+ await expect(unavailable(active)).rejects.toThrow('MEDIA_DUPLICATE_CONFIRMATION_UNAVAILABLE')
 })
 
 it('releases collect to the background and pauses only the original local transfer',async()=>{

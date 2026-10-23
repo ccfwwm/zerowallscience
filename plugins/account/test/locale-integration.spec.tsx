@@ -28,7 +28,7 @@ async function setup(current: () => Promise<unknown>, withDictionary = true, cli
   const loadAccount = async () => {
     await accountHandle?.dispose()
     accountHandle = await runtime.mount({ inject: ['slots'], apply(ctx: any) {
-      clients.account({ locale, slots: ctx.slots, get: (name: string) => name === 'remote.zerowallAccount' ? { current } : undefined } as any)
+      clients.account({ locale, slots: ctx.slots, effect: ctx.effect.bind(ctx), on: () => {}, inject: () => {}, remote: { $on: () => () => {} }, get: (name: string) => name === 'remote.zerowallAccount' ? { current } : undefined } as any)
     } })
   }
   const disposers: Array<() => void> = []

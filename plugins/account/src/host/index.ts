@@ -5,10 +5,10 @@ import type {
   AiCloudAccountSnapshot, AiCloudCreateOrderRequest, AiCloudGateway, AiCloudLoginRequest, AiCloudManagedModel,
   AiCloudCheckoutInfo, AiCloudGetOrderRequest, AiCloudPaymentOrder, AiCloudPublicConfig,
   AiCloudRegisterRequest, AiCloudSendCodeRequest, AiCloudSendCodeResult, AiCloudForgotPasswordRequest, AiCloudVerifyOrderRequest,
-  AiCloudSavedLogin, AiCloudMediaModel,
+  AiCloudSavedLogin, AiCloudMediaModel, AiCloudGroup, AiCloudGroupCatalog,
 } from '../shared/types.js'
 import type {} from 'zod'
-import { imageQualityChoices, isImageGenerationGroup, uniqueMediaModels } from '../shared/types.js'
+import { accountGroupCatalog, imageQualityChoices, isImageGenerationGroup, uniqueMediaModels } from '../shared/types.js'
 export { isImageGenerationGroup, uniqueMediaModels } from '../shared/types.js'
 
 export type {
@@ -39,6 +39,7 @@ interface StoredSession {
   lowBalanceThreshold?: number
   models: AiCloudManagedModel[]
   groupIds: string[]
+  groups?: AiCloudGroup[]
   modelSync?: AiCloudAccountSnapshot['modelSync']
   mediaModels?: AiCloudMediaModel[]
   mediaSync?: AiCloudAccountSnapshot['mediaSync']
@@ -50,7 +51,7 @@ interface StoredLogin {
   password: string
 }
 
-interface AvailableGroup { id: number; name: string; platform?: string }
+interface AvailableGroup { id: number; name: string; platform?: string; description?: string; rateMultiplier?: number }
 interface ExistingKey { groupId?: number; key: string }
 
 export interface AccountSecretStore {
@@ -216,6 +217,14 @@ export class AiCloudClient {
     return login === undefined ? undefined : { ...login, rememberPassword: true }
   }
 
+  /** Read synchronized metadata without network requests, login restoration, or secret writes. */
+  async groupCatalog(): Promise<AiCloudGroupCatalog> {
+    if (await this.isManuallySignedOut()) return { groups: [], routes: [] }
+    const session = await this.loadSession()
+    if (session === undefined) return { groups: [], routes: [] }
+    return accountGroupCatalog(snapshot(session, 'stale'))
+  }
+
   async discoverModels(): Promise<AiCloudAccountSnapshot> {
     const revision = this.identityRevision
     const session = await this.requireSession()
@@ -315,7 +324,8 @@ export class AiCloudClient {
     const modelSync: NonNullable<AiCloudAccountSnapshot['modelSync']> = { checkedAt, status: failures === 0 ? 'succeeded' : failures === results.length ? 'failed' : 'partial', groups: results }
     const mediaFailures = mediaResults.filter(group => group.status === 'failed').length
     const mediaSync: NonNullable<AiCloudAccountSnapshot['mediaSync']> = { checkedAt, status: mediaFailures === 0 ? 'succeeded' : mediaFailures === mediaResults.length ? 'failed' : 'partial', groups: mediaResults }
-    const updated = { ...live, models, groupIds, modelSync, mediaModels: uniqueMediaModels(mediaModels), mediaSync }
+    const groupMetadata: AiCloudGroup[] = groups.map(({ id, name, ...metadata }) => ({ groupId: String(id), groupName: name, ...metadata }))
+    const updated = { ...live, models, groupIds, groups: groupMetadata, modelSync, mediaModels: uniqueMediaModels(mediaModels), mediaSync }
     await this.storeSession(updated, revision)
     return snapshot(updated, 'current')
   }
@@ -598,6 +608,7 @@ export class ZeroWallAccountService extends TypertRemoteService {
   constructor(private readonly runtimeCtx: Context) { super(runtimeCtx, 'zerowallAccount') }
   @Remote('publicConfig') publicConfig(gatewayBaseUrl?: string): Promise<AiCloudPublicConfig> { return this.client.publicConfig(gatewayBaseUrl) }
   @Remote('gateways') gateways(): Promise<AiCloudGateway[]> { return this.client.gateways() }
+  @Remote('groupCatalog') groupCatalog(): Promise<AiCloudGroupCatalog> { return this.client.groupCatalog() }
   @Remote('selectGateway') async selectGateway(baseUrl: string): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.selectGateway(baseUrl)) }
   @Remote('sendCode') sendCode(input: AiCloudSendCodeRequest): Promise<AiCloudSendCodeResult> { return this.client.sendCode(input) }
   @Remote('forgotPassword') forgotPassword(input: AiCloudForgotPasswordRequest): Promise<void> { return this.client.forgotPassword(input) }
@@ -669,7 +680,23 @@ function list(body: string): unknown[] {
   if (isRecord(data) && Array.isArray(data.items)) return data.items
   return Array.isArray(root.items) ? root.items : []
 }
-function availableGroups(body: string): AvailableGroup[] { return list(body).flatMap((item) => { if (!isRecord(item)) return []; const id = Number(item.id); const name = typeof item.name === 'string' ? item.name.trim() : ''; const disabled = [item.visible, item.available, item.enabled, item.is_visible, item.is_available].includes(false) || ['disabled', 'inactive', 'unavailable', 'closed'].includes(String(item.status ?? '').toLowerCase()); return Number.isInteger(id) && id > 0 && name && !disabled ? [{ id, name, ...(typeof item.platform === "string" ? { platform: item.platform } : {}) }] : [] }) }
+function availableGroups(body: string): AvailableGroup[] {
+  return list(body).flatMap((item) => {
+    if (!isRecord(item)) return []
+    const id = Number(item.id)
+    const name = typeof item.name === 'string' ? item.name.trim() : ''
+    const disabled = [item.visible, item.available, item.enabled, item.is_visible, item.is_available].includes(false)
+      || ['disabled', 'inactive', 'unavailable', 'closed'].includes(String(item.status ?? '').toLowerCase())
+    if (!Number.isInteger(id) || id <= 0 || !name || disabled) return []
+    const rawRate = item.rate_multiplier
+    const rate = typeof rawRate === 'number' ? rawRate : typeof rawRate === 'string' && rawRate.trim() ? Number(rawRate) : undefined
+    return [{ id, name,
+      ...(typeof item.platform === 'string' ? { platform: item.platform } : {}),
+      ...(typeof item.description === 'string' && item.description.trim() ? { description: item.description.trim() } : {}),
+      ...(rate !== undefined && Number.isFinite(rate) && rate >= 0 ? { rateMultiplier: rate } : {}),
+    }]
+  })
+}
 function existingKeys(body: string): ExistingKey[] { return list(body).flatMap((item) => { if (!isRecord(item) || item.enabled === false) return []; const key = stringField(item, ['key', 'token', 'api_key']); const groupId = Number(item.group_id ?? (isRecord(item.group) ? item.group.id : undefined)); return key === undefined ? [] : [{ key, ...(Number.isInteger(groupId) ? { groupId } : {}) }] }) }
 function createdKey(body: string): string { const key = stringField(envelope(body), ['key', 'token', 'api_key']); if (!key) throw new Error('AI Cloud created a key but returned no credential.'); return key }
 function modelIds(body: string): string[] { const root = JSON.parse(body) as Record<string, unknown>; const values = Array.isArray(root.data) ? root.data : Array.isArray(root) ? root : []; const ids = values.flatMap((item) => isRecord(item) && typeof item.id === 'string' && item.id ? [item.id] : []); if (ids.length === 0) throw new Error('AI Cloud listed no models for a managed group.'); return ids }
@@ -688,7 +715,7 @@ function modelQualities(body: string, id: string): string[] {
   const entry = Array.isArray(rows) ? rows.find((row: any) => row.id === id) : undefined
   return Array.isArray(entry?.qualities) ? entry.qualities.filter((quality: unknown): quality is string => typeof quality === 'string') : []
 }
-function snapshot(session: StoredSession, freshness: 'current' | 'stale'): AiCloudAccountSnapshot { return { status: 'signedIn', email: session.email, balance: session.balance, currency: session.currency, balanceFreshness: freshness, gatewayBaseUrl: session.baseUrl, ...(session.rechargeUrl === undefined ? {} : { rechargeUrl: session.rechargeUrl }), lowBalance: session.lowBalanceThreshold !== undefined && session.balance <= session.lowBalanceThreshold, models: session.models, mediaModels: session.mediaModels ?? [], ...(session.mediaSync ? { mediaSync: session.mediaSync } : {}), ...(session.modelSync ? { modelSync: session.modelSync } : {}) } }
+function snapshot(session: StoredSession, freshness: 'current' | 'stale'): AiCloudAccountSnapshot { return { status: 'signedIn', email: session.email, balance: session.balance, currency: session.currency, balanceFreshness: freshness, gatewayBaseUrl: session.baseUrl, ...(session.groups ? { groups: session.groups } : {}), ...(session.rechargeUrl === undefined ? {} : { rechargeUrl: session.rechargeUrl }), lowBalance: session.lowBalanceThreshold !== undefined && session.balance <= session.lowBalanceThreshold, models: session.models, mediaModels: session.mediaModels ?? [], ...(session.mediaSync ? { mediaSync: session.mediaSync } : {}), ...(session.modelSync ? { modelSync: session.modelSync } : {}) } }
 function gatewayLabel(baseUrl: string): string { return baseUrl === PRIMARY_BASE ? 'Hong Kong (default)' : baseUrl.includes('.xyz') ? 'Global XYZ backup' : 'Global CN backup' }
 function normalizePaymentType(value: string): string { const normalized = value.trim().toLowerCase(); if (normalized === 'wechat' || normalized === 'wechat_pay') return 'wxpay'; if (['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct'].includes(normalized)) return normalized; throw new Error('Unsupported payment type.') }
 function paymentOrderPayload(value: unknown): Record<string, unknown> {

@@ -234,7 +234,7 @@ for (const plugin of plugins) {
       bundle: { patch: 'dsh.bundle.patch.yml' },
       ...(plugin.client ? {
         client: {
-          inject: plugin.id === 'files' ? [...clientInject, 'remote.workspaceFiles', 'sidebarRightTabs', '@deepseek-ai/dsh-client-ui-sidebar-right', '@deepseek-ai/dsh-api-workspace-files'] : ['base', 'environment', 'extension-center'].includes(plugin.id) ? clientInject.filter(name => name !== 'betterSidebar') : clientInject,
+          inject: plugin.id === 'account' ? [...clientInject, '@deepseek-ai/dsh-client-ui-model-selection'] : plugin.id === 'files' ? [...clientInject, 'remote.workspaceFiles', 'sidebarRightTabs', '@deepseek-ai/dsh-client-ui-sidebar-right', '@deepseek-ai/dsh-api-workspace-files'] : ['base', 'environment', 'extension-center'].includes(plugin.id) ? clientInject.filter(name => name !== 'betterSidebar') : clientInject,
           ...(plugin.clientExternal === undefined ? {} : { external: plugin.clientExternal }),
           platform: 'web',
         },
@@ -279,6 +279,7 @@ for (const plugin of plugins) {
     ],
     dependencies: {
     ...dshDependencies,
+    ...(plugin.id === 'account' ? { '@deepseek-ai/dsh-client-ui-model-selection': 'workspace:^', '@deepseek-ai/dsh-client-ui-settings-models': 'workspace:^' } : {}),
     ...(plugin.id === 'files' ? { '@deepseek-ai/dsh-fs': 'workspace:^', 'dsh-office-tools': officeSource } : {}),
       ...(plugin.client && !['base', 'environment', 'extension-center'].includes(plugin.id) ? externalClientDependencies : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),

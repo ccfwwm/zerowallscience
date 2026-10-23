@@ -13,6 +13,50 @@ function json(value: unknown, status = 200): Response {
 }
 
 describe('AI Cloud account client', () => {
+  it('persists gateway descriptions and standard multipliers, including zero, and reads metadata without network or secret writes', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.session', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'test@example.com', accessToken: 'fixture', balance: 1, currency: 'CNY', models: [], groupIds: [] }))
+    const fetcher = vi.fn<typeof fetch>(async input => {
+      const url = String(input)
+      if (url.endsWith('/groups/available')) return json({ data: [
+        { id: 1, name: 'Economy', description: 'Platform supplied\nDetails', rate_multiplier: 0 },
+        { id: 2, name: 'Pro', rate_multiplier: '0.6', description: null },
+        { id: 3, name: 'Unknown', rate_multiplier: null },
+        { id: 4, name: 'Invalid', rate_multiplier: -2 },
+      ] })
+      if (url.includes('/keys?')) return json({ data: [1, 2, 3, 4].map(group_id => ({ group_id, key: `fixture-${group_id}` })) })
+      if (url.endsWith('/v1/models')) return json({ data: [{ id: 'gpt-fixture' }] })
+      throw new Error('Unexpected request')
+    })
+    const client = new AiCloudClient({ secrets, fetch: fetcher })
+    const result = await client.discoverModels()
+    expect(result.groups).toEqual([
+      { groupId: '1', groupName: 'Economy', description: 'Platform supplied\nDetails', rateMultiplier: 0 },
+      { groupId: '2', groupName: 'Pro', rateMultiplier: 0.6 },
+      { groupId: '3', groupName: 'Unknown' }, { groupId: '4', groupName: 'Invalid' },
+    ])
+    const stored = [...secrets.values]
+    fetcher.mockClear()
+    const catalog = await client.groupCatalog()
+    expect(catalog.groups).toEqual(result.groups)
+    expect(catalog.routes[0]).toEqual({ providerId: 'zerowall-ai-cloud-1-responses', groupId: '1', modelId: 'gpt-fixture' })
+    expect(JSON.stringify(catalog)).not.toContain('fixture-1')
+    expect(fetcher).not.toHaveBeenCalled()
+    expect([...secrets.values]).toEqual(stored)
+    await client.logout()
+    await expect(client.groupCatalog()).resolves.toEqual({ groups: [], routes: [] })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('reads legacy group names without login restoration, discovery, or a made-up multiplier', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.session', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'test@example.com', accessToken: 'fixture', models: [{ providerId: 'legacy', groupId: '7', groupName: 'Legacy', modelId: 'gpt-fixture' }], groupIds: ['7'] }))
+    const fetcher = vi.fn<typeof fetch>()
+    const client = new AiCloudClient({ secrets, fetch: fetcher })
+    await expect(client.groupCatalog()).resolves.toMatchObject({ groups: [{ groupId: '7', groupName: 'Legacy' }] })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
   it('coalesces model sync, reports partial failure with retained stale models and rejects a late response after logout', async () => {
     const secrets = new MemorySecrets()
     const previous = { providerId: 'zerowall-ai-cloud-2-completions', groupId: '2', groupName: 'Old', modelId: 'deepseek-old', baseUrl: 'https://code.aicodeme.xyz/v1' }

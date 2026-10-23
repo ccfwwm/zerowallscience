@@ -1,12 +1,22 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp as createTemporaryDirectory, rm, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { ZeroWallCapabilitiesService } from '../src/host/index.js'
 import { migrateSkillRoutingText, migrateUserSkillRouting } from '../src/host/skill-routing-migration.js'
+
+const temporaryDirectories: string[] = []
+async function mkdtemp(prefix: string) {
+  const directory = await createTemporaryDirectory(prefix)
+  temporaryDirectories.push(directory)
+  return directory
+}
+afterEach(async () => {
+  await Promise.all(temporaryDirectories.splice(0).map(directory => rm(directory, { recursive: true, force: true, maxRetries: 3 })))
+})
 
 const summary = {
   name: 'literature-review',

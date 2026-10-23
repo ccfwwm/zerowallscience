@@ -3,10 +3,11 @@
 // Tests exercise the generated publish artifacts in lib with installed dependencies.
 // Run `pnpm test` for the full suite (build included). For this file alone, run
 // `pnpm build && node --test test/host.test.mjs` so source changes are rebuilt first.
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
 	mkdtempSync,
+	rmSync,
 	mkdirSync,
 	writeFileSync,
 	readFileSync,
@@ -38,6 +39,14 @@ import {
 const SID = (n) =>
 	`session-${String(n).padStart(5, "0")}-0000-0000-0000-000000000000`;
 const require = createRequire(import.meta.url);
+const fixtureDirectories = new Set();
+
+afterEach(() => {
+	for (const directory of fixtureDirectories) {
+		rmSync(directory, { recursive: true, force: true, maxRetries: 3 });
+	}
+	fixtureDirectories.clear();
+});
 
 test("剩余宿主不再走早于 0.2.0 的投影、只读和列表回退", () => {
 	const source = readFileSync(new URL("../src/workspace.ts", import.meta.url), "utf8");
@@ -121,6 +130,7 @@ function buildRoot({
 } = {}) {
 	const ctx = new Context();
 	const root = mkdtempSync(join(tmpdir(), "dsh-am-test-"));
+	fixtureDirectories.add(root);
 	const canonicalOf = new Map();
 	for (const header of headers) {
 		if (header.cwd === void 0 || canonicalOf.has(header.cwd)) continue;
