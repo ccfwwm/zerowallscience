@@ -25,7 +25,20 @@
 }
 ```
 
-比较上传与下载的 `bytes/sha256`，确认内容一致。100 MiB 以上上传自动走分片恢复，当前最多 20 GiB；下载流式写入临时文件并验证校验和。网络中断后复用相同项目、路径和内容；目标文件冲突时选择新路径。
+比较上传与下载的 `bytes/sha256`，确认内容一致。省略 `local_path` 时自动保存到当前项目工作区的 `downloads/<文件名>`。100 MiB 以上上传自动走分片恢复，当前最多 20 GiB；下载在 Host 内流式写入临时文件并验证校验和，不会把 base64 文件内容发到对话。网络中断后重试；目标文件冲突时选择新路径。
+
+RMCP 各工作流产物使用同一个下载动作：R、OmicVerse、FigureYa 绘图、GEO、NHANES、遗传分析和 scTenifoldKnk 的 Manifest 若含 `project_id/path`，传入这两个字段及 `remote_path=path` 即可，不需要关心产物由哪个分析工具生成。独立 Biomni 任务产物传 `source=biomni`、`job_id` 和 Manifest 文件路径：
+
+```json
+{
+  "action": "download_workspace",
+  "source": "biomni",
+  "job_id": "<job_id>",
+  "remote_path": "figures/plot.png"
+}
+```
+
+省略 `local_path` 后会将文件写入当前工作区的 `downloads/plot.png`。Host 会核对远端 Manifest 的字节数和 SHA-256，返回本地路径及校验值。
 
 查看服务器文件则使用工作流，不传 local_path：
 
@@ -43,9 +56,9 @@
 }
 ```
 
-模板源文件使用 `download_figureya_module`，传 `module_id` 和本地相对目录 `local_path`；不把模板的服务器绝对路径作为项目路径。
+单个模板源文件也可使用 `download_workspace`，传 `source=figureya_source`、`module_id`、`source_path` 和可选的 `local_path`；批量取回整个模板才使用 `download_figureya_module`。不把模板的服务器绝对路径作为项目路径。
 
-需要跨本地/远程传输时选择 Host r_files；服务器已有文件查询使用本工作流。FigureYa 模板文件属于服务器安装目录，使用专用下载动作。
+需要跨本地/远程传输时选择 Host `r_files`；服务器已有文件查询使用本工作流。服务器 FigureYa 模板源文件可用 `source=figureya_source` 通过同一下载动作保存到当前工作区。
 
 Windows 路径不能作为远程 path。本地 local_path 必须在当前工作区内且为相对路径；远程 path 为项目相对路径。复用返回的 project_id、path，不猜绝对路径。
 

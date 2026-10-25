@@ -55,6 +55,56 @@ test('recovery preserves a candidate owned by a running preparation', async t =>
   assert((await lstat(candidate)).isDirectory())
 })
 
+test('tokenized recovery retains only the candidate matching the live mutation lease', async t => {
+  const f = await fixture(t)
+  const candidate = join(f.root, 'profiles/zerowall-pnpm-11111111-1111-1111-1111-111111111111')
+  const directory = join(f.profile, '.plugin-manager/package-transactions/22222222-2222-2222-2222-222222222222')
+  const token = 'live-owner-token'
+  await mkdir(candidate, { recursive: true }); await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'journal.json'), JSON.stringify({ schema: 2, state: 'preparing', pid: process.pid, ownerToken: token, candidate, created: Date.now(), items: [] }))
+  await writeFile(join(f.root, 'profiles/.zerowall-plugin-mutation.lock'), JSON.stringify({ pid: process.pid, token }))
+  await assert.rejects(recoverPnpmTransactions(f.profile), /still running/u)
+  assert((await lstat(candidate)).isDirectory())
+})
+
+test('tokenized recovery cleans a stale PID candidate without touching the active profile', async t => {
+  const f = await fixture(t), before = await readFile(join(f.profile, 'package.json'))
+  const candidate = join(f.root, 'profiles/zerowall-pnpm-11111111-1111-1111-1111-111111111111')
+  const directory = join(f.profile, '.plugin-manager/package-transactions/22222222-2222-2222-2222-222222222222')
+  await mkdir(candidate, { recursive: true }); await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'journal.json'), JSON.stringify({ schema: 2, state: 'preparing', pid: 2147483647, ownerToken: 'dead-owner', candidate, created: Date.now(), items: [] }))
+  await writeFile(join(f.root, 'profiles/.zerowall-plugin-mutation.lock'), JSON.stringify({ pid: 2147483647, token: 'dead-owner' }))
+  await recoverPnpmTransactions(f.profile)
+  await assert.rejects(lstat(candidate), { code: 'ENOENT' })
+  assert.deepEqual(await readFile(join(f.profile, 'package.json')), before)
+  assert.equal(JSON.parse(await readFile(join(directory, 'journal.json'))).state, 'preparation-failed')
+})
+
+test('tokenized recovery rejects a live PID whose lock token belongs to a different transaction', async t => {
+  const f = await fixture(t)
+  const candidate = join(f.root, 'profiles/zerowall-pnpm-11111111-1111-1111-1111-111111111111')
+  const directory = join(f.profile, '.plugin-manager/package-transactions/22222222-2222-2222-2222-222222222222')
+  await mkdir(candidate, { recursive: true }); await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'journal.json'), JSON.stringify({ schema: 2, state: 'preparing', pid: process.pid, ownerToken: 'stale-token', candidate, created: Date.now(), items: [] }))
+  await writeFile(join(f.root, 'profiles/.zerowall-plugin-mutation.lock'), JSON.stringify({ pid: process.pid, token: 'current-token' }))
+  await recoverPnpmTransactions(f.profile)
+  await assert.rejects(lstat(candidate), { code: 'ENOENT' })
+  assert.equal(JSON.parse(await readFile(join(directory, 'journal.json'))).state, 'preparation-failed')
+})
+
+test('tokenized recovery preserves evidence and never cleans an out-of-profile candidate path', async t => {
+  const f = await fixture(t)
+  const outside = join(f.root, 'outside-candidate')
+  const directory = join(f.profile, '.plugin-manager/package-transactions/22222222-2222-2222-2222-222222222222')
+  await mkdir(outside, { recursive: true }); await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'journal.json'), JSON.stringify({ schema: 2, state: 'preparing', pid: 2147483647, ownerToken: 'dead-owner', candidate: outside, created: Date.now(), items: [] }))
+  await recoverPnpmTransactions(f.profile)
+  assert((await lstat(outside)).isDirectory())
+  const state = JSON.parse(await readFile(join(directory, 'journal.json')))
+  assert.equal(state.state, 'preparation-failed')
+  assert.match(state.error, /Invalid transaction candidate path/u)
+})
+
 test('an untrusted lifecycle ID cannot bypass the profile mutation lease', async t => {
   const f = await fixture(t)
   let ran = false
@@ -63,6 +113,8 @@ test('an untrusted lifecycle ID cannot bypass the profile mutation lease', async
   const lifecycle = await beginProfilePackageChange(f.profile)
   try {
     await assert.rejects(runProfilePnpmTransaction({ profile: f.profile, args: ['install'], lifecycleId: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_ID, ownerPid: process.pid + 1, run }), /PLUGIN_LIFECYCLE_INVALID/)
+    await assert.rejects(runProfilePnpmTransaction({ profile: f.profile, args: ['install'], lifecycleId: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_ID,
+      ownerPid: process.pid, ownerToken: 'unowned-token', run }), /PLUGIN_LIFECYCLE_INVALID/)
     assert.equal(ran, false)
   } finally { await lifecycle.finish(false) }
 })
@@ -166,6 +218,7 @@ for (const accepted of [true, false]) test(`real pnpm lifecycle ${accepted ? 'co
   const result = await runProfilePnpmTransaction({ profile: f.profile,
     args: ['add', 'link:' + f.addition, '--offline'],
     lifecycleId: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_ID, ownerPid: process.pid,
+    ownerToken: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_OWNER_TOKEN,
     run: async (args, candidate) => {
       const output = await execute(process.execPath, [pnpm, ...args], { cwd: candidate, env: { ...process.env, CI: 'false' }, windowsHide: true })
       return { code: 0, tail: output.stdout }
@@ -209,7 +262,7 @@ for (const accepted of [false, true]) test(`crash recovery ${accepted ? 'keeps t
     const lifecycle = await beginProfilePackageChange(profile);
     for (const addition of [first, second]) {
       await runProfilePnpmTransaction({ profile, args: ['add', 'link:' + addition, '--offline'],
-        lifecycleId: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_ID, ownerPid: process.pid,
+        lifecycleId: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_ID, ownerPid: process.pid, ownerToken: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_OWNER_TOKEN,
         run: async (args, candidate) => {
           await promisify(execFile)(process.execPath, [pnpm, ...args], { cwd: candidate, env: { ...process.env, CI: 'false' }, windowsHide: true });
           return { code: 0 };

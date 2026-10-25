@@ -7,10 +7,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, expect, it } from 'vitest'
 import { ResearchStore } from '../../research-store/src/index.js'
 import { CellViewerService } from '../src/host/cell-viewer.js'
+import { defaultSciencePythonExecutable } from '../src/host/managed-python.js'
 import { validateCellSelection } from '../src/shared/cell-selection.js'
 
 const run = promisify(execFile)
-const python = process.env.ZEROWALL_CELL_PYTHON || process.env.ZEROWALL_PYTHON || 'python'
+const python = process.env.ZEROWALL_CELL_PYTHON || process.env.ZEROWALL_PYTHON || defaultSciencePythonExecutable() || 'python'
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => { for (const dispose of cleanup.splice(0).reverse()) await dispose() })
 

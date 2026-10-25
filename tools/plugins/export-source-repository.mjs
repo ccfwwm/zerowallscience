@@ -5,7 +5,20 @@ import { root, stageRoot, releaseRoot, contract } from '../build/paths.mjs'
 import { sourceFiles, isExportableSource } from './source-files.mjs'
 import { sourceRepositoryReadme } from './source-readme.mjs'
 
-const destination = resolve(process.argv[2] ?? join(root, 'artifacts/source/zerowall-dsh-plugins'))
+const argumentDestination = process.argv[2]?.startsWith('--') ? undefined : process.argv[2]
+const destination = resolve(argumentDestination ?? join(root, 'artifacts/source/zerowall-dsh-plugins'))
+const selectedPlugin = process.argv.includes('--plugin') ? process.argv[process.argv.indexOf('--plugin') + 1] : undefined
+if (process.argv.includes('--plugin')) {
+  if (!selectedPlugin || selectedPlugin.startsWith('--') || !process.argv.includes('--update') || !process.argv.includes('--source-only')) {
+    throw new Error('Selective export requires --update --source-only --plugin <id> [--include <source-file>]')
+  }
+  const include = process.argv.flatMap((value, index) => value === '--include' ? [process.argv[index + 1]] : [])
+  if (include.some(value => !value || value.startsWith('--'))) throw new Error('--include requires one explicit source file')
+  const { exportPluginSource } = await import('./export-plugin-source.mjs')
+  const receipt = await exportPluginSource({ root, destination, plugin: selectedPlugin, include })
+  console.log(`Exported ${receipt.id}@${receipt.version}: ${receipt.files.length} reviewed files; unrelated sources retained; no publication asserted`)
+  process.exit(0)
+}
 await mkdir(destination, { recursive: true })
 const sourceOnly = process.argv.includes('--source-only')
 const update = process.argv.includes('--update')

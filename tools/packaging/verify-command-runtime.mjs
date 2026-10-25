@@ -22,7 +22,7 @@ export async function verifyCommandRuntime({ resourcesRoot, executablePath, repo
     const script = join(isolated, 'probe.mjs')
     await writeFile(script, probe)
     const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', CI: 'false' }
-    for (const key of ['NODE_PATH', 'NODE_OPTIONS', 'DSH_HOME', 'ZEROWALL_RUNTIME_ANCHOR', 'ZEROWALL_PROFILE_ANCHOR', 'ZEROWALL_DEPENDENCIES_ANCHOR', 'ZEROWALL_PROFILE_TRANSACTION_ID', 'ZEROWALL_PROFILE_TRANSACTION_OWNER']) delete env[key]
+    for (const key of ['NODE_PATH', 'NODE_OPTIONS', 'DSH_HOME', 'ZEROWALL_RUNTIME_ANCHOR', 'ZEROWALL_PROFILE_ANCHOR', 'ZEROWALL_DEPENDENCIES_ANCHOR', 'ZEROWALL_PROFILE_TRANSACTION_ID', 'ZEROWALL_PROFILE_TRANSACTION_OWNER', 'ZEROWALL_PROFILE_TRANSACTION_OWNER_TOKEN']) delete env[key]
     const output = await execute(executablePath, [script], { cwd: isolated, env, windowsHide: true, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 })
     const result = JSON.parse(output.stdout.trim())
     assert.equal(result.passed, true)

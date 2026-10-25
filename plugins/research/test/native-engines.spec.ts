@@ -225,7 +225,8 @@ describe('managed BrainGlobe atlas resolution', () => {
       runtimeLayout: { relativeExecutable: 'Python/python.exe', relativeSitePackages: 'Python/Lib/site-packages' },
       manifest: { python: { version: '3.12.10', relativeExecutable: 'python.exe', relativeSitePackages: 'Lib/site-packages' } },
     }))
-    cleanups.push(() => rm(runtimeRoot, { recursive: true, force: true }))
+    // Windows may briefly retain the executable image after the probe closes.
+    cleanups.push(() => rm(runtimeRoot, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }))
     vi.stubEnv('ZEROWALL_PYTHON_ROOT', manager)
     vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', runtimeRoot)
     delete process.env.ZEROWALL_MCP_ENVIRONMENT_ROOT

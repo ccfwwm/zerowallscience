@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -19,7 +19,89 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-describe('rdatalinux workspace upload bridge', () => {
+describe('rdatalinux workspace file transfer bridge', () => {
+	it('lists local download_workspace alongside the remote file catalog', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'zerowall-r-files-catalog-'))
+		roots.push(root)
+		process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+		process.env.DSH_HOME = join(root, 'harness')
+		process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+		const ctx = new Context()
+		try {
+			await ctx.plugin(SystemPrompt)
+			await ctx.plugin(ToolRuntime)
+			await ctx.plugin(ZeroWallProjectsService)
+			await ctx.plugin(ZeroWallMcpService)
+			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
+			ctx.tools.register(defineTool({
+				name: 'mcp__rmcp__r_files',
+				description: 'remote files catalog fixture',
+				parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+				output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+				execute: async () => ({ domain: 'r_files', capabilities: [{ id: 'r.download.file' }, { id: 'r.read.file.chunk' }] }),
+			}))
+			const result = await ctx.tools.execute({
+				signal: new AbortController().signal,
+				callId: ToolCallId('workspace-file-catalog'),
+				name: 'r_files',
+				arguments: { action: 'catalog' },
+			})
+			expect(result.isError, JSON.stringify(result)).toBe(false)
+			const value = result.isError ? {} : result.value as any
+			expect(value.capabilities.map((item: any) => item.id)).toEqual(expect.arrayContaining([
+				'r.download.file', 'r.read.file.chunk', 'host.r_files.download_workspace', 'host.r_files.upload_workspace',
+			]))
+			expect(value.host_capabilities.find((item: any) => item.id === 'host.r_files.download_workspace')?.input_schema.properties.local_path.description).toMatch(/省略时/u)
+		} finally {
+			await ctx.fiber.dispose()
+		}
+	})
+
+	it('downloads a Biomni job artifact directly into the local workspace without exposing base64', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'zerowall-biomni-download-'))
+		roots.push(root)
+		process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+		process.env.DSH_HOME = join(root, 'harness')
+		process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+		const bytes = Buffer.from('biomni-figure-bytes')
+		const sha256 = createHash('sha256').update(bytes).digest('hex')
+		const forwarded: any[] = []
+		const ctx = new Context()
+		try {
+			await ctx.plugin(SystemPrompt)
+			await ctx.plugin(ToolRuntime)
+			await ctx.plugin(ZeroWallProjectsService)
+			await ctx.plugin(ZeroWallMcpService)
+			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
+			ctx.tools.register(defineTool({
+				name: 'mcp__rmcp__biomni_artifacts',
+				description: 'Biomni artifact fixture',
+				parameters: { action: { type: 'string', required: true }, arguments: { type: 'json', required: true } },
+				output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+				execute: async (args: any) => {
+					forwarded.push(args)
+					if (args.action === 'biomni.get.job.manifest') return { job_id: 'bio-1', files: [{ path: 'figures/plot.png', bytes: bytes.length, sha256, mime_type: 'image/png' }] }
+					if (args.action === 'biomni.read.file.chunk') return { path: args.arguments.path, offset: args.arguments.offset, bytes: bytes.length, total_bytes: bytes.length, eof: true, data_base64: bytes.toString('base64') }
+					throw new Error(`Unexpected Biomni action: ${args.action}`)
+				},
+			}))
+			const result = await ctx.tools.execute({
+				signal: new AbortController().signal,
+				callId: ToolCallId('biomni-workspace-download'),
+				name: 'r_files',
+				arguments: { action: 'download_workspace', source: 'biomni', job_id: 'bio-1', remote_path: 'figures/plot.png' },
+				agent: { session: { header: { cwd: root } } } as any,
+			})
+			expect(result.isError, JSON.stringify(result)).toBe(false)
+			expect(readFileSync(join(root, 'downloads', 'plot.png'))).toEqual(bytes)
+			expect(forwarded.map(item => item.action)).toEqual(['biomni.get.job.manifest', 'biomni.read.file.chunk'])
+			expect(JSON.stringify(result.isError ? {} : result.value)).not.toContain('data_base64')
+			expect(result.isError ? undefined : result.value).toMatchObject({ source: 'biomni', jobId: 'bio-1', localPath: 'downloads/plot.png', bytes: bytes.length, sha256 })
+		} finally {
+			await ctx.fiber.dispose()
+		}
+	})
+
 	it('forwards a workspace upload once through the native tool', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-r-upload-'))
     roots.push(root)
@@ -84,6 +166,7 @@ describe('rdatalinux workspace upload bridge', () => {
     process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
     const bytes = Buffer.from('remote-figure-bytes')
     const sha256 = createHash('sha256').update(bytes).digest('hex')
+    const forwarded: any[] = []
     const ctx = new Context()
     try {
       await ctx.plugin(SystemPrompt)
@@ -98,6 +181,7 @@ describe('rdatalinux workspace upload bridge', () => {
         parameters: { action: { type: 'string', required: true }, arguments: { type: 'json', required: true } },
         output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
         execute: async (args: any) => {
+          forwarded.push(args)
           const structuredContent = args.action === 'r.resolve.file'
             ? { path: 'figureya/run-1/module-source/FigureYa123/example.png', manifest: { path: 'figureya/run-1/module-source/FigureYa123/example.png', bytes: bytes.length, sha256, mime_type: 'image/png' } }
             : args.action === 'r.get.file.manifest'
@@ -110,13 +194,52 @@ describe('rdatalinux workspace upload bridge', () => {
         signal: new AbortController().signal,
         callId: ToolCallId('workspace-download'),
         name: 'r_files',
-        arguments: { action: 'download_workspace', project_id: 'study-1', remote_path: 'module-source/FigureYa123/example.png', local_path: 'outputs/plot.png' },
+        arguments: { action: 'download_workspace', project_id: 'study-1', remote_path: 'module-source/FigureYa123/example.png' },
         agent: { session: { header: { cwd: root } } } as any,
       })
       expect(result.isError).toBe(false)
-      expect(readFileSync(join(root, 'outputs', 'plot.png'))).toEqual(bytes)
+      expect(readFileSync(join(root, 'downloads', 'example.png'))).toEqual(bytes)
+      expect(forwarded[1]).toMatchObject({ action: 'r.read.file.chunk', arguments: { internal_host_download: true, offset: 0 } })
       expect(JSON.stringify(result.isError ? {} : result.value)).not.toContain('data_base64')
-      expect(result.isError ? undefined : result.value).toMatchObject({ localPath: 'outputs/plot.png', requestedRemotePath: 'module-source/FigureYa123/example.png', remotePath: 'figureya/run-1/module-source/FigureYa123/example.png', bytes: bytes.length, sha256 })
+      expect(result.isError ? undefined : result.value).toMatchObject({ localPath: 'downloads/example.png', requestedRemotePath: 'module-source/FigureYa123/example.png', remotePath: 'figureya/run-1/module-source/FigureYa123/example.png', bytes: bytes.length, sha256 })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('does not publish a partial file when a remote chunk fails the manifest checksum', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-r-download-integrity-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    const expected = Buffer.from('verified contents')
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(ZeroWallMcpService)
+      vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__r_files',
+        description: 'checksum failure fixture',
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json', required: true } },
+        output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+        execute: async (args: any) => args.action === 'r.resolve.file'
+          ? { path: 'results/report.pdf', bytes: expected.length, sha256: createHash('sha256').update('different contents').digest('hex') }
+          : { path: args.arguments.path, offset: args.arguments.offset, bytes: expected.length, total_bytes: expected.length, next_offset: expected.length, eof: true, data_base64: expected.toString('base64') },
+      }))
+      const result = await ctx.tools.execute({
+        signal: new AbortController().signal,
+        callId: ToolCallId('workspace-download-integrity'),
+        name: 'r_files',
+        arguments: { action: 'download_workspace', project_id: 'study-1', remote_path: 'results/report.pdf' },
+        agent: { session: { header: { cwd: root } } } as any,
+      })
+      expect(result.isError).toBe(true)
+      expect(existsSync(join(root, 'downloads', 'report.pdf'))).toBe(false)
+      expect(readdirSync(join(root, 'downloads'))).toEqual([])
     } finally {
       await ctx.fiber.dispose()
     }

@@ -34,13 +34,18 @@ export async function acquireProfileMutation(profile) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         await writeFile(path, JSON.stringify(owner), { flag: 'wx', mode: 0o600 })
-        return async () => {
+        const release = async () => {
           try {
             const current = JSON.parse(await readFile(path, 'utf8'))
             if (current.token !== owner.token) throw new Error('Profile mutation lock ownership changed')
             await unlink(path)
           } finally { await releaseGuard() }
         }
+        // The transaction journal records this identity so startup recovery
+        // can distinguish the current owner from a reused/stale PID.
+        release.ownerPid = owner.pid
+        release.ownerToken = owner.token
+        return release
       } catch (error) {
         if (!['EEXIST', 'EPERM'].includes(error.code)) throw error
         const current = await readFile(path, 'utf8').then(JSON.parse)

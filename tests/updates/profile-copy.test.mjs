@@ -6,6 +6,23 @@ import { dirname, join } from 'node:path'
 import { copyProfileTree } from '../../tools/commands/profile-copy.mjs'
 import { repairProfileLayout } from '../../tools/commands/profile-layout.mjs'
 
+test('profile copies retain active sources and referenced archives without recopying unrelated rollback history', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-copy-history-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const source = join(root, 'source'), candidate = join(root, 'candidate')
+  const files = ['.zerowall/install-sources/active/code.js', '.zerowall/dependency-history/retained/code.js', '.zerowall/plugin-imports/active.json', '.zerowall/import-history/referenced/code.js', '.zerowall/retired-plugin-history/unreferenced/code.js', '.zerowall/restore-history/referenced/code.js', 'node_modules/custom/.zerowall/import-history/asset.txt']
+  for (const local of files) { await mkdir(dirname(join(source, local)), { recursive: true }); await writeFile(join(source, local), local) }
+  await mkdir(join(source, 'node_modules/custom/node_modules'), { recursive: true })
+  await symlink(join(source, '.zerowall/import-history/referenced'), join(source, 'node_modules/custom/node_modules/old'), process.platform === 'win32' ? 'junction' : 'dir')
+  await symlink(join(source, '.zerowall/restore-history/referenced'), join(source, '.zerowall/import-history/referenced/next'), process.platform === 'win32' ? 'junction' : 'dir')
+  await copyProfileTree(source, candidate)
+  for (const local of files) {
+    assert.equal(await readFile(join(source, local), 'utf8'), local)
+    if (local.includes('unreferenced')) await assert.rejects(readFile(join(candidate, local)), { code: 'ENOENT' })
+    else assert.equal(await readFile(join(candidate, local), 'utf8'), local)
+  }
+})
+
 for (const modulesOnly of [false, true]) test(`profile copy omits exact retired pnpm instances and nested entries (${modulesOnly ? 'modules' : 'profile'} root)`, async t => {
   const root = await mkdtemp(join(tmpdir(), 'zws-copy-retired-'))
   t.after(() => rm(root, { recursive: true, force: true }))

@@ -454,12 +454,18 @@ async function copyEntry(sourceRoot, targetRoot, entry) {
     throw error
   }
   await mkdir(dirname(target), { recursive: true })
-  await cp(source, target, { recursive: true, dereference: true, filter: candidate => includeRuntimeFile(sourceRoot, candidate) })
+  await cp(source, target, { recursive: true, dereference: true, filter: candidate => includeRuntimeFile(sourceRoot, candidate, targetRoot) })
 }
 
-function includeRuntimeFile(sourceRoot, candidate) {
+function includeRuntimeFile(sourceRoot, candidate, targetRoot) {
   const path = relative(sourceRoot, candidate).replaceAll('\\', '/')
   if (path === '') return true
+  // Transitive npm dependencies of the integrity runtime are copied into
+  // its nested node_modules tree. Their README files are package documentation,
+  // not runtime inputs, and must not enter the signed desktop/offline closure.
+  const integrityRuntimeRoot = resolve(outputRoot, '@zerowallscience/integrity-runtime')
+  const integrityDependencyPath = relative(integrityRuntimeRoot, targetRoot).replaceAll('\\', '/')
+  if (integrityDependencyPath.startsWith('node_modules/') && /^README(?:_[^/]*)?\.md$/iu.test(basename(path))) return false
   // This exact declared metadata asset is runtime content, even though its
   // upstream location sits under the otherwise excluded documentation tree.
   if (path === 'docs/images/icon.png' && basename(sourceRoot) === 'dsh-zotero') return true

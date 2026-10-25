@@ -22,6 +22,9 @@ export const inject: string[] = [];
 
 /** Plugin config accepted from the composition row's `config:` block. */
 export interface PluginConfig {
+  /** Start the iLink bridge during Host activation. Disabled in packaged
+   * desktop defaults so an external QR/login flow cannot delay first paint. */
+  autoStart?: boolean;
   baseUrl?: string;
   cdnBaseUrl?: string;
   botType?: string;
@@ -458,10 +461,16 @@ if (typeof context.inject === "function") {
     console.log("[dsh-wechat] ctx.inject unavailable; QR page disabled (login QR is logged)");
   }
 
-  // Start the bridge (token resume or QR login), stop on dispose.
-  void bridge.start().catch((err) => {
-    console.error(`[dsh-wechat] bridge start failed: ${String(err)}`);
-  });
+  // Start the bridge (token resume or QR login) only when explicitly enabled.
+  // The packaged desktop default is false: QR/network login is user initiated
+  // and must never hold core Host readiness or the first renderer navigation.
+  if (rawConfig.autoStart !== false) {
+    void bridge.start().catch((err) => {
+      console.error(`[dsh-wechat] bridge start failed: ${String(err)}`);
+    });
+  } else {
+    console.log("[dsh-wechat] autoStart disabled; bridge will start on user request");
+  }
 
   return () => bridge.stop();
 }

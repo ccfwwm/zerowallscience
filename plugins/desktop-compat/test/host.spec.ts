@@ -1,6 +1,7 @@
+import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { describe, expect, it, vi } from 'vitest'
-import { DesktopCompatController } from '../src/host/index.js'
+import { createProcessBridge, DesktopCompatController } from '../src/host/index.js'
 
 function handle() {
   return {
@@ -12,6 +13,25 @@ function handle() {
 }
 
 describe('Desktop compatibility public boundary', () => {
+  it('removes its process message listener and rejects pending work when the plugin unloads', async () => {
+    const channel = Object.assign(new EventEmitter(), { send: vi.fn() })
+    const baseline = channel.listenerCount('message')
+    for (let index = 0; index < 20; index++) {
+      const bridge = createProcessBridge(undefined, channel as never)
+      expect(channel.listenerCount('message')).toBe(baseline + 1)
+      bridge.dispose()
+      expect(channel.listenerCount('message')).toBe(baseline)
+    }
+
+    const bridge = createProcessBridge(undefined, channel as never)
+    const operation = bridge.pnpm.runPlugin(['update'], 'C:/work')
+    expect(channel.send).toHaveBeenCalledTimes(1)
+    bridge.dispose()
+    await expect(operation.done).rejects.toThrow('Desktop plugin bridge stopped.')
+    expect(channel.listenerCount('message')).toBe(baseline)
+    expect(operation.stdout.writableEnded).toBe(true)
+  })
+
   it('uses the active generation profile and runPlugin for package mutations', () => {
     const operation = handle()
     const profiles = {

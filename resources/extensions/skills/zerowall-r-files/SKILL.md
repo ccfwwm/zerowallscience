@@ -6,7 +6,7 @@ allowed-tools: read
 
 # 远程项目文件浏览、预览、读写与本地上传下载。
 
-需要跨本地/远程传输时选择 Host r_files；服务器已有文件查询使用本工作流。FigureYa 模板文件属于服务器安装目录，使用专用下载动作。
+需要跨本地/远程传输时选择 Host `r_files`；服务器已有文件查询使用本工作流。R、OmicVerse、FigureYa 绘图、GEO、NHANES、遗传分析和 scTenifoldKnk 等 RMCP 结果，只要 Manifest 给出项目 `project_id/path`，都用同一个 `download_workspace` 下载。Biomni 独立任务结果使用 `source=biomni`、`job_id` 和 Manifest 文件路径。FigureYa 安装目录里的模板源文件也走 `download_workspace`，传 `module_id/source_path`；批量取回整个模板才使用 `download_figureya_module`。
 
 ## 功能地图
 
@@ -14,11 +14,11 @@ allowed-tools: read
 
 ## 入口与准备
 
-有远程 R 项目文件检索或传输需求时主动加载 zerowall-rmcp 与本 Skill，使用 Host `r_files` 或发现的 `research_workflow`，以当前 schema 为准。连接状态未知时先调用 `mcp_connect`；不要把工作流 ID 当工具名。只在既有授权范围内传输数据，不能因远程默认而扩大上传范围。
+有远程文件检索或传输需求时主动加载 zerowall-rmcp 与本 Skill，使用 Host `r_files` 或发现的 `research_workflow`，以当前 schema 为准。Host `r_files` 的 `action=catalog` 会合并远端文件操作和本地传输动作；`research_workflow` 的远端 catalog 不包含 Host 本地动作。连接状态未知时先调用 `mcp_connect`；不要把工作流 ID 当工具名。只在既有授权范围内传输数据，不能因远程默认而扩大上传范围。
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 
-工作流 ID：`r.files`。Windows 路径不能作为远程 path。本地 local_path 必须在当前工作区内且为相对路径；远程 path 为项目相对路径。复用返回的 project_id、path，不猜绝对路径。
+工作流 ID：`r.files`。Windows 路径不能作为远程 path。本地 `local_path` 必须在当前工作区内且为相对路径；省略时自动保存到 `downloads/<文件名>`。远程 path 为项目相对路径。复用 Manifest 返回的 `project_id/path`，不猜绝对路径。
 
 ## 首次调用
 
@@ -72,7 +72,7 @@ allowed-tools: read
 
 ## 返回与恢复
 
-文件写入同步完成，没有远程 job_id；下载必须核对字节数及 SHA-256。
+文件写入同步完成，没有远程 job_id；下载必须核对字节数及 SHA-256。`download_workspace` 在 Host 内分块传输并写入本地文件，不把 base64 内容发送到对话，也不要求用户手工解码。项目文件默认使用 `source=project`；独立 Biomni 结果使用 `source=biomni` 和 `job_id`。省略 `local_path` 时默认写入当前项目工作区的 `downloads/`。
 
 异步任务的 queued/running 不是成功。只有终态 succeeded 且所需产物存在才报告完成；使用结果内 Manifest 的 project_id/path/bytes/sha256 下载。连接中断先查 status/历史，不换 request_id 重算。参数错回 describe；数据错核对路径、物种和矩阵；缺依赖查环境；权限错返回明确原因；计算错查看日志。
 

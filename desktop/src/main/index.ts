@@ -27,7 +27,7 @@ import { stopBeforeExit } from './shutdown.js'
 import { PythonUpdaterService } from './python-manager-broker.js'
 import { createPythonTerminalLaunch, managedPythonTerminalPaths } from './python-terminal.js'
 import { ensurePythonCoreAtStartup } from './python-startup.js'
-import { unchangedPluginFailure, type PluginHealth, type PluginActivationScope } from './plugin-health.js'
+import { pluginActivationHealth, type PluginHealth, type PluginActivationScope } from './plugin-health.js'
 
 import type { PythonEnvironmentApi, PythonEnvironmentRequest } from './python-environment-api.js'
 import { preparePythonLocation, resolvePythonLocation } from './python-location.js'
@@ -792,14 +792,13 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (harnessRuntime.snapshot().phase !== 'ready') throw new Error('Host activation failed')
     const deadline = Date.now() + 30_000
     do {
-      const health = await callHost('host.health', []) as PluginHealth
-      const existingFailure = (entry: PluginHealth['entries'][number]): boolean => unchangedPluginFailure(entry, options)
-      if (health.ready || health.entries.length > 0 && health.entries.every(entry => entry.state === 2 || existingFailure(entry))) {
+      const health = pluginActivationHealth(await callHost('host.health', []) as PluginHealth, options)
+      if (health.ready) {
         const rendered = await navigation.completion
         if (rendered !== true || startup.phase !== 'ready') throw new Error('客户端工作台未能就绪；正在恢复更新前的插件配置。')
         return
       }
-      if (health.entries.some(entry => entry.state === 3 && !existingFailure(entry))) break
+      if (health.failures.length) break
       await new Promise(accept => setTimeout(accept, 250))
     } while (Date.now() < deadline)
     throw new Error('A configured ZeroWall plugin could not activate; restoring the previous profile')
@@ -1408,13 +1407,27 @@ if (ownsInstance) app.whenReady().then(async () => {
     return mcpEnvironment.selectManual(result.filePaths[0])
   })
 
-  const repair = await resources.repairOffline(app.isPackaged ? join(process.resourcesPath, 'offline-profile') : developmentStagePath('offline-profile'))
-  if (repair.blocked?.length) notifications.show({ title: '默认插件需要修复', body: '固定版本缺失。请在扩展中心导入对应版本或明确解除固定；用户配置已保留。', tag: 'profile-repair' })
+  const offlineProfileSource = app.isPackaged ? join(process.resourcesPath, 'offline-profile') : developmentStagePath('offline-profile')
+  const startupProfile = await resources.inspectStartupProfile(offlineProfileSource)
+  const reportOfflineRepair = (repair: { blocked?: unknown[] }): void => {
+    if (repair.blocked?.length) notifications.show({ title: '默认插件需要修复', body: '固定版本缺失。请在扩展中心导入对应版本或明确解除固定；用户配置已保留。', tag: 'profile-repair' })
+  }
+  // A new or older profile must have the bundled entry points before the
+  // first Host renders its client module graph. This is a local signed file
+  // transaction; optional plugin activation and remote checks remain detached.
+  if (!startupProfile.ready) {
+    publishStartup({ progress: 30, message: '正在准备本地工作台组件' })
+    reportOfflineRepair(await resources.repairOffline(offlineProfileSource, { startup: true }))
+  }
   await launch()
-  await navigation
-  // Python bootstrap and signed core/science dependency reconciliation are
-  // durable background work. Start after the workbench is navigable so a
-  // slow mirror, wheel build, or retry never blocks desktop startup.
+  if (await navigation.completion !== true) return
+  // Current profiles start immediately after the lightweight entry-point
+  // check. Full integrity verification stays in the background and retains
+  // the resource manager's candidate transaction and per-plugin rollback.
+  if (startupProfile.ready) void resources.repairOffline(offlineProfileSource, { startup: true }).then(reportOfflineRepair).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn('Background offline plugin repair deferred; current profile remains active:', redactResourceDiagnostic(message).slice(-4000))
+  })
   // Python bootstrap and signed dependency reconciliation are durable
   // background work. Start only after navigation succeeds so a slow mirror,
   // wheel build, or retry never blocks desktop startup. A shared promise

@@ -1,11 +1,24 @@
 {
-  "version": "8.4.7",
+  "version": "8.4.8",
   "deepseekHarness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "tag": "dsh-v0.2.1-rc.2",
-    "commit": "683cb0318b9a0fa09362794588d01acb0366850f",
+    "commit": "cb61e6caf4664e82fc4bf30e9a15d0d8bf32293a",
     "branch": "zerowall/reviewer-history-opaque",
     "upstreamCommit": "687f282e8625c6b8d11ff58211a90524be2e4317"
+  },
+  "claudeCode": {
+    "repository": "https://github.com/Norman-else/dsh-claude",
+    "tag": "v0.1.65",
+    "commit": "fe00e3af0b1ad03acc977b13b4d4ab805086f6da",
+    "upstreamVersion": "0.1.65",
+    "package": "@zerowallscience/plugin-claude-code",
+    "source": "plugins/claude-code",
+    "version": "0.1.8",
+    "resourceVersion": "0.1.8",
+    "license": "MIT",
+    "catalogOptional": true,
+    "localAdaptation": "Fresh ZeroWall Claude Code CLI integration; independently installs a pinned CLI in private plugin data, bridges the active model route and safely projects eligible Skills and MCP. Does not embed the upstream Claude Agent SDK adapter or reuse the user's Claude configuration."
   },
   "betterSidebar": {
     "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",
@@ -49,7 +62,7 @@
     "version": "0.11.0",
     "license": "MIT",
     "source": "plugins/dsh-wechat",
-    "resourceVersion": "0.11.1-zws.1"
+    "resourceVersion": "0.11.1-zws.2"
   },
   "academicResearchSkills": {
     "repository": "https://github.com/Imbad0202/academic-research-skills.git",

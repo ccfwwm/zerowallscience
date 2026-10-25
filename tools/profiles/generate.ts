@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import development from '../../profiles/sources/development.ts'
 import preview from '../../profiles/sources/preview.ts'
 import stable from '../../profiles/sources/stable.ts'
+import { syncClaudeModePatch } from './claude-mode.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
 const check = process.argv.includes('--check')
@@ -33,3 +34,5 @@ for (const source of [development, preview, stable]) {
     await writeFile(path, output)
   }
 }
+
+await syncClaudeModePatch(root, check)

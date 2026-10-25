@@ -36,7 +36,12 @@ export function attachManagement(ctx: Context): void {
       type Entry = { options: { name?: string; id?: string }; disabled?: boolean; fiber?: { state: number } }
       const loader = (ctx.root as Context & { loader?: { entries(): Iterable<Entry> } }).loader
       const entries = loader ? [...loader.entries()].filter(entry => entry.options.name && !entry.disabled) : []
-      process.send?.({ type: 'zerowall:management:result', id: request.id, result: { ready: !!loader && entries.length > 0 && entries.every(entry => entry.fiber?.state === 2), entries: entries.map(entry => ({ id: entry.options.id, name: entry.options.name, state: entry.fiber?.state })) } })
+      const required = new Set(['agent-loop', 'webserver', 'web-runtime', 'modules', 'connection', 'workspace', 'session-controller', 'workspace-controller', 'headless-runner', 'acp', 'sdk-jsonrpc-server'])
+      const strict = Boolean((request.args?.[0] as { strict?: unknown } | undefined)?.strict)
+      const ready = !!loader && entries.length > 0 && (strict
+        ? entries.every(entry => entry.fiber?.state === 2)
+        : entries.filter(entry => required.has(entry.options.id ?? '')).every(entry => entry.fiber?.state === 2))
+      process.send?.({ type: 'zerowall:management:result', id: request.id, result: { ready, entries: entries.map(entry => ({ id: entry.options.id, name: entry.options.name, state: entry.fiber?.state })) } })
       return
     }
     const operation = operations[request.operation ?? '']

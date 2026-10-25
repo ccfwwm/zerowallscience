@@ -326,6 +326,123 @@ describe('AI Cloud account client', () => {
     expect(secrets.values.get('zerowall.ai-cloud.group.7')).toBe('saved-group-key')
   })
 
+  it('coalesces concurrent current calls while restoring a saved login', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({
+      baseUrl: 'https://code.aicodeme.xyz', email: 'local-fixture@example.invalid', password: 'local-only-fixture',
+    }))
+    let finishLogin: ((response: Response) => void) | undefined
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/auth/login')) return new Promise<Response>(resolve => { finishLogin = resolve })
+      if (url.endsWith('/auth/me')) return json({ data: { balance: 9, currency: 'CNY' } })
+      if (url.endsWith('/groups/available')) return json({ data: [] })
+      if (url.includes('/keys?')) return json({ data: { items: [] } })
+      throw new Error(`Unexpected fixture endpoint: ${url}`)
+    })
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://code.aicodeme.xyz'] })
+
+    const first = client.current()
+    await expect.poll(() => finishLogin !== undefined).toBe(true)
+    const second = client.current()
+    expect(fetcher.mock.calls.filter(([input]) => String(input).endsWith('/auth/login'))).toHaveLength(1)
+
+    finishLogin!(json({ data: { access_token: 'local-only-session-fixture' } }))
+    const [a, b] = await Promise.all([first, second])
+    expect(a).toEqual(b)
+    expect(a).toMatchObject({ status: 'signedIn', email: 'local-fixture@example.invalid' })
+    expect(fetcher.mock.calls.filter(([input]) => String(input).endsWith('/groups/available'))).toHaveLength(1)
+    expect(fetcher.mock.calls.filter(([input]) => String(input).includes('/keys?'))).toHaveLength(1)
+  })
+
+  it('does not restore a saved login after logout invalidates an in-flight current call', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({
+      baseUrl: 'https://code.aicodeme.xyz', email: 'local-fixture@example.invalid', password: 'local-only-fixture',
+    }))
+    let finishLogin: ((response: Response) => void) | undefined
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      if (String(input).endsWith('/auth/login')) return new Promise<Response>(resolve => { finishLogin = resolve })
+      throw new Error(`Unexpected fixture endpoint: ${String(input)}`)
+    })
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://code.aicodeme.xyz'] })
+
+    const current = client.current()
+    await expect.poll(() => finishLogin !== undefined).toBe(true)
+    await client.logout()
+    finishLogin!(json({ data: { access_token: 'local-only-session-fixture' } }))
+
+    await expect(current).rejects.toThrow('ACCOUNT_STATE_CHANGED')
+    expect(secrets.values.has('zerowall.ai-cloud.session')).toBe(false)
+    expect(secrets.values.get('zerowall.ai-cloud.manual-signout')).toBe('1')
+    expect(fetcher.mock.calls.filter(([input]) => String(input).endsWith('/auth/login'))).toHaveLength(1)
+  })
+
+  it('does not let an older automatic restore overwrite a newer explicit login', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({
+      baseUrl: 'https://code.aicodeme.xyz', email: 'restore-fixture@example.invalid', password: 'restore-fixture',
+    }))
+    let finishRestore: ((response: Response) => void) | undefined
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { email?: string } : undefined
+      if (url.endsWith('/auth/login') && body?.email === 'restore-fixture@example.invalid') {
+        return new Promise<Response>(resolve => { finishRestore = resolve })
+      }
+      if (url.endsWith('/auth/login') && body?.email === 'manual-fixture@example.invalid') {
+        return json({ data: { access_token: 'manual-session-fixture' } })
+      }
+      if (url.endsWith('/auth/me')) return json({ data: { balance: 3 } })
+      if (url.endsWith('/groups/available')) return json({ data: [] })
+      if (url.includes('/keys?')) return json({ data: { items: [] } })
+      throw new Error(`Unexpected fixture endpoint: ${url}`)
+    })
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://code.aicodeme.xyz'] })
+
+    const restore = client.current()
+    await expect.poll(() => finishRestore !== undefined).toBe(true)
+    const explicitLogin = client.login({ email: 'manual-fixture@example.invalid', password: 'manual-fixture' })
+    await expect(explicitLogin).resolves.toMatchObject({ status: 'signedIn', email: 'manual-fixture@example.invalid' })
+    finishRestore!(json({ data: { access_token: 'restore-session-fixture' } }))
+
+    await expect(restore).rejects.toThrow('ACCOUNT_STATE_CHANGED')
+    await expect(client.current()).resolves.toMatchObject({ status: 'signedIn', email: 'manual-fixture@example.invalid' })
+    const stored = JSON.parse(secrets.values.get('zerowall.ai-cloud.session')!) as { email: string; accessToken: string }
+    expect(stored).toMatchObject({ email: 'manual-fixture@example.invalid', accessToken: 'manual-session-fixture' })
+  })
+
+  it('waits for an explicit login before current reads a missing session', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({
+      baseUrl: 'https://code.aicodeme.xyz', email: 'old-fixture@example.invalid', password: 'old-fixture',
+    }))
+    let finishLogin: ((response: Response) => void) | undefined
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input)
+      const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { email?: string } : undefined
+      if (url.endsWith('/auth/login') && body?.email === 'new-fixture@example.invalid') {
+        return new Promise<Response>(resolve => { finishLogin = resolve })
+      }
+      if (url.endsWith('/auth/login')) throw new Error('Unexpected automatic restore login')
+      if (url.endsWith('/auth/me')) return json({ data: { balance: 3 } })
+      if (url.endsWith('/groups/available')) return json({ data: [] })
+      if (url.includes('/keys?')) return json({ data: { items: [] } })
+      throw new Error(`Unexpected fixture endpoint: ${url}`)
+    })
+    const client = new AiCloudClient({ secrets, fetch: fetcher, bases: ['https://code.aicodeme.xyz'] })
+
+    const login = client.login({ email: 'new-fixture@example.invalid', password: 'new-fixture' })
+    await expect.poll(() => finishLogin !== undefined).toBe(true)
+    const current = client.current()
+    expect(fetcher.mock.calls.filter(([input]) => String(input).endsWith('/auth/login'))).toHaveLength(1)
+    finishLogin!(json({ data: { access_token: 'new-session-fixture' } }))
+
+    await expect(login).resolves.toMatchObject({ status: 'signedIn', email: 'new-fixture@example.invalid' })
+    await expect(current).resolves.toMatchObject({ status: 'signedIn', email: 'new-fixture@example.invalid' })
+    expect(fetcher.mock.calls.filter(([input]) => String(input).endsWith('/auth/login'))).toHaveLength(1)
+  })
+
   it('restores an existing account through its saved gateway before the new default', async () => {
     const secrets = new MemorySecrets()
     secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({

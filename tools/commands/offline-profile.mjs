@@ -385,13 +385,47 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   started = Date.now()
   onPhase({ phase: 'profile-prepare', state: 'started' })
   const active = join(home, 'profiles/web')
+  const phaseStarted = Date.now()
   const damagedLinks = await scanProfileLinks(active)
+  onPhase({ phase: 'profile-prepare', state: 'links-scanned', durationMs: Date.now() - phaseStarted, count: damagedLinks.length })
   const manifest = JSON.parse(await readFile(join(active, 'package.json'), 'utf8'))
   const selection = JSON.parse(await readFile(join(home, 'resources/plugins/selection.json'), 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return '{}' }))
   const disabled = new Set([...(selection.disabled ?? []), ...(manifest.zerowall?.disabledPlugins ?? [])])
   const removed = new Set(selection.removed ?? [])
   const pins = selection.pinned ?? {}
   const packages = new Map(receipt.plugins.map(entry => [entry.id, entry]))
+  onPhase({ phase: 'profile-prepare', state: 'inputs-read', durationMs: Date.now() - phaseStarted })
+
+  // A removed test integration can remain in an older profile after its
+  // package disappeared from the signed offline closure. Such a package must
+  // not hold up the core Host. Remove only non-core roots that are already
+  // missing or malformed; signed non-core packages remain strict and are
+  // rebuilt below, while core packages still fail closed.
+  const skipped = []
+  const coreIds = new Set(bundledPlugins.filter(item => item?.core).map(item => item.id))
+  const candidateIds = new Set([
+    ...(manifest.dsh?.profile?.bundles ?? []),
+    ...Object.keys(manifest.dependencies ?? {}),
+    ...Object.keys(manifest.devDependencies ?? {}),
+    ...Object.keys(manifest.optionalDependencies ?? {}),
+  ])
+  for (const id of candidateIds) {
+    pluginIdentity(id)
+    if (coreIds.has(id) || RETIRED_PLUGIN_IDS.has(id)) continue
+    const record = packages.get(id)
+    const packagePath = join(active, 'node_modules', ...id.split('/'))
+    const info = await lstat(packagePath).catch(error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error })
+    const installed = await readFile(join(packagePath, 'package.json'), 'utf8').then(JSON.parse).catch(error => {
+      if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error
+    })
+    const malformed = info && (!info.isDirectory() || info.isSymbolicLink() || !installed || installed.name !== id)
+    if (record || installed && !malformed) continue
+    const reason = !info ? 'missing package and signed closure entry' : 'invalid package and signed closure entry missing'
+    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) delete manifest[field]?.[id]
+    if (Array.isArray(manifest.dsh?.profile?.bundles)) manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(item => item !== id)
+    skipped.push({ id, reason })
+  }
+  if (skipped.length) onPhase({ phase: 'profile-prepare', state: 'skipped-invalid', durationMs: Date.now() - phaseStarted, skipped })
   // A desktop upgrade owns the managed packages declared by its bundled
   // inventory. Rebuild those roots from this installer's signed closure so a
   // previous desktop/DSH generation cannot remain active through a link or a
@@ -404,10 +438,11 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   // Supporting packages are not DSH bundles, but previously imported managed
   // roots still need the current installer's compatible bytes and provenance.
   // Otherwise an old exact-runtime receipt survives a desktop/DSH upgrade.
-  const installationIds = new Set(defaults)
+  const installationIds = new Set(defaults.filter(id => !skipped.some(item => item.id === id)))
   for (const record of receipt.plugins) {
     if (record.core || record.managed === false || !bundledPlugins.some(item => item.id === record.id && item.managed !== false && !item.core)) continue
     const id = pluginIdentity(record.id)
+    if (skipped.some(item => item.id === id)) continue
     if (oldMaterialization.ids?.includes(id)
       || ['dependencies', 'devDependencies', 'optionalDependencies'].some(field => Object.hasOwn(manifest[field] ?? {}, id))
       || await lstat(join(active, 'node_modules', id)).catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
@@ -447,9 +482,11 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     if (!installed || owned || provenance || managed && (declared || compareVersions(installed.version, record.version) <= 0)) replacing.add(id)
   }
   const candidate = await prepareProfileCandidate(home)
+  onPhase({ phase: 'profile-prepare', state: 'candidate-created', durationMs: Date.now() - phaseStarted })
   // Supplied replacements are installed once. A broken old entry or missing
   // old offline directory cannot block an installer that already owns its bytes.
   await copyProfileTree(active, candidate, { filter: path => ![...replacing].some(id => path === 'node_modules/' + id) })
+  onPhase({ phase: 'profile-prepare', state: 'profile-copied', durationMs: Date.now() - phaseStarted })
   if (damagedLinks.length) {
     const evidence = join(candidate, '.zerowall/link-recovery', randomUUID())
     await mkdir(evidence, { recursive: true })
@@ -634,7 +671,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   // DSH resolves imported bundles directly from profile node_modules.
   // Preserve their dependency declarations: a file reference into this
   // temporary candidate would break when activation renames it to web.
-  if (blocked.length) return { candidate, receipt, digest, changed, blocked }
+  if (blocked.length) return { candidate, receipt, digest, changed, blocked, skipped }
   const preserved = await preserveMaterializedDependencies({ profile: candidate, previous: oldMaterialization, replacedIds: materialized, removedIds: [...removed, ...inactiveArchived] })
   const previousDependencies = join(candidate, 'node_modules/.zerowall-dependencies')
   if (await lstat(previousDependencies).catch(() => undefined)) await displace(previousDependencies)
@@ -645,7 +682,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   catch (error) {
     if (error.code !== 'HISTORICAL_PLUGIN_IMPORT_BLOCKED') throw error
     blocked.push({ id: error.pluginId, reason: error.reason })
-    return { candidate, receipt, digest, changed, blocked }
+    return { candidate, receipt, digest, changed, blocked, skipped }
   }
   // Migration can retire an entire old package graph, including equal-version
   // core shadows whose nested links still target an older core. Validate the
@@ -669,5 +706,5 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   await writeFile(patchPath, yaml.stringify(removeRetiredPatch([...patches, ...existingPatch])))
   await writeFile(join(candidate, 'package.json'), JSON.stringify(manifest, null, 2))
   onPhase({ phase: 'profile-prepare', state: 'complete', durationMs: Date.now() - started })
-  return { candidate, receipt, digest, changed, blocked, archivedIds: inactiveArchived, replacedInstallSources: [...replacedInstallSources], archivedHistoryPaths }
+  return { candidate, receipt, digest, changed, blocked, skipped, archivedIds: inactiveArchived, replacedInstallSources: [...replacedInstallSources], archivedHistoryPaths }
 }

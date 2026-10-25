@@ -78,9 +78,70 @@ async function fixture(t, ids = ['plugin-a', 'plugin-b'], { supportIds = [] } = 
     return source
   }
   let activations = 0
-  const createManager = (runtimeTarget = target) => createResourceManager({ home, keys, target: runtimeTarget, runtimeModules, defaultPlugins: ids, bundledPlugins: allIds.map(id => ({ id, managed: true })), yaml: JSON, stopHost: async () => { activations++ }, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
+  const createManager = (runtimeTarget = target, overrides = {}) => createResourceManager({ home, keys, target: runtimeTarget, runtimeModules, defaultPlugins: ids, bundledPlugins: allIds.map(id => ({ id, managed: true })), yaml: JSON, stopHost: async () => { activations++ }, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }), ...overrides })
   return { root, home, ids, keys, manager: createManager(), createManager, supply, runtimeModules, active: join(home, 'profiles/web'), activations: () => activations }
 }
+
+test('startup readiness detects an empty profile before the first Host and performs no activation', async t => {
+  const f = await fixture(t), source = await f.supply('1.0.0')
+  const manifest = await readFile(join(f.active, 'package.json'), 'utf8')
+  const state = await f.manager.inspectStartupProfile(source)
+  assert.equal(state.ready, false)
+  assert(state.reasons.includes('offline-generation'))
+  assert.deepEqual(state.missingIds.sort(), f.ids)
+  assert.equal(f.activations(), 0)
+  assert.equal(await readFile(join(f.active, 'package.json'), 'utf8'), manifest)
+  await f.manager.repairOffline(source, { startup: true })
+  assert.equal((await f.manager.inspectStartupProfile(source)).ready, true)
+})
+
+test('startup readiness catches missing client entrypoints and a changed installer generation', async t => {
+  const f = await fixture(t)
+  const source = await f.supply('1.0.0', { exports: { '.': './index.cjs', './client': './client.js' } }, { extraFiles: f.ids.map(id => [id + '/client.js', 'export default {}']) })
+  await f.manager.repairOffline(source)
+  assert.equal((await f.manager.inspectStartupProfile(source)).ready, true)
+  await unlink(join(f.active, 'node_modules/plugin-a/client.js'))
+  const damaged = await f.manager.inspectStartupProfile(source)
+  assert.equal(damaged.ready, false)
+  assert.deepEqual(damaged.invalidIds, ['plugin-a'])
+  assert(damaged.reasons.includes('missing-entrypoints'))
+  await writeFile(join(f.active, 'node_modules/plugin-a/client.js'), 'export default {}')
+  const next = await f.supply('2.0.0')
+  const upgraded = await f.manager.inspectStartupProfile(next)
+  assert.equal(upgraded.ready, false)
+  assert(upgraded.reasons.includes('offline-generation'))
+})
+
+test('startup readiness catches a lost dependency namespace before launching the Host', async t => {
+  const f = await fixture(t), source = await f.supply('1.0.0')
+  await f.manager.repairOffline(source)
+  await rename(join(f.active, 'node_modules/.zerowall-dependencies'), join(f.root, 'retained-dependencies'))
+  const state = await f.manager.inspectStartupProfile(source)
+  assert.equal(state.ready, false)
+  assert(state.reasons.includes('missing-dependency-root'))
+})
+
+for (const mode of ['disabled', 'removed', 'pinned']) test(`startup readiness respects ${mode} plugin selections`, async t => {
+  const f = await fixture(t), source = await f.supply('1.0.0')
+  await f.manager.repairOffline(source)
+  const selection = mode === 'pinned' ? { pinned: { 'plugin-a': '1.0.0' } } : { [mode]: ['plugin-a'] }
+  await mkdir(join(f.home, 'resources/plugins'), { recursive: true })
+  await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify(selection))
+  if (mode !== 'pinned') await rename(join(f.active, 'node_modules/plugin-a'), join(f.root, 'retained-plugin-a'))
+  assert.equal((await f.manager.inspectStartupProfile(source)).ready, true)
+  assert.deepEqual(JSON.parse(await readFile(join(f.home, 'resources/plugins/selection.json'))), selection)
+})
+
+for (const startup of [true, false]) test(`offline upgrade ${startup ? 'during startup admits core readiness' : 'on explicit repair retains affected-plugin health'}`, async t => {
+  const f = await fixture(t)
+  await f.manager.repairOffline(await f.supply('1.0.0'))
+  const starts = []
+  const manager = f.createManager(target, { startHost: async options => { starts.push(options) } })
+  assert.equal((await manager.repairOffline(await f.supply('2.0.0'), { startup })).repaired, true)
+  assert.equal(starts.length, 1)
+  if (startup) assert.equal(starts[0], undefined)
+  else assert.deepEqual(starts[0].ids.sort(), ['plugin-a', 'plugin-b'])
+})
 
 for (const mode of ['active', 'pinned', 'disabled', 'removed']) test(`DSH upgrade handles historical managed support provenance without enabling it as a bundle (${mode})`, async t => {
   const id = '@dsh-external/zotero-harvest', f = await fixture(t, ['plugin-a'], { supportIds: [id] })

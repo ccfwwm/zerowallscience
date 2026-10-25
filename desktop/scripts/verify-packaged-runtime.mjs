@@ -862,7 +862,11 @@ async function verifyExternalPolicy() {
     && /(?:^|\/)(?:academic-ppt-studio|gpt-image2-ppt|journal-club-ppt)(?:\/|$)/i.test(path))
   if (legacyPptFiles.length > 0) throw new Error(`Legacy PPT Skills are forbidden in the packaged runtime:\n${legacyPptFiles.slice(0, 50).join('\n')}`)
   const offlineCount = externalFiles.filter(path => path.startsWith('offline-profile/')).length
-  if (externalFiles.length > 6_000) throw new Error(`Installed resource file count ${externalFiles.length} exceeds the 6,000-file gate.`)
+  // The stable installer carries the complete Skills catalog, signed offline
+  // profile, native runtime unpack, and command runtime. Keep a hard upper
+  // bound while allowing the current catalog to grow beyond the legacy 6,000
+  // file budget without weakening the content-level artifact checks above.
+  if (externalFiles.length > 7_000) throw new Error(`Installed resource file count ${externalFiles.length} exceeds the 7,000-file gate.`)
   console.log(`[files] installed resources: ${externalFiles.length}; signed offline closure: ${offlineCount}`)
 
   const nodeExecutables = (await listDiskFiles(packaged.root)).filter(path => /(?:^|\/)node\.exe$/i.test(path))

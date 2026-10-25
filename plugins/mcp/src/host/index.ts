@@ -4,9 +4,9 @@ import { registerResearchWorkflow } from './research-workflow.js'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import * as McpClient from '@deepseek-ai/dsh-mcp-client'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync, renameSync, rmSync, statSync, mkdirSync, writeFileSync } from 'node:fs'
-import { lstat, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { lstat, link, mkdir, open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { rootCertificates } from 'node:tls'
@@ -67,6 +67,51 @@ const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 1000
 const MCP_FAILURE_COOLDOWN_MS = 5 * 60_000
 const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 const FIGUREYA_MODULE_MAX_BYTES = 250 * 1024 * 1024
+const HOST_FILE_CAPABILITIES: JsonValue[] = [
+  {
+    id: 'host.r_files.download_workspace',
+    public_tool: 'r_files',
+    category: 'workspace_transfer',
+    summary: '下载 RMCP 项目产物、Biomni 任务产物或服务器 FigureYa 源文件到当前本地工作区；按 Manifest 和 SHA-256 校验，local_path 可省略并默认保存到 downloads/<文件名>。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { const: 'download_workspace' },
+        source: { type: 'string', enum: ['project', 'biomni', 'figureya_source'], default: 'project' },
+        project_id: { type: 'string', description: '项目产物来源需要' },
+        job_id: { type: 'string', description: 'Biomni 任务产物来源需要' },
+        module_id: { type: 'string', description: '可用 source=figureya_source 指定服务器 FigureYa 模块' },
+        source_path: { type: 'string' },
+        remote_path: { type: 'string', description: 'Manifest 中的远程相对路径' },
+        local_path: { type: 'string', description: '当前工作区内的相对路径；省略时写入 downloads/<文件名>' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+    effects: 'local_workspace_write',
+    query_allowed: false,
+    execution: 'local_host',
+    confirmation_fields: [],
+    requires_confirmation: false,
+    availability: 'host_registered',
+    verification: 'registered',
+    output: '本地路径、文件大小、来源路径及 SHA-256；不返回 base64 文件内容。',
+  },
+  {
+    id: 'host.r_files.upload_workspace',
+    public_tool: 'r_files',
+    category: 'workspace_transfer',
+    summary: '将当前本地工作区文件上传到 RMCP 项目；需要 confirm=true。',
+    effects: 'remote_write',
+    query_allowed: false,
+    execution: 'local_host',
+    confirmation_fields: ['confirm'],
+    requires_confirmation: true,
+    availability: 'host_registered',
+    verification: 'registered',
+    output: '上传字节数、远程路径、transfer id（大文件）及 SHA-256。',
+  },
+]
 
 function figureyaSourceRequest(moduleId: unknown, sourcePath: unknown, remotePath: unknown): { moduleId: string; path: string } | undefined {
   if (typeof moduleId === 'string' && moduleId.trim() !== '') {
@@ -283,11 +328,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
     })), 'zerowall-mcp: demand connection tool')
     ctx.tools.register(defineTool({
       name: 'r_files',
-      description: 'Access rdatalinux files through the compact file facade. download_workspace saves a remote project artifact or a server-installed FigureYa source/example file into the current local workspace without confirmation or base64 in the conversation. download_figureya_module saves every FigureYa module artifact (PNG, HTML, README, R/Rmd, CSV/JSON, and other manifest files) into a workspace directory and returns local paths plus checksums. FigureYa source downloads accept module_id plus source_path, or an /opt/rdatalinux-figureya/current/... remote_path, and do not require project_id. upload_workspace requires confirm=true.',
+      description: 'Access rdatalinux files through the compact file facade. action=catalog includes both remote file operations and local Host transfer actions. download_workspace saves any project artifact produced by R, OmicVerse, FigureYa, GEO, NHANES, genetics, or other RMCP workflows into the current local workspace; use source=biomni for separate Biomni job artifacts. It verifies Manifest size and SHA-256, streams bounded chunks inside the Host, and never returns base64 file contents to the conversation. local_path is optional and defaults to downloads/<filename>. FigureYa server source files accept module_id plus source_path (no project_id). download_figureya_module remains a convenience for fetching all files from one installed template. upload_workspace requires confirm=true.',
       parameters: {
         action: { type: 'string', required: true },
         arguments: { type: 'json' },
+        source: { type: 'string' },
         project_id: { type: 'string' },
+        job_id: { type: 'string' },
         module_id: { type: 'string' },
         source_path: { type: 'string' },
         local_path: { type: 'string' },
@@ -303,11 +350,31 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const action = (args as { action?: unknown }).action
         return typeof action === 'string' && /(?:^catalog$|list|read|manifest|resolve|inspect|status)/iu.test(action)
       },
-      async execute(args: { action: string; arguments?: JsonValue; project_id?: string; module_id?: string; source_path?: string; local_path?: string; remote_path?: string; confirm?: boolean }, exec: any) {
-        await service.ensureConnected(RDATALINUX_SERVER_NAME)
+      async execute(args: { action: string; arguments?: JsonValue; source?: string; project_id?: string; job_id?: string; module_id?: string; source_path?: string; local_path?: string; remote_path?: string; confirm?: boolean }, exec: any) {
         const remoteName = 'mcp__rmcp__r_files'
         const nestedValues = args.arguments !== null && typeof args.arguments === 'object' && !Array.isArray(args.arguments) ? args.arguments : {}
         const values = { ...args, ...nestedValues } as typeof args
+        if (args.action === 'catalog') {
+          try { await service.ensureConnected(RDATALINUX_SERVER_NAME) }
+          catch (error) {
+            return { domain: 'r_files', remote_available: false, remote_error: error instanceof Error ? error.message : String(error), capabilities: HOST_FILE_CAPABILITIES, host_capabilities: HOST_FILE_CAPABILITIES }
+          }
+          if (service.ctx.tools.get(remoteName) === undefined) {
+            return { domain: 'r_files', host_capabilities: HOST_FILE_CAPABILITIES, capabilities: HOST_FILE_CAPABILITIES }
+          }
+          const nested = await service.ctx.tools.execute({
+            signal: exec.signal,
+            callId: ToolCallId(`r-files-catalog-${Date.now()}`),
+            name: remoteName,
+            arguments: { action: 'catalog', arguments: nestedValues },
+            parent: exec.token,
+            agent: exec.agent,
+          })
+          const remoteCatalog = service.compactPayload(nested, remoteName)
+          const remoteCapabilities = Array.isArray(remoteCatalog.capabilities) ? remoteCatalog.capabilities : []
+          return { ...remoteCatalog, capabilities: [...remoteCapabilities, ...HOST_FILE_CAPABILITIES], host_capabilities: HOST_FILE_CAPABILITIES }
+        }
+        await service.ensureConnected(RDATALINUX_SERVER_NAME)
         if (args.action !== 'upload_workspace' && args.action !== 'download_workspace' && args.action !== 'download_figureya_module') {
           if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before accessing project files.')
           const nested = await service.ctx.tools.execute({
@@ -325,21 +392,28 @@ export class ZeroWallMcpService extends TypertRemoteService {
           return nested.value as Record<string, JsonValue>
         }
         if (args.action === 'upload_workspace' && values.confirm !== true) throw new Error('Uploading a workspace file requires confirm=true.')
-        const sourceRequest = args.action === 'download_workspace' ? figureyaSourceRequest(values.module_id, values.source_path, values.remote_path) : undefined
-        if (typeof values.local_path !== 'string' || (args.action === 'upload_workspace' && (typeof values.project_id !== 'string' || typeof values.remote_path !== 'string'))
-          || (args.action === 'download_workspace' && sourceRequest === undefined && (typeof values.project_id !== 'string' || typeof values.remote_path !== 'string'))) {
-          throw new Error(sourceRequest === undefined
-            ? `project_id, local_path, and remote_path are required for ${args.action}. Server FigureYa sources may omit project_id when module_id/source_path or an /opt/rdatalinux-figureya/current/... remote_path is provided.`
-            : `local_path is required for ${args.action}.`)
+        const figureyaRequest = args.action === 'download_workspace' ? figureyaSourceRequest(values.module_id, values.source_path, values.remote_path) : undefined
+        const downloadSource = values.source ?? (figureyaRequest === undefined ? 'project' : 'figureya_source')
+        if ((args.action === 'upload_workspace' && (typeof values.local_path !== 'string' || typeof values.project_id !== 'string' || typeof values.remote_path !== 'string'))
+          || (args.action === 'download_workspace' && downloadSource === 'project' && (typeof values.remote_path !== 'string' || values.remote_path.trim() === '' || typeof values.project_id !== 'string'))
+          || (args.action === 'download_workspace' && downloadSource === 'biomni' && (typeof values.remote_path !== 'string' || values.remote_path.trim() === '' || typeof values.job_id !== 'string'))
+          || (args.action === 'download_workspace' && downloadSource === 'figureya_source' && (figureyaRequest === undefined || figureyaRequest.path.trim() === ''))
+          || (args.action === 'download_workspace' && !['project', 'biomni', 'figureya_source'].includes(downloadSource))) {
+          throw new Error(`Invalid ${args.action} request. Provide a source path, use source=project with project_id, source=biomni with job_id, or source=figureya_source with module_id/source_path; local_path is optional for downloads.`)
         }
         const sessionCwd = exec.agent?.session.header.cwd
         if (typeof sessionCwd !== 'string' || sessionCwd.trim() === '') throw new Error('The current session has no workspace directory.')
         const workspace = await realpath(resolve(sessionCwd))
-        const requested = String(values.local_path ?? '').trim()
+        const remotePath = downloadSource === 'figureya_source' ? figureyaRequest?.path : values.remote_path
+        const defaultName = typeof remotePath === 'string' ? basename(remotePath.replaceAll('\\', '/')) : ''
+        if (args.action === 'download_workspace' && (defaultName === '' || defaultName === '.' || defaultName === '..')) {
+          throw new Error('The remote file path must end with a file name.')
+        }
+        const requested = String(values.local_path ?? (args.action === 'download_workspace' ? `downloads/${defaultName}` : '')).trim()
         if (requested === '' || isAbsolute(requested)) throw new Error('local_path must be a relative path inside the current workspace.')
         const source = resolve(workspace, requested)
         const containment = relative(workspace, source)
-        if (containment === '..' || containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(containment)) throw new Error('local_path escapes the current workspace.')
+        if (containment === '' || containment === '..' || containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(containment)) throw new Error('local_path must name a file inside the current workspace.')
         if (args.action === 'download_figureya_module') {
           if (typeof values.module_id !== 'string' || values.module_id.trim() === '') throw new Error('module_id is required for download_figureya_module.')
           const moduleId = values.module_id.trim()
@@ -505,28 +579,45 @@ export class ZeroWallMcpService extends TypertRemoteService {
           return { projectId: values.project_id!, localPath: requested, remotePath: values.remote_path!, name: basename(source), bytes: bytes.length, sha256, remote: nested.value as JsonValue }
         }
 
-        const downloadTool = sourceRequest === undefined ? remoteName : 'mcp__rmcp__r_figureya_catalog'
-        if (service.ctx.tools.get(downloadTool) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before downloading files.')
+        const downloadTool = downloadSource === 'biomni'
+          ? 'mcp__rmcp__biomni_artifacts'
+          : figureyaRequest === undefined ? remoteName : 'mcp__rmcp__r_figureya_catalog'
+        if (service.ctx.tools.get(downloadTool) === undefined) throw new Error(`${downloadSource === 'biomni' ? 'rdatalinux Biomni artifact' : figureyaRequest === undefined ? 'rdatalinux R file' : 'rdatalinux FigureYa catalog'} tool is not active; reload the connection before downloading files.`)
         const resolvedResult = await service.ctx.tools.execute({
           signal: exec.signal,
           callId: ToolCallId(`r-download-resolve-${Date.now()}`),
           name: downloadTool,
-          arguments: sourceRequest === undefined
-            ? { action: 'r.resolve.file', arguments: { project_id: values.project_id, path: values.remote_path } }
-            : { action: 'figureya.source.file.manifest', arguments: { module_id: sourceRequest.moduleId, path: sourceRequest.path } },
+          arguments: downloadSource === 'biomni'
+            ? { action: 'biomni.get.job.manifest', arguments: { job_id: values.job_id } }
+            : figureyaRequest === undefined
+              ? { action: 'r.resolve.file', arguments: { project_id: values.project_id, path: values.remote_path } }
+              : { action: 'figureya.source.file.manifest', arguments: { module_id: figureyaRequest.moduleId, path: figureyaRequest.path } },
           parent: exec.token,
           agent: exec.agent,
         })
-        const resolvedPayload = service.compactPayload(resolvedResult, 'rdatalinux file resolver')
+        let resolvedPayload = service.compactPayload(resolvedResult, downloadSource === 'biomni' ? 'Biomni job manifest' : 'rdatalinux file resolver')
+        if (downloadSource === 'biomni') {
+          const nestedManifest = resolvedPayload.manifest !== null && typeof resolvedPayload.manifest === 'object' && !Array.isArray(resolvedPayload.manifest)
+            ? resolvedPayload.manifest as Record<string, JsonValue>
+            : resolvedPayload
+          const files = Array.isArray(nestedManifest.files) ? nestedManifest.files : []
+          const file = files.find(item => item !== null && typeof item === 'object' && !Array.isArray(item)
+            && [item.path, item.relative_path, item.name].some(candidate => candidate === values.remote_path))
+          if (file === undefined || file === null || typeof file !== 'object' || Array.isArray(file)) {
+            throw new Error(`Biomni job ${values.job_id} has no artifact at ${values.remote_path}.`)
+          }
+          resolvedPayload = { path: values.remote_path!, manifest: file as Record<string, JsonValue> }
+        }
         const resolvedRemotePath = typeof resolvedPayload.path === 'string' && resolvedPayload.path.trim() !== ''
           ? resolvedPayload.path
-          : sourceRequest?.path ?? values.remote_path ?? ''
+          : figureyaRequest?.path ?? values.remote_path ?? ''
         const manifest = resolvedPayload.manifest !== null && typeof resolvedPayload.manifest === 'object' && !Array.isArray(resolvedPayload.manifest)
           ? resolvedPayload.manifest as Record<string, JsonValue>
           : resolvedPayload
         const expectedBytes = Number(manifest.bytes)
         const expectedSha256 = typeof manifest.sha256 === 'string' ? manifest.sha256.toLowerCase() : ''
-        if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > 20 * 1024 ** 3) throw new Error('The remote file must be between 0 bytes and 20 GiB.')
+        if ((typeof manifest.bytes !== 'number' && typeof manifest.bytes !== 'string') || (typeof manifest.bytes === 'string' && manifest.bytes.trim() === '')
+          || !Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > 20 * 1024 ** 3) throw new Error('The remote file must be between 0 bytes and 20 GiB.')
         if (!/^[a-f0-9]{64}$/u.test(expectedSha256)) throw new Error('The remote file manifest has no valid SHA-256.')
         const parent = dirname(source)
         let currentParent = workspace
@@ -542,7 +633,13 @@ export class ZeroWallMcpService extends TypertRemoteService {
         }
         const parentContainment = relative(workspace, await realpath(parent))
         if (parentContainment === '..' || parentContainment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(parentContainment)) throw new Error('local_path resolves outside the current workspace.')
-        const temporary = `${source}.${Date.now()}.download-partial`
+        try {
+          await lstat(source)
+          throw new Error('The download target already exists; choose a new local_path to avoid overwriting it.')
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+        const temporary = `${source}.${randomUUID()}.download-partial`
         const output = await open(temporary, 'wx')
         const hash = createHash('sha256')
         let offset = 0
@@ -553,16 +650,29 @@ export class ZeroWallMcpService extends TypertRemoteService {
             signal: exec.signal,
             callId: ToolCallId(`r-download-chunk-${Date.now()}-${offset}`),
             name: downloadTool,
-            arguments: sourceRequest === undefined
-              ? { action: 'r.read.file.chunk', arguments: { project_id: values.project_id, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset) } }
-              : { action: 'figureya.read.source.file.chunk', arguments: { module_id: sourceRequest.moduleId, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset), internal_host_download: true } },
+            arguments: downloadSource === 'biomni'
+              ? { action: 'biomni.read.file.chunk', arguments: { job_id: values.job_id, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset), internal_host_download: true } }
+              : figureyaRequest === undefined
+                ? { action: 'r.read.file.chunk', arguments: { project_id: values.project_id, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset), internal_host_download: true } }
+                : { action: 'figureya.read.source.file.chunk', arguments: { module_id: figureyaRequest.moduleId, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset), internal_host_download: true } },
             parent: exec.token,
             agent: exec.agent,
           })
           const chunkPayload = service.compactPayload(chunkResult, 'rdatalinux file chunk')
           if (typeof chunkPayload.data_base64 !== 'string' || chunkPayload.data_base64 === '') throw new Error(`The remote file chunk at offset ${offset} has no data.`)
-          const chunk = Buffer.from(chunkPayload.data_base64, 'base64')
-          if (chunk.length < 1 || offset + chunk.length > expectedBytes) throw new Error(`The remote file chunk at offset ${offset} has an invalid length.`)
+          const encodedChunk = chunkPayload.data_base64
+          if (encodedChunk.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(encodedChunk)) {
+            throw new Error(`The remote file chunk at offset ${offset} is not valid base64.`)
+          }
+          const chunk = Buffer.from(encodedChunk, 'base64')
+          if (chunk.toString('base64') !== encodedChunk || chunk.length < 1 || chunk.length > 4_194_304 || offset + chunk.length > expectedBytes) {
+            throw new Error(`The remote file chunk at offset ${offset} has an invalid length or encoding.`)
+          }
+          if (chunkPayload.offset !== undefined && Number(chunkPayload.offset) !== offset) throw new Error(`The remote file chunk offset does not match the requested offset ${offset}.`)
+          if (chunkPayload.bytes !== undefined && Number(chunkPayload.bytes) !== chunk.length) throw new Error(`The remote file chunk byte count does not match its payload at offset ${offset}.`)
+          if (chunkPayload.total_bytes !== undefined && Number(chunkPayload.total_bytes) !== expectedBytes) throw new Error('The remote file chunk reports a different total size than its Manifest.')
+          if (chunkPayload.next_offset !== undefined && Number(chunkPayload.next_offset) !== offset + chunk.length) throw new Error(`The remote file chunk next offset is invalid at offset ${offset}.`)
+          if (chunkPayload.eof !== undefined && (typeof chunkPayload.eof !== 'boolean' || chunkPayload.eof !== (offset + chunk.length === expectedBytes))) throw new Error(`The remote file chunk EOF marker is invalid at offset ${offset}.`)
           let written = 0
           while (written < chunk.length) {
             const progress = await output.write(chunk, written, chunk.length - written)
@@ -582,14 +692,21 @@ export class ZeroWallMcpService extends TypertRemoteService {
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
         }
-        await rename(temporary, source)
+        try {
+          await link(temporary, source)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error('The download target already exists; choose a new local_path to avoid overwriting it.')
+          throw error
+        }
         } finally {
           await output.close()
           await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error })
         }
-        return sourceRequest === undefined
-          ? { projectId: values.project_id!, localPath: requested, requestedRemotePath: values.remote_path!, remotePath: resolvedRemotePath, name: basename(source), bytes: expectedBytes, sha256 }
-          : { moduleId: sourceRequest.moduleId, sourcePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: expectedBytes, sha256 }
+        return downloadSource === 'biomni'
+          ? { source: 'biomni', jobId: values.job_id!, remotePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: expectedBytes, sha256 }
+          : figureyaRequest === undefined
+            ? { source: 'project', projectId: values.project_id!, requestedRemotePath: values.remote_path!, remotePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: expectedBytes, sha256 }
+            : { source: 'figureya_source', moduleId: figureyaRequest.moduleId, sourcePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: expectedBytes, sha256 }
       },
     }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {

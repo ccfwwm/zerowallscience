@@ -71,6 +71,8 @@ export class AiCloudClient {
   private secretWrites: Promise<unknown> = Promise.resolve()
   private readonly discoveredGroups = new Set<string>()
   private modelDiscovery: { key: string; operation: Promise<AiCloudAccountSnapshot> } | undefined
+  private currentOperation: { revision: number; operation: Promise<AiCloudAccountSnapshot> } | undefined
+  private identityAction: { revision: number; settled: Promise<void> } | undefined
   private readonly secrets: AccountSecretStore
   private readonly fetcher: typeof fetch
   private readonly bases: string[]
@@ -93,15 +95,20 @@ export class AiCloudClient {
   /** Persist a selected supported endpoint without exposing account credentials. */
   async selectGateway(baseUrl: string): Promise<AiCloudAccountSnapshot> {
     const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, this.selectGatewayAtRevision(baseUrl, revision))
+  }
+
+  private async selectGatewayAtRevision(baseUrl: string, revision: number): Promise<AiCloudAccountSnapshot> {
     const selected = this.requireBase(baseUrl)
-    await this.secrets.set(PREFERRED_BASE_KEY, selected)
-    const login = await this.loadLogin()
+    await this.mutateSecrets(revision, () => this.secrets.set(PREFERRED_BASE_KEY, selected))
+    const login = await this.loadLogin(revision)
     if (login === undefined || await this.isManuallySignedOut()) return signedOut(selected)
     const authenticated = await this.authenticate(login.email, login.password, [selected])
     const account = await this.finishAuthentication(authenticated.baseUrl, login.email, login.password, authenticated.accessToken, undefined, true, revision)
     try {
       return await this.discoverModels()
     } catch {
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
       return account
     }
   }
@@ -131,6 +138,10 @@ export class AiCloudClient {
 
   async login(input: AiCloudLoginRequest): Promise<AiCloudAccountSnapshot> {
     const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, this.loginAtRevision(input, revision))
+  }
+
+  private async loginAtRevision(input: AiCloudLoginRequest, revision: number): Promise<AiCloudAccountSnapshot> {
     const email = normalizedEmail(input.email)
     const password = requiredPassword(input.password)
     const authenticated = await this.authenticate(email, password)
@@ -148,6 +159,10 @@ export class AiCloudClient {
 
   async register(input: AiCloudRegisterRequest): Promise<AiCloudAccountSnapshot> {
     const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, this.registerAtRevision(input, revision))
+  }
+
+  private async registerAtRevision(input: AiCloudRegisterRequest, revision: number): Promise<AiCloudAccountSnapshot> {
     const base = input.gatewayBaseUrl === undefined ? await this.preferredBase() : this.requireBase(input.gatewayBaseUrl)
     const config = await this.publicConfig(base)
     if (!config.registrationEnabled || !config.emailVerifyEnabled || config.captchaEnabled || config.invitationCodeEnabled) {
@@ -176,9 +191,24 @@ export class AiCloudClient {
 
   async current(): Promise<AiCloudAccountSnapshot> {
     const revision = this.identityRevision
-    if (await this.isManuallySignedOut()) return signedOut()
+    if (this.currentOperation?.revision === revision) return this.currentOperation.operation
+    const operation = this.readCurrent(revision)
+    this.currentOperation = { revision, operation }
+    try { return await operation }
+    finally { if (this.currentOperation?.operation === operation) this.currentOperation = undefined }
+  }
+
+  private async readCurrent(revision: number): Promise<AiCloudAccountSnapshot> {
+    const action = this.identityAction
+    if (action?.revision === revision) await action.settled
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    if (await this.isManuallySignedOut()) {
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+      return signedOut()
+    }
     const session = await this.loadSession()
-    if (session === undefined) return await this.restoreSavedLogin('signedOut')
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    if (session === undefined) return await this.restoreSavedLogin('signedOut', revision)
     try {
       const { body } = await this.request(session.baseUrl, '/auth/me', { token: session.accessToken })
       const funds = accountFunds(body)
@@ -189,25 +219,40 @@ export class AiCloudClient {
     } catch (error) {
       if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
       if (error instanceof GatewayHttpError && (error.status === 401 || error.status === 403)) {
-        await this.clearSession(session, false)
-        return await this.restoreSavedLogin('authExpired')
+        await this.mutateSecrets(revision, () => this.clearSession(session, false))
+        return await this.restoreSavedLogin('authExpired', revision)
       }
       return snapshot(session, 'stale')
     }
   }
 
   async logout(): Promise<void> {
-    this.identityRevision++
+    const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, this.finishLogout(revision))
+  }
+
+  private async finishLogout(revision: number): Promise<void> {
     await this.secretWrites.catch(() => {})
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
     const session = await this.loadSession()
-    for (const groupId of this.discoveredGroups) await this.secrets.delete(`${KEY_PREFIX}${groupId}`)
-    this.discoveredGroups.clear()
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
     // Signing out ends the active token session but intentionally keeps the
     // encrypted login record so the next sign-in can reuse it. A user can
     // remove the saved password by unchecking "remember password" at login.
-    if (session !== undefined) await this.clearSession(session, false)
-    else await this.secrets.delete(SESSION_KEY)
-    await this.secrets.set(MANUAL_SIGNOUT_KEY, '1')
+    await this.mutateSecrets(revision, async () => {
+      for (const groupId of this.discoveredGroups) await this.secrets.delete(`${KEY_PREFIX}${groupId}`)
+      if (session !== undefined) await this.clearSession(session, false)
+      else await this.secrets.delete(SESSION_KEY)
+      await this.secrets.set(MANUAL_SIGNOUT_KEY, '1')
+    })
+    this.discoveredGroups.clear()
+  }
+
+  private async trackIdentityAction<T>(revision: number, operation: Promise<T>): Promise<T> {
+    const action = { revision, settled: operation.then(() => undefined, () => undefined) }
+    this.identityAction = action
+    try { return await operation }
+    finally { if (this.identityAction === action) this.identityAction = undefined }
   }
 
   async forgetLogin(): Promise<void> { await this.secrets.delete(LOGIN_KEY) }
@@ -418,10 +463,13 @@ export class AiCloudClient {
     return { baseUrl: authenticated.base, accessToken: authenticated.body }
   }
 
-  private async restoreSavedLogin(fallback: 'signedOut' | 'authExpired'): Promise<AiCloudAccountSnapshot> {
-    const revision = this.identityRevision
-    if (await this.isManuallySignedOut()) return fallback === 'authExpired' ? { ...signedOut(), status: 'authExpired' } : signedOut()
-    const login = await this.loadLogin()
+  private async restoreSavedLogin(fallback: 'signedOut' | 'authExpired', revision = this.identityRevision): Promise<AiCloudAccountSnapshot> {
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    const manuallySignedOut = await this.isManuallySignedOut()
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    if (manuallySignedOut) return fallback === 'authExpired' ? { ...signedOut(), status: 'authExpired' } : signedOut()
+    const login = await this.loadLogin(revision)
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
     if (login === undefined) return fallback === 'authExpired' ? { ...signedOut(), status: 'authExpired' } : signedOut()
     try {
       // Existing installs retain their working gateway on startup. New logins
@@ -437,11 +485,12 @@ export class AiCloudClient {
       try {
         return await this.discoverModels()
       } catch {
+        if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
         return account
       }
     } catch (error) {
+      if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
       if (error instanceof GatewayHttpError && (error.status === 401 || error.status === 403)) {
-        if (revision !== this.identityRevision) return signedOut()
         await this.mutateSecrets(revision, () => this.secrets.delete(LOGIN_KEY))
         return { ...signedOut(), status: 'authExpired' }
       }
@@ -467,13 +516,13 @@ export class AiCloudClient {
     }
   }
 
-  private async loadLogin(): Promise<StoredLogin | undefined> {
+  private async loadLogin(revision = this.identityRevision): Promise<StoredLogin | undefined> {
     const raw = await this.secrets.get(LOGIN_KEY)
     if (raw === undefined) return undefined
     const parsed = JSON.parse(raw) as Partial<StoredLogin>
     if (!this.bases.includes(parsed.baseUrl ?? '') || typeof parsed.email !== 'string' || !parsed.email.trim()
       || typeof parsed.password !== 'string' || parsed.password.length === 0) {
-      await this.secrets.delete(LOGIN_KEY)
+      await this.mutateSecrets(revision, () => this.secrets.delete(LOGIN_KEY))
       return undefined
     }
     return { baseUrl: parsed.baseUrl!, email: parsed.email.trim(), password: parsed.password }

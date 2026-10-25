@@ -8,10 +8,11 @@ import {createHash} from 'node:crypto'
 import {afterEach,beforeAll,expect,it} from 'vitest'
 import {ResearchStore} from '../../research-store/src/index.js'
 import {BrainTransformService,runBrainTransform,brainFileHash} from '../src/host/brain-transform.js'
+import {defaultSciencePythonExecutable} from '../src/host/managed-python.js'
 
 const roots:string[]=[]
 const stores:ResearchStore[]=[]
-const py=process.env.ZEROWALL_BRAINGLOBE_PYTHON||process.env.ZEROWALL_PYTHON||'python'
+const py=process.env.ZEROWALL_BRAINGLOBE_PYTHON||process.env.ZEROWALL_PYTHON||defaultSciencePythonExecutable()||'python'
 beforeAll(()=>{process.env.ZEROWALL_BRAINGLOBE_PYTHON=py})
 afterEach(async()=>{for(const s of stores.splice(0))s.close();for(const p of roots.splice(0))await rm(p,{recursive:true,force:true})})
 async function fixture(nonfinite=false){

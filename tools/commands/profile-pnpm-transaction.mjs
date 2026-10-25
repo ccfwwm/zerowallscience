@@ -13,6 +13,7 @@ const read = path => readFile(path, 'utf8').then(JSON.parse)
 const inside = (root, path) => { const child = relative(root, path); return !isAbsolute(child) && child !== '..' && !child.startsWith('..' + sep) }
 const declarativeNames = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'cordis.patch.yml', 'compatibility.json']
 const transactionId = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u
+const candidateName = /^zerowall-pnpm-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u
 async function record(directory, state) {
   const temporary = join(directory, 'journal.tmp')
   await writeFile(temporary, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 })
@@ -35,8 +36,27 @@ export async function recoverPnpmTransactions(profile, { lifecycleId } = {}) {
       continue
     }
     if (state.state === 'preparing') {
-      try { process.kill(state.pid, 0); throw new Error('Another profile package transaction is still running') }
-      catch (error) { if (error.code !== 'ESRCH') throw error }
+      const candidate = typeof state.candidate === 'string' ? resolve(state.candidate) : undefined
+      const candidateValid = candidate !== undefined && dirname(candidate) === dirname(resolve(profile)) && candidateName.test(candidate.split(/[\\/]/u).at(-1))
+      let ownerActive = false
+      if (state.schema >= 2 && candidateValid && state.ownerToken && Number.isSafeInteger(state.pid) && state.pid > 0) {
+        const lock = await read(join(dirname(resolve(profile)), '.zerowall-plugin-mutation.lock')).catch(error => {
+          if (error.code !== 'ENOENT') throw error
+          return undefined
+        })
+        if (lock?.pid === state.pid && lock.token === state.ownerToken) {
+          try { process.kill(state.pid, 0); ownerActive = true } catch (error) { if (error.code !== 'ESRCH') throw error }
+        }
+      } else if (state.schema === undefined || !state.ownerToken) {
+        // Journals written before tokenized ownership retain their historical
+        // PID-only behavior for compatibility with older desktop builds.
+        try { process.kill(state.pid, 0); ownerActive = true } catch (error) { if (error.code !== 'ESRCH') throw error }
+      }
+      if (ownerActive) throw new Error('Another profile package transaction is still running')
+      if (!candidateValid) {
+        await record(directory, { ...state, state: 'preparation-failed', error: 'Invalid transaction candidate path' })
+        continue
+      }
       await record(directory, { ...state, state: 'preparation-failed' })
       await cleanupTransaction(profile, directory, state, 'preparation-failed')
       continue
@@ -88,7 +108,7 @@ export async function beginProfilePackageChange(profile) {
     await record(directory, { pid: process.pid, state: 'pending', files })
     let finished = false
     return {
-      env: { ZEROWALL_PROFILE_TRANSACTION_ID: id, ZEROWALL_PROFILE_TRANSACTION_OWNER: String(process.pid) },
+      env: { ZEROWALL_PROFILE_TRANSACTION_ID: id, ZEROWALL_PROFILE_TRANSACTION_OWNER: String(process.pid), ZEROWALL_PROFILE_TRANSACTION_OWNER_TOKEN: String(release.ownerToken ?? '') },
       async finish(accepted) {
         if (finished) throw new Error('Plugin lifecycle transaction already settled')
         const history = join(profile, '.plugin-manager', 'package-transactions')
@@ -159,16 +179,16 @@ export async function runProfilePnpmTransaction(options) {
     if (!transactionId.test(lifecycleId) || !Number.isSafeInteger(options.ownerPid) || options.ownerPid <= 0) throw new Error('PLUGIN_LIFECYCLE_INVALID')
     const parent = await read(join(resolve(profile), '.plugin-manager', 'lifecycle-transactions', lifecycleId, 'journal.json'))
     const lease = await read(join(dirname(resolve(profile)), '.zerowall-plugin-mutation.lock'))
-    if (parent.state !== 'pending' || parent.pid !== options.ownerPid || lease.pid !== parent.pid) throw new Error('PLUGIN_LIFECYCLE_INVALID')
+    if (parent.state !== 'pending' || parent.pid !== options.ownerPid || lease.pid !== parent.pid || options.ownerToken && lease.token !== options.ownerToken) throw new Error('PLUGIN_LIFECYCLE_INVALID')
   }
   // A resource candidate is already protected by the desktop's active-profile
   // lease. Give its nested CLI a separate lease rather than deadlocking it.
   const lockProfile = resolve(profile).split(/[\\/]/u).at(-1) === 'web' ? resolve(profile) : join(resolve(profile), '.plugin-manager', 'candidate')
   const release = lifecycleId ? undefined : await acquireProfileMutation(lockProfile)
-  try { return await runCandidate(options) } finally { await release?.() }
+  try { return await runCandidate({ ...options, ownerToken: options.ownerToken ?? release?.ownerToken }) } finally { await release?.() }
 }
 
-async function runCandidate({ profile, args, run, signal, lifecycleId, ownerPid }) {
+async function runCandidate({ profile, args, run, signal, lifecycleId, ownerPid, ownerToken }) {
   profile = resolve(profile)
   if (args.some(arg => /^(?:--(?:dir|prefix|workspace-dir|global-dir)|-C|-g|--global|--workspace-root|-w)(?:=|$)/u.test(arg))) throw new Error('PLUGIN_CWD_OVERRIDE_DENIED')
   await recoverPnpmTransactions(profile, { lifecycleId })
@@ -178,7 +198,7 @@ async function runCandidate({ profile, args, run, signal, lifecycleId, ownerPid 
   // remain at their stable paths while DSH performs compatibility checks/HMR.
   const candidate = join(dirname(profile), 'zerowall-pnpm-' + randomUUID())
   await mkdir(directory, { recursive: true })
-  const state = { state: 'preparing', pid: ownerPid ?? process.pid, candidate, created: Date.now(), lifecycleId, items: [] }
+  const state = { state: 'preparing', schema: 2, pid: ownerPid ?? process.pid, ownerToken, candidate, created: Date.now(), lifecycleId, items: [] }
   await record(directory, state)
   try {
     await copyProfileTree(profile, candidate, { filter: local => !/^\.plugin-manager(?:\/|$)|(?:^|\/)package\.json\.lock(?:\/|$)/u.test(local) })

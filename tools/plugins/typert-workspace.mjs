@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { access, readdir, readFile, writeFile } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
 import ts from 'typescript'
 
@@ -17,6 +17,24 @@ export async function refreshTypertWorkspace(root) {
   const file = resolve(root, 'tsconfig.host.json')
   const current = JSON.parse(await readFile(file, 'utf8'))
   const localReferences = current.references.filter(item => item.path.startsWith('./plugins/'))
+  const referenced = new Set(localReferences.map(item => item.path))
+  // New independently published plugins do not enter the desktop's dependency
+  // graph. Discover their declared Host faces here rather than requiring a
+  // manual edit to the generated aggregate before their first build.
+  const pluginDirectories = await readdir(resolve(root, 'plugins'), { withFileTypes: true })
+  for (const entry of pluginDirectories.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!entry.isDirectory()) continue
+    const packageRoot = resolve(root, 'plugins', entry.name)
+    let manifest
+    try { manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8')) }
+    catch (error) { if (error.code === 'ENOENT') continue; throw error }
+    if (!manifest.name?.startsWith('@zerowallscience/plugin-') || !manifest.exports?.['./typert']) continue
+    const path = `./plugins/${entry.name}/tsconfig.host.json`
+    if (referenced.has(path)) continue
+    await access(resolve(root, path))
+    localReferences.push({ path })
+    referenced.add(path)
+  }
   const localPaths = Object.fromEntries(Object.entries(current.compilerOptions.paths)
     .filter(([name]) => name.startsWith('@zerowallscience/')))
   const paths = Object.fromEntries(Object.entries(base.compilerOptions.paths)

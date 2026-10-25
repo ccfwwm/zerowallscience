@@ -18,7 +18,15 @@ if (!/^\d+\.\d+\.\d+$/u.test(version)) throw new Error('Stable packaging require
 const applicationVersion = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
 const artifactRoot = resolve(process.env.ZEROWALL_ARTIFACT_ROOT ?? join(root, 'artifacts'))
 const installer = resolve(process.env.ZEROWALL_PACKAGE_OUTPUT || join(artifactRoot, 'packages', applicationVersion, stable.target), `zerowall-science-${applicationVersion}-win-x64.exe`)
-if (await lstat(installer).catch(error => error.code === 'ENOENT' ? undefined : Promise.reject(error))) throw new Error('This stable installer already exists. Verify/reuse it, or set a new version in config/build/desktop-release.json. Existing stable bytes are never overwritten.')
+if (await lstat(installer).catch(error => error.code === 'ENOENT' ? undefined : Promise.reject(error))) {
+  if (process.env.ZEROWALL_ALLOW_LOCAL_PACKAGE_OVERWRITE !== '1') {
+    throw new Error('This stable installer already exists. Verify/reuse it, or set a new version in config/build/desktop-release.json. Existing stable bytes are never overwritten.')
+  }
+  // Local acceptance may explicitly replace the requested version. The
+  // default stable path remains immutable so publishing cannot overwrite it
+  // accidentally.
+  console.warn(`Replacing existing local installer: ${installer}`)
+}
 await access(process.env.ZEROWALL_RESOURCE_PRIVATE_KEY_FILE)
 const stageRoot = join(artifactRoot, 'stage', applicationVersion)
 const pluginStore = join(artifactRoot, 'release/plugins')

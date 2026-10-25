@@ -15,7 +15,7 @@ node -p "require('./package.json').version"
 
 基线工具：Node.js 24.9.0、pnpm 11.28.5。不要用另一个 pnpm 主版本操作现有 profile 的 node_modules；由桌面插件安装服务管理用户 profile 的 store 与安装事务。
 
-DSH 固定为 0.2.1-rc.2，fork 分支 zerowall/reviewer-history-opaque，commit `683cb0318b9a0fa09362794588d01acb0366850f`。权威来源是 config/deepseek-harness/upstream.json 与子模块 gitlink。ZeroWall 领域功能放入插件，不因桌面功能随意升级 DSH。
+DSH 固定为 0.2.1-rc.2，fork 分支 zerowall/reviewer-history-opaque，commit `cb61e6caf4664e82fc4bf30e9a15d0d8bf32293a`。该本地修订保留上游版本，修复核心启动、历史路径索引和不可达历史目录下的新会话回退。权威来源是 config/deepseek-harness/upstream.json 与子模块 gitlink。ZeroWall 领域功能放入插件，不因桌面功能随意升级 DSH。
 
 ## 2. 目录与职责
 

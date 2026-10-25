@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {afterEach,expect,it} from 'vitest'
 import {BRAIN_GLOBE_RUNNER} from '../src/host/brainglobe-runner.js'
+import {defaultSciencePythonExecutable} from '../src/host/managed-python.js'
 
 const paths:string[]=[]
 afterEach(async()=>{for(const path of paths.splice(0))await rm(path,{recursive:true,force:true})})
@@ -27,7 +28,7 @@ class BrainGlobeAtlas:
 `)
   await writeFile(join(root,'runner.py'),BRAIN_GLOBE_RUNNER)
   await writeFile(join(root,'run-fixture.py'), 'import sys,runpy\nsys.path.insert(0,'+JSON.stringify(root)+')\nrunpy.run_path('+JSON.stringify(join(root,'runner.py'))+',run_name="__main__")\n')
-  return await new Promise<any>((resolve,reject)=>{const child=execFile(process.env.ZEROWALL_PYTHON||'python',['-I',join(root,'run-fixture.py')],{timeout:15000,windowsHide:true},(error,stdout,stderr)=>{try{resolve({code:error?(error as any).code:0,...JSON.parse(stdout)})}catch{reject(new Error(stderr||stdout))}});child.stdin?.end(JSON.stringify({operation:'coordinates',brainglobeDir:root,coordinates,...extra}))})
+  return await new Promise<any>((resolve,reject)=>{const child=execFile(process.env.ZEROWALL_PYTHON || defaultSciencePythonExecutable() || 'python',['-I',join(root,'run-fixture.py')],{timeout:15000,windowsHide:true},(error,stdout,stderr)=>{try{resolve({code:error?(error as any).code:0,...JSON.parse(stdout)})}catch{reject(new Error(stderr||stdout))}});child.stdin?.end(JSON.stringify({operation:'coordinates',brainglobeDir:root,coordinates,...extra}))})
 }
 it('rejects NumPy negative wrapping before int conversion and bounds every atlas axis',async()=>{
   const result=await run([[-1,2,3],[-.01,2,3],[1,-1,3],[1,2,-1],[3,2,3],[1,4,3],[1,2,5],[1,2,3]])

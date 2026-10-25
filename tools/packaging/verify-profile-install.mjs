@@ -53,7 +53,7 @@ await runProfilePnpmTransaction({ profile, args: ['remove', 'zws-install-verific
 await lstat(join(profile, 'node_modules/zws-install-verification')).then(() => { throw new Error('Explicit removal failed') }, error => { if (error.code !== 'ENOENT') throw error })
 const lifecycle = await beginProfilePackageChange(profile)
 await runProfilePnpmTransaction({ profile, args: ['add', 'file:' + addition, '--offline', '--ignore-scripts'], run,
-  lifecycleId: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_ID, ownerPid: process.pid })
+  lifecycleId: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_ID, ownerPid: process.pid, ownerToken: lifecycle.env.ZEROWALL_PROFILE_TRANSACTION_OWNER_TOKEN })
 await lifecycle.finish(false)
 await lstat(join(profile, 'node_modules/zws-install-verification')).then(() => { throw new Error('Rollback failed') }, error => { if (error.code !== 'ENOENT') throw error })
 const receipt = { passed: true, retained, addedAndRemoved: true, runtimeRollback: true, actualPluginImagesYaml: true }

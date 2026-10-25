@@ -43,6 +43,12 @@ export async function reuseAssembly({ cache, output, key, prepare, linkFile, obj
 export async function assembleRuntime(kind, run) {
   const offline = kind === 'offline'
   const profile = JSON.parse(await readFile(join(root, 'config/layout/runtime-profile.json'), 'utf8'))
+  // The offline closure is selected by the stable profile inventory as well
+  // as by runtime-profile.json. Include that authoritative list in the cache
+  // identity so adding a bundled plugin cannot reuse an older assembly that
+  // predates the selection.
+  const inventory = JSON.parse(await readFile(join(root, 'config/deepseek-harness/plugin-inventory.json'), 'utf8'))
+  const selectedPlugins = inventory.profiles?.stable?.plugins ?? []
   delete profile.version
   const tasks = []
   for (const file of await readdir(join(cacheRoot, 'build-graph/tasks'))) {
@@ -53,7 +59,7 @@ export async function assembleRuntime(kind, run) {
     tasks.push({ task: receipt.task, fingerprint: receipt.fingerprint, outputIntegrity: receipt.outputIntegrity })
   }
   const recipes = await runtimeRecipes(root)
-  const key = createHash('sha256').update(JSON.stringify({ schema: 2, kind, profile, tasks: tasks.sort((a, b) => a.task.localeCompare(b.task)), recipes, native: JSON.parse(await readFile(join(cacheRoot, 'native-runtime.json'), 'utf8')) })).digest('hex')
+  const key = createHash('sha256').update(JSON.stringify({ schema: 3, kind, profile, selectedPlugins, tasks: tasks.sort((a, b) => a.task.localeCompare(b.task)), recipes, native: JSON.parse(await readFile(join(cacheRoot, 'native-runtime.json'), 'utf8')) })).digest('hex')
   const parent = join(stageRoot, offline ? 'offline-profile' : 'runtime')
   const receiptPath = join(parent, 'build-receipt.json')
   const metadata = await reuseAssembly({ cache: join(cacheRoot, 'runtime-assemblies', kind), objectRoot: artifactRoot, output: join(parent, offline ? 'modules' : 'node_modules'), key, prepare: async destination => {

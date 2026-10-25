@@ -187,6 +187,9 @@
     - id: zerowall-account
       name: '@zerowallscience/plugin-account'
 
+    - id: zerowall-claude-code
+      name: '@zerowallscience/plugin-claude-code'
+
     - id: zerowall-ai-cloud-llm
       name: '@zerowallscience/plugin-ai-cloud'
 

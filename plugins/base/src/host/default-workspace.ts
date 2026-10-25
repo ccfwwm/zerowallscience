@@ -1,15 +1,10 @@
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-/** Register a writable default only when no existing workspace directory is available. */
+/** Restore the desktop's fixed local default without probing historical paths.
+ * Registry creation reuses an existing canonical path and retains its title,
+ * Session membership and identity. Other Workspace registrations are untouched. */
 export async function ensureDefaultWorkspace(registry: { list(): readonly { path: string }[]; create(path: string, title: string): Promise<unknown> }, userData: string): Promise<void> {
-  for (const workspace of registry.list()) {
-    try { if ((await stat(workspace.path)).isDirectory()) return }
-    catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-      if (code !== 'ENOENT' && code !== 'ENOTDIR' && code !== 'EACCES' && code !== 'EPERM') throw error
-    }
-  }
   const path = join(userData, 'workspace')
   await mkdir(path, { recursive: true })
   await registry.create(path, 'default-workspace')

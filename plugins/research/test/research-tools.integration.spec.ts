@@ -12,6 +12,7 @@ import * as Research from '../src/host/index.js'
 import sharp from 'sharp'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { defaultSciencePythonExecutable } from '../src/host/managed-python.js'
 
 const cleanups: Array<() => Promise<void>> = []
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); vi.unstubAllEnvs() })
@@ -168,7 +169,7 @@ it('does not register the managed atlas when an explicit open fails', async () =
 it('dispatches actual H5AD cell tools and exports results with project isolation', async () => {
   const { store, project, call } = await fixture()
   const path = join(project.rootPath, 'cells.h5ad')
-  await promisify(execFile)(process.env.ZEROWALL_CELL_PYTHON || 'python', ['-c', `import h5py,sys
+  await promisify(execFile)(process.env.ZEROWALL_CELL_PYTHON || process.env.ZEROWALL_PYTHON || defaultSciencePythonExecutable() || 'python', ['-c', `import h5py,sys
 with h5py.File(sys.argv[1], 'w') as f:
  f.attrs['encoding-type']='anndata'
  f.create_dataset('X', data=[[1.,0.],[0.,4.]])

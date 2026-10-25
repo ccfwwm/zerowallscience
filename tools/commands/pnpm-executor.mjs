@@ -39,7 +39,8 @@ if (mutating && (fixedRoots || activeProfile)) {
   try {
     const outcome = await runProfilePnpmTransaction({ profile: process.cwd(), args, run, signal: cancellation.signal,
       lifecycleId: process.env.ZEROWALL_PROFILE_TRANSACTION_ID,
-      ownerPid: process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER ? Number(process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER) : undefined })
+      ownerPid: process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER ? Number(process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER) : undefined,
+      ownerToken: process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER_TOKEN })
     process.exitCode = outcome.code
   } catch (error) {
     if (targetLocked(error) && basename(process.cwd()) === 'web') {

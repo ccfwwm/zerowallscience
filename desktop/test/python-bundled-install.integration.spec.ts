@@ -2,12 +2,12 @@ import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
 import { McpEnvironmentController, MCP_ENVIRONMENT_KEYRING } from '../src/main/mcp-environment.js'
-import { contract } from '../../tools/build/paths.mjs'
+import { resolveBundledSkillsPath } from '../src/main/paths.js'
+import { contract, resourcePath } from '../../tools/build/paths.mjs'
 
 const execute = promisify(execFile)
 const bootstrap = resolve(process.env.ZEROWALL_TEST_PYTHON_BOOTSTRAP ?? join(contract.stage, 'python-base-3.12.10'))
@@ -19,12 +19,11 @@ const available = process.platform === 'win32' && (Boolean(process.env.ZEROWALL_
 it.skipIf(!available)('installs and reuses the real bundled Python without a migration directory', async () => {
   const selectedParent = await mkdtemp(join(tmpdir(), 'zerowall-bundled-python-'))
   const root = join(selectedParent, 'zerowall-python')
-  const workspace = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
   const bundledAssets = {
-    bioToolsRoot: join(workspace, 'resources', 'mcp', 'bio-tools'),
-    ketcherRoot: join(workspace, 'resources', 'mcp', 'ketcher-chemistry'),
+    bioToolsRoot: resourcePath('mcp', 'bio-tools').preferred,
+    ketcherRoot: resourcePath('mcp', 'ketcher-chemistry').preferred,
     sciRoot: join(contract.stage, 'resources', 'sci'),
-    skillsRoot: join(contract.stage, 'resources', 'skills'),
+    skillsRoot: resolveBundledSkillsPath(join(contract.stage, 'resources')),
   }
   const controller = new McpEnvironmentController({
     root,

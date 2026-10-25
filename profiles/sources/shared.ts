@@ -17,6 +17,7 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-projects',
   '@zerowallscience/plugin-mcp',
   '@zerowallscience/plugin-account',
+  '@zerowallscience/plugin-claude-code',
   '@zerowallscience/plugin-ai-cloud',
   'dsh-free-search',
   '@zerowallscience/plugin-files',

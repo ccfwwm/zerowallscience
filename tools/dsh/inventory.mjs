@@ -27,16 +27,16 @@ const thirdPartyOrder = [
 ]
 const zeroWallOrder = [
   'base', 'secrets', 'environment', 'desktop-compat', 'projects', 'mcp',
-  'account', 'ai-cloud',
+  'account', 'claude-code', 'ai-cloud',
   'files', 'images',
   'research', 'pubmed', 'mineru', 'singlecell', 'execution', 'python', 'biogenie', 'runs',
   'publications', 'skills', 'reviewer', 'extension-center',
 ]
 const expectedOrder = [
   ...thirdPartyOrder,
-  ...zeroWallOrder.slice(0, 8).map(id => `@zerowallscience/plugin-${id}`),
+  ...zeroWallOrder.slice(0, 9).map(id => `@zerowallscience/plugin-${id}`),
   'dsh-free-search',
-  ...zeroWallOrder.slice(8).map(id => `@zerowallscience/plugin-${id}`),
+  ...zeroWallOrder.slice(9).map(id => `@zerowallscience/plugin-${id}`),
 ]
 const thirdPartyPackages = [...thirdPartyOrder, 'dsh-free-search']
 // The desktop initializer persists these bundles into the editable profile.

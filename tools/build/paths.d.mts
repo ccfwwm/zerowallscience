@@ -5,6 +5,7 @@ export interface BuildPaths {
   target: string
   artifacts: string
   active: string
+  source: string
   stage: string
   dev: string
   packages: string
@@ -14,6 +15,8 @@ export interface BuildPaths {
   pluginSnapshotStore: string
   cache: string
   logs: string
+  resource(...parts: string[]): { logical: string; preferred: string; legacy: string }
+  packageRoots: { dsh: string; support: string; bundles: string; legacy: string }
 }
 export const root: string
 export const contract: BuildPaths
@@ -30,3 +33,4 @@ export const pluginSnapshotStoreRoot: string
 export const logRoot: string
 export const cacheRoot: string
 export function artifactPath(...parts: string[]): string
+export function resourcePath(...parts: string[]): { preferred: string; legacy: string }

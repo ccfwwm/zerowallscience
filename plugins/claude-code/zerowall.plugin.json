@@ -1,0 +1,52 @@
+{
+  "name": "@zerowallscience/plugin-claude-code",
+  "version": "0.1.8",
+  "applicationVersion": "8.4.8",
+  "restartRequired": true,
+  "desktop": {
+    "min": "8.4.7"
+  },
+  "rollbackSupported": true,
+  "remote": "./lib/typert.remote-client.js",
+  "dsh": {
+    "min": "0.2.1-rc.2",
+    "max": "0.2.1-rc.2"
+  },
+  "host": "./lib/index.js",
+  "client": "./lib/client.js",
+  "requiredServices": [
+    "agentDefaultModel",
+    "subprocess",
+    "workingDirectory",
+    "skills",
+    "zerowallProjects",
+    "zerowallEnvironment",
+    "credentials",
+    "settings",
+    "llm",
+    "sessionProjections"
+  ],
+  "optionalServices": [
+    "zerowallAiCloudCredentialResolver",
+    "zerowallMcpRouteResolver"
+  ],
+  "capabilities": [
+    "claude-code"
+  ],
+  "permissions": [
+    "processes",
+    "files",
+    "network",
+    "credentials"
+  ],
+  "network": true,
+  "files": true,
+  "credentials": true,
+  "approvals": false,
+  "profiles": [
+    "development",
+    "preview",
+    "stable"
+  ],
+  "migrationVersion": 1
+}

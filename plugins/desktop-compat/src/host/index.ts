@@ -112,13 +112,22 @@ export function apply(ctx: Context): void {
   if (existingPnpm === undefined && pnpm !== undefined) ctx.provide('desktopPnpm', pnpm)
   const service = new DesktopCompatController(profiles, pnpm)
   ctx.provide(SERVICE_NAME, service)
+  if (bridge !== undefined) ctx.effect(() => () => bridge.dispose())
 }
 
 interface BridgeResult { ok: boolean; result?: unknown; error?: string }
+interface ProcessBridgeChannel {
+  on(event: 'message', listener: (message: unknown) => void): unknown
+  off(event: 'message', listener: (message: unknown) => void): unknown
+  send(message: unknown): unknown
+}
 
-function createProcessBridge(profile?: { name: string; dir: string }): { profiles: DesktopProfilesLike; pnpm: DesktopPnpmLike } {
-  const requests = new Map<string, { stdout: PassThrough; stderr: PassThrough; resolve: (value: DesktopPnpmOutcome) => void; reject: (error: Error) => void }>()
-  process.on('message', (message: unknown) => {
+export function createProcessBridge(
+  profile?: { name: string; dir: string },
+  channel: ProcessBridgeChannel = process as ProcessBridgeChannel,
+): { profiles: DesktopProfilesLike; pnpm: DesktopPnpmLike; dispose(): void } {
+  const requests = new Map<string, { stdout: PassThrough; stderr: PassThrough; resolve: (value: DesktopPnpmOutcome) => void; reject: (error: Error) => void; signal?: AbortSignal; abort?: () => void }>()
+  const listener = (message: unknown): void => {
     if (!message || typeof message !== 'object') return
     const value = message as { type?: string; requestId?: string; stream?: 'stdout' | 'stderr'; chunk?: string; result?: BridgeResult }
     if (value.type !== 'zerowall:desktop:result' || value.requestId === undefined) return
@@ -126,10 +135,12 @@ function createProcessBridge(profile?: { name: string; dir: string }): { profile
     if (pending === undefined) return
     if (value.stream !== undefined) { pending[value.stream].write(value.chunk ?? ''); return }
     requests.delete(value.requestId)
+    if (pending.abort !== undefined) pending.signal?.removeEventListener('abort', pending.abort)
     pending.stdout.end(); pending.stderr.end()
     if (value.result?.ok === true) pending.resolve(value.result.result as DesktopPnpmOutcome)
     else pending.reject(new Error(value.result?.error ?? 'Desktop plugin operation failed.'))
-  })
+  }
+  channel.on('message', listener)
   const profiles: DesktopProfilesLike = {
     current: profile ?? { name: 'web', dir: join(process.env.DSH_HOME ?? process.cwd(), 'profiles', 'web') },
     list: () => [{ ...profiles.current, selectable: false }],
@@ -145,12 +156,27 @@ function createProcessBridge(profile?: { name: string; dir: string }): { profile
     let resolve!: (value: DesktopPnpmOutcome) => void; let reject!: (error: Error) => void
     const done = new Promise<DesktopPnpmOutcome>((res, rej) => { resolve = res; reject = rej })
     requests.set(requestId, { stdout, stderr, resolve, reject })
-    ;(process.send as (message: unknown) => void)({ type: 'zerowall:desktop', requestId, op, args, invokingDir })
-    const cancel = () => { ;(process.send as (message: unknown) => void)({ type: 'zerowall:desktop:cancel', requestId }) }
-    signal?.addEventListener('abort', cancel, { once: true })
+    const cancel = () => { channel.send({ type: 'zerowall:desktop:cancel', requestId }) }
+    const abort = signal === undefined ? undefined : () => cancel()
+    requests.set(requestId, { stdout, stderr, resolve, reject, ...(signal === undefined ? {} : { signal }), ...(abort === undefined ? {} : { abort }) })
+    channel.send({ type: 'zerowall:desktop', requestId, op, args, invokingDir })
+    if (abort !== undefined) signal!.addEventListener('abort', abort, { once: true })
     return { stdout, stderr, done, cancel }
   }
-  return { profiles, pnpm }
+  return {
+    profiles,
+    pnpm,
+    dispose() {
+      channel.off('message', listener)
+      for (const pending of requests.values()) {
+        if (pending.abort !== undefined) pending.signal?.removeEventListener('abort', pending.abort)
+        pending.stdout.end()
+        pending.stderr.end()
+        pending.reject(new Error('Desktop plugin bridge stopped.'))
+      }
+      requests.clear()
+    },
+  }
 }
 
 export default { name, inject, apply }

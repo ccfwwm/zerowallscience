@@ -1,0 +1,23 @@
+- insert:
+    - id: zerowall-claude-code
+      name: '@zerowallscience/plugin-claude-code'
+    # BEGIN GENERATED CLAUDE MODE PRESET
+    - id: preset-claude
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: claude
+        name: Claude Code
+        description: "使用应用独立管理的 Claude Code CLI；复用当前模型凭据，并同步已启用的 Skills、MCP 与环境变量。"
+        order: 4
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: You are Claude Code, powered by the selected {{model}} model. Use your native tools, enabled Skills, and configured MCP servers to complete the request in the current workspace.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+    # END GENERATED CLAUDE MODE PRESET
