@@ -7,6 +7,8 @@ import { physicalFs } from './physical-fs.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
 import { renameProfile } from './profile-rename.mjs'
 import { bounded, copyProfileTree } from './profile-copy.mjs'
+import { profileHistoryCopyOptions } from './profile-history.mjs'
+export { declaredResolutionRoots } from './profile-history.mjs'
 import { scanProfileLinks } from './profile-link-scan.mjs'
 import { RETIRED_PLUGIN_IDS, removeRetiredPlugins, removeRetiredPatch, removeRetiredResolutionRules } from './retired-plugins.mjs'
 import { PROFILE_LAYOUT, materializationFile, materializeOfflinePackages, preserveMaterializedDependencies, verifyMaterializedProfile } from './profile-materialization.mjs'
@@ -435,6 +437,11 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     .filter(item => item && item.managed !== false && !item.core)
     .map(item => item.id))
   const oldMaterialization = await readFile(join(active, materializationFile), 'utf8').then(JSON.parse).catch(error => { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; return {} })
+  // Dependency-history is immutable rollback data. During startup recovery we
+  // only need roots still referenced by active links or by the signed
+  // materialization marker; copying every old generation makes a large profile
+  // take minutes while leaving the active profile untouched.
+  const historyCopyOptions = await profileHistoryCopyOptions(active, { yaml, manifest })
   // Supporting packages are not DSH bundles, but previously imported managed
   // roots still need the current installer's compatible bytes and provenance.
   // Otherwise an old exact-runtime receipt survives a desktop/DSH upgrade.
@@ -485,7 +492,10 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   onPhase({ phase: 'profile-prepare', state: 'candidate-created', durationMs: Date.now() - phaseStarted })
   // Supplied replacements are installed once. A broken old entry or missing
   // old offline directory cannot block an installer that already owns its bytes.
-  await copyProfileTree(active, candidate, { filter: path => ![...replacing].some(id => path === 'node_modules/' + id) })
+  await copyProfileTree(active, candidate, {
+    filter: path => ![...replacing].some(id => path === 'node_modules/' + id),
+    ...historyCopyOptions,
+  })
   onPhase({ phase: 'profile-prepare', state: 'profile-copied', durationMs: Date.now() - phaseStarted })
   if (damagedLinks.length) {
     const evidence = join(candidate, '.zerowall/link-recovery', randomUUID())

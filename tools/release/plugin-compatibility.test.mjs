@@ -27,3 +27,10 @@ test('independently published consumer versions require separate audited identit
   for (const entry of result.slice(1)) assert.equal(entry.dependencies[sidebar.id], '^0.25.0 || 0.26.1-zws.2')
   assert.throws(() => applyAuditedPluginCompatibility([sidebar, { ...next, version: '1.0.2' }], rules, [sidebar.id], x => x), /Unaudited/)
 })
+
+test('a newer independently compatible feed does not reactivate a historical sidebar exception', () => {
+  const dependency = { ...sidebar, version: '0.28.1-zws.1' }
+  const next = { ...consumer, version: '1.0.1', dependencies: { [sidebar.id]: dependency.version } }
+  const entries = [dependency, next]
+  assert.deepEqual(applyAuditedPluginCompatibility(entries, [rule], [sidebar.id], () => { throw Error('No metadata change expected') }), entries)
+})

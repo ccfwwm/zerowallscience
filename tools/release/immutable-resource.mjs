@@ -5,6 +5,7 @@ import { dirname, basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { list } from 'tar'
 import { downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
+import { retryTransientTransfer } from '../commands/network-retry.mjs'
 
 async function contents(archive) {
   const files = new Map()
@@ -53,20 +54,21 @@ export async function historicalResources(releaseRoot, kind) {
 export async function publishedResources({ baseUrl, kind, keys, cache, fetcher = fetch }) {
   const base = baseUrl.replace(/\/$/u, '')
   const url = `${base}/catalogs/${kind}-latest.json`
-  let response
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try { response = await fetcher(url, { cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(15000) }); break }
-    catch (error) { if (attempt === 2) throw error }
-  }
-  if (response.status === 404) return new Map()
-  assert(response.ok, 'Cannot read the published resource pointer: ' + response.status)
-  const pointer = verifySignedDocument(await response.json(), keys)
+  const signal = AbortSignal.timeout(45_000)
+  const result = await retryTransientTransfer(async () => {
+    const response = await fetcher(url, { cache: 'no-store', redirect: 'error', signal })
+    if (response.status === 404) return { missing: true }
+    assert(response.ok, 'Cannot read the published resource pointer: ' + response.status)
+    return { document: await response.json() }
+  }, { signal })
+  if (result.missing) return new Map()
+  const pointer = verifySignedDocument(result.document, keys)
   assert(pointer.kind === 'pointer' && !pointer.localOnly && pointer.resourceKind === kind, 'Invalid published resource pointer')
   assert(pointer.catalog.downloadUrl.startsWith(`${base}/catalogs/${kind}/`), 'Published resource catalog is outside the release store')
   const path = await downloadResource(pointer.catalog, cache, { fetcher })
-  const document = verifyCatalog(JSON.parse(await readFile(path, 'utf8')), keys)
-  assert(!document.localOnly && document.kind === kind, 'Invalid published resource catalog')
-  return new Map(document.resources.map(entry => {
+  const catalog = verifyCatalog(JSON.parse(await readFile(path, 'utf8')), keys)
+  assert(!catalog.localOnly && catalog.kind === kind, 'Invalid published resource catalog')
+  return new Map(catalog.resources.map(entry => {
     verifySignedDocument(entry, keys)
     assert(entry.downloadUrl.startsWith(`${base}/`), 'Published resource is outside the release store')
     return [entry.id + '@' + entry.version, { entry, sha256: entry.sha256 }]

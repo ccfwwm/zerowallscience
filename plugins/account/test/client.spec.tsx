@@ -13,7 +13,7 @@ vi.mock('qrcode/lib/browser.js', () => ({
   default: { toDataURL: vi.fn().mockResolvedValue('data:image/png;base64,zerowall-payment-qr') },
 }))
 
-afterEach(() => cleanup())
+afterEach(() => { cleanup(); vi.useRealTimers() })
 
 function props() {
   return {
@@ -32,6 +32,7 @@ function props() {
     sendCode: vi.fn(),
     forgotPassword: vi.fn(),
     savedLogin: vi.fn().mockResolvedValue(undefined),
+    relogin: vi.fn(),
     forgetLogin: vi.fn().mockResolvedValue(undefined),
     logout: vi.fn(),
     discoverModels: vi.fn(),
@@ -149,6 +150,30 @@ describe('AI Cloud account panel', () => {
     await expect(injected!().getAccount()).rejects.toThrow('AI 云账户服务尚未连接')
   })
 
+  it('keeps the shared catalog through a pending or failed relogin and ignores older in-flight reads', async () => {
+    const current = { status: 'signedIn', email: 'saved@example.com', gatewayBaseUrl: 'https://code.aicodeme.xyz',
+      balanceFreshness: 'current', lowBalance: false, models: [{ providerId: 'zerowall-ai-cloud-25-messages', groupId: '25', groupName: 'Claude', modelId: 'claude-opus-4-6', baseUrl: 'https://code.aicodeme.xyz' }] }
+    let rejectRelogin!: (reason: Error) => void
+    let finishOldRead!: (value: unknown) => void
+    const account = { current: vi.fn().mockResolvedValueOnce({ ok: true, value: current }).mockImplementationOnce(() => new Promise(resolve => { finishOldRead = resolve })),
+      relogin: vi.fn(() => new Promise((_, reject) => { rejectRelogin = reject })) }
+    let injected!: () => Record<string, any>
+    apply({ locale: { bind: () => translator(), register: () => () => {} }, effect: (mount: () => unknown) => mount(), on: vi.fn(), inject: vi.fn(),
+      get: (name: string) => name === 'remote.zerowallAccount' ? account : undefined,
+      slots: { inject: (_name: string, mount: () => unknown) => mount(), register: (options: any) => { if (options.name === 'sidebar.footer.action') injected = options.inject; return () => {} } } } as any)
+    const actions = injected()
+    await actions.getAccount()
+    const cached = actions.catalog.getSnapshot()
+    const stale = actions.getAccount()
+    const pending = actions.relogin()
+    expect(actions.catalog.getSnapshot()).toEqual(cached)
+    rejectRelogin(new Error('offline'))
+    await expect(pending).rejects.toThrow('offline')
+    finishOldRead({ ok: true, value: { status: 'signedOut', balanceFreshness: 'current', lowBalance: false, models: [] } })
+    await stale
+    expect(actions.catalog.getSnapshot()).toEqual(cached)
+  })
+
   it('does not block the conversation with a login surface on first signed-out launch', async () => {
     const actions = props()
     render(<AiCloudAccountButton {...actions} />)
@@ -239,6 +264,141 @@ describe('AI Cloud account panel', () => {
     await waitFor(() => expect(actions.logout).toHaveBeenCalledOnce())
     fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
     expect(await screen.findByRole('dialog', { name: '登录或注册' })).toBeTruthy()
+  })
+
+  it('offers saved-credential relogin for a signed-in account and refreshes its models', async () => {
+    const actions = props()
+    const account = { status: 'signedIn' as const, email: 'user@example.com', balance: 8, currency: 'CNY', balanceFreshness: 'current' as const, lowBalance: false, models: [] }
+    actions.getAccount.mockResolvedValue(account)
+    actions.savedLogin.mockResolvedValue({ email: 'user@example.com', password: 'local-test', baseUrl: 'https://hkcode.aicodeme.xyz', rememberPassword: true })
+    actions.relogin.mockResolvedValue(account)
+    const refreshModelCatalog = vi.fn().mockResolvedValue(undefined)
+    render(<AiCloudAccountButton {...actions} refreshModelCatalog={refreshModelCatalog} />)
+
+    await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    fireEvent.click(await screen.findByRole('button', { name: '重新登录' }))
+
+    await waitFor(() => expect(actions.relogin).toHaveBeenCalledOnce())
+    expect(await screen.findByText('已使用保存的账号密码重新登录并同步模型')).toBeTruthy()
+    expect(refreshModelCatalog).toHaveBeenCalledOnce()
+  })
+
+  it('waits for automatic account restoration before showing a sign-in form', async () => {
+    const actions = props()
+    let restore!: (account: any) => void
+    actions.getAccount.mockReturnValue(new Promise(resolve => { restore = resolve }))
+    render(<AiCloudAccountButton {...actions} />)
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    expect(screen.getByRole('dialog', { name: '正在恢复登录…' })).toBeTruthy()
+    expect(screen.queryByRole('textbox', { name: '邮箱' })).toBeNull()
+    expect(actions.login).not.toHaveBeenCalled()
+    await act(async () => restore({ status: 'signedIn', email: 'saved@example.com', balanceFreshness: 'current', lowBalance: false, models: [] }))
+    expect(await screen.findByRole('dialog', { name: '云账户与充值' })).toBeTruthy()
+    expect(screen.getByText('saved@example.com')).toBeTruthy()
+  })
+
+  it('offers saved-credential relogin while signed out after loading the encrypted login record', async () => {
+    const actions = props()
+    actions.savedLogin.mockResolvedValue({ email: 'saved@example.com', password: 'saved-password', baseUrl: 'https://hkcode.aicodeme.xyz', rememberPassword: true })
+    actions.relogin.mockResolvedValue({ status: 'signedIn', email: 'saved@example.com', balanceFreshness: 'current', lowBalance: false, models: [] })
+    render(<AiCloudAccountButton {...actions} />)
+
+    await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    fireEvent.click(await screen.findByRole('button', { name: '重新登录' }))
+
+    await waitFor(() => expect(actions.relogin).toHaveBeenCalledOnce())
+    expect(await screen.findByRole('status')).toBeTruthy()
+  })
+
+  it('hides relogin when no encrypted saved login is available', async () => {
+    const actions = props()
+    actions.getAccount.mockResolvedValue({ status: 'signedIn', email: 'user@example.com', balance: 8, balanceFreshness: 'current', lowBalance: false, models: [] })
+    render(<AiCloudAccountButton {...actions} />)
+    await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    await screen.findByRole('dialog', { name: '云账户与充值' })
+    await waitFor(() => expect(actions.savedLogin).toHaveBeenCalled())
+    expect(screen.queryByRole('button', { name: '重新登录' })).toBeNull()
+  })
+
+  it('reports incomplete relogin sync without claiming all models were synchronized', async () => {
+    const actions = props()
+    const model = { providerId: 'zerowall-ai-cloud-25-messages', groupId: '25', groupName: 'Claude', modelId: 'claude-opus-4-6', baseUrl: 'https://code.aicodeme.xyz', stale: true }
+    const account = { status: 'signedIn' as const, email: 'user@example.com', balance: 8, balanceFreshness: 'current' as const, lowBalance: false, models: [model],
+      modelSync: { status: 'failed', checkedAt: '2026-10-26T00:00:00Z', groups: [] } }
+    actions.getAccount.mockResolvedValue(account)
+    actions.savedLogin.mockResolvedValue({ email: 'user@example.com', password: 'local-test', baseUrl: 'https://code.aicodeme.xyz', rememberPassword: true })
+    actions.relogin.mockResolvedValue(account)
+    render(<AiCloudAccountButton {...actions} />)
+    await waitFor(() => expect(actions.getAccount).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    fireEvent.click(await screen.findByRole('button', { name: '重新登录' }))
+    expect(await screen.findByText('部分目录暂未更新，已保留上次可用模型。可稍后重新同步。')).toBeTruthy()
+    expect(screen.queryByText('已使用保存的账号密码重新登录并同步模型')).toBeNull()
+    expect(screen.getByText('claude-opus-4-6')).toBeTruthy()
+  })
+
+  it('limits background restore to three retries even if the network repeatedly reports online', async () => {
+    const actions = props()
+    actions.getAccount.mockResolvedValue({ status: 'signedOut', autoLoginRetryable: true, balanceFreshness: 'current', lowBalance: false, models: [] })
+    vi.useFakeTimers()
+    render(<AiCloudAccountButton {...actions} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(actions.getAccount).toHaveBeenCalledTimes(1)
+    for (const milliseconds of [2_000, 8_000, 30_000]) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(milliseconds) })
+    }
+    expect(actions.getAccount).toHaveBeenCalledTimes(4)
+    await act(async () => { window.dispatchEvent(new Event('online')); await vi.advanceTimersByTimeAsync(120_000) })
+    expect(actions.getAccount).toHaveBeenCalledTimes(4)
+  })
+
+  it('restores on an online event and cancels the pending timer after success', async () => {
+    const actions = props()
+    actions.getAccount.mockResolvedValueOnce({ status: 'signedOut', autoLoginRetryable: true, balanceFreshness: 'current', lowBalance: false, models: [] })
+      .mockResolvedValue({ status: 'signedIn', email: 'saved@example.com', balance: 8, balanceFreshness: 'current', lowBalance: false, models: [] })
+    vi.useFakeTimers()
+    render(<AiCloudAccountButton {...actions} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    await act(async () => { window.dispatchEvent(new Event('online')); await vi.advanceTimersByTimeAsync(0) })
+    expect(actions.getAccount).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); window.dispatchEvent(new Event('online')) })
+    expect(actions.getAccount).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not retry rejected credentials and removes restore listeners on unmount', async () => {
+    const actions = props()
+    vi.useFakeTimers()
+    const view = render(<AiCloudAccountButton {...actions} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    await act(async () => { window.dispatchEvent(new Event('online')); await vi.advanceTimersByTimeAsync(120_000) })
+    expect(actions.getAccount).toHaveBeenCalledOnce()
+    view.unmount()
+    actions.getAccount.mockClear().mockResolvedValue({ status: 'signedOut', autoLoginRetryable: true, balanceFreshness: 'current', lowBalance: false, models: [] })
+    const retrying = render(<AiCloudAccountButton {...actions} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    retrying.unmount()
+    await act(async () => { window.dispatchEvent(new Event('online')); await vi.advanceTimersByTimeAsync(120_000) })
+    expect(actions.getAccount).toHaveBeenCalledOnce()
+  })
+
+  it('cancels delayed restore when the user starts an explicit login', async () => {
+    const actions = props()
+    actions.getAccount.mockResolvedValue({ status: 'signedOut', autoLoginRetryable: true, balanceFreshness: 'current', lowBalance: false, models: [] })
+    actions.login.mockResolvedValue({ status: 'signedIn', email: 'new@example.com', balance: 8, balanceFreshness: 'current', lowBalance: false, models: [] })
+    vi.useFakeTimers()
+    render(<AiCloudAccountButton {...actions} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    fireEvent.click(screen.getByRole('button', { name: '登录AI平台' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    fireEvent.change(screen.getByRole('textbox', { name: '邮箱' }), { target: { value: 'new@example.com' } })
+    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'local-only' } })
+    fireEvent.click(screen.getByRole('button', { name: '登录并配置模型' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); window.dispatchEvent(new Event('online')) })
+    expect(actions.login).toHaveBeenCalledOnce()
+    expect(actions.getAccount).toHaveBeenCalledTimes(2)
   })
 
   it('shows billing and model pricing buttons for the active AI Cloud gateway', async () => {

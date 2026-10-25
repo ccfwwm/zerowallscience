@@ -17042,6 +17042,9 @@ importers:
       '@deepseek-ai/dsh-system-prompt':
         specifier: workspace:^
         version: link:../../deepseek-harness/packages/core/system-prompt
+      '@deepseek-ai/dsh-tool-subagent':
+        specifier: workspace:^
+        version: link:../../deepseek-harness/packages/subagent/tool-subagent
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../deepseek-harness/packages/core/tools

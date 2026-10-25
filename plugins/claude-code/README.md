@@ -18,7 +18,7 @@ Each new run reads the selected conversation's current model route. It supports 
 
 The Claude agent preset routes ordinary conversation turns through the independently managed Claude Code CLI. New conversations keep the DSH Standard preset unless Claude Code is selected. Each turn uses the provider, model, and explicit reasoning effort from DSH's final request, and resolves its credential again for that request. Standard conversations continue using the DSH model adapter.
 
-Claude Code runs in the current project with `acceptEdits`, allowing automatic file edits. Enabled, compatible MCP servers are authorized for that run. It runs in noninteractive print mode: commands that require additional permission can be rejected. The plugin does not grant unrestricted command execution.
+Claude Code runs in the current project using the configured permission selector and the conversation's sandbox policy. The plugin selector supplies a default mode for new sessions; the native selector follows ZeroWall's permission controls. Enabled, compatible MCP servers are authorized for that run. It runs in noninteractive print mode: commands that require additional permission can be rejected.
 
 Eligible enabled Skills, independently launchable MCP servers, and configured ZeroWall environment variables are projected into the isolated Claude Code process. Environment values and credentials are supplied only to that process and redacted from returned text; MCP configuration files keep opaque references. The plugin does not rewrite source Skills or MCP definitions. Managed MCP services that cannot be launched independently are reported as unsupported. MCP credential references are resolved through the host's controlled credential service and are never copied as plaintext into Claude configuration.
 
@@ -28,9 +28,21 @@ Relative or invalid directories, shell-dependent launches in a separate director
 
 ## Version and source
 
-- ZeroWall plugin: `0.1.7`
+- ZeroWall plugin: `0.1.11`
 - Claude Code CLI: `2.1.309`
 - Upstream adapter reference: [`Norman-else/dsh-claude`](https://github.com/Norman-else/dsh-claude/tree/fe00e3af0b1ad03acc977b13b4d4ab805086f6da), tag `v0.1.65`, commit `fe00e3af0b1ad03acc977b13b4d4ab805086f6da`
 - License: MIT; see [`LICENSE`](./LICENSE)
 
 This ZeroWall plugin is a native adaptation. It does not include the upstream Claude Agent SDK adapter or its behavior of reusing the user's Claude profile.
+
+## Claude subagents
+
+The plugin mounts the official DSH delegation tool as `claude_subagent` in each Agent scope. It starts a text-only one-shot child with the managed Claude CLI, inherited Skills/MCP/environment, its own working directory and cancellation, and the parent's selected route by default. To delegate from an OpenAI parent, enable DSH's existing subagent model-selection setting and authorize an already configured Anthropic Messages route. `claude_list_subagent_models` discovers those allowed routes; pass exact `provider`, `model` and optional `reasoning_effort` to `claude_subagent`. This changes only the child process. The plugin never enables that setting or changes the parent/default model. Output schemas, continuation and max-token overrides are unsupported and fail explicitly.
+
+## Native settings surface
+
+The global setting listbox, text controls, chevron, card styles and prose theme reuse the pinned upstream `src/client/ClaudeCodeSettings.tsx`, `styles.ts` and `markdown-theme.ts`. The extracted components live in `src/client/upstream/`, retain the upstream MIT license, and are connected to ZeroWall's managed settings API. Local changes add accessible labels and help-text associations, avoid duplicate text writes on Enter, and support the managed runtime's availability descriptors. The runtime diagnostic card uses ZeroWall's CLI status and install/update/rollback operations.
+
+Output style, permission selection, permission defaults, renderer, prose mode and the concurrent process limit are connected to the managed Host. The native conditional display rules hide prose for the native renderer and hide the plugin permission default for the native permission selector. Renderer changes apply to the next turn; prose settings apply to the plugin transcript.
+
+The managed CLI currently exits after each turn and does not create worktrees. Worktree naming and idle-process reuse controls are shown disabled with their reasons. Upstream Claude subscription usage and Jira account services are not connected; the page states those limits without collecting credentials. The upstream plugin marketplace/update service is also not connected: ZeroWall's signed Extension Center owns plugin installation and updates, separately from the Claude CLI update controls. This reuses the applicable native settings components, rather than claiming the upstream settings services were all transplanted.

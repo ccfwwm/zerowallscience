@@ -6,11 +6,14 @@ export function applyAuditedPluginCompatibility(entries, rules, selectedPlugins,
   for (const rule of rules) {
     if (!selectedPlugins.includes(rule.dependency)) continue
     const consumers = new Set(rule.consumers.map(entry => `${entry.id}@${entry.version}`))
-    // Historical exceptions only apply while their exact consumers are present.
-    // New consumer releases carry their own dependency compatibility contracts.
-    if (!result.some(entry => consumers.has(`${entry.id}@${entry.version}`) && entry.dependencies?.[rule.dependency])) continue
     const dependency = result.find(entry => entry.id === rule.dependency)
-    if (dependency?.version !== rule.testedVersion) throw new Error('Audited plugin compatibility requires its exact tested version')
+    // A newer dependency with no historical consumer needs no old exception.
+    // When selecting the audited dependency itself, however, every
+    // incompatible edge must still match an explicitly reviewed consumer.
+    if (dependency?.version !== rule.testedVersion) {
+      if (result.some(entry => consumers.has(`${entry.id}@${entry.version}`) && entry.dependencies?.[rule.dependency])) throw new Error('Audited plugin compatibility requires its exact tested version')
+      continue
+    }
     result = result.map(entry => {
       const range = entry.dependencies?.[rule.dependency]
       if (!range || satisfiesPackageRange(dependency.version, range)) return entry

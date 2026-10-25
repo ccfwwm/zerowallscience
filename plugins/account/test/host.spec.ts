@@ -523,7 +523,7 @@ describe('AI Cloud account client', () => {
     expect(secrets.values.get('zerowall.ai-cloud.session')).toContain('renewed')
   })
 
-  it('removes an invalid saved password and requires an explicit login', async () => {
+  it('keeps an invalid saved password so explicit relogin can retry it', async () => {
     const secrets = new MemorySecrets()
     secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({
       baseUrl: 'https://code.aicodeme.xyz', email: 'saved@example.com', password: 'wrong-password',
@@ -532,8 +532,91 @@ describe('AI Cloud account client', () => {
       secrets, bases: ['https://code.aicodeme.xyz'], fetch: async () => json({ message: 'invalid credentials' }, 401),
     })
 
-    await expect(client.current()).resolves.toEqual(expect.objectContaining({ status: 'authExpired' }))
-    expect(secrets.values.has('zerowall.ai-cloud.login')).toBe(false)
+    const rejected = await client.current()
+    expect(rejected).toEqual(expect.objectContaining({ status: 'authExpired' }))
+    expect(rejected.autoLoginRetryable).not.toBe(true)
+    expect(secrets.values.has('zerowall.ai-cloud.login')).toBe(true)
+  })
+
+  it('relogs in with the saved credentials and clears the manual sign-out marker', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({
+      baseUrl: 'https://code.aicodeme.xyz', email: 'saved@example.com', password: 'saved-password',
+    }))
+    secrets.values.set('zerowall.ai-cloud.manual-signout', '1')
+    const client = new AiCloudClient({
+      secrets, bases: ['https://code.aicodeme.xyz'], fetch: async input => {
+        if (String(input).endsWith('/auth/login')) return json({ data: { access_token: 'relogin-token' } })
+        if (String(input).endsWith('/auth/me')) return json({ data: { balance: 4, currency: 'CNY' } })
+        if (String(input).endsWith('/groups/available')) return json({ data: [{ id: 25, name: 'Claude', enabled: true }] })
+        if (String(input).includes('/keys?')) return json({ data: { items: [{ group_id: 25, key: 'local-test-key' }] } })
+        if (String(input).endsWith('/v1/models')) return json({ data: [{ id: 'claude-opus-4-6' }] })
+        throw new Error('Unexpected relogin test endpoint')
+      },
+    })
+    await expect(client.relogin()).resolves.toMatchObject({ status: 'signedIn', email: 'saved@example.com',
+      models: [expect.objectContaining({ modelId: 'claude-opus-4-6', providerId: 'zerowall-ai-cloud-25-messages' })], modelSync: { status: 'succeeded' } })
+    expect(secrets.values.has('zerowall.ai-cloud.manual-signout')).toBe(false)
+    expect(secrets.values.get('zerowall.ai-cloud.session')).toContain('relogin-token')
+  })
+
+  it('fails clearly when relogin has no saved credentials', async () => {
+    const client = new AiCloudClient({ secrets: new MemorySecrets(), bases: ['https://code.aicodeme.xyz'], fetch: async () => json({ data: {} }) })
+    await expect(client.relogin()).rejects.toThrow('Saved AI Cloud login is unavailable or expired.')
+  })
+
+  it.each(['directory', 'group'] as const)('retains the exact same-account catalog when relogin %s requests fail', async failurePoint => {
+    const secrets = new MemorySecrets()
+    const model = { providerId: 'zerowall-ai-cloud-25-messages', groupId: '25', groupName: 'Claude',
+      modelId: 'claude-opus-4-6', baseUrl: 'https://code.aicodeme.xyz', contextWindow: 200000, maxOutputTokens: 64000 }
+    secrets.values.set('zerowall.ai-cloud.session', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'saved@example.com',
+      accessToken: 'old-token', balance: 31, currency: 'USD', models: [model], groupIds: ['25'] }))
+    secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'saved@example.com', password: 'local-only' }))
+    const client = new AiCloudClient({ secrets, bases: ['https://code.aicodeme.xyz'], fetch: async input => {
+      const url = String(input)
+      if (url.endsWith('/auth/login')) return json({ data: { access_token: 'new-token' } })
+      if (url.endsWith('/auth/me')) throw new Error('billing offline')
+      if (url.endsWith('/groups/available')) {
+        if (failurePoint === 'directory') throw new Error('offline')
+        return json({ data: [{ id: 25, name: 'Claude', enabled: true }] })
+      }
+      if (url.includes('/keys?')) return json({ data: { items: [{ group_id: 25, key: 'local-test-key' }] } })
+      if (url.endsWith('/v1/models')) throw new Error('offline')
+      throw new Error('Unexpected test endpoint')
+    } })
+    await expect(client.relogin()).resolves.toMatchObject({ status: 'signedIn', balance: 31, currency: 'USD', balanceFreshness: 'stale', models: [{ ...model, stale: true }], modelSync: { status: 'failed' } })
+    expect(JSON.parse(secrets.values.get('zerowall.ai-cloud.session')!).models).toEqual([{ ...model, stale: true }])
+  })
+
+  it('never retains another account catalog after an explicit identity change and catalog outage', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.session', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'old@example.com',
+      accessToken: 'old-token', balance: 1, currency: 'CNY', models: [{ providerId: 'old', groupId: '7', groupName: 'Private', modelId: 'private-old-model', baseUrl: 'https://code.aicodeme.xyz' }], groupIds: ['7'] }))
+    const client = new AiCloudClient({ secrets, bases: ['https://code.aicodeme.xyz'], fetch: async input => {
+      if (String(input).endsWith('/auth/login')) return json({ data: { access_token: 'new-token' } })
+      if (String(input).endsWith('/auth/me')) return json({ data: { balance: 2 } })
+      throw new Error('offline')
+    } })
+    await expect(client.login({ email: 'new@example.com', password: 'local-only' })).resolves.toMatchObject({ email: 'new@example.com', models: [], modelSync: { status: 'failed' } })
+  })
+
+  it('retries a transient saved-login failure on the next current call and respects logout afterward', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.login', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'saved@example.com', password: 'local-only' }))
+    let online = false, logins = 0
+    const client = new AiCloudClient({ secrets, bases: ['https://code.aicodeme.xyz'], fetch: async input => {
+      if (String(input).endsWith('/auth/login')) { ++logins; if (!online) throw new Error('offline'); return json({ data: { access_token: 'new-token' } }) }
+      if (String(input).endsWith('/auth/me')) return json({ data: { balance: 3 } })
+      if (String(input).endsWith('/groups/available')) return json({ data: [] })
+      if (String(input).includes('/keys?')) return json({ data: { items: [] } })
+      throw new Error('Unexpected test endpoint')
+    } })
+    await expect(client.current()).resolves.toMatchObject({ status: 'signedOut', autoLoginRetryable: true })
+    online = true
+    await expect(client.current()).resolves.toMatchObject({ status: 'signedIn', email: 'saved@example.com' })
+    await client.logout()
+    await expect(client.current()).resolves.toMatchObject({ status: 'signedOut' })
+    expect(logins).toBe(2)
   })
 
   it('keeps saved credentials when automatic login is temporarily offline', async () => {

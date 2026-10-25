@@ -8,6 +8,7 @@ import { isAgentLoopRequest, markAgentLoopRequest, type GenerateOptions } from '
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SkillsProjectionApi, McpServerProjectionInput } from '../src/host/projection.js'
 import type { ClaudeSelection, ClaudeRequestHeader } from '../src/host/route.js'
+import type { SubagentProvider, SubagentRun } from '@deepseek-ai/dsh-subagent'
 
 const broker = vi.hoisted(() => ({ get: vi.fn() }))
 // Transport registration is outside this unit boundary. Run the real Host,
@@ -93,6 +94,7 @@ async function fixture() {
   const workspaces = new Map<string, string>()
   const terminals: FakeTerminal[] = []
   const processes: FakeProcess[] = []
+  const registeredSubagentProviders: SubagentProvider[] = []
   const launches: Launch[] = []
   const servers: McpServerProjectionInput[] = []
   const credentials = vi.fn(async () => ({ value: 'host-only-route-secret-1234567890' }))
@@ -111,6 +113,7 @@ async function fixture() {
     llm: { listConfigurableProviders: vi.fn(() => [{ provider: 'custom-anthropic', settingsNs: 'provider-settings', settingsPath: ['profile'] }]) },
     settings: { describe: vi.fn(() => [{ ns: 'provider-settings', value: { profile } }]) },
     agentPresets: {},
+    subagents: { registerProvider: vi.fn((provider: SubagentProvider) => { registeredSubagentProviders.push(provider); return () => { const i = registeredSubagentProviders.indexOf(provider); if (i >= 0) registeredSubagentProviders.splice(i, 1) } }) },
     credentials: { resolve: credentials },
     skills: { snapshot, get: getSkill },
     zerowallProjects: { listMcpServers: vi.fn(() => servers) },
@@ -152,7 +155,10 @@ async function fixture() {
     selected.set(id, { provider: 'custom-anthropic', model: `model-${id}` })
     presets.set(id, preset)
     await mkdir(cwd, { recursive: true })
-    return { id, session: { id, requestHeader: () => loggedHeaders.get(id) }, ctx: context } as unknown as Agent
+    const events = [{ type: 'step/start', seq: 1, data: { turn: 1, step: 1 } }] as Array<{ type: string; seq: number; data: unknown; ignorable?: boolean }>
+    return { id, session: { id, requestHeader: () => loggedHeaders.get(id), snapshotEvents: () => events,
+      append: vi.fn(async (type: string, data: unknown, options?: { ignorable?: boolean }) => { events.push({ type, data, seq: events.length + 1, ...options }) }),
+    }, ctx: context } as unknown as Agent
   }
   const finish = async (agent: Agent, index: number, code = 0) => {
     terminals[index]!.finish(code)
@@ -168,7 +174,7 @@ async function fixture() {
     await new Promise<void>(resolve => setImmediate(resolve))
   })
   return { host, runtime, agent, selected, presets, loggedHeaders, workspaces, launches, terminals, processes, handlers, servers, credentials,
-    snapshot, getSkill, profile, services, managedRoute, managedCredential, configDir, cli, finish }
+    snapshot, getSkill, profile, services, managedRoute, managedCredential, configDir, cli, finish, registeredSubagentProviders }
 }
 
 async function fileContents(root: string): Promise<string[]> {
@@ -184,6 +190,7 @@ async function fileContents(root: string): Promise<string[]> {
 describe('Claude Code Host session boundary', () => {
   it('routes Claude preset requests through the managed CLI and projects the selected model resources', async () => {
     const f = await fixture(), agent = await f.agent('chat', 'claude')
+    await f.host.settingsUpdate({ renderer: 'native' })
     f.snapshot.mockResolvedValue({ complete: true, skills: [{ name: 'review-plan', description: 'Review a plan', invocation: { modelInvocable: true } }] })
     f.getSkill.mockResolvedValue({ name: 'review-plan', description: 'Review a plan', invocation: { modelInvocable: true }, content: 'Use the project review checklist.' })
     broker.get.mockImplementation(async (key: string) => key === 'zerowall.environment.var.mcp_token' ? 'host-only-mcp-secret-1234567890' : undefined)
@@ -204,6 +211,7 @@ describe('Claude Code Host session boundary', () => {
     const first = iterator.next()
     await vi.waitFor(() => expect(f.processes).toHaveLength(1))
     const launched = f.launches[0]!
+    expect(launched.argv).toContain('--include-partial-messages')
     expect(launched.argv).toContain('--input-format')
     expect(launched.argv).toContain('stream-json')
     expect(launched.argv).toContain('--model')
@@ -217,20 +225,173 @@ describe('Claude Code Host session boundary', () => {
     expect(JSON.parse(f.processes[0]!.input().trim())).toMatchObject({
       type: 'user', message: { role: 'user', content: expect.stringContaining('Use my configured Claude environment.') },
     })
+    f.processes[0]!.stdout.write(`${JSON.stringify({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } })}\n`)
+    expect(await first).toMatchObject({ done: false, value: { type: 'block-start', index: 0, blockType: 'text' } })
+    const visibleDelta = iterator.next()
+    const streamed = 'Claude streaming output remains visible before the CLI process exits. '
+    f.processes[0]!.stdout.write(`${JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: streamed } } })}\n`)
+    const visible = await visibleDelta
+    expect(visible).toMatchObject({ done: false, value: { type: 'text-delta', index: 0 } })
+    expect((visible.value as { text: string }).text.length).toBeGreaterThan(0)
+    const chunks = [visible]
+    const trailing = iterator.next()
     f.processes[0]!.finish([
-      { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Claude response' } } },
+      { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'The final response has arrived.' } } },
+      { type: 'stream_event', event: { type: 'content_block_stop', index: 0 } },
       { type: 'result', is_error: false, result: 'Claude response' },
     ])
-    const chunks = [await first]
+    chunks.push(await trailing)
     while (true) {
       const next = await iterator.next()
       if (next.done) break
       chunks.push(next)
     }
     expect(fallbackCalled).toBe(false)
-    expect(chunks.map(chunk => chunk.value)).toContainEqual({ type: 'text-delta', index: 0, text: 'Claude response' })
+    expect(chunks.filter(chunk => (chunk.value as { type?: string } | undefined)?.type === 'text-delta').length).toBeGreaterThanOrEqual(2)
     expect(chunks.map(chunk => chunk.value)).toContainEqual({ type: 'finish', reason: { kind: 'stop' } })
     expect(f.host.read(agent)?.running).toBe(false)
+  })
+
+  it('registers Claude Code as a managed external subagent provider and settles its real CLI result', async () => {
+    const f = await fixture(), agent = await f.agent('subagent-parent')
+    const provider = f.registeredSubagentProviders.find(item => item.name === 'claude-code')
+    expect(provider).toBeDefined()
+    expect(provider?.capabilities).toMatchObject({ agentOptions: true, outputSchema: false, depthLimit: false })
+    expect(provider?.inheritsParentContext).toBe(false)
+    const signal = new AbortController().signal
+    const run = await provider!.start!({
+      cwd: f.workspaces.get(agent.id)!, parent: agent,
+      prompt: [{ type: 'text', text: 'Review the current project changes.' }], signal,
+    }) as SubagentRun
+    expect(f.launches[0]?.argv).toContain('--input-format')
+    expect(JSON.parse(f.processes[0]!.input().trim())).toMatchObject({
+      type: 'user', message: { role: 'user', content: expect.stringContaining('Review the current project changes.') },
+    })
+    f.processes[0]!.finish([
+      { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
+      { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Reviewed changes.' } } },
+      { type: 'result', is_error: false, result: 'Reviewed changes.' },
+    ])
+    await expect(run.result).resolves.toMatchObject({ stopReason: 'completed', output: [{ type: 'text', text: 'Reviewed changes.' }] })
+    await run.dispose()
+  })
+
+  it('shares parent-scoped Skills/MCP with external children, enforces quota, and releases it after cancellation', async () => {
+    const f = await fixture(), parent = await f.agent('child-resources')
+    await f.host.settingsUpdate({ maxProcesses: 1 })
+    const cwd = join(f.workspaces.get(parent.id)!, 'subproject')
+    await mkdir(cwd)
+    f.snapshot.mockResolvedValue({ complete: true, skills: [{ name: 'child-skill', description: 'Child workflow', invocation: { modelInvocable: true } }] })
+    f.getSkill.mockResolvedValue({ name: 'child-skill', description: 'Child workflow', invocation: { modelInvocable: true }, content: 'Use the selected child directory.' })
+    f.servers.push({ name: 'ChildTools', serverName: 'child-tools', transport: 'http', enabled: true, url: 'https://tools.example.test/mcp', envRefs: {}, headerRefs: {} })
+    const cancel = new AbortController()
+    const run = await f.host.startSubagent({ cwd, parent, prompt: [{ type: 'text', text: 'Inspect child project' }], signal: cancel.signal })
+    const launch = f.launches[0]!
+    expect(launch.cwd).toBe(cwd)
+    expect(launch.argv).toContain('--include-partial-messages')
+    expect(launch.argv).toContain('--mcp-config')
+    expect(f.snapshot).toHaveBeenCalledWith({ cwd, scope: parent })
+    const root = launch.argv[launch.argv.indexOf('--plugin-dir') + 1]!
+    expect((await fileContents(root)).join('\n')).toContain('Use the selected child directory.')
+    expect(await f.host.settingsStatus()).toMatchObject({ running: true })
+    await expect(f.host.start(parent, 'another task')).rejects.toThrow('最大并发进程数')
+    cancel.abort()
+    expect(launch.signal.aborted).toBe(true)
+    f.processes[0]!.finish([], 143)
+    await expect(run.result).resolves.toMatchObject({ stopReason: 'aborted' })
+    await run.dispose()
+    expect(await fileContents(root)).toEqual([])
+    expect(await f.host.settingsStatus()).toMatchObject({ running: false })
+    await f.host.start(parent, 'after cancellation')
+    await f.finish(parent, 0)
+  })
+
+  it('launches an explicit configured Anthropic child route without changing its OpenAI parent or inheriting the parent effort', async () => {
+    const f = await fixture(), parent = await f.agent('cross-route-parent')
+    f.selected.set(parent.id, { provider: 'openai-parent', model: 'selected-gpt', reasoningEffort: 'high' })
+    const run = await f.host.startSubagent({ cwd: f.workspaces.get(parent.id)!, parent,
+      prompt: [{ type: 'text', text: 'Review this project' }], signal: new AbortController().signal,
+      agentOptions: { provider: 'custom-anthropic', model: 'configured-claude' },
+    })
+    const argv = f.launches[0]!.argv
+    expect(argv[argv.indexOf('--model') + 1]).toBe('configured-claude')
+    expect(argv).not.toContain('--effort')
+    expect(f.selected.get(parent.id)).toEqual({ provider: 'openai-parent', model: 'selected-gpt', reasoningEffort: 'high' })
+    f.processes[0]!.finish([{ type: 'result', result: 'Reviewed' }])
+    await expect(run.result).resolves.toMatchObject({ stopReason: 'completed', output: [{ type: 'text', text: 'Reviewed' }] })
+    await run.dispose()
+    ;(f.services.llm as { listConfigurableProviders: ReturnType<typeof vi.fn> }).listConfigurableProviders.mockReturnValue([{ provider: 'openai-parent', settingsNs: 'provider-settings', settingsPath: ['profile'] }])
+    f.profile.api = 'openai-completions'
+    await expect(f.host.startSubagent({ cwd: f.workspaces.get(parent.id)!, parent,
+      prompt: [{ type: 'text', text: 'Review this project' }], signal: new AbortController().signal,
+    })).rejects.toThrow('子 agent 模型选择设置')
+    await expect(f.host.startSubagent({ cwd: f.workspaces.get(parent.id)!, parent,
+      prompt: [{ type: 'text', text: 'Review' }], signal: new AbortController().signal,
+      agentOptions: { maxTokens: 10 },
+    })).rejects.toThrow('only provider, model and reasoningEffort')
+  })
+
+  it('uses the native sandbox permission mapping and rejects settings with no managed runtime behavior', async () => {
+    const f = await fixture(), agent = await f.agent('native-permission')
+    await f.host.settingsUpdate({ permissionSelector: 'native', permissionMode: 'bypassPermissions' })
+    await agent.session.append('sandbox/mode', { mode: 'read-only' })
+    await f.host.start(agent, 'Inspect this project')
+    const argv = f.launches[0]!.argv
+    expect(argv[argv.indexOf('--permission-mode') + 1]).toBe('plan')
+    await f.finish(agent, 0)
+    await expect(f.host.settingsGlobalUpdate({ worktreeBranchPrefix: 'new-prefix' })).rejects.toThrow('does not provide')
+    await expect(f.host.settingsGlobalUpdate({ idleTimeoutMinutes: '45' })).rejects.toThrow('does not provide')
+    const settings = await f.host.settingsGlobalGet()
+    expect(settings.settings.find(setting => setting.key === 'worktreeBranchPrefix')).toMatchObject({ available: false })
+    expect(settings.settings.find(setting => setting.key === 'idleTimeoutMinutes')).toMatchObject({ available: false })
+  })
+
+  it('streams reasoning and mirrors CLI-owned tools without asking DSH to execute them again', async () => {
+    const f = await fixture(), agent = await f.agent('native-tools', 'claude')
+    await f.host.settingsUpdate({ renderer: 'native' })
+    await f.handlers.get('agent/request')!({ agent }, async () => ({}))
+    const llm = f.handlers.get('llm/stream') as (options: GenerateOptions, next: () => AsyncIterable<never>) => AsyncIterable<Record<string, unknown>>
+    const output: Record<string, unknown>[] = []
+    const pending = (async () => { for await (const chunk of llm(markAgentLoopRequest({ provider: 'custom-anthropic', model: 'test', sessionId: agent.id, messages: [{ role: 'user', content: [{ type: 'text', text: 'Read the file.' }] }] } as GenerateOptions), async function* () {})) output.push(chunk) })()
+    await vi.waitFor(() => expect(f.processes).toHaveLength(1))
+    const frame = (event: unknown) => ({ type: 'stream_event', event })
+    f.processes[0]!.finish([
+      frame({ type: 'content_block_start', index: 0, content_block: { type: 'thinking' } }),
+      frame({ type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'I will inspect the requested file.' } }),
+      frame({ type: 'content_block_stop', index: 0 }),
+      frame({ type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'read-1', name: 'Read' } }),
+      frame({ type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"file_path":"README.md"}' } }),
+      frame({ type: 'content_block_stop', index: 1 }),
+      { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read-1', content: 'read result', is_error: false }] } },
+      frame({ type: 'content_block_start', index: 0, content_block: { type: 'text' } }),
+      frame({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Read complete.' } }),
+      frame({ type: 'content_block_stop', index: 0 }),
+      { type: 'result', result: 'Read complete.' },
+    ])
+    await pending
+    expect(output.some(chunk => chunk.type === 'reasoning-delta')).toBe(true)
+    expect(output.some(chunk => chunk.type === 'tool-call-delta' || chunk.blockType === 'tool-call')).toBe(false)
+    expect(agent.session.append).toHaveBeenCalledWith('tool/call', expect.objectContaining({ callId: 'read-1', name: 'Read', arguments: '{"file_path":"README.md"}' }))
+    expect(agent.session.append).toHaveBeenCalledWith('tool/result', expect.objectContaining({ message: expect.objectContaining({ toolCallId: 'read-1', content: [{ type: 'text', text: 'read result' }] }) }), { surfaceOp: 'append' })
+  })
+
+  it('publishes plugin-rendered activity live and preserves an ignorable transcript for restart', async () => {
+    const f = await fixture(), agent = await f.agent('plugin-stream', 'claude')
+    await f.handlers.get('agent/request')!({ agent }, async () => ({}))
+    const llm = f.handlers.get('llm/stream') as (options: GenerateOptions, next: () => AsyncIterable<never>) => AsyncIterable<unknown>
+    const result = (async () => { for await (const _chunk of llm(markAgentLoopRequest({ provider: 'custom-anthropic', model: 'test', sessionId: agent.id, messages: [{ role: 'user', content: [{ type: 'text', text: 'Explain this project.' }] }] } as GenerateOptions), async function* () {})) {} })()
+    await vi.waitFor(() => expect(f.processes).toHaveLength(1))
+    const frame = (event: unknown) => ({ type: 'stream_event', event })
+    f.processes[0]!.stdout.write(`${JSON.stringify(frame({ type: 'content_block_start', index: 0, content_block: { type: 'text' } }))}\n`)
+    f.processes[0]!.stdout.write(`${JSON.stringify(frame({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Visible progress while Claude is still running and before the final result.' } }))}\n`)
+    await vi.waitFor(() => expect(f.host.readTranscript(agent, 1, 1)?.activity[0]?.text).toContain('Visible progress'))
+    expect(f.host.readTranscript(agent, 1, 1)?.running).toBe(true)
+    f.processes[0]!.finish([frame({ type: 'content_block_stop', index: 0 }), { type: 'result', result: 'done' }])
+    await result
+    expect(agent.session.append).toHaveBeenCalledWith('zerowall-claude/turn', { turn: 1, step: 1 }, { ignorable: true })
+    expect(agent.session.append).toHaveBeenCalledWith('zerowall-claude/transcript', expect.objectContaining({ renderer: 'plugin', running: false, activity: [expect.objectContaining({ answer: true })] }), { ignorable: true })
+    ;(f.host as unknown as { sessions: Map<string, unknown> }).sessions.clear()
+    expect(f.host.readTranscript(agent, 1, 1)?.activity[0]?.text).toContain('Visible progress')
   })
 
   it('keeps the ordinary DSH request path for Standard preset sessions', async () => {
@@ -255,6 +416,28 @@ describe('Claude Code Host session boundary', () => {
     expect(f.runtime.installOrUpdate).toHaveBeenCalledOnce()
     expect(f.runtime.rollback).toHaveBeenCalledOnce()
     expect(f.runtime.uninstall).toHaveBeenCalledOnce()
+  })
+
+  it('exposes native settings as dynamic descriptors and updates only supported fields', async () => {
+    const f = await fixture()
+    await mkdir(join(f.configDir, 'output-styles'), { recursive: true })
+    await writeFile(join(f.configDir, 'output-styles', 'review.md'), '---\nname: Project Reviewer\n---\nprivate body')
+    const initial = await f.host.settingsGlobalGet()
+    expect(initial.settings.map(setting => setting.key)).toEqual([
+      'outputStyle', 'permissionSelector', 'permissionMode', 'renderer', 'prose', 'worktreeBranchPrefix', 'maxProcesses', 'idleTimeoutMinutes',
+    ])
+    expect(initial.settings[0]).toMatchObject({ kind: 'select', value: 'Default', effect: 'new-session' })
+    expect(initial.settings[0]?.kind === 'select' && initial.settings[0].options).toContainEqual({ value: 'Project Reviewer', label: 'Project Reviewer', source: 'user' })
+    expect(JSON.stringify(initial)).not.toContain('private body')
+    const updated = await f.host.settingsGlobalUpdate({ outputStyle: 'Project Reviewer', renderer: 'native', maxProcesses: '6' })
+    expect(updated.settings.find(setting => setting.key === 'outputStyle')).toMatchObject({ value: 'Project Reviewer' })
+    expect(updated.settings.find(setting => setting.key === 'renderer')).toMatchObject({ value: 'native' })
+    expect(updated.settings.find(setting => setting.key === 'maxProcesses')).toMatchObject({ value: '6' })
+    expect(JSON.parse(await readFile(join(f.configDir, 'settings.json'), 'utf8'))).toMatchObject({ outputStyle: 'Project Reviewer' })
+    expect(JSON.parse(await readFile(join(f.configDir, 'plugin-settings.json'), 'utf8'))).toMatchObject({ renderer: 'native', maxProcesses: 6 })
+    await expect(f.host.settingsGlobalUpdate({ arbitrary: 'no' })).rejects.toThrow('Unsupported Claude Code global setting')
+    await expect(f.host.settingsGlobalUpdate({ outputStyle: 'missing' })).rejects.toThrow('output style is unavailable')
+    await expect(f.host.settingsGlobalUpdate({ maxProcesses: '0' })).rejects.toThrow('invalid')
   })
 
   it('keeps status/read passive and only installs, rolls back or removes on explicit calls', async () => {

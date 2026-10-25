@@ -106,10 +106,10 @@ export class AiCloudClient {
     const authenticated = await this.authenticate(login.email, login.password, [selected])
     const account = await this.finishAuthentication(authenticated.baseUrl, login.email, login.password, authenticated.accessToken, undefined, true, revision)
     try {
-      return await this.discoverModels()
+      return { ...await this.discoverModels(), balanceFreshness: account.balanceFreshness }
     } catch {
       if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
-      return account
+      return this.catalogFailure(account, revision)
     }
   }
 
@@ -151,9 +151,9 @@ export class AiCloudClient {
     // contract while retaining a valid login when the catalog endpoint is
     // temporarily unavailable.
     try {
-      return await this.discoverModels()
+      return { ...await this.discoverModels(), balanceFreshness: account.balanceFreshness }
     } catch {
-      return account
+      return this.catalogFailure(account, revision)
     }
   }
 
@@ -183,9 +183,9 @@ export class AiCloudClient {
     }
     const account = await this.finishAuthentication(registered.base, email, password, token, config, input.rememberPassword !== false, revision)
     try {
-      return await this.discoverModels()
+      return { ...await this.discoverModels(), balanceFreshness: account.balanceFreshness }
     } catch {
-      return account
+      return this.catalogFailure(account, revision)
     }
   }
 
@@ -220,7 +220,7 @@ export class AiCloudClient {
       if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
       if (error instanceof GatewayHttpError && (error.status === 401 || error.status === 403)) {
         await this.mutateSecrets(revision, () => this.clearSession(session, false))
-        return await this.restoreSavedLogin('authExpired', revision)
+        return await this.restoreSavedLogin('authExpired', revision, session)
       }
       return snapshot(session, 'stale')
     }
@@ -260,6 +260,17 @@ export class AiCloudClient {
   async savedLogin(): Promise<AiCloudSavedLogin | undefined> {
     const login = await this.loadLogin()
     return login === undefined ? undefined : { ...login, rememberPassword: true }
+  }
+
+  /** Re-authenticate with the encrypted login record without asking for input again. */
+  async relogin(): Promise<AiCloudAccountSnapshot> {
+    const revision = ++this.identityRevision
+    return this.trackIdentityAction(revision, (async () => {
+      await this.mutateSecrets(revision, () => this.secrets.delete(MANUAL_SIGNOUT_KEY))
+      const state = await this.restoreSavedLogin('authExpired', revision)
+      if (state.status !== 'signedIn') throw new Error('Saved AI Cloud login is unavailable or expired.')
+      return state
+    })())
   }
 
   /** Read synchronized metadata without network requests, login restoration, or secret writes. */
@@ -431,17 +442,25 @@ export class AiCloudClient {
     }
   }
 
-  private async finishAuthentication(baseUrl: string, email: string, password: string, accessToken: string, config?: AiCloudPublicConfig, rememberPassword = true, revision = this.identityRevision): Promise<AiCloudAccountSnapshot> {
-    let balance = 0
-    let currency = 'CNY'
+  private async finishAuthentication(baseUrl: string, email: string, password: string, accessToken: string, config?: AiCloudPublicConfig, rememberPassword = true, revision = this.identityRevision, previous?: StoredSession): Promise<AiCloudAccountSnapshot> {
+    const prior = previous ?? await this.loadSession().catch(() => undefined)
+    // A refreshed token must not erase a working catalog before discovery has
+    // succeeded. Never carry routes across accounts or regional gateways.
+    const retained = prior?.email.toLowerCase() === email.toLowerCase() && prior.baseUrl === baseUrl ? prior : undefined
+    let balance = retained?.balance ?? 0
+    let currency = retained?.currency ?? 'CNY'
+    let freshness: 'current' | 'stale' = 'stale'
     try {
       const me = await this.request(baseUrl, '/auth/me', { token: accessToken })
       ;({ balance, currency } = accountFunds(me.body))
+      freshness = 'current'
     } catch {
       // A billing outage must not discard a valid login.
     }
     const session: StoredSession = {
+      ...retained,
       baseUrl, email, accessToken, balance, currency, models: [], groupIds: [],
+      ...(retained === undefined ? {} : { models: retained.models, groupIds: retained.groupIds }),
       ...(config?.rechargeUrl === undefined ? {} : { rechargeUrl: config.rechargeUrl }),
       ...(config?.lowBalanceThreshold === undefined ? {} : { lowBalanceThreshold: config.lowBalanceThreshold }),
     }
@@ -452,7 +471,7 @@ export class AiCloudClient {
       if (rememberPassword) await this.storeLogin({ baseUrl, email, password })
       else await this.secrets.delete(LOGIN_KEY)
     })
-    return snapshot(session, 'current')
+    return snapshot(session, freshness)
   }
 
   private async authenticate(email: string, password: string, bases?: readonly string[]): Promise<{ baseUrl: string; accessToken: string }> {
@@ -463,7 +482,7 @@ export class AiCloudClient {
     return { baseUrl: authenticated.base, accessToken: authenticated.body }
   }
 
-  private async restoreSavedLogin(fallback: 'signedOut' | 'authExpired', revision = this.identityRevision): Promise<AiCloudAccountSnapshot> {
+  private async restoreSavedLogin(fallback: 'signedOut' | 'authExpired', revision = this.identityRevision, previous?: StoredSession): Promise<AiCloudAccountSnapshot> {
     if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
     const manuallySignedOut = await this.isManuallySignedOut()
     if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
@@ -480,22 +499,40 @@ export class AiCloudClient {
       ])
       const account = await this.finishAuthentication(
         authenticated.baseUrl, login.email, login.password, authenticated.accessToken,
-        undefined, true, revision,
+        undefined, true, revision, previous,
       )
       try {
-        return await this.discoverModels()
+        return { ...await this.discoverModels(), balanceFreshness: account.balanceFreshness }
       } catch {
         if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
-        return account
+        return this.catalogFailure(account, revision)
       }
     } catch (error) {
       if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
       if (error instanceof GatewayHttpError && (error.status === 401 || error.status === 403)) {
-        await this.mutateSecrets(revision, () => this.secrets.delete(LOGIN_KEY))
+        // Keep the encrypted password so the user can explicitly retry with
+        // the new “重新登录” action after a transient token expiry.
         return { ...signedOut(), status: 'authExpired' }
       }
-      return fallback === 'authExpired' ? { ...signedOut(), status: 'authExpired' } : signedOut()
+      return { ...signedOut(), status: fallback, autoLoginRetryable: !(error instanceof GatewayHttpError) || error.status === 429 || error.status >= 500 }
     }
+  }
+
+  private async catalogFailure(account: AiCloudAccountSnapshot, revision: number): Promise<AiCloudAccountSnapshot> {
+    if (revision !== this.identityRevision) throw new Error('ACCOUNT_STATE_CHANGED')
+    const session = await this.loadSession()
+    if (session === undefined) return account
+    const checkedAt = new Date().toISOString()
+    const failed = (models: AiCloudManagedModel[]): NonNullable<StoredSession['modelSync']> => ({
+      checkedAt, status: 'failed', groups: [...new Map(models.map(model => [model.groupId, model])).values()].map(model => ({
+        groupId: model.groupId, groupName: model.groupName, status: 'failed', count: models.filter(entry => entry.groupId === model.groupId).length,
+        checkedAt, error: 'MODEL_SYNC_FAILED',
+      })),
+    })
+    const retained: StoredSession = { ...session, models: session.models.map(model => ({ ...model, stale: true })),
+      mediaModels: (session.mediaModels ?? []).map(model => ({ ...model, stale: true })), modelSync: failed(session.models), mediaSync: failed(session.mediaModels ?? []) }
+    await this.storeSession(retained, revision)
+    return snapshot(retained, account.balanceFreshness)
   }
 
   private async loadSession(): Promise<StoredSession | undefined> {
@@ -672,6 +709,7 @@ export class ZeroWallAccountService extends TypertRemoteService {
   }
   @Remote('forgetLogin') forgetLogin(): Promise<void> { return this.client.forgetLogin() }
   @Remote('savedLogin') savedLogin(): Promise<AiCloudSavedLogin | undefined> { return this.client.savedLogin() }
+  @Remote('relogin') async relogin(): Promise<AiCloudAccountSnapshot> { return this.publish(await this.client.relogin()) }
   @Remote('logout') async logout(): Promise<void> { await this.client.logout(); this.publish(signedOut()) }
   @Remote('discoverModels') async discoverModels(): Promise<AiCloudAccountSnapshot> {
     const snapshot = await this.client.discoverModels()

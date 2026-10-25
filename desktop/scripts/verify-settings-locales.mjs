@@ -48,6 +48,8 @@ export async function verifySettingsLocales(page, settings, root) {
   } catch (error) {
     await page.screenshot({ path: resolve(root, 'settings-failure.png'), fullPage: true })
     await writeFile(resolve(root, 'settings-failure.txt'), await page.locator('body').innerText())
+    await writeFile(resolve(root, 'settings-failure.html'), await settings.evaluate(node => node.outerHTML).catch(() => '<settings dialog unavailable>'))
+    await writeFile(resolve(root, 'settings-failure-nav.json'), JSON.stringify(await settings.locator(':scope > nav button').evaluateAll(buttons => buttons.map(button => ({ text: button.innerText, label: button.getAttribute('aria-label'), title: button.getAttribute('title') }))).catch(() => []), null, 2))
     throw new Error(`${error.message}\nSettings evidence: ${root}`)
   }
 }

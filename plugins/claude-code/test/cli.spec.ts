@@ -23,12 +23,33 @@ describe('Claude CLI conversation bridge', () => {
     expect(prompt).toContain('Tool output')
   })
 
-  it('reads streamed text deltas and reports CLI result failures without exposing raw frames', () => {
+  it('preserves Claude content block starts, deltas, stops, and the nested block index', () => {
+    expect(parseClaudeCliEvent(JSON.stringify({ type: 'stream_event', index: 77, event: {
+      type: 'content_block_start', index: 2, content_block: { type: 'text' },
+    } }))).toEqual({ kind: 'text-start', index: 2 })
     expect(parseClaudeCliEvent(JSON.stringify({ type: 'stream_event', event: {
-      type: 'content_block_delta', delta: { type: 'text_delta', text: 'hello' },
-    } }))).toEqual({ text: 'hello' })
+      type: 'content_block_delta', index: 2, delta: { type: 'text_delta', text: 'hello' },
+    } }))).toEqual({ kind: 'text', text: 'hello', index: 2 })
+    expect(parseClaudeCliEvent(JSON.stringify({ type: 'stream_event', event: {
+      type: 'content_block_stop', index: 2,
+    } }))).toEqual({ kind: 'block-stop', index: 2 })
+    expect(parseClaudeCliEvent(JSON.stringify({ type: 'stream_event', event: {
+      type: 'content_block_start', index: 3, content_block: { type: 'thinking' },
+    } }))).toEqual({ kind: 'thinking-start', index: 3 })
+    expect(parseClaudeCliEvent(JSON.stringify({ type: 'stream_event', event: {
+      type: 'content_block_delta', index: 3, delta: { type: 'thinking_delta', thinking: 'reasoning' },
+    } }))).toEqual({ kind: 'thinking', text: 'reasoning', index: 3 })
+    expect(parseClaudeCliEvent(JSON.stringify({ type: 'stream_event', event: {
+      type: 'content_block_start', index: 4, content_block: { type: 'tool_use', id: 'tool-1', name: 'Read' },
+    } }))).toEqual({ kind: 'tool-start', index: 4, id: 'tool-1', name: 'Read' })
+    expect(parseClaudeCliEvent(JSON.stringify({ type: 'stream_event', event: {
+      type: 'content_block_delta', index: 4, delta: { type: 'input_json_delta', partial_json: '{"path":' },
+    } }))).toEqual({ kind: 'tool-input', argumentsDelta: '{"path":', index: 4 })
+  })
+
+  it('reports CLI result failures without exposing raw frames', () => {
     expect(parseClaudeCliEvent(JSON.stringify({ type: 'result', is_error: true, result: 'provider details' })))
-      .toEqual({ text: 'provider details', final: true, failed: true })
+      .toEqual({ kind: 'result', text: 'provider details', final: true, failed: true })
     expect(parseClaudeCliEvent('not json')).toBeUndefined()
     expect(parseClaudeCliEvent(JSON.stringify({ type: 'system', subtype: 'init' }))).toBeUndefined()
   })

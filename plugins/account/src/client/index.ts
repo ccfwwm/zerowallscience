@@ -37,7 +37,7 @@ export function apply(ctx: ClientContext): void {
   }
   const sessionRemote = ctx.get('remote.session')
   const accountResult = async (operation: () => Promise<RemoteResult<AiCloudAccountSnapshot>>, changesIdentity = false): Promise<AiCloudAccountSnapshot> => {
-    if (changesIdentity) { ++identityRevision; catalog.clear() }
+    if (changesIdentity) ++identityRevision
     const revision = identityRevision
     const result = unwrapRemoteResult('zerowall.account', await operation()) as AiCloudAccountSnapshot
     if (revision === identityRevision) catalog.update(result)
@@ -73,6 +73,7 @@ export function apply(ctx: ClientContext): void {
       modelText,
       forgetLogin: async () => { unwrapRemoteResult('zerowall.account.forgetLogin', await requireAccountRemote().forgetLogin()) },
       savedLogin: async () => unwrapRemoteResult<AiCloudSavedLogin | undefined>('zerowall.account.savedLogin', await requireAccountRemote().savedLogin()),
+      relogin: () => accountResult(() => requireAccountRemote().relogin(), true),
       getPublicConfig: async (gatewayBaseUrl?: string) => unwrapRemoteResult('zerowall.account.publicConfig', await requireAccountRemote().publicConfig(gatewayBaseUrl)),
       gateways: async () => unwrapRemoteResult('zerowall.account.gateways', await requireAccountRemote().gateways()),
       selectGateway: (baseUrl: string) => accountResult(() => requireAccountRemote().selectGateway(baseUrl), true),

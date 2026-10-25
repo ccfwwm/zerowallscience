@@ -8,12 +8,58 @@ export interface ClaudeCodeStatus {
   running: boolean
 }
 
+export type ClaudePermissionMode = 'default' | 'dontAsk' | 'acceptEdits' | 'auto' | 'plan' | 'bypassPermissions'
+export type ClaudePermissionSelector = 'plugin' | 'native'
+export type ClaudeRenderer = 'plugin' | 'native'
+export type ClaudeProse = 'plain' | 'enhanced'
+export interface ClaudeNativeSettings {
+  outputStyle?: string
+  permissionSelector?: ClaudePermissionSelector
+  permissionMode?: ClaudePermissionMode
+  renderer?: ClaudeRenderer
+  prose?: ClaudeProse
+  worktreeBranchPrefix?: string
+  maxProcesses?: number
+  idleTimeoutMinutes?: number
+}
+
+export type ClaudeGlobalSettingEffect = 'immediate' | 'new-session' | 'next-turn' | 'next-worktree' | 'restart'
+export interface ClaudeGlobalSettingOption {
+  value: string
+  label: string
+  source: 'built-in' | 'user' | 'configured'
+}
+export type ClaudeGlobalSetting = {
+  key: string
+  kind: 'select'
+  value: string
+  options: readonly ClaudeGlobalSettingOption[]
+  effect: ClaudeGlobalSettingEffect
+  available?: boolean
+  unavailableReason?: string
+} | {
+  key: string
+  kind: 'text'
+  value: string
+  maxLength: number
+  effect: ClaudeGlobalSettingEffect
+  available?: boolean
+  unavailableReason?: string
+}
+export interface ClaudeGlobalSettingsView {
+  settings: readonly ClaudeGlobalSetting[]
+}
+
 /** Settings-page operations do not belong to a conversation Agent. */
 export interface ClaudeCodeSettingsApi {
   status: () => Promise<ClaudeCodeStatus>
   install: () => Promise<ClaudeCodeStatus>
   rollback: () => Promise<ClaudeCodeStatus>
   uninstall: () => Promise<ClaudeCodeStatus>
+  settings?: () => Promise<ClaudeNativeSettings>
+  updateSettings?: (settings: Partial<ClaudeNativeSettings>) => Promise<ClaudeNativeSettings>
+  globalSettings?: () => Promise<ClaudeGlobalSettingsView>
+  updateGlobalSettings?: (changes: Record<string, string>) => Promise<ClaudeGlobalSettingsView>
 }
 export interface ClaudeCodeTurn {
   id: string
@@ -28,4 +74,33 @@ export interface ClaudeCodeTurn {
   skills: number
   mcp: number
   skipped: string[]
+  renderer?: ClaudeRenderer
+  turn?: number
+  step?: number
+  activity?: ClaudeActivityBlock[]
+}
+
+export interface ClaudeActivityBlock {
+  index: number
+  kind: 'text' | 'reasoning' | 'tool-call'
+  text: string
+  ended: boolean
+  id?: string
+  name?: string
+  result?: string
+  failed?: boolean
+  answer?: boolean
+}
+export interface ClaudeTranscript {
+  turn: number
+  step: number
+  renderer: ClaudeRenderer
+  running: boolean
+  activity: ClaudeActivityBlock[]
+}
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap {
+    'zerowall-claude/turn': { turn: number; step: number }
+    'zerowall-claude/transcript': ClaudeTranscript
+  }
 }

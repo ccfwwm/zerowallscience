@@ -1,12 +1,13 @@
 import { cp, lstat, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
 import { archiveProfileCandidate, discardProfileCandidate, migrateOfflineProfileLinks, pluginIdentity, prepareProfileCandidate, prepareOfflineCandidate, profileCarrier, readOfflineReceipt, verifiedGeneration, verifyProfileCarriers } from './offline-profile.mjs'
 import { satisfiesInstalledPackageRange, satisfiesPackageRange } from './package-range.mjs'
 import { renameProfile } from './profile-rename.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
 import { copyProfileTree } from './profile-copy.mjs'
+import { profileHistoryCopyOptions } from './profile-history.mjs'
 import { RETIRED_PLUGIN_IDS, retiredPackageSelector, removeRetiredPlugins, removeRetiredPatch, removeRetiredResolutionRules } from './retired-plugins.mjs'
 import { restorePackageClosure } from './profile-restore.mjs'
 import { PROFILE_LAYOUT, materializationFile, physicalizeProfilePlugins, preparePhysicalRootsForPnpm, verifyMaterializedProfile } from './profile-materialization.mjs'
@@ -17,6 +18,18 @@ import { commitPackagePaths, restorePackagePaths } from './profile-package-commi
 import { recoverPnpmTransactions } from './profile-pnpm-transaction.mjs'
 import { enqueuePendingPlugin, readPendingPlugin, writePendingPlugin, listPendingPlugins, targetLocked } from './profile-pending.mjs'
 import { pluginRuntimeEntries } from './plugin-entrypoints.mjs'
+import { bounded } from './profile-copy.mjs'
+
+const PLUGIN_DOWNLOAD_CONCURRENCY = 8
+
+function pluginArchivePath(root, item) {
+  // The content-addressed .package is shared by identical payloads. Each
+  // package still needs its own immutable file: pnpm records these paths in
+  // the candidate manifest and concurrent workers must never copy to one
+  // common .tgz target.
+  const identity = createHash('sha256').update(`${item.id}@${item.version}`).digest('hex').slice(0, 24)
+  return join(root, 'downloads', `${item.sha256}.${identity}.tgz`)
+}
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
 async function atomic(path, value, { raw = false } = {}) {
@@ -27,7 +40,7 @@ async function atomic(path, value, { raw = false } = {}) {
 }
 
 /** Signed resource preparation and official DSH profile transactions. */
-export function createResourceManager({ home, keys, target, runPlugin, stopHost: stopHostCallback, startHost: startHostCallback, callHost, readHealth, applyPython, runtimeModules, offlineSource, local = false, offlineStaging = false, onOfflinePhase = () => {}, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], bundledSkillVersions = {}, defaultPlugins = [] }) {
+export function createResourceManager({ home, keys, target, runPlugin, stopHost: stopHostCallback, startHost: startHostCallback, callHost, readHealth, applyPython, runtimeModules, offlineSource, local = false, offlineStaging = false, onOfflinePhase = () => {}, feedBase = 'https://zerowall.chengxunkeji.cn/stable/catalogs', yaml = { parse: JSON.parse, stringify: JSON.stringify }, bundledPlugins = [], bundledSkillVersions = {}, defaultPlugins = [], downloadResource: download = downloadResource }) {
   const root = join(home, 'resources')
   const profiles = join(home, 'profiles')
   const active = join(profiles, 'web')
@@ -68,7 +81,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
 
   async function copyProfileSkeleton(source, destination, { pendingIds = [], ...options } = {}) {
     const filter = options.filter ?? (() => true)
-    await copyProfileTree(source, destination, { ...options, filter: (path, entry) => !/^\.plugin-manager(?:\/|$)|(?:^|\/)package\.json\.lock(?:\/|$)/u.test(path) && filter(path, entry) })
+    const history = await profileHistoryCopyOptions(source, { yaml })
+    await copyProfileTree(source, destination, { ...history, ...options, filter: (path, entry) => !/^\.plugin-manager(?:\/|$)|(?:^|\/)package\.json\.lock(?:\/|$)/u.test(path) && filter(path, entry) })
     const layout = await repairProfileLayout(destination, { from: source, home,
       diagnoseMissingTargets: true, pendingRoots: pendingIds.map(id => packagePath(destination, id)) })
     if (layout.needsRelink) throw new Error('PROFILE_LAYOUT_RELINK_REQUIRED: use the plugin repair action with the bundled pnpm before activation')
@@ -190,6 +204,36 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     }
   }
 
+  async function preparePluginArchives(entries, { signal, prepared }) {
+    const controller = new AbortController()
+    const downloadSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
+    let failure
+    const check = () => {
+      if (signal?.aborted) throw new Error('RESOURCE_BATCH_CANCELLED')
+      if (failure) throw failure
+    }
+    try {
+      await bounded(entries, async item => {
+        try {
+          check()
+          const file = await download(item, join(root, 'downloads'), { local, signal: downloadSignal })
+          check()
+          const tarball = pluginArchivePath(root, item)
+          await cp(file, tarball)
+          check()
+          await prepared(item, tarball)
+        } catch (error) {
+          if (signal?.aborted) throw new Error('RESOURCE_BATCH_CANCELLED', { cause: error })
+          failure ??= error
+          controller.abort()
+          throw error
+        }
+      }, PLUGIN_DOWNLOAD_CONCURRENCY)
+    } catch (error) {
+      throw failure ?? error
+    }
+  }
+
   async function repairMissingFileDependencies(profile, document, replacements, { signal } = {}) {
     if (!document?.resources) return
     const manifestFile = join(profile, 'package.json')
@@ -229,14 +273,16 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       if (installed && compareVersions(entry.version, installed.version) < 0) throw new Error('Repair would downgrade an installed plugin: ' + id)
       visit(entry)
     }
+    // Validate all retained versions before starting any transfer. Legacy
+    // profiles may have many missing source tarballs; they use the same bounded
+    // download path as the requested update instead of another serial queue.
     for (const entry of repaired.values()) {
       const installed = await packageVersion(active, entry.id)
       if (installed && compareVersions(entry.version, installed.version) < 0) throw new Error('Repair would downgrade an installed plugin: ' + entry.id)
-      const cached = await downloadResource(entry, join(root, 'downloads'), { local, signal })
-      const tarball = cached + '.tgz'
-      await cp(cached, tarball)
-      replacements[entry.id] = 'file:' + tarball.replaceAll('\\', '/')
     }
+    await preparePluginArchives([...repaired.values()], { signal, prepared: (entry, tarball) => {
+      replacements[entry.id] = 'file:' + tarball.replaceAll('\\', '/')
+    } })
     return [...repaired.keys()]
   }
 
@@ -506,7 +552,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     const candidateManifest = await json(join(result.candidate, 'package.json'))
     candidateManifest.zerowall.offlineBuildId = document.buildId
     await atomic(join(result.candidate, 'package.json'), candidateManifest)
+    const packageInstallStarted = Date.now()
     await preparePackageInstall(result.candidate)
+    onOfflinePhase({ phase: 'offline-package-install', state: 'complete', durationMs: Date.now() - packageInstallStarted })
     try {
       const repairedIds = [...new Set([...document.plugins.filter(entry => !entry.core).map(entry => entry.id), ...(result.archivedIds ?? [])])]
       const repairedDependencyIds = [...new Set(document.files.map(entry => /^modules\/((?:@[^/]+\/)?[^/]+)\/package\.json$/u.exec(entry.path)?.[1]).filter(Boolean))]
@@ -621,15 +669,18 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     const overrides = {}, archives = new Map()
     let completed = 0
     try {
-      for (const item of closure.values()) {
-        checkCancelled()
-        const file = await downloadResource(item, join(root, 'downloads'), { local, signal })
-        const tarball = file + '.tgz'; await cp(file, tarball)
+      let progressWrites = Promise.resolve()
+      await preparePluginArchives([...closure.values()], { signal, prepared: async (item, tarball) => {
         overrides[item.id] = 'file:' + tarball.replaceAll('\\', '/')
         archives.set(item.id, tarball)
-        await report({ phase: 'preparing', completed: ++completed, total: closure.size, currentPlugin: item.id })
-        await atomic(journal, { state: 'preparing', candidate, completed, ...metadata })
-      }
+        progressWrites = progressWrites.then(async () => {
+          checkCancelled()
+          const current = ++completed
+          await report({ phase: 'preparing', completed: current, total: closure.size, currentPlugin: item.id })
+          await atomic(journal, { state: 'preparing', candidate, completed: current, ...metadata })
+        })
+        await progressWrites
+      } })
       // Discover and authenticate missing sources before relocating internal
       // links. Strict relocation cannot succeed until these exact roots exist.
       metadata.repairedIds = await prepareMutationCandidate(candidate, overrides, document, { signal })
@@ -781,7 +832,16 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
   }
 
   async function activatePackages(candidate, metadata, completionState) {
+    const started = Date.now()
+    let phaseStarted = started
+    const recordOfflinePhase = step => {
+      if (metadata.operation !== 'offline-repair') return
+      const now = Date.now()
+      onOfflinePhase({ phase: 'profile-activation', step, state: 'complete', durationMs: now - phaseStarted, totalDurationMs: now - started })
+      phaseStarted = now
+    }
     await requireProfileLayout(candidate, candidate)
+    recordOfflinePhase('layout-verified')
     const before = await json(join(active, 'package.json')), after = await json(join(candidate, 'package.json'))
     const ids = new Set(metadata.packageIds ?? [])
     if (!['enable', 'disable'].includes(metadata.operation)) {
@@ -797,6 +857,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     const previousEntries = await affectedPluginEntries(affectedIds, [active])
     // A snapshot supplies per-plugin rollback without moving the live profile.
     await copyProfileSkeleton(active, backup)
+    recordOfflinePhase('backup-copied')
     const directory = join(backup, 'transaction')
     await mkdir(directory, { recursive: true })
     const state = { state: 'preparing', schema: 2, items: [], created: Date.now(), pid: process.pid }
@@ -809,11 +870,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       await stopHost()
       await commitPackagePaths({ profile: active, candidate, directory, state, ids: [...ids], includeDependencyRoot: metadata.operation === 'offline-repair', replaceInstallSources: metadata.replaceInstallSources, historyPaths: metadata.historyPaths })
       committed = true
+      recordOfflinePhase('paths-committed')
       // Initial desktop migration admits the core Host first. Optional bundles
       // activate in the background; explicit repair/update operations retain
       // their affected-plugin health gate and transaction rollback.
       await startHost(metadata.operation === 'offline-repair' && metadata.startup === true
         ? undefined : { baseline, ids: affectedIds, affectedEntries: [...previousEntries, ...await affectedPluginEntries(affectedIds, [active])] })
+      recordOfflinePhase('host-ready')
       // The global journal is the commit decision. Until it is durable recovery
       // restores exact paths, even if the process dies after health succeeds.
       await atomic(journal, { ...record, state: completionState })

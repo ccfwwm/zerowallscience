@@ -123,11 +123,13 @@ describe('Claude Code conversation panel', () => {
 })
 
 describe('Claude Code client entry points', () => {
-  it('registers the Claude Code settings page and the existing session action', () => {
+  it('registers the Claude settings, transcript renderer and session action with explicit dependencies', () => {
     const calls: Array<{ name: string; options: Record<string, unknown>; component: unknown }> = []
     const remote = {
       settingsStatus: vi.fn(), settingsInstall: vi.fn(), settingsRollback: vi.fn(), settingsUninstall: vi.fn(),
+      settingsGet: vi.fn(async () => ({ ok: true, value: { prose: 'plain' } })),
     }
+    const uiConversation = { events: { register: vi.fn() } }
     const slots = {
       inject: vi.fn((_name: string, callback: () => void) => callback()),
       register: vi.fn((options: Record<string, unknown>, component: unknown) => { calls.push({ name: String(options.name), options, component }) }),
@@ -135,13 +137,15 @@ describe('Claude Code client entry points', () => {
     const ctx = {
       locale: { register: vi.fn(), bind: vi.fn(() => (key: string) => key) },
       effect: vi.fn(effect => effect()), slots,
-      get: vi.fn(() => remote),
+      get: vi.fn((key: string) => key === 'uiConversation' ? uiConversation : remote),
     }
     expect(inject).toContain('locale')
+    expect(inject).toContain('uiConversation')
     apply(ctx as never)
-    expect(calls.map(call => call.name)).toEqual(['conversation.session.header.actions', 'settings.section'])
-    expect(calls[1]?.options).toMatchObject({ id: 'zerowall-claude-code', order: 35, locale: 'zerowall.claude-code' })
-    expect(calls[1]?.component).toBe(ClaudeCodeSettingsSection)
+    expect(calls.map(call => call.name)).toEqual(['conversation.chat.node', 'conversation.session.header.actions', 'settings.section'])
+    expect(uiConversation.events.register).toHaveBeenCalledWith(expect.objectContaining({ kind: 'zerowall-claude-transcript' }))
+    expect(calls[2]?.options).toMatchObject({ id: 'zerowall-claude-code', order: 35, locale: 'zerowall.claude-code' })
+    expect(calls[2]?.component).toBe(ClaudeCodeSettingsSection)
     expect(remote.settingsStatus).not.toHaveBeenCalled()
   })
 })

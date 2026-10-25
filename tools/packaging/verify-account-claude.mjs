@@ -55,8 +55,8 @@ await writeFile(join(environmentRoot, 'localappdata/ZeroWall Science/python-loca
 const env = { ...process.env, APPDATA: join(environmentRoot, 'appdata'), LOCALAPPDATA: join(environmentRoot, 'localappdata'),
   USERPROFILE: environmentRoot, HOME: environmentRoot, ZEROWALL_USER_DATA_DIR: userData,
   ZEROWALL_PYTHON_RUNTIME_ROOT: join(environmentRoot, 'Python') }
-delete env.ELECTRON_RUN_AS_NODE
-delete env.PWDEBUG
+for (const key of ['ELECTRON_RUN_AS_NODE', 'PWDEBUG', 'NODE_OPTIONS', 'NODE_PATH', 'DSH_HOME',
+  'ZEROWALL_RUNTIME_ANCHOR', 'ZEROWALL_PROFILE_ANCHOR', 'ZEROWALL_DEPENDENCIES_ANCHOR']) delete env[key]
 
 async function vaultValue(key) {
   const document = await json(join(userData, 'credentials/vault.json')).catch(error => { if (error.code !== 'ENOENT') throw error })
@@ -118,8 +118,15 @@ async function stop() {
   if (!application) return
   const current = application
   application = undefined
-  const pid = current.process().pid
-  try { await limited(current.close(), 20_000, 'APP_SHUTDOWN_TIMEOUT') }
+  const child = current.process()
+  const pid = child.pid
+  try {
+    await limited(current.close(), 20_000, 'APP_SHUTDOWN_TIMEOUT')
+    for (const deadline = Date.now() + 10_000; child.exitCode === null && child.signalCode === null && Date.now() < deadline;) await wait(50)
+    check(child.exitCode !== null || child.signalCode !== null, 'APP_PROCESS_DID_NOT_EXIT')
+    report.closedProcesses ??= []
+    report.closedProcesses.push({ pid, exited: true, exitCode: child.exitCode, signal: child.signalCode })
+  }
   catch (error) {
     if (process.platform === 'win32' && pid) spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
     else current.process().kill('SIGKILL')
@@ -204,14 +211,48 @@ try {
   report.login.modelsSyncedToHost = true
   report.login.defaultSelectionPreserved = JSON.stringify(catalog.default) === defaultBefore
   check(report.login.defaultSelectionPreserved, 'DEFAULT_MODEL_CHANGED_DURING_LOGIN')
+  // A successful form login intentionally closes the account panel. Reopen
+  // through the visible footer action before verifying its saved-login UI.
+  panel = await accountPanel(page)
   await screenshot(page, 'account-login-masked.png')
   await persist()
 
+  phase = 'gui-saved-credential-relogin'
+  const [reloginResponse] = await Promise.all([
+    page.waitForResponse(response => new URL(response.url()).pathname === '/api/zerowallAccount/relogin' && response.request().method() === 'POST', { timeout: 120_000 }),
+    panel.getByRole('button', { name: /^(重新登录|Sign in again)$/u }).click(),
+  ])
+  check(reloginResponse.ok(), 'GUI_RELOGIN_TRANSPORT_FAILED')
+  const reloginEnvelope = await reloginResponse.json()
+  const relogged = reloginEnvelope.result?.value
+  check(reloginEnvelope.result?.ok === true && relogged?.status === 'signedIn', 'GUI_SAVED_CREDENTIAL_RELOGIN_FAILED')
+  check(relogged.email?.toLowerCase() === credentials.email.trim().toLowerCase(), 'RELOGIN_IDENTITY_CHANGED')
+  const reloginCatalog = await modelCatalog(page, route)
+  check(JSON.stringify(reloginCatalog.default) === defaultBefore, 'DEFAULT_MODEL_CHANGED_DURING_RELOGIN')
+  report.relogin = { ...accountSummary(relogged), guiButtonSubmitted: true, savedCredentialsUsed: true,
+    modelsSyncedToHost: true, defaultSelectionPreserved: true }
+  await screenshot(page, 'account-relogin-masked.png')
+  await persist()
+
   phase = 'restart-and-restore'
+  const previousPid = application.process().pid
   await stop()
+  // Simulate a missing/expired session in this marked fixture. The saved login
+  // stays encrypted; startup must authenticate again rather than reuse a token.
+  const vaultFile = join(userData, 'credentials/vault.json')
+  const vault = await json(vaultFile)
+  check(typeof vault.entries?.['zerowall.ai-cloud.login'] === 'string', 'SAVED_LOGIN_NOT_ENCRYPTED')
+  delete vault.entries['zerowall.ai-cloud.session']
+  await writeFile(vaultFile, JSON.stringify(vault))
+  const removedSession = await json(vaultFile)
+  check(removedSession.entries?.['zerowall.ai-cloud.session'] === undefined, 'SESSION_REMOVAL_READBACK_FAILED')
+  report.restoreSimulation = { previousPid, previousProcessExited: true, sessionAbsentBeforeRestart: true }
   page = await start('restart-restore')
+  check(application.process().pid !== previousPid, 'RESTART_REUSED_PREVIOUS_PROCESS')
+  report.restoreSimulation.newPid = application.process().pid
   const restored = await rpc(page, 'zerowallAccount/current')
-  report.restore = { ...accountSummary(restored), identityMatchesLogin: restored.email?.toLowerCase() === credentials.email.trim().toLowerCase() }
+  report.restore = { ...accountSummary(restored), sessionRemovedBeforeRestart: true,
+    identityMatchesLogin: restored.email?.toLowerCase() === credentials.email.trim().toLowerCase() }
   check(restored.status === 'signedIn' && restored.balanceFreshness === 'current' && report.restore.identityMatchesLogin, 'PACKAGED_ACCOUNT_NOT_RESTORED_AFTER_RESTART')
   check(restored.models?.some(model => model.providerId === route.providerId && model.modelId === route.modelId && !model.stale), 'RESTORED_CLAUDE_ROUTE_MISSING')
   const restoredCatalog = await modelCatalog(page, route)

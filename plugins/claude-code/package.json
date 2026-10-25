@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-claude-code",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "description": "Run an isolated Claude Code CLI from ZeroWall conversations.",
   "type": "module",
   "main": "./lib/index.js",
@@ -34,6 +34,7 @@
       "inject": [
         "slots",
         "locale",
+        "uiConversation",
         "@deepseek-ai/dsh-api-remotes",
         "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-conversation",
@@ -53,6 +54,7 @@
     "requiredServices": [
       "agentDefaultModel",
       "subprocess",
+      "subagents",
       "workingDirectory",
       "skills",
       "zerowallProjects",
@@ -60,11 +62,16 @@
       "credentials",
       "settings",
       "llm",
-      "sessionProjections"
+      "sessionProjections",
+      "agentPresets",
+      "tools",
+      "systemPrompt"
     ],
     "optionalServices": [
       "zerowallAiCloudCredentialResolver",
-      "zerowallMcpRouteResolver"
+      "zerowallMcpRouteResolver",
+      "agents",
+      "subagentModelSelection"
     ],
     "capabilities": [
       "claude-code"
@@ -159,7 +166,8 @@
     "@deepseek-ai/dsh-client-ui-workspace": "0.2.1-rc.2",
     "@deepseek-ai/dsh-credentials": "0.2.1-rc.2",
     "@deepseek-ai/dsh-session-projection": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-subprocess": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-subprocess": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-tool-subagent": "0.2.1-rc.2"
   },
   "devDependencies": {
     "tsdown": "^0.22.2",
@@ -207,6 +215,7 @@
     "@deepseek-ai/dsh-client-ui-workspace": "workspace:^",
     "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-session-projection": "workspace:^",
-    "@deepseek-ai/dsh-subprocess": "workspace:^"
+    "@deepseek-ai/dsh-subprocess": "workspace:^",
+    "@deepseek-ai/dsh-tool-subagent": "workspace:^"
   }
 }

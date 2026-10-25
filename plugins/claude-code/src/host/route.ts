@@ -79,9 +79,19 @@ export class ClaudeSafeOutput {
     if (this.raw.length > 4 * 1024 * 1024) throw new Error('Claude Code 输出超过单轮限制。')
   }
   finish(): void { this.finished = true }
+  /** Create an independent buffer with the same redaction set for one stream block. */
+  fork(): ClaudeSafeOutput { return new ClaudeSafeOutput(this.secrets) }
   snapshot(): string {
     const secrets = this.secrets.filter(Boolean)
-    let end = this.finished ? this.raw.length : Math.max(0, this.raw.length - Math.max(1, ...secrets.map(value => value.length)) + 1)
+    // Delay only a suffix that could actually be the start of a secret.
+    // Holding max(secret.length) characters on every update hid short Claude
+    // deltas until whole paragraphs arrived, even when no secret was present.
+    let end = this.raw.length
+    if (!this.finished) for (const secret of secrets) {
+      for (let length = Math.min(this.raw.length, secret.length - 1); length > this.raw.length - end; length -= 1) {
+        if (this.raw.endsWith(secret.slice(0, length))) { end = this.raw.length - length; break }
+      }
+    }
     for (const secret of secrets) {
       const start = this.raw.lastIndexOf(secret, end)
       if (start >= 0 && start < end && start + secret.length > end) end = start

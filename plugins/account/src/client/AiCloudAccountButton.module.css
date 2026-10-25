@@ -63,7 +63,7 @@
 .accountCard > div { display: grid; min-width: 0; gap: 3px; }
 .identity small { display: inline-flex; align-items: center; gap: 5px; color: #27845a; }
 .externalActions { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.accountCard { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.accountCard { grid-template-columns: minmax(0, 1fr) auto auto auto auto; }
 .accountCard > .externalActions { display: flex; }
 .modelList { margin-top: 12px; padding: 12px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 12px; min-width: 0; }
 .modelList summary { cursor: pointer; color: var(--dsw-alias-link, #315b7d); font-size: 13px; font-weight: 650; }

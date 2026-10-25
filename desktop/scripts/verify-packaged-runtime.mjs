@@ -1926,7 +1926,7 @@ async function verifyDesktopStartup() {
     await settings.locator('input[value="http://127.0.0.1:23119/api"]').waitFor({ state: 'visible', timeout: 30_000 })
     // Locale assertions use controlled fixture names; user-supplied names
     // retain their original language during saved-profile replay.
-    if (!process.env.ZEROWALL_SSH_PROFILE_REPLAY) await verifySettingsLocales(page, settings, root)
+    if (!process.env.ZEROWALL_SSH_PROFILE_REPLAY) await verifySettingsLocales(page, settings, evidenceRoot)
     await settings.getByRole('button', { name: /^(关闭|Close)$/ }).click()
     if (process.env.ZEROWALL_ZOTERO_REPLAY_LOG) {
       try { await verifyConversationViews(page, root) } catch (error) {

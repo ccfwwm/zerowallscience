@@ -152,7 +152,7 @@ const dshDependencies = {
 const npmDependencies = {
   // Independent Claude releases must remain installable with the base shipped
   // in 8.4.7, even while an unrelated base update is present in the workspace.
-  'claude-code': { '@zerowallscience/plugin-base': '^0.1.24', '@deepseek-ai/dsh-credentials': 'workspace:^', '@deepseek-ai/dsh-session-projection': 'workspace:^', '@deepseek-ai/dsh-subprocess': 'workspace:^', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
+  'claude-code': { '@zerowallscience/plugin-base': '^0.1.24', '@deepseek-ai/dsh-credentials': 'workspace:^', '@deepseek-ai/dsh-session-projection': 'workspace:^', '@deepseek-ai/dsh-subprocess': 'workspace:^', '@deepseek-ai/dsh-tool-subagent': 'workspace:^', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   python: { '@zerowallscience/integrity-runtime': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', yauzl: '3.4.0', pend: '1.2.0', react: '^18.2.0', 'react-dom': '^18.2.0' },
   biogenie: { '@zerowallscience/research-store': 'workspace:^' },
   pubmed: { compromise: '14.16.0', undici: '^7.16.0', '@zerowallscience/research-store': 'workspace:^', zod: '^4.4.3' },
@@ -176,7 +176,7 @@ const npmDependencies = {
 }
 
 const plugins = [
-  { id: 'claude-code', client: true, remote: true, clientInject: ['slots', 'locale', '@deepseek-ai/dsh-api-remotes', '@deepseek-ai/dsh-client-ui-slots', '@deepseek-ai/dsh-client-ui-conversation', '@deepseek-ai/dsh-client-ui-settings'], capabilities: ['claude-code'], permissions: ['processes', 'files', 'network', 'credentials'], dependencies: ['base', 'projects', 'secrets', 'environment'], requiredServices: ['agentDefaultModel', 'subprocess', 'workingDirectory', 'skills', 'zerowallProjects', 'zerowallEnvironment', 'credentials', 'settings', 'llm', 'sessionProjections'], optionalServices: ['zerowallAiCloudCredentialResolver', 'zerowallMcpRouteResolver'] },
+  { id: 'claude-code', client: true, remote: true, clientInject: ['slots', 'locale', 'uiConversation', '@deepseek-ai/dsh-api-remotes', '@deepseek-ai/dsh-client-ui-slots', '@deepseek-ai/dsh-client-ui-conversation', '@deepseek-ai/dsh-client-ui-settings'], capabilities: ['claude-code'], permissions: ['processes', 'files', 'network', 'credentials'], dependencies: ['base', 'projects', 'secrets', 'environment'], requiredServices: ['agentDefaultModel', 'subprocess', 'subagents', 'workingDirectory', 'skills', 'zerowallProjects', 'zerowallEnvironment', 'credentials', 'settings', 'llm', 'sessionProjections', 'agentPresets', 'tools', 'systemPrompt'], optionalServices: ['zerowallAiCloudCredentialResolver', 'zerowallMcpRouteResolver', 'agents', 'subagentModelSelection'] },
   { id: 'pubmed', remote: true, capabilities: ['literature', 'evidence-graph'], permissions: ['files', 'network', 'credentials', 'approvals'], dependencies: ['secrets', 'research'], requiredServices: ['settings', 'tools', 'sessions', 'zerowallResearch'] },
   // These services are accessed directly by plugin-base during activation.
   // Keep the generated manifest in sync so Loader injects them before apply.

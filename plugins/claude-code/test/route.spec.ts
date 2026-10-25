@@ -168,6 +168,16 @@ describe('Claude Code current conversation routing', () => {
 })
 
 describe('Claude Code output credential isolation', () => {
+  it('exposes short ordinary deltas immediately while withholding only a possible credential prefix', () => {
+    const output = new ClaudeSafeOutput(['a-long-private-credential-that-must-not-delay-every-token'])
+    output.append('Hi!')
+    expect(output.snapshot()).toBe('Hi!')
+    output.append(' a-long-private-cred')
+    expect(output.snapshot()).toBe('Hi! ')
+    output.append('ential-that-must-not-delay-every-token')
+    output.finish()
+    expect(output.snapshot()).toBe('Hi! [REDACTED]')
+  })
   it('redacts a credential across every possible chunk boundary before exposing output', () => {
     const secret = 'private-sentinel-token'
     for (let split = 1; split < secret.length; split++) {

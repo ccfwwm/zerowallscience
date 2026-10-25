@@ -1,8 +1,13 @@
 import { createHash, randomUUID, sign, verify } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { mkdir, open, rename, readFile, rm, stat } from 'node:fs/promises'
+import { lstat, mkdir, open, rename, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { physicalFs } from '../commands/physical-fs.mjs'
+import { retryTransientTransfer } from '../commands/network-retry.mjs'
+
+// Consumers may share a transfer only when their integrity, source, and
+// cancellation contracts agree. Independent transfers use their own parts.
+const inFlightDownloads = new Map()
 
 export function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical)
@@ -76,38 +81,75 @@ export async function fileDigest(path) {
   return hash.digest('hex')
 }
 /** Download into a new content-addressed generation; never overwrite a live package. */
-export async function downloadResource(entry, directory, { local = false, fetcher = fetch, signal } = {}) {
-  await mkdir(directory, { recursive: true })
-  const destination = join(directory, entry.sha256 + '.package')
-  if ((await stat(destination).catch(() => undefined))?.size === entry.size && await fileDigest(destination) === entry.sha256) return destination
-  const temporary = destination + `.${randomUUID()}.part`
-  const url = new URL(entry.downloadUrl)
-  const output = await open(temporary, 'wx', 0o600)
-  let size = 0
-  const hash = createHash('sha256')
-  try {
-    let body
-    if (url.protocol === 'file:' && local) body = [await readFile(url)]
-    else {
-      if (url.protocol !== 'https:') throw new Error('Resource download must use HTTPS')
-      const response = await fetcher(url, { redirect: 'error', signal: signal ?? AbortSignal.timeout(120_000) })
-      if (!response.ok || !response.body) throw new Error('Resource download failed')
-      body = response.body
+export function downloadResource(entry, directory, { local = false, fetcher = fetch, signal, timeoutMs = 120_000 } = {}) {
+  const { sha256, size: expectedSize, downloadUrl } = entry
+  const destination = join(directory, sha256 + '.package')
+  const records = inFlightDownloads.get(destination) ?? new Set()
+  const existing = [...records].find(record => record.expectedSize === expectedSize && record.downloadUrl === downloadUrl
+    && record.local === local && record.fetcher === fetcher && record.signal === signal && record.timeoutMs === timeoutMs)
+  if (existing) return existing.promise
+  const record = { expectedSize, downloadUrl, local, fetcher, signal, timeoutMs }
+  const operation = (async () => {
+    // A caller's cancellation signal must not disable the transfer deadline.
+    // Plugin batches always pass one so a failed sibling can abort the group.
+    const deadline = AbortSignal.timeout(timeoutMs)
+    const transferSignal = signal ? AbortSignal.any([signal, deadline]) : deadline
+    transferSignal.throwIfAborted()
+    const url = new URL(downloadUrl)
+    if (url.protocol !== 'https:' && !(url.protocol === 'file:' && local)) throw new Error('Resource download must use HTTPS')
+    await mkdir(directory, { recursive: true })
+    if ((await stat(destination).catch(() => undefined))?.size === expectedSize && await fileDigest(destination) === sha256) {
+      transferSignal.throwIfAborted()
+      return destination
     }
-    for await (const chunk of body) {
-      size += chunk.length
-      if (size > entry.size) throw new Error('Resource exceeded signed size')
-      hash.update(chunk)
-      for (let offset = 0; offset < chunk.length;) offset += (await output.write(chunk, offset, chunk.length - offset)).bytesWritten
-    }
-    if (size !== entry.size || hash.digest('hex') !== entry.sha256) throw new Error('Resource SHA-256 or size mismatch')
-    await output.sync()
-    await output.close()
-    await rename(temporary, destination)
-    return destination
-  } catch (error) {
-    await output.close().catch(() => undefined)
-    await rm(temporary, { force: true })
-    throw error
-  }
+    return retryTransientTransfer(async () => {
+      const temporary = destination + `.${randomUUID()}.part`
+      const output = await open(temporary, 'wx', 0o600)
+      let size = 0
+      const hash = createHash('sha256')
+      try {
+        let body
+        if (url.protocol === 'file:' && local) body = [await readFile(url)]
+        else {
+          const response = await fetcher(url, { redirect: 'error', signal: transferSignal })
+          if (!response.ok || !response.body) throw new Error('Resource download failed')
+          body = response.body
+        }
+        for await (const chunk of body) {
+          transferSignal.throwIfAborted()
+          size += chunk.length
+          if (size > expectedSize) throw new Error('Resource exceeded signed size')
+          hash.update(chunk)
+          for (let offset = 0; offset < chunk.length;) offset += (await output.write(chunk, offset, chunk.length - offset)).bytesWritten
+        }
+        transferSignal.throwIfAborted()
+        if (size !== expectedSize || hash.digest('hex') !== sha256) throw new Error('Resource SHA-256 or size mismatch')
+        await output.sync()
+        await output.close()
+        transferSignal.throwIfAborted()
+        try {
+          await rename(temporary, destination)
+        } catch (error) {
+          // Windows can reject replacement when another independently verified
+          // transfer has just committed the same content-addressed file.
+          const installed = await lstat(destination).catch(() => undefined)
+          if (!['EEXIST', 'EPERM', 'EACCES'].includes(error.code) || !installed?.isFile() || installed.size !== expectedSize
+            || await fileDigest(destination).catch(() => undefined) !== sha256) throw error
+          await rm(temporary, { force: true })
+        }
+        return destination
+      } catch (error) {
+        await output.close().catch(() => undefined)
+        await rm(temporary, { force: true })
+        throw error
+      }
+    }, { signal: transferSignal })
+  })()
+  record.promise = operation.finally(() => {
+    records.delete(record)
+    if (!records.size && inFlightDownloads.get(destination) === records) inFlightDownloads.delete(destination)
+  })
+  records.add(record)
+  inFlightDownloads.set(destination, records)
+  return record.promise
 }

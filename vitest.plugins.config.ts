@@ -7,21 +7,30 @@ import { standardDecoratorPlugin, vitestExecArgv } from './deepseek-harness/vite
 
 const root = import.meta.dirname
 const workspaceRequire = createRequire(resolve(root, 'package.json'))
-const testingLibraryRequire = createRequire(workspaceRequire.resolve('@testing-library/react'))
+const dshRuntimeRequire = createRequire(resolve(root, 'deepseek-harness/packages/test-support/client-runtime/package.json'))
 
 export default defineConfig({
   resolve: {
+    // The account plugin and DSH test-support package are separate pnpm
+    // workspaces and may otherwise load different React/ReactDOM copies.
+    // Dedupe the package roots (including subpaths such as react-dom/client)
+    // so slot components and Testing Library share the same hook dispatcher.
+    dedupe: ['react', 'react-dom'],
     // DSH is a nested workspace with its own install root. Client tests must
     // still render against one React instance or hooks imported by DSH UI
     // primitives will use a different dispatcher from ReactDOM.
     alias: [
+      { find: /^@testing-library\/react$/u, replacement: dshRuntimeRequire.resolve('@testing-library/react') },
       { find: '@deepseek-ai/dsh-client-ui-chat/client', replacement: resolve(root, 'deepseek-harness/packages/client/ui-chat/src/client/index.ts') },
       // Client helper entrypoints are intentionally source-only exports in the
       // published plugin manifest. Map them explicitly in Vite so plugin
       // component tests do not depend on a prebuilt `lib/` tree.
       { find: '@zerowallscience/plugin-base/client-helpers', replacement: resolve(root, 'plugins/base/src/shared/client-helpers.ts') },
-      { find: /^react$/u, replacement: testingLibraryRequire.resolve('react') },
-      { find: /^react-dom$/u, replacement: testingLibraryRequire.resolve('react-dom') },
+      { find: /^react$/u, replacement: dshRuntimeRequire.resolve('react') },
+      { find: /^react-dom\/client$/u, replacement: dshRuntimeRequire.resolve('react-dom/client') },
+      { find: /^react-dom$/u, replacement: dshRuntimeRequire.resolve('react-dom') },
+      { find: /^react\/jsx-runtime$/u, replacement: dshRuntimeRequire.resolve('react/jsx-runtime') },
+      { find: /^react\/jsx-dev-runtime$/u, replacement: dshRuntimeRequire.resolve('react/jsx-dev-runtime') },
     ],
   },
   plugins: [
@@ -42,7 +51,10 @@ export default defineConfig({
     server: {
       // Published DSH UI primitives import KaTeX CSS as a side effect. Route
       // them through Vite so browser-component tests do not hand CSS to Node.
-      deps: { inline: [/@deepseek-ai\/dsh-client-ui-primitives/] },
+      // Keep Testing Library in the Vite graph as well: its externalized
+      // CommonJS require would otherwise resolve the root ReactDOM 18.2 copy,
+      // bypassing the React/ReactDOM aliases above.
+      deps: { inline: [/@deepseek-ai\/dsh-client-ui-primitives/, /@testing-library\/react/] },
     },
   },
 })

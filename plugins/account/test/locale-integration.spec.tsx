@@ -71,6 +71,10 @@ it('uses the production slot and Base dictionaries across language changes and d
 it.runIf(process.env.ZEROWALL_TEST_PACKED_CLIENTS === '1')('loads the published tgz factories through the real locale and card registration path', async () => {
   const feed = JSON.parse(await readFile(new NodeURL('../../../artifacts/release/plugins/plugin-packages.json', import.meta.url), 'utf8'))
   const require = createRequire(import.meta.url)
+  const rendererRequire = createRequire(new NodeURL('../../../deepseek-harness/packages/test-support/client-runtime/package.json', import.meta.url))
+  // VM factories bypass Vite's aliases. Resolve React from the real slot
+  // renderer's workspace too, so both use the same hook dispatcher.
+  const packedRequire = Object.assign((id: string) => /^(react|react-dom)(\/|$)/u.test(id) ? rendererRequire(id) : require(id), require)
   async function client(name: string) {
     const record = feed.find((item: any) => item.id === `@zerowallscience/plugin-${name}`)
     expect(record).toBeDefined()
@@ -80,10 +84,13 @@ it.runIf(process.env.ZEROWALL_TEST_PACKED_CLIENTS === '1')('loads the published 
       if (entry.path === 'package/package.json') entry.on('data', chunk => { manifest += chunk })
     } })
     const pkg = JSON.parse(manifest)
-    if (name === 'account') expect(pkg.dependencies['@zerowallscience/plugin-base']).toBe('0.1.24')
+    if (name === 'account') {
+      const baseSource = JSON.parse(await readFile(new NodeURL('../../base/package.json', import.meta.url), 'utf8'))
+      expect(pkg.dependencies['@zerowallscience/plugin-base']).toBe(baseSource.version)
+    }
     let factory!: (require: NodeRequire) => any
     runInNewContext(code, { window: { __ModuleLoader__: { load: (value: any) => { factory = value.factory } } }, document, console, setTimeout, clearTimeout, setInterval, clearInterval, URL, TextEncoder, TextDecoder, navigator })
-    return factory(require)
+    return factory(packedRequire)
   }
   const base = await client('base')
   const wrappedAccount = await client('account')

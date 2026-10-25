@@ -1,4 +1,4 @@
-.root { box-sizing: border-box; width: 100%; max-width: 860px; padding: 28px 32px; color: var(--dsw-alias-label-primary); }
+.root { box-sizing: border-box; width: 100%; min-width: 0; max-width: 860px; padding: 28px 32px; color: var(--dsw-alias-label-primary); }
 .root h2 { margin: 0 0 8px; font-size: 20px; }
 .intro { margin: 0 0 20px; color: var(--dsw-alias-label-secondary); line-height: 1.5; }
 .card { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-3); }
@@ -18,4 +18,14 @@
 .primary { color: var(--dsw-alias-label-on-primary, #fff) !important; background: var(--dsw-alias-interactive-bg-primary, #2563eb) !important; border-color: transparent !important; }
 .error { margin: 0; color: var(--dsw-alias-red-500, #c94d4d); font-size: 13px; }
 .note { margin: 0; color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.5; }
+.diagnostics { display: grid; grid-template-columns: minmax(100px, 0.35fr) minmax(0, 1fr); gap: 8px 14px; align-items: baseline; font-size: 12px; }
+.diagnostics > span, .settingCopy p { color: var(--dsw-alias-label-secondary); }
+.diagnostics code { overflow-wrap: anywhere; }
+.settingRow { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(0, 1fr); gap: 14px; align-items: center; padding-top: 12px; border-top: 1px solid var(--dsw-alias-border-l2); }
+.settingCopy { display: grid; min-width: 0; gap: 4px; }
+.settingCopy label { font-size: 13px; font-weight: 600; }
+.settingCopy p { margin: 0; font-size: 11px; line-height: 1.4; }
+.settingRow select, .settingRow input { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; background: var(--dsw-alias-bg-layer-2); color: inherit; font: inherit; }
+.settingRow select:disabled, .settingRow input:disabled { opacity: .55; }
 @media (max-width: 600px) { .root { padding: 18px 16px; } .cardHeader { display: grid; } }
+@media (max-width: 680px) { .settingRow { grid-template-columns: 1fr; gap: 8px; } .diagnostics { grid-template-columns: 1fr; gap: 4px; } .diagnostics > code { margin-bottom: 8px; } }

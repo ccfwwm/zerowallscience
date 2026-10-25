@@ -64,3 +64,25 @@ test('verified public history reuses unchanged legacy archive bytes and rejects 
   const tampered = async url => new Response(String(url).endsWith('skill-latest.json') ? JSON.stringify(pointer) : Buffer.alloc(catalog.length))
   await assert.rejects(publishedResources({ baseUrl, kind: 'skill', keys, cache: badCache, fetcher: tampered }), /SHA-256 or size mismatch/u)
 })
+
+test('public history retries a reset while reading pointer JSON before verifying its signature', async t => {
+  const { original } = await fixture(t)
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  const keys = { test: publicKey.export({ type: 'spki', format: 'pem' }) }
+  const baseUrl = 'https://resources.example/stable'
+  const catalog = Buffer.from(JSON.stringify(signCatalog({ schema: 1, kind: 'plugin', localOnly: false, resources: [] }, privateKey, 'test')))
+  const pointer = signCatalog({ kind: 'pointer', resourceKind: 'plugin', localOnly: false, catalog: { downloadUrl: baseUrl + '/catalogs/plugin/build/catalog.json', size: catalog.length, sha256: createHash('sha256').update(catalog).digest('hex') } }, privateKey, 'test')
+  let pointerCalls = 0
+  const fetcher = async url => {
+    if (!String(url).endsWith('plugin-latest.json')) return new Response(catalog)
+    pointerCalls++
+    if (pointerCalls === 1) return { ok: true, status: 200, json: async () => { throw new TypeError('terminated', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) }) } }
+    return new Response(JSON.stringify(pointer))
+  }
+  const history = await publishedResources({ baseUrl, kind: 'plugin', keys, cache: join(original, '..', 'retry-cache'), fetcher })
+  assert.equal(history.size, 0)
+  assert.equal(pointerCalls, 2)
+  let tamperedCalls = 0
+  await assert.rejects(publishedResources({ baseUrl, kind: 'plugin', keys, cache: join(original, '..', 'invalid-cache'), fetcher: async () => { tamperedCalls++; return new Response(JSON.stringify({ ...pointer, localOnly: true })) } }), /signature/u)
+  assert.equal(tamperedCalls, 1)
+})

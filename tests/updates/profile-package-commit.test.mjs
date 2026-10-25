@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, writeFile, readFile, lstat, rename, rm, symlink } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile, lstat, rename, rm, symlink, readlink, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { commitPackagePaths, restorePackagePaths } from '../../tools/commands/profile-package-commit.mjs'
@@ -41,6 +41,30 @@ test('recovery restores a crash between exact-path renames and is idempotent', a
   await restorePackagePaths(f.profile, f.directory, state)
   await restorePackagePaths(f.profile, f.directory, state)
   assert.equal(await readFile(join(f.profile, name, 'data'), 'utf8'), 'old')
+})
+
+test('publication relocates nested dependency links and never traverses an external Junction', async t => {
+  const f = await fixture(t)
+  const selected = join(f.candidate, 'node_modules/@scope/selected')
+  const dependency = join(f.candidate, '.zerowall/install-sources/resolution-fixture/node_modules/shared')
+  const external = join(f.root, 'external')
+  await mkdir(dependency, { recursive: true }); await writeFile(join(dependency, 'index.cjs'), 'shared')
+  await mkdir(join(selected, 'assets/deep/node_modules'), { recursive: true })
+  const dependencyLink = join(selected, 'assets/deep/node_modules/shared')
+  const directoryLink = process.platform === 'win32' ? 'junction' : 'dir'
+  await symlink(dependency, dependencyLink, directoryLink)
+  await mkdir(external)
+  const dangling = join(external, 'unrelated-dangling-link'), missing = join(f.root, 'missing')
+  await symlink(missing, dangling, directoryLink)
+  await symlink(external, join(selected, 'assets/external'), directoryLink)
+  await commitPackagePaths(f)
+  assert.equal(await readFile(join(f.profile, 'node_modules/@scope/selected/assets/deep/node_modules/shared/index.cjs'), 'utf8'), 'shared')
+  assert.equal(await realpath(join(f.profile, 'node_modules/@scope/selected/assets/deep/node_modules/shared')), await realpath(join(f.profile, '.zerowall/install-sources/resolution-fixture/node_modules/shared')))
+  assert.equal(await readlink(dangling), missing)
+  assert.equal(await realpath(join(f.profile, 'node_modules/@scope/selected/assets/external')), await realpath(external))
+  await restorePackagePaths(f.profile, f.directory, f.state)
+  assert.equal(await readFile(join(f.profile, 'node_modules/@scope/selected/data'), 'utf8'), 'old')
+  assert.equal(await readlink(dangling), missing)
 })
 
 test('rollback rejects traversal, duplicate entries and symlinked parent directories', async t => {

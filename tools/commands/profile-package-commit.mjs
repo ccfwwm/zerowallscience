@@ -1,5 +1,6 @@
 import { lstat, mkdir, readdir, readFile, readlink, rename, symlink, unlink, writeFile, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { bounded } from './profile-copy.mjs'
 
 const exists = path => lstat(path).then(() => true, error => { if (error.code !== 'ENOENT') throw error; return false })
 const inside = (root, path) => { const child = relative(root, path); return child === '' || !isAbsolute(child) && child !== '..' && !child.startsWith('..' + sep) }
@@ -24,15 +25,26 @@ export async function writePackageJournal(directory, state) {
 // Only traverse physical directories owned by this publication. In particular
 // never traverse a package Junction into another plugin or the running profile.
 async function relocateTree(path, candidate, profile, links) {
-  const info = await lstat(path)
-  if (info.isSymbolicLink()) {
-    const target = await readlink(path), absolute = resolve(dirname(path), target)
-    const next = inside(candidate, absolute) ? join(profile, relative(candidate, absolute)) : absolute
-    const type = (await stat(path)).isDirectory() ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file'
-    links.push({ path, target, next, type })
-    return
+  let level = [path]
+  while (level.length) {
+    const nextLevel = []
+    await bounded(level, async path => {
+      // Recheck directories before opening them. Dirents let ordinary files
+      // bypass a serial lstat for every asset in the installed plugin closure.
+      const info = await lstat(path)
+      if (info.isSymbolicLink()) {
+        const target = await readlink(path), absolute = resolve(dirname(path), target)
+        const next = inside(candidate, absolute) ? join(profile, relative(candidate, absolute)) : absolute
+        const type = (await stat(path)).isDirectory() ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file'
+        links.push({ path, target, next, type })
+      } else if (info.isDirectory()) {
+        for (const entry of await readdir(path, { withFileTypes: true })) {
+          if (entry.isDirectory() || entry.isSymbolicLink()) nextLevel.push(join(path, entry.name))
+        }
+      }
+    })
+    level = nextLevel
   }
-  if (info.isDirectory()) for (const entry of await readdir(path)) await relocateTree(join(path, entry), candidate, profile, links)
 }
 
 async function physicalParents(profile, name) {

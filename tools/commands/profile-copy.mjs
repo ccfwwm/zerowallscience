@@ -2,6 +2,11 @@ import { physicalFs } from './physical-fs.mjs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { RETIRED_PLUGIN_IDS } from './retired-plugins.mjs'
 const { copyFile, stat, mkdir, readdir, readlink, realpath, symlink } = physicalFs.promises
+const resolutionSource = /^\.zerowall\/install-sources\/resolution-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/iu
+
+export function isResolutionInstallSource(local) {
+  return resolutionSource.test(local.replaceAll('\\', '/'))
+}
 
 // These namespaces contain displaced packages and diagnostic receipts, not
 // active dependency sources. The source profile retains their independent
@@ -40,34 +45,51 @@ export async function bounded(entries, task, concurrency = 16) {
   if (failure) throw failure.reason
 }
 
-/** Copy independent bytes, never hardlink mutable profiles or follow junctions.
- * Existing archives remain in the source profile's rollback history. */
-export async function copyProfileTree(source, destination, { filter = () => true } = {}) {
-  source = resolve(source); destination = resolve(destination)
-  const child = relative(source, destination)
-  if (!child || !isAbsolute(child) && child !== '..' && !child.startsWith('..' + sep)) throw new Error('Profile copy destination must be outside source')
+/** Plan a physical copy without writing to the source or its link targets. */
+export async function planProfileCopy(source, { filter = () => true, pruneDependencyHistory = false, retainedDependencyHistory = [], pruneInstallSources = false, retainedInstallSources = [] } = {}) {
+  source = resolve(source)
   const copyingModules = basename(source) === 'node_modules'
+  const dependencyHistory = '.zerowall/dependency-history'
+  const installSources = '.zerowall/install-sources'
   const files = [], links = [], directories = ['']
   const archives = new Map()
+  const retainedHistory = new Set(retainedDependencyHistory.map(local => local.replaceAll('\\', '/')))
+  const retainedSources = new Set(retainedInstallSources.map(local => local.replaceAll('\\', '/')))
   async function collect(initial) {
     let level = initial
     while (level.length) {
-    const next = []
-    await bounded(level, async local => {
-      for (const entry of await readdir(join(source, local), { withFileTypes: true })) {
-        const name = join(local, entry.name), normalized = name.replaceAll('\\', '/')
-        const packagePath = copyingModules ? 'node_modules/' + normalized : normalized
-        if (!copyingModules && isProfileArchivePath(normalized) && (entry.isDirectory() || entry.isSymbolicLink())) { archives.set(normalized, entry); continue }
-        if (packagePath.startsWith('node_modules/') && (previousPackageShadow(packagePath, entry)
-          || retiredPackagePath(packagePath))) continue
-        if (!filter(normalized, entry)) continue
-        if (entry.isSymbolicLink()) links.push(name)
-        else if (entry.isDirectory()) { directories.push(name); next.push(name) }
-        else if (entry.isFile()) files.push(name)
-        else throw new Error('Profile contains an unsupported file')
-      }
-    })
-    level = next
+      const next = []
+      await bounded(level, async local => {
+        for (const entry of await readdir(join(source, local), { withFileTypes: true })) {
+          const name = join(local, entry.name), normalized = name.replaceAll('\\', '/')
+          const packagePath = copyingModules ? 'node_modules/' + normalized : normalized
+          if (!copyingModules && pruneDependencyHistory && normalized === dependencyHistory && entry.isDirectory()) {
+            directories.push(name)
+            next.push(name)
+            continue
+          }
+          if (!copyingModules && pruneDependencyHistory && normalized.startsWith(dependencyHistory + '/')
+            && normalized.slice(dependencyHistory.length + 1).indexOf('/') < 0
+            && (entry.isDirectory() || entry.isSymbolicLink())) {
+            archives.set(normalized, entry)
+            continue
+          }
+          if (!copyingModules && pruneInstallSources && isResolutionInstallSource(normalized)
+            && (entry.isDirectory() || entry.isSymbolicLink())) {
+            archives.set(normalized, entry)
+            continue
+          }
+          if (!copyingModules && isProfileArchivePath(normalized) && (entry.isDirectory() || entry.isSymbolicLink())) { archives.set(normalized, entry); continue }
+          if (packagePath.startsWith('node_modules/') && (previousPackageShadow(packagePath, entry)
+            || retiredPackagePath(packagePath))) continue
+          if (!filter(normalized, entry)) continue
+          if (entry.isSymbolicLink()) links.push(name)
+          else if (entry.isDirectory()) { directories.push(name); next.push(name) }
+          else if (entry.isFile()) files.push(name)
+          else throw new Error('Profile contains an unsupported file')
+        }
+      })
+      level = next
     }
   }
   await collect([''])
@@ -76,12 +98,21 @@ export async function copyProfileTree(source, destination, { filter = () => true
   // dependency. This is read-only; no archived bytes are removed or relinked.
   const archiveRoot = path => {
     const local = relative(source, path).replaceAll('\\', '/')
+    if (!copyingModules && pruneDependencyHistory && local.startsWith(dependencyHistory + '/')) {
+      return local.split('/').slice(0, 3).join('/')
+    }
+    if (!copyingModules && pruneInstallSources && local.startsWith(installSources + '/')) {
+      const root = local.split('/').slice(0, 3).join('/')
+      return isResolutionInstallSource(root) ? root : undefined
+    }
     const root = local.split('/').slice(0, 2).join('/')
     return isProfileArchivePath(root) ? root : undefined
   }
   let inspected = 0
-  while (inspected < links.length && archives.size) {
-    const pending = links.slice(inspected), referenced = new Set()
+  let preserveMetadataRoots = new Set([...retainedHistory, ...retainedSources].filter(root => archives.has(root)))
+  while ((inspected < links.length || preserveMetadataRoots.size) && archives.size) {
+    const pending = links.slice(inspected), referenced = preserveMetadataRoots
+    preserveMetadataRoots = new Set()
     inspected = links.length
     await bounded(pending, async local => {
       const path = join(source, local)
@@ -101,6 +132,16 @@ export async function copyProfileTree(source, destination, { filter = () => true
     }
     await collect(retained)
   }
+  return { files, links, directories }
+}
+
+/** Copy independent bytes, never hardlink mutable profiles or follow junctions.
+ * Existing archives remain in the source profile's rollback history. */
+export async function copyProfileTree(source, destination, options = {}) {
+  source = resolve(source); destination = resolve(destination)
+  const child = relative(source, destination)
+  if (!child || !isAbsolute(child) && child !== '..' && !child.startsWith('..' + sep)) throw new Error('Profile copy destination must be outside source')
+  const { files, links, directories } = await planProfileCopy(source, options)
   await mkdir(destination, { recursive: true })
   await bounded(directories, local => mkdir(join(destination, local), { recursive: true }))
   await bounded(files, local => copyFile(join(source, local), join(destination, local)))

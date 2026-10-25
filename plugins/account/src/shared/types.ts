@@ -103,6 +103,8 @@ export interface AiCloudMediaModel extends AiCloudManagedModel {
 
 export interface AiCloudAccountSnapshot {
   status: AiCloudAccountStatus
+  /** A transient restore failure may be retried in the background; explicit logout and rejected credentials never opt in. */
+  autoLoginRetryable?: boolean
   email?: string
   balance?: number
   currency?: string

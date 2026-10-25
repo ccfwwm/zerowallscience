@@ -4,7 +4,7 @@ import { createHash, generateKeyPairSync } from 'node:crypto'
 import { lstat, mkdtemp, mkdir, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
-import { migrateOfflineProfileLinks, offlineFiles, prepareOfflineCandidate, readOfflineReceipt, verifyOfflineProfile } from '../../tools/commands/offline-profile.mjs'
+import { declaredResolutionRoots, migrateOfflineProfileLinks, offlineFiles, prepareOfflineCandidate, readOfflineReceipt, verifyOfflineProfile } from '../../tools/commands/offline-profile.mjs'
 import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
 import { initializeProfile } from '../../tools/commands/profile.mjs'
 import { signCatalog } from '../../tools/release/resource-catalog.mjs'
@@ -12,7 +12,7 @@ import { materializationFile } from '../../tools/commands/profile-materializatio
 
 const target = { desktopVersion: '8.0.8', dshVersion: '0.2.0-rc.2', dshCommit: '86b6740d0e671cee0b3fd0168de484c0efbf46ea', platform: 'win32', architecture: 'x64' }
 const defaults = ['base', 'mcp', 'skills', 'python'].map(id => '@zerowallscience/plugin-' + id)
-async function fixture(t) {
+async function fixture(t, { onOfflinePhase = () => {} } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'zws-offline-'))
   t.after(async () => { assert(resolve(root).startsWith(resolve(tmpdir()) + sep)); await rm(root, { recursive: true, force: true }) })
   const home = join(root, '用户 配置'), source = join(root, 'resources/offline-profile')
@@ -26,9 +26,20 @@ async function fixture(t) {
   }
   const unsigned = { schema: 1, kind: 'offline-profile', profileArchitecture: 7, applicationVersion: target.desktopVersion, buildId: 'test-build', dshCommit: target.dshCommit, dshRange: { min: target.dshVersion, max: target.dshVersion }, desktopRange: { min: target.desktopVersion, max: target.desktopVersion }, platform: ['win32'], architecture: ['x64'], plugins: defaults.map(id => ({ id, version: '0.2.0' })), files: (await offlineFiles(source)).sort((a,b) => a.path.localeCompare(b.path)), defaultPatch: [] }
   await writeFile(join(source, 'receipt.json'), JSON.stringify(signCatalog(unsigned, pair.privateKey, 'test')))
-  const manager = createResourceManager({ home, keys, target, defaultPlugins: defaults, bundledPlugins: unsigned.plugins, yaml: JSON, stopHost: async () => {}, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }) })
+  const manager = createResourceManager({ home, keys, target, defaultPlugins: defaults, bundledPlugins: unsigned.plugins, yaml: JSON, stopHost: async () => {}, startHost: async () => {}, callHost: async () => ({ ready: true, entries: [] }), onOfflinePhase })
   return { root, home, source, keys, target, defaults, bundledPlugins: unsigned.plugins, yaml: JSON, manager, unsigned, pair }
 }
+
+test('startup source retention recognizes local package and workspace declarations only for resolution UUID roots', () => {
+  const profile = join(tmpdir(), 'zws-declaration-fixture')
+  const uuid = '44444444-4444-4444-8444-444444444444'
+  const root = '.zerowall/install-sources/resolution-' + uuid
+  const legacy = '.zerowall/install-sources/resolution-old'
+  assert.deepEqual(declaredResolutionRoots(profile, [
+    { dependencies: { linked: 'link:' + root + '/node_modules/linked', ordinary: '1.2.3' } },
+    { overrides: { declared: 'file:' + root + '/node_modules/declared', old: 'link:' + legacy + '/node_modules/old' } },
+  ]), [root])
+})
 
 for (const layout of [2, 3]) test(`desktop upgrade archives a pre-rename media adaptation and obsolete provenance in layout ${layout}`, async t => {
   const f = await fixture(t), old = '@oh-story/dsh', next = '@zerowallscience/plugin-videos'
@@ -179,7 +190,8 @@ test('damaged architecture 6 is repaired offline and repeated repair preserves e
 })
 
 test('layout 3 offline repair keeps the active profile root and commits package paths', async t => {
-  const f = await fixture(t), active = join(f.home, 'profiles/web')
+  const phases = []
+  const f = await fixture(t, { onOfflinePhase: event => phases.push(event) }), active = join(f.home, 'profiles/web')
   const manifestFile = join(active, 'package.json')
   const manifest = JSON.parse(await readFile(manifestFile, 'utf8'))
   manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: 7, profileLayout: 3 }
@@ -193,6 +205,10 @@ test('layout 3 offline repair keeps the active profile root and commits package 
   assert.equal(JSON.parse(await readFile(manifestFile, 'utf8')).zerowall.profileLayout, 3)
   assert.equal((await lstat(join(active, 'node_modules', defaults[1], 'package.json'))).isFile(), true)
   assert.equal((await lstat(join(active, 'node_modules/.zerowall-dependencies'))).isDirectory(), true)
+  assert.equal(phases.some(event => event.phase === 'offline-package-install' && event.durationMs >= 0), true)
+  const activationPhases = phases.filter(event => event.phase === 'profile-activation')
+  assert.deepEqual(activationPhases.map(event => event.step), ['layout-verified', 'backup-copied', 'paths-committed', 'host-ready'])
+  assert(activationPhases.every(event => event.state === 'complete' && event.durationMs >= 0 && event.totalDurationMs >= event.durationMs))
   assert.equal((await f.manager.repairOffline(f.source)).repaired, false)
 })
 

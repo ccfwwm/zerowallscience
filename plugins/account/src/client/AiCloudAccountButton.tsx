@@ -14,7 +14,7 @@ import { defaultModelText, type ModelText } from './model-locales.js'
 import type { GroupCatalogStore } from './group-catalog.js'
 
 export interface AiCloudModelView { providerId: string; groupId: string; groupName: string; modelId: string; baseUrl: string; capability?: string; stale?: boolean }
-export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; groups?: AiCloudGroup[]; models: AiCloudModelView[]; modelSync?: AiCloudModelSync; mediaModels?: Array<{providerId?:string;groupId?:string;modelId:string;profileId:string;groupName:string;mediaType:string;stale?:boolean}>; mediaSync?: AiCloudModelSync }
+export interface AiCloudAccountView { status: 'signedOut' | 'signedIn' | 'authExpired'; autoLoginRetryable?: boolean; email?: string; balance?: number; currency?: string; balanceFreshness: 'current' | 'stale'; rechargeUrl?: string; lowBalance: boolean; gatewayBaseUrl?: string; groups?: AiCloudGroup[]; models: AiCloudModelView[]; modelSync?: AiCloudModelSync; mediaModels?: Array<{providerId?:string;groupId?:string;modelId:string;profileId:string;groupName:string;mediaType:string;stale?:boolean}>; mediaSync?: AiCloudModelSync }
 export interface AiCloudGatewayView { baseUrl: string; label: string; preferred: boolean }
 export interface AiCloudPublicView { registrationEnabled: boolean; emailVerifyEnabled: boolean; invitationCodeEnabled: boolean; captchaEnabled: boolean; passwordResetEnabled?: boolean; rechargeUrl?: string; lowBalanceThreshold?: number }
 export interface AiCloudCheckoutView { enabled: boolean; minimumAmount: number; paymentTypes: string[]; rechargeUrl?: string }
@@ -26,6 +26,7 @@ export interface Actions {
   getAccount: () => Promise<AiCloudAccountView>
   forgetLogin: () => Promise<void>
   savedLogin: () => Promise<{ email: string; password: string; baseUrl: string; rememberPassword: true } | undefined>
+  relogin: () => Promise<AiCloudAccountView>
   getPublicConfig: (gatewayBaseUrl?: string) => Promise<AiCloudPublicView>
   gateways: () => Promise<AiCloudGatewayView[]>
   selectGateway: (baseUrl: string) => Promise<AiCloudAccountView>
@@ -67,6 +68,7 @@ export function AiCloudAccountButton(props: Props) {
   useEffect(() => accountSurface.subscribeOpen(() => setOpen(true)), [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [savedLoginAvailable, setSavedLoginAvailable] = useState(false)
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [rememberPassword, setRememberPassword] = useState(true)
   const [code, setCode] = useState('')
@@ -75,6 +77,8 @@ export function AiCloudAccountButton(props: Props) {
   const [resetCooldown, setResetCooldown] = useState(0)
   const authPending = useRef(false)
   const refreshPending = useRef(false)
+  const restoreAttempts = useRef(0)
+  const cancelAutoRestore = useRef(() => {})
   const formEdited = useRef(false)
   const configRequest = useRef(0)
   const [codeNotice, setCodeNotice] = useState<string>()
@@ -83,6 +87,7 @@ export function AiCloudAccountButton(props: Props) {
   const [amount, setAmount] = useState('100')
   const [paymentType, setPaymentType] = useState('alipay')
   const [busy, setBusy] = useState(false)
+  const [relogging, setRelogging] = useState(false)
   const [polling, setPolling] = useState(false)
   const [error, setError] = useState<string>()
   const [success, setSuccess] = useState<string>()
@@ -147,7 +152,7 @@ export function AiCloudAccountButton(props: Props) {
     void props.gateways().then(setGateways).catch(() => undefined)
     try {
       const nextAccount = await props.getAccount()
-      setAccount(nextAccount)
+      setAccount({ ...nextAccount })
       if (nextAccount.status === 'signedIn') await loadBilling()
       return nextAccount
     } catch (reason) {
@@ -168,11 +173,30 @@ export function AiCloudAccountButton(props: Props) {
   }, [refresh])
 
   useEffect(() => {
+    if (account?.autoLoginRetryable !== true || restoreAttempts.current >= 3) return
+    let active = true
+    let started = false
+    const retry = () => {
+      if (!active || started || authPending.current || refreshPending.current) return
+      started = true
+      ++restoreAttempts.current
+      void refresh()
+    }
+    const timer = window.setTimeout(retry, [2_000, 8_000, 30_000][restoreAttempts.current])
+    window.addEventListener('online', retry)
+    const cancel = () => { active = false; window.clearTimeout(timer); window.removeEventListener('online', retry) }
+    cancelAutoRestore.current = () => { restoreAttempts.current = 3; cancel() }
+    return cancel
+  }, [account, refresh])
+
+  useEffect(() => {
     if (!open && !target) return
     let active = true
-    if (account?.status !== 'signedOut' && account?.status !== 'authExpired') return
+    if (account === undefined) return
     void props.savedLogin?.().then(saved => {
-      if (!active || saved === undefined || formEdited.current) return
+      if (!active) return
+      setSavedLoginAvailable(saved !== undefined)
+      if (account.status === 'signedIn' || saved === undefined || formEdited.current) return
       setEmail(saved.email)
       setPassword(saved.password)
       setRememberPassword(true)
@@ -239,6 +263,7 @@ export function AiCloudAccountButton(props: Props) {
     if (forgotMode && resetCooldown > 0) return
     if (!forgotMode && registering && password.length < 6) { setError(props.t('account.passwordHint')); return }
     if (!forgotMode && registering && !/^[0-9]{6}$/.test(code.trim())) { setError(props.t('account.invalidCode')); return }
+    cancelAutoRestore.current()
     authPending.current = true
     setSuccess(undefined)
     setBusy(true)
@@ -255,6 +280,7 @@ export function AiCloudAccountButton(props: Props) {
         ? await props.register(email.trim().toLowerCase(), password, code.trim(), rememberPassword, verificationGateway ?? selectedGateway)
         : await props.login(email.trim().toLowerCase(), password, rememberPassword)
       setAccount(next)
+      setSavedLoginAvailable(rememberPassword)
       setCode('')
       // Host login performs discovery as part of the authenticated operation.
       // A catalog outage must not turn a valid login into a failed UI flow;
@@ -307,6 +333,7 @@ export function AiCloudAccountButton(props: Props) {
   }
 
   const logout = async () => {
+    cancelAutoRestore.current()
     ++modelSyncRequest.current; setSyncingModels(false)
     setBusy(true)
     setError(undefined)
@@ -316,6 +343,7 @@ export function AiCloudAccountButton(props: Props) {
       setOrders([])
       setActiveOrder(undefined)
       const saved = await props.savedLogin?.()
+      setSavedLoginAvailable(saved !== undefined)
       setRegistering(false)
       setPasswordVisible(false)
       setEmail(saved?.email ?? '')
@@ -328,9 +356,36 @@ export function AiCloudAccountButton(props: Props) {
     }
   }
 
+  const relogin = async () => {
+    if (busy || relogging || authPending.current) return
+    cancelAutoRestore.current()
+    authPending.current = true
+    setRelogging(true)
+    setBusy(true)
+    setError(undefined)
+    setSuccess(undefined)
+    try {
+      const next = await props.relogin()
+      setAccount(next)
+      setSavedLoginAvailable(true)
+      // Reload the shared model directory after the Host replaces routes.
+      // Keep successful authentication usable if only this refresh fails.
+      await props.refreshModelCatalog?.().catch(() => undefined)
+      await loadBilling()
+      setSuccess(props.t(hasIncompleteCatalog(next) ? 'account.modelsSyncPartial' : 'account.reloginSuccess'))
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      authPending.current = false
+      setRelogging(false)
+      setBusy(false)
+    }
+  }
+
   const switchGateway = async (baseUrl: string) => {
     ++modelSyncRequest.current; setSyncingModels(false)
     if (authPending.current) return
+    cancelAutoRestore.current()
     formEdited.current = true
     ++configRequest.current
     setConfig(undefined)
@@ -376,6 +431,7 @@ export function AiCloudAccountButton(props: Props) {
   }
   const continueOrder = (order: AiCloudOrderView) => { setActiveOrder(order) }
   const signedIn = account?.status === 'signedIn'
+  const restoring = account === undefined && error === undefined
   const selectedGateway = account?.gatewayBaseUrl ?? gateways.find(gateway => gateway.preferred)?.baseUrl ?? gateways[0]?.baseUrl
   const registrationAvailable = config?.registrationEnabled === true && config.emailVerifyEnabled && !config.captchaEnabled && !config.invitationCodeEnabled
   const resetAvailable = config?.passwordResetEnabled === true && !config.captchaEnabled
@@ -404,7 +460,7 @@ export function AiCloudAccountButton(props: Props) {
     {(open || target) && createPortal(<div className={target ? css.embedded : css.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setOpen(false) }}>
       <section className={css.panel} data-auth={!signedIn} role={target ? undefined : "dialog"} aria-modal={target ? undefined : true} aria-labelledby="zerowall-account-title">
         <header className={css.header}>
-          <div className={css.headerIdentity}><span className={css.brandIcon}><Cloud size={22} aria-hidden="true" /></span><div><p>ZeroWall Science</p><h2 id="zerowall-account-title">{signedIn ? props.t('account.centerTitle') : forgotMode ? props.t('account.resetTitle') : props.t('account.title')}</h2></div></div>
+          <div className={css.headerIdentity}><span className={css.brandIcon}><Cloud size={22} aria-hidden="true" /></span><div><p>ZeroWall Science</p><h2 id="zerowall-account-title">{restoring ? props.t('account.restoring') : signedIn ? props.t('account.centerTitle') : forgotMode ? props.t('account.resetTitle') : props.t('account.title')}</h2></div></div>
           <div className={css.headerActions}>
             {platformUrl !== undefined && <button className={css.iconButton} type="button" onClick={() => openExternal(platformUrl)} title={props.t('account.openPlatform')} aria-label={props.t('account.openPlatform')}><ExternalLink size={18} /></button>}
             {!target && <button className={css.iconButton} type="button" onClick={() => setOpen(false)} title={props.t('common.close')} aria-label={props.t('common.close')}><X size={18} /></button>}
@@ -412,7 +468,11 @@ export function AiCloudAccountButton(props: Props) {
         </header>
         {error && <p className={css.error} role="alert">{accountError(error, props.t)}</p>}
         {success && <p className={css.success} role="status">{success}</p>}
-        {!signedIn ? <form className={css.auth} noValidate onSubmit={event => { event.preventDefault(); void authenticate() }}>
+        {restoring ? <div className={css.auth} role="status" aria-live="polite" aria-busy="true">
+          <RefreshCw size={22} className={css.spin} aria-hidden="true" />
+          <p className={css.authLead}>{props.t('account.restoringHint')}</p>
+          {!target && <button className={css.secondary} type="button" onClick={() => setOpen(false)}>{props.t('common.close')}</button>}
+        </div> : !signedIn ? <form className={css.auth} noValidate onSubmit={event => { event.preventDefault(); void authenticate() }}>
           {account?.status === 'authExpired' && <p className={css.notice}>{props.t('account.authExpired')}</p>}
           {!forgotMode && <section className={css.capabilities} aria-label={props.t('account.capabilities')}>
             <strong>{props.t('account.capabilities')}</strong>
@@ -428,7 +488,7 @@ export function AiCloudAccountButton(props: Props) {
           {!forgotMode && <>
             <div className={css.passwordField}><label htmlFor="zerowall-account-password">{props.t('account.password')}</label><div><input id="zerowall-account-password" type={passwordVisible ? 'text' : 'password'} value={password} disabled={busy} onChange={event => { formEdited.current = true; setPassword(event.target.value) }} autoComplete={registering ? 'new-password' : 'current-password'} /><button className={css.iconButton} type="button" disabled={busy} aria-label={props.t(passwordVisible ? 'account.hidePassword' : 'account.showPassword')} title={props.t(passwordVisible ? 'account.hidePassword' : 'account.showPassword')} onClick={() => setPasswordVisible(value => !value)}>{passwordVisible ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></div>
             {registering && <p className={css.authLead}>{props.t('account.passwordHint')}</p>}
-            <label className={css.remember}><input type="checkbox" disabled={busy} checked={rememberPassword} onChange={event => { const checked = event.target.checked; setRememberPassword(checked); if (!checked) void props.forgetLogin().then(() => undefined).catch(reason => setError(message(reason))) }} />{props.t('account.rememberPassword')}</label>
+            <label className={css.remember}><input type="checkbox" disabled={busy} checked={rememberPassword} onChange={event => { const checked = event.target.checked; setRememberPassword(checked); if (!checked) { setSavedLoginAvailable(false); void props.forgetLogin().catch(reason => setError(message(reason))) } }} />{props.t('account.rememberPassword')}</label>
           </>}
           {registering && !forgotMode && <div className={css.codeGroup}>
             <label htmlFor="zerowall-verification-code">{props.t('account.code')}</label>
@@ -446,6 +506,7 @@ export function AiCloudAccountButton(props: Props) {
           {forgotMode && (config?.passwordResetEnabled === false || config?.captchaEnabled) && <p className={css.notice}>{props.t('account.resetUnavailable')}</p>}
           <div className={css.authActions}>
             {!target && <button className={css.secondary} type="button" onClick={() => setOpen(false)}>{props.t('account.skip')}</button>}
+            {savedLoginAvailable && !forgotMode && !registering && <button className={css.secondary} type="button" onClick={() => void relogin()} disabled={busy || relogging}><RefreshCw size={15} className={relogging ? css.spin : undefined} />{relogging ? props.t('account.relogging') : props.t('account.relogin')}</button>}
             <button className={css.primary} type="submit" disabled={busy || !validEmail(email) || (forgotMode ? resetCooldown > 0 || !resetAvailable : password === '' || (registering && (!registrationAvailable || password.length < 6 || !/^[0-9]{6}$/.test(code.trim()))))}>{busy && !sendingCode ? props.t('account.working') : forgotMode ? (resetCooldown > 0 ? props.t('account.codeResend', { seconds: resetCooldown }) : props.t('account.sendReset')) : registering ? props.t('account.registerConfigure') : props.t('account.loginConfigure')}</button>
           </div>
           {forgotMode && <button className={css.textButton} type="button" disabled={busy} onClick={() => changeMode('login')}>{props.t('account.backToLogin')}</button>}
@@ -455,6 +516,7 @@ export function AiCloudAccountButton(props: Props) {
             <div className={css.identity}><span>{props.t('account.currentAccount')}</span><strong>{account.email}</strong><small><span className={css.connectionBadge} data-connection={connection}><i aria-hidden="true" />{accountStatusText}</span>{account.balanceFreshness === 'stale' ? props.t('account.lastBalance') : props.t('account.signedIn')}</small></div>
             <div className={css.balance}><span>{props.t('account.balance')}</span><strong>{formatBalance(account)}</strong></div>
             <button className={css.logoutButton} type="button" onClick={() => void logout()} disabled={busy}><LogOut size={16} />{props.t('account.logout')}</button>
+            {savedLoginAvailable && <button className={css.externalButton} type="button" onClick={() => void relogin()} disabled={busy || relogging} title={props.t('account.relogin')} aria-label={props.t('account.relogin')}><RefreshCw size={15} className={relogging ? css.spin : undefined} />{relogging ? props.t('account.relogging') : props.t('account.relogin')}</button>}
           <div className={css.externalActions}>
             {usageUrl !== undefined && <button className={css.externalButton} type="button" onClick={() => openExternal(usageUrl)}><ExternalLink size={15} />{props.t('account.usageDetails')}</button>}
             <button className={css.externalButton} type="button" onClick={() => openExternal(modelPricingUrl)}><ExternalLink size={15} />{props.t('account.modelPricing')}</button>

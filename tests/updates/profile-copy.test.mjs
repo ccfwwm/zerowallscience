@@ -23,6 +23,62 @@ test('profile copies retain active sources and referenced archives without recop
   }
 })
 
+test('startup profile copies only referenced dependency-history roots', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-copy-dependency-history-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const source = join(root, 'source'), candidate = join(root, 'candidate')
+  const histories = ['retained-by-link', 'retained-by-marker', 'unreferenced']
+  for (const id of histories) {
+    const file = join(source, '.zerowall/dependency-history', id, 'node_modules/shared/index.cjs')
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, id)
+  }
+  const link = join(source, 'node_modules/plugin-a/node_modules/shared')
+  await mkdir(dirname(link), { recursive: true })
+  await symlink(join(source, '.zerowall/dependency-history/retained-by-link/node_modules/shared'), link,
+    process.platform === 'win32' ? 'junction' : 'dir')
+  await copyProfileTree(source, candidate, {
+    pruneDependencyHistory: true,
+    retainedDependencyHistory: ['.zerowall/dependency-history/retained-by-marker'],
+  })
+  for (const id of histories.slice(0, 2)) {
+    assert.equal(await readFile(join(candidate, '.zerowall/dependency-history', id, 'node_modules/shared/index.cjs'), 'utf8'), id)
+  }
+  await assert.rejects(readFile(join(candidate, '.zerowall/dependency-history/unreferenced/node_modules/shared/index.cjs')), { code: 'ENOENT' })
+  assert.equal(await readFile(join(source, '.zerowall/dependency-history/unreferenced/node_modules/shared/index.cjs'), 'utf8'), 'unreferenced')
+})
+
+test('startup profile copies only referenced resolution UUID roots and keeps legacy roots', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-copy-resolution-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const source = join(root, 'source'), candidate = join(root, 'candidate')
+  const ids = {
+    linked: '11111111-1111-4111-8111-111111111111',
+    declared: '22222222-2222-4222-8222-222222222222',
+    skipped: '33333333-3333-4333-8333-333333333333',
+  }
+  for (const [name, id] of Object.entries(ids)) {
+    const file = join(source, '.zerowall/install-sources', 'resolution-' + id, 'node_modules', name, 'index.cjs')
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, name)
+  }
+  const legacy = join(source, '.zerowall/install-sources/resolution-legacy-old/node_modules/legacy/index.cjs')
+  await mkdir(dirname(legacy), { recursive: true }); await writeFile(legacy, 'legacy')
+  const linked = join(source, 'node_modules/plugin-a/node_modules/linked')
+  await mkdir(dirname(linked), { recursive: true })
+  await symlink(join(source, '.zerowall/install-sources', 'resolution-' + ids.linked, 'node_modules/linked'), linked,
+    process.platform === 'win32' ? 'junction' : 'dir')
+  await copyProfileTree(source, candidate, {
+    pruneInstallSources: true,
+    retainedInstallSources: ['.zerowall/install-sources/resolution-' + ids.declared],
+  })
+  for (const name of ['linked', 'declared', 'legacy']) {
+    assert.equal(await readFile(join(candidate, '.zerowall/install-sources', name === 'legacy' ? 'resolution-legacy-old' : 'resolution-' + ids[name], 'node_modules', name, 'index.cjs'), 'utf8'), name)
+  }
+  await assert.rejects(readFile(join(candidate, '.zerowall/install-sources/resolution-' + ids.skipped, 'node_modules/skipped/index.cjs')), { code: 'ENOENT' })
+  assert.equal(await readFile(join(source, '.zerowall/install-sources/resolution-' + ids.skipped, 'node_modules/skipped/index.cjs'), 'utf8'), 'skipped')
+})
+
 for (const modulesOnly of [false, true]) test(`profile copy omits exact retired pnpm instances and nested entries (${modulesOnly ? 'modules' : 'profile'} root)`, async t => {
   const root = await mkdtemp(join(tmpdir(), 'zws-copy-retired-'))
   t.after(() => rm(root, { recursive: true, force: true }))
