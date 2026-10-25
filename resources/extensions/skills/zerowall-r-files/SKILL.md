@@ -6,7 +6,7 @@ allowed-tools: read
 
 # 远程项目文件浏览、预览、读写与本地上传下载。
 
-需要跨本地/远程传输时选择 Host `r_files`；服务器已有文件查询使用本工作流。R、OmicVerse、FigureYa 绘图、GEO、NHANES、遗传分析和 scTenifoldKnk 等 RMCP 结果，只要 Manifest 给出项目 `project_id/path`，都用同一个 `download_workspace` 下载。Biomni 独立任务结果使用 `source=biomni`、`job_id` 和 Manifest 文件路径。FigureYa 安装目录里的模板源文件也走 `download_workspace`，传 `module_id/source_path`；批量取回整个模板才使用 `download_figureya_module`。
+需要跨本地/远程传输时，优先调用独立 Host 工具 `r_download_workspace`，直接把远端文件写入当前本地工作区。R、OmicVerse、FigureYa 绘图、GEO、NHANES、遗传分析和 scTenifoldKnk 等 RMCP 结果，使用 `source=project`、Manifest 的 `project_id/path`；Biomni 独立任务结果使用 `source=biomni`、`job_id` 和 Manifest 文件路径；FigureYa 安装目录里的模板源文件使用 `source=figureya_source`、`module_id/source_path`。省略 `local_path` 时保存至 `downloads/<文件名>`。兼容入口是 Host `r_files` 的 `action=download_workspace`；批量取回整个 FigureYa 模板才使用 `download_figureya_module`。服务器已有文件查询仍使用本工作流。
 
 ## 功能地图
 

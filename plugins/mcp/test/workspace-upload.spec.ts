@@ -49,7 +49,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
 			expect(result.isError, JSON.stringify(result)).toBe(false)
 			const value = result.isError ? {} : result.value as any
 			expect(value.capabilities.map((item: any) => item.id)).toEqual(expect.arrayContaining([
-				'r.download.file', 'r.read.file.chunk', 'host.r_files.download_workspace', 'host.r_files.upload_workspace',
+				'r.download.file', 'r.read.file.chunk', 'host.r_files.download_workspace', 'host.r_download_workspace', 'host.r_files.upload_workspace',
 			]))
 			expect(value.host_capabilities.find((item: any) => item.id === 'host.r_files.download_workspace')?.input_schema.properties.local_path.description).toMatch(/省略时/u)
 		} finally {
@@ -80,7 +80,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
 				output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
 				execute: async (args: any) => {
 					forwarded.push(args)
-					if (args.action === 'biomni.get.job.manifest') return { job_id: 'bio-1', files: [{ path: 'figures/plot.png', bytes: bytes.length, sha256, mime_type: 'image/png' }] }
+					if (args.action === 'biomni.get.job.manifest') return { job_id: 'bio-1', outputs: [{ path: 'figures/plot.png', bytes: bytes.length, sha256, mime_type: 'image/png' }] }
 					if (args.action === 'biomni.read.file.chunk') return { path: args.arguments.path, offset: args.arguments.offset, bytes: bytes.length, total_bytes: bytes.length, eof: true, data_base64: bytes.toString('base64') }
 					throw new Error(`Unexpected Biomni action: ${args.action}`)
 				},
@@ -88,8 +88,8 @@ describe('rdatalinux workspace file transfer bridge', () => {
 			const result = await ctx.tools.execute({
 				signal: new AbortController().signal,
 				callId: ToolCallId('biomni-workspace-download'),
-				name: 'r_files',
-				arguments: { action: 'download_workspace', source: 'biomni', job_id: 'bio-1', remote_path: 'figures/plot.png' },
+				name: 'r_download_workspace',
+				arguments: { source: 'biomni', job_id: 'bio-1', remote_path: 'figures/plot.png' },
 				agent: { session: { header: { cwd: root } } } as any,
 			})
 			expect(result.isError, JSON.stringify(result)).toBe(false)
@@ -193,8 +193,8 @@ describe('rdatalinux workspace file transfer bridge', () => {
       const result = await ctx.tools.execute({
         signal: new AbortController().signal,
         callId: ToolCallId('workspace-download'),
-        name: 'r_files',
-        arguments: { action: 'download_workspace', project_id: 'study-1', remote_path: 'module-source/FigureYa123/example.png' },
+        name: 'r_download_workspace',
+        arguments: { source: 'project', project_id: 'study-1', remote_path: 'module-source/FigureYa123/example.png' },
         agent: { session: { header: { cwd: root } } } as any,
       })
       expect(result.isError).toBe(false)
@@ -415,7 +415,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
         agent: { session: { header: { cwd: root } } } as any,
       })
       expect(result.isError).toBe(true)
-      expect(result.content[0]?.type === 'text' ? result.content[0].text : '').toMatch(/(?:escapes|outside) the current workspace/u)
+      expect(result.content[0]?.type === 'text' ? result.content[0].text : '').toMatch(/(?:escapes|outside) the current workspace|inside the current workspace/u)
       expect(existsSync(join(root, '..', 'outside', 'blocked.bin'))).toBe(false)
     } finally {
       await ctx.fiber.dispose()

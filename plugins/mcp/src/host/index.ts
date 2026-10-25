@@ -98,6 +98,33 @@ const HOST_FILE_CAPABILITIES: JsonValue[] = [
     output: '本地路径、文件大小、来源路径及 SHA-256；不返回 base64 文件内容。',
   },
   {
+    id: 'host.r_download_workspace',
+    public_tool: 'r_download_workspace',
+    category: 'workspace_transfer',
+    summary: '将 RMCP 项目、Biomni 任务或服务器 FigureYa 源文件直接下载到当前本地工作区。按来源提供 remote_path 与 project_id、job_id 或 module_id/source_path；省略 local_path 时保存至 downloads/<文件名>。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        source: { type: 'string', enum: ['project', 'biomni', 'figureya_source'], default: 'project' },
+        project_id: { type: 'string', description: '项目产物来源需要' },
+        job_id: { type: 'string', description: 'Biomni 任务产物来源需要' },
+        module_id: { type: 'string', description: 'FigureYa 源文件来源需要' },
+        source_path: { type: 'string', description: 'FigureYa 模块内的相对路径' },
+        remote_path: { type: 'string', description: 'Manifest 中的远程相对路径' },
+        local_path: { type: 'string', description: '当前工作区内的相对路径；省略时写入 downloads/<文件名>' },
+      },
+      additionalProperties: false,
+    },
+    effects: 'local_workspace_write',
+    query_allowed: false,
+    execution: 'local_host',
+    confirmation_fields: [],
+    requires_confirmation: false,
+    availability: 'host_registered',
+    verification: 'registered',
+    output: '本地路径、文件大小、来源路径及 SHA-256；不返回 base64 文件内容。',
+  },
+  {
     id: 'host.r_files.upload_workspace',
     public_tool: 'r_files',
     category: 'workspace_transfer',
@@ -600,13 +627,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
           const nestedManifest = resolvedPayload.manifest !== null && typeof resolvedPayload.manifest === 'object' && !Array.isArray(resolvedPayload.manifest)
             ? resolvedPayload.manifest as Record<string, JsonValue>
             : resolvedPayload
-          const files = Array.isArray(nestedManifest.files) ? nestedManifest.files : []
+          const files = Array.isArray(nestedManifest.files)
+            ? nestedManifest.files
+            : Array.isArray(nestedManifest.outputs) ? nestedManifest.outputs : []
           const file = files.find(item => item !== null && typeof item === 'object' && !Array.isArray(item)
             && [item.path, item.relative_path, item.name].some(candidate => candidate === values.remote_path))
           if (file === undefined || file === null || typeof file !== 'object' || Array.isArray(file)) {
             throw new Error(`Biomni job ${values.job_id} has no artifact at ${values.remote_path}.`)
           }
-          resolvedPayload = { path: values.remote_path!, manifest: file as Record<string, JsonValue> }
+          const artifact = file as Record<string, JsonValue>
+          const artifactPath = [artifact.path, artifact.relative_path, artifact.name].find(candidate => typeof candidate === 'string' && candidate.trim() !== '')
+          resolvedPayload = { path: typeof artifactPath === 'string' ? artifactPath : values.remote_path!, manifest: artifact }
         }
         const resolvedRemotePath = typeof resolvedPayload.path === 'string' && resolvedPayload.path.trim() !== ''
           ? resolvedPayload.path
@@ -707,6 +738,38 @@ export class ZeroWallMcpService extends TypertRemoteService {
           : figureyaRequest === undefined
             ? { source: 'project', projectId: values.project_id!, requestedRemotePath: values.remote_path!, remotePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: expectedBytes, sha256 }
             : { source: 'figureya_source', moduleId: figureyaRequest.moduleId, sourcePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: expectedBytes, sha256 }
+      },
+    }) as any)
+    ctx.tools.register(defineTool({
+      name: 'r_download_workspace',
+      description: 'Download a remote RMCP project artifact, Biomni result, or installed FigureYa source file directly into the current local workspace. This creates the real file on disk; it never returns base64 for the user to decode. Give remote_path and project_id (source=project), job_id (source=biomni), or module_id plus source_path (source=figureya_source). local_path is optional and defaults to downloads/<filename>. The Host verifies size and SHA-256 and refuses to overwrite existing files.',
+      parameters: {
+        source: { type: 'string', enum: ['project', 'biomni', 'figureya_source'] },
+        project_id: { type: 'string' },
+        job_id: { type: 'string' },
+        module_id: { type: 'string' },
+        source_path: { type: 'string' },
+        remote_path: { type: 'string' },
+        local_path: { type: 'string' },
+      },
+      output: {
+        schema: { type: 'object', additionalProperties: true },
+        render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }],
+      },
+      async execute(args: { source?: 'project' | 'biomni' | 'figureya_source'; project_id?: string; job_id?: string; module_id?: string; source_path?: string; remote_path?: string; local_path?: string }, exec: any) {
+        const nested = await service.ctx.tools.execute({
+          signal: exec.signal,
+          callId: ToolCallId(`r-download-workspace-${Date.now()}`),
+          name: 'r_files',
+          arguments: { action: 'download_workspace', ...args },
+          parent: exec.token,
+          agent: exec.agent,
+        })
+        if (nested.isError) {
+          const message = nested.content.map((block: ContentBlock) => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
+          throw new Error(message || 'Workspace download failed.')
+        }
+        return nested.value as Record<string, JsonValue>
       },
     }) as any)
     this.recordsReady = this.seedBundledServers().then(() => {

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "description": "ZeroWall Science mcp domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
