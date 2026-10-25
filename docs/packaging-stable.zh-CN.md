@@ -1,6 +1,6 @@
 # 稳定版打包固定流程
 
-Windows 正式入口固定为 `pnpm package:stable:win`，普通 `package:win` 也指向此入口。Mac 普通入口同样使用 stable 配置；不默认生成 preview 安装器。
+Windows 正式入口固定为 `pnpm package:stable:win`，普通 `package:win` 也指向此入口。日常一键更新与打包可运行 [Windows 快速打包脚本](quick-package-windows.zh-CN.md)，它会先完成版本、插件、profile 和 DSH 合同同步，再进入正式入口。Mac 普通入口同样使用 stable 配置；不默认生成 preview 安装器。
 
 ## 每次发布修改配置
 
@@ -17,7 +17,7 @@ Windows 正式入口固定为 `pnpm package:stable:win`，普通 `package:win` �
 | Skill 独立版本 | `config/catalogs/resource-versions.json` |
 | MCP 模板及 SciMaster 包版本 | `config/catalogs/mcp-catalog.json`、`config/catalogs/mcp-server-bundles.json` |
 
-例如下次桌面升级，在 desktop-release.json 设置新稳定版本并准备对应 release notes，然后执行：
+例如下次桌面升级，在 desktop-release.json 设置新稳定版本并准备对应 release notes。推荐使用快速打包脚本；需要单独执行各阶段时，可运行：
 
 ```powershell
 pnpm release:sync
