@@ -14,8 +14,8 @@
     "upstreamVersion": "0.1.65",
     "package": "@zerowallscience/plugin-claude-code",
     "source": "plugins/claude-code",
-    "version": "0.1.8",
-    "resourceVersion": "0.1.8",
+    "version": "0.1.9",
+    "resourceVersion": "0.1.9",
     "license": "MIT",
     "catalogOptional": true,
     "localAdaptation": "Fresh ZeroWall Claude Code CLI integration; independently installs a pinned CLI in private plugin data, bridges the active model route and safely projects eligible Skills and MCP. Does not embed the upstream Claude Agent SDK adapter or reuse the user's Claude configuration."
@@ -185,5 +185,15 @@
     "tag": "v1.0.6",
     "version": "1.0.6",
     "commit": "6c9faa36409961226623480c0ba6ef8fd6313beb"
+  },
+  "mcp": {
+    "repository": "https://github.com/ccfwwm/zerowallscience.git",
+    "commit": "5bcab462fc259d47ba77be0addf7ac6c255d33bc",
+    "package": "@zerowallscience/plugin-mcp",
+    "source": "plugins/mcp",
+    "version": "0.2.18",
+    "resourceVersion": "0.2.18",
+    "license": "AGPL-3.0-only",
+    "localAdaptation": "Local MCP integration with verified workspace downloads: transfers server files directly through the Host in bounded chunks, validates size and SHA-256, confines destinations to the workspace, and removes partial output on failure."
   }
 }
