@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "8.4.9",
+  "version": "8.4.10",
   "roots": {
     "dsh": [
       "dsh-archive-manager",
