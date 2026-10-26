@@ -422,7 +422,7 @@
     {
       "id": "claude-code",
       "package": "@zerowallscience/plugin-claude-code",
-      "version": "0.2.6",
+      "version": "0.2.7",
       "source": "plugins/claude-code",
       "manifest": "plugins/claude-code/zerowall.plugin.json",
       "client": true,

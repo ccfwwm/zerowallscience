@@ -188,6 +188,7 @@ describe('Claude Code client entry points', () => {
     }
     const uiConversation = { events: { register: vi.fn() } }
     const slots = {
+      entries: vi.fn(() => []), subscribe: vi.fn(() => () => {}),
       inject: vi.fn((_name: string, callback: () => void) => callback()),
       register: vi.fn((options: Record<string, unknown>, component: unknown) => { calls.push({ name: String(options.name), options, component }) }),
     }

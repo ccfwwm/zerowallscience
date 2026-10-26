@@ -14,6 +14,7 @@ import { applyClaudeMarkdownTheme } from './upstream/markdown-theme.js'
 import { CLAUDE_NS, en, zh } from './locales.js'
 import { ClaudePermissionSelect } from './ClaudePermissionSelect.js'
 import type { ClaudePermissionView } from '../shared/types.js'
+import { registerClaudeStats } from './ClaudeStats.js'
 
 export const inject = ['slots', 'locale', 'uiConversation', 'remote.zerowallClaudeCode']
 
@@ -38,6 +39,7 @@ export function bindClaudeCodeRemote(remote: ClaudeCodeRemote, sessionId: Sessio
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(CLAUDE_NS, { zh, en }), 'claude-code: dictionaries')
+  registerClaudeStats(ctx)
   const remote = ctx.get('remote.zerowallClaudeCode') as ClaudeCodeRemote & ClaudeCodeSettingsRemote & {
     readTranscript(sessionId: SessionId, turn: number, step: number): Promise<RemoteResult<import('../shared/types.js').ClaudeTranscript | null>>
     permissionView(sessionId: SessionId): Promise<RemoteResult<ClaudePermissionView>>

@@ -14,8 +14,8 @@
     "upstreamVersion": "0.1.65",
     "package": "@zerowallscience/plugin-claude-code",
     "source": "plugins/claude-code",
-    "version": "0.2.6",
-    "resourceVersion": "0.2.6",
+    "version": "0.2.7",
+    "resourceVersion": "0.2.7",
     "license": "MIT",
     "catalogOptional": true,
     "localAdaptation": "ZeroWall-managed Claude CLI with the official Agent SDK, persistent per-conversation sessions, Host-authorized tool/MCP bridging, eligible Skills projection and localized permission controls. Uses private plugin data without adopting the user's system Claude configuration."

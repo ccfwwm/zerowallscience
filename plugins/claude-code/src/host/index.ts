@@ -34,6 +34,8 @@ import { claudeFailureCategory } from './diagnostic.js'
 import type { ClaudePermissionView } from '../shared/types.js'
 import { resourceStatus } from './resource-status.js'
 import { appendClaudeToolCall, settleClaudeToolCalls } from './tool-journal.js'
+import { ClaudeMetricsCollector } from './metrics.js'
+import { claudeMetricsProjection } from './metrics-projection.js'
 
 export const name = 'zerowall-claude-code'
 export const inject = ['typert', 'agentDefaultModel', 'subprocess', 'subagents', 'workingDirectory', 'skills', 'zerowallProjects', 'zerowallEnvironment', 'credentials', 'settings', 'llm', 'sessionProjections', 'agentPresets', 'tools', 'systemPrompt', 'permissionPresets', 'approval', 'attachments']
@@ -139,6 +141,7 @@ export class ClaudeCodeService extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallClaudeCode')
+    ctx.sessionProjections.register(claudeMetricsProjection)
     ctx.inject(['subagents'], scope => {
       const subagents = scope.get('subagents') as { registerProvider(provider: SubagentProvider): () => void }
       const dispose = subagents.registerProvider(new ClaudeCodeSubagentProvider(this))
@@ -374,6 +377,8 @@ export class ClaudeCodeService extends TypertRemoteService {
       throw error
     }
     if (!turn.query) { this.sessions.delete(id); throw new Error(turn.view.message ?? 'Claude Code subagent process is unavailable.') }
+    const metrics = new ClaudeMetricsCollector({ runId: turn.view.id, nativeSessionId: turn.binding?.nativeId ?? id,
+      provider: turn.view.provider, model: turn.view.model, turn: request.parent.session.snapshotEvents().reduce((n, e) => e.type === 'step/start' ? e.data.turn : n, 0), main: false }, Date.now, turn.view.resumed === true)
     const output = turn.safe.fork()
     let receivedText = false
     let finalOutput: string | undefined
@@ -390,7 +395,9 @@ export class ClaudeCodeService extends TypertRemoteService {
     }
     const result = settleRunResult({
       attempt: async (): Promise<SubagentResult> => {
+        await request.parent.session.append('zerowall-claude/metrics', metrics.snapshot(), { ignorable: true })
         for await (const message of turn.query!) {
+          if (metrics.observe(message)) await request.parent.session.append('zerowall-claude/metrics', metrics.snapshot(), { ignorable: true })
           if (message.type === 'system' && message.subtype === 'init' && turn.binding) {
             if (message.session_id !== turn.binding.nativeId) throw new Error('Claude child session identity changed unexpectedly.')
             turn.binding.initialized = true; turn.binding.state = 'running'
@@ -409,11 +416,18 @@ export class ClaudeCodeService extends TypertRemoteService {
       collectOutput, collectDiagnostic: () => diagnostic, cancelled: () => turn.cancel.signal.aborted,
       signal: request.signal, onAbort,
     }).finally(async () => {
-      turn.query?.close(); await turn.process?.terminate(); await turn.process?.done.catch(() => undefined)
-      turn.release?.()
-      if (turn.binding) { turn.binding.state = turn.cancel.signal.aborted ? 'stopped' : diagnostic ? 'failed' : 'idle'; await turn.bindingStore!.save(id, turn.binding) }
-      output.finish(); turn.view.running = false; this.sessions.delete(id)
-      if (turn.projectionRoot) await rm(turn.projectionRoot, { recursive: true, force: true }).catch(() => undefined)
+      try {
+        await request.parent.session.append('zerowall-claude/metrics', metrics.snapshot(true), { ignorable: true })
+      } finally {
+        try {
+          turn.query?.close(); await turn.process?.terminate(); await turn.process?.done.catch(() => undefined)
+        } finally {
+          turn.release?.()
+          output.finish(); turn.view.running = false; this.sessions.delete(id)
+          if (turn.projectionRoot) await rm(turn.projectionRoot, { recursive: true, force: true }).catch(() => undefined)
+          if (turn.binding) { turn.binding.state = turn.cancel.signal.aborted ? 'stopped' : diagnostic ? 'failed' : 'idle'; await turn.bindingStore!.save(id, turn.binding) }
+        }
+      }
     })
     return subprocessRunHandle({ id, result, signal: request.signal, onAbort,
       requestCancel: () => turn.cancel.abort(),
@@ -811,6 +825,15 @@ export class ClaudeCodeService extends TypertRemoteService {
 
   private async *streamConversation(agent: Agent, selection: ClaudeSelection, options: GenerateOptions): AsyncIterable<StreamChunk> {
     let turn: OwnedTurn | undefined
+    let metrics: ClaudeMetricsCollector | undefined
+    const observeMetrics = async (message: unknown) => {
+      if (metrics?.observe(message)) await agent.session.append('zerowall-claude/metrics', metrics.snapshot(), { ignorable: true })
+    }
+    const observeMetricsLine = async (line: string) => {
+      let message: unknown
+      try { message = JSON.parse(line) } catch { return }
+      await observeMetrics(message)
+    }
     type ActiveBlock = {
       index: number
       sourceIndex: number
@@ -953,6 +976,16 @@ export class ClaudeCodeService extends TypertRemoteService {
 
     try {
       turn = await this.launch(agent, 'SDK conversation input', 'conversation', selection, { request: options, ...(options.signal ? { signal: options.signal } : {}) })
+      metrics = new ClaudeMetricsCollector({ runId: turn.view.id, nativeSessionId: turn.binding?.nativeId ?? turn.view.id,
+        provider: selection.provider, model: selection.model, turn: cursor?.turn ?? 0, main: true }, Date.now, turn.view.resumed === true)
+      await agent.session.append('zerowall-claude/metrics', metrics.snapshot(), { ignorable: true })
+      // DSH's surface excludes Claude's internal requests. Its capacity meter
+      // must not combine those separate surfaces; the plugin owns this reading.
+      const context = agent.session.requestContext?.()
+      if (context?.contextWindow !== undefined) {
+        const { contextWindow: _capacity, ...metadata } = context
+        await agent.session.append('request/context', metadata)
+      }
       if (cursor?.turn && cursor.step) {
         turn.view.turn = cursor.turn; turn.view.step = cursor.step
         if (turn.view.renderer === 'plugin') await agent.session.append('zerowall-claude/turn', cursor, { ignorable: true })
@@ -964,6 +997,7 @@ export class ClaudeCodeService extends TypertRemoteService {
       let pending = ''
       if (turn.query) {
         for await (const message of turn.query) {
+          await observeMetrics(message)
           if (message.type === 'system' && message.subtype === 'init' && turn.binding) {
             if (turn.binding.nativeId !== message.session_id) throw new Error('Claude session identity changed unexpectedly.')
             turn.binding.initialized = true; turn.binding.state = 'running'
@@ -984,12 +1018,14 @@ export class ClaudeCodeService extends TypertRemoteService {
         while (newline >= 0) {
           const line = pending.slice(0, newline).trim()
           pending = pending.slice(newline + 1)
+          await observeMetricsLine(line)
           const event = parseClaudeCliEvent(line)
           if (event) { for (const delta of consume(event)) if (turn.view.renderer === 'native') yield delta; await mirrorTools(event) }
           newline = pending.indexOf('\n')
         }
       }
       if (pending.trim()) {
+        await observeMetricsLine(pending.trim())
         const event = parseClaudeCliEvent(pending.trim())
         if (event) { for (const delta of consume(event)) if (turn.view.renderer === 'native') yield delta; await mirrorTools(event) }
       }
@@ -1076,6 +1112,7 @@ export class ClaudeCodeService extends TypertRemoteService {
         }
         syncActivity()
         try {
+          if (metrics) await agent.session.append('zerowall-claude/metrics', metrics.snapshot(true), { ignorable: true })
           if (cursor?.turn && cursor.step && turn.view.renderer === 'plugin') await agent.session.append('zerowall-claude/transcript', {
             ...cursor, renderer: 'plugin', running: false, activity: turn.view.activity ?? [],
           }, { ignorable: true })

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import type { ClaudeTranscript } from '../src/shared/types.js'
+import { ClaudeMetricsCollector } from '../src/host/metrics.js'
 
 it('persists Claude process records and reopens the session with its plugin vocabulary absent', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-claude-history-'))
@@ -22,7 +23,9 @@ it('persists Claude process records and reopens the session with its plugin voca
     ] }
     session.append('zerowall-claude/turn', { turn: 1, step: 1 }, { ignorable: true })
     session.append('zerowall-claude/transcript', transcript, { ignorable: true })
+    session.append('zerowall-claude/metrics', new ClaudeMetricsCollector({ runId: 'run', nativeSessionId: 'native', provider: 'test', model: 'test', turn: 1, main: true }).snapshot(), { ignorable: true })
     expect(KNOWN_SESSION_EVENT_TYPES.has('zerowall-claude/transcript')).toBe(false)
+    expect(KNOWN_SESSION_EVENT_TYPES.has('zerowall-claude/metrics')).toBe(false)
     const writer = await ctx.sessionPersistence.create(session.header)
     await writer.append(session.snapshotEvents())
     await writer.flush()
@@ -38,6 +41,7 @@ it('persists Claude process records and reopens the session with its plugin voca
       const reopened = Session.create(id, stored.events, reader.header)
       expect(reopened.deriveMessages()).toMatchObject([{ role: 'user', content: [{ type: 'text', text: 'Inspect the project' }] }])
       expect(reopened.snapshotEvents().find(event => event.type === 'zerowall-claude/transcript')).toMatchObject({ ignorable: true, data: transcript })
+      expect(reopened.snapshotEvents().find(event => event.type === 'zerowall-claude/metrics')).toMatchObject({ ignorable: true, data: { runId: 'run' } })
     } finally { await reader.close() }
   } finally { await ctx.fiber.dispose(); await rm(root, { recursive: true, force: true, maxRetries: 3 }) }
 })

@@ -28,9 +28,15 @@ Claude Code `2.1.309` does not support a `cwd` field for stdio MCP servers. An o
 
 Relative or invalid directories, shell-dependent launches in a separate directory, and Windows `.cmd`/`.bat` commands are skipped with an explicit compatibility reason. Use the service's absolute native executable or a Node entry point instead. The unsupported `cwd` field is never written into Claude's MCP configuration, and the source MCP records are preserved. HTTP MCP services are unaffected by this directory restriction.
 
+## Conversation statistics
+
+The composer dock displays actual Claude tokens, cache-hit share, weighted main-agent decode speed, and the most recent request's context occupancy. Compact and detailed preferences, application language and theme are shared with the standard conversation UI. Details separate uncached input, cache reads, cache writes and output (including thinking), with per-model totals covering SDK internal subagents and compaction. Missing counters or timing boundaries are never replaced with zero or an estimate.
+
+Statistics start with this plugin version. Ignorable `zerowall-claude/metrics` events and a plugin-owned session projection preserve them across restarts without changing DSH's global event vocabulary or rewriting old logs. The managed CLI 2.1.309 restores cumulative `result.modelUsage` on resume, contrary to the older SDK 0.3.263 type comment. The collector uses its verified `model_usage_since_last_result` whole-tree delta; older resumed runtimes without that field expose confirmed partial stream statistics only. This avoids importing old spend, counting repeated assistant blocks, or adding the same final result to its provisional stream samples. Context capacity comes from the matching result model's `contextWindow`, never a model-name table or whole-turn token sum.
+
 ## Version and source
 
-- ZeroWall plugin: `0.2.6`
+- ZeroWall plugin: `0.2.7`
 - Agent SDK: `0.3.263`
 - Claude Code CLI: `2.1.309`
 - Upstream adapter reference: [`Norman-else/dsh-claude`](https://github.com/Norman-else/dsh-claude/tree/fe00e3af0b1ad03acc977b13b4d4ab805086f6da), tag `v0.1.65`, commit `fe00e3af0b1ad03acc977b13b4d4ab805086f6da`

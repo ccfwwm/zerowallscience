@@ -107,7 +107,7 @@ async function fixture() {
   const managedCredential = vi.fn(async (_provider: string, model: string) => `host-only-key-for-${model}-1234567890`)
   const services: Record<string, unknown> = {
     agentDefaultModel: { currentSelection: vi.fn(() => ({ provider: 'custom-anthropic', model: 'fallback' })) },
-    sessionProjections: { stateOf: vi.fn((session: { id: string }, key: string) => key === 'agentPreset'
+    sessionProjections: { register: vi.fn(), stateOf: vi.fn((session: { id: string }, key: string) => key === 'agentPreset'
       ? presets.get(session.id) ?? null : { pending: selected.get(session.id) }) },
     workingDirectory: { get: vi.fn((session: { id: string }) => workspaces.get(session.id)) },
     llm: { listConfigurableProviders: vi.fn(() => [{ provider: 'custom-anthropic', settingsNs: 'provider-settings', settingsPath: ['profile'] }]) },
@@ -138,6 +138,7 @@ async function fixture() {
   const effects: Array<() => unknown> = []
   const handlers = new Map<string, (...args: unknown[]) => unknown>()
   const context = {
+    sessionProjections: services.sessionProjections,
     get: (key: string) => services[key],
     on: (event: string, callback: (...args: unknown[]) => unknown) => { handlers.set(event, callback); return () => handlers.delete(event) },
     inject: (keys: string[], callback: (scope: unknown) => unknown) => {
@@ -452,6 +453,28 @@ describe('Claude Code Host session boundary', () => {
     expect(f.host.readTranscript(agent, 1, 1)?.activity[0]?.text).toContain('Visible progress')
   })
 
+  it.each(['native', 'plugin'] as const)('persists metrics and preserves request metadata with the %s renderer', async renderer => {
+    const f = await fixture(), agent = await f.agent(`metrics-${renderer}`, 'claude')
+    Object.defineProperty(agent.session, 'requestContext', { value: () => ({ contextWindow: 100000, outputLimit: 4096 }) })
+    await f.host.settingsUpdate({ renderer })
+    await f.handlers.get('agent/request')!({ agent }, async () => ({}))
+    const llm = f.handlers.get('llm/stream') as (options: GenerateOptions, next: () => AsyncIterable<never>) => AsyncIterable<unknown>
+    const pending = (async () => { for await (const _chunk of llm(markAgentLoopRequest({ provider: 'custom-anthropic', model: 'test', sessionId: agent.id,
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'Reply briefly.' }] }] } as GenerateOptions), async function* () {})) {} })()
+    await vi.waitFor(() => expect(f.processes).toHaveLength(1))
+    const frame = (event: unknown) => ({ type: 'stream_event', event })
+    f.processes[0]!.finish([
+      frame({ type: 'message_start', message: { id: 'metrics-message', model: 'test', usage: { input_tokens: 12, output_tokens: 1, cache_read_input_tokens: 20, cache_creation_input_tokens: 0 } } }),
+      frame({ type: 'message_delta', usage: { output_tokens: 5 } }), frame({ type: 'message_stop' }),
+      { type: 'result', modelUsage: { test: { inputTokens: 12, outputTokens: 5, cacheReadInputTokens: 20, cacheCreationInputTokens: 0, contextWindow: 200000 } } },
+    ])
+    await pending
+    expect(agent.session.append).toHaveBeenCalledWith('request/context', { outputLimit: 4096 })
+    expect(agent.session.append).toHaveBeenCalledWith('zerowall-claude/metrics', expect.objectContaining({ finished: true, settled: true,
+      models: { test: { inputTokens: 12, outputTokens: 5, cacheReadTokens: 20, cacheWriteTokens: 0 } },
+      context: { model: 'test', usedTokens: 37, contextWindow: 200000 } }), { ignorable: true })
+  })
+
   it('keeps the ordinary DSH request path for Standard preset sessions', async () => {
     const f = await fixture(), agent = await f.agent('standard-chat', 'standard')
     const requestHook = f.handlers.get('agent/request') as (payload: { agent: Agent }, next: () => Promise<{ provider: string; model: string }>) => Promise<unknown>
@@ -463,6 +486,7 @@ describe('Claude Code Host session boundary', () => {
     for await (const chunk of llmHook(request, fallback)) chunks.push(chunk)
     expect(chunks).toEqual(['standard'])
     expect(f.processes).toHaveLength(0)
+    expect(agent.session.append).not.toHaveBeenCalledWith('request/context', expect.anything())
   })
 
   it('exposes application-level settings management without requiring a conversation Agent', async () => {
