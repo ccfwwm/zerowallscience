@@ -19,6 +19,9 @@ PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `gene
 
 ## 工具路由
 
+Claude Agent SDK 会话中，相同工具通过 Host MCP 桥显示为 `mcp__zerowall__generate_image` 和 `mcp__zerowall__edit_image`。先使用当前已提供的工具；若定义被延迟加载，用 ToolSearch 搜索准确的桥接名称或 `+zerowall generate_image edit_image`。只调用实际发现的工具，参数和返回值与 Host 工具一致。发现失败时报告工具桥或资源状态，不重复猜测不存在的名称，也不改走其他模型或媒体工作流。
+
+
 - 用户明确要求新画面、重新构思，或没有任何编辑已有图片的意图时，调用 `generate_image`。
 - 用户要求修改主体、换背景、删除元素、调整颜色、保持构图、局部重绘、模板复刻或基于参考图延展，并且存在源图时，调用 `edit_image`。
 - 源图选择优先级固定为：用户明确指定路径 > 本轮明确指定的图片 > 当前会话最近一次成功的 `generate_image` / `edit_image` 输出。

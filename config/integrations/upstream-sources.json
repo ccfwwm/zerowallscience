@@ -14,11 +14,11 @@
     "upstreamVersion": "0.1.65",
     "package": "@zerowallscience/plugin-claude-code",
     "source": "plugins/claude-code",
-    "version": "0.1.11",
-    "resourceVersion": "0.1.11",
+    "version": "0.2.6",
+    "resourceVersion": "0.2.6",
     "license": "MIT",
     "catalogOptional": true,
-    "localAdaptation": "Fresh ZeroWall Claude Code CLI integration; independently installs a pinned CLI in private plugin data, bridges the active model route and safely projects eligible Skills and MCP. Does not embed the upstream Claude Agent SDK adapter or reuse the user's Claude configuration."
+    "localAdaptation": "ZeroWall-managed Claude CLI with the official Agent SDK, persistent per-conversation sessions, Host-authorized tool/MCP bridging, eligible Skills projection and localized permission controls. Uses private plugin data without adopting the user's system Claude configuration."
   },
   "betterSidebar": {
     "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-reviewer",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "applicationVersion": "8.0.0",
   "restartRequired": true,
   "desktop": {
@@ -13,25 +13,16 @@
   },
   "host": "./lib/index.js",
   "client": "./lib/client.js",
-  "requiredServices": [
-    "settings",
-    "subagents",
-    "commands",
-    "llm",
-    "agentPresets",
-    "tools"
-  ],
+  "requiredServices": [],
   "optionalServices": [],
   "capabilities": [
-    "reviewer"
+    "reviewer-history"
   ],
-  "permissions": [
-    "approvals"
-  ],
+  "permissions": [],
   "network": false,
   "files": false,
   "credentials": false,
-  "approvals": true,
+  "approvals": false,
   "profiles": [
     "development",
     "preview",

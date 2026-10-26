@@ -32,7 +32,6 @@ export const bundledPlugins = [
   '@zerowallscience/plugin-runs',
   '@zerowallscience/plugin-publications',
   '@zerowallscience/plugin-skills',
-  '@zerowallscience/plugin-reviewer',
   '@zerowallscience/plugin-extension-center',
 ] as const
 

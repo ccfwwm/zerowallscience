@@ -36,7 +36,6 @@ plugins:
   - '@zerowallscience/plugin-runs'
   - '@zerowallscience/plugin-publications'
   - '@zerowallscience/plugin-skills'
-  - '@zerowallscience/plugin-reviewer'
   - '@zerowallscience/plugin-extension-center'
 wechat:
   enabled: true

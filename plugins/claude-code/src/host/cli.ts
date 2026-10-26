@@ -48,6 +48,7 @@ export type ClaudeCliEvent = {
   argumentsDelta?: string
   final?: boolean
   failed?: boolean
+  errors?: string[]
   toolResults?: Array<{ id: string; text: string; failed: boolean }>
 }
 
@@ -91,6 +92,7 @@ export function parseClaudeCliEvent(line: string): ClaudeCliEvent | undefined {
       ...(typeof event.result === 'string' ? { text: event.result } : {}),
       final: true,
       ...(event.is_error === true ? { failed: true } : {}),
+      ...(Array.isArray(event.errors) ? { errors: event.errors.filter((error): error is string => typeof error === 'string') } : {}),
     }
   }
   return undefined

@@ -6,6 +6,7 @@ export interface ClaudeCodeStatus {
   executablePath?: string
   rollbackAvailable: boolean
   running: boolean
+  readiness?: 'installed' | 'unavailable'
 }
 
 export type ClaudePermissionMode = 'default' | 'dontAsk' | 'acceptEdits' | 'auto' | 'plan' | 'bypassPermissions'
@@ -78,6 +79,29 @@ export interface ClaudeCodeTurn {
   turn?: number
   step?: number
   activity?: ClaudeActivityBlock[]
+  nativeSessionId?: string
+  resumed?: boolean
+  permission?: ClaudePermissionView
+  resources?: ClaudeResourceStatus[]
+  diagnostic?: { id: string; category: string }
+}
+
+export interface ClaudeResourceStatus {
+  kind: 'skill' | 'mcp'
+  name: string
+  state: 'synced' | 'manual' | 'disabled' | 'unavailable' | 'failed'
+  detail?: string
+}
+
+export interface ClaudePermissionView {
+  active: boolean
+  source: ClaudePermissionSelector
+  mode: ClaudePermissionMode
+  hostPreset: string
+  hostSandbox: string
+  hostApproval: string
+  runningMode?: ClaudePermissionMode
+  nativeOptions: Array<{ value: string; name: string; description?: string }>
 }
 
 export interface ClaudeActivityBlock {
@@ -102,5 +126,6 @@ declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     'zerowall-claude/turn': { turn: number; step: number }
     'zerowall-claude/transcript': ClaudeTranscript
+    'zerowall-claude/permission': { mode: ClaudePermissionMode }
   }
 }

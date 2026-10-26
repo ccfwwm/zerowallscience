@@ -231,16 +231,7 @@
     - id: zerowall-skills-plugin
       name: '@zerowallscience/plugin-skills'
 
-    - id: zerowall-reviewer
-      name: '@zerowallscience/plugin-reviewer'
 
-      config:
-        channel: ilink
-        enabled: true
-        autoConnect: false
-        dmPolicy: open
-        groupPolicy: allowlist
-        groups: []
 
     - id: zerowall-extension-center
       name: '@zerowallscience/plugin-extension-center'

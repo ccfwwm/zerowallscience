@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-reviewer",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "ZeroWall Science reviewer domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -59,21 +59,12 @@
       "min": "0.2.1-rc.2",
       "max": "0.2.1-rc.2"
     },
-    "requiredServices": [
-      "settings",
-      "subagents",
-      "commands",
-      "llm",
-      "agentPresets",
-      "tools"
-    ],
+    "requiredServices": [],
     "optionalServices": [],
     "capabilities": [
-      "reviewer"
+      "reviewer-history"
     ],
-    "permissions": [
-      "approvals"
-    ],
+    "permissions": [],
     "profiles": [
       "development",
       "preview",

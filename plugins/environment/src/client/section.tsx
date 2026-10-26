@@ -3,7 +3,6 @@ import { Check, Copy, Eye, EyeOff, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import type {} from '@zerowallscience/plugin-base/client-helpers'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 import css from './section.module.css'
 import { LiteratureSettings } from './LiteratureSettings.js'
@@ -13,7 +12,6 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 
 interface Props extends PropsRuntime<'settings.section'> {
   t: EnvironmentTranslate
-  reviewerScope: ConfigForm<any>
   environmentRemote: any
   accountRemote: any
   mcpRemote: any
@@ -23,7 +21,6 @@ interface Props extends PropsRuntime<'settings.section'> {
   modelCatalog(): Promise<{ groups: any[]; failures: any[] }>
 }
 
-const defaultReviewer = { autoReview: false, modelMode: 'follow-session' as const, provider: '', model: '', reasoningEffort: '' }
 const VALUE_SEPARATOR = '\u0000'
 const SCI_MASTER_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 const mediaIdentity = (model: any): string => JSON.stringify([model.providerId, model.groupId, model.modelId, model.profileId ?? ''])
@@ -31,9 +28,7 @@ const isImageGroup = (name: unknown): boolean => typeof name === 'string' && /�
 
 type LoadState = 'loading' | 'ready' | 'unavailable' | 'error'
 
-export function EnvironmentSection({ reviewerScope, environmentRemote, accountRemote, mcpRemote, mineruRemote, pubmedRemote, unwrap, modelCatalog, t }: Props) {
-  const [reviewer, setReviewerValue] = useState(() => reviewerScope.getSnapshot().value ?? defaultReviewer)
-  const [catalogGroups, setCatalogGroups] = useState<any[]>([])
+export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote, mineruRemote, pubmedRemote, unwrap, modelCatalog, t }: Props) {
   const [imageModels, setImageModels] = useState<any[]>([])
   const [variables, setVariables] = useState<EnvironmentVariableInfo[]>([])
   const [sciConfigured, setSciConfigured] = useState(false)
@@ -74,11 +69,6 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
   const [rdatalinuxConnection, setRdatalinuxConnection] = useState<LocalizedMessage>('')
 
   useEffect(() => {
-    setReviewerValue(reviewerScope.getSnapshot().value ?? defaultReviewer)
-    return reviewerScope.subscribe(() => setReviewerValue(reviewerScope.getSnapshot().value ?? defaultReviewer))
-  }, [reviewerScope])
-
-  useEffect(() => {
     let cancelled = false
     const load = async (key: string, task: () => Promise<void>) => {
       try {
@@ -98,10 +88,6 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
       const rows = [...(Array.isArray(snapshot?.models) ? snapshot.models.filter((model: any) => model.capability === 'image-generation' || (model.capability === undefined && isImageGroup(model.groupName))) : []), ...(Array.isArray(snapshot?.mediaModels) ? snapshot.mediaModels.filter((model: any) => model.mediaType === 'image') : [])]
       const available = rows.filter((model: any) => isImageGroup(model.groupName) && !model.stale)
       setImageModels([...new Map(available.map((model: any) => [mediaIdentity(model), model])).values()])
-    })
-    void load('catalog', async () => {
-      const value = await modelCatalog()
-      if (!cancelled) setCatalogGroups(Array.isArray(value?.groups) ? value.groups : [])
     })
     void load('variables', async () => {
       if (environmentRemote?.listVariables === undefined) throw new LocalizedError('variablesUnavailable')
@@ -141,17 +127,6 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     return () => { cancelled = true }
   }, [accountRemote, environmentRemote, mcpRemote, mineruRemote, modelCatalog, unwrap])
 
-  const reviewerModels = useMemo(() => catalogGroups.flatMap((group: any) => (Array.isArray(group.models) ? group.models.map((model: any) => ({
-    ...model,
-    providerId: group.id,
-    providerName: group.name ?? group.id,
-    modelId: model.id,
-  })) : [])), [catalogGroups])
-  const selectedReviewerModel = reviewerModels.find((model: any) => model.providerId === reviewer.provider && model.modelId === reviewer.model)
-  const reviewerEfforts = selectedReviewerModel?.reasoning?.efforts ?? []
-  const reviewerModelValue = reviewer.provider && reviewer.model ? `${reviewer.provider}${VALUE_SEPARATOR}${reviewer.model}` : ''
-  const reviewerModelIsKnown = reviewerModels.some((model: any) => model.providerId === reviewer.provider && model.modelId === reviewer.model)
-
   const imageModelValue = image.providerId && image.groupId && image.modelId
     ? `${image.providerId}${VALUE_SEPARATOR}${image.groupId}${VALUE_SEPARATOR}${image.modelId}${VALUE_SEPARATOR}${image.profileId ?? ""}`
     : ''
@@ -179,15 +154,6 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     setBusy(true)
     setError('')
     try { await action() } catch (value) { setError(messageFromError(value)) } finally { setBusy(false) }
-  }
-  const setReviewer = async (field: string, value: unknown) => run(async () => { await reviewerScope.set(field, value) })
-  const selectReviewerModel = (value: string) => {
-    const [provider = '', model = ''] = value.split(VALUE_SEPARATOR)
-    void run(async () => {
-      await reviewerScope.set('provider', provider)
-      await reviewerScope.set('model', model)
-      await reviewerScope.set('reasoningEffort', '')
-    })
   }
   const saveVariable = async () => {
     if (!newName.trim() || !newValue) return
@@ -258,17 +224,6 @@ export function EnvironmentSection({ reviewerScope, environmentRemote, accountRe
     {error ? <p className={css.error} role="alert">{renderMessage(error, t)}</p> : null}
     <div className={css.grid}>
       <LiteratureSettings remote={pubmedRemote} unwrap={unwrap} t={t} />
-      <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>Reviewer</h3><p>{t('reviewerDescription')}</p></div><span className={css.status}>{statusText('catalog', t('catalogSynced'))}</span></div>
-        <div className={css.formGrid}>
-          <label className={css.checkboxField}><input type="checkbox" checked={reviewer.autoReview === true} disabled={busy} onChange={event => void setReviewer('autoReview', event.target.checked)} /><span>{t('autoReview')}</span></label>
-          <label className={css.field}><span>{t('reviewMode')}</span><select className={css.control} value={reviewer.modelMode ?? 'follow-session'} disabled={busy} onChange={event => void setReviewer('modelMode', event.target.value)}><option value="follow-session">{t('followSession')}</option><option value="fixed">{t('fixedModel')}</option></select></label>
-          {reviewer.modelMode === 'fixed' ? <>
-            <label className={`${css.field} ${css.fullWidth}`}><span>{t('reviewModel')}</span><select className={css.control} value={reviewerModelIsKnown ? reviewerModelValue : ''} disabled={busy || reviewerModels.length === 0} onChange={event => selectReviewerModel(event.target.value)}><option value="">{t('selectModel')}</option>{!reviewerModelIsKnown && reviewer.provider && reviewer.model ? <option value={reviewerModelValue}>{reviewer.provider} / {reviewer.model}{t('currentConfig')}</option> : null}{catalogGroups.map((group: any) => <optgroup key={group.id} label={group.name ?? group.id}>{(Array.isArray(group.models) ? group.models : []).map((model: any) => <option key={`${group.id}${VALUE_SEPARATOR}${model.id}`} value={`${group.id}${VALUE_SEPARATOR}${model.id}`}>{model.name ?? model.id}</option>)}</optgroup>)}</select></label>
-            <label className={css.field}><span>{t('reasoningEffort')}</span><select className={css.control} value={reviewer.reasoningEffort ?? ''} disabled={busy || reviewerEfforts.length === 0} onChange={event => void setReviewer('reasoningEffort', event.target.value)}><option value="">{t('modelDefault')}{selectedReviewerModel?.reasoning?.defaultEffort ? `（${selectedReviewerModel.reasoning.defaultEffort}）` : ''}</option>{reviewer.reasoningEffort && !reviewerEfforts.some((effort: any) => effort.id === reviewer.reasoningEffort) ? <option value={reviewer.reasoningEffort}>{reviewer.reasoningEffort}{t('currentConfig')}</option> : null}{reviewerEfforts.map((effort: any) => <option key={effort.id} value={effort.id}>{effort.name ?? effort.id}</option>)}</select><small>{reviewerEfforts.length === 0 ? t('noEfforts') : t('chooseEffort')}</small></label>
-          </> : null}
-        </div>
-      </article>
 
       <article className={css.card}>
         <div className={css.cardHeader}><div><h3>rdatalinux rmcp</h3><p>{t('rmcpDescription')}</p></div><span className={rdatalinuxConfigured ? css.statusGood : css.status}>{statusText('rdatalinux', rdatalinuxConfigured ? t('configured') : t('notConfigured'))}</span></div>

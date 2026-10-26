@@ -23,9 +23,20 @@ import type { ClaudeCodeStatus, ClaudeCodeTurn, ClaudeGlobalSettingOption, Claud
 import { claudePromptFromRequest, parseClaudeCliEvent } from './cli.js'
 import { claudePermissionMode } from './permission-mode.js'
 import { mountClaudeSubagentTools } from './subagent-tool.js'
+import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
+import { setApprovalPolicy, type ApprovalService } from '@deepseek-ai/dsh-user-approval'
+import type { PermissionPresetService } from '@deepseek-ai/dsh-permission-presets'
+import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
+import { SANDBOX_BY_CLAUDE_MODE, isClaudePermissionMode, CLAUDE_MODE_BY_SANDBOX } from './permission-mode.js'
+import { ClaudeSessionBindings, type ClaudeSessionBinding } from './session-binding.js'
+import { createHostToolBridge, hostToolApproval, managedSdkSpawner, sdkGenerationEnvironment, sdkInput, sdkSystemPrompt, startSdkQuery, type Query, type Options as ClaudeSdkOptions } from './sdk-driver.js'
+import { claudeFailureCategory } from './diagnostic.js'
+import type { ClaudePermissionView } from '../shared/types.js'
+import { resourceStatus } from './resource-status.js'
+import { appendClaudeToolCall, settleClaudeToolCalls } from './tool-journal.js'
 
 export const name = 'zerowall-claude-code'
-export const inject = ['typert', 'agentDefaultModel', 'subprocess', 'subagents', 'workingDirectory', 'skills', 'zerowallProjects', 'zerowallEnvironment', 'credentials', 'settings', 'llm', 'sessionProjections', 'agentPresets', 'tools', 'systemPrompt']
+export const inject = ['typert', 'agentDefaultModel', 'subprocess', 'subagents', 'workingDirectory', 'skills', 'zerowallProjects', 'zerowallEnvironment', 'credentials', 'settings', 'llm', 'sessionProjections', 'agentPresets', 'tools', 'systemPrompt', 'permissionPresets', 'approval', 'attachments']
 
 declare module '@deepseek-ai/cordis' { interface Context { zerowallClaudeCode: ClaudeCodeService } }
 
@@ -36,6 +47,13 @@ interface OwnedTurn {
   process?: SubprocessHandle
   projectionRoot?: string
   cancel: AbortController
+  diagnostics?: ClaudeSafeOutput
+  query?: Query
+  binding?: ClaudeSessionBinding
+  bindingStore?: ClaudeSessionBindings
+  release?: () => void
+  approvalCalls?: Set<string>
+  drainBridge?: () => Promise<unknown>
 }
 interface SessionRuntime { turn?: OwnedTurn; history: string[]; busy: boolean; preparing?: AbortController }
 type ManagedRoute = NonNullable<ClaudeRouteServices['managedRoute']>
@@ -57,7 +75,7 @@ const runInstaller: ProcessRunner = (command, args, options) => new Promise((res
 
 const CLAUDE_SETTINGS_DEFAULTS: ClaudeNativeSettings = {
   outputStyle: 'Default', permissionSelector: 'plugin', permissionMode: 'acceptEdits', renderer: 'plugin',
-  prose: 'plain', worktreeBranchPrefix: 'claude', maxProcesses: 4, idleTimeoutMinutes: 30,
+  prose: 'plain', maxProcesses: 4,
 }
 const CLAUDE_PERMISSION_MODES: readonly ClaudePermissionMode[] = ['default', 'dontAsk', 'acceptEdits', 'auto', 'plan', 'bypassPermissions']
 const CLAUDE_PERMISSION_SELECTORS = ['plugin', 'native'] as const
@@ -141,6 +159,15 @@ export class ClaudeCodeService extends TypertRemoteService {
       const config = await next()
       const projections = ctx.get('sessionProjections') as { stateOf(session: unknown, key: string): string | null | undefined }
       if (projections.stateOf(agent.session, 'agentPreset') === 'claude') {
+        // Align before the loop assembles runtime policy context and tool schemas.
+        // Doing this in llm/stream alone made the prompt describe the old policy.
+        const permission = await this.permissionView(agent)
+        if (permission.source === 'plugin') {
+          if (!agent.session.snapshotEvents().some(event => event.type === 'zerowall-claude/permission')) {
+            await agent.session.append('zerowall-claude/permission', { mode: permission.mode }, { ignorable: true })
+          }
+          this.alignPermission(agent, permission.mode)
+        }
         this.chatAgents.set(agent.id, agent)
       } else this.chatAgents.delete(agent.id)
       return config
@@ -163,6 +190,7 @@ export class ClaudeCodeService extends TypertRemoteService {
       await Promise.allSettled([...this.sessions.values()].map(async state => {
         state.preparing?.abort()
         state.turn?.cancel.abort()
+        state.turn?.query?.close()
         await state.turn?.terminal?.terminate()
         state.turn?.process?.terminate()
       }))
@@ -197,7 +225,7 @@ export class ClaudeCodeService extends TypertRemoteService {
     if (!this.desktop()) return { desktop: false, installed: false, rollbackAvailable: false, running: false }
     try {
       const status = await this.runtime().status()
-      return { desktop: true, installed: status.installed, ...(status.version ? { version: status.version } : {}),
+      return { desktop: true, installed: status.installed, readiness: status.installed ? 'installed' : 'unavailable', ...(status.version ? { version: status.version } : {}),
         ...(status.executablePath ? { executablePath: status.executablePath } : {}),
         rollbackAvailable: Boolean(status.previousVersion), running }
     } catch { return { desktop: true, installed: false, rollbackAvailable: false, running: false } }
@@ -261,9 +289,7 @@ export class ClaudeCodeService extends TypertRemoteService {
       select('permissionMode', native.permissionMode ?? 'auto', CLAUDE_PERMISSION_MODES.map(value => ({ value, label: value, source: 'built-in' as const })), 'new-session'),
       select('renderer', native.renderer ?? 'plugin', CLAUDE_RENDERERS.map(value => ({ value, label: value, source: 'built-in' as const })), 'next-turn'),
       select('prose', native.prose ?? 'plain', CLAUDE_PROSE_MODES.map(value => ({ value, label: value, source: 'built-in' as const })), 'immediate'),
-      { ...text('worktreeBranchPrefix', native.worktreeBranchPrefix ?? 'claude', 128, 'next-worktree'), available: false, unavailableReason: 'worktreeUnavailable' },
       text('maxProcesses', String(native.maxProcesses ?? 4), 2, 'immediate'),
-      { ...text('idleTimeoutMinutes', String(native.idleTimeoutMinutes ?? 30), 4, 'new-session'), available: false, unavailableReason: 'idleReuseUnavailable' },
     ] }
   }
 
@@ -329,7 +355,6 @@ export class ClaudeCodeService extends TypertRemoteService {
   /** External children use the same isolated Skills/MCP/model launch as chat. */
   async startSubagent(request: ResolvedSubagentStartRequest): Promise<SubagentRun> {
     if (request.signal.aborted) throw new Error('Claude Code subagent request was canceled before startup.')
-    if (request.prompt.some(block => block.type !== 'text')) throw new Error('Claude Code subagent currently accepts text tasks only; pass workspace file paths in the task.')
     const text = request.prompt.filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text').map(block => block.text).join('\n')
     if (!text.trim() || text.length > 2 * 1024 * 1024) throw new Error('Claude Code subagent requires a non-empty text task within the supported size.')
     const id = randomUUID() as SessionId
@@ -339,7 +364,8 @@ export class ClaudeCodeService extends TypertRemoteService {
     const selected = this.subagentSelection(request.parent, request.agentOptions)
     let turn: OwnedTurn
     try {
-      turn = await this.launch(agent, text, 'conversation', selected, { cwd: request.cwd, signal: request.signal, scope: request.parent })
+      const input = { messages: [{ role: 'user', content: request.prompt }], tools: (request.parent.ctx.get('tools') as ToolRuntime | undefined)?.schemas(request.parent) ?? [] } as unknown as GenerateOptions
+      turn = await this.launch(agent, text, 'conversation', selected, { cwd: request.cwd, signal: request.signal, scope: request.parent, request: input })
     } catch (error) {
       this.sessions.delete(id)
       if (error instanceof Error && error.message === 'Claude Code 仅支持明确声明为 Anthropic Messages 的模型路由，请在当前对话切换模型。') {
@@ -347,8 +373,7 @@ export class ClaudeCodeService extends TypertRemoteService {
       }
       throw error
     }
-    const child = turn.process
-    if (!child?.stdout) { this.sessions.delete(id); throw new Error(turn.view.message ?? 'Claude Code subagent process is unavailable.') }
+    if (!turn.query) { this.sessions.delete(id); throw new Error(turn.view.message ?? 'Claude Code subagent process is unavailable.') }
     const output = turn.safe.fork()
     let receivedText = false
     let finalOutput: string | undefined
@@ -359,35 +384,40 @@ export class ClaudeCodeService extends TypertRemoteService {
       const event = parseClaudeCliEvent(line)
       if (event?.kind === 'text' && event.text) { receivedText = true; output.append(event.text) }
       if (event?.final) {
-        if (event.failed) diagnostic = 'Claude Code reported an unsuccessful result.'
+        if (event.failed) { diagnostic = [event.text, ...(event.errors ?? [])].filter(Boolean).join('\n') || 'Claude Code reported an unsuccessful result.'; turn.diagnostics?.append(diagnostic) }
         else if (event.text) { const safe = turn.safe.fork(); safe.append(event.text); safe.finish(); finalOutput = safe.snapshot(); if (!receivedText) output.append(event.text) }
       }
     }
     const result = settleRunResult({
       attempt: async (): Promise<SubagentResult> => {
-        let pending = ''
-        for await (const chunk of child.stdout!) {
-          pending += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
-          if (pending.length > 24 * 1024 * 1024) throw new Error('Claude Code subagent output exceeded the supported size.')
-          let newline = pending.indexOf('\n')
-          while (newline >= 0) { consume(pending.slice(0, newline).trim()); pending = pending.slice(newline + 1); newline = pending.indexOf('\n') }
+        for await (const message of turn.query!) {
+          if (message.type === 'system' && message.subtype === 'init' && turn.binding) {
+            if (message.session_id !== turn.binding.nativeId) throw new Error('Claude child session identity changed unexpectedly.')
+            turn.binding.initialized = true; turn.binding.state = 'running'
+            await turn.bindingStore!.save(id, turn.binding)
+          }
+          if ((message.type === 'assistant' || message.type === 'stream_event') && turn.binding?.pending) {
+            turn.binding.submitted = turn.binding.pending.keys; delete turn.binding.pending
+          }
+          consume(JSON.stringify(message))
         }
-        if (pending.trim()) consume(pending.trim())
-        const exit = await child.done
+        const exit = turn.process ? await turn.process.done : { exitCode: diagnostic ? 1 : 0 }
         output.finish()
-        if (exit.exitCode !== 0 || diagnostic) throw new Error('Claude Code subagent did not complete successfully.')
+        if (exit.exitCode !== 0 || diagnostic) throw new Error(`Claude 子会话执行失败（诊断 ${turn.view.id}）。${diagnostic ?? turn.diagnostics?.snapshot() ?? ''}`)
         return { output: collectOutput(), stopReason: 'completed' }
       },
       collectOutput, collectDiagnostic: () => diagnostic, cancelled: () => turn.cancel.signal.aborted,
       signal: request.signal, onAbort,
     }).finally(async () => {
-      await child.terminate(); await child.done.catch(() => undefined)
+      turn.query?.close(); await turn.process?.terminate(); await turn.process?.done.catch(() => undefined)
+      turn.release?.()
+      if (turn.binding) { turn.binding.state = turn.cancel.signal.aborted ? 'stopped' : diagnostic ? 'failed' : 'idle'; await turn.bindingStore!.save(id, turn.binding) }
       output.finish(); turn.view.running = false; this.sessions.delete(id)
       if (turn.projectionRoot) await rm(turn.projectionRoot, { recursive: true, force: true }).catch(() => undefined)
     })
     return subprocessRunHandle({ id, result, signal: request.signal, onAbort,
       requestCancel: () => turn.cancel.abort(),
-      teardown: async () => { await child.terminate(); await child.done.catch(() => undefined) },
+      teardown: async () => { turn.query?.close(); await turn.process?.terminate(); await turn.process?.done.catch(() => undefined) },
     })
   }
 
@@ -471,12 +501,54 @@ export class ClaudeCodeService extends TypertRemoteService {
     })
   }
 
-  @Remote
+  /** Local compatibility helper for tests and pre-SDK callers; never expose the legacy terminal launcher over RPC. */
   async start(agent: Agent, prompt: string): Promise<ClaudeCodeTurn> {
     return this.turnView(await this.launch(agent, prompt, 'panel'))
   }
 
-  private async launch(agent: Agent, prompt: string, mode: 'panel' | 'conversation', selected?: ClaudeSelection, execution: { cwd?: string; signal?: AbortSignal; scope?: Agent } = {}): Promise<OwnedTurn> {
+  @Remote
+  async permissionView(agent: Agent): Promise<ClaudePermissionView> {
+    const settings = await this.settingsGet()
+    const presets = this.ctx.get('permissionPresets') as PermissionPresetService | undefined
+    const source = settings.permissionSelector ?? 'plugin'
+    const events = agent.session.snapshotEvents()
+    const chosen = [...events].reverse().find(event => event.type === 'zerowall-claude/permission')
+    const hostPreset = presets?.current(agent.session) ?? 'custom'
+    const spec = hostPreset !== 'custom' ? presets?.resolve(hostPreset) : undefined
+    const permissions = (this.ctx.get('sessionProjections') as { stateOf(session: unknown, key: string): { sandbox?: string; approval?: string } | undefined }).stateOf(agent.session, 'permissions')
+    const sandbox = permissions?.sandbox ?? spec?.sandbox ?? 'read-only'
+    const approval = permissions?.approval ?? spec?.approval ?? 'ask'
+    const selected = chosen?.type === 'zerowall-claude/permission' ? chosen.data.mode : settings.permissionMode ?? 'acceptEdits'
+    const mode = source === 'plugin' ? selected : CLAUDE_MODE_BY_SANDBOX[sandbox as keyof typeof CLAUDE_MODE_BY_SANDBOX]
+    if (!mode) throw new Error('当前 Host 权限无法映射到 Claude；请先选择明确的权限预设。')
+    const active = (this.ctx.get('sessionProjections') as { stateOf(session: unknown, key: string): unknown }).stateOf(agent.session, 'agentPreset') === 'claude'
+    return { active, source, mode, hostPreset, hostSandbox: sandbox, hostApproval: approval,
+      ...(this.owner(agent).turn?.view.running && this.owner(agent).turn?.view.permission ? { runningMode: this.owner(agent).turn!.view.permission!.mode } : {}),
+      nativeOptions: presets ? presets.names.map(value => presets.optionOf(value)) : [],
+    }
+  }
+
+  @Remote
+  async permissionSet(agent: Agent, value: string): Promise<ClaudePermissionView> {
+    const view = await this.permissionView(agent)
+    if (view.active && view.source === 'plugin') {
+      if (!isClaudePermissionMode(value)) throw new Error('Claude 权限模式无效。')
+      await agent.session.append('zerowall-claude/permission', { mode: value }, { ignorable: true })
+      // A running turn retains both its SDK mode and Host policy until completion.
+      if (!this.owner(agent).turn?.view.running) this.alignPermission(agent, value)
+    } else {
+      if (this.owner(agent).turn?.view.running) throw new Error('请等待当前请求完成后切换 Host 权限。')
+      ;(this.ctx.get('permissionPresets') as PermissionPresetService).set(agent.session, value)
+    }
+    return this.permissionView(agent)
+  }
+
+  private alignPermission(agent: Agent, mode: ClaudePermissionMode): void {
+    setSandboxMode(agent.session, SANDBOX_BY_CLAUDE_MODE[mode])
+    setApprovalPolicy(agent.session, mode === 'dontAsk' || mode === 'bypassPermissions' ? 'never' : 'ask')
+  }
+
+  private async launch(agent: Agent, prompt: string, mode: 'panel' | 'conversation', selected?: ClaudeSelection, execution: { cwd?: string; signal?: AbortSignal; scope?: Agent; request?: GenerateOptions } = {}): Promise<OwnedTurn> {
     const maxPrompt = mode === 'panel' ? 64_000 : 2 * 1024 * 1024
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > maxPrompt || prompt.includes('\0')) {
       if (mode === 'panel') throw new Error('请输入 1 到 64000 字的 Claude Code 指令。')
@@ -515,7 +587,7 @@ export class ClaudeCodeService extends TypertRemoteService {
       const projects = this.ctx.get('zerowallProjects') as { listMcpServers(): McpServerProjectionInput[] }
       const skills = await projectSkillsForClaude(skillsRegistry, cwd, execution.scope ?? agent)
       const credentials = this.ctx.get('credentials') as { resolve(ref: ReturnType<typeof credentialRef>): Promise<{ value: string } | undefined> }
-      const mcp = await prepareClaudeMcpRuntime(projectMcpForClaude(projects.listMcpServers(), cwd), async reference => {
+      const mcp = execution.request ? { servers: [], skipped: [], environment: {} } : await prepareClaudeMcpRuntime(projectMcpForClaude(projects.listMcpServers(), cwd), async reference => {
         const specialKey = reference === 'R_PLATFORM_MCP_AUTHORIZATION' ? 'zerowall.mcp.rdatalinux_authorization'
           : reference === 'HUAGONGSHE_MCP_AUTHORIZATION' ? 'zerowall.mcp.huagongshe_token' : undefined
         if (specialKey) {
@@ -536,7 +608,7 @@ export class ClaudeCodeService extends TypertRemoteService {
             : resource?.kind === 'opaque' ? `Original skill resources: ${resource.description}` : ''
         const dir = join(skillRoot, skill.name)
         await mkdir(dir, { recursive: true, mode: 0o700 })
-        await writeFile(join(dir, 'SKILL.md'), `---\nname: ${skill.name}\ndescription: ${JSON.stringify(skill.description)}\n---\n${hint}\n\n${skill.content}`, { mode: 0o600 })
+        await writeFile(join(dir, 'SKILL.md'), `---\nname: ${skill.name}\ndescription: ${JSON.stringify(skill.description)}\ndisable-model-invocation: ${!skill.invocation.modelInvocable}\nuser-invocable: ${skill.invocation.userInvocable !== false}\n---\n${hint}\n\n${skill.content}`, { mode: 0o600 })
       }
       const mcpPath = join(projectionRoot, 'mcp.json')
       const searchPath = Object.entries(process.env).find(([key]) => key.toUpperCase() === 'PATH')?.[1]
@@ -573,6 +645,73 @@ export class ClaudeCodeService extends TypertRemoteService {
       }
       owner.turn = turn
       turn.projectionRoot = projectionRoot
+      if (execution.request) {
+        const generationEnvironment = sdkGenerationEnvironment(execution.request)
+        const permission = await this.permissionView(agent)
+        if (permission.source === 'plugin' && !execution.scope) {
+          if (!agent.session.snapshotEvents().some(event => event.type === 'zerowall-claude/permission')) {
+            await agent.session.append('zerowall-claude/permission', { mode: permission.mode }, { ignorable: true })
+          }
+          this.alignPermission(agent, permission.mode)
+        }
+        turn.view.permission = await this.permissionView(agent)
+        const store = new ClaudeSessionBindings(runtime.configDir)
+        const { binding, recovery } = await store.load(agent.id, cwd)
+        turn.binding = binding; turn.bindingStore = store
+        turn.view.nativeSessionId = binding.nativeId; turn.view.resumed = binding.initialized
+        if (recovery) turn.view.message = recovery
+        const input = await sdkInput(agent, execution.request, binding, cancel.signal)
+        const schemas = execution.request.tools ?? []
+        const bridgeState: { concluded: boolean; delivered: (keys: string[]) => Promise<void>; drain?: () => Promise<unknown> } = { concluded: false, delivered: async (keys: string[]) => {
+          if (!keys.length) return
+          binding.submitted = [...new Set([...binding.submitted, ...keys])]
+          if (binding.pending) binding.pending.keys = [...new Set([...binding.pending.keys, ...keys])]
+          await store.save(agent.id, binding)
+        } }
+        const bridge = createHostToolBridge(execution.scope ?? agent, schemas, cancel.signal, route, bridgeState)
+        if (bridgeState.drain) turn.drainBridge = bridgeState.drain
+        const mcpService = this.ctx.get('zerowallMcp') as { list(): Promise<Array<{ serverName: string; runtimeState: string }>> } | undefined
+        const skillService = this.ctx.get('zerowallCapabilities') as { listSkillSources(): Promise<{ disabled: string[] }> } | undefined
+        const mcpRuntime = await mcpService?.list().catch(() => []) ?? []
+        const disabled = (await skillService?.listSkillSources().catch(() => ({ disabled: [] })))?.disabled ?? []
+        turn.view.resources = resourceStatus(skills, projects.listMcpServers(), schemas, mcpRuntime, disabled.map(path => path.split(/[\\/]/u).at(-1)!).filter(Boolean))
+        turn.view.mcp = turn.view.resources.filter(row => row.kind === 'mcp' && row.state === 'synced').length
+        turn.diagnostics = turn.safe.fork()
+        const inputId = randomUUID()
+        binding.pending = { uuid: inputId, keys: input.submitted }; binding.state = 'submitted'
+        await store.save(agent.id, binding)
+        const approval = this.ctx.get('approval') as ApprovalService
+        turn.approvalCalls = new Set()
+        turn.query = startSdkQuery({
+          pathToClaudeCodeExecutable: executable, cwd, env: { ...environment, ...generationEnvironment },
+          abortController: cancel, model: route.model, ...(route.reasoningEffort ? { effort: route.reasoningEffort as NonNullable<ClaudeSdkOptions['effort']> } : {}),
+          ...(binding.initialized ? { resume: binding.nativeId } : { sessionId: binding.nativeId }), persistSession: true,
+          permissionMode: permission.mode, permissionPrompts: 'host', allowDangerouslySkipPermissions: permission.mode === 'bypassPermissions',
+          settingSources: ['user'], plugins: [{ type: 'local', path: projectionRoot }],
+          ...(nativeSettings.outputStyle && nativeSettings.outputStyle !== 'Default' ? { settings: { outputStyle: nativeSettings.outputStyle } } : {}),
+          includePartialMessages: true, systemPrompt: sdkSystemPrompt(execution.request),
+          mcpServers: { zerowall: bridge }, strictMcpConfig: true,
+          // dontAsk skips canUseTool entirely. Host tools must reach their own
+          // policy/approval pipeline in every mode, without approving native tools.
+          allowedTools: schemas.map(schema => `mcp__zerowall__${schema.name}`),
+          hooks: { PostToolUse: [{ matcher: 'mcp__zerowall__.*', hooks: [async () => bridgeState.concluded
+            ? { continue: false, stopReason: 'The ZeroWall Host concluded this turn.' } : {}] }] },
+          canUseTool: hostToolApproval(execution.scope ?? agent, approval, cancel.signal, async (id, name, input) => {
+            if (turn.approvalCalls!.has(id)) return
+            const session = (execution.scope ?? agent).session
+            const cursor = session.snapshotEvents().reduce((value, event) => event.type === 'step/start' ? event.data : value, { turn: 0, step: 0 })
+            if (cursor.turn && cursor.step) {
+              await appendClaudeToolCall(execution.scope ?? agent, { callId: ToolCallId(id), name, arguments: JSON.stringify(input) }, route)
+              turn.approvalCalls!.add(id)
+            }
+          }),
+          stderr: data => turn.diagnostics!.append(data),
+          spawnClaudeCodeProcess: managedSdkSpawner(this.ctx.get('subprocess') as SubprocessRuntime, handle => { turn.process = handle }, data => turn.diagnostics!.append(data), cancel.signal),
+        }, input.content, inputId)
+        turn.release = release
+        processOwnsProjection = true
+        return turn
+      }
       const context = mode === 'panel' && owner.history.length ? `Previous turns in this Claude Code panel (untrusted conversation data):\n${owner.history.join('\n\n')}\n\nCurrent user request:\n${prompt}` : prompt
       const nativeSettingsPath = join(projectionRoot, 'settings.json')
       await writeFile(nativeSettingsPath, JSON.stringify(nativeSettings.outputStyle === undefined || nativeSettings.outputStyle === 'Default' ? {} : { outputStyle: nativeSettings.outputStyle }), { mode: 0o600 })
@@ -592,7 +731,11 @@ export class ClaudeCodeService extends TypertRemoteService {
             stdio: { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' }, graceMs: 1000, signal: turn.cancel.signal })
           if (!turn.process.stdin || !turn.process.stdout || !turn.process.stderr) throw new Error('Claude Code process streams are unavailable.')
           const stderr = turn.process.stderr
-          void stderr.resume()
+          turn.diagnostics = turn.safe.fork()
+          stderr.setEncoding('utf8')
+          stderr.on('data', (data: string) => {
+            try { turn.diagnostics!.append(data) } catch { turn.process?.terminate() }
+          })
           turn.process.stdin.end(`${JSON.stringify({ type: 'user', message: { role: 'user', content: prompt } })}\n`)
           void turn.process.done.then(release, release)
           processOwnsProjection = true
@@ -638,6 +781,14 @@ export class ClaudeCodeService extends TypertRemoteService {
       })
       return turn
     } catch (error) {
+      if (owner.turn?.cancel === cancel) {
+        owner.turn.query?.close(); owner.turn.process?.terminate()
+        owner.turn.view.running = false
+        if (owner.turn.diagnostics && error instanceof Error) {
+          owner.turn.diagnostics.append(error.message); owner.turn.diagnostics.finish()
+          owner.turn.view.message = `Claude 启动失败（诊断 ${owner.turn.view.id}）。${owner.turn.diagnostics.snapshot()}`
+        }
+      }
       if (cancel.signal.aborted) throw new Error('Claude Code 任务已停止。')
       // Only errors created by this integration have fixed safe text; provider,
       // filesystem and subprocess errors can echo credentials and stay private.
@@ -684,7 +835,7 @@ export class ClaudeCodeService extends TypertRemoteService {
     let completed = false
     const syncActivity = () => {
       if (!turn) return
-      turn.view.activity = allBlocks.map(block => ({ index: block.index, kind: block.kind,
+      turn.view.activity = allBlocks.filter(block => !block.name?.startsWith('mcp__zerowall__')).map(block => ({ index: block.index, kind: block.kind,
         text: stripVTControlCharacters(block.safe.snapshot()), ended: block.ended,
         ...(block.id ? { id: block.id } : {}), ...(block.name ? { name: block.name } : {}),
         ...((turn!.view.activity ?? []).find(item => item.index === block.index)?.answer ? { answer: true } : {}),
@@ -737,22 +888,24 @@ export class ClaudeCodeService extends TypertRemoteService {
         const block = turn.view.activity?.find(item => item.id === result.id)
         if (block) { const safe = turn.safe.fork(); safe.append(result.text); safe.finish(); block.result = safe.snapshot(); block.failed = result.failed }
       }
-      if (turn.view.renderer !== 'native' || !cursor?.turn || !cursor.step) return
+      if (!cursor?.turn || !cursor.step) return
       if (event.kind === 'block-stop') {
         const block = event.index === undefined ? [...blocks.values()].find(item => item.kind === 'tool-call' && !mirroredTools.has(item.id ?? '')) : blocks.get(event.index)
-        if (block?.kind === 'tool-call' && block.id && !mirroredTools.has(block.id)) {
+        if (block?.kind === 'tool-call' && !block.name?.startsWith('mcp__zerowall__') && block.id && !mirroredTools.has(block.id)
+          && (turn.view.renderer === 'native' || turn.approvalCalls?.has(block.id))) {
           mirroredTools.add(block.id)
           // Use DSH's durable presentation channel, as upstream dsh-claude
           // does for its native renderer, outside LLM tool execution.
-          await agent.session.append('tool/call', { ...cursor, callId: ToolCallId(block.id), name: block.name ?? 'unknown', arguments: block.safe.snapshot() || '{}' })
+          if (!turn.approvalCalls?.has(block.id)) await appendClaudeToolCall(agent, { callId: ToolCallId(block.id), name: block.name ?? 'unknown', arguments: block.safe.snapshot() || '{}' }, turn.view)
         }
       }
       for (const result of event.toolResults ?? []) {
         if (completedTools.has(result.id)) continue
         const block = allBlocks.find(item => item.id === result.id)
-        if (!mirroredTools.has(result.id) && block) {
+        if (block?.name?.startsWith('mcp__zerowall__')) continue
+        if (!mirroredTools.has(result.id) && block && (turn.view.renderer === 'native' || turn.approvalCalls?.has(result.id))) {
           block.safe.finish()
-          await agent.session.append('tool/call', { ...cursor, callId: ToolCallId(result.id), name: block.name ?? 'unknown', arguments: block.safe.snapshot() || '{}' })
+          if (!turn.approvalCalls?.has(result.id)) await appendClaudeToolCall(agent, { callId: ToolCallId(result.id), name: block.name ?? 'unknown', arguments: block.safe.snapshot() || '{}' }, turn.view)
           mirroredTools.add(result.id)
         }
         if (!mirroredTools.has(result.id)) continue
@@ -763,7 +916,10 @@ export class ClaudeCodeService extends TypertRemoteService {
       }
     }
     const consume = function* (event: NonNullable<ReturnType<typeof parseClaudeCliEvent>>): Generator<StreamChunk> {
-      if (event.failed) cliFailed = true
+      if (event.failed) {
+        cliFailed = true
+        turn?.diagnostics?.append([event.text, ...(event.errors ?? [])].filter(Boolean).join('\n'))
+      }
       if (event.final) { if (typeof event.text === 'string') finalText = event.text; return }
       if (!turn) return
       // Some Claude CLI versions omit the nested block index on deltas/stops.
@@ -796,18 +952,32 @@ export class ClaudeCodeService extends TypertRemoteService {
     }
 
     try {
-      const prompt = claudePromptFromRequest(options)
-      turn = await this.launch(agent, prompt, 'conversation', selection, { ...(options.signal ? { signal: options.signal } : {}) })
+      turn = await this.launch(agent, 'SDK conversation input', 'conversation', selection, { request: options, ...(options.signal ? { signal: options.signal } : {}) })
       if (cursor?.turn && cursor.step) {
         turn.view.turn = cursor.turn; turn.view.step = cursor.step
         if (turn.view.renderer === 'plugin') await agent.session.append('zerowall-claude/turn', cursor, { ignorable: true })
       }
-      if (!turn.process?.stdout) {
+      if (!turn.query && !turn.process?.stdout) {
         yield failure(turn.view.message ?? 'Claude Code could not start the managed CLI.')
         return
       }
       let pending = ''
-      for await (const chunk of turn.process.stdout) {
+      if (turn.query) {
+        for await (const message of turn.query) {
+          if (message.type === 'system' && message.subtype === 'init' && turn.binding) {
+            if (turn.binding.nativeId !== message.session_id) throw new Error('Claude session identity changed unexpectedly.')
+            turn.binding.initialized = true; turn.binding.state = 'running'
+            await turn.bindingStore!.save(agent.id, turn.binding)
+          }
+          // Reconcile the exact input UUID from disk after a crash before an assistant frame.
+          if ((message.type === 'assistant' || message.type === 'stream_event') && turn.binding?.pending) {
+            turn.binding.submitted = turn.binding.pending.keys; delete turn.binding.pending
+            await turn.bindingStore!.save(agent.id, turn.binding)
+          }
+          const event = parseClaudeCliEvent(JSON.stringify(message))
+          if (event) { for (const delta of consume(event)) if (turn.view.renderer === 'native') yield delta; await mirrorTools(event) }
+        }
+      } else for await (const chunk of turn.process!.stdout!) {
         pending += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
         if (pending.length > 24 * 1024 * 1024) throw new Error('Claude Code output frame exceeds the supported size.')
         let newline = pending.indexOf('\n')
@@ -823,7 +993,7 @@ export class ClaudeCodeService extends TypertRemoteService {
         const event = parseClaudeCliEvent(pending.trim())
         if (event) { for (const delta of consume(event)) if (turn.view.renderer === 'native') yield delta; await mirrorTools(event) }
       }
-      const result = await turn.process.done
+      const result = turn.process ? await turn.process.done : { exitCode: cliFailed ? 1 : 0 }
       turn.view.exitCode = result.exitCode ?? -1
       if (result.exitCode === 0 && !cliFailed) {
         for (const block of allBlocks) for (const delta of endBlock(block)) if (turn.view.renderer === 'native') yield delta
@@ -838,7 +1008,8 @@ export class ClaudeCodeService extends TypertRemoteService {
         for (const delta of endBlock(fallback)) if (turn.view.renderer === 'native') yield delta
       }
       if (result.exitCode !== 0 || cliFailed) {
-        turn.view.message = 'Claude Code 未成功完成，请检查所选模型和安装状态后重试。'
+        turn.diagnostics?.finish()
+        turn.view.message = `Claude Code 执行失败（退出码 ${result.exitCode ?? 'unknown'}；诊断 ${turn.view.id}）。${turn.diagnostics?.snapshot() || 'CLI 未返回错误详情。'}`
         yield failure(turn.view.message)
         return
       }
@@ -859,7 +1030,9 @@ export class ClaudeCodeService extends TypertRemoteService {
       if (turn?.cancel.signal.aborted || options.signal?.aborted) {
         yield { type: 'finish', reason: { kind: 'aborted', failure: { code: 'ABORTED', message: 'Claude Code request was canceled.' } } }
       } else {
-        const message = error instanceof Error && [
+        if (turn?.diagnostics && error instanceof Error) turn.diagnostics.append(error.message)
+        turn?.diagnostics?.finish()
+        const message = turn?.diagnostics ? `Claude Code 执行失败（诊断 ${turn.view.id}）。${turn.diagnostics.snapshot()}` : error instanceof Error && [
           '请先安装 Claude Code。', '当前会话没有有效的项目目录。', '当前会话没有选择模型。',
           '当前模型路由没有可读取的协议配置。', '当前路由没有可用的 API endpoint。', '当前路由的 API endpoint 不受支持。',
           '当前模型路由没有可用凭据，请在平台对话设置中配置。',
@@ -871,18 +1044,44 @@ export class ClaudeCodeService extends TypertRemoteService {
       }
     } finally {
       if (turn) {
+        turn.query?.close()
         if (!completed && turn.view.running) turn.process?.terminate()
         if (turn.process) {
           const result = await turn.process.done.catch(() => undefined)
           if (result && turn.view.exitCode === undefined) turn.view.exitCode = result.exitCode ?? -1
         }
+        await turn.drainBridge?.()
+        await settleClaudeToolCalls(agent)
         turn.safe.finish()
         turn.view.running = false
+        turn.release?.()
+        if (!completed && turn.diagnostics) {
+          turn.diagnostics.finish()
+          const detail = stripVTControlCharacters(turn.diagnostics.snapshot()).slice(-32_000)
+          const category = claudeFailureCategory(detail)
+          const root = join(this.runtime().configDir, 'diagnostics')
+          turn.view.diagnostic = { id: turn.view.id, category }
+          const diagnostic = {
+            id: turn.view.id, category, at: new Date().toISOString(), model: turn.view.model, provider: turn.view.provider,
+            exitCode: turn.view.exitCode, nativeSessionId: turn.view.nativeSessionId, permission: turn.view.permission, detail,
+          }
+          await mkdir(root, { recursive: true, mode: 0o700 }).then(() => this.writeSettingsDocument(join(root, `${diagnostic.id}.json`), diagnostic))
+            .catch(() => { turn!.view.message = `${turn!.view.message ?? 'Claude 执行失败。'} 诊断文件无法写入，请检查数据目录权限。` })
+        }
+        if (turn.binding && turn.bindingStore) {
+          turn.binding.state = completed ? 'idle' : turn.cancel.signal.aborted ? 'stopped' : 'failed'
+          await turn.bindingStore.save(agent.id, turn.binding).catch(() => {
+            turn!.view.message = `${turn!.view.message ?? ''} Claude 会话进度无法保存，下次续接将核对原生记录。`.trim()
+          })
+        }
         syncActivity()
-        if (cursor?.turn && cursor.step && turn.view.renderer === 'plugin') await agent.session.append('zerowall-claude/transcript', {
-          ...cursor, renderer: 'plugin', running: false, activity: turn.view.activity ?? [],
-        }, { ignorable: true })
-        if (turn.projectionRoot) await rm(turn.projectionRoot, { recursive: true, force: true }).catch(() => undefined)
+        try {
+          if (cursor?.turn && cursor.step && turn.view.renderer === 'plugin') await agent.session.append('zerowall-claude/transcript', {
+            ...cursor, renderer: 'plugin', running: false, activity: turn.view.activity ?? [],
+          }, { ignorable: true })
+        } finally {
+          if (turn.projectionRoot) await rm(turn.projectionRoot, { recursive: true, force: true }).catch(() => undefined)
+        }
       }
     }
   }

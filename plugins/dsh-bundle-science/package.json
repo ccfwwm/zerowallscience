@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/dsh-bundle-science",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "type": "module",
   "license": "AGPL-3.0-only",
   "files": [
@@ -37,7 +37,6 @@
       "@zerowallscience/plugin-python",
       "@zerowallscience/plugin-biogenie",
       "@zerowallscience/plugin-research",
-      "@zerowallscience/plugin-reviewer",
       "@zerowallscience/plugin-runs",
       "@zerowallscience/plugin-secrets",
       "@zerowallscience/plugin-singlecell",
@@ -64,7 +63,6 @@
     "@zerowallscience/plugin-python": "workspace:^",
     "@zerowallscience/plugin-biogenie": "workspace:^",
     "@zerowallscience/plugin-research": "workspace:^",
-    "@zerowallscience/plugin-reviewer": "workspace:^",
     "@zerowallscience/plugin-runs": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-singlecell": "workspace:^",

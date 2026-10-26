@@ -42,12 +42,10 @@ export function apply(ctx: ClientContext): void {
   const mcpRemote = optionalRemote('remote.zerowallMcp')
   const mineruRemote = optionalRemote('remote.zerowallMineru')
   const pubmedRemote = optionalRemote('remote.zerowallPubmed')
-  const reviewerScope = ctx.configForms.get<any>('zerowall-reviewer')
   ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section', id: 'zerowall-environment', order: 25,
     label: () => t('title'), locale: NS,
     inject: () => ({
-      reviewerScope,
       environmentRemote,
       accountRemote,
       mcpRemote,

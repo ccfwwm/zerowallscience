@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-claude-code",
-  "version": "0.1.11",
+  "version": "0.2.6",
   "description": "Run an isolated Claude Code CLI from ZeroWall conversations.",
   "type": "module",
   "main": "./lib/index.js",
@@ -65,11 +65,16 @@
       "sessionProjections",
       "agentPresets",
       "tools",
-      "systemPrompt"
+      "systemPrompt",
+      "permissionPresets",
+      "approval",
+      "attachments"
     ],
     "optionalServices": [
       "zerowallAiCloudCredentialResolver",
       "zerowallMcpRouteResolver",
+      "zerowallMcp",
+      "zerowallCapabilities",
       "agents",
       "subagentModelSelection"
     ],
@@ -80,7 +85,9 @@
       "processes",
       "files",
       "network",
-      "credentials"
+      "credentials",
+      "approvals",
+      "attachments"
     ],
     "profiles": [
       "development",
@@ -119,6 +126,7 @@
     "@zerowallscience/plugin-projects": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-environment": "workspace:^",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "zod": "^4.4.3"
@@ -167,9 +175,13 @@
     "@deepseek-ai/dsh-credentials": "0.2.1-rc.2",
     "@deepseek-ai/dsh-session-projection": "0.2.1-rc.2",
     "@deepseek-ai/dsh-subprocess": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-tool-subagent": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-tool-subagent": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-permission-presets": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-user-approval": "0.2.1-rc.2"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.263",
     "tsdown": "^0.22.2",
     "typescript": "6.0.3",
     "vitest": "^4.1.10",
@@ -216,6 +228,9 @@
     "@deepseek-ai/dsh-credentials": "workspace:^",
     "@deepseek-ai/dsh-session-projection": "workspace:^",
     "@deepseek-ai/dsh-subprocess": "workspace:^",
-    "@deepseek-ai/dsh-tool-subagent": "workspace:^"
+    "@deepseek-ai/dsh-tool-subagent": "workspace:^",
+    "@deepseek-ai/dsh-permission-presets": "workspace:^",
+    "@deepseek-ai/dsh-sandbox-policy": "workspace:^",
+    "@deepseek-ai/dsh-user-approval": "workspace:^"
   }
 }

@@ -13,7 +13,7 @@ export interface SkillSummaryProjectionInput {
   name: string
   description: string
   whenToUse?: string
-  invocation: { modelInvocable: boolean }
+  invocation: { modelInvocable: boolean; userInvocable?: boolean }
 }
 
 export interface SkillDefinitionProjectionInput extends SkillSummaryProjectionInput {
@@ -35,6 +35,7 @@ export interface ProjectedClaudeSkill {
   name: string
   description: string
   content: string
+  invocation: { modelInvocable: boolean; userInvocable?: boolean }
   whenToUse?: string
   resourceBase?: SkillResourceBaseProjectionInput
 }
@@ -72,7 +73,7 @@ export async function projectSkillsForClaude(
   const skipped: SkillProjectionResult['skipped'] = []
   for (const summary of snapshot.skills) {
     const name = typeof summary.name === 'string' ? summary.name : ''
-    if (summary.invocation?.modelInvocable !== true) {
+    if (summary.invocation?.modelInvocable !== true && summary.invocation?.userInvocable !== true) {
       skipped.push({ name, reason: 'not-model-invocable' })
       continue
     }
@@ -95,7 +96,7 @@ export async function projectSkillsForClaude(
       continue
     }
     if (definition.name !== name
-      || definition.invocation?.modelInvocable !== true
+      || (definition.invocation?.modelInvocable !== true && definition.invocation?.userInvocable !== true)
       || typeof definition.description !== 'string'
       || definition.description.trim() === ''
       || typeof definition.content !== 'string'
@@ -109,6 +110,7 @@ export async function projectSkillsForClaude(
       name,
       description: definition.description,
       content: definition.content,
+      invocation: { ...definition.invocation },
       ...(typeof definition.whenToUse === 'string' && definition.whenToUse.trim() !== ''
         ? { whenToUse: definition.whenToUse }
         : {}),

@@ -71,7 +71,6 @@
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
         "@zerowallscience/plugin-skills",
-        "@zerowallscience/plugin-reviewer",
         "@zerowallscience/plugin-extension-center"
       ]
     },
@@ -112,7 +111,6 @@
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
         "@zerowallscience/plugin-skills",
-        "@zerowallscience/plugin-reviewer",
         "@zerowallscience/plugin-extension-center"
       ]
     },
@@ -153,7 +151,6 @@
         "@zerowallscience/plugin-runs",
         "@zerowallscience/plugin-publications",
         "@zerowallscience/plugin-skills",
-        "@zerowallscience/plugin-reviewer",
         "@zerowallscience/plugin-extension-center"
       ]
     }
@@ -318,7 +315,7 @@
     {
       "id": "environment",
       "package": "@zerowallscience/plugin-environment",
-      "version": "0.1.16",
+      "version": "0.1.17",
       "source": "plugins/environment",
       "manifest": "plugins/environment/zerowall.plugin.json",
       "client": true,
@@ -425,7 +422,7 @@
     {
       "id": "claude-code",
       "package": "@zerowallscience/plugin-claude-code",
-      "version": "0.1.11",
+      "version": "0.2.6",
       "source": "plugins/claude-code",
       "manifest": "plugins/claude-code/zerowall.plugin.json",
       "client": true,
@@ -438,7 +435,9 @@
         "processes",
         "files",
         "network",
-        "credentials"
+        "credentials",
+        "approvals",
+        "attachments"
       ],
       "requiredServices": [
         "agentDefaultModel",
@@ -454,11 +453,16 @@
         "sessionProjections",
         "agentPresets",
         "tools",
-        "systemPrompt"
+        "systemPrompt",
+        "permissionPresets",
+        "approval",
+        "attachments"
       ],
       "optionalServices": [
         "zerowallAiCloudCredentialResolver",
         "zerowallMcpRouteResolver",
+        "zerowallMcp",
+        "zerowallCapabilities",
         "agents",
         "subagentModelSelection"
       ],
@@ -794,32 +798,6 @@
       "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-skills"
     },
     {
-      "id": "reviewer",
-      "package": "@zerowallscience/plugin-reviewer",
-      "version": "0.1.7",
-      "source": "plugins/reviewer",
-      "manifest": "plugins/reviewer/zerowall.plugin.json",
-      "client": true,
-      "remote": false,
-      "loadOrder": 34,
-      "capabilities": [
-        "reviewer"
-      ],
-      "permissions": [
-        "approvals"
-      ],
-      "requiredServices": [
-        "settings",
-        "subagents",
-        "commands",
-        "llm",
-        "agentPresets",
-        "tools"
-      ],
-      "optionalServices": [],
-      "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-reviewer"
-    },
-    {
       "id": "extension-center",
       "package": "@zerowallscience/plugin-extension-center",
       "version": "0.1.16",
@@ -827,7 +805,7 @@
       "manifest": "plugins/extension-center/zerowall.plugin.json",
       "client": true,
       "remote": false,
-      "loadOrder": 35,
+      "loadOrder": 34,
       "capabilities": [
         "resource-management",
         "plugin-updates",

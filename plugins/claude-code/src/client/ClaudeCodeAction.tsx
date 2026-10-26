@@ -7,7 +7,6 @@ import css from './ClaudeCodeAction.module.css'
 
 export interface ClaudeCodeActionInjected {
   getStatus: () => Promise<ClaudeCodeStatus>
-  start: (prompt: string) => Promise<ClaudeCodeTurn>
   read: () => Promise<ClaudeCodeTurn | null>
   stop: () => Promise<void>
   install: () => Promise<ClaudeCodeStatus>
@@ -37,9 +36,7 @@ export function ClaudeCodeAction(props: ClaudeCodeActionProps) {
   const [open, setOpen] = useState(false)
   const [status, setStatus] = useState<ClaudeCodeStatus>()
   const [turn, setTurn] = useState<ClaudeCodeTurn | null>(null)
-  const [prompt, setPrompt] = useState('')
   const [pending, setPending] = useState(false)
-  const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [error, setError] = useState('')
 
@@ -66,16 +63,6 @@ export function ClaudeCodeAction(props: ClaudeCodeActionProps) {
     } finally { setPending(false) }
   }
 
-  const start = () => run(async () => {
-    if (!prompt.trim()) { setError('请先描述要交给 Claude Code 的任务。'); return }
-    setStarting(true)
-    try {
-      const next = await props.start(prompt.trim())
-      setTurn(next)
-      if (next.message) setError(next.message)
-    } finally { setStarting(false) }
-  })
-
   const stop = async (): Promise<void> => {
     if (stopping) return
     setStopping(true)
@@ -99,27 +86,28 @@ export function ClaudeCodeAction(props: ClaudeCodeActionProps) {
             <div><h2 id="claude-code-title">Claude Code</h2><p>{status?.installed ? `CLI ${status.version ?? ''}` : status?.desktop === false ? '仅 ZeroWall Desktop 支持' : '尚未安装'}</p></div>
             <button type="button" className={css.iconButton} aria-label="关闭" onClick={() => setOpen(false)}>×</button>
           </header>
-          <p className={css.hint}>使用当前对话选择的模型，允许编辑当前项目文件。</p>
+          <p className={css.hint}>使用当前对话选择的模型和权限。安装就绪表示 CLI 已安装，连接状态以实际请求为准。</p>
           <div className={css.controls}>
             <button type="button" disabled={pending || status?.desktop === false} onClick={() => void manage('install')}>{status?.installed ? '更新 CLI' : '安装 CLI'}</button>
             {status?.rollbackAvailable && <button type="button" disabled={pending || status.running} onClick={() => void manage('rollback')}>回滚</button>}
             {status?.installed && <button type="button" disabled={pending || status.running} onClick={() => void manage('uninstall')}>卸载 CLI</button>}
-            {(starting || status?.running || turn?.running) && <button type="button" disabled={stopping} onClick={() => void stop()}>停止</button>}
+            {(status?.running || turn?.running) && <button type="button" disabled={stopping} onClick={() => void stop()}>停止</button>}
             {turn && !turn.running && <button type="button" disabled={pending} onClick={() => void run(async () => { await props.clear(); setTurn(null) })}>清空</button>}
           </div>
+          {turn?.nativeSessionId && <p>Claude 会话：<code>{turn.nativeSessionId}</code> · {turn.resumed ? '续接原会话' : '首次建立'}</p>}
+          {turn?.message && <p role="status">{turn.message}</p>}
+          {turn?.diagnostic && <p>错误类别：{turn.diagnostic.category} · 诊断编号：{turn.diagnostic.id}</p>}
           {turn && <div className={css.route} aria-live="polite">{turn.provider} · {turn.model}{turn.running ? ' · 运行中' : turn.exitCode === 0 ? ' · 已完成' : ''}</div>}
           {(turn?.executablePath || status?.executablePath) && <details className={css.skipped}>
             <summary>运行诊断</summary>
             <p>应用独立 CLI 路径：<code>{turn?.executablePath || status?.executablePath}</code></p>
             <p>此路径来自应用内“安装 CLI”创建的独立运行时。</p>
           </details>}
-          {turn?.skipped.length ? <details className={css.skipped}><summary>未同步资源（{turn.skipped.length}）</summary><ul>{turn.skipped.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul></details> : null}
+          {turn?.skipped.length ? <details className={css.skipped}><summary>资源同步详情（{turn.skipped.length}）</summary><ul>{turn.skipped.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul></details> : null}
+          {turn?.resources && <details className={css.skipped}><summary>资源状态（{turn.resources.length}）</summary><ul>{turn.resources.map(row => <li key={`${row.kind}-${row.name}`}>{row.kind} {row.name}：{{ synced: '已同步', manual: '仅手动调用（已同步）', disabled: '已禁用', unavailable: '不可用', failed: '同步失败' }[row.state]}{row.detail ? ` · ${row.detail}` : ''}</li>)}</ul></details>}
           <pre className={css.output} aria-live="polite">{turn?.output || (turn?.running ? '等待 Claude Code 输出…' : '运行结果会显示在这里。')}</pre>
           {error && <p className={css.error} role="alert">{error}</p>}
-          <form className={css.form} onSubmit={event => { event.preventDefault(); void start() }}>
-            <textarea aria-label="Claude Code 任务" value={prompt} onChange={event => setPrompt(event.target.value)} maxLength={64000} placeholder="描述要在当前工作区完成的任务" disabled={pending || turn?.running === true} />
-            <button type="submit" disabled={pending || status?.installed !== true || turn?.running === true || !prompt.trim()}>{pending ? '处理中…' : '运行'}</button>
-          </form>
+          <p className={css.hint}>请在主输入框选择 Claude 模式发送消息；此面板仅显示状态与诊断。</p>
         </section>
       </div>, document.body)}
   </>

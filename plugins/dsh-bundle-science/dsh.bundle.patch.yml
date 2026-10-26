@@ -44,9 +44,6 @@
     - id: zerowall-research
       name: '@zerowallscience/plugin-research'
 - insert:
-    - id: zerowall-reviewer
-      name: '@zerowallscience/plugin-reviewer'
-- insert:
     - id: zerowall-runs
       name: '@zerowallscience/plugin-runs'
 - insert:

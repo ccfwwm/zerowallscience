@@ -13,7 +13,7 @@ import type { ObjectJsonSchema } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 
 export const name = 'zerowall-reviewer'
-export const inject = ['settings', 'subagents', 'commands', 'llm', 'agentPresets', 'tools']
+export const inject: string[] = []
 export const REVIEWER_SETTINGS_NS = 'zerowall-reviewer' as SettingsNamespace
 export const REVIEWER_MESSAGE_SOURCE_KIND = 'plugin:zerowall-reviewer' as const
 
@@ -457,123 +457,7 @@ export function canAutoCorrect(report: ReviewReport): boolean {
     && report.findings.every(finding => finding.evidenceStatus === 'verified' || finding.evidenceStatus === 'auto-repaired')
 }
 
-export function apply(ctx: Context, config: ReviewerSettings): void {
-  ctx.effect(() => ctx.agentPresets.register({
-    id: REVIEWER_PRESET, name: 'ZeroWall Reviewer',
-    plugins: [{ name: '@deepseek-ai/dsh-persona', config: { prefix: REVIEWER_PERSONA, complete: true, includeRuntimeContext: false } }],
-  }), 'reviewer.preset')
-  ctx.on('agent/created', ({ agent }) => {
-    if (agent.session.header.agentPreset === REVIEWER_PRESET) agent.ctx.tools.restrict({ allow: [] })
-  })
-  let settings = config
-  ctx.on('settings/document-updated', (ns) => {
-    if (ns !== REVIEWER_SETTINGS_NS) return
-    const value = ctx.settings.describe().find(row => row.ns === REVIEWER_SETTINGS_NS)?.value
-    if (value !== undefined) settings = value as ReviewerSettings
-  })
-  // Existing installations used an implicit default-on reviewer. Migrate that
-  // implicit value to opt-in once while preserving later explicit choices.
-  if (settings.autoReviewConfigured !== true) {
-    const migrated = { ...settings, autoReviewConfigured: true }
-    settings = migrated
-    void ctx.settings.replace(REVIEWER_SETTINGS_NS, migrated).catch((error: unknown) => {
-      ctx.logger.warn(`Reviewer settings migration failed: ${error instanceof Error ? error.message : String(error)}`)
-    })
-  }
-  const review = async (agent: Agent, turn: number, signal: AbortSignal, allowCorrection: boolean): Promise<ReviewReport | undefined> => {
-    const events = currentTurnEvents(agent.session, turn)
-    if (events.length === 0) return undefined
-    try {
-      let report = await runReview(ctx, agent, events, turn, signal, settings)
-      if (allowCorrection && canAutoCorrect(report)) {
-        report.correction = 'requested'
-        appendReport(agent.session, report)
-        agent.steer(createUserMessage({ content: [{ type: 'text', text: correctionPrompt(report) }], source: { kind: REVIEWER_MESSAGE_SOURCE_KIND } }))
-        return report
-      }
-      if (allowCorrection && report.reviewStatus === 'failed' && report.hasUnverifiedEvidence === true) {
-        report.coverageGaps = [...new Set([...report.coverageGaps, '自动纠正已跳过：存在未验证证据'])].slice(0, 12)
-      }
-      if (!(allowCorrection && report.reviewStatus === 'passed' && report.findings.length === 0 && report.coverageGaps.length === 0)) appendReport(agent.session, report)
-      return report
-    } catch (error) {
-      const report: ReviewReport = {
-        id: crypto.randomUUID(), turn, summary: `审核失败：${error instanceof Error ? error.message : String(error)}`, findings: [], reviewerModel: 'session', reviewerBackend: 'spawn', reviewStatus: 'error', evidenceCoverage: 0, citationCoverage: 0, hasUnverifiedEvidence: false, summaryEvidenceStatus: 'legacy', coverageGaps: [], coverageGapDetails: [], correction: 'none', reReviewed: false,
-      }
-      appendReport(agent.session, report)
-      ctx.logger.warn(`Reviewer failed for ${String(agent.id)}: ${report.summary}`)
-      return report
-    }
-  }
-
-  ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
-    if (agent.session.header.parentSession !== undefined || agent.session.header.origin === 'subagent') return
-    const prior = [...agent.session.snapshotEvents()].reverse().map(reviewerReportOf).find(event => event?.data.turn === turn)
-    if (prior) {
-      if (prior.data.reReviewed === true || prior.data.correction !== 'requested') return
-      try {
-        const followUp = await runReview(ctx, agent, currentTurnEvents(agent.session, turn), turn, signal, settings)
-        const reconciled: ReviewReport = followUp.findings.length === 0
-          ? {
-              ...prior.data,
-              summary: followUp.summary,
-              findings: prior.data.findings.map(finding => ({ ...finding, status: 'resolved' })),
-              reviewerModel: followUp.reviewerModel,
-              ...(followUp.reviewerEffort === undefined ? {} : { reviewerEffort: followUp.reviewerEffort }),
-              reviewStatus: followUp.reviewStatus,
-              evidenceCoverage: followUp.evidenceCoverage,
-              ...(followUp.citationCoverage === undefined ? {} : { citationCoverage: followUp.citationCoverage }),
-              ...(followUp.hasUnverifiedEvidence === undefined ? {} : { hasUnverifiedEvidence: followUp.hasUnverifiedEvidence }),
-              ...(followUp.summaryEvidenceStatus === undefined ? {} : { summaryEvidenceStatus: followUp.summaryEvidenceStatus }),
-              coverageGaps: followUp.coverageGaps,
-              ...(followUp.coverageGapDetails === undefined ? {} : { coverageGapDetails: followUp.coverageGapDetails }),
-              correction: 'completed',
-              reReviewed: true,
-            }
-          : {
-              ...followUp,
-              id: prior.data.id,
-              findings: followUp.findings.map(finding => ({ ...finding, status: 'unaddressed' })),
-              correction: 'completed',
-              reReviewed: true,
-            }
-        appendReport(agent.session, reconciled)
-      } catch (error) {
-        appendReport(agent.session, {
-          ...prior.data,
-          summary: error instanceof Error ? error.message : String(error),
-          reviewStatus: 'error',
-          correction: 'completed',
-          reReviewed: true,
-        })
-      }
-      return
-    }
-    if (!effectiveEnabled(agent.session, settings) || !shouldAutoReview(agent.session.snapshotEvents(), turn)) return
-    await review(agent, turn, signal, true)
-  })
-
-  const command = (name: string, handler: (agent: Agent, raw: string, signal: AbortSignal) => Promise<CommandResult>): void => {
-    ctx.commands.register({ name, description: `Reviewer command: /${name}`, input: { hint: 'optional' }, handler: invocation => handler(invocation.agent, invocation.rawInput, invocation.signal) })
-  }
-  command('review', async (agent, raw, signal) => {
-    const action = raw.trim().split(/\s+/u)[0] || 'status'
-    if (action === 'on' || action === 'off' || action === 'follow') {
-      appendPluginRecord(agent.session, 'plugin:zerowall/reviewer/mode', { mode: action === 'follow' ? 'inherit' : action })
-      const label = action === 'on' ? '本会话已开启审核' : action === 'off' ? '本会话已关闭审核' : '已跟随审核设置'
-      return { kind: 'success', text: label }
-    }
-    if (action === 'now') {
-      const last = [...agent.session.snapshotEvents()].reverse().find(event => event.type === 'turn/end' && event.data.reason.kind === 'completed')
-      if (last?.type !== 'turn/end') return { kind: 'error', text: '没有可供审核的已完成回答。' }
-      const report = await review(agent, last.data.turn, signal, false)
-      return { kind: 'success', text: report?.summary ?? '审核未执行。' }
-    }
-    if (action !== 'status') return { kind: 'error', text: `未知的审核命令：${action}` }
-    const mode = latestMode(agent.session)
-    const state = mode === 'inherit' ? (settings.autoReview ? '已开启' : '已关闭') : mode === 'on' ? '本会话开启' : '本会话关闭'
-    return { kind: 'success', text: `审核${state}；可使用 /review now 进行一次审核` }
-  })
-}
+/** Compatibility retirement package: history readers remain, no live reviewer hooks. */
+export function apply(_ctx: Context, _config: ReviewerSettings): void {}
 
 export default { name, inject, Config, apply: (ctx: Context, config: { get(): ReviewerSettings }) => apply(ctx, config.get()) }

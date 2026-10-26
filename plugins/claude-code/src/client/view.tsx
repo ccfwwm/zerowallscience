@@ -12,6 +12,8 @@ import { ClaudeCodeSettingsSection } from './ClaudeCodeSettingsSection.js'
 import { ClaudeTranscriptNode, claudeTranscriptDefinition } from './ClaudeTranscript.js'
 import { applyClaudeMarkdownTheme } from './upstream/markdown-theme.js'
 import { CLAUDE_NS, en, zh } from './locales.js'
+import { ClaudePermissionSelect } from './ClaudePermissionSelect.js'
+import type { ClaudePermissionView } from '../shared/types.js'
 
 export const inject = ['slots', 'locale', 'uiConversation', 'remote.zerowallClaudeCode']
 
@@ -25,7 +27,6 @@ export function bindClaudeCodeRemote(remote: ClaudeCodeRemote, sessionId: Sessio
   }
   return {
     getStatus: () => value(remote.status(sessionId)),
-    start: prompt => value(remote.start(sessionId, prompt)),
     read: () => value(remote.read(sessionId)),
     stop: () => value(remote.stop(sessionId)),
     install: () => value(remote.installCli(sessionId)),
@@ -39,7 +40,16 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(CLAUDE_NS, { zh, en }), 'claude-code: dictionaries')
   const remote = ctx.get('remote.zerowallClaudeCode') as ClaudeCodeRemote & ClaudeCodeSettingsRemote & {
     readTranscript(sessionId: SessionId, turn: number, step: number): Promise<RemoteResult<import('../shared/types.js').ClaudeTranscript | null>>
+    permissionView(sessionId: SessionId): Promise<RemoteResult<ClaudePermissionView>>
+    permissionSet(sessionId: SessionId, value: string): Promise<RemoteResult<ClaudePermissionView>>
   }
+  ctx.slots.inject('conversation.input.permission', () => ctx.slots.register({
+    name: 'conversation.input.permission', priority: -20, locale: CLAUDE_NS,
+    inject: (sessionId: SessionId) => ({
+      loadPermission: () => unwrap(remote.permissionView(sessionId)),
+      selectPermission: (value: string) => unwrap(remote.permissionSet(sessionId, value)),
+    }),
+  }, ClaudePermissionSelect))
   const uiConversation = ctx.get('uiConversation') as { events: { register(definition: typeof claudeTranscriptDefinition): () => void } } | undefined
   if (uiConversation) ctx.effect(() => uiConversation.events.register(claudeTranscriptDefinition), 'claude-code: transcript node')
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'zerowall-claude-transcript',

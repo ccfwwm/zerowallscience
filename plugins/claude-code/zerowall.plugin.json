@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-claude-code",
-  "version": "0.1.11",
+  "version": "0.2.6",
   "applicationVersion": "8.4.9",
   "restartRequired": true,
   "desktop": {
@@ -28,11 +28,16 @@
     "sessionProjections",
     "agentPresets",
     "tools",
-    "systemPrompt"
+    "systemPrompt",
+    "permissionPresets",
+    "approval",
+    "attachments"
   ],
   "optionalServices": [
     "zerowallAiCloudCredentialResolver",
     "zerowallMcpRouteResolver",
+    "zerowallMcp",
+    "zerowallCapabilities",
     "agents",
     "subagentModelSelection"
   ],
@@ -43,12 +48,14 @@
     "processes",
     "files",
     "network",
-    "credentials"
+    "credentials",
+    "approvals",
+    "attachments"
   ],
   "network": true,
   "files": true,
   "credentials": true,
-  "approvals": false,
+  "approvals": true,
   "profiles": [
     "development",
     "preview",

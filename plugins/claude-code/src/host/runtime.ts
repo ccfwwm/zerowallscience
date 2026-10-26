@@ -301,10 +301,12 @@ export class ClaudeRuntimeManager {
     })
   }
 
-  /** Remove only this manager's dedicated data directory and its managed installs. */
+  /** Remove managed executables only. Configuration and native transcripts survive reinstall. */
   async uninstall(): Promise<void> {
     return this.#withMutation(async () => {
-      await this.#fs.rm(this.dataDir, { recursive: true, force: true })
+      await this.#verifyRealPathInside(this.dataDir, this.dataDir, 'Claude Code runtime root', 'directory', true)
+      await this.#fs.rm(join(this.dataDir, 'versions'), { recursive: true, force: true })
+      await this.#fs.rm(join(this.dataDir, 'current.json'), { force: true })
     })
   }
 

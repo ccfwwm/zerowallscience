@@ -7,15 +7,77 @@ import { ClaudeCodeAction, type ClaudeCodeActionInjected } from '../src/client/C
 import { bindClaudeCodeRemote } from '../src/client/view.js'
 import { apply, inject } from '../src/client/view.js'
 import { ClaudeCodeSettingsSection } from '../src/client/ClaudeCodeSettingsSection.js'
-import type { ClaudeCodeStatus, ClaudeCodeTurn } from '../src/shared/types.js'
+import { ClaudePermissionSelect } from '../src/client/ClaudePermissionSelect.js'
+import { en, zh } from '../src/client/locales.js'
+import type { ClaudeCodeStatus, ClaudeCodeTurn, ClaudePermissionView } from '../src/shared/types.js'
 
 afterEach(() => cleanup())
+
+describe('composer permission selection', () => {
+  const translate = (dictionary: Record<string, string>) => (key: string, args?: Record<string, string>) =>
+    (dictionary[key] ?? key).replace(/\{(\w+)\}/g, (match, name: string) => args?.[name] ?? match)
+  const t = translate(zh)
+  const view: ClaudePermissionView = { active: true, source: 'plugin', mode: 'default', hostPreset: 'workspace-write',
+    hostSandbox: 'workspace-write', hostApproval: 'on-request', nativeOptions: [{ value: 'auto', name: 'Auto Review' }] }
+  it('exposes all six Claude modes and shows current execution versus next turn', async () => {
+    const selectPermission = vi.fn(async () => ({ ...view, mode: 'plan' as const, runningMode: 'default' as const }))
+    render(<ClaudePermissionSelect {...({ loadPermission: async () => view, selectPermission, locked: true, t } as never)} />)
+    const selector = await screen.findByRole('button', { name: 'Claude 会话权限' }) as HTMLButtonElement
+    await waitFor(() => expect(selector.disabled).toBe(false))
+    fireEvent.click(selector)
+    expect(selector.disabled).toBe(false)
+    expect(screen.getAllByRole('menuitem').map(option => option.textContent)).toEqual(['默认', '不询问', '允许编辑', '自动', '计划模式', '跳过权限检查'])
+    fireEvent.click(screen.getByRole('menuitem', { name: '计划模式' }))
+    await waitFor(() => expect(selector.textContent).toBe('计划模式'))
+    expect(selectPermission).toHaveBeenCalledWith('plan')
+    expect(selector.title).toContain('Claude 当前模式：默认；下一轮：计划模式')
+  })
+  it('uses canonical Host options for native control and exposes load failures', async () => {
+    const mounted = render(<ClaudePermissionSelect {...({ loadPermission: async () => ({ ...view, source: 'native', hostPreset: 'auto' }), selectPermission: vi.fn(), locked: false, t } as never)} />)
+    const selector = await screen.findByRole('button', { name: 'ZeroWall 会话权限' })
+    await waitFor(() => expect(selector.textContent).toBe('自动审查'))
+    fireEvent.click(selector)
+    expect(screen.getByRole('menuitem', { name: '自动审查' })).toBeTruthy()
+    mounted.unmount()
+    render(<ClaudePermissionSelect {...({ loadPermission: async () => { throw new Error('private diagnostic') }, selectPermission: vi.fn(), locked: false, t } as never)} />)
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', '无法读取会话权限，请重试。')
+  })
+  it('follows language changes and preserves custom Host names', async () => {
+    const loadPermission = async () => ({ ...view, source: 'native' as const, nativeOptions: [
+      { value: 'workspace-write', name: 'workspace-write' }, { value: 'danger-full-access', name: 'Full access' },
+      { value: 'custom-team', name: '团队审批' },
+    ] })
+    const props = { loadPermission, selectPermission: vi.fn(), locked: false }
+    const mounted = render(<ClaudePermissionSelect {...({ ...props, t } as never)} />)
+    const selector = await screen.findByRole('button', { name: 'ZeroWall 会话权限' })
+    await waitFor(() => expect(selector.textContent).toBe('工作区内修改'))
+    fireEvent.keyDown(selector, { key: 'ArrowDown' })
+    expect(screen.getAllByRole('menuitem').map(option => option.textContent)).toEqual(['工作区内修改', '完全权限', '团队审批'])
+    mounted.rerender(<ClaudePermissionSelect {...({ ...props, t: translate(en) } as never)} />)
+    expect(screen.getByRole('button', { name: 'ZeroWall session permissions' }).textContent).toBe('Workspace Write')
+    expect(screen.getAllByRole('menuitem').map(option => option.textContent)).toEqual(['Workspace Write', 'Full access', '团队审批'])
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+  it('localizes Claude modes in English and retains cancellation without writing permissions', async () => {
+    const selectPermission = vi.fn()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<ClaudePermissionSelect {...({ loadPermission: async () => view, selectPermission, locked: false, t: translate(en) } as never)} />)
+    const selector = await screen.findByRole('button', { name: 'Claude session permissions' }) as HTMLButtonElement
+    await waitFor(() => expect(selector.disabled).toBe(false))
+    fireEvent.click(selector)
+    expect(screen.getAllByRole('menuitem').map(option => option.textContent)).toEqual(['Default', 'Don’t ask', 'Accept edits', 'Auto', 'Plan', 'Bypass permissions'])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Bypass permissions' }))
+    expect(confirm).toHaveBeenCalledWith(en.permissionConfirm)
+    expect(selectPermission).not.toHaveBeenCalled()
+  })
+})
 
 const installed: ClaudeCodeStatus = { desktop: true, installed: true, version: '2.1.309', rollbackAvailable: true, running: false }
 const finished: ClaudeCodeTurn = { id: 'turn', provider: 'platform', model: 'selected-model', running: false, output: 'Done', exitCode: 0, skills: 1, mcp: 1, skipped: [] }
 function actions(overrides: Partial<ClaudeCodeActionInjected> = {}): ClaudeCodeActionInjected {
   return {
-    getStatus: vi.fn(async () => installed), read: vi.fn(async () => null), start: vi.fn(async () => finished),
+    getStatus: vi.fn(async () => installed), read: vi.fn(async () => null),
     stop: vi.fn(async () => {}), install: vi.fn(async () => installed), rollback: vi.fn(async () => installed),
     uninstall: vi.fn(async () => ({ ...installed, installed: false })), clear: vi.fn(async () => {}), ...overrides,
   }
@@ -34,7 +96,6 @@ describe('Claude Code conversation panel', () => {
     await screen.findByRole('button', { name: '安装 CLI' })
     expect(api.getStatus).toHaveBeenCalledOnce()
     expect(api.install).not.toHaveBeenCalled()
-    expect(api.start).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '安装 CLI' }))
     await screen.findByText('CLI 2.1.309')
     expect(api.install).toHaveBeenCalledOnce()
@@ -42,14 +103,15 @@ describe('Claude Code conversation panel', () => {
     expect(input.submit).not.toHaveBeenCalled()
   })
 
-  it('uses a separate prompt and displays the route and output from the Host', async () => {
-    const api = actions()
+  it('uses the main composer and displays the native session, route and diagnostics', async () => {
+    const api = actions({ read: vi.fn(async () => ({ ...finished, nativeSessionId: 'native-session', resumed: true })) })
     const input = openPanel(api)
     await screen.findByText('CLI 2.1.309')
-    fireEvent.change(screen.getByRole('textbox', { name: 'Claude Code 任务' }), { target: { value: '  Edit this project  ' } })
-    fireEvent.click(screen.getByRole('button', { name: '运行' }))
     await screen.findByText('Done')
-    expect(api.start).toHaveBeenCalledWith('Edit this project')
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(screen.getByText('native-session')).toBeTruthy()
+    expect(screen.getByText(/续接原会话/)).toBeTruthy()
+    expect(screen.getByText(/请在主输入框/)).toBeTruthy()
     expect(screen.getByText(/platform · selected-model/)).toBeTruthy()
     expect(input.setDraft).not.toHaveBeenCalled()
     expect(input.submit).not.toHaveBeenCalled()
@@ -78,46 +140,41 @@ describe('Claude Code conversation panel', () => {
   it('allows stopping a running task and reports skipped resources', async () => {
     const api = actions({ getStatus: vi.fn(async () => ({ ...installed, running: true })), read: vi.fn(async () => ({ ...finished, running: true, skipped: ['MCP managed: managed-server'] })) })
     openPanel(api)
-    await screen.findByText(/未同步资源/)
+    await screen.findByText(/资源同步详情/)
     fireEvent.click(screen.getByRole('button', { name: '停止' }))
     await waitFor(() => expect(api.stop).toHaveBeenCalledOnce())
-    expect((screen.getByRole('button', { name: '运行' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: '运行' })).toBeNull()
   })
 
   it('replaces untrusted errors with a safe message', async () => {
-    const api = actions({ start: vi.fn(async () => { throw new Error('当前路由 sensitive-host-token') }) })
+    const api = actions({ install: vi.fn(async () => { throw new Error('当前路由 sensitive-host-token') }) })
     openPanel(api)
     await screen.findByText('CLI 2.1.309')
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Run' } })
-    fireEvent.click(screen.getByRole('button', { name: '运行' }))
+    fireEvent.click(screen.getByRole('button', { name: '更新 CLI' }))
     const error = await screen.findByRole('alert')
     expect(error.textContent).toContain('操作失败')
     expect(screen.queryByText('sensitive-host-token')).toBeNull()
   })
 
-  it('can stop while the Host is preparing the first turn', async () => {
-    let rejectStart!: (reason: Error) => void
-    const api = actions({ start: vi.fn(() => new Promise((_resolve, reject) => { rejectStart = reject })) })
+  it('can stop while the main composer request is preparing', async () => {
+    const api = actions({ getStatus: vi.fn(async () => ({ ...installed, running: true })),
+      stop: vi.fn(async () => { throw new Error('Claude Code 任务已停止。') }) })
     openPanel(api)
     await screen.findByText('CLI 2.1.309')
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Run' } })
-    fireEvent.click(screen.getByRole('button', { name: '运行' }))
     fireEvent.click(await screen.findByRole('button', { name: '停止' }))
     await waitFor(() => expect(api.stop).toHaveBeenCalledOnce())
-    rejectStart(new Error('Claude Code 任务已停止。'))
     expect((await screen.findByRole('alert')).textContent).toBe('Claude Code 任务已停止。')
   })
 
   it('binds every remote operation to the displayed Session', async () => {
     const ok = <T,>(value: T) => Promise.resolve({ ok: true as const, value })
     const remote = {
-      status: vi.fn(() => ok(installed)), start: vi.fn(() => ok(finished)), read: vi.fn(() => ok(finished)), stop: vi.fn(() => ok(undefined)),
+      status: vi.fn(() => ok(installed)), read: vi.fn(() => ok(finished)), stop: vi.fn(() => ok(undefined)),
       installCli: vi.fn(() => ok(installed)), rollback: vi.fn(() => ok(installed)), uninstall: vi.fn(() => ok(installed)), clear: vi.fn(() => ok(undefined)),
     }
     const api = bindClaudeCodeRemote(remote, 'session-A' as SessionId)
-    await api.getStatus(); await api.start('Task'); await api.read(); await api.stop()
+    await api.getStatus(); await api.read(); await api.stop()
     await api.install(); await api.rollback(); await api.uninstall(); await api.clear()
-    expect(remote.start).toHaveBeenCalledWith('session-A', 'Task')
     for (const method of ['status', 'read', 'stop', 'installCli', 'rollback', 'uninstall', 'clear'] as const) expect(remote[method]).toHaveBeenCalledWith('session-A')
   })
 })
@@ -142,10 +199,11 @@ describe('Claude Code client entry points', () => {
     expect(inject).toContain('locale')
     expect(inject).toContain('uiConversation')
     apply(ctx as never)
-    expect(calls.map(call => call.name)).toEqual(['conversation.chat.node', 'conversation.session.header.actions', 'settings.section'])
+    expect(calls.map(call => call.name)).toEqual(['conversation.input.permission', 'conversation.chat.node', 'conversation.session.header.actions', 'settings.section'])
     expect(uiConversation.events.register).toHaveBeenCalledWith(expect.objectContaining({ kind: 'zerowall-claude-transcript' }))
-    expect(calls[2]?.options).toMatchObject({ id: 'zerowall-claude-code', order: 35, locale: 'zerowall.claude-code' })
-    expect(calls[2]?.component).toBe(ClaudeCodeSettingsSection)
+    expect(calls[3]?.options).toMatchObject({ id: 'zerowall-claude-code', order: 35, locale: 'zerowall.claude-code' })
+    expect(calls[3]?.component).toBe(ClaudeCodeSettingsSection)
+    expect(calls[0]?.options.locale).toBe('zerowall.claude-code')
     expect(remote.settingsStatus).not.toHaveBeenCalled()
   })
 })

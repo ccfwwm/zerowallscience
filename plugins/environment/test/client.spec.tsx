@@ -77,12 +77,13 @@ describe('environment settings client', () => {
     expect(injected).toBeDefined()
     const props = { ...injected!(), t }
     const view = render(createElement(Section!, props))
-    await waitFor(() => expect(remotes.session.modelCatalog).toHaveBeenCalledOnce())
-    expect(remotes.session.modelCatalog.mock.calls).toEqual([[]])
+    await waitFor(() => expect(remotes.zerowallEnvironment.listVariables).toHaveBeenCalled())
+    expect(remotes.session.modelCatalog).not.toHaveBeenCalled()
+    expect(reviewerScope.set).not.toHaveBeenCalled()
     expect(navLabel!()).toBe('环境配置')
 
     expect(screen.getByRole('heading', { name: '环境配置' })).toBeTruthy()
-    expect(screen.getByText('Reviewer')).toBeTruthy()
+    expect(screen.queryByText('Reviewer')).toBeNull()
     expect(screen.getByText('SciMaster')).toBeTruthy()
     expect(screen.getByText('生图模型')).toBeTruthy()
     expect(screen.getByText('自定义变量')).toBeTruthy()

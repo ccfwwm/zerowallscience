@@ -56,6 +56,7 @@ describe('Claude Code resource projections', () => {
       name: 'safe-skill',
       description: 'A valid skill',
       content: '# Instructions\nDo useful work.',
+      invocation: { modelInvocable: true },
       whenToUse: 'When the task needs it.',
     }])
     expect(result.skipped).toEqual([{ name: 'user-only', reason: 'not-model-invocable' }])

@@ -188,6 +188,60 @@ async function fileContents(root: string): Promise<string[]> {
 }
 
 describe('Claude Code Host session boundary', () => {
+  it('keeps six Claude choices durable and session-local, while native control uses canonical Host presets', async () => {
+    const f = await fixture(), agent = await f.agent('permissions', 'claude'), other = await f.agent('permissions-other', 'claude')
+    type Session = Agent['session']
+    const permissionState = (session: Session) => session.snapshotEvents().reduce((state, event) => {
+      if (event.type === 'sandbox/mode') state.sandbox = event.data.mode
+      if (event.type === 'approval/policy') state.approval = event.data.policy
+      if (event.type === 'permission/preset') state.preset = event.data.preset
+      return state
+    }, { sandbox: 'read-only', approval: 'ask', preset: 'read-only' })
+    const nativeSet = vi.fn((session: Session, value: string) => {
+      session.append('permission/preset', { preset: value })
+      session.append('sandbox/mode', { mode: value === 'auto' ? 'danger-full-access' : value as never })
+      session.append('approval/policy', { policy: value === 'danger-full-access' ? 'never' : 'ask' })
+    })
+    f.services.permissionPresets = {
+      current: (session: Session) => permissionState(session).preset,
+      resolve: () => undefined,
+      names: ['read-only', 'workspace-write', 'danger-full-access', 'auto'],
+      optionOf: (value: string) => ({ value, name: value }), set: nativeSet,
+    }
+    f.services.sessionProjections = { stateOf: (session: Session, key: string) => key === 'permissions' ? permissionState(session)
+      : key === 'agentPreset' ? f.presets.get(session.id) : { pending: f.selected.get(session.id) } }
+    const request = f.handlers.get('agent/request')!
+    await f.host.settingsUpdate({ permissionMode: 'default', permissionSelector: 'plugin' })
+    await request({ agent }, async () => ({}))
+    await f.host.settingsUpdate({ permissionMode: 'plan' })
+    expect(await f.host.permissionView(agent)).toMatchObject({ mode: 'default' })
+    await request({ agent: other }, async () => ({}))
+    expect(await f.host.permissionView(other)).toMatchObject({ mode: 'plan' })
+    const modes = ['plan', 'default', 'acceptEdits', 'dontAsk', 'auto', 'bypassPermissions'] as const
+    for (const mode of modes) {
+      const view = await f.host.permissionSet(agent, mode)
+      expect(view).toMatchObject({ source: 'plugin', mode,
+        hostSandbox: mode === 'plan' ? 'read-only' : mode === 'bypassPermissions' ? 'danger-full-access' : 'workspace-write',
+        hostApproval: mode === 'dontAsk' || mode === 'bypassPermissions' ? 'never' : 'ask' })
+    }
+    expect(nativeSet).not.toHaveBeenCalled()
+    await f.host.settingsUpdate({ permissionSelector: 'native' })
+    for (const [value, mode] of [['read-only', 'plan'], ['workspace-write', 'acceptEdits'], ['danger-full-access', 'bypassPermissions'], ['auto', 'bypassPermissions']]) {
+      expect(await f.host.permissionSet(agent, value!)).toMatchObject({ source: 'native', mode, hostPreset: value })
+    }
+    expect(nativeSet).toHaveBeenCalledTimes(4)
+    expect((await f.host.permissionView(agent)).nativeOptions).toContainEqual({ value: 'auto', name: 'auto' })
+    await f.host.settingsUpdate({ permissionSelector: 'plugin' })
+    const running = await f.host.permissionSet(agent, 'default')
+    const owner = (f.host as unknown as { sessions: Map<string, { turn?: unknown }> }).sessions.get(agent.id)!
+    owner.turn = { view: { running: true, permission: running } }
+    expect(await f.host.permissionSet(agent, 'plan')).toMatchObject({ mode: 'plan', runningMode: 'default', hostSandbox: 'workspace-write' })
+    expect(await f.host.permissionView(other)).toMatchObject({ mode: 'plan', hostSandbox: 'read-only' })
+    owner.turn = undefined
+    await request({ agent }, async () => ({}))
+    expect(await f.host.permissionView(agent)).toMatchObject({ mode: 'plan', hostSandbox: 'read-only' })
+  })
+
   it('routes Claude preset requests through the managed CLI and projects the selected model resources', async () => {
     const f = await fixture(), agent = await f.agent('chat', 'claude')
     await f.host.settingsUpdate({ renderer: 'native' })
@@ -218,13 +272,12 @@ describe('Claude Code Host session boundary', () => {
     expect(launched.argv[launched.argv.indexOf('--model') + 1]).toBe('selected-claude')
     expect(launched.env.ANTHROPIC_API_KEY).toBe('host-only-route-secret-1234567890')
     expect(launched.env.CUSTOM_BUILD_TOKEN).toBe('host-only-configured-env-secret-1234567890')
-    expect(Object.values(launched.env)).toContain('host-only-mcp-secret-1234567890')
-    expect(launched.argv).toContain('mcp__tools__*')
+    expect(Object.values(launched.env)).not.toContain('host-only-mcp-secret-1234567890')
+    expect(launched.argv).not.toContain('--no-session-persistence')
+    expect(launched.argv.join(' ')).toContain('zerowall')
     const pluginDir = launched.argv[launched.argv.indexOf('--plugin-dir') + 1]!
     expect((await fileContents(pluginDir)).join('\n')).toContain('Use the project review checklist.')
-    expect(JSON.parse(f.processes[0]!.input().trim())).toMatchObject({
-      type: 'user', message: { role: 'user', content: expect.stringContaining('Use my configured Claude environment.') },
-    })
+    expect(f.processes[0]!.input()).toContain('initialize')
     f.processes[0]!.stdout.write(`${JSON.stringify({ type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } })}\n`)
     expect(await first).toMatchObject({ done: false, value: { type: 'block-start', index: 0, blockType: 'text' } })
     const visibleDelta = iterator.next()
@@ -264,9 +317,9 @@ describe('Claude Code Host session boundary', () => {
       prompt: [{ type: 'text', text: 'Review the current project changes.' }], signal,
     }) as SubagentRun
     expect(f.launches[0]?.argv).toContain('--input-format')
-    expect(JSON.parse(f.processes[0]!.input().trim())).toMatchObject({
-      type: 'user', message: { role: 'user', content: expect.stringContaining('Review the current project changes.') },
-    })
+    await vi.waitFor(() => expect(f.processes[0]!.input()).toContain('Review the current project changes.'))
+    const messages = f.processes[0]!.input().trim().split('\n').map(line => JSON.parse(line))
+    expect(messages).toContainEqual(expect.objectContaining({ type: 'user', message: expect.objectContaining({ role: 'user', content: expect.arrayContaining([expect.objectContaining({ type: 'text', text: expect.stringContaining('Review the current project changes.') })]) }) }))
     f.processes[0]!.finish([
       { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
       { type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Reviewed changes.' } } },
@@ -289,7 +342,8 @@ describe('Claude Code Host session boundary', () => {
     const launch = f.launches[0]!
     expect(launch.cwd).toBe(cwd)
     expect(launch.argv).toContain('--include-partial-messages')
-    expect(launch.argv).toContain('--mcp-config')
+    expect(launch.argv.join(' ')).toContain('zerowall')
+    expect(launch.argv).not.toContain('--no-session-persistence')
     expect(f.snapshot).toHaveBeenCalledWith({ cwd, scope: parent })
     const root = launch.argv[launch.argv.indexOf('--plugin-dir') + 1]!
     expect((await fileContents(root)).join('\n')).toContain('Use the selected child directory.')
@@ -342,8 +396,8 @@ describe('Claude Code Host session boundary', () => {
     await expect(f.host.settingsGlobalUpdate({ worktreeBranchPrefix: 'new-prefix' })).rejects.toThrow('does not provide')
     await expect(f.host.settingsGlobalUpdate({ idleTimeoutMinutes: '45' })).rejects.toThrow('does not provide')
     const settings = await f.host.settingsGlobalGet()
-    expect(settings.settings.find(setting => setting.key === 'worktreeBranchPrefix')).toMatchObject({ available: false })
-    expect(settings.settings.find(setting => setting.key === 'idleTimeoutMinutes')).toMatchObject({ available: false })
+    expect(settings.settings.find(setting => setting.key === 'worktreeBranchPrefix')).toBeUndefined()
+    expect(settings.settings.find(setting => setting.key === 'idleTimeoutMinutes')).toBeUndefined()
   })
 
   it('streams reasoning and mirrors CLI-owned tools without asking DSH to execute them again', async () => {
@@ -352,8 +406,12 @@ describe('Claude Code Host session boundary', () => {
     await f.handlers.get('agent/request')!({ agent }, async () => ({}))
     const llm = f.handlers.get('llm/stream') as (options: GenerateOptions, next: () => AsyncIterable<never>) => AsyncIterable<Record<string, unknown>>
     const output: Record<string, unknown>[] = []
-    const pending = (async () => { for await (const chunk of llm(markAgentLoopRequest({ provider: 'custom-anthropic', model: 'test', sessionId: agent.id, messages: [{ role: 'user', content: [{ type: 'text', text: 'Read the file.' }] }] } as GenerateOptions), async function* () {})) output.push(chunk) })()
+    const pending = (async () => { for await (const chunk of llm(markAgentLoopRequest({ provider: 'custom-anthropic', model: 'test', sessionId: agent.id,
+      tools: [{ name: 'visible_host_tool', description: 'Host policy owns this tool', parameters: { type: 'object', properties: {} } }],
+      messages: [{ role: 'user', content: [{ type: 'text', text: 'Read the file.' }] }] } as GenerateOptions), async function* () {})) output.push(chunk) })()
     await vi.waitFor(() => expect(f.processes).toHaveLength(1))
+    const allowed = f.launches[0]!.argv[f.launches[0]!.argv.indexOf('--allowedTools') + 1]
+    expect(allowed).toBe('mcp__zerowall__visible_host_tool')
     const frame = (event: unknown) => ({ type: 'stream_event', event })
     f.processes[0]!.finish([
       frame({ type: 'content_block_start', index: 0, content_block: { type: 'thinking' } }),
@@ -424,7 +482,7 @@ describe('Claude Code Host session boundary', () => {
     await writeFile(join(f.configDir, 'output-styles', 'review.md'), '---\nname: Project Reviewer\n---\nprivate body')
     const initial = await f.host.settingsGlobalGet()
     expect(initial.settings.map(setting => setting.key)).toEqual([
-      'outputStyle', 'permissionSelector', 'permissionMode', 'renderer', 'prose', 'worktreeBranchPrefix', 'maxProcesses', 'idleTimeoutMinutes',
+      'outputStyle', 'permissionSelector', 'permissionMode', 'renderer', 'prose', 'maxProcesses',
     ])
     expect(initial.settings[0]).toMatchObject({ kind: 'select', value: 'Default', effect: 'new-session' })
     expect(initial.settings[0]?.kind === 'select' && initial.settings[0].options).toContainEqual({ value: 'Project Reviewer', label: 'Project Reviewer', source: 'user' })
@@ -442,7 +500,7 @@ describe('Claude Code Host session boundary', () => {
 
   it('keeps status/read passive and only installs, rolls back or removes on explicit calls', async () => {
     const f = await fixture(), agent = await f.agent('install')
-    expect(await f.host.status(agent)).toEqual({ desktop: true, installed: true, version: '2.1.309', executablePath: f.cli, rollbackAvailable: true, running: false })
+    expect(await f.host.status(agent)).toEqual({ desktop: true, installed: true, version: '2.1.309', executablePath: f.cli, rollbackAvailable: true, running: false, readiness: 'installed' })
     expect(f.host.read(agent)).toBeNull()
     expect(f.runtime.installOrUpdate).not.toHaveBeenCalled()
     expect(f.runtime.rollback).not.toHaveBeenCalled()
