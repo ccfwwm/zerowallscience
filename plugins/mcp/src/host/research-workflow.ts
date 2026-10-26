@@ -39,6 +39,46 @@ const scalar = (value: unknown): unknown => Array.isArray(value) && value.length
 const canonical = (v: unknown): unknown => Array.isArray(v) ? v.map(canonical) : v !== null && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, value]) => [k, canonical(value)])) : v
 const terminal = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
 
+export function normalizeJsonArguments(value: unknown): ObjectValue {
+  const ancestors = new WeakSet<object>()
+  const visit = (item: unknown, inArray = false): Json => {
+    if (item === undefined && inArray) return null
+    if (item === null || typeof item === 'string' || typeof item === 'boolean') return item
+    if (typeof item === 'number' && Number.isFinite(item)) return Object.is(item, -0) ? 0 : item
+    if (Array.isArray(item)) {
+      if (Object.getPrototypeOf(item) !== Array.prototype || ancestors.has(item)) throw new Error('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+      for (const key of Reflect.ownKeys(item)) {
+        if (key === 'length') continue
+        if (typeof key !== 'string' || !/^(0|[1-9]\d*)$/u.test(key) || Number(key) >= item.length) throw new Error('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+        const descriptor = Object.getOwnPropertyDescriptor(item, key)
+        if (!descriptor?.enumerable || !('value' in descriptor)) throw new Error('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+      }
+      ancestors.add(item)
+      const result = Array.from({ length: item.length }, (_, index) => Object.hasOwn(item, index) ? visit(item[index], true) : null)
+      ancestors.delete(item)
+      return result
+    }
+    if (typeof item === 'object' && item !== null) {
+      const prototype = Object.getPrototypeOf(item)
+      if ((prototype !== Object.prototype && prototype !== null) || ancestors.has(item)) throw new Error('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+      ancestors.add(item)
+      const result: ObjectValue = {}
+      for (const key of Reflect.ownKeys(item)) {
+        if (typeof key !== 'string') throw new Error('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+        const descriptor = Object.getOwnPropertyDescriptor(item, key)
+        if (!descriptor?.enumerable || !('value' in descriptor)) throw new Error('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+        if (descriptor.value !== undefined) Object.defineProperty(result, key, { value: visit(descriptor.value), enumerable: true, configurable: true, writable: true })
+      }
+      ancestors.delete(item)
+      return result
+    }
+    throw new Error('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+  }
+  const result = visit(value)
+  if (result === null || Array.isArray(result) || typeof result !== 'object') throw new Error('TOOL_ARGUMENTS_MUST_BE_JSON_OBJECT')
+  return result
+}
+
 export function workflowPayload(value: unknown): ObjectValue {
   const result = object(value)
   if (result.structuredContent) return object(result.structuredContent)
@@ -47,6 +87,28 @@ export function workflowPayload(value: unknown): ObjectValue {
     if (typeof text === 'string') { try { return object(JSON.parse(text)) } catch { return { text } } }
   }
   return result
+}
+
+/** Accept both the native Host envelope and clients that flatten query fields. */
+export function normalizeWorkflowQuery(args: { operation?: unknown; parameters?: unknown }, workflowId?: string): ObjectValue {
+  const parameters = object(args.parameters)
+  const canonicalize = (value: unknown) => {
+    if (typeof value !== 'string' || !value.trim()) return undefined
+    const operation = value.trim()
+    if (workflowId === 'tooluniverse') return ({ status: 'tooluniverse.status', catalog: 'tooluniverse.search', search: 'tooluniverse.search' } as Record<string, string>)[operation] ?? operation
+    return operation
+  }
+  const topOperation = canonicalize(args.operation)
+  const nestedOperation = canonicalize(parameters.operation)
+  if (topOperation && nestedOperation && topOperation !== nestedOperation) throw new Error('OPERATION_CONFLICT: top-level operation and parameters.operation must match.')
+  const operation = topOperation ?? nestedOperation
+  if (!operation) throw new Error('OPERATION_REQUIRED: provide operation at the top level or inside parameters.operation.')
+  if (workflowId === 'tooluniverse' && operation === 'tooluniverse.status') return { operation, arguments: {} }
+  const nestedArguments = parameters.arguments
+  const queryArguments = nestedArguments !== null && typeof nestedArguments === 'object' && !Array.isArray(nestedArguments)
+    ? object(nestedArguments)
+    : Object.fromEntries(Object.entries(parameters).filter(([key]) => !['operation', 'arguments', 'request_id', 'research_task_id'].includes(key))) as ObjectValue
+  return { operation, arguments: queryArguments }
 }
 
 /** A Host service, shared by the model tool and code callers. Only registered catalog operations execute. */
@@ -74,9 +136,16 @@ export class ResearchWorkflowService {
     return object(await this.mcp.workflowRequest('workflow_describe', { workflow_id: id, operation }, exec))
   }
   async query(id: string, parameters: ObjectValue, exec: ToolRunContext): Promise<ObjectValue> {
-    this.module(id)
-    await this.ensureContext(exec)
-    return object(await this.mcp.workflowRequest('workflow_query', { workflow_id: id, operation: parameters.operation, arguments: object(parameters.arguments) }, exec))
+    const module = this.module(id)
+    const rawOperation = typeof parameters.operation === 'string' ? parameters.operation.trim() : ''
+    const operationId = id === 'tooluniverse' && rawOperation === 'status' ? 'tooluniverse.status' : rawOperation
+    if (!operationId) throw new Error('OPERATION_REQUIRED: provide an exact registered read operation.')
+    if (id === 'tooluniverse') {
+      const operation = this.operation(module, operationId)
+      if (operation.query_allowed !== true) throw new Error(`READ_ONLY_REQUIRED: ${operationId} must use run`)
+    } else await this.ensureContext(exec)
+    const argumentsValue = operationId === 'tooluniverse.status' ? {} : normalizeJsonArguments(object(parameters.arguments))
+    return object(await this.mcp.workflowRequest('workflow_query', { workflow_id: id, operation: operationId, arguments: argumentsValue }, exec))
   }
   private module(id: string): Module { const module = modules.find(item => item.id === id); if (!module) throw new Error(`UNKNOWN_WORKFLOW: ${id}`); return module }
   private operation(module: Module, id: string): Operation { const op = module.operations.find(item => item.id === id); if (!op) throw new Error(`Operation ${id} is not registered in ${module.id}`); return op }
@@ -301,7 +370,7 @@ export function registerResearchWorkflow(ctx: Context, mcp: ZeroWallMcpService):
   ctx.provide('researchWorkflow', { get })
   ctx.effect(() => () => store?.close())
   ctx.tools.register(defineTool({
-    name: 'research_workflow', description: 'List/describe registered research workflows; query user-scope data; submit once, inspect progress/artifact manifests, or cancel. Research Project/Study context is automatically ensured for data queries and submissions. A valid formal analysis plan is automatically system-validated and frozen before a confirmation Runner; missing inputs return recoverable blockers while catalog and download work can continue. Remote methods use the existing rmcp connection; Fiji runs through the local Host scientific service. Load the module skill first.',
+    name: 'research_workflow', description: 'List/describe registered research workflows; query user-scope data; submit once, inspect progress/artifact manifests, or cancel. Query accepts operation at the top level or parameters.operation; query arguments may be nested under parameters.arguments or supplied directly in parameters. ToolUniverse status and catalog reads do not require a Research Project/Study. Other research queries and submissions automatically ensure context. A valid formal analysis plan is automatically system-validated and frozen before a confirmation Runner; missing inputs return recoverable blockers while catalog and download work can continue. Remote methods use the existing rmcp connection; Fiji runs through the local Host scientific service. Load the module skill first.',
     parameters: { action: { type: 'string', required: true, enum: ['list', 'search', 'describe', 'query', 'run', 'status', 'cancel'] }, workflow_id: { type: 'string' }, query: { type: 'string' }, offset: { type: 'number' }, limit: { type: 'number' }, offline: { type: 'boolean' }, operation: { type: 'string' }, parameters: { type: 'json' }, research_task_id: { type: 'string', description: 'Optional existing research task to reserve and reconcile with this Run.' }, run_id: { type: 'string' }, confirm: { type: 'boolean' } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec) {
@@ -309,7 +378,7 @@ export function registerResearchWorkflow(ctx: Context, mcp: ZeroWallMcpService):
         case 'list': return get().list()
         case 'describe': return args.offline ? { ...get().describe(args.workflow_id ?? '', args.operation), connected: false, verification: 'offline_unverified' } : get().describeLive(args.workflow_id ?? '', args.operation, exec)
         case 'search': return get().search(args.workflow_id ?? '', args.query ?? '', args.offset ?? 0, args.limit ?? 25, exec)
-        case 'query': return get().query(args.workflow_id ?? '', object(args.parameters), exec)
+        case 'query': return get().query(args.workflow_id ?? '', normalizeWorkflowQuery(args, args.workflow_id ?? ''), exec)
         case 'run': return get().run(args.workflow_id ?? '', { ...object(args.parameters), ...(args.research_task_id === undefined ? {} : { research_task_id: String(args.research_task_id) }) }, exec)
         case 'status': return get().status(args.run_id ?? '', exec)
         case 'cancel': return get().cancel(args.run_id ?? '', args.confirm === true, exec)

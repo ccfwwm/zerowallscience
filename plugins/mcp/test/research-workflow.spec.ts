@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ResearchStore } from '@zerowallscience/research-store'
 import { rWorkflows } from '../src/shared/r-workflows.js'
-import { ResearchWorkflowService } from '../src/host/research-workflow.js'
+import { normalizeJsonArguments, normalizeWorkflowQuery, ResearchWorkflowService } from '../src/host/research-workflow.js'
 const roots: string[] = []; const stores: ResearchStore[] = []
 afterEach(async () => { stores.splice(0).forEach(s => s.close()); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
 async function fixture() {
@@ -26,6 +26,31 @@ async function fixture() {
   return { root, store, service, backend, execute, exec, ensureResearchContext, autoApproveResearchGate1, status: (value: string) => { remoteStatus = value } }
 }
 const input = { operation: 'r.submit.script', arguments: { project_id: 'demo', code: 'print(1)', confirm: true }, request_id: 'submission-1' }
+it('normalizes top-level, nested and flattened workflow query envelopes without losing operations', () => {
+  expect(normalizeWorkflowQuery({ operation: 'tooluniverse.status', parameters: { project_id: 'p' } })).toEqual({ operation: 'tooluniverse.status', arguments: { project_id: 'p' } })
+  expect(normalizeWorkflowQuery({ operation: 'tooluniverse.status', parameters: { project_id: 'f0071be9-525d-452d-af77-a28f7deea60' } }, 'tooluniverse')).toEqual({ operation: 'tooluniverse.status', arguments: {} })
+  expect(normalizeWorkflowQuery({ parameters: { operation: 'tooluniverse.search', arguments: { query: 'UniProt' } } })).toEqual({ operation: 'tooluniverse.search', arguments: { query: 'UniProt' } })
+  expect(normalizeWorkflowQuery({ operation: 'status', parameters: { project_id: 'p' } }, 'tooluniverse')).toEqual({ operation: 'tooluniverse.status', arguments: {} })
+  expect(normalizeWorkflowQuery({ parameters: { operation: 'catalog', query: 'UniProt' } }, 'tooluniverse')).toEqual({ operation: 'tooluniverse.search', arguments: { query: 'UniProt' } })
+  expect(() => normalizeWorkflowQuery({ parameters: { project_id: 'p' } })).toThrow('OPERATION_REQUIRED')
+  expect(() => normalizeWorkflowQuery({ operation: 'tooluniverse.status', parameters: { operation: 'tooluniverse.search' } })).toThrow('OPERATION_CONFLICT')
+})
+it('drops undefined object properties while preserving JSON array semantics', () => {
+  expect(normalizeJsonArguments({ omitted: undefined, nested: { omitted: undefined, value: 2 }, items: [undefined, 'x'] })).toEqual({ nested: { value: 2 }, items: [null, 'x'] })
+  expect(normalizeJsonArguments({ value: -0, sparse: Array(2) })).toEqual({ value: 0, sparse: [null, null] })
+  expect(() => normalizeJsonArguments({ unsupported: 1n })).toThrow('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+  expect(() => normalizeJsonArguments({ unsupported: Number.POSITIVE_INFINITY })).toThrow('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+  const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic
+  expect(() => normalizeJsonArguments(cyclic)).toThrow('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
+})
+it('queries ToolUniverse status without provisioning an unrelated research context', async () => {
+  const f = await fixture()
+  f.backend.workflowRequest.mockResolvedValueOnce({ status: 'ok', version: '1.5.7' })
+  const query = normalizeWorkflowQuery({ operation: 'tooluniverse.status', parameters: { project_id: 'f0071be9-525d-452d-af77-a28f7deea60' } }, 'tooluniverse')
+  await expect(f.service.query('tooluniverse', query, f.exec)).resolves.toEqual({ status: 'ok', version: '1.5.7' })
+  expect(f.backend.workflowRequest).toHaveBeenCalledWith('workflow_query', { workflow_id: 'tooluniverse', operation: 'tooluniverse.status', arguments: {} }, f.exec)
+  expect(f.ensureResearchContext).not.toHaveBeenCalled()
+})
 it('injects ToolUniverse project/idempotency context and rejects nested secrets before persistence', async () => {
   const f = await fixture()
   const value = { operation: 'tooluniverse.run.tool', arguments: { tool_name: 'UniProt_get_entry_by_accession', tool_arguments: { accession: 'P05067' }, confirm: true }, request_id: 'tu-1' }

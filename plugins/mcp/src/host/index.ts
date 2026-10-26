@@ -1,6 +1,6 @@
 import { configuredPythonRuntimeRoot } from '../../../python/src/shared/runtime-path.js'
 import { ManagedGenerations } from './managed-generations.js'
-import { registerResearchWorkflow } from './research-workflow.js'
+import { normalizeJsonArguments, registerResearchWorkflow } from './research-workflow.js'
 import { isBuiltInMcpConnection } from '../shared/connections.js'
 import { callToolUniverse, resolveToolUniverseCredentials } from './tooluniverse-transport.js'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
@@ -873,7 +873,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   async workflowRequest(action: string, args: unknown, exec: any): Promise<unknown> {
     await this.ensureConnected('rmcp')
     const target = 'mcp__rmcp__r_runtime'
-    const result = await this.ctx.tools.execute({ callId: ToolCallId(`${exec.callId}:${action}`), name: target, arguments: { action, arguments: args }, agent: exec.agent, parent: exec.token, rootCallId: exec.rootCallId ?? exec.callId, signal: exec.signal })
+    const result = await this.ctx.tools.execute({ callId: ToolCallId(`${exec.callId}:${action}`), name: target, arguments: { action, arguments: normalizeJsonArguments(args) }, agent: exec.agent, parent: exec.token, rootCallId: exec.rootCallId ?? exec.callId, signal: exec.signal })
     if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n'))
     return this.compactPayload(result, target)
   }
@@ -927,6 +927,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   async executeCompactCapability(id: string, args: unknown, exec: any): Promise<{ target: string; content: ContentBlock[]; value: unknown }> {
+    const safeArgs = normalizeJsonArguments(args ?? {})
     const [record] = await this.searchCompactCapabilities('', id, 1, exec)
     if (record === undefined) throw new Error(`UNKNOWN_CAPABILITY: ${id}`)
     if (record.backend === 'rmcp' && (id === 'tooluniverse.run.tool' || id.startsWith('tooluniverse.tool.'))) {
@@ -935,7 +936,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       const credentials = await resolveToolUniverseCredentials(connection, async ref => await this.secrets.get(`${ENVIRONMENT_SECRET_PREFIX}${ref.toLowerCase()}`) ?? process.env[ref])
       const authorization = await this.secrets.get(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL) ?? process.env[RDATALINUX_R_MCP_AUTHORIZATION_ENV]
       if (!authorization?.trim()) throw new Error('RMCP_AUTHORIZATION_MISSING')
-      const result = await callToolUniverse({ url: connection.url!, authorization, operation: id, arguments: (args ?? {}) as Record<string, unknown>, credentials, signal: exec.signal })
+      const result = await callToolUniverse({ url: connection.url!, authorization, operation: id, arguments: safeArgs, credentials, signal: exec.signal })
       const content: ContentBlock[] = result.content.filter(item => item.type === 'text').map(item => ({ type: 'text', text: item.text }))
       if (result.isError) throw new Error(content.map(item => item.type === 'text' ? item.text : '').join('\n') || 'ToolUniverse submission failed')
       return { target: 'mcp__rmcp__tooluniverse_execute', content, value: result }
@@ -944,8 +945,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
       ? `mcp__zerowall_managed_bio_tools__${record.publicTool}`
       : `mcp__rmcp__${record.publicTool}`
     const argumentsValue = record.backend === 'bio'
-      ? { capability_id: id, arguments: args ?? {} }
-      : { action: id, arguments: args ?? {} }
+      ? { capability_id: id, arguments: safeArgs }
+      : { action: id, arguments: safeArgs }
     const result = await this.ctx.tools.execute({
       callId: ToolCallId(`${exec.callId}:compact:${id}`),
       name: target,
