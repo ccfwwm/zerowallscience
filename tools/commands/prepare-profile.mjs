@@ -31,10 +31,6 @@ await writeFile(join(stageRoot, 'resources/zerowall-core.patch.yml'), core.join(
 // bundled third-party plugins even when an older user profile does not yet
 // contain them in its package manifest.
 const inventory = JSON.parse(await readFile(join(root, 'config/deepseek-harness/plugin-inventory.json'), 'utf8'))
-const integrations = JSON.parse(await readFile(join(root, 'config/integrations/upstream-sources.json'), 'utf8'))
-const catalogOptionalPackages = new Set(Object.values(integrations)
-  .filter(entry => entry && typeof entry === 'object' && entry.catalogOptional === true && typeof entry.package === 'string')
-  .map(entry => entry.package))
 const configuredDefaults = [...(inventory.profiles?.stable?.plugins ?? [])]
 const defaults = [...new Set([
   '@deepseek-ai/dsh-base',
@@ -46,12 +42,10 @@ for (const name of await readdir(join(root, 'plugins'))) {
   if (name === 'wechat') continue
   const manifest = await readFile(join(root, 'plugins', name, 'package.json'), 'utf8').then(JSON.parse, () => undefined)
   if (!manifest?.name?.startsWith('@zerowallscience/plugin-')) continue
-  // Catalog-optional plugins are distributed through the signed extension
-  // feed and must not be silently pulled into the stable offline profile.
-  // They are still packed and cataloged independently; only the profile
-  // selection decides which plugins enter the installer closure.
-  if (!defaults.includes(manifest.name) && !catalogOptionalPackages.has(manifest.name)) defaults.push(manifest.name)
-  if (catalogOptionalPackages.has(manifest.name) && !defaults.includes(manifest.name)) continue
+  // Source availability does not imply default activation. Compatibility
+  // retirement packages remain in the signed feed without re-entering the
+  // installer profile; use the same inventory as the runtime assembler.
+  if (!defaults.includes(manifest.name)) continue
   bundled.push({ id: manifest.name, version: manifest.version, desktop: manifest.zerowall?.desktop, dsh: manifest.zerowall?.dsh, managed: true, core: runtimeProfile.corePlugins.includes(manifest.name), offline: true })
 }
 const known = new Set(bundled.map(item => item.id))

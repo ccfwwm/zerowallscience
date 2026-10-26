@@ -41,6 +41,8 @@ const desktopManifest = JSON.parse(await readFile(resolve(packageRoot, 'package.
 const evidenceRoot = resolve(repositoryRoot, 'artifacts/verification', desktopManifest.version, 'package-runtime', String(Date.now()))
 await mkdir(evidenceRoot, { recursive: true })
 const runtimeProfile = JSON.parse(await readFile(resolve(repositoryRoot, 'config', 'layout', 'runtime-profile.json'), 'utf8'))
+const inventory = JSON.parse(await readFile(resolve(repositoryRoot, 'config/deepseek-harness/plugin-inventory.json'), 'utf8'))
+const selectedDomainPlugins = inventory.profiles.stable.plugins.filter(id => id.startsWith('@zerowallscience/plugin-'))
 const fullOffline = runtimeProfile.optionalPluginPolicy?.offlineClosure === 'offline-profile/modules'
 const coreOnly = runtimeProfile.optionalPluginPolicy?.bundled === false && !fullOffline
 const desktopOnly = process.argv.includes('--desktop-only')
@@ -210,7 +212,7 @@ const bundledClaudeCodeRuntime = archiveFiles.find(path => claudeCodeRuntimePatt
 if (bundledClaudeCodeRuntime) {
   throw new Error(`Claude Code runtime must not be packaged: ${bundledClaudeCodeRuntime}`)
 }
-for (const retired of ['@zerowallscience/plugin-opencode', '@jiesou/dsh-opencode-zen-free-provider', 'dsh-opencode-zen-free-provider', '@zerowallscience/plugin-image-dup', '@zerowallscience/plugin-presentations', '@zerowallscience/presentations-runtime']) {
+for (const retired of ['dsh-auto-review', '@zerowallscience/dsh-capability-menu', '@zerowallscience/plugin-opencode', '@jiesou/dsh-opencode-zen-free-provider', 'dsh-opencode-zen-free-provider', '@zerowallscience/plugin-image-dup', '@zerowallscience/plugin-presentations', '@zerowallscience/presentations-runtime']) {
   if (archiveFiles.some(path => path.startsWith(`node_modules/${retired}/`))) {
     throw new Error(`Retired module is still in the packaged runtime: ${retired}`)
   }
@@ -440,10 +442,7 @@ async function verifyArchivePolicy() {
     && !/(win32|windows).*(x64|amd64)/i.test(path))
   if (nativeMismatch.length > 0) throw new Error(`Non-Windows-x64 native files found in ASAR:\n${nativeMismatch.join('\n')}`)
 
-  const pluginNames = [
-    'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'execution', 'python', 'runs', 'publications',
-  ]
+  const pluginNames = selectedDomainPlugins.map(id => id.slice('@zerowallscience/plugin-'.length))
   // Different Sharp native builds share libvips in one Windows Host process.
   // Mixed versions can load successfully yet corrupt colourspace operations.
   const sharpVersions = new Set(archiveFiles.filter(path => /(?:^|\/)node_modules\/sharp\/package\.json$/.test(path)).map(path => JSON.parse(readArchiveFile(path).toString('utf8')).version))
@@ -1388,10 +1387,10 @@ async function verifyPluginInventory(url) {
   if (entries.some(entry => String(entry?.moduleName).startsWith('@daweifu/capability-menu'))) {
     throw new Error('Retired capability-menu package must not be mounted in the Host.')
   }
-  const expected = coreOnly ? [...runtimeProfile.corePlugins] : [
-    'base', 'desktop-compat', 'secrets', 'environment', 'projects', 'account', 'ai-cloud', 'files', 'images', 'mineru', 'mcp',
-    'skills', 'reviewer', 'research', 'pubmed', 'singlecell', 'execution', 'python', 'runs', 'publications', 'extension-center',
-  ].map(name => `@zerowallscience/plugin-${name}`)
+  if (entries.some(entry => entry?.moduleName === '@zerowallscience/plugin-reviewer' && entry.enabled === true)) {
+    throw new Error('Retired ZeroWall Reviewer must not be activated by the default Host profile.')
+  }
+  const expected = coreOnly ? [...runtimeProfile.corePlugins] : [...selectedDomainPlugins]
   if (!coreOnly) expected.push('@dsh-external/zotero-harvest', 'dsh-free-search', 'dsh-wechat', 'dsh-file-review', 'dsh-ppt-maker', 'dsh-zotero')
   const byModule = new Map(entries.map(entry => [entry?.moduleName, entry]))
   const missing = expected.filter(name => !byModule.has(name))
@@ -1631,7 +1630,7 @@ async function verifyWebBootManifest(url) {
     '@zerowallscience/plugin-singlecell',
     '@zerowallscience/plugin-mcp',
     '@zerowallscience/plugin-skills',
-    '@zerowallscience/plugin-reviewer',
+    '@zerowallscience/plugin-claude-code',
     '@zerowallscience/plugin-research',
 
     'dsh-free-search', 'dsh-zotero',
@@ -1777,7 +1776,7 @@ async function verifyDesktopStartup() {
       '@zerowallscience/plugin-projects', '@zerowallscience/plugin-account', '@zerowallscience/plugin-images',
 
       '@zerowallscience/plugin-mineru',
-      '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-reviewer',
+      '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-claude-code',
       '@zerowallscience/plugin-research',
       'dsh-free-search', 'dsh-zotero',
       'dsh-ppt-maker',

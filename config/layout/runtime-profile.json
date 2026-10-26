@@ -9,7 +9,9 @@
     "@zerowallscience/plugin-extension-center"
   ],
   "corePackageDependencies": [],
-  "offlinePackageDependencies": {},
+  "offlinePackageDependencies": {
+    "@zerowallscience/plugin-reviewer": "reviewer"
+  },
   "coreRuntimeSeeds": [
     "@deepseek-ai/dsh-web-frontend",
     "@deepseek-ai/dsh-client-store",
