@@ -27,7 +27,13 @@ export async function runtimeRecipes(root) {
     async function collect(path) {
       const rel = relative(source, path)
       if (!rel || rel === '..' || rel.startsWith('../') || rel.startsWith('..\\') || isAbsolute(rel)) throw new Error('Offline package input escapes source: ' + path)
-      const info = await stat(path)
+      // npm's files list may name an optional top-level README that is not
+      // present in a compatibility package. Keep executable inputs strict.
+      const info = await stat(path).catch(error => {
+        if (error.code === 'ENOENT' && /^README(?:\.[^/\\]+)?$/iu.test(rel)) return undefined
+        throw error
+      })
+      if (!info) return
       if (info.isDirectory()) {
         for (const entry of await readdir(path)) await collect(join(path, entry))
       } else if (info.isFile()) files.add(rel.replaceAll('\\', '/'))
