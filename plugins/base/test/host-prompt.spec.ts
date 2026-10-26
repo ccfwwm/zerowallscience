@@ -8,7 +8,7 @@ describe('ZeroWall Science system prompt', () => {
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('capability_search')
     expect(SCIENCE_SYSTEM_PROMPT).not.toContain('mcp__rmcp__')
     expect(SCIENCE_SYSTEM_PROMPT).toContain(SCIENCE_SYSTEM_PROMPT_VERSION)
-    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toMatch(/^8\.4\.7-/u)
+    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toBe('8.4.10-tooluniverse.1')
   })
 
   it('proactively routes scientific computation to the matching remote RMCP Skill', () => {
@@ -19,6 +19,9 @@ describe('ZeroWall Science system prompt', () => {
     expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('Preserve existing confirmations')
     expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('zerowall-nhanes')
     expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('zerowall-omicverse')
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('zerowall-tooluniverse')
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('availability and verification are separate')
+    expect(SCIENCE_RMCP_ROUTING_PROMPT).toContain('trusted Host metadata')
   })
 
   it('routes presentation requests to the PPT Maker image and editable modes', () => {

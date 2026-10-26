@@ -556,11 +556,7 @@
 
 ## biomni.run.python
 
-Run Python in the remote Biomni host's configured shared Python runtime. Do
-not create or select a per-job venv; the remote service owns its single
-environment and dependency policy. Read BIOMNI_DATA_ROOT and write artifacts
-in the job directory. Task LLM configuration is inherited by Biomni calls.
-Requires confirm=true.
+Run Python in the shared host Biomni venv. Read BIOMNI_DATA_ROOT and write artifacts in the job directory. Task LLM configuration is inherited by Biomni calls. Requires confirm=true.
 
 - 工具族：biomni_execute；副作用：execute；query：false；执行：async_or_cached。
 - 确认字段：confirm。
@@ -891,7 +887,7 @@ Requires confirm=true.
 
 ## biomni.read.file.chunk
 
-读取 Biomni 任务结果的受限二进制分片，适用于 RDS、Parquet、PDF 等大文件。
+读取 Biomni 任务结果的受限二进制分片，适用于 RDS、Parquet、PDF 等大文件。普通读取只返回元数据；ZeroWall Host 本地下载使用 internal_host_download=true 在 Host 内接收文件分片。
 
 - 工具族：biomni_artifacts；副作用：read；query：true；执行：sync。
 - 确认字段：无。
@@ -924,6 +920,11 @@ Requires confirm=true.
         "minimum": 1,
         "maximum": 4194304,
         "default": 1048576
+      },
+      "internal_host_download": {
+        "type": "boolean",
+        "default": false,
+        "description": "Host-only: keep binary chunk content inside the trusted local workspace downloader"
       }
     },
     "required": [

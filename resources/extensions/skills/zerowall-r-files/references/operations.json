@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
-  "catalog_version": "2026-09-20.1",
-  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "catalog_version": "2026-10-26.1",
+  "content_sha256": "f4b6720f4cd28fd5c83e66c39456398a2962dcc787aa4e1b630879d7773ae036",
   "id": "r.files",
   "skill": "zerowall-r-files",
   "groups": [
@@ -337,7 +337,7 @@
       "id": "r.read.file.chunk",
       "public_tool": "r_files",
       "category": "r_files",
-      "summary": "Read one base64 file chunk. Chunks are at most 4 MiB and include offset, next_offset, EOF, total size, and SHA-256.",
+      "summary": "Read one base64 file chunk. Chunks are at most 4 MiB and include offset, next_offset, EOF, total size, and SHA-256. Ordinary reads omit binary payloads from chat; ZeroWall Host local downloads use internal_host_download=true to receive chunks inside the Host.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -364,6 +364,11 @@
             "minimum": 1,
             "maximum": 4194304,
             "default": 1048576
+          },
+          "internal_host_download": {
+            "type": "boolean",
+            "default": false,
+            "description": "Host-only: keep binary chunk content inside the trusted local workspace downloader"
           }
         },
         "required": [
@@ -580,7 +585,7 @@
       "id": "r.download.file",
       "public_tool": "r_files",
       "category": "r_files",
-      "summary": "Download a project file. Images that fit the inline limit are returned as native MCP image content; larger or non-image binaries return a manifest and bounded base64 chunk plan for r_read_file_chunk.",
+      "summary": "Return the remote project download response. This server-side operation cannot write to the desktop workspace: large or non-image files return only a manifest/chunk plan. To save the actual file locally, use the ZeroWall Host tool r_download_workspace with source=project, project_id, and remote_path; do not ask the user to decode chunks.",
       "input_schema": {
         "type": "object",
         "properties": {

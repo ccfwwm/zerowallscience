@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Cable, Download, Plus, RefreshCw, RotateCw, Save, ServerCog, Trash2, Upload, X, PackageSearch } from 'lucide-react'
 import type { SidebarFooterActionOwnerProps } from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -13,6 +13,8 @@ import {
 } from './mcp-form.js'
 import { NS } from '@zerowallscience/plugin-base/client-helpers'
 import css from './McpConnectionsButton.module.css'
+import { isBuiltInMcpConnection } from '../shared/connections.js'
+import { observeEmbeddedPanelSize } from './embedded-panel.js'
 
 type McpTransport = 'stdio' | 'streamable-http'
 type McpRuntimeState = 'idle' | 'disabled' | 'starting' | 'waiting-for-credentials' | 'discovering-tools' | 'blocked' | 'active' | 'active-with-zero-tools' | 'error'
@@ -113,9 +115,15 @@ type Props = Partial<SidebarFooterActionOwnerProps> & McpActions & PropsLocale<t
 
 const NEW_SERVER = '__new__'
 
+/** Settings owns visibility and closing; never expose the standalone launcher. */
+export function McpSettingsTab(props: Props) {
+  return <McpConnectionsButton {...props} embedded />
+}
+
 export function McpConnectionsButton(props: Props) {
   const { wide = false, embedded = false, listMcpServers, createMcpServer, updateMcpServer, removeMcpServer, reloadMcpServer, getSciMasterCredentialStatus, setSciMasterApiKey, clearSciMasterApiKey, getRdatalinuxCredentialStatus, setRdatalinuxAuthorization, clearRdatalinuxAuthorization } = props
   const [open, setOpen] = useState(embedded)
+  const panelRef = useRef<HTMLElement>(null)
   const [servers, setServers] = useState<McpServerView[]>([])
   const [selectedId, setSelectedId] = useState(NEW_SERVER)
   const [draft, setDraft] = useState<Draft>(() => emptyDraft())
@@ -163,8 +171,12 @@ export function McpConnectionsButton(props: Props) {
     const needle = toolQuery.trim().toLocaleLowerCase()
     return needle === '' ? details : details.filter(tool => `${tool.name} ${tool.description} ${JSON.stringify(tool.inputSchema ?? {})}`.toLocaleLowerCase().includes(needle))
   }, [selected, toolQuery])
-  const managedConnection = selected !== undefined && ['zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher', 'huagongshe', 'rmcp', 'gpsadb'].includes(selected.serverName)
+  const managedConnection = selected !== undefined && isBuiltInMcpConnection(selected.serverName)
   const hasStartingServer = servers.some(server => server.runtimeState === 'starting')
+
+  useLayoutEffect(() => {
+    if (embedded && panelRef.current) return observeEmbeddedPanelSize(panelRef.current)
+  }, [embedded])
 
   const refresh = useCallback(async (preferredId?: string) => {
     const version = ++refreshVersion.current
@@ -274,14 +286,13 @@ export function McpConnectionsButton(props: Props) {
   }
 
   useEffect(() => {
-    if (!open) return
+    if (!open || (embedded && deleteTarget === undefined)) return
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
       event.stopImmediatePropagation()
       if (deleteTarget !== undefined) setDeleteTarget(undefined)
-      else if (!embedded) setOpen(false)
-      else return
+      else setOpen(false)
     }
     window.addEventListener('keydown', closeOnEscape, true)
     return () => window.removeEventListener('keydown', closeOnEscape, true)
@@ -304,7 +315,7 @@ export function McpConnectionsButton(props: Props) {
       const input = inputFromDraft(draft, props.t)
       const saved = selectedId === NEW_SERVER
         ? await createMcpServer(input)
-        : await updateMcpServer(selectedId, managedConnection ? { enabled: input.enabled, toolCallTimeoutMs: input.toolCallTimeoutMs, reconnect: input.reconnect, failOnStartupError: input.failOnStartupError } : input)
+        : await updateMcpServer(selectedId, managedConnection ? { enabled: input.enabled, toolCallTimeoutMs: input.toolCallTimeoutMs, reconnect: input.reconnect, failOnStartupError: input.failOnStartupError, ...(selected?.serverName === 'rmcp' ? { envRefs: input.envRefs } : {}) } : input)
       await refresh(saved.id)
     } catch (reason) {
       setError(message(reason))
@@ -328,7 +339,7 @@ export function McpConnectionsButton(props: Props) {
   }
 
   const remove = async () => {
-    if (deleteTarget === undefined) return
+    if (deleteTarget === undefined || isBuiltInMcpConnection(deleteTarget.serverName)) return
     setBusy(true)
     setError(undefined)
     try {
@@ -375,7 +386,7 @@ export function McpConnectionsButton(props: Props) {
   }
 
   const manager = <>
-    <section className={embedded ? css.embeddedPanel : css.panel} {...embedded ? {} : { role: 'dialog', 'aria-modal': true }} aria-labelledby="zerowall-mcp-title">
+    <section ref={panelRef} className={embedded ? css.embeddedPanel : css.panel} {...embedded ? {} : { role: 'dialog', 'aria-modal': true }} aria-labelledby="zerowall-mcp-title">
       <header className={css.header}>
         <div><p>ZeroWall Science</p><h2 id="zerowall-mcp-title">{props.t('mcp.title')}</h2></div>
         <div className={css.headerActions}>
@@ -410,9 +421,10 @@ export function McpConnectionsButton(props: Props) {
             <div><h3>{selected === undefined ? props.t('mcp.newTitle') : selected.name}</h3>{selected !== undefined && <p>{statusText(selected.runtimeState, props.t)}</p>}</div>
             <div className={css.editorActions}>
               {selected !== undefined && <button className={css.iconButton} type="button" onClick={() => void reload()} disabled={busy || !selected.enabled} title={props.t('mcp.reload')} aria-label={props.t('mcp.reload')}><RotateCw size={17} /></button>}
-              {selected !== undefined && <button className={`${css.iconButton} ${css.dangerIcon}`} type="button" onClick={() => setDeleteTarget(selected)} disabled={busy} title={props.t('common.delete')} aria-label={props.t('mcp.deleteConnection')}><Trash2 size={17} /></button>}
+              {selected !== undefined && !managedConnection && <button className={`${css.iconButton} ${css.dangerIcon}`} type="button" onClick={() => setDeleteTarget(selected)} disabled={busy} title={props.t('common.delete')} aria-label={props.t('mcp.deleteConnection')}><Trash2 size={17} /></button>}
             </div>
           </div>
+          <div className={css.editorBody}>
           {selected?.runtimeError && <p className={css.error} role="alert">{selected.runtimeError}</p>}
           {(selected?.missingEnvironmentVariables.length ?? 0) > 0 && <p className={css.warning}>{props.t('mcp.missing', { names: selected?.missingEnvironmentVariables.join(', ') ?? '' })}</p>}
           {error && <p className={css.error} role="alert">{error}</p>}
@@ -473,6 +485,7 @@ export function McpConnectionsButton(props: Props) {
               <Field label={props.t('mcp.headerReferences')}><textarea rows={3} value={draft.headerRefs} onChange={event => setDraft({ ...draft, headerRefs: event.target.value })} placeholder="Authorization=ZEROWALL_MCP_AUTHORIZATION" /></Field>
             </>}
             </fieldset>
+            {selected?.serverName === 'rmcp' && <Field label="ToolUniverse 数据库凭据引用（名称=环境变量引用）"><textarea rows={3} value={draft.envRefs} onChange={event => setDraft({ ...draft, envRefs: event.target.value })} placeholder="NCBI_API_KEY=NCBI_API_KEY" /><small>先在环境设置中保存密钥，这里仅填写引用名称。凭据按任务发送到固定 RMCP 服务。</small></Field>}
             <div className={css.threeColumns}>
               <Field label={props.t('mcp.toolTimeout')}><input type="number" min="1" step="1000" value={draft.toolCallTimeoutMs} onChange={event => setDraft({ ...draft, toolCallTimeoutMs: event.target.value })} /></Field>
               <Field label={props.t('mcp.initialRetry')}><input type="number" min="1" value={draft.reconnectInitialDelayMs} onChange={event => setDraft({ ...draft, reconnectInitialDelayMs: event.target.value })} /></Field>
@@ -483,6 +496,7 @@ export function McpConnectionsButton(props: Props) {
               <Field label={props.t('mcp.attempts')}><input className={css.shortInput} type="number" min="1" value={draft.reconnectMaxAttempts} onChange={event => setDraft({ ...draft, reconnectMaxAttempts: event.target.value })} /></Field>
               <Toggle checked={draft.failOnStartupError} onChange={checked => setDraft({ ...draft, failOnStartupError: checked })} label={props.t('mcp.strictStartup')} />
             </div>
+          </div>
           </div>
           <footer className={css.footer}>
             {<button className={css.saveButton} type="button" onClick={() => void save()} disabled={busy}><Save size={17} /><span>{selected === undefined ? props.t('common.create') : props.t('common.save')}</span></button>}

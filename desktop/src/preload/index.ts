@@ -82,6 +82,7 @@ contextBridge.exposeInMainWorld('zerowallDesktop', {
   },
   resources: {
     updatePlugins: async (ids: string[]): Promise<{ taskId: string }> => ipcRenderer.invoke('desktop:resource-update-plugins', ids),
+    updateSkills: async (ids: string[]): Promise<{ taskId: string }> => ipcRenderer.invoke('desktop:resource-update-skills', ids),
     list: async (kind: ResourceKind): Promise<ResourceCheckResult> => await ipcRenderer.invoke('desktop:resource-list', kind) as ResourceCheckResult,
     dependents: async (id: string): Promise<string[]> => await ipcRenderer.invoke('desktop:resource-dependents', id) as string[],
     check: async (kind: ResourceKind, localOnly?: boolean): Promise<ResourceCheckResult> => await ipcRenderer.invoke('desktop:resource-check', kind, localOnly) as ResourceCheckResult,

@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { parse, stringify } from './command-yaml.mjs'
+import { bounded } from './profile-copy.mjs'
 
 const fields = ['dependencies', 'devDependencies', 'optionalDependencies']
 const read = path => readFile(path, 'utf8').then(JSON.parse)
@@ -12,28 +13,36 @@ const packageName = value => /^(?<id>(?:@[^/\s]+\/)?[^@/\s]+)(?:@.*)?$/u.exec(va
 
 // Snapshot actual dependency instances, not just the direct package versions.
 // Cyclic package graphs are finite because each physical instance is visited once.
-async function retainedGraph(retained) {
+async function retainedGraph(retained, { signal, report = () => {} } = {}) {
   const instances = new Map()
+  let checked = 0, lastReport = 0
   async function visit(directory) {
     const source = await realpath(directory)
     if (instances.has(source)) return source
     const manifest = await read(join(source, 'package.json'))
     const item = { name: manifest.name, version: manifest.version, files: Object.create(null), dependencies: Object.create(null) }
     instances.set(source, item)
+    const pending = []
     async function files(base, prefix = '') {
+      signal?.throwIfAborted()
       for (const entry of (await readdir(base, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
         if (entry.name === 'node_modules') continue
         const path = join(base, entry.name), local = prefix + entry.name
         if (entry.isDirectory()) await files(path, local + '/')
         else if (entry.isSymbolicLink()) item.files[local] = { link: await readlink(path) }
-        else if (entry.isFile()) {
-          const digest = createHash('sha256')
-          for await (const bytes of createReadStream(path)) digest.update(bytes)
-          item.files[local] = digest.digest('hex')
-        }
+        else if (entry.isFile()) pending.push({ path, local })
       }
     }
     await files(source)
+    await bounded(pending, async ({ path, local }) => {
+      signal?.throwIfAborted()
+      const digest = createHash('sha256')
+      for await (const bytes of createReadStream(path, { signal })) digest.update(bytes)
+      item.files[local] = digest.digest('hex')
+      checked++
+      if (Date.now() - lastReport >= 500) { lastReport = Date.now(); await report({ phase: 'verifying-dependencies', completed: checked, total: 0 }) }
+    }, 16)
+    item.files = Object.fromEntries(Object.entries(item.files).sort(([a], [b]) => a.localeCompare(b)))
     for (const id of Object.keys({ ...manifest.peerDependencies, ...manifest.dependencies, ...manifest.optionalDependencies }).sort()) {
       if (!packageName(id) || id.includes('..')) throw new Error('PLUGIN_RETAINED_DEPENDENCY_INVALID')
       let cursor = source
@@ -70,7 +79,7 @@ async function localIdentity(path) {
 
 /** Resolve in a fresh namespace. pnpm never owns the retained package graph or
  * its historical hoistedLocations, even when the old lockfile claims ownership. */
-export async function preparePnpmResolution({ profile, manifest, args }) {
+export async function preparePnpmResolution({ profile, manifest, args, signal, report }) {
   const directory = join(profile, '.zerowall/install-sources', 'resolution-' + randomUUID())
   await mkdir(directory, { recursive: true })
   const command = args[0], targets = new Set(), original = structuredClone(manifest)
@@ -128,7 +137,7 @@ export async function preparePnpmResolution({ profile, manifest, args }) {
     manifest[field][id] = 'link:' + root
   }
   await writeFile(join(directory, 'package.json'), JSON.stringify(manifest, null, 2) + '\n')
-  const graph = await retainedGraph(retained)
+  const graph = await retainedGraph(retained, { signal, report })
   const provenance = Object.create(null)
   for (const id of retained.keys()) {
     const file = join(profile, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')
@@ -148,12 +157,12 @@ export async function preparePnpmResolution({ profile, manifest, args }) {
   workspace.linkWorkspacePackages = false
   await writeFile(join(directory, 'pnpm-workspace.yaml'), stringify(workspace))
   if (await exists(join(profile, '.npmrc'))) await cp(join(profile, '.npmrc'), join(directory, '.npmrc'))
-  return { directory, profile, original, retained, damaged, graph, targets, args: resolvedArgs, removed: new Set() }
+  return { directory, profile, original, retained, damaged, graph, targets, args: resolvedArgs, removed: new Set(), signal, report }
 }
 
 export async function mergePnpmResolution(state) {
   const { profile, directory, original, retained, targets, damaged } = state
-  if (JSON.stringify(await retainedGraph(retained)) !== JSON.stringify(state.graph)) throw new Error('PLUGIN_RETAINED_CLOSURE_CHANGED: retained files or dependency instances were modified during resolution')
+  if (JSON.stringify(await retainedGraph(retained, state)) !== JSON.stringify(state.graph)) throw new Error('PLUGIN_RETAINED_CLOSURE_CHANGED: retained files or dependency instances were modified during resolution')
   const after = await read(join(directory, 'package.json'))
   const remaining = new Set(fields.flatMap(field => Object.keys(after[field] ?? {})))
   for (const field of fields) {

@@ -174,6 +174,7 @@ async function restore(profile, directory, state) {
 /** Isolate pnpm from fixed plugin roots. Only publish a complete dependency tree;
  * failures and cancellation leave the running profile's bytes untouched. */
 export async function runProfilePnpmTransaction(options) {
+  if (options.resourceCandidateId) return runResourceCandidate(options)
   const { profile, lifecycleId } = options
   if (lifecycleId) {
     if (!transactionId.test(lifecycleId) || !Number.isSafeInteger(options.ownerPid) || options.ownerPid <= 0) throw new Error('PLUGIN_LIFECYCLE_INVALID')
@@ -186,6 +187,29 @@ export async function runProfilePnpmTransaction(options) {
   const lockProfile = resolve(profile).split(/[\\/]/u).at(-1) === 'web' ? resolve(profile) : join(resolve(profile), '.plugin-manager', 'candidate')
   const release = lifecycleId ? undefined : await acquireProfileMutation(lockProfile)
   try { return await runCandidate({ ...options, ownerToken: options.ownerToken ?? release?.ownerToken }) } finally { await release?.() }
+}
+
+/** The desktop already owns an isolated candidate and its activation journal.
+ * Authenticate the lease, then resolve directly there without copying it again. */
+async function runResourceCandidate({ profile, args, run, signal, resourceCandidateId, report }) {
+  profile = resolve(profile)
+  if (!transactionId.test(resourceCandidateId) || profile.split(/[\\/]/u).at(-1) !== 'zerowall') throw new Error('RESOURCE_CANDIDATE_INVALID')
+  const receipt = await read(join(profile, '.zerowall/resource-transaction.json'))
+  const lease = await read(join(dirname(profile), '.zerowall-plugin-mutation.lock'))
+  if (receipt.id !== resourceCandidateId || receipt.profile !== join(dirname(profile), 'web') || receipt.pid !== lease.pid || receipt.token !== lease.token) throw new Error('RESOURCE_CANDIDATE_INVALID')
+  process.kill(lease.pid, 0)
+  if (args.some(arg => /^(?:--(?:dir|prefix|workspace-dir|global-dir)|-C|-g|--global|--workspace-root|-w)(?:=|$)/u.test(arg))) throw new Error('PLUGIN_CWD_OVERRIDE_DENIED')
+  signal?.throwIfAborted()
+  const manifest = await read(join(profile, 'package.json'))
+  const resolution = await preparePnpmResolution({ profile, manifest, args, signal, report })
+  const result = await run(resolution.args, resolution.directory)
+  signal?.throwIfAborted()
+  if (result.code !== 0) return result
+  await mergePnpmResolution(resolution)
+  await physicalizeProfilePlugins({ profile, ids: [...resolution.targets].filter(id => !resolution.removed.has(id)) })
+  const layout = await repairProfileLayout(profile, { from: profile, diagnoseMissingTargets: true })
+  if (layout.needsRelink) throw new Error('PLUGIN_CANDIDATE_LAYOUT_INVALID')
+  return result
 }
 
 async function runCandidate({ profile, args, run, signal, lifecycleId, ownerPid, ownerToken }) {

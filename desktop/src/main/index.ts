@@ -804,10 +804,10 @@ if (ownsInstance) app.whenReady().then(async () => {
     throw new Error('A configured ZeroWall plugin could not activate; restoring the previous profile')
   }
   const redactDiagnostic = (value: string): string => redactResourceDiagnostic(value).slice(-4000)
-  const runPlugin = (args: string[], profile = 'web', options: { signal?: AbortSignal } = {}): Promise<unknown> => new Promise((accept, reject) => {
+  const runPlugin = (args: string[], profile = 'web', options: { signal?: AbortSignal; resourceCandidateId?: string; report?: (progress: { phase: string; completed: number; total: number; logLine?: string }) => Promise<void> } = {}): Promise<unknown> => new Promise((accept, reject) => {
     options.signal?.throwIfAborted()
     const child = spawn(nodeExecutablePath(), ['--expose-internals', join(commandRoot, 'dsh.mjs'), 'plugin', '--profile', profile, ...args], {
-      windowsHide: true, env: { ...process.env, DSH_HOME: dshHome, ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}) }, stdio: 'pipe',
+      windowsHide: true, env: { ...process.env, DSH_HOME: dshHome, ZEROWALL_RESOURCE_CANDIDATE_ID: options.resourceCandidateId, ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}) }, stdio: 'pipe',
     })
     const cancel = () => { if (process.platform === 'win32' && child.pid) spawn('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => child.kill()); else child.kill() }
     options.signal?.addEventListener('abort', cancel, { once: true })
@@ -815,7 +815,17 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (options.signal?.aborted) cancel()
     let output = ''
     let errorOutput = ''
-    child.stdout.on('data', chunk => { output = (output + String(chunk)).slice(-65536) })
+    let progressBuffer = ''
+    child.stdout.on('data', chunk => {
+      output = (output + String(chunk)).slice(-65536)
+      progressBuffer = (progressBuffer + String(chunk)).slice(-65536)
+      const lines = progressBuffer.split(/\r?\n/u); progressBuffer = lines.pop() ?? ''
+      for (const line of lines) {
+        if (line.startsWith('ZEROWALL_RESOURCE_PROGRESS ')) {
+          try { const value = JSON.parse(line.slice(27)) as { phase: string; completed: number; total: number }; if (typeof value.phase === 'string' && typeof value.completed === 'number' && typeof value.total === 'number') void options.report?.(value).catch(() => undefined) } catch { /* Untrusted process output is diagnostic data. */ }
+        } else if (line.trim()) void options.report?.({ phase: 'installing', completed: 0, total: 0, logLine: redactDiagnostic(line).slice(-1200) }).catch(() => undefined)
+      }
+    })
     child.stderr.on('data', chunk => { errorOutput = (errorOutput + String(chunk)).slice(-65536) })
     child.on('error', reject)
     child.on('exit', code => {
@@ -894,7 +904,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     })().finally(() => { resourceCheckInFlight = undefined })
     return resourceCheckInFlight
   }
-  type ResourceJob = { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'pending-restart'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
+  type ResourceJob = { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'pending-restart'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries: number; retryOf?: string; cancelRequested?: boolean; canCancel?: boolean; currentResource?: string; completed?: number; total?: number; lastActivityAt?: string; logLines?: string[]; error?: string; result?: unknown; createdAt: string; updatedAt: string }
   const resourceJobRoot = join(userData, 'harness', 'resources', 'jobs')
   const resourceJobs = new Map<string, ResourceJob>()
   const resourceJobControllers = new Map<string, AbortController>()
@@ -911,14 +921,14 @@ if (ownsInstance) app.whenReady().then(async () => {
     await rename(tmp, file)
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:resource-job', job)
   }
-  const resourceAction = async (kind: ResourceKind, action: string, id?: string, source?: string): Promise<unknown> => {
+  const resourceAction = async (kind: ResourceKind, action: string, id?: string, source?: string, options: Record<string, unknown> = {}): Promise<unknown> => {
     if (action === 'resume-pending') { if (!id) throw new Error('Pending identity is required'); return resources.resumePending(id) }
     if (action === 'check') return resources.check(kind, source)
     if (action === 'list') return resources.list(kind)
     if (action === 'update') {
       if (id === undefined) return resources.update(kind, source)
-      if (kind === 'plugin') return resources.plugin(id, source)
-      return resources.resource(kind, id, source)
+      if (kind === 'plugin') return resources.plugin(id, source, options)
+      return resources.resource(kind, id, source, options)
     }
     if (action === 'rollback') {
       if (kind === 'plugin') return resources.rollbackPlugin(id)
@@ -962,8 +972,8 @@ if (ownsInstance) app.whenReady().then(async () => {
     const now = new Date().toISOString()
     const taskId = randomUUID()
     const batchController = new AbortController()
-    if (action === 'update-batch') resourceJobControllers.set(taskId, batchController)
-    const oldVersion = id ? (await resources.list(kind).catch(() => undefined))?.resources.find((item: { id: string; installedVersion?: string }) => item.id === id)?.installedVersion : undefined
+    resourceJobControllers.set(taskId, batchController)
+    const oldVersion = id ? await resources.installedVersion(kind, id).catch(() => undefined) : undefined
     const job: ResourceJob = { taskId, kind, ...(id === undefined ? {} : { id }), ...(source === undefined ? {} : { source }), action, status: 'queued', phase: 'queued', progress: 0, oldVersion, retries, ...(retryOf === undefined ? {} : { retryOf }), createdAt: now, updatedAt: now }
     await persistResourceJob(job)
     void (async () => {
@@ -972,19 +982,23 @@ if (ownsInstance) app.whenReady().then(async () => {
       const running: ResourceJob = { ...job, status: 'running', phase: 'preparing', progress: 10, updatedAt: new Date().toISOString() }
       await persistResourceJob(running)
       try {
-        await persistResourceJob({ ...running, phase: 'applying', progress: 35, updatedAt: new Date().toISOString() })
-        const result = action === 'update-batch' && kind === 'plugin'
-          ? await resources.updatePlugins(JSON.parse(source ?? '[]'), undefined, {
-            signal: batchController.signal,
-            report: async (progress: { phase: string; completed: number; total: number; currentPlugin?: string }) => persistResourceJob({ ...(resourceJobs.get(taskId) ?? running), phase: progress.phase, progress: progress.phase === 'activating' ? 90 : 10 + Math.floor(progress.completed / Math.max(1, progress.total) * 75), updatedAt: new Date().toISOString() }),
-          })
-          : await resourceAction(kind, action, id, source)
+        const report = async (value: { phase: string; completed: number; total: number; currentPlugin?: string; currentResource?: string; canCancel?: boolean; logLine?: string }) => {
+          const latest = resourceJobs.get(taskId) ?? running
+          const ranges: Record<string, [number, number]> = { preparing: [5, 20], downloading: [5, 20], copying: [20, 40], extracting: [20, 40], installing: [40, 65], 'verifying-dependencies': [40, 65], snapshot: [65, 85], applying: [50, 90], activating: [90, 92], 'health-check': [92, 98] }
+          const [from, to] = ranges[value.phase] ?? [5, 90]
+          const percent = value.total > 0 ? from + Math.floor(Math.min(1, value.completed / value.total) * (to - from)) : from
+          await persistResourceJob({ ...latest, phase: value.phase, progress: Math.max(latest.progress ?? 0, percent), completed: value.completed, total: value.total, currentResource: value.currentResource ?? value.currentPlugin, canCancel: value.canCancel ?? true, lastActivityAt: new Date().toISOString(), ...(value.logLine ? { logLines: [...(latest.logLines ?? []), value.logLine].slice(-30) } : {}), updatedAt: new Date().toISOString() })
+        }
+        const options = { signal: batchController.signal, report }
+        const result = action === 'update-batch' && (kind === 'plugin' || kind === 'skill')
+          ? await (kind === 'plugin' ? resources.updatePlugins : resources.updateSkills)(JSON.parse(source ?? '[]'), undefined, options)
+          : await resourceAction(kind, action, id, source, options)
         if (result && typeof result === 'object' && (result as { pendingRestart?: boolean }).pendingRestart) {
           await persistResourceJob({ ...running, status: 'pending-restart', phase: 'pending-restart', progress: 0, result, updatedAt: new Date().toISOString() })
           return
         }
         const latest = resourceJobs.get(taskId)
-        const newVersion = id ? (await resources.list(kind).catch(() => undefined))?.resources.find((item: { id: string; installedVersion?: string }) => item.id === id)?.installedVersion : undefined
+        const newVersion = id ? await resources.installedVersion(kind, id).catch(() => undefined) : undefined
         await persistResourceJob({ ...running, status: 'succeeded', phase: 'health-check', progress: 90, newVersion, result, updatedAt: new Date().toISOString() })
         if (latest?.cancelRequested) await persistResourceJob({ ...running, status: 'succeeded', phase: 'complete', progress: 100, newVersion, result, error: 'Cancellation requested after activation; result retained', updatedAt: new Date().toISOString() })
         else await persistResourceJob({ ...running, status: 'succeeded', phase: 'complete', progress: 100, newVersion, result, updatedAt: new Date().toISOString() })
@@ -996,7 +1010,7 @@ if (ownsInstance) app.whenReady().then(async () => {
           await persistResourceJob({ ...running, status: 'pending-restart', phase: 'pending-restart', progress: 0, result: { pendingRestart: true, pendingId: id }, error: safeResourceError(error), updatedAt: new Date().toISOString() })
           return
         }
-        const cancelled = action === 'update-batch' && latest?.cancelRequested && batchController.signal.aborted
+        const cancelled = latest?.cancelRequested && batchController.signal.aborted
         await persistResourceJob({ ...running, status: cancelled ? 'cancelled' : 'failed', phase: cancelled ? 'cancelled' : 'failed', progress: 100, error: safeResourceError(error), updatedAt: new Date().toISOString() })
       } finally { resourceJobControllers.delete(taskId) }
     })()
@@ -1023,6 +1037,7 @@ if (ownsInstance) app.whenReady().then(async () => {
   const cancelResourceJob = async (taskId: string): Promise<ResourceJob | undefined> => {
     if (resumingResourceJobs.has(taskId)) throw new Error('Task is already being resumed')
     const job = resourceJobs.get(taskId)
+    if (job?.canCancel === false) return job
     resourceJobControllers.get(taskId)?.abort()
     if (job?.status === 'pending-restart') {
       await resources.cancelPending((job.result as { pendingId: string }).pendingId)
@@ -1361,6 +1376,10 @@ if (ownsInstance) app.whenReady().then(async () => {
   ipcMain.handle('desktop:resource-update-plugins', (_event, ids: unknown) => {
     if (!Array.isArray(ids) || !ids.length || ids.length > 200 || !ids.every(id => typeof id === 'string')) throw new Error('Invalid plugin batch')
     return startResourceJob('plugin', 'update-batch', undefined, JSON.stringify([...new Set(ids)]))
+  })
+  ipcMain.handle('desktop:resource-update-skills', (_event, ids: unknown) => {
+    if (!Array.isArray(ids) || !ids.length || ids.length > 1000 || !ids.every(id => typeof id === 'string')) throw new Error('Invalid Skills batch')
+    return startResourceJob('skill', 'update-batch', undefined, JSON.stringify([...new Set(ids)]))
   })
   ipcMain.handle('desktop:resource-rollback', (_event, kind: unknown, id: unknown) => resourceAction(String(kind) as ResourceKind, 'rollback', String(id)))
   ipcMain.handle('desktop:resource-job-start', (_event, kind: unknown, action: unknown, id?: unknown, source?: unknown) => startResourceJob(String(kind) as ResourceKind, String(action), typeof id === 'string' ? id : undefined, typeof source === 'string' ? source : undefined))

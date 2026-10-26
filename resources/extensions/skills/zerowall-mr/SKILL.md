@@ -5,6 +5,8 @@ description: ZeroWall MR analysis with prepared, harmonized instruments, version
 
 # mr
 
+RMCP 当前静态 schema 参见 [生成操作目录](references/operations.md)；具体遗传分析方法仍以 genetics-runner.md 的已实现范围为准。
+
 Use the persisted ZeroWall research objects and the current Host/Runner schemas. Keep source, version, unit, applicability, and access state explicit; unknown values remain unknown. Register inputs and parameters before execution, use deterministic runners for numeric outputs, and retain manifests, logs, failures, conflicts, and limitations. Do not claim a professional workflow is available unless the executable adapter and validation artifact are present. A frozen question, plan, or candidate set is immutable: propose an amendment and new version. Escalate only the two research gates: freeze the primary question and validation plan, then approve the final claims.
 
 

@@ -1,5 +1,5 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import { McpConnectionsButton, type McpServerInput } from './McpConnectionsButton.tsx'
+import { McpSettingsTab, type McpServerInput } from './McpConnectionsButton.tsx'
 import { NS, unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 import { registerKetcherTab } from './KetcherTab.js'
 
@@ -16,7 +16,6 @@ export function apply(ctx: ClientContext): void {
     name: 'settings.plugins.tab', id: 'zerowall-mcp', order: -10,
     label: () => t('capabilities.mcpTab'), locale: NS,
     inject: () => ({
-      embedded: true,
       listMcpServers: async () => unwrapRemoteResult('zerowall.mcp.list', await mcpRemote?.list?.() ?? { ok: false, error: 'MCP remote is still connecting.' }),
       createMcpServer: async (input: McpServerInput) => unwrapRemoteResult('zerowall.mcp.create', await mcpRemote.create(input)),
       updateMcpServer: async (id: string, input: Partial<McpServerInput>) => unwrapRemoteResult('zerowall.mcp.update', await mcpRemote.update({ id, changes: input })),
@@ -29,5 +28,5 @@ export function apply(ctx: ClientContext): void {
       setRdatalinuxAuthorization: async (value: string) => unwrapRemoteResult('zerowall.mcp.setRdatalinuxAuthorization', await mcpRemote.setRdatalinuxAuthorization(value)),
       clearRdatalinuxAuthorization: async () => unwrapRemoteResult('zerowall.mcp.clearRdatalinuxAuthorization', await mcpRemote.clearRdatalinuxAuthorization()),
     }),
-  }, McpConnectionsButton))
+  }, McpSettingsTab))
 }

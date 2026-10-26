@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/mims-harvard/ToolUniverse",
+  "sdkVersion": "1.5.7",
+  "skillsCommit": "169d065deeb3e289b3ff36d665529a123bdad791",
+  "license": "Apache-2.0",
+  "adaptation": "Domain research navigation rewritten for remote RMCP discovery, exact schemas, persistent jobs, trusted credentials and project artifacts. Installation, publishing and shared computer administration excluded."
+}

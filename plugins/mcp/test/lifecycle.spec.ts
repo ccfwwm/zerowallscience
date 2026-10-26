@@ -483,8 +483,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await expect(second.zerowallMcp.update({ id: restarted!.id, changes: { url: 'https://attacker.invalid/mcp' } })).rejects.toThrow('Managed connection fields are read-only')
       const renamed = await second.zerowallMcp.update({ id: restarted!.id, changes: { name: 'GPSAdb renamed' } })
       expect(renamed.name).toBe('GPSAdb renamed')
-      await second.zerowallMcp.deleteConnection(restarted!.id)
-      expect((await second.zerowallMcp.list()).some(server => server.id === restarted!.id)).toBe(false)
+      await expect(second.zerowallMcp.deleteConnection(restarted!.id)).rejects.toThrow('Built-in MCP connections cannot be deleted')
+      expect((await second.zerowallMcp.list()).some(server => server.id === restarted!.id)).toBe(true)
     } finally {
       if (first) await first.fiber.dispose()
       if (second) await second.fiber.dispose()
@@ -492,6 +492,39 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       process.send = send
     }
   }, 30_000)
+
+  it('rejects deletion before disposing any built-in MCP and still deletes custom connections', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-protected-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'db.sqlite')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(ZeroWallProjectsService)
+      const names = ['gpsadb', 'rmcp', 'huagongshe', 'zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher']
+      const records = names.map(serverName => ctx.zerowallProjects.createMcpServer({ name: serverName, serverName, transport: 'streamable-http', enabled: false, url: 'https://example.test/mcp' }))
+      await ctx.plugin(ZeroWallMcpService)
+      const dispose = vi.spyOn(ctx.zerowallMcp as any, 'disposeOne')
+      for (const record of records) {
+        await expect(ctx.zerowallMcp.deleteConnection(record.id)).rejects.toThrow('Disable the connection instead')
+        expect(ctx.zerowallProjects.getMcpServer(record.id)).toBeDefined()
+      }
+      expect(dispose).not.toHaveBeenCalled()
+      for (const record of records) {
+        expect(await ctx.zerowallMcp.update({ id: record.id, changes: { enabled: true } })).toMatchObject({ enabled: true })
+        expect(await ctx.zerowallMcp.update({ id: record.id, changes: { enabled: false } })).toMatchObject({ enabled: false, runtimeState: 'disabled' })
+      }
+      const custom = await ctx.zerowallMcp.create({ name: 'custom', serverName: 'custom', transport: 'streamable-http', enabled: false, url: 'https://example.test/mcp' })
+      await ctx.zerowallMcp.deleteConnection(custom.id)
+      expect(ctx.zerowallProjects.getMcpServer(custom.id)).toBeUndefined()
+    } finally {
+      await ctx.fiber.dispose()
+      starts.mockRestore()
+    }
+  })
 
   it('fails closed for GPSAdb tools outside the approved read-only allowlist', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-gpsadb-guard-'))

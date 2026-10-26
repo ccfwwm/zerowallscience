@@ -81,3 +81,5 @@ Skill 加载结果的 `resourceBase` 是资源根目录；以它解析下列相�
 - [可执行示例](references/examples.json)：结构化调用与预期结果，用于验证和复用。
 - [场景与失败恢复](references/scenarios.md)：提交后如何跟踪、取回产物及处理模块特有错误。
 - [数据约定](references/data-formats.md)：输入/输出、ID 和路径边界。
+
+科学资源发现、文献、基因蛋白、药物化学及临床数据库的精确查询可转交 `zerowall-tooluniverse`，`workflow_id=tooluniverse`。既有专项分析继续使用本模块；先发现、describe 实时 schema，再提交并跟踪任务与 Manifest。

@@ -161,7 +161,9 @@ const npmDependencies = {
   account: { qrcode: '^1.5.4', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   files: { '@open-file-viewer/core': '0.1.49', 'viewer-pdfjs': 'npm:pdfjs-dist@6.3.289', '@deepseek-ai/dsh-api-workspace-files': 'workspace:^', '@deepseek-ai/dsh-office-to-pdf': 'workspace:^', '@deepseek-ai/dsh-client-ui-sidebar-right': 'workspace:^', '@deepseek-ai/dsh-client-file-upload': 'workspace:^', 'dsh-office-tools': officeSource, jszip: '3.10.1', 'pdf-lib': '^1.17.1', 'pdfjs-dist': '^4.10.38', xlsx: '^0.18.5', 'fast-xml-parser': '^5.11.0', zod: '^4.4.3', 'lucide-react': '^0.468.0', react: '^18.2.0' },
   images: { sharp: runtimeDependencies.sharp, '@xmldom/xmldom': '0.9.12', fflate: '0.8.3', 'lucide-react': '^0.468.0', react: '^18.2.0', yaml: '2.8.1' },
-  mcp: { '@zerowallscience/plugin-secrets': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
+  // MCP uses the published base client helpers and must not require an
+  // unrelated, unpublished base prompt revision from the shared workspace.
+  mcp: { '@zerowallscience/plugin-base': '^0.1.27', '@zerowallscience/plugin-secrets': 'workspace:^', '@zerowallscience/research-store': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   skills: { 'lucide-react': '^0.468.0', react: '^18.2.0', 'react-dom': '^18.2.0', zod: '^4.4.3' },
   'extension-center': { 'lucide-react': '^0.468.0', react: '^18.2.0' },
   reviewer: { '@deepseek-ai/dsh-agent-preset-registry': 'workspace:^', '@deepseek-ai/dsh-persona': 'workspace:^', 'lucide-react': '^0.468.0', react: '^18.2.0', zod: '^4.4.3' },

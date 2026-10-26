@@ -316,7 +316,7 @@ Resolve an exact project file path. FigureYa result-relative paths are mapped to
 
 ## r.read.file.chunk
 
-Read one base64 file chunk. Chunks are at most 4 MiB and include offset, next_offset, EOF, total size, and SHA-256.
+Read one base64 file chunk. Chunks are at most 4 MiB and include offset, next_offset, EOF, total size, and SHA-256. Ordinary reads omit binary payloads from chat; ZeroWall Host local downloads use internal_host_download=true to receive chunks inside the Host.
 
 - 工具族：r_files；副作用：read；query：true；执行：sync。
 - 确认字段：无。
@@ -350,6 +350,11 @@ Read one base64 file chunk. Chunks are at most 4 MiB and include offset, next_of
         "minimum": 1,
         "maximum": 4194304,
         "default": 1048576
+      },
+      "internal_host_download": {
+        "type": "boolean",
+        "default": false,
+        "description": "Host-only: keep binary chunk content inside the trusted local workspace downloader"
       }
     },
     "required": [
@@ -548,7 +553,7 @@ Upload one base64-encoded file of at most 100 MiB (decoded binary size). Require
 
 ## r.download.file
 
-Download a project file. Images that fit the inline limit are returned as native MCP image content; larger or non-image binaries return a manifest and bounded base64 chunk plan for r_read_file_chunk.
+Return the remote project download response. This server-side operation cannot write to the desktop workspace: large or non-image files return only a manifest/chunk plan. To save the actual file locally, use the ZeroWall Host tool r_download_workspace with source=project, project_id, and remote_path; do not ask the user to decode chunks.
 
 - 工具族：r_files；副作用：read；query：true；执行：sync。
 - 确认字段：无。

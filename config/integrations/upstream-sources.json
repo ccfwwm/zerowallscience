@@ -1,5 +1,5 @@
 {
-  "version": "8.4.10",
+  "version": "8.4.11",
   "deepseekHarness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "tag": "dsh-v0.2.1-rc.2",
@@ -191,9 +191,9 @@
     "commit": "5bcab462fc259d47ba77be0addf7ac6c255d33bc",
     "package": "@zerowallscience/plugin-mcp",
     "source": "plugins/mcp",
-    "version": "0.2.18",
-    "resourceVersion": "0.2.18",
+    "version": "0.2.22",
+    "resourceVersion": "0.2.22",
     "license": "AGPL-3.0-only",
-    "localAdaptation": "Local MCP integration with verified workspace downloads: transfers server files directly through the Host in bounded chunks, validates size and SHA-256, confines destinations to the workspace, and removes partial output on failure."
+    "localAdaptation": "Local MCP integration with verified workspace downloads: transfers server files directly through the Host in bounded chunks, validates size and SHA-256, confines destinations to the workspace, and removes partial output on failure. ToolUniverse exact catalog, persistent jobs, project manifests and trusted per-task credential metadata."
   }
 }

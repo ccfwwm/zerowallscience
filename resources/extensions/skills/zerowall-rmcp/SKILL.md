@@ -15,7 +15,8 @@ allowed-tools: read
 | R 包查询、管理员包变更 | zerowall-r-packages | r.packages |
 | GEO 数据、bulk、R 单细胞 | zerowall-geo | r.geo |
 | NHANES 周期、复杂抽样分析 | zerowall-nhanes | r.nhanes |
-| 生物精确工具、数据湖、Agent | zerowall-rbioagent | biomni |
+| 科学资源发现、文献、基因蛋白、药物与临床精确查询 | zerowall-tooluniverse | tooluniverse |
+| Biomni 专项工具、数据湖、Agent | zerowall-rbioagent | biomni |
 | 已安装绘图模板、计划、图表 | zerowall-rplotfigure | figureya |
 | 单细胞虚拟敲除科学编排 | sc-tenifold-knockout | sc.knockout |
 | AnnData、单细胞、空间、多组学 | zerowall-omicverse | omicverse |

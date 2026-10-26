@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
-  "catalog_version": "2026-09-20.1",
-  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "catalog_version": "2026-10-26.1",
+  "content_sha256": "f4b6720f4cd28fd5c83e66c39456398a2962dcc787aa4e1b630879d7773ae036",
   "id": "biomni",
   "skill": "zerowall-rbioagent",
   "groups": [
@@ -933,7 +933,7 @@
       "id": "biomni.read.file.chunk",
       "public_tool": "biomni_artifacts",
       "category": "biomni_artifacts",
-      "summary": "读取 Biomni 任务结果的受限二进制分片，适用于 RDS、Parquet、PDF 等大文件。",
+      "summary": "读取 Biomni 任务结果的受限二进制分片，适用于 RDS、Parquet、PDF 等大文件。普通读取只返回元数据；ZeroWall Host 本地下载使用 internal_host_download=true 在 Host 内接收文件分片。",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -959,6 +959,11 @@
             "minimum": 1,
             "maximum": 4194304,
             "default": 1048576
+          },
+          "internal_host_download": {
+            "type": "boolean",
+            "default": false,
+            "description": "Host-only: keep binary chunk content inside the trusted local workspace downloader"
           }
         },
         "required": [

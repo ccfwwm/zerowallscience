@@ -7,6 +7,7 @@ import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type { LocalScienceWorkflow, ResearchTaskRecord } from '@zerowallscience/research-store/types'
 import { rWorkflows } from '../shared/r-workflows.js'
+import { rejectToolUniverseSecretArguments } from './tooluniverse-transport.js'
 import type { ZeroWallMcpService } from './index.js'
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
@@ -116,6 +117,7 @@ export class ResearchWorkflowService {
     const operation = await this.describeLive(id, operationId, exec) as unknown as Operation
     if (operation.id !== operationId) throw new Error('Invalid live operation contract')
     const args = { ...object(parameters.arguments) }
+    if (id === 'tooluniverse') rejectToolUniverseSecretArguments(args)
     const researchTaskId = typeof parameters.research_task_id === 'string' ? parameters.research_task_id : undefined
     if (operation.requires_confirmation && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: approve the concrete operation and any first remote upload.')
     if (args.api_key || args.token || args.password) throw new Error('Use the Host credential broker; workflow arguments must not contain credentials.')
@@ -124,7 +126,7 @@ export class ResearchWorkflowService {
     if (typeof requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/u.test(requestId)) throw new Error('request_id is required for safe submission retries.')
     const properties = object(object(operation.input_schema).properties)
     if ('project_id' in properties && !args.project_id && operation.query_allowed !== true) args.project_id = `zw-${createHash('sha256').update(workspace).digest('hex').slice(0, 24)}`
-    if (id === 'omicverse' && 'request_id' in properties) args.request_id = createHash('sha256').update(requestId).digest('hex')
+    if (['omicverse', 'tooluniverse'].includes(id) && 'request_id' in properties) args.request_id = createHash('sha256').update(requestId).digest('hex')
     const key = `${workspace}:${requestId}`
     // Concurrent callers with the same request cannot race past durable idempotency.
     const active = this.pending.get(key)

@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
-  "catalog_version": "2026-09-20.1",
-  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "catalog_version": "2026-10-26.1",
+  "content_sha256": "f4b6720f4cd28fd5c83e66c39456398a2962dcc787aa4e1b630879d7773ae036",
   "id": "r.nhanes",
   "skill": "zerowall-nhanes",
   "groups": [
@@ -961,6 +961,98 @@
           "all": {
             "type": "boolean",
             "default": false
+          },
+          "runner_contract": {
+            "type": "string",
+            "const": "7.0.0-nhanes-survey.1"
+          },
+          "survey_domain": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "variable": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "operator": {
+                  "type": "string",
+                  "enum": [
+                    "gte",
+                    "lte",
+                    "eq"
+                  ]
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "variable",
+                "operator",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50
+          },
+          "missing_codes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "maxItems": 100
+            }
+          },
+          "lonely_psu": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "adjust",
+              "average",
+              "certainty",
+              "remove"
+            ]
+          },
+          "cycle_strategy": {
+            "type": "string",
+            "enum": [
+              "single-cycle",
+              "per-cycle",
+              "official-combined"
+            ]
+          },
+          "combined_weight_source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "cycle_weight_multipliers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "preview_truncated": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1076,6 +1168,98 @@
           "all": {
             "type": "boolean",
             "default": false
+          },
+          "runner_contract": {
+            "type": "string",
+            "const": "7.0.0-nhanes-survey.1"
+          },
+          "survey_domain": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "variable": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "operator": {
+                  "type": "string",
+                  "enum": [
+                    "gte",
+                    "lte",
+                    "eq"
+                  ]
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "variable",
+                "operator",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50
+          },
+          "missing_codes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "maxItems": 100
+            }
+          },
+          "lonely_psu": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "adjust",
+              "average",
+              "certainty",
+              "remove"
+            ]
+          },
+          "cycle_strategy": {
+            "type": "string",
+            "enum": [
+              "single-cycle",
+              "per-cycle",
+              "official-combined"
+            ]
+          },
+          "combined_weight_source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "cycle_weight_multipliers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "preview_truncated": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1175,6 +1359,98 @@
           "all": {
             "type": "boolean",
             "default": false
+          },
+          "runner_contract": {
+            "type": "string",
+            "const": "7.0.0-nhanes-survey.1"
+          },
+          "survey_domain": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "variable": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "operator": {
+                  "type": "string",
+                  "enum": [
+                    "gte",
+                    "lte",
+                    "eq"
+                  ]
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "variable",
+                "operator",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 50
+          },
+          "missing_codes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "maxItems": 100
+            }
+          },
+          "lonely_psu": {
+            "type": "string",
+            "enum": [
+              "fail",
+              "adjust",
+              "average",
+              "certainty",
+              "remove"
+            ]
+          },
+          "cycle_strategy": {
+            "type": "string",
+            "enum": [
+              "single-cycle",
+              "per-cycle",
+              "official-combined"
+            ]
+          },
+          "combined_weight_source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "cycle_weight_multipliers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "preview_truncated": {
+            "type": "boolean"
           }
         },
         "required": [

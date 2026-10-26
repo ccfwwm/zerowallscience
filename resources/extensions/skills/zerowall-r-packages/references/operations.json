@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
-  "catalog_version": "2026-09-20.1",
-  "content_sha256": "d97af66a6e1c5035a8a82df1919947bf254f7ab78a1b3f41d3781f443b99a752",
+  "catalog_version": "2026-10-26.1",
+  "content_sha256": "f4b6720f4cd28fd5c83e66c39456398a2962dcc787aa4e1b630879d7773ae036",
   "id": "r.packages",
   "skill": "zerowall-r-packages",
   "groups": [

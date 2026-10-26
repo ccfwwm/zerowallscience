@@ -26,6 +26,19 @@ async function fixture() {
   return { root, store, service, backend, execute, exec, ensureResearchContext, autoApproveResearchGate1, status: (value: string) => { remoteStatus = value } }
 }
 const input = { operation: 'r.submit.script', arguments: { project_id: 'demo', code: 'print(1)', confirm: true }, request_id: 'submission-1' }
+it('injects ToolUniverse project/idempotency context and rejects nested secrets before persistence', async () => {
+  const f = await fixture()
+  const value = { operation: 'tooluniverse.run.tool', arguments: { tool_name: 'UniProt_get_entry_by_accession', tool_arguments: { accession: 'P05067' }, confirm: true }, request_id: 'tu-1' }
+  f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent: id === 'tooluniverse.run.tool' ? { job_id: 'tu-job', status: 'queued' } : id === 'tooluniverse.get.job' ? { status: 'succeeded' } : {} } }))
+  const result = await f.service.run('tooluniverse', value, f.exec)
+  expect(result.remote_id).toBe('tu-job')
+  const submitted = f.execute.mock.calls.find(([id]) => id === 'tooluniverse.run.tool') as unknown as [string, Record<string, unknown>]
+  expect(submitted[1].request_id).toMatch(/^[a-f0-9]{64}$/u)
+  expect(submitted[1].project_id).toMatch(/^zw-/u)
+  const before = f.store.listRuns(f.store.listProjects()[0]!.id).length
+  await expect(f.service.run('tooluniverse', { ...value, request_id: 'tu-secret', arguments: { ...value.arguments, tool_arguments: { api_key: 'forbidden-test-value' } } }, f.exec)).rejects.toThrow('CREDENTIAL_ARGUMENT_FORBIDDEN')
+  expect(f.store.listRuns(f.store.listProjects()[0]!.id)).toHaveLength(before)
+})
 it('submits once, persists remote IDs, resumes queries and returns checksummed manifests', async () => {
   const f = await fixture()
   const [first, same] = await Promise.all([f.service.run('r.compute', input, f.exec), f.service.run('r.compute', input, f.exec)])

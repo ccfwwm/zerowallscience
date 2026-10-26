@@ -148,7 +148,7 @@ Execute Python in the isolated OmicVerse CPU worker. Write outputs in OUTPUT_DIR
 
 ## omicverse.run.singlecell
 
-CPU QC, normalization, PCA, neighbors, UMAP, Leiden, markers and H5AD checkpoint using verified input.
+CPU QC, embeddings and descriptive markers. Optional pseudobulk replaces this QC route with explicit raw-count H5AD donor/cell-type aggregation and donor-level PyDESeq2; cells are never independent replicates. Supports dense/CSR matrices, sequential cell types and 512 MiB aggregate cap.
 
 - 工具族：omicverse_execute；副作用：execute；query：false；执行：async_or_cached。
 - 确认字段：confirm。
@@ -190,6 +190,102 @@ CPU QC, normalization, PCA, neighbors, UMAP, Leiden, markers and H5AD checkpoint
         "minimum": 0,
         "maximum": 100,
         "default": 20
+      },
+      "pseudobulk": {
+        "type": "object",
+        "properties": {
+          "donor": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "cell_type": {
+            "$ref": "#/properties/pseudobulk/properties/donor"
+          },
+          "condition": {
+            "$ref": "#/properties/pseudobulk/properties/donor"
+          },
+          "cell_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "test": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reference": {
+            "type": "string",
+            "minLength": 1
+          },
+          "counts_source": {
+            "type": "string",
+            "enum": [
+              "X",
+              "layer"
+            ]
+          },
+          "counts_layer": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "raw_counts_confirmed": {
+            "type": "boolean",
+            "const": true
+          },
+          "biological_replicates_confirmed": {
+            "type": "boolean",
+            "const": true
+          },
+          "min_cells_per_sample": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000,
+            "default": 10
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "prepare",
+              "analyze"
+            ],
+            "default": "analyze"
+          },
+          "design": {
+            "type": "object",
+            "properties": {
+              "batch": {
+                "$ref": "#/properties/pseudobulk/properties/donor"
+              },
+              "covariates": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/properties/pseudobulk/properties/donor"
+                },
+                "maxItems": 20
+              },
+              "paired": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "donor",
+          "cell_type",
+          "condition",
+          "cell_types",
+          "test",
+          "reference",
+          "counts_source",
+          "raw_counts_confirmed",
+          "biological_replicates_confirmed"
+        ],
+        "additionalProperties": false
       }
     },
     "required": [
@@ -217,7 +313,7 @@ CPU QC, normalization, PCA, neighbors, UMAP, Leiden, markers and H5AD checkpoint
 
 ## omicverse.run.bulk
 
-PyDESeq2 raw count differential expression with aligned biological replicate metadata.
+PyDESeq2 raw count differential expression with explicit biological replicate design checks. Legacy factor-only calls remain supported but pairing is never inferred; structured design may include batch, numeric covariates and donor. donor_pseudobulk requires already aggregated counts for one cell type per donor/condition. Paired mode supports exactly two complete conditions.
 
 - 工具族：omicverse_execute；副作用：execute；query：false；执行：async_or_cached。
 - 确认字段：confirm。
@@ -258,10 +354,50 @@ PyDESeq2 raw count differential expression with aligned biological replicate met
         "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
       },
       "test": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       },
       "reference": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
+      },
+      "design": {
+        "type": "object",
+        "properties": {
+          "batch": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "covariates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+            }
+          },
+          "donor": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "paired": {
+            "type": "boolean"
+          },
+          "observation_unit": {
+            "type": "string",
+            "enum": [
+              "sample",
+              "donor_pseudobulk"
+            ]
+          },
+          "biological_replicates_confirmed": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "biological_replicates_confirmed"
+        ],
+        "additionalProperties": false
       }
     },
     "required": [
@@ -273,6 +409,181 @@ PyDESeq2 raw count differential expression with aligned biological replicate met
       "factor",
       "test",
       "reference"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lifecycle": {
+    "id_fields": [
+      "id",
+      "job_id"
+    ],
+    "argument": "job_id",
+    "status": "omicverse.get.job",
+    "cancel": "omicverse.cancel.job",
+    "manifest": "omicverse.get.job.manifest",
+    "log": "omicverse.get.job.log"
+  }
+}
+```
+
+## omicverse.run.gsva
+
+GSVA pathway scoring for an H5AD expression matrix. Gene sets are supplied explicitly; scores and an annotated H5AD are written to the job manifest. The float64-equivalent dense expression matrix is limited to 256 MiB; filter cells/genes or use smaller samples for larger inputs.
+
+- 工具族：omicverse_execute；副作用：execute；query：false；执行：async_or_cached。
+- 确认字段：confirm。
+- 输出：Submission with remote identifier; status and manifest are separate operations.
+
+```json
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "project_id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+      },
+      "request_id": {
+        "$ref": "#/properties/project_id"
+      },
+      "timeout_ms": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 14400000,
+        "default": 1800000
+      },
+      "confirm": {
+        "type": "boolean",
+        "const": true
+      },
+      "input_path": {
+        "type": "string",
+        "minLength": 1
+      },
+      "layer": {
+        "type": "string",
+        "minLength": 1
+      },
+      "gene_sets": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        }
+      },
+      "min_size": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 2
+      },
+      "max_size": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 5000
+      },
+      "threads": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 8,
+        "default": 8
+      }
+    },
+    "required": [
+      "project_id",
+      "request_id",
+      "confirm",
+      "input_path",
+      "gene_sets"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lifecycle": {
+    "id_fields": [
+      "id",
+      "job_id"
+    ],
+    "argument": "job_id",
+    "status": "omicverse.get.job",
+    "cancel": "omicverse.cancel.job",
+    "manifest": "omicverse.get.job.manifest",
+    "log": "omicverse.get.job.log"
+  }
+}
+```
+
+## omicverse.run.module.score
+
+Deterministic single-cell module scores using mean(module) minus mean(control genes). Gene sets and the expression layer are explicit and results are checksummed. The float64-equivalent dense expression matrix is limited to 256 MiB; filter cells/genes or use smaller samples for larger inputs.
+
+- 工具族：omicverse_execute；副作用：execute；query：false；执行：async_or_cached。
+- 确认字段：confirm。
+- 输出：Submission with remote identifier; status and manifest are separate operations.
+
+```json
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "project_id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+      },
+      "request_id": {
+        "$ref": "#/properties/project_id"
+      },
+      "timeout_ms": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 14400000,
+        "default": 1800000
+      },
+      "confirm": {
+        "type": "boolean",
+        "const": true
+      },
+      "input_path": {
+        "type": "string",
+        "minLength": 1
+      },
+      "layer": {
+        "type": "string",
+        "minLength": 1
+      },
+      "modules": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        }
+      },
+      "min_genes": {
+        "type": "integer",
+        "minimum": 1,
+        "default": 2
+      },
+      "control_size": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 5000,
+        "default": 50
+      }
+    },
+    "required": [
+      "project_id",
+      "request_id",
+      "confirm",
+      "input_path",
+      "modules"
     ],
     "additionalProperties": false,
     "$schema": "http://json-schema.org/draft-07/schema#"

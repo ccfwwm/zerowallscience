@@ -38,6 +38,7 @@ it.each(['rmcp', 'gpsadb'])('keeps %s connection fields read-only while allowing
     expect(record.runtimeState).toBe('idle')
     expect(update).toHaveBeenLastCalledWith('managed', {
       enabled: true, toolCallTimeoutMs: Number(timeout), reconnect: record.reconnect, failOnStartupError: false,
+      ...(serverName === 'rmcp' ? { envRefs: record.envRefs } : {}),
     })
   }
   expect(update).toHaveBeenCalledTimes(2)

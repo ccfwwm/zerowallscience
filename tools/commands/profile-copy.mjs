@@ -138,14 +138,27 @@ export async function planProfileCopy(source, { filter = () => true, pruneDepend
 /** Copy independent bytes, never hardlink mutable profiles or follow junctions.
  * Existing archives remain in the source profile's rollback history. */
 export async function copyProfileTree(source, destination, options = {}) {
+  const { signal, report = () => {} } = options
+  signal?.throwIfAborted()
   source = resolve(source); destination = resolve(destination)
   const child = relative(source, destination)
   if (!child || !isAbsolute(child) && child !== '..' && !child.startsWith('..' + sep)) throw new Error('Profile copy destination must be outside source')
   const { files, links, directories } = await planProfileCopy(source, options)
+  signal?.throwIfAborted()
+  let completed = 0, lastReport = 0
+  const progress = async () => {
+    signal?.throwIfAborted()
+    completed++
+    if (Date.now() - lastReport >= 250 || completed === files.length) {
+      lastReport = Date.now()
+      await report({ phase: 'copying', completed, total: files.length })
+    }
+  }
   await mkdir(destination, { recursive: true })
   await bounded(directories, local => mkdir(join(destination, local), { recursive: true }))
-  await bounded(files, local => copyFile(join(source, local), join(destination, local)))
+  await bounded(files, async local => { signal?.throwIfAborted(); await copyFile(join(source, local), join(destination, local)); await progress() })
   await bounded(links, async local => {
+    signal?.throwIfAborted()
     const target = await readlink(join(source, local))
     // Preserve broken directory links without following them. An authenticated
     // repair can replace their package roots in the candidate; an ordinary

@@ -40,6 +40,8 @@ if (mutating && (fixedRoots || activeProfile)) {
     const outcome = await runProfilePnpmTransaction({ profile: process.cwd(), args, run, signal: cancellation.signal,
       lifecycleId: process.env.ZEROWALL_PROFILE_TRANSACTION_ID,
       ownerPid: process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER ? Number(process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER) : undefined,
+      resourceCandidateId: process.env.ZEROWALL_RESOURCE_CANDIDATE_ID,
+      report: process.env.ZEROWALL_RESOURCE_CANDIDATE_ID ? progress => process.stdout.write('ZEROWALL_RESOURCE_PROGRESS ' + JSON.stringify(progress) + '\n') : undefined,
       ownerToken: process.env.ZEROWALL_PROFILE_TRANSACTION_OWNER_TOKEN })
     process.exitCode = outcome.code
   } catch (error) {

@@ -137,7 +137,7 @@ export interface ResourceCheckItem {
   updateBlocked?: string
 }
 export interface ResourceCheckResult { kind: ResourceKind; checkedAt: string; resources: ResourceCheckItem[]; catalogStatus?: 'checked' | 'unavailable' | 'local' | 'unpublished'; domainAvailable?: boolean; error?: string }
-export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'pending-restart'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; error?: string; result?: unknown; createdAt: string; updatedAt: string }
+export interface ResourceJob { taskId: string; kind: ResourceKind; id?: string; action: string; source?: string; status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'pending-restart'; phase?: string; progress?: number; oldVersion?: string; newVersion?: string; retries?: number; retryOf?: string; cancelRequested?: boolean; canCancel?: boolean; currentResource?: string; completed?: number; total?: number; lastActivityAt?: string; logLines?: string[]; error?: string; result?: unknown; createdAt: string; updatedAt: string }
 export type PythonLayer = 'core' | 'science' | 'capability'
 export interface PythonLayerChange { name: string; from?: string; to: string; required: boolean; capabilities: string[] }
 export interface PythonLayerCheck {
@@ -203,6 +203,7 @@ export interface ZeroWallDesktopApi {
   onResourceUpdateStatus?(listener: (status: ResourceUpdateStatus) => void): () => void
   resources?: {
     updatePlugins?(ids: string[]): Promise<{ taskId: string }>
+    updateSkills?(ids: string[]): Promise<{ taskId: string }>
     list(kind: ResourceKind): Promise<ResourceCheckResult>
     dependents?(id: string): Promise<string[]>
     check(kind: ResourceKind, localOnly?: boolean): Promise<ResourceCheckResult>

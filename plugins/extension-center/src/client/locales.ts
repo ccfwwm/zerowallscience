@@ -2,6 +2,7 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-locale'
 
 export const NS = 'zerowall.extensionCenter' as const
 export const zh = {
+  phase_preparing: '准备资源', phase_downloading: '下载资源', phase_extracting: '解包资源', phase_copying: '复制候选文件', phase_installing: '安装依赖', phase_verifying: '校验保留依赖', phase_snapshot: '保存回滚快照', phase_applying: '应用更新', phase_activating: '切换插件', phase_health: '检查运行状态', phase_cancelling: '正在取消', taskLogs: '任务日志',
   activationError: '运行异常', activationUnavailable: '运行状态暂不可用', activationHint: '桌面尚未返回此插件的运行状态；已安装和已启用不代表完成了运行健康检查。', unchecked: '尚未检查更新', summary: '资源更新摘要', lastChecked: '上次检查', filter: '筛选资源', filter_all: '全部', filter_updates: '有更新', filter_installed: '已安装', filter_disabled: '已停用', filter_missing: '未安装 / 缺失', systemCore: '系统核心', coreDescription: '由 DSH 核心提供，随桌面运行；无需单独激活。',
   batchHint: '一键更新会先完成全部插件的下载和校验，最后统一重载一次。', batchUnsupported: '插件批量更新需要桌面 8.1.3 或更高版本。', operationComplete: '操作完成，已刷新本地状态。', pythonHint: 'Python 依赖层统一在这里管理；路径、镜像和包诊断可在「Python 环境」详细配置。', packages: '依赖包', pendingPackages: '待补齐 / 更新', pythonUnavailable: '此依赖层暂不可安装，请检查更新后重试。',
   localRefresh: '刷新本地列表', localReady: '本地资源', loadingLocal: '读取本地资源…', missing: '插件包缺失',

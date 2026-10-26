@@ -18932,7 +18932,7 @@ importers:
         specifier: 2.2.0
         version: 2.2.0
       '@zerowallscience/plugin-base':
-        specifier: workspace:^
+        specifier: ^0.1.28
         version: link:../base
       '@zerowallscience/plugin-projects':
         specifier: workspace:^

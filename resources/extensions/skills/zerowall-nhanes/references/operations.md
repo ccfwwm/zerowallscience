@@ -941,6 +941,98 @@ Compute NHANES survey-weighted mean or proportion with optional grouping, PSU, s
       "all": {
         "type": "boolean",
         "default": false
+      },
+      "runner_contract": {
+        "type": "string",
+        "const": "7.0.0-nhanes-survey.1"
+      },
+      "survey_domain": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "variable": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "operator": {
+              "type": "string",
+              "enum": [
+                "gte",
+                "lte",
+                "eq"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "required": [
+            "variable",
+            "operator",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 50
+      },
+      "missing_codes": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "maxItems": 100
+        }
+      },
+      "lonely_psu": {
+        "type": "string",
+        "enum": [
+          "fail",
+          "adjust",
+          "average",
+          "certainty",
+          "remove"
+        ]
+      },
+      "cycle_strategy": {
+        "type": "string",
+        "enum": [
+          "single-cycle",
+          "per-cycle",
+          "official-combined"
+        ]
+      },
+      "combined_weight_source": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "cycle_weight_multipliers": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "preview_truncated": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -1055,6 +1147,98 @@ Run a validated NHANES survey-weighted linear or logistic regression and return 
       "all": {
         "type": "boolean",
         "default": false
+      },
+      "runner_contract": {
+        "type": "string",
+        "const": "7.0.0-nhanes-survey.1"
+      },
+      "survey_domain": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "variable": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "operator": {
+              "type": "string",
+              "enum": [
+                "gte",
+                "lte",
+                "eq"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "required": [
+            "variable",
+            "operator",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 50
+      },
+      "missing_codes": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "maxItems": 100
+        }
+      },
+      "lonely_psu": {
+        "type": "string",
+        "enum": [
+          "fail",
+          "adjust",
+          "average",
+          "certainty",
+          "remove"
+        ]
+      },
+      "cycle_strategy": {
+        "type": "string",
+        "enum": [
+          "single-cycle",
+          "per-cycle",
+          "official-combined"
+        ]
+      },
+      "combined_weight_source": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "cycle_weight_multipliers": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "preview_truncated": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -1153,6 +1337,98 @@ Compute survey-weighted proportions for a categorical NHANES variable.
       "all": {
         "type": "boolean",
         "default": false
+      },
+      "runner_contract": {
+        "type": "string",
+        "const": "7.0.0-nhanes-survey.1"
+      },
+      "survey_domain": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "variable": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "operator": {
+              "type": "string",
+              "enum": [
+                "gte",
+                "lte",
+                "eq"
+              ]
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "required": [
+            "variable",
+            "operator",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 50
+      },
+      "missing_codes": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "maxItems": 100
+        }
+      },
+      "lonely_psu": {
+        "type": "string",
+        "enum": [
+          "fail",
+          "adjust",
+          "average",
+          "certainty",
+          "remove"
+        ]
+      },
+      "cycle_strategy": {
+        "type": "string",
+        "enum": [
+          "single-cycle",
+          "per-cycle",
+          "official-combined"
+        ]
+      },
+      "combined_weight_source": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "cycle_weight_multipliers": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "preview_truncated": {
+        "type": "boolean"
       }
     },
     "required": [
