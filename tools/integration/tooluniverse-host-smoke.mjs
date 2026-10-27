@@ -15,6 +15,7 @@ const installation = resolve(installationArg), home = resolve(homeArg), output =
 await mkdir(output)
 const workspace = join(output, 'workspace'); await mkdir(workspace)
 const resources = join(installation, 'resources'), asar = join(resources, 'app.asar')
+const offlineProfile = join(resources, 'offline-profile')
 const sessionId = randomUUID(), project = `tooluniverse-host-${Date.now()}`
 const token = process.env.R_PLATFORM_MCP_AUTHORIZATION || 'Bearer ' + execFileSync('ssh', ['rdatalinux', 'python3', '-'], {
   encoding: 'utf8', input: 'from pathlib import Path\nx=dict(l.split("=",1) for l in Path("/etc/rdatalinux-r-platform/platform.env").read_text().splitlines() if "=" in l and not l.startswith("#"))\nprint(x["R_PLATFORM_MCP_KEY"].strip("\\\"\'"))\n',
@@ -43,7 +44,9 @@ await writeFile(patch, await readFile(join(resources, 'zerowall.patch.yml'), 'ut
 const executable = join(installation, 'ZeroWallScience.exe')
 const env = { ...process.env, ELECTRON_RUN_AS_NODE: '1', DSH_HOME: home, ZEROWALL_USER_DATA_DIR: output,
   ZEROWALL_RESEARCH_DB: join(output, 'research.sqlite'),
-  NODE_PATH: [join(asar, 'node_modules'), join(home, 'profiles/web/node_modules')].join(delimiter),
+  NODE_PATH: [join(offlineProfile, 'profile-runtime.asar', 'node_modules'),
+    join(offlineProfile, 'profile-runtime.asar.unpacked', 'node_modules'),
+    join(asar, 'node_modules'), join(home, 'profiles/web/node_modules')].join(delimiter),
   ZEROWALL_RUNTIME_ANCHOR: pathToFileURL(join(asar, 'package.json')).href,
   ZEROWALL_PROFILE_ANCHOR: pathToFileURL(join(home, 'profiles/web/package.json')).href,
   ZEROWALL_DEFER_DEFAULT_MCP: '1', R_PLATFORM_MCP_AUTHORIZATION: token, DSH_TELEMETRY_DISABLED: '1' }

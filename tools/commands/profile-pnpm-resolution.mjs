@@ -79,8 +79,12 @@ async function localIdentity(path) {
 
 /** Resolve in a fresh namespace. pnpm never owns the retained package graph or
  * its historical hoistedLocations, even when the old lockfile claims ownership. */
-export async function preparePnpmResolution({ profile, manifest, args, signal, report }) {
-  const directory = join(profile, '.zerowall/install-sources', 'resolution-' + randomUUID())
+export async function preparePnpmResolution({ profile, manifest, args, signal, report, resolutionDirectory }) {
+  // Resource updates may resolve directly against the active DSH profile. Keep
+  // the resolver's writable tree in a short-lived sibling directory so the
+  // active profile is never cloned and only the package paths selected by the
+  // transaction are published afterwards.
+  const directory = resolutionDirectory ? resolve(resolutionDirectory) : join(profile, '.zerowall/install-sources', 'resolution-' + randomUUID())
   await mkdir(directory, { recursive: true })
   const command = args[0], targets = new Set(), original = structuredClone(manifest)
   const operands = []
@@ -160,7 +164,7 @@ export async function preparePnpmResolution({ profile, manifest, args, signal, r
   return { directory, profile, original, retained, damaged, graph, targets, args: resolvedArgs, removed: new Set(), signal, report }
 }
 
-export async function mergePnpmResolution(state) {
+export async function mergePnpmResolution(state, { publish = true } = {}) {
   const { profile, directory, original, retained, targets, damaged } = state
   if (JSON.stringify(await retainedGraph(retained, state)) !== JSON.stringify(state.graph)) throw new Error('PLUGIN_RETAINED_CLOSURE_CHANGED: retained files or dependency instances were modified during resolution')
   const after = await read(join(directory, 'package.json'))
@@ -171,7 +175,7 @@ export async function mergePnpmResolution(state) {
       if (!targets.has(id)) throw new Error('PLUGIN_UNRELATED_REMOVAL: ' + id)
       state.removed.add(id)
       const root = join(profile, 'node_modules', id)
-      if (await exists(root)) {
+      if (publish && await exists(root)) {
         const archive = join(profile, '.zerowall/root-links', 'removed-' + randomUUID())
         await mkdir(dirname(archive), { recursive: true }); await rename(root, archive)
       }
@@ -191,8 +195,17 @@ export async function mergePnpmResolution(state) {
       if ((await read(join(incoming, 'package.json'))).name !== id) throw new Error('PLUGIN_CANDIDATE_IDENTITY_MISMATCH: ' + id)
       const source = await realpath(incoming)
       const sameInstance = await exists(root) && await realpath(root) === source
+      if (!publish) {
+        // A direct resource transaction resolves in a sibling tree. Do not
+        // touch the active profile while merging the resolver result; the
+        // package commit journal publishes these roots atomically afterwards.
+        // Keep the manifest self-contained because the sibling resolver is
+        // removed after commit.
+        original[field][id] = 'link:./node_modules/' + id
+        continue
+      }
       if (!sameInstance) {
-        if (await exists(root)) {
+        if (publish && await exists(root)) {
           const archive = join(profile, '.zerowall/root-links', 'previous-' + randomUUID())
           await mkdir(dirname(archive), { recursive: true }); await rename(root, archive)
         }
@@ -208,7 +221,7 @@ export async function mergePnpmResolution(state) {
     }
     for (const [id, item] of damaged) if (item.field === field) original[field][id] = item.spec
   }
-  await writeFile(join(profile, 'package.json'), JSON.stringify(original, null, 2) + '\n')
+  await writeFile(join(publish ? profile : directory, 'package.json'), JSON.stringify(original, null, 2) + '\n')
   // The resolution's lock is scoped to its own namespace. The legacy root
   // lock/metadata is never fed back into pnpm and stays available as evidence.
 }

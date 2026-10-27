@@ -33,9 +33,16 @@ test('a locked uninstall releases its lease, preserves selection, and resumes ag
   const manager = createResourceManager({ home, yaml, target: { desktopVersion: '8.4.3', dshVersion: '0.2.0-rc.2', platform: 'win32', architecture: 'x64' },
     readHealth: async () => { assert.equal(hostRunning, true, 'baseline must be read before stopping the Host'); return baseline },
     stopHost: async () => { await readFile(join(home, 'profiles/.zerowall-plugin-mutation.lock')); hostRunning = false },
-    startHost: async options => { starts.push(options); hostRunning = true }, runPlugin: async (args, generation) => {
+    startHost: async options => { starts.push(options); hostRunning = true }, runPlugin: async (args, generation, options = {}) => {
       calls++
-      await execute(process.execPath, [executor, pnpm, ...args], { cwd: join(home, 'profiles', generation), env: { ...process.env, npm_config_offline: 'true', npm_config_ignore_scripts: 'true' }, windowsHide: true })
+      try {
+        await execute(process.execPath, [executor, pnpm, ...args], { cwd: join(home, 'profiles', generation), env: { ...process.env, ZEROWALL_RESOURCE_CANDIDATE_ID: options.resourceCandidateId, npm_config_offline: 'true', npm_config_ignore_scripts: 'true' }, windowsHide: true })
+      } catch (error) {
+        if (/PLUGIN_RESTART_REQUIRED|PLUGIN_TARGET_LOCKED/u.test(error.stderr ?? '')) {
+          const locked = new Error('PLUGIN_TARGET_LOCKED: plugin target is in use'); locked.code = 'PLUGIN_TARGET_LOCKED'; throw locked
+        }
+        throw error
+      }
     },
   })
   const release = await holdWindowsFile(t, join(selected, 'native.dll'))

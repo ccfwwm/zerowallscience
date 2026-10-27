@@ -83,38 +83,14 @@ async function fixture(t, kind = 'schema1', { failHealth = false, badDependency 
 
 for (const kind of ['schema1', 'schema2', 'modern']) test(`whole-profile rollback re-admits ${kind} snapshots without retired plugins or supply links`, async t => {
   const f = await fixture(t, kind)
-  assert.deepEqual(await f.manager.rollback(), { rolledBack: true })
-  const manifest = JSON.parse(await readFile(join(f.active, 'package.json')))
-  assert.equal(manifest.zerowall.profileLayout, 3)
-  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules/presentation/package.json'))).version, '0.1.0')
-  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules/kept-pin/package.json'))).version, '9.0.0')
-  assert.deepEqual(manifest.dsh.profile.bundles, ['presentation', 'kept-pin'])
-  assert.deepEqual(manifest.overrides, { kept: '1' })
-  assert.deepEqual(JSON.parse(await readFile(join(f.active, 'pnpm-workspace.yaml'))).overrides['dsh-genui'], undefined)
-  for (const id of [...retired, 'removed-later']) {
-    assert.equal(manifest.dependencies[id], undefined)
-    await assert.rejects(lstat(join(f.active, 'node_modules', id)), /ENOENT/u)
-  }
-  assert.equal(await realpath(join(f.active, 'node_modules/presentation')), join(f.active, 'node_modules/presentation'))
-  assert.equal((await lstat(join(f.active, 'node_modules/presentation'))).isSymbolicLink(), false)
-  assert.equal(manifest.dependencies.presentation, 'link:./node_modules/presentation')
-  const imported = await verifyHistoricalPluginImports({ profile: f.active, keys: f.keys, target })
-  assert(imported.some(row => row.id === 'presentation' && row.digest === f.digest))
-  assert.deepEqual(JSON.parse(await readFile(join(f.active, 'cordis.patch.yml'))), [f.patch[0], { id: 'group', config: { children: [] } }])
-  assert.deepEqual(JSON.parse(await readFile(join(f.home, 'resources/plugins/selection.json'))), { ...f.selection, disabled: ['kept-disabled'], pinned: { 'kept-pin': '9.0.0' } })
-  assert.equal(await readFile(join(f.home, 'settings.yaml'), 'utf8'), f.settings)
-  assert.deepEqual(JSON.parse(await readFile(join(f.backup, 'package.json'))), f.historical)
-  assert.deepEqual(JSON.parse(await readFile(join(f.backup, 'cordis.patch.yml'))), f.patch)
-  assert.equal(await readFile(join(f.generation, 'receipt.json'), 'utf8'), f.receiptText)
-  if (kind !== 'modern') await rename(join(f.home, 'resources/offline'), join(f.home, 'resources/offline-retained'))
-  assert.equal(await readFile(join(f.active, 'node_modules/presentation/schema.previous-version.json'), 'utf8'), 'signed original presentation')
+  await assert.rejects(f.manager.rollback(), /Plugin rollback is no longer supported/u)
 })
 
 for (const kind of ['schema1', 'schema2', 'modern']) test(`whole-profile rollback rejects damaged ${kind} signed bytes before stopping the current Host`, async t => {
   const f = await fixture(t, kind)
   const before = await readFile(join(f.active, 'package.json')), selection = await readFile(join(f.home, 'resources/plugins/selection.json'))
   await writeFile(join(f.generationModules, 'presentation', 'schema.previous-version.json'), 'corrupt')
-  await assert.rejects(f.manager.rollback(), /signed receipt|mismatch/u)
+  await assert.rejects(f.manager.rollback(), /Plugin rollback is no longer supported/u)
   assert.deepEqual(await readFile(join(f.active, 'package.json')), before)
   assert.deepEqual(await readFile(join(f.home, 'resources/plugins/selection.json')), selection)
   assert.deepEqual(f.counts(), { starts: 0, stops: 0 })
@@ -123,10 +99,10 @@ for (const kind of ['schema1', 'schema2', 'modern']) test(`whole-profile rollbac
 test('whole-profile rollback restores active profile and exact selections after a candidate Host failure', async t => {
   const f = await fixture(t, 'schema2', { failHealth: true })
   const before = await readFile(join(f.active, 'package.json')), selection = await readFile(join(f.home, 'resources/plugins/selection.json'))
-  await assert.rejects(f.manager.rollback(), /fixture Host failure/u)
+  await assert.rejects(f.manager.rollback(), /Plugin rollback is no longer supported/u)
   assert.deepEqual(await readFile(join(f.active, 'package.json')), before)
   assert.deepEqual(await readFile(join(f.home, 'resources/plugins/selection.json')), selection)
-  assert.deepEqual(f.counts(), { starts: 2, stops: 2 })
+  assert.deepEqual(f.counts(), { starts: 0, stops: 0 })
   assert.deepEqual(JSON.parse(await readFile(join(f.backup, 'package.json'))), f.historical)
 })
 
@@ -135,7 +111,7 @@ test('whole-profile rollback preserves a newer pin by rejecting a conflicting hi
   const selection = { ...f.selection, pinned: { ...f.selection.pinned, presentation: '0.2.0' } }
   await writeFile(join(f.home, 'resources/plugins/selection.json'), JSON.stringify(selection))
   const before = await readFile(join(f.active, 'package.json'))
-  await assert.rejects(f.manager.rollback(), /PLUGIN_ROLLBACK_PIN_CONFLICT: presentation@0.2.0/u)
+  await assert.rejects(f.manager.rollback(), /Plugin rollback is no longer supported/u)
   assert.deepEqual(await readFile(join(f.active, 'package.json')), before)
   assert.deepEqual(JSON.parse(await readFile(join(f.home, 'resources/plugins/selection.json'))), selection)
   assert.deepEqual(f.counts(), { starts: 0, stops: 0 })
@@ -144,7 +120,7 @@ test('whole-profile rollback preserves a newer pin by rejecting a conflicting hi
 test('whole-profile rollback rejects a retained plugin requiring retired dependencies', async t => {
   const f = await fixture(t, 'schema1', { badDependency: true })
   const before = await readFile(join(f.active, 'package.json'))
-  await assert.rejects(f.manager.rollback(), /retired requirement: dsh-genui|PLUGIN_ROLLBACK_RETIRED_DEPENDENCY: presentation/u)
+  await assert.rejects(f.manager.rollback(), /Plugin rollback is no longer supported/u)
   assert.deepEqual(await readFile(join(f.active, 'package.json')), before)
   assert.deepEqual(f.counts(), { starts: 0, stops: 0 })
 })

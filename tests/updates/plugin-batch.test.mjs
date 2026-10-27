@@ -12,6 +12,7 @@ import { c as createArchive } from 'tar'
 import { signCatalog, fileDigest, downloadResource } from '../../tools/release/resource-catalog.mjs'
 import { initializeProfile } from '../../tools/commands/profile.mjs'
 import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
+import { commitPackagePaths } from '../../tools/commands/profile-package-commit.mjs'
 import { pluginDependencyContract } from '../../tools/release/plugin-dependency-contract.mjs'
 const target = { desktopVersion: '8.1.3', dshVersion: '0.2.0-rc.2', platform: 'win32', architecture: 'x64' }
 
@@ -89,8 +90,17 @@ for (const failHealth of [false, true]) test(`modern batch resolves old and new 
   await writeFile(source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources }, pair.privateKey, 'test')))
   const starts = []
   const manager = createResourceManager({ home, target, runtimeModules, yaml, local: true, keys: { test: pair.publicKey },
-    runPlugin: async (_args, generation) => {
-      for (const name of [id, shared]) await bundle(join(home, 'profiles', generation, 'node_modules'), name, '2.0.0', 'new-' + name.split('-').at(-1))
+    runPlugin: async (_args) => {
+      const activeReceipt = JSON.parse(await readFile(join(active, '.zerowall/resource-transaction.json')))
+      const transactionId = activeReceipt.transactionId
+      const directory = join(active, '.plugin-manager/package-transactions', transactionId)
+      const transaction = JSON.parse(await readFile(join(directory, 'journal.json')))
+      const candidate = transaction.candidate
+      await mkdir(candidate, { recursive: true })
+      await writeFile(join(candidate, 'package.json'), await readFile(join(active, 'package.json')))
+      for (const name of [id, shared]) await bundle(join(candidate, 'node_modules'), name, '2.0.0', 'new-' + name.split('-').at(-1))
+      await commitPackagePaths({ profile: active, candidate, directory, state: transaction, ids: [id, shared], includeDependencyRoot: true })
+      await writeFile(join(directory, 'journal.json'), JSON.stringify({ ...transaction, state: 'awaiting-validation' }))
     }, stopHost: async () => {}, startHost: async options => {
       starts.push(options)
       if (failHealth && starts.length === 1) throw new Error('injected health failure')
@@ -102,8 +112,9 @@ for (const failHealth of [false, true]) test(`modern batch resolves old and new 
   assert.deepEqual(new Set(starts[0].affectedEntries.map(entry => entry.id)), new Set(['old-secrets', 'runtime-shared', 'new-secrets', 'new-shared']))
   assert.equal(JSON.parse(await readFile(join(active, 'node_modules', id, 'package.json'))).version, failHealth ? '1.0.0' : '2.0.0')
   const journal = JSON.parse(await readFile(join(home, 'resources/transaction.json')))
-  assert.equal(journal.packageTransaction, true)
-  await assert.rejects(readFile(join(journal.backup, 'node_modules', shared, 'dsh.bundle.patch.yml')), { code: 'ENOENT' })
+  assert.equal(journal.direct, true)
+  assert.equal(journal.backup, undefined)
+  assert.equal((await readdir(join(home, 'resources/history')).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))).length, 0)
 })
 
 test('two plugins with shared closure prepare once and activate with one Host restart', () => fixture(async f => {
@@ -212,16 +223,16 @@ test('cancellation during downloads preserves the active Host and profile', () =
   assert.equal(await readFile(path, 'utf8'), before)
 }))
 
-test('repeated failed updates reuse one staging name and preserve each diagnostic profile in history', () => fixture(async f => {
+test('repeated failed updates discard the disposable candidate without growing history', () => fixture(async f => {
   for (let i = 0; i < 3; i++) {
     await assert.rejects(f.manager.updatePlugins(f.ids.slice(0, 2), f.source), /preparation failed/)
     assert.deepEqual(await readdir(join(f.home, 'profiles')), ['web'])
     const state = JSON.parse(await readFile(join(f.home, 'resources/transaction.json')))
     assert.equal(state.state, 'preparation-failed')
-    assert.match(state.candidate, /history[\\/]preparation-failed-/)
-    assert.equal(JSON.parse(await readFile(join(state.candidate, 'package.json'))).private, true)
+    assert.equal(state.candidate.endsWith('profiles\\zerowall') || state.candidate.endsWith('profiles/zerowall'), true)
+    await assert.rejects(readFile(join(state.candidate, 'package.json')), { code: 'ENOENT' })
   }
-  assert.equal((await readdir(join(f.home, 'resources/history'))).length, 3)
+  assert.equal((await readdir(join(f.home, 'resources/history')).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))).length, 0)
 }, 'prepare-failure'))
 
 for (const modern of [false, true]) test(`a signed closure installs with real pnpm offline and keeps unrelated selections (layout ${modern ? 3 : 'legacy'})`, async()=>{
@@ -248,7 +259,7 @@ for (const modern of [false, true]) test(`a signed closure installs with real pn
   await writeFile(join(home,'profiles/web/pnpm-workspace.yaml'),yaml.stringify({packages:['.'],autoInstallPeers:false,nodeLinker:'hoisted',overrides:{'dsh-auto-review':'file:retired.tgz',custom:'1.2.3'}}))
   const source=join(home,'catalog.json');await writeFile(source,JSON.stringify(signCatalog({schema:1,localOnly:true,resources},pair.privateKey,'test')))
   const before=JSON.parse(await readFile(join(home,'profiles/web/package.json')))
-  const manager=createResourceManager({home,target,local:true,yaml,keys:{test:pair.publicKey},stopHost:async()=>{},startHost:async()=>{},runPlugin:async(args,generation)=>{
+  const manager=createResourceManager({home,target,local:true,yaml,keys:{test:pair.publicKey},stopHost:async()=>{},startHost:async()=>{},runPlugin:async(args,generation,{resourceCandidateId}={})=>{
    const candidate=join(home,'profiles',generation),manifest=JSON.parse(await readFile(join(candidate,'package.json'))),workspace=yaml.parse(await readFile(join(candidate,'pnpm-workspace.yaml'),'utf8'))
    assert.match(manifest.dependencies[sidebar],/^file:.*\.tgz$/)
    assert.equal(manifest.dependencies[peer],before.dependencies[peer])
@@ -257,7 +268,7 @@ for (const modern of [false, true]) test(`a signed closure installs with real pn
    assert.equal(args.length,2)
    const pnpm=new URL('../../deepseek-harness/apps/desktop/node_modules/pnpm/bin/pnpm.cjs',import.meta.url)
    const executor=fileURLToPath(new URL('../../tools/commands/pnpm-executor.mjs',import.meta.url))
-   const result=spawnSync(process.execPath,[...(modern?[executor]:['--expose-internals']),fileURLToPath(pnpm),...args,'--offline','--ignore-scripts'],{cwd:candidate,encoding:'utf8',timeout:60000})
+   const result=spawnSync(process.execPath,[...(modern?[executor]:['--expose-internals']),fileURLToPath(pnpm),...args,'--offline','--ignore-scripts'],{cwd:candidate,env:{...process.env,...(modern?{ZEROWALL_RESOURCE_CANDIDATE_ID:resourceCandidateId}: {})},encoding:'utf8',timeout:60000})
    assert.equal(result.status,0,result.stdout+'\n'+result.stderr)
    assert.equal(JSON.parse(await readFile(join(candidate,'node_modules',sidebar,'package.json'))).version,version)
   }})
@@ -300,12 +311,12 @@ for (const modern of [false, true]) test(`immutable exact archive dependencies r
   const source = join(home, 'catalog.json')
   await writeFile(source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources }, pair.privateKey, 'test')))
   let preparations = 0
-  const manager = createResourceManager({ home, target, local: true, yaml, keys: { test: pair.publicKey }, stopHost: async () => {}, startHost: async () => {}, runPlugin: async (args, generation) => {
+  const manager = createResourceManager({ home, target, local: true, yaml, keys: { test: pair.publicKey }, stopHost: async () => {}, startHost: async () => {}, runPlugin: async (args, generation, { resourceCandidateId } = {}) => {
     preparations++
     const candidate = join(home, 'profiles', generation)
     const pnpm = fileURLToPath(new URL('../../deepseek-harness/apps/desktop/node_modules/pnpm/bin/pnpm.cjs', import.meta.url))
     const executor = fileURLToPath(new URL('../../tools/commands/pnpm-executor.mjs', import.meta.url))
-    const result = spawnSync(process.execPath, [...(modern ? [executor] : ['--expose-internals']), pnpm, ...args, '--offline', '--ignore-scripts'], { cwd: candidate, encoding: 'utf8', timeout: 60000 })
+    const result = spawnSync(process.execPath, [...(modern ? [executor] : ['--expose-internals']), pnpm, ...args, '--offline', '--ignore-scripts'], { cwd: candidate, env: { ...process.env, ...(modern ? { ZEROWALL_RESOURCE_CANDIDATE_ID: resourceCandidateId } : {}) }, encoding: 'utf8', timeout: 60000 })
     assert.equal(result.status, 0, result.stdout + '\n' + result.stderr)
     for (const [id, version] of Object.entries(versions)) assert.equal(JSON.parse(await readFile(join(candidate, 'node_modules', id, 'package.json'))).version, version)
   } })

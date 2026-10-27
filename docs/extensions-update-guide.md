@@ -39,12 +39,11 @@ zws plugin list
 zws plugin check
 zws plugin update plugin-extension-center
 zws plugin update plugin-files
-zws plugin rollback plugin-files
 ```
 
 GUI 与 CLI 使用同一插件发现、安装和 profile 激活流程。扩展中心可发现 CLI 安装的合法 DSH bundle 并导入桌面 profile；读取列表不会触发重装，已有禁用、移除和固定版本选择保持不变。
 
-完整包 ID 也可以使用，例如 `@zerowallscience/plugin-files`。需要的自有依赖会一起准备和验签，随后通过 candidate profile 和 Host 健康检查切换；不重新下载整个桌面安装包。
+完整包 ID 也可以使用，例如 `@zerowallscience/plugin-files`。需要的自有依赖会一起准备和验签，随后只提交受影响的插件路径并执行 Host 健康检查；不复制整个 profile，也不保留插件版本回滚快照。失败会恢复清单、锁文件和本次受影响路径；需要回退时重新安装旧版安装包。
 
 安装、启停和移除：
 

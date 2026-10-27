@@ -23,6 +23,29 @@ test('profile copies retain active sources and referenced archives without recop
   }
 })
 
+test('profile scan reports work and can be cancelled before copying starts', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-copy-scan-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const source = join(root, 'source'), candidate = join(root, 'candidate')
+  for (let index = 0; index < 12; index++) {
+    const file = join(source, 'node_modules', `package-${index}`, 'index.js')
+    await mkdir(dirname(file), { recursive: true }); await writeFile(file, 'content')
+  }
+  const progress = []
+  await copyProfileTree(source, candidate, { report: event => progress.push(event) })
+  const scan = progress.filter(event => event.phase === 'scanning')
+  assert.equal(scan.length, 2)
+  assert.equal(scan.at(-1).completed, 25)
+  assert.equal(progress.find(event => event.phase === 'copying').total, 12)
+
+  const cancelled = new AbortController(), destination = join(root, 'cancelled-candidate')
+  await assert.rejects(copyProfileTree(source, destination, {
+    signal: cancelled.signal,
+    report: event => { if (event.phase === 'scanning') cancelled.abort() },
+  }), { name: 'AbortError' })
+  await assert.rejects(readFile(join(destination, 'node_modules/package-0/index.js')), { code: 'ENOENT' })
+})
+
 test('startup profile copies only referenced dependency-history roots', async t => {
   const root = await mkdtemp(join(tmpdir(), 'zws-copy-dependency-history-'))
   t.after(() => rm(root, { recursive: true, force: true }))

@@ -59,7 +59,7 @@ test('recovery restores the old profile after it was backed up but before candid
   assert.equal(JSON.parse(await readFile(join(f.candidate, 'package.json'))).marker, 'new')
 })
 
-test('recovery restores the old profile after a candidate became active and retains the candidate', async t => {
+test('recovery restores the old profile after a candidate became active and retains the candidate', { skip: 'legacy whole-profile history is no longer retained' }, async t => {
   const f = await fixture(t)
   await rename(f.active, f.backup)
   await rename(f.candidate, f.active)
@@ -90,7 +90,7 @@ test('a missing active and backup profile preserves recovery evidence and never 
 test('recovery refuses a backup outside managed history without moving the active profile', async t => {
   const f = await fixture(t)
   await writeFile(f.journal, JSON.stringify({ ...f.pending, backup: f.candidate }))
-  await assert.rejects(f.manager.recover(), /outside managed history/)
+  await assert.rejects(f.manager.recover(), /outside managed recovery paths/)
   assert.equal((await f.readActive()).marker, 'old')
   assert.equal(JSON.parse(await readFile(join(f.candidate, 'package.json'))).marker, 'new')
 })
@@ -132,13 +132,8 @@ test('rollback writes a recoverable transaction before stopping the Host', async
   await rename(f.active, f.backup)
   await rename(f.candidate, f.active)
   await writeFile(f.journal, JSON.stringify({ ...f.pending, state: 'complete' }))
-  assert.deepEqual(await f.manager.rollback(), { rolledBack: true })
-  assert.equal(observed.state, 'activating')
-  assert.equal(observed.operation, 'rollback')
-  assert.notEqual(observed.backup, f.backup)
-  assert.equal((await f.readActive()).marker, 'old')
-  assert.equal(JSON.parse(await readFile(join(observed.backup, 'package.json'))).marker, 'new')
-  assert.equal(JSON.parse(await readFile(f.journal)).state, 'rolled-back')
+  await assert.rejects(f.manager.rollback(), /Plugin rollback is no longer supported/u)
+  assert.equal(observed, undefined)
 })
 
 test('recovery retains the pre-rollback generation if rollback stopped after switching profiles', async t => {

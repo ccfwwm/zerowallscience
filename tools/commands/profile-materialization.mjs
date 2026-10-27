@@ -169,14 +169,16 @@ export async function preparePhysicalRootsForPnpm({ profile, ids, manifest }) {
 
 /** Retained higher/pinned packages keep the exact dependency instances they
  * already used. A new seed must not silently rebind them to newer siblings. */
-export async function preserveMaterializedDependencies({ profile, previous, replacedIds, removedIds = [] }) {
+export async function preserveMaterializedDependencies({ profile, previous, replacedIds, removedIds = [], moveDependencyRoot = true, preserveIds }) {
   const replaced = new Set([...replacedIds, ...removedIds, ...RETIRED_PLUGIN_IDS])
+  const preserve = preserveIds === undefined ? undefined : new Set(preserveIds)
   const sources = []
   for (const source of [previous, ...(previous.preserved ?? [])]) {
     if (!source?.receipt || !Array.isArray(source.ids)) continue
     const ids = []
     for (const id of source.ids) {
       if (replaced.has(id)) continue
+      if (preserve && !preserve.has(id)) continue
       const manifest = await manifestAt(join(profile, 'node_modules', id))
       if (manifest?.version === source.receipt.plugins.find(entry => entry.id === id)?.version) ids.push(id)
     }
@@ -184,26 +186,58 @@ export async function preserveMaterializedDependencies({ profile, previous, repl
   }
   const current = sources.find(source => source.digest === previous.digest)
   let retainedDependencies = false
-  const oldRoot = join(profile, 'node_modules/.zerowall-dependencies')
+  let movedDependencyRoot
+  let movedIds = []
+  const oldRoot = previous.dependencyRoot
+    ? resolve(profile, previous.dependencyRoot, '..')
+    : join(profile, 'node_modules/.zerowall-dependencies')
   if (current && await lstat(oldRoot).catch(error => { if (error.code !== 'ENOENT') throw error })) {
-    const nextRoot = join(profile, '.zerowall/dependency-history', randomUUID())
-    await mkdir(dirname(nextRoot), { recursive: true }); await rename(oldRoot, nextRoot)
-    current.dependencyRoot = relative(profile, join(nextRoot, 'node_modules')).replaceAll('\\', '/')
-    retainedDependencies = true
+    if (moveDependencyRoot) {
+      const nextRoot = join(profile, '.zerowall/dependency-history', randomUUID())
+      await mkdir(dirname(nextRoot), { recursive: true }); await rename(oldRoot, nextRoot)
+      movedDependencyRoot = nextRoot
+      movedIds = [...current.ids]
+      current.dependencyRoot = relative(profile, join(nextRoot, 'node_modules')).replaceAll('\\', '/')
+      retainedDependencies = true
+      async function rebase(path) {
+        for (const entry of await readdir(path, { withFileTypes: true })) {
+          const child = join(path, entry.name)
+          if (entry.isSymbolicLink()) {
+            const target = resolve(dirname(child), await readlink(child))
+            if (inside(oldRoot, target)) {
+              await unlink(child); await symlink(join(nextRoot, relative(oldRoot, target)), child, process.platform === 'win32' ? 'junction' : 'dir')
+            }
+          } else if (entry.isDirectory()) await rebase(child)
+        }
+      }
+      for (const id of current.ids) await rebase(join(profile, 'node_modules', id))
+    } else {
+      current.dependencyRoot = relative(profile, join(oldRoot, 'node_modules')).replaceAll('\\', '/')
+      retainedDependencies = true
+    }
+  }
+  return { sources, retainedDependencies, async restore() {
+    if (!movedDependencyRoot || !await lstat(movedDependencyRoot).catch(error => { if (error.code !== 'ENOENT') throw error })) return
+    if (await lstat(oldRoot).catch(error => { if (error.code !== 'ENOENT') throw error })) throw new Error('Cannot restore a retained dependency root over an existing path')
+    await mkdir(dirname(oldRoot), { recursive: true })
+    await rename(movedDependencyRoot, oldRoot)
     async function rebase(path) {
       for (const entry of await readdir(path, { withFileTypes: true })) {
         const child = join(path, entry.name)
         if (entry.isSymbolicLink()) {
           const target = resolve(dirname(child), await readlink(child))
           if (inside(oldRoot, target)) {
-            await unlink(child); await symlink(join(nextRoot, relative(oldRoot, target)), child, process.platform === 'win32' ? 'junction' : 'dir')
+            await unlink(child)
+            await symlink(join(oldRoot, relative(movedDependencyRoot, target)), child, process.platform === 'win32' ? 'junction' : 'dir')
+          } else if (inside(movedDependencyRoot, target)) {
+            await unlink(child)
+            await symlink(join(oldRoot, relative(movedDependencyRoot, target)), child, process.platform === 'win32' ? 'junction' : 'dir')
           }
         } else if (entry.isDirectory()) await rebase(child)
       }
     }
-    for (const id of current.ids) await rebase(join(profile, 'node_modules', id))
-  }
-  return { sources, retainedDependencies }
+    for (const id of movedIds) await rebase(join(profile, 'node_modules', id))
+  } }
 }
 async function bounded(entries, task, concurrency = 16) {
   let next = 0
@@ -224,9 +258,9 @@ function authenticate(receipt, digest, keys, target, local) {
     seen.add(entry.path)
   }
 }
-function plannedPath(profile, entry, ids) {
+function plannedPath(profile, entry, ids, dependencyRoot = join(profile, 'node_modules/.zerowall-dependencies/node_modules')) {
   const [, id, local] = packageRoot(entry.path)
-  const base = ids.has(id) ? join(profile, 'node_modules', id) : join(profile, 'node_modules/.zerowall-dependencies/node_modules', id)
+  const base = ids.has(id) ? join(profile, 'node_modules', id) : join(dependencyRoot, id)
   const path = join(base, local)
   if (!inside(base, path)) throw new Error('Materialized file escapes its package')
   return path
@@ -295,11 +329,15 @@ function packageGraphVerifier({ profile, receipt, ids, dependencyRoot, full, ver
 
 /** The signed archive supplies bytes only. Active plugin entrypoints are real
  * directories; non-core dependencies share a fixed, profile-owned namespace. */
-export async function materializeOfflinePackages({ profile, source, receipt, digest, ids, keys, target, runtimeModules, preserved = [], local = false }) {
+export async function materializeOfflinePackages({ profile, source, receipt, digest, ids, keys, target, runtimeModules, preserved = [], dependencyRootPath, local = false }) {
   authenticate(receipt, digest, keys, target, local)
   const selected = new Set(ids)
   const core = new Set(receipt.plugins.filter(entry => entry.core).map(entry => entry.id))
   for (const id of selected) if (core.has(id) || RETIRED_PLUGIN_IDS.has(id) || !receipt.plugins.some(entry => entry.id === id)) throw new Error('Cannot materialize a core, retired or unsigned plugin: ' + id)
+  const dependencyRoot = dependencyRootPath
+    ? resolve(profile, dependencyRootPath)
+    : join(profile, 'node_modules/.zerowall-dependencies/node_modules')
+  if (!inside(resolve(profile), dependencyRoot)) throw new Error('Materialized dependency root escapes profile')
   const files = receipt.files.filter(entry => { const id = packageRoot(entry.path)[1]; return !core.has(id) && !RETIRED_PLUGIN_IDS.has(id) && !id.startsWith('@deepseek-ai/') })
   let archive, index
   if (receipt.schema === 2) {
@@ -337,7 +375,7 @@ export async function materializeOfflinePackages({ profile, source, receipt, dig
         }
       }
       if (bytes.length !== entry.size || hash(bytes) !== entry.sha256) throw new Error('Materialized profile signed size or SHA-256 mismatch')
-      const destination = plannedPath(profile, entry, selected), parent = dirname(destination)
+      const destination = plannedPath(profile, entry, selected, dependencyRoot), parent = dirname(destination)
       await ensureDirectory(parent)
       await writeFile(destination, bytes, { flag: 'wx' })
     })
@@ -352,7 +390,7 @@ export async function materializeOfflinePackages({ profile, source, receipt, dig
     for (const dependency of Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies, ...manifest.optionalDependencies })) {
       if (!/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(dependency) || RETIRED_PLUGIN_IDS.has(dependency)) throw new Error('Invalid or retired materialized dependency')
       if (await manifestAt(join(root, 'node_modules', dependency))) continue
-      const destination = selected.has(dependency) ? join(profile, 'node_modules', dependency) : join(profile, 'node_modules/.zerowall-dependencies/node_modules', dependency)
+      const destination = selected.has(dependency) ? join(profile, 'node_modules', dependency) : join(dependencyRoot, dependency)
       if (await manifestAt(destination)) {
         await mkdir(dirname(join(root, 'node_modules', dependency)), { recursive: true })
         await symlink(destination, join(root, 'node_modules', dependency), process.platform === 'win32' ? 'junction' : 'dir')
@@ -362,9 +400,10 @@ export async function materializeOfflinePackages({ profile, source, receipt, dig
       }
     }
   }
-  const marker = { schema: 1, layout: PROFILE_LAYOUT, digest, receipt, ids: [...selected].sort(), preserved }
-  await mkdir(join(profile, 'node_modules/.zerowall-dependencies/node_modules'), { recursive: true })
-  await writeFile(join(profile, 'node_modules/.zerowall-dependencies/package.json'), '{"name":"zerowall-profile-dependencies","private":true}')
+  const marker = { schema: 1, layout: PROFILE_LAYOUT, digest, receipt, ids: [...selected].sort(), preserved,
+    dependencyRoot: relative(profile, dependencyRoot).replaceAll('\\', '/') }
+  await mkdir(dependencyRoot, { recursive: true })
+  await writeFile(join(dirname(dependencyRoot), 'package.json'), '{"name":"zerowall-profile-dependencies","private":true}')
   await mkdir(join(profile, '.zerowall'), { recursive: true })
   await writeFile(join(profile, materializationFile), JSON.stringify(marker))
   return marker
@@ -378,10 +417,13 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
     const marker = JSON.parse(await readFile(join(profile, materializationFile), 'utf8'))
     if (marker.schema !== 1 || marker.layout !== PROFILE_LAYOUT || !Array.isArray(marker.ids) || digest && marker.digest !== digest) return undefined
     authenticate(marker.receipt, marker.digest, keys, target, local)
-    const dependencyRoot = join(profile, 'node_modules/.zerowall-dependencies/node_modules')
+    const dependencyRoot = marker.dependencyRoot
+      ? resolve(profile, marker.dependencyRoot)
+      : join(profile, 'node_modules/.zerowall-dependencies/node_modules')
+    if (!inside(profile, dependencyRoot)) return undefined
     const dependencies = await lstat(dependencyRoot)
     if (!dependencies.isDirectory() || dependencies.isSymbolicLink()) return undefined
-    await readFile(join(profile, 'node_modules/.zerowall-dependencies/package.json'))
+    await readFile(join(dirname(dependencyRoot), 'package.json'))
     const signed = new Map(marker.receipt.files.map(entry => [entry.path, entry]))
     const selected = new Set(marker.ids)
     const preservedIds = new Set()
@@ -472,7 +514,7 @@ export async function verifyMaterializedProfile({ profile, keys, target, expecte
         const id = packageRoot(entry.path)[1]
         if (RETIRED_PLUGIN_IDS.has(id) || id.startsWith('@deepseek-ai/') || coreIds.has(id)) return
         if (selected.has(id) && selectedVersions.get(id) !== signedVersions.get(id)) return
-        await verifyFile(plannedPath(profile, entry, selected), entry, true, false)
+        await verifyFile(plannedPath(profile, entry, selected, dependencyRoot), entry, true, false)
       }, 4)
     }
     return marker

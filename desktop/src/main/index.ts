@@ -842,6 +842,16 @@ if (ownsInstance) app.whenReady().then(async () => {
         }
         const stdout = redactDiagnostic(output)
         const stderr = redactDiagnostic(errorOutput)
+        // The command wrapper persists a pending restart when Windows keeps a
+        // selected plugin file open. Preserve that machine-readable outcome so
+        // the resource manager can enqueue the operation instead of treating
+        // the child exit as an ordinary pnpm failure.
+        if (/PLUGIN_RESTART_REQUIRED|PLUGIN_TARGET_LOCKED/u.test(errorOutput + '\n' + output)) {
+          const locked = new Error('PLUGIN_TARGET_LOCKED: plugin target is in use')
+          ;(locked as Error & { code?: string }).code = 'PLUGIN_TARGET_LOCKED'
+          reject(locked)
+          return
+        }
         const details = [
           `DSH package operation failed (exit code ${code ?? 'unknown'})`,
           stderr ? `stderr: ${stderr}` : '',
@@ -931,7 +941,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       return resources.resource(kind, id, source, options)
     }
     if (action === 'rollback') {
-      if (kind === 'plugin') return resources.rollbackPlugin(id)
+      if (kind === 'plugin') throw new Error('Plugin rollback is no longer supported; reinstall the previous installer to restore its bundled version')
       if (kind === 'mcp') return resources.rollbackMcp(id)
       return callHost('skill.rollback', [id])
     }
@@ -984,7 +994,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       try {
         const report = async (value: { phase: string; completed: number; total: number; currentPlugin?: string; currentResource?: string; canCancel?: boolean; logLine?: string }) => {
           const latest = resourceJobs.get(taskId) ?? running
-          const ranges: Record<string, [number, number]> = { preparing: [5, 20], downloading: [5, 20], copying: [20, 40], extracting: [20, 40], installing: [40, 65], 'verifying-dependencies': [40, 65], snapshot: [65, 85], applying: [50, 90], activating: [90, 92], 'health-check': [92, 98] }
+          const ranges: Record<string, [number, number]> = { preparing: [5, 20], downloading: [5, 20], scanning: [20, 30], copying: [20, 40], extracting: [20, 40], installing: [40, 65], 'verifying-dependencies': [40, 65], snapshot: [65, 85], applying: [50, 90], activating: [90, 92], 'health-check': [92, 98] }
           const [from, to] = ranges[value.phase] ?? [5, 90]
           const percent = value.total > 0 ? from + Math.floor(Math.min(1, value.completed / value.total) * (to - from)) : from
           await persistResourceJob({ ...latest, phase: value.phase, progress: Math.max(latest.progress ?? 0, percent), completed: value.completed, total: value.total, currentResource: value.currentResource ?? value.currentPlugin, canCancel: value.canCancel ?? true, lastActivityAt: new Date().toISOString(), ...(value.logLine ? { logLines: [...(latest.logLines ?? []), value.logLine].slice(-30) } : {}), updatedAt: new Date().toISOString() })
@@ -1080,7 +1090,10 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (request.operation === 'resource.job.retry') return retryResourceJob(String(request.args[0]))
     if (request.operation === 'resource.job.resume') return resumeResourceJob(String(request.args[0]))
     if (request.operation === 'resource.job.cancel') return cancelResourceJob(String(request.args[0]))
-    if (request.operation === 'resource.rollback') return request.args[0] === 'plugin' ? resources.rollbackPlugin(String(request.args[1])) : resources.rollback()
+    if (request.operation === 'resource.rollback') {
+      if (request.args[0] === 'plugin') throw new Error('Plugin rollback is no longer supported; reinstall the previous installer to restore its bundled version')
+      return resources.rollback()
+    }
     if (request.operation === 'resource.mcp.rollback') return resources.rollbackMcp(request.args[0])
     if (request.operation === 'resource.import') return resources.resource(...request.args)
     if (request.operation === 'resource.update') return resources.update(String(request.args[0]) as ResourceKind, request.args[1] === undefined ? undefined : String(request.args[1]))
@@ -1090,7 +1103,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       if (action === 'list') return resources.list('plugin')
       if (action === 'install') return resources.plugin(id ?? (() => { throw new Error('Plugin identity is required') })(), request.args[1] === undefined ? undefined : String(request.args[1]))
       if (action === 'update') return id === undefined ? resources.update('plugin', request.args[1] === undefined ? undefined : String(request.args[1])) : resources.plugin(id, request.args[1] === undefined ? undefined : String(request.args[1]))
-      if (action === 'rollback') return resources.rollbackPlugin(id ?? (() => { throw new Error('Plugin identity is required') })())
+      if (action === 'rollback') throw new Error('Plugin rollback is no longer supported; reinstall the previous installer to restore its bundled version')
       return resourceAction('plugin', action, id)
     }
     if (request.operation.startsWith('resource.skill.')) {

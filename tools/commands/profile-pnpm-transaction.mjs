@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile, lstat, rename, readdir, unlink, rm } from 'node:fs/promises'
+import { cp, mkdir, readFile, writeFile, lstat, rename, readdir, unlink, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { copyProfileTree } from './profile-copy.mjs'
@@ -14,10 +14,62 @@ const inside = (root, path) => { const child = relative(root, path); return !isA
 const declarativeNames = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'cordis.patch.yml', 'compatibility.json']
 const transactionId = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u
 const candidateName = /^zerowall-pnpm-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u
+const directFiles = [...declarativeNames, '.zerowall/resolution-targets.json']
 async function record(directory, state) {
   const temporary = join(directory, 'journal.tmp')
   await writeFile(temporary, JSON.stringify(state, null, 2) + '\n', { mode: 0o600 })
   await rename(temporary, join(directory, 'journal.json'))
+}
+
+async function snapshotFiles(profile) {
+  return Promise.all(directFiles.map(async name => ({ name,
+    content: await readFile(join(profile, name)).then(bytes => bytes.toString('base64'), error => {
+      if (error.code !== 'ENOENT') throw error
+      return null
+    }),
+  })))
+}
+
+async function restoreFiles(profile, files = []) {
+  for (const { name, content } of files) {
+    if (!directFiles.includes(name)) throw new Error('Invalid plugin transaction recovery file')
+    const path = join(profile, name)
+    if (content === null) await unlink(path).catch(error => { if (error.code !== 'ENOENT') throw error })
+    else {
+      await mkdir(dirname(path), { recursive: true })
+      await writeFile(path, Buffer.from(content, 'base64'), { mode: 0o600 })
+    }
+  }
+}
+
+/** Reserve a DSH-style transaction before the active profile manifest is
+ * changed. The caller owns the profile mutation lease; no profile copy is
+ * created. */
+export async function beginDirectProfilePackageChange(profile, owner = {}) {
+  profile = resolve(profile)
+  if (profile.split(/[\\/]/u).at(-1) !== 'web') throw new Error('PLUGIN_PROFILE_INVALID')
+  await recoverPnpmTransactions(profile)
+  const directory = join(profile, '.plugin-manager', 'package-transactions', randomUUID())
+  const candidate = join(dirname(profile), 'zerowall-pnpm-' + randomUUID())
+  await mkdir(directory, { recursive: true, mode: 0o700 })
+  const state = { state: 'preparing', schema: 2, direct: true, pid: owner.ownerPid ?? process.pid, ownerToken: owner.ownerToken, candidate, created: Date.now(), items: [], files: await snapshotFiles(profile) }
+  await record(directory, state)
+  const id = directory.split(/[\\/]/u).at(-1)
+  return { id, directory, candidate, state,
+    async restore() {
+      const current = await read(join(directory, 'journal.json'))
+      if (current.state === 'committing' || current.state === 'awaiting-validation') await restorePackagePaths(profile, directory, current)
+      await restoreFiles(profile, current.files)
+      await record(directory, { ...current, state: 'rolled-back' })
+    },
+    async finish(accepted) {
+      const current = await read(join(directory, 'journal.json'))
+      if (!accepted && (current.state === 'committing' || current.state === 'awaiting-validation')) await restorePackagePaths(profile, directory, current)
+      if (!accepted) await restoreFiles(profile, current.files)
+      await record(directory, { ...current, state: accepted ? 'complete' : 'rolled-back' })
+      await cleanupTransaction(profile, directory, current, accepted ? 'complete' : 'rolled-back')
+    },
+  }
 }
 
 /** Restore an interrupted publication before another explicit pnpm mutation. */
@@ -57,6 +109,7 @@ export async function recoverPnpmTransactions(profile, { lifecycleId } = {}) {
         await record(directory, { ...state, state: 'preparation-failed', error: 'Invalid transaction candidate path' })
         continue
       }
+      if (state.direct) await restoreFiles(profile, state.files)
       await record(directory, { ...state, state: 'preparation-failed' })
       await cleanupTransaction(profile, directory, state, 'preparation-failed')
       continue
@@ -74,6 +127,7 @@ export async function recoverPnpmTransactions(profile, { lifecycleId } = {}) {
     try { process.kill(state.pid, 0); throw new Error('Another profile package transaction is still running') }
     catch (error) { if (error.code !== 'ESRCH') throw error }
     await restore(profile, directory, state)
+    if (state.direct) await restoreFiles(profile, state.files)
     await cleanupTransaction(profile, directory, state, 'rolled-back')
   }
   const lifecycles = join(profile, '.plugin-manager', 'lifecycle-transactions')
@@ -193,13 +247,14 @@ export async function runProfilePnpmTransaction(options) {
  * Authenticate the lease, then resolve directly there without copying it again. */
 async function runResourceCandidate({ profile, args, run, signal, resourceCandidateId, report }) {
   profile = resolve(profile)
-  if (!transactionId.test(resourceCandidateId) || profile.split(/[\\/]/u).at(-1) !== 'zerowall') throw new Error('RESOURCE_CANDIDATE_INVALID')
+  if (!transactionId.test(resourceCandidateId) || !['zerowall', 'web'].includes(profile.split(/[\\/]/u).at(-1))) throw new Error('RESOURCE_CANDIDATE_INVALID')
   const receipt = await read(join(profile, '.zerowall/resource-transaction.json'))
   const lease = await read(join(dirname(profile), '.zerowall-plugin-mutation.lock'))
   if (receipt.id !== resourceCandidateId || receipt.profile !== join(dirname(profile), 'web') || receipt.pid !== lease.pid || receipt.token !== lease.token) throw new Error('RESOURCE_CANDIDATE_INVALID')
   process.kill(lease.pid, 0)
   if (args.some(arg => /^(?:--(?:dir|prefix|workspace-dir|global-dir)|-C|-g|--global|--workspace-root|-w)(?:=|$)/u.test(arg))) throw new Error('PLUGIN_CWD_OVERRIDE_DENIED')
   signal?.throwIfAborted()
+  if (profile.split(/[\\/]/u).at(-1) === 'web') return runDirectProfile({ profile, args, run, signal, report, transactionId: receipt.transactionId })
   const manifest = await read(join(profile, 'package.json'))
   const resolution = await preparePnpmResolution({ profile, manifest, args, signal, report })
   const result = await run(resolution.args, resolution.directory)
@@ -210,6 +265,66 @@ async function runResourceCandidate({ profile, args, run, signal, resourceCandid
   const layout = await repairProfileLayout(profile, { from: profile, diagnoseMissingTargets: true })
   if (layout.needsRelink) throw new Error('PLUGIN_CANDIDATE_LAYOUT_INVALID')
   return result
+}
+
+/** Resolve pnpm in a short-lived sibling tree and publish only the selected
+ * package roots into the active profile. This is the resource-manager path for
+ * modern profiles; it never copies unrelated user files. */
+async function runDirectProfile({ profile, args, run, signal, report, transactionId: id }) {
+  if (!transactionId.test(id)) throw new Error('PLUGIN_TRANSACTION_INVALID')
+  const directory = join(profile, '.plugin-manager', 'package-transactions', id)
+  const state = await read(join(directory, 'journal.json'))
+  if (!state.direct || state.state !== 'preparing') throw new Error('PLUGIN_TRANSACTION_INVALID')
+  // Keep the PID that reserved the transaction in the desktop process. This
+  // executor is short-lived; recording its PID would make startup recovery
+  // treat a still-unvalidated Host activation as abandoned as soon as pnpm
+  // exits, and roll back a successfully installed plugin after a restart.
+  await record(directory, state)
+  const candidate = resolve(state.candidate)
+  if (dirname(candidate) !== dirname(profile) || !candidateName.test(candidate.split(/[\\/]/u).at(-1))) throw new Error('Invalid direct package candidate')
+  await mkdir(candidate, { recursive: true })
+  try {
+    const manifest = await read(join(profile, 'package.json'))
+    const resolution = await preparePnpmResolution({ profile, manifest, args, signal, report, resolutionDirectory: candidate })
+    const result = await run(resolution.args, resolution.directory)
+    const outcome = result ?? { code: 0 }
+    signal?.throwIfAborted()
+    if (outcome.code !== 0) {
+      await restoreFiles(profile, state.files)
+      await record(directory, { ...state, state: 'preparation-failed' })
+      await cleanupTransaction(profile, directory, state, 'preparation-failed')
+      return { ...outcome, code: outcome.code || 1 }
+    }
+    await mergePnpmResolution(resolution, { publish: false })
+    await physicalizeProfilePlugins({ profile: candidate, ids: [...resolution.targets].filter(id => !resolution.removed.has(id)) })
+    for (const name of ['cordis.patch.yml', 'compatibility.json']) {
+      if (await exists(join(profile, name))) await cp(join(profile, name), join(candidate, name))
+    }
+    // The marker is declarative state and must travel with the package commit;
+    // it is not a profile snapshot.
+    const marker = join(profile, '.zerowall/materialized-profile.json')
+    if (await exists(marker)) {
+      await mkdir(dirname(join(candidate, '.zerowall/materialized-profile.json')), { recursive: true })
+      await writeFile(join(candidate, '.zerowall/materialized-profile.json'), await readFile(marker))
+    }
+    const layout = await repairProfileLayout(candidate, { from: profile, diagnoseMissingTargets: true })
+    if (layout.needsRelink) throw new Error('PLUGIN_CANDIDATE_LAYOUT_INVALID')
+    // Include removed targets so the publication journal also removes their
+    // old active roots. Newly materialized roots are physicalized above.
+    const ids = [...resolution.targets]
+    state.state = 'preparing'
+    await commitPackagePaths({ profile, candidate, directory, state, ids, includeDependencyRoot: true })
+    await record(directory, { ...state, state: 'awaiting-validation' })
+    return outcome
+  } catch (error) {
+    const current = await read(join(directory, 'journal.json')).catch(() => state)
+    if (current.state !== 'committing' && current.state !== 'awaiting-validation') {
+      await restoreFiles(profile, state.files).catch(() => {})
+      await record(directory, { ...current, state: 'preparation-failed', error: error.message }).catch(() => {})
+      await cleanupTransaction(profile, directory, current, 'preparation-failed').catch(() => {})
+    }
+    throw error
+  }
 }
 
 async function runCandidate({ profile, args, run, signal, lifecycleId, ownerPid, ownerToken }) {

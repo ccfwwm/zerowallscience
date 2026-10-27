@@ -14,8 +14,9 @@ import { RETIRED_PLUGIN_IDS, removeRetiredPlugins, removeRetiredPatch, removeRet
 import { PROFILE_LAYOUT, materializationFile, materializeOfflinePackages, preserveMaterializedDependencies, verifyMaterializedProfile } from './profile-materialization.mjs'
 import { importHistoricalPlugin, verifyHistoricalPluginImports } from './historical-plugin.mjs'
 import { verifyPluginDocument } from './plugin-verification.mjs'
+import { pluginRuntimeEntries } from './plugin-entrypoints.mjs'
 import { legacyMediaId, mediaId, managedLegacyMedia } from './media-identity.mjs'
-const { copyFile, lstat, readdir } = physicalFs.promises
+const { copyFile, lstat, readdir, stat } = physicalFs.promises
 
 /** Keep one staging name. Preserve displaced candidates and diagnostic data
  * in managed history instead of merging trees or discarding rollback data. */
@@ -38,7 +39,10 @@ export async function archiveProfileCandidate(home, directory, kind = 'candidate
 
 export async function prepareProfileCandidate(home) {
   const candidate = join(home, 'profiles/zerowall')
-  await archiveProfileCandidate(home, candidate)
+  // The candidate is a disposable resolver workspace. Reusing its fixed
+  // sibling path avoids copying a complete profile into long-lived history;
+  // interrupted work is recovered from the transaction journal instead.
+  await rm(candidate, { recursive: true, force: true })
   return candidate
 }
 
@@ -351,8 +355,7 @@ export async function migrateOfflineProfileLinks(profile, home, manifest, keys, 
   }
   const oldCarriers = join(profile, 'node_modules/.zerowall-carriers')
   if (await lstat(oldCarriers).catch(() => undefined)) {
-    const history = join(home, 'resources/history', 'legacy-carriers-' + randomUUID())
-    await mkdir(dirname(history), { recursive: true }); await rename(oldCarriers, history)
+    await rm(oldCarriers, { recursive: true, force: true })
   }
 }
 
@@ -437,6 +440,13 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     .filter(item => item && item.managed !== false && !item.core)
     .map(item => item.id))
   const oldMaterialization = await readFile(join(active, materializationFile), 'utf8').then(JSON.parse).catch(error => { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error; return {} })
+  // The signed offline marker can establish that a previously materialized
+  // generation was compatible with this runtime. Its id list is not ownership:
+  // online signed plugin updates also live under those ids and must survive an
+  // application restart when their versions are newer than the embedded seed.
+  const trustedMaterialization = oldMaterialization.ids?.length
+    ? await verifyMaterializedProfile({ profile: active, keys, target, expected: [], local })
+    : undefined
   // Dependency-history is immutable rollback data. During startup recovery we
   // only need roots still referenced by active links or by the signed
   // materialization marker; copying every old generation makes a large profile
@@ -470,23 +480,42 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
       if (record.version === pins[id] && !await verifyMaterializedProfile({ profile: active, keys, target, expected: [id], local })) replacing.add(id)
       continue
     }
-    const root = installed && await realpath(join(active, 'node_modules', id)).catch(() => undefined)
-    const owned = oldMaterialization.ids?.includes(id) || root && [join(home, 'resources/offline'), join(active, 'node_modules/.zerowall-carriers')].some(base => !relative(base, root).startsWith('..') && !isAbsolute(relative(base, root)))
+    const rootPath = join(active, 'node_modules', id)
+    const root = installed && await realpath(rootPath).catch(() => undefined)
+    const carrierOwned = root && [join(home, 'resources/offline'), join(active, 'node_modules/.zerowall-carriers')]
+      .some(base => !relative(base, root).startsWith('..') && !isAbsolute(relative(base, root)))
     const managed = bundledManagedIds.has(id)
-    const declared = ['dependencies', 'devDependencies', 'optionalDependencies']
-      .some(field => Object.hasOwn(manifest[field] ?? {}, id))
     const provenance = await lstat(join(active, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json'))
       .catch(error => { if (error.code !== 'ENOENT') throw error })
-    if (installed && !owned && !provenance && compareVersions(installed.version, record.version) > 0
-      && damagedLinks.some(link => link.path.startsWith('node_modules/' + id + '/'))) {
-      throw new Error('Nested offline dependency requires a verified plugin import: ' + id + '@' + installed.version + '; exact trusted recovery source is unavailable')
+    const newer = installed && compareVersions(installed.version, record.version) > 0
+    if (newer && !carrierOwned) {
+      const info = await lstat(rootPath).catch(error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error })
+      let ready = Boolean(info?.isDirectory() && !info.isSymbolicLink() && installed.name === id)
+      if (ready) for (const entry of pluginRuntimeEntries(installed)) {
+        const entryPath = resolve(rootPath, entry), child = relative(rootPath, entryPath)
+        if (child === '..' || child.startsWith('..' + sep) || isAbsolute(child)) { ready = false; break }
+        let available = false
+        for (const suffix of ['', '.js', '.json', '.node', '/index.js', '/index.json', '/index.node']) {
+          if ((await stat(entryPath + suffix).catch(error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error }))?.isFile()) { available = true; break }
+        }
+        if (!available) { ready = false; break }
+      }
+      let importedCompatible = false
+      if (provenance) {
+        try { importedCompatible = (await verifyHistoricalPluginImports({ profile: active, keys, target, runtimeModules, local, full: false, ids: [id] })).some(item => item.id === id) }
+        catch { importedCompatible = false }
+      }
+      const hasPriorEvidence = oldMaterialization.ids?.includes(id) || Boolean(provenance)
+      const compatibleEvidence = Boolean(trustedMaterialization && oldMaterialization.ids?.includes(id) || importedCompatible)
+      if (hasPriorEvidence && !compatibleEvidence || !ready) replacing.add(id)
+      else continue
     }
-    // A declared managed package belongs to the desktop profile even when its
-    // version happens to be newer than the bundled record. Keeping that tree
-    // would also keep its old exact-runtime receipt and reproduce the startup
-    // failure. An undeclared newer package is an independent user install and
-    // is deliberately preserved.
-    if (!installed || owned || provenance || managed && (declared || compareVersions(installed.version, record.version) <= 0)) replacing.add(id)
+    // A signed plugin update may be newer than the version embedded in an
+    // older installer. Keep that installed version across restart even when
+    // the package is declared by the profile. Carrier-backed roots still need
+    // a physical signed copy; ordinary profile roots are refreshed only when
+    // missing, damaged, or older/equal to the installer's managed version.
+    if (!installed || carrierOwned || provenance || managed && compareVersions(installed.version, record.version) <= 0) replacing.add(id)
   }
   const candidate = await prepareProfileCandidate(home)
   onPhase({ phase: 'profile-prepare', state: 'candidate-created', durationMs: Date.now() - phaseStarted })
@@ -509,6 +538,16 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
     }
   }
   const inactiveArchived = [], archivedHistoryPaths = [], replacedInstallSources = new Set()
+  // Remove generated legacy rollback shadows as part of the same activation.
+  // They are disposable package history, not user-selected plugin roots, and
+  // retaining them would keep old bytes in the active profile after migration.
+  for (const entry of await readdir(join(active, 'node_modules'), { withFileTypes: true }).catch(error => {
+    if (error.code === 'ENOENT') return []
+    throw error
+  })) {
+    if (!entry.isDirectory() || !/^(?:@[A-Za-z0-9._-]+[\\/])?[A-Za-z0-9._-]+\.previous-[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(entry.name)) continue
+    inactiveArchived.push(entry.name)
+  }
   const sourceRoot = join(candidate, '.zerowall/install-sources')
   const pathIsInside = (root, path) => {
     const child = relative(root, path)
@@ -517,27 +556,28 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   async function collectInstallSourceLinks(packageRoots) {
     const roots = packageRoots.map(path => resolve(path))
     const links = []
-    async function visit(directory) {
+    async function visit(directory, sourceBase) {
       for (const entry of await readdir(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name)
         if (entry.isSymbolicLink()) {
           const target = resolve(dirname(path), await readlink(path))
           if (roots.some(root => pathIsInside(root, target))) links.push(path)
-        } else if (entry.isDirectory()) await visit(path)
+        } else if (entry.isDirectory()) await visit(path, sourceBase)
       }
     }
-    const info = await lstat(sourceRoot).catch(error => { if (error.code !== 'ENOENT') throw error })
-    if (info?.isDirectory() && !info.isSymbolicLink()) await visit(sourceRoot)
+    for (const base of [sourceRoot, join(active, '.zerowall/install-sources')]) {
+      const info = await lstat(base).catch(error => { if (error.code !== 'ENOENT') throw error })
+      if (info?.isDirectory() && !info.isSymbolicLink()) await visit(base, base)
+    }
     return links
   }
-  async function moveInstallSourceLinks(history, links) {
+  async function removeInstallSourceLinks(links) {
     for (const link of links) {
-      const relativePath = relative(sourceRoot, link)
+      const base = pathIsInside(active, link) ? join(active, '.zerowall/install-sources') : sourceRoot
+      const relativePath = relative(base, link)
       const sourceName = relativePath.split(sep)[0]
       if (sourceName) replacedInstallSources.add(sourceName)
-      const archivedLink = join(history, 'install-sources', relativePath)
-      await mkdir(dirname(archivedLink), { recursive: true })
-      await rename(link, archivedLink)
+      await unlink(link).catch(error => { if (error.code !== 'ENOENT') throw error })
     }
   }
   // Initialization changes declarations only. Remove the old managed media
@@ -592,18 +632,12 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
       catch { obsolete = true }
     }
     if (!obsolete) continue
-    const history = join(candidate, retired ? '.zerowall/retired-plugin-history' : '.zerowall/inactive-plugin-history', encodeURIComponent(id) + '-' + randomUUID())
-    await mkdir(history, { recursive: true })
-    archivedHistoryPaths.push(relative(candidate, history).split(sep).join('/'))
-    if (hasLegacyMediaLinks) await moveInstallSourceLinks(history, legacyMediaLinks)
-    if (info) await rename(root, join(history, 'package'))
-    const declarations = {}
+    if (hasLegacyMediaLinks) await removeInstallSourceLinks(legacyMediaLinks)
+    if (info) await rm(root, { recursive: true, force: true })
     for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) if (Object.hasOwn(manifest[field] ?? {}, id)) {
-      declarations[field] = manifest[field][id]
       delete manifest[field][id]
     }
-    if (hasProvenance) await rename(provenance, join(history, 'provenance.json'))
-    await writeFile(join(history, 'receipt.json'), JSON.stringify({ id, reason: 'Inactive managed package referenced obsolete supply or incompatible provenance', declarations }))
+    if (hasProvenance) await unlink(provenance)
     inactiveArchived.push(id)
   }
   const layout = await repairProfileLayout(candidate, { from: active, home, pendingRoots: [...replacing].map(id => join(candidate, 'node_modules', id)) })
@@ -617,9 +651,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
   }
   const changed = [], blocked = [], materialized = []
   async function displace(path) {
-    const history = join(home, 'resources/history', 'upgrade-shadow-' + randomUUID())
-    await mkdir(dirname(history), { recursive: true })
-    await rename(path, history)
+    await rm(path, { recursive: true, force: true })
   }
   const bundles = new Set(manifest.dsh?.profile?.bundles ?? [])
   const defaultBundles = new Set(defaults)
@@ -649,11 +681,7 @@ export async function prepareOfflineCandidate({ home, source, keys, target, defa
         const path = join(candidate, 'node_modules', id)
         const links = await collectInstallSourceLinks([path, join(active, 'node_modules', id)])
         if (links.length) {
-          const history = join(candidate, '.zerowall/inactive-plugin-history', encodeURIComponent(id) + '-' + randomUUID())
-          await mkdir(history, { recursive: true })
-          archivedHistoryPaths.push(relative(candidate, history).split(sep).join('/'))
-          await moveInstallSourceLinks(history, links)
-          await writeFile(join(history, 'receipt.json'), JSON.stringify({ id, reason: 'Older core shadow removed from the active profile' }))
+          await removeInstallSourceLinks(links)
         }
         await displace(path)
         const provenance = join(candidate, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')

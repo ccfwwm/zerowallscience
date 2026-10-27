@@ -42,19 +42,12 @@ for (const [range, current, historical, allowed] of [
   await writeFile(join(state, dependency, 'history.json'), JSON.stringify({ records: [{ id: dependency, version: historical, profile: previous, packageIds: [dependency, shared] }] }))
   const selection = JSON.stringify({ disabled: ['kept-disabled'], removed: ['kept-removed'], pinned: { untouched: '9.0.0' } })
   await writeFile(join(state, 'selection.json'), selection)
-  let starts = 0
-  const manager = createResourceManager({ home, local: true, yaml: JSON, runPlugin: async () => assert.fail('Rollback must not install dependencies'), stopHost: async () => {}, startHost: async () => { starts++ } })
-  const before = await readFile(file, 'utf8')
-  if (allowed) {
-    await manager.rollbackPlugin(dependency)
-    assert.equal(JSON.parse(await readFile(join(active, 'node_modules', dependency, 'package.json'))).version, historical)
-    assert.equal(starts, 1)
-    assert.deepEqual(JSON.parse(await readFile(file)).customSettings, manifest.customSettings)
-  } else {
-    await assert.rejects(manager.rollbackPlugin(dependency), /PLUGIN_ROLLBACK_CONFLICT/)
-    assert.equal(await readFile(file, 'utf8'), before)
-    assert.equal(JSON.parse(await readFile(join(active, 'node_modules', dependency, 'package.json'))).version, current)
-    assert.equal(starts, 0)
-  }
+  const manager = createResourceManager({ home, local: true, yaml: JSON, runPlugin: async () => assert.fail('Rollback must not install dependencies'), stopHost: async () => {}, startHost: async () => {} })
+  // Plugin rollback is intentionally removed. Users restore an older bundled
+  // plugin by reinstalling the previous desktop installer.
+  assert.equal(manager.rollbackPlugin, undefined)
+  await assert.rejects(manager.rollback(), /Plugin rollback is no longer supported/u)
+  assert.equal(await readFile(file, 'utf8'), JSON.stringify(manifest))
+  assert.equal(JSON.parse(await readFile(join(active, 'node_modules', dependency, 'package.json'))).version, current)
   assert.equal(await readFile(join(state, 'selection.json'), 'utf8'), selection)
 })

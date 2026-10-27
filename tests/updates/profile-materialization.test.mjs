@@ -4,15 +4,18 @@ import { createHash, generateKeyPairSync } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, writeFile, lstat, unlink } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, realpath, rename, rm, symlink, writeFile, lstat, unlink, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { c as createArchive, x as extractArchive } from 'tar'
 import { offlineFiles } from '../../tools/commands/offline-profile.mjs'
 import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
 import { materializationFile, physicalizeProfilePlugins, preparePhysicalRootsForPnpm, verifyMaterializedProfile } from '../../tools/commands/profile-materialization.mjs'
 import { repairProfileLayout } from '../../tools/commands/profile-layout.mjs'
 import { initializeProfile } from '../../tools/commands/profile.mjs'
 import { signCatalog } from '../../tools/commands/resource-catalog.mjs'
+import { fileDigest } from '../../tools/release/resource-catalog.mjs'
 import { physicalFs } from '../../tools/commands/physical-fs.mjs'
 import { importHistoricalPlugin, verifyHistoricalPluginImports } from '../../tools/commands/historical-plugin.mjs'
 import { scanProfileLinks } from '../../tools/commands/profile-link-scan.mjs'
@@ -87,7 +90,7 @@ test('startup readiness detects an empty profile before the first Host and perfo
   const manifest = await readFile(join(f.active, 'package.json'), 'utf8')
   const state = await f.manager.inspectStartupProfile(source)
   assert.equal(state.ready, false)
-  assert(state.reasons.includes('offline-generation'))
+  assert(state.reasons.includes('missing-plugins'))
   assert.deepEqual(state.missingIds.sort(), f.ids)
   assert.equal(f.activations(), 0)
   assert.equal(await readFile(join(f.active, 'package.json'), 'utf8'), manifest)
@@ -108,8 +111,89 @@ test('startup readiness catches missing client entrypoints and a changed install
   await writeFile(join(f.active, 'node_modules/plugin-a/client.js'), 'export default {}')
   const next = await f.supply('2.0.0')
   const upgraded = await f.manager.inspectStartupProfile(next)
-  assert.equal(upgraded.ready, false)
-  assert(upgraded.reasons.includes('offline-generation'))
+  assert.equal(upgraded.ready, true)
+  assert.equal((await f.manager.repairOffline(next)).repaired, true)
+  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules/plugin-a/package.json'))).version, '2.0.0')
+})
+
+test('a healthy signed plugin update survives restart when the installer embeds an older seed', async t => {
+  const f = await fixture(t, ['plugin-a']), offline = await f.supply('1.0.0')
+  await f.manager.repairOffline(offline)
+  const id = 'plugin-a', packageRoot = join(f.root, 'plugin-update/package')
+  await mkdir(packageRoot, { recursive: true })
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: id, version: '2.0.0', main: 'index.cjs',
+    zerowall: { desktop: { min: target.desktopVersion }, dsh: { min: target.dshVersion, max: target.dshVersion } } }))
+  await writeFile(join(packageRoot, 'index.cjs'), 'module.exports="2.0.0"')
+  const archive = join(f.root, 'plugin-update.tgz')
+  const normalized = join(f.root, 'normalized/package')
+  await mkdir(dirname(normalized), { recursive: true })
+  await rename(packageRoot, normalized)
+  await createArchive({ file: archive, cwd: join(f.root, 'normalized'), gzip: true }, ['package'])
+  const pair = generateKeyPairSync('ed25519'), entry = {
+    id, kind: 'plugin', version: '2.0.0', dependencies: {}, platform: [target.platform], architecture: [target.architecture],
+    desktopRange: { min: target.desktopVersion }, dshRange: { min: target.dshVersion, max: target.dshVersion },
+    downloadUrl: pathToFileURL(archive).href, size: (await stat(archive)).size, sha256: await fileDigest(archive), restartRequired: true, rollbackSupported: false,
+  }
+  const catalog = join(f.root, 'plugin-catalog.json')
+  await writeFile(catalog, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [entry] }, pair.privateKey, 'test')))
+  const updateTarget = { ...target, pluginVerification: { signature: 'strict', installedContent: 'warn' } }
+  const update = f.createManager(updateTarget, { local: true, keys: { test: pair.publicKey }, runPlugin: async (args, generation) => {
+    assert.equal(generation, 'web')
+    const extracted = join(f.root, 'extracted')
+    await mkdir(extracted, { recursive: true })
+    await extractArchive({ file: args.at(-1), cwd: extracted, strict: true })
+    await rm(join(f.active, 'node_modules', id), { recursive: true, force: true })
+    await rename(join(extracted, 'package'), join(f.active, 'node_modules', id))
+  } })
+  await update.updatePlugins([id], catalog)
+  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules', id, 'package.json'))).version, '2.0.0')
+
+  // A fresh manager instance models the next application process. Startup
+  // accepts the healthy, compatible root and the offline repair must not
+  // replace it with the older version shipped in this installer's seed.
+  const restarted = f.createManager(updateTarget)
+  assert.equal((await restarted.inspectStartupProfile(offline)).ready, true)
+  assert.equal((await restarted.repairOffline(offline)).repaired, false)
+  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules', id, 'package.json'))).version, '2.0.0')
+})
+
+test('a healthy signed plugin update survives restart when the old materialization receipt belongs to another DSH', async t => {
+  const f = await fixture(t, ['plugin-a']), oldOffline = await f.supply('1.0.0')
+  await f.manager.repairOffline(oldOffline)
+  const id = 'plugin-a', packageRoot = join(f.root, 'plugin-update/package')
+  await mkdir(packageRoot, { recursive: true })
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: id, version: '2.0.0', main: 'index.cjs' }))
+  await writeFile(join(packageRoot, 'index.cjs'), 'module.exports="2.0.0"')
+  const archive = join(f.root, 'plugin-update.tgz'), normalized = join(f.root, 'normalized/package')
+  await mkdir(dirname(normalized), { recursive: true })
+  await rename(packageRoot, normalized)
+  await createArchive({ file: archive, cwd: join(f.root, 'normalized'), gzip: true }, ['package'])
+  const pair = generateKeyPairSync('ed25519'), entry = {
+    id, kind: 'plugin', version: '2.0.0', dependencies: {}, platform: [target.platform], architecture: [target.architecture],
+    desktopRange: { min: target.desktopVersion }, dshRange: { min: target.dshVersion, max: target.dshVersion },
+    downloadUrl: pathToFileURL(archive).href, size: (await stat(archive)).size, sha256: await fileDigest(archive), restartRequired: true, rollbackSupported: false,
+  }
+  const catalog = join(f.root, 'plugin-catalog.json')
+  await writeFile(catalog, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [entry] }, pair.privateKey, 'test')))
+  const oldTarget = { ...target, pluginVerification: { signature: 'strict', installedContent: 'warn' } }
+  const update = f.createManager(oldTarget, { local: true, keys: { test: pair.publicKey }, runPlugin: async args => {
+    const extracted = join(f.root, 'extracted')
+    await mkdir(extracted, { recursive: true })
+    await extractArchive({ file: args.at(-1), cwd: extracted, strict: true })
+    await rm(join(f.active, 'node_modules', id), { recursive: true, force: true })
+    await rename(join(extracted, 'package'), join(f.active, 'node_modules', id))
+  } })
+  await update.updatePlugins([id], catalog)
+
+  // The next installer has a different DSH identity but still carries the old
+  // offline plugin seed. The existing receipt is now invalid for this runtime;
+  // that must not turn a healthy newer plugin into a downgrade candidate.
+  const nextTarget = { ...target, desktopVersion: '8.4.0', dshVersion: '0.2.1-rc.2', dshCommit: 'b'.repeat(40) }
+  const nextOffline = await f.supply('1.0.0', {}, { runtimeTarget: nextTarget })
+  const restarted = f.createManager(nextTarget)
+  assert.equal((await restarted.inspectStartupProfile(nextOffline)).ready, true)
+  assert.equal((await restarted.repairOffline(nextOffline, { startup: true })).repaired, false)
+  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules', id, 'package.json'))).version, '2.0.0')
 })
 
 test('startup readiness catches a lost dependency namespace before launching the Host', async t => {

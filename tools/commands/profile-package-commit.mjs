@@ -14,6 +14,7 @@ const validName = name => typeof name === 'string' && (packageCommitFiles.includ
   || /^node_modules\/(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(name) && validId(name.slice(13))
   || /^\.zerowall\/(?:install-sources|dependency-history)\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(name)
   || validHistoryPath(name)
+  || /^\.zerowall\/dependency-generations\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u.test(name)
   || /^\.zerowall\/plugin-imports\/[A-Za-z0-9@%._-]+\.json$/u.test(name))
 
 export async function writePackageJournal(directory, state) {
@@ -68,7 +69,7 @@ export async function commitPackagePaths({ profile, candidate, directory, state,
   ids = [...new Set(ids)]
   if (ids.some(id => !validId(id))) throw new Error('Invalid package publication identity')
   const names = []
-  for (const namespace of ['install-sources', 'dependency-history']) {
+  for (const namespace of ['install-sources', 'dependency-history', 'dependency-generations']) {
     const source = join(candidate, '.zerowall', namespace)
     for (const name of await readdir(source).catch(error => { if (error.code !== 'ENOENT') throw error; return [] })) {
       if (!validName('.zerowall/' + namespace + '/' + name) || (await lstat(join(source, name))).isSymbolicLink()) throw new Error('Invalid package namespace')
@@ -79,7 +80,10 @@ export async function commitPackagePaths({ profile, candidate, directory, state,
   for (const name of sourceNames) {
     if (typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(name)) throw new Error('Invalid package source publication path')
     const local = '.zerowall/install-sources/' + name
-    if (!await exists(join(candidate, local))) throw new Error('Missing package source publication path: ' + local)
+    // A removed legacy source is intentionally absent from the candidate. The
+    // publication journal still includes it so the active path is moved to the
+    // short-lived `before` tree and the stale link disappears atomically.
+    if (!await exists(join(candidate, local)) && !await exists(join(profile, local))) throw new Error('Missing package source publication path: ' + local)
     if (!names.includes(local)) names.push(local)
   }
   for (const local of [...new Set(historyPaths)]) {

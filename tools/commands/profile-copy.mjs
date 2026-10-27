@@ -46,7 +46,7 @@ export async function bounded(entries, task, concurrency = 16) {
 }
 
 /** Plan a physical copy without writing to the source or its link targets. */
-export async function planProfileCopy(source, { filter = () => true, pruneDependencyHistory = false, retainedDependencyHistory = [], pruneInstallSources = false, retainedInstallSources = [] } = {}) {
+export async function planProfileCopy(source, { filter = () => true, pruneDependencyHistory = false, retainedDependencyHistory = [], pruneInstallSources = false, retainedInstallSources = [], signal, report = () => {} } = {}) {
   source = resolve(source)
   const copyingModules = basename(source) === 'node_modules'
   const dependencyHistory = '.zerowall/dependency-history'
@@ -55,13 +55,28 @@ export async function planProfileCopy(source, { filter = () => true, pruneDepend
   const archives = new Map()
   const retainedHistory = new Set(retainedDependencyHistory.map(local => local.replaceAll('\\', '/')))
   const retainedSources = new Set(retainedInstallSources.map(local => local.replaceAll('\\', '/')))
+  let scanned = 0, lastScanReport = 0, scanReports = Promise.resolve()
+  const reportScan = async force => {
+    const now = Date.now()
+    if (!force && now - lastScanReport < 250) return
+    lastScanReport = now
+    const completed = scanned
+    scanReports = scanReports.then(() => report({ phase: 'scanning', completed, total: 0 }))
+    await scanReports
+  }
+  signal?.throwIfAborted()
+  await reportScan(true)
+  signal?.throwIfAborted()
   async function collect(initial) {
     let level = initial
     while (level.length) {
       const next = []
       await bounded(level, async local => {
         for (const entry of await readdir(join(source, local), { withFileTypes: true })) {
+          signal?.throwIfAborted()
           const name = join(local, entry.name), normalized = name.replaceAll('\\', '/')
+          scanned++
+          if (scanned % 256 === 0) await reportScan(false)
           const packagePath = copyingModules ? 'node_modules/' + normalized : normalized
           if (!copyingModules && pruneDependencyHistory && normalized === dependencyHistory && entry.isDirectory()) {
             directories.push(name)
@@ -132,6 +147,8 @@ export async function planProfileCopy(source, { filter = () => true, pruneDepend
     }
     await collect(retained)
   }
+  signal?.throwIfAborted()
+  await reportScan(true)
   return { files, links, directories }
 }
 
@@ -144,6 +161,8 @@ export async function copyProfileTree(source, destination, options = {}) {
   const child = relative(source, destination)
   if (!child || !isAbsolute(child) && child !== '..' && !child.startsWith('..' + sep)) throw new Error('Profile copy destination must be outside source')
   const { files, links, directories } = await planProfileCopy(source, options)
+  signal?.throwIfAborted()
+  await report({ phase: 'copying', completed: 0, total: files.length })
   signal?.throwIfAborted()
   let completed = 0, lastReport = 0
   const progress = async () => {

@@ -16,7 +16,7 @@
 
 ## 验证与交付
 
-- 更新回归覆盖选择性快照、独立回滚字节、伪造事务拒绝、复制取消、Skills 批量更新和版本写入；安全及更新合同测试继续执行。
+- 更新回归覆盖受影响路径事务、真实 pnpm 解析、进程中断恢复、伪造事务拒绝、取消、Skills 批量更新和版本写入；安全及更新合同测试继续执行。插件更新不再生成整 profile 快照、依赖闭包回滚副本或 `upgrade-shadow-*`。
 - 使用系统 `C:\Program Files\Python312\python.exe` 验证科学依赖和 Research 测试；测试所需缺失依赖安装到系统解释器的用户目录。产品固定 Python 安装根及签名 bootstrap 合同仍由产品资源配置管理。
 - 新 build ID 生成安装器，检查完整插件快照、Skills 实际文件树、签名资源收据、ASAR/runtime 闭包、Host 启动、Electron、更新 smoke、`dsh --version` 和 `zws --version`，记录字节数与 SHA-256。
 - 检查结果和未通过项写入 `artifacts/verification/8.4.11`。真实旧用户 profile 的更新耗时、取消和回滚应单独验收；自动测试及构建通过不能替代这项证据。

@@ -74,7 +74,7 @@ test('copy cancellation stops before remaining files and leaves source bytes int
   await mkdir(source)
   await Promise.all(Array.from({ length: 100 }, (_, i) => writeFile(join(source, i + '.txt'), 'original')))
   const controller = new AbortController()
-  await assert.rejects(copyProfileTree(source, destination, { signal: controller.signal, report: () => controller.abort() }), { name: 'AbortError' })
+  await assert.rejects(copyProfileTree(source, destination, { signal: controller.signal, report: value => { if (value.phase === 'copying' && value.completed > 0) controller.abort() } }), { name: 'AbortError' })
   assert.equal((await readdir(source)).length, 100)
   assert.ok((await readdir(destination)).length < 100)
 })
@@ -100,7 +100,19 @@ test('Skills batch reads one catalog, stamps versions and commits once per Skill
   const result = await manager.updateSkills(resources.map(item => item.id), source, { report: value => progress.push(value) })
   assert.equal(result.updated, 5); assert.equal(calls.length, 5)
   assert.deepEqual(progress.filter(value => value.phase === 'applying').map(value => value.completed), [0, 1, 2, 3, 4])
+  assert.ok(progress.filter(value => value.phase === 'applying').every(value => value.canCancel === false))
   const cancelled = new AbortController(); cancelled.abort()
   await assert.rejects(manager.updateSkills(['skill-0'], source, { signal: cancelled.signal }), { name: 'AbortError' })
   assert.equal(calls.length, 5)
+
+  const duringApply = new AbortController(), applied = []
+  const completing = createResourceManager({ home: join(home, 'during-apply'), target, yaml, local: true, keys: { test: pair.publicKey }, callHost: async (operation, [input]) => {
+    assert.equal(operation, 'skill.update')
+    if (applied.length === 0) duringApply.abort()
+    applied.push(input.sourcePath)
+    return {}
+  } })
+  const completed = await completing.updateSkills(resources.map(item => item.id), source, { signal: duringApply.signal })
+  assert.equal(completed.updated, 5)
+  assert.equal(applied.length, 5)
 })

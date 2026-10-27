@@ -1,26 +1,25 @@
-import { cp, lstat, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { cp, lstat, mkdir, readFile, readdir, readlink, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import { assertCompatible, compareVersions, downloadResource, verifyCatalog, verifySignedDocument } from './resource-catalog.mjs'
-import { archiveProfileCandidate, migrateOfflineProfileLinks, pluginIdentity, prepareProfileCandidate, prepareOfflineCandidate, profileCarrier, readOfflineReceipt, verifiedGeneration, verifyProfileCarriers } from './offline-profile.mjs'
-import { satisfiesInstalledPackageRange, satisfiesPackageRange } from './package-range.mjs'
+import { migrateOfflineProfileLinks, pluginIdentity, prepareProfileCandidate, prepareOfflineCandidate, profileCarrier, readOfflineReceipt, verifiedGeneration, verifyProfileCarriers, verifyOfflineProfile } from './offline-profile.mjs'
+import { satisfiesPackageRange } from './package-range.mjs'
 import { renameProfile } from './profile-rename.mjs'
 import { repairProfileLayout } from './profile-layout.mjs'
 import { copyProfileTree } from './profile-copy.mjs'
 import { profileHistoryCopyOptions } from './profile-history.mjs'
 import { RETIRED_PLUGIN_IDS, retiredPackageSelector, removeRetiredPlugins, removeRetiredPatch, removeRetiredResolutionRules } from './retired-plugins.mjs'
-import { restorePackageClosure } from './profile-restore.mjs'
-import { PROFILE_LAYOUT, materializationFile, physicalizeProfilePlugins, preparePhysicalRootsForPnpm, verifyMaterializedProfile } from './profile-materialization.mjs'
+import { PROFILE_LAYOUT, materializationFile, materializeOfflinePackages, physicalizeProfilePlugins, preparePhysicalRootsForPnpm, preserveMaterializedDependencies, verifyMaterializedProfile } from './profile-materialization.mjs'
 import { archiveHistoricalPluginProvenance, verifyHistoricalPluginImports } from './historical-plugin.mjs'
 import { acquireProfileMutation } from './profile-mutation-lock.mjs'
 import { pluginVerificationMode, verifyPluginDocument } from './plugin-verification.mjs'
 import { commitPackagePaths, restorePackagePaths } from './profile-package-commit.mjs'
-import { recoverPnpmTransactions } from './profile-pnpm-transaction.mjs'
+import { beginDirectProfilePackageChange, recoverPnpmTransactions } from './profile-pnpm-transaction.mjs'
 import { enqueuePendingPlugin, readPendingPlugin, writePendingPlugin, listPendingPlugins, targetLocked } from './profile-pending.mjs'
 import { pluginRuntimeEntries } from './plugin-entrypoints.mjs'
+import { legacyMediaId, mediaId } from './media-identity.mjs'
 import { bounded } from './profile-copy.mjs'
-import { snapshotPackageClosure } from './profile-package-snapshot.mjs'
-import { deferCandidateCleanup, resumeCandidateCleanup } from './profile-cleanup.mjs'
+import { resumeCandidateCleanup } from './profile-cleanup.mjs'
 
 const PLUGIN_DOWNLOAD_CONCURRENCY = 8
 
@@ -31,6 +30,16 @@ function pluginArchivePath(root, item) {
   // common .tgz target.
   const identity = createHash('sha256').update(`${item.id}@${item.version}`).digest('hex').slice(0, 24)
   return join(root, 'downloads', `${item.sha256}.${identity}.tgz`)
+}
+
+function compatibleInstalledPlugin(manifest, target) {
+  for (const [range, version] of [[manifest?.zerowall?.desktop, target.desktopVersion], [manifest?.zerowall?.dsh, target.dshVersion]]) {
+    if (!range) continue
+    if (typeof range !== 'object' || typeof version !== 'string'
+      || range.min !== undefined && compareVersions(version, range.min) < 0
+      || range.max !== undefined && compareVersions(version, range.max) > 0) return false
+  }
+  return true
 }
 
 async function json(path) { return JSON.parse(await readFile(path, 'utf8')) }
@@ -62,7 +71,11 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     try { return await task() } finally {
       // An unfinished candidate is diagnostic history, never another active
       // profile. Cleanup failure cannot veto the accepted profile or startup.
-      try { await archiveProfileCandidate(home, join(profiles, 'zerowall'), 'unfinished-candidate') }
+      // Modern profile operations publish selected package paths in place. A
+      // failed candidate is disposable diagnostic state; retaining a full
+      // profile copy here recreated the slow history growth this transaction
+      // path is intended to avoid.
+      try { await rm(join(profiles, 'zerowall'), { recursive: true, force: true }) }
       catch (error) { await atomic(join(root, 'profile-cleanup.json'), { pending: true, error: error.message }).catch(() => {}) }
       await release()
       mutationOwner = undefined
@@ -334,6 +347,34 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     if (runtimeModules) return json(join(runtimeModules, pluginIdentity(id), 'package.json')).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
     return undefined
   }
+
+  async function pluginRootReady(profile, id, manifest) {
+    const root = packagePath(profile, id)
+    const info = await lstat(root).catch(error => {
+      if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) return undefined
+      throw error
+    })
+    if (!info?.isDirectory() || info.isSymbolicLink() || manifest?.name !== id) return false
+    for (const entry of pluginRuntimeEntries(manifest)) {
+      const path = resolve(root, entry), child = relative(root, path)
+      if (child === '..' || child.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) || isAbsolute(child)) return false
+      let available = false
+      for (const suffix of ['', '.js', '.json', '.node', '/index.js', '/index.json', '/index.node']) {
+        const file = await stat(path + suffix).catch(error => {
+          if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error
+        })
+        if (file?.isFile()) { available = true; break }
+      }
+      if (!available) return false
+    }
+    return true
+  }
+
+  function offlinePluginFiles(receipt, id) {
+    return (receipt?.files ?? []).filter(entry => entry.path.startsWith('modules/' + id + '/'))
+      .map(({ path, size, sha256 }) => ({ path, size, sha256 }))
+      .sort((left, right) => left.path.localeCompare(right.path))
+  }
   const localSnapshots = new Map()
   async function hostRead(operation, args) {
     let timer
@@ -367,65 +408,14 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     return { id, pinnedVersion: selection.pinned[id] }
   }
 
-  async function restorePluginGeneration(candidate, previousProfile, packageIds, id) {
-    const currentFile = join(candidate, 'package.json')
-    const previousFile = join(previousProfile, 'package.json')
-    const current = await json(currentFile)
-    const previous = await json(previousFile)
-    const ids = [...new Set([id, ...(packageIds ?? [])])]
-    const restoredSpecs = await restorePackageClosure({ candidate, previousProfile, packageIds: ids, home, keys, target, local, runtimeModules })
-    // Restore the selected plugin's root manifest changes while retaining
-    // unrelated plugin changes made after the snapshot was taken.
-    const merged = { ...current }
-    // Layout, carrier identity, disabled selections and unrelated plugin
-    // metadata belong to the current profile, even for a legacy snapshot.
-    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-      const values = { ...(current[field] ?? {}) }
-      for (const packageId of ids) {
-        if (previous[field]?.[packageId] === undefined || !restoredSpecs.get(packageId)) delete values[packageId]
-        else {
-          // A previous generation may have recorded a link into its carrier
-          // or into resources/offline. The restored package now lives as
-          // independent bytes in this candidate, so anchor only the target
-          // package to the candidate-local node_modules path.
-          values[packageId] = restoredSpecs.get(packageId)
-        }
-      }
-      merged[field] = values
-    }
-    merged.dsh = { ...(current.dsh ?? {}), profile: { ...(current.dsh?.profile ?? {}) } }
-    const currentBundles = new Set(current.dsh?.profile?.bundles ?? [])
-    const previousBundles = new Set(previous.dsh?.profile?.bundles ?? [])
-    for (const packageId of ids) {
-      if (previousBundles.has(packageId)) currentBundles.add(packageId)
-      else currentBundles.delete(packageId)
-    }
-    merged.dsh.profile.bundles = [...currentBundles]
-    await atomic(currentFile, merged)
-    const replacements = Object.fromEntries([...restoredSpecs].filter(([, spec]) => spec))
-    await preparePackageInstall(candidate, replacements)
-  }
-
-  async function recordPluginGeneration(metadata, backup) {
-    if (metadata.plugins?.length > 1 && !metadata.rollback) { for (const item of metadata.plugins) await recordPluginGeneration({ ...metadata, plugins: undefined, packageId: item.id, version: item.version }, backup); return }
-    if (!metadata.packageId || metadata.rollback) return
-    const old = await packageVersion(backup, metadata.packageId)
-    const previousVersion = old?.version ?? metadata.previousVersion ?? metadata.version
-    if (!previousVersion) return
-    const file = join(pluginStateRoot, encodeURIComponent(metadata.packageId), 'history.json')
-    const history = await json(file).catch(error => {
-      if (error.code === 'ENOENT') return { records: [] }
-      throw error
-    })
-    const records = Array.isArray(history.records) ? history.records : []
-    records.push({ id: metadata.packageId, version: previousVersion, profile: backup, packageIds: metadata.packageIds ?? [metadata.packageId], createdAt: new Date().toISOString() })
-    await atomic(file, { records: records.slice(-12) })
-  }
-
-  function ownedBackup(path) {
+  function ownedRecovery(path) {
     if (typeof path !== 'string') throw new Error('Invalid plugin recovery backup')
-    const child = relative(join(root, 'history'), resolve(path))
-    if (!child || child.startsWith('..') || isAbsolute(child)) throw new Error('Plugin recovery backup is outside managed history')
+    const resolved = resolve(path)
+    const historyChild = relative(join(root, 'history'), resolved)
+    const profileChild = relative(profiles, resolved)
+    const inHistory = historyChild && !historyChild.startsWith('..') && !isAbsolute(historyChild)
+    const inProfiles = /^\.zerowall-recovery-[a-f0-9-]{36}$/u.test(profileChild)
+    if (!inHistory && !inProfiles) throw new Error('Plugin recovery backup is outside managed recovery paths')
     return path
   }
 
@@ -436,13 +426,49 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       throw error
     })
     if (!pending || pending.state !== 'activating') {
+      if (pending?.direct === true && typeof pending.transactionId === 'string') {
+        const transactionId = pending.transactionId
+        if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(transactionId)) throw new Error('Invalid direct resource transaction ID')
+        const state = await json(join(active, '.plugin-manager/package-transactions', transactionId, 'journal.json')).catch(error => {
+          if (error.code === 'ENOENT') return undefined
+          throw error
+        })
+        if (state?.state !== 'complete' && Object.hasOwn(pending, 'selectionBefore')) {
+          if (pending.selectionBefore === null) await unlink(selectionFile).catch(error => { if (error.code !== 'ENOENT') throw error })
+          else await atomic(selectionFile, pending.selectionBefore)
+        }
+        const receipt = join(active, '.zerowall/resource-transaction.json')
+        const activeTransaction = await json(receipt).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
+        if (activeTransaction?.transactionId === transactionId) await unlink(receipt)
+        await atomic(journal, { ...pending, state: 'recovered' })
+      }
       // Local-only migration of pre-8.3.1 candidate paths; no downloads or pnpm
       // operations run during ordinary startup.
       const layout = await repairProfileLayout(active, { home, diagnoseMissingTargets: true })
       if (layout.changed) await atomic(join(root, 'profile-layout-migration.json'), { ...layout, at: new Date().toISOString() })
       return
     }
-    const backup = ownedBackup(pending.backup)
+    if (pending.direct === true && typeof pending.transactionId === 'string') {
+      // Direct package commits are recovered by recoverPnpmTransactions. The
+      // profile journal only settles adjacent user-selection state and must
+      // never enter the legacy whole-profile backup path.
+      const transactionId = pending.transactionId
+      if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/u.test(transactionId)) throw new Error('Invalid direct resource transaction ID')
+      const state = await json(join(active, '.plugin-manager/package-transactions', transactionId, 'journal.json')).catch(error => {
+        if (error.code === 'ENOENT') return undefined
+        throw error
+      })
+      if (state?.state !== 'complete' && Object.hasOwn(pending, 'selectionBefore')) {
+        if (pending.selectionBefore === null) await unlink(selectionFile).catch(error => { if (error.code !== 'ENOENT') throw error })
+        else await atomic(selectionFile, pending.selectionBefore)
+      }
+      const receipt = join(active, '.zerowall/resource-transaction.json')
+      const activeTransaction = await json(receipt).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
+      if (activeTransaction?.transactionId === transactionId) await unlink(receipt)
+      await atomic(journal, { ...pending, state: 'recovered' })
+      return
+    }
+    const backup = ownedRecovery(pending.backup)
     if (pending.packageTransaction) {
       const directory = join(backup, 'transaction')
       const state = await json(join(directory, 'journal.json'))
@@ -455,7 +481,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     // active still contains the complete old profile. Never quarantine it
     // unless there is a complete backup to restore.
     if (await exists(backup)) {
-      if (await exists(active)) await archiveProfileCandidate(home, active, 'interrupted')
+      if (await exists(active)) await rm(active, { recursive: true, force: true })
       await renameProfile(backup, active)
       await repairProfileLayout(active, { from: backup, home })
     } else if (!await exists(active)) {
@@ -475,14 +501,19 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     const selection = await readPluginSelection()
     const reasons = new Set(), missingIds = new Set(), invalidIds = new Set()
     if (!(manifest.zerowall?.pluginArchitecture >= 7) || manifest.zerowall?.profileLayout !== PROFILE_LAYOUT) reasons.add('profile-layout')
-    const marker = await json(join(active, materializationFile)).catch(error => { if (error.code !== 'ENOENT') throw error })
-    if (marker?.schema !== 1 || marker.layout !== PROFILE_LAYOUT || marker.digest !== digest) reasons.add('offline-generation')
     const expected = defaultPlugins.filter(id => !RETIRED_PLUGIN_IDS.has(id) && !selection.removed.has(id) && !selection.disabled.has(id) && !manifest.zerowall?.disabledPlugins?.includes(id))
     const records = new Map(receipt.plugins.map(entry => [entry.id, entry]))
     const signed = new Set(receipt.files.map(entry => entry.path))
     const unavailable = error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error }
-    if (expected.some(id => !records.get(id)?.core)) {
-      const dependencies = await lstat(join(active, 'node_modules/.zerowall-dependencies/node_modules')).catch(unavailable)
+    const marker = await json(join(active, materializationFile)).catch(unavailable)
+    const dependencyRoot = marker?.dependencyRoot
+      ? resolve(active, marker.dependencyRoot)
+      : join(active, 'node_modules/.zerowall-dependencies/node_modules')
+    const dependencyRelative = relative(active, dependencyRoot)
+    const dependencyRootValid = dependencyRelative !== '..' && !dependencyRelative.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) && !isAbsolute(dependencyRelative)
+    if (!dependencyRootValid) reasons.add('invalid-dependency-root')
+    if (dependencyRootValid && expected.some(id => !records.get(id)?.core)) {
+      const dependencies = await lstat(dependencyRoot).catch(unavailable)
       if (!dependencies?.isDirectory() || dependencies.isSymbolicLink()) reasons.add('missing-dependency-root')
     }
     for (const id of expected) {
@@ -500,6 +531,13 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       if (!info?.isDirectory() || info.isSymbolicLink() || installed.name !== id || selection.pinned[id] && installed.version !== selection.pinned[id]) {
         invalidIds.add(id); reasons.add('invalid-plugins'); continue
       }
+      if (seed && compareVersions(installed.version, seed.version) > 0 && !compatibleInstalledPlugin(installed, target)) {
+        invalidIds.add(id); reasons.add('incompatible-plugins'); continue
+      }
+      // Validate the actual installed entrypoints even when this package is
+      // newer than the version embedded in the offline installer. A compatible
+      // newer package may launch immediately, but a missing entrypoint must
+      // still trigger pre-launch repair.
       for (const entry of pluginRuntimeEntries(installed)) {
         // Some upstream exports advertise conditions omitted from their signed
         // package. Match the runtime verifier instead of inventing new files.
@@ -516,6 +554,242 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       }
     }
     return { ready: reasons.size === 0, reasons: [...reasons], missingIds: [...missingIds], invalidIds: [...invalidIds], generation: digest, buildId: receipt.buildId }
+  }
+
+  async function repairOfflineDirect(source, document, sourceDigest, { startup = false } = {}) {
+    const started = Date.now()
+    const manifest = await json(join(active, 'package.json'))
+    const selection = await readPluginSelection()
+    const enabled = id => !RETIRED_PLUGIN_IDS.has(id) && !selection.removed.has(id) && !selection.disabled.has(id) && !manifest.zerowall?.disabledPlugins?.includes(id)
+    const records = new Map(document.plugins.map(entry => [entry.id, entry]))
+    const existingMarker = await json(join(active, materializationFile)).catch(error => {
+      if (error.code === 'ENOENT' || error instanceof SyntaxError) return undefined
+      throw error
+    })
+    const declared = new Set(['dependencies', 'devDependencies', 'optionalDependencies'].flatMap(field => Object.keys(manifest[field] ?? {})))
+    const managedRoots = []
+    for (const item of bundledPlugins) {
+      if (!item || item.managed === false || item.core) continue
+      const id = item.id
+      const installed = await lstat(packagePath(active, id)).catch(error => { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error })
+      const provenance = await lstat(join(active, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json'))
+        .catch(error => { if (error.code !== 'ENOENT') throw error })
+      if (declared.has(id) || existingMarker?.ids?.includes(id) || installed || provenance) managedRoots.push(id)
+    }
+    const candidates = [...new Set([...(defaultPlugins ?? []), ...(manifest.dsh?.profile?.bundles ?? []), ...managedRoots])]
+      .filter(id => enabled(id) && records.get(id) && !records.get(id).core)
+    const coreShadowIds = [], removedIds = []
+    const legacyMediaInstalled = await json(join(packagePath(active, legacyMediaId), 'package.json')).catch(error => {
+      if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) return undefined
+      throw error
+    })
+    const replacingLegacyMedia = legacyMediaInstalled && !selection.pinned[legacyMediaId]
+      && enabled(mediaId) && records.has(mediaId)
+      && !(selection.pinned[mediaId])
+    if (replacingLegacyMedia) removedIds.push(legacyMediaId)
+    // A legacy media package may still be referenced by a pnpm resolution
+    // directory. Publish that source directory as part of the same package
+    // transaction so the stale link disappears atomically with the package
+    // replacement, without archiving a shadow copy.
+    const replacedInstallSources = new Set()
+    if (replacingLegacyMedia) {
+      const sourceRoot = join(active, '.zerowall/install-sources')
+      const oldRoot = resolve(packagePath(active, legacyMediaId))
+      const inside = (root, path) => {
+        const child = relative(root, path)
+        return child === '' || child !== '..' && !child.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) && !isAbsolute(child)
+      }
+      const visit = async (directory, sourceName) => {
+        for (const entry of await readdir(directory, { withFileTypes: true })) {
+          const path = join(directory, entry.name)
+          if (entry.isSymbolicLink()) {
+            const target = resolve(dirname(path), await readlink(path))
+            if (inside(oldRoot, target)) replacedInstallSources.add(sourceName)
+          } else if (entry.isDirectory()) await visit(path, sourceName)
+        }
+      }
+      for (const entry of await readdir(sourceRoot, { withFileTypes: true }).catch(error => {
+        if (error.code === 'ENOENT') return []
+        throw error
+      })) if (entry.isDirectory() && !entry.isSymbolicLink()) await visit(join(sourceRoot, entry.name), entry.name)
+    }
+    for (const id of defaultPlugins ?? []) {
+      const seed = records.get(id)
+      if (!seed?.core || selection.pinned[id] || !bundledPlugins.some(item => item.id === id && item.managed !== false)) continue
+      const installed = await json(join(packagePath(active, id), 'package.json')).catch(error => {
+        if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) return undefined
+        throw error
+      })
+      if (installed?.version && compareVersions(installed.version, seed.version) <= 0) coreShadowIds.push(id)
+    }
+    const previousGeneration = existingMarker && await verifyMaterializedProfile({ profile: active, keys, target, expected: candidates, local })
+    const ids = [], blocked = []
+    for (const id of candidates) {
+      const seed = records.get(id), installed = await json(join(packagePath(active, id), 'package.json')).catch(error => {
+        if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) return undefined
+        throw error
+      })
+      const usable = await pluginRootReady(active, id, installed)
+      const pin = selection.pinned[id]
+      if (pin && installed?.version === pin && usable) {
+        // A pinned root can still lose a nested or shared dependency. The
+        // root readiness check only covers runtime entrypoints, so validate
+        // the signed graph before treating the exact pin as fully repaired.
+        if (previousGeneration && await verifyMaterializedProfile({ profile: active, keys, target, expected: [id], local })) continue
+        ids.push(id)
+        continue
+      }
+      if (pin && seed.version !== pin) {
+        blocked.push({ id, version: pin, reason: 'Pinned package is missing or damaged; import this exact version or explicitly unpin' })
+        continue
+      }
+      if (pin) { ids.push(id); continue }
+      if (!usable || !installed) { ids.push(id); continue }
+      const comparison = compareVersions(installed.version, seed.version)
+      if (comparison > 0) {
+        if (!compatibleInstalledPlugin(installed, target)) { ids.push(id); continue }
+        // A managed package with historical provenance belongs to an older
+        // signed runtime supply. Re-authenticate that provenance against the
+        // current DSH before preserving a newer-looking version; an old
+        // receipt must be replaced by the current installer closure.
+        if (await lstat(join(active, '.zerowall/plugin-imports', encodeURIComponent(id) + '.json')).catch(error => {
+          if (error.code !== 'ENOENT') throw error
+          return undefined
+        })) {
+          let importedCompatible = false
+          try {
+            importedCompatible = (await verifyHistoricalPluginImports({ profile: active, keys, target, runtimeModules, local, full: false, ids: [id] })).some(item => item.id === id)
+          } catch { importedCompatible = false }
+          if (!importedCompatible) { ids.push(id); continue }
+        }
+        // A healthy, compatible package above this installer's offline seed
+        // may have been installed from the signed live catalog. Its previous
+        // materialization receipt can belong to an older desktop/DSH and is
+        // not evidence that the newer package should be replaced. In
+        // particular, desktop upgrades change the receipt identity while
+        // preserving the user's independently updated plugin version.
+        continue
+      }
+      if (comparison < 0) { ids.push(id); continue }
+      if (previousGeneration?.digest === sourceDigest) continue
+      // A damaged marker or dependency graph can leave the package root
+      // itself usable while a nested dependency is missing. Verify this
+      // package's signed graph before deciding that an equal-version root can
+      // be reused; otherwise a partial repair would publish a marker that
+      // forgets the healthy packages which were not re-materialized.
+      if (!await verifyMaterializedProfile({ profile: active, keys, target, expected: [id], local })) {
+        ids.push(id)
+        continue
+      }
+      const old = previousGeneration?.receipt?.plugins?.find(entry => entry.id === id)
+      if (old?.version === seed.version
+        && JSON.stringify(offlinePluginFiles(previousGeneration.receipt, id)) === JSON.stringify(offlinePluginFiles(document, id))) continue
+      ids.push(id)
+    }
+    if (blocked.length) return { repaired: false, blocked }
+    if (ids.length === 0 && coreShadowIds.length === 0) {
+      // A plugin catalog update can be newer than this installer's offline
+      // seed. Once every current package is healthy, advance only the small
+      // signed materialization pointer so the next launch does not repeat the
+      // same generation check or mistake the old seed for the active version.
+      const markerPath = join(active, materializationFile), manifestPath = join(active, 'package.json')
+      const previousMarker = await readFile(markerPath, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error })
+      const previousManifest = await readFile(manifestPath, 'utf8')
+      const preserved = existingMarker?.preserved ?? []
+      const preservedIds = new Set(preserved.flatMap(item => item.ids ?? []))
+      const nextMarker = { schema: 1, layout: PROFILE_LAYOUT, digest: sourceDigest, receipt: document,
+        ids: candidates.filter(id => !preservedIds.has(id)).sort(), preserved,
+        dependencyRoot: existingMarker?.dependencyRoot ?? 'node_modules/.zerowall-dependencies/node_modules' }
+      const nextManifest = { ...manifest, zerowall: { ...(manifest.zerowall ?? {}), pluginArchitecture: 7,
+        profileLayout: PROFILE_LAYOUT, offlineBuildId: document.buildId, offlineGeneration: sourceDigest } }
+      await atomic(markerPath, nextMarker)
+      await atomic(manifestPath, nextManifest)
+      const refreshed = await verifyMaterializedProfile({ profile: active, keys, target, expected: candidates, digest: sourceDigest, local })
+      if (!refreshed) {
+        if (previousMarker === undefined) await unlink(markerPath).catch(error => { if (error.code !== 'ENOENT') throw error })
+        else await atomic(markerPath, previousMarker, { raw: true })
+        await atomic(manifestPath, previousManifest, { raw: true })
+      }
+      onOfflinePhase({ phase: 'offline-reuse', state: 'complete', durationMs: 0 })
+      return { repaired: false, architecture: 7, generation: sourceDigest }
+    }
+    await verifyOfflineProfile(source, keys, target, { local, staging: offlineStaging })
+    const transaction = await beginDirectProfilePackageChange(active, mutationOwner)
+    const directory = transaction.directory, candidate = transaction.candidate
+    const state = { ...transaction.state, items: [] }
+    const activeReceipt = join(active, '.zerowall/resource-transaction.json')
+    // Capture the health baseline while the current Host is still serving the
+    // active profile. Reading it after stopHost() can race the shutdown and
+    // makes a failed repair restart without the previous activation scope.
+    const baseline = pendingActivationBaseline ?? await readHealth?.().catch(() => undefined)
+    let stopped = false, preservedDependencies
+    try {
+      await mkdir(candidate, { recursive: true })
+      for (const name of ['pnpm-lock.yaml', 'pnpm-workspace.yaml', 'cordis.patch.yml', 'compatibility.json']) {
+        const sourceFile = join(active, name)
+        if (await exists(sourceFile)) await cp(sourceFile, join(candidate, name))
+      }
+      const next = { ...manifest,
+        dependencies: { ...(manifest.dependencies ?? {}) },
+        dsh: { ...(manifest.dsh ?? {}), profile: { ...(manifest.dsh?.profile ?? {}) } },
+        zerowall: { ...(manifest.zerowall ?? {}), pluginArchitecture: 7, profileLayout: PROFILE_LAYOUT, offlineBuildId: document.buildId, offlineGeneration: sourceDigest },
+      }
+      const removedCore = new Set(coreShadowIds)
+      next.dsh.profile.bundles = [...new Set([...(next.dsh.profile.bundles ?? []), ...(defaultPlugins ?? [])])].filter(id => enabled(id) && !removedCore.has(id))
+      if (replacingLegacyMedia) next.dsh.profile.bundles = next.dsh.profile.bundles.filter(id => id !== legacyMediaId)
+      if (replacingLegacyMedia) for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) delete next[field]?.[legacyMediaId]
+      for (const id of coreShadowIds) for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) delete next[field]?.[id]
+      for (const id of ids) next.dependencies[id] = 'link:./node_modules/' + id
+      await atomic(join(candidate, 'package.json'), next)
+      const dependencyRootPath = 'node_modules/.zerowall-dependencies/node_modules'
+      await materializeOfflinePackages({ profile: candidate, source, receipt: document, digest: sourceDigest, ids, keys, target, runtimeModules, dependencyRootPath, local })
+      onOfflinePhase({ phase: 'offline-package-install', state: 'complete', durationMs: Date.now() - started })
+      const patchPath = join(candidate, 'cordis.patch.yml')
+      const patchText = await readFile(patchPath, 'utf8').catch(error => { if (error.code !== 'ENOENT') throw error; return '[]\n' })
+      const existingPatch = yaml.parse(patchText) ?? []
+      if (!Array.isArray(existingPatch)) throw new Error('Profile patch must remain an array')
+      const patches = document.defaultPatch.filter(row => !existingPatch.some(existing => existing.id === row.id))
+      await writeFile(patchPath, yaml.stringify(removeRetiredPatch([...patches, ...existingPatch])))
+      await atomic(join(candidate, 'package.json'), next)
+      if (!await verifyMaterializedProfile({ profile: candidate, keys, target, expected: ids, digest: sourceDigest, local, full: true })) throw new Error('Installed plugin candidate is incomplete or invalid')
+      const changedIds = [...new Set([...ids, ...coreShadowIds, ...removedIds])]
+      const previousEntries = await affectedPluginEntries(changedIds, [active])
+      const activeTransactionReceipt = { id: randomUUID(), profile: active, transactionId: transaction.id, ...mutationOwner, direct: true }
+      await atomic(activeReceipt, activeTransactionReceipt)
+      const record = { state: 'activating', direct: true, transactionId: transaction.id, operation: 'offline-repair', buildId: document.buildId, offlineGeneration: sourceDigest, packageIds: changedIds, ...(startup ? { startup: true } : {}) }
+      await atomic(journal, record)
+      await stopHost(); stopped = true
+      preservedDependencies = previousGeneration
+        ? await preserveMaterializedDependencies({ profile: active, previous: previousGeneration, replacedIds: ids })
+        : { sources: [] }
+      const candidateMarkerPath = join(candidate, materializationFile)
+      const candidateMarker = await json(candidateMarkerPath)
+      candidateMarker.preserved = preservedDependencies.sources
+      await atomic(candidateMarkerPath, candidateMarker)
+      await commitPackagePaths({ profile: active, candidate, directory, state, ids: changedIds, includeDependencyRoot: true, replaceInstallSources: [...replacedInstallSources] })
+      await writeFile(join(directory, 'journal.json'), JSON.stringify({ ...state, state: 'awaiting-validation' }, null, 2) + '\n', { mode: 0o600 })
+      if (!await verifyMaterializedProfile({ profile: active, keys, target, expected: ids, digest: sourceDigest, local })) throw new Error('Installed plugin profile failed signed validation')
+      await startHost(startup ? undefined : { baseline, ids: changedIds, affectedEntries: [...previousEntries, ...await affectedPluginEntries(changedIds, [active])] })
+      stopped = false
+      await transaction.finish(true)
+      await unlink(activeReceipt).catch(error => { if (error.code !== 'ENOENT') throw error })
+      await atomic(journal, { ...record, state: 'complete' })
+      return { repaired: true, architecture: 7, changed: [...ids.map(id => ({ id, to: records.get(id)?.version })), ...coreShadowIds.map(id => ({ id, removed: true }))] }
+    } catch (error) {
+      const recoveryErrors = []
+      try {
+        if (hostNeedsRestart && !stopped) await stopHost()
+        await transaction.finish(false)
+      } catch (failure) { recoveryErrors.push({ phase: 'rollback', message: failure.message }) }
+      try { await preservedDependencies?.restore?.() }
+      catch (failure) { recoveryErrors.push({ phase: 'dependency-root', message: failure.message }) }
+      try {
+        await unlink(activeReceipt).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError })
+        if (stopped || hostNeedsRestart) await startHost()
+      } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
+      await atomic(journal, { state: recoveryErrors.length ? 'rollback-failed' : 'rolled-back', direct: true, operation: 'offline-repair', transactionId: transaction.id, error: error.message, recoveryErrors })
+      throw error
+    }
   }
 
   async function repairOffline(source, { startup = false } = {}) {
@@ -549,6 +823,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         return { repaired: false, architecture: 7, generation: generation.digest }
       }
     }
+    if (manifest.zerowall?.pluginArchitecture >= 7 && manifest.zerowall?.profileLayout >= 3) return repairOfflineDirect(source, document, sourceDigest, { startup })
     const result = await prepareOfflineCandidate({ home, source, keys, target, defaults: defaultPlugins, bundledPlugins, yaml, runtimeModules, local, staging: offlineStaging, onPhase: onOfflinePhase })
     const receiptPath = join(pluginStateRoot, 'repairs', result.digest + '.json')
     if (result.blocked.length) {
@@ -632,6 +907,72 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     return mutate(['add', id + '@' + spec], [], options)
   }
 
+  /** Apply a signed plugin batch to a modern DSH profile in place. The only
+   * temporary tree is the resolver sibling owned by the package transaction;
+   * the active profile is never cloned and no plugin rollback snapshot is
+   * retained. */
+  async function pluginBatchDirect(ids, entries, closure, document, { signal, report, install, batchId, metadata, transaction } = {}) {
+    const activeReceipt = join(active, '.zerowall/resource-transaction.json')
+    const baseline = pendingActivationBaseline ?? await readHealth?.().catch(() => undefined)
+    const overrides = {}, archives = new Map()
+    let completed = 0, stopped = false
+    let progressWrites = Promise.resolve()
+    try {
+      await preparePluginArchives([...closure.values()], { signal, prepared: async (item, tarball) => {
+        overrides[item.id] = 'file:' + tarball.replaceAll('\\', '/')
+        archives.set(item.id, tarball)
+        progressWrites = progressWrites.then(async () => {
+          if (signal?.aborted) throw new Error('RESOURCE_BATCH_CANCELLED')
+          const current = ++completed
+          await report({ phase: 'preparing', completed: current, total: closure.size, currentPlugin: item.id })
+        })
+        await progressWrites
+      } })
+      const repairedIds = await repairMissingFileDependencies(active, document, overrides, { signal })
+      metadata.repairedIds = repairedIds
+      metadata.packageIds = [...new Set([...metadata.packageIds, ...Object.keys(overrides)])]
+      await preparePackageInstall(active, overrides, { forPnpm: true })
+      // Persist recovery instructions before changing selections or stopping
+      // Host. A process interruption between any of these steps must restore
+      // the old package declarations and the user's explicit choices.
+      await atomic(journal, { state: 'activating', direct: true, transactionId: transaction.id, ...(selectionBefore !== undefined ? { selectionBefore } : {}), ...metadata })
+      if (install) {
+        const selection = await readPluginSelection()
+        for (const id of ids) selection.removed.delete(id)
+        await writePluginSelection(selection)
+      }
+      await atomic(activeReceipt, { id: batchId, profile: active, transactionId: transaction.id, ...mutationOwner, direct: true })
+      await report({ phase: 'installing', completed: 0, total: entries.length, canCancel: false })
+      signal?.throwIfAborted()
+      const affectedIds = [...new Set(metadata.packageIds)]
+      const previousEntries = await affectedPluginEntries(affectedIds, [active])
+      await stopHost(); stopped = true
+      const result = await runPlugin(['add', ...entries.map(entry => archives.get(entry.id))], 'web', { signal, resourceCandidateId: batchId, report })
+      if (result && result.code !== undefined && result.code !== 0) throw new Error('PLUGIN_PNPM_FAILED: ' + result.code)
+      signal?.throwIfAborted()
+      await normalizeComposition(active)
+      await requireProfileLayout(active, active)
+      await report({ phase: 'health-check', completed: affectedIds.length, total: affectedIds.length, canCancel: false })
+      await startHost({ baseline, ids: affectedIds, affectedEntries: [...previousEntries, ...await affectedPluginEntries(affectedIds, [active])] })
+      stopped = false
+      await transaction.finish(true)
+      await unlink(activeReceipt).catch(error => { if (error.code !== 'ENOENT') throw error })
+      await atomic(journal, { state: 'complete', direct: true, transactionId: transaction.id, ...metadata })
+      return { ...metadata, restarted: true, updated: entries.length, rollbackSupported: false }
+    } catch (error) {
+      const recoveryErrors = []
+      try {
+        await transaction.finish(false)
+      } catch (failure) { recoveryErrors.push({ phase: 'rollback', message: failure.message }) }
+      try {
+        await unlink(activeReceipt).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError })
+        if (stopped) await startHost()
+      } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
+      await atomic(journal, { state: recoveryErrors.some(item => item.phase === 'rollback') ? 'rollback-failed' : 'rolled-back', direct: true, transactionId: transaction.id, ...metadata, error: error.message, recoveryErrors })
+      throw error
+    }
+  }
+
   async function pluginBatch(ids, source, snapshot, { signal, report = () => {}, install = false } = {}) {
     if (!Array.isArray(ids) || !ids.length || ids.length > 200 || ids.some(id => typeof id !== 'string')) throw new Error('Invalid plugin batch')
     if (ids.some(id => RETIRED_PLUGIN_IDS.has(id))) throw new Error('Plugin has been retired')
@@ -681,8 +1022,12 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       }
       if (complete) closure.delete(id)
     }
-    const generation = 'zerowall', candidate = await prepareProfileCandidate(home)
+    const profileManifest = await json(join(active, 'package.json'))
+    const direct = profileManifest.zerowall?.profileLayout >= 3
+    const transaction = direct ? await beginDirectProfilePackageChange(active, mutationOwner) : undefined
+    const generation = direct ? 'web' : 'zerowall', candidate = direct ? transaction.candidate : await prepareProfileCandidate(home)
     const batchId = randomUUID(), metadata = { batchId, plugins: entries.map(entry => ({ id: entry.id, version: entry.version })), packageIds: [...closure.keys()] }
+    if (direct) return pluginBatchDirect(ids, entries, closure, document, { signal, report, install, batchId, metadata, transaction })
     await atomic(journal, { state: 'preparing', candidate, ...metadata })
     const overrides = {}, archives = new Map()
     let completed = 0
@@ -721,8 +1066,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     } catch (error) {
       const state = await json(journal).catch(() => undefined)
       if (state?.batchId === batchId && state.state === 'preparing') {
-        const archived = await archiveProfileCandidate(home, candidate, 'preparation-failed')
-        await atomic(journal, { ...state, candidate: archived ?? candidate, state: signal?.aborted ? 'cancelled' : 'preparation-failed', error: String(error) })
+        await rm(candidate, { recursive: true, force: true })
+        await atomic(journal, { ...state, state: signal?.aborted ? 'cancelled' : 'preparation-failed', error: String(error) })
       }
       throw error
     }
@@ -763,6 +1108,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
   async function setPluginEnabled(id, enabled, acknowledgedDependents = []) {
     if (RETIRED_PLUGIN_IDS.has(id)) throw new Error('Plugin has been retired')
     if (typeof id !== 'string' || !/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) || id.split('/').some(part => part === '.' || part === '..')) throw new Error('Invalid plugin identity')
+    const current = await json(join(active, 'package.json'))
+    if (current.zerowall?.profileLayout >= 3) return setPluginEnabledDirect(id, enabled, acknowledgedDependents)
     const candidate = await prepareProfileCandidate(home)
     await mkdir(candidate, { recursive: true })
     await copyProfileSkeleton(active, candidate)
@@ -790,14 +1137,82 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     return activate(candidate, { operation: enabled ? 'enable' : 'disable', packageId: id, enabled })
   }
 
+  async function setPluginEnabledDirect(id, enabled, acknowledgedDependents = []) {
+    const transaction = await beginDirectProfilePackageChange(active, mutationOwner)
+    const batchId = randomUUID(), activeReceipt = join(active, '.zerowall/resource-transaction.json')
+    const manifestPath = join(transaction.candidate, 'package.json')
+    const baseline = pendingActivationBaseline ?? await readHealth?.().catch(() => undefined)
+    let stopped = false
+    try {
+      const manifest = await json(join(active, 'package.json'))
+      const selection = await readPluginSelection()
+      const disabled = new Set([...selection.disabled, ...(Array.isArray(manifest.zerowall?.disabledPlugins) ? manifest.zerowall.disabledPlugins : [])])
+      if (!enabled) {
+        const required = await dependents(id)
+        if (required.some(name => !acknowledgedDependents.includes(name))) throw new Error('Plugin has active dependents; review them before disabling')
+        for (const name of required) disabled.add(name)
+      }
+      if (enabled) {
+        disabled.delete(id); selection.removed.delete(id)
+        manifest.dsh ??= {}
+        manifest.dsh.profile ??= {}
+        manifest.dsh.profile.bundles ??= []
+        if (!manifest.dsh.profile.bundles.includes(id)) manifest.dsh.profile.bundles.push(id)
+      } else { disabled.add(id); selection.removed.delete(id) }
+      selection.disabled = disabled
+      manifest.zerowall = { ...manifest.zerowall, disabledPlugins: [...disabled].sort() }
+      await atomic(manifestPath, manifest)
+      const sourceMarker = join(active, materializationFile), candidateMarker = join(transaction.candidate, materializationFile)
+      if (await lstat(sourceMarker).catch(error => { if (error.code !== 'ENOENT') throw error })) {
+        await mkdir(join(transaction.candidate, '.zerowall'), { recursive: true })
+        await cp(sourceMarker, candidateMarker)
+      }
+      await requireProfileLayout(transaction.candidate, active)
+      await atomic(activeReceipt, { id: batchId, profile: active, transactionId: transaction.id, ...mutationOwner, direct: true })
+      await atomic(journal, { state: 'activating', direct: true, transactionId: transaction.id,
+        ...(selectionBefore !== undefined ? { selectionBefore } : {}), operation: enabled ? 'enable' : 'disable', packageIds: [id] })
+      await writePluginSelection(selection)
+      const previousEntries = await affectedPluginEntries([id], [active])
+      await stopHost(); stopped = true
+      await commitPackagePaths({ profile: active, candidate: transaction.candidate, directory: transaction.directory,
+        state: transaction.state, ids: [], includeDependencyRoot: false, files: ['package.json'] })
+      await startHost({ baseline, ids: [id], affectedEntries: [...previousEntries, ...await affectedPluginEntries([id], [active])] })
+      stopped = false
+      await transaction.finish(true)
+      await unlink(activeReceipt).catch(error => { if (error.code !== 'ENOENT') throw error })
+      await atomic(journal, { state: 'complete', direct: true, transactionId: transaction.id,
+        operation: enabled ? 'enable' : 'disable', packageIds: [id] })
+      return { id, enabled, restarted: true, rollbackSupported: false }
+    } catch (error) {
+      const recoveryErrors = []
+      try { await transaction.finish(false) }
+      catch (failure) { recoveryErrors.push({ phase: 'rollback', message: failure.message }) }
+      try {
+        await unlink(activeReceipt).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError })
+        if (stopped) await startHost()
+      } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
+      await atomic(journal, { state: recoveryErrors.length ? 'rollback-failed' : 'rolled-back', direct: true,
+        transactionId: transaction.id, operation: enabled ? 'enable' : 'disable', error: error.message, recoveryErrors })
+      throw error
+    }
+  }
+
   async function activate(candidate, metadata, completionState = 'complete', options = {}) {
     const current = await json(join(active, 'package.json'))
-    if (current.zerowall?.profileLayout >= 3) return activatePackages(candidate, metadata, completionState, options)
+    const candidateManifest = await json(join(candidate, 'package.json')).catch(error => {
+      if (error.code !== 'ENOENT') throw error
+      return undefined
+    })
+    // Offline migration materializes the modern fixed-root layout in its
+    // candidate even when the active profile is still legacy. Publish that
+    // candidate through the same direct package transaction so the first
+    // upgrade does not create a full profile snapshot.
+    if (current.zerowall?.profileLayout >= 3 || candidateManifest?.zerowall?.profileLayout >= 3) return activatePackages(candidate, metadata, completionState, options)
     // Normalize relative external links before the deeper history move. The
     // signed offline generation itself is never traversed or modified.
     if (metadata.operation !== 'offline-repair') await requireProfileLayout(active, active, metadata.repairedIds, metadata.repairedDependencyIds)
     await requireProfileLayout(candidate, candidate)
-    const backup = join(root, 'history', 'zerowall-' + randomUUID())
+    const backup = join(profiles, '.zerowall-recovery-' + randomUUID())
     await mkdir(resolve(backup, '..'), { recursive: true })
     // Persist the recovery instruction before stopping the Host. If that
     // write fails, the running profile is still available without a restart.
@@ -824,16 +1239,16 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       await renameProfile(candidate, active)
       await requireProfileLayout(active, candidate)
       await startHost()
-      await atomic(journal, { state: completionState, backup, ...metadata })
-      await recordPluginGeneration(metadata, backup)
-      return { ...metadata, restarted: true, rollbackSupported: true }
+      await rm(backup, { recursive: true, force: true })
+      await atomic(journal, { state: completionState, ...metadata })
+      return { ...metadata, restarted: true, rollbackSupported: false }
     } catch (error) {
       const recoveryErrors = []
       let restored = !backedUp
       try {
         if (backedUp) {
           await stopHost()
-          if (await exists(active)) await archiveProfileCandidate(home, active, 'failed')
+          if (await exists(active)) await rm(active, { recursive: true, force: true })
           await renameProfile(backup, active)
           restored = true
           try { await requireProfileLayout(active, backup) }
@@ -847,7 +1262,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       } catch (rollbackError) { recoveryErrors.push({ phase: 'rollback', message: rollbackError.message }) }
       if (restored) try { await startHost() }
       catch (restartError) { recoveryErrors.push({ phase: 'original-host', message: restartError.message }) }
-      await atomic(journal, { state: restored ? 'rolled-back' : 'rollback-failed', backup, ...metadata, error: error.message, recoveryErrors })
+      await atomic(journal, { state: restored ? 'rolled-back' : 'rollback-failed', ...metadata, error: error.message, recoveryErrors })
       throw error
     }
   }
@@ -871,20 +1286,14 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       }
       for (const id of metadata.packages ?? []) if (/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id)) ids.add(id)
     }
-    const backup = join(root, 'history', 'zerowall-' + randomUUID())
+    const transaction = await beginDirectProfilePackageChange(active, mutationOwner)
+    const directory = transaction.directory
+    const state = { ...transaction.state, items: [] }
     // Capture old entries while their physical paths exist, before journaling
     // activation. History may omit packages supplied by the shared runtime.
     const affectedIds = [...new Set([...ids, ...(metadata.packageId ? [metadata.packageId] : [])])]
     const previousEntries = await affectedPluginEntries(affectedIds, [active])
-    // A snapshot supplies per-plugin rollback without moving the live profile.
-    if (metadata.batchId) await snapshotPackageClosure({ profile: active, backup, ids: affectedIds, signal, report })
-    else await copyProfileSkeleton(active, backup, { signal, report })
-    recordOfflinePhase('backup-copied')
-    const directory = join(backup, 'transaction')
-    await mkdir(directory, { recursive: true })
-    const state = { state: 'preparing', schema: 2, items: [], created: Date.now(), pid: process.pid }
-    await atomic(join(directory, 'journal.json'), state)
-    const record = { state: 'activating', backup, candidate, packageTransaction: true, ...metadata, ...(selectionBefore ? { selectionBefore } : {}) }
+    const record = { state: 'activating', direct: true, transactionId: transaction.id, candidate, ...metadata, ...(selectionBefore ? { selectionBefore } : {}) }
     await atomic(journal, record)
     const baseline = pendingActivationBaseline ?? await readHealth?.().catch(() => undefined)
     signal?.throwIfAborted()
@@ -904,22 +1313,66 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       recordOfflinePhase('host-ready')
       // The global journal is the commit decision. Until it is durable recovery
       // restores exact paths, even if the process dies after health succeeds.
+      await transaction.finish(true)
+      await unlink(join(active, '.zerowall/resource-transaction.json')).catch(error => { if (error.code !== 'ENOENT') throw error })
+      await rm(candidate, { recursive: true, force: true })
       await atomic(journal, { ...record, state: completionState })
-      await atomic(join(directory, 'journal.json'), { ...state, state: 'complete' }).catch(() => {})
-      let historyPending = false
-      await recordPluginGeneration({ ...metadata, packageIds: [...ids] }, backup).catch(() => { historyPending = true })
-      await deferCandidateCleanup(home, candidate).catch(async error => {
-        await atomic(join(root, 'profile-cleanup.json'), { pending: true, error: error.message }).catch(() => {})
-      })
-      return { ...metadata, restarted: true, rollbackSupported: !historyPending, ...(historyPending ? { historyPending } : {}) }
+      return { ...metadata, restarted: true, rollbackSupported: false }
     } catch (error) {
       const recoveryErrors = []
       try {
         if (committed) await stopHost()
-        if (state.state === 'committing') await restorePackagePaths(active, directory, state)
+        await transaction.finish(false)
       } catch (failure) { recoveryErrors.push({ phase: 'rollback', message: failure.message }) }
       try { await startHost() } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
+      await rm(candidate, { recursive: true, force: true }).catch(error => recoveryErrors.push({ phase: 'candidate-cleanup', message: error.message }))
       await atomic(journal, { ...record, state: recoveryErrors.some(item => item.phase === 'rollback') ? 'rollback-failed' : 'rolled-back', error: error.message, recoveryErrors })
+      throw error
+    }
+  }
+
+  async function mutateDirect(args, acknowledgedDependents = []) {
+    const transaction = await beginDirectProfilePackageChange(active, mutationOwner)
+    const batchId = randomUUID(), activeReceipt = join(active, '.zerowall/resource-transaction.json')
+    const before = await json(join(active, 'package.json'))
+    const baseline = pendingActivationBaseline ?? await readHealth?.().catch(() => undefined)
+    let stopped = false, ids = []
+    try {
+      ids = [...new Set([...(before.dsh?.profile?.bundles ?? []), ...Object.keys(before.dependencies ?? {}), ...args.slice(1).filter(value => typeof value === 'string')])]
+        .filter(value => /^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(value))
+      const previousEntries = await affectedPluginEntries(ids, [active])
+      await atomic(activeReceipt, { id: batchId, profile: active, transactionId: transaction.id, ...mutationOwner, direct: true })
+      await atomic(journal, { state: 'activating', direct: true, transactionId: transaction.id,
+        ...(selectionBefore !== undefined ? { selectionBefore } : {}), operation: args[0], packageIds: ids, packages: args.slice(1) })
+      if (args[0] === 'remove' && args[1]) {
+        const required = await dependents(args[1])
+        if (required.some(name => !acknowledgedDependents.includes(name))) throw new Error('Plugin has active dependents; review them before removing')
+        const selection = await readPluginSelection()
+        for (const name of required) selection.disabled.add(name)
+        selection.removed.add(args[1]); selection.disabled.delete(args[1])
+        await writePluginSelection(selection)
+      }
+      await stopHost(); stopped = true
+      const result = await runPlugin(args, 'web', { resourceCandidateId: batchId })
+      if (result && result.code !== undefined && result.code !== 0) throw new Error('PLUGIN_PNPM_FAILED: ' + result.code)
+      await normalizeComposition(active, args[0] === 'remove' ? args[1] : undefined)
+      await requireProfileLayout(active, active)
+      await startHost({ baseline, ids, affectedEntries: [...previousEntries, ...await affectedPluginEntries(ids, [active])] })
+      stopped = false
+      await transaction.finish(true)
+      await unlink(activeReceipt).catch(error => { if (error.code !== 'ENOENT') throw error })
+      await atomic(journal, { state: 'complete', direct: true, transactionId: transaction.id, operation: args[0], packageIds: ids })
+      return { operation: args[0], restarted: true, rollbackSupported: false }
+    } catch (error) {
+      const recoveryErrors = []
+      try {
+        await transaction.finish(false)
+      } catch (failure) { recoveryErrors.push({ phase: 'rollback', message: failure.message }) }
+      try {
+        await unlink(activeReceipt).catch(unlinkError => { if (unlinkError.code !== 'ENOENT') throw unlinkError })
+        if (stopped) await startHost()
+      } catch (failure) { recoveryErrors.push({ phase: 'original-host', message: failure.message }) }
+      await atomic(journal, { state: recoveryErrors.length ? 'rollback-failed' : 'rolled-back', direct: true, transactionId: transaction.id, operation: args[0], error: error.message, recoveryErrors })
       throw error
     }
   }
@@ -966,6 +1419,8 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     if (!Array.isArray(args) || !args.every(item => typeof item === 'string') || !['add', 'remove', 'update', 'install'].includes(args[0])) throw new Error('Invalid plugin mutation')
     if (args.slice(1).some(retiredPackageSelector)) throw new Error('Plugin has been retired')
     if (args[0] === 'remove' && (args.length !== 2 || !/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(args[1]))) throw new Error('Remove one plugin identity at a time')
+    const current = await json(join(active, 'package.json'))
+    if (current.zerowall?.profileLayout >= 3) return mutateDirect(args, acknowledgedDependents)
     const generation = 'zerowall'
     const candidate = await prepareProfileCandidate(home)
     await mkdir(candidate, { recursive: true })
@@ -1002,84 +1457,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
   }
 
   async function rollback() {
-    const previous = await json(journal)
-    if (previous.state !== 'complete' || !await exists(previous.backup)) throw new Error('No previous plugin generation is available')
-    const backup = ownedBackup(previous.backup), current = await json(join(active, 'package.json'))
-    const selection = await readPluginSelection(), candidate = await prepareProfileCandidate(home)
-    // Historical snapshots are retained verbatim. Re-admit a separate candidate
-    // under today's retirement, signature and user-selection rules.
-    await copyProfileSkeleton(backup, candidate, { filter: path => ![...selection.removed].some(id => path === 'node_modules/' + id) })
-    const file = join(candidate, 'package.json'), manifest = await json(file)
-    removeRetiredPlugins(manifest)
-    for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
-      for (const id of selection.removed) if (manifest[field]) delete manifest[field][id]
-    }
-    manifest.zerowall = { ...manifest.zerowall, pluginArchitecture: Math.max(7, manifest.zerowall?.pluginArchitecture ?? 0), profileLayout: PROFILE_LAYOUT, disabledPlugins: current.zerowall?.disabledPlugins ?? [] }
-    await migrateOfflineProfileLinks(candidate, home, manifest, keys, target, local, runtimeModules)
-    await verifyHistoricalPluginImports({ profile: candidate, keys, target, runtimeModules, local })
-    if (await exists(join(candidate, materializationFile))) {
-      const expected = defaultPlugins.filter(id => !selection.removed.has(id) && !selection.disabled.has(id) && manifest.dsh?.profile?.bundles?.includes(id))
-      if (!await verifyMaterializedProfile({ profile: candidate, keys, target, expected, local, full: true })) throw new Error('PLUGIN_ROLLBACK_SIGNED_PROFILE_MISMATCH')
-    }
-    await atomic(file, manifest)
-    await preparePackageInstall(candidate)
-    await normalizeComposition(candidate)
-    for (const [id, version] of Object.entries(selection.pinned)) {
-      if (RETIRED_PLUGIN_IDS.has(id)) continue
-      if ((await packageVersion(candidate, id))?.version !== version) throw new Error('PLUGIN_ROLLBACK_PIN_CONFLICT: ' + id + '@' + version)
-    }
-    const normalized = await json(file)
-    for (const id of normalized.dsh?.profile?.bundles ?? []) {
-      const item = await packageVersion(candidate, id)
-      if (Object.keys({ ...item?.peerDependencies, ...item?.dependencies, ...item?.optionalDependencies }).some(name => RETIRED_PLUGIN_IDS.has(name))) throw new Error('PLUGIN_ROLLBACK_RETIRED_DEPENDENCY: ' + id)
-    }
-    await writePluginSelection(selection)
-    await activate(candidate, { operation: 'rollback' }, 'rolled-back')
-    return { rolledBack: true }
-  }
-
-  async function rollbackPlugin(id) {
-    if (RETIRED_PLUGIN_IDS.has(id)) throw new Error('Plugin has been retired')
-    if (typeof id !== 'string' || id.length === 0) throw new Error('Invalid plugin identity')
-    const file = join(pluginStateRoot, encodeURIComponent(id), 'history.json')
-    const history = await json(file).catch(error => {
-      if (error.code === 'ENOENT') return { records: [] }
-      throw error
-    })
-    const installed = await packageVersion(active, id)
-    const records = (history.records ?? []).filter(record => record.id === id && record.profile && record.version && record.version !== installed?.version)
-    let previous
-    for (let index = records.length - 1; index >= 0; index -= 1) {
-      if (await exists(records[index].profile)) { previous = records[index]; break }
-    }
-    if (!previous) throw new Error('No previous generation is available for this plugin')
-    const candidate = await prepareProfileCandidate(home)
-    await copyProfileSkeleton(active, candidate)
-    // Rollback is a surgical profile change. Keep every other installed
-    // package from the active generation so updating A cannot remove B.
-    await requireProfileLayout(candidate, active)
-    await restorePluginGeneration(candidate, previous.profile, previous.packageIds, id)
-    await normalizeComposition(candidate)
-    const manifest = await json(join(candidate, 'package.json'))
-    const restoredIds = new Set(previous.packageIds ?? [id])
-    for (const name of manifest.dsh?.profile?.bundles ?? []) {
-      const item = await packageVersion(candidate, name)
-      const currentConsumer = await packageVersion(active, name)
-      for (const [dependency, range] of Object.entries(item?.dependencies ?? {})) {
-        if (!restoredIds.has(dependency)) continue
-        const restored = await packageVersion(candidate, dependency)
-        const currentDependency = await packageVersion(active, dependency)
-        // Transactions record the whole dependency closure, including unchanged
-        // adapted packages. Only changed requirements/resolutions can introduce
-        // a new conflict; retain the current generation's admitted relationships.
-        if (restored && restored.version === currentDependency?.version && range === currentConsumer?.dependencies?.[dependency]) continue
-        const reference = typeof range === 'string' && /^workspace:[~^]$/u.test(range)
-          ? await packageVersion(restoredIds.has(name) ? previous.profile : active, dependency)
-          : undefined
-        if (!restored || !satisfiesInstalledPackageRange(restored.version, range, reference?.version)) throw new Error('PLUGIN_ROLLBACK_CONFLICT: ' + name + ' requires ' + dependency + '@' + range)
-      }
-    }
-    return activate(candidate, { operation: 'rollback', packageId: id, version: previous.version, rollback: true, packageIds: previous.packageIds }, 'rolled-back')
+    throw new Error('Plugin rollback is no longer supported; reinstall the previous installer to restore its bundled version')
   }
 
   async function resource(kind, id, source, { signal, report = () => {}, snapshot, prepareOnly = false } = {}) {
@@ -1172,8 +1550,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     }, 4)
     const results = []
     for (const item of prepared) {
-      signal?.throwIfAborted()
-      await report({ phase: 'applying', completed: results.length, total: ids.length, currentResource: item.id, canCancel: true })
+      if (results.length === 0) signal?.throwIfAborted()
+      await report({ phase: 'applying', completed: results.length, total: ids.length, currentResource: item.id, canCancel: false })
+      if (results.length === 0) signal?.throwIfAborted()
       results.push({ ...await callHost('skill.update', [{ sourcePath: item.folder }]), id: item.id, version: item.version })
     }
     return { updated: results.length, results }
@@ -1265,7 +1644,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         const managed = packaged?.managed !== false && !packaged?.core && installedState !== 'runtime'
         const enabled = !selection.disabled.has(id) && !selection.removed.has(id) && (packaged?.core || packaged?.managed === false || (manifest.dsh?.profile?.bundles ?? []).includes(id))
         const present = Boolean(activeVersion)
-        resources.push({ id, version: present || catalogEntry || packaged ? version : '—', installedVersion: activeVersion, updateAvailable: Boolean(catalogEntry && activeVersion && compareVersions(catalogEntry.version, activeVersion) > 0), source: !present && !catalogEntry ? 'profile' : installedState, catalogSigned: Boolean(catalogEntry), signed: Boolean(catalogEntry), restartRequired: catalogEntry?.restartRequired ?? true, rollbackSupported: Boolean((await json(join(pluginStateRoot, encodeURIComponent(id), 'history.json')).catch(() => undefined))?.records?.length), enabled: Boolean(enabled), managed, installState: present ? 'installed' : 'missing', activationState: !present ? 'missing' : enabled ? 'active' : 'disabled', pinnedVersion: selection.pinned[id], ...(selection.pinned[id] ? { updateBlocked: 'Pinned version' } : {}) })
+        resources.push({ id, version: present || catalogEntry || packaged ? version : '—', installedVersion: activeVersion, updateAvailable: Boolean(catalogEntry && activeVersion && compareVersions(catalogEntry.version, activeVersion) > 0), source: !present && !catalogEntry ? 'profile' : installedState, catalogSigned: Boolean(catalogEntry), signed: Boolean(catalogEntry), restartRequired: catalogEntry?.restartRequired ?? true, rollbackSupported: false, enabled: Boolean(enabled), managed, installState: present ? 'installed' : 'missing', activationState: !present ? 'missing' : enabled ? 'active' : 'disabled', pinnedVersion: selection.pinned[id], ...(selection.pinned[id] ? { updateBlocked: 'Pinned version' } : {}) })
       }
       for (const resource of resources) {
         if (resource.installState === 'missing' || !resource.enabled) continue
@@ -1353,7 +1732,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     reads.set(identity, pending)
     return pending
   }
-  const operations = { mutate, setPluginEnabled, rollbackPlugin, plugin, repairPlugin, updatePlugins: (ids, source, options) => pluginBatch(ids, source, undefined, options), update, rollback }
+  const operations = { mutate, setPluginEnabled, plugin, repairPlugin, updatePlugins: (ids, source, options) => pluginBatch(ids, source, undefined, options), update, rollback }
   const pendingAction = (method, args, task, options) => exclusive(async () => {
     try { return await selectionTransaction(task ?? (() => operations[method](...args))) }
     catch (error) { if (!targetLocked(error)) throw error; return enqueuePendingPlugin(home, { method, args }) }
@@ -1385,5 +1764,5 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     await writePendingPlugin(home, { ...record, state: 'cancelled' })
     return { cancelled: true }
   })
-  return { recover: () => exclusive(async () => { await recover(); void resumeCandidateCleanup(home) }), inspectStartupProfile, repairOffline: (source, options) => exclusive(() => repairOffline(source, options), options), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => pendingAction('rollbackMcp', [id]), rollbackPlugin: id => pendingAction('rollbackPlugin', [id]), setPluginEnabled: (id, enabled, dependents = []) => pendingAction('setPluginEnabled', [id, enabled, dependents]), mutate: (args, dependents = []) => pendingAction('mutate', [args, dependents]), updatePlugins: (ids, source, options) => pendingAction('updatePlugins', [ids, source], () => pluginBatch(ids, source, undefined, options), options), plugin: (id, source, options) => pendingAction('plugin', [id, source], () => plugin(id, source, options), options), repairPlugin: (id, source, options) => pendingAction('repairPlugin', [id, source], () => repairPlugin(id, source, options), options), rollback: () => pendingAction('rollback', []), update: (kind, source, options) => pendingAction('update', [kind, source], () => update(kind, source, options), options), installedVersion: installedVersionFor, updateSkills: (ids, source, options) => exclusive(() => updateSkills(ids, source, options), options), resource: (kind, id, source, options) => exclusive(() => resource(kind, id, source, options), options), resumePending, cancelPending, pending: () => listPendingPlugins(home) }
+  return { recover: () => exclusive(async () => { await recover(); void resumeCandidateCleanup(home) }), inspectStartupProfile, repairOffline: (source, options) => exclusive(() => repairOffline(source, options), options), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => pendingAction('rollbackMcp', [id]), setPluginEnabled: (id, enabled, dependents = []) => pendingAction('setPluginEnabled', [id, enabled, dependents]), mutate: (args, dependents = []) => pendingAction('mutate', [args, dependents]), updatePlugins: (ids, source, options) => pendingAction('updatePlugins', [ids, source], () => pluginBatch(ids, source, undefined, options), options), plugin: (id, source, options) => pendingAction('plugin', [id, source], () => plugin(id, source, options), options), repairPlugin: (id, source, options) => pendingAction('repairPlugin', [id, source], () => repairPlugin(id, source, options), options), rollback: () => pendingAction('rollback', []), update: (kind, source, options) => pendingAction('update', [kind, source], () => update(kind, source, options), options), installedVersion: installedVersionFor, updateSkills: (ids, source, options) => exclusive(() => updateSkills(ids, source, options), options), resource: (kind, id, source, options) => exclusive(() => resource(kind, id, source, options), options), resumePending, cancelPending, pending: () => listPendingPlugins(home) }
 }
