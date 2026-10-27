@@ -3,7 +3,7 @@ import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:chil
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:http'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
@@ -317,7 +317,9 @@ describe('ZeroWall Science Electron', () => {
     // The current card homepage registers its project automatically. Asset
     // fixtures go through the real scoped Host API; viewers and exports remain UI checks.
     const project = await rpc(page, 'zerowallResearch/registerSessionProject', { input: { sessionId } })
-    expect(project.rootPath).toBe(join(root, 'markdown-images'))
+    // Workspace storage canonicalizes Windows casing. Require the same real
+    // directory so a different or missing project root still fails.
+    expect(relative(realpathSync(project.rootPath), realpathSync(join(root, 'markdown-images')))).toBe('')
     const registerAsset = async (path: string) => rpc(page, 'zerowallResearch/registerLocalAsset', { input: { sessionId, path } })
     const output = join(contract.verification, 'electron')
     mkdirSync(output, { recursive: true })
