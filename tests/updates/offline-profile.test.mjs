@@ -407,6 +407,34 @@ for (const layout of [2, 3]) test(`desktop upgrade removes an undeclared older c
   assert(JSON.parse(await readFile(join(active, 'package.json'))).dsh.profile.bundles.includes(id), 'Removing a core shadow must retain activation of the packaged runtime plugin')
   assert.equal((await f.manager.repairOffline(f.source)).repaired, false)
 })
+for (const layout of [2, 3]) test(`offline repair preserves explicit locale, model settings and declarative files in layout ${layout}`, async t => {
+  const f = await fixture(t), active = join(f.home, 'profiles/web')
+  const manifest = JSON.parse(await readFile(join(active, 'package.json')))
+  manifest.zerowall.profileLayout = layout
+  await writeFile(join(active, 'package.json'), JSON.stringify(manifest))
+  const patch = [
+    { id: 'locale', name: '@deepseek-ai/dsh-client-locale', config: { preference: 'en' } },
+    { id: 'custom-model', config: { model: 'user-selected', reasoningEffort: 'xhigh', imageQuality: 'max' } },
+  ]
+  const otherFiles = { 'pnpm-lock.yaml': '{"lockfileVersion":"9.0"}', 'pnpm-workspace.yaml': '{"autoInstallPeers":false,"customSetting":"kept"}', 'compatibility.json': '{"customChoice":"kept"}' }
+  await writeFile(join(active, 'cordis.patch.yml'), JSON.stringify(patch))
+  for (const [name, text] of Object.entries(otherFiles)) await writeFile(join(active, name), text)
+  const settings = async () => {
+    assert.deepEqual(JSON.parse(await readFile(join(active, 'cordis.patch.yml'))), patch)
+    for (const [name, text] of Object.entries(otherFiles)) {
+      const value = JSON.parse(await readFile(join(active, name)))
+      for (const [key, expected] of Object.entries(JSON.parse(text))) assert.deepEqual(value[key], expected, name + ':' + key)
+    }
+  }
+  const manager = createResourceManager({ ...f, defaultPlugins: defaults, stopHost: async () => {}, startHost: settings })
+  assert.equal((await manager.repairOffline(f.source)).repaired, true)
+  await settings()
+  // Exercise a second damaged-package repair after the first migration.
+  await rm(join(active, 'node_modules', defaults[1], 'package.json'))
+  assert.equal((await manager.repairOffline(f.source)).repaired, true)
+  await settings()
+})
+
 for (const layout of [2, 3]) test(`migration removes equal-version core shadows with nested links to a retired base in layout ${layout}`, async t => {
   const f = await fixture(t), active = join(f.home, 'profiles/web'), base = defaults[0], environment = defaults[1]
   f.unsigned.plugins[0].core = true

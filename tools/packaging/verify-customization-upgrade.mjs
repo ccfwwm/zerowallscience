@@ -162,12 +162,25 @@ async function customization(page, f, attempt) {
 
 async function sessionPermissions(page, f, attempt) {
   const before = await rpc(page, 'session/list', { _request: {} })
-  const known = new Set(before.items.map(item => item.sessionId))
+  const creation = page.waitForResponse(response => new URL(response.url()).pathname === '/api/session/create'
+    && response.request().method() === 'POST', { timeout: 10000 })
   await page.getByRole('button', { name: /^(新建会话|新会话)$/u }).first().click({ timeout: 5000 })
-  await page.waitForFunction(() => document.querySelector('[data-conversation-session]'), null, { timeout: 10000 })
+  const response = await creation
+  assert(response.ok(), 'New Session request failed')
+  const envelope = await response.json()
+  assert.equal(envelope.result?.ok, true, 'New Session request was rejected')
+  const selectedId = envelope.result.value.sessionId
+  assert.equal(typeof selectedId, 'string')
+  await page.waitForFunction(id => document.querySelector('[data-conversation-session]')?.getAttribute('data-conversation-session') === id,
+    selectedId, { timeout: 10000 })
   const list = await rpc(page, 'session/list', { _request: {} })
-  const created = list.items.find(item => !known.has(item.sessionId))
-  assert(created, 'New Session did not persist')
+  const created = list.items.find(item => item.sessionId === selectedId)
+  assert(created?.blank, 'Selected new Session is missing from persistence or already contains a turn')
+  // DSH may reuse an existing blank. A completed historical Session must never
+  // be reused, and no existing row may disappear while preparing the draft.
+  const reused = before.items.find(item => item.sessionId === selectedId)
+  if (reused) assert.equal(reused.blank, true, 'New Session reused nonblank history')
+  for (const item of before.items) assert(list.items.some(row => row.sessionId === item.sessionId), 'New Session removed existing history')
   const hero = page.locator('[data-slot="conversation.hero.brand.mark"] img[src*="zerowall-icon.png"]')
   await hero.waitFor({ state: 'visible', timeout: 10000 })
   assert(await hero.evaluate(image => image.complete && image.naturalWidth > 0), 'New Session hero brand did not decode')

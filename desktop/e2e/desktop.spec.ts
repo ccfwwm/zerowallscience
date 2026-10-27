@@ -129,7 +129,7 @@ afterEach(async context => {
     if (await page.getByRole('dialog', { name: 'Settings', exact: true }).isVisible()) {
       await settings.getByRole('button', { name: 'General', exact: true }).click()
       await settings.getByRole('button', { name: /English/ }).click()
-      await page.getByRole('menuitem', { name: '中文' }).click()
+      await selectLocaleMenu(page, '中文', 'zh')
     }
     await settings.getByRole('button', { name: /^(关闭|Close)$/ }).click()
     await settings.waitFor({ state: 'hidden', timeout: 30_000 })
@@ -262,9 +262,17 @@ describe('ZeroWall Science Electron', () => {
     await reloadWithoutCredentials(page)
     await page.getByText('markdown-images', { exact: true }).first().click()
     await page.getByText('图片与模型回归', { exact: true }).first().click()
-    // This isolated profile has no configured model credentials. The pinned
-    // client labels an unselected model explicitly instead of inventing a selection.
-    await page.getByRole('button', { name: /^(请选择模型|选择模型，当前.*)$/u }).first().waitFor({ timeout: 60_000 })
+    // Credentials and selection are separate: the shipped default remains
+    // selected even when this isolated profile has no provider API key.
+    const catalog = await rpc(page, 'session/modelCatalog', {})
+    expect(catalog.default.provider).toBe('deepseek-official')
+    expect(catalog.groups.some((group: { id: string }) => group.id === catalog.default.provider)).toBe(false)
+    expect(catalog.routableProviders).not.toContain(catalog.default.provider)
+    // The keyless route is unavailable, so the account selector retains its
+    // exact configured model id instead of displaying an empty selection.
+    const selected = page.locator('[data-slot="conversation.input.model"]').getByRole('button', { name: /^选择模型：/u })
+    await selected.waitFor({ timeout: 60_000 })
+    expect((await selected.getAttribute('title'))?.split(' · ')[0]).toBe(catalog.default.model)
     // This credential-free request finishes itself. Clicking a disappearing
     // stop button races the terminal composer replacement.
     await expect.poll(() => page.getByRole('button', { name: '停止生成', exact: true }).count(), { timeout: 30_000 }).toBe(0)
@@ -584,7 +592,7 @@ describe('ZeroWall Science Electron', () => {
     await settings.getByRole('button', { name: '外观', exact: true }).waitFor()
     expect(await settings.getByRole('button', { name: 'Theme / 外观', exact: true }).count()).toBe(0)
     await settings.getByRole('button', { name: /中文/ }).click()
-    await page.getByRole('menuitem', { name: 'English' }).click()
+    await selectLocaleMenu(page, 'English', 'en')
     await page.getByRole('dialog', { name: 'Settings' }).waitFor({ state: 'visible' })
     await page.getByText('Language', { exact: true }).waitFor({ state: 'visible' })
 
@@ -596,15 +604,17 @@ describe('ZeroWall Science Electron', () => {
     await englishSettings.getByRole('heading', { name: 'AIchem', exact: true }).waitFor()
     expect(await englishSettings.getByLabel('AIchem API token', { exact: true }).getAttribute('type')).toBe('password')
     await englishSettings.getByRole('region', { name: 'Literature services', exact: true }).getByRole('button', { name: 'Save settings', exact: true }).waitFor()
-    await englishSettings.getByText('Review model mode', { exact: true }).waitFor()
-    expect(await englishSettings.getByText('模型目录已同步', { exact: true }).count()).toBe(0)
+    await englishSettings.getByRole('heading', { name: 'Image generation model', exact: true }).waitFor()
+    await englishSettings.getByText('Available models synced', { exact: true }).waitFor()
+    await englishSettings.getByRole('combobox', { name: /^Default quality/u }).waitFor()
+    expect(await englishSettings.getByText('候选模型已同步', { exact: true }).count()).toBe(0)
     const artifacts = join(contract.verification, 'electron')
     mkdirSync(artifacts, { recursive: true })
     await page.screenshot({ path: join(artifacts, 'environment-english.png') })
 
     await englishSettings.getByRole('button', { name: 'General', exact: true }).click()
     await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: /English/ }).click()
-    await page.getByRole('menuitem', { name: '中文' }).click()
+    await selectLocaleMenu(page, '中文', 'zh')
     await page.getByRole('dialog', { name: '设置' }).waitFor({ state: 'visible' })
     await page.keyboard.press('Escape')
     await expect.poll(() => page.getByRole('dialog', { name: '设置' }).count()).toBe(0)
@@ -625,7 +635,7 @@ describe('ZeroWall Science Electron', () => {
     ).toBeGreaterThan(0)
     await settings.getByRole('tab', { name: 'MCP' }).click()
     await settings.getByRole('heading', { name: 'MCP 连接', exact: true }).waitFor({ state: 'visible' })
-    await settings.getByText('新建连接', { exact: true }).waitFor({ state: 'visible' })
+    await settings.getByRole('button', { name: /^新建连接/u }).waitFor({ state: 'visible' })
     await settings.getByRole('button', { name: '导入' }).waitFor({ state: 'visible' })
     await settings.getByRole('button', { name: '导出' }).waitFor({ state: 'visible' })
     await settings.getByRole('button', { name: /rmcp/ }).click()
@@ -742,7 +752,7 @@ describe('ZeroWall Science Electron', () => {
     const settings = page.getByRole('dialog', { name: '设置' })
     await settings.getByRole('button', { name: '环境配置', exact: true }).click()
     await settings.getByRole('heading', { name: '化工社 AIchem' }).waitFor()
-    await expect.poll(() => settings.getByText('模型目录已同步', { exact: true }).count(), { timeout: 30_000 }).toBe(1)
+    await expect.poll(() => settings.getByText('候选模型已同步', { exact: true }).count(), { timeout: 30_000 }).toBe(1)
     expect(await settings.getByText('科研 MCP 能力', { exact: true }).count()).toBe(0)
     expect(await settings.getByLabel('化工社 API Token').getAttribute('type')).toBe('password')
     const literature = settings.getByRole('region', { name: '文献服务', exact: true })
@@ -880,7 +890,6 @@ describe('ZeroWall Science Electron', () => {
   it('repairs a damaged architecture 6 profile with the real Host while preserving user choices', async () => {
     const home = join(root, 'zerowall-user-data/harness')
     const active = join(home, 'profiles/web')
-    const patchBefore = parseYaml(readFileSync(join(active, 'cordis.patch.yml'), 'utf8')) as unknown[]
     const mcpId = '@zerowallscience/plugin-mcp'
     const disabledId = '@zerowallscience/plugin-pubmed'
     const removedId = '@zerowallscience/plugin-mineru'
@@ -888,9 +897,17 @@ describe('ZeroWall Science Electron', () => {
     const pinnedVersion = JSON.parse(readFileSync(join(active, 'node_modules', pinnedId, 'package.json'), 'utf8')).version
     const imported = join(active, 'node_modules/parity-user-plugin')
     const importedSource = 'export function apply() {}\n'
+    // Preserve an explicit nondefault choice. ConfigEditor may legitimately
+    // remove a redundant zh override equal to the bundled default.
+    const locale = await rpc(page, 'settings/update', { ns: 'locale', patch: { preference: 'en' } })
+    expect(locale.value.preference).toBe('en')
+    await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
     stopProcessTree(application)
     await browser.close()
     if (application.exitCode === null) await new Promise<void>(resolveClosed => application.once('close', () => resolveClosed()))
+    // Capture durable choices after completed Settings writes and Host exit.
+    const patchBefore = parseYaml(readFileSync(join(active, 'cordis.patch.yml'), 'utf8')) as unknown[]
+    writeFileSync(join(contract.verification, 'electron/profile-repair-before.json'), JSON.stringify({ patchBefore, locale }, null, 2))
     mkdirSync(imported, { recursive: true })
     writeFileSync(join(imported, 'package.json'), JSON.stringify({ name: 'parity-user-plugin', version: '1.2.3', type: 'module', main: 'index.js', dsh: { bundle: { patch: './cordis.patch.yml' } } }))
     writeFileSync(join(imported, 'index.js'), importedSource)
@@ -922,7 +939,13 @@ describe('ZeroWall Science Electron', () => {
     for (const stream of [application.stdout, application.stderr]) stream.on('data', chunk => { applicationOutput = (applicationOutput + String(chunk)).slice(-40_000) })
     browser = await chromium.connectOverCDP(await waitForDevToolsEndpoint(application, 150_000))
     page = await waitForMainPage(browser.contexts()[0]!, application, 150_000)
-    await completeFirstRunOnboarding(page)
+    await page.getByRole('button', { name: /^(设置|Settings)$/u }).waitFor({ timeout: 60_000 })
+    const repairedSettings = await rpc(page, 'settings/describe', {})
+    writeFileSync(join(contract.verification, 'electron/profile-repair-after.json'), JSON.stringify({ repairedSettings,
+      patch: parseYaml(readFileSync(join(active, 'cordis.patch.yml'), 'utf8')) }, null, 2))
+    expect(repairedSettings.namespaces.find((row: { ns: string }) => row.ns === 'locale').value.preference).toBe('en')
+    await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
+    await page.screenshot({ path: join(contract.verification, 'electron/profile-repair-preserved-english.png') })
     const repaired = JSON.parse(readFileSync(join(active, 'package.json'), 'utf8'))
     expect(repaired.zerowall.pluginArchitecture).toBe(7)
     expect(repaired.zerowall.profileLayout).toBe(3)
@@ -950,6 +973,17 @@ describe('ZeroWall Science Electron', () => {
       repairedPlugin: mcpId, disabledPlugin: disabledId, removedPlugin: removedId, pinnedVersion, thirdPartyRetained: true, patchUnchanged: true }, null, 2))
   })
 })
+
+async function selectLocaleMenu(page: Page, label: string, preference: string): Promise<void> {
+  const saved = page.waitForResponse(response => new URL(response.url()).pathname === '/api/settings/mutate'
+    && response.request().postDataJSON()?.payload?.args?.ns === 'locale')
+  await page.getByRole('menuitem', { name: label, exact: true }).click()
+  const response = await saved
+  expect(response.ok()).toBe(true)
+  const envelope = await response.json()
+  expect(envelope.result?.ok).toBe(true)
+  expect(envelope.result.value.value.preference).toBe(preference)
+}
 
 // This credential-free profile deliberately skips configuration. That decision
 // First-run onboarding is available manually from Settings; desktop launch keeps

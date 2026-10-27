@@ -726,8 +726,11 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     try {
       await mkdir(candidate, { recursive: true })
       for (const name of ['pnpm-lock.yaml', 'pnpm-workspace.yaml', 'cordis.patch.yml', 'compatibility.json']) {
-        const sourceFile = join(active, name)
-        if (await exists(sourceFile)) await cp(sourceFile, join(candidate, name))
+        // The package-root probe expects a directory with package.json. These
+        // are individual user-owned files, so probe/copy the file itself.
+        await cp(join(active, name), join(candidate, name)).catch(error => {
+          if (error.code !== 'ENOENT') throw error
+        })
       }
       const next = { ...manifest,
         dependencies: { ...(manifest.dependencies ?? {}) },
