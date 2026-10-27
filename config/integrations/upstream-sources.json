@@ -79,7 +79,7 @@
     "tag": "v0.3.22",
     "commit": "f7216b847f2c47fe6cde1cc95d6093921a20980d",
     "version": "0.3.22",
-    "resourceVersion": "0.3.23-zws.1",
+    "resourceVersion": "0.3.23-zws.3",
     "license": "MIT",
     "source": "plugins/dsh-ssh-ops"
   },

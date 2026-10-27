@@ -92,9 +92,10 @@ const unwrapped = [];
 const dynamic = [];
 
 for (const abs of walkFiles(join(root, "src"))) {
-  const file = relative(root, abs);
+  const file = relative(root, abs).replaceAll("\\", "/");
   const source = readFileSync(abs, "utf8");
-  if (file === "client/locale.js") continue; // the binding module (label data, not UI)
+  if (file === "src/client/locale.js") continue; // the binding module (label data, not UI)
+  if (file === "src/client/resource-locales.js") continue; // host dictionaries, checked below
   const sourceLines = source.split("\n");
   // Identifier convention: `// i18n-identifier` on a line, or a
   // `// i18n-identifier-start` … `// i18n-identifier-end` range, marks string
@@ -163,6 +164,13 @@ function push(map, key, where) {
 // protocol "d:" and the dynamic import dies with ERR_UNSUPPORTED_ESM_URL_SCHEME
 // (same class as the checker-path fix from PR #28, one level deeper).
 const { en } = await import(pathToFileURL(join(root, "src/i18n/messages.en.js")).href);
+const { resourceZh, resourceEn } = await import(pathToFileURL(join(root, "src/client/resource-locales.js")).href);
+for (const key of new Set([...Object.keys(resourceZh), ...Object.keys(resourceEn)])) {
+  const placeholders = text => [...text.matchAll(/\{([^{}]+)\}/g)].map(match => match[1]).sort().join(",");
+  if (!resourceZh[key] || !resourceEn[key] || placeholders(resourceZh[key]) !== placeholders(resourceEn[key])) {
+    throw new Error("Host resource dictionary pairing or placeholders differ: " + key);
+  }
+}
 
 const dictNormalized = new Map(Object.keys(en).map((key) => [normalizeKey(key), key]));
 const missing = [...callKeys.entries()].filter(([key]) => !dictNormalized.has(key)).map(([key, where]) => `${where.join(", ")}  ${key.slice(0, 70)}`);

@@ -18082,6 +18082,9 @@ importers:
       eslint:
         specifier: ^10.10.0
         version: 10.10.0(jiti@2.7.0)(supports-color@9.4.0)
+      espree:
+        specifier: ^11.2.0
+        version: 11.2.0
       globals:
         specifier: ^17.12.0
         version: 17.12.0

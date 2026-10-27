@@ -27,6 +27,7 @@ import { sshUiAnnounceAgentConnections, sshUiSetSurfaceOpener } from "./store.js
 import { startAgentConnectionPoll } from "./agent-connection-poll.js";
 import { activateSidebarWhenAvailable } from "./sidebar-lifecycle.js";
 import { readHostLanguage, setLanguage } from "./locale.js";
+import { syncLanguageWithHost } from "./language-sync.js";
 import { installSettingsNavIcon } from "./nav-icon.js";
 import TYPERT_REMOTE from "../remote.js";
 
@@ -87,7 +88,7 @@ export async function apply(ctx) {
   // whatever DSH Settings → Language shows now and on every later change the
   // locale face reports, writing it back so the host half (agent-visible
   // messages) speaks the same language after the next restart.
-  own(syncLanguageWithHost(api, ctx));
+  own(syncLanguageWithHost(api, ctx.locale, readHostLanguage, setLanguage));
 
   // The Sidebar's service faces may be provided after this bundle is
   // evaluated; register through the delayed lifecycle instead of a one-time
@@ -327,55 +328,4 @@ function SshTabButtonHost({ press, isActive, title, activeTitle, ariaLabel, watc
   }, [watchActive]);
 
   return null;
-}
-
-
-/**
- * Resolve the stored language choice and keep follow mode tracking the host.
- * Returns a disposer for the optional live subscription.
- */
-function syncLanguageWithHost(api, ctx) {
-  let disposed = false;
-  let unsubscribe = null;
-  const applyFollow = async () => {
-    if (disposed) return;
-    let stored = null;
-    try {
-      // The stored settings decide whether the plugin follows the host at
-      // all: autoApplySystemLanguage=false pins the stored language (a
-      // third-party system locale such as "ru" would otherwise be coerced to
-      // "zh" and written back on every load). Read them first so the pin is
-      // respected even before the host locale is consulted.
-      stored = await api.languageGet();
-      if (disposed) return;
-    } catch {
-      // Older host without the languageGet RPC: treat as auto mode with no
-      // stored pin and fall through to the synchronous host-locale read.
-    }
-    if (stored?.autoApplySystemLanguage === false) {
-      if (stored.language !== null) setLanguage(stored.language);
-      return;
-    }
-    const host = readHostLanguage(ctx.locale);
-    if (host !== null) {
-      setLanguage(host);
-      // Write back so the host half (agent-visible messages) follows the
-      // same language immediately and after the next restart.
-      api.languageSave(host).catch(() => {});
-      return;
-    }
-    if (stored?.language !== null) setLanguage(stored.language);
-  };
-  void applyFollow();
-  // Best-effort live follow: the documented face exposes subscribe; older
-  // hosts simply re-resolve on the next plugin load.
-  try {
-    if (typeof ctx.locale?.subscribe === "function") {
-      unsubscribe = ctx.locale.subscribe(() => { void applyFollow(); });
-    }
-  } catch {}
-  return () => {
-    disposed = true;
-    try { unsubscribe?.(); } catch {}
-  };
 }

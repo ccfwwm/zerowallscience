@@ -9,6 +9,9 @@
  * `npm run i18n:extract` — it reports missing and orphaned entries.
  */
 export const en = {
+  "调整 SSH 终端宽度": "Resize the SSH terminal",
+  "拖动以调整 SSH 终端宽度": "Drag to resize the SSH terminal",
+  "隐藏 SSH 终端面板（不断开连接）": "Hide the SSH terminal panel (keep connections)",
   "\n[到达命中上限，已停止]": "\n[hit limit reached; stopped]",
   " · 含无法按 UTF-8 解码的字节（保存会按 UTF-8 重写）": " · contains bytes that do not decode as UTF-8 (saving rewrites it as UTF-8)",
   " · 留空沿用已保存配置": " · leave empty to keep the saved configuration",

@@ -79,7 +79,7 @@ async function health(f) {
       input += bytes
       if (input.includes('\n')) {
         const row = JSON.parse(input.split('\n')[0]); socket.end()
-        row.ok ? accept(row.result) : reject(new Error('Host health failed'))
+        row.ok ? accept(row.result) : reject(new Error('Host health failed: ' + String(row.error)))
       }
     })
   })
@@ -277,6 +277,8 @@ async function settingsAndAccount(page, f) {
 
 async function launch(f, action, { broken = false } = {}) {
   let application, page
+  const network = []
+  const launchId = randomUUID()
   try {
     application = await _electron.launch({ executablePath: executable, cwd: dirname(executable), args: ['--user-data-dir=' + f.browserData], env: f.env, timeout: 120000 })
     assert.equal(await application.evaluate(({ app }) => app.getVersion()), expectedVersion)
@@ -290,6 +292,12 @@ async function launch(f, action, { broken = false } = {}) {
       for (const window of BrowserWindow.getAllWindows()) isolate(window)
       app.on('browser-window-created', (_event, window) => isolate(window))
     })
+    const observe = candidate => {
+      candidate.on('request', request => { if (new URL(request.url()).pathname.startsWith('/api/')) network.push({ phase: 'request', path: new URL(request.url()).pathname, time: Date.now() }) })
+      candidate.on('response', response => { if (new URL(response.url()).pathname.startsWith('/api/')) network.push({ phase: 'response', path: new URL(response.url()).pathname, status: response.status(), time: Date.now() }) })
+    }
+    application.context().pages().forEach(observe)
+    application.context().on('page', observe)
     const deadline = Date.now() + 120000
     while (Date.now() < deadline) {
       page = application.context().pages().find(candidate => candidate.url().startsWith('http://127.0.0.1:'))
@@ -303,7 +311,14 @@ async function launch(f, action, { broken = false } = {}) {
     // This is the first RPC, with a fixed deadline and no retry. A screenshot
     // alone must not conceal an unusable Session backend.
     console.log(f.name + ':first-session-rpc')
-    const sessions = await rpc(page, 'session/list', { _request: {} })
+    const rpcStartedAt = Date.now()
+    const [status, sessions] = await Promise.all([
+      health(f).catch(error => ({ diagnosticError: error.message })),
+      rpc(page, 'session/list', { _request: {} }),
+    ])
+    await writeFile(join(output, f.name, `first-rpc-health-${launchId}.json`), JSON.stringify({ firstRpcMs: Date.now() - rpcStartedAt, host: status,
+      client: await page.evaluate(() => window.__dshSidebarModuleSystem__?.entries.state.getSnapshot()) }, null, 2))
+    assert(!status.diagnosticError, status.diagnosticError)
     assert(Array.isArray(sessions.items))
     console.log(f.name + ':session-rpc-ready')
     if (!broken) {
@@ -322,7 +337,10 @@ async function launch(f, action, { broken = false } = {}) {
       await writeFile(join(output, f.name, 'failure.txt'), (await page.locator('body').innerText().catch(() => '')).slice(0, 20000))
     }
     throw error
-  } finally { await stop(application) }
+  } finally {
+    await writeFile(join(output, f.name, `network-timing-${launchId}.json`), JSON.stringify(network, null, 2))
+    await stop(application)
+  }
 }
 
 if (mode !== 'verify') {

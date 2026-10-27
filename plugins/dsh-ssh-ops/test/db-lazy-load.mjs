@@ -56,7 +56,7 @@ const loaded = () => [...new Set(Object.keys(require.cache)
   // require.cache keys use backslashes on Windows — normalize before slicing
   // around the "node_modules/" separator or every lookup comes back empty.
   // (Inside this template literal \\\\ reaches the child as the /\\/ regex.)
-  .map((path) => path.replace(/\\\\/g, "/").split("node_modules/")[1]?.split("/")[0]).filter(Boolean))]
+  .map((path) => path.replace(/\\\\/g, "/").split("node_modules/").at(-1)?.split("/")[0]).filter(Boolean))]
   .filter((name) => DRIVERS.includes(name));
 
 function makeManager() {
