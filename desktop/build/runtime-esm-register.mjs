@@ -10,12 +10,11 @@ import { initialize, resolve } from './runtime-esm-loader.mjs'
 if (process.env.ZEROWALL_USER_DATA_DIR) {
   try {
     Module.enableCompileCache(join(process.env.ZEROWALL_USER_DATA_DIR, 'cache', 'host-compile'))
-    process.on('message', onWorkbenchReady)
-    function onWorkbenchReady(message) {
-      if (message?.type !== 'zerowall:desktop:workbench-ready') return
-      process.off('message', onWorkbenchReady)
-      setImmediate(() => Module.flushCompileCache())
-    }
+    // Node writes the cache during normal shutdown. flushCompileCache() is
+    // synchronous: flushing the complete packaged Host when the workbench
+    // becomes ready blocks all RPCs, including permissions and session/create.
+    // A forced shutdown may lose this optional cache; foreground requests must
+    // never wait for it to be persisted.
   } catch { /* Compile cache support is optional for non-desktop runtimes. */ }
 }
 
