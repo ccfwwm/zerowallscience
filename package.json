@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "8.4.12",
+  "version": "8.4.13",
   "description": "ZeroWall Science local-first scientific visualization and research workbench.",
   "private": true,
   "type": "module",

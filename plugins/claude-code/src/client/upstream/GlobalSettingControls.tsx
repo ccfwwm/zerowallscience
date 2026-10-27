@@ -268,3 +268,4 @@ export function GlobalSettingSelect({ setting, disabled, onChange, label, id, de
     </div>
   )
 }
+

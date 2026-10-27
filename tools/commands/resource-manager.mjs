@@ -734,8 +734,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         dsh: { ...(manifest.dsh ?? {}), profile: { ...(manifest.dsh?.profile ?? {}) } },
         zerowall: { ...(manifest.zerowall ?? {}), pluginArchitecture: 7, profileLayout: PROFILE_LAYOUT, offlineBuildId: document.buildId, offlineGeneration: sourceDigest },
       }
-      const removedCore = new Set(coreShadowIds)
-      next.dsh.profile.bundles = [...new Set([...(next.dsh.profile.bundles ?? []), ...(defaultPlugins ?? [])])].filter(id => enabled(id) && !removedCore.has(id))
+      // Retire the profile-local files/dependency declarations only. The same
+      // bundle ID must remain enabled so DSH loads its desktop-runtime copy.
+      next.dsh.profile.bundles = [...new Set([...(next.dsh.profile.bundles ?? []), ...(defaultPlugins ?? [])])].filter(enabled)
       if (replacingLegacyMedia) next.dsh.profile.bundles = next.dsh.profile.bundles.filter(id => id !== legacyMediaId)
       if (replacingLegacyMedia) for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) delete next[field]?.[legacyMediaId]
       for (const id of coreShadowIds) for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) delete next[field]?.[id]

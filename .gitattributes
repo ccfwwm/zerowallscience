@@ -34,3 +34,6 @@
 *.zip   binary
 *.gz    binary
 *.patch -whitespace
+
+# Preserve the source bytes shipped in the signed upstream adaptation archive.
+plugins/claude-code/src/client/upstream/GlobalSettingControls.tsx whitespace=-blank-at-eof

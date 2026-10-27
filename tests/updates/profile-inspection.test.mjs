@@ -5,6 +5,33 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { initializeProfile, inspectProfile } from '../../tools/commands/profile.mjs'
 
+test('restores lost runtime-core declarations in architecture-7 upgrades without restoring optional selections', async t => {
+  const home = await mkdtemp(join(tmpdir(), 'zws-core-declarations-'))
+  t.after(() => rm(home, { recursive: true, force: true }))
+  const ids = ['base', 'secrets', 'environment', 'desktop-compat', 'extension-center'].map(name => '@zerowallscience/plugin-' + name)
+  const optional = '@zerowallscience/plugin-images'
+  const directory = join(home, 'profiles/web'), file = join(directory, 'package.json')
+  await mkdir(directory, { recursive: true })
+  await mkdir(join(home, 'resources/plugins'), { recursive: true })
+  const selection = { disabled: [ids[3]], removed: [ids[4]], pinned: { [ids[1]]: '0.1.1', custom: '2.0.0' } }
+  await writeFile(join(home, 'resources/plugins/selection.json'), JSON.stringify(selection))
+  const original = { private: true, dependencies: { custom: '2.0.0', [ids[1]]: '0.1.1' }, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'custom'], patchReload: 'live' } }, zerowall: { pluginArchitecture: 7, model: 'selected-model', disabledPlugins: [] } }
+  await writeFile(file, JSON.stringify(original))
+  const patch = '- id: ui-theme\n  config:\n    preference: light\n'
+  await writeFile(join(directory, 'cordis.patch.yml'), patch)
+  await initializeProfile(home, [...ids, optional], ids.map(id => ({ id, core: true, managed: true })))
+  const result = JSON.parse(await readFile(file, 'utf8'))
+  assert.deepEqual(result.dsh.profile.bundles, [...original.dsh.profile.bundles, ...ids.slice(0, 3)])
+  assert.deepEqual(result.dependencies, original.dependencies)
+  assert.equal(result.zerowall.model, original.zerowall.model)
+  assert.equal(result.dsh.profile.patchReload, 'live')
+  assert.equal(await readFile(join(directory, 'cordis.patch.yml'), 'utf8'), patch)
+  assert.deepEqual(JSON.parse(await readFile(join(home, 'resources/plugins/selection.json'))), selection)
+  const before = await readFile(file, 'utf8')
+  await initializeProfile(home, [...ids, optional], ids.map(id => ({ id, core: true, managed: true })))
+  assert.equal(await readFile(file, 'utf8'), before)
+})
+
 test('modern profile initialization removes retired resolver policy without restoring user selections', async t => {
   const home = await mkdtemp(join(tmpdir(), 'zws-profile-resolvers-'))
   t.after(() => rm(home, { recursive: true, force: true }))

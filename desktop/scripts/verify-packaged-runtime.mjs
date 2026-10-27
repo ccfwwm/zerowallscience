@@ -1790,6 +1790,20 @@ async function verifyDesktopStartup() {
       // the overall desktop startup budget instead of treating a slow but
       // healthy plugin graph as a white-screen failure.
       await page.getByText('ZeroWall Science', { exact: true }).first().waitFor({ state: 'visible', timeout: 240_000 })
+      // Account panels also contain the product name. Require both actual
+      // shell marks and core footer actions so an unloaded base plugin cannot
+      // pass merely because another plugin paints that name.
+      for (const slot of ['sidebar.brand.mark', 'conversation.hero.brand.mark']) {
+        const mark = page.locator(`[data-slot="${slot}"] img[src*="zerowall-icon.png"]`)
+        await mark.waitFor({ state: 'visible', timeout: 10_000 })
+        if (!await mark.evaluate(image => image.complete && image.naturalWidth > 0)) throw new Error(`Product brand did not decode: ${slot}`)
+      }
+      const footer = page.locator('[data-sidebar-footer]')
+      await footer.getByRole('button', { name: '设置', exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
+      const update = footer.locator('button[data-update]')
+      await update.waitFor({ state: 'visible', timeout: 10_000 })
+      if (!/更新/u.test(await update.getAttribute('aria-label'))) throw new Error('Update action did not receive its Chinese dictionary')
+      if (/account\.[A-Za-z]|DSH 本地构建/u.test(await page.locator('body').innerText())) throw new Error('Core customization or Chinese dictionary did not activate')
     } catch (error) {
       const snapshot = (await page.locator('body').innerText().catch(() => '')).slice(0, 4_000)
       throw new Error(`Packaged desktop did not render the ZeroWall Science brand. body=${JSON.stringify(snapshot)} errors=${JSON.stringify(browserErrors.slice(-20))}\n${error.message}`)

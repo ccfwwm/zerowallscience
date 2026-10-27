@@ -404,6 +404,7 @@ for (const layout of [2, 3]) test(`desktop upgrade removes an undeclared older c
   await assert.rejects(lstat(join(active, '.zerowall/inactive-plugin-history')), { code: 'ENOENT' })
   assert.equal((await readdir(join(f.home, 'resources/history')).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))).length, 0)
   assert.equal(JSON.parse(await readFile(join(active, 'package.json'))).dependencies[id], undefined)
+  assert(JSON.parse(await readFile(join(active, 'package.json'))).dsh.profile.bundles.includes(id), 'Removing a core shadow must retain activation of the packaged runtime plugin')
   assert.equal((await f.manager.repairOffline(f.source)).repaired, false)
 })
 for (const layout of [2, 3]) test(`migration removes equal-version core shadows with nested links to a retired base in layout ${layout}`, async t => {
@@ -427,6 +428,8 @@ for (const layout of [2, 3]) test(`migration removes equal-version core shadows 
   const result = await manager.repairOffline(f.source)
   assert.equal(result.repaired, true)
   for (const id of [base, environment]) await assert.rejects(lstat(join(active, 'node_modules', id)), { code: 'ENOENT' })
+  const migrated = JSON.parse(await readFile(file))
+  for (const id of [base, environment]) assert(migrated.dsh.profile.bundles.includes(id), 'Runtime core declaration lost: ' + id)
   assert.equal(JSON.parse(await readFile(join(active, 'node_modules', defaults[2], 'package.json'))).version, '0.2.0')
   assert.equal((await manager.repairOffline(f.source)).repaired, false)
   await assert.rejects(lstat(join(f.home, 'profiles/zerowall')), { code: 'ENOENT' })

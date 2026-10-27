@@ -104,6 +104,15 @@ export async function initializeProfile(home, defaults, bundled = []) {
     const overlay = new Set(bundled.filter(item => item.managed === false && !item.core).map(item => item.id))
     bundles = bundles.filter(id => !overlay.has(id))
   }
+  // Runtime-core packages still need a profile bundle declaration: the
+  // desktop overlay no longer inserts these entries. Older shadow cleanup
+  // removed both the physical shadow and its declaration, leaving an
+  // architecture-7 profile without branding, dictionaries or domain services.
+  // Restore only core defaults, preserving explicit disables/removals, pins
+  // and the user's optional/third-party plugin selections.
+  bundles = [...new Set([...bundles, ...bundled
+    .filter(item => item.core && defaults.includes(item.id) && !removed.has(item.id) && !disabled.has(item.id))
+    .map(item => item.id)])]
   // Progressive Tools was retired in 8.2.1. This cleanup must also run for
   // architecture-7 profiles created by the offline carrier, otherwise an old
   // profile can continue loading the dispatch wrapper after an app upgrade.

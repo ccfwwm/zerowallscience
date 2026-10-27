@@ -59,12 +59,12 @@
 .codeNotice, .authLead { overflow-wrap: anywhere; }
 .secondary { min-height: 38px; padding: 0 13px; border: 1px solid var(--dsw-alias-border-l2, #cfd5d9); border-radius: 9px; color: inherit; background: transparent; cursor: pointer; font-weight: 600; }
 .content { min-height: 0; min-width: 0; container-type: inline-size; container-name: account; overflow: auto; padding: 22px; background: var(--dsw-alias-bg-layer-2); }
-.accountCard { padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 20px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 12px; background: var(--dsw-alias-bg-layer-2, #f7f8f9); }
+.accountCard { padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 12px; background: var(--dsw-alias-bg-layer-2, #f7f8f9); }
 .accountCard > div { display: grid; min-width: 0; gap: 3px; }
+.accountCard > .identity { flex: 1 1 200px; }
 .identity small { display: inline-flex; align-items: center; gap: 5px; color: #27845a; }
 .externalActions { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-.accountCard { grid-template-columns: minmax(0, 1fr) auto auto auto auto; }
-.accountCard > .externalActions { display: flex; }
+.accountCard > .externalActions { display: flex; flex: 1 1 100%; margin-left: 0; justify-content: flex-start; }
 .modelList { margin-top: 12px; padding: 12px; border: 1px solid var(--dsw-alias-border-l2, #dfe3e6); border-radius: 12px; min-width: 0; }
 .modelList summary { cursor: pointer; color: var(--dsw-alias-link, #315b7d); font-size: 13px; font-weight: 650; }
 .modelSearch { min-height: 38px; margin: 12px 0; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--dsw-alias-border-l2, #cfd5d9); border-radius: 9px; color: var(--dsw-alias-label-tertiary, #8a9299); background: var(--dsw-alias-bg-layer-1); }
