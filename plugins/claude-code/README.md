@@ -8,6 +8,8 @@ In ZeroWall Desktop, open Settings → Extension Center → Plugins and enable C
 
 Claude Code is installed only after the user chooses Install or Update. The plugin uses ZeroWall's bundled pnpm and the npmmirror registry to install the pinned `@anthropic-ai/claude-code` CLI into plugin-owned application data. The CLI runs by absolute path with its own config, home and package-store directories. The official Agent SDK is bundled in this independent plugin. It does not adopt, inspect or modify a user's existing Claude Code configuration.
 
+The managed CLI receives Anthropic's documented `DISABLE_AUTOUPDATER=1` and `DISABLE_UPDATES=1` flags. Its pinned files therefore stay inside the active runtime generation; install, update and rollback run through ZeroWall's plugin settings.
+
 The plugin is available only in the ZeroWall Desktop host. It does not provide a system-wide Claude installation or a PATH command.
 
 The settings page's runtime diagnostics show the absolute managed CLI path. Each turn captures its own executable path so a later runtime change cannot change that turn's diagnostic evidence.
@@ -19,6 +21,10 @@ Each new run reads the selected conversation's current model route. It supports 
 The Claude agent preset routes ordinary conversation turns through the independently managed Claude Code CLI. New conversations keep the DSH Standard preset unless Claude Code is selected. Each turn uses the provider, model, and explicit reasoning effort from DSH's final request, and resolves its credential again for that request. Standard conversations continue using the DSH model adapter.
 
 Each conversation binds a persistent native Claude session ID and resumes it across turns and Host restarts. Existing DSH history is imported on first use; subsequent turns send new input. Cancelled or failed turns retain their binding, and pending input UUIDs are checked against native transcripts before retrying. CLI uninstall retains configuration, bindings and history.
+
+All Claude execution stays inside the conversation flow through the Claude Agent SDK. The plugin does not create a terminal tab or expose PTY open/close lifecycle controls. Chat turns, slash commands, cancellation and Host tool approvals use the same persistent native session and SDK process ownership.
+
+Context capacity and the automatic compaction window offer presets and custom token counts. Capacity overrides apply to unrecognized gateway IDs; recognized Claude models keep their native capacity while compaction is enabled. Use the automatic compaction window (100k–1m, capped to model capacity) to compact earlier. The settings page preserves the requested value and explains when it cannot apply. External `FORCE_PROMPT_CACHING_5M` overrides both main and subagent TTLs. `DISABLE_COMPACT` and `DISABLE_AUTO_COMPACT` are removed so automatic compaction remains enabled.
 
 Claude Code runs in the current project using the configured permission selector and the conversation's sandbox policy. Claude plugin control supports default, dontAsk, acceptEdits, auto, plan and bypassPermissions; native control follows ZeroWall's current-session presets. Composer and settings labels follow the application language. Global defaults initialize new conversations, and running turns retain the permissions they started with. SDK authorization requests use Host approval dialogs. Host-bridged tools always pass through Host policy checks.
 
@@ -36,7 +42,7 @@ Statistics start with this plugin version. Ignorable `zerowall-claude/metrics` e
 
 ## Version and source
 
-- ZeroWall plugin: `0.2.7`
+- ZeroWall plugin: `0.2.14`
 - Agent SDK: `0.3.263`
 - Claude Code CLI: `2.1.309`
 - Upstream adapter reference: [`Norman-else/dsh-claude`](https://github.com/Norman-else/dsh-claude/tree/fe00e3af0b1ad03acc977b13b4d4ab805086f6da), tag `v0.1.65`, commit `fe00e3af0b1ad03acc977b13b4d4ab805086f6da`
@@ -54,4 +60,8 @@ The global setting listbox, text controls, chevron, card styles and prose theme 
 
 Output style, permission selection, permission defaults, renderer, prose mode and the concurrent process limit are connected to the managed Host. The native conditional display rules hide prose for the native renderer and hide the plugin permission default for the native permission selector. Renderer changes apply to the next turn; prose settings apply to the plugin transcript.
 
-The managed CLI currently exits after each turn and does not create worktrees. Worktree naming and idle-process reuse controls are shown disabled with their reasons. Upstream Claude subscription usage and Jira account services are not connected; the page states those limits without collecting credentials. The upstream plugin marketplace/update service is also not connected: ZeroWall's signed Extension Center owns plugin installation and updates, separately from the Claude CLI update controls. This reuses the applicable native settings components, rather than claiming the upstream settings services were all transplanted.
+Context capacity and automatic compaction windows accept custom integer token counts; clearing either input selects `auto`. The compaction window accepts 100000–1000000 tokens and is capped at the effective model capacity. The settings page reports requested and effective values, precedence, limits and activation timing. Automatic compaction remains enabled. Main-chat and subagent prompt-cache TTLs independently support `auto`, `5m` and `1h`; explicit external overrides are reported without displaying environment secrets.
+
+Chat input handles slash commands through the Claude Agent SDK, preserving the current route and native session. `/compact` and `/压缩` confirm success only after a new native `compact_boundary`; optional focus instructions are preserved. `/context`, `/上下文`, `/autocompact`, `/usage`, `/config`, `/clear` and `/help` report unavailable commands explicitly. These controls remain in chat and do not depend on a terminal tab.
+
+Unused worktree, idle-process reuse, subscription-usage and Jira cards are hidden. ZeroWall's signed Extension Center manages plugin updates; the runtime card separately manages CLI installation. Settings edited by the CLI are reread when the settings page refreshes. Context and environment changes take effect when a new CLI process starts.

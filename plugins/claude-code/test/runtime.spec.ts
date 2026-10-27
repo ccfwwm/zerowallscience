@@ -159,6 +159,72 @@ describe('Claude Code private runtime manager', () => {
     expect(calls).toHaveLength(3)
   })
 
+  it('atomically recovers the newest retained generation after both pointer generations lose their executable', async () => {
+    const dataDir = await makeDataDirectory()
+    const runtimeDir = join(dataDir, 'plugin-runtime')
+    const fixture = installFixture({ code: 0 }, { code: 0, stdout: `${CLAUDE_CODE_VERSION} (Claude Code)\n` }, true)
+    const manager = createClaudeRuntimeManager({
+      dataDir: runtimeDir,
+      platform: 'win32',
+      pnpm: { executable: resolve('bundled-node'), pnpmPath: resolve('bundled-pnpm.cjs') },
+      run: fixture.run,
+    })
+    const first = await manager.installOrUpdate()
+    const second = await manager.installOrUpdate()
+    const third = await manager.installOrUpdate()
+    const pointerPath = join(runtimeDir, 'current.json')
+    const before = JSON.parse(await readFile(pointerPath, 'utf8')) as { current: { id: string; executable: string }; previous: { id: string; executable: string } }
+    const probesBeforeRecovery = fixture.calls.filter(call => call.args.includes('--version')).length
+    await rm(third.executablePath!, { force: true })
+    await rm(join(runtimeDir, 'versions', before.previous.id, before.previous.executable), { force: true })
+
+    const recovered = await manager.status()
+
+    expect(recovered).toMatchObject({ installed: true, version: CLAUDE_CODE_VERSION, executablePath: first.executablePath })
+    const after = JSON.parse(await readFile(pointerPath, 'utf8')) as { current: { id: string }; previous: { id: string } | null }
+    expect(after.current.id).not.toBe(before.current.id)
+    expect(after.current.id).not.toBe(before.previous.id)
+    expect(after.previous).toBeNull()
+    expect(fixture.calls.filter(call => call.args.includes('--version'))).toHaveLength(probesBeforeRecovery + 1)
+    expect(second.executablePath).not.toBe(first.executablePath)
+  })
+
+  it('does not rewrite a broken runtime pointer while another installer owns the lock', async () => {
+    const dataDir = await makeDataDirectory()
+    const runtimeDir = join(dataDir, 'plugin-runtime')
+    const fixture = installFixture({ code: 0 }, { code: 0, stdout: `${CLAUDE_CODE_VERSION} (Claude Code)\n` }, true)
+    const manager = createClaudeRuntimeManager({
+      dataDir: runtimeDir,
+      platform: 'win32',
+      pnpm: { executable: resolve('bundled-node'), pnpmPath: resolve('bundled-pnpm.cjs') },
+      run: fixture.run,
+    })
+    const installed = await manager.installOrUpdate()
+    const pointerPath = join(runtimeDir, 'current.json')
+    const before = await readFile(pointerPath, 'utf8')
+    await rm(installed.executablePath!, { force: true })
+    await writeFile(join(runtimeDir, 'runtime.lock'), JSON.stringify({ schema: 1, pid: process.pid, nonce: randomUUID() }))
+
+    await expect(manager.status()).rejects.toThrow('Another Claude Code runtime operation is in progress.')
+    expect(await readFile(pointerPath, 'utf8')).toBe(before)
+  })
+
+  it('reports an actionable diagnosis when no retained generation passes the pinned version check', async () => {
+    const dataDir = await makeDataDirectory()
+    const runtimeDir = join(dataDir, 'plugin-runtime')
+    const fixture = installFixture({ code: 0 }, { code: 0, stdout: `${CLAUDE_CODE_VERSION} (Claude Code)\n` }, true)
+    const manager = createClaudeRuntimeManager({
+      dataDir: runtimeDir,
+      platform: 'win32',
+      pnpm: { executable: resolve('bundled-node'), pnpmPath: resolve('bundled-pnpm.cjs') },
+      run: fixture.run,
+    })
+    const installed = await manager.installOrUpdate()
+    await rm(installed.executablePath!, { force: true })
+
+    await expect(manager.status()).rejects.toThrow(/no retained managed generation passed the 2\.1\.309 health check.*Reinstall Claude Code/u)
+  })
+
   it.each([
     { code: 1, stdout: `${CLAUDE_CODE_VERSION} (Claude Code)` },
     { code: 0, stdout: '2.1.308 (Claude Code)' },
@@ -440,6 +506,11 @@ describe('Claude Code private runtime manager', () => {
       npm_config_userconfig: join(dataDir, 'user-npmrc'),
       XDG_CONFIG_HOME: join(dataDir, 'user-xdg-config'),
       CLAUDE_CODE_USE_BEDROCK: '1',
+      CLAUDE_CODE_DISABLE_1M_CONTEXT: '1',
+      ENABLE_PROMPT_CACHING_1H: '1',
+      FORCE_PROMPT_CACHING_5M: '1',
+      DISABLE_AUTOUPDATER: '0',
+      DISABLE_UPDATES: '0',
       PATH: 'preserved-for-cli-runtime',
     })
     expect(env.ANTHROPIC_API_KEY).toBe('turn-secret')
@@ -453,6 +524,11 @@ describe('Claude Code private runtime manager', () => {
     expect(env.NODE_OPTIONS).toBeUndefined()
     expect(env.npm_config_userconfig).toBeUndefined()
     expect(env.CLAUDE_CODE_USE_BEDROCK).toBeUndefined()
+    expect(env.CLAUDE_CODE_DISABLE_1M_CONTEXT).toBe('1')
+    expect(env.ENABLE_PROMPT_CACHING_1H).toBe('1')
+    expect(env.FORCE_PROMPT_CACHING_5M).toBe('1')
+    expect(env.DISABLE_AUTOUPDATER).toBe('1')
+    expect(env.DISABLE_UPDATES).toBe('1')
     expect(env.XDG_CONFIG_HOME).toBe(join(dataDir, 'isolated', 'xdg-config'))
     expect(env.XDG_DATA_HOME).toBe(join(dataDir, 'isolated', 'xdg-data'))
     expect(env.PATH).toBe('preserved-for-cli-runtime')
@@ -461,6 +537,14 @@ describe('Claude Code private runtime manager', () => {
     expect(withMcp.CLAUDE_CONFIG_DIR).toBe(join(dataDir, 'isolated', 'config'))
     const withConfigured = manager.getCliEnvironment({}, { PATH: 'safe-path' }, {}, { MY_BUILD_TOKEN: 'configured-secret' })
     expect(withConfigured.MY_BUILD_TOKEN).toBe('configured-secret')
+    const withControls = manager.getCliEnvironment({}, { CLAUDE_CODE_PROMPT_CACHE_TTL: '5m' }, {}, {
+      CLAUDE_CODE_PROMPT_CACHE_TTL: '1h', FORCE_PROMPT_CACHING_5M: '1', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '150000',
+    })
+    expect(withControls).toMatchObject({ CLAUDE_CODE_PROMPT_CACHE_TTL: '1h', FORCE_PROMPT_CACHING_5M: '1', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '150000' })
+    expect(manager.getCliEnvironment({}, {}, {}, { CLAUDE_CODE_EFFORT_LEVEL: 'high', TOOL_API_URL: 'https://tool.example' })).toMatchObject({ CLAUDE_CODE_EFFORT_LEVEL: 'high', TOOL_API_URL: 'https://tool.example' })
+    expect(() => manager.getCliEnvironment({}, {}, {}, { PATH: 'override' })).toThrow(/reserved/u)
+    expect(() => manager.getCliEnvironment({}, {}, {}, { DISABLE_AUTOUPDATER: '0' })).toThrow(/reserved/u)
+    expect(() => manager.getCliEnvironment({}, {}, { DISABLE_UPDATES: '0' })).toThrow(/reserved/u)
     expect(() => manager.getCliEnvironment({}, {}, { ANTHROPIC_API_KEY: 'override' })).toThrow(/reserved/u)
     expect(() => manager.getCliEnvironment({}, {}, {}, { ANTHROPIC_API_KEY: 'ambient-route' })).toThrow(/reserved/u)
     expect(() => manager.getCliEnvironment({}, {}, { HOME: join(dataDir, 'outside-home') })).toThrow(/reserved/u)

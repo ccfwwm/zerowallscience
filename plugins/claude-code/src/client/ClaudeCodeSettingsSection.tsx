@@ -1,18 +1,22 @@
 import React from 'react'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ClaudeCodeSettingsApi, ClaudeCodeStatus, ClaudeGlobalSetting, ClaudeGlobalSettingOption, ClaudeGlobalSettingsView, ClaudeNativeSettings } from '../shared/types.js'
+import type { ClaudeCodeSettingsApi, ClaudeCodeStatus, ClaudeEffectiveSetting, ClaudeGlobalSetting, ClaudeGlobalSettingOption, ClaudeGlobalSettingsView, ClaudeNativeSettings } from '../shared/types.js'
+import { CLAUDE_COMPACT_PRESETS, CLAUDE_CONTEXT_PRESETS } from '../shared/types.js'
 import { CLAUDE_NS } from './locales.js'
 import css from './ClaudeCodeSettingsSection.module.css'
-import { GlobalSettingSelect, GlobalSettingText } from './upstream/GlobalSettingControls.js'
+import { GlobalSettingNumber, GlobalSettingSelect, GlobalSettingText } from './upstream/GlobalSettingControls.js'
 import * as upstreamStyles from './upstream/settings-styles.js'
 
 export type ClaudeCodeSettingsSectionProps = PropsRuntime<'settings.section'> & PropsLocale<typeof CLAUDE_NS> & InjectFace<ClaudeCodeSettingsApi>
 
-const GLOBAL_SETTING_KEYS = ['outputStyle', 'permissionSelector', 'permissionMode', 'renderer', 'prose', 'worktreeBranchPrefix', 'maxProcesses', 'idleTimeoutMinutes'] as const
+const GLOBAL_SETTING_KEYS = ['outputStyle', 'permissionSelector', 'permissionMode', 'renderer', 'prose', 'maxProcesses', 'contextWindow', 'autoCompactWindow', 'promptCacheTtl', 'subagentPromptCacheTtl'] as const
 const EFFECTS = ['immediate', 'new-session', 'next-turn', 'next-worktree', 'restart'] as const
 const SOURCES = ['built-in', 'user', 'configured'] as const
 const EFFECT_LABELS: Record<typeof EFFECTS[number], string> = {
   immediate: 'effect_immediate', 'new-session': 'effect_newSession', 'next-turn': 'effect_nextTurn', 'next-worktree': 'effect_nextWorktree', restart: 'effect_restart',
+}
+const SOURCE_LABELS: Record<ClaudeEffectiveSetting['source'], string> = {
+  auto: 'source_auto', explicit: 'source_explicit', external: 'source_external', clamped: 'source_clamped', unsupported: 'source_unsupported',
 }
 
 export function isGlobalSettingsView(value: unknown): value is ClaudeGlobalSettingsView {
@@ -25,6 +29,11 @@ export function isGlobalSettingsView(value: unknown): value is ClaudeGlobalSetti
       || item.available !== undefined && typeof item.available !== 'boolean'
       || item.unavailableReason !== undefined && typeof item.unavailableReason !== 'string') return false
     if (item.kind === 'text') return typeof item.maxLength === 'number' && Number.isInteger(item.maxLength) && item.maxLength > 0
+    if (item.kind === 'number') return typeof item.min === 'number' && Number.isSafeInteger(item.min) && typeof item.max === 'number' && Number.isSafeInteger(item.max)
+      && item.min > 0 && item.max >= item.min && typeof item.step === 'number' && Number.isSafeInteger(item.step) && item.step > 0
+      && (item.presets === undefined || Array.isArray(item.presets) && item.presets.every(preset => typeof preset === 'object' && preset !== null
+        && typeof preset.label === 'string' && typeof preset.value === 'string' && (preset.value === 'auto'
+          || Number.isSafeInteger(Number(preset.value)) && Number(preset.value) >= (item.min as number) && Number(preset.value) <= (item.max as number))))
     return item.kind === 'select' && Array.isArray(item.options) && item.options.every(option => {
       if (typeof option !== 'object' || option === null || Array.isArray(option)) return false
       const row = option as Record<string, unknown>
@@ -45,20 +54,25 @@ function legacySettings(settings: ClaudeNativeSettings): ClaudeGlobalSettingsVie
     key, kind: 'select', value, effect, options: values.map(option => ({ value: option, label: option, source: 'built-in' })),
   })
   const text = (key: string, value: string, maxLength: number, effect: ClaudeGlobalSetting['effect']): ClaudeGlobalSetting => ({ key, kind: 'text', value, maxLength, effect })
+  const number = (key: string, value: string, min: number, max: number, effect: ClaudeGlobalSetting['effect']): ClaudeGlobalSetting => ({ key, kind: 'number', value, min, max, step: 1, effect })
   return { settings: [
     select('outputStyle', settings.outputStyle ?? 'Default', ['Default', 'Proactive', 'Concise', 'Explanatory', 'Learning'], 'new-session'),
     select('permissionSelector', settings.permissionSelector ?? 'plugin', ['plugin', 'native'], 'immediate'),
     select('permissionMode', settings.permissionMode ?? 'acceptEdits', ['plan', 'default', 'acceptEdits', 'dontAsk', 'auto', 'bypassPermissions'], 'new-session'),
     select('renderer', settings.renderer ?? 'plugin', ['plugin', 'native'], 'next-turn'),
     select('prose', settings.prose ?? 'plain', ['plain', 'enhanced'], 'immediate'),
-    { ...text('worktreeBranchPrefix', settings.worktreeBranchPrefix ?? 'claude', 128, 'next-worktree'), available: false, unavailableReason: 'worktreeUnavailable' },
     text('maxProcesses', String(settings.maxProcesses ?? 4), 2, 'immediate'),
-    { ...text('idleTimeoutMinutes', String(settings.idleTimeoutMinutes ?? 30), 4, 'new-session'), available: false, unavailableReason: 'idleReuseUnavailable' },
+    { ...number('contextWindow', String(settings.contextWindow ?? 'auto'), 1, 10_000_000, 'new-session'), presets: CLAUDE_CONTEXT_PRESETS },
+    { ...number('autoCompactWindow', String(settings.autoCompactWindow ?? 'auto'), 100_000, 1_000_000, 'new-session'), presets: CLAUDE_COMPACT_PRESETS },
+    select('promptCacheTtl', settings.promptCacheTtl ?? 'auto', ['auto', '5m', '1h'], 'new-session'),
+    select('subagentPromptCacheTtl', settings.subagentPromptCacheTtl ?? 'auto', ['auto', '5m', '1h'], 'new-session'),
   ] }
 }
 
 function settingPatch(key: string, value: string): Partial<ClaudeNativeSettings> {
-  if (key === 'maxProcesses' || key === 'idleTimeoutMinutes') return { [key]: Number(value) }
+  if (key === 'maxProcesses' || key === 'contextWindow' || key === 'autoCompactWindow') {
+    return { [key]: value === 'auto' || value === '200k' || value === '1m' ? value : Number(value) }
+  }
   return { [key]: value } as Partial<ClaudeNativeSettings>
 }
 
@@ -137,6 +151,7 @@ export function ClaudeCodeSettingsSection(props: ClaudeCodeSettingsSectionProps)
         <span>{t('runtimeVersion')}</span><code>{status?.version ?? t('unknown')}</code>
         <span>{t('path')}</span><code>{status?.executablePath ?? t('pathUnavailable')}</code>
       </div>
+      {status?.diagnostic && <p className={css.error} role="alert">{status.diagnostic}</p>}
       <div className={css.actions}>
         <button type="button" disabled={busy} onClick={() => void run(() => props.status())}>{t('refreshDiagnostics')}</button>
         <button className={installed ? '' : css.primary} type="button" disabled={busy || status === undefined || status.desktop === false || status.running} onClick={() => void run(() => props.install())}>{installed ? t('update') : t('install')}</button>
@@ -158,16 +173,15 @@ export function ClaudeCodeSettingsSection(props: ClaudeCodeSettingsSectionProps)
           <div className={css.settingCopy}>
             <label htmlFor={id}>{label}</label>
             <p id={`${id}-hint`}>{setting.available === false ? t(setting.unavailableReason ?? 'unavailable') : hint === `settingHint_${setting.key}` ? t('settingEffect', { effect: effectLabel }) : `${hint} · ${effectLabel}`}</p>
+            {setting.effective && <small>{t('effectiveSetting', { requested: setting.effective.requested, effective: setting.effective.effective, source: t(SOURCE_LABELS[setting.effective.source]) })}{setting.effective.reason ? ` · ${setting.effective.reason}` : ''}</small>}
           </div>
           {setting.kind === 'select' ? <GlobalSettingSelect id={id} describedBy={`${id}-hint`} setting={setting} label={label} disabled={disabled} labelFor={option => labelForOption(setting.key, option)} onChange={value => void saveSetting(setting.key, value)} />
-            : <GlobalSettingText id={id} describedBy={`${id}-hint`} setting={setting} label={label} disabled={disabled} onChange={value => void saveSetting(setting.key, value)} />}
+            : setting.kind === 'number' ? <GlobalSettingNumber id={id} describedBy={`${id}-hint`} setting={setting} label={label} disabled={disabled} invalidMessage={t('numericInputInvalid')} presetLabel={t('numericPresets')} customLabel={t('numericCustom')} onChange={value => void saveSetting(setting.key, value)} />
+              : <GlobalSettingText id={id} describedBy={`${id}-hint`} setting={setting} label={label} disabled={disabled} onChange={value => void saveSetting(setting.key, value)} />}
         </div>
       })}
       {settingsError && <p className={css.error} role="alert">{settingsError}</p>}
     </article>
-    <article style={upstreamStyles.settingsCard}><h3 style={upstreamStyles.settingsSectionHeading}>{t('planUsage')}</h3><p className={css.note}>{t('planUsageUnavailable')}</p></article>
-    <article style={upstreamStyles.settingsCard}><h3 style={upstreamStyles.settingsSectionHeading}>Jira</h3><p className={css.note}>{t('jiraUnavailable')}</p></article>
-    <article style={upstreamStyles.settingsCard}><h3 style={upstreamStyles.settingsSectionHeading}>{t('pluginUpdates')}</h3><p className={css.note}>{t('pluginUpdatesManaged')}</p></article>
     {error && <p className={css.error} role="alert">{error}</p>}
   </section>
 }

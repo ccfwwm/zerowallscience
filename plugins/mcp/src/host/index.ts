@@ -1238,17 +1238,15 @@ export class ZeroWallMcpService extends TypertRemoteService {
         if (server.serverName === 'zerowall_filesystem') projects.deleteMcpServer(server.id)
       }
     }
-    if (markerVersion < 4) {
-      // Older builds persisted the managed RMCP record with an HTTP/IP URL.
-      // Match the reserved record and credential reference instead of keeping
-      // the retired address in source or rewriting arbitrary user servers.
-      for (const server of projects.listMcpServers()) {
-        if (server.serverName === RDATALINUX_SERVER_NAME
-          && server.transport === 'streamable-http'
-          && server.headerRefs?.Authorization === RDATALINUX_R_MCP_AUTHORIZATION_ENV
-          && server.url !== RDATALINUX_R_MCP_URL) {
-          projects.updateMcpServer(server.id, { url: RDATALINUX_R_MCP_URL })
-        }
+    // RMCP is product-owned. Normalize its endpoint on every boot so an
+    // existing profile that already passed the old migration marker cannot
+    // continue calling the retired IP address. User-created MCP records keep
+    // their chosen endpoints because only the reserved rmcp name is managed.
+    for (const server of projects.listMcpServers()) {
+      if (server.serverName === RDATALINUX_SERVER_NAME
+        && server.transport === 'streamable-http'
+        && server.url !== RDATALINUX_R_MCP_URL) {
+        projects.updateMcpServer(server.id, { url: RDATALINUX_R_MCP_URL })
       }
     }
     if (deferDefaultConnections && markerVersion < 6 && process.env.ZEROWALL_REENABLE_DEFAULT_MCP_MIGRATION === '1') {

@@ -8,7 +8,7 @@ export const CLAUDE_CODE_PACKAGE = '@anthropic-ai/claude-code'
 export const CLAUDE_CODE_VERSION = '2.1.309'
 export const CLAUDE_CODE_REGISTRY = 'https://registry.npmmirror.com'
 
-type FsPromises = Pick<typeof nodeFs, 'mkdir' | 'writeFile' | 'readFile' | 'rename' | 'rm' | 'lstat' | 'open' | 'chmod' | 'realpath' | 'link'>
+type FsPromises = Pick<typeof nodeFs, 'mkdir' | 'writeFile' | 'readFile' | 'rename' | 'rm' | 'lstat' | 'open' | 'chmod' | 'realpath' | 'link' | 'readdir'>
 
 export type ProcessRunOptions = {
   cwd: string
@@ -96,19 +96,29 @@ function sameLockIdentity(left: Stats, right: Stats): boolean {
 // Forward only process plumbing needed by the CLI and its child tools. In
 // particular, do not forward arbitrary Host credentials, NODE_OPTIONS, DSH_*
 // facts, or user package-manager settings into pnpm lifecycle scripts/Claude.
+const CLAUDE_CONTROL_ENV = new Set([
+  'CLAUDE_CODE_MAX_CONTEXT_TOKENS', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_DISABLE_1M_CONTEXT',
+  'CLAUDE_CODE_PROMPT_CACHE_TTL', 'CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL',
+  'ENABLE_PROMPT_CACHING_1H', 'FORCE_PROMPT_CACHING_5M',
+])
 const SAFE_INHERITED_ENV = new Set([
   'PATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'TEMP', 'TMP', 'TMPDIR',
   'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TERM_PROGRAM', 'COLORTERM',
-  'NO_COLOR', 'FORCE_COLOR', 'CI',
+  'NO_COLOR', 'FORCE_COLOR', 'CI', ...CLAUDE_CONTROL_ENV,
 ])
 const ANTHROPIC_TURN_ENV = new Set([
   'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_MODEL',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL',
 ])
 const RESERVED_EPHEMERAL_ENV = /^(?:ANTHROPIC_|CLAUDE_|DSH_|NPM_CONFIG_|PNPM_|XDG_)/iu
+// User-managed environment variables are part of the Claude session contract.
+// Keep routing, package-manager, DSH and profile-path namespaces Host-owned,
+// while allowing documented CLAUDE_CODE_* controls and ordinary tool vars.
+const RESERVED_CONFIGURED_ENV = /^(?:ANTHROPIC_|DSH_|NPM_CONFIG_|PNPM_|XDG_)/iu
 const RESERVED_EPHEMERAL_NAMES = new Set([
   'PATH', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'SYSTEMROOT', 'WINDIR', 'COMSPEC',
   'NODE_OPTIONS', 'NODE_PATH', 'ELECTRON_RUN_AS_NODE', 'TEMP', 'TMP', 'TMPDIR',
+  'DISABLE_AUTOUPDATER', 'DISABLE_UPDATES',
 ])
 
 function normalizedEnvKey(key: string, platform: NodeJS.Platform): string {
@@ -169,12 +179,13 @@ export class ClaudeRuntimeManager {
     const versionsRoot = join(this.dataDir, 'versions')
     await this.#verifyRealPathInside(this.dataDir, versionsRoot, 'Claude Code versions directory', 'directory', true)
     const activePath = this.#generationPath(state.current.id)
+    if (!await this.#exists(activePath)) return this.#recoverMissingGeneration()
     await this.#verifyRealPathInside(versionsRoot, activePath, 'Active Claude Code generation', 'directory', true)
     const executablePath = resolve(activePath, state.current.executable)
     if (!isInside(activePath, executablePath) || !isAbsolute(executablePath)) {
       throw new Error('Claude Code runtime state contains an invalid executable path.')
     }
-    if (!await this.#exists(executablePath)) throw new Error('Claude Code runtime state points to a missing executable.')
+    if (!await this.#exists(executablePath)) return this.#recoverMissingGeneration()
     await this.#verifyRealPathInside(activePath, executablePath, 'Claude Code runtime executable', 'file', true)
     return {
       installed: true,
@@ -301,6 +312,76 @@ export class ClaudeRuntimeManager {
     })
   }
 
+  /** Restore a retained, verified generation without downloading or reinstalling it. */
+  async #recoverMissingGeneration(): Promise<ClaudeRuntimeStatus> {
+    return this.#withMutation(async () => {
+      const state = await this.#readState()
+      if (!state) return { installed: false }
+
+      // Another process may have repaired the pointer while this caller was
+      // waiting for the runtime lock. In that case, leave its activation alone.
+      const activePath = this.#generationPath(state.current.id)
+      if (await this.#exists(activePath)) {
+        const activeExecutable = resolve(activePath, state.current.executable)
+        if (isInside(activePath, activeExecutable) && await this.#exists(activeExecutable)) return this.status()
+      }
+
+      const versionsRoot = join(this.dataDir, 'versions')
+      await this.#verifyRealPathInside(this.dataDir, this.dataDir, 'Claude Code runtime root', 'directory', true)
+      await this.#verifyRealPathInside(this.dataDir, versionsRoot, 'Claude Code versions directory', 'directory', true)
+      const generations = await this.#fs.readdir(versionsRoot, { withFileTypes: true })
+      const byModifiedTime = await Promise.all(generations
+        .filter(entry => entry.isDirectory() && safeId.test(entry.name))
+        .map(async entry => ({ id: entry.name, modified: (await this.#fs.lstat(this.#generationPath(entry.name))).mtimeMs })))
+      byModifiedTime.sort((left, right) => right.modified - left.modified)
+
+      const ids = new Set<string>([state.current.id])
+      if (state.previous) ids.add(state.previous.id)
+      for (const generation of byModifiedTime) ids.add(generation.id)
+
+      const healthy: RuntimeState['current'][] = []
+      for (const id of ids) {
+        const generationRoot = this.#generationPath(id)
+        try {
+          await this.#verifyRealPathInside(versionsRoot, generationRoot, 'Retained Claude Code generation', 'directory', true)
+          const packageRoot = join(generationRoot, 'node_modules', '@anthropic-ai', 'claude-code')
+          await this.#verifyRealPathInside(generationRoot, packageRoot, 'Retained Claude Code package', 'directory')
+          const packageJson = JSON.parse(String(await this.#fs.readFile(join(packageRoot, 'package.json'), 'utf8'))) as {
+            name?: string
+            version?: string
+            bin?: string | Record<string, string>
+          }
+          if (packageJson.name !== CLAUDE_CODE_PACKAGE || packageJson.version !== CLAUDE_CODE_VERSION) continue
+
+          const executablePath = resolve(packageRoot, this.#resolveCliRelative(packageJson))
+          if (!isInside(packageRoot, executablePath) || !await this.#exists(executablePath)) continue
+          const packageReal = await this.#fs.realpath(packageRoot)
+          await this.#verifyRealPathInside(packageReal, executablePath, 'Retained Claude Code executable', 'file', true)
+          const javascriptCli = /\.[cm]?js$/iu.test(executablePath)
+          const probe = await this.#run(javascriptCli ? this.#pnpm.executable : executablePath,
+            javascriptCli ? [executablePath, '--version'] : ['--version'], {
+              cwd: generationRoot,
+              env: this.getCliEnvironment(),
+              windowsHide: true,
+            })
+          if (probe.code !== 0 || probe.stdout?.trim() !== `${CLAUDE_CODE_VERSION} (Claude Code)`) continue
+          healthy.push({ id, version: CLAUDE_CODE_VERSION, executable: relative(generationRoot, executablePath) })
+          if (healthy.length === 2) break
+        } catch {
+          // Never activate a stale or malformed generation. Continue to the
+          // next retained directory and report one actionable error if no
+          // candidate passes the package and executable health checks.
+        }
+      }
+
+      if (!healthy.length) {
+        throw new Error(`Claude Code's active executable is missing, and no retained managed generation passed the ${CLAUDE_CODE_VERSION} health check. Reinstall Claude Code from plugin settings.`)
+      }
+      await this.#writeState({ schema: 1, current: healthy[0]!, previous: healthy[1] ?? null })
+      return this.status()
+    })
+  }
+
   /** Remove managed executables only. Configuration and native transcripts survive reinstall. */
   async uninstall(): Promise<void> {
     return this.#withMutation(async () => {
@@ -332,16 +413,16 @@ export class ClaudeRuntimeManager {
     for (const [key, value] of Object.entries(configuredEnvironment)) {
       const normalized = normalizedEnvKey(key, this.#platform)
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(key)
-        || RESERVED_EPHEMERAL_ENV.test(key)
+        || RESERVED_CONFIGURED_ENV.test(key)
         || RESERVED_EPHEMERAL_NAMES.has(normalized)
-        || SAFE_INHERITED_ENV.has(normalized)
+        || SAFE_INHERITED_ENV.has(normalized) && !CLAUDE_CONTROL_ENV.has(normalized)
         || configuredKeys.has(normalized)
         || typeof value !== 'string'
         || value.includes('\0')) {
         throw new Error('Claude Code configured environment contains a reserved or invalid variable.')
       }
       configuredKeys.add(normalized)
-      env[key] = value
+      env[CLAUDE_CONTROL_ENV.has(normalized) ? normalized : key] = value
     }
     for (const [key, value] of Object.entries(turnEnvironment)) {
       if (!ANTHROPIC_TURN_ENV.has(normalizedEnvKey(key, this.#platform))) {
@@ -368,6 +449,12 @@ export class ClaudeRuntimeManager {
       seenMcpKeys.add(normalized)
       env[key] = value
     }
+    // This plugin distributes an exact pinned CLI build and switches builds
+    // through the managed runtime pointer. Upstream self-updates can rename or
+    // replace the executable inside an immutable generation, so all updates
+    // must go through ZeroWall's install/rollback transaction.
+    env.DISABLE_AUTOUPDATER = '1'
+    env.DISABLE_UPDATES = '1'
     // These paths deliberately override inherited values, preventing Claude
     // from reading/writing the user's ~/.claude or platform user profile.
     env.CLAUDE_CONFIG_DIR = this.configDir

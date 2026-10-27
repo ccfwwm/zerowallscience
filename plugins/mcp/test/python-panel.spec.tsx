@@ -16,6 +16,7 @@ function fixture(inventory: any = ready, initialTask?: any) {
     if (input.action === 'configure') return { revision: input.mirrorUrl ? 8 : 7, mirrorUrl: input.mirrorUrl ?? 'https://mirrors.ustc.edu.cn/pypi/simple' }
     if (input.action === 'open_shell') return { opened: true }
     if (input.action === 'cancel') { task = { ...task, state: 'cancelled', message: '任务已取消' }; return { task } }
+    if (input.action === 'search_package') return { packageCatalog: { name: input.packageName, summary: '', latestVersion: '25.4.0', versions: ['25.4.0', '25.3.0'] } }
     if (input.action === 'sync' || input.action === 'install_package') {
       task = { taskId: 'new', requestId: input.requestId, action: input.action, layer: input.layer, state: 'queued', stage: 'queued', message: '正在准备 Python 依赖任务。', completedPackages: 0, logLines: [] }
       return { task }
@@ -87,7 +88,9 @@ it('keeps failed packages retryable, preserves the mirror revision and saves an 
   fireEvent.click(screen.getByRole('button', { name: '保存' }))
   await waitFor(() => expect(request).toHaveBeenCalledWith(expect.objectContaining({ action: 'configure', mirrorUrl: 'https://pypi.org/simple', expectedRevision: 7 })))
   fireEvent.change(screen.getByLabelText('包名'), { target: { value: 'attrs==25.4.0' } })
-  fireEvent.click(screen.getByRole('button', { name: '安装' }))
+  fireEvent.click(screen.getByRole('button', { name: '搜索版本' }))
+  await screen.findByRole('button', { name: '安装所选版本' })
+  fireEvent.click(screen.getByRole('button', { name: '安装所选版本' }))
   await waitFor(() => expect(request).toHaveBeenCalledWith(expect.objectContaining({ action: 'install_package', packageSpec: 'attrs==25.4.0', confirm: true })))
 })
 it('renders English controls and installed versions without Chinese copy', async () => {

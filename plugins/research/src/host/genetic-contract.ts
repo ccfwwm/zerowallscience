@@ -5,16 +5,18 @@ export const GENETIC_CONTRACT_VERSION = '7.0.0-genetic-contract.2'
 export function validateGeneticContract(input: JsonObject): JsonObject {
   const findings: JsonObject[] = []; const missing: string[] = []; const errors: string[] = []
   const add = (code: string, message: string): void => { findings.push({ code, message }) }
+  const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
   const text = (value: unknown): string => typeof value === 'string' ? value.trim().toLowerCase() : ''
   const number = (value: unknown): number | undefined => typeof value === 'number' && Number.isFinite(value) ? value : undefined
   const method = text(input.method)
   if (!['mr', 'ivw', 'wald-ratio', 'mr-egger', 'coloc', 'susie-coloc', 'mvmr', 'two-step-mr'].includes(method)) missing.push('method')
-  for (const field of ['exposureDefinition', 'outcomeDefinition', 'ancestry', 'genomeBuild', 'effectUnit']) if (!text(input[field])) missing.push(field)
+  const traitFields = method === 'mvmr' ? ['outcomeDefinition', 'ancestry', 'genomeBuild'] : ['exposureDefinition', 'outcomeDefinition', 'ancestry', 'genomeBuild', 'effectUnit']
+  for (const field of traitFields) if (!text(input[field])) missing.push(field)
   if (input.sampleOverlapChecked !== true) missing.push('sampleOverlapChecked')
   if (input.harmonized !== true) missing.push('harmonized')
   const instruments = number(input.instrumentCount)
   const notApplicable = new Set<string>()
-  if (['mr', 'ivw', 'wald-ratio', 'mr-egger', 'mvmr', 'two-step-mr'].includes(method)) {
+  if (['mr', 'ivw', 'wald-ratio', 'mr-egger', 'two-step-mr'].includes(method)) {
     if (instruments === undefined) missing.push('instrumentCount')
     else if (!Number.isInteger(instruments) || instruments < 1) errors.push('instrumentCount must be a positive integer.')
     if (method === 'wald-ratio' && instruments !== undefined && instruments !== 1) { add('wald-ratio-tool-count', 'Wald ratio 只适用于单个有效工具；多工具需按冻结方案选择合并方法。'); notApplicable.add('wald-ratio-tool-count') }
@@ -30,9 +32,25 @@ export function validateGeneticContract(input: JsonObject): JsonObject {
     if (method === 'susie-coloc' && input.matchedLd !== true) missing.push('matchedLd')
   }
   if (method === 'mvmr') {
+    const exposureCount = number(input.exposureCount)
+    if (exposureCount === undefined) missing.push('exposureCount')
+    else if (!Number.isInteger(exposureCount) || exposureCount < 2) errors.push('MVMR requires at least two exposures.')
+    const definitions = Array.isArray(input.exposureDefinitions) ? input.exposureDefinitions : undefined
+    if (!definitions || (exposureCount !== undefined && definitions.length !== exposureCount)) missing.push('exposureDefinitions')
+    else {
+      const ids = definitions.map(value => text(object(value).id))
+      if (ids.some(id => !id) || new Set(ids).size !== ids.length) errors.push('MVMR exposure definitions require unique stable IDs.')
+      if (definitions.some(value => !text(object(value).trait) || !text(object(value).unit) || !text(object(value).source))) missing.push('exposureDefinitions')
+    }
+    if (instruments === undefined) missing.push('instrumentCount')
+    else if (!Number.isInteger(instruments) || instruments < 1) errors.push('instrumentCount must be a positive integer.')
+    else if (exposureCount !== undefined && instruments <= exposureCount) {
+      add('mvmr-insufficient-instruments', 'MVMR requires more eligible independent variants than exposures.')
+      notApplicable.add('mvmr-insufficient-instruments')
+    }
     const conditionalF = number(input.conditionalFStatistic)
-    if (conditionalF === undefined) missing.push('conditionalFStatistic')
-    else if (conditionalF <= 0) errors.push('conditionalFStatistic must be positive.')
+    if (input.conditionalFStatistic !== undefined && conditionalF === undefined) missing.push('conditionalFStatistic')
+    else if (conditionalF !== undefined && conditionalF <= 0) errors.push('conditionalFStatistic must be positive.')
   }
   if (method === 'two-step-mr' && !text(input.mediationEstimand)) missing.push('mediationEstimand')
   if (input.sampleOverlap === 'unknown') add('sample-overlap-unknown', '样本重叠未知时只能登记限制，不能把 MR 结果写成无偏因果证据。')

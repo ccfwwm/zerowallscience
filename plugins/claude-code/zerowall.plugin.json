@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-claude-code",
-  "version": "0.2.7",
+  "version": "0.2.14",
   "applicationVersion": "8.4.9",
   "restartRequired": true,
   "desktop": {

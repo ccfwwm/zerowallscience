@@ -1,6 +1,17 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 
 export const TOOLUNIVERSE_TRUSTED_URL = 'https://rmcp.chengxunkeji.cn/r-platform/mcp'
+const TOOLUNIVERSE_LEGACY_URLS = new Set([
+  'http://103.217.185.141:8099/r-platform/mcp',
+])
+
+export function normalizeToolUniverseUrl(value: string | undefined): string | undefined {
+  if (typeof value !== 'string' || value.trim() === '') return undefined
+  const raw = value.trim().replace(/\/+$/u, '')
+  if (raw === TOOLUNIVERSE_TRUSTED_URL || raw === TOOLUNIVERSE_TRUSTED_URL.replace(/\/+$/u, '')) return TOOLUNIVERSE_TRUSTED_URL
+  if (TOOLUNIVERSE_LEGACY_URLS.has(raw)) return TOOLUNIVERSE_TRUSTED_URL
+  return undefined
+}
 const forbidden = /api[_-]?key|password|secret|credential|authorization|access[_-]?token|^token$/iu
 export function rejectToolUniverseSecretArguments(value: unknown): void {
   if (Array.isArray(value)) { for (const item of value) rejectToolUniverseSecretArguments(item); return }
@@ -12,10 +23,10 @@ export function rejectToolUniverseSecretArguments(value: unknown): void {
 }
 type Connection = { serverName: string; url?: string; transport: string; enabled: boolean; envRefs: Record<string, string> }
 export async function resolveToolUniverseCredentials(record: Connection, resolve: (ref: string) => Promise<string | undefined>): Promise<Record<string, string>> {
-  if (record.serverName !== 'rmcp' || record.transport !== 'streamable-http' || record.url !== TOOLUNIVERSE_TRUSTED_URL || !record.enabled) throw new Error('UNTRUSTED_TOOLUNIVERSE_ENDPOINT')
+  if (record.serverName !== 'rmcp' || record.transport !== 'streamable-http' || normalizeToolUniverseUrl(record.url) === undefined || !record.enabled) throw new Error('UNTRUSTED_TOOLUNIVERSE_ENDPOINT')
   const credentials: Record<string, string> = {}
   for (const [name, ref] of Object.entries(record.envRefs)) {
-    if (!/^[A-Z][A-Z0-9_]{0,99}(KEY|TOKEN|PASSWORD|SECRET)$/u.test(name) || /^(R_PLATFORM_|TOOLUNIVERSE_|BIOMNI_|OMICVERSE_)/u.test(name)) continue
+    if (!/^[A-Z][A-Z0-9_]{0,99}(KEY|TOKEN|PASSWORD|SECRET|EMAIL|USERNAME|CLIENT_ID|CLIENT_SECRET|USER)$/u.test(name) || /^(R_PLATFORM_|TOOLUNIVERSE_|BIOMNI_|OMICVERSE_)/u.test(name)) continue
     const value = await resolve(ref)
     if (typeof value !== 'string' || !value.length || value.length > 8192) throw new Error(`MISSING_TOOLUNIVERSE_CREDENTIAL: ${name}`)
     credentials[name] = value
@@ -27,10 +38,11 @@ export async function resolveToolUniverseCredentials(record: Connection, resolve
 // This short-lived client carries request-scoped secrets only. It never persists
 // a connection, model argument, transcript block, or credential-bearing retry.
 export async function callToolUniverse(input: { url: string; authorization: string; operation: string; arguments: Record<string, unknown>; credentials: Record<string, string>; signal?: AbortSignal }) {
-  if (input.url !== TOOLUNIVERSE_TRUSTED_URL || !(input.operation === 'tooluniverse.run.tool' || input.operation.startsWith('tooluniverse.tool.'))) throw new Error('INVALID_TOOLUNIVERSE_CREDENTIAL_TARGET')
+  const trustedUrl = normalizeToolUniverseUrl(input.url)
+  if (trustedUrl === undefined || !(input.operation === 'tooluniverse.run.tool' || input.operation.startsWith('tooluniverse.tool.'))) throw new Error('INVALID_TOOLUNIVERSE_CREDENTIAL_TARGET')
   rejectToolUniverseSecretArguments(input.arguments)
   const client = new Client({ name: 'zerowall-tooluniverse', version: '1.0.0' })
-  const transport = new StreamableHTTPClientTransport(new URL(input.url), { requestInit: { headers: { Authorization: input.authorization }, redirect: 'error' } })
+  const transport = new StreamableHTTPClientTransport(new URL(trustedUrl), { requestInit: { headers: { Authorization: input.authorization }, redirect: 'error' } })
   try {
     const options = { ...(input.signal ? { signal: input.signal } : {}), timeout: 45000 }
     await client.connect(transport, options)

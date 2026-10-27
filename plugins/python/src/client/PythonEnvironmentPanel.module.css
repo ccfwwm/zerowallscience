@@ -46,12 +46,20 @@
 .toolbar input { flex:1; min-width:0; }
 .inventory { margin-top:12px; border-top:1px solid #e2e8eb; }
 .list { max-height:300px; overflow:auto; }
-.row { display:flex; justify-content:space-between; gap:16px; padding:9px 0; border-bottom:1px solid #edf0f2; overflow-wrap:anywhere; }
-.row span { color:#63727b; }
+.row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 16px; padding:9px 0; border-bottom:1px solid #edf0f2; overflow-wrap:anywhere; }
+.packageInfo { min-width:140px; flex:1; }
+.row small { display:block; margin-top:4px; color:#63727b; }
+.rowActions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.rowActions button { padding:5px 8px; font-size:12px; }
+.rowVersionActions { display:flex; flex:1 0 100%; flex-wrap:wrap; align-items:center; gap:8px; }
+.rowVersionActions select { min-width:0; flex:1; }
+.packageSearch { margin-top:12px; padding:12px; border:1px solid #dce8ef; border-radius:7px; background:#f6fafc; }
+.packageSearch p { margin:6px 0; color:#63727b; }
+.packageSearch select { flex:1; min-width:0; }
 .advanced { color:#526571; }
 .advancedBody { padding-bottom:10px; }
 .healthList { margin-top:14px; }
 .healthList>div { display:grid; grid-template-columns:100px minmax(0,1fr); gap:10px; padding:8px 0; border-bottom:1px solid #e2e8eb; }
 .healthList p { grid-column:1/-1; margin:0; overflow-wrap:anywhere; }
 @media(max-width:760px) { .panel { height:calc(100vh - 135px); padding:18px 16px; }.heading { align-items:flex-start; }.headingActions { align-items:flex-end; flex-direction:column; }.layerCards,.environmentGrid { grid-template-columns:1fr; }.summary { grid-template-columns:repeat(2,minmax(0,1fr)); }.metric:last-child { grid-column:1/-1; border-left:0; border-top:1px solid #e1e8ed; } }
-@media(max-width:460px) { .heading { flex-wrap:wrap; }.headingActions { flex-direction:row; }.toolbar { flex-wrap:wrap; }.toolbar input { flex-basis:100%; }.heading h2 { font-size:20px; } }
+@media(max-width:460px) { .heading { flex-wrap:wrap; }.headingActions { flex-direction:row; }.toolbar { flex-wrap:wrap; }.toolbar input { flex-basis:100%; }.heading h2 { font-size:20px; }.rowActions { width:100%; }.rowVersionActions select { flex-basis:100%; } }

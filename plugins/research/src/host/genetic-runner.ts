@@ -9,7 +9,7 @@ import type { GeneticAnalysisRequest, GeneticRefreshRequest } from '../shared/ty
 import { validateGeneticContract } from './genetic-contract.js'
 import { containedFile } from './science-viewer.js'
 
-export const GENETIC_RUNNER = '7.0.0-genetics.1'
+export const GENETIC_RUNNER = '7.0.0-genetics.2'
 export interface GeneticWorkflow {
   run(id: string, parameters: JsonObject, exec: ToolRunContext): Promise<JsonObject>
   status(id: string, exec: ToolRunContext): Promise<JsonObject>
@@ -27,7 +27,88 @@ const estimate = (value: unknown): boolean => {
   const item = object(value)
   return ['beta', 'se', 'ci_low', 'ci_high', 'p_value'].every(key => typeof item[key] === 'number' && Number.isFinite(item[key])) && Number(item.se) > 0 && Number(item.ci_low) <= Number(item.beta) && Number(item.beta) <= Number(item.ci_high) && Number(item.p_value) >= 0 && Number(item.p_value) <= 1
 }
-function numericalResult(request: JsonObject, result: JsonObject): boolean {
+export function numericalResult(request: JsonObject, result: JsonObject): boolean {
+  if (request.analysis === 'contrast_scan') {
+    const exposures = (Array.isArray(request.exposures) ? request.exposures : []).map(object)
+    const outcomes = (Array.isArray(request.outcomes) ? request.outcomes : []).map(object)
+    const panel = object(request.outcome_panel)
+    const layers = object(result.layers)
+    const landscape = object(layers.landscape)
+    const adjusted = object(layers.adjusted)
+    const univariable = (Array.isArray(landscape.results) ? landscape.results : []).map(object)
+    const mvmr = (Array.isArray(adjusted.results) ? adjusted.results : []).map(object)
+    const coverage = object(result.coverage)
+    const expectedUnivariable = outcomes.length * exposures.length
+    const expectedMvmr = outcomes.length
+    if (exposures.length !== 2 || outcomes.length < 1 || outcomes.length > 100 || result.analysis !== 'contrast_scan'
+      || landscape.status !== 'complete' || adjusted.status !== 'complete'
+      || coverage.complete !== true || coverage.expected_univariable !== expectedUnivariable
+      || coverage.completed_univariable !== expectedUnivariable || coverage.expected_mvmr !== expectedMvmr
+      || coverage.completed_mvmr !== expectedMvmr || coverage.expected_contrasts !== expectedMvmr
+      || coverage.completed_contrasts !== expectedMvmr || univariable.length !== expectedUnivariable || mvmr.length !== expectedMvmr) return false
+    const exposureIds = exposures.map(item => item.id)
+    const outcomeIds = outcomes.map(item => item.id)
+    if (exposureIds.some(id => typeof id !== 'string') || new Set(exposureIds).size !== exposureIds.length
+      || outcomeIds.some(id => typeof id !== 'string') || new Set(outcomeIds).size !== outcomeIds.length) return false
+    const uvPairs = new Set<string>()
+    for (const row of univariable) {
+      const pair = `${String(row.outcome_id)}\u0000${String(row.exposure_id)}`
+      const outcome = outcomes.find(item => item.id === row.outcome_id)
+      if (!outcome || !exposureIds.includes(row.exposure_id as string) || uvPairs.has(pair)
+        || row.status !== 'succeeded' || row.outcome_panel_id !== panel.id
+        || row.outcome_panel_version !== panel.version || !estimate(row) || !Number.isInteger(row.instruments) || Number(row.instruments) < 2) return false
+      uvPairs.add(pair)
+    }
+    if (uvPairs.size !== expectedUnivariable || outcomes.some(outcome => exposureIds.some(id => !uvPairs.has(`${String(outcome.id)}\u0000${String(id)}`)))) return false
+    const threshold = Number(request.min_conditional_f)
+    if (!Number.isFinite(threshold) || threshold < 10) return false
+    const adjustedIds = new Set<string>()
+    for (const row of mvmr) {
+      const outcome = outcomes.find(item => item.id === row.outcome_id)
+      const effects = (Array.isArray(row.effects) ? row.effects : []).map(object)
+      const strength = (Array.isArray(row.conditional_f_statistics) ? row.conditional_f_statistics : []).map(object)
+      const matrix = Array.isArray(row.coefficient_covariance) ? row.coefficient_covariance.map(value => Array.isArray(value) ? value.map(Number) : []) : []
+      const difference = object(row.difference_test)
+      const id = String(row.outcome_id)
+      if (!outcome || adjustedIds.has(id) || row.status !== 'succeeded' || row.outcome_panel_id !== panel.id
+        || row.outcome_panel_version !== panel.version || effects.length !== 2 || strength.length !== 2
+        || effects.some((effect, index) => effect.exposure_id !== exposureIds[index] || !estimate(effect))
+        || strength.some((item, index) => item.exposure_id !== exposureIds[index] || typeof item.f_statistic !== 'number'
+          || !Number.isFinite(item.f_statistic) || item.f_statistic < threshold)
+        || matrix.length !== 2 || matrix.some(values => values.length !== 2 || values.some(value => !Number.isFinite(value)))) return false
+      for (let i = 0; i < 2; i++) {
+        if (matrix[i]![i]! <= 0 || Math.abs(matrix[i]![i]! - Number(effects[i]!.se) ** 2) > 1e-7 * Math.max(1, matrix[i]![i]!)) return false
+        for (let j = 0; j < 2; j++) if (Math.abs(matrix[i]![j]! - matrix[j]![i]!) > 1e-10 * Math.max(1, Math.abs(matrix[i]![j]!))) return false
+      }
+      const q = row.heterogeneity_Q; const p = row.heterogeneity_p; const df = row.heterogeneity_df
+      if (typeof q !== 'number' || !Number.isFinite(q) || q < 0 || typeof p !== 'number' || !Number.isFinite(p) || p < 0 || p > 1
+        || !Number.isInteger(row.instruments) || Number(row.instruments) <= 2 || df !== Number(row.instruments) - 2
+        || !estimate(difference) || difference.exposure_a_id !== exposureIds[0] || difference.exposure_b_id !== exposureIds[1]
+        || difference.unit !== exposures[0]!.unit
+        || Math.abs(Number(difference.beta) - (Number(effects[0]!.beta) - Number(effects[1]!.beta))) > 1e-8 * Math.max(1, Math.abs(Number(difference.beta)))) return false
+      adjustedIds.add(id)
+    }
+    return adjustedIds.size === expectedMvmr && outcomes.every(outcome => adjustedIds.has(String(outcome.id)))
+  }
+  if (request.analysis === 'mvmr') {
+    const analysis = object(object(result.analyses).mvmr)
+    const exposures = (Array.isArray(request.exposures) ? request.exposures : []).map(object)
+    const effects = (Array.isArray(analysis.effects) ? analysis.effects : []).map(object)
+    const strength = (Array.isArray(analysis.conditional_f_statistics) ? analysis.conditional_f_statistics : []).map(object)
+    const matrix = Array.isArray(analysis.coefficient_covariance) ? analysis.coefficient_covariance.map(row => Array.isArray(row) ? row.map(Number) : []) : []
+    const threshold = Number(request.min_conditional_f)
+    if (exposures.length < 2 || effects.length !== exposures.length || strength.length !== exposures.length || !Number.isFinite(threshold) || threshold < 10) return false
+    const ids = exposures.map(item => item.id)
+    if (effects.some((effect, index) => effect.exposure_id !== ids[index] || !estimate(effect))) return false
+    if (strength.some((item, index) => item.exposure_id !== ids[index] || typeof item.f_statistic !== 'number' || !Number.isFinite(item.f_statistic) || item.f_statistic < threshold)) return false
+    if (matrix.length !== exposures.length || matrix.some(row => row.length !== exposures.length || row.some(value => !Number.isFinite(value)))) return false
+    for (let i = 0; i < matrix.length; i++) {
+      if (matrix[i]![i]! <= 0 || Math.abs(matrix[i]![i]! - Number(effects[i]!.se) ** 2) > 1e-7 * Math.max(1, matrix[i]![i]!)) return false
+      for (let j = 0; j < matrix.length; j++) if (Math.abs(matrix[i]![j]! - matrix[j]![i]!) > 1e-10 * Math.max(1, Math.abs(matrix[i]![j]!))) return false
+    }
+    const q = analysis.heterogeneity_Q; const p = analysis.heterogeneity_p; const df = analysis.heterogeneity_df
+    return typeof q === 'number' && Number.isFinite(q) && q >= 0 && typeof p === 'number' && Number.isFinite(p) && p >= 0 && p <= 1 && df === Number(analysis.instruments) - exposures.length && Number(analysis.instruments) > exposures.length
+  }
   if (request.analysis === 'coloc') {
     const summary = object(result.summary); const probabilities = ['PP.H0.abf', 'PP.H1.abf', 'PP.H2.abf', 'PP.H3.abf', 'PP.H4.abf'].map(key => summary[key])
     return Number.isInteger(summary.nsnps) && Number(summary.nsnps) > 1 && probabilities.every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1) && Math.abs(probabilities.reduce<number>((sum, value) => sum + Number(value), 0) - 1) < 1e-6
@@ -41,14 +122,54 @@ export function prepareGeneticAnalysis(contract: JsonObject, settings: JsonObjec
   if (contract.applicability !== 'usable' || contract.sourceStatus !== 'supported' || typeof contract.source !== 'string' || !contract.source.trim()) errors.push('DatasetContract applicability and source must be verified.')
   const data = object(contract.geneticInput)
   const type = settings.analysis
-  if (!['mr', 'coloc'].includes(String(type))) errors.push('genetics.analysis must be mr or coloc.')
-  if (Object.keys(settings).some(key => !['analysis', 'methods', 'min_f', 'egger_min_i2gx', 'priors'].includes(key))) errors.push('Analysis settings contain unsupported fields; prepared data belong in geneticInput.')
-  const methods = type === 'coloc' ? ['coloc'] : strings(settings.methods).map(method => ({ wald: 'wald-ratio', ivw: 'ivw', egger: 'mr-egger' })[method])
-  if (!methods.length || methods.some(method => !method)) errors.push('Explicit supported genetics methods are required.')
+  if (!['mr', 'mvmr', 'contrast_scan', 'coloc'].includes(String(type))) errors.push('genetics.analysis must be mr, mvmr, contrast_scan, or coloc.')
+  if (Object.keys(settings).some(key => !['analysis', 'methods', 'min_f', 'min_conditional_f', 'egger_min_i2gx', 'priors'].includes(key))) errors.push('Analysis settings contain unsupported fields; prepared data belong in geneticInput.')
+  const methods = type === 'coloc' ? ['coloc'] : type === 'mvmr' ? ['mvmr'] : type === 'contrast_scan' ? ['contrast_scan'] : strings(settings.methods).map(method => ({ wald: 'wald-ratio', ivw: 'ivw', egger: 'mr-egger' })[method])
+  if (type !== 'contrast_scan' && (!methods.length || methods.some(method => !method))) errors.push('Explicit supported genetics methods are required.')
   if (type === 'mr' && (!Array.isArray(data.instruments) || data.instruments.length !== contract.instrumentCount)) errors.push('Declared instrumentCount must match prepared instrument rows.')
-  const validations = methods.map(method => validateGeneticContract({ ...contract, method: method ?? '' }))
+  if (type === 'mvmr' && (!Array.isArray(data.exposures) || data.exposures.length < 2 || !Array.isArray(data.instruments) || data.instruments.length !== contract.instrumentCount)) errors.push('MVMR requires at least two exposure definitions and an instrumentCount matching prepared rows.')
+  const validations = type === 'contrast_scan' ? [] : methods.map(method => validateGeneticContract({ ...contract, method: method ?? '', ...(type === 'mvmr' ? { exposureCount: Array.isArray(data.exposures) ? data.exposures.length : 0, exposureDefinitions: data.exposures, instrumentCount: Array.isArray(data.instruments) ? data.instruments.length : 0 } : {}) }))
+  if (type === 'contrast_scan') {
+    const exposures = (Array.isArray(data.exposures) ? data.exposures : []).map(object)
+    const panel = object(data.outcome_panel)
+    const outcomes = (Array.isArray(data.outcomes) ? data.outcomes : []).map(object)
+    const fieldText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
+    const stableId = (value: unknown): value is string => fieldText(value) && /^[A-Za-z0-9._:-]{1,128}$/u.test(value)
+    if (exposures.length !== 2) errors.push('contrast_scan requires exactly two prepared exposure definitions.')
+    if (!fieldText(panel.id) || !fieldText(panel.source) || !fieldText(panel.version) || !fieldText(panel.ancestry) || !fieldText(panel.genome_build)) errors.push('contrast_scan requires a fixed outcome_panel id, source, version, ancestry, and genome_build.')
+    const exposureIds = exposures.map(item => item.id)
+    if (exposures.some(item => !stableId(item.id) || !fieldText(item.trait) || !fieldText(item.unit) || !fieldText(item.source)
+      || !fieldText(item.ancestry) || !fieldText(item.genome_build) || typeof item.sample_size !== 'number' || !Number.isFinite(item.sample_size) || item.sample_size <= 0)) errors.push('Each contrast_scan exposure requires a stable ID, source, trait, unit, ancestry, genome build, and positive sample size.')
+    if (new Set(exposureIds).size !== exposureIds.length) errors.push('contrast_scan exposure IDs must be unique.')
+    if (exposures.length === 2 && (exposures[0]!.unit !== exposures[1]!.unit)) errors.push('Formal MVMR coefficient contrasts require both exposures to use the same declared unit.')
+    if (exposures.some(item => item.ancestry !== panel.ancestry || item.genome_build !== panel.genome_build)) errors.push('All exposures and outcomes must share the fixed panel ancestry and genome build.')
+    if (!Number.isFinite(settings.min_f) || Number(settings.min_f) < 10 || !Number.isFinite(settings.min_conditional_f) || Number(settings.min_conditional_f) < 10) errors.push('contrast_scan requires prespecified min_f and min_conditional_f thresholds of at least 10.')
+    if (outcomes.length < 1 || outcomes.length > 100) errors.push('contrast_scan requires 1-100 outcomes from the fixed panel.')
+    const outcomeIds = outcomes.map(item => item.id)
+    if (outcomes.some(item => !stableId(item.id) || !fieldText(item.study_id) || !fieldText(item.trait) || !fieldText(item.unit)
+      || typeof item.sample_size !== 'number' || !Number.isFinite(item.sample_size) || item.sample_size <= 0)) errors.push('Every contrast_scan outcome requires a stable ID, study, trait, unit, and positive sample size.')
+    if (new Set(outcomeIds).size !== outcomeIds.length) errors.push('contrast_scan outcome IDs must be unique.')
+    const mvmrValidations: JsonObject[] = []
+    for (const [index, outcome] of outcomes.entries()) {
+      const uv = (Array.isArray(outcome.univariable) ? outcome.univariable : []).map(object)
+      const joint = object(outcome.mvmr)
+      if (uv.length !== 2 || uv.some((item, position) => item.exposure_id !== exposureIds[position]
+        || !fieldText(item.ld_source) || !fieldText(item.sample_overlap_source) || !fieldText(item.harmonization_source)
+        || !Array.isArray(item.instruments) || item.instruments.length < 2)) errors.push(`Outcome ${String(outcome.id ?? index + 1)} must provide ordered UVMR inputs for both exposures, each with provenance and at least two instruments.`)
+      if (!fieldText(joint.ld_source) || !fieldText(joint.harmonization_source) || !Array.isArray(joint.instruments)
+        || joint.instruments.length <= 2) errors.push(`Outcome ${String(outcome.id ?? index + 1)} requires one jointly prepared MVMR input with more instruments than exposures.`)
+      const overlap = object(joint.sample_overlap)
+      if (overlap.exposure_outcome !== 'none' || !fieldText(overlap.exposure_outcome_source)
+        || !['none', 'known'].includes(String(overlap.exposure_exposure)) || !fieldText(overlap.exposure_exposure_source)) errors.push(`Outcome ${String(outcome.id ?? index + 1)} requires reviewed exposure/outcome and exposure/exposure overlap declarations.`)
+      mvmrValidations.push(validateGeneticContract({ ...contract, method: 'mvmr', outcomeDefinition: `${String(outcome.trait ?? '')} [${String(outcome.study_id ?? '')}]`,
+        ancestry: typeof panel.ancestry === 'string' ? panel.ancestry : '', genomeBuild: typeof panel.genome_build === 'string' ? panel.genome_build : '',
+        exposureCount: exposures.length, exposureDefinitions: exposures, instrumentCount: Array.isArray(joint.instruments) ? joint.instruments.length : 0 }))
+    }
+    if (mvmrValidations.some(value => value.status !== 'usable')) errors.push('Every contrast_scan outcome must satisfy the MVMR dataset contract, including independent-instrument count.')
+    validations.push(...mvmrValidations)
+  }
   if (validations.some(value => value.status !== 'usable')) errors.push('Genetic DatasetContract has unresolved method applicability.')
-  const keys = type === 'mr' ? ['exposure', 'outcome', 'instruments', 'ld_independent', 'ld_source', 'sample_overlap', 'sample_overlap_source', 'harmonization_source'] : ['trait1', 'trait2', 'variants', 'region', 'complete_region', 'single_causal_variant_assumption']
+  const keys = type === 'mr' ? ['exposure', 'outcome', 'instruments', 'ld_independent', 'ld_source', 'sample_overlap', 'sample_overlap_source', 'harmonization_source'] : type === 'mvmr' ? ['exposures', 'outcome', 'instruments', 'ld_independent', 'ld_source', 'sample_overlap', 'harmonization_source'] : type === 'contrast_scan' ? ['exposures', 'outcome_panel', 'outcomes', 'min_f', 'min_conditional_f'] : ['trait1', 'trait2', 'variants', 'region', 'complete_region', 'single_causal_variant_assumption']
   for (const key of keys) if (data[key] === undefined) errors.push(`geneticInput.${key} is required.`)
   if (errors.length) return { status: 'blocked', errors, validations }
   return { status: 'ready', request: { ...Object.fromEntries(keys.map(key => [key, data[key]!])), ...settings, runner_contract: GENETIC_RUNNER }, validations }
@@ -145,7 +266,9 @@ export class GeneticAnalysisService {
       const outer = object(envelope.manifest ?? envelope)
       const files = (Array.isArray(outer.files) ? outer.files : outer.files ? [outer.files] : []).map(object)
       const downloaded: Record<string, { path: string; sha256: string; bytes: number }> = {}
-      for (const name of ['manifest.json', 'input.json', 'result.json']) {
+      const analysis = object(snapshot.request).analysis
+      const requiredFiles = ['manifest.json', 'input.json', 'result.json', ...(analysis === 'contrast_scan' ? ['contrast-scan-univariable.tsv', 'contrast-scan-adjusted.tsv'] : [])]
+      for (const name of requiredFiles) {
         const entry = files.find(file => scalar(file.path) === `genetics/${name}`)
         const expectedHash = String(scalar(entry?.sha256) ?? ''); const expectedBytes = Number(scalar(entry?.bytes))
         if (!entry || !/^[a-f0-9]{64}$/u.test(expectedHash) || !Number.isSafeInteger(expectedBytes) || expectedBytes < 1 || expectedBytes > (name === 'manifest.json' ? 1048576 : 64 * 1024 ** 2)) throw new Error(`Missing or invalid genetics/${name} in remote job manifest.`)
@@ -165,16 +288,16 @@ export class GeneticAnalysisService {
       if (!['runner.R', 'run.py'].every(name => sources.some(source => source.path === name && typeof source.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(source.sha256)))) throw new Error('Method manifest lacks versioned runner source hashes.')
       if (hash(actualInput) !== hash({ ...object(snapshot.request), request_id: snapshot.requestId }) || method.runner_contract !== GENETIC_RUNNER || result.runner_contract !== GENETIC_RUNNER || method.request_id !== snapshot.requestId || result.request_id !== snapshot.requestId) throw new Error('Returned genetics input/result does not match the submitted request.')
       const methodFiles = (Array.isArray(method.files) ? method.files : []).map(object)
-      for (const name of ['input.json', 'result.json']) if (!methodFiles.some(file => file.path === name && file.sha256 === downloaded[name]!.sha256 && file.bytes === downloaded[name]!.bytes)) throw new Error('Method manifest does not certify downloaded input/result files.')
-      const artifacts = Object.entries(downloaded).map(([name, file]) => this.store.listArtifacts(project.id).find(item => item.metadata.runner === GENETIC_RUNNER && item.runId === run.id && item.checksum === file.sha256 && item.name === `Genetics ${name}`) ?? this.store.createArtifact({ projectId: project.id, runId: run.id, name: `Genetics ${name}`, uri: pathToFileURL(file.path).href, mediaType: 'application/json', checksum: file.sha256, metadata: { runner: GENETIC_RUNNER, requestId: snapshot.requestId!, studyId: snapshot.studyId!, taskId: snapshot.taskId!, scientificReview: 'pending' } }))
+      for (const name of requiredFiles.filter(item => item !== 'manifest.json')) if (!methodFiles.some(file => file.path === name && file.sha256 === downloaded[name]!.sha256 && file.bytes === downloaded[name]!.bytes)) throw new Error(`Method manifest does not certify downloaded genetics/${name}.`)
+      const artifacts = Object.entries(downloaded).map(([name, file]) => this.store.listArtifacts(project.id).find(item => item.metadata.runner === GENETIC_RUNNER && item.runId === run.id && item.checksum === file.sha256 && item.name === `Genetics ${name}`) ?? this.store.createArtifact({ projectId: project.id, runId: run.id, name: `Genetics ${name}`, uri: pathToFileURL(file.path).href, mediaType: name.endsWith('.tsv') ? 'text/tab-separated-values' : 'application/json', checksum: file.sha256, metadata: { runner: GENETIC_RUNNER, requestId: snapshot.requestId!, studyId: snapshot.studyId!, taskId: snapshot.taskId!, scientificReview: 'pending' } }))
       const study = this.store.getResearchStudy(String(snapshot.studyId))
       const current = !!study && !['archived', 'completed', 'blocked'].includes(study.status) && (study.currentFreezeId ?? null) === snapshot.freezeId && (snapshot.exploratory === true || study.gate1 === 'approved') && this.store.getResearchDocument(String(snapshot.planId))?.version === snapshot.planVersion && this.store.getResearchDocument(String(snapshot.contractId))?.version === snapshot.contractVersion
       const numericalValid = numericalResult(object(snapshot.request), result)
       const successful = run.status === 'succeeded' && method.analysis_complete === true && result.analysis_complete === true && method.status === 'succeeded' && result.status === 'succeeded' && numericalValid
       const resultArtifact = artifacts.find(item => item.name === 'Genetics result.json')!
       let evidence = this.store.listResearchDocuments(String(snapshot.studyId), 'evidence').find(item => item.payload.artifactId === resultArtifact.id)
-      const summary: JsonObject = { analyses: result.analyses ?? {}, summary: result.summary ?? {}, stoppedMethods: result.stopped_methods ?? {}, excludedCount: Array.isArray(result.excluded) ? result.excluded.length : 0, includedCount: Array.isArray(result.included) ? result.included.length : 0, limitations: result.limitations ?? [], errors: result.errors ?? [], runtime: result.runtime ?? {} }
-      if (successful && current && !evidence) evidence = this.store.registerResearchEvidence({ projectId: project.id, studyId: String(snapshot.studyId), payload: { runner: GENETIC_RUNNER, evidenceType: object(snapshot.request).analysis === 'coloc' ? 'regional-colocalization' : 'genetic-instrument-analysis', runId: run.id, artifactId: resultArtifact.id, artifactSha256: resultArtifact.checksum!, relatedArtifactIds: artifacts.map(item => item.id), planId: snapshot.planId!, contractId: snapshot.contractId!, freezeId: snapshot.freezeId!, exploratory: snapshot.exploratory!, needsReview: true, allowedClaim: 'Genetic support under the declared assumptions only; not proof of mediation, clinical mechanism or benefit.', result: summary } })
+      const summary: JsonObject = { analysis: result.analysis ?? object(snapshot.request).analysis ?? null, analyses: result.analyses ?? {}, layers: result.layers ?? {}, coverage: result.coverage ?? {}, outcome_panel: result.outcome_panel ?? {}, summary: result.summary ?? {}, stoppedMethods: result.stopped_methods ?? {}, excludedCount: Array.isArray(result.excluded) ? result.excluded.length : 0, includedCount: Array.isArray(result.included) ? result.included.length : 0, limitations: result.limitations ?? [], errors: result.errors ?? [], runtime: result.runtime ?? {} }
+      if (successful && current && !evidence) evidence = this.store.registerResearchEvidence({ projectId: project.id, studyId: String(snapshot.studyId), payload: { runner: GENETIC_RUNNER, evidenceType: object(snapshot.request).analysis === 'contrast_scan' ? 'two-exposure-outcome-panel-scan' : object(snapshot.request).analysis === 'coloc' ? 'regional-colocalization' : object(snapshot.request).analysis === 'mvmr' ? 'multivariable-genetic-analysis' : 'genetic-instrument-analysis', runId: run.id, artifactId: resultArtifact.id, artifactSha256: resultArtifact.checksum!, relatedArtifactIds: artifacts.map(item => item.id), planId: snapshot.planId!, contractId: snapshot.contractId!, freezeId: snapshot.freezeId!, exploratory: snapshot.exploratory!, needsReview: true, allowedClaim: 'Genetic support under the declared assumptions only; not proof of mediation, clinical mechanism or benefit.', result: summary } })
       return json({ ...base, analysisComplete: successful, inputsCurrent: current, methodStatus: result.status, artifacts, evidence: evidence ?? null, result: summary, ...(!current ? { error: 'Inputs or approval changed; historical artifacts retained without new scientific evidence.' } : result.status === 'succeeded' && !numericalValid ? { error: 'Required numerical estimates or uncertainty are absent/invalid; artifacts retained without evidence.' } : {}) })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

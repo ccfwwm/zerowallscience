@@ -10,3 +10,10 @@ export function mergePythonInventory(previous: McpPythonInfo | undefined, next: 
 export function coreNeedsInstallation(info: McpPythonInfo | undefined): boolean {
   return info?.inventoryComplete === true && info.ready && (info.officialPackageCount ?? 0) > 0 && (info.missingCorePackages?.length ?? 0) > 0
 }
+
+export function pythonTaskProgressPercent(task: { state: string; completedPackages?: number; totalPackages?: number } | undefined): number | undefined {
+  if (!task) return undefined
+  if (task.state === 'succeeded' || task.state === 'partial') return 100
+  if (!task.totalPackages) return 0
+  return Math.min(99, Math.floor((task.completedPackages ?? 0) / task.totalPackages * 100))
+}

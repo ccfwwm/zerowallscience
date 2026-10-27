@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from '@zerowallscience/plugin-base/client-helpers'
 import type { McpEnvironmentStatus, McpPythonInfo, PythonDependencyTask, PythonEnvironmentResponse, PythonMirrorPresetInfo } from '../../../base/src/client/desktop-api.js'
-import { mergePythonInventory, coreNeedsInstallation } from './python-inventory-state.js'
+import { mergePythonInventory, coreNeedsInstallation, pythonTaskProgressPercent } from './python-inventory-state.js'
 import { localizePythonText } from './python-localization.js'
 import css from './PythonEnvironmentPanel.module.css'
 
@@ -29,6 +29,10 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const [revision, setRevision] = useState<number>()
   const [query, setQuery] = useState('')
   const [spec, setSpec] = useState('')
+  const [catalog, setCatalog] = useState<PythonEnvironmentResponse['packageCatalog']>()
+  const [catalogTarget, setCatalogTarget] = useState<string>()
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [selectedVersion, setSelectedVersion] = useState('')
   const [diagnostics, setDiagnostics] = useState<PythonEnvironmentResponse['diagnostics']>()
   const scanRequest = useRef(0)
   const alive = useRef(true)
@@ -96,7 +100,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   useEffect(() => {
     if (!task || activeTask(task) || completedTask.current === task.taskId) return
     completedTask.current = task.taskId
-    if (['sync', 'apply_sync', 'install_package', 'install_runtime'].includes(task.action)) void refresh()
+    if (['sync', 'apply_sync', 'install_package', 'uninstall_package', 'install_runtime'].includes(task.action)) void refresh()
   }, [task, refresh])
   const perform = async (work: () => Promise<unknown>) => {
     setBusy(true); setFeedback('')
@@ -110,7 +114,34 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const installPackage = (packageSpec: string) => void perform(async () => {
     const result = await call?.({ action: 'install_package', packageSpec, confirm: true, requestId: crypto.randomUUID() })
     if (result?.task) setTask(result.task)
-    setSpec('')
+    setSpec(''); setCatalog(undefined); setCatalogTarget(undefined)
+  })
+  const searchPackage = () => void perform(async () => {
+    const name = spec.trim().match(/^[A-Za-z0-9][A-Za-z0-9_.-]*/u)?.[0] ?? ''
+    if (!name) throw new Error(L('请输入包名后再搜索。', 'Enter a package name to search.'))
+    setCatalogTarget(undefined)
+    setCatalogLoading(true)
+    try {
+      const result = await call?.({ action: 'search_package', packageName: name, requestId: crypto.randomUUID() })
+      setCatalog(result?.packageCatalog); setSelectedVersion(result?.packageCatalog?.latestVersion ?? '')
+    } finally { setCatalogLoading(false) }
+  })
+  const checkPackageUpdates = (name: string) => void perform(async () => {
+    const result = await call?.({ action: 'check_package_updates', packageNames: [name], requestId: crypto.randomUUID() })
+    if (result?.inventory) acceptInventory(result.inventory)
+    const updated = result?.inventory?.packages.find(pkg => normalize(pkg.name) === normalize(name))
+    if (updated?.latestVersion) {
+      const versions = result?.packageCatalog?.versions ?? [updated.latestVersion, updated.version].filter((version, index, values) => values.indexOf(version) === index)
+      setSpec(updated.name)
+      setSelectedVersion(result?.packageCatalog?.latestVersion ?? updated.latestVersion)
+      setCatalog(result?.packageCatalog ?? { name: updated.name, summary: '', latestVersion: updated.latestVersion, versions })
+      setCatalogTarget(normalize(updated.name))
+    }
+  })
+  const uninstallPackage = (name: string) => void perform(async () => {
+    if (!window.confirm(L(`确定卸载 ${name} 吗？软件会先检查是否仍被其他包依赖。`, `Remove ${name}? Dependencies will be checked first.`))) return
+    const result = await call?.({ action: 'uninstall_package', packageName: name, confirm: true, requestId: crypto.randomUUID() })
+    if (result?.task) setTask(result.task)
   })
   const saveMirror = (value: string) => void perform(async () => {
     const result = await call?.({ action: 'configure', mirrorUrl: value, expectedRevision: revision, requestId: crypto.randomUUID() })
@@ -134,7 +165,7 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
   const coreTotal = info?.officialPackageCount ?? 0
   const scienceTotal = info?.sciencePackageCount ?? 0
   const missing = (total: number, installed?: number) => Math.max(0, total - (installed ?? 0))
-  const percent = task?.totalPackages ? Math.floor((task.completedPackages ?? 0) / task.totalPackages * 100) : undefined
+  const percent = pythonTaskProgressPercent(task)
   const installedRows = (info?.packages ?? []).filter(pkg => normalize(pkg.name).includes(normalize(query.trim())))
   const failures = (task?.result?.skippedPackages as Array<{ name: string; message: string }> | undefined) ?? []
   const mirrorId = presets.find(preset => sameIndex(preset.indexUrl, mirror))?.id ?? (sameIndex(mirror, DEFAULT_MIRROR) ? 'ustc' : 'custom')
@@ -159,8 +190,8 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
       {layerCard('science', L('科研依赖', 'Science dependencies'), scienceTotal, info?.scienceInstalledPackageCount)}
     </div>
     {task && <section className={css.update} aria-live="polite">
-      <div><strong>{activeTask(task) ? task.stage === 'installing' ? L('逐包安装中', 'Installing packages') : text(task.message) : task.state === 'succeeded' ? L('安装完成', 'Completed') : text(task.message)}</strong>{activeTask(task) && task.currentPackage && <span>{task.currentPackage}</span>}</div>
-      {task.totalPackages !== undefined && <><progress max={task.totalPackages || 1} value={task.completedPackages ?? 0} /><div className={css.progressLine}><span>{L('安装成功', 'Successfully installed')} {task.completedPackages ?? 0} / {task.totalPackages}</span><span>{percent ?? 0}%</span></div></>}
+      <div><strong>{activeTask(task) ? task.stage === 'installing' ? L('逐包安装中', 'Installing packages') : text(task.message) : task.state === 'succeeded' ? L('安装完成', 'Completed') : text(task.message)}</strong>{activeTask(task) && (task.currentPackage || task.packageName) && <span>{task.currentPackage || task.packageName}</span>}</div>
+      {task.totalPackages !== undefined && <><progress max={task.totalPackages || 1} value={percent === 100 ? 1 : task.completedPackages ?? 0} /><div className={css.progressLine}><span>{task.totalPackages === 0 && percent === 100 ? L('所有依赖均已就绪', 'All dependencies are already satisfied') : L('安装成功', 'Successfully installed')} {task.totalPackages === 0 ? '' : `${task.completedPackages ?? 0} / ${task.totalPackages}`}</span><span>{percent ?? 0}%</span></div></>}
       {task.error && <p className={css.warning}>{text(task.error)}</p>}
       {!!failures.length && <details><summary>{L(`失败 ${failures.length} 个包`, `${failures.length} packages failed`)}</summary>{failures.map(failure => <p key={failure.name}><strong>{failure.name}</strong> {text(failure.message)} <button disabled={working} onClick={() => installPackage(failure.name)}>{L('重试', 'Retry')}</button></p>)}</details>}
       {activeTask(task) && <button disabled={busy} onClick={() => void perform(async () => { const result = await call?.({ action: 'cancel', taskId: task.taskId, requestId: crypto.randomUUID() }); if (result?.task) setTask(result.task) })}>{L('取消安装', 'Cancel installation')}</button>}
@@ -174,8 +205,9 @@ export function PythonEnvironmentPanel({ t }: PropsLocale<typeof NS>) {
       </select>{mirrorId === 'custom' && <div className={css.toolbar}><input aria-label={L('镜像网址', 'Mirror URL')} value={mirror} onChange={event => setMirror(event.target.value)} /><button disabled={working || !mirror.trim()} onClick={() => saveMirror(mirror)}>{L('保存', 'Save')}</button></div>}</section>
     </div>
     <section className={css.card}>
-      <h3>{L('安装其他包', 'Install another package')}</h3><div className={css.toolbar}><input aria-label={L('包名', 'Package name')} placeholder={L('例如 pandas', 'e.g. pandas')} value={spec} onChange={event => setSpec(event.target.value)} /><button disabled={!spec.trim() || working || restart} onClick={() => installPackage(spec.trim())}>{L('安装', 'Install')}</button></div>
-      <details className={css.inventory}><summary>{L('查看已安装包', 'View installed packages')} ({info?.packageCount ?? '—'})</summary><input className={css.mirrorInput} aria-label={L('搜索已安装包', 'Search installed packages')} placeholder={L('搜索包名', 'Search by package name')} value={query} onChange={event => setQuery(event.target.value)} /><div className={css.list}>{installedRows.slice(0, 100).map(pkg => <div className={css.row} key={normalize(pkg.name)}><strong>{pkg.name}</strong><span>{pkg.version}</span></div>)}{installedRows.length > 100 && <p>{L('请搜索包名缩小列表', 'Search to narrow the list')}</p>}</div></details>
+      <h3>{L('安装其他包', 'Install another package')}</h3><div className={css.toolbar}><input aria-label={L('包名', 'Package name')} placeholder={L('先搜索包名，例如 pandas', 'Search a package, e.g. pandas')} value={spec} onChange={event => setSpec(event.target.value)} /><button disabled={!spec.trim() || working || restart || catalogLoading} onClick={searchPackage}>{catalogLoading ? L('搜索中…', 'Searching…') : L('搜索版本', 'Search versions')}</button></div>
+      {catalog && !catalogTarget && <div className={css.packageSearch}><strong>{catalog.name}</strong>{catalog.summary && <p>{catalog.summary}</p>}<div className={css.toolbar}><select aria-label={L('选择版本', 'Select version')} value={selectedVersion} onChange={event => setSelectedVersion(event.target.value)}>{catalog.versions.map(version => <option key={version} value={version}>{version}{version === catalog.latestVersion ? ` · ${L('最新', 'latest')}` : ''}</option>)}</select><button className={css.primary} disabled={!selectedVersion || working || restart} onClick={() => installPackage(`${catalog.name}==${selectedVersion}`)}>{L('安装所选版本', 'Install selected version')}</button></div></div>}
+      <details className={css.inventory}><summary>{L('查看已安装包', 'View installed packages')} ({info?.packageCount ?? '—'})</summary><input className={css.mirrorInput} aria-label={L('搜索已安装包', 'Search installed packages')} placeholder={L('搜索包名', 'Search by package name')} value={query} onChange={event => setQuery(event.target.value)} /><div className={css.list}>{installedRows.slice(0, 100).map(pkg => <div className={css.row} key={normalize(pkg.name)}><div className={css.packageInfo}><strong>{pkg.name}</strong><small>{pkg.version}{pkg.updateAvailable && ` · ${L(`可更新至 ${pkg.latestVersion}`, `update available: ${pkg.latestVersion}`)}`}</small></div><div className={css.rowActions}><button disabled={working || restart} onClick={() => checkPackageUpdates(pkg.name)}>{L('检测更新', 'Check updates')}</button><button disabled={working || restart || pkg.source === 'core'} onClick={() => void uninstallPackage(pkg.name)}>{L('卸载', 'Remove')}</button></div>{catalogTarget === normalize(pkg.name) && catalog && <div className={css.rowVersionActions}><select aria-label={L(`选择 ${pkg.name} 的安装版本`, `Version for ${pkg.name}`)} value={selectedVersion} onChange={event => setSelectedVersion(event.target.value)}>{catalog.versions.map(version => <option key={version} value={version}>{version}{version === catalog.latestVersion ? ` · ${L('最新', 'latest')}` : ''}</option>)}</select><button className={css.primary} disabled={!selectedVersion || working || restart} onClick={() => installPackage(`${catalog.name}==${selectedVersion}`)}>{L('安装所选版本', 'Install selected version')}</button></div>}</div>)}{installedRows.length > 100 && <p>{L('请搜索包名缩小列表', 'Search to narrow the list')}</p>}</div></details>
     </section>
     <details className={css.advanced}><summary>{L('高级设置', 'Advanced settings')}</summary><div className={css.advancedBody}>
       <div className={css.actions}><button disabled={working} onClick={changePath}>{L('更改 Python 路径', 'Change Python path')}</button><button disabled={working} onClick={() => saveMirror(DEFAULT_MIRROR)}>{L('恢复中科大镜像', 'Reset to USTC')}</button><button disabled={working} onClick={() => void perform(async () => { const value = await call?.({ action: 'diagnose', requestId: crypto.randomUUID() }); setDiagnostics(value?.diagnostics) })}>{L('运行诊断', 'Run diagnostics')}</button>{status?.rollbackAvailable && <button disabled={working} onClick={() => void perform(async () => { await api?.rollbackMcpEnvironment?.(); completedTask.current = undefined; await refresh() })}>{L('回滚上次环境更新', 'Roll back runtime update')}</button>}</div>

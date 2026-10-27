@@ -4,9 +4,14 @@ vi.mock('@modelcontextprotocol/client', () => ({
   Client: class { connect = mocks.connect; callTool = mocks.callTool; close = mocks.close },
   StreamableHTTPClientTransport: class { constructor(...args: unknown[]) { mocks.transport(...args) } },
 }))
-import { callToolUniverse, resolveToolUniverseCredentials, rejectToolUniverseSecretArguments, TOOLUNIVERSE_TRUSTED_URL } from '../src/host/tooluniverse-transport.js'
+import { callToolUniverse, normalizeToolUniverseUrl, resolveToolUniverseCredentials, rejectToolUniverseSecretArguments, TOOLUNIVERSE_TRUSTED_URL } from '../src/host/tooluniverse-transport.js'
 beforeEach(() => { vi.clearAllMocks(); mocks.connect.mockResolvedValue(undefined); mocks.close.mockResolvedValue(undefined); mocks.callTool.mockResolvedValue({ content: [{ type: 'text', text: '{"job_id":"j"}' }] }) })
 const connection = { serverName: 'rmcp', transport: 'streamable-http', url: TOOLUNIVERSE_TRUSTED_URL, enabled: true, envRefs: { NCBI_API_KEY: 'NCBI_REF' } }
+it('normalizes the retired IP endpoint to the HTTPS product endpoint', () => {
+  expect(normalizeToolUniverseUrl('https://rmcp.chengxunkeji.cn/r-platform/mcp/')).toBe(TOOLUNIVERSE_TRUSTED_URL)
+  expect(normalizeToolUniverseUrl('http://103.217.185.141:8099/r-platform/mcp')).toBe(TOOLUNIVERSE_TRUSTED_URL)
+  expect(normalizeToolUniverseUrl('https://untrusted.example/r-platform/mcp')).toBeUndefined()
+})
 it('keeps request credentials exclusively in metadata and clears them after submission', async () => {
   const credentials = await resolveToolUniverseCredentials(connection, async () => 'private-value')
   let sent: any
@@ -17,6 +22,10 @@ it('keeps request credentials exclusively in metadata and clears them after subm
   expect(credentials).toEqual({})
   expect(mocks.transport.mock.calls[0]?.[1]).toMatchObject({ requestInit: { redirect: 'error' } })
   expect(mocks.close).toHaveBeenCalledOnce()
+})
+it('sends a migrated legacy connection to the HTTPS endpoint', async () => {
+  await callToolUniverse({ url: 'http://103.217.185.141:8099/r-platform/mcp', authorization: 'Bearer internal', operation: 'tooluniverse.run.tool', arguments: {}, credentials: {} })
+  expect(mocks.transport.mock.calls[0]?.[0]?.toString()).toBe(TOOLUNIVERSE_TRUSTED_URL)
 })
 it('does not resolve or forward secrets to untrusted endpoints, disabled connections or read operations', async () => {
   const resolver = vi.fn(async () => 'private-value')

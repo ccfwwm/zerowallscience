@@ -12,6 +12,34 @@ const object = (value: unknown): Record<string, unknown> => value && typeof valu
 const numeric = (value: unknown): string => typeof value === 'number' && Number.isFinite(value) ? value.toPrecision(7) : '未提供'
 
 function Estimates({ result }: { result: Record<string, unknown> }): JSX.Element {
+  if (result.analysis === 'contrast_scan') {
+    const layers = object(result.layers)
+    const landscape = object(layers.landscape)
+    const adjusted = object(layers.adjusted)
+    const univariableRows = (Array.isArray(landscape.results) ? landscape.results : []).map(object)
+    const adjustedRows = (Array.isArray(adjusted.results) ? adjusted.results : []).map(object)
+    const coverage = object(result.coverage)
+    const estimateCells = (value: Record<string, unknown>): JSX.Element => <>{['beta', 'se', 'ci_low', 'ci_high', 'p_value'].map(key => <td key={key}>{numeric(value[key])}</td>)}</>
+    return <>
+      <p>结果面板：{String(object(result.outcome_panel).id ?? '未知')} · UVMR {String(coverage.completed_univariable ?? 0)}/{String(coverage.expected_univariable ?? 0)} · MVMR {String(coverage.completed_mvmr ?? 0)}/{String(coverage.expected_mvmr ?? 0)} · 差异检验 {String(coverage.completed_contrasts ?? 0)}/{String(coverage.expected_contrasts ?? 0)}</p>
+      <h4>第一层：暴露 × 结局的 IVW UVMR 全景扫描</h4>
+      {univariableRows.length > 0 && <table aria-label="UVMR 面板扫描"><thead><tr><th>结局</th><th>暴露</th><th>状态</th><th>β</th><th>SE</th><th>CI 下限</th><th>CI 上限</th><th>P 值</th><th>工具数</th></tr></thead><tbody>{univariableRows.map((row, index) => <tr key={`${String(row.outcome_id)}-${String(row.exposure_id)}-${index}`}><td>{String(row.outcome_trait ?? row.outcome_id ?? '未知')}</td><td>{String(row.exposure_trait ?? row.exposure_id ?? '未知')}</td><td>{String(row.status ?? '未知')}</td>{estimateCells(row)}<td>{String(row.instruments ?? '未提供')}</td></tr>)}</tbody></table>}
+      <h4>第二层：同一结局中的联合 MVMR 与条件差异检验</h4>
+      {adjustedRows.map((row, index) => {
+        const effects = (Array.isArray(row.effects) ? row.effects : []).map(object)
+        const strengths = (Array.isArray(row.conditional_f_statistics) ? row.conditional_f_statistics : []).map(object)
+        const difference = object(row.difference_test)
+        return <section key={`${String(row.outcome_id)}-${index}`} aria-label={`MVMR ${String(row.outcome_id ?? index + 1)}`}>
+          <h5>{String(row.outcome_trait ?? row.outcome_id ?? '未知')} · 联合模型工具数 {String(row.instruments ?? '未提供')} · Q={numeric(row.heterogeneity_Q)}, df={String(row.heterogeneity_df ?? '未提供')}, P={numeric(row.heterogeneity_p)}</h5>
+          <table aria-label={`MVMR 独立效应 ${String(row.outcome_id ?? index + 1)}`}><thead><tr><th>暴露</th><th>条件 F</th><th>β</th><th>SE</th><th>CI 下限</th><th>CI 上限</th><th>P 值</th></tr></thead><tbody>{effects.map((effect, effectIndex) => <tr key={String(effect.exposure_id ?? effectIndex)}><td>{String(effect.trait ?? effect.exposure_id ?? '未知')}</td><td>{numeric(strengths[effectIndex]?.f_statistic)}</td>{estimateCells(effect)}</tr>)}</tbody></table>
+          {difference.beta !== undefined && <p>同一 MVMR 模型内系数差（{String(difference.contrast ?? '暴露 A − 暴露 B')}，单位 {String(difference.unit ?? '未提供')}）：β={numeric(difference.beta)}，SE={numeric(difference.se)}，95% CI [{numeric(difference.ci_low)}, {numeric(difference.ci_high)}]，P={numeric(difference.p_value)}，统计量={numeric(difference.statistic)}</p>}
+          {row.status !== 'succeeded' && <p>此结局联合模型未完成：{String(row.code ?? row.status)}</p>}
+        </section>
+      })}
+      {univariableRows.length === 0 && adjustedRows.length === 0 && <p>尚无已取回的面板数值结果。</p>}
+      {Array.isArray(result.limitations) && result.limitations.length > 0 && <ul>{result.limitations.map((value, index) => <li key={index}>{String(value)}</li>)}</ul>}
+    </>
+  }
   const rows = Object.entries(object(result.analyses)).flatMap(([method, value]) => method === 'egger' ? ['slope', 'intercept'].map(term => [`${method} ${term}`, object(object(value)[term])] as const) : [[method, object(value)] as const])
     .filter(([, value]) => typeof value.beta === 'number' && Number.isFinite(value.beta))
   const probabilities = Object.entries(object(result.summary)).filter(([name, value]) => /^PP\.H[0-4]\.abf$/u.test(name) && typeof value === 'number' && Number.isFinite(value))
@@ -65,8 +93,8 @@ export function GeneticAnalysisPanel({ remote, sessionId, study, documents, task
   }
   const reset = (): void => { setResult(undefined); setMessage(''); setRunId('') }
   return <section aria-label="遗传确定性分析" style={{ border: '1px solid var(--dsw-alias-border-l1)', borderRadius: 8, padding: 14, marginTop: 14 }}>
-    <h3>MR 与区域共定位</h3>
-    <p>使用已协调的汇总统计执行 Wald、IVW、MR-Egger 或 coloc.abf。方案记录输入与前提，远程服务必须提供对应版本的 Runner。</p>
+    <h3>UVMR、MVMR 与区域共定位</h3>
+    <p>使用已协调的汇总统计执行单变量 MR、联合 MVMR、固定结局面板扫描或 coloc.abf。面板扫描逐一计算暴露 × 结局的 IVW，再在每个结局内联合拟合两暴露并检验模型内系数差；要求远端 Runner 提供匹配版本及完整结果产物。</p>
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
       <label>分析计划<select aria-label="遗传分析计划" value={plan?.id ?? ''} disabled={busy} onChange={event => { setPlanId(event.target.value); setContractId(''); setTaskId(''); reset() }}><option value="">选择计划</option>{plans.map(item => <option key={item.id} value={item.id}>{String(item.payload.method ?? '遗传分析')} · v{item.version} · {item.id}</option>)}</select></label>
       <label>数据契约<select aria-label="遗传数据契约" value={contract?.id ?? ''} disabled={busy} onChange={event => { setContractId(event.target.value); reset() }}><option value="">选择契约</option>{contracts.map(item => <option key={item.id} value={item.id}>{item.id} · v{item.version}</option>)}</select></label>

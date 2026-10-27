@@ -121,6 +121,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     roots.push(root)
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
     process.env.DSH_HOME = join(root, 'harness')
+    mkdirSync(process.env.DSH_HOME, { recursive: true })
+    writeFileSync(join(process.env.DSH_HOME, 'zerowall-mcp-defaults-v1.json'), JSON.stringify({ version: 10 }))
 
     const ctx = new Context()
     try {
@@ -132,7 +134,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
         serverName: 'rmcp',
         transport: 'streamable-http',
         enabled: false,
-        url: 'http://legacy.example.invalid/r-platform/mcp',
+        url: 'http://103.217.185.141:8099/r-platform/mcp',
         headerRefs: { Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV },
       })
       const custom = ctx.zerowallProjects.createMcpServer({

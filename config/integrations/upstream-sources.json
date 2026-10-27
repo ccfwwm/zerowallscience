@@ -1,5 +1,5 @@
 {
-  "version": "8.4.11",
+  "version": "8.4.12",
   "deepseekHarness": {
     "repository": "https://github.com/ccfwwm/deepseek-harness.git",
     "tag": "dsh-v0.2.1-rc.2",
@@ -14,11 +14,11 @@
     "upstreamVersion": "0.1.65",
     "package": "@zerowallscience/plugin-claude-code",
     "source": "plugins/claude-code",
-    "version": "0.2.7",
-    "resourceVersion": "0.2.7",
+    "version": "0.2.14",
+    "resourceVersion": "0.2.14",
     "license": "MIT",
     "catalogOptional": true,
-    "localAdaptation": "ZeroWall-managed Claude CLI with the official Agent SDK, persistent per-conversation sessions, Host-authorized tool/MCP bridging, eligible Skills projection and localized permission controls. Uses private plugin data without adopting the user's system Claude configuration."
+    "localAdaptation": "ZeroWall-managed Claude CLI through the official Agent SDK with persistent per-conversation sessions, Host-authorized tool/MCP bridging, eligible Skills projection, localized permission controls and in-chat slash commands. Uses private plugin data without adopting the user's system Claude configuration; no terminal or PTY interface."
   },
   "betterSidebar": {
     "repository": "https://github.com/omdsh-dev/DSH-better-sidebar.git",

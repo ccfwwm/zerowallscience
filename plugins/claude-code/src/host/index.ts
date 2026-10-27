@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { createToolResultMessage, isAgentLoopRequest, ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
-import type { SubprocessHandle, SubprocessTerminalHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessHandle, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { NO_START_CAPABILITIES, assertUsableCwd, settleRunResult, subprocessRunHandle, type ResolvedSubagentStartRequest, type SubagentProvider } from '@deepseek-ai/dsh-subagent'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SubagentResult, SubagentRun } from '@deepseek-ai/dsh-subagent'
@@ -19,7 +19,8 @@ import { claudeEnvironmentOverlay } from './environment.js'
 import { writeClaudeMcpLaunchers } from './mcp-launcher.js'
 import { prepareClaudeMcpRuntime, projectMcpForClaude, projectSkillsForClaude, type McpServerProjectionInput, type SkillsProjectionApi } from './projection.js'
 import { ClaudeSafeOutput, resolveClaudeRoute, selectedClaudeModel, type ClaudeRouteServices, type ClaudeSelection } from './route.js'
-import type { ClaudeCodeStatus, ClaudeCodeTurn, ClaudeGlobalSettingOption, ClaudeGlobalSettingsView, ClaudeNativeSettings, ClaudePermissionMode, ClaudeTranscript } from '../shared/types.js'
+import type { ClaudeApiUsage, ClaudeCliState, ClaudeCodeStatus, ClaudeCodeTurn, ClaudeCommandDescriptor, ClaudeContextUsage, ClaudeGlobalSettingOption, ClaudeGlobalSettingsView, ClaudeNativeSettings, ClaudePermissionMode, ClaudeTranscript } from '../shared/types.js'
+import { CLAUDE_COMPACT_PRESETS, CLAUDE_CONTEXT_PRESETS } from '../shared/types.js'
 import { claudePromptFromRequest, parseClaudeCliEvent } from './cli.js'
 import { claudePermissionMode } from './permission-mode.js'
 import { mountClaudeSubagentTools } from './subagent-tool.js'
@@ -28,7 +29,7 @@ import { setApprovalPolicy, type ApprovalService } from '@deepseek-ai/dsh-user-a
 import type { PermissionPresetService } from '@deepseek-ai/dsh-permission-presets'
 import type { ToolRuntime } from '@deepseek-ai/dsh-tools'
 import { SANDBOX_BY_CLAUDE_MODE, isClaudePermissionMode, CLAUDE_MODE_BY_SANDBOX } from './permission-mode.js'
-import { ClaudeSessionBindings, type ClaudeSessionBinding } from './session-binding.js'
+import { ClaudeSessionBindings, inputKey, type ClaudeSessionBinding } from './session-binding.js'
 import { createHostToolBridge, hostToolApproval, managedSdkSpawner, sdkGenerationEnvironment, sdkInput, sdkSystemPrompt, startSdkQuery, type Query, type Options as ClaudeSdkOptions } from './sdk-driver.js'
 import { claudeFailureCategory } from './diagnostic.js'
 import type { ClaudePermissionView } from '../shared/types.js'
@@ -36,6 +37,8 @@ import { resourceStatus } from './resource-status.js'
 import { appendClaudeToolCall, settleClaudeToolCalls } from './tool-journal.js'
 import { ClaudeMetricsCollector } from './metrics.js'
 import { claudeMetricsProjection } from './metrics-projection.js'
+import { claudeSettingsEnvironment, validateAdvancedClaudeSettings } from './claude-settings.js'
+import { FALLBACK_COMMANDS, commandSupported, compactBoundaryOf, parseClaudeCommand } from './claude-commands.js'
 
 export const name = 'zerowall-claude-code'
 export const inject = ['typert', 'agentDefaultModel', 'subprocess', 'subagents', 'workingDirectory', 'skills', 'zerowallProjects', 'zerowallEnvironment', 'credentials', 'settings', 'llm', 'sessionProjections', 'agentPresets', 'tools', 'systemPrompt', 'permissionPresets', 'approval', 'attachments']
@@ -45,7 +48,6 @@ declare module '@deepseek-ai/cordis' { interface Context { zerowallClaudeCode: C
 interface OwnedTurn {
   view: ClaudeCodeTurn
   safe: ClaudeSafeOutput
-  terminal?: SubprocessTerminalHandle
   process?: SubprocessHandle
   projectionRoot?: string
   cancel: AbortController
@@ -56,10 +58,37 @@ interface OwnedTurn {
   release?: () => void
   approvalCalls?: Set<string>
   drainBridge?: () => Promise<unknown>
+  commands?: ClaudeCommandDescriptor[]
+  contextUsage?: ClaudeContextUsage
+  compact?: ClaudeCliState['lastCompact']
+  cliOutput?: ClaudeSafeOutput
 }
-interface SessionRuntime { turn?: OwnedTurn; history: string[]; busy: boolean; preparing?: AbortController }
+interface SessionRuntime { turn?: OwnedTurn; history: string[]; busy: boolean; preparing?: AbortController; availableWaiters?: Set<() => void>; cliOutput?: ClaudeSafeOutput }
 type ManagedRoute = NonNullable<ClaudeRouteServices['managedRoute']>
 type ManagedCredential = NonNullable<ClaudeRouteServices['managedCredential']>
+
+function contextUsageView(value: unknown, detail: 'summary' | 'full'): ClaudeContextUsage {
+  const input = value as Record<string, unknown>
+  const rawApiUsage = input.apiUsage
+  const apiUsage = rawApiUsage && typeof rawApiUsage === 'object' && !Array.isArray(rawApiUsage)
+    ? rawApiUsage as Record<string, unknown>
+    : undefined
+  const safeApiUsage: ClaudeApiUsage | undefined = apiUsage ? {
+    ...(typeof apiUsage.input_tokens === 'number' ? { input_tokens: apiUsage.input_tokens } : {}),
+    ...(typeof apiUsage.output_tokens === 'number' ? { output_tokens: apiUsage.output_tokens } : {}),
+    ...(typeof apiUsage.cache_creation_input_tokens === 'number' ? { cache_creation_input_tokens: apiUsage.cache_creation_input_tokens } : {}),
+    ...(typeof apiUsage.cache_read_input_tokens === 'number' ? { cache_read_input_tokens: apiUsage.cache_read_input_tokens } : {}),
+  } : undefined
+  return {
+    totalTokens: typeof input.totalTokens === 'number' ? input.totalTokens : 0,
+    maxTokens: typeof input.maxTokens === 'number' ? input.maxTokens : 0,
+    ...(typeof input.rawMaxTokens === 'number' ? { rawMaxTokens: input.rawMaxTokens } : {}),
+    percentage: typeof input.percentage === 'number' ? input.percentage : 0,
+    ...(typeof input.autoCompactThreshold === 'number' ? { autoCompactThreshold: input.autoCompactThreshold } : {}),
+    ...(typeof input.isAutoCompactEnabled === 'boolean' ? { isAutoCompactEnabled: input.isAutoCompactEnabled } : {}), detail,
+    ...(safeApiUsage ? { apiUsage: safeApiUsage } : {}),
+  }
+}
 
 /** Never forward installer diagnostics; capture only the bounded CLI version probe. */
 const runInstaller: ProcessRunner = (command, args, options) => new Promise((resolve, reject) => {
@@ -77,7 +106,7 @@ const runInstaller: ProcessRunner = (command, args, options) => new Promise((res
 
 const CLAUDE_SETTINGS_DEFAULTS: ClaudeNativeSettings = {
   outputStyle: 'Default', permissionSelector: 'plugin', permissionMode: 'acceptEdits', renderer: 'plugin',
-  prose: 'plain', maxProcesses: 4,
+  prose: 'plain', maxProcesses: 4, contextWindow: 'auto', autoCompactWindow: 'auto', promptCacheTtl: 'auto', subagentPromptCacheTtl: 'auto',
 }
 const CLAUDE_PERMISSION_MODES: readonly ClaudePermissionMode[] = ['default', 'dontAsk', 'acceptEdits', 'auto', 'plan', 'bypassPermissions']
 const CLAUDE_PERMISSION_SELECTORS = ['plugin', 'native'] as const
@@ -85,7 +114,7 @@ const CLAUDE_RENDERERS = ['plugin', 'native'] as const
 const CLAUDE_PROSE_MODES = ['plain', 'enhanced'] as const
 
 function knownNativeSettings(value: Record<string, unknown>): ClaudeNativeSettings {
-  const keys = ['outputStyle', 'permissionSelector', 'permissionMode', 'renderer', 'prose', 'worktreeBranchPrefix', 'maxProcesses', 'idleTimeoutMinutes']
+  const keys = ['outputStyle', 'permissionSelector', 'permissionMode', 'renderer', 'prose', 'maxProcesses', 'contextWindow', 'autoCompactWindow', 'promptCacheTtl', 'subagentPromptCacheTtl']
   return validateNativeSettings(Object.fromEntries(keys.filter(key => Object.hasOwn(value, key)).map(key => [key, value[key]])))
 }
 
@@ -113,18 +142,11 @@ function validateNativeSettings(value: unknown): ClaudeNativeSettings {
     if (typeof input.prose !== 'string' || !CLAUDE_PROSE_MODES.includes(input.prose as typeof CLAUDE_PROSE_MODES[number])) throw new Error('Claude Code prose mode is invalid.')
     result.prose = input.prose as NonNullable<ClaudeNativeSettings['prose']>
   }
-  if (input.worktreeBranchPrefix !== undefined) {
-    const prefix = input.worktreeBranchPrefix
-    if (typeof prefix !== 'string' || prefix.length < 1 || prefix.length > 128 || prefix.trim() !== prefix || prefix.startsWith('/') || prefix.endsWith('/') || prefix.includes('//') || prefix.includes('..') || prefix.includes('@{') || /[\0-\x20\x7f~^:?*[\\]/u.test(prefix) || prefix.split('/').some(segment => !segment || segment.startsWith('.') || segment.endsWith('.lock'))) throw new Error('Claude Code worktree branch prefix is invalid.')
-    result.worktreeBranchPrefix = prefix
+  if (input.maxProcesses !== undefined) {
+    if (typeof input.maxProcesses !== 'number' || !Number.isSafeInteger(input.maxProcesses) || input.maxProcesses < 1 || input.maxProcesses > 16) throw new Error('Claude Code setting maxProcesses is invalid.')
+    result.maxProcesses = input.maxProcesses
   }
-  for (const key of ['maxProcesses', 'idleTimeoutMinutes'] as const) {
-    if (input[key] !== undefined) {
-      const max = key === 'maxProcesses' ? 16 : 1440
-      if (typeof input[key] !== 'number' || !Number.isSafeInteger(input[key]) || input[key] < 1 || input[key] > max) throw new Error(`Claude Code setting ${key} is invalid.`)
-      result[key] = input[key]
-    }
-  }
+  Object.assign(result, validateAdvancedClaudeSettings(input))
   return result
 }
 
@@ -138,7 +160,6 @@ export class ClaudeCodeService extends TypertRemoteService {
   private mutation = false
   private readonly chatAgents = new Map<string, Agent>()
   private processReservations = 0
-
   constructor(ctx: Context) {
     super(ctx, 'zerowallClaudeCode')
     ctx.sessionProjections.register(claudeMetricsProjection)
@@ -183,6 +204,13 @@ export class ClaudeCodeService extends TypertRemoteService {
       const routed = options.purpose === undefined && isAgentLoopRequest(options) && options.sessionId !== undefined
         ? thisService.chatAgents.get(String(options.sessionId)) : undefined
       if (!routed) { yield* next(); return }
+      const latest = options.messages.at(-1)
+      const block = latest?.role === 'user' && latest.content.length === 1 ? latest.content[0] : undefined
+      const command = block?.type === 'text' ? parseClaudeCommand(block.text) : undefined
+      if (command?.kind === 'slash') {
+        yield* thisService.streamConversationCommand(routed, block!.type === 'text' ? block!.text : '', options)
+        return
+      }
       yield* thisService.streamConversation(routed, {
         provider: options.provider,
         model: options.model,
@@ -194,7 +222,6 @@ export class ClaudeCodeService extends TypertRemoteService {
         state.preparing?.abort()
         state.turn?.cancel.abort()
         state.turn?.query?.close()
-        await state.turn?.terminal?.terminate()
         state.turn?.process?.terminate()
       }))
       this.sessions.clear()
@@ -205,6 +232,9 @@ export class ClaudeCodeService extends TypertRemoteService {
   private desktop(): boolean { return Boolean(process.env.ZEROWALL_USER_DATA_DIR && isAbsolute(process.env.ZEROWALL_USER_DATA_DIR)) }
   private anyRunning(): boolean {
     return [...this.sessions.values()].some(state => state.busy || state.turn?.view.running === true)
+  }
+  private sessionOccupied(owner: SessionRuntime): boolean {
+    return owner.busy || owner.turn?.view.running === true
   }
   private runtime(): ClaudeRuntimeManager {
     if (!this.desktop()) throw new Error('Claude Code 安装与运行仅适用于 ZeroWall Desktop。')
@@ -224,6 +254,27 @@ export class ClaudeCodeService extends TypertRemoteService {
     return state
   }
 
+  private notifySessionAvailable(owner: SessionRuntime): void {
+    if (this.sessionOccupied(owner)) return
+    const waiters = owner.availableWaiters
+    delete owner.availableWaiters
+    for (const resolve of waiters ?? []) resolve()
+  }
+
+  private async waitForSessionAvailable(owner: SessionRuntime, signal?: AbortSignal): Promise<void> {
+    while (this.sessionOccupied(owner)) {
+      if (signal?.aborted) throw new Error('Claude Code request was canceled.')
+      await new Promise<void>((resolve, reject) => {
+        const cleanup = () => signal?.removeEventListener('abort', abort)
+        const ready = () => { cleanup(); resolve() }
+        const abort = () => { owner.availableWaiters?.delete(ready); cleanup(); reject(new Error('Claude Code request was canceled.')) }
+        owner.availableWaiters ??= new Set()
+        owner.availableWaiters.add(ready)
+        signal?.addEventListener('abort', abort, { once: true })
+      })
+    }
+  }
+
   private async statusSnapshot(running: boolean): Promise<ClaudeCodeStatus> {
     if (!this.desktop()) return { desktop: false, installed: false, rollbackAvailable: false, running: false }
     try {
@@ -231,12 +282,16 @@ export class ClaudeCodeService extends TypertRemoteService {
       return { desktop: true, installed: status.installed, readiness: status.installed ? 'installed' : 'unavailable', ...(status.version ? { version: status.version } : {}),
         ...(status.executablePath ? { executablePath: status.executablePath } : {}),
         rollbackAvailable: Boolean(status.previousVersion), running }
-    } catch { return { desktop: true, installed: false, rollbackAvailable: false, running: false } }
+    } catch (error) {
+      return { desktop: true, installed: false, readiness: 'unavailable', rollbackAvailable: false, running,
+        diagnostic: error instanceof Error ? error.message : 'Claude Code runtime status could not be read.' }
+    }
   }
 
   @Remote
   async status(agent: Agent): Promise<ClaudeCodeStatus> {
-    return this.statusSnapshot(this.owner(agent).busy || Boolean(this.owner(agent).turn?.view.running))
+    const owner = this.owner(agent)
+    return this.statusSnapshot(this.sessionOccupied(owner))
   }
 
   @Remote('settingsStatus')
@@ -272,10 +327,30 @@ export class ClaudeCodeService extends TypertRemoteService {
       if (next.outputStyle === 'Default') delete native.outputStyle
       else native.outputStyle = next.outputStyle
     }
-    for (const key of ['permissionSelector', 'permissionMode', 'renderer', 'prose', 'worktreeBranchPrefix', 'maxProcesses', 'idleTimeoutMinutes'] as const) {
+    for (const key of ['permissionSelector', 'permissionMode', 'renderer', 'prose', 'maxProcesses', 'contextWindow', 'autoCompactWindow', 'promptCacheTtl', 'subagentPromptCacheTtl'] as const) {
       if (next[key] !== undefined) plugin[key] = next[key]
     }
     await Promise.all([this.writeSettingsDocument(nativePath, native), this.writeSettingsDocument(pluginPath, plugin)])
+    // Streaming SDK sessions can hot-apply the native controls that Claude
+    // exposes. File-backed context/cache settings intentionally take effect
+    // on the next session because the SDK does not permit changing them
+    // safely after initialization.
+    const syncFailures: string[] = []
+    for (const state of this.sessions.values()) {
+      const query = state.turn?.query
+      if (!state.turn?.view.running || !query) continue
+      if (next.permissionMode !== undefined) {
+        try { await query.setPermissionMode(next.permissionMode as Parameters<Query['setPermissionMode']>[0]) }
+        catch { syncFailures.push('权限模式') }
+      }
+      if (next.outputStyle !== undefined) {
+        try {
+          await query.applyFlagSettings({ outputStyle: next.outputStyle === 'Default' ? null : next.outputStyle })
+          if (next.outputStyle !== 'Default') await query.updateSettings('localSettings', { outputStyle: next.outputStyle })
+        } catch { syncFailures.push('输出风格') }
+      }
+    }
+    if (syncFailures.length) throw new Error(`设置已保存，但活动 Claude 会话未能同步：${[...new Set(syncFailures)].join('、')}。新设置将在新会话生效。`)
     return merged
   }
 
@@ -284,8 +359,19 @@ export class ClaudeCodeService extends TypertRemoteService {
   async settingsGlobalGet(): Promise<ClaudeGlobalSettingsView> {
     const native = await this.settingsGet()
     const outputStyles = await this.outputStyleOptions()
+    const activeModel = [...this.sessions.values()].map(state => state.turn?.view.model).find(Boolean) ?? 'claude'
+    const configuredOverrides: NodeJS.ProcessEnv = { ...process.env }
+    const environment = this.ctx.get('zerowallEnvironment') as { listVariables(): Promise<Array<{ name: string }>>; readVariable(name: string): Promise<string | undefined> }
+    const overrideNames = new Set(['CLAUDE_CODE_MAX_CONTEXT_TOKENS', 'CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_CODE_DISABLE_1M_CONTEXT', 'CLAUDE_CODE_PROMPT_CACHE_TTL', 'CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL', 'ENABLE_PROMPT_CACHING_1H', 'FORCE_PROMPT_CACHING_5M'])
+    for (const variable of await environment.listVariables()) {
+      if (!overrideNames.has(variable.name.toUpperCase())) continue
+      const value = await environment.readVariable(variable.name)
+      if (value !== undefined) configuredOverrides[variable.name] = value
+    }
+    const effective = claudeSettingsEnvironment(native, activeModel, configuredOverrides).effective
     const select = (key: string, value: string, options: readonly { value: string; label: string; source: 'built-in' | 'user' | 'configured' }[], effect: 'immediate' | 'new-session' | 'next-turn' | 'next-worktree' | 'restart') => ({ key, kind: 'select' as const, value, options, effect })
     const text = (key: string, value: string, maxLength: number, effect: 'immediate' | 'new-session' | 'next-turn' | 'next-worktree' | 'restart') => ({ key, kind: 'text' as const, value, maxLength, effect })
+    const number = (key: string, value: string, min: number, max: number, effect: 'immediate' | 'new-session' | 'next-turn' | 'next-worktree' | 'restart') => ({ key, kind: 'number' as const, value, min, max, step: 1, effect })
     return { settings: [
       select('outputStyle', native.outputStyle ?? 'Default', outputStyles, 'new-session'),
       select('permissionSelector', native.permissionSelector ?? 'plugin', CLAUDE_PERMISSION_SELECTORS.map(value => ({ value, label: value, source: 'built-in' as const })), 'immediate'),
@@ -293,23 +379,30 @@ export class ClaudeCodeService extends TypertRemoteService {
       select('renderer', native.renderer ?? 'plugin', CLAUDE_RENDERERS.map(value => ({ value, label: value, source: 'built-in' as const })), 'next-turn'),
       select('prose', native.prose ?? 'plain', CLAUDE_PROSE_MODES.map(value => ({ value, label: value, source: 'built-in' as const })), 'immediate'),
       text('maxProcesses', String(native.maxProcesses ?? 4), 2, 'immediate'),
+      { ...number('contextWindow', String(native.contextWindow ?? 'auto'), 1, 10_000_000, 'new-session'), presets: CLAUDE_CONTEXT_PRESETS, effective: effective.contextWindow },
+      { ...number('autoCompactWindow', String(native.autoCompactWindow ?? 'auto'), 100_000, 1_000_000, 'new-session'), presets: CLAUDE_COMPACT_PRESETS, effective: effective.autoCompactWindow },
+      { ...select('promptCacheTtl', native.promptCacheTtl ?? 'auto', ['auto', '5m', '1h'].map(value => ({ value, label: value, source: 'built-in' as const })), 'new-session'), effective: effective.promptCacheTtl },
+      { ...select('subagentPromptCacheTtl', native.subagentPromptCacheTtl ?? 'auto', ['auto', '5m', '1h'].map(value => ({ value, label: value, source: 'built-in' as const })), 'new-session'), effective: effective.subagentPromptCacheTtl },
     ] }
   }
 
   @Remote('settingsGlobalUpdate')
   async settingsGlobalUpdate(changes: Record<string, string>): Promise<ClaudeGlobalSettingsView> {
     if (!changes || typeof changes !== 'object' || Array.isArray(changes)) throw new Error('Claude Code global settings changes must be an object.')
-    const supported = new Set(['outputStyle', 'permissionSelector', 'permissionMode', 'renderer', 'prose', 'worktreeBranchPrefix', 'maxProcesses', 'idleTimeoutMinutes'])
+    const supported = new Set(['outputStyle', 'permissionSelector', 'permissionMode', 'renderer', 'prose', 'maxProcesses', 'contextWindow', 'autoCompactWindow', 'promptCacheTtl', 'subagentPromptCacheTtl'])
     for (const key of Object.keys(changes)) if (!supported.has(key)) throw new Error(`Unsupported Claude Code global setting: ${key}`)
-    if (Object.hasOwn(changes, 'worktreeBranchPrefix') || Object.hasOwn(changes, 'idleTimeoutMinutes')) throw new Error('This managed runtime does not provide worktree creation or persistent process reuse.')
     for (const [key, value] of Object.entries(changes)) if (typeof value !== 'string' || value.length > 128) throw new Error(`Claude Code setting ${key} is invalid.`)
     if (Object.hasOwn(changes, 'outputStyle') && !(await this.outputStyleOptions()).some(option => option.value === changes.outputStyle)) throw new Error('Claude Code output style is unavailable.')
     const patch: Partial<ClaudeNativeSettings> = {}
     for (const [key, value] of Object.entries(changes)) {
-      if (key === 'maxProcesses' || key === 'idleTimeoutMinutes') {
+      if (key === 'maxProcesses') {
         const parsed = Number(value)
         if (!Number.isSafeInteger(parsed)) throw new Error(`Claude Code setting ${key} is invalid.`)
         patch[key] = parsed
+      } else if (key === 'contextWindow' || key === 'autoCompactWindow') {
+        const parsed = value === 'auto' || value === '200k' || value === '1m' ? value : Number(value)
+        if (typeof parsed === 'number' && (!Number.isSafeInteger(parsed) || key === 'autoCompactWindow' && (parsed < 100_000 || parsed > 1_000_000))) throw new Error(`Claude Code setting ${key} is outside the supported range.`)
+        ;(patch as Record<string, unknown>)[key] = parsed
       } else (patch as Record<string, unknown>)[key] = value
     }
     await this.settingsUpdate(patch)
@@ -368,7 +461,7 @@ export class ClaudeCodeService extends TypertRemoteService {
     let turn: OwnedTurn
     try {
       const input = { messages: [{ role: 'user', content: request.prompt }], tools: (request.parent.ctx.get('tools') as ToolRuntime | undefined)?.schemas(request.parent) ?? [] } as unknown as GenerateOptions
-      turn = await this.launch(agent, text, 'conversation', selected, { cwd: request.cwd, signal: request.signal, scope: request.parent, request: input })
+      turn = await this.launch(agent, text, selected, { cwd: request.cwd, signal: request.signal, scope: request.parent, request: input })
     } catch (error) {
       this.sessions.delete(id)
       if (error instanceof Error && error.message === 'Claude Code 仅支持明确声明为 Anthropic Messages 的模型路由，请在当前对话切换模型。') {
@@ -488,7 +581,7 @@ export class ClaudeCodeService extends TypertRemoteService {
   async settingsUninstall(): Promise<ClaudeCodeStatus> { return this.changeRuntime('uninstall') }
 
   private async changeRuntime(operation: 'install' | 'rollback' | 'uninstall', agent?: Agent): Promise<ClaudeCodeStatus> {
-    if (this.mutation || [...this.sessions.values()].some(state => state.busy || state.turn?.view.running)) throw new Error('请先停止 Claude Code，再管理安装。')
+    if (this.mutation || this.anyRunning()) throw new Error('请先停止 Claude Code，再管理安装。')
     this.mutation = true
     try {
       const runtime = this.runtime()
@@ -513,11 +606,6 @@ export class ClaudeCodeService extends TypertRemoteService {
       ...(this.managedRoute ? { managedRoute: this.managedRoute } : {}),
       ...(this.managedCredential ? { managedCredential: this.managedCredential } : {}),
     })
-  }
-
-  /** Local compatibility helper for tests and pre-SDK callers; never expose the legacy terminal launcher over RPC. */
-  async start(agent: Agent, prompt: string): Promise<ClaudeCodeTurn> {
-    return this.turnView(await this.launch(agent, prompt, 'panel'))
   }
 
   @Remote
@@ -562,14 +650,13 @@ export class ClaudeCodeService extends TypertRemoteService {
     setApprovalPolicy(agent.session, mode === 'dontAsk' || mode === 'bypassPermissions' ? 'never' : 'ask')
   }
 
-  private async launch(agent: Agent, prompt: string, mode: 'panel' | 'conversation', selected?: ClaudeSelection, execution: { cwd?: string; signal?: AbortSignal; scope?: Agent; request?: GenerateOptions } = {}): Promise<OwnedTurn> {
-    const maxPrompt = mode === 'panel' ? 64_000 : 2 * 1024 * 1024
+  private async launch(agent: Agent, prompt: string, selected?: ClaudeSelection, execution: { cwd?: string; signal?: AbortSignal; scope?: Agent; request?: GenerateOptions } = {}): Promise<OwnedTurn> {
+    const maxPrompt = 2 * 1024 * 1024
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > maxPrompt || prompt.includes('\0')) {
-      if (mode === 'panel') throw new Error('请输入 1 到 64000 字的 Claude Code 指令。')
       throw new Error('Claude Code conversation context exceeds the supported size.')
     }
     const owner = this.owner(agent)
-    if (this.mutation || owner.busy || owner.turn?.view.running) throw new Error('Claude Code 正在运行，请等待或停止当前任务。')
+    if (this.mutation || this.sessionOccupied(owner)) throw new Error('Claude Code 正在运行，请等待或停止当前任务。')
     owner.busy = true
     const cancel = new AbortController()
     const onAbort = () => cancel.abort()
@@ -601,7 +688,7 @@ export class ClaudeCodeService extends TypertRemoteService {
       const projects = this.ctx.get('zerowallProjects') as { listMcpServers(): McpServerProjectionInput[] }
       const skills = await projectSkillsForClaude(skillsRegistry, cwd, execution.scope ?? agent)
       const credentials = this.ctx.get('credentials') as { resolve(ref: ReturnType<typeof credentialRef>): Promise<{ value: string } | undefined> }
-      const mcp = execution.request ? { servers: [], skipped: [], environment: {} } : await prepareClaudeMcpRuntime(projectMcpForClaude(projects.listMcpServers(), cwd), async reference => {
+      const mcp = await prepareClaudeMcpRuntime(projectMcpForClaude(projects.listMcpServers(), cwd), async reference => {
         const specialKey = reference === 'R_PLATFORM_MCP_AUTHORIZATION' ? 'zerowall.mcp.rdatalinux_authorization'
           : reference === 'HUAGONGSHE_MCP_AUTHORIZATION' ? 'zerowall.mcp.huagongshe_token' : undefined
         if (specialKey) {
@@ -612,7 +699,10 @@ export class ClaudeCodeService extends TypertRemoteService {
         return stored ?? (await credentials.resolve(credentialRef(reference)))?.value
       })
       cancel.signal.throwIfAborted()
-      projectionRoot = join(runtime.configDir, 'sessions', createHash('sha256').update(agent.id).digest('hex'), randomUUID())
+      // Keep one projection root per native session so Skills/MCP paths stay
+      // stable and prompt-cache entries remain reusable across turns.
+      projectionRoot = join(runtime.configDir, 'sessions', createHash('sha256').update(agent.id).digest('hex'), 'projection')
+      await rm(projectionRoot, { recursive: true, force: true }).catch(() => undefined)
       await mkdir(projectionRoot, { recursive: true, mode: 0o700 })
       const skillRoot = join(projectionRoot, 'skills')
       for (const skill of skills.skills) {
@@ -644,13 +734,15 @@ export class ClaudeCodeService extends TypertRemoteService {
         const value = await environmentService.readVariable(name)
         if (value !== undefined) configuredEnvironment[name] = value
       }
-      const environment = runtime.getCliEnvironment({ ANTHROPIC_API_KEY: route.apiKey, ANTHROPIC_BASE_URL: route.baseUrl,
+      const baseEnvironment = runtime.getCliEnvironment({ ANTHROPIC_API_KEY: route.apiKey, ANTHROPIC_BASE_URL: route.baseUrl,
         ANTHROPIC_MODEL: route.model, ANTHROPIC_DEFAULT_HAIKU_MODEL: route.model,
         ANTHROPIC_DEFAULT_SONNET_MODEL: route.model, ANTHROPIC_DEFAULT_OPUS_MODEL: route.model }, undefined, mcp.environment, configuredEnvironment)
+      const settingsEnvironment = claudeSettingsEnvironment(nativeSettings, route.model, baseEnvironment)
+      const environment = settingsEnvironment.env
       const turn: OwnedTurn = {
         view: { id: randomUUID(), provider: route.provider, model: route.model, executablePath: executable, running: true, output: '', renderer: nativeSettings.renderer ?? 'plugin', activity: [],
           skills: skills.skills.length, mcp: mcpServers.length,
-          skipped: [...skills.skipped.map(item => `Skill ${item.name}: ${item.reason}`), ...[...mcp.skipped, ...launchSkipped].map(item => `MCP ${item.serverName}: ${item.reason === 'unsupported-working-directory'
+          skipped: [...settingsEnvironment.warnings.map(item => `设置：${item}`), ...skills.skipped.map(item => `Skill ${item.name}: ${item.reason}`), ...[...mcp.skipped.filter(item => item.reason !== 'managed-server'), ...launchSkipped].map(item => `MCP ${item.serverName}: ${item.reason === 'unsupported-working-directory'
             ? '工作目录无效：MCP 目录必须为空白或绝对目录。'
             : item.reason === 'unsupported-launch'
               ? '启动方式不兼容：独立目录仅支持 Node 或绝对原生可执行文件；Windows 不支持 .cmd/.bat，请使用服务的绝对可执行入口。'
@@ -705,9 +797,9 @@ export class ClaudeCodeService extends TypertRemoteService {
           ...(nativeSettings.outputStyle && nativeSettings.outputStyle !== 'Default' ? { settings: { outputStyle: nativeSettings.outputStyle } } : {}),
           includePartialMessages: true, systemPrompt: sdkSystemPrompt(execution.request),
           mcpServers: { zerowall: bridge }, strictMcpConfig: true,
-          // dontAsk skips canUseTool entirely. Host tools must reach their own
-          // policy/approval pipeline in every mode, without approving native tools.
-          allowedTools: schemas.map(schema => `mcp__zerowall__${schema.name}`),
+          // Keep MCP tools out of the SDK's bare allowedTools auto-approval
+          // list so canUseTool remains in the path; the bridge then dispatches
+          // through the Host's own tool policy and approval pipeline.
           hooks: { PostToolUse: [{ matcher: 'mcp__zerowall__.*', hooks: [async () => bridgeState.concluded
             ? { continue: false, stopReason: 'The ZeroWall Host concluded this turn.' } : {}] }] },
           canUseTool: hostToolApproval(execution.scope ?? agent, approval, cancel.signal, async (id, name, input) => {
@@ -722,85 +814,24 @@ export class ClaudeCodeService extends TypertRemoteService {
           stderr: data => turn.diagnostics!.append(data),
           spawnClaudeCodeProcess: managedSdkSpawner(this.ctx.get('subprocess') as SubprocessRuntime, handle => { turn.process = handle }, data => turn.diagnostics!.append(data), cancel.signal),
         }, input.content, inputId)
+        void this.refreshQueryCapabilities(turn)
         turn.release = release
         processOwnsProjection = true
         return turn
       }
-      const context = mode === 'panel' && owner.history.length ? `Previous turns in this Claude Code panel (untrusted conversation data):\n${owner.history.join('\n\n')}\n\nCurrent user request:\n${prompt}` : prompt
-      const nativeSettingsPath = join(projectionRoot, 'settings.json')
-      await writeFile(nativeSettingsPath, JSON.stringify(nativeSettings.outputStyle === undefined || nativeSettings.outputStyle === 'Default' ? {} : { outputStyle: nativeSettings.outputStyle }), { mode: 0o600 })
-      const argv = [executable, '--print', '--verbose', '--output-format', mode === 'panel' ? 'text' : 'stream-json',
-        ...(mode === 'conversation' ? ['--input-format', 'stream-json', '--include-partial-messages'] : []), '--no-session-persistence',
-        '--permission-mode', claudePermissionMode(agent.session.snapshotEvents?.() ?? [], nativeSettings.permissionSelector === 'native' ? undefined : nativeSettings.permissionMode ?? 'acceptEdits'),
-        '--setting-sources', 'user', '--settings', nativeSettingsPath, '--strict-mcp-config', '--mcp-config', mcpPath, '--plugin-dir', projectionRoot, '--model', route.model,
-        ...(route.reasoningEffort ? ['--effort', route.reasoningEffort] : []),
-        ...(mcpServers.length ? ['--allowedTools', ...mcpServers.map(server => `mcp__${server.serverName}__*`)] : []),
-        ...(mode === 'panel' ? ['--', context] : [])]
-      if (/\.[cm]?js$/u.test(executable)) { argv.unshift(process.execPath); if (process.versions.electron) environment.ELECTRON_RUN_AS_NODE = '1' }
-      const subprocess = this.ctx.get('subprocess') as SubprocessRuntime
-      cancel.signal.throwIfAborted()
-      if (mode === 'conversation') {
-        try {
-          turn.process = subprocess.spawn({ argv, cwd, env: claudeEnvironmentOverlay(environment),
-            stdio: { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' }, graceMs: 1000, signal: turn.cancel.signal })
-          if (!turn.process.stdin || !turn.process.stdout || !turn.process.stderr) throw new Error('Claude Code process streams are unavailable.')
-          const stderr = turn.process.stderr
-          turn.diagnostics = turn.safe.fork()
-          stderr.setEncoding('utf8')
-          stderr.on('data', (data: string) => {
-            try { turn.diagnostics!.append(data) } catch { turn.process?.terminate() }
-          })
-          turn.process.stdin.end(`${JSON.stringify({ type: 'user', message: { role: 'user', content: prompt } })}\n`)
-          void turn.process.done.then(release, release)
-          processOwnsProjection = true
-          return turn
-        } catch {
-          turn.process?.terminate()
-          turn.view.running = false
-          turn.view.message = 'Claude Code 无法启动，请检查安装状态后重试。'
-          return turn
-        }
-      }
-      try {
-        // Pinned DSH's terminal implementation honors undefined tombstones via
-        // targetEnvironment(), although its public terminal type is narrower.
-        // Keep process-tree ownership while removing all unselected ambient env.
-        turn.terminal = await subprocess.spawnTerminal({ argv, cwd, env: claudeEnvironmentOverlay(environment) as Record<string, string>,
-          rows: 40, cols: 120, terminalType: 'xterm-256color', graceMs: 1000, signal: turn.cancel.signal })
-      } catch {
-        turn.view.running = false
-        turn.view.message = 'Claude Code 无法启动，请检查安装状态后重试。'
-        return turn
-      }
-      turn.terminal.output.setEncoding('utf8')
-      turn.terminal.output.on('data', (data: string) => {
-        try { turn.safe.append(data) } catch { turn.view.message = 'Claude Code 输出超过限制，任务已停止。'; void turn.terminal?.terminate().catch(() => undefined) }
-      })
-      turn.terminal.output.on('error', () => { turn.view.message = 'Claude Code 输出连接中断。' })
-      const activeProjectionRoot = projectionRoot
-      processOwnsProjection = true
-      void turn.terminal.done.then(result => {
-        turn.view.exitCode = result.exitCode
-        if (result.exitCode !== 0 && !turn.view.message) turn.view.message = 'Claude Code 未成功完成，请检查所选模型和安装状态后重试。'
-      }).catch(() => { turn.view.message = 'Claude Code 进程中断，请重试。' }).finally(async () => {
-        release()
-        turn.safe.finish()
-        turn.view.running = false
-        const output = stripVTControlCharacters(turn.safe.snapshot())
-        if (turn.view.exitCode === 0) {
-          owner.history.push(`User: ${prompt}\nClaude: ${output}`)
-          while (owner.history.join('\n').length > 96_000 && owner.history.length) owner.history.shift()
-        }
-        await rm(activeProjectionRoot, { recursive: true, force: true }).catch(() => undefined)
-      })
-      return turn
+      throw new Error('Claude Code conversation request is missing its SDK options.')
     } catch (error) {
       if (owner.turn?.cancel === cancel) {
         owner.turn.query?.close(); owner.turn.process?.terminate()
         owner.turn.view.running = false
+        if (owner.turn.binding && owner.turn.bindingStore) {
+          owner.turn.binding.state = cancel.signal.aborted ? 'stopped' : 'failed'
+          delete owner.turn.binding.pending
+          await owner.turn.bindingStore.save(agent.id, owner.turn.binding).catch(() => undefined)
+        }
         if (owner.turn.diagnostics && error instanceof Error) {
-          owner.turn.diagnostics.append(error.message); owner.turn.diagnostics.finish()
-          owner.turn.view.message = `Claude 启动失败（诊断 ${owner.turn.view.id}）。${owner.turn.diagnostics.snapshot()}`
+          owner.turn.diagnostics.finish()
+          owner.turn.view.message = `Claude 启动失败（诊断 ${owner.turn.view.id}），请检查安装状态后重试。`
         }
       }
       if (cancel.signal.aborted) throw new Error('Claude Code 任务已停止。')
@@ -820,10 +851,12 @@ export class ClaudeCodeService extends TypertRemoteService {
       if (!processOwnsProjection) release()
       delete owner.preparing
       owner.busy = false
+      this.notifySessionAvailable(owner)
     }
   }
 
   private async *streamConversation(agent: Agent, selection: ClaudeSelection, options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const owner = this.owner(agent)
     let turn: OwnedTurn | undefined
     let metrics: ClaudeMetricsCollector | undefined
     const observeMetrics = async (message: unknown) => {
@@ -975,7 +1008,8 @@ export class ClaudeCodeService extends TypertRemoteService {
     }
 
     try {
-      turn = await this.launch(agent, 'SDK conversation input', 'conversation', selection, { request: options, ...(options.signal ? { signal: options.signal } : {}) })
+      if (owner.busy || owner.turn?.view.running) await this.waitForSessionAvailable(owner, options.signal)
+      turn = await this.launch(agent, 'SDK conversation input', selection, { request: options, ...(options.signal ? { signal: options.signal } : {}) })
       metrics = new ClaudeMetricsCollector({ runId: turn.view.id, nativeSessionId: turn.binding?.nativeId ?? turn.view.id,
         provider: selection.provider, model: selection.model, turn: cursor?.turn ?? 0, main: true }, Date.now, turn.view.resumed === true)
       await agent.session.append('zerowall-claude/metrics', metrics.snapshot(), { ignorable: true })
@@ -998,6 +1032,14 @@ export class ClaudeCodeService extends TypertRemoteService {
       if (turn.query) {
         for await (const message of turn.query) {
           await observeMetrics(message)
+          const compactBoundary = compactBoundaryOf(message)
+          if (compactBoundary) {
+            delete turn.contextUsage
+          }
+          if (compactBoundary) turn.compact = compactBoundary
+          if (message.type === 'result') {
+            try { turn.contextUsage = contextUsageView(await turn.query.getContextUsage({ detail: 'summary' }), 'summary') } catch { /* optional SDK control */ }
+          }
           if (message.type === 'system' && message.subtype === 'init' && turn.binding) {
             if (turn.binding.nativeId !== message.session_id) throw new Error('Claude session identity changed unexpectedly.')
             turn.binding.initialized = true; turn.binding.state = 'running'
@@ -1063,7 +1105,7 @@ export class ClaudeCodeService extends TypertRemoteService {
       }
       yield { type: 'finish', reason: { kind: 'stop' } }
     } catch (error) {
-      if (turn?.cancel.signal.aborted || options.signal?.aborted) {
+      if (turn?.cancel.signal.aborted || options.signal?.aborted || error instanceof Error && error.message === 'Claude Code 任务已停止。') {
         yield { type: 'finish', reason: { kind: 'aborted', failure: { code: 'ABORTED', message: 'Claude Code request was canceled.' } } }
       } else {
         if (turn?.diagnostics && error instanceof Error) turn.diagnostics.append(error.message)
@@ -1074,7 +1116,8 @@ export class ClaudeCodeService extends TypertRemoteService {
           '当前模型路由没有可用凭据，请在平台对话设置中配置。',
           '当前选择的推理强度不受此 Claude Code 版本支持，请在当前对话调整。',
           'Claude Code 仅支持明确声明为 Anthropic Messages 的模型路由，请在当前对话切换模型。',
-          'Claude Code 安装与运行仅适用于 ZeroWall Desktop。',
+          'Claude Code 安装与运行仅适用于 ZeroWall Desktop。', 'Claude Code 无法准备当前会话，请检查模型配置与资源状态。',
+          'Claude Code 已达到最大并发进程数，请等待其他任务完成。', 'Claude Code 正在运行，请等待或停止当前任务。',
         ].includes(error.message) ? error.message : 'Claude Code 请求失败，请检查独立 CLI、模型和资源配置。'
         yield failure(message)
       }
@@ -1120,11 +1163,227 @@ export class ClaudeCodeService extends TypertRemoteService {
           if (turn.projectionRoot) await rm(turn.projectionRoot, { recursive: true, force: true }).catch(() => undefined)
         }
       }
+      this.notifySessionAvailable(owner)
+    }
+  }
+
+  private async *streamConversationCommand(agent: Agent, input: string, options: GenerateOptions): AsyncIterable<StreamChunk> {
+    const owner = this.owner(agent)
+    const selected: ClaudeSelection = {
+      provider: options.provider,
+      model: options.model,
+      ...(options.reasoningEffort === undefined ? {} : { reasoningEffort: options.reasoningEffort }),
+    }
+    try {
+      await this.waitForSessionAvailable(owner, options.signal)
+      const previous = (await this.cliStateFor(agent)).output
+      const state = await this.executeCliInput(agent, input, selected, options.signal)
+      const command = parseClaudeCommand(input)
+      const compact = command.kind === 'slash' && (command.name === '/compact' || command.name === '/压缩') ? state.lastCompact : undefined
+      const text = compact
+        ? `上下文已压缩（已收到 compact_boundary）：压缩前 ${compact.preTokens.toLocaleString()} tokens${compact.postTokens === undefined ? '' : `，压缩后 ${compact.postTokens.toLocaleString()} tokens`}。`
+        : (state.output.startsWith(previous) ? state.output.slice(previous.length).trim() : state.output) || 'Claude 命令已完成。'
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      yield { type: 'text-delta', index: 0, text }
+      yield { type: 'block-end', index: 0, block: { type: 'text', text } }
+      yield { type: 'finish', reason: { kind: 'stop' } }
+    } catch (reason) {
+      const safe = new ClaudeSafeOutput([])
+      safe.append(reason instanceof Error ? reason.message : 'Claude 命令执行失败。')
+      yield { type: 'finish', reason: { kind: options.signal?.aborted ? 'aborted' : 'error', failure: { code: 'CLAUDE_COMMAND', message: safe.snapshot() } } }
+    } finally {
+      // A handled command must not be replayed as prose on the next chat turn.
+      const turn = owner.turn
+      const latest = options.messages.at(-1)
+      if (latest && turn?.binding && turn.bindingStore) {
+        turn.binding.submitted = [...new Set([...turn.binding.submitted, inputKey(latest)])]
+        await turn.bindingStore.save(agent.id, turn.binding)
+      }
     }
   }
 
   private turnView(turn: OwnedTurn): ClaudeCodeTurn {
-    return { ...turn.view, skipped: [...turn.view.skipped], output: stripVTControlCharacters(turn.safe.snapshot()) }
+    return { ...turn.view, skipped: [...turn.view.skipped], output: stripVTControlCharacters(turn.safe.snapshot()), ...(turn.contextUsage ? { contextUsage: turn.contextUsage } : {}), ...(turn.compact ? { lastCompact: turn.compact } : {}) }
+  }
+
+  private async refreshQueryCapabilities(turn: OwnedTurn): Promise<void> {
+    if (!turn.query) return
+    try {
+      turn.commands = (await turn.query.supportedCommands()).map(command => ({ name: command.name, ...(command.description ? { description: command.description } : {}), ...(command.argumentHint ? { argumentHint: command.argumentHint } : {}) }))
+    } catch { turn.commands = [...FALLBACK_COMMANDS] }
+    try {
+      const usage = await turn.query.getContextUsage({ detail: 'summary' })
+      turn.contextUsage = contextUsageView(usage, 'summary')
+    } catch { /* Older managed CLIs do not expose control requests. */ }
+  }
+
+  private async runCliInput(agent: Agent, text: string, selected?: ClaudeSelection, options: { requireCompactBoundary?: boolean; fetchUsage?: boolean; fetchContext?: 'summary' | 'full'; signal?: AbortSignal } = {}): Promise<OwnedTurn> {
+    const request = { messages: [{ role: 'user', content: [{ type: 'text', text }] }], tools: [] } as unknown as GenerateOptions
+    const turn = await this.launch(agent, text, selected, { request, ...(options.signal ? { signal: options.signal } : {}) })
+    if (!turn.query) throw new Error(turn.view.message ?? 'Claude SDK 会话不可用。')
+    turn.cliOutput = turn.safe.fork()
+    this.owner(agent).cliOutput = turn.cliOutput
+    let compactBoundary = false
+    let completed = false
+    try {
+      if (options.fetchUsage && turn.query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET) {
+        try {
+          const usage = await turn.query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }) as Record<string, unknown>
+          const fields = ['total_cost_usd', 'total_input_tokens', 'total_output_tokens', 'total_duration_ms', 'total_api_duration_ms', 'num_turns', 'rate_limits_available']
+          const lines = fields.filter(key => usage[key] !== undefined).map(key => `${key}: ${String(usage[key])}`)
+          if (lines.length) turn.cliOutput.append(`用量摘要\n${lines.join('\n')}\n\n`)
+        } catch { /* The experimental endpoint is optional; the native command still runs. */ }
+      }
+      for await (const message of turn.query) {
+        const compact = compactBoundaryOf(message)
+        if (compact) {
+          compactBoundary = true
+          turn.compact = compact
+          delete turn.contextUsage
+        }
+        if (message.type === 'system' && message.subtype === 'init' && turn.binding) {
+          if (turn.binding.nativeId !== message.session_id) throw new Error('Claude session identity changed unexpectedly.')
+          turn.binding.initialized = true
+          turn.binding.state = 'running'
+          await turn.bindingStore!.save(agent.id, turn.binding)
+        }
+        if ((message.type === 'assistant' || message.type === 'stream_event') && turn.binding?.pending) {
+          turn.binding.submitted = turn.binding.pending.keys
+          delete turn.binding.pending
+          await turn.bindingStore!.save(agent.id, turn.binding)
+        }
+        if (message.type === 'result') {
+          if (turn.binding?.pending) {
+            turn.binding.submitted = turn.binding.pending.keys
+            delete turn.binding.pending
+          }
+          try {
+            const detail = options.fetchContext ?? 'summary'
+            turn.contextUsage = contextUsageView(await turn.query.getContextUsage({ detail }), detail)
+          } catch { /* Context usage is optional on older managed CLIs. */ }
+          if (turn.binding) await turn.bindingStore!.save(agent.id, turn.binding)
+        }
+        const event = parseClaudeCliEvent(JSON.stringify(message))
+        if (event?.text) { turn.cliOutput.append(event.text); turn.safe.append(event.text) }
+      }
+      if (turn.process) await turn.process.done.catch(() => undefined)
+      if (options.requireCompactBoundary && !compactBoundary) throw new Error('Claude 未返回本次压缩的 compact_boundary；无法确认上下文已压缩。')
+      completed = true
+      return turn
+    } finally {
+      turn.query.close()
+      if (turn.process) turn.process.terminate()
+      turn.release?.()
+      turn.view.running = false
+      if (turn.binding && turn.bindingStore) {
+        turn.binding.state = completed ? 'idle' : turn.cancel.signal.aborted ? 'stopped' : 'failed'
+        await turn.bindingStore.save(agent.id, turn.binding).catch(() => undefined)
+      }
+      if (turn.projectionRoot) await rm(turn.projectionRoot, { recursive: true, force: true }).catch(() => undefined)
+      const owner = this.owner(agent)
+      this.notifySessionAvailable(owner)
+    }
+  }
+
+  private async cliStateFor(agent: Agent): Promise<ClaudeCliState> {
+    const owner = this.owner(agent)
+    const turn = owner.turn
+    return { active: this.sessionOccupied(owner), queued: false, commands: turn?.commands ? [...turn.commands] : [...FALLBACK_COMMANDS], output: stripVTControlCharacters(turn?.cliOutput?.snapshot() ?? owner.cliOutput?.snapshot() ?? turn?.safe.snapshot() ?? ''), ...(turn?.view.nativeSessionId ? { sessionId: turn.view.nativeSessionId } : {}), ...(turn?.view.model ? { model: turn.view.model } : {}), ...(turn?.contextUsage ? { contextUsage: turn.contextUsage } : {}), ...(turn?.compact ? { lastCompact: turn.compact } : {}), ...(turn?.view.message ? { error: turn.view.message } : {}) }
+  }
+
+  private async executeCliInput(agent: Agent, input: string, selected?: ClaudeSelection, signal?: AbortSignal): Promise<ClaudeCliState> {
+    const parsed = parseClaudeCommand(input)
+    if (parsed.kind === 'prompt') {
+      await this.runCliInput(agent, parsed.text, selected, { ...(signal ? { signal } : {}) })
+      return this.cliStateFor(agent)
+    }
+    const owner = this.owner(agent)
+    const turn = owner.turn
+    const normalized = parsed.name === '/压缩' ? '/compact' : parsed.name === '/上下文' ? '/context' : parsed.name
+    const appendNotice = async (message: string): Promise<ClaudeCliState> => {
+      const output = owner.turn?.cliOutput ?? owner.cliOutput ?? owner.turn?.safe ?? (owner.cliOutput = new ClaudeSafeOutput([]))
+      if (output) output.append(`${output.snapshot() ? '\n\n' : ''}${message}`)
+      return this.cliStateFor(agent)
+    }
+    if (normalized === '/help') {
+      const commands = turn?.commands ?? FALLBACK_COMMANDS
+      return appendNotice(commands.map(command => `${command.name}${command.argumentHint ? ` ${command.argumentHint}` : ''}${command.description ? `  ${command.description}` : ''}`).join('\n'))
+    }
+    if (normalized === '/context') {
+      const detail = parsed.args[0] === 'full' ? 'full' : 'summary'
+      const state = await this.contextUsage(agent, detail)
+      const usage = state.contextUsage
+      const compactStatus = usage?.isAutoCompactEnabled === true ? '开启' : usage?.isAutoCompactEnabled === false ? '关闭' : 'SDK 未报告状态'
+      return usage ? await appendNotice(`上下文：${usage.totalTokens.toLocaleString()} / ${usage.maxTokens.toLocaleString()} tokens（${usage.percentage.toFixed(1)}%）；自动压缩 ${compactStatus}。`) : state
+    }
+    if (normalized === '/autocompact') {
+      const settings = await this.settingsGet()
+      const context = turn?.contextUsage
+      const status = context?.isAutoCompactEnabled === true ? '开启' : context?.isAutoCompactEnabled === false ? '关闭' : 'SDK 未报告状态'
+      return appendNotice(`自动压缩窗口：${settings.autoCompactWindow ?? 'auto'}；${context ? `SDK 状态：${status}，阈值 ${context.autoCompactThreshold?.toLocaleString() ?? 'SDK 默认'} tokens。` : 'SDK 尚未提供本会话用量状态。'}`)
+    }
+    if (normalized === '/config') {
+      const keys = new Set(['contextWindow', 'autoCompactWindow', 'promptCacheTtl', 'subagentPromptCacheTtl', 'permissionMode', 'outputStyle', 'renderer', 'prose', 'maxProcesses'])
+      if (parsed.args.length === 0) {
+        const view = await this.settingsGlobalGet()
+        return appendNotice(view.settings.map(setting => {
+          const effective = setting.effective
+          return `${setting.key}: requested=${setting.value}${effective ? `; effective=${effective.effective}; source=${effective.source}${effective.reason ? `; ${effective.reason}` : ''}` : ''}`
+        }).join('\n'))
+      }
+      if (parsed.args.length !== 2 || !keys.has(parsed.args[0]!)) throw new Error('用法：/config <contextWindow|autoCompactWindow|promptCacheTtl|subagentPromptCacheTtl|permissionMode|outputStyle|renderer|prose|maxProcesses> <value>。')
+      const [key, value] = parsed.args
+      const view = await this.settingsGlobalUpdate({ [key!]: value! })
+      const setting = view.settings.find(item => item.key === key)
+      if (!setting) throw new Error(`Claude 配置 ${key} 未返回。`)
+      const effective = setting.effective
+      return appendNotice(`${setting.key}: requested=${setting.value}${effective ? `; effective=${effective.effective}; source=${effective.source}${effective.reason ? `; ${effective.reason}` : ''}` : ''}`)
+    }
+    const supportedCommands = turn?.commands ?? FALLBACK_COMMANDS
+    if (normalized === '/usage' && !commandSupported(supportedCommands, '/usage')) throw new Error('当前 Claude Agent SDK 未声明支持 /usage。')
+    if (normalized === '/compact' && !commandSupported(supportedCommands, '/compact') && !commandSupported(supportedCommands, '/压缩')) {
+      throw new Error('当前 Claude Agent SDK 未声明支持 /compact。')
+    }
+    if (!commandSupported(supportedCommands, parsed.name) && !commandSupported(supportedCommands, normalized)) {
+      throw new Error(`Claude 当前不支持命令 ${parsed.name}。`)
+    }
+    await this.runCliInput(agent, [normalized, ...parsed.args].join(' '), selected, { requireCompactBoundary: normalized === '/compact', fetchUsage: normalized === '/usage', ...(signal ? { signal } : {}) })
+    return this.cliStateFor(agent)
+  }
+
+  @Remote('contextUsage')
+  async contextUsage(agent: Agent, detail?: 'summary' | 'full'): Promise<ClaudeCliState> {
+    const usageDetail = detail ?? 'summary'
+    const turn = this.owner(agent).turn
+    if (!turn?.query) throw new Error('当前没有可读取上下文的 Claude 会话。')
+    if (!turn.view.running) {
+      if (usageDetail === 'summary' && turn.contextUsage) return this.cliStateFor(agent)
+      if (usageDetail === 'full') {
+        await this.runCliInput(agent, '/context', undefined, { fetchContext: 'full' })
+        return this.cliStateFor(agent)
+      }
+      throw new Error('摘要用量将在会话恢复后更新。')
+    }
+    turn.contextUsage = contextUsageView(await turn.query.getContextUsage({ detail: usageDetail }), usageDetail)
+    return this.cliStateFor(agent)
+  }
+
+  @Remote('cliSetModel')
+  async cliSetModel(agent: Agent, model: string): Promise<ClaudeCliState> {
+    if (typeof model !== 'string' || !/^[\w.:[\]-]{1,160}$/u.test(model)) throw new Error('Claude 模型标识无效。')
+    const query = this.owner(agent).turn?.query
+    if (!query) throw new Error('当前没有可更新模型的 Claude 会话。')
+    await query.setModel(model)
+    return this.cliStateFor(agent)
+  }
+
+  @Remote('cliSetPermissionMode')
+  async cliSetPermissionMode(agent: Agent, mode: ClaudePermissionMode): Promise<ClaudeCliState> {
+    if (!CLAUDE_PERMISSION_MODES.includes(mode)) throw new Error('Claude 权限模式无效。')
+    const query = this.owner(agent).turn?.query
+    if (!query) throw new Error('当前没有可更新权限的 Claude 会话。')
+    await query.setPermissionMode(mode as Parameters<Query['setPermissionMode']>[0])
+    return this.cliStateFor(agent)
   }
   @Remote
   read(agent: Agent): ClaudeCodeTurn | null {
@@ -1150,13 +1409,12 @@ export class ClaudeCodeService extends TypertRemoteService {
     owner.preparing?.abort()
     const turn = owner.turn
     turn?.cancel.abort()
-    await turn?.terminal?.terminate()
     turn?.process?.terminate()
   }
   @Remote
   clear(agent: Agent): void {
     const owner = this.owner(agent)
-    if (owner.busy || owner.turn?.view.running) throw new Error('请先停止当前 Claude Code 任务。')
+    if (this.sessionOccupied(owner)) throw new Error('请先停止当前 Claude Code 任务。')
     owner.history = []
     delete owner.turn
   }

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-python",
-  "version": "0.1.26",
+  "version": "0.1.35",
   "applicationVersion": "8.0.0",
   "restartRequired": true,
   "desktop": {

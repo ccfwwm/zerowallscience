@@ -72,6 +72,91 @@ export function GlobalSettingText({ setting, disabled, onChange, label, id, desc
   )
 }
 
+export function GlobalSettingNumber({ setting, disabled, onChange, label, id, describedBy, invalidMessage, presetLabel, customLabel }: {
+  setting: Extract<GlobalSettingView, { kind: 'number' }>
+  label: string
+  id?: string
+  describedBy?: string
+  disabled: boolean
+  invalidMessage: string
+  presetLabel: string
+  customLabel: string
+  onChange: (value: string) => void
+}) {
+  const initial = setting.value === 'auto' ? '' : setting.value === '200k' ? '200000' : setting.value === '1m' ? '1000000' : setting.value
+  const [draft, setDraft] = useState(initial)
+  const [invalid, setInvalid] = useState(false)
+  const [custom, setCustom] = useState(false)
+  const input = useRef<HTMLInputElement>(null)
+  const skipBlur = useRef(false)
+  useEffect(() => { setDraft(setting.value === 'auto' ? '' : setting.value === '200k' ? '200000' : setting.value === '1m' ? '1000000' : setting.value); setInvalid(false); setCustom(false) }, [setting.value])
+  useEffect(() => { if (custom) input.current?.focus() }, [custom])
+  const save = (): void => {
+    if (draft === '') {
+      setInvalid(false)
+      if (setting.value !== 'auto') onChange('auto')
+      return
+    }
+    const value = Number(draft)
+    if (!Number.isSafeInteger(value) || value < setting.min || value > setting.max) {
+      setInvalid(true)
+      return
+    }
+    setInvalid(false)
+    if (String(value) !== setting.value) onChange(String(value))
+  }
+  return (
+    <div style={{ display: 'grid', gap: 4, minWidth: 132 }}>
+      {setting.presets && <select id={id} aria-label={`${label} ${presetLabel}`} aria-describedby={describedBy} disabled={disabled}
+        value={custom || !setting.presets.some(preset => preset.value === setting.value) ? 'custom' : setting.value}
+        style={styles.settingTextInput}
+        onChange={event => {
+          const value = event.currentTarget.value
+          if (value === 'custom') { setCustom(true); input.current?.focus(); return }
+          setCustom(false)
+          setDraft(value === 'auto' ? '' : value)
+          setInvalid(false)
+          if (value !== setting.value) onChange(value)
+        }}>
+        {setting.presets.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}
+        <option value="custom">{customLabel}</option>
+      </select>}
+      {(!setting.presets || custom || !setting.presets.some(preset => preset.value === setting.value)) && <input
+        ref={input}
+        id={setting.presets ? `${id}-custom` : id}
+        aria-label={label}
+        aria-describedby={describedBy}
+        aria-invalid={invalid || undefined}
+        type="number"
+        inputMode="numeric"
+        value={draft}
+        min={setting.min}
+        max={setting.max}
+        step={setting.step}
+        placeholder="auto"
+        disabled={disabled}
+        style={styles.settingTextInput}
+        onChange={event => { setDraft(event.currentTarget.value); setInvalid(false) }}
+        onBlur={() => { if (!skipBlur.current) save(); skipBlur.current = false }}
+        onKeyDown={event => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            skipBlur.current = true
+            save()
+            event.currentTarget.blur()
+          } else if (event.key === 'Escape') {
+            skipBlur.current = true
+            setDraft(setting.value === 'auto' ? '' : setting.value === '200k' ? '200000' : setting.value === '1m' ? '1000000' : setting.value)
+            setInvalid(false)
+            event.currentTarget.blur()
+          }
+        }}
+      />}
+      {invalid && <small role="alert">{invalidMessage}</small>}
+    </div>
+  )
+}
+
 export function GlobalSettingSelect({ setting, disabled, onChange, label, id, describedBy, labelFor = option => option.label }: GlobalSettingSelectProps) {
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)

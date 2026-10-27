@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { mergePythonInventory, coreNeedsInstallation } from '../src/client/python-inventory-state.js'
+import { mergePythonInventory, coreNeedsInstallation, pythonTaskProgressPercent } from '../src/client/python-inventory-state.js'
 
 const installed = { ready: true, runtimeRoot: 'C:/installation/Python', inventoryComplete: true, scannedAt: '2026-10-12T12:00:00Z', officialPackageCount: 43, corePackageCount: 43, missingCorePackages: [], packages: [{ name: 'pandas', version: '1.0' }] }
 it('preserves the valid local inventory during failed and late refreshes without inventing missing core packages', () => {
@@ -14,4 +14,9 @@ it('accepts a fresh uninstall and never retains packages from a different runtim
   expect(mergePythonInventory(installed, removed)).toBe(removed)
   const selected = { ready: false, runtimeRoot: 'C:/new/Python', packages: [] }
   expect(mergePythonInventory(installed, selected)).toBe(selected)
+})
+it('shows completed zero-package jobs as 100 percent complete', () => {
+  expect(pythonTaskProgressPercent({ state: 'succeeded', completedPackages: 0, totalPackages: 0 })).toBe(100)
+  expect(pythonTaskProgressPercent({ state: 'running', completedPackages: 0, totalPackages: 0 })).toBe(0)
+  expect(pythonTaskProgressPercent({ state: 'running', completedPackages: 1, totalPackages: 4 })).toBe(25)
 })

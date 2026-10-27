@@ -87,6 +87,7 @@ export function ClaudeCodeAction(props: ClaudeCodeActionProps) {
             <button type="button" className={css.iconButton} aria-label="关闭" onClick={() => setOpen(false)}>×</button>
           </header>
           <p className={css.hint}>使用当前对话选择的模型和权限。安装就绪表示 CLI 已安装，连接状态以实际请求为准。</p>
+          {status?.diagnostic && <p className={css.error} role="alert">{status.diagnostic}</p>}
           <div className={css.controls}>
             <button type="button" disabled={pending || status?.desktop === false} onClick={() => void manage('install')}>{status?.installed ? '更新 CLI' : '安装 CLI'}</button>
             {status?.rollbackAvailable && <button type="button" disabled={pending || status.running} onClick={() => void manage('rollback')}>回滚</button>}

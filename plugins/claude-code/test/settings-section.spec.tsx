@@ -29,6 +29,17 @@ describe('Claude Code settings section', () => {
     expect(screen.getByRole('button', { name: 'update' })).toBeTruthy()
   })
 
+  it('shows an actionable runtime recovery diagnostic when the managed CLI is unavailable', async () => {
+    const diagnostic = 'Claude Code executable is missing; reinstall from plugin settings.'
+    const api: ClaudeCodeSettingsApi = {
+      status: vi.fn(async () => ({ ...installed, installed: false, rollbackAvailable: false, executablePath: undefined, diagnostic })),
+      install: vi.fn(async () => installed), rollback: vi.fn(async () => installed), uninstall: vi.fn(async () => installed),
+    }
+    renderSettings(api)
+    expect(await screen.findByText(diagnostic)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'install' })).toBeTruthy()
+  })
+
   it('runs install and rollback from Settings without a session id', async () => {
     const next = { ...installed, version: '2.1.310' }
     const api: ClaudeCodeSettingsApi = {
@@ -61,7 +72,6 @@ describe('Claude Code settings section', () => {
         { value: 'Default', label: 'Default', source: 'built-in' as const },
         { value: 'Reviewer', label: 'Reviewer', source: 'user' as const },
       ] },
-      { key: 'worktreeBranchPrefix', kind: 'text' as const, value: 'claude', maxLength: 128, effect: 'next-worktree' as const },
     ] }
     const api: ClaudeCodeSettingsApi = {
       status: vi.fn(async () => installed), install: vi.fn(async () => installed),
@@ -74,8 +84,8 @@ describe('Claude Code settings section', () => {
     fireEvent.click(screen.getByRole('button', { name: 'setting_outputStyle' }))
     fireEvent.click(screen.getByRole('option', { name: 'Reviewer' }))
     await waitFor(() => expect(api.updateGlobalSettings).toHaveBeenCalledWith({ outputStyle: 'Reviewer' }))
-    expect(screen.getByLabelText('setting_worktreeBranchPrefix')).toBeTruthy()
-    expect(screen.getAllByText('settingEffect')).toHaveLength(2)
+    expect(screen.queryByLabelText('setting_worktreeBranchPrefix')).toBeNull()
+    expect(screen.getAllByText('settingEffect')).toHaveLength(1)
   })
 
   it('uses the upstream keyboard listbox and preserves server-discovered style names', async () => {
@@ -112,6 +122,39 @@ describe('Claude Code settings section', () => {
     expect(api.updateGlobalSettings).toHaveBeenCalledOnce()
   })
 
+  it('saves common presets and keeps validated custom context and compaction inputs', async () => {
+    const api = apiWithSettings({ settings: [
+      { key: 'contextWindow', kind: 'number', value: 'auto', min: 1, max: 10000000, step: 1, effect: 'new-session', presets: [
+        { value: 'auto', label: 'auto' }, { value: '200000', label: '200k' }, { value: '500000', label: '500k' }, { value: '1000000', label: '1m' },
+      ] },
+      { key: 'autoCompactWindow', kind: 'number', value: 'auto', min: 100000, max: 1000000, step: 1, effect: 'new-session', presets: [
+        { value: 'auto', label: 'auto' }, { value: '100000', label: '100k' }, { value: '200000', label: '200k' }, { value: '500000', label: '500k' }, { value: '1000000', label: '1m' },
+      ] },
+    ] })
+    renderSettings(api)
+    const contextPreset = await screen.findByRole('combobox', { name: 'setting_contextWindow numericPresets' })
+    fireEvent.change(contextPreset, { target: { value: '500000' } })
+    await waitFor(() => expect(api.updateGlobalSettings).toHaveBeenCalledWith({ contextWindow: '500000' }))
+    fireEvent.change(contextPreset, { target: { value: 'custom' } })
+    const context = await screen.findByRole('spinbutton', { name: 'setting_contextWindow' })
+    expect((context as HTMLInputElement).placeholder).toBe('auto')
+    fireEvent.change(context, { target: { value: '750000' } })
+    fireEvent.keyDown(context, { key: 'Enter' })
+    await waitFor(() => expect(api.updateGlobalSettings).toHaveBeenCalledWith({ contextWindow: '750000' }))
+
+    const compactPreset = screen.getByRole('combobox', { name: 'setting_autoCompactWindow numericPresets' })
+    fireEvent.change(compactPreset, { target: { value: '200000' } })
+    await waitFor(() => expect(api.updateGlobalSettings).toHaveBeenLastCalledWith({ autoCompactWindow: '200000' }))
+    fireEvent.change(compactPreset, { target: { value: 'custom' } })
+    const compact = await screen.findByRole('spinbutton', { name: 'setting_autoCompactWindow' })
+    expect((compact as HTMLInputElement).min).toBe('100000')
+    expect((compact as HTMLInputElement).max).toBe('1000000')
+    fireEvent.change(compact, { target: { value: '99999' } })
+    fireEvent.keyDown(compact, { key: 'Enter' })
+    expect(await screen.findByText('numericInputInvalid')).toBeTruthy()
+    expect(api.updateGlobalSettings).toHaveBeenLastCalledWith({ autoCompactWindow: '200000' })
+  })
+
   it('uses native setting visibility rules and disables services the managed runtime does not provide', async () => {
     const options = (values: string[]) => values.map(value => ({ value, label: value, source: 'built-in' as const }))
     const api = apiWithSettings({ settings: [
@@ -119,17 +162,13 @@ describe('Claude Code settings section', () => {
       { key: 'prose', kind: 'select', value: 'plain', effect: 'immediate', options: options(['plain', 'enhanced']) },
       { key: 'permissionSelector', kind: 'select', value: 'native', effect: 'immediate', options: options(['plugin', 'native']) },
       { key: 'permissionMode', kind: 'select', value: 'acceptEdits', effect: 'new-session', options: options(['plan', 'acceptEdits']) },
-      { key: 'worktreeBranchPrefix', kind: 'text', value: 'claude', maxLength: 128, effect: 'next-worktree', available: false, unavailableReason: 'worktreeUnavailable' },
-      { key: 'idleTimeoutMinutes', kind: 'text', value: '30', maxLength: 4, effect: 'new-session', available: false, unavailableReason: 'idleReuseUnavailable' },
     ] })
     renderSettings(api)
     await screen.findByRole('button', { name: 'setting_renderer' })
     expect(screen.queryByLabelText('setting_prose')).toBeNull()
     expect(screen.queryByLabelText('setting_permissionMode')).toBeNull()
-    expect((screen.getByRole('textbox', { name: 'setting_worktreeBranchPrefix' }) as HTMLInputElement).disabled).toBe(true)
-    expect((screen.getByRole('textbox', { name: 'setting_idleTimeoutMinutes' }) as HTMLInputElement).disabled).toBe(true)
-    expect(screen.getByText('worktreeUnavailable')).toBeTruthy()
-    expect(screen.getByText('idleReuseUnavailable')).toBeTruthy()
+    expect(screen.queryByLabelText('setting_worktreeBranchPrefix')).toBeNull()
+    expect(screen.queryByLabelText('setting_idleTimeoutMinutes')).toBeNull()
     expect(api.updateGlobalSettings).not.toHaveBeenCalled()
   })
 
@@ -149,15 +188,15 @@ describe('Claude Code settings section', () => {
   it.each([['zh', zh], ['en', en]])('localizes supported controls and capability boundaries in %s', async (_locale, dictionary) => {
     const api = apiWithSettings({ settings: [
       { key: 'maxProcesses', kind: 'text', value: '4', maxLength: 2, effect: 'immediate' },
-      { key: 'idleTimeoutMinutes', kind: 'text', value: '30', maxLength: 4, effect: 'new-session', available: false, unavailableReason: 'idleReuseUnavailable' },
     ] })
     const t = (key: string) => dictionary[key as keyof typeof dictionary] ?? key
     const view = render(<ClaudeCodeSettingsSection {...({ ...api, t } as never)} />)
     await screen.findByRole('textbox', { name: dictionary.setting_maxProcesses })
-    expect(view.container.textContent).not.toMatch(/(?:worktreeUnavailable|idleReuseUnavailable|planUsageUnavailable|jiraUnavailable|pluginUpdatesManaged)/)
-    expect(screen.getByText(dictionary.planUsageUnavailable)).toBeTruthy()
-    expect(screen.getByText(dictionary.jiraUnavailable)).toBeTruthy()
-    expect(screen.getByText(dictionary.pluginUpdatesManaged)).toBeTruthy()
+    expect(view.container.textContent).not.toMatch(/(?:worktreeBranchPrefix|idleTimeoutMinutes|planUsageUnavailable|jiraUnavailable|pluginUpdatesManaged)/)
+    // The retired plan/Jira/plugin-update cards were intentionally removed;
+    // the settings surface should contain only supported managed controls.
+    expect(view.container.textContent).not.toContain('Claude 套餐用量')
+    expect(view.container.textContent).not.toContain('Claude plan usage')
   })
 
   it('reports an unavailable settings service instead of displaying an endless loading state', async () => {

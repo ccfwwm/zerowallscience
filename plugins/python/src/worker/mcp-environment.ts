@@ -16,6 +16,7 @@ import { collectSnapshots } from './python-snapshots.js'
 import { preparePackagePlan, prepareManifestPackagePlan, applyPackagePlanFiles, replayCustomizations, type StoredPackagePlan } from './python-packages.js'
 import { dependencyManifestChanges, dependencyManifestSha256, parsePythonDependencyManifest, type PythonDependencyManifest } from './python-dependency-manifest.js'
 import { DEFAULT_INDEX_URL, projectJsonCandidates, resolveMirror, sanitizePythonTlsEnvironment, type MirrorConfig } from './python-mirror.js'
+import { parsePythonPackageCatalog, type PythonPackageCatalog } from './python-package-catalog.js'
 import { copyRuntimeSnapshot, isStablePythonDirectory, migrateStablePython, normalizeRuntimeCandidate, readRuntimeLayout, SHARED_LAYOUT, verifySharedPackages } from './shared-python-runtime.js'
 import type { McpEnvironmentStatus, McpPythonInfo, McpPythonPackage, McpSkillAudit, PythonPackagePlan } from '../shared/contracts.js'
 
@@ -352,6 +353,14 @@ export class McpEnvironmentController {
       checked.forEach((pkg, index) => { pkg.updateAvailable = available[index]; if (pkg.updateAvailable) pkg.health = 'update-available' })
     }
     return info
+  }
+
+  /** Search the selected PyPI mirror without changing the managed runtime. */
+  async searchPackageVersions(name: string): Promise<PythonPackageCatalog> {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(name)) throw new Error('请输入有效的 Python 包名。')
+    const context = await this.pythonContext()
+    const data = await lookupProjectMetadata(this.options.fetcher ?? fetch, context.mirror, name)
+    return { name: data.name, summary: data.summary, latestVersion: data.latestVersion, versions: data.versions }
   }
 
   async previewPackages(names: string[]): Promise<PythonPackagePlan> {
@@ -1596,13 +1605,16 @@ function describeError(error: unknown): { message: string; code?: (string) | und
 
 /** Try each candidate index in order; only the last error escapes to the caller. */
 async function lookupProjectVersion(fetcher: typeof fetch, mirror: MirrorConfig, name: string): Promise<string> {
+  return (await lookupProjectMetadata(fetcher, mirror, name)).latestVersion
+}
+
+async function lookupProjectMetadata(fetcher: typeof fetch, mirror: MirrorConfig, name: string): Promise<{ name: string; summary: string; latestVersion: string; versions: string[] }> {
   let lastError: unknown
   for (const url of projectJsonCandidates(mirror, name)) {
     try {
       const response = await fetcher(url, { signal: AbortSignal.timeout(15_000) })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      const data = await response.json() as { info: { version: string } }
-      return data.info.version
+      return parsePythonPackageCatalog(name, await response.json())
     } catch (error) { lastError = error }
   }
   throw lastError

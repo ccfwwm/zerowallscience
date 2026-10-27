@@ -22,11 +22,13 @@ const execute = promisify(execFile)
 
 export { normalizePythonRuntimePath } from './python-location.js'
 export interface PythonEnvironmentRequest {
-  action: 'status' | 'scan_local' | 'open_shell' | 'install_runtime' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'
+  action: 'status' | 'scan_local' | 'open_shell' | 'install_runtime' | 'task_status' | 'cancel' | 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'uninstall_package' | 'search_package' | 'check_package_updates' | 'list_packages' | 'configure' | 'diagnose' | 'rollback'
   requestId: string
   taskId?: (string) | undefined
   layer?: (PythonDependencyLayer) | undefined
   packageSpec?: (string) | undefined
+  packageName?: (string) | undefined
+  packageNames?: (string[]) | undefined
   capabilityId?: (string) | undefined
   planId?: (string) | undefined
   manifestRevision?: (string) | undefined
@@ -50,7 +52,7 @@ interface SyncService {
   installFailures?(planId: string): Promise<Array<{ name: string; version: string; message: string }>>
 }
 interface ManifestSummary { revision: string; changes: Array<{ name: string; from?: (string) | undefined; to: string }>; packageCount: number }
-type AsyncPythonAction = Extract<PythonEnvironmentRequest['action'], 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'install_runtime'>
+type AsyncPythonAction = Extract<PythonEnvironmentRequest['action'], 'check_manifest' | 'preview_sync' | 'apply_sync' | 'sync' | 'install_package' | 'uninstall_package' | 'install_runtime'>
 interface PythonJobReceipt { fingerprint: string; taskId: string; state: PythonTaskState | 'completed'; result?: (Record<string, unknown>) | undefined; error?: (string) | undefined }
 
 export class PythonEnvironmentApi {
@@ -354,14 +356,14 @@ export class PythonEnvironmentApi {
         return await this.auditedExecute(input)
       } finally { this.switching = false }
     }
-    const writes = ['open_shell', 'check_manifest', 'preview_sync', 'apply_sync', 'sync', 'install_package', 'install_runtime', 'rollback'].includes(input.action) || input.action === 'configure' && input.mirrorUrl !== undefined
+    const writes = ['open_shell', 'check_manifest', 'preview_sync', 'apply_sync', 'sync', 'install_package', 'uninstall_package', 'install_runtime', 'rollback'].includes(input.action) || input.action === 'configure' && input.mirrorUrl !== undefined
     if (writes) await this.assertMutationAllowed()
     if (input.action === 'open_shell') {
       await openPythonShell(this.canonicalRuntimeRoot ?? dirname(this.root))
       return { opened: true, requestId: input.requestId }
     }
     if (input.action === 'scan_local') return { requestId: input.requestId, ...this.startLocalScan() }
-    if (['check_manifest', 'preview_sync', 'apply_sync', 'sync', 'install_package', 'install_runtime'].includes(input.action)) return this.acceptTask(input)
+    if (['check_manifest', 'preview_sync', 'apply_sync', 'sync', 'install_package', 'uninstall_package', 'install_runtime'].includes(input.action)) return this.acceptTask(input)
     if (input.action === 'task_status') {
       if (!input.taskId || !/^[a-f0-9-]{36}$/u.test(input.taskId)) throw new Error('Invalid Python task id')
       // A progress callback updates the cache and receipt asynchronously. Wait
@@ -431,6 +433,7 @@ export class PythonEnvironmentApi {
     if (input.action === 'sync' && input.confirm !== true && input.automatic !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
     if (input.action === 'apply_sync' && (!input.planId || !input.manifestRevision || input.confirm !== true)) throw new Error('CONFIRMATION_REQUIRED: review and approve the concrete dependency plan first.')
     if (input.action === 'install_package' && (!input.packageSpec || !/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\[[A-Za-z0-9_,.-]+\])?(?:[=<>!~]=?[A-Za-z0-9.*+!<>=~,.-]+)?$/u.test(input.packageSpec.trim()) || input.confirm !== true)) throw new Error('CONFIRMATION_REQUIRED: enter a valid package name and optional version, then confirm its installation.')
+    if (input.action === 'uninstall_package' && (!input.packageName || !/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(input.packageName.trim()) || input.confirm !== true)) throw new Error('CONFIRMATION_REQUIRED: select an installed package and confirm its removal.')
     const directory = join(this.controlRoot(), 'requests')
     const path = join(directory, `${input.requestId}.json`)
     const fingerprint = createHash('sha256').update(JSON.stringify(Object.entries(input).sort(([a], [b]) => a.localeCompare(b)))).digest('hex')
@@ -455,7 +458,7 @@ export class PythonEnvironmentApi {
     const now = new Date().toISOString()
     const task: PythonDependencyTask = {
       taskId, ownerPid: process.pid, requestId: input.requestId, action: input.action as AsyncPythonAction,
-      layer: input.layer ?? 'science', ...(input.automatic === true ? { automatic: true } : {}), ...(input.packageSpec ? { packageSpec: input.packageSpec.trim() } : {}), state: 'queued', stage: 'queued',
+      layer: input.layer ?? 'science', ...(input.automatic === true ? { automatic: true } : {}), ...(input.packageSpec ? { packageSpec: input.packageSpec.trim() } : {}), ...(input.packageName ? { packageName: input.packageName.trim() } : {}), state: 'queued', stage: 'queued',
       message: '任务已加入队列，桌面可以继续使用。', logLines: [], createdAt: now, updatedAt: now,
     }
     this.taskCache.set(taskId, task)
@@ -560,7 +563,7 @@ export class PythonEnvironmentApi {
         await this.log(input, 'failed', { taskId, message })
         if (failed) this.taskCache.set(taskId, failed)
       } finally {
-        if (!this.closing && ['sync', 'apply_sync', 'install_package', 'install_runtime'].includes(input.action)) this.startLocalScan(true)
+        if (!this.closing && ['sync', 'apply_sync', 'install_package', 'uninstall_package', 'install_runtime'].includes(input.action)) this.startLocalScan(true)
         this.activeTaskIds.delete(taskId)
         this.taskAbort.delete(taskId)
         this.workerLogs.delete(taskId)
@@ -615,7 +618,7 @@ export class PythonEnvironmentApi {
       await this.persistRuntimeSummary(inventory)
       return { inventory, runtimeRoot: inventory.runtimeRoot }
     }
-    if ((input.action === 'sync' || input.action === 'install_package') && input.confirm !== true && input.automatic !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
+    if (['sync', 'install_package', 'uninstall_package'].includes(input.action) && input.confirm !== true && input.automatic !== true) throw new Error('CONFIRMATION_REQUIRED: 一键同步需要显式确认。')
     // A healthy fixed interpreter does not need bootstrap or management-record
     // repair merely to acknowledge an already installed package.
     if (input.action === 'install_package' && !/[=<>!~]/u.test(input.packageSpec!)) {
@@ -626,7 +629,7 @@ export class PythonEnvironmentApi {
       checkPythonCancellation()
       if (local.ready && local.packages.some(pkg => pkg.name.toLowerCase().replace(/[-_.]+/gu, '-') === name)) return { upToDate: true, packageSpec: spec, changes: [], installed: 0 }
     }
-    if (['sync', 'apply_sync', 'install_package'].includes(input.action)) {
+    if (['sync', 'apply_sync', 'install_package', 'uninstall_package'].includes(input.action)) {
       await report({ stage: 'waiting-runtime', message: '等待基础 Python 环境就绪。' })
       const runtime = await (this.updater as PythonUpdaterService & { ensureReady?: (() => Promise<McpEnvironmentStatus>) | undefined }).ensureReady?.()
       checkPythonCancellation()
@@ -677,6 +680,26 @@ export class PythonEnvironmentApi {
       const plan = await this.sync.previewSync(layer, input.capabilityId, taskId, report) as Record<string, unknown>
       return { plan }
     }
+    if (input.action === 'uninstall_package') {
+      const packageUpdater = this.updater as PythonUpdaterService & {
+        previewUninstall?: ((names: string[]) => Promise<{ planId: string; changes?: Array<{ name: string; from?: string; to: string }> }>) | undefined
+        applyPackagePlan?: ((planId: string) => Promise<{ taskId: string }>) | undefined
+        pythonPackages?: ((names: string[]) => Promise<McpPythonInfo>) | undefined
+      }
+      const name = input.packageName!.trim()
+      if (!packageUpdater.previewUninstall || !packageUpdater.applyPackagePlan) throw new Error('当前 Python updater 不支持安全卸载。')
+      await report({ stage: 'package-preflight', progress: 10, message: `正在检查 ${name} 是否可以安全卸载。`, currentPackage: name })
+      const plan = await packageUpdater.previewUninstall([name]) as { planId: string; changes?: Array<{ name: string; from?: string; to: string }> }
+      checkPythonCancellation()
+      const queued = await packageUpdater.applyPackagePlan(plan.planId)
+      if (!queued.taskId) throw new Error('卸载任务没有启动可追踪事务。')
+      this.activeUnderlyingTaskId = queued.taskId
+      await this.updateTask(taskId, { underlyingTaskId: queued.taskId, stage: 'installing', message: `正在卸载 ${name}。` })
+      await this.waitForInstall(queued.taskId, taskId, layer, undefined, report)
+      const inventory = packageUpdater.pythonPackages ? await packageUpdater.pythonPackages([name]) : await this.updater.pythonInfo()
+      if (inventory.packages.some(pkg => pkg.name.toLowerCase().replace(/[-_.]+/gu, '-') === name.toLowerCase().replace(/[-_.]+/gu, '-'))) throw new Error(`卸载后仍检测到 ${name}。`)
+      return { taskId: queued.taskId, underlyingTaskId: queued.taskId, packageName: name, removed: true, changes: plan.changes ?? [] }
+    }
     if (input.action === 'install_package') {
       const packageUpdater = this.updater as PythonUpdaterService & {
         previewPackages?: ((specs: string[]) => Promise<{ planId: string; changes?: (Array<{ name: string; from?: (string) | undefined; to: string }>) | undefined; error?: (string) | undefined }>) | undefined
@@ -699,8 +722,8 @@ export class PythonEnvironmentApi {
       const expected = plan.changes ?? []
       const installed = packageUpdater.pythonPackages ? await packageUpdater.pythonPackages(expected.map(change => change.name)) : await packageUpdater.pythonInfo()
       const actual = new Map(installed.packages.map(pkg => [pkg.name.toLowerCase().replace(/[-_.]+/gu, '-'), pkg.version]))
-      const missed = expected.filter(change => !actual.has(change.name.toLowerCase().replace(/[-_.]+/gu, '-')))
-      if (missed.length) throw new Error(`安装后仍缺少包：${missed.map(change => change.name).join('、')}`)
+      const missed = expected.filter(change => actual.get(change.name.toLowerCase().replace(/[-_.]+/gu, '-')) !== change.to)
+      if (missed.length) throw new Error(`安装后版本核验未通过：${missed.map(change => `${change.name} (需要 ${change.to}，检测到 ${actual.get(change.name.toLowerCase().replace(/[-_.]+/gu, '-')) ?? '未安装'})`).join('、')}`)
       return { taskId: queued.taskId, underlyingTaskId: queued.taskId, packageSpec: spec, changes: expected, installed: expected.length }
     }
     let planId = input.planId
@@ -897,6 +920,22 @@ export class PythonEnvironmentApi {
         const limit = input.limit === undefined ? rows.length : Math.max(1, Math.min(100, Math.floor(input.limit)))
         if (!Number.isFinite(offset) || !Number.isFinite(limit)) throw new Error('Invalid package pagination')
         result = { inventory: { ...inventory, packages: rows.slice(offset, offset + limit).map(pkg => { const locked = packages.get(normalize(pkg.name)); return { ...pkg, capabilities: locked?.capabilities ?? [], ...(locked?.version === pkg.version && locked.sha256 ? { sha256: locked.sha256 } : {}) } }) }, offset, total: rows.length, nextOffset: offset + limit < rows.length ? offset + limit : null }; break
+      }
+      case 'search_package': {
+        const name = input.packageName?.trim() ?? ''
+        if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(name)) throw new Error('请输入有效的 Python 包名后再搜索。')
+        const search = (this.updater as PythonUpdaterService & { searchPackageVersions?: (value: string) => Promise<{ name: string; summary: string; latestVersion: string; versions: string[] }> }).searchPackageVersions
+        if (!search) throw new Error('当前 Python updater 不支持包版本搜索。')
+        result = { packageCatalog: await search.call(this.updater, name) }; break
+      }
+      case 'check_package_updates': {
+        const names = input.packageNames?.length ? input.packageNames : input.packageName ? [input.packageName] : []
+        if (!names.length || names.length > 10 || names.some(name => !/^[A-Za-z0-9][A-Za-z0-9_.-]*$/u.test(name))) throw new Error('请选择 1 到 10 个有效的已安装包。')
+        const updater = this.updater as PythonUpdaterService & { checkPythonPackageUpdates?: (values: string[]) => Promise<McpPythonInfo> }
+        if (!updater.checkPythonPackageUpdates) throw new Error('当前 Python updater 不支持包更新检测。')
+        const inventory = await updater.checkPythonPackageUpdates(names)
+        const search = (this.updater as PythonUpdaterService & { searchPackageVersions?: (name: string) => Promise<{ name: string; summary: string; latestVersion: string; versions: string[] }> }).searchPackageVersions
+        result = { inventory, ...(names.length === 1 && search ? { packageCatalog: await search.call(this.updater, names[0]!) } : {}) }; break
       }
       case 'check_manifest': result = { manifest: await this.sync.checkManifest(input.layer ?? 'science', input.capabilityId) }; break
       case 'preview_sync': result = { plan: await this.sync.previewSync(input.layer ?? 'science', input.capabilityId) }; break

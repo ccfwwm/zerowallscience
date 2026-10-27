@@ -11,7 +11,10 @@ import { ClaudePermissionSelect } from '../src/client/ClaudePermissionSelect.js'
 import { en, zh } from '../src/client/locales.js'
 import type { ClaudeCodeStatus, ClaudeCodeTurn, ClaudePermissionView } from '../src/shared/types.js'
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  delete (window as Window & { zerowallDesktop?: unknown }).zerowallDesktop
+})
 
 describe('composer permission selection', () => {
   const translate = (dictionary: Record<string, string>) => (key: string, args?: Record<string, string>) =>
@@ -180,12 +183,13 @@ describe('Claude Code conversation panel', () => {
 })
 
 describe('Claude Code client entry points', () => {
-  it('registers the Claude settings, transcript renderer and session action with explicit dependencies', () => {
+  it('registers conversation and settings controls without creating a terminal tab', async () => {
     const calls: Array<{ name: string; options: Record<string, unknown>; component: unknown }> = []
     const remote = {
       settingsStatus: vi.fn(), settingsInstall: vi.fn(), settingsRollback: vi.fn(), settingsUninstall: vi.fn(),
       settingsGet: vi.fn(async () => ({ ok: true, value: { prose: 'plain' } })),
     }
+    const sidebar = { registerTab: vi.fn(() => vi.fn()) }
     const uiConversation = { events: { register: vi.fn() } }
     const slots = {
       entries: vi.fn(() => []), subscribe: vi.fn(() => () => {}),
@@ -206,5 +210,7 @@ describe('Claude Code client entry points', () => {
     expect(calls[3]?.component).toBe(ClaudeCodeSettingsSection)
     expect(calls[0]?.options.locale).toBe('zerowall.claude-code')
     expect(remote.settingsStatus).not.toHaveBeenCalled()
+    expect(sidebar.registerTab).not.toHaveBeenCalled()
+    expect((window as Window & { zerowallDesktop?: unknown }).zerowallDesktop).toBeUndefined()
   })
 })

@@ -55,8 +55,8 @@ function shutdown(): Promise<void> {
   })()
 }
 setInterval(() => send({ type: 'activity', busy: !!manager?.hasPendingWork() || !!api?.hasPendingWork() || operations.size > 0 }), 1000).unref()
-const controllerMethods = ['initialize', 'localStatus', 'pythonInfo', 'checkForUpdates', 'checkPythonPackageUpdates', 'installPythonPackage', 'updatePythonPackages', 'selectManual', 'rollback', 'previewPackages', 'previewUninstall', 'applyPackagePlan', 'previewDependencyManifest']
-const managerMethods = ['autoUpdate', 'ensureReady', 'pythonInfo', 'pythonCoreInfo', 'pythonPackages', 'taskStatus', 'previewUninstall', 'checkPythonPackageUpdates', 'checkForUpdates', 'updateForUser', 'retry', 'pause', 'cancel', 'installPythonPackage', 'updatePythonPackages', 'selectManual', 'rollback', 'previewPackages', 'previewDependencyManifest', 'applyPackagePlan']
+const controllerMethods = ['initialize', 'localStatus', 'pythonInfo', 'checkForUpdates', 'checkPythonPackageUpdates', 'searchPackageVersions', 'installPythonPackage', 'updatePythonPackages', 'selectManual', 'rollback', 'previewPackages', 'previewUninstall', 'applyPackagePlan', 'previewDependencyManifest']
+const managerMethods = ['autoUpdate', 'ensureReady', 'pythonInfo', 'pythonCoreInfo', 'pythonPackages', 'taskStatus', 'previewUninstall', 'checkPythonPackageUpdates', 'searchPackageVersions', 'checkForUpdates', 'updateForUser', 'retry', 'pause', 'cancel', 'installPythonPackage', 'updatePythonPackages', 'selectManual', 'rollback', 'previewPackages', 'previewDependencyManifest', 'applyPackagePlan']
 process.on('message', async (message: any) => {
   if (message.type === 'cancel') { operations.get(message.id)?.abort(); return }
   if (message.type === 'configure') {

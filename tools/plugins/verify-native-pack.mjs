@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { runInNewContext } from 'node:vm'
 import { root, verificationRoot } from '../build/paths.mjs'
 
 if (!process.env.npm_execpath) throw new Error('Run pnpm plugins:verify-pack')
@@ -35,6 +36,28 @@ for (const id of await readdir(join(root, 'plugins'))) {
     const clientSource = execFileSync('tar', ['-xOf', archive, `package/${descriptor.client.replace(/^\.\//, '')}`], { encoding: 'utf8', maxBuffer: 128 * 1024 ** 2 })
     assert(!/require\(["']@zerowallscience\/plugin-base\/client-helpers["']\)/u.test(clientSource), `${source.name}: client helper escaped into the DSH module table`)
     assert(!/require\(["']@deepseek-ai\/dsh-typert-protocol\/remote-info["']\)/u.test(clientSource), `${source.name}: generated remote helper escaped into the DSH module table`)
+    assert(!/require\(["']dsh-better-sidebar\/src\//u.test(clientSource), `${source.name}: sidebar source helper escaped into the DSH module table`)
+    if (id === 'python') {
+      const styles = []
+      let registration
+      const document = {
+        createElement: () => {
+          const attributes = new Map()
+          return { textContent: '', setAttribute: (key, value) => attributes.set(key, value), getAttribute: key => attributes.get(key) }
+        },
+        querySelectorAll: () => styles,
+        head: { appendChild: style => styles.push(style) },
+      }
+      const sandbox = { console, document, __ModuleLoader__: { load: value => { registration = value } } }
+      sandbox.window = sandbox
+      runInNewContext(clientSource, sandbox, { filename: 'plugin-python-client.js' })
+      assert.equal(styles.length, 1, 'Python client must inject its stylesheet exactly once')
+      assert.equal(styles[0].getAttribute('data-zerowall-plugin-css'), source.name)
+      assert.match(styles[0].textContent, /\.[A-Za-z0-9]+_panel\s*\{/u, 'Python panel CSS module selectors must be present')
+      assert.match(styles[0].textContent, /height:\s*calc\(100vh\s*-\s*165px\)/u, 'Python panel layout rules must be present')
+      assert(!entries.includes('package/lib/style.css'), 'Python stylesheet must be embedded in client.js, not shipped as an unloaded sidecar')
+      assert.equal(registration?.id, source.name)
+    }
   }
   for (const section of ['dependencies', 'peerDependencies']) {
     assert(!/workspace:|github:|git\+|git:/.test(JSON.stringify(manifest[section] ?? {})), `${source.name}: unpublished dependency`)

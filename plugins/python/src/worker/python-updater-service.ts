@@ -137,6 +137,7 @@ export class PythonUpdaterService {
   }
   async previewUninstall(names: string[]): Promise<unknown> { return this.rpc('previewUninstall', [names]) }
   async checkPythonPackageUpdates(names: string[] = []): Promise<McpPythonInfo> { return this.rpc('checkPythonPackageUpdates', [names]) }
+  async searchPackageVersions(name: string): Promise<{ name: string; summary: string; latestVersion: string; versions: string[] }> { return this.rpc('searchPackageVersions', [name]) }
   checkForUpdates(): Promise<McpEnvironmentStatus> { return this.busy ? Promise.resolve(this.status) : this.rpc('checkForUpdates') }
   private enqueue(method: string, args: unknown[] = [], taskId: string = randomUUID()): { taskId: string } {
     checkPythonCancellation()

@@ -1,5 +1,6 @@
 import { defineConfig } from 'tsdown'
 import { readFileSync } from 'node:fs'
+import { unlink } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -12,6 +13,8 @@ export interface ZeroWallBundleOptions {
   host?: boolean
   client?: boolean
   hostAlwaysBundle?: RegExp[]
+  clientAlwaysBundle?: RegExp[]
+  inlineClientCss?: boolean
   inlinePngAssets?: boolean
   staticPngAssets?: boolean
   universalViewer?: boolean
@@ -29,6 +32,7 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
   const hasRemote = manifest.exports?.['./remote'] !== undefined
   const host = options.host !== false
   const configs = []
+  const detachedCssFiles = new Set<string>()
   if (options.pythonWorker) configs.push({
     name: `${id}/worker`, entry: { 'python-updater-worker': 'src/worker/python-updater-worker.ts' },
     outDir: 'lib/worker', format: ['esm'], platform: 'node', target: 'es2024',
@@ -91,6 +95,7 @@ export function zerowallBundle(id: string, options: ZeroWallBundleOptions = {}) 
         // entry points (for example `qrcode/lib/browser.js` and
         // `react/jsx-runtime`) are resolved as explicit subpath imports.
         alwaysBundle: [
+          ...(options.clientAlwaysBundle ?? []),
           ...(options.universalViewer ? [/^(?!.*(?:^|[\\/])(?:react(?:[\\/]|$)|react-dom(?:[\\/]|$)|@deepseek-ai[\\/]|@zerowallscience[\\/])).+/u] : []),
           // ZeroWall plugins are independently installable DSH bundles. Keep
           // their client entrypoints external so the ModuleLoader can load,
@@ -208,7 +213,33 @@ export async function apply(ctx, config) {
           }
           return null
         },
-      }, {
+      }, ...(options.inlineClientCss ? [{
+        name: 'zerowall-inline-css',
+        generateBundle: {
+          // @tsdown/css emits its assets in generateBundle, after user plugins.
+          // Run after that hook: an ordinary hook silently sees no CSS at all.
+          order: 'post' as const,
+          handler(_outputOptions: unknown, bundle: Record<string, any>) {
+            const cssAssets = Object.values(bundle).filter((item: any) => item.type === 'asset' && item.fileName.endsWith('.css')) as any[]
+            const clientChunk = Object.values(bundle).find((item: any) => item.type === 'chunk' && item.fileName.endsWith('client.js')) as any
+            if (cssAssets.length === 0 || clientChunk === undefined) return
+            const css = cssAssets.map(asset => typeof asset.source === 'string' ? asset.source : Buffer.from(asset.source).toString('utf8')).join('\n')
+            clientChunk.code = `(function(){var id=${JSON.stringify(id)},s=Array.from(document.querySelectorAll('style[data-zerowall-plugin-css]')).find(function(s){return s.getAttribute('data-zerowall-plugin-css')===id;});if(!s){s=document.createElement('style');s.setAttribute('data-zerowall-plugin-css',id);document.head.appendChild(s);}s.textContent=${JSON.stringify(css)};})();\n${clientChunk.code}`
+            for (const asset of cssAssets) {
+              detachedCssFiles.add(asset.fileName)
+              delete bundle[asset.fileName]
+            }
+          },
+        },
+        async writeBundle(outputOptions: { dir?: string }) {
+          if (!outputOptions.dir) return
+          await Promise.all([...detachedCssFiles].map(fileName => unlink(resolve(outputOptions.dir!, fileName)).catch((error: unknown) => {
+            if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return
+            throw error
+          })))
+          detachedCssFiles.clear()
+        },
+      }] : [{
         name: 'zerowall-inline-css',
         generateBundle(_outputOptions: unknown, bundle: Record<string, any>) {
           const cssAsset = Object.values(bundle).find((item: any) => item.type === 'asset' && item.fileName.endsWith('.css')) as any
@@ -218,7 +249,8 @@ export async function apply(ctx, config) {
           clientChunk.code = `(function(){var s=document.createElement('style');s.setAttribute('data-zerowall-plugin-css',${JSON.stringify(id)});s.textContent=${JSON.stringify(css)};document.head.appendChild(s);})();\n${clientChunk.code}`
           delete bundle[cssAsset.fileName]
         },
-      }],
+      }]),
+      ],
     })
     if (options.universalViewer) {
       const client = configs.at(-1)!

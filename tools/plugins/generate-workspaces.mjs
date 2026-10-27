@@ -282,7 +282,7 @@ for (const plugin of plugins) {
       typecheck: plugin.client
         ? 'tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit' + (plugin.id === 'research' ? ' && tsc -p tsconfig.workbench.json --noEmit' : '')
         : 'tsc -p tsconfig.host.json --noEmit',
-      test: `vitest run --config ../../vitest.plugins.config.ts${['skills', 'research'].includes(plugin.id) ? ' --no-file-parallelism' : ''}`,
+      test: plugin.id === 'research' ? 'node scripts/run-tests.mjs' : `vitest run --config ../../vitest.plugins.config.ts${plugin.id === 'skills' ? ' --no-file-parallelism' : ''}`,
     },
     publishConfig: { directory: `../../artifacts/dev/publish/plugin-${plugin.id}`, linkDirectory: false },
     license: plugin.id === 'claude-code' ? 'MIT' : 'AGPL-3.0-only',
@@ -384,14 +384,14 @@ for (const plugin of plugins) {
     `export default zerowallBundle('${name}', { host: true, client: ${plugin.client === true}${plugin.id === 'ai-cloud'
       ? String.raw`, hostAlwaysBundle: [/^@deepseek-ai\/dsh-llm-pi-ai\/src\/config\.ts$/u, /llm-pi-ai[\\/]src[\\/]config\.ts$/u]`
       : plugin.id === 'claude-code'
-        ? String.raw`, hostAlwaysBundle: [/^@anthropic-ai\/claude-agent-sdk(?:\/|$)/u]`
+        ? String.raw`, inlineClientCss: true, hostAlwaysBundle: [/^@anthropic-ai\/claude-agent-sdk(?:\/|$)/u]`
       : plugin.id === 'mcp'
         ? String.raw`, hostAlwaysBundle: [/^@deepseek-ai\/dsh-mcp-client\/src\//]`
         : plugin.id === 'research'
           ? ', staticPngAssets: true'
           : plugin.id === 'files'
             ? ', universalViewer: true'
-          : plugin.id === 'python' ? ', pythonWorker: true' : ''} })`,
+          : plugin.id === 'python' ? ', inlineClientCss: true, pythonWorker: true' : ''} })`,
     '',
   ].join('\n'))
   if (plugin.client) {
