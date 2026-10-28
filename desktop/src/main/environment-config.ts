@@ -129,7 +129,7 @@ export async function hydrateOfficialEnvironment(vault: EnvironmentVault, option
       if (stored !== undefined && vault.delete) await vault.delete(credentialKey(name)).catch(() => undefined)
       continue
     }
-    if (inherited && inherited !== stored) {
+    if (inherited) {
       // Environment values supplied by the launching shell or administrator
       // are local overrides. Persist them when the OS vault is available so
       // the Host process cannot later replace them with a stale cached value.
@@ -159,10 +159,6 @@ export async function hydrateOfficialEnvironment(vault: EnvironmentVault, option
       if (stored !== undefined) process.env[name] = stored
       else if (inherited) metadata.variables[name] = { source: 'user' }
       else delete process.env[name]
-      continue
-    }
-    if (inherited) {
-      metadata.variables[name] = { source: 'user' }
       continue
     }
     if (stored !== undefined) {

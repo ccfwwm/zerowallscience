@@ -43,7 +43,9 @@ describe('official environment configuration', () => {
       ['zerowall.environment.var.zw_env_legacy', 'legacy local wins'],
       ['zerowall.environment.var.zw_env_system_override', 'previous official value'],
     ])
-    process.env.ZW_ENV_SYSTEM_OVERRIDE = 'inherited machine value'
+    // Even an inherited value identical to the old cached official value is
+    // an explicit local override and must survive a changed cloud default.
+    process.env.ZW_ENV_SYSTEM_OVERRIDE = 'previous official value'
     process.env.ZW_ENV_SYSTEM_SUPPRESSED = 'inherited machine value'
     const storage = {
       get: async key => vault.get(key),
@@ -59,7 +61,7 @@ describe('official environment configuration', () => {
     expect(process.env.ZW_ENV_USER).toBe('manually saved value')
     expect(process.env.ZW_ENV_LEGACY).toBe('legacy local wins')
     expect(process.env.ZW_ENV_SUPPRESSED).toBeUndefined()
-    expect(process.env.ZW_ENV_SYSTEM_OVERRIDE).toBe('inherited machine value')
+    expect(process.env.ZW_ENV_SYSTEM_OVERRIDE).toBe('previous official value')
     expect(process.env.ZW_ENV_SYSTEM_SUPPRESSED).toBe('inherited machine value')
     expect(vault.get('zerowall.environment.var.zw_env_official_old')).toBe('updated default')
     expect(JSON.parse(vault.get(ENVIRONMENT_METADATA_KEY)!).variables.ZW_ENV_USER.source).toBe('user')
