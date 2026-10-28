@@ -13,7 +13,7 @@ function signed(document: Record<string, unknown>, privateKey: KeyObject) {
 }
 
 describe('official environment configuration', () => {
-  it('fills missing values, refreshes official values, and preserves local or suppressed values', async () => {
+  it('fills missing values and preserves existing values and deletions', async () => {
     const { privateKey, publicKey } = generateKeyPairSync('ed25519')
     const variables = {
       ZW_ENV_OFFICIAL_NEW: 'new default',
@@ -57,13 +57,13 @@ describe('official environment configuration', () => {
 
     expect(result.usedRemote).toBe(true)
     expect(process.env.ZW_ENV_OFFICIAL_NEW).toBe('new default')
-    expect(process.env.ZW_ENV_OFFICIAL_OLD).toBe('updated default')
+    expect(process.env.ZW_ENV_OFFICIAL_OLD).toBe('old official value')
     expect(process.env.ZW_ENV_USER).toBe('manually saved value')
     expect(process.env.ZW_ENV_LEGACY).toBe('legacy local wins')
     expect(process.env.ZW_ENV_SUPPRESSED).toBeUndefined()
     expect(process.env.ZW_ENV_SYSTEM_OVERRIDE).toBe('previous official value')
-    expect(process.env.ZW_ENV_SYSTEM_SUPPRESSED).toBe('inherited machine value')
-    expect(vault.get('zerowall.environment.var.zw_env_official_old')).toBe('updated default')
+    expect(process.env.ZW_ENV_SYSTEM_SUPPRESSED).toBeUndefined()
+    expect(vault.get('zerowall.environment.var.zw_env_official_old')).toBe('old official value')
     expect(JSON.parse(vault.get(ENVIRONMENT_METADATA_KEY)!).variables.ZW_ENV_USER.source).toBe('user')
     expect(JSON.parse(vault.get(ENVIRONMENT_METADATA_KEY)!).variables.ZW_ENV_SYSTEM_OVERRIDE.source).toBe('user')
 
@@ -79,7 +79,8 @@ describe('official environment configuration', () => {
     expect(process.env.ZW_ENV_OFFICIAL_NEW).toBe('new manual value')
     expect(process.env.ZW_ENV_OFFICIAL_OLD).toBeUndefined()
     expect(vault.has('zerowall.environment.var.zw_env_official_old')).toBe(false)
-    expect(JSON.parse(vault.get(ENVIRONMENT_METADATA_KEY)!).variables.ZW_ENV_OFFICIAL_OLD.suppressed).toBe(true)
+    expect(JSON.parse(vault.get(ENVIRONMENT_METADATA_KEY)!).variables.ZW_ENV_OFFICIAL_OLD).toBeUndefined()
+    expect(JSON.parse(vault.get(ENVIRONMENT_METADATA_KEY)!).deletedNames).toContain('ZW_ENV_OFFICIAL_OLD')
     await hydrateOfficialEnvironment(storage, options)
     expect(process.env.ZW_ENV_OFFICIAL_NEW).toBe('new manual value')
     expect(process.env.ZW_ENV_OFFICIAL_OLD).toBeUndefined()

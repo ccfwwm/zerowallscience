@@ -32,8 +32,8 @@ const WELL_KNOWN_VARIABLES = ['R_PLATFORM_MCP_AUTHORIZATION', 'MINERU_API_TOKEN'
 const RETIRED_VARIABLES = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', 'TSG_TSGUSER', 'TSG_JSESSIONID', 'RESEARCH_SCIDB_SETTLE_MS', 'LITERATURE_OUTPUT_ROOT', 'LITERATURE_DISABLE_PAPER_DOWNLOAD', 'LITERATURE_DOWNLOAD_WORKERS', 'LITERATURE_MAX_PDF_BYTES', 'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS', 'ZEROWALL_PAPER_DOWNLOAD_ROOT'] as const
 // Cordis publishes FiberState as a const enum, which has no runtime export.
 const FIBER_ACTIVE = 2 as FiberState.ACTIVE
-type ProvenanceEntry = { source: 'official' | 'user'; suppressed?: boolean; version?: string }
-type Provenance = { version: 1; variables: Record<string, ProvenanceEntry> }
+type ProvenanceEntry = { source: 'official' | 'user'; version?: string }
+type Provenance = { version: 1; variables: Record<string, ProvenanceEntry>; deletedNames?: string[] }
 
 export function validateEnvironmentVariableName(name: string): string {
   const value = name.trim().toUpperCase()
@@ -147,7 +147,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     const metadata = await this.readProvenance()
     const configuredNames = WELL_KNOWN_VARIABLES.filter(name => Boolean(process.env[name]?.trim()))
     const names = [...new Set([...this.settings.variables.map((row: { name: string }) => row.name), ...Object.keys(metadata.variables), ...configuredNames])]
-    const values = await Promise.all(names.map(async name => {
+    const values = await Promise.all(names.filter(name => !metadata.deletedNames?.includes(name)).sort().map(async name => {
       const source: EnvironmentVariableInfo['source'] = metadata.variables[name]?.source ?? (process.env[name]?.trim() ? 'environment' : undefined)
       return {
         name,
@@ -155,7 +155,6 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
         // credentials before the settings snapshot is available.
         configured: await isEnvironmentVariableConfigured(name, key => this.secrets.get(key)),
         ...(source === undefined ? {} : { source }),
-        suppressed: metadata.variables[name]?.suppressed === true,
       }
     }))
     return values
@@ -165,11 +164,12 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
   async setVariable(name: string, value: string): Promise<EnvironmentVariableInfo[]> {
     await this.hydration
     const key = validateEnvironmentVariableName(name)
-    if (value.length === 0) throw new Error('环境变量值不能为空。')
+    if (!value.trim()) throw new Error('环境变量值不能为空。')
     await this.secrets.set(credentialKey(key), value)
     process.env[key] = value
     const metadata = await this.readProvenance()
     metadata.variables[key] = { source: 'user' }
+    metadata.deletedNames = (metadata.deletedNames ?? []).filter(name => name !== key)
     await this.writeProvenance(metadata)
     const current = this.settings.variables.filter((row: { name: string }) => row.name !== key)
     await this.replaceSettings({ ...this.settings, variables: [...current, { name: key }].sort((a, b) => a.name.localeCompare(b.name)) })
@@ -180,6 +180,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
   async readVariable(name: string): Promise<string | undefined> {
     await this.hydration
     const key = validateEnvironmentVariableName(name)
+    if ((await this.readProvenance()).deletedNames?.includes(key)) return undefined
     const value = await this.secrets.get(credentialKey(key))
     return value ?? process.env[key]
   }
@@ -191,7 +192,8 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     await this.secrets.delete(credentialKey(key))
     delete process.env[key]
     const metadata = await this.readProvenance()
-    metadata.variables[key] = { source: 'official', suppressed: true }
+    delete metadata.variables[key]
+    metadata.deletedNames = [...new Set([...(metadata.deletedNames ?? []), key])]
     await this.writeProvenance(metadata)
     await this.replaceSettings({ ...this.settings, variables: this.settings.variables.filter((row: { name: string }) => row.name !== key) })
     return await this.listVariables()
@@ -199,8 +201,13 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 
   private async hydrate(): Promise<void> {
     const metadata = await this.readProvenance()
-    const names = [...new Set([...this.settings.variables.map((row: { name: string }) => row.name), ...Object.keys(metadata.variables), ...WELL_KNOWN_VARIABLES])]
+    const names = [...new Set([...this.settings.variables.map((row: { name: string }) => row.name), ...Object.keys(metadata.variables), ...(metadata.deletedNames ?? []), ...WELL_KNOWN_VARIABLES])]
     for (const name of names) {
+      if (metadata.deletedNames?.includes(name)) {
+        delete process.env[name]
+        await this.secrets.delete(credentialKey(name)).catch(() => undefined)
+        continue
+      }
       try {
         const value = await this.secrets.get(credentialKey(name))
         if (value !== undefined) process.env[name] = value
@@ -208,12 +215,11 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
         // A broken OS credential entry is ignored; the UI can replace it.
       }
     }
-    for (const name of RETIRED_VARIABLES) {
-      if (metadata.variables[name]?.suppressed) delete process.env[name]
-    }
-    const known = new Set(this.settings.variables.map((row: { name: string }) => row.name))
-    const added = Object.keys(metadata.variables).filter(name => !known.has(name) && !metadata.variables[name]?.suppressed)
-    if (added.length) await this.replaceSettings({ ...this.settings, variables: [...this.settings.variables, ...added.map(name => ({ name }))].sort((a, b) => a.name.localeCompare(b.name)) })
+    await this.writeProvenance(metadata)
+    const retained = this.settings.variables.filter(row => !metadata.deletedNames?.includes(row.name))
+    const known = new Set(retained.map(row => row.name))
+    const added = Object.keys(metadata.variables).filter(name => !known.has(name)).map(name => ({ name }))
+    if (added.length || retained.length !== this.settings.variables.length) await this.replaceSettings({ ...this.settings, variables: [...retained, ...added].sort((a, b) => a.name.localeCompare(b.name)) })
   }
 
   @Remote('restoreOfficialDefaults')
@@ -221,37 +227,19 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     await this.hydration
     const document = await fetchOfficialEnvironment()
     const metadata = await this.readProvenance()
-    const names = new Set([...Object.keys(metadata.variables), ...Object.keys(document.variables)])
-    const removedOfficial = new Set<string>()
+    const names = Object.keys(document.variables)
+    // This RPC is an explicit, confirmed replacement. Startup hydration is
+    // missing-only; manual synchronization replaces every remote-owned name.
     for (const name of names) {
-      const entry = metadata.variables[name]
-      const remote = document.variables[name]
-      const inherited = process.env[name]?.trim()
-      const stored = await this.secrets.get(credentialKey(name)).catch(() => undefined)
-      if (entry?.suppressed) continue
-      if (entry?.source === 'user' || (!entry && (stored !== undefined || inherited))) {
-        if (!entry) metadata.variables[name] = { source: 'user' }
-        if (stored !== undefined) process.env[name] = stored
-        continue
-      }
-      if (remote !== undefined) {
-        await this.secrets.set(credentialKey(name), remote)
-        process.env[name] = remote
-        metadata.variables[name] = { source: 'official', version: document.version }
-      } else if (entry?.source === 'official') {
-        await this.secrets.delete(credentialKey(name)).catch(() => undefined)
-        delete process.env[name]
-        delete metadata.variables[name]
-        removedOfficial.add(name)
-      }
+      await this.secrets.set(credentialKey(name), document.variables[name]!)
+      process.env[name] = document.variables[name]
+      metadata.variables[name] = { source: 'official', version: document.version }
     }
+    metadata.deletedNames = (metadata.deletedNames ?? []).filter(name => !names.includes(name))
     await this.writeProvenance(metadata)
-    const existingRows = this.settings.variables.filter((row: { name: string }) => !removedOfficial.has(row.name))
-    const current = new Set(existingRows.map((row: { name: string }) => row.name))
-    const added = [...names].filter(name => !current.has(name) && !metadata.variables[name]?.suppressed && metadata.variables[name] !== undefined).map(name => ({ name }))
-    if (added.length || existingRows.length !== this.settings.variables.length) {
-      await this.replaceSettings({ ...this.settings, variables: [...existingRows, ...added].sort((a, b) => a.name.localeCompare(b.name)) })
-    }
+    const current = new Set(this.settings.variables.map(row => row.name))
+    const added = names.filter(name => !current.has(name)).map(name => ({ name }))
+    if (added.length) await this.replaceSettings({ ...this.settings, variables: [...this.settings.variables, ...added].sort((a, b) => a.name.localeCompare(b.name)) })
     return this.listVariables()
   }
 
@@ -259,7 +247,14 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     try {
       const value = await this.secrets.get(METADATA_KEY)
       const parsed = value ? JSON.parse(value) as Partial<Provenance> : undefined
-      if (parsed?.version === 1 && parsed.variables && typeof parsed.variables === 'object') return { version: 1, variables: { ...parsed.variables } as Record<string, ProvenanceEntry> }
+      if (parsed?.version === 1 && parsed.variables && typeof parsed.variables === 'object') {
+        const variables = { ...parsed.variables }
+        const deleted = new Set((parsed.deletedNames ?? []).filter(name => VARIABLE_NAME.test(name)))
+        for (const [name, entry] of Object.entries(variables)) {
+          if ((entry as ProvenanceEntry & { suppressed?: boolean }).suppressed) { deleted.add(name); delete variables[name] }
+        }
+        return { version: 1, variables, deletedNames: [...deleted] }
+      }
     } catch { /* Broken metadata is rebuilt from the current environment. */ }
     return { version: 1, variables: {} }
   }

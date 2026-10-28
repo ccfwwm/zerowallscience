@@ -12,13 +12,13 @@ export interface EnvironmentVault {
 
 export interface EnvironmentProvenanceEntry {
   source: 'official' | 'user'
-  suppressed?: boolean
   version?: string
 }
 
 export interface EnvironmentProvenance {
   version: 1
   variables: Record<string, EnvironmentProvenanceEntry>
+  deletedNames?: string[]
 }
 
 interface SignedDocument {
@@ -58,7 +58,14 @@ const readMetadata = async (vault: EnvironmentVault): Promise<EnvironmentProvena
   try {
     const value = await vault.get(ENVIRONMENT_METADATA_KEY)
     const parsed = value ? JSON.parse(value) as Partial<EnvironmentProvenance> : undefined
-    if (parsed?.version === 1 && parsed.variables && typeof parsed.variables === 'object') return { version: 1, variables: { ...parsed.variables } as Record<string, EnvironmentProvenanceEntry> }
+    if (parsed?.version === 1 && parsed.variables && typeof parsed.variables === 'object') {
+      const variables = { ...parsed.variables }
+      const deleted = new Set((parsed.deletedNames ?? []).filter(name => VARIABLE_NAME.test(name)))
+      for (const [name, entry] of Object.entries(variables)) {
+        if ((entry as EnvironmentProvenanceEntry & { suppressed?: boolean }).suppressed) { deleted.add(name); delete variables[name] }
+      }
+      return { version: 1, variables, deletedNames: [...deleted] }
+    }
   } catch { /* Corrupt or unavailable metadata must not block startup. */ }
   return { version: 1, variables: {} }
 }
@@ -85,7 +92,7 @@ export async function hydrateOfficialEnvironment(vault: EnvironmentVault, option
 }): Promise<EnvironmentHydrationResult> {
   const previousValues = hydratedProcessValues.get(vault)
   const metadata = await readMetadata(vault)
-  const names = new Set(Object.keys(metadata.variables).filter(name => VARIABLE_NAME.test(name)))
+  const names = new Set([...Object.keys(metadata.variables), ...(metadata.deletedNames ?? [])].filter(name => VARIABLE_NAME.test(name)))
   let document: (SignedDocument & { schema: 1; kind: 'environment-defaults'; version: string; variables: Record<string, string> }) | undefined
   let error: string | undefined
   try {
@@ -119,14 +126,10 @@ export async function hydrateOfficialEnvironment(vault: EnvironmentVault, option
     const observed = process.env[name]?.trim()
     const inherited = previousValues?.has(name) && previousValues.get(name) === observed ? undefined : observed
     const stored = await vault.get(credentialKey(name)).catch(() => undefined)
-    if (entry?.suppressed) {
-      if (inherited) {
-        await vault.set(credentialKey(name), inherited).catch(() => undefined)
-        metadata.variables[name] = { source: 'user' }
-        continue
-      }
+    if (metadata.deletedNames?.includes(name)) {
       delete process.env[name]
       if (stored !== undefined && vault.delete) await vault.delete(credentialKey(name)).catch(() => undefined)
+      delete metadata.variables[name]
       continue
     }
     if (inherited) {
@@ -138,34 +141,12 @@ export async function hydrateOfficialEnvironment(vault: EnvironmentVault, option
       continue
     }
     const remote = document?.variables[name]
-    if (entry?.source === 'official' && document && remote !== undefined) {
-      if (stored !== remote) { await vault.set(credentialKey(name), remote).catch(() => undefined); updatedOfficial++ }
-      process.env[name] = remote
-      metadata.variables[name] = { source: 'official', version: document.version }
-      continue
-    }
-    if (entry?.source === 'official' && !document) {
-      if (stored !== undefined) process.env[name] = stored
-      metadata.variables[name] = { source: 'official', ...(entry.version ? { version: entry.version } : {}) }
-      continue
-    }
-    if (entry?.source === 'official' && document && remote === undefined) {
-      if (stored !== undefined && vault.delete) await vault.delete(credentialKey(name)).catch(() => undefined)
-      delete process.env[name]
-      delete metadata.variables[name]
-      continue
-    }
-    if (entry?.source === 'user') {
-      if (stored !== undefined) process.env[name] = stored
-      else if (inherited) metadata.variables[name] = { source: 'user' }
-      else delete process.env[name]
-      continue
-    }
     if (stored !== undefined) {
       process.env[name] = stored
-      metadata.variables[name] = { source: 'user' }
+      metadata.variables[name] = entry ?? { source: 'user' }
       continue
     }
+    delete process.env[name]
     if (remote !== undefined) {
       await vault.set(credentialKey(name), remote).catch(() => undefined)
       process.env[name] = remote

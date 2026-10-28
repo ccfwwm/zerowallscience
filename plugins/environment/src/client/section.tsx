@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Copy, Eye, EyeOff, X } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import type {} from '@zerowallscience/plugin-base/client-helpers'
@@ -6,6 +6,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 import css from './section.module.css'
 import { LiteratureSettings } from './LiteratureSettings.js'
+import { VariableActionDialog, type VariableAction } from './VariableActionDialog.js'
 import type { EnvironmentTranslate } from './locales.js'
 import { LocalizedError, messageFromError, renderMessage, type LocalizedMessage } from './messages.js'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -35,6 +36,8 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
   const [busy, setBusy] = useState(false)
   const [newName, setNewName] = useState('')
   const [newValue, setNewValue] = useState('')
+  const [variableAction, setVariableAction] = useState<VariableAction>()
+  const cancelVariableAction = useCallback(() => setVariableAction(undefined), [])
   const [viewingVariable, setViewingVariable] = useState<{ name: string; value: string }>()
   const [variableRevealed, setVariableRevealed] = useState(false)
   const [variableCopied, setVariableCopied] = useState(false)
@@ -165,10 +168,22 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
       await refreshCredentials()
     })
   }
-  const restoreOfficialDefaults = () => void run(async () => {
-    if (environmentRemote?.restoreOfficialDefaults === undefined) throw new LocalizedError('variablesUnavailable')
-    setVariables(await unwrap(environmentRemote.restoreOfficialDefaults()))
+  const confirmVariableAction = (value?: string) => void run(async () => {
+    if (!variableAction) return
+    if (variableAction.kind === 'sync') {
+      if (environmentRemote?.restoreOfficialDefaults === undefined) throw new LocalizedError('variablesUnavailable')
+      setVariables(await unwrap(environmentRemote.restoreOfficialDefaults()))
+    } else if (variableAction.kind === 'delete') {
+      setVariables(await unwrap(environmentRemote.deleteVariable(variableAction.name)))
+    } else {
+      setVariables(await unwrap(environmentRemote.setVariable(variableAction.name, value)))
+    }
     await refreshCredentials()
+    setVariableAction(undefined)
+  })
+  const editVariable = (name: string) => void run(async () => {
+    const value = await unwrap(environmentRemote.readVariable(name))
+    setVariableAction({ kind: 'edit', name, value: value ?? '' })
   })
   const refreshCredentials = async () => {
     const loadRemote = async (remote: any, method: string) => {
@@ -317,10 +332,11 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
 
       <details className={`${css.card} ${css.variablesCard}`}>
         <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>{t('variablesTitle')}</h3><p>{t('variablesDescription')}</p></div><span className={statusClass('variables', variables.length > 0 && configuredVariables === variables.length)}>{statusText('variables', t('configuredCount', { configured: configuredVariables, total: variables.length }))}</span></div></summary>
-        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>{status.variables === 'error' ? t('unavailable') : t('noVariables')}</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span className={variable.configured ? css.variableConfigured : css.variableMissing}>{variable.suppressed ? t('suppressedSource') : variable.source === 'official' ? t('officialSource') : variable.source === 'environment' ? t('environmentSource') : variable.source === 'user' ? t('userSource') : variable.configured ? t('configured') : t('notConfigured')}</span>{variable.configured && <button className={css.textButton} type="button" disabled={busy} onClick={() => void viewVariable(variable.name)}>{t('viewVariable')}</button>}<button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => { setVariables(await unwrap(environmentRemote.deleteVariable(variable.name))); await refreshCredentials() })}>{t('delete')}</button></div>)}</div>
-        <div className={css.variableForm}><input className={css.control} placeholder={t('variableName')} value={newName} onChange={event => setNewName(event.target.value)} /><input className={css.control} type="password" placeholder={t('variableValue')} value={newValue} onChange={event => setNewValue(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !newName.trim() || !newValue} onClick={() => void saveVariable()}>{t('addVariable')}</button><button className={css.secondaryButton} type="button" disabled={busy || environmentRemote?.restoreOfficialDefaults === undefined} onClick={restoreOfficialDefaults}>{t('syncOfficialDefaults')}</button></div>
+        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>{status.variables === 'error' ? t('unavailable') : t('noVariables')}</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span className={variable.configured ? css.variableConfigured : css.variableMissing}>{variable.source === 'official' ? t('officialSource') : variable.source === 'environment' ? t('environmentSource') : variable.source === 'user' ? t('userSource') : variable.configured ? t('configured') : t('notConfigured')}</span><div className={css.variableActions}>{variable.configured && <button className={css.textButton} type="button" disabled={busy} onClick={() => void viewVariable(variable.name)}>{t('viewVariable')}</button>}<button className={css.textButton} type="button" disabled={busy} onClick={() => editVariable(variable.name)}>{t('editVariable')}</button><button className={css.textButton} type="button" disabled={busy} onClick={() => setVariableAction({ kind: 'delete', name: variable.name })}>{t('delete')}</button></div></div>)}</div>
+        <div className={css.variableForm}><input className={css.control} placeholder={t('variableName')} value={newName} onChange={event => setNewName(event.target.value)} /><input className={css.control} type="password" placeholder={t('variableValue')} value={newValue} onChange={event => setNewValue(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !newName.trim() || !newValue.trim()} onClick={() => void saveVariable()}>{t('addVariable')}</button><button className={css.secondaryButton} type="button" disabled={busy || environmentRemote?.restoreOfficialDefaults === undefined} onClick={() => setVariableAction({ kind: 'sync' })}>{t('syncOfficialDefaults')}</button></div>
       </details>
     </div>
+    {variableAction && <VariableActionDialog action={variableAction} busy={busy} error={renderMessage(error, t)} t={t} cancel={cancelVariableAction} confirm={confirmVariableAction} />}
     {viewingVariable !== undefined && createPortal(<dialog ref={variableDialog} className={css.variableDialog} aria-labelledby="environment-variable-title" onCancel={() => setViewingVariable(undefined)} onClick={event => { if (event.target === event.currentTarget) setViewingVariable(undefined) }}>
       <header className={css.variableDialogHeader}><div><span className={css.eyebrow}>{t('variablesTitle')}</span><h3 id="environment-variable-title">{viewingVariable.name}</h3></div><button className={css.iconButton} type="button" aria-label={t('close')} onClick={() => setViewingVariable(undefined)}><X size={17} /></button></header>
       <div className={css.variableValueBox}><input readOnly aria-label={t('variableValue')} type={variableRevealed ? 'text' : 'password'} value={viewingVariable.value} autoComplete="off" /><button className={css.iconButton} type="button" aria-label={t(variableRevealed ? 'hideValue' : 'showValue')} onClick={() => setVariableRevealed(value => !value)}>{variableRevealed ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>

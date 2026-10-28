@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import '../../../tests/support/native-dialog.js'
 import { createElement, type ComponentType } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, inject } from '../src/client/index.js'
 import { EnvironmentSection } from '../src/client/section.js'
@@ -157,6 +157,8 @@ describe('environment settings client', () => {
       else Reflect.deleteProperty(navigator, 'clipboard')
     }
     fireEvent.click(screen.getByRole('button', { name: '删除', exact: true }))
+    expect(remotes.zerowallEnvironment.deleteVariable).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '确认删除', exact: true }))
     await waitFor(() => expect(remotes.zerowallEnvironment.deleteVariable).toHaveBeenCalledWith('SCI_TOKEN'))
     await waitFor(() => expect(screen.queryByText('SCI_TOKEN')).toBeNull())
 
@@ -191,10 +193,11 @@ describe('environment settings client', () => {
   it('refreshes service status after shared edits and keeps the shared fallback after clearing a dedicated key', async () => {
     let configured = true
     const ok = (value: unknown) => Promise.resolve({ ok: true, value })
-    const variables = () => [{ name: 'MINERU_API_TOKEN', configured }]
+    const variables = () => configured ? [{ name: 'MINERU_API_TOKEN', configured }] : []
     const t: EnvironmentTranslate = (key, params = {}) => zh[key].replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''))
     const environmentRemote = {
       listVariables: vi.fn(() => ok(variables())),
+      readVariable: vi.fn(() => ok('original value')),
       deleteVariable: vi.fn(() => { configured = false; return ok(variables()) }),
       setVariable: vi.fn(() => { configured = true; return ok(variables()) }),
       restoreOfficialDefaults: vi.fn(() => { configured = true; return ok(variables()) }),
@@ -217,6 +220,11 @@ describe('environment settings client', () => {
     await waitFor(() => expect(mcpRemote.getRdatalinuxCredentialStatus).toHaveBeenCalledTimes(2))
     expect(summary('rdatalinux rmcp').textContent).toContain('已配置')
     fireEvent.click([...row('自定义变量').querySelectorAll('button')].find(button => button.textContent === '删除')!)
+    expect(environmentRemote.deleteVariable).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '取消', exact: true }))
+    expect(environmentRemote.deleteVariable).not.toHaveBeenCalled()
+    fireEvent.click([...row('自定义变量').querySelectorAll('button')].find(button => button.textContent === '删除')!)
+    fireEvent.click(screen.getByRole('button', { name: '确认删除', exact: true }))
     await waitFor(() => expect(summary('MinerU 文档解析').textContent).toContain('未配置（失败）'))
     expect(summary('SciMaster').textContent).toContain('未配置（失败）')
     fireEvent.change(screen.getByPlaceholderText('变量名，例如 SCI_KEY'), { target: { value: 'MINERU_API_TOKEN' } })
@@ -226,5 +234,19 @@ describe('environment settings client', () => {
     expect(summary('SciMaster').textContent).toContain('已配置')
     expect(accountRemote.current).toHaveBeenCalledOnce()
     expect(pubmedRemote.getConfigStatus).toHaveBeenCalledTimes(4)
+    fireEvent.click(screen.getByRole('button', { name: '从七牛云同步', exact: true }))
+    expect(environmentRemote.restoreOfficialDefaults).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '取消', exact: true }))
+    expect(environmentRemote.restoreOfficialDefaults).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '从七牛云同步', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: '确认同步并覆盖', exact: true }))
+    await waitFor(() => expect(environmentRemote.restoreOfficialDefaults).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    environmentRemote.readVariable = vi.fn(() => ok('original value'))
+    fireEvent.click(screen.getByRole('button', { name: '修改', exact: true }))
+    const editor = await screen.findByRole('dialog', { name: '修改' })
+    fireEvent.change(within(editor).getByLabelText('变量值'), { target: { value: 'changed value' } })
+    fireEvent.click(within(editor).getByRole('button', { name: '保存修改' }))
+    await waitFor(() => expect(environmentRemote.setVariable).toHaveBeenLastCalledWith('MINERU_API_TOKEN', 'changed value'))
   })
 })
