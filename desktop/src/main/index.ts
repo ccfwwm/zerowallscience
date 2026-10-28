@@ -28,6 +28,7 @@ import { PythonUpdaterService } from './python-manager-broker.js'
 import { createPythonTerminalLaunch, managedPythonTerminalPaths } from './python-terminal.js'
 import { ensurePythonCoreAtStartup } from './python-startup.js'
 import { pluginActivationHealth, type PluginHealth, type PluginActivationScope } from './plugin-health.js'
+import { hydrateOfficialEnvironment } from './environment-config.js'
 
 import type { PythonEnvironmentApi, PythonEnvironmentRequest } from './python-environment-api.js'
 import { preparePythonLocation, resolvePythonLocation } from './python-location.js'
@@ -66,6 +67,7 @@ let initialRuntimeStartRequested = false
 const desktopPluginProcesses = new Map<string, ReturnType<typeof spawn>>()
 let managementChild: HarnessChildProcess | undefined
 const managementRequests = new Map<string, { resolve: (result: unknown) => void; reject: (error: Error) => void }>()
+let prepareEnvironmentForHost: (() => Promise<void>) | undefined
 
 async function sessionDeleteRpc<T>(window: BrowserWindow, activeRuntime: HarnessRuntime, method: string, request: object, fallback: string): Promise<T> {
   if (activeRuntime.snapshot().phase !== 'ready') throw new Error(fallback)
@@ -519,6 +521,7 @@ async function launch(): Promise<void> {
   if (runtimeReachedReady || runtime?.snapshot().phase === 'ready' || initialRuntimeStartRequested) return
   initialRuntimeStartRequested = true
   publishStartup({ progress: 35, message: '正在加载核心服务与插件' })
+  await prepareEnvironmentForHost?.()
   await runtime?.start(join(app.getPath('userData'), 'workspace'))
 }
 
@@ -604,6 +607,11 @@ if (ownsInstance) app.whenReady().then(async () => {
     encrypt: (value) => safeStorage.encryptString(value),
     decrypt: (value) => safeStorage.decryptString(value),
   })
+  prepareEnvironmentForHost = async () => {
+    const result = await hydrateOfficialEnvironment(credentialVault, { publicKeys: MCP_ENVIRONMENT_KEYRING })
+    if (result.error) console.warn(`Official environment defaults unavailable; local values preserved: ${result.error}`)
+    else if (result.usedRemote) console.info(`Official environment defaults loaded: ${result.version ?? 'unknown'} (${result.updatedOfficial} updated)`)
+  }
   let mcpEnvironment!: PythonUpdaterService
   const harnessRuntime = new HarnessRuntime({
     dshEntryPath: dshEntryPath(),
@@ -788,6 +796,7 @@ if (ownsInstance) app.whenReady().then(async () => {
     })
   }
   const startHost = async (options?: PluginActivationScope): Promise<void> => {
+    await prepareEnvironmentForHost?.()
     await harnessRuntime.start(join(userData, 'workspace'))
     if (harnessRuntime.snapshot().phase !== 'ready') throw new Error('Host activation failed')
     const deadline = Date.now() + 30_000
@@ -1128,7 +1137,7 @@ if (ownsInstance) app.whenReady().then(async () => {
       const log = await readFile(join(userData, 'logs/harness.log'), 'utf8').catch(() => '')
       return { logFile: join(userData, 'logs/harness.log'), events: log.split(/\r?\n/).filter(line => line.includes('[zws-mcp]')).slice(-100).flatMap(line => { try { const event = JSON.parse(line.split('[zws-mcp] ')[1]!); return [{ operation: event.operation, status: event.status, time: event.time }] } catch { return [] } }) }
     }
-    if (request.operation === 'host.restart') { await harnessRuntime.start(join(userData, 'workspace')); return { restarted: true } }
+    if (request.operation === 'host.restart') { await prepareEnvironmentForHost?.(); await harnessRuntime.start(join(userData, 'workspace')); return { restarted: true } }
     if (request.operation === 'plugin.run') {
       const args = request.args
       if (!args.every(value => typeof value === 'string') || !['list', 'add', 'remove', 'update', 'install'].includes(String(args[0]))) throw new Error('Invalid plugin command')

@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "8.4.13",
+  "version": "8.4.14",
   "description": "ZeroWall Science local-first scientific visualization and research workbench.",
   "private": true,
   "type": "module",
@@ -75,6 +75,10 @@
     "python:dependencies:build": "node tools/release/build-python-dependency-manifest.mjs",
     "python:dependencies:publish": "node scripts/publish-python-dependency-manifest.mjs",
     "release:verify:stable": "node scripts/verify-qiniu.mjs",
+    "environment:import": "node scripts/import-environment-defaults.mjs",
+    "environment:publish": "node scripts/publish-environment-config.mjs",
+    "environment:verify": "pnpm --dir desktop exec tsx ../scripts/verify-environment-config.mjs",
+    "environment:probe": "pnpm --dir desktop exec tsx ../scripts/probe-environment-config.mjs",
     "package:dir": "pnpm build && pnpm --filter @zerowallscience/desktop run package:dir",
     "package:win": "pnpm package:stable:win",
     "package:stable:win": "node tools/build/package-windows.mjs",

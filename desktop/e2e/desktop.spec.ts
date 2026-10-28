@@ -605,14 +605,20 @@ describe('ZeroWall Science Electron', () => {
     await englishSettings.getByRole('heading', { name: 'Environment', exact: true }).waitFor()
     await englishSettings.getByRole('heading', { name: 'AIchem', exact: true }).waitFor()
     expect(await englishSettings.getByLabel('AIchem API token', { exact: true }).getAttribute('type')).toBe('password')
-    await englishSettings.getByRole('region', { name: 'Literature services', exact: true }).getByRole('button', { name: 'Save settings', exact: true }).waitFor()
+    const literature = englishSettings.locator('details[aria-labelledby="literature-settings-title"]')
+    await englishSettings.locator('details[aria-labelledby="literature-settings-title"] > summary').evaluate(element => (element as HTMLElement).click())
+    await literature.getByText('Save settings', { exact: true }).waitFor()
     await englishSettings.getByRole('heading', { name: 'Image generation model', exact: true }).waitFor()
     await englishSettings.getByText('Available models synced', { exact: true }).waitFor()
+    const imageSettings = englishSettings.locator('details').filter({ hasText: 'Image generation model' }).first()
+    await imageSettings.locator('summary').evaluate(element => (element as HTMLElement).click())
     await englishSettings.getByRole('combobox', { name: /^Default quality/u }).waitFor()
     expect(await englishSettings.getByText('候选模型已同步', { exact: true }).count()).toBe(0)
     const artifacts = join(contract.verification, 'electron')
     mkdirSync(artifacts, { recursive: true })
     await page.screenshot({ path: join(artifacts, 'environment-english.png') })
+    await imageSettings.locator('summary').evaluate(element => (element as HTMLElement).click())
+    await literature.locator('summary').evaluate(element => (element as HTMLElement).click())
 
     await englishSettings.getByRole('button', { name: 'General', exact: true }).click()
     await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: /English/ }).click()
@@ -749,56 +755,86 @@ describe('ZeroWall Science Electron', () => {
     }
   }, 60_000)
 
-  it('shows environment configuration as a list with AIchem credentials and live model catalog', async () => {
-    await page.getByRole('button', { name: '设置' }).click()
+  it('shows environment configuration as a list and receives signed Qiniu defaults', async () => {
+    const variables = await rpc(page, 'zerowallEnvironment/listVariables', {})
+    const names = ['MINERU_API_TOKEN', 'R_PLATFORM_MCP_AUTHORIZATION', 'HUAGONGSHE_MCP_AUTHORIZATION', 'ZEROWALL_SCIMASTER_API_KEY', 'NCBI_API_KEY']
+    for (const name of names) expect(variables.find((row: any) => row.name === name), name).toMatchObject({ configured: true, source: 'official' })
+    await page.getByRole('button', { name: '设置', exact: true }).click()
     const settings = page.getByRole('dialog', { name: '设置' })
     await settings.getByRole('button', { name: '环境配置', exact: true }).click()
-    await settings.getByRole('heading', { name: '化工社 AIchem' }).waitFor()
-    await expect.poll(() => settings.getByText('候选模型已同步', { exact: true }).count(), { timeout: 30_000 }).toBe(1)
-    expect(await settings.getByText('科研 MCP 能力', { exact: true }).count()).toBe(0)
-    expect(await settings.getByLabel('化工社 API Token').getAttribute('type')).toBe('password')
-    const literature = settings.getByRole('region', { name: '文献服务', exact: true })
-    await literature.getByRole('heading', { name: '文献服务', exact: true }).waitFor()
-    await expect.poll(() => literature.getByRole('button', { name: '检测 NCBI / PubMed', exact: true }).isEnabled()).toBe(true)
-    for (const key of ['NCBI_API_KEY', 'S2_API_KEY', 'OPENALEX_API_KEY']) {
-      expect(await literature.getByLabel(key, { exact: true }).getAttribute('type')).toBe('password')
-      expect(await literature.getByLabel(key, { exact: true }).inputValue()).toBe('')
+    const section = settings.locator('section').filter({ hasText: '自定义变量' }).last()
+    const rows = section.locator(':scope > div > details')
+    const service = (title: string) => rows.filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+    for (const title of ['rdatalinux rmcp', 'MinerU 文档解析', 'SciMaster', '化工社 AIchem']) {
+      const status = service(title).locator(':scope > summary').locator('span').last()
+      await expect.poll(() => status.innerText()).toMatch(/已配置/u)
+      expect(await status.evaluate(element => getComputedStyle(element).color)).toBe('rgb(36, 112, 76)')
     }
-    expect(await literature.getByRole('link', { name: 'NCBI / PubMed 获取 Key' }).getAttribute('href')).toBe('https://www.ncbi.nlm.nih.gov/account/settings/')
-    const version = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
+    expect(await rows.first().locator('h3').innerText()).toBe('rdatalinux rmcp')
+    expect(await rows.evaluateAll(elements => elements.every(element => !(element as HTMLDetailsElement).open))).toBe(true)
+    const literature = service('文献服务')
     const artifacts = join(contract.verification, 'electron')
     mkdirSync(artifacts, { recursive: true })
     for (const viewport of [{ width: 1280, height: 900 }, { width: 720, height: 900 }]) {
       await page.setViewportSize(viewport)
       await settings.getByRole('heading', { name: '环境配置', exact: true }).scrollIntoViewIfNeeded()
-      expect(await settings.evaluate(element => {
-        const top = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2)
-        return top !== null && element.contains(top) && element.parentElement?.parentElement === document.body
-      })).toBe(true)
-      const rows = await settings.locator('article').evaluateAll(elements => elements.map(element => {
+      const layout = await rows.evaluateAll(elements => elements.map(element => {
         const box = element.getBoundingClientRect()
-        return { x: box.x, width: box.width, bottom: box.bottom, top: box.top }
+        const summary = element.querySelector(':scope > summary')!.getBoundingClientRect()
+        return { x: box.x, width: box.width, bottom: box.bottom, top: box.top, height: summary.height }
       }))
-      expect(rows.length).toBeGreaterThanOrEqual(6)
-      const first = rows[0]!
-      for (let i = 1; i < rows.length; i++) {
-        const current = rows[i]!
-        const previous = rows[i - 1]!
-        expect(Math.abs(current.x - first.x)).toBeLessThan(2)
-        expect(current.top).toBeGreaterThanOrEqual(previous.bottom - 1)
+      expect(layout.length).toBeGreaterThanOrEqual(6)
+      for (let i = 0; i < layout.length; i++) {
+        const current = layout[i]!
+        expect(Math.abs(current.x - layout[0]!.x)).toBeLessThan(2)
+        expect(Math.abs(current.width - layout[0]!.width)).toBeLessThan(2)
+        expect(current.height).toBeLessThanOrEqual(56)
+        if (i) expect(current.top).toBeGreaterThanOrEqual(layout[i - 1]!.bottom - 1)
       }
       await page.screenshot({ path: join(artifacts, `environment-${viewport.width}.png`) })
-      await literature.scrollIntoViewIfNeeded()
-      const statusHeadingHeight = await literature.getByRole('columnheader', { name: '配置状态', exact: true }).evaluate(element => {
-        const range = document.createRange()
-        range.selectNodeContents(element)
-        return range.getBoundingClientRect().height
-      })
-      expect(statusHeadingHeight).toBeLessThan(30)
+      await literature.locator(':scope > summary').click()
+      expect(await literature.evaluate(element => (element as HTMLDetailsElement).open)).toBe(true)
+      expect(await literature.locator('h3').evaluate(element => element.getBoundingClientRect().left - element.closest('details')!.getBoundingClientRect().left)).toBeLessThan(55)
+      const sourceRows = literature.locator('details').filter({ has: page.locator(':scope > summary') })
+      expect(await sourceRows.count()).toBe(6)
+      const ncbi = sourceRows.filter({ hasText: 'NCBI / PubMed' }).first()
+      await expect.poll(() => ncbi.locator(':scope > summary').innerText()).toContain('已配置')
+      for (const title of ['Semantic Scholar', 'OpenAlex']) {
+        const missing = sourceRows.filter({ has: page.locator('summary', { hasText: title }) }).first().locator(':scope > summary > span').last()
+        expect(await missing.innerText()).toContain('未配置（失败）')
+        expect(await missing.evaluate(element => getComputedStyle(element).color)).toBe('rgb(161, 43, 43)')
+      }
       await page.screenshot({ path: join(artifacts, `literature-${viewport.width}.png`) })
-      await settings.getByLabel('化工社 API Token').scrollIntoViewIfNeeded()
+      await ncbi.locator(':scope > summary').click()
+      expect(await ncbi.getByLabel('NCBI_API_KEY', { exact: true }).getAttribute('type')).toBe('password')
+      expect(await ncbi.getByLabel('NCBI_API_KEY', { exact: true }).inputValue()).toBe('')
+      await ncbi.locator(':scope > summary').click()
+      await literature.locator(':scope > summary').click()
+      const chem = service('化工社 AIchem')
+      await chem.locator(':scope > summary').click()
+      expect(await chem.getByLabel('化工社 API Token').getAttribute('type')).toBe('password')
+      await chem.scrollIntoViewIfNeeded()
       await page.screenshot({ path: join(artifacts, `aichem-${viewport.width}.png`) })
+      await chem.locator(':scope > summary').click()
     }
+    // Deletion suppresses cloud restoration. A deliberate local edit makes
+    // the service configured again and is preserved by later cloud sync.
+    await service('自定义变量').locator(':scope > summary').click()
+    const mineruVariable = service('自定义变量').locator('code').filter({ hasText: /^MINERU_API_TOKEN$/u }).locator('..')
+    await mineruVariable.getByRole('button', { name: '删除', exact: true }).click()
+    await expect.poll(async () => (await rpc(page, 'zerowallEnvironment/listVariables', {})).find((row: any) => row.name === 'MINERU_API_TOKEN')).toMatchObject({ configured: false, suppressed: true })
+    await expect.poll(() => service('MinerU 文档解析').locator(':scope > summary').innerText()).toContain('未配置（失败）')
+    await service('自定义变量').getByRole('button', { name: '从七牛云同步', exact: true }).click()
+    await expect.poll(() => service('自定义变量').getByRole('button', { name: '从七牛云同步', exact: true }).isEnabled()).toBe(true)
+    expect(await service('MinerU 文档解析').locator(':scope > summary').innerText()).toContain('未配置（失败）')
+    await settings.getByPlaceholder('变量名，例如 SCI_KEY').fill('MINERU_API_TOKEN')
+    await settings.getByPlaceholder('变量值', { exact: true }).fill('synthetic-local-override-e2e')
+    await settings.getByRole('button', { name: '添加变量', exact: true }).click()
+    await expect.poll(() => service('MinerU 文档解析').locator(':scope > summary').innerText(), { timeout: 30_000 }).toContain('Token 已配置')
+    await service('自定义变量').getByRole('button', { name: '从七牛云同步', exact: true }).click()
+    await expect.poll(() => service('自定义变量').getByRole('button', { name: '从七牛云同步', exact: true }).isEnabled()).toBe(true)
+    expect(await rpc(page, 'zerowallEnvironment/readVariable', { name: 'MINERU_API_TOKEN' })).toBe('synthetic-local-override-e2e')
+    writeFileSync(join(artifacts, 'environment-qiniu-receipt.json'), JSON.stringify({ passed: true, source: 'signed Qiniu public configuration', variables: names, configured: names.length, localOverride: 'unit regression passed', immediateStatusRefresh: true }, null, 2))
   })
 
   it('verifies variable privacy, clipboard, settings chrome and account layout', async () => {
@@ -810,6 +846,8 @@ describe('ZeroWall Science Electron', () => {
     const settings = page.getByRole('dialog', { name: '设置' })
     expect(await settings.getByRole('button', { name: '打开配置文件', exact: true }).count()).toBe(1)
     await settings.getByRole('button', { name: '环境配置', exact: true }).click()
+    const environmentSection = settings.locator('section').filter({ hasText: '自定义变量' }).last()
+    await environmentSection.locator(':scope > div > details').last().evaluate(element => { (element.querySelector(':scope > summary') as HTMLElement).click() })
     await settings.getByPlaceholder('变量名，例如 SCI_KEY').fill('ZEROWALL_UI_TEST')
     await settings.getByPlaceholder('变量值', { exact: true }).fill('test-only-650')
     await settings.getByRole('button', { name: '添加变量', exact: true }).click()
@@ -828,7 +866,7 @@ describe('ZeroWall Science Electron', () => {
     await page.keyboard.press('Escape')
     expect(await settings.isVisible()).toBe(true)
     await row.getByRole('button', { name: '删除', exact: true }).click()
-    await expect.poll(() => settings.locator('code', { hasText: 'ZEROWALL_UI_TEST' }).count(), { timeout: 30_000 }).toBe(0)
+    await expect.poll(() => row.getByText('已停用自动补齐', { exact: true }).count(), { timeout: 30_000 }).toBe(1)
     await settings.getByRole('heading', { name: '环境配置', exact: true }).scrollIntoViewIfNeeded()
     await page.screenshot({ path: join(artifacts, 'environment.png') })
     await settings.getByRole('button', { name: 'Python 环境', exact: true }).click()

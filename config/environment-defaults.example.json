@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "kind": "environment-defaults",
+  "version": "2026.10.28.1",
+  "variables": {
+    "R_PLATFORM_MCP_AUTHORIZATION": "Bearer <your-rmcp-token>",
+    "MINERU_API_TOKEN": "<your-mineru-token>",
+    "ZEROWALL_SCIMASTER_API_KEY": "<your-scimaster-api-key>",
+    "HUAGONGSHE_MCP_AUTHORIZATION": "Bearer <your-huagongshe-token>",
+    "NCBI_API_KEY": "<your-ncbi-api-key>"
+  }
+}

@@ -63,6 +63,11 @@ export const RDATALINUX_RPLOTFIGURE_SERVER_NAME = 'rplotfigure'
 export const RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL = 'zerowall.mcp.rdatalinux_authorization'
 export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
 const ENVIRONMENT_SECRET_PREFIX = 'zerowall.environment.var.'
+export async function hasEnvironmentCredential(name: string, getCredential: (key: string) => Promise<string | undefined>, environment: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  let value: string | undefined
+  try { value = await getCredential(`${ENVIRONMENT_SECRET_PREFIX}${name.toLowerCase()}`) } catch { value = undefined }
+  return Boolean(value?.trim() || environment[name]?.trim())
+}
 // A prepared update waits for Host readiness. Poll the compact transaction and
 // pointer frequently; manifest contents remain cached by the file signature.
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 1000
@@ -1019,12 +1024,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   @Remote('getSciMasterCredentialStatus')
   async getSciMasterCredentialStatus(): Promise<{ configured: boolean }> {
+    let value: string | undefined
     try {
-      const value = await this.secrets.get(SCIMASTER_API_KEY_CREDENTIAL)
-      return { configured: typeof value === 'string' && value.trim() !== '' }
-    } catch {
-      return { configured: false }
-    }
+      value = await this.secrets.get(SCIMASTER_API_KEY_CREDENTIAL)
+    } catch { value = undefined }
+    return { configured: Boolean(value?.trim() || await hasEnvironmentCredential('ZEROWALL_SCIMASTER_API_KEY', key => this.secrets.get(key))) }
   }
 
   @Remote('setSciMasterApiKey')
@@ -1054,12 +1058,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   @Remote('getHuagongsheCredentialStatus')
   async getHuagongsheCredentialStatus(): Promise<{ configured: boolean }> {
+    let value: string | undefined
     try {
-      if ((await this.secrets.get(HUAGONGSHE_CREDENTIAL))?.trim()) return { configured: true }
-    } catch { /* Existing environment references remain supported. */ }
-    const record = this.projects().listMcpServers().find(item => item.serverName === 'huagongshe' && item.url === HUAGONGSHE_URL)
-    const reference = record?.headerRefs.Authorization
-    return { configured: Boolean(reference && process.env[reference]?.trim()) }
+      value = await this.secrets.get(HUAGONGSHE_CREDENTIAL)
+    } catch { value = undefined }
+    return { configured: Boolean(value?.trim() || await hasEnvironmentCredential(HUAGONGSHE_AUTH_ENV, key => this.secrets.get(key))) }
   }
 
   @Remote('setHuagongsheApiKey')
@@ -1085,19 +1088,19 @@ export class ZeroWallMcpService extends TypertRemoteService {
       await this.secrets.delete(HUAGONGSHE_CREDENTIAL)
       const record = this.projects().listMcpServers().find(item => item.serverName === 'huagongshe' && item.url === HUAGONGSHE_URL)
       if (!record) return
-      const { Authorization: _removed, ...headerRefs } = record.headerRefs
+      const keepOfficialReference = await hasEnvironmentCredential(HUAGONGSHE_AUTH_ENV, key => this.secrets.get(key))
+      const headerRefs = keepOfficialReference ? { ...record.headerRefs, Authorization: HUAGONGSHE_AUTH_ENV } : Object.fromEntries(Object.entries(record.headerRefs).filter(([name]) => name !== 'Authorization'))
       await this.reconcile(this.projects().updateMcpServer(record.id, { headerRefs }))
     })
   }
 
   @Remote('getRdatalinuxCredentialStatus')
   async getRdatalinuxCredentialStatus(): Promise<{ configured: boolean; endpoint: string }> {
+    let value: string | undefined
     try {
-      const value = await this.secrets.get(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL)
-      return { configured: typeof value === 'string' && value.trim() !== '', endpoint: RDATALINUX_R_MCP_URL }
-    } catch {
-      return { configured: Boolean(process.env[RDATALINUX_R_MCP_AUTHORIZATION_ENV]?.trim()), endpoint: RDATALINUX_R_MCP_URL }
-    }
+      value = await this.secrets.get(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL)
+    } catch { value = undefined }
+    return { configured: Boolean(value?.trim() || await hasEnvironmentCredential(RDATALINUX_R_MCP_AUTHORIZATION_ENV, key => this.secrets.get(key))), endpoint: RDATALINUX_R_MCP_URL }
   }
 
   @Remote('setRdatalinuxAuthorization')
@@ -1300,6 +1303,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
       if (server.serverName === RDATALINUX_SERVER_NAME && server.transport === 'streamable-http' && server.headerRefs.Authorization === undefined) {
         projects.updateMcpServer(server.id, { headerRefs: { ...server.headerRefs, Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV } })
       }
+      if (server.serverName === 'huagongshe' && server.url === HUAGONGSHE_URL && server.headerRefs.Authorization === undefined) {
+        projects.updateMcpServer(server.id, { headerRefs: { ...server.headerRefs, Authorization: HUAGONGSHE_AUTH_ENV } })
+      }
       // RMCP is the managed remote service. A successful MCP client Fiber is
       // not evidence that the HTTP handshake and tools/list completed when
       // failOnStartupError is false: DSH can resolve the Fiber after a failed
@@ -1453,6 +1459,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
         sciMasterApiKey = undefined
       }
       if (!sciMasterApiKey?.trim()) {
+        try { sciMasterApiKey = await this.secrets.get(`${ENVIRONMENT_SECRET_PREFIX}zerowall_scimaster_api_key`) } catch { sciMasterApiKey = undefined }
+      }
+      if (!sciMasterApiKey?.trim()) sciMasterApiKey = process.env.ZEROWALL_SCIMASTER_API_KEY
+      if (!sciMasterApiKey?.trim()) {
         await this.disposeOne(record.id)
         if (current()) this.statuses.set(record.id, { state: 'blocked', error: 'SciMaster 需要配置 API Key。请在设置中保存 Key 后重试。', missingEnvironmentVariables: [] })
         return
@@ -1460,6 +1470,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
     }
     if (record.serverName === RDATALINUX_SERVER_NAME) {
       try { rdatalinuxAuthorization = await this.secrets.get(RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL) } catch { rdatalinuxAuthorization = undefined }
+      if (!rdatalinuxAuthorization?.trim()) {
+        try { rdatalinuxAuthorization = await this.secrets.get(`${ENVIRONMENT_SECRET_PREFIX}r_platform_mcp_authorization`) } catch { rdatalinuxAuthorization = undefined }
+      }
       if (!rdatalinuxAuthorization?.trim()) rdatalinuxAuthorization = process.env[RDATALINUX_R_MCP_AUTHORIZATION_ENV]
       if (!rdatalinuxAuthorization?.trim()) {
         await this.disposeOne(record.id)
@@ -1473,7 +1486,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const token = await this.secrets.get(HUAGONGSHE_CREDENTIAL)
         if (token?.trim()) huagongsheAuthorization = `Bearer ${token.trim()}`
       } catch { /* An unavailable vault is reported by reference resolution. */ }
-      if (!huagongsheAuthorization && !process.env[HUAGONGSHE_AUTH_ENV]?.trim()) {
+      if (!huagongsheAuthorization?.trim()) {
+        try { huagongsheAuthorization = await this.secrets.get(`${ENVIRONMENT_SECRET_PREFIX}huagongshe_mcp_authorization`) } catch { huagongsheAuthorization = undefined }
+      }
+      if (!huagongsheAuthorization?.trim()) huagongsheAuthorization = process.env[HUAGONGSHE_AUTH_ENV]
+      if (!huagongsheAuthorization?.trim()) {
         await this.disposeOne(record.id)
         if (current()) this.statuses.set(record.id, { state: 'blocked', error: '请在环境配置中设置化工社 Token。', missingEnvironmentVariables: [] })
         return

@@ -213,7 +213,9 @@ export class ZeroWallMineruService extends TypertRemoteService {
     if (!value) {
       try { value = await this.secrets.get(`${ENV_TOKEN_KEY_PREFIX}${this.config().tokenCredential.toLowerCase()}`) } catch { value = undefined }
     }
-    return value?.trim() || undefined
+    // Startup hydration sets official defaults on process.env so the main
+    // process and its Host child can share the same missing-only value.
+    return value?.trim() || process.env[this.config().tokenCredential]?.trim() || undefined
   }
   @Remote('getConfigStatus') async getConfigStatus(): Promise<MineruConfigStatus> { const cfg = this.config(); const token = await this.token(); const registeredTools = MINERU_TOOL_NAMES.filter(tool => this.hostCtx.tools.get(tool) !== undefined); return { ...cfg, api: apiFor(cfg.mode, token), tokenConfigured: token !== undefined, tokenManagementUrl: TOKEN_MANAGEMENT_URL, available: registeredTools.length === MINERU_TOOL_NAMES.length, registeredTools } }
   @Remote('updateConfig') async updateConfig(input: Partial<MineruConfig>): Promise<MineruConfigStatus> { const next = validateConfig({ ...this.config(), ...input }); this.settings = next; await this.hostCtx.settings.replace(MINERU_SETTINGS_NS, next); return this.getConfigStatus() }

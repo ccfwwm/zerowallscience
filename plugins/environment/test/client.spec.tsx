@@ -4,6 +4,7 @@ import { createElement, type ComponentType } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply, inject } from '../src/client/index.js'
+import { EnvironmentSection } from '../src/client/section.js'
 import { en, NS, zh, type EnvironmentTranslate } from '../src/client/locales.js'
 import { DEFAULTS, type PubmedStatus } from '../../pubmed/src/shared/types.js'
 
@@ -83,6 +84,14 @@ describe('environment settings client', () => {
     expect(navLabel!()).toBe('环境配置')
 
     expect(screen.getByRole('heading', { name: '环境配置' })).toBeTruthy()
+    const environmentSection = screen.getByRole('heading', { name: '环境配置' }).closest('section')!
+    const serviceRows = [...environmentSection.querySelectorAll<HTMLElement>(':scope > div > details')]
+    expect(serviceRows[0]?.querySelector('summary h3')?.textContent).toBe('rdatalinux rmcp')
+    expect(serviceRows.every(row => !(row as HTMLDetailsElement).open)).toBe(true)
+    const literature = screen.getByRole('heading', { name: '文献服务' }).closest('details') as HTMLDetailsElement
+    expect(literature.querySelectorAll('details')).toHaveLength(6)
+    fireEvent.click(literature.querySelector('summary')!)
+    expect(literature.open).toBe(true)
     expect(screen.queryByText('Reviewer')).toBeNull()
     expect(screen.getByText('SciMaster')).toBeTruthy()
     expect(screen.getByText('生图模型')).toBeTruthy()
@@ -161,7 +170,7 @@ describe('environment settings client', () => {
     expect(navLabel!()).toBe('Environment')
     expect(screen.getByRole('heading', { name: 'Environment', exact: true })).toBeTruthy()
     expect(screen.getByRole('heading', { name: 'Literature services' })).toBeTruthy()
-    expect(screen.getByRole('columnheader', { name: 'Configuration status' })).toBeTruthy()
+    expect(screen.getAllByText('Semantic Scholar').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Configured · Dedicated setting')).toBeTruthy()
     expect(screen.getByText('Anonymous queries available')).toBeTruthy()
     expect(screen.getByText('Connected')).toBeTruthy()
@@ -170,12 +179,52 @@ describe('environment settings client', () => {
     expect((screen.getByLabelText('NCBI contact email') as HTMLInputElement).value).toBe('draft@example.com')
     expect(screen.getByRole('option', { name: 'Medium (recommended)' })).toBeTruthy()
     expect(screen.getByRole('link', { name: /Get an API token and setup instructions/ }).getAttribute('href')).toBe('https://huagongshe.com/mcp-guide')
-    expect(remotes.zerowallPubmed.getConfigStatus).toHaveBeenCalledTimes(1)
+    expect(remotes.zerowallPubmed.getConfigStatus).toHaveBeenCalledTimes(2)
     language = 'zh'
     view.rerender(createElement(Section!, props))
     expect(navLabel!()).toBe('环境配置')
     expect(screen.getByRole('heading', { name: '文献服务' })).toBeTruthy()
     expect(screen.getByText('匿名查询可用')).toBeTruthy()
     expect((screen.getByLabelText('NCBI 联系邮箱') as HTMLInputElement).value).toBe('draft@example.com')
+  })
+
+  it('refreshes service status after shared edits and keeps the shared fallback after clearing a dedicated key', async () => {
+    let configured = true
+    const ok = (value: unknown) => Promise.resolve({ ok: true, value })
+    const variables = () => [{ name: 'MINERU_API_TOKEN', configured }]
+    const t: EnvironmentTranslate = (key, params = {}) => zh[key].replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''))
+    const environmentRemote = {
+      listVariables: vi.fn(() => ok(variables())),
+      deleteVariable: vi.fn(() => { configured = false; return ok(variables()) }),
+      setVariable: vi.fn(() => { configured = true; return ok(variables()) }),
+      restoreOfficialDefaults: vi.fn(() => { configured = true; return ok(variables()) }),
+    }
+    const credential = () => ok({ configured })
+    const mcpRemote = {
+      getSciMasterCredentialStatus: vi.fn(credential), getHuagongsheCredentialStatus: vi.fn(credential),
+      getRdatalinuxCredentialStatus: vi.fn(credential), clearRdatalinuxAuthorization: vi.fn(() => ok(undefined)),
+    }
+    const mineruRemote = { getConfigStatus: vi.fn(() => ok({ tokenConfigured: configured })) }
+    const pubmedRemote = { getConfigStatus: vi.fn(() => ok({ config: DEFAULTS, keys: [{ name: 'NCBI_API_KEY', configured, source: 'variable' }] })) }
+    const accountRemote = { current: vi.fn(() => ok({ status: 'signedOut' })) }
+    render(createElement(EnvironmentSection, { environmentRemote, mcpRemote, mineruRemote, pubmedRemote, accountRemote,
+      modelCatalog: vi.fn(), unwrap: async value => (await value).value, t } as any))
+    const row = (title: string) => screen.getByRole('heading', { name: title, exact: true }).closest('details')!
+    const summary = (title: string) => row(title).querySelector('summary')!
+    await waitFor(() => expect(summary('MinerU 文档解析').textContent).toContain('Token 已配置'))
+    fireEvent.click([...row('rdatalinux rmcp').querySelectorAll('button')].find(button => button.textContent === '清除')!)
+    await waitFor(() => expect(mcpRemote.clearRdatalinuxAuthorization).toHaveBeenCalledOnce())
+    await waitFor(() => expect(mcpRemote.getRdatalinuxCredentialStatus).toHaveBeenCalledTimes(2))
+    expect(summary('rdatalinux rmcp').textContent).toContain('已配置')
+    fireEvent.click([...row('自定义变量').querySelectorAll('button')].find(button => button.textContent === '删除')!)
+    await waitFor(() => expect(summary('MinerU 文档解析').textContent).toContain('未配置（失败）'))
+    expect(summary('SciMaster').textContent).toContain('未配置（失败）')
+    fireEvent.change(screen.getByPlaceholderText('变量名，例如 SCI_KEY'), { target: { value: 'MINERU_API_TOKEN' } })
+    fireEvent.change(screen.getByPlaceholderText('变量值'), { target: { value: 'test value' } })
+    fireEvent.click(screen.getByRole('button', { name: '添加变量', exact: true }))
+    await waitFor(() => expect(summary('MinerU 文档解析').textContent).toContain('Token 已配置'))
+    expect(summary('SciMaster').textContent).toContain('已配置')
+    expect(accountRemote.current).toHaveBeenCalledOnce()
+    expect(pubmedRemote.getConfigStatus).toHaveBeenCalledTimes(4)
   })
 })

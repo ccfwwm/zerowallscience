@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { McpServerRecord } from '@zerowallscience/research-store'
-import { aiCloudCredentialKey, managedBioDependenciesReady, managedEnvironmentFileSignature, managedEnvironmentRecord, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch, sanitizeMcpToolSchema } from '../src/host/index.js'
+import { aiCloudCredentialKey, hasEnvironmentCredential, managedBioDependenciesReady, managedEnvironmentFileSignature, managedEnvironmentRecord, providerCredentialNames, redactError, resolveMcpConfig, resolveStdioLaunch, sanitizeMcpToolSchema } from '../src/host/index.js'
 beforeEach(() => { vi.stubEnv('ZEROWALL_PYTHON_RUNTIME_ROOT', ''); vi.stubEnv('ZEROWALL_PYTHON_MANAGEMENT_ROOT', '') })
 afterEach(() => vi.unstubAllEnvs())
 
@@ -16,6 +16,13 @@ const base: McpServerRecord = {
 }
 
 describe('ZeroWall MCP config boundary', () => {
+  it('recognizes official environment credentials stored in the shared vault', async () => {
+    const vault = new Map([['zerowall.environment.var.zerowall_scimaster_api_key', 'remote-secret']])
+    expect(await hasEnvironmentCredential('ZEROWALL_SCIMASTER_API_KEY', async key => vault.get(key), {})).toBe(true)
+    expect(await hasEnvironmentCredential('HUAGONGSHE_MCP_AUTHORIZATION', async () => undefined, { HUAGONGSHE_MCP_AUTHORIZATION: 'Bearer env-secret' })).toBe(true)
+    expect(await hasEnvironmentCredential('R_PLATFORM_MCP_AUTHORIZATION', async () => ' ', {})).toBe(false)
+    expect(await hasEnvironmentCredential('NCBI_API_KEY', async () => { throw new Error('vault unavailable') }, {})).toBe(false)
+  })
   it('keeps useful tool schema fields and bounds oversized or deeply nested values', () => {
     const normal = sanitizeMcpToolSchema({ type: 'object', properties: { query: { type: 'string', description: 'Search term' } }, required: ['query'] })
     expect(normal.truncated).toBe(false)

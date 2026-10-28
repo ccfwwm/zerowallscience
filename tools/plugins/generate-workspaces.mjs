@@ -185,7 +185,7 @@ const plugins = [
   { id: 'base', client: true, clientExternal: [], capabilities: ['ui.locale', 'ui.update'], permissions: [], requiredServices: ['webServer', 'systemPrompt', 'workspaceRegistry'], optionalServices: ['updater'] },
   { id: 'desktop-compat', capabilities: ['desktop.profiles', 'desktop.plugins'], permissions: [], requiredServices: [], optionalServices: ['desktopProfiles', 'desktopPnpm'] },
   { id: 'secrets', capabilities: ['credentials.read', 'credentials.write'], permissions: ['credentials'], requiredServices: [], optionalServices: ['credentialBroker'] },
-  { id: 'environment', client: true, remote: true, capabilities: ['environment-config'], permissions: ['credentials', 'processes'], dependencies: ['secrets', 'base'], requiredServices: ['settings'] },
+  { id: 'environment', client: true, remote: true, capabilities: ['environment-config'], permissions: ['credentials', 'processes', 'network'], dependencies: ['secrets', 'base'], requiredServices: ['settings'] },
   { id: 'projects', client: true, remote: true, capabilities: ['projects', 'workspaces'], permissions: ['files'] },
   { id: 'account', client: true, remote: true, capabilities: ['account'], permissions: ['credentials', 'network'], dependencies: ['secrets', 'base'] },
   { id: 'ai-cloud', client: true, capabilities: ['llm.cloud', 'media.cloud'], permissions: ['credentials', 'network', 'files'], dependencies: ['account', 'secrets'], requiredServices: ['llm', 'zerowallAccount'] },

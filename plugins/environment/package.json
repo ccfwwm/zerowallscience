@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-environment",
-  "version": "0.1.17",
+  "version": "0.1.20",
   "description": "ZeroWall Science environment domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -75,7 +75,8 @@
     ],
     "permissions": [
       "credentials",
-      "processes"
+      "processes",
+      "network"
     ],
     "profiles": [
       "development",

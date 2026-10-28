@@ -4,6 +4,7 @@ import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 import type { EnvironmentSettingsValue, EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
+import { fetchOfficialEnvironment } from './official-config.js'
 
 export const name = 'zerowall-environment'
 export const ENVIRONMENT_SETTINGS_NS = 'zerowall-environment' as SettingsNamespace
@@ -24,12 +25,15 @@ export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
 const VARIABLE_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u
 const RESERVED = new Set(['NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE', 'PATH', 'PATHEXT', 'COMSPEC', 'DSH_HOME', 'ZEROWALL_USER_DATA_DIR'])
 const KEY_PREFIX = 'zerowall.environment.var.'
+const METADATA_KEY = 'zerowall.environment.meta'
 // These are part of the TSG contract even when an older settings snapshot
 // did not persist the variable names alongside the encrypted values.
-const WELL_KNOWN_VARIABLES: string[] = []
+const WELL_KNOWN_VARIABLES = ['R_PLATFORM_MCP_AUTHORIZATION', 'MINERU_API_TOKEN', 'ZEROWALL_SCIMASTER_API_KEY', 'HUAGONGSHE_MCP_AUTHORIZATION', 'NCBI_API_KEY']
 const RETIRED_VARIABLES = ['TSG_PM_JSESSIONID', 'TSG_SESSIONID', 'TSG_SGUSER', 'TSG_TSGUSER', 'TSG_JSESSIONID', 'RESEARCH_SCIDB_SETTLE_MS', 'LITERATURE_OUTPUT_ROOT', 'LITERATURE_DISABLE_PAPER_DOWNLOAD', 'LITERATURE_DOWNLOAD_WORKERS', 'LITERATURE_MAX_PDF_BYTES', 'AUTHORIZED_ADAPTER_MODULE', 'AUTHORIZED_ADAPTER_ALLOWED_DOMAINS', 'ZEROWALL_PAPER_DOWNLOAD_ROOT'] as const
 // Cordis publishes FiberState as a const enum, which has no runtime export.
 const FIBER_ACTIVE = 2 as FiberState.ACTIVE
+type ProvenanceEntry = { source: 'official' | 'user'; suppressed?: boolean; version?: string }
+type Provenance = { version: 1; variables: Record<string, ProvenanceEntry> }
 
 export function validateEnvironmentVariableName(name: string): string {
   const value = name.trim().toUpperCase()
@@ -38,6 +42,11 @@ export function validateEnvironmentVariableName(name: string): string {
 }
 
 function credentialKey(name: string): string { return `${KEY_PREFIX}${name.toLowerCase()}` }
+export async function isEnvironmentVariableConfigured(name: string, getCredential: (key: string) => Promise<string | undefined>, environment: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  let value: string | undefined
+  try { value = await getCredential(credentialKey(name)) } catch { value = undefined }
+  return Boolean(value?.trim() || environment[name]?.trim())
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context { zerowallEnvironment: ZeroWallEnvironmentService }
@@ -135,14 +144,20 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
   @Remote('listVariables')
   async listVariables(): Promise<EnvironmentVariableInfo[]> {
     await this.hydration
+    const metadata = await this.readProvenance()
     const configuredNames = WELL_KNOWN_VARIABLES.filter(name => Boolean(process.env[name]?.trim()))
-    const names = [...new Set([...this.settings.variables.map((row: { name: string }) => row.name), ...configuredNames])]
-    const values = await Promise.all(names.map(async name => ({
-      name,
-      // process.env is also a supported source: packaged launches can inject
-      // credentials before the settings snapshot is available.
-      configured: Boolean(process.env[name]?.trim()) || (await this.secrets.get(credentialKey(name))) !== undefined,
-    })))
+    const names = [...new Set([...this.settings.variables.map((row: { name: string }) => row.name), ...Object.keys(metadata.variables), ...configuredNames])]
+    const values = await Promise.all(names.map(async name => {
+      const source: EnvironmentVariableInfo['source'] = metadata.variables[name]?.source ?? (process.env[name]?.trim() ? 'environment' : undefined)
+      return {
+        name,
+        // process.env is also a supported source: packaged launches can inject
+        // credentials before the settings snapshot is available.
+        configured: await isEnvironmentVariableConfigured(name, key => this.secrets.get(key)),
+        ...(source === undefined ? {} : { source }),
+        suppressed: metadata.variables[name]?.suppressed === true,
+      }
+    }))
     return values
   }
 
@@ -153,6 +168,9 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     if (value.length === 0) throw new Error('环境变量值不能为空。')
     await this.secrets.set(credentialKey(key), value)
     process.env[key] = value
+    const metadata = await this.readProvenance()
+    metadata.variables[key] = { source: 'user' }
+    await this.writeProvenance(metadata)
     const current = this.settings.variables.filter((row: { name: string }) => row.name !== key)
     await this.replaceSettings({ ...this.settings, variables: [...current, { name: key }].sort((a, b) => a.name.localeCompare(b.name)) })
     return await this.listVariables()
@@ -172,12 +190,16 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
     const key = validateEnvironmentVariableName(name)
     await this.secrets.delete(credentialKey(key))
     delete process.env[key]
+    const metadata = await this.readProvenance()
+    metadata.variables[key] = { source: 'official', suppressed: true }
+    await this.writeProvenance(metadata)
     await this.replaceSettings({ ...this.settings, variables: this.settings.variables.filter((row: { name: string }) => row.name !== key) })
     return await this.listVariables()
   }
 
   private async hydrate(): Promise<void> {
-    const names = [...new Set([...this.settings.variables.map((row: { name: string }) => row.name), ...WELL_KNOWN_VARIABLES])]
+    const metadata = await this.readProvenance()
+    const names = [...new Set([...this.settings.variables.map((row: { name: string }) => row.name), ...Object.keys(metadata.variables), ...WELL_KNOWN_VARIABLES])]
     for (const name of names) {
       try {
         const value = await this.secrets.get(credentialKey(name))
@@ -186,6 +208,64 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
         // A broken OS credential entry is ignored; the UI can replace it.
       }
     }
+    for (const name of RETIRED_VARIABLES) {
+      if (metadata.variables[name]?.suppressed) delete process.env[name]
+    }
+    const known = new Set(this.settings.variables.map((row: { name: string }) => row.name))
+    const added = Object.keys(metadata.variables).filter(name => !known.has(name) && !metadata.variables[name]?.suppressed)
+    if (added.length) await this.replaceSettings({ ...this.settings, variables: [...this.settings.variables, ...added.map(name => ({ name }))].sort((a, b) => a.name.localeCompare(b.name)) })
+  }
+
+  @Remote('restoreOfficialDefaults')
+  async restoreOfficialDefaults(): Promise<EnvironmentVariableInfo[]> {
+    await this.hydration
+    const document = await fetchOfficialEnvironment()
+    const metadata = await this.readProvenance()
+    const names = new Set([...Object.keys(metadata.variables), ...Object.keys(document.variables)])
+    const removedOfficial = new Set<string>()
+    for (const name of names) {
+      const entry = metadata.variables[name]
+      const remote = document.variables[name]
+      const inherited = process.env[name]?.trim()
+      const stored = await this.secrets.get(credentialKey(name)).catch(() => undefined)
+      if (entry?.suppressed) continue
+      if (entry?.source === 'user' || (!entry && (stored !== undefined || inherited))) {
+        if (!entry) metadata.variables[name] = { source: 'user' }
+        if (stored !== undefined) process.env[name] = stored
+        continue
+      }
+      if (remote !== undefined) {
+        await this.secrets.set(credentialKey(name), remote)
+        process.env[name] = remote
+        metadata.variables[name] = { source: 'official', version: document.version }
+      } else if (entry?.source === 'official') {
+        await this.secrets.delete(credentialKey(name)).catch(() => undefined)
+        delete process.env[name]
+        delete metadata.variables[name]
+        removedOfficial.add(name)
+      }
+    }
+    await this.writeProvenance(metadata)
+    const existingRows = this.settings.variables.filter((row: { name: string }) => !removedOfficial.has(row.name))
+    const current = new Set(existingRows.map((row: { name: string }) => row.name))
+    const added = [...names].filter(name => !current.has(name) && !metadata.variables[name]?.suppressed && metadata.variables[name] !== undefined).map(name => ({ name }))
+    if (added.length || existingRows.length !== this.settings.variables.length) {
+      await this.replaceSettings({ ...this.settings, variables: [...existingRows, ...added].sort((a, b) => a.name.localeCompare(b.name)) })
+    }
+    return this.listVariables()
+  }
+
+  private async readProvenance(): Promise<Provenance> {
+    try {
+      const value = await this.secrets.get(METADATA_KEY)
+      const parsed = value ? JSON.parse(value) as Partial<Provenance> : undefined
+      if (parsed?.version === 1 && parsed.variables && typeof parsed.variables === 'object') return { version: 1, variables: { ...parsed.variables } as Record<string, ProvenanceEntry> }
+    } catch { /* Broken metadata is rebuilt from the current environment. */ }
+    return { version: 1, variables: {} }
+  }
+
+  private async writeProvenance(metadata: Provenance): Promise<void> {
+    await this.secrets.set(METADATA_KEY, JSON.stringify(metadata))
   }
 
   private async removeRetiredVariables(): Promise<void> {

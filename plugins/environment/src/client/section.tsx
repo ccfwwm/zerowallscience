@@ -55,11 +55,12 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
   }, [viewingVariable])
   const [sciKey, setSciKey] = useState('')
   const [error, setError] = useState<LocalizedMessage>('')
-  const [status, setStatus] = useState<Record<string, LoadState>>({ account: 'loading', catalog: 'loading', variables: 'loading', image: 'loading', mcp: 'loading' })
+  const [status, setStatus] = useState<Record<string, LoadState>>({ account: 'loading', catalog: 'loading', variables: 'loading', image: 'loading', mcp: 'loading', chem: 'loading', rdatalinux: 'loading', mineru: 'loading' })
   const [image, setImage] = useState<ImageModelSelection>({ providerId: '', groupId: '', modelId: '' })
   const [imageQuality, setImageQuality] = useState<ImageGenerationQuality>('medium')
   const [mineru, setMineru] = useState<any>({ apiBaseUrl: 'https://mineru.net', mode: 'auto', modelVersion: 'vlm', language: 'ch', tokenConfigured: false, available: false, registeredTools: [] })
   const [mineruToken, setMineruToken] = useState('')
+  const [credentialRefresh, setCredentialRefresh] = useState(0)
   const [chemConfigured, setChemConfigured] = useState(false)
   const [chemKey, setChemKey] = useState('')
   const [chemConnection, setChemConnection] = useState<LocalizedMessage>('')
@@ -161,7 +162,41 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
       setVariables(await unwrap(environmentRemote.setVariable(newName, newValue)))
       setNewName('')
       setNewValue('')
+      await refreshCredentials()
     })
+  }
+  const restoreOfficialDefaults = () => void run(async () => {
+    if (environmentRemote?.restoreOfficialDefaults === undefined) throw new LocalizedError('variablesUnavailable')
+    setVariables(await unwrap(environmentRemote.restoreOfficialDefaults()))
+    await refreshCredentials()
+  })
+  const refreshCredentials = async () => {
+    const loadRemote = async (remote: any, method: string) => {
+      try {
+        if (typeof remote?.[method] !== 'function') throw new Error('Remote service unavailable')
+        return { ok: true as const, value: await unwrap(remote[method]()) }
+      } catch { return { ok: false as const } }
+    }
+    const [sci, chem, rmcp, mineruStatus] = await Promise.all([
+      loadRemote(mcpRemote, 'getSciMasterCredentialStatus'),
+      loadRemote(mcpRemote, 'getHuagongsheCredentialStatus'),
+      loadRemote(mcpRemote, 'getRdatalinuxCredentialStatus'),
+      loadRemote(mineruRemote, 'getConfigStatus'),
+    ])
+    if (sci.ok) setSciConfigured(sci.value?.configured === true)
+    if (chem.ok) setChemConfigured(chem.value?.configured === true)
+    if (rmcp.ok) {
+      setRdatalinuxConfigured(rmcp.value?.configured === true)
+      setRdatalinuxEndpoint(rmcp.value?.endpoint ?? 'https://rmcp.chengxunkeji.cn/r-platform/mcp')
+    }
+    if (mineruStatus.ok) setMineru(mineruStatus.value)
+    setStatus(current => ({ ...current,
+      mcp: sci.ok ? 'ready' : 'error',
+      chem: chem.ok ? 'ready' : 'error',
+      rdatalinux: rmcp.ok ? 'ready' : 'error',
+      mineru: mineruStatus.ok ? 'ready' : 'error',
+    }))
+    setCredentialRefresh(value => value + 1)
   }
   const viewVariable = async (name: string) => run(async () => {
     const value = await unwrap(environmentRemote.readVariable(name))
@@ -215,6 +250,8 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
   }
   const saveMineru = async (changes: Record<string, unknown>) => run(async () => { const value = await unwrap(mineruRemote.updateConfig(changes)); setMineru(value) })
   const statusText = (key: string, ready = t('loaded')) => status[key] === 'loading' ? t('loading') : status[key] === 'error' || status[key] === 'unavailable' ? t('unavailable') : ready
+  const statusClass = (key: string, configured: boolean) => status[key] === 'loading' ? css.status : status[key] === 'error' || status[key] === 'unavailable' || !configured ? css.statusBad : css.statusGood
+  const configuredVariables = variables.filter(variable => variable.configured).length
 
   return <section className={css.root}>
     <header className={css.header}>
@@ -223,17 +260,17 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
     </header>
     {error ? <p className={css.error} role="alert">{renderMessage(error, t)}</p> : null}
     <div className={css.grid}>
-      <LiteratureSettings remote={pubmedRemote} unwrap={unwrap} t={t} />
-
-      <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>rdatalinux rmcp</h3><p>{t('rmcpDescription')}</p></div><span className={rdatalinuxConfigured ? css.statusGood : css.status}>{statusText('rdatalinux', rdatalinuxConfigured ? t('configured') : t('notConfigured'))}</span></div>
+      <details className={css.card}>
+        <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>rdatalinux rmcp</h3><p>{t('rmcpDescription')}</p></div><span className={statusClass('rdatalinux', rdatalinuxConfigured)}>{statusText('rdatalinux', rdatalinuxConfigured ? t('configured') : t('missingFailed'))}</span></div></summary>
         <label className={css.field}><span>Endpoint</span><input className={css.control} value={rdatalinuxEndpoint} readOnly /></label>
-        <div className={css.keyRow}><input className={css.control} type="password" placeholder={t('enterMcpKey')} value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorization(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !rdatalinuxAuthorization.trim() || !mcpRemote?.setRdatalinuxAuthorization} onClick={saveRdatalinux}>{t('saveKey')}</button><button className={css.secondaryButton} type="button" disabled={busy || !rdatalinuxConfigured || !mcpRemote?.clearRdatalinuxAuthorization} onClick={() => void run(async () => { await unwrap(mcpRemote.clearRdatalinuxAuthorization()); setRdatalinuxConfigured(false); setRdatalinuxConnection('') })}>{t('clear')}</button><button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'rmcp'); if (!record) throw new LocalizedError('rmcpMissing'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || t('rmcpUnavailable')); setRdatalinuxConnection({ key: 'connectedTools', params: { count: (value.tools ?? []).length } }) })}>{t('testConnection')}</button></div>
+        <div className={css.keyRow}><input className={css.control} type="password" placeholder={t('enterMcpKey')} value={rdatalinuxAuthorization} onChange={event => setRdatalinuxAuthorization(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !rdatalinuxAuthorization.trim() || !mcpRemote?.setRdatalinuxAuthorization} onClick={saveRdatalinux}>{t('saveKey')}</button><button className={css.secondaryButton} type="button" disabled={busy || !rdatalinuxConfigured || !mcpRemote?.clearRdatalinuxAuthorization} onClick={() => void run(async () => { await unwrap(mcpRemote.clearRdatalinuxAuthorization()); await refreshCredentials(); setRdatalinuxConnection('') })}>{t('clear')}</button><button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'rmcp'); if (!record) throw new LocalizedError('rmcpMissing'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || t('rmcpUnavailable')); setRdatalinuxConnection({ key: 'connectedTools', params: { count: (value.tools ?? []).length } }) })}>{t('testConnection')}</button></div>
         {rdatalinuxConnection ? <p className={css.muted} role="status">{renderMessage(rdatalinuxConnection, t)}</p> : null}
-      </article>
+      </details>
 
-      <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>{t('mineruTitle')}</h3><p>{t('mineruDescription')}</p></div><span className={mineru.tokenConfigured && mineru.available ? css.statusGood : css.status}>{statusText('mineru', !mineru.available ? t('toolsInactive') : mineru.tokenConfigured ? t('tokenConfigured') : t('localParsing'))}</span></div>
+      <LiteratureSettings remote={pubmedRemote} unwrap={unwrap} t={t} refreshToken={credentialRefresh} />
+
+      <details className={css.card}>
+        <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>{t('mineruTitle')}</h3><p>{t('mineruDescription')}</p></div><span className={statusClass('mineru', mineru.tokenConfigured)}>{statusText('mineru', mineru.tokenConfigured ? t('tokenConfigured') : t('missingFailed'))}</span></div></summary>
         <div className={`${css.keyRow} ${css.mineruTokenRow}`}><input className={css.control} type="password" placeholder={t('enterMineruToken')} value={mineruToken} onChange={event => setMineruToken(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !mineruToken.trim() || mineruRemote?.setToken === undefined} onClick={() => void run(async () => { const value = await unwrap(mineruRemote.setToken(mineruToken)); setMineru(value); setMineruToken('') })}>{t('saveToken')}</button><button className={css.secondaryButton} type="button" disabled={busy || !mineru.tokenConfigured || mineruRemote?.clearToken === undefined} onClick={() => void run(async () => setMineru(await unwrap(mineruRemote.clearToken()))) }>{t('clear')}</button></div>
         <div className={css.formGrid}>
           <label className={css.field}><span>API Base URL</span><input className={css.control} value={mineru.apiBaseUrl ?? ''} onChange={event => setMineru((current: any) => ({ ...current, apiBaseUrl: event.target.value }))} onBlur={() => void saveMineru({ apiBaseUrl: mineru.apiBaseUrl })} /></label>
@@ -248,41 +285,41 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
           <label className={css.field}><span>{t('dailyLimit')}</span><input className={css.control} type="number" min={1} max={5000} value={mineru.dailyLimit ?? 5000} onChange={event => setMineru((current: any) => ({ ...current, dailyLimit: Number(event.target.value) }))} onBlur={() => void saveMineru({ dailyLimit: mineru.dailyLimit })} /></label>
         </div>
         <div className={`${css.keyRow} ${css.mineruActionsRow}`}><button className={css.secondaryButton} type="button" disabled={busy || mineruRemote?.testConnection === undefined} onClick={() => void run(async () => { await unwrap(mineruRemote.testConnection()) })}>{t('testConnection')}</button><a className={css.helpLink} href="https://mineru.net/apiManage/token" target="_blank" rel="noreferrer">{t('getMineruToken')}</a></div>
-      </article>
+      </details>
 
-      <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>SciMaster</h3><p>{t('sciDescription')}</p></div><span className={sciConfigured ? css.statusGood : css.status}>{status.mcp === 'loading' ? t('loading') : sciConfigured ? t('configured') : t('notConfigured')}</span></div>
-        <div className={css.keyRow}><input className={css.control} type="password" placeholder={t('enterSciKey')} value={sciKey} onChange={event => setSciKey(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !sciKey.trim() || mcpRemote?.setSciMasterApiKey === undefined} onClick={() => void saveSci()}>{t('saveKey')}</button><button className={css.secondaryButton} type="button" disabled={busy || !sciConfigured || mcpRemote?.clearSciMasterApiKey === undefined} onClick={() => void run(async () => { await unwrap(mcpRemote.clearSciMasterApiKey()); setSciConfigured(false) })}>{t('clear')}</button></div>
+      <details className={css.card}>
+        <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>SciMaster</h3><p>{t('sciDescription')}</p></div><span className={statusClass('mcp', sciConfigured)}>{statusText('mcp', sciConfigured ? t('configured') : t('missingFailed'))}</span></div></summary>
+        <div className={css.keyRow}><input className={css.control} type="password" placeholder={t('enterSciKey')} value={sciKey} onChange={event => setSciKey(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !sciKey.trim() || mcpRemote?.setSciMasterApiKey === undefined} onClick={() => void saveSci()}>{t('saveKey')}</button><button className={css.secondaryButton} type="button" disabled={busy || !sciConfigured || mcpRemote?.clearSciMasterApiKey === undefined} onClick={() => void run(async () => { await unwrap(mcpRemote.clearSciMasterApiKey()); await refreshCredentials() })}>{t('clear')}</button></div>
         <a className={css.helpLink} href={SCI_MASTER_KEY_URL} target="_blank" rel="noreferrer">{t('getSciKey')}</a>
-      </article>
+      </details>
 
-      <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>{t('chemTitle')}</h3><p>{t('chemDescription')}</p></div><span className={chemConfigured ? css.statusGood : css.status}>{statusText('chem', chemConfigured ? t('tokenConfigured') : t('publicQueries'))}</span></div>
+      <details className={css.card}>
+        <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>{t('chemTitle')}</h3><p>{t('chemDescription')}</p></div><span className={statusClass('chem', chemConfigured)}>{statusText('chem', chemConfigured ? t('tokenConfigured') : t('missingFailed'))}</span></div></summary>
         <div className={css.keyRow}>
           <input className={css.control} aria-label={t('chemToken')} type="password" placeholder={t('enterChemToken')} value={chemKey} onChange={event => setChemKey(event.target.value)} autoComplete="off" />
           <button className={css.primaryButton} type="button" disabled={busy || !chemKey.trim() || !mcpRemote?.setHuagongsheApiKey} onClick={() => void run(async () => { const value = await unwrap(mcpRemote.setHuagongsheApiKey(chemKey)); setChemConfigured(true); setChemKey(''); setChemConnection({ key: value.runtimeState === 'active' ? 'connected' : 'tokenSaved' }) })}>{t('saveToken')}</button>
-          <button className={css.secondaryButton} type="button" disabled={busy || !chemConfigured} onClick={() => void run(async () => { await unwrap(mcpRemote.clearHuagongsheApiKey()); setChemConfigured(false); setChemConnection('') })}>{t('clear')}</button>
+          <button className={css.secondaryButton} type="button" disabled={busy || !chemConfigured} onClick={() => void run(async () => { await unwrap(mcpRemote.clearHuagongsheApiKey()); await refreshCredentials(); setChemConnection('') })}>{t('clear')}</button>
           <button className={css.secondaryButton} type="button" disabled={busy || !mcpRemote?.list} onClick={() => void run(async () => { const rows = await unwrap(mcpRemote.list()); const record = rows.find((row: any) => row.serverName === 'huagongshe'); if (!record) throw new LocalizedError('chemMissing'); const value = await unwrap(mcpRemote.reload(record.id)); if (value.runtimeState !== 'active') throw new Error(value.runtimeError || t('chemUnavailable')); setChemConnection({ key: 'connectedTools', params: { count: value.tools.length } }) })}>{t('testConnection')}</button>
         </div>
         <a className={css.helpLink} href="https://huagongshe.com/mcp-guide" target="_blank" rel="noreferrer">{t('getChemToken')}</a>
         {chemConnection ? <p className={css.muted} role="status">{renderMessage(chemConnection, t)}</p> : null}
-      </article>
+      </details>
 
-      <article className={css.card}>
-        <div className={css.cardHeader}><div><h3>{t('imageTitle')}</h3><p>{t('imageDescription')}</p></div><span className={css.status}>{statusText('account', t('imageSynced'))}</span></div>
+      <details className={css.card}>
+        <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>{t('imageTitle')}</h3><p>{t('imageDescription')}</p></div><span className={statusClass('image', Boolean(imageModelValue))}>{statusText('image', imageModelValue ? t('configured') : t('missingFailed'))}</span></div></summary>
         <label className={css.field}><span>{t('currentImageModel')}</span><select className={css.control} value={imageModelIsKnown ? imageModelValue : ''} disabled={busy || status.account !== 'ready'} onChange={event => { const [providerId = '', groupId = '', modelId = '', profileId = ''] = event.target.value.split(VALUE_SEPARATOR); saveImageSelection({ providerId, groupId, modelId, ...(profileId ? { profileId } : {}) }) }}><option value="">{t("selectImageModel")}</option>{!imageModelIsKnown && imageModelValue ? <option value={imageModelValue}>{image.providerId} / {image.modelId}{t('currentConfig')}</option> : null}{imageGroups.map(group => <optgroup key={`${group.providerId}${VALUE_SEPARATOR}${group.groupId}`} label={group.label}>{group.models.map((model: any) => <option key={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}${VALUE_SEPARATOR}${model.profileId}`} value={`${model.providerId}${VALUE_SEPARATOR}${model.groupId}${VALUE_SEPARATOR}${model.modelId}${VALUE_SEPARATOR}${model.profileId ?? ""}`}>{model.modelId}{model.name && model.name !== model.modelId ? ` · ${model.name}` : ''}</option>)}</optgroup>)}</select></label>
         {!imageModelIsKnown && imageModelValue && <p role="alert">历史模型或能力配置已失效，请重新选择。</p>}
         {imageModels.filter((m:any) => mediaIdentity(m) === mediaIdentity(image)).map((m:any) => <div key={`${m.providerId}${VALUE_SEPARATOR}${m.groupId}${VALUE_SEPARATOR}${m.modelId}${VALUE_SEPARATOR}${m.profileId}`}>
           {([['resolution','分辨率',m.resolutions],['aspectRatio','比例',m.aspectRatios]] as const).map(([key,label,values]) => values?.length ? <label className={css.field} key={key}><span>{label}</span><select className={css.control} value={image[key] ?? ''} disabled={busy} onChange={event=>saveImageSelection({...image,[key]:event.target.value})}><option value="">默认</option>{values.map((v:string)=><option key={v}>{v}</option>)}</select></label> : null)}
         </div>)}
         <label className={css.field}><span>{t('defaultQuality')}</span><select className={css.control} value={imageQuality} disabled={busy} onChange={event => saveImageQuality(event.target.value as ImageGenerationQuality)}>{!imageQualityChoices.includes(imageQuality) && <option value={imageQuality} disabled>{t(imageQuality)}{t("currentConfig")}</option>}{imageQualityChoices.map(quality => <option key={quality} value={quality}>{t(quality as ImageGenerationQuality)}</option>)}</select><small>{t('qualityNote')}</small></label>
-      </article>
+      </details>
 
-      <article className={`${css.card} ${css.variablesCard}`}>
-        <div className={css.cardHeader}><div><h3>{t('variablesTitle')}</h3><p>{t('variablesDescription')}</p></div><span className={css.status}>{statusText('variables', t('variableCount', { count: variables.length }))}</span></div>
-        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>{t('noVariables')}</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span>{variable.configured ? t('configured') : t('notConfigured')}</span>{variable.configured && <button className={css.textButton} type="button" disabled={busy} onClick={() => void viewVariable(variable.name)}>{t('viewVariable')}</button>}<button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => setVariables(await unwrap(environmentRemote.deleteVariable(variable.name))))}>{t('delete')}</button></div>)}</div>
-        <div className={css.variableForm}><input className={css.control} placeholder={t('variableName')} value={newName} onChange={event => setNewName(event.target.value)} /><input className={css.control} type="password" placeholder={t('variableValue')} value={newValue} onChange={event => setNewValue(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !newName.trim() || !newValue} onClick={() => void saveVariable()}>{t('addVariable')}</button></div>
-      </article>
+      <details className={`${css.card} ${css.variablesCard}`}>
+        <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>{t('variablesTitle')}</h3><p>{t('variablesDescription')}</p></div><span className={statusClass('variables', variables.length > 0 && configuredVariables === variables.length)}>{statusText('variables', t('configuredCount', { configured: configuredVariables, total: variables.length }))}</span></div></summary>
+        <div className={css.variableList}>{variables.length === 0 ? <span className={css.muted}>{status.variables === 'error' ? t('unavailable') : t('noVariables')}</span> : variables.map(variable => <div className={css.variableRow} key={variable.name}><code>{variable.name}</code><span className={variable.configured ? css.variableConfigured : css.variableMissing}>{variable.suppressed ? t('suppressedSource') : variable.source === 'official' ? t('officialSource') : variable.source === 'environment' ? t('environmentSource') : variable.source === 'user' ? t('userSource') : variable.configured ? t('configured') : t('notConfigured')}</span>{variable.configured && <button className={css.textButton} type="button" disabled={busy} onClick={() => void viewVariable(variable.name)}>{t('viewVariable')}</button>}<button className={css.textButton} type="button" disabled={busy} onClick={() => void run(async () => { setVariables(await unwrap(environmentRemote.deleteVariable(variable.name))); await refreshCredentials() })}>{t('delete')}</button></div>)}</div>
+        <div className={css.variableForm}><input className={css.control} placeholder={t('variableName')} value={newName} onChange={event => setNewName(event.target.value)} /><input className={css.control} type="password" placeholder={t('variableValue')} value={newValue} onChange={event => setNewValue(event.target.value)} autoComplete="off" /><button className={css.primaryButton} type="button" disabled={busy || !newName.trim() || !newValue} onClick={() => void saveVariable()}>{t('addVariable')}</button><button className={css.secondaryButton} type="button" disabled={busy || environmentRemote?.restoreOfficialDefaults === undefined} onClick={restoreOfficialDefaults}>{t('syncOfficialDefaults')}</button></div>
+      </details>
     </div>
     {viewingVariable !== undefined && createPortal(<dialog ref={variableDialog} className={css.variableDialog} aria-labelledby="environment-variable-title" onCancel={() => setViewingVariable(undefined)} onClick={event => { if (event.target === event.currentTarget) setViewingVariable(undefined) }}>
       <header className={css.variableDialogHeader}><div><span className={css.eyebrow}>{t('variablesTitle')}</span><h3 id="environment-variable-title">{viewingVariable.name}</h3></div><button className={css.iconButton} type="button" aria-label={t('close')} onClick={() => setViewingVariable(undefined)}><X size={17} /></button></header>

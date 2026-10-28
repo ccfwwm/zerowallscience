@@ -315,7 +315,7 @@
     {
       "id": "environment",
       "package": "@zerowallscience/plugin-environment",
-      "version": "0.1.17",
+      "version": "0.1.20",
       "source": "plugins/environment",
       "manifest": "plugins/environment/zerowall.plugin.json",
       "client": true,
@@ -326,7 +326,8 @@
       ],
       "permissions": [
         "credentials",
-        "processes"
+        "processes",
+        "network"
       ],
       "requiredServices": [
         "settings"
@@ -378,7 +379,7 @@
     {
       "id": "mcp",
       "package": "@zerowallscience/plugin-mcp",
-      "version": "0.2.25",
+      "version": "0.2.27",
       "source": "plugins/mcp",
       "manifest": "plugins/mcp/zerowall.plugin.json",
       "client": true,
@@ -604,7 +605,7 @@
     {
       "id": "mineru",
       "package": "@zerowallscience/plugin-mineru",
-      "version": "0.1.10",
+      "version": "0.1.11",
       "source": "plugins/mineru",
       "manifest": "plugins/mineru/zerowall.plugin.json",
       "client": true,

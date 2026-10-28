@@ -1,6 +1,8 @@
 export interface EnvironmentVariableInfo {
   name: string
   configured: boolean
+  source?: 'official' | 'user' | 'environment'
+  suppressed?: boolean
 }
 
 export interface ImageModelSelection {
