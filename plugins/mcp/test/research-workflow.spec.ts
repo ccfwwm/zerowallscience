@@ -51,6 +51,14 @@ it('queries ToolUniverse status without provisioning an unrelated research conte
   expect(f.backend.workflowRequest).toHaveBeenCalledWith('workflow_query', { workflow_id: 'tooluniverse', operation: 'tooluniverse.status', arguments: {} }, f.exec)
   expect(f.ensureResearchContext).not.toHaveBeenCalled()
 })
+it('queries FAERS connectivity without provisioning a remote analysis project', async () => {
+  const f = await fixture()
+  f.backend.workflowRequest.mockResolvedValueOnce({ installed: true, connected: true })
+  const query = normalizeWorkflowQuery({ operation: 'r.faerskit.status' }, 'r.faerskit')
+  await expect(f.service.query('r.faerskit', query, f.exec)).resolves.toEqual({ installed: true, connected: true })
+  expect(f.backend.workflowRequest).toHaveBeenCalledWith('workflow_query', { workflow_id: 'r.faerskit', operation: 'r.faerskit.status', arguments: {} }, f.exec)
+  expect(f.ensureResearchContext).not.toHaveBeenCalled()
+})
 it('injects ToolUniverse project/idempotency context and rejects nested secrets before persistence', async () => {
   const f = await fixture()
   const value = { operation: 'tooluniverse.run.tool', arguments: { tool_name: 'UniProt_get_entry_by_accession', tool_arguments: { accession: 'P05067' }, confirm: true }, request_id: 'tu-1' }
@@ -75,6 +83,43 @@ it('submits once, persists remote IDs, resumes queries and returns checksummed m
   expect(done.status).toBe('succeeded'); expect(JSON.stringify(done)).toContain('digest')
   await restored.status(String(first.run_id), f.exec)
   expect(f.execute.mock.calls.filter(([id]) => id === 'r.submit.script')).toHaveLength(1)
+})
+it('keeps FAERS jobs active, resumes their R lifecycle and exposes project-relative artifacts', async () => {
+  const f = await fixture()
+  let status = 'running'
+  f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent:
+    id === 'r.faerskit.analyze' ? { job_id: 'faers-job-1', status: 'queued' } :
+    id === 'r.get.job' ? { status, progress: 25 } :
+    id === 'r.get.job.manifest' ? { files: [{ path: 'faerskit/metformin/signals.csv', sha256: 'faers-digest', mime_type: 'text/csv' }] } : {} } }))
+  const request = { operation: 'r.faerskit.analyze', arguments: { fun: 'AFun', drug: 'METFORMIN', year: [141, 244], path: 'faerskit/metformin', confirm: true }, request_id: 'faers-1' }
+  expect(f.service.list().workflows).toEqual(expect.arrayContaining([expect.objectContaining({ workflow_id: 'r.faerskit', skill: 'zerowall-faerskit' })]))
+  await expect(f.service.run('r.faerskit', { ...request, arguments: { ...request.arguments, confirm: false } }, f.exec)).rejects.toThrow('CONFIRMATION_REQUIRED')
+  const [first, retry] = await Promise.all([f.service.run('r.faerskit', request, f.exec), f.service.run('r.faerskit', request, f.exec)])
+  expect(first).toMatchObject({ status: 'running', remote_id: 'faers-job-1', remote_key: 'job_id' })
+  expect(first.run_id).toBe(retry.run_id)
+  expect(f.execute.mock.calls.filter(([id]) => id === 'r.faerskit.analyze')).toHaveLength(1)
+  expect(f.execute.mock.calls.some(([id]) => id === 'r.get.job.manifest')).toBe(false)
+  const restored = new ResearchWorkflowService(f.store, join(f.root, 'workflows'), f.backend, undefined, () => ({ ensureResearchContext: f.ensureResearchContext, autoApproveResearchGate1: f.autoApproveResearchGate1 } as any))
+  status = 'succeeded'
+  const done = await restored.status(String(first.run_id), f.exec)
+  expect(done.status).toBe('succeeded')
+  expect(JSON.stringify(done.result)).toContain('faers-digest')
+  const submission = f.execute.mock.calls.find(([id]) => id === 'r.faerskit.analyze') as unknown as [string, Record<string, unknown>]
+  expect(done.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ uri: `rmcp://${submission[1].project_id}/.zerowall/jobs/faers-job-1/result/faerskit/metformin/signals.csv`, mediaType: 'text/csv' })]))
+  await restored.status(String(first.run_id), f.exec)
+  expect(f.execute.mock.calls.filter(([id]) => id === 'r.faerskit.analyze')).toHaveLength(1)
+})
+it('cancels FAERS through the shared remote R job contract', async () => {
+  const f = await fixture()
+  let status = 'running'
+  f.execute.mockImplementation(async id => {
+    if (id === 'r.cancel.job') status = 'cancelled'
+    return { target: id, content: [], value: { structuredContent: id === 'r.faerskit.analyze' ? { job_id: 'faers-cancel', status: 'queued' } : { status } } }
+  })
+  const run = await f.service.run('r.faerskit', { operation: 'r.faerskit.analyze', arguments: { fun: 'KFun', age: [65, 90], confirm: true }, request_id: 'faers-cancel-1' }, f.exec)
+  const cancelled = await f.service.cancel(String(run.run_id), true, f.exec)
+  expect(cancelled.status).toBe('cancelled')
+  expect(f.execute.mock.calls.find(([id]) => id === 'r.cancel.job')).toEqual(['r.cancel.job', expect.objectContaining({ job_id: 'faers-cancel', confirm: true }), f.exec])
 })
 it('binds an optional research task to the durable remote Run and reconciles its terminal state', async () => {
   const f = await fixture()

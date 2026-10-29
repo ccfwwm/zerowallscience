@@ -112,13 +112,15 @@ export async function exportPluginSource({ root, destination, plugin, include = 
     if (!path.startsWith(prefix) || !safeSourcePath(path)) throw new Error('Refusing to remove an unrelated tracked source: ' + path)
     await assertOrdinaryAncestors(destination, join(destination, path))
   }
-  const retained = await Promise.all(git(destination, ['ls-files', '-z']).split('\0').filter(path =>
+  const retained = []
+  const retainedPaths = git(destination, ['ls-files', '-z']).split('\0').filter(path =>
     path && !path.startsWith(prefix) && !selectedSet.has(path)
     && ![upstreamPath, 'pnpm-lock.yaml', 'source-provenance.json'].includes(path))
-    .map(async path => {
-      const info = await lstat(join(destination, path)).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
-      return info?.isFile() ? [path, sha256(await readFile(join(destination, path)))] : undefined
-    }))
+  // Large source repositories exceed Windows handle limits with Promise.all.
+  for (const path of retainedPaths) {
+    const info = await lstat(join(destination, path)).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
+    if (info?.isFile()) retained.push([path, sha256(await readFile(join(destination, path)))])
+  }
   for (const path of selected) {
     await mkdir(dirname(join(destination, path)), { recursive: true })
     await cp(join(root, path), join(destination, path))

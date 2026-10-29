@@ -1,0 +1,61 @@
+{
+  "workflow_id": "r.faerskit",
+  "steps": [
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "describe",
+        "workflow_id": "r.faerskit",
+        "operation": "r.faerskit.status"
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "query",
+        "workflow_id": "r.faerskit",
+        "parameters": {
+          "operation": "r.faerskit.status",
+          "arguments": {}
+        }
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "describe",
+        "workflow_id": "r.faerskit",
+        "operation": "r.faerskit.analyze"
+      }
+    },
+    {
+      "name": "research_workflow",
+      "arguments": {
+        "action": "run",
+        "workflow_id": "r.faerskit",
+        "parameters": {
+          "operation": "r.faerskit.analyze",
+          "arguments": {
+            "project_id": "rmcp-demo",
+            "fun": "AFun",
+            "drug": "METFORMIN",
+            "drugEffect": "PS",
+            "year": [141, 244],
+            "unit": "pair",
+            "path": "faerskit/metformin",
+            "confirm": true
+          },
+          "request_id": "demo-faerskit-metformin-2014q1-2024q4-1"
+        }
+      }
+    }
+  ],
+  "expected": {
+    "query": "package and ClickHouse connectivity only; no local run_id",
+    "run": "local run_id, followed by status and Manifest-backed artifacts"
+  },
+  "failure": {
+    "operation": "r.faerskit.search",
+    "expected": "not registered; use actual database drug names and live schema"
+  }
+}

@@ -83,7 +83,7 @@ try {
     const result=await wait(async()=>{const state=await call('research_workflow',{action:'status',run_id:run.run_id});return ['succeeded','failed','cancelled','timed_out'].includes(state.status)?state:undefined},1800000)
     assert.equal(result.status,'succeeded',JSON.stringify(result));return result
   }
-  for(const name of ['zerowall-rmcp','zerowall-rplatform','zerowall-r-files','zerowall-r-packages','zerowall-geo','zerowall-nhanes','zerowall-rbioagent','zerowall-rplotfigure','sc-tenifold-knockout','zerowall-omicverse']){
+  for(const name of ['zerowall-rmcp','zerowall-rplatform','zerowall-r-files','zerowall-r-packages','zerowall-geo','zerowall-nhanes','zerowall-faerskit','zerowall-rbioagent','zerowall-rplotfigure','sc-tenifold-knockout','zerowall-omicverse']){
     const skill=await call('skill',{name});assert.equal(skill.resourceBase.kind,'directory')
     const reference=await call('read',{file_path:join(skill.resourceBase.path,name==='zerowall-rmcp'?'references/conventions.md':'references/operations.md'),limit:15})
     assert.ok(reference);report.checks.push({skill:name,resourceBase:skill.resourceBase.path})

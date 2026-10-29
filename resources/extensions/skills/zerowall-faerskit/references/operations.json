@@ -1,0 +1,727 @@
+{
+  "protocol_version": 2,
+  "catalog_version": "2026-10-29.1",
+  "content_sha256": "53a79523097a83439c634170f87e978f635a0417a02628551f74de8a5624d333",
+  "id": "r.faerskit",
+  "skill": "zerowall-faerskit",
+  "groups": [
+    "r_faerskit",
+    "r_jobs"
+  ],
+  "operations": [
+    {
+      "id": "r.get.sc.tenifold.run",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Get the asynchronous state and manifest summary for a remote scTenifoldKnk run.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.cancel.sc.tenifold.run",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Cancel a queued or running remote scTenifoldKnk run. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.sc.tenifold.manifest",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "List output artifacts produced by a remote scTenifoldKnk run.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.job",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Get current state, timestamps, exit code, failure reason, and result summary for an R job.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.wait.job",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Wait up to 30 seconds for a queued or running job to change state, then return its latest record. Call again while still queued or running.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 30000,
+            "default": 10000
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.list.jobs",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "List up to 100 recent asynchronous R jobs for a project.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.job.log",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Read bounded stdout and stderr tails for an R job.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4000000,
+            "default": 256000
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.cancel.job",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Request cancellation of a queued or running R job. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "confirm": {
+            "type": "boolean",
+            "default": false,
+            "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "write",
+      "query_allowed": false,
+      "execution": "sync",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.job.manifest",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "List result files produced in R_PLATFORM_RESULT_DIR with MIME type, byte size, and SHA-256.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.get.job.result",
+      "public_tool": "r_jobs",
+      "category": "r_jobs",
+      "summary": "Read a job result by manifest path. Text is returned as text, images as native MCP images, and other binary data as bounded base64 chunks.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "description": "ZeroWall project id"
+          },
+          "job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "R job id returned by r_submit_script"
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": "",
+            "description": "Path relative to the project root; absolute paths and symbolic links are rejected"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4194304,
+            "default": 1048576
+          }
+        },
+        "required": [
+          "project_id",
+          "job_id"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.faerskit.status",
+      "public_tool": "r_faerskit",
+      "category": "r_faerskit",
+      "summary": "Check whether the remote faerskit (FAERS pharmacovigilance signal detection) package is installed and its ClickHouse database is reachable. Read-only.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.faerskit.analyze",
+      "public_tool": "r_faerskit",
+      "category": "r_faerskit",
+      "summary": "Run a parameterized FAERS pharmacovigilance analysis (AFun/BFun/CFun/EFun/FFun/HFun/IFun/KFun/DDI/DDIALL/Concomitant_Medication_Analysis/BFun_upgrade1/BFun_upgrade2/disproportionality_analysis_for_top50_drug) on the remote ClickHouse database as an asynchronous job. Signal-detection results are produced as CSV files. Results are written to the project workspace and retrieved with r_get_job_manifest then r_get_job_result or r_download_file. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]{1,128}$",
+            "description": "ZeroWall project id"
+          },
+          "fun": {
+            "type": "string",
+            "enum": [
+              "AFun",
+              "BFun",
+              "CFun",
+              "EFun",
+              "FFun",
+              "HFun",
+              "IFun",
+              "KFun",
+              "DDI",
+              "DDIALL",
+              "Concomitant_Medication_Analysis",
+              "BFun_upgrade1",
+              "BFun_upgrade2",
+              "disproportionality_analysis_for_top50_drug"
+            ],
+            "description": "Which faerskit function to run"
+          },
+          "drug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Single drug name (AFun/CFun/EFun/HFun)"
+          },
+          "ptname": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Target PT (BFun/BFun_upgrade1/BFun_upgrade2/CFun/top50)"
+          },
+          "drug1": {
+            "$ref": "#/properties/drug",
+            "description": "First drug (DDI/DDIALL/Concomitant/top50 drug1)"
+          },
+          "drug2": {
+            "$ref": "#/properties/drug",
+            "description": "Second drug (DDI/DDIALL/Concomitant/top50 drug2)"
+          },
+          "drug3": {
+            "$ref": "#/properties/drug",
+            "description": "Third drug (Concomitant/top50 drug3)"
+          },
+          "drug4": {
+            "$ref": "#/properties/drug",
+            "description": "Fourth drug (Concomitant/top50 drug4)"
+          },
+          "drug5": {
+            "$ref": "#/properties/drug",
+            "description": "Fifth drug (top50 only)"
+          },
+          "drug6": {
+            "$ref": "#/properties/drug",
+            "description": "Sixth drug (top50 only)"
+          },
+          "drug7": {
+            "$ref": "#/properties/drug",
+            "description": "Seventh drug (top50 only)"
+          },
+          "drug8": {
+            "$ref": "#/properties/drug",
+            "description": "Eighth drug (top50 only)"
+          },
+          "drug9": {
+            "$ref": "#/properties/drug",
+            "description": "Ninth drug (top50 only)"
+          },
+          "drug10": {
+            "$ref": "#/properties/drug",
+            "description": "Tenth drug (top50 only)"
+          },
+          "edrug1": {
+            "$ref": "#/properties/drug",
+            "description": "Excluded drug (DDI/DDIALL only)"
+          },
+          "edrug2": {
+            "$ref": "#/properties/drug",
+            "description": "Second excluded drug (DDI/DDIALL only)"
+          },
+          "drug_PS": {
+            "$ref": "#/properties/drug",
+            "description": "Primary-suspect drug (FFun)"
+          },
+          "drug_concomitant": {
+            "$ref": "#/properties/drug",
+            "description": "Concomitant drug (FFun)"
+          },
+          "drug_A": {
+            "$ref": "#/properties/drug",
+            "description": "Drug A (IFun)"
+          },
+          "drug_B": {
+            "$ref": "#/properties/drug",
+            "description": "Drug B (IFun)"
+          },
+          "primaryid": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "maxItems": 100,
+            "description": "Optional FAERS primaryid values (AFun/CFun)"
+          },
+          "drug_exclusion": {
+            "$ref": "#/properties/primaryid",
+            "description": "Drug exclusion list (AFun only)"
+          },
+          "drug_route": {
+            "$ref": "#/properties/primaryid",
+            "description": "Route values such as \"ORAL\" (BFun only)"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "pair",
+              "case"
+            ],
+            "description": "Counting unit for AFun/CFun/FFun/IFun/DDI/DDIALL/Concomitant; omit for other functions"
+          },
+          "age": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "Inclusive age range in years, e.g. [18, 75]"
+          },
+          "gender": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Gender filter, e.g. \"F\" or \"M\""
+          },
+          "weight": {
+            "$ref": "#/properties/age",
+            "description": "Inclusive weight range"
+          },
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "$ref": "#/properties/primaryid"
+              }
+            ],
+            "description": "FAERS OCCP_COD, e.g. \"CN\" (consumer), \"MD\" (physician), \"PH\" (pharmacist)"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "$ref": "#/properties/primaryid"
+              }
+            ],
+            "description": "Reporter country code, e.g. \"CN\", \"US\""
+          },
+          "drugEffect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "$ref": "#/properties/primaryid"
+              }
+            ],
+            "description": "Drug role code: \"PS\", \"SS\", \"C\", \"I\""
+          },
+          "year": {
+            "$ref": "#/properties/age",
+            "description": "Inclusive getdatayear code range: 41=2004Q1, 141=2014Q1, 244=2024Q4. Not calendar years; confirm database coverage first."
+          },
+          "illnesses": {
+            "$ref": "#/properties/primaryid",
+            "description": "Optional vector of strings"
+          },
+          "illnesses_exclusion": {
+            "$ref": "#/properties/illnesses"
+          },
+          "pregnancy": {
+            "type": "boolean"
+          },
+          "pregnancy_exclusion": {
+            "type": "boolean"
+          },
+          "drug_exclusion_from_alldata": {
+            "$ref": "#/properties/illnesses"
+          },
+          "database": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "ClickHouse database name, e.g. \"druginfo\" or \"2026Q1\""
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 14400000,
+            "default": 3600000
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Output directory relative to the job result dir; defaults to faerskit/<fun>/<timestamp>"
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "project_id",
+          "fun",
+          "confirm"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    }
+  ]
+}

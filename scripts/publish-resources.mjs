@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 import { root, contract, releaseRoot } from '../tools/build/paths.mjs'
 import { openQiniuStore } from '../tools/release/qiniu-store.mjs'
 import { verifyCatalog, verifySignedDocument, fileDigest } from '../tools/release/resource-catalog.mjs'
@@ -28,7 +29,11 @@ const { plugins: selectedPlugins, remaining: afterPlugins } = selectedPluginArgu
 const { skills: selectedSkills, remaining } = selectedSkillArguments(afterPlugins)
 const { kinds, receiptSuffix: scopeSuffix } = resourcePublicationScope(remaining)
 const receiptIds = [...selectedPlugins, ...selectedSkills].map(id => id.replace(/[^A-Za-z0-9._-]/gu, '-'))
-const receiptSuffix = receiptIds.length ? `${scopeSuffix}-${receiptIds.join('_')}` : scopeSuffix
+const selectedSuffix = receiptIds.length ? `${scopeSuffix}-${receiptIds.join('_')}` : scopeSuffix
+// Batch Skill releases can exceed Windows filename and path limits.
+const receiptSuffix = selectedSuffix.length > 80
+  ? `${scopeSuffix}-${createHash('sha256').update(selectedSuffix).digest('hex').slice(0, 24)}`
+  : selectedSuffix
 const store = await openQiniuStore(root)
 const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
 const output = join(releaseRoot, 'publication')

@@ -140,11 +140,11 @@ export class ResearchWorkflowService {
     const rawOperation = typeof parameters.operation === 'string' ? parameters.operation.trim() : ''
     const operationId = id === 'tooluniverse' && rawOperation === 'status' ? 'tooluniverse.status' : rawOperation
     if (!operationId) throw new Error('OPERATION_REQUIRED: provide an exact registered read operation.')
-    if (id === 'tooluniverse') {
-      const operation = this.operation(module, operationId)
-      if (operation.query_allowed !== true) throw new Error(`READ_ONLY_REQUIRED: ${operationId} must use run`)
-    } else await this.ensureContext(exec)
-    const argumentsValue = operationId === 'tooluniverse.status' ? {} : normalizeJsonArguments(object(parameters.arguments))
+    const operation = this.operation(module, operationId)
+    if (operation.query_allowed !== true) throw new Error(`READ_ONLY_REQUIRED: ${operationId} must use run`)
+    const needsProject = !['tooluniverse.status', 'r.faerskit.status'].includes(operationId)
+    if (needsProject) await this.ensureContext(exec)
+    const argumentsValue = needsProject ? normalizeJsonArguments(object(parameters.arguments)) : {}
     return object(await this.mcp.workflowRequest('workflow_query', { workflow_id: id, operation: operationId, arguments: argumentsValue }, exec))
   }
   private module(id: string): Module { const module = modules.find(item => item.id === id); if (!module) throw new Error(`UNKNOWN_WORKFLOW: ${id}`); return module }

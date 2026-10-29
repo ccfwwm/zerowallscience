@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
-  "catalog_version": "2026-10-26.1",
-  "content_sha256": "f4b6720f4cd28fd5c83e66c39456398a2962dcc787aa4e1b630879d7773ae036",
+  "catalog_version": "2026-10-29.1",
+  "content_sha256": "53a79523097a83439c634170f87e978f635a0417a02628551f74de8a5624d333",
   "id": "omicverse",
   "skill": "zerowall-omicverse",
   "groups": [
