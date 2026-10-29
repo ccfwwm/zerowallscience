@@ -1,5 +1,8 @@
 # FAERS plugin and Skills release — 2026-10-29
 
+Historical initial FAERS publication. The current conversation Research and
+automatic-preflight release is recorded in [2026-10-30](faerskit-release-20261030.md).
+
 ## Source baseline and scope
 
 - Branch: `main`; parent HEAD: `c972eeba8fa079910b64733ec07b17a64250a2cf`.

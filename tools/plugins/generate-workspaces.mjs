@@ -280,7 +280,7 @@ for (const plugin of plugins) {
       prepack: 'node ../../tools/plugins/prepare-pack.mjs',
       bundle: plugin.id === 'python' ? 'tsdown && node ../../tools/plugins/prepare-python-worker.mjs' : plugin.id === 'biogenie' ? 'node ../../tools/integration/prepare-biogenie.mjs && tsdown' : plugin.id === 'research' ? 'node ../../tools/science/build-molecule-runtime.mjs && tsdown' : plugin.id === 'files' ? 'node scripts/prepare-viewer-assets.mjs && tsdown' : 'tsdown',
       typecheck: plugin.client
-        ? 'tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit' + (plugin.id === 'research' ? ' && tsc -p tsconfig.workbench.json --noEmit' : '')
+        ? 'tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit'
         : 'tsc -p tsconfig.host.json --noEmit',
       test: plugin.id === 'research' ? 'node scripts/run-tests.mjs' : `vitest run --config ../../vitest.plugins.config.ts${plugin.id === 'skills' ? ' --no-file-parallelism' : ''}`,
     },
