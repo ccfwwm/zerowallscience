@@ -6,7 +6,7 @@
     "build": "node build.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.0",
     "events": "3.3.0",
     "ketcher-core": "3.18.0",
     "ketcher-react": "3.18.0",
