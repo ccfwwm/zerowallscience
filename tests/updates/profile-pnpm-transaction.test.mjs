@@ -77,6 +77,41 @@ for (const accepted of [true, false]) test(`real DSH CLI under the desktop lease
   await assert.rejects(readFile(resolve(f.profile, '../.zerowall-plugin-mutation.lock')), { code: 'ENOENT' })
 })
 
+for (const accepted of [true, false]) test(`direct resource update preserves shared dependencies and ${accepted ? 'commits' : 'rolls back'} new dependency instances`, async t => {
+  const f = await fixture(t), before = await readFile(join(f.profile, 'package.json'))
+  const dependency = join(f.root, 'new-leaf')
+  await mkdir(dependency)
+  await writeFile(join(dependency, 'package.json'), JSON.stringify({ name: 'new-leaf', version: '2.0.0', type: 'module', exports: './index.js' }))
+  await writeFile(join(dependency, 'index.js'), 'export const value = "new dependency"')
+  await writeFile(join(f.addition, 'package.json'), JSON.stringify({ name: 'third-party', version: '1.0.1', type: 'module', dependencies: { 'new-leaf': 'file:' + dependency } }))
+  await writeFile(join(f.addition, 'index.js'), 'export { value } from "new-leaf"')
+  const release = await acquireProfileMutation(f.profile)
+  try {
+    const transaction = await beginDirectProfilePackageChange(f.profile, release)
+    const resourceCandidateId = randomUUID()
+    await mkdir(join(f.profile, '.zerowall'), { recursive: true })
+    await writeFile(join(f.profile, '.zerowall/resource-transaction.json'), JSON.stringify({ id: resourceCandidateId, profile: f.profile, transactionId: transaction.id, direct: true, pid: release.ownerPid, token: release.ownerToken }))
+    const result = await runProfilePnpmTransaction({ profile: f.profile, resourceCandidateId,
+      args: ['add', 'file:' + f.addition, '--offline', '--ignore-scripts'],
+      run: async (args, candidate) => {
+        const output = await execute(process.execPath, [pnpm, ...args], { cwd: candidate, env: { ...process.env, CI: 'false' }, windowsHide: true })
+        return { code: 0, tail: output.stdout }
+      },
+    })
+    assert.equal(result.code, 0)
+    const load = relativePath => execute(process.execPath, ['--input-type=module', '-e', `console.log((await import(${JSON.stringify(relativePath)})).value)`], { cwd: f.profile, windowsHide: true })
+    assert.equal((await load('./node_modules/third-party/index.js')).stdout.trim(), 'new dependency')
+    assert.equal((await load('./node_modules/@dingyi222666/dsh-session-notification/index.js')).stdout.trim(), 'retained closure')
+    await transaction.finish(accepted)
+    assert.equal((await load('./node_modules/@dingyi222666/dsh-session-notification/index.js')).stdout.trim(), 'retained closure')
+    if (accepted) assert.equal((await load('./node_modules/third-party/index.js')).stdout.trim(), 'new dependency')
+    else {
+      assert.deepEqual(await readFile(join(f.profile, 'package.json')), before)
+      await assert.rejects(lstat(join(f.profile, 'node_modules/third-party')), { code: 'ENOENT' })
+    }
+  } finally { await release() }
+})
+
 for (const state of ['rolled-back', 'complete', 'preparation-failed', 'preparing']) test(`recovery cleans an abandoned ${state} candidate while preserving the active profile`, async t => {
   const f = await fixture(t), before = await readFile(join(f.profile, 'package.json'))
   const candidate = join(f.root, 'profiles/zerowall-pnpm-11111111-1111-1111-1111-111111111111')
