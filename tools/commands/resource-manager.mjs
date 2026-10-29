@@ -1467,8 +1467,9 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
   async function resource(kind, id, source, { signal, report = () => {}, snapshot, prepareOnly = false } = {}) {
     signal?.throwIfAborted()
     const document = snapshot ?? await catalog(source ?? `${feedBase}/${kind}-latest.json`, { kind, signal })
-    const entry = document.resources.find(item => item.id === id && item.kind === kind)
+    const entry = document.resources.find(item => item.kind === kind && (item.id === id || kind === 'mcp' && item.server?.serverName === id))
     if (!entry) throw new Error('Resource is absent from the signed catalog')
+    id = entry.id
     assertCompatible(entry, target)
     await report({ phase: 'downloading', currentResource: id, completed: 0, total: 1 })
     const file = await downloadResource(entry, join(root, 'downloads'), { local, signal })

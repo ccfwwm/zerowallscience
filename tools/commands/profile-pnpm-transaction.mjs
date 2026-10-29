@@ -147,8 +147,15 @@ export async function recoverPnpmTransactions(profile, { lifecycleId } = {}) {
 }
 
 /** The DSH caller owns acceptance through compatibility, selection and HMR. */
-export async function beginProfilePackageChange(profile) {
+export async function beginProfilePackageChange(profile, { resourceCandidateId = process.env.ZEROWALL_RESOURCE_CANDIDATE_ID } = {}) {
   profile = resolve(profile)
+  // Desktop owns acceptance and rollback for this operation. Its nested DSH
+  // command must authenticate that ownership before reusing the transaction;
+  // taking the active-profile lease again would deadlock against its parent.
+  if (resourceCandidateId) {
+    await authenticateResourceCandidate(profile, resourceCandidateId)
+    return undefined
+  }
   if (dirname(profile) === profile || profile.split(/[\\/]/u).at(-1) !== 'web') return undefined
   const release = await acquireProfileMutation(profile)
   try {
@@ -245,13 +252,23 @@ export async function runProfilePnpmTransaction(options) {
 
 /** The desktop already owns an isolated candidate and its activation journal.
  * Authenticate the lease, then resolve directly there without copying it again. */
-async function runResourceCandidate({ profile, args, run, signal, resourceCandidateId, report }) {
-  profile = resolve(profile)
+async function authenticateResourceCandidate(profile, resourceCandidateId) {
   if (!transactionId.test(resourceCandidateId) || !['zerowall', 'web'].includes(profile.split(/[\\/]/u).at(-1))) throw new Error('RESOURCE_CANDIDATE_INVALID')
   const receipt = await read(join(profile, '.zerowall/resource-transaction.json'))
   const lease = await read(join(dirname(profile), '.zerowall-plugin-mutation.lock'))
-  if (receipt.id !== resourceCandidateId || receipt.profile !== join(dirname(profile), 'web') || receipt.pid !== lease.pid || receipt.token !== lease.token) throw new Error('RESOURCE_CANDIDATE_INVALID')
+  if (receipt.id !== resourceCandidateId || receipt.profile !== join(dirname(profile), 'web') || receipt.pid !== lease.pid || !Number.isSafeInteger(lease.pid) || lease.pid <= 0 || typeof lease.token !== 'string' || !lease.token || receipt.token !== lease.token) throw new Error('RESOURCE_CANDIDATE_INVALID')
   process.kill(lease.pid, 0)
+  if (profile.split(/[\\/]/u).at(-1) === 'web') {
+    if (!receipt.direct || !transactionId.test(receipt.transactionId ?? '')) throw new Error('RESOURCE_CANDIDATE_INVALID')
+    const state = await read(join(profile, '.plugin-manager/package-transactions', receipt.transactionId, 'journal.json'))
+    if (!state.direct || state.state !== 'preparing' || state.pid !== lease.pid) throw new Error('RESOURCE_CANDIDATE_INVALID')
+  }
+  return receipt
+}
+
+async function runResourceCandidate({ profile, args, run, signal, resourceCandidateId, report }) {
+  profile = resolve(profile)
+  const receipt = await authenticateResourceCandidate(profile, resourceCandidateId)
   if (args.some(arg => /^(?:--(?:dir|prefix|workspace-dir|global-dir)|-C|-g|--global|--workspace-root|-w)(?:=|$)/u.test(arg))) throw new Error('PLUGIN_CWD_OVERRIDE_DENIED')
   signal?.throwIfAborted()
   if (profile.split(/[\\/]/u).at(-1) === 'web') return runDirectProfile({ profile, args, run, signal, report, transactionId: receipt.transactionId })

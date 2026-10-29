@@ -6,7 +6,11 @@ import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { beginProfilePackageChange, runProfilePnpmTransaction, recoverPnpmTransactions } from '../../tools/commands/profile-pnpm-transaction.mjs'
+import { randomUUID } from 'node:crypto'
+import { beginDirectProfilePackageChange, beginProfilePackageChange, runProfilePnpmTransaction, recoverPnpmTransactions } from '../../tools/commands/profile-pnpm-transaction.mjs'
+import { acquireProfileMutation } from '../../tools/commands/profile-mutation-lock.mjs'
+import { createResourceManager } from '../../tools/commands/resource-manager.mjs'
+import * as yaml from 'yaml'
 import { holdWindowsFile, releaseWindowsFiles } from './plugin-lock-fixture.mjs'
 
 const execute = promisify(execFile)
@@ -30,6 +34,48 @@ async function fixture(t) {
   await writeFile(join(profile, 'package.json'), JSON.stringify({ dependencies: { '@dingyi222666/dsh-session-notification': 'link:./node_modules/@dingyi222666/dsh-session-notification' }, dsh: { profile: { bundles: ['@dingyi222666/dsh-session-notification'] } }, zerowall: { profileLayout: 3 }, preserved: { model: 'user-selected', effort: 'max' } }))
   return { root, profile, addition, retained }
 }
+
+test('a nested DSH lifecycle authenticates the desktop transaction without acquiring or releasing its lease', async t => {
+  const f = await fixture(t), release = await acquireProfileMutation(f.profile)
+  try {
+    const transaction = await beginDirectProfilePackageChange(f.profile, release)
+    const resourceCandidateId = randomUUID(), file = join(f.profile, '.zerowall/resource-transaction.json')
+    await mkdir(resolve(file, '..'), { recursive: true })
+    const receipt = { id: resourceCandidateId, profile: f.profile, transactionId: transaction.id, direct: true, pid: release.ownerPid, token: release.ownerToken }
+    await writeFile(file, JSON.stringify(receipt))
+    assert.equal(await beginProfilePackageChange(f.profile, { resourceCandidateId }), undefined)
+    await assert.rejects(acquireProfileMutation(f.profile), /PLUGIN_TRANSACTION_BUSY/)
+    await assert.rejects(beginProfilePackageChange(f.profile, { resourceCandidateId: randomUUID() }), /RESOURCE_CANDIDATE_INVALID/)
+    for (const change of [{ token: 'wrong-token' }, { pid: process.pid + 1 }, { profile: f.root }, { transactionId: randomUUID() }]) {
+      await writeFile(file, JSON.stringify({ ...receipt, ...change }))
+      await assert.rejects(beginProfilePackageChange(f.profile, { resourceCandidateId }))
+    }
+    await transaction.finish(false)
+  } finally { await release() }
+})
+
+for (const accepted of [true, false]) test(`real DSH CLI under the desktop lease ${accepted ? 'installs' : 'rolls back after failed health'} without a nested lock conflict`, async t => {
+  const f = await fixture(t), before = await readFile(join(f.profile, 'package.json'))
+  const manager = createResourceManager({ home: resolve(f.profile, '../..'), yaml,
+    stopHost: async () => {}, startHost: async options => { if (options && !accepted) throw new Error('fixture health failure') },
+    runPlugin: async (args, generation, options = {}) => {
+      await execute(process.execPath, [resolve('tools/commands/dsh.mjs'), 'plugin', '--profile', generation, ...args, '--offline', '--ignore-scripts'], {
+        cwd: f.root, env: { ...process.env, DSH_HOME: resolve(f.profile, '../..'), ZEROWALL_RESOURCE_CANDIDATE_ID: options.resourceCandidateId }, windowsHide: true, timeout: 60_000,
+      })
+    },
+  })
+  const result = manager.mutate(['add', 'file:' + f.addition])
+  if (accepted) {
+    await result
+    assert.equal(JSON.parse(await readFile(join(f.profile, 'node_modules/third-party/package.json'))).version, '1.0.0')
+  } else {
+    await assert.rejects(result, /fixture health failure/)
+    assert.deepEqual(await readFile(join(f.profile, 'package.json')), before)
+    await assert.rejects(lstat(join(f.profile, 'node_modules/third-party')), { code: 'ENOENT' })
+  }
+  assert.equal(await readFile(join(f.retained, 'index.js'), 'utf8'), 'export { value } from "leaf"\n')
+  await assert.rejects(readFile(resolve(f.profile, '../.zerowall-plugin-mutation.lock')), { code: 'ENOENT' })
+})
 
 for (const state of ['rolled-back', 'complete', 'preparation-failed', 'preparing']) test(`recovery cleans an abandoned ${state} candidate while preserving the active profile`, async t => {
   const f = await fixture(t), before = await readFile(join(f.profile, 'package.json'))

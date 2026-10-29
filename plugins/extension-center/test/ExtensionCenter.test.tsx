@@ -19,6 +19,37 @@ function bridge() {
   return { resources, pythonLayers }
 }
 describe('local Extension Center', () => {
+  it.each([['plugin', 'catalog'], ['skill', 'catalog'], ['mcp', 'catalog'], ['plugin', 'removed']] as const)('installs a signed %s from %s only after an explicit click', async (kind, source) => {
+    const api = bridge()
+    const read = async (requested: string) => ({ kind: requested, catalogStatus: 'checked', resources: requested === kind ? [{ id: 'new-resource', version: '0.1.0', source, catalogSigned: true }] : [] })
+    api.resources.list.mockImplementation(read as any)
+    api.resources.check.mockImplementation(read as any)
+    const startJob = vi.fn(async () => ({ taskId: 'install' }))
+    Object.assign(api.resources, { startJob, getJob: vi.fn(async () => ({ taskId: 'install', status: 'succeeded' })) })
+    render(<ExtensionCenter {...{ t } as any} />)
+    if (kind !== 'plugin') fireEvent.click(screen.getByRole('tab', { name: kind === 'skill' ? zh.skills : zh.mcp }))
+    await screen.findByText('new-resource', { selector: 'strong' })
+    const install = await screen.findByRole('button', { name: zh.install })
+    await waitFor(() => expect(install.hasAttribute('disabled')).toBe(false))
+    expect(screen.getByRole('article').textContent).toContain(source === 'removed' ? zh.source_removed : zh.notInstalled)
+    expect(startJob).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: zh.updateAll })).toBeNull()
+    fireEvent.click(install)
+    await waitFor(() => expect(startJob).toHaveBeenCalledWith(kind, 'install', 'new-resource', undefined))
+  })
+  it('keeps every active job visible ahead of recent completed history', async () => {
+    const api = bridge()
+    Object.assign(api.resources, { listJobs: vi.fn(async () => [
+      ...Array.from({ length: 9 }, (_, index) => ({ taskId: `old-${index}`, kind: 'plugin', id: `old-${index}`, action: 'update', status: 'succeeded' })),
+      { taskId: 'active', kind: 'skill', id: 'active-skill', action: 'install', status: 'running', progress: 45, phase: 'extracting' },
+      { taskId: 'queued', kind: 'plugin', id: 'queued-plugin', action: 'update', status: 'queued', progress: 0 },
+    ]) })
+    render(<ExtensionCenter {...{ t } as any} />)
+    const tasks = await screen.findByRole('region', { name: zh.tasks })
+    await within(tasks).findByText('安装 · active-skill')
+    expect(within(tasks).getByText('更新 · queued-plugin')).toBeTruthy()
+    expect(tasks.querySelector('strong')?.textContent).toBe('安装 · active-skill')
+  })
   it.each(['profile', 'disabled', 'catalog'] as const)('hides composition packages from %s rows, counts, search and batch candidates', async source => {
     const api = bridge()
     const read = async (kind: string) => ({ kind, catalogStatus: 'checked', checkedAt: '', resources: kind === 'plugin' ? [

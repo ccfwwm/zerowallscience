@@ -15,6 +15,7 @@ import { WORKBENCH_READY_SCRIPT } from './workbench-ready.js'
 import { awaitWorkbenchStep, WorkbenchNavigation } from './workbench-navigation.js'
 import { nextStartupStatus } from './startup-status.js'
 import { resourceUpdateSummary, type CatalogCheck } from './resource-update-status.js'
+import { createResourceJobQueue } from './resource-job-queue.js'
 import updaterPackage from 'electron-updater'
 import { HarnessRuntime, type HarnessChildProcess } from './runtime/harness-runtime.js'
 import { attachCredentialBroker } from './credentials/broker.js'
@@ -927,25 +928,34 @@ if (ownsInstance) app.whenReady().then(async () => {
   const resourceJobRoot = join(userData, 'harness', 'resources', 'jobs')
   const resourceJobs = new Map<string, ResourceJob>()
   const resourceJobControllers = new Map<string, AbortController>()
+  const enqueueResourceJob = createResourceJobQueue()
+  const enqueueResourceJobWrite = createResourceJobQueue()
   const safeResourceError = (error: unknown): string => {
     const message = error instanceof Error ? error.message : 'Resource operation failed'
     return redactResourceDiagnostic(message).slice(0, 12000)
   }
-  const persistResourceJob = async (job: ResourceJob): Promise<void> => {
+  const persistResourceJob = (job: ResourceJob): Promise<void> => {
     resourceJobs.set(job.taskId, job)
-    await mkdir(resourceJobRoot, { recursive: true })
-    const file = join(resourceJobRoot, `${job.taskId}.json`)
-    const tmp = `${file}.${randomUUID()}.tmp`
-    await writeFile(tmp, JSON.stringify(job, null, 2), { mode: 0o600 })
-    await rename(tmp, file)
-    if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:resource-job', job)
+    // Process progress can arrive concurrently. Keep durable receipts and UI
+    // events in the same order as the in-memory state, including completion.
+    return enqueueResourceJobWrite(async () => {
+      await mkdir(resourceJobRoot, { recursive: true })
+      const file = join(resourceJobRoot, `${job.taskId}.json`)
+      const tmp = `${file}.${randomUUID()}.tmp`
+      await writeFile(tmp, JSON.stringify(job, null, 2), { mode: 0o600 })
+      await rename(tmp, file)
+      if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.webContents.send('desktop:resource-job', job)
+    })
   }
   const resourceAction = async (kind: ResourceKind, action: string, id?: string, source?: string, options: Record<string, unknown> = {}): Promise<unknown> => {
     if (action === 'resume-pending') { if (!id) throw new Error('Pending identity is required'); return resources.resumePending(id) }
     if (action === 'check') return resources.check(kind, source)
     if (action === 'list') return resources.list(kind)
-    if (action === 'update') {
-      if (id === undefined) return resources.update(kind, source)
+    if (action === 'update' || action === 'install' && kind !== 'plugin') {
+      if (id === undefined) {
+        if (action === 'install') throw new Error('Resource identity is required')
+        return resources.update(kind, source, options)
+      }
       if (kind === 'plugin') return resources.plugin(id, source, options)
       return resources.resource(kind, id, source, options)
     }
@@ -957,9 +967,9 @@ if (ownsInstance) app.whenReady().then(async () => {
     if (kind === 'plugin' && ['install', 'import', 'remove', 'enable', 'disable', 'repair', 'pin', 'unpin'].includes(action)) {
       if ((action === 'install' || action === 'import') && id !== undefined) {
         if (source && !/^https?:\/\//u.test(source) && /\.(?:tgz|tar\.gz|tar)$/iu.test(source)) return resources.mutate(['add', source])
-        return resources.plugin(id, source)
+        return resources.plugin(id, source, options)
       }
-      if (action === 'repair') { if (!id) throw new Error('Resource identity is required'); return resources.repairPlugin(id, source) }
+      if (action === 'repair') { if (!id) throw new Error('Resource identity is required'); return resources.repairPlugin(id, source, options) }
       if (id === undefined) throw new Error('Resource identity is required')
       if (action === 'pin' || action === 'unpin') return resources.pinPlugin(id, action === 'pin')
       const acknowledgment = source && ['disable', 'remove'].includes(action) ? JSON.parse(source) as { dependents?: unknown } : undefined
@@ -995,14 +1005,15 @@ if (ownsInstance) app.whenReady().then(async () => {
     const oldVersion = id ? await resources.installedVersion(kind, id).catch(() => undefined) : undefined
     const job: ResourceJob = { taskId, kind, ...(id === undefined ? {} : { id }), ...(source === undefined ? {} : { source }), action, status: 'queued', phase: 'queued', progress: 0, oldVersion, retries, ...(retryOf === undefined ? {} : { retryOf }), createdAt: now, updatedAt: now }
     await persistResourceJob(job)
-    void (async () => {
+    void enqueueResourceJob(async () => {
       const queued = resourceJobs.get(taskId)
-      if (queued?.cancelRequested || queued?.status === 'cancelled') { await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() }); return }
+      if (queued?.cancelRequested || queued?.status === 'cancelled') { resourceJobControllers.delete(taskId); await persistResourceJob({ ...job, status: 'cancelled', phase: 'cancelled', updatedAt: new Date().toISOString() }); return }
       const running: ResourceJob = { ...job, status: 'running', phase: 'preparing', progress: 10, updatedAt: new Date().toISOString() }
-      await persistResourceJob(running)
       try {
+        await persistResourceJob(running)
         const report = async (value: { phase: string; completed: number; total: number; currentPlugin?: string; currentResource?: string; canCancel?: boolean; logLine?: string }) => {
           const latest = resourceJobs.get(taskId) ?? running
+          if (latest.status !== 'running') return
           const ranges: Record<string, [number, number]> = { preparing: [5, 20], downloading: [5, 20], scanning: [20, 30], copying: [20, 40], extracting: [20, 40], installing: [40, 65], 'verifying-dependencies': [40, 65], snapshot: [65, 85], applying: [50, 90], activating: [90, 92], 'health-check': [92, 98] }
           const [from, to] = ranges[value.phase] ?? [5, 90]
           const percent = value.total > 0 ? from + Math.floor(Math.min(1, value.completed / value.total) * (to - from)) : from
@@ -1013,26 +1024,24 @@ if (ownsInstance) app.whenReady().then(async () => {
           ? await (kind === 'plugin' ? resources.updatePlugins : resources.updateSkills)(JSON.parse(source ?? '[]'), undefined, options)
           : await resourceAction(kind, action, id, source, options)
         if (result && typeof result === 'object' && (result as { pendingRestart?: boolean }).pendingRestart) {
-          await persistResourceJob({ ...running, status: 'pending-restart', phase: 'pending-restart', progress: 0, result, updatedAt: new Date().toISOString() })
+          await persistResourceJob({ ...(resourceJobs.get(taskId) ?? running), status: 'pending-restart', phase: 'pending-restart', progress: 0, result, updatedAt: new Date().toISOString() })
           return
         }
         const latest = resourceJobs.get(taskId)
         const newVersion = id ? await resources.installedVersion(kind, id).catch(() => undefined) : undefined
-        await persistResourceJob({ ...running, status: 'succeeded', phase: 'health-check', progress: 90, newVersion, result, updatedAt: new Date().toISOString() })
-        if (latest?.cancelRequested) await persistResourceJob({ ...running, status: 'succeeded', phase: 'complete', progress: 100, newVersion, result, error: 'Cancellation requested after activation; result retained', updatedAt: new Date().toISOString() })
-        else await persistResourceJob({ ...running, status: 'succeeded', phase: 'complete', progress: 100, newVersion, result, updatedAt: new Date().toISOString() })
+        await persistResourceJob({ ...(latest ?? running), status: 'succeeded', phase: 'complete', progress: 100, newVersion, result, ...(latest?.cancelRequested ? { error: 'Cancellation requested after activation; result retained' } : {}), updatedAt: new Date().toISOString() })
         await resources.list(kind).then((result: CatalogCheck) => publishResourceUpdateStatus(countResourceUpdates([result]))).catch(() => undefined)
       } catch (error) {
         const latest = resourceJobs.get(taskId)
         if (latest?.status === 'cancelled') return
         if (action === 'resume-pending' && (await resources.pending()).some((pending: { id: string }) => pending.id === id)) {
-          await persistResourceJob({ ...running, status: 'pending-restart', phase: 'pending-restart', progress: 0, result: { pendingRestart: true, pendingId: id }, error: safeResourceError(error), updatedAt: new Date().toISOString() })
+          await persistResourceJob({ ...(latest ?? running), status: 'pending-restart', phase: 'pending-restart', progress: 0, result: { pendingRestart: true, pendingId: id }, error: safeResourceError(error), updatedAt: new Date().toISOString() })
           return
         }
         const cancelled = latest?.cancelRequested && batchController.signal.aborted
-        await persistResourceJob({ ...running, status: cancelled ? 'cancelled' : 'failed', phase: cancelled ? 'cancelled' : 'failed', progress: 100, error: safeResourceError(error), updatedAt: new Date().toISOString() })
+        await persistResourceJob({ ...(latest ?? running), status: cancelled ? 'cancelled' : 'failed', phase: cancelled ? 'cancelled' : 'failed', progress: 100, error: safeResourceError(error), updatedAt: new Date().toISOString() })
       } finally { resourceJobControllers.delete(taskId) }
-    })()
+    }).catch(error => console.error('Resource job persistence failed:', safeResourceError(error)))
     return { taskId }
   }
   const retryResourceJob = async (taskId: string): Promise<{ taskId: string }> => {

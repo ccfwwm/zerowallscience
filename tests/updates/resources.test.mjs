@@ -292,6 +292,24 @@ test('MCP checks compare the installed generation version independently of Skill
   assert.equal((await manager.check('mcp', f.source)).resources[0].updateAvailable, false)
 })
 
+test('a new MCP catalog entry installs through its server identity', async () => {
+  const f = await fixture(), template = { serverName: 'friendly-server', transport: 'stdio', command: 'node', args: ['server.js'], enabled: false }
+  await writeFile(f.path, JSON.stringify(template))
+  const resource = { ...f.resource, id: 'catalog-server-package', kind: 'mcp', server: template, size: (await readFile(f.path)).length, sha256: await fileDigest(f.path) }
+  await writeFile(f.source, JSON.stringify(signCatalog({ schema: 1, localOnly: true, resources: [resource] }, f.privateKey, 'test')))
+  const added = []
+  const manager = createResourceManager({ ...f, target, local: true, callHost: async (operation, args) => {
+    if (operation === 'mcp.list') return []
+    assert.equal(operation, 'mcp.add')
+    added.push(args[0]); return { id: 'new-connection' }
+  } })
+  const row = (await manager.check('mcp', f.source)).resources[0]
+  assert.equal(row.source, 'catalog')
+  assert.equal(added.length, 0, 'catalog browsing must remain read-only')
+  await manager.resource('mcp', row.id, f.source)
+  assert.deepEqual(added, [template])
+})
+
 test('Core profiles can browse signed Skills/MCP catalogs before installing their domain plugins', async () => {
   const f = await fixture()
   for (const kind of ['skill', 'mcp']) {

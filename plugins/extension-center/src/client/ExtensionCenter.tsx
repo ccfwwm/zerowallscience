@@ -167,6 +167,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
     return api.onJob(job => { setJobs(current => [job as Job, ...current.filter(item => item.taskId !== job.taskId)]) })
   }, [api])
   const activeJobs = jobs.some(job => job.status === 'queued' || job.status === 'running')
+  const visibleJobs = [...jobs.filter(job => ['queued', 'running', 'pending-restart'].includes(job.status)), ...jobs.filter(job => !['queued', 'running', 'pending-restart'].includes(job.status)).slice(0, 8)]
   const operationBusy = busy || activeJobs
   useEffect(() => {
     if (!activeJobs) {
@@ -391,7 +392,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
             {!item.pythonLayer && item.managed !== false && isInstalled(item) && ['profile', 'bundled', 'disabled'].includes(item.source ?? '') && <button type="button" disabled={operationBusy} onClick={() => void run(item.enabled === false ? 'enable' : 'disable', item)} title={item.enabled === false ? t('enable') : t('disable')} aria-label={item.enabled === false ? t('enable') : t('disable')}><Power size={14} aria-hidden="true" />{item.enabled === false ? t('enable') : t('disable')}</button>}
             {!item.pythonLayer && item.managed !== false && item.source === 'profile' && <button className={css.iconButton} type="button" disabled={operationBusy} onClick={() => void run('remove', item)} title={t('remove')} aria-label={t('remove')}><Trash2 size={14} aria-hidden="true" /></button>}
             {kind === 'mcp' && item.enabled !== false && item.source === 'profile' && <button type="button" disabled={operationBusy} onClick={() => void run('restart', item)} title={t('restartServer')}><RefreshCw size={14} aria-hidden="true" />{t('restartServer')}</button>}
-            {kind === 'plugin' && item.source === 'catalog' && <button type="button" disabled={operationBusy} onClick={() => void run('install', item)} title={t('install')}><Download size={14} aria-hidden="true" />{t('install')}</button>}
+            {!item.pythonLayer && ['catalog', 'removed'].includes(item.source ?? '') && item.catalogSigned && <button type="button" disabled={operationBusy || checking || current?.domainAvailable === false || Boolean(item.pinnedVersion || item.updateBlocked)} onClick={() => void run('install', item)} title={t('install')}><Download size={14} aria-hidden="true" />{t('install')}</button>}
             {kind === 'plugin' && item.managed !== false && item.source !== 'runtime' && item.source !== 'catalog' && <button className={css.iconButton} type="button" disabled={operationBusy} onClick={() => void run('repair', item)} title={t('repair')} aria-label={t('repair')}><Wrench size={14} aria-hidden="true" /></button>}
           </div>}
           {core && <span className={css.coreMark} title={t('coreDescription')} aria-label={t('coreDescription')}><CircleHelp size={14} aria-hidden="true" /></span>}
@@ -401,7 +402,7 @@ export function ExtensionCenter({ t }: Props): JSX.Element {
     </div>
     <section className={css.jobs} aria-label={t('tasks')}>
       <h3>{t('tasks')}</h3>
-      {jobs.slice(0, 8).map(job => <div className={css.job} key={job.taskId}>
+      {visibleJobs.map(job => <div className={css.job} key={job.taskId}>
         <div className={css.jobInfo}><strong title={job.id}>{jobName(job)}</strong><div className={css.jobMeta}>{job.oldVersion && <span>{job.oldVersion}{job.newVersion ? ` → ${job.newVersion}` : ''}</span>}{jobTime(job) && <time dateTime={job.updatedAt ?? job.createdAt}>{jobTime(job)}</time>}</div>
           {job.logLines?.length ? <details className={css.jobError}><summary>{t('taskLogs')}</summary><pre>{job.logLines.join('\n')}</pre></details> : null}
           {job.error && <details className={css.jobError}><summary>{rollbackConflict(job) ? t('rollbackConflict') : t('errorDetails')}</summary><p>{job.error}</p></details>}
