@@ -1,4 +1,4 @@
-import type { ScienceToolId } from '../shared/workbench.js'
+import type { ScienceToolId } from '../shared/conversation.js'
 
 /** Route imported assets to the viewer that understands their file format. */
 export function scienceToolForImportedPath(path: string, activeTool?: ScienceToolId): ScienceToolId | undefined {

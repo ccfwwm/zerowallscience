@@ -16,6 +16,6 @@ Windows 验收使用原生 Qt/OpenGL 后端；Qt offscreen 不具备所需 OpenG
 
 ROI 往返使用 `image_open` → `annotation_save` → `annotation_launch(engine:"napari")` → 原生保存 → `annotation_collect`。后两者需要真实返回的 `viewer_id`、`expected_revision`（视图版本）；收取还需返回的 `launch_id`。普通 `launch_native` 不建立 ROI 交换。详细交换契约见 [Fiji 共享 ROI 流程](../zerowall-fiji/SKILL.md#内置图像与-roi-往返)，实际参数以工具 schema 为准。
 
-原生编辑仅操作 `ZeroWall ROI` 和 `ZeroWall points` 图层；点击 `Save ROI return (once)` 后再收取。支持单页矩形、多边形、单点；旋转矩形回传为多边形，图层变换和额外图层会阻止导出，避免隐式漏掉数据。napari 像素中心与工作台像素边界之间的半像素转换由适配器完成。冲突分支需明确选择采用，不能自动覆盖。
+原生编辑仅操作 `ZeroWall ROI` 和 `ZeroWall points` 图层；点击 `Save ROI return (once)` 后再收取。支持单页矩形、多边形、单点；旋转矩形回传为多边形，图层变换和额外图层会阻止导出，避免隐式漏掉数据。napari 像素中心与 ZeroWall 图像坐标边界之间的半像素转换由适配器完成。冲突分支需明确选择采用，不能自动覆盖。
 
 层状态、多维 ROI/标签掩膜、OME-Zarr 适配及 BrainGlobe 尚未接入此接口。保留源资产，不把启动或 ROI 交换当作分析、配准或脑区统计完成。BrainGlobe 与 napari 共用 ZeroWall 稳定 Python，但图谱数据和动作仍由 BrainGlobe Host 管理。

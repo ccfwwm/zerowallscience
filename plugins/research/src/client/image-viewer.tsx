@@ -5,7 +5,7 @@ import type { AnnotationRevisionRecord, DataAssetRecord, ImageAnnotations, Image
 import type { ImageAnalysis, ImageMaskAnalysis, ImagePreview, ImageViewState, ScienceViewerRequest, ScientificEngineLaunchResult } from '../shared/types.js'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import { WesternBlotPanel } from './western-blot-panel.js'
-import { useWorkbenchSelection } from './workbench-selection.js'
+import { useViewerSelection } from './viewer-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 const initialView: ImageViewState = { page: 0, zoom: 1, panX: 0, panY: 0 }
@@ -26,7 +26,7 @@ function pageForOmePosition(order: string, sizes: Record<string, number>, positi
 function isImageAsset(asset: DataAssetRecord): boolean { return /\.(png|jpe?g|tiff?|pgm|zarr)(?:[\\/]|$)/iu.test(asset.uri) || asset.mediaType === 'application/vnd.ome.zarr' }
 
 export function ImageViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
-  const selection = useWorkbenchSelection()
+  const selection = useViewerSelection()
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
   const [views, setViews] = useState<ViewerSessionRecord[]>([])
   const [assetId, setAssetId] = useState(''); const [importId, setImportId] = useState(''); const [maskAssetId, setMaskAssetId] = useState(''); const [maskLabels, setMaskLabels] = useState('')

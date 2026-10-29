@@ -7,9 +7,9 @@ description: Open SVS/NDPI/pyramidal TIFF, inspect calibrated ROIs, run bounded 
 
 ## 7.0.5 查看入口
 
-选择 SVS/NDPI/TIFF 后导入到项目，文件导入上限 20 GiB；工作台调用 `he_open`，随后用 `he_read` 按金字塔层级查看瓦片、缩放和平移。未选择文件显示“请先选择资产”；解码/读取失败显示“打开失败”及 Host 原因；OpenSlide 或相关引擎不可用时显示“引擎未配置”。默认查看器不提供 ROI 统计、StarDist、批处理或导出控件。分析通过 `science_workbench` 传 `tool=he`、`skill_id=zerowall-he`、所选 `action_id`（如 `he_analyze` 或 `he_segment`）、真实 `viewer_id` 和稳定 `request_id`。产物以 Run/Artifact 清单和 SHA-256 验证。
+选择 SVS/NDPI/TIFF 后导入到项目，文件导入上限 20 GiB；对话请求查看时由 `science_viewer_panel(action="open", tool="he", asset_id=..., request_id=...)` 打开查看器，随后在对话中用 `science_viewer` 的 `he_read` 按金字塔层级读取瓦片、缩放和平移。未选择文件显示“请先选择资产”；解码/读取失败显示“打开失败”及 Host 原因；OpenSlide 或相关引擎不可用时显示“引擎未配置”。ROI 统计、StarDist、批处理或导出直接在对话中调用 `science_viewer` 的 `he_analyze`、`he_segment`、`he_export` 等真实 action，并遵循当前 Host schema。产物以 Run/Artifact 清单和 SHA-256 验证；需要查看结果时再按需打开或聚焦查看器。
 
-Use `science_viewer` and its current schema. Ordinary viewing does not require a study freeze. Research validation and final claims follow the study's two human gates; viewing or already-authorized computation does not add another gate.
+Use `science_viewer` and its current schema. Gate 1/2 are non-blocking diagnostics and never delay a requested run. Record the actual plan/input version and hashes; reports must label claims that have not been reviewed as unverified.
 
 ## Inspect and select
 

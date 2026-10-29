@@ -7,7 +7,7 @@ description: 在 ZeroWall 中打开本地 AnnData/H5AD，查看已有嵌入和�
 
 ## 7.0.5 查看入口
 
-选择 H5AD 并导入项目；导入上限 20 GiB，h5py/NumPy 与数据预览还有自身限制。工作台调用 `cell_open`（路由别名 `cells_open`）展示嵌入图，默认只允许选择嵌入、缩放、平移和刷新。未选择资产提示“请先选择资产”；Python 依赖缺失提示“引擎未配置”；解析失败提示“打开失败”。QC、细胞筛选与导出由本 skill 调用 `science_workbench(tool=cells, skill_id=zerowall-cells, action_id=cell_analyze, viewer_id=..., request_id=...)` 或相应 action。核对返回 Run/Artifact、源数据哈希和输出校验和。
+选择 H5AD 并导入项目；导入上限 20 GiB，h5py/NumPy 与数据预览还有自身限制。用户在对话请求打开细胞数据时调用 `science_viewer_panel(action="open", tool="cells", asset_id=..., request_id=...)`，Host 自动打开查看器并展示嵌入图。未选择资产提示“请先选择资产”；Python 依赖缺失提示“引擎未配置”；解析失败提示“打开失败”。QC、细胞筛选与导出直接在对话中调用 `science_viewer` 的 `cell_analyze`、`cell_select`、`cell_export` 等真实 action，并使用当前会话、资产和 Host schema。核对返回 Run/Artifact、源数据哈希和输出校验和；需要查看结果时再调用 `science_viewer_panel` 的 `open` 或 `focus`。
 
 先发现 `science_viewer`，再使用 `cell_open`、`cell_read`、`cell_analyze` 或 `cell_export`。资产必须是当前项目内已登记的本地 `.h5ad`/`.h5` 文件；远程文件先经 `r_files` 物化并校验哈希。矩阵保持 backed 分块读取，不把全量表达矩阵写入 Agent 上下文或浏览器。运行依赖 Python 3.12.10、h5py 和 NumPy；Host 只使用 ZeroWall Science 唯一共享 Python 和 site-packages。缺依赖时通过 Python 环境设置安装，不切换到 PATH 上的 Python，也不创建环境。
 

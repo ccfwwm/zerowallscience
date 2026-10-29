@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { ResearchStore } from '@zerowallscience/research-store'
-import type { LocalScienceWorkflow, ResearchTaskRecord } from '@zerowallscience/research-store/types'
+import type { LocalScienceWorkflow, ResearchStudyRecord, ResearchTaskRecord } from '@zerowallscience/research-store/types'
 import { rWorkflows } from '../shared/r-workflows.js'
 import { rejectToolUniverseSecretArguments } from './tooluniverse-transport.js'
 import type { ZeroWallMcpService } from './index.js'
@@ -15,19 +15,16 @@ type ObjectValue = { [key: string]: Json }
 type Lifecycle = { id_fields: readonly string[]; argument: string; status: string; cancel?: string; manifest?: string; log?: string }
 type Operation = { lifecycle?: Lifecycle | null; query_allowed?: boolean; effects?: string; execution?: string; id: string; public_tool: string; summary: string; input_schema: unknown; requires_confirmation: boolean }
 type Module = { id: string; skill: string; groups: readonly string[]; operations: readonly Operation[] }
-interface State { run_id: string; workflow_id: string; operation: string; workspace: string; request_id: string; fingerprint: string; research_task_id?: string; remote_id?: string; remote_key?: string; remote_project?: string; status_operation?: string; cancel_operation?: string; manifest_operation?: string; result?: ObjectValue; submission?: ObjectValue; lifecycle?: Lifecycle | null }
+interface State { run_id: string; workflow_id: string; operation: string; workspace: string; request_id: string; fingerprint: string; request_fingerprint?: string; research_task_id?: string; research_input_snapshot?: ObjectValue; research_input_snapshot_sha256?: string; remote_id?: string; remote_key?: string; remote_project?: string; status_operation?: string; cancel_operation?: string; manifest_operation?: string; result?: ObjectValue; submission?: ObjectValue; lifecycle?: Lifecycle | null }
 type AutoContext = {
   project: { id: string; rootPath: string }
-  study: { id: string; projectId: string; version: number; status: string; gate1: string; currentFreezeId?: string | null }
+  study: ResearchStudyRecord
   createdProject: boolean
   createdStudy: boolean
   targetFingerprint: string
 }
-type GateBlocker = { code: string; message: string; documentId?: string }
-type AutomaticGate = { status: 'approved' | 'blocked'; study: AutoContext['study']; blockers: GateBlocker[]; ruleVersion: string; freeze?: unknown }
 type ResearchContextRemote = {
   ensureResearchContext(input: { sessionId: string; target?: string }): AutoContext | Promise<AutoContext>
-  autoApproveResearchGate1(input: { sessionId: string; studyId: string; expectedVersion: number }): AutomaticGate | Promise<AutomaticGate>
 }
 declare module '@deepseek-ai/cordis' {
   interface Context { researchWorkflow: { get(): ResearchWorkflowService } }
@@ -211,48 +208,43 @@ export class ResearchWorkflowService {
     // attach to the active project, but do not apply Gate 1 to retrieval work.
     const ensured = await this.ensureContext(exec)
     const project = ensured.project
-    const contextRemote = this.researchContext()!
-    const researchTask = researchTaskId === undefined ? undefined : this.findResearchTask(project.id, researchTaskId)
     const fingerprint = createHash('sha256').update(JSON.stringify(canonical({ workflow: module.id, operation: operation.id, args, ...(researchTaskId === undefined ? {} : { research_task_id: researchTaskId }) }))).digest('hex')
     const existing = this.store.listRuns(project.id).find(run => run.leaseOwner === 'research-workflow' && run.inputs.some(input => input.name === 'request_id' && input.uri === requestId))
-    if (existing) { const state = await this.load(existing.id, exec); if (state.fingerprint !== fingerprint) throw new Error('IDEMPOTENCY_CONFLICT: request_id was already used for different parameters.'); return this.view(state) }
+    if (existing) {
+      const state = await this.load(existing.id, exec)
+      const legacyFingerprint = state.research_input_snapshot_sha256
+        ? createHash('sha256').update(JSON.stringify(canonical({ fingerprint, researchInputSnapshotSha256: state.research_input_snapshot_sha256 }))).digest('hex')
+        : undefined
+      const sameRequest = state.request_fingerprint === fingerprint || state.fingerprint === fingerprint || state.fingerprint === legacyFingerprint
+      if (!sameRequest) throw new Error('IDEMPOTENCY_CONFLICT: request_id was already used with different workflow arguments.')
+      return this.view(state)
+    }
+    const researchTask = researchTaskId === undefined ? undefined : this.findResearchTask(project.id, researchTaskId)
     let study = researchTask ? this.store.getResearchStudy(researchTask.studyId) : ensured.study
     if (!study || study.projectId !== project.id) throw new Error('The research study is not available in the active project.')
     if (['archived', 'completed'].includes(study.status)) throw new Error('The research study is not available for execution.')
-    // Only confirmed, asynchronous analysis submissions need a frozen plan.
-    // Public catalog lookups, previews, and user-scope downloads remain usable
-    // while the automatically drafted contract is still pending.
-    const requiresGate = operation.requires_confirmation === true
-      && operation.execution === 'async_or_cached'
-      && operation.id !== 'biomni.prefetch.datalake'
-      && researchTask?.exploratory !== true
-    if (requiresGate && study.status === 'blocked') {
-      return {
-        status: 'blocked', stage: 'pre-run-gate1', workflow_id: module.id, operation: operation.id,
-        project_id: project.id, study_id: study.id, system_validation: 'blocked',
-        blockers: [{ code: 'STUDY_BLOCKED', message: '当前 Study 的确认性分析仍有待解决的阻断项。' }],
-        recovery: '解决 Study 阻断项后重试；检索、目录查询和数据下载可继续。',
-      }
+    const researchInputSnapshot: ObjectValue = {
+      studyId: study.id,
+      studyVersion: study.version,
+      phase: study.phase,
+      status: study.status,
+      currentQuestionId: study.currentQuestionId ?? null,
+      currentPlanId: study.currentPlanId ?? null,
+      gate1: study.gate1,
+      gate2: study.gate2,
+      documents: this.store.listResearchDocuments(study.id).map(document => ({
+        id: document.id,
+        kind: document.kind,
+        version: document.version,
+        sha256: createHash('sha256').update(JSON.stringify(document.payload)).digest('hex'),
+      })),
     }
-    // A prior freeze is not evidence that its source files are still intact.
-    // The Host revalidates existing approvals before every new submission.
-    if (requiresGate) {
-      const gate = await contextRemote.autoApproveResearchGate1({ sessionId, studyId: study.id, expectedVersion: study.version })
-      if (gate.status !== 'approved' || !gate.study.currentFreezeId || gate.study.gate1 !== 'approved') {
-        const blockers = gate.blockers.length ? gate.blockers : [{ code: 'GATE1_NOT_FROZEN', message: '系统校验未能冻结当前研究方案。' }]
-        return {
-          status: 'blocked', stage: 'pre-run-gate1', workflow_id: module.id, operation: operation.id,
-          project_id: project.id, study_id: study.id, system_validation: 'blocked', rule_version: gate.ruleVersion,
-          blockers, recovery: '补齐阻断项后重试；检索、目录查询和数据下载可继续。',
-        }
-      }
-      study = gate.study
-    }
-    if (requiresGate && researchTask && !researchTask.exploratory && (!study.currentFreezeId || study.gate1 !== 'approved')) {
-      throw new Error('Confirmatory tasks require gate one approval and a frozen study plan.')
-    }
+    const researchInputSnapshotSha256 = createHash('sha256').update(JSON.stringify(canonical(researchInputSnapshot))).digest('hex')
+    const runFingerprint = createHash('sha256').update(JSON.stringify(canonical({ fingerprint, researchInputSnapshotSha256 }))).digest('hex')
     const run = this.store.createRun({ projectId: project.id, name: `${module.id}: ${operation.id}`, command: 'research_workflow', workingDirectory: workspace, status: 'submitted', leaseOwner: 'research-workflow', inputs: [{ name: 'request_id', uri: requestId }] })
-    const state: State = { run_id: run.id, workflow_id: module.id, operation: operation.id, workspace, request_id: requestId, fingerprint, ...(researchTask === undefined ? {} : { research_task_id: researchTask.id }), lifecycle: operation.lifecycle ?? null, ...(typeof args.project_id === 'string' ? { remote_project: args.project_id } : {}) }
+    const state: State = { run_id: run.id, workflow_id: module.id, operation: operation.id, workspace, request_id: requestId, fingerprint: runFingerprint, request_fingerprint: fingerprint, ...(researchTask === undefined ? {} : { research_task_id: researchTask.id }), research_input_snapshot: researchInputSnapshot, research_input_snapshot_sha256: researchInputSnapshotSha256, lifecycle: operation.lifecycle ?? null, ...(typeof args.project_id === 'string' ? { remote_project: args.project_id } : {}) }
+    this.store.recordAuditEvent(project.id, 'research-workflow.inputs-captured', { runId: run.id, requestId, studyId: study.id, researchInputSnapshotSha256, researchInputSnapshot })
+    this.store.updateRun(run.id, { inputs: [...run.inputs, { name: 'research_input_snapshot_sha256', uri: researchInputSnapshotSha256 }] })
     await this.save(state)
     try {
       if (researchTask !== undefined) this.store.updateResearchTask(researchTask.id, { expectedVersion: researchTask.version, status: 'running', runId: run.id })
@@ -370,7 +362,7 @@ export function registerResearchWorkflow(ctx: Context, mcp: ZeroWallMcpService):
   ctx.provide('researchWorkflow', { get })
   ctx.effect(() => () => store?.close())
   ctx.tools.register(defineTool({
-    name: 'research_workflow', description: 'List/describe registered research workflows; query user-scope data; submit once, inspect progress/artifact manifests, or cancel. Query accepts operation at the top level or parameters.operation; query arguments may be nested under parameters.arguments or supplied directly in parameters. ToolUniverse status and catalog reads do not require a Research Project/Study. Other research queries and submissions automatically ensure context. A valid formal analysis plan is automatically system-validated and frozen before a confirmation Runner; missing inputs return recoverable blockers while catalog and download work can continue. Remote methods use the existing rmcp connection; Fiji runs through the local Host scientific service. Load the module skill first.',
+  name: 'research_workflow', description: 'List/describe registered research workflows; query user-scope data; submit once, inspect progress/artifact manifests, or cancel. Query accepts operation at the top level or parameters.operation; query arguments may be nested under parameters.arguments or supplied directly in parameters. ToolUniverse status and catalog reads do not require a Research Project/Study. Other research queries and submissions automatically ensure context. Gate 1/2 are diagnostic only and never block analysis; each Run records the Study document versions and hashes current at submission. Runner input schemas, parameters, permissions, dependencies, budgets, and runtime availability remain enforced. Remote methods use the existing rmcp connection; Fiji runs through the local Host scientific service. Load the module skill first.',
     parameters: { action: { type: 'string', required: true, enum: ['list', 'search', 'describe', 'query', 'run', 'status', 'cancel'] }, workflow_id: { type: 'string' }, query: { type: 'string' }, offset: { type: 'number' }, limit: { type: 'number' }, offline: { type: 'boolean' }, operation: { type: 'string' }, parameters: { type: 'json' }, research_task_id: { type: 'string', description: 'Optional existing research task to reserve and reconcile with this Run.' }, run_id: { type: 'string' }, confirm: { type: 'boolean' } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec) {

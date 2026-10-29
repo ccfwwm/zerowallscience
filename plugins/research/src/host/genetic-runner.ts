@@ -197,27 +197,24 @@ export class GeneticAnalysisService {
       const study = this.store.getResearchStudy(input.studyId)
       const contract = this.store.getResearchDocument(input.contractId); const plan = this.store.getResearchDocument(input.planId)
       if (!study || study.projectId !== project.id || !contract || contract.studyId !== study.id || contract.kind !== 'dataset-contract' || !plan || plan.studyId !== study.id || plan.kind !== 'analysis-plan') throw new Error('Genetic study, plan and contract must belong to the active project.')
+      if (study.currentPlanId !== plan.id) throw new Error('Genetics analysis plan is not the current plan for this study.')
       const task = this.store.listResearchTasks(study.id).find(item => item.id === input.taskId)
       if (!task || !strings(plan.payload.taskIds ?? plan.payload.researchTaskIds).includes(task.id)) throw new Error('Analysis plan does not bind this research task.')
       if (plan.version !== input.expectedPlanVersion) throw new Error(`Analysis plan revision conflict: current ${plan.version}.`)
       if (strings(plan.payload.inputs).length !== 1 || strings(plan.payload.inputs)[0] !== contract.id) throw new Error('The genetics plan must reference exactly this prepared dataset contract.')
       this.store.validateAnalysisPlan(plan.id)
       if (task.exploratory !== (plan.payload.exploratory === true)) throw new Error('Task and plan exploratory labels differ.')
-      if (['blocked', 'archived', 'completed'].includes(study.status)) throw new Error('Study is not available for new execution.')
+      if (['archived', 'completed'].includes(study.status)) throw new Error('Study is not available for new execution.')
       const freeze = this.store.listStudyFreezes(study.id).find(item => item.id === study.currentFreezeId)
-      if (!task.exploratory) {
-        const frozenPlan = object(freeze?.snapshot.plan)
-        const frozenContract = (Array.isArray(freeze?.snapshot.documents) ? freeze.snapshot.documents.map(object) : []).find(item => item.id === contract.id)
-        if (study.gate1 !== 'approved' || study.currentPlanId !== plan.id || !freeze || frozenPlan.id !== plan.id || frozenPlan.version !== plan.version || hash(frozenPlan.payload) !== hash(plan.payload) || frozenContract?.version !== contract.version || hash(frozenContract?.payload) !== hash(contract.payload)) throw new Error('Confirmatory genetics requires the exact approved frozen plan and contract.')
-      }
       const prepared = prepareGeneticAnalysis(contract.payload, object(plan.payload.genetics))
       if (prepared.status !== 'ready') return { runner: GENETIC_RUNNER, ...prepared }
       const runtime = object(plan.payload.geneticRuntime)
       const threads = runtime.threads ?? 1; const timeout = runtime.timeout_ms ?? 1800000
       if (!Number.isInteger(threads) || Number(threads) < 1 || Number(threads) > 8 || !Number.isInteger(timeout) || Number(timeout) < 1000 || Number(timeout) > 14400000) throw new Error('Genetics runtime limits are invalid.')
       const remoteProject = `zw-${createHash('sha256').update(resolve(project.rootPath)).digest('hex').slice(0, 24)}`
+      const inputHashes = { contractSha256: hash(contract.payload), planSha256: hash(plan.payload) }
       const request: JsonObject = { ...object(prepared.request), exploratory: task.exploratory, study_id: study.id, task_id: task.id, plan_id: plan.id, ...(freeze ? { freeze_id: freeze.id } : {}) }
-      const snapshot: JsonObject = { format: 'zerowall-genetics-request', runner: GENETIC_RUNNER, studyId: study.id, contractId: contract.id, contractVersion: contract.version, contract: contract.payload, planId: plan.id, planVersion: plan.version, plan: plan.payload, taskId: task.id, exploratory: task.exploratory, freezeId: freeze?.id ?? null, requestId: input.requestId, remoteProject, request, threads, timeout }
+      const snapshot: JsonObject = { format: 'zerowall-genetics-request', runner: GENETIC_RUNNER, studyId: study.id, contractId: contract.id, contractVersion: contract.version, contract: contract.payload, planId: plan.id, planVersion: plan.version, plan: plan.payload, inputHashes, taskId: task.id, exploratory: task.exploratory, freezeId: freeze?.id ?? null, requestId: input.requestId, remoteProject, request, threads, timeout }
       const fingerprint = hash(snapshot)
       const prior = this.store.listAuditEvents(project.id).find(event => event.action === 'genetics.requested' && event.details.requestId === input.requestId)
       if (prior && prior.details.fingerprint !== fingerprint) throw new Error('IDEMPOTENCY_CONFLICT: requestId already belongs to another genetic analysis.')
@@ -291,14 +288,17 @@ export class GeneticAnalysisService {
       for (const name of requiredFiles.filter(item => item !== 'manifest.json')) if (!methodFiles.some(file => file.path === name && file.sha256 === downloaded[name]!.sha256 && file.bytes === downloaded[name]!.bytes)) throw new Error(`Method manifest does not certify downloaded genetics/${name}.`)
       const artifacts = Object.entries(downloaded).map(([name, file]) => this.store.listArtifacts(project.id).find(item => item.metadata.runner === GENETIC_RUNNER && item.runId === run.id && item.checksum === file.sha256 && item.name === `Genetics ${name}`) ?? this.store.createArtifact({ projectId: project.id, runId: run.id, name: `Genetics ${name}`, uri: pathToFileURL(file.path).href, mediaType: name.endsWith('.tsv') ? 'text/tab-separated-values' : 'application/json', checksum: file.sha256, metadata: { runner: GENETIC_RUNNER, requestId: snapshot.requestId!, studyId: snapshot.studyId!, taskId: snapshot.taskId!, scientificReview: 'pending' } }))
       const study = this.store.getResearchStudy(String(snapshot.studyId))
-      const current = !!study && !['archived', 'completed', 'blocked'].includes(study.status) && (study.currentFreezeId ?? null) === snapshot.freezeId && (snapshot.exploratory === true || study.gate1 === 'approved') && this.store.getResearchDocument(String(snapshot.planId))?.version === snapshot.planVersion && this.store.getResearchDocument(String(snapshot.contractId))?.version === snapshot.contractVersion
+      const currentPlan = this.store.getResearchDocument(String(snapshot.planId))
+      const currentContract = this.store.getResearchDocument(String(snapshot.contractId))
+      const inputHashes = object(snapshot.inputHashes)
+      const current = !!study && !['archived', 'completed'].includes(study.status) && study.currentPlanId === snapshot.planId && currentPlan?.version === snapshot.planVersion && hash(currentPlan?.payload ?? {}) === inputHashes.planSha256 && currentContract?.version === snapshot.contractVersion && hash(currentContract?.payload ?? {}) === inputHashes.contractSha256
       const numericalValid = numericalResult(object(snapshot.request), result)
       const successful = run.status === 'succeeded' && method.analysis_complete === true && result.analysis_complete === true && method.status === 'succeeded' && result.status === 'succeeded' && numericalValid
       const resultArtifact = artifacts.find(item => item.name === 'Genetics result.json')!
       let evidence = this.store.listResearchDocuments(String(snapshot.studyId), 'evidence').find(item => item.payload.artifactId === resultArtifact.id)
       const summary: JsonObject = { analysis: result.analysis ?? object(snapshot.request).analysis ?? null, analyses: result.analyses ?? {}, layers: result.layers ?? {}, coverage: result.coverage ?? {}, outcome_panel: result.outcome_panel ?? {}, summary: result.summary ?? {}, stoppedMethods: result.stopped_methods ?? {}, excludedCount: Array.isArray(result.excluded) ? result.excluded.length : 0, includedCount: Array.isArray(result.included) ? result.included.length : 0, limitations: result.limitations ?? [], errors: result.errors ?? [], runtime: result.runtime ?? {} }
       if (successful && current && !evidence) evidence = this.store.registerResearchEvidence({ projectId: project.id, studyId: String(snapshot.studyId), payload: { runner: GENETIC_RUNNER, evidenceType: object(snapshot.request).analysis === 'contrast_scan' ? 'two-exposure-outcome-panel-scan' : object(snapshot.request).analysis === 'coloc' ? 'regional-colocalization' : object(snapshot.request).analysis === 'mvmr' ? 'multivariable-genetic-analysis' : 'genetic-instrument-analysis', runId: run.id, artifactId: resultArtifact.id, artifactSha256: resultArtifact.checksum!, relatedArtifactIds: artifacts.map(item => item.id), planId: snapshot.planId!, contractId: snapshot.contractId!, freezeId: snapshot.freezeId!, exploratory: snapshot.exploratory!, needsReview: true, allowedClaim: 'Genetic support under the declared assumptions only; not proof of mediation, clinical mechanism or benefit.', result: summary } })
-      return json({ ...base, analysisComplete: successful, inputsCurrent: current, methodStatus: result.status, artifacts, evidence: evidence ?? null, result: summary, ...(!current ? { error: 'Inputs or approval changed; historical artifacts retained without new scientific evidence.' } : result.status === 'succeeded' && !numericalValid ? { error: 'Required numerical estimates or uncertainty are absent/invalid; artifacts retained without evidence.' } : {}) })
+      return json({ ...base, analysisComplete: successful, inputsCurrent: current, methodStatus: result.status, artifacts, evidence: evidence ?? null, result: summary, ...(!current ? { error: 'The research plan or data contract changed; historical artifacts retained without new scientific evidence.' } : result.status === 'succeeded' && !numericalValid ? { error: 'Required numerical estimates or uncertainty are absent/invalid; artifacts retained without evidence.' } : {}) })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       this.store.recordAuditEvent(project.id, 'genetics.artifact-retrieval-failed', { runId: run.id, requestId: snapshot.requestId!, error: message })

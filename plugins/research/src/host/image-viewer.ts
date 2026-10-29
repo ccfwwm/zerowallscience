@@ -163,14 +163,14 @@ export class ImageViewerService {
       return { ...response(), ...result }
     }
     if (input.action === 'annotation_save' || input.action === 'annotation_import') {
-      let payload: ImageAnnotations; let expectedRevisionId: string | null; let origin: 'workbench' | 'fiji' | 'napari' = 'workbench'
+      let payload: ImageAnnotations; let expectedRevisionId: string | null; let origin: 'viewer' | 'fiji' | 'napari' = 'viewer'
       if (input.action === 'annotation_import') {
         const imported = this.asset(project.id, input.importAssetId)
         if (!/\.json$/iu.test(fileURLToPath(imported.uri))) throw new Error('Annotation import requires a registered JSON asset.')
         const document = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await readProjectAsset(project, imported, 8 * 1024 * 1024)))
         if (document.format !== 'zerowall-image-annotations' || document.version !== 1 || document.assetId !== asset.id || document.sourceSha256 !== sha256 || document.projectId !== project.id) throw new Error('Annotation exchange does not match the project, asset or source hash.')
-        if (!['workbench', 'fiji', 'napari'].includes(document.origin)) throw new Error('Unknown annotation exchange origin.')
-        payload = validateAnnotationPayload(document.payload); expectedRevisionId = document.baseRevisionId; origin = document.origin as 'workbench' | 'fiji' | 'napari'
+        if (!['viewer', 'workbench', 'fiji', 'napari'].includes(document.origin)) throw new Error('Unknown annotation exchange origin.')
+        payload = validateAnnotationPayload(document.payload); expectedRevisionId = document.baseRevisionId; origin = (document.origin === 'workbench' ? 'viewer' : document.origin) as 'viewer' | 'fiji' | 'napari'
       } else {
         if (!input.annotation) throw new Error('Annotation payload and expected revision are required.')
         payload = validateAnnotationPayload(input.annotation.payload); expectedRevisionId = input.annotation.expectedRevisionId

@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { ReadOnlyHeViewer, ReadOnlyImageViewer } from '../src/client/read-only-image-viewers.js'
 import { BrainViewer } from '../src/client/brain-viewer.js'
 import { ScientificEngineCenter } from '../src/client/scientific-engine-center.js'
-import { WorkbenchSelectionContext } from '../src/client/workbench-selection.js'
+import { ViewerSelectionContext } from '../src/client/viewer-selection.js'
 
 afterEach(cleanup)
 const ok = (value: unknown) => ({ ok: true, value })
@@ -15,7 +15,7 @@ it('opens the selected image and shows loaded state without analysis controls', 
   const viewer = { id: 'viewer-1', assetId: asset.id, tool: 'image', version: 1, state: { page: 0, zoom: 1, panX: 0, panY: 0 } }
   const image = { sourceSha256: 'a'.repeat(64), coordinates: { width: 12, height: 8, pages: 1 }, format: 'png', channels: 3, depth: 'uchar', page: 0, previewWidth: 12, previewHeight: 8, pngBase64: 'AQID', notes: [] }
   const scienceViewer = vi.fn(async (input: { action: string }) => ok(input.action === 'list' ? { assets: [asset], viewers: [] } : { viewer, image }))
-  render(<WorkbenchSelectionContext.Provider value={{ assetId: asset.id, revision: 1 }}><ReadOnlyImageViewer remote={{ scienceViewer } as any} sessionId="session-1" /></WorkbenchSelectionContext.Provider>)
+  render(<ViewerSelectionContext.Provider value={{ assetId: asset.id, revision: 1 }}><ReadOnlyImageViewer remote={{ scienceViewer } as any} sessionId="session-1" /></ViewerSelectionContext.Provider>)
   expect(await screen.findByRole('img', { name: 'sample.png' })).toHaveProperty('src', 'data:image/png;base64,AQID')
   expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'image_open', assetId: asset.id, sessionId: 'session-1' }))
   expect(screen.getByText('已加载')).toBeTruthy()
@@ -28,7 +28,7 @@ it('reads the first bounded HE tile after opening a selected slide', async () =>
   const he = { width: 8000, height: 6000, pages: 2, format: 'svs', engine: 'openslide', levels: [{ level: 0, downsample: 1 }, { level: 1, downsample: 4 }], notes: [] }
   const tile = { region: { x: 0, y: 0, width: 8000, height: 6000, page: 1 }, width: 2000, height: 1500, downsample: 4, coverageLevel0: { width: 8000, height: 6000 }, pngBase64: 'AQID' }
   const scienceViewer = vi.fn(async (input: { action: string }) => ok(input.action === 'list' ? { assets: [asset], viewers: [] } : { he: input.action === 'he_open' ? { he, viewer } : { tile, viewer } }))
-  render(<WorkbenchSelectionContext.Provider value={{ assetId: asset.id, revision: 1 }}><ReadOnlyHeViewer remote={{ scienceViewer } as any} sessionId="session-1" /></WorkbenchSelectionContext.Provider>)
+  render(<ViewerSelectionContext.Provider value={{ assetId: asset.id, revision: 1 }}><ReadOnlyHeViewer remote={{ scienceViewer } as any} sessionId="session-1" /></ViewerSelectionContext.Provider>)
   await screen.findByRole('img', { name: 'slide.svs' })
   expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'he_open', assetId: asset.id }))
   expect(scienceViewer).toHaveBeenCalledWith(expect.objectContaining({ action: 'he_read', viewerId: viewer.id, region: { x: 0, y: 0, width: 8000, height: 6000, page: 1 } }))

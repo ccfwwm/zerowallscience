@@ -5,7 +5,7 @@ import type { DataAssetRecord, ViewerSessionRecord } from '@zerowallscience/rese
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { HeRegion, HeSlideMetadata, HeTile } from '../shared/he.js'
 import type { HeResponse, ImagePreview, ScienceViewerRequest, ScienceViewerResponse } from '../shared/types.js'
-import { useWorkbenchSelection } from './workbench-selection.js'
+import { useViewerSelection } from './viewer-selection.js'
 import { ViewerLanding } from './viewer-landing.js'
 import styles from './read-only-image-viewers.module.css'
 
@@ -18,7 +18,7 @@ function assetName(assets: DataAssetRecord[], assetId: string): string {
 }
 
 export function ReadOnlyImageViewer({ remote, sessionId, onPickFile }: CommonProps): JSX.Element {
-  const selection = useWorkbenchSelection()
+  const selection = useViewerSelection()
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
   const [assetId, setAssetId] = useState('')
   const [viewer, setViewer] = useState<ViewerSessionRecord>()
@@ -87,7 +87,7 @@ export function ReadOnlyImageViewer({ remote, sessionId, onPickFile }: CommonPro
 }
 
 export function ReadOnlyHeViewer({ remote, sessionId, onPickFile }: CommonProps): JSX.Element {
-  const selection = useWorkbenchSelection()
+  const selection = useViewerSelection()
   const [assets, setAssets] = useState<DataAssetRecord[]>([])
   const [assetId, setAssetId] = useState('')
   const [viewer, setViewer] = useState<ViewerSessionRecord>()

@@ -1,7 +1,7 @@
 import type { JsonObject } from '@zerowallscience/research-store/types'
-import type { ScienceToolId } from '../shared/workbench.js'
+import type { ScienceToolId } from '../shared/conversation.js'
 
-/** Map a workbench operation to an existing deterministic science_viewer action. */
+/** Map a requested tool operation to an existing deterministic viewer action. */
 export function scienceViewerAction(tool: ScienceToolId, operation?: string): string {
   const op = operation?.trim()
   const prefix: Partial<Record<ScienceToolId, string>> = {
@@ -12,11 +12,11 @@ export function scienceViewerAction(tool: ScienceToolId, operation?: string): st
   if (!mapped) {
     if (!op || op === 'sequence_open') return 'open'
     if (['open', 'read', 'save', 'analyze', 'export'].includes(op)) return op
-    throw new Error(`Unsupported workbench operation ${op} for ${tool}.`)
+    throw new Error(`Unsupported research operation ${op} for ${tool}.`)
   }
   // BrainGlobe owns a managed atlas and is deliberately opt-in.  A missing
   // operation used to be treated as `brain_open`, which meant that a generic
-  // workbench request (or a replayed event without an operation) could start
+  // generic request (or a replayed event without an operation) could start
   // loading the Allen atlas.  Require the caller to name the action instead.
   if (!op) {
     if (tool === 'brainglobe') throw new Error('BrainGlobe requires an explicit operation; the atlas is never opened implicitly.')
@@ -34,17 +34,17 @@ export function scienceViewerAction(tool: ScienceToolId, operation?: string): st
   const aliases: Record<string, string> = { cells_open: 'cell_open', brainglobe_open: 'brain_open', canvas_open: 'canvas_render' }
   const canonical = aliases[op] ?? op
   if (canonical === 'native_status' || canonical === 'launch_native') {
-    if (tool !== 'imagej') throw new Error(`Workbench operation ${op} does not belong to ${tool}.`)
+    if (tool !== 'imagej') throw new Error(`Research operation ${op} does not belong to ${tool}.`)
     return canonical
   }
   if (canonical.startsWith(`${mapped}_`)) {
     const suffix = canonical.slice(mapped.length + 1)
     if (allowed[tool]?.includes(suffix)) return canonical
-    throw new Error(`Unsupported workbench operation ${op} for ${tool}.`)
+    throw new Error(`Unsupported research operation ${op} for ${tool}.`)
   }
   if (allowed[tool]?.includes(canonical)) return `${mapped}_${canonical}`
-  if (/^[a-z]+_[a-z_]+$/u.test(op)) throw new Error(`Workbench operation ${op} does not belong to ${tool}.`)
-  if (!allowed[tool]?.includes(op)) throw new Error(`Unsupported workbench operation ${op} for ${tool}.`)
+  if (/^[a-z]+_[a-z_]+$/u.test(op)) throw new Error(`Research operation ${op} does not belong to ${tool}.`)
+  if (!allowed[tool]?.includes(op)) throw new Error(`Unsupported research operation ${op} for ${tool}.`)
   return `${mapped}_${op}`
 }
 
@@ -54,7 +54,7 @@ export const scienceSkillForTool: Partial<Record<ScienceToolId, string>> = {
   cells: 'zerowall-cells', sequence: 'zerowall-sequence', brainglobe: 'zerowall-brainglobe',
 }
 
-export function workbenchTabTitle(tool: ScienceToolId): string {
+export function scienceViewerTitle(tool: ScienceToolId): string {
   return ({ home: '主页', imagej: 'ImageJ', he: 'HE 查看器', molecule: '分子结构', sanger: 'Sanger', flow: '流式', canvas: '科研画布', cells: '细胞查看器', sequence: '序列', brainglobe: '脑图谱' } as Record<ScienceToolId, string>)[tool]
 }
 
@@ -70,7 +70,7 @@ export function scienceToolForAction(action: string): ScienceToolId | undefined 
   return undefined
 }
 
-export function workbenchContext(input: { tool?: ScienceToolId; assetId?: string; artifactId?: string; viewerId?: string; runId?: string; operation?: string }): JsonObject {
+export function conversationContext(input: { tool?: ScienceToolId; assetId?: string; artifactId?: string; viewerId?: string; runId?: string; operation?: string }): JsonObject {
   return {
     ...(input.tool ? { tool: input.tool } : {}), ...(input.assetId ? { assetId: input.assetId } : {}),
     ...(input.artifactId ? { artifactId: input.artifactId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}),

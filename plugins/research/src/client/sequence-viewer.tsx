@@ -6,7 +6,7 @@ import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { ScienceViewerRequest, SequenceAnalysis, SequenceViewState, SequenceWindow } from '../shared/types.js'
 import { SequenceFeatureMap } from './sequence-feature-map.js'
 import type { SequenceSimulationOptions } from '../shared/sequence.js'
-import { useWorkbenchSelection } from './workbench-selection.js'
+import { useViewerSelection } from './viewer-selection.js'
 import { ViewerLanding } from './viewer-landing.js'
 import styles from './read-only-image-viewers.module.css'
 
@@ -33,7 +33,7 @@ export function SequenceViewer({ remote, sessionId, viewOnly = false, onPickFile
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
   const locked = useRef(false)
-  const workbench = useWorkbenchSelection()
+  const viewerSelection = useViewerSelection()
   const handled = useRef('')
 
   const call = async (input: Omit<ScienceViewerRequest, 'sessionId'>) => unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId }))
@@ -81,21 +81,21 @@ export function SequenceViewer({ remote, sessionId, viewOnly = false, onPickFile
     finally { if (current === generation.current) { locked.current = false; setBusy(false) } }
   }
   const selectAsset = (nextAssetId: string): void => { generation.current++; locked.current = false; setBusy(false); setAssetId(nextAssetId); setViewer(undefined); setWindow(undefined); setAnalysis(undefined); setMessage(''); if (nextAssetId) void run({ action: 'open', assetId: nextAssetId }) }
-  // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
+  // Mirror the routed asset into the local dropdown, so the panel shows
   // the file the user selected. An empty selection leaves the dropdown untouched,
   // because then the user is choosing inside the viewer.
-  useEffect(() => { if (workbench.assetId) { setAssetId(workbench.assetId); setViewer(undefined); setWindow(undefined); setAnalysis(undefined); setMessage('') } }, [workbench.assetId])
+  useEffect(() => { if (viewerSelection.assetId) { setAssetId(viewerSelection.assetId); setViewer(undefined); setWindow(undefined); setAnalysis(undefined); setMessage('') } }, [viewerSelection.assetId])
   useEffect(() => {
-    if (!workbench.assetId || workbench.revision == null) return
+    if (!viewerSelection.assetId || viewerSelection.revision == null) return
     // Keyed by revision: selecting the same asset again is a second request, but a
     // re-render of the same selection must not reissue the remote open call.
-    const key = `${workbench.assetId}:${workbench.revision}`
+    const key = `${viewerSelection.assetId}:${viewerSelection.revision}`
     if (handled.current === key) return
     handled.current = key
     // Fired from the effect, so it runs before any user interaction can flip run()'s
     // locked guard and swallow the requested open.
-    void run({ action: 'open', assetId: workbench.assetId })
-  }, [workbench.assetId, workbench.revision])
+    void run({ action: 'open', assetId: viewerSelection.assetId })
+  }, [viewerSelection.assetId, viewerSelection.revision])
   const savedState = viewer?.state
   const simulate=(action:'analyze'|'export')=>{
     if(!viewer)return

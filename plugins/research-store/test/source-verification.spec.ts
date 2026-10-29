@@ -133,7 +133,7 @@ describe('system dataset source verification', () => {
     expect(gate(store, study.id).status).toBe('approved')
   })
 
-  it('rechecks bytes before Gate 1 and refuses to refresh an already frozen input', () => {
+  it('rechecks changed source bytes and detaches the old immutable freeze from current inputs', () => {
     const { store, study, path, contract } = fixture()
     const original = store.verifyDatasetContractSource(contract.id)
     writeFileSync(path, 'x,y\n9,8\n')
@@ -147,11 +147,13 @@ describe('system dataset source verification', () => {
     const freezeId = store.getResearchStudy(study.id)!.currentFreezeId
     writeFileSync(path, 'x,y\n7,6\n')
     expectSourceBlocked(store, study.id)
-    expect(store.verifyDatasetContractSource(contract.id)).toMatchObject({ status: 'blocked', code: 'CONTRACT_PROVENANCE_UNVERIFIED' })
-    expect(store.getResearchStudy(study.id)!.currentFreezeId).toBe(freezeId)
-    const gate2 = store.approveResearchGate2Automatically(study.id, store.getResearchStudy(study.id)!.version)
-    expect(gate2.status).toBe('blocked')
-    if (gate2.status === 'blocked') expect(gate2.blockers.map(item => item.code)).toContain('CONTRACT_PROVENANCE_UNVERIFIED')
+    const refreshed = store.verifyDatasetContractSource(contract.id)
+    expect(refreshed.status).toBe('verified')
+    expect(store.getResearchStudy(study.id)!.currentFreezeId).toBeUndefined()
+    expect(store.getResearchStudy(study.id)!.gate1).toBe('pending')
+    expect(store.getResearchStudy(study.id)!.gate2).toBe('pending')
+    expect(store.listStudyFreezes(study.id).map(item => item.id)).toContain(freezeId)
+    expect(store.diagnoseResearchGate(study.id, 2)).toMatchObject({ status: 'proceedable', proceedable: true, readOnly: true })
   })
 
   it('rejects missing actual variables despite a claimed usable contract', () => {

@@ -14,7 +14,7 @@ allowed-tools: read
 
 ## 入口与准备
 
-NHANES 周期、变量、复杂抽样或回归请求时主动加载 zerowall-rmcp 与本 Skill，通过唯一物理连接 `rmcp` 使用 Host `research_workflow` 的实时 schema；R 统计默认远程执行。连接状态未知时先调用 `mcp_connect`。门禁前的公共目录查询和授权范围内数据获取可继续，正式 Runner 仍必须满足研究 Store 的输入与门禁约束。
+NHANES 周期、变量、复杂抽样或回归请求时主动加载 zerowall-rmcp 与本 Skill，通过唯一物理连接 `rmcp` 使用 Host `research_workflow` 的实时 schema；R 统计默认远程执行。连接状态未知时先调用 `mcp_connect`。Gate 1/2 只返回 warnings，不要求先审计、冻结或补交研究材料。收到明确运行请求即在本轮直接调用 Runner；仍须满足真实调查设计、数据契约、变量、参数、权限和运行时校验。
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 
@@ -72,7 +72,7 @@ NHANES 周期、变量、复杂抽样或回归请求时主动加载 zerowall-rmc
 
 ensure.available 可启动下载，虽无 confirm 也不是 query。datasets.ensure_available=true 同样可能写缓存；此类分析使用 run。
 
-正式研究分析通过 `research_study` 的 `run_nhanes_survey` 执行。先登记 DatasetContract、研究任务和 AnalysisPlan；工作台“研究计划”页也能选择同一记录并执行。
+正式研究分析通过对话中的 `research_study` 工具 `run_nhanes_survey` 执行。Host 自动确保并关联 Study；按 Runner schema 提供 DatasetContract、研究任务和 AnalysisPlan 的真实 ID 与参数。全程不需要打开独立研究页面。
 
 ```json
 {
@@ -86,7 +86,7 @@ ensure.available 可启动下载，虽无 confirm 也不是 query。datasets.ens
 }
 ```
 
-以上 ID 与版本必须替换为真实登记记录。计划的 `inputs` 首版仅引用本次契约，`taskIds` 包含任务 ID，`nhanesSurvey` 为 `{ "kind":"summary", "variable":"RIDAGEYR" }` 或 `{ "kind":"regression", "outcome":"…", "predictors":["…"], "family":"gaussian" }`，并保存 `method`、`stoppingConditions`、`exploratory`。任务的探索身份必须与计划一致。验证任务由 Host 在完整校验通过后自动执行 Gate 1 系统审批并冻结，计划、契约必须与冻结快照一致；缺项时仅暂停正式分析，继续可完成的检索、下载和草稿整理。
+以上 ID 与版本必须替换为真实登记记录。计划的 `inputs` 首版仅引用本次契约，`taskIds` 包含任务 ID，`nhanesSurvey` 为 `{ "kind":"summary", "variable":"RIDAGEYR" }` 或 `{ "kind":"regression", "outcome":"…", "predictors":["…"], "family":"gaussian" }`，并保存 `method`、`stoppingConditions`、`exploratory`。任务的探索身份必须与计划一致。提交时 Host 保存当时计划/契约版本与 SHA-256，不要求 Gate 审批或 freeze；实际样本结构、调查权重、PSU、分层、特殊缺失码和分析参数错误仍由 Runner 明确拒绝。
 
 契约必须记录 `applicability=usable`、`sourceStatus=supported`、真实 `source`、`fullDataset=true`、`previewTruncated=false`。`datasets` 每项含周期、component、dataset、weight、codebook；设计含明确的 key、weight、strata、psu、availableVariables、specialMissingCodes（无特殊码也显式 []）、isolatedPsuHandling、lonelyPsu。多组件说明 `componentWeightRationale`；多周期选 `cycleStrategy`，正式合并还要 `combinedWeightSource` 与逐周期 `cycleWeightMultipliers`。子人群用 `domainDesign=survey-domain`、可读 `domainExpression` 和 `{variable,operator,value}` 数组 `surveyDomain`，只支持 eq/gte/lte；不能预过滤原始样本后伪装完整调查设计。DXX_H 必须在代码本年龄范围内，并显式应用 RIDAGEYR 下限和上限。Unknown 信息不能补写成已验证。
 

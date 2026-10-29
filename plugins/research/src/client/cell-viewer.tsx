@@ -8,7 +8,7 @@ import type { CellSelection, CellSelectionResult } from '../shared/cell-selectio
 import { DEFAULT_CELL_CAMERA, cameraForward, cameraInverse, zoomCellCamera, type CellCamera } from '../shared/cell-camera.js'
 import { prepareCellPlot } from './cell-webgl.js'
 import { CellGpuCanvas } from './cell-gpu-canvas.js'
-import { useWorkbenchSelection } from './workbench-selection.js'
+import { useViewerSelection } from './viewer-selection.js'
 import { ViewerLanding } from './viewer-landing.js'
 import viewerStyles from './read-only-image-viewers.module.css'
 
@@ -30,7 +30,7 @@ export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: 
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
   const inFlight = useRef(false)
-  const workbench = useWorkbenchSelection()
+  const viewerSelection = useViewerSelection()
   const handled = useRef('')
   const call = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<ScienceViewerResponse> =>
     unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId })) as ScienceViewerResponse
@@ -48,7 +48,7 @@ export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: 
     return () => { generation.current++ }
   }, [remote, sessionId])
 
-  // assetOverride lets the workbench-selection effect open an asset in the same tick
+  // assetOverride lets the route selection open an asset in the same tick.
   // it sets the dropdown, before React has committed that state back into assetId.
   const run = async (action: 'cell_open' | 'cell_read' | 'cell_analyze' | 'cell_export' | 'cell_select' | 'cell_export_selection' | 'cell_view', restore?: ViewerSessionRecord, geometry?: CellSelection | null, assetOverride?: string): Promise<void> => {
     if (action === 'cell_open' && inFlight.current) { generation.current++; inFlight.current = false }
@@ -102,26 +102,26 @@ export function CellViewer({ remote, sessionId, viewOnly = false, onPickFile }: 
     finally { if (id === generation.current) { setBusy(false); inFlight.current = false } }
   }
 
-  // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
+  // Mirror the routed asset into the local dropdown, so the panel shows
   // the file the user selected. An empty selection leaves the dropdown untouched,
   // because then the user is choosing inside the viewer.
-  useEffect(() => { if (workbench.assetId) { setAssetId(workbench.assetId); setViewer(undefined); setPreview(undefined); setAnalysis(undefined); setSelection(undefined); setMessage('') } }, [workbench.assetId])
+  useEffect(() => { if (viewerSelection.assetId) { setAssetId(viewerSelection.assetId); setViewer(undefined); setPreview(undefined); setAnalysis(undefined); setSelection(undefined); setMessage('') } }, [viewerSelection.assetId])
   const selectAsset = (nextAssetId: string): void => {
     generation.current++; inFlight.current = false; setBusy(false)
     setAssetId(nextAssetId); setViewer(undefined); setPreview(undefined); setAnalysis(undefined); setSelection(undefined); setMessage('')
     if (nextAssetId) void run('cell_open', undefined, undefined, nextAssetId)
   }
   useEffect(() => {
-    if (!workbench.assetId || workbench.revision == null) return
+    if (!viewerSelection.assetId || viewerSelection.revision == null) return
     // Keyed by revision: selecting the same asset again is a second request, but a
     // re-render of the same selection must not reissue the remote open call.
-    const key = `${workbench.assetId}:${workbench.revision}`
+    const key = `${viewerSelection.assetId}:${viewerSelection.revision}`
     if (handled.current === key) return
     handled.current = key
     // The sibling effect only queues the dropdown update, so this request carries the
     // sidebar pick explicitly instead of reading a stale assetId out of state.
-    void run('cell_open', undefined, undefined, workbench.assetId)
-  }, [workbench.assetId, workbench.revision])
+    void run('cell_open', undefined, undefined, viewerSelection.assetId)
+  }, [viewerSelection.assetId, viewerSelection.revision])
 
   const currentPreview = preview
   if (viewOnly && !currentPreview) return <ViewerLanding tool="cells" status={busy ? '正在加载' : message ? '打开失败' : '未选择文件'} message={message} {...(onPickFile ? { onPickFile } : {})} {...(assets.length ? { assetPicker: <select aria-label="H5AD 数据资产" value={assetId} onChange={event => selectAsset(event.target.value)}><option value="">已有 H5AD 文件</option>{assets.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select> } : {})} />

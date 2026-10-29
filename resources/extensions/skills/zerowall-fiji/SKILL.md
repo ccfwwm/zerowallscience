@@ -3,13 +3,13 @@ name: zerowall-fiji
 description: 在 ZeroWall 查看图像、管理 ROI 修订并通过本机 Fiji 编辑和回传单页 ROI；五类实验分析需各自经过验证的 Runner。
 ---
 
-# Fiji 图像工作台
+# Fiji 图像查看与本机分析
 
 ## 7.0.5 查看入口
 
-选择 PNG/JPEG/TIFF 图像后由工作台导入项目并调用 `image_open`；普通文件导入上限 128 MiB，TIFF 导入上限 20 GiB，但内置图像预览仍受 128 MiB 与像素上限约束。OME-Zarr 使用目录导入。未选择资产提示“请先选择资产”；打开失败保留 Host 原因。Fiji/napari 未配置时提示“引擎未配置”，原生进程 `spawned` 只能提示“进程已启动，窗口状态待确认”。默认查看器只显示图像、页码、缩放与平移，不呈现 ROI、实验、批处理或导出控件。
+在当前会话中选择 PNG/JPEG/TIFF 图像后，Host 导入并调用 `image_open`；普通文件导入上限 128 MiB，TIFF 导入上限 20 GiB，但内置图像预览仍受 128 MiB 与像素上限约束。OME-Zarr 使用目录导入。未选择资产提示“请先选择资产”；打开失败保留 Host 原因。Fiji/napari 未配置时提示“引擎未配置”，原生进程 `spawned` 只能提示“进程已启动，窗口状态待确认”。默认查看器只显示图像、页码、缩放与平移，不呈现 ROI、实验、批处理或导出控件。
 
-分析时使用 `science_workbench` 的 `tool=imagej`、`skill_id=zerowall-fiji`、`action_id=image_analyze` 或对应已登记的 Fiji 工作流 action，并提供真实资产/视图 ID。专项分析由下述五个 Fiji skill 继续处理；读取 Run、Artifact 和 SHA-256 后再报告产物。
+图像分析直接在对话中调用 `science_viewer` 的 `image_analyze`；专项流程使用下述五个 Fiji Skill 对应的 `research_workflow` action，并传递实际资产、视图和用户参数。`science_viewer_panel` 仅在底层工具成功后按需 `open` 或 `focus` 展示文件/可视化结果。读取 Run、Artifact 和 SHA-256 后再报告产物；研究执行、状态、证据与报告均在对话中完成。
 
 开始本地启动前先调用科研引擎配置 skill：读取 `getScientificEngineConfigs`，确认 Fiji 已启用并使用返回的安装目录/可执行文件；需要修改时调用 `setScientificEngineConfig` 后重新 `probeScientificEngine`。发现 `science_viewer` 后调用真实工具，不通过任意 shell 拼接图像路径。不覆盖现有 Fiji、Java、插件或宏。
 
@@ -30,7 +30,7 @@ description: 在 ZeroWall 查看图像、管理 ROI 修订并通过本机 Fiji �
 
 图像坐标以原图像素边界为准，页码从 0 开始，不推断 Z/T/通道。物理标定未知时保持未知，不从 DPI 推断。适配器负责 ImageJ 点坐标的半像素转换；不得人工再加减一次。桥接只回传 ROI，不回写原图像素。
 
-Fiji 使用独立实例启动参数。关闭工作台页签不关闭原生窗口；关闭 Host 保留原生窗口以免丢失未保存编辑。
+Fiji 使用独立实例启动参数。关闭科学查看器页签不关闭原生窗口；关闭 Host 保留原生窗口以免丢失未保存编辑。
 
 ## 实验分析共同规范
 
@@ -44,7 +44,7 @@ Fiji 使用独立实例启动参数。关闭工作台页签不关闭原生窗口
 
 除 Western blot 外，图像路径要求已登记的本地原始 8 位灰度单平面 PNG/TIFF/PGM（128 MiB、2500 万像素内），传 `arguments.sourceAssetId` 与 `arguments.image`。原生 ImageJ 拒绝 RGB／多页／其它位深的隐式转换；不从显示预览反推定量像素。所有 ROI 坐标和阈值必须来自当前原图；不能把示例数字当作待分析图像参数。原生运行输出 `result.json`、分割 `mask.png`、边界 `overlay.png`、`analysis.roi`、颗粒／边表 `particles.csv`、原生结果、请求、固定脚本和 SHA-256 完成清单。原图坐标和 ROI 局部坐标分开；保留失败日志。
 
-`arguments.measurements` 是人工或外部工具已有测量的汇总路径；不得声称这些输入是本轮 ImageJ 从图像计算得到。涉及完整研究的正式验证遵循已冻结计划，两个门禁由研究 Host 在完整校验通过后自动记录系统审批，不要求用户例行确认；缺项时仅暂停受影响阶段，普通查看、已授权定量和恢复可继续。
+`arguments.measurements` 是人工或外部工具已有测量的汇总路径；不得声称这些输入是本轮 ImageJ 从图像计算得到。Gate 1/2 只提供诊断警告，不阻止运行或报告生成；每次运行记录实际方案、输入版本与哈希，正式报告明确标注尚未核验的结论。保留全部结果、失败和限制，不以缺少审计材料要求用户补交后才继续。
 
 缺失的标定、样本映射、稀释、接种量和生物学重复保持未知。阈值与参数优化属于探索，不能选取显著性更强的版本代替冻结分析。当前没有持久批处理队列、自动粘连拆分或疾病诊断。接受的区域修订可生成手工掩膜，具体见下述契约。
 

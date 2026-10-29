@@ -4,7 +4,7 @@ import type { DataAssetRecord, RunRecord, ViewerSessionRecord } from '@zerowalls
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { FlowAnalysis, FlowDataset, FlowGate } from '../shared/flow.js'
 import type { FlowBatchItem, ScienceViewerRequest } from '../shared/types.js'
-import { useWorkbenchSelection } from './workbench-selection.js'
+import { useViewerSelection } from './viewer-selection.js'
 import { ViewerLanding } from './viewer-landing.js'
 import styles from './read-only-image-viewers.module.css'
 
@@ -28,8 +28,8 @@ export function FlowViewer({ remote, sessionId, viewOnly = false, onPickFile }: 
   // of the previous file can no longer land on top of the new selection's state.
   const run = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<void> => { const opening = input.action === 'flow_open'; if (busy && !opening) return; const current = opening ? ++generation.current : generation.current; if (opening) { setViewer(undefined); setDataset(undefined); setAnalysis(undefined); setMessage('') } setBusy(true); setMessage(''); try { const response = await call(input); if (current !== generation.current) return; apply(response); await refresh() } catch (error) { if (current !== generation.current) return; setMessage(error instanceof Error ? error.message : String(error)) } finally { if (current === generation.current) setBusy(false) } }
   const selectAsset = (nextAssetId: string): void => { generation.current++; setBusy(false); setAssetId(nextAssetId); setViewer(undefined); setDataset(undefined); setAnalysis(undefined); setMessage(''); if (nextAssetId) void run({ action: 'flow_open', assetId: nextAssetId }) }
-  const selection = useWorkbenchSelection(); const handled = useRef('')
-  // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
+  const selection = useViewerSelection(); const handled = useRef('')
+  // Mirror the routed asset into the local dropdown, so the panel shows
   // the file the user selected. An empty selection leaves the dropdown untouched,
   // because then the user is choosing inside the viewer.
   useEffect(() => { if (selection.assetId) { setAssetId(selection.assetId); setViewer(undefined); setDataset(undefined); setAnalysis(undefined); setMessage('') } }, [selection.assetId])

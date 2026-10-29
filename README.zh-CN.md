@@ -11,7 +11,7 @@
   </p>
 </div>
 
-ZeroWall Science 是一个模型无关的智能科研工作台，由 Electron、React、TypeScript、固定版本的 DeepSeek Harness（DSH）运行时、独立领域插件及平铺 DSH 集成、Better Sidebar Office 集成和独立 SQLite 科研存储构成。它面向需要 AI 协助，同时又不能放弃项目数据、凭据、执行环境和科研产物谱系控制权的研究人员。
+ZeroWall Science 是一个以对话驱动研究流程的模型无关科研环境，由 Electron、React、TypeScript、固定版本的 DeepSeek Harness（DSH）运行时、独立领域插件及平铺 DSH 集成、Better Sidebar Office 集成和独立 SQLite 科研存储构成。研究规划、执行、状态、证据与报告都在对话中完成；仅在查看文件或可视化结果时按需打开专用查看器。它面向需要 AI 协助，同时又不能放弃项目数据、凭据、执行环境和科研产物谱系控制权的研究人员。
 
 项目的核心判断简单但严格：一段 AI 回答还不是科研结果。可信科研系统必须保留研究问题如何转化为计划、哪个工具或模型采取了行动、代码在哪里运行、哪些数据进入、产生了什么产物、据此形成了什么决策，以及结果如何进入论文或演示。
 

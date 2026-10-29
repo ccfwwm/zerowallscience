@@ -109,7 +109,7 @@ def main():
         try:
             save_return(request,collect_layers(viewer,image,shapes,points),'napari')
             button.setEnabled(False)
-            QMessageBox.information(None,'ZeroWall','Saved. Return to the workbench and collect this revision.')
+            QMessageBox.information(None,'ZeroWall','Saved. Return to the conversation and collect this revision.')
         except Exception as error: QMessageBox.critical(None,'ZeroWall',str(error))
     button.clicked.connect(save)
     viewer.window.add_dock_widget(button,name='ZeroWall annotation return',area='right')
@@ -165,7 +165,7 @@ def main():
         try:
             if image.getWidth()!=coordinates['width'] or image.getHeight()!=coordinates['height'] or image.getStackSize()!=1: raise ValueError('Source geometry changed')
             save_return(request,collect_rois(manager),'fiji'); button.setEnabled(False)
-            IJ.showMessage('ZeroWall','Saved. Return to the workbench and collect this revision.')
+            IJ.showMessage('ZeroWall','Saved. Return to the conversation and collect this revision.')
         except Exception as error: IJ.error('ZeroWall',str(error))
     button.addActionListener(save); frame.add(button,BorderLayout.CENTER); frame.pack(); frame.setVisible(True)
     with open(request['returnPath']+'.ready','w') as ready: ready.write(request['bridgeId'])

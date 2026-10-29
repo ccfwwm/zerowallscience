@@ -98,34 +98,28 @@ export class NhanesSurveyService {
     const plan = this.store.getResearchDocument(input.planId)
     const task = this.store.listResearchTasks(study.id).find(item => item.id === input.taskId)
     if (!contract || contract.studyId !== study.id || contract.kind !== 'dataset-contract' || !plan || plan.studyId !== study.id || plan.kind !== 'analysis-plan' || !task) throw new Error('Contract, plan and task must belong to this study.')
+    if (study.currentPlanId !== plan.id) throw new Error('NHANES analysis plan is not the current plan for this study.')
     if (plan.version !== input.expectedPlanVersion) throw new Error(`Analysis plan revision conflict: current ${plan.version}.`)
     if (!Array.isArray(plan.payload.inputs) || plan.payload.inputs.length !== 1 || plan.payload.inputs[0] !== contract.id) throw new Error('NHANES analysis plan must reference exactly this dataset contract.')
     this.store.validateAnalysisPlan(plan.id)
     const taskRefs = nonemptyStrings(plan.payload.taskIds ?? plan.payload.researchTaskIds)
     if (!taskRefs.includes(task.id)) throw new Error('Analysis plan does not reference this research task.')
     if (task.exploratory !== (plan.payload.exploratory === true)) throw new Error('Task and analysis plan exploratory labels must agree.')
-    if (['blocked', 'archived', 'completed'].includes(study.status)) throw new Error('Study is unavailable for execution.')
+    if (['archived', 'completed'].includes(study.status)) throw new Error('Study is unavailable for execution.')
     const freeze = study.currentFreezeId
       ? this.store.listStudyFreezes(study.id).find(item => item.id === study.currentFreezeId)
       : undefined
-    const frozenPlan = freeze ? object(object(freeze.snapshot).plan) : undefined
-    const frozenPayload = object(frozenPlan?.payload)
-    if (!task.exploratory && (!freeze || study.gate1 !== 'approved' || study.currentPlanId !== plan.id || frozenPlan?.id !== plan.id || frozenPlan.version !== plan.version)) throw new Error('Confirmatory NHANES execution requires the approved frozen current plan.')
-    if (!task.exploratory) {
-      const frozenDocuments = Array.isArray(freeze?.snapshot.documents) ? freeze.snapshot.documents.map(object) : []
-      const frozenContract = frozenDocuments.find(item => item.id === contract.id)
-      if (digest(frozenPayload) !== digest(plan.payload) || frozenContract?.version !== contract.version || digest(frozenContract?.payload) !== digest(contract.payload)) throw new Error('Plan or dataset contract differs from the approved frozen snapshot.')
-    }
     const analysis = object(plan.payload.nhanesSurvey)
     const prepared = prepareNhanesSurvey(contract.payload, analysis)
-    const fingerprint = digest({ runner: NHANES_SURVEY_RUNNER, studyId: study.id, contractId: contract.id, contractVersion: contract.version, contract: contract.payload, planId: plan.id, planVersion: plan.version, freezeId: freeze?.id ?? null, freezeVersion: freeze?.version ?? null, analysis, taskId: task.id })
+    const inputHashes = { planSha256: digest(plan.payload), contractSha256: digest(contract.payload) }
+    const fingerprint = digest({ runner: NHANES_SURVEY_RUNNER, studyId: study.id, contractId: contract.id, contractVersion: contract.version, contractSha256: inputHashes.contractSha256, planId: plan.id, planVersion: plan.version, planSha256: inputHashes.planSha256, analysis, taskId: task.id })
     // Execution bookkeeping must not be a mutable research observation: creating an
     // observation invalidates Gate 1 in the store, including for an approved freeze.
     // Keep the idempotency record in the audit log instead, which is append-only and
     // does not alter the scientific plan state.
     const previous = this.store.listAuditEvents(project.id).find(event => event.action === 'nhanes-survey.requested' && event.details.runner === NHANES_SURVEY_RUNNER && event.details.requestId === input.requestId)
     if (previous && previous.details.fingerprint !== fingerprint) throw new Error('IDEMPOTENCY_CONFLICT: requestId was used for another NHANES plan or contract.')
-    if (!previous) this.store.recordAuditEvent(project.id, 'nhanes-survey.requested', { runner: NHANES_SURVEY_RUNNER, requestId: input.requestId, fingerprint, taskId: task.id, contractId: contract.id, planId: plan.id, freezeId: study.currentFreezeId ?? null, status: prepared.status!, errors: prepared.errors ?? [] })
+    if (!previous) this.store.recordAuditEvent(project.id, 'nhanes-survey.requested', { runner: NHANES_SURVEY_RUNNER, requestId: input.requestId, fingerprint, taskId: task.id, contractId: contract.id, contractVersion: contract.version, planId: plan.id, planVersion: plan.version, inputHashes, freezeId: study.currentFreezeId ?? null, status: prepared.status!, errors: prepared.errors ?? [] })
     if (prepared.status !== 'ready') return { status: 'blocked', runner: NHANES_SURVEY_RUNNER, observationId: null, errors: prepared.errors!, validation: prepared.validation! }
     const workflow = this.workflow()
     if (!workflow) throw new Error('The rdatalinux research workflow is unavailable; connect rmcp first.')
@@ -136,11 +130,12 @@ export class NhanesSurveyService {
     const successful = run.status === 'succeeded' && result.runner_contract === NHANES_SURVEY_RUNNER && result.analysis_complete === true
     const currentStudy = this.store.getResearchStudy(study.id)
     const inputsCurrent = this.store.getResearchDocument(contract.id)?.version === contract.version
+      && digest(this.store.getResearchDocument(contract.id)?.payload ?? {}) === inputHashes.contractSha256
       && this.store.getResearchDocument(plan.id)?.version === plan.version
-      && currentStudy?.currentFreezeId === study.currentFreezeId
-      && !!currentStudy && !['blocked', 'archived', 'completed'].includes(currentStudy.status)
-      && (task.exploratory || currentStudy.gate1 === 'approved')
-    const staleReason = inputsCurrent ? null : 'Research inputs, freeze or authorization changed during execution. Historical output retained; no new scientific evidence registered.'
+      && digest(this.store.getResearchDocument(plan.id)?.payload ?? {}) === inputHashes.planSha256
+      && currentStudy?.currentPlanId === plan.id
+      && !!currentStudy && !['archived', 'completed'].includes(currentStudy.status)
+    const staleReason = inputsCurrent ? null : 'The research plan or data contract changed during execution. Historical output retained; no new scientific evidence registered.'
     const artifactKey = `${input.requestId}:${run.version}`
     let artifact = this.store.listArtifacts(project.id).find(item => item.metadata.runner === NHANES_SURVEY_RUNNER && item.metadata.artifactKey === artifactKey)
     if (!artifact) {
@@ -148,7 +143,7 @@ export class NhanesSurveyService {
       const parent = join(root, '.zerowall'); await mkdir(parent, { recursive: true }); await containedFile(root, parent)
       const base = join(parent, 'nhanes-survey'); await mkdir(base, { recursive: true }); await containedFile(root, base)
       const directory = join(base, digest({ studyId: study.id, artifactKey })); await mkdir(directory, { recursive: true }); await containedFile(root, directory)
-      const manifest: JsonObject = { format: 'zerowall-nhanes-survey-result', runner: NHANES_SURVEY_RUNNER, studyId: study.id, taskId: task.id, runId: run.id, remoteId: remote.remote_id ?? null, requestId: input.requestId, fingerprint, contractId: contract.id, contractVersion: contract.version, planId: plan.id, planVersion: plan.version, freezeId: study.currentFreezeId ?? null, exploratory: task.exploratory, executionStatus: run.status, scientificReview: 'pending', analysisComplete: successful, inputsCurrent, staleReason, parameters: prepared.arguments!, result, remoteArtifacts: remote.artifacts ?? [], error: remote.error ?? null }
+      const manifest: JsonObject = { format: 'zerowall-nhanes-survey-result', runner: NHANES_SURVEY_RUNNER, studyId: study.id, taskId: task.id, runId: run.id, remoteId: remote.remote_id ?? null, requestId: input.requestId, fingerprint, contractId: contract.id, contractVersion: contract.version, planId: plan.id, planVersion: plan.version, inputHashes, freezeId: study.currentFreezeId ?? null, exploratory: task.exploratory, executionStatus: run.status, scientificReview: 'pending', analysisComplete: successful, inputsCurrent, staleReason, parameters: prepared.arguments!, result, remoteArtifacts: remote.artifacts ?? [], error: remote.error ?? null }
       const path = join(directory, 'manifest.json'); const bytes = `${JSON.stringify(manifest, null, 2)}\n`
       try { await writeFile(path, bytes, { flag: 'wx' }) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || await readFile(path, 'utf8') !== bytes) throw error }
       artifact = this.store.createArtifact({ projectId: project.id, runId: run.id, name: 'NHANES survey result manifest', uri: pathToFileURL(path).href, mediaType: 'application/json', checksum: createHash('sha256').update(bytes).digest('hex'), metadata: { runner: NHANES_SURVEY_RUNNER, artifactKey, requestId: input.requestId, fingerprint, studyId: study.id, taskId: task.id, scientificReview: 'pending', analysisComplete: successful, inputsCurrent, staleReason } })

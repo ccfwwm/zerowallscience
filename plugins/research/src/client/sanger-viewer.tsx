@@ -4,7 +4,7 @@ import type { DataAssetRecord, ViewerSessionRecord } from '@zerowallscience/rese
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { BidirectionalSangerReview, SangerAnalysis, SangerTrace } from '../shared/sanger.js'
 import type { ScienceViewerRequest } from '../shared/types.js'
-import { useWorkbenchSelection } from './workbench-selection.js'
+import { useViewerSelection } from './viewer-selection.js'
 import { ViewerLanding } from './viewer-landing.js'
 import styles from './read-only-image-viewers.module.css'
 
@@ -32,7 +32,7 @@ export function SangerViewer({ remote, sessionId, viewOnly = false, onPickFile }
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
-  const selection = useWorkbenchSelection()
+  const selection = useViewerSelection()
   const handled = useRef('')
   const call = async (input: Omit<ScienceViewerRequest, 'sessionId'>): Promise<SangerResponse & { assets?: DataAssetRecord[]; viewers?: ViewerSessionRecord[] }> => { const result = unwrapRemoteResult('scienceViewer', await remote.scienceViewer({ ...input, sessionId })) as unknown as SangerResponse & { sanger?: SangerResponse; assets?: DataAssetRecord[]; viewers?: ViewerSessionRecord[] }; return result.sanger ?? result }
   const refresh = async (): Promise<void> => {
@@ -60,7 +60,7 @@ export function SangerViewer({ remote, sessionId, viewOnly = false, onPickFile }
     } catch (error) { if (current === generation.current) setMessage(error instanceof Error ? error.message : String(error)) } finally { if (current === generation.current) setBusy(false) }
   }
   const selectAsset = (nextAssetId: string): void => { generation.current++; setBusy(false); setAssetId(nextAssetId); setViewer(undefined); setTrace(undefined); setAnalysis(undefined); setReview(undefined); setMessage(''); if (nextAssetId) void run({ action: 'sanger_open', assetId: nextAssetId }) }
-  // Mirror the workbench sidebar pick into the local dropdown, so the panel shows
+  // Mirror the routed asset into the local dropdown, so the panel shows
   // the file the user selected. An empty selection leaves the dropdown untouched,
   // because then the user is choosing inside the viewer.
   useEffect(() => { if (selection.assetId) { setAssetId(selection.assetId); setViewer(undefined); setTrace(undefined); setAnalysis(undefined); setReview(undefined); setMessage('') } }, [selection.assetId])

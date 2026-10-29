@@ -5,7 +5,7 @@ import type { DataAssetRecord, RunRecord } from '@zerowallscience/research-store
 import { FijiReviewControls } from './fiji-review-controls.js'
 import type { FijiExperimentRequest, FijiExperimentResponse } from '../shared/types.js'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
-import { useWorkbenchSelection } from './workbench-selection.js'
+import { useViewerSelection } from './viewer-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 const examples: Record<FijiExperimentId, string> = {
@@ -23,7 +23,7 @@ const imageExamples: Record<FijiExperimentId, object> = {
 }
 
 export function FijiExperimentPanel({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
-  const selection = useWorkbenchSelection()
+  const selection = useViewerSelection()
   const [experiment, setExperiment] = useState<FijiExperimentId>('scratch-wound')
   const [text, setText] = useState(examples['scratch-wound'])
   const [mode, setMode] = useState<'measurements' | 'image'>('measurements')

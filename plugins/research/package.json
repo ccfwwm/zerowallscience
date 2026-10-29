@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-research",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "description": "ZeroWall Science research domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -104,7 +104,7 @@
   "scripts": {
     "prepack": "node ../../tools/plugins/prepare-pack.mjs",
     "bundle": "node ../../tools/science/build-molecule-runtime.mjs && tsdown",
-    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit && tsc -p tsconfig.workbench.json --noEmit",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "test": "node scripts/run-tests.mjs"
   },
   "publishConfig": {

@@ -28,7 +28,7 @@ describe('research runtime policy provenance', () => {
     // coreVersion tracks SCIENCE_SYSTEM_PROMPT_VERSION, the constant the Host
     // actually reports; the literal pin has to move with it or a prompt bump
     // reads as a provenance regression instead of a rename.
-    expect(first).toMatchObject({ coreVersion: SCIENCE_SYSTEM_PROMPT_VERSION, contextVersion: '7.0.0-context.1', skillContextCount: 1 })
+    expect(first).toMatchObject({ coreVersion: SCIENCE_SYSTEM_PROMPT_VERSION, contextVersion: '7.0.0-context.2', skillContextCount: 1 })
     expect(JSON.stringify(first)).not.toContain('private instructions')
     expect(JSON.stringify(first)).not.toContain('secret prompt body')
     const changed = request()
@@ -111,7 +111,7 @@ describe('research runtime policy provenance', () => {
       expect(store.listStudyFreezes(study.id)[0]!.snapshot.runtimeProvenance).toHaveLength(3)
       const exported = await new ReportService(store).generate(project, study.id)
       const manifest = JSON.parse(await readFile(fileURLToPath(exported.manifest.uri), 'utf8'))
-      expect(manifest.version).toBe(2)
+      expect(manifest.version).toBe(3)
       expect(manifest.runtimeProvenance).toHaveLength(6)
       expect(manifest.runtimeProvenance[1].details.systemSha256).toMatch(/^[a-f0-9]{64}$/u)
     } finally { await ctx.fiber.dispose(); store.close(); await rm(root, { recursive: true, force: true }) }

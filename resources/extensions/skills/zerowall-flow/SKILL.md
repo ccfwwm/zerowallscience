@@ -7,9 +7,9 @@ description: 在 ZeroWall 导入并查看 FCS 流式细胞数据，通过 Host �
 
 ## 7.0.5 查看入口
 
-选择 FCS 并导入当前项目；外部文件导入上限 20 GiB，具体事件/内存限制由 FCS Host 再校验。调用 `flow_open` 查看通道和散点；未选择资产提示“请先选择资产”，解析失败提示“打开失败”并保留 Host 原因。默认查看器只保留通道切换、缩放和刷新，补偿、门控、批量提交与导出通过本 skill 调用。分析用 `science_workbench(tool=flow, skill_id=zerowall-flow, action_id=flow_analyze, viewer_id=..., request_id=...)`；批量动作使用实际 Host schema。核对返回的事件计数、Run 状态、产物 URI 与 SHA-256，不把图形预览当成定量结论。
+选择 FCS 并导入当前项目；外部文件导入上限 20 GiB，具体事件/内存限制由 FCS Host 再校验。用户在对话请求查看时调用 `science_viewer_panel(action="open", tool="flow", asset_id=..., request_id=...)` 查看通道和散点；未选择资产提示“请先选择资产”，解析失败提示“打开失败”并保留 Host 原因。补偿、门控、批量提交、分析和导出直接在对话中调用 `science_viewer` 的 `flow_analyze`、`flow_import`、`flow_batch_submit`、`flow_export` 等真实 action，并使用实际 Host schema。核对返回的事件计数、Run 状态、产物 URI 与 SHA-256，不把图形预览当成定量结论；需要查看结果时再按需打开或聚焦查看器。
 
-Use the persisted ZeroWall research objects and the current Host/Runner schemas. Keep source, version, unit, applicability, and access state explicit; unknown values remain unknown. Register inputs and parameters before execution, use deterministic runners for numeric outputs, and retain manifests, logs, failures, conflicts, and limitations. Do not claim a professional workflow is available unless the executable adapter and validation artifact are present. A frozen question, plan, or candidate set is immutable: propose an amendment and new version. Escalate only the two research gates: freeze the primary question and validation plan, then approve the final claims.
+Use the current Host/Runner schemas and preserve source, version, unit, applicability, manifests, logs, failures, conflicts, and limitations. Gate 1/2 are non-blocking diagnostics: continue the requested run and report warnings. Record the actual plan/input version and hashes for each run; mark unreviewed claims as unverified in reports.
 
 
 ## Domain constraints

@@ -80,7 +80,7 @@ describe('ResearchStore', () => {
     expect(repeated.study.id).toBe(first.study.id)
     expect(repeated.createdProject).toBe(false)
     expect(repeated.createdStudy).toBe(false)
-    expect(store.getResearchStudy(first.study.id)).toMatchObject({ gate1: 'pending', gate2: 'pending', phase: 'question' })
+    expect(store.getResearchStudy(first.study.id)).toMatchObject({ gate1: 'pending', gate2: 'pending', phase: 'planning' })
     const drafts = store.listResearchDocuments(first.study.id)
     expect(drafts.map(document => document.kind).sort()).toEqual(['analysis-plan', 'dataset-contract', 'question'])
     expect(drafts.find(document => document.kind === 'dataset-contract')?.payload).toMatchObject({ applicability: 'pending', sourceStatus: 'unknown', missing: expect.any(Array) })
@@ -615,7 +615,7 @@ describe('ResearchStore', () => {
     store.close()
   })
 
-  it('persists a study, validates its contract and freezes an immutable plan', () => {
+  it('keeps old freezes immutable while allowing edited inputs to become the current study state', () => {
     const store = new ResearchStore(databasePath())
     const project = store.createProject({ name: 'Study foundation', rootPath: 'C:/science/foundation' })
     const study = store.createResearchStudy({ projectId: project.id, title: '肥胖—脱发' })
@@ -627,8 +627,10 @@ describe('ResearchStore', () => {
     const approved = store.approveResearchGate(study.id, 1, 'approved', current.version + 1, 'validated fixture contract')
     const freeze = store.freezeResearchStudy(study.id, approved.version)
     expect(freeze.snapshot.sha256).toMatch(/^[a-f0-9]{64}$/u)
-    expect(() => store.updateResearchDocument(plan.id, { expectedVersion: plan.version, payload: { method: 'changed' } })).toThrow('Frozen')
-    expect(store.getResearchStudy(study.id)?.currentFreezeId).toBe(freeze.id)
+    const revised = store.updateResearchDocument(plan.id, { expectedVersion: plan.version, payload: { method: 'changed' } })
+    expect(revised.payload.method).toBe('changed')
+    expect(store.getResearchStudy(study.id)?.currentFreezeId).toBeUndefined()
+    expect(store.listStudyFreezes(study.id)).toEqual([freeze])
     store.close()
   })
 
@@ -787,6 +789,23 @@ describe('ResearchStore', () => {
       expect(() => store.updateResearchTask(task.id, { expectedVersion: failedAgain.version, status: 'running' })).toThrow(/new Run/i)
       const thirdRun = store.createRun({ projectId: project.id, name: 'Remote third', command: 'job', workingDirectory: project.rootPath, status: 'running' })
       expect(() => store.updateResearchTask(task.id, { expectedVersion: failedAgain.version, status: 'running', runId: thirdRun.id })).toThrow(/budget/i)
+    } finally { store.close() }
+  })
+
+  it('keeps gate diagnostics read-only and permits completion while both gates are pending', () => {
+    const store = new ResearchStore(databasePath())
+    try {
+      const project = store.createProject({ name: 'Gate diagnostics', rootPath: 'C:/science/gate-diagnostics' })
+      const study = store.createResearchStudy({ projectId: project.id, title: 'Ungated study' })
+      const gate1 = store.diagnoseResearchGate(study.id, 1)
+      const gate2 = store.diagnoseResearchGate(study.id, 2)
+      expect(gate1).toMatchObject({ status: 'proceedable', proceedable: true, readOnly: true, study: { gate1: 'pending', gate2: 'pending' } })
+      expect(gate1.warnings.length).toBeGreaterThan(0)
+      expect(gate2).toMatchObject({ status: 'proceedable', proceedable: true, readOnly: true, study: { gate1: 'pending', gate2: 'pending' } })
+      expect(gate2.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'GATE2_NOT_REVIEWED' })]))
+      const completed = store.updateResearchStudy(study.id, { expectedVersion: study.version, phase: 'completed', status: 'completed' })
+      expect(completed).toMatchObject({ phase: 'completed', status: 'completed', gate1: 'pending', gate2: 'pending' })
+      expect(store.listStudyFreezes(study.id)).toEqual([])
     } finally { store.close() }
   })
 })

@@ -23,11 +23,11 @@
 
 ## 参数含义
 
-- `year`：两个升序报告期编码 `[起始期, 终止期]`，`41=2004Q1`，`141=2014Q1`，`262=2026Q2`；公历年份不是此参数的单位。数据实际可用期间另行核实。
+- `year`：可传两个升序报告期编码 `[起始期, 终止期]`，或季度字符串范围（如 `['2014Q1','2024Q4']`），也可只传结束季度（如 `'2026Q1'`），此时服务端以数据库最早覆盖季度补起点。示例编码 `41=2004Q1`、`141=2014Q1`、`261=2026Q1`；公历年份不是整数编码。实际覆盖由服务端查询，覆盖不全是警告，不改变原请求。
 - `age` / `weight`：两个升序数值组成的范围；`gender` 例如 `F`、`M`，`country` 为报告者国家代码。
 - `agent`：数据中的 `OCCP_COD`，如 `MD`、`PH`、`CN`，不是 physician/consumer 这样的自然语言。
 - `drugEffect`：`PS` / `SS` / `C` / `I`；DDI 等函数另有自身队列规则，不能把传入角色推断成每个输出队列的相同暴露定义。
-- 药物使用数据库中的真实 `drugname` 或 `prod_ai` 写法；PT 使用实际 MedDRA Preferred Term。本接口没有药名自动规范化或字典搜索动作，不能虚构 `r.faerskit.search`。
+- 药物可使用用户原始名称；只读 `r.faerskit.lookup` 会查找数据库中的 `drugname`/`prod_ai` 和实际 MedDRA Preferred Term。无精确匹配时只自动采用唯一候选；零个或多个候选继续保留原请求并在预检中提示，不静默扩大匹配。
 - `unit`：`pair` 或 `case`。当前仅 AFun、CFun、FFun、IFun、DDI、DDIALL、Concomitant_Medication_Analysis 接受；保留实际口径，不将两类计数混合解释。
 - `drug_route`：当前仅 BFun 接受。`drugEffect` 不适用于 IFun、Concomitant 或 top50。`drug_exclusion_from_alldata` 可用于 top50，但不适用于 BFun_upgrade1/2。不要把共用 schema 的可选字段全部透传。
 - `database` 为可选数据库名称，凭据由服务端注入；省略时使用服务端配置的默认库。不要自行变更数据库或假定数据库名就是数据版本。

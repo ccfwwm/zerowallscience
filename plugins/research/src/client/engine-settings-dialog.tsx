@@ -3,16 +3,16 @@ import type { TypertRemoteNamespaceMap } from '@deepseek-ai/dsh-typert-protocol'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ScientificEngineConfig, ScientificEngineHealth, ScientificEngineId, ScientificEngineStatus } from '../shared/types.js'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
-import { WORKBENCH_LOCALES } from './tool-descriptors.js'
+import { SCIENCE_LOCALES } from './tool-descriptors.js'
 import { NativeEnginePanel } from './native-engine-panel.js'
 import styles from './engine-settings.module.css'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 
 /** Narrowed copy keys this dialog paints; a typo is a compile error. */
-type EngineDialogKey = keyof typeof WORKBENCH_LOCALES.zh
-const copyZh = WORKBENCH_LOCALES.zh as Record<string, string>
-const copyEn = WORKBENCH_LOCALES.en as Record<string, string>
+type EngineDialogKey = keyof typeof SCIENCE_LOCALES.zh
+const copyZh = SCIENCE_LOCALES.zh as Record<string, string>
+const copyEn = SCIENCE_LOCALES.en as Record<string, string>
 const translate = (locale: 'zh' | 'en', key: EngineDialogKey, params?: Record<string, unknown>): string => {
   let value = (locale === 'en' ? copyEn : copyZh)[key] ?? key
   for (const [name, replacement] of Object.entries(params ?? {})) value = value.replaceAll(`{${name}}`, String(replacement))
@@ -168,7 +168,7 @@ export function EngineSettingsDialog({ remote, sessionId, locale = 'zh', onClose
   }, [sessionId, remote, api, t])
 
   // Focus trap, Escape-to-close and body scroll lock live here because the
-  // overlay is rendered by this component rather than by the workbench shell.
+  // overlay is rendered by this component rather than by the viewer panel.
   // `close` is read through a ref so an unmemoised `onClose` from the shell
   // cannot tear the trap down and re-run it on every render.
   const closeRef = useRef(close)

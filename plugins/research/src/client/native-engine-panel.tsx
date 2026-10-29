@@ -4,14 +4,14 @@ import type {} from '../../lib/typert.remote-client.js'
 import type { DataAssetRecord } from '@zerowallscience/research-store/types'
 import type { ScientificEngineLaunchResult } from '../shared/types.js'
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
-import { WORKBENCH_LOCALES } from './tool-descriptors.js'
+import { SCIENCE_LOCALES } from './tool-descriptors.js'
 import styles from './engine-settings.module.css'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 
-type LaunchKey = keyof typeof WORKBENCH_LOCALES.zh
-const copyZh = WORKBENCH_LOCALES.zh as Record<string, string>
-const copyEn = WORKBENCH_LOCALES.en as Record<string, string>
+type LaunchKey = keyof typeof SCIENCE_LOCALES.zh
+const copyZh = SCIENCE_LOCALES.zh as Record<string, string>
+const copyEn = SCIENCE_LOCALES.en as Record<string, string>
 const translate = (locale: 'zh' | 'en', key: LaunchKey, params?: Record<string, unknown>): string => {
   let value = (locale === 'en' ? copyEn : copyZh)[key] ?? key
   for (const [name, replacement] of Object.entries(params ?? {})) value = value.replaceAll(`{${name}}`, String(replacement))

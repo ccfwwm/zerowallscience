@@ -10,7 +10,7 @@
   </p>
 </div>
 
-ZeroWall Science is a model-agnostic scientific research workbench built with Electron, React, TypeScript, a pinned DeepSeek Harness (DSH) runtime, independent domain plugins and flat DSH integrations, the Better Sidebar Office integration, and an independent SQLite research store. It is designed for researchers who need AI assistance without surrendering control over project data, credentials, execution environments, or the provenance of scientific outputs.
+ZeroWall Science is a model-agnostic scientific research environment built around conversation-driven workflows, with Electron, React, TypeScript, a pinned DeepSeek Harness (DSH) runtime, independent domain plugins and flat DSH integrations, the Better Sidebar Office integration, and an independent SQLite research store. Research planning, execution, status, evidence, and reports stay in conversation; dedicated viewers open on demand for files and visual results. It is designed for researchers who need AI assistance without surrendering control over project data, credentials, execution environments, or the provenance of scientific outputs.
 
 The core idea is simple but demanding: an AI answer is not yet a research result. A trustworthy research system must preserve how a question became a plan, which tool or model acted, where code ran, what data entered, what artifact was produced, which decision followed, and how the result reached a paper or presentation.
 

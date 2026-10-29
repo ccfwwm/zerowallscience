@@ -69,6 +69,15 @@ export type AutomaticGateResult =
   | { status: 'approved'; study: ResearchStudyRecord; freeze?: StudyFreezeRecord; blockers: []; ruleVersion: string }
   | { status: 'blocked'; study: ResearchStudyRecord; blockers: ResearchGateBlocker[]; ruleVersion: string }
 
+export interface ResearchGateDiagnostic {
+  status: 'proceedable'
+  proceedable: true
+  readOnly: true
+  study: ResearchStudyRecord
+  warnings: ResearchGateBlocker[]
+  ruleVersion: string
+}
+
 export const SYSTEM_RESEARCH_GATE_RULE_VERSION = 'research-gates-2'
 
 export interface DatasetSourceVerificationRecord extends VerifiedDatasetSource {
@@ -413,7 +422,7 @@ const MIGRATIONS = [
       revision INTEGER NOT NULL CHECK(revision>0),
       base_revision_id TEXT REFERENCES annotation_revisions(id) DEFERRABLE INITIALLY DEFERRED,
       status TEXT NOT NULL CHECK(status IN ('accepted','conflict')),
-      origin TEXT NOT NULL CHECK(origin IN ('workbench','fiji','napari')),
+      origin TEXT NOT NULL CHECK(origin IN ('viewer','workbench','fiji','napari')),
       payload_json TEXT NOT NULL, created_at TEXT NOT NULL,
       UNIQUE(asset_id, source_sha256, revision)
     );
@@ -891,10 +900,7 @@ export class ResearchStore {
     if (changes.expectedVersion !== current.version) throw new Error(`Research study revision conflict: expected ${changes.expectedVersion}, current ${current.version}.`)
     if (current.status === 'archived') throw new Error('Archived research studies cannot be changed.')
     if ('gate1' in changes || 'gate2' in changes) throw new Error('Use the human gate review endpoint.')
-    if (changes.phase === 'frozen') throw new Error('Use freezeResearchStudy to freeze a plan.')
-    if (['analysis', 'evidence', 'report', 'completed'].includes(changes.phase ?? '') && !current.currentFreezeId) throw new Error('A frozen plan is required for this phase.')
-    if ((changes.status === 'completed' || changes.phase === 'completed') && current.gate2 !== 'approved') throw new Error('Gate 2 must be approved before completion.')
-    if (current.currentFreezeId && (changes.currentQuestionId !== undefined || changes.currentPlanId !== undefined || changes.budget !== undefined)) throw new Error('Frozen study changes require an amendment.')
+    if (changes.phase === 'frozen' && !current.currentFreezeId) throw new Error('A freeze record is required before marking a study frozen.')
     for (const [ref, kind] of [[changes.currentQuestionId, 'question'], [changes.currentPlanId, 'analysis-plan']] as const) {
       if (ref) { const doc = this.getResearchDocument(ref); if (!doc || doc.studyId !== id || doc.kind !== kind) throw new Error('Current document does not belong to this study or has the wrong kind.') }
     }
@@ -910,7 +916,13 @@ export class ResearchStore {
     }
     if (changes.currentQuestionId === null) delete updated.currentQuestionId
     if (changes.currentPlanId === null) delete updated.currentPlanId
-    if (changes.currentQuestionId !== undefined || changes.currentPlanId !== undefined || changes.budget !== undefined) { updated.gate1 = 'pending'; updated.gate2 = 'pending' }
+    const planInputsChanged = changes.currentQuestionId !== undefined || changes.currentPlanId !== undefined || changes.budget !== undefined
+    if (planInputsChanged) {
+      updated.gate1 = 'pending'
+      updated.gate2 = 'pending'
+      delete updated.currentFreezeId
+      updated.phase = 'planning'
+    }
     this.database.prepare(`UPDATE research_studies SET title=?, phase=?, status=?, current_question_id=?, current_plan_id=?, current_freeze_id=?, budget_json=?, gate1=?, gate2=?, version=?, updated_at=? WHERE id=?`)
       .run(updated.title, updated.phase, updated.status, updated.currentQuestionId ?? null, updated.currentPlanId ?? null, updated.currentFreezeId ?? null, JSON.stringify(updated.budget), updated.gate1, updated.gate2, updated.version, updated.updatedAt, updated.id)
     this.recordAuditEvent(updated.projectId, 'research-study.updated', { studyId: updated.id, version: updated.version, phase: updated.phase, status: updated.status })
@@ -924,7 +936,6 @@ export class ResearchStore {
     const study = this.getResearchStudy(input.studyId)
     if (study === undefined || study.projectId !== input.projectId) throw new Error('Research document study does not belong to the project.')
     if (study.status === 'archived') throw new Error('Archived research studies cannot be changed.')
-    if (study.currentFreezeId && ['question', 'dataset-contract', 'analysis-plan'].includes(input.kind)) throw new Error('Frozen study documents require an amendment.')
     const payload = jsonObject(input.payload, 'Research document payload')
     if (input.kind === 'evidence') {
       if (payload.needsReview !== undefined && typeof payload.needsReview !== 'boolean') throw new Error('Evidence needsReview must be boolean.')
@@ -1028,7 +1039,6 @@ export class ResearchStore {
     if (study.status === 'archived') throw new Error('Archived research studies cannot be changed.')
     if (changes.expectedVersion !== current.version) throw new Error(`Research document revision conflict: expected ${changes.expectedVersion}, current ${current.version}.`)
     if (current.kind === 'annotation-revision') throw new Error('Annotation revisions are immutable; create a new revision.')
-    if (['question', 'dataset-contract', 'analysis-plan'].includes(current.kind) && this.listStudyFreezes(study.id).some(f => frozenDocumentIds(f.snapshot).has(current.id))) throw new Error('Frozen study documents require a new amendment record; the frozen record is immutable.')
     const updated: ResearchDocumentRecord = { ...current, payload: jsonObject(changes.payload, 'Research document payload'), version: current.version + 1, updatedAt: new Date().toISOString() }
     if (current.kind === 'evidence') {
       if (updated.payload.needsReview === undefined) updated.payload.needsReview = true
@@ -1106,7 +1116,14 @@ export class ResearchStore {
         const existing = this.getDatasetSourceVerification(contract.id)
         const contractSha256 = researchDocumentSha256(contract)
         if (existing && existing.contractSha256 === contractSha256 && JSON.stringify(source) === JSON.stringify(datasetSourceFromReceipt(existing))) return { status: 'verified', verification: existing }
-        if (this.listStudyFreezes(study.id).some(freeze => frozenDocumentIds(freeze.snapshot).has(contract.id))) throw new Error('The frozen data source no longer matches its system receipt; create an amendment before replacing it.')
+        if (existing && study.currentFreezeId && JSON.stringify(source) !== JSON.stringify(datasetSourceFromReceipt(existing))) {
+          this.database.prepare("UPDATE research_studies SET current_freeze_id=NULL,gate1='pending',gate2='pending',phase='planning',version=version+1,updated_at=? WHERE id=?")
+            .run(new Date().toISOString(), study.id)
+          this.recordAuditEvent(study.projectId, 'research-study.freeze-superseded-by-source-change', {
+            studyId: study.id, freezeId: study.currentFreezeId, contractId: contract.id,
+            priorSourceSha256: existing.sourceSha256, currentSourceSha256: source.sourceSha256,
+          })
+        }
         const checkedAt = new Date().toISOString()
         const verification: DatasetSourceVerificationRecord = { contractId: contract.id, contractVersion: contract.version, contractSha256, ...source, verifier: DATASET_SOURCE_VERIFIER, checkedAt }
         this.database.prepare(`INSERT INTO contract_source_verifications
@@ -1145,6 +1162,36 @@ export class ResearchStore {
     if (!receipt || receipt.contractSha256 !== researchDocumentSha256(contract) || receipt.verifier !== DATASET_SOURCE_VERIFIER) return false
     try { return JSON.stringify(this.inspectContractSource(contract)) === JSON.stringify(datasetSourceFromReceipt(receipt)) }
     catch { return false }
+  }
+
+  diagnoseResearchGate(studyId: string, gate: 1 | 2, options: { ruleVersion?: string } = {}): ResearchGateDiagnostic {
+    const study = this.getResearchStudy(studyId)
+    if (!study) throw new Error(`Research study was not found: ${studyId}`)
+    const warnings = gate === 1 ? this.researchGate1Blockers(study) : this.researchGate2Warnings(study)
+    return {
+      status: 'proceedable',
+      proceedable: true,
+      readOnly: true,
+      study,
+      warnings,
+      ruleVersion: nonEmptyString(options.ruleVersion ?? SYSTEM_RESEARCH_GATE_RULE_VERSION, 'Research gate rule version'),
+    }
+  }
+
+  private researchGate2Warnings(study: ResearchStudyRecord): ResearchGateBlocker[] {
+    const warnings: ResearchGateBlocker[] = []
+    if (study.gate2 !== 'approved') warnings.push({ code: 'GATE2_NOT_REVIEWED', message: 'Gate 2 尚未完成人工或系統审阅；这不影响研究运行或报告生成。' })
+    const claims = this.listResearchDocuments(study.id, 'claim')
+    if (!claims.length) warnings.push({ code: 'CLAIMS_MISSING', message: '当前没有登记研究主张。' })
+    for (const claim of claims) {
+      if (claim.payload.auditStatus !== 'passed' || claim.payload.needsReview !== false) {
+        warnings.push({ code: 'CLAIM_UNVERIFIED', message: '研究主张尚未完成证据核验。', documentId: claim.id })
+      }
+    }
+    for (const evidence of this.listResearchDocuments(study.id, 'evidence')) {
+      if (evidence.payload.needsReview === true) warnings.push({ code: 'EVIDENCE_REVIEW_PENDING', message: '存在待复核证据。', documentId: evidence.id })
+    }
+    return warnings
   }
 
   /**
@@ -1337,7 +1384,6 @@ export class ResearchStore {
     if (study === undefined) throw new Error(`Research study was not found: ${studyId}`)
     if (expectedVersion !== study.version) throw new Error(`Research study revision conflict: current ${study.version}.`)
     if (study.status === 'archived' || study.currentFreezeId) throw new Error('Study is archived or already frozen; create an amendment first.')
-    if (study.gate1 !== 'approved') throw new Error('Gate 1 must be approved before freezing a research study.')
     if (study.currentQuestionId === undefined || study.currentPlanId === undefined) throw new Error('A current research question and analysis plan are required before freezing.')
     const question = this.getResearchDocument(study.currentQuestionId)
     const plan = this.validateAnalysisPlan(study.currentPlanId)
@@ -1520,13 +1566,8 @@ export class ResearchStore {
 
   private invalidateResearchStudy(studyId: string, kind: ResearchRecordKind): void {
     if (['viewer-session', 'evaluation', 'benchmark-task'].includes(kind)) return
-    // A frozen plan is immutable. Observations and annotation revisions are
-    // post-freeze outputs that can require a fresh evidence review, but they
-    // do not change the question/contract/plan that Gate 1 froze. Treating
-    // them as plan edits leaves gate1=pending while retaining currentFreezeId;
-    // the next automatic Gate 1 attempt then fails with "already frozen".
     const affectsPlan = ['question', 'dataset-contract', 'analysis-plan'].includes(kind)
-    this.database.prepare(`UPDATE research_studies SET gate2='pending', ${affectsPlan ? "gate1='pending'," : ''} version=version+1, updated_at=? WHERE id=?`).run(new Date().toISOString(), studyId)
+    this.database.prepare(`UPDATE research_studies SET gate2='pending', ${affectsPlan ? "gate1='pending',current_freeze_id=NULL,phase='planning'," : ''} version=version+1, updated_at=? WHERE id=?`).run(new Date().toISOString(), studyId)
     if (affectsPlan || kind === 'evidence' || kind === 'annotation-revision') {
       for (const doc of this.listResearchDocuments(studyId).filter(d => affectsPlan ? ['evidence', 'claim'].includes(d.kind) : d.kind === 'claim')) {
         this.database.prepare('UPDATE research_documents SET payload_json=?, version=version+1, updated_at=? WHERE id=?').run(JSON.stringify({ ...doc.payload, needsReview: true }), new Date().toISOString(), doc.id)
@@ -1626,7 +1667,7 @@ export class ResearchStore {
   createAnnotationRevision(input: CreateAnnotationRevisionInput): AnnotationSaveResult {
     return this.withTransaction(() => {
       if (!/^[a-f0-9]{64}$/u.test(input.sourceSha256)) throw new Error('Annotation source SHA-256 is required.')
-      if (!['workbench', 'fiji', 'napari'].includes(input.origin)) throw new Error('Unsupported annotation origin.')
+      if (!['viewer', 'workbench', 'fiji', 'napari'].includes(input.origin)) throw new Error('Unsupported annotation origin.')
       if (input.expectedRevisionId !== null && typeof input.expectedRevisionId !== 'string') throw new Error('Expected annotation revision ID or null is required.')
       const history = this.listAnnotationRevisions(input.projectId, input.assetId).filter(item => item.sourceSha256 === input.sourceSha256)
       const head = history.filter(item => item.status === 'accepted').at(-1)
@@ -1647,7 +1688,7 @@ export class ResearchStore {
   collectNativeAnnotation(input: CreateAnnotationRevisionInput, launchId: string, artifactInput: CreateArtifactInput): { annotationSave: AnnotationSaveResult; artifact: ArtifactRecord } {
     return this.withTransaction(() => {
       nonEmptyString(launchId, 'Native launch ID')
-      if (artifactInput.projectId !== input.projectId || input.origin === 'workbench' || !artifactInput.checksum) throw new Error('Native return project, origin and checksum are required.')
+      if (artifactInput.projectId !== input.projectId || input.origin === 'viewer' || input.origin === 'workbench' || !artifactInput.checksum) throw new Error('Native return project, origin and checksum are required.')
       const previous = this.listAuditEvents(input.projectId).find(event => event.action === 'science-annotation.collected' && event.details.launchId === launchId)
       if (previous) {
         const history = this.listAnnotationRevisions(input.projectId, input.assetId).filter(item => item.sourceSha256 === input.sourceSha256)
@@ -3282,7 +3323,7 @@ function validateResearchSnapshot(input: ResearchProjectSnapshot): void {
     const streams = new Map<string, AnnotationRevisionRecord[]>()
     for (const revision of input.annotationRevisions ?? []) {
       if (!revision.id || ids.has(revision.id) || viewIds.has(revision.id) || annotationIds.has(revision.id) || revision.projectId !== input.project.id || !input.dataAssets.some(asset => asset.id === revision.assetId)) throw new Error('Annotation snapshot has a foreign or duplicate revision.')
-      if (!/^[a-f0-9]{64}$/u.test(revision.sourceSha256) || !Number.isSafeInteger(revision.revision) || revision.revision < 1 || !['workbench','fiji','napari'].includes(revision.origin) || !['accepted','conflict'].includes(revision.status)) throw new Error('Invalid annotation revision.')
+      if (!/^[a-f0-9]{64}$/u.test(revision.sourceSha256) || !Number.isSafeInteger(revision.revision) || revision.revision < 1 || !['viewer','workbench','fiji','napari'].includes(revision.origin) || !['accepted','conflict'].includes(revision.status)) throw new Error('Invalid annotation revision.')
       validateAnnotationPayload(revision.payload)
       annotationIds.set(revision.id, revision)
       const key = `${revision.assetId}:${revision.sourceSha256}`
@@ -3480,15 +3521,4 @@ function isResolvedResearchMetadata(key: string, value: unknown, depth: number):
   if (value !== null && typeof value === 'object') return Object.entries(value).every(([childKey, item]) => isResolvedResearchMetadata(childKey, item, depth + 1))
   if (typeof value === 'boolean') return value
   return isMeaningfulResearchValue(value, depth)
-}
-
-function frozenDocumentIds(snapshot: JsonObject): Set<string> {
-  const result = new Set<string>()
-  const documents = snapshot.documents
-  if (Array.isArray(documents)) {
-    for (const document of documents) {
-      if (document !== null && typeof document === 'object' && !Array.isArray(document) && typeof document.id === 'string') result.add(document.id)
-    }
-  }
-  return result
 }

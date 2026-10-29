@@ -90,17 +90,14 @@ describe('persisted survey execution and evidence', () => {
     expect(await f.service.execute(f.project, f.input, f.exec)).toMatchObject({ status: 'succeeded', analysisComplete: false, evidence: null })
     expect(f.store.listArtifacts(f.project.id)).toHaveLength(1)
   })
-  it('blocks confirmatory computation until human gate one and exact plan freeze', async () => {
+  it('runs confirmatory computation with pending gates and without a plan freeze', async () => {
     const f = await fixture(false)
-    await expect(f.service.execute(f.project, f.input, f.exec)).rejects.toThrow('approved frozen')
-    expect(f.execute).not.toHaveBeenCalled()
-    const latest = f.store.getResearchStudy(f.study.id)!
-    const approved = f.store.approveResearchGate(f.study.id, 1, 'approved', latest.version, 'Synthetic fixture review')
-    const freeze = f.store.freezeResearchStudy(f.study.id, approved.version)
-    expect(f.store.getResearchStudy(f.study.id)).toMatchObject({ gate1: 'approved', currentPlanId: f.plan.id, currentFreezeId: freeze.id })
     const result = await f.service.execute(f.project, f.input, f.exec)
     const manifest = JSON.parse(await readFile(fileURLToPath(String((result.artifact as JsonObject).uri)), 'utf8'))
-    expect(manifest).toMatchObject({ freezeId: freeze.id, exploratory: false })
+    expect(manifest).toMatchObject({ freezeId: null, exploratory: false, inputsCurrent: true })
+    expect(manifest.inputHashes).toMatchObject({ planSha256: expect.stringMatching(/^[a-f0-9]{64}$/u), contractSha256: expect.stringMatching(/^[a-f0-9]{64}$/u) })
+    expect(f.store.getResearchStudy(f.study.id)).toMatchObject({ gate1: 'pending', gate2: 'pending' })
+    expect(f.store.getResearchStudy(f.study.id)?.currentFreezeId).toBeUndefined()
   })
   it('rejects a task absent from the persisted plan', async () => {
     const f = await fixture()

@@ -6,7 +6,7 @@ import { expect, it } from 'vitest'
 import { ResearchStore } from '../../research-store/src/index.js'
 import { ReportService } from '../src/host/report.js'
 
-it('exports a useful reconnaissance draft and downgrades a blocked final request to a marked draft', async () => {
+it('exports drafts and formal reports without gate approval while marking unverified material', async () => {
   const root = await mkdtemp(join(tmpdir(), 'science-report-'))
   const store = new ResearchStore(join(root, 'research.sqlite'))
   try {
@@ -16,15 +16,16 @@ it('exports a useful reconnaissance draft and downgrades a blocked final request
     const service = new ReportService(store)
     const draft = await service.generate(project, study.id, 'draft')
     expect(draft.needsReview).toBe(true)
-    expect(draft.blockers).toEqual(['Gate 1 尚未批准', '研究方案尚未冻结', 'Gate 2 尚未批准', '没有主张记录'])
+    expect(draft.blockers).toEqual([])
+    expect(draft.warnings).toEqual(expect.arrayContaining(['Gate 1 状态未批准；此状态不阻止报告生成', 'Gate 2 状态未批准；此状态不阻止报告生成', '没有登记研究主张']))
     const markdown = await readFile(fileURLToPath(draft.report.uri), 'utf8')
-    expect(markdown).toContain('当前阻断：Gate 1 尚未批准')
-    expect(markdown).not.toContain('没有待处理的门禁阻断')
+    expect(markdown).toContain('科学核验状态：含未核验项目')
+    expect(markdown).toContain('报告生成不会批准 Gate')
     expect(markdown).toContain('Catalog only')
     const manifest = JSON.parse(await readFile(fileURLToPath(draft.manifest.uri), 'utf8'))
-    expect(manifest.blockers).toEqual(draft.blockers)
-    const blockedFinal = await service.generate(project, study.id, 'final')
-    expect(blockedFinal).toMatchObject({ mode: 'draft', requestedMode: 'final', needsReview: true, blockers: draft.blockers })
+    expect(manifest).toMatchObject({ mode: 'draft', blockers: [], warnings: draft.warnings, verificationStatus: 'not-certified-by-report-generation', needsReview: true })
+    const final = await service.generate(project, study.id, 'final')
+    expect(final).toMatchObject({ mode: 'final', needsReview: true, blockers: [], warnings: draft.warnings })
     expect(store.listArtifacts(project.id)).toHaveLength(4)
     expect(store.getResearchStudy(study.id)?.gate1).toBe('pending')
   } finally { store.close(); await rm(root, { recursive: true, force: true }) }

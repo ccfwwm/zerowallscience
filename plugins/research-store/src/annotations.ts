@@ -15,7 +15,8 @@ export interface ImageAnnotations { coordinates: ImageCoordinates; rois: ImageRo
 export interface AnnotationRevisionRecord {
   id: string; projectId: string; assetId: string; sourceSha256: string
   revision: number; baseRevisionId: string | null; status: 'accepted' | 'conflict'
-  origin: 'workbench' | 'fiji' | 'napari'; payload: ImageAnnotations; createdAt: string
+  /** `workbench` is accepted only when reading legacy records. New records use `viewer`. */
+  origin: 'viewer' | 'workbench' | 'fiji' | 'napari'; payload: ImageAnnotations; createdAt: string
 }
 export interface CreateAnnotationRevisionInput {
   projectId: string; assetId: string; sourceSha256: string

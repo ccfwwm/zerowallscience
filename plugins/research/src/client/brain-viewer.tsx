@@ -4,7 +4,7 @@ import type { ArtifactRecord, ViewerSessionRecord } from '@zerowallscience/resea
 import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { BrainAtlasResponse, BrainAtlasSummary, BrainCellAnalysis, BrainRegionResult, BrainSlice } from '../shared/types.js'
 import {BrainTransformPanel} from './brain-transform-panel.js'
-import { useWorkbenchSelection } from './workbench-selection.js'
+import { useViewerSelection } from './viewer-selection.js'
 import { ViewerLanding } from './viewer-landing.js'
 import viewerStyles from './read-only-image-viewers.module.css'
 
@@ -44,7 +44,7 @@ export function BrainViewer({ remote, sessionId, viewOnly = false, active = true
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
   const generation = useRef(0)
-  const selection = useWorkbenchSelection()
+  const selection = useViewerSelection()
 
   const call = async (action: BrainAction, input: Record<string, unknown> = {}): Promise<BrainAtlasResponse> => {
     const result = unwrapRemoteResult('scienceViewer', await remote.scienceViewer({
@@ -88,7 +88,7 @@ export function BrainViewer({ remote, sessionId, viewOnly = false, active = true
   }
 
   // Of the three asset slots this viewer exposes, registrationAsset is the one that
-  // binds an asset to the workbench flow: brainreg stacks are the same file: URIs
+  // Binds registered BrainGlobe assets to the active viewer request.
   // registered under a study that show up in the sidebar, while cellfinder signal and
   // background volumes are chosen ad hoc inside the panel. Auto-filling those two from
   // a sidebar pick would silently point cell detection at an unrelated file.

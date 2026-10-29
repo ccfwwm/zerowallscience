@@ -41,13 +41,28 @@ async function fixture() {
 }
 function value(result: any): any { expect(result.isError, JSON.stringify(result.content)).toBe(false); return result.value }
 
-it('keeps scientific services and tools available in a headless Host without webServer', async () => {
-  const { ctx, call } = await fixture()
+it('keeps scientific services and conversation viewer routing available in a headless Host', async () => {
+  const { ctx, call, asset } = await fixture()
   expect(ctx.get('webServer')).toBeUndefined()
   expect(Research.inject).toEqual(['tools'])
   expect(ctx.zerowallResearch).toBeDefined()
-  expect(ctx.tools.get('science_workbench')).toBeDefined()
+  expect((ctx.zerowallResearch as any).scienceWorkbench).toBeUndefined()
+  expect((ctx.zerowallResearch as any).scienceWorkbenchEvents).toBeUndefined()
+  expect((ctx.zerowallResearch as any).scienceViewerRoute).toBeTypeOf('function')
+  expect(ctx.tools.get('science_viewer_panel')).toBeDefined()
   expect(ctx.tools.get('science_viewer')).toBeDefined()
+  expect((await call('science_viewer_panel', { action: 'analyze', tool: 'imagej', request_id: 'legacy-analysis' })).isError).toBe(true)
+  const opened = value(await call('science_viewer_panel', { action: 'open', tool: 'imagej', asset_id: asset.id, request_id: 'viewer-open-1' }))
+  expect(opened).toMatchObject({ status: 'accepted', action: 'open', tool: 'imagej' })
+  const repeated = value(await call('science_viewer_panel', { action: 'open', tool: 'imagej', asset_id: asset.id, request_id: 'viewer-open-1' }))
+  expect(repeated).toMatchObject({ status: 'accepted', idempotent: true, action: 'open', tool: 'imagej' })
+  expect((await call('science_viewer_panel', { action: 'open', tool: 'imagej', asset_id: 'other-asset', request_id: 'viewer-open-1' })).isError).toBe(true)
+  await expect((ctx.zerowallResearch as any).scienceViewerRoute({ action: 'analyze', sessionId: 'a', requestId: 'viewer-analysis-1', tool: 'imagej' })).rejects.toThrow(/Only viewer open\/focus/u)
+  await expect((ctx.zerowallResearch as any).scienceViewerRoute({ action: 'open', sessionId: 'a', requestId: 'viewer-invalid-tool', tool: 'not-a-viewer' })).rejects.toThrow(/supported scientific viewer/u)
+  await expect((ctx.zerowallResearch as any).scienceViewerRoute({ action: 'open', sessionId: 'a', requestId: 'viewer-foreign-asset', tool: 'imagej', assetId: 'foreign-asset' })).rejects.toThrow(/does not belong to the active conversation/u)
+  await expect((ctx.zerowallResearch as any).scienceViewerRoute({ action: 'open', sessionId: 'a', requestId: 'viewer-foreign-view', tool: 'imagej', viewerId: 'foreign-viewer' })).rejects.toThrow(/does not belong to the active conversation/u)
+  await expect((ctx.zerowallResearch as any).scienceViewerRoute({ action: 'open', sessionId: 'a', requestId: 'viewer-foreign-run', tool: 'imagej', runId: 'foreign-run' })).rejects.toThrow(/does not belong to the active conversation/u)
+  await expect((ctx.zerowallResearch as any).scienceViewerRoute({ action: 'open', sessionId: 'b', projectId: 'foreign-project', requestId: 'foreign-viewer-1', tool: 'imagej' })).rejects.toThrow(/active conversation research context/u)
   expect(value(await call('science_viewer', { action: 'native_status' }))).toEqual({ launches: [] })
 })
 
@@ -98,18 +113,27 @@ it('keeps a user objective bound across tool summaries, nested Gates, Runners an
   const first = value(await call('research_study', { action: 'get', target: summary })).study
   expect(store.getResearchDocument(first.currentQuestionId)?.payload.text).toBe(messages[0])
 
-  // Contract creation triggers an internal automatic Gate check. It must not
-  // switch Studies when that nested call omits the model's summary target.
+  // Contract creation must not run a Gate or switch Studies when the model
+  // invokes a nested operation without the objective summary.
   const contract = value(await call('research_study', { action: 'create_document', kind: 'dataset-contract', target: summary, payload: { sourceStatus: 'unknown', variables: [] } })).document
   expect(contract.studyId).toBe(first.id)
   const gate = value(await call('research_study', { action: 'auto_gate1', target: summary }))
-  expect(gate).toMatchObject({ status: 'blocked', study: { id: first.id } })
-  for (const action of ['run_nhanes_survey', 'run_genetic_analysis']) {
-    const result = value(await call('research_study', { action, target: summary, request_id: action }))
-    expect(result).toMatchObject({ status: 'blocked', stage: 'gate1', studyId: first.id })
+  expect(gate).toMatchObject({ status: 'proceedable', proceedable: true, readOnly: true, study: { id: first.id } })
+  expect(gate.warnings.length).toBeGreaterThan(0)
+  const plan = store.createResearchDocument({ projectId: project.id, studyId: first.id, kind: 'analysis-plan', payload: { method: 'validation fixture', inputs: [], stoppingConditions: ['fixture'], exploratory: false } })
+  const task = store.createResearchTask({ projectId: project.id, studyId: first.id, name: 'Validation fixture', kind: 'runner' })
+  const nhanes = vi.spyOn((ctx.zerowallResearch as any).nhanes, 'execute').mockResolvedValue({ status: 'runner-reached' })
+  const genetics = vi.spyOn((ctx.zerowallResearch as any).genetics, 'execute').mockResolvedValue({ status: 'runner-reached' })
+  for (const [action, runner] of [['run_nhanes_survey', nhanes], ['run_genetic_analysis', genetics]] as const) {
+    const result = value(await call('research_study', { action, target: summary, request_id: action, plan_id: plan.id, contract_id: contract.id, task_id: task.id, expected_revision: plan.version }))
+    expect(result).toEqual({ status: 'runner-reached' })
+    expect(runner).toHaveBeenCalledOnce()
   }
-  const report = value(await call('research_study', { action: 'generate_report', target: summary }))
+  const report = value(await call('research_study', { action: 'generate_report', target: summary, report_mode: 'final' }))
+  expect(report).toMatchObject({ mode: 'final', status: 'succeeded' })
   const manifest = JSON.parse(await readFile(fileURLToPath(report.manifest.uri), 'utf8'))
+  expect(manifest.verificationStatus).toBe('not-certified-by-report-generation')
+  expect(manifest.warnings).toEqual(expect.arrayContaining([expect.stringContaining('Gate 1'), expect.stringContaining('Gate 2')]))
   expect(manifest.studyId).toBe(first.id)
   expect(ctx.zerowallResearch.getActiveResearchStudy({ sessionId: 'a' })?.id).toBe(first.id)
   expect(store.listResearchStudies(project.id)).toHaveLength(1)
@@ -319,7 +343,7 @@ it('exposes the genetic contract gate and keeps it project-scoped', async () => 
   expect((await call('research_study', { action: 'validate_genetic_contract', study_id: study.id, project_id: foreign.id, contract })).isError).toBe(true)
 })
 
-it('generates a traceable draft and returns a recoverable draft when final gates are blocked', async () => {
+it('generates a traceable draft and a formal report while preserving review warnings', async () => {
   const { ctx, store, project, call } = await fixture()
   const study = store.createResearchStudy({ projectId: project.id, title: '肥胖—脱发报告链路', phase: 'evidence' })
   await ctx.zerowallResearch.setActiveResearchStudy({ sessionId: 'a', studyId: study.id })
@@ -330,10 +354,10 @@ it('generates a traceable draft and returns a recoverable draft when final gates
   expect(draft.report.uri).toMatch(/^file:/)
   expect(await readFile(fileURLToPath(draft.report.uri), 'utf8')).toContain('Introduction')
   expect(JSON.parse(await readFile(fileURLToPath(draft.manifest.uri), 'utf8'))).toMatchObject({ format: 'zerowall-science-imrad-report', needsReview: true })
-  const blocked = value(await call('research_study', { action: 'generate_report', study_id: study.id, report_mode: 'final' }))
-  expect(blocked).toMatchObject({ mode: 'draft', requestedMode: 'final', status: 'blocked', stage: 'gate1', label: '草稿报告；系统校验未通过' })
-  expect(blocked.blockers.length).toBeGreaterThan(0)
-  expect(blocked.recovery).toContain('自动重新校验')
+  const final = value(await call('research_study', { action: 'generate_report', study_id: study.id, report_mode: 'final' }))
+  expect(final).toMatchObject({ mode: 'final', status: 'succeeded', blockers: [] })
+  expect(final.warnings.length).toBeGreaterThan(0)
+  expect(await readFile(fileURLToPath(final.report.uri), 'utf8')).toContain('科学核验状态：含未核验项目')
 })
 
 it('runs the managed Allen 25 um BrainGlobe atlas through the science viewer when configured', async () => {
@@ -432,7 +456,7 @@ it('runs scratch, colony and tube image protocols through the Host artifact path
   expect(colony.artifacts?.map(item => item.name)).toContain('overlay.png')
 }, 60000)
 
-it('verifies actual source columns automatically and rechecks frozen inputs before a confirmatory Runner', async () => {
+it('keeps legacy Gate 1/2 actions read-only and does not freeze or alter the study', async () => {
   const { ctx, store, project } = await fixture()
   const study = store.createResearchStudy({ projectId: project.id, title: 'Automatically verified local source' })
   await ctx.zerowallResearch.setActiveResearchStudy({ sessionId: 'a', studyId: study.id })
@@ -445,30 +469,20 @@ it('verifies actual source columns automatically and rechecks frozen inputs befo
   const incomplete = ctx.zerowallResearch.updateResearchStudy({ id: study.id, changes: { expectedVersion: store.getResearchStudy(study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id } })
   expect(incomplete.gate1).toBe('pending')
   expect(store.listStudyFreezes(study.id)).toEqual([])
-  const blocked = ctx.zerowallResearch.autoApproveResearchGate1({ sessionId: 'a', studyId: study.id })
-  expect(blocked).toMatchObject({ status: 'blocked', blockers: expect.arrayContaining([expect.objectContaining({ code: 'CONTRACT_PROVENANCE_UNVERIFIED' })]) })
-
-  await writeFile(path, 'x,y\n1,2\n')
-  const approved = ctx.zerowallResearch.autoApproveResearchGate1({ sessionId: 'a', studyId: study.id })
-  expect(approved).toMatchObject({ status: 'approved', study: { gate1: 'approved' } })
-  const freezes = store.listStudyFreezes(study.id)
-  expect(freezes).toHaveLength(1)
-  expect(freezes[0]!.snapshot.sourceVerifications).toEqual([expect.objectContaining({ contractId: contract.id, assetId: asset.id, header: ['x', 'y'], sourceSha256: expect.stringMatching(/^[a-f0-9]{64}$/u) })])
-
-  const task = store.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Confirmatory analysis', kind: 'nhanes', exploratory: false })
-  const execute = vi.spyOn((ctx.zerowallResearch as any).nhanes, 'execute')
-  await writeFile(path, 'x,y\n9,8\n')
-  const retried = await ctx.zerowallResearch.runNhanesSurveyRemote({ sessionId: 'a', studyId: study.id, contractId: contract.id, planId: plan.id, expectedPlanVersion: plan.version, taskId: task.id, requestId: 'changed-source' })
-  expect(retried).toMatchObject({ status: 'blocked', stage: 'gate1', blockers: expect.arrayContaining([expect.objectContaining({ code: 'CONTRACT_PROVENANCE_UNVERIFIED' })]) })
-  expect(execute).not.toHaveBeenCalled()
-  expect(store.listStudyFreezes(study.id)).toHaveLength(1)
-  expect(store.listRuns(project.id)).toEqual([])
+  const before = store.getResearchStudy(study.id)
+  const gate1 = ctx.zerowallResearch.autoApproveResearchGate1({ sessionId: 'a', studyId: study.id })
+  const gate2 = ctx.zerowallResearch.autoApproveResearchGate2({ sessionId: 'a', studyId: study.id })
+  expect(gate1).toMatchObject({ status: 'proceedable', proceedable: true, readOnly: true, study: { gate1: 'pending' } })
+  expect(gate1.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'CONTRACT_PROVENANCE_UNVERIFIED' })]))
+  expect(gate2).toMatchObject({ status: 'proceedable', proceedable: true, readOnly: true, study: { gate2: 'pending' } })
+  expect(store.getResearchStudy(study.id)).toEqual(before)
+  expect(store.listStudyFreezes(study.id)).toEqual([])
 })
 
 it.each([
   { runner: 'nhanes', remote: 'runNhanesSurveyRemote', payload: { nhanesSurvey: { kind: 'summary', variable: 'x' } } },
   { runner: 'genetics', remote: 'runGeneticAnalysisRemote', payload: { genetics: { analysis: 'mr', methods: ['ivw'] } } },
-])('keeps formal $runner inputs blocked when only an unrelated local CSV can be verified', async ({ runner, remote, payload }) => {
+])('lets formal $runner requests reach their strict Runner without a Gate 1 check', async ({ runner, remote, payload }) => {
   const { ctx, store, project } = await fixture()
   const study = store.createResearchStudy({ projectId: project.id, title: `Remote ${runner} source` })
   await ctx.zerowallResearch.setActiveResearchStudy({ sessionId: 'a', studyId: study.id })
@@ -480,19 +494,17 @@ it.each([
   ctx.zerowallResearch.updateResearchStudy({ id: study.id, changes: { expectedVersion: store.getResearchStudy(study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id } })
   const task = store.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Remote analysis', kind: runner, exploratory: false })
   const service = ctx.zerowallResearch as any
-  const execute = vi.spyOn(service[runner], 'execute')
+  const execute = vi.spyOn(service[runner], 'execute').mockResolvedValue({ status: 'runner-reached' } as any)
   const result = await service[remote]({ sessionId: 'a', studyId: study.id, contractId: contract.id, planId: plan.id, expectedPlanVersion: plan.version, taskId: task.id, requestId: `remote-${runner}` })
-  expect(result).toMatchObject({ status: 'blocked', stage: 'gate1', blockers: expect.arrayContaining([expect.objectContaining({ code: 'CONTRACT_VERIFIER_UNAVAILABLE' })]) })
-  expect(execute).not.toHaveBeenCalled()
+  expect(result).toEqual({ status: 'runner-reached' })
+  expect(execute).toHaveBeenCalledOnce()
   expect(store.getResearchStudy(study.id)!.gate1).toBe('pending')
   expect(store.listStudyFreezes(study.id)).toEqual([])
-  expect(store.listRuns(project.id)).toEqual([])
 
-  // The Host still delegates exploratory requests to the strict Runner's own
-  // contract validation; unavailable formal verification is not a blanket stop.
+  // The Host delegates exploratory requests through the same strict Runner.
   const exploratory = store.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Exploratory preparation', kind: runner, exploratory: true })
   execute.mockResolvedValueOnce({ status: 'blocked', stage: 'runner-contract' })
   const preparation = await service[remote]({ sessionId: 'a', studyId: study.id, contractId: contract.id, planId: plan.id, expectedPlanVersion: plan.version, taskId: exploratory.id, requestId: `exploratory-${runner}` })
-  expect(execute).toHaveBeenCalledOnce()
+  expect(execute).toHaveBeenCalledTimes(2)
   expect(preparation).toEqual({ status: 'blocked', stage: 'runner-contract' })
 })

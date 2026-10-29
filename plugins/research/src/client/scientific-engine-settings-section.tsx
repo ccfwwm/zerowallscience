@@ -8,7 +8,7 @@ import styles from './scientific-engine-settings-section.module.css'
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 type Props = PropsRuntime<'settings.section'> & PropsLocale<typeof NS> & { remote: Remote }
 
-/** Global Settings entry for the same Host-backed engine configuration used by the workbench. */
+/** Global Settings entry for the Host-backed scientific engine configuration. */
 export function ScientificEngineSettingsSection({ remote, useSessions, t }: Props): JSX.Element {
   const sessionId = useSessions(state => state.current) ?? ''
   return <section className={styles.root}>

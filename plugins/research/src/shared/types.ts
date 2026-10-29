@@ -3,7 +3,7 @@ import type { BrainTransformRequest } from './brain-transform.js'
 export interface ImageCoordinates { convention: 'pixel-edge-top-left'; width: number; height: number; pages: number; calibration: { x: number; y: number; unit: 'um' | 'mm'; source: string } | null }
 export type ImageRoi = { id: string; name: string; page: number } & ({ kind: 'rectangle'; x: number; y: number; width: number; height: number } | { kind: 'polygon'; points: Array<[number, number]> } | { kind: 'point'; x: number; y: number })
 export interface ImageAnnotations { coordinates: ImageCoordinates; rois: ImageRoi[] }
-export interface AnnotationRevisionRecord { id: string; projectId: string; assetId: string; sourceSha256: string; revision: number; baseRevisionId: string | null; status: 'accepted' | 'conflict'; origin: 'workbench' | 'fiji' | 'napari'; payload: ImageAnnotations; createdAt: string }
+export interface AnnotationRevisionRecord { id: string; projectId: string; assetId: string; sourceSha256: string; revision: number; baseRevisionId: string | null; status: 'accepted' | 'conflict'; origin: 'viewer' | 'workbench' | 'fiji' | 'napari'; payload: ImageAnnotations; createdAt: string }
 export interface AnnotationSaveResult { revision: AnnotationRevisionRecord; head: AnnotationRevisionRecord; conflict: boolean }
 import type { WesternBlotPlan, WesternBlotResult } from './western-blot.js'
 import type { FijiExperimentId, FijiExperimentResult, FijiImageConfig } from './fiji-experiments.js'
@@ -97,7 +97,7 @@ export interface FijiWorkflowResponse { run?: ResearchRunRecord; runs?: Research
 export interface FijiExperimentRequest { sessionId: string; action: 'list' | 'analyze' | 'status' | 'cancel'; runId?: string; experiment?: FijiExperimentId; requestId?: string; measurements?: ResearchJsonObject[]; sourceAssetId?: string; image?: FijiImageConfig }
 export interface FijiExperimentResponse { run?: ResearchRunRecord; artifacts?: ResearchArtifactRecord[]; result?: FijiExperimentResult; runs?: ResearchRunRecord[]; annotations?: AnnotationRevisionRecord[]; experiments?: FijiExperimentId[] }
 export interface ScientificPreviewPayload { uri: string; mediaType: string; byteSize: number; base64: string }
-/** Scientific executable/environment identifiers supported by the workbench. */
+/** Scientific executable/environment identifiers supported by Research. */
 export type ScientificEngineId = 'fiji' | 'napari' | 'brain-globe' | 'he-python' | 'he-stardist' | 'remote-r'
 export type ScientificEngineSource = 'project' | 'user' | 'environment' | 'discovered' | 'default'
 export type ScientificEngineHealth = 'unknown' | 'available' | 'invalid' | 'degraded'
@@ -244,15 +244,12 @@ export type { SequenceSimulationOptions, SequenceSimulationResult } from './sequ
 
 export type { BrainTransformRequest } from './brain-transform.js'
 
-// Public protocol types used by the conversation/workbench remotes.  Keep
+// Public protocol types used by conversation and viewer remotes. Keep
 // these on the package's existing `./types` subpath so Typert can expose the
 // remote boundary without depending on a private source path.
 export type {
   ScienceToolId,
-  ScienceTab,
-  ScienceWorkbenchEventType,
-  ScienceWorkbenchEvent,
-  ScienceWorkbenchAction,
-  ScienceWorkbenchRequest,
-  ScienceWorkbenchEventsResponse,
-} from './workbench.js'
+  ResearchConversationEventType,
+  ResearchConversationEvent,
+  ResearchConversationEventsResponse,
+} from './conversation.js'

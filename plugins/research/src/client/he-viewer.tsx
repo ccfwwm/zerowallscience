@@ -5,11 +5,11 @@ import { unwrapRemoteResult } from '../../../base/src/shared/client-helpers.ts'
 import type { HeAnalysis, HeRegion, HeSlideMetadata, HeTile } from '../shared/he.js'
 import type { HeSegmentationResult } from '../shared/he-segmentation.js'
 import type { HeResponse, ScienceViewerRequest } from '../shared/types.js'
-import { useWorkbenchSelection } from './workbench-selection.js'
+import { useViewerSelection } from './viewer-selection.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
 export function HeViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
-  const selection = useWorkbenchSelection()
+  const selection = useViewerSelection()
   const [assets,setAssets] = useState<DataAssetRecord[]>([])
   const [viewers,setViewers] = useState<ViewerSessionRecord[]>([])
   const [assetId,setAssetId] = useState('')
@@ -115,7 +115,7 @@ export function HeViewer({ remote, sessionId }: { remote: Remote; sessionId: str
   }
   return <section aria-label="HE 组织切片查看与分析" style={{ border:'1px solid var(--dsw-alias-border-l1)',borderRadius:8,padding:14 }}>
     <h3>HE 组织切片查看与分析</h3>
-    <p>OpenSlide 按金字塔层级读取局部瓦片。拖动图像框选 ROI，坐标始终对应原始第 0 层；RGB 连通域统计是筛查基线；StarDist 独立任务按带上下文的块执行核分割，并保存标签、轮廓和核计数。本工作台用于科研，不提供临床诊断。</p>
+    <p>OpenSlide 按金字塔层级读取局部瓦片。拖动图像框选 ROI，坐标始终对应原始第 0 层；RGB 连通域统计是筛查基线；StarDist 独立任务按带上下文的块执行核分割，并保存标签、轮廓和核计数。本查看器用于科研，不提供临床诊断。</p>
     <fieldset disabled={busy} style={{ border:0,padding:0 }}>
       <label>切片资产 <select aria-label="HE 资产" value={assetId} onChange={event => setAssetId(event.target.value)}>
         <option value="">选择 SVS/NDPI/TIFF</option>{assets.filter(asset => /\.(svs|ndpi|tif|tiff)$/iu.test(asset.uri)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}

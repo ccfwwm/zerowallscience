@@ -16,6 +16,7 @@ export interface ReportResponse {
   manifest: { uri: string; checksum: string; artifactId: string }
   needsReview: boolean
   blockers: string[]
+  warnings: string[]
   documentIds: string[]
 }
 
@@ -50,7 +51,7 @@ function section(title: string, rows: string[]): string {
   return `## ${title}\n\n${rows.length ? rows.map(row => `- ${row}`).join('\n') : '- 未记录'}\n`
 }
 
-function renderMarkdown(snapshot: ResearchStudySnapshot, mode: ReportMode, generatedAt: string, blockers: string[]): string {
+function renderMarkdown(snapshot: ResearchStudySnapshot, mode: ReportMode, generatedAt: string, warnings: string[]): string {
   const { study, documents, freezes, tasks = [] } = snapshot
   const by = (kind: ResearchDocumentRecord['kind']) => documents.filter(document => document.kind === kind)
   const question = by('question')
@@ -85,7 +86,7 @@ function renderMarkdown(snapshot: ResearchStudySnapshot, mode: ReportMode, gener
     section('Results', [
       ...observations.map(document => `观察 [${document.id}]：${payloadText(document)}`),
       ...evidence.map(document => `证据 [${document.id}]：${payloadText(document)}；引用：${references(document.payload).join(', ') || '未登记'}`),
-      ...claims.map(document => `主张 [${document.id}]：${payloadText(document)}；审计：${text(document.payload.auditStatus, '未审计')}`),
+      ...claims.map(document => `主张 [${document.id}]：${payloadText(document)}；核验状态：${document.payload.auditStatus === 'passed' && document.payload.needsReview === false ? '已通过记录的确定性核验' : '未核验'}（审计字段：${text(document.payload.auditStatus, '未审计')}）`),
     ]).trimEnd(),
     section('Discussion', limitations),
     section('Reproducibility and traceability', [
@@ -94,9 +95,10 @@ function renderMarkdown(snapshot: ResearchStudySnapshot, mode: ReportMode, gener
     ]).trimEnd(),
     '## Review status',
     '',
-    `交付模式：${mode}；${blockers.length ? `当前阻断：${blockers.join('；')}` : '没有待处理的门禁阻断。'}`,
+    `交付模式：${mode}；科学核验状态：${warnings.length ? '含未核验项目' : '未由报告生成流程认证'}。`,
+    ...(warnings.length ? [`提示：${warnings.join('；')}`] : []),
     '',
-    '本文件是可追踪的研究报告草稿/交付物，不把计算成功自动升级为科学结论；主张仍需按证据范围和人工审阅状态解释。',
+    '报告生成不会批准 Gate、替代来源核验或把计算成功升级为科学结论；主张仍需按证据范围和审阅状态解释。',
     '',
   ]
   return lines.join('\n')
@@ -112,19 +114,13 @@ export class ReportService {
     const runtimeProvenance = this.store.listResearchRuntimeEvents(studyId)
     const evidence = snapshot.documents.filter(document => document.kind === 'evidence')
     const claims = snapshot.documents.filter(document => document.kind === 'claim')
-    const blockers: string[] = []
-    // Drafts display the same outstanding scientific gates as final exports.
-    // The export mode controls whether blockers stop writing, not their truth.
-    if (study.gate1 !== 'approved') blockers.push('Gate 1 尚未批准')
-    if (!study.currentFreezeId) blockers.push('研究方案尚未冻结')
-    if (study.gate2 !== 'approved') blockers.push('Gate 2 尚未批准')
-    if (claims.length === 0) blockers.push('没有主张记录')
-    const unaudited = claims.filter(document => document.payload.auditStatus !== 'passed')
-    if (unaudited.length) blockers.push(`${unaudited.length} 条主张尚未通过证据审计`)
-    if (evidence.some(document => document.payload.needsReview === true)) blockers.push('存在待人工复核证据')
-    // A final request remains useful when a non-gate report check blocks it:
-    // preserve the user's work and return a visibly marked draft with reasons.
-    const outputMode: ReportMode = mode === 'final' && blockers.length ? 'draft' : mode
+    const warnings: string[] = []
+    if (study.gate1 !== 'approved') warnings.push('Gate 1 状态未批准；此状态不阻止报告生成')
+    if (study.gate2 !== 'approved') warnings.push('Gate 2 状态未批准；此状态不阻止报告生成')
+    if (claims.length === 0) warnings.push('没有登记研究主张')
+    const unaudited = claims.filter(document => document.payload.auditStatus !== 'passed' || document.payload.needsReview !== false)
+    if (unaudited.length) warnings.push(`${unaudited.length} 条主张尚未完成证据核验`)
+    if (evidence.some(document => document.payload.needsReview === true)) warnings.push('存在待人工复核证据')
 
     const root = await realpath(project.rootPath)
     const exportRoot = join(root, '.zerowall', 'science-exports')
@@ -134,25 +130,27 @@ export class ReportService {
     await mkdir(directoryRaw, { recursive: true })
     const directory = await containedFile(root, directoryRaw)
     const generatedAt = new Date().toISOString()
-    const markdown = renderMarkdown(snapshot, outputMode, generatedAt, blockers)
+    const markdown = renderMarkdown(snapshot, mode, generatedAt, warnings)
     const manifestValue: JsonObject = {
-      format: 'zerowall-science-imrad-report', version: 2, runner: RUNNER, mode: outputMode, ...(mode !== outputMode ? { requestedMode: mode } : {}), generatedAt,
+      format: 'zerowall-science-imrad-report', version: 3, runner: RUNNER, mode, generatedAt,
       studyId, studyVersion: study.version, gate1: study.gate1, gate2: study.gate2,
       documentIds: snapshot.documents.map(document => document.id),
       evidenceIds: evidence.map(document => document.id), claimIds: claims.map(document => document.id),
       taskIds: (snapshot.tasks ?? []).map(task => task.id), freezes: snapshot.freezes.map(freeze => freeze.id),
       runtimeProvenance: JSON.parse(JSON.stringify(runtimeProvenance)),
       provenanceScope: 'Observed provider-neutral requests only; absent history, provider wire transforms and unlinked subagents are not inferred.',
-      blockers, needsReview: outputMode !== 'final' || blockers.length > 0,
+      blockers: [], warnings, verificationStatus: 'not-certified-by-report-generation',
+      needsReview: mode !== 'final' || warnings.length > 0,
     }
     const reportPath = join(directory, 'imrad-report.md')
     const manifestPath = join(directory, 'manifest.json')
     const manifest = `${JSON.stringify(manifestValue, null, 2)}\n`
     try {
       await writeFile(reportPath, markdown, { flag: 'wx' }); await writeFile(manifestPath, manifest, { flag: 'wx' })
-      const report = this.store.createArtifact({ projectId: project.id, name: `IMRAD 报告：${study.title}`, uri: pathToFileURL(reportPath).href, mediaType: 'text/markdown', checksum: createHash('sha256').update(markdown).digest('hex'), metadata: { runner: RUNNER, studyId, studyVersion: study.version, mode: outputMode, manifestUri: pathToFileURL(manifestPath).href, needsReview: outputMode !== 'final' } })
-      const manifestArtifact = this.store.createArtifact({ projectId: project.id, name: `IMRAD 报告清单：${study.title}`, uri: pathToFileURL(manifestPath).href, mediaType: 'application/json', checksum: createHash('sha256').update(manifest).digest('hex'), metadata: { runner: RUNNER, studyId, reportArtifactId: report.id, mode: outputMode, needsReview: outputMode !== 'final' } })
-      return { mode: outputMode, ...(mode !== outputMode ? { requestedMode: mode } : {}), report: { uri: report.uri, checksum: report.checksum ?? '', artifactId: report.id }, manifest: { uri: manifestArtifact.uri, checksum: manifestArtifact.checksum ?? '', artifactId: manifestArtifact.id }, needsReview: outputMode !== 'final' || blockers.length > 0, blockers, documentIds: snapshot.documents.map(document => document.id) }
+      const needsReview = mode !== 'final' || warnings.length > 0
+      const report = this.store.createArtifact({ projectId: project.id, name: `IMRAD 报告：${study.title}`, uri: pathToFileURL(reportPath).href, mediaType: 'text/markdown', checksum: createHash('sha256').update(markdown).digest('hex'), metadata: { runner: RUNNER, studyId, studyVersion: study.version, mode, manifestUri: pathToFileURL(manifestPath).href, needsReview } })
+      const manifestArtifact = this.store.createArtifact({ projectId: project.id, name: `IMRAD 报告清单：${study.title}`, uri: pathToFileURL(manifestPath).href, mediaType: 'application/json', checksum: createHash('sha256').update(manifest).digest('hex'), metadata: { runner: RUNNER, studyId, reportArtifactId: report.id, mode, needsReview } })
+      return { mode, report: { uri: report.uri, checksum: report.checksum ?? '', artifactId: report.id }, manifest: { uri: manifestArtifact.uri, checksum: manifestArtifact.checksum ?? '', artifactId: manifestArtifact.id }, needsReview, blockers: [], warnings, documentIds: snapshot.documents.map(document => document.id) }
     } catch (error) {
       await rm(directory, { recursive: true, force: true }); throw error
     }

@@ -7,9 +7,9 @@ description: 在 ZeroWall 查看 SCF/AB1 峰图，并通过 Host 执行质量裁
 
 ## 7.0.5 查看入口
 
-选择 SCF/AB1 后导入项目，文件导入上限 128 MiB。`sanger_open` 打开峰图，默认页面只提供样本窗口、缩放和翻页；未选择资产提示“请先选择资产”，解析失败提示“打开失败”。裁剪、双向核对、人工修订和导出通过本 skill 使用 `science_workbench(tool=sanger, skill_id=zerowall-sanger, action_id=sanger_analyze, viewer_id=..., request_id=...)` 等真实 action。检查源哈希、双向来源、修订版本及产物 SHA-256；默认查看器不显示这些分析表单。
+选择 SCF/AB1 后导入项目，文件导入上限 128 MiB。对话请求查看时由 `science_viewer_panel(action="open", tool="sanger", asset_id=..., request_id=...)` 打开峰图，默认页面只提供样本窗口、缩放和翻页；未选择资产提示“请先选择资产”，解析失败提示“打开失败”。裁剪、双向核对、人工修订和导出直接在对话中调用 `science_viewer` 的 `sanger_analyze`、`sanger_review`、`sanger_revise`、`sanger_export` 等真实 action，并遵循当前 Host schema。检查源哈希、双向来源、修订版本及产物 SHA-256；需要查看结果时再按需打开或聚焦查看器。
 
-Use the persisted ZeroWall research objects and the current Host/Runner schemas. Keep source, version, unit, applicability, and access state explicit; unknown values remain unknown. Register inputs and parameters before execution, use deterministic runners for numeric outputs, and retain manifests, logs, failures, conflicts, and limitations. Do not claim a professional workflow is available unless the executable adapter and validation artifact are present. A frozen question, plan, or candidate set is immutable: propose an amendment and new version. Escalate only the two research gates: freeze the primary question and validation plan, then approve the final claims.
+Use the current Host/Runner schemas and preserve source, version, unit, applicability, manifests, logs, failures, conflicts, and limitations. Gate 1/2 are non-blocking diagnostics: continue the requested run and report warnings. Record the actual plan/input version and hashes for each run; mark unreviewed claims as unverified in reports.
 
 
 ## Domain constraints

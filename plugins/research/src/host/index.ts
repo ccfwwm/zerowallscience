@@ -72,9 +72,9 @@ import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runti
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ScientificPreviewPayload, ScientificEngineConfig, ScientificEngineId, ScientificEngineLaunchResult, ScientificEngineStatus, ScienceViewerRequest, ScienceViewerResponse, CellViewerRequest, BrainAtlasRequest } from '../shared/types.js'
-import type { ScienceWorkbenchRequest, ScienceWorkbenchEventsResponse, ScienceWorkbenchEvent, ScienceToolId } from '../shared/types.js'
-import { ScienceWorkbenchEventStore } from './workbench-events.js'
-import { scienceViewerAction, scienceSkillForTool, scienceToolForAction, workbenchContext, workbenchTabTitle } from './workbench-router.js'
+import type { ScienceToolId } from '../shared/types.js'
+import { ResearchConversationEventStore } from './conversation-events.js'
+import { scienceToolForAction, conversationContext, scienceViewerTitle } from './conversation-router.js'
 
 export type { ScientificPreviewPayload } from '../shared/types.js'
 export const inject = ['tools'] as const
@@ -105,7 +105,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
   private readonly brain: BrainAtlasService
   private readonly nhanes: NhanesSurveyService
   private readonly genetics: GeneticAnalysisService
-  private readonly workbenchEventStore: ScienceWorkbenchEventStore
+  private readonly conversationEventStore: ResearchConversationEventStore
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallResearch')
@@ -113,7 +113,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (!path) throw new Error('ZEROWALL_RESEARCH_DB is required.')
     this.defaultProjectRoot = resolve(dirname(path), 'workspace')
     this.store = new ResearchStore(path)
-    this.workbenchEventStore = new ScienceWorkbenchEventStore(this.store)
+    this.conversationEventStore = new ResearchConversationEventStore(this.store)
     this.viewer = new ScienceViewerService(this.store)
     this.nativeEngines = new NativeEngineService(this.store)
     this.imageViewer = new ImageViewerService(this.store, this.nativeEngines)
@@ -203,30 +203,30 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
     const tool: ScienceToolId = 'imagej'
-    this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: input.action === 'submit' ? 'run.accepted' : 'tab.focus', tool, ...(input.runId ? { runId: input.runId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), payload: { operation: input.action, requestId: input.requestId ?? null } })
+    this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: input.action === 'submit' ? 'run.accepted' : 'viewer.focus', tool, ...(input.runId ? { runId: input.runId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), payload: { operation: input.action, requestId: input.requestId ?? null } })
     try {
       const result = await this.fijiWorkflows.execute(project,input)
       const run = result.run
-      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: run?.status === 'failed' ? 'run.failed' : run?.status === 'succeeded' ? 'run.completed' : 'run.progress', tool, ...(run?.id ? { runId: run.id } : {}), payload: { operation: input.action, status: run?.status ?? null, artifactCount: result.artifacts?.length ?? 0 } })
-      for (const artifact of result.artifacts ?? []) this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'artifact.created', tool, ...(run?.id ? { runId: run.id } : {}), artifactId: artifact.id, payload: { operation: input.action, name: artifact.name } })
+      this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: run?.status === 'failed' ? 'run.failed' : run?.status === 'succeeded' ? 'run.completed' : 'run.progress', tool, ...(run?.id ? { runId: run.id } : {}), payload: { operation: input.action, status: run?.status ?? null, artifactCount: result.artifacts?.length ?? 0 } })
+      for (const artifact of result.artifacts ?? []) this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'artifact.created', tool, ...(run?.id ? { runId: run.id } : {}), artifactId: artifact.id, payload: { operation: input.action, name: artifact.name } })
       return result
     } catch (error) {
-      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'run.failed', tool, ...(input.runId ? { runId: input.runId } : {}), payload: { operation: input.action, error: error instanceof Error ? error.message : String(error) } })
+      this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'run.failed', tool, ...(input.runId ? { runId: input.runId } : {}), payload: { operation: input.action, error: error instanceof Error ? error.message : String(error) } })
       throw error
     }
   }
   @Remote('fijiExperiment') async fijiExperiment(input: FijiExperimentRequest): Promise<FijiExperimentResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     if (!project) throw new Error('An active registered project session is required.')
-    this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: input.action === 'analyze' ? 'run.accepted' : 'tab.focus', tool: 'imagej', ...(input.runId ? { runId: input.runId } : {}), ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, requestId: input.requestId ?? null } })
+    this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: input.action === 'analyze' ? 'run.accepted' : 'viewer.focus', tool: 'imagej', ...(input.runId ? { runId: input.runId } : {}), ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, requestId: input.requestId ?? null } })
     try {
       const result = await this.fijiExperiments.execute(project, input)
       const run = result.run
-      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: run?.status === 'failed' ? 'run.failed' : run?.status === 'succeeded' ? 'run.completed' : 'run.progress', tool: 'imagej', ...(run?.id ? { runId: run.id } : {}), ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, status: run?.status ?? null, artifactCount: result.artifacts?.length ?? 0 } })
-      for (const artifact of result.artifacts ?? []) this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'artifact.created', tool: 'imagej', ...(run?.id ? { runId: run.id } : {}), artifactId: artifact.id, ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, name: artifact.name } })
+      this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: run?.status === 'failed' ? 'run.failed' : run?.status === 'succeeded' ? 'run.completed' : 'run.progress', tool: 'imagej', ...(run?.id ? { runId: run.id } : {}), ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, status: run?.status ?? null, artifactCount: result.artifacts?.length ?? 0 } })
+      for (const artifact of result.artifacts ?? []) this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'artifact.created', tool: 'imagej', ...(run?.id ? { runId: run.id } : {}), artifactId: artifact.id, ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, name: artifact.name } })
       return result
     } catch (error) {
-      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'run.failed', tool: 'imagej', ...(input.runId ? { runId: input.runId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, error: error instanceof Error ? error.message : String(error) } })
+      this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: 'run.failed', tool: 'imagej', ...(input.runId ? { runId: input.runId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, error: error instanceof Error ? error.message : String(error) } })
       throw error
     }
   }
@@ -247,12 +247,12 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (!project) throw new Error('An active registered project session is required.')
     return this.brainTransforms.execute(project, input)
   }
-  /** Direct science_viewer calls are also reflected in the durable workbench event stream. */
+  /** Direct science_viewer calls are recorded with their conversation context. */
   @Remote('scienceViewer') async scienceViewer(input: ScienceViewerRequest): Promise<ScienceViewerResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
     const tool = scienceToolForAction(input.action)
     if (project && input.requestId) {
-      const prior = this.workbenchEventStore.latestRequest(project.id, input.sessionId, input.requestId)
+      const prior = this.conversationEventStore.latestRequest(project.id, input.sessionId, input.requestId)
       if (prior) {
         if (prior.tool && tool && prior.tool !== tool) throw new Error('IDEMPOTENCY_CONFLICT: requestId was already used by another science tool.')
         if (prior.payload.operation !== input.action) throw new Error('IDEMPOTENCY_CONFLICT: requestId was already used with another science operation.')
@@ -260,12 +260,12 @@ export class ZeroWallResearchService extends TypertRemoteService {
         return {} as ScienceViewerResponse
       }
     }
-    const emit = (type: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'], payload: ResearchRemoteJsonObject = {}): void => {
+    const emit = (type: Parameters<ResearchConversationEventStore['append']>[0]['type'], payload: ResearchRemoteJsonObject = {}): void => {
       if (!project || !tool) return
-      this.workbenchEventStore.append({ sessionId: input.sessionId, projectId: project.id, type, tool, ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.runId ? { runId: input.runId } : {}), payload: { operation: input.action, ...(input.requestId ? { requestId: input.requestId } : {}), ...payload } })
+      this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type, tool, ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.runId ? { runId: input.runId } : {}), payload: { operation: input.action, ...(input.requestId ? { requestId: input.requestId } : {}), ...payload } })
     }
     const active = /(?:_analyze|_submit|_segment|_register|_cellfinder|_render|_transform|_revise|_measure|_save|_cancel)$/u.test(input.action)
-    emit(active ? 'run.accepted' : 'tab.focus')
+    emit(active ? 'run.accepted' : 'viewer.focus')
     try {
       const result = await this.scienceViewerImpl(input)
       const resultObject = result as unknown as ResearchRemoteJsonObject
@@ -273,7 +273,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
       const run = resultObject.run && typeof resultObject.run === 'object' && !Array.isArray(resultObject.run) ? resultObject.run as ResearchRemoteJsonObject : nestedRuns[0]
       const runId = typeof run?.id === 'string' ? run.id : input.runId
       const status = typeof run?.status === 'string' ? run.status : undefined
-      const eventType: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'] = status === 'succeeded' ? 'run.completed' : status === 'failed' || status === 'timed_out' ? 'run.failed' : status === 'cancelled' ? 'run.cancelled' : active ? 'run.progress' : 'tab.focus'
+      const eventType: Parameters<ResearchConversationEventStore['append']>[0]['type'] = status === 'succeeded' ? 'run.completed' : status === 'failed' || status === 'timed_out' ? 'run.failed' : status === 'cancelled' ? 'run.cancelled' : active ? 'run.progress' : 'viewer.focus'
       emit(eventType, { ...(runId ? { runId } : {}), status: status ?? null, result: resultObject })
       const artifacts: ResearchRemoteJsonObject[] = []
       if (resultObject.artifact && typeof resultObject.artifact === 'object' && !Array.isArray(resultObject.artifact)) artifacts.push(resultObject.artifact as ResearchRemoteJsonObject)
@@ -391,110 +391,35 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (input.action.startsWith('image_') || input.action.startsWith('annotation_')) return this.imageViewer.execute(project, input)
     return this.viewer.execute(project, input)
   }
-  /** Durable workbench cursor API used by the desktop and conversation bridge. */
-  @Remote('scienceWorkbenchEvents') scienceWorkbenchEvents(input: { sessionId: string; afterSequence?: number; limit?: number }): ScienceWorkbenchEventsResponse {
-    const project = this.projectForSession({ sessionId: input.sessionId })
-    // A tab may poll while its ordinary session is still being registered.
-    // Reading an empty cursor is safe; writes and asset access remain scoped.
-    if (!project) return { protocol: 'science-workbench/1', sessionId: input.sessionId, events: [], lastSequence: Math.max(0, input.afterSequence ?? 0), hasMore: false }
-    return this.workbenchEventStore.read(project.id, input.sessionId, input.afterSequence, input.limit)
-  }
-
-  @Remote('scienceWorkbench') async scienceWorkbench(input: ScienceWorkbenchRequest): Promise<ResearchRemoteJsonObject> {
+  @Remote('scienceViewerRoute') async scienceViewerRoute(input: { action: 'open' | 'focus'; sessionId: string; requestId: string; tool: ScienceToolId; projectId?: string; assetId?: string; viewerId?: string; runId?: string }): Promise<ResearchRemoteJsonObject> {
     const sessionId = String(input.sessionId ?? '').trim()
     const requestId = String(input.requestId ?? '').trim()
     if (!sessionId || requestId === '') throw new Error('sessionId and requestId are required.')
     if (!/^[A-Za-z0-9_.:-]{1,128}$/u.test(requestId)) throw new Error('requestId must contain 1-128 letters, numbers, dots, underscores, colons or hyphens.')
-    if (input.expectedRevision !== undefined && (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 0)) throw new Error('expectedRevision must be a non-negative integer.')
+    if (input.action !== 'open' && input.action !== 'focus') throw new Error('Only viewer open/focus actions are supported by this route.')
+    const supportedTools: readonly ScienceToolId[] = ['imagej', 'he', 'molecule', 'sanger', 'flow', 'canvas', 'cells', 'sequence', 'brainglobe']
+    if (!supportedTools.includes(input.tool)) throw new Error('A supported scientific viewer is required.')
     const project = this.projectForSession({ sessionId })
-    if (!project) throw new Error('An active registered project session is required.')
-    if (input.projectId !== undefined && input.projectId !== project.id) throw new Error('Workbench access is limited to the active project workspace.')
+    if (!project) throw new Error('An active conversation research context is required.')
+    if (input.projectId !== undefined && input.projectId !== project.id) throw new Error('Viewer access is limited to the active conversation research context.')
     const tool = input.tool
-    if (input.action === 'analyze') {
-      if (!tool) throw new Error('tool is required for workbench analyze.')
-      const action = scienceViewerAction(tool, input.operation)
-      if (input.skillId !== scienceSkillForTool[tool] || input.actionId !== action) throw new Error(`Workbench analysis requires skillId=${scienceSkillForTool[tool]} and actionId=${action}.`)
-      if (!input.assetId && !input.viewerId) throw new Error('Workbench analysis requires a registered assetId or viewerId.')
-    }
-    const context = workbenchContext(input)
-    const prior = this.workbenchEventStore.latestRequest(project.id, sessionId, requestId)
+    if (input.assetId && !this.store.listDataAssets(project.id).some(asset => asset.id === input.assetId)) throw new Error('Viewer asset does not belong to the active conversation research context.')
+    const viewer = input.viewerId ? this.store.listViewerSessions(project.id).find(item => item.id === input.viewerId) : undefined
+    if (input.viewerId && !viewer) throw new Error('Viewer session does not belong to the active conversation research context.')
+    if (viewer && input.assetId && viewer.assetId !== input.assetId) throw new Error('Viewer session is bound to a different asset.')
+    if (input.runId && !this.store.listRuns(project.id).some(run => run.id === input.runId)) throw new Error('Run does not belong to the active conversation research context.')
+    const context = conversationContext(input)
+    const prior = this.conversationEventStore.latestRequest(project.id, sessionId, requestId)
     if (prior) {
-      const priorTool = prior.tool
-      const priorOperation = typeof prior.payload.operation === 'string' ? prior.payload.operation : undefined
+      const priorViewerId = prior.viewerId ?? (typeof prior.payload.viewerId === 'string' ? prior.payload.viewerId : undefined)
+      const priorRunId = prior.runId ?? (typeof prior.payload.runId === 'string' ? prior.payload.runId : undefined)
       const priorAction = typeof prior.payload.action === 'string' ? prior.payload.action : undefined
-      if ((tool && priorTool && tool !== priorTool) || (priorAction && priorAction !== input.action) || (input.operation && priorOperation && input.operation !== priorOperation)) throw new Error('IDEMPOTENCY_CONFLICT: requestId was already used with different workbench inputs.')
-      return { status: 'accepted', idempotent: true, action: input.action, tool: priorTool ?? tool, ...(prior.runId ? { runId: prior.runId } : {}), event: prior, ...(prior.payload.result && typeof prior.payload.result === 'object' && !Array.isArray(prior.payload.result) ? { result: prior.payload.result as ResearchRemoteJsonObject } : {}) } as unknown as ResearchRemoteJsonObject
+      if (prior.tool !== tool || priorAction !== input.action || prior.assetId !== input.assetId || priorViewerId !== input.viewerId || priorRunId !== input.runId) throw new Error('IDEMPOTENCY_CONFLICT: requestId was already used with different viewer inputs.')
+      return { status: 'accepted', idempotent: true, action: input.action, tool, event: prior } as unknown as ResearchRemoteJsonObject
     }
-    const emit = (type: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'], payload: ResearchRemoteJsonObject = {}): ScienceWorkbenchEvent => this.workbenchEventStore.append({ sessionId, projectId: project.id, type, ...(tool ? { tool } : {}), ...(input.studyId ? { studyId: input.studyId } : {}), ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.artifactId ? { artifactId: input.artifactId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.runId ? { runId: input.runId } : {}), payload: { ...context, ...payload, action: input.action, requestId } })
-    if (input.action === 'open' || input.action === 'focus') {
-      if (!tool) throw new Error('tool is required for workbench open/focus.')
-      const event = emit(input.action === 'open' ? 'tab.open' : 'tab.focus', { title: workbenchTabTitle(tool), requestId: input.requestId })
-      if (input.assetId) emit('asset.selected', { requestId: input.requestId })
-      return { status: 'accepted', action: input.action, tool, event } as unknown as ResearchRemoteJsonObject
-    }
-    if (input.action === 'engine') {
-      const statuses = await this.probeScientificEngines({ sessionId: input.sessionId })
-      const event = emit('engine.status', { statuses: statuses as unknown as ResearchRemoteJsonObject, requestId: input.requestId })
-      return { status: 'succeeded', action: input.action, statuses: statuses as unknown as ResearchRemoteJsonObject, event } as unknown as ResearchRemoteJsonObject
-    }
-    if (input.action === 'status') {
-      if (!input.runId) throw new Error('runId is required for workbench status.')
-      const run = this.store.getRun(input.runId)
-      if (!run || run.projectId !== project.id) throw new Error('Run is not in the active project.')
-      if (!this.workbenchEventStore.ownsRun(project.id, sessionId, run.id)) throw new Error('Run is not owned by this workbench session.')
-      return { status: run.status, run } as unknown as ResearchRemoteJsonObject
-    }
-    if (input.action === 'cancel') {
-      if (!input.runId) throw new Error('runId is required for workbench cancel.')
-      const run = this.store.getRun(input.runId)
-      if (!run || run.projectId !== project.id) throw new Error('Run is not in the active project.')
-      if (!this.workbenchEventStore.ownsRun(project.id, sessionId, run.id)) throw new Error('Run is not owned by this workbench session.')
-      const cancellation = await this.cancelWorkbenchRun(project, sessionId, run)
-      const candidate = cancellation.run
-      const updated = candidate && typeof candidate === 'object' && !Array.isArray(candidate) && typeof candidate.status === 'string' && typeof candidate.id === 'string' ? candidate as unknown as RunRecord : run
-      const event = emit(updated.status === 'cancelled' ? 'run.cancelled' : 'run.progress', { status: updated.status, runId: updated.id })
-      return { status: updated.status, run: updated, event, ...(cancellation as unknown as ResearchRemoteJsonObject) } as unknown as ResearchRemoteJsonObject
-    }
-    if (input.action === 'export') {
-      if (!input.artifactId) throw new Error('artifactId is required for workbench export.')
-      const artifact = this.store.listArtifacts(project.id).find(item => item.id === input.artifactId)
-      if (!artifact || artifact.projectId !== project.id) throw new Error('Artifact is not in the active project.')
-      const event = emit('artifact.created', { requestId: input.requestId, exported: true })
-      return { status: 'succeeded', artifact, event } as unknown as ResearchRemoteJsonObject
-    }
-    if (input.action !== 'analyze') throw new Error(`Unsupported workbench action: ${input.action}`)
-    if (!tool) throw new Error('tool is required for workbench analyze.')
-    const operation = scienceViewerAction(tool, input.operation)
-    emit('run.accepted', { requestId: input.requestId, operation, skillId: input.skillId as string, actionId: input.actionId as string })
-    try {
-      const parameters = input.parameters ?? {}
-      // Context fields are owned by the router; parameters cannot smuggle a
-      // different session or action into the deterministic service.
-      const { sessionId: _parameterSessionId, action: _parameterAction, ...safeParameters } = parameters as ResearchRemoteJsonObject & { sessionId?: unknown; action?: unknown }
-      void _parameterSessionId; void _parameterAction
-      const result = await this.scienceViewerImpl({ ...(safeParameters as unknown as Partial<ScienceViewerRequest>), sessionId, action: operation as ScienceViewerRequest['action'], ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.expectedRevision === undefined ? {} : { expectedVersion: input.expectedRevision }), requestId })
-      const resultObject = result as unknown as ResearchRemoteJsonObject
-      const nestedRuns = Object.values(resultObject).flatMap(value => value && typeof value === 'object' && !Array.isArray(value) && 'run' in value && value.run && typeof value.run === 'object' && !Array.isArray(value.run) ? [value.run as ResearchRemoteJsonObject] : [])
-      const run = (resultObject.run && typeof resultObject.run === 'object' && !Array.isArray(resultObject.run)) ? resultObject.run as ResearchRemoteJsonObject : nestedRuns[0]
-      const runId = typeof run?.id === 'string' ? run.id : input.runId
-      const runStatus = typeof run?.status === 'string' ? run.status : undefined
-      const eventType: Parameters<ScienceWorkbenchEventStore['append']>[0]['type'] = runStatus === 'succeeded' ? 'run.completed' : runStatus === 'failed' || runStatus === 'timed_out' ? 'run.failed' : runStatus === 'cancelled' ? 'run.cancelled' : 'run.progress'
-      const event = emit(eventType, { requestId: input.requestId, operation, ...(runId ? { runId } : {}), result: resultObject })
-      return { status: 'succeeded', tool, operation, runId, result: resultObject, event } as unknown as ResearchRemoteJsonObject
-    } catch (error) {
-      const event = emit('run.failed', { requestId: input.requestId, operation, error: error instanceof Error ? error.message : String(error) })
-      throw Object.assign(error instanceof Error ? error : new Error(String(error)), { workbenchEvent: event })
-    }
-  }
-
-  private async cancelWorkbenchRun(project: ProjectRecord, sessionId: string, run: RunRecord): Promise<ResearchRemoteJsonObject> {
-    const terminal = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
-    if (terminal.has(run.status)) return { run } as unknown as ResearchRemoteJsonObject
-    if (run.leaseOwner === 'fiji-experiment') return await this.fijiExperiments.cancel(project, run.id) as unknown as ResearchRemoteJsonObject
-    if (run.leaseOwner === 'fiji-workflow') return await this.fijiWorkflows.execute(project, { sessionId, action: 'cancel', runId: run.id }) as unknown as ResearchRemoteJsonObject
-    if (run.leaseOwner === 'he-segmentation') return await this.he.execute(project, { sessionId, action: 'cancel', runId: run.id }) as unknown as ResearchRemoteJsonObject
-    if (run.leaseOwner === 'flow-batch') return await this.flow.execute(project, { sessionId, action: 'batch_cancel', runId: run.id }) as unknown as ResearchRemoteJsonObject
-    throw new Error(`Run owner ${run.leaseOwner ?? 'unknown'} does not expose a safe cancellation adapter.`)
+    const event = this.conversationEventStore.append({ sessionId, projectId: project.id, type: input.action === 'open' ? 'viewer.open' : 'viewer.focus', tool, ...(input.assetId ? { assetId: input.assetId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), ...(input.runId ? { runId: input.runId } : {}), payload: { ...context, action: input.action, requestId, title: scienceViewerTitle(tool) } })
+    if (input.assetId) this.conversationEventStore.append({ sessionId, projectId: project.id, type: 'asset.selected', tool, assetId: input.assetId, payload: { ...context, action: input.action, requestId } })
+    return { status: 'accepted', action: input.action, tool, event } as unknown as ResearchRemoteJsonObject
   }
 
   @Remote('listExecutionContexts') listExecutionContexts(projectId: string): ResearchExecutionContextRecord[] { return this.store.listExecutionContexts(projectId) as ResearchExecutionContextRecord[] }
@@ -527,9 +452,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('getResearchStudy') getResearchStudy(studyId: string): ResearchRemoteStudyRecord | undefined { return this.store.getResearchStudy(studyId) as ResearchRemoteStudyRecord | undefined }
   @Remote('listResearchStudies') listResearchStudies(projectId: string): ResearchRemoteStudyRecord[] { return this.store.listResearchStudies(projectId) as ResearchRemoteStudyRecord[] }
   @Remote('updateResearchStudy') updateResearchStudy(input: { id: string; changes: ResearchRemoteUpdateStudyInput }): ResearchRemoteStudyRecord {
-    const study = this.store.updateResearchStudy(input.id, input.changes as UpdateResearchStudyInput) as ResearchRemoteStudyRecord
-    if (input.changes.currentQuestionId !== undefined || input.changes.currentPlanId !== undefined) this.tryAutomaticGate1(study.id)
-    return this.store.getResearchStudy(study.id) as ResearchRemoteStudyRecord
+    return this.store.updateResearchStudy(input.id, input.changes as UpdateResearchStudyInput) as ResearchRemoteStudyRecord
   }
   @Remote('createResearchDocument') createResearchDocument(input: ResearchRemoteCreateDocumentInput): ResearchRemoteDocumentRecord {
     return this.store.createResearchDocument(input as CreateResearchDocumentInput) as ResearchRemoteDocumentRecord
@@ -537,14 +460,10 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('getResearchDocument') getResearchDocument(documentId: string): ResearchRemoteDocumentRecord | undefined { return this.store.getResearchDocument(documentId) as ResearchRemoteDocumentRecord | undefined }
   @Remote('listResearchDocuments') listResearchDocuments(input: { studyId: string; kind?: ResearchRecordKind }): ResearchRemoteDocumentRecord[] { return this.store.listResearchDocuments(input.studyId, input.kind) as ResearchRemoteDocumentRecord[] }
   @Remote('updateResearchDocument') updateResearchDocument(input: { id: string; changes: ResearchRemoteUpdateDocumentInput }): ResearchRemoteDocumentRecord {
-    const document = this.store.updateResearchDocument(input.id, input.changes as UpdateResearchDocumentInput) as ResearchRemoteDocumentRecord
-    if (['question', 'dataset-contract', 'analysis-plan'].includes(document.kind)) this.tryAutomaticGate1(document.studyId)
-    return document
+    return this.store.updateResearchDocument(input.id, input.changes as UpdateResearchDocumentInput) as ResearchRemoteDocumentRecord
   }
   @Remote('validateAnalysisPlan') validateAnalysisPlan(planId: string): ResearchRemoteDocumentRecord {
-    const document = this.store.validateAnalysisPlan(planId) as ResearchRemoteDocumentRecord
-    this.tryAutomaticGate1(document.studyId)
-    return document
+    return this.store.validateAnalysisPlan(planId) as ResearchRemoteDocumentRecord
   }
   @Remote('methodCheckEvaluate') methodCheckEvaluate(input: { studyId: string; method: string; assumptions?: ResearchRemoteJsonObject }): ResearchRemoteJsonObject {
     const study = this.store.getResearchStudy(input.studyId)
@@ -557,41 +476,19 @@ export class ZeroWallResearchService extends TypertRemoteService {
   @Remote('approveResearchGate') approveResearchGate(input: { studyId: string; gate: 1 | 2; status: 'approved' | 'rejected'; expectedVersion: number; rationale: string }): ResearchRemoteStudyRecord { return this.store.approveResearchGate(input.studyId, input.gate, input.status, input.expectedVersion, input.rationale) as ResearchRemoteStudyRecord }
   @Remote('autoApproveResearchGate1') autoApproveResearchGate1(input: { sessionId: string; studyId: string; expectedVersion?: number }): ResearchRemoteJsonObject {
     const study = this.requireStudyInActiveProject(input.sessionId, input.studyId)
-    this.verifyGate1Sources(study)
-    const result = this.store.approveResearchGateAutomatically(study.id, input.expectedVersion ?? study.version)
+    const result = this.store.diagnoseResearchGate(study.id, 1)
     return result as unknown as ResearchRemoteJsonObject
   }
   @Remote('autoApproveResearchGate2') autoApproveResearchGate2(input: { sessionId: string; studyId: string; expectedVersion?: number }): ResearchRemoteJsonObject {
     const study = this.requireStudyInActiveProject(input.sessionId, input.studyId)
-    const result = this.store.approveResearchGate2Automatically(study.id, input.expectedVersion ?? study.version)
+    const result = this.store.diagnoseResearchGate(study.id, 2)
     return result as unknown as ResearchRemoteJsonObject
-  }
-  private tryAutomaticGate1(studyId: string): void {
-    const study = this.store.getResearchStudy(studyId)
-    if (!study || study.currentFreezeId || study.gate1 === 'approved' || study.status === 'archived') return
-    this.verifyGate1Sources(study)
-    this.store.approveResearchGateAutomatically(studyId, study.version)
-  }
-  private verifyGate1Sources(study: ResearchStudyRecord): void {
-    const plan = study.currentPlanId ? this.store.getResearchDocument(study.currentPlanId) : undefined
-    if (plan?.studyId !== study.id || !Array.isArray(plan.payload.inputs)) return
-    for (const id of plan.payload.inputs) {
-      if (typeof id !== 'string') continue
-      const contract = this.store.getResearchDocument(id)
-      if (contract?.studyId === study.id && contract.kind === 'dataset-contract') this.store.verifyDatasetContractSource(id)
-    }
   }
   private requireStudyInActiveProject(sessionId: string, studyId: string): ResearchStudyRecord {
     const project = this.ensureResearchContext({ sessionId }).project
     const study = this.store.getResearchStudy(studyId)
     if (!study || study.projectId !== project.id) throw new Error('Research study access is limited to the active project workspace.')
     return study
-  }
-  private gate1BeforeConfirmatoryRun(study: ResearchStudyRecord): ResearchRemoteJsonObject | undefined {
-    this.verifyGate1Sources(study)
-    const result = this.store.approveResearchGateAutomatically(study.id, study.version)
-    if (result.status === 'approved') return undefined
-    return { status: 'blocked', stage: 'gate1', studyId: study.id, label: '系统校验未通过', message: '系统校验发现缺项，已暂停确认性 Runner；检索和下载仍可继续。', blockers: result.blockers, recovery: '补齐列出的研究问题、数据契约和分析计划后，系统会自动重新校验。' } as unknown as ResearchRemoteJsonObject
   }
   @Remote('freezeResearchStudy') freezeResearchStudy(input: { studyId: string; expectedVersion: number }): ResearchRemoteFreezeRecord { return this.store.freezeResearchStudy(input.studyId, input.expectedVersion) as ResearchRemoteFreezeRecord }
   @Remote('amendResearchStudy') amendResearchStudy(input: { studyId: string; reason: string; expectedVersion: number }): ResearchRemoteStudyRecord { return this.store.amendResearchStudy(input.studyId, input.reason, input.expectedVersion) as ResearchRemoteStudyRecord }
@@ -608,16 +505,8 @@ export class ZeroWallResearchService extends TypertRemoteService {
     return { studyId: input.studyId, ...validateNhanesContract(input.contract), checkedAt: new Date().toISOString() }
   }
   async runNhanesSurvey(input: NhanesSurveyRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
-    const sessionId = String(exec.agent?.session.id ?? '')
-    const { project, study } = this.ensureResearchContext({ sessionId })
+    const { project, study } = this.ensureResearchContext({ sessionId: String(exec.agent?.session.id ?? '') })
     if (study.id !== input.studyId) throw new Error('NHANES run is outside the automatically bound research study.')
-    // Exploratory work still passes the Runner's full contract/schema checks,
-    // but it does not require a confirmatory plan freeze.
-    const task = this.store.listResearchTasks(study.id).find(item => item.id === input.taskId)
-    if (task?.exploratory !== true) {
-      const blocked = this.gate1BeforeConfirmatoryRun(study)
-      if (blocked) return blocked
-    }
     return this.nhanes.execute(project, input, exec)
   }
   @Remote('runNhanesSurvey') async runNhanesSurveyRemote(input: NhanesSurveyRequest & { sessionId: string }): Promise<ResearchRemoteJsonObject> {
@@ -627,16 +516,8 @@ export class ZeroWallResearchService extends TypertRemoteService {
     return this.runNhanesSurvey(input, exec)
   }
   async runGeneticAnalysis(input: GeneticAnalysisRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
-    const sessionId = String(exec.agent?.session.id ?? '')
-    const { project, study } = this.ensureResearchContext({ sessionId })
+    const { project, study } = this.ensureResearchContext({ sessionId: String(exec.agent?.session.id ?? '') })
     if (study.id !== input.studyId) throw new Error('Genetic analysis is outside the automatically bound research study.')
-    // Exploratory work still passes the Runner's full contract/schema checks,
-    // but it does not require a confirmatory plan freeze.
-    const task = this.store.listResearchTasks(study.id).find(item => item.id === input.taskId)
-    if (task?.exploratory !== true) {
-      const blocked = this.gate1BeforeConfirmatoryRun(study)
-      if (blocked) return blocked
-    }
     return this.genetics.execute(project, input, exec)
   }
   async refreshGeneticAnalysis(input: GeneticRefreshRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
@@ -664,10 +545,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const study = this.store.getResearchStudy(existingDocument.studyId)
     const active = this.projectForSession({ sessionId: input.sessionId })
     if (!study || study.projectId !== existingDocument.projectId || !active || active.id !== study.projectId) throw new Error('Research claim is not in the active project.')
-    const document = this.store.auditResearchClaim(input.claimId, input.expectedVersion) as ResearchRemoteDocumentRecord
-    const latestStudy = this.store.getResearchStudy(document.studyId)
-    if (latestStudy?.currentFreezeId && document.payload.auditStatus === 'passed') this.store.approveResearchGate2Automatically(latestStudy.id, latestStudy.version)
-    return document
+    return this.store.auditResearchClaim(input.claimId, input.expectedVersion) as ResearchRemoteDocumentRecord
   }
   @Remote('createResearchTask') createResearchTask(input: ResearchRemoteCreateTaskInput): ResearchRemoteTaskRecord { return this.store.createResearchTask(input as CreateResearchTaskInput) as ResearchRemoteTaskRecord }
   @Remote('listResearchTasks') listResearchTasks(studyId: string): ResearchRemoteTaskRecord[] { return this.store.listResearchTasks(studyId) as ResearchRemoteTaskRecord[] }
@@ -679,37 +557,8 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const { project, study } = this.ensureResearchContext({ sessionId: input.sessionId })
     if (study.id !== input.studyId) throw new Error('Research report is outside the automatically bound research study.')
     const mode = input.mode ?? 'draft'
-    if (mode === 'draft') return await this.reports.generate(project, study.id, mode) as unknown as ResearchRemoteJsonObject
-
-    const blocked = this.gate1BeforeConfirmatoryRun(study)
-    if (blocked) {
-      const report = await this.reports.generate(project, study.id, 'draft')
-      return { ...report, requestedMode: 'final', status: 'blocked', stage: 'gate1', label: '草稿报告；系统校验未通过', blockers: blocked.blockers, recovery: blocked.recovery } as unknown as ResearchRemoteJsonObject
-    }
-
-    const frozenStudy = this.store.getResearchStudy(study.id)!
-    const gate2 = this.store.approveResearchGate2Automatically(frozenStudy.id, frozenStudy.version)
-    if (gate2.status === 'blocked') {
-      const report = await this.reports.generate(project, gate2.study.id, 'draft')
-      return { ...report, requestedMode: 'final', status: 'blocked', stage: 'gate2', label: '草稿报告；系统校验未通过', blockers: gate2.blockers, recovery: '补充可核实的证据并完成所有结论的确定性审计后，系统会重新校验。' } as unknown as ResearchRemoteJsonObject
-    }
-
-    const report = await this.reports.generate(project, gate2.study.id, 'final')
-    // ReportService can still downgrade a final request when its own
-    // consistency checks find a blocker after Gate 2 (for example an
-    // unreviewed evidence record). Do not claim success while returning a
-    // draft artifact; expose the recoverable report blockers instead.
-    if (report.mode !== 'final' || report.needsReview || report.blockers.length > 0) {
-      return {
-        ...report,
-        requestedMode: 'final',
-        status: 'blocked',
-        stage: 'report',
-        label: '草稿报告；报告校验未通过',
-        recovery: '处理报告列出的阻断项后，系统会重新校验并生成正式报告。',
-      } as unknown as ResearchRemoteJsonObject
-    }
-    return { ...report, status: 'succeeded', label: '系统校验通过' } as unknown as ResearchRemoteJsonObject
+    const report = await this.reports.generate(project, study.id, mode)
+    return { ...report, status: 'succeeded', label: mode === 'final' ? '正式报告已生成' : '研究报告草稿已生成' } as unknown as ResearchRemoteJsonObject
   }
   /**
    * Probe every engine the Host knows about. The previous implementation
@@ -788,7 +637,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     // Explicit hints remain useful for headless sessions without user text.
     const target = researchTargetFromSession(session) || boundedResearchTarget(input.target)
     const rootPath = resolve(cwd)
-    const result = this.store.ensureResearchContext({ sessionId, rootPath, projectName: session.header.cwd ? basename(rootPath) || rootPath : '科研工作台', ...(target ? { target } : {}) })
+    const result = this.store.ensureResearchContext({ sessionId, rootPath, projectName: session.header.cwd ? basename(rootPath) || rootPath : '当前会话研究', ...(target ? { target } : {}) })
     return {
       project: result.project as ResearchRemoteProjectRecord,
       study: result.study as ResearchRemoteStudyRecord,
@@ -873,31 +722,26 @@ export function apply(ctx: Context): void {
 
 function registerResearchTools(ctx: Context): void {
   ctx.effect(() => ctx.tools.register(defineTool({
-    name: 'science_workbench',
-    description: 'Route conversation actions to the ZeroWall Science workbench. Opens/focuses a tool, starts an existing deterministic analysis, reads status, cancels or exports. This router never invents scientific numeric results.',
+    name: 'science_viewer_panel',
+    description: 'Open or focus a scientific file or visualization in its dedicated viewer after a successful conversation tool call. This display router accepts only open/focus; perform research planning, analysis, status checks, evidence handling and reports through conversation tools.',
     parameters: {
-      action: { type: 'string', required: true, enum: ['open', 'focus', 'analyze', 'status', 'cancel', 'export', 'engine'] },
-      session_id: { type: 'string', description: 'Optional when called from the active conversation; Host uses the agent session id.' }, project_id: { type: 'string' }, study_id: { type: 'string' },
-      tool: { type: 'string', enum: ['home', 'imagej', 'he', 'molecule', 'sanger', 'flow', 'canvas', 'cells', 'sequence', 'brainglobe'] },
-      asset_id: { type: 'string' }, artifact_id: { type: 'string' }, viewer_id: { type: 'string' }, run_id: { type: 'string' },
-      operation: { type: 'string' }, parameters: { type: 'json' }, request_id: { type: 'string', required: true }, expected_revision: { type: 'integer' },
-      skill_id: { type: 'string', description: 'Required for analyze; must match the selected science tool.' }, action_id: { type: 'string', description: 'Required for analyze; must match the resolved Host action.' },
+      action: { type: 'string', required: true, enum: ['open', 'focus'] },
+      session_id: { type: 'string', description: 'Optional when called from the active conversation; Host uses the agent session id.' },
+      tool: { type: 'string', required: true, enum: ['imagej', 'he', 'molecule', 'sanger', 'flow', 'canvas', 'cells', 'sequence', 'brainglobe'] },
+      asset_id: { type: 'string' }, viewer_id: { type: 'string' }, run_id: { type: 'string' },
+      request_id: { type: 'string', required: true },
     },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec) {
       const sessionId = String(args.session_id ?? exec.agent?.session.id ?? '').trim()
       if (!sessionId) throw new Error('An active conversation session is required.')
-      return ctx.zerowallResearch.scienceWorkbench({
-        action: String(args.action) as ScienceWorkbenchRequest['action'], sessionId, requestId: String(args.request_id),
-        ...(args.project_id === undefined ? {} : { projectId: String(args.project_id) }), ...(args.study_id === undefined ? {} : { studyId: String(args.study_id) }),
-        ...(args.tool === undefined ? {} : { tool: String(args.tool) as ScienceToolId }), ...(args.asset_id === undefined ? {} : { assetId: String(args.asset_id) }),
-        ...(args.artifact_id === undefined ? {} : { artifactId: String(args.artifact_id) }), ...(args.viewer_id === undefined ? {} : { viewerId: String(args.viewer_id) }),
-        ...(args.run_id === undefined ? {} : { runId: String(args.run_id) }), ...(args.operation === undefined ? {} : { operation: String(args.operation) }),
-        ...(args.skill_id === undefined ? {} : { skillId: String(args.skill_id) }), ...(args.action_id === undefined ? {} : { actionId: String(args.action_id) }),
-        ...(args.parameters === undefined ? {} : { parameters: requireResearchRemoteJsonObject(args.parameters) }), ...(args.expected_revision === undefined ? {} : { expectedRevision: Number(args.expected_revision) }),
+      return ctx.zerowallResearch.scienceViewerRoute({
+        action: String(args.action) as 'open' | 'focus', sessionId, requestId: String(args.request_id),
+        tool: String(args.tool) as ScienceToolId, ...(args.asset_id === undefined ? {} : { assetId: String(args.asset_id) }),
+        ...(args.viewer_id === undefined ? {} : { viewerId: String(args.viewer_id) }), ...(args.run_id === undefined ? {} : { runId: String(args.run_id) }),
       })
     },
-  })), 'zerowall-research: register science_workbench router')
+  })), 'zerowall-research: register science_viewer_panel router')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'science_viewer',
     description: 'View registered AnnData H5AD (local h5py/NumPy required; first-N previews and whole-X descriptive QC), FASTA (<=16 MiB), SCF/AB1 Sanger traces, and PNG/JPEG/TIFF (<=128 MiB); analyze sequences, Sanger traces, accepted image ROIs and single-channel integer label masks with bounded raw-pixel statistics, export/import traceable results. Launch local Fiji/napari and inspect process status (not GUI readiness). No study required. Sequence coordinates 1-based inclusive; image coordinates original pixel edges with 0-based page (not assumed Z/T). Image intensity and mask results are descriptive and remain pending scientific review. Sanger quality is stored-call confidence, not a Phred score; incomplete AB1 tags are rejected.',
@@ -1028,7 +872,7 @@ function registerResearchTools(ctx: Context): void {
   })), 'zerowall-research: register science_viewer tool')
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'research_study',
-    description: 'Read and update structured research records. Research Project/Study context and draft records are prepared automatically. The system may approve Gate 1 and freeze a validated plan, or return recoverable blockers; data discovery and downloads can continue while blockers are resolved. Gate 2 passes only after deterministic evidence audits succeed.',
+    description: 'Read and update structured research records, run validated analyses, and generate draft or formal reports. Gate 1/2 actions are read-only diagnostics that always return proceedable=true with optional warnings; they never approve, freeze, or block a run or report. Runners still enforce active-project access, required schemas, validated parameters, versions, and runtime availability. Reports preserve unverified status explicitly.',
     parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'auto_gate1', 'auto_gate2', 'method_check_evaluate', 'validate_nhanes_contract', 'run_nhanes_survey', 'run_genetic_analysis', 'refresh_genetic_analysis', 'validate_genetic_contract', 'generate_report', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, target: { type: 'string', description: 'Fallback research objective for headless sessions without user text. The latest user-authored request is the canonical bounded draft when available.' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, evaluation_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' }, run_id: { type: 'string' }, contract_id: { type: 'string' }, plan_id: { type: 'string' }, request_id: { type: 'string' }, expected_revision: { type: 'integer', description: 'Expected analysis plan version for run_nhanes_survey. The saved plan must contain nhanesSurvey and reference contract_id in inputs.' }, report_mode: { type: 'string', enum: ['draft', 'final'] } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args, exec: ToolRunContext) {
@@ -1054,7 +898,7 @@ function registerResearchTools(ctx: Context): void {
         const result = args.action === 'auto_gate1'
           ? service.autoApproveResearchGate1({ sessionId, studyId: study.id, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) })
           : service.autoApproveResearchGate2({ sessionId, studyId: study.id, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) })
-        return result.status === 'blocked' ? { ...result, stage: args.action === 'auto_gate1' ? 'gate1' : 'gate2', message: '系统校验发现阻断项，已暂停对应阶段；检索、下载和草稿整理仍可继续。', recovery: '补齐阻断项列出的材料并重试，系统会重新校验。' } as unknown as ResearchRemoteJsonObject : { ...result, label: '系统校验通过' } as unknown as ResearchRemoteJsonObject
+        return { ...result, label: '只读诊断完成；研究流程可继续。' } as unknown as ResearchRemoteJsonObject
       }
       if (args.action === 'tasks') return { tasks: service.listResearchTasks(study.id) as unknown as ResearchRemoteJsonObject }
       if (['task_budget', 'refresh_tasks'].includes(String(args.action))) {
@@ -1086,7 +930,7 @@ function registerResearchTools(ctx: Context): void {
         if (kind === 'question' || kind === 'analysis-plan') {
           const latest = service.getResearchStudy(study.id)!
           service.updateResearchStudy({ id: study.id, changes: { expectedVersion: latest.version, [kind === 'question' ? 'currentQuestionId' : 'currentPlanId']: document.id } as UpdateResearchStudyInput })
-        } else if (kind === 'dataset-contract') service.autoApproveResearchGate1({ sessionId, studyId: study.id })
+        }
         return { document: document as unknown as ResearchRemoteJsonObject }
       }
       if (args.action === 'method_check_evaluate') return service.methodCheckEvaluate({ studyId: study.id, method: String(args.method ?? ''), ...(args.assumptions === undefined ? {} : { assumptions: requireResearchRemoteJsonObject(args.assumptions) }) })

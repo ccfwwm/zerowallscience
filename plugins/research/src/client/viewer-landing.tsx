@@ -1,7 +1,7 @@
 import { FileUp } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { RESEARCH_TOOL_DESCRIPTORS } from './tool-descriptors.js'
-import type { ScienceToolId } from '../shared/workbench.js'
+import type { ScienceToolId } from '../shared/conversation.js'
 import styles from './viewer-landing.module.css'
 
 type Tool = Exclude<ScienceToolId, 'home'>

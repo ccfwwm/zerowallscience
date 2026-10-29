@@ -1,7 +1,7 @@
 {
   "name": "zerowallscience",
   "version": "8.4.15",
-  "description": "ZeroWall Science local-first scientific visualization and research workbench.",
+  "description": "ZeroWall Science local-first scientific visualization and conversation-driven research.",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.28.5",

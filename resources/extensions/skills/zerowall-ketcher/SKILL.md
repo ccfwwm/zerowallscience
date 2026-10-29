@@ -1,6 +1,6 @@
 ---
 name: zerowall-ketcher
-description: 在现有工作台用离线 Ketcher 编辑分子、读取手工修改、原子高亮、保存结构和导出。
+description: 在当前 Ketcher 编辑会话中离线编辑分子、读取手工修改、原子高亮、保存结构和导出。
 allowed-tools:
 ---
 

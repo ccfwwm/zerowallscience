@@ -1,26 +1,33 @@
 import { randomUUID } from 'node:crypto'
 import type { JsonObject, ResearchStore } from '@zerowallscience/research-store'
-import type { ScienceWorkbenchEvent, ScienceWorkbenchEventType, ScienceWorkbenchEventsResponse, ScienceToolId } from '../shared/workbench.js'
+import type { ResearchConversationEvent, ResearchConversationEventType, ResearchConversationEventsResponse, ScienceToolId } from '../shared/conversation.js'
 
 /**
- * Durable event cursor for the workbench. Events are stored in the research
+ * Durable event cursor for conversation and viewer routing. Events are stored in the research
  * audit chain, so reconnecting a browser never depends on React memory and
  * does not re-run a scientific job.
  */
-export class ScienceWorkbenchEventStore {
+export class ResearchConversationEventStore {
   constructor(private readonly store: ResearchStore) {}
 
-  private all(projectId: string, sessionId: string): ScienceWorkbenchEvent[] {
+  private all(projectId: string, sessionId: string): ResearchConversationEvent[] {
     return this.store.listAuditEvents(projectId)
-      .filter(item => item.action === 'science-workbench.event' && item.details.sessionId === sessionId)
-      .map(item => item.details as unknown as ScienceWorkbenchEvent)
+      .filter(item => ['research-conversation.event', 'science-workbench.event'].includes(item.action) && item.details.sessionId === sessionId)
+      .map(item => {
+        const event = item.details as unknown as Omit<ResearchConversationEvent, 'type' | 'protocol'> & { type: string; protocol?: string }
+        return {
+          ...event,
+          protocol: 'research-conversation/1',
+          type: event.type === 'tab.open' ? 'viewer.open' : event.type === 'tab.focus' ? 'viewer.focus' : event.type,
+        } as ResearchConversationEvent
+      })
       .sort((a, b) => a.sequence - b.sequence)
   }
 
   append(input: {
     sessionId: string
     projectId: string
-    type: ScienceWorkbenchEventType
+    type: ResearchConversationEventType
     tool?: ScienceToolId
     studyId?: string
     assetId?: string
@@ -30,12 +37,12 @@ export class ScienceWorkbenchEventStore {
     toolCallId?: string
     messageId?: string
     payload?: JsonObject
-  }): ScienceWorkbenchEvent {
+  }): ResearchConversationEvent {
     const sessionId = input.sessionId.trim()
-    if (!sessionId) throw new Error('A workbench sessionId is required.')
+    if (!sessionId) throw new Error('A conversation sessionId is required.')
     const prior = this.all(input.projectId, sessionId)
-    const event: ScienceWorkbenchEvent = {
-      protocol: 'science-workbench/1', eventId: randomUUID(), sequence: (prior.at(-1)?.sequence ?? 0) + 1,
+    const event: ResearchConversationEvent = {
+      protocol: 'research-conversation/1', eventId: randomUUID(), sequence: (prior.at(-1)?.sequence ?? 0) + 1,
       sessionId, type: input.type, payload: input.payload ?? {}, createdAt: new Date().toISOString(),
       ...(input.projectId ? { projectId: input.projectId } : {}), ...(input.studyId ? { studyId: input.studyId } : {}),
       ...(input.tool ? { tool: input.tool } : {}), ...(input.assetId ? { assetId: input.assetId } : {}),
@@ -45,11 +52,11 @@ export class ScienceWorkbenchEventStore {
     }
     // eventId lives in the redacted details payload. Audit entityId is a
     // research graph foreign key and cannot safely contain an event UUID.
-    this.store.recordAuditEvent(input.projectId, 'science-workbench.event', event as unknown as JsonObject)
+    this.store.recordAuditEvent(input.projectId, 'research-conversation.event', event as unknown as JsonObject)
     return event
   }
 
-  events(projectId: string, sessionId: string, afterSequence = 0, limit = 200): ScienceWorkbenchEvent[] {
+  events(projectId: string, sessionId: string, afterSequence = 0, limit = 200): ResearchConversationEvent[] {
     const boundedAfter = Number.isFinite(afterSequence) && afterSequence >= 0 ? Math.floor(afterSequence) : 0
     const boundedLimit = Math.min(1000, Math.max(1, Math.floor(limit || 200)))
     return this.all(projectId, sessionId)
@@ -57,7 +64,7 @@ export class ScienceWorkbenchEventStore {
       .slice(0, boundedLimit)
   }
 
-  latestRequest(projectId: string, sessionId: string, requestId: string): ScienceWorkbenchEvent | undefined {
+  latestRequest(projectId: string, sessionId: string, requestId: string): ResearchConversationEvent | undefined {
     const wanted = requestId.trim()
     if (!wanted) return undefined
     return this.all(projectId, sessionId).filter(event => event.payload.requestId === wanted).at(-1)
@@ -67,12 +74,12 @@ export class ScienceWorkbenchEventStore {
     return this.all(projectId, sessionId).some(event => event.runId === runId || event.payload.runId === runId)
   }
 
-  read(projectId: string, sessionId: string, afterSequence = 0, limit = 200): ScienceWorkbenchEventsResponse {
+  read(projectId: string, sessionId: string, afterSequence = 0, limit = 200): ResearchConversationEventsResponse {
     const boundedLimit = Math.min(500, Math.max(1, Math.floor(limit || 200)))
     const page = this.events(projectId, sessionId, afterSequence, boundedLimit + 1)
     const events = page.slice(0, boundedLimit)
     const all = this.all(projectId, sessionId)
     const lastSequence = all.at(-1)?.sequence ?? (Number(afterSequence) || 0)
-    return { protocol: 'science-workbench/1', sessionId, events, lastSequence, hasMore: page.length > boundedLimit }
+    return { protocol: 'research-conversation/1', sessionId, events, lastSequence, hasMore: page.length > boundedLimit }
   }
 }

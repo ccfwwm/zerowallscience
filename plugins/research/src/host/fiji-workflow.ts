@@ -77,7 +77,7 @@ export class FijiWorkflowService {
     if (input.researchTaskId !== undefined && !task) throw new Error('Fiji research task is not in the active project.')
     if (task && !task.exploratory) {
       const study = this.store.getResearchStudy(task.studyId)
-      if (!study || ['archived', 'completed', 'blocked'].includes(study.status) || !study.currentFreezeId || study.gate1 !== 'approved') throw new Error('Confirmatory Fiji tasks require gate one approval and a frozen study plan.')
+      if (!study || ['archived', 'completed'].includes(study.status)) throw new Error('Fiji research task is not available in this study.')
     }
     const fingerprint=hash(JSON.stringify(canonical({sourceAssetId:source.id,sourceSha256:annotation.sourceSha256,annotationRevisionId:annotation.id,plan,runnerHash,researchTaskId:input.researchTaskId??null})))
     // Persist the key before launching, including across different Host connections.

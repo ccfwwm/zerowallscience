@@ -119,32 +119,17 @@ describe('genetics durable Host adapter', () => {
     expect(done).toMatchObject({ analysisComplete: true, inputsCurrent: false, evidence: null })
     expect(f.store.listArtifacts(f.project.id)).toHaveLength(3)
   })
-  it('requires an exact frozen plan and rechecks remote provenance despite prior manual approval', async () => {
+  it('runs a confirmatory request without a Gate 1 approval or freeze and snapshots input hashes', async () => {
     const f = await fixture(false)
-    await expect(f.service.execute(f.project, f.input, f.exec)).rejects.toThrow('approved frozen')
-    expect(f.execute).not.toHaveBeenCalled()
+    const result = await f.service.execute(f.project, f.input, f.exec)
+    expect(result).toMatchObject({ status: 'running', analysisComplete: false, remoteId: 'genetics-job-1' })
+    expect(f.execute).toHaveBeenCalledWith('r.genetics.run', expect.any(Object), f.exec)
     expect(f.researchContext.autoApproveResearchGate1).not.toHaveBeenCalled()
-    const question = f.store.getResearchDocument(f.store.getResearchStudy(f.study.id)!.currentQuestionId!)!
-    f.store.updateResearchDocument(question.id, { expectedVersion: question.version, payload: { population: 'Synthetic subjects', outcome: 'Y', estimand: 'Synthetic exposure effect' } })
-    const approved = f.store.approveResearchGate(f.study.id, 1, 'approved', f.store.getResearchStudy(f.study.id)!.version, 'Synthetic review')
-    const freeze = f.store.freezeResearchStudy(f.study.id, approved.version)
-    await expect(f.service.execute(f.project, f.input, f.exec)).rejects.toThrow('did not return its bound project Run')
-    expect(f.researchContext.autoApproveResearchGate1).toHaveBeenCalledWith({ sessionId: 'genetics-session', studyId: f.study.id, expectedVersion: f.store.getResearchStudy(f.study.id)!.version })
-    const gate = f.researchContext.autoApproveResearchGate1.mock.results[0]!.value
-    expect(gate).toMatchObject({ status: 'blocked' })
-    expect(gate.blockers).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: 'CONTRACT_VERIFIER_UNAVAILABLE', documentId: f.plan.id }),
-      expect.objectContaining({ code: 'CONTRACT_PROVENANCE_UNVERIFIED', documentId: f.contract.id }),
-    ]))
-    expect(gate.blockers.map(blocker => blocker.code)).not.toContain('QUESTION_INCOMPLETE')
-    expect(f.execute).not.toHaveBeenCalled()
-    expect(f.download).not.toHaveBeenCalled()
-    expect(f.store.listRuns(f.project.id)).toEqual([])
-    expect(f.store.listResearchDocuments(f.study.id, 'evidence')).toEqual([])
-    expect(f.store.listAuditEvents(f.project.id).some(event => event.action === 'genetics.submitted')).toBe(false)
-    expect(f.store.listResearchTasks(f.study.id).find(task => task.id === f.task.id)?.runId).toBeUndefined()
-    expect(f.store.getResearchStudy(f.study.id)).toMatchObject({ gate1: 'approved', currentFreezeId: freeze.id })
-    expect(f.store.listStudyFreezes(f.study.id)).toEqual([freeze])
+    expect(f.store.getResearchStudy(f.study.id)).toMatchObject({ gate1: 'pending', gate2: 'pending' })
+    expect(f.store.listStudyFreezes(f.study.id)).toEqual([])
+    const requestPath = join(f.root, '.zerowall', 'genetics', sha(JSON.stringify({ projectId: f.project.id, requestId: f.input.requestId })), 'request.json')
+    const request = JSON.parse(await readFile(requestPath, 'utf8'))
+    expect(request).toMatchObject({ freezeId: null, exploratory: false, inputHashes: { planSha256: expect.stringMatching(/^[a-f0-9]{64}$/u), contractSha256: expect.stringMatching(/^[a-f0-9]{64}$/u) } })
   })
   it('rejects cross-project refresh and tampered local provenance', async () => {
     const f = await fixture(); const first = await f.service.execute(f.project, f.input, f.exec)
