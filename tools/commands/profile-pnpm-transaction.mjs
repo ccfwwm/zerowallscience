@@ -302,7 +302,10 @@ async function runDirectProfile({ profile, args, run, signal, report, transactio
   await mkdir(candidate, { recursive: true })
   try {
     const manifest = await read(join(profile, 'package.json'))
-    const resolution = await preparePnpmResolution({ profile, manifest, args, signal, report, resolutionDirectory: candidate })
+    // Keep the resolver's complete instance graph in a publishable namespace.
+    // node_modules/.pnpm at the candidate root is not a committed package path.
+    const resolutionDirectory = join(candidate, '.zerowall/install-sources', 'resolution-' + randomUUID())
+    const resolution = await preparePnpmResolution({ profile, manifest, args, signal, report, resolutionDirectory })
     const result = await run(resolution.args, resolution.directory)
     const outcome = result ?? { code: 0 }
     signal?.throwIfAborted()
@@ -312,8 +315,8 @@ async function runDirectProfile({ profile, args, run, signal, report, transactio
       await cleanupTransaction(profile, directory, state, 'preparation-failed')
       return { ...outcome, code: outcome.code || 1 }
     }
-    await mergePnpmResolution(resolution, { publish: false })
-    await physicalizeProfilePlugins({ profile: candidate, ids: [...resolution.targets].filter(id => !resolution.removed.has(id)) })
+    await mergePnpmResolution(resolution, { publish: false, destination: candidate })
+    await physicalizeProfilePlugins({ profile: candidate, ids: [...resolution.targets].filter(id => !resolution.removed.has(id)), retainedProfile: profile })
     for (const name of ['cordis.patch.yml', 'compatibility.json']) {
       if (await exists(join(profile, name))) await cp(join(profile, name), join(candidate, name))
     }
@@ -324,13 +327,15 @@ async function runDirectProfile({ profile, args, run, signal, report, transactio
       await mkdir(dirname(join(candidate, '.zerowall/materialized-profile.json')), { recursive: true })
       await writeFile(join(candidate, '.zerowall/materialized-profile.json'), await readFile(marker))
     }
-    const layout = await repairProfileLayout(candidate, { from: profile, diagnoseMissingTargets: true })
+    const layout = await repairProfileLayout(candidate, { from: candidate, diagnoseMissingTargets: true })
     if (layout.needsRelink) throw new Error('PLUGIN_CANDIDATE_LAYOUT_INVALID')
     // Include removed targets so the publication journal also removes their
     // old active roots. Newly materialized roots are physicalized above.
     const ids = [...resolution.targets]
     state.state = 'preparing'
-    await commitPackagePaths({ profile, candidate, directory, state, ids, includeDependencyRoot: true })
+    // This is a pnpm update, not an offline-seed replacement. The active
+    // .zerowall-dependencies tree belongs to retained packages and stays put.
+    await commitPackagePaths({ profile, candidate, directory, state, ids })
     await record(directory, { ...state, state: 'awaiting-validation' })
     return outcome
   } catch (error) {

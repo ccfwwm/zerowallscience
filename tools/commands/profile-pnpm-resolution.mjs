@@ -164,7 +164,7 @@ export async function preparePnpmResolution({ profile, manifest, args, signal, r
   return { directory, profile, original, retained, damaged, graph, targets, args: resolvedArgs, removed: new Set(), signal, report }
 }
 
-export async function mergePnpmResolution(state, { publish = true } = {}) {
+export async function mergePnpmResolution(state, { publish = true, destination = state.directory } = {}) {
   const { profile, directory, original, retained, targets, damaged } = state
   if (JSON.stringify(await retainedGraph(retained, state)) !== JSON.stringify(state.graph)) throw new Error('PLUGIN_RETAINED_CLOSURE_CHANGED: retained files or dependency instances were modified during resolution')
   const after = await read(join(directory, 'package.json'))
@@ -202,6 +202,9 @@ export async function mergePnpmResolution(state, { publish = true } = {}) {
         // Keep the manifest self-contained because the sibling resolver is
         // removed after commit.
         original[field][id] = 'link:./node_modules/' + id
+        const stagedRoot = join(destination, 'node_modules', id)
+        await mkdir(dirname(stagedRoot), { recursive: true })
+        await symlink(source, stagedRoot, process.platform === 'win32' ? 'junction' : 'dir')
         continue
       }
       if (!sameInstance) {
@@ -221,7 +224,7 @@ export async function mergePnpmResolution(state, { publish = true } = {}) {
     }
     for (const [id, item] of damaged) if (item.field === field) original[field][id] = item.spec
   }
-  await writeFile(join(publish ? profile : directory, 'package.json'), JSON.stringify(original, null, 2) + '\n')
+  await writeFile(join(publish ? profile : destination, 'package.json'), JSON.stringify(original, null, 2) + '\n')
   // The resolution's lock is scoped to its own namespace. The legacy root
   // lock/metadata is never fed back into pnpm and stays available as evidence.
 }

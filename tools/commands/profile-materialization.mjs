@@ -94,7 +94,7 @@ async function dependencyAt(source, id) {
 
 /** pnpm may link a newly installed package to its virtual store. Keep that
  * dependency graph but expose each managed plugin through a physical root. */
-export async function physicalizeProfilePlugins({ profile, ids }) {
+export async function physicalizeProfilePlugins({ profile, ids, retainedProfile }) {
   profile = resolve(profile)
   // Resolve the complete nested graph before replacing any of its root links.
   // In particular, a package-local dependency must be copied, not linked to
@@ -117,7 +117,9 @@ export async function physicalizeProfilePlugins({ profile, ids }) {
       if (!/^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(dependency) || RETIRED_PLUGIN_IDS.has(dependency)) throw new Error('Invalid fixed-root dependency')
       const resolved = await dependencyAt(instance.source, dependency)
       if (!resolved) continue // Shared runtime or compiler-inlined dependency.
-      if (!inside(profile, resolved)) throw new Error('Fixed-root dependency is outside candidate profile: ' + dependency)
+      // A resolver may reference an unchanged, fingerprinted package in the
+      // active profile. Keep that exact instance; never traverse or copy it.
+      if (!inside(profile, resolved) && !(retainedProfile && inside(resolve(retainedProfile), resolved))) throw new Error('Fixed-root dependency is outside candidate profile: ' + dependency)
       let child = plans.get(resolved)
       if (!child && inside(instance.source, resolved)) {
         child = { source: resolved, destination: join(instance.destination, relative(instance.source, resolved)), manifest: await manifestAt(resolved) }
