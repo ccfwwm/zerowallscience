@@ -201,6 +201,7 @@
     "shap": "0.1.3",
     "simpy": "0.1.3",
     "singlecell-milor": "0.1.1",
+    "sc-tenifold-knockout": "0.1.5",
     "singlecell-qc": "0.1.1",
     "skill-creator": "0.1.2",
     "solublempnn": "0.1.1",
