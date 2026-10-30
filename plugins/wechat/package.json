@@ -140,7 +140,6 @@
     "dsh-better-sidebar": "workspace:^",
     "dsh-dream-skin": "10.9.3",
     "@zerowallscience/plugin-secrets": "workspace:^",
-    "@zerowallscience/plugin-projects": "workspace:^",
     "@zerowallscience/plugin-files": "workspace:^",
     "@zerowallscience/plugin-base": "workspace:^",
     "qrcode": "^1.5.4",

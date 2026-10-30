@@ -113,7 +113,7 @@ async function fixture() {
     subagents: { registerProvider: vi.fn((provider: SubagentProvider) => { registeredSubagentProviders.push(provider); return () => { const i = registeredSubagentProviders.indexOf(provider); if (i >= 0) registeredSubagentProviders.splice(i, 1) } }) },
     credentials: { resolve: credentials },
     skills: { snapshot, get: getSkill },
-    zerowallProjects: { listMcpServers: vi.fn(() => servers) },
+    zerowallMcpConfigurationStore: { listMcpServers: vi.fn(() => servers) },
     zerowallEnvironment: {
       listVariables: vi.fn(async () => [{ name: 'CUSTOM_BUILD_TOKEN' }]),
       readVariable: vi.fn(async () => 'host-only-configured-env-secret-1234567890'),

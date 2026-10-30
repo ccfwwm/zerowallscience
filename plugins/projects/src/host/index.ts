@@ -22,6 +22,7 @@ import type {
   ProjectBundleV1,
   ProjectDto, ProjectsJsonObject, ProjectsPreferencesRecord, ProjectsProjectBundle,
 } from '../shared/types.js'
+import { mergeProjectSettings } from './project-settings.js'
 import type {} from 'zod'
 
 const RESEARCH_STORE = Symbol('zerowall.research-store')
@@ -98,7 +99,8 @@ export class ZeroWallProjectsService extends TypertRemoteService {
 
   @Remote('updateSettings')
   updateSettings(input: { projectId: string; settings: ProjectsJsonObject }): ProjectsPreferencesRecord {
-    const value = this[RESEARCH_STORE].updateProjectSettings(input.projectId, input.settings)
+    const current = this[RESEARCH_STORE].getProjectPreferences(input.projectId).settings
+    const value = this[RESEARCH_STORE].updateProjectSettings(input.projectId, mergeProjectSettings(current, input.settings))
     return { ...value, settings: value.settings as ProjectsJsonObject }
   }
 

@@ -7,12 +7,16 @@ import type { JsonObject, ProjectRecord } from '@zerowallscience/research-store/
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { containedFile } from './science-viewer.js'
 import { readProjectAsset } from './image-viewer.js'
-import type { GeneticWorkflow } from './genetic-runner.js'
 import { parseMolecule } from './molecule.js'
 import { DOCKING_RUNNER, DOCKING_TOOL, validateDockingLigands, validateDockingSettings, type MoleculeDockingRequest } from '../shared/molecule-docking.js'
 
 export type DockingTransfer = (input: { action: 'upload_workspace' | 'download_workspace'; projectId: string; remotePath: string; localPath: string }, exec: ToolRunContext) => Promise<JsonObject>
-export interface DockingWorkflow extends GeneticWorkflow { cancel(id: string, confirm: boolean, exec: ToolRunContext): Promise<JsonObject> }
+export interface ResearchWorkflowClient {
+  run(id: string, parameters: JsonObject, exec: ToolRunContext): Promise<JsonObject>
+  status(id: string, exec: ToolRunContext): Promise<JsonObject>
+  query(id: string, parameters: JsonObject, exec: ToolRunContext): Promise<JsonObject>
+}
+export interface DockingWorkflow extends ResearchWorkflowClient { cancel(id: string, confirm: boolean, exec: ToolRunContext): Promise<JsonObject> }
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex')
 const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)])) : value
 const fingerprint = (value: unknown) => hash(JSON.stringify(canonical(value)))
@@ -48,7 +52,7 @@ export function validateDockingPoses(text:string,score:number,sdf:Awaited<Return
 /** A bounded application adapter over existing durable research_workflow/r_files. */
 export class MoleculeDockingService {
   private readonly pending = new Map<string, Promise<JsonObject>>()
-  constructor(private readonly store: ResearchStore, private readonly workflow: () => GeneticWorkflow | undefined, private readonly transfer: DockingTransfer) {}
+  constructor(private readonly store: ResearchStore, private readonly workflow: () => ResearchWorkflowClient | undefined, private readonly transfer: DockingTransfer) {}
   private async locked(key: string, work: () => Promise<JsonObject>): Promise<JsonObject> {
     const previous = this.pending.get(key);if (previous) { await previous;return this.locked(key, work) }
     const task = work();this.pending.set(key, task);try { return await task } finally { this.pending.delete(key) }

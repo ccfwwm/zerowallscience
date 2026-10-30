@@ -20,4 +20,5 @@ export interface EnvironmentSettingsValue {
   variables: { name: string }[]
   imageModel: ImageModelSelection
   imageQuality: ImageGenerationQuality
+  contextBudgetTokens: number
 }

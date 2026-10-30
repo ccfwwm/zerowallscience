@@ -47,11 +47,11 @@
     - id: zerowall-runs
       name: '@zerowallscience/plugin-runs'
 - insert:
-    - id: zerowall-secrets
-      name: '@zerowallscience/plugin-secrets'
-- insert:
     - id: zerowall-singlecell
       name: '@zerowallscience/plugin-singlecell'
+- insert:
+    - id: zerowall-secrets
+      name: '@zerowallscience/plugin-secrets'
 - insert:
     - id: zerowall-skills-plugin
       name: '@zerowallscience/plugin-skills'

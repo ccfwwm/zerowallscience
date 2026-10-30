@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-environment",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "applicationVersion": "8.0.6",
   "restartRequired": true,
   "desktop": {
@@ -15,7 +15,9 @@
   "host": "./lib/index.js",
   "client": "./lib/client.js",
   "requiredServices": [
-    "settings"
+    "settings",
+    "llm",
+    "tokenMeter"
   ],
   "optionalServices": [],
   "capabilities": [

@@ -22,12 +22,12 @@ interface WorkbenchActions {
   openProject: (id: string) => Promise<ProjectView>
   updateProject: (id: string, changes: { name: string; rootPath: string; description: string }) => Promise<ProjectView>
   getProjectSettings: (id: string) => Promise<ProjectSettings>
-  updateProjectSettings: (id: string, settings: { defaultContextId: string; autoHarvest: boolean }) => Promise<ProjectSettings>
+  updateProjectSettings: (id: string, settings: { defaultContextId: string; autoHarvest: boolean; rPlatformProjectId: string }) => Promise<ProjectSettings>
   exportProject: (id: string) => Promise<ProjectBundle>
   importProject: (bundle: ProjectBundle) => Promise<ProjectView>
 }
 
-export interface ProjectSettings { projectId: string; settings: { defaultContextId?: string; autoHarvest?: boolean }; lastOpenedAt?: string; updatedAt: string }
+export interface ProjectSettings { projectId: string; settings: { defaultContextId?: string; autoHarvest?: boolean; rPlatformProjectId?: string }; lastOpenedAt?: string; updatedAt: string }
 
 export interface ProjectBundle {
   format: 'zerowall-science-project'
@@ -58,6 +58,7 @@ export function ProjectWorkbenchButton({ wide, t, listProjects, listRecentProjec
   const [editRootPath, setEditRootPath] = useState('')
   const [editDescription, setEditDescription] = useState('')
   const [defaultContextId, setDefaultContextId] = useState('')
+  const [rPlatformProjectId, setRPlatformProjectId] = useState('')
   const [autoHarvest, setAutoHarvest] = useState(true)
 
   const refresh = useCallback(async () => {
@@ -141,6 +142,7 @@ export function ProjectWorkbenchButton({ wide, t, listProjects, listRecentProjec
       const preferences = await getProjectSettings(project.id)
       setEditing(project); setEditName(project.name); setEditRootPath(project.rootPath); setEditDescription(project.description)
       setDefaultContextId(typeof preferences.settings.defaultContextId === 'string' ? preferences.settings.defaultContextId : '')
+      setRPlatformProjectId(typeof preferences.settings.rPlatformProjectId === 'string' ? preferences.settings.rPlatformProjectId : '')
       setAutoHarvest(preferences.settings.autoHarvest !== false)
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
     finally { setBusy(false) }
@@ -151,7 +153,7 @@ export function ProjectWorkbenchButton({ wide, t, listProjects, listRecentProjec
     setBusy(true); setError(undefined)
     try {
       await updateProject(editing.id, { name: editName, rootPath: editRootPath, description: editDescription })
-      await updateProjectSettings(editing.id, { defaultContextId, autoHarvest })
+      await updateProjectSettings(editing.id, { defaultContextId, autoHarvest, rPlatformProjectId: rPlatformProjectId.trim() })
       setEditing(undefined)
       await refresh()
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)) }
@@ -185,6 +187,7 @@ export function ProjectWorkbenchButton({ wide, t, listProjects, listRecentProjec
             <label><span>{t('project.root')}</span><input value={editRootPath} onChange={(event) => setEditRootPath(event.target.value)} /></label>
             <label className={css.wideField}><span>{t('project.description')}</span><input value={editDescription} onChange={(event) => setEditDescription(event.target.value)} /></label>
             <label><span>{t('project.defaultContext')}</span><input value={defaultContextId} onChange={(event) => setDefaultContextId(event.target.value)} placeholder={t('common.optional')} /></label>
+            <label><span>{t('project.rPlatformProjectId')}</span><input value={rPlatformProjectId} onChange={(event) => setRPlatformProjectId(event.target.value)} placeholder={t('common.optional')} /></label>
             <label className={css.toggle}><input type="checkbox" checked={autoHarvest} onChange={(event) => setAutoHarvest(event.target.checked)} /><span>{t('project.autoHarvest')}</span></label>
             <button className={css.createButton} type="submit" disabled={busy || editName.trim() === '' || editRootPath.trim() === ''}><Save size={16} /><span>{t('common.save')}</span></button>
           </form>}

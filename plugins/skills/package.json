@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-skills",
-  "version": "0.2.8",
+  "version": "0.2.10",
   "description": "ZeroWall Science skills domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -69,7 +69,9 @@
     },
     "requiredServices": [
       "skills",
-      "systemPrompt"
+      "systemPrompt",
+      "tools",
+      "workingDirectory"
     ],
     "optionalServices": [],
     "capabilities": [

@@ -20,7 +20,8 @@ export function GroupedModelSelect({ available, locked, directory, load, select,
   const currentGroup = groups.find(group => group.models.some(row => row.providerId === state.current?.provider && row.model.id === state.current.model))
   const current = currentGroup?.models.find(row => row.providerId === state.current?.provider && row.model.id === state.current.model)
   const reasoning = current?.model.reasoning
-  const effectiveEffort = state.current?.reasoningEffort ?? reasoning?.defaultEffort
+  const highEffort = reasoning?.efforts.find(level => level.id === 'high')
+  const effectiveEffort = state.current?.reasoningEffort ?? highEffort?.id ?? reasoning?.defaultEffort
   const effortLabel = reasoning?.efforts.find(effort => effort.id === effectiveEffort)?.name ?? state.retainedEffort ?? effectiveEffort
   const busy = state.pending !== null
   const [open, setOpen] = useState(false)
@@ -29,10 +30,12 @@ export function GroupedModelSelect({ available, locked, directory, load, select,
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string>()
   const [retrySelection, setRetrySelection] = useState<ModelSelection>()
+  const [effortIndex, setEffortIndex] = useState(0)
   const trigger = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const search = useRef<HTMLInputElement>(null)
   const mounted = useRef(true)
+  const defaultAttempt = useRef<string>()
   const id = useId()
   const position = useFloatingPanel(open, trigger, menu)
   const browsing = groups.find(group => group.key === browseKey) ?? currentGroup ?? groups[0]
@@ -60,6 +63,9 @@ export function GroupedModelSelect({ available, locked, directory, load, select,
   useEffect(() => {
     if (locked || !available) { setOpen(false); setBrowseKey(undefined) }
   }, [locked, available])
+  useEffect(() => {
+    if (pane === 'effort' && reasoning) setEffortIndex(Math.max(0, reasoning.efforts.findIndex(level => level.id === effectiveEffort)))
+  }, [pane, reasoning, effectiveEffort])
 
   const submit = async (selection: ModelSelection) => {
     setError(undefined); setRetrySelection(selection); trigger.current?.focus()
@@ -70,10 +76,22 @@ export function GroupedModelSelect({ available, locked, directory, load, select,
       else if (result && !result.ok) setError(`${result.error.code}: ${result.error.message}`)
     } catch (reason) { if (mounted.current) setError(reason instanceof Error ? reason.message : String(reason)) }
   }
+  useEffect(() => {
+    const selected = state.current
+    if (!selected || selected.reasoningEffort !== undefined || !highEffort || busy || locked || !available) return
+    const key = JSON.stringify([selected.provider, selected.model])
+    if (defaultAttempt.current === key) return
+    defaultAttempt.current = key
+    // Persist through the same session controller as explicit selections so
+    // the request envelope, history and selector agree on the default.
+    void select({ ...selected, reasoningEffort: highEffort.id }).catch(reason => { if (mounted.current) setError(String(reason)) })
+  }, [state.current, highEffort, busy, locked, available, select])
   const choose = (row: GroupModel) => {
-    if (row.providerId === state.current?.provider && row.model.id === state.current.model) { close(); return }
+    if (row.providerId === state.current?.provider && row.model.id === state.current.model && state.current.reasoningEffort !== undefined) { close(); return }
     // Preserve an explicitly selected level whenever the target route supports it.
-    const effort = row.model.reasoning?.efforts.some(level => level.id === effectiveEffort) ? effectiveEffort : row.model.reasoning?.defaultEffort
+    const effort = row.model.reasoning?.efforts.some(level => level.id === state.current?.reasoningEffort)
+      ? state.current?.reasoningEffort
+      : row.model.reasoning?.efforts.find(level => level.id === 'high')?.id ?? row.model.reasoning?.defaultEffort
     void submit({ provider: row.providerId, model: row.model.id, ...(effort === undefined ? {} : { reasoningEffort: effort }) })
   }
   const keyDown = (event: KeyboardEvent) => {
@@ -126,8 +144,7 @@ export function GroupedModelSelect({ available, locked, directory, load, select,
           </div>)}
           {pane === 'model' && models.map(row => <button data-choice key={JSON.stringify([row.providerId, row.model.id])} className={css.row} type="button" role="menuitemradio" aria-checked={isCurrent(row)} disabled={busy} title={`${row.model.name} (${row.providerId})`} onClick={() => choose(row)}><span className={css.modelName}>{row.model.name}</span>{browsing?.cloud && <RateBadge group={browsing.metadata} t={t} />}<span className={css.check}>{isCurrent(row) && <Check size={15} />}</span></button>)}
           {pane === 'effort' && reasoning && <>
-            {reasoning.defaultEffort === undefined && <button data-choice className={css.row} type="button" role="menuitemradio" aria-checked={effectiveEffort === undefined} disabled={busy} onClick={() => { if (state.current) void submit({ provider: state.current.provider, model: state.current.model }) }}>{t('defaultEffort')}</button>}
-            {reasoning.efforts.map(level => <button data-choice key={level.id} className={css.row} type="button" role="menuitemradio" aria-checked={effectiveEffort === level.id} disabled={busy} onClick={() => { if (state.current) void submit({ ...state.current, reasoningEffort: level.id }) }}><span>{level.name}</span>{effectiveEffort === level.id && <Check size={15} />}</button>)}
+            <div className={css.effortControl}><input aria-label={t('effort')} type="range" min={0} max={Math.max(0, reasoning.efforts.length - 1)} step={1} value={effortIndex} aria-valuetext={reasoning.efforts[effortIndex]?.name ?? effectiveEffort} disabled={busy || reasoning.efforts.length < 2} onChange={event => setEffortIndex(Number(event.target.value))} onKeyDown={event => { if (event.key !== 'Escape' && event.key !== 'Tab') event.stopPropagation() }} onPointerUp={event => { const level = reasoning.efforts[Number(event.currentTarget.value)]; if (level && state.current) void submit({ ...state.current, reasoningEffort: level.id }) }} onKeyUp={event => { if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) return; const level = reasoning.efforts[Number(event.currentTarget.value)]; if (level && state.current) void submit({ ...state.current, reasoningEffort: level.id }) }} /><output>{reasoning.efforts[effortIndex]?.name ?? t('defaultEffort')}</output></div>
           </>}
           {(pane === 'model' && models.length === 0 || pane === 'group' && filteredGroups.length === 0) && <p className={css.help}>{t('empty')}</p>}
         </div>

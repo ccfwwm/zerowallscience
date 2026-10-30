@@ -67,6 +67,22 @@ test('publication relocates nested dependency links and never traverses an exter
   assert.equal(await readlink(dangling), missing)
 })
 
+test('publication preserves a broken dependency directory link without aborting the package transaction', async t => {
+  const f = await fixture(t)
+  const selected = join(f.candidate, 'node_modules/@scope/selected')
+  const missing = join(f.profile, 'node_modules/lucide-react')
+  const dependencyLink = join(selected, 'node_modules/lucide-react')
+  await mkdir(join(selected, 'node_modules'), { recursive: true })
+  await symlink(missing, dependencyLink, process.platform === 'win32' ? 'junction' : 'dir')
+
+  await commitPackagePaths(f)
+
+  const published = join(f.profile, 'node_modules/@scope/selected/node_modules/lucide-react')
+  assert.equal(await readlink(published), missing)
+  await assert.rejects(realpath(published), { code: 'ENOENT' })
+  await restorePackagePaths(f.profile, f.directory, f.state)
+})
+
 test('rollback rejects traversal, duplicate entries and symlinked parent directories', async t => {
   const f = await fixture(t)
   for (const items of [[{ name: '../outside', existed: true }], [{ name: 'node_modules', existed: true }], [{ name: 'node_modules/a', existed: true }, { name: 'node_modules/a', existed: false }]]) {

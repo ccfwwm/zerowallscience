@@ -52,7 +52,6 @@ export class FijiWorkflowService {
       const owned = this.live.get(run.id)
       if (!owned) throw new Error('This Host does not own the process. Inspect its completion manifest; do not kill a historical PID.')
       this.store.updateRun(run.id,{status:'cancelled',error:'Cancelled by user; partial files and logs retained.'})
-      this.syncTaskForRun(run.id)
       owned.child.kill(); clearTimeout(owned.timer); this.live.delete(run.id)
       return { run: this.store.getRun(run.id)! }
     }
@@ -73,13 +72,7 @@ export class FijiWorkflowService {
     const bytes = await readProjectAsset(project,source,MAX_BYTES)
     if (hash(bytes)!==annotation.sourceSha256) throw new Error('Source changed since ROI revision; reopen and review annotations.')
     const runnerHash=hash(westernBlotRunner)
-    const task = input.researchTaskId === undefined ? undefined : this.store.listResearchStudies(project.id).flatMap(study => this.store.listResearchTasks(study.id)).find(item => item.id === input.researchTaskId)
-    if (input.researchTaskId !== undefined && !task) throw new Error('Fiji research task is not in the active project.')
-    if (task && !task.exploratory) {
-      const study = this.store.getResearchStudy(task.studyId)
-      if (!study || ['archived', 'completed'].includes(study.status)) throw new Error('Fiji research task is not available in this study.')
-    }
-    const fingerprint=hash(JSON.stringify(canonical({sourceAssetId:source.id,sourceSha256:annotation.sourceSha256,annotationRevisionId:annotation.id,plan,runnerHash,researchTaskId:input.researchTaskId??null})))
+    const fingerprint=hash(JSON.stringify(canonical({sourceAssetId:source.id,sourceSha256:annotation.sourceSha256,annotationRevisionId:annotation.id,plan,runnerHash})))
     // Persist the key before launching, including across different Host connections.
     let directory=await realpath(project.rootPath)
     for (const name of ['.zerowall','fiji-runs']) {
@@ -87,11 +80,10 @@ export class FijiWorkflowService {
       directory=await containedFile(project.rootPath,next)
     }
     directory=join(directory,randomUUID())
-    const reserved=this.store.reserveScientificRun({projectId:project.id,name:'Fiji Western blot',command:'fiji.western-blot.v1',workingDirectory:directory,status:'submitted',timeoutAt:new Date(Date.now()+120000).toISOString(),inputs:task?[{name:'research_task_id',uri:task.id}]:[]},input.requestId??'',fingerprint)
+    const reserved=this.store.reserveScientificRun({projectId:project.id,name:'Fiji Western blot',command:'fiji.western-blot.v1',workingDirectory:directory,status:'submitted',timeoutAt:new Date(Date.now()+120000).toISOString()},input.requestId??'',fingerprint)
     if(!reserved.created)return this.status(project,reserved.run.id)
     const run=reserved.run
     try {
-      if (task) this.store.updateResearchTask(task.id, { expectedVersion: task.version, status: 'running', runId: run.id })
       await mkdir(directory)
       const sourcePath=join(directory,'source'+extname(fileURLToPath(source.uri)))
       const requestPath=join(directory,'request.json');const scriptPath=join(directory,'runner.py');const logPath=join(directory,'runner.log')
@@ -106,10 +98,10 @@ export class FijiWorkflowService {
       const log=await open(logPath,'wx')
       try {
         const child=spawn(java.executable,['-Xmx512m','-Djava.awt.headless=true','-XX:ActiveProcessorCount=2','-cp',java.jars,'org.python.util.jython',scriptPath],{cwd:directory,env:{...process.env,ZEROWALL_FIJI_REQUEST:requestPath},shell:false,windowsHide:true,stdio:['ignore',log.fd,log.fd]})
-        const timer=setTimeout(()=>{if(!this.disposed && !terminal.has(this.store.getRun(run.id)!.status)){this.store.updateRun(run.id,{status:'timed_out',error:'Fiji bounded computation exceeded 120 seconds; partial files retained.'});this.syncTaskForRun(run.id)}child.kill()},120000)
+        const timer=setTimeout(()=>{if(!this.disposed && !terminal.has(this.store.getRun(run.id)!.status)){this.store.updateRun(run.id,{status:'timed_out',error:'Fiji bounded computation exceeded 120 seconds; partial files retained.'})}child.kill()},120000)
         this.live.set(run.id,{child,timer})
         child.once('spawn',()=>{if(!this.disposed && child.pid && !terminal.has(this.store.getRun(run.id)!.status))this.store.updateRun(run.id,{pid:child.pid})})
-        child.once('error',error=>{if(!this.disposed&&!terminal.has(this.store.getRun(run.id)!.status)){this.store.updateRun(run.id,{status:'failed',error:error.message});this.syncTaskForRun(run.id)}})
+        child.once('error',error=>{if(!this.disposed&&!terminal.has(this.store.getRun(run.id)!.status)){this.store.updateRun(run.id,{status:'failed',error:error.message})}})
         child.once('close',()=>{clearTimeout(timer);this.live.delete(run.id);if(!this.disposed)void this.status(project,run.id,true).catch(error=>this.fail(run.id,error))})
       } finally {await log.close()}
     } catch(error){this.fail(run.id,error)}
@@ -117,11 +109,7 @@ export class FijiWorkflowService {
   }
 
   private fail(id:string,error:unknown):void {
-    if(!this.disposed&&!terminal.has(this.store.getRun(id)!.status)){this.store.updateRun(id,{status:'failed',error:String(error)});this.syncTaskForRun(id)}
-  }
-  private syncTaskForRun(id:string):void {
-    const run=this.store.getRun(id);const taskId=run?.inputs.find(item=>item.name==='research_task_id')?.uri
-    if(taskId) this.store.reconcileResearchTaskRun(taskId)
+    if(!this.disposed&&!terminal.has(this.store.getRun(id)!.status)) this.store.updateRun(id,{status:'failed',error:String(error)})
   }
   private status(project:ProjectRecord,id:string,exited=false):Promise<FijiWorkflowResponse> {
     const active=this.finishing.get(id);if(active)return active
@@ -174,7 +162,6 @@ export class FijiWorkflowService {
       run=this.store.getRun(id)!
       if(terminal.has(run.status))return {run,artifacts:artifacts()}
       run=this.store.finishScientificRun(project.id,id,registered)
-      this.syncTaskForRun(id)
       return {run,artifacts:artifacts(),...(result?{result}:{})}
     }catch(error){this.fail(id,error);return {run:this.store.getRun(id)!,artifacts:artifacts()}}
   }
@@ -182,7 +169,7 @@ export class FijiWorkflowService {
   dispose():void {
     this.disposed=true
     // This bounded computational child owns only copied input. Interactive Fiji instances are separate.
-    for(const [id,{child,timer}] of this.live){clearTimeout(timer);child.kill();const run=this.store.getRun(id);if(run&&!terminal.has(run.status)){this.store.updateRun(id,{status:'failed',error:'Host stopped during bounded Fiji computation. Partial outputs retained; inspect before a new request.'});this.syncTaskForRun(id)}}
+    for(const [id,{child,timer}] of this.live){clearTimeout(timer);child.kill();const run=this.store.getRun(id);if(run&&!terminal.has(run.status))this.store.updateRun(id,{status:'failed',error:'Host stopped during bounded Fiji computation. Partial outputs retained; inspect before a new request.'})}
     this.live.clear()
   }
 }

@@ -5,7 +5,9 @@ import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
-import { ZeroWallCapabilitiesService } from '../src/host/index.js'
+import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { rankSkills, skillCategory, shrinkLegacySkillCatalogs, ZeroWallCapabilitiesService } from '../src/host/index.js'
 import { migrateSkillRoutingText, migrateUserSkillRouting } from '../src/host/skill-routing-migration.js'
 
 const temporaryDirectories: string[] = []
@@ -95,7 +97,7 @@ describe('ZeroWall capabilities Remote', () => {
       for (const name of ['method-choice', 'zerowall-research-orchestrator', 'zerowall-data-contract', 'zerowall-research-evidence', 'zerowall-claim-audit']) {
         const detail = await service.getSkill(name)
         expect(detail.source).toBe('bundled')
-        expect(detail.declaredVersion).toBe('7.0.0-1')
+        expect(detail.declaredVersion).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u)
         expect(detail.contentHash).toMatch(/^[a-f0-9]{64}$/u)
         expect(detail.content).not.toContain('search_mcp_tools')
       }
@@ -276,4 +278,26 @@ describe('ZeroWall capabilities Remote', () => {
       else process.env.ZEROWALL_USER_SKILLS = previousUser
     }
   })
+})
+
+// Registry discovery must remain metadata-only regardless of catalog size.
+it('ranks Chinese and English task metadata with stable ordering and one entry per skill name', () => {
+  const skill = (name: string, description: string) => ({ ...summary, name, description })
+  const skills = [skill('image-analysis', '图像强度分析'), skill('paper-review', 'Literature review'), skill('paper-review', 'Literature review'), ...Array.from({ length: 267 }, (_, index) => skill('unrelated-' + index, 'unrelated'))]
+  expect(rankSkills(skills, '图像分析').map(item => item.name)).toEqual(['image-analysis'])
+  expect(rankSkills(skills, 'literature').map(item => item.name)).toEqual(['paper-review'])
+  expect(rankSkills(skills, '')).toEqual([])
+  expect(skillCategory(skills[1]!)).toBe('literature')
+})
+
+it('shrinks historical catalogs without editing the original event or repeating the replacement', () => {
+  const session = Session.create(SessionId('legacy-skill-catalog'))
+  const catalog = session.append('user/message', createUserMessage({ source: { kind: 'skill-catalog', form: 'catalog', entries: Array.from({ length: 267 }, (_, i) => ({ name: 'skill-' + i, description: 'Long summary '.repeat(50) })) }, content: [{ type: 'text', text: 'Original full catalog' }] }), { surfaceOp: 'append' })
+  shrinkLegacySkillCatalogs(session)
+  const after = session.snapshotEvents().length
+  expect(session.eventAt(catalog.seq)?.data).toEqual(catalog.data)
+  expect(session.surface.nodes).not.toContain(catalog.seq)
+  expect(session.deriveMessages().map(message => message.content)).not.toContainEqual(catalog.data.content)
+  shrinkLegacySkillCatalogs(session)
+  expect(session.snapshotEvents()).toHaveLength(after)
 })

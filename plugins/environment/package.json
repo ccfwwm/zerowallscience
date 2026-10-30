@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-environment",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "ZeroWall Science environment domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -67,7 +67,9 @@
       "max": "0.2.1-rc.2"
     },
     "requiredServices": [
-      "settings"
+      "settings",
+      "llm",
+      "tokenMeter"
     ],
     "optionalServices": [],
     "capabilities": [

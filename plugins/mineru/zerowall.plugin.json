@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mineru",
-  "version": "0.1.11",
+  "version": "0.1.13",
   "applicationVersion": "8.0.1",
   "restartRequired": true,
   "desktop": {

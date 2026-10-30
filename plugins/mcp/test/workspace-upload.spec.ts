@@ -7,7 +7,6 @@ import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { Context } from '@deepseek-ai/cordis'
-import ZeroWallProjectsService from '../../projects/src/host/index.js'
 import ZeroWallMcpService from '../src/host/index.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -30,7 +29,6 @@ describe('rdatalinux workspace file transfer bridge', () => {
 		try {
 			await ctx.plugin(SystemPrompt)
 			await ctx.plugin(ToolRuntime)
-			await ctx.plugin(ZeroWallProjectsService)
 			await ctx.plugin(ZeroWallMcpService)
 			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
 			ctx.tools.register(defineTool({
@@ -70,7 +68,6 @@ describe('rdatalinux workspace file transfer bridge', () => {
 		try {
 			await ctx.plugin(SystemPrompt)
 			await ctx.plugin(ToolRuntime)
-			await ctx.plugin(ZeroWallProjectsService)
 			await ctx.plugin(ZeroWallMcpService)
 			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
 			ctx.tools.register(defineTool({
@@ -116,9 +113,7 @@ describe('rdatalinux workspace file transfer bridge', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
-      vi.spyOn(ctx.zerowallMcp, 'executeCompactCapability').mockResolvedValue({ target: 'mcp__rmcp__r_project', content: [], value: { ok: true } })
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
       let connectionChecks = 0
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockImplementation(async () => {
@@ -171,7 +166,6 @@ describe('rdatalinux workspace file transfer bridge', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -218,7 +212,6 @@ describe('rdatalinux workspace file transfer bridge', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
       ctx.tools.register(defineTool({
@@ -258,7 +251,6 @@ describe('rdatalinux workspace file transfer bridge', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -330,7 +322,6 @@ describe('rdatalinux workspace file transfer bridge', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
@@ -396,7 +387,6 @@ describe('rdatalinux workspace file transfer bridge', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
       await ctx.plugin(ZeroWallMcpService)
       // Transport behavior is exercised by lifecycle.spec; this fixture supplies the remote tools.
       vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)

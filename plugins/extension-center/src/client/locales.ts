@@ -46,7 +46,7 @@ export const zh = {
   noMatches: '没有匹配的资源', resourceCount: '资源', unversioned: '未声明版本', restartServer: '重启服务',
   job_queued: '等待中', job_running: '处理中', job_succeeded: '已完成', job_failed: '失败', job_cancelled: '已取消',
   pythonJob_queued: '等待中', pythonJob_running: '处理中', pythonJob_succeeded: '已完成', pythonJob_partial: '部分完成', pythonJob_failed: '失败', pythonJob_interrupted: '中断', pythonJob_cancelled: '已取消',
-  name_base: '基础服务与界面', name_account: '账号', name_ai_cloud: 'AI 云平台', name_desktop_compat: '桌面命令桥接', name_environment: '环境变量', name_execution: '任务执行', name_extension_center: '扩展中心', name_files: '文件预览与附件', name_images: '图片生成与管理', name_mcp: 'MCP 管理', name_mineru: 'MinerU 文档解析', name_projects: '项目', name_publications: '成果与出版', name_pubmed: 'PubMed 检索', name_python: 'Python 环境', name_research: '科研工具', name_reviewer: '科研审稿', name_runs: '运行记录', name_secrets: '安全凭据', name_singlecell: '单细胞分析', name_skills: 'Skills 管理',
+  name_base: '基础服务与界面', name_account: '账号', name_ai_cloud: 'AI 云平台', name_desktop_compat: '桌面命令桥接', name_environment: '环境变量', name_execution: '任务执行', name_extension_center: '扩展中心', name_files: '文件预览与附件', name_images: '图片生成与管理', name_mcp: 'MCP 管理', name_mineru: 'MinerU 文档解析', name_publications: '成果与出版', name_pubmed: 'PubMed 检索', name_python: 'Python 环境', name_reviewer: '科研审稿', name_runs: '运行记录', name_secrets: '安全凭据', name_skills: 'Skills 管理',
   catalogError: '目录检查失败',
   search: '搜索资源',
   import: '导入',
@@ -80,7 +80,7 @@ export const en: typeof zh = {
   localError: 'Cannot read local resources. Retry or check desktop logs.', noMatches: 'No matching resources', resourceCount: 'Resources', unversioned: 'Version not declared', restartServer: 'Restart server',
   job_queued: 'Queued', job_running: 'Running', job_succeeded: 'Completed', job_failed: 'Failed', job_cancelled: 'Cancelled',
   pythonJob_queued: 'Queued', pythonJob_running: 'Running', pythonJob_succeeded: 'Completed', pythonJob_partial: 'Partial', pythonJob_failed: 'Failed', pythonJob_interrupted: 'Interrupted', pythonJob_cancelled: 'Cancelled',
-  name_base: 'Base services and UI', name_account: 'Accounts', name_ai_cloud: 'AI Cloud', name_desktop_compat: 'Desktop command bridge', name_environment: 'Environment variables', name_execution: 'Execution', name_extension_center: 'Extension Center', name_files: 'File previews and attachments', name_images: 'Images', name_mcp: 'MCP management', name_mineru: 'MinerU document parsing', name_projects: 'Projects', name_publications: 'Publications', name_pubmed: 'PubMed search', name_python: 'Python environment', name_research: 'Scientific tools', name_reviewer: 'Research reviewer', name_runs: 'Run history', name_secrets: 'Secure credentials', name_singlecell: 'Single-cell analysis', name_skills: 'Skills management',
+  name_base: 'Base services and UI', name_account: 'Accounts', name_ai_cloud: 'AI Cloud', name_desktop_compat: 'Desktop command bridge', name_environment: 'Environment variables', name_execution: 'Execution', name_extension_center: 'Extension Center', name_files: 'File previews and attachments', name_images: 'Images', name_mcp: 'MCP management', name_mineru: 'MinerU document parsing', name_publications: 'Publications', name_pubmed: 'PubMed search', name_python: 'Python environment', name_reviewer: 'Research reviewer', name_runs: 'Run history', name_secrets: 'Secure credentials', name_skills: 'Skills management',
 }
 
 export type ExtensionTranslate = TranslateNS<typeof NS>

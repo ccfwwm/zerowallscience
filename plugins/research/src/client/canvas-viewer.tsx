@@ -18,21 +18,21 @@ function editableSpec(value: unknown, nested = false): value is CanvasSpec {
   const v = value as Record<string, unknown>
   return ['title', 'xLabel', 'yLabel'].every(k => typeof v[k] === 'string') && typeof v.width === 'number' && typeof v.height === 'number' && Array.isArray(v.series) && v.series.every(s => s && typeof s === 'object' && ['id', 'name', 'color'].every(k => typeof s[k] === 'string') && Array.isArray(s.points)) && (v.panels === undefined || (!nested && Array.isArray(v.panels) && v.panels.every(p => editableSpec(p, true))))
 }
-export function CanvasViewer({ remote, sessionId, projectId }: { remote: Remote; sessionId: string; projectId?: string | undefined }): JSX.Element {
+export function CanvasViewer({ remote, sessionId }: { remote: Remote; sessionId: string }): JSX.Element {
   const [text, setText] = useState(JSON.stringify(initial, null, 2)); const [svg, setSvg] = useState(''); const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false)
   const [imageSources, setImageSources] = useState<Array<{ kind: 'asset' | 'artifact'; id: string; name: string }>>([])
   const sourceGeneration = useRef(0)
   const refreshSources = async (): Promise<void> => {
-    if (!projectId) return
+    if (!sessionId) return
     const current = sourceGeneration.current
     try {
-      const [assets, artifacts] = await Promise.all([remote.listDataAssets(projectId), remote.listArtifacts(projectId)])
+      const [assets, artifacts] = await Promise.all([remote.listWorkspaceDataAssets({ sessionId }), remote.listWorkspaceArtifacts({ sessionId })])
       if (current !== sourceGeneration.current) return
       const supported = (v: { mediaType?: string | null; uri: string }): boolean => /^image\/(png|jpeg|webp)$/u.test(v.mediaType ?? '') || /\.(png|jpe?g|webp)$/iu.test(v.uri)
-      setImageSources([...unwrapRemoteResult('listDataAssets', assets).filter(supported).map(v => ({ kind: 'asset' as const, id: v.id, name: v.name })), ...unwrapRemoteResult('listArtifacts', artifacts).filter(supported).map(v => ({ kind: 'artifact' as const, id: v.id, name: v.name }))])
+      setImageSources([...unwrapRemoteResult('listWorkspaceDataAssets', assets).filter(supported).map(v => ({ kind: 'asset' as const, id: v.id, name: v.name })), ...unwrapRemoteResult('listWorkspaceArtifacts', artifacts).filter(supported).map(v => ({ kind: 'artifact' as const, id: v.id, name: v.name }))])
     } catch (error) { if (current === sourceGeneration.current) setMessage(String(error)) }
   }
-  useEffect(() => { sourceGeneration.current++; setImageSources([]); void refreshSources(); return () => { sourceGeneration.current++ } }, [projectId, sessionId])
+  useEffect(() => { sourceGeneration.current++; setImageSources([]); void refreshSources(); return () => { sourceGeneration.current++ } }, [sessionId])
   const revision = useRef(0)
   const generation = useRef(0)
   useEffect(() => { generation.current++; revision.current++; try { setText(localStorage.getItem(`zerowall:canvas:${sessionId}`) ?? JSON.stringify(initial, null, 2)) } catch { /* Host exports remain available. */ } setSvg(''); setMessage(''); return () => { generation.current++ } }, [sessionId])

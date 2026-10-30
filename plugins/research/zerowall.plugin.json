@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-research",
-  "version": "0.1.27",
+  "version": "0.1.30",
   "applicationVersion": "8.1.0",
   "restartRequired": true,
   "desktop": {

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-extension-center",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "applicationVersion": "8.1.0",
   "restartRequired": true,
   "desktop": {

@@ -5,46 +5,20 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import {
-  type ArtifactRecord, type AuditEventRecord, type CreateArtifactInput, type CreateDataAssetInput,
-  type CreateDecisionInput, type CreateExecutionContextInput, type CreatePaperInput, type CreateResearchEdgeInput,
-  type CreateRunInput, type DataAssetRecord, type DecisionRecord, type ExecutionContextRecord, type PaperRecord,
-  type ProjectRecord, type ResearchEdgeRecord, type ResearchProjectSnapshot, type RunRecord, type UpdateRunChanges, type AuditReport,
+  type ArtifactRecord, type CreateArtifactInput, type CreateResearchEdgeInput, type PaperRecord, type ProjectRecord, type ResearchEdgeRecord,
   type LiteratureGraph, type LiteratureSnapshot,
-  type ResearchStudyRecord, type ResearchDocumentRecord, type StudyFreezeRecord, type ResearchStudySnapshot,
-  type CreateResearchStudyInput, type UpdateResearchStudyInput, type CreateResearchDocumentInput, type UpdateResearchDocumentInput,
-  type ResearchRecordKind,
-  type ResearchTaskRecord, type CreateResearchTaskInput, type UpdateResearchTaskInput,
-  type ResearchTaskBudgetReport,
   type LocalScienceWorkflow,
 } from '@zerowallscience/research-store/types'
 import { ResearchStore } from '@zerowallscience/research-store'
 import type {} from 'zod'
 import type {} from '@deepseek-ai/dsh-system-prompt'
-import { assemblySessionId, researchContextText } from './research-context.js'
 import { installResearchRuntimeProvenance } from './runtime-provenance.js'
 import { evaluateMethod } from './method-check.js'
-import { validateNhanesContract } from './nhanes-contract.js'
-import { NhanesSurveyService } from './nhanes-runner.js'
-import { GeneticAnalysisService, type GeneticWorkflow } from './genetic-runner.js'
 import type {
-  NhanesSurveyRequest, GeneticAnalysisRequest, GeneticRefreshRequest, ResearchExecutionContextInput, ResearchExecutionContextRecord, ResearchJsonObject as ResearchRemoteJsonObject,
-  ResearchDataAssetRecord as ResearchRemoteDataAssetRecord, ResearchViewerSessionRecord as ResearchRemoteViewerSessionRecord,
-  ResearchRunRecord as ResearchRemoteRunRecord, ResearchArtifactRecord as ResearchRemoteArtifactRecord,
-  ResearchPaperRecord as ResearchRemotePaperRecord, ResearchDecisionRecord as ResearchRemoteDecisionRecord,
-  ResearchEdgeRecord as ResearchRemoteEdgeRecord, ResearchAuditEventRecord as ResearchRemoteAuditEventRecord,
-  ResearchAuditReport as ResearchRemoteAuditReport, ResearchStudyRecord as ResearchRemoteStudyRecord,
-  ResearchDocumentRecord as ResearchRemoteDocumentRecord, ResearchFreezeRecord as ResearchRemoteFreezeRecord,
-  ResearchTaskRecord as ResearchRemoteTaskRecord, ResearchTaskBudgetReport as ResearchRemoteTaskBudgetReport,
-  ResearchProjectRecord as ResearchRemoteProjectRecord, ResearchStudySnapshot as ResearchRemoteStudySnapshot,
-  ResearchProjectSnapshot as ResearchRemoteProjectSnapshot, ResearchCreateDataAssetInput as ResearchRemoteCreateDataAssetInput,
-  ResearchCreateRunInput as ResearchRemoteCreateRunInput, ResearchUpdateRunChanges as ResearchRemoteUpdateRunChanges,
-  ResearchCreateArtifactInput as ResearchRemoteCreateArtifactInput, ResearchCreatePaperInput as ResearchRemoteCreatePaperInput,
-  ResearchCreateDecisionInput as ResearchRemoteCreateDecisionInput, ResearchCreateEdgeInput as ResearchRemoteCreateEdgeInput,
-  ResearchCreateStudyInput as ResearchRemoteCreateStudyInput, ResearchUpdateStudyInput as ResearchRemoteUpdateStudyInput,
-  ResearchCreateDocumentInput as ResearchRemoteCreateDocumentInput, ResearchUpdateDocumentInput as ResearchRemoteUpdateDocumentInput,
-  ResearchCreateTaskInput as ResearchRemoteCreateTaskInput, ResearchUpdateTaskInput as ResearchRemoteUpdateTaskInput,
+  ResearchJsonObject as ResearchRemoteJsonObject,
+  ResearchDataAssetRecord as ResearchRemoteDataAssetRecord,
+  ResearchArtifactRecord as ResearchRemoteArtifactRecord,
 } from '../shared/types.js'
-import { validateGeneticContract } from './genetic-contract.js'
 import { ScienceViewerService } from './science-viewer.js'
 import { ImageViewerService } from './image-viewer.js'
 import { FijiWorkflowService } from './fiji-workflow.js'
@@ -53,11 +27,10 @@ import { SangerService } from './sanger.js'
 import { FlowService } from './flow.js'
 import { HeService } from './he.js'
 import { MoleculeService } from './molecule.js'
-import { MoleculeDockingService } from './molecule-docking.js'
+import { MoleculeDockingService, type ResearchWorkflowClient } from './molecule-docking.js'
 import type { MoleculeDockingRequest } from '../shared/molecule-docking.js'
 import type { MoleculeRequest } from '../shared/types.js'
 import { CanvasService } from './canvas.js'
-import { ReportService } from './report.js'
 import { importLocalAsset as importLocalScienceAsset, registerLocalAsset } from './local-assets.js'
 import { CellViewerService } from './cell-viewer.js'
 import { BrainTransformService } from './brain-transform.js'
@@ -69,7 +42,7 @@ import { engineEnvironment, NativeEngineService } from './native-engines.js'
 import { readFile, stat, access, mkdir } from 'node:fs/promises'
 import { mkdirSync, statSync } from 'node:fs'
 import { spawnWithRuntimeLease as spawn } from '../../../python/src/shared/runtime-process.js'
-import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
+import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ScientificPreviewPayload, ScientificEngineConfig, ScientificEngineId, ScientificEngineLaunchResult, ScientificEngineStatus, ScienceViewerRequest, ScienceViewerResponse, CellViewerRequest, BrainAtlasRequest } from '../shared/types.js'
 import type { ScienceToolId } from '../shared/types.js'
@@ -82,7 +55,7 @@ export const inject = ['tools'] as const
 declare module '@deepseek-ai/cordis' {
   interface Context { zerowallResearch: ZeroWallResearchService }
   interface Context { localScienceWorkflow: LocalScienceWorkflow }
-  interface Context { researchWorkflow?: { get(): GeneticWorkflow } }
+  interface Context { researchWorkflow?: { get(): ResearchWorkflowClient } }
 }
 
 export class ZeroWallResearchService extends TypertRemoteService {
@@ -99,12 +72,9 @@ export class ZeroWallResearchService extends TypertRemoteService {
   private readonly molecule: MoleculeService
   private readonly docking: MoleculeDockingService
   private readonly canvas: CanvasService
-  private readonly reports: ReportService
   private readonly cells: CellViewerService
   private readonly brainTransforms: BrainTransformService
   private readonly brain: BrainAtlasService
-  private readonly nhanes: NhanesSurveyService
-  private readonly genetics: GeneticAnalysisService
   private readonly conversationEventStore: ResearchConversationEventStore
 
   constructor(ctx: Context) {
@@ -129,17 +99,10 @@ export class ZeroWallResearchService extends TypertRemoteService {
       return result.value as ResearchRemoteJsonObject
     })
     this.canvas = new CanvasService(this.store)
-    this.reports = new ReportService(this.store)
     this.cells = new CellViewerService(this.store)
     this.brainTransforms = new BrainTransformService(this.store)
     this.brain = new BrainAtlasService(this.store)
-    this.nhanes = new NhanesSurveyService(this.store, () => this.ctx.get('researchWorkflow')?.get())
-    this.genetics = new GeneticAnalysisService(this.store, () => this.ctx.get('researchWorkflow')?.get(), async (input, exec) => {
-      const result = await this.ctx.tools.execute({ name: 'r_files', arguments: { action: 'download_workspace', project_id: input.projectId, remote_path: input.remotePath, local_path: input.localPath }, callId: ToolCallId(`genetics-files-${Date.now()}`), signal: exec.signal, parent: exec.token, ...(exec.agent ? { agent: exec.agent } : {}) })
-      if (result.isError) throw new Error(result.content.map(item => item.type === 'text' ? item.text : '').filter(Boolean).join('\n') || 'Genetics artifact download failed.')
-      return result.value as ResearchRemoteJsonObject
-    })
-    installResearchRuntimeProvenance(ctx, this.store, sessionId => this.getActiveResearchStudy({ sessionId }))
+    installResearchRuntimeProvenance(ctx, this.store, sessionId => this.projectForSession({ sessionId }))
     ctx.provide('localScienceWorkflow', {
       list: () => ({ workflow_id: 'fiji', skill: 'zerowall-fiji', operation_count: 5, location: 'local' }),
       describe: operation => {
@@ -150,32 +113,21 @@ export class ZeroWallResearchService extends TypertRemoteService {
       execute: async (sessionId,action,parameters,runId) => {
         if(action === 'run' && typeof parameters.operation === 'string' && parameters.operation !== 'fiji.western-blot') {
           const experiment = String(parameters.operation).slice('fiji.'.length) as 'scratch-wound'|'colony-formation'|'bacterial-cfu'|'tube-formation'
-          const project = this.projectForSession({ sessionId }); if (!project) throw new Error('An active registered project session is required.')
+          const project = this.projectForSession({ sessionId }); if (!project) throw new Error('The active conversation workspace is unavailable.')
           const args = requireResearchRemoteJsonObject(parameters.arguments)
           const result = await this.fijiExperiments.execute(project, { sessionId, action: 'analyze', experiment, requestId: String(parameters.request_id ?? ''), ...(args.measurements === undefined ? {} : { measurements: requireJsonArray(args.measurements).map(requireResearchRemoteJsonObject) }), ...(args.sourceAssetId === undefined ? {} : { sourceAssetId: String(args.sourceAssetId) }), ...(args.image === undefined ? {} : { image: requireResearchRemoteJsonObject(args.image) as any }) })
           return JSON.parse(JSON.stringify({ workflow_id: 'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as ResearchRemoteJsonObject
         }
         if (runId && action !== 'run' && this.store.getRun(runId)?.leaseOwner === 'fiji-experiment') {
-          const project = this.projectForSession({ sessionId }); if (!project) throw new Error('An active registered project session is required.')
+          const project = this.projectForSession({ sessionId }); if (!project) throw new Error('The active conversation workspace is unavailable.')
           const result = action === 'cancel' ? await this.fijiExperiments.cancel(project, runId) : await this.fijiExperiments.status(project, runId)
           return JSON.parse(JSON.stringify({ workflow_id: 'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as ResearchRemoteJsonObject
         }
         const args = action === 'run' ? requireResearchRemoteJsonObject(parameters.arguments) : {}
-        const input: FijiWorkflowRequest = action === 'run' ? { sessionId, action: 'submit', requestId: String(parameters.request_id??''), ...(parameters.research_task_id === undefined ? {} : { researchTaskId: String(parameters.research_task_id) }), viewerId: String(args.viewerId??''), expectedVersion: Number(args.expectedVersion), annotationRevisionId: String(args.annotationRevisionId??''), plan: args.plan as unknown as NonNullable<FijiWorkflowRequest['plan']> } : { sessionId, action: action as 'status'|'cancel', ...(runId?{runId}:{}) }
+        const input: FijiWorkflowRequest = action === 'run' ? { sessionId, action: 'submit', requestId: String(parameters.request_id??''), viewerId: String(args.viewerId??''), expectedVersion: Number(args.expectedVersion), annotationRevisionId: String(args.annotationRevisionId??''), plan: args.plan as unknown as NonNullable<FijiWorkflowRequest['plan']> } : { sessionId, action: action as 'status'|'cancel', ...(runId?{runId}:{}) }
         const result = await this.fijiWorkflow(input)
         return JSON.parse(JSON.stringify({ workflow_id:'fiji', run_id: result.run?.id, status: result.run?.status, ...result })) as ResearchRemoteJsonObject
       },
-    })
-    ctx.inject(['systemPrompt'], promptCtx => {
-      promptCtx.systemPrompt.context({
-        name: 'zerowall:research-context', order: 940,
-        text: context => {
-          const sessionId = assemblySessionId(context)
-          if (!sessionId) return ''
-          const study = this.getActiveResearchStudy({ sessionId })
-          return researchContextText(study ? this.store.getResearchStudySnapshot(study.id) : undefined)
-        },
-      })
     })
     ctx.on('session/event', (session: Session, event: SessionEvent) => {
       if (event.type !== 'tool/call' && event.type !== 'tool/result') return
@@ -198,10 +150,9 @@ export class ZeroWallResearchService extends TypertRemoteService {
     ctx.effect(() => async () => { this.he.dispose(); this.fijiExperiments.dispose(); this.fijiWorkflows.dispose(); this.nativeEngines.dispose(); await Promise.all([this.flow.dispose(), this.brain.dispose(), this.brainTransforms.dispose()]); this.store.close() }, 'zerowall-research: close research store')
   }
 
-  @Remote('createExecutionContext') createExecutionContext(input: ResearchExecutionContextInput): ResearchExecutionContextRecord { return this.store.createExecutionContext(input as CreateExecutionContextInput) as ResearchExecutionContextRecord }
   @Remote('fijiWorkflow') async fijiWorkflow(input: FijiWorkflowRequest): Promise<FijiWorkflowResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
-    if (!project) throw new Error('An active registered project session is required.')
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
     const tool: ScienceToolId = 'imagej'
     this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: input.action === 'submit' ? 'run.accepted' : 'viewer.focus', tool, ...(input.runId ? { runId: input.runId } : {}), ...(input.viewerId ? { viewerId: input.viewerId } : {}), payload: { operation: input.action, requestId: input.requestId ?? null } })
     try {
@@ -217,7 +168,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
   }
   @Remote('fijiExperiment') async fijiExperiment(input: FijiExperimentRequest): Promise<FijiExperimentResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
-    if (!project) throw new Error('An active registered project session is required.')
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
     this.conversationEventStore.append({ sessionId: input.sessionId, projectId: project.id, type: input.action === 'analyze' ? 'run.accepted' : 'viewer.focus', tool: 'imagej', ...(input.runId ? { runId: input.runId } : {}), ...(input.sourceAssetId ? { assetId: input.sourceAssetId } : {}), payload: { operation: `fiji.${input.experiment ?? input.action}`, requestId: input.requestId ?? null } })
     try {
       const result = await this.fijiExperiments.execute(project, input)
@@ -234,7 +185,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     const sessionId = String(exec.agent?.session.id ?? '')
     if (sessionId !== input.sessionId) throw new Error('Docking request session does not match the execution context.')
     const project = this.projectForSession({ sessionId })
-    if (!project) throw new Error('An active registered project session is required.')
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
     return this.docking.execute(project, input, exec)
   }
   @Remote('moleculeDocking') async moleculeDocking(input: MoleculeDockingRequest): Promise<ResearchRemoteJsonObject> {
@@ -244,7 +195,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
   }
   @Remote('brainTransform') async brainTransform(input: BrainTransformRequest): Promise<ResearchRemoteJsonObject> {
     const project = this.projectForSession({ sessionId: input.sessionId })
-    if (!project) throw new Error('An active registered project session is required.')
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
     return this.brainTransforms.execute(project, input)
   }
   /** Direct science_viewer calls are recorded with their conversation context. */
@@ -292,7 +243,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
 
   private async scienceViewerImpl(input: ScienceViewerRequest): Promise<ScienceViewerResponse> {
     const project = this.projectForSession({ sessionId: input.sessionId })
-    if (!project) throw new Error('An active registered project session is required.')
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
     if (input.action === 'native_status') return { launches: this.nativeEngines.list(project.id) }
     if (input.action === 'launch_native') {
       if (!input.engine) throw new Error('A native engine is required.')
@@ -391,7 +342,7 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (input.action.startsWith('image_') || input.action.startsWith('annotation_')) return this.imageViewer.execute(project, input)
     return this.viewer.execute(project, input)
   }
-  @Remote('scienceViewerRoute') async scienceViewerRoute(input: { action: 'open' | 'focus'; sessionId: string; requestId: string; tool: ScienceToolId; projectId?: string; assetId?: string; viewerId?: string; runId?: string }): Promise<ResearchRemoteJsonObject> {
+  @Remote('scienceViewerRoute') async scienceViewerRoute(input: { action: 'open' | 'focus'; sessionId: string; requestId: string; tool: ScienceToolId; assetId?: string; viewerId?: string; runId?: string }): Promise<ResearchRemoteJsonObject> {
     const sessionId = String(input.sessionId ?? '').trim()
     const requestId = String(input.requestId ?? '').trim()
     if (!sessionId || requestId === '') throw new Error('sessionId and requestId are required.')
@@ -401,7 +352,6 @@ export class ZeroWallResearchService extends TypertRemoteService {
     if (!supportedTools.includes(input.tool)) throw new Error('A supported scientific viewer is required.')
     const project = this.projectForSession({ sessionId })
     if (!project) throw new Error('An active conversation research context is required.')
-    if (input.projectId !== undefined && input.projectId !== project.id) throw new Error('Viewer access is limited to the active conversation research context.')
     const tool = input.tool
     if (input.assetId && !this.store.listDataAssets(project.id).some(asset => asset.id === input.assetId)) throw new Error('Viewer asset does not belong to the active conversation research context.')
     const viewer = input.viewerId ? this.store.listViewerSessions(project.id).find(item => item.id === input.viewerId) : undefined
@@ -422,144 +372,33 @@ export class ZeroWallResearchService extends TypertRemoteService {
     return { status: 'accepted', action: input.action, tool, event } as unknown as ResearchRemoteJsonObject
   }
 
-  @Remote('listExecutionContexts') listExecutionContexts(projectId: string): ResearchExecutionContextRecord[] { return this.store.listExecutionContexts(projectId) as ResearchExecutionContextRecord[] }
-  @Remote('createDataAsset') createDataAsset(input: ResearchRemoteCreateDataAssetInput): ResearchRemoteDataAssetRecord { return this.store.createDataAsset(input as CreateDataAssetInput) as ResearchRemoteDataAssetRecord }
   @Remote('registerLocalAsset') async registerLocalAsset(input: { sessionId: string; path: string }): Promise<ResearchRemoteDataAssetRecord> {
     const project = this.projectForSession(input)
-    if (!project) throw new Error('Register the current workspace before adding assets.')
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
     return await registerLocalAsset(this.store, project, input.path) as ResearchRemoteDataAssetRecord
   }
   @Remote('importLocalAsset') async importLocalAsset(input: { sessionId: string; sourcePath: string }): Promise<ResearchRemoteDataAssetRecord> {
     const project = this.projectForSession(input)
-    if (!project) throw new Error('Register the current workspace before importing a science file.')
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
     return await importLocalScienceAsset(this.store, project, input.sourcePath) as ResearchRemoteDataAssetRecord
   }
-  @Remote('listDataAssets') listDataAssets(projectId: string): ResearchRemoteDataAssetRecord[] { return this.store.listDataAssets(projectId) as ResearchRemoteDataAssetRecord[] }
-  @Remote('createRun') createRun(input: ResearchRemoteCreateRunInput): ResearchRemoteRunRecord { return this.store.createRun(input as CreateRunInput) as ResearchRemoteRunRecord }
-  @Remote('updateRun') updateRun(input: { id: string; changes: ResearchRemoteUpdateRunChanges }): ResearchRemoteRunRecord { return this.store.updateRun(input.id, input.changes as UpdateRunChanges) as ResearchRemoteRunRecord }
-  @Remote('listRuns') listRuns(projectId: string): ResearchRemoteRunRecord[] { return this.store.listRuns(projectId) as ResearchRemoteRunRecord[] }
-  @Remote('createArtifact') createArtifact(input: ResearchRemoteCreateArtifactInput): ResearchRemoteArtifactRecord { return this.store.createArtifact(input as CreateArtifactInput) as ResearchRemoteArtifactRecord }
-  @Remote('listArtifacts') listArtifacts(projectId: string): ResearchRemoteArtifactRecord[] { return this.store.listArtifacts(projectId) as ResearchRemoteArtifactRecord[] }
-  @Remote('createPaper') createPaper(input: ResearchRemoteCreatePaperInput): ResearchRemotePaperRecord { return this.store.createPaper(input as CreatePaperInput) as ResearchRemotePaperRecord }
-  @Remote('listPapers') listPapers(projectId: string): ResearchRemotePaperRecord[] { return this.store.listPapers(projectId) as ResearchRemotePaperRecord[] }
+  @Remote('listWorkspaceDataAssets') listWorkspaceDataAssets(input: { sessionId: string }): ResearchRemoteDataAssetRecord[] {
+    const project = this.projectForSession(input)
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
+    return this.store.listDataAssets(project.id) as ResearchRemoteDataAssetRecord[]
+  }
+  @Remote('listWorkspaceArtifacts') listWorkspaceArtifacts(input: { sessionId: string }): ResearchRemoteArtifactRecord[] {
+    const project = this.projectForSession(input)
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
+    return this.store.listArtifacts(project.id) as ResearchRemoteArtifactRecord[]
+  }
   saveLiteraturePapers(projectId: string, articles: ResearchRemoteJsonObject[]): PaperRecord[] { return this.store.saveLiteraturePapers(projectId, articles) }
+  listPapers(projectId: string): PaperRecord[] { return this.store.listPapers(projectId) }
   getLiteratureGraph(projectId: string): LiteratureSnapshot { return this.store.getLiteratureGraph(projectId) }
   commitLiteratureGraph(projectId: string, graph: LiteratureGraph): { addedNodes: number; addedEdges: number } { return this.store.commitLiteratureGraph(projectId, graph) }
   resetLiteratureGraph(projectId: string): void { this.store.resetLiteratureGraph(projectId) }
-  @Remote('createDecision') createDecision(input: CreateDecisionInput): DecisionRecord { return this.store.createDecision(input) }
-  @Remote('listDecisions') listDecisions(projectId: string): DecisionRecord[] { return this.store.listDecisions(projectId) }
-  @Remote('createResearchStudy') createResearchStudy(input: ResearchRemoteCreateStudyInput): ResearchRemoteStudyRecord { return this.store.createResearchStudy(input as CreateResearchStudyInput) as ResearchRemoteStudyRecord }
-  @Remote('getResearchStudy') getResearchStudy(studyId: string): ResearchRemoteStudyRecord | undefined { return this.store.getResearchStudy(studyId) as ResearchRemoteStudyRecord | undefined }
-  @Remote('listResearchStudies') listResearchStudies(projectId: string): ResearchRemoteStudyRecord[] { return this.store.listResearchStudies(projectId) as ResearchRemoteStudyRecord[] }
-  @Remote('updateResearchStudy') updateResearchStudy(input: { id: string; changes: ResearchRemoteUpdateStudyInput }): ResearchRemoteStudyRecord {
-    return this.store.updateResearchStudy(input.id, input.changes as UpdateResearchStudyInput) as ResearchRemoteStudyRecord
-  }
-  @Remote('createResearchDocument') createResearchDocument(input: ResearchRemoteCreateDocumentInput): ResearchRemoteDocumentRecord {
-    return this.store.createResearchDocument(input as CreateResearchDocumentInput) as ResearchRemoteDocumentRecord
-  }
-  @Remote('getResearchDocument') getResearchDocument(documentId: string): ResearchRemoteDocumentRecord | undefined { return this.store.getResearchDocument(documentId) as ResearchRemoteDocumentRecord | undefined }
-  @Remote('listResearchDocuments') listResearchDocuments(input: { studyId: string; kind?: ResearchRecordKind }): ResearchRemoteDocumentRecord[] { return this.store.listResearchDocuments(input.studyId, input.kind) as ResearchRemoteDocumentRecord[] }
-  @Remote('updateResearchDocument') updateResearchDocument(input: { id: string; changes: ResearchRemoteUpdateDocumentInput }): ResearchRemoteDocumentRecord {
-    return this.store.updateResearchDocument(input.id, input.changes as UpdateResearchDocumentInput) as ResearchRemoteDocumentRecord
-  }
-  @Remote('validateAnalysisPlan') validateAnalysisPlan(planId: string): ResearchRemoteDocumentRecord {
-    return this.store.validateAnalysisPlan(planId) as ResearchRemoteDocumentRecord
-  }
-  @Remote('methodCheckEvaluate') methodCheckEvaluate(input: { studyId: string; method: string; assumptions?: ResearchRemoteJsonObject }): ResearchRemoteJsonObject {
-    const study = this.store.getResearchStudy(input.studyId)
-    if (!study) throw new Error('Research study was not found.')
-    const method = input.method.trim()
-    if (!method) throw new Error('Method is required.')
-    const result = evaluateMethod({ method, testUsed: method, ...(input.assumptions ?? {}) })
-    return { studyId: study.id, ...result, checkedAt: new Date().toISOString() }
-  }
-  @Remote('approveResearchGate') approveResearchGate(input: { studyId: string; gate: 1 | 2; status: 'approved' | 'rejected'; expectedVersion: number; rationale: string }): ResearchRemoteStudyRecord { return this.store.approveResearchGate(input.studyId, input.gate, input.status, input.expectedVersion, input.rationale) as ResearchRemoteStudyRecord }
-  @Remote('autoApproveResearchGate1') autoApproveResearchGate1(input: { sessionId: string; studyId: string; expectedVersion?: number }): ResearchRemoteJsonObject {
-    const study = this.requireStudyInActiveProject(input.sessionId, input.studyId)
-    const result = this.store.diagnoseResearchGate(study.id, 1)
-    return result as unknown as ResearchRemoteJsonObject
-  }
-  @Remote('autoApproveResearchGate2') autoApproveResearchGate2(input: { sessionId: string; studyId: string; expectedVersion?: number }): ResearchRemoteJsonObject {
-    const study = this.requireStudyInActiveProject(input.sessionId, input.studyId)
-    const result = this.store.diagnoseResearchGate(study.id, 2)
-    return result as unknown as ResearchRemoteJsonObject
-  }
-  private requireStudyInActiveProject(sessionId: string, studyId: string): ResearchStudyRecord {
-    const project = this.ensureResearchContext({ sessionId }).project
-    const study = this.store.getResearchStudy(studyId)
-    if (!study || study.projectId !== project.id) throw new Error('Research study access is limited to the active project workspace.')
-    return study
-  }
-  @Remote('freezeResearchStudy') freezeResearchStudy(input: { studyId: string; expectedVersion: number }): ResearchRemoteFreezeRecord { return this.store.freezeResearchStudy(input.studyId, input.expectedVersion) as ResearchRemoteFreezeRecord }
-  @Remote('amendResearchStudy') amendResearchStudy(input: { studyId: string; reason: string; expectedVersion: number }): ResearchRemoteStudyRecord { return this.store.amendResearchStudy(input.studyId, input.reason, input.expectedVersion) as ResearchRemoteStudyRecord }
-  @Remote('listStudyFreezes') listStudyFreezes(studyId: string): ResearchRemoteFreezeRecord[] { return this.store.listStudyFreezes(studyId) as ResearchRemoteFreezeRecord[] }
-  @Remote('getResearchStudySnapshot') getResearchStudySnapshot(studyId: string): ResearchRemoteStudySnapshot { return this.store.getResearchStudySnapshot(studyId) as ResearchRemoteStudySnapshot }
-  @Remote('registerResearchEvidence') registerResearchEvidence(input: { sessionId: string; projectId: string; studyId: string; payload: ResearchRemoteJsonObject }): ResearchRemoteDocumentRecord {
-    const active = this.projectForSession({ sessionId: input.sessionId })
-    const project = this.store.getResearchStudy(input.studyId)?.projectId
-    if (!active || active.id !== input.projectId || project !== input.projectId) throw new Error('Evidence study is not in the active project.')
-    return this.store.registerResearchEvidence(input) as ResearchRemoteDocumentRecord
-  }
-  @Remote('validateNhanesContract') validateNhanesContractRemote(input: { studyId: string; contract: ResearchRemoteJsonObject }): ResearchRemoteJsonObject {
-    if (!this.store.getResearchStudy(input.studyId)) throw new Error('Research study was not found.')
-    return { studyId: input.studyId, ...validateNhanesContract(input.contract), checkedAt: new Date().toISOString() }
-  }
-  async runNhanesSurvey(input: NhanesSurveyRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
-    const { project, study } = this.ensureResearchContext({ sessionId: String(exec.agent?.session.id ?? '') })
-    if (study.id !== input.studyId) throw new Error('NHANES run is outside the automatically bound research study.')
-    return this.nhanes.execute(project, input, exec)
-  }
-  @Remote('runNhanesSurvey') async runNhanesSurveyRemote(input: NhanesSurveyRequest & { sessionId: string }): Promise<ResearchRemoteJsonObject> {
-    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
-    if (!session) throw new Error('An active session is required.')
-    const exec = { agent: { session }, callId: `rpc:nhanes-survey:${input.requestId}`, rootCallId: `rpc:nhanes-survey:${input.requestId}`, signal: new AbortController().signal } as unknown as ToolRunContext
-    return this.runNhanesSurvey(input, exec)
-  }
-  async runGeneticAnalysis(input: GeneticAnalysisRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
-    const { project, study } = this.ensureResearchContext({ sessionId: String(exec.agent?.session.id ?? '') })
-    if (study.id !== input.studyId) throw new Error('Genetic analysis is outside the automatically bound research study.')
-    return this.genetics.execute(project, input, exec)
-  }
-  async refreshGeneticAnalysis(input: GeneticRefreshRequest, exec: ToolRunContext): Promise<ResearchRemoteJsonObject> {
-    const project = this.projectForSession({ sessionId: String(exec.agent?.session.id ?? '') })
-    if (!project) throw new Error('An active registered project session is required.')
-    return this.genetics.refresh(project, input, exec)
-  }
-  @Remote('runGeneticAnalysis') async runGeneticAnalysisRemote(input: GeneticAnalysisRequest & { sessionId: string }): Promise<ResearchRemoteJsonObject> {
-    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
-    if (!session) throw new Error('An active session is required.')
-    return this.runGeneticAnalysis(input, { agent: { session }, callId: `rpc:genetics:${input.requestId}`, signal: new AbortController().signal } as unknown as ToolRunContext)
-  }
-  @Remote('refreshGeneticAnalysis') async refreshGeneticAnalysisRemote(input: GeneticRefreshRequest & { sessionId: string }): Promise<ResearchRemoteJsonObject> {
-    const session = this.ctx.get('sessions')?.get(SessionId(input.sessionId))
-    if (!session) throw new Error('An active session is required.')
-    return this.refreshGeneticAnalysis(input, { agent: { session }, callId: `rpc:genetics-refresh:${input.runId}`, signal: new AbortController().signal } as unknown as ToolRunContext)
-  }
-  @Remote('validateGeneticContract') validateGeneticContractRemote(input: { studyId: string; contract: ResearchRemoteJsonObject }): ResearchRemoteJsonObject {
-    if (!this.store.getResearchStudy(input.studyId)) throw new Error('Research study was not found.')
-    return { studyId: input.studyId, ...validateGeneticContract(input.contract), checkedAt: new Date().toISOString() }
-  }
-  @Remote('auditResearchClaim') auditResearchClaim(input: { sessionId: string; claimId: string; expectedVersion: number }): ResearchRemoteDocumentRecord {
-    const existingDocument = this.store.getResearchDocument(input.claimId)
-    if (!existingDocument) throw new Error('Research claim was not found.')
-    const study = this.store.getResearchStudy(existingDocument.studyId)
-    const active = this.projectForSession({ sessionId: input.sessionId })
-    if (!study || study.projectId !== existingDocument.projectId || !active || active.id !== study.projectId) throw new Error('Research claim is not in the active project.')
-    return this.store.auditResearchClaim(input.claimId, input.expectedVersion) as ResearchRemoteDocumentRecord
-  }
-  @Remote('createResearchTask') createResearchTask(input: ResearchRemoteCreateTaskInput): ResearchRemoteTaskRecord { return this.store.createResearchTask(input as CreateResearchTaskInput) as ResearchRemoteTaskRecord }
-  @Remote('listResearchTasks') listResearchTasks(studyId: string): ResearchRemoteTaskRecord[] { return this.store.listResearchTasks(studyId) as ResearchRemoteTaskRecord[] }
-  @Remote('updateResearchTask') updateResearchTask(input: { id: string; changes: ResearchRemoteUpdateTaskInput }): ResearchRemoteTaskRecord { return this.store.updateResearchTask(input.id, input.changes as UpdateResearchTaskInput) as ResearchRemoteTaskRecord }
-  @Remote('refreshResearchTaskReadiness') refreshResearchTaskReadiness(studyId: string): ResearchRemoteTaskRecord[] { return this.store.refreshResearchTaskReadiness(studyId) as ResearchRemoteTaskRecord[] }
-  @Remote('getResearchTaskBudget') getResearchTaskBudget(studyId: string): ResearchRemoteTaskBudgetReport { return this.store.getResearchTaskBudget(studyId) as ResearchRemoteTaskBudgetReport }
-  @Remote('reconcileResearchTaskRun') reconcileResearchTaskRun(input: { id: string; expectedVersion?: number }): ResearchRemoteTaskRecord { return this.store.reconcileResearchTaskRun(input.id, input.expectedVersion) as ResearchRemoteTaskRecord }
-  @Remote('generateResearchReport') async generateResearchReport(input: { sessionId: string; studyId: string; mode?: 'draft' | 'final' }): Promise<ResearchRemoteJsonObject> {
-    const { project, study } = this.ensureResearchContext({ sessionId: input.sessionId })
-    if (study.id !== input.studyId) throw new Error('Research report is outside the automatically bound research study.')
-    const mode = input.mode ?? 'draft'
-    const report = await this.reports.generate(project, study.id, mode)
-    return { ...report, status: 'succeeded', label: mode === 'final' ? '正式报告已生成' : '研究报告草稿已生成' } as unknown as ResearchRemoteJsonObject
-  }
+  createArtifact(input: CreateArtifactInput): ArtifactRecord { return this.store.createArtifact(input) }
+  createEdge(input: CreateResearchEdgeInput): ResearchEdgeRecord { return this.store.createResearchEdge(input) }
   /**
    * Probe every engine the Host knows about. The previous implementation
    * returned a fixed three-element array, so he-python, he-stardist and
@@ -601,74 +440,39 @@ export class ZeroWallResearchService extends TypertRemoteService {
   }
   @Remote('launchScientificEngine') async launchScientificEngine(input: { sessionId: string; engine: 'fiji' | 'napari'; assetId?: string }): Promise<ScientificEngineLaunchResult> {
     const project = this.projectForSession({ sessionId: input.sessionId })
-    if (!project) throw new Error('An active registered project session is required.')
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
     return this.nativeEngines.launch(project, input.sessionId, input.engine, input.assetId)
   }
   @Remote('listScientificEngineLaunches') listScientificEngineLaunches(input: { sessionId: string }): ScientificEngineLaunchResult[] {
     const project = this.projectForSession(input)
-    if (!project) throw new Error('An active registered project session is required.')
+    if (!project) throw new Error('The active conversation workspace is unavailable.')
     return this.nativeEngines.list(project.id)
   }
-  @Remote('createEdge') createEdge(input: ResearchRemoteCreateEdgeInput): ResearchRemoteEdgeRecord { return this.store.createResearchEdge(input as CreateResearchEdgeInput) as unknown as ResearchRemoteEdgeRecord }
-  @Remote('listEdges') listEdges(projectId: string): ResearchRemoteEdgeRecord[] { return this.store.listResearchEdges(projectId) as unknown as ResearchRemoteEdgeRecord[] }
-  @Remote('listAuditEvents') listAuditEvents(projectId: string): ResearchRemoteAuditEventRecord[] { return this.store.listAuditEvents(projectId) as unknown as ResearchRemoteAuditEventRecord[] }
-  @Remote('projectForSession') projectForSession(input: { sessionId: string }): ResearchRemoteProjectRecord | undefined {
+  @Remote('workspaceReadyForSession') workspaceReadyForSession(input: { sessionId: string }): boolean {
+    return this.projectForSession(input) !== undefined
+  }
+  projectForSession(input: { sessionId: string }): ProjectRecord | undefined {
     const sessionId = String(input.sessionId ?? '').trim()
     if (!sessionId) return undefined
     const session = this.ctx.get('sessions')?.get(SessionId(sessionId))
     if (!session) return undefined
-    return this.ensureResearchContext({ sessionId }).project as unknown as ResearchRemoteProjectRecord
-  }
-  /** One idempotent entry point shared by Research UI, MCP tools and Runners. */
-  @Remote('ensureResearchContext') ensureResearchContext(input: { sessionId: string; target?: string }): { project: ResearchRemoteProjectRecord; study: ResearchRemoteStudyRecord; createdProject: boolean; createdStudy: boolean; targetFingerprint: string } {
-    const sessionId = String(input.sessionId ?? '').trim()
-    if (!sessionId) throw new Error('An active conversation session is required.')
-    const session = this.ctx.get('sessions')?.get(SessionId(sessionId))
-    if (!session) throw new Error('The active conversation session is not available; research context can be retried when it reconnects.')
     const cwd = session.header.cwd ? resolve(session.header.cwd) : this.defaultProjectRoot
-    if (!isAbsolute(cwd)) throw new Error('The session workspace path must be absolute.')
     if (!session.header.cwd) mkdirSync(cwd, { recursive: true })
-    let info
-    try { info = statSync(cwd) } catch { throw new Error(`Research workspace is unavailable: ${cwd}; restore or select a valid workspace and retry.`) }
-    if (!info.isDirectory()) throw new Error(`Research workspace is not a directory: ${cwd}; select a valid workspace and retry.`)
-    // Use the same durable user-authored objective at every entry point. A
-    // tool's abbreviated target must not establish a different binding from
-    // the nested Runner, Gate or UI calls that read the conversation itself.
-    // Explicit hints remain useful for headless sessions without user text.
-    const target = researchTargetFromSession(session) || boundedResearchTarget(input.target)
-    const rootPath = resolve(cwd)
-    const result = this.store.ensureResearchContext({ sessionId, rootPath, projectName: session.header.cwd ? basename(rootPath) || rootPath : '当前会话研究', ...(target ? { target } : {}) })
-    return {
-      project: result.project as ResearchRemoteProjectRecord,
-      study: result.study as ResearchRemoteStudyRecord,
-      createdProject: result.createdProject,
-      createdStudy: result.createdStudy,
-      targetFingerprint: result.targetFingerprint,
-    }
+    if (!statSync(cwd).isDirectory()) throw new Error('The conversation workspace is unavailable.')
+    return this.store.ensureWorkspaceProject(cwd)
   }
-  @Remote('registerSessionProject') async registerSessionProject(input: { sessionId: string }): Promise<ResearchRemoteProjectRecord> {
-    return this.ensureResearchContext(input).project as unknown as ResearchRemoteProjectRecord
+  private existingProjectForSession(input: { sessionId: string }): ProjectRecord | undefined {
+    const sessionId = String(input.sessionId ?? '').trim()
+    if (!sessionId) return undefined
+    const session = this.ctx.get('sessions')?.get(SessionId(sessionId))
+    if (!session) return undefined
+    const cwd = resolve(session.header.cwd || this.defaultProjectRoot)
+    const normalize = (value: string) => process.platform === 'win32' ? resolve(value).toLowerCase() : resolve(value)
+    return this.store.listProjects().find(item => normalize(item.rootPath) === normalize(cwd))
   }
-  @Remote('getActiveResearchStudy') getActiveResearchStudy(input: { sessionId: string }): ResearchRemoteStudyRecord | undefined {
+  @Remote('preview') async preview(input: { sessionId: string; uri: string; mediaType?: string }): Promise<ScientificPreviewPayload> {
     const project = this.projectForSession(input)
-    return project ? this.store.getSessionResearchStudy(project.id, input.sessionId) as unknown as ResearchRemoteStudyRecord | undefined : undefined
-  }
-  @Remote('setActiveResearchStudy') setActiveResearchStudy(input: { sessionId: string; studyId: string | null }): ResearchRemoteStudyRecord | undefined {
-    const ensured = this.ensureResearchContext(input)
-    const project = ensured.project
-    if (input.studyId) {
-      const study = this.store.getResearchStudy(input.studyId)
-      if (!study || study.projectId !== project.id) throw new Error('Research study access is limited to the active project workspace.')
-    }
-    return this.store.setSessionResearchStudy(project.id, input.sessionId, input.studyId, ensured.targetFingerprint) as unknown as ResearchRemoteStudyRecord | undefined
-  }
-  @Remote('getAuditReport') getAuditReport(projectId: string): ResearchRemoteAuditReport { return this.store.getAuditReport(projectId) as unknown as ResearchRemoteAuditReport }
-  @Remote('exportAuditReport') exportAuditReport(input: { projectId: string; format: 'json' | 'markdown' }): string { return this.store.exportAuditReport(input.projectId, input.format) }
-  @Remote('exportSnapshot') exportSnapshot(projectId: string): ResearchRemoteProjectSnapshot { return this.store.exportResearchSnapshot(projectId) as unknown as ResearchRemoteProjectSnapshot }
-  @Remote('importSnapshot') importSnapshot(snapshot: ResearchRemoteProjectSnapshot): ResearchRemoteProjectRecord { return this.store.importResearchSnapshot(snapshot as unknown as ResearchProjectSnapshot) as unknown as ResearchRemoteProjectRecord }
-  @Remote('preview') async preview(input: { projectId: string; uri: string; mediaType?: string }): Promise<ScientificPreviewPayload> {
-    const project = this.store.listProjects().find(item => item.id === input.projectId)
-    if (project === undefined) throw new Error(`Project was not found: ${input.projectId}`)
+    if (project === undefined) throw new Error('The active conversation workspace is unavailable.')
     const url = new URL(input.uri)
     if (url.protocol !== 'file:') throw new Error('Remote scientific files must be harvested or mounted before preview.')
     const path = resolve(fileURLToPath(url))
@@ -684,28 +488,6 @@ export class ZeroWallResearchService extends TypertRemoteService {
 function mediaTypeFromPath(path: string): string {
   const extension = path.toLowerCase().split('.').pop()
   return ({ pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', csv: 'text/csv', tsv: 'text/tab-separated-values', fasta: 'text/x-fasta', fa: 'text/x-fasta', fastq: 'text/x-fastq', pdb: 'chemical/x-pdb', sdf: 'chemical/x-mdl-sdfile', scf: 'application/octet-stream', ab1: 'application/octet-stream', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml' } as Record<string, string>)[extension ?? ''] ?? 'application/octet-stream'
-}
-
-function boundedResearchTarget(value: unknown): string {
-  return typeof value === 'string' ? value.replaceAll('\0', '').trim().slice(0, 5000) : ''
-}
-
-/** Read only the user's own latest plain-text message; tool output, assistant text,
- * attachments and injected context never become research instructions. */
-function researchTargetFromSession(session: Session): string {
-  const events = session.snapshotEvents() as readonly unknown[]
-  for (let index = events.length - 1; index >= 0; index--) {
-    const event = events[index]
-    if (!event || typeof event !== 'object' || (event as { type?: unknown }).type !== 'user/message') continue
-    const data = (event as { data?: unknown }).data
-    if (!data || typeof data !== 'object') continue
-    const message = data as { source?: { kind?: unknown }; content?: unknown }
-    if (message.source?.kind !== undefined && message.source.kind !== 'user') continue
-    if (!Array.isArray(message.content)) continue
-    const text = message.content.filter((block): block is { type: 'text'; text: string } => !!block && typeof block === 'object' && (block as { type?: unknown }).type === 'text' && typeof (block as { text?: unknown }).text === 'string').map(block => block.text).join('\n')
-    return boundedResearchTarget(text)
-  }
-  return ''
 }
 
 function isWithin(path: string, root: string): boolean {
@@ -870,78 +652,7 @@ function registerResearchTools(ctx: Context): void {
       return result as unknown as ResearchRemoteJsonObject
     },
   })), 'zerowall-research: register science_viewer tool')
-  ctx.effect(() => ctx.tools.register(defineTool({
-    name: 'research_study',
-    description: 'Read and update structured research records, run validated analyses, and generate draft or formal reports. Gate 1/2 actions are read-only diagnostics that always return proceedable=true with optional warnings; they never approve, freeze, or block a run or report. Runners still enforce active-project access, required schemas, validated parameters, versions, and runtime availability. Reports preserve unverified status explicitly.',
-    parameters: { action: { type: 'string', required: true, enum: ['list', 'get', 'documents', 'create_document', 'register_evidence', 'audit_claim', 'auto_gate1', 'auto_gate2', 'method_check_evaluate', 'validate_nhanes_contract', 'run_nhanes_survey', 'run_genetic_analysis', 'refresh_genetic_analysis', 'validate_genetic_contract', 'generate_report', 'tasks', 'create_task', 'update_task', 'refresh_tasks', 'task_budget', 'reconcile_task_run'] }, project_id: { type: 'string' }, study_id: { type: 'string' }, target: { type: 'string', description: 'Fallback research objective for headless sessions without user text. The latest user-authored request is the canonical bounded draft when available.' }, task_id: { type: 'string' }, claim_id: { type: 'string' }, evaluation_id: { type: 'string' }, task: { type: 'json' }, expected_version: { type: 'integer' }, kind: { type: 'string' }, payload: { type: 'json' }, method: { type: 'string' }, assumptions: { type: 'json' }, contract: { type: 'json' }, run_id: { type: 'string' }, contract_id: { type: 'string' }, plan_id: { type: 'string' }, request_id: { type: 'string' }, expected_revision: { type: 'integer', description: 'Expected analysis plan version for run_nhanes_survey. The saved plan must contain nhanesSurvey and reference contract_id in inputs.' }, report_mode: { type: 'string', enum: ['draft', 'final'] } },
-    output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
-    async execute(args, exec: ToolRunContext) {
-      const service = ctx.zerowallResearch
-      const sessionId = String(exec.agent?.session.id ?? '')
-      if (!sessionId) throw new Error('An active conversation session is required.')
-      const ensured = service.ensureResearchContext({ sessionId, ...(typeof args.target === 'string' ? { target: args.target } : {}) })
-      const project = ensured.project
-      const requestedProjectId = args.project_id === undefined ? project.id : String(args.project_id)
-      if (requestedProjectId !== project.id) throw new Error('Research study access is limited to the active project workspace.')
-      if (args.action === 'list') return { studies: service.listResearchStudies(requestedProjectId) as unknown as ResearchRemoteJsonObject }
-      const studyId = args.study_id === undefined ? ensured.study.id : String(args.study_id)
-      const study = service.getResearchStudy(studyId)
-      if (!study || study.projectId !== project.id) throw new Error('Research study is not in the active project.')
-      if (args.study_id !== undefined && study.id !== ensured.study.id) {
-        const active = service.getActiveResearchStudy({ sessionId })
-        if (active?.id !== study.id) throw new Error('The requested study is not the automatically bound study for this research objective. Select it in the research workspace first; frozen studies are never rebound to another objective.')
-      }
-      if (args.action === 'get') return { study: study as unknown as ResearchRemoteJsonObject }
-      if (args.action === 'documents') return { documents: service.listResearchDocuments({ studyId: study.id }) as unknown as ResearchRemoteJsonObject }
-      if (args.action === 'generate_report') return await service.generateResearchReport({ sessionId: String(exec.agent?.session.id ?? ''), studyId: study.id, mode: args.report_mode === 'final' ? 'final' : 'draft' })
-      if (args.action === 'auto_gate1' || args.action === 'auto_gate2') {
-        const result = args.action === 'auto_gate1'
-          ? service.autoApproveResearchGate1({ sessionId, studyId: study.id, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) })
-          : service.autoApproveResearchGate2({ sessionId, studyId: study.id, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) })
-        return { ...result, label: '只读诊断完成；研究流程可继续。' } as unknown as ResearchRemoteJsonObject
-      }
-      if (args.action === 'tasks') return { tasks: service.listResearchTasks(study.id) as unknown as ResearchRemoteJsonObject }
-      if (['task_budget', 'refresh_tasks'].includes(String(args.action))) {
-        if (args.action === 'task_budget') return { budget: service.getResearchTaskBudget(study.id) as unknown as ResearchRemoteJsonObject }
-        return { tasks: service.refreshResearchTaskReadiness(study.id) as unknown as ResearchRemoteJsonObject }
-      }
-      if (args.action === 'create_task') {
-        const task = requireResearchRemoteJsonObject(args.task)
-        return { task: service.createResearchTask({ projectId: project.id, studyId: study.id, name: String(task.name ?? ''), kind: String(task.kind ?? ''), ...(task.dependencies === undefined ? {} : { dependencies: requireJsonArray(task.dependencies).map(String) }), exploratory: task.exploratory === true, budget: task.budget === undefined ? {} : requireResearchRemoteJsonObject(task.budget) }) as unknown as ResearchRemoteJsonObject }
-      }
-      if (args.action === 'update_task') {
-        const taskId = String(args.task_id ?? '')
-        const current = service.listResearchTasks(study.id).find(task => task.id === taskId)
-        if (!current) throw new Error('Research task is not in the active study.')
-        const changes = requireResearchRemoteJsonObject(args.task)
-        return { task: service.updateResearchTask({ id: taskId, changes: { expectedVersion: Number(args.expected_version ?? current.version), ...(changes.status === undefined ? {} : { status: String(changes.status) as ResearchTaskRecord['status'] }), ...(changes.runId === undefined ? {} : { runId: changes.runId === null ? null : String(changes.runId) }), ...(changes.error === undefined ? {} : { error: changes.error === null ? null : String(changes.error) }) } } as any) as unknown as ResearchRemoteJsonObject }
-      }
-      if (args.action === 'reconcile_task_run') {
-        const taskId = String(args.task_id ?? '')
-        if (!service.listResearchTasks(study.id).some(task => task.id === taskId)) throw new Error('Research task is not in the active study.')
-        return { task: service.reconcileResearchTaskRun({ id: taskId, ...(args.expected_version === undefined ? {} : { expectedVersion: Number(args.expected_version) }) }) as unknown as ResearchRemoteJsonObject }
-      }
-      if (args.action === 'register_evidence') return { document: service.registerResearchEvidence({ sessionId: String(exec.agent?.session.id ?? ''), projectId: project.id, studyId: study.id, payload: { ...requireResearchRemoteJsonObject(args.payload), needsReview: true } }) as unknown as ResearchRemoteJsonObject }
-      if (args.action === 'audit_claim') return { document: service.auditResearchClaim({ sessionId, claimId: String(args.claim_id ?? ''), expectedVersion: Number(args.expected_version ?? 0) }) as unknown as ResearchRemoteJsonObject }
-      if (args.action === 'create_document') {
-        const kind = args.kind ?? 'observation'
-        if (!['observation', 'question', 'dataset-contract', 'analysis-plan'].includes(kind)) throw new Error('Agents may propose observations, questions, contracts and plans; result ingestion and evidence approval require dedicated services.')
-        const document = service.createResearchDocument({ projectId: project.id, studyId: study.id, kind: kind as ResearchRecordKind, payload: requireResearchRemoteJsonObject(args.payload) })
-        if (kind === 'question' || kind === 'analysis-plan') {
-          const latest = service.getResearchStudy(study.id)!
-          service.updateResearchStudy({ id: study.id, changes: { expectedVersion: latest.version, [kind === 'question' ? 'currentQuestionId' : 'currentPlanId']: document.id } as UpdateResearchStudyInput })
-        }
-        return { document: document as unknown as ResearchRemoteJsonObject }
-      }
-      if (args.action === 'method_check_evaluate') return service.methodCheckEvaluate({ studyId: study.id, method: String(args.method ?? ''), ...(args.assumptions === undefined ? {} : { assumptions: requireResearchRemoteJsonObject(args.assumptions) }) })
-      if (args.action === 'run_genetic_analysis') return service.runGeneticAnalysis({ studyId: study.id, contractId: String(args.contract_id ?? ''), planId: String(args.plan_id ?? study.currentPlanId ?? ''), taskId: String(args.task_id ?? ''), requestId: String(args.request_id ?? ''), expectedPlanVersion: Number(args.expected_revision ?? 0) }, exec)
-      if (args.action === 'refresh_genetic_analysis') return service.refreshGeneticAnalysis({ studyId: study.id, runId: String(args.run_id ?? '') }, exec)
-      if (args.action === 'run_nhanes_survey') return service.runNhanesSurvey({ studyId: study.id, contractId: String(args.contract_id ?? ''), planId: String(args.plan_id ?? study.currentPlanId ?? ''), taskId: String(args.task_id ?? ''), requestId: String(args.request_id ?? ''), expectedPlanVersion: Number(args.expected_revision ?? 0) }, exec)
-      if (args.action === 'validate_nhanes_contract') return service.validateNhanesContractRemote({ studyId: study.id, contract: requireResearchRemoteJsonObject(args.contract) })
-      if (args.action === 'validate_genetic_contract') return service.validateGeneticContractRemote({ studyId: study.id, contract: requireResearchRemoteJsonObject(args.contract) })
-      throw new Error('Unsupported research study action.')
-    },
-  })), 'zerowall-research: register research_study tool')
+
   ctx.effect(() => ctx.tools.register(defineTool({
     name: 'method_check_evaluate',
     description: 'Deterministic method-fit checks of reported analysis metadata; unknown methods remain unverified. Does not certify correctness or approve research gates.',

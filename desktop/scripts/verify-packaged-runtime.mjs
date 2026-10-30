@@ -238,19 +238,12 @@ if (coreOnly) {
   console.log(`Packaged ZeroWall Core runtime verified; optional plugins and resource payloads remain profile-managed; startup: ${hostOnly ? 'Host' : desktopOnly ? 'Desktop' : 'Host and Desktop'}.`)
   return
 }
-for (const [plugin, file] of ['mcp', 'research'].flatMap(plugin => ['lib/client.js', 'lib/index.js'].map(file => [plugin, file]))) {
+for (const [plugin, file] of ['mcp'].flatMap(plugin => ['lib/client.js', 'lib/index.js'].map(file => [plugin, file]))) {
   const path = `node_modules/@zerowallscience/plugin-${plugin}/${file}`
   if (!readArchiveFile(path).equals(await readFile(resolve(stageRoot, fullOffline && !rawArchiveSet.has(path) ? 'offline-profile/modules' : 'runtime/node_modules', path.slice('node_modules/'.length))))) {
     throw new Error(`Packaged ${plugin} ${file} is stale. Repackage the current runtime.`)
   }
 }
-const moleculePrefix = 'node_modules/@zerowallscience/plugin-research/lib/'
-const moleculeManifest = JSON.parse(readArchiveFile(`${moleculePrefix}molecule-runtime.manifest.json`).toString('utf8'))
-const moleculeRuntime = readArchiveFile(`${moleculePrefix}molecule-runtime.js`)
-if (moleculeManifest.version !== '5.11.0' || moleculeRuntime.length !== moleculeManifest.size || createHash('sha256').update(moleculeRuntime).digest('hex') !== moleculeManifest.sha256) {
-  throw new Error('Packaged molecular viewer runtime differs from its fixed version/hash manifest.')
-}
-if (!readArchiveFile(`${moleculePrefix}molecule-runtime.LICENSE.txt`).toString('utf8').includes('MIT')) throw new Error('Packaged molecular viewer license is missing.')
 for (const entry of ['out/main/index.js', 'out/preload/index.cjs']) {
   if (!readArchiveFile(entry).equals(await readFile(resolve(packageRoot, entry)))) {
     throw new Error(`Packaged ${entry} differs from the completed desktop build. Rebuild before packaging.`)
@@ -320,7 +313,6 @@ const requiredArchivePaths = [
   'node_modules/@pdf-lib/fontkit/dist/fontkit.es.js',
   'node_modules/@deepseek-ai/cordis-plugin-group/lib/index.js',
   'node_modules/@zerowallscience/plugin-base/lib/client.js',
-  'node_modules/@zerowallscience/plugin-projects/lib/index.js',
   'node_modules/@zerowallscience/plugin-files/lib/index.js',
   'node_modules/@zerowallscience/plugin-python/lib/index.js',
   'node_modules/@zerowallscience/plugin-pubmed/lib/index.js',
@@ -355,6 +347,17 @@ const requiredArchivePaths = [
 ]
 for (const path of requiredArchivePaths) {
   if (!archiveSet.has(path)) throw new Error(`Required ASAR runtime file is missing: ${path}`)
+}
+for (const id of ['@zerowallscience/plugin-projects', '@zerowallscience/plugin-research', '@zerowallscience/plugin-singlecell']) {
+  if (archiveFiles.some(path => path.startsWith(`node_modules/${id}/`))) {
+    throw new Error(`Retired plugin must not be present in the packaged ASAR: ${id}`)
+  }
+  try {
+    await access(resolve(stageRoot, 'offline-profile/modules', id))
+    throw new Error(`Retired plugin must not be present in the offline profile: ${id}`)
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
 }
 
 for (const path of [
@@ -599,9 +602,8 @@ async function verifyArchivePolicy() {
   if (!mineruHost.includes('MinerU Host tool registration failed')) {
     throw new Error('Packaged MinerU Host is missing its startup tool-registration assertion.')
   }
-  const singlecellHost = readArchiveFile('node_modules/@zerowallscience/plugin-singlecell/lib/index.js').toString('utf8')
-  for (const tool of ['sc_tenifold_knockout_validate', 'sc_tenifold_knockout_plan', 'sc_tenifold_knockout_run', 'sc_tenifold_knockout_status', 'sc_tenifold_knockout_cancel', 'sc_tenifold_knockout_collect', 'sc_tenifold_knockout_review', 'sc_tenifold_knockout_report']) {
-    if (!singlecellHost.includes(tool)) throw new Error(`Packaged singlecell Host is missing required tool registration: ${tool}`)
+  if (archiveSet.has('node_modules/@zerowallscience/plugin-singlecell/lib/index.js')) {
+    throw new Error('Packaged runtime includes the retired singlecell Study workflow.')
   }
   const filesHost = readArchiveFile('node_modules/@zerowallscience/plugin-files/lib/index.js').toString('utf8')
   if (!filesHost.includes('extract_uploaded_file')) {
@@ -915,12 +917,11 @@ async function verifyImports() {
     const expectedInject = new Map([
       ['@zerowallscience/plugin-base', ['webServer']],
       ['@zerowallscience/plugin-files', ['tools']],
-      ['@zerowallscience/plugin-mineru', ['settings', 'tools', 'sessions', 'zerowallFiles', 'zerowallResearch']],
+      ['@zerowallscience/plugin-mineru', ['settings', 'tools', 'sessions', 'zerowallFiles']],
       ['@zerowallscience/plugin-skills', ['skills', 'systemPrompt']],
     ]);
     for (const name of [
       '@zerowallscience/plugin-base',
-      '@zerowallscience/plugin-projects',
       '@zerowallscience/plugin-account',
       '@zerowallscience/plugin-ai-cloud',
       '@zerowallscience/plugin-files',
@@ -1622,16 +1623,13 @@ async function verifyWebBootManifest(url) {
     '@deepseek-ai/dsh-client-ui-layout',
     '@deepseek-ai/dsh-client-ui-user-questions',
     '@zerowallscience/plugin-base',
-    '@zerowallscience/plugin-projects',
     '@zerowallscience/plugin-account',
     '@zerowallscience/plugin-images',
 
     '@zerowallscience/plugin-mineru',
-    '@zerowallscience/plugin-singlecell',
     '@zerowallscience/plugin-mcp',
     '@zerowallscience/plugin-skills',
     '@zerowallscience/plugin-claude-code',
-    '@zerowallscience/plugin-research',
 
     'dsh-free-search', 'dsh-zotero',
   ]
@@ -1773,11 +1771,10 @@ async function verifyDesktopStartup() {
     ] : [
       '@deepseek-ai/dsh-api-session-controller', '@deepseek-ai/dsh-client-connection',
       '@deepseek-ai/dsh-client-ui-layout', '@zerowallscience/plugin-base',
-      '@zerowallscience/plugin-projects', '@zerowallscience/plugin-account', '@zerowallscience/plugin-images',
+      '@zerowallscience/plugin-account', '@zerowallscience/plugin-images',
 
       '@zerowallscience/plugin-mineru',
       '@zerowallscience/plugin-mcp', '@zerowallscience/plugin-skills', '@zerowallscience/plugin-claude-code',
-      '@zerowallscience/plugin-research',
       'dsh-free-search', 'dsh-zotero',
       'dsh-ppt-maker',
     ]
@@ -1796,7 +1793,12 @@ async function verifyDesktopStartup() {
       for (const slot of ['sidebar.brand.mark', 'conversation.hero.brand.mark']) {
         const mark = page.locator(`[data-slot="${slot}"] img[src*="zerowall-icon.png"]`)
         await mark.waitFor({ state: 'visible', timeout: 10_000 })
-        if (!await mark.evaluate(image => image.complete && image.naturalWidth > 0)) throw new Error(`Product brand did not decode: ${slot}`)
+        // Visible layout precedes image decoding on a cold renderer. Await the
+        // same decoded-image condition rather than sampling that race once.
+        await page.waitForFunction(selector => {
+          const image = document.querySelector(selector)
+          return image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0
+        }, `[data-slot="${slot}"] img[src*="zerowall-icon.png"]`, { timeout: 30_000 })
       }
       const footer = page.locator('[data-sidebar-footer]')
       await footer.getByRole('button', { name: '设置', exact: true }).waitFor({ state: 'visible', timeout: 10_000 })
@@ -2030,8 +2032,12 @@ async function verifyConversationViews(page, root) {
 }
 
 function hostEnvironment(root, dshEntry) {
+  // This probe asserts credential-free fallback. Do not inherit developer
+  // credentials into its fresh temporary profile.
+  const officialVariables = new Set(['MINERU_API_TOKEN', 'R_PLATFORM_MCP_AUTHORIZATION', 'HUAGONGSHE_MCP_AUTHORIZATION', 'ZEROWALL_SCIMASTER_API_KEY', 'NCBI_API_KEY'])
+  const environment = Object.fromEntries(Object.entries(process.env).filter(([name]) => !officialVariables.has(name)))
   return {
-    ...process.env,
+    ...environment,
     ELECTRON_RUN_AS_NODE: '1',
     NODE_PATH: [resolve(asarPath, 'node_modules'), ...(fullOffline ? [resolve(offlineProbe.candidate, 'node_modules')] : [])].join(delimiter),
     ...(fullOffline ? { ZEROWALL_PROFILE_ANCHOR: pathToFileURL(resolve(offlineProbe.candidate, 'package.json')).href } : {}),

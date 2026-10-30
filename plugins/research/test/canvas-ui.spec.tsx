@@ -38,8 +38,9 @@ it('keeps invalid project JSON editable and displays Host rejection', async () =
 })
 
 it('selects a registered project image and preserves explicit scale calibration on submission', async () => {
-  const remote = { listDataAssets: vi.fn().mockResolvedValue({ ok: true, value: [] }), listArtifacts: vi.fn().mockResolvedValue({ ok: true, value: [{ id: 'result-png', name: 'HE overlay', mediaType: 'image/png', uri: 'file:///overlay.png' }] }), scienceViewer: vi.fn().mockResolvedValue({ ok: true, value: { canvas: { canvas: { svg: '<svg><text>image result</text></svg>' } } } }) }
-  render(<CanvasViewer remote={remote as any} sessionId="canvas-image" projectId="p1" />)
+  const remote = { listWorkspaceDataAssets: vi.fn().mockResolvedValue({ ok: true, value: [] }), listWorkspaceArtifacts: vi.fn().mockResolvedValue({ ok: true, value: [{ id: 'result-png', name: 'HE overlay', mediaType: 'image/png', uri: 'file:///overlay.png' }] }), scienceViewer: vi.fn().mockResolvedValue({ ok: true, value: { canvas: { canvas: { svg: '<svg><text>image result</text></svg>' } } } }) }
+  render(<CanvasViewer remote={remote as any} sessionId="canvas-image" />)
+  expect(remote.listWorkspaceArtifacts).toHaveBeenCalledWith({ sessionId: 'canvas-image' })
   fireEvent.change(screen.getByLabelText('面板类型'), { target: { value: 'image' } })
   await screen.findByRole('option', { name: 'HE overlay · 产物' })
   fireEvent.change(screen.getByLabelText('项目图像'), { target: { value: 'artifact:result-png' } })

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-biogenie",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "ZeroWall Science biogenie domain plugin.",
   "type": "module",
   "main": "./lib/index.js",

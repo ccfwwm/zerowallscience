@@ -3,7 +3,6 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { ResearchStore } from '@zerowallscience/research-store'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { dirname } from 'node:path'
 import { verifyBioPayload } from './payload.js'
@@ -46,17 +45,6 @@ export function registerBioLocal(ctx: Context, runPython: RunPython, payloadRoot
         const directory = join(workspace, '.zerowall', 'bio-runs'); await mkdir(directory, { recursive: true })
         const runId = randomUUID(); const path = join(directory, `${runId}.json`)
         await writeFile(path, JSON.stringify({ ...value, operation: args.operation, input_sha256: createHash('sha256').update(JSON.stringify(args.arguments ?? {})).digest('hex'), createdAt: new Date().toISOString() }, null, 2))
-        const db = process.env.ZEROWALL_RESEARCH_DB
-        if (db) {
-          const store = new ResearchStore(db)
-          try {
-            const project = store.listProjects().find(item => resolve(item.rootPath) === resolve(workspace)) ?? store.createProject({ name: 'Bio analysis', rootPath: workspace })
-            const run = store.createRun({ projectId: project.id, name: `BioGenie ${args.operation}`, command: 'bio_local', workingDirectory: workspace, status: 'submitted', leaseOwner: 'research-workflow' })
-            store.updateRun(run.id, { status: 'running' })
-            store.updateRun(run.id, { status: value.ok ? 'succeeded' : 'failed', progress: value.ok ? 1 : 0, outputs: [{ name: 'BioGenie result', uri: pathToFileURL(path).href, mediaType: 'application/json' }], ...(value.ok ? {} : { error: String(value.error) }) })
-            value.task_id = run.id
-          } finally { store.close() }
-        }
         return { ...value, run_id: runId, log_artifact: path }
       }
       return value

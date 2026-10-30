@@ -7,7 +7,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { afterEach, describe, expect, it } from 'vitest'
-import ZeroWallProjectsService from '../../projects/src/host/index.js'
+import McpConfigurationStorePlugin from '../src/host/configuration-store.js'
 import ZeroWallMcpService from '../src/host/index.js'
 
 const roots: string[] = []
@@ -27,7 +27,7 @@ describe.runIf(process.env.ZEROWALL_LIVE_R_TESTS === '1' && Boolean(process.env.
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
       const configured = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')
       if (configured !== undefined && !configured.enabled) await ctx.zerowallMcp.update({ id: configured.id, changes: { enabled: true } })
@@ -39,7 +39,7 @@ describe.runIf(process.env.ZEROWALL_LIVE_R_TESTS === '1' && Boolean(process.env.
       // Check the aggregate capability boundary itself. A historical tool count
       // rejected valid OmicVerse domain additions without detecting raw routes.
       const aggregateNames = [
-        'r_runtime', 'r_project', 'r_files', 'r_execute', 'r_jobs', 'r_packages',
+        'r_runtime', 'r_files', 'r_execute', 'r_jobs', 'r_packages',
         'r_geo_catalog', 'r_geo_analysis', 'r_geo_artifacts',
         'r_nhanes_catalog', 'r_nhanes_analysis', 'r_nhanes_artifacts',
         'r_figureya_catalog', 'r_figureya_plan', 'r_figureya_run', 'r_figureya_artifacts',
@@ -51,6 +51,7 @@ describe.runIf(process.env.ZEROWALL_LIVE_R_TESTS === '1' && Boolean(process.env.
       expect(server?.tools).toContain('mcp__rmcp__r_runtime')
       expect(server?.tools).toContain('mcp__rmcp__r_jobs')
       expect(server?.tools).toContain('mcp__rmcp__r_figureya_artifacts')
+      expect(server?.tools).not.toContain('mcp__rmcp__r_project')
       expect(server?.tools.some(name => /(?:rplatform__|rbioagent__|rplotfigure__)/u.test(name))).toBe(false)
       expect(ctx.tools.schemas().map(schema => schema.name)).toContain('mcp__rmcp__r_runtime')
       expect(ctx.tools.get('mcp__rmcp__r_files')).toBeDefined()
@@ -71,7 +72,7 @@ describe.runIf(process.env.ZEROWALL_LIVE_R_TESTS === '1' && Boolean(process.env.
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(SkillRegistry)
-      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
       const configured = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'rmcp')
       if (configured !== undefined && !configured.enabled) await ctx.zerowallMcp.update({ id: configured.id, changes: { enabled: true } })

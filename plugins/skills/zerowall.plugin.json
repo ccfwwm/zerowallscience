@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-skills",
-  "version": "0.2.8",
+  "version": "0.2.10",
   "applicationVersion": "8.0.2",
   "restartRequired": true,
   "desktop": {
@@ -16,7 +16,9 @@
   "client": "./lib/client.js",
   "requiredServices": [
     "skills",
-    "systemPrompt"
+    "systemPrompt",
+    "tools",
+    "workingDirectory"
   ],
   "optionalServices": [],
   "capabilities": [

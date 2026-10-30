@@ -3,7 +3,7 @@ import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from 'node:chil
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createServer } from 'node:http'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
@@ -12,8 +12,6 @@ import { parse as parseYaml } from 'yaml'
 import { locatePackagedApp } from '../scripts/packaged-app.mjs'
 import { clipboardCapability } from '../scripts/clipboard-capability.mjs'
 import { handleResourceUpdateNotices, resourceUpdateNotice } from '../scripts/update-notice-handler.mjs'
-import { pcrTemplate, pcrForward, pcrReverse, pcrExpected } from '../../plugins/research/test/sequence-simulation-fixture.js'
-import { moleculePdb } from '../../plugins/research/test/molecule-fixture.js'
 
 const desktopRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const applicationVersion = JSON.parse(readFileSync(join(desktopRoot, 'package.json'), 'utf8')).version
@@ -32,13 +30,19 @@ beforeAll(async () => {
   writeFileSync(join(contract.verification, 'clipboard-capability.json'), JSON.stringify(clipboardAccess, null, 2))
   if (!clipboardAccess.available) console.log('Clipboard success checks unavailable in this Windows session:', clipboardAccess)
   root = mkdtempSync(join(tmpdir(), 'zerowall-中文路径-e2e-')); roots.push(root)
+  const harnessHome = join(root, 'zerowall-user-data', 'harness')
+  mkdirSync(harnessHome, { recursive: true })
   mkdirSync(join(root, 'appdata'), { recursive: true })
   mkdirSync(join(root, 'localappdata'), { recursive: true })
   const pythonLocation = join(root, 'localappdata', 'ZeroWall Science', 'python-location.json')
   mkdirSync(dirname(pythonLocation), { recursive: true })
   writeFileSync(pythonLocation, JSON.stringify({ runtimeRoot: join(root, 'shared-python', 'Python') }))
   const packaged = await locatePackagedApp(desktopRoot)
-  const environment = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined))
+  // Official-default provenance requires a clean launch environment. User
+  // shell overrides are deliberately preserved by the product, so do not
+  // accidentally import this developer machine's credentials into the fixture.
+  const officialVariables = new Set(['MINERU_API_TOKEN', 'R_PLATFORM_MCP_AUTHORIZATION', 'HUAGONGSHE_MCP_AUTHORIZATION', 'ZEROWALL_SCIMASTER_API_KEY', 'NCBI_API_KEY'])
+  const environment = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined && !officialVariables.has(entry[0])))
   application = spawn(packaged.executablePath, ['--remote-debugging-port=0', `--user-data-dir=${join(root, 'chromium')}`], {
     cwd: packaged.root,
     env: {
@@ -180,6 +184,29 @@ describe('ZeroWall Science Electron', () => {
     await settings.locator('strong[title="@zerowallscience/plugin-mcp"]').waitFor()
     await page.screenshot({ path: join(contract.verification, 'extensions-8.0.8.png'), fullPage: true })
   })
+  it('persists the context budget slider and leaves MCP connections dormant at startup', async () => {
+    const connections = await rpc(page, 'zerowallMcp/list', {})
+    expect(connections.length).toBeGreaterThan(0)
+    expect(connections.filter((row: { runtimeState: string }) => ['active', 'starting', 'discovering-tools'].includes(row.runtimeState))).toEqual([])
+    expect(await rpc(page, 'zerowallEnvironment/getContextBudget', {})).toBe(300_000)
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    const settings = page.getByRole('dialog', { name: '设置', exact: true })
+    await settings.getByRole('button', { name: '环境配置', exact: true }).click()
+    const budget = settings.getByRole('slider', { name: '上下文预算', exact: true })
+    await expect.poll(() => budget.inputValue(), { timeout: 30_000 }).toBe('300000')
+    await budget.focus()
+    await budget.press('ArrowRight')
+    await expect.poll(() => rpc(page, 'zerowallEnvironment/getContextBudget', {}), { timeout: 30_000 }).toBe(304_000)
+    await reloadWithoutCredentials(page)
+    await page.getByRole('button', { name: '设置', exact: true }).click()
+    await settings.getByRole('button', { name: '环境配置', exact: true }).click()
+    await expect.poll(() => budget.inputValue(), { timeout: 30_000 }).toBe('304000')
+    await budget.focus()
+    await budget.press('ArrowLeft')
+    await expect.poll(() => rpc(page, 'zerowallEnvironment/getContextBudget', {}), { timeout: 30_000 }).toBe(300_000)
+    await page.screenshot({ path: join(contract.verification, 'context-budget-slider.png') })
+  })
+
   it('starts with the iOS appearance and no factory painting', async () => {
     await expect.poll(() => page.evaluate(() => ({
       dark: document.body.getAttribute('data-ds-dark-theme'),
@@ -297,88 +324,10 @@ describe('ZeroWall Science Electron', () => {
     await page.screenshot({ path: join(contract.verification, 'electron', 'markdown-images.png') })
   })
 
-  it('registers a workspace and restores its research workbench in the packaged application', async () => {
-    const pane = page.locator('[data-sidebar-right-panel]')
-    await pane.getByRole('button', { name: '新标签页', exact: true }).click()
-    await pane.locator('[data-sidebar-right-guide-entry$="science-workbench"]').click()
-    await pane.getByRole('region', { name: '科研工具', exact: true }).waitFor()
-    // Use the persisted conversation created by the preceding Markdown check.
-    // Empty sessions are deliberately absent from the rc.2 history view.
-    const sessionId = markdownSessionId
-    expect(sessionId).toBeTruthy()
-    await rpc(page, 'session/rename', { request: { sessionId, title: `${applicationVersion} 科研插件验收` } })
-    await reloadWithoutCredentials(page)
-    await page.getByText(`${applicationVersion} 科研插件验收`, { exact: true }).first().click()
-    const expand = page.locator('[data-sidebar-right-expand]').first()
-    if (await expand.isVisible()) await expand.click()
-    const guide = pane.locator('[data-sidebar-right-guide-entry$="science-workbench"]')
-    if (await guide.isVisible()) await guide.click()
-    await pane.getByRole('region', { name: '科研工具', exact: true }).waitFor()
-    // The current card homepage registers its project automatically. Asset
-    // fixtures go through the real scoped Host API; viewers and exports remain UI checks.
-    const project = await rpc(page, 'zerowallResearch/registerSessionProject', { input: { sessionId } })
-    // Workspace storage canonicalizes Windows casing. Require the same real
-    // directory so a different or missing project root still fails.
-    expect(relative(realpathSync(project.rootPath), realpathSync(join(root, 'markdown-images')))).toBe('')
-    const registerAsset = async (path: string) => rpc(page, 'zerowallResearch/registerLocalAsset', { input: { sessionId, path } })
-    const output = join(contract.verification, 'electron')
-    mkdirSync(output, { recursive: true })
-    await page.screenshot({ path: join(output, 'science-workbench-restored.png') })
-    const openTool = async (title: string) => {
-      const back = pane.getByRole('button', { name: '返回科研工作台', exact: true })
-      if (await back.isVisible()) await back.click()
-      await pane.getByRole('region', { name: '科研工具', exact: true }).getByRole('button', { name: new RegExp(title) }).click()
-    }
-    const science = async (input: Record<string, unknown>) => rpc(page, 'zerowallResearch/scienceViewer', { input: { sessionId, ...input } })
-    writeFileSync(join(root, 'markdown-images', 'reference.pdb'), moleculePdb)
-    await registerAsset('reference.pdb')
-    await openTool('分子结构')
-    const molecule = pane.getByRole('region', { name: '分子结构查看器', exact: true })
-    const option = molecule.getByLabel('分子资产', { exact: true }).locator('option').filter({ hasText: 'reference.pdb' })
-    await option.waitFor({ state: 'attached' })
-    await molecule.getByLabel('分子资产', { exact: true }).selectOption((await option.getAttribute('value'))!)
-    const moleculeCanvas = molecule.locator('[data-testid="molecule-canvas"][data-ready="true"]')
-    await moleculeCanvas.waitFor({ timeout: 60000 })
-    const moleculeViewer = (await science({ action: 'list' })).viewers.find((item: { tool: string }) => item.tool === 'molecule')
-    const measured = await science({ action: 'molecule_measure', viewerId: moleculeViewer.id, expectedVersion: moleculeViewer.version,
-      molecule: { sessionId, action: 'measure', atomA: 0, atomB: 8 } })
-    expect(measured.molecule.measurement.distanceAngstrom).toBeCloseTo(5, 4)
-    expect(readFileSync(join(root, 'markdown-images', 'reference.pdb'), 'utf8')).toBe(moleculePdb)
-    await molecule.screenshot({ path: join(output, 'molecule-packaged.png') })
-
-    const canvasSpec = { title: 'Packaged canvas fixture', width: 900, height: 650, xLabel: 'Time', yLabel: 'Value',
-      series: [{ id: 'series-a', name: 'Fixture', color: '#2157a3', points: [{ x: 0, y: 1 }, { x: 1, y: 3 }] }] }
-    await page.evaluate(({ sessionId, spec }) => localStorage.setItem(`zerowall:canvas:${sessionId}`, JSON.stringify(spec)), { sessionId, spec: canvasSpec })
-    await openTool('科研画布')
-    const canvas = pane.getByRole('region', { name: '科研画布查看器', exact: true })
-    await canvas.getByRole('button', { name: '查看画布', exact: true }).click()
-    await canvas.getByLabel('科研画布预览').locator('svg').first().waitFor()
-    const exportedCanvas = await science({ action: 'canvas_export', canvas: { sessionId, action: 'export', spec: canvasSpec } })
-    expect(exportedCanvas.canvas.artifacts).toHaveLength(4)
-    for (const artifact of exportedCanvas.canvas.artifacts) expect(readFileSync(fileURLToPath(artifact.uri)).length).toBeGreaterThan(0)
-    await canvas.getByLabel('科研画布预览').screenshot({ path: join(output, 'canvas-packaged.png') })
-
-    writeFileSync(join(root, 'markdown-images', 'pcr-reference.fasta'), `>reference\n${pcrTemplate}\n`)
-    const sequenceAsset = await registerAsset('pcr-reference.fasta')
-    await openTool('序列/Motif')
-    const sequence = pane.locator('#science-panel-sequence')
-    const sequenceOption = sequence.getByLabel('序列资产', { exact: true }).locator('option').filter({ hasText: 'pcr-reference.fasta' })
-    await sequenceOption.waitFor({ state: 'attached' })
-    await sequence.getByLabel('序列资产', { exact: true }).selectOption((await sequenceOption.getAttribute('value'))!)
-    await sequence.getByLabel('碱基视图', { exact: true }).waitFor()
-    const opened = await science({ action: 'open', assetId: sequenceAsset.id })
-    const saved = await science({ action: 'save', viewerId: opened.viewer.id, expectedVersion: opened.viewer.version,
-      state: { recordIndex: 0, start: 1, count: 2400, selectionStart: 1, selectionEnd: pcrTemplate.length } })
-    const exportedSequence = await science({ action: 'export', viewerId: saved.viewer.id, expectedVersion: saved.viewer.version, operation: 'pcr',
-      sequenceOptions: { forwardPrimer: pcrForward, reversePrimer: pcrReverse, forwardAnnealLength: 20, reverseAnnealLength: 20, templateTopology: 'linear' } })
-    expect(exportedSequence.analysis.sequence).toBe(pcrExpected)
-    expect(readFileSync(fileURLToPath(exportedSequence.artifact.uri)).length).toBeGreaterThan(0)
-    await sequence.screenshot({ path: join(output, 'sequence-pcr-packaged.png') })
-    writeFileSync(join(output, 'research-receipt.json'), JSON.stringify({ applicationVersion, workspaceRestored: true,
-      scope: 'Packaged readonly viewers and real Host actions using local software fixtures', moleculeDistanceAngstrom: measured.molecule.measurement.distanceAngstrom,
-      canvasExports: exportedCanvas.canvas.artifacts.length, pcrFixturePassed: true }, null, 2))
-
-  }, 300_000)
+  it('does not expose the retired Research viewer surfaces', async () => {
+    expect(await page.locator('[data-sidebar-right-guide-entry$="science-viewers"]').count()).toBe(0)
+    expect(await page.getByRole('region', { name: '科学查看器', exact: true }).count()).toBe(0)
+  })
 
   it('keeps the custom chrome clear with the compact footer, WeChat settings and right sidebar controls', async () => {
     const controls = await page.locator('#zerowall-window-controls').boundingBox()
@@ -463,7 +412,7 @@ describe('ZeroWall Science Electron', () => {
     await expect.poll(() => right.getAttribute('data-sidebar-right-panel')).toBe('push')
   })
 
-  it('converts a workspace Office document and reads persisted science engine settings', async () => {
+  it('converts a workspace Office document', async () => {
     const zip = new JSZip()
     zip.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
     zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
@@ -471,22 +420,16 @@ describe('ZeroWall Science Electron', () => {
     const bytes = await zip.generateAsync({ type: 'nodebuffer' })
     const file = join(root, 'markdown-images', '验收文档.docx')
     writeFileSync(file, bytes)
+    expect(markdownSessionId).toBeTruthy()
     const rendered = await rpc(page, 'zerowallFiles/renderWorkspaceOffice', { input: { sessionId: markdownSessionId, path: '验收文档.docx' } })
     const pdf = Buffer.from(rendered.data, 'base64')
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-')
     expect(pdf.length).toBeGreaterThan(100)
     expect(readFileSync(file)).toEqual(bytes)
-    const configs = await rpc(page, 'zerowallResearch/getScientificEngineConfigs', { input: { sessionId: markdownSessionId } })
-    expect(configs.map((config: { id: string }) => config.id)).toEqual(expect.arrayContaining(['fiji', 'napari', 'brain-globe', 'he-python', 'he-stardist', 'remote-r']))
-    await page.getByRole('button', { name: '设置', exact: true }).click()
-    const settings = page.getByRole('dialog', { name: '设置' })
-    await settings.getByRole('button', { name: '科研引擎', exact: true }).click()
-    await settings.getByRole('region', { name: '科研引擎中心', exact: true }).getByLabel('Fiji / ImageJ 路径', { exact: true }).waitFor()
     const output = join(contract.verification, 'electron')
     mkdirSync(output, { recursive: true })
     writeFileSync(join(output, 'office-parity.pdf'), pdf)
-    writeFileSync(join(output, 'office-engine-receipt.json'), JSON.stringify({ applicationVersion, sourceUnchanged: true, pdfBytes: pdf.length, engineIds: configs.map((config: { id: string }) => config.id) }, null, 2))
-    await page.screenshot({ path: join(output, 'science-engines.png') })
+    writeFileSync(join(output, 'office-parity-receipt.json'), JSON.stringify({ applicationVersion, sourceUnchanged: true, pdfBytes: pdf.length }, null, 2))
   })
 
   it('does not mount the removed capability management module', async () => {
@@ -609,16 +552,20 @@ describe('ZeroWall Science Electron', () => {
     await englishSettings.locator('details[aria-labelledby="literature-settings-title"] > summary').evaluate(element => (element as HTMLElement).click())
     await literature.getByText('Save settings', { exact: true }).waitFor()
     await englishSettings.getByRole('heading', { name: 'Image generation model', exact: true }).waitFor()
-    await englishSettings.getByText('Available models synced', { exact: true }).waitFor()
     const imageSettings = englishSettings.locator('details').filter({ hasText: 'Image generation model' }).first()
     await imageSettings.locator('summary').evaluate(element => (element as HTMLElement).click())
+    // The current image card exposes its sync state through the selector;
+    // the old imageSynced locale string is no longer rendered.
+    const imageModel = imageSettings.getByRole('combobox', { name: 'Current image model', exact: true })
+    await expect.poll(() => imageModel.isEnabled(), { timeout: 30_000 }).toBe(true)
+    expect(await imageModel.locator('option').first().innerText()).toBe('Select an image generation model')
     await englishSettings.getByRole('combobox', { name: /^Default quality/u }).waitFor()
     expect(await englishSettings.getByText('候选模型已同步', { exact: true }).count()).toBe(0)
     const artifacts = join(contract.verification, 'electron')
     mkdirSync(artifacts, { recursive: true })
     await page.screenshot({ path: join(artifacts, 'environment-english.png') })
     await imageSettings.locator('summary').evaluate(element => (element as HTMLElement).click())
-    await literature.locator('summary').evaluate(element => (element as HTMLElement).click())
+    await literature.locator(':scope > summary').evaluate(element => (element as HTMLElement).click())
 
     await englishSettings.getByRole('button', { name: 'General', exact: true }).click()
     await page.getByRole('dialog', { name: 'Settings' }).getByRole('button', { name: /English/ }).click()
@@ -770,8 +717,10 @@ describe('ZeroWall Science Electron', () => {
       await expect.poll(() => status.innerText(), { timeout: 30_000 }).toMatch(/已配置/u)
       expect(await status.evaluate(element => getComputedStyle(element).color)).toBe('rgb(36, 112, 76)')
     }
-    expect(await rows.first().locator('h3').innerText()).toBe('rdatalinux rmcp')
-    expect(await rows.evaluateAll(elements => elements.every(element => !(element as HTMLDetailsElement).open))).toBe(true)
+    expect(await rows.first().locator('h3').innerText()).toBe('上下文预算')
+    expect(await rows.first().getByRole('slider', { name: '上下文预算', exact: true }).inputValue()).toBe('300000')
+    expect(await rows.nth(1).locator('h3').innerText()).toBe('rdatalinux rmcp')
+    expect(await rows.evaluateAll(elements => elements.every((element, index) => (element as HTMLDetailsElement).open === (index === 0)))).toBe(true)
     const literature = service('文献服务')
     const artifacts = join(contract.verification, 'electron')
     mkdirSync(artifacts, { recursive: true })
@@ -1067,6 +1016,7 @@ async function selectLocaleMenu(page: Page, label: string, preference: string): 
 async function reloadWithoutCredentials(page: Page): Promise<void> {
   await page.reload()
   await page.getByRole('button', { name: '设置', exact: true }).waitFor({ state: 'visible', timeout: 60_000 })
+  await page.locator('[data-slot="conversation.input.model"]').getByRole('button', { name: /^选择模型：/u }).waitFor({ state: 'visible', timeout: 60_000 })
   expect(await page.getByRole('dialog', { name: '添加一个 API Key 开始使用' }).count()).toBe(0)
 }
 async function completeFirstRunOnboarding(page: Page): Promise<void> {

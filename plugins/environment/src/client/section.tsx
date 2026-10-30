@@ -61,6 +61,7 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
   const [status, setStatus] = useState<Record<string, LoadState>>({ account: 'loading', catalog: 'loading', variables: 'loading', image: 'loading', mcp: 'loading', chem: 'loading', rdatalinux: 'loading', mineru: 'loading' })
   const [image, setImage] = useState<ImageModelSelection>({ providerId: '', groupId: '', modelId: '' })
   const [imageQuality, setImageQuality] = useState<ImageGenerationQuality>('medium')
+  const [contextBudget, setContextBudget] = useState(300_000)
   const [mineru, setMineru] = useState<any>({ apiBaseUrl: 'https://mineru.net', mode: 'auto', modelVersion: 'vlm', language: 'ch', tokenConfigured: false, available: false, registeredTools: [] })
   const [mineruToken, setMineruToken] = useState('')
   const [credentialRefresh, setCredentialRefresh] = useState(0)
@@ -108,6 +109,11 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
         ? 'medium'
         : await unwrap(environmentRemote.getImageQuality())
       if (!cancelled && ['auto', 'low', 'medium', 'high', 'xhigh', 'max'].includes(value)) setImageQuality(value)
+    })
+    void load('contextBudget', async () => {
+      if (environmentRemote?.getContextBudget === undefined) return
+      const value = await unwrap(environmentRemote.getContextBudget())
+      if (!cancelled && Number.isSafeInteger(value) && value >= 32_000 && value <= 2_000_000) setContextBudget(value)
     })
     void load('mcp', async () => {
       if (mcpRemote?.getSciMasterCredentialStatus === undefined) throw new LocalizedError('mcpUnavailable')
@@ -263,6 +269,10 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
       if (environmentRemote?.setImageQuality !== undefined) await unwrap(environmentRemote.setImageQuality(value))
     })
   }
+  const saveContextBudget = (value: number) => {
+    if (environmentRemote?.setContextBudget === undefined) return
+    void run(async () => { await unwrap(environmentRemote.setContextBudget(value)) })
+  }
   const saveMineru = async (changes: Record<string, unknown>) => run(async () => { const value = await unwrap(mineruRemote.updateConfig(changes)); setMineru(value) })
   const statusText = (key: string, ready = t('loaded')) => status[key] === 'loading' ? t('loading') : status[key] === 'error' || status[key] === 'unavailable' ? t('unavailable') : ready
   const statusClass = (key: string, configured: boolean) => status[key] === 'loading' ? css.status : status[key] === 'error' || status[key] === 'unavailable' || !configured ? css.statusBad : css.statusGood
@@ -275,6 +285,10 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
     </header>
     {error ? <p className={css.error} role="alert">{renderMessage(error, t)}</p> : null}
     <div className={css.grid}>
+      <details className={css.card} open>
+        <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>{t('contextBudgetTitle')}</h3><p>{t('contextBudgetDescription')}</p></div></div></summary>
+        <label className={css.field}><span>{t('contextBudgetTitle')}</span><output className={css.budgetValue}>{Math.round(contextBudget / 1000)}k</output><input className={css.budgetSlider} type="range" min={32_000} max={2_000_000} step={4_000} value={contextBudget} disabled={busy || environmentRemote?.setContextBudget === undefined} aria-label={t('contextBudgetTitle')} aria-valuetext={`${Math.round(contextBudget / 1000)}k tokens`} onChange={event => setContextBudget(Number(event.target.value))} onPointerUp={event => saveContextBudget(Number(event.currentTarget.value))} onKeyUp={event => saveContextBudget(Number(event.currentTarget.value))} /><small>{t('contextBudgetDescription')}</small></label>
+      </details>
       <details className={css.card}>
         <summary className={css.cardSummary}><div className={css.cardHeader}><div><h3>rdatalinux rmcp</h3><p>{t('rmcpDescription')}</p></div><span className={statusClass('rdatalinux', rdatalinuxConfigured)}>{statusText('rdatalinux', rdatalinuxConfigured ? t('configured') : t('missingFailed'))}</span></div></summary>
         <label className={css.field}><span>Endpoint</span><input className={css.control} value={rdatalinuxEndpoint} readOnly /></label>

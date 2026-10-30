@@ -1,7 +1,6 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { afterEach, expect, it, vi } from 'vitest'
 import { ResearchStore } from '@zerowallscience/research-store'
 import { rWorkflows } from '../src/shared/r-workflows.js'
@@ -12,18 +11,12 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'workflow-')); roots.push(root)
   const store = new ResearchStore(join(root, 'db.sqlite')); stores.push(store)
   let remoteStatus = 'running'
-  const ensureResearchContext = vi.fn(async ({ sessionId, target }: { sessionId: string; target?: string }) => store.ensureResearchContext({ sessionId, rootPath: root, projectName: 'Workflow project', target }))
-  const autoApproveResearchGate1 = vi.fn(async ({ studyId }: { sessionId: string; studyId: string; expectedVersion: number }) => {
-    const study = store.getResearchStudy(studyId)!
-    return { status: 'approved' as const, study: { ...study, gate1: 'approved', currentFreezeId: 'freeze-test' }, blockers: [], ruleVersion: 'test-rule-v1', freeze: { id: 'freeze-test' } }
-  })
   const execute = vi.fn(async (id: string) => ({ target: id, content: [], value: { structuredContent: id === 'r.submit.script' ? { id: 'job-1', status: 'queued' } : id === 'r.get.job' ? { status: remoteStatus, progress: 25 } : id === 'r.get.job.manifest' ? { files: [{ path: 'plot.png', sha256: 'digest' }] } : {} } }))
   const workflowRequest = vi.fn(async (_action: string, args: any) => { const op = rWorkflows.modules.find(m => m.id === args.workflow_id)?.operations.find(o => o.id === args.operation); if (!op) throw new Error('Operation not registered'); return op })
   const backend = { workflowRequest, ensureConnected: vi.fn(async () => undefined), executeCompactCapability: execute } as any
-  const research = { ensureResearchContext, autoApproveResearchGate1 }
-  const service = new ResearchWorkflowService(store, join(root, 'workflows'), backend, undefined, () => research)
+  const service = new ResearchWorkflowService(store, join(root, 'workflows'), backend)
   const exec = { signal: new AbortController().signal, agent: { session: { id: 'workflow-session', header: { cwd: root } } } } as any
-  return { root, store, service, backend, execute, exec, ensureResearchContext, autoApproveResearchGate1, status: (value: string) => { remoteStatus = value } }
+  return { root, store, service, backend, execute, exec, status: (value: string) => { remoteStatus = value } }
 }
 const input = { operation: 'r.submit.script', arguments: { project_id: 'demo', code: 'print(1)', confirm: true }, request_id: 'submission-1' }
 it('normalizes top-level, nested and flattened workflow query envelopes without losing operations', () => {
@@ -43,41 +36,42 @@ it('drops undefined object properties while preserving JSON array semantics', ()
   const cyclic: Record<string, unknown> = {}; cyclic.self = cyclic
   expect(() => normalizeJsonArguments(cyclic)).toThrow('TOOL_ARGUMENTS_NOT_JSON_SERIALIZABLE')
 })
-it('queries ToolUniverse status without provisioning an unrelated research context', async () => {
+it('queries ToolUniverse status without creating local project records', async () => {
   const f = await fixture()
   f.backend.workflowRequest.mockResolvedValueOnce({ status: 'ok', version: '1.5.7' })
   const query = normalizeWorkflowQuery({ operation: 'tooluniverse.status', parameters: { project_id: 'f0071be9-525d-452d-af77-a28f7deea60' } }, 'tooluniverse')
   await expect(f.service.query('tooluniverse', query, f.exec)).resolves.toEqual({ status: 'ok', version: '1.5.7' })
   expect(f.backend.workflowRequest).toHaveBeenCalledWith('workflow_query', { workflow_id: 'tooluniverse', operation: 'tooluniverse.status', arguments: {} }, f.exec)
-  expect(f.ensureResearchContext).not.toHaveBeenCalled()
+  expect(f.store.listProjects()).toHaveLength(0)
 })
-it('queries FAERS connectivity without provisioning a remote analysis project', async () => {
+it('queries FAERS connectivity without creating local project records', async () => {
   const f = await fixture()
   f.backend.workflowRequest.mockResolvedValueOnce({ installed: true, connected: true })
   const query = normalizeWorkflowQuery({ operation: 'r.faerskit.status' }, 'r.faerskit')
   await expect(f.service.query('r.faerskit', query, f.exec)).resolves.toEqual({ installed: true, connected: true })
   expect(f.backend.workflowRequest).toHaveBeenCalledWith('workflow_query', { workflow_id: 'r.faerskit', operation: 'r.faerskit.status', arguments: {} }, f.exec)
-  expect(f.ensureResearchContext).not.toHaveBeenCalled()
+  expect(f.store.listProjects()).toHaveLength(0)
 })
-it('injects ToolUniverse project/idempotency context and rejects nested secrets before persistence', async () => {
+it('adds only a request id to ToolUniverse calls and rejects nested secrets before persistence', async () => {
   const f = await fixture()
-  const value = { operation: 'tooluniverse.run.tool', arguments: { tool_name: 'UniProt_get_entry_by_accession', tool_arguments: { accession: 'P05067' }, confirm: true }, request_id: 'tu-1' }
+  const value = { operation: 'tooluniverse.run.tool', arguments: { project_id: 'existing-tu-project', tool_name: 'UniProt_get_entry_by_accession', tool_arguments: { accession: 'P05067' }, confirm: true }, request_id: 'tu-1' }
   f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent: id === 'tooluniverse.run.tool' ? { job_id: 'tu-job', status: 'queued' } : id === 'tooluniverse.get.job' ? { status: 'succeeded' } : {} } }))
   const result = await f.service.run('tooluniverse', value, f.exec)
   expect(result.remote_id).toBe('tu-job')
   const submitted = f.execute.mock.calls.find(([id]) => id === 'tooluniverse.run.tool') as unknown as [string, Record<string, unknown>]
   expect(submitted[1].request_id).toMatch(/^[a-f0-9]{64}$/u)
-  expect(submitted[1].project_id).toMatch(/^zw-/u)
-  const before = f.store.listRuns(f.store.listProjects()[0]!.id).length
+  expect(submitted[1].project_id).toBe('existing-tu-project')
+  expect(f.store.listProjects()).toHaveLength(0)
+  expect(f.execute.mock.calls.some(([id]) => id === 'r.register.project')).toBe(false)
   await expect(f.service.run('tooluniverse', { ...value, request_id: 'tu-secret', arguments: { ...value.arguments, tool_arguments: { api_key: 'forbidden-test-value' } } }, f.exec)).rejects.toThrow('CREDENTIAL_ARGUMENT_FORBIDDEN')
-  expect(f.store.listRuns(f.store.listProjects()[0]!.id)).toHaveLength(before)
+  expect(f.store.listProjects()).toHaveLength(0)
 })
 it('submits once, persists remote IDs, resumes queries and returns checksummed manifests', async () => {
   const f = await fixture()
   const [first, same] = await Promise.all([f.service.run('r.compute', input, f.exec), f.service.run('r.compute', input, f.exec)])
   expect(first.run_id).toBe(same.run_id); expect(first.remote_id).toBe('job-1')
   expect(f.execute.mock.calls.filter(([id]) => id === 'r.submit.script')).toHaveLength(1)
-  const restored = new ResearchWorkflowService(f.store, join(f.root, 'workflows'), f.backend, undefined, () => ({ ensureResearchContext: f.ensureResearchContext, autoApproveResearchGate1: f.autoApproveResearchGate1 } as any))
+  const restored = new ResearchWorkflowService(f.store, join(f.root, 'workflows'), f.backend)
   f.status('succeeded')
   const done = await restored.status(String(first.run_id), f.exec)
   expect(done.status).toBe('succeeded'); expect(JSON.stringify(done)).toContain('digest')
@@ -91,7 +85,7 @@ it('keeps FAERS jobs active, resumes their R lifecycle and exposes project-relat
     id === 'r.faerskit.analyze' ? { job_id: 'faers-job-1', status: 'queued' } :
     id === 'r.get.job' ? { status, progress: 25 } :
     id === 'r.get.job.manifest' ? { files: [{ path: 'faerskit/metformin/signals.csv', sha256: 'faers-digest', mime_type: 'text/csv' }] } : {} } }))
-  const request = { operation: 'r.faerskit.analyze', arguments: { fun: 'AFun', drug: 'METFORMIN', year: [141, 244], path: 'faerskit/metformin', confirm: true }, request_id: 'faers-1' }
+  const request = { operation: 'r.faerskit.analyze', arguments: { project_id: 'existing-faers-project', fun: 'AFun', drug: 'METFORMIN', year: [141, 244], path: 'faerskit/metformin', confirm: true }, request_id: 'faers-1' }
   expect(f.service.list().workflows).toEqual(expect.arrayContaining([expect.objectContaining({ workflow_id: 'r.faerskit', skill: 'zerowall-faerskit' })]))
   await expect(f.service.run('r.faerskit', { ...request, arguments: { ...request.arguments, confirm: false } }, f.exec)).rejects.toThrow('CONFIRMATION_REQUIRED')
   const [first, retry] = await Promise.all([f.service.run('r.faerskit', request, f.exec), f.service.run('r.faerskit', request, f.exec)])
@@ -99,13 +93,14 @@ it('keeps FAERS jobs active, resumes their R lifecycle and exposes project-relat
   expect(first.run_id).toBe(retry.run_id)
   expect(f.execute.mock.calls.filter(([id]) => id === 'r.faerskit.analyze')).toHaveLength(1)
   expect(f.execute.mock.calls.some(([id]) => id === 'r.get.job.manifest')).toBe(false)
-  const restored = new ResearchWorkflowService(f.store, join(f.root, 'workflows'), f.backend, undefined, () => ({ ensureResearchContext: f.ensureResearchContext, autoApproveResearchGate1: f.autoApproveResearchGate1 } as any))
+  const restored = new ResearchWorkflowService(f.store, join(f.root, 'workflows'), f.backend)
   status = 'succeeded'
   const done = await restored.status(String(first.run_id), f.exec)
   expect(done.status).toBe('succeeded')
   expect(JSON.stringify(done.result)).toContain('faers-digest')
   const submission = f.execute.mock.calls.find(([id]) => id === 'r.faerskit.analyze') as unknown as [string, Record<string, unknown>]
-  expect(done.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ uri: `rmcp://${submission[1].project_id}/.zerowall/jobs/faers-job-1/result/faerskit/metformin/signals.csv`, mediaType: 'text/csv' })]))
+  expect(done.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ uri: 'rmcp://existing-faers-project/.zerowall/jobs/faers-job-1/result/faerskit/metformin/signals.csv', mediaType: 'text/csv' })]))
+  expect(f.execute.mock.calls.some(([id]) => id === 'r.register.project')).toBe(false)
   await restored.status(String(first.run_id), f.exec)
   expect(f.execute.mock.calls.filter(([id]) => id === 'r.faerskit.analyze')).toHaveLength(1)
 })
@@ -116,108 +111,63 @@ it('cancels FAERS through the shared remote R job contract', async () => {
     if (id === 'r.cancel.job') status = 'cancelled'
     return { target: id, content: [], value: { structuredContent: id === 'r.faerskit.analyze' ? { job_id: 'faers-cancel', status: 'queued' } : { status } } }
   })
-  const run = await f.service.run('r.faerskit', { operation: 'r.faerskit.analyze', arguments: { fun: 'KFun', age: [65, 90], confirm: true }, request_id: 'faers-cancel-1' }, f.exec)
+  const run = await f.service.run('r.faerskit', { operation: 'r.faerskit.analyze', arguments: { project_id: 'existing-faers-project', fun: 'KFun', age: [65, 90], confirm: true }, request_id: 'faers-cancel-1' }, f.exec)
   const cancelled = await f.service.cancel(String(run.run_id), true, f.exec)
   expect(cancelled.status).toBe('cancelled')
-  expect(f.execute.mock.calls.find(([id]) => id === 'r.cancel.job')).toEqual(['r.cancel.job', expect.objectContaining({ job_id: 'faers-cancel', confirm: true }), f.exec])
+  expect(f.execute.mock.calls.find(([id]) => id === 'r.cancel.job')).toEqual(['r.cancel.job', expect.objectContaining({ project_id: 'existing-faers-project', job_id: 'faers-cancel', confirm: true }), f.exec])
 })
-it('binds an optional research task to the durable remote Run and reconciles its terminal state', async () => {
-  const f = await fixture()
-  const project = f.store.createProject({ name: 'Workflow project', rootPath: f.root })
-  const study = f.store.createResearchStudy({ projectId: project.id, title: 'Workflow study', budget: { maxRemoteThreads: 1, maxTokens: 100 } })
-  const task = f.store.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Remote analysis', kind: 'mr', exploratory: true, budget: { remoteThreads: 1, tokens: 100 } })
-  const run = await f.service.run('r.compute', { ...input, research_task_id: task.id }, f.exec)
-  expect(run.research_task_id).toBe(task.id)
-  expect(f.store.getResearchStudy(study.id) && f.store.listResearchTasks(study.id)[0]?.status).toBe('running')
-  f.status('succeeded')
-  await f.service.status(String(run.run_id), f.exec)
-  expect(f.store.listResearchTasks(study.id)[0]?.status).toBe('succeeded')
-})
-it('runs a confirmatory task without gate approval or a frozen plan', async () => {
-  const f = await fixture()
-  const project = f.store.createProject({ name: 'Gated project', rootPath: f.root })
-  const study = f.store.createResearchStudy({ projectId: project.id, title: 'Gated study', budget: { maxTokens: 100 } })
-  const task = f.store.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Confirmatory', kind: 'runner', budget: { tokens: 10 } })
-  const result = await f.service.run('r.compute', { ...input, research_task_id: task.id }, f.exec)
-  expect(result).toMatchObject({ status: 'running', research_task_id: task.id })
-  expect(f.autoApproveResearchGate1).not.toHaveBeenCalled()
-  expect(f.execute).toHaveBeenCalledWith('r.submit.script', expect.any(Object), f.exec)
-  expect(f.store.listRuns(project.id)).toHaveLength(1)
-})
-
-it('ensures study context for a public GEO download but never gates download on a draft contract', async () => {
-  const f = await fixture()
-  f.autoApproveResearchGate1.mockClear()
-  const context = f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' })
-  const task = f.store.createResearchTask({ projectId: context.project.id, studyId: context.study.id, name: 'Confirmatory follow-up', kind: 'runner', budget: { tokens: 10 } })
-  f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent: id === 'r.geo.download' ? { job_id: 'geo-1', status: 'queued' } : {} } }))
-  const result = await f.service.run('r.geo', { operation: 'r.geo.download', arguments: { accession: 'GSE1000' }, request_id: 'geo-download-pending', research_task_id: task.id }, f.exec)
-  expect(result.status).toBe('running')
-  expect(f.ensureResearchContext).toHaveBeenCalledWith({ sessionId: expect.any(String) })
-  expect(f.autoApproveResearchGate1).not.toHaveBeenCalled()
-  expect(f.execute).toHaveBeenCalledWith('r.geo.download', expect.any(Object), f.exec)
-})
-
-it('runs analyses for a Study with legacy blocked status without applying a gate', async () => {
-  const f = await fixture()
-  const context = f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' })
-  f.store.updateResearchStudy(context.study.id, { expectedVersion: context.study.version, status: 'blocked' })
-  f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent: id === 'r.geo.download' ? { job_id: 'geo-blocked-study', status: 'queued' } : {} } }))
-
-  const download = await f.service.run('r.geo', { operation: 'r.geo.download', arguments: { accession: 'GSE1000' }, request_id: 'download-blocked-study' }, f.exec)
-  expect(download.status).toBe('running')
-  expect(f.execute).toHaveBeenCalledWith('r.geo.download', expect.any(Object), f.exec)
-
-  const analysis = await f.service.run('r.compute', input, f.exec)
-  expect(analysis).toMatchObject({ status: 'succeeded', workflow_id: 'r.compute' })
-  expect(f.execute.mock.calls.some(([id]) => id === 'r.submit.script')).toBe(true)
-  expect(f.autoApproveResearchGate1).not.toHaveBeenCalled()
-})
-
-it.each(['draft', 'blocked'] as const)('prefetches Biomni data for a %s Study without analysis approval while preserving confirmation', async status => {
-  const f = await fixture()
-  const context = f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' })
-  if (status === 'blocked') f.store.updateResearchStudy(context.study.id, { expectedVersion: context.study.version, status })
-  const task = f.store.createResearchTask({ projectId: context.project.id, studyId: context.study.id, name: 'Confirmatory follow-up', kind: 'runner', budget: { tokens: 10 } })
-  f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent: id === 'biomni.prefetch.datalake' ? { job_id: 'biomni-download', status: 'queued' } : {} } }))
-  const request = { operation: 'biomni.prefetch.datalake', arguments: { datasets: ['public-data'], confirm: false }, request_id: `biomni-prefetch-${status}`, research_task_id: task.id }
-
-  await expect(f.service.run('biomni', request, f.exec)).rejects.toThrow('CONFIRMATION_REQUIRED')
-  expect(f.execute).not.toHaveBeenCalled()
-  const result = await f.service.run('biomni', { ...request, arguments: { ...request.arguments, confirm: true } }, f.exec)
-  expect(result).toMatchObject({ status: 'running', remote_id: 'biomni-download' })
-  expect(f.execute).toHaveBeenCalledWith('biomni.prefetch.datalake', expect.objectContaining({ confirm: true }), f.exec)
-  expect(f.autoApproveResearchGate1).not.toHaveBeenCalled()
-})
-
-it('does not call the compatibility gate endpoint before formal async analysis', async () => {
+it('runs remote workflows without creating local Projects, Studies, Tasks, or Runs', async () => {
   const f = await fixture()
   const result = await f.service.run('r.compute', input, f.exec)
   expect(result.status).toBe('running')
-  expect(f.autoApproveResearchGate1).not.toHaveBeenCalled()
-  expect(f.execute.mock.calls.some(([id]) => id === 'r.submit.script')).toBe(true)
-  expect(f.store.listRuns(f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' }).project.id).length).toBe(1)
+  expect(f.execute).toHaveBeenCalledWith('r.submit.script', expect.objectContaining({ project_id: 'demo' }), f.exec)
+  expect(f.execute.mock.calls.some(([id]) => id === 'r.register.project')).toBe(false)
+  expect(f.store.listProjects()).toHaveLength(0)
 })
 
-it('submits without source-audit gate checks and preserves input in the submitted request', async () => {
+it('requires an existing project id only when the live operation schema requires one', async () => {
   const f = await fixture()
-  const { project, study } = f.store.ensureResearchContext({ sessionId: 'workflow-session', rootPath: f.root, projectName: 'Workflow project' })
-  const source = join(f.root, 'verified.csv')
-  await writeFile(source, 'x,y\n1,2\n')
-  const asset = f.store.createDataAsset({ projectId: project.id, name: 'Verified input', uri: pathToFileURL(source).href, location: 'local', mediaType: 'text/csv' })
-  const contract = f.store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'dataset-contract', payload: { applicability: 'usable', sourceStatus: 'supported', source: asset.uri, assetId: asset.id, availableVariables: ['x', 'y'] } })
-  const question = f.store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: { population: 'Synthetic adults', outcome: 'y', estimand: 'mean difference' } })
-  const plan = f.store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'analysis-plan', payload: { method: 'linear regression', inputs: [contract.id], stoppingConditions: ['Stop if x or y are missing'], exploratory: false } })
-  f.store.updateResearchStudy(study.id, { expectedVersion: f.store.getResearchStudy(study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
-  const first = await f.service.run('r.compute', input, f.exec)
-  expect(first.status).toBe('running')
-  await writeFile(source, 'x,y\n9,8\n')
-  const next = await f.service.run('r.compute', { ...input, request_id: 'changed-source' }, f.exec)
-  expect(next.status).toBe('running')
-  expect(f.autoApproveResearchGate1).not.toHaveBeenCalled()
-  expect(f.execute.mock.calls.filter(([id]) => id === 'r.submit.script')).toHaveLength(2)
-  expect(f.store.listRuns(project.id)).toHaveLength(2)
-  expect(f.store.getResearchStudy(study.id)?.gate1).toBe('pending')
+  f.backend.workflowRequest.mockResolvedValueOnce({ id: 'r.geo.download', query_allowed: false, requires_confirmation: true,
+    input_schema: { type: 'object', properties: { project_id: { type: 'string' } }, required: ['project_id'] } })
+  await expect(f.service.run('r.geo', { operation: 'r.geo.download', arguments: { accession: 'GSE1000', confirm: true }, request_id: 'missing-project-id' }, f.exec))
+    .rejects.toThrow('EXISTING_PROJECT_ID_REQUIRED')
+  expect(f.execute).not.toHaveBeenCalled()
+})
+
+it('runs a live R workflow that is not present in the local catalog snapshot', async () => {
+  const f = await fixture()
+  const operation = {
+    id: 'r.genetics.run', query_allowed: false, requires_confirmation: true, lifecycle: null,
+    input_schema: { type: 'object', properties: { project_id: { type: 'string' } }, required: ['project_id'] },
+  }
+  f.backend.workflowRequest.mockImplementation(async (action: string, args: any) => {
+    if (action === 'workflow_describe' && args.workflow_id === 'r.genetics' && args.operation === 'r.genetics.run') return operation
+    throw new Error('Unexpected live workflow request')
+  })
+  const result = await f.service.run('r.genetics', {
+    operation: 'r.genetics.run', arguments: { project_id: 'existing-genetics-project', confirm: true }, request_id: 'genetics-live',
+  }, f.exec)
+  expect(result).toMatchObject({ workflow_id: 'r.genetics', status: 'succeeded' })
+  expect(f.execute).toHaveBeenCalledWith('r.genetics.run', expect.objectContaining({ project_id: 'existing-genetics-project' }), f.exec)
+})
+
+it('fills a required project id from the current project binding', async () => {
+  const f = await fixture()
+  const project = f.store.createProject({ name: 'NHANES', rootPath: f.root })
+  f.store.updateProjectSettings(project.id, { rPlatformProjectId: 'nhanes-existing-project' })
+  await f.service.run('r.nhanes', {
+    operation: 'r.nhanes.ensure.available', arguments: { dataset: 'DEMO' }, request_id: 'nhanes-bound-project',
+  }, f.exec)
+  expect(f.execute).toHaveBeenCalledWith('r.nhanes.ensure.available', expect.objectContaining({ project_id: 'nhanes-existing-project' }), f.exec)
+})
+
+it('blocks remote project registration operations', async () => {
+  const f = await fixture()
+  f.backend.workflowRequest.mockResolvedValueOnce({ id: 'r.register.project', query_allowed: false, requires_confirmation: false, input_schema: { type: 'object' } })
+  await expect(f.service.run('r.compute', { operation: 'r.register.project', arguments: {}, request_id: 'register-project' }, f.exec))
+    .rejects.toThrow('PROJECT_REGISTRATION_DISABLED')
+  expect(f.execute).not.toHaveBeenCalled()
+  expect(f.store.listProjects()).toHaveLength(0)
 })
 
 it('rejects unconfirmed mutations, invalid operations, conflicting idempotency keys and another workspace', async () => {
@@ -253,7 +203,7 @@ it('tracks downloads and nested advanced analysis jobs with their exact status c
 it('routes GEO job_id to download status and preserves the original submission', async () => {
   const f = await fixture()
   f.execute.mockImplementation(async id => ({ target: id, content: [], value: { structuredContent: id === 'r.geo.download' ? { job_id: 'geo-download', status: 'queued', accession: 'GSE1000' } : id === 'r.geo.wait.download' ? { status: 'completed', files: ['matrix.gz'] } : {} } }))
-  const run = await f.service.run('r.geo', { operation: 'r.geo.download', arguments: { accession: 'GSE1000' }, request_id: 'geo-download' }, f.exec)
+  const run = await f.service.run('r.geo', { operation: 'r.geo.download', arguments: { project_id: 'existing-geo-project', accession: 'GSE1000' }, request_id: 'geo-download' }, f.exec)
   expect(run.status).toBe('succeeded')
   expect(run.submission).toMatchObject({ accession: 'GSE1000' })
   expect(f.execute).toHaveBeenCalledWith('r.geo.wait.download', expect.objectContaining({ download_job_id: 'geo-download' }), f.exec)
@@ -281,7 +231,7 @@ it('collects a singleton R manifest using the project-relative result path', asy
 
 it.each([
   { workflow: 'biomni', operation: 'biomni.call.tool', status: 'biomni.get.job', manifest: 'biomni.get.job.manifest', files: { outputs: [{ path: 'result.json' }] }, path: 'biomni/job-1/result.json' },
-  { workflow: 'sc.knockout', operation: 'r.submit.sc.tenifold.knockout', status: 'r.get.sc.tenifold.run', manifest: 'r.get.sc.tenifold.manifest', files: { manifest: { files: [{ path: 'tables/diff_regulation.csv' }] } }, path: '.zerowall/jobs/job-1/result/tables/diff_regulation.csv' },
+  { workflow: 'omicverse', operation: 'omicverse.run.singlecell', status: 'omicverse.get.job', manifest: 'omicverse.get.job.manifest', files: { outputs: [{ path: 'result.json' }] }, path: 'result.json' },
   { workflow: 'figureya', operation: 'figureya.run.plan', status: 'figureya.get.job', manifest: 'figureya.get.manifest', files: { job_id: 'r-job', files: [{ path: 'plot.png', project_artifact_path: 'figures/plan-1/plot.png' }] }, path: 'figures/plan-1/plot.png' },
 ])('collects downloadable artifacts for $workflow', async (sample) => {
   const f = await fixture()

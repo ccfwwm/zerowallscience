@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-projects",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "applicationVersion": "8.0.0",
   "restartRequired": true,
   "desktop": {

@@ -29,11 +29,11 @@ The workspace combines project-scoped conversations, searchable sessions, config
 - **Methods, models, and infrastructure are separable.** Skills encode domain procedures, MCP connects services, plugins own product domains, and execution contexts span Local, WSL, and SSH resources.
 - **Audit integrity is machine-checkable.** Project audit events can be exported with deterministic event hashes and a chain hash, allowing tampering or reordering to be detected.
 
-Together these choices create one product path from intent to evidence to delivery: the model proposes actions, the Host enforces execution boundaries, the Research Store preserves facts, and the researcher makes the final judgment. ZeroWall does not treat a polished answer as a verified scientific conclusion.
+Together these choices create one product path from intent to evidence to delivery: the model proposes actions, the Host enforces execution boundaries, local storage preserves literature and run records, and the researcher makes the final judgment. Research Project/Study registration and the Research viewer workbench are retired; remote analysis continues through configured MCP workflows. ZeroWall does not treat a polished answer as a verified scientific conclusion.
 
 ## Current Scope (4.3.8)
 
-The shipped Windows desktop is the reference distribution for this release. It includes the DSH-based Agent workspace, first-party research plugins, the Better Sidebar Office viewer for DOCX/XLSX/PPTX, PowerShell-first Windows execution, and the recoverable presentation workflow. The current presentation flow generates PPTX; older PDF artifacts remain readable for database compatibility but are not regenerated. Quality metadata is recorded for inspection and does not block a completed PPTX.
+The shipped Windows desktop is the reference distribution for this release. It includes the DSH-based Agent workspace, literature and remote-analysis plugins, the Better Sidebar Office viewer for DOCX/XLSX/PPTX, PowerShell-first Windows execution, and the recoverable presentation workflow. Research Project/Study registration and the Research viewer workbench are not included. The current presentation flow generates PPTX; older PDF artifacts remain readable for database compatibility but are not regenerated. Quality metadata is recorded for inspection and does not block a completed PPTX.
 
 ZeroWall is local-first, not local-only: model APIs, MCP services, WSL, SSH hosts, and web resources can participate when explicitly configured. Their availability and trust remain separate from the local application.
 
@@ -41,22 +41,21 @@ ZeroWall is local-first, not local-only: model APIs, MCP services, WSL, SSH host
 
 | Innovation | Problem addressed | Concrete implementation |
 | --- | --- | --- |
-| Dual-track conversation and research state | Project facts disappear when long transcripts are compressed | DSH sessions remain separate from the Research Store and are linked by project/session context |
+| Durable analysis state | Task outputs disappear when long transcripts are compressed | Session logs, MCP workflow receipts and local run records persist independently of conversation text |
 | Recoverable scientific execution | Long jobs are trapped in transient terminals | Run state machine, heartbeat, lease, PID, timeout, recovery, and artifact harvesting |
 | Model-independent governance | Switching models changes the security boundary | Host/store enforce approvals, path containment, project ownership, and credential references |
 | Provenance from compute to delivery | Code, data, papers, and slides become disconnected files | Explicit links among DataAsset, Run, Artifact, Paper, Decision, Publication, and Presentation |
 | Patchable generative delivery | One bad slide forces a full regeneration | Per-slide visual state, attachment, checksum, generation ID, and retry semantics |
 | Evidence-aware review | Review feedback remains ephemeral chat text | Persisted findings with claims, evidence coverage, remediation, re-review, and gaps |
 
-## A Typical Project Path
+## A Typical Conversation Path
 
-1. Open or create a research project and select models, Skills, MCP services, and execution contexts.
-2. Ask a question in a project-scoped session; the Agent plans before invoking tools or subagents.
-3. Approve side-effecting actions and persist commands, inputs, outputs, and environment facts as a Run.
-4. Harvest results into SHA-256-checked Artifacts, then connect Papers, Decisions, and explicit ResearchEdges.
-5. Use Reviewer to inspect evidence coverage, remediate findings, and re-review.
-6. Freeze a Publication snapshot or generate a presentation; slide visuals can be previewed, retried, and patched independently.
-7. Deliver a checked PPTX, research snapshot, or publication package while retaining its traceable record.
+1. Configure models, Skills, MCP services, and execution contexts in Settings.
+2. Start a conversation and describe the research question; the Agent plans before invoking tools or subagents.
+3. Approve side-effecting actions and keep commands, inputs, outputs, and environment facts with the conversation's Run history.
+4. Save generated files to the conversation workspace and verify citations against their source records.
+5. Generate a presentation when needed; preview, retry, and revise individual slides.
+6. Deliver the checked files and conversation record without creating or registering a Research Project or Study.
 
 ## System Overview
 

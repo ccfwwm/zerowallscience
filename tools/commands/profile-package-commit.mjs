@@ -7,6 +7,14 @@ const inside = (root, path) => { const child = relative(root, path); return chil
 export const packageCommitFiles = ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'cordis.patch.yml', 'compatibility.json']
 export const packageLocked = error => ['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY'].includes(error?.code)
 const validId = id => /^(?:@[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+$/u.test(id) && !id.split('/').some(part => part === '.' || part === '..')
+const brokenDependencyDirectoryLink = path => {
+  const parts = path.split(sep)
+  const modules = parts.lastIndexOf('node_modules')
+  if (modules < 0) return false
+  const entry = parts.slice(modules + 1)
+  return entry.length === 1 && /^[A-Za-z0-9._-]+$/u.test(entry[0])
+    || entry.length === 2 && /^@[A-Za-z0-9._-]+$/u.test(entry[0]) && /^[A-Za-z0-9._-]+$/u.test(entry[1])
+}
 const validHistoryPath = name => /^\.zerowall\/(?:retired|inactive)-plugin-history\/[A-Za-z0-9@%._-]+-[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/u.test(name)
 const validName = name => typeof name === 'string' && (packageCommitFiles.includes(name)
   || name === '.zerowall/materialized-profile.json'
@@ -36,7 +44,13 @@ async function relocateTree(path, candidate, profile, links) {
       if (info.isSymbolicLink()) {
         const target = await readlink(path), absolute = resolve(dirname(path), target)
         const next = inside(candidate, absolute) ? join(profile, relative(candidate, absolute)) : absolute
-        const type = (await stat(path)).isDirectory() ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file'
+        let directory
+        try { directory = (await stat(path)).isDirectory() }
+        catch (error) {
+          if (error?.code !== 'ENOENT' || !brokenDependencyDirectoryLink(path)) throw error
+          directory = true
+        }
+        const type = directory ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file'
         links.push({ path, target, next, type })
       } else if (info.isDirectory()) {
         for (const entry of await readdir(path, { withFileTypes: true })) {
@@ -133,8 +147,17 @@ export async function commitPackagePaths({ profile, candidate, directory, state,
   // own diagnosis; it cannot veto installing or removing another plugin.
   for (const link of links) {
     const published = join(profile, relative(candidate, link.path))
-    await stat(published)
-    const target = resolve(dirname(published), await readlink(published))
+    let target
+    try {
+      await stat(published)
+      target = resolve(dirname(published), await readlink(published))
+    } catch (error) {
+      if (error?.code !== 'ENOENT' || !brokenDependencyDirectoryLink(published)) throw error
+      const info = await lstat(published)
+      target = resolve(dirname(published), await readlink(published))
+      if (!info.isSymbolicLink() || target !== resolve(link.next) || inside(candidate, target)) throw error
+      continue
+    }
     if (inside(candidate, target)) throw new Error('PLUGIN_EPHEMERAL_DEPENDENCY_TARGET')
   }
 }

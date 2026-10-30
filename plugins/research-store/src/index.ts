@@ -793,6 +793,13 @@ export class ResearchStore {
     }
   }
 
+  /** Internal workspace ownership for artifacts and Runs; never provisions a Study. */
+  ensureWorkspaceProject(rootPath: string): ProjectRecord {
+    const canonical = (value: string) => process.platform === 'win32' ? value.toLowerCase().replaceAll('\\', '/').replace(/\/$/u, '') : value.replace(/\/$/u, '')
+    return this.listProjects().find(item => canonical(item.rootPath) === canonical(rootPath))
+      ?? this.createProject({ name: 'Workspace', rootPath })
+  }
+
   createProject(input: CreateProjectInput): ProjectRecord {
     const name = input.name.trim()
     if (name.length === 0) throw new Error('Project name is required.')

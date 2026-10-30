@@ -139,7 +139,7 @@ async function customization(page, f, attempt) {
   assert.deepEqual(modules.failures, [], 'Client module activation failed')
   for (const entry of modules.entries.filter(entry => entry.name?.startsWith('@zerowallscience/plugin-'))) assert.equal(entry.state, 2, 'Inactive client: ' + entry.name)
   const host = await health(f)
-  for (const id of [...coreIds, ...['account', 'claude-code', 'images', 'videos', 'mcp', 'skills', 'research', 'python'].map(name => '@zerowallscience/plugin-' + name)]) {
+  for (const id of [...coreIds, ...['account', 'claude-code', 'images', 'videos', 'mcp', 'skills', 'python'].map(name => '@zerowallscience/plugin-' + name)]) {
     const entries = host.entries.filter(entry => entry.name === id)
     assert(entries.length && entries.every(entry => entry.state === 2), 'Host customization is absent/inactive: ' + id)
   }

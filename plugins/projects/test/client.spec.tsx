@@ -17,7 +17,7 @@ function props() {
     createProject: vi.fn(),
     openProject: vi.fn().mockResolvedValue(project),
     updateProject: vi.fn().mockResolvedValue(project),
-    getProjectSettings: vi.fn().mockResolvedValue({ projectId: 'p1', settings: { defaultContextId: 'gpu', autoHarvest: true }, updatedAt: '' }),
+    getProjectSettings: vi.fn().mockResolvedValue({ projectId: 'p1', settings: { defaultContextId: 'gpu', autoHarvest: true, rPlatformProjectId: 'r-platform-existing' }, updatedAt: '' }),
     updateProjectSettings: vi.fn(),
     exportProject: vi.fn(),
     importProject: vi.fn(),
@@ -36,6 +36,12 @@ describe('Project workbench', () => {
     fireEvent.click(screen.getByRole('button', { name: '设置 Genome' }))
     await screen.findByRole('form', { name: '项目设置' })
     expect(screen.getByDisplayValue('gpu')).toBeTruthy()
+    expect(screen.getByDisplayValue('r-platform-existing')).toBeTruthy()
+    fireEvent.change(screen.getByDisplayValue('r-platform-existing'), { target: { value: 'r-platform-updated' } })
+    fireEvent.submit(screen.getByRole('form', { name: '项目设置' }))
+    await waitFor(() => expect(actions.updateProjectSettings).toHaveBeenCalledWith('p1', {
+      defaultContextId: 'gpu', autoHarvest: true, rPlatformProjectId: 'r-platform-updated',
+    }))
   })
 
   it('uses one Escape press for only the project settings surface', async () => {

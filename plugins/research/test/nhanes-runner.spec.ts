@@ -53,6 +53,7 @@ async function fixture(exploratory = true, certified = true) {
   const store = new ResearchStore(join(root, 'research.sqlite'))
   cleanups.push(async () => { store.close(); await rm(root, { recursive: true, force: true }) })
   const project = store.createProject({ name: 'Survey', rootPath: root })
+  store.updateProjectSettings(project.id, { rPlatformProjectId: 'nhanes-existing-project' })
   const study = store.createResearchStudy({ projectId: project.id, title: 'Synthetic runner test' })
   const data = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'dataset-contract', payload: contract() })
   const task = store.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Age summary', kind: 'nhanes-survey', exploratory })
@@ -76,6 +77,7 @@ describe('persisted survey execution and evidence', () => {
     const result = await f.service.execute(f.project, f.input, f.exec)
     expect(result).toMatchObject({ status: 'succeeded', analysisComplete: true, remoteId: null, needsReview: true, evidence: { payload: { needsReview: true, evidenceType: 'observational-survey' } } })
     expect(f.backend.workflowRequest).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ workflow_id: 'r.nhanes', operation: 'r.nhanes.survey.summary' }), expect.anything())
+    expect(f.execute).toHaveBeenCalledWith('r.nhanes.survey.summary', expect.objectContaining({ project_id: 'nhanes-existing-project' }), expect.anything())
     const artifact = result.artifact as JsonObject
     const manifest = JSON.parse(await readFile(fileURLToPath(String(artifact.uri)), 'utf8'))
     expect(manifest).toMatchObject({ taskId: f.task.id, contractId: f.data.id, planId: f.plan.id, scientificReview: 'pending', remoteId: null, result: { mean: 41 } })

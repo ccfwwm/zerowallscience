@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-claude-code",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "description": "Run an isolated Claude Code CLI from ZeroWall conversations.",
   "type": "module",
   "main": "./lib/index.js",
@@ -57,7 +57,7 @@
       "subagents",
       "workingDirectory",
       "skills",
-      "zerowallProjects",
+      "zerowallMcpConfigurationStore",
       "zerowallEnvironment",
       "credentials",
       "settings",
@@ -123,7 +123,7 @@
   ],
   "dependencies": {
     "@zerowallscience/plugin-base": "^0.1.24",
-    "@zerowallscience/plugin-projects": "workspace:^",
+    "@zerowallscience/plugin-mcp": "workspace:^",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-environment": "workspace:^",
     "@modelcontextprotocol/sdk": "^1.29.0",

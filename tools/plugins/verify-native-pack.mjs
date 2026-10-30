@@ -5,6 +5,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import { root, verificationRoot } from '../build/paths.mjs'
+import { RETIRED_PLUGIN_IDS } from '../commands/retired-plugins.mjs'
 
 if (!process.env.npm_execpath) throw new Error('Run pnpm plugins:verify-pack')
 const directory = join(verificationRoot, 'native-pack', randomUUID())
@@ -20,6 +21,7 @@ for (const id of await readdir(join(root, 'plugins'))) {
   // the canonical plugins directory. Their reviewed package is supplied by
   // the offline profile and is not a native ZeroWall package to pack here.
   if (!source) continue
+  if (RETIRED_PLUGIN_IDS.has(source.name)) continue
   if (!source.name.startsWith('@zerowallscience/plugin-')) continue
   const target = join(directory, id)
   await mkdir(target, { recursive: true })

@@ -112,6 +112,47 @@ for (const accepted of [true, false]) test(`direct resource update preserves sha
   } finally { await release() }
 })
 
+for (const accepted of [true, false]) test(`plugin-base update ${accepted ? 'retains lucide-react after commit and cleanup' : 'restores its previous graph after failed health'}`, async t => {
+  const f = await fixture(t), id = '@zerowallscience/plugin-base'
+  const previous = join(f.profile, 'node_modules', id)
+  await mkdir(previous, { recursive: true })
+  await writeFile(join(previous, 'package.json'), JSON.stringify({ name: id, version: '0.1.29', type: 'module', exports: './index.js' }))
+  await writeFile(join(previous, 'index.js'), 'export const version = "previous"')
+  const manifest = JSON.parse(await readFile(join(f.profile, 'package.json')))
+  manifest.dependencies[id] = 'link:./node_modules/' + id
+  await writeFile(join(f.profile, 'package.json'), JSON.stringify(manifest))
+  const before = await readFile(join(f.profile, 'package.json'))
+  await writeFile(join(f.addition, 'package.json'), JSON.stringify({ name: id, version: '0.1.30', type: 'module', exports: './index.js', dependencies: {
+    'lucide-react': 'file:' + await realpath(resolve('plugins/base/node_modules/lucide-react')),
+    react: 'file:' + await realpath(resolve('plugins/base/node_modules/react')),
+  } }))
+  await writeFile(join(f.addition, 'index.js'), 'import { FlaskConical } from "lucide-react"; export const version = FlaskConical ? "updated" : "invalid"')
+  const load = () => execute(process.execPath, ['--input-type=module', '-e', 'console.log((await import("./node_modules/@zerowallscience/plugin-base/index.js")).version)'], { cwd: f.profile, windowsHide: true })
+  const manager = createResourceManager({ home: resolve(f.profile, '../..'), yaml,
+    stopHost: async () => {},
+    startHost: async options => {
+      if (!options) return
+      assert.equal((await load()).stdout.trim(), 'updated')
+      assert((await lstat(previous)).isDirectory())
+      await lstat(join(previous, 'node_modules/lucide-react/package.json'))
+      if (!accepted) throw new Error('fixture Host rejected updated plugin')
+    },
+    runPlugin: async (args, generation, options = {}) => {
+      await execute(process.execPath, [resolve('tools/commands/dsh.mjs'), 'plugin', '--profile', generation, ...args, '--offline', '--ignore-scripts'], {
+        cwd: f.root, env: { ...process.env, DSH_HOME: resolve(f.profile, '../..'), ZEROWALL_RESOURCE_CANDIDATE_ID: options.resourceCandidateId }, windowsHide: true, timeout: 90_000,
+      })
+    },
+  })
+  const result = manager.mutate(['add', 'file:' + f.addition])
+  if (accepted) await result
+  else await assert.rejects(result, /fixture Host rejected updated plugin/u)
+  // Import in a new process after transaction cleanup; a candidate-only link
+  // can pass an initial import but fail as soon as the candidate is removed.
+  assert.equal((await load()).stdout.trim(), accepted ? 'updated' : 'previous')
+  if (!accepted) assert.deepEqual(await readFile(join(f.profile, 'package.json')), before)
+  assert.equal((await readdir(resolve(f.profile, '..'))).filter(name => name.startsWith('zerowall-pnpm-')).length, 0)
+})
+
 for (const state of ['rolled-back', 'complete', 'preparation-failed', 'preparing']) test(`recovery cleans an abandoned ${state} candidate while preserving the active profile`, async t => {
   const f = await fixture(t), before = await readFile(join(f.profile, 'package.json'))
   const candidate = join(f.root, 'profiles/zerowall-pnpm-11111111-1111-1111-1111-111111111111')

@@ -3,9 +3,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { GenerateOptions, TokenUsage } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-skill'
 import type { ResearchStore } from '@zerowallscience/research-store'
-import type { JsonObject, ResearchStudyRecord } from '@zerowallscience/research-store/types'
+import type { JsonObject, ProjectRecord } from '@zerowallscience/research-store/types'
 import { SCIENCE_SYSTEM_PROMPT_VERSION } from '@zerowallscience/plugin-base'
-import { RESEARCH_CONTEXT_VERSION } from './research-context.js'
 
 export const RUNTIME_PROVENANCE_VERSION = '7.0.0-runtime-provenance.1'
 const hash = (value: unknown): string => createHash('sha256').update(JSON.stringify(value) ?? 'null').digest('hex')
@@ -43,7 +42,7 @@ export function runtimePolicyFingerprint(options: GenerateOptions): JsonObject {
   })
   return {
     version: RUNTIME_PROVENANCE_VERSION, boundary: 'provider-neutral-pre-serialization',
-    coreVersion: SCIENCE_SYSTEM_PROMPT_VERSION, contextVersion: RESEARCH_CONTEXT_VERSION,
+    coreVersion: SCIENCE_SYSTEM_PROMPT_VERSION,
     systemSha256: hash([options.system ?? null, options.messages.filter(message => message.role === 'system').map(message => message.content)]),
     contextSha256: hash(dynamic.map(message => message.content)), skillsSha256: hash(skills),
     toolSchemaSha256: hash(options.tools ?? []), skillContextCount: skills.length, skills,
@@ -71,19 +70,19 @@ export function observedModelUsage(usage: TokenUsage | undefined): JsonObject {
     monetaryCost: null }
 }
 
-export function installResearchRuntimeProvenance(ctx: Context, store: ResearchStore, resolveStudy: (sessionId: string) => ResearchStudyRecord | undefined): void {
+export function installResearchRuntimeProvenance(ctx: Context, store: ResearchStore, resolveWorkspace: (sessionId: string) => ProjectRecord | undefined): void {
   ctx.on('llm/stream', async function* (options, next) {
-    const study = options.sessionId ? resolveStudy(String(options.sessionId)) : undefined
-    if (!study) { yield* next(); return }
+    const workspace = options.sessionId ? resolveWorkspace(String(options.sessionId)) : undefined
+    if (!workspace) { yield* next(); return }
     const requestId = randomUUID(), started = performance.now()
     const policy = runtimePolicyFingerprint(options)
     const skills = policy.skills as JsonObject[]
     delete policy.skills
-    const common: JsonObject = { studyId: study.id, sessionId: String(options.sessionId), requestId, freezeId: study.currentFreezeId ?? null, studyVersion: study.version }
+    const common: JsonObject = { workspaceId: workspace.id, sessionId: String(options.sessionId), requestId }
     // One event per Skill avoids the generic audit redactor's bounded array
     // preview. The aggregate hash still covers the complete ordered sequence.
-    for (const [index, skill] of skills.entries()) store.recordAuditEvent(study.projectId, 'research-runtime.skill-context', { ...common, index, ...skill })
-    store.recordAuditEvent(study.projectId, 'research-runtime.request', { ...common, ...policy })
+    for (const [index, skill] of skills.entries()) store.recordAuditEvent(workspace.id, 'research-runtime.skill-context', { ...common, index, ...skill })
+    store.recordAuditEvent(workspace.id, 'research-runtime.request', { ...common, ...policy })
     let usage: TokenUsage | undefined
     let status = 'interrupted'
     let finished = false
@@ -100,7 +99,7 @@ export function installResearchRuntimeProvenance(ctx: Context, store: ResearchSt
       throw error
     } finally {
       // An upstream error message may contain credentials: record only outcome.
-      store.recordAuditEvent(study.projectId, 'research-runtime.outcome', {
+      store.recordAuditEvent(workspace.id, 'research-runtime.outcome', {
         ...common, status, finishKind, elapsedMs: Math.max(0, Math.round(performance.now() - started)), ...observedModelUsage(usage),
       })
     }

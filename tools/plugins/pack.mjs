@@ -127,9 +127,11 @@ for (const candidate of sourceCandidates) {
   const current = sourceByPackage.get(candidate.manifest.name)
   if (!current || candidate.priority > current.priority) sourceByPackage.set(candidate.manifest.name, candidate)
 }
-const selectedSources = selectedPlugin
-  ? [...sourceByPackage.values()].filter(({ source, manifest }) => source.split(/[\\/]/u).at(-1) === selectedPlugin || manifest.name === selectedPlugin).map(({ source }) => source)
-  : [...sourceByPackage.values()].map(({ source }) => source)
+if (selectedPlugin && retiredPluginIds.has(selectedPlugin)) throw new Error(`Cannot package retired plugin: ${selectedPlugin}`)
+const selectedSources = [...sourceByPackage.values()]
+  .filter(({ manifest }) => !retiredPluginIds.has(manifest.name))
+  .filter(({ source, manifest }) => !selectedPlugin || source.split(/[\\/]/u).at(-1) === selectedPlugin || manifest.name === selectedPlugin)
+  .map(({ source }) => source)
 if (selectedPlugin && !selectedSources.length) throw new Error(`Unknown plugin source: ${selectedPlugin}`)
 for (const source of selectedSources) {
   const manifest = await readFile(join(source, 'package.json'), 'utf8').then(JSON.parse, () => undefined)

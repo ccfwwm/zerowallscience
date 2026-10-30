@@ -10,13 +10,15 @@ import { pathToFileURL } from 'node:url'
 const [installationArg, homeArg, outputArg, skillArg] = process.argv.slice(2)
 assert.ok(installationArg && homeArg && outputArg && skillArg,
   'Usage: node tools/integration/tooluniverse-host-smoke.mjs <installation> <disposable-home> <new-evidence-directory> <verified-skill-folder>')
+const project = process.env.ZEROWALL_TOOLUNIVERSE_PROJECT_ID?.trim()
+assert.ok(project, 'Set ZEROWALL_TOOLUNIVERSE_PROJECT_ID to an existing remote project; this smoke never creates one.')
 const installation = resolve(installationArg), home = resolve(homeArg), output = resolve(outputArg)
 // A new output directory prevents accidental reuse of earlier acceptance.
 await mkdir(output)
 const workspace = join(output, 'workspace'); await mkdir(workspace)
 const resources = join(installation, 'resources'), asar = join(resources, 'app.asar')
 const offlineProfile = join(resources, 'offline-profile')
-const sessionId = randomUUID(), project = `tooluniverse-host-${Date.now()}`
+const sessionId = randomUUID()
 const token = process.env.R_PLATFORM_MCP_AUTHORIZATION || 'Bearer ' + execFileSync('ssh', ['rdatalinux', 'python3', '-'], {
   encoding: 'utf8', input: 'from pathlib import Path\nx=dict(l.split("=",1) for l in Path("/etc/rdatalinux-r-platform/platform.env").read_text().splitlines() if "=" in l and not l.startswith("#"))\nprint(x["R_PLATFORM_MCP_KEY"].strip("\\\"\'"))\n',
 }).trim()
@@ -85,12 +87,7 @@ try {
   assert.ok(JSON.stringify(search).includes('tooluniverse.tool.UniProt_get_entry_by_accession'))
   const detail = await call('research_workflow', { action: 'describe', workflow_id: 'tooluniverse', operation: 'tooluniverse.tool.UniProt_get_entry_by_accession' })
   assert.equal(detail.id, 'tooluniverse.tool.UniProt_get_entry_by_accession')
-  // Resource retrieval is an exploratory task, with the same durable task
-  // contract used by the product. Do not forge approval of a statistical plan.
-  const task = await call('research_study', { action: 'create_task', target: 'Verify the UniProt P05067 source record and download its original result',
-    task: { name: 'ToolUniverse source lookup acceptance', kind: 'resource-retrieval', exploratory: true, budget: { remoteThreads: 1 } } })
-  assert.ok(task.task?.id)
-  const parameters = { operation: detail.id, research_task_id: task.task.id, request_id: 'host-uniprot-p05067', arguments: {
+  const parameters = { operation: detail.id, request_id: 'host-uniprot-p05067', arguments: {
     project_id: project, tool_arguments: { accession: 'P05067', compact: true }, confirm: true } }
   const run = await call('research_workflow', { action: 'run', workflow_id: 'tooluniverse', parameters })
   assert.ok(run.run_id, JSON.stringify(run))

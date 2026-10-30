@@ -16,10 +16,7 @@ import { BrainViewer } from './brain-viewer.js'
 import { scienceToolForImportedPath } from './imported-science-file.js'
 
 type Remote = TypertRemoteNamespaceMap['zerowallResearch']
-type ProjectContext = { project?: { id?: string } }
-type ViewerRemote = Remote & {
-  ensureResearchContext?: (input: { sessionId: string; target?: string }) => Promise<unknown>
-}
+type ViewerRemote = Remote
 type ScienceToolId = 'imagej' | 'he' | 'molecule' | 'sanger' | 'flow' | 'canvas' | 'cells' | 'sequence' | 'brainglobe'
 type ViewerRoute = { tool?: ScienceToolId; assetId?: string; viewerId?: string; runId?: string; requestId?: string }
 
@@ -38,7 +35,7 @@ export function ScienceViewer(props: ScienceViewerProps): JSX.Element {
   const remote = props.remote as ViewerRemote
   const sessionId = props.scope.sessionId
   const route = routeFromTab(props.tab)
-  const [projectId, setProjectId] = useState<string>()
+  const [workspaceReady, setWorkspaceReady] = useState(false)
   const [selection, setSelection] = useState<ViewerSelection>({})
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
@@ -48,26 +45,17 @@ export function ScienceViewer(props: ScienceViewerProps): JSX.Element {
 
   useEffect(() => {
     const generation = ++requestGeneration.current
-    setProjectId(undefined)
+    setWorkspaceReady(false)
     setSelection({})
     setMessage('')
     setLoading(true)
     void (async () => {
       try {
         if (!sessionId) throw new Error('当前会话尚未就绪。')
-        let project: { id: string } | undefined
-        if (remote.ensureResearchContext) {
-          const ensured = unwrapRemoteResult('ensureResearchContext', await remote.ensureResearchContext({ sessionId }) as Parameters<typeof unwrapRemoteResult<ProjectContext>>[1])
-          project = ensured.project?.id ? ensured.project as { id: string } : undefined
-        } else {
-          project = remote.projectForSession ? unwrapRemoteResult('zerowallResearch/projectForSession', await remote.projectForSession({ sessionId })) as { id: string } | undefined : undefined
-          if (!project?.id && remote.registerSessionProject) {
-            project = unwrapRemoteResult('zerowallResearch/registerSessionProject', await remote.registerSessionProject({ sessionId })) as { id: string }
-          }
-        }
-        if (!project?.id) throw new Error('科学查看器未能连接当前会话。')
+        const ready = unwrapRemoteResult('zerowallResearch/workspaceReadyForSession', await remote.workspaceReadyForSession({ sessionId })) as boolean
+        if (!ready) throw new Error('科学查看器未能连接当前会话。')
         if (generation === requestGeneration.current) {
-          setProjectId(project.id)
+          setWorkspaceReady(true)
           setSelection({ assetId: route.assetId, viewerId: route.viewerId, runId: route.runId, revision: 1 })
         }
       } catch (error) {
@@ -80,7 +68,7 @@ export function ScienceViewer(props: ScienceViewerProps): JSX.Element {
   }, [remote, sessionId, route.requestId, route.tool])
 
   const importExternalPath = async (sourcePath: string): Promise<void> => {
-    if (!sessionId || !projectId) { setMessage('当前会话正在准备，请稍后重试。'); return }
+    if (!sessionId || !workspaceReady) { setMessage('当前会话正在准备，请稍后重试。'); return }
     if (!remote.importLocalAsset) { setMessage('当前 Host 不支持导入科研文件。'); return }
     if (!route.tool) { setMessage('请先在对话中指定要打开的科研查看器。'); return }
     try {
@@ -124,10 +112,10 @@ export function ScienceViewer(props: ScienceViewerProps): JSX.Element {
       {message && <p role="status" style={{ margin: 0, fontSize: 12 }}>{message}</p>}
     </header>
     {loading && <p role="status" style={{ padding: 16 }}>正在连接当前会话…</p>}
-    {!loading && !projectId && <p role="alert" style={{ padding: 16 }}>{message || '科学查看器暂不可用。'}</p>}
-    {!loading && projectId && route.tool && <div key={`${sessionId}:${route.requestId}:${selection.revision ?? 0}`} style={{ minHeight: 0, flex: 1, overflow: 'auto' }}>
+    {!loading && !workspaceReady && <p role="alert" style={{ padding: 16 }}>{message || '科学查看器暂不可用。'}</p>}
+    {!loading && workspaceReady && route.tool && <div key={`${sessionId}:${route.requestId}:${selection.revision ?? 0}`} style={{ minHeight: 0, flex: 1, overflow: 'auto' }}>
       <ViewerSelectionContext.Provider value={selectionValue}>{renderTool(route.tool)}</ViewerSelectionContext.Provider>
     </div>}
-    {!loading && projectId && !route.tool && <p style={{ padding: 16 }}>请在对话中请求打开科研文件或可视化结果。</p>}
+    {!loading && workspaceReady && !route.tool && <p style={{ padding: 16 }}>请在对话中请求打开科研文件或可视化结果。</p>}
   </section>
 }

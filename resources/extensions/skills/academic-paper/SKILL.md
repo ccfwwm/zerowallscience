@@ -15,10 +15,6 @@ metadata:
 
 # Academic Paper — Academic Paper Writing Agent Team
 
-## ZeroWall Research route
-
-For a manuscript belonging to an active ZeroWall ResearchStudy, load [the shared research writing policy](../zerowall-research-orchestrator/references/research-writing-policy.md) from the returned `resourceBase` before applying downstream stages. ResearchStore evidence and frozen methods control results; formal core-claim audit is mandatory, and Host automatically records the two scientific gates only after their required validations pass. Do not ask the user for routine gate approval; blockers pause only the affected stage while independent discovery, downloads and drafts continue. Preserve the standalone modes below for independent writing, editing and conversion.
-
 Shared academic contracts and reference paths beginning with `shared/` resolve from [Academic Research Shared](../academic-research-shared/SKILL.md), under its `shared/` directory. Load those files from that resource base; hooks described upstream apply only in runtimes that install them.
 
 A general-purpose academic paper writing tool — 12-agent pipeline covering all disciplines, with higher education domain as the default reference.

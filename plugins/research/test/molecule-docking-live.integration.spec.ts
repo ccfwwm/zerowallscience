@@ -10,7 +10,6 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { expect, it } from 'vitest'
 import { ResearchStore } from '../../research-store/src/index.js'
-import Projects from '../../projects/src/host/index.js'
 import Mcp from '../../mcp/src/host/index.js'
 import * as Research from '../src/host/index.js'
 
@@ -39,7 +38,7 @@ it.runIf(process.env.ZEROWALL_LIVE_DOCKING === '1')('executes public receptor/et
   })},resolveId(id:string){if(id==='/fixture-entry.js')return '\0vina-live'},load(id:string){if(id==='\0vina-live')return app}}]})
   let browser:Awaited<ReturnType<typeof chromium.launch>>|undefined
   try{
-    await ctx.plugin(SystemPrompt);await ctx.plugin(ToolRuntime);await ctx.plugin(Projects);await ctx.plugin(Mcp);await ctx.plugin(Research)
+    await ctx.plugin(SystemPrompt);await ctx.plugin(ToolRuntime);await ctx.plugin(Mcp);await ctx.plugin(Research)
     const configured=(await ctx.zerowallMcp.list()).find(item=>item.serverName==='rmcp');if(configured&&!configured.enabled)await ctx.zerowallMcp.update({id:configured.id,changes:{enabled:true}})
     expect((await execute('mcp_connect',{server:'rmcp'})).isError).toBe(false)
     await expect.poll(async()=>(await ctx.zerowallMcp.list()).find(item=>item.serverName==='rmcp')?.runtimeState,{timeout:20000}).toBe('active')

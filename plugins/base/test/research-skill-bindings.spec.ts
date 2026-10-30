@@ -16,17 +16,17 @@ const cases = [
   ['zerowall-rplatform', 'mcp__rmcp__r_execute'], ['zerowall-r-files', 'mcp__rmcp__r_files'],
   ['zerowall-r-packages', 'mcp__rmcp__r_packages'], ['zerowall-geo', 'mcp__rmcp__r_geo_analysis'],
   ['zerowall-nhanes', 'mcp__rmcp__r_nhanes_analysis'], ['zerowall-rbioagent', 'mcp__rmcp__biomni_execute'],
-  ['zerowall-rplotfigure', 'mcp__rmcp__r_figureya_run'], ['sc-tenifold-knockout', 'sc_tenifold_knockout_run'],
+  ['zerowall-rplotfigure', 'mcp__rmcp__r_figureya_run'],
   ['zerowall-bio', 'bio_local'], ['zerowall-python-packages', 'python_environment'],
   ['zerowall-ketcher', 'mcp__zerowall_managed_ketcher__open_sketcher'],
-  ['zerowall-research-orchestrator', 'research_study'], ['method-choice', 'method_check_evaluate'],
-  ['zerowall-research-evidence', 'research_study'], ['zerowall-claim-audit', 'research_study'],
-  ['academic-pipeline', 'research_study'], ['academic-paper', 'research_study'], ['academic-paper-reviewer', 'research_study'], ['deep-research', 'research_study'],
+  ['zerowall-research-orchestrator', 'research_workflow'], ['method-choice', 'method_check_evaluate'],
+  ['zerowall-research-evidence', 'research_workflow'], ['zerowall-claim-audit', 'r_files'],
+  ['academic-pipeline', 'r_files'], ['academic-paper', 'r_files'], ['academic-paper-reviewer', 'r_files'], ['deep-research', 'r_files'],
   ['zerowall-sequence', 'science_viewer'],
   ['zerowall-image-intensity', 'science_viewer'], ['zerowall-image-mask', 'science_viewer'],
   ['zerowall-fiji', 'science_viewer'], ['zerowall-napari', 'science_viewer'],
   ['zerowall-cells', 'science_viewer'],
-  ['zerowall-mr', 'research_study'], ['zerowall-colocalization', 'research_study'],
+  ['zerowall-mr', 'research_workflow'], ['zerowall-colocalization', 'research_workflow'],
 ]
 it.each(cases)('loads %s and calls its bound native tool %s directly', async (skill, target) => {
   const ctx = new Context(); await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime)

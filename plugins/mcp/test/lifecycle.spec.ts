@@ -9,7 +9,7 @@ import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
-import ZeroWallProjectsService from '../../projects/src/host/index.js'
+import McpConfigurationStorePlugin from '../src/host/configuration-store.js'
 import ZeroWallMcpService, {
   ZeroWallMcpService as McpServiceClass,
   RDATALINUX_R_MCP_AUTHORIZATION_ENV,
@@ -56,7 +56,7 @@ afterEach(async () => {
 })
 
 describe('ZeroWall MCP Cordis lifecycle', () => {
-  it('keeps saved enabled connections out of the boot barrier until the desktop mounts', async () => {
+  it('keeps saved enabled connections disconnected through desktop mount', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-boot-gate-'))
     roots.push(root)
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'db.sqlite')
@@ -69,8 +69,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
-      ctx.zerowallProjects.createMcpServer({ name: 'saved', serverName: 'saved', transport: 'streamable-http', enabled: true, url: 'http://127.0.0.1:9/mcp' })
+      await ctx.plugin(McpConfigurationStorePlugin)
+      ctx.zerowallMcpConfigurationStore.createMcpServer({ name: 'saved', serverName: 'saved', transport: 'streamable-http', enabled: true, url: 'http://127.0.0.1:9/mcp' })
       await ctx.plugin(ZeroWallMcpService)
       expect((await ctx.zerowallMcp.list())[0]?.enabled).toBe(true)
       expect(starts).not.toHaveBeenCalled()
@@ -83,10 +83,10 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(starts).not.toHaveBeenCalled()
       process.emit('message', { type: 'zerowall:desktop:workbench-ready' }, undefined)
       await new Promise(resolve => setImmediate(resolve))
-      expect(starts).toHaveBeenCalledTimes(1)
+      expect(starts).not.toHaveBeenCalled()
       process.emit('message', { type: 'zerowall:desktop:workbench-ready' }, undefined)
       await new Promise(resolve => setImmediate(resolve))
-      expect(starts).toHaveBeenCalledTimes(1)
+      expect(starts).not.toHaveBeenCalled()
     } finally {
       await ctx.fiber.dispose()
       starts.mockRestore()
@@ -106,7 +106,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
 
       await expect(ctx.zerowallMcp.list()).resolves.toEqual(expect.any(Array))
@@ -128,8 +128,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
-      const migrated = ctx.zerowallProjects.createMcpServer({
+      await ctx.plugin(McpConfigurationStorePlugin)
+      const migrated = ctx.zerowallMcpConfigurationStore.createMcpServer({
         name: 'rplatform',
         serverName: 'rmcp',
         transport: 'streamable-http',
@@ -137,7 +137,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
         url: 'http://103.217.185.141:8099/r-platform/mcp',
         headerRefs: { Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV },
       })
-      const custom = ctx.zerowallProjects.createMcpServer({
+      const custom = ctx.zerowallMcpConfigurationStore.createMcpServer({
         name: 'Custom R',
         serverName: 'custom_r_platform',
         transport: 'streamable-http',
@@ -158,6 +158,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-lifecycle-'))
     roots.push(root)
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
     process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
     const fixtureServer = fileURLToPath(new URL(
       '../../../deepseek-harness/packages/mcp/mcp-client/tests/fixture-server.ts',
@@ -176,7 +177,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
 
       const idle = await ctx.zerowallMcp.create({
@@ -198,11 +199,12 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       // MCP SDK v2 auto-negotiation may probe a stdio server before its
       // active transport. Demand must reuse the settled connection.
       expect(initialStarts.split('start\n').length - 1).toBeGreaterThanOrEqual(1)
+      const selectionAgent = {} as never
       const connect = (id: string) => ctx.tools.execute({
         signal: new AbortController().signal, callId: ToolCallId(id), name: 'mcp_connect', arguments: { server: 'fixture' },
       })
       const results = await Promise.all([connect('demand-1'), connect('demand-2'), connect('demand-3')])
-      expect(results.every(result => !result.isError)).toBe(true)
+      expect(results.every(result => !result.isError), JSON.stringify(results.map(result => result.content))).toBe(true)
       expect(readFileSync(startsFile, 'utf8')).toBe(initialStarts)
       const created = (await ctx.zerowallMcp.list()).find(server => server.id === idle.id)!
       expect(created.runtimeState, created.runtimeError).toBe('active')
@@ -210,6 +212,21 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(created.tools.every(name => name.startsWith('mcp__fixture__'))).toBe(true)
       expect(ctx.tools.get('mcp__fixture__add')).toBeDefined()
       expect(ctx.tools.get('mcp__fixture__greet')).toBeDefined()
+      const initialAssembly = await ctx.systemPrompt.assemble({ scope: {} })
+      ;(ctx.zerowallMcp as any).selectedTools.set(selectionAgent, new Set(['fixture']))
+      const selectedAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent })
+      const unscopedAssembly = await ctx.systemPrompt.assemble({})
+      expect(initialAssembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(false)
+      expect(unscopedAssembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(false)
+      expect(selectedAssembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(true)
+      const search = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('search-fixture'), name: 'mcp_search', arguments: { query: 'greet' } })
+      expect(search.value).toMatchObject({ matches: [expect.objectContaining({ server: 'fixture', tools: [expect.objectContaining({ name: 'mcp__fixture__greet' })] })] })
+      await expect.poll(() => {
+        try {
+          const cache = JSON.parse(readFileSync(join(root, 'harness', 'zerowall-mcp-tool-index.json'), 'utf8'))
+          return cache.servers[created.id]?.tools?.some((tool: { name?: string }) => tool.name === 'mcp__fixture__greet') ?? false
+        } catch { return false }
+      }).toBe(true)
 
       ctx.root.emit('mcp-client/status', 'fixture', 'starting')
       const afterDelayedStarting = (await ctx.zerowallMcp.list()).find(server => server.id === created.id)
@@ -242,14 +259,14 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
-      const seeded = ctx.zerowallProjects.createMcpServer({
+      await ctx.plugin(McpConfigurationStorePlugin)
+      const seeded = ctx.zerowallMcpConfigurationStore.createMcpServer({
         name: 'RMCP fixture', serverName: 'rmcp', transport: 'stdio', enabled: false,
         command: process.execPath, args: ['-e', 'process.stdin.resume()'], cwd: root,
       })
       await ctx.plugin(ZeroWallMcpService)
 
-      ctx.zerowallProjects.updateMcpServer(seeded.id, { enabled: true })
+      ctx.zerowallMcpConfigurationStore.updateMcpServer(seeded.id, { enabled: true })
       const missing = await ctx.zerowallMcp.reload(seeded.id)
       expect(missing.runtimeState).toBe('waiting-for-credentials')
       expect(missing.missingEnvironmentVariables).toEqual(['R_PLATFORM_MCP_AUTHORIZATION'])
@@ -260,7 +277,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       writeFileSync(mode, 'zero')
       const launcher = join(root, 'rmcp-fixture.mjs')
       writeFileSync(launcher, `import { readFileSync } from 'node:fs'; import { createInterface } from 'node:readline'; const mode=${JSON.stringify(mode)}; createInterface({input:process.stdin}).on('line',line=>{let req;try{req=JSON.parse(line)}catch{return}if(req.id===undefined)return;let result={};if(req.method==='initialize')result={protocolVersion:'2024-11-05',capabilities:{tools:{}},serverInfo:{name:'rmcp-fixture',version:'1'}};else if(req.method==='tools/list')result={tools:readFileSync(mode,'utf8').trim()==='one'?[{name:'echo',description:'fixture description',inputSchema:{type:'object',properties:{query:{type:'string',description:'Search phrase'}},required:['query']}}]:[]};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:req.id,result})+'\\n')});`)
-      ctx.zerowallProjects.updateMcpServer(seeded.id, { command: process.execPath, args: [launcher] })
+      ctx.zerowallMcpConfigurationStore.updateMcpServer(seeded.id, { command: process.execPath, args: [launcher] })
       const zero = await ctx.zerowallMcp.reload(seeded.id)
       expect(zero.runtimeState, zero.runtimeError).toBe('active-with-zero-tools')
       expect(zero.toolDiscoveryState).toBe('complete')
@@ -292,18 +309,18 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
-      const rmcp = ctx.zerowallProjects.createMcpServer({
+      await ctx.plugin(McpConfigurationStorePlugin)
+      const rmcp = ctx.zerowallMcpConfigurationStore.createMcpServer({
         name: 'rmcp', serverName: 'rmcp', transport: 'streamable-http', enabled: false,
         url: 'http://127.0.0.1:9/mcp', failOnStartupError: false,
       })
-      const custom = ctx.zerowallProjects.createMcpServer({
+      const custom = ctx.zerowallMcpConfigurationStore.createMcpServer({
         name: 'User MCP fixture', serverName: 'user-fixture', transport: 'streamable-http', enabled: false,
         url: 'http://127.0.0.1:9/mcp', failOnStartupError: false,
       })
       await ctx.plugin(ZeroWallMcpService)
       await ctx.zerowallMcp.list()
-      const records = ctx.zerowallProjects.listMcpServers()
+      const records = ctx.zerowallMcpConfigurationStore.listMcpServers()
       expect(records.find(server => server.id === rmcp.id)?.failOnStartupError).toBe(true)
       expect(records.find(server => server.serverName === 'zerowall_managed_bio_tools')?.failOnStartupError).toBe(true)
       expect(records.find(server => server.id === custom.id)?.failOnStartupError).toBe(false)
@@ -335,8 +352,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
-      const seeded = ctx.zerowallProjects.createMcpServer({
+      await ctx.plugin(McpConfigurationStorePlugin)
+      const seeded = ctx.zerowallMcpConfigurationStore.createMcpServer({
         name: 'RMCP fixture', serverName: 'rmcp', transport: 'streamable-http', enabled: false,
         url: `http://127.0.0.1:${address.port}/mcp`,
         headerRefs: { Authorization: 'R_PLATFORM_MCP_AUTHORIZATION' },
@@ -344,7 +361,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
         reconnect: { enabled: false, initialDelayMs: 5_000, maxDelayMs: 60_000, maxAttempts: 1 },
       })
       await ctx.plugin(ZeroWallMcpService)
-      ctx.zerowallProjects.updateMcpServer(seeded.id, { enabled: true })
+      ctx.zerowallMcpConfigurationStore.updateMcpServer(seeded.id, { enabled: true })
       const failed = await ctx.zerowallMcp.reload(seeded.id)
       expect(failed.runtimeState).toBe('error')
       expect(failed.toolDiscoveryState).toBe('failed')
@@ -356,7 +373,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   }, 30_000)
 
-  it('starts enabled managed servers once their environment becomes ready and polls the compact pointer every second', async () => {
+  it('waits for an explicit connection after the managed environment becomes ready', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-refresh-'))
     const environmentStore = join(root, 'Python/.zerowall')
     const installed = join(environmentStore, 'versions', '4.1.10')
@@ -385,7 +402,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
       const seeded = await ctx.zerowallMcp.list()
       expect(seeded.filter(item => item.serverName.startsWith('zerowall_managed_')).every(item => item.enabled)).toBe(true)
@@ -408,12 +425,14 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       // Fire the production callback to verify the compact-pointer refresh.
       await (timer![0] as () => void)()
       await new Promise(resolve => setImmediate(resolve))
+      await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_ketcher')?.runtimeState, { timeout: 10_000 }).toBe('blocked')
+      await ctx.zerowallMcp.ensureConnected('zerowall_managed_ketcher')
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_ketcher')?.runtimeState, { timeout: 10_000 }).toBe('active')
+      await expect(ctx.zerowallMcp.ensureConnected('zerowall_managed_bio_tools')).rejects.toThrow('核心依赖尚未安装')
       expect((await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_bio_tools')).toMatchObject({ runtimeState: 'blocked', runtimeError: expect.stringContaining('核心依赖尚未安装') })
       mkdirSync(join(runtimeRoot, 'Lib/site-packages/mcp'), { recursive: true })
       writeFileSync(join(runtimeRoot, 'Lib/site-packages/mcp/__init__.py'), '')
-      const bio = (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_bio_tools')!
-      await ctx.zerowallMcp.update({ id: bio.id, changes: { enabled: true } })
+      await ctx.zerowallMcp.ensureConnected('zerowall_managed_bio_tools')
       await expect.poll(async () => (await ctx.zerowallMcp.list()).find(item => item.serverName === 'zerowall_managed_bio_tools')?.runtimeState, { timeout: 10_000 }).toBe('active')
       const beforeInspect = (await ctx.zerowallMcp.list()).map(item => item.tools)
       await (timer![0] as () => void)()
@@ -436,7 +455,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
       const servers = await ctx.zerowallMcp.list()
       expect(servers).toHaveLength(6)
@@ -464,7 +483,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       const ctx = new Context()
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
       return ctx
     }
@@ -505,14 +524,14 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(McpConfigurationStorePlugin)
       const names = ['gpsadb', 'rmcp', 'huagongshe', 'zerowall_managed_scimaster', 'zerowall_managed_bio_tools', 'zerowall_managed_ketcher']
-      const records = names.map(serverName => ctx.zerowallProjects.createMcpServer({ name: serverName, serverName, transport: 'streamable-http', enabled: false, url: 'https://example.test/mcp' }))
+      const records = names.map(serverName => ctx.zerowallMcpConfigurationStore.createMcpServer({ name: serverName, serverName, transport: 'streamable-http', enabled: false, url: 'https://example.test/mcp' }))
       await ctx.plugin(ZeroWallMcpService)
       const dispose = vi.spyOn(ctx.zerowallMcp as any, 'disposeOne')
       for (const record of records) {
         await expect(ctx.zerowallMcp.deleteConnection(record.id)).rejects.toThrow('Disable the connection instead')
-        expect(ctx.zerowallProjects.getMcpServer(record.id)).toBeDefined()
+        expect(ctx.zerowallMcpConfigurationStore.getMcpServer(record.id)).toBeDefined()
       }
       expect(dispose).not.toHaveBeenCalled()
       for (const record of records) {
@@ -521,7 +540,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       }
       const custom = await ctx.zerowallMcp.create({ name: 'custom', serverName: 'custom', transport: 'streamable-http', enabled: false, url: 'https://example.test/mcp' })
       await ctx.zerowallMcp.deleteConnection(custom.id)
-      expect(ctx.zerowallProjects.getMcpServer(custom.id)).toBeUndefined()
+      expect(ctx.zerowallMcpConfigurationStore.getMcpServer(custom.id)).toBeUndefined()
     } finally {
       await ctx.fiber.dispose()
       starts.mockRestore()
@@ -542,7 +561,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     try {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
-      await ctx.plugin(ZeroWallProjectsService)
+      await ctx.plugin(McpConfigurationStorePlugin)
       await ctx.plugin(ZeroWallMcpService)
       const definition = (name: string) => defineTool({
         name,
@@ -568,4 +587,69 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       process.send = send
     }
   }, 30_000)
+
+  it('never exposes or executes remote R project administration', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-r-project-retired-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.ZEROWALL_DEFER_DEFAULT_MCP = '1'
+    const send = process.send
+    process.send = (() => true) as typeof process.send
+    const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
+    const ctx = new Context()
+    const calls: string[] = []
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(McpConfigurationStorePlugin)
+      await ctx.plugin(ZeroWallMcpService)
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__r_project',
+        description: 'retired remote project administration',
+        parameters: {},
+        output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+        execute: async () => { calls.push('r_project'); return { ok: true } },
+      }))
+      const assembly = await ctx.systemPrompt.assemble({ scope: {} })
+      const denied = await ctx.tools.execute({ name: 'mcp__rmcp__r_project', arguments: {}, callId: ToolCallId('retired-r-project'), signal: new AbortController().signal })
+      expect(assembly.tools.some(tool => tool.name === 'mcp__rmcp__r_project')).toBe(false)
+      expect(denied.isError).toBe(true)
+      expect(denied.content.some(block => block.type === 'text' && block.text.includes('Remote R project administration is disabled'))).toBe(true)
+      expect(calls).toEqual([])
+    } finally {
+      await ctx.fiber.dispose()
+      starts.mockRestore()
+      process.send = send
+    }
+  }, 30_000)
+})
+
+it('restores a metadata-only MCP index after Host restart and invalidates it when the connection changes', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-cache-restart-')); roots.push(root)
+  vi.stubEnv('ZEROWALL_RESEARCH_DB', join(root, 'db.sqlite'))
+  vi.stubEnv('DSH_HOME', join(root, 'harness'))
+  vi.stubEnv('ZEROWALL_DISABLE_DEFAULT_MCP', '1')
+  const starts = vi.spyOn(McpServiceClass.prototype as any, 'startConnection').mockImplementation(() => undefined)
+  const mount = async () => { const ctx = new Context(); await ctx.plugin(SystemPrompt); await ctx.plugin(ToolRuntime); await ctx.plugin(McpConfigurationStorePlugin); return ctx }
+  let first: Context | undefined, second: Context | undefined
+  try {
+    first = await mount()
+    const record = first.zerowallMcpConfigurationStore.createMcpServer({ name: 'Fixture', serverName: 'fixture', transport: 'streamable-http', enabled: true, url: 'https://example.test/mcp' })
+    await first.plugin(ZeroWallMcpService); await first.zerowallMcp.list()
+    first.tools.register(defineTool({ name: 'mcp__fixture__gene_lookup', description: 'kinase gene lookup', parameters: {}, output: { schema: { type: 'string' }, render: () => [] }, execute: async () => 'ok' }))
+    // A malformed cache is replaceable metadata, never an executable schema source.
+    mkdirSync(join(root, 'harness'), { recursive: true })
+    writeFileSync(join(root, 'harness', 'zerowall-mcp-tool-index.json'), JSON.stringify({ schema: 1, servers: null }))
+    await (first.zerowallMcp as any).cacheMcpServer(record)
+    await first.fiber.dispose(); first = undefined
+    second = await mount(); await second.plugin(ZeroWallMcpService); await second.zerowallMcp.list()
+    const search = () => second!.tools.execute({ name: 'mcp_search', arguments: { query: 'kinase' }, callId: ToolCallId('cached-search'), signal: new AbortController().signal })
+    expect((await search()).value).toMatchObject({ matches: [expect.objectContaining({ server: 'fixture' })] })
+    expect(second.tools.get('mcp__fixture__gene_lookup')).toBeUndefined()
+    expect(starts).not.toHaveBeenCalled()
+    expect((await second.systemPrompt.assemble({ scope: {} })).tools.some(tool => tool.name.startsWith('mcp__fixture__'))).toBe(false)
+    await second.zerowallMcp.update({ id: record.id, changes: { url: 'https://other.example.test/mcp' } })
+    expect((await search()).value).toMatchObject({ matches: [] })
+  } finally { if (first) await first.fiber.dispose(); if (second) await second.fiber.dispose(); starts.mockRestore() }
 })

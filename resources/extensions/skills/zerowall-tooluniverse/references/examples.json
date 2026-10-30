@@ -3,7 +3,7 @@
   "steps": [
     {"name":"research_workflow","arguments":{"action":"query","workflow_id":"tooluniverse","parameters":{"operation":"tooluniverse.status","arguments":{}}}},
     {"name":"research_workflow","arguments":{"action":"describe","workflow_id":"tooluniverse","operation":"tooluniverse.run.tool"}},
-    {"name":"research_workflow","arguments":{"action":"run","workflow_id":"tooluniverse","parameters":{"operation":"tooluniverse.run.tool","research_task_id":"<task.id>","arguments":{"project_id":"rmcp-demo","request_id":"uniprot-demo","tool_name":"UniProt_get_entry_by_accession","tool_arguments":{"accession":"P05067","compact":true},"confirm":true},"request_id":"uniprot-demo"}}}
+    {"name":"research_workflow","arguments":{"action":"run","workflow_id":"tooluniverse","parameters":{"operation":"tooluniverse.run.tool","arguments":{"project_id":"<existing-remote-project-id>","request_id":"uniprot-demo","tool_name":"UniProt_get_entry_by_accession","tool_arguments":{"accession":"P05067","compact":true},"confirm":true},"request_id":"uniprot-demo"}}}
   ],
-  "expected":{"precondition":"Create an exploratory resource-retrieval task with research_study action=create_task, then substitute its task.id into parameters.research_task_id. Confirmatory analyses require the normal research gates.","run":"local run_id; inspect remote status, verify record identity and download Manifest files with Host r_files"}
+  "expected":{"precondition":"Use an existing remote project ID only when the live schema requires it. The workflow does not create or register local or remote projects.","run":"local run_id; inspect remote status, verify record identity and download Manifest files with Host r_files"}
 }

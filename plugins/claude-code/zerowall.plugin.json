@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-claude-code",
-  "version": "0.2.14",
+  "version": "0.2.15",
   "applicationVersion": "8.4.9",
   "restartRequired": true,
   "desktop": {
@@ -20,7 +20,7 @@
     "subagents",
     "workingDirectory",
     "skills",
-    "zerowallProjects",
+    "zerowallMcpConfigurationStore",
     "zerowallEnvironment",
     "credentials",
     "settings",

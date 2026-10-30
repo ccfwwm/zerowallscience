@@ -26,6 +26,8 @@ describe('environment settings client', () => {
       session: { modelCatalog: vi.fn().mockResolvedValue({ ok: true, value: { groups: [{ id: 'cloud', models: [{ id: 'claude-sonnet-5', name: 'Claude Sonnet 5', reasoning: { efforts: [{ id: 'high', name: '高' }] } }] }], failures: [] } }) },
       zerowallEnvironment: {
         getImageQuality: vi.fn().mockResolvedValue({ ok: true, value: 'xhigh' }),
+        getContextBudget: vi.fn().mockResolvedValue({ ok: true, value: 300_000 }),
+        setContextBudget: vi.fn().mockResolvedValue({ ok: true, value: undefined }),
         readVariable: vi.fn().mockResolvedValue({ ok: true, value: 'private-test-value' }),
         deleteVariable: vi.fn().mockResolvedValue({ ok: true, value: [] }),
         listVariables: vi.fn().mockResolvedValue({ ok: true, value: [{ name: 'SCI_TOKEN', configured: true }] }),
@@ -86,8 +88,14 @@ describe('environment settings client', () => {
     expect(screen.getByRole('heading', { name: '环境配置' })).toBeTruthy()
     const environmentSection = screen.getByRole('heading', { name: '环境配置' }).closest('section')!
     const serviceRows = [...environmentSection.querySelectorAll<HTMLElement>(':scope > div > details')]
+      .filter(row => row.querySelector('summary h3')?.textContent !== '上下文预算')
     expect(serviceRows[0]?.querySelector('summary h3')?.textContent).toBe('rdatalinux rmcp')
     expect(serviceRows.every(row => !(row as HTMLDetailsElement).open)).toBe(true)
+    const contextBudget = screen.getByRole('slider', { name: '上下文预算' }) as HTMLInputElement
+    expect(contextBudget.value).toBe('300000')
+    fireEvent.change(contextBudget, { target: { value: '316000' } })
+    fireEvent.pointerUp(contextBudget)
+    await waitFor(() => expect(remotes.zerowallEnvironment.setContextBudget).toHaveBeenCalledWith(316_000))
     const literature = screen.getByRole('heading', { name: '文献服务' }).closest('details') as HTMLDetailsElement
     expect(literature.querySelectorAll('details')).toHaveLength(6)
     fireEvent.click(literature.querySelector('summary')!)

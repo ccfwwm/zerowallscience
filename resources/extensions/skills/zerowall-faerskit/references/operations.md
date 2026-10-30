@@ -440,9 +440,74 @@ Check whether the remote faerskit (FAERS pharmacovigilance signal detection) pac
 }
 ```
 
+## r.faerskit.lookup
+
+Read the selected ClickHouse database for exact and candidate FAERS drug/PT names, aggregate drug-role counts, report-period coverage, and matching report counts. Returns aggregate information only; it never returns case identifiers or credentials.
+
+- 工具族：r_faerskit；副作用：read；query：true；执行：sync。
+- 确认字段：无。
+- 输出：Immediate structured result; no background task is implied.
+
+```json
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "drug": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500,
+        "description": "Drug name to match against DRUGNAME or prod_ai"
+      },
+      "ptname": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500,
+        "description": "MedDRA Preferred Term to match"
+      },
+      "field": {
+        "type": "string",
+        "enum": [
+          "drugname",
+          "prod_ai"
+        ],
+        "default": "drugname"
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "PS",
+          "SS",
+          "C",
+          "I"
+        ]
+      },
+      "year": {
+        "type": "string",
+        "pattern": "^20\\d{2}Q[1-4]$",
+        "description": "Optional end period; the start defaults to the selected database coverage"
+      },
+      "database": {
+        "type": "string",
+        "maxLength": 100
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20
+      }
+    },
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lifecycle": null
+}
+```
+
 ## r.faerskit.analyze
 
-Run a parameterized FAERS pharmacovigilance analysis (AFun/BFun/CFun/EFun/FFun/HFun/IFun/KFun/DDI/DDIALL/Concomitant_Medication_Analysis/BFun_upgrade1/BFun_upgrade2/disproportionality_analysis_for_top50_drug) on the remote ClickHouse database as an asynchronous job. Signal-detection results are produced as CSV files. Results are written to the project workspace and retrieved with r_get_job_manifest then r_get_job_result or r_download_file. Requires confirm=true.
+Run a parameterized aggregate FAERS signal analysis on the remote ClickHouse database as an asynchronous job. Before submission the server checks real schema and coverage, resolves exact or unique drug/PT matches, and stores a preflight summary; no-match and partial coverage are warnings and do not stop the run. Results include the job manifest and checksums. Requires confirm=true for the submitted run.
 
 - 工具族：r_faerskit；副作用：execute；query：false；执行：async_or_cached。
 - 确认字段：confirm。
@@ -635,8 +700,30 @@ Run a parameterized FAERS pharmacovigilance analysis (AFun/BFun/CFun/EFun/FFun/H
         "description": "Drug role code: \"PS\", \"SS\", \"C\", \"I\""
       },
       "year": {
-        "$ref": "#/properties/age",
-        "description": "Inclusive getdatayear code range: 41=2004Q1, 141=2014Q1, 244=2024Q4. Not calendar years; confirm database coverage first."
+        "anyOf": [
+          {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 41,
+                  "maximum": 994
+                },
+                {
+                  "type": "string",
+                  "pattern": "^20\\d{2}Q[1-4]$"
+                }
+              ]
+            },
+            "minItems": 2,
+            "maxItems": 2
+          },
+          {
+            "$ref": "#/properties/year/anyOf/0/items"
+          }
+        ],
+        "description": "Optional FAERS getdatayear range, e.g. [141, 244], [\"2014Q1\", \"2024Q4\"], or end period \"2026Q1\" (the server fills the start from the database coverage). Calendar years are not codes."
       },
       "illnesses": {
         "$ref": "#/properties/primaryid",

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "0.2.30",
+  "version": "0.2.34",
   "applicationVersion": "8.0.6",
   "restartRequired": true,
   "desktop": {
@@ -15,7 +15,7 @@
   "host": "./lib/index.js",
   "client": "./lib/client.js",
   "requiredServices": [
-    "zerowallProjects",
+    "zerowallMcpConfigurationStore",
     "tools"
   ],
   "optionalServices": [],

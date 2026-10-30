@@ -3,6 +3,8 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
+import type {} from '@deepseek-ai/dsh-agent'
+import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { EnvironmentSettingsValue, EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 import { fetchOfficialEnvironment } from './official-config.js'
 
@@ -20,7 +22,61 @@ export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
     aspectRatio: z.string().default(''),
   }).default({ providerId: '', groupId: '', modelId: '' }),
   imageQuality: z.union(['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const).default('medium'),
+  contextBudgetTokens: z.number().step(1).min(32_000).max(2_000_000).default(300_000),
 })
+
+interface BudgetMeasurement {
+  totalTokens: number
+  baseline: { kind: string }
+  nodes: readonly { seq: SessionSeq; tokens: number }[]
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    tokenMeter: { measure(session: Session): BudgetMeasurement }
+    compaction: {
+      compactRegion(start: SessionSeq, end: SessionSeq, agent: { session: Session; options: { provider: string; model: string } }, signal?: AbortSignal): Promise<{ shadowedTokenCount: number }>
+    }
+  }
+}
+
+function balancedCuts(session: Session, surface: readonly SessionSeq[]): boolean[] {
+  const cuts = [true]
+  let pending = 0
+  for (const seq of surface) {
+    const event = session.eventAt(seq)
+    if (event?.type === 'assistant/message') pending += event.data.message.content.filter(block => block.type === 'tool-call').length
+    else if (event?.type === 'tool/result') pending -= 1
+    if (pending < 0) throw new Error('Context pressure surface has an unmatched tool result.')
+    cuts.push(pending === 0)
+  }
+  return cuts
+}
+
+export function selectContextBudgetRange(
+  session: Session,
+  surface: readonly SessionSeq[],
+  tokensBySeq: ReadonlyMap<SessionSeq, number>,
+  firstIndex: number,
+  neededTokens: number,
+): { start: SessionSeq; end: SessionSeq } | undefined {
+  const start = surface[firstIndex]
+  const cuts = balancedCuts(session, surface)
+  if (start === undefined || !cuts[firstIndex]) return undefined
+  let selected = 0
+  for (let index = firstIndex; index < surface.length - 1; index++) {
+    const seq = surface[index]
+    if (seq === undefined) continue
+    selected += tokensBySeq.get(seq) ?? 0
+    if (selected >= neededTokens && cuts[index + 1]) return { start, end: seq }
+  }
+  return undefined
+}
+
+/** The user budget caps prompt input; output is reserved against model capacity. */
+export function contextPressureThreshold(budget: number, contextWindow: number, outputReserve: number): number {
+  return Math.min(Math.floor(budget * 0.9), contextWindow - outputReserve - 16_000)
+}
 
 const VARIABLE_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u
 const RESERVED = new Set(['NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE', 'PATH', 'PATHEXT', 'COMSPEC', 'DSH_HOME', 'ZEROWALL_USER_DATA_DIR'])
@@ -53,7 +109,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export class ZeroWallEnvironmentService extends TypertRemoteService {
-  static inject = ['settings']
+  static inject = ['settings', 'llm', 'tokenMeter']
   static Config = EnvironmentSettingsSchema
   private readonly secrets = new SecretBrokerClient()
   private settings: EnvironmentSettingsValue
@@ -66,6 +122,57 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
       if (ns !== ENVIRONMENT_SETTINGS_NS) return
       const value = hostCtx.settings.describe().find(row => row.ns === ENVIRONMENT_SETTINGS_NS)?.value
       if (value !== undefined) this.settings = value as EnvironmentSettingsValue
+    })
+    hostCtx.on('agent/pre-step', async ({ agent, signal }, next) => {
+      const decision = await next()
+      if (decision.kind === 'reject' || signal.aborted) return decision
+      const route = agent.session.requestHeader()?.config
+      const provider = route?.provider || agent.options.provider
+      const model = route?.model || agent.options.model
+      if (!provider || !model || this.settings.contextBudgetTokens < 32_000) return decision
+      try {
+        // Web presets isolate compaction per agent; it is not a Host service.
+        const presets = hostCtx.get('agentPresets') as { serviceFor(agent: unknown, name: string): unknown } | undefined
+        const compaction = (presets?.serviceFor(agent, 'compaction') ?? hostCtx.get('compaction')) as Context['compaction'] | undefined
+        if (!compaction) return decision
+        const modelInfo = await hostCtx.llm.resolveModelInfo(provider, model, signal)
+        const contextWindow = modelInfo.context?.contextWindow
+        if (typeof contextWindow !== 'number' || !Number.isSafeInteger(contextWindow) || contextWindow <= 0) {
+          hostCtx.logger.warn(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=unknown reason=model-window-unavailable`)
+          return decision
+        }
+        const effectiveBudget = Math.min(this.settings.contextBudgetTokens ?? 300_000, contextWindow)
+        const measurement = hostCtx.tokenMeter.measure(agent.session)
+        const outputReserve = route?.maxTokens ?? agent.options.maxTokens ?? modelInfo.defaultMaxTokens ?? 0
+        const threshold = contextPressureThreshold(effectiveBudget, contextWindow, outputReserve)
+        if (threshold <= 0) {
+          hostCtx.logger.warn(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=${effectiveBudget} capacity=${contextWindow} outputReserve=${outputReserve} compacted=false reason=output-reserve-exceeds-budget`)
+          return decision
+        }
+        if (measurement.totalTokens < threshold) return decision
+        const pruner = (presets?.serviceFor(agent, 'toolResultPruner') ?? hostCtx.get('toolResultPruner')) as { pruneSession?(session: unknown): unknown } | undefined
+        pruner?.pruneSession?.(agent.session)
+        const current = hostCtx.tokenMeter.measure(agent.session)
+        if (current.totalTokens < threshold) {
+          hostCtx.logger.info(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=${effectiveBudget} capacity=${contextWindow} estimated=${current.baseline.kind === 'estimated'} pruned=true compacted=false`)
+          return decision
+        }
+        const surface = agent.session.surface.nodes
+        const nodeTokens = new Map(current.nodes.map(node => [node.seq, node.tokens]))
+        const firstSeq = surface[0]
+        const firstIndex = firstSeq !== undefined && agent.session.eventAt(firstSeq)?.type === 'system/message' ? 1 : 0
+        const needed = current.totalTokens - threshold + Math.min(24_000, Math.floor(effectiveBudget * 0.08))
+        const range = selectContextBudgetRange(agent.session, surface, nodeTokens, firstIndex, needed)
+        if (range === undefined) {
+          hostCtx.logger.warn(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=${effectiveBudget} capacity=${contextWindow} estimated=${current.baseline.kind === 'estimated'} compacted=false reason=no-balanced-range`)
+          return decision
+        }
+        const result = await compaction.compactRegion(range.start, range.end, { session: agent.session, options: { provider, model } }, signal)
+        hostCtx.logger.info(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=${effectiveBudget} capacity=${contextWindow} before=${current.totalTokens} shadowed=${result.shadowedTokenCount} compacted=true`)
+      } catch (error) {
+        if (!signal.aborted) hostCtx.logger.warn(`[context-budget] automatic compaction failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      return decision
     })
     // Settings writes are only valid after this plugin's Loader fiber is
     // ACTIVE.  rc.2 constructs the service while the fiber is still LOADING,
@@ -105,6 +212,15 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 
   @Remote('getImageQuality')
   getImageQuality(): ImageGenerationQuality { return this.settings.imageQuality }
+
+  @Remote('getContextBudget')
+  getContextBudget(): number { return this.settings.contextBudgetTokens }
+
+  @Remote('setContextBudget')
+  async setContextBudget(tokens: number): Promise<void> {
+    if (!Number.isSafeInteger(tokens) || tokens < 32_000 || tokens > 2_000_000) throw new Error('上下文预算必须在 32k 到 2,000k token 之间。')
+    await this.replaceSettings({ ...this.settings, contextBudgetTokens: tokens })
+  }
 
   @Remote('setImageQuality')
   async setImageQuality(quality: ImageGenerationQuality): Promise<void> {
@@ -285,6 +401,6 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 // The Loader entry must own its schema for the official profile ConfigEditor.
 // A schema only on a nested service cannot be addressed by its entry ID.
 export const Config = EnvironmentSettingsSchema.volatile()
-export const inject = ['settings']
+export const inject = ['settings', 'llm', 'tokenMeter']
 export function apply(ctx: Context, config: { get(): EnvironmentSettingsValue }): void { ctx.plugin(ZeroWallEnvironmentService, config.get()) }
 export default { name, Config, inject, apply }

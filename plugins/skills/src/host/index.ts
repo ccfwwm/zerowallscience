@@ -4,7 +4,11 @@ import { cp, mkdir, readdir, realpath, rename, rm, stat, writeFile } from 'node:
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import type { SkillDefinition, SkillSummary } from '@deepseek-ai/dsh-skill'
-import { isSkillName } from '@deepseek-ai/dsh-skill'
+import { isModelInvocable, isSkillName } from '@deepseek-ai/dsh-skill'
+import type {} from '@deepseek-ai/dsh-agent'
+import { createUserMessage, type MessageSource } from '@deepseek-ai/dsh-llm'
+import type { Session } from '@deepseek-ai/dsh-session'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 import { apply as applySkillFilesystem } from '@deepseek-ai/dsh-skill-filesystem'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from 'zod'
@@ -15,7 +19,24 @@ export type { CopyBundledSkillInput, CreateSkillInput, ImportSkillInput, SkillSo
 
 // Keep systemPrompt as an activation dependency so the Host loader preserves
 // the established ordering; ARS guidance itself is owned by plugin-base.
-export const inject = ['skills', 'systemPrompt']
+export const inject = ['skills', 'systemPrompt', 'tools', 'workingDirectory']
+
+declare module '@deepseek-ai/cordis' {
+  interface Context { workingDirectory: { ensure(agent: unknown, signal?: AbortSignal): Promise<string> } }
+}
+
+// The catalog producer owns this source extension. Keep its boundary local:
+// redeclaring MessageSourceMap changes unrelated plugins' generated Typert
+// source snapshots and invalidates their immutable published packages.
+type SkillCatalogSource = { kind: 'skill-catalog'; form: 'catalog'; entries: readonly { name: string; description: string }[] }
+function isSkillCatalogSource(source: unknown): source is SkillCatalogSource {
+  return source !== null && typeof source === 'object'
+    && (source as SkillCatalogSource).kind === 'skill-catalog'
+    && Array.isArray((source as SkillCatalogSource).entries)
+}
+function skillCatalogSource(entries: SkillCatalogSource['entries']): MessageSource {
+  return { kind: 'skill-catalog', form: 'catalog', entries } as unknown as MessageSource
+}
 
 // Windows directory watchers and virus scanners can briefly deny rename.
 // Retry only sharing/permission failures; never remove a target to force a swap.
@@ -69,6 +90,42 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
         watch: true,
       })
     }
+    if (runtimeCtx.get('tools') === undefined || runtimeCtx.get('workingDirectory') === undefined) return
+    runtimeCtx.tools.register(defineTool({
+      name: 'skill_search',
+      description: 'Search available Skills by task, method, software, or domain. Returns at most five matching summaries; call skill with an exact returned name to load its full instructions.',
+      parameters: { query: { type: 'string', description: 'Task or capability; omit to browse categories.' }, category: { type: 'string', description: 'Optional category returned by this tool.' } },
+      output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+      async execute(args, exec) {
+        const cwd = exec.agent === undefined ? undefined : await runtimeCtx.workingDirectory.ensure(exec.agent, exec.signal)
+        const skills = (await runtimeCtx.skills.list({ cwd, signal: exec.signal, scope: exec.agent })).filter(isModelInvocable)
+        const candidates = skills.filter(skill => !args.category || skillCategory(skill) === args.category)
+        if (!args.query?.trim() && !args.category) return { categories: SKILL_CATEGORIES.map(([id, label]) => ({ id, label, count: skills.filter(skill => skillCategory(skill) === id).length })).filter(item => item.count > 0), next: 'Search a category or task, then load an exact name with skill.' }
+        return { matches: (args.query?.trim() ? rankSkills(candidates, args.query) : candidates.sort((a, b) => a.name.localeCompare(b.name))).slice(0, 5).map(skill => ({ name: skill.name, category: skillCategory(skill), description: skill.description.slice(0, 320), ...(skill.whenToUse ? { whenToUse: skill.whenToUse.slice(0, 200) } : {}) })) }
+      },
+    }))
+    // DSH's standard preset emits every Skill summary into every request. Keep
+    // its explicit /name gesture and full-content `skill` tool, while replacing
+    // only that broad catalog with a tiny task-ranked shortlist.
+    runtimeCtx.on('agent/pre-step', async ({ agent, messages, signal }, next) => {
+      shrinkLegacySkillCatalogs(agent.session)
+      const decision = await next()
+      if (decision.kind === 'reject') return decision
+      const catalogs = decision.messages.filter(message => isSkillCatalogSource(message.source))
+      if (!catalogs.length) return decision
+      const query = [...messages].reverse().find(message => message.source?.kind === 'user')?.content
+        ?.filter(block => block.type === 'text').map(block => block.text).join('\n') ?? ''
+      const cwd = await runtimeCtx.workingDirectory.ensure(agent, signal)
+      const snapshot = await runtimeCtx.skills.snapshot({ cwd, signal, scope: agent })
+      if (!snapshot.complete) return { ...decision, messages: decision.messages.filter(message => !isSkillCatalogSource(message.source)) }
+      const matches = rankSkills(snapshot.skills.filter(isModelInvocable), query).slice(0, 3)
+      const compact = matches.length ? createUserMessage({
+        content: [{ type: 'text', text: `<available_skills>\n${matches.map(skill => `- ${skill.name}: ${skill.description.slice(0, 180)}`).join('\n')}\n</available_skills>` }],
+        source: skillCatalogSource(matches.map(skill => ({ name: skill.name, description: skill.description.slice(0, 180) }))),
+      }) : undefined
+      const filtered = decision.messages.filter(message => !isSkillCatalogSource(message.source))
+      return { ...decision, messages: compact ? [...filtered, compact] : filtered }
+    }, { prepend: true })
   }
 
   @Remote('listSkills')
@@ -193,8 +250,61 @@ export class ZeroWallCapabilitiesService extends TypertRemoteService {
   }
 }
 
+/** Replace only obsolete catalogs in the model surface; original events stay in the log. */
+export function shrinkLegacySkillCatalogs(session: Session): void {
+  for (const seq of [...session.surface.nodes]) {
+    const event = session.eventAt(seq)
+    if (event?.type !== 'user/message') continue
+    const source: unknown = event.data.source
+    if (!isSkillCatalogSource(source)) continue
+    if (source.entries.length <= 5 && JSON.stringify(event.data.content).length < 1800) continue
+    session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'Skills are available on demand: browse categories or search with skill_search, then load an exact name with skill.' }],
+      source: skillCatalogSource([]),
+    }), { surfaceOp: { op: 'replace', startSeq: seq, endSeq: seq }, sourceEventSeqs: [seq] })
+  }
+}
+
 function userSkillDir(): string {
   return resolve(process.env.ZEROWALL_USER_SKILLS ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'zerowall-skills', 'enabled'))
+}
+
+function skillTerms(value: string): Set<string> {
+  const normalized = value.toLocaleLowerCase().replaceAll('_', ' ').replaceAll('-', ' ')
+  const terms = new Set(normalized.match(/[\p{L}\p{N}]{2,}/gu) ?? [])
+  const compact = normalized.replace(/\s+/gu, '')
+  for (const match of compact.matchAll(/[\p{Script=Han}]{2,}/gu)) {
+    const phrase = match[0]
+    terms.add(phrase)
+    for (let index = 0; index < phrase.length - 1; index++) terms.add(phrase.slice(index, index + 2))
+  }
+  return terms
+}
+
+const SKILL_CATEGORIES = [
+  ['literature', '文献与证据 / literature', /paper|literature|pubmed|citation|论文|文献|引用/iu],
+  ['data', '数据与统计 / data', /statistic|survey|nhanes|data|统计|数据|回归/iu],
+  ['biology', '生命科学 / biology', /gene|cell|omic|protein|molecul|biology|生物|基因|细胞/iu],
+  ['documents', '文档与演示 / documents', /document|pdf|docx|ppt|presentation|slide|文档|演示|排版/iu],
+  ['engineering', '软件与工具 / engineering', /code|software|program|mcp|python|git|软件|编程|工具/iu],
+  ['general', '其他能力 / general', /./u],
+] as const
+export function skillCategory(skill: Pick<SkillSummary, 'name' | 'description'>): string {
+  return SKILL_CATEGORIES.find(([, , pattern]) => pattern.test(skill.name))?.[0]
+    ?? SKILL_CATEGORIES.find(([, , pattern]) => pattern.test(skill.description))?.[0] ?? 'general'
+}
+export function rankSkills(skills: SkillSummary[], query: string): SkillSummary[] {
+  const terms = skillTerms(query)
+  const unique = [...new Map(skills.map(skill => [skill.name, skill])).values()]
+  if (!terms.size) return []
+  return unique.map(skill => {
+    const name = skill.name.toLocaleLowerCase()
+    const description = `${skill.description} ${skill.whenToUse ?? ''}`.toLocaleLowerCase()
+    const score = [...terms].reduce((total, term) => total + (name.includes(term) ? 5 : 0) + (description.includes(term) ? 1 : 0), 0)
+    return { skill, score }
+  }).filter(item => item.score > 0)
+    .sort((left, right) => right.score - left.score || left.skill.name.localeCompare(right.skill.name))
+    .map(item => item.skill)
 }
 
 function bundledSkillDir(): string | undefined {

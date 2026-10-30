@@ -4,19 +4,6 @@ export type MineruModelVersion = 'pipeline' | 'vlm' | 'MinerU-HTML'
 export type MineruExtraFormat = 'docx' | 'html' | 'latex'
 export type MineruJsonValue = null | boolean | number | string | MineruJsonValue[] | MineruJsonObject
 export interface MineruJsonObject { [key: string]: MineruJsonValue }
-export interface MineruArtifactRecord {
-  id: string
-  projectId: string
-  runId?: string
-  name: string
-  uri: string
-  mediaType: string
-  checksum?: string
-  metadata: MineruJsonObject
-  version: number
-  createdAt: string
-  updatedAt: string
-}
 
 export interface MineruConfig {
   apiBaseUrl: string
@@ -76,15 +63,6 @@ export interface MineruParseResult {
 export interface MineruBatchResult { ok: true; api: 'precision'; results: MineruParseResult[]; succeeded: number; failed: number }
 export interface MineruTaskResult { ok: true; api: MineruApi; taskId: string; state: 'waiting-file' | 'pending' | 'running' | 'converting' | 'done' | 'failed'; result?: MineruParseResult; error?: string }
 
-export interface MineruRegistrationInput {
-  sessionId: string
-  projectId: string
-  artifactPath: string
-  name?: string
-  mediaType?: string
-  source?: string
-  taskId?: string
-}
 
 export type ScTenifoldExecution = 'r-mcp' | 'local-r' | 'remote-run' | 'auto'
 export type ScTenifoldReviewState = 'pass' | 'pass_with_warnings' | 'blocked' | 'requires_human_review'

@@ -19,6 +19,9 @@
 .paneHeader, .infoPanel header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:3px 4px 6px; }
 .paneHeader strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
 .search { box-sizing:border-box; width:100%; margin:3px 0 5px; padding:8px 10px; border:1px solid var(--dsw-alias-border-l2, #8883); border-radius:8px; color:inherit; background:var(--dsw-alias-bg-layer-2, #8881); font:inherit; }
+.effortControl { display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:12px; padding:10px; color:var(--dsw-alias-label-secondary, #626770); font-size:12px; }
+.effortControl input { width:100%; accent-color:#16856b; }
+.effortControl output { min-width:52px; text-align:right; color:var(--dsw-alias-label-primary, #202428); font-weight:600; }
 .choices { max-height:min(350px, calc(100dvh - 155px)); overflow:auto; overscroll-behavior:contain; }
 .section { padding:8px 10px 3px; color:var(--dsw-alias-label-caption, #858a92); font-size:11px; }
 .groupName, .modelName { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

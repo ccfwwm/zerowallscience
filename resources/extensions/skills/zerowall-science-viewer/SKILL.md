@@ -7,7 +7,7 @@ description: Route conversation requests to a dedicated scientific file or visua
 
 Use `science_viewer_panel` only to open or focus a scientific file or visual result after the underlying conversation tool has succeeded. The conversation automatically opens the matching viewer and selects the returned tool and asset. Pass the current session context and a stable `request_id` when available.
 
-Research planning, analysis, task status, evidence handling and report generation happen through conversation tools such as `research_study`, `research_workflow` and domain-specific runners. Never ask the user to visit a separate research interface, register a Study manually, or supply routine audit materials before a valid run. An explicit request to run or continue authorizes that submission in the current turn.
+Analysis submission, status and artifact retrieval use `research_workflow` and the matching domain skill. The viewer does not create projects, studies, plans or gates. An explicit request to run or continue authorizes that submission in the current turn.
 
 The viewer route only coordinates display and accepts `open` or `focus`; it does not run, inspect, cancel, or export analyses. Use the specialized conversation tool (`science_viewer`, `fijiWorkflow`, `fijiExperiment`, `he`, `flow`, `sanger`, `molecule`, `cell`, `canvas`, `brain`, `research_workflow`, or `r_files`) for computation, task status and file operations. Read numeric values only from returned Run or Artifact manifests. Do not claim an engine is available when Host reports `unknown`, `invalid`, or `degraded`.
 
@@ -25,7 +25,7 @@ The viewer route only coordinates display and accepts `open` or `focus`; it does
 | Canvas | registered canvas specification | `canvas_render` | `zerowall-science-canvas` |
 | Brain atlas | managed atlas or registered data | `brain_open` | `zerowall-brainglobe` |
 
-For a local file, the viewer offers a picker restricted to the selected tool's supported extensions. Host copies the file into the active project's `.zerowall/imports/`, verifies size and SHA-256, and registers it. Existing registered OME-Zarr and other managed assets can be opened through the matching specialized action. A viewer or engine may impose a lower import limit.
+For a local file, the viewer offers a picker restricted to the selected tool's supported extensions. Host copies the file into the active conversation workspace's `.zerowall/imports/`, verifies size and SHA-256, and registers it as a viewer asset. Existing OME-Zarr and other local assets can be opened through the matching specialized action. A viewer or engine may impose a lower import limit.
 
 Use the matching domain Skill and its conversation tool for analysis. Do not route analysis through the viewer or ask the user to open a separate research interface. Reuse a request ID only for an identical retry. Verify output using the returned Run/Artifact ID and checksum; a viewer render alone is not an analysis result.
 

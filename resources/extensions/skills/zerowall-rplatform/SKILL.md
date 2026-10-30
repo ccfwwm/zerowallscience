@@ -1,16 +1,16 @@
 ---
 name: zerowall-rplatform
-description: 远程 R 项目、脚本、图表报告和论文复现。
+description: 远程 R 脚本、图表报告和论文复现。
 allowed-tools: read
 ---
 
-# 远程 R 项目、脚本、图表报告和论文复现。
+# 远程 R 脚本、图表报告和论文复现。
 
 用 R 处理统计、调查权重和现有 RDS 数据。单细胞原生 Python/AnnData 流程转 OmicVerse；现成绘图模板转 FigureYa。
 
 ## 功能地图
 
-环境与依赖检查；项目和工作目录；异步 R 脚本；图表、表格和报告；论文复现记录、比较和打包。
+环境与依赖检查；当前会话的本地工作区；异步 R 脚本；图表、表格和报告；论文复现结果比较和打包。
 
 ## 入口与准备
 
@@ -18,7 +18,7 @@ allowed-tools: read
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 
-工作流 ID：`r.compute`。R 脚本输出使用项目相对路径；保存 sessionInfo、随机种子和代码。包缺失先查询 zerowall-r-packages，不在脚本里自动安装。
+工作流 ID：`r.compute`。R 脚本输出使用工作区相对路径；保存 sessionInfo、随机种子和代码。若实时远端 schema 要求 `project_id`，只使用现有远端 ID；Host 不创建或注册项目。包缺失先查询 zerowall-r-packages，不在脚本里自动安装。
 
 ## 首次调用
 
@@ -40,7 +40,7 @@ allowed-tools: read
 }
 ```
 
-确认实际输入和范围后，以下执行示例可提交至专用演示项目。
+确认实际输入和范围后，按实时 schema 提交。下面的脚本示例不调用项目创建或注册操作。
 
 ```json
 {

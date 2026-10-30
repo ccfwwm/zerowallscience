@@ -1,5 +1,5 @@
 // Only generated references are owned by this script. SKILL.md and scenarios are editorial.
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { rWorkflows } from '../../plugins/mcp/src/shared/r-workflows.ts'
 const root = resolve(import.meta.dirname, '../../resources/extensions/skills')
@@ -15,5 +15,16 @@ for (const module of rWorkflows.modules) {
   }
   const skill = await readFile(resolve(root, module.skill, 'SKILL.md'), 'utf8')
   if (!skill.includes('references/operations.md')) throw new Error(`Missing operation reference: ${module.skill}`)
+}
+const liveSkills = new Set(rWorkflows.modules.map(module => module.skill))
+for (const entry of await readdir(root, { withFileTypes: true })) {
+  if (!entry.isDirectory() || liveSkills.has(entry.name)) continue
+  const directory = resolve(root, entry.name, 'references')
+  const jsonPath = resolve(directory, 'operations.json')
+  const generated = await readFile(jsonPath, 'utf8').then(JSON.parse, () => undefined)
+  if (generated?.protocol_version !== rWorkflows.protocol_version || typeof generated.content_sha256 !== 'string' || typeof generated.skill !== 'string') continue
+  if (check) throw new Error(`Stale generated reference: ${jsonPath}`)
+  await rm(jsonPath, { force: true })
+  await rm(resolve(directory, 'operations.md'), { force: true })
 }
 console.log(check ? 'Generated references match; editorial skills untouched' : 'Updated generated operation references only')

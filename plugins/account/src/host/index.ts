@@ -1,3 +1,4 @@
+import { installDefaultReasoning } from './reasoning-default.js'
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
@@ -691,7 +692,10 @@ declare module '@deepseek-ai/cordis' {
 
 export class ZeroWallAccountService extends TypertRemoteService {
   private readonly client = new AiCloudClient()
-  constructor(private readonly runtimeCtx: Context) { super(runtimeCtx, 'zerowallAccount') }
+  constructor(private readonly runtimeCtx: Context) {
+    super(runtimeCtx, 'zerowallAccount')
+    runtimeCtx.inject(['llm'], scope => installDefaultReasoning(scope))
+  }
   @Remote('publicConfig') publicConfig(gatewayBaseUrl?: string): Promise<AiCloudPublicConfig> { return this.client.publicConfig(gatewayBaseUrl) }
   @Remote('gateways') gateways(): Promise<AiCloudGateway[]> { return this.client.gateways() }
   @Remote('groupCatalog') groupCatalog(): Promise<AiCloudGroupCatalog> { return this.client.groupCatalog() }

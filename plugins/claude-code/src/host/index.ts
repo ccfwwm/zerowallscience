@@ -41,7 +41,7 @@ import { claudeSettingsEnvironment, validateAdvancedClaudeSettings } from './cla
 import { FALLBACK_COMMANDS, commandSupported, compactBoundaryOf, parseClaudeCommand } from './claude-commands.js'
 
 export const name = 'zerowall-claude-code'
-export const inject = ['typert', 'agentDefaultModel', 'subprocess', 'subagents', 'workingDirectory', 'skills', 'zerowallProjects', 'zerowallEnvironment', 'credentials', 'settings', 'llm', 'sessionProjections', 'agentPresets', 'tools', 'systemPrompt', 'permissionPresets', 'approval', 'attachments']
+export const inject = ['typert', 'agentDefaultModel', 'subprocess', 'subagents', 'workingDirectory', 'skills', 'zerowallMcpConfigurationStore', 'zerowallEnvironment', 'credentials', 'settings', 'llm', 'sessionProjections', 'agentPresets', 'tools', 'systemPrompt', 'permissionPresets', 'attachments']
 
 declare module '@deepseek-ai/cordis' { interface Context { zerowallClaudeCode: ClaudeCodeService } }
 
@@ -685,7 +685,7 @@ export class ClaudeCodeService extends TypertRemoteService {
       const route = await this.route(agent, selected)
       cancel.signal.throwIfAborted()
       const skillsRegistry = agent.ctx.get('skills') as SkillsProjectionApi
-      const projects = this.ctx.get('zerowallProjects') as { listMcpServers(): McpServerProjectionInput[] }
+      const projects = this.ctx.get('zerowallMcpConfigurationStore') as { listMcpServers(): McpServerProjectionInput[] }
       const skills = await projectSkillsForClaude(skillsRegistry, cwd, execution.scope ?? agent)
       const credentials = this.ctx.get('credentials') as { resolve(ref: ReturnType<typeof credentialRef>): Promise<{ value: string } | undefined> }
       const mcp = await prepareClaudeMcpRuntime(projectMcpForClaude(projects.listMcpServers(), cwd), async reference => {

@@ -26,6 +26,7 @@ async function fixture(exploratory = true) {
   const task = store.createResearchTask({ projectId: project.id, studyId: study.id, name: 'Wald', kind: 'genetics', exploratory })
   const plan = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'analysis-plan', payload: { method: 'wald-ratio', inputs: [contract.id], taskIds: [task.id], stoppingConditions: ['invalid instruments'], exploratory, genetics: { analysis: 'mr', methods: ['wald'], min_f: 10 } } })
   const question = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: { estimand: 'synthetic fixture' } })
+  store.updateProjectSettings(project.id, { rPlatformProjectId: 'genetics-existing-project' })
   store.updateResearchStudy(study.id, { expectedVersion: store.getResearchStudy(study.id)!.version, currentQuestionId: question.id, currentPlanId: plan.id })
   let status = 'running'; let methodStatus = 'succeeded'; let altered = false; let corrupt = false; let missingNumbers = false
   const files = new Map<string, string>()
@@ -43,8 +44,21 @@ async function fixture(exploratory = true) {
     if (id === 'r.get.job.manifest') value = { files: [...files.entries()].map(([name, text]) => ({ path: `genetics/${name}`, sha256: sha(text), bytes: Buffer.byteLength(text), mime_type: 'application/json' })) }
     return { target: id, content: [], value: { structuredContent: value } }
   })
+  const liveGeneticsOperations: Record<string, any> = {
+    'r.genetics.run': {
+      id: 'r.genetics.run', query_allowed: false, requires_confirmation: true,
+      input_schema: { type: 'object', properties: { project_id: { type: 'string' } }, required: ['project_id'] },
+      lifecycle: { id_fields: ['job_id'], argument: 'job_id', status: 'r.get.job', manifest: 'r.get.job.manifest' },
+    },
+    'r.get.job.manifest': {
+      id: 'r.get.job.manifest', query_allowed: true, requires_confirmation: false, lifecycle: null,
+      input_schema: { type: 'object', properties: { project_id: { type: 'string' }, job_id: { type: 'string' } }, required: ['project_id', 'job_id'] },
+    },
+  }
   const backend = { ensureConnected: vi.fn(), executeCompactCapability: execute, workflowRequest: vi.fn(async (action: string, args: any) => {
-    if (action === 'workflow_describe') return rWorkflows.modules.find(item => item.id === args.workflow_id)?.operations.find(item => item.id === args.operation)
+    if (action === 'workflow_describe') return args.workflow_id === 'r.genetics'
+      ? liveGeneticsOperations[args.operation]
+      : rWorkflows.modules.find(item => item.id === args.workflow_id)?.operations.find(item => item.id === args.operation)
     if (action === 'workflow_query') return (await execute(args.operation, args.arguments)).value.structuredContent
     throw new Error('Unsupported test workflow action')
   }) } as any
@@ -81,6 +95,7 @@ describe('genetics durable Host adapter', () => {
     const f = await fixture()
     const first = await f.service.execute(f.project, f.input, f.exec)
     expect(first).toMatchObject({ status: 'running', analysisComplete: false, evidence: null, remoteId: 'genetics-job-1' })
+    expect(f.execute).toHaveBeenCalledWith('r.genetics.run', expect.objectContaining({ project_id: 'genetics-existing-project' }), f.exec)
     const id = String((first.run as JsonObject).id)
     await f.service.execute(f.project, f.input, f.exec)
     expect(f.execute.mock.calls.filter(([operation]) => operation === 'r.genetics.run')).toHaveLength(1)
@@ -161,5 +176,12 @@ describe('genetics durable Host adapter', () => {
     const f = await fixture(); f.status('succeeded'); f.omitNumbers()
     expect(await f.service.execute(f.project, f.input, f.exec)).toMatchObject({ status: 'succeeded', analysisComplete: false, evidence: null, error: expect.stringContaining('numerical') })
     expect(f.store.listArtifacts(f.project.id)).toHaveLength(3)
+  })
+  it('requires an explicitly configured existing remote project and never derives one from a local path', async () => {
+    const f = await fixture()
+    f.store.updateProjectSettings(f.project.id, {})
+    await expect(f.service.execute(f.project, f.input, f.exec)).rejects.toThrow('EXISTING_PROJECT_ID_REQUIRED')
+    expect(f.execute.mock.calls.some(([operation]) => operation === 'r.genetics.run')).toBe(false)
+    expect(f.store.listAuditEvents(f.project.id).some(event => event.action === 'genetics.requested')).toBe(false)
   })
 })

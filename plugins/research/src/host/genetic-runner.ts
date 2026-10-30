@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ResearchStore } from '@zerowallscience/research-store'
@@ -211,7 +211,9 @@ export class GeneticAnalysisService {
       const runtime = object(plan.payload.geneticRuntime)
       const threads = runtime.threads ?? 1; const timeout = runtime.timeout_ms ?? 1800000
       if (!Number.isInteger(threads) || Number(threads) < 1 || Number(threads) > 8 || !Number.isInteger(timeout) || Number(timeout) < 1000 || Number(timeout) > 14400000) throw new Error('Genetics runtime limits are invalid.')
-      const remoteProject = `zw-${createHash('sha256').update(resolve(project.rootPath)).digest('hex').slice(0, 24)}`
+      const configuredRemoteProject = this.store.getProjectPreferences(project.id).settings.rPlatformProjectId
+      const remoteProject = typeof configuredRemoteProject === 'string' ? configuredRemoteProject.trim() : ''
+      if (!/^[A-Za-z0-9._-]{1,128}$/u.test(remoteProject)) throw new Error('EXISTING_PROJECT_ID_REQUIRED: configure this project\'s existing R Platform project ID before running genetic analysis.')
       const inputHashes = { contractSha256: hash(contract.payload), planSha256: hash(plan.payload) }
       const request: JsonObject = { ...object(prepared.request), exploratory: task.exploratory, study_id: study.id, task_id: task.id, plan_id: plan.id, ...(freeze ? { freeze_id: freeze.id } : {}) }
       const snapshot: JsonObject = { format: 'zerowall-genetics-request', runner: GENETIC_RUNNER, studyId: study.id, contractId: contract.id, contractVersion: contract.version, contract: contract.payload, planId: plan.id, planVersion: plan.version, plan: plan.payload, inputHashes, taskId: task.id, exploratory: task.exploratory, freezeId: freeze?.id ?? null, requestId: input.requestId, remoteProject, request, threads, timeout }

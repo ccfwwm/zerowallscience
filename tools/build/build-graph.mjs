@@ -11,6 +11,7 @@ import { storeAndLink } from './content-store.mjs'
 import { dependencyLockFingerprint, sharedSourceInputs } from './component-inputs.mjs'
 import { offlineFiles } from '../commands/offline-profile.mjs'
 import { restorePublishedOutput } from '../plugins/published-output.mjs'
+import { RETIRED_PLUGIN_IDS } from '../commands/retired-plugins.mjs'
 
 const requested = process.argv.slice(2)
 const [command, ...args] = requested
@@ -292,7 +293,7 @@ async function allComponents({ development = false } = {}) {
   for (const entry of await readdir(join(root, 'plugins'), { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name === 'wechat') continue
     const manifest = await readFile(join(root, 'plugins', entry.name, 'package.json'), 'utf8').then(JSON.parse, () => undefined)
-    if (manifest?.name?.startsWith('@zerowallscience/plugin-')) await runTask('plugin-build:' + entry.name)
+    if (manifest?.name?.startsWith('@zerowallscience/plugin-') && !RETIRED_PLUGIN_IDS.has(manifest.name)) await runTask('plugin-build:' + entry.name)
   }
 }
 
@@ -310,6 +311,8 @@ if (command === 'development') {
   await runTask('desktop')
 } else if (command === 'plugin:build' || command === 'plugin:pack') {
   if (!args[0] || !await exists(join(root, 'plugins', args[0], 'package.json')) && !await exists(join(await packageSource(args[0]), 'package.json'))) throw new Error(`Unknown plugin: ${args[0] ?? '(missing)'}`)
+  const manifest = await readFile(join(root, 'plugins', args[0], 'package.json'), 'utf8').then(JSON.parse, () => undefined)
+  if (manifest?.name && RETIRED_PLUGIN_IDS.has(manifest.name)) throw new Error(`Plugin is retired: ${manifest.name}`)
   await runTask(`${command === 'plugin:build' ? 'plugin-build' : 'plugin-pack'}:${args[0]}`)
 } else if (command === 'package:build') {
   if (!args[0] || !await exists(join(await packageSource(args[0]), 'package.json'))) throw new Error(`Unknown package: ${args[0] ?? '(missing)'}`)
