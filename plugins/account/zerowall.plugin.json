@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-account",
-  "version": "0.1.23",
+  "version": "0.1.25",
   "applicationVersion": "8.0.0",
   "restartRequired": true,
   "desktop": {

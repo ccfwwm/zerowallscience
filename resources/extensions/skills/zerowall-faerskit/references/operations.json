@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
   "catalog_version": "2026-10-29.1",
-  "content_sha256": "c4fcf00c28aae7a87cadb3d69d45c9ed5cd711b16feb7c177176bd2f727837d6",
+  "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
   "id": "r.faerskit",
   "skill": "zerowall-faerskit",
   "groups": [
@@ -471,15 +471,28 @@
         "type": "object",
         "properties": {
           "drug": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Drug name (DRUGNAME or prod_ai)"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 100
+              }
+            ],
             "description": "Drug name to match against DRUGNAME or prod_ai"
           },
           "ptname": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500,
+            "$ref": "#/properties/drug",
             "description": "MedDRA Preferred Term to match"
           },
           "field": {
@@ -544,116 +557,127 @@
           "fun": {
             "type": "string",
             "enum": [
-              "AFun",
-              "BFun",
-              "CFun",
-              "EFun",
-              "FFun",
-              "HFun",
-              "IFun",
-              "KFun",
-              "DDI",
-              "DDIALL",
-              "Concomitant_Medication_Analysis",
-              "BFun_upgrade1",
-              "BFun_upgrade2",
-              "disproportionality_analysis_for_top50_drug"
+              "faers_analyze_drug",
+              "faers_analyze_pt_cohort",
+              "faers_analyze_drugs_for_pt",
+              "faers_test_drug_pt_group",
+              "faers_analyze_drug_target_pt",
+              "faers_analyze_interaction_target_pt",
+              "faers_analyze_interaction_all_pts",
+              "faers_compare_drugs_for_pt",
+              "faers_summarize_analysis_flow",
+              "faers_analyze_concomitant_exposure",
+              "faers_rank_concomitant_drugs",
+              "faers_compare_two_drug_exposures",
+              "faers_describe_population",
+              "faers_analyze_multi_drug_exposure"
             ],
-            "description": "Which faerskit function to run"
+            "description": "Canonical FAERS workflow name"
           },
           "drug": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500,
-            "description": "Single drug name (AFun/CFun/EFun/HFun)"
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Drug name (DRUGNAME or prod_ai)"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 100
+              }
+            ],
+            "description": "Single drug name (faers_analyze_drug/faers_analyze_drug_target_pt/faers_summarize_analysis_flow/faers_rank_concomitant_drugs)"
           },
           "ptname": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 500,
-            "description": "Target PT (BFun/BFun_upgrade1/BFun_upgrade2/CFun/top50)"
+            "$ref": "#/properties/drug",
+            "description": "Target PT (faers_analyze_pt_cohort/faers_analyze_drugs_for_pt/faers_test_drug_pt_group/faers_analyze_drug_target_pt/faers_compare_drugs_for_pt)"
           },
           "drug1": {
             "$ref": "#/properties/drug",
-            "description": "First drug (DDI/DDIALL/Concomitant/top50 drug1)"
+            "description": "First drug (faers_analyze_interaction_target_pt/faers_analyze_interaction_all_pts/multi-drug/candidate comparison drug1)"
           },
           "drug2": {
             "$ref": "#/properties/drug",
-            "description": "Second drug (DDI/DDIALL/Concomitant/top50 drug2)"
+            "description": "Second drug (faers_analyze_interaction_target_pt/faers_analyze_interaction_all_pts/multi-drug/candidate comparison drug2)"
           },
           "drug3": {
             "$ref": "#/properties/drug",
-            "description": "Third drug (Concomitant/top50 drug3)"
+            "description": "Third drug (multi-drug/candidate comparison drug3)"
           },
           "drug4": {
             "$ref": "#/properties/drug",
-            "description": "Fourth drug (Concomitant/top50 drug4)"
+            "description": "Fourth drug (multi-drug/candidate comparison drug4)"
           },
           "drug5": {
             "$ref": "#/properties/drug",
-            "description": "Fifth drug (top50 only)"
+            "description": "Fifth drug (candidate comparison only)"
           },
           "drug6": {
             "$ref": "#/properties/drug",
-            "description": "Sixth drug (top50 only)"
+            "description": "Sixth drug (candidate comparison only)"
           },
           "drug7": {
             "$ref": "#/properties/drug",
-            "description": "Seventh drug (top50 only)"
+            "description": "Seventh drug (candidate comparison only)"
           },
           "drug8": {
             "$ref": "#/properties/drug",
-            "description": "Eighth drug (top50 only)"
+            "description": "Eighth drug (candidate comparison only)"
           },
           "drug9": {
             "$ref": "#/properties/drug",
-            "description": "Ninth drug (top50 only)"
+            "description": "Ninth drug (candidate comparison only)"
           },
           "drug10": {
             "$ref": "#/properties/drug",
-            "description": "Tenth drug (top50 only)"
+            "description": "Tenth drug (candidate comparison only)"
           },
           "edrug1": {
             "$ref": "#/properties/drug",
-            "description": "Excluded drug (DDI/DDIALL only)"
+            "description": "Excluded drug (faers_analyze_interaction_target_pt/faers_analyze_interaction_all_pts only)"
           },
           "edrug2": {
             "$ref": "#/properties/drug",
-            "description": "Second excluded drug (DDI/DDIALL only)"
+            "description": "Second excluded drug (faers_analyze_interaction_target_pt/faers_analyze_interaction_all_pts only)"
           },
           "drug_PS": {
             "$ref": "#/properties/drug",
-            "description": "Primary-suspect drug (FFun)"
+            "description": "Primary-suspect drug (faers_analyze_concomitant_exposure)"
           },
           "drug_concomitant": {
             "$ref": "#/properties/drug",
-            "description": "Concomitant drug (FFun)"
+            "description": "Concomitant drug (faers_analyze_concomitant_exposure)"
           },
           "drug_A": {
             "$ref": "#/properties/drug",
-            "description": "Drug A (IFun)"
+            "description": "Drug A (faers_compare_two_drug_exposures)"
           },
           "drug_B": {
             "$ref": "#/properties/drug",
-            "description": "Drug B (IFun)"
+            "description": "Drug B (faers_compare_two_drug_exposures)"
           },
           "primaryid": {
             "type": "array",
             "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 500
+              "$ref": "#/properties/drug/anyOf/1/items"
             },
             "maxItems": 100,
-            "description": "Optional FAERS primaryid values (AFun/CFun)"
+            "description": "Optional FAERS primaryid values (faers_analyze_drug/faers_analyze_drug_target_pt)"
           },
           "drug_exclusion": {
             "$ref": "#/properties/primaryid",
-            "description": "Drug exclusion list (AFun only)"
+            "description": "Drug exclusion list (faers_analyze_drug only)"
           },
           "drug_route": {
             "$ref": "#/properties/primaryid",
-            "description": "Route values such as \"ORAL\" (BFun only)"
+            "description": "Route values such as \"ORAL\" (faers_analyze_pt_cohort only)"
           },
           "unit": {
             "type": "string",
@@ -661,7 +685,26 @@
               "pair",
               "case"
             ],
-            "description": "Counting unit for AFun/CFun/FFun/IFun/DDI/DDIALL/Concomitant; omit for other functions"
+            "description": "Counting unit for workflows whose contract includes unit; omit otherwise"
+          },
+          "role_comparisons": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "PS",
+                  "SS",
+                  "C",
+                  "I"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 4
+            },
+            "maxItems": 8,
+            "description": "Explicit separate role sensitivity analyses; main analysis roles are preserved"
           },
           "age": {
             "type": "array",
@@ -784,6 +827,317 @@
         "required": [
           "project_id",
           "fun",
+          "confirm"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.faerskit.query",
+      "public_tool": "r_faerskit",
+      "category": "r_faerskit",
+      "summary": "Query filtered aggregate FAERS counts and population, drug, PT, outcome or report-period distributions. No arbitrary SQL, identifiers or credentials.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "enum": [
+              "counts",
+              "sex",
+              "age",
+              "year",
+              "quarter",
+              "outcome",
+              "country",
+              "reporter",
+              "drug",
+              "pt",
+              "route",
+              "indication",
+              "role"
+            ],
+            "default": "counts"
+          },
+          "drug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Drug name (DRUGNAME or prod_ai)"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 100
+              }
+            ]
+          },
+          "ptname": {
+            "$ref": "#/properties/drug"
+          },
+          "age": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "Inclusive age range in years, e.g. [18, 75]"
+          },
+          "gender": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "Gender filter, e.g. \"F\" or \"M\""
+          },
+          "weight": {
+            "$ref": "#/properties/age",
+            "description": "Inclusive weight range"
+          },
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/properties/drug/anyOf/1/items"
+                },
+                "maxItems": 100
+              }
+            ],
+            "description": "FAERS OCCP_COD, e.g. \"CN\" (consumer), \"MD\" (physician), \"PH\" (pharmacist)"
+          },
+          "country": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "$ref": "#/properties/agent/anyOf/1"
+              }
+            ],
+            "description": "Reporter country code, e.g. \"CN\", \"US\""
+          },
+          "drugEffect": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "$ref": "#/properties/agent/anyOf/1"
+              }
+            ],
+            "description": "Drug role code: \"PS\", \"SS\", \"C\", \"I\""
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 41,
+                      "maximum": 994
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^20\\d{2}Q[1-4]$"
+                    }
+                  ]
+                },
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "$ref": "#/properties/year/anyOf/0/items"
+              }
+            ],
+            "description": "Optional FAERS getdatayear range, e.g. [141, 244], [\"2014Q1\", \"2024Q4\"], or end period \"2026Q1\" (the server fills the start from the database coverage). Calendar years are not codes."
+          },
+          "illnesses": {
+            "$ref": "#/properties/agent/anyOf/1",
+            "description": "Optional vector of strings"
+          },
+          "illnesses_exclusion": {
+            "$ref": "#/properties/illnesses"
+          },
+          "pregnancy": {
+            "type": "boolean"
+          },
+          "pregnancy_exclusion": {
+            "type": "boolean"
+          },
+          "drug_exclusion_from_alldata": {
+            "$ref": "#/properties/illnesses"
+          },
+          "database": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "ClickHouse database name, e.g. \"druginfo\" or \"2026Q1\""
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100
+          }
+        },
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "read",
+      "query_allowed": true,
+      "execution": "sync",
+      "confirmation_fields": [],
+      "requires_confirmation": false,
+      "lifecycle": null,
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Immediate structured result; no background task is implied."
+    },
+    {
+      "id": "r.faerskit.plot",
+      "public_tool": "r_faerskit",
+      "category": "r_faerskit",
+      "summary": "Generate plot artifacts from an existing successful FAERS job without rerunning database statistics. Returns a new asynchronous job.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]{1,128}$",
+            "description": "ZeroWall project id"
+          },
+          "source_job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "plots": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z_]+$"
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 14400000,
+            "default": 3600000
+          }
+        },
+        "required": [
+          "project_id",
+          "source_job_id",
+          "confirm"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.faerskit.report",
+      "public_tool": "r_faerskit",
+      "category": "r_faerskit",
+      "summary": "Generate report artifacts from an existing successful FAERS job without rerunning database statistics. Returns a new asynchronous job.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]{1,128}$",
+            "description": "ZeroWall project id"
+          },
+          "source_job_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "plots": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z_]+$"
+            },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 14400000,
+            "default": 3600000
+          }
+        },
+        "required": [
+          "project_id",
+          "source_job_id",
           "confirm"
         ],
         "additionalProperties": false,

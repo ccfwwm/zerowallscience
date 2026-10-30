@@ -7,10 +7,20 @@ export function fingerprint(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value) ?? 'null').digest('hex')
 }
 
+function routeProtocol(provider: string): 'responses' | 'messages' | 'completions' | 'unknown' {
+  const value = provider.toLocaleLowerCase()
+  if (value.includes('responses')) return 'responses'
+  if (value.includes('messages')) return 'messages'
+  if (value.includes('completions')) return 'completions'
+  return 'unknown'
+}
+
 export function cacheUsage(usage: TokenUsage) {
   const input = usage.inputTokens
   const read = usage.cacheReadTokens ?? 0
   const write = usage.cacheWriteTokens ?? 0
+  const readSource = usage.cacheReadTokens === undefined ? 'missing' as const : 'provider' as const
+  const writeSource = usage.cacheWriteTokens === undefined ? 'missing' as const : 'provider' as const
   const valid = [input, read, write].every(value => Number.isSafeInteger(value) && value >= 0)
   const prompt = input + read + write
   // Omitted counters are only known to be zero if the exact total reconciles.
@@ -18,11 +28,15 @@ export function cacheUsage(usage: TokenUsage) {
     (usage.cacheReadTokens !== undefined && usage.cacheWriteTokens !== undefined)
     || usage.totalTokens === prompt + usage.outputTokens
   )
+  const reconciledRead = usage.cacheReadTokens === undefined && complete
+  const reconciledWrite = usage.cacheWriteTokens === undefined && complete
   return {
     input_tokens: input,
     uncached_input_tokens: input,
     cache_read_tokens: usage.cacheReadTokens ?? (complete ? 0 : null),
     cache_write_tokens: usage.cacheWriteTokens ?? (complete ? 0 : null),
+    cache_read_source: reconciledRead ? 'reconciled' as const : readSource,
+    cache_write_source: reconciledWrite ? 'reconciled' as const : writeSource,
     prompt_tokens: complete ? prompt : null,
     cache_hit_rate: complete && prompt > 0 ? read / prompt : null,
     usage_complete: complete,
@@ -95,6 +109,9 @@ export class CacheDiagnostics {
       request_id: ++this.sequence,
       session_id: key ?? null,
       diagnostic_boundary: 'provider-neutral-pre-serialization',
+      route_provider: options.provider,
+      route_model: options.model,
+      route_protocol: routeProtocol(options.provider),
       ...fields,
       changed_sections: changed,
       history_prefix_preserved: historyExtended,
@@ -102,6 +119,19 @@ export class CacheDiagnostics {
         ? '工具列表变化，可能导致缓存前缀失效；服务端命中结果见 usage。' : null,
     }
   }
+}
+
+function cacheMissReason(record: ReturnType<CacheDiagnostics['begin']>, usage: ReturnType<typeof cacheUsage> | undefined): string | null {
+  if (usage === undefined) return 'no_usage_event'
+  if (usage.cache_read_source === 'missing') return 'no_provider_cache_counters'
+  if (usage.cache_read_tokens !== 0) return null
+  if (record.changed_sections.includes('tool_schema_hash')) return 'prefix_changed_tool_schema'
+  if (record.changed_sections.includes('system_prompt_hash')) return 'prefix_changed_system'
+  if (record.changed_sections.includes('skills_hash')) return 'prefix_changed_skills'
+  if (record.changed_sections.includes('dynamic_prefix_hash')) return 'prefix_changed_dynamic_context'
+  if (record.changed_sections.includes('route_hash')) return 'route_changed'
+  if (record.history_prefix_preserved === false) return 'prefix_changed_history'
+  return 'provider_reported_zero'
 }
 
 /** Observe the canonical request and terminal usage without changing dispatch or durable messages. */
@@ -126,7 +156,10 @@ export function installCacheDiagnostics(ctx: Context): void {
     } finally {
       if (record !== undefined) log({
         request_id: record.request_id, session_id: record.session_id,
-        ...(usage === undefined ? { usage_complete: false } : cacheUsage(usage)),
+        ...(usage === undefined ? { usage_complete: false, cache_miss_reason: cacheMissReason(record, undefined) } : (() => {
+          const observed = cacheUsage(usage)
+          return { ...observed, cache_miss_reason: cacheMissReason(record, observed) }
+        })()),
       })
     }
   })

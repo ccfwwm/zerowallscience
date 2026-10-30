@@ -1765,6 +1765,181 @@ Generate a survey-weighted NHANES PNG. Supports weighted histogram, category pro
 }
 ```
 
+## r.nhanes.create.analysis.plan
+
+Save a versioned NHANES analysis plan in the ZeroWall project for later validation and asynchronous execution.
+
+- 工具族：r_nhanes_analysis；副作用：write；query：false；执行：sync。
+- 确认字段：无。
+- 输出：Immediate structured result; no background task is implied.
+
+```json
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "project_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._-]+$",
+        "description": "ZeroWall project id"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "plan": {
+        "type": "object",
+        "additionalProperties": {}
+      }
+    },
+    "required": [
+      "project_id",
+      "name",
+      "plan"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lifecycle": null
+}
+```
+
+## r.nhanes.list.analysis.plans
+
+List saved NHANES analysis plans for a project.
+
+- 工具族：r_nhanes_artifacts；副作用：read；query：true；执行：sync。
+- 确认字段：无。
+- 输出：Immediate structured result; no background task is implied.
+
+```json
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "project_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._-]+$",
+        "description": "ZeroWall project id"
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 50
+      }
+    },
+    "required": [
+      "project_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lifecycle": null
+}
+```
+
+## r.nhanes.get.analysis.plan
+
+Get one saved NHANES analysis plan, including its structured definition and catalog version.
+
+- 工具族：r_nhanes_artifacts；副作用：read；query：true；执行：sync。
+- 确认字段：无。
+- 输出：Immediate structured result; no background task is implied.
+
+```json
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "project_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._-]+$",
+        "description": "ZeroWall project id"
+      },
+      "plan_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": "R job id returned by r_submit_script"
+      }
+    },
+    "required": [
+      "project_id",
+      "plan_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lifecycle": null
+}
+```
+
+## r.nhanes.run.analysis.plan
+
+Validate and asynchronously run a saved NHANES analysis plan. Results include reproducible R code and manifests.
+
+- 工具族：r_nhanes_analysis；副作用：execute；query：false；执行：async_or_cached。
+- 确认字段：confirm。
+- 输出：Submission with remote identifier; status and manifest are separate operations.
+
+```json
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "project_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._-]+$",
+        "description": "ZeroWall project id"
+      },
+      "plan_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": "R job id returned by r_submit_script"
+      },
+      "timeout_ms": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 3600000,
+        "default": 1800000
+      },
+      "confirm": {
+        "type": "boolean",
+        "default": false,
+        "description": "Must be true for file writes, destructive actions, code execution, and package changes"
+      }
+    },
+    "required": [
+      "project_id",
+      "plan_id"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lifecycle": {
+    "id_fields": [
+      "run_id",
+      "id"
+    ],
+    "argument": "run_id",
+    "status": "r.nhanes.get.analysis.run",
+    "cancel": "r.nhanes.cancel.analysis.run",
+    "manifest": "r.nhanes.get.analysis.manifest"
+  }
+}
+```
+
 ## r.nhanes.get.analysis.run
 
 Get the current status and underlying job record for a NHANES analysis run.

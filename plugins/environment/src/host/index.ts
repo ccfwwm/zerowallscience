@@ -4,9 +4,13 @@ import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import { SecretBrokerClient } from '@zerowallscience/plugin-secrets'
 import type {} from '@deepseek-ai/dsh-agent'
-import type { Session, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionId, type Session, type SessionSeq } from '@deepseek-ai/dsh-session'
 import type { EnvironmentSettingsValue, EnvironmentVariableInfo, ImageGenerationQuality, ImageModelSelection } from '../shared/types.js'
 import { fetchOfficialEnvironment } from './official-config.js'
+
+declare module '@deepseek-ai/dsh-session/types' {
+  interface SessionEventMap { 'zerowall/context-budget': { tokens: number } }
+}
 
 export const name = 'zerowall-environment'
 export const ENVIRONMENT_SETTINGS_NS = 'zerowall-environment' as SettingsNamespace
@@ -22,7 +26,7 @@ export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
     aspectRatio: z.string().default(''),
   }).default({ providerId: '', groupId: '', modelId: '' }),
   imageQuality: z.union(['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const).default('medium'),
-  contextBudgetTokens: z.number().step(1).min(32_000).max(2_000_000).default(300_000),
+  contextBudgetTokens: z.number().step(1).min(32_000).max(1_000_000).default(300_000),
 })
 
 interface BudgetMeasurement {
@@ -78,6 +82,13 @@ export function contextPressureThreshold(budget: number, contextWindow: number, 
   return Math.min(Math.floor(budget * 0.9), contextWindow - outputReserve - 16_000)
 }
 
+const CONTEXT_BUDGET_EVENT = 'zerowall/context-budget' as const
+function sessionContextBudget(session: Session): number | undefined {
+  const event = session.snapshotEvents().findLast(item => item.type === CONTEXT_BUDGET_EVENT)
+  const tokens = event?.data.tokens
+  return typeof tokens === 'number' && Number.isSafeInteger(tokens) && tokens >= 32_000 && tokens <= 1_000_000 ? tokens : undefined
+}
+
 const VARIABLE_NAME = /^[A-Z_][A-Z0-9_]{0,127}$/u
 const RESERVED = new Set(['NODE_OPTIONS', 'ELECTRON_RUN_AS_NODE', 'PATH', 'PATHEXT', 'COMSPEC', 'DSH_HOME', 'ZEROWALL_USER_DATA_DIR'])
 const KEY_PREFIX = 'zerowall.environment.var.'
@@ -129,7 +140,8 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
       const route = agent.session.requestHeader()?.config
       const provider = route?.provider || agent.options.provider
       const model = route?.model || agent.options.model
-      if (!provider || !model || this.settings.contextBudgetTokens < 32_000) return decision
+      const requestedBudget = sessionContextBudget(agent.session) ?? this.settings.contextBudgetTokens
+      if (!provider || !model || requestedBudget < 32_000) return decision
       try {
         // Web presets isolate compaction per agent; it is not a Host service.
         const presets = hostCtx.get('agentPresets') as { serviceFor(agent: unknown, name: string): unknown } | undefined
@@ -138,15 +150,15 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
         const modelInfo = await hostCtx.llm.resolveModelInfo(provider, model, signal)
         const contextWindow = modelInfo.context?.contextWindow
         if (typeof contextWindow !== 'number' || !Number.isSafeInteger(contextWindow) || contextWindow <= 0) {
-          hostCtx.logger.warn(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=unknown reason=model-window-unavailable`)
+          hostCtx.logger.warn(`[context-budget] session=${agent.session.id} requested=${requestedBudget} effective=unknown reason=model-window-unavailable`)
           return decision
         }
-        const effectiveBudget = Math.min(this.settings.contextBudgetTokens ?? 300_000, contextWindow)
+        const effectiveBudget = Math.min(requestedBudget, contextWindow)
         const measurement = hostCtx.tokenMeter.measure(agent.session)
         const outputReserve = route?.maxTokens ?? agent.options.maxTokens ?? modelInfo.defaultMaxTokens ?? 0
         const threshold = contextPressureThreshold(effectiveBudget, contextWindow, outputReserve)
         if (threshold <= 0) {
-          hostCtx.logger.warn(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=${effectiveBudget} capacity=${contextWindow} outputReserve=${outputReserve} compacted=false reason=output-reserve-exceeds-budget`)
+          hostCtx.logger.warn(`[context-budget] session=${agent.session.id} requested=${requestedBudget} effective=${effectiveBudget} capacity=${contextWindow} outputReserve=${outputReserve} compacted=false reason=output-reserve-exceeds-budget`)
           return decision
         }
         if (measurement.totalTokens < threshold) return decision
@@ -154,7 +166,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
         pruner?.pruneSession?.(agent.session)
         const current = hostCtx.tokenMeter.measure(agent.session)
         if (current.totalTokens < threshold) {
-          hostCtx.logger.info(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=${effectiveBudget} capacity=${contextWindow} estimated=${current.baseline.kind === 'estimated'} pruned=true compacted=false`)
+          hostCtx.logger.info(`[context-budget] session=${agent.session.id} requested=${requestedBudget} effective=${effectiveBudget} capacity=${contextWindow} estimated=${current.baseline.kind === 'estimated'} pruned=true compacted=false`)
           return decision
         }
         const surface = agent.session.surface.nodes
@@ -164,11 +176,11 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
         const needed = current.totalTokens - threshold + Math.min(24_000, Math.floor(effectiveBudget * 0.08))
         const range = selectContextBudgetRange(agent.session, surface, nodeTokens, firstIndex, needed)
         if (range === undefined) {
-          hostCtx.logger.warn(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=${effectiveBudget} capacity=${contextWindow} estimated=${current.baseline.kind === 'estimated'} compacted=false reason=no-balanced-range`)
+          hostCtx.logger.warn(`[context-budget] session=${agent.session.id} requested=${requestedBudget} effective=${effectiveBudget} capacity=${contextWindow} estimated=${current.baseline.kind === 'estimated'} compacted=false reason=no-balanced-range`)
           return decision
         }
         const result = await compaction.compactRegion(range.start, range.end, { session: agent.session, options: { provider, model } }, signal)
-        hostCtx.logger.info(`[context-budget] session=${agent.session.id} requested=${this.settings.contextBudgetTokens} effective=${effectiveBudget} capacity=${contextWindow} before=${current.totalTokens} shadowed=${result.shadowedTokenCount} compacted=true`)
+        hostCtx.logger.info(`[context-budget] session=${agent.session.id} requested=${requestedBudget} effective=${effectiveBudget} capacity=${contextWindow} before=${current.totalTokens} shadowed=${result.shadowedTokenCount} compacted=true`)
       } catch (error) {
         if (!signal.aborted) hostCtx.logger.warn(`[context-budget] automatic compaction failed: ${error instanceof Error ? error.message : String(error)}`)
       }
@@ -218,8 +230,53 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
 
   @Remote('setContextBudget')
   async setContextBudget(tokens: number): Promise<void> {
-    if (!Number.isSafeInteger(tokens) || tokens < 32_000 || tokens > 2_000_000) throw new Error('上下文预算必须在 32k 到 2,000k token 之间。')
+    if (!Number.isSafeInteger(tokens) || tokens < 32_000 || tokens > 1_000_000) throw new Error('上下文预算必须在 32k 到 1,000k token 之间。')
     await this.replaceSettings({ ...this.settings, contextBudgetTokens: tokens })
+  }
+
+  @Remote('getSessionContextBudget')
+  getSessionContextBudget(sessionId: string): number {
+    const agent = this.hostCtx.agents?.get(SessionId(String(sessionId)))
+    return agent === undefined ? this.settings.contextBudgetTokens : sessionContextBudget(agent.session) ?? this.settings.contextBudgetTokens
+  }
+
+  @Remote('getSessionContextInfo')
+  async getSessionContextInfo(sessionId: string): Promise<{ contextWindow?: number; outputReserve?: number; effectiveBudget?: number; pressureThreshold?: number; model?: string }> {
+    const agent = this.hostCtx.agents?.get(SessionId(String(sessionId)))
+    const header = agent?.session.requestHeader()
+    // `model/selection` is a legacy persisted event that is not part of the
+    // current SessionEventMap. Read it through a narrow compatibility view so
+    // old conversations still report their selected model without widening the
+    // DSH event union.
+    const recentSelection = (agent?.session.snapshotEvents() as unknown as ReadonlyArray<{ type: string; data?: { provider?: unknown; model?: unknown } }>)
+      .findLast(item => item.type === 'model/selection')
+    const provider = recentSelection?.data?.provider ?? header?.config.provider ?? agent?.options.provider
+    const model = recentSelection?.data?.model ?? header?.config.model ?? agent?.options.model
+    if (typeof provider !== 'string' || typeof model !== 'string') return {}
+    try {
+      const info = await this.hostCtx.llm.resolveModelInfo(provider, model)
+      const contextWindow = info.context?.contextWindow
+      if (typeof contextWindow !== 'number' || !Number.isSafeInteger(contextWindow) || contextWindow <= 0) return { model }
+      const requested = agent === undefined ? this.settings.contextBudgetTokens : sessionContextBudget(agent.session) ?? this.settings.contextBudgetTokens
+      const outputReserve = header?.config.maxTokens ?? info.defaultMaxTokens ?? 0
+      return {
+        model,
+        contextWindow,
+        outputReserve,
+        effectiveBudget: Math.min(requested, contextWindow),
+        pressureThreshold: contextPressureThreshold(Math.min(requested, contextWindow), contextWindow, outputReserve),
+      }
+    } catch {
+      return { model }
+    }
+  }
+
+  @Remote('setSessionContextBudget')
+  async setSessionContextBudget(sessionId: string, tokens: number): Promise<void> {
+    if (!Number.isSafeInteger(tokens) || tokens < 32_000 || tokens > 1_000_000) throw new Error('上下文预算必须在 32k 到 1,000k token 之间。')
+    const agent = this.hostCtx.agents?.get(SessionId(String(sessionId)))
+    if (agent === undefined) throw new Error('当前对话不可用，请先打开一个会话。')
+    await agent.session.append(CONTEXT_BUDGET_EVENT, { tokens }, { ignorable: true })
   }
 
   @Remote('setImageQuality')

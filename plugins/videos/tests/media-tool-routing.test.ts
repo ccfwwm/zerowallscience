@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { MediaJobLedger } from '../../ai-cloud/src/host/media-jobs.js'
-import { MEDIA_CONVERSATION_PROMPT, mergeStandardReferenceParameters, removeNumberedMediaReferences, validateMediaJobKind, validateMediaToolIds } from '../src/media-contract.js'
+import { MEDIA_SKILL_DESCRIPTION, mergeStandardReferenceParameters, removeNumberedMediaReferences, validateMediaJobKind, validateMediaToolIds } from '../src/media-contract.js'
 import { createMediaSkillProvider } from '../src/media-skill.js'
 
 const studio = vi.hoisted(() => ({ scope: vi.fn(async () => ({ sessionId: 's1', projectId: 'session-s1' })), generate: vi.fn(async (_session: string, input: any) => ({ id: input.id, state: 'queued' })), call: vi.fn(async () => '{}'), importSource: vi.fn(async () => ({})) }))
@@ -27,11 +27,8 @@ async function fixture() {
 
 it('publishes consistent discovery routes for deck illustrations and independent media', async () => {
   const f = await fixture()
-  expect(f.prompts[0].text).toBe(MEDIA_CONVERSATION_PROMPT)
-  expect(f.prompts[0].text).toContain('加载 gpt-image-generator')
-  expect(f.prompts[0].text).toContain('只有用户明确要求独立视频、音频/音乐或宣传片时')
-  expect(f.prompts[0].text).toContain('不要因为“生成”“制作一张”“做一张图”等泛化措辞调用媒体工具')
-  expect(f.prompts[0].text).toContain('status 查询状态并尊重 paused/failed')
+  expect(f.prompts).toEqual([])
+  expect(MEDIA_SKILL_DESCRIPTION).toContain('独立视频')
   const provider = createMediaSkillProvider(new URL('../knowledge/media-create', import.meta.url).pathname)
   const candidates = await provider.list()
   expect(candidates[0]?.description).toContain('普通图片生成和编辑使用 gpt-image-generator')

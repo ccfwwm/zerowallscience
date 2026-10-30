@@ -60,12 +60,14 @@ describe('environment settings client', () => {
       configForms: { get: vi.fn(() => reviewerScope) },
       locale: { register: vi.fn(() => () => undefined), bind: vi.fn(() => t) },
       effect: vi.fn((mount: () => unknown) => mount()),
-      slots: {
+        slots: {
         inject: vi.fn((_name: string, mount: () => unknown) => mount()),
-        register: vi.fn((options: { inject: () => Record<string, unknown>; label: () => string; locale: string }, component: ComponentType<any>) => {
-          injected = options.inject
-          Section = component
-          navLabel = options.label
+        register: vi.fn((options: { name: string; inject: () => Record<string, unknown>; label?: () => string; locale: string }, component: ComponentType<any>) => {
+          if (component === EnvironmentSection) {
+            injected = options.inject
+            Section = component
+            navLabel = options.label
+          }
           expect(options.locale).toBe(NS)
           return () => undefined
         }),

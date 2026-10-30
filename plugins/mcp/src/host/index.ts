@@ -3,6 +3,7 @@ import { ManagedGenerations } from './managed-generations.js'
 import { normalizeJsonArguments, registerResearchWorkflow } from './research-workflow.js'
 import { McpConfigurationStoreService } from './configuration-store.js'
 import { isBuiltInMcpConnection } from '../shared/connections.js'
+import { matchMcpCapabilities } from './capability-match.js'
 import { callToolUniverse, resolveToolUniverseCredentials } from './tooluniverse-transport.js'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -64,6 +65,11 @@ export const RDATALINUX_R_PLATFORM_SERVER_NAME = 'rplatform'
 export const RDATALINUX_RPLOTFIGURE_SERVER_NAME = 'rplotfigure'
 export const RDATALINUX_R_MCP_AUTHORIZATION_CREDENTIAL = 'zerowall.mcp.rdatalinux_authorization'
 export const RDATALINUX_R_MCP_AUTHORIZATION_ENV = 'R_PLATFORM_MCP_AUTHORIZATION'
+const RMCP_LEGACY_ALIASES = new Set(['zerowall-rmcp'])
+function canonicalMcpServerName(serverName: string): string {
+  const value = serverName.trim()
+  return RMCP_LEGACY_ALIASES.has(value) ? RDATALINUX_SERVER_NAME : value
+}
 const ENVIRONMENT_SECRET_PREFIX = 'zerowall.environment.var.'
 export async function hasEnvironmentCredential(name: string, getCredential: (key: string) => Promise<string | undefined>, environment: NodeJS.ProcessEnv = process.env): Promise<boolean> {
   let value: string | undefined
@@ -76,6 +82,7 @@ const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 1000
 const MCP_FAILURE_COOLDOWN_MS = 5 * 60_000
 const RETIRED_R_PROJECT_TOOL = 'mcp__rmcp__r_project'
 const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
+const RDATALINUX_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 const FIGUREYA_MODULE_MAX_BYTES = 250 * 1024 * 1024
 const HOST_FILE_CAPABILITIES: JsonValue[] = [
   {
@@ -88,7 +95,7 @@ const HOST_FILE_CAPABILITIES: JsonValue[] = [
       properties: {
         action: { const: 'download_workspace' },
         source: { type: 'string', enum: ['project', 'biomni', 'figureya_source'], default: 'project' },
-        project_id: { type: 'string', description: '项目产物来源需要' },
+        project_id: { type: 'string', description: '可省略；省略时按当前工作区自动生成并复用绑定' },
         job_id: { type: 'string', description: 'Biomni 任务产物来源需要' },
         module_id: { type: 'string', description: '可用 source=figureya_source 指定服务器 FigureYa 模块' },
         source_path: { type: 'string' },
@@ -116,8 +123,9 @@ const HOST_FILE_CAPABILITIES: JsonValue[] = [
       type: 'object',
       properties: {
         source: { type: 'string', enum: ['project', 'biomni', 'figureya_source'], default: 'project' },
-        project_id: { type: 'string', description: '项目产物来源需要' },
+        project_id: { type: 'string', description: '可省略；省略时按当前工作区自动生成并复用绑定' },
         job_id: { type: 'string', description: 'Biomni 任务产物来源需要' },
+        download_all: { type: 'boolean', description: '项目来源下下载指定 job 的全部 Manifest 产物' },
         module_id: { type: 'string', description: 'FigureYa 源文件来源需要' },
         source_path: { type: 'string', description: 'FigureYa 模块内的相对路径' },
         remote_path: { type: 'string', description: 'Manifest 中的远程相对路径' },
@@ -133,6 +141,31 @@ const HOST_FILE_CAPABILITIES: JsonValue[] = [
     availability: 'host_registered',
     verification: 'registered',
     output: '本地路径、文件大小、来源路径及 SHA-256；不返回 base64 文件内容。',
+  },
+  {
+    id: 'host.r_files.download_job_manifest',
+    public_tool: 'r_files',
+    category: 'workspace_transfer',
+    summary: '将远端 R job Manifest 中的全部文件按相对路径下载到工作区，逐文件校验 SHA-256；失败文件和部分进度保留，后续调用可续传。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        action: { const: 'download_job_manifest' },
+        project_id: { type: 'string', description: '可省略；按当前对话绑定远端项目' },
+        job_id: { type: 'string', description: '已完成的远端 R job ID' },
+        local_path: { type: 'string', description: '本地工作区中的结果目录；默认 downloads/faerskit/<job_id>' },
+      },
+      required: ['action', 'job_id'],
+      additionalProperties: false,
+    },
+    effects: 'local_workspace_write',
+    query_allowed: false,
+    execution: 'local_host',
+    confirmation_fields: [],
+    requires_confirmation: false,
+    availability: 'host_registered',
+    verification: 'registered',
+    output: 'Manifest 文件数、已校验数、字节数、本地目录及按文件列出的失败原因；不返回文件内容。',
   },
   {
     id: 'host.r_files.upload_workspace',
@@ -352,7 +385,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     } as never)
     ctx.effect(() => ctx.tools.register(defineTool({
       name: 'mcp_connect',
-      description: 'List configured MCP connection states without connecting, or pass one enabled server name to connect it on demand and discover its tools. Connections do not start automatically.',
+      description: 'List configured MCP states without connecting, or pass one enabled server name to connect and discover its live tools.',
       parameters: { server: { type: 'string' } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       async execute(args, exec) {
@@ -360,37 +393,73 @@ export class ZeroWallMcpService extends TypertRemoteService {
         if (args.server === undefined || args.server.trim() === '') {
           return { connections: (await service.list()).map(item => ({ server: item.serverName, name: item.name, enabled: item.enabled, state: item.runtimeState, toolCount: item.tools.length, ...(item.runtimeError ? { error: item.runtimeError } : {}) })) }
         }
-        await service.ensureConnected(args.server)
+        const serverName = canonicalMcpServerName(args.server)
+        // An explicit connect is a demand boundary: refresh tools/list even
+        // when a stale status says the connection is already active.
+        await service.ensureConnected(serverName, true)
+        const record = (await service.list()).find(item => item.serverName === serverName)
+        if (record === undefined) throw new Error(`MCP server disappeared during connection: ${serverName}`)
         if (exec.agent && typeof exec.agent === 'object') {
           const selected = service.selectedTools.get(exec.agent) ?? new Set<string>()
-          selected.add(args.server)
+          for (const name of service.registeredTools.get(record.id) ?? []) selected.add(name)
           service.selectedTools.set(exec.agent, selected)
         }
-        const record = (await service.list()).find(item => item.serverName === args.server)
-        if (record === undefined) throw new Error(`MCP server disappeared during connection: ${args.server}`)
-        return { server: args.server, state: record.runtimeState, tools: record.tools.slice(0, 40), toolCount: record.tools.length }
+        return { server: record.serverName, requestedServer: args.server, state: record.runtimeState, tools: record.tools.slice(0, 40), toolCount: record.tools.length }
       },
     })), 'zerowall-mcp: demand connection tool')
     ctx.effect(() => ctx.tools.register(defineTool({
       name: 'mcp_search',
-      description: 'Find configured MCP servers and already discovered tools by capability. This search is local and does not start a connection; call mcp_connect with a returned server name to load its live tool schemas.',
+      description: 'Find an enabled MCP server by its name or tool capability. The best match is refreshed from live tools/list and only matching tools are loaded into this conversation; unrelated servers stay idle.',
       parameters: { query: { type: 'string', required: true } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
-      async execute(args) {
+      async execute(args, exec) {
         const query = args.query.trim().toLocaleLowerCase()
-        const servers = (await service.list()).filter(item => item.enabled)
-        const matches = servers.map(item => ({ server: item.serverName, name: item.name, state: item.runtimeState,
-          tools: [...service.mcpToolIndex.values()].filter(tool => tool.server === item.serverName && (!query || `${tool.name} ${tool.description}`.toLocaleLowerCase().includes(query)))
-            .slice(0, 5).map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) })),
-        })).filter(item => !query || item.server.toLocaleLowerCase().includes(query) || item.name.toLocaleLowerCase().includes(query) || item.tools.length > 0)
-          .sort((left, right) => right.tools.length - left.tools.length || left.name.localeCompare(right.name))
+        const servers = (await service.list()).filter(item => item.enabled || item.serverName === RDATALINUX_SERVER_NAME)
+        const ranked = servers.map(item => {
+          const indexed = [...service.mcpToolIndex.values()].filter(tool => tool.server === item.serverName)
+          return { item, ...matchMcpCapabilities(query, item.serverName, item.name, indexed) }
+        }).filter(result => result.score > 0)
+          .sort((left, right) => right.score - left.score || left.item.name.localeCompare(right.item.name))
           .slice(0, 5)
-        return { matches, connectTool: 'mcp_connect' }
+        const candidate = ranked[0]
+        if (!candidate) return { matches: [], availableServers: servers.map(item => item.serverName), connectedServer: null }
+
+        await service.ensureConnected(candidate.item.serverName, true)
+        const refreshed = (await service.list()).find(item => item.id === candidate.item.id)
+        if (!refreshed || !['active', 'active-with-zero-tools'].includes(refreshed.runtimeState)) {
+          throw new Error(refreshed?.runtimeError || `MCP connection is unavailable: ${candidate.item.serverName}`)
+        }
+        const live = matchMcpCapabilities(query, refreshed.serverName, refreshed.name, refreshed.toolDetails ?? [])
+        // A metadata-only index can still identify the requested capability
+        // when a refresh is blocked or returns an empty list. Report that
+        // discovery result, but only expose names that are actually live.
+        const metadataFallback = live.tools.length === 0 && candidate.tools.length > 0 ? candidate.tools : []
+        const selectedTools = live.tools
+          .slice(0, 8)
+          .map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) }))
+        if (exec.agent && typeof exec.agent === 'object') {
+          const selected = service.selectedTools.get(exec.agent) ?? new Set<string>()
+          for (const tool of selectedTools) selected.add(tool.name)
+          service.selectedTools.set(exec.agent, selected)
+        }
+        return {
+          matches: (selectedTools.length > 0 || metadataFallback.length > 0)
+            ? [{ server: refreshed.serverName, name: refreshed.name, state: refreshed.runtimeState, score: candidate.score, tools: (selectedTools.length > 0 ? selectedTools : metadataFallback).slice(0, 8) }]
+            : [],
+          ...(selectedTools.length === 0 ? {
+            candidateTools: (refreshed.toolDetails ?? []).slice(0, 8).map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) })),
+            instruction: 'No live tool matched this query. Search again using one of the candidate tool names or a more specific capability; no tool schemas were enabled.',
+          } : {}),
+          connectedServer: refreshed.serverName,
+          toolCount: refreshed.tools.length,
+          loadedToolNames: selectedTools.map(tool => tool.name),
+          ...(selectedTools.length > 0 ? { instruction: 'The matching live tools are available to this conversation on the next model step.' } : {}),
+        }
       },
     })), 'zerowall-mcp: local capability search')
     ctx.tools.register(defineTool({
       name: 'r_files',
-      description: 'Access rdatalinux files through the compact file facade. action=catalog includes remote file operations and local Host transfers. download_workspace saves project artifacts into the current local workspace; pass an existing remote project_id for project files or a job_id for Biomni artifacts. FigureYa source files accept module_id plus source_path without a project. Transfers verify size and SHA-256, use bounded chunks and never return base64 file contents to the conversation. local_path defaults to downloads/<filename>. upload_workspace requires confirm=true and an existing remote project_id; the Host never creates or registers remote projects.',
+      description: 'Access rdatalinux files through the compact file facade. action=catalog includes remote file operations and local Host transfers. download_workspace saves one file; download_job_manifest saves every file from a completed remote R job and resumes partial downloads. project_id may be omitted because Host binds the current conversation. Downloads stream 1 MiB chunks, verify SHA-256, and never return file contents to the conversation. upload_workspace requires confirm=true.',
       parameters: {
         action: { type: 'string', required: true },
         arguments: { type: 'json' },
@@ -417,7 +486,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const nestedValues = args.arguments !== null && typeof args.arguments === 'object' && !Array.isArray(args.arguments) ? args.arguments : {}
         const values = { ...args, ...nestedValues } as typeof args
         if (args.action === 'catalog') {
-          try { await service.ensureConnected(RDATALINUX_SERVER_NAME) }
+          try { await service.ensureConnected(RDATALINUX_SERVER_NAME, true) }
           catch (error) {
             return { domain: 'r_files', remote_available: false, remote_error: error instanceof Error ? error.message : String(error), capabilities: HOST_FILE_CAPABILITIES, host_capabilities: HOST_FILE_CAPABILITIES }
           }
@@ -436,8 +505,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
           const remoteCapabilities = Array.isArray(remoteCatalog.capabilities) ? remoteCatalog.capabilities : []
           return { ...remoteCatalog, capabilities: [...remoteCapabilities, ...HOST_FILE_CAPABILITIES], host_capabilities: HOST_FILE_CAPABILITIES }
         }
-        await service.ensureConnected(RDATALINUX_SERVER_NAME)
-        if (args.action !== 'upload_workspace' && args.action !== 'download_workspace' && args.action !== 'download_figureya_module') {
+        await service.ensureConnected(RDATALINUX_SERVER_NAME, true)
+        if (args.action !== 'upload_workspace' && args.action !== 'download_workspace' && args.action !== 'download_job_manifest' && args.action !== 'download_figureya_module') {
           if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before accessing project files.')
           const nested = await service.ctx.tools.execute({
             signal: exec.signal,
@@ -456,16 +525,134 @@ export class ZeroWallMcpService extends TypertRemoteService {
         if (args.action === 'upload_workspace' && values.confirm !== true) throw new Error('Uploading a workspace file requires confirm=true.')
         const figureyaRequest = args.action === 'download_workspace' ? figureyaSourceRequest(values.module_id, values.source_path, values.remote_path) : undefined
         const downloadSource = values.source ?? (figureyaRequest === undefined ? 'project' : 'figureya_source')
-        if ((args.action === 'upload_workspace' && (typeof values.local_path !== 'string' || typeof values.project_id !== 'string' || typeof values.remote_path !== 'string'))
-          || (args.action === 'download_workspace' && downloadSource === 'project' && (typeof values.remote_path !== 'string' || values.remote_path.trim() === '' || typeof values.project_id !== 'string'))
+        if ((args.action === 'upload_workspace' && (typeof values.local_path !== 'string' || typeof values.remote_path !== 'string'))
+          || (args.action === 'download_workspace' && downloadSource === 'project' && (typeof values.remote_path !== 'string' || values.remote_path.trim() === ''))
           || (args.action === 'download_workspace' && downloadSource === 'biomni' && (typeof values.remote_path !== 'string' || values.remote_path.trim() === '' || typeof values.job_id !== 'string'))
           || (args.action === 'download_workspace' && downloadSource === 'figureya_source' && (figureyaRequest === undefined || figureyaRequest.path.trim() === ''))
           || (args.action === 'download_workspace' && !['project', 'biomni', 'figureya_source'].includes(downloadSource))) {
-          throw new Error(`Invalid ${args.action} request. Provide a source path, use source=project with project_id, source=biomni with job_id, or source=figureya_source with module_id/source_path; local_path is optional for downloads.`)
+          throw new Error(`Invalid ${args.action} request. Provide a source path, use source=project with remote_path (project_id is optional), source=biomni with job_id, or source=figureya_source with module_id/source_path; local_path is optional for downloads.`)
         }
         const sessionCwd = exec.agent?.session.header.cwd
         if (typeof sessionCwd !== 'string' || sessionCwd.trim() === '') throw new Error('The current session has no workspace directory.')
         const workspace = await realpath(resolve(sessionCwd))
+        if (args.action === 'download_job_manifest') {
+          if (typeof values.job_id !== 'string' || values.job_id.trim() === '') throw new Error('job_id is required to download an R job Manifest.')
+          const workflow = service.ctx.researchWorkflow?.get()
+          if (workflow === undefined) throw new Error('Research workflow service is unavailable for automatic project binding.')
+          values.project_id = await workflow.resolveProjectId(exec, values.project_id)
+          const manifestResult = await service.executeCompactCapability('r.get.job.manifest', { project_id: values.project_id, job_id: values.job_id }, exec)
+          const manifestPayload = service.compactPayload(manifestResult as any, 'R job Manifest')
+          const manifest = manifestPayload.manifest !== null && typeof manifestPayload.manifest === 'object' && !Array.isArray(manifestPayload.manifest)
+            ? manifestPayload.manifest as Record<string, JsonValue>
+            : manifestPayload
+          const rawValue = manifest.files ?? manifest.outputs
+          const rawFiles = Array.isArray(rawValue) ? rawValue : rawValue !== null && typeof rawValue === 'object' ? [rawValue] : []
+          if (rawFiles.length === 0) throw new Error(`R job ${values.job_id} Manifest contains no downloadable files.`)
+          const localRoot = String(values.local_path ?? `downloads/faerskit/${values.job_id}`).trim()
+          if (localRoot === '' || isAbsolute(localRoot)) throw new Error('local_path must be a relative directory inside the current workspace.')
+          const rootPath = resolve(workspace, localRoot)
+          const rootContainment = relative(workspace, rootPath)
+          if (rootContainment === '' || rootContainment === '..' || rootContainment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(rootContainment)) throw new Error('local_path must name a directory inside the current workspace.')
+          const seen = new Set<string>()
+          const files: Array<Record<string, JsonValue>> = []
+          const errors: Array<{ path: string; error: string }> = []
+          let totalBytes = 0n
+          for (const raw of rawFiles) {
+            if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+              errors.push({ path: '(invalid manifest entry)', error: 'Manifest entry is not an object.' })
+              continue
+            }
+            const item = raw as Record<string, JsonValue>
+            const remoteRelative = [item.path, item.relative_path, item.name].find(value => typeof value === 'string' && value.trim() !== '')
+            if (typeof remoteRelative !== 'string') {
+              errors.push({ path: '(unnamed manifest entry)', error: 'Manifest entry has no relative file path.' })
+              continue
+            }
+            const normalizedPath = remoteRelative.trim().replaceAll('\\', '/')
+            if (normalizedPath === '' || normalizedPath.startsWith('/') || /^[A-Za-z]:/u.test(normalizedPath) || normalizedPath.split('/').some(part => part === '..' || part === '.' || part === '')) {
+              errors.push({ path: remoteRelative, error: 'Manifest path is not a safe relative path.' })
+              continue
+            }
+            if (seen.has(normalizedPath)) {
+              errors.push({ path: normalizedPath, error: 'Manifest contains a duplicate path.' })
+              continue
+            }
+            seen.add(normalizedPath)
+            const bytesValue = item.bytes ?? item.size
+            const expectedBytes = Number(bytesValue)
+            const expectedSha256 = typeof item.sha256 === 'string' ? item.sha256.toLowerCase() : ''
+            if ((typeof bytesValue !== 'number' && typeof bytesValue !== 'string') || (typeof bytesValue === 'string' && bytesValue.trim() === '') || !Number.isSafeInteger(expectedBytes) || expectedBytes < 0) {
+              errors.push({ path: normalizedPath, error: 'Manifest byte size is missing or is not a safe integer.' })
+              continue
+            }
+            if (!/^[a-f0-9]{64}$/u.test(expectedSha256)) {
+              errors.push({ path: normalizedPath, error: 'Manifest SHA-256 is missing or invalid.' })
+              continue
+            }
+            totalBytes += BigInt(expectedBytes)
+            const localPath = `${localRoot.replaceAll('\\', '/').replace(/\/+$/u, '')}/${normalizedPath}`
+            const destination = resolve(workspace, localPath)
+            const destinationContainment = relative(workspace, destination)
+            if (destinationContainment === '..' || destinationContainment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(destinationContainment)) {
+              errors.push({ path: normalizedPath, error: 'Manifest path resolves outside the current workspace.' })
+              continue
+            }
+            try {
+              const existing = await lstat(destination)
+              if (existing.isSymbolicLink() || !existing.isFile()) throw new Error('Local destination exists and is not a regular file.')
+              const resolvedExisting = await realpath(destination)
+              const existingContainment = relative(workspace, resolvedExisting)
+              if (existingContainment === '..' || existingContainment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(existingContainment)) throw new Error('Local destination resolves outside the current workspace.')
+              if (existing.size !== expectedBytes) throw new Error('Existing local file size does not match the remote Manifest.')
+              const existingFile = await open(destination, 'r')
+              const existingHash = createHash('sha256')
+              try {
+                const buffer = Buffer.alloc(RDATALINUX_DOWNLOAD_CHUNK_BYTES)
+                for (let position = 0; position < existing.size;) {
+                  const { bytesRead } = await existingFile.read(buffer, 0, Math.min(buffer.length, existing.size - position), position)
+                  if (!bytesRead) throw new Error('Could not hash the existing local file completely.')
+                  existingHash.update(buffer.subarray(0, bytesRead))
+                  position += bytesRead
+                }
+              } finally { await existingFile.close() }
+              const sha256 = existingHash.digest('hex')
+              if (sha256 !== expectedSha256) throw new Error('Existing local file SHA-256 does not match the remote Manifest.')
+              files.push({ path: normalizedPath, local_path: localPath, bytes: expectedBytes, sha256, status: 'already_verified' })
+              continue
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+                errors.push({ path: normalizedPath, error: error instanceof Error ? error.message : String(error) })
+                continue
+              }
+            }
+            const remotePath = `.zerowall/jobs/${values.job_id}/result/${normalizedPath}`
+            try {
+              const downloaded = await service.ctx.tools.execute({
+                signal: exec.signal,
+                callId: ToolCallId(`r-download-manifest-${Date.now()}-${files.length}`),
+                name: 'r_files',
+                arguments: { action: 'download_workspace', source: 'project', project_id: values.project_id, remote_path: remotePath, local_path: localPath },
+                parent: exec.token,
+                agent: exec.agent,
+              })
+              if (downloaded.isError) {
+                const message = downloaded.content.map((block: ContentBlock) => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
+                throw new Error(message || 'Host file download failed.')
+              }
+              const payload = downloaded.value as Record<string, JsonValue>
+              if (Number(payload.bytes) !== expectedBytes || String(payload.sha256).toLowerCase() !== expectedSha256) throw new Error('Downloaded file verification differs from the job Manifest.')
+              files.push({ path: normalizedPath, local_path: localPath, bytes: expectedBytes, sha256: expectedSha256, status: 'verified' })
+            } catch (error) {
+              errors.push({ path: normalizedPath, error: error instanceof Error ? error.message : String(error) })
+            }
+          }
+          return {
+            source: 'project_manifest', projectId: values.project_id, jobId: values.job_id,
+            localRoot: localRoot.replaceAll('\\', '/'), manifestFiles: rawFiles.length,
+            verifiedFiles: files.length, failedFiles: errors.length, totalBytes: totalBytes.toString(),
+            status: errors.length === 0 && files.length === rawFiles.length ? 'complete' : 'partial', files, errors,
+          }
+        }
         const remotePath = downloadSource === 'figureya_source' ? figureyaRequest?.path : values.remote_path
         const defaultName = typeof remotePath === 'string' ? basename(remotePath.replaceAll('\\', '/')) : ''
         if (args.action === 'download_workspace' && (defaultName === '' || defaultName === '.' || defaultName === '..')) {
@@ -476,6 +663,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const source = resolve(workspace, requested)
         const containment = relative(workspace, source)
         if (containment === '' || containment === '..' || containment.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`) || isAbsolute(containment)) throw new Error('local_path must name a file inside the current workspace.')
+        if ((args.action === 'upload_workspace' || (args.action === 'download_workspace' && downloadSource === 'project'))) {
+          const workflow = service.ctx.researchWorkflow?.get()
+          if (workflow === undefined) throw new Error('Research workflow service is unavailable for automatic project binding.')
+          values.project_id = await workflow.resolveProjectId(exec, values.project_id)
+        }
         if (args.action === 'download_figureya_module') {
           if (typeof values.module_id !== 'string' || values.module_id.trim() === '') throw new Error('module_id is required for download_figureya_module.')
           const moduleId = values.module_id.trim()
@@ -682,7 +874,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const expectedBytes = Number(manifest.bytes)
         const expectedSha256 = typeof manifest.sha256 === 'string' ? manifest.sha256.toLowerCase() : ''
         if ((typeof manifest.bytes !== 'number' && typeof manifest.bytes !== 'string') || (typeof manifest.bytes === 'string' && manifest.bytes.trim() === '')
-          || !Number.isSafeInteger(expectedBytes) || expectedBytes < 0 || expectedBytes > 20 * 1024 ** 3) throw new Error('The remote file must be between 0 bytes and 20 GiB.')
+          || !Number.isSafeInteger(expectedBytes) || expectedBytes < 0) throw new Error('The remote file Manifest must contain a non-negative safe-integer byte size.')
         if (!/^[a-f0-9]{64}$/u.test(expectedSha256)) throw new Error('The remote file manifest has no valid SHA-256.')
         const parent = dirname(source)
         let currentParent = workspace
@@ -704,33 +896,60 @@ export class ZeroWallMcpService extends TypertRemoteService {
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
         }
-        const temporary = `${source}.${randomUUID()}.download-partial`
-        const output = await open(temporary, 'wx')
-        const hash = createHash('sha256')
+        const temporary = `${source}.download-partial`
+        let output: Awaited<ReturnType<typeof open>>
         let offset = 0
+        try {
+          const partial = await lstat(temporary)
+          if (!partial.isFile() || partial.isSymbolicLink()) throw new Error('The resumable download file is not a regular file.')
+          output = await open(temporary, 'r+')
+          if (partial.size <= expectedBytes) offset = partial.size
+          else { await output.truncate(0); offset = 0 }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+          output = await open(temporary, 'wx+')
+        }
+        let hash = createHash('sha256')
         let sha256: string
         try {
+        if (offset > 0) {
+          const existing = Buffer.alloc(RDATALINUX_DOWNLOAD_CHUNK_BYTES)
+          for (let position = 0; position < offset;) {
+            const { bytesRead } = await output.read(existing, 0, Math.min(existing.length, offset - position), position)
+            if (!bytesRead) throw new Error(`The resumable download file ended while hashing at byte ${position}.`)
+            hash.update(existing.subarray(0, bytesRead))
+            position += bytesRead
+          }
+          if (offset === expectedBytes && hash.copy().digest('hex') !== expectedSha256) {
+            await output.truncate(0)
+            offset = 0
+            hash = createHash('sha256')
+          }
+        }
         while (offset < expectedBytes) {
           const chunkResult = await service.ctx.tools.execute({
             signal: exec.signal,
             callId: ToolCallId(`r-download-chunk-${Date.now()}-${offset}`),
             name: downloadTool,
             arguments: downloadSource === 'biomni'
-              ? { action: 'biomni.read.file.chunk', arguments: { job_id: values.job_id, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset), internal_host_download: true } }
+              ? { action: 'biomni.read.file.chunk', arguments: { job_id: values.job_id, path: resolvedRemotePath, offset, length: Math.min(RDATALINUX_DOWNLOAD_CHUNK_BYTES, expectedBytes - offset), internal_host_download: true } }
               : figureyaRequest === undefined
-                ? { action: 'r.read.file.chunk', arguments: { project_id: values.project_id, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset), internal_host_download: true } }
-                : { action: 'figureya.read.source.file.chunk', arguments: { module_id: figureyaRequest.moduleId, path: resolvedRemotePath, offset, length: Math.min(4_194_304, expectedBytes - offset), internal_host_download: true } },
+                ? { action: 'r.read.file.chunk', arguments: { project_id: values.project_id, path: resolvedRemotePath, offset, length: Math.min(RDATALINUX_DOWNLOAD_CHUNK_BYTES, expectedBytes - offset), internal_host_download: true } }
+                : { action: 'figureya.read.source.file.chunk', arguments: { module_id: figureyaRequest.moduleId, path: resolvedRemotePath, offset, length: Math.min(RDATALINUX_DOWNLOAD_CHUNK_BYTES, expectedBytes - offset), internal_host_download: true } },
             parent: exec.token,
             agent: exec.agent,
           })
           const chunkPayload = service.compactPayload(chunkResult, 'rdatalinux file chunk')
           if (typeof chunkPayload.data_base64 !== 'string' || chunkPayload.data_base64 === '') throw new Error(`The remote file chunk at offset ${offset} has no data.`)
           const encodedChunk = chunkPayload.data_base64
-          if (encodedChunk.length % 4 !== 0 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(encodedChunk)) {
+          // A repeated-group regex over multi-MiB Base64 can overflow V8's
+          // regexp stack. Check the alphabet linearly; canonical re-encoding
+          // below validates padding and rejects permissive Buffer decoding.
+          if (encodedChunk.length % 4 !== 0 || /[^A-Za-z0-9+/=]/u.test(encodedChunk)) {
             throw new Error(`The remote file chunk at offset ${offset} is not valid base64.`)
           }
           const chunk = Buffer.from(encodedChunk, 'base64')
-          if (chunk.toString('base64') !== encodedChunk || chunk.length < 1 || chunk.length > 4_194_304 || offset + chunk.length > expectedBytes) {
+          if (chunk.toString('base64') !== encodedChunk || chunk.length < 1 || chunk.length > RDATALINUX_DOWNLOAD_CHUNK_BYTES || offset + chunk.length > expectedBytes) {
             throw new Error(`The remote file chunk at offset ${offset} has an invalid length or encoding.`)
           }
           if (chunkPayload.offset !== undefined && Number(chunkPayload.offset) !== offset) throw new Error(`The remote file chunk offset does not match the requested offset ${offset}.`)
@@ -740,7 +959,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
           if (chunkPayload.eof !== undefined && (typeof chunkPayload.eof !== 'boolean' || chunkPayload.eof !== (offset + chunk.length === expectedBytes))) throw new Error(`The remote file chunk EOF marker is invalid at offset ${offset}.`)
           let written = 0
           while (written < chunk.length) {
-            const progress = await output.write(chunk, written, chunk.length - written)
+            const progress = await output.write(chunk, written, chunk.length - written, offset + written)
             if (progress.bytesWritten === 0) throw new Error('Local download write made no progress.')
             written += progress.bytesWritten
           }
@@ -763,9 +982,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
           if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error('The download target already exists; choose a new local_path to avoid overwriting it.')
           throw error
         }
+        await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error })
         } finally {
           await output.close()
-          await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error })
         }
         return downloadSource === 'biomni'
           ? { source: 'biomni', jobId: values.job_id!, remotePath: resolvedRemotePath, localPath: requested, name: basename(source), bytes: expectedBytes, sha256 }
@@ -776,11 +995,12 @@ export class ZeroWallMcpService extends TypertRemoteService {
     }) as any)
     ctx.tools.register(defineTool({
       name: 'r_download_workspace',
-      description: 'Download a remote RMCP project artifact, Biomni result, or installed FigureYa source file directly into the current local workspace. This creates the real file on disk; it never returns base64 for the user to decode. Give remote_path and project_id (source=project), job_id (source=biomni), or module_id plus source_path (source=figureya_source). local_path is optional and defaults to downloads/<filename>. The Host verifies size and SHA-256 and refuses to overwrite existing files.',
+      description: 'Download remote results directly into the current local workspace, including every file from an R job Manifest. Set download_all=true with a project job_id to collect the full result directory; project_id is optional because Host binds the current conversation. Single files use remote_path. Biomni uses job_id; FigureYa uses module_id and source_path. local_path defaults to downloads/<filename> for a single file and downloads/faerskit/<job_id> for a full manifest. Downloads stream 1 MiB chunks, resume partial files, verify SHA-256, report per-file failures, and never return file content to the conversation.',
       parameters: {
         source: { type: 'string', enum: ['project', 'biomni', 'figureya_source'] },
         project_id: { type: 'string' },
         job_id: { type: 'string' },
+        download_all: { type: 'boolean', description: 'Download every artifact from a completed remote R job Manifest.' },
         module_id: { type: 'string' },
         source_path: { type: 'string' },
         remote_path: { type: 'string' },
@@ -790,12 +1010,12 @@ export class ZeroWallMcpService extends TypertRemoteService {
         schema: { type: 'object', additionalProperties: true },
         render: (_args: unknown, value: JsonValue) => [{ type: 'text', text: JSON.stringify(value) }],
       },
-      async execute(args: { source?: 'project' | 'biomni' | 'figureya_source'; project_id?: string; job_id?: string; module_id?: string; source_path?: string; remote_path?: string; local_path?: string }, exec: any) {
+      async execute(args: { source?: 'project' | 'biomni' | 'figureya_source'; project_id?: string; job_id?: string; module_id?: string; source_path?: string; remote_path?: string; local_path?: string; download_all?: boolean }, exec: any) {
         const nested = await service.ctx.tools.execute({
           signal: exec.signal,
           callId: ToolCallId(`r-download-workspace-${Date.now()}`),
           name: 'r_files',
-          arguments: { action: 'download_workspace', ...args },
+          arguments: { action: args.download_all ? 'download_job_manifest' : 'download_workspace', ...args },
           parent: exec.token,
           agent: exec.agent,
         })
@@ -837,13 +1057,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
             if (block.name === 'mcp_connect') {
               try {
                 const args = typeof block.arguments === 'string' ? JSON.parse(block.arguments) : block.arguments
-                const server = typeof args?.server === 'string' ? args.server : undefined
-                if (server) selected.add(server)
+                const server = typeof args?.server === 'string' ? canonicalMcpServerName(args.server) : undefined
+                if (server) {
+                  const record = this.projects().listMcpServers().find(item => item.serverName === server)
+                  if (record) for (const name of this.registeredTools.get(record.id) ?? []) selected.add(name)
+                }
               } catch { /* malformed historical arguments do not expose schemas */ }
             }
-            for (const record of this.projects().listMcpServers()) {
-              if (block.name.startsWith(`mcp__${record.serverName}__`)) selected.add(record.serverName)
-            }
+            if (block.name.startsWith('mcp__')) selected.add(block.name)
           }
         }
         this.selectedTools.set(scope, selected)
@@ -853,7 +1074,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
         if (schema.name === RETIRED_R_PROJECT_TOOL) return false
         if (!schema.name.startsWith('mcp__')) return true
         const record = records.find(item => schema.name.startsWith(`mcp__${item.serverName}__`))
-        return record === undefined || selected.has(record.serverName)
+        return record === undefined || selected.has(schema.name)
       }) }
     })
     // Nested Cordis fibers created during boot join the boot barrier even
@@ -920,7 +1141,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   async workflowRequest(action: string, args: unknown, exec: any): Promise<unknown> {
-    await this.ensureConnected('rmcp')
+    await this.ensureConnected('rmcp', true)
     const target = 'mcp__rmcp__r_runtime'
     const result = await this.ctx.tools.execute({ callId: ToolCallId(`${exec.callId}:${action}`), name: target, arguments: { action, arguments: normalizeJsonArguments(args) }, agent: exec.agent, parent: exec.token, rootCallId: exec.rootCallId ?? exec.callId, signal: exec.signal })
     if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n'))
@@ -977,6 +1198,21 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   async executeCompactCapability(id: string, args: unknown, exec: any): Promise<{ target: string; content: ContentBlock[]; value: unknown }> {
     const safeArgs = normalizeJsonArguments(args ?? {})
+    if (id === 'r.ensure.project') {
+      const target = 'mcp__rmcp__r_runtime'
+      if (this.ctx.tools.get(target) === undefined) throw new Error('The configured RMCP connection does not provide automatic conversation storage. No analysis was submitted; update the RMCP plugin and retry.')
+      const result = await this.ctx.tools.execute({
+        callId: ToolCallId(`${exec.callId}:conversation-project`),
+        name: target,
+        arguments: { action: id, arguments: safeArgs },
+        agent: exec.agent,
+        parent: exec.token,
+        rootCallId: exec.rootCallId ?? exec.callId,
+        signal: exec.signal,
+      })
+      if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\\n') || 'Automatic conversation project binding failed.')
+      return { target, content: result.content, value: result.value }
+    }
     const [record] = await this.searchCompactCapabilities('', id, 1, exec)
     if (record === undefined) throw new Error(`UNKNOWN_CAPABILITY: ${id}`)
     if (record.backend === 'rmcp' && (id === 'tooluniverse.run.tool' || id.startsWith('tooluniverse.tool.'))) {
@@ -1270,6 +1506,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
     // to normalize because their endpoint is product-owned; custom MCP
     // records keep their URL and settings.
     for (const server of projects.listMcpServers()) {
+      if (server.serverName === 'zerowall-rmcp') {
+        const existing = projects.listMcpServers().find(candidate => candidate.serverName === RDATALINUX_SERVER_NAME)
+        if (existing === undefined) projects.updateMcpServer(server.id, { serverName: RDATALINUX_SERVER_NAME, name: 'rmcp' })
+        else if (existing.id !== server.id) projects.deleteMcpServer(server.id)
+      }
       if (['rdatalinux_biomni', 'rdatalinux_r_platform', 'rbioagent', 'rplatform', 'rplotfigure'].includes(server.serverName)
         && server.transport === 'streamable-http'
         && server.headerRefs?.Authorization === RDATALINUX_R_MCP_AUTHORIZATION_ENV) {
@@ -1447,12 +1688,22 @@ export class ZeroWallMcpService extends TypertRemoteService {
   }
 
   /** Coalesce demand for one server; inspection and polling never call this method. */
-  async ensureConnected(serverName: string): Promise<void> {
+  async ensureConnected(serverName: string, refresh: boolean = false): Promise<void> {
     await this.recordsReady
     if (this.disposed) throw new Error('MCP service is stopping.')
-    const record = this.projects().listMcpServers().find(item => item.serverName === serverName)
-    if (record === undefined || !record.enabled) throw new Error('MCP connection is disabled or unknown. Enable it in Settings first.')
-    if (['active', 'active-with-zero-tools'].includes(this.statuses.get(record.id)?.state ?? '') && (this.fibers.has(record.id) || this.managed.has(record.id))) return
+    const canonical = canonicalMcpServerName(serverName)
+    let record = this.projects().listMcpServers().find(item => item.serverName === canonical)
+    if (record === undefined && canonical === RDATALINUX_SERVER_NAME && process.env.ZEROWALL_DISABLE_DEFAULT_MCP !== '1') {
+      record = this.projects().createMcpServer({ name: 'rmcp', serverName: RDATALINUX_SERVER_NAME, transport: 'streamable-http', enabled: true, url: RDATALINUX_R_MCP_URL, headerRefs: { Authorization: RDATALINUX_R_MCP_AUTHORIZATION_ENV }, failOnStartupError: true })
+      this.statuses.set(record.id, { state: 'idle', error: '', missingEnvironmentVariables: [] })
+    } else if (record !== undefined && canonical === RDATALINUX_SERVER_NAME && !record.enabled) {
+      // A direct R/FAERS capability request is an explicit demand for the
+      // product-owned RMCP connection. Repair a stale disabled record only at
+      // that point; unrelated MCP servers keep their user-selected state.
+      record = this.projects().updateMcpServer(record.id, { enabled: true })
+    }
+    if (record === undefined || !record.enabled) throw new Error(`MCP connection is disabled or unknown: ${canonical}`)
+    if (!refresh && ['active', 'active-with-zero-tools'].includes(this.statuses.get(record.id)?.state ?? '') && (this.fibers.has(record.id) || this.managed.has(record.id))) return
     const cooldown = this.failureCooldownUntil.get(record.id) ?? 0
     if (cooldown > Date.now()) throw new Error('MCP connection is cooling down after a failed start. Retry later or reload it from Settings.')
     let pending = this.connecting.get(record.id)
@@ -1460,7 +1711,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       pending = this.exclusive(async () => {
         const current = this.projects().getMcpServer(record.id)
         if (current === undefined || !current.enabled) throw new Error('MCP connection is disabled or removed.')
-        if (!['active', 'active-with-zero-tools'].includes(this.statuses.get(record.id)?.state ?? '')) await this.reconcile(current)
+        if (refresh || !['active', 'active-with-zero-tools'].includes(this.statuses.get(record.id)?.state ?? '')) await this.reconcile(current, refresh)
         const status = this.statuses.get(record.id)
         if (!['active', 'active-with-zero-tools'].includes(status?.state ?? '')) throw new Error(status?.error || 'MCP connection is unavailable.')
       })

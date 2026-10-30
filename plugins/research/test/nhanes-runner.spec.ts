@@ -61,7 +61,7 @@ async function fixture(exploratory = true, certified = true) {
   const question = store.createResearchDocument({ projectId: project.id, studyId: study.id, kind: 'question', payload: { estimand: 'mean age' } })
   const latest = store.getResearchStudy(study.id)!
   store.updateResearchStudy(study.id, { expectedVersion: latest.version, currentQuestionId: question.id, currentPlanId: plan.id })
-  const execute = vi.fn(async (id: string) => ({ target: id, content: [], value: { structuredContent: { ...(certified ? { runner_contract: NHANES_SURVEY_RUNNER, analysis_complete: true } : {}), mean: 41, standard_error: 1.2, scientific_review: 'pending' } } }))
+  const execute = vi.fn(async (id: string, args: any = {}) => ({ target: id, content: [], value: { structuredContent: id === 'r.ensure.project' ? { project_id: `zw-${args.binding_key}`, managed: true, scope: 'conversation' } : { ...(certified ? { runner_contract: NHANES_SURVEY_RUNNER, analysis_complete: true } : {}), mean: 41, standard_error: 1.2, scientific_review: 'pending' } } }))
   const backend = { workflowRequest: vi.fn(async (_action: string, args: any) => { const operation = rWorkflows.modules.find(m => m.id === args.workflow_id)?.operations.find(o => o.id === args.operation); if (!operation) throw new Error('Wrong workflow or operation'); return operation }), ensureConnected: vi.fn(), executeCompactCapability: execute } as any
   const researchContext = { ensureResearchContext: ({ sessionId }: { sessionId: string }) => store.ensureResearchContext({ sessionId, rootPath: root, projectName: 'Survey' }) }
   const workflow = new ResearchWorkflowService(store, join(root, 'workflows'), backend, undefined, () => researchContext as any)
@@ -77,7 +77,7 @@ describe('persisted survey execution and evidence', () => {
     const result = await f.service.execute(f.project, f.input, f.exec)
     expect(result).toMatchObject({ status: 'succeeded', analysisComplete: true, remoteId: null, needsReview: true, evidence: { payload: { needsReview: true, evidenceType: 'observational-survey' } } })
     expect(f.backend.workflowRequest).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ workflow_id: 'r.nhanes', operation: 'r.nhanes.survey.summary' }), expect.anything())
-    expect(f.execute).toHaveBeenCalledWith('r.nhanes.survey.summary', expect.objectContaining({ project_id: 'nhanes-existing-project' }), expect.anything())
+    expect(f.execute).toHaveBeenCalledWith('r.nhanes.survey.summary', expect.objectContaining({ project_id: expect.stringMatching(/^zw-[a-f0-9]{64}$/u) }), expect.anything())
     const artifact = result.artifact as JsonObject
     const manifest = JSON.parse(await readFile(fileURLToPath(String(artifact.uri)), 'utf8'))
     expect(manifest).toMatchObject({ taskId: f.task.id, contractId: f.data.id, planId: f.plan.id, scientificReview: 'pending', remoteId: null, result: { mean: 41 } })

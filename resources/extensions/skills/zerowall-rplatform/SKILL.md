@@ -18,7 +18,7 @@ allowed-tools: read
 
 查询 schema：`action=describe`，精确 ID 放顶层 `operation`。业务调用：`action=query/run`，精确 ID 放 `parameters.operation`，业务参数放 `parameters.arguments`。只读 query 不创建 Run、不需要 request_id；run 必须有唯一 request_id，同一提交重试复用，参数变化换新 ID。`offline=true` 的 describe 仅浏览本地快照，不能证明在线能力可用。
 
-工作流 ID：`r.compute`。R 脚本输出使用工作区相对路径；保存 sessionInfo、随机种子和代码。若实时远端 schema 要求 `project_id`，只使用现有远端 ID；Host 不创建或注册项目。包缺失先查询 zerowall-r-packages，不在脚本里自动安装。
+工作流 ID：`r.compute`。R 脚本输出使用工作区相对路径；保存 sessionInfo、随机种子和代码。每个对话绑定独立远程项目，仅在同一对话内复用；调用时省略 `project_id`，Host 会在 RMCP 后端自动获取，不要求用户查找、填写或确认 ID。包缺失先查询 zerowall-r-packages，不在脚本里自动安装。
 
 ## 首次调用
 
@@ -49,7 +49,6 @@ allowed-tools: read
   "parameters": {
     "operation": "r.submit.script",
     "arguments": {
-      "project_id": "rmcp-demo",
       "code": "out <- Sys.getenv('R_PLATFORM_RESULT_DIR'); write.csv(data.frame(x=1:3,y=c(2,4,7)), file.path(out,'result.csv'), row.names=FALSE); capture.output(sessionInfo(), file=file.path(out,'session-info.txt'))",
       "confirm": true
     },

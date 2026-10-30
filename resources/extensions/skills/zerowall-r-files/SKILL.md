@@ -8,6 +8,10 @@ allowed-tools: read
 
 需要跨本地/远程传输时，优先调用独立 Host 工具 `r_download_workspace`，直接把远端文件写入当前本地工作区。R、OmicVerse、FigureYa 绘图、GEO、NHANES、遗传分析和 scTenifoldKnk 等 RMCP 结果，使用 `source=project`、Manifest 的 `project_id/path`；Biomni 独立任务结果使用 `source=biomni`、`job_id` 和 Manifest 文件路径；FigureYa 安装目录里的模板源文件使用 `source=figureya_source`、`module_id/source_path`。省略 `local_path` 时保存至 `downloads/<文件名>`。兼容入口是 Host `r_files` 的 `action=download_workspace`；批量取回整个 FigureYa 模板才使用 `download_figureya_module`。服务器已有文件查询仍使用本工作流。
 
+完整取回一个 R 作业时，使用 Host `r_files` 的 `action=download_job_manifest`，传 `job_id`，`project_id` 可省略由 Host 自动绑定；也可用 `r_download_workspace` 的 `download_all=true`。默认保存到 `downloads/faerskit/<job_id>/`，`local_path` 可指定工作区内相对目录。该动作下载完整 Manifest，保留子目录并逐文件核验大小和 SHA-256；`status=partial` 时按同一作业和目录重试，复用已验证文件并续传部分文件。不要以重新提交分析代替下载重试。
+
+下载以 1 MiB 流式分块写盘，不设置单文件、文件数或总字节数产品上限；实际磁盘、网络或校验错误会逐文件返回。Base64 仅供 Host 内部传输，不进入对话。以 `manifestFiles`、`verifiedFiles`、`failedFiles` 和 `status` 判断是否全量完成。
+
 ## 功能地图
 
 目录与路径解析；文本与数据预览；读写和删除；Manifest 与 SHA-256；图片显式读取；Host 上传、下载、模板源文件下载。

@@ -72,7 +72,7 @@ export interface AiCloudManagedModel {
   stale?: boolean
   contextWindow?: number
   maxOutputTokens?: number
-  capacitySource?: 'gateway'
+  capacitySource?: 'gateway' | 'models-dev'
 }
 export interface AiCloudModelSync {
   checkedAt: string

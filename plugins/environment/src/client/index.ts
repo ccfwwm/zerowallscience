@@ -7,6 +7,7 @@ import type { ImageModelSelection, EnvironmentVariableInfo } from '../shared/typ
 import { EnvironmentSection } from './section.js'
 import { unwrapRemoteResult } from '@zerowallscience/plugin-base/client-helpers'
 import { en, NS, zh } from './locales.js'
+import { ContextBudgetControl } from './context-budget.js'
 
 // Cordis uses an object inject declaration as a service-to-intercept map.  It
 // does not have `required`/`optional` groups; declaring those names would make
@@ -58,6 +59,9 @@ export function apply(ctx: ClientContext): void {
       },
     }),
   }, EnvironmentSection), 'zerowall: environment settings'), 'zerowall: environment settings injection')
+  ctx.effect(() => ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+    name: 'conversation.input.right', id: 'zerowall-context-budget', order: -20, locale: NS,
+    inject: () => ({ environmentRemote, t }),
+  }, ContextBudgetControl), 'zerowall: session context budget'), 'zerowall: session context budget injection')
 }
-
 export type { ImageModelSelection, EnvironmentVariableInfo }

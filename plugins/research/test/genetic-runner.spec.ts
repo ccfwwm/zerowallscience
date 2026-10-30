@@ -39,6 +39,7 @@ async function fixture(exploratory = true) {
   }
   const execute = vi.fn(async (id: string, args: any) => {
     let value: any = {}
+    if (id === 'r.ensure.project') value = { project_id: `zw-${args.binding_key}`, managed: true, scope: 'conversation' }
     if (id === 'r.genetics.run') { createFiles({ ...args.request, request_id: args.request_id }); value = { job_id: 'genetics-job-1', status: 'queued' } }
     if (id === 'r.get.job') value = { status }
     if (id === 'r.get.job.manifest') value = { files: [...files.entries()].map(([name, text]) => ({ path: `genetics/${name}`, sha256: sha(text), bytes: Buffer.byteLength(text), mime_type: 'application/json' })) }
@@ -95,7 +96,7 @@ describe('genetics durable Host adapter', () => {
     const f = await fixture()
     const first = await f.service.execute(f.project, f.input, f.exec)
     expect(first).toMatchObject({ status: 'running', analysisComplete: false, evidence: null, remoteId: 'genetics-job-1' })
-    expect(f.execute).toHaveBeenCalledWith('r.genetics.run', expect.objectContaining({ project_id: 'genetics-existing-project' }), f.exec)
+    expect(f.execute).toHaveBeenCalledWith('r.genetics.run', expect.objectContaining({ project_id: expect.stringMatching(/^zw-[a-f0-9]{64}$/u) }), f.exec)
     const id = String((first.run as JsonObject).id)
     await f.service.execute(f.project, f.input, f.exec)
     expect(f.execute.mock.calls.filter(([operation]) => operation === 'r.genetics.run')).toHaveLength(1)
@@ -177,11 +178,16 @@ describe('genetics durable Host adapter', () => {
     expect(await f.service.execute(f.project, f.input, f.exec)).toMatchObject({ status: 'succeeded', analysisComplete: false, evidence: null, error: expect.stringContaining('numerical') })
     expect(f.store.listArtifacts(f.project.id)).toHaveLength(3)
   })
-  it('requires an explicitly configured existing remote project and never derives one from a local path', async () => {
+  it('runs and retrieves genetics with an automatically bound remote project', async () => {
     const f = await fixture()
     f.store.updateProjectSettings(f.project.id, {})
-    await expect(f.service.execute(f.project, f.input, f.exec)).rejects.toThrow('EXISTING_PROJECT_ID_REQUIRED')
-    expect(f.execute.mock.calls.some(([operation]) => operation === 'r.genetics.run')).toBe(false)
-    expect(f.store.listAuditEvents(f.project.id).some(event => event.action === 'genetics.requested')).toBe(false)
+    f.status('succeeded')
+    const result = await f.service.execute(f.project, f.input, f.exec)
+    expect(result.analysisComplete).toBe(true)
+    const registered = f.execute.mock.calls.find(([operation]) => operation === 'r.ensure.project')!
+    expect(registered[1].binding_key).toMatch(/^[a-f0-9]{64}$/u)
+    expect(registered[1].name).toContain('ZeroWall conversation')
+    const projectId = `zw-${registered[1].binding_key}`
+    expect(f.execute).toHaveBeenCalledWith('r.genetics.run', expect.objectContaining({ project_id: projectId }), expect.anything())
   })
 })

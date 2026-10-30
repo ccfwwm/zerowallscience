@@ -12,7 +12,7 @@ allowed-tools: read
 
 1. 用 `action=search`、关键词及 `offset/limit` 发现目录；缺密钥和缺依赖的工具仍可发现。状态查询用 `action=query`、`workflow_id=tooluniverse`、`operation=tooluniverse.status`，`parameters` 留空；旧客户端的 `status` 别名也受支持。不要把 `status` 当成能力 ID，也不要把项目 ID 传给状态操作。需要精确底层 schema 时用 `action=describe` 和完整原始 ID，例如 `tooluniverse.tool.UniProt_get_entry_by_accession`。保留大小写和下划线。
 2. 检查 `availability`、`available`、`conditionally_available`、`verification`、`blockers`、`required_credentials` 和 `input_schema`。`requires_credentials` 表示只缺本次请求的可信凭据；配置凭据后可执行。`requires_runtime_check` 表示依赖条件满足但尚未逐项实测，不等于已验证。`blocked` 和 `upstream_broken` 才表示当前不能执行，并会列出前置条件或上游原因。管理员关闭模块、缺依赖、GPU、模型、执行审查或失效 API 时按具体原因处理，不替代为虚构结果。首期没有 ToolUniverse 自治 Agent。
-3. 资源查询可直接按用户请求执行，不创建本地任务登记。用 `research_workflow` 的 `action=run` 提交；业务参数放在 `parameters.arguments.tool_arguments`。顶层 `parameters.request_id` 是本地提交幂等键，同一提交重试复用，参数改变使用新键。Host 不创建或注册远程项目；仅当实时 schema 要求 `project_id` 时，使用现有远程 ID。凭据只在设置中保存引用，由可信 Host 按任务发送；不得写入参数、聊天或文件。
+3. 资源查询可直接按用户请求执行，不创建本地任务登记。用 `research_workflow` 的 `action=run` 提交；业务参数放在 `parameters.arguments.tool_arguments`。顶层 `parameters.request_id` 是本地提交幂等键，同一提交重试复用，参数改变使用新键。可省略 `project_id`，由 Host 后台复用绑定或自动注册隔离项目；不要要求用户查找 ID。凭据只在设置中保存引用，由可信 Host 按任务发送；不得写入参数、聊天或文件。
 4. 保存本地 `run_id`，用 `action=status` 刷新状态并取得成功任务的 Manifest，必要时用 `action=cancel`。需要远端短等待时，通过 `action=query` 调用 `tooluniverse.wait.job`，只传实时 schema 要求的远程 job 标识。取消及超时为终态；服务重启中断的任务不自动重放。连接中断先按原提交查询任务历史。
 5. 成功后核对实际记录身份、来源、查询时间和版本。读取 Manifest；需要从远端项目取文件时，用 Host `r_files`、`source=project`、现有 `project_id` 和 Manifest 路径下载至工作区并核对 SHA-256。大结果在文件中，摘要不能代替完整记录。
 

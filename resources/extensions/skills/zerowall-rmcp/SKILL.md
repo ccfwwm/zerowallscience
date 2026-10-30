@@ -24,6 +24,8 @@ allowed-tools: read
 
 ## 首次调用
 
+`research_workflow` 自动处理远程项目绑定。每个对话绑定独立项目，只在同一对话内复用，不按用户或工作区跨对话共用。调用时省略 `project_id`，由 Host 在 RMCP 后端自动获取项目；不要要求用户查找、填写或确认项目 ID。后续操作和下载沿用该对话绑定，重连不新建分析任务。
+
 Host tool registry 输入 `{"query":"research_workflow"}`。然后交给 the native tool：
 
 ```json
@@ -51,7 +53,6 @@ Host tool registry 输入 `{"query":"research_workflow"}`。然后交给 the nat
   "parameters": {
     "operation": "r.submit.script",
     "arguments": {
-      "project_id": "rmcp-demo",
       "code": "writeLines(capture.output(sessionInfo()), file.path(Sys.getenv('R_PLATFORM_RESULT_DIR'), 'session-info.txt'))",
       "confirm": true
     },

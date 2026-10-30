@@ -43,8 +43,21 @@ describe('environment configuration', () => {
     await service.setContextBudget(512_000)
     expect(service.getContextBudget()).toBe(512_000)
     expect(replace).toHaveBeenCalledWith(ENVIRONMENT_SETTINGS_NS, expect.objectContaining({ contextBudgetTokens: 512_000 }))
-    await expect(service.setContextBudget(31_999)).rejects.toThrow('32k 到 2,000k')
-    await expect(service.setContextBudget(2_000_001)).rejects.toThrow('32k 到 2,000k')
+    await expect(service.setContextBudget(31_999)).rejects.toThrow('32k 到 1,000k')
+    await expect(service.setContextBudget(1_000_001)).rejects.toThrow('32k 到 1,000k')
+  })
+  it('stores and reads a per-session budget override without changing global settings', async () => {
+    const session = Session.create(SessionId('session-budget-override'))
+    const agent = { session } as any
+    const { service, replace } = fixture()
+    ;(service as any).hostCtx.agents = { get: (id: SessionId) => String(id) === String(session.id) ? agent : undefined }
+    expect(service.getSessionContextBudget(String(session.id))).toBe(300_000)
+    await service.setSessionContextBudget(String(session.id), 512_000)
+    expect(service.getSessionContextBudget(String(session.id))).toBe(512_000)
+    expect(service.getContextBudget()).toBe(300_000)
+    expect(replace).not.toHaveBeenCalled()
+    expect(session.snapshotEvents().at(-1)).toMatchObject({ type: 'zerowall/context-budget', data: { tokens: 512_000 } })
+    await expect(service.setSessionContextBudget(String(session.id), 1_000_001)).rejects.toThrow('32k 到 1,000k')
   })
   it('selects an old balanced tool-call range and preserves the newest surface event', () => {
     const session = {

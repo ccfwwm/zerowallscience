@@ -65,4 +65,77 @@ describe('ZeroWall native tool composition', () => {
 	expect(records.filter(record => record.cache_hit_rate === 0.9)).toHaveLength(2)
     expect(logs.join('')).not.toContain('short result')
   })
+
+  it('restricts a large tool surface and expands it only after capability_search enables an exact tool', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt, {})
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjection)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(LlmRuntime)
+    ctx.provide('webServer', { register() {} } as never)
+    ctx.provide('workspaceRegistry', { list: () => [], create: vi.fn() } as never)
+    applyBase(ctx)
+    const called = vi.fn(async () => 'loaded')
+    const standardTools = [
+      'bash', 'pwsh', 'read', 'write', 'edit', 'glob', 'grep', 'read_image', 'working_directory',
+      'web_search', 'web_fetch', 'skill', 'skill_search', 'ask_user_question', 'create_goal',
+      'get_goal', 'update_goal', 'exit_plan_mode', 'job_kill', 'job_list', 'job_output',
+      'todo_write', 'subagent', 'subagent_fork', 'schedule_list',
+    ]
+    for (const name of standardTools) {
+      ctx.tools.register(defineTool({
+        name, description: `DSH standard tool ${name}`, parameters: {},
+        output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+        execute: called,
+      }))
+    }
+    for (let index = 0; index < 160; index += 1) {
+      const name = `zerowall_extra_${index}`
+      ctx.tools.register(defineTool({
+        name, description: `Extra capability ${index} for on-demand loading`, parameters: {},
+        output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+        execute: called,
+      }))
+    }
+    await ctx.plugin(AgentLoop, { agents: [] })
+    const requests: GenerateOptions[] = []
+    class FixtureAdapter extends LlmAdapter {
+      async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+        requests.push(options)
+        const call = requests.length === 1
+          ? { name: 'capability_search', arguments: JSON.stringify({ query: 'extra capability' }) }
+          : requests.length === 2
+            ? { name: 'capability_search', arguments: JSON.stringify({ enable: ['zerowall_extra_3'] }) }
+            : requests.length === 3
+              ? { name: 'zerowall_extra_3', arguments: '{}' }
+              : undefined
+        if (call !== undefined) {
+          const id = ToolCallId(`on-demand-${requests.length}`)
+          yield { type: 'block-start', index: 0, blockType: 'tool-call' }
+          yield { type: 'tool-call-delta', index: 0, id, name: call.name, argumentsDelta: call.arguments }
+          yield { type: 'block-end', index: 0, block: { type: 'tool-call', id, ...call } }
+        }
+        yield { type: 'usage', usage: { inputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 1, totalTokens: 11 } }
+        yield { type: 'finish', reason: { kind: call === undefined ? 'stop' : 'tool-calls' } }
+      }
+    }
+    ctx.llm.registerAdapter(['fixture'], new FixtureAdapter())
+    const agent = await ctx.agentLoop.create(SessionId('zerowall-on-demand'), { provider: 'fixture', model: 'fixture' })
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Load one extra capability' }], source: { kind: 'user' } }))
+    await agent.whenIdle()
+    expect(called).toHaveBeenCalledOnce()
+    const initial = requests[0]?.tools?.map(tool => tool.name) ?? []
+    const afterSearch = requests[1]?.tools?.map(tool => tool.name) ?? []
+    const afterEnable = requests[2]?.tools?.map(tool => tool.name) ?? []
+    expect(initial).toContain('capability_search')
+    expect(initial).not.toContain('zerowall_extra_3')
+    expect(initial).toEqual(expect.arrayContaining(standardTools))
+    expect(initial).toHaveLength(standardTools.length + 1)
+    expect(afterSearch).not.toContain('zerowall_extra_3')
+    expect(afterEnable).toContain('zerowall_extra_3')
+    expect(afterEnable).not.toContain('zerowall_extra_4')
+    await ctx.fiber.dispose()
+  })
 })

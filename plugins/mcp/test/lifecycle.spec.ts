@@ -10,6 +10,7 @@ import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import McpConfigurationStorePlugin from '../src/host/configuration-store.js'
+import { matchMcpCapabilities } from '../src/host/capability-match.js'
 import ZeroWallMcpService, {
   ZeroWallMcpService as McpServiceClass,
   RDATALINUX_R_MCP_AUTHORIZATION_ENV,
@@ -56,6 +57,15 @@ afterEach(async () => {
 })
 
 describe('ZeroWall MCP Cordis lifecycle', () => {
+  it('fuzzy-matches configured server names and live tool descriptions', () => {
+    expect(matchMcpCapabilities('化学品检索', 'huagongshe', 'Huagongshe', []).score).toBeGreaterThan(0)
+    expect(matchMcpCapabilities('find a drug target', 'opcrd', 'OPCRD', []).score).toBeGreaterThan(0)
+    expect(matchMcpCapabilities('search greeting', 'fixture', 'Fixture', [
+      { name: 'mcp__fixture__greet', description: 'Greet and search text' },
+      { name: 'mcp__fixture__add', description: 'Add two numeric values' },
+    ]).tools.map(tool => tool.name)).toEqual(['mcp__fixture__greet'])
+  })
+
   it('keeps saved enabled connections disconnected through desktop mount', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-boot-gate-'))
     roots.push(root)
@@ -154,6 +164,51 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   }, 30_000)
 
+  it('repairs a disabled legacy RMCP record and refreshes it through the canonical name on demand', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-rmcp-legacy-demand-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.ZEROWALL_DEFER_DEFAULT_MCP = '1'
+    process.env.R_PLATFORM_MCP_AUTHORIZATION = 'fixture-token'
+    process.env.DSH_HOME = join(root, 'harness')
+    mkdirSync(process.env.DSH_HOME, { recursive: true })
+    writeFileSync(join(process.env.DSH_HOME, 'zerowall-mcp-defaults-v1.json'), JSON.stringify({ version: 10 }))
+    const fixtureServer = fileURLToPath(new URL(
+      '../../../deepseek-harness/packages/mcp/mcp-client/tests/fixture-server.ts',
+      import.meta.url,
+    ))
+    const fixtureDirectory = fileURLToPath(new URL(
+      '../../../deepseek-harness/packages/mcp/mcp-client/',
+      import.meta.url,
+    ))
+    const launcher = join(root, 'fixture.mjs')
+    writeFileSync(launcher, `await import(${JSON.stringify(pathToFileURL(fixtureServer).href)});`)
+
+    const ctx = new Context()
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(McpConfigurationStorePlugin)
+      const legacy = ctx.zerowallMcpConfigurationStore.createMcpServer({
+        name: 'Legacy RMCP', serverName: 'zerowall-rmcp', transport: 'stdio', enabled: false,
+        command: process.execPath, args: [launcher], cwd: fixtureDirectory, failOnStartupError: true,
+      })
+      await ctx.plugin(ZeroWallMcpService)
+
+      const migrated = (await ctx.zerowallMcp.list()).find(server => server.id === legacy.id)
+      expect(migrated).toMatchObject({ serverName: 'rmcp', enabled: false, runtimeState: 'disabled' })
+      const result = await ctx.tools.execute({
+        name: 'mcp_connect', arguments: { server: 'zerowall-rmcp' },
+        callId: ToolCallId('legacy-rmcp-demand'), signal: new AbortController().signal,
+      })
+      expect(result.isError, JSON.stringify(result.content)).toBe(false)
+      expect(result.value).toMatchObject({ server: 'rmcp', requestedServer: 'zerowall-rmcp', state: 'active' })
+      expect((await ctx.zerowallMcp.list()).find(server => server.id === legacy.id)).toMatchObject({ serverName: 'rmcp', enabled: true, runtimeState: 'active' })
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
   it('mounts tools from a real local stdio server and unregisters them when disabled', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-lifecycle-'))
     roots.push(root)
@@ -205,7 +260,9 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       })
       const results = await Promise.all([connect('demand-1'), connect('demand-2'), connect('demand-3')])
       expect(results.every(result => !result.isError), JSON.stringify(results.map(result => result.content))).toBe(true)
-      expect(readFileSync(startsFile, 'utf8')).toBe(initialStarts)
+      // Explicit mcp_connect is a refresh boundary, so concurrent connects
+      // may replace the stale client once while the live tools/list settles.
+      expect(readFileSync(startsFile, 'utf8').split('start\n').length - 1).toBeGreaterThanOrEqual(initialStarts.split('start\n').length - 1)
       const created = (await ctx.zerowallMcp.list()).find(server => server.id === idle.id)!
       expect(created.runtimeState, created.runtimeError).toBe('active')
       expect(created.tools).toEqual(expect.arrayContaining(['mcp__fixture__add', 'mcp__fixture__greet']))
@@ -213,14 +270,24 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(ctx.tools.get('mcp__fixture__add')).toBeDefined()
       expect(ctx.tools.get('mcp__fixture__greet')).toBeDefined()
       const initialAssembly = await ctx.systemPrompt.assemble({ scope: {} })
-      ;(ctx.zerowallMcp as any).selectedTools.set(selectionAgent, new Set(['fixture']))
+      ;(ctx.zerowallMcp as any).selectedTools.set(selectionAgent, new Set(['mcp__fixture__add']))
       const selectedAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent })
       const unscopedAssembly = await ctx.systemPrompt.assemble({})
       expect(initialAssembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(false)
       expect(unscopedAssembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(false)
       expect(selectedAssembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(true)
-      const search = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('search-fixture'), name: 'mcp_search', arguments: { query: 'greet' } })
+      expect(selectedAssembly.tools.some(tool => tool.name === 'mcp__fixture__greet')).toBe(false)
+      ;(ctx.zerowallMcp as any).selectedTools.delete(selectionAgent)
+      const search = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('search-fixture'), name: 'mcp_search', arguments: { query: 'greet' }, agent: selectionAgent })
       expect(search.value).toMatchObject({ matches: [expect.objectContaining({ server: 'fixture', tools: [expect.objectContaining({ name: 'mcp__fixture__greet' })] })] })
+      const searchAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent })
+      expect(searchAssembly.tools.filter(tool => tool.name.startsWith('mcp__fixture__')).map(tool => tool.name)).toEqual(['mcp__fixture__greet'])
+      ;(ctx.zerowallMcp as any).selectedTools.delete(selectionAgent)
+      const unmatched = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('search-unmatched'), name: 'mcp_search', arguments: { query: 'fixture' }, agent: selectionAgent })
+      expect(unmatched.value).toMatchObject({ matches: [], connectedServer: 'fixture', candidateTools: expect.arrayContaining([expect.objectContaining({ name: 'mcp__fixture__greet' })]) })
+      const unmatchedAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent })
+      expect(unmatchedAssembly.tools.some(tool => tool.name.startsWith('mcp__fixture__'))).toBe(false)
+      expect(readFileSync(startsFile, 'utf8')).not.toBe(initialStarts)
       await expect.poll(() => {
         try {
           const cache = JSON.parse(readFileSync(join(root, 'harness', 'zerowall-mcp-tool-index.json'), 'utf8'))

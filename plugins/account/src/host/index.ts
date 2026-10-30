@@ -10,6 +10,7 @@ import type {
 } from '../shared/types.js'
 import type {} from 'zod'
 import { accountGroupCatalog, imageQualityChoices, isImageGenerationGroup, uniqueMediaModels } from '../shared/types.js'
+import { MODELS_DEV_CONTEXT } from './models-dev-context.js'
 export { isImageGenerationGroup, uniqueMediaModels } from '../shared/types.js'
 
 export type {
@@ -798,7 +799,15 @@ function modelCapacity(body: string, id: string): Partial<AiCloudManagedModel> {
   const positive = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0
   const context = entry?.context_window ?? entry?.contextWindow
   const output = entry?.max_output_tokens ?? entry?.maxOutputTokens
-  return { ...(positive(context) ? { contextWindow: context, capacitySource: 'gateway' as const } : {}), ...(positive(output) ? { maxOutputTokens: output, capacitySource: 'gateway' as const } : {}) }
+  const local = MODELS_DEV_CONTEXT[id]
+  const resolvedContext = positive(context) ? context : local?.context
+  const resolvedOutput = positive(output) ? output : local?.output
+  const source = positive(context) || positive(output) ? 'gateway' as const : local === undefined ? undefined : 'models-dev' as const
+  return {
+    ...(positive(resolvedContext) ? { contextWindow: resolvedContext } : {}),
+    ...(positive(resolvedOutput) ? { maxOutputTokens: resolvedOutput } : {}),
+    ...(source === undefined ? {} : { capacitySource: source }),
+  }
 }
 function modelQualities(body: string, id: string): string[] {
   const value = JSON.parse(body)

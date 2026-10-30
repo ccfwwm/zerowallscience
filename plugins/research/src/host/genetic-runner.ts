@@ -213,7 +213,6 @@ export class GeneticAnalysisService {
       if (!Number.isInteger(threads) || Number(threads) < 1 || Number(threads) > 8 || !Number.isInteger(timeout) || Number(timeout) < 1000 || Number(timeout) > 14400000) throw new Error('Genetics runtime limits are invalid.')
       const configuredRemoteProject = this.store.getProjectPreferences(project.id).settings.rPlatformProjectId
       const remoteProject = typeof configuredRemoteProject === 'string' ? configuredRemoteProject.trim() : ''
-      if (!/^[A-Za-z0-9._-]{1,128}$/u.test(remoteProject)) throw new Error('EXISTING_PROJECT_ID_REQUIRED: configure this project\'s existing R Platform project ID before running genetic analysis.')
       const inputHashes = { contractSha256: hash(contract.payload), planSha256: hash(plan.payload) }
       const request: JsonObject = { ...object(prepared.request), exploratory: task.exploratory, study_id: study.id, task_id: task.id, plan_id: plan.id, ...(freeze ? { freeze_id: freeze.id } : {}) }
       const snapshot: JsonObject = { format: 'zerowall-genetics-request', runner: GENETIC_RUNNER, studyId: study.id, contractId: contract.id, contractVersion: contract.version, contract: contract.payload, planId: plan.id, planVersion: plan.version, plan: plan.payload, inputHashes, taskId: task.id, exploratory: task.exploratory, freezeId: freeze?.id ?? null, requestId: input.requestId, remoteProject, request, threads, timeout }
@@ -225,7 +224,7 @@ export class GeneticAnalysisService {
       try { await writeFile(path, bytes, { flag: 'wx' }) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || await readFile(path, 'utf8') !== bytes) throw new Error('IDEMPOTENCY_CONFLICT: persisted genetics input differs.') }
       if (!prior) this.store.recordAuditEvent(project.id, 'genetics.requested', { requestId: input.requestId, fingerprint, studyId: study.id, planId: plan.id, contractId: contract.id, taskId: task.id })
       const workflow = this.workflow(); if (!workflow) throw new Error('Connect the rdatalinux research workflow first.')
-      const remote = await workflow.run('r.genetics', { operation: 'r.genetics.run', request_id: input.requestId, research_task_id: task.id, arguments: { project_id: remoteProject, request_id: input.requestId, request, threads, timeout_ms: timeout, confirm: true } }, exec)
+      const remote = await workflow.run('r.genetics', { operation: 'r.genetics.run', request_id: input.requestId, research_task_id: task.id, arguments: { ...(remoteProject ? { project_id: remoteProject } : {}), request_id: input.requestId, request, threads, timeout_ms: timeout, confirm: true } }, exec)
       const run = this.store.getRun(String(remote.run_id))
       if (!run || run.projectId !== project.id || this.store.listResearchTasks(study.id).find(item => item.id === task.id)?.runId !== run.id) throw new Error('Genetics workflow did not return its bound project Run.')
       if (!this.store.listAuditEvents(project.id).some(event => event.action === 'genetics.submitted' && event.details.runId === run.id)) this.store.recordAuditEvent(project.id, 'genetics.submitted', { requestId: input.requestId, studyId: study.id, taskId: task.id, runId: run.id, remoteId: remote.remote_id ?? null })
@@ -253,6 +252,7 @@ export class GeneticAnalysisService {
     })
   }
   private async collect(project: ProjectRecord, snapshot: JsonObject, remote: JsonObject, exec: ToolRunContext): Promise<JsonObject> {
+    snapshot = { ...snapshot, remoteProject: remote.remote_project ?? snapshot.remoteProject ?? null }
     const run = this.store.getRun(String(remote.run_id))
     if (!run || run.projectId !== project.id || remote.workflow_id !== 'r.genetics') throw new Error('Unexpected genetics workflow Run.')
     const base = json({ runner: GENETIC_RUNNER, status: run.status, run, remoteId: remote.remote_id ?? null, analysisComplete: false, evidence: null, needsReview: true })

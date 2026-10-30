@@ -15,7 +15,7 @@ import { defaultMediaProjectId, MediaStudioService } from './media-studio.js'
 import { createMediaSkillProvider } from './media-skill.js'
 import { registerMediaRoute } from './media-route.js'
 import { assertTrustedWorkspaceAuthority } from './workspace-request-trust.js'
-import { MEDIA_CONVERSATION_PROMPT, MEDIA_PROJECT_ID_PARAMETER, MEDIA_JOB_ID_PARAMETER, mergeStandardReferenceParameters, validateMediaJobKind, validateMediaToolIds } from './media-contract.js'
+import { MEDIA_PROJECT_ID_PARAMETER, MEDIA_JOB_ID_PARAMETER, mergeStandardReferenceParameters, validateMediaJobKind, validateMediaToolIds } from './media-contract.js'
 import { ownMediaRuntime } from './shared-runtime.js'
 export { MediaStudioService } from './media-studio.js'
 export const name='videos'
@@ -27,10 +27,6 @@ export async function installMediaStudio(context:Context,config:Config={}){
   const studio=new MediaStudioService(context)
   context.skills.registerProvider(()=>createMediaSkillProvider())
   registerMediaRoute(context,studio,config.trustedHosts??[])
-  context.inject(['systemPrompt'], scoped => scoped.systemPrompt.context({
-    name:'zerowall:media-conversation', order:950,
-    text:MEDIA_CONVERSATION_PROMPT
-  }))
   const output={schema:{type:'object' as const,additionalProperties:false,properties:{result:{type:'string' as const,required:true as const}}},render:(_:unknown,value:{result:string})=>[{type:'text' as const,text:value.result}]}
   const mediaReferences={type:'array',items:{oneOf:[{type:'string'},{type:'object',additionalProperties:true}]},description:'统一参考素材数组。普通参考优先使用 HTTPS URL 或完整 MIME Data URL 字符串；需要角色或模板扩展参数时用 {url:...}/{b64_json:...} 对象。保留用户明确给出的 role 和参数；不要自行补 role: reference。上游字段名、结构转换与精确属性过滤由 Sub2API 协议模板负责。'} as const
   context.tools.register(defineTool({name:'media_models',description:'查询当前账号可用的视频和音乐能力与已选默认模型，或按用户明确要求保存模型选择。普通图片使用 gpt-image-generator，不在此选择。无需供应商密钥。',parameters:{action:{type:'string',required:true,enum:['list','choices','select']},choices_json:{type:'string',description:'select 时传默认选择 JSON {video|music|speech:{selection:{groupId,modelId,profileId,operation},parameters:{}}}，须先查询真实目录，保留未修改类别'}},output,isConcurrencySafe:()=>false,async execute(args,exec){

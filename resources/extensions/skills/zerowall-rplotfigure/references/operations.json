@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
   "catalog_version": "2026-10-29.1",
-  "content_sha256": "c4fcf00c28aae7a87cadb3d69d45c9ed5cd711b16feb7c177176bd2f727837d6",
+  "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
   "id": "figureya",
   "skill": "zerowall-rplotfigure",
   "groups": [

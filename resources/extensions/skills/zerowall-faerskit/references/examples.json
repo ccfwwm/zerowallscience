@@ -37,12 +37,12 @@
           "operation": "r.faerskit.analyze",
           "arguments": {
             "project_id": "rmcp-demo",
-            "fun": "AFun",
+            "fun": "faers_analyze_drug",
             "drug": "METFORMIN",
             "drugEffect": "PS",
             "year": [141, 244],
             "unit": "pair",
-            "path": "faerskit/metformin",
+            "path": "faerskit/citalopram",
             "confirm": true
           },
           "request_id": "demo-faerskit-metformin-2014q1-2024q4-1"

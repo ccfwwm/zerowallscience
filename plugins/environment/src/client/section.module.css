@@ -25,6 +25,8 @@
 .formGrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 13px; }
 .budgetValue { align-self: flex-end; color: var(--dsw-alias-label-primary, #202428); font-variant-numeric: tabular-nums; font-weight: 650; }
 .budgetSlider { width: 100%; accent-color: #16856b; }
+.sessionBudget { display: inline-flex; align-items: center; gap: 5px; color: var(--dsw-alias-label-secondary, #687078); font-size: 10px; font-variant-numeric: tabular-nums; }
+.sessionBudget input { width: 78px; accent-color: #16856b; }
 .fullWidth { grid-column: 1 / -1; }
 .field { min-width: 0; display: grid; gap: 6px; color: var(--dsw-alias-label-secondary, #687078); font-size: 12px; }
 .field small { color: var(--dsw-alias-label-tertiary, #8a9299); font-size: 11px; line-height: 1.4; }

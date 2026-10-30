@@ -48,6 +48,28 @@ describe('AI Cloud account client', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
+  it('uses the bundled models.dev reference only when the gateway omits capacity', async () => {
+    const secrets = new MemorySecrets()
+    secrets.values.set('zerowall.ai-cloud.session', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'test@example.com', accessToken: 'fixture', balance: 1, currency: 'CNY', models: [], groupIds: [] }))
+    const fetcher = vi.fn<typeof fetch>(async input => {
+      const url = String(input)
+      if (url.endsWith('/groups/available')) return json({ data: [{ id: 1, name: 'Reference' }] })
+      if (url.includes('/keys?')) return json({ data: [{ group_id: 1, key: 'fixture' }] })
+      if (url.endsWith('/v1/models')) return json({ data: [
+        { id: 'claude-sonnet-4-6' },
+        { id: 'deepseek-v4-pro', context_window: 123456 },
+        { id: 'llama-3.1-8b-instruct' },
+        { id: 'private-model' },
+      ] })
+      throw new Error('Unexpected request')
+    })
+    const result = await new AiCloudClient({ secrets, fetch: fetcher }).discoverModels()
+    expect(result.models.find(model => model.modelId === 'claude-sonnet-4-6')).toMatchObject({ contextWindow: 1_000_000, maxOutputTokens: 128_000, capacitySource: 'models-dev' })
+    expect(result.models.find(model => model.modelId === 'deepseek-v4-pro')).toMatchObject({ contextWindow: 123456, maxOutputTokens: 393_216, capacitySource: 'gateway' })
+    expect(result.models.find(model => model.modelId === 'llama-3.1-8b-instruct')).toMatchObject({ contextWindow: 16_384, maxOutputTokens: 16_384, capacitySource: 'models-dev' })
+    expect(result.models.find(model => model.modelId === 'private-model')).not.toHaveProperty('contextWindow')
+  })
+
   it('reads legacy group names without login restoration, discovery, or a made-up multiplier', async () => {
     const secrets = new MemorySecrets()
     secrets.values.set('zerowall.ai-cloud.session', JSON.stringify({ baseUrl: 'https://code.aicodeme.xyz', email: 'test@example.com', accessToken: 'fixture', models: [{ providerId: 'legacy', groupId: '7', groupName: 'Legacy', modelId: 'gpt-fixture' }], groupIds: ['7'] }))
@@ -204,7 +226,7 @@ describe('AI Cloud account client', () => {
     const account = await client.login({ email: 'claude@example.com', password: 'test-password' })
     expect(account.models).toEqual([
       { providerId: 'zerowall-ai-cloud-4-messages', groupId: '4', groupName: 'Claude', modelId: 'claude-sonnet-4', baseUrl: 'https://hkcode.aicodeme.xyz' },
-      { providerId: 'zerowall-ai-cloud-4-responses', groupId: '4', groupName: 'Claude', modelId: 'gpt-5.6-sol', baseUrl: 'https://hkcode.aicodeme.xyz/v1' },
+      { providerId: 'zerowall-ai-cloud-4-responses', groupId: '4', groupName: 'Claude', modelId: 'gpt-5.6-sol', baseUrl: 'https://hkcode.aicodeme.xyz/v1', contextWindow: 1_050_000, maxOutputTokens: 128_000, capacitySource: 'models-dev' },
     ])
   })
 
@@ -232,7 +254,7 @@ describe('AI Cloud account client', () => {
 
     const discovered = await client.discoverModels()
     expect(discovered.models).toEqual([
-      { providerId: 'zerowall-ai-cloud-2-completions', groupId: '2', groupName: 'Research models', modelId: 'deepseek-v4-flash', baseUrl: 'https://code.aicodeme.xyz/v1' },
+      { providerId: 'zerowall-ai-cloud-2-completions', groupId: '2', groupName: 'Research models', modelId: 'deepseek-v4-flash', baseUrl: 'https://code.aicodeme.xyz/v1', contextWindow: 1_048_576, maxOutputTokens: 393_216, capacitySource: 'models-dev' },
       { providerId: 'zerowall-ai-cloud-2-completions', groupId: '2', groupName: 'Research models', modelId: 'kimi-k3', baseUrl: 'https://code.aicodeme.xyz/v1' },
     ])
     expect(JSON.stringify(discovered)).not.toContain('group-api-key')

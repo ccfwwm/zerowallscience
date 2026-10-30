@@ -4,7 +4,11 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it, vi } from 'vitest'
-import { apply } from '../src/host/index.ts'
+import { apply, inject } from '../src/host/index.ts'
+
+it('declares tools before installing on-demand tool loading', () => {
+  expect(inject).toContain('tools')
+})
 
 it('serves the brand route while fixed-root Workspace restoration is still pending', async () => {
   const root = await mkdtemp(join(tmpdir(), 'zws-brand-start-'))
