@@ -349,14 +349,18 @@ for (const path of requiredArchivePaths) {
   if (!archiveSet.has(path)) throw new Error(`Required ASAR runtime file is missing: ${path}`)
 }
 for (const id of ['@zerowallscience/plugin-projects', '@zerowallscience/plugin-research', '@zerowallscience/plugin-singlecell']) {
-  if (archiveFiles.some(path => path.startsWith(`node_modules/${id}/`))) {
-    throw new Error(`Retired plugin must not be present in the packaged ASAR: ${id}`)
+  if (rawArchiveFiles.some(path => path.startsWith(`node_modules/${id}/`))) {
+    throw new Error(`Optional plugin must not be embedded in the Core ASAR: ${id}`)
   }
-  try {
-    await access(resolve(stageRoot, 'offline-profile/modules', id))
-    throw new Error(`Retired plugin must not be present in the offline profile: ${id}`)
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error
+  if (fullOffline) {
+    const packagePath = `node_modules/${id}/package.json`
+    if (!archiveSet.has(packagePath)) throw new Error(`Required offline plugin is missing: ${id}`)
+    const sourcePath = resolve(repositoryRoot, 'plugins', id.slice('@zerowallscience/plugin-'.length), 'package.json')
+    const sourceManifest = JSON.parse(await readFile(sourcePath, 'utf8'))
+    const packagedManifest = JSON.parse(readArchiveFile(packagePath).toString('utf8'))
+    if (packagedManifest.version !== sourceManifest.version) {
+      throw new Error(`Offline plugin version mismatch for ${id}: expected ${sourceManifest.version}, found ${packagedManifest.version}`)
+    }
   }
 }
 
@@ -601,9 +605,6 @@ async function verifyArchivePolicy() {
   }
   if (!mineruHost.includes('MinerU Host tool registration failed')) {
     throw new Error('Packaged MinerU Host is missing its startup tool-registration assertion.')
-  }
-  if (archiveSet.has('node_modules/@zerowallscience/plugin-singlecell/lib/index.js')) {
-    throw new Error('Packaged runtime includes the retired singlecell Study workflow.')
   }
   const filesHost = readArchiveFile('node_modules/@zerowallscience/plugin-files/lib/index.js').toString('utf8')
   if (!filesHost.includes('extract_uploaded_file')) {
