@@ -82,7 +82,7 @@ dsh plugin --profile <profile> add "dsh-ppt-maker"
 | `ppt_undo` / `ppt_redo` | 撤销 / 重做（游标移动，合并窗内连续编辑算一步） | `dir` · `steps`（1–20，默认 1） |
 | `ppt_render` | 渲染每页 PNG 预览（最终 pptx 光栅化） | `dir` · `pages` · `dpi`（默认 96） |
 | `ppt_check` | 规则质检（默认）+ AI 视觉质检（只出建议不阻断） | `dir` · `pages` · `ai` |
-| `ppt_export` | 导出 .pptx（规则 blocker 拦截，`skipCheck` 绕过） | `dir` · `out` · `skipCheck` |
+| `ppt_export` | 立即导出 .pptx（质量问题仅提示；可导出画布草稿及历史版本） | `dir` · `out` · `skipCheck` |
 | `ppt_import` | .pptx → PPTD 全量逆向（dropped / degraded 两级报告 + 占位形状回插） | `source` · `targetDir` · `mode`（`full` / `surgical`）· `open` |
 | `ppt_open` | 让右侧栏工作台打开指定工程 | `dir` |
 | `ppt_patch` | 对 .pptx 外科手术：set_text / replace_image / move_page | `source` · `ops` · `out` |

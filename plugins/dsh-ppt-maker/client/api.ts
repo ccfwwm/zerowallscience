@@ -169,7 +169,7 @@ const q = (params: Record<string, string>) =>
     .join('&')
 
 /**
- * 导出失败的统一口径：409 抛 `ConflictError`（面板要亮冲突条，别再让用户乱点导出），
+ * 导出失败的统一口径：409 抛 `ConflictError`，
  * 其余抛带宿主 error 文案的 Error；返回 never，调用处写 `if (!res.ok) await failExport(res)`。
  */
 async function failExport(res: Response): Promise<never> {
@@ -249,11 +249,12 @@ export const api = {
   async exportPptxToProject(
     sessionId: string,
     key: string,
+    snapshot?: { baseRevision: number; deck?: unknown; pageData?: Record<string, unknown>; ops: unknown[] },
   ): Promise<{ relativePath: string; absolutePath: string; filename: string; revision: number; bytes: number }> {
     const res = await fetch(`${PREFIX}/export`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sessionId, key, save: true }),
+      body: JSON.stringify({ sessionId, key, save: true, snapshot }),
     })
     if (!res.ok) await failExport(res)
     const payload = (await res.json().catch(() => ({}))) as {

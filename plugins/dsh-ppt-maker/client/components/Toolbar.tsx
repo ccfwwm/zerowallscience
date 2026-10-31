@@ -3,7 +3,7 @@
  *
  * 「导出 .pptx」：POST /export 一次走完整 build → pptx，由宿主落到工程目录 `export/` 下，
  * 面板只把落点报给用户（桌面外壳的下载没有可回读的落点，不做浏览器下载）。
- * `stage` 这一杆成功才会刷 banner；409 冲突时不再让用户乱点导出按钮（先消化横幅）。
+ * 保存和冲突不影响导出：基准画布加草稿在临时快照中构建。
  */
 import * as React from 'react'
 import type { PptStore } from '../store'
@@ -20,7 +20,6 @@ export function Toolbar({
 }) {
   const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot)
   const disabled = !state.activeKey || state.saving
-  const inConflict = Boolean(state.conflict || state.externalChange)
 
   const onExport = async () => {
     await store.actions.exportDeck()
@@ -33,7 +32,7 @@ export function Toolbar({
           <span className="ppt-toolbar-project">
             <strong>{(state.deck as { title?: string } | null)?.title ?? state.activeKey}</strong>
             {state.deckPages.length ? <span className="ppt-toolbar-meta">{state.deckPages.length} 页</span> : null}
-            <span className="ppt-toolbar-meta">第 {state.lastSeenRevision} 版</span>
+            <span className="ppt-toolbar-meta">{state.exportPreview ? '预览 / 导出' : '第'} {state.exportPreview?.baseRevision ?? state.lastSeenRevision} 版</span>
             {state.draft?.ops.length ? <span className="ppt-toolbar-meta">草稿 {state.draft.ops.length}</span> : null}
           </span>
         ) : null}
@@ -67,9 +66,9 @@ export function Toolbar({
         <button
           type="button"
           className="ppt-btn"
-          disabled={disabled || inConflict}
+          disabled={!state.activeKey}
           onClick={() => void onExport()}
-          title="导出 .pptx 到工程目录的 export/ 下"
+          title="立即导出当前画布（含草稿），后台任务继续"
         >
           <ExportGlyph size={13} /> 导出 .pptx
         </button>

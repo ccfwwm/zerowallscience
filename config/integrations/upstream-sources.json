@@ -170,7 +170,7 @@
     "source": "plugins/dsh-ppt-maker",
     "tag": null,
     "localAdaptation": "Integrated as the default PPTD/PPTX workflow with raster-first generation, explicit editable mode, image prompt receipts, and literature/project provenance.",
-    "localVersion": "1.0.1-zws.9"
+    "localVersion": "1.0.1-zws.10"
   },
   "libreOfficeKit": {
     "package": "@deepseek-ai/libreoffice-kit",

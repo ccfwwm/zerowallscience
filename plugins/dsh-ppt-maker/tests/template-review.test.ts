@@ -7,7 +7,7 @@ import { parse, stringify } from 'yaml'
 import { afterEach, describe, expect, it } from 'vitest'
 import { buildProjectDeck, saveProjectPptx, saveRawProjectPptx } from '../src/core/export-pipeline.js'
 import { createProject, editProject } from '../src/core/project/store.js'
-import { hasPassedTemplateReview, templatePageFingerprint, type TemplateVisualReview } from '../src/core/template-review.js'
+import { assertTemplateExportReady, hasPassedTemplateReview, templatePageFingerprint, type TemplateVisualReview } from '../src/core/template-review.js'
 import { registerExportTool } from '../src/tools/export.js'
 import type { ToolDef } from '../src/tools/shared.js'
 import { PNG_1PX } from './__fixtures__/pptx-fixtures.js'
@@ -41,16 +41,21 @@ async function fixture(mode: 'image' | 'editable' = 'image') {
   return { cwd, dir, evidence, provenance, saveEvidence, spec, ledger, saveLedger: () => writeFile(path.join(cwd, 'assets.json'), JSON.stringify(ledger)) }
 }
 
-describe('generated page image review export gate', () => {
+async function diagnoseExport(pipeline: Awaited<ReturnType<typeof buildProjectDeck>>) {
+  return assertTemplateExportReady({ metadata: JSON.parse(await readFile(path.join(pipeline.dir, 'manifest.json'), 'utf8')).metadata, workspaceRoot: path.dirname(pipeline.dir), dir: pipeline.dir, deck: pipeline.deck, pages: pipeline.pages,
+    loadMedia: src => readFile(path.join(pipeline.dir, src)) })
+}
+
+describe('generated page image quality diagnostics (advisory for export)', () => {
   it('keeps previews available before review, while skipCheck cannot bypass the required image review', async () => {
     const { cwd } = await fixture()
     const built = await buildProjectDeck(cwd, 'deck')
     expect((await saveRawProjectPptx(built)).length).toBeGreaterThan(1000)
-    await expect(saveProjectPptx(built)).rejects.toMatchObject({ code: 'TemplateReviewRequired' })
+    await expect(diagnoseExport(built)).rejects.toMatchObject({ code: 'TemplateReviewRequired' })
     let tool!: ToolDef
     registerExportTool({ tools: { register: def => { tool = def } }, sessions: { get: () => ({ header: { cwd } }) } })
     expect(await tool.execute({ dir: 'deck', out: 'blocked.pptx', skipCheck: true }, { agent: { session: { id: 'test' } } }))
-      .toMatchObject({ ok: false, error: { code: 'TemplateReviewRequired' } })
+      .toMatchObject({ ok: true })
   })
 
   it.each(['image', 'editable'] as const)('allows %s export only after the exact template passes all three checks', async mode => {
@@ -65,7 +70,7 @@ describe('generated page image review export gate', () => {
     for (const field of ['textIntegrity', 'layout', 'contentAccuracy'] as const) {
       evidence.review = { ...evidence.review, [field]: 'fail', status: 'repair-required', issues: ['Unreadable or inconsistent image content.'] }
       await saveEvidence()
-      await expect(saveProjectPptx(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewRequired' })
+      await expect(diagnoseExport(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewRequired' })
     }
     expect(hasPassedTemplateReview({ ...passed, issues: ['still wrong'] }, imageHash)).toBe(false)
   })
@@ -74,7 +79,7 @@ describe('generated page image review export gate', () => {
     const { cwd, dir, saveEvidence } = await fixture('editable')
     await saveEvidence()
     await writeFile(path.join(dir, 'media/template.png'), Buffer.concat([PNG_1PX, Buffer.from('repaired')]))
-    await expect(saveProjectPptx(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
+    await expect(diagnoseExport(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
   })
 
   it('keeps an already built image snapshot tied to its own reviewed bytes after a disk replacement', async () => {
@@ -86,7 +91,7 @@ describe('generated page image review export gate', () => {
     // The immutable built snapshot still exports the old reviewed bytes. A new
     // build observes the replacement and cannot reuse the old review.
     expect((await saveProjectPptx(built)).bytes).toEqual(original.bytes)
-    await expect(saveProjectPptx(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
+    await expect(diagnoseExport(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
   })
 
   it('does not require generating or reviewing the same template again after native editable text changes', async () => {
@@ -104,10 +109,10 @@ describe('generated page image review export gate', () => {
     const pagePath = path.join(dir, 'pages/01.page'), page = parse(await readFile(pagePath, 'utf8'))
     page.elements[0].bounds = [10, 10, 400, 200]
     await writeFile(pagePath, stringify(page))
-    await expect(saveProjectPptx(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
+    await expect(diagnoseExport(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
     evidence.pageFingerprint = templatePageFingerprint(parse(await readFile(path.join(dir, 'deck.pptd'), 'utf8')), await readFile(pagePath, 'utf8'))
     await saveEvidence()
-    await expect(saveProjectPptx(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
+    await expect(diagnoseExport(await buildProjectDeck(cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
   })
 
   it('preserves independent nonmanaged PPTD exports', async () => {
@@ -128,7 +133,7 @@ describe('generated page image review export gate', () => {
     if (change === 'review-transcription') { item.ledger.templateReviews.template.textTranscription = ['Wrong text']; await item.saveLedger() }
     if (change === 'slide-fingerprint') { item.spec.slides[0].text[0] = 'Changed fact'; await writeFile(path.join(item.cwd, 'spec.json'), JSON.stringify(item.spec)); item.provenance.specificationFingerprint = sha(JSON.stringify(item.spec)); await item.saveEvidence() }
     if (change === 'source-escape') { item.ledger.assets[0].path = path.join(item.cwd, '..', 'outside.png'); await item.saveLedger() }
-    await expect(saveProjectPptx(await buildProjectDeck(item.cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
+    await expect(diagnoseExport(await buildProjectDeck(item.cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
   })
 
   it('requires changed generated bytes with the failed parent/input SHA chain for a replacement template', async () => {
@@ -147,19 +152,19 @@ describe('generated page image review export gate', () => {
     // A passing new-ID receipt cannot hide that the registered replacement
     // is unrelated to the failed original.
     item.ledger.assets[1].inputImageHashes = ['0'.repeat(64)]; await item.saveLedger()
-    await expect(saveProjectPptx(await buildProjectDeck(item.cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
+    await expect(diagnoseExport(await buildProjectDeck(item.cwd, 'deck'))).rejects.toMatchObject({ code: 'TemplateReviewStale' })
   })
 
-  it('blocks direct skipCheck export after a specification edit without rebuilding', async () => {
+  it('allows direct skipCheck export after a specification edit without rebuilding', async () => {
     const item = await fixture('editable'); await item.saveEvidence()
     item.spec.slides[0].text[0] = 'Updated source fact'; await writeFile(path.join(item.cwd, 'spec.json'), JSON.stringify(item.spec))
     let tool!: ToolDef
     registerExportTool({ tools: { register: def => { tool = def } }, sessions: { get: () => ({ header: { cwd: item.cwd } }) } })
     expect(await tool.execute({ dir: 'deck', out: 'blocked.pptx', skipCheck: true }, { agent: { session: { id: 'test' } } }))
-      .toMatchObject({ ok: false, error: { code: 'TemplateReviewStale' } })
+      .toMatchObject({ ok: true })
   })
 
-  it('rechecks shared-ledger failures across projects and blocks HTTP binary and saved exports', async () => {
+  it('records shared-ledger failures while allowing HTTP binary and saved exports', async () => {
     const item = await fixture(); await item.saveEvidence()
     await createProject(item.cwd, { dir: 'other', metadata: { zeroWall: { outputMode: 'image' } } })
     await mkdir(path.join(item.cwd, 'other', 'pages'), { recursive: true })
@@ -170,7 +175,7 @@ describe('generated page image review export gate', () => {
     await item.saveLedger()
     // The other project's passing receipt remains unchanged; the shared ledger
     // is the current authority, including for an already built snapshot.
-    await expect(saveProjectPptx(built)).rejects.toMatchObject({ code: 'TemplateReviewStale' })
+    await expect(diagnoseExport(built)).rejects.toMatchObject({ code: 'TemplateReviewStale' })
     const handler = createApiHandler({ resolveCwd: () => item.cwd,
       core: { loadProject, editProject, buildProjectDeck, saveProjectPptx, writeExportReport, ProjectError },
       sessionStore: { resolveProject: () => ({ dir: 'other', abs: path.join(item.cwd, 'other') }) } })
@@ -180,8 +185,9 @@ describe('generated page image review export gate', () => {
     try {
       for (const save of [false, true]) {
         const response = await fetch(`http://127.0.0.1:${address.port}${API_PREFIX}/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: 'shared-authority', key: 'other', save, skipCheck: true }) })
-        expect(response.status).toBe(409)
-        expect(await response.json()).toMatchObject({ ok: false })
+        expect(response.status).toBe(200)
+        if (save) expect(await response.json()).toMatchObject({ ok: true, qualityIssues: expect.arrayContaining([expect.any(String)]) })
+        else expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1000)
       }
     } finally { await new Promise<void>(resolve => server.close(() => resolve())) }
   })

@@ -388,6 +388,47 @@ export interface OpRecord {
   [key: string]: unknown
 }
 
+export interface CanvasSnapshot {
+  baseRevision: number
+  /** Browser's immutable baseline also survives history merging/eviction. */
+  deck?: Presentation
+  pageData?: Record<string, Page>
+  ops?: OpRecord[]
+}
+
+/** Replay a visible canvas in memory; never materialize or advance the project. */
+export async function loadCanvasSnapshot(cwd: string, dir: string, snapshot: CanvasSnapshot): Promise<LoadedProject> {
+  const abs = resolveProjectDir(cwd, dir)
+  if (!Number.isSafeInteger(snapshot?.baseRevision) || snapshot.baseRevision < 0 || !Array.isArray(snapshot.ops ?? [])) {
+    throw new ProjectError('InvalidSnapshot', '画布快照需要有效 baseRevision 和 ops 数组', { status: 400 })
+  }
+  if ((snapshot.deck === undefined) !== (snapshot.pageData === undefined)) {
+    throw new ProjectError('InvalidSnapshot', '画布数据需要同时提供 deck 和 pageData', { status: 400 })
+  }
+  return withProjectLock(abs, async () => {
+    const live = await loadProject(cwd, dir)
+    let model: ProjectModel
+    if (snapshot.deck && snapshot.pageData) {
+      model = cloneModel({ deck: snapshot.deck, pages: new Map(Object.entries(snapshot.pageData)) })
+    } else {
+      const saved = await readSnapshotState(abs, snapshot.baseRevision)
+      if (!saved) throw new ProjectError('SnapshotUnavailable', '画布基准快照不可用，请携带完整画布数据', { status: 409 })
+      const parsed = parseProject(saved.deck, [...saved.pages].map(([path, text]) => ({ path, text })))
+      if (!parsed.deck) throw new ProjectError('DeckParseFailed', '画布基准无法解析', { status: 400 })
+      model = cloneModel({ deck: parsed.deck, pages: parsed.pages })
+    }
+    if (!Array.isArray(model.deck.pages) || model.deck.pages.some(rel => !isSafeRelativePath(rel))) {
+      throw new ProjectError('InvalidSnapshot', '画布包含不安全的页路径', { status: 400 })
+    }
+    for (const rel of model.pages.keys()) if (!isSafeRelativePath(rel)) throw new ProjectError('InvalidSnapshot', '画布包含不安全的页路径', { status: 400 })
+    for (const [index, op] of (snapshot.ops ?? []).entries()) applyOp(model, op, index)
+    const parsed = parseProject(stringifyDeck(model.deck), [...model.pages].map(([path, page]) => ({ path, text: stringifyPage(page) })))
+    if (!parsed.deck) throw new ProjectError('DeckParseFailed', '画布无法序列化', { status: 400 })
+    return { ...live, deck: parsed.deck, pages: parsed.pages, issues: parsed.issues, checksumMismatch: false,
+      manifest: { ...live.manifest, revision: snapshot.baseRevision } }
+  })
+}
+
 function opError(index: number, op: string, message: string): OpError {
   return new OpError(index, op, message)
 }
@@ -530,6 +571,7 @@ export interface EditOptions {
   ops: OpRecord[]
   baseRevision?: number
   sessionId?: string | null
+  newVersion?: boolean
 }
 
 export interface EditResult {
@@ -582,7 +624,8 @@ export async function editProject(cwd: string, options: EditOptions): Promise<Ed
       baseRevision: base,
       revision: base + 1,
       sessionId: options.sessionId ?? null,
-      ops: appliedOps
+      ops: appliedOps,
+      force: options.newVersion === true
     })
 
     const revision = appended.merged ? base : base + 1
@@ -738,7 +781,8 @@ export async function readHistorySnapshot(
   const deckParsed = parseDeckText(state.deck, `.history/${label}/deck.pptd`)
   warnings.push(...deckParsed.issues.map(formatParseIssue))
   const pages: Array<{ path: string; page: Page | null }> = []
-  for (const [rel, text] of [...state.pages.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+  for (const rel of deckParsed.value?.pages ?? []) {
+    const text = state.pages.get(rel) ?? ''
     const parsed = parsePageText(text, `.history/${label}/${rel}`)
     warnings.push(...parsed.issues.map(formatParseIssue))
     pages.push({ path: rel, page: parsed.value })

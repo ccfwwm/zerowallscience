@@ -44,7 +44,7 @@ export function TextEditor({
   const editor = textEditorModel(rawText)
 
   const ref = React.useRef<HTMLDivElement | null>(null)
-  const [committed, setCommitted] = React.useState(false)
+  const committed = React.useRef(false)
 
   React.useEffect(() => {
     const el = ref.current
@@ -58,21 +58,20 @@ export function TextEditor({
     sel?.addRange(range)
   }, [])
 
-  if (!target || !target.bounds) return null
-  const [x, y, w, h] = target.bounds
-  const align = target.content?.align
+  const [x, y, w, h] = target?.bounds ?? [0, 0, 0, 0]
+  const align = target?.content?.align
   const justifyContent = align?.[0] === 'center' ? 'center' : align?.[0] === 'right' ? 'flex-end' : 'flex-start'
   const alignItems = align?.[1] === 'middle' ? 'center' : align?.[1] === 'bottom' ? 'flex-end' : 'flex-start'
-  const fontSize = typeof target.content?.fontSize === 'number' ? target.content.fontSize : undefined
+  const fontSize = typeof target?.content?.fontSize === 'number' ? target.content.fontSize : undefined
 
   const commit = async (text: string) => {
-    if (committed) return
+    if (committed.current || !target) return
     // 显示值原样交回 = 没动过：连归一化写入都免了（纯文本简写不会被打包成 <p>）。
     if (text === editor.display) {
       onDone()
       return
     }
-    setCommitted(true)
+    committed.current = true
     const nextValue = editor.commit(text)
     if (nextValue === rawText) {
       onDone()
@@ -80,8 +79,14 @@ export function TextEditor({
     }
     const ok = await store.actions.updateElement(elementId, { content: { ...(target.content ?? {}), text: nextValue } })
     if (ok) onDone()
-    else setCommitted(false) // 409 / 网络错误都要让人能再改改、再发
+    else committed.current = false
   }
+
+  React.useEffect(() => store.actions.registerEditorCommit(async () => {
+    if (ref.current) await commit(ref.current.innerText)
+  }))
+
+  if (!target || !target.bounds) return null
 
   return (
     <div

@@ -3,6 +3,7 @@ import { ManagedGenerations } from './managed-generations.js'
 import { normalizeJsonArguments, registerResearchWorkflow } from './research-workflow.js'
 import { McpConfigurationStoreService } from './configuration-store.js'
 import { isBuiltInMcpConnection } from '../shared/connections.js'
+import { rWorkflows } from '../shared/r-workflows.js'
 import { matchMcpCapabilities } from './capability-match.js'
 import { callToolUniverse, resolveToolUniverseCredentials } from './tooluniverse-transport.js'
 import type { Context, Fiber } from '@deepseek-ai/cordis'
@@ -300,17 +301,21 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private environmentSignature = ''
   private environmentRefreshInFlight = false
   private readonly secrets = new SecretBrokerClient()
+  private readonly internalProjectBootstrapCalls = new Set<string>()
   private readonly mcpToolIndex = new Map<string, { server: string; name: string; description: string }>()
-  private readonly selectedTools = new WeakMap<object, Set<string>>()
   private toolCacheWrite: Promise<void> = Promise.resolve()
   private readonly failureCooldownUntil = new Map<string, number>()
+  /** Persistent connections belong to this plugin, never a temporary RPC/agent caller. */
+  private readonly connectionContext: Context
 
   constructor(ctx: Context) {
     super(ctx, 'zerowallMcp')
+    this.connectionContext = ctx
     this.managed = new ManagedGenerations(ctx, () => managedEnvironmentRecord()?.root)
     registerResearchWorkflow(ctx, this)
+    const service = this
     ctx.effect(() => ctx.tools.guard(exec => {
-      if (exec.name === RETIRED_R_PROJECT_TOOL) return 'Remote R project administration is disabled; use an existing project ID where a backend operation requires one.'
+      if (exec.name === RETIRED_R_PROJECT_TOOL && !service.internalProjectBootstrapCalls.has(String(exec.callId))) return 'Remote R project administration is Host-managed; use research_workflow or r_files for conversation-bound project operations.'
       const prefix = `mcp__${GPSADB_SERVER_NAME}__`
       if (!exec.name.startsWith(prefix)) return undefined
       const remoteToolName = exec.name.slice(prefix.length)
@@ -318,7 +323,6 @@ export class ZeroWallMcpService extends TypertRemoteService {
         ? undefined
         : `GPSAdb tool is not on the approved read-only allowlist: ${remoteToolName || '(empty name)'}`
     }), 'zerowall-mcp: GPSAdb read-only tool allowlist')
-    const service = this
     // Biomni execution runs through the DSH MCP bridge, but its model key is
     // owned by ZeroWall AI Cloud rather than the DSH credential-local store.
     // Expose a narrow Host-only resolver so the bridge can inject the active
@@ -386,7 +390,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
     } as never)
     ctx.effect(() => ctx.tools.register(defineTool({
       name: 'mcp_connect',
-      description: 'List configured MCP states without connecting, or pass one enabled server name to connect and discover its live tools.',
+      description: 'List configured MCP states or refresh one enabled server. Each enabled MCP automatically exposes all currently registered live tool schemas without a tool-count limit.',
       parameters: { server: { type: 'string' } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       async execute(args, exec) {
@@ -400,25 +404,24 @@ export class ZeroWallMcpService extends TypertRemoteService {
         await service.ensureConnected(serverName, true)
         const record = (await service.list()).find(item => item.serverName === serverName)
         if (record === undefined) throw new Error(`MCP server disappeared during connection: ${serverName}`)
-        if (exec.agent && typeof exec.agent === 'object' && serverName !== RDATALINUX_SERVER_NAME) {
-          const selected = service.selectedTools.get(exec.agent) ?? new Set<string>()
-          for (const name of service.registeredTools.get(record.id) ?? []) selected.add(name)
-          service.selectedTools.set(exec.agent, selected)
-        }
+        const liveTools = service.liveToolNames(record.serverName)
+        const tools = liveTools
+        service.includeToolsForAgent(exec.agent, tools)
         const hostRouted = serverName === RDATALINUX_SERVER_NAME
         return {
           server: record.serverName,
           requestedServer: args.server,
           state: record.runtimeState,
-          tools: hostRouted ? [] : record.tools.slice(0, 40),
-          toolCount: record.tools.length,
-          ...(hostRouted ? { workflow: 'research_workflow', instruction: 'Use research_workflow for RMCP operations. The Host connects on demand and manages the conversation project automatically.' } : {}),
+          tools,
+          toolCount: liveTools.length,
+          toolsOmitted: Math.max(0, liveTools.length - tools.length),
+          ...(hostRouted ? { workflow: 'research_workflow', instruction: 'Use research_workflow for automatic project binding and asynchronous R workflows. The connected RMCP tools are also available for direct operations.' } : {}),
         }
       },
     })), 'zerowall-mcp: demand connection tool')
     ctx.effect(() => ctx.tools.register(defineTool({
       name: 'mcp_search',
-      description: 'Find an enabled MCP server by its name or tool capability. The best match is refreshed from live tools/list and only matching tools are loaded into this conversation; unrelated servers stay idle.',
+      description: 'Find an enabled MCP server by its name or tool capability. The best match is refreshed from live tools/list; once connected, all of its live tool schemas are available to this conversation.',
       parameters: { query: { type: 'string', required: true } },
       output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
       async execute(args, exec) {
@@ -439,42 +442,27 @@ export class ZeroWallMcpService extends TypertRemoteService {
           throw new Error(refreshed?.runtimeError || `MCP connection is unavailable: ${candidate.item.serverName}`)
         }
         const live = matchMcpCapabilities(query, refreshed.serverName, refreshed.name, refreshed.toolDetails ?? [])
-        // A metadata-only index can still identify the requested capability
-        // when a refresh is blocked or returns an empty list. Report that
-        // discovery result, but only expose names that are actually live.
-        const metadataFallback = live.tools.length === 0 && candidate.tools.length > 0 ? candidate.tools : []
-        const selectedTools = live.tools
-          .slice(0, 8)
+        // A metadata-only index can identify a likely capability when live
+        // discovery returns no match; stale names remain candidates only.
+        const liveNames = new Set(service.liveToolNames(refreshed.serverName))
+        const metadataFallback = live.tools.length === 0 && candidate.tools.length > 0
+          ? candidate.tools.filter(tool => liveNames.has(tool.name))
+          : []
+        const matchedTools = (live.tools.length > 0 ? live.tools : metadataFallback)
           .map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) }))
-        if (refreshed.serverName === RDATALINUX_SERVER_NAME) {
-          return {
-            matches: live.tools.length > 0
-              ? [{ server: refreshed.serverName, name: refreshed.name, state: refreshed.runtimeState, score: candidate.score, tools: [{ name: 'research_workflow', description: 'Host-managed RMCP workflow with automatic connection and project binding.' }] }]
-              : [],
-            connectedServer: refreshed.serverName,
-            toolCount: refreshed.tools.length,
-            loadedToolNames: ['research_workflow'],
-            workflow: 'research_workflow',
-            instruction: 'Do not call raw RMCP tools. Discover and run operations through research_workflow; the Host connects and binds the project automatically.',
-          }
-        }
-        if (exec.agent && typeof exec.agent === 'object') {
-          const selected = service.selectedTools.get(exec.agent) ?? new Set<string>()
-          for (const tool of selectedTools) selected.add(tool.name)
-          service.selectedTools.set(exec.agent, selected)
-        }
+        service.includeToolsForAgent(exec.agent, [...liveNames])
         return {
-          matches: (selectedTools.length > 0 || metadataFallback.length > 0)
-            ? [{ server: refreshed.serverName, name: refreshed.name, state: refreshed.runtimeState, score: candidate.score, tools: (selectedTools.length > 0 ? selectedTools : metadataFallback).slice(0, 8) }]
+          matches: (matchedTools.length > 0 || metadataFallback.length > 0 || candidate.tools.length > 0)
+            ? [{ server: refreshed.serverName, name: refreshed.name, state: refreshed.runtimeState, score: candidate.score, tools: matchedTools.length > 0 ? matchedTools : metadataFallback }]
             : [],
-          ...(selectedTools.length === 0 ? {
-            candidateTools: (refreshed.toolDetails ?? []).slice(0, 8).map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) })),
-            instruction: 'No live tool matched this query. Search again using one of the candidate tool names or a more specific capability; no tool schemas were enabled.',
+          ...(matchedTools.length === 0 ? {
+            candidateTools: (refreshed.toolDetails ?? []).map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) })),
+            instruction: 'No live tool matched the query. All currently connected tools remain available; try a more specific capability name if you need discovery details.',
           } : {}),
           connectedServer: refreshed.serverName,
           toolCount: refreshed.tools.length,
-          loadedToolNames: selectedTools.map(tool => tool.name),
-          ...(selectedTools.length > 0 ? { instruction: 'The matching live tools are available to this conversation on the next model step.' } : {}),
+          loadedToolNames: matchedTools.map(tool => tool.name),
+          ...(matchedTools.length > 0 ? { instruction: 'The matching live tool schemas are available to this conversation on the next model step.' } : {}),
         }
       },
     })), 'zerowall-mcp: local capability search')
@@ -514,29 +502,14 @@ export class ZeroWallMcpService extends TypertRemoteService {
           if (service.ctx.tools.get(remoteName) === undefined) {
             return { domain: 'r_files', host_capabilities: HOST_FILE_CAPABILITIES, capabilities: HOST_FILE_CAPABILITIES }
           }
-          const nested = await service.ctx.tools.execute({
-            signal: exec.signal,
-            callId: ToolCallId(`r-files-catalog-${Date.now()}`),
-            name: remoteName,
-            arguments: { action: 'catalog', arguments: nestedValues },
-            parent: exec.token,
-            agent: exec.agent,
-          })
+          const nested = (await service.executeRmcpTool('r_files', { action: 'catalog', arguments: nestedValues }, exec, 'r-files-catalog', true)).result
           const remoteCatalog = service.compactPayload(nested, remoteName)
           const remoteCapabilities = Array.isArray(remoteCatalog.capabilities) ? remoteCatalog.capabilities : []
           return { ...remoteCatalog, capabilities: [...remoteCapabilities, ...HOST_FILE_CAPABILITIES], host_capabilities: HOST_FILE_CAPABILITIES }
         }
         await service.ensureConnected(RDATALINUX_SERVER_NAME, true)
         if (args.action !== 'upload_workspace' && args.action !== 'download_workspace' && args.action !== 'download_job_manifest' && args.action !== 'download_figureya_module') {
-          if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before accessing project files.')
-          const nested = await service.ctx.tools.execute({
-            signal: exec.signal,
-            callId: ToolCallId(`r-files-${Date.now()}`),
-            name: remoteName,
-            arguments: { action: args.action, arguments: nestedValues },
-            parent: exec.token,
-            agent: exec.agent,
-          })
+          const nested = (await service.executeRmcpTool('r_files', { action: args.action, arguments: nestedValues }, exec, `r-files-${args.action}`, true)).result
           if (nested.isError) {
             const message = nested.content.map((block: ContentBlock) => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
             throw new Error(message || 'rdatalinux R MCP file operation failed.')
@@ -715,11 +688,8 @@ export class ZeroWallMcpService extends TypertRemoteService {
             }
           }
           await ensureWorkspaceDirectory(targetRoot)
-          const catalogTool = 'mcp__rmcp__r_figureya_catalog'
-          if (service.ctx.tools.get(catalogTool) === undefined) throw new Error('rdatalinux FigureYa catalog tool is not active; reload the connection before downloading a module.')
           const callCatalog = async (action: string, actionArguments: Record<string, JsonValue>): Promise<Record<string, JsonValue>> => {
-            const result = await service.ctx.tools.execute({ signal: exec.signal, callId: ToolCallId(`figureya-module-${Date.now()}-${Math.random().toString(16).slice(2)}`), name: catalogTool, arguments: { action, arguments: actionArguments }, parent: exec.token, agent: exec.agent })
-            return service.compactPayload(result, `FigureYa ${action}`)
+            return service.figureyaCatalogRequest(action, actionArguments, exec)
           }
           const listing = await callCatalog('figureya.list.files', { module_id: moduleId })
           const rawEntries: JsonValue[] = []
@@ -803,7 +773,6 @@ export class ZeroWallMcpService extends TypertRemoteService {
           return { moduleId, localRoot: relative(workspace, targetRoot).replaceAll('\\', '/'), files, totalBytes }
         }
         if (args.action === 'upload_workspace') {
-          if (service.ctx.tools.get(remoteName) === undefined) throw new Error('rdatalinux R MCP is not active; reload the connection before uploading project files.')
           const info = await lstat(source)
           if (!info.isFile() || info.isSymbolicLink()) throw new Error('local_path must be a regular, non-symbolic-link file.')
           const resolvedSource = await realpath(source)
@@ -818,7 +787,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
               const sha256 = hash.digest('hex')
               const transfer_id = createHash('sha256').update(JSON.stringify([values.project_id, values.remote_path, sha256, size])).digest('hex')
               const transfer = async (action: string, fields: Record<string, unknown> = {}) => {
-                const response = await service.ctx.tools.execute({ signal: exec.signal, callId: ToolCallId(`r-transfer-${transfer_id}-${action}`), name: remoteName, arguments: { action: 'r.upload.transfer', arguments: { project_id: values.project_id, transfer_id, action, confirm: true, ...fields } }, parent: exec.token, agent: exec.agent })
+                const response = (await service.executeRmcpTool('r_files', { action: 'r.upload.transfer', arguments: { project_id: values.project_id, transfer_id, action, confirm: true, ...fields } }, exec, `r-transfer-${transfer_id}-${action}`, true)).result
                 return service.compactPayload(response, remoteName)
               }
               const started = await transfer('start', { path: values.remote_path, bytes: size, sha256 })
@@ -838,14 +807,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
           }
           const bytes = await readFile(source)
           const sha256 = createHash('sha256').update(bytes).digest('hex')
-          const nested = await service.ctx.tools.execute({
-            signal: exec.signal,
-            callId: ToolCallId(`r-upload-workspace-${Date.now()}`),
-            name: remoteName,
-            arguments: { action: 'r.upload.file', arguments: { project_id: values.project_id, path: values.remote_path, data_base64: bytes.toString('base64'), confirm: true } },
-            parent: exec.token,
-            agent: exec.agent,
-          })
+          const nested = (await service.executeRmcpTool('r_files', { action: 'r.upload.file', arguments: { project_id: values.project_id, path: values.remote_path, data_base64: bytes.toString('base64'), confirm: true } }, exec, 'r-upload-workspace', true)).result
           if (nested.isError) {
             const message = nested.content.map((block: ContentBlock) => block.type === 'text' ? block.text : '').filter(Boolean).join('\n')
             throw new Error(message || 'rdatalinux R MCP upload failed.')
@@ -853,23 +815,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
           return { projectId: values.project_id!, localPath: requested, remotePath: values.remote_path!, name: basename(source), bytes: bytes.length, sha256, remote: nested.value as JsonValue }
         }
 
-        const downloadTool = downloadSource === 'biomni'
-          ? 'mcp__rmcp__biomni_artifacts'
-          : figureyaRequest === undefined ? remoteName : 'mcp__rmcp__r_figureya_catalog'
-        if (service.ctx.tools.get(downloadTool) === undefined) throw new Error(`${downloadSource === 'biomni' ? 'rdatalinux Biomni artifact' : figureyaRequest === undefined ? 'rdatalinux R file' : 'rdatalinux FigureYa catalog'} tool is not active; reload the connection before downloading files.`)
-        const resolvedResult = await service.ctx.tools.execute({
-          signal: exec.signal,
-          callId: ToolCallId(`r-download-resolve-${Date.now()}`),
-          name: downloadTool,
-          arguments: downloadSource === 'biomni'
-            ? { action: 'biomni.get.job.manifest', arguments: { job_id: values.job_id } }
-            : figureyaRequest === undefined
-              ? { action: 'r.resolve.file', arguments: { project_id: values.project_id, path: values.remote_path } }
-              : { action: 'figureya.source.file.manifest', arguments: { module_id: figureyaRequest.moduleId, path: figureyaRequest.path } },
-          parent: exec.token,
-          agent: exec.agent,
-        })
-        let resolvedPayload = service.compactPayload(resolvedResult, downloadSource === 'biomni' ? 'Biomni job manifest' : 'rdatalinux file resolver')
+        let resolvedPayload = figureyaRequest !== undefined
+          ? await service.figureyaCatalogRequest('figureya.source.file.manifest', { module_id: figureyaRequest.moduleId, path: figureyaRequest.path }, exec)
+          : service.compactPayload((await service.executeRmcpTool(
+            downloadSource === 'biomni' ? 'biomni_artifacts' : 'r_files',
+            downloadSource === 'biomni'
+              ? { action: 'biomni.get.job.manifest', arguments: { job_id: values.job_id } }
+              : { action: 'r.resolve.file', arguments: { project_id: values.project_id, path: values.remote_path } },
+            exec,
+            'r-download-resolve',
+            true,
+          )).result, downloadSource === 'biomni' ? 'Biomni job manifest' : 'rdatalinux file resolver')
         if (downloadSource === 'biomni') {
           const nestedManifest = resolvedPayload.manifest !== null && typeof resolvedPayload.manifest === 'object' && !Array.isArray(resolvedPayload.manifest)
             ? resolvedPayload.manifest as Record<string, JsonValue>
@@ -948,19 +904,17 @@ export class ZeroWallMcpService extends TypertRemoteService {
           }
         }
         while (offset < expectedBytes) {
-          const chunkResult = await service.ctx.tools.execute({
-            signal: exec.signal,
-            callId: ToolCallId(`r-download-chunk-${Date.now()}-${offset}`),
-            name: downloadTool,
-            arguments: downloadSource === 'biomni'
-              ? { action: 'biomni.read.file.chunk', arguments: { job_id: values.job_id, path: resolvedRemotePath, offset, length: Math.min(RDATALINUX_DOWNLOAD_CHUNK_BYTES, expectedBytes - offset), internal_host_download: true } }
-              : figureyaRequest === undefined
-                ? { action: 'r.read.file.chunk', arguments: { project_id: values.project_id, path: resolvedRemotePath, offset, length: Math.min(RDATALINUX_DOWNLOAD_CHUNK_BYTES, expectedBytes - offset), internal_host_download: true } }
-                : { action: 'figureya.read.source.file.chunk', arguments: { module_id: figureyaRequest.moduleId, path: resolvedRemotePath, offset, length: Math.min(RDATALINUX_DOWNLOAD_CHUNK_BYTES, expectedBytes - offset), internal_host_download: true } },
-            parent: exec.token,
-            agent: exec.agent,
-          })
-          const chunkPayload = service.compactPayload(chunkResult, 'rdatalinux file chunk')
+          const chunkPayload = figureyaRequest !== undefined
+            ? await service.figureyaCatalogRequest('figureya.read.source.file.chunk', { module_id: figureyaRequest.moduleId, path: resolvedRemotePath, offset, length: Math.min(RDATALINUX_DOWNLOAD_CHUNK_BYTES, expectedBytes - offset), internal_host_download: true }, exec)
+            : service.compactPayload((await service.executeRmcpTool(
+              downloadSource === 'biomni' ? 'biomni_artifacts' : 'r_files',
+              downloadSource === 'biomni'
+                ? { action: 'biomni.read.file.chunk', arguments: { job_id: values.job_id, path: resolvedRemotePath, offset, length: Math.min(RDATALINUX_DOWNLOAD_CHUNK_BYTES, expectedBytes - offset), internal_host_download: true } }
+                : { action: 'r.read.file.chunk', arguments: { project_id: values.project_id, path: resolvedRemotePath, offset, length: Math.min(RDATALINUX_DOWNLOAD_CHUNK_BYTES, expectedBytes - offset), internal_host_download: true } },
+              exec,
+              `r-download-chunk-${offset}`,
+              true,
+            )).result, 'rdatalinux file chunk')
           if (typeof chunkPayload.data_base64 !== 'string' || chunkPayload.data_base64 === '') throw new Error(`The remote file chunk at offset ${offset} has no data.`)
           const encodedChunk = chunkPayload.data_base64
           // A repeated-group regex over multi-MiB Base64 can overflow V8's
@@ -1064,40 +1018,38 @@ export class ZeroWallMcpService extends TypertRemoteService {
     })
     this.operation = this.recordsReady
     ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
-      const assembly = await next()
-      const scope = context.scope
-      const scoped = scope !== undefined && typeof scope === 'object' && scope !== null
-      const selected = scoped ? this.selectedTools.get(scope) ?? new Set<string>() : new Set<string>()
-      if (scoped) {
-        const agent = scope as { session?: { surface?: { nodes?: readonly number[] }; eventAt?: (seq: number) => any } }
-        for (const seq of [...(agent.session?.surface?.nodes ?? [])].slice(-400)) {
-          const event = agent.session?.eventAt?.(seq)
-          if (event?.type !== 'assistant/message') continue
-          for (const block of event.data.message.content ?? []) {
-            if (block.type !== 'tool-call') continue
-            if (block.name === 'mcp_connect') {
-              try {
-                const args = typeof block.arguments === 'string' ? JSON.parse(block.arguments) : block.arguments
-                const server = typeof args?.server === 'string' ? canonicalMcpServerName(args.server) : undefined
-                if (server) {
-                  const record = this.projects().listMcpServers().find(item => item.serverName === server)
-                  if (record && server !== RDATALINUX_SERVER_NAME) for (const name of this.registeredTools.get(record.id) ?? []) selected.add(name)
-                }
-              } catch { /* malformed historical arguments do not expose schemas */ }
-            }
-            if (block.name.startsWith('mcp__') && !block.name.startsWith(RMCP_PUBLIC_TOOL_PREFIX)) selected.add(block.name)
-          }
+      await this.recordsReady
+      const configured = this.projects().listMcpServers().filter(record => record.enabled)
+      if (context.agent !== undefined) {
+        const connections = await Promise.allSettled(configured.map(record => this.ensureConnected(record.serverName)))
+        for (const [index, result] of connections.entries()) {
+          if (result.status === 'rejected') ctx.logger.warn(`zerowall-mcp: automatic connection failed for ${configured[index]!.serverName}: ${redactError(result.reason)}`)
         }
-        this.selectedTools.set(scope, selected)
+        const current = this.projects().listMcpServers()
+        const names = current.flatMap(record => {
+          if (!record.enabled || !['active', 'active-with-zero-tools'].includes(this.statuses.get(record.id)?.state ?? '')) return []
+          return this.liveToolNames(record.serverName)
+        })
+        this.includeToolsForAgent(context.agent, names)
       }
+      const assembly = await next()
       const records = this.projects().listMcpServers()
-      return { ...assembly, tools: assembly.tools.filter(schema => {
+      const available = new Map(assembly.tools.filter(schema => {
         if (schema.name === RETIRED_R_PROJECT_TOOL) return false
-        if (schema.name.startsWith(RMCP_PUBLIC_TOOL_PREFIX)) return false
         if (!schema.name.startsWith('mcp__')) return true
         const record = records.find(item => schema.name.startsWith(`mcp__${item.serverName}__`))
-        return record === undefined || selected.has(schema.name)
-      }) }
+        return record === undefined
+      }).map(schema => [schema.name, schema]))
+      const live = new Map(this.ctx.tools.schemas().map(schema => [schema.name, schema]))
+      for (const record of records) {
+        if (!record.enabled || !['active', 'active-with-zero-tools'].includes(this.statuses.get(record.id)?.state ?? '')) continue
+        const names = this.liveToolNames(record.serverName)
+        for (const name of names) {
+          const schema = live.get(name)
+          if (schema) available.set(name, schema)
+        }
+      }
+      return { ...assembly, tools: [...available.values()] }
     })
     // Nested Cordis fibers created during boot join the boot barrier even
     // without an await here. Release optional transports after UI mount.
@@ -1162,11 +1114,75 @@ export class ZeroWallMcpService extends TypertRemoteService {
     return parsed as Record<string, JsonValue>
   }
 
-  private selectToolForAgent(exec: any, target: string): void {
-    if (!exec.agent || typeof exec.agent !== 'object') return
-    const selected = this.selectedTools.get(exec.agent) ?? new Set<string>()
-    selected.add(target)
-    this.selectedTools.set(exec.agent, selected)
+  /**
+   * Return only names that still have a live Host schema. The persisted tool
+   * index and the connection generation are useful hints, but neither is an
+   * execution authority after a remote server changes its tools/list.
+   */
+  private liveToolNames(serverName: string, candidates?: readonly string[]): string[] {
+    const prefix = `mcp__${serverName}__`
+    const live = new Set(this.ctx.tools.schemas().map(schema => schema.name))
+    const source = candidates ?? this.toolNames(serverName)
+    return [...new Set(source)]
+      .filter(name => name.startsWith(prefix) && name !== RETIRED_R_PROJECT_TOOL && live.has(name))
+      .sort((left, right) => left.localeCompare(right))
+  }
+
+  /**
+   * FigureYa is exposed by older RMCP servers as a compact catalog tool, but
+   * newer servers route the same operations through r_runtime. Keep the raw
+   * path for compatibility and transparently fall back to the workflow route
+   * when the old tool is absent or rejected as unknown.
+   */
+  private async figureyaCatalogRequest(action: string, actionArguments: Record<string, JsonValue>, exec: any): Promise<Record<string, JsonValue>> {
+    const catalogTool = 'mcp__rmcp__r_figureya_catalog'
+    const invokeRaw = async (): Promise<Record<string, JsonValue>> => {
+      const result = await this.ctx.tools.execute({
+        signal: exec.signal,
+        callId: ToolCallId(`figureya-${Date.now()}-${Math.random().toString(16).slice(2)}`),
+        name: catalogTool,
+        arguments: { action, arguments: actionArguments },
+        parent: exec.token,
+        rootCallId: exec.rootCallId ?? exec.callId,
+        agent: exec.agent,
+      })
+      return this.compactPayload(result, `FigureYa ${action}`)
+    }
+    if (this.ctx.tools.get(catalogTool) !== undefined) {
+      try {
+        return await invokeRaw()
+      } catch (error) {
+        if (!this.isUnknownRmcpTool(error, catalogTool)) throw error
+      }
+    }
+    try {
+      const routed = await this.workflowRequest('workflow_query', {
+        workflow_id: 'figureya',
+        operation: action,
+        arguments: actionArguments,
+      }, exec)
+      if (routed !== null && typeof routed === 'object' && !Array.isArray(routed)) {
+        const payload = routed as Record<string, JsonValue>
+        if (payload.ok === false || payload.isError === true) throw new Error(String(payload.error ?? `FigureYa ${action} failed`))
+        return payload
+      }
+      throw new Error(`FigureYa ${action} returned an invalid workflow payload.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      throw new Error(`FigureYa ${action} unavailable through the Host: ${message}`)
+    }
+  }
+
+  private includeToolsForAgent(agent: unknown, names: readonly string[]): void {
+    if (agent === null || typeof agent !== 'object' || names.length === 0) return
+    const access = this.ctx.get('zerowallToolAccess') as { include?: (agent: object, names: readonly string[]) => void } | undefined
+    access?.include?.(agent, names)
+  }
+
+  includeConnectedToolsForAgent(agent: unknown, serverName: string = RDATALINUX_SERVER_NAME): void {
+    const record = this.projects().listMcpServers().find(item => item.serverName === canonicalMcpServerName(serverName))
+    if (!record?.enabled) return
+    this.includeToolsForAgent(agent, this.liveToolNames(record.serverName))
   }
 
   private async ensureRmcpTool(publicTool: string, exec: any, refresh = false): Promise<string> {
@@ -1178,7 +1194,6 @@ export class ZeroWallMcpService extends TypertRemoteService {
     if (this.ctx.tools.get(target) === undefined) {
       throw new Error(`RMCP_TOOL_UNAVAILABLE: ${publicTool} is not present in the refreshed RMCP tools/list; no remote operation was submitted.`)
     }
-    this.selectToolForAgent(exec, target)
     return target
   }
 
@@ -1187,38 +1202,134 @@ export class ZeroWallMcpService extends TypertRemoteService {
     return /unknown tool/i.test(message) && message.includes(target)
   }
 
-  private async executeRmcpTool(publicTool: string, argumentsValue: unknown, exec: any, callId: string): Promise<{ target: string; result: any }> {
-    const invoke = async (target: string, attempt: number) => this.ctx.tools.execute({
-      callId: ToolCallId(`${String(exec.callId ?? randomUUID())}:${callId}${attempt ? ':refresh-retry' : ''}`),
-      name: target,
-      arguments: argumentsValue,
-      agent: exec.agent,
-      parent: exec.token,
-      rootCallId: exec.rootCallId ?? exec.callId,
-      signal: exec.signal,
-    })
-    let target = await this.ensureRmcpTool(publicTool, exec)
+  private rmcpWorkflowId(publicTool: string, action: unknown): string | undefined {
+    if (typeof action !== 'string' || action.trim() === '') return undefined
+    const operation = action.trim()
+    if (publicTool === 'r_files') return 'r.files'
+    const registered = rWorkflows.modules.find(module => module.operations.some(item => item.id === operation && item.public_tool === publicTool))
+    if (registered) return registered.id
+    // New backend modules can be routed by their namespaced operation ID
+    // before the desktop catalog has refreshed, without assuming a fixed
+    // allowlist of RMCP module names.
+    const namespace = /^(r\.[a-z][a-z0-9_-]{0,63}|biomni|figureya|omicverse|tooluniverse)\./u.exec(operation)?.[1]
+    return namespace
+  }
+
+  private async tryRmcpWorkflowFallback(publicTool: string, argumentsValue: unknown, exec: any): Promise<{ target: string; result: any } | undefined> {
+    if (publicTool === 'r_runtime') return undefined
+    const envelope = argumentsValue !== null && typeof argumentsValue === 'object' && !Array.isArray(argumentsValue) ? argumentsValue as Record<string, unknown> : undefined
+    const action = envelope?.action
+    const workflowId = this.rmcpWorkflowId(publicTool, action)
+    if (workflowId === undefined || typeof action !== 'string') return undefined
+    const operationArguments = envelope?.arguments !== null && typeof envelope?.arguments === 'object' && !Array.isArray(envelope.arguments) ? envelope.arguments : {}
+    const payload = await this.workflowRequest('workflow_query', { workflow_id: workflowId, operation: action, arguments: operationArguments }, exec)
+    const content: ContentBlock[] = [{ type: 'text', text: JSON.stringify(payload) }]
+    return { target: 'mcp__rmcp__r_runtime', result: { isError: false, content, value: { structuredContent: payload } } }
+  }
+
+  private async executeRmcpTool(publicTool: string, argumentsValue: unknown, exec: any, callId: string, alreadyConnected = false, internalProjectBootstrap = false): Promise<{ target: string; result: any }> {
+    const invoke = async (target: string, attempt: number) => {
+      const nestedCallId = ToolCallId(`${String(exec.callId ?? randomUUID())}:${callId}${attempt ? ':refresh-retry' : ''}`)
+      if (internalProjectBootstrap && target === RETIRED_R_PROJECT_TOOL) this.internalProjectBootstrapCalls.add(String(nestedCallId))
+      try {
+        return await this.ctx.tools.execute({
+          callId: nestedCallId,
+          name: target,
+          arguments: argumentsValue,
+          agent: exec.agent,
+          parent: exec.token,
+          rootCallId: exec.rootCallId ?? exec.callId,
+          signal: exec.signal,
+        })
+      } finally {
+        this.internalProjectBootstrapCalls.delete(String(nestedCallId))
+      }
+    }
+    let target: string
+    try {
+      const directTarget = `${RMCP_PUBLIC_TOOL_PREFIX}${publicTool}`
+      target = alreadyConnected && this.ctx.tools.get(directTarget) !== undefined
+        ? directTarget
+        : await this.ensureRmcpTool(publicTool, exec)
+    } catch (error) {
+      const fallback = await this.tryRmcpWorkflowFallback(publicTool, argumentsValue, exec)
+      if (fallback !== undefined) return fallback
+      throw error
+    }
+    this.includeConnectedToolsForAgent(exec.agent, RDATALINUX_SERVER_NAME)
     let result: any
     try {
       result = await invoke(target, 0)
     } catch (error) {
       if (!this.isUnknownRmcpTool(error, target)) throw error
-      target = await this.ensureRmcpTool(publicTool, exec, true)
+      try {
+        target = await this.ensureRmcpTool(publicTool, exec, true)
+      } catch (refreshError) {
+        const fallback = await this.tryRmcpWorkflowFallback(publicTool, argumentsValue, exec)
+        if (fallback !== undefined) return fallback
+        throw refreshError
+      }
       result = await invoke(target, 1)
     }
     if (result.isError) {
       const message = result.content.filter((block: ContentBlock) => block.type === 'text').map((block: any) => block.text).join('\n')
       if (!this.isUnknownRmcpTool(message, target)) throw new Error(message || `${target} failed`)
-      target = await this.ensureRmcpTool(publicTool, exec, true)
+      try {
+        target = await this.ensureRmcpTool(publicTool, exec, true)
+      } catch (refreshError) {
+        const fallback = await this.tryRmcpWorkflowFallback(publicTool, argumentsValue, exec)
+        if (fallback !== undefined) return fallback
+        throw refreshError
+      }
       result = await invoke(target, 1)
-      if (result.isError) throw new Error(result.content.filter((block: ContentBlock) => block.type === 'text').map((block: any) => block.text).join('\n') || `${target} failed`)
+      if (result.isError) {
+        const finalMessage = result.content.filter((block: ContentBlock) => block.type === 'text').map((block: any) => block.text).join('\n')
+        if (this.isUnknownRmcpTool(finalMessage, target)) {
+          const fallback = await this.tryRmcpWorkflowFallback(publicTool, argumentsValue, exec)
+          if (fallback !== undefined) return fallback
+        }
+        throw new Error(finalMessage || `${target} failed`)
+      }
     }
     return { target, result }
   }
 
   async workflowRequest(action: string, args: unknown, exec: any): Promise<unknown> {
-    const { target, result } = await this.executeRmcpTool('r_runtime', { action, arguments: normalizeJsonArguments(args) }, exec, action)
-    return this.compactPayload(result, target)
+    try {
+      const { target, result } = await this.executeRmcpTool('r_runtime', { action, arguments: normalizeJsonArguments(args) }, exec, action)
+      return this.compactPayload(result, target)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!(/RMCP_TOOL_UNAVAILABLE:\s*r_runtime\b/iu.test(message) || /unknown tool[^\n]*mcp__rmcp__r_runtime/iu.test(message))) throw error
+      const request = normalizeJsonArguments(args)
+      const workflowId = typeof request.workflow_id === 'string' ? request.workflow_id : ''
+      const operationId = typeof request.operation === 'string' ? request.operation : ''
+      const modules = rWorkflows.modules as readonly { id: string; skill: string; operations: readonly { id: string; public_tool: string; summary: string; input_schema: unknown }[] }[]
+      const module = modules.find(item => item.id === workflowId)
+      if (action === 'workflow_catalog') {
+        return { catalog_version: rWorkflows.catalog_version, modules: modules.map(item => normalizeJsonArguments({ id: item.id, skill: item.skill, operations: item.operations })) }
+      }
+      if (action === 'workflow_search') {
+        const candidates = module?.operations ?? modules.flatMap(item => item.operations)
+        const query = typeof request.query === 'string' ? request.query.trim().toLowerCase() : ''
+        const offset = typeof request.offset === 'number' && Number.isInteger(request.offset) && request.offset >= 0 ? request.offset : 0
+        const limit = typeof request.limit === 'number' && Number.isInteger(request.limit) && request.limit > 0 ? Math.min(request.limit, 100) : 25
+        const capabilities = candidates
+          .filter(item => !query || `${item.id} ${item.summary} ${item.public_tool}`.toLowerCase().includes(query))
+        return { workflow_id: workflowId, catalog_version: rWorkflows.catalog_version, capabilities: capabilities.slice(offset, offset + limit).map(item => normalizeJsonArguments(item)), total: capabilities.length, next_offset: offset + limit < capabilities.length ? offset + limit : null, schema_source: 'bundled_operation_catalog' }
+      }
+      if (action === 'workflow_describe') {
+        const operation = module?.operations.find(item => item.id === operationId)
+        if (operation) {
+          return { ...normalizeJsonArguments(operation), schema_source: 'bundled_operation_catalog', live_schema_unavailable: true }
+        }
+      }
+      if (action === 'workflow_query' && operationId && operationId !== 'r.ensure.project' && operationId !== 'r.register.project') {
+        const result = await this.executeCompactCapability(operationId, request.arguments ?? {}, exec)
+        return this.compactPayload({ isError: false, content: result.content, value: result.value }, operationId)
+      }
+      throw error
+    }
   }
 
   async searchCompactCapabilities(query: string, detailId: string | undefined, limit: number, exec: any): Promise<CompactCapabilityRecord[]> {
@@ -1274,10 +1385,44 @@ export class ZeroWallMcpService extends TypertRemoteService {
   async executeCompactCapability(id: string, args: unknown, exec: any): Promise<{ target: string; content: ContentBlock[]; value: unknown }> {
     const safeArgs = normalizeJsonArguments(args ?? {})
     if (id === 'r.ensure.project') {
-      const { target, result } = await this.executeRmcpTool('r_runtime', { action: id, arguments: safeArgs }, exec, 'conversation-project')
-      return { target, content: result.content, value: result.value }
+      try {
+        const { target, result } = await this.executeRmcpTool('r_runtime', { action: id, arguments: safeArgs }, exec, 'conversation-project')
+        return { target, content: result.content, value: result.value }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        const bindingKey = safeArgs.binding_key
+        const projectName = safeArgs.name
+        if (!(/RMCP_TOOL_UNAVAILABLE:\s*r_runtime\b/iu.test(message) || /unknown tool[^\n]*mcp__rmcp__r_runtime/iu.test(message))
+          || typeof bindingKey !== 'string' || !/^[a-f0-9]{64}$/u.test(bindingKey)
+          || typeof projectName !== 'string' || projectName.trim() === ''
+          || this.ctx.tools.get(RMCP_PUBLIC_TOOL_PREFIX + 'r_project') === undefined) throw error
+        const projectId = `zw-${createHash('sha256').update(bindingKey).digest('hex').slice(0, 40)}`
+        const { target, result } = await this.executeRmcpTool('r_project', {
+          action: 'r.register.project',
+          arguments: { project_id: projectId, name: projectName },
+        }, exec, 'conversation-project-bootstrap', true, true)
+        return { target, content: result.content, value: result.value }
+      }
     }
-    const [record] = await this.searchCompactCapabilities('', id, 1, exec)
+    const [discoveredRecord] = await this.searchCompactCapabilities('', id, 1, exec)
+    let record: CompactCapabilityRecord | undefined = discoveredRecord
+    if (record === undefined) {
+      // Bundled contracts let every module-specific live tool keep working
+      // when the generic r_runtime discovery tool is omitted by a server.
+      const modules = rWorkflows.modules as readonly { operations: readonly { id: string; public_tool: string; summary: string; input_schema: unknown }[] }[]
+      for (const module of modules) {
+        const operation = module.operations.find(candidate => candidate.id === id)
+        if (!operation) continue
+        record = {
+          id: operation.id,
+          publicTool: operation.public_tool,
+          summary: operation.summary,
+          inputSchema: normalizeJsonArguments(operation.input_schema),
+          backend: 'rmcp',
+        }
+        break
+      }
+    }
     if (record === undefined) throw new Error(`UNKNOWN_CAPABILITY: ${id}`)
     if (record.backend === 'rmcp' && (id === 'tooluniverse.run.tool' || id.startsWith('tooluniverse.tool.'))) {
       const connection = this.projects().listMcpServers().find(item => item.serverName === 'rmcp')
@@ -1902,7 +2047,10 @@ export class ZeroWallMcpService extends TypertRemoteService {
     try {
       const config = resolved.config as McpClient.Config
       if (sciMasterApiKey !== undefined && config.transport === 'stdio') config.env.ZEROWALL_SCIMASTER_API_KEY = sciMasterApiKey
-      const fiber = this.ctx.plugin(McpClient, config)
+      // Cordis rebinds this.ctx to the service caller. A management request
+      // uses a short-lived injected Fiber; registering under it would silently
+      // dispose this connection and its tools when that request is cleaned up.
+      const fiber = this.connectionContext.plugin(McpClient, config)
       replacement = fiber
       await fiber
       if (!current()) {
@@ -1942,10 +2090,9 @@ export class ZeroWallMcpService extends TypertRemoteService {
 
   private dto(record: McpServerRecord): McpServerDto {
     const status = this.statuses.get(record.id) ?? { state: record.enabled ? 'idle' as const : 'disabled' as const, error: '', missingEnvironmentVariables: [] }
-    // Prefer the snapshot captured for this connection generation. Reading the
-    // global registry during a concurrent refresh can otherwise expose a
-    // different server's tools in this DTO.
-    const tools = [...(this.registeredTools.get(record.id) ?? this.toolNames(record.serverName))]
+    // Read the current namespace from the live registry so tools/list change
+    // notifications cannot leave this DTO stuck on the initial snapshot.
+    const tools = this.liveToolNames(record.serverName)
     const runtimeState = status.state === 'starting' && (this.fibers.has(record.id) || this.managed.has(record.id)) && this.registeredTools.has(record.id)
       ? 'active'
       : status.state
@@ -2017,7 +2164,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       const entry = cache.servers[record.id]
       if (!entry || entry.signature !== this.cacheSignature(record) || !/^[a-f0-9]{64}$/u.test(entry.schemaHash ?? '') || !Array.isArray(entry.tools)) continue
       const tools = entry.tools.filter(tool => tool !== null && typeof tool === 'object' && typeof tool.name === 'string' && tool.name !== RETIRED_R_PROJECT_TOOL && tool.name.startsWith(`mcp__${record.serverName}__`) && typeof tool.description === 'string')
-        .slice(0, 500).map(tool => ({ name: tool.name!, description: tool.description!.slice(0, 400) }))
+        .map(tool => ({ name: tool.name!, description: tool.description!.slice(0, 400) }))
       for (const tool of tools) this.mcpToolIndex.set(tool.name, { server: record.serverName, ...tool })
     }
   }
@@ -2025,7 +2172,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   private async cacheMcpServer(record: McpServerRecord): Promise<void> {
     const schemas = this.ctx.tools.schemas().filter(schema => schema.name.startsWith(`mcp__${record.serverName}__`) && schema.name !== RETIRED_R_PROJECT_TOOL)
       .sort((left, right) => left.name.localeCompare(right.name))
-    const tools = schemas.slice(0, 500).map(schema => ({ name: schema.name, description: (schema.description ?? '').slice(0, 400) }))
+    const tools = schemas.map(schema => ({ name: schema.name, description: (schema.description ?? '').slice(0, 400) }))
     const signature = this.cacheSignature(record)
     const schemaHash = createHash('sha256').update(JSON.stringify(schemas)).digest('hex')
     const path = join(process.env.DSH_HOME?.trim() || join(homedir(), '.dsh'), 'zerowall-mcp-tool-index.json')

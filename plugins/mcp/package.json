@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-mcp",
-  "version": "0.2.45",
+  "version": "0.2.51",
   "description": "ZeroWall Science mcp domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -114,7 +114,7 @@
   "dependencies": {
     "dsh-better-sidebar": "workspace:^",
     "dsh-dream-skin": "10.16.0",
-    "@zerowallscience/plugin-base": "^0.1.27",
+    "@zerowallscience/plugin-base": "^0.1.36",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/research-store": "workspace:^",
     "lucide-react": "^0.468.0",

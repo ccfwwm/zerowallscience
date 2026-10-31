@@ -42,6 +42,11 @@ export function HistoryDrawer({ store, onClose }: { store: PptStore; onClose: ()
 
   const key = state.activeKey
   const sessionId = state.sessionId
+  const request = React.useRef(0)
+  React.useEffect(() => {
+    setSelected(null); setPreview(null); setEntries(null)
+    return () => { request.current++; store.actions.setExportPreview(null) }
+  }, [store, key])
 
   React.useEffect(() => {
     let cancelled = false
@@ -67,16 +72,21 @@ export function HistoryDrawer({ store, onClose }: { store: PptStore; onClose: ()
     setPreview(null)
     setPreviewPage(0)
     setError(null)
+    const generation = ++request.current
+    store.actions.setExportPreview({ baseRevision: revision, ops: [] })
     api
       .getHistoryPages(sessionId, key, revision)
       .then((snap) => {
+        if (generation !== request.current) return
+        store.actions.setExportPreview({ baseRevision: revision, deck: snap.deck,
+          pageData: Object.fromEntries(snap.pages.map(page => [page.path, page.page])), ops: [] })
         setPreview({
           size: snap.deck?.size ?? [960, 540],
           pages: snap.pages.map((p) => (p.page ?? {}) as PptdPage),
           warnings: snap.warnings,
         })
       })
-      .catch((err: unknown) => setError(`快照读取失败：${(err as Error).message}`))
+      .catch((err: unknown) => { if (generation === request.current) setError(`快照读取失败：${(err as Error).message}`) })
   }
 
   const restore = async () => {
@@ -154,6 +164,7 @@ export function HistoryDrawer({ store, onClose }: { store: PptStore; onClose: ()
             <div className="ppt-history-loading">正在读取 r{selected}…</div>
           )}
           <div className="ppt-history-actions">
+            <button type="button" className="ppt-btn" onClick={() => void store.actions.exportDeck()}>导出此版本（r{selected}）</button>
             <button
               type="button"
               className="ppt-btn ppt-btn-primary"

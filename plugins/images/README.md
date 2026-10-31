@@ -16,4 +16,8 @@
 
 ## 验收
 
-生成或编辑完成后由 `dsh-ppt-maker` 执行 `ppt_check`、`ppt_render` 和 `ppt_export`。规则 blocker 必须修复；渲染结果逐页检查后再交付。图片型 PPTX 回读后应以整页图片为主，可编辑 PPTX 回读后应确认文字、表格、图表和图片对象仍可编辑。详细工作流见 `resources/extensions/skills/zerowall-presentation/SKILL.md`。
+生成或编辑完成后由 `dsh-ppt-maker` 执行 `ppt_check`、`ppt_render` 和 `ppt_export`。质量问题逐页记录和修复，导出随时使用当前可见版本；blocker、未审阅或过期账本不拦截导出。图片型 PPTX 回读后应以整页图片为主，可编辑 PPTX 回读后应确认文字、表格、图表和图片对象仍可编辑。详细工作流见 `resources/extensions/skills/zerowall-presentation/SKILL.md`。
+
+逐页生成与修改：presentation_generate_templates、presentation_repair_templates 立即返回任务 ID，默认并发 10（1–10）。每页完成后独立写入、检查和渲染，单页失败保留其他成功结果。presentation_status 显示 pageJobs，重启中断页需用户明确选择后 presentation_resume_pages 恢复。修改只处理选定页并保存独立 PPT 修订，工作台历史选中哪版即可导出哪版。
+
+内容计划支持全局/逐页 stylePrompt、styleReferenceAssetIds 的逐字段继承覆盖；参考图走 edit_image，无参考图走 generate_image。保留原始/组合提示词、参考图哈希和生成回执。纯风格图不作为事实内容嵌入，也不要求 assetPlacements。

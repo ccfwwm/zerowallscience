@@ -2,7 +2,7 @@ export const DEFAULT_IMAGE_CONCURRENCY = 10
 
 export function imageConcurrency(value: number | undefined): number {
   const limit = value ?? DEFAULT_IMAGE_CONCURRENCY
-  if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Image concurrency must be a positive integer.')
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10) throw new Error('Image concurrency must be an integer from 1 to 10.')
   return limit
 }
 

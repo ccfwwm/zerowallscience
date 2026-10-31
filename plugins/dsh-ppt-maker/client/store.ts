@@ -49,6 +49,7 @@ export interface PptState {
   deck: { profile?: string; title?: string; size: [number, number]; pages: string[]; source?: unknown } | null
   /** 活动工程 deck 的页文件清单（GET /project 的 deck.pages，顺序即页序）。 */
   deckPages: string[]
+  deckRevision: number
   /** 当前页的文件内容（GET /page 拉起来的单页 AST；Store 只存「已经请求过」的那一份）。 */
   currentPageData: unknown | null
   /** 判断「currentPageData 是不是 lastSeenRevision 时的那一份」：错了就该重拉。 */
@@ -73,6 +74,7 @@ export interface PptState {
   /** 「外部已修改」横幅：轮询看见服务端 revision 变了，但本地 draft 没提交。 */
   externalChange: { revision: number } | null
   toast: Toast | null
+  exportPreview: { baseRevision: number; deck?: unknown; pageData?: Record<string, unknown>; ops: unknown[] } | null
 }
 
 function initialState(sessionId: string): PptState {
@@ -86,6 +88,7 @@ function initialState(sessionId: string): PptState {
     manifest: null,
     deck: null,
     deckPages: [],
+    deckRevision: -1,
     currentPageData: null,
     currentPageRevision: -1,
     lastSeenRevision: -1,
@@ -100,6 +103,7 @@ function initialState(sessionId: string): PptState {
     conflict: null,
     externalChange: null,
     toast: null,
+    exportPreview: null,
   }
 }
 
@@ -114,6 +118,7 @@ export function createPptStore(sessionId: string) {
   // 属性级 op（update_element/update_page/add_element/remove_element）不清，原地静默重拉。
   const STRUCTURAL_OPS = new Set(['add_page', 'remove_page', 'move_page', 'page_duplicate'])
   let stageTimer: ReturnType<typeof setTimeout> | null = null
+  let commitEditor: (() => Promise<void>) | null = null
   /**
    * 重启竞态预算：init 撞「无法解析会话工作目录」（宿主侧会话还没注册完，/state 回 400）
    * 是已知瞬时态——保持 loading、短间隔静默重试；超过预算仍失败才升级成错误屏。
@@ -188,6 +193,7 @@ export function createPptStore(sessionId: string) {
         manifest: res.manifest,
         deck: res.deck,
         deckPages,
+        deckRevision: res.revision,
         currentPageData: pagesAst[currentPage]?.page ?? null,
         currentPageRevision: pagesAst[currentPage] ? res.revision : -1,
         lastSeenRevision: res.revision,
@@ -195,6 +201,7 @@ export function createPptStore(sessionId: string) {
         currentPage,
         selection: null,
         draft: null,
+        exportPreview: sameProject ? state.exportPreview : null,
         conflict: null,
         externalChange: null,
         pagesAst,
@@ -297,7 +304,8 @@ export function createPptStore(sessionId: string) {
       patch({
         saving: false,
         lastSeenRevision: res.revision,
-        draft: null,
+        draft: state.draft && state.draft.ops.length > ops.length
+          ? { baseRevision: res.revision, ops: state.draft.ops.slice(ops.length) } : null,
         conflict: null,
         externalChange: null,
       })
@@ -310,7 +318,9 @@ export function createPptStore(sessionId: string) {
       )
       if (structural) {
         patch({ currentPageData: null, currentPageRevision: -1, pagesAst: {} })
+        await actions.syncProjectPages()
         void actions.ensurePageLoaded(true)
+        void actions.ensureAllPages()
       } else {
         // 强制重拉：同 session 30s 内的连写会「并进」同一份快照（history.ts 的
         // merge window），revision **不前进**——只比 revision 会让第二笔之后的
@@ -319,7 +329,8 @@ export function createPptStore(sessionId: string) {
         void actions.ensurePageAst(state.currentPage, true)
         void actions.ensureAllPages()
       }
-      void actions.syncProjectPages()
+      if (!structural) void actions.syncProjectPages()
+      if (state.draft) scheduleFlush()
       return true
     } catch (error) {
       if (error instanceof ConflictError) {
@@ -333,6 +344,11 @@ export function createPptStore(sessionId: string) {
   }
 
   const actions = {
+    setExportPreview(snapshot: PptState['exportPreview']) { patch({ exportPreview: snapshot }) },
+    registerEditorCommit(commit: () => Promise<void>) {
+      commitEditor = commit
+      return () => { if (commitEditor === commit) commitEditor = null }
+    },
     /**
      * 让正在 edit 的动作之前来一次：把 draft 刷成已提交（undo/redo 之前一笔 op 得先进 .history，
      * 不然 .history 看到的是「draft 不在历史里」时的旧游标；操作然后就会变成把还没提交的东西撤回）。
@@ -460,12 +476,14 @@ export function createPptStore(sessionId: string) {
       if (!force && state.currentPageData !== null && state.currentPageRevision === state.lastSeenRevision) return
       const key = state.activeKey
       const path = state.deckPages[page]
+      const revision = state.lastSeenRevision
       try {
         const res = await api.page(state.sessionId, key, path)
         // 期间可能又翻页了或切了工程：只有当前页/当前工程还是这个才落数据
-        if (state.currentPage !== page || state.activeKey !== key) return
+        if (state.currentPage !== page || state.activeKey !== key || state.deckPages[page] !== path || res.revision !== state.lastSeenRevision) return
         patch({ currentPageData: res.page, currentPageRevision: res.revision })
       } catch (error) {
+        if (state.activeKey !== key || state.currentPage !== page || state.deckPages[page] !== path || state.lastSeenRevision !== revision) return
         patch({ currentPageData: null, currentPageRevision: -1 })
         toast(`第 ${page + 1} 页载入失败：${(error as Error).message}`, 'error')
       }
@@ -501,7 +519,7 @@ export function createPptStore(sessionId: string) {
       const path = state.deckPages[pageIndex]
       try {
         const res = await api.page(state.sessionId, key, path)
-        if (state.activeKey !== key) return // 期间切了工程：旧响应不落盘
+        if (state.activeKey !== key || state.deckPages[pageIndex] !== path || res.revision !== state.lastSeenRevision) return
         patch({
           pagesAst: { ...state.pagesAst, [pageIndex]: { page: res.page, revision: res.revision } },
         })
@@ -527,10 +545,12 @@ export function createPptStore(sessionId: string) {
       if (!key) return
       try {
         const res = await api.project(state.sessionId, key)
-        if (state.activeKey !== key) return
+        if (state.activeKey !== key || res.revision !== state.lastSeenRevision) return
         patch({
           deck: res.deck,
           deckPages: Array.isArray(res.deck?.pages) ? res.deck.pages : [],
+          deckRevision: res.revision,
+          currentPage: Math.min(state.currentPage, Math.max(0, (res.deck?.pages?.length ?? 0) - 1)),
         })
       } catch {
         /* 同步失败不阻断：下轮轮询兜底 */
@@ -660,8 +680,16 @@ export function createPptStore(sessionId: string) {
     async exportDeck(): Promise<{ relativePath: string; filename: string } | null> {
       if (!state.activeKey) return null
       try {
-        const saved = await api.exportPptxToProject(state.sessionId, state.activeKey)
-        if (saved.revision) patch({ lastSeenRevision: saved.revision })
+        if (!state.exportPreview) await commitEditor?.()
+        const baseRevision = state.draft?.baseRevision ?? state.lastSeenRevision
+        const pageEntries = state.deckPages.map((path, index) => [path,
+          index === state.currentPage && state.currentPageData && state.currentPageRevision === baseRevision ? state.currentPageData
+            : state.pagesAst[index]?.revision === baseRevision ? state.pagesAst[index]?.page : undefined] as const)
+        const snapshot = structuredClone(state.exportPreview ?? { baseRevision,
+          ...(state.deckRevision === baseRevision && pageEntries.every(([, page]) => page !== undefined) ? { deck: state.deck, pageData: Object.fromEntries(pageEntries) } : {}),
+          ops: state.draft?.ops ?? [] })
+        // Capture synchronously before any save/poll response can replace the canvas.
+        const saved = await api.exportPptxToProject(state.sessionId, state.activeKey, snapshot)
         const kb = Math.max(1, Math.round(saved.bytes / 1024))
         toast(`已导出 ${saved.relativePath || saved.filename}（${kb} KB）`, 'info', {
           file: saved.absolutePath || undefined,

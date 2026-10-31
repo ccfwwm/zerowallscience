@@ -78,7 +78,9 @@ describe('image-only and editable export modes', () => {
         const check = await checkBuiltProject(pipeline, { withMissingFonts: false })
         expect(check.pass).toBe(true)
         expect(pipeline.buildWarnings).toEqual([])
-        await expect(saveProjectPptx(pipeline)).rejects.toMatchObject({ code: 'TemplateReviewRequired' })
+        const unreviewed = await saveProjectPptx(pipeline)
+        expect(unreviewed.bytes.length).toBeGreaterThan(1000)
+        expect(pipeline.qualityIssues).toContainEqual(expect.stringContaining('presentation-provenance.json'))
         const spec = { width: 960, height: 540, fonts: {}, palette: {}, slides: [{ text: [] }] }
         const templateReview = { schemaVersion: 1, sha256: hash(slideImage), status: 'passed', textIntegrity: 'pass', layout: 'pass', contentAccuracy: 'pass', page: 1, specFingerprint: hash(Buffer.from(JSON.stringify(spec.slides[0]))), textTranscription: [],
           observations: 'Viewed the full-size local template: the intended empty text area is clear, the background is consistent and the source figure remains intact.', issues: [], reviewedAt: new Date().toISOString() }
@@ -120,7 +122,7 @@ describe('image-only and editable export modes', () => {
           expect(bytes.readUInt32BE(16)).toBe(1280)
           expect(bytes.readUInt32BE(20)).toBe(720)
           await writeFile(path.join(cwd, `${mode}.png`), bytes)
-          evidence.push({ mode, pptxPath, pptxBytes: saved.bytes.length, pptxSha256: hash(saved.bytes), shapeCount: shapes.length, originalMediaPart: originalMatches[0][0], originalSha256: provenance.sha256, exactPromptAndSourceInNotes: true, unreviewedExportRejected: true, reviewedTemplateSha256: hash(slideImage), pngSha256: hash(bytes), renderMs: Math.round(performance.now() - renderedAt) })
+          evidence.push({ mode, pptxPath, pptxBytes: saved.bytes.length, pptxSha256: hash(saved.bytes), shapeCount: shapes.length, originalMediaPart: originalMatches[0][0], originalSha256: provenance.sha256, exactPromptAndSourceInNotes: true, unreviewedExportAllowed: true, reviewedTemplateSha256: hash(slideImage), pngSha256: hash(bytes), renderMs: Math.round(performance.now() - renderedAt) })
         } finally { await rendered.cleanup() }
       }
       await writeFile(path.join(cwd, 'verification.json'), JSON.stringify({ provenance, exports: evidence }, null, 2))

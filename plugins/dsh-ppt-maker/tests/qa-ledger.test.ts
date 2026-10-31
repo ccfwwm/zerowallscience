@@ -85,7 +85,7 @@ afterEach(async () => {
 })
 
 describe('质检落账 manifest.qaReport', () => {
-  it('check / export 阻断 / export 通过 三条路径都落账，且随 revision 可追溯', async () => {
+  it('导出复用已有 QA 记录，质量问题不拦截且不伪造新检查', async () => {
     const { ctx, fire } = makeCtx(cwd)
     apply(ctx)
     revealTools(fire)
@@ -130,9 +130,9 @@ describe('质检落账 manifest.qaReport', () => {
 
     // 2) ppt_export 被阻断：同样落账（pass:false，tool 标 ppt_export）
     const blocked = await call('ppt_export', { dir: 'deck', out: 'deck/out.pptx' })
-    expect(blocked).toMatchObject({ ok: false, error: { code: 'ExportBlocked' } })
+    expect(blocked).toMatchObject({ ok: true, check: { pass: false } })
     qa = await readQaReport()
-    expect(qa.tool).toBe('ppt_export')
+    expect(qa.tool).toBe('ppt_check')
     expect(qa.pass).toBe(false)
     expect(qa.blockerCount).toBeGreaterThanOrEqual(1)
 
@@ -153,7 +153,7 @@ describe('质检落账 manifest.qaReport', () => {
     const exported = await call('ppt_export', { dir: 'deck', out: 'deck/out.pptx' })
     expect(exported.ok).toBe(true)
     qa = await readQaReport()
-    expect(qa.tool).toBe('ppt_export')
+    expect(qa.tool).toBe('ppt_check')
     expect(qa.pass).toBe(true)
     const manifest = JSON.parse(await readFile(path.join(cwd, 'deck', 'manifest.json'), 'utf8')) as {
       exportReport?: { check?: { pass?: boolean; issueCount?: number } | null }
@@ -166,6 +166,6 @@ describe('质检落账 manifest.qaReport', () => {
     const manifest2 = JSON.parse(await readFile(path.join(cwd, 'deck', 'manifest.json'), 'utf8')) as {
       exportReport?: { check?: { pass?: boolean } | null }
     }
-    expect(manifest2.exportReport?.check ?? null).toBeNull()
+    expect(manifest2.exportReport?.check?.pass).toBe(true)
   })
 })

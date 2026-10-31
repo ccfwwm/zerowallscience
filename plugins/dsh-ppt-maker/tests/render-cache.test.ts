@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSlides, loadPresentation } from '@office-kit/pptx'
 import { createProject, editProject } from '../src/core/project/store.js'
-import { buildProjectDeck, checkBuiltProject, renderProjectPreviews, renderPptxImages } from '../src/core/export-pipeline.js'
+import { buildProjectDeck, checkBuiltProject, checkProject, renderProjectPreviews, renderPptxImages } from '../src/core/export-pipeline.js'
 
 const state = vi.hoisted(() => ({ calls: [] as Array<{ pages: number[]; dpi: number }>, active: 0, maximum: 0, fail: false }))
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
@@ -54,6 +54,15 @@ beforeEach(async () => {
 afterEach(async () => { await rm(cwd, { recursive: true, force: true }) })
 
 describe('40-page final-deck preview cache', () => {
+  it('checks and renders only selected pages even when an unrelated page has missing media', async () => {
+    await rm(path.join(cwd, 'deck/media/figure.png'))
+    const result = await checkProject(cwd, 'deck', { pages: [37], withMissingFonts: false })
+    expect(result.issues.some(issue => issue.page === 2)).toBe(false)
+    await renderProjectPreviews(cwd, 'deck', { pages: [37] })
+    expect(state.calls).toEqual([{ pages: [37], dpi: 96 }])
+    await expect(buildProjectDeck(cwd, 'deck')).rejects.toMatchObject({ code: 'MediaUnreadable' })
+  })
+
   it('renders one batch, coalesces concurrent repeat requests, and only re-renders a changed page', async () => {
     const [first, second, third] = await Promise.all(Array.from({ length: 3 }, () => renderProjectPreviews(cwd, 'deck')))
     expect(first.images).toHaveLength(40)

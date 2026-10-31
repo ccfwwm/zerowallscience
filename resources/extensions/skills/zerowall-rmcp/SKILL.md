@@ -6,7 +6,7 @@ allowed-tools: read
 
 # 远程科研入口
 
-所有模块共享一个物理连接 `rmcp`。涉及 R、统计、生信、GEO、NHANES、FAERS 药物警戒、遗传或 OmicVerse 的请求应主动加载本导航和匹配的专项 Skill，发现 Host `research_workflow` / `r_files` 并按实时 schema 调用；R 计算默认远程运行。连接状态未知时调用 `mcp_connect`，再使用实际发现的工具 schema。`mcp__rmcp__*` 是底层转发工具，不是独立连接。远程连接失败时不得静默改成本地 R；可继续独立检索与准备，说明阻断步骤和恢复方法。
+所有模块共享一个物理连接 `rmcp`。涉及 R、统计、生信、GEO、NHANES、FAERS 药物警戒、遗传或 OmicVerse 的请求应主动加载本导航和匹配的专项 Skill，按实时 schema 调用 Host `research_workflow` / `r_files`；R 计算默认远程运行。提示组装前，Host 会自动启动已启用 MCP，并动态发现服务当前公布的工具 schema，完整传给模型，不设工具数量上限；单个连接失败不会阻止其他服务的工具装配，`mcp_search` 可按能力检索和刷新。无需为了确认工具存在而先调用 `mcp_connect`；仅在查看状态或主动刷新时调用。`mcp__rmcp__*` 是底层转发工具，不是独立连接。RMCP 的目录、说明、只读查询和执行会按实时 `tools/list` 路由到 FAERS、GEO、NHANES、R、Biomni、OmicVerse、ToolUniverse、FigureYa 等对应模块；若远端没有通用 `r_runtime`，Host 使用本地版本化操作契约继续发现，并直接调用已发现的模块工具，不会要求用户手工换工具名。项目操作由 Host 按当前对话自动创建和绑定；缺少项目时优先使用可用的自动注册入口。FigureYa 文件必须通过 Host `r_files` 的 `download_workspace` / `download_figureya_module`，Host 会兼容旧版 catalog 工具并按实时模块能力降级；不要直接调用 `mcp__rmcp__r_figureya_catalog`，若历史上下文仍出现该名称，忽略它并重新调用 Host 工具。远程连接失败时不得静默改成本地 R；可继续独立检索与准备，说明实际阻断步骤和恢复方法。
 
 | 用户任务 | Skill | workflow_id |
 |---|---|---|

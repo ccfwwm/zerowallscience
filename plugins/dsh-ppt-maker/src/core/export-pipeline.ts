@@ -9,7 +9,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import { createConverter, type Converter, type RenderImagesResult } from '@deepseek-ai/libreoffice-kit'
-import { loadProject, ProjectError, type LoadedProject } from './project/store.js'
+import { loadProject, loadCanvasSnapshot, withProjectLock, resolveProjectDir, ProjectError, type CanvasSnapshot, type LoadedProject } from './project/store.js'
 import { createOfficeKitEngine } from './engine/officekit.js'
 import type { BuildContext, DeckBuildResult } from './engine/types.js'
 import { reviewDeck, type ReviewIssue } from './review/index.js'
@@ -29,6 +29,8 @@ export interface PipelineResult {
   /** 供 saveProjectPptx 嵌字体用：deck + pages 再次递进来 */
   deck: Presentation
   pages: Page[]
+  snapshotHash: string
+  qualityIssues: string[]
 }
 
 const pipelineModels = new WeakMap<PipelineResult, LoadedProject>()
@@ -36,22 +38,22 @@ const pipelineMedia = new WeakMap<PipelineResult, Map<string, Promise<Uint8Array
 const pipelineWorkspaces = new WeakMap<PipelineResult, string>()
 
 /** Build the native deck for a project. Shared by all three tools. */
-export async function buildProjectDeck(cwd: string, dir: string): Promise<PipelineResult> {
-  const loaded = await loadProject(cwd, dir)
+export async function buildProjectDeck(cwd: string, dir: string, snapshot?: CanvasSnapshot): Promise<PipelineResult> {
+  const loaded = snapshot ? await loadCanvasSnapshot(cwd, dir, snapshot) : await withProjectLock(resolveProjectDir(cwd, dir), () => loadProject(cwd, dir))
   const pipeline = await buildLoadedProject(loaded)
   pipelineWorkspaces.set(pipeline, cwd)
   return pipeline
 }
 
-async function buildLoadedProject(loaded: LoadedProject, media?: Map<string, Promise<Uint8Array>>): Promise<PipelineResult> {
-  const blockers = loaded.issues.filter((i) => i.level === 'blocker')
-  if (blockers.length > 0) {
-    throw new ProjectError('SchemaBlockers', `工程存在 ${blockers.length} 个阻断级问题，先修复再导出/渲染`, {
-      status: 409,
-      detail: blockers.map((b) => `${b.code}: ${b.message}${b.path ? `（${b.path}）` : ''}`)
-    })
-  }
+/** Preserve original page numbers without processing or loading media from unrelated pages. */
+function selectedPageModel(loaded: LoadedProject, pages?: number[]): LoadedProject {
+  if (!pages?.length) return loaded
+  const selected = new Set(pages)
+  return { ...loaded, pages: new Map(loaded.deck.pages.map((rel, index) => [rel,
+    selected.has(index + 1) ? loaded.pages.get(rel)! : { elements: [] }])) }
+}
 
+async function buildLoadedProject(loaded: LoadedProject, media?: Map<string, Promise<Uint8Array>>): Promise<PipelineResult> {
   const pages = loaded.deck.pages.map((rel) => {
     const key = rel.replace(/\\/g, '/')
     const page = loaded.pages.get(key)
@@ -69,7 +71,10 @@ async function buildLoadedProject(loaded: LoadedProject, media?: Map<string, Pro
   }
   // Fetch independent figures concurrently once, then build shapes serially
   // to preserve z-order and the engine's shared package mutation contract.
-  await mapBounded([...mediaSources([loaded.deck, pages])], async (src) => { await loadMedia(src).catch(() => {}) })
+  await mapBounded([...mediaSources([loaded.deck, pages])], async (src) => {
+    try { await loadMedia(src) }
+    catch (error) { throw new ProjectError('MediaUnreadable', `必要素材无法读取：${src}：${(error as Error).message}`, { status: 400 }) }
+  })
   const ctx: BuildContext = {
     projectDir: loaded.dir,
     loadMedia,
@@ -79,6 +84,7 @@ async function buildLoadedProject(loaded: LoadedProject, media?: Map<string, Pro
   // clean so content fingerprints and the next render describe PPTD, not that
   // implementation detail.
   const built = await engine.buildDeck(structuredClone({ deck: loaded.deck, pages }), ctx)
+  const qa = loaded.manifest.qaReport as { revision?: number; issues?: unknown[] } | undefined
   const pipeline = {
     dir: loaded.dir,
     revision: loaded.manifest.revision,
@@ -86,7 +92,12 @@ async function buildLoadedProject(loaded: LoadedProject, media?: Map<string, Pro
     buildWarnings: warnings,
     fontsUsed: built.fontsUsed,
     deck: loaded.deck,
-    pages
+    pages,
+    snapshotHash: createHash('sha256').update(JSON.stringify({ deck: loaded.deck, pages,
+      media: await Promise.all([...mediaCache].sort(([a], [b]) => a.localeCompare(b)).map(async ([src, bytes]) =>
+        [src, createHash('sha256').update(await bytes).digest('hex')])) })).digest('hex'),
+    qualityIssues: [...loaded.issues.map(issue => `${issue.code}: ${issue.message}`),
+      ...(Array.isArray(qa?.issues) ? qa.issues.map(issue => `QA r${qa.revision ?? '?'}${qa.revision === loaded.manifest.revision ? '' : '（非当前快照）'}: ${JSON.stringify(issue)}`) : [])]
   }
   pipelineModels.set(pipeline, loaded)
   pipelineMedia.set(pipeline, mediaCache)
@@ -108,11 +119,14 @@ export async function saveRawProjectPptx(pipeline: PipelineResult): Promise<Uint
 /** Save the built deck to pptx bytes ( fonts embedded按 deck.export.fontEmbed 模式 ) */
 export async function saveProjectPptx(pipeline: PipelineResult): Promise<{ bytes: Uint8Array; fontEmbed: FontEmbedSummary | null }> {
   const media = pipelineMedia.get(pipeline)
-  await assertTemplateExportReady({
+  try { await assertTemplateExportReady({
     dir: pipeline.dir, workspaceRoot: pipelineWorkspaces.get(pipeline), deck: pipeline.deck, pages: pipeline.pages,
     metadata: pipelineModels.get(pipeline)?.manifest.metadata,
     loadMedia: (src) => media?.get(src) ?? loadMediaBytes(pipeline.dir, src)
-  })
+  }) } catch (error) {
+    const message = (error as Error).message
+    if (!pipeline.qualityIssues.includes(message)) pipeline.qualityIssues.push(message)
+  }
   const rawBytes = await saveRawProjectPptx(pipeline)
   const mode = modeOfExportConfig(pipeline.deck)
   if (mode === 'off') {
@@ -271,7 +285,8 @@ export interface CheckOptions {
 }
 
 export async function checkProject(cwd: string, dir: string, options: CheckOptions = {}): Promise<CheckResult> {
-  const pipeline = await buildProjectDeck(cwd, dir)
+  const loaded = await withProjectLock(resolveProjectDir(cwd, dir), () => loadProject(cwd, dir))
+  const pipeline = await buildLoadedProject(selectedPageModel(loaded, options.pages))
   return checkBuiltProject(pipeline, options)
 }
 
@@ -450,10 +465,6 @@ async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: 
   if (pages.some((page) => !Number.isInteger(page) || page < 1 || page > loaded.deck.pages.length)) {
     throw new ProjectError('InvalidPages', '预览页码超出演示文稿范围', { status: 400 })
   }
-  // Validate the full project even on a cache hit; a cached PNG is not a way to
-  // hide a newly introduced schema blocker in another page.
-  const blockers = loaded.issues.filter((issue) => issue.level === 'blocker')
-  if (blockers.length) throw new ProjectError('SchemaBlockers', `工程存在 ${blockers.length} 个阻断级问题，先修复再导出/渲染`, { status: 409, detail: blockers })
   const cacheDir = path.join(loaded.dir, '.previews', ...(dpi === 96 ? [] : [`dpi-${dpi}`]))
   await mkdir(cacheDir, { recursive: true })
   const cachePath = path.join(cacheDir, 'cache-v1.json')
@@ -493,7 +504,7 @@ async function renderProjectPreviewsUnlocked(cwd: string, dir: string, options: 
   })
   if (pending.length) {
     pending.sort((a, b) => a - b)
-    const pipeline = prepared?.pipeline ?? await buildLoadedProject(loaded, media)
+    const pipeline = prepared?.pipeline ?? await buildLoadedProject(selectedPageModel(loaded, pending), media)
     const bytes = await saveRawProjectPptx(pipeline)
     const rendered = await renderPptxImages(bytes, { pages: pending, dpi })
     try {

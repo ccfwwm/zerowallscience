@@ -15,6 +15,12 @@ type Json = null | boolean | number | string | Json[] | { [key: string]: Json }
 type ObjectValue = { [key: string]: Json }
 type Lifecycle = { id_fields: readonly string[]; argument: string; status: string; cancel?: string; manifest?: string; log?: string }
 type Operation = { lifecycle?: Lifecycle | null; query_allowed?: boolean; effects?: string; execution?: string; id: string; public_tool: string; summary: string; input_schema: unknown; requires_confirmation: boolean }
+const FAERS_AUTO_AUTHORIZED_OPERATIONS = new Set([
+  'r.faerskit.analyze',
+  'r.faerskit.plot',
+  'r.faerskit.report',
+  'r.faerskit.synthesize',
+])
 type Module = { id: string; skill: string; groups: readonly string[]; operations: readonly Operation[] }
 interface State { run_id: string; workflow_id: string; operation: string; workspace: string; conversation_id?: string; request_id: string; fingerprint: string; request_fingerprint?: string; research_task_id?: string; research_run_id?: string; remote_id?: string; remote_key?: string; remote_project?: string; status_operation?: string; cancel_operation?: string; manifest_operation?: string; result?: ObjectValue; submission?: ObjectValue; lifecycle?: Lifecycle | null; status?: string; progress?: number; artifacts?: Array<{ name: string; uri: string; mediaType?: string }>; delivery?: ObjectValue; error?: string | null }
 type FaersArtifactCollector = (projectId: string, jobId: string, exec: ToolRunContext) => Promise<ObjectValue>
@@ -28,11 +34,38 @@ const scalar = (value: unknown): unknown => Array.isArray(value) && value.length
 const canonical = (v: unknown): unknown => Array.isArray(v) ? v.map(canonical) : v !== null && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, value]) => [k, canonical(value)])) : v
 const terminal = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
 const hostManagedProjectOperations = new Set(['r.register.project', 'r.ensure.project'])
+function remoteErrorText(error: unknown): string {
+  const parts: string[] = []
+  const seen = new WeakSet<object>()
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > 5 || value === null || value === undefined) return
+    if (typeof value === 'string') { if (value.trim()) parts.push(value); return }
+    if (typeof value === 'number' || typeof value === 'boolean') { parts.push(String(value)); return }
+    if (value instanceof Error) { parts.push(value.message); visit((value as Error & { cause?: unknown }).cause, depth + 1); return }
+    if (typeof value !== 'object' || seen.has(value)) return
+    seen.add(value)
+    if (Array.isArray(value)) { for (const item of value) visit(item, depth + 1); return }
+    const objectValue = value as Record<string, unknown>
+    for (const key of ['message', 'error', 'errors', 'detail', 'details', 'reason', 'content', 'structuredContent', 'data', 'status', 'text', 'code']) {
+      if (Object.hasOwn(objectValue, key)) visit(objectValue[key], depth + 1)
+    }
+    if (parts.length === 0) {
+      try { parts.push(JSON.stringify(value)) } catch { /* ignore cyclic error payloads */ }
+    }
+  }
+  visit(error, 0)
+  return [...new Set(parts)].join('\n') || String(error)
+}
+const isRuntimeToolUnavailable = (error: unknown): boolean => {
+  const message = remoteErrorText(error)
+  return /RMCP_TOOL_UNAVAILABLE:\s*r_runtime\b/iu.test(message)
+    || /unknown tool[^\n]*mcp__rmcp__r_runtime/iu.test(message)
+}
 const isMissingRemoteProjectError = (error: unknown): boolean => {
-  const message = error instanceof Error ? error.message : (() => {
-    try { return JSON.stringify(error) } catch { return String(error) }
-  })()
-  return /\b404\b/u.test(message) && /project.{0,80}(?:not found|does not exist)/isu.test(message)
+  const message = remoteErrorText(error)
+  return (/\b404\b/u.test(message) || /(?:not[_ ]found|does not exist|unknown project)/iu.test(message))
+    && /project/iu.test(message)
+    && /(?:not[_ ]found|does not exist|missing|unknown)/iu.test(message)
 }
 const managedProjectBindingContract = (workflowId: string, id: string): ObjectValue => ({
   workflow_id: workflowId,
@@ -173,15 +206,30 @@ export class ResearchWorkflowService {
   async search(id: string, query: string, offset: number, limit: number, exec: ToolRunContext): Promise<ObjectValue> {
     if(id==='fiji') { const operation=this.localService().describe();return {workflow_id:id,operations: offset>0 || limit<1 || (query && !JSON.stringify(operation).toLowerCase().includes(query.toLowerCase()))?[]:[operation]} }
     if (!id.trim()) {
-      const catalog = object(await this.mcp.workflowRequest('workflow_catalog', {}, exec))
-      const modules = Array.isArray(catalog.modules) ? catalog.modules.map(object) : []
+      let catalog: ObjectValue
+      try { catalog = object(await this.mcp.workflowRequest('workflow_catalog', {}, exec)) }
+      catch (error) {
+        if (!isRuntimeToolUnavailable(error)) throw error
+        catalog = { catalog_version: rWorkflows.catalog_version, modules: modules.map(module => normalizeJsonArguments({ id: module.id, skill: module.skill, operations: module.operations })) }
+      }
+      const catalogModules = Array.isArray(catalog.modules) ? catalog.modules.map(object) : []
       const needle = query.trim().toLowerCase()
-      const operations = modules.flatMap(module => Array.isArray(module.operations) ? module.operations.map(object) : []).filter(operation => !hostManagedProjectOperations.has(String(operation.id ?? '')))
+      const operations = catalogModules.flatMap(module => Array.isArray(module.operations) ? module.operations.map(object) : []).filter(operation => !hostManagedProjectOperations.has(String(operation.id ?? '')))
         .filter(operation => !needle || `${String(operation.id ?? '')} ${String(operation.summary ?? '')} ${String(operation.public_tool ?? '')}`.toLowerCase().includes(needle))
       return { catalog_version: catalog.catalog_version ?? rWorkflows.catalog_version, workflow_id: '', capabilities: operations.slice(offset, offset + limit), total: operations.length, next_offset: offset + limit < operations.length ? offset + limit : null }
     }
     this.assertWorkflowId(id)
-    const result = object(await this.mcp.workflowRequest('workflow_search', { workflow_id: id, query, offset, limit }, exec))
+    let result: ObjectValue
+    try { result = object(await this.mcp.workflowRequest('workflow_search', { workflow_id: id, query, offset, limit }, exec)) }
+    catch (error) {
+      if (!isRuntimeToolUnavailable(error)) throw error
+      const module = modules.find(item => item.id === id)
+      if (!module) throw error
+      const needle = query.trim().toLowerCase()
+      const operations = module.operations.filter(operation => !hostManagedProjectOperations.has(operation.id))
+        .filter(operation => !needle || `${operation.id} ${operation.summary} ${operation.public_tool}`.toLowerCase().includes(needle))
+      return { workflow_id: id, catalog_version: rWorkflows.catalog_version, capabilities: operations.slice(offset, offset + limit).map(operation => normalizeJsonArguments(operation)), total: operations.length, next_offset: offset + limit < operations.length ? offset + limit : null, schema_source: 'bundled_operation_catalog' }
+    }
     return Array.isArray(result.capabilities)
       ? { ...result, capabilities: result.capabilities.filter(value => !hostManagedProjectOperations.has(String(object(value).id ?? ''))) }
       : result
@@ -191,7 +239,14 @@ export class ResearchWorkflowService {
     this.assertWorkflowId(id)
     if (operation && hostManagedProjectOperations.has(operation)) return managedProjectBindingContract(id, operation)
     if (!operation) return this.search(id, '', 0, 25, exec)
-    return object(await this.mcp.workflowRequest('workflow_describe', { workflow_id: id, operation }, exec))
+    try { return object(await this.mcp.workflowRequest('workflow_describe', { workflow_id: id, operation }, exec)) }
+    catch (error) {
+      if (!isRuntimeToolUnavailable(error)) throw error
+      const module = modules.find(item => item.id === id)
+      const local = module?.operations.find(item => item.id === operation)
+      if (!local) throw error
+      return { ...JSON.parse(JSON.stringify(local)) as ObjectValue, schema_source: 'bundled_operation_catalog', live_schema_unavailable: true }
+    }
   }
   async query(id: string, parameters: ObjectValue, exec: ToolRunContext): Promise<ObjectValue> {
     this.assertWorkflowId(id)
@@ -206,9 +261,17 @@ export class ResearchWorkflowService {
     if (operation.query_allowed !== true) throw new Error(`READ_ONLY_REQUIRED: ${operationId} must use run`)
     const argumentsValue = await this.withProjectId(operation, normalizeJsonArguments(object(parameters.arguments)), exec)
     const request = { workflow_id: id, operation: operationId, arguments: argumentsValue }
+    const directQuery = async (): Promise<ObjectValue> => {
+      try { return object(await this.mcp.workflowRequest('workflow_query', request, exec)) }
+      catch (error) {
+        if (!isRuntimeToolUnavailable(error)) throw error
+        const result = await this.mcp.executeCompactCapability(operationId, argumentsValue, exec)
+        return workflowPayload(result.value ?? { content: result.content })
+      }
+    }
     return typeof argumentsValue.project_id === 'string'
-      ? object(await this.withProjectRecovery(request, exec, () => this.mcp.workflowRequest('workflow_query', request, exec), true))
-      : object(await this.mcp.workflowRequest('workflow_query', request, exec))
+      ? object(await this.withProjectRecovery(request, exec, directQuery, true))
+      : directQuery()
   }
   private module(id: string): Module { const module = modules.find(item => item.id === id); if (!module) throw new Error(`UNKNOWN_WORKFLOW: ${id}`); return module }
   private assertWorkflowId(id: string): void {
@@ -391,9 +454,11 @@ export class ResearchWorkflowService {
     // live tools/list here so a stale active/zero-tool status cannot surface
     // as a local "disabled or unknown" error on the first real operation.
     await this.mcp.ensureConnected('rmcp', true)
+    const includeTools = (this.mcp as Partial<ZeroWallMcpService>).includeConnectedToolsForAgent
+    includeTools?.call(this.mcp, exec.agent, 'rmcp')
     const result = await this.mcp.executeCompactCapability(id, args, exec)
     const payload = workflowPayload(result.value ?? { content: result.content })
-    if (payload.ok === false || payload.isError === true) throw new Error(String(payload.error ?? 'Backend operation failed'))
+    if (payload.ok === false || payload.isError === true) throw new Error(remoteErrorText(payload.error ?? payload.message ?? 'Backend operation failed'))
     return payload
   }
   async run(id: string, parameters: ObjectValue, exec: ToolRunContext): Promise<ObjectValue> {
@@ -423,6 +488,7 @@ export class ResearchWorkflowService {
     const operation = await this.describeLive(id, operationId, exec) as unknown as Operation
     if (operation.id !== operationId) throw new Error(`LIVE_OPERATION_MISMATCH: expected ${operationId}, received ${String(operation.id ?? 'no operation id')}. Refresh the workflow catalog and retry this call.`)
     if (id === 'tooluniverse') rejectToolUniverseSecretArguments(args)
+    if (id === 'r.faerskit' && FAERS_AUTO_AUTHORIZED_OPERATIONS.has(operationId) && args.confirm === undefined) args.confirm = true
     if (operation.requires_confirmation && args.confirm !== true) throw new Error('CONFIRMATION_REQUIRED: approve the concrete operation and any first remote upload.')
     if (args.api_key || args.token || args.password) throw new Error('Use the Host credential broker; workflow arguments must not contain credentials.')
     const resolvedArgs = await this.withProjectId(operation, args, exec)

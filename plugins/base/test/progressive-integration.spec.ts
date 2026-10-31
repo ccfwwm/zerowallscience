@@ -11,6 +11,45 @@ import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import { apply as applyBase } from '../src/host/index.ts'
 
 describe('ZeroWall native tool composition', () => {
+	it('starts on-demand pruning above 100 tools while retaining and dynamically adding MCP tools', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt, {})
+    await ctx.plugin(ToolRuntime)
+    ctx.provide('webServer', { register() {} } as never)
+    ctx.provide('workspaceRegistry', { list: () => [], create: vi.fn() } as never)
+    applyBase(ctx)
+
+    const register = (name: string) => ctx.tools.register(defineTool({
+      name, description: name, parameters: {},
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+      execute: async () => 'ok',
+    }))
+    for (const name of ['mcp_connect', 'mcp_search', 'research_workflow', 'r_files']) await register(name)
+    const mcpTool = 'mcp__fixture__lookup'
+    await register(mcpTool)
+    const schemasBeforePadding = ctx.tools.schemas().length
+    for (let index = schemasBeforePadding; index < 100; index += 1) await register(`zerowall_threshold_${index}`)
+    expect(ctx.tools.schemas()).toHaveLength(100)
+
+    const atLimitRestriction = vi.fn(() => () => undefined)
+    const atLimitAgent = { ctx: { tools: { restrict: atLimitRestriction } } } as any
+    ctx.emit('agent/created', { agent: atLimitAgent } as never)
+    expect(atLimitRestriction).not.toHaveBeenCalled()
+
+    await register('zerowall_threshold_100')
+    const overLimitRestriction = vi.fn(() => () => undefined)
+    const overLimitAgent = { ctx: { tools: { restrict: overLimitRestriction } } } as any
+    ctx.emit('agent/created', { agent: overLimitAgent } as never)
+    expect(overLimitRestriction).toHaveBeenCalledWith({ allow: expect.arrayContaining([mcpTool, 'mcp_connect', 'mcp_search', 'research_workflow', 'r_files']) })
+
+    const lateMcpTool = 'mcp__fixture__late_lookup'
+    await register(lateMcpTool)
+    const access = ctx.get('zerowallToolAccess') as { include(agent: object, names: readonly string[]): void }
+    access.include(overLimitAgent, [lateMcpTool])
+    expect(overLimitRestriction).toHaveBeenLastCalledWith({ allow: expect.arrayContaining([mcpTool, lateMcpTool]) })
+    await ctx.fiber.dispose()
+  })
+
 	it('executes exposed tools directly with diagnostics enabled', async () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt, {})
@@ -83,6 +122,7 @@ describe('ZeroWall native tool composition', () => {
       'web_search', 'web_fetch', 'skill', 'skill_search', 'ask_user_question', 'create_goal',
       'get_goal', 'update_goal', 'exit_plan_mode', 'job_kill', 'job_list', 'job_output',
       'todo_write', 'subagent', 'subagent_fork', 'schedule_list',
+      'mcp_connect', 'mcp_search', 'research_workflow', 'r_files', 'r_download_workspace',
     ]
     for (const name of standardTools) {
       ctx.tools.register(defineTool({
@@ -95,6 +135,14 @@ describe('ZeroWall native tool composition', () => {
       const name = `zerowall_extra_${index}`
       ctx.tools.register(defineTool({
         name, description: `Extra capability ${index} for on-demand loading`, parameters: {},
+        output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+        execute: called,
+      }))
+    }
+    const connectedMcpTools = ['mcp__fixture__lookup', 'mcp__fixture__analyze', ...Array.from({ length: 205 }, (_, index) => `mcp__fixture__extra_${index}`)]
+    for (const name of connectedMcpTools) {
+      ctx.tools.register(defineTool({
+        name, description: `Connected MCP tool ${name}`, parameters: {},
         output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
         execute: called,
       }))
@@ -132,10 +180,22 @@ describe('ZeroWall native tool composition', () => {
     expect(initial).toContain('capability_search')
     expect(initial).not.toContain('zerowall_extra_3')
     expect(initial).toEqual(expect.arrayContaining(standardTools))
-    expect(initial).toHaveLength(standardTools.length + 1)
+    expect(initial).toEqual(expect.arrayContaining(connectedMcpTools))
+    expect(initial).toHaveLength(standardTools.length + connectedMcpTools.length + 1)
     expect(afterSearch).not.toContain('zerowall_extra_3')
     expect(afterEnable).toContain('zerowall_extra_3')
     expect(afterEnable).not.toContain('zerowall_extra_4')
+    for (const request of requests) expect(request.tools?.map(tool => tool.name)).toEqual(expect.arrayContaining(connectedMcpTools))
+
+    const lateMcpTool = 'mcp__fixture__connected_after_agent_start'
+    ctx.tools.register(defineTool({
+      name: lateMcpTool, description: 'A tool discovered after this agent started', parameters: {},
+      output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
+      execute: called,
+    }))
+    const access = ctx.get('zerowallToolAccess') as { include(agent: object, names: readonly string[]): void }
+    access.include(agent, [lateMcpTool])
+    expect(ctx.tools.schemas(agent).map(tool => tool.name)).toContain(lateMcpTool)
     await ctx.fiber.dispose()
   })
 })

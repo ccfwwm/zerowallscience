@@ -288,7 +288,7 @@ interface ExportConfig {
 
 `export` 字段落账：每次导出把实际执行结果（嵌入 face 数、跳过原因、子集前后体积、写出的转场页数、写出的动画步骤数）写入 `manifest.json` 的 `exportReport`，随 `revision` 可追溯。
 
-`qaReport` 字段落账：`ppt_check` 与 `ppt_export`（含被质检阻断的路径）都把最近一次质检结果（pass、issue/blocker 计数、完整 issues 列表、检查页子集）写入 `manifest.json` 的 `qaReport`，`revision`/`checkedAt` 由账本现场盖戳——「当初为什么没过」永远可追溯。
+`qaReport` 字段落账：`ppt_check` 把最近一次质检结果（pass、issue/blocker 计数、完整 issues 列表、检查页子集）写入 `manifest.json` 的 `qaReport`，`revision`/`checkedAt` 由账本现场盖戳。`ppt_export` 仅在导出回执中复用已有记录，不伪造新的检查时间或修订。
 
 ### 3.3 Theme 与子结构
 
@@ -952,7 +952,7 @@ degraded:
 
 ## 11. 校验与错误码
 
-级别：`blocker` = 阻断导出（`ppt_export` 的 `skipCheck` 可绕过）；`warning` = 不阻断，进导出摘要。
+级别：`blocker` = 严重质量问题；`warning` = 一般提示。两者均进入质量/导出摘要，不阻止导出。真实序列化或必要素材读取失败才返回构建错误。
 
 ### 11.1 方言与 profile
 
@@ -1379,3 +1379,11 @@ degraded:
     detail: "路径动画不在动画词表内，步骤保留为 effect: null"
     originalValue: "presetId=101;presetClass=path"
 ```
+
+## 当前画布导出与独立修订
+
+POST /export 可携带 snapshot:{baseRevision,deck?,pageData?,ops:[]}。deck/pageData 是浏览器可见基准，未携带时从 baseRevision 历史读取；只在内存重放 ops，不写 manifest、page、历史游标或来源账本。导出在保存、冲突、生图、检查和审阅期间均可进行。历史预览同样传选定修订的画布快照；导出不必先恢复工程。回执 .pptx.export.json 包含 revision、snapshotHash、已知质量问题和构建信息。
+
+ppt_edit(newVersion:true) 为单页或多页修改保存独立修订，不并入上个版本。工作台和受管页面构建默认启用。其他页复用；新图片使用新路径和资产 ID 保留旧版媒体。
+
+presentation-spec.json 支持全局与逐页 stylePrompt、styleReferenceAssetIds，分别继承与覆盖；空值清除继承。纯风格参考只用于 edit_image 和来源记录，不隐式作为事实图片嵌入。presentation_generate_templates/repair_templates 返回任务 ID 和逐页 queued 状态；每页独立生成、构建、检查、渲染，默认并发 10、可设 1–10，写入串行。presentation_status 暴露持久化 pageJobs；重启将未完成页标为 interrupted，presentation_resume_pages 仅恢复用户选择页，复用已完成资产和回执。

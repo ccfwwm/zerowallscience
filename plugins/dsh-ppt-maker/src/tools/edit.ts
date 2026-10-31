@@ -41,7 +41,8 @@ export function registerEditTool(ctx: PluginToolCtx): (() => void) | undefined {
           type: 'integer',
           minimum: 0,
           description: '乐观锁基线修订号；与当前 manifest.revision 不一致时整批拒绝（409）'
-        }
+        },
+        newVersion: { type: 'boolean', description: '为本次单页/多页修改保存独立修订，不合并到上一版本' }
       }
     },
     output: {
@@ -63,7 +64,8 @@ export function registerEditTool(ctx: PluginToolCtx): (() => void) | undefined {
           dir: args.dir as string,
           ops: args.ops as OpRecord[],
           baseRevision: args.baseRevision as number | undefined,
-          sessionId: sessionIdOf(exec)
+          sessionId: sessionIdOf(exec),
+          newVersion: args.newVersion !== false
         })
         return { ok: true, revision: result.revision, appliedOps: result.appliedOps, warnings: result.warnings, merged: result.merged }
       } catch (err) {

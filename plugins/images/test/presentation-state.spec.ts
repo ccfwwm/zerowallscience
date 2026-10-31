@@ -125,11 +125,13 @@ it('invalidates checks when deck settings after the page list change', async () 
   expect(canonical.get('ppt_render').mock.calls.at(-1)[0].pages).toEqual([1, 2])
 })
 
-it('explains missing review separately and keeps blockers and explicit finding waivers enforced', async () => {
+it('exposes missing reviews and blocker findings as advice without intercepting export', async () => {
   const { invoke, canonical, state } = await fixture()
   canonical.set('ppt_check', async () => ({ ok: true, pass: false, issues: [{ page: 1, severity: 'blocker', category: 'overflow' }, { page: 2, severity: 'warning', category: 'overlap' }] }))
   await invoke('presentation_check_pages', {})
-  await expect(invoke('ppt_export', { dir: 'deck' })).rejects.toThrow('"missingChecks":false')
+  canonical.set('ppt_export', vi.fn(async () => ({ ok: true, path: 'export.pptx' })))
+  await expect(invoke('ppt_export', { dir: 'deck' })).resolves.toMatchObject({ value: { ok: true } })
+  expect(canonical.get('ppt_export')).toHaveBeenCalledOnce()
   await invoke('presentation_record_reviews', { reviews: [1, 2].map(page => ({ kind: 'page', target: String(page), observations: 'Viewed the actual returned PNG and checked text boundaries and figures.' })) })
   const result = JSON.parse((await invoke('presentation_status', {})).value)
   expect(result.requirements).toMatchObject([{ page: 1, missingReview: false, blockers: 1 }, { page: 2, missingReview: false, unreviewedFindings: 1 }])

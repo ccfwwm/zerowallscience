@@ -246,17 +246,17 @@ export const CSS = `
 .ppt-thumb-skeleton{position:absolute;inset:0;animation:ppt-sweep 1.2s ease-in-out infinite;background:var(--dsw-alias-bg-layer-2)}
 .ppt-thumb-num{position:relative;z-index:1}
 .ppt-thumb-actions{
-  position:absolute;top:2px;right:2px;display:flex;gap:2px;opacity:0;
-  transition:opacity .12s ease;
+  position:absolute;top:2px;right:2px;z-index:5;
 }
-.ppt-thumbrow:hover .ppt-thumb-actions,
-.ppt-thumbrow:focus-within .ppt-thumb-actions{opacity:1}
 .ppt-thumb-action{
-  padding:1px 4px;font-size:10px;
+  min-width:26px;min-height:26px;padding:3px 5px;font-size:9px;
   background-color:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);
   border-radius:3px;color:var(--dsw-alias-label-secondary);
   box-shadow:var(--dsw-shadow-lv1);
 }
+.ppt-thumb-menu{position:absolute;right:0;top:28px;min-width:88px;max-width:160px;padding:4px;
+  display:flex;flex-direction:column;gap:4px;background:var(--dsw-alias-bg-layer-1);
+  border:1px solid var(--dsw-alias-border-l2);border-radius:4px;box-shadow:var(--dsw-shadow-lv2);font-size:10px}
 /* hover：底色必须保持不透明——直接换成 interactive-bg-hover（带 alpha）会让缩略图透上来，
    视觉上像按钮被抠空。改用叠加层：不透明底 + 半透明高亮叠在一起。 */
 .ppt-thumb-action:hover{

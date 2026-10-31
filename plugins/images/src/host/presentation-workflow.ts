@@ -4,7 +4,7 @@ import { extname, join, relative, resolve } from 'node:path'
 import { parse } from 'yaml'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool, type ToolRunContext, type ToolDispatchExecution } from '@deepseek-ai/dsh-tools'
-import { assetsForPage, assetsWithReferences, hash, readManifest, readSpecification, recordAssetReview, recordTemplateReview, recordVisualAssets, requireTemplateReview, saveJson, templateFailure, withPresentationLock, workspacePath, type AssetInput, type VisualAsset, type VisualManifest, type TemplateReview } from './visual-assets.js'
+import { assetsForPage, assetsWithReferences, hash, pageStyle, readManifest, readSpecification, recordAssetReview, recordTemplateReview, recordVisualAssets, requireTemplateReview, saveJson, templateFailure, withPresentationLock, workspacePath, type AssetInput, type VisualAsset, type VisualManifest, type TemplateReview } from './visual-assets.js'
 import { DEFAULT_IMAGE_CONCURRENCY, imageConcurrency } from './image-concurrency.js'
 
 type Exec = ToolRunContext | ToolDispatchExecution
@@ -17,6 +17,12 @@ export interface PresentationWorkflow {
   phase: string; templatePlans?: Record<string, EditablePagePlan>; reconstructionFailures?: Record<string, string[]>
   failure?: { stage: string; message: string; at: string }; exportReceipt?: { outputPath: string; bytes: number; sha256: string; revision: number }
   provenancePath?: string
+  pageJobs?: Record<string, PageJob>
+}
+export interface PageJob {
+  taskId: string; runId: string; page: number; status: 'queued' | 'generating' | 'building' | 'checking' | 'rendering' | 'awaiting-editable' | 'complete' | 'failed' | 'interrupted'
+  input: { prompt: string; originalPrompt: string; stylePrompt: string; outputPath: string; assetId: string; references: { assetId: string; path: string; sha256: string }[]; parentAssetId?: string }
+  concurrency: number; specFingerprint: string; updatedAt: string; asset?: VisualAsset; generated?: unknown; error?: string | undefined; revision?: number; builtFingerprint?: string
 }
 export interface EditablePagePlan { page: number; templateAssetId?: string; elements: Record<string, any>[]; createdAt: string }
 export interface PresentationImageTask<T = unknown> { id: string; page: number; run: () => Promise<T> }
@@ -26,7 +32,7 @@ export async function runPresentationImageTasks<T>(tasks: PresentationImageTask<
   imageConcurrency(concurrency)
   if (new Set(tasks.map(task => task.id)).size !== tasks.length) throw new Error('Presentation image task IDs must be unique.')
   const results = new Array<T>(tasks.length), cursor = { value: 0 }
-  async function worker(): Promise<void> { for (;;) { const index = cursor.value++; if (index >= tasks.length) return; results[index] = await tasks[index]!.run() } }
+  async function worker(): Promise<void> { for (;;) { const index = cursor.value++; if (index >= tasks.length) return; try { results[index] = await tasks[index]!.run() } catch (error) { results[index] = { page: tasks[index]!.page, error: error instanceof Error ? error.message : String(error) } as T } } }
   await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(tasks.length, 1)) }, () => worker()))
   return results
 }
@@ -107,7 +113,7 @@ function assetInput(manifest: string, args: any): AssetInput {
 function findings(state: PresentationWorkflow, pages = state.changedPages) { return pages.flatMap(page => (state.pages[page]?.checks.ppt_check?.findings ?? []).map(finding => ({ page, sha256: hash(JSON.stringify(finding)), finding }))) }
 function workflowView(state: PresentationWorkflow) {
   return { schemaVersion: state.schemaVersion, spec: state.spec, manifest: state.manifest, dir: state.dir, journal: state.journal, mode: state.mode, outputMode: state.outputMode, phase: state.phase, changedPages: state.changedPages,
-    failure: state.failure, exportReceipt: state.exportReceipt, provenancePath: state.provenancePath,
+    pageJobs: state.pageJobs, failure: state.failure, exportReceipt: state.exportReceipt, provenancePath: state.provenancePath,
     pages: Object.fromEntries(Object.entries(state.pages).map(([page, entry]) => [page, { id: entry.id, fingerprint: entry.fingerprint,
       checkCurrent: entry.checks.ppt_check?.fingerprint === entry.fingerprint, renderCurrent: entry.checks.ppt_render?.fingerprint === entry.fingerprint,
       screenshot: entry.checks.ppt_render?.screenshot, reviewCurrent: entry.review?.fingerprint === entry.fingerprint, findingCount: entry.checks.ppt_check?.findings.length ?? 0 }])) }
@@ -143,12 +149,17 @@ export function factualImagePlacements(slide: Record<string, any>, assets: Visua
 
 export function installPresentationWorkflow(ctx: Context): void {
   const bypass = new Set<string>()
-  ctx.effect(() => () => bypass.clear())
+  const runId = randomUUID(), activePages = new Set<string>(), shutdown = new AbortController()
+  ctx.effect(() => () => { shutdown.abort(new Error('Presentation host stopped. Resume selected interrupted pages manually.')); bypass.clear() })
   function cwd(exec: Exec): string { const value = exec.agent?.session.header.cwd; if (!value) throw new Error('Presentation requires an authorized workspace.'); return value }
   async function load(exec: Exec): Promise<PresentationWorkflow | undefined> {
     const events = exec.agent?.session.snapshotEvents() as readonly { type: string; data: any }[] | undefined, event = events?.filter(item => item.type === EVENT).at(-1)?.data
     if (event?.schemaVersion !== 3) return undefined
-    return JSON.parse(await readFile(await workspacePath(cwd(exec), event.journal), 'utf8'))
+    const state = JSON.parse(await readFile(await workspacePath(cwd(exec), event.journal), 'utf8')) as PresentationWorkflow
+    for (const job of Object.values(state.pageJobs ?? {})) if (!['complete', 'failed', 'interrupted', 'awaiting-editable'].includes(job.status) && job.runId !== runId) {
+      job.status = 'interrupted'; job.error = 'Host restarted; select this page explicitly with presentation_resume_pages.'
+    }
+    return state
   }
   function bindingMatches(state: PresentationWorkflow | undefined, expected: PresentationWorkflow): state is PresentationWorkflow {
     // journal is derived from the spec, asset-manifest and project paths;
@@ -178,7 +189,7 @@ export function installPresentationWorkflow(ctx: Context): void {
       if (result.isError) throw new Error(`${name}: ${result.error.message}`)
       const value: any = result.value
       if (value?.ok === false) throw new Error(`${name}: ${value.error?.message ?? 'tool returned failure'}`)
-      if ('deferContext' in exec) for (const context of result.additionalContexts ?? []) exec.deferContext(context)
+      if ('deferContext' in exec && typeof exec.deferContext === 'function') for (const context of result.additionalContexts ?? []) exec.deferContext(context)
       return value
     } finally { bypass.delete(String(callId)) }
   }
@@ -194,12 +205,71 @@ export function installPresentationWorkflow(ctx: Context): void {
   }
   async function sync(exec: Exec, state: PresentationWorkflow): Promise<PageSnapshot[]> {
     const current = await project(exec, state), spec = await readSpecification(cwd(exec), state.spec), manifest = await readManifest(cwd(exec), state.manifest), dependencies: Record<string, string> = {}
-    for (const page of current.snapshots) dependencies[page.page] = JSON.stringify({ plan: spec.slides[page.page - 1], editablePlan: state.templatePlans?.[page.page], assets: referencedPageAssets(spec, manifest, state, page.page).map(asset => ({ id: asset.assetId, sha256: asset.sha256, prompt: asset.prompt, source: asset.source })) })
+    for (const page of current.snapshots) dependencies[page.page] = JSON.stringify({ plan: spec.slides[page.page - 1], style: spec.slides[page.page - 1] ? pageStyle(spec, page.page) : undefined, editablePlan: state.templatePlans?.[page.page], assets: referencedPageAssets(spec, manifest, state, page.page).map(asset => ({ id: asset.assetId, sha256: asset.sha256, prompt: asset.prompt, source: asset.source })) })
     refreshPages(state, current.snapshots, dependencies)
     state.reconstructionFailures = Object.fromEntries(Object.values(state.templatePlans ?? {}).map(plan => [plan.page, current.snapshots[plan.page - 1] ? editableReconstructionFailures(current.snapshots[plan.page - 1]!, plan) : ['Planned page is missing.']]))
     return current.snapshots
   }
   async function bound(exec: Exec): Promise<PresentationWorkflow> { const state = await load(exec); if (!state) throw new Error('Call presentation_prepare with dir first.'); return state }
+  async function updateJob(exec: Exec, initial: PresentationWorkflow, page: number, patch: Partial<PageJob>): Promise<PageJob> {
+    return withPresentationLock(initial.dir, async () => {
+      const state = await currentBinding(exec, initial), job = state.pageJobs?.[page]
+      if (!job) throw new Error('Page task no longer exists.')
+      Object.assign(job, patch, { updatedAt: new Date().toISOString() })
+      await persist(exec, state); return structuredClone(job)
+    })
+  }
+  function launchPages(exec: Exec, initial: PresentationWorkflow, jobs: PageJob[]) {
+    const background = { ...exec, signal: shutdown.signal, token: undefined, rootCallId: undefined } as unknown as Exec
+    if ('deferContext' in background) delete (background as any).deferContext
+    const tasks = jobs.map(job => {
+      const key = `${initial.journal}:${job.page}`
+      activePages.add(key)
+      return { id: job.input.assetId, page: job.page, run: async () => {
+        try {
+          const root = cwd(background), input = job.input
+          const spec = await readSpecification(root, initial.spec)
+          if (hash(JSON.stringify({ slide: spec.slides[job.page - 1], style: pageStyle(spec, job.page) })) !== job.specFingerprint) throw new Error('Page plan/style changed; queue a new selected-page task.')
+          for (const reference of input.references) if (hash(await readFile(await workspacePath(root, reference.path))) !== reference.sha256) throw new Error(`Reference asset ${reference.assetId} changed.`)
+          let generated: any = job.generated, asset = job.asset
+          if (!asset) {
+            await updateJob(background, initial, job.page, { status: 'generating', error: undefined })
+            // A crash after the provider wrote its receipt must not charge for the same image again.
+            try {
+              const target = await workspacePath(root, input.outputPath)
+              const receipt = JSON.parse(await readFile(target + '.generation.json', 'utf8'))
+              if (receipt.prompt === input.prompt && receipt.sha256 === hash(await readFile(target)) && JSON.stringify(receipt.inputImageHashes ?? []) === JSON.stringify(input.references.map(reference => reference.sha256))) generated = { path: target, recovered: true }
+            } catch { /* no completed generation to recover */ }
+            generated ??= await dispatch(background, input.references.length ? 'edit_image' : 'generate_image', { prompt: input.prompt, output_path: input.outputPath, concurrency: job.concurrency, ...(input.references.length ? { input_paths: input.references.map(reference => reference.path) } : {}) })
+            const generation = JSON.parse(await readFile(await workspacePath(root, generated.path + '.generation.json'), 'utf8'))
+            if (JSON.stringify(generation.inputImageHashes ?? []) !== JSON.stringify(input.references.map(reference => reference.sha256))) throw new Error('Image receipt must bind the referenced original images.')
+            if (input.parentAssetId && generation.sha256 === input.references.find(reference => reference.assetId === input.parentAssetId)?.sha256) throw new Error('Image repair must contain changed image bytes.')
+            asset = (await recordVisualAssets(root, [{ manifest: initial.manifest, image: generated.path, assetId: input.assetId, role: initial.outputMode === 'image' ? 'slide-image' : 'template', sourceKind: 'generated', slideNumber: job.page,
+              styleReferenceIds: input.references.map(reference => reference.assetId), originalPrompt: input.originalPrompt, combinedPrompt: input.prompt, stylePrompt: input.stylePrompt, referenceImageHashes: input.references.map(reference => reference.sha256), ...(input.parentAssetId ? { parentAssetId: input.parentAssetId } : {}) }])).assets[0]!
+            await updateJob(background, initial, job.page, { asset, generated, status: 'building' })
+          }
+          if (hash(await readFile(asset.path)) !== asset.sha256) throw new Error('Completed page asset changed; select a new generation explicitly.')
+          const state = await currentBinding(background, initial)
+          if (state.outputMode === 'editable' && state.templatePlans?.[job.page]?.templateAssetId !== asset.assetId) {
+            await updateJob(background, initial, job.page, { status: 'awaiting-editable' }); return
+          }
+          await updateJob(background, initial, job.page, { status: 'building' })
+          const before = await project(background, state)
+          if (job.builtFingerprint && before.snapshots[job.page - 1]?.fingerprint !== job.builtFingerprint) throw new Error('Page changed after this task wrote it; queue a new selected-page edit to preserve your version.')
+          const built = job.builtFingerprint ? { revision: job.revision } : JSON.parse(await dispatch(background, 'presentation_build_pages', { pages: [job.page] }))
+          const after = await project(background, state)
+          await updateJob(background, initial, job.page, { status: 'checking', revision: built.revision, builtFingerprint: after.snapshots[job.page - 1]!.fingerprint })
+          await dispatch(background, 'ppt_check', { dir: initial.dir, pages: [job.page] })
+          await updateJob(background, initial, job.page, { status: 'rendering' })
+          await dispatch(background, 'ppt_render', { dir: initial.dir, pages: [job.page] })
+          await updateJob(background, initial, job.page, { status: 'complete' })
+        } catch (error) {
+          await updateJob(background, initial, job.page, { status: shutdown.signal.aborted ? 'interrupted' : 'failed', error: error instanceof Error ? error.message : String(error) }).catch(() => {})
+        } finally { activePages.delete(key) }
+      } }
+    })
+    void runPresentationImageTasks(tasks, jobs[0]?.concurrency).catch(() => {})
+  }
   async function verifyAssets(exec: Exec, state: PresentationWorkflow, page?: number) {
     const root = cwd(exec), spec = await readSpecification(root, state.spec), manifest = await readManifest(root, state.manifest)
     const verified = new Map<string, string>()
@@ -221,10 +291,11 @@ export function installPresentationWorkflow(ctx: Context): void {
       return !check.screenshotHash || check.screenshotHash === actual
     } catch { return false }
   }
-  // Observe canonical tools without changing their result schema. A bound deck
-  // export is gated by actual PNG review and current page/asset fingerprints.
+  // Observe page changes/checks without altering canonical tool results.
   ctx.on('tools/execute', async (exec, next) => {
-    if (bypass.has(String(exec.callId)) || !exec.agent || !['ppt_edit', 'ppt_undo', 'ppt_redo', 'ppt_check', 'ppt_render', 'ppt_export'].includes(exec.name)) return next()
+    // Export never depends on source journals, reviews or a running page transaction.
+    if (exec.name === 'ppt_export') return next()
+    if (bypass.has(String(exec.callId)) || !exec.agent || !['ppt_edit', 'ppt_undo', 'ppt_redo', 'ppt_check', 'ppt_render'].includes(exec.name)) return next()
     const initial = await load(exec), args = exec.arguments as any
     if (!initial || typeof args.dir !== 'string' || resolve(cwd(exec), args.dir) !== resolve(cwd(exec), initial.dir)) return next()
     const lock = resolve(cwd(exec), initial.dir)
@@ -274,26 +345,9 @@ export function installPresentationWorkflow(ctx: Context): void {
       if (!bindingMatches(state, initial)) return next()
       try {
         await sync(exec, state)
-        if (exec.name === 'ppt_export') {
-          await verifyAssets(exec, state)
-          const visual = await readManifest(cwd(exec), state.manifest)
-          const specification = await readSpecification(cwd(exec), state.spec)
-          for (const page of state.changedPages) {
-            const template = pageTemplate(visual, page, state.outputMode, state.templatePlans?.[page]?.templateAssetId)
-            if (template) await requirePageTemplateReview(cwd(exec), specification, visual, template, page)
-          }
-          for (const entry of Object.values(state.pages)) if (entry.checks.ppt_render && !await currentScreenshot(exec, entry.checks.ppt_render)) { delete entry.checks.ppt_render; delete entry.review }
-          const requirements = exportRequirements(state)
-          if (requirements.length) throw new Error(`Export requirements: ${JSON.stringify(requirements)}. Use presentation_check_pages only for missing/stale checks or renders; view the returned PNGs and use presentation_record_reviews for missing reviews and explicit finding waivers. Re-running checks does not record a visual review.`)
-        }
         const result = await next()
         if (result.isError || (result.value as any)?.ok === false) { await persist(exec, state); return result }
-        const value = result.value as any
         if (['ppt_edit', 'ppt_undo', 'ppt_redo'].includes(exec.name)) await sync(exec, state)
-        else if (exec.name === 'ppt_export') {
-          const bytes = await readFile(await workspacePath(cwd(exec), value.path))
-          state.exportReceipt = { outputPath: value.path, bytes: bytes.length, sha256: hash(bytes), revision: value.revision }; state.phase = 'exported-awaiting-readback'
-        }
         delete state.failure; await persist(exec, state); return result
       } catch (error) { state.failure = { stage: exec.name, message: error instanceof Error ? error.message.slice(0, 1000) : 'Presentation operation failed.', at: new Date().toISOString() }; await persist(exec, state); throw error }
     })
@@ -352,45 +406,59 @@ export function installPresentationWorkflow(ctx: Context): void {
       return JSON.stringify({ reviews })
     })
   } }))
-  ctx.tools.register(defineTool({ name: 'presentation_repair_templates', description: 'Repair failed full-slide images using edit_image without changing the configured image model, quality or size. Supply the exact repair prompt and a new output/asset ID. The old image/prompt remains and the repaired image must be visually reviewed before build or editable conversion.', parameters: { repairs: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { asset_id: { type: 'string', required: true }, expected_sha256: { type: 'string', required: true }, prompt: { type: 'string', required: true }, output_path: { type: 'string', required: true }, new_asset_id: { type: 'string', required: true } } } }, concurrency: { type: 'integer' } }, output, execute: async (args, exec) => {
-    const state = await bound(exec), root = cwd(exec), manifest = await readManifest(root, state.manifest)
-    if (!args.repairs.length || args.repairs.length > 128) throw new Error('Repair 1–128 full-slide images per batch.')
-    const outputs = new Set<string>()
-    const tasks = args.repairs.map(item => {
-      const asset = manifest.assets.find(asset => asset.assetId === item.asset_id), review = asset && templateFailure(manifest, asset.sha256)
-      if (!asset || !['slide-image', 'template'].includes(asset.role) || asset.sha256 !== item.expected_sha256 || review?.sha256 !== asset.sha256 || review.status !== 'repair-required') throw new Error('Repair requires a current failed full-slide image review.')
-      const output = resolve(root, item.output_path)
-      if (!/^[a-zA-Z0-9][\w.-]{0,127}$/u.test(item.new_asset_id) || item.new_asset_id === item.asset_id || manifest.assets.some(asset => asset.assetId === item.new_asset_id) || outputs.has(output) || manifest.assets.some(asset => asset.path === output)) throw new Error('Repairs require unique new IDs and output paths; keep original evidence.')
-      outputs.add(output)
-      return { id: item.new_asset_id, page: asset.slideNumber ?? asset.slideNumbers?.[0] ?? 1, run: async () => {
-        if (hash(await readFile(await workspacePath(root, asset.path))) !== asset.sha256) throw new Error('Repair input changed after review.')
-        const value = await dispatch(exec, 'edit_image', { prompt: item.prompt, input_paths: [asset.path], output_path: item.output_path, concurrency: imageConcurrency(args.concurrency) })
-        const generation = JSON.parse(await readFile(await workspacePath(root, value.path + '.generation.json'), 'utf8'))
-        if (!generation.inputImageHashes?.includes(asset.sha256) || generation.sha256 === asset.sha256) throw new Error('Image repair receipt must bind the reviewed original and contain changed image bytes.')
-        const registered = await recordVisualAssets(root, [{ manifest: state.manifest, image: value.path, assetId: item.new_asset_id, role: asset.role, sourceKind: 'generated', ...(asset.slideNumber === undefined ? {} : { slideNumber: asset.slideNumber }), ...(asset.slideNumbers === undefined ? {} : { slideNumbers: asset.slideNumbers }), parentAssetId: asset.assetId, styleReferenceIds: asset.styleReferenceIds }])
-        return { asset: registered.assets[0], replacesAssetId: asset.assetId, reviewRequired: true, imagePath: registered.assets[0]!.path, expectedSha256: registered.assets[0]!.sha256 }
-      } }
-    })
-    return JSON.stringify({ repairs: await runPresentationImageTasks(tasks, imageConcurrency(args.concurrency)) })
+  ctx.tools.register(defineTool({ name: 'presentation_repair_templates', description: 'Modify one or more selected full-slide images using edit_image. Queue independent page tasks; preserve old images, prompts and PPT revisions. Works for normal edits and failed-image repair. Other pages are reused.', parameters: { repairs: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { asset_id: { type: 'string', required: true }, expected_sha256: { type: 'string', required: true }, prompt: { type: 'string', required: true }, output_path: { type: 'string', required: true }, new_asset_id: { type: 'string', required: true } } } }, concurrency: { type: 'integer' } }, output, execute: async (args, exec) => {
+    const state = await bound(exec), manifest = await readManifest(cwd(exec), state.manifest)
+    return queueTemplates(exec, args.repairs.map(item => {
+      const asset = manifest.assets.find(asset => asset.assetId === item.asset_id)
+      if (!asset || !['slide-image', 'template'].includes(asset.role) || asset.sha256 !== item.expected_sha256) throw new Error('Select a current full-slide image and its SHA-256.')
+      return { page: asset.slideNumber ?? asset.slideNumbers?.[0] ?? 1, prompt: item.prompt, output_path: item.output_path, asset_id: item.new_asset_id, reference_asset_ids: [asset.assetId], parent_asset_id: asset.assetId }
+    }), args.concurrency)
   } }))
-  ctx.tools.register(defineTool({ name: 'presentation_generate_templates', description: 'Generate complete slide PNGs concurrently using the environment image settings. Reference assets are passed to edit_image; preserve exact prompt and source hashes. Image mode uses the PNG in the final PPTX; editable mode keeps it reference-only.', parameters: { templates: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { page: { type: 'integer', required: true }, prompt: { type: 'string', required: true }, output_path: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, reference_asset_ids: { type: 'array', items: { type: 'string' } } } } }, concurrency: { type: 'integer', description: 'User-selected batch limit; default 10.' } }, output, execute: async (args, exec) => {
-    const state = await bound(exec), root = cwd(exec), spec = await readSpecification(root, state.spec), manifest = await readManifest(root, state.manifest)
-    if (!args.templates.length || args.templates.length > 128) throw new Error('Generate 1–128 page images per batch.')
-    const paths = new Set<string>(), ids = new Set<string>()
-    const tasks = args.templates.map(item => {
-      if (!Number.isInteger(item.page) || !spec.slides[item.page - 1]) throw new Error('Template page is outside the presentation specification.')
-      if (!/^[a-zA-Z0-9][\w.-]{0,127}$/u.test(item.asset_id) || ids.has(item.asset_id)) throw new Error('Template IDs must be unique stable identifiers.')
-      const path = resolve(root, item.output_path); if (paths.has(path)) throw new Error('Template output paths must be unique.'); paths.add(path); ids.add(item.asset_id)
-      const references = (item.reference_asset_ids ?? []).map(id => { const asset = manifest.assets.find(asset => asset.assetId === id); if (!asset) throw new Error(`Unknown reference asset ${id}.`); return asset })
-      if (references.length > 16) throw new Error('At most 16 reference assets per image request.')
-      return { id: item.asset_id, page: item.page, run: async () => {
-        for (const asset of references) if (hash(await readFile(await workspacePath(root, asset.path))) !== asset.sha256) throw new Error(`Reference asset ${asset.assetId} changed.`)
-        const value = await dispatch(exec, references.length ? 'edit_image' : 'generate_image', { prompt: item.prompt, output_path: item.output_path, concurrency: imageConcurrency(args.concurrency), ...(references.length ? { input_paths: references.map(asset => asset.path) } : {}) })
-        const registered = await recordVisualAssets(root, [{ manifest: state.manifest, image: value.path, assetId: item.asset_id, role: state.outputMode === 'image' ? 'slide-image' : 'template', sourceKind: 'generated', slideNumber: item.page, ...(item.reference_asset_ids === undefined ? {} : { styleReferenceIds: item.reference_asset_ids }) }])
-        return { page: item.page, asset: registered.assets[0], generated: value, reviewRequired: true, imagePath: registered.assets[0]!.path, expectedSha256: registered.assets[0]!.sha256 }
-      } }
+  async function queueTemplates(exec: Exec, templates: { page: number; prompt: string; output_path: string; asset_id: string; reference_asset_ids?: string[]; parent_asset_id?: string }[], limit?: number) {
+    const initial = await bound(exec), root = cwd(exec), concurrency = imageConcurrency(limit), taskId = randomUUID()
+    const jobs = await withPresentationLock(initial.dir, async () => {
+      const state = await currentBinding(exec, initial), spec = await readSpecification(root, state.spec), manifest = await readManifest(root, state.manifest)
+      if (!templates.length || templates.length > 128) throw new Error('Select 1–128 pages.')
+      const paths = new Set<string>(), ids = new Set<string>(), pages = new Set<number>(), jobs: PageJob[] = []
+      for (const item of templates) {
+        if (!Number.isInteger(item.page) || !spec.slides[item.page - 1] || pages.has(item.page)) throw new Error('Select distinct pages inside the presentation specification.')
+        if (activePages.has(state.journal + ':' + item.page) ||
+          (state.pageJobs?.[item.page]?.runId === runId && ['queued', 'generating', 'building', 'checking', 'rendering'].includes(state.pageJobs[item.page]!.status))) throw new Error('A selected page already has an active task.')
+        const target = await workspacePath(root, item.output_path)
+        if (!/^[a-zA-Z0-9][\w.-]{0,127}$/u.test(item.asset_id) || ids.has(item.asset_id) || paths.has(target) || manifest.assets.some(asset => asset.assetId === item.asset_id || asset.path === target)
+          || Object.values(state.pageJobs ?? {}).some(job => job.input.assetId === item.asset_id || job.input.outputPath === target)) throw new Error('Use unique new asset IDs and paths to preserve earlier versions.')
+        const style = pageStyle(spec, item.page), referenceIds = [...new Set([...(item.reference_asset_ids ?? []), ...style.styleReferenceAssetIds])]
+        const references = referenceIds.map(id => { const asset = manifest.assets.find(asset => asset.assetId === id); if (!asset) throw new Error('Unknown reference asset ' + id); return { assetId: id, path: asset.path, sha256: asset.sha256 } })
+        if (references.length > 16) throw new Error('At most 16 reference images per page.')
+        const prompt = style.stylePrompt ? item.prompt + '\n\n[Style reference]\n' + style.stylePrompt : item.prompt
+        jobs.push({ taskId, runId, page: item.page, status: 'queued', concurrency, updatedAt: new Date().toISOString(),
+          specFingerprint: hash(JSON.stringify({ slide: spec.slides[item.page - 1], style })),
+          input: { prompt, originalPrompt: item.prompt, stylePrompt: style.stylePrompt, outputPath: target, assetId: item.asset_id, references, ...(item.parent_asset_id ? { parentAssetId: item.parent_asset_id } : {}) } })
+        paths.add(target); ids.add(item.asset_id); pages.add(item.page)
+      }
+      state.pageJobs ??= {}
+      for (const job of jobs) state.pageJobs[job.page] = job
+      state.phase = 'processing-pages'; await persist(exec, state); return jobs
     })
-    return JSON.stringify({ templates: await runPresentationImageTasks(tasks, imageConcurrency(args.concurrency)) })
+    launchPages(exec, initial, jobs)
+    return JSON.stringify({ taskId, pages: jobs.map(job => ({ page: job.page, status: 'queued', assetId: job.input.assetId })), concurrency })
+  }
+  ctx.tools.register(defineTool({ name: 'presentation_generate_templates', description: 'Queue selected pages and return taskId immediately. Each page independently generates, saves, checks and renders. Global stylePrompt/styleReferenceAssetIds inherit with per-page overrides. References use edit_image. Read presentation_status for durable per-page results.', parameters: { templates: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { page: { type: 'integer', required: true }, prompt: { type: 'string', required: true }, output_path: { type: 'string', required: true }, asset_id: { type: 'string', required: true }, reference_asset_ids: { type: 'array', items: { type: 'string' } } } } }, concurrency: { type: 'integer', description: '1–10 concurrent pages; default 10.' } }, output, execute: async (args, exec) => queueTemplates(exec, args.templates, args.concurrency) }))
+  ctx.tools.register(defineTool({ name: 'presentation_resume_pages', description: 'Manually resume only explicitly selected failed/interrupted pages. Reuse completed generation receipts without charging again. Never automatically retries on restart.', parameters: { pages: { type: 'array', required: true, items: { type: 'integer' } }, concurrency: { type: 'integer' } }, output, execute: async (args, exec) => {
+    const initial = await bound(exec), concurrency = imageConcurrency(args.concurrency)
+    const jobs = await withPresentationLock(initial.dir, async () => {
+      const state = await currentBinding(exec, initial)
+      if (!args.pages.length || new Set(args.pages).size !== args.pages.length) throw new Error('Explicitly select distinct interrupted pages.')
+      const jobs = args.pages.map(page => {
+        const job = state.pageJobs?.[page]
+        if (!job || !['failed', 'interrupted', 'awaiting-editable'].includes(job.status) || activePages.has(state.journal + ':' + page)) throw new Error('Only selected failed, interrupted or awaiting-editable pages can resume.')
+        return { ...job, runId, concurrency, status: 'queued' as const, error: undefined, updatedAt: new Date().toISOString() }
+      })
+      for (const job of jobs) state.pageJobs![job.page] = job
+      await persist(exec, state); return jobs
+    })
+    launchPages(exec, initial, jobs)
+    return JSON.stringify({ pages: jobs.map(job => ({ page: job.page, taskId: job.taskId, status: 'queued' })) })
   } }))
   ctx.tools.register(defineTool({ name: 'presentation_plan_editable_pages', description: 'Persist native PPTD element plans (elementId, elementType, bounds plus complete text/shape/line/image/table/chart fields). Images reference registered asset IDs using src. No whole-page bitmap can satisfy an editable page.', parameters: { plans: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { page: { type: 'integer', required: true }, template_asset_id: { type: 'string' }, elements: { type: 'array', required: true, items: { type: 'json' } } } } } }, output, execute: async (args, exec) => {
     const initial = await bound(exec)
@@ -402,7 +470,7 @@ export function installPresentationWorkflow(ctx: Context): void {
         if (!spec.slides[plan.page - 1]) throw new Error('Page is outside the specification.')
         const template = pageTemplate(manifest, plan.page, state.outputMode, plan.template_asset_id)
         if (!template) throw new Error(`Page ${plan.page}: generate and visually review a full-slide template before editable conversion.`)
-        await requirePageTemplateReview(cwd(exec), spec, manifest, template, plan.page)
+        // Template review remains an advisory record; the selected page can be edited immediately.
         state.templatePlans[plan.page] = validateEditablePagePlan(plan.page, plan.elements as Record<string, any>[], template.assetId)
       }
       state.phase = 'planned-editable'; await persist(exec, state); return JSON.stringify(state.templatePlans)
@@ -420,15 +488,14 @@ export function installPresentationWorkflow(ctx: Context): void {
         const slide = spec.slides[page - 1]; if (!slide) throw new Error('Page is outside the specification.')
         await verifyAssets(exec, state, page)
         const assets = assetsForPage(spec, assetsManifest, page)
-        const template = pageTemplate(assetsManifest, page, state.outputMode, state.templatePlans?.[page]?.templateAssetId)
-        if (!template) throw new Error(`Page ${page}: generate and visually review a full-slide image first.`)
-        const templateReview = await requirePageTemplateReview(root, spec, assetsManifest, template, page)
+        const template = pageTemplate(assetsManifest, page, state.outputMode, state.pageJobs?.[page]?.asset?.assetId ?? state.templatePlans?.[page]?.templateAssetId)
+        if (!template) throw new Error(`Page ${page}: generate a full-slide image first.`)
+        const templateReview = assetsManifest.templateReviews?.[template.assetId]
         const allAssets = assetsWithReferences(assetsManifest, [...assets, template])
-        // Scientific/user references are required original objects even when
-        // they entered through generation references rather than assetIds.
-        const pageAssets = allAssets.filter(asset => assets.includes(asset) || asset.sourceKind === 'literature' || asset.sourceKind === 'user')
+        // Only declared page content is embedded; style references stay generation inputs.
+        const pageAssets = assets.filter(asset => asset.assetId !== template.assetId)
         const media = new Map<string, string>()
-        for (const asset of allAssets) { const target = `media/${asset.assetId}-${asset.sha256.slice(0, 12)}${extname(asset.path)}`; await copyFile(await workspacePath(root, asset.path), await workspacePath(root, join(current.dir, target))); media.set(asset.assetId, target) }
+        for (const asset of [...pageAssets, template]) { const target = `media/${asset.assetId}-${asset.sha256.slice(0, 12)}${extname(asset.path)}`; await copyFile(await workspacePath(root, asset.path), await workspacePath(root, join(current.dir, target))); media.set(asset.assetId, target) }
         let elements: Record<string, any>[]
         if (state.outputMode === 'image') {
           elements = [{ elementId: `slide-image-${page}`, elementType: 'image', bounds: [0, 0, spec.width, spec.height], src: media.get(template.assetId), fit: { mode: 'contain' } },
@@ -442,12 +509,15 @@ export function installPresentationWorkflow(ctx: Context): void {
         }
         const content = { elements, notes: notes(slide.notes, allAssets, page), ...(slide.background === undefined ? {} : { background: slide.background }) }
         const existing = current.snapshots[page - 1]
-        if (!existing && page > current.snapshots.length + ops.filter(op => op.op === 'add_page').length + 1) throw new Error('Build new pages in contiguous order.')
+        // Reserve still-generating pages so later pages can land immediately and keep their page numbers.
+        for (let number = current.snapshots.length + ops.filter(op => op.op === 'add_page').length + 1; number < page; number++) {
+          ops.push({ op: 'add_page', page: `pages/${String(number).padStart(2, '0')}.page`, content: { elements: [] } })
+        }
         ops.push(existing ? { op: 'update_page', page: existing.id, patch: content } : { op: 'add_page', page: `pages/${String(page).padStart(2, '0')}.page`, content })
         receipts.push({ page, assets: provenance(allAssets, page) })
         templateReceipts.push({ page, assetId: template.assetId, assetSha256: template.sha256, sourcePath: template.path, mediaPath: media.get(template.assetId), review: templateReview })
       }
-      const result = await dispatch(exec, 'ppt_edit', { dir: state.dir, baseRevision: current.manifest.revision, ops }, true)
+      const result = await dispatch(exec, 'ppt_edit', { dir: state.dir, baseRevision: current.manifest.revision, ops, newVersion: true }, true)
       const next = await sync(exec, state)
       const provenanceFile = await workspacePath(root, state.provenancePath ?? join(state.dir, 'presentation-provenance.json'))
       let previous: any = {}
@@ -508,7 +578,7 @@ export function installPresentationWorkflow(ctx: Context): void {
         catch { const review = templateFailure(manifest, template.sha256) ?? manifest.templateReviews?.[template.assetId]; templateRequirements.push({ page, assetId: template.assetId, imagePath: template.path, expectedSha256: template.sha256, status: review?.status ?? 'unreviewed', issues: review?.issues ?? [] }) }
       }
       await persist(exec, state)
-      return JSON.stringify({ state: workflowView(state), ...findingsView(state, args.pages ?? state.changedPages, offset, limit), blockedPages: exportBlockers(state), requirements: exportRequirements(state), templateRequirements })
+      return JSON.stringify({ state: workflowView(state), ...findingsView(state, args.pages ?? state.changedPages, offset, limit), exportBlocked: false, exportPolicy: 'immediate-current-canvas', blockedPages: exportBlockers(state), requirements: exportRequirements(state), templateRequirements })
     })
   } }))
 }

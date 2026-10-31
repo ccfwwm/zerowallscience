@@ -206,7 +206,7 @@ export function apply(ctx: Context): void {
       size: { type: 'string', description: 'auto 或 WIDTHxHEIGHT，例如 2048x2048；不要假设 1024x1024 是最大尺寸。' },
       quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], description: 'Optional explicit override. Omit unless the user requested a quality level; the environment setting is otherwise authoritative (default: medium). Image dimensions do not imply high quality.' },
       overwrite: { type: 'boolean', description: 'Replace an existing output file. Defaults to false.' },
-      concurrency: { type: 'integer', description: 'Maximum concurrent image jobs in this batch (positive integer, default 10). When the user specifies a limit, pass the same value to every generate_image/edit_image call in the batch.' },
+      concurrency: { type: 'integer', description: 'Maximum concurrent image jobs in this batch (integer 1–10, default 10). When the user specifies a limit, pass the same value to every generate_image/edit_image call in the batch.' },
     },
     output: {
       schema: IMAGE_OUTPUT_SCHEMA,
@@ -248,7 +248,7 @@ export function apply(ctx: Context): void {
       size: { type: 'string', description: 'auto 或 WIDTHxHEIGHT，例如 2048x2048；不要假设 1024x1024 是最大尺寸。' },
       quality: { type: 'string', enum: ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], description: 'Optional explicit override. Omit unless the user requested a quality level; the environment setting is otherwise authoritative (default: medium). Image dimensions do not imply high quality.' },
       overwrite: { type: 'boolean', description: 'Replace an existing output file, including a source image. Defaults to false.' },
-      concurrency: { type: 'integer', description: 'Maximum concurrent image jobs in this batch (positive integer, default 10). Use the same value for every generate_image/edit_image call in the batch.' },
+      concurrency: { type: 'integer', description: 'Maximum concurrent image jobs in this batch (integer 1–10, default 10). Use the same value for every generate_image/edit_image call in the batch.' },
     },
     output: {
       schema: IMAGE_OUTPUT_SCHEMA,

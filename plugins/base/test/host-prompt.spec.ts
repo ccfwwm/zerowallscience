@@ -12,7 +12,7 @@ describe('ZeroWall Science system prompt', () => {
     expect(SCIENCE_SYSTEM_PROMPT).toContain('science_viewer_panel')
     expect(SCIENCE_SYSTEM_PROMPT).not.toMatch(/Gate|Study|register/u)
     expect(SCIENCE_SYSTEM_PROMPT.toLowerCase()).not.toContain('workbench')
-    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toBe('8.4.18-on-demand-context.1')
+    expect(SCIENCE_SYSTEM_PROMPT_VERSION).toBe('8.4.18-on-demand-context.2')
   })
 
   it('keeps domain workflows out of the permanent prompt', () => {

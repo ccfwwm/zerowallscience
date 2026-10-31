@@ -5,7 +5,7 @@
  *   1. 按 `deckPages` 排页；每页一张缩略图，用 PptdView 直接渲染该页 AST（DOM 直渲，
  *      不走光栅化 PNG——打开即出、与画布同渲染管线、无 px:pt 系数错位）。
  *   2. 点选 → store.actions.setPage（面板同步到 Stage 与 Inspector）。
- *   3. 悬停动作按钮：复制（page_duplicate）、删除（remove_page）；顶部「+ 新页」（add_page），
+ *   3. 显式菜单与二次确认：复制（page_duplicate）、删除（remove_page）；顶部「+ 新页」（add_page），
  *      与收起按钮同处一行（panel.tsx 经 headerAction 注入，flex 行内天然纵坐标对齐）。
  *
  * 拖拽排序（HTML5 drag & drop）→ move_page：拖一个缩略图到某条间隙，松开即落 op。
@@ -102,17 +102,17 @@ export function ThumbStrip({ store, headerAction }: { store: PptStore; headerAct
               <div
                 role="listitem"
                 className={`ppt-thumbrow${active ? ' ppt-thumbrow-on' : ''}${drag.fromPath === pagePath ? ' ppt-thumbrow-dragging' : ''}`}
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('text/ppt-page-path', pagePath)
-                  e.dataTransfer.effectAllowed = 'move'
-                  setDrag({ fromPath: pagePath, overIndex: null })
-                }}
-                onDragEnd={() => setDrag({ fromPath: null, overIndex: null })}
               >
                 <button
                   type="button"
                   className="ppt-thumb"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/ppt-page-path', pagePath)
+                    e.dataTransfer.effectAllowed = 'move'
+                    setDrag({ fromPath: pagePath, overIndex: null })
+                  }}
+                  onDragEnd={() => setDrag({ fromPath: null, overIndex: null })}
                   onClick={() => store.actions.setPage(index)}
                   title={`第 ${pageNo} 页（${pagePath}）`}
                   aria-pressed={active}
@@ -132,24 +132,7 @@ export function ThumbStrip({ store, headerAction }: { store: PptStore; headerAct
                     />
                   )}
                 </button>
-                <div className="ppt-thumb-actions">
-                  <button
-                    type="button"
-                    className="ppt-btn ppt-thumb-action"
-                    onClick={() => void store.actions.duplicatePage(pagePath)}
-                    title="复制这页（page_duplicate）"
-                  >
-                    复制
-                  </button>
-                  <button
-                    type="button"
-                    className="ppt-btn ppt-thumb-action"
-                    onClick={() => void store.actions.removePage(pagePath)}
-                    title="删除这页（remove_page）"
-                  >
-                    删除
-                  </button>
-                </div>
+                <PageActions key={state.activeKey + pagePath} store={store} pagePath={pagePath} pageNo={pageNo} />
               </div>
               {renderGap(index + 1)}
             </React.Fragment>
@@ -158,6 +141,32 @@ export function ThumbStrip({ store, headerAction }: { store: PptStore; headerAct
       </div>
     </div>
   )
+}
+
+function PageActions({ store, pagePath, pageNo }: { store: PptStore; pagePath: string; pageNo: number }) {
+  const [open, setOpen] = React.useState(false)
+  const [confirm, setConfirm] = React.useState<'copy' | 'delete' | null>(null)
+  const [busy, setBusy] = React.useState(false)
+  const close = () => { setOpen(false); setConfirm(null) }
+  return <div className="ppt-thumb-actions" onKeyDown={e => { if (e.key === 'Escape') close() }} onDragStart={e => e.preventDefault()}>
+    <button type="button" className="ppt-btn ppt-thumb-action" aria-label={`第 ${pageNo} 页操作`} aria-expanded={open}
+      onClick={() => { setOpen(!open); setConfirm(null) }}>⋯</button>
+    {open ? <div className="ppt-thumb-menu" role={confirm ? 'alertdialog' : 'menu'} aria-label={`第 ${pageNo} 页操作`}>
+      {confirm ? <>
+        <span>{confirm === 'copy' ? '复制' : '删除'}第 {pageNo} 页？</span>
+        <button type="button" className="ppt-btn ppt-thumb-action" disabled={busy} onClick={async () => {
+          setBusy(true)
+          try { if (confirm === 'copy') await store.actions.duplicatePage(pagePath); else await store.actions.removePage(pagePath); close() }
+          finally { setBusy(false) }
+        }}>确认{confirm === 'copy' ? '复制' : '删除'}</button>
+        <button type="button" className="ppt-btn ppt-thumb-action" disabled={busy} onClick={close}>取消</button>
+      </> : <>
+        <button type="button" role="menuitem" className="ppt-btn ppt-thumb-action" onClick={() => setConfirm('copy')}>复制…</button>
+        <button type="button" role="menuitem" className="ppt-btn ppt-thumb-action" onClick={() => setConfirm('delete')}>删除…</button>
+        <button type="button" className="ppt-btn ppt-thumb-action" onClick={close}>关闭</button>
+      </>}
+    </div> : null}
+  </div>
 }
 
 /**

@@ -20,6 +20,7 @@
  */
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 
 import * as sessionStore from './store.mjs'
 
@@ -491,6 +492,7 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
           dir,
           ops: Array.isArray(body.ops) ? body.ops : [],
           baseRevision: body.baseRevision,
+          newVersion: true,
           sessionId,
         })
         ss.markSeenRevision(sessionId, key, result.revision)
@@ -525,27 +527,30 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
         const { sessionId, cwd } = sessionOf(body, url)
         const key = String(body.key || '')
         const { dir, abs } = projectOf(ss, sessionId, cwd, key)
-        const pipeline = await buildProjectDeck(cwd, dir)
+        const pipeline = await buildProjectDeck(cwd, dir, body.snapshot)
         const { bytes, fontEmbed } = await saveProjectPptx(pipeline)
         const buffer = Buffer.from(bytes)
         // 面板导出（body.save）落到工程目录 export/ 并回相对路径：桌面外壳的下载没有
         // 可回读的落点，磁盘上的文件 + 可见路径才是「点了就有反应」的确定性口径。
         const saveToProject = body.save === true
-        await writeExportReport(cwd, dir, {
+        const receipt = {
           kind: saveToProject ? 'panel-export' : 'browser-export',
           at: new Date().toISOString(),
           revision: pipeline.revision,
+          snapshotHash: pipeline.snapshotHash,
           bytes: buffer.length,
           fontEmbed: fontEmbed ?? null,
-          issues: pipeline.issues ?? pipeline.buildWarnings ?? null,
-        })
-        ss.markSeenRevision(sessionId, key, pipeline.revision)
+          issues: [...(pipeline.qualityIssues ?? []), ...(pipeline.buildWarnings ?? [])],
+        }
+        // Canvas export is read-only: the receipt belongs to the artifact, not manifest.json.
+        if (!body.snapshot) await writeExportReport(cwd, dir, receipt)
         if (saveToProject) {
-          const filename = `${safeFileStem(key)}-r${pipeline.revision}.pptx`
+          const filename = `${safeFileStem(key)}-r${pipeline.revision}-${pipeline.snapshotHash?.slice(0, 12) ?? Date.now()}.pptx`
           const outDir = path.join(abs, 'export')
           await fsp.mkdir(outDir, { recursive: true })
           const absolutePath = path.join(outDir, filename)
           await fsp.writeFile(absolutePath, buffer)
+          await fsp.writeFile(`${absolutePath}.export.json`, JSON.stringify(receipt, null, 2))
           return json(res, 200, {
             ok: true,
             filename,
@@ -553,12 +558,16 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
             absolutePath,
             revision: pipeline.revision,
             bytes: buffer.length,
+            snapshotHash: pipeline.snapshotHash,
+            qualityIssues: receipt.issues,
           })
         }
         res.writeHead(200, {
           'content-type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
           'content-disposition': 'attachment; filename="deck.pptx"',
           'cache-control': 'no-store',
+          'x-pt-revision': String(pipeline.revision),
+          'x-pt-snapshot': pipeline.snapshotHash ?? '',
         })
         return res.end(buffer)
       }
@@ -636,6 +645,9 @@ export function createApiHandler({ resolveCwd, log = () => {}, core, createConve
       const message = error && error.message ? error.message : String(error)
       log(`[ppt-maker] ${route} 失败: ${message}`)
       if (error instanceof OversizeError) return fail(res, 413, message)
+      if (error instanceof ProjectError && error.code === 'RevisionMismatch') {
+        return json(res, 409, { ok: false, error: error.message, conflict: { revision: error.detail?.expected ?? 0 } })
+      }
       if (error instanceof ProjectError && typeof error.status === 'number') return fail(res, error.status, error.message)
       if (typeof error === 'object' && error !== null && typeof error.status === 'number' && error.status >= 400 && error.status < 600) {
         return fail(res, error.status, message)
@@ -675,13 +687,13 @@ async function saveMedia({ abs, key, body, res }) {
     .slice(0, 24) || 'paste'
   const stamp = new Date()
   const pad = (n) => String(n).padStart(2, '0')
-  const base = `${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}-${stem}`
+  const base = `${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}-${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}-${stem}-${randomUUID()}`
   const target = path.join(abs, 'media', `${base}${ext}`)
   const rel = path.relative(abs, target).replace(/\\/g, '/')
   if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
     return fail(res, 400, '落盘路径越界')
   }
   await fsp.mkdir(path.dirname(target), { recursive: true })
-  await fsp.writeFile(target, buf)
+  await fsp.writeFile(target, buf, { flag: 'wx' })
   return json(res, 200, { ok: true, key, src: `media/${path.basename(target)}`, path: target, bytes: buf.length })
 }

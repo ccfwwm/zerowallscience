@@ -4,7 +4,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 
 const TOOL_NAME = 'capability_search'
 const MAX_ENABLED_TOOLS = 12
-const ON_DEMAND_TRIGGER = 32
+const ON_DEMAND_TRIGGER = 100
 const CORE_TOOLS = new Set([
   TOOL_NAME,
   'ask_user_question',
@@ -18,8 +18,13 @@ const CORE_TOOLS = new Set([
   'job_kill',
   'job_list',
   'job_output',
+  'mcp_connect',
+  'mcp_search',
   'read',
   'read_image',
+  'r_download_workspace',
+  'r_files',
+  'research_workflow',
   'schedule_create',
   'schedule_delete',
   'schedule_list',
@@ -83,6 +88,7 @@ export function installOnDemandTools(ctx: Context): void {
   const tools = ctx.tools
   if (tools === undefined) return
   const restrictions = new WeakMap<object, { dispose: () => void; enabled: Set<string> }>()
+  const mcpToolNames = () => tools.schemas().map((schema: ToolSchema) => schema.name).filter(name => name.startsWith('mcp__'))
   const allowFor = (agent: any, names: readonly string[]) => {
     if (agent === undefined || agent.ctx?.tools === undefined) return
     // Read the global registry so a second enable call can recover a tool
@@ -95,9 +101,18 @@ export function installOnDemandTools(ctx: Context): void {
     restrictions.set(agent, { dispose: agent.ctx.tools.restrict({ allow }), enabled: new Set(allow) })
   }
   ctx.on('agent/created', ({ agent }) => {
-    if (tools.schemas(agent).length > ON_DEMAND_TRIGGER) allowFor(agent, [...CORE_TOOLS])
+    if (tools.schemas(agent).length > ON_DEMAND_TRIGGER) allowFor(agent, [...CORE_TOOLS, ...mcpToolNames()])
   })
   ctx.on('agent/disposed', ({ agent }) => { restrictions.get(agent)?.dispose(); restrictions.delete(agent) })
+  ctx.provide('zerowallToolAccess', {
+    include(agent: object | undefined, names: readonly string[]) {
+      if (agent === undefined || !restrictions.has(agent)) return
+      const state = restrictions.get(agent)!
+      const available = new Set(tools.schemas().map((schema: ToolSchema) => schema.name))
+      for (const name of names) if (available.has(name) && name !== TOOL_NAME) state.enabled.add(name)
+      allowFor(agent, [...CORE_TOOLS, ...state.enabled])
+    },
+  } as never)
   ctx.effect(() => tools.register(defineTool({
     name: TOOL_NAME,
     description: 'Find a tool by task or capability. Search returns exact available names; call again with enable set to the exact names before using them. Disable loaded tools when no longer needed.',

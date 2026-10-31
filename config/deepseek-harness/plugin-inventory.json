@@ -269,7 +269,7 @@
     {
       "id": "base",
       "package": "@zerowallscience/plugin-base",
-      "version": "0.1.35",
+      "version": "0.1.36",
       "source": "plugins/base",
       "manifest": "plugins/base/zerowall.plugin.json",
       "client": true,
@@ -381,7 +381,7 @@
     {
       "id": "mcp",
       "package": "@zerowallscience/plugin-mcp",
-      "version": "0.2.45",
+      "version": "0.2.51",
       "source": "plugins/mcp",
       "manifest": "plugins/mcp/zerowall.plugin.json",
       "client": true,
@@ -527,7 +527,7 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "0.2.30",
+      "version": "0.2.32",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, readFile, realpath, rename, writeFile } from 'node:fs/promises'
+import { lstat, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises'
+import { setTimeout as delay } from 'node:timers/promises'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import sharp from 'sharp'
 import { installPresentationWorkflow } from './presentation-workflow.js'
@@ -13,6 +14,7 @@ export interface VisualAsset {
   model?: string; providerId?: string; groupId?: string; requestedQuality?: string; actualQuality?: string
   requestedSize?: string; prompt?: string; promptHash?: string; inputImageHashes: string[]; styleReferenceIds: string[]
   sourceSeedPath?: string; revisedPrompt?: string; createdAt: string; parentAssetId?: string
+  originalPrompt?: string; combinedPrompt?: string; stylePrompt?: string; referenceImageHashes?: string[]
 }
 export interface VisualManifest {
   schemaVersion: 1 | 2; assets: VisualAsset[]; selectedStyleAssetId?: string; styleReview?: string
@@ -30,12 +32,14 @@ export interface TemplateReview {
 }
 export interface SlideSpecification {
   purpose?: string; text?: string[]; assetIds?: string[]; source?: string; notes?: string; svg?: string
+  stylePrompt?: string; styleReferenceAssetIds?: string[]
   [key: string]: unknown
 }
-export interface PresentationSpecification { width: number; height: number; fonts: object; palette: object; slides: SlideSpecification[]; [key: string]: unknown }
+export interface PresentationSpecification { width: number; height: number; fonts: object; palette: object; slides: SlideSpecification[]; stylePrompt?: string; styleReferenceAssetIds?: string[]; [key: string]: unknown }
 export interface AssetInput {
   manifest: string; image: string; assetId: string; role: string; slideNumber?: number; slideNumbers?: number[]
   styleReferenceIds?: string[]; sourceSeedPath?: string; sourceKind?: SourceKind; source?: SourceReference; parentAssetId?: string
+  originalPrompt?: string; combinedPrompt?: string; stylePrompt?: string; referenceImageHashes?: string[]
 }
 export const hash = (data: Uint8Array | string) => createHash('sha256').update(data).digest('hex')
 export async function workspacePath(cwd: string, path: string): Promise<string> {
@@ -55,7 +59,17 @@ export async function withPresentationLock<T>(key: string, action: () => Promise
 }
 export async function saveJson(path: string, value: unknown): Promise<void> {
   const temporary = path + `.${process.pid}.${randomUUID()}.tmp`
-  await writeFile(temporary, JSON.stringify(value, null, 2)); await rename(temporary, path)
+  await writeFile(temporary, JSON.stringify(value, null, 2))
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try { await rename(temporary, path); return }
+      catch (error) {
+        if (attempt >= 6 || !['EPERM', 'EBUSY', 'EACCES'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error
+        // Windows readers/antivirus can briefly hold the destination open.
+        await delay(10 * (attempt + 1))
+      }
+    }
+  } finally { await unlink(temporary).catch(() => {}) }
 }
 export async function readManifest(cwd: string, path: string): Promise<VisualManifest> {
   const value = await readFile(await workspacePath(cwd, path), 'utf8').then(raw => JSON.parse(raw)).catch(error => {
@@ -70,7 +84,16 @@ export async function readSpecification(cwd: string, path: string): Promise<Pres
   const spec = JSON.parse(await readFile(await workspacePath(cwd, path), 'utf8'))
   if (!Array.isArray(spec.slides) || !spec.slides.length || !Number.isFinite(spec.width) || spec.width <= 0 || !Number.isFinite(spec.height) || spec.height <= 0 || !spec.fonts || !spec.palette) throw new Error('presentation-spec.json requires width, height, fonts, palette and slides.')
   for (const slide of spec.slides) if (slide.assetIds !== undefined && (!Array.isArray(slide.assetIds) || slide.assetIds.some((id: unknown) => typeof id !== 'string'))) throw new Error('Slide assetIds must be an array of registered asset IDs.')
+  for (const item of [spec, ...spec.slides]) {
+    if (item.stylePrompt !== undefined && typeof item.stylePrompt !== 'string') throw new Error('stylePrompt must be a string.')
+    if (item.styleReferenceAssetIds !== undefined && (!Array.isArray(item.styleReferenceAssetIds) || item.styleReferenceAssetIds.some((id: unknown) => typeof id !== 'string'))) throw new Error('styleReferenceAssetIds must be an array of asset IDs.')
+  }
   return spec
+}
+export function pageStyle(spec: PresentationSpecification, page: number) {
+  const slide = spec.slides[page - 1]
+  if (!slide) throw new Error('Page is outside the presentation specification.')
+  return { stylePrompt: slide.stylePrompt ?? spec.stylePrompt ?? '', styleReferenceAssetIds: slide.styleReferenceAssetIds ?? spec.styleReferenceAssetIds ?? [] }
 }
 export function assetsForPage(spec: PresentationSpecification, manifest: VisualManifest, page: number): VisualAsset[] {
   const slide = spec.slides[page - 1]
@@ -81,7 +104,8 @@ export function assetsForPage(spec: PresentationSpecification, manifest: VisualM
     if (asset.role === 'template') throw new Error(`Page ${page}: template asset ${id} is reference-only; reconstruct editable slide elements instead.`)
     return asset
   })
-  return manifest.assets.filter(asset => (asset.slideNumber === page || asset.slideNumbers?.includes(page)) && !['style-candidate', 'content-seed', 'template'].includes(asset.role))
+  const styleIds = pageStyle(spec, page).styleReferenceAssetIds
+  return manifest.assets.filter(asset => (asset.slideNumber === page || asset.slideNumbers?.includes(page)) && !styleIds.includes(asset.assetId) && !['style-reference', 'style-candidate', 'content-seed', 'template'].includes(asset.role))
 }
 export function pagesForAsset(spec: PresentationSpecification, manifest: VisualManifest, assetId: string): number[] {
   return spec.slides.flatMap((_, i) => assetsForPage(spec, manifest, i + 1).some(asset => asset.assetId === assetId) ? [i + 1] : [])
@@ -174,6 +198,7 @@ async function inspectAsset(cwd: string, input: AssetInput): Promise<VisualAsset
   if (!['png', 'jpeg', 'webp'].includes(metadata.format ?? '') || !metadata.width || !metadata.height) throw new Error('Visual asset must be a readable PNG, JPEG or WebP image.')
   const sourceKind = input.sourceKind ?? 'generated'
   const asset: VisualAsset = { assetId: input.assetId, role: input.role, ...(input.slideNumber === undefined ? {} : { slideNumber: input.slideNumber }), ...(input.slideNumbers === undefined ? {} : { slideNumbers: input.slideNumbers }), path, sha256: hash(bytes), mediaType: `image/${metadata.format}`, width: metadata.width, height: metadata.height, sourceKind, inputImageHashes: [], styleReferenceIds: input.styleReferenceIds ?? [], createdAt: new Date().toISOString() }
+  for (const key of ['originalPrompt', 'combinedPrompt', 'stylePrompt', 'referenceImageHashes'] as const) if (input[key] !== undefined) (asset as any)[key] = input[key]
   if (sourceKind === 'generated') {
     const receipt = JSON.parse(await readFile(await workspacePath(cwd, path + '.generation.json'), 'utf8'))
     if (asset.sha256 !== receipt.sha256) throw new Error('Visual asset generation checksum mismatch.')

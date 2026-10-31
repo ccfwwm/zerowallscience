@@ -64,6 +64,21 @@ it('queries FAERS connectivity without creating local project records', async ()
   expect(f.backend.workflowRequest).toHaveBeenCalledWith('workflow_query', { workflow_id: 'r.faerskit', operation: 'r.faerskit.status', arguments: {} }, f.exec)
   expect(f.store.listProjects()).toHaveLength(0)
 })
+it('uses bundled module contracts and direct live module tools when r_runtime is unavailable', async () => {
+  const f = await fixture()
+  f.backend.workflowRequest.mockRejectedValue(new Error('RMCP_TOOL_UNAVAILABLE: r_runtime is not present in the refreshed RMCP tools/list'))
+  f.backend.executeCompactCapability.mockResolvedValue({ target: 'mcp__rmcp__r_faerskit', content: [], value: { structuredContent: { matching_case_count: 3 } } })
+
+  const detail = await f.service.describeLive('r.faerskit', 'r.faerskit.lookup', f.exec)
+  expect(detail).toMatchObject({ id: 'r.faerskit.lookup', schema_source: 'bundled_operation_catalog', live_schema_unavailable: true })
+
+  const query = normalizeWorkflowQuery({ operation: 'r.faerskit.lookup', arguments: { drug: 'METFORMIN', ptname: 'Nausea' } }, 'r.faerskit')
+  await expect(f.service.query('r.faerskit', query, f.exec)).resolves.toEqual({ matching_case_count: 3 })
+  expect(f.backend.executeCompactCapability).toHaveBeenCalledWith('r.faerskit.lookup', { drug: 'METFORMIN', ptname: 'Nausea' }, f.exec)
+
+  const catalog = await f.service.search('', 'r.faerskit.lookup', 0, 10, f.exec)
+  expect(catalog.capabilities).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'r.faerskit.lookup', public_tool: 'r_faerskit' })]))
+})
 it('forwards top-level lookup arguments to the remote read operation', async () => {
   const f = await fixture()
   const query = normalizeWorkflowQuery({ operation: 'r.faerskit.lookup', arguments: { drug: 'Citalopram', ptname: 'Torsade de pointes', field: 'drugname', limit: 20 } }, 'r.faerskit')
@@ -120,7 +135,7 @@ it('keeps FAERS jobs active, resumes their R lifecycle and exposes project-relat
     id === 'r.faerskit.analyze' ? { job_id: 'faers-job-1', status: 'queued' } :
     id === 'r.get.job' ? { status, progress: 25 } :
     id === 'r.get.job.manifest' ? { files: [{ path: 'faerskit/metformin/signals.csv', sha256: 'faers-digest', mime_type: 'text/csv' }] } : {} } }))
-  const request = { operation: 'r.faerskit.analyze', arguments: { project_id: 'existing-faers-project', fun: 'faers_analyze_drug', drug: 'METFORMIN', year: [141, 244], path: 'faerskit/metformin', confirm: true }, request_id: 'faers-1' }
+  const request = { operation: 'r.faerskit.analyze', arguments: { project_id: 'existing-faers-project', fun: 'faers_analyze_drug', drug: 'METFORMIN', year: [141, 244], path: 'faerskit/metformin' }, request_id: 'faers-1' }
   expect(f.service.list().workflows).toEqual(expect.arrayContaining([expect.objectContaining({ workflow_id: 'r.faerskit', skill: 'zerowall-faerskit' })]))
   await expect(f.service.run('r.faerskit', { ...request, arguments: { ...request.arguments, confirm: false } }, f.exec)).rejects.toThrow('CONFIRMATION_REQUIRED')
   const [first, retry] = await Promise.all([f.service.run('r.faerskit', request, f.exec), f.service.run('r.faerskit', request, f.exec)])
@@ -137,6 +152,7 @@ it('keeps FAERS jobs active, resumes their R lifecycle and exposes project-relat
   expect(collect).toHaveBeenCalledWith(conversationProject(), 'faers-job-1', f.exec)
   expect(done.result.local_delivery).toMatchObject({ status: 'complete', localRoot: 'downloads/faerskit/faers-job-1' })
   const submission = f.execute.mock.calls.find(([id]) => id === 'r.faerskit.analyze') as unknown as [string, Record<string, unknown>]
+  expect(submission[1].confirm).toBe(true)
   expect(done.artifacts).toEqual(expect.arrayContaining([expect.objectContaining({ uri: `rmcp://${conversationProject()}/.zerowall/jobs/faers-job-1/result/faerskit/metformin/signals.csv`, mediaType: 'text/csv' })]))
   expect(f.execute.mock.calls.some(([id]) => id === 'r.register.project')).toBe(false)
   await restored.status(String(first.run_id), f.exec)

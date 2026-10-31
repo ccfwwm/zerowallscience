@@ -68,6 +68,12 @@ function seedStore(): PptStore {
   return createPptStore('s1')
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void, reject!: (error: unknown) => void
+  const promise = new Promise<T>((accept, fail) => { resolve = accept; reject = fail })
+  return { promise, resolve, reject }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers()
@@ -78,6 +84,83 @@ afterEach(() => {
 })
 
 describe('PptStore（S6 骨架纪律）', () => {
+  it('loads the surviving page after deletion only after refreshing the page list', async () => {
+    const store = seedStore()
+    await store.actions.init()
+    mockApi.project.mockResolvedValue({ ...PROJECT_R1, revision: 2, deck: { ...DECK, pages: [DECK.pages[1]] } })
+    mockApi.page.mockImplementation(async (_session, _key, path) => {
+      if (path === DECK.pages[0]) throw new Error('deleted page')
+      return { ok: true, path, revision: 2, page: PAGE_1 }
+    })
+    await store.actions.removePage(DECK.pages[0])
+    await vi.advanceTimersByTimeAsync(400)
+    await store.actions.ensurePageLoaded()
+    expect(store.getSnapshot().deckPages).toEqual([DECK.pages[1]])
+    expect(store.getSnapshot().currentPageData).toEqual(PAGE_1)
+    expect(store.getSnapshot().toast?.kind).not.toBe('error')
+    store.dispose()
+  })
+
+  it('exports drafts during an in-flight save and conflict, committing the active editor without waiting for save', async () => {
+    const store = seedStore()
+    await store.actions.init()
+    const pending = deferred<any>()
+    mockApi.edit.mockReturnValueOnce(pending.promise)
+    mockApi.exportPptxToProject.mockResolvedValue({ relativePath: 'draft.pptx', filename: 'draft.pptx', bytes: 1024 })
+    const first = { op: 'update_page', page: DECK.pages[0], patch: { name: 'First' } }
+    const second = { op: 'update_page', page: DECK.pages[0], patch: { name: 'Second' } }
+    await store.actions.stage(first)
+    await vi.advanceTimersByTimeAsync(400)
+    expect(store.getSnapshot().saving).toBe(true)
+    const unregister = store.actions.registerEditorCommit(async () => { await store.actions.stage(second) })
+    await store.actions.exportDeck()
+    expect(mockApi.exportPptxToProject.mock.calls.at(-1)![2]).toMatchObject({ baseRevision: 1, ops: [first, second] })
+    expect(mockApi.edit).toHaveBeenCalledTimes(1)
+    unregister()
+    pending.reject(new ConflictError(5))
+    await Promise.resolve(); await Promise.resolve()
+    expect(store.getSnapshot().conflict).not.toBeNull()
+    await store.actions.exportDeck()
+    expect(mockApi.exportPptxToProject.mock.calls.at(-1)![2]).toMatchObject({ baseRevision: 1, ops: [first, second] })
+    expect(store.getSnapshot().draft?.ops).toEqual([first, second])
+    store.dispose()
+  })
+
+  it('exports selected historical canvas and does not substitute current drafts', async () => {
+    const store = seedStore()
+    await store.actions.init()
+    await store.actions.stage({ op: 'update_page', page: DECK.pages[0], patch: { name: 'Current draft' } })
+    const history = { baseRevision: 0, deck: { ...DECK, pages: [] }, pageData: {}, ops: [] }
+    store.actions.setExportPreview(history)
+    const commit = vi.fn(async () => {})
+    store.actions.registerEditorCommit(commit)
+    mockApi.exportPptxToProject.mockResolvedValue({ relativePath: 'old.pptx', filename: 'old.pptx', bytes: 1024 })
+    await store.actions.exportDeck()
+    expect(mockApi.exportPptxToProject).toHaveBeenLastCalledWith('s1', 'k1', history)
+    expect(commit).not.toHaveBeenCalled()
+    expect(store.getSnapshot().draft).not.toBeNull()
+    store.dispose()
+  })
+
+  it('retains new operations appended during save and never exports stale page caches as the new baseline', async () => {
+    const store = seedStore()
+    mockApi.project.mockResolvedValue({ ...PROJECT_R1, pageData: Object.fromEntries(DECK.pages.map(path => [path, PAGE_1])) })
+    await store.actions.init()
+    const pending = deferred<any>()
+    mockApi.edit.mockReturnValueOnce(pending.promise)
+    const first = { op: 'update_element', page: DECK.pages[0], elementId: 'el-1', patch: { content: { text: 'Saved' } } }
+    const second = { op: 'update_element', page: DECK.pages[0], elementId: 'el-1', patch: { content: { text: 'Draft' } } }
+    await store.actions.stage(first); await vi.advanceTimersByTimeAsync(400)
+    await store.actions.stage(second)
+    pending.resolve({ ok: true, revision: 2, appliedOps: [], warnings: [] })
+    await Promise.resolve(); await Promise.resolve()
+    expect(store.getSnapshot().draft).toEqual({ baseRevision: 2, ops: [second] })
+    mockApi.exportPptxToProject.mockResolvedValue({ relativePath: 'current.pptx', filename: 'current.pptx', bytes: 1024 })
+    await store.actions.exportDeck()
+    expect(mockApi.exportPptxToProject.mock.calls.at(-1)![2]).toEqual({ baseRevision: 2, ops: [second] })
+    store.dispose()
+  })
+
   it('init 拉 /state：projects 进来，activeKey 成为活动工程，status 变 ready', async () => {
     const store = seedStore()
     await store.actions.init()

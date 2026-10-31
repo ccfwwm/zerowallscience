@@ -178,7 +178,7 @@ describe('ppt_* 工具全链（e2e stub）', () => {
     expect(await fileExists('deck/deck.pptd')).toBe(true)
     expect(await fileExists('deck/.history/r0000/meta.json')).toBe(true)
 
-    // edit ×3（同会话 30s 合并窗内：第二次起合并，revision 保持 1）
+    // Each explicit edit creates an independent version, even inside the merge window.
     const e1 = await call('ppt_edit', {
       dir: 'deck',
       baseRevision: 0,
@@ -191,10 +191,10 @@ describe('ppt_* 工具全链（e2e stub）', () => {
       baseRevision: 1,
       ops: [{ op: 'add_element', page: 'pages/01.page', element: { elementType: 'text', elementId: 't1', bounds: [0, 0, 100, 50], content: 'hi' } }]
     })
-    expect(e2).toMatchObject({ ok: true, revision: 1, merged: true })
+    expect(e2).toMatchObject({ ok: true, revision: 2, merged: false })
     const e3 = await call('ppt_edit', {
       dir: 'deck',
-      baseRevision: 1,
+      baseRevision: 2,
       ops: [{ op: 'update_element', page: 'pages/01.page', elementId: 't1', patch: { content: 'hello e2e' } }]
     })
     expect(e3.ok).toBe(true)
@@ -204,23 +204,23 @@ describe('ppt_* 工具全链（e2e stub）', () => {
     const stale = await call('ppt_edit', { dir: 'deck', baseRevision: 0, ops: [{ op: 'add_page' }] })
     expect(stale).toMatchObject({ ok: false, error: { code: 'RevisionMismatch', status: 409 } })
 
-    // undo：合并窗内的三次编辑视为一步 → 回锚点
+    // Undo only the last selected modification.
     const undone = await call('ppt_undo', { dir: 'deck', steps: 1 })
-    expect(undone).toMatchObject({ ok: true, revision: 0 })
-    expect((undone.undoneOps as string[]).length).toBe(3)
-    expect(await fileExists('deck/pages/01.page')).toBe(false)
+    expect(undone).toMatchObject({ ok: true, revision: 2 })
+    expect((undone.undoneOps as string[]).length).toBe(1)
+    expect(await fileExists('deck/pages/01.page')).toBe(true)
 
     // redo
     const redone = await call('ppt_redo', { dir: 'deck', steps: 1 })
-    expect(redone).toMatchObject({ ok: true, revision: 1 })
-    expect((redone.redoneOps as string[]).length).toBe(3)
+    expect(redone).toMatchObject({ ok: true, revision: 3 })
+    expect((redone.redoneOps as string[]).length).toBe(1)
     expect(await fileExists('deck/pages/01.page')).toBe(true)
 
     // export（质检通过 → 产物落盘 + exportReport 落账）
     const exported = await call('ppt_export', { dir: 'deck', out: 'deck/out.pptx' })
     expect(exported.ok).toBe(true)
     expect(await fileExists('deck/out.pptx')).toBe(true)
-    expect((exported.check as { pass: boolean }).pass).toBe(true)
+    expect(exported.check).toEqual({ skipped: true })
 
     // render（最终 pptx → PNG 预览）
     const rendered = await call('ppt_render', { dir: 'deck' })

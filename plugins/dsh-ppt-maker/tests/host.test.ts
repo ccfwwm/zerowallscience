@@ -38,6 +38,7 @@ import {
   saveProjectPptx,
 } from '../src/core/export-pipeline.js'
 import { setHistoryPolicy, DEFAULT_HISTORY_LIMIT, DEFAULT_MERGE_WINDOW_MS } from '../src/core/project/history.js'
+import { strFromU8, unzipSync } from 'fflate'
 
 const core = {
   loadProject,
@@ -299,6 +300,7 @@ describe('host 路由', () => {
 
     r = await apiJson(`${API_PREFIX}/edit`, { method: 'POST', body: { sessionId: SESSION, key, baseRevision: 99, ops: [] } })
     expect(r.status).toBe(409)
+    expect(r.json!.conflict).toEqual({ revision: 0 })
   })
 
   it('/edit 应用 add_page / add_element / update_element / move_page / remove_element / remove_page，revision 推进；update_page 顶层浅合并', async () => {
@@ -407,6 +409,29 @@ describe('host 路由', () => {
     const proj = await apiJson(`${API_PREFIX}/project?sessionId=${SESSION}&key=${key}`)
     const manifest = proj.json!.manifest as Record<string, unknown>
     expect((manifest.exportReport as Record<string, unknown> | undefined)?.kind).toBe('panel-export')
+  })
+
+  it('/export exports a historical baseline plus drafts without changing the live project', async () => {
+    await startServer()
+    const { key, dir } = await seedProject()
+    await editProject(cwd, { dir, newVersion: true, ops: [{ op: 'add_page', page: 'pages/01.page', content: { elements: [{ elementId: 'text', elementType: 'text', bounds: [10, 10, 400, 60], content: { text: 'Old version' } }] } }] })
+    await editProject(cwd, { dir, newVersion: true, ops: [{ op: 'update_element', page: 'pages/01.page', elementId: 'text', patch: { content: { text: 'Background change' } } }] })
+    const before = await readFile(path.join(cwd, dir, 'manifest.json'), 'utf8')
+    const snapshot = { baseRevision: 1, ops: [{ op: 'update_element', page: 'pages/01.page', elementId: 'text', patch: { content: { text: 'Visible draft' } } }] }
+    const saved = await apiJson(`${API_PREFIX}/export`, { method: 'POST', body: { sessionId: SESSION, key, save: true, snapshot } })
+    expect(saved.status).toBe(200)
+    expect(saved.json!.revision).toBe(1)
+    expect(saved.json!.snapshotHash).toMatch(/^[a-f0-9]{64}$/)
+    const output = await readFile(String(saved.json!.absolutePath))
+    const xml = strFromU8(unzipSync(output)['ppt/slides/slide1.xml'])
+    expect(xml).toContain('Visible draft'); expect(xml).not.toContain('Background change')
+    const receipt = JSON.parse(await readFile(String(saved.json!.absolutePath) + '.export.json', 'utf8'))
+    expect(receipt.snapshotHash).toBe(saved.json!.snapshotHash)
+    expect(await readFile(path.join(cwd, dir, 'manifest.json'), 'utf8')).toBe(before)
+    const binary = await apiJson(`${API_PREFIX}/export`, { method: 'POST', body: { sessionId: SESSION, key, snapshot } })
+    expect(binary.status).toBe(200)
+    expect(binary.headers['x-pt-revision']).toBe('1')
+    expect(binary.headers['x-pt-snapshot']).toBe(saved.json!.snapshotHash)
   })
 
   describe('/export/open-menu 与 /export/open（打开方式 / 显示文件位置）', () => {
@@ -537,6 +562,11 @@ describe('host 路由', () => {
     expect(okR.status).toBe(200)
     expect(okR.json!.ok).toBe(true)
     expect(String(okR.json!.src)).toMatch(/^media\//)
+    const changedBytes = Buffer.concat([pngBuf, Buffer.from('new version')])
+    const again = await apiJson(`${API_PREFIX}/media/upload`, { method: 'POST', body: { sessionId: SESSION, key, name: 'hello.png', mime: 'image/png', data: changedBytes.toString('base64') } })
+    expect(again.status).toBe(200)
+    expect(again.json!.src).not.toBe(okR.json!.src)
+    expect(await readFile(String(okR.json!.path))).toEqual(pngBuf)
 
     // svg 不收（UPLOAD_EXTS 不含）
     const svgR = await apiJson(`${API_PREFIX}/media/upload`, {

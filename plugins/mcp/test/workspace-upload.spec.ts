@@ -548,6 +548,108 @@ describe('rdatalinux workspace file transfer bridge', () => {
     }
   })
 
+	it('routes FigureYa downloads through r_runtime when the legacy catalog tool is absent', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'zerowall-figureya-workflow-fallback-'))
+		roots.push(root)
+		process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+		process.env.DSH_HOME = join(root, 'harness')
+		process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+		const moduleId = 'FigureYaWorkflowFallback'
+		const bytes = Buffer.from('FigureYa fallback contents\n')
+		const sha256 = createHash('sha256').update(bytes).digest('hex')
+		const path = `${moduleId}/README.md`
+		const forwarded: any[] = []
+		const ctx = new Context()
+		try {
+			await ctx.plugin(SystemPrompt)
+			await ctx.plugin(ToolRuntime)
+			await ctx.plugin(ZeroWallMcpService)
+			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
+			ctx.tools.register(defineTool({
+				name: 'mcp__rmcp__r_runtime',
+				description: 'workflow route fixture',
+				parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+				output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+				execute: async (args: any) => {
+					forwarded.push(args)
+					if (args.action !== 'workflow_query') throw new Error(`Unexpected runtime action: ${args.action}`)
+					const request = args.arguments
+					const operation = request.operation
+					const payload = operation === 'figureya.list.files'
+						? { module_id: moduleId, files: [{ path, bytes: bytes.length, sha256, mime_type: 'text/markdown' }] }
+						: operation === 'figureya.source.file.manifest'
+							? { path, bytes: bytes.length, sha256, mime_type: 'text/markdown' }
+							: { path, offset: request.arguments.offset, bytes: bytes.length, total_bytes: bytes.length, next_offset: bytes.length, eof: true, data_base64: bytes.toString('base64') }
+					return { content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload }
+				},
+			}))
+			const result = await ctx.tools.execute({
+				signal: new AbortController().signal,
+				callId: ToolCallId('figureya-workflow-fallback'),
+				name: 'r_files',
+				arguments: { action: 'download_figureya_module', module_id: moduleId, local_path: `figureya/${moduleId}` },
+				agent: { session: { header: { cwd: root } } } as any,
+			})
+			expect(result.isError, JSON.stringify(result)).toBe(false)
+			expect(readFileSync(join(root, 'figureya', moduleId, 'README.md'))).toEqual(bytes)
+			expect(forwarded).toHaveLength(3)
+			expect(forwarded.every(item => item.action === 'workflow_query')).toBe(true)
+			expect(forwarded.map(item => item.arguments.operation)).toEqual([
+				'figureya.list.files', 'figureya.source.file.manifest', 'figureya.read.source.file.chunk',
+			])
+			expect(ctx.tools.get('mcp__rmcp__r_figureya_catalog')).toBeUndefined()
+		} finally {
+			await ctx.fiber.dispose()
+		}
+	})
+
+	it('discovers the r_files workflow route when the compact r_files tool is absent', async () => {
+		const root = mkdtempSync(join(tmpdir(), 'zerowall-r-files-workflow-fallback-'))
+		roots.push(root)
+		process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+		process.env.DSH_HOME = join(root, 'harness')
+		process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+		const bytes = Buffer.from('r.files workflow fallback\n')
+		const sha256 = createHash('sha256').update(bytes).digest('hex')
+		const forwarded: any[] = []
+		const ctx = new Context()
+		try {
+			await ctx.plugin(SystemPrompt)
+			await ctx.plugin(ToolRuntime)
+			await ctx.plugin(ZeroWallMcpService)
+			vi.spyOn(ctx.zerowallMcp, 'ensureConnected').mockResolvedValue(undefined)
+			ctx.tools.register(defineTool({
+				name: 'mcp__rmcp__r_runtime',
+				description: 'r.files workflow fallback fixture',
+				parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+				output: { schema: { type: 'object', additionalProperties: true }, render: () => [{ type: 'text', text: 'ok' }] },
+				execute: async (args: any) => {
+					forwarded.push(args)
+					if (args.action === 'r.ensure.project') return { project_id: 'fallback-project' }
+					if (args.action !== 'workflow_query') throw new Error(`Unexpected runtime action: ${args.action}`)
+					const request = args.arguments
+					const payload = request.operation === 'r.resolve.file'
+						? { path: 'results/fallback.txt', bytes: bytes.length, sha256 }
+						: { path: 'results/fallback.txt', offset: request.arguments.offset, bytes: bytes.length, total_bytes: bytes.length, next_offset: bytes.length, eof: true, data_base64: bytes.toString('base64') }
+					return { content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload }
+				},
+			}))
+			const result = await ctx.tools.execute({
+				signal: new AbortController().signal,
+				callId: ToolCallId('r-files-workflow-fallback'),
+				name: 'r_files',
+				arguments: { action: 'download_workspace', remote_path: 'results/fallback.txt' },
+				agent: { session: { id: 'r-files-fallback-session', header: { cwd: root } } } as any,
+			})
+			expect(result.isError, JSON.stringify(result)).toBe(false)
+			expect(readFileSync(join(root, 'downloads', 'fallback.txt'))).toEqual(bytes)
+			expect(ctx.tools.get('mcp__rmcp__r_files')).toBeUndefined()
+			expect(forwarded.map(item => item.arguments?.operation).filter(Boolean)).toEqual(['r.resolve.file', 'r.read.file.chunk'])
+		} finally {
+			await ctx.fiber.dispose()
+		}
+	})
+
   it('rejects a download path outside the workspace before creating directories', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-r-download-boundary-'))
     roots.push(root)

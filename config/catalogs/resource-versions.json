@@ -3,9 +3,9 @@
     "science-dependencies": "8.3.0"
   },
   "skill": {
-    "gpt-image-generator": "0.1.9",
+    "gpt-image-generator": "0.1.10",
     "mineru-document-parser": "0.1.1",
-    "zerowall-presentation": "0.2.6",
+    "zerowall-presentation": "0.2.7",
     "academic-paper": "0.1.5",
     "academic-paper-reviewer": "0.1.4",
     "academic-pipeline": "0.1.5",
@@ -249,7 +249,7 @@
     "zerowall-integrity-report": "0.1.1",
     "zerowall-intervention-response": "0.1.3",
     "zerowall-ketcher": "0.1.3",
-    "zerowall-mcp-guide": "0.1.4",
+    "zerowall-mcp-guide": "0.1.8",
     "zerowall-molecule-docking": "0.1.1",
     "zerowall-molecule-viewer": "0.1.2",
     "zerowall-mr": "0.1.10",
@@ -265,12 +265,12 @@
     "zerowall-paper-analysis": "0.1.1",
     "zerowall-paper-compare": "0.1.1",
     "zerowall-python-packages": "0.1.5",
-    "zerowall-r-files": "0.1.12",
+    "zerowall-r-files": "0.1.14",
     "zerowall-r-packages": "0.1.10",
     "zerowall-rbioagent": "0.1.10",
     "zerowall-research-evidence": "0.1.5",
     "zerowall-research-orchestrator": "0.1.5",
-    "zerowall-rmcp": "0.1.9",
+    "zerowall-rmcp": "0.1.13",
     "zerowall-rplatform": "0.1.11",
     "zerowall-rplotfigure": "0.1.9",
     "zerowall-sanger": "0.1.2",
@@ -283,6 +283,6 @@
     "zerowall-spreadsheet": "0.1.1",
     "academic-research-shared": "0.1.0",
     "zerowall-tooluniverse": "0.1.11",
-    "zerowall-faerskit": "0.1.10"
+    "zerowall-faerskit": "0.1.14"
   }
 }

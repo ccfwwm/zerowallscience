@@ -23,12 +23,12 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 | `ppt_undo` / `ppt_redo` | 撤销/重做（游标移动，append-only 快照） | `{ok, revision}` |
 | `ppt_render` | 渲染每页 PNG 预览（libreoffice-kit 光栅化最终 pptx） | `{ok, images:[{page,path}]}` |
 | `ppt_check` | 质检（规则层默认跑；`ai:true` 追加 AI 视觉质检） | `{ok, pass, issues:[...]}` |
-| `ppt_export` | 导出 .pptx（规则质检 blocker 会拦住；`skipCheck:true` 仅跳过规则检查，受管整页图审核仍强制执行） | `{ok, path, revision, check}` |
+| `ppt_export` | 立即导出 .pptx（质量记录为提示，不等待检查或审阅） | `{ok, path, revision, check}` |
 | `ppt_import` | 把既有 .pptx 逆向成 PPTD 工程（`mode:'full'`；`surgical` 只回提示不建工程） | `{ok, dir, report}` |
 | `ppt_patch` | 对 .pptx 外科手术式轻改（改字/换图/调页序），库不建模的部件原样保留 | `{ok, path, lostParts}` |
 | `ppt_open` | 用右侧栏工作台打开一个工程（只登记打开请求，不改工程） | `{ok}` |
 
-**质检分两层**：规则层（文字溢出/出界/重叠/对比度/结构/缺字体）是阻断式，blocker 不修掉就不给导出；AI 层（`ppt_check` 传 `ai: true`）只出建议不阻断——把最终渲染页 PNG 送当前路由的多模态模型看配色/层级/平衡。路由不支持图像输入时，AI 层降级为返回 PNG 路径清单 + 版式指标摘要，由你（主模型）自行 `read_image` 复核。
+**质检分两层**：规则层（文字溢出/出界/重叠/对比度/结构/缺字体）记录质量问题，blocker 为严重提示，不阻断导出；AI 层（`ppt_check` 传 `ai: true`）只出建议不阻断——把最终渲染页 PNG 送当前路由的多模态模型看配色/层级/平衡。路由不支持图像输入时，AI 层降级为返回 PNG 路径清单 + 版式指标摘要，由你（主模型）自行 `read_image` 复核。
 
 ## 交付产物（默认必须齐备）
 
@@ -54,7 +54,7 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 1. `ppt_themes` 看有哪些设计系统（学术/咨询/金融/促销/工作），用户指定了就用指定族，没指定就按场景挑一个；自定风格不要硬套预设。
 2. 新建整页生图或可编辑转换先写 `presentation-spec.json`（每页 `text` 为逐字正文），以及空或已登记的 `visual-assets.json`，再调用 `presentation_prepare(mode: new, output_mode: image)` 绑定目录。工程不存在时该工具自动 `ppt_create` 并打开演示台；明确要求可编辑时使用 `output_mode: editable`。未绑定不能调用 `presentation_generate_templates`、计划或构建工具。
-3. 绑定后并发生成、逐页查看审核和局部返修，全部通过再用 `presentation_build_pages`；可编辑模式先保存独立对象计划。避免同工程多个子智能体争用 `baseRevision`。
+3. 绑定后每页独立生成、构建、检查和渲染，不等整批完成；可编辑模式先为对应新图保存独立对象计划。写入短事务串行，避免同工程修订竞争。
 4. 已有原生工程的普通编辑继续 `ppt_import` / `ppt_open` / `ppt_edit`；仅使用底层原生工具新建时用 `ppt_create`。`ppt_edit` 一次提交多项 ops，携带最新 `baseRevision`，409 后重读。改错用 `ppt_undo` / `ppt_redo`。
 
 最小 `presentation-spec.json`：
@@ -71,11 +71,11 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 省略 `assetIds` 时自动按目标页匹配已登记素材；显式提供该字段时须随新素材登记追加 ID，不能保留空数组漏掉事实图。已有工程需要受管生图或模板转换时，用 `mode: edit` 绑定。
 
-创建与首次编辑会自动打开右侧演示台，需要重新展开时调用 `ppt_open`。并行准备不同页的内容和图片，但用一次 `ppt_edit` 批量提交同一工程，避免相同 baseRevision 的竞争。已绑定内容计划时，使用 `presentation_generate_templates` 并发生图（默认并发 10），再通过 `presentation_build_pages` 批量写入。
+创建与首次编辑会自动打开右侧演示台，需要重新展开时调用 `ppt_open`。每页独立处理，PPTD 写入短事务串行。`presentation_generate_templates` 立即返回任务 ID，默认并发 10（范围 1–10），后台逐页生成、写入、检查和渲染。用 `presentation_status` 查看逐页结果。单页或多页修改用 `presentation_repair_templates` 选择对应图片，只处理选定页；构建保存独立修订，未变化页复用。重启后中断页仅由用户明确选择后 `presentation_resume_pages` 手动恢复，不自动重复计费请求。
 
-**整页生图先审后用**：`spec.slides[].text` 保存逐字文本。生成完成后必须实际打开返回 PNG、全分辨率检查乱码、错漏字、图中文字、布局与事实准确性；无法直接显示时按返回绝对路径查看。用 `presentation_review_templates` 记录当前图片 SHA、实际看到的逐字 `text_transcription` 和三项检查，转录与 spec 不符必须判失败。失败图使用 `presentation_repair_templates` 调用原图 `edit_image` 局部返修，只重做受影响页，保留原始及返修 prompt、父图 SHA、模型与质量参数；新图需重新打开复核。代码阻止未审、失败或变更后的图片进入组装、可编辑转换与导出，不能靠普通 asset review 或 `skipCheck` 跳过。
+**整页生图逐页查看与修复**：`spec.slides[].text` 保存逐字文本。生成完成后必须实际打开返回 PNG、全分辨率检查乱码、错漏字、图中文字、布局与事实准确性；无法直接显示时按返回绝对路径查看。用 `presentation_review_templates` 记录当前图片 SHA、实际看到的逐字 `text_transcription` 和三项检查，转录与 spec 不符必须判失败。失败图使用 `presentation_repair_templates` 调用原图 `edit_image` 局部返修，只重做受影响页，保留原始及返修 prompt、父图 SHA、模型与质量参数；新图需重新打开复核。审阅记录保持真实，但未审、失败或过期审阅仅作质量提示，不拦截构建、转换和导出。全局 `stylePrompt`、`styleReferenceAssetIds` 分别继承，逐页同名字段覆盖；有参考图走 `edit_image`，纯风格图不自动嵌入页面。
 
-图片型事实图必须在 `spec.slides[].assetPlacements` 提供 `{assetId,bounds:[x,y,width,height]}`，在明确留白区以原文件字节图片对象覆盖，保持比例。缺位置阻断，不能把未引用的 media 复制称为嵌入；可编辑计划也必须实际引用原图。通过前置图像审核后再构建原生对象，最终仍需渲染 QA；两层核验各自保留记录。
+图片型事实图必须在 `spec.slides[].assetPlacements` 提供 `{assetId,bounds:[x,y,width,height]}`，在明确留白区以原文件字节图片对象覆盖，保持比例。缺位置阻断，不能把未引用的 media 复制称为嵌入；可编辑计划也必须实际引用原图。原生对象计划与实际渲染 QA 各自保留记录；审核只提供质量建议。
 
 ### 三、生成内容的纪律
 
@@ -89,7 +89,7 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 
 1. 优先级：用户材料 → 官方/权威来源 → 检索到的相关图 → 生成图。
 2. 涉及产品、人物、地点、事件、界面、实验对象时优先用真实图片。
-3. 先批量备好图再按比例排版；存 `media/`，**严禁拉伸变形**。
+3. 每页备好图即可按比例排版；存 `media/`，**严禁拉伸变形**。
 4. 不放与页面结论无关的凑数图。
 
 ### 四、校验（导出前必做）
@@ -98,11 +98,11 @@ description: 生成/编辑/逆向/导出 PPT 与演示文稿。工具优先：�
 2. **视觉 QA**：`ppt_render` 出每页 PNG（最终 pptx 光栅化，所见即所得），逐页核对：图片清晰不变形、文字未压住关键画面、元素未越界、文字与背景对比足够、对齐/间距/字号层级统一。可疑页 `read_image` 全分辨率确认后再改，改完重跑直到全部通过。
 3. **AI 深检（按需）**：`ppt_check` 传 `ai: true`。路由不支持图像时会降级成 PNG 路径清单 + 版式摘要，由你自行 `read_image` 完成视觉复核。
 
-已绑定内容计划时，`presentation_check_pages` 只重做缺失或变化页。查看 PNG 后用 `presentation_record_reviews` 保存具体观察和接受的 warning 哈希；导出报错先读 `presentation_status.requirements`，缺审阅只补审阅，不反复重跑未变化页。
+已绑定内容计划时，`presentation_check_pages` 只重做缺失或变化页。查看 PNG 后用 `presentation_record_reviews` 保存具体观察和接受的 warning 哈希；`presentation_status.requirements` 只作质量建议，不是导出条件；修改只检查/渲染目标页，不反复重跑未变化页。
 
 ### 五、导出与交付
 
-`ppt_export` 落盘最终 .pptx（默认先跑规则质检，blocker 拦下；`skipCheck: true` 仅跳过规则检查，不能跳过整页图文字、布局、内容审核或绑定工作流的最终页面审阅）。成功后摘要在 `manifest.exportReport` 落账。
+`ppt_export` 立即导出当前工程，沿用已有 QA，不等待生图、检查或审阅；blocker 和过期来源记录作为提示进入回执。顶部导出包含当前画布和本地草稿，在保存或冲突时仍可用，临时快照不改写工程。版本历史选中哪版就导出哪版；真实序列化或素材读取失败才阻止导出。普通工程工具导出在 `manifest.exportReport` 落账，画布导出在 `.pptx.export.json` 保存修订、快照哈希及质量问题。
 
 ### 字体嵌入（本地 TS 链路原生，默认开启）
 

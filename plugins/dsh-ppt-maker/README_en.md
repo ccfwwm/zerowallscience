@@ -80,7 +80,7 @@ dsh plugin --profile <profile> add "dsh-ppt-maker"
 | `ppt_undo` / `ppt_redo` | Undo / redo (cursor moves; consecutive edits within the merge window count as one step) | `dir` · `steps` (1–20, default 1) |
 | `ppt_render` | Render per-page PNG previews (rasterization of the final pptx) | `dir` · `pages` · `dpi` (default 96) |
 | `ppt_check` | Rule-based QA (default) + AI visual QA (suggestions only, never blocking) | `dir` · `pages` · `ai` |
-| `ppt_export` | Export .pptx (rule blockers stop it; `skipCheck` bypasses) | `dir` · `out` · `skipCheck` |
+| `ppt_export` | Export .pptx immediately (QA is advisory; canvas drafts and selected history versions can be exported) | `dir` · `out` · `skipCheck` |
 | `ppt_import` | .pptx → full PPTD reverse engineering (dropped / degraded two-level report + placeholder re-insertion) | `source` · `targetDir` · `mode` (`full` / `surgical`) · `open` |
 | `ppt_open` | Have the right-hand workbench open a project | `dir` |
 | `ppt_patch` | Surgical edits on a .pptx: set_text / replace_image / move_page | `source` · `ops` · `out` |

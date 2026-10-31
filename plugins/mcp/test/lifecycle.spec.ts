@@ -105,6 +105,80 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   })
 
+  it('connects enabled MCP servers before prompt assembly and isolates connection failures', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-prompt-connect-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'db.sqlite')
+    process.env.DSH_HOME = join(root, 'harness')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    process.env.ZEROWALL_DEFER_DEFAULT_MCP = '1'
+    const fixtureServer = fileURLToPath(new URL(
+      '../../../deepseek-harness/packages/mcp/mcp-client/tests/fixture-server.ts',
+      import.meta.url,
+    ))
+    const fixtureDirectory = fileURLToPath(new URL(
+      '../../../deepseek-harness/packages/mcp/mcp-client/',
+      import.meta.url,
+    ))
+    const launcher = join(root, 'fixture.mjs')
+    writeFileSync(launcher, `await import(${JSON.stringify(pathToFileURL(fixtureServer).href)});`)
+    const ctx = new Context()
+    const agent = { ctx, id: 'prompt-connect-agent', session: { id: 'prompt-connect-session', header: { cwd: root }, snapshotEvents: () => [], append: () => undefined } } as any
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(McpConfigurationStorePlugin)
+      ctx.zerowallMcpConfigurationStore.createMcpServer({
+        name: 'Saved enabled fixture', serverName: 'fixture', transport: 'stdio', enabled: true,
+        command: process.execPath, args: [launcher], cwd: fixtureDirectory, failOnStartupError: true,
+      })
+      ctx.zerowallMcpConfigurationStore.createMcpServer({
+        name: 'Second enabled fixture', serverName: 'second_fixture', transport: 'stdio', enabled: true,
+        command: process.execPath, args: [launcher], cwd: fixtureDirectory, failOnStartupError: true,
+      })
+      ctx.zerowallMcpConfigurationStore.createMcpServer({
+        name: 'Saved disabled fixture', serverName: 'disabled_fixture', transport: 'stdio', enabled: false,
+        command: process.execPath, args: [launcher], cwd: fixtureDirectory, failOnStartupError: true,
+      })
+      ctx.zerowallMcpConfigurationStore.createMcpServer({
+        name: 'Unavailable fixture', serverName: 'unavailable_fixture', transport: 'stdio', enabled: true,
+        command: join(root, 'missing-command.exe'), args: [], cwd: fixtureDirectory, failOnStartupError: true,
+      })
+      await ctx.plugin(ZeroWallMcpService)
+
+      expect((await ctx.zerowallMcp.list()).find(server => server.serverName === 'fixture')?.runtimeState).toBe('idle')
+      expect(ctx.tools.get('mcp__fixture__add')).toBeUndefined()
+      const assembly = await ctx.systemPrompt.assemble({ scope: agent, agent })
+      const after = await ctx.zerowallMcp.list()
+      expect(after.find(server => server.serverName === 'fixture')?.runtimeState).toBe('active')
+      expect(assembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(true)
+      expect(assembly.tools.some(tool => tool.name === 'mcp__fixture__greet')).toBe(true)
+      expect(assembly.tools.some(tool => tool.name.startsWith('mcp__disabled_fixture__'))).toBe(false)
+      expect(assembly.tools.some(tool => tool.name.startsWith('mcp__unavailable_fixture__'))).toBe(false)
+      expect(after.find(server => server.serverName === 'disabled_fixture')?.runtimeState).toBe('disabled')
+      expect(after.find(server => server.serverName === 'unavailable_fixture')?.runtimeState).toBe('error')
+      expect(assembly.tools.some(tool => tool.name === 'mcp__second_fixture__add')).toBe(true)
+      const second = after.find(server => server.serverName === 'second_fixture')!
+      const request = ctx.inject(['zerowallMcp'], async scope => {
+        await scope.zerowallMcp.reload(second.id)
+      })
+      await request
+      expect(ctx.tools.get('mcp__second_fixture__add')).toBeDefined()
+      await request.dispose()
+      expect(ctx.tools.get('mcp__fixture__add')).toBeDefined()
+      expect(ctx.tools.get('mcp__second_fixture__add')).toBeDefined()
+      for (const server of ['fixture', 'second_fixture']) {
+        const result = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId(`parallel-${server}`), name: `mcp__${server}__add`, arguments: { a: 2, b: 3 }, agent })
+        expect(result.isError).toBe(false)
+      }
+      await ctx.zerowallMcp.update({ id: second.id, changes: { enabled: false } })
+      expect(ctx.tools.get('mcp__fixture__add')).toBeDefined()
+      expect(ctx.tools.get('mcp__second_fixture__add')).toBeUndefined()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
   it('contains a failed default migration instead of terminating Host startup', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-contained-startup-'))
     roots.push(root)
@@ -209,7 +283,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   }, 30_000)
 
-  it('connects RMCP on demand, refreshes once after an unknown internal tool, and hides raw RMCP tools from the model', async () => {
+  it('connects RMCP on demand, refreshes after an unknown internal tool, and exposes live RMCP tools to the model', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-rmcp-internal-demand-'))
     roots.push(root)
     process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
@@ -252,8 +326,72 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(ensure.mock.calls.map(call => call[1])).toEqual([false, true, true])
       expect(executions).toBe(2)
       const assembly = await ctx.systemPrompt.assemble({ scope: agent })
-      expect(assembly.tools.some(tool => tool.name === target)).toBe(false)
+      expect(assembly.tools.some(tool => tool.name === target)).toBe(true)
       expect(assembly.tools.some(tool => tool.name === 'research_workflow')).toBe(true)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
+  it('routes a bundled RMCP module operation through its live module tool when r_runtime is absent', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-rmcp-module-fallback-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    process.env.DSH_HOME = join(root, 'harness')
+    const ctx = new Context()
+    const forwarded: unknown[] = []
+    const agent = { ctx, id: 'rmcp-module-agent', session: { id: 'rmcp-module-session', header: { cwd: root }, snapshotEvents: () => [], append: () => undefined } } as any
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(McpConfigurationStorePlugin)
+      await ctx.plugin(ZeroWallMcpService)
+      const service = ctx.zerowallMcp as any
+      vi.spyOn(service, 'ensureConnected').mockResolvedValue(undefined)
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__r_faerskit',
+        description: 'FAERS module operation fixture',
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+        output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+        execute: async args => { forwarded.push(args); return { matching_case_count: 4 } },
+      }))
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__biomni_runtime',
+        description: 'Biomni module operation fixture',
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+        output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+        execute: async args => { forwarded.push(args); return { status: 'ready' } },
+      }))
+      ctx.tools.register(defineTool({
+        name: 'mcp__rmcp__r_project',
+        description: 'Project registration fixture',
+        parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+        output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+        execute: async args => {
+          forwarded.push(args)
+          const parameters = (args as any).arguments
+          return { project_id: parameters.project_id, managed: true, scope: 'conversation' }
+        },
+      }))
+
+      const result = await service.workflowRequest('workflow_query', { workflow_id: 'r.faerskit', operation: 'r.faerskit.lookup', arguments: { drug: 'METFORMIN' } }, {
+        signal: new AbortController().signal,
+        callId: 'rmcp-direct-module-fallback',
+        agent,
+      })
+      expect(result).toEqual({ matching_case_count: 4 })
+      expect(forwarded).toEqual([{ action: 'r.faerskit.lookup', arguments: { drug: 'METFORMIN' } }])
+      await expect(service.workflowRequest('workflow_describe', { workflow_id: 'r.faerskit', operation: 'r.faerskit.lookup' }, { signal: new AbortController().signal, callId: 'rmcp-fallback-describe', agent }))
+        .resolves.toMatchObject({ id: 'r.faerskit.lookup', schema_source: 'bundled_operation_catalog', live_schema_unavailable: true })
+      const catalog = await service.workflowRequest('workflow_catalog', {}, { signal: new AbortController().signal, callId: 'rmcp-fallback-catalog', agent }) as any
+      expect(catalog.modules.map((module: any) => module.id)).toEqual(expect.arrayContaining(['r.faerskit', 'r.geo', 'r.nhanes', 'r.compute', 'figureya']))
+      await expect(service.workflowRequest('workflow_query', { workflow_id: 'biomni', operation: 'biomni.status', arguments: {} }, { signal: new AbortController().signal, callId: 'rmcp-biomni-fallback', agent }))
+        .resolves.toEqual({ status: 'ready' })
+      expect(forwarded.at(-1)).toEqual({ action: 'biomni.status', arguments: {} })
+      const projectId = await ctx.researchWorkflow.get().resolveProjectId({ agent, signal: new AbortController().signal, callId: 'rmcp-project-bootstrap' } as any)
+      expect(projectId).toMatch(/^zw-[a-f0-9]{40}$/u)
+      expect(forwarded.at(-1)).toMatchObject({ action: 'r.register.project', arguments: { project_id: projectId } })
     } finally {
       await ctx.fiber.dispose()
     }
@@ -275,6 +413,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     ))
     const startsFile = join(root, 'starts.log')
     const launcher = join(root, 'fixture.mjs')
+    const unregisterExtraTools: Array<() => void> = []
     writeFileSync(startsFile, '')
     writeFileSync(launcher, `import { appendFileSync } from 'node:fs'; appendFileSync(${JSON.stringify(startsFile)}, 'start\\n'); await import(${JSON.stringify(pathToFileURL(fixtureServer).href)});`)
 
@@ -283,6 +422,8 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       await ctx.plugin(SystemPrompt)
       await ctx.plugin(ToolRuntime)
       await ctx.plugin(McpConfigurationStorePlugin)
+      const includeTools = vi.fn()
+      ctx.provide('zerowallToolAccess', { include: includeTools } as never)
       await ctx.plugin(ZeroWallMcpService)
 
       const idle = await ctx.zerowallMcp.create({
@@ -306,7 +447,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(initialStarts.split('start\n').length - 1).toBeGreaterThanOrEqual(1)
       const selectionAgent = {} as never
       const connect = (id: string) => ctx.tools.execute({
-        signal: new AbortController().signal, callId: ToolCallId(id), name: 'mcp_connect', arguments: { server: 'fixture' },
+        signal: new AbortController().signal, callId: ToolCallId(id), name: 'mcp_connect', arguments: { server: 'fixture' }, agent: selectionAgent,
       })
       const results = await Promise.all([connect('demand-1'), connect('demand-2'), connect('demand-3')])
       expect(results.every(result => !result.isError), JSON.stringify(results.map(result => result.content))).toBe(true)
@@ -317,26 +458,85 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(created.runtimeState, created.runtimeError).toBe('active')
       expect(created.tools).toEqual(expect.arrayContaining(['mcp__fixture__add', 'mcp__fixture__greet']))
       expect(created.tools.every(name => name.startsWith('mcp__fixture__'))).toBe(true)
+      expect(results.some(result => (result.value as any)?.tools?.includes('mcp__fixture__greet'))).toBe(true)
+      expect(includeTools).toHaveBeenCalledWith(selectionAgent, expect.arrayContaining(created.tools))
       expect(ctx.tools.get('mcp__fixture__add')).toBeDefined()
       expect(ctx.tools.get('mcp__fixture__greet')).toBeDefined()
+      const connectedTools = [...created.tools].sort((left, right) => left.localeCompare(right))
       const initialAssembly = await ctx.systemPrompt.assemble({ scope: {} })
-      ;(ctx.zerowallMcp as any).selectedTools.set(selectionAgent, new Set(['mcp__fixture__add']))
       const selectedAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent })
       const unscopedAssembly = await ctx.systemPrompt.assemble({})
-      expect(initialAssembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(false)
-      expect(unscopedAssembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(false)
-      expect(selectedAssembly.tools.some(tool => tool.name === 'mcp__fixture__add')).toBe(true)
-      expect(selectedAssembly.tools.some(tool => tool.name === 'mcp__fixture__greet')).toBe(false)
-      ;(ctx.zerowallMcp as any).selectedTools.delete(selectionAgent)
+      for (const assembly of [initialAssembly, selectedAssembly, unscopedAssembly]) {
+        expect(assembly.tools.filter(tool => tool.name.startsWith('mcp__fixture__')).map(tool => tool.name)).toEqual(connectedTools)
+      }
       const search = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('search-fixture'), name: 'mcp_search', arguments: { query: 'greet' }, agent: selectionAgent })
       expect(search.value).toMatchObject({ matches: [expect.objectContaining({ server: 'fixture', tools: [expect.objectContaining({ name: 'mcp__fixture__greet' })] })] })
       const searchAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent })
-      expect(searchAssembly.tools.filter(tool => tool.name.startsWith('mcp__fixture__')).map(tool => tool.name)).toEqual(['mcp__fixture__greet'])
-      ;(ctx.zerowallMcp as any).selectedTools.delete(selectionAgent)
+      expect(searchAssembly.tools.filter(tool => tool.name.startsWith('mcp__fixture__')).map(tool => tool.name)).toEqual(connectedTools)
+
+      const service = ctx.zerowallMcp as any
+      const extraTools = Array.from({ length: 605 }, (_, index) => `mcp__fixture__extra_${String(index).padStart(3, '0')}`)
+      for (const name of extraTools) {
+        unregisterExtraTools.push(ctx.tools.register(defineTool({
+          name,
+          description: `Synthetic capability ${name}`,
+          parameters: {},
+          output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+          execute: async () => ({ ok: true }),
+        })))
+      }
+      const allNames = [...created.tools, ...extraTools]
+      // Remote re-syncs publish new live tools without replacing the service's
+      // initial snapshot. Discovery must use the current registry generation.
+      expect(service.registeredTools.get(created.id)).toEqual(created.tools)
+      service.clearMcpToolIndex('fixture')
+      service.indexMcpTools('fixture', allNames)
+      vi.spyOn(service, 'ensureConnected').mockResolvedValue(undefined)
+
+      const fullAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent, agent: selectionAgent })
+      expect(fullAssembly.tools.filter(tool => tool.name.startsWith('mcp__fixture__')).map(tool => tool.name)).toEqual([...allNames].sort((left, right) => left.localeCompare(right)))
+      const fullConnect = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('connect-all-tools'), name: 'mcp_connect', arguments: { server: 'fixture' }, agent: selectionAgent })
+      expect(fullConnect.isError, JSON.stringify(fullConnect.content)).toBe(false)
+      expect((fullConnect.value as any).tools).toHaveLength(allNames.length)
+      expect(fullConnect.value).toMatchObject({ toolCount: allNames.length, toolsOmitted: 0 })
+      const fullSearch = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('search-all-tools'), name: 'mcp_search', arguments: { query: 'Synthetic capability' }, agent: selectionAgent })
+      expect(fullSearch.isError, JSON.stringify(fullSearch.content)).toBe(false)
+      expect((fullSearch.value as any).loadedToolNames).toHaveLength(extraTools.length)
+      expect((fullSearch.value as any).matches[0].tools).toHaveLength(extraTools.length)
+      const tailTool = extraTools.at(-1)!
+      const tailSearch = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('search-beyond-auto-cap'), name: 'mcp_search', arguments: { query: tailTool }, agent: selectionAgent })
+      expect((tailSearch.value as any).loadedToolNames).toContain(tailTool)
+      const tailAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent, agent: selectionAgent })
+      expect(tailAssembly.tools.map(tool => tool.name)).toContain(tailTool)
+      const otherAssembly = await ctx.systemPrompt.assemble({ scope: {} })
+      expect(otherAssembly.tools.filter(tool => tool.name.startsWith('mcp__fixture__'))).toHaveLength(allNames.length)
+      expect(otherAssembly.tools.map(tool => tool.name)).toContain(tailTool)
+      const tailExecution = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('execute-beyond-auto-cap'), name: tailTool, arguments: {}, agent: selectionAgent })
+      expect(tailExecution.isError).toBe(false)
+      await service.cacheMcpServer(created)
+      const cached = JSON.parse(readFileSync(join(root, 'harness', 'zerowall-mcp-tool-index.json'), 'utf8'))
+      expect(cached.servers[created.id].tools).toHaveLength(allNames.length)
+      service.clearMcpToolIndex('fixture')
+      await service.loadMcpToolCache()
+      expect(service.mcpToolIndex.has(tailTool)).toBe(true)
+      for (const unregister of unregisterExtraTools.splice(0)) unregister()
+      service.registeredTools.set(created.id, [...created.tools, 'mcp__fixture__retired_from_remote'])
+      service.clearMcpToolIndex('fixture')
+      service.indexMcpTools('fixture', [...created.tools, 'mcp__fixture__retired_from_remote'])
+      const retiredAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent })
+      expect(retiredAssembly.tools.map(tool => tool.name)).not.toContain(tailTool)
+
+      const staleFilteredConnect = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('connect-stale-filter'), name: 'mcp_connect', arguments: { server: 'fixture' }, agent: selectionAgent })
+      expect(staleFilteredConnect.isError, JSON.stringify(staleFilteredConnect.content)).toBe(false)
+      expect((staleFilteredConnect.value as any).tools).toEqual(connectedTools)
+      const staleFilteredSearch = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('search-stale-filter'), name: 'mcp_search', arguments: { query: 'retired_from_remote' }, agent: selectionAgent })
+      expect(staleFilteredSearch.isError, JSON.stringify(staleFilteredSearch.content)).toBe(false)
+      expect(JSON.stringify(staleFilteredSearch.value)).not.toContain('retired_from_remote')
+
       const unmatched = await ctx.tools.execute({ signal: new AbortController().signal, callId: ToolCallId('search-unmatched'), name: 'mcp_search', arguments: { query: 'fixture' }, agent: selectionAgent })
       expect(unmatched.value).toMatchObject({ matches: [], connectedServer: 'fixture', candidateTools: expect.arrayContaining([expect.objectContaining({ name: 'mcp__fixture__greet' })]) })
       const unmatchedAssembly = await ctx.systemPrompt.assemble({ scope: selectionAgent })
-      expect(unmatchedAssembly.tools.some(tool => tool.name.startsWith('mcp__fixture__'))).toBe(false)
+      expect(unmatchedAssembly.tools.filter(tool => tool.name.startsWith('mcp__fixture__')).map(tool => tool.name)).toEqual(connectedTools)
       expect(readFileSync(startsFile, 'utf8')).not.toBe(initialStarts)
       await expect.poll(() => {
         try {
@@ -361,6 +561,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       expect(ctx.tools.get('mcp__fixture__add')).toBeUndefined()
       expect(await ctx.zerowallMcp.list()).toHaveLength(1)
     } finally {
+      for (const unregister of unregisterExtraTools) unregister()
       await ctx.fiber.dispose()
     }
   }, 30_000)
@@ -732,7 +933,7 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
       const denied = await ctx.tools.execute({ name: 'mcp__rmcp__r_project', arguments: {}, callId: ToolCallId('retired-r-project'), signal: new AbortController().signal })
       expect(assembly.tools.some(tool => tool.name === 'mcp__rmcp__r_project')).toBe(false)
       expect(denied.isError).toBe(true)
-      expect(denied.content.some(block => block.type === 'text' && block.text.includes('Remote R project administration is disabled'))).toBe(true)
+      expect(denied.content.some(block => block.type === 'text' && block.text.includes('Remote R project administration is Host-managed'))).toBe(true)
       expect(calls).toEqual([])
     } finally {
       await ctx.fiber.dispose()
