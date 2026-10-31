@@ -37,6 +37,7 @@ import { resolveDesktopUserDataPath } from './user-data-location.js'
 import { mcpEnvironmentDiagnostic, MCP_ENVIRONMENT_KEYRING } from './mcp-environment.js'
 import { hideWindowToTray, showWindowFromTray } from './tray-window.js'
 import { registerWindowControls } from './window-controls.js'
+import { editContextMenu } from './edit-context-menu.js'
 import { DesktopUpdateController, isUpdateCheckDue, UPDATE_CHECK_INTERVAL_MS } from './updater.js'
 import { verifyDownloadedArtifact } from './update-artifact.js'
 import { resolveRevealPath } from './reveal-path.js'
@@ -347,6 +348,10 @@ function createWindow(): BrowserWindow {
     hideWindowToTray(window, process.platform)
   })
   secureWindow(window, () => runtime?.snapshot().url)
+  window.webContents.on('context-menu', (_event, params) => {
+    const template = editContextMenu(params)
+    if (template.length) Menu.buildFromTemplate(template).popup({ window, frame: params.frame ?? undefined })
+  })
   registerWindowControls(window, () => runtime?.snapshot().url, pathToFileURL(resourcePath('splash.html')).href, () => startupCover?.webContents, () => app.quit())
   window.on('closed', () => {
     startupCover?.webContents.close()
@@ -1465,19 +1470,20 @@ if (ownsInstance) app.whenReady().then(async () => {
   // A new or older profile must have the bundled entry points before the
   // first Host renders its client module graph. This is a local signed file
   // transaction; optional plugin activation and remote checks remain detached.
-  if (!startupProfile.ready) {
+  if (!startupProfile.ready || startupProfile.reconcile) {
+    if (!startupProfile.repairAvailable) throw new Error('本地插件文件不完整，安装供给已清理。请重新运行当前或更新版本的安装器修复；账户和项目数据将保留。')
     publishStartup({ progress: 30, message: '正在准备本地工作台组件' })
     reportOfflineRepair(await resources.repairOffline(offlineProfileSource, { startup: true }))
   }
   await launch()
   if (await navigation.completion !== true) return
-  // Current profiles start immediately after the lightweight entry-point
-  // check. Full integrity verification stays in the background and retains
-  // the resource manager's candidate transaction and per-plugin rollback.
-  if (startupProfile.ready) void resources.repairOffline(offlineProfileSource, { startup: true }).then(reportOfflineRepair).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error)
-    console.warn('Background offline plugin repair deferred; current profile remains active:', redactResourceDiagnostic(message).slice(-4000))
-  })
+  // Only after both Host and renderer are ready, verify the profile without
+  // the installer source under the profile mutation lock. Cleanup is optional
+  // and never starts a repair, downloads plugins or restarts the working Host.
+  void resources.cleanupOffline({ packaged: app.isPackaged, platform: process.platform, localAppData: process.env.LOCALAPPDATA,
+    executable: process.execPath, resourcesPath: process.resourcesPath, ready: harnessRuntime.snapshot().phase === 'ready' }).then((result: { state: string; reason?: string }) => {
+    console.info('Offline installer supply cleanup:', result.state, result.reason ?? '')
+  }).catch((error: unknown) => console.warn('Offline installer supply cleanup deferred:', redactResourceDiagnostic(error instanceof Error ? error.message : String(error))))
   // Python bootstrap and signed dependency reconciliation are durable
   // background work. Start only after navigation succeeds so a slow mirror,
   // wheel build, or retry never blocks desktop startup. A shared promise

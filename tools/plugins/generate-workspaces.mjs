@@ -184,7 +184,7 @@ const plugins = [
   { id: 'pubmed', remote: true, capabilities: ['literature', 'evidence-graph'], permissions: ['files', 'network', 'credentials', 'approvals'], dependencies: ['secrets', 'research'], requiredServices: ['settings', 'tools', 'sessions', 'zerowallResearch'] },
   // These services are accessed directly by plugin-base during activation.
   // Keep the generated manifest in sync so Loader injects them before apply.
-  { id: 'base', client: true, clientExternal: [], capabilities: ['ui.locale', 'ui.update'], permissions: [], requiredServices: ['webServer', 'systemPrompt', 'workspaceRegistry'], optionalServices: ['updater'] },
+  { id: 'base', client: true, clientExternal: [], capabilities: ['ui.locale', 'ui.update'], permissions: [], requiredServices: ['webServer', 'systemPrompt', 'workspaceRegistry'], optionalServices: ['updater', 'dshPptMakerTools'] },
   { id: 'desktop-compat', capabilities: ['desktop.profiles', 'desktop.plugins'], permissions: [], requiredServices: [], optionalServices: ['desktopProfiles', 'desktopPnpm'] },
   { id: 'secrets', capabilities: ['credentials.read', 'credentials.write'], permissions: ['credentials'], requiredServices: [], optionalServices: ['credentialBroker'] },
   { id: 'environment', client: true, remote: true, capabilities: ['environment-config'], permissions: ['credentials', 'processes', 'network'], dependencies: ['secrets', 'base'], requiredServices: ['settings', 'llm', 'tokenMeter'] },
@@ -198,6 +198,7 @@ const plugins = [
     permissions: ['files', 'network'],
     dependencies: ['account', 'ai-cloud', 'secrets', 'base', 'environment'],
     requiredServices: ['tools', 'zerowallEnvironment', 'attachments', 'llm', 'zerowallMedia'],
+    optionalServices: ['dshPptMakerTools'],
   },
   { id: 'mcp', client: true, remote: true, capabilities: ['mcp'], permissions: ['files', 'network', 'credentials'], dependencies: ['base', 'secrets'], requiredServices: ['zerowallMcpConfigurationStore', 'tools'] },
   { id: 'skills', client: true, remote: true, capabilities: ['skills'], permissions: ['files'], dependencies: ['base'], requiredServices: ['skills', 'systemPrompt', 'tools', 'workingDirectory'] },

@@ -42,6 +42,29 @@ describe('skillNameOf', () => {
 })
 
 describe('armLazyTools', () => {
+  it('allows an internal workflow to synchronously reveal tools without invoking the skill', () => {
+    const { ctx, registered } = makeHost()
+    const controller = armLazyTools(ctx, registerSuiteStub(registered))
+    expect(registered).toEqual([])
+    controller.ensureRegistered()
+    controller.ensureRegistered()
+    expect(registered).toEqual(['suite'])
+  })
+
+  it('surfaces synchronous registration failures and still permits a later retry', () => {
+    const { ctx, registered } = makeHost()
+    let fail = true
+    const controller = armLazyTools(ctx, () => {
+      if (fail) throw new Error('registration failed')
+      registered.push('suite')
+      return () => registered.push('disposed')
+    })
+    expect(() => controller.ensureRegistered()).toThrow('registration failed')
+    fail = false
+    controller.ensureRegistered()
+    expect(registered).toEqual(['suite'])
+  })
+
   it('tools/result：目标技能成功才展开；失败/别的技能不展开；幂等', () => {
     const { ctx, fire, registered } = makeHost()
     armLazyTools(ctx, registerSuiteStub(registered))

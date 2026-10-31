@@ -91,7 +91,7 @@ describe('published Host implementation boundary', () => {
         assert(!denied.test(specifier), 'Office loaded during lightweight work: ' + specifier);
         return next(specifier, context);
       }});
-      const warnings = [], events = new Map(), tools = new Map(), disposers = [];
+      const warnings = [], events = new Map(), tools = new Map(), services = new Map(), disposers = [];
       try {
         const plugin = await import(pathToFileURL(path.join(runtime, 'lib/index.js')).href);
         assert.equal(plugin.PACKAGE_ROOT, runtime);
@@ -100,12 +100,17 @@ describe('published Host implementation boundary', () => {
           tools: { register(def) { tools.set(def.name, def); return () => tools.delete(def.name); } },
           sessions: { get: () => ({ header: { cwd } }) },
           skills: { register(def) { assert(def.content.includes('ppt')); return () => {}; } },
+          provide(name, service) { services.set(name, service); },
           webServer: { register(spec) { handler = spec.handler; return () => {}; } },
           on(event, callback) { events.set(event, callback); return () => events.delete(event); },
           effect(fn) { const off = fn(); if (off) disposers.push(off); },
           logger: { warn: message => warnings.push(message) }
         });
         assert.equal(tools.size, 0);
+        const pptTools = services.get('dshPptMakerTools');
+        assert.equal(typeof pptTools.ensureRegistered, 'function');
+        pptTools.ensureRegistered();
+        assert.deepEqual([...tools.keys()].sort(), ${JSON.stringify(['ppt_create', 'ppt_themes', 'ppt_edit', 'ppt_undo', 'ppt_redo', 'ppt_render', 'ppt_export', 'ppt_check', 'ppt_import', 'ppt_open', 'ppt_patch'].sort())});
         events.get('tools/result')({ name: 'skill', arguments: { name: 'ppt-maker' } }, { isError: false });
         assert.deepEqual([...tools.keys()].sort(), ${JSON.stringify(['ppt_create', 'ppt_themes', 'ppt_edit', 'ppt_undo', 'ppt_redo', 'ppt_render', 'ppt_export', 'ppt_check', 'ppt_import', 'ppt_open', 'ppt_patch'].sort())});
         for (const tool of tools.values()) {

@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "0.2.32",
+  "version": "0.2.33",
   "applicationVersion": "8.0.1",
   "restartRequired": true,
   "desktop": {
@@ -20,7 +20,9 @@
     "llm",
     "zerowallMedia"
   ],
-  "optionalServices": [],
+  "optionalServices": [
+    "dshPptMakerTools"
+  ],
   "capabilities": [
     "images",
     "image-generation"

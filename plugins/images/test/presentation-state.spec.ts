@@ -8,19 +8,28 @@ import { installPresentationWorkflow } from '../src/host/presentation-workflow.j
 const roots: string[] = []
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
-async function fixture() {
+async function fixture(options: { project?: boolean; bind?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'presentation-state-')); roots.push(root)
-  await mkdir(join(root, 'deck', 'pages'), { recursive: true })
+  const hasProject = options.project !== false
+  if (hasProject) await mkdir(join(root, 'deck', 'pages'), { recursive: true })
   await writeFile(join(root, 'spec.json'), JSON.stringify({ width: 960, height: 540, fonts: {}, palette: {}, slides: [{}, {}] }))
   await writeFile(join(root, 'assets.json'), JSON.stringify({ schemaVersion: 2, assets: [] }))
-  await writeFile(join(root, 'deck', 'deck.pptd'), 'size: [960, 540]\npages:\n  - pages/01.page\n  - pages/02.page\n')
-  await writeFile(join(root, 'deck', 'manifest.json'), '{"revision":1}')
-  for (const page of ['01', '02']) await writeFile(join(root, 'deck', 'pages', `${page}.page`), 'elements: []\n')
+  if (hasProject) {
+    await writeFile(join(root, 'deck', 'deck.pptd'), 'size: [960, 540]\npages:\n  - pages/01.page\n  - pages/02.page\n')
+    await writeFile(join(root, 'deck', 'manifest.json'), '{"revision":1}')
+    for (const page of ['01', '02']) await writeFile(join(root, 'deck', 'pages', `${page}.page`), 'elements: []\n')
+  }
   const events: any[] = [], definitions = new Map<string, any>(), canonical = new Map<string, any>()
+  const operationOrder: string[] = []
+  let pptCreateReady = false
+  const pptTools = { ensureRegistered: vi.fn(() => { operationOrder.push('ensureRegistered'); pptCreateReady = true }) }
   let observer: any
   const agent = { session: { header: { cwd: root }, snapshotEvents: () => events, append: (type: string, data: any) => events.push({ type, data: structuredClone(data) }) } }
-  const ctx = { effect: () => {}, on: (_: string, fn: any) => { observer = fn }, tools: {
-    register: (def: any) => { definitions.set(def.name, def) }, execute: async (input: any) => invoke(input.name, input.arguments, input.callId)
+  const ctx = { effect: () => {}, get: (name: string) => name === 'dshPptMakerTools' ? pptTools : undefined, on: (_: string, fn: any) => { observer = fn }, tools: {
+    register: (def: any) => { definitions.set(def.name, def) }, execute: async (input: any) => {
+      if (input.name === 'ppt_create' && !pptCreateReady) throw new Error('ppt_create: unknown tool "ppt_create"')
+      return invoke(input.name, input.arguments, input.callId)
+    }
   } }
   async function invoke(name: string, args: any, callId = randomUUID()): Promise<any> {
     const exec = { name, arguments: args, agent, callId }
@@ -35,10 +44,29 @@ async function fixture() {
     return { ok: true, images }
   }))
   installPresentationWorkflow(ctx as any)
-  await invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'edit' })
+  if (options.bind !== false) await invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: hasProject ? 'edit' : 'new' })
   const state = async () => JSON.parse(await readFile(events.at(-1).data.journal, 'utf8'))
-  return { root, invoke, canonical, state }
+  return { root, invoke, canonical, state, pptTools, operationOrder }
 }
+
+it('registers the lazy PPT tools before presentation_prepare automatically creates a project', async () => {
+  const { root, invoke, canonical, pptTools, operationOrder } = await fixture({ project: false, bind: false })
+  canonical.set('ppt_create', vi.fn(async (args: any) => {
+    operationOrder.push('ppt_create')
+    await mkdir(join(args.dir, 'pages'), { recursive: true })
+    await writeFile(join(args.dir, 'deck.pptd'), 'size: [960, 540]\npages:\n  - pages/01.page\n  - pages/02.page\n')
+    await writeFile(join(args.dir, 'manifest.json'), '{"revision":0}')
+    await writeFile(join(args.dir, 'pages', '01.page'), 'elements: []\n')
+    await writeFile(join(args.dir, 'pages', '02.page'), 'elements: []\n')
+    return { ok: true }
+  }))
+
+  await invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new' })
+
+  expect(pptTools.ensureRegistered).toHaveBeenCalledOnce()
+  expect(operationOrder).toEqual(['ensureRegistered', 'ppt_create'])
+  await expect(readFile(join(root, 'deck', 'deck.pptd'), 'utf8')).resolves.toContain('pages/02.page')
+})
 
 it('reuses current checks and PNGs; regenerates only changed pages and damaged PNGs', async () => {
   const { root, invoke, canonical } = await fixture()

@@ -20,6 +20,7 @@ import { pluginRuntimeEntries } from './plugin-entrypoints.mjs'
 import { legacyMediaId, mediaId } from './media-identity.mjs'
 import { bounded } from './profile-copy.mjs'
 import { resumeCandidateCleanup } from './profile-cleanup.mjs'
+import { cleanupOfflineSupply } from './offline-cleanup.mjs'
 
 const PLUGIN_DOWNLOAD_CONCURRENCY = 8
 
@@ -491,21 +492,86 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     await atomic(journal, { ...pending, state: 'recovered' })
   }
 
-  // Decide whether the first Host may resolve the selected workbench plugins.
-  // This is only a local readiness probe: no archive sweep, dependency graph,
-  // mutation or plugin activation. The normal repair still authenticates and
-  // verifies a candidate before it can become active.
-  async function inspectStartupProfile(source = offlineSource) {
-    const { receipt, digest } = await readOfflineReceipt(source, keys, target, { local })
+  // A materialized profile is the runtime authority. The offline installer
+  // payload is consulted only when an older, missing or damaged profile needs
+  // a local repair; healthy startup must survive its removal.
+  async function inspectStartupProfile(source = offlineSource, { full = false } = {}) {
     const manifest = await json(join(active, 'package.json'))
     const selection = await readPluginSelection()
     const reasons = new Set(), missingIds = new Set(), invalidIds = new Set()
-    if (!(manifest.zerowall?.pluginArchitecture >= 7) || manifest.zerowall?.profileLayout !== PROFILE_LAYOUT) reasons.add('profile-layout')
     const expected = defaultPlugins.filter(id => !RETIRED_PLUGIN_IDS.has(id) && !selection.removed.has(id) && !selection.disabled.has(id) && !manifest.zerowall?.disabledPlugins?.includes(id))
+    const unavailable = error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error }
+    const profileLayoutReady = manifest.zerowall?.pluginArchitecture >= 7 && manifest.zerowall?.profileLayout === PROFILE_LAYOUT
+    if (!profileLayoutReady) reasons.add('profile-layout')
+    let marker
+    try { marker = await json(join(active, materializationFile)) }
+    catch (error) {
+      if (error.code === 'ENOENT' || error.code === 'ENOTDIR') marker = undefined
+      else if (error instanceof SyntaxError) reasons.add('invalid-materialization')
+      else throw error
+    }
+    if (profileLayoutReady && marker) {
+      const generation = await verifyMaterializedProfile({ profile: active, keys, target, expected, local, full })
+      if (generation) {
+        const records = new Map(generation.receipt.plugins.map(entry => [entry.id, entry]))
+        const signed = new Set(generation.receipt.files.map(entry => entry.path))
+        for (const id of expected) {
+          const seed = records.get(id), root = packagePath(active, id)
+          const installed = await json(join(root, 'package.json')).catch(unavailable)
+          if (seed?.core && !selection.pinned[id]) {
+            if (installed?.version && bundledPlugins.some(item => item.id === id && item.managed !== false) && compareVersions(installed.version, seed.version) <= 0) {
+              invalidIds.add(id); reasons.add('core-shadow')
+            }
+            continue
+          }
+          if (!installed && seed?.core && selection.pinned[id] === seed.version) continue
+          if (!installed) { missingIds.add(id); reasons.add('missing-plugins'); continue }
+          const info = await lstat(root).catch(unavailable)
+          if (!info?.isDirectory() || info.isSymbolicLink() || installed.name !== id || selection.pinned[id] && installed.version !== selection.pinned[id]) {
+            invalidIds.add(id); reasons.add('invalid-plugins'); continue
+          }
+          if (seed && compareVersions(installed.version, seed.version) > 0 && !compatibleInstalledPlugin(installed, target)) {
+            invalidIds.add(id); reasons.add('incompatible-plugins'); continue
+          }
+          // Validate profile entrypoints independently of the installer seed.
+          // This accepts a separately upgraded plugin and never resolves its
+          // docs or code from the older package carried by the installer.
+          for (const entry of pluginRuntimeEntries(installed)) {
+            if (installed.version === seed?.version && !signed.has('modules/' + id + '/' + entry)) continue
+            const path = resolve(root, entry), child = relative(root, path)
+            if (child === '..' || child.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) || isAbsolute(child)) {
+              invalidIds.add(id); reasons.add('invalid-entrypoints'); continue
+            }
+            let available = false
+            for (const suffix of ['', '.js', '.json', '.node', '/index.js', '/index.json', '/index.node']) {
+              if ((await stat(path + suffix).catch(unavailable))?.isFile()) { available = true; break }
+            }
+            if (!available) { invalidIds.add(id); reasons.add('missing-entrypoints') }
+          }
+        }
+        try { await verifyHistoricalPluginImports({ profile: active, keys, target, runtimeModules, local, full }) }
+        catch { reasons.add('historical-plugin-imports') }
+        if (reasons.size === 0) return { ready: true, reasons: [], missingIds: [], invalidIds: [], generation: generation.digest, buildId: generation.receipt.buildId,
+          reconcile: Boolean(source) && (generation.receipt.applicationVersion !== target.desktopVersion || bundledPlugins.some(item => item.managed !== false && item.version && records.get(item.id)?.version !== item.version)), repairAvailable: Boolean(source) }
+      } else reasons.add('invalid-materialization')
+    } else if (profileLayoutReady) reasons.add('missing-materialization')
+
+    if (!source) return { ready: false, reasons: [...reasons], missingIds: [...missingIds], invalidIds: [...invalidIds], repairAvailable: false }
+    let receipt, digest
+    try { ({ receipt, digest } = await readOfflineReceipt(source, keys, target, { local })) }
+    catch (error) {
+      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error
+      reasons.add('offline-seed-unavailable')
+      return { ready: false, reasons: [...reasons], missingIds: [...missingIds], invalidIds: [...invalidIds], repairAvailable: false }
+    }
+    // The current authenticated installer can admit an independently upgraded
+    // plugin whose previous receipt belongs to another DSH. Do not carry the
+    // obsolete receipt's failure into that separate readiness probe; require
+    // reconciliation before the installer supply may be removed instead.
+    reasons.delete('invalid-materialization')
+    reasons.delete('missing-materialization')
     const records = new Map(receipt.plugins.map(entry => [entry.id, entry]))
     const signed = new Set(receipt.files.map(entry => entry.path))
-    const unavailable = error => { if (!['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code)) throw error }
-    const marker = await json(join(active, materializationFile)).catch(unavailable)
     const dependencyRoot = marker?.dependencyRoot
       ? resolve(active, marker.dependencyRoot)
       : join(active, 'node_modules/.zerowall-dependencies/node_modules')
@@ -534,13 +600,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
       if (seed && compareVersions(installed.version, seed.version) > 0 && !compatibleInstalledPlugin(installed, target)) {
         invalidIds.add(id); reasons.add('incompatible-plugins'); continue
       }
-      // Validate the actual installed entrypoints even when this package is
-      // newer than the version embedded in the offline installer. A compatible
-      // newer package may launch immediately, but a missing entrypoint must
-      // still trigger pre-launch repair.
       for (const entry of pluginRuntimeEntries(installed)) {
-        // Some upstream exports advertise conditions omitted from their signed
-        // package. Match the runtime verifier instead of inventing new files.
         if (installed.version === seed?.version && !signed.has('modules/' + id + '/' + entry)) continue
         const path = resolve(root, entry), child = relative(root, path)
         if (child === '..' || child.startsWith('..' + (process.platform === 'win32' ? '\\' : '/')) || isAbsolute(child)) {
@@ -553,7 +613,7 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
         if (!available) { invalidIds.add(id); reasons.add('missing-entrypoints') }
       }
     }
-    return { ready: reasons.size === 0, reasons: [...reasons], missingIds: [...missingIds], invalidIds: [...invalidIds], generation: digest, buildId: receipt.buildId }
+    return { ready: reasons.size === 0, reasons: [...reasons], missingIds: [...missingIds], invalidIds: [...invalidIds], generation: digest, buildId: receipt.buildId, reconcile: true, repairAvailable: true }
   }
 
   async function repairOfflineDirect(source, document, sourceDigest, { startup = false } = {}) {
@@ -1769,5 +1829,5 @@ export function createResourceManager({ home, keys, target, runPlugin, stopHost:
     await writePendingPlugin(home, { ...record, state: 'cancelled' })
     return { cancelled: true }
   })
-  return { recover: () => exclusive(async () => { await recover(); void resumeCandidateCleanup(home) }), inspectStartupProfile, repairOffline: (source, options) => exclusive(() => repairOffline(source, options), options), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => pendingAction('rollbackMcp', [id]), setPluginEnabled: (id, enabled, dependents = []) => pendingAction('setPluginEnabled', [id, enabled, dependents]), mutate: (args, dependents = []) => pendingAction('mutate', [args, dependents]), updatePlugins: (ids, source, options) => pendingAction('updatePlugins', [ids, source], () => pluginBatch(ids, source, undefined, options), options), plugin: (id, source, options) => pendingAction('plugin', [id, source], () => plugin(id, source, options), options), repairPlugin: (id, source, options) => pendingAction('repairPlugin', [id, source], () => repairPlugin(id, source, options), options), rollback: () => pendingAction('rollback', []), update: (kind, source, options) => pendingAction('update', [kind, source], () => update(kind, source, options), options), installedVersion: installedVersionFor, updateSkills: (ids, source, options) => exclusive(() => updateSkills(ids, source, options), options), resource: (kind, id, source, options) => exclusive(() => resource(kind, id, source, options), options), resumePending, cancelPending, pending: () => listPendingPlugins(home) }
+  return { recover: () => exclusive(async () => { await recover(); void resumeCandidateCleanup(home) }), inspectStartupProfile, cleanupOffline: options => exclusive(() => cleanupOfflineSupply({ ...options, profile: active, verifyProfile: () => inspectStartupProfile(null, { full: true }) })), repairOffline: (source, options) => exclusive(() => repairOffline(source, options), options), catalog, check: checkResources, list: kind => checkResources(kind, undefined, { localOnly: true }), dependents, pinPlugin: (id, pinned) => exclusive(() => pinPlugin(id, pinned)), rollbackMcp: id => pendingAction('rollbackMcp', [id]), setPluginEnabled: (id, enabled, dependents = []) => pendingAction('setPluginEnabled', [id, enabled, dependents]), mutate: (args, dependents = []) => pendingAction('mutate', [args, dependents]), updatePlugins: (ids, source, options) => pendingAction('updatePlugins', [ids, source], () => pluginBatch(ids, source, undefined, options), options), plugin: (id, source, options) => pendingAction('plugin', [id, source], () => plugin(id, source, options), options), repairPlugin: (id, source, options) => pendingAction('repairPlugin', [id, source], () => repairPlugin(id, source, options), options), rollback: () => pendingAction('rollback', []), update: (kind, source, options) => pendingAction('update', [kind, source], () => update(kind, source, options), options), installedVersion: installedVersionFor, updateSkills: (ids, source, options) => exclusive(() => updateSkills(ids, source, options), options), resource: (kind, id, source, options) => exclusive(() => resource(kind, id, source, options), options), resumePending, cancelPending, pending: () => listPendingPlugins(home) }
 }

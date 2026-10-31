@@ -36,6 +36,11 @@ interface SessionsServiceLike {
   list?: () => readonly SessionLike[]
 }
 
+export interface LazyToolsController {
+  (): void
+  ensureRegistered(): void
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined
 }
@@ -120,7 +125,7 @@ class SkillInvocationState {
  * 挂起懒展开。返回 disposer：拆监听器，并在已展开时连工具组一起注销。
  * @param registerSuite 注册全部 ppt_* 工具，返回合并注销函数。
  */
-export function armLazyTools(ctx: LazyCtx, registerSuite: () => () => void): () => void {
+export function armLazyTools(ctx: LazyCtx, registerSuite: () => () => void): LazyToolsController {
   let disposed = false
   let revealPending = false
   let sessionStates = new WeakMap<SessionLike, SkillInvocationState>()
@@ -128,8 +133,12 @@ export function armLazyTools(ctx: LazyCtx, registerSuite: () => () => void): () 
   const disposers: Array<() => void> = []
   const log = (msg: string) => ctx.logger?.warn?.(msg)
 
-  const ensureSuite = () => {
-    if (disposed || suiteDisposer !== undefined) return
+  const ensureSuite = (required = false) => {
+    if (disposed) {
+      if (required) throw new Error('PPT tools have already been disposed.')
+      return
+    }
+    if (suiteDisposer !== undefined) return
     try {
       suiteDisposer = registerSuite()
       revealPending = false
@@ -138,7 +147,13 @@ export function armLazyTools(ctx: LazyCtx, registerSuite: () => () => void): () 
       suiteDisposer = undefined
       revealPending = true
       log(`[dsh-ppt-maker] 懒展开注册失败：${(error as Error).message}（下个轮次重试）`)
+      if (required) throw error
     }
+  }
+
+  const ensureRegistered = () => {
+    ensureSuite(true)
+    if (suiteDisposer === undefined) throw new Error('PPT tool suite registration did not complete.')
   }
 
   const stateFor = (session: SessionLike): SkillInvocationState | undefined => {
@@ -215,7 +230,7 @@ export function armLazyTools(ctx: LazyCtx, registerSuite: () => () => void): () 
     if (typeof dispose === 'function') disposers.push(() => (dispose as () => void).call(watcher))
   }
 
-  return () => {
+  const dispose = () => {
     if (disposed) return
     disposed = true
     for (const dispose of disposers.splice(0)) {
@@ -228,4 +243,7 @@ export function armLazyTools(ctx: LazyCtx, registerSuite: () => () => void): () 
     suiteDisposer?.()
     sessionStates = new WeakMap()
   }
+  const controller = dispose as LazyToolsController
+  controller.ensureRegistered = ensureRegistered
+  return controller
 }

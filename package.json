@@ -1,6 +1,6 @@
 {
   "name": "zerowallscience",
-  "version": "8.4.18",
+  "version": "8.4.19",
   "description": "ZeroWall Science local-first scientific visualization and conversation-driven analysis.",
   "private": true,
   "type": "module",

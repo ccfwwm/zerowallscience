@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "applicationVersion": "8.1.0",
   "restartRequired": true,
   "desktop": {
@@ -19,7 +19,8 @@
     "workspaceRegistry"
   ],
   "optionalServices": [
-    "updater"
+    "updater",
+    "dshPptMakerTools"
   ],
   "capabilities": [
     "ui.locale",

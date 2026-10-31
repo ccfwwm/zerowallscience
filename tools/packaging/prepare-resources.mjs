@@ -1,6 +1,6 @@
 import { stageRoot } from '../build/paths.mjs'
 import { cp, mkdir, readdir, stat } from 'node:fs/promises'
-import { relative, resolve, sep } from 'node:path'
+import { resolve, sep } from 'node:path'
 import { patchSciMasterMcp } from '../release/scimaster-compat.mjs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { x as extractArchive } from 'tar'
@@ -36,10 +36,9 @@ const groups = [
     ['resources/extensions/mcp/bio-tools', 'extensions/mcp/bio-tools'],
     ['resources/extensions/mcp/ketcher-chemistry', 'extensions/mcp/ketcher-chemistry'],
     ['resources/extensions/capabilities/biogenie', 'extensions/capabilities/biogenie'],
-  ].map(([source, destination]) => ({ source: resolve(root, source), destination, filter: candidate => {
-    const segments = relative(resolve(root, source), candidate).toLowerCase().split(/[\\/]/u)
-    return !segments.some(segment => forbiddenDirectories.has(segment)) && !/\.py[co]$/u.test(candidate)
-  } })),
+  // These resource groups share the same exclusions as Skills. Keep one
+  // canonical filter for both fingerprinting and copying their runtime files.
+  ].map(([source, destination]) => ({ source: resolve(root, source), destination, filter: candidate => includePackagedSkillPath(resolve(root, source), candidate) })),
 ]
 const bundle = JSON.parse(await readFile(resolve(root, 'config/catalogs/mcp-server-bundles.json'), 'utf8')).scimaster
 const inputs = []

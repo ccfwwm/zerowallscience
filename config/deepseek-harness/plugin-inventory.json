@@ -269,7 +269,7 @@
     {
       "id": "base",
       "package": "@zerowallscience/plugin-base",
-      "version": "0.1.36",
+      "version": "0.1.37",
       "source": "plugins/base",
       "manifest": "plugins/base/zerowall.plugin.json",
       "client": true,
@@ -286,7 +286,8 @@
         "workspaceRegistry"
       ],
       "optionalServices": [
-        "updater"
+        "updater",
+        "dshPptMakerTools"
       ],
       "productionPath": "resources/app.asar/node_modules/@zerowallscience/plugin-base"
     },
@@ -527,7 +528,7 @@
     {
       "id": "images",
       "package": "@zerowallscience/plugin-images",
-      "version": "0.2.32",
+      "version": "0.2.33",
       "source": "plugins/images",
       "manifest": "plugins/images/zerowall.plugin.json",
       "client": true,
@@ -548,7 +549,9 @@
         "llm",
         "zerowallMedia"
       ],
-      "optionalServices": [],
+      "optionalServices": [
+        "dshPptMakerTools"
+      ],
       "productionPath": "resources/offline-profile/modules/@zerowallscience/plugin-images"
     },
     {

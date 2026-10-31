@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "modules": {
+    "zerowall-tooluniverse": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+      "module_sha256": "638a8fc97266bbfd046f6f0ce2560643aedef9ee5cd1fdab6d145a990f93cb50"
+    },
+    "zerowall-omicverse": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+      "module_sha256": "db301dbcee18983d73ac5454de37216ce3176318be5e850aa3ed46ab1c23f574"
+    },
+    "zerowall-rplatform": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "501453b19b1009a7ab16d5814320d50d2c35018ff1bd3a8d58aaf2f8515385d1",
+      "module_sha256": "347f7c717b5541798f34457b92b5852b0ca2b8ebf382fc678f8a72b1574fb9c2"
+    },
+    "zerowall-mr": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+      "module_sha256": "5a58efe8c286fe150ca5dd21cea3539543cfe44df1e9410d6c3db7b569ecc1ce"
+    },
+    "zerowall-r-files": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "501453b19b1009a7ab16d5814320d50d2c35018ff1bd3a8d58aaf2f8515385d1",
+      "module_sha256": "317d24794f5792a3e84c85067788d96ab3ffffaa49cad6bcfd53b85f0abdcad2"
+    },
+    "zerowall-r-packages": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+      "module_sha256": "2ec1705ef15f46c038dff5c8864bccc192dccb38d22daef9374274821769151d"
+    },
+    "zerowall-faerskit": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "501453b19b1009a7ab16d5814320d50d2c35018ff1bd3a8d58aaf2f8515385d1",
+      "module_sha256": "b161e7f8fdc0100172250733bf85dc30c18ce2093475792cc7d977bf8536f401"
+    },
+    "zerowall-geo": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+      "module_sha256": "2c8dd0c41f0f5adcb1a138ae6d4b9731a91f7b00fdb55371ef502ad9e896e9a6"
+    },
+    "zerowall-nhanes": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+      "module_sha256": "4c854fe739d88d0c441b25c4ed5b172a817e255bcd7044bff97d33352baa1d31"
+    },
+    "zerowall-rbioagent": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+      "module_sha256": "4bfc2cfb23e7b3dca58007d804d5b25df5259ce4c8a8eeb18e3a24e3cfa6dfb6"
+    },
+    "zerowall-rplotfigure": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+      "module_sha256": "266bfbdae9194c6115c5bb4d5667ec8226b68d42f23a9ce7d6bbcecb8e5e0cba"
+    },
+    "sc-tenifold-knockout": {
+      "protocol_version": 2,
+      "catalog_version": "2026-10-29.1",
+      "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+      "module_sha256": "6010546e9c2b84c1bab08c99136387bea3cd15bfd05e05ac798c9adc57653c33"
+    }
+  }
+}

@@ -95,6 +95,8 @@ interface ApplyCtx {
   effect?: (fn: () => void | (() => void)) => void
   /** Cordis `ctx.get(name)`：懒取 inject 之外的可选服务（llm / attachments）。 */
   get?: (name: string) => unknown
+  /** Cordis `ctx.provide(name, service)`：向协作插件暴露 PPT 工具预热入口。 */
+  provide?: (name: string, service: unknown) => unknown
   /** Cordis 事件总线（懒展开用）：tools/result、session/event、session/created。 */
   on?: (event: string, handler: (...args: never[]) => void) => unknown
   /** Cordis `ctx.inject(deps, cb)`：服务到达回调（懒展开扫 sessions 用）。 */
@@ -326,7 +328,9 @@ export function apply(ctx: ApplyCtx): void {
     }
     // 懒展开（browser-skill 同款）：常驻的只有技能目录行；模型 invoke "ppt-maker"
     // 技能成功后整组工具才进场。webServer 路由不进懒展开——工作台面板随时要用。
-    offs.push(armLazyTools(ctx, registerToolSuite))
+    const lazyTools = armLazyTools(ctx, registerToolSuite)
+    ctx.provide?.('dshPptMakerTools', { ensureRegistered: lazyTools.ensureRegistered })
+    offs.push(lazyTools)
   }
 
   // webServer 路由在 apply 之后再起：先把 store/bridge 装配好，再让 handler

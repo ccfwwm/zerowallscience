@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-base",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "description": "ZeroWall Science base domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -66,7 +66,8 @@
       "workspaceRegistry"
     ],
     "optionalServices": [
-      "updater"
+      "updater",
+      "dshPptMakerTools"
     ],
     "capabilities": [
       "ui.locale",

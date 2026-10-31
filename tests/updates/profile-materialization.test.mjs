@@ -116,6 +116,31 @@ test('startup readiness catches missing client entrypoints and a changed install
   assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules/plugin-a/package.json'))).version, '2.0.0')
 })
 
+test('healthy startup and full verification do not read a removed installer supply', async t => {
+  const f = await fixture(t), source = await f.supply('1.0.0')
+  await f.manager.repairOffline(source)
+  await rm(source, { recursive: true })
+  assert.equal((await f.manager.inspectStartupProfile(source)).ready, true)
+  assert.equal((await f.manager.inspectStartupProfile(null, { full: true })).ready, true)
+  await unlink(join(f.active, 'node_modules/plugin-a/index.cjs'))
+  const damaged = await f.manager.inspectStartupProfile(source)
+  assert.equal(damaged.ready, false)
+  assert.equal(damaged.repairAvailable, false)
+})
+
+test('a new desktop installer requests local reconciliation even when the active profile is healthy', async t => {
+  const f = await fixture(t), source = await f.supply('1.0.0')
+  await f.manager.repairOffline(source)
+  const nextTarget = { ...target, desktopVersion: '8.4.19' }, next = await f.supply('2.0.0', {}, { runtimeTarget: nextTarget })
+  const manager = f.createManager(nextTarget)
+  const state = await manager.inspectStartupProfile(next)
+  assert.equal(state.ready, true)
+  assert.equal(state.reconcile, true)
+  await manager.repairOffline(next, { startup: true })
+  assert.equal((await manager.inspectStartupProfile(next)).reconcile, false)
+  assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules/plugin-a/package.json'))).version, '2.0.0')
+})
+
 test('a healthy signed plugin update survives restart when the installer embeds an older seed', async t => {
   const f = await fixture(t, ['plugin-a']), offline = await f.supply('1.0.0')
   await f.manager.repairOffline(offline)
@@ -155,6 +180,9 @@ test('a healthy signed plugin update survives restart when the installer embeds 
   assert.equal((await restarted.inspectStartupProfile(offline)).ready, true)
   assert.equal((await restarted.repairOffline(offline)).repaired, false)
   assert.equal(JSON.parse(await readFile(join(f.active, 'node_modules', id, 'package.json'))).version, '2.0.0')
+  await rm(offline, { recursive: true })
+  assert.equal((await restarted.inspectStartupProfile(offline)).ready, true)
+  assert.equal((await restarted.inspectStartupProfile(null, { full: true })).ready, true)
 })
 
 test('a healthy signed plugin update survives restart when the old materialization receipt belongs to another DSH', async t => {

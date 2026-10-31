@@ -26,6 +26,7 @@ export interface PageJob {
 }
 export interface EditablePagePlan { page: number; templateAssetId?: string; elements: Record<string, any>[]; createdAt: string }
 export interface PresentationImageTask<T = unknown> { id: string; page: number; run: () => Promise<T> }
+interface PptMakerToolsService { ensureRegistered(): void }
 declare module '@deepseek-ai/dsh-session/types' { interface SessionEventMap { 'zerowall/presentation-workflow': Pick<PresentationWorkflow, 'schemaVersion' | 'journal' | 'dir' | 'phase'> } }
 
 export async function runPresentationImageTasks<T>(tasks: PresentationImageTask<T>[], concurrency = DEFAULT_IMAGE_CONCURRENCY): Promise<T[]> {
@@ -364,6 +365,9 @@ export function installPresentationWorkflow(ctx: Context): void {
       const deckPath = join(dir, 'deck.pptd')
       try { await readFile(deckPath, 'utf8') } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || args.mode !== 'new') throw error
+        const pptTools = ctx.get('dshPptMakerTools') as PptMakerToolsService | undefined
+        if (!pptTools || typeof pptTools.ensureRegistered !== 'function') throw new Error('PPT 工具尚未就绪。请确认 dsh-ppt-maker 插件已加载后重试 presentation_prepare。')
+        pptTools.ensureRegistered()
         const created = await dispatch(exec, 'ppt_create', { dir, title: (specification as any).title ?? 'ZeroWall presentation', size: [specification.width, specification.height], metadata: { zeroWall: { spec: relative(root, spec), assetsManifest: relative(root, manifest), mode: args.mode, outputMode } } }, true)
         if (created?.ok === false) throw new Error(created.error?.message ?? 'ppt_create failed')
       }

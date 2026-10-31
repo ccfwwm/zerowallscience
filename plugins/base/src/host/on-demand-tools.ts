@@ -1,10 +1,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ToolSchema } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { createToolLoaders, type ToolLoader } from './tool-loaders.ts'
 
 const TOOL_NAME = 'capability_search'
 const MAX_ENABLED_TOOLS = 12
 const ON_DEMAND_TRIGGER = 100
+// Exact exported names from dsh-ppt-maker's suite, not a prefix fallback.
+// An absent/disabled provider must never trigger disk discovery or installation.
+const PPT_TOOLS = ['ppt_create', 'ppt_themes', 'ppt_edit', 'ppt_undo', 'ppt_redo', 'ppt_render', 'ppt_export', 'ppt_check', 'ppt_import', 'ppt_open', 'ppt_patch'] as const
 const CORE_TOOLS = new Set([
   TOOL_NAME,
   'ask_user_question',
@@ -87,7 +91,9 @@ export function searchToolSchemas(schemas: readonly ToolSchema[], query: string,
 export function installOnDemandTools(ctx: Context): void {
   const tools = ctx.tools
   if (tools === undefined) return
-  const restrictions = new WeakMap<object, { dispose: () => void; enabled: Set<string> }>()
+  const restrictions = new Map<object, { dispose: () => void; enabled: Set<string> }>()
+  ctx.effect(() => () => { for (const state of restrictions.values()) state.dispose(); restrictions.clear() })
+  const loaders = createToolLoaders(name => tools.get(name) !== undefined)
   const mcpToolNames = () => tools.schemas().map((schema: ToolSchema) => schema.name).filter(name => name.startsWith('mcp__'))
   const allowFor = (agent: any, names: readonly string[]) => {
     if (agent === undefined || agent.ctx?.tools === undefined) return
@@ -104,18 +110,43 @@ export function installOnDemandTools(ctx: Context): void {
     if (tools.schemas(agent).length > ON_DEMAND_TRIGGER) allowFor(agent, [...CORE_TOOLS, ...mcpToolNames()])
   })
   ctx.on('agent/disposed', ({ agent }) => { restrictions.get(agent)?.dispose(); restrictions.delete(agent) })
+  const include = (agent: object | undefined, names: readonly string[]) => {
+    if (agent === undefined || !restrictions.has(agent)) return
+    const state = restrictions.get(agent)!
+    const available = new Set(tools.schemas().map((schema: ToolSchema) => schema.name))
+    let changed = false
+    for (const name of names) if (available.has(name) && name !== TOOL_NAME && !state.enabled.has(name)) { state.enabled.add(name); changed = true }
+    if (changed) allowFor(agent, [...CORE_TOOLS, ...state.enabled])
+  }
+  const ensure = async (agent: object | undefined, name: string, signal?: AbortSignal) => {
+    if (!await loaders.ensure(name, signal)) return false
+    include(agent, [name])
+    return true
+  }
   ctx.provide('zerowallToolAccess', {
-    include(agent: object | undefined, names: readonly string[]) {
-      if (agent === undefined || !restrictions.has(agent)) return
-      const state = restrictions.get(agent)!
-      const available = new Set(tools.schemas().map((schema: ToolSchema) => schema.name))
-      for (const name of names) if (available.has(name) && name !== TOOL_NAME) state.enabled.add(name)
-      allowFor(agent, [...CORE_TOOLS, ...state.enabled])
-    },
+    include,
+    ensure,
+    registerLoader: (loader: ToolLoader) => loaders.register(loader),
   } as never)
+  ctx.inject(['dshPptMakerTools'], (providerCtx) => {
+    const provider = providerCtx.get('dshPptMakerTools') as { ensureRegistered(): void } | undefined
+    if (provider === undefined) return
+    providerCtx.effect(() => loaders.register({
+      id: 'dsh-ppt-maker', names: PPT_TOOLS,
+      description: 'PPT PowerPoint presentation tools: create, edit, check, render, export, import, open, patch, themes, undo and redo.',
+      load: () => provider.ensureRegistered(),
+    }))
+  })
+  // Around-dispatch runs AFTER policy, human approval and monotonic guards.
+  // Loading in pre-execute would miss approved `ask` calls and load denied
+  // guard calls. Reuse the original dispatch once; never replay a tool body.
+  ctx.on('tools/execute', async (exec, next) => {
+    await ensure(exec.agent, exec.name, exec.signal)
+    return next()
+  })
   ctx.effect(() => tools.register(defineTool({
     name: TOOL_NAME,
-    description: 'Find a tool by task or capability. Search returns exact available names; call again with enable set to the exact names before using them. Disable loaded tools when no longer needed.',
+    description: 'Find an installed tool by task or capability. Search includes declared local tools awaiting registration without loading them. Enable exact names to load and expose their real schemas before use. Disable tools when no longer needed.',
     parameters: {
       query: { type: 'string' },
       enable: { type: 'array', items: { type: 'string' } },
@@ -123,7 +154,7 @@ export function installOnDemandTools(ctx: Context): void {
     },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
     async execute(args: { query?: string; enable?: string[]; disable?: string[] }, exec) {
-      const available = tools.schemas()
+      const available = [...tools.schemas(), ...loaders.catalog()]
       const byName = new Map(available.map(schema => [schema.name, schema]))
       const enabled = list(args.enable)
       const disabled = list(args.disable)
@@ -131,6 +162,7 @@ export function installOnDemandTools(ctx: Context): void {
       for (const name of [...enabled, ...disabled]) {
         if (!byName.has(name) || name === TOOL_NAME) throw new Error(`Tool is not available to this conversation: ${name}`)
       }
+      for (const name of enabled) await ensure(exec.agent, name, exec.signal)
       if (exec.agent !== undefined && restrictions.has(exec.agent)) {
         const state = restrictions.get(exec.agent)!
         for (const name of enabled) state.enabled.add(name)
@@ -138,7 +170,7 @@ export function installOnDemandTools(ctx: Context): void {
         allowFor(exec.agent, [...CORE_TOOLS, ...state.enabled])
       }
       return {
-        matches: searchToolSchemas(available, args.query ?? ''),
+        matches: searchToolSchemas([...tools.schemas(), ...loaders.catalog()], args.query ?? ''),
         enabled,
         disabled,
         availableCount: available.filter(schema => schema.name !== TOOL_NAME).length,
