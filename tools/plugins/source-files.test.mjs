@@ -11,11 +11,18 @@ test('current source includes untracked files and excludes ignored secrets and l
   try {
     execFileSync('git', ['init', '-q', root])
     await mkdir(join(root, 'plugins/new/src'), { recursive: true })
+    await mkdir(join(root, 'resources/extensions/skills/paper-download/lib/acquire'), { recursive: true })
     await writeFile(join(root, 'plugins/new/src/current.ts'), 'export const current = true')
+    await writeFile(join(root, 'resources/extensions/skills/paper-download/lib/acquire/runtime.py'), 'runtime = True')
     await writeFile(join(root, '.gitignore'), '*.secret\n')
     await writeFile(join(root, 'plugins/new/token.secret'), 'test fixture')
-    assert.deepEqual(sourceFiles(root), ['plugins/new/src/current.ts'])
+    assert.deepEqual(sourceFiles(root), [
+      'plugins/new/src/current.ts',
+      'resources/extensions/skills/paper-download/lib/acquire/runtime.py',
+    ])
     for (const path of ['plugins/new/.env', 'plugins/new/private.key', 'plugins/new/lib/x.js', 'plugins/new/user-data/a.json', 'packages/store/src/index.ts']) assert.equal(isExportableSource(path), false)
+    assert.equal(isExportableSource('resources/extensions/skills/paper-download/lib/acquire/runtime.py'), true)
+    assert.equal(isExportableSource('resources/extensions/skills/paper-download/lib/.env'), false)
     assert.equal(isExportableSource('plugins/mcp/src/scimaster/zerowall-mcp-launcher.cjs'), true)
   } finally { await rm(root, { recursive: true, force: true }) }
 })

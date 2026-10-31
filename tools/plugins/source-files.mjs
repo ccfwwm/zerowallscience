@@ -9,7 +9,10 @@ export function isExportableSource(path) {
   if (!/^(?:plugins\/|tools\/|config\/|tests\/|patches\/|schemas\/|resources\/extensions\/|desktop\/src\/shared\/)/u.test(path)
     && !/^(?:tsconfig.*\.json|vitest.*\.ts)$/u.test(path)
     && !['pnpm-lock.yaml', 'pnpm-workspace.yaml', '.gitmodules', 'LICENSE', 'LICENSE.md'].includes(path)) return false
-  return !/(?:^|\/)(?:node_modules|artifacts|lib|payload|\.yarn|\.git|\.zerowall|__pycache__|user-data|credentials|secrets)(?:\/|$)|(?:^|\/)\.env(?:\.|$)|\.(?:pem|key|p12|pfx|log|tsbuildinfo|sqlite|sqlite3|db)$/iu.test(checkedPath)
+  const skillSource = path.startsWith('resources/extensions/skills/')
+  const privatePath = /(?:^|\/)(?:node_modules|artifacts|payload|\.yarn|\.git|\.zerowall|__pycache__|user-data|credentials|secrets)(?:\/|$)|(?:^|\/)\.env(?:\.|$)|\.(?:pem|key|p12|pfx|log|tsbuildinfo|sqlite|sqlite3|db)$/iu.test(checkedPath)
+  const generatedLibrary = /(?:^|\/)lib(?:\/|$)/iu.test(checkedPath)
+  return !privatePath && (skillSource || !generatedLibrary)
     && !/^plugins\/(?:dsh-auto-review|dsh-capability-menu)(?:\/|$)/u.test(path)
 }
 
