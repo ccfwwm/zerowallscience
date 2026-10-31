@@ -1,10 +1,18 @@
 import { targetPackageRoot } from '../build/paths.mjs'
 import { createHash } from 'node:crypto'
-import { readFile, stat, writeFile } from 'node:fs/promises'
+import { readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)))
+
+export async function removeObsoleteDevelopmentMetadata(directory) {
+  // Remove only the retired generated alias; installers and stable feeds keep
+  // their original bytes. The following manifest step inventories the result.
+  await unlink(resolve(directory, 'releases-zerowallsciencedev-latest.json')).catch(error => {
+    if (error.code !== 'ENOENT') throw error
+  })
+}
 
 export async function createWindowsReleaseMetadata(options) {
   const installer = resolve(options.installer)
@@ -59,6 +67,7 @@ async function main() {
     ? nextFeed.replace(/^releaseNotes:[\s\S]*$/mu, `releaseNotes: |-\n${releaseNotes}\n`)
     : `${nextFeed.replace(/\s*$/u, '')}\nreleaseNotes: |-\n${releaseNotes}\n`
   await writeFile(feedPath, nextFeed, 'utf8')
+  await removeObsoleteDevelopmentMetadata(targetPackageRoot)
   for (const output of outputs) console.log(`Generated ${output}`)
 }
 
