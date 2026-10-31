@@ -1,20 +1,21 @@
 ---
 name: zerowall-faerskit
-description: 通过远程 RMCP faerskit 分析 FAERS 药物不良事件报告，执行比例失衡信号筛查、人群描述、联合用药及多药对比，跟踪异步任务并核验结果。适用于 FAERS 药物警戒研究。
-allowed-tools: read
+description: 对 FAERS 药物不良事件报告执行远程信号筛查，并在下载后完成跨分析比较、校验、图表和文档交付。
+allowed-tools: read python
 ---
 
-# FAERS 药物警戒分析
+# FAERS 分析与本地交付
 
-加载 `zerowall-rmcp`，使用同一物理连接 `rmcp` 和 Host `research_workflow`，工作流 ID 为 `r.faerskit`。连接未知时先发现 `mcp_connect`。按实时 describe 的 schema 执行；连接失败时报告实际服务错误，不静默改用本地 R 或其他数据源。FAERS 输入是去标识报告的汇总统计分析，用于群体信号筛查，不是个体诊断或治疗建议。
+使用 Host `research_workflow`，工作流 ID 为 `r.faerskit`，并按实时 `describe` 的 schema 执行。无需预先调用 `mcp_connect`：Host 会在首次远端操作时按需连接并刷新 RMCP 工具；只在操作需要远端项目时自动创建或绑定项目，遇到明确的项目不存在错误会修复绑定并重试一次。不要直接调用原始 `mcp__rmcp__*` 工具，不要要求用户创建项目、提供项目 ID 或处理连接状态。若自动连接或修复后仍失败，再报告实际服务错误，不静默切换数据源。FAERS 是去标识自发报告的群体信号筛查，不用于个体诊断或治疗建议。
 
-## 检查与提交
+远程作业和文件由 Host 自动绑定到当前对话的 R 项目；不要让用户查找或填写项目 ID。
 
-远程项目绑定由 Host 在 RMCP 调用时自动处理。每个对话拥有独立项目，只在同一对话内复用；不同对话不共享研究项目。调用时省略 `project_id`，不得要求用户查找、填写或确认 ID，也不要把“已有ID”等占位文字作为 ID 发送。Host 会自动把任务、结果和文件操作绑定到该对话的项目。
+## 分析与敏感性作业
 
-1. 可用 `action=query` 查询 `r.faerskit.status`，查看服务端实际表结构、必需列和数据库覆盖期；它不返回病例级明细或连接凭据。
-2. 当数据库名称候选未知或需核对覆盖时，用 `action=query` 调用只读 `r.faerskit.lookup`，检索实际药名/PT、角色汇总计数和匹配报告数。精确匹配优先；无精确项时唯一候选自动采用，多候选或零命中作为预检提示。读取 `r.faerskit.analyze` 的实时 schema 并按用户明确的 规范工作流、角色、计数口径和筛选条件构造参数。
-3. 收到用户明确的运行/继续请求后，直接调用 `action=run` 提交；该请求就是本次任务授权，不要再次询问确认，也不要要求用户另交数据库审计、覆盖证明或研究记录。按工具 schema 设置 `confirm=true`，业务参数放在 `parameters.arguments`，精确操作放在 `parameters.operation`，同一提交重试复用 `parameters.request_id`。服务端自动预检并异步执行。数据库连接、权限、必需表列或参数错误仍应如实报告。
+1. 用 `r.faerskit.status` 检查 ClickHouse 连接、表结构和报告期覆盖。药物或 PT 不确定时，用只读 `r.faerskit.lookup` 检查真实名称和汇总匹配数；优先精确匹配，不擅自替换用户输入。
+2. 阅读 `r.faerskit.analyze` 的实时输入 schema，按问题选择规范工作流、队列、计数单位和筛选条件。提交前读取预检中的名称解析、候选数、角色计数、期覆盖和警告。零匹配、低计数或覆盖不足要如实保留，不把警告改写成肯定结果。
+3. 收到用户明确的运行请求后，用 `action=run` 提交，每个分析提供稳定且唯一的 `request_id`，并按 schema 设置 `confirm=true`。在药物和目标 PT 均明确的情况下，优先让主分析和互补敏感性分析围绕同一问题设计；例如在支持的工作流中单独改变 `PS`/`PS+SS`、`case`/`pair` 或报告期。每个敏感性作业只改变一个主要维度，避免机械运行全部工作流，也不推断用户未提供的比较药。
+4. 中断后先用已有本地 `run_id` 查询 `research_workflow action=status`，再用已有远端 `job_id` 查询 `r.get.job`、日志和 Manifest。作业仍在运行时继续等待；不要因断线或回复中断重复提交。只有用户调整分析条件或原作业确实失败并修正了参数，才用新 `request_id` 重算。
 
 ```json
 {
@@ -29,36 +30,57 @@ allowed-tools: read
       "drugEffect": "PS",
       "year": "2026Q1",
       "unit": "pair",
-      "path": "faerskit/citalopram",
+      "path": "faerskit/citalopram-primary",
       "confirm": true
     },
-    "request_id": "faers-citalopram-torsade-2026q1-1"
+    "request_id": "faers-citalopram-torsade-2026q1-primary"
   }
 }
 ```
 
-`year` 支持季度字符串，例如 `2026Q1`，服务端会转换为 FAERS `getdatayear` 编码并从所选数据库查询实际覆盖范围；旧格式整数编码仍可用。覆盖不完整、零匹配或多候选是预检警告，不改变用户条件，也不阻止提交。保留用户原始的 `case`/`pair` 计数单位及 `PS`/`SS`/`C`/`I` 角色，不要静默替换。
+`year` 可用 `YYYYQn`，例如 `2026Q1`；也可用服务端支持的 FAERS `getdatayear` 编码。保留用户指定的 `case`/`pair` 和 `PS`/`SS`/`C`/`I`。预检警告不会授权更改筛选条件。
 
-## 任务和交付
+## 下载、比较与报告
 
-返回的本地 `run_id` 用 `research_workflow action=status` 查询。远端 `job_id` 用于 `r.get.job`、`r.get.job.log`、`r.get.job.manifest` 等共享 R 作业操作，不要混用两种 ID。Host 会持久化异步生命周期，并在成功后收集 Manifest。重连先查已有 run，避免重新提交。
+1. 对所有准备纳入比较的成功分析作业，使用 Host `r_files action=download_job_manifest` 完整下载到工作区默认目录 `downloads/faerskit/<job_id>/`。确认 `result.local_delivery.status=complete` 且已校验文件数等于 Manifest 文件数。遇到 `partial` 时，对原 job 和同一本地目录重试续传；不要重跑分析。
+2. 将这些**分析作业**的远端 `job_id` 提交给 `r.faerskit.synthesize`，同一远端 R 项目内可选 1 至 20 个。传 `confirm=true`。一个来源也要合成，以便生成统一的质量核查和报告；不能把 report、plot 或 synthesis 作业 ID 当作来源。
+3. 合成作业从成功分析的受保护 RDS 快照读取统计，不重新查 ClickHouse。它会逐对识别 workflow、分析参数、`case`/`pair`、角色、报告期、人群筛选的差异；只对预先声明且口径兼容的配对做信号一致性比较。不同计数单位、不同核心队列或多个同时变化维度标记为不可直接比较，不合并、不做平均。根据实际输入给出方法信号一致性、低计数和零命中检查、可用的角色/人群/时间敏感性、队列流程图及 ROR/PRR 对照；缺少数据的维度不补造。
+4. 等待 synthesis 作业完成并完整下载它的 Manifest 到 `downloads/faerskit/<synthesis_job_id>/`。同样核对完整性；不把远端临时报告当最终交付。
+5. 阅读 `synthesis.json`、`sources.csv`、`compatibility.csv`、`signal_agreement.csv`、`methods.csv`、`cross_analysis.csv`、`data_quality.csv` 和图表 CSV，先对照检查来源、分母、兼容状态、缺失/零命中与稀疏计数，再撰写中文 `interpretation.json`。说明研究问题、队列和计数口径、主要跨分析结果、敏感性方向、限制与科学审查状态；每条发现都必须带可在实际 CSV 中定位的行条件、列名和实际值。不得只复述远端报告文字，也不得补算不存在的指标。
 
-终态成功后 Host 自动按完整 Manifest 下载全部产物，默认保存到当前工作区 `downloads/faerskit/<job_id>/`，保留远端子目录。检查 `result.local_delivery`：只有 `status=complete` 且已验证文件数等于 Manifest 文件数才可报告全量交付完成；`partial` 时说明具体失败文件，用 Host `r_files action=download_job_manifest` 和同一 `job_id/local_path` 重试，复用已校验文件与下载进度，不重新分析。可按用户要求指定工作区内的相对目录。
+```json
+{
+  "format": "faerskit-narrative/1",
+  "research_question": "本次分析要回答的问题",
+  "executive_summary": "依据已核验聚合结果撰写的综合判断，并说明尚未独立科学审查",
+  "findings": [
+    {
+      "title": "来源记录概况",
+      "text": "仅陈述所引用行和列支持的结果，不把信号解释为发生率或因果作用。",
+      "evidence": [
+        {
+          "table": "sources",
+          "where": {"source_job_id": "实际 job ID"},
+          "column": "signal_rows",
+          "value": "实际单元格值"
+        }
+      ]
+    }
+  ],
+  "limitations": ["仅写入真实适用的限制、缺失或不可比情形"]
+}
+```
 
-下载使用 1 MiB 分块、流式写盘及大小/SHA-256 校验，没有结果文件总数、总量或单文件产品上限。不要把 Base64 或完整文件内容放入对话。交付应包含 HTML、`analysis_summary.md`、Excel、全部适用 PNG/SVG、图表 CSV 和统计产物；从本地打开报告并核对相对资源链接。Manifest 路径相对作业结果目录，交给传输工具时复用其项目文件引用。分析失败或超时先读日志；只有修正分析参数后才用新 request_id 重算。取消按实时工具合同执行。
+6. 使用工作区 `python` 工具运行下载包内的 `faerskit_postprocess.py`，并传入该 JSON，例如 `--narrative-json downloads/faerskit/<synthesis_job_id>/interpretation.json`，同时传 `--bundle-dir downloads/faerskit/<synthesis_job_id>` 和 `--download-root downloads/faerskit`。脚本会重验合成包与每个源作业的 SHA-256 Manifest、RDS 哈希、参数与预检 JSON、比较表计数、Excel/CSV 值、报告链接和 PNG/SVG/图表 CSV，再把逐条证据核验结果、中文解释及来源队列/配对摘要放在报告前部，生成 DOCX、PDF、本地校验报告和最终交付 Manifest。DOCX/PDF 依赖本机 Pandoc、LibreOffice；运行时缺失或失败必须报告，不能标为已交付。
+7. 只从 `deliverables/` 汇总交付。检查 `local_validation.json` 的全部检查状态和 `deliverables-manifest.json`；任一失败时先修复或重试下载/本地处理，不要把不完整产物说成最终报告。交付 Markdown、HTML、Excel、DOCX、PDF、PNG/SVG/图表 CSV、逐项校验和来源 job/哈希清单。报告正文采用带行证据的中文解释和限量摘要，完整分析表保留在 Excel/CSV。来源 RDS 和原始下载包留在各自作业目录，不复制到交付包、不上传回远端。
+
+若本地 Python、Pandoc 或 LibreOffice 不可用，保留已下载结果并明确报告未完成的校验或格式；不得退化成只下载后放置文件。不得在对话中展开病例级数据、原始记录、Base64 或凭据。
 
 ## 分析边界
 
-- 远程接口当前开放 14 个 规范工作流 入口，后端为 ClickHouse。`faers_signal` / `faers_describe` 等 DuckDB 专用函数不是该接口的分析动作；`action=describe` 是查看接口定义。
-- 结果目录包含 `faerskit_preflight.json`，记录实际药名/PT 解析、报告期覆盖、角色与匹配计数；连同日志、CSV、summary、Manifest 和 SHA-256 一并核对。
-- 药名匹配、PS/SS/C/I 角色、pair/case 计数口径及人群筛选会改变分析对象和分母。保留所选 规范工作流、参数、数据版本/覆盖范围及限制；未知值明确记录。
-- 去标识自发报告的比例失衡结果是群体层面的研究线索，不能直接解释为发生率、相对风险或因果结论，也不用于个体诊断或治疗建议。保留混杂、报告偏倚、药名与重复报告处理范围等限制。
-- 不把数据库密码、连接凭据写入提示词、参数或结果文件；连接由服务端管理。数据库导入、安装和切换服务不属于普通分析调用。
+- `r.faerskit` 只开放 ClickHouse 上的 14 个规范工作流。`faers_signal`/`faers_describe` 等 DuckDB 专用函数不能直接当作远端分析动作；`action=describe` 用于查询当前接口定义。
+- 原始预检、报告参数、覆盖、队列分母、RDS 和所有产物哈希应能追溯到来源 job。校验通过只证明文件与结构一致，不代表临床或科学结论已经验证。
+- 比例失衡受报告偏倚、混杂、缺失、重复报告处理、暴露角色与多重比较影响；信号不是发生率、相对风险或因果证据。
+- 不把数据库凭据写入参数、提示词、脚本输出或报告。数据库导入、安装和切换服务不属于普通分析流程。
 
-按研究目的读取[分析场景](references/scenarios.md)和[数据约定](references/data-formats.md)。结构化调用示例见 [examples.json](references/examples.json)；完整输入和生命周期见[生成操作目录](references/operations.md)，该目录由实际服务端注册生成，实时 describe 优先。
-
-## 查询、图表与报告
-
-`r.faerskit.query` 通过 action=query 返回按角色、人群、PT、期间筛选的聚合分布，默认100、最多1000行，禁止任意SQL。`analyze` 默认交付 HTML、Excel、适用图表 PNG/SVG、图表CSV、预检和统计快照。`plot` 与 `report` 用 action=run 和 source_job_id 从成功分析重绘/生成独立任务，不重新查库、不改变原统计。明确PS+SS对比时以 role_comparisons=[["PS","SS"]] 启用独立敏感性分析，主PS参数保留。
-
-所有14个旧名已删除，无转接别名；旧名错误提供新名映射，需使用明确规范名称重新提交。任务在当前对话跟踪，图表与HTML由现有viewer展示，不引入工作台。报告未核验状态、缺字典、缺季或零结果只作说明，不要求用户先交审计。
+按问题读取[分析场景](references/scenarios.md)和[数据约定](references/data-formats.md)。结构化调用示例见 [examples.json](references/examples.json)；完整输入与作业生命周期见[生成操作目录](references/operations.md)，实时 `describe` 优先。

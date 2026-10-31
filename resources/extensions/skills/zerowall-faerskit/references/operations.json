@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
   "catalog_version": "2026-10-29.1",
-  "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+  "content_sha256": "501453b19b1009a7ab16d5814320d50d2c35018ff1bd3a8d58aaf2f8515385d1",
   "id": "r.faerskit",
   "skill": "zerowall-faerskit",
   "groups": [
@@ -1138,6 +1138,75 @@
         "required": [
           "project_id",
           "source_job_id",
+          "confirm"
+        ],
+        "additionalProperties": false,
+        "$schema": "http://json-schema.org/draft-07/schema#"
+      },
+      "effects": "execute",
+      "query_allowed": false,
+      "execution": "async_or_cached",
+      "confirmation_fields": [
+        "confirm"
+      ],
+      "requires_confirmation": true,
+      "lifecycle": {
+        "id_fields": [
+          "job_id",
+          "id"
+        ],
+        "argument": "job_id",
+        "status": "r.get.job",
+        "cancel": "r.cancel.job",
+        "manifest": "r.get.job.manifest",
+        "log": "r.get.job.log"
+      },
+      "availability": "requires_runtime_check",
+      "verification": "registered",
+      "output": "Submission with remote identifier; status and manifest are separate operations."
+    },
+    {
+      "id": "r.faerskit.synthesize",
+      "public_tool": "r_faerskit",
+      "category": "r_faerskit",
+      "summary": "Compare one to twenty successful FAERS analysis snapshots from the same project. The asynchronous job validates source type and status, reads protected RDS snapshots without re-querying ClickHouse, marks incompatible analyses, and creates aggregate comparison tables and figures. Requires confirm=true.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]{1,128}$",
+            "description": "ZeroWall project id"
+          },
+          "source_job_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "minItems": 1,
+            "maxItems": 20
+          },
+          "path": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Safe relative output directory"
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 14400000,
+            "default": 3600000
+          },
+          "confirm": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "project_id",
+          "source_job_ids",
           "confirm"
         ],
         "additionalProperties": false,

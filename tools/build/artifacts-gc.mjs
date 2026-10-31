@@ -8,6 +8,7 @@ const apply = process.argv.includes('--apply')
 const requestedDryRun = process.argv.includes('--dry-run')
 const pruneIncomplete = process.argv.includes('--prune-incomplete')
 const pruneUnpacked = process.argv.includes('--prune-unpacked')
+const deferObjectSweep = process.argv.includes('--defer-object-sweep')
 if (apply && requestedDryRun) throw new Error('Choose either --dry-run or --apply.')
 const dryRun = requestedDryRun || !apply
 const policy = JSON.parse(await readFile(join(root, 'config/layout/cleanup-policy.json'), 'utf8'))
@@ -17,6 +18,7 @@ policy.version = contract.version
 const planArg = process.argv.indexOf('--plan')
 const outputArg = process.argv.indexOf('--output')
 const plan = planArg >= 0 ? JSON.parse(await readFile(resolve(process.argv[planArg + 1]), 'utf8')) : await createCleanupPlan({ root, policy, pruneIncomplete, pruneUnpacked,
+  deferObjectSweep,
   onCandidate: item => console.error(`Checking ${item.reason}: ${item.path}`),
 })
 for (const candidate of plan.candidates) if (resolve(candidate.repositoryRoot ?? '') !== root) throw new Error('Cleanup plan belongs to a different repository')

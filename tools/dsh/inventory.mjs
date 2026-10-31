@@ -67,6 +67,7 @@ for (const id of zeroWallOrder) {
   const expectedName = `@zerowallscience/plugin-${id}`
   assert(manifest.name === expectedName, `${manifestPath} must declare ${expectedName}`)
   assert(packageManifest.name === expectedName, `plugins/${id}/package.json must declare ${expectedName}`)
+  assert(manifest.version === packageManifest.version, `${manifestPath} version must match plugins/${id}/package.json`)
   assert(manifest.dsh?.min === upstream.version && manifest.dsh?.max === upstream.version, `${expectedName} must target DSH ${upstream.version}`)
   zeroWallPlugins.push({
     id,

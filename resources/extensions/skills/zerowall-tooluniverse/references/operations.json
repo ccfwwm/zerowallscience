@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
   "catalog_version": "2026-10-29.1",
-  "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+  "content_sha256": "501453b19b1009a7ab16d5814320d50d2c35018ff1bd3a8d58aaf2f8515385d1",
   "id": "tooluniverse",
   "skill": "zerowall-tooluniverse",
   "groups": [

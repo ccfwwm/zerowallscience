@@ -1,7 +1,7 @@
 {
   "protocol_version": 2,
   "catalog_version": "2026-10-29.1",
-  "content_sha256": "fc4bd6ab9bc71e17e4ef06d2325143ce4fc4ce949572b1513de13f438c6229d5",
+  "content_sha256": "501453b19b1009a7ab16d5814320d50d2c35018ff1bd3a8d58aaf2f8515385d1",
   "id": "r.compute",
   "skill": "zerowall-rplatform",
   "groups": [
@@ -96,44 +96,6 @@
       },
       "effects": "read",
       "query_allowed": true,
-      "execution": "sync",
-      "confirmation_fields": [],
-      "requires_confirmation": false,
-      "lifecycle": null,
-      "availability": "requires_runtime_check",
-      "verification": "registered",
-      "output": "Immediate structured result; no background task is implied."
-    },
-    {
-      "id": "r.register.project",
-      "public_tool": "r_project",
-      "category": "r_project",
-      "summary": "Create or verify an isolated workspace for a ZeroWall project. Returns project root and persistent working directory.",
-      "input_schema": {
-        "type": "object",
-        "properties": {
-          "project_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9._-]+$",
-            "description": "ZeroWall project id"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          }
-        },
-        "required": [
-          "project_id",
-          "name"
-        ],
-        "additionalProperties": false,
-        "$schema": "http://json-schema.org/draft-07/schema#"
-      },
-      "effects": "write",
-      "query_allowed": false,
       "execution": "sync",
       "confirmation_fields": [],
       "requires_confirmation": false,

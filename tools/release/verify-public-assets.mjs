@@ -10,7 +10,7 @@ const provider = process.argv[2]
 if (!['qiniu', 'github'].includes(provider)) throw new Error('Usage: node tools/release/verify-public-assets.mjs qiniu|github')
 const installer = `zerowall-science-${version}-win-x64.exe`
 const versionMetadata = `zerowall-science-${version}-latest.json`
-const files = [installer, `${installer}.blockmap`, versionMetadata, 'latest.yml', 'releases-latest.json', 'releases-zerowallsciencedev-latest.json']
+const files = [installer, `${installer}.blockmap`, versionMetadata, 'latest.yml', 'releases-latest.json']
 const metadata = JSON.parse(await readFile(resolve(targetPackageRoot, versionMetadata), 'utf8'))
 const base = new URL(metadata.assetUrl).origin
 const report = []
@@ -21,8 +21,7 @@ for (const name of files) {
   const expected = { bytes: (await stat(local)).size, sha256: localHash.digest('hex') }
   const key = name === 'latest.yml' ? 'stable/latest.yml'
     : name === 'releases-latest.json' ? 'stable/releases/latest.json'
-      : name === 'releases-zerowallsciencedev-latest.json' ? 'stable/releases-zerowallsciencedev/latest.json'
-        : `stable/releases/${version}/${name}`
+      : `stable/releases/${version}/${name}`
   const url = provider === 'qiniu' ? `${base}/${key}` : `https://github.com/ccfwwm/zerowallscience/releases/download/v${version}/${name}`
   const response = await fetch(url, { signal: AbortSignal.timeout(900_000), cache: 'no-store' })
   if (!response.ok || !response.body) throw new Error(`${name}: HTTP ${response.status}`)

@@ -14,10 +14,13 @@ import { mergePublishedPlugins, mergePublishedSkills, selectedPluginArguments, s
 import { applyAuditedPluginCompatibility } from './plugin-compatibility.mjs'
 import { prepareFallbackWheel } from './python-wheel-artifacts.mjs'
 import { RETIRED_PLUGIN_IDS } from '../commands/retired-plugins.mjs'
-import { readRetiredPluginIds, readRetiredResourceIds } from '../plugins/snapshot.mjs'
+import { readRetiredPluginIds, readRetiredResourceIds, readVerifiedPluginFeed } from '../plugins/snapshot.mjs'
 import { reuseResourceArchive } from './resource-archive-cache.mjs'
+import { readStableConfig, stableEnvironment, verifyStableSigner } from '../build/stable-config.mjs'
+import { writeStableResourceLock } from '../build/stable-resource-lock.mjs'
 
-const publicationArgs = process.argv.slice(2)
+const localDevelopment = process.argv.includes('--local-development')
+const publicationArgs = process.argv.slice(2).filter(argument => argument !== '--local-development')
 const { plugins: selectedPlugins, remaining } = selectedPluginArguments(publicationArgs)
 const { skills: selectedSkills, remaining: skillRemaining } = selectedSkillArguments(remaining)
 const targeted = selectedPlugins.length > 0 || selectedSkills.length > 0
@@ -25,13 +28,19 @@ const { kinds } = resourcePublicationScope(skillRemaining)
 const destination = join(releaseRoot, 'catalogs')
 const catalogGeneration = `${contract.buildId}-${Date.now()}`
 await mkdir(destination, { recursive: true })
-const configured = process.env.ZEROWALL_RESOURCE_PRIVATE_KEY_FILE
+const configured = !localDevelopment
 let privateKey, keys, keyId
-if (configured) {
-  privateKey = await readFile(configured, 'utf8')
-  keyId = process.env.ZEROWALL_RESOURCE_KEY_ID ?? 'stable-3'
+let signingEnv
+if (!localDevelopment) {
+  const stable = await readStableConfig(root)
+  signingEnv = stableEnvironment(root, stable)
+  await verifyStableSigner(root, stable)
+  privateKey = await readFile(signingEnv.ZEROWALL_RESOURCE_PRIVATE_KEY_FILE, 'utf8')
+  keyId = signingEnv.ZEROWALL_RESOURCE_KEY_ID
   keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
 } else {
+  if (process.env.ZEROWALL_RESOURCE_BASE_URL) throw new Error('Local-development catalogs must not target a public resource URL.')
+  if (resolve(contract.artifacts) === resolve(root, 'artifacts')) throw new Error('Local-development catalogs require an isolated ZEROWALL_ARTIFACT_ROOT.')
   // A local validation key is never shipped as a release trust root.
   const directory = join(contract.cache, 'catalogs')
   await mkdir(directory, { recursive: true })
@@ -46,8 +55,8 @@ if (configured) {
   }
   keyId = 'local-development'
 }
-const baseUrl = process.env.ZEROWALL_RESOURCE_BASE_URL?.replace(/\/$/, '')
-const localOnly = !baseUrl
+const baseUrl = localDevelopment ? '' : signingEnv.ZEROWALL_RESOURCE_BASE_URL.replace(/\/$/, '')
+const localOnly = localDevelopment
 if (targeted && (kinds.length !== 1 || !['plugin', 'skill'].includes(kinds[0]) || localOnly || !configured)) throw new Error('Targeted catalogs require --kind plugin --plugin <package-name> or --kind skill --skill <skill-name>, a public base URL and a release signing key')
 const retiredCatalogPluginIds = new Set([...RETIRED_PLUGIN_IDS, ...await readRetiredPluginIds()])
 const records = kinds.includes('plugin') ? JSON.parse(await readFile(join(releaseRoot, 'plugin-packages.json'), 'utf8')).filter(record => !retiredCatalogPluginIds.has(record.id) && (!targeted || selectedPlugins.includes(record.id))) : []
@@ -186,4 +195,9 @@ for (const [kind, resources] of [['plugin', plugins], ['skill', skills], ['mcp',
 }
 await writeFile(join(destination, 'verification-keys.json'), JSON.stringify(keys, null, 2))
 if (kinds.some(kind => ['skill', 'mcp'].includes(kind))) await writeFile(join(releaseRoot, 'immutable-resource-receipt.json'), JSON.stringify(immutableResources, null, 2))
+if (kinds.includes('skill') && !localOnly) {
+  const currentPlugins = await readVerifiedPluginFeed(join(contract.artifacts, 'release/plugins'))
+  await writeStableResourceLock({ root, records: currentPlugins, section: 'skills', selected: selectedSkills.length ? selectedSkills : undefined,
+    skillRecords: skills, artifactsRoot: contract.artifacts })
+}
 console.log(`Verified catalogs (${kinds.join(', ')}): ${plugins.length} packages, ${skills.length} Skills; localOnly=${localOnly}`)

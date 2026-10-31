@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 import { offlineFiles } from '../commands/offline-profile.mjs'
 import { fileDigest } from '../commands/resource-catalog.mjs'
 import { basename, dirname, join, sep } from 'node:path'
-import { root, stageRoot, releaseRoot, cacheRoot, pluginStoreRoot, pluginSnapshotStoreRoot } from '../build/paths.mjs'
+import { root, stageRoot, releaseRoot, cacheRoot, contract, pluginStoreRoot, pluginSnapshotStoreRoot } from '../build/paths.mjs'
 import { preparePublishPackage } from './publish-package.mjs'
 import { commitImmutablePackage } from './immutable-package.mjs'
 import { historicalPackage } from './package-history.mjs'
@@ -197,3 +197,9 @@ if (selectedPlugin) {
 await writeFile(sharedRecordsPath, JSON.stringify(completeRecords, null, 2) + '\n')
 const snapshot = await writeSnapshot(completeRecords)
 console.log(`PLUGIN SNAPSHOT ${snapshot.snapshotId}; ${completeRecords.length} immutable component artifacts`)
+const { writeStableResourceLock } = await import('../build/stable-resource-lock.mjs')
+const selectedPackage = selectedPlugin
+  ? JSON.parse(await readFile(join(selectedSources[0], 'package.json'), 'utf8')).name
+  : undefined
+const stableLock = await writeStableResourceLock({ root, records: completeRecords, section: 'plugins', selected: selectedPackage, artifactsRoot: contract.artifacts })
+console.log(`STABLE RESOURCE LOCK ${stableLock.plugins.length} packages and ${stableLock.skills.length} Skills`)

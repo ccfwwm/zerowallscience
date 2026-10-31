@@ -1,17 +1,20 @@
 import { execFileSync } from 'node:child_process'
-import { readFile, lstat, access } from 'node:fs/promises'
+import { readFile, lstat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { acquireBuildLock } from './build-lock.mjs'
 import { verifyStageCompletion } from './clone-current-stage.mjs'
 import { assertFeedNotRegressed, readVerifiedPluginFeed, verifyStagePluginFeed } from '../plugins/snapshot.mjs'
-import { readStableConfig, stableEnvironment } from './stable-config.mjs'
+import { readStableConfig, stableEnvironment, verifyStableSigner } from './stable-config.mjs'
+import { verifyStableResourceLock } from './stable-resource-lock.mjs'
 import { syncDesktopRelease } from './sync-desktop-release.mjs'
 import paths from './paths.cjs'
 const root = resolve(import.meta.dirname, '../..')
 if (!process.env.npm_execpath) throw new Error('Run pnpm package:stable:win')
 const stable = await readStableConfig(root)
+const stableEnv = stableEnvironment(root, stable)
+await verifyStableSigner(root, stable)
 await syncDesktopRelease(root)
-Object.assign(process.env, stableEnvironment(root, stable))
+Object.assign(process.env, stableEnv)
 const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
 if (!/^\d+\.\d+\.\d+$/u.test(version)) throw new Error('Stable packaging requires a stable desktop version')
 // Reuse verified component archives, but always integrate the latest plugin set.
@@ -19,20 +22,19 @@ const applicationVersion = JSON.parse(await readFile(join(root, 'package.json'),
 const artifactRoot = resolve(process.env.ZEROWALL_ARTIFACT_ROOT ?? join(root, 'artifacts'))
 const installer = resolve(process.env.ZEROWALL_PACKAGE_OUTPUT || join(artifactRoot, 'packages', applicationVersion, stable.target), `zerowall-science-${applicationVersion}-win-x64.exe`)
 if (await lstat(installer).catch(error => error.code === 'ENOENT' ? undefined : Promise.reject(error))) {
-  if (process.env.ZEROWALL_ALLOW_LOCAL_PACKAGE_OVERWRITE !== '1') {
-    throw new Error('This stable installer already exists. Verify/reuse it, or set a new version in config/build/desktop-release.json. Existing stable bytes are never overwritten.')
-  }
-  // Local acceptance may explicitly replace the requested version. The
-  // default stable path remains immutable so publishing cannot overwrite it
-  // accidentally.
-  console.warn(`Replacing existing local installer: ${installer}`)
+  throw new Error('This stable installer already exists. Verify/reuse it, or set a new version in config/build/desktop-release.json. Existing stable bytes are never overwritten.')
 }
-await access(process.env.ZEROWALL_RESOURCE_PRIVATE_KEY_FILE)
 const stageRoot = join(artifactRoot, 'stage', applicationVersion)
 const pluginStore = join(artifactRoot, 'release/plugins')
 const pin = JSON.parse(await readFile(join(root, 'config/deepseek-harness/upstream.json'), 'utf8'))
 const { verifyRuntimeFreshness } = await import('../packaging/verify-runtime-freshness.mjs')
 const initialFeed = await readVerifiedPluginFeed(pluginStore)
+const resourceLock = await verifyStableResourceLock({ root, records: initialFeed, artifactsRoot: artifactRoot })
+const { verifyStableCatalogFreshness } = await import('../packaging/verify-bundled-resources.mjs')
+const publishedCounts = await verifyStableCatalogFreshness({ plugins: resourceLock.plugins, skills: resourceLock.skills,
+  keys: JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8')),
+  cache: join(artifactRoot, 'cache'), publicBase: stable.resourceBaseUrl })
+console.log(`Stable preflight verified ${resourceLock.plugins.length} packages and ${resourceLock.skills.length} Skills against ${publishedCounts.plugin} plugins and ${publishedCounts.skill} published Skills`)
 const pointer = await readFile(join(stageRoot, 'current.json'), 'utf8').then(JSON.parse, () => undefined)
 let reusableStage = false
 if (pointer?.applicationVersion === applicationVersion && /^[A-Za-z0-9._-]+$/u.test(pointer.buildId ?? '')) {
@@ -88,4 +90,4 @@ const env = {
 }
 execFileSync(process.execPath, [process.env.npm_execpath, '--filter', '@zerowallscience/desktop', 'run', 'package:stable:win'], { cwd: root, env, stdio: 'inherit' })
 } finally { await releaseLock() }
-if (stable.retention.afterPackage) execFileSync(process.execPath, [join(root, 'tools/build/artifacts-gc.mjs'), '--apply', '--prune-incomplete'], { cwd: root, env: process.env, stdio: 'inherit' })
+if (stable.retention.afterPackage) execFileSync(process.execPath, [join(root, 'tools/build/artifacts-gc.mjs'), '--apply', '--prune-incomplete', '--defer-object-sweep'], { cwd: root, env: process.env, stdio: 'inherit' })

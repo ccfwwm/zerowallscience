@@ -13,8 +13,11 @@
 
 - 作业结果写入 Manifest 所列的相对路径；常见布局为 `faerskit/<fun>/<timestamp>/`。
 - runner 写入 `summary.json`、`faerskit_preflight.json`、统一结果快照、HTML、Excel、适用统计表及 PNG/SVG/图表数据。具体产物与缺失原因见 Manifest 和 `artifacts.json`。
-- 重绘或重生成报告使用 `source_job_id`，产生独立新任务，从原结果快照读取统计值。
-- 使用共享 R 作业操作查询状态、日志和 Manifest，再通过 Host `r_files` 下载并核对大小与 SHA-256。
+- 跨作业汇总使用 `r.faerskit.synthesize` 和一至二十个已成功的分析 `job_id`，生成来源清单、兼容性矩阵、方法和信号一致性、低计数检查、跨来源比较表及图表。它从原结果快照读取统计值，不重查 ClickHouse。
+- 使用共享 R 作业操作查询状态、日志和 Manifest，再通过 Host `r_files` 下载并核对大小与 SHA-256。合成前完整下载纳入比较的来源作业，合成后完整下载合成作业。
+- `faerskit_postprocess.py` 位于合成作业目录，读取本地来源目录及合成包；验证 RDS 哈希、参数与预检 JSON、来源/汇总统计、CSV 与 Excel 数值、报告链接和图表文件，并核验 `faerskit-narrative/1` 中每条发现的 CSV 行条件、列和值。报告前部包含中文解释和来源/配对摘要；完整分析表保留在 Excel/CSV。生成本地校验 JSON、DOCX、PDF 和交付清单。运行前先写 `interpretation.json` 并通过 `--narrative-json` 传入；转换工具不可用时应明确报告未完成。
+- 正式交付目录为合成包中的 `deliverables/`，包括 Markdown、HTML、Excel、DOCX、PDF、图表 PNG/SVG/CSV、来源 job/RDS 哈希及逐项校验记录。源 RDS 和源作业文件不复制到该目录。
+- 单个来源也可以合成，用于质量检查与一致格式的交付；只有一个来源时不得声称做过跨作业比较。
 
 ## 解释限制
 

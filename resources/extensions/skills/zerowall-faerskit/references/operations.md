@@ -1131,3 +1131,69 @@ Generate report artifacts from an existing successful FAERS job without rerunnin
   }
 }
 ```
+
+## r.faerskit.synthesize
+
+Compare one to twenty successful FAERS analysis snapshots from the same project. The asynchronous job validates source type and status, reads protected RDS snapshots without re-querying ClickHouse, marks incompatible analyses, and creates aggregate comparison tables and figures. Requires confirm=true.
+
+- 工具族：r_faerskit；副作用：execute；query：false；执行：async_or_cached。
+- 确认字段：confirm。
+- 输出：Submission with remote identifier; status and manifest are separate operations.
+
+```json
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "project_id": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._-]{1,128}$",
+        "description": "ZeroWall project id"
+      },
+      "source_job_ids": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "minItems": 1,
+        "maxItems": 20
+      },
+      "path": {
+        "type": "string",
+        "maxLength": 500,
+        "description": "Safe relative output directory"
+      },
+      "timeout_ms": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 14400000,
+        "default": 3600000
+      },
+      "confirm": {
+        "type": "boolean",
+        "const": true
+      }
+    },
+    "required": [
+      "project_id",
+      "source_job_ids",
+      "confirm"
+    ],
+    "additionalProperties": false,
+    "$schema": "http://json-schema.org/draft-07/schema#"
+  },
+  "lifecycle": {
+    "id_fields": [
+      "job_id",
+      "id"
+    ],
+    "argument": "job_id",
+    "status": "r.get.job",
+    "cancel": "r.cancel.job",
+    "manifest": "r.get.job.manifest",
+    "log": "r.get.job.log"
+  }
+}
+```

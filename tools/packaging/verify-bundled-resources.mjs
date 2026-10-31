@@ -8,7 +8,7 @@ import { compareVersions, verifyCatalog, verifySignedDocument } from '../release
 import { publishedResources } from '../release/immutable-resource.mjs'
 import { readRetiredResourceIds } from '../plugins/snapshot.mjs'
 
-export function assertLatestResources(packaged, published, { requireAll = false } = {}) {
+export function assertLatestResources(packaged, published, { requireAll = false, verifyDigests = true } = {}) {
   const available = new Map(packaged.map(entry => [entry.id, entry]))
   for (const entry of published) {
     const actual = available.get(entry.id)
@@ -16,8 +16,22 @@ export function assertLatestResources(packaged, published, { requireAll = false 
     assert(actual, `Published resource is missing from the installer: ${entry.id}; synchronize sources first`)
     assert(compareVersions(actual.version, entry.version) >= 0,
       `Installer resource is older than the signed public catalog: ${entry.id}@${actual.version} < ${entry.version}; synchronize sources first`)
-    if (actual.version === entry.version) assert.equal(actual.sha256, entry.sha256, `Immutable resource bytes differ: ${entry.id}@${entry.version}`)
+    if (verifyDigests && actual.version === entry.version) assert.equal(actual.sha256, entry.sha256, `Immutable resource bytes differ: ${entry.id}@${entry.version}`)
   }
+}
+
+export async function verifyStableCatalogFreshness({ plugins, skills, keys, cache, publicBase }) {
+  if (!publicBase) throw new Error('Stable packaging requires the public stable resource catalog URL')
+  const counts = {}
+  for (const kind of ['plugin', 'skill']) {
+    const published = await publishedResources({ baseUrl: publicBase, kind, keys, cache: join(cache, 'published-resources', kind) })
+    assert(published.size > 0, `The public stable ${kind} catalog is unavailable`)
+    const retired = await readRetiredResourceIds(kind)
+    const entries = [...published.values()].map(value => value.entry).filter(entry => !retired.has(entry.id))
+    assertLatestResources(kind === 'plugin' ? plugins : skills, entries, { requireAll: kind === 'skill' })
+    counts[kind] = entries.length
+  }
+  return counts
 }
 
 async function archiveFiles(path) {

@@ -28,6 +28,12 @@ const scalar = (value: unknown): unknown => Array.isArray(value) && value.length
 const canonical = (v: unknown): unknown => Array.isArray(v) ? v.map(canonical) : v !== null && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, value]) => [k, canonical(value)])) : v
 const terminal = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
 const hostManagedProjectOperations = new Set(['r.register.project', 'r.ensure.project'])
+const isMissingRemoteProjectError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : (() => {
+    try { return JSON.stringify(error) } catch { return String(error) }
+  })()
+  return /\b404\b/u.test(message) && /project.{0,80}(?:not found|does not exist)/isu.test(message)
+}
 const managedProjectBindingContract = (workflowId: string, id: string): ObjectValue => ({
   workflow_id: workflowId,
   id,
@@ -152,6 +158,7 @@ export function normalizeWorkflowRun(args: { operation?: unknown; arguments?: un
 export class ResearchWorkflowService {
   private readonly pending = new Map<string, Promise<ObjectValue>>()
   private readonly projectBindings = new Map<string, Promise<string>>()
+  private readonly projectRepairs = new Map<string, Promise<string>>()
   constructor(private readonly store: ResearchStore, private readonly directory: string, private readonly mcp: Pick<ZeroWallMcpService, 'ensureConnected' | 'executeCompactCapability' | 'workflowRequest'>, private readonly local: () => LocalScienceWorkflow | undefined = () => undefined, private readonly collectFaersArtifacts?: FaersArtifactCollector) {}
   private localService(): LocalScienceWorkflow { const local=this.local();if(!local)throw new Error('Local Fiji workflow service is unavailable.');return local }
   private sessionId(exec:ToolRunContext):string {const id=exec.agent?.session.id ?? exec.agent?.session.header?.id;if(typeof id!=='string'||!id.trim())throw new Error('A stable conversation identity is required to isolate remote research.');return id.trim()}
@@ -198,7 +205,10 @@ export class ResearchWorkflowService {
     if (operation.id !== operationId) throw new Error('Invalid live operation contract')
     if (operation.query_allowed !== true) throw new Error(`READ_ONLY_REQUIRED: ${operationId} must use run`)
     const argumentsValue = await this.withProjectId(operation, normalizeJsonArguments(object(parameters.arguments)), exec)
-    return object(await this.mcp.workflowRequest('workflow_query', { workflow_id: id, operation: operationId, arguments: argumentsValue }, exec))
+    const request = { workflow_id: id, operation: operationId, arguments: argumentsValue }
+    return typeof argumentsValue.project_id === 'string'
+      ? object(await this.withProjectRecovery(request, exec, () => this.mcp.workflowRequest('workflow_query', request, exec), true))
+      : object(await this.mcp.workflowRequest('workflow_query', request, exec))
   }
   private module(id: string): Module { const module = modules.find(item => item.id === id); if (!module) throw new Error(`UNKNOWN_WORKFLOW: ${id}`); return module }
   private assertWorkflowId(id: string): void {
@@ -222,6 +232,36 @@ export class ResearchWorkflowService {
       this.projectBindings.set(bindingKey, binding)
     }
     try { return await binding } catch (error) { this.projectBindings.delete(bindingKey); throw error }
+  }
+
+  private async recreateProjectBinding(exec: ToolRunContext): Promise<string> {
+    const bindingKey = createHash('sha256').update('zerowall-rmcp-conversation:v1|' + this.sessionId(exec)).digest('hex')
+    let repair = this.projectRepairs.get(bindingKey)
+    if (!repair) {
+      this.projectBindings.delete(bindingKey)
+      repair = this.resolveProjectId(exec)
+      this.projectRepairs.set(bindingKey, repair)
+    }
+    try { return await repair } finally {
+      if (this.projectRepairs.get(bindingKey) === repair) this.projectRepairs.delete(bindingKey)
+    }
+  }
+
+  private async withProjectRecovery<T>(args: ObjectValue, exec: ToolRunContext, invoke: () => Promise<T>, nestedArguments = false): Promise<T> {
+    const projectArgs = nestedArguments ? object(args.arguments) : args
+    try {
+      return await invoke()
+    } catch (error) {
+      // The server rejects a missing project before accepting or mutating the
+      // requested operation. Recreate the conversation binding and retry once.
+      if (!isMissingRemoteProjectError(error) || typeof projectArgs.project_id !== 'string') throw error
+      projectArgs.project_id = await this.recreateProjectBinding(exec)
+      return invoke()
+    }
+  }
+
+  private callProjectScoped(id: string, args: ObjectValue, exec: ToolRunContext): Promise<ObjectValue> {
+    return this.withProjectRecovery(args, exec, () => this.call(id, args, exec))
   }
 
   private async withProjectId(operation: Operation, args: ObjectValue, exec: ToolRunContext): Promise<ObjectValue> {
@@ -421,7 +461,10 @@ export class ResearchWorkflowService {
       if (module.id === 'r.compute') await this.call('r.runtime.capabilities', {}, exec)
       state.status = 'running'
       await this.save(state)
-      state.result = await this.call(operation.id, args, exec)
+      state.result = typeof args.project_id === 'string'
+        ? await this.callProjectScoped(operation.id, args, exec)
+        : await this.call(operation.id, args, exec)
+      if (typeof args.project_id === 'string') state.remote_project = args.project_id
       state.submission = state.result
       this.track(state)
       if (!state.remote_project) {
@@ -464,12 +507,21 @@ export class ResearchWorkflowService {
     if (terminal.has(state.status ?? '') && !collectFaers) return
     if (!state.remote_id) return
     const args: ObjectValue = { ...(state.remote_project ? { project_id: state.remote_project } : {}), [state.remote_key!]: state.remote_id }
-    const result = await this.call(state.status_operation!, args, exec)
+    const result = typeof args.project_id === 'string'
+      ? await this.callProjectScoped(state.status_operation!, args, exec)
+      : await this.call(state.status_operation!, args, exec)
+    if (typeof args.project_id === 'string') state.remote_project = args.project_id
     state.result = result
     const job = object(scalar(result.job ?? result.run ?? result.download))
     const status = String(scalar(result.status ?? job.status) ?? 'running')
     const mapped = ['complete', 'completed', 'success', 'succeeded'].includes(status) ? 'succeeded' : ['failed', 'error'].includes(status) ? 'failed' : ['cancelled', 'canceled'].includes(status) ? 'cancelled' : status === 'timed_out' ? 'timed_out' : state.status === 'cancelling' ? 'cancelling' : 'running'
-    if (mapped === 'succeeded' && state.manifest_operation) state.result = { ...result, artifacts: await this.call(state.manifest_operation, args, exec) }
+    if (mapped === 'succeeded' && state.manifest_operation) {
+      const manifest = typeof args.project_id === 'string'
+        ? await this.callProjectScoped(state.manifest_operation, args, exec)
+        : await this.call(state.manifest_operation, args, exec)
+      if (typeof args.project_id === 'string') state.remote_project = args.project_id
+      state.result = { ...result, artifacts: manifest }
+    }
     const progress = Number(scalar(result.progress ?? job.progress) ?? 0.1)
     state.status = mapped
     state.progress = mapped === 'succeeded' ? 1 : Math.min(0.99, Math.max(0, Number.isFinite(progress) ? progress > 1 ? progress / 100 : progress : 0.1))
@@ -478,7 +530,16 @@ export class ResearchWorkflowService {
       try {
         state.delivery = await this.collectFaersArtifacts(state.remote_project, state.remote_id, exec)
       } catch (error) {
-        state.delivery = { status: 'partial', localRoot: `downloads/faerskit/${state.remote_id}`, errors: [{ path: '(manifest download)', error: error instanceof Error ? error.message : String(error) }] }
+        if (isMissingRemoteProjectError(error)) {
+          try {
+            state.remote_project = await this.recreateProjectBinding(exec)
+            state.delivery = await this.collectFaersArtifacts(state.remote_project, state.remote_id, exec)
+          } catch (retryError) {
+            state.delivery = { status: 'partial', localRoot: `downloads/faerskit/${state.remote_id}`, errors: [{ path: '(manifest download)', error: retryError instanceof Error ? retryError.message : String(retryError) }] }
+          }
+        } else {
+          state.delivery = { status: 'partial', localRoot: `downloads/faerskit/${state.remote_id}`, errors: [{ path: '(manifest download)', error: error instanceof Error ? error.message : String(error) }] }
+        }
       }
       state.result = { ...(state.result ?? {}), local_delivery: state.delivery }
     }
@@ -524,7 +585,13 @@ export class ResearchWorkflowService {
     const state = await this.load(workflowRunId, exec)
     if (terminal.has(state.status ?? '')) return this.view(state)
     if (!state.remote_id || !state.cancel_operation) throw new Error('No remote job id; inspect backend history before cancelling.')
-    await this.call(state.cancel_operation, { ...(state.remote_project ? { project_id: state.remote_project } : {}), [state.remote_key!]: state.remote_id, confirm: true }, exec)
+    const cancelArgs: ObjectValue = { ...(state.remote_project ? { project_id: state.remote_project } : {}), [state.remote_key!]: state.remote_id, confirm: true }
+    if (typeof cancelArgs.project_id === 'string') {
+      await this.callProjectScoped(state.cancel_operation, cancelArgs, exec)
+      state.remote_project = cancelArgs.project_id
+    } else {
+      await this.call(state.cancel_operation, cancelArgs, exec)
+    }
     state.status = 'cancelling'
     await this.save(state)
     await this.refresh(state, exec)

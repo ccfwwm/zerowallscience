@@ -31,6 +31,8 @@ for (const id of await readdir(join(root, 'plugins'))) {
   const entries = execFileSync('tar', ['-tf', archive], { encoding: 'utf8' }).split(/\r?\n/)
   const manifest = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/package.json'], { encoding: 'utf8' }))
   const descriptor = JSON.parse(execFileSync('tar', ['-xOf', archive, 'package/zerowall.plugin.json'], { encoding: 'utf8' }))
+  assert.equal(descriptor.name, manifest.name, `${source.name}: plugin descriptor identity differs from package.json`)
+  assert.equal(descriptor.version, manifest.version, `${source.name}: plugin descriptor version differs from package.json`)
   for (const entry of [manifest.main, descriptor.host, descriptor.client, descriptor.remote, 'dsh.bundle.patch.yml'].filter(Boolean)) {
     assert(entries.includes('package/' + entry.replace(/^\.\//, '')), `${source.name}: missing ${entry}`)
   }

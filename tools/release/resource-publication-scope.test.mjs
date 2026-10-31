@@ -26,7 +26,7 @@ test('plugin catalog refresh needs no stage and preserves other feeds and origin
     await writeFile(join(release, 'plugin-packages.json'), JSON.stringify([
       { id: '@zerowallscience/plugin-example', version: '1.2.3', path: archive, kind: 'plugin' },
     ]))
-    const child = spawnSync(process.execPath, [join(root, 'tools/release/generate-resource-catalogs.mjs'), '--kind', 'plugin'], {
+    const child = spawnSync(process.execPath, [join(root, 'tools/release/generate-resource-catalogs.mjs'), '--local-development', '--kind', 'plugin'], {
       cwd: root, encoding: 'utf8', env: {
         ...process.env, ZEROWALL_ARTIFACT_ROOT: artifacts, ZEROWALL_BUILD_ID: 'plugin-feed-test',
         ZEROWALL_RESOURCE_PRIVATE_KEY_FILE: '', ZEROWALL_RESOURCE_KEY_ID: '', ZEROWALL_RESOURCE_BASE_URL: '',
@@ -44,6 +44,31 @@ test('plugin catalog refresh needs no stage and preserves other feeds and origin
     assert.equal(await readFile(join(release, 'immutable-resource-receipt.json'), 'utf8'), 'existing immutable receipt')
     assert.equal(await readFile(join(release, 'latest.yml'), 'utf8'), 'existing desktop pointer')
     assert.equal(await stat(join(artifacts, 'stage')).catch(() => undefined), undefined)
+  } finally { await rm(artifacts, { recursive: true, force: true }) }
+})
+
+test('catalog generation defaults to the pinned stable signer', async () => {
+  const artifacts = await mkdtemp(join(tmpdir(), 'zws-stable-plugin-feed-'))
+  try {
+    const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version
+    const release = join(artifacts, 'release', version)
+    const catalogs = join(release, 'catalogs')
+    await mkdir(catalogs, { recursive: true })
+    const archive = join(release, 'example.tgz')
+    await writeFile(archive, 'stable fixture archive')
+    await writeFile(join(release, 'plugin-packages.json'), JSON.stringify([
+      { id: '@fixture/plugin', version: '1.0.0', path: archive, kind: 'plugin' },
+    ]))
+    const env = { ...process.env, ZEROWALL_ARTIFACT_ROOT: artifacts, ZEROWALL_BUILD_ID: 'stable-default-test' }
+    for (const name of ['ZEROWALL_CHANNEL', 'ZEROWALL_RESOURCE_PRIVATE_KEY_FILE', 'ZEROWALL_RESOURCE_KEY_ID', 'ZEROWALL_RESOURCE_BASE_URL', 'ZEROWALL_RELEASE_BASE_URL', 'ZEROWALL_TARGET', 'ZEROWALL_BUNDLE_PYTHON']) delete env[name]
+    const child = spawnSync(process.execPath, [join(root, 'tools/release/generate-resource-catalogs.mjs'), '--kind', 'plugin'], {
+      cwd: root, encoding: 'utf8', env,
+    })
+    assert.equal(child.status, 0, child.stderr + child.stdout)
+    const keys = JSON.parse(await readFile(join(root, 'config/catalogs/trusted-keys.json'), 'utf8'))
+    const catalog = verifyCatalog(JSON.parse(await readFile(join(catalogs, 'plugin-catalog.json'), 'utf8')), keys)
+    assert.equal(catalog.localOnly, false)
+    assert.equal(catalog.signature.keyId, 'stable-4')
   } finally { await rm(artifacts, { recursive: true, force: true }) }
 })
 

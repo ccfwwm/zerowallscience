@@ -161,7 +161,7 @@ async function collectJsonFiles(path, files = [], depth = 0) {
   return files
 }
 
-export async function createCleanupPlan({ root, policy, now = Date.now(), pruneIncomplete = false, pruneUnpacked = false, onCandidate = () => {} }) {
+export async function createCleanupPlan({ root, policy, now = Date.now(), pruneIncomplete = false, pruneUnpacked = false, deferObjectSweep = false, onCandidate = () => {} }) {
   const repositoryRoot = resolve(root)
   const artifacts = join(repositoryRoot, 'artifacts')
   const currentVersion = await readFile(join(repositoryRoot, 'package.json'), 'utf8').then(JSON.parse, () => ({})).then(pkg => pkg.version ?? policy.version)
@@ -366,25 +366,28 @@ export async function createCleanupPlan({ root, policy, now = Date.now(), pruneI
   }
 
   const objectRoot = join(artifacts, 'objects', 'sha256')
-  for (const prefixPath of await directChildren(objectRoot).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
-    const prefix = prefixPath.split(/[\\/]/u).at(-1)
-    if (!/^[a-f0-9]{2}$/u.test(prefix)) continue
-    for (const objectPath of await directChildren(prefixPath)) {
-      const digest = objectPath.split(/[\\/]/u).at(-1)
-      if (!/^[a-f0-9]{64}$/u.test(digest) || digest.slice(0, 2) !== prefix) continue
-      if ((await lstat(objectPath)).nlink > 1) { exclusions.push({ path: objectPath, reason: 'linked-content-object' }); continue }
-      // Recent objects cannot be candidates. Avoid reading every runtime
-      // JSON for each new object in the content store.
-      if ((now - (await lstat(objectPath)).mtimeMs) / 86_400_000 < (policy.defaults.objectDays ?? 30)) continue
-      // Historical cleanup plans/provenance must not pin discarded objects.
-      // Hard-linked shared archives are protected above; strict retention only
-      // keeps references from current distributables and the active stage.
-      referenceFiles ??= strictVersions ? cacheReferences : await collectJsonFiles(artifacts)
-      if (await isReferenced(relative(artifacts, objectPath).replaceAll('\\', '/'), undefined, referenceFiles, contents)) {
-        exclusions.push({ path: objectPath, reason: 'referenced-content-object' })
-        continue
+  if (deferObjectSweep) exclusions.push({ path: objectRoot, reason: 'deferred-object-sweep' })
+  else {
+    for (const prefixPath of await directChildren(objectRoot).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error))) {
+      const prefix = prefixPath.split(/[\\/]/u).at(-1)
+      if (!/^[a-f0-9]{2}$/u.test(prefix)) continue
+      for (const objectPath of await directChildren(prefixPath)) {
+        const digest = objectPath.split(/[\\/]/u).at(-1)
+        if (!/^[a-f0-9]{64}$/u.test(digest) || digest.slice(0, 2) !== prefix) continue
+        if ((await lstat(objectPath)).nlink > 1) { exclusions.push({ path: objectPath, reason: 'linked-content-object' }); continue }
+        // Recent objects cannot be candidates. Avoid reading every runtime
+        // JSON for each new object in the content store.
+        if ((now - (await lstat(objectPath)).mtimeMs) / 86_400_000 < (policy.defaults.objectDays ?? 30)) continue
+        // Historical cleanup plans/provenance must not pin discarded objects.
+        // Hard-linked shared archives are protected above; strict retention only
+        // keeps references from current distributables and the active stage.
+        referenceFiles ??= strictVersions ? cacheReferences : await collectJsonFiles(artifacts)
+        if (await isReferenced(relative(artifacts, objectPath).replaceAll('\\', '/'), undefined, referenceFiles, contents)) {
+          exclusions.push({ path: objectPath, reason: 'referenced-content-object' })
+          continue
+        }
+        await addCandidate('artifacts/objects', objectPath, policy.defaults.objectDays ?? 30, 'unreferenced-content-object-expired')
       }
-      await addCandidate('artifacts/objects', objectPath, policy.defaults.objectDays ?? 30, 'unreferenced-content-object-expired')
     }
   }
   return { generatedAt: new Date(now).toISOString(), candidates: candidates.sort((a, b) => a.path.localeCompare(b.path)), exclusions, space: summarizeInodes(selectedInodes) }
@@ -449,7 +452,16 @@ export async function removeCandidate(candidate, expected) {
     const references = candidate.referenceVersion
       ? await collectJsonFiles(join(artifacts, 'packages', candidate.referenceVersion))
       : [...await collectJsonFiles(join(artifacts, 'release')), ...await collectJsonFiles(join(artifacts, 'verification'))]
-    const id = candidate.reason.startsWith('historical-verification') || candidate.reason === 'disposable-package-unpacked' ? undefined : path.split(/[\\/]/u).at(-1)
+    // Generic development and legacy output directories often share names
+    // with packaged modules (for example `pptx` or `dsh-office-tools`); their
+    // basename alone must not be treated as a durable reference. Content
+    // object hashes remain valid identifiers because receipts store them.
+    const id = candidate.reason.startsWith('historical-verification')
+      || candidate.reason === 'disposable-package-unpacked'
+      || candidate.reason === 'development-output-expired'
+      || candidate.reason === 'legacy-output-expired'
+      ? undefined
+      : path.split(/[\\/]/u).at(-1)
     // A stage can become active or acquire a durable reference after planning.
     for (const version of await directChildren(join(artifacts, 'stage'))) {
       if (candidate.referenceVersion && version.split(/[\\/]/u).at(-1) !== candidate.referenceVersion) continue

@@ -81,6 +81,7 @@ export async function hasEnvironmentCredential(name: string, getCredential: (key
 const MCP_ENVIRONMENT_POLL_INTERVAL_MS = 1000
 const MCP_FAILURE_COOLDOWN_MS = 5 * 60_000
 const RETIRED_R_PROJECT_TOOL = 'mcp__rmcp__r_project'
+const RMCP_PUBLIC_TOOL_PREFIX = `mcp__${RDATALINUX_SERVER_NAME}__`
 const RDATALINUX_UPLOAD_MAX_BYTES = 100 * 1024 * 1024
 const RDATALINUX_DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 const FIGUREYA_MODULE_MAX_BYTES = 250 * 1024 * 1024
@@ -399,12 +400,20 @@ export class ZeroWallMcpService extends TypertRemoteService {
         await service.ensureConnected(serverName, true)
         const record = (await service.list()).find(item => item.serverName === serverName)
         if (record === undefined) throw new Error(`MCP server disappeared during connection: ${serverName}`)
-        if (exec.agent && typeof exec.agent === 'object') {
+        if (exec.agent && typeof exec.agent === 'object' && serverName !== RDATALINUX_SERVER_NAME) {
           const selected = service.selectedTools.get(exec.agent) ?? new Set<string>()
           for (const name of service.registeredTools.get(record.id) ?? []) selected.add(name)
           service.selectedTools.set(exec.agent, selected)
         }
-        return { server: record.serverName, requestedServer: args.server, state: record.runtimeState, tools: record.tools.slice(0, 40), toolCount: record.tools.length }
+        const hostRouted = serverName === RDATALINUX_SERVER_NAME
+        return {
+          server: record.serverName,
+          requestedServer: args.server,
+          state: record.runtimeState,
+          tools: hostRouted ? [] : record.tools.slice(0, 40),
+          toolCount: record.tools.length,
+          ...(hostRouted ? { workflow: 'research_workflow', instruction: 'Use research_workflow for RMCP operations. The Host connects on demand and manages the conversation project automatically.' } : {}),
+        }
       },
     })), 'zerowall-mcp: demand connection tool')
     ctx.effect(() => ctx.tools.register(defineTool({
@@ -437,6 +446,18 @@ export class ZeroWallMcpService extends TypertRemoteService {
         const selectedTools = live.tools
           .slice(0, 8)
           .map(tool => ({ name: tool.name, description: tool.description.slice(0, 180) }))
+        if (refreshed.serverName === RDATALINUX_SERVER_NAME) {
+          return {
+            matches: live.tools.length > 0
+              ? [{ server: refreshed.serverName, name: refreshed.name, state: refreshed.runtimeState, score: candidate.score, tools: [{ name: 'research_workflow', description: 'Host-managed RMCP workflow with automatic connection and project binding.' }] }]
+              : [],
+            connectedServer: refreshed.serverName,
+            toolCount: refreshed.tools.length,
+            loadedToolNames: ['research_workflow'],
+            workflow: 'research_workflow',
+            instruction: 'Do not call raw RMCP tools. Discover and run operations through research_workflow; the Host connects and binds the project automatically.',
+          }
+        }
         if (exec.agent && typeof exec.agent === 'object') {
           const selected = service.selectedTools.get(exec.agent) ?? new Set<string>()
           for (const tool of selectedTools) selected.add(tool.name)
@@ -1060,11 +1081,11 @@ export class ZeroWallMcpService extends TypertRemoteService {
                 const server = typeof args?.server === 'string' ? canonicalMcpServerName(args.server) : undefined
                 if (server) {
                   const record = this.projects().listMcpServers().find(item => item.serverName === server)
-                  if (record) for (const name of this.registeredTools.get(record.id) ?? []) selected.add(name)
+                  if (record && server !== RDATALINUX_SERVER_NAME) for (const name of this.registeredTools.get(record.id) ?? []) selected.add(name)
                 }
               } catch { /* malformed historical arguments do not expose schemas */ }
             }
-            if (block.name.startsWith('mcp__')) selected.add(block.name)
+            if (block.name.startsWith('mcp__') && !block.name.startsWith(RMCP_PUBLIC_TOOL_PREFIX)) selected.add(block.name)
           }
         }
         this.selectedTools.set(scope, selected)
@@ -1072,6 +1093,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
       const records = this.projects().listMcpServers()
       return { ...assembly, tools: assembly.tools.filter(schema => {
         if (schema.name === RETIRED_R_PROJECT_TOOL) return false
+        if (schema.name.startsWith(RMCP_PUBLIC_TOOL_PREFIX)) return false
         if (!schema.name.startsWith('mcp__')) return true
         const record = records.find(item => schema.name.startsWith(`mcp__${item.serverName}__`))
         return record === undefined || selected.has(schema.name)
@@ -1140,11 +1162,62 @@ export class ZeroWallMcpService extends TypertRemoteService {
     return parsed as Record<string, JsonValue>
   }
 
+  private selectToolForAgent(exec: any, target: string): void {
+    if (!exec.agent || typeof exec.agent !== 'object') return
+    const selected = this.selectedTools.get(exec.agent) ?? new Set<string>()
+    selected.add(target)
+    this.selectedTools.set(exec.agent, selected)
+  }
+
+  private async ensureRmcpTool(publicTool: string, exec: any, refresh = false): Promise<string> {
+    const target = `${RMCP_PUBLIC_TOOL_PREFIX}${publicTool}`
+    await this.ensureConnected('rmcp', refresh)
+    if (this.ctx.tools.get(target) === undefined && !refresh) {
+      await this.ensureConnected('rmcp', true)
+    }
+    if (this.ctx.tools.get(target) === undefined) {
+      throw new Error(`RMCP_TOOL_UNAVAILABLE: ${publicTool} is not present in the refreshed RMCP tools/list; no remote operation was submitted.`)
+    }
+    this.selectToolForAgent(exec, target)
+    return target
+  }
+
+  private isUnknownRmcpTool(error: unknown, target: string): boolean {
+    const message = error instanceof Error ? error.message : String(error)
+    return /unknown tool/i.test(message) && message.includes(target)
+  }
+
+  private async executeRmcpTool(publicTool: string, argumentsValue: unknown, exec: any, callId: string): Promise<{ target: string; result: any }> {
+    const invoke = async (target: string, attempt: number) => this.ctx.tools.execute({
+      callId: ToolCallId(`${String(exec.callId ?? randomUUID())}:${callId}${attempt ? ':refresh-retry' : ''}`),
+      name: target,
+      arguments: argumentsValue,
+      agent: exec.agent,
+      parent: exec.token,
+      rootCallId: exec.rootCallId ?? exec.callId,
+      signal: exec.signal,
+    })
+    let target = await this.ensureRmcpTool(publicTool, exec)
+    let result: any
+    try {
+      result = await invoke(target, 0)
+    } catch (error) {
+      if (!this.isUnknownRmcpTool(error, target)) throw error
+      target = await this.ensureRmcpTool(publicTool, exec, true)
+      result = await invoke(target, 1)
+    }
+    if (result.isError) {
+      const message = result.content.filter((block: ContentBlock) => block.type === 'text').map((block: any) => block.text).join('\n')
+      if (!this.isUnknownRmcpTool(message, target)) throw new Error(message || `${target} failed`)
+      target = await this.ensureRmcpTool(publicTool, exec, true)
+      result = await invoke(target, 1)
+      if (result.isError) throw new Error(result.content.filter((block: ContentBlock) => block.type === 'text').map((block: any) => block.text).join('\n') || `${target} failed`)
+    }
+    return { target, result }
+  }
+
   async workflowRequest(action: string, args: unknown, exec: any): Promise<unknown> {
-    await this.ensureConnected('rmcp', true)
-    const target = 'mcp__rmcp__r_runtime'
-    const result = await this.ctx.tools.execute({ callId: ToolCallId(`${exec.callId}:${action}`), name: target, arguments: { action, arguments: normalizeJsonArguments(args) }, agent: exec.agent, parent: exec.token, rootCallId: exec.rootCallId ?? exec.callId, signal: exec.signal })
-    if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n'))
+    const { target, result } = await this.executeRmcpTool('r_runtime', { action, arguments: normalizeJsonArguments(args) }, exec, action)
     return this.compactPayload(result, target)
   }
 
@@ -1160,17 +1233,19 @@ export class ZeroWallMcpService extends TypertRemoteService {
         target: 'mcp__zerowall_managed_bio_tools__bio_search',
         arguments: { query: detailId === undefined ? query : '', ...(detailId === undefined ? {} : { capability_id: detailId }), detail: detailId !== undefined, limit },
       },
-    ].filter(request => this.ctx.tools.get(request.target) !== undefined)
+    ].filter(request => this.ctx.tools.get(request.target) !== undefined || (request.backend === 'rmcp' && Boolean(detailId?.startsWith('r.') || detailId?.startsWith('tooluniverse.'))))
     const settled = await Promise.allSettled(requests.map(async request => {
-      const result = await this.ctx.tools.execute({
-        callId: ToolCallId(`${exec.callId}:catalog:${request.backend}`),
-        name: request.target,
-        arguments: request.arguments,
-        agent: exec.agent,
-        parent: exec.token,
-        rootCallId: exec.rootCallId ?? exec.callId,
-        signal: exec.signal,
-      })
+      const result = request.backend === 'rmcp'
+        ? (await this.executeRmcpTool('r_runtime', request.arguments, exec, `catalog:${request.backend}`)).result
+        : await this.ctx.tools.execute({
+          callId: ToolCallId(`${exec.callId}:catalog:${request.backend}`),
+          name: request.target,
+          arguments: request.arguments,
+          agent: exec.agent,
+          parent: exec.token,
+          rootCallId: exec.rootCallId ?? exec.callId,
+          signal: exec.signal,
+        })
       return { request, payload: this.compactPayload(result, request.target) }
     }))
     const records: CompactCapabilityRecord[] = []
@@ -1199,18 +1274,7 @@ export class ZeroWallMcpService extends TypertRemoteService {
   async executeCompactCapability(id: string, args: unknown, exec: any): Promise<{ target: string; content: ContentBlock[]; value: unknown }> {
     const safeArgs = normalizeJsonArguments(args ?? {})
     if (id === 'r.ensure.project') {
-      const target = 'mcp__rmcp__r_runtime'
-      if (this.ctx.tools.get(target) === undefined) throw new Error('The configured RMCP connection does not provide automatic conversation storage. No analysis was submitted; update the RMCP plugin and retry.')
-      const result = await this.ctx.tools.execute({
-        callId: ToolCallId(`${exec.callId}:conversation-project`),
-        name: target,
-        arguments: { action: id, arguments: safeArgs },
-        agent: exec.agent,
-        parent: exec.token,
-        rootCallId: exec.rootCallId ?? exec.callId,
-        signal: exec.signal,
-      })
-      if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\\n') || 'Automatic conversation project binding failed.')
+      const { target, result } = await this.executeRmcpTool('r_runtime', { action: id, arguments: safeArgs }, exec, 'conversation-project')
       return { target, content: result.content, value: result.value }
     }
     const [record] = await this.searchCompactCapabilities('', id, 1, exec)
@@ -1232,16 +1296,18 @@ export class ZeroWallMcpService extends TypertRemoteService {
     const argumentsValue = record.backend === 'bio'
       ? { capability_id: id, arguments: safeArgs }
       : { action: id, arguments: safeArgs }
-    const result = await this.ctx.tools.execute({
-      callId: ToolCallId(`${exec.callId}:compact:${id}`),
-      name: target,
-      arguments: argumentsValue,
-      agent: exec.agent,
-      parent: exec.token,
-      rootCallId: exec.rootCallId ?? exec.callId,
-      signal: exec.signal,
-    })
-    if (result.isError) throw new Error(result.content.filter(block => block.type === 'text').map(block => block.text).join('\n') || `${id} failed`)
+    const result = record.backend === 'rmcp'
+      ? (await this.executeRmcpTool(record.publicTool, argumentsValue, exec, `compact:${id}`)).result
+      : await this.ctx.tools.execute({
+        callId: ToolCallId(`${exec.callId}:compact:${id}`),
+        name: target,
+        arguments: argumentsValue,
+        agent: exec.agent,
+        parent: exec.token,
+        rootCallId: exec.rootCallId ?? exec.callId,
+        signal: exec.signal,
+      })
+    if (result.isError) throw new Error(result.content.filter((block: ContentBlock) => block.type === 'text').map((block: any) => block.text).join('\n') || `${id} failed`)
     return { target, content: result.content, value: result.value }
   }
 

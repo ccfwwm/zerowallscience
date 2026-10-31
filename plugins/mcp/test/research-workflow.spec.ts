@@ -142,6 +142,49 @@ it('keeps FAERS jobs active, resumes their R lifecycle and exposes project-relat
   await restored.status(String(first.run_id), f.exec)
   expect(f.execute.mock.calls.filter(([id]) => id === 'r.faerskit.analyze')).toHaveLength(1)
 })
+it('recreates the automatic project binding and retries only an explicit pre-submission project 404', async () => {
+  const f = await fixture()
+  let submitted = 0
+  f.execute.mockImplementation(async (id: string, args: any = {}) => {
+    if (id === 'r.ensure.project') return { target: id, content: [], value: { structuredContent: { project_id: `zw-${args.binding_key}`, managed: true } } }
+    if (id === 'r.faerskit.analyze' && submitted++ === 0) throw new Error('R service returned 404: {"error":["Project was not found."]}')
+    return { target: id, content: [], value: { structuredContent: id === 'r.faerskit.analyze' ? { job_id: 'faers-job-recovered', status: 'queued' } : {} } }
+  })
+  const result = await f.service.run('r.faerskit', {
+    operation: 'r.faerskit.analyze',
+    arguments: { project_id: 'temporary-id', fun: 'faers_analyze_drug', drug: 'CITALOPRAM', confirm: true },
+    request_id: 'faers-project-recovery',
+  }, f.exec)
+  expect(result).toMatchObject({ status: 'running', remote_id: 'faers-job-recovered', remote_project: conversationProject() })
+  expect(f.execute.mock.calls.filter(([id]) => id === 'r.ensure.project')).toHaveLength(2)
+  expect(f.execute.mock.calls.filter(([id]) => id === 'r.faerskit.analyze')).toHaveLength(2)
+  const submissions = f.execute.mock.calls.filter(([id]) => id === 'r.faerskit.analyze') as unknown as [string, Record<string, unknown>][]
+  expect(submissions.map(([, args]) => args.project_id)).toEqual([conversationProject(), conversationProject()])
+})
+it('repairs a missing project while resuming FAERS status and manifest reads without resubmitting the analysis', async () => {
+  const f = await fixture()
+  let statusCalls = 0
+  let manifestCalls = 0
+  f.execute.mockImplementation(async (id: string, args: any = {}) => {
+    if (id === 'r.ensure.project') return { target: id, content: [], value: { structuredContent: { project_id: `zw-${args.binding_key}`, managed: true } } }
+    if (id === 'r.faerskit.analyze') return { target: id, content: [], value: { structuredContent: { job_id: 'faers-job-resumed', status: 'queued' } } }
+    if (id === 'r.get.job' && ++statusCalls === 1) throw new Error('R service returned 404: {"error":["Project was not found."]}')
+    if (id === 'r.get.job') return { target: id, content: [], value: { structuredContent: { status: 'succeeded', progress: 100 } } }
+    if (id === 'r.get.job.manifest' && ++manifestCalls === 1) throw new Error('R service returned 404: {"error":["Project was not found."]}')
+    if (id === 'r.get.job.manifest') return { target: id, content: [], value: { structuredContent: { files: [{ path: 'signals.csv', sha256: 'verified' }] } } }
+    return { target: id, content: [], value: { structuredContent: {} } }
+  })
+  const result = await f.service.run('r.faerskit', {
+    operation: 'r.faerskit.analyze',
+    arguments: { fun: 'faers_analyze_drug', drug: 'CITALOPRAM', confirm: true },
+    request_id: 'faers-project-resume-recovery',
+  }, f.exec)
+  expect(result).toMatchObject({ status: 'succeeded', remote_id: 'faers-job-resumed', remote_project: conversationProject() })
+  expect(statusCalls).toBe(2)
+  expect(manifestCalls).toBe(2)
+  expect(f.execute.mock.calls.filter(([id]) => id === 'r.ensure.project')).toHaveLength(3)
+  expect(f.execute.mock.calls.filter(([id]) => id === 'r.faerskit.analyze')).toHaveLength(1)
+})
 it('cancels FAERS through the shared remote R job contract', async () => {
   const f = await fixture()
   let status = 'running'

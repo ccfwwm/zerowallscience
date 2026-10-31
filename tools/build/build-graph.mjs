@@ -96,7 +96,7 @@ async function taskDefinition(id, taskArgs = []) {
     const pluginPath = join(root, 'plugins', name)
     const manifest = await readFile(join(pluginPath, 'package.json'), 'utf8').then(JSON.parse)
     const inputs = [`plugins/${name}`, 'tools/plugins/tsdown.ts', 'tools/plugins/generate-typert.mjs', 'tools/plugins/typert-workspace.mjs', 'tsconfig.host.json', 'tools/plugins/prepare-pack.mjs', 'tools/plugins/inline-css.mjs', 'tsconfig.plugin.host.json', 'tsconfig.plugin.client.json', ...await sharedSourceInputs(root, pluginPath)]
-    if (kind === 'plugin-pack') inputs.push('tools/plugins/pack.mjs', 'tools/plugins/publish-package.mjs', 'tools/plugins/snapshot.mjs')
+    if (kind === 'plugin-pack') inputs.push('tools/plugins/pack.mjs', 'tools/plugins/publish-package.mjs', 'tools/plugins/snapshot.mjs', 'tools/build/stable-resource-lock.mjs')
     if (name === 'files') inputs.push('tools/plugins/viewer-style.mjs', 'tools/plugins/viewer-adapter.mjs')
     if (name === 'biogenie') inputs.push('resources/extensions/capabilities/biogenie', 'tools/integration/prepare-biogenie.mjs', 'tools/integration/generate-biogenie-catalog.py')
     if (name === 'python') inputs.push('tools/plugins/prepare-python-worker.mjs')
@@ -321,6 +321,18 @@ if (command === 'development') {
   if (!['skill', 'mcp', 'python'].includes(args[0])) throw new Error('Usage: pnpm resource:build skill|mcp|python <id-or-layer>')
   const task = args[0] === 'python' ? `resource:python:${args[1]}${args[1] === 'capability' && args[2] ? `:${args[2]}` : ''}` : `resource:${args[0]}:${args[1]}`
   await runTask(task, args)
+  if (args[0] === 'skill') {
+    const versions = JSON.parse(await readFile(join(root, 'config/catalogs/resource-versions.json'), 'utf8')).skill
+    const id = args[1]
+    const version = versions?.[id]
+    if (!version) throw new Error(`No independent Skill version is declared for ${id}`)
+    const archive = join(stageRoot, 'resource-packages', 'skill', id, version, `${id}.tgz`)
+    const sha256 = createHash('sha256').update(await readFile(archive)).digest('hex')
+    const { writeStableResourceLock } = await import('./stable-resource-lock.mjs')
+    const lock = await writeStableResourceLock({ root, records: [], section: 'skills', selected: id,
+      skillRecords: [{ id, version, sha256 }], artifactsRoot: contract.artifacts })
+    console.log(`STABLE RESOURCE LOCK ${id}@${version}; ${lock.skills.length} Skills`)
+  }
 } else {
   throw new Error('Usage: node tools/build/build-graph.mjs build:changed|plugin:build <id>|plugin:pack <id>|package:build <id>|resource:build <kind> <id>')
 }

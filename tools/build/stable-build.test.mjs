@@ -80,12 +80,14 @@ test('stable policy retires old versions including their current pointers while 
   assert.equal(await readFile(join(root, 'artifacts/release/plugins/example/0.1.0/plugin.tgz'), 'utf8'), 'independent')
 })
 
-test('stable environment reads configuration and preserves explicit signer settings', async () => {
+test('stable environment pins the configured signer and rejects overrides', async () => {
   const root = fileURLToPath(new URL('../..', import.meta.url))
   const config = await readStableConfig(root)
-  const env = stableEnvironment(root, config, { ZEROWALL_RESOURCE_KEY_ID: 'stable-3' })
-  assert.equal(env.ZEROWALL_RESOURCE_KEY_ID, 'stable-3')
+  const env = stableEnvironment(root, config, { ZEROWALL_RESOURCE_KEY_ID: 'stable-4' })
+  assert.equal(env.ZEROWALL_RESOURCE_KEY_ID, 'stable-4')
   assert.equal(env.ZEROWALL_BUNDLE_PYTHON, '1')
+  assert.equal(env.ZEROWALL_CHANNEL, 'stable')
+  assert.throws(() => stableEnvironment(root, config, { ZEROWALL_RESOURCE_KEY_ID: 'stable-3' }), /does not accept an override/u)
 })
 
 test('a saved strict cleanup plan cannot remove caches after the desktop version changes', async t => {

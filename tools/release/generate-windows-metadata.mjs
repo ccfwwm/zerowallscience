@@ -44,7 +44,6 @@ async function main() {
   const outputs = [
     resolve(targetPackageRoot, `zerowall-science-${version}-latest.json`),
     resolve(targetPackageRoot, 'releases-latest.json'),
-    resolve(targetPackageRoot, 'releases-zerowallsciencedev-latest.json'),
   ]
   await Promise.all(outputs.map(output => writeFile(output, payload, 'utf8')))
   // electron-updater exposes this field on update-available, allowing the

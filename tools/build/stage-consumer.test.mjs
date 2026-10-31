@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import test from 'node:test'
-import { createHash } from 'node:crypto'
+import { createHash, generateKeyPairSync } from 'node:crypto'
 import { pluginSnapshotId } from '../plugins/snapshot.mjs'
 
 const execute = promisify(execFile)
@@ -24,7 +24,9 @@ async function fixture(t) {
   const stable = JSON.parse(await readFile(new URL('../../config/build/stable.json', import.meta.url), 'utf8'))
   stable.retention.afterPackage = false
   stable.signing.privateKeyFile = 'fixture-signing-reference'
-  await writeFile(join(root, 'fixture-signing-reference'), 'test fixture; no signing operations')
+  const signingKeys = generateKeyPairSync('ed25519')
+  await writeFile(join(root, 'fixture-signing-reference'), signingKeys.privateKey.export({ format: 'pem', type: 'pkcs8' }))
+  await writeFile(join(root, 'config/catalogs/trusted-keys.json'), JSON.stringify({ 'stable-4': signingKeys.publicKey.export({ format: 'pem', type: 'spki' }) }))
   await writeFile(join(root, 'config/build/stable.json'), JSON.stringify(stable))
   await writeFile(join(root, 'config/build/desktop-release.json'), JSON.stringify({ schema: 1, version: '8.3.0', description: 'fixture' }))
   for (const file of ['desktop/package.json', 'config/layout/package-layout.json', 'config/layout/runtime-profile.json', 'config/integrations/upstream-sources.json']) {
@@ -42,6 +44,7 @@ async function fixture(t) {
   await writeFile(join(root, 'artifacts/release/plugins/plugin-packages.json'), JSON.stringify([{ ...record, path: join(store, 'plugin.tgz') }]))
   await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', version: '8.3.0', description: 'fixture' }))
   for (const file of ['incremental-build.mjs', 'clone-current-stage.mjs', 'materialize-tree.mjs', 'hardlink.mjs', 'package-windows.mjs', 'paths.cjs', 'stable-config.mjs', 'sync-desktop-release.mjs']) await copyFile(new URL(file, import.meta.url), join(root, 'tools/build', file))
+  await writeFile(join(root, 'tools/build/stable-resource-lock.mjs'), 'export async function verifyStableResourceLock({ records }) { return { plugins: records, skills: [] } }')
   await writeFile(join(root, 'tools/build/build-lock.mjs'), 'export async function acquireBuildLock() { return async () => {} }')
   await writeFile(join(root, 'tools/build/assembly-cache.mjs'), 'export async function assembleRuntime() {}')
   await writeFile(join(root, 'tools/build/paths.mjs'), "import { join } from 'node:path'; export const root = join(import.meta.dirname, '../..'); export const contract = { cache: join(root, 'artifacts/cache') }")
@@ -57,6 +60,7 @@ async function fixture(t) {
   `)
   await writeFile(join(root, 'tools/packaging/verify-bundled-resources.mjs'), `
     import { appendFile, readFile } from 'node:fs/promises'; import { join } from 'node:path';
+    export async function verifyStableCatalogFreshness() { return { plugin: 1, skill: 0 } }
     export async function verifyBundledResources({ root, stage, release }) {
       const version = JSON.parse(await readFile(join(root, 'package.json'))).version;
       const pointer = JSON.parse(await readFile(join(root, 'artifacts/stage', version, 'current.json')));
@@ -145,6 +149,7 @@ async function fixture(t) {
   const pointer = JSON.stringify({ applicationVersion: '8.3.0', buildId: 'old-build' })
   await writeFile(join(versionRoot, 'current.json'), pointer)
   const env = { ...process.env, npm_execpath: join(root, 'fake-pnpm.mjs') }
+  for (const name of ['ZEROWALL_CHANNEL', 'ZEROWALL_RESOURCE_PRIVATE_KEY_FILE', 'ZEROWALL_RESOURCE_KEY_ID', 'ZEROWALL_RESOURCE_BASE_URL', 'ZEROWALL_RELEASE_BASE_URL', 'ZEROWALL_TARGET', 'ZEROWALL_BUNDLE_PYTHON']) delete env[name]
   delete env.ZEROWALL_ARTIFACT_ROOT
   delete env.ZEROWALL_BUILD_ID
   return { root, env, source, versionRoot, pointer, receipt,

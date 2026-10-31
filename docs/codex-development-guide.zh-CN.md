@@ -129,7 +129,7 @@ pnpm profiles:check
 pnpm dsh:verify
 ```
 
-正式打包不要求提权 PowerShell。8.4.1 起安装器外层和应用入口使用 asInvoker，保留启动用户身份；仅当目标目录不可写或选择全用户安装时请求 UAC。用户注册、PATH、用户快捷方式及应用启动由原用户外层完成，不使用另一管理员账户的用户目录。稳定配置默认引用已有的忽略签名文件；需要覆盖时使用对应环境变量，不在日志打印内容：
+正式打包不要求提权 PowerShell。8.4.1 起安装器外层和应用入口使用 asInvoker，保留启动用户身份；仅当目标目录不可写或选择全用户安装时请求 UAC。用户注册、PATH、用户快捷方式及应用启动由原用户外层完成，不使用另一管理员账户的用户目录。稳定配置固定使用 `config/build/stable.json` 指定的 stable-4 签名、渠道、目标和资源地址；这些值不能用环境变量覆盖。私钥只从被忽略的文件引用读取，不在配置和日志打印内容。稳定资源选择由 `config/build/stable-resource-lock.json` 约束；插件/Skill 归档或 Skill 版本变化后同步锁，并运行 `pnpm stable:resources:check`：
 
 ```powershell
 pnpm package:stable:win

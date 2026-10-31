@@ -91,43 +91,6 @@ Return the reproducibility profile identifier and exact package snapshot for the
 }
 ```
 
-## r.register.project
-
-Create or verify an isolated workspace for a ZeroWall project. Returns project root and persistent working directory.
-
-- 工具族：r_project；副作用：write；query：false；执行：sync。
-- 确认字段：无。
-- 输出：Immediate structured result; no background task is implied.
-
-```json
-{
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "project_id": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 128,
-        "pattern": "^[A-Za-z0-9._-]+$",
-        "description": "ZeroWall project id"
-      },
-      "name": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 200
-      }
-    },
-    "required": [
-      "project_id",
-      "name"
-    ],
-    "additionalProperties": false,
-    "$schema": "http://json-schema.org/draft-07/schema#"
-  },
-  "lifecycle": null
-}
-```
-
 ## r.create.reproduction.record
 
 Register a paper or literature reproduction with citation/DOI, research question, data references, plan metadata, and seed. The record is persisted in the project and linked conceptually to later GEO/NHANES runs. Requires confirm=true.

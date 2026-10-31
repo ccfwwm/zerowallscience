@@ -29,7 +29,9 @@ pnpm dsh:verify
 pnpm package:stable:win
 ```
 
-正式打包不要求提权 PowerShell。签名配置默认引用已有的忽略文件，私钥内容不进入配置和日志；显式环境变量仍可覆盖签名引用和发布地址。版本同步不会提升插件、Skills、MCP 或 Python 的独立版本。新增原生插件按现有插件/profile 声明纳入完整共享清单。Windows Stable 安装器必须携带 config/python/bundled-bootstrap.json 固定的已发布签名 Python + pip 基础包；完整科学依赖仍由桌面可用后的后台队列安装。
+正式打包不要求提权 PowerShell。签名配置固定使用 `stable-4` 和 `config/build/stable.json` 中的地址；私钥内容不进入配置和日志，环境变量不能替换稳定签名、渠道、目标或资源地址。`stable-3` 仍只用于验证历史签名，不再签发新 catalog。版本同步不会提升插件、Skills、MCP 或 Python 的独立版本。新增原生插件按现有插件/profile 声明纳入完整共享清单。Windows Stable 安装器必须携带 config/python/bundled-bootstrap.json 固定的已发布签名 Python + pip 基础包；完整科学依赖仍由桌面可用后的后台队列安装。
+
+`config/build/stable-resource-lock.json` 是稳定打包的资源选择合同，逐项锁定共享插件包、源码版本与摘要，以及 Skill 版本、打包源码摘要和归档摘要。插件全量/单项打包、Skill 归档构建和稳定 Skill catalog 生成会同步相应条目；提交前可运行 `pnpm stable:resources:check`，手动重建完整锁使用 `pnpm stable:resources:sync`。稳定打包在任何 runtime 组装前检查该锁，并在线核对稳定插件和 Skill catalog；源码、归档、版本或公开 catalog 不一致时停止打包。开发 catalog 仅能显式使用 `--local-development`，且必须写入单独的 `ZEROWALL_ARTIFACT_ROOT`。
 
 组件编译后、运行时装配前，固定流程会用实际编译文件预检全部运行时适配器及 JavaScript 语法；菜单、预览、目录选择器或上游结构变化时先失败，不生成缺补丁的载体。LibreOfficeKit 的审核版本同样由 `upstream-sources.json` 定义，结构锚点继续严格检查。
 
@@ -41,7 +43,7 @@ pnpm package:stable:win
 
 运行时代码、离线载体和 Skills/MCP 资源树按内容缓存；相同文件通过 `artifacts/objects/sha256` 共享。桌面版本戳仅替换新 stage 中少量文件。每个 stage 有独立收据和 build ID，当前指针只在构建成功后切换。硬链接保留普通文件路径，删除一个历史 stage 不会删除其他链接仍引用的内容。
 
-插件、桌面和本地运行时编译指纹排除目录扫描带入的 `test`、`tests`、`__tests__`、`e2e` 和 `.test`/`.spec` 文件，单改测试不再触发这些组件重编译。生产源码实际导入的测试目录文件仍作为显式输入校验；DSH 子模块、插件归档与 Skill/MCP 资源文件不适用此排除规则，打包内容和不可变摘要继续完整校验。
+插件、桌面和本地运行时编译指纹排除目录扫描带入的 `test`、`tests`、`__tests__`、`e2e` 和 `.test`/`.spec` 文件，单改测试不再触发这些组件重编译。生产源码实际导入的测试目录文件仍作为显式输入校验；DSH 子模块、插件归档与 Skill/MCP 资源文件不适用编译指纹排除规则。Skill 安装包和桌面内置树共用同一文件筛选规则，摘要和实际载荷保持一致。
 
 现有编译缓存不因上述排除规则直接作废：只有旧收据完整、剔除测试后输入指纹一致，且现有编译输出 SHA-256 全部匹配时，才更新缓存索引并复用输出。源码、依赖、工具链变化或输出损坏仍要求重编译。
 

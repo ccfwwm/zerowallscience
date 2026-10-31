@@ -7,7 +7,7 @@ import { x as extractArchive } from 'tar'
 import { contract } from '../build/paths.mjs'
 import { createHash } from 'node:crypto'
 import { reuseAssembly } from '../build/assembly-cache.mjs'
-import { resourceTreeFiles } from '../build/resource-tree.mjs'
+import { includePackagedSkillPath, resourceTreeFiles } from '../build/resource-tree.mjs'
 import { digestFile } from '../build/content-store.mjs'
 
 const root = resolve(import.meta.dirname, '../..')
@@ -15,11 +15,6 @@ const skillRoots = contract.resource('skills')
 const sourceRoot = resolve((await stat(skillRoots.preferred).catch(() => undefined)) ? skillRoots.preferred : skillRoots.legacy)
 const outputRoot = resolve(stageRoot, 'resources/extensions/skills')
 const expectedParent = resolve(stageRoot, 'resources')
-const forbiddenDirectories = new Set([
-  '.git', '.pytest_cache', '__pycache__', 'coverage', 'output', 'outputs', 'rendered',
-  'screenshots', 'test-output', 'test-results', 'tests', 'node_modules', '.venv', 'venv', '.cache',
-])
-
 if (!outputRoot.startsWith(`${expectedParent}${sep}`)) throw new Error(`Refusing to replace Skills output outside ${expectedParent}.`)
 
 const sourceEntries = (await readdir(sourceRoot, { withFileTypes: true })).filter(entry => entry.isDirectory())
@@ -36,7 +31,7 @@ for (const skill of sourceEntries) {
   skillEntries.push(skill)
 }
 const groups = [
-  ...skillEntries.map(skill => ({ source: resolve(sourceRoot, skill.name), destination: `extensions/skills/${skill.name}`, filter: includeSkillPath })),
+  ...skillEntries.map(skill => ({ source: resolve(sourceRoot, skill.name), destination: `extensions/skills/${skill.name}`, filter: candidate => includePackagedSkillPath(resolve(sourceRoot, skill.name), candidate) })),
   ...[
     ['resources/extensions/mcp/bio-tools', 'extensions/mcp/bio-tools'],
     ['resources/extensions/mcp/ketcher-chemistry', 'extensions/mcp/ketcher-chemistry'],
@@ -76,13 +71,3 @@ await reuseAssembly({ cache: resolve(contract.cache, 'resource-trees'), output: 
   await cp(resolve(root, 'plugins/mcp/src/scimaster/zerowall-mcp-launcher.cjs'), resolve(sci, 'zerowall-mcp-launcher.cjs'))
   return { skills: skillEntries.length }
 } })
-
-function includeSkillPath(candidate) {
-  const path = relative(sourceRoot, candidate).replaceAll('\\', '/')
-  if (path === '') return true
-  const lower = path.toLowerCase()
-  const segments = lower.split('/')
-  if (segments.some(segment => forbiddenDirectories.has(segment))) return false
-  if (lower.endsWith('.pyc') || lower.endsWith('.pyo')) return false
-  return true
-}

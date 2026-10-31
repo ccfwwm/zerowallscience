@@ -9,8 +9,10 @@ for (const name of [
   `zerowall-science-${version}-latest.json`,
   'latest.yml',
   'releases-latest.json',
-  'releases-zerowallsciencedev-latest.json',
 ]) await access(resolve(dist, name))
+if (await access(resolve(dist, 'releases-zerowallsciencedev-latest.json')).then(() => true, () => false)) {
+  throw new Error('Stable packaging must not generate a development-channel update pointer.')
+}
 const metadata = JSON.parse(await readFile(resolve(dist, `zerowall-science-${version}-latest.json`), 'utf8'))
 if (metadata.version !== version || !String(metadata.assetUrl).includes(`/stable/releases/${version}/`)) {
   throw new Error(`Stable update metadata does not point at ${version}.`)

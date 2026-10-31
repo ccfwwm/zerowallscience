@@ -3,14 +3,15 @@ import { copyFile, link, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/p
 import { dirname, join } from 'node:path'
 import { deterministicArchive } from './deterministic-archive.mjs'
 import { preserveImmutableResource } from './immutable-resource.mjs'
-import { resourceTreeFiles } from '../build/resource-tree.mjs'
+import { includePackagedSkillPath, resourceTreeFiles } from '../build/resource-tree.mjs'
 import { digestFile, storeAndLink } from '../build/content-store.mjs'
 
 /** Independent ID/version store. Desktop release paths are only hard links;
  * unchanged inputs never invoke tar again. Published bytes win over new headers. */
 export async function reuseResourceArchive({ kind, id, version, source, destination, artifactRoot, baseline, expectedDigest }) {
   if (!['skill', 'mcp'].includes(kind) || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(id) || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(version)) throw new Error('Invalid independent resource identity')
-  const input = createHash('sha256').update(JSON.stringify(await resourceTreeFiles(source))).digest('hex')
+  const filter = kind === 'skill' ? candidate => includePackagedSkillPath(source, candidate) : undefined
+  const input = createHash('sha256').update(JSON.stringify(await resourceTreeFiles(source, filter))).digest('hex')
   const directory = join(artifactRoot, 'release/resource-packages', kind, id, version)
   const archive = join(directory, `${id}.tgz`), receiptPath = join(directory, 'archive-receipt.json')
   const receipt = await readFile(receiptPath, 'utf8').then(JSON.parse, error => error.code === 'ENOENT' ? undefined : Promise.reject(error))
@@ -21,7 +22,7 @@ export async function reuseResourceArchive({ kind, id, version, source, destinat
     await mkdir(directory, { recursive: true })
     const candidate = join(directory, `.candidate-${randomUUID()}.tgz`)
     try {
-      await deterministicArchive(source, candidate)
+      await deterministicArchive(source, candidate, filter)
       const previous = baseline ?? (existing ? archive : undefined)
       if (previous) await preserveImmutableResource(candidate, previous, expectedDigest ?? receipt?.sha256)
       // Never rewrite an object or a link already consumed by another release.

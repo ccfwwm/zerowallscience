@@ -209,6 +209,56 @@ describe('ZeroWall MCP Cordis lifecycle', () => {
     }
   }, 30_000)
 
+  it('connects RMCP on demand, refreshes once after an unknown internal tool, and hides raw RMCP tools from the model', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'zerowall-rmcp-internal-demand-'))
+    roots.push(root)
+    process.env.ZEROWALL_RESEARCH_DB = join(root, 'zerowall-research.sqlite')
+    process.env.ZEROWALL_DISABLE_DEFAULT_MCP = '1'
+    process.env.DSH_HOME = join(root, 'harness')
+    const ctx = new Context()
+    const target = 'mcp__rmcp__r_runtime'
+    let executions = 0
+    let connections = 0
+    const agent = { ctx, id: 'rmcp-demand-agent', session: { id: 'rmcp-demand-session', header: { cwd: root }, snapshotEvents: () => [], append: () => undefined } } as any
+    try {
+      await ctx.plugin(SystemPrompt)
+      await ctx.plugin(ToolRuntime)
+      await ctx.plugin(McpConfigurationStorePlugin)
+      await ctx.plugin(ZeroWallMcpService)
+      const service = ctx.zerowallMcp as any
+      const ensure = vi.spyOn(service, 'ensureConnected').mockImplementation(async (_server: string, _refresh: boolean) => {
+        connections += 1
+        if (_refresh && ctx.tools.get(target) === undefined) {
+          ctx.tools.register(defineTool({
+            name: target,
+            description: 'Internal RMCP runtime fixture',
+            parameters: { action: { type: 'string', required: true }, arguments: { type: 'json' } },
+            output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+            execute: async () => {
+              executions += 1
+              if (executions === 1) throw new Error(`unknown tool "${target}"`)
+              return { ok: true }
+            },
+          }))
+        }
+      })
+      const result = await service.workflowRequest('health', {}, {
+        signal: new AbortController().signal,
+        callId: 'rmcp-demand-workflow',
+        agent,
+      })
+      expect(result).toMatchObject({ ok: true })
+      expect(connections).toBe(3)
+      expect(ensure.mock.calls.map(call => call[1])).toEqual([false, true, true])
+      expect(executions).toBe(2)
+      const assembly = await ctx.systemPrompt.assemble({ scope: agent })
+      expect(assembly.tools.some(tool => tool.name === target)).toBe(false)
+      expect(assembly.tools.some(tool => tool.name === 'research_workflow')).toBe(true)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  }, 30_000)
+
   it('mounts tools from a real local stdio server and unregisters them when disabled', async () => {
     const root = mkdtempSync(join(tmpdir(), 'zerowall-mcp-lifecycle-'))
     roots.push(root)

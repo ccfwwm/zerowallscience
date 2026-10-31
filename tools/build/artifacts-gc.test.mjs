@@ -204,6 +204,25 @@ test('GC protects external Windows receipt references and rechecks active locks'
   assert.equal(await readFile(join(target, 'payload'), 'utf8'), 'keep')
 })
 
+test('GC does not protect generic development output by a shared module basename', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-gc-basename-reference-')); t.after(() => rm(root, { recursive: true, force: true }))
+  const output = join(root, 'artifacts/dev/pptx')
+  const active = join(root, 'artifacts/stage/8.1.2/active')
+  await mkdir(output, { recursive: true })
+  await writeFile(join(output, 'payload'), 'old')
+  await mkdir(active, { recursive: true })
+  await writeFile(join(active, 'build-receipt.json'), JSON.stringify({ dependency: 'pptx' }))
+  await writeFile(join(root, 'artifacts/stage/8.1.2/current.json'), JSON.stringify({ buildId: 'active' }))
+  const old = new Date(Date.now() - 40 * 86_400_000)
+  await utimes(join(output, 'payload'), old, old)
+  await utimes(output, old, old)
+  const plan = await createCleanupPlan({ root, policy })
+  const candidate = plan.candidates.find(item => item.path === output)
+  assert.ok(candidate)
+  await removeCandidate(candidate, candidate)
+  await assert.rejects(readFile(join(output, 'payload')))
+})
+
 test('space accounting counts shared inodes once and excludes external hard links from reclaimable bytes', async t => {
   const root = await mkdtemp(join(tmpdir(), 'zws-space-')); t.after(() => rm(root, { recursive: true, force: true }))
   const a = join(root, 'a'), b = join(root, 'b')
@@ -251,6 +270,19 @@ test('GC keeps current verification payloads and external references to historic
   assert.equal(plan.candidates.length, 0)
   assert.ok(plan.exclusions.some(item => item.path === referenced && item.reason === 'referenced-build'))
   assert.equal(await readFile(join(current, 'payload'), 'utf8'), 'keep')
+})
+
+test('package cleanup can defer the full content-object sweep without scheduling object deletion', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'zws-gc-deferred-objects-')); t.after(() => rm(root, { recursive: true, force: true }))
+  const object = join(root, 'artifacts/objects/sha256/aa', 'a'.repeat(64))
+  await mkdir(join(object, '..'), { recursive: true })
+  await writeFile(object, 'old unreferenced content')
+  const old = new Date('2000-01-01T00:00:00.000Z')
+  await utimes(object, old, old)
+  const plan = await createCleanupPlan({ root, now: Date.parse('2026-10-10T00:00:00.000Z'), policy, deferObjectSweep: true })
+  assert.equal(plan.candidates.length, 0)
+  assert.ok(plan.exclusions.some(item => item.path === join(root, 'artifacts/objects/sha256') && item.reason === 'deferred-object-sweep'))
+  assert.equal(await readFile(object, 'utf8'), 'old unreferenced content')
 })
 
 test('desktop version retention keeps the previous installer rollback verification intact', async t => {
