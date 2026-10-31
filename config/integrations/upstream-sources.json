@@ -15,7 +15,7 @@
     "package": "@zerowallscience/plugin-claude-code",
     "source": "plugins/claude-code",
     "version": "0.2.14",
-    "resourceVersion": "0.2.14",
+    "resourceVersion": "0.2.15",
     "license": "MIT",
     "catalogOptional": true,
     "localAdaptation": "ZeroWall-managed Claude CLI through the official Agent SDK with persistent per-conversation sessions, Host-authorized tool/MCP bridging, eligible Skills projection, localized permission controls and in-chat slash commands. Uses private plugin data without adopting the user's system Claude configuration; no terminal or PTY interface."
@@ -153,7 +153,7 @@
     "repository": "https://github.com/zenstory-ai/oh-story-dsh.git",
     "commit": "d4fca12fa8a71c9d91944bd25a9d8c6b519084f5",
     "version": "0.1.16",
-    "resourceVersion": "0.2.8",
+    "resourceVersion": "0.2.9",
     "package": "@zerowallscience/plugin-videos",
     "license": "MIT",
     "source": "plugins/videos",
