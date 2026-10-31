@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process'
 import { cp, mkdir, readFile, writeFile, access, unlink, rmdir } from 'node:fs/promises'
 import { join, resolve, dirname } from 'node:path'
-import { root, stageRoot, releaseRoot, contract } from '../build/paths.mjs'
+import { root, releaseRoot, contract } from '../build/paths.mjs'
 import { sourceFiles, isExportableSource } from './source-files.mjs'
 import { sourceRepositoryReadme } from './source-readme.mjs'
+import { copyCanonicalSkillSnapshot, isObsoleteSkillSnapshot } from './skill-snapshot.mjs'
 
 const argumentDestination = process.argv[2]?.startsWith('--') ? undefined : process.argv[2]
 const destination = resolve(argumentDestination ?? join(root, 'artifacts/source/zerowall-dsh-plugins'))
@@ -29,12 +30,12 @@ if (update) {
 }
 const selected = sourceFiles(root)
 const selectedSet = new Set(selected)
+const selectedSkillPaths = new Set(selected.filter(path => path.startsWith('resources/extensions/skills/')))
 if (update) {
   const previous = execFileSync('git', ['ls-files', '-z'], { cwd: destination, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\0').filter(Boolean)
   const obsoleteDirectories = new Set()
   for (const path of previous) {
-    const obsoleteSkillSnapshot = !sourceOnly && path.startsWith('skills/') && await access(join(stageRoot, 'resources/extensions', path))
-      .then(() => false, error => { if (error.code !== 'ENOENT') throw error; return true })
+    const obsoleteSkillSnapshot = !sourceOnly && isObsoleteSkillSnapshot(selectedSkillPaths, path)
     if ((!selectedSet.has(path) && (isExportableSource(path) || /^(?:packages|store)\//u.test(path))) || obsoleteSkillSnapshot) {
       // Remove only individually tracked obsolete source files; preserve all
       // untracked/ignored state and independent publication receipts.
@@ -59,7 +60,7 @@ for (const path of selected) {
   copied++
 }
 if (!sourceOnly) {
-await cp(join(stageRoot, 'resources/extensions/skills'), join(destination, 'skills'), { recursive: true, dereference: true })
+await copyCanonicalSkillSnapshot(root, destination, selectedSkillPaths)
 await mkdir(join(destination, 'mcp'), { recursive: true })
 await cp(join(root, 'config/catalogs/mcp'), join(destination, 'mcp/templates'), { recursive: true })
 // The launcher source is already exported from plugins/mcp/src/scimaster.

@@ -9,6 +9,8 @@ const tooling = [
   'tools/plugins/export-source-repository.mjs',
   'tools/plugins/export-plugin-source.mjs',
   'tools/plugins/export-plugin-source.test.mjs',
+  'tools/plugins/skill-snapshot.mjs',
+  'tools/plugins/skill-snapshot.test.mjs',
 ]
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
 const json = async path => JSON.parse(await readFile(path, 'utf8'))

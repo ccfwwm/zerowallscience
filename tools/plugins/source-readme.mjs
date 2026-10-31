@@ -25,7 +25,7 @@ ZeroWall Science ${version} 的插件与资源源码总仓库。各插件、Skil
 | \`desktop/src/shared/\` | 插件所需的桌面共享接口 |
 | \`deepseek-harness/\` | 固定 DSH 接口与构建依赖（Git 子模块） |
 
-当前源码以以上 canonical 路径为准，不从旧 \`packages/\`、\`store/\` 布局读取。顶层 \`catalogs/\`、\`skills/\`、\`mcp/\` 保留既有历史发布/导出快照，包括独立发布收据；它们不代表当前源码或 ${version} 的线上状态。source-only 导出不会刷新或删除这些历史目录。
+当前源码以以上 canonical 路径为准，不从旧 \`packages/\`、\`store/\` 布局读取。完整导出会从 \`resources/extensions/skills/\` 刷新顶层 \`skills/\` 快照；source-only 导出保留上次快照。顶层 \`catalogs/\` 与 \`mcp/\` 保留既有发布/导出快照及独立发布收据；这些快照本身不代表 ${version} 已在线发布。
 
 Electron 桌面壳与其打包实现位于 [ZeroWall Science 主仓库](https://github.com/ccfwwm/zerowallscience)；本源码仓库不打包 Electron。桌面交付壳与已验证的 DSH 离线运行时闭包，插件/Skills/MCP/Python 资源仍独立版本化。
 
