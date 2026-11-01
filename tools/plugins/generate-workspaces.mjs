@@ -310,7 +310,7 @@ for (const plugin of plugins) {
     ...(plugin.id === 'files' ? { '@deepseek-ai/dsh-fs': 'workspace:^', 'dsh-office-tools': officeSource } : {}),
       ...(plugin.client && !['base', 'environment', 'extension-center', 'claude-code'].includes(plugin.id) ? externalClientDependencies : {}),
       ...Object.fromEntries((plugin.dependencies ?? []).map(id => [`@zerowallscience/plugin-${id}`, 'workspace:^'])),
-      ...(plugin.id === 'images' ? { '@zerowallscience/plugin-ai-cloud': '^0.1.20' } : {}),
+      ...(plugin.id === 'images' ? { '@zerowallscience/plugin-ai-cloud': '^0.1.37' } : {}),
       ...(npmDependencies[plugin.id] ?? {}),
         ...(plugin.id === 'mcp' ? { '@modelcontextprotocol/client': mcpClientDependencies['@modelcontextprotocol/client'] } : {}),
     },

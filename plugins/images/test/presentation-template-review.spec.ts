@@ -58,6 +58,11 @@ async function fixture(mode: 'image' | 'editable' = 'image', fact = false) {
   })
   installPresentationWorkflow(ctx as any)
   await invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new', output_mode: mode })
+  // These fixtures represent existing projects with registered images from before
+  // style selection became mandatory for new projects.
+  const journalPath = events.at(-1).data.journal, savedState = JSON.parse(await readFile(journalPath, 'utf8'))
+  delete savedState.styleSelectionRequired
+  await writeFile(journalPath, JSON.stringify(savedState))
   const bytes = await sharp({ create: { width: 16, height: 9, channels: 4, background: 'white' } }).png().toBuffer()
   await writeFile(join(root, 'template.png'), bytes)
   await writeFile(join(root, 'template.png.generation.json'), JSON.stringify({ sha256: hash(bytes), prompt: 'ORIGINAL PROMPT\n原样', promptHash: hash('ORIGINAL PROMPT\n原样'), model: 'selected-model', requestedQuality: 'medium', requestedSize: 'auto', inputImageHashes: [] }))

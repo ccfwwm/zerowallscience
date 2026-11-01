@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-images",
-  "version": "0.2.35",
+  "version": "0.2.36",
   "description": "ZeroWall Science images domain plugin.",
   "type": "module",
   "main": "./lib/index.js",
@@ -108,7 +108,7 @@
     "dsh-better-sidebar": "workspace:^",
     "dsh-dream-skin": "10.16.0",
     "@zerowallscience/plugin-account": "workspace:^",
-    "@zerowallscience/plugin-ai-cloud": "^0.1.20",
+    "@zerowallscience/plugin-ai-cloud": "^0.1.37",
     "@zerowallscience/plugin-secrets": "workspace:^",
     "@zerowallscience/plugin-base": "^0.1.35",
     "@zerowallscience/plugin-environment": "workspace:^",

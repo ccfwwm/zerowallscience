@@ -36,7 +36,8 @@ PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `gene
    - `prompt`：完整生图提示词。
    - `output_path`：当前项目内的相对或绝对 PNG 路径。
    - `model`：用户未指定时省略，沿用环境配置的生图模型；用户明确指定时只覆盖当前请求。
-   - `size`：用户未指定时省略，沿用 Host 配置；指定时使用 `WIDTHxHEIGHT`。
+   - OpenAI 协议：`size` 使用 `auto` 或 `WIDTHxHEIGHT`；`quality` 按下条保留用户配置。
+   - Gemini 协议：使用 `aspect_ratio`（如 `16:9`）与 `image_size`（`512`、`1K`、`2K`、`4K`，K 大写）。未指定时沿用环境配置，未配置分辨率则默认 `4K`；环境界面可直接选择档位。不要传具体像素 `size` 或 `quality`，也不要由像素宽高猜测档位。目录明确不支持所选档位或比例时报告配置错误，不静默改小或换模型。实际宽高仍以 PNG 回执为准。
    - `quality`：用户未指定时省略，读取环境配置；明确指定时传 `auto`、`low`、`medium`、`high`、`xhigh` 或 `max`。目录未列出或只列出部分档位时仍保留显式选择，由平台校验，不能降档。`auto` 省略 API 质量参数；Gemini 原生生图忽略质量字段，不改变已保存配置。
    - `overwrite`：只有用户明确要求替换已有图时才设为 `true`。
    - `input_attachment_ids`：优先传当前会话附件 ID；`input_paths` 可用于用户指定或当前已生成的工作区资源，按源图优先级排列，主图放第一张。
@@ -45,11 +46,11 @@ PPT/PPTX、幻灯片、文档和报告的配图也使用本技能。通过 `gene
 5. 首次成功回复必须直接显示图片：工具返回的 image attachment 会由 DSH 渲染；助手最终文本也必须逐张原样复制工具返回的 `![...](<绝对路径>)` Markdown 图片嵌入，放在普通文本中且不放入反引号。不要只返回路径、普通下载链接或“图片已附上”。Windows 路径使用 `/`，含空格的路径保留 `<...>`。多图逐张嵌入，只展示成功输出并保留 warning；不要为了展示再次生图。
 6. 返回生成或编辑文件的绝对路径，并简要说明实际模型与尺寸意图。预览失败但文件已保存时，明确报告预览警告，不把文件结果判为失败。
 
-科研 PPT 遵循 `zerowall-presentation`：先分析主题、页面角色、文献和素材，使用同一代表性页面生成四种视觉样式供用户选择；用户确认样式后，再生成逐页的 originalPrompt、analysisPrompt、combinedPrompt、editablePlanPrompt，并写入提示词 Markdown 文档。提示词文档和来源清单确认前不得启动正式全套页面生成。默认快速生成整页 PNG 图片型 PPTX；导出后询问是否需要可编辑版，只有用户确认才依据 PNG 视觉稿构建独立文字、形状、表格、图表和图片对象。优先使用用户项目图片、文献原图和数据图，保留原字节、来源、原始 prompt、生成回执和组件清单，失败后复用成功资产。
+科研 PPT 遵循 `zerowall-presentation`：先分析主题、页面角色、文献和素材，先保存规格和素材清单并 `presentation_prepare`（有客户 PPTX 时传 `template_path` 提前解析），再用 `presentation_generate_style_candidates` 生成同一代表页的四张风格图，逐张展示返回的 previewMarkdown；等待用户选择后调用 `presentation_select_style`。用户确认样式后，再生成逐页的 originalPrompt、analysisPrompt、combinedPrompt、editablePlanPrompt，并写入提示词 Markdown 文档。提示词文档和来源清单确认前不得启动正式全套页面生成。默认快速生成整页 PNG 图片型 PPTX；导出后询问是否需要可编辑版，只有用户确认才依据 PNG 视觉稿构建独立文字、形状、表格、图表和图片对象。优先使用用户项目图片、文献原图和数据图，保留原字节、来源、原始 prompt、生成回执和组件清单，失败后复用成功资产。
 
 ## PPT 风格、选择性修改与恢复
 
-PPT 内容计划的全局 stylePrompt、styleReferenceAssetIds 分别继承到每页；每页同名字段可覆盖，空值可清除继承。四种样式只改变视觉语言、色板、密度和图形系统，不改变事实文字、页面结构或文献素材。确认后保存每页的原始、分析、组合和可编辑计划提示词；`presentation_confirm_plan` 绑定规格、提示词文档、来源资产和选定样式的 SHA-256。纯风格参考图进入 edit_image 的 input_paths 和来源回执，不自动嵌入成页面事实图，也不要求 assetPlacements。无参考图时使用 generate_image。
+PPT 内容计划的全局 stylePrompt、styleReferenceAssetIds 分别继承到每页；每页同名字段可覆盖，空值可清除继承。四种样式只改变视觉语言、色板、密度和图形系统，不改变事实文字或文献素材；每种一张，不能为四种风格各自生成整套 PPT。选中图自动进入每页 edit_image 的参考图列表；客户母版的配色、字体和布局约束进入四图和正式页提示词。确认后保存每页的原始、分析、组合和可编辑计划提示词；`presentation_confirm_plan` 绑定规格、提示词文档、来源资产和选定样式的 SHA-256。纯风格参考图进入 edit_image 的 input_paths 和来源回执，不自动嵌入成页面事实图，也不要求 assetPlacements。无参考图时使用 generate_image。
 
 presentation_generate_templates 立即返回 taskId，每页独立生成、写入、检查和渲染。默认并发 10，范围 1–10；确认门禁会阻止未确认或已过期的正式计划。图片型工程先交付 PPTX；用户确认可编辑后，使用 `presentation_write_component_manifest`、`presentation_plan_editable_pages` 和 `presentation_resume_pages`，将文字、形状、表格、图表、原始图片和无法安全切分的 complex-raster 区域分别保留。组件清单记录 bbox、sourceRegion、z-order、OCR 置信度和 fallback，不能拿整页图片冒充完全可编辑。
 

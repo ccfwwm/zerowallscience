@@ -24,6 +24,7 @@ export const EnvironmentSettingsSchema: z<EnvironmentSettingsValue> = z.object({
     profileId: z.string().default(''),
     resolution: z.string().default(''),
     aspectRatio: z.string().default(''),
+    imageSize: z.string().default(''),
   }).default({ providerId: '', groupId: '', modelId: '' }),
   imageQuality: z.union(['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const).default('medium'),
   contextBudgetTokens: z.number().step(1).min(32_000).max(1_000_000).default(300_000),
@@ -294,6 +295,7 @@ export class ZeroWallEnvironmentService extends TypertRemoteService {
       profileId: String(selection.profileId ?? '').trim(),
       resolution: String(selection.resolution ?? '').trim(),
       aspectRatio: String(selection.aspectRatio ?? '').trim(),
+      imageSize: String(selection.imageSize ?? '').trim(),
     }
     const empty = !value.providerId && !value.groupId && !value.modelId
     const partial = !empty && (!value.providerId || !value.groupId || !value.modelId)

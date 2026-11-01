@@ -60,11 +60,11 @@
     },
     {
       "id": "@zerowallscience/plugin-ai-cloud",
-      "version": "0.1.36",
+      "version": "0.1.37",
       "kind": "plugin",
-      "size": 2272350,
-      "sha256": "00f3469d98186eb60ab9369055928ec8587e9b7cc97113307316f2b82f098208",
-      "sourceFingerprint": "151c05b6a938f7a06a9d4e018501308bd730526492207a2a7bfdce190211a0d5"
+      "size": 2272985,
+      "sha256": "a76d3dd5f1ff1cfe55b1effd5ab7d2d46f68c9e55f4e6cfe980082a9416f6a4d",
+      "sourceFingerprint": "f7ef40f21ae539d4994861779b9b47835682ddd553521fba92895eff338b617c"
     },
     {
       "id": "@zerowallscience/plugin-base",
@@ -100,11 +100,11 @@
     },
     {
       "id": "@zerowallscience/plugin-environment",
-      "version": "0.1.26",
+      "version": "0.1.27",
       "kind": "plugin",
-      "size": 262983,
-      "sha256": "c76f14553f3881d343ba865ecd8ef9846b0ec951ab6ee0eb5bee89351c596980",
-      "sourceFingerprint": "e7a0e144984b829dea1e893b012ff1b9d2867faea7030e55fd0660665b31566a"
+      "size": 264137,
+      "sha256": "56e4ce2554efc3dbff1271c8755cf2c1aa2db4196b13849954aaf4328a64e46c",
+      "sourceFingerprint": "8cfcb360523c20c9c0a1979a6bd6f7698d53b37950121be8d8ead806126a0ce9"
     },
     {
       "id": "@zerowallscience/plugin-execution",
@@ -132,11 +132,11 @@
     },
     {
       "id": "@zerowallscience/plugin-images",
-      "version": "0.2.35",
+      "version": "0.2.36",
       "kind": "plugin",
-      "size": 207892,
-      "sha256": "8cf9fe1d853e62e4948d311d76dcb1c5c1818615e6e23a0fec8d15d771e75d6f",
-      "sourceFingerprint": "99fe650d34099dc22c3e168485441c00d28ffb345487fa64b4593114b81acc9d"
+      "size": 227685,
+      "sha256": "c655ecb2c58426ef5fb3e82af75dde75ac2f99f249b14762304a4de62c8b5c65",
+      "sourceFingerprint": "dee9cf6fdc481e9ada4280bbc82c83bab3e77b4be06e490c3c82f35ffbfdb0b5"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
@@ -375,10 +375,10 @@
     },
     {
       "id": "@zerowallscience/plugin-ai-cloud",
-      "version": "0.1.36",
+      "version": "0.1.37",
       "path": "plugins/ai-cloud",
       "files": 23,
-      "sha256": "3b002354c8a958aaa180a956441be5967ff747b03830ea1f44ae04e046b5bb75"
+      "sha256": "e3642394cccd3d21c3e7f68c5cf138ace145eb65e03b498c3b165d4605ffccd3"
     },
     {
       "id": "@zerowallscience/plugin-base",
@@ -410,10 +410,10 @@
     },
     {
       "id": "@zerowallscience/plugin-environment",
-      "version": "0.1.26",
+      "version": "0.1.27",
       "path": "plugins/environment",
       "files": 20,
-      "sha256": "bbd65b687d3343b2564ae6d23fd8591b2bc92df06155900572c4a5b00fbadfe9"
+      "sha256": "6d1cd06cdf8b4230b2c682e6033622a03048d4a4d577b2df4c0b696d76d3d648"
     },
     {
       "id": "@zerowallscience/plugin-execution",
@@ -438,10 +438,10 @@
     },
     {
       "id": "@zerowallscience/plugin-images",
-      "version": "0.2.35",
+      "version": "0.2.36",
       "path": "plugins/images",
-      "files": 20,
-      "sha256": "7243a98602b9e8764d835a19cc1191450641f57eb872af8e9be1ea4a44a78a61"
+      "files": 22,
+      "sha256": "e461db2720d5955e353329b1cef4488e593099ca8ff478e7054c095f40028083"
     },
     {
       "id": "@zerowallscience/plugin-mcp",
@@ -1210,10 +1210,10 @@
     },
     {
       "id": "gpt-image-generator",
-      "version": "0.1.12",
+      "version": "0.1.13",
       "files": 2,
-      "sourceSha256": "0be5074d835c68007213f9de081e70cd369cd4d7ae85250f730f62b64b622fbe",
-      "sha256": "1fc3dd182c933bf404f772879ea976558700b3f8c2b01f259382daea4a3fbe2d"
+      "sourceSha256": "4b355271f5e053600eb6a4a719fa26f3cd80410d94c26e580c1d63e4e02d2a0a",
+      "sha256": "6d5c6ea5bd1b8764e8f547db3751a077582f0092bce99cc356ba427551a6e5b4"
     },
     {
       "id": "gtars",
@@ -2414,10 +2414,10 @@
     },
     {
       "id": "zerowall-presentation",
-      "version": "0.2.8",
+      "version": "0.2.9",
       "files": 1,
-      "sourceSha256": "666d2a358075ed10c9619d37cc9f49d4e7c5375317a8c7a195bec95191f1c7a3",
-      "sha256": "e620c4342f58350f054fa906b579adcb52367df412440c66d6f705f38bafa2aa"
+      "sourceSha256": "9331d0e2437b54d905def80a38037a8949f4c7f2cb6c31496ba237d1137bbadb",
+      "sha256": "25dae2e61f595577bdf9ff2877466a06c05d0730b4e79bc085c3448712dfa44b"
     },
     {
       "id": "zerowall-python-packages",

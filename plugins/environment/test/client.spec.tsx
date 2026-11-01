@@ -10,6 +10,29 @@ import { DEFAULTS, type PubmedStatus } from '../../pubmed/src/shared/types.js'
 
 describe('environment settings client', () => {
   afterEach(cleanup)
+  it.each([{}, { imageSizes: [], resolutions: ['512', '1024', '2048', '4096'] }, { resolution: '2048' }])('offers Gemini tiers with default 4K and saves an explicit choice (%j)', async capabilities => {
+    const ok = (value: unknown) => Promise.resolve({ ok: true, value })
+    const model = { providerId: 'gemini', groupId: '69', modelId: 'gemini-image', capability: 'image-generation', imageProtocol: 'gemini', ...capabilities }
+    const environmentRemote = { getImageModelSelection: vi.fn(() => ok(model)), getImageQuality: vi.fn(() => ok('max')), listVariables: vi.fn(() => ok([])), setImageModelSelection: vi.fn(() => ok(undefined)) }
+    const accountRemote = { current: vi.fn(() => ok({ status: 'signedIn', models: [model] })) }
+    const t: EnvironmentTranslate = (key, params = {}) => zh[key].replace(/\{(\w+)\}/g, (_, name) => String(params[name] ?? ''))
+    render(createElement(EnvironmentSection, { t, environmentRemote, accountRemote, unwrap: async value => (await value).value, mcpRemote: {}, modelCatalog: vi.fn() } as any))
+    const size = await screen.findByLabelText(zh.geminiImageSize) as HTMLSelectElement
+    expect([...size.options].map(option => option.value)).toEqual(['', '512', '1K', '2K', '4K'])
+    expect(size.selectedOptions[0]!.textContent).toBe('resolution' in capabilities ? '2K' : '默认（4K）')
+    expect(environmentRemote.setImageModelSelection).not.toHaveBeenCalled()
+    if ('resolution' in capabilities) {
+      fireEvent.change(size, { target: { value: '' } })
+      await waitFor(() => expect(environmentRemote.setImageModelSelection).toHaveBeenLastCalledWith(expect.objectContaining({ imageSize: '', resolution: '' })))
+      expect(size.value).toBe('')
+    }
+    fireEvent.change(size, { target: { value: '2K' } })
+    await waitFor(() => expect(environmentRemote.setImageModelSelection).toHaveBeenCalledWith(expect.objectContaining({ providerId: 'gemini', modelId: 'gemini-image', imageSize: '2K' })))
+    fireEvent.change(size, { target: { value: '' } })
+    await waitFor(() => expect(environmentRemote.setImageModelSelection).toHaveBeenLastCalledWith(expect.objectContaining({ imageSize: '', resolution: '' })))
+    expect(size.value).toBe('')
+    expect(screen.queryByLabelText(/^默认质量/)).toBeNull()
+  })
   it('keeps all quality levels and saved routing while refreshing a failed image group', async () => {
     const ok = (value: unknown) => Promise.resolve({ ok: true, value })
     const openai = { providerId: 'openai', groupId: '53', groupName: '生图分组-支持4k', modelId: 'gpt-image-2.5', capability: 'image-generation', imageProtocol: 'openai', qualities: [] }
@@ -41,8 +64,12 @@ describe('environment settings client', () => {
     fireEvent.change(model, { target: { value: geminiValue } })
     await waitFor(() => expect(environmentRemote.setImageModelSelection).toHaveBeenCalledWith({ providerId: 'gemini', groupId: '69', modelId: gemini.modelId }))
     expect(screen.getByText(zh.geminiQualityNote)).toBeTruthy()
-    expect(quality.value).toBe('max')
-    fireEvent.change(quality, { target: { value: 'xhigh' } })
+    expect(screen.queryByLabelText(/^默认质量/)).toBeNull()
+    expect(environmentRemote.setImageQuality).not.toHaveBeenCalled()
+    fireEvent.change(model, { target: { value: saved } })
+    const restoredQuality = await screen.findByLabelText(/^默认质量/) as HTMLSelectElement
+    expect(restoredQuality.value).toBe('max')
+    fireEvent.change(restoredQuality, { target: { value: 'xhigh' } })
     await waitFor(() => expect(environmentRemote.setImageQuality).toHaveBeenCalledWith('xhigh'))
   })
   it.each([true, false])('renders base environment settings when optional domains are available=%s', async domainsAvailable => {

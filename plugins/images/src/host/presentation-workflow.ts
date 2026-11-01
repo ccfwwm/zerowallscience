@@ -7,6 +7,8 @@ import { defineTool, type ToolRunContext, type ToolDispatchExecution } from '@de
 import { assetsForPage, assetsWithReferences, hash, pageStyle, readManifest, readSpecification, recordAssetReview, recordTemplateReview, recordVisualAssets, requireTemplateReview, saveJson, templateFailure, withPresentationLock, workspacePath, type AssetInput, type VisualAsset, type VisualManifest, type TemplateReview } from './visual-assets.js'
 import { DEFAULT_IMAGE_CONCURRENCY, imageConcurrency } from './image-concurrency.js'
 import { compilePresentationPrompts } from './presentation-prompts.js'
+import { PRESENTATION_STYLE_CANDIDATES, presentationAspectRatio, presentationStylePrompt, representativeSlidePrompt, validateStyleCandidateSet, type PresentationStyleCandidate } from './presentation-style-candidates.js'
+import { inspectPresentationTemplate, presentationTemplateStylePrompt } from './presentation-template-analysis.js'
 
 type Exec = ToolRunContext | ToolDispatchExecution
 type OutputMode = 'image' | 'editable'
@@ -20,6 +22,8 @@ export interface PresentationWorkflow {
   provenancePath?: string
   pageJobs?: Record<string, PageJob>
   promptApproval?: PromptApproval
+  styleSelectionRequired?: boolean
+  promptCompilationRequired?: boolean
   componentManifestPath?: string
   fastExportPath?: string
   fastExportSha256?: string
@@ -309,9 +313,17 @@ export function installPresentationWorkflow(ctx: Context): void {
     return current.snapshots
   }
   async function bound(exec: Exec): Promise<PresentationWorkflow> { const state = await load(exec); if (!state) throw new Error('Call presentation_prepare with dir first.'); return state }
+  function requireSelectedStyle(state: PresentationWorkflow, specification: Awaited<ReturnType<typeof readSpecification>>) {
+    if (!state.styleSelectionRequired && !specification.styleCandidates) return
+    if (!specification.styleCandidates) throw new Error('PRESENTATION_STYLE_CANDIDATES_REQUIRED: 新建 PPT 请先调用 presentation_generate_style_candidates，展示同一代表页的四张风格图供用户选择。')
+    validateStyleCandidateSet(specification.styleCandidates)
+    if (!specification.selectedStyleId || !specification.styleCandidates.some(candidate => candidate.id === specification.selectedStyleId)) throw new Error('PRESENTATION_STYLE_SELECTION_REQUIRED: 请展示四张代表图，按用户选择调用 presentation_select_style，再编译和确认逐页提示词。')
+  }
   async function requireCurrentPromptApproval(exec: Exec, state: PresentationWorkflow): Promise<void> {
     const root = cwd(exec), specification = await readSpecification(root, state.spec)
-    if (specification.promptApprovalRequired !== true) return
+    requireSelectedStyle(state, specification)
+    if (!state.styleSelectionRequired && specification.promptApprovalRequired !== true) return
+    if (specification.templateSource && hash(await readFile(await workspacePath(root, specification.templateSource.path))) !== specification.templateSource.sha256) throw new Error('PRESENTATION_TEMPLATE_CHANGED: 客户 PPTX 母版已变化，请重新运行 presentation_prepare 分析母版并确认提示词。')
     const approval = state.promptApproval
     if (!approval) throw new Error('PRESENTATION_PLAN_CONFIRMATION_REQUIRED: 请先确认 presentation-prompts.md、选定风格和来源清单，再开始正式页面生成。')
     if (!specification.promptDocumentPath) throw new Error('PRESENTATION_PROMPT_DOCUMENT_MISSING: 当前规格要求确认，但没有 promptDocumentPath，请重新写入提示词文档。')
@@ -407,7 +419,7 @@ export function installPresentationWorkflow(ctx: Context): void {
               const receipt = JSON.parse(await readFile(target + '.generation.json', 'utf8'))
               if (receipt.prompt === input.prompt && receipt.sha256 === hash(await readFile(target)) && JSON.stringify(receipt.inputImageHashes ?? []) === JSON.stringify(input.references.map(reference => reference.sha256))) generated = { path: target, recovered: true }
             } catch { /* no completed generation to recover */ }
-            generated ??= await dispatch(background, input.references.length ? 'edit_image' : 'generate_image', { prompt: input.prompt, output_path: input.outputPath, concurrency: job.concurrency, ...(input.references.length ? { input_paths: input.references.map(reference => reference.path) } : {}) })
+            generated ??= await dispatch(background, input.references.length ? 'edit_image' : 'generate_image', { prompt: input.prompt, output_path: input.outputPath, aspect_ratio: presentationAspectRatio(spec.width, spec.height), concurrency: job.concurrency, ...(input.references.length ? { input_paths: input.references.map(reference => reference.path) } : {}) })
             const generation = JSON.parse(await readFile(await workspacePath(root, generated.path + '.generation.json'), 'utf8'))
             if (JSON.stringify(generation.inputImageHashes ?? []) !== JSON.stringify(input.references.map(reference => reference.sha256))) throw new Error('Image receipt must bind the referenced original images.')
             if (input.parentAssetId && generation.sha256 === input.references.find(reference => reference.assetId === input.parentAssetId)?.sha256) throw new Error('Image repair must contain changed image bytes.')
@@ -546,14 +558,35 @@ export function installPresentationWorkflow(ctx: Context): void {
       } catch (error) { state.failure = { stage: exec.name, message: error instanceof Error ? error.message.slice(0, 1000) : 'Presentation operation failed.', at: new Date().toISOString() }; await persist(exec, state); throw error }
     })
   })
-  ctx.tools.register(defineTool({ name: 'presentation_prepare', description: 'Bind a rich content plan and asset manifest to a PPTD project. For mode=new, create the project automatically when dir does not exist. output_mode defaults to image (fast whole-page PNG PPTX); use editable only when requested.', parameters: { spec_path: { type: 'string', required: true }, manifest_path: { type: 'string', required: true }, dir: { type: 'string', required: true }, mode: { type: 'string', enum: ['new', 'edit'], required: true }, output_mode: { type: 'string', enum: ['image', 'editable'] }, changed_pages: { type: 'array', items: { type: 'integer' } } }, output, execute: async (args, exec) => {
+  ctx.tools.register(defineTool({ name: 'presentation_prepare', description: 'Bind a rich content plan and asset manifest to a PPTD project. Optionally pass template_path to analyze a customer PPTX master before style selection; its slide size, theme colors, fonts and layouts become visual guidance without modifying the source. For mode=new, create the project automatically when dir does not exist. output_mode defaults to image (fast whole-page PNG PPTX); use editable only when requested.', parameters: { spec_path: { type: 'string', required: true }, manifest_path: { type: 'string', required: true }, dir: { type: 'string', required: true }, mode: { type: 'string', enum: ['new', 'edit'], required: true }, template_path: { type: 'string', description: 'Optional workspace-relative customer PPTX master. Analyzed read-only before generating style candidates.' }, output_mode: { type: 'string', enum: ['image', 'editable'] }, changed_pages: { type: 'array', items: { type: 'integer' } } }, output, execute: async (args, exec) => {
     const root = cwd(exec), specPath = args.spec_path as string, manifestPath = args.manifest_path as string, spec = await workspacePath(root, specPath), manifest = await workspacePath(root, manifestPath), dir = await workspacePath(root, args.dir)
     const specification = await readSpecification(root, spec), visualManifest = await readManifest(root, manifest)
+    let templateSource: { path: string; sha256: string } | undefined
+    const templateInput = args.template_path ?? specification.templateSource?.path
+    if (typeof templateInput === 'string' && templateInput.trim()) {
+      const templatePath = await workspacePath(root, templateInput.trim())
+      if (extname(templatePath).toLowerCase() !== '.pptx') throw new Error('template_path must point to a .pptx file.')
+      const bytes = await readFile(templatePath), analysis = inspectPresentationTemplate(bytes), relativeTemplatePath = relative(root, templatePath).replace(/\\/gu, '/')
+      try {
+        const existing = parse(await readFile(await workspacePath(root, join(dir, 'deck.pptd')), 'utf8'))
+        if (existing.size?.[0] !== analysis.width || existing.size?.[1] !== analysis.height) throw new Error('PRESENTATION_TEMPLATE_CANVAS_MISMATCH: 客户母版画布与已有工程不同，请使用独立 PPTD 工程应用此母版。')
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+      templateSource = { path: relativeTemplatePath, sha256: hash(bytes) }
+      if (specification.templateSource?.sha256 !== templateSource.sha256) {
+        delete specification.styleCandidates; delete specification.selectedStyleId; delete specification.selectedStylePrompt
+      }
+      specification.width = analysis.width
+      specification.height = analysis.height
+      specification.templateAnalysis = { ...analysis, sourcePath: relativeTemplatePath, sourceSha256: templateSource.sha256 }
+      specification.templateSource = templateSource
+      specification.templateStylePrompt = presentationTemplateStylePrompt(analysis)
+      await saveJson(spec, specification)
+    }
     const directory = resolve(root, '.zerowall', 'presentation-state'); await mkdir(directory, { recursive: true })
     const journal = await workspacePath(root, join(directory, hash(JSON.stringify({ spec, manifest, dir })) + '.json'))
     return withPresentationLock(dir, async () => {
       const outputMode = (args.output_mode ?? 'image') as OutputMode
-      let state: PresentationWorkflow = { schemaVersion: 3, spec, manifest, dir, journal, mode: args.mode, outputMode, changedPages: args.changed_pages ?? [], pages: {}, phase: 'planned', provenancePath: join(dir, 'presentation-provenance.json') }
+      let state: PresentationWorkflow = { schemaVersion: 3, spec, manifest, dir, journal, mode: args.mode, outputMode, changedPages: args.changed_pages ?? [], pages: {}, phase: 'planned', styleSelectionRequired: args.mode === 'new', provenancePath: join(dir, 'presentation-provenance.json') }
       try { const previous = JSON.parse(await readFile(journal, 'utf8')); if (previous.schemaVersion === 3) { if (args.output_mode && previous.outputMode !== args.output_mode) throw new Error('Use a separate PPTD project when changing output_mode.'); state = previous } } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
       const deckPath = join(dir, 'deck.pptd')
       try { await readFile(deckPath, 'utf8') } catch (error) {
@@ -568,11 +601,96 @@ export function installPresentationWorkflow(ctx: Context): void {
       const provenanceFile = await workspacePath(root, state.provenancePath ?? join(state.dir, 'presentation-provenance.json'))
       let prior: any = {}
       try { prior = JSON.parse(await readFile(provenanceFile, 'utf8')) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-      await saveJson(provenanceFile, { ...prior, schemaVersion: 2, workspaceRoot: await realpath(root), specificationFingerprint: hash(JSON.stringify(specification)), spec: relative(root, spec), assetsManifest: relative(root, manifest), mode: state.mode, outputMode: state.outputMode, ...(state.componentManifestPath ? { componentManifest: relative(root, state.componentManifestPath) } : {}),
+      await saveJson(provenanceFile, { ...prior, schemaVersion: 2, workspaceRoot: await realpath(root), specificationFingerprint: hash(JSON.stringify(specification)), spec: relative(root, spec), assetsManifest: relative(root, manifest), mode: state.mode, outputMode: state.outputMode, ...(templateSource ? { templateSource } : specification.templateSource ? { templateSource: specification.templateSource } : {}), ...(specification.templateAnalysis ? { templateAnalysis: specification.templateAnalysis } : {}), ...(state.componentManifestPath ? { componentManifest: relative(root, state.componentManifestPath) } : {}),
         requiredTemplatePages: state.mode === 'new' ? specification.slides.map((_, index) => index + 1) : prior.requiredTemplatePages ?? [], templateReviews: prior.templateReviews ?? [], assets: visualManifest.assets })
-      await persist(exec, state, true); return JSON.stringify(workflowView(state))
+      await persist(exec, state, true); return JSON.stringify({ ...workflowView(state), ...(state.styleSelectionRequired ? { nextStep: specification.selectedStyleId && specification.styleCandidates ? 'presentation_write_prompt_document' : 'presentation_generate_style_candidates', styleOptions: PRESENTATION_STYLE_CANDIDATES.map(({ id, label }) => ({ id, label })) } : {}), ...(specification.templateAnalysis ? { templateAnalysis: specification.templateAnalysis } : {}) })
     })
   } }))
+  ctx.tools.register(defineTool({
+    name: 'presentation_generate_style_candidates',
+    description: 'Generate exactly four style-candidate images from the same representative page and content, save and register each with its generation receipt, and bind the complete candidate set to the current presentation specification. Select one with presentation_select_style before compiling the formal prompt document.',
+    parameters: { representative_page: { type: 'integer', description: 'One-based representative page; defaults to page 1.' }, output_dir: { type: 'string', description: 'Optional workspace-relative destination directory; defaults to <presentation>/style-candidates.' }, concurrency: { type: 'integer', description: '1–10 concurrent requests; defaults to 10.' } },
+    output: { schema: output.schema, render: (_args: unknown, value: string) => {
+      const result = JSON.parse(value)
+      return [{ type: 'text' as const, text: value + '\n\n展示以下四张图，等待用户选择后调用 presentation_select_style：\n' + result.candidates.map((candidate: any) => candidate.previewMarkdown).join('\n\n') },
+        ...result.candidates.flatMap((candidate: any) => candidate.attachment ? [{ type: 'image' as const, attachment: candidate.attachment }] : [])]
+    } },
+    execute: async (args, exec) => {
+      const initial = await bound(exec), root = cwd(exec), state = await currentBinding(exec, initial)
+      const specPath = await workspacePath(root, state.spec), specification = await readSpecification(root, state.spec), manifestPath = await workspacePath(root, state.manifest)
+      const specBytesBefore = await readFile(specPath), representativePage = args.representative_page ?? 1
+      if (!Number.isInteger(representativePage) || representativePage < 1 || !specification.slides[representativePage - 1]) throw new Error('representative_page must be a page in the current presentation specification.')
+      if (specification.templateSource && hash(await readFile(await workspacePath(root, specification.templateSource.path))) !== specification.templateSource.sha256) throw new Error('PRESENTATION_TEMPLATE_CHANGED: 客户 PPTX 母版已变化，请重新运行 presentation_prepare。')
+      const limit = imageConcurrency(args.concurrency), slide = specification.slides[representativePage - 1]!
+      const manifest = await readManifest(root, state.manifest)
+      const referenceIds = [...new Set(slide.styleReferenceAssetIds ?? specification.styleReferenceAssetIds ?? [])]
+      const references = referenceIds.map(id => {
+        const asset = manifest.assets.find(item => item.assetId === id)
+        if (!asset) throw new Error(`Unknown style reference asset ${id}.`)
+        return asset
+      })
+      if (references.length > 16) throw new Error('At most 16 style references per candidate.')
+      for (const reference of references) if (hash(await readFile(await workspacePath(root, reference.path))) !== reference.sha256) throw new Error(`Style reference asset ${reference.assetId} changed.`)
+      const contentPrompt = [
+        typeof slide.originalPrompt === 'string' ? slide.originalPrompt : typeof specification.originalPrompt === 'string' ? specification.originalPrompt : '',
+        typeof slide.analysisPrompt === 'string' ? slide.analysisPrompt : '',
+        typeof slide.purpose === 'string' ? `Page purpose: ${slide.purpose}` : '',
+        typeof slide.takeaway === 'string' ? `Key takeaway: ${slide.takeaway}` : '',
+        typeof slide.visualBrief === 'string' ? `Visual direction: ${slide.visualBrief}` : '',
+        specification.stylePrompt ? `User visual requirements (apply to every option): ${specification.stylePrompt}` : '',
+        `User typography and palette (preserve explicit choices): ${JSON.stringify({ fonts: specification.fonts, palette: specification.palette })}`,
+        specification.templateStylePrompt ? `Customer master visual guidance:\n${specification.templateStylePrompt}` : '',
+      ].filter(value => value.trim()).join('\n\n')
+      const sharedPrompt = representativeSlidePrompt({ page: representativePage, width: specification.width, height: specification.height, slide, ...(contentPrompt ? { prompt: contentPrompt } : {}) })
+      const candidateSetId = randomUUID(), outputDir = args.output_dir ?? join(state.dir, 'style-candidates')
+      const candidateDirectory = await workspacePath(root, outputDir)
+      await mkdir(candidateDirectory, { recursive: true })
+      const setDirectory = join(candidateDirectory, candidateSetId)
+      await mkdir(setDirectory, { recursive: true })
+      const generated = await Promise.allSettled(PRESENTATION_STYLE_CANDIDATES.map(async style => {
+        const prompt = `${sharedPrompt}\n\nStyle option ${style.label}: ${presentationStylePrompt(style.id)}\n\nExplicit user requirements and the supplied master take precedence over this option's suggested palette and typography. Vary the visual treatment within those constraints.`
+        const outputPath = join(setDirectory, `${style.id}.png`)
+        const result = await dispatch(exec, references.length ? 'edit_image' : 'generate_image', { prompt, output_path: outputPath, aspect_ratio: presentationAspectRatio(specification.width, specification.height), concurrency: limit, ...(references.length ? { input_paths: references.map(reference => reference.path) } : {}) })
+        const imagePath = await workspacePath(root, result.path)
+        const imageHash = hash(await readFile(imagePath))
+        const receipt = JSON.parse(await readFile(await workspacePath(root, imagePath + '.generation.json'), 'utf8'))
+        if (receipt.sha256 !== imageHash || result.sha256 && result.sha256 !== imageHash || receipt.prompt !== prompt || JSON.stringify(receipt.inputImageHashes ?? []) !== JSON.stringify(references.map(reference => reference.sha256))) throw new Error(`${style.label} candidate generation receipt does not match its image, prompt or references.`)
+        return { style, prompt, imagePath, imageHash, attachment: result.attachment ?? result.image, previewWarning: result.previewWarning }
+      }))
+      const completed = generated.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
+      if (completed.length) await recordVisualAssets(root, completed.map(item => ({
+        manifest: manifestPath, image: item.imagePath, assetId: `style-${item.style.id}-${candidateSetId.slice(0, 8)}`, role: 'style-candidate',
+        slideNumber: representativePage, sourceKind: 'generated', styleReferenceIds: referenceIds, styleId: item.style.id, candidateSetId,
+        originalPrompt: contentPrompt, combinedPrompt: item.prompt, stylePrompt: presentationStylePrompt(item.style.id),
+      })))
+      const failed = generated.flatMap((result, index) => result.status === 'rejected' ? [`${PRESENTATION_STYLE_CANDIDATES[index]!.label}: ${result.reason instanceof Error ? result.reason.message : 'generation failed'}`] : [])
+      if (failed.length) throw new Error(`Style candidate set ${candidateSetId} is incomplete (${completed.length}/4 images registered). ${failed.join('; ')}`)
+      if (hash(await readFile(specPath)) !== hash(specBytesBefore)) throw new Error('The presentation specification changed while style candidates were generating; review the registered candidate images and rerun this tool.')
+      return withPresentationLock(state.dir, async () => {
+        const current = await currentBinding(exec, initial), currentSpec = await readSpecification(root, current.spec), currentManifest = await readManifest(root, current.manifest)
+        const candidates: PresentationStyleCandidate[] = completed.map(item => {
+          const assetId = `style-${item.style.id}-${candidateSetId.slice(0, 8)}`
+          const asset = currentManifest.assets.find(entry => entry.assetId === assetId)
+          if (!asset || asset.sha256 !== item.imageHash) throw new Error(`Registered style candidate ${assetId} is missing or changed.`)
+          return { id: item.style.id, label: item.style.label, assetId, candidateSetId, sha256: asset.sha256 }
+        })
+        validateStyleCandidateSet(candidates)
+        delete currentSpec.selectedStyleId; delete currentSpec.selectedStylePrompt
+        currentSpec.styleCandidates = candidates
+        currentSpec.promptApprovalRequired = true
+        delete currentManifest.selectedStyleAssetId; delete currentManifest.styleReview
+        await saveJson(current.manifest, currentManifest)
+        await saveJson(current.spec, currentSpec)
+        delete current.promptApproval
+        current.promptCompilationRequired = true
+        await persist(exec, current)
+        return JSON.stringify({ candidateSetId, representativePage, aspectRatio: presentationAspectRatio(currentSpec.width, currentSpec.height), nextStep: 'Show all four preview images and wait for the user to select one; then call presentation_select_style.', candidates: candidates.map((candidate, index) => {
+          const generated = completed[index]!, destination = generated.imagePath.replace(/\\/gu, '/').replace(/[%<>\r\n]/gu, character => encodeURIComponent(character))
+          return { ...candidate, path: generated.imagePath, receiptPath: generated.imagePath + '.generation.json', previewMarkdown: `![${candidate.label}](<${destination}>)`, ...(generated.attachment ? { attachment: generated.attachment } : {}), ...(generated.previewWarning ? { previewWarning: generated.previewWarning } : {}) }
+        }) })
+      })
+    },
+  }))
   ctx.tools.register(defineTool({
     name: 'presentation_write_prompt_document',
     description: 'Compile a rich per-page prompt Markdown document from the specification and research source manifest without another model call. Each slides[] may include originalPrompt, analysisPrompt, purpose, takeaway, layout, visualBrief, chartBrief, typography, immutableFacts, negativeConstraints, speakerNotes, confidence, reviewItems and editablePlanPrompt. Omit markdown to compile and bind exact combinedPrompt values used by presentation_generate_fast. Explicit markdown remains supported for existing workflows.',
@@ -581,11 +699,17 @@ export function installPresentationWorkflow(ctx: Context): void {
     execute: async (args, exec) => {
       const root = cwd(exec), specPath = await workspacePath(root, args.spec_path), outputPath = await workspacePath(root, args.output_path)
       const specification = await readSpecification(root, args.spec_path)
+      const binding = await load(exec)
+      if (binding && resolve(root, binding.spec) === specPath) requireSelectedStyle(binding, specification)
       if (specPath === outputPath || outputPath === resolve(root, specification.sourceManifestPath ?? args.spec_path)) throw new Error('Prompt output must be separate from specification and source manifest.')
-      if (typeof args.style_id === 'string' && args.style_id.trim()) specification.selectedStyleId = args.style_id.trim()
+      if (typeof args.style_id === 'string' && args.style_id.trim()) {
+        const requestedStyle = args.style_id.trim()
+        if (specification.styleCandidates && requestedStyle !== specification.selectedStyleId) throw new Error('Call presentation_select_style before compiling prompts for a generated style-candidate set.')
+        specification.selectedStyleId = requestedStyle
+      }
       let markdown: string
       let promptSummary: Array<{ page: number; characters: number; missing: string[] }> = []
-      if (args.markdown === undefined) {
+      if (typeof args.markdown !== 'string' || !args.markdown.trim()) {
         const state = await load(exec)
         if (!state || resolve(root, state.spec) !== specPath) throw new Error('Bind the specification using presentation_prepare before compiling its prompt document.')
         const visualManifest = await readManifest(root, state.manifest)
@@ -596,14 +720,15 @@ export function installPresentationWorkflow(ctx: Context): void {
         markdown = compiled.markdown
         promptSummary = compiled.slides.map(item => ({ page: item.page, characters: item.combinedPrompt.length, missing: item.missing }))
       } else {
-        if (!args.markdown.trim()) throw new Error('Prompt Markdown cannot be empty.')
         markdown = args.markdown
         delete specification.promptDocumentFormat
       }
       await writeFile(outputPath, markdown, 'utf8')
       specification.promptApprovalRequired = true
-      specification.promptDocumentPath = args.output_path
+      specification.promptDocumentPath = relative(root, outputPath).replace(/\\/gu, '/')
       await saveJson(specPath, specification)
+      const state = await load(exec)
+      if (state && resolve(root, state.spec) === specPath) await withPresentationLock(state.dir, async () => { const current = await currentBinding(exec, state); delete current.promptApproval; delete current.promptCompilationRequired; await persist(exec, current) })
       return JSON.stringify({ specPath, promptDocumentPath: outputPath, specificationSha256: hash(await readFile(specPath)), promptDocumentSha256: hash(await readFile(outputPath)), styleId: specification.selectedStyleId, promptSummary })
     },
   }))
@@ -619,20 +744,62 @@ export function installPresentationWorkflow(ctx: Context): void {
     return JSON.stringify({ path: outputPath, sha256: hash(await readFile(outputPath)), queryCount: manifest.queries.length, sourceCount: manifest.sources.length, checkedSourceCount: manifest.sources.filter(source => ['full-text-checked', 'abstract-checked', 'official-source'].includes(source.verification)).length, timeBudgetSeconds: manifest.timeBudgetSeconds })
   } }))
   ctx.tools.register(defineTool({ name: 'presentation_select_style', description: 'Select a reviewed style candidate and invalidate any prior prompt approval until the prompt document is confirmed again.', parameters: { style_id: { type: 'string', required: true }, spec_path: { type: 'string' } }, output, execute: async (args, exec) => {
-    const root = cwd(exec), state = await bound(exec), specPath = await workspacePath(root, args.spec_path ?? state.spec), specification = JSON.parse(await readFile(specPath, 'utf8')) as Record<string, unknown>
-    specification.selectedStyleId = String(args.style_id).trim(); await saveJson(specPath, specification)
-    return withPresentationLock(state.dir, async () => { const current = await currentBinding(exec, state); delete current.promptApproval; await persist(exec, current); return JSON.stringify({ selectedStyleId: specification.selectedStyleId, approvalInvalidated: true }) })
+    const root = cwd(exec), state = await bound(exec), specPath = await workspacePath(root, args.spec_path ?? state.spec), selectedStyleId = String(args.style_id).trim()
+    if (resolve(root, specPath) !== resolve(root, state.spec)) throw new Error('Select a style only for the presentation currently bound by presentation_prepare.')
+    return withPresentationLock(state.dir, async () => {
+      const current = await currentBinding(exec, state), specification = await readSpecification(root, current.spec), manifest = await readManifest(root, current.manifest)
+      let selected: PresentationStyleCandidate | undefined
+      if (current.styleSelectionRequired && !specification.styleCandidates) throw new Error('PRESENTATION_STYLE_CANDIDATES_REQUIRED: Generate and show all four representative images before selecting a style.')
+      if (specification.styleCandidates) {
+        validateStyleCandidateSet(specification.styleCandidates)
+        selected = specification.styleCandidates.find(candidate => candidate.id === selectedStyleId)
+        if (!selected) throw new Error(`Unknown style candidate ${selectedStyleId}.`)
+        for (const candidate of specification.styleCandidates) {
+          const asset = manifest.assets.find(entry => entry.assetId === candidate.assetId)
+          if (!asset || asset.role !== 'style-candidate' || asset.sourceKind !== 'generated' || asset.styleId !== candidate.id || asset.candidateSetId !== candidate.candidateSetId || asset.sha256 !== candidate.sha256) throw new Error(`Style candidate ${candidate.id} is missing or no longer matches the registered asset.`)
+          const imagePath = await workspacePath(root, asset.path), imageHash = hash(await readFile(imagePath))
+          const receipt = JSON.parse(await readFile(await workspacePath(root, imagePath + '.generation.json'), 'utf8'))
+          if (imageHash !== candidate.sha256 || receipt.sha256 !== candidate.sha256) throw new Error(`Style candidate ${candidate.id} changed after generation; generate a new candidate set.`)
+        }
+        specification.selectedStylePrompt = presentationStylePrompt(selectedStyleId)
+        manifest.selectedStyleAssetId = selected.assetId
+        delete manifest.styleReview
+      }
+      specification.selectedStyleId = selectedStyleId
+      specification.promptApprovalRequired = true
+      await saveJson(current.spec, specification)
+      if (selected) await saveJson(current.manifest, manifest)
+      delete current.promptApproval
+      current.promptCompilationRequired = true
+      await persist(exec, current)
+      return JSON.stringify({ selectedStyleId, ...(selected ? { selectedCandidate: selected, selectedStylePrompt: specification.selectedStylePrompt } : {}), approvalInvalidated: true })
+    })
   } }))
   ctx.tools.register(defineTool({ name: 'presentation_confirm_plan', description: 'Confirm the prompt document, selected style and source manifest by SHA-256 before formal page generation.', parameters: { prompt_document_path: { type: 'string', required: true }, style_id: { type: 'string' } }, output, execute: async (args, exec) => {
-    const initial = await bound(exec), root = cwd(exec), specPath = await workspacePath(root, initial.spec), promptPath = await workspacePath(root, args.prompt_document_path)
-    const specification = await readSpecification(root, initial.spec), promptBytes = await readFile(promptPath), specBytes = await readFile(specPath), manifest = await readManifest(root, initial.manifest)
-    if (specification.promptApprovalRequired !== true) throw new Error('Set promptApprovalRequired=true in the specification before confirming a prompt document.')
-    if (specification.promptDocumentPath && resolve(root, specification.promptDocumentPath) !== promptPath) throw new Error('The confirmed prompt document does not match specification.promptDocumentPath.')
-    if (specification.researchSourcesRequired && !specification.sourceManifestPath) throw new Error('Write presentation-sources.json before confirming the research-backed prompt plan.')
-    const styleId = typeof args.style_id === 'string' && args.style_id.trim() ? args.style_id.trim() : specification.selectedStyleId
-    if (specification.selectedStyleId && styleId !== specification.selectedStyleId) throw new Error('The confirmed style does not match specification.selectedStyleId.')
-    const researchManifestSha256 = specification.sourceManifestPath ? hash(await readFile(await workspacePath(root, specification.sourceManifestPath))) : undefined
-    return withPresentationLock(initial.dir, async () => { const state = await currentBinding(exec, initial); state.promptApproval = { specificationSha256: hash(specBytes), promptDocumentSha256: hash(promptBytes), sourceManifestSha256: sourceManifestFingerprint(manifest, manifest.assets.map(asset => asset.assetId)), sourceAssetIds: manifest.assets.map(asset => asset.assetId), ...(researchManifestSha256 ? { researchManifestSha256 } : {}), ...(styleId ? { styleId } : {}), confirmedAt: new Date().toISOString() }; await persist(exec, state); return JSON.stringify({ confirmed: true, ...state.promptApproval }) })
+    const initial = await bound(exec), root = cwd(exec), promptPath = await workspacePath(root, args.prompt_document_path)
+    return withPresentationLock(initial.dir, async () => {
+      const state = await currentBinding(exec, initial), specification = await readSpecification(root, state.spec), promptBytes = await readFile(promptPath)
+      if (!promptBytes.toString('utf8').trim()) throw new Error('PRESENTATION_PROMPT_DOCUMENT_EMPTY: Write a non-empty prompt document before confirming the plan.')
+      if (specification.promptDocumentPath && resolve(root, specification.promptDocumentPath) !== promptPath) throw new Error('The confirmed prompt document does not match specification.promptDocumentPath.')
+      if (specification.templateSource && hash(await readFile(await workspacePath(root, specification.templateSource.path))) !== specification.templateSource.sha256) throw new Error('PRESENTATION_TEMPLATE_CHANGED: 客户 PPTX 母版已变化，请重新运行 presentation_prepare 分析母版并确认提示词。')
+      if (specification.researchSourcesRequired && !specification.sourceManifestPath) throw new Error('Write presentation-sources.json before confirming the research-backed prompt plan.')
+      requireSelectedStyle(state, specification)
+      if (state.promptCompilationRequired) throw new Error('PRESENTATION_PROMPT_RECOMPILE_REQUIRED: 风格已变化，请调用 presentation_write_prompt_document 更新逐页提示词，再确认计划。')
+      if (specification.styleCandidates) {
+        validateStyleCandidateSet(specification.styleCandidates)
+        if (!specification.selectedStyleId || !specification.styleCandidates.some(candidate => candidate.id === specification.selectedStyleId)) throw new Error('Select one of the four generated style candidates before confirming the plan.')
+      }
+      const styleId = typeof args.style_id === 'string' && args.style_id.trim() ? args.style_id.trim() : specification.selectedStyleId
+      if (specification.selectedStyleId && styleId !== specification.selectedStyleId) throw new Error('The confirmed style does not match specification.selectedStyleId.')
+      specification.promptApprovalRequired = true
+      specification.promptDocumentPath = relative(root, promptPath).replace(/\\/gu, '/')
+      await saveJson(state.spec, specification)
+      const specBytes = await readFile(await workspacePath(root, state.spec)), manifest = await readManifest(root, state.manifest)
+      const researchManifestSha256 = specification.sourceManifestPath ? hash(await readFile(await workspacePath(root, specification.sourceManifestPath))) : undefined
+      state.promptApproval = { specificationSha256: hash(specBytes), promptDocumentSha256: hash(promptBytes), sourceManifestSha256: sourceManifestFingerprint(manifest, manifest.assets.map(asset => asset.assetId)), sourceAssetIds: manifest.assets.map(asset => asset.assetId), ...(researchManifestSha256 ? { researchManifestSha256 } : {}), ...(styleId ? { styleId } : {}), confirmedAt: new Date().toISOString() }
+      await persist(exec, state)
+      return JSON.stringify({ confirmed: true, ...state.promptApproval })
+    })
   } }))
   ctx.tools.register(defineTool({
     name: 'presentation_write_component_manifest',
@@ -736,7 +903,7 @@ export function installPresentationWorkflow(ctx: Context): void {
         const prompt = compiledPrompt ?? (style.stylePrompt ? rawPrompt + '\n\n[Style reference]\n' + style.stylePrompt : rawPrompt)
         jobs.push({ taskId, runId, page: item.page, status: 'queued', concurrency, updatedAt: new Date().toISOString(),
           specFingerprint: hash(JSON.stringify({ slide: spec.slides[item.page - 1], style })),
-          input: { prompt, originalPrompt: typeof slide.originalPrompt === 'string' && compiledPrompt ? slide.originalPrompt : rawPrompt, ...(typeof slide.analysisPrompt === 'string' ? { analysisPrompt: slide.analysisPrompt } : {}), ...(typeof slide.editablePlanPrompt === 'string' ? { editablePlanPrompt: slide.editablePlanPrompt } : {}), stylePrompt: style.stylePrompt, outputPath: target, assetId: item.asset_id, references, ...(item.parent_asset_id ? { parentAssetId: item.parent_asset_id } : {}) } })
+          input: { prompt, originalPrompt: typeof slide.originalPrompt === 'string' && compiledPrompt ? slide.originalPrompt : rawPrompt, ...(typeof slide.analysisPrompt === 'string' ? { analysisPrompt: slide.analysisPrompt } : {}), ...(typeof slide.editablePlanPrompt === 'string' ? { editablePlanPrompt: slide.editablePlanPrompt } : {}), stylePrompt: style.stylePrompt ?? '', outputPath: target, assetId: item.asset_id, references, ...(item.parent_asset_id ? { parentAssetId: item.parent_asset_id } : {}) } })
         paths.add(target); ids.add(item.asset_id); pages.add(item.page)
       }
       state.pageJobs ??= {}

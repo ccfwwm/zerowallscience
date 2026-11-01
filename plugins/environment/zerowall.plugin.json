@@ -1,6 +1,6 @@
 {
   "name": "@zerowallscience/plugin-environment",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "applicationVersion": "8.0.6",
   "restartRequired": true,
   "desktop": {

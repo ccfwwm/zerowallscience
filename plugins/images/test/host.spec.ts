@@ -70,26 +70,33 @@ it('uses Gemini wire format for a Gemini group even when the model name looks Op
     const body = JSON.parse(String(init?.body))
     expect(body.contents[0].parts[0].text).toBe('gemini page')
     expect(body.prompt).toBeUndefined()
+    expect(body.size).toBeUndefined()
+    expect(body.generationConfig.imageConfig).toEqual({ imageSize: '4K' })
     expect(JSON.stringify(body)).not.toContain('quality')
     expect(JSON.stringify(body)).not.toContain('xhigh')
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: (await raster()).toString('base64') } }] } }] }), { status: 200 })
   })
-  const result = await new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, fetch: fetcher }).generate({ prompt: 'gemini page', outputPath: 'gemini.png', quality: 'xhigh' }, workspace)
+  const result = await new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, imageQuality: () => { throw new Error('Gemini must not read OpenAI quality') }, fetch: fetcher }).generate({ prompt: 'gemini page', outputPath: 'gemini.png', quality: 'xhigh', size: '2048x1152' }, workspace)
   expect(result.model).toBe('gpt-looking-image')
+  expect(result.requestedImageSize).toBe('4K')
+  expect(JSON.parse(await readFile(result.receiptPath!, 'utf8')).requestedImageSize).toBe('4K')
   expect(fetcher).toHaveBeenCalledOnce()
 })
 
 it('uses upstream image capabilities for gemini-nano-banana-2.1 without a model-name special case', async () => {
   const workspace = await root(), secrets = new MemorySecrets()
   secrets.values.set('zerowall.ai-cloud.group.53', 'host-only-secret')
-  const model = { providerId: 'zerowall-ai-cloud-53', groupId: '53', groupName: 'any-name', modelId: 'gemini-nano-banana-2.1', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, imageProtocol: 'gemini' as const, imageSizes: ['2K'], aspectRatios: ['16:9'], qualities: [] }
+  const model = { providerId: 'zerowall-ai-cloud-53', groupId: '53', groupName: 'any-name', modelId: 'gemini-nano-banana-2.1', baseUrl: 'https://code.aicodeme.xyz/v1', capability: 'image-generation' as const, imageProtocol: 'gemini' as const, imageSizes: ['2048'], aspectRatios: ['16:9'], qualities: [] }
   const fetcher = vi.fn<typeof fetch>(async (url, init) => {
     expect(url).toBe('https://code.aicodeme.xyz/v1beta/models/gemini-nano-banana-2.1:generateContent')
     const body = JSON.parse(String(init?.body))
     expect(body.generationConfig.imageConfig).toEqual({ aspectRatio: '16:9', imageSize: '2K' })
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: (await raster()).toString('base64') } }] } }] }), { status: 200 })
   })
-  await new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, fetch: fetcher }).generate({ prompt: 'nano banana page', outputPath: 'nano.png', size: '2048x1152' }, workspace)
+  const service = new AiCloudImageGenerator({ secrets, account: { current: async () => ({ ...signedIn(), models: [model] }) }, imageModel: async () => model, fetch: fetcher })
+  await expect(service.generate({ prompt: 'nano banana page', outputPath: 'unsupported.png' }, workspace)).rejects.toThrow('IMAGE_SIZE_UNSUPPORTED')
+  expect(fetcher).not.toHaveBeenCalled()
+  await service.generate({ prompt: 'nano banana page', outputPath: 'nano.png', aspectRatio: '16:9', imageSize: '2k' }, workspace)
   expect(fetcher).toHaveBeenCalledOnce()
 })
 
@@ -220,6 +227,16 @@ it('renders a durable image block alongside the assistant-facing Markdown embed'
   expect(result[0]).toMatchObject({ type: 'text' })
   expect((result[0] as { text: string }).text).toContain('![Generated image](<C:/workspace/images/final image.png>)')
   expect(result[1]).toMatchObject({ type: 'image', attachment: { mediaType: 'image/png', width: 4, height: 3 } })
+})
+it('describes Gemini output with the requested tier and ratio', () => {
+  const result = renderImageResult('Generated', {
+    path: 'C:/workspace/image.png', model: 'gemini-image', providerId: 'provider', groupId: 'group',
+    bytes: 12, requestedSize: 'auto', requestedImageSize: '4K', requestedAspectRatio: '16:9',
+    actualWidth: 3840, actualHeight: 2160, quality: 'auto', requestedQuality: 'auto', actualQuality: 'unreported',
+  })
+  const text = (result[0] as { text: string }).text
+  expect(text).toContain('requested 4K tier, 16:9 aspect ratio; actual 3840x2160')
+  expect(text).not.toContain('quality')
 })
 it('recovers transient 503 with the original idempotency key and rejects definitive parameter errors', async () => {
   const workspace = await root(), png = await raster()

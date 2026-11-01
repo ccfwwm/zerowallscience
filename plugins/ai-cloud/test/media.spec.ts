@@ -34,6 +34,29 @@ async function setup(fetcher: typeof fetch, operation = 'image') {
   return { service: make(), make, values, state, cacheDir, setState: (next: AiCloudAccountSnapshot) => { state = next } }
 }
 
+it.each([undefined, '512', '1k', '2048', '4K'])('uses native Gemini imageConfig and normalizes tier %s without size or quality', async tier => {
+  const fetcher = vi.fn<typeof fetch>(async (_url, init) => {
+    const body = JSON.parse(String(init?.body))
+    expect(body.generationConfig.imageConfig).toEqual({ aspectRatio: '16:9', imageSize: tier === '2048' ? '2K' : tier?.toUpperCase() ?? '4K' })
+    expect(body.contents[0].parts).toHaveLength(2)
+    expect(body.contents[0].parts[1].inlineData.mimeType).toBe('image/png')
+    expect(body.size).toBeUndefined(); expect(body.quality).toBeUndefined()
+    return json({ candidates: [{ content: { parts: [{ inlineData: { data: png.toString('base64'), mimeType: 'image/png' } }] } }] })
+  })
+  const { service, state } = await setup(fetcher, 'gemini_image')
+  Object.assign(state.mediaModels![0]!, { imageProtocol: 'gemini', aspectRatios: ['16:9'], imageSizes: [], resolutions: ['512', '1024', '2048', '4096'] })
+  await service.submit({ ...request('gemini_image'), parameters: { ...(tier ? { image_size: tier } : {}), aspect_ratio: '16:9', size: '999x555', quality: 'max' }, references: [{ mediaType: 'image/png', base64: png.toString('base64') }] })
+  expect(fetcher).toHaveBeenCalledOnce()
+})
+
+it('rejects unsupported Gemini options before sending and never silently drops them', async () => {
+  const fetcher = vi.fn<typeof fetch>(), { service, state } = await setup(fetcher, 'gemini_image')
+  Object.assign(state.mediaModels![0]!, { imageProtocol: 'gemini', imageSizes: ['2K'], aspectRatios: ['16:9'] })
+  await expect(service.submit({ ...request('gemini_image'), parameters: {} })).rejects.toThrow('MEDIA_UNSUPPORTED_GEMINI_IMAGE_SIZE')
+  await expect(service.submit({ ...request('gemini_image'), parameters: { image_size: '2K', aspect_ratio: '1:1' } })).rejects.toThrow('MEDIA_UNSUPPORTED_GEMINI_ASPECT_RATIO')
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
 it.each(['v6k_url', 'yunfei_multimodal'])('forwards the complete website manifest and future options with %s despite stale catalog limits', async format => {
   const calls: any[] = []
   const fetcher = vi.fn<typeof fetch>(async (url, init) => {

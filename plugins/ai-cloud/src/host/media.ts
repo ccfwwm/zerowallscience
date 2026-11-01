@@ -23,6 +23,13 @@ const JOURNAL = 'zerowall.ai-cloud.media-journal.v1'
 const MAX_BYTES = 256 * 1024 * 1024
 const TRUSTED = ['hkcode.aicodeme.xyz', 'code.aicodeme.xyz', 'code.aicodeme.cn']
 const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex')
+/** Gemini tiers are enums; a pixel canvas is not an imageSize. */
+export function normalizeGeminiImageSize(raw: string): string {
+  const value = raw.trim().toUpperCase()
+  const aliases: Record<string, string> = { '512': '512', '1024': '1K', '1K': '1K', '2048': '2K', '2K': '2K', '4096': '4K', '4K': '4K' }
+  if (!aliases[value]) throw new Error('Gemini imageSize must be 512, 1K, 2K or 4K.')
+  return aliases[value]!
+}
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, v]) => [key, canonical(v)]))
@@ -104,10 +111,17 @@ export class AiCloudMediaService implements ZeroWallMedia {
         parts.push({ inlineData: { mimeType: ref.mediaType, data: ref.base64 } })
       }
       const imageConfig: Record<string, unknown> = {}
-      const ratio = parameters.aspect_ratio
-      const imageSize = parameters.image_size ?? parameters.resolution ?? parameters.size
-      if (typeof ratio === 'string' && ratio.trim() && (!model.aspectRatios.length || model.aspectRatios.includes(ratio))) imageConfig.aspectRatio = ratio
-      if (typeof imageSize === 'string' && imageSize.trim() && (!model.imageSizes?.length || model.imageSizes.includes(imageSize))) imageConfig.imageSize = imageSize
+      const ratio = typeof parameters.aspect_ratio === 'string' ? parameters.aspect_ratio.trim() : undefined
+      // OpenAI size/quality are deliberately absent from the Gemini payload.
+      const rawSize = parameters.image_size ?? parameters.resolution ?? '4K'
+      if (typeof rawSize !== 'string') throw new Error('MEDIA_INVALID_GEMINI_IMAGE_SIZE')
+      const imageSize = normalizeGeminiImageSize(rawSize)
+      const declaredSizes = model.imageSizes?.length ? model.imageSizes : model.resolutions
+      const supportedSizes = declaredSizes.flatMap(value => { try { return [normalizeGeminiImageSize(value)] } catch { return [] } })
+      if (declaredSizes.length && !supportedSizes.includes(imageSize)) throw new Error('MEDIA_UNSUPPORTED_GEMINI_IMAGE_SIZE: ' + imageSize)
+      if (ratio && model.aspectRatios.length && !model.aspectRatios.includes(ratio)) throw new Error('MEDIA_UNSUPPORTED_GEMINI_ASPECT_RATIO: ' + ratio)
+      if (ratio) imageConfig.aspectRatio = ratio
+      imageConfig.imageSize = imageSize
       const generationConfig: Record<string, unknown> = { candidateCount: 1, responseModalities: ['IMAGE', 'TEXT'], ...(Object.keys(imageConfig).length ? { imageConfig } : {}) }
       const payload: Record<string, unknown> = { contents: [{ role: 'user', parts }], generationConfig }
       const body = JSON.stringify(payload)

@@ -18752,7 +18752,7 @@ importers:
         specifier: workspace:^
         version: link:../account
       '@zerowallscience/plugin-ai-cloud':
-        specifier: ^0.1.20
+        specifier: ^0.1.37
         version: link:../ai-cloud
       '@zerowallscience/plugin-base':
         specifier: workspace:^

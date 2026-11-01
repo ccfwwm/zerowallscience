@@ -11,6 +11,8 @@ export interface ImageModelSelection {
   profileId?: string
   resolution?: string
   aspectRatio?: string
+  /** Gemini imageConfig.imageSize (512, 1K, 2K or 4K). */
+  imageSize?: string
 }
 
 export type ImageGenerationQuality = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'

@@ -27,6 +27,12 @@ const SCI_MASTER_KEY_URL = 'https://scimaster.bohrium.com/vibe-write/home'
 const mediaIdentity = (model: any): string => JSON.stringify([model.providerId, model.groupId, model.modelId, model.profileId ?? ''])
 const hasImageProtocol = (model: any): boolean => model?.imageProtocol === undefined || model?.imageProtocol === 'openai' || model?.imageProtocol === 'gemini'
 const IMAGE_QUALITIES = ['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+const GEMINI_IMAGE_SIZES = ['512', '1K', '2K', '4K']
+const geminiSize = (value: string): string => ({ '1024': '1K', '2048': '2K', '4096': '4K' })[value.trim().toUpperCase()] ?? value.trim().toUpperCase()
+function geminiSizes(model: any): string[] {
+  const declared: string[] = model.imageSizes?.length ? model.imageSizes : model.resolutions?.length ? model.resolutions : GEMINI_IMAGE_SIZES
+  return [...new Set(declared.map(geminiSize).filter(value => GEMINI_IMAGE_SIZES.includes(value)))]
+}
 
 type LoadState = 'loading' | 'ready' | 'unavailable' | 'error'
 
@@ -363,9 +369,9 @@ export function EnvironmentSection({ environmentRemote, accountRemote, mcpRemote
         {!imageModelIsKnown && imageModelValue && <p role="alert">历史模型或能力配置已失效，请重新选择。</p>}
         {imageModels.filter((m:any) => mediaIdentity(m) === mediaIdentity(image)).map((m:any) => <div key={`${m.providerId}${VALUE_SEPARATOR}${m.groupId}${VALUE_SEPARATOR}${m.modelId}${VALUE_SEPARATOR}${m.profileId}`}>
           <p className={css.muted}>协议：{m.imageProtocol === 'gemini' ? 'Gemini generateContent' : 'OpenAI Images'}{m.imageProtocolSource === 'openai-default' ? '（未识别类型，按 OpenAI 默认）' : ''}</p>
-          {([['resolution','分辨率',m.resolutions],['aspectRatio','比例',m.aspectRatios]] as const).map(([key,label,values]) => values?.length ? <label className={css.field} key={key}><span>{label}</span><select className={css.control} value={image[key] ?? ''} disabled={busy} onChange={event=>saveImageSelection({...image,[key]:event.target.value})}><option value="">默认</option>{values.map((v:string)=><option key={v}>{v}</option>)}</select></label> : null)}
+          {([...(m.imageProtocol === 'gemini' ? [['imageSize','Gemini 分辨率档位',geminiSizes(m)] as const] : [['resolution','分辨率',m.resolutions] as const]), ['aspectRatio','比例',m.aspectRatios] as const]).map(([key,label,values]) => values?.length ? <label className={css.field} key={key}><span>{m.imageProtocol === 'gemini' && key === 'imageSize' ? t('geminiImageSize') : label}</span><select aria-label={key === 'imageSize' ? t('geminiImageSize') : label} className={css.control} value={key === 'imageSize' ? geminiSize(image.imageSize || image.resolution || '') : image[key] ?? ''} disabled={busy} onChange={event=>saveImageSelection({...image,[key]:event.target.value,...(key === 'imageSize' ? { resolution: '' } : {})})}><option value="">{key === 'imageSize' ? t('geminiDefaultImageSize') : '默认'}</option>{values.map((v:string)=><option key={v}>{v}</option>)}</select>{m.imageProtocol === 'gemini' && key === 'imageSize' ? <small>{t('geminiImageSizeNote')}</small> : null}</label> : null)}
         </div>)}
-        <label className={css.field}><span>{t('defaultQuality')}</span><select className={css.control} value={imageQuality} disabled={busy} onChange={event => saveImageQuality(event.target.value as ImageGenerationQuality)}>{imageQualityChoices.map(quality => <option key={quality} value={quality}>{t(quality)}</option>)}</select><small>{t(selectedImageModel?.imageProtocol === 'gemini' ? 'geminiQualityNote' : 'qualityNote')}</small></label>
+        {selectedImageModel?.imageProtocol === 'gemini' ? <p className={css.muted}>{t('geminiQualityNote')}</p> : <label className={css.field}><span>{t('defaultQuality')}</span><select className={css.control} value={imageQuality} disabled={busy} onChange={event => saveImageQuality(event.target.value as ImageGenerationQuality)}>{imageQualityChoices.map(quality => <option key={quality} value={quality}>{t(quality)}</option>)}</select><small>{t('qualityNote')}</small></label>}
       </details>
 
       <details className={`${css.card} ${css.variablesCard}`}>

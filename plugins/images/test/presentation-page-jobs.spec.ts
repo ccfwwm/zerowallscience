@@ -10,11 +10,12 @@ import { hash, pageStyle } from '../src/host/visual-assets.js'
 import { registerExportTool } from '../../dsh-ppt-maker/src/tools/export.js'
 import { unzipSync, strFromU8 } from 'fflate'
 import { imageConcurrency } from '../src/host/image-concurrency.js'
+import { templateFixture } from './fixtures/presentation-template.js'
 
 const roots: string[] = [], disposers: (() => void)[] = []
 afterEach(async () => { disposers.splice(0).forEach(dispose => dispose()); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))) })
 
-async function fixture(count: number) {
+async function fixture(count: number, newFlow = false) {
   const root = await mkdtemp(join(tmpdir(), 'page-jobs-')); roots.push(root)
   const spec: any = { width: 960, height: 540, fonts: {}, palette: {}, slides: Array.from({ length: count }, (_, index) => ({ text: [`Page ${index + 1}`], assetIds: [] })) }
   await writeFile(join(root, 'spec.json'), JSON.stringify(spec)); await writeFile(join(root, 'assets.json'), '{"schemaVersion":2,"assets":[]}')
@@ -50,9 +51,117 @@ async function fixture(count: number) {
   installPresentationWorkflow(ctx as any)
   await invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new' })
   const state = async () => JSON.parse(await readFile(events.at(-1).data.journal, 'utf8'))
+  // Existing job tests exercise saved pre-upgrade projects. New-flow tests below
+  // keep the gate created by presentation_prepare and run the real four-image path.
+  if (!newFlow) { const saved = await state(); delete saved.styleSelectionRequired; await writeFile(events.at(-1).data.journal, JSON.stringify(saved)) }
   async function waitPage(page: number, status: string) { await vi.waitFor(async () => { const job = (await state()).pageJobs[page]; expect({ status: job.status, error: job.error }).toEqual({ status, error: status === 'failed' ? job.error : undefined }) }, { timeout: 10000 }) }
-  return { root, invoke, canonical, state, waitPage, spec, generate, events }
+  return { root, invoke, canonical, state, waitPage, spec, generate, events, definitions }
 }
+
+it('requires four visible representative images and a user selection before confirmed pages inherit the chosen image', { timeout: 30000 }, async () => {
+  const f = await fixture(2, true)
+  const formal = { templates: [{ page: 1, output_path: 'page.png', asset_id: 'page' }] }
+  await expect(f.invoke('presentation_generate_fast', formal)).rejects.toThrow('PRESENTATION_STYLE_CANDIDATES_REQUIRED')
+  await expect(f.invoke('presentation_write_prompt_document', { spec_path: 'spec.json', output_path: 'prompts.md' })).rejects.toThrow('PRESENTATION_STYLE_CANDIDATES_REQUIRED')
+  await expect(f.invoke('presentation_select_style', { style_id: 'academic-clean' })).rejects.toThrow('PRESENTATION_STYLE_CANDIDATES_REQUIRED')
+  const result = await f.invoke('presentation_generate_style_candidates', { representative_page: 2 })
+  const previews = JSON.parse(result.value)
+  expect(previews.candidates).toHaveLength(4)
+  expect(new Set(previews.candidates.map((item: any) => item.id)).size).toBe(4)
+  expect(new Set(previews.candidates.map((item: any) => item.path)).size).toBe(4)
+  for (const call of f.generate.mock.calls) {
+    expect(call[0].prompt).toContain('Exact page text to preserve: ["Page 2"]')
+    expect(call[0].aspect_ratio).toBe('16:9')
+  }
+  const rendered = f.definitions.get('presentation_generate_style_candidates').output.render({}, result.value)
+  for (const candidate of previews.candidates) {
+    expect(await readFile(candidate.path)).toBeTruthy()
+    expect(rendered[0].text).toContain(candidate.previewMarkdown)
+  }
+  await expect(f.invoke('presentation_write_prompt_document', { spec_path: 'spec.json', output_path: 'prompts.md' })).rejects.toThrow('PRESENTATION_STYLE_SELECTION_REQUIRED')
+  const selected = previews.candidates[1]
+  await f.invoke('presentation_select_style', { style_id: selected.id })
+  await f.invoke('presentation_write_prompt_document', { spec_path: 'spec.json', output_path: 'prompts.md', markdown: '' })
+  let spec = JSON.parse(await readFile(join(f.root, 'spec.json'), 'utf8'))
+  expect(spec.slides[0].combinedPrompt).toContain(selected.assetId)
+  expect(spec.slides[0].combinedPrompt).toContain(selected.id)
+  await expect(f.invoke('presentation_generate_fast', formal)).rejects.toThrow('PRESENTATION_PLAN_CONFIRMATION_REQUIRED')
+  await f.invoke('presentation_confirm_plan', { prompt_document_path: 'prompts.md' })
+  await f.invoke('presentation_generate_fast', formal)
+  await waitFastExport(f)
+  const call = f.canonical.get('edit_image').mock.calls[0][0]
+  expect(call.input_paths).toEqual([selected.path])
+  expect(call.aspect_ratio).toBe('16:9')
+  expect(call.prompt).toBe(spec.slides[0].combinedPrompt)
+  expect(f.generate).toHaveBeenCalledTimes(5)
+  expect((await f.state()).pageJobs[1].status).toBe('complete')
+  // Registering the completed page must not invalidate the confirmed sources.
+  await f.invoke('presentation_generate_fast', { templates: [{ page: 2, output_path: 'page-2.png', asset_id: 'page-2' }] })
+  await waitFastExport(f)
+  expect((await f.state()).exportReceipt.stage).toBe('final')
+})
+
+it('does not bind or select an incomplete candidate set', async () => {
+  const f = await fixture(1, true), original = f.generate
+  f.canonical.set('generate_image', async (args: any) => { if (args.prompt.includes('Style option 编辑杂志')) throw new Error('provider unavailable'); return original(args) })
+  await expect(f.invoke('presentation_generate_style_candidates', {})).rejects.toThrow('incomplete (3/4 images registered)')
+  expect(JSON.parse(await readFile(join(f.root, 'assets.json'), 'utf8')).assets).toHaveLength(3)
+  await expect(f.invoke('presentation_select_style', { style_id: 'academic-clean' })).rejects.toThrow('PRESENTATION_STYLE_CANDIDATES_REQUIRED')
+})
+
+it('uses supplied visual references for all four candidates and verifies their generation receipts', async () => {
+  const f = await fixture(1, true)
+  await f.generate({ prompt: 'Customer visual reference', output_path: 'reference.png' })
+  await f.invoke('presentation_record_asset', { manifest_path: 'assets.json', image_path: 'reference.png', asset_id: 'reference', role: 'style-reference' })
+  await writeFile(join(f.root, 'spec.json'), JSON.stringify({ ...f.spec, styleReferenceAssetIds: ['reference'] }))
+  f.generate.mockClear()
+  const previews = JSON.parse((await f.invoke('presentation_generate_style_candidates', {})).value)
+  expect(f.canonical.get('edit_image')).toHaveBeenCalledTimes(4)
+  for (const call of f.canonical.get('edit_image').mock.calls) expect(call[0].input_paths).toEqual([join(f.root, 'reference.png')])
+  const assets = JSON.parse(await readFile(join(f.root, 'assets.json'), 'utf8')).assets
+  for (const candidate of previews.candidates) {
+    expect(assets.find((asset: any) => asset.assetId === candidate.assetId).styleReferenceIds).toEqual(['reference'])
+  }
+})
+
+it('confirms a non-empty existing prompt document and binds missing approval fields for legacy projects', async () => {
+  const f = await fixture(1)
+  await writeFile(join(f.root, 'manual.md'), '# User reviewed prompt')
+  await f.invoke('presentation_confirm_plan', { prompt_document_path: 'manual.md' })
+  expect(JSON.parse(await readFile(join(f.root, 'spec.json'), 'utf8'))).toMatchObject({ promptDocumentPath: 'manual.md', promptApprovalRequired: true })
+  expect((await f.state()).promptApproval.promptDocumentSha256).toBe(hash('# User reviewed prompt'))
+})
+
+it('analyzes the supplied PPTX before candidates and reparses changed template bytes', { timeout: 30000 }, async () => {
+  const f = await fixture(1, true), template = templateFixture()
+  await writeFile(join(f.root, 'customer.pptx'), template)
+  const prepared = JSON.parse((await f.invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new', template_path: 'customer.pptx' })).value)
+  expect(prepared.templateAnalysis.palette.accent1).toBe('#336699')
+  expect(prepared.nextStep).toBe('presentation_generate_style_candidates')
+  const previews = JSON.parse((await f.invoke('presentation_generate_style_candidates', {})).value)
+  expect(f.generate.mock.calls[0]![0].prompt).toContain('Master, layout and example-slide geometry')
+  await f.invoke('presentation_select_style', { style_id: previews.candidates[0].id })
+  await writeFile(join(f.root, 'manual.md'), '# Old prompt')
+  await expect(f.invoke('presentation_confirm_plan', { prompt_document_path: 'manual.md' })).rejects.toThrow('PRESENTATION_PROMPT_RECOMPILE_REQUIRED')
+  await f.invoke('presentation_write_prompt_document', { spec_path: 'spec.json', output_path: 'prompts.md' })
+  await f.invoke('presentation_confirm_plan', { prompt_document_path: 'prompts.md' })
+  await writeFile(join(f.root, 'customer.pptx'), templateFixture('663399'))
+  await expect(f.invoke('presentation_generate_fast', { templates: [{ page: 1, output_path: 'page.png', asset_id: 'page' }] })).rejects.toThrow('PRESENTATION_TEMPLATE_CHANGED')
+  // The stored template path is enough to analyze again without a second copy.
+  await f.invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new' })
+  const spec = JSON.parse(await readFile(join(f.root, 'spec.json'), 'utf8'))
+  expect(spec.templateAnalysis.palette.accent1).toBe('#663399')
+  expect(spec.styleCandidates).toBeUndefined()
+  expect(spec.selectedStyleId).toBeUndefined()
+})
+
+it('preserves the existing project and plan when a supplied master has a different canvas', async () => {
+  const f = await fixture(1, true), original = await readFile(join(f.root, 'spec.json'), 'utf8')
+  await writeFile(join(f.root, 'customer.pptx'), templateFixture('336699', [9144000, 6858000]))
+  await expect(f.invoke('presentation_prepare', { spec_path: 'spec.json', manifest_path: 'assets.json', dir: 'deck', mode: 'new', template_path: 'customer.pptx' })).rejects.toThrow('PRESENTATION_TEMPLATE_CANVAS_MISMATCH')
+  expect(await readFile(join(f.root, 'spec.json'), 'utf8')).toBe(original)
+  expect((await loadProject(f.root, 'deck')).deck.size).toEqual([960, 540])
+})
 
 it('returns immediately, commits out-of-order success, isolates failure, and resumes only the selected page', { timeout: 30000 }, async () => {
   const f = await fixture(3), slow = Promise.withResolvers<void>()

@@ -4,6 +4,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import sharp from 'sharp'
 import { installPresentationWorkflow } from './presentation-workflow.js'
+import { resolvePresentationStyle, validateStyleCandidateSet, type PresentationStyleCandidate } from './presentation-style-candidates.js'
 import type { Context } from '@deepseek-ai/cordis'
 
 export type SourceKind = 'generated' | 'literature' | 'user' | 'derived'
@@ -15,6 +16,7 @@ export interface VisualAsset {
   requestedSize?: string; prompt?: string; promptHash?: string; inputImageHashes: string[]; styleReferenceIds: string[]
   sourceSeedPath?: string; revisedPrompt?: string; createdAt: string; parentAssetId?: string
   originalPrompt?: string; analysisPrompt?: string; editablePlanPrompt?: string; combinedPrompt?: string; stylePrompt?: string; referenceImageHashes?: string[]
+  styleId?: string; candidateSetId?: string
 }
 export interface VisualManifest {
   schemaVersion: 1 | 2; assets: VisualAsset[]; selectedStyleAssetId?: string; styleReview?: string
@@ -35,11 +37,12 @@ export interface SlideSpecification {
   stylePrompt?: string; styleReferenceAssetIds?: string[]
   [key: string]: unknown
 }
-export interface PresentationSpecification { width: number; height: number; fonts: object; palette: object; slides: SlideSpecification[]; stylePrompt?: string; styleReferenceAssetIds?: string[]; promptApprovalRequired?: boolean; selectedStyleId?: string; promptDocumentPath?: string; promptDocumentFormat?: 'structured-v1'; sourceManifestPath?: string; researchSourcesRequired?: boolean; [key: string]: unknown }
+export interface PresentationSpecification { width: number; height: number; fonts: object; palette: object; slides: SlideSpecification[]; stylePrompt?: string; templateStylePrompt?: string; selectedStylePrompt?: string; styleReferenceAssetIds?: string[]; promptApprovalRequired?: boolean; selectedStyleId?: string; styleCandidates?: PresentationStyleCandidate[]; templateAnalysis?: Record<string, unknown>; templateSource?: { path: string; sha256: string }; promptDocumentPath?: string; promptDocumentFormat?: 'structured-v1'; sourceManifestPath?: string; researchSourcesRequired?: boolean; [key: string]: unknown }
 export interface AssetInput {
   manifest: string; image: string; assetId: string; role: string; slideNumber?: number; slideNumbers?: number[]
   styleReferenceIds?: string[]; sourceSeedPath?: string; sourceKind?: SourceKind; source?: SourceReference; parentAssetId?: string
   originalPrompt?: string; analysisPrompt?: string; editablePlanPrompt?: string; combinedPrompt?: string; stylePrompt?: string; referenceImageHashes?: string[]
+  styleId?: string; candidateSetId?: string
 }
 export const hash = (data: Uint8Array | string) => createHash('sha256').update(data).digest('hex')
 export async function workspacePath(cwd: string, path: string): Promise<string> {
@@ -93,12 +96,14 @@ export async function readSpecification(cwd: string, path: string): Promise<Pres
   if (spec.sourceManifestPath !== undefined && typeof spec.sourceManifestPath !== 'string') throw new Error('sourceManifestPath must be a string.')
   if (spec.researchSourcesRequired !== undefined && typeof spec.researchSourcesRequired !== 'boolean') throw new Error('researchSourcesRequired must be a boolean.')
   if (spec.selectedStyleId !== undefined && typeof spec.selectedStyleId !== 'string') throw new Error('selectedStyleId must be a string.')
+  if (spec.styleCandidates !== undefined) validateStyleCandidateSet(spec.styleCandidates)
+  if (spec.templateSource !== undefined && (!spec.templateSource || typeof spec.templateSource.path !== 'string' || !spec.templateSource.path.trim() || !/^[a-f0-9]{64}$/u.test(spec.templateSource.sha256))) throw new Error('templateSource requires a workspace path and SHA-256.')
   return spec
 }
 export function pageStyle(spec: PresentationSpecification, page: number) {
   const slide = spec.slides[page - 1]
   if (!slide) throw new Error('Page is outside the presentation specification.')
-  return { stylePrompt: slide.stylePrompt ?? spec.stylePrompt ?? '', styleReferenceAssetIds: slide.styleReferenceAssetIds ?? spec.styleReferenceAssetIds ?? [] }
+  return resolvePresentationStyle(spec, slide)
 }
 export function assetsForPage(spec: PresentationSpecification, manifest: VisualManifest, page: number): VisualAsset[] {
   const slide = spec.slides[page - 1]
@@ -203,7 +208,7 @@ async function inspectAsset(cwd: string, input: AssetInput): Promise<VisualAsset
   if (!['png', 'jpeg', 'webp'].includes(metadata.format ?? '') || !metadata.width || !metadata.height) throw new Error('Visual asset must be a readable PNG, JPEG or WebP image.')
   const sourceKind = input.sourceKind ?? 'generated'
   const asset: VisualAsset = { assetId: input.assetId, role: input.role, ...(input.slideNumber === undefined ? {} : { slideNumber: input.slideNumber }), ...(input.slideNumbers === undefined ? {} : { slideNumbers: input.slideNumbers }), path, sha256: hash(bytes), mediaType: `image/${metadata.format}`, width: metadata.width, height: metadata.height, sourceKind, inputImageHashes: [], styleReferenceIds: input.styleReferenceIds ?? [], createdAt: new Date().toISOString() }
-  for (const key of ['originalPrompt', 'analysisPrompt', 'editablePlanPrompt', 'combinedPrompt', 'stylePrompt', 'referenceImageHashes'] as const) if (input[key] !== undefined) (asset as any)[key] = input[key]
+  for (const key of ['originalPrompt', 'analysisPrompt', 'editablePlanPrompt', 'combinedPrompt', 'stylePrompt', 'referenceImageHashes', 'styleId', 'candidateSetId'] as const) if (input[key] !== undefined) (asset as any)[key] = input[key]
   if (sourceKind === 'generated') {
     const receipt = JSON.parse(await readFile(await workspacePath(cwd, path + '.generation.json'), 'utf8'))
     if (asset.sha256 !== receipt.sha256) throw new Error('Visual asset generation checksum mismatch.')

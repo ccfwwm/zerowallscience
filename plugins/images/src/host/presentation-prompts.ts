@@ -1,5 +1,6 @@
 import type { PresentationSpecification, VisualManifest } from './visual-assets.js'
 import type { PresentationSources } from './presentation-workflow.js'
+import { resolvePresentationStyle } from './presentation-style-candidates.js'
 
 const display = (value: unknown): string => typeof value === 'string' ? value : JSON.stringify(value, null, 2) ?? ''
 const section = (label: string, value: unknown): string => value === undefined || value === '' ? '' : '【' + label + '】\n' + display(value)
@@ -15,19 +16,26 @@ export function compilePresentationPrompts(spec: PresentationSpecification, asse
     const originalPrompt = typeof slide.originalPrompt === 'string' ? slide.originalPrompt : typeof spec.originalPrompt === 'string' ? spec.originalPrompt : ''
     const analysisPrompt = typeof slide.analysisPrompt === 'string' ? slide.analysisPrompt : typeof slide.purpose === 'string' ? slide.purpose : ''
     const editablePlanPrompt = typeof slide.editablePlanPrompt === 'string' ? slide.editablePlanPrompt : '文字使用独立文本框，简单线条和色块还原为原生形状，表格和有数据的图表保留结构；照片、文献图及无法安全拆分的复合区域保留独立图片。保持层级、裁切和坐标。'
-    const stylePrompt = slide.stylePrompt ?? spec.stylePrompt ?? ''
-    const referenceIds = [...new Set([...(slide.styleReferenceAssetIds ?? spec.styleReferenceAssetIds ?? []), ...(slide.assetIds ?? [])])]
+    const style = resolvePresentationStyle(spec, slide)
+    const stylePrompt = style.stylePrompt ?? ''
+    const referenceIds = [...new Set([...style.styleReferenceAssetIds, ...(slide.assetIds ?? [])])]
     const referenceDescriptions = referenceIds.map(id => {
       const asset = assets.assets.find(item => item.assetId === id)
       if (!asset) throw new Error('Unknown prompt reference asset ' + id)
-      return { assetId: id, role: asset.role, sha256: asset.sha256, sourceKind: asset.sourceKind, placement: Array.isArray(slide.assetPlacements) ? slide.assetPlacements.filter((item: any) => item.assetId === id) : [], usage: ['literature', 'user'].includes(asset.sourceKind ?? '') && (slide.assetIds ?? []).includes(id) ? '事实素材：指定位置原字节嵌入，留出位置，不重绘内容、文字和数据' : '参考素材：用于风格或构图，以明确用途为准' }
+      const usage = asset.role === 'style-candidate'
+        ? '仅用于匹配所选候选图的视觉风格；不得复制候选图的事实内容、标题、数字或素材'
+        : ['literature', 'user'].includes(asset.sourceKind ?? '') && (slide.assetIds ?? []).includes(id)
+          ? '事实素材：指定位置原字节嵌入，留出位置，不重绘内容、文字和数据'
+          : '参考素材：用于风格或构图，以明确用途为准'
+      return { assetId: id, role: asset.role, sha256: asset.sha256, sourceKind: asset.sourceKind, placement: Array.isArray(slide.assetPlacements) ? slide.assetPlacements.filter((item: any) => item.assetId === id) : [], usage }
     })
     const evidence = (research?.sources ?? []).flatMap(source => source.claims.filter(claim => claim.slideNumbers.includes(page)).map(claim => ({ sourceId: source.id, citation: source.citation, verification: source.verification, claim: claim.text, evidenceNote: claim.evidenceNote ?? '' })))
     const combinedPrompt = [
       section('页面与受众', { page, role: slide.pageRole ?? '内容页', width: spec.width, height: spec.height, audience: spec.audience ?? '', purpose: slide.purpose ?? '', takeaway: slide.takeaway ?? '' }),
       section('用户原始要求', originalPrompt), section('内容分析与论证结构', analysisPrompt),
       section('必须逐字呈现的页面文字', slide.text), section('不可改写的事实、数值和单位', slide.immutableFacts),
-      section('完整视觉规范', { stylePrompt, fonts: spec.fonts, palette: spec.palette, typography: slide.typography ?? spec.typography, whitespace: slide.whitespace ?? spec.whitespace }),
+      section('客户PPTX母版分析', spec.templateAnalysis),
+      section('完整视觉规范', { stylePrompt, selectedStyleId: spec.selectedStyleId, templateStylePrompt: spec.templateStylePrompt, fonts: spec.fonts, palette: spec.palette, typography: slide.typography ?? spec.typography, whitespace: slide.whitespace ?? spec.whitespace }),
       section('版式与坐标', slide.layout), section('主图与配图细节', slide.visualBrief), section('图表、坐标轴、图例与连接关系', slide.chartBrief),
       section('参考图片用途和放置区域', referenceDescriptions.length ? referenceDescriptions : undefined),
       section('证据依据与核验层级（不自动印到画面）', evidence.length ? evidence : undefined),
